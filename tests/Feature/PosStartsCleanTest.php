@@ -68,7 +68,7 @@ class PosStartsCleanTest extends TestCase
 
     private function customer(string $name): Customer
     {
-        return Customer::create(['business_id' => $this->business->id, 'name' => $name]);
+        return Customer::create(['language' => 'ar', 'business_id' => $this->business->id, 'name' => $name]);
     }
 
     /* --------------------- الشاشة تبدأ نظيفة بعد البيع --------------------- */
@@ -153,7 +153,7 @@ class PosStartsCleanTest extends TestCase
     public function test_a_neighbours_invoice_never_appears(): void
     {
         $other = Business::create(['name' => 'الجار', 'status' => 'نشط']);
-        $theirCustomer = Customer::create(['business_id' => $other->id, 'name' => 'زبونهم']);
+        $theirCustomer = Customer::create(['language' => 'ar', 'business_id' => $other->id, 'name' => 'زبونهم']);
         Order::create([
             'business_id' => $other->id, 'customer_id' => $theirCustomer->id,
             'number' => 'JAAR-1', 'customer_name' => 'زبونهم', 'total' => 50,

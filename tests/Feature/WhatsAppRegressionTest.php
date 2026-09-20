@@ -68,6 +68,7 @@ class WhatsAppRegressionTest extends TestCase
         ]);
 
         $this->customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'زبون', 'phone' => '91234567',
         ]);
 

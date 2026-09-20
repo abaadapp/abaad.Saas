@@ -63,6 +63,7 @@ class ACreditSaleOwesWithoutDoublePostingTest extends TestCase
             'price' => 100, 'cost' => 40, 'quantity' => 50, 'active' => true,
         ]);
         $this->company = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'شركة ABC',
             'customer_type' => 'شركة', 'allow_credit_sales' => true, 'payment_terms_days' => 30,
         ]);
@@ -187,7 +188,7 @@ class ACreditSaleOwesWithoutDoublePostingTest extends TestCase
 
     public function test_a_customer_without_permission_to_owe_is_refused(): void
     {
-        $walkin = Customer::create(['business_id' => $this->business->id, 'name' => 'زبون مارّ']);
+        $walkin = Customer::create(['language' => 'ar', 'business_id' => $this->business->id, 'name' => 'زبون مارّ']);
 
         $this->checkout(['credit' => true, 'customer_id' => $walkin->id])
             ->assertStatus(422)->assertJsonValidationErrors('credit');
@@ -263,6 +264,7 @@ class ACreditSaleOwesWithoutDoublePostingTest extends TestCase
     {
         $other = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
         $theirs = Customer::create([
+            'language' => 'ar',
             'business_id' => $other->id, 'name' => 'عميلهم', 'allow_credit_sales' => true,
         ]);
 

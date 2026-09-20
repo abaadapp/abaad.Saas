@@ -2205,6 +2205,8 @@
     "تصحيح فاتورة: ": "Invoice correction: ",
     "يُراسَل بالإنجليزيّة على واتساب": "Messaged in English on WhatsApp",
     "اختر لغة رسائل واتساب للعميل": "Choose the customer's WhatsApp message language",
+    "اختر لغة رسائل واتساب للعميل قبل إتمام البيع.": "Choose the customer's WhatsApp message language before completing the sale.",
+    "بأي لغة يستلم هذا العميل رسائل واتساب؟": "In which language does this customer receive WhatsApp messages?",
     "لغة رسائل واتساب": "WhatsApp message language",
     "اختياري — بأي لغة تصله إشعارات طلباته وفواتيره": "Optional — the language of their order and invoice notifications",
     "بأي لغة تصله إشعارات طلباته وفواتيره": "The language of their order and invoice notifications",

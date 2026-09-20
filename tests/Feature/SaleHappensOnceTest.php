@@ -154,6 +154,7 @@ class SaleHappensOnceTest extends TestCase
     private function soldOrder(): Order
     {
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'سالم', 'phone' => '90000001',
         ]);
         Coupon::create([

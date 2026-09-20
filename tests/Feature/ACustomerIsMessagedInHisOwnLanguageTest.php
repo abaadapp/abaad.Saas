@@ -190,10 +190,10 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
 
     private function owner(): User
     {
-        return User::create([
-            'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
-            'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
-        ]);
+        return User::firstOrCreate(
+            ['email' => 'o@abaad.om'],
+            ['business_id' => $this->shop->id, 'name' => 'المالك', 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط'],
+        );
     }
 
     public function test_the_owner_saves_a_customers_language_from_the_form(): void
@@ -265,6 +265,80 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
         ])->assertSessionHasNoErrors();
         $this->assertSame('en', Customer::where('phone', '99112237')->value('language'));
         $this->assertSame('ar', Customer::where('phone', '99112238')->value('language'));
+    }
+
+    /* ═════════════ والصندوقُ يسأل من سُجّل قبل السؤال ═════════════ */
+
+    private function sell(Customer $customer, array $extra = [])
+    {
+        $product = \App\Models\Product::firstOrCreate(
+            ['business_id' => $this->shop->id, 'name' => 'باقة'],
+            ['price' => 10, 'cost' => 4, 'quantity' => 100, 'alert_qty' => 1, 'active' => true],
+        );
+
+        return $this->actingAs($this->owner())->withSession(['current_branch' => $this->branch->id])
+            ->postJson(route('pos.checkout'), array_merge([
+                'items' => [['id' => $product->id, 'name' => 'باقة', 'qty' => 1]],
+                'customer' => $customer->name, 'customer_id' => $customer->id,
+                'payment_method' => 'نقدي', 'client_uuid' => uniqid('l', true),
+            ], $extra));
+    }
+
+    /**
+     * زبونٌ من قبل الميزة لا لغةَ له — الصندوقُ يسألها قبل البيعة، ويكتبها.
+     *
+     * البيعةُ تحمل الجواب لا طلبٌ منفصل: بيعةُ الانقطاع ترفعه معها.
+     */
+    public function test_the_till_refuses_to_sell_to_a_customer_whose_language_is_unknown(): void
+    {
+        $old = Customer::create(['business_id' => $this->shop->id, 'name' => 'زبونٌ قديم', 'phone' => '99220001']);
+
+        $this->sell($old)->assertStatus(422)->assertJsonValidationErrors('customer_language');
+        $this->sell($old, ['customer_language' => 'fr'])->assertStatus(422)->assertJsonValidationErrors('customer_language');
+        $this->assertSame(0, Order::count(), 'بيعت بيعةٌ لزبونٍ لا يُعرف بأيّ لغةٍ يُراسَل');
+
+        $this->sell($old, ['customer_language' => 'en'])->assertOk();
+        $this->assertSame('en', $old->fresh()->language, 'الجوابُ لم يُكتب في بطاقته');
+
+        // ولا يُسأل ثانيةً — ولا يُغيَّر جوابُه من بيعةٍ لاحقة
+        $this->sell($old)->assertOk();
+        $this->sell($old, ['customer_language' => 'ar'])->assertOk();
+        $this->assertSame('en', $old->fresh()->language);
+        $this->assertSame(3, Order::count());
+    }
+
+    public function test_a_walk_in_sale_is_not_asked_for_a_language(): void
+    {
+        $product = \App\Models\Product::create([
+            'business_id' => $this->shop->id, 'name' => 'وردة',
+            'price' => 10, 'cost' => 4, 'quantity' => 100, 'alert_qty' => 1, 'active' => true,
+        ]);
+
+        $this->actingAs($this->owner())->withSession(['current_branch' => $this->branch->id])
+            ->postJson(route('pos.checkout'), [
+                'items' => [['id' => $product->id, 'name' => 'وردة', 'qty' => 1]],
+                'customer' => 'عميل نقدي', 'customer_id' => null,
+                'payment_method' => 'نقدي', 'client_uuid' => uniqid('w', true),
+            ])->assertOk();
+    }
+
+    /** وقائمةُ الصندوق تحمل اللغةَ ليعرف الشاشةُ من يُسأل */
+    public function test_the_till_customer_list_carries_the_language(): void
+    {
+        Customer::create(['business_id' => $this->shop->id, 'name' => 'John', 'phone' => '99220002', 'language' => 'en']);
+        Customer::create(['business_id' => $this->shop->id, 'name' => 'قديم', 'phone' => '99220003']);
+
+        $raw = str_repeat('k', 64);
+        $device = \App\Models\PosDevice::create([
+            'business_id' => $this->shop->id, 'branch_id' => $this->branch->id, 'name' => 'صندوق',
+            'token_hash' => hash('sha256', $raw), 'status' => \App\Models\PosDevice::ACTIVE, 'activated_at' => now(),
+        ]);
+
+        $this->withCookie(\App\Support\PosTerminal::COOKIE, $device->id.'|'.$raw)
+            ->actingAs($this->owner())->get(route('pos.index'))
+            ->assertInertia(fn ($p) => $p
+                ->where('customers.0.language', 'en')
+                ->where('customers.1.language', null));
     }
 
     /** وشاشةُ الطلب تُعلِم الكاشيرَ بلغة الزبون قبل أن يغيّر الحالة */

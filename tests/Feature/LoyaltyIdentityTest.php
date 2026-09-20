@@ -63,6 +63,7 @@ class LoyaltyIdentityTest extends TestCase
     private function customer(string $name, string $phone, int $points = 0): Customer
     {
         return Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => $name,
             'phone' => $phone, 'points' => $points,
         ]);
@@ -171,7 +172,7 @@ class LoyaltyIdentityTest extends TestCase
     public function test_a_neighbours_customer_id_is_refused(): void
     {
         $theirs = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
-        $theirCustomer = Customer::create(['business_id' => $theirs->id, 'name' => 'جارهم', 'phone' => '9444']);
+        $theirCustomer = Customer::create(['language' => 'ar', 'business_id' => $theirs->id, 'name' => 'جارهم', 'phone' => '9444']);
 
         $this->sell(['customer' => 'جارهم', 'customer_id' => $theirCustomer->id])->assertOk();
 
@@ -212,7 +213,7 @@ class LoyaltyIdentityTest extends TestCase
         $this->customer('محمد', '9111');
         $theirs = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
 
-        Customer::create(['business_id' => $theirs->id, 'name' => 'زبونهم', 'phone' => '9111']);
+        Customer::create(['language' => 'ar', 'business_id' => $theirs->id, 'name' => 'زبونهم', 'phone' => '9111']);
 
         $this->assertSame(2, Customer::where('phone', '9111')->count());
     }

@@ -59,6 +59,7 @@ class OnePaperMayCoverAMonthTest extends TestCase
             'price' => 10, 'cost' => 4, 'quantity' => 500, 'active' => true,
         ]);
         $this->company = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'شركة ABC',
             'allow_credit_sales' => true, 'monthly_billing' => true, 'payment_terms_days' => 30,
         ]);

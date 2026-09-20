@@ -60,6 +60,7 @@ class ATaxInvoiceDoesNotContradictItselfTest extends TestCase
         ]);
 
         $this->customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->shop->id, 'name' => 'زبون', 'phone' => '90000000',
             'allow_credit_sales' => true, 'credit_limit' => 10000,
         ]);

@@ -215,6 +215,7 @@ class PosSecondPassAuditTest extends TestCase
     public function test_a_phone_finds_its_owner_even_when_the_typed_name_differs(): void
     {
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'أحمد', 'phone' => '90000001', 'points' => 0,
         ]);
 
@@ -227,6 +228,7 @@ class PosSecondPassAuditTest extends TestCase
     {
         $neighbour = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
         Customer::create([
+            'language' => 'ar',
             'business_id' => $neighbour->id, 'name' => 'جارٌ', 'phone' => '90000002', 'points' => 500,
         ]);
 

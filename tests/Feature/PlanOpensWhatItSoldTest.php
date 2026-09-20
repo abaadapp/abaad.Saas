@@ -433,6 +433,7 @@ class PlanOpensWhatItSoldTest extends TestCase
             'price' => 100, 'cost' => 40, 'quantity' => 50, 'alert_qty' => 1, 'active' => true,
         ]);
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'زبون', 'phone' => '90000001', 'points' => 0,
         ]);
 
@@ -455,6 +456,7 @@ class PlanOpensWhatItSoldTest extends TestCase
             'price' => 100, 'cost' => 40, 'quantity' => 50, 'alert_qty' => 1, 'active' => true,
         ]);
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'زبون', 'phone' => '90000002', 'points' => 0,
         ]);
 

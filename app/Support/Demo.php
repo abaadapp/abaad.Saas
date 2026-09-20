@@ -1373,6 +1373,8 @@ class Demo
             'address' => $c->address,
             'notes' => $c->notes,
             'branch_id' => $c->branch_id,
+            // لغةُ رسائل واتساب — فارغةٌ لمن سُجّل قبل أن تُسأل، والصندوقُ يسألها قبل بيعته
+            'language' => $c->language,
             'orders' => $c->orders_count,
             'total_spent' => (float) ($c->orders_sum_total ?? 0),
             'last_order' => $c->orders_max_ordered_at

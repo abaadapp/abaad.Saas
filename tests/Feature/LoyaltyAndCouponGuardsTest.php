@@ -45,6 +45,7 @@ class LoyaltyAndCouponGuardsTest extends TestCase
         ]);
 
         $this->customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'زبون', 'phone' => '90000000', 'points' => 100000,
         ]);
 

@@ -234,6 +234,7 @@ class CheckoutSecurityTest extends TestCase
     public function test_loyalty_redemption_cannot_exceed_its_cap(): void
     {
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'عميل مخلص',
             'phone' => '96890000000', 'points' => 100000,
         ]);

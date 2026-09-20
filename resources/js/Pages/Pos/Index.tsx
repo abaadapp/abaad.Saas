@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
+import LanguageChoice from '@/Components/LanguageChoice';
 import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDialog';
 import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
@@ -565,6 +566,25 @@ export default function PosIndex() {
                                 <UserPlus className="size-5" />
                             </button>
                         </div>
+
+                        {/* زبونٌ سُجّل قبل أن تُسأل لغتُه — يُسأل هنا ولا يُفتح الدفع قبل الجواب */}
+                        {cart.needsLanguage && cart.selectedCustomer && (
+                            <div className="mt-3 rounded-xl border border-[#fde68a] bg-[#fffbeb] p-3">
+                                <p className="mb-2 text-xs font-medium text-[#92400e]">
+                                    {t('بأي لغة يستلم هذا العميل رسائل واتساب؟')}
+                                </p>
+                                <LanguageChoice
+                                    value=""
+                                    onChange={(v) => cart.setCustomerLanguage(cart.selectedCustomer!.id, v)}
+                                />
+                            </div>
+                        )}
+                        {cart.selectedCustomer?.language === 'en' && (
+                            <p className="mt-2 text-[11px] text-gray-400">
+                                <span className="rounded-md border border-[#c7d2fe] bg-[#eef2ff] px-1.5 py-0.5 text-[10px] font-bold text-[#4338ca]">EN</span>{' '}
+                                {t('يُراسَل بالإنجليزيّة على واتساب')}
+                            </p>
+                        )}
                     </div>
 
                     {/* البنود */}
@@ -873,7 +893,11 @@ export default function PosIndex() {
                         <button
                             type="button"
                             onClick={() =>
-                                cart.items.length ? setPayOpen(true) : toast.error(t('السلة فارغة'))
+                                !cart.items.length
+                                    ? toast.error(t('السلة فارغة'))
+                                    : cart.needsLanguage
+                                      ? toast.warning(t('اختر لغة رسائل واتساب للعميل قبل إتمام البيع.'))
+                                      : setPayOpen(true)
                             }
                             className="flex w-full items-center justify-center gap-2 rounded-full bg-gray-900 py-3.5 text-base font-bold text-white shadow-sm transition-colors hover:bg-gray-800"
                         >

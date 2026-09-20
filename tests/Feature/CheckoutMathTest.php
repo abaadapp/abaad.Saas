@@ -253,6 +253,7 @@ class CheckoutMathTest extends TestCase
         ]);
 
         $customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id,
             'name' => 'عميل وفيّ', 'points' => 500,
         ]);

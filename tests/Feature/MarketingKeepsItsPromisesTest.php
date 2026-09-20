@@ -54,6 +54,7 @@ class MarketingKeepsItsPromisesTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
         ]);
         $this->customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'زبون', 'phone' => '90000000', 'points' => 100000,
         ]);
         $this->product = Product::create([

@@ -43,6 +43,7 @@ use App\Support\Recipe;
 use App\Support\Stock;
 use App\Support\StockLedger;
 use App\Support\Vat;
+use App\Support\WhatsAppEvent;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -1011,6 +1012,12 @@ class PosController extends Controller
             // المعرّف هو ما تتبعه النقاط؛ والهاتف مرجعٌ ثانٍ حين يغيب
             'customer_id' => ['nullable', 'integer'],
             'customer_phone' => ['nullable', 'string', 'max:50'],
+            /*
+             * لغةُ رسائل واتساب لزبونٍ سُجّل قبل أن تُسأل — تُختار على
+             * الصندوق وتُحمل مع البيعة لا في طلبٍ منفصل: بيعةٌ كُتبت في
+             * الطابور بلا اتّصال ترفع لغتَها معها حين تعود الشبكة.
+             */
+            'customer_language' => ['nullable', 'string', \Illuminate\Validation\Rule::in(WhatsAppEvent::LANGUAGES)],
             // مطلوبة: انظر `paymentMethod` أدناه لأثر تخمينها في إقفال الوردية
             'payment_method' => ['required', 'string'],
             /*
@@ -1184,6 +1191,21 @@ class PosController extends Controller
             $scheduled = filled($data['scheduled_for'] ?? null);
 
             $customer = $this->customerFor($data['customer'] ?? null, $data['customer_id'] ?? null, $data['customer_phone'] ?? null);
+            /*
+             * ولا تُتمّ بيعةٌ لزبونٍ لا يُعرف بأيّ لغةٍ يُراسَل.
+             *
+             * الشاشةُ تسأل قبل الدفع، والخادمُ يردّ إن لم تُسأل: الرسالةُ تخرج
+             * وحدَها بعد البيعة، فهذه آخرُ لحظةٍ يُسأل فيها أحد. والجوابُ
+             * يُكتب في بطاقته فلا يُسأل ثانيةً.
+             */
+            if ($customer !== null && $customer->language === null) {
+                if (($data['customer_language'] ?? null) === null) {
+                    throw ValidationException::withMessages([
+                        'customer_language' => __('اختر لغة رسائل واتساب للعميل قبل إتمام البيع.'),
+                    ]);
+                }
+                $customer->forceFill(['language' => $data['customer_language']])->save();
+            }
             $redeem = $this->resolveRedemption($customer, $subtotal, $couponDiscount, (int) ($data['redeem_points'] ?? 0));
 
             $discount = round(min($couponDiscount + $redeem['discount'], $subtotal), 3);
@@ -1804,6 +1826,7 @@ class PosController extends Controller
                     'name' => $customer->name,
                     'label' => (app()->getLocale() === 'en' && filled($customer->name_en)) ? $customer->name_en : $customer->name,
                     'phone' => $customer->phone ?? '',
+                    'language' => $customer->language,
                 ],
             ]);
         }

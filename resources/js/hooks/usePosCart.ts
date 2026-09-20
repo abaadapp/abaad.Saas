@@ -112,6 +112,8 @@ export interface PosCustomer {
     label: string;
     phone: string;
     points: number;
+    /** لغةُ رسائل واتساب — `null` لمن سُجّل قبل أن تُسأل، فيسألها الصندوق قبل البيع */
+    language?: string | null;
 }
 
 export interface PosVariant {
@@ -379,6 +381,19 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const customerLabel = selectedCustomer?.label || (isWalkIn ? '' : customer);
 
     /**
+     * زبونٌ مختارٌ لا لغةَ في بطاقته — سُجّل قبل أن تُسأل.
+     *
+     * الرسالةُ تخرج وحدَها بعد البيعة، فلا لحظةَ سؤالٍ غيرَ هذه: يُعرض
+     * الزرّان تحت اسمه ولا يُفتح الدفع حتى يُختار. والجوابُ يُكتب محلّيًّا
+     * ويُحمل مع البيعة (`customer_language`) فيكتبه الخادم في بطاقته —
+     * حتى بيعةُ الانقطاع ترفعه معها حين تعود الشبكة.
+     */
+    const needsLanguage = selectedCustomer !== null && !selectedCustomer.language;
+    const setCustomerLanguage = useCallback((id: number, language: string) => {
+        setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, language } : c)));
+    }, []);
+
+    /**
      * لقطة المخزون في السلة تتقادم: الكاشير يضيف 5 قطع وهي متاحة، ثم يبيعها
      * زميله على جهاز آخر قبل أن يُنهي هو الدفع. `products` تصل محدَّثة من
      * التغذية الحيّة، فنُزامن معها بنود السلة ليصدق تحذير «يتجاوز المتوفر».
@@ -630,7 +645,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 }
                 const c = data.customer;
                 setCustomers((prev) => [
-                    { id: c.id, name: c.name, name_en: c.name_en ?? null, label: c.label || c.name, phone: c.phone || '', points: 0 },
+                    { id: c.id, name: c.name, name_en: c.name_en ?? null, label: c.label || c.name, phone: c.phone || '', points: 0, language: c.language ?? null },
                     ...prev,
                 ]);
                 setCustomer(c.name);
@@ -759,6 +774,10 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
          * عودة الشبكة — ولا تصل ناقصةً بعد ساعة.
          */
         async (method: string, details?: Record<string, unknown>): Promise<CheckoutResult> => {
+            if (needsLanguage) {
+                onToast(t('اختر لغة رسائل واتساب للعميل قبل إتمام البيع.'), 'warning');
+                return { synced: false, invoice: null, points: 0, rejected: true };
+            }
             const id = uuid();
             const payload = {
                 client_uuid: id,
@@ -777,6 +796,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 })),
                 customer,
                 customer_id: customerId,
+                customer_language: selectedCustomer?.language ?? null,
                 payment_method: method,
                 // الخصم والضريبة والإجمالي تُحتسب خادميًا من أسعار القاعدة؛
                 // ما يلي معروض للمستخدم فقط ولا يُقيَّد كما هو
@@ -812,7 +832,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
             return { synced: !!res.ok, invoice: res.invoice ?? null, points: res.points ?? 0, rejected: !!res.drop };
         },
-        [items, customer, customerId, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
+        [items, customer, customerId, selectedCustomer, needsLanguage, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
@@ -860,14 +880,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         customerLabel, isWalkIn,
         // المحسوبات
         count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal, vatRate,
-        selectedCustomer, selectedPoints, canRedeem, pointsToThreshold,
+        selectedCustomer, selectedPoints, canRedeem, pointsToThreshold, needsLanguage,
         redeemCap, redeemDiscount, redeemPointsUsed, redeemMaxPct, redeemMin,
         pointsToEarn, hasStockWarning, filteredCustomers,
         // الأفعال
         add, inc, dec, remove, setNote, clear,
         setBarcode, scanBarcode,
         setCouponCode, applyCoupon, removeCoupon,
-        setRedeemActive, selectCustomer, setCustomerSearch, addCustomer,
+        setRedeemActive, selectCustomer, setCustomerSearch, addCustomer, setCustomerLanguage,
         reset,
         checkoutSale, holdOrder, overStock, replace,
     };

@@ -61,6 +61,7 @@ class CancelReleasesTest extends TestCase
         ]);
 
         $this->customer = Customer::create([
+            'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'خالد', 'phone' => '91234567', 'points' => 0,
         ]);
 

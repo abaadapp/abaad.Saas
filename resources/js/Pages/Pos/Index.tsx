@@ -45,6 +45,7 @@ import {
     type PosCustomer,
     type ResumeCart,
     type VatSettings,
+    whatBlocksPayment,
 } from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
 import type { Addon, PosCoupon, Product } from '@/types/models';
@@ -893,9 +894,9 @@ export default function PosIndex() {
                         <button
                             type="button"
                             onClick={() =>
-                                !cart.items.length
+                                whatBlocksPayment(cart) === 'empty'
                                     ? toast.error(t('السلة فارغة'))
-                                    : cart.needsLanguage
+                                    : whatBlocksPayment(cart) === 'language'
                                       ? toast.warning(t('اختر لغة رسائل واتساب للعميل قبل إتمام البيع.'))
                                       : setPayOpen(true)
                             }

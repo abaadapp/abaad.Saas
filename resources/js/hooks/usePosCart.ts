@@ -214,6 +214,20 @@ function readOutbox(): OutboxEntry[] {
     }
 }
 
+/**
+ * ما يمنع فتحَ الدفع — ولمَ.
+ *
+ * `'empty'` سلّةٌ فارغة، و`'language'` زبونٌ لم يُجَب عن لغته بعد. تُقرأ
+ * في زرّ الدفع قبل فتح النافذة: الكاشيرُ يُقال له السببُ عند الزرّ لا بعد
+ * أن يختار وسيلةَ الدفع ويضغط «تأكيد».
+ */
+export function whatBlocksPayment(cart: { items: unknown[]; needsLanguage: boolean }): 'empty' | 'language' | null {
+    if (cart.items.length === 0) return 'empty';
+    if (cart.needsLanguage) return 'language';
+
+    return null;
+}
+
 /* ------------------------------- الـhook ------------------------------- */
 
 interface Options {

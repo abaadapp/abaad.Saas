@@ -160,18 +160,7 @@ export default function CustomersIndex() {
                 في صفّه ويُجاب عنه بنقرة، بلا فتح ملفّه. ومن أُجيب عنه تُعرض
                 لغتُه شارةً.
             */
-            cell: (c) =>
-                c.language ? (
-                    <Badge variant={c.language === 'en' ? 'info' : 'neutral'}>{c.language === 'en' ? 'English' : t('العربية')}</Badge>
-                ) : (
-                    <LanguageChoice
-                        value=""
-                        className="w-40 gap-1 [&>button]:h-8 [&>button]:text-xs"
-                        onChange={(v) =>
-                            router.post(route('admin.customers.language', c.id), { language: v }, { preserveScroll: true, preserveState: true })
-                        }
-                    />
-                ),
+            cell: (c) => <LanguageCell customer={c} />,
         },
         {
             key: 'actions',
@@ -258,24 +247,7 @@ export default function CustomersIndex() {
                 ))}
             </div>
 
-            {/* جولةُ اللغة: يبقى الشريط حتى يُجاب عن آخرهم */}
-            {unlanguaged > 0 && (
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">
-                    <span className="flex items-center gap-2">
-                        <MessageSquareWarning className="size-5 shrink-0" />
-                        {t(':n من العملاء لم تُحدَّد لغة رسائل واتساب لهم — يُراسَلون بالعربيّة حتى تُحدَّد', { n: number(unlanguaged) })}
-                    </span>
-                    {filters.missing === 'language' ? (
-                        <Button variant="outline" size="sm" onClick={() => router.get(route('admin.customers.index'), {}, { preserveState: false })}>
-                            {t('عرض الكل')}
-                        </Button>
-                    ) : (
-                        <Button size="sm" onClick={() => router.get(route('admin.customers.index'), { missing: 'language' }, { preserveState: false })}>
-                            {t('حدّدها الآن')}
-                        </Button>
-                    )}
-                </div>
-            )}
+            <LanguageRoundBanner unlanguaged={unlanguaged} filtering={filters.missing === 'language'} />
 
             <Card className="overflow-hidden">
                 <DataTable
@@ -416,5 +388,58 @@ export default function CustomersIndex() {
                 </DialogContent>
             </Dialog>
         </AdminLayout>
+    );
+}
+
+/**
+ * لغةُ رسائل العميل في صفّه — شارةٌ لمن أُجيب عنه، وزرّان لمن لم يُجَب.
+ *
+ * جولةُ اللغة من الصفّ نفسه: من سُجّل قبل أن يُسأل يُجاب عنه بنقرةٍ بلا
+ * فتح ملفّه. مُصدَّرٌ ليُقاس وحدَه — انظر tests/js.
+ */
+export function LanguageCell({ customer }: { customer: Pick<Customer, 'id' | 'language'> }) {
+    const t = useTranslate();
+
+    if (customer.language) {
+        return (
+            <Badge variant={customer.language === 'en' ? 'info' : 'neutral'}>
+                {customer.language === 'en' ? 'English' : t('العربية')}
+            </Badge>
+        );
+    }
+
+    return (
+        <LanguageChoice
+            value=""
+            className="w-40 gap-1 [&>button]:h-8 [&>button]:text-xs"
+            onChange={(v) =>
+                router.post(route('admin.customers.language', customer.id), { language: v }, { preserveScroll: true, preserveState: true })
+            }
+        />
+    );
+}
+
+/** شريطُ الجولة — يبقى حتى يُجاب عن آخرهم، ويحوّل القائمةَ إليهم */
+export function LanguageRoundBanner({ unlanguaged, filtering }: { unlanguaged: number; filtering: boolean }) {
+    const t = useTranslate();
+
+    if (unlanguaged <= 0) return null;
+
+    return (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm text-[#92400e]">
+            <span className="flex items-center gap-2">
+                <MessageSquareWarning className="size-5 shrink-0" />
+                {t(':n من العملاء لم تُحدَّد لغة رسائل واتساب لهم — يُراسَلون بالعربيّة حتى تُحدَّد', { n: number(unlanguaged) })}
+            </span>
+            {filtering ? (
+                <Button variant="outline" size="sm" onClick={() => router.get(route('admin.customers.index'), {}, { preserveState: false })}>
+                    {t('عرض الكل')}
+                </Button>
+            ) : (
+                <Button size="sm" onClick={() => router.get(route('admin.customers.index'), { missing: 'language' }, { preserveState: false })}>
+                    {t('حدّدها الآن')}
+                </Button>
+            )}
+        </div>
     );
 }

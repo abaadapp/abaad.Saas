@@ -15,6 +15,7 @@ use App\Support\CrmAssistant;
 use App\Support\CrmKnowledge;
 use App\Support\CrmLeads;
 use App\Support\CrmSignals;
+use App\Support\CrmWhatsApp;
 use App\Support\WhatsAppMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -66,6 +67,15 @@ class TheAssistantSuggestsAndDoesNotSendTest extends TestCase
         ]);
 
         $this->lead->forceFill(['whatsapp_window_at' => now()])->save();
+
+        /* وخطٌّ موصول: ردٌّ لا سبيلَ إلى إرساله لا يُقترح أصلًا — انظر `suggest` */
+        WhatsAppConnection::create([
+            'owner_type' => WhatsAppMode::OWNER_PLATFORM,
+            'purpose' => WhatsAppMode::PURPOSE_CRM_SALES,
+            'phone_number_id' => 'SALES-LINE',
+            'access_token' => 'line-token',
+            'status' => WhatsAppConnection::ACTIVE,
+        ]);
     }
 
     /* ═══════════════════ الافتراض ═══════════════════ */
@@ -125,6 +135,45 @@ class TheAssistantSuggestsAndDoesNotSendTest extends TestCase
 
         /* ولا نداءَ إلى ميتا — والمزوّدُ وحدَه نُودي */
         Http::assertNotSent(fn ($request) => str_contains($request->url(), 'graph.facebook'));
+    }
+
+    /**
+     * والاقتراحُ يبلغ الشاشةَ — لا يبقى في الجلسة.
+     *
+     * قِسناه من المتصفّح: الزرُّ يعمل، والمزوّدُ يُنادى ويُجيب، والصفحةُ لا
+     * تعرض حرفًا. `suggest` كان يكتبه في الجلسة، والشاشةُ تقرؤه خاصّيةً
+     * باسمه، ولا أحد ينقله بينهما.
+     */
+    public function test_the_suggestion_reaches_the_screen_after_the_redirect(): void
+    {
+        $this->fakeProvider('أهلًا خالد، حيّاك الله 🌷');
+
+        $this->post(route('super-admin.crm.conversations.suggest', $this->lead->id))
+            ->assertRedirect();
+
+        $this->get(route('super-admin.crm.conversations', ['lead' => $this->lead->id]))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where('suggestion.text', 'أهلًا خالد، حيّاك الله 🌷')
+                ->has('suggestion.model'));
+    }
+
+    /**
+     * وردٌّ لا سبيلَ إلى إرساله لا يُقترح — ولا يُنادى المزوّدُ له.
+     *
+     * نافذةُ واتساب مغلقة: المُحرِّرُ محجوبٌ بسببه، وكان الزرُّ يبقى يُدفع
+     * ثمنُه ثمّ يقول «يُنسخ إلى المُحرِّر» ولا مُحرِّر.
+     */
+    public function test_nothing_is_suggested_when_the_reply_could_not_be_sent(): void
+    {
+        $this->fakeProvider('لن يُطلب');
+        $this->lead->update(['whatsapp_window_at' => now()->subHours(CrmWhatsApp::WINDOW_HOURS + 1)]);
+
+        $this->post(route('super-admin.crm.conversations.suggest', $this->lead->id))
+            ->assertSessionMissing('suggestion')
+            ->assertSessionHas('toast', fn ($t) => $t['msg'] === CrmWhatsApp::blockedReason($this->lead->fresh()));
+
+        Http::assertNothingSent();
     }
 
     /**

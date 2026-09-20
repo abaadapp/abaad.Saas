@@ -610,13 +610,18 @@ export default function CrmConversations() {
                                 </span>
                             </header>
 
-                            {! assistant.available ? (
+                            {! assistant.available || active.blockedReason ? (
                                 /*
                                     ولا زرَّ يُعرض ولا يُفتح.
                                     زرٌّ مُطفأ فوق سببٍ مكتوب خيرٌ من زرٍّ يُضغط
                                     فيردّ خطأً إنجليزيًّا من مزوّد.
+
+                                    ومُحرِّرٌ محجوبٌ يحجب الاقتراحَ معه: ردٌّ لا
+                                    يُرسَل لا يُقترح — والسببُ هو سببُ الحجب نفسُه.
                                 */
-                                <p className="text-[13px] text-[#6b7280]">{assistant.reason}</p>
+                                <p className="text-[13px] text-[#6b7280]">
+                                    {assistant.available ? active.blockedReason : assistant.reason}
+                                </p>
                             ) : (
                                 <>
                                     <div className="flex flex-wrap items-center gap-2">

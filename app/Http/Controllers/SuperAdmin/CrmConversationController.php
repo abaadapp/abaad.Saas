@@ -130,6 +130,15 @@ class CrmConversationController extends Controller
                 'available' => CrmAssistant::available(),
                 'reason' => CrmAssistant::unavailableReason(),
             ],
+            /*
+             * والاقتراحُ الذي وُلّد للتوّ — من الجلسة إلى الشاشة.
+             *
+             * `suggest` يعيده بـ`with('suggestion')`، والشاشةُ تقرؤه خاصّيةً
+             * باسمه. ولم يكن أحدٌ ينقله من الجلسة إلى الخاصّيات: يُضغط الزرّ،
+             * ويُنادى المزوّدُ ويُدفع ثمنُه، ويعود النصُّ — ولا يظهر حرفٌ منه.
+             * قِسناه من الشاشة: الزرُّ يعمل والمزوّدُ يُجيب والصفحةُ فارغة.
+             */
+            'suggestion' => $request->session()->get('suggestion'),
             /* وحالُ الخطّ يُقال: شاشةٌ صامتةٌ عن رقمٍ غير موصول تُفسَّر عطبًا */
             'line' => [
                 'connected' => CrmWhatsApp::connected(),
@@ -238,6 +247,18 @@ class CrmConversationController extends Controller
     {
         $lead = CrmLead::findOrFail($id);
         $data = $request->validate(['steer' => ['nullable', 'string', 'max:300']]);
+
+        /*
+         * ولا يُقترح ردٌّ لا سبيلَ إلى إرساله.
+         *
+         * نافذةُ واتساب مغلقة أو الخطُّ غير موصول: المُحرِّرُ محجوبٌ بسببه،
+         * وكان زرُّ الاقتراح يبقى — يُضغط، ويُنادى المزوّدُ ويُدفع ثمنُه، ثمّ
+         * يقول الاقتراحُ «يُنسخ إلى المُحرِّر» ولا مُحرِّرَ على الشاشة. والسببُ
+         * من المصدر الذي يحجب المُحرِّر نفسِه، فلا يفترق البابان.
+         */
+        if (($blocked = CrmWhatsApp::blockedReason($lead)) !== null) {
+            return back()->with('toast', ['msg' => $blocked, 'type' => 'warning']);
+        }
 
         $reply = CrmAssistant::suggest($lead, $data['steer'] ?? null);
 

@@ -93,6 +93,27 @@ class PageController extends Controller
          * ولا يُطبَّق على متجرٍ بلا فروع: لا فرع يُختار، ولا سبب للحجز.
          */
         if (! PosTerminal::activated() && Branch::where('business_id', Demo::bid())->exists()) {
+            /*
+             * ═══ ومتجرُ الفرع الواحد يُربط وحدَه ═══
+             *
+             * التفعيلُ يحمي من خلط فرعٍ بفرع، ولا فرعَ يُخلط به هنا. وكان
+             * الكاشيرُ على متصفّحٍ جديد — سفاري بعد كروم، أو هاتفٌ بعد
+             * الحاسوب — يُحوَّل إلى شاشة تفعيلٍ لا يملكها فيقف على 403 وقد
+             * كتب بريدَه وكلمتَه صحيحَين. فيُربط الجهازُ بالفرع الوحيد ويُقيَّد
+             * في السجلّ، ويُعاد إلى الصندوق بكوكيه. والمتجرُ ذو الفروع يبقى
+             * على بابه: هناك اختيارٌ لا يُخمَّن.
+             */
+            $branches = Branch::where('business_id', Demo::bid())->orderBy('id')->get(['id', 'name']);
+            if ($branches->count() === 1 && auth()->user()?->allows('pos')) {
+                $only = Branch::find($branches->first()->id);
+                $device = PosTerminal::activate($only, __('جهاز :name', ['name' => auth()->user()->name]), auth()->id());
+                Activity::log('created', 'فُعّل جهاز نقطة بيع تلقائيًّا: '.$device->name.' — فرع '.$only->name.' (الفرع الوحيد)', [
+                    'subject_id' => $device->id,
+                ]);
+
+                return redirect()->route('pos.index');
+            }
+
             return redirect()->route('pos.setup');
         }
 

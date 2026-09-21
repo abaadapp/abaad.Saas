@@ -36,7 +36,16 @@ class DeviceController extends Controller
             return redirect()->route('pos.index');
         }
 
-        $this->authorizeActivation();
+        /*
+         * من لا يملك التفعيل لا يُصفع بـ403: كتب بريدَه وكلمتَه صحيحَين
+         * ووصل. يُقال له ما ينقص ومن يفعله — والتفعيلُ نفسُه يبقى محروسًا
+         * في `activate`.
+         */
+        if (! auth()->user()->allows('settings')) {
+            return Inertia::render('Pos/DeviceNotActivated', [
+                'businessName' => Demo::businessName(),
+            ]);
+        }
 
         return Inertia::render('Pos/DeviceSetup', [
             'branches' => Branch::where('business_id', Demo::bid())

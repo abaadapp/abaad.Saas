@@ -192,7 +192,9 @@ class PosDeviceTest extends TestCase
         $cashier = $this->cashier($this->a, 'k6@abaad.om');
         [$dev] = $this->device($this->khuwair);
 
-        $this->actingAs($cashier)->get(route('pos.setup'))->assertForbidden();
+        // شاشةُ الإعداد لا تصفعه بـ403 — تقول له ما ينقص؛ والتفعيلُ نفسُه يبقى ممنوعًا
+        $this->actingAs($cashier)->get(route('pos.setup'))->assertOk()
+            ->assertInertia(fn ($p) => $p->component('Pos/DeviceNotActivated'));
         $this->actingAs($cashier)->post(route('pos.setup.activate'), [
             'branch_id' => $this->seeb->id, 'name' => 'جهاز الكاشير',
         ])->assertForbidden();
@@ -627,5 +629,43 @@ class PosDeviceTest extends TestCase
             $this->assertSame($says, $gone,
                 'الشاشة تقول عن «'.$d->name.'» غيرَ ما يفعله الخادم');
         }
+    }
+
+    /* ------------------- متجرُ الفرع الواحد يُربط وحدَه ------------------- */
+
+    /**
+     * كاشيرٌ على متصفّحٍ جديد في متجرٍ بفرعٍ واحد يصل الصندوقَ مباشرة.
+     *
+     * كان يُحوَّل إلى تفعيلٍ لا يملكه فيقف على 403 وقد كتب بريدَه وكلمتَه
+     * صحيحَين. ولا فرعَ يُخلط به هنا، فيُربط الجهازُ بالوحيد ويُقيَّد.
+     */
+    public function test_a_single_branch_shop_binds_a_new_browser_by_itself(): void
+    {
+        $c = Business::create(['name' => 'متجر ج', 'type' => 'عام', 'status' => 'نشط']);
+        JobTitle::create(['business_id' => $c->id, 'name' => 'كاشير', 'role' => 'cashier']);
+        $only = Branch::create(['business_id' => $c->id, 'name' => 'الرئيسي']);
+        $cashier = $this->cashier($c, 'solo@abaad.om');
+
+        $first = $this->actingAs($cashier)->get(route('pos.index'));
+        $first->assertRedirect(route('pos.index'));
+
+        $device = PosDevice::where('business_id', $c->id)->first();
+        $this->assertNotNull($device, 'لم يُربط الجهاز');
+        $this->assertSame($only->id, (int) $device->branch_id);
+        $this->assertSame($cashier->id, (int) $device->activated_by);
+
+        // والكوكي في الردّ — فالطلبُ التالي يدخل الصندوق
+        $cookie = collect($first->headers->getCookies())->first(fn ($k) => $k->getName() === PosTerminal::COOKIE);
+        $this->assertNotNull($cookie, 'لا كوكي جهازٍ في الردّ');
+        $this->assertNotNull(\App\Models\ActivityLog::where('business_id', $c->id)->where('description', 'like', '%فُعّل جهاز نقطة بيع تلقائيًّا%')->first());
+    }
+
+    /** ومتجرُ الفروع يبقى على بابه — لا يُخمَّن فرع */
+    public function test_a_multi_branch_shop_still_asks(): void
+    {
+        $cashier = $this->cashier($this->a, 'multi@abaad.om');
+
+        $this->actingAs($cashier)->get(route('pos.index'))->assertRedirect(route('pos.setup'));
+        $this->assertSame(0, PosDevice::where('business_id', $this->a->id)->count());
     }
 }

@@ -99,6 +99,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     };
 
     const isPlatform = auth?.user.role === 'super_admin';
+    const abilities = auth?.abilities ?? [];
 
     /**
      * البحث الموحّد — لكل لوحة مسارها. مدير المنصة لا يملك business_id،
@@ -171,16 +172,24 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
             <div className="ms-auto flex shrink-0 items-center gap-1.5">
                 {context && (
                     <>
-                        <Button asChild variant="ghost" size="icon" title={t('نقطة البيع')}>
-                            <Link href={route('pos.index')}>
-                                <Store />
-                                <span className="sr-only">{t('نقطة البيع')}</span>
-                            </Link>
-                        </Button>
+                        {/*
+                         * وكلُّ زرٍّ يتبع قسمَه: الكاشير الذي لم يُمنح «الموقع»
+                         * كان يرى الكرةَ الأرضيّة وتفتح له موقعَ المتجر أو شاشةَ
+                         * ضبطه — وهو ما لا يُفتح له من الشريط الجانبيّ. والأقسامُ
+                         * تصل من الخادم (`auth.abilities`) لا تُخمَّن من الدور.
+                         */}
+                        {abilities.includes('pos') && (
+                            <Button asChild variant="ghost" size="icon" title={t('نقطة البيع')}>
+                                <Link href={route('pos.index')}>
+                                    <Store />
+                                    <span className="sr-only">{t('نقطة البيع')}</span>
+                                </Link>
+                            </Button>
+                        )}
 
                         {/* موقع التاجر إن ضُبط، وإلا فزرٌّ يدلّ على الإعدادات
-                            لإضافته — فلا يقف بلا وظيفة. */}
-                        {context.website ? (
+                            لإضافته — فلا يقف بلا وظيفة. ولمن يملك قسمَ الموقع وحده. */}
+                        {!abilities.includes('website') ? null : context.website ? (
                             <Button asChild variant="ghost" size="icon" title={t('الموقع الإلكتروني')}>
                                 <a href={context.website} target="_blank" rel="noopener noreferrer">
                                     <Globe />

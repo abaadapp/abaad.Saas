@@ -7,16 +7,21 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Customer;
+use App\Models\CustomerInvoice;
 use App\Models\Order;
 use App\Models\PosDevice;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerFlags;
+use App\Support\Ledger;
 use App\Support\OrderNotice;
+use App\Support\Permissions;
 use App\Support\PosTerminal;
+use App\Support\Sheet;
 use App\Support\WhatsAppEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
@@ -372,7 +377,7 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
 
     public function test_a_blocked_customer_gets_no_invoice_from_the_admin_screen_either(): void
     {
-        \App\Support\Ledger::seedChart($this->shop->id);
+        Ledger::seedChart($this->shop->id);
         $c = $this->customer(['alert_type' => 'block', 'alert_reason' => 'سرّ', 'allow_credit_sales' => true]);
 
         $invoice = fn () => $this->actingAs($this->owner)->post(route('admin.customerInvoices.store'), [
@@ -381,12 +386,12 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
         ]);
 
         $invoice()->assertSessionHasErrors('customer_id');
-        $this->assertSame(0, \App\Models\CustomerInvoice::count(), 'كُتبت فاتورةٌ لزبونٍ موقوف');
+        $this->assertSame(0, CustomerInvoice::count(), 'كُتبت فاتورةٌ لزبونٍ موقوف');
         $this->assertStringNotContainsString('سرّ', (string) session('errors')?->first('customer_id'));
 
         $this->set(CustomerFlags::BLOCKING, '0');
         $invoice()->assertSessionHasNoErrors();
-        $this->assertSame(1, \App\Models\CustomerInvoice::count());
+        $this->assertSame(1, CustomerInvoice::count());
     }
 
     /* ═════════════ التجاوزُ لصاحب المتجر افتراضًا — والمديرُ بالاسم ═════════════ */
@@ -403,7 +408,7 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
         $this->assertSame(0, Order::count());
 
         // يُمنح بالاسم — مع ما يفتحه دورُه، فالقائمةُ اليدويّة تحلّ محلّ الوراثة
-        $manager->update(['permissions' => [...\App\Support\Permissions::roleGrants('manager'), CustomerFlags::OVERRIDE]]);
+        $manager->update(['permissions' => [...Permissions::roleGrants('manager'), CustomerFlags::OVERRIDE]]);
         $this->sell($c, $manager->fresh(), ['block_override_reason' => 'سبب'])->assertOk();
     }
 
@@ -417,7 +422,7 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
         $body = $this->actingAs($this->owner)->get(route('admin.customers.export.xlsx'))->assertOk()->streamedContent();
         $path = tempnam(sys_get_temp_dir(), 'exp').'.xlsx';
         file_put_contents($path, $body);
-        $rows = \App\Support\Sheet::rows($path);
+        $rows = Sheet::rows($path);
         $head = array_map('strval', $rows[0]);
         $col = array_search('تاريخ الميلاد', $head, true);
         $this->assertNotFalse($col);
@@ -432,7 +437,7 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
         $csv = tempnam(sys_get_temp_dir(), 'imp').'.csv';
         file_put_contents($csv, "الاسم,الهاتف,اللغة,تاريخ الميلاد\nسالم,{$c->phone},العربية,29/02\nنورة,99770003,English,1995-07-04\nغامض,99770004,العربية,أمس\nبسنة,99770002,العربية,\n");
         $this->actingAs($this->owner)->post(route('admin.customers.import.upload'), [
-            'file' => new \Illuminate\Http\UploadedFile($csv, 'c.csv', 'text/csv', null, true),
+            'file' => new UploadedFile($csv, 'c.csv', 'text/csv', null, true),
         ]);
         $this->actingAs($this->owner)->post(route('admin.customers.import.confirm'));
 

@@ -162,6 +162,7 @@ export function MessageBubble({
             <div
                 className={cn(
                     'max-w-[78%] rounded-[14px] px-3 py-2 shadow-[0_1px_1px_rgba(0,0,0,0.04)]',
+                    files && files.length > 0 && 'sm:max-w-[420px]',
                     internal
                         ? 'border border-dashed border-[#f59e0b] bg-[#fffbeb]'
                         : side === 'out'
@@ -230,7 +231,7 @@ export function AttachmentCard({
                 className="block overflow-hidden rounded-[10px] border border-black/5 bg-white"
                 title={name}
             >
-                <img src={url} alt={name} className="max-h-60 w-auto max-w-full object-contain" loading="lazy" />
+                <img src={url} alt={name} className="max-h-44 w-auto max-w-full object-contain" loading="lazy" />
                 <span className="flex items-center gap-2 px-2 py-1 text-[11px] text-[#71717a]">
                     <span className="min-w-0 flex-1 truncate">{name}</span>
                     <span className="shrink-0">{fileSize(size)}</span>

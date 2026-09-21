@@ -89,7 +89,14 @@ export function ConversationShell({
     );
 }
 
-/** رأسُ الصفحة: العنوانُ وسطرٌ يقول أين أنت — فلا يُنسى أدعمٌ هذا أم مبيعات */
+/**
+ * رأسُ الصفحة: سطرٌ واحدٌ مضغوط — العنوانُ وحبّةٌ تقول أين أنت والوصفُ
+ * بجانبهما.
+ *
+ * كان سطرين بحجم رأسِ صفحةٍ عاديّة، فأكل ما يقارب ستّين بكسلًا من ارتفاعٍ
+ * تحتاجه الرسائل. والمحادثاتُ شاشةُ تطبيقٍ لا صفحةُ تقرير: كلُّ بكسلٍ فوق
+ * الأعمدة يُؤخذ من الخيط.
+ */
 export function ConversationPageHeader({
     title,
     subtitle,
@@ -104,22 +111,18 @@ export function ConversationPageHeader({
     children?: ReactNode;
 }) {
     return (
-        <div className="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
-            <div>
-                <div className="flex items-center gap-2">
-                    <h1 className="text-[20px] font-bold text-[#111]">{title}</h1>
-                    <span
-                        className={cn(
-                            'rounded-full px-2 py-0.5 text-[11px] font-bold',
-                            tone === 'green' ? 'bg-[#e6f6ee] text-[#047857]' : 'bg-[#f5f3ff] text-[#6d28d9]',
-                        )}
-                    >
-                        {context}
-                    </span>
-                </div>
-                <p className="mt-0.5 text-[13px] text-[#71717a]">{subtitle}</p>
-            </div>
-            {children}
+        <div className="mb-2 flex shrink-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+            <h1 className="text-[17px] font-bold leading-tight text-[#111]">{title}</h1>
+            <span
+                className={cn(
+                    'rounded-full px-2 py-0.5 text-[11px] font-bold leading-tight',
+                    tone === 'green' ? 'bg-[#e6f6ee] text-[#047857]' : 'bg-[#f5f3ff] text-[#6d28d9]',
+                )}
+            >
+                {context}
+            </span>
+            <p className="text-[12px] text-[#71717a]">{subtitle}</p>
+            {children && <div className="ms-auto">{children}</div>}
         </div>
     );
 }

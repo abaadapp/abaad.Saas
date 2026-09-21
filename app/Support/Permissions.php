@@ -828,6 +828,8 @@ class Permissions
         'branches' => 'settings',
         'branch' => 'settings',
         'addons' => 'products',
+        /* والمواسمُ تبويبٌ في المنتجات: من يملك المنتجات يملكها */
+        'seasons' => 'products',
         'jobTitles' => 'employees',
         // مسيرة الرواتب وصرفها من قسم «الرواتب والموظفين» — لا مفتاح ثالث لها
         'payroll' => 'employees',

@@ -89,6 +89,8 @@ class Preview
         }
         unset($page);
 
+        $snapshot = self::withSeasons($snapshot, $businessId);
+
         foreach ($snapshot['globals'] as &$slot) {
             $slot['data'] = Media::absolute($slot['type'], $slot['data'] ?? []);
         }
@@ -407,6 +409,82 @@ class Preview
             ->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id']);
 
         return self::onShelf($businessId, $rows);
+    }
+
+    /**
+     * المواسمُ الجاريةُ أقسامًا في الصفحة الرئيسيّة — بنوعٍ يعرفه الراسم.
+     *
+     * ═══ لمَ لا نوعَ قسمٍ جديد ═══
+     *
+     * الموقعُ يُرسم في عارضٍ مستقلّ يقرأ هذا المستند، وقسمٌ بنوعٍ لا يعرفه
+     * يسقط صامتًا. فالموسمُ يُقال بلغةٍ يفهمها اليوم: «منتجات مختارة»
+     * بعنوان الموسم وسطرٍ فوقه — والبطاقةُ بطاقةُ المنتج نفسُها.
+     *
+     * ═══ وما يُعرض يمرّ بقواعد الموقع كلِّها ═══
+     *
+     * الموسمُ يُعطي معرّفاتٍ لا صفوفًا؛ والصفوفُ تُقرأ بالشروط الثلاثة نفسِها
+     * (`active` و`published` و`Shelf`) فلا يُخرج موسمٌ صنفًا غيرَ منشورٍ إلى
+     * الناس. وموسمٌ لا صنفَ صالحًا فيه لا يُرسم — قسمٌ فارغٌ وعدٌ بلا شيء.
+     *
+     * والمنتهي يسقط وحدَه: `Seasons::forWebsite` تقرأ الجاريَ اليوم، والصنفُ
+     * يبقى في مكانه المعتاد — انتهاءُ الموسم ليس إلغاءَ نشر.
+     */
+    private static function withSeasons(array $snapshot, int $businessId): array
+    {
+        $seasons = \App\Support\Seasons::forWebsite($businessId);
+
+        if ($seasons->isEmpty() || empty($snapshot['pages'])) {
+            return $snapshot;
+        }
+
+        $sections = [];
+
+        foreach ($seasons as $season) {
+            $ids = $season->products->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+            if ($ids === []) {
+                continue;
+            }
+
+            $rows = Product::where('business_id', $businessId)
+                ->where('active', true)->where('published', true)
+                ->whereIn('id', $ids)->orderByDesc('id')->limit(self::CATALOG_MAX)
+                ->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id']);
+
+            $items = self::onShelf($businessId, $rows);
+
+            if ($items === []) {
+                continue;
+            }
+
+            $sections[] = [
+                'id' => 'season-'.$season->id,
+                'type' => 'featured_products',
+                'visible' => true,
+                'data' => [
+                    'title' => $season->name,
+                    'eyebrow' => __('منتجات مختارة لهذا الموسم'),
+                    'layout' => 'auto',
+                    'product_ids' => array_column($items, 'id'),
+                    'limit' => count($items),
+                    'columns' => '4',
+                ],
+                'items' => $items,
+            ];
+        }
+
+        if ($sections === []) {
+            return $snapshot;
+        }
+
+        /* بعد أوّل قسمٍ في الرئيسيّة (الترويسة عادةً) — حيث يقع نظرُ الزائر أوّلًا */
+        $home = &$snapshot['pages'][0];
+        $existing = (array) ($home['sections'] ?? []);
+        array_splice($existing, min(1, count($existing)), 0, $sections);
+        $home['sections'] = array_values($existing);
+        unset($home);
+
+        return $snapshot;
     }
 
     /**

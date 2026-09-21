@@ -134,6 +134,8 @@ export const CUSTOMER_TABS: SectionTab[] = [
  */
 export const PRODUCT_TABS: SectionTab[] = [
     { label: 'المنتجات', routeName: 'admin.products.index', section: 'products' },
+    /* والمواسمُ تبويبٌ بجانبها لا قسمٌ في الشريط: طبقةٌ فوق الأصناف لا تُعيد تعريفها */
+    { label: 'المواسم', routeName: 'admin.seasons.index', section: 'products' },
 ];
 
 /*

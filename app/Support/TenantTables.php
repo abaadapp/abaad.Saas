@@ -59,6 +59,8 @@ class TenantTables
         'custom_order_templates', 'custom_order_fields', 'custom_order_field_options',
         'products', 'product_variants', 'product_images',
         'addons', 'product_addons', 'recipe_items',
+        /* والمواسمُ بعد الأصناف: صلتُها تشير إليها */
+        'seasons', 'season_product', 'season_reminders',
         'customers', 'customer_addresses',
         /*
          * والبنوكُ قبل الأجهزة.
@@ -143,6 +145,7 @@ class TenantTables
          */
         'google_business_reviews' => ['branches', 'branch_id'],
         'customer_addresses' => ['customers', 'customer_id'],
+        'season_product' => ['seasons', 'season_id'],
         'delivery_note_items' => ['delivery_notes', 'delivery_note_id'],
         'goods_receipt_note_items' => ['goods_receipt_notes', 'goods_receipt_note_id'],
         'journal_lines' => ['journal_entries', 'journal_entry_id'],

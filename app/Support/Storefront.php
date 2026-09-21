@@ -427,6 +427,10 @@ class Storefront
             'transfer' => ($site['store_pay_transfer'] ?? '0') === '1',
             'bank' => trim((string) ($site['store_bank'] ?? '')),
             'categories' => self::categories($bid),
+            /* المواسمُ الجارية — حبّاتُ ترشيحٍ فوق الشبكة نفسِها، لا صنفًا زائدًا */
+            'seasons' => Seasons::forWebsite($bid)
+                ->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'product_ids' => $s->products->pluck('id')->map(fn ($i) => (int) $i)->all()])
+                ->filter(fn ($s) => $s['product_ids'] !== [])->values()->all(),
             'currency' => $currency,
             'products' => self::products($bid, $showPrices, $whatsapp, $currency),
             /*

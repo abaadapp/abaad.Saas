@@ -5,6 +5,7 @@ import {
     AlertTriangle,
     Award,
     BadgeCheck,
+    CalendarDays,
     ChevronDown,
     CreditCard,
     Lightbulb,
@@ -54,6 +55,8 @@ import type { Addon, PosCoupon, Product } from '@/types/models';
 interface Props {
     products: Product[];
     categories: { value: string; label: string }[];
+    /** المواسمُ الجارية اليوم — مرشِّحٌ فوق الأصناف المحمَّلة، لا مصدرٌ لها */
+    seasons?: { id: number; name: string; product_ids: number[] }[];
     customers: (PosCustomer & { avatar?: string | null })[];
     addons: Addon[];
     coupons: PosCoupon[];
@@ -78,7 +81,7 @@ interface Props {
 }
 
 export default function PosIndex() {
-    const { products: serverProducts, categories, customers, addons, coupons, resumeCart, settings, orderOptions, customOrder, context } =
+    const { products: serverProducts, categories, seasons = [], customers, addons, coupons, resumeCart, settings, orderOptions, customOrder, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -90,6 +93,9 @@ export default function PosIndex() {
     const currency = context!.currency;
 
     const [cat, setCat] = useState('الكل');
+    /* الموسمُ المختار — `null` الكلّ. ولا يغيّر أهليّةَ صنفٍ للبيع: يرشّح ما هو معروضٌ أصلًا */
+    const [season, setSeason] = useState<number | null>(null);
+    const seasonIds = useMemo(() => new Set(seasons.find((s) => s.id === season)?.product_ids ?? []), [seasons, season]);
     const [q, setQ] = useState('');
     const [payOpen, setPayOpen] = useState(false);
     const [newCustomerOpen, setNewCustomerOpen] = useState(false);
@@ -244,10 +250,11 @@ export default function PosIndex() {
             // الموقوف لا يُعرض — والخادم يردّه كذلك (PosController::checkout)
             if (p.active === false) return false;
             const inCat = cat === 'الكل' || cat === p.cat;
+            const inSeason = season === null || seasonIds.has(p.id);
             const inSearch = !needle || `${p.name} ${p.label}`.includes(needle);
-            return inCat && inSearch;
+            return inCat && inSeason && inSearch;
         });
-    }, [products, cat, q]);
+    }, [products, cat, q, season, seasonIds]);
 
     const loyaltyOn = settings.loyaltyEnabled !== false;
 
@@ -409,6 +416,34 @@ export default function PosIndex() {
                             </button>
                         ))}
                     </div>
+
+                    {/*
+                        المواسمُ الجارية — شريطٌ لا يُرسم إن لم يكن موسمٌ جارٍ
+                        يُعرض في الصندوق؛ فبلا مواسم يبقى الصندوقُ كما كان.
+                    */}
+                    {seasons.length > 0 && (
+                        <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1" data-testid="pos-seasons">
+                            <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-bold text-[#0f766e]">
+                                <CalendarDays className="size-4" /> {t('المواسم النشطة')}:
+                            </span>
+                            {[{ id: null as number | null, name: t('الكل') }, ...seasons].map((s) => (
+                                <button
+                                    key={s.id ?? 'all'}
+                                    type="button"
+                                    onClick={() => setSeason(s.id)}
+                                    aria-pressed={season === s.id}
+                                    className={cn(
+                                        'whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-medium transition-colors touch:px-4 touch:py-2',
+                                        season === s.id
+                                            ? 'bg-[#0f766e] text-white shadow-sm'
+                                            : 'border border-[#99f6e4] bg-[#f0fdfa] text-[#0f766e] hover:bg-[#ccfbf1]',
+                                    )}
+                                >
+                                    {s.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
                     {/* الإضافات — تُضاف كبنود بلا مخزون */}
                     {activeAddons.length > 0 && (

@@ -54,6 +54,7 @@ use App\Http\Controllers\Admin\ReportDownloadController;
 use App\Http\Controllers\Admin\ReportExportController;
 use App\Http\Controllers\Admin\ReportFeedController;
 use App\Http\Controllers\Admin\ReportPageController;
+use App\Http\Controllers\Admin\SeasonController;
 use App\Http\Controllers\Admin\SetupController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierExportController;
@@ -535,6 +536,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     // الإجراء الجماعي قبل نمط المعرّف حتى لا يبتلعه
     Route::post('/products/bulk', [ProductController::class, 'bulk'])->name('products.bulk');
+    /*
+     * المواسم — تبويبٌ في قسم المنتجات، وأبوابُها كلُّها تحت صلاحيّته
+     * (انظر `Permissions::ALIASES`). وقبل `products/{id}` كي لا يبتلع
+     * المعرّفُ كلمةَ `seasons`.
+     */
+    Route::get('/products/seasons', [SeasonController::class, 'index'])->name('seasons.index');
+    Route::post('/products/seasons', [SeasonController::class, 'store'])->name('seasons.store');
+    Route::get('/products/seasons/{id}', [SeasonController::class, 'show'])->name('seasons.show');
+    Route::put('/products/seasons/{id}', [SeasonController::class, 'update'])->name('seasons.update');
+    Route::delete('/products/seasons/{id}', [SeasonController::class, 'destroy'])->name('seasons.destroy');
+    Route::get('/products/seasons/{id}/products', [SeasonController::class, 'products'])->name('seasons.products');
+    Route::post('/products/seasons/{id}/products', [SeasonController::class, 'attach'])->name('seasons.attach');
+    Route::delete('/products/seasons/{id}/products/{productId}', [SeasonController::class, 'detach'])->name('seasons.detach');
+    Route::post('/products/seasons/{id}/reminders', [SeasonController::class, 'storeReminder'])->name('seasons.reminders.store');
+    Route::patch('/products/seasons/{id}/reminders/{reminderId}', [SeasonController::class, 'updateReminder'])->name('seasons.reminders.update');
+    Route::delete('/products/seasons/{id}/reminders/{reminderId}', [SeasonController::class, 'destroyReminder'])->name('seasons.reminders.destroy');
     Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');
     Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
     // تعطيلُ صنفٍ وتفعيلُه — البديلُ الذي يقصده أكثرُ من يضغط «حذف»

@@ -172,9 +172,13 @@
         {{-- ولا صفحةٌ تدّعي متجرًا بلا بضاعة: الزائر يُصرَّح له بالحقيقة --}}
         <p class="empty">لا توجد منتجات معروضة حاليًا.</p>
     @else
-        @if (count($categories) > 0)
+        @if (count($categories) > 0 || count($seasons ?? []) > 0)
             <nav class="cats" id="cats">
                 <button type="button" data-cat="all" aria-pressed="true">الكل</button>
+                {{-- المواسمُ الجارية: ترشيحٌ فوق الشبكة نفسِها — الصنفُ يحمل مواسمَه في وسمه --}}
+                @foreach ($seasons ?? [] as $s)
+                    <button type="button" data-cat="s{{ $s['id'] }}" aria-pressed="false">{{ $s['name'] }}</button>
+                @endforeach
                 @foreach ($categories as $c)
                     <button type="button" data-cat="{{ $c['id'] }}" aria-pressed="false">{{ $c['name'] }}</button>
                 @endforeach
@@ -183,7 +187,8 @@
 
         <div class="grid" id="grid">
             @foreach ($products as $p)
-                <article class="card" data-cat="{{ $p['category_id'] ?? 'none' }}">
+                @php $inSeasons = collect($seasons ?? [])->filter(fn ($s) => in_array((int) $p['id'], $s['product_ids'], true))->map(fn ($s) => 's'.$s['id'])->implode(' '); @endphp
+                <article class="card" data-cat="{{ $p['category_id'] ?? 'none' }}" data-seasons="{{ $inSeasons }}">
                     <div class="shot">
                         @if ($p['image'])
                             <img src="{{ $p['image'] }}" alt="{{ $p['name'] }}" loading="lazy">
@@ -257,7 +262,8 @@
             b.setAttribute('aria-pressed', String(b === btn));
         });
         document.querySelectorAll('#grid .card').forEach(function (card) {
-            card.style.display = (pick === 'all' || card.dataset.cat === pick) ? '' : 'none';
+            var inSeason = pick.charAt(0) === 's' && (' ' + (card.dataset.seasons || '') + ' ').indexOf(' ' + pick + ' ') !== -1;
+            card.style.display = (pick === 'all' || card.dataset.cat === pick || inSeason) ? '' : 'none';
         });
     });
 </script>

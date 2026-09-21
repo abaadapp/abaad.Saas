@@ -10,6 +10,7 @@ use App\Support\Activity;
 use App\Support\CustomArrangement;
 use App\Support\CustomerFlags;
 use App\Support\Demo;
+use App\Support\Seasons;
 use App\Support\FlowerOrder;
 use App\Support\PlanFeatures;
 use App\Support\PosCashier;
@@ -121,6 +122,8 @@ class PageController extends Controller
             // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة
             'products' => Demo::products(Demo::activeBranchId()),
             'categories' => Demo::posCategories(),
+            /* المواسمُ الجارية — مرشِّحٌ فوق ما حُمّل، لا يُضيف صنفًا ولا يُجيز بيعَه */
+            'seasons' => Seasons::forPos(Demo::bid()),
             // ومع كلّ زبونٍ ما يُقال عنه للكاشير — بالإعدادات، وبلا ملاحظةٍ أُطفئت
             'customers' => $this->customersWithContext(),
             'addons' => Demo::addons(),

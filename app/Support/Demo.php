@@ -3595,6 +3595,32 @@ class Demo
             ]);
         }
 
+        /*
+         * تذكيراتُ المواسم — مشتقّةٌ لا مخزَّنة، كأخواتها.
+         *
+         * وقبل المخزون والعملاء الراكدين: الجرسُ يعرض ستّةً، ومتجرٌ فيه عشرةُ
+         * أصنافٍ منخفضة كان سيدفن تذكيرًا حان وقتُه تحتها.
+         *
+         *
+         * يحين التذكيرُ فيظهر، ويُخفيه صاحبُه بمفتاحه الثابت فلا يعود. ولا
+         * صفَّ إشعارٍ يُكتب في كلّ استطلاع. والرابطُ يفتح الموسمَ بعينه لا
+         * شاشةَ التنبيهات العامّة — وقسمُه قسمُ المنتجات لأنّ الموسمَ تبويبٌ فيها.
+         */
+        foreach (Seasons::due($bid) as $reminder) {
+            $season = $reminder->season;
+            $days = (int) today()->diffInDays($season->starts_at, false);
+
+            $add('season-reminder-'.$reminder->id, [
+                'text' => __(':season — :message', ['season' => self::ln($season->name, $season->name_en), 'message' => $reminder->message]),
+                'time' => $days > 0
+                    ? __('يبدأ الموسم بعد :n يومًا', ['n' => $days])
+                    : ($days === 0 ? __('يبدأ الموسم اليوم') : __('الموسم جارٍ')),
+                'section' => 'products',
+                'icon' => 'calendar-days', 'color' => 'info',
+                'url' => route('admin.seasons.show', $season->id),
+            ]);
+        }
+
         // ملخّص اليوم (بطاقة في الجرس) — يظهر فقط إذا كان مفعّلًا في الإعدادات وهناك نشاط اليوم
         $dailyPref = Setting::where('business_id', $bid)->where('key', 'notify_daily_summary')->value('value');
         if ($dailyPref !== '0') {

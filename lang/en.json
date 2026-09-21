@@ -6129,5 +6129,17 @@
     "عرض الفاتورة": "View invoice",
     "رجوع إلى الحركة المالية": "Back to transactions",
     "تعذّر فتح الورقة — أعد المحاولة.": "Could not open the paper — try again.",
-    "يُحمَّل…": "Loading…"
+    "يُحمَّل…": "Loading…",
+    "تنزيل": "Download",
+    "محادثات العملاء المحتملين والمبيعات": "Lead and sales conversations",
+    "معلومات": "Info",
+    "إشارات": "Signals",
+    "النشاط": "Business",
+    "المتابعة": "Follow-up",
+    ":in واردة · :out صادرة": ":in incoming · :out outgoing",
+    "نقل إلى CRM": "Move to CRM",
+    "سيتم نقل المحادثة إلى مسار المبيعات وإغلاق محادثة الدعم مع الاحتفاظ بالسجل.": "The conversation will move to the sales pipeline and the support thread will be closed, with its history kept.",
+    "المحادثة": "Conversation",
+    "ليست دعمًا؟": "Not a support case?",
+    "CRM": "CRM"
 }

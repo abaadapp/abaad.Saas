@@ -1,29 +1,39 @@
-import { type FormEvent, useRef, useState } from 'react';
+import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
-    ArrowLeft,
     Building2,
     Clock,
-    Inbox,
-    FileText,
     Lock,
     MessageCircle,
-    Paperclip,
-    Search,
-    Send,
+    Phone,
     Sparkles,
     ThumbsDown,
     ThumbsUp,
-    X,
+    UserRound,
 } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import SmartLink from '@/Components/SmartLink';
 import type { SelectOption } from '@/Components/Field';
 import type { ServerPagination } from '@/Components/DataTable';
+import { MessageComposer } from '@/Components/conversations/Composer';
+import { ConversationDetailsPanel, DetailLine, DetailSection } from '@/Components/conversations/Details';
+import {
+    Avatar,
+    ConversationEmptyState,
+    ConversationList,
+    ConversationListItem,
+    ConversationPage,
+    ConversationPageHeader,
+    ConversationSearch,
+    ConversationShell,
+    FilterChips,
+    type Pane,
+    Pill,
+} from '@/Components/conversations/Shell';
+import { ConversationHeader, ConversationThread, MessageBubble } from '@/Components/conversations/Thread';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
-import { fileSize } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -126,6 +136,11 @@ interface Props {
     extensions: string[];
 }
 
+interface Suggestion {
+    text: string;
+    model: string | null;
+}
+
 const TONE: Record<string, string> = {
     info: 'bg-[#eff6ff] text-[#1d4ed8]',
     primary: 'bg-[#f5f3ff] text-[#6d28d9]',
@@ -135,36 +150,9 @@ const TONE: Record<string, string> = {
     gray: 'bg-[#f4f4f5] text-[#52525b]',
 };
 
-/** سطرٌ في لوحة البيانات — والمجهولُ يُقال ولا يُخترع */
-function Row({ label, value }: { label: string; value: string | null | undefined }) {
-    const t = useTranslate();
-
-    return (
-        <div className="flex items-start justify-between gap-3 py-1.5">
-            <dt className="shrink-0 text-[12px] text-[#6b7280]">{t(label)}</dt>
-            <dd className={cn('min-w-0 truncate text-end text-[13px]', value ? 'text-[#111]' : 'text-[#9ca3af]')}>
-                {value || t('غير معروف')}
-            </dd>
-        </div>
-    );
-}
-
 export default function CrmConversations() {
-    const { conversations, filters, counts, active, messages, signals, assistant, line, maxFiles, maxKb, extensions } =
+    const { conversations, pagination, filters, counts, stages, active, messages, signals, assistant, line, maxFiles, maxKb, extensions } =
         usePage<PageProps<Props>>().props;
-    const { props: pageProps } = usePage<PageProps<Props> & { suggestion?: { text: string; model: string | null } }>();
-    const t = useTranslate();
-    const [query, setQuery] = useState(filters.q ?? '');
-
-    const form = useForm<{ body: string; ai_model: string; ai_edited: boolean; files: File[] }>({
-        body: '',
-        ai_model: '',
-        ai_edited: false,
-        files: [],
-    });
-    const picker = useRef<HTMLInputElement>(null);
-    const suggestForm = useForm({ steer: '' });
-
     /*
      * والاقتراحُ يُعرض ولا يُرسل.
      *
@@ -172,13 +160,314 @@ export default function CrmConversations() {
      * الردّ» — لا قبلها. وملؤه تلقائيًّا يجعل ضغطةَ «إرسال» التاليةَ تُخرج
      * ما لم يقرأه أحد.
      */
-    const suggestion = (pageProps as unknown as { suggestion?: { text: string; model: string | null } }).suggestion;
+    const suggestion = (usePage().props as unknown as { suggestion?: Suggestion }).suggestion;
+    const t = useTranslate();
+    const [query, setQuery] = useState(filters.q ?? '');
+    const [pane, setPane] = useState<Pane>(active ? 'thread' : 'list');
+    const [tab, setTab] = useState<'info' | 'signals'>('info');
+
+    const go = (params: Record<string, string | number | undefined>) =>
+        router.get(route('super-admin.crm.conversations'), { ...filters, ...params }, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+
+    const views = [
+        { key: 'all', label: t('الكل'), n: counts.all },
+        { key: 'window', label: t('النافذة مفتوحة'), n: counts.window },
+        { key: 'mine', label: t('محادثاتي'), n: counts.mine },
+        { key: 'unassigned', label: t('غير معيّن'), n: counts.unassigned },
+    ];
+
+    return (
+        <PlatformLayout title={t('محادثات العملاء المحتملين')}>
+            <ConversationPage>
+            <ConversationPageHeader
+                title={t('المحادثات')}
+                context={t('CRM')}
+                subtitle={t('محادثات العملاء المحتملين والمبيعات')}
+                tone="violet"
+            />
+
+            {/*
+                رقمٌ غير موصول يُقال في الرأس لا يُصمت عنه.
+                شاشةٌ فارغةٌ بلا سبب تُقرأ عطبًا، فيُعاد فتحُها ويُسأل عنها.
+            */}
+            {!line.connected && (
+                <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 rounded-[12px] border border-[#fde68a] bg-[#fffbeb] px-3 py-2.5 text-[13px] text-[#92400e]">
+                    <AlertTriangle className="size-4 shrink-0" />
+                    <span>
+                        {t('رقم مبيعات أبعاد غير موصول — لا يصل وارد ولا يخرج ردّ. يُربط من إعدادات واتساب في لوحة المنصّة.')}
+                    </span>
+                </div>
+            )}
+
+            <ConversationShell
+                pane={pane}
+                list={
+                    <ConversationList
+                        header={
+                            <div className="space-y-2">
+                                <ConversationSearch
+                                    value={query}
+                                    onChange={setQuery}
+                                    onSubmit={() => go({ q: query, page: 1 })}
+                                    placeholder={t('ابحث بالاسم أو رقم الجوال...')}
+                                    label={t('ابحث بالاسم أو رقم الجوال...')}
+                                />
+                                <FilterChips
+                                    items={views}
+                                    value={filters.assignment ?? 'all'}
+                                    onChange={(assignment) => go({ assignment, page: 1 })}
+                                    label={t('العرض')}
+                                />
+                                {/* والمرحلةُ مرشِّحٌ قائمٌ في الخادم — كان بلا مقبضٍ في الشاشة */}
+                                <select
+                                    value={filters.stage ?? 'all'}
+                                    onChange={(e) => go({ stage: e.target.value, page: 1 })}
+                                    aria-label={t('المرحلة')}
+                                    className="h-8 w-full rounded-[9px] border border-[var(--ui-border,#e8e8e8)] bg-white px-2 text-[12px] text-[#4b4b4b] outline-none focus:border-[#059669]"
+                                >
+                                    <option value="all">{t('كل المراحل')}</option>
+                                    {stages.map((s) => (
+                                        <option key={String(s.value)} value={String(s.value)}>
+                                            {s.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        }
+                        footer={
+                            pagination.last_page > 1 ? (
+                                <div className="flex items-center justify-between gap-2 text-[12px] text-[#71717a]">
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={!pagination.prev_page_url}
+                                        onClick={() => go({ page: pagination.current_page - 1 })}
+                                    >
+                                        {t('السابق')}
+                                    </Button>
+                                    <span className="tabular-nums">
+                                        {pagination.current_page} / {pagination.last_page}
+                                    </span>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={!pagination.next_page_url}
+                                        onClick={() => go({ page: pagination.current_page + 1 })}
+                                    >
+                                        {t('التالي')}
+                                    </Button>
+                                </div>
+                            ) : undefined
+                        }
+                    >
+                        {conversations.length === 0 && (
+                            <li>
+                                <ConversationEmptyState text={t('لا محادثات بهذا الترشيح.')} />
+                            </li>
+                        )}
+
+                        {conversations.map((c) => (
+                            <ConversationListItem
+                                key={c.id}
+                                active={active?.id === c.id}
+                                onClick={() => {
+                                    setPane('thread');
+                                    go({ lead: c.id });
+                                }}
+                                avatar={<Avatar name={c.name} />}
+                                title={c.name}
+                                subtitle={c.businessName}
+                                preview={c.preview}
+                                time={c.at}
+                                unread={c.unread}
+                                badges={
+                                    <>
+                                        <Pill className={TONE[c.stageTone] ?? TONE.gray}>{c.stageLabel}</Pill>
+                                        {/* والنافذةُ تُقرأ في القائمة: من ضاق وقتُه يُردّ عليه أوّلًا */}
+                                        {c.windowOpen && (
+                                            <Pill className="bg-[#f0fdf4] text-[#15803d]">
+                                                <Clock className="size-3" />
+                                                {t('النافذة مفتوحة')}
+                                            </Pill>
+                                        )}
+                                        {c.assignee && (
+                                            <span className="truncate text-[10.5px] text-[#9ca3af]">{c.assignee}</span>
+                                        )}
+                                    </>
+                                }
+                            />
+                        ))}
+                    </ConversationList>
+                }
+                thread={
+                    !active ? (
+                        <ConversationEmptyState text={t('اختر محادثةً لقراءتها.')} icon={<MessageCircle className="size-6" />} />
+                    ) : (
+                        <>
+                            <ConversationHeader
+                                avatar={<Avatar name={active.name} size="sm" />}
+                                title={active.name}
+                                subtitle={
+                                    <>
+                                        <span dir="ltr">{active.phone}</span>
+                                        {active.businessName && (
+                                            <>
+                                                <span className="mx-1.5 text-[#d4d4d8]">·</span>
+                                                {active.businessName}
+                                            </>
+                                        )}
+                                    </>
+                                }
+                                badges={<Pill className={TONE[active.stageTone] ?? TONE.gray}>{active.stageLabel}</Pill>}
+                                actions={
+                                    <SmartLink routeName="super-admin.crm.leads.show" href={active.url}>
+                                        <Button variant="outline" size="sm">
+                                            <UserRound />
+                                            <span className="hidden sm:inline">{t('ملفّ العميل')}</span>
+                                        </Button>
+                                    </SmartLink>
+                                }
+                                onBack={() => setPane('list')}
+                                onDetails={() => setPane('details')}
+                            />
+
+                            {/* تاجرٌ عندنا أصلًا — يُقال قبل أن يُباع ما اشتراه */}
+                            {active.business && (
+                                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#f3f4f6] bg-[#eff6ff] px-3 py-2 text-[12px] text-[#1e40af]">
+                                    <Building2 className="size-3.5 shrink-0" />
+                                    <span>{t('مشترك — :name', { name: active.business.name })}</span>
+                                    <SmartLink routeName="super-admin.businesses.show" href={active.business.url} className="underline">
+                                        {t('افتح ملفّ المتجر')}
+                                    </SmartLink>
+                                </div>
+                            )}
+
+                            {messages.length === 0 ? (
+                                <ConversationEmptyState text={t('لا رسائل بعد.')} />
+                            ) : (
+                                <ConversationThread threadKey={active.id} count={messages.length}>
+                                    {messages.map((m) => (
+                                        <MessageBubble
+                                            key={m.id}
+                                            /* والمعنى معنى المبيعات: `out` منّا و`in` منه — لا غير */
+                                            side={m.direction}
+                                            body={m.body}
+                                            sender={m.sender}
+                                            time={m.at}
+                                            files={m.files}
+                                            footer={
+                                                /*
+                                                    وحالُ التسليم تُعرض كما قالتها ميتا.
+                                                    وصمتٌ بعد الإرسال يُقرأ نجاحًا — وهو ما
+                                                    لا يجوز أن يُترك للتأويل.
+                                                */
+                                                m.deliveryLabel || m.deliveryError ? (
+                                                    <p
+                                                        className={cn(
+                                                            'mt-0.5 flex items-start gap-1 text-[10.5px]',
+                                                            m.delivery === 'failed' || m.delivery === 'blocked'
+                                                                ? 'font-medium text-[#b91c1c]'
+                                                                : /* وبعضُها خرج: لا أحمرَ يقول «ضاع» ولا رماديٌّ يقول «تمّ» */
+                                                                  m.delivery === 'partial'
+                                                                  ? 'font-medium text-[#b45309]'
+                                                                  : 'text-[#8a8a8a]',
+                                                        )}
+                                                    >
+                                                        {(m.delivery === 'failed' || m.delivery === 'blocked' || m.delivery === 'partial') && (
+                                                            <AlertTriangle className="mt-px size-3 shrink-0" />
+                                                        )}
+                                                        <span>
+                                                            {m.deliveryLabel}
+                                                            {m.deliveryError && ` — ${m.deliveryError}`}
+                                                        </span>
+                                                    </p>
+                                                ) : null
+                                            }
+                                        />
+                                    ))}
+                                </ConversationThread>
+                            )}
+
+                            <CrmComposer
+                                active={active}
+                                assistant={assistant}
+                                suggestion={suggestion}
+                                maxFiles={maxFiles}
+                                maxKb={maxKb}
+                                extensions={extensions}
+                            />
+                        </>
+                    )
+                }
+                details={
+                    !active ? (
+                        <ConversationEmptyState text={t('اختر محادثةً لقراءتها.')} icon={<UserRound className="size-6" />} />
+                    ) : (
+                        <ConversationDetailsPanel
+                            title={t('معلومات العميل المحتمل')}
+                            onBack={() => setPane('thread')}
+                            tabs={
+                                signals
+                                    ? {
+                                          items: [
+                                              { key: 'info', label: t('معلومات') },
+                                              { key: 'signals', label: t('إشارات') },
+                                          ],
+                                          value: tab,
+                                          onChange: (k) => setTab(k as 'info' | 'signals'),
+                                      }
+                                    : undefined
+                            }
+                        >
+                            {tab === 'signals' && signals ? (
+                                <SignalsPanel signals={signals} />
+                            ) : (
+                                <LeadPanel active={active} />
+                            )}
+                        </ConversationDetailsPanel>
+                    )
+                }
+            />
+            </ConversationPage>
+        </PlatformLayout>
+    );
+}
+
+/* ═══════════════════ المُحرِّر والمساعد ═══════════════════ */
+
+function CrmComposer({
+    active,
+    assistant,
+    suggestion,
+    maxFiles,
+    maxKb,
+    extensions,
+}: {
+    active: Active;
+    assistant: { available: boolean; reason: string | null };
+    suggestion: Suggestion | undefined;
+    maxFiles: number;
+    maxKb: number;
+    extensions: string[];
+}) {
+    const t = useTranslate();
+
+    const form = useForm<{ body: string; ai_model: string; ai_edited: boolean; files: File[] }>({
+        body: '',
+        ai_model: '',
+        ai_edited: false,
+        files: [],
+    });
+    const suggestForm = useForm({ steer: '' });
 
     /* وما اقتُرح أصلًا — ليُعرف إن عدّله الإنسان قبل الإرسال */
     const [usedSuggestion, setUsedSuggestion] = useState<string | null>(null);
 
     const useSuggestion = () => {
-        if (! suggestion) return;
+        if (!suggestion) return;
         form.setData({
             ...form.data,
             body: suggestion.text,
@@ -189,7 +478,7 @@ export default function CrmConversations() {
     };
 
     const feedback = (verdict: 'up' | 'down') => {
-        if (! active || ! suggestion) return;
+        if (!suggestion) return;
         router.post(
             route('super-admin.crm.conversations.feedback', active.id),
             { verdict, suggestion: suggestion.text, model: suggestion.model ?? '' },
@@ -197,15 +486,8 @@ export default function CrmConversations() {
         );
     };
 
-    const go = (params: Record<string, string | number | undefined>) =>
-        router.get(route('super-admin.crm.conversations'), { ...filters, ...params }, {
-            preserveState: true,
-            preserveScroll: true,
-        });
-
-    const submit = (e: FormEvent) => {
-        e.preventDefault();
-        if (! active) return;
+    const send = () => {
+        if (form.processing || !form.data.body.trim()) return;
         form.post(route('super-admin.crm.conversations.reply', active.id), {
             preserveScroll: true,
             /*
@@ -217,598 +499,295 @@ export default function CrmConversations() {
         });
     };
 
-    const views = [
-        { key: 'all', label: 'الكل', n: counts.all },
-        { key: 'window', label: 'النافذة مفتوحة', n: counts.window },
-        { key: 'mine', label: 'محادثاتي', n: counts.mine },
-        { key: 'unassigned', label: 'غير معيّن', n: counts.unassigned },
-    ];
+    /*
+        والسببُ يُقال قبل الكتابة لا بعد المنع.
+        من يكتب ردًّا طويلًا ثمّ يُردّ «النافذة مغلقة» يكون قد كتب على لا شيء.
+    */
+    if (active.blockedReason) {
+        return (
+            <div className="shrink-0 border-t border-[var(--ui-border,#e8e8e8)] p-3">
+                <div className="flex items-start gap-2 rounded-[12px] bg-[#fffbeb] p-3 text-[12px] text-[#92400e]">
+                    <Lock className="mt-0.5 size-4 shrink-0" />
+                    <div>
+                        <p>{active.blockedReason}</p>
+                        <p className="mt-1 text-[11px]">
+                            {t('ولا قوالبَ معتمَدةً في هذه النسخة — فلا يخرج شيء حتى يكتب هو.')}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <PlatformLayout title={t('محادثات العملاء المحتملين')}>
-            {/*
-                رقمٌ غير موصول يُقال في الرأس لا يُصمت عنه.
-                شاشةٌ فارغةٌ بلا سبب تُقرأ عطبًا، فيُعاد فتحُها ويُسأل عنها.
-            */}
-            {! line.connected && (
-                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#fde68a] bg-[#fffbeb] p-4 text-[13px] text-[#92400e]">
-                    <AlertTriangle className="size-4 shrink-0" />
-                    <span>
-                        {t('رقم مبيعات أبعاد غير موصول — لا يصل وارد ولا يخرج ردّ. يُربط من إعدادات واتساب في لوحة المنصّة.')}
+        <MessageComposer
+            value={form.data.body}
+            onChange={(body) =>
+                /*
+                    و«عدّله الإنسان» يُقاس ولا يُفترض: يُقارَن ما في المُحرِّر
+                    بما اقتُرح. وافتراضُه دائمًا يجعل السجلَّ يقول إنّ كلَّ ردٍّ
+                    رُوجع وهو لم يُمسّ.
+                */
+                form.setData({
+                    ...form.data,
+                    body,
+                    ai_edited: usedSuggestion !== null && body !== usedSuggestion,
+                })
+            }
+            onSend={send}
+            files={form.data.files}
+            onAddFiles={(picked) => form.setData('files', [...form.data.files, ...picked].slice(0, maxFiles))}
+            onRemoveFile={(i) =>
+                form.setData(
+                    'files',
+                    form.data.files.filter((_, j) => j !== i),
+                )
+            }
+            accept={extensions.map((e) => `.${e}`).join(',')}
+            maxFiles={maxFiles}
+            maxKb={maxKb}
+            processing={form.processing}
+            placeholder={t('اكتب رسالتك...')}
+            errors={{ body: form.errors.body, files: form.errors.files }}
+            trailing={
+                active.windowEndsAt ? (
+                    <span className="hidden shrink-0 items-center gap-1 self-center rounded-full bg-[#f0fdf4] px-2 py-0.5 text-[11px] text-[#15803d] sm:inline-flex">
+                        <Clock className="size-3" />
+                        {t('النافذة مفتوحة')}
                     </span>
+                ) : undefined
+            }
+            above={
+                /* ── مساعد أبعاد الذكيّ — يقترح، والإنسانُ يُرسل ── */
+                <div className="mb-2 rounded-[12px] border border-[#ede9fe] bg-[#faf8ff] p-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="flex items-center gap-1 text-[12px] font-bold text-[#5b21b6]">
+                            <Sparkles className="size-3.5" />
+                            {t('مساعد أبعاد الذكي')}
+                        </span>
+                        <span className="rounded-full bg-[#f5f3ff] px-2 py-0.5 text-[10.5px] text-[#6d28d9]">
+                            {t('يقترح ولا يُرسل')}
+                        </span>
+
+                        {assistant.available ? (
+                            <>
+                                <Input
+                                    value={suggestForm.data.steer}
+                                    onChange={(e) => suggestForm.setData('steer', e.target.value)}
+                                    placeholder={t('توجيه اختياري: «أقصر»، «اذكر التجربة»...')}
+                                    className="h-8 min-w-[160px] flex-1 rounded-[9px] text-[12px]"
+                                />
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    loading={suggestForm.processing}
+                                    onClick={() =>
+                                        suggestForm.post(route('super-admin.crm.conversations.suggest', active.id), {
+                                            preserveScroll: true,
+                                        })
+                                    }
+                                >
+                                    <Sparkles className="size-4" />
+                                    {suggestion ? t('إعادة إنشاء') : t('اقتراح رد')}
+                                </Button>
+                            </>
+                        ) : (
+                            /*
+                                ولا زرَّ يُعرض ولا يُفتح.
+                                زرٌّ مُطفأ فوق سببٍ مكتوب خيرٌ من زرٍّ يُضغط
+                                فيردّ خطأً إنجليزيًّا من مزوّد.
+                            */
+                            <span className="text-[12px] text-[#6b7280]">{assistant.reason}</span>
+                        )}
+                    </div>
+
+                    {assistant.available && suggestion && (
+                        <div className="mt-2 rounded-[10px] border border-[#e9d5ff] bg-white p-2.5">
+                            <p className="whitespace-pre-wrap text-[13px] text-[#111]" dir="auto">
+                                {suggestion.text}
+                            </p>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <Button size="sm" onClick={useSuggestion}>
+                                    {t('استخدام الرد')}
+                                </Button>
+                                <span className="text-[11px] text-[#6b7280]">
+                                    {t('يُنسخ إلى المُحرِّر — تُعدّله ثم ترسله بنفسك.')}
+                                </span>
+
+                                <div className="ms-auto flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => feedback('up')}
+                                        aria-label={t('مناسب')}
+                                        className="rounded-full p-1.5 text-[#6b7280] transition hover:bg-[#f0fdf4] hover:text-[#15803d]"
+                                    >
+                                        <ThumbsUp className="size-4" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => feedback('down')}
+                                        aria-label={t('غير مناسب')}
+                                        className="rounded-full p-1.5 text-[#6b7280] transition hover:bg-[#fef2f2] hover:text-[#b91c1c]"
+                                    >
+                                        <ThumbsDown className="size-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            }
+        />
+    );
+}
+
+/* ═══════════════════ لوحةُ العميل ═══════════════════ */
+
+function LeadPanel({ active }: { active: Active }) {
+    const t = useTranslate();
+    const unknown = t('غير معروف');
+
+    return (
+        <>
+            <DetailSection>
+                <div className="flex items-center gap-3">
+                    <Avatar name={active.name} size="lg" />
+                    <div className="min-w-0">
+                        <p className="truncate text-[14px] font-bold text-[#111]">{active.name}</p>
+                        <p className="mt-0.5 flex items-center gap-1 text-[12px] text-[#71717a]">
+                            <Phone className="size-3" />
+                            <span dir="ltr">{active.phone}</span>
+                        </p>
+                        <Pill className={cn('mt-1', TONE[active.stageTone] ?? TONE.gray)}>{active.stageLabel}</Pill>
+                    </div>
+                </div>
+            </DetailSection>
+
+            <DetailSection title={t('النشاط')}>
+                <dl>
+                    <DetailLine label={t('اسم النشاط')} value={active.businessName} empty={unknown} />
+                    <DetailLine label={t('الولاية')} value={active.wilayat} empty={unknown} />
+                    <DetailLine
+                        label={t('عدد الفروع')}
+                        value={active.branchesCount !== null ? String(active.branchesCount) : null}
+                        empty={unknown}
+                    />
+                    <DetailLine label={t('النظام الحالي')} value={active.currentSystem} empty={unknown} />
+                    <DetailLine label={t('الباقة المهتم بها')} value={active.plan} empty={unknown} />
+                </dl>
+            </DetailSection>
+
+            <DetailSection title={t('المتابعة')}>
+                <dl>
+                    <DetailLine label={t('المصدر')} value={active.sourceLabel} empty={unknown} />
+                    <DetailLine label={t('المسؤول')} value={active.assignee} empty={unknown} />
+                    <DetailLine label={t('أول تواصل')} value={active.firstContactAt} empty={unknown} />
+                    <DetailLine label={t('آخر تواصل')} value={active.lastContactAt} empty={unknown} />
+                    <DetailLine label={t('المتابعة القادمة')} value={active.nextFollowUpAt} empty={unknown} />
+                </dl>
+            </DetailSection>
+
+            {active.notesSummary && (
+                <DetailSection title={t('آخر ملاحظة داخلية')}>
+                    <p className="text-[12.5px] text-[#111]" dir="auto">
+                        {active.notesSummary}
+                    </p>
+                </DetailSection>
+            )}
+
+            <SmartLink routeName="super-admin.crm.leads.show" href={active.url} className="block">
+                <Button variant="outline" className="w-full">
+                    {t('المراحل والملاحظات والمهام')}
+                </Button>
+            </SmartLink>
+        </>
+    );
+}
+
+/* ═══════════════════ تحليلُ المحادثة: إشاراتٌ مقيسةٌ لا تقديرُ نموذج ═══════════════════ */
+
+function SignalsPanel({ signals }: { signals: Signals }) {
+    const t = useTranslate();
+
+    return (
+        <>
+            {/*
+                ويُقال مصدرُه صراحةً.
+                «٧٥٪» بلا مصدرٍ تُقرأ قياسًا، ومن يقرؤها يبني عليها ترتيبَ من
+                يُتابَع أوّلًا.
+            */}
+            <p className="text-[11px] text-[#9ca3af]">{t('مقروءٌ من نصّ رسائله — لا تقديرَ نموذجٍ فيه.')}</p>
+
+            {signals.handoff && (
+                <div className="rounded-[10px] border border-[#fecaca] bg-[#fef2f2] p-3">
+                    <p className="flex items-center gap-1.5 text-[12px] font-medium text-[#991b1b]">
+                        <AlertTriangle className="size-3.5" />
+                        {t('يحتاج تدخل بشري')}
+                    </p>
+                    <p className="mt-1 text-[11px] text-[#991b1b]" dir="auto">
+                        «{signals.handoff}»
+                    </p>
                 </div>
             )}
 
-            <div className="grid gap-3 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_290px]">
-                {/* ═══════════ القائمة ═══════════ */}
-                <aside
-                    className={cn(
-                        'rounded-xl border border-[#e8e8e8] bg-white',
-                        /* وعلى الجوّال: قائمةٌ أو محادثة، لا الاثنتان في عمودٍ واحد */
-                        active ? 'hidden lg:block' : 'block',
-                    )}
-                >
-                    <header className="border-b border-[#f3f4f6] p-3">
-                        <h1 className="mb-2 text-[14px] font-bold text-[#111]">{t('محادثات العملاء المحتملين')}</h1>
+            <DetailSection title={t('درجة الاهتمام')} action={<span className="text-[13px] font-bold text-[#111]">{signals.score}%</span>}>
+                <div className="h-1.5 overflow-hidden rounded-full bg-[#ecece9]">
+                    <div className="h-full rounded-full bg-[#8b5cf6]" style={{ width: `${signals.score}%` }} />
+                </div>
 
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute inset-y-0 start-2.5 my-auto size-4 text-[#9ca3af]" />
-                            <Input
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && go({ q: query, page: 1 })}
-                                placeholder={t('ابحث بالاسم أو رقم الجوال...')}
-                                className="ps-8"
-                            />
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap gap-1">
-                            {views.map((v) => (
-                                <button
-                                    key={v.key}
-                                    type="button"
-                                    onClick={() => go({ assignment: v.key, page: 1 })}
-                                    className={cn(
-                                        'rounded-full px-2.5 py-1 text-[12px] transition',
-                                        (filters.assignment ?? 'all') === v.key
-                                            ? 'bg-[#111] text-white'
-                                            : 'bg-[#f4f4f5] text-[#52525b] hover:bg-[#e8e8e8]',
-                                    )}
-                                >
-                                    {t(v.label)} {v.n}
-                                </button>
-                            ))}
-                        </div>
-                    </header>
-
-                    {conversations.length === 0 ? (
-                        <div className="p-8 text-center">
-                            <Inbox className="mx-auto mb-2 size-7 text-[#d1d5db]" />
-                            <p className="text-[13px] text-[#6b7280]">{t('لا محادثات بهذا الترشيح.')}</p>
-                        </div>
-                    ) : (
-                        <ul className="max-h-[70vh] divide-y divide-[#f3f4f6] overflow-y-auto">
-                            {conversations.map((c) => (
-                                <li key={c.id}>
-                                    <button
-                                        type="button"
-                                        onClick={() => go({ lead: c.id })}
-                                        className={cn(
-                                            'w-full p-3 text-start transition hover:bg-[#fafafa]',
-                                            active?.id === c.id && 'bg-[#f5f3ff]',
-                                        )}
-                                    >
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span
-                                                className={cn(
-                                                    'truncate text-[13px] text-[#111]',
-                                                    c.unread > 0 ? 'font-bold' : 'font-medium',
-                                                )}
-                                            >
-                                                {c.name}
-                                            </span>
-                                            <div className="flex shrink-0 items-center gap-1.5">
-                                                {/*
-                                                    وصفرٌ لا يُرسم: شارةٌ بصفرٍ تشغل موضعَ شارةٍ
-                                                    تعني شيئًا، فتُدرَّب العينُ على تجاهل الموضع.
-                                                */}
-                                                {c.unread > 0 && (
-                                                    <span className="flex min-w-[18px] items-center justify-center rounded-full bg-[#dc2626] px-1 text-[10px] font-bold tabular-nums text-white">
-                                                        {c.unread}
-                                                    </span>
-                                                )}
-                                                <span className="text-[11px] text-[#9ca3af]">{c.at}</span>
-                                            </div>
-                                        </div>
-                                        <p
-                                            className={cn(
-                                                'mt-0.5 truncate text-[12px]',
-                                                c.unread > 0 ? 'text-[#111]' : 'text-[#6b7280]',
-                                            )}
-                                        >
-                                            {c.preview}
-                                        </p>
-                                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                            <span className={cn('rounded-full px-2 py-0.5 text-[11px]', TONE[c.stageTone] ?? TONE.gray)}>
-                                                {c.stageLabel}
-                                            </span>
-                                            {/* والنافذةُ تُقرأ في القائمة: من ضاق وقتُه يُردّ عليه أوّلًا */}
-                                            {c.windowOpen && (
-                                                <span className="inline-flex items-center gap-1 rounded-full bg-[#f0fdf4] px-2 py-0.5 text-[11px] text-[#15803d]">
-                                                    <Clock className="size-3" />
-                                                    {t('النافذة مفتوحة')}
-                                                </span>
-                                            )}
-                                            {c.assignee && (
-                                                <span className="truncate text-[11px] text-[#9ca3af]">{c.assignee}</span>
-                                            )}
-                                        </div>
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </aside>
-
-                {/* ═══════════ المحادثة ═══════════ */}
-                <section className="flex min-h-[60vh] flex-col rounded-xl border border-[#e8e8e8] bg-white">
-                    {! active ? (
-                        <div className="flex flex-1 flex-col items-center justify-center p-10 text-center">
-                            <MessageCircle className="mb-2 size-8 text-[#d1d5db]" />
-                            <p className="text-[13px] text-[#6b7280]">{t('اختر محادثةً لقراءتها.')}</p>
-                        </div>
-                    ) : (
-                        <>
-                            <header className="flex flex-wrap items-center gap-2 border-b border-[#f3f4f6] p-3">
-                                <button
-                                    type="button"
-                                    onClick={() => go({ lead: undefined })}
-                                    className="lg:hidden"
-                                    aria-label={t('رجوع')}
-                                >
-                                    <ArrowLeft className="size-4 text-[#6b7280] rtl:rotate-180" />
-                                </button>
-
-                                <div className="min-w-0 flex-1">
-                                    <div className="truncate text-[14px] font-bold text-[#111]">{active.name}</div>
-                                    <div className="truncate text-[12px] text-[#6b7280]" dir="ltr">
-                                        {active.phone}
-                                    </div>
-                                </div>
-
-                                <span className={cn('rounded-full px-2 py-0.5 text-[12px]', TONE[active.stageTone] ?? TONE.gray)}>
-                                    {active.stageLabel}
+                {/* ولكلّ نقطةٍ سببُها — ومن لا يوافق يرى على ماذا لا يوافق */}
+                {signals.scoreReasons.length > 0 && (
+                    <ul className="mt-2 space-y-0.5">
+                        {signals.scoreReasons.map((r) => (
+                            <li key={r.label} className="flex justify-between text-[11px]">
+                                <span className="text-[#6b7280]">{r.label}</span>
+                                <span className={r.points < 0 ? 'text-[#b91c1c]' : 'text-[#15803d]'}>
+                                    {r.points > 0 ? `+${r.points}` : r.points}
                                 </span>
-
-                                <SmartLink routeName="super-admin.crm.leads.show" href={active.url}>
-                                    <Button variant="outline" size="sm">{t('ملفّ العميل')}</Button>
-                                </SmartLink>
-                            </header>
-
-                            {/* تاجرٌ عندنا أصلًا — يُقال قبل أن يُباع ما اشتراه */}
-                            {active.business && (
-                                <div className="flex flex-wrap items-center gap-2 border-b border-[#f3f4f6] bg-[#eff6ff] p-2.5 text-[12px] text-[#1e40af]">
-                                    <Building2 className="size-3.5 shrink-0" />
-                                    <span>{t('مشترك — :name', { name: active.business.name })}</span>
-                                    <SmartLink routeName="super-admin.businesses.show" href={active.business.url} className="underline">
-                                        {t('افتح ملفّ المتجر')}
-                                    </SmartLink>
-                                </div>
-                            )}
-
-                            <div className="flex-1 space-y-3 overflow-y-auto p-4" style={{ maxHeight: '55vh' }}>
-                                {messages.length === 0 ? (
-                                    <p className="py-8 text-center text-[13px] text-[#9ca3af]">{t('لا رسائل بعد.')}</p>
-                                ) : (
-                                    messages.map((m) => (
-                                        <div
-                                            key={m.id}
-                                            className={cn('flex', m.direction === 'out' ? 'justify-end' : 'justify-start')}
-                                        >
-                                            <div
-                                                className={cn(
-                                                    'max-w-[85%] rounded-[14px] px-3 py-2',
-                                                    m.direction === 'out'
-                                                        ? 'bg-[#f5f3ff] text-[#111]'
-                                                        : 'bg-[#f4f4f5] text-[#111]',
-                                                )}
-                                            >
-                                                <p className="whitespace-pre-wrap text-[13px]">{m.body}</p>
-
-                                                {/*
-                                                    والمرفقُ يُعرض رابطًا يُفتح لا اسمًا يُقرأ.
-                                                    «بابٌ معروضٌ لا يُفتح أسوأ من بابٍ لا يُعرض»
-                                                    — وصورةٌ يقرأ الموظّفُ اسمَها ولا يراها
-                                                    كأنّها لم تصل.
-                                                */}
-                                                {m.files.map((f) => (
-                                                    <a
-                                                        key={f.id}
-                                                        href={f.url}
-                                                        className="mt-2 flex items-center gap-2 rounded-[10px] border border-[#e8e8e8] bg-white p-2 text-[12px] hover:bg-[#fafafa]"
-                                                    >
-                                                        <FileText className="size-4 shrink-0 text-[#6d28d9]" />
-                                                        <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                                                        <span className="shrink-0 text-[11px] text-[#9ca3af]">
-                                                            {fileSize(f.size)}
-                                                        </span>
-                                                    </a>
-                                                ))}
-
-                                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[#9ca3af]">
-                                                    <span>{m.at}</span>
-                                                    {m.sender && <span>· {m.sender}</span>}
-                                                    {/*
-                                                        وحالُ التسليم تُعرض كما قالتها ميتا.
-                                                        وصمتٌ بعد الإرسال يُقرأ نجاحًا — وهو ما
-                                                        لا يجوز أن يُترك للتأويل.
-                                                    */}
-                                                    {m.deliveryLabel && (
-                                                        <span
-                                                            className={cn(
-                                                                m.delivery === 'failed' || m.delivery === 'blocked'
-                                                                    ? 'font-medium text-[#b91c1c]'
-                                                                    /* وبعضُها خرج: لا أحمرَ يقول «ضاع» ولا رماديٌّ يقول «تمّ» */
-                                                                    : m.delivery === 'partial'
-                                                                      ? 'font-medium text-[#b45309]'
-                                                                      : 'text-[#9ca3af]',
-                                                            )}
-                                                        >
-                                                            · {m.deliveryLabel}
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                {m.deliveryError && (
-                                                    <p className="mt-1 text-[11px] text-[#b91c1c]">{m.deliveryError}</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-
-                            {/* ═══ المُحرِّر ═══ */}
-                            <footer className="border-t border-[#f3f4f6] p-3">
-                                {/*
-                                    والسببُ يُقال قبل الكتابة لا بعد المنع.
-                                    من يكتب ردًّا طويلًا ثمّ يُردّ «النافذة مغلقة»
-                                    يكون قد كتب على لا شيء.
-                                */}
-                                {active.blockedReason ? (
-                                    <div className="flex items-start gap-2 rounded-[12px] bg-[#fffbeb] p-3 text-[12px] text-[#92400e]">
-                                        <Lock className="mt-0.5 size-4 shrink-0" />
-                                        <div>
-                                            <p>{active.blockedReason}</p>
-                                            <p className="mt-1 text-[11px]">
-                                                {t('ولا قوالبَ معتمَدةً في هذه النسخة — فلا يخرج شيء حتى يكتب هو.')}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <form onSubmit={submit}>
-                                        <div className="rounded-[12px] border border-[#e8e8e8] p-2">
-                                            <textarea
-                                                rows={2}
-                                                value={form.data.body}
-                                                onChange={(e) => {
-                                                    /*
-                                                        و«عدّله الإنسان» يُقاس ولا يُفترض:
-                                                        يُقارَن ما في المُحرِّر بما اقتُرح.
-                                                        وافتراضُه دائمًا يجعل السجلَّ يقول
-                                                        إنّ كلَّ ردٍّ رُوجع وهو لم يُمسّ.
-                                                    */
-                                                    form.setData({
-                                                        ...form.data,
-                                                        body: e.target.value,
-                                                        ai_edited:
-                                                            usedSuggestion !== null &&
-                                                            e.target.value !== usedSuggestion,
-                                                    });
-                                                }}
-                                                placeholder={t('اكتب رسالتك...')}
-                                                className="w-full resize-none border-0 bg-transparent p-1.5 text-[13px] outline-none placeholder:text-[#9ca3af]"
-                                            />
-
-                                            {form.data.files.length > 0 && (
-                                                <ul className="mb-2 space-y-1">
-                                                    {form.data.files.map((f, i) => (
-                                                        <li
-                                                            key={i}
-                                                            className="flex items-center gap-2 rounded-[8px] bg-[#fafafa] p-1.5 text-[12px]"
-                                                        >
-                                                            <Paperclip className="size-3.5 shrink-0 text-[#9ca3af]" />
-                                                            <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                                                            <button
-                                                                type="button"
-                                                                aria-label={t('إزالة')}
-                                                                onClick={() =>
-                                                                    form.setData(
-                                                                        'files',
-                                                                        form.data.files.filter((_, j) => j !== i),
-                                                                    )
-                                                                }
-                                                            >
-                                                                <X className="size-3.5 text-[#9ca3af] hover:text-[#b91c1c]" />
-                                                            </button>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            )}
-
-                                            <div className="flex items-center justify-between gap-2">
-                                                <input
-                                                    ref={picker}
-                                                    type="file"
-                                                    multiple
-                                                    className="hidden"
-                                                    accept={extensions.map((e) => `.${e}`).join(',')}
-                                                    onChange={(e) =>
-                                                        form.setData(
-                                                            'files',
-                                                            [
-                                                                ...form.data.files,
-                                                                ...Array.from(e.target.files ?? []),
-                                                            ].slice(0, maxFiles),
-                                                        )
-                                                    }
-                                                />
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => picker.current?.click()}
-                                                    disabled={form.data.files.length >= maxFiles}
-                                                    title={t('حتى :n ملفات، :kb ميغابايت للملف', {
-                                                        n: maxFiles,
-                                                        kb: Math.round(maxKb / 1024),
-                                                    })}
-                                                >
-                                                    <Paperclip className="size-4" />
-                                                </Button>
-
-                                                {active.windowEndsAt && (
-                                                    <span className="text-[11px] text-[#9ca3af]">
-                                                        {t('النافذة مفتوحة')}
-                                                    </span>
-                                                )}
-                                                <Button
-                                                    type="submit"
-                                                    size="sm"
-                                                    className="ms-auto"
-                                                    disabled={form.processing || ! form.data.body.trim()}
-                                                >
-                                                    <Send className="size-4" />
-                                                    {t('إرسال')}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                        {form.errors.body && (
-                                            <p className="mt-1 text-[12px] text-[#b91c1c]">{form.errors.body}</p>
-                                        )}
-                                        {form.errors.files && (
-                                            <p className="mt-1 text-[12px] text-[#b91c1c]">{form.errors.files}</p>
-                                        )}
-                                    </form>
-                                )}
-                            </footer>
-                        </>
-                    )}
-                </section>
-
-                {/* ═══════════ المساعدُ والتحليل ═══════════ */}
-                {active && (
-                    <div className="lg:col-start-2 xl:col-start-auto xl:row-start-2 xl:col-span-2 space-y-3">
-                        {/* ── مساعد أبعاد الذكيّ ── */}
-                        <section className="rounded-xl border border-[#e8e8e8] bg-white p-4">
-                            <header className="mb-2 flex flex-wrap items-center gap-2">
-                                <Sparkles className="size-4 text-[#8b5cf6]" />
-                                <h2 className="text-[14px] font-bold text-[#111]">{t('مساعد أبعاد الذكي')}</h2>
-                                {/* ويُقال ما هو: يقترح، والإنسانُ يُرسل */}
-                                <span className="rounded-full bg-[#f5f3ff] px-2 py-0.5 text-[11px] text-[#6d28d9]">
-                                    {t('يقترح ولا يُرسل')}
-                                </span>
-                            </header>
-
-                            {! assistant.available || active.blockedReason ? (
-                                /*
-                                    ولا زرَّ يُعرض ولا يُفتح.
-                                    زرٌّ مُطفأ فوق سببٍ مكتوب خيرٌ من زرٍّ يُضغط
-                                    فيردّ خطأً إنجليزيًّا من مزوّد.
-
-                                    ومُحرِّرٌ محجوبٌ يحجب الاقتراحَ معه: ردٌّ لا
-                                    يُرسَل لا يُقترح — والسببُ هو سببُ الحجب نفسُه.
-                                */
-                                <p className="text-[13px] text-[#6b7280]">
-                                    {assistant.available ? active.blockedReason : assistant.reason}
-                                </p>
-                            ) : (
-                                <>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <Input
-                                            value={suggestForm.data.steer}
-                                            onChange={(e) => suggestForm.setData('steer', e.target.value)}
-                                            placeholder={t('توجيه اختياري: «أقصر»، «اذكر التجربة»...')}
-                                            className="min-w-[180px] flex-1"
-                                        />
-                                        <Button
-                                            size="sm"
-                                            loading={suggestForm.processing}
-                                            onClick={() =>
-                                                suggestForm.post(
-                                                    route('super-admin.crm.conversations.suggest', active.id),
-                                                    { preserveScroll: true },
-                                                )
-                                            }
-                                        >
-                                            <Sparkles className="size-4" />
-                                            {suggestion ? t('إعادة إنشاء') : t('اقتراح رد')}
-                                        </Button>
-                                    </div>
-
-                                    {suggestion && (
-                                        <div className="mt-3 rounded-[12px] border border-[#e9d5ff] bg-[#faf5ff] p-3">
-                                            <p className="whitespace-pre-wrap text-[13px] text-[#111]">
-                                                {suggestion.text}
-                                            </p>
-
-                                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                                                <Button size="sm" onClick={useSuggestion}>
-                                                    {t('استخدام الرد')}
-                                                </Button>
-                                                <span className="text-[11px] text-[#6b7280]">
-                                                    {t('يُنسخ إلى المُحرِّر — تُعدّله ثم ترسله بنفسك.')}
-                                                </span>
-
-                                                <div className="ms-auto flex items-center gap-1">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => feedback('up')}
-                                                        aria-label={t('مناسب')}
-                                                        className="rounded-full p-1.5 text-[#6b7280] transition hover:bg-[#f0fdf4] hover:text-[#15803d]"
-                                                    >
-                                                        <ThumbsUp className="size-4" />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => feedback('down')}
-                                                        aria-label={t('غير مناسب')}
-                                                        className="rounded-full p-1.5 text-[#6b7280] transition hover:bg-[#fef2f2] hover:text-[#b91c1c]"
-                                                    >
-                                                        <ThumbsDown className="size-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </section>
-
-                        {/* ── تحليلُ المحادثة: إشاراتٌ مقيسةٌ لا تقديرُ نموذج ── */}
-                        {signals && (
-                            <section className="rounded-xl border border-[#e8e8e8] bg-white p-4">
-                                <h2 className="mb-1 text-[14px] font-bold text-[#111]">{t('تحليل المحادثة')}</h2>
-                                {/*
-                                    ويُقال مصدرُه صراحةً.
-                                    «٧٥٪» بلا مصدرٍ تُقرأ قياسًا، ومن يقرؤها
-                                    يبني عليها ترتيبَ من يُتابَع أوّلًا.
-                                */}
-                                <p className="mb-3 text-[11px] text-[#9ca3af]">
-                                    {t('مقروءٌ من نصّ رسائله — لا تقديرَ نموذجٍ فيه.')}
-                                </p>
-
-                                {signals.handoff && (
-                                    <div className="mb-3 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] p-3">
-                                        <p className="flex items-center gap-1.5 text-[12px] font-medium text-[#991b1b]">
-                                            <AlertTriangle className="size-3.5" />
-                                            {t('يحتاج تدخل بشري')}
-                                        </p>
-                                        <p className="mt-1 text-[11px] text-[#991b1b]">«{signals.handoff}»</p>
-                                    </div>
-                                )}
-
-                                <div className="mb-3">
-                                    <div className="mb-1 flex items-center justify-between text-[12px]">
-                                        <span className="text-[#6b7280]">{t('درجة الاهتمام')}</span>
-                                        <span className="font-bold text-[#111]">{signals.score}%</span>
-                                    </div>
-                                    <div className="h-1.5 overflow-hidden rounded-full bg-[#f3f4f6]">
-                                        <div
-                                            className="h-full rounded-full bg-[#8b5cf6]"
-                                            style={{ width: `${signals.score}%` }}
-                                        />
-                                    </div>
-
-                                    {/* ولكلّ نقطةٍ سببُها — ومن لا يوافق يرى على ماذا لا يوافق */}
-                                    {signals.scoreReasons.length > 0 && (
-                                        <ul className="mt-2 space-y-0.5">
-                                            {signals.scoreReasons.map((r) => (
-                                                <li key={r.label} className="flex justify-between text-[11px]">
-                                                    <span className="text-[#6b7280]">{r.label}</span>
-                                                    <span className={r.points < 0 ? 'text-[#b91c1c]' : 'text-[#15803d]'}>
-                                                        {r.points > 0 ? `+${r.points}` : r.points}
-                                                    </span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </div>
-
-                                {signals.intent.length > 0 && (
-                                    <div className="mb-3">
-                                        <p className="mb-1.5 text-[12px] text-[#6b7280]">{t('الاحتياجات المكتشفة')}</p>
-                                        <ul className="space-y-1.5">
-                                            {signals.intent.map((i) => (
-                                                <li key={i.key} className="rounded-[8px] bg-[#f5f3ff] p-2">
-                                                    <span className="text-[12px] font-medium text-[#6d28d9]">{i.label}</span>
-                                                    <p className="mt-0.5 text-[11px] text-[#6b7280]">«{i.quote}»</p>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-
-                                {signals.objections.length > 0 && (
-                                    <div className="mb-3">
-                                        <p className="mb-1.5 text-[12px] text-[#6b7280]">{t('الاعتراضات')}</p>
-                                        <ul className="space-y-1.5">
-                                            {signals.objections.map((o) => (
-                                                <li key={o.key} className="rounded-[8px] bg-[#fffbeb] p-2">
-                                                    <span className="text-[12px] font-medium text-[#b45309]">{o.label}</span>
-                                                    <p className="mt-0.5 text-[11px] text-[#6b7280]">«{o.quote}»</p>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-
-                                <div className="rounded-[8px] bg-[#fafafa] p-2.5">
-                                    <p className="mb-0.5 text-[11px] text-[#9ca3af]">{t('الإجراء المقترح')}</p>
-                                    <p className="text-[12px] text-[#111]">{signals.nextAction}</p>
-                                </div>
-                            </section>
-                        )}
-                    </div>
+                            </li>
+                        ))}
+                    </ul>
                 )}
+            </DetailSection>
 
-                {/* ═══════════ لوحةُ العميل ═══════════ */}
-                {active && (
-                    <aside className="rounded-xl border border-[#e8e8e8] bg-white p-4 xl:block">
-                        <h2 className="mb-2 text-[14px] font-bold text-[#111]">{t('معلومات العميل المحتمل')}</h2>
+            {signals.intent.length > 0 && (
+                <DetailSection title={t('الاحتياجات المكتشفة')}>
+                    <ul className="space-y-1.5">
+                        {signals.intent.map((i) => (
+                            <li key={i.key} className="rounded-[8px] bg-[#f5f3ff] p-2">
+                                <span className="text-[12px] font-medium text-[#6d28d9]">{i.label}</span>
+                                <p className="mt-0.5 text-[11px] text-[#6b7280]" dir="auto">
+                                    «{i.quote}»
+                                </p>
+                            </li>
+                        ))}
+                    </ul>
+                </DetailSection>
+            )}
 
-                        <dl className="divide-y divide-[#f3f4f6]">
-                            <Row label="رقم الجوال" value={active.phone} />
-                            <Row label="اسم النشاط" value={active.businessName} />
-                            <Row label="الولاية" value={active.wilayat} />
-                            <Row
-                                label="عدد الفروع"
-                                value={active.branchesCount !== null ? String(active.branchesCount) : null}
-                            />
-                            <Row label="النظام الحالي" value={active.currentSystem} />
-                            <Row label="المصدر" value={active.sourceLabel} />
-                            <Row label="المسؤول" value={active.assignee} />
-                            <Row label="الباقة المهتم بها" value={active.plan} />
-                            <Row label="أول تواصل" value={active.firstContactAt} />
-                            <Row label="آخر تواصل" value={active.lastContactAt} />
-                            <Row label="المتابعة القادمة" value={active.nextFollowUpAt} />
-                        </dl>
+            {signals.objections.length > 0 && (
+                <DetailSection title={t('الاعتراضات')}>
+                    <ul className="space-y-1.5">
+                        {signals.objections.map((o) => (
+                            <li key={o.key} className="rounded-[8px] bg-[#fffbeb] p-2">
+                                <span className="text-[12px] font-medium text-[#b45309]">{o.label}</span>
+                                <p className="mt-0.5 text-[11px] text-[#6b7280]" dir="auto">
+                                    «{o.quote}»
+                                </p>
+                            </li>
+                        ))}
+                    </ul>
+                </DetailSection>
+            )}
 
-                        {active.notesSummary && (
-                            <div className="mt-3 rounded-lg bg-[#fafafa] p-3">
-                                <p className="mb-1 text-[11px] text-[#9ca3af]">{t('آخر ملاحظة داخلية')}</p>
-                                <p className="text-[12px] text-[#111]">{active.notesSummary}</p>
-                            </div>
-                        )}
+            <DetailSection title={t('الإجراء المقترح')}>
+                <p className="text-[12.5px] text-[#111]">{signals.nextAction}</p>
+            </DetailSection>
 
-                        <SmartLink routeName="super-admin.crm.leads.show" href={active.url} className="mt-3 block">
-                            <Button variant="outline" className="w-full">
-                                {t('المراحل والملاحظات والمهام')}
-                            </Button>
-                        </SmartLink>
-                    </aside>
-                )}
-            </div>
-        </PlatformLayout>
+            <p className="text-[11px] text-[#9ca3af]">
+                {t(':in واردة · :out صادرة', { in: signals.inbound, out: signals.outbound })}
+            </p>
+        </>
     );
 }

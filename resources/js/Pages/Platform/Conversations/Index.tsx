@@ -1,27 +1,52 @@
-import { router, useForm } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
-    ArrowLeft,
     ArrowLeftRight,
     Building2,
     CheckCircle2,
     ExternalLink,
-    FileText,
-    Inbox,
+    Hash,
+    LifeBuoy,
     Lock,
-    Paperclip,
-    Search,
-    Send,
-    X,
+    Mail,
+    Phone,
+    Tag,
+    User,
 } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
-import { Badge } from '@/Components/ui/badge';
+import { useConfirm } from '@/Components/ConfirmDialog';
+import { MessageComposer } from '@/Components/conversations/Composer';
+import {
+    ConversationDetailsPanel,
+    DetailLine,
+    DetailSection,
+    DetailSelect,
+} from '@/Components/conversations/Details';
+import {
+    Avatar,
+    ConversationEmptyState,
+    ConversationList,
+    ConversationListItem,
+    ConversationPage,
+    ConversationPageHeader,
+    ConversationSearch,
+    ConversationShell,
+    FilterChips,
+    type Pane,
+    PageLinks,
+    Pill,
+} from '@/Components/conversations/Shell';
+import {
+    ConversationHeader,
+    ConversationThread,
+    MessageBubble,
+    SystemRow,
+} from '@/Components/conversations/Thread';
 import { Button } from '@/Components/ui/button';
-import { Input } from '@/Components/ui/input';
-import { fileSize } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import type { PageProps } from '@/types';
 
 /* ═══════════════════ الأنواع ═══════════════════ */
 
@@ -110,14 +135,6 @@ interface Props {
 
 /* ═══════════════════ أدوات ═══════════════════ */
 
-const initials = (name: string) =>
-    name
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((w) => w[0])
-        .join('');
-
 /**
  * وقتٌ يُقرأ بلمحة — «منذ ٣ دقائق» لا طابعُ ISO.
  *
@@ -137,6 +154,22 @@ const ago = (iso: string | null, t: (k: string, r?: Record<string, string | numb
     return new Date(iso).toLocaleDateString();
 };
 
+/**
+ * ساعةُ الرسالة في الخيط — واليومُ يُقال في فاصلٍ فوقها لا في كلّ سطر.
+ *
+ * وبلغة الواجهة لا بلغة المتصفّح: لوحةٌ عربيّةٌ تقول «الاثنين ٢١ سبتمبر» لا
+ * «Monday, September 21». والأرقامُ لاتينيّةٌ في الحالين (`nu-latn`) كما في
+ * بقيّة اللوحة.
+ */
+const tag = (locale: string) => (locale === 'en' ? 'en-u-nu-latn' : 'ar-u-nu-latn');
+
+const clock = (iso: string | null, locale: string) =>
+    iso ? new Date(iso).toLocaleTimeString(tag(locale), { hour: '2-digit', minute: '2-digit' }) : null;
+
+const day = (iso: string | null) => (iso ? new Date(iso).toDateString() : '');
+
+const dayLabel = (iso: string | null, locale: string) =>
+    iso ? new Date(iso).toLocaleDateString(tag(locale), { weekday: 'long', day: 'numeric', month: 'long' }) : '';
 
 /** لونُ حبّةِ الحالة — والمعنى قبل اللون: النصّ مكتوبٌ فيها دائمًا */
 const statusTone = (status: string) =>
@@ -151,11 +184,11 @@ const statusTone = (status: string) =>
 
 const priorityTone = (priority: string) =>
     ({
-        low: 'text-[#9ca3af]',
-        normal: 'text-[#6b7280]',
-        high: 'text-[#b45309]',
-        urgent: 'text-[#b91c1c]',
-    })[priority] ?? 'text-[#6b7280]';
+        low: 'bg-[#f4f4f5] text-[#71717a]',
+        normal: 'bg-[#f4f4f5] text-[#52525b]',
+        high: 'bg-[#fff7ed] text-[#c2410c]',
+        urgent: 'bg-[#fef2f2] text-[#b91c1c]',
+    })[priority] ?? 'bg-[#f4f4f5] text-[#52525b]';
 
 /* ═══════════════════ الشاشة ═══════════════════ */
 
@@ -182,7 +215,7 @@ export default function Conversations({
      * `pane` يقول أيَّها يُعرض على الشاشة الصغيرة. وثلاثةُ أعمدةٍ مضغوطةٍ
      * في عرض هاتفٍ ليست ثلاثةَ أعمدة — هي ثلاثةُ أشرطةٍ لا يُقرأ منها شيء.
      */
-    const [pane, setPane] = useState<'list' | 'thread' | 'details'>(active ? 'thread' : 'list');
+    const [pane, setPane] = useState<Pane>(active ? 'thread' : 'list');
 
     const go = (params: Record<string, string | number | null>) => {
         router.get(route('super-admin.conversations.index'), { ...filters, ...params } as never, {
@@ -229,402 +262,221 @@ export default function Conversations({
         [counts, t],
     );
 
+    const assignments = useMemo(
+        () => [
+            { key: 'all', label: t('الكل') },
+            { key: 'mine', label: t('محادثاتي') },
+            { key: 'unassigned', label: t('غير معيّنة') },
+        ],
+        [t],
+    );
+
     return (
         <PlatformLayout title="مركز المحادثات">
-            <div className="mb-4">
-                <h1 className="text-[20px] font-bold text-[#111]">{t('مركز المحادثات')}</h1>
-                <p className="mt-0.5 text-[13px] text-[#71717a]">
-                    {t('محادثات الدعم بين أبعاد وأصحاب المتاجر')}
-                </p>
-            </div>
+            <ConversationPage>
+            <ConversationPageHeader
+                title={t('المحادثات')}
+                context={t('الدعم')}
+                subtitle={t('محادثات الدعم بين أبعاد وأصحاب المتاجر')}
+                tone="green"
+            />
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,340px)_minmax(0,1fr)_minmax(0,320px)]">
-                {/* ═══════════ العمود الأول: القائمة ═══════════ */}
-                <section
-                    className={cn(
-                        'min-w-0 rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white',
-                        pane !== 'list' && 'hidden xl:block',
-                    )}
-                >
-                    <div className="border-b border-[var(--ui-border,#e8e8e8)] p-3">
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-[#9ca3af]" />
-                            <Input
-                                value={term}
-                                onChange={(e) => setTerm(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && search(term)}
-                                onBlur={() => term !== filters.q && search(term)}
-                                placeholder={t('بحث في المحادثات...')}
-                                className="ps-9"
-                                aria-label={t('بحث في المحادثات')}
-                            />
-                        </div>
+            <ConversationShell
+                pane={pane}
+                list={
+                    <ConversationList
+                        header={
+                            <div className="space-y-2">
+                                <ConversationSearch
+                                    value={term}
+                                    onChange={setTerm}
+                                    onSubmit={() => search(term)}
+                                    onBlur={() => term !== filters.q && search(term)}
+                                    placeholder={t('بحث في المحادثات...')}
+                                    label={t('بحث في المحادثات')}
+                                />
+                                <FilterChips items={tabs} value={filters.status} onChange={(status) => go({ status, page: null })} label={t('الحالة')} />
+                                <FilterChips
+                                    items={assignments}
+                                    value={filters.assignment}
+                                    onChange={(assignment) => go({ assignment, page: null })}
+                                    label={t('المسؤول')}
+                                    size="sm"
+                                />
 
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                            {tabs.map((tab) => (
-                                <button
-                                    key={tab.key}
-                                    type="button"
-                                    onClick={() => go({ status: tab.key, page: null })}
-                                    aria-pressed={filters.status === tab.key}
-                                    className={cn(
-                                        'rounded-full px-2.5 py-1 text-[12px] font-medium transition-colors',
-                                        filters.status === tab.key
-                                            ? 'bg-[#111] text-white'
-                                            : 'bg-[#f7f7f5] text-[#4b4b4b] hover:bg-[#efefed]',
-                                    )}
-                                >
-                                    {tab.label}
-                                    {tab.n > 0 && <span className="ms-1.5 tabular-nums opacity-70">{tab.n}</span>}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="mt-2 flex gap-1.5">
-                            {[
-                                { key: 'all', label: t('الكل') },
-                                { key: 'mine', label: t('محادثاتي') },
-                                { key: 'unassigned', label: t('غير معيّنة') },
-                            ].map((a) => (
-                                <button
-                                    key={a.key}
-                                    type="button"
-                                    onClick={() => go({ assignment: a.key, page: null })}
-                                    aria-pressed={filters.assignment === a.key}
-                                    className={cn(
-                                        'rounded-[8px] px-2 py-1 text-[12px] transition-colors',
-                                        filters.assignment === a.key
-                                            ? 'bg-[#f5f3ff] font-medium text-[#5b21b6]'
-                                            : 'text-[#71717a] hover:bg-[#fafafa]',
-                                    )}
-                                >
-                                    {a.label}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/*
-                            والقنواتُ المرسومةُ هي العاملةُ وحدَها.
-                            مُرشِّحٌ لقناةٍ لا تصلها رسالةٌ يقول إنّها موصولة.
-                        */}
-                        {channels.length > 1 && (
-                            <div className="mt-2 flex gap-1.5">
-                                {channels.map((c) => (
-                                    <span key={c.value} className="text-[12px] text-[#9ca3af]">
-                                        {c.label}
-                                    </span>
-                                ))}
+                                {/*
+                                    والقنواتُ المرسومةُ هي العاملةُ وحدَها.
+                                    مُرشِّحٌ لقناةٍ لا تصلها رسالةٌ يقول إنّها موصولة.
+                                */}
+                                {channels.length > 1 && (
+                                    <div className="flex gap-1.5">
+                                        {channels.map((c) => (
+                                            <span key={c.value} className="text-[11px] text-[#9ca3af]">
+                                                {c.label}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
-
-                    <ul className="max-h-[62dvh] divide-y divide-[var(--ui-border,#f0f0ef)] overflow-y-auto xl:max-h-[calc(100svh-19rem)]">
+                        }
+                        footer={
+                            <PageLinks
+                                links={conversations.links}
+                                onGo={(url) => router.get(url, {}, { preserveState: true, preserveScroll: true })}
+                            />
+                        }
+                    >
                         {conversations.data.length === 0 && (
-                            <li className="px-4 py-14 text-center">
-                                <Inbox className="mx-auto size-9 text-[#d4d4d8]" />
-                                <p className="mt-3 text-[14px] font-medium text-[#4b4b4b]">
-                                    {t('لا توجد محادثات حاليًا')}
-                                </p>
+                            <li>
+                                <ConversationEmptyState text={t('لا توجد محادثات حاليًا')} />
                             </li>
                         )}
 
                         {conversations.data.map((c) => (
-                            <li key={c.id}>
-                                <button
-                                    type="button"
-                                    onClick={() => openThread(c.id)}
-                                    aria-current={active?.id === c.id}
-                                    className={cn(
-                                        'flex w-full gap-3 p-3 text-start transition-colors hover:bg-[#fafafa]',
-                                        active?.id === c.id &&
-                                            'bg-[#f5f3ff] shadow-[inset_2px_0_0_#6d28d9] hover:bg-[#f5f3ff]',
-                                    )}
-                                >
-                                    {/* ولا وجهَ يُختلق: الأحرفُ الأولى حين لا شعار */}
-                                    <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#f4f4f5] text-[12px] font-bold text-[#71717a]">
-                                        {c.businessLogo ? (
-                                            <img src={c.businessLogo} alt="" className="size-full object-cover" />
-                                        ) : (
-                                            initials(c.business)
+                            <ConversationListItem
+                                key={c.id}
+                                active={active?.id === c.id}
+                                onClick={() => openThread(c.id)}
+                                avatar={<Avatar name={c.business} src={c.businessLogo} />}
+                                title={c.business}
+                                subtitle={c.subject}
+                                preview={c.preview}
+                                time={ago(c.lastMessageAt, t)}
+                                unread={c.unread}
+                                badges={
+                                    <>
+                                        <Pill className={statusTone(c.status)}>{c.statusLabel}</Pill>
+                                        {c.priority !== 'normal' && (
+                                            <Pill className={priorityTone(c.priority)}>{c.priorityLabel}</Pill>
                                         )}
-                                    </span>
-
-                                    <span className="min-w-0 flex-1">
-                                        <span className="flex items-center gap-2">
-                                            <span className="truncate text-[14px] font-bold text-[#111]">
-                                                {c.business}
-                                            </span>
-                                            <span className="ms-auto shrink-0 text-[11px] text-[#9ca3af]">
-                                                {ago(c.lastMessageAt, t)}
-                                            </span>
-                                        </span>
-
-                                        <span className="mt-0.5 block truncate text-[13px] text-[#4b4b4b]">
-                                            {c.subject}
-                                        </span>
-
-                                        <span className="mt-1 flex items-center gap-1.5">
-                                            <span
-                                                className={cn(
-                                                    'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
-                                                    statusTone(c.status),
-                                                )}
-                                            >
-                                                {c.statusLabel}
-                                            </span>
-                                            {c.priority !== 'normal' && (
-                                                <span className={cn('text-[10px] font-medium', priorityTone(c.priority))}>
-                                                    {c.priorityLabel}
-                                                </span>
-                                            )}
-                                            {c.assignee && (
-                                                <span className="truncate text-[10px] text-[#9ca3af]">{c.assignee}</span>
-                                            )}
-                                            {c.unread > 0 && (
-                                                <span className="ms-auto flex size-[18px] shrink-0 items-center justify-center rounded-full bg-[#6d28d9] text-[10px] font-bold tabular-nums text-white">
-                                                    {c.unread}
-                                                </span>
-                                            )}
-                                        </span>
-                                    </span>
-                                </button>
-                            </li>
+                                        {c.assignee && (
+                                            <span className="truncate text-[10.5px] text-[#9ca3af]">{c.assignee}</span>
+                                        )}
+                                    </>
+                                }
+                            />
                         ))}
-                    </ul>
-
-                    {conversations.links.length > 3 && (
-                        <nav className="flex flex-wrap items-center justify-center gap-1 border-t border-[var(--ui-border,#e8e8e8)] p-2">
-                            {conversations.links.map((l, i) => (
-                                <button
-                                    key={i}
-                                    type="button"
-                                    disabled={!l.url}
-                                    onClick={() => l.url && router.get(l.url, {}, { preserveState: true, preserveScroll: true })}
-                                    className={cn(
-                                        'min-w-7 rounded-[6px] px-2 py-1 text-[12px]',
-                                        l.active ? 'bg-[#111] text-white' : 'text-[#4b4b4b] hover:bg-[#fafafa]',
-                                        !l.url && 'cursor-not-allowed opacity-40',
-                                    )}
-                                    dangerouslySetInnerHTML={{ __html: l.label }}
-                                />
-                            ))}
-                        </nav>
-                    )}
-                </section>
-
-                {/* ═══════════ العمود الثاني: المحادثة ═══════════ */}
-                <section
-                    className={cn(
-                        'flex min-w-0 flex-col rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white',
-                        pane !== 'thread' && 'hidden xl:flex',
-                    )}
-                >
-                    {!active ? (
-                        <div className="flex min-h-[40dvh] flex-col items-center justify-center p-10 text-center">
-                            <Inbox className="size-10 text-[#d4d4d8]" />
-                            <p className="mt-3 text-[14px] text-[#71717a]">
-                                {t('اختر محادثة لعرض الرسائل')}
-                            </p>
-                        </div>
+                    </ConversationList>
+                }
+                thread={
+                    !active ? (
+                        <ConversationEmptyState text={t('اختر محادثة لعرض الرسائل')} icon={<LifeBuoy className="size-6" />} />
                     ) : (
                         <>
-                            <Header active={active} onBack={() => setPane('list')} onDetails={() => setPane('details')} />
-                            <Thread messages={messages} />
-                            <Composer
-                                active={active}
-                                maxFiles={maxFiles}
-                                maxKb={maxKb}
-                                extensions={extensions}
+                            <ConversationHeader
+                                avatar={<Avatar name={active.business.name} src={active.business.logo} size="sm" />}
+                                title={active.business.name}
+                                subtitle={
+                                    <>
+                                        {active.subject}
+                                        <span className="mx-1.5 text-[#d4d4d8]">·</span>
+                                        <span dir="ltr">{active.reference}</span>
+                                    </>
+                                }
+                                badges={
+                                    <>
+                                        <Pill className="bg-[#f4f4f5] text-[#52525b]">{active.channelLabel}</Pill>
+                                        <Pill className={statusTone(active.status)}>{active.statusLabel}</Pill>
+                                    </>
+                                }
+                                onBack={() => setPane('list')}
+                                onDetails={() => setPane('details')}
                             />
+                            <Thread active={active} messages={messages} />
+                            <Composer active={active} maxFiles={maxFiles} maxKb={maxKb} extensions={extensions} />
                         </>
-                    )}
-                </section>
-
-                {/* ═══════════ العمود الثالث: النشاط والتفاصيل ═══════════ */}
-                <section
-                    className={cn('min-w-0 space-y-3', pane !== 'details' && 'hidden xl:block')}
-                >
-                    {pane === 'details' && (
-                        <Button variant="outline" size="sm" className="xl:hidden" onClick={() => setPane('thread')}>
-                            <ArrowLeft className="rtl:rotate-180" />
-                            {t('رجوع')}
-                        </Button>
-                    )}
-
-                    {active ? (
+                    )
+                }
+                details={
+                    active ? (
                         <Details
                             active={active}
                             staff={staff}
                             statuses={statuses}
                             priorities={priorities}
+                            onBack={() => setPane('thread')}
                         />
                     ) : (
-                        <div className="rounded-[16px] border border-dashed border-[var(--ui-border,#e8e8e8)] p-8 text-center text-[13px] text-[#9ca3af]">
-                            {t('اختر محادثة لعرض الرسائل')}
-                        </div>
-                    )}
-                </section>
-            </div>
+                        <ConversationEmptyState text={t('اختر محادثة لعرض الرسائل')} icon={<Building2 className="size-6" />} />
+                    )
+                }
+            />
+            </ConversationPage>
         </PlatformLayout>
-    );
-}
-
-/* ═══════════════════ ترويسة المحادثة ═══════════════════ */
-
-function Header({
-    active,
-    onBack,
-    onDetails,
-}: {
-    active: Active;
-    onBack: () => void;
-    onDetails: () => void;
-}) {
-    const t = useTranslate();
-
-    return (
-        <header className="flex items-center gap-3 border-b border-[var(--ui-border,#e8e8e8)] p-3">
-            <Button variant="outline" size="sm" className="xl:hidden" onClick={onBack} aria-label={t('رجوع')}>
-                <ArrowLeft className="rtl:rotate-180" />
-            </Button>
-
-            <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#f4f4f5] text-[12px] font-bold text-[#71717a]">
-                {active.business.logo ? (
-                    <img src={active.business.logo} alt="" className="size-full object-cover" />
-                ) : (
-                    initials(active.business.name)
-                )}
-            </span>
-
-            <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-bold text-[#111]">{active.business.name}</p>
-                <p className="truncate text-[12px] text-[#71717a]">
-                    {active.subject}
-                    <span className="mx-1.5 text-[#d4d4d8]">·</span>
-                    <span dir="ltr">{active.reference}</span>
-                </p>
-            </div>
-
-            <Badge className={cn('shrink-0 border-0', statusTone(active.status))}>{active.statusLabel}</Badge>
-
-            <Button variant="outline" size="sm" className="xl:hidden" onClick={onDetails}>
-                <Building2 />
-            </Button>
-        </header>
     );
 }
 
 /* ═══════════════════ الخيط ═══════════════════ */
 
-function Thread({ messages }: { messages: Message[] }) {
+function Thread({ active, messages }: { active: Active; messages: Message[] }) {
     const t = useTranslate();
+    const { locale } = usePage<PageProps>().props;
 
     if (messages.length === 0) {
-        return (
-            <div className="flex flex-1 items-center justify-center p-10 text-[13px] text-[#9ca3af]">
-                {t('لا توجد رسائل بعد')}
-            </div>
-        );
+        return <ConversationEmptyState text={t('لا توجد رسائل بعد')} />;
     }
 
     return (
-        <div className="max-h-[50dvh] flex-1 space-y-3 overflow-y-auto p-4 xl:max-h-[calc(100svh-24rem)]">
-            {messages.map((m) =>
-                m.event ? (
-                    /* حدثُ النظام سطرٌ محايدٌ في التسلسل لا فقاعة */
-                    <p key={m.id} className="text-center text-[11px] text-[#9ca3af]">
-                        {m.eventText}
-                    </p>
-                ) : (
-                    <Bubble key={m.id} m={m} />
-                ),
-            )}
-        </div>
-    );
-}
-
-function Bubble({ m }: { m: Message }) {
-    const t = useTranslate();
-    const mine = m.scope === 'platform';
-
-    return (
-        <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
-            <div
-                className={cn(
-                    'max-w-[80%] rounded-[14px] px-3.5 py-2.5',
-                    m.internal
-                        ? /* والملاحظةُ الداخليّة تُرى بشكلها قبل نصّها: لونٌ آخر وقفلٌ ظاهر */
-                          'border border-dashed border-[#f59e0b] bg-[#fffbeb]'
-                        : mine
-                          ? 'bg-[#f5f3ff]'
-                          : 'bg-[#f7f7f5]',
-                )}
-            >
-                {m.internal && (
-                    <p className="mb-1 flex items-center gap-1 text-[10px] font-bold text-[#b45309]">
-                        <Lock className="size-3" />
-                        {t('ملاحظة داخلية')}
-                    </p>
-                )}
-
-                {m.body && (
-                    <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed text-[#111]">
-                        {m.body}
-                    </p>
-                )}
-
-                {m.files.map((f) => (
-                    <a
-                        key={f.id}
-                        href={f.url}
-                        className="mt-2 flex items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white p-2 text-[12px] hover:bg-[#fafafa]"
-                    >
-                        <FileText className="size-4 shrink-0 text-[#6d28d9]" />
-                        <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                        <span className="shrink-0 text-[11px] text-[#9ca3af]">{fileSize(f.size)}</span>
-                    </a>
-                ))}
-
-                <p className="mt-1 text-[10px] text-[#9ca3af]">
-                    {m.sender}
-                    {m.at && (
-                        <>
-                            <span className="mx-1">·</span>
-                            <span dir="ltr">{new Date(m.at).toLocaleString()}</span>
-                        </>
+        <ConversationThread threadKey={active.id} count={messages.length}>
+            {messages.map((m, i) => (
+                <div key={m.id} className="space-y-2">
+                    {/* فاصلُ اليوم مرّةً فوق أوّل رسائله */}
+                    {(i === 0 || day(m.at) !== day(messages[i - 1].at)) && m.at && (
+                        <SystemRow>{dayLabel(m.at, locale)}</SystemRow>
                     )}
-                </p>
 
-                {/*
-                    وحالُ الخروج تُقرأ تحت الرسالة نفسِها.
-                    ردٌّ حُفظ ولم يخرج إلى هاتف التاجر هو ردٌّ لم يصل — وصمتُ
-                    الشاشة عنه يجعل الدعمَ ينتظر جوابًا على كلامٍ لم يقرأه أحد.
-                */}
-                {m.deliveryLabel && (
-                    <p
-                        className={cn(
-                            'mt-1 flex items-start gap-1 text-[10px]',
-                            m.delivery === 'sent'
-                                ? 'text-[#15803d]'
-                                /* وبعضُها خرج: لا أخضرَ يقول «وصل كلُّه» ولا أحمرَ يقول «لم يصل شيء» */
-                                : m.delivery === 'partial'
-                                  ? 'text-[#b45309]'
-                                  : 'text-[#b91c1c]',
-                        )}
-                    >
-                        {m.delivery === 'sent' ? (
-                            <CheckCircle2 className="mt-px size-3 shrink-0" />
-                        ) : (
-                            <AlertTriangle className="mt-px size-3 shrink-0" />
-                        )}
-                        <span>
-                            {m.deliveryLabel}
-                            {m.deliveryError && ` — ${m.deliveryError}`}
-                        </span>
-                    </p>
-                )}
-            </div>
-        </div>
+                    {m.event ? (
+                        /* حدثُ النظام سطرٌ محايدٌ في التسلسل لا فقاعة */
+                        <SystemRow>{m.eventText}</SystemRow>
+                    ) : (
+                        <MessageBubble
+                            /*
+                                والمعنى يبقى معنى الدعم: `platform` منّا، و`business`
+                                من صاحب المتجر، و`internal` لا يبلغه أبدًا — والفقاعةُ
+                                لا تعرف إلا جهةً ونبرة.
+                            */
+                            side={m.scope === 'platform' ? 'out' : 'in'}
+                            tone={m.internal ? 'internal' : 'default'}
+                            internalLabel={t('ملاحظة داخلية')}
+                            body={m.body}
+                            sender={m.sender}
+                            time={clock(m.at, locale)}
+                            files={m.files.map((f) => ({ ...f, image: f.isImage }))}
+                            footer={
+                                /*
+                                    وحالُ الخروج تُقرأ تحت الرسالة نفسِها.
+                                    ردٌّ حُفظ ولم يخرج إلى هاتف التاجر هو ردٌّ لم يصل — وصمتُ
+                                    الشاشة عنه يجعل الدعمَ ينتظر جوابًا على كلامٍ لم يقرأه أحد.
+                                */
+                                m.deliveryLabel ? (
+                                    <p
+                                        className={cn(
+                                            'mt-1 flex items-start gap-1 text-[10.5px]',
+                                            m.delivery === 'sent'
+                                                ? 'text-[#15803d]'
+                                                : /* وبعضُها خرج: لا أخضرَ يقول «وصل كلُّه» ولا أحمرَ يقول «لم يصل شيء» */
+                                                  m.delivery === 'partial'
+                                                  ? 'text-[#b45309]'
+                                                  : 'text-[#b91c1c]',
+                                        )}
+                                    >
+                                        {m.delivery === 'sent' ? (
+                                            <CheckCircle2 className="mt-px size-3 shrink-0" />
+                                        ) : (
+                                            <AlertTriangle className="mt-px size-3 shrink-0" />
+                                        )}
+                                        <span>
+                                            {m.deliveryLabel}
+                                            {m.deliveryError && ` — ${m.deliveryError}`}
+                                        </span>
+                                    </p>
+                                ) : null
+                            }
+                        />
+                    )}
+                </div>
+            ))}
+        </ConversationThread>
     );
 }
 
@@ -643,7 +495,6 @@ function Composer({
 }) {
     const t = useTranslate();
     const [internal, setInternal] = useState(false);
-    const picker = useRef<HTMLInputElement>(null);
     const conversationId = active.id;
 
     /*
@@ -674,207 +525,162 @@ function Composer({
     };
 
     return (
-        <div className="border-t border-[var(--ui-border,#e8e8e8)] p-3">
-            {/*
-                وضعان صريحان لا مفتاحٌ صغير.
-                من يكتب ملاحظةً لفريقه ويضغط «إرسال» ظانًّا أنّها ملاحظة —
-                يرسلها إلى التاجر. فالوضعُ يُقرأ قبل الكتابة لا بعدها.
-            */}
-            <div
-                role="tablist"
-                aria-label={t('وضع الإرسال')}
-                className="mb-2 inline-flex overflow-hidden rounded-[10px] border border-[var(--ui-border,#e8e8e8)]"
-            >
-                {[
-                    { key: false, label: t('رد للعميل') },
-                    { key: true, label: t('ملاحظة داخلية') },
-                ].map((mode) => (
-                    <button
-                        key={String(mode.key)}
-                        type="button"
-                        role="tab"
-                        aria-selected={internal === mode.key}
-                        onClick={() => setInternal(mode.key)}
-                        className={cn(
-                            'px-3 py-1.5 text-[12px] font-medium transition-colors',
-                            internal === mode.key
-                                ? mode.key
-                                    ? 'bg-[#fffbeb] text-[#b45309]'
-                                    : 'bg-[#111] text-white'
-                                : 'bg-white text-[#4b4b4b] hover:bg-[#fafafa]',
-                        )}
+        <MessageComposer
+            value={form.data.body}
+            onChange={(body) => form.setData('body', body)}
+            onSend={send}
+            files={form.data.files}
+            onAddFiles={(picked) => form.setData('files', [...form.data.files, ...picked].slice(0, maxFiles))}
+            onRemoveFile={(i) =>
+                form.setData(
+                    'files',
+                    form.data.files.filter((_, j) => j !== i),
+                )
+            }
+            accept={extensions.map((e) => `.${e}`).join(',')}
+            maxFiles={maxFiles}
+            maxKb={maxKb}
+            processing={form.processing}
+            placeholder={internal ? t('لفريقك وحده…') : t('اكتب رسالتك هنا…')}
+            tone={internal ? 'internal' : 'default'}
+            errors={{ body: form.errors.body, files: form.errors.files }}
+            above={
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                    {/*
+                        وضعان صريحان لا مفتاحٌ صغير.
+                        من يكتب ملاحظةً لفريقه ويضغط «إرسال» ظانًّا أنّها ملاحظة —
+                        يرسلها إلى التاجر. فالوضعُ يُقرأ قبل الكتابة لا بعدها.
+                    */}
+                    <div
+                        role="tablist"
+                        aria-label={t('وضع الإرسال')}
+                        className="inline-flex overflow-hidden rounded-[9px] border border-[var(--ui-border,#e8e8e8)]"
                     >
-                        {mode.key && <Lock className="me-1 inline size-3" />}
-                        {mode.label}
-                    </button>
-                ))}
-            </div>
-
-            {internal && (
-                <p className="mb-2 text-[11px] text-[#b45309]">
-                    {t('لا تظهر لصاحب المتجر ولا تُرسل إليه إشعارًا، ولا تخرج إلى واتساب.')}
-                </p>
-            )}
-
-            {wa && (
-                <p
-                    className={cn(
-                        'mb-2 flex items-start gap-1.5 rounded-[10px] p-2 text-[11px]',
-                        waBlocked ? 'bg-[#fef2f2] text-[#b91c1c]' : 'bg-[#f0fdf4] text-[#166534]',
-                    )}
-                >
-                    {waBlocked ? (
-                        <AlertTriangle className="mt-px size-3.5 shrink-0" />
-                    ) : (
-                        <CheckCircle2 className="mt-px size-3.5 shrink-0" />
-                    )}
-                    <span>
-                        {!active.whatsappLine
-                            ? t('خطُّ دعم واتساب غير موصول — سيُحفظ ردّك هنا ولن يخرج.')
-                            : active.whatsappWindowOpen
-                              ? t('يخرج ردّك إلى واتساب. تُغلق النافذة :at', {
-                                    at: active.whatsappWindowEndsAt
-                                        ? new Date(active.whatsappWindowEndsAt).toLocaleString()
-                                        : '—',
-                                })
-                              : t('نافذة واتساب مغلقة — سيُحفظ ردّك هنا ولن يخرج حتى يكتب التاجر من جديد.')}
-                    </span>
-                </p>
-            )}
-
-            <div
-                className={cn(
-                    'rounded-[12px] border p-2',
-                    internal ? 'border-[#f59e0b] bg-[#fffbeb]' : 'border-[var(--ui-border,#e8e8e8)]',
-                )}
-            >
-                <textarea
-                    rows={3}
-                    value={form.data.body}
-                    onChange={(e) => form.setData('body', e.target.value)}
-                    placeholder={internal ? t('لفريقك وحده…') : t('اكتب رسالتك هنا…')}
-                    className="w-full resize-none border-0 bg-transparent p-1.5 text-[13px] outline-none placeholder:text-[#9ca3af]"
-                />
-
-                {form.data.files.length > 0 && (
-                    <ul className="mb-2 space-y-1">
-                        {form.data.files.map((f, i) => (
-                            <li
-                                key={i}
-                                className="flex items-center gap-2 rounded-[8px] bg-white p-1.5 text-[12px]"
+                        {[
+                            { key: false, label: t('رد للعميل') },
+                            { key: true, label: t('ملاحظة داخلية') },
+                        ].map((mode) => (
+                            <button
+                                key={String(mode.key)}
+                                type="button"
+                                role="tab"
+                                aria-selected={internal === mode.key}
+                                onClick={() => setInternal(mode.key)}
+                                className={cn(
+                                    'px-2.5 py-1 text-[12px] font-medium transition-colors',
+                                    internal === mode.key
+                                        ? mode.key
+                                            ? 'bg-[#fffbeb] text-[#b45309]'
+                                            : 'bg-[#111] text-white'
+                                        : 'bg-white text-[#4b4b4b] hover:bg-[#fafafa]',
+                                )}
                             >
-                                <Paperclip className="size-3.5 shrink-0 text-[#9ca3af]" />
-                                <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                                <button
-                                    type="button"
-                                    aria-label={t('إزالة')}
-                                    onClick={() =>
-                                        form.setData(
-                                            'files',
-                                            form.data.files.filter((_, j) => j !== i),
-                                        )
-                                    }
-                                >
-                                    <X className="size-3.5 text-[#9ca3af] hover:text-[#b91c1c]" />
-                                </button>
-                            </li>
+                                {mode.key && <Lock className="me-1 inline size-3" />}
+                                {mode.label}
+                            </button>
                         ))}
-                    </ul>
-                )}
+                    </div>
 
-                {form.errors.body && <p className="text-[12px] text-[#b91c1c]">{form.errors.body}</p>}
-                {form.errors.files && <p className="text-[12px] text-[#b91c1c]">{form.errors.files}</p>}
+                    {internal && (
+                        <p className="text-[11px] text-[#b45309]">
+                            {t('لا تظهر لصاحب المتجر ولا تُرسل إليه إشعارًا، ولا تخرج إلى واتساب.')}
+                        </p>
+                    )}
 
-                <div className="flex items-center gap-2">
-                    <input
-                        ref={picker}
-                        type="file"
-                        multiple
-                        className="hidden"
-                        accept={extensions.map((e) => `.${e}`).join(',')}
-                        onChange={(e) =>
-                            form.setData(
-                                'files',
-                                [...form.data.files, ...Array.from(e.target.files ?? [])].slice(0, maxFiles),
-                            )
-                        }
-                    />
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => picker.current?.click()}
-                        disabled={form.data.files.length >= maxFiles}
-                        title={t('حتى :n ملفات، :kb ميغابايت للملف', {
-                            n: maxFiles,
-                            kb: Math.round(maxKb / 1024),
-                        })}
-                    >
-                        <Paperclip />
-                    </Button>
-
-                    <Button
-                        type="button"
-                        size="sm"
-                        className="ms-auto"
-                        onClick={send}
-                        /* والضغطتان أمرٌ واحد: `processing` يُقفل الزرّ حتّى يعود الردّ */
-                        disabled={form.processing || form.data.body.trim() === ''}
-                    >
-                        <Send />
-                        {t('إرسال')}
-                    </Button>
+                    {wa && (
+                        <p
+                            className={cn(
+                                'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]',
+                                waBlocked ? 'bg-[#fef2f2] text-[#b91c1c]' : 'bg-[#f0fdf4] text-[#166534]',
+                            )}
+                        >
+                            {waBlocked ? (
+                                <AlertTriangle className="size-3.5 shrink-0" />
+                            ) : (
+                                <CheckCircle2 className="size-3.5 shrink-0" />
+                            )}
+                            <span>
+                                {!active.whatsappLine
+                                    ? t('خطُّ دعم واتساب غير موصول — سيُحفظ ردّك هنا ولن يخرج.')
+                                    : active.whatsappWindowOpen
+                                      ? t('يخرج ردّك إلى واتساب. تُغلق النافذة :at', {
+                                            at: active.whatsappWindowEndsAt
+                                                ? new Date(active.whatsappWindowEndsAt).toLocaleString()
+                                                : '—',
+                                        })
+                                      : t('نافذة واتساب مغلقة — سيُحفظ ردّك هنا ولن يخرج حتى يكتب التاجر من جديد.')}
+                            </span>
+                        </p>
+                    )}
                 </div>
-            </div>
-        </div>
+            }
+        />
     );
 }
 
-/* ═══════════════════ بطاقتا النشاط والتفاصيل ═══════════════════ */
+/* ═══════════════════ التفاصيل ═══════════════════ */
 
 function Details({
     active,
     staff,
     statuses,
     priorities,
+    onBack,
 }: {
     active: Active;
     staff: { id: number; name: string }[];
     statuses: Option[];
     priorities: Option[];
+    onBack: () => void;
 }) {
     const t = useTranslate();
+    const [confirm, confirmDialog] = useConfirm();
 
     const post = (name: string, data: Record<string, string | number | null>) =>
         router.post(route(name, active.id), data as never, { preserveScroll: true, preserveState: true });
 
-    return (
-        <>
-            <div className="rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white p-4">
-                <h2 className="mb-3 text-[14px] font-bold text-[#111]">{t('معلومات النشاط')}</h2>
+    /*
+        ═══ ونقلُ خيطٍ طرق البابَ الخطأ ═══
 
+        الواردُ يُوزَّع بـ«من كتب» لا بـ«ما كتب» — وهو الفاصلُ الذي يمنع أن
+        تصير زبونةُ محلِّ ورودٍ صفًّا في دفتر مبيعاتنا. وهو لا يقرأ النيّة:
+        تاجرٌ مسجَّلٌ عندنا يسأل عن سعر الباقة الأكبر يصل إلى هنا.
+
+        فالموزِّعُ يبقى كما هو، والحالةُ النادرة تُصحَّح بضغطةٍ — بيد إنسانٍ
+        وبعد تأكيد، وبالمسار القائم نفسِه (`ConversationHandover`).
+
+        ولا يُعرض الزرُّ على خيطٍ فُتح من داخل اللوحة: لا رقمَ له ولا نافذةَ
+        ردّ، ونقلُه يفتح عميلًا لا نملك أن نكتب إليه حرفًا.
+    */
+    const handover = async () => {
+        const ok = await confirm({
+            title: t('نقل إلى CRM'),
+            message: t('سيتم نقل المحادثة إلى مسار المبيعات وإغلاق محادثة الدعم مع الاحتفاظ بالسجل.'),
+            action: t('نقل إلى CRM'),
+        });
+
+        if (ok) post('super-admin.conversations.toCrm', {});
+    };
+
+    return (
+        <ConversationDetailsPanel title={t('التفاصيل')} onBack={onBack}>
+            {confirmDialog}
+
+            <DetailSection>
                 <div className="flex items-center gap-3">
-                    <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#f4f4f5] text-[13px] font-bold text-[#71717a]">
-                        {active.business.logo ? (
-                            <img src={active.business.logo} alt="" className="size-full object-cover" />
-                        ) : (
-                            initials(active.business.name)
-                        )}
-                    </span>
+                    <Avatar name={active.business.name} src={active.business.logo} size="lg" />
                     <div className="min-w-0">
                         <p className="truncate text-[14px] font-bold text-[#111]">{active.business.name}</p>
                         {active.business.status && (
-                            <Badge className="mt-1 border-0 bg-[#ecfdf5] text-[11px] text-[#047857]">
-                                {t(active.business.status)}
-                            </Badge>
+                            <Pill className="mt-1 bg-[#ecfdf5] text-[#047857]">{t(active.business.status)}</Pill>
                         )}
                     </div>
                 </div>
 
-                <dl className="mt-3 space-y-2 text-[12px]">
-                    <Line label={t('فتحها')} value={active.business.owner} />
-                    <Line label={t('البريد الإلكتروني')} value={active.business.email} ltr />
-                    <Line label={t('رقم التواصل')} value={active.business.phone} ltr />
+                <dl className="mt-3">
+                    <DetailLine label={t('فتحها')} value={active.business.owner} icon={<User className="size-3.5" />} />
+                    <DetailLine label={t('البريد الإلكتروني')} value={active.business.email} ltr icon={<Mail className="size-3.5" />} />
+                    <DetailLine label={t('رقم التواصل')} value={active.business.phone} ltr icon={<Phone className="size-3.5" />} />
                 </dl>
 
                 {active.business.url && (
@@ -885,80 +691,44 @@ function Details({
                         </a>
                     </Button>
                 )}
-            </div>
+            </DetailSection>
 
-            <div className="rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white p-4">
-                <h2 className="mb-3 text-[14px] font-bold text-[#111]">{t('تفاصيل المحادثة')}</h2>
-
-                <dl className="space-y-3 text-[12px]">
-                    <div>
-                        <dt className="mb-1 text-[#71717a]">{t('الحالة')}</dt>
-                        <dd>
-                            <select
-                                value={active.status}
-                                onChange={(e) => post('super-admin.conversations.status', { status: e.target.value })}
-                                aria-label={t('الحالة')}
-                                className="w-full rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-2 py-1.5 text-[12px]"
-                            >
-                                {statuses.map((s) => (
-                                    <option key={s.value} value={s.value}>
-                                        {s.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </dd>
-                    </div>
-
-                    <Line label={t('القناة')} value={active.channelLabel} />
-                    <Line label={t('التصنيف')} value={active.category} />
-
-                    <div>
-                        <dt className="mb-1 text-[#71717a]">{t('المسؤول')}</dt>
-                        <dd>
-                            <select
-                                value={active.assigneeId ?? ''}
-                                onChange={(e) =>
-                                    post('super-admin.conversations.assign', {
-                                        user_id: e.target.value === '' ? null : Number(e.target.value),
-                                    })
-                                }
-                                aria-label={t('المسؤول')}
-                                className="w-full rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-2 py-1.5 text-[12px]"
-                            >
-                                <option value="">{t('غير معيّن')}</option>
-                                {staff.map((s) => (
-                                    <option key={s.id} value={s.id}>
-                                        {s.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </dd>
-                    </div>
-
-                    <div>
-                        <dt className="mb-1 text-[#71717a]">{t('الأولوية')}</dt>
-                        <dd>
-                            <select
-                                value={active.priority}
-                                onChange={(e) =>
-                                    post('super-admin.conversations.priority', { priority: e.target.value })
-                                }
-                                aria-label={t('الأولوية')}
-                                className="w-full rounded-[8px] border border-[var(--ui-border,#e8e8e8)] px-2 py-1.5 text-[12px]"
-                            >
-                                {priorities.map((p) => (
-                                    <option key={p.value} value={p.value}>
-                                        {p.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </dd>
-                    </div>
-
-                    <Line label={t('رقم المحادثة')} value={active.reference} ltr />
+            <DetailSection title={t('المحادثة')}>
+                <dl>
+                    <DetailLine label={t('رقم المحادثة')} value={active.reference} ltr icon={<Hash className="size-3.5" />} />
+                    <DetailLine label={t('القناة')} value={active.channelLabel} />
+                    <DetailLine label={t('التصنيف')} value={active.category} icon={<Tag className="size-3.5" />} />
                 </dl>
+            </DetailSection>
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
+            <DetailSection title={t('الإدارة')}>
+                <div className="space-y-2.5">
+                    <DetailSelect
+                        label={t('الحالة')}
+                        value={active.status}
+                        onChange={(status) => post('super-admin.conversations.status', { status })}
+                        options={statuses}
+                    />
+                    <DetailSelect
+                        label={t('المسؤول')}
+                        value={active.assigneeId === null ? '' : String(active.assigneeId)}
+                        onChange={(v) =>
+                            post('super-admin.conversations.assign', { user_id: v === '' ? null : Number(v) })
+                        }
+                        options={[
+                            { value: '', label: t('غير معيّن') },
+                            ...staff.map((s) => ({ value: String(s.id), label: s.name })),
+                        ]}
+                    />
+                    <DetailSelect
+                        label={t('الأولوية')}
+                        value={active.priority}
+                        onChange={(priority) => post('super-admin.conversations.priority', { priority })}
+                        options={priorities}
+                    />
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
                     <Button
                         variant="outline"
                         size="sm"
@@ -979,56 +749,19 @@ function Details({
                         {active.status === 'closed' ? t('إعادة فتح') : t('إغلاق المحادثة')}
                     </Button>
                 </div>
+            </DetailSection>
 
-                {/*
-                    ═══ ونقلُ خيطٍ طرق البابَ الخطأ ═══
-
-                    الواردُ يُوزَّع بـ«من كتب» لا بـ«ما كتب» — وهو الفاصلُ
-                    الذي يمنع أن تصير زبونةُ محلِّ ورودٍ صفًّا في دفتر
-                    مبيعاتنا. وهو لا يقرأ النيّة: تاجرٌ مسجَّلٌ عندنا يسأل عن
-                    سعر الباقة الأكبر يصل إلى هنا.
-
-                    فالموزِّعُ يبقى كما هو، والحالةُ النادرة تُصحَّح بضغطة.
-
-                    ولا يُعرض الزرُّ على خيطٍ فُتح من داخل اللوحة: لا رقمَ
-                    له ولا نافذةَ ردّ، ونقلُه يفتح عميلًا لا نملك أن نكتب
-                    إليه حرفًا — وزرٌّ يُعرض ولا يُدير شيئًا أسوأ من غيابه.
-                */}
-                {active.channel === 'whatsapp' && (
-                    <div className="mt-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => {
-                                if (
-                                    confirm(
-                                        t('تُنقل هذه المحادثة إلى دفتر المبيعات (CRM) ويُقفل خيطُ الدعم. أتريد ذلك؟'),
-                                    )
-                                ) {
-                                    post('super-admin.conversations.toCrm', {});
-                                }
-                            }}
-                        >
-                            <ArrowLeftRight />
-                            {t('ليست دعمًا — انقلها إلى المبيعات')}
-                        </Button>
-                    </div>
-                )}
-            </div>
-        </>
-    );
-}
-
-function Line({ label, value, ltr }: { label: string; value: string | null; ltr?: boolean }) {
-    if (!value) return null;
-
-    return (
-        <div className="flex items-start justify-between gap-3">
-            <dt className="shrink-0 text-[#71717a]">{label}</dt>
-            <dd className="min-w-0 truncate text-[#111]" dir={ltr ? 'ltr' : undefined}>
-                {value}
-            </dd>
-        </div>
+            {active.channel === 'whatsapp' && (
+                <DetailSection title={t('ليست دعمًا؟')}>
+                    <p className="mb-2 text-[11.5px] text-[#71717a]">
+                        {t('سيتم نقل المحادثة إلى مسار المبيعات وإغلاق محادثة الدعم مع الاحتفاظ بالسجل.')}
+                    </p>
+                    <Button variant="outline" size="sm" className="w-full" onClick={handover}>
+                        <ArrowLeftRight />
+                        {t('نقل إلى CRM')}
+                    </Button>
+                </DetailSection>
+            )}
+        </ConversationDetailsPanel>
     );
 }

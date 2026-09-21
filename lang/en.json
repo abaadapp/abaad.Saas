@@ -1136,6 +1136,8 @@
     "البيانات الأساسية": "Basic details",
     "البيانات الشخصية": "Personal details",
     "البيانات الوهميّة لا تدخل حساب تاجر": "Dummy data never enters a merchant account",
+    "البيع الآجل مُطفأ في إعدادات المتجر — يُفعَّل من الإعدادات: طرق الدفع.": "Credit sales are switched off in the shop settings — enable them under Settings: payment methods.",
+    "يُسجَّل الباقي دَينًا على عميل مأذون له بالآجل — يُطفأ فيختفي من الصندوق": "The balance is recorded as a debt on a customer allowed to buy on credit — switch off and it disappears from the till",
     "البيع الآجل": "Credit sales",
     "البيع الآجل غير مفتوح لهذا العميل — تُفتح صلاحيته من صفحته.": "Credit sales are not enabled for this customer — enable them on their page.",
     "البيع الآجل غير مفعّل لهذا العميل — يُفعَّل من صفحة العميل.": "Credit sales are not enabled for this customer — enable them on the customer page.",

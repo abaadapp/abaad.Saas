@@ -57,7 +57,7 @@ interface Props {
     addons: Addon[];
     coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
-    settings: LoyaltySettings & { loyaltyEnabled?: boolean; paymentMethods?: string[]; vat?: VatSettings };
+    settings: LoyaltySettings & { loyaltyEnabled?: boolean; paymentMethods?: string[]; creditSale?: boolean; vat?: VatSettings };
     /** خيارات طلب الورد — تصل من الخادم فلا تُكتب هنا مرّةً ثانية */
     orderOptions?: OrderOptions;
     /**
@@ -919,6 +919,7 @@ export default function PosIndex() {
                 money={money}
                 fmt={fmt}
                 methods={settings.paymentMethods}
+                creditSale={settings.creditSale ?? true}
                 orderOptions={orderOptions}
                 onCheckout={cart.checkoutSale}
                 onNewOrder={() => { cart.reset(); toast.success(t('طلب جديد جاهز')); }}

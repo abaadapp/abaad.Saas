@@ -123,6 +123,9 @@ class SettingController extends Controller
             'rules' => ['sometimes', 'boolean']],
         'pay_transfer' => ['section' => 'finance', 'label' => 'الدفع بالتحويل',
             'rules' => ['sometimes', 'boolean']],
+        // والبيعُ الآجل مقبضٌ في القائمة نفسِها — انظر PaymentMethods::CREDIT_KEY
+        'pay_credit' => ['section' => 'finance', 'label' => 'البيع الآجل',
+            'rules' => ['sometimes', 'boolean']],
 
         /*
          * الطلباتُ المخصَّصة — مقبضٌ يُطفئ بابًا لا يُخفي زرًّا.

@@ -55,6 +55,8 @@ const BLANK: FlowerDetails = {
 interface Props {
     /** الوسائل المأذونة من الإعدادات؛ غيابها يعني الثلاث (شاشة قديمة) */
     methods?: string[];
+    /** البيعُ الآجل مأذونٌ في إعدادات المتجر — وإلّا لا يُعرض صندوقُه أصلًا */
+    creditSale?: boolean;
     /** خيارات طلب الورد؛ غيابها يعني شاشةً قديمة فيُخفى القسم كلّه */
     orderOptions?: OrderOptions;
     open: boolean;
@@ -71,6 +73,7 @@ interface Props {
 
 export default function PaymentDialog({
     open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder, methods, orderOptions,
+    creditSale = true,
 }: Props) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
@@ -413,6 +416,7 @@ export default function PaymentDialog({
                             ولا مصطلحَ محاسبيًّا هنا: لا «ذمّة» ولا «مدين» —
                             كم دُفع الآن، ومتى يُسدَّد الباقي.
                         */}
+                        {creditSale && (
                         <div className="rounded-xl border border-[var(--ui-border,#e8e8e8)] p-3">
                             <label className="flex items-center gap-2 text-[13px] font-medium">
                                 <input
@@ -468,6 +472,7 @@ export default function PaymentDialog({
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/*
                             تفاصيل طلب الورد — داخل نافذة الدفع نفسها لا في خطوةٍ ثانية.

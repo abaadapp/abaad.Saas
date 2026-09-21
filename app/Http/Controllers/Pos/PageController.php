@@ -49,6 +49,8 @@ class PageController extends Controller
             // الوسائل المأذونة — والخادم يرفض ما عداها، فالإخفاء هنا عرضٌ لقرارٍ
             // مُنفَّذ لا حاجزٌ وحيد (انظر PosController::enabledPaymentMethods)
             'paymentMethods' => PaymentMethods::enabled($s),
+            // والآجلُ مقبضٌ بجانبها — والخادمُ يردّه كذلك (PosController::checkout)
+            'creditSale' => PaymentMethods::creditAllowed($s),
             /*
              * الضريبة كما ضبطها التاجر — لا خمسةٌ مكتوبةٌ في شيفرة الشاشة.
              *

@@ -1235,6 +1235,12 @@ class PosController extends Controller
             $creditAmount = $isCredit ? round($total - $paidNow, 3) : 0.0;
 
             if ($isCredit) {
+                // مقبضُ الإعدادات قبل شروط العميل: من أطفأ الآجلَ لا يُسأل عن حدّه
+                if (! PaymentMethods::creditAllowedFor($bid)) {
+                    throw ValidationException::withMessages([
+                        'credit' => __('البيع الآجل مُطفأ في إعدادات المتجر — يُفعَّل من الإعدادات: طرق الدفع.'),
+                    ]);
+                }
                 CreditSales::assertAllowed(
                     $customer,
                     $creditAmount,

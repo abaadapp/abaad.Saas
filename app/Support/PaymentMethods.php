@@ -43,6 +43,16 @@ final class PaymentMethods
     public const ALL = [self::CASH, self::CARD, self::TRANSFER];
 
     /**
+     * البيعُ الآجل — مقبضٌ في «طرق الدفع» وليس وسيلةً منها.
+     *
+     * الوسيلةُ تقول بمَ دُخل المالُ إلى الدرج، والآجلُ يقول إنّ بعضَه لم
+     * يدخل بعد. فلا يُضاف إلى `ALL` — لا يُطبع على إيصالٍ «وسيلة: آجل» ولا
+     * يُعرض في تذييل الموقع — لكنّه يُضبط من الشاشة نفسِها التي تُطفئ
+     * البطاقةَ والتحويل، لأنّ التاجر يبحث عنه هناك. والغيابُ إذنٌ كأخواته.
+     */
+    public const CREDIT_KEY = 'pay_credit';
+
+    /**
      * ما هو مأذونٌ به من إعداداتٍ مقروءةٍ سلفًا.
      *
      * @param  array<string, mixed>  $settings  مفتاح ← قيمة، كما تُقرأ من `settings`
@@ -74,6 +84,19 @@ final class PaymentMethods
             ->pluck('value', 'key')->all();
 
         return self::enabled($settings);
+    }
+
+    /** هل يُسمح بالبيع الآجل في هذا المتجر — من إعداداتٍ مقروءةٍ سلفًا */
+    public static function creditAllowed(array $settings): bool
+    {
+        return ($settings[self::CREDIT_KEY] ?? '1') !== '0';
+    }
+
+    public static function creditAllowedFor(int $businessId): bool
+    {
+        return self::creditAllowed(
+            Setting::where('business_id', $businessId)->where('key', self::CREDIT_KEY)->pluck('value', 'key')->all(),
+        );
     }
 
     /**

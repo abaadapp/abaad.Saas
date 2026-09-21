@@ -6210,5 +6210,17 @@
     "إظهار في الموقع الإلكتروني": "Show on Website",
     "قسم باسم الموسم في موقعك أثناء مدّته — لما هو منشور أصلًا": "A section named after the season on your website during its dates — for products already published",
     ":season — :message": ":season — :message",
-    "عدد الأيام": "Number of days"
+    "عدد الأيام": "Number of days",
+    "أداء الموسم": "Season Performance",
+    "هامش مجمل الربح": "Gross Margin",
+    "قناة البيع": "Sales Channel",
+    "أفضل منتجات الموسم": "Top Season Products",
+    "غير محدّدة": "Unspecified",
+    "كل القنوات": "All channels",
+    "المبيعات حسب القناة": "Sales by Channel",
+    "لا مبيعات منسوبة لهذا الموسم بعد.": "No sales attributed to this season yet.",
+    "صافي ربح الموسم يحتاج ربط المصروفات بالموسم.": "Season net profit requires linking expenses to the season.",
+    "تُنسب البيعة للموسم حين يختاره الكاشير في الصندوق. المبالغ بأسعار البنود كما بيعت قبل خصومات الفاتورة، والتكلفة بلقطتها يوم البيع — كما في ربحية المنتجات.": "A sale is attributed to the season when the cashier selects it at the POS. Amounts are line prices as sold, before invoice discounts; cost is the snapshot taken on the day of sale — as in Product Profitability.",
+    "بيعات لمنتجات الموسم في مدّته لم تُنسب إليه: :orders طلب (:units قطعة) — بيعت من شاشة «الكل» ولا تُحتسب هنا.": "Sales of season products during its dates not attributed to it: :orders orders (:units units) — sold from the “All” view and not counted here.",
+    "لا يُحذف موسمٌ له مبيعات منسوبة إليه — أطفئه بدلًا من حذفه ليبقى تقريره.": "A season with attributed sales cannot be deleted — deactivate it instead so its report remains."
 }

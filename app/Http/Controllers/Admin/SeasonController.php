@@ -8,7 +8,9 @@ use App\Models\Season;
 use App\Models\SeasonReminder;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\SalesChannel;
 use App\Support\Seasons;
+use App\Support\SeasonSales;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -59,11 +61,22 @@ class SeasonController extends Controller
         ]);
     }
 
-    public function show(int $id)
+    public function show(Request $request, int $id)
     {
         $season = $this->mine($id);
         $season->load(['reminders', 'products' => fn ($q) => $q->with('category:id,name,name_en')->orderBy('name')]);
         $today = today();
+
+        /*
+         * والأداءُ لمن يقرأ التقارير — لا لكلّ من يفتح المنتجات.
+         *
+         * صفحةُ الموسم بابُها قسمُ «المنتجات»، وفيها منذ اليوم تكلفةٌ وربح.
+         * ومن مُنح المنتجات ليربط أصنافًا لم يُمنح بها أن يقرأ هامشَ المتجر.
+         * فتُحجب الأرقامُ عمّن لا يملك «التقارير» — وهو القسمُ الذي يقرأ
+         * منه ربحيّةَ المنتجات أصلًا — ولا يُرسل شيءٌ منها إلى شاشته.
+         */
+        $channel = $request->query('channel');
+        $channel = in_array($channel, [SalesChannel::POS, SalesChannel::WEBSITE, SalesChannel::UNKNOWN], true) ? $channel : null;
 
         return Inertia::render('Admin/Seasons/Show', [
             'season' => $this->row($season, $today) + [
@@ -71,6 +84,7 @@ class SeasonController extends Controller
                 'reminders' => $season->reminders->map(fn (SeasonReminder $r) => $this->reminderRow($r, $season))->values()->all(),
             ],
             'maxReminders' => Seasons::MAX_REMINDERS,
+            'performance' => auth()->user()?->allows('reports') ? SeasonSales::report($season, $channel) : null,
         ]);
     }
 
@@ -101,6 +115,19 @@ class SeasonController extends Controller
     public function destroy(int $id)
     {
         $season = $this->mine($id);
+
+        /*
+         * وموسمٌ له بيعاتٌ منسوبة لا يُحذف — يُطفأ.
+         *
+         * البنودُ تحمل معرّفَه واسمَه لقطةً فلا يُمحى منها شيء بحذفه، لكنّ
+         * التقريرَ يُقرأ من صفحته؛ وحذفُها يُضيّع على التاجر أرقامَ موسمٍ
+         * باع فيه. والإطفاءُ يعطيه ما أراد — لا شريطَ ولا تذكير — ويبقي
+         * التقرير.
+         */
+        if (SeasonSales::hasSales($season)) {
+            return back()->withErrors(['message' => __('لا يُحذف موسمٌ له مبيعات منسوبة إليه — أطفئه بدلًا من حذفه ليبقى تقريره.')]);
+        }
+
         $name = $season->name;
         $season->delete();
         Activity::log('deleted', 'حذف الموسم: '.$name);

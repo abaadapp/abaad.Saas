@@ -39,6 +39,13 @@ export interface CartItem {
     tax?: number | null;
     /** وصفُ الطلب المخصَّص — `null` لكلّ بندٍ من الكتالوج */
     custom?: CustomCart | null;
+    /**
+     * الموسمُ الذي كان مختارًا في الصندوق حين أُضيف البند — يثبت مع البند.
+     *
+     * يُرسَل إلى الخادم ليُكتب لقطةً على بند الفاتورة، والخادمُ يتحقّق منه
+     * ولا يصدّقه. و`null` من شاشة «الكل»: لا يُخمَّن موسمٌ لبيعةٍ لم تُختر له.
+     */
+    season_id?: number | null;
 }
 
 export interface CartAddon {
@@ -836,6 +843,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                     note: i.note ?? '',
                     // الطلبُ المخصَّص — الخادمُ يقرأ منه السعرَ والموادّ، ويحسب التكلفة بنفسه
                     custom: i.custom ?? null,
+                    // موسمُ البند كما اختير — والخادمُ يقرّر (SeasonSales::attribute)
+                    season_id: i.season_id ?? null,
                 })),
                 customer,
                 customer_id: customerId,
@@ -901,6 +910,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                         note: i.note ?? '',
                         // وتُعلَّق بموادّها: سلّةٌ تعود ناقصةً تبيع ما لا يَنقص الرفُّ به
                         custom: i.custom ?? null,
+                        season_id: i.season_id ?? null,
                     })),
                     customer,
                     // الكوبون يُعلَّق مع الطلب: بدونه كان الكاشير يطبّق خصمًا،

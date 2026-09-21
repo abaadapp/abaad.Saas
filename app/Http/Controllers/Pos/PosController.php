@@ -41,6 +41,8 @@ use App\Support\PosTerminal;
 use App\Support\ProductAddons;
 use App\Support\ReceiptVisibility;
 use App\Support\Recipe;
+use App\Support\SalesChannel;
+use App\Support\SeasonSales;
 use App\Support\Stock;
 use App\Support\StockLedger;
 use App\Support\Vat;
@@ -444,6 +446,8 @@ class PosController extends Controller
                     'note' => $i['note'] ?? null,
                     'addons' => $chosen,
                     'addons_total' => round(collect($chosen)->sum('total'), 3),
+                    // كما أُرسل — لا يُصدَّق هنا؛ `SeasonSales::attribute` تقرّر
+                    'season_id' => $i['season_id'] ?? null,
                 ];
 
                 continue;
@@ -1010,6 +1014,8 @@ class PosController extends Controller
             'items.*.price' => ['nullable', 'numeric'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
             'items.*.note' => ['nullable', 'string', 'max:255'],
+            // موسمُ البند كما اختاره الكاشير — يُتحقَّق منه في الخادم ويُطرح إن لم يصحّ (SeasonSales::attribute)
+            'items.*.season_id' => ['nullable', 'integer'],
             'customer' => ['nullable', 'string'],
             // المعرّف هو ما تتبعه النقاط؛ والهاتف مرجعٌ ثانٍ حين يغيب
             'customer_id' => ['nullable', 'integer'],
@@ -1153,6 +1159,14 @@ class PosController extends Controller
             $lines = $this->priceItems($data['items'], lock: true);
             $this->assertStock($lines, $branch['id']);
 
+            /*
+             * موسمُ كلّ بند — يُقرّر هنا ويُكتب لقطةً على البند.
+             *
+             * تحليلٌ لا قيد: لا يُغيّر ثمنًا ولا ضريبةً ولا ترحيلًا، ولا تُردّ
+             * بيعةٌ لأنّ موسمَها لم يصحّ — يُطرح الموسمُ وتمضي البيعة.
+             */
+            $seasonOf = SeasonSales::attribute($bid, $lines);
+
             // الإضافات جزءٌ من ثمن البند لا سطرٌ منفصل: «بوكيه + شوكولاتة»
             // بندٌ واحد يقرؤه الزبون على الفاتورة، ومجموعُه يدخل الحساب معه
             $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
@@ -1290,6 +1304,8 @@ class PosController extends Controller
                  * في محلٍّ فيه ثلاثة صناديق، هذا العمود وحده يقول أيّها.
                  */
                 'pos_device_id' => $device?->id,
+                // البابُ الذي دخل منه الطلب — يُكتب حين يُعرف، والصندوقُ يعرفه
+                'channel' => SalesChannel::POS,
                 /*
                  * والبنكُ الذي دخله المال — لقطةً، لا قراءةً متأخّرة.
                  *
@@ -1345,9 +1361,12 @@ class PosController extends Controller
             ] + FlowerOrder::attributes($data),
                 $this->salePrefix(), max(1, (int) $this->setting('inv_start', 1)));
 
-            foreach ($lines as $l) {
+            foreach ($lines as $idx => $l) {
                 $item = $order->items()->create([
                     'product_id' => $l['product']?->id,
+                    // موسمُ البند كما نُسب ساعةَ البيع — معرّفًا واسمًا، انظر SeasonSales
+                    'season_id' => $seasonOf[$idx]['id'] ?? null,
+                    'season_name' => $seasonOf[$idx]['name'] ?? null,
                     /*
                      * لقطة المقاس — لا علاقةٌ تُقرأ لاحقًا.
                      *
@@ -1594,6 +1613,8 @@ class PosController extends Controller
             'items.*.price' => ['nullable', 'numeric'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
             'items.*.note' => ['nullable', 'string', 'max:255'],
+            // موسمُ البند كما اختاره الكاشير — يُتحقَّق منه في الخادم ويُطرح إن لم يصحّ (SeasonSales::attribute)
+            'items.*.season_id' => ['nullable', 'integer'],
             'customer' => ['nullable', 'string'],
             'total' => ['nullable', 'numeric'],
             'coupon_code' => ['nullable', 'string', 'max:40'],
@@ -1607,6 +1628,8 @@ class PosController extends Controller
         // ولا حارس مخزون هنا: التعليق لا يخصم شيئًا، والحارس يعمل عند الدفع.
         return DB::transaction(function () use ($data, $saved) {
             $lines = $this->priceItems($data['items']);
+            // والموسمُ يُعلَّق مع البند ليعود معه — ويُقرَّر ثانيةً عند الدفع
+            $seasonOf = SeasonSales::attribute($this->bid(), $lines);
             // الإضافات جزءٌ من ثمن البند لا سطرٌ منفصل: «بوكيه + شوكولاتة»
             // بندٌ واحد يقرؤه الزبون على الفاتورة، ومجموعُه يدخل الحساب معه
             $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
@@ -1635,9 +1658,12 @@ class PosController extends Controller
             // حفظ الأصناف — بدونها لا يمكن استكمال الطلب لاحقًا. والمقاس
             // والإضافات معها: طلبٌ عُلّق بمقاسٍ وشوكولاتة يجب أن يعود كما
             // عُلّق، لا مجرّدًا من نصف اختيار الزبون
-            foreach ($lines as $l) {
+            foreach ($lines as $idx => $l) {
                 $item = $order->items()->create([
                     'product_id' => $l['product']?->id,
+                    // موسمُ البند كما نُسب ساعةَ البيع — معرّفًا واسمًا، انظر SeasonSales
+                    'season_id' => $seasonOf[$idx]['id'] ?? null,
+                    'season_name' => $seasonOf[$idx]['name'] ?? null,
                     'variant_id' => $l['variant']?->id,
                     'variant_name' => $l['variant']?->name,
                     'variant_sku' => $l['variant']?->sku,
@@ -1745,6 +1771,8 @@ class PosController extends Controller
                 'name' => $i->name,
                 'price' => (float) $i->price,
                 'qty' => (int) $i->quantity,
+                // موسمُه كما عُلّق — والدفعُ يتحقّق منه من جديد
+                'season_id' => $i->season_id,
                 'note' => $i->note ?? '',
                 'addons' => $i->addons->map(fn ($a) => [
                     'addon_id' => $a->addon_id,

@@ -80,6 +80,19 @@ interface Props {
     customOrder?: { templates: PosTemplate[] };
 }
 
+/**
+ * موسمُ البند: الموسمُ المختارُ في الشريط إن كان الصنفُ من أصنافه — وإلّا لا شيء.
+ *
+ * من شاشة «الكل» لا يُنسب بندٌ لموسم ولو كان الجاري واحدًا: النسبةُ
+ * تُكتب حين يختارها الكاشير، لا حين تُخمَّن. والبندُ يثبت على موسمه
+ * الأوّل: ضغطةٌ ثانية على الصنف نفسه من شريطٍ آخر تزيد كميّته ولا تنقله.
+ *
+ * دالّةٌ خالصة ومُصدَّرة لتُقاس وحدَها — الصفحةُ أثقل من أن تُركَّب في اختبار.
+ */
+export function seasonOfLine(season: number | null, seasonIds: Set<number>, productId: number): number | null {
+    return season !== null && seasonIds.has(productId) ? season : null;
+}
+
 export default function PosIndex() {
     const { products: serverProducts, categories, seasons = [], customers, addons, coupons, resumeCart, settings, orderOptions, customOrder, context } =
         usePage<PageProps<Props>>().props;
@@ -225,6 +238,8 @@ export default function PosIndex() {
         setCustomOpen(true);
     };
 
+    const seasonFor = (productId: number) => seasonOfLine(season, seasonIds, productId);
+
     const pick = (p: (typeof products)[number]) => {
         const allowed = activeAddons.filter((a) => p.addon_ids == null || p.addon_ids.includes(a.id));
         const needsChoice = (p.variants?.length ?? 0) > 0 || allowed.length > 0;
@@ -241,6 +256,7 @@ export default function PosIndex() {
             // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها؛ وغيرُ المرتبط مثلُه
             stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
             tax: p.tax,
+            season_id: seasonFor(p.id),
         });
     };
 
@@ -1081,6 +1097,7 @@ export default function PosIndex() {
                         image: p.image,
                         stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
                         tax: p.tax,
+                        season_id: seasonFor(p.id),
                     });
                     setOptionsFor(null);
                 }}

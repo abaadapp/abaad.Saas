@@ -14,6 +14,7 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import Performance, { type SeasonPerformance } from './Performance';
 import SeasonDialog from './SeasonDialog';
 import { STATUS_TONE, dateRange, type SeasonRow } from './Index';
 
@@ -41,6 +42,8 @@ interface Reminder {
 interface Props {
     season: SeasonRow & { products: SeasonProduct[]; reminders: Reminder[] };
     maxReminders: number;
+    /** أداءُ الموسم — `null` لمن لا يقرأ التقارير، فلا يصل رقمٌ إلى شاشته */
+    performance: SeasonPerformance | null;
 }
 
 const when = (iso: string | null, locale: string) =>
@@ -51,7 +54,7 @@ const when = (iso: string | null, locale: string) =>
         : '—';
 
 export default function SeasonShow() {
-    const { season, maxReminders, locale } = usePage<PageProps<Props>>().props;
+    const { season, maxReminders, performance, locale, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [edit, setEdit] = useState(false);
     const [picker, setPicker] = useState(false);
@@ -110,6 +113,13 @@ export default function SeasonShow() {
                     </span>
                 )}
             </div>
+
+            {/* ═══ الأداء — لمن يقرأ التقارير؛ والخادمُ لا يرسله لسواه ═══ */}
+            {performance && context && (
+                <div className="mb-4">
+                    <Performance seasonId={season.id} data={performance} currency={context.currency} />
+                </div>
+            )}
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
                 {/* ═══ منتجات الموسم ═══ */}

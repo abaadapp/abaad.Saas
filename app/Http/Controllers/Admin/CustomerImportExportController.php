@@ -25,7 +25,7 @@ class CustomerImportExportController extends Controller
     /** أعمدة الملف بترتيب النشاط (تُستخدم للتصدير والنموذج) */
     private function columns(): array
     {
-        return [__('الاسم'), __('الهاتف'), __('البريد'), __('العنوان'), __('الفرع'), __('النقاط'), __('اللغة')];
+        return [__('الاسم'), __('الهاتف'), __('البريد'), __('العنوان'), __('الفرع'), __('النقاط'), __('اللغة'), __('تاريخ الميلاد')];
     }
 
     /**
@@ -81,6 +81,8 @@ class CustomerImportExportController extends Controller
                 $c->branch?->name ?? '',
                 (int) $c->points,
                 self::languageLabel($c->language),
+                // الميلادُ يخرج، والتنبيهُ والملاحظةُ لا: الملفُّ يُرسَل ويُشارَك
+                \App\Support\CustomerFlags::formatBirthday($c),
             ])->all();
     }
 
@@ -231,6 +233,8 @@ class CustomerImportExportController extends Controller
             $points = (int) ($idx['points'] !== null ? ($r[$idx['points']] ?? 0) : 0);
             $languageText = $get('language');
             $language = self::parseLanguage($languageText);
+            $birthdayText = $get('birthday');
+            $birthday = \App\Support\CustomerFlags::parseBirthday($birthdayText);
 
             // تحديد الفرع: فرع الملف إن طابق فرعًا موجودًا، وإلا الفرع الافتراضي
             $branchId = $defaultBranchId;
@@ -288,6 +292,9 @@ class CustomerImportExportController extends Controller
                 } elseif ($language === null && ($status === 'new' || ($languageOf[$targetId] ?? null) === null)) {
                     $status = 'invalid';
                     $note = __('بلا لغة رسائل واتساب — أضف عمود «اللغة» (العربية/English) — يُتجاهل');
+                } elseif ($birthday === false) {
+                    $status = 'invalid';
+                    $note = __('تاريخ ميلاد لا يُفهم — اكتبه «12/03» أو «12/03/1990» — يُتجاهل');
                 }
             }
 
@@ -304,11 +311,12 @@ class CustomerImportExportController extends Controller
              * وعنوانه معها. ولا شيء في الشاشة يقول ذلك.
              */
             $stated = [];
-            foreach (['name', 'phone', 'email', 'address', 'points', 'language'] as $field) {
+            foreach (['name', 'phone', 'email', 'address', 'points', 'language', 'birthday'] as $field) {
                 $stated[$field] = $idx[$field] !== null && $get($field) !== '';
             }
 
-            $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'language', 'branchId', 'branchDisplay', 'status', 'note', 'targetId', 'stated');
+            $birthday = $birthday ?: null;
+            $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'language', 'birthday', 'branchId', 'branchDisplay', 'status', 'note', 'targetId', 'stated');
         }
 
         session()->put(self::SESSION_KEY, [
@@ -338,7 +346,7 @@ class CustomerImportExportController extends Controller
         ];
 
         // ما لا يذكره الملفّ يبقى كما هو — يُقال قبل التأكيد لا بعده
-        $labels = ['name' => 'الاسم', 'phone' => 'الهاتف', 'email' => 'البريد', 'address' => 'العنوان', 'points' => 'النقاط', 'language' => 'اللغة'];
+        $labels = ['name' => 'الاسم', 'phone' => 'الهاتف', 'email' => 'البريد', 'address' => 'العنوان', 'points' => 'النقاط', 'language' => 'اللغة', 'birthday' => 'تاريخ الميلاد'];
         $untouched = [];
         if ($counts['update'] > 0) {
             foreach ($labels as $key => $label) {
@@ -385,6 +393,9 @@ class CustomerImportExportController extends Controller
                     'address' => $r['address'] ?: null,
                     'points' => (int) $r['points'],
                     'language' => $r['language'] ?? null,
+                    'birth_day' => $r['birthday']['day'] ?? null,
+                    'birth_month' => $r['birthday']['month'] ?? null,
+                    'birth_year' => $r['birthday']['year'] ?? null,
                 ];
 
                 if ($r['status'] === 'new') {
@@ -406,6 +417,10 @@ class CustomerImportExportController extends Controller
                             if (! ($r['stated'][$field] ?? true)) {
                                 unset($fields[$field]);
                             }
+                        }
+                        // والميلادُ ثلاثةُ أعمدةٍ لعمودٍ واحد في الملفّ — يُسكَت عنها معًا
+                        if (! ($r['stated']['birthday'] ?? false)) {
+                            unset($fields['birth_day'], $fields['birth_month'], $fields['birth_year']);
                         }
                         $before = (int) $customer->points;
                         $customer->update($fields);
@@ -499,9 +514,10 @@ class CustomerImportExportController extends Controller
             'branch' => ['الفرع', 'فرع', 'branch'],
             'points' => ['النقاط', 'نقاط', 'points'],
             'language' => ['اللغة', 'لغة', 'language', 'lang'],
+            'birthday' => ['تاريخ الميلاد', 'الميلاد', 'ميلاد', 'birthday', 'birth', 'dob'],
         ];
 
-        $index = ['name' => 0, 'phone' => 1, 'email' => 2, 'address' => 3, 'branch' => 4, 'points' => 5, 'language' => 6];
+        $index = ['name' => 0, 'phone' => 1, 'email' => 2, 'address' => 3, 'branch' => 4, 'points' => 5, 'language' => 6, 'birthday' => 7];
         $found = [];
         $isHeader = false;
 
@@ -534,6 +550,7 @@ class CustomerImportExportController extends Controller
                 'branch' => $found['branch'] ?? null,
                 'points' => $found['points'] ?? null,
                 'language' => $found['language'] ?? null,
+                'birthday' => $found['birthday'] ?? null,
             ];
         } else {
             // بلا ترويسة: افتراض الترتيب حسب عدد الأعمدة المتاحة
@@ -546,6 +563,7 @@ class CustomerImportExportController extends Controller
                 'branch' => $cols > 5 ? 4 : null,
                 'points' => $cols > 5 ? 5 : ($cols > 4 ? 4 : null),
                 'language' => $cols > 6 ? 6 : null,
+                'birthday' => $cols > 7 ? 7 : null,
             ];
         }
 

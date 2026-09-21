@@ -28,6 +28,7 @@ interface Row {
     branchDisplay: string;
     points: number;
     language: string | null;
+    birthday: { day: number; month: number; year: number | null } | null;
     status: 'new' | 'update' | 'invalid' | 'dup_file';
     note?: string | null;
 }
@@ -117,7 +118,7 @@ export default function ImportPreview() {
                 <Table>
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                            {['#', 'الاسم', 'الهاتف', 'البريد', 'العنوان', 'الفرع', 'النقاط', 'اللغة', 'الحالة'].map((h) => (
+                            {['#', 'الاسم', 'الهاتف', 'البريد', 'العنوان', 'الفرع', 'النقاط', 'اللغة', 'تاريخ الميلاد', 'الحالة'].map((h) => (
                                 <TableHead key={h}>{h === '#' ? h : t(h)}</TableHead>
                             ))}
                         </TableRow>
@@ -136,6 +137,11 @@ export default function ImportPreview() {
                                     <TableCell className="text-[#4b4b4b]">{r.branchDisplay}</TableCell>
                                     <TableCell className="tabular-nums text-[#4b4b4b]">{number(r.points)}</TableCell>
                                     <TableCell className="text-[#4b4b4b]">{r.language === 'en' ? 'English' : r.language === 'ar' ? t('العربية') : '—'}</TableCell>
+                                    <TableCell dir="ltr" className="text-[#4b4b4b]">
+                                        {r.birthday
+                                            ? `${String(r.birthday.day).padStart(2, '0')}/${String(r.birthday.month).padStart(2, '0')}${r.birthday.year ? `/${r.birthday.year}` : ''}`
+                                            : '—'}
+                                    </TableCell>
                                     <TableCell>
                                         <Badge variant={s.variant}>{t(s.label)}</Badge>
                                         {(r.status === 'invalid' || r.status === 'dup_file') && r.note && (

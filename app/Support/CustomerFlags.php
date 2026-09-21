@@ -103,6 +103,49 @@ final class CustomerFlags
         return (int) $today->diffInDays($next);
     }
 
+    /**
+     * الميلادُ كما يُكتب في ملفّ: «12/3» أو «12/03/1990» أو «1990-03-12».
+     *
+     * يُردّ `null` لفراغ، و`false` لما لا يُفهم — فيُقال في معاينة الاستيراد.
+     *
+     * @return array{day: int, month: int, year: int|null}|false|null
+     */
+    public static function parseBirthday(string $text): array|false|null
+    {
+        $v = trim(str_replace(['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'], range(0, 9), $text));
+        if ($v === '') {
+            return null;
+        }
+
+        if (preg_match('~^(\d{4})-(\d{1,2})-(\d{1,2})$~', $v, $m)) {
+            [$year, $month, $day] = [(int) $m[1], (int) $m[2], (int) $m[3]];
+        } elseif (preg_match('~^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{4}))?$~', $v, $m)) {
+            [$day, $month, $year] = [(int) $m[1], (int) $m[2], isset($m[3]) ? (int) $m[3] : null];
+        } else {
+            return false;
+        }
+
+        if ($month < 1 || $month > 12 || $day < 1 || $day > Carbon::create(2000, $month, 1)->daysInMonth) {
+            return false;
+        }
+        if ($year !== null && ($year < 1900 || $year > (int) Carbon::today()->year || ! checkdate($month, $day, $year))) {
+            return false;
+        }
+
+        return ['day' => $day, 'month' => $month, 'year' => $year];
+    }
+
+    /** «12/03» أو «12/03/1990» — لا سنةَ تُخترع */
+    public static function formatBirthday(Customer $customer): string
+    {
+        if ($customer->birth_day === null || $customer->birth_month === null) {
+            return '';
+        }
+        $base = sprintf('%02d/%02d', (int) $customer->birth_day, (int) $customer->birth_month);
+
+        return $customer->birth_year ? $base.'/'.$customer->birth_year : $base;
+    }
+
     private static function occurrence(int $month, int $day, int $year): Carbon
     {
         $lastDay = Carbon::create($year, $month, 1)->daysInMonth;
@@ -160,7 +203,7 @@ final class CustomerFlags
      * وسببٌ مكتوب. وإغلاقُ نافذةٍ ليس تجاوزًا. ويُقيَّد في السجلّ بالعميل
      * والفاعل والسبب.
      */
-    public static function assertSellable(?Customer $customer, array $settings, ?User $actor, ?string $overrideReason): void
+    public static function assertSellable(?Customer $customer, array $settings, ?User $actor, ?string $overrideReason, string $field = 'customer_block'): void
     {
         if ($customer === null || ! self::blocked($customer, $settings)) {
             return;
@@ -177,7 +220,7 @@ final class CustomerFlags
         }
 
         throw ValidationException::withMessages([
-            'customer_block' => $mayOverride
+            $field => $mayOverride
                 ? __('البيع لهذا العميل موقوف — اكتب سببَ التجاوز للمتابعة.')
                 : __('البيع لهذا العميل موقوف.'),
         ]);

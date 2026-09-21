@@ -345,7 +345,7 @@ export default function CustomersIndex() {
                     <form onSubmit={submitImport} className="space-y-4 px-5 pb-5">
                         <Field
                             label="ملف العملاء"
-                            hint="الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، العنوان، الفرع، النقاط، اللغة (العربية/English — إجباريّة). يمكنك تصدير ملف ثم تعديله وإعادة استيراده."
+                            hint="الصيغ المدعومة: CSV، XLS، XLSX، XLSM — الأعمدة: الاسم، الهاتف، البريد، العنوان، الفرع، النقاط، اللغة (العربية/English — إجباريّة)، تاريخ الميلاد (12/03 أو 12/03/1990). يمكنك تصدير ملف ثم تعديله وإعادة استيراده."
                             error={upload.errors.file}
                             required
                         >

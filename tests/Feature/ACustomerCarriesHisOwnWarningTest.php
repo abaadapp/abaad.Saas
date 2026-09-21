@@ -367,4 +367,96 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
         $this->sell($theirs, $this->owner)->assertOk();
         $this->assertNull(Order::latest('id')->first()->customer_id);
     }
+
+    /* ═════════════ والفاتورةُ بيعٌ كالصندوق ═════════════ */
+
+    public function test_a_blocked_customer_gets_no_invoice_from_the_admin_screen_either(): void
+    {
+        \App\Support\Ledger::seedChart($this->shop->id);
+        $c = $this->customer(['alert_type' => 'block', 'alert_reason' => 'سرّ', 'allow_credit_sales' => true]);
+
+        $invoice = fn () => $this->actingAs($this->owner)->post(route('admin.customerInvoices.store'), [
+            'customer_id' => $c->id, 'payment_method' => 'آجل', 'issued_at' => now()->toDateString(), 'issue' => true,
+            'items' => [['description' => 'توريد', 'quantity' => 1, 'unit_price' => 100]],
+        ]);
+
+        $invoice()->assertSessionHasErrors('customer_id');
+        $this->assertSame(0, \App\Models\CustomerInvoice::count(), 'كُتبت فاتورةٌ لزبونٍ موقوف');
+        $this->assertStringNotContainsString('سرّ', (string) session('errors')?->first('customer_id'));
+
+        $this->set(CustomerFlags::BLOCKING, '0');
+        $invoice()->assertSessionHasNoErrors();
+        $this->assertSame(1, \App\Models\CustomerInvoice::count());
+    }
+
+    /* ═════════════ التجاوزُ لصاحب المتجر افتراضًا — والمديرُ بالاسم ═════════════ */
+
+    public function test_a_manager_overrides_only_when_granted_by_name(): void
+    {
+        $manager = User::create([
+            'business_id' => $this->shop->id, 'name' => 'مدير', 'email' => 'm@abaad.om',
+            'password' => bcrypt('x'), 'role' => 'manager', 'status' => 'نشط',
+        ]);
+        $c = $this->customer(['alert_type' => 'block']);
+
+        $this->sell($c, $manager, ['block_override_reason' => 'سبب'])->assertStatus(422);
+        $this->assertSame(0, Order::count());
+
+        // يُمنح بالاسم — مع ما يفتحه دورُه، فالقائمةُ اليدويّة تحلّ محلّ الوراثة
+        $manager->update(['permissions' => [...\App\Support\Permissions::roleGrants('manager'), CustomerFlags::OVERRIDE]]);
+        $this->sell($c, $manager->fresh(), ['block_override_reason' => 'سبب'])->assertOk();
+    }
+
+    /* ═════════════ الميلادُ في الملفّ ذهابًا وإيابًا — والداخليُّ لا ═════════════ */
+
+    public function test_the_birthday_travels_through_export_and_import_and_internal_data_does_not(): void
+    {
+        $c = $this->customer(['birth_day' => 12, 'birth_month' => 3, 'alert_type' => 'block', 'alert_reason' => 'سرّ', 'notes' => 'ملاحظةٌ سرّيّة']);
+        Customer::create(['business_id' => $this->shop->id, 'name' => 'بسنة', 'phone' => '99770002', 'language' => 'ar', 'birth_day' => 1, 'birth_month' => 1, 'birth_year' => 1990]);
+
+        $body = $this->actingAs($this->owner)->get(route('admin.customers.export.xlsx'))->assertOk()->streamedContent();
+        $path = tempnam(sys_get_temp_dir(), 'exp').'.xlsx';
+        file_put_contents($path, $body);
+        $rows = \App\Support\Sheet::rows($path);
+        $head = array_map('strval', $rows[0]);
+        $col = array_search('تاريخ الميلاد', $head, true);
+        $this->assertNotFalse($col);
+        $byPhone = collect(array_slice($rows, 1))->keyBy(fn ($r) => (string) $r[1]);
+        $this->assertSame('12/03', (string) $byPhone[$c->phone][$col]);
+        $this->assertSame('01/01/1990', (string) $byPhone['99770002'][$col]);
+        $flat = json_encode($rows, JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('سرّ', $flat);
+        $this->assertStringNotContainsString('ملاحظةٌ سرّيّة', $flat);
+
+        // والاستيرادُ يقرؤه بأشكاله، ويردّ ما لا يُفهم، ويُبقي ما سُكت عنه
+        $csv = tempnam(sys_get_temp_dir(), 'imp').'.csv';
+        file_put_contents($csv, "الاسم,الهاتف,اللغة,تاريخ الميلاد\nسالم,{$c->phone},العربية,29/02\nنورة,99770003,English,1995-07-04\nغامض,99770004,العربية,أمس\nبسنة,99770002,العربية,\n");
+        $this->actingAs($this->owner)->post(route('admin.customers.import.upload'), [
+            'file' => new \Illuminate\Http\UploadedFile($csv, 'c.csv', 'text/csv', null, true),
+        ]);
+        $this->actingAs($this->owner)->post(route('admin.customers.import.confirm'));
+
+        $this->assertSame([29, 2, null], [(int) $c->fresh()->birth_day, (int) $c->fresh()->birth_month, $c->fresh()->birth_year]);
+        $this->assertSame('block', $c->fresh()->alert_type, 'الاستيرادُ مسّ التنبيه');
+        $n = Customer::where('phone', '99770003')->firstOrFail();
+        $this->assertSame([4, 7, 1995], [(int) $n->birth_day, (int) $n->birth_month, (int) $n->birth_year]);
+        $this->assertNull(Customer::where('phone', '99770004')->first(), 'ميلادٌ لا يُفهم دخل');
+        $this->assertSame(1990, (int) Customer::where('phone', '99770002')->value('birth_year'), 'فراغُ الملفّ محا الميلاد');
+    }
+
+    public function test_the_readable_archive_carries_the_birthday_and_not_the_alert(): void
+    {
+        $this->assertSame('12/03', CustomerFlags::formatBirthday($this->customer(['birth_day' => 12, 'birth_month' => 3])));
+        $this->assertSame('', CustomerFlags::formatBirthday($this->customer()));
+        $this->assertFalse(CustomerFlags::parseBirthday('31/04'));
+        $this->assertFalse(CustomerFlags::parseBirthday('29/02/2023'));
+        $this->assertSame(['day' => 29, 'month' => 2, 'year' => null], CustomerFlags::parseBirthday('٢٩/٢'));
+        $this->assertNull(CustomerFlags::parseBirthday('  '));
+
+        $src = (string) file_get_contents(base_path('app/Support/Archive/Sheets.php'));
+        $this->assertStringContainsString('formatBirthday', $src);
+        $this->assertStringNotContainsString('alert_reason', $src);
+        $customersSheet = substr($src, strpos($src, 'function customers('), strpos($src, 'الموردون') - strpos($src, 'function customers('));
+        $this->assertStringNotContainsString('->notes', $customersSheet);
+    }
 }

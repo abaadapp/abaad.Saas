@@ -256,7 +256,8 @@ class Permissions
         self::WEBSITE_CONFIGURE => ['admin', 'manager'],
         // والكاشير لا يتجاوز حدًّا وضعه صاحبُ المتجر: يطلبه ممّن وضعه
         'credit.override' => ['admin', 'manager'],
-        \App\Support\CustomerFlags::OVERRIDE => ['admin', 'manager'],
+        // ولصاحب المتجر وحده افتراضًا — والمديرُ يُمنحه بالاسم من «صلاحيات الموظفين»
+        \App\Support\CustomerFlags::OVERRIDE => ['admin'],
         /*
          * وتصديرُ بيانات النشاط لصاحبه ومديره — والمحاسبُ يُمنحه باسمه.
          *

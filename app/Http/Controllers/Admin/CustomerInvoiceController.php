@@ -1006,6 +1006,9 @@ class CustomerInvoiceController extends Controller
             ]);
         }
 
+        // والفاتورةُ بيعٌ كالصندوق: الموقوفُ لا تُكتب له — ولا تجاوزَ من هنا، بابُه الصندوق
+        \App\Support\CustomerFlags::assertSellable($customer, \App\Support\CustomerFlags::settings($this->bid()), null, null, 'customer_id');
+
         /*
          * واستحقاقٌ قبل تاريخ الورقة يجعلها متأخّرةً لحظةَ إصدارها.
          *

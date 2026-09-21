@@ -421,7 +421,7 @@ final class Sheets
         $book->head([
             __('الاسم'), __('الاسم القانوني'), __('النوع'), __('الهاتف'), __('البريد'),
             __('الرقم الضريبي'), __('السجل التجاري'), __('العنوان'),
-            __('البيع الآجل'), __('حد الائتمان'), __('مدة السداد'),
+            __('البيع الآجل'), __('حد الائتمان'), __('مدة السداد'), __('تاريخ الميلاد'),
         ]);
 
         $rows = Customer::where('business_id', $bid)
@@ -441,6 +441,8 @@ final class Sheets
                 $customer->allow_credit_sales ? __('نعم') : __('لا'),
                 Amount::of($customer->credit_limit ?? 0),
                 $customer->payment_terms_days !== null ? (int) $customer->payment_terms_days : '—',
+                // والتنبيهُ والملاحظةُ لا يخرجان في ورقة — انظر CustomerFlags
+                Text::of(\App\Support\CustomerFlags::formatBirthday($customer) ?: '—'),
             ]);
         }
     }

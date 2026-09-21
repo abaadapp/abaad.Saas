@@ -1,6 +1,22 @@
 import { type ReactNode, useEffect } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { Check, ChevronDown, CreditCard, Languages, LayoutDashboard, Lock, LogOut, Receipt, ReceiptText, Settings, Store, User, UserRound, Users } from 'lucide-react';
+import {
+    Check,
+    ChevronDown,
+    ClipboardList,
+    CreditCard,
+    Languages,
+    LayoutDashboard,
+    Lock,
+    LogOut,
+    Receipt,
+    ReceiptText,
+    Settings,
+    Store,
+    User,
+    UserRound,
+    Users,
+} from 'lucide-react';
 import { router } from '@inertiajs/react';
 import { Toaster, toast } from 'sonner';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
@@ -33,6 +49,12 @@ const POS_NAV = [
     // حصيلة الصندوق وطرق الدفع — لصاحب النشاط لا للكاشير
     { label: 'المدفوعات', icon: CreditCard, route: 'pos.payments', ability: 'finance' },
     { label: 'العملاء', icon: Users, route: 'pos.customers' },
+    /*
+     * لوحةُ التجهيز بابُها من الصندوق أيضًا: من يصنع الباقة يقف عنده لا في
+     * اللوحة. والصفحةُ صفحةُ اللوحة نفسُها (`admin.preparation.index`)، لا
+     * نسخةٌ ثانية — وقسمُها `preparation` يُمنح للموظّف من ملفّه.
+     */
+    { label: 'لوحة التجهيز', icon: ClipboardList, route: 'admin.preparation.index', ability: 'preparation' },
 ] as const;
 
 interface PosLayoutProps {

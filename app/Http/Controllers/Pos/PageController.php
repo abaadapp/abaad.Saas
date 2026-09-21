@@ -8,6 +8,7 @@ use App\Models\CustomOrderTemplate;
 use App\Models\Order;
 use App\Support\Activity;
 use App\Support\CustomArrangement;
+use App\Support\CustomerFlags;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\PlanFeatures;
@@ -52,6 +53,12 @@ class PageController extends Controller
             // والآجلُ مقبضٌ بجانبها — والخادمُ يردّه كذلك (PosController::checkout)
             'creditSale' => PaymentMethods::creditAllowed($s),
             /*
+             * تجاوزُ حظر البيع — يُعرض حقلُ السبب لمن يملكه وحده، والخادمُ
+             * يقيسه ثانيةً (CustomerFlags::assertSellable).
+             */
+            'canOverrideBlock' => CustomerFlags::on($s, CustomerFlags::MANAGER_OVERRIDE)
+                && (bool) auth()->user()?->may(CustomerFlags::OVERRIDE),
+            /*
              * الضريبة كما ضبطها التاجر — لا خمسةٌ مكتوبةٌ في شيفرة الشاشة.
              *
              * كانت السلّة تحسب ٥٪ ثابتة: من ضبط نسبته ١٠٪ يقرأ الكاشير على
@@ -93,7 +100,8 @@ class PageController extends Controller
             // رصيد الفرع الذي سيُخصم منه البيع، لا مجموع الشركة
             'products' => Demo::products(Demo::activeBranchId()),
             'categories' => Demo::posCategories(),
-            'customers' => Demo::customers(),
+            // ومع كلّ زبونٍ ما يُقال عنه للكاشير — بالإعدادات، وبلا ملاحظةٍ أُطفئت
+            'customers' => $this->customersWithContext(),
             'addons' => Demo::addons(),
             'coupons' => Demo::activeCoupons(),
             /*
@@ -283,7 +291,7 @@ class PageController extends Controller
     public function customers(): Response
     {
         return Inertia::render('Pos/Customers', [
-            'customers' => Demo::customers(),
+            'customers' => $this->customersWithContext(),
         ]);
     }
 
@@ -314,5 +322,26 @@ class PageController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('login');
+    }
+
+    /**
+     * زبائنُ الصندوق ومع كلٍّ منهم ما يُقال عنه — لا الصفُّ كلُّه.
+     *
+     * `Demo::customers` تحمل الملاحظةَ الداخليّة لأنّ شاشةَ الملفّ تقرؤها؛
+     * والصندوقُ يقرؤها بإذن الإعدادات وحده، فتُنزَع هنا وتُعاد في
+     * `context.note` إن أُذن. والتنبيهُ وعيدُ الميلاد كذلك.
+     */
+    private function customersWithContext(): array
+    {
+        $settings = CustomerFlags::settings(Demo::bid());
+        $models = \App\Models\Customer::where('business_id', Demo::bid())->get()->keyBy('id');
+
+        return array_map(function (array $row) use ($settings, $models) {
+            $model = $models->get($row['id']);
+            unset($row['notes'], $row['alert_type'], $row['alert_reason'], $row['birth_day'], $row['birth_month'], $row['birth_year']);
+            $row['context'] = $model ? CustomerFlags::context($model, $settings) : ['alert' => null, 'birthday_in' => null, 'note' => null];
+
+            return $row;
+        }, Demo::customers());
     }
 }

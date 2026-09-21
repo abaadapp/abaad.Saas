@@ -26,6 +26,7 @@ use App\Support\CreditSales;
 use App\Support\CustomerInvoices;
 use App\Support\CustomArrangement;
 use App\Support\CustomerPayments;
+use App\Support\CustomerFlags;
 use App\Support\Customers;
 use App\Support\Demo;
 use App\Support\Document\Snapshot;
@@ -1030,6 +1031,8 @@ class PosController extends Controller
             'paid_now' => ['nullable', 'numeric', 'min:0'],
             'due_at' => ['nullable', 'date'],
             'credit_override_reason' => ['nullable', 'string', 'max:200'],
+            // سببُ تجاوز حظر البيع — يُقرأ في CustomerFlags::assertSellable وحدَها
+            'block_override_reason' => ['nullable', 'string', 'max:200'],
             'delivery_fee' => ['nullable', 'numeric', 'min:0'],
             'resume_id' => ['nullable', 'integer'],
             'coupon_code' => ['nullable', 'string', 'max:40'],
@@ -1191,6 +1194,16 @@ class PosController extends Controller
             $scheduled = filled($data['scheduled_for'] ?? null);
 
             $customer = $this->customerFor($data['customer'] ?? null, $data['customer_id'] ?? null, $data['customer_phone'] ?? null);
+            /*
+             * والزبونُ الموقوف يُردّ هنا لا في الشاشة وحدها — طلبٌ عُدّل بيده
+             * يصل إلى السطر نفسه. والتجاوزُ بسببٍ ممّن يملكه، ويُقيَّد.
+             */
+            CustomerFlags::assertSellable(
+                $customer,
+                CustomerFlags::settings($bid),
+                auth()->user(),
+                $data['block_override_reason'] ?? null,
+            );
             /*
              * ولا تُتمّ بيعةٌ لزبونٍ لا يُعرف بأيّ لغةٍ يُراسَل.
              *

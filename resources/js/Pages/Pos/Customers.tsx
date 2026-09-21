@@ -15,7 +15,21 @@ export default function PosCustomers() {
     const currency = context!.currency;
 
     const columns: Column<Customer>[] = [
-        { key: 'name', header: 'العميل', sortable: true, value: (c) => c.label ?? c.name },
+        {
+            key: 'name',
+            header: 'العميل',
+            sortable: true,
+            value: (c) => c.label ?? c.name,
+            // إشاراتٌ صغيرة لا السبب: السببُ يُقرأ عند اختياره في البيع
+            cell: (c) => (
+                <span className="flex items-center gap-1.5">
+                    {c.label ?? c.name}
+                    {c.context?.alert?.type === 'block' && <span title={t('البيع لهذا العميل موقوف')}>⛔</span>}
+                    {c.context?.alert?.type === 'warning' && <span title={t('تنبيه على العميل')}>⚠️</span>}
+                    {c.context?.birthday_in !== null && c.context?.birthday_in !== undefined && <span title={t('عيد ميلاده قريب')}>🎂</span>}
+                </span>
+            ),
+        },
         {
             key: 'phone',
             header: 'الهاتف',

@@ -1241,6 +1241,16 @@ class Demo
              * ولا نقرة. وفارغُها يعني لغةَ القالب (العربيّة).
              */
             'customer_language' => $o->customer?->language,
+            /*
+             * والتنبيهُ الداخليّ على الزبون — للموظّف الذي سيراسله من هنا.
+             *
+             * يُقال عند أزرار «أبلغ الزبون» و«إرسال بواتسابك» لا في نصّ
+             * الرسالة: السببُ للموظّف وحده ولا يخرج في ورقةٍ ولا رسالة.
+             * والحظرُ يمنع البيعَ لا التواصل.
+             */
+            'customer_alert' => $o->customer
+                ? CustomerFlags::context($o->customer, CustomerFlags::settings(self::bid()))['alert']
+                : null,
             'employee' => $o->employee_name ?? '—',
             'branch' => $o->branch ?? __('الفرع الرئيسي'),
             'status' => $o->status,
@@ -1375,6 +1385,16 @@ class Demo
             'branch_id' => $c->branch_id,
             // لغةُ رسائل واتساب — فارغةٌ لمن سُجّل قبل أن تُسأل، والصندوقُ يسألها قبل بيعته
             'language' => $c->language,
+            /*
+             * الميلادُ والتنبيهُ — للملفّ ولشاشة العملاء. والصندوقُ لا يقرأ
+             * هذه الخام: `Pos\PageController::customersWithContext` تنزعها
+             * وتُعيد ما أذنت به الإعدادات وحده (CustomerFlags::context).
+             */
+            'birth_day' => $c->birth_day,
+            'birth_month' => $c->birth_month,
+            'birth_year' => $c->birth_year,
+            'alert_type' => $c->alert_type,
+            'alert_reason' => $c->alert_reason,
             'orders' => $c->orders_count,
             'total_spent' => (float) ($c->orders_sum_total ?? 0),
             'last_order' => $c->orders_max_ordered_at

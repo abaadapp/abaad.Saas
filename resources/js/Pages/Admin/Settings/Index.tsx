@@ -21,6 +21,7 @@ import {
     Trash2,
     TriangleAlert,
     Upload,
+    Users,
 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -166,6 +167,7 @@ const SECTION_WIDTH: Partial<Record<TabKey, SettingsWidth>> = {
     permissions: 'form',
     templates: 'form',
     notifications: 'form',
+    customers: 'form',
     'notifications-log': 'form',
     backup: 'form',
     // الموقع أوسع: فيه معاينةٌ بإطارٍ وقائمةُ أصناف لا تُقرآن في عمودٍ ضيّق
@@ -369,6 +371,15 @@ export default function SettingsIndex() {
         pay_card: on('pay_card'),
         pay_transfer: on('pay_transfer'),
         pay_credit: on('pay_credit'),
+
+        // العملاء — الغيابُ إذن، كوسائل الدفع (CustomerFlags)
+        customer_alerts_enabled: on('customer_alerts_enabled'),
+        show_customer_notes_in_pos: on('show_customer_notes_in_pos'),
+        customer_sale_blocking_enabled: on('customer_sale_blocking_enabled'),
+        customer_block_manager_override: on('customer_block_manager_override'),
+        customer_birthdays_enabled: on('customer_birthdays_enabled'),
+        customer_birthday_pos_reminder: on('customer_birthday_pos_reminder'),
+        customer_birthday_reminder_days: get('customer_birthday_reminder_days', '7'),
 
         /*
          * حُذف من هنا ما كان يُحفظ ولا يقرؤه سطرٌ واحد: مربّعات الصلاحيات
@@ -1653,6 +1664,92 @@ export default function SettingsIndex() {
                                     templates={customOrderTemplates ?? []}
                                     fieldTypes={customOrderFieldTypes ?? []}
                                 />
+                                {saveBar}
+                            </>
+                        )}
+
+                        {tab === 'customers' && (
+                            <>
+                                <SettingsSection
+                                    title="العملاء"
+                                    description="تحكم في تنبيهات العملاء والملاحظات وأعياد الميلاد — والإطفاء يُخفي ولا يمحو."
+                                    icon={Users}
+                                >
+                                    <SettingsGroup title="تنبيهات العملاء">
+                                        <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                            <div className="py-2 first:pt-0">
+                                                <Toggle
+                                                    on={form.data.customer_alerts_enabled}
+                                                    onChange={(v) => form.setData('customer_alerts_enabled', v)}
+                                                    label="تفعيل تنبيهات العملاء"
+                                                    hint="تحذيرٌ يُقال للكاشير عند اختيار العميل، أو حظرُ بيعٍ يردّه الخادم"
+                                                />
+                                            </div>
+                                            <div className="py-2">
+                                                <Toggle
+                                                    on={form.data.show_customer_notes_in_pos}
+                                                    onChange={(v) => form.setData('show_customer_notes_in_pos', v)}
+                                                    label="إظهار ملاحظة العميل عند البيع"
+                                                    hint="الملاحظة الداخلية من ملفّ العميل تظهر للكاشير بعد اختياره — ولا تُطبع ولا تُرسَل"
+                                                />
+                                            </div>
+                                            <div className="py-2">
+                                                <Toggle
+                                                    on={form.data.customer_sale_blocking_enabled}
+                                                    onChange={(v) => form.setData('customer_sale_blocking_enabled', v)}
+                                                    label="السماح بحظر البيع لعميل"
+                                                    hint="عميلٌ عليه «حظر البيع» لا تُتمّ له بيعة — يُردّ في الخادم لا في الشاشة وحدها"
+                                                />
+                                            </div>
+                                            <div className="py-2 last:pb-0">
+                                                <Toggle
+                                                    on={form.data.customer_block_manager_override}
+                                                    onChange={(v) => form.setData('customer_block_manager_override', v)}
+                                                    label="السماح للمدير بتجاوز حظر البيع"
+                                                    hint="لمن يملك صلاحية «تجاوز حظر البيع على عميل» — بسببٍ مكتوب يُقيَّد في السجلّ"
+                                                />
+                                            </div>
+                                        </div>
+                                    </SettingsGroup>
+
+                                    <SettingsGroup title="أعياد الميلاد">
+                                        <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                            <div className="py-2 first:pt-0">
+                                                <Toggle
+                                                    on={form.data.customer_birthdays_enabled}
+                                                    onChange={(v) => form.setData('customer_birthdays_enabled', v)}
+                                                    label="تفعيل أعياد ميلاد العملاء"
+                                                    hint="تاريخ الميلاد في ملفّ العميل — اليوم والشهر يكفيان"
+                                                />
+                                            </div>
+                                            <div className="py-2">
+                                                <Toggle
+                                                    on={form.data.customer_birthday_pos_reminder}
+                                                    onChange={(v) => form.setData('customer_birthday_pos_reminder', v)}
+                                                    label="إظهار تنبيه عيد الميلاد في نقطة البيع"
+                                                    hint="🎂 يُقال للكاشير عند اختيار العميل إن اقترب عيدُ ميلاده"
+                                                />
+                                            </div>
+                                            <div className="py-2 last:pb-0">
+                                                <Field
+                                                    label="التنبيه قبل عيد الميلاد بـ"
+                                                    hint="بالأيام، من 0 إلى 30 — والصفر يعني يومَ الميلاد وحده"
+                                                    error={form.errors.customer_birthday_reminder_days}
+                                                >
+                                                    <Input
+                                                        type="number"
+                                                        min={0}
+                                                        max={30}
+                                                        className="max-w-[10rem]"
+                                                        value={form.data.customer_birthday_reminder_days}
+                                                        onChange={(e) => form.setData('customer_birthday_reminder_days', e.target.value)}
+                                                    />
+                                                </Field>
+                                            </div>
+                                        </div>
+                                    </SettingsGroup>
+                                </SettingsSection>
+
                                 {saveBar}
                             </>
                         )}

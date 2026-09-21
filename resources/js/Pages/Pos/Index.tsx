@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
 import LanguageChoice from '@/Components/LanguageChoice';
+import CustomerContextCard from '@/Pages/Pos/partials/CustomerContextCard';
 import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDialog';
 import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
@@ -57,7 +58,14 @@ interface Props {
     addons: Addon[];
     coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
-    settings: LoyaltySettings & { loyaltyEnabled?: boolean; paymentMethods?: string[]; creditSale?: boolean; vat?: VatSettings };
+    settings: LoyaltySettings & {
+        loyaltyEnabled?: boolean;
+        paymentMethods?: string[];
+        creditSale?: boolean;
+        /** يملك تجاوز حظر البيع ومقبضُه مفتوح — يقوله الخادم ويقيسه ثانيةً */
+        canOverrideBlock?: boolean;
+        vat?: VatSettings;
+    };
     /** خيارات طلب الورد — تصل من الخادم فلا تُكتب هنا مرّةً ثانية */
     orderOptions?: OrderOptions;
     /**
@@ -580,6 +588,16 @@ export default function PosIndex() {
                                 />
                             </div>
                         )}
+                        {/* ما يُقال عن الزبون: حظرٌ، تحذيرٌ، عيدُ ميلاد، ملاحظة — بطاقةٌ واحدة، وقد يُعاد تركيبها لكلّ زبون */}
+                        {cart.selectedCustomer?.context && (
+                            <CustomerContextCard
+                                key={cart.selectedCustomer.id}
+                                context={cart.selectedCustomer.context}
+                                canOverride={settings.canOverrideBlock ?? false}
+                                overrideReason={cart.blockOverrideReason}
+                                onOverrideReason={cart.setBlockOverrideReason}
+                            />
+                        )}
                         {cart.selectedCustomer?.language === 'en' && (
                             <p className="mt-2 text-[11px] text-gray-400">
                                 <span className="rounded-md border border-[#c7d2fe] bg-[#eef2ff] px-1.5 py-0.5 text-[10px] font-bold text-[#4338ca]">EN</span>{' '}
@@ -898,7 +916,9 @@ export default function PosIndex() {
                                     ? toast.error(t('السلة فارغة'))
                                     : whatBlocksPayment(cart) === 'language'
                                       ? toast.warning(t('اختر لغة رسائل واتساب للعميل قبل إتمام البيع.'))
-                                      : setPayOpen(true)
+                                      : whatBlocksPayment(cart) === 'blocked'
+                                        ? toast.error(t('البيع لهذا العميل موقوف.'))
+                                        : setPayOpen(true)
                             }
                             className="flex w-full items-center justify-center gap-2 rounded-full bg-gray-900 py-3.5 text-base font-bold text-white shadow-sm transition-colors hover:bg-gray-800"
                         >

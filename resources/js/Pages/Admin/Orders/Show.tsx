@@ -49,6 +49,8 @@ interface OrderDetail {
     customer: string;
     /** لغةُ رسائل واتساب من بطاقة الزبون — `null` يعني لغةَ المتجر */
     customer_language: string | null;
+    /** تنبيهٌ داخليٌّ على الزبون — للموظّف قبل أن يراسله، ولا يدخل نصَّ رسالة */
+    customer_alert: { type: 'warning' | 'block'; reason: string } | null;
     employee: string;
     branch: string | null;
     date: string;
@@ -741,6 +743,26 @@ export default function OrderShow() {
                                     <p className="text-[12px] text-[#9ca3af]">{order.branch || '—'}</p>
                                 </div>
                             </div>
+                            {/*
+                                التنبيهُ الداخليّ يُقال هنا — حيث أزرارُ «أبلغ الزبون»
+                                و«إرسال بواتسابك» — لا في نصّ الرسالة. والحظرُ يمنع البيعَ
+                                لا التواصل، فالأزرار تبقى.
+                            */}
+                            {order.customer_alert && (
+                                <div
+                                    className={
+                                        order.customer_alert.type === 'block'
+                                            ? 'mb-4 rounded-xl border border-[#fecaca] bg-[#fef2f2] p-3 text-[12px] text-[#b91c1c]'
+                                            : 'mb-4 rounded-xl border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#92400e]'
+                                    }
+                                >
+                                    <p className="font-bold">
+                                        {order.customer_alert.type === 'block' ? '⛔ ' : '⚠️ '}
+                                        {t('يوجد تنبيه داخلي على هذا العميل')}
+                                    </p>
+                                    {order.customer_alert.reason && <p className="mt-1">{order.customer_alert.reason}</p>}
+                                </div>
+                            )}
                             <dl className="space-y-2.5 text-sm text-[#4b4b4b]">
                                 <div className="flex items-center gap-2">
                                     <User className="size-4 text-[#9ca3af]" />

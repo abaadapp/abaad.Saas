@@ -397,8 +397,16 @@ class PageController extends Controller
         $customer = Demo::customer($id);
         abort_if(empty($customer), 404);
 
+        $flags = \App\Support\CustomerFlags::settings(Demo::bid());
+
         return Inertia::render('Admin/Customers/Show', [
             'customer' => $customer,
+            // ما تُظهره الشاشةُ من «معلومات داخلية» — المُطفأ يُخفى ولا يُمحى
+            'customerFlags' => [
+                'alerts' => \App\Support\CustomerFlags::on($flags, \App\Support\CustomerFlags::ALERTS),
+                'blocking' => \App\Support\CustomerFlags::on($flags, \App\Support\CustomerFlags::BLOCKING),
+                'birthdays' => \App\Support\CustomerFlags::on($flags, \App\Support\CustomerFlags::BIRTHDAYS),
+            ],
             'orders' => Demo::customerOrders($id),
             // الافتراضي أولًا ثم الأقدم — ترتيب ثابت لا يقفز بين التحميلات
             'addresses' => CustomerAddress::where('customer_id', $id)

@@ -23,6 +23,7 @@ import {
 import Field, { Select } from '@/Components/Field';
 
 import LanguageChoice from '@/Components/LanguageChoice';
+import Toggle from '@/Components/Toggle';
 import { Input, Textarea } from '@/Components/ui/input';
 import {
     Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
@@ -47,12 +48,24 @@ interface Props {
     branches?: { id: number; name: string }[];
     orders: Order[];
     addresses: Address[];
+    /** ما أذنت به «الإعدادات ← العملاء» — المُطفأ يُخفى ولا يُمحى */
+    customerFlags: { alerts: boolean; blocking: boolean; birthdays: boolean };
+}
+
+const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+/** الميلادُ كما يُقرأ: «١٢ مارس» — والسنةُ إن عُرفت، ولا سنةَ تُخترع */
+export function birthdayLabel(c: { birth_day?: number | null; birth_month?: number | null; birth_year?: number | null }, t: (k: string) => string): string | null {
+    if (!c.birth_day || !c.birth_month) return null;
+    const base = `${c.birth_day} ${t(MONTHS[c.birth_month - 1])}`;
+
+    return c.birth_year ? `${base} ${c.birth_year}` : base;
 }
 
 const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 
 export default function CustomerShow() {
-    const { customer, orders, addresses, context, branches = [] } = usePage<PageProps<Props>>().props;
+    const { customer, orders, addresses, context, branches = [], customerFlags } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -79,6 +92,27 @@ export default function CustomerShow() {
     const [tab, setTab] = useState<'orders' | 'addresses'>('orders');
 
     const notes = useForm({ notes: customer.notes ?? '' });
+
+    /*
+     * المعلوماتُ الداخليّة — الميلادُ والتنبيه.
+     *
+     * نموذجٌ واحد ومسارٌ واحد (`customers.internal`): لا يُزاحم نافذةَ
+     * الصندوق السريعة ولا نموذجَ تعديل البيانات. والتنبيهُ يُطفأ ويبقى سببُه
+     * مكتوبًا في الحقل لمن يعيده.
+     */
+    const internal = useForm({
+        birth_day: customer.birth_day ? String(customer.birth_day) : '',
+        birth_month: customer.birth_month ? String(customer.birth_month) : '',
+        birth_year: customer.birth_year ? String(customer.birth_year) : '',
+        alert_enabled: !!customer.alert_type,
+        alert_type: customer.alert_type ?? 'warning',
+        alert_reason: customer.alert_reason ?? '',
+    });
+    const saveInternal = (e: React.FormEvent) => {
+        e.preventDefault();
+        internal.post(route('admin.customers.internal', customer.id), { preserveScroll: true });
+    };
+    const showInternal = customerFlags.alerts || customerFlags.birthdays;
 
     /** نموذج واحد للإضافة والتعديل: address_id فارغ = عنوان جديد */
     const [editing, setEditing] = useState(false);
@@ -217,8 +251,95 @@ export default function CustomerShow() {
                         </ul>
                     </Card>
 
+                    {showInternal && (
+                        <Card className="p-6">
+                            <h3 className="mb-1 text-sm font-bold text-[#111]">{t('معلومات داخلية')}</h3>
+                            <p className="mb-4 text-[12px] text-[#9ca3af]">{t('لا تظهر في فاتورة ولا إيصال ولا رسالة — للموظّفين وحدهم.')}</p>
+                            <form onSubmit={saveInternal} className="space-y-4">
+                                {customerFlags.birthdays && (
+                                    <Field label="تاريخ الميلاد" hint="اليوم والشهر يكفيان — والسنة إن عُرفت" error={internal.errors.birth_day || internal.errors.birth_month || internal.errors.birth_year}>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <Input
+                                                type="number" min={1} max={31} placeholder={t('اليوم')} aria-label={t('اليوم')}
+                                                value={internal.data.birth_day}
+                                                onChange={(e) => internal.setData('birth_day', e.target.value)}
+                                            />
+                                            <Select
+                                                aria-label={t('الشهر')}
+                                                value={internal.data.birth_month}
+                                                onChange={(e) => internal.setData('birth_month', e.target.value)}
+                                                placeholder="الشهر"
+                                                options={MONTHS.map((m, i) => ({ label: m, value: String(i + 1) }))}
+                                            />
+                                            <Input
+                                                type="number" min={1900} max={new Date().getFullYear()} placeholder={t('السنة')} aria-label={t('السنة')}
+                                                value={internal.data.birth_year}
+                                                onChange={(e) => internal.setData('birth_year', e.target.value)}
+                                            />
+                                        </div>
+                                        {birthdayLabel(customer, t) && (
+                                            <p className="mt-1.5 text-[12px] text-[#6b7280]">🎂 {birthdayLabel(customer, t)}</p>
+                                        )}
+                                    </Field>
+                                )}
+
+                                {customerFlags.alerts && (
+                                    <div className="space-y-3 rounded-xl border border-[var(--ui-border,#e8e8e8)] p-3">
+                                        <Toggle
+                                            on={internal.data.alert_enabled}
+                                            onChange={(v) => internal.setData('alert_enabled', v)}
+                                            label="تفعيل التنبيه لهذا العميل"
+                                            hint="يُقال للكاشير عند اختياره في نقطة البيع"
+                                        />
+                                        {internal.data.alert_enabled && (
+                                            <>
+                                                <Field label="نوع التنبيه" error={internal.errors.alert_type}>
+                                                    <div className="grid grid-cols-2 gap-2" role="radiogroup">
+                                                        {([
+                                                            { value: 'warning', label: 'تحذير' },
+                                                            ...(customerFlags.blocking ? [{ value: 'block', label: 'حظر البيع' }] : []),
+                                                        ] as { value: 'warning' | 'block'; label: string }[]).map((o) => (
+                                                            <button
+                                                                key={o.value}
+                                                                type="button"
+                                                                role="radio"
+                                                                aria-checked={internal.data.alert_type === o.value}
+                                                                onClick={() => internal.setData('alert_type', o.value)}
+                                                                className={
+                                                                    internal.data.alert_type === o.value
+                                                                        ? o.value === 'block'
+                                                                            ? 'h-10 rounded-md border border-[#dc2626] bg-[#fef2f2] text-sm font-medium text-[#b91c1c]'
+                                                                            : 'h-10 rounded-md border border-[#d97706] bg-[#fffbeb] text-sm font-medium text-[#92400e]'
+                                                                        : 'h-10 rounded-md border border-[#e5e7eb] bg-white text-sm font-medium text-[#4b4b4b] hover:bg-[#f9fafb]'
+                                                                }
+                                                            >
+                                                                {t(o.label)}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </Field>
+                                                <Field label="سبب التنبيه" error={internal.errors.alert_reason}>
+                                                    <Textarea
+                                                        rows={3}
+                                                        value={internal.data.alert_reason}
+                                                        onChange={(e) => internal.setData('alert_reason', e.target.value)}
+                                                        placeholder={t('مثال: سبق عدم استلام طلبات متعددة. تأكد من الدفع قبل التجهيز.')}
+                                                    />
+                                                </Field>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
+                                <Button type="submit" size="sm" loading={internal.processing}>
+                                    <Save />{t('حفظ المعلومات الداخلية')}
+                                </Button>
+                            </form>
+                        </Card>
+                    )}
+
                     <Card className="p-6">
-                        <h3 className="mb-3 text-sm font-bold text-[#111]">{t('ملاحظات')}</h3>
+                        <h3 className="mb-3 text-sm font-bold text-[#111]">{t('ملاحظة داخلية')}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); notes.post(route('admin.customers.note', customer.id), { preserveScroll: true }); }}>
                             <Textarea
                                 rows={4}

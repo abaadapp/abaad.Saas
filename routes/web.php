@@ -659,6 +659,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/customers/{id}/note', [CustomerController::class, 'saveNote'])->name('customers.note');
     // جولةُ اللغة: زرٌّ في صفّ القائمة لمن سُجّل قبل أن يُسأل
     Route::post('/customers/{id}/language', [CustomerController::class, 'language'])->name('customers.language');
+    // المعلوماتُ الداخليّة: الميلادُ والتنبيه — من ملفّ العميل لا من نافذة الصندوق السريعة
+    Route::post('/customers/{id}/internal', [CustomerController::class, 'internal'])->name('customers.internal');
     Route::put('/customers/{id}', [CustomerController::class, 'update'])->name('customers.update');
     Route::delete('/customers/{id}', [CustomerController::class, 'destroy'])->name('customers.destroy');
     Route::post('/customers/{id}/restore', [TrashController::class, 'restore'])

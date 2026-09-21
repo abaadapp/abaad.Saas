@@ -15,6 +15,7 @@ import {
     Target,
     Trash2,
     UserCog,
+    Users,
 } from 'lucide-react';
 
 /**
@@ -109,6 +110,12 @@ export const SETTINGS_NAV = [
                 label: 'الطلبات المخصصة',
                 desc: 'تفعيلها وقوالبها وحقولها — شكل الطلب كما تكتبه أنت',
                 icon: SlidersHorizontal,
+            },
+            {
+                key: 'customers',
+                label: 'العملاء',
+                desc: 'تحكم في تنبيهات العملاء والملاحظات وأعياد الميلاد',
+                icon: Users,
             },
         ],
     },

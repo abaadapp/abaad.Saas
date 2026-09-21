@@ -61,6 +61,26 @@ export interface Customer {
     points: number;
     /** لغةُ رسائل واتساب — `null` لمن سُجّل قبل أن تُسأل */
     language?: string | null;
+    /** الميلاد: اليومُ والشهرُ معًا، والسنةُ إن عُرفت — لا تُخترع */
+    birth_day?: number | null;
+    birth_month?: number | null;
+    birth_year?: number | null;
+    /** التنبيه الداخليّ: `warning` يُقال، و`block` يردّ البيع — `null` لا تنبيه */
+    alert_type?: 'warning' | 'block' | null;
+    alert_reason?: string | null;
+    /**
+     * ما يُقال للكاشير عن الزبون — يبنيه الخادم بالإعدادات (CustomerFlags::context).
+     * يصل صفوفَ الصندوق وحدها.
+     */
+    context?: CustomerContext;
+}
+
+export interface CustomerContext {
+    alert: { type: 'warning' | 'block'; reason: string } | null;
+    /** أيّامٌ إلى عيد ميلاده إن وقع ضمن مدّة التذكير — `0` اليوم */
+    birthday_in: number | null;
+    /** الملاحظةُ الداخليّة إن أذنت الإعدادات بإظهارها عند البيع */
+    note: string | null;
 }
 
 export interface Employee {

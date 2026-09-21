@@ -114,6 +114,12 @@ export interface PosCustomer {
     points: number;
     /** لغةُ رسائل واتساب — `null` لمن سُجّل قبل أن تُسأل، فيسألها الصندوق قبل البيع */
     language?: string | null;
+    /** ما يُقال للكاشير عنه — يبنيه الخادم بالإعدادات، انظر CustomerFlags::context */
+    context?: {
+        alert: { type: 'warning' | 'block'; reason: string } | null;
+        birthday_in: number | null;
+        note: string | null;
+    };
 }
 
 export interface PosVariant {
@@ -221,9 +227,16 @@ function readOutbox(): OutboxEntry[] {
  * في زرّ الدفع قبل فتح النافذة: الكاشيرُ يُقال له السببُ عند الزرّ لا بعد
  * أن يختار وسيلةَ الدفع ويضغط «تأكيد».
  */
-export function whatBlocksPayment(cart: { items: unknown[]; needsLanguage: boolean }): 'empty' | 'language' | null {
+export function whatBlocksPayment(cart: {
+    items: unknown[];
+    needsLanguage: boolean;
+    blocked?: boolean;
+    blockOverrideReason?: string;
+}): 'empty' | 'language' | 'blocked' | null {
     if (cart.items.length === 0) return 'empty';
     if (cart.needsLanguage) return 'language';
+    // الزبونُ الموقوف: يُفتح الدفعُ بسببِ تجاوزٍ مكتوبٍ وحده — والخادمُ يقيس الإذن
+    if (cart.blocked && (cart.blockOverrideReason ?? '').trim() === '') return 'blocked';
 
     return null;
 }
@@ -406,6 +419,16 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const setCustomerLanguage = useCallback((id: number, language: string) => {
         setCustomers((prev) => prev.map((c) => (c.id === id ? { ...c, language } : c)));
     }, []);
+
+    /*
+     * الزبونُ الموقوف — يقوله الخادم في `context.alert` لا الشاشة.
+     *
+     * الدفعُ لا يُفتح له إلّا بسببِ تجاوزٍ مكتوب، ويُحمل مع البيعة
+     * (`block_override_reason`) فيقيس الخادمُ الإذنَ ويقيّده. وإغلاقُ
+     * النافذة ليس تجاوزًا: السببُ يُصفَّر مع كلّ اختيارِ زبون.
+     */
+    const blocked = selectedCustomer?.context?.alert?.type === 'block';
+    const [blockOverrideReason, setBlockOverrideReason] = useState('');
 
     /**
      * لقطة المخزون في السلة تتقادم: الكاشير يضيف 5 قطع وهي متاحة، ثم يبيعها
@@ -631,6 +654,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         setCustomer(name);
         setCustomerId(id);
         setCustomerSearch('');
+        setBlockOverrideReason('');
     }, []);
 
     /** يضيف عميلًا ثم يحدّده للطلب الجاري بلا إعادة تحميل تُفقد السلة */
@@ -792,6 +816,10 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 onToast(t('اختر لغة رسائل واتساب للعميل قبل إتمام البيع.'), 'warning');
                 return { synced: false, invoice: null, points: 0, rejected: true };
             }
+            if (blocked && blockOverrideReason.trim() === '') {
+                onToast(t('البيع لهذا العميل موقوف.'), 'danger');
+                return { synced: false, invoice: null, points: 0, rejected: true };
+            }
             const id = uuid();
             const payload = {
                 client_uuid: id,
@@ -811,6 +839,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 customer,
                 customer_id: customerId,
                 customer_language: selectedCustomer?.language ?? null,
+                block_override_reason: blocked && blockOverrideReason.trim() !== '' ? blockOverrideReason.trim() : null,
                 payment_method: method,
                 // الخصم والضريبة والإجمالي تُحتسب خادميًا من أسعار القاعدة؛
                 // ما يلي معروض للمستخدم فقط ولا يُقيَّد كما هو
@@ -846,7 +875,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
             return { synced: !!res.ok, invoice: res.invoice ?? null, points: res.points ?? 0, rejected: !!res.drop };
         },
-        [items, customer, customerId, selectedCustomer, needsLanguage, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
+        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
@@ -894,14 +923,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         customerLabel, isWalkIn,
         // المحسوبات
         count, subtotal, couponDiscount, discountAmount, taxAmount, total, displayTotal, vatRate,
-        selectedCustomer, selectedPoints, canRedeem, pointsToThreshold, needsLanguage,
+        selectedCustomer, selectedPoints, canRedeem, pointsToThreshold, needsLanguage, blocked, blockOverrideReason,
         redeemCap, redeemDiscount, redeemPointsUsed, redeemMaxPct, redeemMin,
         pointsToEarn, hasStockWarning, filteredCustomers,
         // الأفعال
         add, inc, dec, remove, setNote, clear,
         setBarcode, scanBarcode,
         setCouponCode, applyCoupon, removeCoupon,
-        setRedeemActive, selectCustomer, setCustomerSearch, addCustomer, setCustomerLanguage,
+        setRedeemActive, selectCustomer, setCustomerSearch, addCustomer, setCustomerLanguage, setBlockOverrideReason,
         reset,
         checkoutSale, holdOrder, overStock, replace,
     };

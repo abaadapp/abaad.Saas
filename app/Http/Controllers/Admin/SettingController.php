@@ -127,6 +127,22 @@ class SettingController extends Controller
         'pay_credit' => ['section' => 'finance', 'label' => 'البيع الآجل',
             'rules' => ['sometimes', 'boolean']],
 
+        // العملاء: تنبيهاتٌ وملاحظاتٌ وأعيادُ ميلاد — مفاتيحها في CustomerFlags
+        \App\Support\CustomerFlags::ALERTS => ['section' => 'customers', 'label' => 'تفعيل تنبيهات العملاء',
+            'rules' => ['sometimes', 'boolean']],
+        \App\Support\CustomerFlags::NOTES_IN_POS => ['section' => 'customers', 'label' => 'إظهار ملاحظة العميل عند البيع',
+            'rules' => ['sometimes', 'boolean']],
+        \App\Support\CustomerFlags::BLOCKING => ['section' => 'customers', 'label' => 'السماح بحظر البيع لعميل',
+            'rules' => ['sometimes', 'boolean']],
+        \App\Support\CustomerFlags::MANAGER_OVERRIDE => ['section' => 'customers', 'label' => 'السماح للمدير بتجاوز حظر البيع',
+            'rules' => ['sometimes', 'boolean']],
+        \App\Support\CustomerFlags::BIRTHDAYS => ['section' => 'customers', 'label' => 'تفعيل أعياد ميلاد العملاء',
+            'rules' => ['sometimes', 'boolean']],
+        \App\Support\CustomerFlags::BIRTHDAY_POS => ['section' => 'customers', 'label' => 'إظهار تنبيه عيد الميلاد في نقطة البيع',
+            'rules' => ['sometimes', 'boolean']],
+        \App\Support\CustomerFlags::BIRTHDAY_DAYS => ['section' => 'customers', 'label' => 'التنبيه قبل عيد الميلاد بـ',
+            'rules' => ['sometimes', 'integer', 'min:0', 'max:'.\App\Support\CustomerFlags::MAX_REMINDER_DAYS]],
+
         /*
          * الطلباتُ المخصَّصة — مقبضٌ يُطفئ بابًا لا يُخفي زرًّا.
          *
@@ -223,6 +239,7 @@ class SettingController extends Controller
         'permissions' => 'صلاحيات الموظفين',
         'notifications' => 'الإشعارات',
         'custom-orders' => 'الطلبات المخصصة',
+        'customers' => 'العملاء',
     ];
 
     /**

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Support\Demo;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CustomerController extends Controller
 {
@@ -203,6 +204,66 @@ class CustomerController extends Controller
         \App\Support\Activity::log('updated', 'حدّد لغة رسائل العميل: ' . $customer->name . ' — ' . $data['language'], ['subject_id' => $customer->id]);
 
         return back();
+    }
+
+    /**
+     * الميلادُ والتنبيهُ من ملفّ العميل.
+     *
+     * اليومُ والشهرُ معًا أو لا شيء، والسنةُ اختياريّة — لا تُخترع. والتنبيهُ
+     * نوعٌ وسبب، وإطفاؤه يُفرغ النوعَ ويُبقي السببَ مكتوبًا لمن يعيده.
+     * ويُقيَّد في السجلّ ما يغيّر حالَ الزبون: حُظر، رُفع حظرُه، حُذّر منه.
+     */
+    public function internal(Request $request, $id)
+    {
+        $customer = Customer::where('business_id', $this->bid())->findOrFail($id);
+
+        $data = $request->validate([
+            'birth_day' => ['nullable', 'integer', 'min:1', 'max:31', 'required_with:birth_month'],
+            'birth_month' => ['nullable', 'integer', 'min:1', 'max:12', 'required_with:birth_day'],
+            'birth_year' => ['nullable', 'integer', 'min:1900', 'max:'.now()->year],
+            'alert_enabled' => ['nullable', 'boolean'],
+            'alert_type' => ['nullable', Rule::in(\App\Support\CustomerFlags::ALERT_TYPES), 'required_if:alert_enabled,1'],
+            'alert_reason' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'birth_day.required_with' => __('اكتب اليوم مع الشهر.'),
+            'birth_month.required_with' => __('اكتب الشهر مع اليوم.'),
+            'alert_type.required_if' => __('اختر نوع التنبيه: تحذير أو حظر البيع.'),
+        ]);
+
+        // يومٌ لا يقع في شهره (٣١ أبريل) يُردّ — و٢٩ فبراير يُقبل بلا سنة
+        if (($data['birth_day'] ?? null) !== null && ($data['birth_month'] ?? null) !== null) {
+            $max = \Carbon\Carbon::create(2000, (int) $data['birth_month'], 1)->daysInMonth;
+            if ((int) $data['birth_day'] > $max) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['birth_day' => __('هذا اليوم لا يقع في هذا الشهر.')]);
+            }
+            if (($data['birth_year'] ?? null) !== null
+                && ! checkdate((int) $data['birth_month'], (int) $data['birth_day'], (int) $data['birth_year'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['birth_day' => __('هذا التاريخ لا يقع في هذه السنة.')]);
+            }
+        }
+
+        $before = $customer->alert_type;
+        $type = ($data['alert_enabled'] ?? false) ? ($data['alert_type'] ?? null) : null;
+
+        $customer->update([
+            'birth_day' => $data['birth_day'] ?? null,
+            'birth_month' => $data['birth_month'] ?? null,
+            'birth_year' => ($data['birth_day'] ?? null) !== null ? ($data['birth_year'] ?? null) : null,
+            'alert_type' => $type,
+            'alert_reason' => filled($data['alert_reason'] ?? null) ? trim($data['alert_reason']) : null,
+        ]);
+
+        if ($before !== $type) {
+            $what = match (true) {
+                $type === \App\Support\CustomerFlags::BLOCK => 'حظر البيع على العميل',
+                $type === \App\Support\CustomerFlags::WARNING => 'وضع تنبيه تحذيري على العميل',
+                $before === \App\Support\CustomerFlags::BLOCK => 'رفع حظر البيع عن العميل',
+                default => 'أزال التنبيه عن العميل',
+            };
+            \App\Support\Activity::log('updated', $what.': '.$customer->name, ['subject_id' => $customer->id, 'subject_type' => 'customer']);
+        }
+
+        return back()->with('toast', ['msg' => __('حُفظت المعلومات الداخلية'), 'type' => 'success']);
     }
 
     public function saveNote(Request $request, $id)

@@ -6222,5 +6222,13 @@
     "صافي ربح الموسم يحتاج ربط المصروفات بالموسم.": "Season net profit requires linking expenses to the season.",
     "تُنسب البيعة للموسم حين يختاره الكاشير في الصندوق. المبالغ بأسعار البنود كما بيعت قبل خصومات الفاتورة، والتكلفة بلقطتها يوم البيع — كما في ربحية المنتجات.": "A sale is attributed to the season when the cashier selects it at the POS. Amounts are line prices as sold, before invoice discounts; cost is the snapshot taken on the day of sale — as in Product Profitability.",
     "بيعات لمنتجات الموسم في مدّته لم تُنسب إليه: :orders طلب (:units قطعة) — بيعت من شاشة «الكل» ولا تُحتسب هنا.": "Sales of season products during its dates not attributed to it: :orders orders (:units units) — sold from the “All” view and not counted here.",
-    "لا يُحذف موسمٌ له مبيعات منسوبة إليه — أطفئه بدلًا من حذفه ليبقى تقريره.": "A season with attributed sales cannot be deleted — deactivate it instead so its report remains."
+    "لا يُحذف موسمٌ له مبيعات منسوبة إليه — أطفئه بدلًا من حذفه ليبقى تقريره.": "A season with attributed sales cannot be deleted — deactivate it instead so its report remains.",
+    "أداء المواسم": "Season Performance",
+    "مبيعات كل موسم وتكلفتها ومجمل ربحها — ممّا نُسب إليه في الصندوق.": "Each season's sales, cost and gross profit — from what was attributed to it at the POS.",
+    "مبيعات كل موسم وتكلفتها ومجمل ربحها — ممّا نُسب إليه في الصندوق": "Each season's sales, cost and gross profit — from what was attributed to it at the POS",
+    "عدد المواسم": "Seasons",
+    "مواسم لها مبيعات": "Seasons with sales",
+    "كل المواسم": "All seasons",
+    "لا مواسم بعد — أنشئ موسمك الأول من المنتجات.": "No seasons yet — create your first season from Products.",
+    "الهامش %": "Margin %"
 }

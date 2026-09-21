@@ -201,6 +201,15 @@ class Reports
             'route' => 'admin.reports.waste',
         ],
         [
+            'key' => 'seasons',
+            'category' => 'analytical',
+            'section' => 'reports',
+            'title' => 'أداء المواسم',
+            'desc' => 'مبيعات كل موسم وتكلفتها ومجمل ربحها — ممّا نُسب إليه في الصندوق.',
+            'icon' => 'calendar-days',
+            'route' => 'admin.reports.seasons',
+        ],
+        [
             'key' => 'marketing',
             'category' => 'analytical',
             'section' => 'marketing',

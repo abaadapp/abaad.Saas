@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Support\Books;
 use App\Support\Ledger;
 use App\Support\OrderCorrection;
+use App\Support\ReportData;
 use App\Support\SalesChannel;
 use App\Support\SeasonSales;
 use App\Support\Website\Commerce;
@@ -599,6 +600,94 @@ class ASaleRemembersItsSeasonAndTheReportReadsOnlyWhatWasWrittenTest extends Tes
         $s = $this->season();
 
         $this->page($this->otherOwner, $s)->assertNotFound();
+    }
+
+    /* ═══════════ تقريرُ «أداء المواسم» في فهرس التقارير ═══════════ */
+
+    public function test_the_seasons_report_lists_every_season_with_its_own_numbers(): void
+    {
+        $p = $this->product(['price' => 10, 'cost' => 4]);
+        $ramadan = $this->season(['name' => 'رمضان']);
+        $spring = $this->season(['name' => 'الربيع']);
+        $idle = $this->season(['name' => 'خامل', 'starts_at' => '2027-05-01', 'ends_at' => '2027-05-10']);
+        $ramadan->products()->attach($p->id);
+        $spring->products()->attach($p->id);
+
+        $this->sell([$this->line($p, $ramadan->id, 2)])->assertOk();
+        $this->sell([$this->line($p, $spring->id, 1)])->assertOk();
+        $this->sell([$this->line($p, $ramadan->id, 1)])->assertOk();
+
+        $data = ReportData::seasons($this->business->id, ['range' => 'all']);
+        $rows = collect($data['rows'])->keyBy('name');
+
+        $this->assertSame(3, $data['summary']['seasons']);
+        $this->assertSame(2, $data['summary']['sold']);
+        $this->assertSame(['sales' => 30.0, 'cogs' => 12.0, 'gross_profit' => 18.0, 'margin' => 60.0, 'orders' => 2, 'units' => 3],
+            collect($rows['رمضان'])->only(['sales', 'cogs', 'gross_profit', 'margin', 'orders', 'units'])->all());
+        $this->assertSame(10.0, $rows['الربيع']['sales']);
+        $this->assertSame(0.0, $rows['خامل']['sales']);
+        $this->assertSame(0, $rows['خامل']['orders']);
+        $this->assertSame(40.0, $data['summary']['sales']);
+        $this->assertSame(24.0, $data['summary']['gross_profit']);
+
+        // والصفحةُ تقول عن الموسم ما يقوله التقرير — قاعدةٌ واحدة
+        $this->assertSame($rows['رمضان']['sales'], $this->report($ramadan)['summary']['sales']);
+        $this->assertSame($rows['رمضان']['cogs'], $this->report($ramadan)['summary']['cogs']);
+    }
+
+    public function test_the_seasons_report_filters_by_status_and_reads_its_own_business(): void
+    {
+        $this->season(['name' => 'جارٍ']);
+        $this->season(['name' => 'قادم', 'starts_at' => '2027-05-01', 'ends_at' => '2027-05-10']);
+        Season::create(['business_id' => $this->other->id, 'name' => 'موسم الجار', 'starts_at' => '2027-01-20', 'ends_at' => '2027-02-20', 'active' => true, 'show_in_pos' => true, 'show_on_website' => true]);
+
+        $all = ReportData::seasons($this->business->id, ['range' => 'all']);
+        $this->assertSame(['قادم', 'جارٍ'], array_column($all['rows'], 'name'), 'الأحدثُ بدايةً أوّلًا');
+
+        $active = ReportData::seasons($this->business->id, ['range' => 'all', 'status' => Season::ACTIVE]);
+        $this->assertSame(['جارٍ'], array_column($active['rows'], 'name'));
+
+        $theirs = ReportData::seasons($this->other->id, ['range' => 'all']);
+        $this->assertSame(['موسم الجار'], array_column($theirs['rows'], 'name'));
+    }
+
+    public function test_the_seasons_report_drops_the_cancelled_and_ignores_a_neighbours_lines(): void
+    {
+        $p = $this->product(['cost' => 4]);
+        $s = $this->season();
+        $s->products()->attach($p->id);
+        $this->sell([$this->line($p, $s->id, 2)])->assertOk();
+        $this->sell([$this->line($p, $s->id, 1)])->assertOk();
+        OrderCorrection::cancel($this->lastOrder(), 'رجّعها');
+
+        // وبندٌ عند الجار يحمل معرّفَ موسمنا — لا يبلغ تقريرَنا
+        $foreignProduct = Product::create(['business_id' => $this->other->id, 'name' => 'صنف الجار', 'price' => 50, 'cost' => 1, 'quantity' => 9, 'active' => true]);
+        $this->actingAs($this->otherOwner)->postJson('/pos/checkout', [
+            'items' => [['id' => $foreignProduct->id, 'name' => 'صنف الجار', 'qty' => 1, 'price' => 50]], 'payment_method' => 'نقدي',
+        ])->assertOk();
+        OrderItem::where('name', 'صنف الجار')->update(['season_id' => $s->id, 'season_name' => $s->name]);
+
+        $row = collect(ReportData::seasons($this->business->id, ['range' => 'all'])['rows'])->firstWhere('id', $s->id);
+        $this->assertSame(['sales' => 20.0, 'orders' => 1, 'units' => 2], ['sales' => $row['sales'], 'orders' => $row['orders'], 'units' => $row['units']]);
+    }
+
+    public function test_the_seasons_report_page_and_its_files_open_for_who_reads_reports(): void
+    {
+        $p = $this->product(['cost' => 4]);
+        $s = $this->season();
+        $s->products()->attach($p->id);
+        $this->sell([$this->line($p, $s->id)])->assertOk();
+
+        $props = $this->actingAs($this->owner)->get(route('admin.reports.seasons'))->assertOk()->viewData('page')['props'];
+        $this->assertSame(10.0, $props['rows'][0]['sales']);
+
+        foreach (['xlsx', 'csv', 'pdf'] as $format) {
+            $this->actingAs($this->owner)->get(route('admin.reports.export.'.$format, 'seasons'))->assertOk();
+        }
+
+        $sales = User::create(['business_id' => $this->business->id, 'name' => 'بائع', 'email' => 's2@abaad.om', 'password' => bcrypt('x'), 'role' => 'sales', 'status' => 'نشط']);
+        $this->actingAs($sales)->get(route('admin.reports.seasons'))->assertForbidden();
+        $this->actingAs($sales)->get(route('admin.reports.export.csv', 'seasons'))->assertForbidden();
     }
 
     /* ═══════════ الحذفُ والتعليق ═══════════ */

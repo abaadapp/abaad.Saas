@@ -4,6 +4,7 @@ import {
     ArrowDownCircle,
     ArrowLeft,
     Boxes,
+    CalendarDays,
     Clock,
     CreditCard,
     History,
@@ -56,6 +57,7 @@ interface Props {
 const ICONS: Record<string, LucideIcon> = {
     'arrow-down-circle': ArrowDownCircle,
     boxes: Boxes,
+    'calendar-days': CalendarDays,
     clock: Clock,
     'credit-card': CreditCard,
     history: History,

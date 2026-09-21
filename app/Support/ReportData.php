@@ -11,6 +11,7 @@ use App\Models\Expense;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Models\Season;
 use App\Models\StockAdjustment;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
@@ -863,6 +864,51 @@ class ReportData
     }
 
     /* ======================= الكوبونات والتسويق ======================= */
+
+    /* ============================ المواسم ============================ */
+
+    /**
+     * أداءُ كلّ موسم — ممّا نُسب إليه، بقاعدة صفحته نفسِها (`SeasonSales`).
+     *
+     * لا فترةَ هنا: لكلّ موسمٍ مدّتُه، والتقريرُ يقرأ ما نُسب إليه لا ما وقع
+     * في شهرٍ بعينه. والحالةُ مُرشِّحُه الوحيد.
+     */
+    public static function seasons(int $bid, array $filters): array
+    {
+        $status = self::pick($filters, 'status');
+        $today = today();
+        $sums = SeasonSales::summaries($bid);
+        $empty = ['sales' => 0.0, 'cogs' => 0.0, 'gross_profit' => 0.0, 'margin' => 0.0, 'orders' => 0, 'units' => 0];
+
+        $rows = Season::where('business_id', $bid)
+            ->orderByDesc('starts_at')->orderByDesc('id')->get()
+            ->map(fn (Season $s) => [
+                'id' => $s->id,
+                'name' => Demo::ln($s->name, $s->name_en),
+                'starts_at' => $s->starts_at->toDateString(),
+                'ends_at' => $s->ends_at->toDateString(),
+                'dates' => $s->starts_at->format('Y-m-d').' — '.$s->ends_at->format('Y-m-d'),
+                'status' => $s->status($today),
+                'statusLabel' => Seasons::statusLabel($s->status($today)),
+            ] + ($sums[$s->id] ?? $empty))
+            ->filter(fn ($r) => $status === null || $r['status'] === $status);
+
+        $total = $rows->count();
+
+        return array_merge(self::capped($rows->take(self::LIMIT), $total), [
+            'summary' => [
+                'seasons' => $total,
+                'sold' => $rows->where('orders', '>', 0)->count(),
+                'sales' => round((float) $rows->sum('sales'), 3),
+                'gross_profit' => round((float) $rows->sum('gross_profit'), 3),
+            ],
+            'options' => [
+                'statuses' => collect([Season::ACTIVE, Season::UPCOMING, Season::ENDED, Season::INACTIVE])
+                    ->map(fn ($st) => ['value' => $st, 'label' => Seasons::statusLabel($st)])->all(),
+            ],
+            'periodLabel' => __('كل المواسم'),
+        ]);
+    }
 
     public static function marketing(int $bid, array $filters): array
     {

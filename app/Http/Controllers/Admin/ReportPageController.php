@@ -133,6 +133,11 @@ class ReportPageController extends Controller
         return $this->report($request, 'marketing', 'Marketing');
     }
 
+    public function seasons(Request $request): Response
+    {
+        return $this->report($request, 'seasons', 'Seasons', ['status']);
+    }
+
     public function stocktake(Request $request): Response
     {
         return $this->report($request, 'stocktake', 'Stocktake', ['branch_id', 'reason']);

@@ -210,3 +210,50 @@ describe('شاشةُ الصندوق وموسمُ البند', () => {
         productAdds.forEach((a) => expect(a).toContain('season_id: seasonFor(p.id)'));
     });
 });
+
+/**
+ * صفُّ الموسم في تقرير «أداء المواسم» — أرقامُه كما وصلت، واسمُه يفتح صفحته.
+ */
+describe('صفُّ الموسم في التقرير', () => {
+    it('يكتب الأرقامَ الستّة ويفتح الموسمَ بعينه', async () => {
+        const { SeasonReportLine } = await import('@/Pages/Admin/Reports/Seasons');
+        const m = (v: number) => `${v.toFixed(3)} ر.ع`;
+        render(
+            <table>
+                <tbody>
+                    <SeasonReportLine
+                        locale="ar"
+                        money={m}
+                        row={{
+                            id: 3, name: 'رمضان', starts_at: '2027-01-20', ends_at: '2027-02-20', dates: '2027-01-20 — 2027-02-20',
+                            status: 'active', statusLabel: 'نشط',
+                            sales: 30, cogs: 12, gross_profit: 18, margin: 60, orders: 2, units: 3,
+                        }}
+                    />
+                </tbody>
+            </table>,
+        );
+
+        expect(screen.getByRole('link', { name: 'رمضان' })).toHaveAttribute('href', '/admin.seasons.show/3');
+        expect(screen.getByText('نشط')).toBeInTheDocument();
+        const cells = screen.getAllByRole('cell').map((c) => c.textContent);
+        expect(cells.slice(2)).toEqual(['30.000 ر.ع', '12.000 ر.ع', '18.000 ر.ع', '60.0%', '2', '3']);
+    });
+
+    it('والخسارةُ تُلوَّن حمراء', async () => {
+        const { SeasonReportLine } = await import('@/Pages/Admin/Reports/Seasons');
+        render(
+            <table>
+                <tbody>
+                    <SeasonReportLine
+                        locale="ar"
+                        money={(v) => String(v)}
+                        row={{ id: 3, name: 'خاسر', starts_at: '2027-01-20', ends_at: '2027-02-20', dates: '', status: 'ended', statusLabel: 'منتهي', sales: 10, cogs: 14, gross_profit: -4, margin: -40, orders: 1, units: 1 }}
+                    />
+                </tbody>
+            </table>,
+        );
+
+        expect(screen.getByText('-4').className).toContain('text-[#b91c1c]');
+    });
+});

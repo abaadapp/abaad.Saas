@@ -1364,6 +1364,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/reports/suppliers', [ReportPageController::class, 'suppliers'])->name('reports.suppliers');
     Route::get('/reports/activity', [ReportPageController::class, 'activity'])->name('reports.activity');
     Route::get('/reports/marketing', [ReportPageController::class, 'marketing'])->name('reports.marketing');
+    Route::get('/reports/seasons', [ReportPageController::class, 'seasons'])->name('reports.seasons');
     // عمليات جرد المخزون — أين فارق الدفترُ الواقع، وبكم
     Route::get('/reports/stocktake', [ReportPageController::class, 'stocktake'])->name('reports.stocktake');
 

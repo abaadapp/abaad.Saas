@@ -64,6 +64,12 @@ class ReportColumns
             ['at', 'الوقت', 'text'], ['user', 'المستخدم', 'text'],
             ['action', 'الإجراء', 'text'], ['description', 'التفصيل', 'text'],
         ],
+        'seasons' => [
+            ['name', 'الموسم', 'text'], ['dates', 'المدّة', 'text'], ['statusLabel', 'الحالة', 'text'],
+            ['sales', 'إجمالي المبيعات', 'money'], ['cogs', 'تكلفة البضاعة المباعة', 'money'],
+            ['gross_profit', 'مجمل الربح', 'money'], ['margin', 'الهامش %', 'number'],
+            ['orders', 'عدد الطلبات', 'number'], ['units', 'الكمية المباعة', 'number'],
+        ],
         'marketing' => [
             ['code', 'الرمز', 'text'], ['type', 'النوع', 'text'], ['value', 'القيمة', 'number'],
             ['uses', 'مرات الاستخدام', 'number'], ['discount', 'الخصم', 'money'], ['revenue', 'الإيراد', 'money'],

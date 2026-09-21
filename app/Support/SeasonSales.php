@@ -123,7 +123,7 @@ final class SeasonSales
      */
     public static function report(Season $season, ?string $channel = null): array
     {
-        $cards = self::cards($season);
+        $cards = self::cards((int) $season->business_id);
         $rows = self::grouped($season, $channel, ['order_items.product_id', 'order_items.name'])
             ->map(fn ($r) => self::costed($cards, $r));
 
@@ -157,6 +157,77 @@ final class SeasonSales
             'unattributed' => self::unattributed($season),
             'channel' => $channel,
         ];
+    }
+
+    /**
+     * ملخّصُ كلّ مواسم المتجر — لتقرير «المواسم» في فهرس التقارير.
+     *
+     * استعلاماتٌ ثلاثة للمتجر كلِّه لا ستّةٌ لكلّ موسم: متجرٌ بثلاثين موسمًا
+     * كان سيطلب مئتي استعلامٍ لصفحةٍ واحدة. والأرقامُ بقاعدة `report`
+     * نفسِها — حرفًا — فلا يقرأ التاجرُ عن الموسم الواحد رقمًا هنا وآخرَ في
+     * صفحته.
+     *
+     * @return array<int, array{sales: float, cogs: float, gross_profit: float, margin: float, orders: int, units: int}> [معرّف الموسم => ...]
+     */
+    public static function summaries(int $businessId): array
+    {
+        $orders = Order::where('business_id', $businessId)->sold()->select('id');
+        $lines = fn () => OrderItem::query()
+            ->whereNotNull('order_items.season_id')
+            ->whereIn('order_items.order_id', $orders);
+
+        $rows = $lines()
+            ->groupBy('order_items.season_id', 'order_items.product_id')
+            ->selectRaw('order_items.season_id as season_id, order_items.product_id as product_id'
+                .', SUM(order_items.quantity) as units'
+                .', SUM(order_items.total + COALESCE(order_items.addons_total, 0)) as sales'
+                .', SUM(order_items.cost * order_items.quantity) as cost_snapshot'
+                .', SUM(CASE WHEN order_items.cost > 0 THEN order_items.quantity ELSE 0 END) as costed_qty')
+            ->get();
+
+        $addonCosts = OrderItemAddon::query()
+            ->join('order_items', 'order_items.id', '=', 'order_item_addons.order_item_id')
+            ->whereIn('order_items.id', $lines()->select('order_items.id'))
+            ->groupBy('order_items.season_id', 'order_items.product_id')
+            ->selectRaw('order_items.season_id as season_id, order_items.product_id as product_id'
+                .', SUM(COALESCE(order_item_addons.cost, 0) * order_item_addons.quantity) as cost')
+            ->get()
+            ->keyBy(fn ($r) => $r->season_id.'|'.$r->product_id);
+
+        $orderCounts = $lines()
+            ->groupBy('order_items.season_id')
+            ->selectRaw('order_items.season_id as season_id, COUNT(DISTINCT order_items.order_id) as n')
+            ->pluck('n', 'season_id');
+
+        $cards = self::cards($businessId);
+        $out = [];
+
+        foreach ($rows as $r) {
+            $r->addon_cost = (float) ($addonCosts[$r->season_id.'|'.$r->product_id]->cost ?? 0);
+            $c = self::costed($cards, $r);
+            $id = (int) $r->season_id;
+            $out[$id] ??= ['sales' => 0.0, 'cogs' => 0.0, 'units' => 0];
+            $out[$id]['sales'] += $c['sales'];
+            $out[$id]['cogs'] += $c['cogs'];
+            $out[$id]['units'] += $c['units'];
+        }
+
+        foreach ($out as $id => &$v) {
+            $sales = round($v['sales'], 3);
+            $cogs = round($v['cogs'], 3);
+            $profit = round($sales - $cogs, 3);
+            $v = [
+                'sales' => $sales,
+                'cogs' => $cogs,
+                'gross_profit' => $profit,
+                'margin' => $sales > 0 ? round($profit / $sales * 100, 1) : 0.0,
+                'orders' => (int) ($orderCounts[$id] ?? 0),
+                'units' => (int) $v['units'],
+            ];
+        }
+        unset($v);
+
+        return $out;
     }
 
     /**
@@ -273,9 +344,9 @@ final class SeasonSales
      *
      * @return array<int, float>
      */
-    private static function cards(Season $season): array
+    private static function cards(int $businessId): array
     {
-        return DB::table('products')->where('business_id', $season->business_id)
+        return DB::table('products')->where('business_id', $businessId)
             ->pluck('cost', 'id')->map(fn ($c) => (float) $c)->all();
     }
 

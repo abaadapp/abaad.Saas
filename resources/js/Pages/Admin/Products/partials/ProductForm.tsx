@@ -70,6 +70,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
     discount: 'pricing',
     quantity: 'stock',
     alert_qty: 'stock',
+    tracks_stock: 'stock',
     image: 'media',
 };
 
@@ -102,6 +103,8 @@ export default function ProductForm({ categories, product, description, currency
         discount: product ? String(product.discount) : '',
         quantity: product ? String(product.qty) : '',
         alert_qty: product ? String(product.alert) : '',
+        // مرتبطٌ بالمخزون افتراضًا — وما سبق المفتاحَ كان بضاعةً كلُّه
+        tracks_stock: product ? product.tracks_stock !== false : true,
         active: product ? product.active : true,
         published: product?.published ?? true,
         image: null as File | null,
@@ -609,6 +612,32 @@ export default function ProductForm({ categories, product, description, currency
                 {tab === 'stock' && (
                     <Card className="p-6">
                         <h3 className="mb-4 font-bold text-[#111]">{t('المخزون')}</h3>
+
+                        {/*
+                            مرتبطٌ بالمخزون أم لا — يُقرأ قبل الكميّة.
+
+                            خدمةٌ أو رسمُ توصيلٍ أو صنفٌ يُصنع عند الطلب لا رفَّ له:
+                            كان النظام يخصم منه ويمنع بيعَه حين «ينفد» ويرنّ عليه.
+                            فمن فكّ الربطَ تختفي الكميّةُ وحدُّها من الشاشة — لا
+                            معنى لهما — ويُقال له ما يترتّب على ذلك.
+                        */}
+                        <div className="mb-4 flex items-center justify-between gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
+                            <div>
+                                <p className="text-sm font-medium text-[#111]">{t('ربط المنتج بالمخزون')}</p>
+                                <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                    {form.data.tracks_stock
+                                        ? t('يُخصم من الكمية عند البيع، ويُمنع بيعه عند النفاد، ويُنبَّه عند انخفاضه')
+                                        : t('لا يُخصم ولا ينفد ولا يُنبَّه — مناسب للخدمات وما يُصنع عند الطلب')}
+                                </p>
+                            </div>
+                            <Switch
+                                on={form.data.tracks_stock}
+                                onChange={() => form.setData('tracks_stock', !form.data.tracks_stock)}
+                                label={t('ربط المنتج بالمخزون')}
+                            />
+                        </div>
+
+                        {form.data.tracks_stock && (
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <Field label="الكمية المتوفرة" error={form.errors.quantity}>
                                 <Input
@@ -635,6 +664,7 @@ export default function ProductForm({ categories, product, description, currency
                                 />
                             </Field>
                         </div>
+                        )}
                     </Card>
                 )}
 
@@ -771,12 +801,13 @@ export default function ProductForm({ categories, product, description, currency
 }
 
 /** مفتاح تبديل صغير — كان مكرّرًا حرفًا بحرف حين صار المفتاحان اثنين */
-function Switch({ on, onChange }: { on: boolean; onChange: () => void }) {
+function Switch({ on, onChange, label }: { on: boolean; onChange: () => void; label?: string }) {
     return (
         <button
             type="button"
             role="switch"
             aria-checked={on}
+            aria-label={label}
             onClick={onChange}
             className={cn(
                 'relative h-6 w-12 shrink-0 rounded-full transition-colors',

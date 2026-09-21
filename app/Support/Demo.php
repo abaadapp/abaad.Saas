@@ -1075,7 +1075,9 @@ class Demo
                 'sku' => $p->sku,
                 'barcode' => $p->barcode,
                 'image' => $p->image,
-                'stock_status' => Product::statusFor($qty, (int) $p->alert_qty),
+                'stock_status' => $p->stockStatusAt($qty),
+                /* ومن لا يُعدّ على رفٍّ تقوله الشاشةُ فلا تكتب له «المتوفر: ٠» */
+                'tracks_stock' => $p->tracksStock(),
                 'active' => (bool) $p->active,
                 // ما يُعرض في المتجر على الإنترنت — انظر App\Support\Storefront
                 'published' => (bool) $p->published,
@@ -2027,7 +2029,7 @@ class Demo
             'totalQty' => (int) $p->quantity,
             'min' => $p->alert_qty,
             'status' => $here
-                ? Product::statusFor((int) ($books[$p->id][$here] ?? 0), (int) $p->alert_qty)
+                ? $p->stockStatusAt((int) ($books[$p->id][$here] ?? 0))
                 : $p->stock_status,
             'cost' => (float) $p->cost,
             /*

@@ -219,9 +219,13 @@ export default function ProductsIndex() {
             key: 'qty',
             header: 'الكمية',
             align: 'end',
-            cell: (p) => (
-                <QuickCell id={p.id} field="quantity" value={p.qty} display={number(p.qty)} />
-            ),
+            cell: (p) =>
+                /* ومن لا يُعدّ على رفٍّ لا كميّةَ له تُحرَّر */
+                p.tracks_stock === false ? (
+                    <span className="text-[#9ca3af]">—</span>
+                ) : (
+                    <QuickCell id={p.id} field="quantity" value={p.qty} display={number(p.qty)} />
+                ),
         },
         { key: 'stock_status', header: 'المخزون', cell: (p) => <Badge status={p.stock_status} /> },
         {

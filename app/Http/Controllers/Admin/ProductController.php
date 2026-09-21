@@ -71,7 +71,7 @@ class ProductController extends Controller
     public function stockFeed()
     {
         $products = Product::where('business_id', $this->bid())
-            ->orderBy('id')->get(['id', 'quantity', 'alert_qty'])
+            ->orderBy('id')->get(['id', 'quantity', 'alert_qty', 'tracks_stock'])
             ->map(fn ($p) => [
                 'id' => $p->id,
                 'qty' => (int) $p->quantity,
@@ -136,6 +136,7 @@ class ProductController extends Controller
             'sku' => $p->sku, 'barcode' => $p->barcode, 'image' => $p->image,
             'stock_status' => $p->stock_status, 'active' => (bool) $p->active,
             'alert' => $p->alert_qty, 'tax' => (float) $p->tax, 'discount' => (float) $p->discount,
+            'tracks_stock' => $p->tracksStock(),
         ]);
 
         return Inertia::render('Admin/Products/Index', [
@@ -180,6 +181,8 @@ class ProductController extends Controller
             'cost' => ['nullable', 'numeric', 'min:0'],
             'quantity' => ['nullable', 'integer', 'min:0'],
             'alert_qty' => ['nullable', 'integer', 'min:0'],
+            /* مرتبطٌ بالمخزون أم لا — انظر Product::tracksStock */
+            'tracks_stock' => ['nullable', 'boolean'],
             // نسبتان لا مبلغان: خصمٌ فوق المئة يجعل سطر الفاتورة سالبًا،
             // وضريبةٌ ٩٠٠٪ تُخرج فاتورةً بعشرة أضعاف ثمنها. كانا يُقبلان
             'tax' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -197,7 +200,12 @@ class ProductController extends Controller
         PlanLimits::enforce(auth()->user()->business, 'products');
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL؛ الفراغ يُحوَّل إلى null فيفشل)
         $data['cost'] = $data['cost'] ?? 0;
-        $data['quantity'] = $data['quantity'] ?? 0;
+        /*
+         * والافتراضُ «مرتبط»: كلُّ ما سبق المفتاحَ كان بضاعة. ومن فكّ الربطَ
+         * لا كميّةَ له — صفرٌ لا يُخصم ولا يُحرَس ولا يُقيَّد رصيدًا افتتاحيًّا.
+         */
+        $data['tracks_stock'] = $request->boolean('tracks_stock', true);
+        $data['quantity'] = $data['tracks_stock'] ? ($data['quantity'] ?? 0) : 0;
         $data['alert_qty'] = $data['alert_qty'] ?? 10;
         // الضريبة الفارغة تبقى فارغة: «اتبع نسبة المتجر» لا «صفر»
         $data['tax'] = ($data['tax'] ?? '') === '' ? null : $data['tax'];
@@ -282,6 +290,7 @@ class ProductController extends Controller
             'cost' => ['nullable', 'numeric', 'min:0'],
             'quantity' => ['nullable', 'integer', 'min:0'],
             'alert_qty' => ['nullable', 'integer', 'min:0'],
+            'tracks_stock' => ['nullable', 'boolean'],
             // نسبتان لا مبلغان: خصمٌ فوق المئة يجعل سطر الفاتورة سالبًا،
             // وضريبةٌ ٩٠٠٪ تُخرج فاتورةً بعشرة أضعاف ثمنها. كانا يُقبلان
             'tax' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -310,6 +319,10 @@ class ProductController extends Controller
         $data = Lexicon::fill($data);
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)
         $data['cost'] = $data['cost'] ?? 0;
+        // ولا يُبدَّل الربطُ بحفظةٍ لم تُرسله — كالعرض سواء
+        if ($request->has('tracks_stock')) {
+            $data['tracks_stock'] = $request->boolean('tracks_stock');
+        }
         $data['quantity'] = $data['quantity'] ?? 0;
         $data['alert_qty'] = $data['alert_qty'] ?? 10;
         // الضريبة الفارغة تبقى فارغة: «اتبع نسبة المتجر» لا «صفر»
@@ -319,6 +332,16 @@ class ProductController extends Controller
         \DB::transaction(function () use ($product, $data) {
             $locked = Product::where('business_id', $this->bid())->lockForUpdate()->findOrFail($product->id);
             $oldQty = (int) $locked->quantity;
+            /*
+             * ومن فُكّ ربطُه تبقى كميّتُه كما هي ولا تُحرَّك.
+             *
+             * الشاشةُ تُخفي حقلَ الكميّة حين يُفكّ الربط فيصل فارغًا = صفرًا،
+             * وكتابةُ الصفر كانت ستُقيَّد حركةً «تعديل يدويّ −N» على صنفٍ
+             * لم يُمسّ رفُّه. فالكميّةُ تُترك، ليجدها صاحبُها إن أعاد الربط.
+             */
+            if (! ($data['tracks_stock'] ?? $locked->tracksStock())) {
+                $data['quantity'] = $oldQty;
+            }
             BranchStock::ensureAllocated($this->bid(), $locked->id, $oldQty);
             $locked->update($data);
             // مزامنة رصيد الفرع بفارق الكمية إن عُدّلت يدويًا من نموذج المنتج
@@ -446,7 +469,7 @@ class ProductController extends Controller
                 $locked->price = $data['price'];
             }
 
-            if (array_key_exists('quantity', $data) && $data['quantity'] !== null) {
+            if (array_key_exists('quantity', $data) && $data['quantity'] !== null && $locked->tracksStock()) {
                 // الفارق يذهب إلى الفرع الحالي كما في نموذج المنتج، فيبقى
                 // «مجموع الفروع = كمية المنتج»
                 $old = (int) $locked->quantity;

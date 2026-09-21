@@ -20,7 +20,10 @@ class Product extends Model
      * و`published` معه لا بدونه: تركُه عددًا يجعل `$product->published` تردّ 1
      * حيث تردّ أختُها true — فيخرج في JSON عددًا إلى واجهةٍ تنتظر منطقيًّا.
      */
-    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean'];
+    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean', 'tracks_stock' => 'boolean'];
+
+    /** حالةُ صنفٍ لا يُعدّ على رفّ — لا «متوفر» ولا «نفد» */
+    public const UNTRACKED = 'غير مرتبط بالمخزون';
 
     public function business(): BelongsTo
     {
@@ -86,7 +89,28 @@ class Product extends Model
 
     public function getStockStatusAttribute(): string
     {
-        return self::statusFor((int) $this->quantity, (int) $this->alert_qty);
+        return $this->stockStatusAt((int) $this->quantity);
+    }
+
+    /**
+     * هل يُعدّ هذا الصنفُ على رفّ؟
+     *
+     * صنفٌ لا يُربط بالمخزون — خدمةٌ، رسمُ توصيل، صنفٌ يُصنع عند الطلب —
+     * لا يُخصم عند بيعه، ولا يُمنع بيعُه حين تكون كميّتُه صفرًا، ولا يرنّ
+     * الجرسُ عليه. والعمودُ الجديد يقرأ `true` لما سبقه: كلُّ ما كان قبل
+     * المفتاح كان بضاعة.
+     */
+    public function tracksStock(): bool
+    {
+        return $this->tracks_stock ?? true;
+    }
+
+    /** حالةُ المخزون لكميّةٍ ما — والذي لا يُعدّ لا حالةَ مخزونٍ له */
+    public function stockStatusAt(int $quantity): string
+    {
+        return $this->tracksStock()
+            ? self::statusFor($quantity, (int) $this->alert_qty)
+            : self::UNTRACKED;
     }
 
     /**
@@ -145,7 +169,8 @@ class Product extends Model
      */
     public function scopeNeedsStockAlert($query)
     {
-        return $query->whereColumn('quantity', '<', 'alert_qty');
+        /* ومن لا يُعدّ على رفّ لا يُنبَّه بنفاده */
+        return $query->where('tracks_stock', true)->whereColumn('quantity', '<', 'alert_qty');
     }
 
     /**

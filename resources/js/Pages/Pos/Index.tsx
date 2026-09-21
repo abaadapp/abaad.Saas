@@ -124,7 +124,8 @@ export default function PosIndex() {
         () =>
             products.map((p) => ({
                 id: p.id, label: p.label, price: p.price, image: p.image,
-                sku: p.sku, barcode: p.barcode, stock: p.qty,
+                // ومن لا يُعدّ على رفٍّ لا لقطةَ مخزونٍ له — كذي الوصفة
+                sku: p.sku, barcode: p.barcode, stock: p.tracks_stock === false ? null : p.qty,
             })),
         [products],
     );
@@ -231,8 +232,8 @@ export default function PosIndex() {
         cart.add({
             key: `p${p.id}`, id: p.id, name: p.label, price: p.price,
             image: p.image,
-            // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها
-            stock: p.has_recipe ? null : p.qty,
+            // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — فلا لقطةَ مخزونٍ تحذّر بها؛ وغيرُ المرتبط مثلُه
+            stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
             tax: p.tax,
         });
     };
@@ -472,7 +473,7 @@ export default function PosIndex() {
                                         <div className="p-3">
                                             <h3 className="truncate text-sm font-semibold text-gray-800">{p.label}</h3>
                                             <p className="mt-0.5 text-xs text-gray-400">
-                                                {t('المتوفر:')} {p.qty}
+                                                {p.tracks_stock === false ? t('غير مرتبط بالمخزون') : `${t('المتوفر:')} ${p.qty}`}
                                             </p>
                                             <div className="mt-2 flex items-center justify-between gap-1">
                                                 <p className="text-sm font-bold text-gray-900">{money(p.price)}</p>
@@ -1043,7 +1044,7 @@ export default function PosIndex() {
                         name: choice.variantName ? `${p.label} — ${choice.variantName}` : p.label,
                         price: choice.price,
                         image: p.image,
-                        stock: p.has_recipe ? null : p.qty,
+                        stock: p.has_recipe || p.tracks_stock === false ? null : p.qty,
                         tax: p.tax,
                     });
                     setOptionsFor(null);

@@ -42,7 +42,10 @@ export default function ProductShow() {
         { label: 'رمز المنتج SKU', value: product.sku || '—' },
         { label: 'الباركود', value: product.barcode || '—' },
         { label: 'سعر التكلفة', value: money(product.cost, currency) },
-        { label: 'حد التنبيه', value: `${number(product.alert)} ${t('قطعة')}` },
+        {
+            label: 'حد التنبيه',
+            value: product.tracks_stock === false ? t('غير مرتبط بالمخزون') : `${number(product.alert)} ${t('قطعة')}`,
+        },
     ];
 
     return (

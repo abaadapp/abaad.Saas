@@ -137,7 +137,8 @@ export interface PosProduct {
     image: string | null;
     sku: string;
     barcode: string;
-    stock: number;
+    /** و`null` لما لا لقطةَ مخزونٍ له: ذو الوصفة وغيرُ المرتبط بالمخزون */
+    stock: number | null;
     variants?: PosVariant[];
     /** معرّفات الإضافات المسموحة — و`null` يعني «كلّها» (سلوك ما قبل الربط) */
     addon_ids?: number[] | null;

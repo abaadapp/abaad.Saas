@@ -67,6 +67,8 @@ const STATUS_VARIANT: Record<string, VariantProps<typeof badgeVariants>['variant
     'غير مفعّل': 'neutral',
     متوفر: 'success',
     'نفد المخزون': 'danger',
+    /* صنفٌ لا يُعدّ على رفّ — لا خبرَ فيه يُلوَّن */
+    'غير مرتبط بالمخزون': 'neutral',
     راكد: 'warning',
     منشور: 'success',
     مرفوض: 'danger',

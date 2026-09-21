@@ -61,6 +61,11 @@ class StockLedger
                 continue;
             }
 
+            /* وما لا يُعدّ على رفٍّ لا يتحرّك: بيعُ خدمةٍ لا يُنقص شيئًا */
+            if (! $product->tracksStock()) {
+                continue;
+            }
+
             // التوزيع أوّلًا ثم الخصم — وإلّا بدأ صفّ الفرع من صفر فصار سالبًا
             BranchStock::ensureAllocated($businessId, (int) $product->id, (int) $product->quantity);
             $product->increment('quantity', $delta);
@@ -157,7 +162,7 @@ class StockLedger
         ?string $note = null,
     ): void {
         // وصفرٌ ليس حركة: من حفظ الشاشة بلا تغيير لا يُقيَّد له شيء
-        if ($delta === 0) {
+        if ($delta === 0 || ! $product->tracksStock()) {
             return;
         }
 

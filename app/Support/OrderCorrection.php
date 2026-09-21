@@ -243,7 +243,7 @@ class OrderCorrection
 
         // الزيادة تمرّ بحارس المخزون نفسه الذي يحرس البيع — وإلّا صار
         // التصحيح بابًا خلفيًّا يتجاوز الحدّ الذي يُغلق عند نقطة البيع
-        if ($delta < 0) {
+        if ($delta < 0 && $product->tracksStock()) {
             $allowsNegative = (string) (Setting::where('business_id', $order->business_id)
                 ->where('key', 'allow_negative_stock')->value('value') ?? '0') === '1';
 
@@ -423,7 +423,7 @@ class OrderCorrection
 
         foreach ($needed as $pid => $want) {
             $p = $products->get($pid);
-            if (! $p) {
+            if (! $p || ! $p->tracksStock()) {
                 continue;
             }
             if ($resolve($pid, (int) $p->quantity) < $want) {

@@ -168,14 +168,14 @@ class PosController extends Controller
         $available = Stock::availabilityResolver($this->bid(), Demo::activeBranchId());
 
         $products = Product::where('business_id', $this->bid())
-            ->orderBy('id')->get(['id', 'quantity', 'alert_qty'])
+            ->orderBy('id')->get(['id', 'quantity', 'alert_qty', 'tracks_stock'])
             ->map(function ($p) use ($available) {
                 $qty = $available($p->id, (int) $p->quantity);
 
                 return [
                     'id' => $p->id,
                     'qty' => $qty,
-                    'stock_status' => Product::statusFor($qty, (int) $p->alert_qty),
+                    'stock_status' => $p->stockStatusAt($qty),
                 ];
             })->values();
 
@@ -730,7 +730,8 @@ class PosController extends Controller
         $short = [];
         foreach ($needed as $pid => $want) {
             $product = $byId->get($pid);
-            if (! $product) {
+            /* وما لا يُعدّ على رفٍّ لا ينفد */
+            if (! $product || ! $product->tracksStock()) {
                 continue;
             }
             $have = $available($pid, (int) $product->quantity);

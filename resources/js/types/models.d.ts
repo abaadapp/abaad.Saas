@@ -33,6 +33,8 @@ export interface Product {
     addon_ids?: number[] | null;
     /** ذو الوصفة رصيدُه مكوّناتُه لا عمودُه */
     has_recipe?: boolean;
+    /** مرتبطٌ بالمخزون — و`false` خدمةٌ لا تُخصم ولا تنفد ولا تُنبَّه */
+    tracks_stock?: boolean;
 }
 
 export interface Category {

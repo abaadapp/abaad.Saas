@@ -74,12 +74,14 @@ final class Shelf
              * يجعل متجرًا بأربعين صنفًا أربعين رحلةً إلى القاعدة.
              */
             ->withCount('recipeItems')
-            ->get(['id', 'quantity']);
+            ->get(['id', 'quantity', 'tracks_stock']);
 
         $out = array_fill_keys($ids, false);
 
         foreach ($rows as $row) {
-            $out[(int) $row->id] = (int) $row->recipe_items_count > 0
+            /* وما لا يُعدّ على رفٍّ معروضٌ دائمًا: خدمةٌ لا تنفد */
+            $out[(int) $row->id] = ! $row->tracksStock()
+                || (int) $row->recipe_items_count > 0
                 || (int) $row->quantity > 0;
         }
 

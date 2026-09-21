@@ -116,7 +116,7 @@ export function ConversationPageHeader({
             <span
                 className={cn(
                     'rounded-full px-2 py-0.5 text-[11px] font-bold leading-tight',
-                    tone === 'green' ? 'bg-[#e6f6ee] text-[#047857]' : 'bg-[#f5f3ff] text-[#6d28d9]',
+                    tone === 'green' ? 'bg-[#e8efff] text-[#1d4ed8]' : 'bg-[#f5f3ff] text-[#6d28d9]',
                 )}
             >
                 {context}
@@ -170,7 +170,7 @@ export function ConversationSearch({
                 onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
                 onBlur={onBlur}
                 placeholder={placeholder}
-                className="h-9 rounded-[10px] bg-[#f7f7f5] ps-9 text-[13px]"
+                className="h-9 rounded-[12px] border-[#e6e9f0] bg-[#f7f8fb] ps-9 text-[13px] focus-visible:border-[#2563eb]"
                 aria-label={label}
             />
         </div>
@@ -205,7 +205,7 @@ export function FilterChips({
                         className={cn(
                             'rounded-full font-medium transition-colors',
                             size === 'md' ? 'px-2.5 py-1 text-[12px]' : 'px-2 py-0.5 text-[11px]',
-                            on ? 'bg-[#111] text-white' : 'bg-[#f2f2f0] text-[#4b4b4b] hover:bg-[#e9e9e6]',
+                            on ? 'bg-[#2563eb] text-white' : 'bg-[#f3f5f9] text-[#4b4b4b] hover:bg-[#e8ecf3]',
                         )}
                     >
                         {item.label}
@@ -227,7 +227,7 @@ export function FilterChips({
 }
 
 /** وجهٌ حين يوجد، وأحرفٌ أولى حين لا — ولا وجهَ يُختلق */
-export function Avatar({ name, src, size = 'md' }: { name: string; src?: string | null; size?: 'sm' | 'md' | 'lg' }) {
+export function Avatar({ name, src, size = 'md' }: { name: string; src?: string | null; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
     const initials = name
         .split(/\s+/)
         .filter(Boolean)
@@ -238,8 +238,14 @@ export function Avatar({ name, src, size = 'md' }: { name: string; src?: string 
     return (
         <span
             className={cn(
-                'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e6f6ee] font-bold text-[#047857]',
-                size === 'sm' ? 'size-9 text-[11px]' : size === 'md' ? 'size-11 text-[12px]' : 'size-14 text-[15px]',
+                'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e8efff] font-bold text-[#1d4ed8]',
+                size === 'sm'
+                    ? 'size-8 text-[11px]'
+                    : size === 'md'
+                      ? 'size-11 text-[12px]'
+                      : size === 'lg'
+                        ? 'size-14 text-[15px]'
+                        : 'size-20 text-[20px]',
             )}
             aria-hidden="true"
         >
@@ -283,7 +289,7 @@ export function ConversationListItem({
                 aria-current={active ? 'true' : undefined}
                 className={cn(
                     'flex w-full gap-3 px-3 py-2.5 text-start transition-colors hover:bg-[#fafaf9]',
-                    active && 'bg-[#e9f6ef] shadow-[inset_3px_0_0_#059669] hover:bg-[#e9f6ef] rtl:shadow-[inset_-3px_0_0_#059669]',
+                    active && 'bg-[#eef4ff] shadow-[inset_3px_0_0_#2563eb] hover:bg-[#eef4ff] rtl:shadow-[inset_-3px_0_0_#2563eb]',
                 )}
             >
                 {avatar}
@@ -309,7 +315,7 @@ export function ConversationListItem({
                         </span>
                         {unread > 0 && (
                             <span
-                                className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#059669] px-1 text-[10px] font-bold tabular-nums text-white"
+                                className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#2563eb] px-1 text-[10px] font-bold tabular-nums text-white"
                                 aria-label={String(unread)}
                             >
                                 {unread}
@@ -366,7 +372,7 @@ export function PageLinks({
                     onClick={() => l.url && onGo(l.url)}
                     className={cn(
                         'min-w-7 rounded-[6px] px-2 py-1 text-[12px]',
-                        l.active ? 'bg-[#111] text-white' : 'text-[#4b4b4b] hover:bg-[#fafafa]',
+                        l.active ? 'bg-[#2563eb] text-white' : 'text-[#4b4b4b] hover:bg-[#fafafa]',
                         !l.url && 'cursor-not-allowed opacity-40',
                     )}
                     dangerouslySetInnerHTML={{ __html: l.label }}

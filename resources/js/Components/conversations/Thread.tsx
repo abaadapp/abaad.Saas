@@ -106,11 +106,22 @@ export function ConversationThread({
         seen.current = { key: threadKey, count };
     }, [threadKey, count]);
 
+    /*
+     * والصورةُ تصل بعد الرسائل: الخيطُ يُقاس ويُقفز إلى قاعه قبل أن تُحمَّل
+     * الصورُ فيه، ثمّ تُحمَّل فيطول الخيطُ ويبقى القاعُ تحت النظر. فكلُّ
+     * صورةٍ تكتمل وهو في القاع تُعيده إليه.
+     */
+    const settle = () => {
+        const el = box.current;
+        if (el && nearBottom.current) el.scrollTop = el.scrollHeight;
+    };
+
     return (
         <div
             ref={box}
             onScroll={track}
-            className={cn('min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#f7f8f7] px-4 py-3', className)}
+            onLoadCapture={settle}
+            className={cn('min-h-0 flex-1 space-y-3 overflow-y-auto bg-white px-4 py-3', className)}
         >
             {children}
         </div>
@@ -121,7 +132,7 @@ export function ConversationThread({
 export function SystemRow({ children }: { children: ReactNode }) {
     return (
         <div className="flex justify-center py-1">
-            <span className="max-w-[85%] rounded-full bg-white px-3 py-1 text-center text-[11px] text-[#71717a] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <span className="max-w-[85%] rounded-full bg-[#f3f5f9] px-3 py-1 text-center text-[11px] text-[#71717a]">
                 {children}
             </span>
         </div>
@@ -131,9 +142,12 @@ export function SystemRow({ children }: { children: ReactNode }) {
 /**
  * الفقاعة.
  *
- * `side`: `out` منّا (خضراءُ خفيفة)، `in` منهم (بيضاء). و`tone: 'internal'`
- * لما لا يخرج إلى الطرف الآخر — لونٌ آخر وقفلٌ وكلمةٌ صريحة، فلا يُعتمد على
- * اللون وحدَه.
+ * `side`: `out` منّا (زرقاءُ بنصٍّ أبيض)، `in` منهم (رماديّةٌ فاتحة). واسمُ
+ * الكاتب ووقتُه فوق الفقاعة لا داخلها، ووجهُ الوارد بجانبه — كما في
+ * تطبيقات الرسائل، فتُقرأ «من» و«متى» قبل «ماذا».
+ *
+ * و`tone: 'internal'` لما لا يخرج إلى الطرف الآخر — لونٌ آخر وقفلٌ وكلمةٌ
+ * صريحة، فلا يُعتمد على اللون وحدَه.
  */
 export function MessageBubble({
     side,
@@ -144,6 +158,7 @@ export function MessageBubble({
     footer,
     files,
     internalLabel,
+    avatar,
 }: {
     side: 'in' | 'out';
     tone?: 'default' | 'internal';
@@ -154,48 +169,59 @@ export function MessageBubble({
     footer?: ReactNode;
     files?: { id: number; name: string; size: number; image: boolean; url: string }[];
     internalLabel?: string;
+    /** وجهُ الكاتب — يُرسم بجانب الوارد وحدَه */
+    avatar?: ReactNode;
 }) {
     const internal = tone === 'internal';
+    const out = side === 'out';
 
     return (
-        <div className={cn('flex', side === 'out' ? 'justify-end' : 'justify-start')}>
-            <div
-                className={cn(
-                    'max-w-[78%] rounded-[14px] px-3 py-2 shadow-[0_1px_1px_rgba(0,0,0,0.04)]',
-                    files && files.length > 0 && 'sm:max-w-[420px]',
-                    internal
-                        ? 'border border-dashed border-[#f59e0b] bg-[#fffbeb]'
-                        : side === 'out'
-                          ? 'rounded-ee-[4px] bg-[#e3f5ea] rtl:rounded-ee-[14px] rtl:rounded-es-[4px]'
-                          : 'rounded-ss-[4px] bg-white rtl:rounded-ss-[14px] rtl:rounded-se-[4px]',
-                )}
-            >
-                {internal && internalLabel && (
-                    <p className="mb-1 flex items-center gap-1 text-[10.5px] font-bold text-[#b45309]">
-                        <Lock className="size-3" />
-                        {internalLabel}
+        <div className={cn('flex gap-2', out ? 'justify-end' : 'justify-start')}>
+            {!out && avatar && <span className="mt-5 shrink-0">{avatar}</span>}
+
+            <div className={cn('flex max-w-[78%] flex-col', out ? 'items-end' : 'items-start', files && files.length > 0 && 'sm:max-w-[420px]')}>
+                {(sender || time) && (
+                    <p className={cn('mb-1 flex items-baseline gap-1.5 px-1 text-[11px]', out && 'flex-row-reverse')}>
+                        {sender && <span className="font-semibold text-[#111]">{sender}</span>}
+                        {time && (
+                            <span className="text-[#9ca3af]" dir="ltr">
+                                {time}
+                            </span>
+                        )}
                     </p>
                 )}
 
-                {body && (
-                    <p className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.55] text-[#111]" dir="auto">
-                        {body}
-                    </p>
-                )}
+                <div
+                    className={cn(
+                        'w-fit max-w-full rounded-[14px] px-3.5 py-2.5',
+                        internal
+                            ? 'border border-dashed border-[#f59e0b] bg-[#fffbeb] text-[#111]'
+                            : out
+                              ? 'rounded-se-[4px] bg-[#2563eb] text-white shadow-[0_2px_8px_rgba(37,99,235,0.25)]'
+                              : 'rounded-ss-[4px] bg-[#f3f5f9] text-[#111]',
+                    )}
+                >
+                    {internal && internalLabel && (
+                        <p className="mb-1 flex items-center gap-1 text-[10.5px] font-bold text-[#b45309]">
+                            <Lock className="size-3" />
+                            {internalLabel}
+                        </p>
+                    )}
 
-                {files && files.length > 0 && (
-                    <div className={cn('space-y-1.5', body && 'mt-2')}>
-                        {files.map((f) => (
-                            <AttachmentCard key={f.id} {...f} />
-                        ))}
-                    </div>
-                )}
+                    {body && (
+                        <p className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.55]" dir="auto">
+                            {body}
+                        </p>
+                    )}
 
-                <p className="mt-1 flex items-center justify-end gap-1 text-[10px] text-[#8a8a8a]">
-                    {sender && <span className="truncate">{sender}</span>}
-                    {sender && time && <span aria-hidden="true">·</span>}
-                    {time && <span dir="ltr">{time}</span>}
-                </p>
+                    {files && files.length > 0 && (
+                        <div className={cn('space-y-1.5', body && 'mt-2')}>
+                            {files.map((f) => (
+                                <AttachmentCard key={f.id} {...f} />
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 {footer}
             </div>
@@ -243,7 +269,7 @@ export function AttachmentCard({
     return (
         <a
             href={url}
-            className="flex items-center gap-2.5 rounded-[10px] border border-black/5 bg-white p-2 text-[12px] hover:bg-[#fafafa]"
+            className="flex items-center gap-2.5 rounded-[10px] border border-black/5 bg-white p-2 text-[12px] text-[#111] hover:bg-[#fafafa]"
             title={t('تنزيل')}
         >
             <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-[#fef2f2] text-[#dc2626]">

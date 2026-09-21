@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileText } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
+import { fileSize } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -42,7 +43,7 @@ export function ConversationDetailsPanel({
                                 className={cn(
                                     'rounded-[8px] px-2.5 py-1.5 text-[13px] font-medium transition-colors',
                                     tabs.value === tab.key
-                                        ? 'bg-[#e9f6ef] text-[#047857]'
+                                        ? 'bg-[#eef4ff] text-[#1d4ed8]'
                                         : 'text-[#71717a] hover:bg-[#fafaf9] hover:text-[#111]',
                                 )}
                             >
@@ -139,7 +140,7 @@ export function DetailSelect({
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 aria-label={label}
-                className="h-9 w-full rounded-[9px] border border-[var(--ui-border,#e8e8e8)] bg-white px-2 text-[12.5px] outline-none focus:border-[#059669]"
+                className="h-9 w-full rounded-[9px] border border-[var(--ui-border,#e8e8e8)] bg-white px-2 text-[12.5px] outline-none focus:border-[#2563eb]"
             >
                 {options.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -148,5 +149,74 @@ export function DetailSelect({
                 ))}
             </select>
         </label>
+    );
+}
+
+/** هويّةُ الطرف في أعلى اللوحة — وجهٌ كبيرٌ في الوسط واسمٌ وسطرٌ تحته */
+export function DetailIdentity({
+    avatar,
+    name,
+    subtitle,
+    children,
+}: {
+    avatar: ReactNode;
+    name: string;
+    subtitle?: ReactNode;
+    children?: ReactNode;
+}) {
+    return (
+        <div className="flex flex-col items-center py-3 text-center">
+            {avatar}
+            <p className="mt-2.5 text-[15px] font-bold text-[#111]">{name}</p>
+            {subtitle && <div className="mt-0.5 text-[12px] text-[#71717a]">{subtitle}</div>}
+            {children && <div className="mt-2 flex flex-wrap justify-center gap-1.5">{children}</div>}
+        </div>
+    );
+}
+
+/** قائمةُ ملفّات المحادثة — ما مرّ في الخيط من مرفقات، وعدُّه في الرأس */
+export function DetailFiles({
+    title,
+    files,
+    limit = 6,
+}: {
+    title: string;
+    files: { id: number; name: string; size: number; image: boolean; url: string }[];
+    limit?: number;
+}) {
+    if (files.length === 0) return null;
+
+    return (
+        <DetailSection
+            title={title}
+            action={<span className="rounded-full bg-[#eef4ff] px-2 py-0.5 text-[11px] font-bold text-[#1d4ed8]">{files.length}</span>}
+        >
+            <ul className="space-y-1.5">
+                {files.slice(0, limit).map((f) => (
+                    <li key={f.id}>
+                        <a
+                            href={f.url}
+                            target={f.image ? '_blank' : undefined}
+                            rel={f.image ? 'noopener noreferrer' : undefined}
+                            className="flex items-center gap-2.5 rounded-[10px] bg-white p-1.5 text-[12px] hover:bg-[#f7f8fb]"
+                        >
+                            {f.image ? (
+                                <img src={f.url} alt="" className="size-9 shrink-0 rounded-[8px] object-cover" loading="lazy" />
+                            ) : (
+                                <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-[#fef2f2] text-[#dc2626]">
+                                    <FileText className="size-4" />
+                                </span>
+                            )}
+                            <span className="min-w-0 flex-1">
+                                <span className="block truncate font-medium text-[#111]" dir="auto">
+                                    {f.name}
+                                </span>
+                                <span className="block text-[11px] text-[#9ca3af]">{fileSize(f.size)}</span>
+                            </span>
+                        </a>
+                    </li>
+                ))}
+            </ul>
+        </DetailSection>
     );
 }

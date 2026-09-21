@@ -80,12 +80,13 @@ export function MessageComposer({
                 </ul>
             )}
 
+            <div className="flex items-end gap-2">
             <div
                 className={cn(
-                    'flex items-end gap-1.5 rounded-[14px] border p-1.5',
+                    'flex min-w-0 flex-1 items-end gap-1 rounded-[22px] border px-2 py-1',
                     tone === 'internal'
                         ? 'border-[#f59e0b] bg-[#fffbeb]'
-                        : 'border-[var(--ui-border,#e8e8e8)] bg-white focus-within:border-[#059669]',
+                        : 'border-[#e6e9f0] bg-[#f7f8fb] focus-within:border-[#2563eb] focus-within:bg-white',
                 )}
             >
                 <input
@@ -128,6 +129,7 @@ export function MessageComposer({
                 />
 
                 {trailing}
+            </div>
 
                 <Button
                     type="button"
@@ -138,11 +140,11 @@ export function MessageComposer({
                     aria-label={t('إرسال')}
                     title={t('إرسال')}
                     className={cn(
-                        'rounded-full',
-                        tone === 'internal' ? 'bg-[#b45309] hover:bg-[#92400e]' : 'bg-[#059669] hover:bg-[#047857]',
+                        'size-11 shrink-0 rounded-[14px] shadow-[0_2px_8px_rgba(37,99,235,0.3)]',
+                        tone === 'internal' ? 'bg-[#b45309] hover:bg-[#92400e]' : 'bg-[#2563eb] hover:bg-[#1d4ed8]',
                     )}
                 >
-                    <Send className="rtl:-scale-x-100" />
+                    <Send className="size-5 rtl:-scale-x-100" />
                 </Button>
             </div>
 

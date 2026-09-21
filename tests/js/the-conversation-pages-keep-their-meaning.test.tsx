@@ -79,15 +79,15 @@ describe('صفحةُ الدعم', () => {
         shell();
         render(<SupportConversations {...supportProps()} />);
 
-        const note = screen.getByText('أظنّها التعريفات').closest('div')!;
-        expect(note).toHaveTextContent('ملاحظة داخلية');
+        const row = (text: string) => screen.getByText(text).closest('[class*="justify-"]') as HTMLElement;
 
-        const reply = screen.getByText('جرّب إعادة التشغيل').closest('div')!;
+        expect(screen.getByText('أظنّها التعريفات').closest('div')).toHaveTextContent('ملاحظة داخلية');
+
+        const reply = row('جرّب إعادة التشغيل');
         expect(reply).not.toHaveTextContent('ملاحظة داخلية');
-        expect(reply.parentElement!.className).toContain('justify-end');
+        expect(reply.className).toContain('justify-end');
 
-        const incoming = screen.getByText('لا تطبع').closest('div')!;
-        expect(incoming.parentElement!.className).toContain('justify-start');
+        expect(row('لا تطبع').className).toContain('justify-start');
     });
 
     it('النقلُ إلى CRM لا يمرّ قبل تأكيدٍ — وبعده يقصد المسارَ القائم', async () => {
@@ -105,6 +105,19 @@ describe('صفحةُ الدعم', () => {
         fireEvent.click(within(dialog).getByRole('button', { name: /نقل إلى CRM/ }));
         await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
         expect(post.mock.calls[0][0]).toBe('/super-admin.conversations.toCrm/7');
+    });
+});
+
+describe('صفحةُ الدعم — الترشيحُ لا يُغلق الخيط', () => {
+    it('الضغطُ على مرشِّحٍ يُبقي المحادثةَ المفتوحةَ في الطلب', () => {
+        shell();
+        render(<SupportConversations {...supportProps()} />);
+        const get = vi.mocked(router.get);
+        get.mockClear();
+
+        fireEvent.click(screen.getByRole('button', { name: /^مفتوحة/ }));
+        expect(get).toHaveBeenCalledTimes(1);
+        expect(get.mock.calls[0][1]).toMatchObject({ status: 'open', conversation: 7 });
     });
 });
 

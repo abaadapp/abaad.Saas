@@ -19,6 +19,8 @@ import { useConfirm } from '@/Components/ConfirmDialog';
 import { MessageComposer } from '@/Components/conversations/Composer';
 import {
     ConversationDetailsPanel,
+    DetailFiles,
+    DetailIdentity,
     DetailLine,
     DetailSection,
     DetailSelect,
@@ -217,8 +219,15 @@ export default function Conversations({
      */
     const [pane, setPane] = useState<Pane>(active ? 'thread' : 'list');
 
+    /*
+     * والمحادثةُ المفتوحة تبقى مفتوحةً وأنت ترشّح أو تبحث.
+     *
+     * كانت المرشِّحاتُ تُرسَل بلا `conversation`، فمن يقرأ خيطًا ويضيّق
+     * القائمةَ بجانبه يجد الخيطَ قد أُغلق — والبحثُ عن محادثةٍ أخرى ليس
+     * طلبًا لإغلاق هذه.
+     */
     const go = (params: Record<string, string | number | null>) => {
-        router.get(route('super-admin.conversations.index'), { ...filters, ...params } as never, {
+        router.get(route('super-admin.conversations.index'), { ...filters, conversation: active?.id ?? null, ...params } as never, {
             preserveState: true,
             preserveScroll: true,
             replace: true,
@@ -391,6 +400,7 @@ export default function Conversations({
                     active ? (
                         <Details
                             active={active}
+                            files={messages.flatMap((m) => m.files.map((f) => ({ ...f, image: f.isImage })))}
                             staff={staff}
                             statuses={statuses}
                             priorities={priorities}
@@ -436,6 +446,7 @@ function Thread({ active, messages }: { active: Active; messages: Message[] }) {
                                 لا تعرف إلا جهةً ونبرة.
                             */
                             side={m.scope === 'platform' ? 'out' : 'in'}
+                            avatar={<Avatar name={active.business.name} src={active.business.logo} size="sm" />}
                             tone={m.internal ? 'internal' : 'default'}
                             internalLabel={t('ملاحظة داخلية')}
                             body={m.body}
@@ -622,12 +633,15 @@ function Composer({
 
 function Details({
     active,
+    files,
     staff,
     statuses,
     priorities,
     onBack,
 }: {
     active: Active;
+    /* ما مرّ في الخيط من مرفقات — مشتقٌّ من الرسائل نفسِها، لا جدولَ آخر */
+    files: { id: number; name: string; size: number; image: boolean; url: string }[];
     staff: { id: number; name: string }[];
     statuses: Option[];
     priorities: Option[];
@@ -666,18 +680,17 @@ function Details({
         <ConversationDetailsPanel title={t('التفاصيل')} onBack={onBack}>
             {confirmDialog}
 
-            <DetailSection>
-                <div className="flex items-center gap-3">
-                    <Avatar name={active.business.name} src={active.business.logo} size="lg" />
-                    <div className="min-w-0">
-                        <p className="truncate text-[14px] font-bold text-[#111]">{active.business.name}</p>
-                        {active.business.status && (
-                            <Pill className="mt-1 bg-[#ecfdf5] text-[#047857]">{t(active.business.status)}</Pill>
-                        )}
-                    </div>
-                </div>
+            <DetailIdentity
+                avatar={<Avatar name={active.business.name} src={active.business.logo} size="xl" />}
+                name={active.business.name}
+                subtitle={<span dir="ltr">{active.reference}</span>}
+            >
+                <Pill className={statusTone(active.status)}>{active.statusLabel}</Pill>
+                {active.business.status && <Pill className="bg-[#ecfdf5] text-[#047857]">{t(active.business.status)}</Pill>}
+            </DetailIdentity>
 
-                <dl className="mt-3">
+            <DetailSection title={t('معلومات النشاط')}>
+                <dl>
                     <DetailLine label={t('فتحها')} value={active.business.owner} icon={<User className="size-3.5" />} />
                     <DetailLine label={t('البريد الإلكتروني')} value={active.business.email} ltr icon={<Mail className="size-3.5" />} />
                     <DetailLine label={t('رقم التواصل')} value={active.business.phone} ltr icon={<Phone className="size-3.5" />} />
@@ -750,6 +763,8 @@ function Details({
                     </Button>
                 </div>
             </DetailSection>
+
+            <DetailFiles title={t('الملفات')} files={files} />
 
             {active.channel === 'whatsapp' && (
                 <DetailSection title={t('ليست دعمًا؟')}>

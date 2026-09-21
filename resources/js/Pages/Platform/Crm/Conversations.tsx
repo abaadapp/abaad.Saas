@@ -17,7 +17,7 @@ import SmartLink from '@/Components/SmartLink';
 import type { SelectOption } from '@/Components/Field';
 import type { ServerPagination } from '@/Components/DataTable';
 import { MessageComposer } from '@/Components/conversations/Composer';
-import { ConversationDetailsPanel, DetailLine, DetailSection } from '@/Components/conversations/Details';
+import { ConversationDetailsPanel, DetailFiles, DetailIdentity, DetailLine, DetailSection } from '@/Components/conversations/Details';
 import {
     Avatar,
     ConversationEmptyState,
@@ -166,8 +166,9 @@ export default function CrmConversations() {
     const [pane, setPane] = useState<Pane>(active ? 'thread' : 'list');
     const [tab, setTab] = useState<'info' | 'signals'>('info');
 
+    /* والعميلُ المفتوح يبقى مفتوحًا وأنت ترشّح — انظر نظيرَه في شاشة الدعم */
     const go = (params: Record<string, string | number | undefined>) =>
-        router.get(route('super-admin.crm.conversations'), { ...filters, ...params }, {
+        router.get(route('super-admin.crm.conversations'), { ...filters, lead: active?.id, ...params }, {
             preserveState: true,
             preserveScroll: true,
         });
@@ -354,6 +355,7 @@ export default function CrmConversations() {
                                             key={m.id}
                                             /* والمعنى معنى المبيعات: `out` منّا و`in` منه — لا غير */
                                             side={m.direction}
+                                            avatar={<Avatar name={active.name} size="sm" />}
                                             body={m.body}
                                             sender={m.sender}
                                             time={m.at}
@@ -425,7 +427,7 @@ export default function CrmConversations() {
                             {tab === 'signals' && signals ? (
                                 <SignalsPanel signals={signals} />
                             ) : (
-                                <LeadPanel active={active} />
+                                <LeadPanel active={active} files={messages.flatMap((m) => m.files)} />
                             )}
                         </ConversationDetailsPanel>
                     )
@@ -644,25 +646,31 @@ function CrmComposer({
 
 /* ═══════════════════ لوحةُ العميل ═══════════════════ */
 
-function LeadPanel({ active }: { active: Active }) {
+function LeadPanel({
+    active,
+    files,
+}: {
+    active: Active;
+    /* ما مرّ في الخيط من مرفقات — مشتقٌّ من الرسائل نفسِها، لا جدولَ آخر */
+    files: { id: number; name: string; size: number; image: boolean; url: string }[];
+}) {
     const t = useTranslate();
     const unknown = t('غير معروف');
 
     return (
         <>
-            <DetailSection>
-                <div className="flex items-center gap-3">
-                    <Avatar name={active.name} size="lg" />
-                    <div className="min-w-0">
-                        <p className="truncate text-[14px] font-bold text-[#111]">{active.name}</p>
-                        <p className="mt-0.5 flex items-center gap-1 text-[12px] text-[#71717a]">
-                            <Phone className="size-3" />
-                            <span dir="ltr">{active.phone}</span>
-                        </p>
-                        <Pill className={cn('mt-1', TONE[active.stageTone] ?? TONE.gray)}>{active.stageLabel}</Pill>
-                    </div>
-                </div>
-            </DetailSection>
+            <DetailIdentity
+                avatar={<Avatar name={active.name} size="xl" />}
+                name={active.name}
+                subtitle={
+                    <span className="inline-flex items-center gap-1">
+                        <Phone className="size-3" />
+                        <span dir="ltr">{active.phone}</span>
+                    </span>
+                }
+            >
+                <Pill className={TONE[active.stageTone] ?? TONE.gray}>{active.stageLabel}</Pill>
+            </DetailIdentity>
 
             <DetailSection title={t('النشاط')}>
                 <dl>
@@ -687,6 +695,8 @@ function LeadPanel({ active }: { active: Active }) {
                     <DetailLine label={t('المتابعة القادمة')} value={active.nextFollowUpAt} empty={unknown} />
                 </dl>
             </DetailSection>
+
+            <DetailFiles title={t('الملفات')} files={files} />
 
             {active.notesSummary && (
                 <DetailSection title={t('آخر ملاحظة داخلية')}>

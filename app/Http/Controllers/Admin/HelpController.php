@@ -32,7 +32,8 @@ class HelpController extends Controller
     {
         $user = $request->user();
 
-        $conversations = SupportConversation::where('business_id', $user->business_id)
+        /* والموظّفُ يرى ما فتحه هو، وصاحبُ المتجر يرى الكلّ — `Support::visibleTo` */
+        $conversations = Support::visibleTo($user)
             ->with('assignee:id,name')
             ->orderByDesc('last_message_at')
             ->paginate(10)
@@ -167,8 +168,7 @@ class HelpController extends Controller
      */
     private function mine(Request $request, int $id): SupportConversation
     {
-        return SupportConversation::where('business_id', $request->user()->business_id)
-            ->findOrFail($id);
+        return Support::visibleTo($request->user())->findOrFail($id);
     }
 
     /** حدثُ النظام نصًّا — وما لا يخصّ التاجر لا يُترجم له */

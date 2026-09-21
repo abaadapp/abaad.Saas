@@ -172,6 +172,111 @@ class AShopSpeaksToAbaadTest extends TestCase
         $this->assertSame('الفاتورة لا تُطبع', $rows[0]['subject']);
     }
 
+    /* ═══════════════ المحادثةُ لمن فتحها — لا للمتجر كلِّه ═══════════════ */
+
+    /**
+     * صاحبُ المتجر يكتب لأبعاد عن اشتراكه أو عن موظّفٍ بعينه — ولا يقرؤها
+     * الكاشير. والمديرُ موظّفٌ كذلك: يرى ما فتحه هو.
+     */
+    public function test_an_employee_does_not_see_the_owners_conversation_in_the_list(): void
+    {
+        $this->conversation();
+        $cashier = $this->person($this->shop->id, 'sales', 'بائع');
+        Support::open($cashier, 'الطابعة', 'مشكلة تقنية', 'لا تطبع');
+
+        $rows = $this->actingAs($cashier)->get(route('admin.help.index'))
+            ->viewData('page')['props']['conversations']['data'];
+
+        $this->assertCount(1, $rows);
+        $this->assertSame('الطابعة', $rows[0]['subject']);
+    }
+
+    public function test_a_manager_is_an_employee_here_and_sees_only_what_he_opened(): void
+    {
+        $this->conversation();
+        $manager = $this->person($this->shop->id, 'manager', 'مدير');
+
+        $rows = $this->actingAs($manager)->get(route('admin.help.index'))
+            ->viewData('page')['props']['conversations']['data'];
+
+        $this->assertCount(0, $rows);
+    }
+
+    public function test_the_owner_sees_every_conversation_of_his_shop(): void
+    {
+        $this->conversation();
+        $cashier = $this->person($this->shop->id, 'sales', 'بائع');
+        Support::open($cashier, 'الطابعة', 'مشكلة تقنية', 'لا تطبع');
+
+        $rows = $this->actingAs($this->owner)->get(route('admin.help.index'))
+            ->viewData('page')['props']['conversations']['data'];
+
+        $this->assertCount(2, $rows);
+    }
+
+    public function test_an_employee_cannot_open_or_answer_the_owners_conversation(): void
+    {
+        $c = $this->conversation();
+        $cashier = $this->person($this->shop->id, 'sales', 'بائع');
+
+        $this->actingAs($cashier)->get(route('admin.help.show', $c->id))->assertNotFound();
+        $this->actingAs($cashier)
+            ->post(route('admin.help.reply', $c->id), ['body' => 'أنا هنا'])
+            ->assertNotFound();
+
+        $this->assertSame(1, SupportMessage::where('conversation_id', $c->id)->count(), 'لم يُكتب شيء');
+    }
+
+    public function test_an_employee_cannot_download_a_file_from_the_owners_conversation(): void
+    {
+        Storage::fake('local');
+        $c = $this->conversation();
+        $this->actingAs($this->owner)->post(route('admin.help.reply', $c->id), [
+            'body' => 'الصورة مرفقة',
+            'files' => [UploadedFile::fake()->image('receipt.png')],
+        ]);
+        $a = SupportAttachment::firstOrFail();
+        $cashier = $this->person($this->shop->id, 'sales', 'بائع');
+
+        $this->actingAs($cashier)->get(route('admin.help.attachment', [$c->id, $a->id]))->assertNotFound();
+        $this->actingAs($this->owner)->get(route('admin.help.attachment', [$c->id, $a->id]))->assertOk();
+    }
+
+    public function test_abaads_reply_rings_the_bell_of_the_one_who_asked_not_the_whole_shop(): void
+    {
+        $c = $this->conversation();
+        $cashier = $this->person($this->shop->id, 'sales', 'بائع');
+
+        $this->actingAs($this->staff)
+            ->post(route('super-admin.conversations.reply', $c->id), ['body' => 'وصلنا']);
+
+        $this->assertSame(1, Support::businessBadge($this->owner->fresh()));
+        $this->assertSame(0, Support::businessBadge($cashier->fresh()), 'شارةُ الكاشير صامتة');
+
+        $this->actingAs($this->owner->fresh());
+        $this->assertContains('support-reply-'.$c->id.'-'.$c->fresh()->last_message_at->timestamp,
+            array_column(\App\Support\Demo::allNotifications(), 'key'));
+
+        auth()->logout();
+        $this->actingAs($cashier->fresh());
+        $this->assertSame([], array_values(array_filter(
+            array_column(\App\Support\Demo::allNotifications(), 'key'),
+            fn ($k) => str_starts_with($k, 'support-reply-'),
+        )), 'الجرسُ لا يقول للكاشير «لديك ردّ» عن محادثةٍ ليست له');
+    }
+
+    public function test_abaads_reply_on_an_employees_conversation_rings_his_bell_and_the_owners(): void
+    {
+        $cashier = $this->person($this->shop->id, 'sales', 'بائع');
+        $c = Support::open($cashier, 'الطابعة', 'مشكلة تقنية', 'لا تطبع');
+
+        $this->actingAs($this->staff)
+            ->post(route('super-admin.conversations.reply', $c->id), ['body' => 'جرّب إعادة التشغيل']);
+
+        $this->assertSame(1, Support::businessBadge($cashier->fresh()));
+        $this->assertSame(1, Support::businessBadge($this->owner->fresh()), 'وصاحبُ المتجر يرى متجرَه كلَّه');
+    }
+
     /* ═══════════════ لوحة المنصّة ═══════════════ */
 
     public function test_the_platform_opens_the_conversation_center(): void

@@ -3491,7 +3491,8 @@ class Demo
          * ومن ينبّه بها يُخرج كلامَ الفريق إلى صاحب المتجر بلا أن يفتحه أحد.
          */
         if ($u) {
-            $replies = SupportConversation::where('business_id', $bid)
+            /* وردٌّ على محادثةٍ لم يفتحها الموظّفُ لا يبلغه — `Support::visibleTo` */
+            $replies = Support::visibleTo($u)
                 ->orderByDesc('last_message_at')->limit($limit)->get();
 
             foreach ($replies as $c) {

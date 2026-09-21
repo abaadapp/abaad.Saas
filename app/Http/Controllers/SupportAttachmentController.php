@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\SupportAttachment;
 use App\Models\SupportConversation;
+use App\Support\Support;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -42,7 +43,8 @@ class SupportAttachmentController extends Controller
         $thread = SupportConversation::findOrFail($conversation);
 
         if (! $user->isSuperAdmin()) {
-            abort_unless($thread->business_id === $user->business_id, 404);
+            /* والمرفقُ يتبع محادثتَه: من لا يرى المحادثةَ لا يُنزّل ملفَّها */
+            abort_unless(Support::visibleTo($user)->whereKey($thread->id)->exists(), 404);
         }
 
         /*

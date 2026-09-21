@@ -6146,5 +6146,6 @@
     "غير مرتبط بالمخزون": "Not stock-tracked",
     "ربط المنتج بالمخزون": "Track this product in stock",
     "يُخصم من الكمية عند البيع، ويُمنع بيعه عند النفاد، ويُنبَّه عند انخفاضه": "Quantity is deducted on sale, selling stops when it runs out, and you are alerted when it runs low",
-    "لا يُخصم ولا ينفد ولا يُنبَّه — مناسب للخدمات وما يُصنع عند الطلب": "Nothing is deducted, it never runs out and never alerts — for services and made-to-order items"
+    "لا يُخصم ولا ينفد ولا يُنبَّه — مناسب للخدمات وما يُصنع عند الطلب": "Nothing is deducted, it never runs out and never alerts — for services and made-to-order items",
+    "مرتبط بالمخزون": "Stock-tracked"
 }

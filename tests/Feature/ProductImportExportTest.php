@@ -98,7 +98,7 @@ class ProductImportExportTest extends TestCase
         $sheet = IOFactory::load($path)->getActiveSheet()->toArray();
 
         $this->assertSame(
-            ['الاسم', 'القسم', 'SKU', 'الباركود', 'السعر', 'التكلفة', 'الكمية', 'حد التنبيه', 'الضريبة %', 'الخصم %', 'الحالة'],
+            ['الاسم', 'القسم', 'SKU', 'الباركود', 'السعر', 'التكلفة', 'الكمية', 'حد التنبيه', 'الضريبة %', 'الخصم %', 'الحالة', 'مرتبط بالمخزون'],
             array_map('strval', $sheet[0]),
         );
         $this->assertSame('باقة ورد', $sheet[1][0]);

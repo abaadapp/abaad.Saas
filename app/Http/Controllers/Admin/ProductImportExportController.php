@@ -56,6 +56,8 @@ class ProductImportExportController extends Controller
         return [
             __('الاسم'), __('القسم'), 'SKU', __('الباركود'), __('السعر'), __('التكلفة'),
             __('الكمية'), __('حد التنبيه'), __('الضريبة %'), __('الخصم %'), __('الحالة'),
+            /* وآخرًا لا وسطًا: ملفٌّ بلا ترويسة يُقرأ بالترتيب القياسيّ، وما سبق المفتاحَ لا يتزحزح */
+            __('مرتبط بالمخزون'),
         ];
     }
 
@@ -75,6 +77,7 @@ class ProductImportExportController extends Controller
                 round((float) $p->tax, 2),
                 round((float) $p->discount, 2),
                 $p->active ? __('مفعّل') : __('معطّل'),
+                $p->tracksStock() ? __('نعم') : __('لا'),
             ])->all();
     }
 
@@ -88,7 +91,7 @@ class ProductImportExportController extends Controller
 
         $sheet->fromArray($this->columns(), null, 'A1');
 
-        $lastCol = 'K';
+        $lastCol = 'L';
         $sheet->getStyle("A1:{$lastCol}1")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
         $sheet->getStyle("A1:{$lastCol}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
         $sheet->getStyle("A1:{$lastCol}1")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -105,6 +108,7 @@ class ProductImportExportController extends Controller
                 $sheet->setCellValue("{$col}{$row}", $r[$i]);
             }
             $sheet->setCellValue("K{$row}", $r[10]);
+            $sheet->setCellValue("L{$row}", $r[11]);
             $row++;
         }
 
@@ -149,6 +153,7 @@ class ProductImportExportController extends Controller
         'name' => 'الاسم', 'category' => 'القسم', 'sku' => 'SKU', 'barcode' => 'الباركود',
         'price' => 'السعر', 'cost' => 'التكلفة', 'quantity' => 'الكمية', 'alert_qty' => 'حد التنبيه',
         'tax' => 'الضريبة %', 'discount' => 'الخصم %', 'status' => 'الحالة',
+        'tracks_stock' => 'مرتبط بالمخزون',
     ];
 
     public function upload(Request $request)
@@ -396,16 +401,19 @@ class ProductImportExportController extends Controller
                     'tax' => $r['tax'],
                     'discount' => $r['discount'],
                     'active' => $r['active'],
+                    'tracks_stock' => $r['tracksStock'] ?? true,
                 ];
 
                 if ($r['status'] === 'new') {
+                    $tracked = $fields['tracks_stock'];
                     $product = Product::create($fields + [
                         'business_id' => $bid,
-                        'quantity' => $r['quantity'],
+                        /* ومن لا يُعدّ على رفٍّ لا كميّةَ له ولا رصيدَ فرع — كما في نموذج المنتج */
+                        'quantity' => $tracked ? $r['quantity'] : 0,
                         // ‏ولا صورةَ تُخترع للمستورَد: مئتا صنفٍ بمئتَي صورةٍ عشوائيّة
                         'image' => null,
                     ]);
-                    foreach ($this->allocation($r, $branchId) as $branch => $qty) {
+                    foreach ($tracked ? $this->allocation($r, $branchId) : [] as $branch => $qty) {
                         BranchStock::adjust($bid, $branch, $product->id, $qty);
                         // ورصيدٌ دخل الرفَّ يقول من أين جاء — انظر `noteImport`
                         $this->noteImport($bid, $branch, $product, $qty, StockLedger::OPENING, $file);
@@ -433,6 +441,7 @@ class ProductImportExportController extends Controller
                     'name' => 'name', 'category_id' => 'category', 'sku' => 'sku', 'barcode' => 'barcode',
                     'price' => 'price', 'cost' => 'cost', 'alert_qty' => 'alert_qty',
                     'tax' => 'tax', 'discount' => 'discount', 'active' => 'status',
+                    'tracks_stock' => 'tracks_stock',
                 ];
                 foreach ($map as $column => $field) {
                     if (! ($stated[$field] ?? true)) {
@@ -446,7 +455,9 @@ class ProductImportExportController extends Controller
                 // تجعل مجموع الفروع 30 وكمية المنتج 50 — وهو الخلل الذي كان
                 // يُجيز البيع من فرعٍ فارغ.
                 $oldQty = (int) $product->quantity;
-                $quantityStated = $stated['quantity'] ?? true;
+                /* وكميّةُ صنفٍ لا يُعدّ لا تُكتب ولا تُحرَّك — كما في نموذج المنتج */
+                $quantityStated = ($stated['quantity'] ?? true)
+                    && ($fields['tracks_stock'] ?? $product->tracksStock());
                 $product->update($quantityStated ? $fields + ['quantity' => $r['quantity']] : $fields);
 
                 $deltas = [];
@@ -684,6 +695,11 @@ class ProductImportExportController extends Controller
 
             $alertQty = $idx['alert_qty'] !== null && $get('alert_qty') !== '' ? (int) $this->num($get('alert_qty')) : 10;
             $active = ! in_array($this->norm($get('status')), ['معطل', 'معطّل', 'غير مفعل', 'غير مفعّل', 'inactive', 'disabled', '0', 'لا'], true);
+            /*
+             * مرتبطٌ بالمخزون ما لم يقل الملفُّ «لا» — والعمودُ الغائب يعني
+             * الافتراض: قائمةُ أسعارٍ قديمة لا تفكّ ربطَ شيء.
+             */
+            $tracksStock = ! in_array($this->norm($get('tracks_stock')), ['لا', 'غير مرتبط', 'غير مرتبط بالمخزون', 'no', 'false', '0', 'off'], true);
 
             $categoryId = $category !== '' ? ($categoryByName[$this->norm($category)] ?? null) : null;
             $categoryNew = $category !== '' && $categoryId === null;
@@ -749,7 +765,7 @@ class ProductImportExportController extends Controller
              * ثلاثتها لا تُرى وقت الاستيراد: الأرقام تبقى معقولة.
              */
             $stated = [];
-            foreach (['name', 'category', 'sku', 'barcode', 'price', 'cost', 'alert_qty', 'tax', 'discount', 'status'] as $field) {
+            foreach (['name', 'category', 'sku', 'barcode', 'price', 'cost', 'alert_qty', 'tax', 'discount', 'status', 'tracks_stock'] as $field) {
                 $stated[$field] = $idx[$field] !== null && $get($field) !== '';
             }
             // الكمية: عمودٌ واحد، أو أعمدة فروع — وأيّهما وُجد فقد ذُكرت
@@ -760,7 +776,7 @@ class ProductImportExportController extends Controller
             $rows[] = compact(
                 'name', 'category', 'categoryDisplay', 'categoryNew', 'categoryId', 'sku', 'barcode',
                 'price', 'cost', 'quantity', 'branchQty', 'alertQty', 'tax', 'discount', 'active',
-                'status', 'note', 'targetId', 'stated',
+                'tracksStock', 'status', 'note', 'targetId', 'stated',
             ) + [
                 'grossPrice' => $grossPrice,
                 'currentQty' => $targetId ? ($qtyOf[$targetId] ?? 0) : null,
@@ -861,6 +877,8 @@ class ProductImportExportController extends Controller
             'cost' => ['التكلفة', 'تكلفة', 'سعر الشراء', 'cost', 'purchase'],
             'price' => ['السعر', 'سعر', 'البيع', 'price', 'sale'],
             'alert_qty' => ['حد التنبيه', 'الحد الأدنى', 'حد', 'alert', 'min', 'reorder'],
+            // و«مرتبط بالمخزون» قبل «الكمية» — وإلّا التقطت «المخزون» عمودَ الربط
+            'tracks_stock' => ['مرتبط بالمخزون', 'مرتبط', 'ربط', 'tracks', 'track stock', 'stock link', 'linked'],
             'quantity' => ['الكمية', 'كمية', 'المخزون', 'الرصيد', 'quantity', 'qty', 'stock'],
             'tax' => ['الضريبة', 'ضريبة', 'tax', 'vat'],
             'discount' => ['الخصم', 'خصم', 'discount'],

@@ -34,6 +34,8 @@ interface Row {
     branchQty: Record<string, number>;
     currentQty: number | null;
     active: boolean;
+    /** مرتبطٌ بالمخزون — و`false` يُقال في خانة الكميّة بدل رقمٍ لا معنى له */
+    tracksStock?: boolean;
     status: 'new' | 'update' | 'invalid' | 'dup_file';
     note?: string | null;
 }
@@ -347,7 +349,9 @@ export default function ProductImportPreview() {
                                         </TableCell>
                                         {/* الكمية تُكتب فوق القديمة لا تُضاف إليها — يُعرض الطرفان */}
                                         <TableCell className="tabular-nums text-[#4b4b4b]">
-                                            {r.status === 'update' && r.currentQty !== null && r.currentQty !== r.quantity ? (
+                                            {r.tracksStock === false ? (
+                                                <span className="text-[11px] text-[#9ca3af]">{t('غير مرتبط بالمخزون')}</span>
+                                            ) : r.status === 'update' && r.currentQty !== null && r.currentQty !== r.quantity ? (
                                                 <span dir="ltr" className="inline-flex items-center gap-1">
                                                     <span className="text-[#9ca3af] line-through">{r.currentQty}</span>
                                                     <span>→</span>

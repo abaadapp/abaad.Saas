@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
+use App\Models\BranchStock;
 use App\Models\Business;
 use App\Models\Currency;
 use App\Models\InventoryMovement;
@@ -12,6 +14,8 @@ use App\Support\Ledger;
 use App\Support\StockLedger;
 use App\Support\Website\Shelf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 /**
@@ -189,6 +193,83 @@ class AProductMayLiveOutsideTheStockBookTest extends TestCase
         ]);
 
         $this->assertTrue($p->fresh()->tracksStock());
+    }
+
+    /* ═══════════ الملفّ ═══════════ */
+
+    private function importCsv(string $body): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'imp').'.csv';
+        file_put_contents($path, "\xEF\xBB\xBF".$body);
+        $this->actingAs($this->owner)->post(route('admin.products.import.upload'), [
+            'file' => new UploadedFile($path, 'products.csv', 'text/csv', null, true),
+        ]);
+        $this->actingAs($this->owner)->post(route('admin.products.import.confirm'));
+    }
+
+    public function test_the_file_says_whether_a_product_is_stock_tracked(): void
+    {
+        Branch::create(['business_id' => $this->business->id, 'name' => 'مسقط']);
+
+        $this->importCsv("الاسم,السعر,الكمية,مرتبط بالمخزون\nبضاعة,10,7,نعم\nخدمة,5,9,لا\n");
+
+        $goods = Product::where('name', 'بضاعة')->firstOrFail();
+        $service = Product::where('name', 'خدمة')->firstOrFail();
+
+        $this->assertTrue($goods->tracksStock());
+        $this->assertSame(7, (int) $goods->quantity);
+        $this->assertSame(7, (int) BranchStock::where('product_id', $goods->id)->sum('quantity'));
+        $this->assertFalse($service->tracksStock());
+        $this->assertSame(0, (int) $service->quantity, 'كميّةٌ في الملفّ لصنفٍ لا يُعدّ تُهمَل');
+        $this->assertSame(0, (int) BranchStock::where('product_id', $service->id)->sum('quantity'), 'ولا رصيدَ فرعٍ له');
+        $this->assertSame(0, InventoryMovement::where('product_id', $service->id)->count());
+    }
+
+    public function test_a_file_without_the_column_imports_tracked_products(): void
+    {
+        $this->importCsv("الاسم,السعر,الكمية\nبضاعة,10,7\n");
+
+        $this->assertTrue(Product::where('name', 'بضاعة')->firstOrFail()->tracksStock());
+    }
+
+    public function test_a_file_without_the_column_does_not_relink_an_untracked_product(): void
+    {
+        $p = $this->product(['tracks_stock' => false, 'name' => 'خدمة', 'sku' => 'SRV-1']);
+
+        $this->importCsv("الاسم,SKU,السعر,الكمية\nخدمة,SRV-1,6,50\n");
+
+        $p->refresh();
+        $this->assertFalse($p->tracksStock(), 'قائمةُ أسعارٍ لا تفكّ ربطَ شيء ولا تربطه');
+        $this->assertSame(6.0, (float) $p->price);
+        $this->assertSame(0, (int) $p->quantity, 'وكميّتُه لا تُكتب');
+        $this->assertSame(0, InventoryMovement::where('product_id', $p->id)->count());
+    }
+
+    public function test_the_export_carries_the_link_and_survives_the_round_trip(): void
+    {
+        $this->product(['tracks_stock' => false, 'name' => 'خدمة', 'sku' => 'SRV-1']);
+        $this->product(['tracks_stock' => true, 'name' => 'بضاعة', 'sku' => 'GD-1', 'quantity' => 3]);
+
+        $res = $this->actingAs($this->owner)->get(route('admin.products.export.xlsx'))->assertOk();
+        $path = tempnam(sys_get_temp_dir(), 'exp').'.xlsx';
+        file_put_contents($path, $res->streamedContent());
+        $sheet = IOFactory::load($path)->getActiveSheet()->toArray();
+
+        $col = array_search('مرتبط بالمخزون', array_map('strval', $sheet[0]), true);
+        $this->assertNotFalse($col);
+        $byName = collect(array_slice($sheet, 1))->keyBy(0);
+        $this->assertSame('لا', $byName['خدمة'][$col]);
+        $this->assertSame('نعم', $byName['بضاعة'][$col]);
+
+        // والملفُّ يعود كما خرج: فكُّ الربط لا يضيع في الرحلة
+        Product::where('name', 'خدمة')->update(['tracks_stock' => true]);
+        $this->actingAs($this->owner)->post(route('admin.products.import.upload'), [
+            'file' => new UploadedFile($path, 'products.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        ]);
+        $this->actingAs($this->owner)->post(route('admin.products.import.confirm'));
+
+        $this->assertFalse(Product::where('name', 'خدمة')->firstOrFail()->tracksStock());
+        $this->assertTrue(Product::where('name', 'بضاعة')->firstOrFail()->tracksStock());
     }
 
     /** والدفترُ نفسُه يردّ حركةَ صنفٍ لا يُعدّ — لا المتحكّمُ وحدَه */

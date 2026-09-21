@@ -80,7 +80,6 @@ export default function PaymentDialog({
         ? ALL_METHODS.filter((m) => methods.includes(m.value))
         : ALL_METHODS;
     const [step, setStep] = useState<'pay' | 'success'>('pay');
-    const [paid, setPaid] = useState('');
     /*
      * لا وسيلةَ مختارةً حتى تُختار.
      *
@@ -152,11 +151,10 @@ export default function PaymentDialog({
         onOpenChange(next);
     };
 
-    // كل فتح جديد يبدأ من خطوة الدفع بمبلغ صفر
+    // كل فتح جديد يبدأ من خطوة الدفع
     useEffect(() => {
         if (open) {
             setStep('pay');
-            setPaid('');
             setResult(null);
             setFlowerError(null);
             setMethod('');
@@ -209,10 +207,6 @@ export default function PaymentDialog({
             setOccasionBusy(false);
         }
     };
-
-    const paidNum = Number(paid) || 0;
-    const remaining = Math.max(0, displayTotal - paidNum);
-    const change = Math.max(0, paidNum - displayTotal);
 
     const confirm = async () => {
         /*
@@ -373,31 +367,6 @@ export default function PaymentDialog({
                         <div className="rounded-2xl bg-gray-100 p-4 text-center">
                             <p className="text-sm text-[#111]">{t('الإجمالي المطلوب')}</p>
                             <p className="mt-1 text-3xl font-extrabold text-[#111]">{money(total)}</p>
-                        </div>
-
-                        <div>
-                            <Label htmlFor="paid" className="mb-1.5">{t('المبلغ المدفوع')}</Label>
-                            <Input
-                                id="paid"
-                                inputMode="decimal"
-                                enterKeyHint="done"
-                                autoComplete="off"
-                                value={paid}
-                                onChange={(e) => setPaid(e.target.value)}
-                                placeholder="0.000"
-                                className="h-12 text-lg font-bold touch:h-14"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="rounded-xl bg-gray-50 p-3 text-center">
-                                <p className="text-xs text-gray-400">{t('المبلغ المتبقي')}</p>
-                                <p className="mt-0.5 font-bold text-[#dc2626]">{fmt(remaining)}</p>
-                            </div>
-                            <div className="rounded-xl bg-gray-50 p-3 text-center">
-                                <p className="text-xs text-gray-400">{t('المبلغ المرتجع')}</p>
-                                <p className="mt-0.5 font-bold text-[#059669]">{fmt(change)}</p>
-                            </div>
                         </div>
 
                         <div>

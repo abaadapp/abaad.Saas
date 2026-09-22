@@ -6270,5 +6270,16 @@
     "= المحسوب": "= computed",
     "يدفع الزبون": "Customer pays",
     "السعر النهائي لا يغطّي الإضافات.": "The final price does not cover the add-ons.",
-    "أدخل السعر النهائي.": "Enter the final price."
+    "أدخل السعر النهائي.": "Enter the final price.",
+    "افتح لوحة موقعك": "Open your site panel",
+    "ما يطلبه زبونك من الموقع يصل «الطلبات» طلبًا حقيقيًّا بقناة الموقع.": "What your customer orders on the site reaches Orders as a real order on the website channel.",
+    "زبونك يفتح واجهة RIBBON على هذا العنوان — وهذا المفتاح يفتحها ويُغلقها.": "Your customer opens the RIBBON storefront at this address — this switch opens and closes it.",
+    "واجهة": "Storefront",
+    "موقعك بتصميمك، وما يراه زبونك اليوم": "Your site in your own design, and what your customer sees today",
+    "في موقعك سلّة وإتمام طلب — ما يطلبه زبونك يصل «الطلبات» طلبًا حقيقيًّا بقناة الموقع، جديدًا وغير مدفوع.": "Your site has a cart and checkout — what your customer orders reaches Orders as a real order on the website channel, new and unpaid.",
+    "طلبات الموقع اليوم": "Website orders today",
+    "افتح الطلبات": "Open orders",
+    "لا عنوان لمتجرك بعد — اكتب اسمَ متجرك في الإعدادات ثمّ فعّل «نشر المتجر».": "Your store has no address yet — enter your store name in Settings, then turn on “Publish store”.",
+    "«نشر المتجر» مُطفأ في الإعدادات — لا يفتح زبونٌ موقعك حتى تُفعّله.": "“Publish store” is off in Settings — no customer can open your site until you turn it on.",
+    "واجهةُ RIBBON — موقعُك بتصميمك، بلا قوالب جاهزة. وما تراه أدناه يضبطه: عنوانُه ونشرُه ودفعُه وتوصيلُه.": "RIBBON storefront — your site in your own design, no ready-made templates. What you see below controls it: its address, publishing, payment and delivery."
 }

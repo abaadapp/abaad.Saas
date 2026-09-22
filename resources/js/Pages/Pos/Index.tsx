@@ -537,7 +537,17 @@ export default function PosIndex() {
                 </section>
 
                 {/* ===================== السلة ===================== */}
-                <aside className="flex min-h-0 w-full shrink-0 flex-col rounded-2xl border border-gray-100 bg-white shadow-sm md:w-[21rem] lg:w-1/3">
+                {/*
+                    و`shrink-0` من ٧٦٨ فصاعدًا وحدَها.
+
+                    فوق الحدّ الصفُّ أفقيّ، والانكماشُ يمسّ **العرض** — وهو
+                    العطبُ الموصوف فوق: تُدفع السلّة خارج الإطار فتُقصّ.
+                    وتحته العمودُ رأسيّ، والانكماشُ يمسّ **الارتفاع** — وهو
+                    المطلوب: بلا إذنٍ به تأخذ السلّةُ ارتفاعَ محتواها كلَّه
+                    داخل شاشةٍ لا تُمرَّر، فيُقصّ ذيلُها على الهاتف كما كان
+                    يُقصّ على اللوحيّ. و`min-h` أرضيّتُها فلا تنسحق.
+                */}
+                <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-gray-100 bg-white shadow-sm max-md:min-h-[20rem] md:w-[21rem] md:shrink-0 lg:w-1/3">
                     {/* الرأس + العميل */}
                     <div className="shrink-0 border-b border-gray-100 px-4 py-3">
                         <div className="flex items-center justify-between">
@@ -654,8 +664,13 @@ export default function PosIndex() {
                         )}
                     </div>
 
-                    {/* البنود */}
-                    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+                    {/*
+                        البنود.
+                        و`min-h-[7rem]` أرضيّةٌ لا زينة: الملخّصُ تحتها صار
+                        ينكمش حين يطول (انظر تعليقَه)، والانكماشُ يأكل من
+                        البنود حتّى تختفي — فتُقرأ سلّةٌ فارغةٌ وفيها بضاعة.
+                    */}
+                    <div className="min-h-[7rem] flex-1 overflow-y-auto overscroll-contain px-3 py-3">
                         {cart.items.length === 0 ? (
                             <div className="flex h-full flex-col items-center justify-center py-10 text-center">
                                 <div className="mb-3 flex size-16 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
@@ -763,8 +778,27 @@ export default function PosIndex() {
                         )}
                     </div>
 
-                    {/* الملخص */}
-                    <div className="shrink-0 space-y-2.5 border-t border-gray-100 p-3">
+                    {/*
+                        ═══ الملخّص — وثالثُ مرّةٍ يُقصّ فيها زرُّ الدفع ═══
+
+                        كان `shrink-0` بلا تمرير: كتلةٌ تأخذ ارتفاعَ محتواها
+                        مهما طال، داخل شاشةٍ `overflow-hidden`. فما زاد عن
+                        الإطار **يُقصّ ولا يُمرَّر** — لا بيدٍ ولا بعجلة.
+
+                        وارتفاعُها ليس ثابتًا: الكوبون، وبطاقةُ نقاط الولاء،
+                        وسطرُ خصمها، وسطرُ ما سيُكسب، وتحذيرُ المخزون،
+                        والضريبة — كلُّها تظهر بشرط. فمتجرٌ فعّل الولاء وفتح
+                        عميلًا له نقاط يزيد ملخّصُه نحوَ مئتي بكسل دفعةً
+                        واحدة، فينزل «الإجمالي» وزرُّ الدفع تحت الحافّة.
+
+                        والكاشيرُ يقف أمام زبونٍ ولا يجد أين يدفع.
+
+                        فصار ينكمش ويُمرَّر: `min-h-0` تأذن بالانكماش تحت
+                        مقاس محتواه، و`overflow-y-auto` تردّ ما انكمش بعجلة.
+                        وزرُّ الدفع خرج منه إلى قاعٍ مثبَّت — فلا يُقصّ ولا
+                        يحتاج تمريرًا أصلًا.
+                    */}
+                    <div className="min-h-0 space-y-2.5 overflow-y-auto overscroll-contain border-t border-gray-100 p-3" data-testid="pos-summary">
                         <div className="flex items-center justify-between text-sm text-gray-600">
                             <span>{t('المجموع الفرعي')}</span>
                             <span className="font-medium text-gray-800">{money(cart.subtotal)}</span>
@@ -957,6 +991,19 @@ export default function PosIndex() {
                             </button>
                         </div>
 
+                    </div>
+
+                    {/*
+                        ═══ قاعُ الدفع — مثبَّتٌ لا يُقصّ ولا يُمرَّر ═══
+
+                        وهو آخرُ ما يُتنازل عنه في هذه الشاشة: الكاشيرُ قد
+                        يمرّر ليقرأ ضريبةً أو خصمَ نقاط، ولا يُقبل أن يمرّر
+                        ليجد **أين يدفع**.
+
+                        والإجماليُّ مكتوبٌ عليه، فخروجُه من كتلة التمرير لا
+                        يُخفي الرقمَ عن أحد.
+                    */}
+                    <div className="shrink-0 border-t border-gray-100 p-3" data-testid="pos-paybar">
                         <button
                             type="button"
                             onClick={() =>

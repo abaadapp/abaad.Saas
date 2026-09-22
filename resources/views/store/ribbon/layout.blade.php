@@ -19,10 +19,20 @@
     @if ($logo)
         <meta property="og:image" content="{{ $logo }}">
     @endif
+    {{-- أيقونةُ المتصفّح من دليل الهوية — لسانُ الزبون يحمل علامةَ المتجر --}}
+    <link rel="icon" type="image/svg+xml" href="/brand/ribbon/favicon.svg">
+    <link rel="apple-touch-icon" href="/brand/ribbon/apple-touch-icon.png">
+    <meta name="theme-color" content="#58563C">
     <link rel="stylesheet" href="/fonts/ibm-plex-arabic.css">
     <style>
         :root {
-            --rb-olive: #5a563e; --rb-olive-dark: #47462f; --rb-cream: #efeadb; --rb-bg: #faf8f5; --rb-soft: #f1efe6; --rb-line: #e3dfd2; --rb-border: #d3d0c2; --rb-err: #b5525c;
+            /*
+             * الألوانُ من دليل هوية Ribbon بالحرف — لا مقرَّبةً ولا مُستخرَجةً
+             * من صورة: الأخضر `#58563C` والكريميّ `#F7F2EC` كما في ملفّ الهوية.
+             * وما عداهما مشتقٌّ منهما: الأخضرُ الداكن للضغط، وكريميٌّ أعمق
+             * قليلًا لمواضع الصور، وخطوطٌ دافئةٌ تتبع الكريميّ لا الرماديّ.
+             */
+            --rb-olive: #58563c; --rb-olive-dark: #474530; --rb-cream: #f7f2ec; --rb-bg: #f7f2ec; --rb-soft: #efe8de; --rb-line: #e4dcd1; --rb-border: #d8cfc2; --rb-err: #5f2832;
 
             /*
              * الحواف — ثلاثةُ مقاديرَ لا رقمٌ في كلّ موضع.
@@ -47,8 +57,15 @@
          * يجعل كلَّ ما يُرسم داخلَه — حتى ما يضيفه المتصفّح من حقولٍ أصليّة —
          * يرثه، فلا يبقى في الصفحة موضعٌ يسقط إلى Times.
          */
-        html { font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif; }
-        body { margin: 0; background: var(--rb-bg); color: #000; font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+        /*
+         * وأوّلُ السلسلة خطُّ الهوية `GE Hili` — واسمًا لا ملفًّا.
+         *
+         * حزمةُ الهوية لا تحمل ملفّاته، ورخصتُه لا تُجيز استخراجَه من ملفّ
+         * الدليل. فيُذكر أوّلًا ليتولّى يومَ تُضاف ملفّاتُه المرخَّصة، ويقع
+         * اليومَ على `IBM Plex Sans Arabic` المخزَّن عندنا.
+         */
+        html { font-family: 'GE Hili', 'IBM Plex Sans Arabic', 'Noto Kufi Arabic', system-ui, Arial, sans-serif; }
+        body { margin: 0; background: var(--rb-bg); color: #000; font-family: 'GE Hili', 'IBM Plex Sans Arabic', 'Noto Kufi Arabic', system-ui, Arial, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
         a { color: #000; text-decoration: none; }
         input, select, textarea, button { font-family: inherit; }
         input:focus, select:focus, textarea:focus { outline: 2px solid var(--rb-olive); outline-offset: 0; }
@@ -73,7 +90,8 @@
             .rb-head-in { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); grid-template-areas: "lang logo cart" "search search search"; padding: 12px 16px 14px; gap: 12px 8px; min-height: 0; }
             .rb-right { display: contents; }
             .rb-lang { grid-area: lang; justify-self: start; } .rb-cartbtn { grid-area: cart; justify-self: end; }
-            .rb-logo img { width: clamp(150px, 34vw, 210px); }
+            /* وفراغٌ حول الشعار على الهاتف: بين زرّ السلّة وزرّ اللغة مساحةٌ ضيّقة */
+            .rb-logo img { width: clamp(118px, 29vw, 190px); }
             .rb-search { max-width: none; }
         }
 
@@ -130,7 +148,9 @@
             <span></span>
             <input name="q" placeholder="{{ $t['search'] }}" value="{{ request()->query('q', '') }}" aria-label="{{ $t['search'] }}">
         </form>
-        <a href="{{ $base }}/" class="rb-logo" aria-label="{{ $business->name }}"><img src="/store/ribbon/logo-wide.png" alt="{{ $business->name }}"></a>
+        {{-- الشعارُ ملفٌّ متّجه من دليل الهوية — حادٌّ في كلّ مقاسٍ وشاشة،
+             وبنسخته الكريمية لأنّ الترويسة زيتونيّةٌ داكنة --}}
+        <a href="{{ $base }}/" class="rb-logo" aria-label="{{ $business->name }}"><img src="/brand/ribbon/logo-cream.svg" alt="{{ $business->name }}"></a>
         <div class="rb-right">
             @php
                 $rbPath = request()->getPathInfo();
@@ -151,7 +171,7 @@
     <div class="rb-foot-in">
         <div class="rb-foot-grid">
             <div style="display:flex;flex-direction:column;gap:16px">
-                <img src="/store/ribbon/logo-wide.png" alt="{{ $business->name }}" style="width:180px;height:auto;display:block">
+                <img src="/brand/ribbon/logo-cream.svg" alt="{{ $business->name }}" style="width:180px;height:auto;display:block">
                 @if ($identity['about'] !== '')
                     <p style="margin:0;line-height:1.8;max-width:300px">{{ $identity['about'] }}</p>
                 @endif

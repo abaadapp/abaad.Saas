@@ -24,6 +24,7 @@ use App\Support\Storefront;
 use App\Support\Website\Commerce;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -102,6 +103,14 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
      *
      * والملفّاتُ تُفحص وجودًا: رابطٌ إلى ملفٍّ غير موجود يسقط الصفحةَ كلَّها
      * إلى خطّ النظام بلا أن يُخطئ شيء.
+     *
+     * ═══ وأوّلُ السلسلة قد لا يكون هو العامل ═══
+     *
+     * دليلُ هوية Ribbon يسمّي `GE Hili` خطًّا عربيًّا، وملفّاتُه ليست معنا
+     * ورخصتُه لا تُجيز استخراجَها من الدليل. فهو أوّلُ السلسلة اسمًا لِما
+     * يأتي، والعاملُ اليومَ ما بعده. فيُفحص أنّ الخطّ المخزَّن عندنا **في**
+     * السلسلة لا أنّه أوّلُها — وإلّا سقط الحارسُ يومَ تُشترى ملفّاتُ الخطّ
+     * وتُضاف، وهو اليومُ الذي يجب أن يمرّ فيه بلا تعديل.
      */
     public function test_the_theme_serves_the_design_font_from_its_own_files(): void
     {
@@ -114,12 +123,12 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
 
         // على الجذر: فلا يبقى في الصفحة موضعٌ يسقط إلى خطّ النظام
         $this->assertMatchesRegularExpression(
-            "/html\\s*\\{[^}]*font-family:\\s*'IBM Plex Sans Arabic'/",
+            "/html\\s*\\{[^}]*font-family:[^;]*'IBM Plex Sans Arabic'/",
             (string) $layout,
             'خطُّ التصميم غير مضبوطٍ على جذر المستند',
         );
         $this->assertMatchesRegularExpression(
-            "/body\\s*\\{[^}]*font-family:\\s*'IBM Plex Sans Arabic'/",
+            "/body\\s*\\{[^}]*font-family:[^;]*'IBM Plex Sans Arabic'/",
             (string) $layout,
             'خطُّ التصميم غير مضبوطٍ على متن الصفحة',
         );
@@ -152,6 +161,74 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
                 "وزنُ $weight غير معرَّفٍ في ملفّ الخطّ",
             );
         }
+    }
+
+    /* ═══════════ الهوية — شعارُ الدليل وألوانُه ═══════════ */
+
+    public static function brandAssets(): array
+    {
+        return [['logo.svg'], ['logo-cream.svg'], ['logo.png'], ['favicon.svg'], ['apple-touch-icon.png']];
+    }
+
+    /**
+     * ملفّاتُ الهوية موجودةٌ فعلًا — ورابطٌ إلى مفقودٍ شعارٌ مكسورٌ في ترويسة المتجر.
+     */
+    #[DataProvider('brandAssets')]
+    public function test_every_brand_asset_exists(string $file): void
+    {
+        $this->assertFileExists(public_path('brand/ribbon/'.$file));
+    }
+
+    /**
+     * والشعارُ رسمٌ متّجهٌ لا لقطةُ شاشة — يبقى حادًّا في كلّ مقاسٍ وعلى كلّ شاشة.
+     *
+     * وكان قبله ملفَّ PNG عرضُه ثابت، يُرى ناعمًا على الشاشات عالية الكثافة
+     * ويثقل أوّلَ فتحةٍ للصفحة بمئة كيلوبايت.
+     */
+    public function test_the_logo_is_a_real_vector(): void
+    {
+        foreach (['logo.svg', 'logo-cream.svg', 'favicon.svg'] as $file) {
+            $svg = (string) file_get_contents(public_path('brand/ribbon/'.$file));
+
+            $this->assertStringContainsString('<path', $svg, "$file بلا مسارات");
+            $this->assertStringNotContainsString('base64', $svg, "$file صورةٌ مضمَّنة لا رسم");
+            $this->assertStringNotContainsString('<image', $svg, "$file صورةٌ مضمَّنة لا رسم");
+        }
+    }
+
+    /**
+     * والنسخةُ الكريمية كريميّةٌ فعلًا — فالترويسةُ والتذييلُ زيتونيّان داكنان.
+     *
+     * وشعارٌ أخضرُ على خلفيةٍ خضراء يختفي — وهو أوّلُ ما يقع يوم تُنسخ النسخةُ
+     * الواحدة إلى الموضعين.
+     */
+    public function test_the_reversed_logo_carries_no_dark_ink(): void
+    {
+        $svg = (string) file_get_contents(public_path('brand/ribbon/logo-cream.svg'));
+
+        $this->assertStringContainsString('#F7F2EC', $svg, 'النسخةُ الكريمية بلا اللون الكريميّ');
+        $this->assertDoesNotMatchRegularExpression('/#58563[cC]/', $svg, 'فيها أخضرُ العلامة فتختفي على الترويسة');
+    }
+
+    /**
+     * وواجهةُ المتجر تلبس الشعارَ المتّجه وألوانَ الدليل — لا صورةً ولا لونًا مقارَبًا.
+     *
+     * وقيمُ الدليل بالحرف: مقاربةٌ في رقمٍ واحد تُخرج لونًا ليس لون العلامة،
+     * ولا تُكتشف بالعين.
+     */
+    public function test_the_storefront_wears_the_guide_colours_and_the_vector_logo(): void
+    {
+        $layout = (string) file_get_contents(resource_path('views/store/ribbon/layout.blade.php'));
+
+        $this->assertStringContainsString('--rb-olive: #58563c', $layout, 'أخضرُ الدليل ليس لون الواجهة');
+        $this->assertStringContainsString('--rb-cream: #f7f2ec', $layout, 'كريميُّ الدليل ليس لون الواجهة');
+
+        // الشعارُ من ملفّ الهوية، ولا أثرَ للصورة التي كانت
+        $this->assertStringContainsString('/brand/ribbon/logo-cream.svg', $layout);
+        $this->assertStringNotContainsString('logo-wide.png', $layout);
+
+        // وأيقونةُ المتصفّح من الهوية أيضًا
+        $this->assertStringContainsString('/brand/ribbon/favicon.svg', $layout);
     }
 
     /* ═══════════ الحواف — مستديرةٌ بمقدارٍ واحد ═══════════ */

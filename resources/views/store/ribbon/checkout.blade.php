@@ -19,8 +19,8 @@
             <div>
                 {!! $step(2, $t['s2']) !!}
                 <div style="display:flex;gap:8px;margin-bottom:14px" data-rb-fulfil>
-                    <button type="button" class="rb-pill on" data-v="delivery" style="flex:1;height:46px;border-radius:0">{{ $t['delivery'] }}</button>
-                    <button type="button" class="rb-pill" data-v="pickup" style="flex:1;height:46px;border-radius:0">{{ $t['pickup'] }}</button>
+                    <button type="button" class="rb-pill on" data-v="delivery" style="flex:1;height:46px">{{ $t['delivery'] }}</button>
+                    <button type="button" class="rb-pill" data-v="pickup" style="flex:1;height:46px">{{ $t['pickup'] }}</button>
                 </div>
                 <div data-rb-delivery style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
                     <div>
@@ -36,7 +36,7 @@
                     </div>
                     <div><input class="rb-input" name="address" placeholder="{{ $t['fAddress'] }}" aria-label="{{ $t['fAddress'] }}"><div class="rb-error" data-err="address"></div></div>
                 </div>
-                <div data-rb-pickup style="display:none;border:1px solid var(--rb-line);background:#fff;padding:14px;font-size:14px;line-height:1.7">{{ $t['pickupAddr'] }}@if ($identity['address'] !== '') — {{ $identity['address'] }}@endif @if ($hours !== '') · {{ $hours }}@endif</div>
+                <div data-rb-pickup style="display:none;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px;line-height:1.7">{{ $t['pickupAddr'] }}@if ($identity['address'] !== '') — {{ $identity['address'] }}@endif @if ($hours !== '') · {{ $hours }}@endif</div>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px">
                     <div><input class="rb-input" type="date" name="date" min="{{ $minDate }}" max="{{ $maxDate }}" aria-label="{{ $t['date'] }}"><div class="rb-error" data-err="date"></div></div>
                     @if (count($delivery['slots']))
@@ -58,7 +58,7 @@
                 {!! $step(4, $t['s4']) !!}
                 <div style="display:flex;flex-direction:column;gap:8px" data-rb-pay>
                     @foreach ($payments as $i => $p)
-                        <button type="button" class="rb-payopt {{ $i === 0 ? 'on' : '' }}" data-v="{{ $p }}" style="display:flex;align-items:center;gap:12px;height:52px;border:1px solid var(--rb-border);background:#fff;padding:0 16px;font-size:14px;cursor:pointer;text-align:start">
+                        <button type="button" class="rb-payopt {{ $i === 0 ? 'on' : '' }}" data-v="{{ $p }}" style="display:flex;align-items:center;gap:12px;height:52px;border:1px solid var(--rb-border);border-radius:var(--rb-r);background:#fff;padding:0 16px;font-size:14px;cursor:pointer;text-align:start">
                             <span style="width:18px;height:18px;border-radius:50%;border:1.5px solid var(--rb-olive);display:inline-flex;align-items:center;justify-content:center;flex:none"><span class="dot" style="width:10px;height:10px;border-radius:50%"></span></span>
                             <span style="flex:1">{{ $p === 'transfer' ? $t['payBank'] : $t['payCod'] }}</span>
                             <span style="font-size:12px">{{ $p === 'transfer' ? $t['payBankNote'] : $t['payCodNote'] }}</span>
@@ -66,7 +66,7 @@
                     @endforeach
                 </div>
                 <div class="rb-error" data-err="pay"></div>
-                <div data-rb-banknote style="display:none;border:1px solid var(--rb-line);background:#fff;padding:14px;font-size:14px;line-height:1.8;margin-top:12px">{{ $t['bankNote'] }}</div>
+                <div data-rb-banknote style="display:none;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px;line-height:1.8;margin-top:12px">{{ $t['bankNote'] }}</div>
             </div>
         </div>
         <aside class="rb-box">
@@ -74,7 +74,7 @@
             <div data-rb-summary style="display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--rb-line);padding-bottom:16px;font-size:14px"></div>
             <div style="display:flex;gap:8px;margin:16px 0">
                 <input class="rb-input" name="promo" placeholder="{{ $t['promo'] }}" aria-label="{{ $t['promo'] }}" style="flex:1">
-                <button type="button" class="rb-btn-ghost" data-rb-apply style="height:46px;padding:0 16px;border-radius:4px">{{ $t['apply'] }}</button>
+                <button type="button" class="rb-btn-ghost" data-rb-apply style="height:46px;padding:0 16px">{{ $t['apply'] }}</button>
             </div>
             <div class="rb-error" data-rb-promo-msg></div>
             <div style="display:flex;flex-direction:column;gap:10px;font-size:14px;margin-top:8px">
@@ -85,7 +85,7 @@
                 <div style="display:flex;justify-content:space-between;border-top:1px solid var(--rb-line);padding-top:12px;font-size:16px"><span>{{ $t['total'] }}</span><strong data-rb-total></strong></div>
             </div>
             <div class="rb-error" data-rb-form-error style="margin-top:12px"></div>
-            <button type="submit" class="rb-btn" style="width:100%;margin-top:16px;border-radius:0" data-testid="rb-place"><span data-rb-place-label>{{ $t['place'] }}</span></button>
+            <button type="submit" class="rb-btn" style="width:100%;margin-top:16px" data-testid="rb-place"><span data-rb-place-label>{{ $t['place'] }}</span></button>
         </aside>
     </form>
     @endif

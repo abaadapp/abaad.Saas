@@ -91,6 +91,49 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
         return $this->postJson('/s/ribbon/checkout', $this->order($over));
     }
 
+    /* ═══════════ الحواف — مستديرةٌ بمقدارٍ واحد ═══════════ */
+
+    /**
+     * كلُّ حافةٍ في الواجهة تُقرأ من رمز — ولا رقمَ منثورٌ في موضع.
+     *
+     * كانت الأرقامُ مبعثرةً بين ٤ و٦ و٨ وصفرٍ في أزرارٍ بعينها، فيقف الزرُّ
+     * المربّع إلى جانب الحقل المستدير في الشاشة نفسِها. والحارسُ يمنع عودةَ
+     * الرقم لا يصف المقدار: من أراد استدارةً أخرى بدّل الرموزَ الثلاثة في
+     * `layout` فتتبدّل الواجهةُ كلُّها.
+     *
+     * و`999px` و`50%` ليسا مقدارًا بل شكل — حبّةٌ ودائرة — فيبقيان.
+     */
+    public function test_every_corner_in_the_theme_reads_one_scale(): void
+    {
+        $files = glob(resource_path('views/store/ribbon/*.blade.php'));
+        $this->assertNotEmpty($files);
+
+        $tokens = (string) file_get_contents(resource_path('views/store/ribbon/layout.blade.php'));
+        foreach (['--rb-r-sm:', '--rb-r:', '--rb-r-lg:'] as $token) {
+            $this->assertStringContainsString($token, $tokens, "رمزُ الحافة $token غير معرَّف");
+        }
+
+        $guilty = [];
+
+        foreach ($files as $file) {
+            $source = preg_replace('/\{\{--.*?--\}\}|\/\*.*?\*\//s', '', (string) file_get_contents($file));
+
+            preg_match_all('/border-radius:\s*([^;"\']+)/', (string) $source, $m);
+
+            foreach ($m[1] as $value) {
+                $value = trim($value);
+
+                if (str_starts_with($value, 'var(--rb-r') || $value === '999px' || $value === '50%') {
+                    continue;
+                }
+
+                $guilty[] = basename($file).': '.$value;
+            }
+        }
+
+        $this->assertSame([], $guilty, "حافةٌ بمقدارٍ مكتوبٍ بيده:\n".implode("\n", $guilty));
+    }
+
     /* ═══════════ الفئةُ والواجهة ═══════════ */
 
     public function test_the_gold_tier_is_read_and_sent_where_the_name_is_read(): void

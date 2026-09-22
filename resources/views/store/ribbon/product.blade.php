@@ -4,7 +4,7 @@
 <section class="rb-screen rb-wrap" style="padding:40px 24px" data-testid="rb-product-page">
     <a href="{{ $base }}/shop" style="font-size:13px;display:inline-flex;align-items:center;min-height:44px">{{ $t['back'] }}</a>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:48px;margin-top:20px;align-items:start">
-        <div style="aspect-ratio:1/1;border-radius:6px;overflow:hidden;background:var(--rb-soft)">
+        <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
             @if ($product['image'])
                 <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" style="width:100%;height:100%;object-fit:cover;display:block">
             @else
@@ -25,7 +25,7 @@
                     <div style="font-size:13px;margin-bottom:8px">{{ $t['size'] }}</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap" data-rb-sizes>
                         @foreach ($product['sizes'] as $i => $s)
-                            <button type="button" class="rb-pill {{ $i === 0 ? 'on' : '' }}" data-variant="{{ $s['id'] }}" data-price="{{ $s['price_text'] }}" style="border-radius:0;min-width:80px">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
+                            <button type="button" class="rb-pill {{ $i === 0 ? 'on' : '' }}" data-variant="{{ $s['id'] }}" data-price="{{ $s['price_text'] }}" style="min-width:80px">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
                         @endforeach
                     </div>
                 </div>
@@ -37,10 +37,10 @@
                         <span data-rb-qty>1</span>
                         <button type="button" data-rb-inc aria-label="+">+</button>
                     </div>
-                    <button type="button" class="rb-btn" style="flex:1;min-width:200px;height:48px;border-radius:0" data-rb-add data-testid="rb-add">{{ $t['add'] }}</button>
+                    <button type="button" class="rb-btn" style="flex:1;min-width:200px;height:48px" data-rb-add data-testid="rb-add">{{ $t['add'] }}</button>
                 </div>
             @else
-                <div style="border:1px solid var(--rb-line);background:#fff;padding:14px;font-size:14px" data-testid="rb-soldout">{{ $t['soldOut'] }}</div>
+                <div style="border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px" data-testid="rb-soldout">{{ $t['soldOut'] }}</div>
             @endif
             @if ($deliveryNote !== '')
                 <div style="font-size:13px;line-height:1.8">{{ $deliveryNote }}</div>

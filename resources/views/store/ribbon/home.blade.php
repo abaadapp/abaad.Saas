@@ -14,7 +14,7 @@
                     <a class="rb-btn-ghost" href="#rb-cats">{{ $t['explore'] }}</a>
                 </div>
             </div>
-            <div style="aspect-ratio:5/4;border-radius:8px;overflow:hidden;background:repeating-linear-gradient(135deg,#e6dcc8 0 14px,#f3efe9 14px 28px);min-height:240px">
+            <div style="aspect-ratio:5/4;border-radius:var(--rb-r-lg);overflow:hidden;background:repeating-linear-gradient(135deg,#e6dcc8 0 14px,#f3efe9 14px 28px);min-height:240px">
                 @if (($best[0]['image'] ?? null))
                     <img src="{{ $best[0]['image'] }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block">
                 @endif
@@ -28,7 +28,7 @@
         <div class="rb-section-head"><h2 class="rb-h2">{{ $t['catsTitle'] }}</h2></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:16px">
             @foreach ($categories as $i => $c)
-                <a href="{{ $base }}/shop?cat={{ $c['id'] }}" style="display:block;background:#fff;border:1px solid var(--rb-line);border-radius:8px;overflow:hidden;color:inherit" data-testid="rb-cat">
+                <a href="{{ $base }}/shop?cat={{ $c['id'] }}" style="display:block;background:#fff;border:1px solid var(--rb-line);border-radius:var(--rb-r-lg);overflow:hidden;color:inherit" data-testid="rb-cat">
                     <div style="aspect-ratio:4/3;background:repeating-linear-gradient(135deg,{{ ['#f2d6dc','#d9e3e0','#e6dcc8','#e3d5e4'][$i % 4] }} 0 12px,#f3efe9 12px 24px)"></div>
                     <div style="padding:14px 16px;display:flex;justify-content:space-between;align-items:center;min-height:44px">
                         <span style="font-size:15px">{{ $c['name'] }}</span>
@@ -68,14 +68,14 @@
 
     {{-- Occasions banner --}}
     <div class="rb-section">
-        <div style="background:var(--rb-olive);color:var(--rb-cream);border-radius:8px;padding:clamp(32px,4vw,56px) clamp(24px,4vw,56px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:32px;align-items:center">
+        <div style="background:var(--rb-olive);color:var(--rb-cream);border-radius:var(--rb-r-lg);padding:clamp(32px,4vw,56px) clamp(24px,4vw,56px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:32px;align-items:center">
             <div style="display:flex;flex-direction:column;gap:14px">
                 <div style="font-size:12px;letter-spacing:.22em;color:#d9d4c0">{{ $t['bannerKicker'] }}</div>
                 <h2 style="margin:0;font-size:clamp(24px,3vw,40px);font-weight:500;line-height:1.2">{{ $t['bannerTitle'] }}</h2>
                 <p style="margin:0;color:#d9d4c0;line-height:1.8;max-width:520px">{{ $t['bannerSub'] }}</p>
-                <div><a href="{{ $base }}/shop" style="display:inline-flex;align-items:center;height:48px;padding:0 24px;background:var(--rb-cream);color:var(--rb-olive);border-radius:4px;font-size:14px">{{ $t['bannerBtn'] }}</a></div>
+                <div><a href="{{ $base }}/shop" style="display:inline-flex;align-items:center;height:48px;padding:0 24px;background:var(--rb-cream);color:var(--rb-olive);border-radius:var(--rb-r);font-size:14px">{{ $t['bannerBtn'] }}</a></div>
             </div>
-            <div style="aspect-ratio:4/3;border-radius:6px;background:repeating-linear-gradient(135deg,#6b694c 0 14px,#5f5c43 14px 28px)"></div>
+            <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);background:repeating-linear-gradient(135deg,#6b694c 0 14px,#5f5c43 14px 28px)"></div>
         </div>
     </div>
 
@@ -88,7 +88,7 @@
                 <h2 class="rb-h2">{{ $business->name }}</h2>
                 <p style="margin:0;font-size:15px;line-height:1.8;text-wrap:pretty">{{ $identity['about'] }}</p>
             </div>
-            <div style="aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:var(--rb-soft)">
+            <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
                 @if ($logo)<img src="{{ $logo }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block">@endif
             </div>
         </div>

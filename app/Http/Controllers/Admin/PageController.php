@@ -11,8 +11,6 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\CustomAlert;
 use App\Models\CustomerAddress;
-use App\Models\CustomOrderField;
-use App\Models\CustomOrderTemplate;
 use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\Product;
@@ -864,50 +862,6 @@ class PageController extends Controller
                 ->map(fn ($m, $k) => ['key' => $k, 'label' => __($m['label']), 'unit' => $m['unit'], 'section' => $m['section']])
                 ->values()->all(),
             'alertSections' => Permissions::sectionLabels(),
-            /*
-             * قوالبُ الطلب المخصَّص بحقولها وخياراتها.
-             *
-             * وتُرسل كاملةً لا مرقَّمة: قوالبُ متجرٍ عشرةٌ على الأكثر، وحقولُ
-             * كلٍّ منها ثلاثون، وطلبُها برحلةٍ ثانيةٍ إلى الخادم أغلى من
-             * إرسالها — كما تُرسل التنبيهات فوقها.
-             *
-             * والموقوفُ يُرسل مع النشط: الشاشةُ تُشغّل وتُطفئ، ولا تُشغّل ما
-             * لا تراه.
-             */
-            'customOrderTemplates' => CustomOrderTemplate::where('business_id', Demo::bid())
-                ->with('fields.options')
-                ->orderBy('sort_order')->orderBy('id')->get()
-                ->map(fn ($t) => [
-                    'id' => $t->id,
-                    'name' => $t->name,
-                    'name_en' => $t->name_en,
-                    'modes' => $t->modes,
-                    'default_mode' => $t->default_mode,
-                    'base_label' => $t->base_label,
-                    'base_label_en' => $t->base_label_en,
-                    'allow_components' => $t->allow_components,
-                    'allow_addons' => $t->allow_addons,
-                    'components_restockable_default' => $t->components_restockable_default,
-                    'active' => $t->active,
-                    'fields' => $t->fields->map(fn ($f) => [
-                        'id' => $f->id,
-                        'label' => $f->label,
-                        'label_en' => $f->label_en,
-                        'type' => $f->type,
-                        'required' => $f->required,
-                        'internal' => $f->internal,
-                        'active' => $f->active,
-                        'options' => $f->options->map(fn ($o) => [
-                            'id' => $o->id,
-                            'label' => $o->label,
-                            'label_en' => $o->label_en,
-                            'active' => $o->active,
-                        ])->values(),
-                    ])->values(),
-                ])->values(),
-            'customOrderFieldTypes' => collect(CustomOrderField::TYPES)
-                ->map(fn ($t) => ['value' => $t, 'label' => __(CustomOrderField::TYPE_LABELS[$t])])
-                ->values(),
             // قسم «صلاحيات الموظفين»: الموظفون الفعليون وحالة صلاحية كلٍّ منهم
             'staffPermissions' => User::where('business_id', Demo::bid())
                 ->where('role', '!=', 'super_admin')->orderBy('name')->get()

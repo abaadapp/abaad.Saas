@@ -144,15 +144,6 @@ class SettingController extends Controller
             'rules' => ['sometimes', 'integer', 'min:0', 'max:'.\App\Support\CustomerFlags::MAX_REMINDER_DAYS]],
 
         /*
-         * الطلباتُ المخصَّصة — مقبضٌ يُطفئ بابًا لا يُخفي زرًّا.
-         *
-         * الإطفاءُ يمنع إنشاءَ طلبٍ جديد في الخادم، ولا يمسّ طلبًا بيع ولا
-         * قالبًا كُتب ولا تقريرًا صدر — انظر `CustomArrangement::enabled`.
-         */
-        'custom_orders_enabled' => ['section' => 'custom-orders', 'label' => 'تفعيل الطلبات المخصصة',
-            'rules' => ['sometimes', 'boolean']],
-
-        /*
          * البادئة تدخل شرط LIKE عند توليد الرقم — و«%» فيها تجعل كل فاتورةٍ
          * مطابقةً فيقفز العدّاد. تُنقّى في PosController أيضًا، والمنع هنا أوضح.
          */
@@ -238,7 +229,6 @@ class SettingController extends Controller
         'templates' => 'قوالب الأوراق',
         'permissions' => 'صلاحيات الموظفين',
         'notifications' => 'الإشعارات',
-        'custom-orders' => 'الطلبات المخصصة',
         'customers' => 'العملاء',
     ];
 

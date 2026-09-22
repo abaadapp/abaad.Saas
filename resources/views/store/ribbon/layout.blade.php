@@ -38,6 +38,16 @@
             --rb-r-sm: 10px; --rb-r: 14px; --rb-r-lg: 20px;
         }
         * { box-sizing: border-box; }
+        /*
+         * والخطُّ يُوضع على الجذر لا على `body` وحده.
+         *
+         * خطُّ التصميم `IBM Plex Sans Arabic`، ويُخدم من ملفّات المتجر نفسِه
+         * (`/fonts/ibm-plex-arabic.css`) لا من شبكةٍ خارجيّة: صفحةُ التاجر لا
+         * تنتظر خادمَ غيرِنا لتُقرأ، ولا تُسرّب زائرَه إليه. ووضعُه على `html`
+         * يجعل كلَّ ما يُرسم داخلَه — حتى ما يضيفه المتصفّح من حقولٍ أصليّة —
+         * يرثه، فلا يبقى في الصفحة موضعٌ يسقط إلى Times.
+         */
+        html { font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif; }
         body { margin: 0; background: var(--rb-bg); color: #000; font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
         a { color: #000; text-decoration: none; }
         input, select, textarea, button { font-family: inherit; }

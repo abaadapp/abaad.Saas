@@ -91,6 +91,69 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
         return $this->postJson('/s/ribbon/checkout', $this->order($over));
     }
 
+    /* ═══════════ الخطّ — خطُّ التصميم من ملفّات المتجر ═══════════ */
+
+    /**
+     * خطُّ الواجهة `IBM Plex Sans Arabic`، ويُخدم من عندنا لا من شبكةٍ خارجيّة.
+     *
+     * والشرطان معًا لا أحدُهما: خطٌّ صحيحٌ من نطاقٍ أجنبيّ يجعل صفحةَ التاجر
+     * تنتظر خادمَ غيرِنا لتُقرأ، ويُسرّب زائرَه إليه. وملفٌّ عندنا بخطٍّ آخر
+     * يكسر التصميم الذي كُتبت الواجهةُ له.
+     *
+     * والملفّاتُ تُفحص وجودًا: رابطٌ إلى ملفٍّ غير موجود يسقط الصفحةَ كلَّها
+     * إلى خطّ النظام بلا أن يُخطئ شيء.
+     */
+    public function test_the_theme_serves_the_design_font_from_its_own_files(): void
+    {
+        // والتعليقاتُ تُنزع أوّلًا: شرحٌ يذكر اسمَ الملفّ ليس رابطًا إليه
+        $layout = preg_replace(
+            '/\\{\\{--.*?--\\}\\}|\\/\\*.*?\\*\\//s',
+            '',
+            (string) file_get_contents(resource_path('views/store/ribbon/layout.blade.php')),
+        );
+
+        // على الجذر: فلا يبقى في الصفحة موضعٌ يسقط إلى خطّ النظام
+        $this->assertMatchesRegularExpression(
+            "/html\\s*\\{[^}]*font-family:\\s*'IBM Plex Sans Arabic'/",
+            (string) $layout,
+            'خطُّ التصميم غير مضبوطٍ على جذر المستند',
+        );
+        $this->assertMatchesRegularExpression(
+            "/body\\s*\\{[^}]*font-family:\\s*'IBM Plex Sans Arabic'/",
+            (string) $layout,
+            'خطُّ التصميم غير مضبوطٍ على متن الصفحة',
+        );
+
+        // ومن ملفّاتنا: رابطٌ صريحٌ إلى ملفّ الخطّ عندنا
+        $this->assertMatchesRegularExpression(
+            '#<link[^>]+href="/fonts/ibm-plex-arabic\\.css"#',
+            (string) $layout,
+            'ملفُّ الخطّ غير مربوطٍ في الترويسة',
+        );
+
+        // ولا خطَّ من شبكةٍ خارجيّة — لا Google ولا سواها
+        $this->assertDoesNotMatchRegularExpression('#<link[^>]+href="https?://#i', (string) $layout, 'خطٌّ من نطاقٍ أجنبيّ');
+
+        $css = public_path('fonts/ibm-plex-arabic.css');
+        $this->assertFileExists($css);
+
+        preg_match_all('#url\(/fonts/([^)]+)\)#', (string) file_get_contents($css), $m);
+        $this->assertNotEmpty($m[1], 'ملفُّ الخطّ لا يشير إلى ملفّاتٍ عندنا');
+
+        foreach (array_unique($m[1]) as $file) {
+            $this->assertFileExists(public_path('fonts/'.$file));
+        }
+
+        // والأوزانُ التي ترسمها الواجهة — ٤٠٠ و٥٠٠ و٦٠٠ — معرَّفةٌ كلُّها
+        foreach ([400, 500, 600] as $weight) {
+            $this->assertMatchesRegularExpression(
+                "/font-weight:\s*$weight\b/",
+                (string) file_get_contents($css),
+                "وزنُ $weight غير معرَّفٍ في ملفّ الخطّ",
+            );
+        }
+    }
+
     /* ═══════════ الحواف — مستديرةٌ بمقدارٍ واحد ═══════════ */
 
     /**

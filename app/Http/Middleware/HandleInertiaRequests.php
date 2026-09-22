@@ -104,6 +104,8 @@ class HandleInertiaRequests extends Middleware
                 'businessName' => Demo::businessName(),
                 // الفئة — تُرسم علامةً ذهبيّةً في الشريط لمن هو نظامٌ مستقلّ
                 'tier' => $user->business?->tier,
+                // والواجهةُ الخاصّة إن لبسها — تُخفي شاشاتِ البانِي وقوالبَه عمّن لا يراها زبونُه
+                'storefrontTheme' => $user->business?->storefrontTheme(),
                 // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،
                 // فصار مشتركًا لا خاصًّا باللوحة. null حين لم يُضبط بعد.
                 'website' => Demo::websiteUrl(),

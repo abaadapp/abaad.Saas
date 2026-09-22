@@ -49,7 +49,19 @@ interface Props extends SiteShell {
     counts: { shown: number; hidden: number; out: number };
     products: Row[];
     may: { products: boolean; configure: boolean };
+    /**
+     * الواجهةُ الخاصّة — `ribbon` — إن كانت هي الموقع.
+     *
+     * ولا بانٍ معها ولا قوالب: زرُّ الإعدادات يقود إلى بطاقة المتجر في
+     * الإعدادات (النشرُ والدفعُ والتوصيل)، والطلباتُ تصل «الطلبات» بقناة
+     * الموقع. انظر `HubController::themed`.
+     */
+    theme?: string | null;
+    orders?: { today: number };
 }
+
+/** اسمُ الواجهة كما يُعرض — والمفتاحُ كما في `Business::THEMES` */
+const THEME_LABEL: Record<string, string> = { ribbon: 'RIBBON' };
 
 /**
  * لوحةُ تشغيل الموقع — شاشةُ الموظّف اليوميّة.
@@ -71,7 +83,7 @@ interface Props extends SiteShell {
  * يُنسخ، ولا عمودَ يُكتب من بابين.
  */
 export default function Hub() {
-    const { site, readiness, sells, counts, products, may, channel, context } =
+    const { site, readiness, sells, counts, products, may, channel, context, theme, orders } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // وعملةُ المتجر من المشترَك لا من هذه الشاشة — انظر HandleInertiaRequests
@@ -108,10 +120,17 @@ export default function Hub() {
         <AdminLayout title="الموقع الإلكتروني">
             <PageHeader
                 title="الموقع الإلكتروني"
-                subtitle={t('حالة موقعك وما يراه زبونك اليوم')}
+                subtitle={
+                    theme
+                        ? `${t('واجهة')} ${THEME_LABEL[theme] ?? theme} — ${t('موقعك بتصميمك، وما يراه زبونك اليوم')}`
+                        : t('حالة موقعك وما يراه زبونك اليوم')
+                }
                 actions={
                     <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant={STATE_TONE[site.state]}>{t(STATE_LABEL[site.state])}</Badge>
+                        {/* والواجهةُ الخاصّة حالان لا أربع: تُخدم أو لا — لا مسوّدةَ لها ولا تغييراتٍ تنتظر */}
+                        <Badge variant={STATE_TONE[site.state]}>
+                            {t(theme && site.state === 'draft' ? 'غير منشور' : STATE_LABEL[site.state])}
+                        </Badge>
                         {site.url && (
                             <Button variant="outline" asChild>
                                 <a href={site.url} target="_blank" rel="noopener noreferrer">
@@ -123,7 +142,14 @@ export default function Hub() {
                         {/* والضبطُ لمن يملكه — انظر Permissions::WEBSITE_CONFIGURE */}
                         {may.configure && (
                             <Button variant="ghost" asChild>
-                                <Link href={route('admin.website.site')}>
+                                {/* ولمن لبس واجهةً خاصّة لا شاشاتِ بانٍ: ضبطُه في بطاقة المتجر بالإعدادات */}
+                                <Link
+                                    href={
+                                        theme
+                                            ? route('admin.settings.index', { section: 'website' })
+                                            : route('admin.website.site')
+                                    }
+                                >
                                     <Settings />
                                     {t('إعدادات الموقع')}
                                 </Link>
@@ -142,7 +168,7 @@ export default function Hub() {
                 <Card className="mb-5 border-[#fde68a] bg-[#fffbeb] p-4">
                     <p className="flex items-center gap-2 text-[13px] font-semibold text-[#b45309]">
                         <AlertTriangle className="size-4 shrink-0" />
-                        {t('موقعك يعمل، لكن:')}
+                        {t(theme && site.state === 'draft' ? 'موقعك لا يفتح بعد:' : 'موقعك يعمل، لكن:')}
                     </p>
                     <ul className="mt-2 space-y-1 ps-6 text-[13px] leading-7 text-[#92400e]">
                         {missing.map((f) => (
@@ -170,10 +196,22 @@ export default function Hub() {
                 <Card className="mb-5 p-4">
                     <p className="text-[13px] font-semibold text-[#111]">{t('طلبات الموقع')}</p>
                     <p className="mt-1 text-[13px] leading-7 text-[#6b7280]">
-                        {channel === 'whatsapp'
-                            ? t('تصلك على واتساب — الموقع ليس فيه سلّة ولا دفع، فما يُطلب يُسجَّل هنا كما يُسجَّل طلب الهاتف.')
-                            : t('لا يستقبل موقعك طلبات: لا رقم واتساب في بيانات متجرك، فلا يظهر زرّ الطلب أصلًا.')}
+                        {channel === 'checkout'
+                            ? t('في موقعك سلّة وإتمام طلب — ما يطلبه زبونك يصل «الطلبات» طلبًا حقيقيًّا بقناة الموقع، جديدًا وغير مدفوع.')
+                            : channel === 'whatsapp'
+                              ? t('تصلك على واتساب — الموقع ليس فيه سلّة ولا دفع، فما يُطلب يُسجَّل هنا كما يُسجَّل طلب الهاتف.')
+                              : t('لا يستقبل موقعك طلبات: لا رقم واتساب في بيانات متجرك، فلا يظهر زرّ الطلب أصلًا.')}
                     </p>
+                    {channel === 'checkout' && orders && (
+                        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+                            <span className="tabular-nums text-[#111]">
+                                {t('طلبات الموقع اليوم')}: <strong>{number(orders.today)}</strong>
+                            </span>
+                            <Link href={route('admin.orders.index')} className="font-medium text-[#1d4ed8] underline">
+                                {t('افتح الطلبات')}
+                            </Link>
+                        </p>
+                    )}
                 </Card>
             )}
 

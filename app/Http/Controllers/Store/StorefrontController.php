@@ -278,6 +278,18 @@ class StorefrontController extends Controller
             auth()->user()->business_id ?? \App\Support\Demo::bid()
         );
 
+        /*
+         * ومن لبس واجهةً خاصّة يُعايِنها هي — لا الصفحةَ البسيطة التي لن
+         * يراها زبونُه. وروابطُها الداخليّة على عنوانه العامّ: المعاينةُ
+         * صفحةٌ واحدة، وما بعدها الموقعُ نفسُه.
+         */
+        if ($business->storefrontTheme() !== null) {
+            return app(RibbonController::class)
+                ->page($business, null, $business->site_slug ? '/s/'.$business->site_slug : '')
+                ->header('Cache-Control', 'no-store')
+                ->header('X-Robots-Tag', 'noindex, nofollow');
+        }
+
         return response()
             ->view('store.show', Storefront::page($business) + ['preview' => true])
             // ومعاينةٌ لا تُخزَّن ولا تُفهرَس: هي حالُ لحظتها، ولصاحبها وحده

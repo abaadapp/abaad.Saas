@@ -3,10 +3,15 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
+use App\Models\Business;
+use App\Models\Order;
 use App\Models\Product;
 use App\Support\Permissions;
+use App\Support\SalesChannel;
+use App\Support\Storefront;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Commerce;
+use App\Support\Website\Domains;
 use App\Support\Website\Readiness;
 use App\Support\Website\Shelf;
 use Inertia\Inertia;
@@ -59,6 +64,81 @@ class HubController extends Controller
             'products' => $this->rows($bid),
             'may' => [
                 // ولا يُستنتج من القسم: من يفتح الموقع لا يعدّل المنتجات بالضرورة
+                'products' => (bool) $user?->allows('products'),
+                'configure' => (bool) $user?->may(Permissions::WEBSITE_CONFIGURE),
+            ],
+        ]);
+    }
+
+    /**
+     * لوحةُ تشغيلِ الواجهة الخاصّة — RIBBON — وهي الموقعُ كلُّه لمن لبسها.
+     *
+     * ═══ لا صفَّ في `websites` ولا قالبَ ═══
+     *
+     * الواجهةُ الخاصّة ليست موقعًا يُبنى من أقسامٍ ويُنشر لقطةً: هي Blade
+     * بتصميم صاحبها، تقرأ منتجاتِه وإعداداتِه مباشرةً (انظر `Store\RibbonController`).
+     * فلا مسوّدةَ لها ولا «تغييراتٌ لم تُنشر» ولا قالبٌ يُبدَّل — وحالُها
+     * واحدةٌ من اثنتين: تُخدم على عنوانها أو لا تُخدم، ويحكمها مفتاحُ «نشر
+     * المتجر» في الإعدادات كما يحكم الصفحةَ البسيطة (`Storefront::serves`).
+     *
+     * ولوحتُها لوحةُ البانِي نفسُها في الشاشة: الأرقامُ الثلاثة وصفوفُ
+     * المنتجات وأفعالُها — فما يراه الموظّف كلَّ صباح لا يتبدّل بتبدّل ما
+     * يُخدم على العنوان. وما يختلف يُقال في `theme`: لا زرَّ «إعدادات الموقع»
+     * يقود إلى شاشات البانِي، بل إلى بطاقة المتجر في الإعدادات حيث النشرُ
+     * والدفعُ والتوصيل.
+     *
+     * والطلباتُ هنا حقيقيّة: إتمامُ الطلب في الواجهة يكتب طلبًا في أبعاد
+     * بقناة «الموقع» (`Store\WebCheckout`)، فيُعدّ ما وصل اليوم ويُشار إلى
+     * بابه — لا «تصلك على واتساب».
+     */
+    public function themed(string $theme): Response
+    {
+        $bid = $this->bid();
+        $business = Business::findOrFail($bid);
+        $user = auth()->user();
+
+        $published = Storefront::serves($business) === Storefront::SERVES_THEME;
+
+        return Inertia::render('Admin/Website/Hub', [
+            'site' => [
+                'id' => 0,
+                'name' => $business->name,
+                'goal' => Blueprints::STORE,
+                'goal_label' => __(Blueprints::GOALS[Blueprints::STORE]['label'] ?? ''),
+                'template' => $theme,
+                'state' => $published ? 'published' : 'draft',
+                'sells' => true,
+                'maintenance' => false,
+                'published_at' => null,
+                'saved_at' => null,
+                'changes' => false,
+                // والعنوانُ ما يُخدم فعلًا — نطاقُه إن نشط، وإلّا عنوانُ أبعاد
+                'url' => $published ? Domains::canonical($bid) : null,
+                'tokens' => [],
+            ],
+            'theme' => $theme,
+            /*
+             * وما ينقص يُقال بلسان الواجهة لا بلسان البانِي: `Readiness` تقرأ
+             * صفَّ `websites` الذي لا وجود له هنا. والواجهةُ لا تحتاج إلّا
+             * مفتاحَ النشر وعنوانًا — وما عداهما اختياريّ.
+             */
+            'readiness' => $published ? [] : [[
+                'key' => 'published', 'label' => 'النشر', 'ok' => false, 'optional' => false,
+                'detail' => $business->site_slug === null
+                    ? __('لا عنوان لمتجرك بعد — اكتب اسمَ متجرك في الإعدادات ثمّ فعّل «نشر المتجر».')
+                    : __('«نشر المتجر» مُطفأ في الإعدادات — لا يفتح زبونٌ موقعك حتى تُفعّله.'),
+            ]],
+            'channel' => Commerce::channel($bid),
+            'sells' => true,
+            'counts' => $this->counts($bid),
+            'products' => $this->rows($bid),
+            'orders' => [
+                'today' => Order::where('business_id', $bid)
+                    ->where('channel', SalesChannel::WEBSITE)
+                    ->whereDate('created_at', now()->toDateString())
+                    ->count(),
+            ],
+            'may' => [
                 'products' => (bool) $user?->allows('products'),
                 'configure' => (bool) $user?->may(Permissions::WEBSITE_CONFIGURE),
             ],

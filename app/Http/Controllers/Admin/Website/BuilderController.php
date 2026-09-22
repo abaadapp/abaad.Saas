@@ -49,6 +49,17 @@ class BuilderController extends Controller
      */
     public function index(): Response
     {
+        /*
+         * ومن لبس واجهةً خاصّة — RIBBON — فموقعُه هي، لا قالبٌ يختاره.
+         *
+         * لا اختيارَ يُعرض عليه ولا لوحةَ بانٍ: القوالبُ الجاهزة تبني موقعًا
+         * ثانيًا لن يُخدم على عنوانه، ولوحةُ البانِي تقرأ من صفٍّ لا يملكه.
+         * فيرى لوحةَ تشغيل واجهته — انظر `Concerns::theme` و`HubController::themed`.
+         */
+        if (($theme = $this->theme()) !== null) {
+            return app(HubController::class)->themed($theme);
+        }
+
         if (! $this->site()) {
             /*
              * ومن لا يملك ضبطَ الموقع لا يُعرض عليه إنشاؤه — ولا يُصفع بـ٤٠٣.
@@ -132,7 +143,8 @@ class BuilderController extends Controller
     /** إنشاء الموقع — جوابان، ثمّ موقعٌ يصلح للنشر */
     public function store(Request $request)
     {
-        if ($this->site()) {
+        // ولا يُبنى من قالبٍ لمن لبس واجهةً خاصّة — الشاشةُ لا تعرضها، والبابُ لا يقبلها
+        if ($this->site() || $this->theme() !== null) {
             return redirect()->route('admin.website.index');
         }
 

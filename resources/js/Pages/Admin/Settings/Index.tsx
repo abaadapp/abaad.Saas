@@ -245,7 +245,7 @@ export default function SettingsIndex() {
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types, archive } =
         usePage<PageProps<Props>>().props;
-    const { auth } = usePage<PageProps>().props;
+    const { auth, context } = usePage<PageProps>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -680,6 +680,31 @@ export default function SettingsIndex() {
                     فالبابُ يُفتح ولا يُنقل: كلُّ لوحٍ يقول ما يملك، ومن أراد
                     ما ليس هنا وجده في سطرٍ واحد لا في بحثٍ عنه.
                 */}
+                {/*
+                    ومن لبس واجهةً خاصّة — RIBBON — لا شاشاتِ بانٍ له ولا قوالب:
+                    موقعُه واجهتُه بتصميمه، وضبطُه كلُّه في البطاقات أدناه (العنوانُ
+                    والنشرُ والدفعُ والتوصيل). فالبابُ يقود إلى لوحة تشغيلها لا إلى
+                    شاشاتٍ تُعيده إليها.
+                */}
+                {store.serves === 'theme' || context?.storefrontTheme ? (
+                    <SettingsSection
+                        title="موقعك"
+                        description="واجهةُ RIBBON — موقعُك بتصميمك، بلا قوالب جاهزة. وما تراه أدناه يضبطه: عنوانُه ونشرُه ودفعُه وتوصيلُه."
+                        icon={LayoutTemplate}
+                        action={
+                            <Button variant="outline" size="sm" asChild>
+                                <Link href={route('admin.website.index')}>
+                                    {t('افتح لوحة موقعك')}
+                                    <ChevronLeft />
+                                </Link>
+                            </Button>
+                        }
+                    >
+                        <p className="text-[13px] leading-relaxed text-[#6b7280]">
+                            {t('ما يطلبه زبونك من الموقع يصل «الطلبات» طلبًا حقيقيًّا بقناة الموقع.')}
+                        </p>
+                    </SettingsSection>
+                ) : (
                 <SettingsSection
                     title="شاشات موقعك"
                     description="التصميمُ والصفحاتُ والأقسام والظهور في البحث — وحالُ موقعك وما لم يُنشر منه."
@@ -697,6 +722,7 @@ export default function SettingsIndex() {
                         {t('وهذا القسمُ يضبط عنوانَ متجرك ونطاقَه وصفحتَه البسيطة — وما تراه أدناه يخصّها.')}
                     </p>
                 </SettingsSection>
+                )}
 
                 {choosing ? (
                     <DomainChooser
@@ -956,6 +982,12 @@ export default function SettingsIndex() {
                                 البسيطة: لونُها ودفعُها لا يُريان ما دام
                                 المبنيُّ منشورًا.
                             */}
+                            {/* والواجهةُ الخاصّة يُطيعها هذا المفتاح — فيُقال إنّه يُغلقها فعلًا */}
+                            {(store.serves === 'theme' || (context?.storefrontTheme && store.serves === 'none')) && (
+                                <p className="mt-3 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] leading-relaxed text-[#1d4ed8]">
+                                    {t('زبونك يفتح واجهة RIBBON على هذا العنوان — وهذا المفتاح يفتحها ويُغلقها.')}
+                                </p>
+                            )}
                             {store.serves === 'built' && (
                                 <p className="mt-3 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] leading-relaxed text-[#1d4ed8]">
                                     {t('زبونك يفتح موقعك المبنيّ على هذا العنوان — وهذا المفتاح للصفحة البسيطة وحدها، فلا يُغلق شيئًا ما دام المبنيّ منشورًا. وكذلك لونُ هذه البطاقة وطرقُ دفعها.')}{' '}

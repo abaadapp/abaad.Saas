@@ -93,6 +93,8 @@ export interface SharedProps {
         businessName: string;
         /** الفئة — `gold` للنظام المستقلّ داخل أبعاد، وفراغٌ لسائر المتاجر */
         tier?: string | null;
+        /** الواجهةُ الخاصّة — `ribbon` لمن لبسها، وفراغٌ لمن يُخدم بالبانِي أو البسيطة */
+        storefrontTheme?: string | null;
         /** رابط موقع التاجر المُطبَّع — null حين لم يُضبط بعد */
         website: string | null;
         branchId: number | null;

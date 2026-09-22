@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin\Website;
 
+use App\Models\Business;
 use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
@@ -71,6 +72,25 @@ trait Concerns
     }
 
     /**
+     * الواجهةُ الخاصّة لهذا النشاط — `ribbon` لمن لبسها، وnull لسائر المتاجر.
+     *
+     * ═══ ومن لبسها لا قوالبَ له ═══
+     *
+     * الواجهةُ الخاصّة موقعٌ كاملٌ بتصميم صاحبه، يُخدم على عنوانه قبل البانِي
+     * والبسيطة (انظر `Storefront::serves`). فقوالبُ البانِي الجاهزة — التي
+     * يُعرض عليه اختيارُ واحدٍ منها في أوّل فتحةٍ لـ«الموقع الإلكتروني» —
+     * تعرض عليه أن يبني موقعًا ثانيًا لن يراه زبونٌ قطّ، وتقول له إنّ موقعه
+     * الحقيقيّ ليس موقعه.
+     *
+     * فمن لبس واجهةً خاصّة يرى لوحةَ تشغيلها في `‎/website‎`، وكلُّ شاشات
+     * البانِي — الاختيارُ والمحرّرُ والصفحاتُ والتصميم — تردّه إليها.
+     */
+    protected function theme(): ?string
+    {
+        return Business::find($this->bid())?->storefrontTheme();
+    }
+
+    /**
      * موقعُ هذا النشاط — ومن لا موقع له يُردّ إلى شاشة الاختيار لا إلى 404.
      *
      * كلّ شاشات هذا القسم تفترض موقعًا قائمًا، ومن لم ينشئ موقعه بعد قد يصل
@@ -82,7 +102,8 @@ trait Concerns
     {
         $site = $this->site();
 
-        if (! $site) {
+        // ومن لبس واجهةً خاصّة لا شاشاتِ بانٍ له — ولو بقي له موقعٌ بُني قبلها
+        if (! $site || $this->theme() !== null) {
             throw new HttpResponseException(redirect()->route('admin.website.index'));
         }
 

@@ -299,6 +299,8 @@ final class WebCheckout
                 'order_id' => $order->id,
                 'reference' => $order->number,
                 'description' => 'مبيعات الموقع الإلكتروني — '.$order->customer_name,
+                // ونوعٌ يخصُّ الموقع: به تُفرَز «الحركة المالية» وتُسمّى صفوفُها
+                'kind' => Transaction::WEB_SALE,
                 'method' => $method,
                 'bank_account_id' => null,
                 'type' => 'دخل',

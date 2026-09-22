@@ -288,6 +288,10 @@ export interface Order {
     late?: boolean;
     /** نوع التنفيذ باسمه المقروء — لا برمزه المخزَّن */
     fulfillment?: string | null;
+    /** البابُ الذي دخل منه الطلب: 'website' | 'pos' | 'unknown' */
+    channel?: string;
+    /** اسمُ القناة كما يكتبه الخادم — لا تُترجمها الشاشةُ بقائمةٍ ثانية */
+    channel_label?: string;
 }
 
 export interface Expense {

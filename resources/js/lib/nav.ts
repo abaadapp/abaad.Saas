@@ -4,6 +4,7 @@ import {
     EMPLOYEE_TABS,
     FINANCE_TABS,
     INVENTORY_TABS,
+    PRODUCT_TABS,
     PURCHASE_TABS,
     WEBSITE_TABS,
     type SectionTab,
@@ -125,7 +126,24 @@ export const NAV: NavGroup[] = [
     },
     {
         items: [
-            { label: 'المنتجات', icon: Package, route: 'admin.products.index', section: 'products' },
+            {
+                label: 'المنتجات',
+                icon: Package,
+                route: 'admin.products.index',
+                section: 'products',
+                /*
+                 * والمواسمُ من المنتجات — فتُبقي «المنتجات» مضيئةً حين تُفتح.
+                 *
+                 * «المواسم» تبويبٌ في شريط المنتجات (`PRODUCT_TABS`) ولا مدخلَ
+                 * لها في القائمة، ولم تكن مغطّاة. فمن يضغطها تنطفئ القائمةُ
+                 * كلُّها تحت يده: لا عنصرَ مضيء، فلا يعرف أين هو ولا من أين
+                 * جاء — وهي طبقةٌ فوق أصنافه لا قسمٌ ثانٍ في متجره.
+                 *
+                 * وتُقرأ من شريط التبويبات نفسِه لا تُكتب باليد: تبويبٌ يُضاف
+                 * غدًا يرثها بلا أن يتذكّر كاتبُه سطرًا (انظر `covers`).
+                 */
+                covers: covers(PRODUCT_TABS),
+            },
             // «الطلبات» سابقًا: المتجر يبيع ولا يستقبل طلبات وحسب
             { label: 'المبيعات', icon: ShoppingCart, route: 'admin.orders.index', section: 'orders' },
             // فواتيرُ العملاء بابٌ واحدٌ لا يتكرّر في «المالية»: ميزةٌ في

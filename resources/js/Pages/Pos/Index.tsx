@@ -32,6 +32,7 @@ import LanguageChoice from '@/Components/LanguageChoice';
 import CustomerContextCard from '@/Pages/Pos/partials/CustomerContextCard';
 import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDialog';
 import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
+import CustomOrderCard from '@/Pages/Pos/partials/CustomOrderCard';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
 import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -393,29 +394,6 @@ export default function PosIndex() {
 
                     {/* تبويبات الأقسام */}
                     <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1">
-                        {/*
-                          * «طلب مخصص» — طريقٌ ثانٍ للبيع لا بديلٌ عن الأوّل.
-                          *
-                          * الزبون يقول «ورد بعشرين في كيسٍ أسود»، ولا صنفَ في
-                          * الكتالوج بهذا الوصف. وكان الكاشير يبيع أقربَ باقةٍ
-                          * شبيهةٍ بسعرٍ معدَّل — فيُخصم من الرفّ ما في وصفة تلك
-                          * الباقة لا ما أُخذ منه فعلًا.
-                          *
-                          * وموضعُه هنا لا في شبكة المنتجات: هو اختيارُ **طريقة
-                          * بيع** كما أنّ الأقسام اختيارُ ما يُعرض، وبطاقةٌ في
-                          * الشبكة كانت ستُزيح منتجًا حقيقيًّا من مكانه.
-                          */}
-                        {customTemplates.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={openCustom}
-                                className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 touch:px-5 touch:py-2.5"
-                            >
-                                <Plus className="size-4" />
-                                {customTemplates.length === 1 ? customTemplates[0].name : t('طلب مخصص')}
-                            </button>
-                        )}
-
                         {categories.map((c) => (
                             <button
                                 key={c.value}
@@ -489,7 +467,7 @@ export default function PosIndex() {
 
                     {/* شبكة المنتجات */}
                     <div className="-mx-1 flex-1 overflow-y-auto overscroll-contain px-1">
-                        {visibleProducts.length === 0 ? (
+                        {visibleProducts.length === 0 && customTemplates.length === 0 ? (
                             <p className="py-16 text-center text-sm text-gray-400">
                                 {q.trim() || cat !== 'الكل' ? t('لا نتائج مطابقة للبحث أو التصفية') : t('لا توجد منتجات بعد')}
                             </p>
@@ -497,6 +475,24 @@ export default function PosIndex() {
                             /* عمودان على اللوحيّ الرأسيّ: ثلاثةٌ في ٤٩٠ بكسل تجعل
                                البطاقة أضيق من الإصبع */
                             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
+                                {/*
+                                  * «تخصيص الطلب» — بطاقةٌ ثابتةٌ في أوّل الشبكة، لا تتبع
+                                  * قسمًا ولا بحثًا ولا موسمًا.
+                                  *
+                                  * الزبون يقول «ورد بعشرين في كيسٍ أسود»، ولا صنفَ في
+                                  * الكتالوج بهذا الوصف. وكان الكاشير يبيع أقربَ باقةٍ
+                                  * شبيهةٍ بسعرٍ معدَّل — فيُخصم من الرفّ ما في وصفة تلك
+                                  * الباقة لا ما أُخذ منه فعلًا.
+                                  *
+                                  * ولا تُرسم إن أطفأ صاحبُ النشاط الطلباتِ المخصَّصة:
+                                  * الخادمُ لا يرسل قوالبَ حينها، والبابُ يُقفل من عنده.
+                                  */}
+                                {customTemplates.length > 0 && (
+                                    <CustomOrderCard
+                                        label={customTemplates.length === 1 ? customTemplates[0].name : t('تخصيص الطلب')}
+                                        onClick={openCustom}
+                                    />
+                                )}
                                 {visibleProducts.map((p) => (
                                     <button
                                         key={p.id}
@@ -1036,8 +1032,10 @@ export default function PosIndex() {
                 addons={addons}
                 money={money}
                 initial={customEdit ? (cart.items.find((i) => i.key === customEdit)?.custom ?? null) : null}
+                initialNote={customEdit ? (cart.items.find((i) => i.key === customEdit)?.note ?? null) : null}
+                initialAddons={customEdit ? (cart.items.find((i) => i.key === customEdit)?.addons ?? null) : null}
                 onClose={() => { setCustomOpen(false); setCustomEdit(null); }}
-                onConfirm={(custom, chosen) => {
+                onConfirm={(custom, chosen, note) => {
                     /*
                      * واسمُ البند اسمُ القالب — لا نصٌّ مكتوبٌ في الشاشة.
                      *
@@ -1059,11 +1057,20 @@ export default function PosIndex() {
                      * ولولا التفريق لَصار «حفظ التعديل» يُضيف بندًا ثانيًا —
                      * فتخرج باقتان من طلبٍ واحد ويُخصم الرفُّ مرّتين.
                      */
+                    const key = customEdit ?? `c${Date.now()}`;
+
                     if (customEdit) {
                         cart.replace(customEdit, line);
                     } else {
-                        cart.add({ ...line, key: `c${Date.now()}` });
+                        cart.add({ ...line, key });
                     }
+
+                    /*
+                     * وتفاصيلُ الطلب ملاحظةُ البند — الحقلُ نفسُه الذي تحت كلّ
+                     * سطرٍ في السلّة، فيقرؤها المنسّق في التجهيز وتُطبع على
+                     * الفاتورة، ولا يُخترع لها عمودٌ ثانٍ.
+                     */
+                    cart.setNote(key, note);
 
                     setCustomOpen(false);
                     setCustomEdit(null);

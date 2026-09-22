@@ -6259,5 +6259,16 @@
     "الموعد لا يكون في الماضي.": "The date cannot be in the past.",
     "اكتب العنوان بالتفصيل.": "Enter the full address.",
     "اختر المنطقة.": "Choose the area.",
-    "اختر وقت التسليم.": "Choose a delivery time."
+    "اختر وقت التسليم.": "Choose a delivery time.",
+    "على ذوق الزبون": "To the customer's taste",
+    "السعر عند التخصيص": "Priced when customised",
+    "تخصيص الطلب": "Customise Order",
+    "اكتب ما يريده الزبون، وأضف المواد إن شئت، ثم حدّد السعر النهائي": "Write what the customer wants, add materials if you like, then set the final price",
+    "مثال: ٢٠ وردة حمراء، تغليف أسود، شريطة ذهبية": "e.g. 20 red roses, black wrap, gold ribbon",
+    "المواد من المخزون": "Materials from stock",
+    "المحسوب من المواد والإضافات": "Computed from materials and add-ons",
+    "= المحسوب": "= computed",
+    "يدفع الزبون": "Customer pays",
+    "السعر النهائي لا يغطّي الإضافات.": "The final price does not cover the add-ons.",
+    "أدخل السعر النهائي.": "Enter the final price."
 }

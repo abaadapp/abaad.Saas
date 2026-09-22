@@ -7,7 +7,7 @@ import { Label } from '@/Components/ui/label';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { Addon, Product } from '@/types/models';
-import type { CustomCart, CustomComponent } from '@/hooks/usePosCart';
+import type { CartAddon, CustomCart, CustomComponent } from '@/hooks/usePosCart';
 
 /** خيارُ حقلٍ كما يصل من الخادم — مُترجَمٌ أصلًا، فالشاشةُ تعرض ولا تختار */
 export interface PosFieldOption {
@@ -36,9 +36,15 @@ export interface PosTemplate {
     fields: PosField[];
 }
 
+/** أطولُ ما تقبله `items.*.note` في الخادم — والحقلُ يقف عنده لا بعده */
+export const NOTE_MAX = 255;
+
+/** أزرارُ الزيادة السريعة على السعر النهائيّ — بعملة المتجر */
+export const PRICE_STEPS = [1, 5, 10];
+
 interface Props {
     open: boolean;
-    /** القالبُ المختار — شكلُ هذه النافذة كلِّه يُقرأ منه */
+    /** القالبُ المختار — حقولُه وإذنُه بالموادّ والإضافات يُقرأ منه */
     template: PosTemplate | null;
     /** الموادّ تُختار من أصناف المتجر — لا كتالوجَ ثانٍ ولا مخزونَ ثانٍ */
     products: Product[];
@@ -46,31 +52,41 @@ interface Props {
     money: (value: number) => string;
     /** يصل حين يُعدَّل بندٌ قائم في السلّة — فتعود الاختيارات كما تُركت */
     initial?: CustomCart | null;
+    /** تفاصيلُ البند وإضافاتُه كما في السلّة — تعود معه عند التعديل */
+    initialNote?: string | null;
+    initialAddons?: CartAddon[] | null;
     onClose: () => void;
-    onConfirm: (custom: CustomCart, addons: { addon_id: number; name: string; price: number; qty: number }[]) => void;
+    onConfirm: (custom: CustomCart, addons: CartAddon[], note: string) => void;
 }
 
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
 /**
- * الطلبُ المخصَّص — طلبٌ يُركَّب على الطاولة، بالشكل الذي كتبه صاحبُ النشاط.
+ * تخصيصُ الطلب — نافذةٌ واحدةٌ يكتب فيها الكاشير ما يريده الزبون ويقول السعر.
  *
- * ═══ ولمَ نافذةٌ واحدة لا صفحاتٌ ═══
+ * ═══ ثلاثُ خطواتٍ لا أكثر ═══
  *
- * الزبون واقفٌ أمام الكاشير. وأقسامٌ في نافذةٍ تُمرَّر أسرعُ من شاشاتٍ
- * ينتقل بينها — ومن ينتقل ينسى ما اختار في الأولى.
+ *   ١ · التفاصيل — نصٌّ حرّ: ما قاله الزبون كما قاله. يُحفظ ملاحظةً على
+ *       البند فيقرؤه المنسّق في لوحة التجهيز ويُطبع على الفاتورة.
+ *   ٢ · الموادّ والإضافات — اختياريّة. من اختارها خُصمت من الرفّ وحُسبت
+ *       تكلفتُها، ومن لم يخترها باع بالسعر وحدَه.
+ *   ٣ · السعر النهائيّ — يُحسب من الموادّ والإضافات ويُعرض، ثمّ يزيده
+ *       الكاشير بأزرارٍ أو يكتبه بيده. وما كُتب بيده لا تُعيد الشاشةُ
+ *       حسابَه من تحته.
  *
- * ═══ ولا حقلَ مكتوبٌ هنا ═══
+ * ═══ ولمَ زالت «طريقة التسعير» من الشاشة ═══
  *
- * كانت النافذةُ تعرف «ألوان الورد» و«لون التغليف» و«ملاحظات المنسّق» —
- * ثلاثةَ حقولٍ مكتوبةٍ في الشاشة. فمن يبيع العطر يجدها ولا يجد ما يعنيه،
- * ومن أراد سؤالًا رابعًا لم يكن له سبيل.
- *
- * فالحقولُ تُقرأ من القالب: تسميتُها وترتيبُها ونوعُها وإلزامُها. والشاشةُ
- * تعرف ستّةَ أنواعٍ من الحقول ولا تعرف معنى واحدٍ منها.
+ * كان الكاشير يُسأل أوّلًا: «قيمة أساسية + إضافات» أم «سعر نهائي»؟ — سؤالٌ
+ * محاسبيٌّ لا يعرف جوابَه من يقف أمام الزبون. والزبونُ يدفع رقمًا واحدًا.
+ * فالشاشةُ تسأل عن هذا الرقم وحدَه، وتُخبر الخادمَ بالوضع الذي يقبله
+ * القالب: «سعرٌ نهائيّ» إن أذن به، وإلّا «قيمةٌ أساسيّة» هي الرقمُ ناقصَ
+ * الإضافات — فيدفع الزبون في الحالين ما قرأه على الشاشة.
  *
  * ═══ وما هنا عرضٌ لا حساب ═══
  *
- * التكلفةُ تُعرض هنا لتساعد الموظّف على التسعير، و**تُحسب في الخادم** من
- * `products.cost`. فما يُرسَل منها لا يُقرأ، وما يُحفظ هو ما حسبه الخادم.
+ * السعرُ المحسوب اقتراحٌ من أسعار بيع الموادّ، والتكلفةُ تُعرض لتُعين على
+ * التسعير و**تُحسب في الخادم** من `products.cost`. فما يُرسَل منها لا
+ * يُقرأ، وما يُحفظ هو ما حسبه الخادم.
  *
  * ولا يُخصم من الرفّ شيءٌ ما دامت النافذةُ مفتوحة ولا ما دام البندُ في
  * السلّة: الخصمُ في `completeSale` وحدَه.
@@ -82,19 +98,22 @@ export default function CustomArrangementDialog({
     addons,
     money,
     initial,
+    initialNote,
+    initialAddons,
     onClose,
     onConfirm,
 }: Props) {
     const t = useTranslate();
 
-    const [mode, setMode] = useState<string>('value');
-    const [baseValue, setBaseValue] = useState('');
-    const [budget, setBudget] = useState('');
+    const [note, setNote] = useState('');
     /** إجاباتُ الحقول بمعرّفاتها — والشكلُ يتبع نوعَ الحقل */
     const [values, setValues] = useState<Record<number, unknown>>({});
     const [picked, setPicked] = useState<CustomComponent[]>([]);
     const [addonQty, setAddonQty] = useState<Record<number, number>>({});
     const [search, setSearch] = useState('');
+    /** ما كتبه الكاشير في السعر — و`touched` تقول إن كان قد كتب أصلًا */
+    const [priceText, setPriceText] = useState('');
+    const [touched, setTouched] = useState(false);
 
     /**
      * هل فُتحت قائمةُ المخزون؟ — تُفتح بضغطةٍ على الحقل لا بالكتابة وحدَها.
@@ -104,35 +123,36 @@ export default function CustomArrangementDialog({
      */
     const [browsing, setBrowsing] = useState(false);
 
-    /*
-     * تُهيَّأ عند كلّ فتحة — لا مرّةً واحدة.
-     *
-     * بلا هذا يفتح الكاشير النافذةَ للطلب التالي فيجد موادَّ الطلب السابق
-     * فيها، فيضيفها بلا انتباه: طلبٌ يخرج بموادّ طلبٍ آخر.
-     */
-    useEffect(() => {
-        if (!open || !template) return;
-
-        const fallback = template.default_mode ?? template.modes[0] ?? 'value';
-        const resumed = initial?.mode && template.modes.includes(initial.mode) ? initial.mode : fallback;
-
-        setMode(resumed);
-        setBaseValue(initial?.base_value != null ? String(initial.base_value) : '');
-        setBudget(initial?.mode === 'budget' ? String(initial.price) : '');
-        setValues(
-            Object.fromEntries((initial?.fields ?? []).map((f) => [f.field_id, f.value])),
-        );
-        setPicked(initial?.components ?? []);
-        setAddonQty({});
-        setSearch('');
-        setBrowsing(false);
-    }, [open, initial, template]);
-
     /** الإضافاتُ العامّة وحدَها: الطلبُ المخصَّص بلا منتجٍ يأذن بغيرها */
     const freeAddons = useMemo(
         () => (template?.allow_addons ? addons.filter((a) => a.active) : []),
         [addons, template],
     );
+
+    /*
+     * تُهيَّأ عند كلّ فتحة — لا مرّةً واحدة.
+     *
+     * بلا هذا يفتح الكاشير النافذةَ للطلب التالي فيجد موادَّ الطلب السابق
+     * فيها، فيضيفها بلا انتباه: طلبٌ يخرج بموادّ طلبٍ آخر.
+     *
+     * والتعديلُ يعود بالسعر الذي كان يدفعه الزبون: في وضع «قيمة أساسيّة»
+     * كان يدفع القيمةَ والإضافات، فيُعرض مجموعُهما لا القيمةُ وحدَها.
+     */
+    useEffect(() => {
+        if (!open || !template) return;
+
+        const chosen = Object.fromEntries((initialAddons ?? []).map((a) => [a.addon_id, a.qty]));
+        const paidAddons = (initialAddons ?? []).reduce((s, a) => s + a.price * a.qty, 0);
+
+        setNote(initialNote ?? '');
+        setValues(Object.fromEntries((initial?.fields ?? []).map((f) => [f.field_id, f.value])));
+        setPicked(initial?.components ?? []);
+        setAddonQty(chosen);
+        setSearch('');
+        setBrowsing(false);
+        setPriceText(initial ? String(round3(initial.mode === 'value' ? initial.price + paidAddons : initial.price)) : '');
+        setTouched(initial != null);
+    }, [open, initial, initialNote, initialAddons, template]);
 
     const addonsTotal = useMemo(
         () =>
@@ -143,6 +163,8 @@ export default function CustomArrangementDialog({
             }, 0),
         [addonQty, freeAddons],
     );
+
+    const unitPrice = (c: CustomComponent) => Number(products.find((x) => x.id === c.product_id)?.price) || 0;
 
     const materialCost = useMemo(
         () =>
@@ -155,16 +177,21 @@ export default function CustomArrangementDialog({
     );
 
     /*
-     * ═══ السعرُ الذي يدفعه الزبون ═══
+     * ═══ السعرُ المحسوب والسعرُ النهائيّ ═══
      *
-     * في «قيمة أساسية + إضافات» يجمعهما. وفي «السعر النهائي» هو الرقمُ
-     * الذي قاله الزبون وحدَه — والإضافاتُ داخلَه لا فوقَه.
+     * المحسوبُ من أسعار بيع الموادّ وأثمان الإضافات — يُعرض ليُبنى عليه.
+     * والنهائيُّ هو المحسوبُ ما لم يلمسه الكاشير، وما كتبه إذا كتب.
      *
-     * والخادمُ يحسبها بالقاعدة نفسِها عند الدفع؛ وهذا عرضٌ لا مصدر.
+     * والخادمُ يقرأ النهائيَّ وحدَه، ولا يُعيد حسابَه من الموادّ: الموادُّ
+     * للرفّ والتكلفة، والسعرُ للفاتورة — ولا يُستنبط أحدُهما من الآخر.
      */
-    const baseNum = Number(baseValue) || 0;
-    const budgetNum = Number(budget) || 0;
-    const sellingPrice = mode === 'budget' ? budgetNum : baseNum + addonsTotal;
+    const suggested = round3(picked.reduce((s, c) => s + unitPrice(c) * c.quantity, 0) + addonsTotal);
+    const final = touched ? round3(Number(priceText) || 0) : suggested;
+
+    const setFinal = (n: number) => {
+        setTouched(true);
+        setPriceText(String(round3(Math.max(0, n))));
+    };
 
     /*
      * ما يُعرض تحت الحقل: نتيجةُ البحث، أو المخزونُ كلُّه حين لا بحث.
@@ -207,7 +234,7 @@ export default function CustomArrangementDialog({
     const bump = (idx: number, delta: number) =>
         setPicked((prev) =>
             prev
-                .map((c, i) => (i === idx ? { ...c, quantity: Math.round((c.quantity + delta) * 1000) / 1000 } : c))
+                .map((c, i) => (i === idx ? { ...c, quantity: round3(c.quantity + delta) } : c))
                 .filter((c) => c.quantity > 0),
         );
 
@@ -232,11 +259,21 @@ export default function CustomArrangementDialog({
 
     const missing = (template?.fields ?? []).find((f) => f.required && !answered(f));
 
+    /*
+     * الوضعُ الذي يُقال للخادم — من القالب لا من الشاشة.
+     *
+     * «سعرٌ نهائيّ» متى أذن به القالب: الرقمُ الذي قرأه الزبون هو ما يدفع،
+     * والإضافاتُ داخلَه. وإلّا «قيمةٌ أساسيّة» هي الرقمُ ناقصَ الإضافات —
+     * فيجمعهما الخادمُ إلى الرقم نفسِه.
+     */
+    const budget = template?.modes.includes('budget') ?? true;
+    const sentPrice = budget ? final : round3(final - addonsTotal);
+
     /** ما يمنع الإضافة — يُقال، ولا يُترك الزرُّ معطَّلًا بلا سبب */
-    const blocked = sellingPrice <= 0
-        ? t('أدخل سعر البيع.')
-        : template?.allow_components && picked.length === 0
-            ? t('اختر المكونات.')
+    const blocked = final <= 0
+        ? t('أدخل السعر النهائي.')
+        : sentPrice <= 0
+            ? t('السعر النهائي لا يغطّي الإضافات.')
             : missing
                 ? t('«:name» مطلوب.', { name: missing.label })
                 : null;
@@ -248,27 +285,25 @@ export default function CustomArrangementDialog({
             {
                 template_id: template.id,
                 template_name: template.name,
-                mode,
-                price: Math.round(sellingPrice * 1000) / 1000,
-                base_value: mode === 'value' ? baseNum : null,
+                mode: budget ? 'budget' : 'value',
+                price: sentPrice,
+                base_value: budget ? null : sentPrice,
                 fields: (template.fields ?? [])
                     .filter((f) => answered(f))
                     .map((f) => ({ field_id: f.id, value: values[f.id] })),
                 components: picked,
-                material_cost: Math.round(materialCost * 1000) / 1000,
+                material_cost: round3(materialCost),
             },
             Object.entries(addonQty).map(([id, qty]) => {
                 const a = freeAddons.find((x) => x.id === Number(id))!;
 
                 return { addon_id: a.id, name: a.label, price: a.price, qty };
             }),
+            note.trim(),
         );
     };
 
     if (!open || !template) return null;
-
-    const modeLabel = (key: string) =>
-        key === 'budget' ? t('السعر النهائي') : t('قيمة أساسية + إضافات');
 
     return (
         <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -277,73 +312,23 @@ export default function CustomArrangementDialog({
                 <DialogHeader className="shrink-0 px-5 pt-5">
                     {/* واسمُ القالب لا اسمٌ مكتوبٌ في الشاشة */}
                     <DialogTitle>{template.name}</DialogTitle>
-                    <DialogDescription>{t('ركّب الطلب واختر مواده من المخزون')}</DialogDescription>
+                    <DialogDescription>{t('اكتب ما يريده الزبون، وأضف المواد إن شئت، ثم حدّد السعر النهائي')}</DialogDescription>
                 </DialogHeader>
 
                 <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 pb-4">
-                    {/* ١ · التسعير — الأوضاعُ من القالب لا من قائمةٍ في الشاشة */}
+                    {/* ١ · التفاصيل — ما قاله الزبون كما قاله */}
                     <div>
-                        {template.modes.length > 1 && (
-                            <>
-                                <Label className="mb-2 block" required>
-                                    {t('طريقة التسعير')}
-                                </Label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {template.modes.map((key) => (
-                                        <button
-                                            key={key}
-                                            type="button"
-                                            onClick={() => setMode(key)}
-                                            className={cn(
-                                                'rounded-[12px] border px-3 py-3 text-start text-sm font-medium transition-colors',
-                                                mode === key
-                                                    ? 'border-gray-900 bg-gray-900 text-white'
-                                                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
-                                            )}
-                                        >
-                                            {modeLabel(key)}
-                                        </button>
-                                    ))}
-                                </div>
-                            </>
-                        )}
-
-                        <div className={cn(template.modes.length > 1 && 'mt-3')}>
-                            {mode === 'value' ? (
-                                <>
-                                    {/* والتسميةُ من القالب: «قيمة الورد» أو «قيمة الطلب» أو ما شاء */}
-                                    <Label className="mb-1.5 block" required>
-                                        {template.base_label}
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        inputMode="decimal"
-                                        step="0.001"
-                                        min="0"
-                                        value={baseValue}
-                                        onChange={(e) => setBaseValue(e.target.value)}
-                                    />
-                                </>
-                            ) : (
-                                <>
-                                    <Label className="mb-1.5 block" required>
-                                        {t('السعر النهائي')}
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        inputMode="decimal"
-                                        step="0.001"
-                                        min="0"
-                                        value={budget}
-                                        onChange={(e) => setBudget(e.target.value)}
-                                    />
-                                    {/* وعدٌ يُقال قبل أن يُكتشف: الإضافةُ لا ترفع ما قاله الزبون */}
-                                    <p className="mt-1.5 text-xs text-gray-500">
-                                        {t('الإضافات لا تزيد هذا المبلغ — تدخل ضمنه')}
-                                    </p>
-                                </>
-                            )}
-                        </div>
+                        <Label className="mb-1.5 block">{t('تفاصيل الطلب')}</Label>
+                        <Textarea
+                            value={note}
+                            maxLength={NOTE_MAX}
+                            onChange={(e) => setNote(e.target.value)}
+                            placeholder={t('مثال: ٢٠ وردة حمراء، تغليف أسود، شريطة ذهبية')}
+                            className="min-h-20"
+                        />
+                        <p className="mt-1 text-end text-[11px] tabular-nums text-gray-400">
+                            {note.length}/{NOTE_MAX}
+                        </p>
                     </div>
 
                     {/* ٢ · حقولُ القالب — الشاشةُ تعرف النوعَ ولا تعرف المعنى */}
@@ -365,11 +350,12 @@ export default function CustomArrangementDialog({
                         </div>
                     ))}
 
-                    {/* ٣ · المكوّنات — من أصناف المتجر لا من قائمةٍ تُكتب */}
+                    {/* ٣ · الموادّ — من أصناف المتجر لا من قائمةٍ تُكتب، واختياريّة */}
                     {template.allow_components && (
                         <div>
-                            <Label className="mb-2 block" required>
-                                {t('المكونات')}
+                            <Label className="mb-2 block">
+                                {t('المواد من المخزون')}
+                                <span className="ms-1 text-xs font-normal text-gray-400">({t('اختياري')})</span>
                             </Label>
                             <div className="relative">
                                 <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
@@ -402,15 +388,10 @@ export default function CustomArrangementDialog({
                                                 <span className="ms-2 text-xs text-gray-400">
                                                     {t('المتوفر')}: {p.qty}
                                                 </span>
+                                                {Number(p.price) > 0 && (
+                                                    <span className="ms-2 text-xs font-bold text-gray-500">{money(p.price)}</span>
+                                                )}
                                             </span>
-                                            {/*
-                                              * زرٌّ واحد لا زرّان.
-                                              *
-                                              * كانا «ورد» و«التغليف» — نوعان يعرفهما محلُّ ورد
-                                              * وحده، وكان أحدُهما يقرّر صامتًا أتعود المادّةُ
-                                              * إلى الرفّ أم لا. فصار الاختيارُ واحدًا،
-                                              * والإرجاعُ مقبضًا يُقال على الصفّ أدناه.
-                                              */}
                                             <Button
                                                 type="button"
                                                 size="sm"
@@ -434,6 +415,12 @@ export default function CustomArrangementDialog({
                                         >
                                             <span className="min-w-0 text-sm text-gray-700">
                                                 <span className="truncate">{c.name}</span>
+                                                {/* ثمنُ الصفّ — ما يدخل في السعر المحسوب */}
+                                                {unitPrice(c) > 0 && (
+                                                    <span className="ms-2 text-xs tabular-nums text-gray-400" data-testid="component-price">
+                                                        {money(round3(unitPrice(c) * c.quantity))}
+                                                    </span>
+                                                )}
                                                 {/* ومقبضُ الإرجاع يقول حالَه، فلا يُقرأ الصفُّ ناقصًا */}
                                                 <button
                                                     type="button"
@@ -493,12 +480,10 @@ export default function CustomArrangementDialog({
                                         >
                                             <span className="min-w-0 text-sm text-gray-700">
                                                 <span className="truncate">{a.label}</span>
-                                                {/* في «السعر النهائي» لا ثمنَ يُضاف — فلا يُعرض ثمنٌ يُوهم */}
-                                                {mode === 'value' && (
-                                                    <span className="ms-2 text-xs font-bold text-[#7c3aed]">
-                                                        +{money(a.price)}
-                                                    </span>
-                                                )}
+                                                {/* ما تزيده على السعر المحسوب — والنهائيُّ بيد الكاشير */}
+                                                <span className="ms-2 text-xs font-bold text-[#7c3aed]">
+                                                    +{money(a.price)}
+                                                </span>
                                             </span>
                                             <span className="flex shrink-0 items-center gap-2">
                                                 <Button type="button" size="sm" variant="outline" onClick={() => bumpAddon(a.id, -1)}>
@@ -516,20 +501,61 @@ export default function CustomArrangementDialog({
                         </div>
                     )}
 
-                    {/* ٥ · الملخّص — يُقرأ قبل الإضافة لا بعدها */}
-                    <div className="rounded-[12px] bg-gray-50 p-3 text-sm">
-                        <div className="flex items-center justify-between font-bold text-gray-900">
-                            <span>{t('سعر البيع')}</span>
-                            <span className="tabular-nums">{money(sellingPrice)}</span>
+                    {/* ٥ · السعر — يُحسب ويُعرض، ثمّ يزيده الكاشير أو يكتبه */}
+                    <div className="rounded-[12px] bg-gray-50 p-3">
+                        {suggested > 0 && (
+                            <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
+                                <span>{t('المحسوب من المواد والإضافات')}</span>
+                                <span className="tabular-nums" data-testid="suggested-price">{money(suggested)}</span>
+                            </div>
+                        )}
+                        <Label className="mb-1.5 block" required>
+                            {t('السعر النهائي')}
+                        </Label>
+                        <Input
+                            type="number"
+                            inputMode="decimal"
+                            step="0.001"
+                            min="0"
+                            value={touched ? priceText : suggested > 0 ? String(suggested) : ''}
+                            onChange={(e) => {
+                                setTouched(true);
+                                setPriceText(e.target.value);
+                            }}
+                            className="h-12 text-lg font-bold tabular-nums"
+                            aria-label={t('السعر النهائي')}
+                        />
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {PRICE_STEPS.map((n) => (
+                                <button
+                                    key={n}
+                                    type="button"
+                                    onClick={() => setFinal(final + n)}
+                                    className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-100"
+                                >
+                                    +{n}
+                                </button>
+                            ))}
+                            {/* وعودةٌ إلى المحسوب حين يكون ثمّ محسوبٌ وقد خرج الكاشير عنه */}
+                            {touched && suggested > 0 && final !== suggested && (
+                                <button
+                                    type="button"
+                                    onClick={() => setTouched(false)}
+                                    className="rounded-full px-3 py-1 text-xs font-medium text-gray-500 underline-offset-2 hover:underline"
+                                >
+                                    {t('= المحسوب')}
+                                </button>
+                            )}
                         </div>
-                        <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
-                            <span>{t('تكلفة المواد')}</span>
-                            <span className="tabular-nums">{money(materialCost)}</span>
+                        <div className="mt-3 flex items-center justify-between border-t border-gray-200 pt-2 text-sm font-bold text-gray-900">
+                            <span>{t('يدفع الزبون')}</span>
+                            <span className="tabular-nums" data-testid="final-price">{money(final)}</span>
                         </div>
                         {picked.length > 0 && (
-                            <p className="mt-2 text-xs text-gray-500">
-                                {t('المكونات')}: {picked.map((c) => `${c.name} ×${c.quantity}`).join(' · ')}
-                            </p>
+                            <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+                                <span>{t('تكلفة المواد')}</span>
+                                <span className="tabular-nums">{money(materialCost)}</span>
+                            </div>
                         )}
                     </div>
                 </div>

@@ -99,7 +99,9 @@ interface Props {
         path: DomainPath;
         pricing: DomainPricing;
         /** ما يراه الزائر على العنوان الآن — لا ما يقوله مفتاح الصفحة البسيطة */
-        serves: 'built' | 'simple' | 'none';
+        serves: 'built' | 'simple' | 'theme' | 'none';
+        /** هل في واجهته سلّةٌ وإتمامُ طلب؟ — تُفتح به بطاقةُ التوصيل */
+        checkout: boolean;
     };
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
@@ -482,6 +484,12 @@ export default function SettingsIndex() {
         store_pay_cod: (site?.store_pay_cod ?? '1') === '1',
         store_pay_transfer: (site?.store_pay_transfer ?? '0') === '1',
         store_bank: site?.store_bank ?? '',
+        store_delivery_fee: site?.store_delivery_fee ?? '',
+        store_free_delivery_over: site?.store_free_delivery_over ?? '',
+        store_delivery_areas: site?.store_delivery_areas ?? '',
+        store_delivery_slots: site?.store_delivery_slots ?? '',
+        store_hours: site?.store_hours ?? '',
+        store_delivery_note: site?.store_delivery_note ?? '',
     });
 
     const saveStore = (e: React.FormEvent) => {
@@ -896,6 +904,39 @@ export default function SettingsIndex() {
                                 </div>
                             )}
                         </SettingsGroup>
+
+                        {/*
+                            التوصيل — لمن في واجهته سلّةٌ وإتمامُ طلب (RIBBON).
+                            يقرؤها إتمامُ الطلب وحده، فلا تُعرض لمن موقعُه واتساب.
+                        */}
+                        {store.checkout && (
+                            <SettingsGroup title="التوصيل والاستلام">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <Field label="رسوم التوصيل" hint="فارغًا يعني توصيلًا بلا رسم" error={storeForm.errors.store_delivery_fee}>
+                                        <Input type="number" min={0} step="0.001" dir="ltr" value={storeForm.data.store_delivery_fee} onChange={(e) => storeForm.setData('store_delivery_fee', e.target.value)} aria-label={t('رسوم التوصيل')} />
+                                    </Field>
+                                    <Field label="توصيل مجاني فوق" hint="مبلغ الطلب الذي يسقط بعده الرسم — فارغًا يعني لا سقف" error={storeForm.errors.store_free_delivery_over}>
+                                        <Input type="number" min={0} step="0.001" dir="ltr" value={storeForm.data.store_free_delivery_over} onChange={(e) => storeForm.setData('store_free_delivery_over', e.target.value)} aria-label={t('توصيل مجاني فوق')} />
+                                    </Field>
+                                </div>
+                                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <Field label="مناطق التوصيل" hint="سطرٌ لكل منطقة — فارغًا يعني حقلًا حرًّا للزبون" error={storeForm.errors.store_delivery_areas}>
+                                        <Textarea rows={3} value={storeForm.data.store_delivery_areas} onChange={(e) => storeForm.setData('store_delivery_areas', e.target.value)} aria-label={t('مناطق التوصيل')} />
+                                    </Field>
+                                    <Field label="أوقات التسليم" hint="سطرٌ لكل فترة، مثل: 9 ص – 12 م" error={storeForm.errors.store_delivery_slots}>
+                                        <Textarea rows={3} value={storeForm.data.store_delivery_slots} onChange={(e) => storeForm.setData('store_delivery_slots', e.target.value)} aria-label={t('أوقات التسليم')} />
+                                    </Field>
+                                </div>
+                                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <Field label="ساعات العمل" hint="تظهر في تذييل الموقع وعند الاستلام من المحل" error={storeForm.errors.store_hours}>
+                                        <Input value={storeForm.data.store_hours} onChange={(e) => storeForm.setData('store_hours', e.target.value)} aria-label={t('ساعات العمل')} />
+                                    </Field>
+                                    <Field label="ملاحظة التوصيل" hint="سطرٌ تحت زرّ الإضافة إلى السلّة" error={storeForm.errors.store_delivery_note}>
+                                        <Input value={storeForm.data.store_delivery_note} onChange={(e) => storeForm.setData('store_delivery_note', e.target.value)} aria-label={t('ملاحظة التوصيل')} />
+                                    </Field>
+                                </div>
+                            </SettingsGroup>
+                        )}
 
                         {/* ٤ — النشر */}
                         <SettingsGroup title="النشر">

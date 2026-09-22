@@ -319,6 +319,9 @@ class Storefront
 
     public const SERVES_NONE = 'none';
 
+    /** واجهةٌ خاصّةٌ للمتجر — تتقدّم على البانِي والبسيطة حين تُضبط (انظر `Business::storefrontTheme`) */
+    public const SERVES_THEME = 'theme';
+
     /**
      * أيَّ صفحةٍ يرى الزائرُ على هذا العنوان الآن؟ — وجوابٌ واحد لسائليه.
      *
@@ -339,6 +342,17 @@ class Storefront
     {
         if (! self::serving($business)) {
             return self::SERVES_NONE;
+        }
+
+        /*
+         * والواجهةُ الخاصّة أوّلًا: من ضُبطت له — RIBBON — يُخدم بها على عنوانه
+         * أيًّا كان ما بناه قبلها؛ وحذفُ المفتاح يُعيده إلى الاثنين.
+         *
+         * ومفتاحُ «نشر المتجر» يُطاع هنا كما يُطاع في الصفحة البسيطة: صاحبُ
+         * المحلّ يُغلق موقعه من إعداداته، ولا يُترك له مقبضٌ لا يُدير شيئًا.
+         */
+        if ($business->storefrontTheme() !== null) {
+            return self::published($business) ? self::SERVES_THEME : self::SERVES_NONE;
         }
 
         if (Published::hasPublished((int) $business->id)) {

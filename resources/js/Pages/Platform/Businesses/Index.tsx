@@ -6,6 +6,7 @@ import ExportMenu from '@/Components/ExportMenu';
 import RowActions, { type RowAction } from '@/Components/RowActions';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
+import GoldBadge from '@/Components/GoldBadge';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { number } from '@/lib/format';
@@ -24,6 +25,8 @@ interface BusinessRow {
     contactEmail: string | null;
     plan: string;
     status: string;
+    /** الفئة — `gold` للنظام المستقلّ، وفراغٌ لسائر المتاجر */
+    tier: string | null;
     expires: string | null;
     daysLeft: number | null;
     registered: string;
@@ -70,6 +73,7 @@ export default function BusinessesIndex() {
                     >
                         {b.name}
                     </SmartLink>
+                    <GoldBadge tier={b.tier} compact />
                 </div>
             ),
         },

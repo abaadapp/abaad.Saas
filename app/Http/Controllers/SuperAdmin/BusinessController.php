@@ -86,6 +86,7 @@ class BusinessController extends Controller
             'phone' => $b->phone, 'email' => $b->owner_email, 'contactEmail' => $b->email,
             'plan' => $b->plan?->name ?? '—',
             'status' => $b->status, 'registered' => optional($b->starts_at)->format('Y-m-d') ?? '—',
+            'tier' => $b->tier,
             'expires' => optional($b->ends_at)->format('Y-m-d'),
             /*
              * الأيّام الباقية — الواجهة تلوّن بها ولا تحسب.
@@ -418,10 +419,19 @@ class BusinessController extends Controller
             'status' => ['required', Rule::in(PageController::STATUSES)],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date'],
+            // الفئةُ والواجهةُ الخاصّة — من قائمةٍ مغلقة، وفراغُهما «كسائر المتاجر»
+            'tier' => ['nullable', Rule::in(\App\Models\Business::TIERS)],
+            'storefront_theme' => ['nullable', Rule::in(\App\Models\Business::THEMES)],
         ]);
 
         // علامةٌ للنيّة لا عمودٌ في الجدول
         unset($data['remove_logo']);
+        // والفراغُ فراغٌ لا نصٌّ فارغ: `''` يسقط في `Rule::in` ويُقرأ «فئةً» في كلّ فحص
+        foreach (['tier', 'storefront_theme'] as $k) {
+            if (array_key_exists($k, $data) && (string) $data[$k] === '') {
+                $data[$k] = null;
+            }
+        }
 
         return $data;
     }

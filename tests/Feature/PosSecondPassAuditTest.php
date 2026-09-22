@@ -195,7 +195,8 @@ class PosSecondPassAuditTest extends TestCase
          * إثباتُ تساوٍ — والتساوي يُثبته الرقم في الاختبار الأوّل أعلاه.
          */
         $screen = file_get_contents(resource_path('js/hooks/usePosCart.ts'));
-        $server = file_get_contents(app_path('Http/Controllers/Pos/PosController.php'));
+        // والمعادلةُ صارت في `SaleLines` — يقرؤها الصندوقُ والموقعُ معًا
+        $server = file_get_contents(app_path('Support/SaleLines.php'));
 
         $this->assertStringContainsString(
             'const net = lineTotal(i);',

@@ -11,6 +11,7 @@ import {
     Store,
     X,
 } from 'lucide-react';
+import GoldBadge from '@/Components/GoldBadge';
 import UnifiedSearch from '@/Components/UnifiedSearch';
 import { Avatar, AvatarFallback, AvatarImage } from '@/Components/ui/avatar';
 import { Button } from '@/Components/ui/button';
@@ -303,8 +304,9 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                 <AvatarFallback>{initials(auth?.user.name)}</AvatarFallback>
                             </Avatar>
                             <span className="hidden text-start sm:block">
-                                <span className="block text-[13px] font-medium leading-tight text-[#111]">
+                                <span className="flex items-center gap-1.5 text-[13px] font-medium leading-tight text-[#111]">
                                     {auth?.user.name}
+                                    <GoldBadge tier={context?.tier} compact />
                                 </span>
                                 <span className="block text-[11px] leading-tight text-[#9ca3af]">
                                     {auth?.user.roleLabel}

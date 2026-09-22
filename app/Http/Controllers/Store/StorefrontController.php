@@ -8,6 +8,7 @@ use App\Support\Seo;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
 use App\Support\Website\Published;
+use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
 /**
@@ -43,6 +44,11 @@ class StorefrontController extends Controller
         $business = $clean ? Storefront::open($clean) : null;
 
         abort_if($business === null, 404);
+
+        // والواجهةُ الخاصّة — RIBBON — تتقدّم على البانِي والبسيطة معًا
+        if (Storefront::serves($business) === Storefront::SERVES_THEME) {
+            return app(RibbonController::class)->page($business, $path, $this->base($slug));
+        }
 
         /*
          * والأسبقيّةُ تُقرأ من مصدرها لا تُكتب هنا — انظر `Storefront::serves`.
@@ -120,12 +126,60 @@ class StorefrontController extends Controller
 
         abort_if($business === null || ! Storefront::serving($business), 404);
 
+        if (Storefront::serves($business) === Storefront::SERVES_THEME) {
+            return app(RibbonController::class)->page($business, $path, '');
+        }
+
         $site = Published::forBusiness($businessId);
 
         abort_if($site['state'] === Published::NOT_PUBLISHED, 404);
 
         // ونطاقُ التاجر جذرُه جذرُ متجره — فلا قاعدةَ تُضاف
         return $this->built($site, $business, $path, '');
+    }
+
+    /* ═══════════ السلّةُ وإتمامُ الطلب — للواجهة الخاصّة وحدها ═══════════ */
+
+    /** تسعيرُ السلّة من الخادم — بابٌ للقراءة لا يكتب شيئًا */
+    public function quote(Request $request, string $slug)
+    {
+        return app(RibbonController::class)->quote($this->themed($slug), $request);
+    }
+
+    /** إتمامُ الطلب — طلبٌ حقيقيٌّ في أبعاد (انظر `Store\WebCheckout`) */
+    public function place(Request $request, string $slug)
+    {
+        return app(RibbonController::class)->place($this->themed($slug), $request, $this->base($slug));
+    }
+
+    public function quoteByHost(Request $request, string $host)
+    {
+        return app(RibbonController::class)->quote($this->themedHost($host), $request);
+    }
+
+    public function placeByHost(Request $request, string $host)
+    {
+        return app(RibbonController::class)->place($this->themedHost($host), $request, '');
+    }
+
+    /** المتجرُ من عنوانه — ولا يُخدم بابُ السلّة إلّا لمن واجهتُه خاصّة */
+    private function themed(string $slug): Business
+    {
+        $clean = Storefront::slug($slug);
+        $business = $clean ? Storefront::open($clean) : null;
+        abort_if($business === null || Storefront::serves($business) !== Storefront::SERVES_THEME, 404);
+
+        return $business;
+    }
+
+    private function themedHost(string $host): Business
+    {
+        abort_if(! config('storefront.custom_domains'), 404);
+        $businessId = Domains::resolve($host);
+        $business = $businessId ? Business::find($businessId) : null;
+        abort_if($business === null || Storefront::serves($business) !== Storefront::SERVES_THEME, 404);
+
+        return $business;
     }
 
     /**

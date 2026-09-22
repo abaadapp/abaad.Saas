@@ -19,6 +19,8 @@ interface EditableBusiness {
     status: string | null;
     starts_at: string | null;
     ends_at: string | null;
+    tier: string | null;
+    storefront_theme: string | null;
     logo_url: string | null;
     owner_email: string | null;
 }
@@ -51,6 +53,8 @@ export default function BusinessEdit() {
                     status: business.status ?? '',
                     starts_at: business.starts_at ?? '',
                     ends_at: business.ends_at ?? '',
+                    tier: business.tier ?? '',
+                    storefront_theme: business.storefront_theme ?? '',
                 }}
                 logoUrl={business.logo_url}
                 ownerEmail={business.owner_email}

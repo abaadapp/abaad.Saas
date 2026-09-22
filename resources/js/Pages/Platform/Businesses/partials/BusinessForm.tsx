@@ -1,6 +1,6 @@
 import { type FormEvent, useRef, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Building2, Check, Image as ImageIcon, KeyRound, Layers, RefreshCw, Upload, User, X } from 'lucide-react';
+import { Building2, Check, Crown, Image as ImageIcon, KeyRound, Layers, RefreshCw, Upload, User, X } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
@@ -32,6 +32,10 @@ export interface BusinessValues {
     status: string;
     starts_at: string;
     ends_at: string;
+    /** الفئة: '' لسائر المتاجر، 'gold' للنظام المستقلّ */
+    tier: string;
+    /** الواجهة الخاصّة: '' كسائر المتاجر، 'ribbon' لواجهة RIBBON */
+    storefront_theme: string;
 }
 
 /* النطاق ومكوّنه في مكانٍ واحد — انظر Components/ui/username-input */
@@ -385,6 +389,36 @@ export default function BusinessForm({
                             dir="ltr"
                             value={form.data.ends_at}
                             onChange={(e) => form.setData('ends_at', e.target.value)}
+                        />
+                    </Field>
+                </div>,
+            )}
+
+            {section(
+                <Crown className="size-5" />,
+                'الفئة والواجهة الخاصّة',
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    {/*
+                        زبونٌ يُعامَل نظامًا مستقلًّا داخل أبعاد: يُوسم ذهبيًّا
+                        فيُعرف بعلامته، وتُضبط له واجهةٌ تُخدم على عنوان متجره
+                        بدل الصفحة البسيطة والبانِي. وفراغُهما «كسائر المتاجر».
+                    */}
+                    <Field label="الفئة" error={form.errors.tier}>
+                        <Select
+                            value={form.data.tier}
+                            onChange={(e) => form.setData('tier', e.target.value)}
+                            options={[{ label: t('ذهبي — نظام مستقلّ داخل أبعاد'), value: 'gold' }]}
+                            placeholder="عادي"
+                            aria-label={t('الفئة')}
+                        />
+                    </Field>
+                    <Field label="واجهة المتجر الإلكتروني" error={form.errors.storefront_theme}>
+                        <Select
+                            value={form.data.storefront_theme}
+                            onChange={(e) => form.setData('storefront_theme', e.target.value)}
+                            options={[{ label: 'RIBBON', value: 'ribbon' }]}
+                            placeholder="الافتراضية (البانِي أو الصفحة البسيطة)"
+                            aria-label={t('واجهة المتجر الإلكتروني')}
                         />
                     </Field>
                 </div>,

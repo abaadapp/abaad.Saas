@@ -1586,11 +1586,25 @@ Route::domain('{slug}.'.config('storefront.domain'))
             ->where('slug', Storefront::pattern())
             ->where('path', Storefront::PATH)
             ->name('store.page');
+
+        /*
+         * والسلّةُ وإتمامُ الطلب — للواجهة الخاصّة (RIBBON) وحدها.
+         *
+         * بابان بـ`POST` على العنوان نفسِه: تسعيرُ السلّة من الخادم، وإتمامُ
+         * الطلب. ولا يُخدمان لمتجرٍ واجهتُه البانِي أو البسيطة — انظر
+         * `StorefrontController::themed`.
+         */
+        Route::post('/quote', [StorefrontController::class, 'quote'])
+            ->where('slug', Storefront::pattern())->name('store.quote');
+        Route::post('/checkout', [StorefrontController::class, 'place'])
+            ->where('slug', Storefront::pattern())->name('store.checkout');
     });
 
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
 Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
     ->where('path', Storefront::PATH)->name('store.show.page');
+Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])->name('store.show.quote');
+Route::post('/s/{slug}/checkout', [StorefrontController::class, 'place'])->name('store.show.checkout');
 
 /*
  * ونطاقُ التاجر نفسه — `myshop.om` يفتح موقعه.
@@ -1625,6 +1639,11 @@ Route::domain('{host}')
         Route::get('/{path}', [StorefrontController::class, 'byHost'])
             ->where(['host' => Storefront::foreignHost(), 'path' => Storefront::PATH])
             ->name('store.custom.page');
+
+        Route::post('/quote', [StorefrontController::class, 'quoteByHost'])
+            ->where('host', Storefront::foreignHost())->name('store.custom.quote');
+        Route::post('/checkout', [StorefrontController::class, 'placeByHost'])
+            ->where('host', Storefront::foreignHost())->name('store.custom.checkout');
     });
 
 /*

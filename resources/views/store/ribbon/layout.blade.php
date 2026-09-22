@@ -1,0 +1,206 @@
+{{--
+    واجهةُ RIBBON — الهيكلُ المشترك: الترويسةُ والتذييلُ والسلّةُ في المتصفّح.
+
+    التصميمُ تصميمُ صاحب المتجر (ملفّ «متجر RIBBON الإلكتروني») بألوانه:
+    زيتونيٌّ داكن للترويسة والأزرار، وكريميٌّ للصفحة. والسلّةُ في `localStorage`
+    باسم المتجر، وتُسعَّر دائمًا من الخادم (`/quote`) — لا رقمَ يُحسب هنا.
+--}}
+<!DOCTYPE html>
+<html lang="{{ $lang }}" dir="{{ $dir }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>@yield('title', $business->name)</title>
+    <meta name="description" content="{{ Str::limit($identity['about'] !== '' ? $identity['about'] : $business->name, 155) }}">
+    @if ($canonical)
+        <link rel="canonical" href="{{ $canonical }}{{ $base === '' ? request()->getPathInfo() : '' }}">
+    @endif
+    @if ($logo)
+        <meta property="og:image" content="{{ $logo }}">
+    @endif
+    <link rel="stylesheet" href="/fonts/ibm-plex-arabic.css">
+    <style>
+        :root { --rb-olive: #5a563e; --rb-olive-dark: #47462f; --rb-cream: #efeadb; --rb-bg: #faf8f5; --rb-soft: #f1efe6; --rb-line: #e3dfd2; --rb-border: #d3d0c2; --rb-err: #b5525c; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--rb-bg); color: #000; font-family: 'IBM Plex Sans Arabic', system-ui, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+        a { color: #000; text-decoration: none; }
+        input, select, textarea, button { font-family: inherit; }
+        input:focus, select:focus, textarea:focus { outline: 2px solid var(--rb-olive); outline-offset: 0; }
+        main { flex: 1; overflow-x: hidden; }
+        .rb-wrap { max-width: 1280px; margin: 0 auto; padding: 0 24px; box-sizing: border-box; }
+        @keyframes rb-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        .rb-screen { animation: rb-fade .3s ease; }
+
+        /* الترويسة — بحثٌ يسارًا وشعارٌ وسطًا وأزرارٌ يمينًا؛ وعلى الهاتف صفٌّ للأزرار وصفٌّ للبحث */
+        header.rb-head { background: var(--rb-olive); position: sticky; top: 0; z-index: 20; }
+        .rb-head-in { max-width: 1280px; margin: 0 auto; padding: 18px 24px; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); grid-template-areas: "search logo right"; align-items: center; gap: 24px; min-height: 90px; }
+        .rb-logo { grid-area: logo; display: block; } .rb-logo img { width: clamp(150px, 18vw, 240px); height: auto; display: block; margin: 0 auto; }
+        .rb-search { grid-area: search; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(239,234,219,.45); padding: 0 14px; height: 46px; max-width: 340px; border-radius: 4px; margin: 0; }
+        .rb-search span { width: 14px; height: 14px; border: 1.5px solid var(--rb-cream); border-radius: 50%; flex: none; }
+        .rb-search input { border: 0; background: transparent; width: 100%; font-size: 14px; color: var(--rb-cream); }
+        .rb-search input::placeholder { color: rgba(239,234,219,.7); } .rb-search input:focus { outline: none; }
+        .rb-right { grid-area: right; display: flex; justify-content: flex-end; align-items: center; gap: 12px; font-size: 14px; }
+        .rb-hbtn { border: 1px solid rgba(239,234,219,.45); background: transparent; height: 44px; padding: 0 14px; font-size: 13px; cursor: pointer; color: var(--rb-cream); border-radius: 4px; display: inline-flex; align-items: center; gap: 8px; }
+        .rb-hbtn:hover { background: rgba(239,234,219,.12); }
+        .rb-count { background: var(--rb-cream); color: var(--rb-olive); border-radius: 999px; min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; padding: 0 6px; }
+        @media (max-width: 1023px) {
+            .rb-head-in { grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); grid-template-areas: "lang logo cart" "search search search"; padding: 12px 16px 14px; gap: 12px 8px; min-height: 0; }
+            .rb-right { display: contents; }
+            .rb-lang { grid-area: lang; justify-self: start; } .rb-cartbtn { grid-area: cart; justify-self: end; }
+            .rb-logo img { width: clamp(150px, 34vw, 210px); }
+            .rb-search { max-width: none; }
+        }
+
+        /* أزرار */
+        .rb-btn { height: 50px; padding: 0 28px; border: 0; background: var(--rb-olive); color: var(--rb-cream); font-size: 15px; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+        .rb-btn:hover { background: var(--rb-olive-dark); } .rb-btn[disabled] { opacity: .5; cursor: not-allowed; }
+        .rb-btn-ghost { height: 50px; padding: 0 28px; border: 1px solid var(--rb-olive); background: transparent; color: #000; font-size: 15px; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
+        .rb-btn-ghost:hover { background: #e8e4d6; }
+        .rb-pill { border: 1px solid var(--rb-border); background: #fff; color: #000; padding: 10px 18px; font-size: 13px; cursor: pointer; border-radius: 999px; }
+        .rb-pill.on { border-color: var(--rb-olive); background: var(--rb-olive); color: #fff; }
+        .rb-input { height: 46px; border: 1px solid var(--rb-border); background: #fff; padding: 0 14px; font-size: 14px; width: 100%; color: #000; border-radius: 4px; }
+        .rb-input.err { border-color: var(--rb-err); }
+        textarea.rb-input { height: auto; padding: 12px 14px; resize: vertical; }
+        .rb-error { color: var(--rb-err); font-size: 13px; margin-top: 6px; }
+
+        /* شبكة الأصناف */
+        .rb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 28px 24px; }
+        .rb-card { display: block; color: inherit; }
+        .rb-card .rb-img { aspect-ratio: 1/1; border-radius: 6px; overflow: hidden; background: var(--rb-soft); display: flex; align-items: center; justify-content: center; }
+        .rb-card .rb-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }
+        .rb-card:hover .rb-img img { transform: scale(1.03); }
+        .rb-card .rb-name { margin-top: 12px; font-size: 15px; text-align: center; }
+        .rb-card .rb-price { margin-top: 4px; font-size: 17px; font-weight: 600; text-align: center; }
+        .rb-stripes { background: repeating-linear-gradient(135deg, var(--tint, #e6dcc8) 0 12px, #f3efe9 12px 24px); width: 100%; height: 100%; }
+        .rb-h2 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); font-weight: 500; }
+        .rb-h1 { margin: 0; font-size: 30px; font-weight: 500; }
+        .rb-section { max-width: 1280px; margin: 0 auto; padding: clamp(48px, 6vw, 80px) 24px 0; box-sizing: border-box; }
+        .rb-section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 28px; }
+        .rb-link { font-size: 14px; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #c4bfa6; min-height: 44px; display: inline-flex; align-items: center; }
+        .rb-box { background: #fff; border: 1px solid var(--rb-line); border-radius: 6px; padding: 24px; }
+        .rb-qty { display: inline-flex; align-items: center; border: 1px solid var(--rb-border); background: #fff; }
+        .rb-qty button { border: 0; background: transparent; width: 44px; height: 48px; font-size: 18px; cursor: pointer; color: #000; }
+        .rb-qty span { min-width: 32px; text-align: center; font-size: 15px; }
+
+        /* التذييل */
+        footer.rb-foot { background: var(--rb-olive); color: var(--rb-cream); margin-top: clamp(48px, 6vw, 80px); }
+        .rb-foot-in { max-width: 1280px; margin: 0 auto; padding: clamp(40px, 5vw, 64px) 24px 32px; }
+        .rb-foot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 36px 32px; }
+        .rb-foot h3 { margin: 0 0 14px; font-size: 15px; font-weight: 500; }
+        .rb-foot a, .rb-foot p, .rb-foot span { color: #d9d4c0; font-size: 14px; }
+        .rb-foot a { min-height: 44px; display: flex; align-items: center; } .rb-foot a:hover { color: #fff; }
+        .rb-social a { height: 44px; min-width: 44px; padding: 0 14px; border: 1px solid #8b8968; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; color: var(--rb-cream); font-size: 13px; }
+        .rb-social a:hover { background: #6b694c; }
+        .rb-foot-bottom { border-top: 1px solid #77754f; margin-top: 40px; padding-top: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #c4bfa6; }
+        .rb-toast { position: fixed; bottom: 24px; inset-inline-start: 50%; transform: translateX(-50%); background: #111; color: #fff; padding: 12px 20px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; }
+        .rb-toast.show { opacity: 1; }
+    </style>
+    {!! $analytics ?? '' !!}
+</head>
+<body>
+<header class="rb-head">
+    <div class="rb-head-in">
+        <form class="rb-search" action="{{ $base }}/shop" method="get" role="search">
+            <span></span>
+            <input name="q" placeholder="{{ $t['search'] }}" value="{{ request()->query('q', '') }}" aria-label="{{ $t['search'] }}">
+        </form>
+        <a href="{{ $base }}/" class="rb-logo" aria-label="{{ $business->name }}"><img src="/store/ribbon/logo-wide.png" alt="{{ $business->name }}"></a>
+        <div class="rb-right">
+            @php
+                $rbPath = request()->getPathInfo();
+                $rbRel = $base !== '' && str_starts_with($rbPath, $base) ? substr($rbPath, strlen($base)) : $rbPath;
+                $rbQuery = array_filter(request()->query(), fn ($v, $k) => $k !== 'lang', ARRAY_FILTER_USE_BOTH) + ['lang' => $lang === 'en' ? 'ar' : 'en'];
+            @endphp
+            <a class="rb-hbtn rb-lang" href="{{ $base }}{{ $rbRel ?: '/' }}?{{ http_build_query($rbQuery) }}" data-testid="rb-lang">{{ $t['langBtn'] }}</a>
+            <a class="rb-hbtn rb-cartbtn" href="{{ $base }}/cart" data-testid="rb-cart-btn"><span>{{ $t['cart'] }}</span><span class="rb-count" data-rb-count>0</span></a>
+        </div>
+    </div>
+</header>
+
+<main>
+    @yield('content')
+</main>
+
+<footer class="rb-foot">
+    <div class="rb-foot-in">
+        <div class="rb-foot-grid">
+            <div style="display:flex;flex-direction:column;gap:16px">
+                <img src="/store/ribbon/logo-wide.png" alt="{{ $business->name }}" style="width:180px;height:auto;display:block">
+                @if ($identity['about'] !== '')
+                    <p style="margin:0;line-height:1.8;max-width:300px">{{ $identity['about'] }}</p>
+                @endif
+                <div class="rb-social" style="display:flex;gap:10px;flex-wrap:wrap">
+                    @if ($identity['instagram'] !== '')
+                        <a href="https://instagram.com/{{ $identity['instagram'] }}" target="_blank" rel="noopener">Instagram</a>
+                    @endif
+                    @if ($identity['whatsapp'] !== '')
+                        <a href="https://wa.me/{{ preg_replace('/\D/', '', $identity['whatsapp']) }}" target="_blank" rel="noopener">WhatsApp</a>
+                    @endif
+                </div>
+            </div>
+            <div>
+                <h3>{{ $t['footShop'] }}</h3>
+                <div style="display:flex;flex-direction:column">
+                    <a href="{{ $base }}/shop">{{ $t['all'] }}</a>
+                    @foreach ($catsNav as $c)
+                        <a href="{{ $base }}/shop?cat={{ $c['id'] }}">{{ $c['name'] }}</a>
+                    @endforeach
+                </div>
+            </div>
+            <div>
+                <h3>{{ $t['footContact'] }}</h3>
+                <div style="display:flex;flex-direction:column;gap:10px;line-height:1.6">
+                    @if ($identity['phone'] !== '')<span dir="ltr" style="display:block;text-align:start">{{ $identity['phone'] }}</span>@endif
+                    @if ($identity['email'] !== '')<span>{{ $identity['email'] }}</span>@endif
+                    @if ($identity['address'] !== '')<span>{{ $identity['address'] }}</span>@endif
+                    @if ($hours !== '')<span>{{ $hours }}</span>@endif
+                </div>
+            </div>
+        </div>
+        <div class="rb-foot-bottom">
+            <span>© {{ date('Y') }} {{ $business->name }}</span>
+            <span style="letter-spacing:.18em">FLOWERS · LOUNGE · AND MORE</span>
+        </div>
+    </div>
+</footer>
+
+<div class="rb-toast" data-rb-toast></div>
+
+<script>
+/*
+ * سلّةُ RIBBON — في المتصفّح، وتُسعَّر من الخادم.
+ * لا سعرَ يُحسب هنا: الخادمُ يقرأ الأسعارَ من القاعدة ويردّ الأرقامَ مكتوبة.
+ */
+window.RB = (function () {
+    var KEY = 'ribbon-cart:{{ (int) $business->id }}';
+    var BASE = @json($base);
+    var CSRF = document.querySelector('meta[name=csrf-token]').content;
+    function read() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
+    function write(items) { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {} paint(); }
+    function count() { return read().reduce(function (a, b) { return a + (b.qty || 0); }, 0); }
+    function paint() { document.querySelectorAll('[data-rb-count]').forEach(function (el) { el.textContent = count(); }); }
+    function toast(msg) { var el = document.querySelector('[data-rb-toast]'); el.textContent = msg; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(function () { el.classList.remove('show'); }, 1600); }
+    function add(id, variantId, qty) {
+        var items = read(); var hit = null;
+        items.forEach(function (it) { if (it.id === id && (it.variant_id || null) === (variantId || null)) hit = it; });
+        if (hit) hit.qty += qty; else items.push({ id: id, variant_id: variantId || null, qty: qty });
+        write(items);
+    }
+    function set(id, variantId, qty) {
+        var items = read().map(function (it) { if (it.id === id && (it.variant_id || null) === (variantId || null)) it.qty = qty; return it; }).filter(function (it) { return it.qty > 0; });
+        write(items);
+    }
+    function clear() { write([]); }
+    function post(path, body) {
+        return fetch(BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: JSON.stringify(body) })
+            .then(function (r) { return r.json().then(function (j) { j._status = r.status; return j; }); });
+    }
+    function quote(extra) { return post('/quote', Object.assign({ items: read() }, extra || {})); }
+    document.addEventListener('DOMContentLoaded', paint);
+    return { read: read, write: write, add: add, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE };
+})();
+</script>
+@yield('scripts')
+</body>
+</html>

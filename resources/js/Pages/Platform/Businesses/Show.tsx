@@ -7,6 +7,7 @@ import DeleteButton from '@/Components/DeleteButton';
 import SmartLink from '@/Components/SmartLink';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import Tabs from '@/Components/Tabs';
+import GoldBadge from '@/Components/GoldBadge';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -36,6 +37,7 @@ interface Business {
     email: string | null;
     plan: string;
     status: string;
+    tier?: string | null;
     registered: string;
     branches: number;
     city: string | null;
@@ -187,6 +189,7 @@ export default function BusinessShow() {
                         <div className="flex flex-wrap items-center gap-3">
                             <h2 className="text-[20px] font-bold text-[#111]">{business.name}</h2>
                             <Badge status={business.status} />
+                            <GoldBadge tier={business.tier} />
                         </div>
                         <p className="mt-1 text-sm text-[#6b7280]">
                             {t(business.type)}

@@ -492,20 +492,22 @@ class ASaleRemembersItsSeasonAndTheReportReadsOnlyWhatWasWrittenTest extends Tes
         $this->assertStringNotContainsString('الموقع', json_encode($channels, JSON_UNESCAPED_UNICODE));
     }
 
-    public function test_the_website_has_no_checkout_and_nothing_writes_its_channel(): void
+    public function test_only_the_web_checkout_writes_the_website_channel(): void
     {
-        $this->assertFalse(Commerce::checkout($this->business->id), 'الموقعُ لا يُنشئ طلبًا اليوم');
+        // متجرٌ بلا واجهةٍ خاصّة: لا سلّةَ في موقعه، والطلبُ عبر واتساب
+        $this->assertFalse(Commerce::checkout($this->business->id), 'الموقعُ العاديّ لا يُنشئ طلبًا');
         $this->assertSame(0, Order::count());
 
         /*
-         * حارسٌ نصّيّ: لا موضعَ في التطبيق يكتب قناةَ «الموقع» على طلب. فحين
-         * يُكتب يومًا — بسلّةٍ حقيقيّة — يسقط هذا ويُراجَع أنّ المصدر موثوق.
+         * حارسٌ نصّيّ: الموضعُ الوحيد الذي يكتب قناةَ «الموقع» على طلب هو
+         * إتمامُ الطلب من الواجهة الخاصّة — مصدرٌ موثوقٌ يُنشئ طلبًا حقيقيًّا.
+         * موضعٌ ثانٍ يظهر هنا يُراجَع قبل أن يُصدَّق.
          */
         $writers = collect(glob(app_path('**/*.php')))->merge(glob(app_path('**/**/*.php')))->merge(glob(app_path('**/**/**/*.php')))
             ->filter(fn ($f) => preg_match("/'channel'\s*=>\s*SalesChannel::WEBSITE|channel'\s*=>\s*'website'/", file_get_contents($f)))
             ->map(fn ($f) => str_replace(app_path().'/', '', $f))->values()->all();
 
-        $this->assertSame([], $writers);
+        $this->assertSame(['Support/Store/WebCheckout.php'], $writers);
     }
 
     public function test_a_website_row_appears_only_when_a_real_order_carries_that_channel(): void

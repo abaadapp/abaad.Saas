@@ -2,6 +2,7 @@
 
 namespace App\Support\Website;
 
+use App\Models\Business;
 use App\Support\PaymentMethods;
 
 /**
@@ -74,6 +75,15 @@ final class Commerce
     /** هل في الموقع سلّةٌ ومسارُ إتمامِ طلب؟ — انظر `renderer/commerce.ts` */
     public static function checkout(int $businessId): bool
     {
+        /*
+         * إلّا لمن لبس واجهةً خاصّة: واجهةُ RIBBON فيها سلّةٌ وإتمامُ طلبٍ
+         * يُنشئ طلبًا حقيقيًّا في أبعاد — انظر `Store\WebCheckout`. وسائرُ
+         * المتاجر على ما يقوله السطرُ التالي.
+         */
+        if (Business::find($businessId)?->storefrontTheme() !== null) {
+            return true;
+        }
+
         /*
          * لا. والعارضُ يقولها في تعليقه: «لا سلّة في هذا العارض ولا دفع».
          *

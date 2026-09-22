@@ -61,6 +61,8 @@ class NormalizeNumbers
          * أمامه. وكشفه `ArabicNumeralsTest` قبل أن يصل الخادم.
          */
         'paid_amount',
+        // رسومُ توصيل الموقع وحدُّ مجّانه — يكتبهما صاحبُ المحلّ في إعداداته
+        'store_delivery_fee', 'store_free_delivery_over',
 
         // الرواتب — وكانت كلُّها خارج القائمة
         'salary', 'basic_salary', 'basic', 'allowances', 'deductions', 'overtime',

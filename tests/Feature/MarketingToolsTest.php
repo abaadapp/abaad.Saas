@@ -88,6 +88,9 @@ class MarketingToolsTest extends TestCase
             // إنستغرام وقبولُ الطلبات — يقرؤهما بانِي الموقع (MerchantData, SettingsController)
             'store_instagram', 'store_allow_orders',
             'store_pay_cod', 'store_pay_transfer', 'store_bank',
+            // التوصيلُ والاستلام — يقرؤها إتمامُ الطلب في الواجهة الخاصّة (Store\WebCheckout)
+            'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
+            'store_delivery_slots', 'store_hours', 'store_delivery_note',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

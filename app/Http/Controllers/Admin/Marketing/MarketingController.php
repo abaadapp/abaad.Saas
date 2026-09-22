@@ -185,6 +185,13 @@ class MarketingController extends Controller
             'store_pay_cod' => ['sometimes', 'boolean'],
             'store_pay_transfer' => ['sometimes', 'boolean'],
             'store_bank' => ['nullable', 'string', 'max:400'],
+            // التوصيل — يقرؤه إتمامُ الطلب في الواجهة الخاصّة وحده
+            'store_delivery_fee' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'store_free_delivery_over' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'store_delivery_areas' => ['nullable', 'string', 'max:1000'],
+            'store_delivery_slots' => ['nullable', 'string', 'max:400'],
+            'store_hours' => ['nullable', 'string', 'max:120'],
+            'store_delivery_note' => ['nullable', 'string', 'max:200'],
         ]);
 
         $slug = Storefront::slug($request->input('site_slug'));

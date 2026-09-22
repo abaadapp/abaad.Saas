@@ -91,6 +91,8 @@ export interface SharedProps {
     } | null;
     context: {
         businessName: string;
+        /** الفئة — `gold` للنظام المستقلّ داخل أبعاد، وفراغٌ لسائر المتاجر */
+        tier?: string | null;
         /** رابط موقع التاجر المُطبَّع — null حين لم يُضبط بعد */
         website: string | null;
         branchId: number | null;

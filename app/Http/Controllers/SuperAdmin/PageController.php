@@ -110,6 +110,7 @@ class PageController extends Controller
             'business' => [
                 ...$business,
                 'logo' => self::logoUrl($business['logo']),
+                'tier' => $model->tier,
                 // بريد الدخول — أوّل ما يُسأل عنه حين يتصل التاجر
                 'owner_email' => MerchantAccount::owner($model)?->email,
             ],
@@ -169,6 +170,8 @@ class PageController extends Controller
                 'plan_id' => $model?->plan_id,
                 'starts_at' => optional($model?->starts_at)->format('Y-m-d'),
                 'ends_at' => optional($model?->ends_at)->format('Y-m-d'),
+                'tier' => $model?->tier,
+                'storefront_theme' => $model?->storefront_theme,
                 'logo_url' => self::logoUrl($model?->logo),
                 // حساب الدخول يُعرض ولا يُعاد إنشاؤه من هنا
                 'owner_email' => $model ? MerchantAccount::owner($model)?->email : null,

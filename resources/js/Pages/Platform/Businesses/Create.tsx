@@ -28,6 +28,8 @@ export default function BusinessCreate() {
                     phone: '',
                     email: '',
                     plan_id: '',
+                    tier: '',
+                    storefront_theme: '',
                     status: 'نشط',
                     starts_at: '',
                     ends_at: '',

@@ -36,6 +36,7 @@ use App\Support\ReviewInvite;
 use App\Support\Roles;
 use App\Support\ShopIdentity;
 use App\Support\Storefront;
+use App\Support\Website\Commerce;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -821,6 +822,14 @@ class PageController extends Controller
                  * «افتح متجري» عن متجرٍ يعمل. انظر `Storefront::serves`.
                  */
                 'serves' => $b ? Storefront::serves($b) : Storefront::SERVES_NONE,
+                /*
+                 * وهل في واجهته سلّةٌ وإتمامُ طلب؟ — تُفتح به بطاقةُ التوصيل.
+                 *
+                 * رسمُ التوصيل ومناطقُه وأوقاتُه يقرؤها إتمامُ الطلب وحده
+                 * (`Store\WebCheckout`)، فلا تُعرض لمن موقعُه واتساب: مقبضٌ لا
+                 * يُدير شيئًا أسوأ من غيابه.
+                 */
+                'checkout' => $b ? Commerce::checkout((int) $b->id) : false,
             ],
             /*
              * بطاقاتُ القوالب — من السجلّ لا مكتوبةً في الشاشة.

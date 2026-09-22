@@ -129,6 +129,29 @@ class Business extends Model
         return \Illuminate\Support\Facades\Storage::url($value);
     }
 
+    /* ═══ الفئةُ والواجهة — انظر هجرة `a_shop_may_be_gold…` ═══ */
+
+    /** الفئةُ الذهبيّة — زبونٌ يُعامَل نظامًا مستقلًّا داخل أبعاد */
+    public const TIER_GOLD = 'gold';
+
+    public const TIERS = [self::TIER_GOLD];
+
+    /** واجهةُ RIBBON — أوّلُ واجهةٍ خاصّةٍ تُخدم بدل الصفحة البسيطة والبانِي */
+    public const THEME_RIBBON = 'ribbon';
+
+    public const THEMES = [self::THEME_RIBBON];
+
+    public function isGold(): bool
+    {
+        return $this->tier === self::TIER_GOLD;
+    }
+
+    /** واجهتُه الخاصّة إن ضُبطت — أو لا شيء فيُخدم كسائر المتاجر */
+    public function storefrontTheme(): ?string
+    {
+        return in_array($this->storefront_theme, self::THEMES, true) ? $this->storefront_theme : null;
+    }
+
     public function plan(): BelongsTo { return $this->belongsTo(Plan::class); }
     public function users(): HasMany { return $this->hasMany(User::class); }
     public function branches(): HasMany { return $this->hasMany(Branch::class); }

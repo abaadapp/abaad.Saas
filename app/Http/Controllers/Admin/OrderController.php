@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
+use App\Support\SalesChannel;
 use Illuminate\Http\Request;
 
 class OrderController extends Controller
@@ -47,6 +48,18 @@ class OrderController extends Controller
         $totalCount = $filtered->clone()->count();
         $cancelledCount = $filtered->clone()->where('status', Order::CANCELLED)->count();
 
+        /*
+         * كم منها جاء من الموقع — ومبلغُه.
+         *
+         * والسؤالُ «أين أكثرُ طلباتي؟» لا يُجاب بعمودٍ يُقرأ صفًّا صفًّا:
+         * الصفحةُ عشرةٌ من مئة. فيُحسب على ما رُشّح كلِّه كما يُحسب الإجمالي،
+         * وبجواره — فيُقرأ الاثنان نسبةً بلا حساب.
+         */
+        $websiteCount = $filtered->clone()
+            ->where('channel', SalesChannel::WEBSITE)->count();
+        $websiteAmount = (float) $filtered->clone()->sold()
+            ->where('channel', SalesChannel::WEBSITE)->sum('total');
+
         \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('ordered_at'));
 
         $orders = $q->paginate(10)->withQueryString()->through(fn ($o) => [
@@ -57,6 +70,15 @@ class OrderController extends Controller
             'employee' => $o->employee_name ?? '—', 'branch' => $o->branch,
             'items_count' => $o->items_count, 'total' => (float) $o->total,
             'payment' => $o->payment_method, 'status' => $o->status,
+            /*
+             * والقناةُ باسمها ورمزِها معًا.
+             *
+             * الرمزُ ليُرسَم الوسمُ به (لونًا وأيقونة) والاسمُ ليُقرأ —
+             * ولو أُرسل الرمزُ وحده لَترجمته الشاشةُ بقائمةٍ ثانية تفترق
+             * عن `SalesChannel::label` يومَ تُضاف قناة.
+             */
+            'channel' => $o->channel ?: SalesChannel::UNKNOWN,
+            'channel_label' => SalesChannel::label($o->channel),
             'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
             // الموعد يُقرأ في العمود، و'—' لبيعة المنضدة التي لا موعد لها
             'scheduled' => optional($o->scheduled_for)->format('Y-m-d H:i') ?? '—',
@@ -74,7 +96,7 @@ class OrderController extends Controller
         return \Inertia\Inertia::render('Admin/Orders/Index', [
             'orders' => $orders->items(),
             'pagination' => \App\Support\Pagination::meta($orders),
-            'filters' => $request->only('q', 'payment', 'status', 'from', 'to', 'when')
+            'filters' => $request->only('q', 'payment', 'status', 'from', 'to', 'when', 'channel')
                 + \App\Support\Sort::params($request, self::SORTS),
             'sorts' => \App\Support\Sort::keys(self::SORTS),
             // المبلغ من المُباع وحده، والعدد من الكلّ — والملغى يُذكر صراحةً
@@ -82,8 +104,13 @@ class OrderController extends Controller
             'totalAmount' => $totalAmount,
             'totalCount' => $totalCount,
             'cancelledCount' => $cancelledCount,
+            // وما جاء من الموقع يُقرأ بجوار الإجمالي — عددًا ومبلغًا
+            'websiteCount' => $websiteCount,
+            'websiteAmount' => $websiteAmount,
             // قائمة الحالات من مصدرها الواحد — لا تُكتب في الشاشة مرّةً ثانية
             'statusOptions' => \App\Support\OrderStatus::options(),
+            // والقنوات من مصدرها الواحد كذلك — انظر App\Support\SalesChannel
+            'channelOptions' => SalesChannel::options(),
         ]);
     }
 

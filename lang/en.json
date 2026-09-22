@@ -6341,5 +6341,10 @@
     "لا يتكرر الرد لنفس الرقم خلال": "Don't repeat the reply to the same number within",
     "طريقة يدوية (للحالات الخاصة)": "Manual method (special cases)",
     "لمن ربط رقمه قبل اليوم أو لمن لا تُتيح له ميتا الربط بضغطة — والرمز يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ.": "For those who connected before today, or whom Meta does not allow to connect in one tap — the token is stored encrypted and never shown after saving.",
-    "الرقم الذي اخترته ليس ضمن حسابك عند ميتا — أعد الربط.": "The number you chose is not in your account at Meta — please reconnect."
+    "الرقم الذي اخترته ليس ضمن حسابك عند ميتا — أعد الربط.": "The number you chose is not in your account at Meta — please reconnect.",
+    "مبيعات نقطة البيع": "Point-of-sale sales",
+    "مبيعات الموقع الإلكتروني": "Online store sales",
+    "تنبيهُ طلبات الموقع الإلكتروني": "Online store order alerts",
+    "طلبٌ جديد من الموقع الإلكتروني: :number": "New online store order: :number",
+    "منها من الموقع الإلكتروني": "of which from the online store"
 }

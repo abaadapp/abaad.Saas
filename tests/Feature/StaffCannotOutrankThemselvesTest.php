@@ -10,6 +10,7 @@ use App\Models\PayrollRun;
 use App\Models\User;
 use App\Support\Ledger;
 use App\Support\MerchantAccount;
+use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -130,7 +131,18 @@ class StaffCannotOutrankThemselvesTest extends TestCase
     public function test_a_sideways_self_promotion_is_refused_too(): void
     {
         JobTitle::create(['business_id' => $this->business->id, 'name' => 'مشرف', 'role' => 'sales']);
-        $me = $this->staff('cashier', 'كاشير', ['permissions' => ['dashboard', 'employees', 'orders', 'customers', 'products', 'pos', 'preparation']]);
+        /*
+         * وقائمتُه هي ما يحمله دورُ «مشرف» بعينه — أقسامًا وأفعالًا.
+         *
+         * فلو نقص منها شيءٌ لَردّه الحارسُ الأوّل («لا تملك صلاحية منح») ولم
+         * يبلغ الثاني — وهو المقصود بالاختبار. ويُقرأ من `roleGrants` لا
+         * مكتوبًا باليد: قائمةٌ منسوخة تفترق عن الدور يومَ يُضاف إليه فعل،
+         * فيمرّ الاختبارُ على حارسٍ غير الذي كُتب له.
+         */
+        $me = $this->staff('cashier', 'كاشير', [
+            // و«الموظفون» فوقها: بها يفتح الشاشةَ أصلًا، ودورُ «مشرف» لا يحملها
+            'permissions' => [...Permissions::roleGrants('sales'), 'employees'],
+        ]);
         $this->actingAs($me);
 
         $this->put(route('admin.employees.update', $me->id), [

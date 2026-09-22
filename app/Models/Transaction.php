@@ -23,6 +23,20 @@ class Transaction extends Model
      */
     public const SALE = 'sale';
 
+    /**
+     * بيعةٌ أتمّها الزبون بنفسه من الموقع الإلكتروني.
+     *
+     * ونوعٌ ثانٍ لا وسمٌ على الأوّل: شاشةُ «الحركة المالية» ترشّح بـ`kind`
+     * وتسمّي الصفَّ به، فبنوعٍ واحدٍ لا يفرّق التاجرُ ما قبضه في المحلّ
+     * ممّا باعه الموقعُ وهو نائم — وهما رقمان يُقرّران أين يضع جهده.
+     *
+     * وما يجمع البيعَ كلَّه يقرؤه من `scopeSales` لا من ثابتٍ واحد.
+     */
+    public const WEB_SALE = 'web_sale';
+
+    /** البيعُ بنوعيه — بابُه الصندوقُ أو الموقع */
+    public const SALE_KINDS = [self::SALE, self::WEB_SALE];
+
     /** قيدُها في دفتر الأستاذ — إن رُحّلت */
     public function journalEntry(): BelongsTo { return $this->belongsTo(JournalEntry::class); }
 
@@ -41,7 +55,7 @@ class Transaction extends Model
      */
     public function scopeSales($query)
     {
-        return $query->where('kind', self::SALE)->notCancelled();
+        return $query->whereIn('kind', self::SALE_KINDS)->notCancelled();
     }
 
     /**

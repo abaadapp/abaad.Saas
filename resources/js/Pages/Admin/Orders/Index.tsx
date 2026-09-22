@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { Eye, Plus } from 'lucide-react';
+import { Eye, Globe, Plus, Store } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
@@ -22,20 +22,61 @@ interface Props {
     totalAmount: number;
     totalCount: number;
     cancelledCount: number;
+    /** كم من المُرشَّح جاء من الموقع — ومبلغُه. يُقرأ بجوار الإجمالي */
+    websiteCount: number;
+    websiteAmount: number;
     /** الحالات من مصدرها الواحد في الخادم — انظر App\Support\OrderStatus */
     statusOptions: { value: string; label: string }[];
+    /** القنوات من مصدرها الواحد كذلك — انظر App\Support\SalesChannel */
+    channelOptions: { value: string; label: string }[];
 }
 
 export default function OrdersIndex() {
-    const { orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount, statusOptions, context } =
-        usePage<PageProps<Props>>().props;
+    const {
+        orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount,
+        websiteCount, websiteAmount, statusOptions, channelOptions, context,
+    } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
 
     const columns: Column<Order>[] = [
         { key: 'id', header: 'رقم الطلب', cell: (o) => <span className="font-medium text-[#111]">{o.id}</span> },
         { key: 'customer', header: 'العميل', cell: (o) => o.customer || '—' },
-        { key: 'employee', header: 'الموظف', cell: (o) => o.employee || '—' },
+        {
+            /*
+             * ═══ المصدرُ — العمودُ الذي كان مكتوبًا في القاعدة ولا يُقرأ ═══
+             *
+             * `orders.channel` تُكتب في كلّ صفٍّ منذ أُنشئ العمود، ولم تكن
+             * تصل الشاشةَ أصلًا. فالسؤالُ الأوّل الذي يسأله من فتح متجرًا
+             * إلكترونيًّا — «أيبيع الموقعُ شيئًا، أم أبيع أنا وحدي؟» — لم يكن
+             * له جواب في الشاشة التي فيها الجواب.
+             *
+             * وعلامةُ الموقع تكفي وحدها: «الموظف» يكتب فيها الخادمُ «الموقع
+             * الإلكتروني» لأنّه لا بائعَ لها، فتُقرأ الكلمةُ مرّتين في صفٍّ
+             * واحد. فيُترك موضعُ الموظّف خطًّا لطلب الموقع — المصدرُ قاله.
+             */
+            key: 'channel',
+            header: 'المصدر',
+            cell: (o) =>
+                o.channel === 'website' ? (
+                    <Badge variant="primary">
+                        <Globe className="size-3" />
+                        {t('الموقع الإلكتروني')}
+                    </Badge>
+                ) : o.channel === 'pos' ? (
+                    <Badge variant="neutral">
+                        <Store className="size-3" />
+                        {t('نقطة البيع')}
+                    </Badge>
+                ) : (
+                    <span className="text-[#9ca3af]">{o.channel_label ?? '—'}</span>
+                ),
+        },
+        {
+            key: 'employee',
+            header: 'الموظف',
+            cell: (o) => (o.channel === 'website' ? <span className="text-[#9ca3af]">—</span> : o.employee || '—'),
+        },
         { key: 'branch', header: 'الفرع', cell: (o) => o.branch || '—' },
         {
             key: 'items_count',
@@ -106,6 +147,15 @@ export default function OrdersIndex() {
     ];
 
     const tableFilters: Filter<Order>[] = [
+        {
+            /*
+             * والقناةُ أوّلُ مُرشِّحٍ لا آخرُه: «كم باع الموقع؟» سؤالٌ يُسأل
+             * قبل «بأيّ وسيلةٍ دُفع» — وهو سببُ فتح الشاشة عند كثيرين.
+             */
+            label: 'كل المصادر',
+            param: 'channel',
+            options: channelOptions,
+        },
         {
             label: 'كل وسائل الدفع',
             param: 'payment',
@@ -192,6 +242,18 @@ export default function OrdersIndex() {
                         <span className="text-[#9ca3af]">
                             {' '}
                             ({t('منها :n ملغاة لا تُحسب', { n: String(cancelledCount) })})
+                        </span>
+                    )}
+                    {/*
+                        وما جاء من الموقع يُقرأ بجوار الإجمالي لا في عمودٍ
+                        يُعدّ باليد: الصفحةُ عشرةٌ من مئة، فالعدُّ فيها يكذب.
+                        ويُخفى حين لا يكون — سطرٌ يقول «٠ من الموقع» في متجرٍ
+                        بلا موقعٍ نصيحةٌ لم يطلبها أحد.
+                    */}
+                    {websiteCount > 0 && (
+                        <span className="mt-1 block text-[#6d28d9]">
+                            {t('منها من الموقع الإلكتروني')}: {number(websiteCount)} —{' '}
+                            <span className="font-semibold">{money(websiteAmount, currency)}</span>
                         </span>
                     )}
                 </div>

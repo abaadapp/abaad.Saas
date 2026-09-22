@@ -157,6 +157,16 @@ export default function BusinessForm({
                 delete out.login_username;
                 delete out.login_password;
             }
+            /*
+             * ولا يُرسل حقلُ ملفٍّ لم يُختر.
+             *
+             * النموذج يُجبَر على FormData لأجل الملفّ، وFormData لا يعرف
+             * null: يكتبها نصًّا فارغًا. فيصل الخادمَ مفتاحٌ حاضرٌ فارغ في
+             * كل حفظ — وحضورُ المفتاح عنده يعني «غيِّر الشعار» لا «اتركه».
+             *
+             * الخادم يحرس نفسه من هذا، لكنّ الطلب لا يقول ما لا يقصده.
+             */
+            if (!out.logo) delete out.logo;
 
             return out;
         });

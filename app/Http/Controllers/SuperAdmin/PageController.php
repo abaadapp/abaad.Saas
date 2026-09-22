@@ -613,6 +613,14 @@ class PageController extends Controller
      * المرفوع يُخزَّن مسارًا داخل قرص public فيحتاج تحويلًا، لكن بعض السجلات
      * تحمل رابطًا مطلقًا أصلًا. تمريره على url() ينتج
      * http://localhost/storage/https://… وهو رابط مكسور يفشل تحميله.
+     *
+     * والرابطُ الذي يبدأ بشرطة مثلُه: `Business::getLogoAttribute` يردّ
+     * `/storage/logos/…` جاهزًا للعرض، وكلُّ من ينادي هذه الدالّة ينادي
+     * الخاصيّة لا العمود. فكانت تُضيف بادئتها إلى بادئةٍ قائمة فتُخرج
+     * `/storage/storage/logos/…` — ٤٠٤ في قائمة الشركات وفي ملفّ الشركة
+     * وفي معاينة التعديل. شعارٌ مرفوعٌ موجودٌ على القرص لا يُرى في موضع.
+     *
+     * فما كان رابطًا يُترك رابطًا، وما كان مسارًا خامًا يُحوَّل.
      */
     public static function logoUrl(?string $logo): ?string
     {
@@ -620,7 +628,7 @@ class PageController extends Controller
             return null;
         }
 
-        return str_starts_with($logo, 'http')
+        return str_starts_with($logo, 'http') || str_starts_with($logo, '/')
             ? $logo
             : Storage::disk('public')->url($logo);
     }

@@ -424,8 +424,22 @@ class BusinessController extends Controller
             'storefront_theme' => ['nullable', Rule::in(\App\Models\Business::THEMES)],
         ]);
 
-        // علامةٌ للنيّة لا عمودٌ في الجدول
-        unset($data['remove_logo']);
+        /*
+         * علامةُ النيّة لا عمودٌ في الجدول — وحقلُ الملفّ مثلها.
+         *
+         * الشاشة تُجبر النموذج على FormData (فيه ملفّ)، وFormData يكتب
+         * قيمةَ null نصًّا فارغًا، ثمّ يعيدها `ConvertEmptyStringsToNull`
+         * إلى null. فمفتاح `logo` **حاضرٌ فارغ** في كلّ حفظ لا غائب حين لا
+         * يُختار ملف — و`nullable` تقبله، فيدخل المصفوفة المُتحقَّقة ويمحو
+         * العمود عند `update`.
+         *
+         * فكان الشعار يُرفع ويُحفظ، ثمّ يختفي عند أوّل تعديلٍ لاسمٍ أو
+         * هاتف: بلا زرٍّ ضُغط وبلا رسالة، ويبقى ملفُّه على القرص يتيمًا.
+         *
+         * فالعمودُ لا يُؤخذ من المُدخل أبدًا: `store` و`update` يكتبانه من
+         * الملفّ المرفوع أو من علامة الحذف، وهما وحدهما.
+         */
+        unset($data['remove_logo'], $data['logo']);
         // والفراغُ فراغٌ لا نصٌّ فارغ: `''` يسقط في `Rule::in` ويُقرأ «فئةً» في كلّ فحص
         foreach (['tier', 'storefront_theme'] as $k) {
             if (array_key_exists($k, $data) && (string) $data[$k] === '') {

@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\WhatsAppConnection;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Pagination;
 use App\Support\Search;
+use App\Support\WhatsAppAutoReply;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
+use App\Support\WhatsAppLink;
 use App\Support\WhatsAppLog;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppQuota;
@@ -71,6 +75,38 @@ class WhatsAppController extends Controller
             // معرّفات وصلة المحلّ تُعرض له: هي حسابه. والرمز لا يُعرض لأحد
             'own_connection' => WhatsAppConnections::publicView($own, withIds: true),
             'shared_active' => WhatsAppConnections::platform() !== null,
+
+            /*
+             * ═══ التسجيل المدمج: ما تحتاجه الشاشة لتفتح نافذة ميتا ═══
+             *
+             * معرّفُ التطبيق ومعرّفُ الإعداد ليسا سرًّا — ميتا نفسُها تطلب
+             * وضعَهما في صفحة التاجر، وكلاهما يُقرأ من أيّ متصفّح. وسرُّ
+             * التطبيق ليس هنا ولا يمرّ بالشاشة قطّ: تبديلُ الكود برمزٍ يقع
+             * في الخادم وحدَه (`WhatsAppEmbeddedSignup::exchange`).
+             *
+             * و`configured` تُطفئ الزرّ حين ينقص إعدادٌ على الخادم: زرٌّ
+             * يفتح نافذةً تفشل عند ميتا أسوأ من زرٍّ لا يظهر.
+             */
+            'embedded' => [
+                'configured' => WhatsAppEmbeddedSignup::configured(),
+                'app_id' => (string) config('whatsapp.app_id'),
+                'config_id' => (string) config('whatsapp.config_id'),
+                'graph_version' => (string) config('whatsapp.api_version'),
+                'feature_type' => (string) config('whatsapp.feature_type'),
+                'session_info_version' => (string) config('whatsapp.session_info_version'),
+            ],
+
+            /* حالُ الربط بحالاتها الستّ — تُحسب في الخادم ولا تُستنتج في الشاشة */
+            'link' => WhatsAppLink::view($own),
+
+            /* والردُّ التلقائيّ: ما حُفظ، وفروعُ المتجر التي يُختار منها */
+            'auto_reply' => $ownAllowed ? WhatsAppAutoReply::settings($business->id) : null,
+            'branches' => $ownAllowed
+                ? Branch::where('business_id', $business->id)->orderBy('name')->get(['id', 'name'])->all()
+                : [],
+
+            /* ومن يملك الربط: صاحبُ الحساب أو مديره — والشاشةُ تقوله ولا تُخفي الزرّ بلا سبب */
+            'may_manage' => (bool) auth()->user()?->isAdmin(),
             // الحصّة تُعرض للمشترك وحده — رقمه الخاص لا حدَّ عليه منّا
             'usage' => $mode === WhatsAppMode::ABAAD_SHARED ? WhatsAppQuota::snapshot($business) : null,
             'events' => array_map(

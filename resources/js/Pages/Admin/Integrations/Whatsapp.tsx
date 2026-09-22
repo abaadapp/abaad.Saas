@@ -10,6 +10,9 @@ import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
+import WhatsappLinkCard, { type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
+import WhatsappAutoReply, { type AutoReplySettings } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
+import type { EmbeddedConfig } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
 import type { PageProps } from '@/types';
 
 /** ما يُعرض من حال الأتمتة — بلا رمزٍ ولا سرّ (انظر Admin\WhatsAppController::view) */
@@ -28,6 +31,13 @@ export interface Automation {
         phone_number_id?: string | null;
     } | null;
     shared_active: boolean;
+    /** ما تحتاجه الشاشةُ لتفتح نافذة ميتا — ولا سرَّ فيه */
+    embedded: EmbeddedConfig;
+    /** حالُ الربط بحالاتها الستّ — من الخادم لا تُستنتج هنا */
+    link: WhatsappLink;
+    auto_reply: AutoReplySettings | null;
+    branches: { id: number; name: string }[];
+    may_manage: boolean;
     usage: {
         used: number;
         limit: number;
@@ -131,6 +141,22 @@ export default function IntegrationsWhatsapp() {
                     waiting={t('لا تخرج رسالةٌ واحدة قبل أن تكتمل هذه المراحل.')}
                 />
 
+                {/*
+                    ═══ «ربط واتساب» أوّلًا — وهي أوّلُ ما يُفعل ═══
+
+                    كانت شاشةُ الربط تبدأ بالحصّة ثمّ تصل إلى حقولٍ يُلصق فيها
+                    رمزٌ من لوحة مطوّري ميتا. والتاجر لا يملك حساب مطوّرين ولا
+                    ينبغي أن يملكه — فالبطاقةُ تُقدَّم، واللصقُ يبقى تحتها لمن
+                    ربط بالأمس أو لمن لا تُتيح له ميتا الضغطة.
+                */}
+                {automation.own_allowed && (
+                    <WhatsappLinkCard
+                        link={automation.link}
+                        config={automation.embedded}
+                        mayManage={automation.may_manage}
+                    />
+                )}
+
                 {/* الاستهلاك للمشترك وحده: من ربط رقمه يُرسل على حسابه فلا حدَّ عليه منّا */}
                 {automation.usage && (
                     <SettingsSection
@@ -193,8 +219,8 @@ export default function IntegrationsWhatsapp() {
                 {/* ربط رقم المتجر — لمن مُنح الميزة وحده */}
                 {automation.own_allowed && (
                     <SettingsSection
-                        title="رقم متجرك على واتساب"
-                        description="المعرّفان والرمز من حساب المطوّرين في ميتا — والرمز يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ."
+                        title="طريقة يدوية (للحالات الخاصة)"
+                        description="لمن ربط رقمه قبل اليوم أو لمن لا تُتيح له ميتا الربط بضغطة — والرمز يُخزَّن مشفَّرًا ولا يُعرض بعد الحفظ."
                         icon={Smartphone}
                         status={
                             automation.own_connection?.usable
@@ -301,6 +327,16 @@ export default function IntegrationsWhatsapp() {
                             </div>
                         )}
                     </SettingsSection>
+                )}
+
+                {/* والردُّ التلقائيّ بعد الربط — مقبضٌ لا يُدير شيئًا قبله */}
+                {automation.own_allowed && automation.auto_reply && (
+                    <WhatsappAutoReply
+                        settings={automation.auto_reply}
+                        branches={automation.branches}
+                        linked={automation.link.state === 'connected'}
+                        mayManage={automation.may_manage}
+                    />
                 )}
 
                 {/*

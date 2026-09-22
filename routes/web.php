@@ -28,6 +28,7 @@ use App\Http\Controllers\Admin\GoalController;
 use App\Http\Controllers\Admin\GoogleBusinessController;
 use App\Http\Controllers\Admin\HelpController;
 use App\Http\Controllers\Admin\IntegrationsController;
+use App\Http\Controllers\Admin\WhatsAppOnboardingController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
 use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
 use App\Http\Controllers\Admin\InventoryController;
@@ -1059,6 +1060,26 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         Route::post('/whatsapp/mode', [App\Http\Controllers\Admin\WhatsAppController::class, 'mode'])->name('whatsapp.mode');
         Route::post('/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'connect'])->name('whatsapp.connect');
         Route::delete('/whatsapp/connect', [App\Http\Controllers\Admin\WhatsAppController::class, 'disconnect'])->name('whatsapp.disconnect');
+
+        /*
+         * ═══ التسجيل المدمج — الكود يصل، والرمز يُصنع في الخادم ═══
+         *
+         * وداخل هذه المجموعة لا خارجها: جلسةُ لارافيل ورمزُ CSRF و`tenant`
+         * و`CheckAbility` كلُّها شرطٌ قبل أن يُقرأ الكود. ومسارٌ تحت `api/`
+         * كان سيخرج منها جميعًا.
+         *
+         * والحدُّ عشرٌ في الدقيقة: الربطُ فعلٌ يقع مرّةً في عمر المتجر، وكلُّ
+         * نداءٍ منه يستهلك نداءين إلى ميتا بسرّ التطبيق. وعشرٌ تكفي من
+         * يُخطئ ويُعيد، وتقف دون من يُجرّب أكوادًا.
+         */
+        Route::post('/whatsapp/embedded-signup/callback', [WhatsAppOnboardingController::class, 'callback'])
+            ->middleware('throttle:10,1')->name('whatsapp.embedded.callback');
+
+        /* واختبارُ الاتصال نداءٌ إلى ميتا — فلا يُترك بلا حدّ */
+        Route::post('/whatsapp/test', [WhatsAppOnboardingController::class, 'test'])
+            ->middleware('throttle:20,1')->name('whatsapp.test');
+
+        Route::post('/whatsapp/auto-reply', [WhatsAppOnboardingController::class, 'autoReply'])->name('whatsapp.autoReply');
     });
 
     Route::get('/marketing/loyalty', [MarketingController::class, 'loyalty'])->name('marketing.loyalty');

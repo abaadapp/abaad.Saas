@@ -24,6 +24,9 @@ class WhatsAppConnection extends Model
         'token_expires_at' => 'datetime',
         'connected_at' => 'datetime',
         'disconnected_at' => 'datetime',
+        'last_webhook_at' => 'datetime',
+        'last_error_at' => 'datetime',
+        'coexistence' => 'boolean',
         'metadata' => 'array',
     ];
 
@@ -46,9 +49,30 @@ class WhatsAppConnection extends Model
 
     public const ERROR = 'error';
 
+    /**
+     * ═══ حالتان جديدتان، وكلتاهما تصف واقعًا لم يكن له اسم ═══
+     *
+     * `PENDING`: التسجيل المدمج تمّ، والرمزُ عندنا، وحسابُ الأعمال معروف —
+     * ولا رقمَ فيه بعد. وهذا يقع فعلًا في مسار تطبيق واتساب للأعمال: ميتا
+     * تُعيد `waba_id` وحده ثمّ يظهر الرقمُ بعد دقائق. وقبل هذه الحالة كان
+     * الخيارُ بين كذبتين: «متّصل» ولا رقمَ يُرسل منه، أو «فشل» وقد نجح.
+     *
+     * `REAUTH`: الرمزُ حيٌّ بعدُ لكنّه يوشك — أو سُحبت منه صلاحيةٌ يحتاجها.
+     * وهي غيرُ `EXPIRED`: تلك انقطاعٌ وقع، وهذه تحذيرٌ قبل أن يقع. ومن
+     * يُسوّي بينهما يُخيف التاجر أسبوعين أو يفاجئه في اليوم الأخير.
+     */
+    public const PENDING = 'pending';
+
+    public const REAUTH = 'reauthorization_required';
+
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
+    }
+
+    public function connectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'connected_by_user_id');
     }
 
     public function scopePlatform($query)
@@ -70,7 +94,14 @@ class WhatsAppConnection extends Model
      */
     public function isUsable(): bool
     {
-        if ($this->status !== self::ACTIVE || blank($this->phone_number_id) || blank($this->access_token)) {
+        /*
+         * و«يحتاج إعادة تفويض» يُرسل.
+         *
+         * هي تحذيرٌ قبل الانقطاع لا انقطاع: الرمزُ صالحٌ اليوم. ومن أوقف
+         * الإرسال عندها أوقف رسائلَ أسبوعين لأنّ رمزًا سينتهي بعدهما.
+         */
+        if (! in_array($this->status, [self::ACTIVE, self::REAUTH], true)
+            || blank($this->phone_number_id) || blank($this->access_token)) {
             return false;
         }
 

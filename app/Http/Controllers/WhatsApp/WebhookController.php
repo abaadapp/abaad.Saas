@@ -9,6 +9,7 @@ use App\Models\WhatsAppMessage;
 use App\Support\CrmWhatsApp;
 use App\Support\MetaWhatsAppClient;
 use App\Support\SupportWhatsApp;
+use App\Support\WhatsAppAutoReply;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
@@ -94,6 +95,21 @@ class WebhookController extends Controller
             return;
         }
 
+        /*
+         * وآخرُ إشعارٍ يُختم على الوصلة — بعد التوقيع لا قبله.
+         *
+         * ═══ ولمَ يُكتب هذا أصلًا ═══
+         *
+         * انقطاعُ الإشعارات لا يُصدر خطأً: لا شيء يفشل، ولا سطرَ في سجلّ —
+         * تصمت حالاتُ التسليم وحدها. فيقرأ التاجر «أُرسلت» على كلّ رسالةٍ
+         * أبدًا ولا يعلم أنّ الاشتراك سقط. وختمُ الزمن هذا هو الجوابُ
+         * الوحيد على سؤال «متى آخرُ ما وصلنا منه؟».
+         *
+         * و`forceFill`+`save` على عمودٍ واحد: لا مُراقِبَ ولا حدثَ يُطلق،
+         * وهذا بابٌ يُنادى آلافَ المرّات في اليوم.
+         */
+        $connection->forceFill(['last_webhook_at' => now()])->save();
+
         foreach ((array) ($value['statuses'] ?? []) as $status) {
             $this->applyStatus($connection, (array) $status);
         }
@@ -129,6 +145,26 @@ class WebhookController extends Controller
              */
             if ($connection->purpose === WhatsAppMode::PURPOSE_CRM_SALES) {
                 CrmWhatsApp::receive($connection, (array) $message);
+
+                continue;
+            }
+
+            /*
+             * ═══ وواردُ رقمِ المحلّ بابُه غيرُ بابِ رقم أبعاد ═══
+             *
+             * البابان أعلاه (الدعم والمبيعات) كلاهما يخدم **رقم المنصّة**:
+             * أحدهما يقرأ رسائل التجّار إلينا، والآخر رسائل من يريد أن
+             * يشتري أبعاد. ولا شأن لواحدٍ منهما بزبونٍ يكتب إلى محلِّ ورد.
+             *
+             * وكان واردُ رقم المحلّ يُسقَط كلُّه — ولا بأس ما دام لا أحد
+             * يردّ عليه. فلمّا صار للمحلّ ردٌّ تلقائيّ وجب أن يُقيَّد الوارد
+             * ليُعرف المعالَجُ من المكرَّر.
+             *
+             * و`receive` لا تُرسل حرفًا ما لم يُشعل صاحبُ المحلّ الميزةَ
+             * بنفسه: القرارُ كلُّه عندها في موضعٍ واحد.
+             */
+            if ($connection->owner_type === WhatsAppMode::OWNER_BUSINESS) {
+                WhatsAppAutoReply::receive($connection, (array) $message);
 
                 continue;
             }

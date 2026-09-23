@@ -89,6 +89,32 @@ final class StorePage
         return $raw !== '' ? $raw : null;
     }
 
+    /**
+     * صورةُ شريط المناسبات — أو `null` فتبقى الخطوطُ المرسومة.
+     *
+     * والشريطُ يَعِد بباقاتٍ وكرتِ هدية، وكان يُرسم إلى جانب وعده مستطيلٌ
+     * مخطَّط بالـCSS. فيقرأ الزبون وعدًا ولا يرى منه شيئًا.
+     */
+    public static function bannerImage(int $businessId): ?string
+    {
+        $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_banner_image'] ?? ''));
+
+        return $raw !== '' ? $raw : null;
+    }
+
+    /**
+     * سطرُ التذييل — أو `null` فيبقى ما كان مكتوبًا في القالب.
+     *
+     * «FLOWERS · LOUNGE · AND MORE» وصفُ محلٍّ بعينه، وكان مكتوبًا بحروفه.
+     * فمحلٌّ آخر يلبس الواجهةَ نفسَها يُذيّل صفحتَه بوصفِ غيره.
+     */
+    public static function tagline(int $businessId): ?string
+    {
+        $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_tagline'] ?? ''));
+
+        return $raw !== '' ? $raw : null;
+    }
+
     /* ═══════════ القسمُ الذي يكتبه بنفسه ═══════════ */
 
     /**

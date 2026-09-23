@@ -478,4 +478,58 @@ class TheShopOwnerBuildsHisOwnPageTest extends TestCase
         $this->assertStringNotContainsString('rb-sec-cats', $page);
         $this->assertStringNotContainsString('#rb-cats', $page);
     }
+
+    /* ═══════════ ٨) صورةُ الشريط وسطرُ التذييل ═══════════ */
+
+    /**
+     * شريطُ المناسبات يلبس صورةً يرفعها — وبلا صورةٍ تبقى الخطوطُ المرسومة.
+     *
+     * والشريطُ يَعِد بباقةٍ وكرتِ هدية، وكان يُرسم إلى جانب وعده مستطيلٌ
+     * مخطَّطٌ بالـCSS. فيقرأ الزبون وعدًا ولا يرى منه شيئًا.
+     */
+    public function test_the_banner_wears_the_picture_he_picked(): void
+    {
+        $this->assertStringNotContainsString('rb-banner-image', $this->page());
+
+        $this->set(['store_banner_image' => '/storage/website/1/banner.jpg']);
+
+        $this->assertStringContainsString('/storage/website/1/banner.jpg', $this->page());
+    }
+
+    /** ووجهةُ الصورة تُحرس كأختيها — لا سطرَ كودٍ في `src` */
+    public function test_a_banner_that_is_not_a_link_is_refused(): void
+    {
+        $this->actingAs($this->owner)
+            ->from(route('admin.settings.index'))
+            ->post(route('admin.marketing.store.save'), ['store_banner_image' => 'javascript:alert(1)'])
+            ->assertSessionHasErrors('store_banner_image');
+    }
+
+    /**
+     * وسطرُ التذييل يكتبه — وبلا كتابةٍ يبقى ما كان.
+     *
+     * «FLOWERS · LOUNGE · AND MORE» وصفُ محلٍّ بعينه، وكان مكتوبًا بحروفه في
+     * القالب. ومحلٌّ آخر يلبس الواجهةَ نفسَها يُذيّل صفحتَه بوصفِ غيره.
+     */
+    public function test_the_footer_line_is_his_to_write(): void
+    {
+        $this->assertStringContainsString('FLOWERS · LOUNGE · AND MORE', $this->page());
+
+        $this->set(['store_tagline' => 'ورودٌ · هدايا · توصيل']);
+        $page = $this->page();
+
+        $this->assertStringContainsString('ورودٌ · هدايا · توصيل', $page);
+        $this->assertStringNotContainsString('FLOWERS · LOUNGE · AND MORE', $page);
+    }
+
+    /** وفي كلّ صفحةٍ لا في الرئيسية وحدها — التذييلُ في القالب العامّ */
+    public function test_the_footer_line_follows_every_page(): void
+    {
+        $this->set(['store_tagline' => 'ورودٌ · هدايا · توصيل']);
+
+        $this->assertStringContainsString(
+            'ورودٌ · هدايا · توصيل',
+            $this->get('/s/ribbon/shop')->assertOk()->getContent(),
+        );
+    }
 }

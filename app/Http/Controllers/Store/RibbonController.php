@@ -194,6 +194,7 @@ class RibbonController extends Controller
             // ترتيبُ الأقسام وظهورُها، وصورةُ الواجهة، والقسمُ الذي كتبه بنفسه
             'sections' => StorePage::order($bid),
             'hero' => StorePage::heroImage($bid),
+            'bannerImage' => StorePage::bannerImage($bid),
             'block' => StorePage::block($bid),
             // وعنوانُ «الأكثر مبيعًا» يتبع مصدرَه: محسوبًا يُسمّى، ومختارًا يُسمّى
             'bestPicked' => $chosen->isNotEmpty(),
@@ -332,6 +333,8 @@ class RibbonController extends Controller
             'canonical' => Storefront::canonical($business->site_slug, $bid),
             'analytics' => Seo::tagFor($bid),
             'catsNav' => $this->categories($bid, $lang, null)->take(6)->all(),
+            // وسطرُ التذييل في كلّ صفحة — فهو في القالب العامّ لا في الرئيسية
+            'tagline' => StorePage::tagline($bid),
         ];
     }
 

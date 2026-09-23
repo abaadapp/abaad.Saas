@@ -566,6 +566,8 @@ export default function SettingsIndex() {
         store_block_image: site?.store_block_image ?? '',
         store_block_cta: site?.store_block_cta ?? '',
         store_block_href: site?.store_block_href ?? '',
+        store_banner_image: site?.store_banner_image ?? '',
+        store_tagline: site?.store_tagline ?? '',
         store_delivery_areas: site?.store_delivery_areas ?? '',
         store_delivery_slots: site?.store_delivery_slots ?? '',
         store_hours: site?.store_hours ?? '',
@@ -1236,8 +1238,16 @@ export default function SettingsIndex() {
                         */}
                         {store.serves === 'theme' && (
                         <SettingsGroup title="صفحة متجرك">
+                            {/*
+                                وأين يُرى أثرُ ما غُيّر — يُقال هنا لا يُترك يُبحث عنه.
+
+                                «المعاينة» في آخر الشاشة وتتحدّث وحدها بعد كلّ
+                                حفظ. ومن لا يعرف مكانها يحفظ ثمّ يفتح متجره في
+                                لسانٍ آخر ليرى ما صنع، أو يظنّ أنّ شيئًا لم يقع.
+                            */}
                             <p className="mb-4 text-[12px] leading-relaxed text-[#6b7280]">
-                                {t('كلُّ ما هنا يظهر لزبونك فور الحفظ — لا نشرَ بعده.')}
+                                {t('كلُّ ما هنا يظهر لزبونك فور الحفظ — لا نشرَ بعده.')}{' '}
+                                {t('وتراه في «المعاينة» أسفل هذه الصفحة: تتحدّث وحدها بعد كلّ حفظ.')}
                             </p>
 
                             <StoreImageField
@@ -1246,6 +1256,25 @@ export default function SettingsIndex() {
                                 value={storeForm.data.store_hero_image}
                                 onChange={(v) => storeForm.setData('store_hero_image', v)}
                             />
+
+                            <StoreImageField
+                                label="صورة شريط المناسبات"
+                                hint="الشريطُ يَعِد بباقةٍ وكرتِ هدية — وبلا صورةٍ يبقى إلى جانب وعده مستطيلٌ مخطَّط"
+                                value={storeForm.data.store_banner_image}
+                                onChange={(v) => storeForm.setData('store_banner_image', v)}
+                            />
+
+                            <Field
+                                label="سطر التذييل"
+                                hint="يُكتب أسفل كل صفحة — واتركه فارغًا فيبقى «FLOWERS · LOUNGE · AND MORE»"
+                                error={storeForm.errors.store_tagline}
+                            >
+                                <Input
+                                    value={storeForm.data.store_tagline}
+                                    onChange={(e) => storeForm.setData('store_tagline', e.target.value)}
+                                    aria-label={t('سطر التذييل')}
+                                />
+                            </Field>
 
                             {/* الأقسام: القائمةُ هي الترتيبُ والظهورُ معًا */}
                             <div className="mt-5">

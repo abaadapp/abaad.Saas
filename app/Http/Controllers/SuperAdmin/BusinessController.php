@@ -448,8 +448,24 @@ class BusinessController extends Controller
          * الملفّ المرفوع أو من علامة الحذف، وهما وحدهما.
          */
         unset($data['remove_logo'], $data['logo']);
-        // والمفتاحُ منطقٌ لا نصّ: FormData ترفعه «0»/«1» ونصًّا فارغًا حين لا يُرسل
-        $data['boutiques_enabled'] = $request->boolean('boutiques_enabled');
+        /*
+         * ═══ والمفتاحُ يُكتب لمن أرسله وحدَه ═══
+         *
+         * منطقٌ لا نصّ: FormData ترفعه «0»/«1»، فيُقرأ بـ`boolean` لا كما جاء.
+         *
+         * ولا يُكتب حين لا يُرسَل. كان يُكتب دائمًا، فحمولةٌ لا تحمله تُطفئه —
+         * وهذا ما وقع فعلًا: شاشةُ التعديل أسقطته من قيمها الابتدائيّة، فكان
+         * كلُّ حفظٍ لاسمٍ أو هاتفٍ يُطفئ البوتيكات، ويفقد التاجرُ تبويبَه
+         * بلا أن يمسّه أحد. ولا يشي به شيء: الفئةُ والواجهةُ تبقيان لأنّهما
+         * `nullable` تخرجان من المصفوفة حين تغيبان — فيُقرأ الحفظُ سليمًا.
+         *
+         * فصار كسائر الحقول: الغائبُ لا يُمسّ، والمرسَلُ يُكتب كما أُرسل.
+         */
+        if ($request->has('boutiques_enabled')) {
+            $data['boutiques_enabled'] = $request->boolean('boutiques_enabled');
+        } else {
+            unset($data['boutiques_enabled']);
+        }
         // والفراغُ فراغٌ لا نصٌّ فارغ: `''` يسقط في `Rule::in` ويُقرأ «فئةً» في كلّ فحص
         foreach (['tier', 'storefront_theme'] as $k) {
             if (array_key_exists($k, $data) && (string) $data[$k] === '') {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchStock;
+use App\Models\Business;
 use App\Models\ImportBatch;
 use App\Models\Product;
 use App\Support\Activity;
@@ -101,14 +102,98 @@ class ProductController extends Controller
         return Demo::activeBranchId();
     }
 
-    /** رمز منتج تلقائي فريد داخل النشاط: FLW-#### */
+    /** رمز منتج تلقائي فريد داخل النشاط: <بادئة المحلّ>-##### */
     private function generateSku(): string
     {
+        $prefix = $this->skuPrefix();
+
         do {
-            $sku = 'FLW-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT);
+            $sku = $prefix.'-'.str_pad((string) random_int(1, 99999), 5, '0', STR_PAD_LEFT);
         } while (Product::where('business_id', $this->bid())->where('sku', $sku)->exists());
 
         return $sku;
+    }
+
+    /**
+     * بادئةُ الرمز — من المحلّ لا من «الورد».
+     *
+     * كانت `FLW` لكلّ متجر: محلُّ الذهب يطبع على بطاقة سوارٍ رمزًا يقول
+     * «زهور»، ومخزنُ القطع كذلك. والرمزُ يُقرأ في الجرد وعلى الملصق وفي
+     * ملفّ الاستيراد، فبادئةٌ تكذب تُربك من يقرؤها ولا يُصلحها أحد بعدُ.
+     *
+     * وتُقرأ على ترتيب: ما يكتبه المحلُّ اليوم، ثمّ حروفُ اسمه، ثمّ `SKU`.
+     *
+     *  · **ما يكتبه اليوم أولى ممّا نخترعه له.** فمتجرٌ رموزُه `FLW-` —
+     *    مطبوعةً على رفوفه ومحفوظةً في جهاز مورّده — يبقى عليها. فالإصلاحُ
+     *    لا يخلط بادئتين في متجرٍ واحد، ولا يمسّ رمزًا كُتب ولا باركودًا.
+     *  · ثمّ حروفُ الاسم: `RIBBON` → `RIB`، و`Abaad Gold` → `AG`.
+     *  · واسمٌ بلا حرفٍ لاتينيّ يأخذ `SKU` — حياديّةٌ تُقال خيرٌ من نسبةٍ
+     *    كاذبة، والرمزُ يُطبع على ملصقٍ لا يقرأ العربيّة.
+     */
+    private function skuPrefix(): string
+    {
+        /*
+         * وخمسون رمزًا آخرَ ما كُتب تكفي للحكم: القراءةُ تقع في كلّ إضافة،
+         * ومتجرٌ فيه آلافُ الأصناف لا يُمسح جدولُه ليُعرف حرفان.
+         */
+        $seen = [];
+
+        foreach (Product::where('business_id', $this->bid())
+            ->whereNotNull('sku')->orderByDesc('id')->limit(50)->pluck('sku') as $sku) {
+            if (preg_match('/^([A-Za-z]{2,5})-\d+$/', (string) $sku, $m)) {
+                $p = strtoupper($m[1]);
+                $seen[$p] = ($seen[$p] ?? 0) + 1;
+            }
+        }
+
+        if ($seen !== []) {
+            arsort($seen);
+
+            return (string) array_key_first($seen);
+        }
+
+        $business = Business::find($this->bid());
+
+        foreach ([$business?->name_en, $business?->name] as $name) {
+            $letters = self::initials((string) $name);
+
+            if ($letters !== null) {
+                return $letters;
+            }
+        }
+
+        return 'SKU';
+    }
+
+    /**
+     * حرفان أو ثلاثة من اسمٍ — أو `null` إن لم يكن فيه لاتينيّ.
+     *
+     * واسمٌ من كلمةٍ واحدة يُؤخذ من أوّله (`RIBBON` → `RIB`)، ومن كلماتٍ
+     * تُؤخذ أوائلُها (`Abaad Gold` → `AG`) — كما يختصر التاجرُ اسمَه بيده.
+     */
+    private static function initials(string $name): ?string
+    {
+        $words = array_values(array_filter(preg_split('/\s+/', trim($name)) ?: []));
+
+        if (count($words) >= 2) {
+            $letters = '';
+
+            foreach ($words as $word) {
+                if (preg_match('/[A-Za-z]/', $word, $m)) {
+                    $letters .= strtoupper($m[0]);
+                }
+
+                if (strlen($letters) === 3) {
+                    break;
+                }
+            }
+
+            return strlen($letters) >= 2 ? $letters : null;
+        }
+
+        $latin = preg_replace('/[^A-Za-z]/', '', $words[0] ?? '');
+
+        return strlen((string) $latin) >= 2 ? strtoupper(substr((string) $latin, 0, 3)) : null;
     }
 
     /** باركود تلقائي فريد (يشبه EAN-13): 628 + ١٠ أرقام */

@@ -10,7 +10,6 @@ use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
 use Illuminate\Support\Carbon;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -155,20 +154,49 @@ final class Boutiques
     }
 
     /**
-     * أانتهى هذا الشهرُ فصار يُسوَّى؟
+     * أانتهى هذا الشهر؟ — خبرٌ للشاشة لا شرطٌ للتسوية.
      *
-     * ═══ ولا تُصدَر تسويةُ شهرٍ ما زال يبيع ═══
+     * ═══ وكان شرطًا فصار خبرًا ═══
      *
-     * التسويةُ تُجمّد الأرقام، وفهرسُ القاعدة الفريد يمنع ثانيةً لشهرٍ
-     * واحد. فمن أصدرها في العاشر أخذ عشرةَ أيّام وأغلق البابَ على عشرين:
-     * ما يُباع في بقيّة الشهر يبقى في الكشف حيًّا ولا يجد تسويةً تحمله،
-     * ولا تصرخ شاشةٌ ولا يختلّ ميزان — يضيع مالُ البوتيك صامتًا.
+     * كانت الوحدةُ شهرًا، فمن سوّى في العاشر أغلق البابَ على عشرين يومًا:
+     * ما يُباع في بقيّتها لا يجد تسويةً تحمله، ولا تصرخ شاشةٌ ولا يختلّ
+     * ميزان — يضيع مالُ البوتيك صامتًا. فكان الجاري لا يُسوَّى أصلًا.
      *
-     * فالشهرُ الجاري — وما بعده — لا يُسوَّى حتّى يُغلق.
+     * وصارت الوحدةُ مدّةً (انظر `coverFrom`)، فزال سببُ المنع: يُسوّي متى
+     * شاء، وما بعد تسويته تحمله التي تليها.
+     *
+     * ويبقى الخبرُ نافعًا: شهرٌ ما زال يبيع تسويتُه **جزئيّة**، وتُقال له
+     * ذلك قبل أن يُصدرها فلا يظنّها ختامَ الشهر.
      */
     public static function isClosed(string $period): bool
     {
         return $period < now()->format('Y-m');
+    }
+
+    /* ═══════════ ما لم يُسوَّ بعد ═══════════ */
+
+    /**
+     * بنودُ البوتيك في هذا الشهر التي لم تحملها ورقةٌ بعد.
+     *
+     * ═══ والختمُ هو القاعدة لا الوقت ═══
+     *
+     * قسمةُ الشهر بين وقتين تبدو أبسط، وفيها ثغرةٌ لا تُسدّ: `ordered_at`
+     * دقّتُها **ثانية**. فبيعةٌ تقع في الثانية التي أُصدرت فيها الورقة لا
+     * يفصلها عن أختها حدّ — إن شملها الحدُّ حُسبت مرّتين، وإن جاوزها لم
+     * تُحسب أبدًا. ولا ثالثَ لهما، وكلاهما مالٌ يضيع أو يُدفع مرّتين.
+     *
+     * والختمُ يقطع السؤال: ما لا رقمَ ورقةٍ عليه لم يُسوَّ. ولا يتعلّق
+     * بساعةٍ ولا بدقّةِ عمود.
+     */
+    private static function unsettled(int $businessId, int $boutiqueId, string $period)
+    {
+        $from = Carbon::createFromFormat('Y-m-d', $period.'-01')->startOfMonth();
+
+        return OrderItem::query()
+            ->where('order_items.boutique_id', $boutiqueId)
+            ->whereNull('order_items.boutique_settlement_id')
+            ->whereIn('order_items.order_id', Order::where('business_id', $businessId)->sold()
+                ->whereBetween('ordered_at', [$from, (clone $from)->endOfMonth()])->select('id'));
     }
 
     /**
@@ -183,24 +211,33 @@ final class Boutiques
      * والملغى يخرج: `Order::scopeSold` هي قاعدةُ «ما بِيع» في النظام كلِّه.
      *
      * @return array{
-     *     period: string, from: string, to: string,
+     *     period: string, from: string, to: string, from_at: string, to_at: string, partial: bool,
      *     lines: list<array<string, mixed>>,
      *     gross: float, commission: float, net: float, quantity: float, lines_count: int
      * }
      */
     public static function statement(int $businessId, int $boutiqueId, string $period): array
     {
-        $from = Carbon::createFromFormat('Y-m-d', $period.'-01')->startOfMonth();
-        $to = (clone $from)->endOfMonth();
+        $month = Carbon::createFromFormat('Y-m-d', $period.'-01')->startOfMonth();
 
-        $rows = OrderItem::query()
-            ->where('order_items.boutique_id', $boutiqueId)
-            ->whereIn('order_items.order_id', Order::where('business_id', $businessId)->sold()
-                ->whereBetween('ordered_at', [$from, $to])->select('id'))
+        /*
+         * وما حملته ورقةٌ لا يُعاد في كشف.
+         *
+         * كشفٌ يُعيد ما سُوِّي ودُفع يُطالَب به مرّتين، وصاحبُ المحلّ لا
+         * يميّز الجديدَ من القديم — فيدفع أو يجادل، وكلاهما خسارة.
+         */
+        $rows = self::unsettled($businessId, $boutiqueId, $period)
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->orderBy('orders.ordered_at')
             ->get([
                 'order_items.product_id', 'order_items.name', 'order_items.variant_name',
                 'order_items.quantity', 'order_items.total', 'order_items.boutique_rate',
+                'orders.ordered_at',
             ]);
+
+        // وحدّا الورقة ما شملته فعلًا — لا أوّلُ الشهر وآخرُه على الإطلاق
+        $from = $rows->isEmpty() ? $month : Carbon::parse($rows->first()->ordered_at);
+        $to = $rows->isEmpty() ? $month : Carbon::parse($rows->last()->ordered_at);
 
         $lines = [];
         foreach ($rows as $r) {
@@ -254,6 +291,10 @@ final class Boutiques
             'period' => $period,
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
+            // وبالوقت كذلك: يومان متجاوران في مدّتين لا يُفرَّقان بالتاريخ وحده
+            'from_at' => $from->toDateTimeString(),
+            'to_at' => $to->toDateTimeString(),
+            'partial' => ! self::isClosed($period),
             'lines' => $lines,
             'quantity' => round($quantity, 3),
             'gross' => round($gross, 3),
@@ -279,51 +320,48 @@ final class Boutiques
      */
     public static function settle(Business $business, Boutique $boutique, string $period, ?string $employee = null): BoutiqueSettlement
     {
-        if (! self::isClosed($period)) {
-            throw new SettlementRefused(__('الشهرُ لم ينتهِ بعد — تُصدَر تسويتُه بعد آخر يومٍ فيه، وإلّا ضاع ما يُباع في بقيّته.'));
-        }
-
+        /*
+         * ولا شرطَ على الشهر بعد اليوم — انظر `isClosed`.
+         *
+         * كان الجاري يُردّ لأنّ الورقةَ تُغلق شهرَها. وصارت تأخذ ما لم
+         * يُؤخَذ، فما بعدها تحمله التي تليها — ويبقى الحارسُ الحقيقيّ
+         * وحدَه: لا ورقةَ بلا بيعٍ تحمله.
+         */
         $statement = self::statement((int) $business->id, (int) $boutique->id, $period);
 
         if ($statement['lines_count'] === 0) {
-            throw new SettlementRefused(__('لا مبيعات لهذا البوتيك في هذا الشهر — لا تسوية بلا بيع.'));
+            throw new SettlementRefused(
+                BoutiqueSettlement::where('business_id', $business->id)
+                    ->where('boutique_id', $boutique->id)->where('period', $period)->exists()
+                    ? __('لا بيعَ جديدًا بعد تسويته الأخيرة — لا تسوية بلا بيع.')
+                    : __('لا مبيعات لهذا البوتيك في هذا الشهر — لا تسوية بلا بيع.'),
+            );
         }
 
-        /*
-         * ═══ ولا فحصَ ثانٍ للتفرّد ═══
-         *
-         * كان هنا `exists()` قبل الكتابة. وهو وحارسُ الفهرس يقولان الشيء
-         * نفسَه — و«فحصان لسؤالٍ واحد يفترقان يوم يُبدَّل أحدهما». وأسوأُ
-         * منه أنّ الفحصَ يقرأ حالًا قد تتبدّل بين قراءته وكتابته، فيمرّ
-         * منه الضغطتان المتقاربتان معًا ويبقى الفهرسُ هو الذي يردّ فعلًا.
-         *
-         * فالحارسُ واحد — الفهرس — وكلمتُه تُترجَم إلى ما يفهمه صاحبُه.
-         * وهذا الفرعُ هو الطريقُ لا مخرجُ الطوارئ، فيُسلك ويُحرَس.
-         */
-        try {
-            return self::write($business, $boutique, $period, $statement, $employee);
-        } catch (QueryException $e) {
-            /*
-             * وضغطتان متقاربتان تمرّان من الفحص معًا.
-             *
-             * فالفهرسُ الفريد هو الحارسُ الأخير — وهو الصادق: الفحصُ يقرأ
-             * حالًا قد تتبدّل بين قراءته وكتابته. وما يقوله الفهرسُ يُترجَم
-             * إلى الكلمة نفسِها، ولا يُعرض نصُّ القاعدة على التاجر.
-             */
-            if (str_contains($e->getMessage(), 'boutique_settlements')) {
-                throw new SettlementRefused(__('تسويةُ هذا الشهر صدرت من قبل — تُفتح ولا تُصدَر ثانيةً.'));
-            }
-
-            throw $e;
-        }
+        return self::write($business, $boutique, $period, $statement, $employee);
     }
 
     /** كتابةُ المستند ومصروفه — في معاملةٍ واحدة */
     private static function write(Business $business, Boutique $boutique, string $period, array $statement, ?string $employee): BoutiqueSettlement
     {
         return DB::transaction(function () use ($business, $boutique, $period, $statement, $employee) {
+            /*
+             * ═══ والبنودُ تُحجَز أوّلًا ═══
+             *
+             * `update … whereNull` تجعل القاعدةَ هي الحَكَم: ضغطتان
+             * متقاربتان تقرآن البنودَ نفسَها، فتظفر الأولى بها وتجد
+             * الثانيةُ صفرًا — فتُردّ ويُلغى ما كتبته بالمعاملة.
+             *
+             * وكان هذا دورَ الفهرس الفريد على الشهر. وقد سقط الفهرسُ لأنّ
+             * الشهرَ لم يعد وحدة، فانتقل الحارسُ ولم يزُل — ولا فحصَ ثانٍ
+             * يقرأ حالًا تتبدّل بين قراءته وكتابته.
+             */
+            $ids = self::unsettled((int) $business->id, (int) $boutique->id, $period)
+                ->pluck('order_items.id')->all();
+
             $number = self::nextNumber((int) $business->id, $period);
             $due = Carbon::createFromFormat('Y-m-d', $statement['to'])->endOfDay();
+            $partial = ! self::isClosed($period);
 
             /*
              * والمصروفُ بصافي ما للبوتيك — لا بالإجماليّ.
@@ -335,7 +373,16 @@ final class Boutiques
             $expense = Expense::create([
                 'business_id' => $business->id,
                 'type' => self::EXPENSE_TYPE,
-                'description' => __('تسوية :name عن :period', ['name' => $boutique->name, 'period' => $period]),
+                /*
+                 * والجزئيّةُ تقول إنّها جزئيّة في وصفها.
+                 *
+                 * «تسوية ورد الخوير عن 2027-02» على ثلاث ورقاتٍ لشهرٍ واحد
+                 * لا تُميَّز إحداها من أختها في شاشة المستحقّات — ومن يسدّد
+                 * يسدّد ورقةً لا يعرف أيَّ مدّةٍ تحمل.
+                 */
+                'description' => $partial
+                    ? __('تسوية :name حتى :to', ['name' => $boutique->name, 'to' => $statement['to']])
+                    : __('تسوية :name عن :period', ['name' => $boutique->name, 'period' => $period]),
                 'amount' => $statement['net'],
                 'reference' => $number,
                 'due_date' => $due->toDateString(),
@@ -349,6 +396,15 @@ final class Boutiques
                 'boutique_id' => $boutique->id,
                 'number' => $number,
                 'period' => $period,
+                /*
+                 * والمدّةُ تُحفظ في المستند لا تُحسب منه.
+                 *
+                 * `covered_from` هي التي يحرسها الفهرسُ الفريد: ضغطتان
+                 * متقاربتان تقرآن نهايةَ السابقة نفسَها فتبدآن من الوقت
+                 * نفسِه — فتُردّ الثانية كما كانت تُردّ على الشهر.
+                 */
+                'covered_from' => $statement['from_at'],
+                'covered_to' => $statement['to_at'],
                 'gross' => $statement['gross'],
                 'commission' => $statement['commission'],
                 'net' => $statement['net'],
@@ -356,6 +412,14 @@ final class Boutiques
                 'expense_id' => $expense->id,
                 'issued_at' => now(),
             ]);
+
+            $claimed = OrderItem::whereIn('id', $ids)
+                ->whereNull('boutique_settlement_id')
+                ->update(['boutique_settlement_id' => $settlement->id]);
+
+            if ($claimed !== count($ids)) {
+                throw new SettlementRefused(__('صدرت ورقةٌ لهذه البيعات قبل لحظة — افتح الشاشة من جديد.'));
+            }
 
             Activity::log('created', 'تسوية بوتيك '.$boutique->name.' عن '.$period.' بمبلغ '.$statement['net'], [
                 'business_id' => $business->id, 'subject_id' => $settlement->id, 'subject_type' => 'boutique_settlement',

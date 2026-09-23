@@ -29,13 +29,14 @@ interface Props {
         contact_person: string | null; rate: number; active: boolean; notes: string | null;
     };
     statement: {
+        /** أتُصدَر على شهرٍ ما زال يبيع؟ — خبرٌ من الخادم لا حسبةٌ في المتصفّح */
+        partial: boolean;
         period: string; from: string; to: string; lines: Line[];
         quantity: number; gross: number; commission: number; net: number; lines_count: number;
     };
     period: string;
     periods: { value: string; label: string }[];
-    /** أانتهى الشهر؟ — يُحسب في الخادم لا في المتصفّح */
-    closed: boolean;
+    /** آخرُ ورقةٍ صدرت في هذا الشهر — وقد تكون واحدةً من عدّة */
     settlement: {
         id: number; number: string; net: number; gross: number; commission: number;
         issued_at: string | null; paid: boolean; expense_reference: string | null;
@@ -50,7 +51,7 @@ interface Props {
  * الكشفُ لأجله)، ثمّ ما بُني منه صنفًا صنفًا، ثمّ ما صدر من قبل.
  */
 export default function BoutiqueShow() {
-    const { boutique, statement, period, periods, closed, settlement, history, context } =
+    const { boutique, statement, period, periods, settlement, history, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -127,10 +128,17 @@ export default function BoutiqueShow() {
                 ))}
             </div>
 
-            {/* التسوية — صدرت أو تُصدَر */}
-            <Card className="mb-5 flex flex-wrap items-center justify-between gap-3 p-4">
-                {settlement ? (
-                    <>
+            {/*
+                التسوية — ما صدر وما يُصدَر، لا أحدُهما.
+
+                كان الزرُّ يختفي متى وُجدت ورقةٌ لهذا الشهر، وكان صحيحًا
+                يومَ كانت الورقةُ تأخذ الشهرَ كلَّه. وصارت تأخذ ما لم
+                يُؤخَذ — فاختفاؤه يعني أنّ ما بِيع بعدها لا يجد بابًا
+                يُصدَر منه، وهو العطبُ نفسُه الذي فُتح الشهرُ الجاري لأجله.
+            */}
+            <Card className="mb-5 flex flex-col gap-3 p-4">
+                {settlement && (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2.5">
                             <FileCheck2 className="size-5 shrink-0 text-[#047857]" />
                             <div className="min-w-0">
@@ -153,23 +161,33 @@ export default function BoutiqueShow() {
                                 {t('تُسدَّد من المبالغ المستحقة')}
                             </SmartLink>
                         )}
-                    </>
-                ) : (
-                    <>
+                    </div>
+                )}
+
+                {(statement.lines_count > 0 || ! settlement) && (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2.5">
                             <Receipt className="size-5 shrink-0 text-[#6b7280]" />
+                            {/*
+                                والشهرُ الجاري يُسوَّى — وتُقال له جزئيّتُها.
+
+                                الورقةُ تأخذ ما بِيع ولا تُغلق الشهر: ما
+                                يُباع بعدها تحمله التي تليها. لكنّ من
+                                يُصدرها في العاشر يظنّها ختامَ الشهر إن
+                                لم يُقَل له، فيُقال قبل الضغط لا بعده.
+                            */}
                             <p className="text-[13px] leading-6 text-[#6b7280]">
-                                {!closed
-                                    ? t('الشهرُ لم ينتهِ بعد — تُصدَر تسويتُه بعد آخر يومٍ فيه، وإلّا ضاع ما يُباع في بقيّته.')
-                                    : statement.lines_count === 0
-                                      ? t('لا مبيعات لهذا البوتيك في هذا الشهر — لا تسوية بلا بيع.')
+                                {statement.lines_count === 0
+                                    ? t('لا بيعَ ينتظر ورقةً في هذا الشهر — لا تسوية بلا بيع.')
+                                    : statement.partial
+                                      ? t('الشهرُ ما زال يبيع — هذه ورقةٌ بما بِيع حتى الآن، وما بعده تحمله ورقةٌ تليها.')
                                       : t('إصدار التسوية يُجمّد أرقام الشهر ويكتب المستحق في «المبالغ المستحقة».')}
                             </p>
                         </div>
-                        <Button onClick={issue} disabled={!closed || statement.lines_count === 0 || form.processing}>
+                        <Button onClick={issue} disabled={statement.lines_count === 0 || form.processing}>
                             {t('أصدر التسوية')}
                         </Button>
-                    </>
+                    </div>
                 )}
                 {errors?.settlement && (
                     <p className="w-full text-[12px] text-[#b91c1c]">{errors.settlement}</p>

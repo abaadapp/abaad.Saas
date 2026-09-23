@@ -59,6 +59,15 @@ class BoutiqueController extends Controller
          */
         $sold = $this->monthlyGross($business->id, $period);
 
+        /*
+         * وما ينتظر ورقةً غيرُ ما بِيع.
+         *
+         * صار الشهرُ يُسوَّى على دفعات، فوجودُ ورقةٍ لا يعني أنّ الشهرَ
+         * أُغلق: تُصدَر في العاشر ثمّ يُباع في الحادي عشر. و«سُوّي هذا
+         * الشهر» على صفٍّ ينتظر مالًا تجعل صاحبَه يمرّ عليه ولا يفتحه.
+         */
+        $pending = $this->monthlyGross($business->id, $period, true);
+
         $rows = Boutique::where('business_id', $business->id)
             ->withCount('products')
             ->orderByDesc('active')->orderBy('name')
@@ -73,7 +82,9 @@ class BoutiqueController extends Controller
                 'active' => (bool) $b->active,
                 'products_count' => (int) $b->products_count,
                 'gross' => round((float) ($sold[$b->id] ?? 0), 3),
-                // وأصدرتْ تسويةَ هذا الشهر؟ — فلا يُصدرها مرّتين من لا يذكر
+                // وكم ينتظر ورقةً منه — به يُعرف الصفُّ الذي يُفتح
+                'pending' => round((float) ($pending[$b->id] ?? 0), 3),
+                // وأصدرتْ ورقةً في هذا الشهر؟ — خبرٌ عن المضى لا عن الانتظار
                 'settled' => BoutiqueSettlement::where('business_id', $business->id)
                     ->where('boutique_id', $b->id)->where('period', $period)->exists(),
             ])->all();
@@ -95,9 +106,15 @@ class BoutiqueController extends Controller
 
         $statement = Boutiques::statement($business->id, $boutique->id, $period);
 
+        /*
+         * وآخرُ ورقةٍ لا أوّلُها.
+         *
+         * صار الشهرُ يحمل ورقاتٍ، و`first()` بلا ترتيبٍ تُعطي أقدمَها —
+         * فيقرأ صاحبُ المحلّ ورقةً سُدِّدت من زمنٍ ويظنّها آخرَ ما صدر.
+         */
         $settlement = BoutiqueSettlement::where('business_id', $business->id)
             ->where('boutique_id', $boutique->id)->where('period', $period)
-            ->with('expense:id,status,amount,reference')->first();
+            ->with('expense:id,status,amount,reference')->latest('id')->first();
 
         return Inertia::render('Admin/Boutiques/Show', [
             'boutique' => [
@@ -114,13 +131,13 @@ class BoutiqueController extends Controller
             'period' => $period,
             'periods' => $this->periodOptions(),
             /*
-             * وأُغلق الشهر؟ — يُقال للشاشة ولا تحسبه بنفسها.
+             * وأُغلق الشهر؟ — في الكشف نفسِه (`partial`) لا في خاصيّةٍ ثانية.
              *
-             * «الشهرُ الجاري» عند متصفّحٍ على توقيتٍ آخر غيرُه عند الخادم،
-             * فالزرُّ يُعطَّل بحساب الخادم نفسِه الذي يردّ الطلب — وإلّا
-             * عُرض زرٌّ حيّ يُردّ عند ضغطه بلا أن يفهم صاحبُه لِمَ.
+             * كانت `closed` هنا و`partial` هناك يقولان الشيء نفسَه مقلوبًا،
+             * وخاصيّتان لسؤالٍ واحد تفترقان يومًا. والجوابُ من الخادم في
+             * الحالين: «الشهرُ الجاري» عند متصفّحٍ على توقيتٍ آخر غيرُه عند
+             * الخادم الذي يردّ الطلب.
              */
-            'closed' => Boutiques::isClosed($period),
             'settlement' => $settlement ? [
                 'id' => $settlement->id,
                 'number' => $settlement->number,
@@ -257,13 +274,15 @@ class BoutiqueController extends Controller
      *
      * @return array<int, float>
      */
-    private function monthlyGross(int $businessId, string $period): array
+    private function monthlyGross(int $businessId, string $period, bool $pendingOnly = false): array
     {
         $from = Carbon::createFromFormat('Y-m-d', $period.'-01')->startOfMonth();
         $to = (clone $from)->endOfMonth();
 
         return OrderItem::query()
             ->whereNotNull('order_items.boutique_id')
+            // وما ينتظر ورقةً هو ما لا ختمَ عليه — انظر `Boutiques::unsettled`
+            ->when($pendingOnly, fn ($q) => $q->whereNull('order_items.boutique_settlement_id'))
             ->whereIn('order_items.order_id', Order::where('business_id', $businessId)->sold()
                 ->whereBetween('ordered_at', [$from, $to])->select('id'))
             ->selectRaw('order_items.boutique_id, COALESCE(SUM(order_items.total), 0) as gross')

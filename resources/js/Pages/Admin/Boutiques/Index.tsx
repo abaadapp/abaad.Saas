@@ -26,6 +26,8 @@ export interface BoutiqueRow {
     /** ما بِيع له في الشهر المختار — من الخادم لا من عدٍّ في الشاشة */
     gross: number;
     settled: boolean;
+    /** ما ينتظر ورقةً من مبيعات الشهر — غيرُ ما بِيع فيه */
+    pending: number;
 }
 
 interface Props {
@@ -108,10 +110,18 @@ export default function BoutiquesIndex() {
             cell: (b) =>
                 !b.active ? (
                     <Badge variant="neutral">{t('غير نشط')}</Badge>
+                ) : b.pending > 0 ? (
+                    /*
+                        والانتظارُ يتقدّم الإصدار.
+
+                        صار الشهرُ يُسوَّى على دفعات، فوجودُ ورقةٍ لا يعني
+                        أنّه أُغلق: تُصدَر في العاشر ثمّ يُباع في الحادي
+                        عشر. و«سُوّي هذا الشهر» على صفٍّ ينتظر مالًا تجعل
+                        صاحبَه يمرّ عليه ولا يفتحه.
+                    */
+                    <Badge variant="warning">{t('بانتظار التسوية')}</Badge>
                 ) : b.settled ? (
                     <Badge variant="success">{t('سُوّي هذا الشهر')}</Badge>
-                ) : b.gross > 0 ? (
-                    <Badge variant="warning">{t('بانتظار التسوية')}</Badge>
                 ) : (
                     <Badge variant="neutral">{t('لا مبيعات')}</Badge>
                 ),

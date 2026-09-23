@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\SettlementRefused;
 use App\Models\Boutique;
 use App\Models\BoutiqueSettlement;
 use App\Models\Branch;
@@ -293,10 +294,13 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
     }
 
     /**
-     * ولا تُصدَر مرّتين لشهرٍ واحد.
+     * ولا تُصدَر ورقتان على بيعٍ واحد.
      *
-     * ضغطتان على «أصدِر» تُخرجان تسويتين، فيُطالَب المحلُّ بالمبلغ مرّتين —
-     * وهو أكثرُ ما يقع في شاشةٍ تُفتح آخرَ الشهر.
+     * ضغطتان على «أصدِر» كانتا تُخرجان تسويتين، فيُطالَب المحلُّ بالمبلغ
+     * مرّتين — وهو أكثرُ ما يقع في شاشةٍ تُفتح آخرَ الشهر.
+     *
+     * وحين صارت التسويةُ تغطّي مدّةً بقي المنعُ ولم يتبدّل معناه: الثانيةُ
+     * تبدأ من حيث انتهت الأولى، فلا تجد بيعًا — فتُردّ.
      */
     public function test_a_month_is_settled_once(): void
     {
@@ -316,7 +320,7 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
          * «SQLSTATE[23000]…» في موضع الجواب. ولهذا يُوازَن النصّ.
          */
         $settle()->assertSessionHasErrors([
-            'settlement' => 'تسويةُ هذا الشهر صدرت من قبل — تُفتح ولا تُصدَر ثانيةً.',
+            'settlement' => 'لا بيعَ جديدًا بعد تسويته الأخيرة — لا تسوية بلا بيع.',
         ]);
 
         $this->assertSame(1, BoutiqueSettlement::count());
@@ -353,44 +357,125 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
     }
 
     /**
-     * وشهرٌ ما زال يبيع لا يُسوَّى.
+     * وشهرٌ ما زال يبيع يُسوَّى — وما بِيع في بقيّته يجد ورقتَه.
      *
      * ═══ وهو أخطرُ ما في التسوية ═══
      *
-     * الورقةُ تُجمّد الأرقام، والفهرسُ الفريد يمنع ثانيةً لشهرٍ واحد. فمن
-     * ضغط «أصدِر» في العاشر أخذ عشرةَ أيّام وأغلق البابَ على عشرين: ما
-     * يُباع في بقيّة الشهر يبقى في الكشف حيًّا ولا تحمله ورقةٌ أبدًا — ولا
-     * يختلّ ميزانٌ ولا تصرخ شاشة. يضيع مالُ البوتيك صامتًا.
+     * كانت الوحدةُ شهرًا وفهرسٌ فريدٌ يمنع ثانيةً له. فمن ضغط «أصدِر» في
+     * العاشر أخذ عشرةَ أيّام وأغلق البابَ على عشرين: ما يُباع في البقيّة
+     * يبقى في الكشف حيًّا ولا تحمله ورقةٌ أبدًا — ولا يختلّ ميزانٌ ولا
+     * تصرخ شاشة. يضيع مالُ البوتيك صامتًا. ولذلك كان الجاري يُردّ.
+     *
+     * وصارت تغطّي مدّةً، فزال المنعُ وبقي المال: يُصدرها في العاشر بما
+     * بِيع، ويُصدر بقيّةَ الشهر آخرَه، ولا يتكرّر بندٌ ولا يسقط.
      */
-    public function test_a_month_still_selling_is_not_settled(): void
+    public function test_a_running_month_is_settled_and_keeps_its_rest(): void
     {
         $this->sellAtTill($this->theirs, 1);
 
         // العاشرُ من شباط — والشهرُ هو شباط
         $this->actingAs($this->owner)
             ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02'])
-            ->assertSessionHasErrors([
-                'settlement' => 'الشهرُ لم ينتهِ بعد — تُصدَر تسويتُه بعد آخر يومٍ فيه، وإلّا ضاع ما يُباع في بقيّته.',
-            ]);
+            ->assertSessionHasNoErrors();
 
-        $this->assertSame(0, BoutiqueSettlement::count(), 'صدرت ورقةٌ لشهرٍ ما زال يبيع');
-        $this->assertSame(0, Expense::where('type', Boutiques::EXPENSE_TYPE)->count());
+        $first = BoutiqueSettlement::firstOrFail();
+        $this->assertSame('50.000', (string) $first->gross);
 
-        // ولا شهرٌ لم يأتِ بعد
-        $this->actingAs($this->owner)
-            ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-09'])
-            ->assertSessionHasErrors('settlement');
-
-        // فإذا طُوي الشهرُ صدرت — وحملت ما بِيع فيه كلَّه
+        // ثمّ يُباع في بقيّة الشهر — ولا بدّ أن تجده ورقةٌ ثانية
+        Carbon::setTestNow('2027-02-20 11:00:00');
+        $this->sellAtTill($this->theirs, 2);
         $this->monthEnds();
+
         $this->actingAs($this->owner)
             ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02'])
             ->assertSessionHasNoErrors();
 
-        $this->assertSame('50.000', (string) BoutiqueSettlement::firstOrFail()->gross);
+        $second = BoutiqueSettlement::where('id', '>', $first->id)->firstOrFail();
+
+        $this->assertSame('BQ-2027-02-2', $second->number);
+        // مئةٌ لا مئةٌ وخمسون: الأولى لا تُعاد في الثانية
+        $this->assertSame('100.000', (string) $second->gross);
+        $this->assertSame(2, Expense::where('type', Boutiques::EXPENSE_TYPE)->count());
     }
 
-    /** والشاشةُ تقول ذلك قبل الضغط — لا يُعرض زرٌّ حيٌّ يُردّ */
+    /**
+     * وبيعةٌ وقعت في الثانية نفسِها التي أُصدرت فيها الورقة تُحمل مرّةً.
+     *
+     * ═══ وهي أضيقُ حالةٍ في القسمة ═══
+     *
+     * `ordered_at` دقّتُها ثانية. فقسمةُ الشهر بين وقتين لا تفصل هذه
+     * البيعةَ عن أختها: إن شملها الحدُّ حُسبت مرّتين، وإن جاوزها لم تُحسب
+     * أبدًا — ولا ثالثَ لهما، وكلاهما مالٌ يضيع أو يُدفع مرّتين.
+     *
+     * ولذلك صار الختمُ على البند هو القاعدة: ما لا رقمَ ورقةٍ عليه لم
+     * يُسوَّ، ولا يُسأل عن ساعةٍ ولا عن دقّةِ عمود.
+     */
+    public function test_a_sale_in_the_very_second_of_issue_is_carried_once(): void
+    {
+        $this->sellAtTill($this->theirs, 1);
+        $first = Boutiques::settle($this->shop, $this->boutique, '2027-02');
+
+        // بيعةٌ ثانية في الثانية نفسِها — بعد التوقيع وقبل أن تتحرّك الساعة
+        $this->sellAtTill($this->theirs, 1);
+        $this->monthEnds();
+
+        $rest = Boutiques::statement($this->shop->id, $this->boutique->id, '2027-02');
+
+        // لم تسقط: الكشفُ التالي يجدها
+        $this->assertSame(50.0, $rest['gross'], 'سقطت بيعةُ ثانيةِ الإصدار فلم تجد ورقةً');
+
+        $second = Boutiques::settle($this->shop, $this->boutique, '2027-02');
+
+        // ولم تُحمل مرّتين: خمسون في كلّ ورقةٍ لا مئةٌ في إحداهما
+        $this->assertSame('50.000', (string) $first->gross);
+        $this->assertSame('50.000', (string) $second->gross);
+        $this->assertSame(0, OrderItem::whereNull('boutique_settlement_id')
+            ->where('boutique_id', $this->boutique->id)->count());
+    }
+
+    /**
+     * والبندُ يحمل رقمَ ورقته — به يُعرف ما سُوِّي ممّا لم يُسوَّ.
+     *
+     * ولا يُعرف من وقتٍ ولا من تاريخِ إصدار: بيعةٌ تُلغى أو تُصحَّح بعد
+     * التوقيع كانت تُزحزح حدًّا اتُّفق عليه.
+     */
+    public function test_a_settled_line_carries_the_number_of_its_paper(): void
+    {
+        $order = $this->sellAtTill($this->theirs, 1);
+        $settlement = Boutiques::settle($this->shop, $this->boutique, '2027-02');
+
+        $item = OrderItem::where('order_id', $order->id)->firstOrFail();
+
+        $this->assertSame((int) $settlement->id, (int) $item->boutique_settlement_id);
+
+        // وصنفُ المحلّ لا يُختم: ليس له بوتيكٌ يُسوَّى معه
+        $mine = $this->sellAtTill($this->ours, 1);
+        $this->assertNull(OrderItem::where('order_id', $mine->id)->firstOrFail()->boutique_settlement_id);
+    }
+
+    /**
+     * وما حملته ورقةٌ لا يعود في كشف.
+     *
+     * كشفٌ يُعيد ما سُوِّي ودُفع يُطالَب به مرّتين، وصاحبُ المحلّ لا يميّز
+     * الجديدَ من القديم — فيدفع أو يجادل، وكلاهما خسارة.
+     */
+    public function test_what_a_paper_took_never_returns_to_a_statement(): void
+    {
+        $this->sellAtTill($this->theirs, 2);
+        Boutiques::settle($this->shop, $this->boutique, '2027-02');
+
+        $after = Boutiques::statement($this->shop->id, $this->boutique->id, '2027-02');
+
+        $this->assertSame(0, $after['lines_count']);
+        $this->assertSame(0.0, $after['gross']);
+    }
+
+    /**
+     * والشاشةُ تقول إنّها جزئيّة قبل الضغط — لا تمنع.
+     *
+     * والخبرُ من الخادم لا من المتصفّح: «الشهرُ الجاري» عند متصفّحٍ على
+     * توقيتٍ آخر غيرُه عند الخادم الذي يردّ الطلب.
+     */
     public function test_the_screen_says_the_month_is_still_open(): void
     {
         $this->sellAtTill($this->theirs, 1);
@@ -399,8 +484,11 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
             ->get(route('admin.boutiques.show', $this->boutique->id).'?period='.$period)
             ->assertOk()->viewData('page')['props'];
 
-        $this->assertFalse($props('2027-02')['closed'], 'الشهرُ الجاري قيل عنه إنّه أُغلق');
-        $this->assertTrue($props('2027-01')['closed'], 'شهرٌ مضى قيل عنه إنّه مفتوح');
+        $this->assertTrue($props('2027-02')['statement']['partial'], 'لم تُوصَف تسويةُ شهرٍ جارٍ بالجزئيّة');
+        $this->assertFalse($props('2027-01')['statement']['partial'], 'وُصفت تسويةُ شهرٍ منقضٍ بالجزئيّة');
+
+        // ولا خاصيّةَ ثانية تقول الشيءَ نفسَه مقلوبًا
+        $this->assertArrayNotHasKey('closed', $props('2027-02'));
     }
 
     /** وشهرٌ بلا بيعٍ لا تُصدَر له ورقة */
@@ -526,5 +614,121 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
         $this->assertNotNull($this->theirs->fresh(), 'مُحي صنفٌ على الرفّ');
         // والبيعةُ تحمل اسمَه لقطةً فلا تفقد معناها
         $this->assertSame('بوتيك لمى', OrderItem::whereNotNull('boutique_name')->value('boutique_name'));
+    }
+
+    /**
+     * وصفُّ الفهرس يقول «بانتظار التسوية» ما دام مالٌ ينتظر — ولو صدرت ورقة.
+     *
+     * صار الشهرُ يُسوَّى على دفعات، فوجودُ ورقةٍ لا يعني أنّه أُغلق: تُصدَر
+     * في العاشر ثمّ يُباع في الحادي عشر. و«سُوّي هذا الشهر» على صفٍّ ينتظر
+     * مالًا تجعل صاحبَه يمرّ عليه ولا يفتحه — فيبقى دَينُ البوتيك بلا ورقة.
+     */
+    public function test_the_list_says_waiting_while_money_waits(): void
+    {
+        $row = fn () => collect($this->actingAs($this->owner)
+            ->get(route('admin.boutiques.index').'?period=2027-02')
+            ->assertOk()->viewData('page')['props']['boutiques'])
+            ->firstWhere('id', $this->boutique->id);
+
+        $this->sellAtTill($this->theirs, 1);
+        $this->assertSame(50.0, $row()['pending']);
+
+        Boutiques::settle($this->shop, $this->boutique, '2027-02');
+
+        $after = $row();
+        $this->assertSame(0.0, $after['pending'], 'بقي مالٌ منتظرًا بعد أن حملته ورقة');
+        $this->assertTrue($after['settled']);
+        // وما بِيع في الشهر يبقى كما بِيع — «ينتظر» غيرُ «بِيع»
+        $this->assertSame(50.0, $after['gross']);
+
+        // ثمّ يُباع بعد الورقة — فيعود الانتظار
+        $this->sellAtTill($this->theirs, 2);
+
+        $again = $row();
+        $this->assertSame(100.0, $again['pending'], 'لم يُقل إنّ مالًا جديدًا ينتظر');
+        $this->assertSame(150.0, $again['gross']);
+    }
+
+    /**
+     * وورقتان تتسابقان على بيعةٍ واحدة: تظفر بها الأولى وتُردّ الثانية.
+     *
+     * ═══ والقاعدةُ هي الحَكَم ═══
+     *
+     * كان يحرسه فهرسٌ فريدٌ على الشهر، فسقط يومَ لم يعد الشهرُ وحدة.
+     * وانتقل الحارسُ إلى الختم: `update … whereNull` لا تظفر بما ظُفر به.
+     * ولا فحصَ يسبقها — فالفحصُ يقرأ حالًا تتبدّل بين قراءته وكتابته،
+     * وضغطتان متقاربتان تمرّان منه معًا.
+     *
+     * ويُحاكى السباقُ بخصمٍ يختم البنودَ في اللحظة التي تُكتب فيها الورقة.
+     */
+    public function test_two_papers_racing_for_one_sale_leave_only_one(): void
+    {
+        $this->sellAtTill($this->theirs, 1);
+        $this->monthEnds();
+
+        // خصمٌ يسبقنا إلى البنود بعد أن كُتبت ورقتُنا وقبل أن تختمها
+        BoutiqueSettlement::created(function (BoutiqueSettlement $s) {
+            OrderItem::where('boutique_id', $s->boutique_id)
+                ->whereNull('boutique_settlement_id')
+                ->update(['boutique_settlement_id' => 9999]);
+        });
+
+        try {
+            $this->expectException(SettlementRefused::class);
+            Boutiques::settle($this->shop, $this->boutique, '2027-02');
+        } finally {
+            BoutiqueSettlement::flushEventListeners();
+        }
+    }
+
+    /**
+     * وما كتبته الورقةُ الخاسرة يُلغى معها — لا مصروفَ يتيمًا.
+     *
+     * والمعاملةُ هي التي تضمنه: لو بقي المصروفُ لَطُولب المحلُّ بمالٍ لا
+     * ورقةَ خلفه، ولَقُرئ في «المبالغ المستحقة» مرجعًا لا وجودَ له.
+     */
+    public function test_a_refused_paper_leaves_no_expense_behind(): void
+    {
+        $this->sellAtTill($this->theirs, 1);
+        $this->monthEnds();
+
+        BoutiqueSettlement::created(function (BoutiqueSettlement $s) {
+            OrderItem::where('boutique_id', $s->boutique_id)
+                ->whereNull('boutique_settlement_id')
+                ->update(['boutique_settlement_id' => 9999]);
+        });
+
+        try {
+            Boutiques::settle($this->shop, $this->boutique, '2027-02');
+        } catch (SettlementRefused) {
+            // المقصودُ ما بقي بعدها لا هي
+        } finally {
+            BoutiqueSettlement::flushEventListeners();
+        }
+
+        $this->assertSame(0, BoutiqueSettlement::count(), 'بقيت ورقةٌ رُدّت');
+        $this->assertSame(0, Expense::where('type', Boutiques::EXPENSE_TYPE)->count(), 'بقي مصروفٌ بلا ورقة');
+    }
+
+    /**
+     * والشاشةُ تعرض آخرَ ورقةٍ صدرت لا أوّلَها.
+     *
+     * `first()` بلا ترتيبٍ تُعطي أقدمَها — فيقرأ صاحبُ المحلّ ورقةً
+     * سُدِّدت من زمنٍ ويظنّها آخرَ ما صدر، فيسأل عن مالٍ دفعه.
+     */
+    public function test_the_screen_shows_the_newest_paper(): void
+    {
+        $this->sellAtTill($this->theirs, 1);
+        Boutiques::settle($this->shop, $this->boutique, '2027-02');
+
+        Carbon::setTestNow('2027-02-20 11:00:00');
+        $this->sellAtTill($this->theirs, 2);
+        $newest = Boutiques::settle($this->shop, $this->boutique, '2027-02');
+
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.boutiques.show', $this->boutique->id).'?period=2027-02')
+            ->assertOk()->viewData('page')['props'];
+
+        $this->assertSame($newest->number, $props['settlement']['number']);
     }
 }

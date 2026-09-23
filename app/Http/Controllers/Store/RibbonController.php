@@ -184,6 +184,13 @@ class RibbonController extends Controller
             'categories' => $this->categories($bid, $lang, $shown),
             'best' => $best->map(fn ($p) => $this->card($p, $lang, $business))->all(),
             'new' => $new->map(fn ($p) => $this->card($p, $lang, $business))->all(),
+            /*
+             * أفي المتجر بضاعةٌ أصلًا؟ — يسألها ما يَعِد الزبونَ بشيء.
+             *
+             * والسؤالُ عن الرفّ لا عن قسمٍ بعينه: صاحبُ المحلّ قد يُطفئ
+             * «وصل حديثًا» ويبقى رفُّه عامرًا.
+             */
+            'shelf' => $shown->isNotEmpty(),
             // ترتيبُ الأقسام وظهورُها، وصورةُ الواجهة، والقسمُ الذي كتبه بنفسه
             'sections' => StorePage::order($bid),
             'hero' => StorePage::heroImage($bid),

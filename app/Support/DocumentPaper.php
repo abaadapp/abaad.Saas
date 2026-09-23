@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\Customer;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
@@ -12,6 +13,7 @@ use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\SupplierInvoice;
 use App\Support\Demo;
+use App\Support\FlowerOrder;
 use App\Support\Document\Snapshot;
 use Illuminate\Database\Eloquent\Model;
 
@@ -157,17 +159,57 @@ class DocumentPaper
                 ['label' => 'وسيلة الدفع', 'value' => __((string) ($order->payment_method ?: 'نقدي'))],
                 ['label' => 'شروط الدفع', 'value' => $pay['terms']],
                 ['label' => 'تاريخ الاستحقاق', 'value' => $pay['due_at']],
+                /*
+                 * ═══ وأساسيّاتُ الطلب على ورقته ═══
+                 *
+                 * الفاتورةُ كانت تحمل الرقمَ والتاريخَ والأصنافَ والمجموع —
+                 * وتسكت عن **ما طُلب**: أتوصيلٌ هو أم استلام، ومتى، وإلى من.
+                 * فمن يحملها لا يعرف من قراءتها ما اتُّفق عليه، ويعود يسأل
+                 * صاحبَ المحلّ بالهاتف عمّا كان يجب أن يكون مكتوبًا.
+                 *
+                 * وكلُّها تُرشَّح: بيعةُ صندوقٍ بلا موعدٍ ولا مستلِم لا تطبع
+                 * سطورًا فارغة — ورقةٌ فيها حقولٌ خاوية تُقرأ نموذجًا لم يُملأ.
+                 */
+                ['label' => 'نوع التسليم', 'value' => match ((string) $order->fulfillment_type) {
+                    FlowerOrder::DELIVERY => __('توصيل'),
+                    FlowerOrder::PICKUP => __('استلام من المحل'),
+                    default => '',
+                }],
+                ['label' => 'موعد التسليم', 'value' => optional($order->scheduled_for)->format('Y-m-d H:i') ?: ''],
+                ['label' => 'المناسبة', 'value' => (string) ($order->occasion_type ?: '')],
             ], fn (array $r) => filled($r['value']))),
-            'parties' => [[
-                'cap' => 'العميل',
-                'lines' => array_values(array_filter([
-                    Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي'),
-                    filled($extra['customerTax'] ?? null)
-                        ? __('الرقم الضريبي').': '.$extra['customerTax']
-                        : null,
-                    $order->recipient_phone ?: null,
-                ])),
-            ]],
+            'parties' => array_values(array_filter([
+                [
+                    'cap' => 'العميل',
+                    'lines' => array_values(array_filter([
+                        Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي'),
+                        /*
+                         * ═══ ورقمُه هو — لا رقمُ من يستلم ═══
+                         *
+                         * كان هذا السطرُ `recipient_phone`: **هاتفَ المستلِم**
+                         * تحت عنوان «العميل». وفي طلب هديّةٍ هما شخصان دائمًا
+                         * — فتخرج الورقةُ باسم مريم ورقمِ من أُرسلت إليه.
+                         *
+                         * ومن يتّصل بالرقم ليسأل عن فاتورةٍ يقع على المهدى
+                         * إليه، فيكشف له هديّةً لم تصله بعد.
+                         *
+                         * فصار رقمُ العميل من بطاقته، والمستلِمُ في طرفه أدناه.
+                         */
+                        self::customerPhone($order),
+                        filled($extra['customerTax'] ?? null)
+                            ? __('الرقم الضريبي').': '.$extra['customerTax']
+                            : null,
+                    ])),
+                ],
+                [
+                    'cap' => 'المستلِم',
+                    'lines' => array_values(array_filter([
+                        $order->recipient_name ?: null,
+                        $order->recipient_phone ?: null,
+                        $order->delivery_address ?: null,
+                    ])),
+                ],
+            ], fn (array $p) => count(array_filter($p['lines'])) > 0)),
             'items' => $order->items->map(fn ($i) => [
                 'name' => $i->name,
                 'note' => $i->note,
@@ -189,6 +231,27 @@ class DocumentPaper
             'totals' => $totals,
             'notes' => (string) ($order->notes ?: ''),
         ];
+    }
+
+    /**
+     * هاتفُ العميل من بطاقته — لا من سطرٍ على الطلب.
+     *
+     * فالطلبُ لا يحمل عمودَ هاتفٍ للمشتري أصلًا: ما فيه `recipient_phone`
+     * وهو لمن يستلم. والرقمُ يُقرأ من `customers` عبر `customer_id`.
+     *
+     * وبيعةُ صندوقٍ بلا عميلٍ مسجَّل تردّ `null` فلا يُطبع سطر — و«عميل
+     * نقدي» لا هاتفَ له يُكتب.
+     *
+     * وطلبٌ لم يُحفظ (معاينةُ محرّر القوالب) لا يُستعلَم عنه: `customer_id`
+     * فيه فارغٌ فلا يقع استعلام.
+     */
+    private static function customerPhone(Order $order): ?string
+    {
+        if (! $order->customer_id) {
+            return null;
+        }
+
+        return optional(Customer::find($order->customer_id))->phone ?: null;
     }
 
     /**

@@ -20,10 +20,10 @@
         <meta property="og:image" content="{{ $logo }}">
     @endif
     {{-- أيقونةُ المتصفّح من دليل الهوية — لسانُ الزبون يحمل علامةَ المتجر --}}
-    <link rel="icon" type="image/svg+xml" href="/brand/ribbon/favicon.svg">
-    <link rel="apple-touch-icon" href="/brand/ribbon/apple-touch-icon.png">
+    <link rel="icon" type="image/svg+xml" href="{{ \App\Support\Store\StoreAsset::url('/brand/ribbon/favicon.svg') }}">
+    <link rel="apple-touch-icon" href="{{ \App\Support\Store\StoreAsset::url('/brand/ribbon/apple-touch-icon.png') }}">
     <meta name="theme-color" content="#58563C">
-    <link rel="stylesheet" href="/fonts/ibm-plex-arabic.css">
+    <link rel="stylesheet" href="{{ \App\Support\Store\StoreAsset::url('/fonts/ibm-plex-arabic.css') }}">
     <style>
         :root {
             /*
@@ -150,7 +150,7 @@
         </form>
         {{-- الشعارُ ملفٌّ متّجه من دليل الهوية — حادٌّ في كلّ مقاسٍ وشاشة،
              وبنسخته الكريمية لأنّ الترويسة زيتونيّةٌ داكنة --}}
-        <a href="{{ $base }}/" class="rb-logo" aria-label="{{ $business->name }}"><img src="/brand/ribbon/logo-cream.svg" alt="{{ $business->name }}"></a>
+        <a href="{{ $base }}/" class="rb-logo" aria-label="{{ $business->name }}"><img src="{{ \App\Support\Store\StoreAsset::url('/brand/ribbon/logo-cream.svg') }}" alt="{{ $business->name }}"></a>
         <div class="rb-right">
             @php
                 $rbPath = request()->getPathInfo();
@@ -171,7 +171,7 @@
     <div class="rb-foot-in">
         <div class="rb-foot-grid">
             <div style="display:flex;flex-direction:column;gap:16px">
-                <img src="/brand/ribbon/logo-cream.svg" alt="{{ $business->name }}" style="width:180px;height:auto;display:block">
+                <img src="{{ \App\Support\Store\StoreAsset::url('/brand/ribbon/logo-cream.svg') }}" alt="{{ $business->name }}" style="width:180px;height:auto;display:block">
                 @if ($identity['about'] !== '')
                     <p style="margin:0;line-height:1.8;max-width:300px">{{ $identity['about'] }}</p>
                 @endif

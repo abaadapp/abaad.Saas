@@ -4,26 +4,11 @@
 <section class="rb-screen rb-wrap" style="padding:40px 24px" data-testid="rb-product-page">
     <a href="{{ $base }}/shop" style="font-size:13px;display:inline-flex;align-items:center;min-height:44px">{{ $t['back'] }}</a>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:48px;margin-top:20px;align-items:start">
-        {{--
-            والتنبيهُ تحت الصورة لا في آخر العمود المقابل.
-
-            الادّعاءُ عن الصورة، فيعيش معها. وكان أقربُ سطرٍ إليه («ملاحظة
-            التوصيل») تحت زرّ الإضافة — أي على الجوّال بعد الطيّة وبعد أن
-            قرّر الزبون. وتنبيهٌ يُقرأ بعد القرار ليس تنبيهًا.
-
-            والالتفافُ في `div` لازمٌ لا زينة: الشبكةُ `auto-fit`، فسطرٌ
-            يُوضع أخًا للصورة يصير عمودًا ثالثًا.
-        --}}
-        <div>
-            <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
-                @if ($product['image'])
-                    <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" style="width:100%;height:100%;object-fit:cover;display:block">
-                @else
-                    <div class="rb-stripes" style="--tint: {{ $product['tint'] }}"></div>
-                @endif
-            </div>
-            @if ($imageNote !== '')
-                <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
+        <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
+            @if ($product['image'])
+                <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" style="width:100%;height:100%;object-fit:cover;display:block">
+            @else
+                <div class="rb-stripes" style="--tint: {{ $product['tint'] }}"></div>
             @endif
         </div>
         <div style="display:flex;flex-direction:column;gap:20px">
@@ -31,6 +16,27 @@
                 @if ($product['category'])<div style="font-size:12px;letter-spacing:.15em">{{ $product['category'] }}</div>@endif
                 <h1 style="margin:6px 0 0;font-size:30px;font-weight:500">{{ $product['name'] }}</h1>
                 <div style="font-size:22px;margin-top:8px;font-weight:600" data-rb-price>{{ $product['price_text'] }}</div>
+                {{--
+                    ═══ ولمَ هنا لا تحت الصورة ═══
+
+                    كان تحتها — والادّعاءُ عنها، فبدا موضعَه. وعلى الجوّال
+                    كان صحيحًا: الصورةُ أوّلًا ثمّ السطرُ ثمّ الزرّ.
+
+                    ثمّ فُتحت الصفحةُ على شاشةٍ عريضة: عمودان، الصورةُ في
+                    أحدهما بستّمئة بكسل، والاسمُ والثمنُ والزرُّ في الآخر
+                    عند ثلاثمئة. فصار السطرُ عند ٨٣٠ والزرُّ عند ٣٦٣ — أي
+                    **تحت الزرّ بأربعمئة بكسل**، ويُشترى المنتج بلا أن يُقرأ.
+
+                    وهو العطبُ الذي كُتب هذا السطرُ كلُّه لأجله، في صورةٍ
+                    أخرى. ولم يكشفه اختبارٌ: الترتيبُ في المصدر كان صحيحًا
+                    — عمودُ الصورة يسبق — وكشفته لقطةُ شاشة.
+
+                    فمكانُه عمودُ القرار: آخرُ ما يُقرأ قبل الضغطة، في
+                    العرضين معًا.
+                --}}
+                @if ($imageNote !== '')
+                    <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
+                @endif
             </div>
             @if ($product['description'] !== '')
                 <p style="margin:0;font-size:15px;line-height:1.7;text-wrap:pretty">{{ $product['description'] }}</p>

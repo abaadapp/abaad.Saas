@@ -161,7 +161,16 @@ final class WebCheckout
 
         $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty']), 3);
 
-        [$coupon, $discount, $promoError] = self::coupon($bid, $payload['promo'] ?? null, $subtotal, $lock);
+        /*
+         * وكودُ الخصم يُقرأ لمن أبقى حقلَه.
+         *
+         * من أطفأه لا يريد كوبونًا يُطبَّق أصلًا — والحقلُ المخفيُّ لا يمنع
+         * إرسالَه. وبلا هذا يُخصم من فاتورته بكودٍ قديمٍ يعرفه زبونٌ واحد،
+         * وهو لا يرى في شاشته حقلًا يشكّ فيه.
+         */
+        $promo = CheckoutFields::shows($bid, 'promo') ? ($payload['promo'] ?? null) : null;
+
+        [$coupon, $discount, $promoError] = self::coupon($bid, $promo, $subtotal, $lock);
 
         $tax = $sale->taxFor($lines, $subtotal, $discount);
         if (Vat::inclusive($bid)) {
@@ -456,6 +465,35 @@ final class WebCheckout
         return [$coupon, round(min((float) $coupon->discountFor($subtotal), $subtotal), 3), null];
     }
 
+    /**
+     * يُسقط ما أرسله المتصفّح عن حقلٍ أطفأه صاحبُ المحلّ.
+     *
+     * ═══ وإخفاءُ الحقل ليس إسقاطَه ═══
+     *
+     * الشاشةُ لا ترسمه، لكنّ من يعرف شكلَ الحمولة يُرسله — فيصل عنوانٌ في
+     * متجرٍ لا يوصّل، أو موعدٌ في متجرٍ لا يحجز. ولا يُردّ الطلبُ لأجله:
+     * إسقاطُه أصدقُ من رفضٍ عن حقلٍ لا وجود له عند صاحبه.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private static function strip(int $bid, array $payload): array
+    {
+        foreach (CheckoutFields::FIELDS as $f) {
+            if (CheckoutFields::shows($bid, $f)) {
+                continue;
+            }
+
+            unset($payload[$f]);
+
+            if ($f === 'recipient') {
+                unset($payload['recipient_name'], $payload['recipient_phone']);
+            }
+        }
+
+        return $payload;
+    }
+
     private static function deliveryFee(array $settings, string $fulfil, float $subtotal): float
     {
         if ($fulfil === FlowerOrder::PICKUP || $subtotal <= 0) {
@@ -474,14 +512,33 @@ final class WebCheckout
         $settings = self::settings($bid);
         $payments = self::payments($bid);
 
-        $v = validator($payload, [
+        /*
+         * ═══ والقواعدُ تُبنى ممّا انتقاه صاحبُ المحلّ ═══
+         *
+         * لا قائمةً ثابتةً هنا وأخرى في الشاشة: `CheckoutFields` موضعٌ
+         * واحد يقرأ منه الاثنان، فحقلٌ أُخفي لا يبقى مشترَطًا هنا يردّ
+         * الطلبَ بخطأٍ عن حقلٍ لا يراه الزبون.
+         *
+         * و«مطلوب» تُكتب `required` وما سواها `nullable` — وحقلٌ مُطفأٌ
+         * يخرج من القواعد كلِّها ولا يُقرأ ممّا أُرسل (انظر `strip`).
+         */
+        $field = fn (string $name, array $rules) => match (CheckoutFields::state($bid, $name)) {
+            CheckoutFields::OFF => null,
+            CheckoutFields::REQUIRED => array_merge(['required'], $rules),
+            default => array_merge(['nullable'], $rules),
+        };
+
+        $rules = array_filter([
             'name' => ['required', 'string', 'max:120'],
             'phone' => ['required', 'string', 'max:32', 'regex:/^[0-9+()\-\s]{8,}$/'],
-            'fulfil' => ['required', 'in:'.implode(',', FlowerOrder::FULFILLMENT)],
-            'area' => ['nullable', 'string', 'max:120'],
-            'address' => ['nullable', 'string', 'max:500'],
-            'date' => ['required', 'date', 'after_or_equal:today', 'before_or_equal:'.today()->addDays(self::MAX_DAYS_AHEAD)->toDateString()],
-            'slot' => ['nullable', 'string', 'max:60'],
+            'fulfil' => ['required', 'in:'.implode(',', CheckoutFields::fulfilments($bid))],
+            'area' => $field('area', ['string', 'max:120']),
+            'address' => $field('address', ['string', 'max:500']),
+            'date' => $field('date', [
+                'date', 'after_or_equal:today',
+                'before_or_equal:'.today()->addDays(CheckoutFields::maxDays($bid))->toDateString(),
+            ]),
+            'slot' => $field('slot', ['string', 'max:60']),
             'card' => ['nullable', 'string', 'max:'.FlowerOrder::CARD_MAX],
             'pay' => ['required', 'in:'.implode(',', array_keys($payments) ?: ['-'])],
 
@@ -496,8 +553,13 @@ final class WebCheckout
              * واختياريٌّ لا مطلوب: من يشتري لنفسه لا يُسأل عن مستلِمٍ، وحقلٌ
              * يُفرض عليه يُملأ باسمه مرّتين فلا يفرّق أحدٌ بعدها.
              */
-            'recipient_name' => ['nullable', 'string', 'max:120'],
-            'recipient_phone' => FlowerOrder::PHONE_RULE,
+            'recipient_name' => $field('recipient', ['string', 'max:120']),
+            'recipient_phone' => CheckoutFields::shows($bid, 'recipient')
+                ? array_merge(
+                    [CheckoutFields::requires($bid, 'recipient') ? 'required' : 'nullable'],
+                    array_slice(FlowerOrder::PHONE_RULE, 1),
+                )
+                : null,
 
             /*
              * وكرتُ الهدية — اختيارٌ بثمنٍ لا خانةُ نصّ.
@@ -509,7 +571,12 @@ final class WebCheckout
             'card_align' => ['nullable', 'in:'.implode(',', GiftCard::ALIGNS)],
             'card_file' => ['nullable', 'string', 'max:64'],
             'card_file_name' => ['nullable', 'string', 'max:160'],
-        ], [
+        ]);
+
+        // والمنقّى يُفحص هو لا الأصل — وإلّا حُرس حقلٌ أُسقط من القواعد
+        $data = self::strip($bid, $payload);
+
+        $v = validator($data, $rules, [
             'name.required' => __('اكتب اسمك.'),
             'phone.required' => __('اكتب رقم هاتفك.'),
             'phone.regex' => __('رقم الهاتف غير صحيح.'),
@@ -518,27 +585,44 @@ final class WebCheckout
             'pay.in' => __('اختر وسيلة الدفع.'),
         ]);
 
-        $v->after(function ($v) use ($bid, $payload, $settings) {
+        $v->after(function ($v) use ($bid, $data, $settings) {
             /*
              * وكرتٌ يُطلب من متجرٍ أطفأه يُردّ — لا يُبتلع صامتًا.
              *
              * الشاشةُ لا تعرضه، لكنّ من يعرف شكلَ الحمولة يُرسلها. وبلا هذا
              * يمرّ الطلبُ بلا كرتٍ ولا ثمن، فينتظر الزبونُ كرتًا لا يأتي.
              */
-            if (filter_var($payload['gift_card'] ?? false, FILTER_VALIDATE_BOOL) && ! GiftCard::enabled($bid)) {
+            if (filter_var($data['gift_card'] ?? false, FILTER_VALIDATE_BOOL) && ! GiftCard::enabled($bid)) {
                 $v->errors()->add('gift_card', __('كرت الهدية غير متاح في هذا المتجر.'));
             }
 
-            if (($payload['fulfil'] ?? null) === FlowerOrder::DELIVERY) {
-                if (trim((string) ($payload['address'] ?? '')) === '') {
-                    $v->errors()->add('address', __('اكتب العنوان بالتفصيل.'));
-                }
-                if ($settings['areas'] !== [] && ! in_array(trim((string) ($payload['area'] ?? '')), $settings['areas'], true)) {
-                    $v->errors()->add('area', __('اختر المنطقة.'));
+            /*
+             * ═══ والشرطُ مربوطٌ بالتوصيل لا بالحقل وحده ═══
+             *
+             * «مطلوب» في العنوان والمنطقة تعني «مطلوبٌ لمن يُوصَّل إليه».
+             * ومن اختار الاستلامَ من المحلّ لا يُسأل عن عنوانه — وكان هذا
+             * حالَ النظام قبل الشاشة ويبقى.
+             */
+            if (($data['fulfil'] ?? null) === FlowerOrder::DELIVERY) {
+                foreach (['address' => __('اكتب العنوان بالتفصيل.'), 'area' => __('اختر المنطقة.')] as $f => $msg) {
+                    if (CheckoutFields::requires($bid, $f) && trim((string) ($data[$f] ?? '')) === '') {
+                        $v->errors()->add($f, $msg);
+                    }
                 }
             }
-            if ($settings['slots'] !== [] && filled($payload['slot'] ?? null) && ! in_array($payload['slot'], $settings['slots'], true)) {
-                $v->errors()->add('slot', __('اختر وقت التسليم.'));
+
+            /*
+             * والقائمةُ تُحرَس متى ضُبطت ومتى أُرسلت قيمة.
+             *
+             * وهو غيرُ «مطلوب»: من ترك المنطقةَ اختياريّةً وضبط قائمةً لا
+             * يريد منطقةً من خارجها — يريد أن يُقبل الفراغ. وقيمةٌ من خارج
+             * القائمة تعني سائقًا يُرسَل إلى حيث لا يُوصَّل.
+             */
+            foreach (['area' => ['areas', __('اختر المنطقة.')], 'slot' => ['slots', __('اختر وقت التسليم.')]] as $f => [$list, $msg]) {
+                if ($settings[$list] !== [] && CheckoutFields::shows($bid, $f)
+                    && filled($data[$f] ?? null) && ! in_array(trim((string) $data[$f]), $settings[$list], true)) {
+                    $v->errors()->add($f, $msg);
+                }
             }
         });
 
@@ -548,6 +632,17 @@ final class WebCheckout
     /** موعدُ التسليم: اليومُ المختار، وأوّلُ ساعةٍ من فترته إن كُتبت بساعة */
     private static function scheduledFor(array $form): ?Carbon
     {
+        /*
+         * ولا موعدَ لمن لم يُسأل عنه.
+         *
+         * متجرٌ أطفأ حقلَ الموعد يبيع لِما هو جاهزٌ الآن، فلا يُخترع له
+         * موعدٌ: `Carbon::parse('')` تقرأ «الآن» فيخرج طلبٌ موعدُه لحظةُ
+         * وقوعه، ويقف في لوحة التجهيز متأخّرًا بعد دقيقة.
+         */
+        if (! filled($form['date'] ?? null)) {
+            return null;
+        }
+
         $day = Carbon::parse($form['date'])->startOfDay();
         $slot = (string) ($form['slot'] ?? '');
 

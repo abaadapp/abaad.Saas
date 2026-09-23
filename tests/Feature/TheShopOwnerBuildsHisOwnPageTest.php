@@ -423,4 +423,59 @@ class TheShopOwnerBuildsHisOwnPageTest extends TestCase
         // وعنوانُه يعود إلى الحسبة لأنّ المعروضَ صار محسوبًا
         $this->assertStringContainsString('الأكثر مبيعاً', $page);
     }
+
+    /* ═══════════ ٧) ولا يَعِد المتجرُ بما ليس على رفّه ═══════════ */
+
+    /**
+     * متجرٌ لا صنفَ منشورًا فيه لا يُرسم عليه شريطُ المناسبات.
+     *
+     * نصُّه وعدٌ — «نجهّز الباقة مع كرت هدية ونوصلها في الوقت الذي تحدده» —
+     * وزرُّه يقود إلى «لا منتجات هنا بعد». فيقرأ الزبون وعدًا ثمّ يجد رفًّا
+     * فارغًا، ولا يعود. وكلُّ أخواته تسأل قبل أن تُرسم، وكان وحدَه لا يسأل.
+     */
+    public function test_an_empty_shelf_promises_nothing(): void
+    {
+        Product::where('business_id', $this->shop->id)->update(['published' => false]);
+
+        $page = $this->page();
+
+        $this->assertStringNotContainsString('rb-sec-banner', $page);
+        // والصفحةُ تبقى صفحةً — الواجهةُ هويّةٌ لا تُطفأ بفراغ الرفّ
+        $this->assertStringContainsString('rb-landing', $page);
+    }
+
+    /** ورفٌّ عامرٌ يُرسم عليه — ولو أُطفئ «وصل حديثًا» */
+    public function test_a_full_shelf_still_promises(): void
+    {
+        $this->assertStringContainsString('rb-sec-banner', $this->page());
+
+        $this->set(['store_sections' => 'banner,best']);
+        $this->assertStringContainsString('rb-sec-banner', $this->page());
+    }
+
+    /**
+     * و«استكشف مجموعاتنا» قفزةٌ إلى قسمٍ في الصفحة — فلا تُرسم بلا قسمها.
+     *
+     * كان الزرُّ يُرسم دائمًا ويشير إلى `#rb-cats`: يُضغط فلا يقع شيء.
+     * وصاحبُ المحلّ صار يُطفئ ذلك القسمَ بيده من «صفحة متجرك» — فصنعت
+     * الشاشةُ الجديدةُ زرًّا ميّتًا بأمرٍ مشروع.
+     */
+    public function test_the_jump_is_not_drawn_without_its_landing(): void
+    {
+        $this->assertStringContainsString('#rb-cats', $this->page());
+
+        $this->set(['store_sections' => 'best,new']);
+        $this->assertStringNotContainsString('#rb-cats', $this->page());
+    }
+
+    /** ومتجرٌ بلا فئةٍ ذاتِ بضاعة مثلُه — القسمُ لا يُرسم، فلا قفزةَ إليه */
+    public function test_no_jump_where_there_are_no_categories(): void
+    {
+        Product::where('business_id', $this->shop->id)->update(['category_id' => null]);
+
+        $page = $this->page();
+
+        $this->assertStringNotContainsString('rb-sec-cats', $page);
+        $this->assertStringNotContainsString('#rb-cats', $page);
+    }
 }

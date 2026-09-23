@@ -1,4 +1,14 @@
-{{-- Occasions banner --}}
+{{--
+    شريطُ المناسبات — ولا يُرسم على رفٍّ خالٍ.
+
+    نصُّه وعدٌ: «نجهّز الباقة مع كرت هدية ونوصلها في الوقت الذي تحدده»،
+    وزرُّه يقود إلى المتجر. ومتجرٌ لا صنفَ منشورًا فيه يردّ «لا منتجات هنا
+    بعد» — فيقرأ الزبون وعدًا ثمّ يجد رفًّا فارغًا، ولا يعود.
+
+    وكلُّ أخواته تفعل ذلك: «عنّا» لا تُرسم بلا نبذة، و«الآراء» بلا رأي،
+    و«الفئات» و«الأكثر مبيعًا» بلا بضاعة. وكان هذا وحدَه يَعِد بلا أن يسأل.
+--}}
+    @if ($shelf)
     <div class="rb-section" data-testid="rb-sec-banner">
         <div style="background:var(--rb-olive);color:var(--rb-cream);border-radius:var(--rb-r-lg);padding:clamp(32px,4vw,56px) clamp(24px,4vw,56px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:32px;align-items:center">
             <div style="display:flex;flex-direction:column;gap:14px">
@@ -10,3 +20,4 @@
             <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);background:repeating-linear-gradient(135deg,#6b694c 0 14px,#5f5c43 14px 28px)"></div>
         </div>
     </div>
+    @endif

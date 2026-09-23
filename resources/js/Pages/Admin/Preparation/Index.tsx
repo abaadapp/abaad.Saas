@@ -1,68 +1,21 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Clock, Gift, MapPin, Phone, Printer, StickyNote, Store, Truck, User } from 'lucide-react';
+import { AlertTriangle, Bell, BellOff, Columns3, LayoutGrid, RefreshCw, Store, Truck, WifiOff } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Tabs, { type TabItem } from '@/Components/Tabs';
-import { Badge, statusDot } from '@/Components/ui/badge';
+import { useConfirm } from '@/Components/ConfirmDialog';
+import { statusDot } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
-import { number } from '@/lib/format';
+import useBoardLive from '@/hooks/useBoardLive';
+import useNewArrivals from '@/hooks/useNewArrivals';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
-
-interface PrepItem {
-    name: string;
-    qty: number;
-    note: string | null;
-    image: string | null;
-    /** الإضافات المختارة — يراها من يجهّز الطلب */
-    addons?: { name: string; qty: number }[];
-    /** موادُّ الطلب المخصَّص — لقطتُها لحظة البيع، لا وصفةٌ تُقرأ اليوم */
-    components?: { name: string; qty: number }[];
-    /**
-     * خياراتُ الطلب المخصَّص — تسميةٌ وقيمةٌ، أيًّا كانت.
-     *
-     * كانت ثلاثةَ حقولٍ بأسمائها: ألوانٌ وتغليفٌ وملاحظاتُ منسّق. وهذه شاشةُ
-     * نظامٍ لا يعرف ما يبيع التاجر، فصارت قائمةً يقولها قالبُه.
-     */
-    custom?: {
-        template: string | null;
-        fields: { label: string; internal: boolean; values: string[] }[];
-    } | null;
-}
-
-interface PrepOrder {
-    number: string;
-    status: string;
-    /** صاحب الطلب — لا مستلِمه */
-    customer: string | null;
-    fulfillment: string | null;
-    scheduled_for: string | null;
-    overdue: boolean;
-    recipient: string | null;
-    recipient_phone: string | null;
-    address: string | null;
-    occasion: string | null;
-    card_message: string | null;
-    sender: string | null;
-    hide_sender: boolean;
-    delivery_notes: string | null;
-    internal_notes: string | null;
-    branch: string | null;
-    items: PrepItem[];
-    /** ما يجوز الانتقال إليه — يصل من الخادم، والحارس هناك أيضًا */
-    next: string[];
-}
-
-interface Props {
-    orders: PrepOrder[];
-    filters: { when: string | null; type: string | null };
-    counts: { all: number; overdue: number; today: number; tomorrow: number };
-    typeCounts: { all: number; delivery: number; pickup: number };
-    /** يصل حين تُقصّ اللوحة عند سقفها — وnull حين تُعرض كاملة */
-    truncated: { shown: number; total: number } | null;
-}
+import PrepCard from './partials/PrepCard';
+import PrepDetails from './partials/PrepDetails';
+import { checkProgress, type PrepOrder, type PrepProps } from './partials/types';
 
 /**
  * لوحة التجهيز — شاشة من يصنع الباقة.
@@ -72,25 +25,116 @@ interface Props {
  *
  * ولا يُعرض فيها سعرٌ ولا إجمالي: من يجهّز الورد لا يحتاج أن يعرف هامش
  * المحلّ ليضع ساقًا في مزهرية — والخادم لا يرسل تلك الأعمدة أصلًا.
+ *
+ * ═══ وتُحدِّث نفسَها ═══
+ *
+ * الطلب يُباع في الصندوق ويصل الطاولةَ بعد عشرين ثانية لا بعد أن يتذكّر
+ * أحدٌ أن يضغط F5. انظر `useBoardLive` — وما فيها من أبواب تُغلق الاستطلاع.
  */
 const NO_COUNTS = { all: 0, overdue: 0, today: 0, tomorrow: 0 };
 const NO_TYPE_COUNTS = { all: 0, delivery: 0, pickup: 0 };
 
+/** ما تُجلب وحدها عند الاستطلاع — لا الصفحةُ كلُّها */
+const LIVE_PROPS = ['orders', 'counts', 'typeCounts', 'columnCounts', 'truncated', 'fetchedAt'];
+
+/** أسماءُ الأعمدة — مفاتيحُها من `PreparationController::COLUMNS` */
+const COLUMN_LABELS: Record<string, string> = {
+    waiting: 'بانتظار التجهيز',
+    preparing: 'قيد التجهيز',
+    ready: 'جاهز',
+    out: 'خرج للتوصيل',
+    failed: 'تعذّر التوصيل',
+    other: 'أخرى',
+};
+
+/** الحالةُ التي تُسأل عندها قائمةُ التحقّق — وتُسأل لا تمنع */
+const READY = 'جاهز';
+
+/** تفضيلاتُ العرض تخصّ الجهاز لا الحساب: شاشةُ الطاولة تُضبط مرّةً وتبقى */
+function remembered(key: string, fallback: string): string {
+    try {
+        return localStorage.getItem(key) ?? fallback;
+    } catch {
+        // متصفّحٌ يمنع التخزين — التفضيلُ يعيش هذه الجلسة ولا تسقط الشاشة
+        return fallback;
+    }
+}
+
+function remember(key: string, value: string): void {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        /* لا شيء — انظر `remembered` */
+    }
+}
+
 export default function PreparationIndex() {
-    const page = usePage<PageProps<Props>>().props;
+    const page = usePage<PageProps<PrepProps>>().props;
     const t = useTranslate();
+    const [ask, confirmDialog] = useConfirm();
 
     /*
      * قيمٌ بديلة لكل خاصيّة — لا لأنّ الخادم قد ينساها، بل لأنّ نسخة الشاشة
      * ونسخة الخادم قد تفترقان لحظة النشر: المتصفّح يحمل ملفًّا جديدًا يقرأ
-     * `typeCounts` والخادم لم يُرسلها بعد. وقراءة حقلٍ من `undefined` تُسقط
+     * `columnCounts` والخادم لم يُرسلها بعد. وقراءة حقلٍ من `undefined` تُسقط
      * الشجرة كلّها فتبيضّ الشاشة — لأجل عدّادٍ لا لأجل الطلبات.
      */
     const orders = page.orders ?? [];
     const filters = page.filters ?? { when: null, type: null };
     const counts = page.counts ?? NO_COUNTS;
     const typeCounts = page.typeCounts ?? NO_TYPE_COUNTS;
+    const columns = page.columns ?? {};
+    const columnCounts = page.columnCounts ?? {};
     const truncated = page.truncated ?? null;
+
+    const [view, setView] = useState(() => remembered('prep.view', 'cards'));
+    const [sound, setSound] = useState(() => remembered('prep.sound', '0') === '1');
+    const [open, setOpen] = useState<string | null>(null);
+    /** أرقامُ الطلبات التي يُنتظر جوابُ نقلها — أزرارُها معطّلة حتى يصل */
+    const [busy, setBusy] = useState<string[]>([]);
+    /*
+     * وعددُ الكتاباتِ الجارية — نقلًا كانت أو تأشيرًا.
+     *
+     * ═══ ولمَ ليس «النافذة مفتوحة» ═══
+     *
+     * أوّلُ ما كتبتُ أوقف الاستطلاعَ ما دامت نافذةُ التفاصيل مفتوحة — وهو
+     * خطأ: القائمةُ يجب أن تتزامن بين الموظّفين، ومن يقرأ تفاصيل طلبٍ على
+     * شاشةٍ لا يرى ما أشّره زميلُه على الشاشة الثانية ما دامت نافذتُه مفتوحة.
+     * وهي الحالُ التي وُضع التزامنُ لأجلها أصلًا: اثنان يجهّزان طلبًا واحدًا.
+     *
+     * فالوقفُ لحظةَ الكتابة وحدها: بين إرسال الضغطة ووصول جوابها لا تُسحب
+     * البطاقةُ من تحت اليد ولا يرتدّ المربّعُ إلى حاله القديم.
+     */
+    const [writing, setWriting] = useState(0);
+
+    /*
+     * عمرُ الحمولة — به تُحسب البقيّة بلا تفسير تاريخ.
+     *
+     * الخادمُ يرسل الدقائقَ الباقية لحظةَ القراءة، والشاشةُ تطرح منها ما
+     * انقضى. والنبضةُ كلَّ نصف دقيقةٍ تُعيد الرسم فتتحرّك الأرقام وإن وقف
+     * الاستطلاع — شاشةٌ في تبويبٍ مخفيّ عادت إليها العينُ بعد ساعة.
+     */
+    const receivedAt = useRef(Date.now());
+    const [tick, setTick] = useState(0);
+    useEffect(() => {
+        receivedAt.current = Date.now();
+        setTick((n) => n + 1);
+    }, [page.fetchedAt]);
+    useEffect(() => {
+        const id = setInterval(() => setTick((n) => n + 1), 30000);
+
+        return () => clearInterval(id);
+    }, []);
+    // `tick` تُقرأ ليعرف المحرّر أنّها اعتماديّةٌ مقصودة لا سطرٌ زائد
+    const ageMs = useMemo(() => Date.now() - receivedAt.current, [tick]);
+
+    const { refresh, refreshing, failed } = useBoardLive({
+        only: LIVE_PROPS,
+        paused: writing > 0,
+    });
+
+    const numbers = useMemo(() => orders.map((o) => o.number), [orders]);
+    const { fresh, acknowledge, armSound } = useNewArrivals(numbers, sound);
 
     const tabs: TabItem[] = [
         { key: 'all', label: 'الكل', count: counts.all },
@@ -127,8 +171,131 @@ export default function PreparationIndex() {
         );
     };
 
-    const move = (number: string, status: string) =>
-        router.post(route('admin.preparation.move', number), { status }, { preserveScroll: true });
+    /*
+     * النقل — والزرُّ يُعطَّل حتى يصل الجواب.
+     *
+     * ضغطتان متتاليتان على «جاهز» كانتا تُرسلان نداءين: الأوّل ينقل والثاني
+     * يُردّ بـ«لا يمكن نقل الطلب من جاهز إلى جاهز»… أو ما هو أسوأ إن كان
+     * الزرُّ «خرج للتوصيل» وقد صار الطلبُ إليه فعلًا.
+     *
+     * والحارسُ في الخادم على كلّ حال (`OrderTransition` بقفلها) — وهذا يمنع
+     * أن يقرأ من يجهّز رفضًا سبّبه هو.
+     */
+    const move = useCallback(
+        (number: string, status: string) => {
+            setBusy((b) => (b.includes(number) ? b : [...b, number]));
+            setWriting((n) => n + 1);
+            router.post(
+                route('admin.preparation.move', number),
+                { status },
+                {
+                    preserveScroll: true,
+                    /*
+                     * ولا `preserveState`: الردُّ يعيد الصفحةَ بخصائصَ جديدة،
+                     * وبها تُقرأ الحالُ الحقيقيّة بعد النقل — أو بعد رفضِه.
+                     * فمن رُفض نقلُه لأنّ زميلَه ألغى الطلب يرى الحالَ الجديدة
+                     * على البطاقة مع رسالة الرفض، لا حالًا قديمةً يضغطها ثانيةً.
+                     */
+                    onFinish: () => {
+                        setBusy((b) => b.filter((n) => n !== number));
+                        setWriting((n) => n - 1);
+                    },
+                },
+            );
+        },
+        [],
+    );
+
+    /*
+     * و«جاهز» تسأل عمّا لم يُؤشَّر — ولا تمنع.
+     *
+     * المنعُ يوقف طلباتٍ قديمةً لا قائمةَ لها، وطلباتٍ غيرَ معتادةٍ لا تنطبق
+     * عليها البنود، ومحلًّا لم يعتد القائمةَ أصلًا. والسؤالُ يقول العدد ثمّ
+     * يمضي بمن أراد: تذكيرٌ لا بوّابة.
+     */
+    const moveChecked = useCallback(
+        async (o: PrepOrder, status: string) => {
+            if (status === READY) {
+                const { done, total } = checkProgress(o);
+                if (done < total) {
+                    // والنصُّ خامٌ لا مترجَم: `useConfirm` تُمرّره على `t` بقيمه
+                    const ok = await ask({
+                        title: 'قائمة التجهيز غير مكتملة',
+                        message: 'بقي :n من :total دون تأشير. تريد وسمه «جاهز» على كل حال؟',
+                        action: 'نعم، جاهز',
+                        values: { n: total - done, total },
+                    });
+                    if (! ok) return;
+                }
+            }
+
+            move(o.number, status);
+        },
+        [ask, move],
+    );
+
+    const toggle = useCallback((number: string, key: string, checked: boolean) => {
+        setWriting((n) => n + 1);
+        router.post(
+            route('admin.preparation.check', number),
+            { key, checked },
+            {
+                preserveScroll: true,
+                preserveState: true,
+                // الخصائصُ الحيّةُ وحدها تعود: الجوابُ يحمل العلامةَ الجديدة
+                // فتُرسم من الخادم لا من حالٍ محليّةٍ تُخمّن ما وقع
+                only: LIVE_PROPS,
+                onFinish: () => setWriting((n) => n - 1),
+            },
+        );
+    }, []);
+
+    const current = open ? (orders.find((o) => o.number === open) ?? null) : null;
+    /*
+     * ونافذةٌ فُتحت لطلبٍ غادر اللوحة تبقى مفتوحةً وتقول ذلك.
+     *
+     * إغلاقُها تلقائيًّا يُخفي السببَ: من يقرأ التفاصيل تختفي شاشتُه فجأةً
+     * ولا يعرف أنّ زميلًا نقل الطلب. فتُحفظ اللقطةُ الأخيرة ويُرفع سطرٌ فوقها.
+     */
+    const lastSeen = useRef<PrepOrder | null>(null);
+    if (current) lastSeen.current = current;
+    const shown = current ?? (open ? lastSeen.current : null);
+
+    const groups = useMemo(() => {
+        const known = new Set(Object.values(columns).flat());
+        const out: { key: string; orders: PrepOrder[] }[] = Object.keys(columns).map((key) => ({
+            key,
+            orders: orders.filter((o) => columns[key].includes(o.status)),
+        }));
+        // وما لا عمودَ له يُعرض في «أخرى» ولا يُبتلع — حالٌ قديمةٌ في القاعدة
+        const rest = orders.filter((o) => ! known.has(o.status));
+        if (rest.length > 0 || (columnCounts.other ?? 0) > 0) out.push({ key: 'other', orders: rest });
+
+        return out;
+    }, [orders, columns, columnCounts]);
+
+    /*
+     * وبناةُ الروابط تُثبَّت هويّتُها.
+     *
+     * `PrepDetails` تجلب خطَّ الحال في `useEffect` معتمدًا عليها. ودالّةٌ
+     * تُكتب في مكانها تُنشأ من جديدٍ في كلّ رسم — واللوحة تُعاد رسمُها كلّ
+     * نصف دقيقةٍ للنبضة ومع كلّ استطلاع — فيُعاد الجلبُ بلا سبب، عشراتِ
+     * المرّات ما دامت النافذة مفتوحة.
+     */
+    const deliveryNoteUrl = useCallback((n: string) => route('admin.preparation.deliveryNote', n), []);
+    const timelineUrl = useCallback((n: string) => route('admin.preparation.timeline', n), []);
+
+    const card = (o: PrepOrder) => (
+        <PrepCard
+            key={o.number}
+            order={o}
+            ageMs={ageMs}
+            fresh={fresh.includes(o.number)}
+            busy={busy.includes(o.number)}
+            onOpen={() => setOpen(o.number)}
+            onMove={(s) => moveChecked(o, s)}
+        />
+    );
 
     return (
         <AdminLayout title="لوحة التجهيز">
@@ -136,6 +303,92 @@ export default function PreparationIndex() {
                 title="لوحة التجهيز"
                 subtitle={t('الطلبات التي تنتظر التجهيز، مرتّبةً بموعدها — والمتأخّر أوّلًا')}
             />
+
+            {/* ═══ شريطُ الحال: ما وصل، وحالُ الاستطلاع، ومبدّلُ العرض ═══ */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+                {fresh.length > 0 && (
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="primary"
+                        className="rounded-full"
+                        data-testid="prep-fresh"
+                        onClick={acknowledge}
+                    >
+                        <Bell className="size-4" />
+                        {t('وصل :n طلبًا جديدًا', { n: fresh.length })}
+                    </Button>
+                )}
+
+                {failed && (
+                    <span
+                        data-testid="prep-stale"
+                        className="flex items-center gap-1.5 rounded-full bg-[#fef2f2] px-3 py-1.5 text-[12px] font-medium text-[#b91c1c]"
+                    >
+                        <WifiOff className="size-3.5" />
+                        {t('تعذّر التحديث — المعروض قد يكون قديمًا')}
+                    </span>
+                )}
+
+                <div className="ms-auto flex items-center gap-1">
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-full"
+                        aria-pressed={sound}
+                        data-testid="prep-sound"
+                        title={t(sound ? 'إيقاف تنبيه الصوت' : 'تشغيل تنبيه الصوت')}
+                        onClick={() => {
+                            const next = ! sound;
+                            setSound(next);
+                            remember('prep.sound', next ? '1' : '0');
+                            // والتفعيلُ نفسُه تفاعلٌ — فتُجرَّب النغمة ليُعرف أنّها تعمل
+                            if (next) armSound();
+                        }}
+                    >
+                        {sound ? <Bell className="size-4" /> : <BellOff className="size-4" />}
+                        <span className="sr-only">{t('تنبيه صوتي')}</span>
+                    </Button>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="rounded-full"
+                        disabled={refreshing}
+                        data-testid="prep-refresh"
+                        onClick={refresh}
+                    >
+                        <RefreshCw className={cn('size-4', refreshing && 'animate-spin')} />
+                        {t('تحديث')}
+                    </Button>
+                    {[
+                        { key: 'cards', icon: LayoutGrid, label: 'بطاقات' },
+                        { key: 'columns', icon: Columns3, label: 'أعمدة' },
+                    ].map((v) => {
+                        const Icon = v.icon;
+
+                        return (
+                            <Button
+                                key={v.key}
+                                type="button"
+                                size="sm"
+                                variant={view === v.key ? 'primary' : 'ghost'}
+                                className="rounded-full"
+                                aria-pressed={view === v.key}
+                                data-testid={`prep-view-${v.key}`}
+                                onClick={() => {
+                                    setView(v.key);
+                                    remember('prep.view', v.key);
+                                }}
+                            >
+                                <Icon className="size-4" />
+                                {t(v.label)}
+                            </Button>
+                        );
+                    })}
+                </div>
+            </div>
 
             <div className="mb-4">
                 <Tabs
@@ -201,200 +454,57 @@ export default function PreparationIndex() {
                           ? t('لا طلبات استلام تنتظر التجهيز')
                           : t('لا طلبات تنتظر التجهيز')}
                 </Card>
-            ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {orders.map((o) => (
-                        <Card key={o.number} className="flex flex-col gap-3 p-5">
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                    {/* صاحب الطلب أوّلًا: هو أوّل ما يُسأل عنه عند
-                                        الطاولة وعند التسليم. والرقم تحته — يُقرأ
-                                        حين يُبحث عنه لا حين يُجهَّز */}
-                                    <p className="truncate font-bold text-[#111]">{o.customer ?? t('بلا اسم')}</p>
-                                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">{o.number}</p>
-                                    <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-[#6b7280]">
-                                        <Clock className="size-3.5" />
-                                        <span dir="ltr">{o.scheduled_for ?? '—'}</span>
-                                    </p>
-                                </div>
-                                <div className="flex flex-col items-end gap-1.5">
-                                    <Badge status={o.status}>{t(o.status)}</Badge>
-                                    {o.overdue && (
-                                        <span className="flex items-center gap-1 text-[12px] font-medium text-[#b91c1c]">
-                                            <AlertTriangle className="size-3.5" />
-                                            {t('متأخّر')}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[#6b7280]">
-                                {o.fulfillment && (
-                                    <span className="flex items-center gap-1">
-                                        <Truck className="size-3.5" />
-                                        {t(o.fulfillment === 'delivery' ? 'توصيل' : 'استلام من المحل')}
-                                    </span>
-                                )}
-                                {o.recipient && (
-                                    <span className="flex items-center gap-1">
-                                        <User className="size-3.5" />
-                                        {o.recipient}
-                                    </span>
-                                )}
-                                {o.recipient_phone && (
-                                    <span className="flex items-center gap-1" dir="ltr">
-                                        <Phone className="size-3.5" />
-                                        {o.recipient_phone}
-                                    </span>
-                                )}
-                                {o.occasion && <span>{t(o.occasion)}</span>}
-                            </div>
-
-                            {o.address && (
-                                <p className="flex items-start gap-1.5 text-[12px] text-[#6b7280]">
-                                    <MapPin className="mt-0.5 size-3.5 shrink-0" />
-                                    {o.address}
-                                </p>
-                            )}
-
-                            <ul className="flex flex-col gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3 text-sm">
-                                {o.items.map((i, idx) => (
-                                    <li key={idx} className="flex items-center gap-2.5">
-                                        {i.image ? (
-                                            <img
-                                                src={i.image}
-                                                alt=""
-                                                className="size-9 shrink-0 rounded-[8px] object-cover"
-                                            />
-                                        ) : (
-                                            <span className="size-9 shrink-0 rounded-[8px] bg-gray-100" />
-                                        )}
-                                        <span className="flex-1 text-[#111]">
-                                            {i.name}
-                                            {/* من يجهّز يحتاج أن يرى الدبّ والشوكولاتة، لا الاسم وحده */}
-                                            {(i.addons ?? []).map((a, k) => (
-                                                <span key={k} className="block text-[12px] text-[#7c3aed]">
-                                                    + {a.name}
-                                                    {a.qty > 1 && ` ×${a.qty}`}
-                                                </span>
-                                            ))}
-                                            {/*
-                                              * ملاحظةُ السطر: «بلا ورد أحمر»، «اكتب الاسم على الشريط».
-                                              *
-                                              * كانت تُرسل من الخادم ولا تُرسم هنا — يكتبها الكاشير على
-                                              * الصنف وهو يبيع، ولا يقرؤها من يصنع الباقة. وهي أوجبُ ما
-                                              * على البطاقة: الاسمُ يقول ماذا، والملاحظةُ تقول كيف.
-                                              */}
-                                            {i.note && (
-                                                <span className="block text-[12px] font-medium text-[#b45309]">
-                                                    {i.note}
-                                                </span>
-                                            )}
-                                            {/*
-                                              * موادُّ الطلب المخصَّص — وهي كلُّ ما يعرفه المنسّق عنه.
-                                              *
-                                              * الباقةُ الجاهزة اسمُها يقول ما فيها، والمخصَّصةُ اسمُها
-                                              * «تنسيق ورد مخصص» ولا شيءَ تحته. فبلا هذه يقف من يجهّز
-                                              * أمام بطاقةٍ لا تقول ممّ تُصنع.
-                                              *
-                                              * وبالنسق نفسِه الذي تُرسم به الإضافات — لا بطاقةَ جديدة.
-                                              */}
-                                            {(i.components ?? []).map((c, k) => (
-                                                <span key={`c${k}`} className="block text-[12px] text-[#047857]">
-                                                    {c.name} ×{number(c.qty, Number.isInteger(c.qty) ? 0 : 3)}
-                                                </span>
-                                            ))}
-                                            {/*
-                                              * وخياراتُ الطلب بتسمياتها كما كُتبت يوم البيع.
-                                              *
-                                              * والداخليُّ يُلوَّن كالملاحظة: هو ما لا يراه العميل على
-                                              * الفاتورة ويراه من يجهّز — وتمييزُه بلونه يقول ذلك بلا
-                                              * سطرٍ يشرحه.
-                                              */}
-                                            {(i.custom?.fields ?? []).map((f, k) => (
-                                                <span
-                                                    key={`f${k}`}
-                                                    className={cn(
-                                                        'block text-[12px]',
-                                                        f.internal ? 'font-medium text-[#b45309]' : 'text-[#6b7280]',
-                                                    )}
-                                                >
-                                                    {f.label}: {f.values.join(' + ')}
-                                                </span>
-                                            ))}
-                                        </span>
-                                        <span className="font-bold tabular-nums text-[#111]">×{i.qty}</span>
-                                    </li>
-                                ))}
-                            </ul>
-
-                            {o.card_message && (
-                                <div className="rounded-[10px] bg-[#fdf2f8] p-3 text-[12px] text-[#831843]">
-                                    <p className="mb-1 flex items-center gap-1.5 font-medium">
-                                        <Gift className="size-3.5" />
-                                        {t('بطاقة الإهداء')}
-                                    </p>
-                                    <p className="leading-relaxed">{o.card_message}</p>
-                                    {o.sender && (
-                                        <p className="mt-1 text-[#9d174d]">
-                                            {t('من')}: {o.sender}
-                                            {o.hide_sender && ` · ${t('مخفيّ عن المستلِم')}`}
-                                        </p>
-                                    )}
-                                </div>
-                            )}
-
-                            {(o.delivery_notes || o.internal_notes) && (
-                                <div className="rounded-[10px] bg-gray-50 p-3 text-[12px] text-[#6b7280]">
-                                    <p className="mb-1 flex items-center gap-1.5 font-medium text-[#4b4b4b]">
-                                        <StickyNote className="size-3.5" />
-                                        {t('ملاحظات')}
-                                    </p>
-                                    {o.delivery_notes && <p>{o.delivery_notes}</p>}
-                                    {o.internal_notes && <p className="mt-1">{o.internal_notes}</p>}
-                                </div>
-                            )}
-
-                            <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
+            ) : view === 'columns' ? (
+                /*
+                 * الأعمدةُ تُمرَّر أفقيًّا على الجوّال ولا تُطوى.
+                 *
+                 * خمسةُ أعمدةٍ على عرض هاتفٍ تعني عمودًا بعرض إصبعين لا تُقرأ
+                 * بطاقتُه. والتمريرُ الأفقيّ يُبقي كلَّ عمودٍ بعرضه ويُظهر
+                 * حافّةَ التالي — إشارةٌ إلى أنّ ثمّة مزيدًا.
+                 */
+                <div data-testid="prep-columns" className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+                    {groups.map((g) => (
+                        <section key={g.key} className="flex w-[280px] shrink-0 flex-col gap-3 sm:w-[320px]">
+                            <header className="flex items-baseline justify-between rounded-[12px] bg-[#f7f7f5] px-3 py-2">
+                                <h3 className="text-sm font-bold text-[#111]">{t(COLUMN_LABELS[g.key] ?? g.key)}</h3>
                                 {/*
-                                    سندُ التسليم — الورقةُ التي تمشي مع الشحنة.
-
-                                    كانت اللوحةُ تنقل الطلبَ إلى «خرج للتوصيل»
-                                    ولا تطبع شيئًا، ولا رابطَ يخرج من البطاقة.
-                                    ومسارُها هنا `preparation.*` فيتبع قسمَ من
-                                    يجهّز — وصفحةُ الطلب داخل «المبيعات» كانت
-                                    تردّه بـ٤٠٣.
-
-                                    وفي لسانٍ جديد: الورقةُ PDF تُفتح في تبويبٍ
-                                    آخر، فلا تُغادر اللوحةُ مكانَها ولا يضيع
-                                    المرشّحُ الذي يقف عليه.
-                                */}
-                                <Button variant="outline" size="sm" asChild>
-                                    <a
-                                        href={route('admin.preparation.deliveryNote', o.number)}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                    >
-                                        <Printer className="size-3.5" />
-                                        {t('سند تسليم')}
-                                    </a>
-                                </Button>
-
-                                {o.next.map((s) => (
-                                    <Button
-                                        key={s}
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => move(o.number, s)}
-                                    >
-                                        {t(s)}
-                                    </Button>
-                                ))}
-                            </div>
-                        </Card>
+                                  * والرقمان حين تُقصّ اللوحة: المعروضُ من الكلّ.
+                                  *
+                                  * رقمٌ واحدٌ فوق عمودٍ مقصوص يقول «١٢» وتحته مئة —
+                                  * وهو عينُ الكذب الذي وُضع شريطُ الاقتطاع ليمنعه.
+                                  */}
+                                <span className="text-[12px] tabular-nums text-[#6b7280]">
+                                    {truncated && g.orders.length !== (columnCounts[g.key] ?? 0)
+                                        ? `${g.orders.length}/${columnCounts[g.key] ?? 0}`
+                                        : (columnCounts[g.key] ?? g.orders.length)}
+                                </span>
+                            </header>
+                            {g.orders.length === 0 ? (
+                                <p className="rounded-[12px] border border-dashed border-[var(--ui-border,#e8e8e8)] p-4 text-center text-[12px] text-[#9ca3af]">
+                                    {t('لا شيء هنا')}
+                                </p>
+                            ) : (
+                                g.orders.map(card)
+                            )}
+                        </section>
                     ))}
                 </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{orders.map(card)}</div>
             )}
+
+            <PrepDetails
+                order={shown}
+                gone={open !== null && current === null}
+                busy={shown ? busy.includes(shown.number) : false}
+                onClose={() => setOpen(null)}
+                onMove={(s) => shown && moveChecked(shown, s)}
+                onToggle={(key, checked) => shown && toggle(shown.number, key, checked)}
+                deliveryNoteUrl={deliveryNoteUrl}
+                timelineUrl={timelineUrl}
+            />
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

@@ -77,6 +77,8 @@ class TenantTables
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',
         'orders', 'order_items', 'order_item_addons', 'order_item_components', 'order_edits',
+        // وعلاماتُ الطاولة بعد بنودها: مفتاحُها يشير إلى بندٍ أو إضافة
+        'order_prep_checks',
         /*
          * فواتيرُ العملاء وذممُهم — بعد الطلبات لأنّها قد تُولد منها.
          *
@@ -165,6 +167,7 @@ class TenantTables
         // موادُّ الطلب المخصَّص — تتبع بندَها كما تتبعه إضافاتُه
         'order_item_components' => ['order_items', 'order_item_id'],
         'order_items' => ['orders', 'order_id'],
+        'order_prep_checks' => ['orders', 'order_id'],
         'customer_invoice_items' => ['customer_invoices', 'customer_invoice_id'],
         'customer_invoice_orders' => ['customer_invoices', 'customer_invoice_id'],
         'customer_payment_allocations' => ['customer_payments', 'customer_payment_id'],

@@ -198,10 +198,42 @@ class AnOrderThatIsPreparedHasADateTest extends TestCase
         $this->assertSame('بلا ورد أحمر', $this->board()[0]['items'][0]['note']);
     }
 
-    /** ويرسمها من يقف عند الطاولة — لا تصل الشاشةَ لتُطرح */
+    /**
+     * ويرسمها من يقف عند الطاولة — لا تصل الشاشةَ لتُطرح.
+     *
+     * ═══ ولمَ يُفحص المجلّد لا ملفٌّ بعينه ═══
+     *
+     * كان الفحص على `Index.tsx` وحدها بالعبارة `{i.note && (`. ثمّ اختُصرت
+     * البطاقةُ وانتقلت التفاصيلُ إلى `PrepDetails` — فسقط الحارسُ والملاحظةُ
+     * تُرسم كما كانت. وحارسٌ يسقط على إعادةِ ترتيبٍ سليمة يُعلَّم على أنّه
+     * «ضجيج»، فيُلغى أو يُضعَّف، فلا يمسك اليومَ الذي تُحذف فيه فعلًا.
+     *
+     * فالفحصُ على الموضعين اللذين يرسمانها اليوم — وعلى المِحورَين اللذين
+     * يحملانها إليهما، لا على ورودِ الاسم في الملفّ. أوّلُ صياغةٍ كتبتُها
+     * بحثت عن `i.note` في المجلّد كلِّه: مرّت وأنا أحذف الرسمَ من الموضعين،
+     * لأنّ الاسم يرد في جمع الملاحظات أيضًا. وحارسٌ لا يسقط حين يُكسَر ما
+     * يحرسه أسوأ من غيابه — يُقرأ أمانًا وليس بأمان.
+     *
+     * والسلوكُ نفسُه محروسٌ برسمٍ حقيقيّ في
+     * `tests/js/the-prep-bench-ticks-off-what-it-gathered`.
+     */
     public function test_the_board_draws_the_line_note(): void
     {
-        $this->assertStringContainsString('{i.note && (', file_get_contents(base_path(self::BOARD)));
+        $dir = base_path(dirname(self::BOARD)).'/partials/';
+
+        // على البطاقة: أوّلُ بندٍ يحمل ملاحظةً يُعرض نصُّها مختصرًا
+        $this->assertStringContainsString(
+            'o.items.find((i) => i.note)',
+            file_get_contents($dir.'PrepCard.tsx'),
+            'البطاقةُ لم تعد تعرض ملاحظةَ السطر',
+        );
+
+        // وفي التفاصيل: تحت اسم البند في صفّ التحقّق الخاصّ به
+        $this->assertStringContainsString(
+            'i.note ?? undefined',
+            file_get_contents($dir.'PrepDetails.tsx'),
+            'نافذةُ التفاصيل لم تعد تعرض ملاحظةَ السطر',
+        );
     }
 
     /** @return array<int, array<string, mixed>> */

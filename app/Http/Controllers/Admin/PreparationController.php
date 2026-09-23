@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Support\Activity;
 use App\Support\CustomArrangement;
@@ -11,6 +12,7 @@ use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
 use App\Support\OrderTransition;
+use App\Support\PrepChecklist;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -33,6 +35,35 @@ class PreparationController extends Controller
 {
     /** أقصى ما يُرسم على اللوحة دفعةً واحدة — وما زاد يُقال عددُه لا يُبتلع */
     private const BOARD_LIMIT = 200;
+
+    /**
+     * أعمدةُ اللوحة — تجميعُ حالاتٍ قائمة، لا حالاتٌ جديدة.
+     *
+     * ═══ ولمَ ليست في `OrderStatus` ═══
+     *
+     * هذا تجميعُ عرضٍ تخصّ هذه الشاشة: «جديد» و«مؤكّد» عمودٌ واحد هنا لأنّ من
+     * يقف عند الطاولة لا يفرّق بينهما — كلاهما لم يُبدأ بعد. وشاشةُ المبيعات
+     * تفرّقهما وتحتاج ذلك. فمصدرُ الحالات واحدٌ، وطريقةُ قراءتها تخصّ قارئها.
+     *
+     * ═══ والتغطيةُ محروسة ═══
+     *
+     * كلُّ حالةٍ حيّة (ما ليس في `OrderStatus::CLOSED`) لها عمودٌ واحدٌ لا
+     * أكثر. وإلّا اختفت بطاقتُها من العرض العموديّ بلا كلمة — «تعذّر التوصيل»
+     * بالذات: طلبٌ رجع من الطريق هو أحوجُ ما على اللوحة إلى أن يُرى، وهو أوّل
+     * ما يسقط من قائمةٍ تُكتب بالحدس. انظر `ThePrepBoardStandsInColumnsTest`.
+     *
+     * وما لا عمودَ له — حالٌ قديمةٌ في القاعدة لا يعرفها هذا الملفّ — يُجمع في
+     * «أخرى» ولا يُبتلع: `canMove` نفسُها تحتمل مثلَ ذلك ولا تحبسه.
+     *
+     * @var array<string, list<string>>
+     */
+    public const COLUMNS = [
+        'waiting' => [OrderStatus::PENDING, OrderStatus::CONFIRMED],
+        'preparing' => [OrderStatus::PREPARING],
+        'ready' => [OrderStatus::READY],
+        'out' => [OrderStatus::OUT_FOR_DELIVERY],
+        'failed' => [OrderStatus::DELIVERY_FAILED],
+    ];
 
     private function bid(): int
     {
@@ -99,15 +130,82 @@ class PreparationController extends Controller
         $total = (clone $q)->count();
         $orders = $q->orderBy('scheduled_for')->limit(self::BOARD_LIMIT)->get();
 
+        /*
+         * والعلاماتُ تُقرأ دفعةً واحدة.
+         *
+         * اللوحة تُعرض مئتين، وتستطلع نفسَها كلَّ عشرين ثانية. فقراءةُ علامات
+         * كلّ بطاقةٍ على حدة تعني مئتي استعلامٍ ثلاثَ مرّاتٍ في الدقيقة — على
+         * شاشةٍ مفتوحةٍ طولَ اليوم أمام الطاولة.
+         */
+        $checks = PrepChecklist::forOrders($orders->pluck('id')->all());
+
         return Inertia::render('Admin/Preparation/Index', [
-            'orders' => $orders->map(fn ($o) => $this->card($o))->values()->all(),
+            'orders' => $orders->map(fn ($o) => $this->card($o, $checks[$o->id] ?? []))->values()->all(),
             'filters' => ['when' => $filter, 'type' => $type],
             'counts' => $this->counts($type),
             'typeCounts' => $this->typeCounts($filter),
+            'columnCounts' => $this->columnCounts($filter, $type),
+            /*
+             * وخريطةُ الأعمدة تصل من الخادم لا تُكتب في الشاشة.
+             *
+             * لو كُتبت هناك لَافترقت عن `COLUMNS` عند أوّل حالةٍ تُضاف: يُضاف
+             * العمودُ في الخادم فتُعدّ بطاقاتُه ولا تُرسم، أو يُضاف في الشاشة
+             * فيُرسم عمودٌ عدّادُه صفرٌ أبدًا.
+             */
+            'columns' => self::COLUMNS,
             'truncated' => $total > self::BOARD_LIMIT
                 ? ['shown' => $orders->count(), 'total' => $total]
                 : null,
+            /*
+             * وختمُ القراءة — به تقيس الشاشةُ عمرَ ما تعرض.
+             *
+             * رقمٌ يتحرّك بلا أن يُعرف عمرُه يُقرأ لحظيًّا: فيقف من يجهّز أمام
+             * لوحةٍ توقّف استطلاعُها منذ عشر دقائق وهو لا يعلم.
+             */
+            'fetchedAt' => now()->toIso8601String(),
         ]);
+    }
+
+    /**
+     * أعدادُ الأعمدة — تحت المرشّحين القائمين، في استعلامٍ واحد.
+     *
+     * ═══ ولمَ تُعدّ في الخادم لا تُحصى من البطاقات ═══
+     *
+     * البطاقاتُ مقصوصةٌ عند `BOARD_LIMIT`. فإحصاؤها في الشاشة يجعل رأسَ العمود
+     * يقول «١٢» وتحته مئةٌ لم تُحمَّل — وهو الكذبُ الذي وُضع شريطُ الاقتطاع
+     * أصلًا ليمنعه.
+     *
+     * فالرأسُ يحمل الرقمين حين تُقصّ اللوحة: المعروض من الكلّ.
+     *
+     * @return array<string, int>
+     */
+    private function columnCounts(?string $when, ?string $type): array
+    {
+        $q = $this->base()->when($type, fn ($w) => $w->where('fulfillment_type', $type));
+        $this->applyWindow($q, $when);
+
+        $select = ['count(*) as all_count'];
+        $bind = [];
+
+        foreach (self::COLUMNS as $key => $statuses) {
+            $in = implode(', ', array_fill(0, count($statuses), '?'));
+            $select[] = "sum(case when status in ({$in}) then 1 else 0 end) as {$key}_count";
+            $bind = array_merge($bind, $statuses);
+        }
+
+        $row = $q->selectRaw(implode(', ', $select), $bind)->first();
+
+        $out = [];
+        $known = 0;
+        foreach (array_keys(self::COLUMNS) as $key) {
+            $out[$key] = (int) ($row->{$key.'_count'} ?? 0);
+            $known += $out[$key];
+        }
+
+        // وما لا عمودَ له يُقال عددُه — حالٌ قديمةٌ في القاعدة لا تُبتلع
+        $out['other'] = max(0, (int) ($row->all_count ?? 0) - $known);
+
+        return $out;
     }
 
     /** ما تنتظره اللوحة: متجرُ المستخدم، وفرعُه، وما لم يُغلق بعد */
@@ -210,7 +308,7 @@ class PreparationController extends Controller
      * إلى الشاشة يجعله مقروءًا لكلّ من يفتح أدوات المتصفّح — سواءٌ رُسم أم
      * لم يُرسم.
      */
-    private function card(Order $o): array
+    private function card(Order $o, array $checks = []): array
     {
         return [
             'number' => $o->number,
@@ -220,6 +318,35 @@ class PreparationController extends Controller
             'customer' => $o->customer_name,
             'fulfillment' => $o->fulfillment_type,
             'scheduled_for' => optional($o->scheduled_for)->format('Y-m-d H:i'),
+            /*
+             * والموعدُ مفكوكًا — تاريخٌ ووقتٌ ويومٌ ودقائقُ باقية.
+             *
+             * ═══ ولمَ لا يُرسَل نصًّا واحدًا ويُفكّ في المتصفّح ═══
+             *
+             * `new Date('2026-09-23 14:00')` ليست تاريخًا قياسيًّا: المحرّكات
+             * تقرؤها بالتوقيت المحليّ للجهاز — وجهازُ الطاولة قد يكون على
+             * توقيتٍ آخر، أو على توقيتٍ لم يُضبط أصلًا (لوحاتٌ رخيصةٌ تُشترى
+             * وتُشغَّل ولا أحد يفتح إعداداتِها). فيقرأ من يجهّز «بعد ساعتين»
+             * لطلبٍ فات موعدُه.
+             *
+             * فالحسابُ كلُّه هنا: الخادمُ على `Asia/Muscat` — توقيتِ التاجر —
+             * والمتصفّحُ يعرض ما يصله ولا يفسّر تاريخًا أبدًا. والدقائقُ عددٌ
+             * صحيحٌ موقَّع: سالبُه تأخيرٌ وموجبُه بقيّة.
+             *
+             * واليومُ مفتاحٌ لا كلمة: `today` تُترجَم في الشاشة كسائر نصوصها،
+             * ولو أُرسلت «اليوم» عربيّةً لَبقيت عربيّةً في واجهةٍ إنجليزية.
+             */
+            'scheduled' => $o->scheduled_for ? [
+                'date' => $o->scheduled_for->format('Y-m-d'),
+                'time' => $o->scheduled_for->format('H:i'),
+                'day' => match (true) {
+                    $o->scheduled_for->isToday() => 'today',
+                    $o->scheduled_for->isTomorrow() => 'tomorrow',
+                    $o->scheduled_for->isYesterday() => 'yesterday',
+                    default => null,
+                },
+                'minutes_left' => (int) round(now()->diffInMinutes($o->scheduled_for)),
+            ] : null,
             'overdue' => $o->scheduled_for && $o->scheduled_for->isPast(),
             'recipient' => $o->recipient_name,
             'recipient_phone' => $o->recipient_phone,
@@ -236,11 +363,22 @@ class PreparationController extends Controller
             // المقاس والإضافات على بطاقة التجهيز: من يجهّز «بوكيه» لا يعرف
             // أيّ مقاسٍ يجهّز، ولا أنّ معه دبًّا — فيخرج الطلب ناقصًا
             'items' => $o->items->map(fn ($i) => [
+                /*
+                 * ومعرّفُ البند يُرسَل — منه يُبنى مفتاحُ علامة التحقّق.
+                 *
+                 * وليس فيه ما يُخفى: رقمُ صفٍّ في جدولٍ محصورٍ بمتجره وفرعه،
+                 * ولا يُقبل من المتصفّح إلّا إن كان من هذا الطلب نفسِه
+                 * (`PrepChecklist::allows`). والبديلُ — مفتاحٌ يُبنى من اسم
+                 * البند — يجمع بندين اسمُهما واحد في علامةٍ واحدة: «وردة حمراء»
+                 * مرّتين في طلبٍ واحد تُؤشَّر إحداهما فتُؤشَّر الأخرى معها.
+                 */
+                'id' => $i->id,
                 'name' => $i->displayName(),
                 'qty' => (int) $i->quantity,
                 'note' => $i->note,
                 'image' => $i->product?->image,
                 'addons' => $i->addons->map(fn ($a) => [
+                    'id' => $a->id,
                     'name' => $a->name,
                     'qty' => (int) $a->quantity,
                 ])->all(),
@@ -281,6 +419,15 @@ class PreparationController extends Controller
             ])->values()->all(),
             // ما يجوز الانتقال إليه من هنا — تُبنى منه أزرار البطاقة
             'next' => OrderStatus::nextFrom($o->status),
+            /*
+             * وعلاماتُ التجهيز — ما أُشّر منها ومن أشّره ومتى.
+             *
+             * تصل مع البطاقة لا باستدعاءٍ ثانٍ: فتتجدّد مع الاستطلاع نفسِه،
+             * فيرى من على الطاولة الثانية ما جمعه زميلُه قبل عشرين ثانية.
+             * ولو جُلبت وحدها لَبقيت مربّعاتُ شاشةٍ على حالها بينما الطلب
+             * يُجهَّز كلُّه على شاشةٍ أخرى.
+             */
+            'checks' => $checks,
         ];
     }
 
@@ -323,6 +470,93 @@ class PreparationController extends Controller
         $order = $this->base()->where('number', $number)->with('items')->firstOrFail();
 
         return DeliveryPaper::pdf($this->bid(), $order);
+    }
+
+    /**
+     * وضعُ علامةِ تجهيزٍ أو رفعُها — ولا شيء سواها.
+     *
+     * ═══ ما لا تفعله هذه الدالّة ═══
+     *
+     * لا تخصم من رفّ، ولا تكتب قيدًا، ولا تنقل حالَ الطلب. المربّعُ يقول
+     * «جمعتُه» ولا يقول «جاهز» — ومن يؤشّر الأخير يضغط الزرّ بنفسه. وخلطُ
+     * الاثنين يعني طلبًا يقفز إلى «جاهز» لأنّ موظّفًا أشّر آخرَ بندٍ وهو لم
+     * يغلّفه بعد.
+     *
+     * ═══ وحارسان لا واحد ═══
+     *
+     * الطلبُ من `base()`: متجرُه وفرعُه وما لم يُغلق. والمفتاحُ من الطلب نفسِه
+     * (`PrepChecklist::allows`) — فلا يُؤشَّر بندُ طلبٍ آخر برقمٍ يُبدَّل في
+     * الطلب، ولا مفتاحٌ مخترَعٌ يُكتب في الجدول فيتراكم ما لا يُعرض.
+     */
+    public function check(Request $request, string $number)
+    {
+        $data = $request->validate([
+            'key' => ['required', 'string', 'max:64'],
+            'checked' => ['required', 'boolean'],
+        ]);
+
+        $order = $this->base()->where('number', $number)->with('items.addons')->firstOrFail();
+
+        if (! PrepChecklist::allows($order, $data['key'])) {
+            return back()->with('toast', [
+                'msg' => __('هذا البند ليس من هذا الطلب.'),
+                'type' => 'danger',
+            ])->withErrors(['key' => __('هذا البند ليس من هذا الطلب.')]);
+        }
+
+        PrepChecklist::set($order, $data['key'], (bool) $data['checked']);
+
+        /*
+         * ولا `toast` للنجاح ولا سطرٌ في سجلّ النشاط.
+         *
+         * المربّعُ يُؤشَّر عشرين مرّةً في الطلب الواحد. فتنبيهٌ لكلّ ضغطة يُغرق
+         * الشاشة، وسطرٌ لكلّ ضغطة يدفن في السجلّ ما يُراقَب حقًّا — حذفُ فاتورةٍ
+         * وتغييرُ حال. ومن وضع العلامة ومتى محفوظان في الصفّ نفسِه ويُعرضان
+         * بجانبها، وهو الموضع الذي يُسأل فيه عنهما.
+         */
+        return back();
+    }
+
+    /**
+     * خطُّ الطلب الزمنيّ — من سجلّ النشاط القائم لا من سجلٍّ ثانٍ.
+     *
+     * ═══ ولمَ لا جدولَ جديد ═══
+     *
+     * الشاشتان اللتان تنقلان الحال — `PreparationController::move` وصفحةُ
+     * الطلب — تكتبان في `activity_logs` بالفعل: الفعلُ `status`، والموضوعُ
+     * `order` بمعرّفه، ومن فعلها ومتى. فجدولٌ ثانٍ يعني حقيقتين لحدثٍ واحد،
+     * إحداهما تُكتب والأخرى تُنسى.
+     *
+     * ═══ ولا يُخترع ما لم يُسجَّل ═══
+     *
+     * طلباتٌ نُقلت قبل أن يُكتب هذا السجلّ لا خطَّ لها — فيُقال ذلك ولا يُملأ
+     * الفراغ بتخمينٍ من `updated_at`. وختمٌ واحدٌ على الصفّ لا يقول متى بُدئ
+     * التجهيز ولا من بدأه.
+     *
+     * ═══ وطلبُ الجار لا يُقرأ ═══
+     *
+     * الطلبُ من `base()` أوّلًا، ثمّ السجلّ بمتجره ومعرّفه. ولا يكفي أحدهما:
+     * رقمُ طلبٍ من متجرٍ آخر يُردّ بـ٤٠٤ قبل أن يُقرأ سطرٌ واحد.
+     */
+    public function timeline(string $number)
+    {
+        $order = $this->base()->where('number', $number)->firstOrFail();
+
+        $rows = ActivityLog::where('business_id', $this->bid())
+            ->where('subject_type', 'order')
+            ->where('subject_id', $order->id)
+            ->where('action', 'status')
+            ->orderBy('created_at')
+            ->limit(50)
+            ->get(['description', 'user_name', 'created_at']);
+
+        return response()->json([
+            'events' => $rows->map(fn ($r) => [
+                'text' => $r->description,
+                'by' => $r->user_name,
+                'at' => optional($r->created_at)->format('Y-m-d H:i'),
+            ])->values()->all(),
+        ]);
     }
 
     public function move(Request $request, string $number)

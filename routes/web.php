@@ -478,6 +478,19 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::get('/preparation/{number}/delivery-note', [PreparationController::class, 'deliveryNote'])
         ->name('preparation.deliveryNote');
+    /*
+     * وعلامةُ التجهيز وخطُّ الحال — بابان صغيران تحت القسم نفسِه.
+     *
+     * `preparation.*` فيتبعان صلاحيّة من يجهّز لا «المبيعات»: كلاهما يقرأ
+     * الطلبَ من `base()` — متجرُه وفرعُه وما لم يُغلق — ولا يحمل ثمنًا.
+     *
+     * والخطُّ `GET` يردّ JSON لا صفحةً: يُفتح في نافذة التفاصيل لطلبٍ واحد،
+     * فجلبُه لمئتي بطاقةٍ مع اللوحة حِملٌ لا يُقرأ منه سطر.
+     */
+    Route::post('/preparation/{number}/check', [PreparationController::class, 'check'])
+        ->name('preparation.check');
+    Route::get('/preparation/{number}/timeline', [PreparationController::class, 'timeline'])
+        ->name('preparation.timeline');
 
     // الفروع
     Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');

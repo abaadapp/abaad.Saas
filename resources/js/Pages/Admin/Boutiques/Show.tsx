@@ -34,6 +34,8 @@ interface Props {
     };
     period: string;
     periods: { value: string; label: string }[];
+    /** أانتهى الشهر؟ — يُحسب في الخادم لا في المتصفّح */
+    closed: boolean;
     settlement: {
         id: number; number: string; net: number; gross: number; commission: number;
         issued_at: string | null; paid: boolean; expense_reference: string | null;
@@ -48,7 +50,7 @@ interface Props {
  * الكشفُ لأجله)، ثمّ ما بُني منه صنفًا صنفًا، ثمّ ما صدر من قبل.
  */
 export default function BoutiqueShow() {
-    const { boutique, statement, period, periods, settlement, history, context } =
+    const { boutique, statement, period, periods, closed, settlement, history, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -157,12 +159,14 @@ export default function BoutiqueShow() {
                         <div className="flex min-w-0 items-center gap-2.5">
                             <Receipt className="size-5 shrink-0 text-[#6b7280]" />
                             <p className="text-[13px] leading-6 text-[#6b7280]">
-                                {statement.lines_count === 0
-                                    ? t('لا مبيعات لهذا البوتيك في هذا الشهر — لا تسوية بلا بيع.')
-                                    : t('إصدار التسوية يُجمّد أرقام الشهر ويكتب المستحق في «المبالغ المستحقة».')}
+                                {!closed
+                                    ? t('الشهرُ لم ينتهِ بعد — تُصدَر تسويتُه بعد آخر يومٍ فيه، وإلّا ضاع ما يُباع في بقيّته.')
+                                    : statement.lines_count === 0
+                                      ? t('لا مبيعات لهذا البوتيك في هذا الشهر — لا تسوية بلا بيع.')
+                                      : t('إصدار التسوية يُجمّد أرقام الشهر ويكتب المستحق في «المبالغ المستحقة».')}
                             </p>
                         </div>
-                        <Button onClick={issue} disabled={statement.lines_count === 0 || form.processing}>
+                        <Button onClick={issue} disabled={!closed || statement.lines_count === 0 || form.processing}>
                             {t('أصدر التسوية')}
                         </Button>
                     </>

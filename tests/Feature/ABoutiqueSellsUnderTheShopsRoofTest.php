@@ -97,6 +97,17 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
         ]);
     }
 
+    /**
+     * يُطوى الشهرُ فيصير يُسوَّى.
+     *
+     * البيعُ كلُّه يقع في العاشر من شباط، والتسويةُ لا تُصدَر إلّا بعد
+     * آخر يومٍ فيه (`Boutiques::isClosed`) — فتُقدَّم الساعةُ إلى آذار.
+     */
+    private function monthEnds(): void
+    {
+        Carbon::setTestNow('2027-03-02 09:00:00');
+    }
+
     private function sellAtTill(Product $p, int $qty = 1): Order
     {
         $this->actingAs($this->owner)->postJson('/pos/checkout', [
@@ -254,6 +265,7 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
     public function test_a_settlement_becomes_a_due_the_shop_owes(): void
     {
         $this->sellAtTill($this->theirs, 2);
+        $this->monthEnds();
 
         $this->actingAs($this->owner)
             ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02'])
@@ -288,6 +300,7 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
     public function test_a_month_is_settled_once(): void
     {
         $this->sellAtTill($this->theirs, 1);
+        $this->monthEnds();
 
         $settle = fn () => $this->actingAs($this->owner)
             ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02']);
@@ -320,6 +333,7 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
     public function test_a_failure_elsewhere_in_the_books_is_not_dressed_as_a_refusal(): void
     {
         $this->sellAtTill($this->theirs, 1);
+        $this->monthEnds();
 
         // مصروفٌ يحمل المرجعَ نفسَه، وفهرسٌ يمنع تكرارَه — فيسقط إنشاءُ المصروف
         \Illuminate\Support\Facades\Schema::table('expenses', fn ($t) => $t->unique('reference'));
@@ -335,6 +349,57 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
         } finally {
             \Illuminate\Support\Facades\Schema::table('expenses', fn ($t) => $t->dropUnique(['reference']));
         }
+    }
+
+    /**
+     * وشهرٌ ما زال يبيع لا يُسوَّى.
+     *
+     * ═══ وهو أخطرُ ما في التسوية ═══
+     *
+     * الورقةُ تُجمّد الأرقام، والفهرسُ الفريد يمنع ثانيةً لشهرٍ واحد. فمن
+     * ضغط «أصدِر» في العاشر أخذ عشرةَ أيّام وأغلق البابَ على عشرين: ما
+     * يُباع في بقيّة الشهر يبقى في الكشف حيًّا ولا تحمله ورقةٌ أبدًا — ولا
+     * يختلّ ميزانٌ ولا تصرخ شاشة. يضيع مالُ البوتيك صامتًا.
+     */
+    public function test_a_month_still_selling_is_not_settled(): void
+    {
+        $this->sellAtTill($this->theirs, 1);
+
+        // العاشرُ من شباط — والشهرُ هو شباط
+        $this->actingAs($this->owner)
+            ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02'])
+            ->assertSessionHasErrors([
+                'settlement' => 'الشهرُ لم ينتهِ بعد — تُصدَر تسويتُه بعد آخر يومٍ فيه، وإلّا ضاع ما يُباع في بقيّته.',
+            ]);
+
+        $this->assertSame(0, BoutiqueSettlement::count(), 'صدرت ورقةٌ لشهرٍ ما زال يبيع');
+        $this->assertSame(0, Expense::where('type', Boutiques::EXPENSE_TYPE)->count());
+
+        // ولا شهرٌ لم يأتِ بعد
+        $this->actingAs($this->owner)
+            ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-09'])
+            ->assertSessionHasErrors('settlement');
+
+        // فإذا طُوي الشهرُ صدرت — وحملت ما بِيع فيه كلَّه
+        $this->monthEnds();
+        $this->actingAs($this->owner)
+            ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('50.000', (string) BoutiqueSettlement::firstOrFail()->gross);
+    }
+
+    /** والشاشةُ تقول ذلك قبل الضغط — لا يُعرض زرٌّ حيٌّ يُردّ */
+    public function test_the_screen_says_the_month_is_still_open(): void
+    {
+        $this->sellAtTill($this->theirs, 1);
+
+        $props = fn (string $period) => $this->actingAs($this->owner)
+            ->get(route('admin.boutiques.show', $this->boutique->id).'?period='.$period)
+            ->assertOk()->viewData('page')['props'];
+
+        $this->assertFalse($props('2027-02')['closed'], 'الشهرُ الجاري قيل عنه إنّه أُغلق');
+        $this->assertTrue($props('2027-01')['closed'], 'شهرٌ مضى قيل عنه إنّه مفتوح');
     }
 
     /** وشهرٌ بلا بيعٍ لا تُصدَر له ورقة */
@@ -375,6 +440,7 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
     public function test_deleting_leaves_the_goods_on_the_shelf(): void
     {
         $this->sellAtTill($this->theirs, 1);
+        $this->monthEnds();
         $this->actingAs($this->owner)->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02']);
 
         $this->actingAs($this->owner)->delete(route('admin.boutiques.destroy', $this->boutique->id))

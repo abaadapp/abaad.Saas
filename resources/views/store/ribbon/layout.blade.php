@@ -213,7 +213,14 @@
         </div>
         <div class="rb-foot-bottom">
             <span>© {{ date('Y') }} {{ $business->name }}</span>
-            <span style="letter-spacing:.18em">FLOWERS · LOUNGE · AND MORE</span>
+            {{--
+                وسطرُ التذييل يكتبه صاحبُ المحلّ.
+
+                «FLOWERS · LOUNGE · AND MORE» وصفُ محلٍّ بعينه، وكان مكتوبًا
+                بحروفه في هذا القالب. ومحلٌّ آخر يلبس الواجهةَ نفسَها كان
+                يُذيّل صفحتَه بوصفِ غيره.
+            --}}
+            <span style="letter-spacing:.18em" data-testid="rb-tagline">{{ $tagline ?? 'FLOWERS · LOUNGE · AND MORE' }}</span>
         </div>
     </div>
 </footer>

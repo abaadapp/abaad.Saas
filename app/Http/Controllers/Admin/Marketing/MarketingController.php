@@ -256,6 +256,8 @@ class MarketingController extends Controller
              * يعود من بابِ الرفع، ومن أرسل الحمولةَ بيده لا يمرّ بالباب.
              */
             'store_block_href' => ['nullable', 'string', 'max:2048', new SafeLink],
+            'store_banner_image' => ['nullable', 'string', 'max:2048', new SafeLink],
+            'store_tagline' => ['nullable', 'string', 'max:60'],
         ]);
 
         /*

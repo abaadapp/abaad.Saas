@@ -17,7 +17,17 @@
                 <p style="margin:0;color:#d9d4c0;line-height:1.8;max-width:520px">{{ $t['bannerSub'] }}</p>
                 <div><a href="{{ $base }}/shop" style="display:inline-flex;align-items:center;height:48px;padding:0 24px;background:var(--rb-cream);color:var(--rb-olive);border-radius:var(--rb-r);font-size:14px">{{ $t['bannerBtn'] }}</a></div>
             </div>
-            <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);background:repeating-linear-gradient(135deg,#6b694c 0 14px,#5f5c43 14px 28px)"></div>
+            {{--
+                وصورةُ الشريط — أو الخطوطُ المرسومة لمن لم يرفع.
+
+                والشريطُ يَعِد بباقاتٍ وكرتِ هدية، وكان يُرسم إلى جانب وعده
+                مستطيلٌ مخطَّط. فيقرأ الزبون وعدًا ولا يرى منه شيئًا.
+            --}}
+            <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);overflow:hidden;background:repeating-linear-gradient(135deg,#6b694c 0 14px,#5f5c43 14px 28px)">
+                @if ($bannerImage)
+                    <img src="{{ $bannerImage }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" data-testid="rb-banner-image">
+                @endif
+            </div>
         </div>
     </div>
     @endif

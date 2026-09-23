@@ -6496,5 +6496,10 @@
     "الشهرُ ما زال يبيع — هذه ورقةٌ بما بِيع حتى الآن، وما بعده تحمله ورقةٌ تليها.": "The month is still selling — this statement covers what has sold so far, and a later one will carry the rest.",
     "لا بيعَ جديدًا بعد تسويته الأخيرة — لا تسوية بلا بيع.": "No new sale since its last settlement — no settlement without a sale.",
     "تسوية :name حتى :to": "Settlement for :name up to :to",
-    "صدرت ورقةٌ لهذه البيعات قبل لحظة — افتح الشاشة من جديد.": "A statement was issued for these sales a moment ago — reopen the screen."
+    "صدرت ورقةٌ لهذه البيعات قبل لحظة — افتح الشاشة من جديد.": "A statement was issued for these sales a moment ago — reopen the screen.",
+    "وتراه في «المعاينة» أسفل هذه الصفحة: تتحدّث وحدها بعد كلّ حفظ.": "You see it in the preview at the bottom of this page: it refreshes itself after every save.",
+    "سطر التذييل": "Footer line",
+    "صورة شريط المناسبات": "Occasions banner image",
+    "الشريطُ يَعِد بباقةٍ وكرتِ هدية — وبلا صورةٍ يبقى إلى جانب وعده مستطيلٌ مخطَّط": "The banner promises a bouquet and a gift card — without an image, a striped rectangle sits beside that promise",
+    "يُكتب أسفل كل صفحة — واتركه فارغًا فيبقى «FLOWERS · LOUNGE · AND MORE»": "Printed at the foot of every page — leave it empty to keep “FLOWERS · LOUNGE · AND MORE”"
 }

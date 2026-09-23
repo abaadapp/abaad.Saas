@@ -107,6 +107,7 @@ class MarketingToolsTest extends TestCase
             'store_hero_image', 'store_featured', 'store_sections',
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',
+            'store_banner_image', 'store_tagline',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

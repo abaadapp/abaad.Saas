@@ -122,6 +122,24 @@
                     <div class="rb-error" data-err="gift_card"></div>
 
                     <div data-rb-cardbox style="display:none;margin-top:14px;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px">
+                        {{--
+                            طريقةٌ واحدة لا اثنتان.
+
+                            كان الصندوقُ يعرض خانةَ كتابةٍ **ورفعَ ملفٍّ معًا**، فيكتب
+                            الزبونُ رسالةً ويرفع تصميمًا ولا يعرف أيُّهما يُطبع — ولا
+                            يعرفه من يطبعه. فصار اختيارًا: يكتب أو يرفع.
+
+                            والخادمُ يحكم كذلك (`WebCheckout`) — الشاشةُ تُرشد،
+                            والحمولةُ تُكتب بيد من شاء.
+                        --}}
+                        <div style="font-size:13px">{{ $t['cardWay'] }}</div>
+                        <div style="display:flex;gap:8px;margin-top:8px" data-rb-cardway>
+                            <button type="button" class="rb-pill on" data-v="text" data-testid="rb-card-way-text" style="flex:1;height:40px;font-size:13px">{{ $t['cardWayText'] }}</button>
+                            <button type="button" class="rb-pill" data-v="file" data-testid="rb-card-way-file" style="flex:1;height:40px;font-size:13px">{{ $t['cardWayFile'] }}</button>
+                        </div>
+                        <div class="rb-error" data-err="card"></div>
+
+                        <div data-rb-cardtext style="margin-top:14px">
                         <textarea class="rb-input" name="card" rows="4" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
                         <div style="font-size:12px;margin-top:6px">{{ $t['cardHint'] }}</div>
 
@@ -135,12 +153,15 @@
                         {{-- ويُرى النصُّ مرتَّبًا قبل أن يُدفع ثمنُه — لا بعد أن يُطبع --}}
                         <div style="margin-top:14px;font-size:12px">{{ $t['cardPreview'] }}</div>
                         <div data-rb-cardpreview style="margin-top:8px;min-height:92px;white-space:pre-wrap;word-break:break-word;border:1px dashed var(--rb-line);border-radius:var(--rb-r);background:var(--rb-soft);padding:14px;font-size:14px;line-height:1.9;text-align:right"></div>
+                        </div>
 
-                        <div style="margin-top:14px;font-size:13px">{{ $t['cardFile'] }}</div>
+                        <div data-rb-cardfilebox style="display:none;margin-top:14px">
+                        <div style="font-size:13px">{{ $t['cardFile'] }}</div>
                         <input type="file" data-rb-cardfile accept="{{ $giftCard['accept'] }}" aria-label="{{ $t['cardFile'] }}" style="margin-top:8px;font-size:13px;max-width:100%">
                         <div style="font-size:12px;margin-top:6px">{{ $t['cardFileHint'] }}</div>
                         <div data-rb-cardfilemsg style="font-size:12px;margin-top:6px"></div>
                         <div class="rb-error" data-err="card_file"></div>
+                        </div>
                     </div>
                 @else
                     <textarea class="rb-input" name="card" rows="3" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
@@ -239,7 +260,7 @@
      * الخانة يُعيد التسعير كما يُعيده تبديلُ التوصيل — فما يُرى في الزرّ
      * هو ما يُكتب في الفاتورة، لا ما حسبه المتصفّح.
      */
-    var gift = false, align = 'right', cardFile = null, cardFileName = null;
+    var gift = false, align = 'right', cardFile = null, cardFileName = null, cardWay = 'text';
 
     var forOther = form.querySelector('[data-rb-forother]');
     if (forOther) {
@@ -268,6 +289,38 @@
             giftBox.style.display = gift ? 'block' : 'none';
             refresh();
         });
+        /*
+            الطريقةُ اختيارٌ واحد — وتبديلُها يمحو ما كُتب بالأخرى.
+
+            ولا يُترك نصٌّ خفيٌّ خلف زرّ: من بدّل إلى الملفّ ثمّ أرسل، لا
+            يُرسل معه رسالةً كتبها ونسيها — فيطبعها المحلُّ ولا يدري أنّه
+            تراجع عنها.
+        */
+        var wayBox = form.querySelector('[data-rb-cardway]');
+        var textBox = form.querySelector('[data-rb-cardtext]');
+        var fileBox = form.querySelector('[data-rb-cardfilebox]');
+
+        if (wayBox) {
+            wayBox.addEventListener('click', function (e) {
+                var b = e.target.closest('button'); if (!b) return;
+                cardWay = b.dataset.v;
+                form.querySelectorAll('[data-rb-cardway] button').forEach(function (x) { x.classList.toggle('on', x === b); });
+                textBox.style.display = cardWay === 'text' ? 'block' : 'none';
+                fileBox.style.display = cardWay === 'file' ? 'block' : 'none';
+                form.querySelector('[data-err="card"]').textContent = '';
+
+                if (cardWay === 'file') {
+                    if (cardText) { cardText.value = ''; paintPreview(); }
+                } else {
+                    cardFile = null; cardFileName = null;
+                    var fi = form.querySelector('[data-rb-cardfile]');
+                    if (fi) fi.value = '';
+                    var fm = form.querySelector('[data-rb-cardfilemsg]');
+                    if (fm) fm.textContent = '';
+                }
+            });
+        }
+
         form.querySelector('[data-rb-align]').addEventListener('click', function (e) {
             var b = e.target.closest('button'); if (!b) return;
             align = b.dataset.v;
@@ -346,10 +399,12 @@
             address: $('[name=address]') ? $('[name=address]').value : '',
             date: $('[name=date]') ? $('[name=date]').value : '',
             slot: $('[name=slot]') ? $('[name=slot]').value : '',
-            card: $('[name=card]') ? $('[name=card]').value : '',
+            card: (cardWay === 'text' && $('[name=card]')) ? $('[name=card]').value : '',
             recipient_name: $('[name=recipient_name]') ? $('[name=recipient_name]').value : '',
             recipient_phone: $('[name=recipient_phone]') ? $('[name=recipient_phone]').value : '',
-            gift_card: gift, card_align: align, card_file: cardFile, card_file_name: cardFileName,
+            gift_card: gift, card_align: align,
+            card_file: cardWay === 'file' ? cardFile : null,
+            card_file_name: cardWay === 'file' ? cardFileName : null,
         };
         RB.post('/checkout', payload).then(function (r) {
             btn.disabled = false;

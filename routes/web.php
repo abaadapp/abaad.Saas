@@ -935,6 +935,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
     // إنشاء متجر التاجر على الإنترنت — من صفحة الإعدادات نفسها
     Route::post('/marketing/store', [MarketingController::class, 'saveStore'])->name('marketing.store.save');
+    /*
+     * وصورةُ المتجر — واجهتُه أو صورةُ قسمه الحرّ.
+     *
+     * وبابُ البانِي لا يخدمها: `siteOrFail` تردّ من لبس واجهةً خاصّة،
+     * وهو صاحبُ هذه الشاشة. انظر `MarketingController::uploadStoreImage`.
+     */
+    Route::post('/marketing/store/image', [MarketingController::class, 'uploadStoreImage'])
+        ->name('marketing.store.image');
     Route::post('/marketing/store/products', [MarketingController::class, 'publishProducts'])->name('marketing.store.products');
     /*
      * معاينةُ المتجر — خلف الحارس، وبلا معرّفٍ في الرابط.

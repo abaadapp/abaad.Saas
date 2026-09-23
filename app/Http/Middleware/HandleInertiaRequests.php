@@ -243,6 +243,15 @@ class HandleInertiaRequests extends Middleware
                  * فيُعيد التوليد مرّةً بعد مرّة.
                  */
                 'password' => $request->session()->get('issued_password'),
+                /*
+                 * رابطُ الصورة التي رُفعت الآن.
+                 *
+                 * تُومَض في الجلسة (`back()->with('uploaded', …)`) ويقرؤها
+                 * حقلُ الصورة من `props.flash.uploaded` — وكانت تُومَض ولا
+                 * تُشارَك، فيقرأ الحقلُ `undefined` ولا يمتلئ أبدًا: تُرفع
+                 * الصورةُ وتُحفظ على القرص، ولا يظهر في الشاشة شيء.
+                 */
+                'uploaded' => $request->session()->get('uploaded'),
             ],
 
             // الرمز الخام مع كل استجابة: وسم <meta> يُطبع مرّة عند أول تحميل

@@ -103,6 +103,10 @@ class MarketingToolsTest extends TestCase
             'store_field_area', 'store_field_address', 'store_field_date',
             'store_field_slot', 'store_field_recipient', 'store_field_promo',
             'store_fulfil', 'store_max_days',
+            // وصفحةُ المتجر — ما فيها وترتيبُه (Store\StorePage)
+            'store_hero_image', 'store_featured', 'store_sections',
+            'store_block_on', 'store_block_title', 'store_block_text',
+            'store_block_image', 'store_block_cta', 'store_block_href',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

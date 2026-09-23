@@ -229,6 +229,23 @@ class MarketingController extends Controller
             'store_field_promo' => $state,
             'store_fulfil' => ['nullable', 'string', 'max:40'],
             'store_max_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+
+            /*
+             * وصفحةُ المتجر — ما فيها وترتيبُه (انظر `Store\StorePage`).
+             *
+             * والصورتان رابطان لا ملفّان: تُرفعان ببابٍ على حدة ويُحفظ ما
+             * يعود منه — فالنموذجُ يبقى JSON ولا يصير `multipart` من أجل
+             * حقلين. وهي قاعدةُ `GiftCard::hold` نفسُها.
+             */
+            'store_hero_image' => ['nullable', 'string', 'max:2048'],
+            'store_featured' => ['nullable', 'string', 'max:200'],
+            'store_sections' => ['nullable', 'string', 'max:200'],
+            'store_block_on' => ['sometimes', 'boolean'],
+            'store_block_title' => ['nullable', 'string', 'max:120'],
+            'store_block_text' => ['nullable', 'string', 'max:1000'],
+            'store_block_image' => ['nullable', 'string', 'max:2048'],
+            'store_block_cta' => ['nullable', 'string', 'max:40'],
+            'store_block_href' => ['nullable', 'string', 'max:2048'],
         ]);
 
         /*
@@ -311,7 +328,7 @@ class MarketingController extends Controller
          */
         Domains::sync($business->refresh());
 
-        foreach (['store_on', 'store_show_prices', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card'] as $flag) {
+        foreach (['store_on', 'store_show_prices', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card', 'store_block_on'] as $flag) {
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }
@@ -339,6 +356,33 @@ class MarketingController extends Controller
             'link' => Seo::forBusiness($bid),
             'audit' => Seo::check($bid),
         ]);
+    }
+
+    /**
+     * صورةُ المتجر — الواجهةُ أو صورةُ القسم الذي يكتبه بنفسه.
+     *
+     * ═══ ولمَ بابٌ هنا لا `Website\MediaController` ═══
+     *
+     * ذاك يبدأ بـ`siteOrFail()`، وهي تردّ من لبس واجهةً خاصّة صراحةً: «ومن
+     * لبس واجهةً خاصّة لا شاشاتِ بانٍ له». فصاحبُ RIBBON لا يبلغه أصلًا —
+     * وهو بالضبط من يحتاجه هنا.
+     *
+     * وما يعود رابطٌ يُحفظ في الإعداد، فيبقى نموذجُ المتجر JSON ولا يصير
+     * `multipart` من أجل حقلين.
+     */
+    public function uploadStoreImage(Request $request)
+    {
+        $request->validate([
+            'image' => ['required', 'image', 'max:4096'],
+        ], [
+            'image.image' => __('الملفّ صورة — PNG أو JPG أو WEBP'),
+            'image.max' => __('أقصى حجمٍ للصورة ٤ ميغابايت'),
+        ]);
+
+        // في مجلّد النشاط لا في مجلّدٍ عامّ — فنسخُ متجرٍ أو حذفُه يعرف ما يخصّه
+        $path = $request->file('image')->store('website/'.$this->bid(), 'public');
+
+        return back()->with('uploaded', \Illuminate\Support\Facades\Storage::url($path));
     }
 
     public function saveSeo(Request $request)

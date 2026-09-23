@@ -26,6 +26,7 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
+import StoreImageField from '@/Components/StoreImageField';
 import StatusPill from '@/Components/StatusPill';
 import Toggle from '@/Components/Toggle';
 import {
@@ -101,6 +102,25 @@ const FULFILMENTS = [
     { value: 'pickup', label: 'استلام من المحل' },
 ];
 
+/*
+ * أقسامُ صفحة المتجر — صورةٌ من `StorePage::SECTIONS` بالترتيب نفسِه.
+ *
+ * والحارسُ يقارن القائمتين: قسمٌ يُضاف في الخادم ولا يُضاف هنا لا يجد
+ * صاحبُ المحلّ له مفتاحًا، وقسمٌ يُعرض هنا بلا مقابلٍ هناك مفتاحٌ يُحرَّك
+ * ولا يفعل شيئًا.
+ */
+const SECTIONS = [
+    { key: 'cats', label: 'تسوّق حسب الفئة' },
+    { key: 'best', label: 'الأكثر مبيعًا / مختاراتنا' },
+    { key: 'new', label: 'وصل حديثًا' },
+    { key: 'banner', label: 'شريط المناسبات' },
+    { key: 'block', label: 'قسمك الخاصّ' },
+    { key: 'about', label: 'عنّا' },
+    { key: 'reviews', label: 'آراء الزبائن' },
+] as const;
+
+const SECTION_KEYS = SECTIONS.map((s) => s.key);
+
 interface Props {
     settings: Settings;
     /** حقولُ كل قسم — من `SettingController::fieldsBySection` لا مكتوبةً هنا */
@@ -120,6 +140,8 @@ interface Props {
      */
     fieldStates?: Record<string, string>;
     fulfilments?: string[];
+    /** أقسامُ الصفحة مرتَّبةً كما تُعرض — من `StorePage::order` */
+    pageSections?: string[];
     /** بطاقاتُ القوالب — تُبنى من `DocumentTemplates` لا تُكتب في الشاشة */
     templates?: { key: string; label: string; desc: string; section: string }[];
     store: {
@@ -274,7 +296,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, pageSections, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types, archive } =
         usePage<PageProps<Props>>().props;
@@ -534,12 +556,74 @@ export default function SettingsIndex() {
         store_field_promo: fieldStates?.promo ?? 'optional',
         store_fulfil: (fulfilments ?? ['pickup', 'delivery']).join(','),
         store_max_days: site?.store_max_days ?? '',
+        // وصفحةُ المتجر — ما فيها وترتيبُه (انظر `Store\StorePage`)
+        store_hero_image: site?.store_hero_image ?? '',
+        store_featured: site?.store_featured ?? '',
+        store_sections: (pageSections ?? SECTION_KEYS).join(','),
+        store_block_on: (site?.store_block_on ?? '0') === '1',
+        store_block_title: site?.store_block_title ?? '',
+        store_block_text: site?.store_block_text ?? '',
+        store_block_image: site?.store_block_image ?? '',
+        store_block_cta: site?.store_block_cta ?? '',
+        store_block_href: site?.store_block_href ?? '',
         store_delivery_areas: site?.store_delivery_areas ?? '',
         store_delivery_slots: site?.store_delivery_slots ?? '',
         store_hours: site?.store_hours ?? '',
         store_delivery_note: site?.store_delivery_note ?? '',
         store_image_note: site?.store_image_note ?? '',
     });
+
+    /*
+     * ═══ أقسامُ الصفحة: قائمةٌ واحدة تحمل الترتيبَ والظهور ═══
+     *
+     * المختارُ أوّلًا بترتيبه، والمُطفأ بعده — فالمُطفأ يبقى في الشاشة
+     * ليُرفع ثانيةً، ولا يُرسَل إلى الخادم إلّا ما اختِير.
+     */
+    const chosenSections = storeForm.data.store_sections.split(',').filter(Boolean);
+
+    const sectionRows = [
+        ...chosenSections
+            .filter((k) => SECTION_KEYS.includes(k as (typeof SECTION_KEYS)[number]))
+            .map((k) => ({ key: k, label: SECTIONS.find((x) => x.key === k)!.label, on: true })),
+        ...SECTIONS.filter((x) => ! chosenSections.includes(x.key)).map((x) => ({ ...x, on: false })),
+    ];
+
+    const writeSections = (rows: { key: string; on: boolean }[]) =>
+        storeForm.setData('store_sections', rows.filter((r) => r.on).map((r) => r.key).join(','));
+
+    const toggleSection = (key: string) =>
+        writeSections(sectionRows.map((r) => (r.key === key ? { ...r, on: ! r.on } : r)));
+
+    /*
+     * والحركةُ تُبدّل الجارَين ثمّ تُعيد الكتابة.
+     *
+     * ولا تُحرَّك إلّا داخل المختار: رفعُ مُطفأٍ فوق مختارٍ يعني ترتيبًا لا
+     * يُرسَل، فيضغط صاحبُ المحلّ السهمَ ويرى الصفَّ يقفز ولا يتغيّر شيء.
+     */
+    const moveSection = (key: string, by: number) => {
+        const rows = [...sectionRows];
+        const i = rows.findIndex((r) => r.key === key);
+        const j = i + by;
+
+        if (i < 0 || j < 0 || j >= rows.length) return;
+
+        [rows[i], rows[j]] = [rows[j], rows[i]];
+        writeSections(rows);
+    };
+
+    /* المختارات — بترتيب اختيارها، وأربعةٌ لا أكثر */
+    const featuredIds = storeForm.data.store_featured
+        .split(',')
+        .map((v) => Number(v.trim()))
+        .filter((v) => Number.isInteger(v) && v > 0);
+
+    const toggleFeatured = (id: number) => {
+        const next = featuredIds.includes(id)
+            ? featuredIds.filter((v) => v !== id)
+            : [...featuredIds, id].slice(0, 4);
+
+        storeForm.setData('store_featured', next.join(','));
+    };
 
     const saveStore = (e: React.FormEvent) => {
         e.preventDefault();
@@ -1143,6 +1227,158 @@ export default function SettingsIndex() {
                         )}
 
                         {/* ٤ — النشر */}
+                        {/*
+                            ═══ صفحةُ المتجر — ما فيها وترتيبُه ═══
+
+                            وهي لصاحب الواجهة الخاصّة: من يُخدم بموقعٍ مبنيّ
+                            يضبط صفحتَه في البانِي، ومن يُخدم بالبسيطة لا
+                            أقسامَ له تُرتَّب. فلا يُعرض مقبضٌ لا يُحرّك شيئًا.
+                        */}
+                        {store.serves === 'theme' && (
+                        <SettingsGroup title="صفحة متجرك">
+                            <p className="mb-4 text-[12px] leading-relaxed text-[#6b7280]">
+                                {t('كلُّ ما هنا يظهر لزبونك فور الحفظ — لا نشرَ بعده.')}
+                            </p>
+
+                            <StoreImageField
+                                label="صورة الواجهة"
+                                hint="أوّل ما تقع عليه العين — وبلا اختيارك تُؤخذ من أوّل صنفٍ مبيعًا"
+                                value={storeForm.data.store_hero_image}
+                                onChange={(v) => storeForm.setData('store_hero_image', v)}
+                            />
+
+                            {/* الأقسام: القائمةُ هي الترتيبُ والظهورُ معًا */}
+                            <div className="mt-5">
+                                <p className="mb-1 text-sm font-semibold text-[#111]">{t('أقسام الصفحة')}</p>
+                                <p className="mb-3 text-[12px] text-[#6b7280]">
+                                    {t('أطفئ ما لا تريده، وحرّك ما تريده إلى أعلى. والواجهة تبقى أوّلًا دائمًا.')}
+                                </p>
+                                <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] rounded-[12px] border border-[var(--ui-border,#e8e8e8)]">
+                                    {sectionRows.map((row, i) => (
+                                        <li key={row.key} className="flex items-center gap-3 px-3 py-2.5">
+                                            <input
+                                                type="checkbox"
+                                                checked={row.on}
+                                                aria-label={t(row.label)}
+                                                onChange={() => toggleSection(row.key)}
+                                                className="size-4 accent-[#111]"
+                                            />
+                                            <span className="min-w-0 flex-1 truncate text-[13px] text-[#111]">{t(row.label)}</span>
+                                            <button
+                                                type="button"
+                                                aria-label={`${t('ارفع')} ${t(row.label)}`}
+                                                disabled={i === 0}
+                                                onClick={() => moveSection(row.key, -1)}
+                                                className="rounded-md px-2 py-1 text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
+                                            >
+                                                ↑
+                                            </button>
+                                            <button
+                                                type="button"
+                                                aria-label={`${t('أنزل')} ${t(row.label)}`}
+                                                disabled={i === sectionRows.length - 1}
+                                                onClick={() => moveSection(row.key, 1)}
+                                                className="rounded-md px-2 py-1 text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
+                                            >
+                                                ↓
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            {/* المختارات: تتقدّم المحسوبَ إن اختار */}
+                            <div className="mt-5">
+                                <p className="mb-1 text-sm font-semibold text-[#111]">{t('مختاراتنا')}</p>
+                                <p className="mb-3 text-[12px] text-[#6b7280]">
+                                    {t('اختر حتى ٤ أصناف تتصدّر صفحتك — وبلا اختيار يبقى «الأكثر مبيعًا» محسوبًا من بيعك.')}
+                                </p>
+                                <ul className="max-h-[240px] divide-y divide-[var(--ui-border,#e8e8e8)] overflow-y-auto rounded-[12px] border border-[var(--ui-border,#e8e8e8)]">
+                                    {store.products.filter((p) => p.published).map((p) => {
+                                        const on = featuredIds.includes(p.id);
+
+                                        return (
+                                            <li key={p.id} className="flex items-center gap-3 px-3 py-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={on}
+                                                    aria-label={p.name}
+                                                    disabled={! on && featuredIds.length >= 4}
+                                                    onChange={() => toggleFeatured(p.id)}
+                                                    className="size-4 accent-[#111] disabled:opacity-30"
+                                                />
+                                                <span className="min-w-0 flex-1 truncate text-[13px] text-[#111]">{p.name}</span>
+                                                {on && (
+                                                    <span className="text-[11px] text-[#6b7280]">
+                                                        {featuredIds.indexOf(p.id) + 1}
+                                                    </span>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            </div>
+
+                            {/* القسمُ الحرّ */}
+                            <div className="mt-5">
+                                <Toggle
+                                    on={storeForm.data.store_block_on}
+                                    onChange={(v) => storeForm.setData('store_block_on', v)}
+                                    label="قسمك الخاصّ"
+                                    hint="عنوانٌ ونصٌّ وصورةٌ وزرّ — لِما لا تقوله بضاعتك: اشتراك شهريّ، تنسيق أعراس، توصيلٌ إلى ولايتك"
+                                />
+                                {storeForm.data.store_block_on && (
+                                    <div className="mt-4 space-y-4 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
+                                        <Field label="العنوان" error={storeForm.errors.store_block_title}>
+                                            <Input
+                                                value={storeForm.data.store_block_title}
+                                                onChange={(e) => storeForm.setData('store_block_title', e.target.value)}
+                                                aria-label={t('العنوان')}
+                                            />
+                                        </Field>
+                                        <Field label="النصّ" hint="أسطرُك تبقى أسطرًا كما تكتبها" error={storeForm.errors.store_block_text}>
+                                            <Textarea
+                                                rows={4}
+                                                value={storeForm.data.store_block_text}
+                                                onChange={(e) => storeForm.setData('store_block_text', e.target.value)}
+                                                aria-label={t('النصّ')}
+                                            />
+                                        </Field>
+                                        <StoreImageField
+                                            label="صورة القسم"
+                                            hint="اختيارية"
+                                            value={storeForm.data.store_block_image}
+                                            onChange={(v) => storeForm.setData('store_block_image', v)}
+                                        />
+                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <Field label="نصّ الزرّ" hint="اتركه فارغًا فلا زرّ" error={storeForm.errors.store_block_cta}>
+                                                <Input
+                                                    value={storeForm.data.store_block_cta}
+                                                    onChange={(e) => storeForm.setData('store_block_cta', e.target.value)}
+                                                    aria-label={t('نصّ الزرّ')}
+                                                />
+                                            </Field>
+                                            <Field label="وجهة الزرّ" hint="رابطٌ كامل أو /shop" error={storeForm.errors.store_block_href}>
+                                                <Input
+                                                    dir="ltr"
+                                                    value={storeForm.data.store_block_href}
+                                                    onChange={(e) => storeForm.setData('store_block_href', e.target.value)}
+                                                    aria-label={t('وجهة الزرّ')}
+                                                />
+                                            </Field>
+                                        </div>
+                                        {/* ولا نصفَ قسمٍ على صفحة: يُقال هنا قبل أن يُحفظ ولا يظهر */}
+                                        {(! storeForm.data.store_block_title.trim() || ! storeForm.data.store_block_text.trim()) && (
+                                            <p className="rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#b45309]">
+                                                {t('القسم لا يظهر حتى تكتب عنوانه ونصّه معًا.')}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </SettingsGroup>
+                        )}
+
                         <SettingsGroup title="النشر">
                             <Toggle
                                 on={storeForm.data.store_on}

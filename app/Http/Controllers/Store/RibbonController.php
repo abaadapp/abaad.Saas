@@ -15,6 +15,7 @@ use App\Support\Seo;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\GiftCard;
+use App\Support\Store\StorePage;
 use App\Support\Store\WebCheckout;
 use App\Support\Storefront;
 use App\Support\Website\MerchantData;
@@ -151,13 +152,33 @@ class RibbonController extends Controller
             ->groupBy('product_id')->selectRaw('product_id, SUM(quantity) as q')
             ->pluck('q', 'product_id');
 
-        $best = $shown->sortByDesc(fn ($p) => [(int) ($sold[$p->id] ?? 0), $p->id])->take(4)->values();
+        /*
+         * والمختاراتُ تتقدّم الحسبة — إن اختار.
+         *
+         * الحسبةُ تتأخّر عن المواسم دائمًا: باقاتُ العيد تُبرَز بعد أن تبيع
+         * وقد مضى العيد. ومن لم يختر يبقى على المحسوب كما كان.
+         *
+         * والمعروضُ وحدَه: صنفٌ أُبرز ثمّ أُخفي أو نفد لا يُقحَم في الصفحة
+         * بأمرِ إعدادٍ قديم — `$shown` هي قاعدةُ «ما يُعرض» ولا تُتجاوَز.
+         */
+        $picked = StorePage::featured($bid);
+
+        $best = $picked
+            ? $shown->whereIn('id', $picked)->sortBy(fn ($p) => array_search($p->id, $picked, true))->values()
+            : $shown->sortByDesc(fn ($p) => [(int) ($sold[$p->id] ?? 0), $p->id])->take(4)->values();
+
         $new = $shown->sortByDesc('id')->take(4)->values();
 
         return [
             'categories' => $this->categories($bid, $lang, $shown),
             'best' => $best->map(fn ($p) => $this->card($p, $lang, $business))->all(),
             'new' => $new->map(fn ($p) => $this->card($p, $lang, $business))->all(),
+            // ترتيبُ الأقسام وظهورُها، وصورةُ الواجهة، والقسمُ الذي كتبه بنفسه
+            'sections' => StorePage::order($bid),
+            'hero' => StorePage::heroImage($bid),
+            'block' => StorePage::block($bid),
+            // وعنوانُ «الأكثر مبيعًا» يتبع مصدرَه: محسوبًا يُسمّى، ومختارًا يُسمّى
+            'bestPicked' => $picked !== [],
             'reviews' => Review::where('business_id', $bid)->showable()->latest()->take(3)->get()
                 ->map(fn ($r) => ['name' => $r->displayName(), 'text' => (string) $r->comment, 'rating' => (int) $r->rating])
                 ->filter(fn ($r) => $r['text'] !== '')->values()->all(),

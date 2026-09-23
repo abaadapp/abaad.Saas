@@ -91,6 +91,12 @@ class MarketingToolsTest extends TestCase
             // التوصيلُ والاستلام — يقرؤها إتمامُ الطلب في الواجهة الخاصّة (Store\WebCheckout)
             'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
             'store_delivery_slots', 'store_hours', 'store_delivery_note',
+            /*
+             * وتنبيهُ الصورة — تقرؤه صفحاتُ المنتج والإتمام والتأكيد في
+             * الواجهة الخاصّة (`Store\WebCheckout::settings` ثمّ
+             * `RibbonController::context`).
+             */
+            'store_image_note',
             // وكرتُ الهدية وثمنُه — يقرؤهما إتمامُ الطلب (Store\GiftCard)
             'store_gift_card', 'store_gift_card_price',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');

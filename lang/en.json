@@ -6441,5 +6441,8 @@
     "الملف أكبر من المسموح.": "The file is larger than allowed.",
     "كرت الهدية": "Gift card",
     "يختاره الزبون في إتمام الطلب — نصًّا يرتّبه وملفًّا يرفقه": "The customer picks it at checkout — text they arrange and a file they attach",
-    "فارغًا يعني ٠٫٥٠٠ — واكتب صفرًا إن أردته مجّانًا": "Empty means 0.500 — write zero to make it free"
+    "فارغًا يعني ٠٫٥٠٠ — واكتب صفرًا إن أردته مجّانًا": "Empty means 0.500 — write zero to make it free",
+    "تنبيه الصورة": "Photo note",
+    "يظهر تحت صورة المنتج، وفوق زرّ الطلب، وفي صفحة التأكيد. اتركه فارغًا إن لم تحتجه.": "Shown under the product photo, above the order button, and on the confirmation page. Leave it empty if you do not need it.",
+    "كل باقة تُنسَّق يدويًّا من ورد اليوم. قد يختلف صنفٌ أو لون حسب المتوفر — ونستبدله بما يساويه أو أفضل، بنفس الشكل والألوان.": "Every bouquet is arranged by hand from today's flowers. A stem or a shade may differ depending on what is available — we substitute it with an equal or better one, in the same style and colours."
 }

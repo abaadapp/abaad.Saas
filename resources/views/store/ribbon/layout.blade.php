@@ -106,6 +106,14 @@
         .rb-input.err { border-color: var(--rb-err); }
         textarea.rb-input { height: auto; padding: 12px 14px; resize: vertical; border-radius: var(--rb-r); }
         .rb-error { color: var(--rb-err); font-size: 13px; margin-top: 6px; }
+        /*
+            تنبيهُ الصورة — تعليقٌ لا تحذير.
+
+            بلا إطارٍ ولا أيقونةٍ ولا خلفيّةٍ صفراء: صندوقُ إنذارٍ فوق باقةٍ
+            يجعلها تبدو معيبةً قبل أن تُشترى. ومكتوبٌ مرّةً هنا لأنّه يظهر في
+            ثلاث صفحات — ولو كُتب في كلٍّ منها لَافترق شكلُه يوم يُبدَّل.
+        */
+        .rb-note { margin: 12px 0 0; font-size: 13px; line-height: 1.8; color: #6b655c; text-wrap: pretty; }
 
         /* شبكة الأصناف */
         .rb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 28px 24px; }

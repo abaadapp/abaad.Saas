@@ -15,6 +15,16 @@
             <div><span>{{ $t['pay'] }}:</span> {{ $order['pay'] }}</div>
         </div>
         <div style="border-top:1px solid var(--rb-line);margin-top:10px;padding-top:10px;display:flex;justify-content:space-between"><span>{{ $t['total'] }}</span><strong>{{ $order['total'] }}</strong></div>
+        {{--
+            وثالثةٌ هنا — وهي التي تُقرأ ساعةَ الخلاف.
+
+            الزبونُ يفتح الصندوق فيرى باقةً تختلف قليلًا، فيعود إلى آخر ما
+            قاله له المحلّ. وهذه الصفحةُ هي آخرُ ما قاله — لا صفحةُ منتجٍ
+            مرّ عليها ثمّ نسيها.
+        --}}
+        @if ($imageNote !== '')
+            <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
+        @endif
     </div>
     @if ($order['transfer'] && $bank !== '')
         <div class="rb-box" style="text-align:start;font-size:14px;line-height:1.9;margin-bottom:28px" data-testid="rb-bank">

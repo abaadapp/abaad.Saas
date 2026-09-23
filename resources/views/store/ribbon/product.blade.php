@@ -4,11 +4,26 @@
 <section class="rb-screen rb-wrap" style="padding:40px 24px" data-testid="rb-product-page">
     <a href="{{ $base }}/shop" style="font-size:13px;display:inline-flex;align-items:center;min-height:44px">{{ $t['back'] }}</a>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:48px;margin-top:20px;align-items:start">
-        <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
-            @if ($product['image'])
-                <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" style="width:100%;height:100%;object-fit:cover;display:block">
-            @else
-                <div class="rb-stripes" style="--tint: {{ $product['tint'] }}"></div>
+        {{--
+            والتنبيهُ تحت الصورة لا في آخر العمود المقابل.
+
+            الادّعاءُ عن الصورة، فيعيش معها. وكان أقربُ سطرٍ إليه («ملاحظة
+            التوصيل») تحت زرّ الإضافة — أي على الجوّال بعد الطيّة وبعد أن
+            قرّر الزبون. وتنبيهٌ يُقرأ بعد القرار ليس تنبيهًا.
+
+            والالتفافُ في `div` لازمٌ لا زينة: الشبكةُ `auto-fit`، فسطرٌ
+            يُوضع أخًا للصورة يصير عمودًا ثالثًا.
+        --}}
+        <div>
+            <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
+                @if ($product['image'])
+                    <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" style="width:100%;height:100%;object-fit:cover;display:block">
+                @else
+                    <div class="rb-stripes" style="--tint: {{ $product['tint'] }}"></div>
+                @endif
+            </div>
+            @if ($imageNote !== '')
+                <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
             @endif
         </div>
         <div style="display:flex;flex-direction:column;gap:20px">

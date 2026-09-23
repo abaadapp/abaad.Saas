@@ -339,6 +339,50 @@ class TheShopPicksWhatItAsksItsBuyersTest extends TestCase
         ])->assertSessionHasErrors('store_field_date');
     }
 
+    /**
+     * والمقفلان يحملان نجمتَهما كذلك.
+     *
+     * الاسمُ والهاتفُ أشدُّ الحقول إلزامًا ولا ينتقيهما أحد. وكانت النجمةُ
+     * على ما يملك صاحبُ المحلّ أمرَه وحدَه، فخرجا بلا علامة: يرى الزبونُ
+     * نجمةً على «المنطقة» ولا يراها على «رقم الهاتف» فيظنّ الثاني
+     * اختياريًّا ويتركه — ثمّ يُردّ طلبُه بعد أن ملأ النموذج كلَّه.
+     */
+    public function test_the_two_locked_fields_wear_their_star(): void
+    {
+        $page = $this->page();
+
+        $this->assertStringContainsString('الاسم الكامل *', $page);
+        $this->assertStringContainsString('رقم الهاتف *', $page);
+
+        // ولا يُردّان فارغين بلا قول — الخادمُ يشترطهما فعلًا
+        $this->place(['name' => '', 'phone' => ''])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.name.0', 'اكتب اسمك.')
+            ->assertJsonPath('errors.phone.0', 'اكتب رقم هاتفك.');
+    }
+
+    /**
+     * ونجمةٌ تُرى ولا تُقال ليست علامة.
+     *
+     * قارئُ الشاشة يقرأ الاسمَ ويُسقط الرمز، فيسمع الأعمى «المنطقة» ويسمع
+     * المبصرُ «المنطقة مطلوبة». و`aria-required` تقولها له كما تقولها
+     * النجمةُ لعينه — وتتبع الانتقاءَ نفسَه لا تُكتب ثابتةً.
+     */
+    public function test_what_the_eye_sees_the_reader_hears(): void
+    {
+        $this->picks(['store_field_date' => 'optional', 'store_field_recipient' => 'required']);
+
+        $page = $this->page();
+
+        // المقفلان دائمًا
+        $this->assertMatchesRegularExpression('/name="name"[^>]*aria-required="true"/', $page);
+        $this->assertMatchesRegularExpression('/name="phone"[^>]*aria-required="true"/', $page);
+        // ومطلوبٌ بالانتقاء يُقال كذلك
+        $this->assertMatchesRegularExpression('/name="recipient_name"[^>]*aria-required="true"/', $page);
+        // واختياريٌّ لا يُقال
+        $this->assertDoesNotMatchRegularExpression('/name="date"[^>]*aria-required/', $page);
+    }
+
     /** والشاشةُ تعرض ما يشترطه الخادم — النجمةُ حيث «مطلوب» */
     public function test_the_page_stars_exactly_what_the_server_demands(): void
     {

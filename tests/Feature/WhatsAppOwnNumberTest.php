@@ -112,6 +112,9 @@ class WhatsAppOwnNumberTest extends TestCase
 
     public function test_a_business_cannot_connect_its_own_number_without_the_entitlement(): void
     {
+        // الإذنُ ممنوحٌ بالولادة — فيُسحب هنا ليُسأل عمّا يفعله السحب
+        $this->business->update(['whatsapp_own_allowed' => false]);
+
         $this->post(route('admin.integrations.whatsapp.connect'), [
             'phone_number_id' => 'SHOP-PN',
             'access_token' => 'shop-token-value-9876543210',

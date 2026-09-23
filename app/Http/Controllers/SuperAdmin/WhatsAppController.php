@@ -5,9 +5,11 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\WhatsAppConnection;
+use App\Models\WhatsAppMessagePack;
 use App\Support\Activity;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Http\Request;
@@ -324,6 +326,45 @@ class WhatsAppController extends Controller
         }
     }
 
+    /**
+     * اعتمادُ حزمةٍ طلبها تاجر — تُصدَر فاتورتُها ولا يُضاف رصيدٌ بعد.
+     *
+     * والرصيدُ يُضاف عند تسجيل السداد وحدَه (`Billing::markPaid`). ولو
+     * أُضيف هنا لَصار زرُّ الاعتماد هديّةً: يُضغط، وتُرسَل خمسمئةُ رسالةٍ،
+     * ثمّ يُطالَب من لا ينوي الدفع.
+     */
+    public function approvePack(int $id)
+    {
+        $pack = WhatsAppMessagePack::findOrFail($id);
+
+        if ($pack->status !== WhatsAppPacks::REQUESTED) {
+            return back()->withErrors(['pack' => __('هذا الطلب حُسم من قبل.')]);
+        }
+
+        $pack = WhatsAppPacks::approve($pack);
+
+        return back()->with('toast', [
+            'msg' => __('أُصدرت فاتورة :inv — ويُضاف الرصيد فور تسجيل سدادها.', [
+                'inv' => $pack->invoice?->number ?? '—',
+            ]),
+            'type' => 'success',
+        ]);
+    }
+
+    /** رفضُ طلبٍ أو إلغاؤه — والفاتورةُ المصدَّرة تبقى في دفترها */
+    public function cancelPack(int $id)
+    {
+        $pack = WhatsAppMessagePack::findOrFail($id);
+
+        if (! in_array($pack->status, WhatsAppPacks::OPEN, true)) {
+            return back()->withErrors(['pack' => __('هذا الطلب حُسم من قبل.')]);
+        }
+
+        WhatsAppPacks::cancel($pack);
+
+        return back()->with('toast', ['msg' => __('أُلغي الطلب'), 'type' => 'success']);
+    }
+
     /** صورة استهلاك متجرٍ — تُقرأ في شاشة المتجر لدى المنصّة */
     public static function businessView(Business $business): array
     {
@@ -336,6 +377,9 @@ class WhatsAppController extends Controller
             'limit_override' => $business->whatsapp_monthly_limit,
             'platform_default' => WhatsAppQuota::platformDefault(),
             'usage' => WhatsAppQuota::snapshot($business),
+            /* حزمُ الرسائل: ما طلبه هذا المتجر وما صار إليه */
+            'packs' => WhatsAppPacks::forPlatform($business),
+            'pack_offer' => ['size' => WhatsAppPacks::size(), 'price' => WhatsAppPacks::price()],
             // معرّفات الوصلة تُعرض لمدير المنصّة وحده — لا الرمز، هو لا يُقرأ أبدًا
             'own_connection' => WhatsAppConnections::publicView($own, withIds: true),
         ];

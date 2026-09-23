@@ -18,6 +18,7 @@ use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppLink;
 use App\Support\WhatsAppLog;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
 use App\Support\WhatsAppStatus;
 use App\Support\WhatsAppTemplates;
@@ -109,6 +110,11 @@ class WhatsAppController extends Controller
             'may_manage' => (bool) auth()->user()?->isAdmin(),
             // الحصّة تُعرض للمشترك وحده — رقمه الخاص لا حدَّ عليه منّا
             'usage' => $mode === WhatsAppMode::ABAAD_SHARED ? WhatsAppQuota::snapshot($business) : null,
+            /*
+             * وعرضُ الحزمة مع الحصّة: من نفدت حصّتُه يقرأ ثمنَ ما بعدها في
+             * الموضع نفسِه. ولو كان في شاشةٍ أخرى لَما وصلها إلّا من بحث.
+             */
+            'pack' => $mode === WhatsAppMode::ABAAD_SHARED ? WhatsAppPacks::view($business) : null,
             'events' => array_map(
                 fn ($e) => ['key' => $e, 'setting' => WhatsAppEvent::SETTING_KEYS[$e], 'label' => WhatsAppEvent::label($e)],
                 WhatsAppEvent::ALL,
@@ -195,6 +201,42 @@ class WhatsAppController extends Controller
             .WhatsAppMode::label($from).' ← '.WhatsAppMode::label($data['mode']));
 
         return back()->with('toast', ['msg' => __('حُفظ وضع الإرسال'), 'type' => 'success']);
+    }
+
+    /**
+     * يطلب التاجر حزمةَ رسائلَ إضافيّة — ولا يشحن رصيدَه بنفسه.
+     *
+     * ═══ ولمَ طلبٌ لا شراء ═══
+     *
+     * لا بوّابةَ دفعٍ في المستودع. فزرٌّ مكتوبٌ عليه «اشترِ الآن» يأخذ
+     * ضغطةً ولا يأخذ مالًا، ثمّ يقف التاجر أمام رصيدٍ لم يزد. والطلبُ يقول
+     * ما يقع فعلًا: تصل الفاتورة، ويُحوِّل، فيُضاف الرصيد.
+     *
+     * والحارسان: صاحبُ الحساب أو مديره وحدَهما — هذا مالٌ يُلتزَم به؛ ومن
+     * على رقمه الخاصّ لا يُباع له ما لا يستعمله.
+     */
+    public function requestPack()
+    {
+        $business = $this->business();
+
+        if (! auth()->user()?->isAdmin()) {
+            return back()->withErrors(['pack' => __('طلب الرسائل الإضافيّة لصاحب الحساب أو مديره.')]);
+        }
+
+        if (WhatsAppFeature::effectiveMode($business) !== WhatsAppMode::ABAAD_SHARED) {
+            return back()->withErrors(['pack' => __('متجرك يُرسل من رقمه الخاص — رسائلُه على حسابه، ولا حصّة تُشترى.')]);
+        }
+
+        $result = WhatsAppPacks::request($business, auth()->user()?->name);
+
+        return back()->with('toast', [
+            'msg' => $result['created']
+                ? __('وصلنا طلبُك — تصلك فاتورة :n رسالة، ويُضاف الرصيد فور تسجيل السداد.', [
+                    'n' => $result['pack']->messages,
+                ])
+                : __('لك طلبٌ قائمٌ لم يُحسم بعد — لا نُصدر له فاتورةً ثانية.'),
+            'type' => $result['created'] ? 'success' : 'warning',
+        ]);
     }
 
     /**

@@ -12,6 +12,7 @@ import { useTranslate } from '@/lib/i18n';
 import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
 import WhatsappLinkCard, { type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 import WhatsappAutoReply, { type AutoReplySettings } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
+import WhatsappQuotaPack, { type QuotaPack } from '@/Pages/Admin/Integrations/partials/WhatsappQuotaPack';
 import type { EmbeddedConfig } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
 import type { PageProps } from '@/types';
 
@@ -44,8 +45,15 @@ export interface Automation {
         unlimited: boolean;
         remaining: number | null;
         percentage: number | null;
+        /** رصيدٌ مشترًى لا يسقط آخر الشهر — انظر `WhatsAppQuota` */
+        credits: number;
+        /** نفدت عطيّةُ الشهر — وقد يبقى رصيدٌ يُرسل منه */
+        monthly_exhausted: boolean;
+        /** لا تخرج رسالةٌ الآن: لا عطيّةَ ولا رصيد */
         is_exhausted: boolean;
     } | null;
+    /** عرضُ الحزمة وحالُ طلبها — للمشترك وحده */
+    pack: QuotaPack | null;
     events: { key: string; setting: string; label: string }[];
 }
 
@@ -161,7 +169,7 @@ export default function IntegrationsWhatsapp() {
                 {automation.usage && (
                     <SettingsSection
                         title="حصّة هذا الشهر"
-                        description="رسائل أبعاد المشتركة — وتعود الحصّة مع الشهر الجديد."
+                        description="رسائل أبعاد المشتركة — تعود الحصّة مع الشهر الجديد، وتُشترى حزمةٌ إن نفدت قبله."
                         icon={Gauge}
                         status={
                             automation.usage.is_exhausted
@@ -184,12 +192,29 @@ export default function IntegrationsWhatsapp() {
                                     {automation.usage.unlimited ? t('بلا حد') : String(automation.usage.remaining)}
                                 </dd>
                             </div>
+                            {/*
+                                والرصيدُ المشترى سطرٌ مستقلّ لا يُجمع مع المتبقّي.
+
+                                هما شيئان: هذا يسقط أوّلَ الشهر وذاك لا. وجمعُهما
+                                في رقمٍ واحد يجعل من اشترى خمسمئةً يظنّها تسقط
+                                معها — فلا يشتري.
+                            */}
+                            {automation.usage.credits > 0 && (
+                                <div className="flex justify-between gap-3">
+                                    <dt className="text-[#6b7280]">{t('رصيد مشترًى')}</dt>
+                                    <dd className="font-medium tabular-nums text-[#111]" dir="ltr">
+                                        {String(automation.usage.credits)}
+                                    </dd>
+                                </div>
+                            )}
                         </dl>
 
-                        {automation.usage.is_exhausted && (
-                            <p className="mt-3 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] leading-relaxed text-[#b45309]">
-                                {t('نفدت رسائل هذا الشهر — الطلبات تعمل كالمعتاد، والرسائل تعود مع الشهر الجديد.')}
-                            </p>
+                        {automation.pack && (
+                            <WhatsappQuotaPack
+                                pack={automation.pack}
+                                exhausted={automation.usage.is_exhausted}
+                                mayManage={automation.may_manage}
+                            />
                         )}
                     </SettingsSection>
                 )}

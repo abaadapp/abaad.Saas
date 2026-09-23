@@ -101,7 +101,17 @@ class SendWhatsAppMessage implements ShouldQueue
          */
         $shared = $message->source_mode === WhatsAppMode::ABAAD_SHARED;
 
-        if ($shared && ! WhatsAppQuota::reserve($business)) {
+        /*
+         * والحجزُ يقول من أيّ جيبٍ خرج: عطيّةُ الشهر أم الرصيدُ المشترى.
+         *
+         * ويُكتب في الصفّ لا يُحمل في متغيّرٍ وحده: `failed()` تقع في
+         * عمليّةٍ أخرى بعد أن تنفد المحاولات، ولا شيء فيها إلّا معرّفُ
+         * الرسالة. فلولا العمود لَردّت كلَّ ما تردّه إلى عدّاد الشهر —
+         * فيربح من اشترى رسالةً مجّانيّةً ويخسر ما دفع.
+         */
+        $source = $shared ? WhatsAppQuota::reserve($business) : null;
+
+        if ($shared && $source === null) {
             $this->stop($message, WhatsAppStatus::QUOTA_EXCEEDED, WhatsAppStatus::SKIP_QUOTA);
 
             return;
@@ -109,6 +119,8 @@ class SendWhatsAppMessage implements ShouldQueue
 
         if ($shared) {
             $message->quota_consumed = true;
+            $message->quota_source = $source;
+            $message->save();
         }
 
         /*
@@ -159,10 +171,11 @@ class SendWhatsAppMessage implements ShouldQueue
             return;
         }
 
-        // لم تُقبل: تُردّ الحصّة — لا يُحاسَب التاجر على رسالةٍ لم تخرج
+        // لم تُقبل: تُردّ الحصّة إلى جيبها — لا يُحاسَب التاجر على رسالةٍ لم تخرج
         if ($shared) {
-            WhatsAppQuota::release($business);
+            WhatsAppQuota::release($business, $source);
             $message->quota_consumed = false;
+            $message->quota_source = null;
         }
 
         $message->forceFill([
@@ -197,13 +210,14 @@ class SendWhatsAppMessage implements ShouldQueue
         if ($message->source_mode === WhatsAppMode::ABAAD_SHARED && $message->quota_consumed) {
             $business = Business::find($message->business_id);
             if ($business) {
-                WhatsAppQuota::release($business);
+                WhatsAppQuota::release($business, $message->quota_source);
             }
         }
 
         $message->forceFill([
             'status' => WhatsAppStatus::FAILED,
             'quota_consumed' => false,
+            'quota_source' => null,
             'failed_at' => now(),
             'error_code' => 'job_failed',
             'error_message' => mb_substr($e->getMessage(), 0, 500),
@@ -215,6 +229,7 @@ class SendWhatsAppMessage implements ShouldQueue
         $message->forceFill([
             'status' => $status,
             'quota_consumed' => false,
+            'quota_source' => null,
             'failed_at' => $status === WhatsAppStatus::FAILED ? now() : null,
             'error_code' => $code,
             'error_message' => $reason,

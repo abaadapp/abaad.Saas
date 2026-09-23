@@ -91,6 +91,15 @@ class NormalizeNumbers
          * آخر، فيُردّ بـ«يجب أن يكون رقمًا» على رقمٍ صحيح.
          */
         'expected_value',
+
+        /*
+         * وثمنُ حزمة رسائل واتساب في لوحة المنصّة.
+         *
+         * صاحبُ المنصّة يكتب «٥٫٠٠٠» بلوحةٍ عربيّة كما يكتب سعرَ الباقة،
+         * فيُردّ بـ«يجب أن يكون رقمًا» على رقمٍ صحيح — وكشفه `ArabicNumeralsTest`
+         * قبل أن يصل أحدٌ إلى الشاشة.
+         */
+        'whatsapp_pack_price',
     ];
 
     public function handle(Request $request, Closure $next)

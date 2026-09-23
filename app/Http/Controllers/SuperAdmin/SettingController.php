@@ -58,6 +58,15 @@ class SettingController extends Controller
         'whatsapp_shared_default_monthly_limit' => ['nullable', 'integer', 'min:-1', 'max:1000000'],
 
         /*
+         * وحزمةُ ما بعد الحصّة: كم رسالةً وبكم.
+         *
+         * والحجمُ لا يقبل صفرًا: حزمةٌ بصفر رسالةٍ فاتورةٌ تُصدَر مقابل لا
+         * شيء. والثمنُ يقبله — حزمةٌ تُمنح مجّانًا لتاجرٍ يُعتذَر إليه.
+         */
+        'whatsapp_pack_size' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+        'whatsapp_pack_price' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+
+        /*
          * وضعُ المساعد الذكيّ في CRM.
          *
          * والقائمةُ المقبولة `CrmAssistant::MODES` — وفيها اليوم اثنان لا

@@ -28,6 +28,21 @@ class Billing
 
     public const SUB_EXPIRED = 'منتهي';
 
+    /*
+     * ═══ ولمَ للفاتورة نوع ═══
+     *
+     * كانت كلُّ فاتورةٍ في الجدول دورةَ اشتراك، فلم يكن للنوع معنى. ثمّ صار
+     * يُباع فيه شيءٌ ثانٍ: حزمةُ رسائل واتساب (انظر `WhatsAppPacks`). ومن
+     * غير النوع تُقرأ الفاتورتان سطرًا واحدًا في دفتر التحصيل — وأسوأ:
+     * `markPaid` تُعلّم اشتراكًا غيرَ مدفوعٍ مدفوعًا بفاتورةِ رسائل.
+     */
+
+    /** دورةُ باقة */
+    public const KIND_SUBSCRIPTION = 'اشتراك';
+
+    /** حزمةُ رسائل واتساب */
+    public const KIND_MESSAGES = 'رسائل';
+
     /** ما تُكلّفه دورةٌ من الباقة */
     public static function price(Business $business, string $cycle): float
     {
@@ -95,6 +110,8 @@ class Billing
             'amount' => $amount,
             'issued_at' => now(),
             'status' => self::UNPAID,
+            'kind' => self::KIND_SUBSCRIPTION,
+            'note' => $business->plan?->name,
         ]);
     }
 
@@ -106,7 +123,7 @@ class Billing
      * والحساب من أعلى رقمٍ قائم لا من العدد: حذفُ فاتورةٍ كان سيُعيد رقمًا
      * مستعملًا.
      */
-    private static function nextNumber(): string
+    public static function nextNumber(): string
     {
         $last = Invoice::where('number', 'like', 'INV-P-%')
             ->orderByRaw('LENGTH(number) DESC, number DESC')
@@ -127,10 +144,30 @@ class Billing
         DB::transaction(function () use ($invoice) {
             $invoice->update(['status' => self::PAID]);
 
-            Subscription::where('business_id', $invoice->business_id)
-                ->where('payment_status', 'غير مدفوع')
-                ->latest('id')->limit(1)
-                ->update(['payment_status' => 'مدفوع']);
+            /*
+             * ولا يُعلَّم اشتراكٌ مدفوعًا إلّا بفاتورةِ اشتراك.
+             *
+             * كان السطرُ يُنفَّذ مع كلّ فاتورةٍ تُسدَّد، وهو صحيحٌ ما دامت كلُّ
+             * فاتورةٍ دورةَ باقة. فلمّا دخلت فاتورةُ الرسائل صار سدادُ خمسةِ
+             * ريالاتٍ يُقيّد اشتراكًا سنويًّا مدفوعًا — خطأٌ في المال لا في
+             * الشاشة، ولا يُكتشف إلّا حين يُطالَب تاجرٌ بما دفعه أو يُعفى
+             * ممّا لم يدفعه.
+             */
+            if (($invoice->kind ?? self::KIND_SUBSCRIPTION) === self::KIND_SUBSCRIPTION) {
+                Subscription::where('business_id', $invoice->business_id)
+                    ->where('payment_status', 'غير مدفوع')
+                    ->latest('id')->limit(1)
+                    ->update(['payment_status' => 'مدفوع']);
+            }
+
+            /*
+             * وحزمةُ الرسائل تُشحن هنا لا في شاشةٍ أخرى.
+             *
+             * داخل المعاملة نفسِها: إمّا أن تُقيَّد الفاتورة مدفوعةً ويُضاف
+             * الرصيد معًا، وإمّا ألّا يقع شيء. ولو انفصلا لَأمكن أن يُقيَّد
+             * السداد ويبقى التاجر بلا رسائل — ولا سطرَ في النظام يقول ذلك.
+             */
+            WhatsAppPacks::settle($invoice);
 
             Activity::log('created', 'سجّل سداد الفاتورة: '.$invoice->number, [
                 'business_id' => null,

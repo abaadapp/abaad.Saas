@@ -74,6 +74,10 @@ class WhatsAppPermissionsTest extends TestCase
 
     public function test_a_business_cannot_grant_itself_the_own_number_feature(): void
     {
+        /* والإذنُ يُمنح بالولادة اليوم، فيُسحب هنا صراحةً: السؤالُ «أيستطيع
+           أن يُعيده بنفسه؟» لا «أهو مطفأ افتراضًا؟» */
+        $this->business->update(['whatsapp_own_allowed' => false]);
+
         $this->actingAs($this->owner)->post(route('admin.marketing.whatsapp.save'), [
             'whatsapp_own_allowed' => true,
         ]);
@@ -116,6 +120,8 @@ class WhatsAppPermissionsTest extends TestCase
     /** ولا يضع متجرًا في وضعٍ لا يُرسل منه شيء */
     public function test_the_platform_admin_cannot_set_own_mode_without_the_entitlement(): void
     {
+        $this->business->update(['whatsapp_own_allowed' => false]);
+
         $this->actingAs($this->super)
             ->put(route('super-admin.businesses.whatsapp.update', $this->business->id), [
                 'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
@@ -137,6 +143,9 @@ class WhatsAppPermissionsTest extends TestCase
     /** وتغيير الأذونات يُقيَّد بقيمته القديمة والجديدة */
     public function test_entitlement_changes_are_written_to_the_activity_log(): void
     {
+        // يُسحب أوّلًا ليكون منحُه تغييرًا يُقيَّد — لا قيمةً تُكتب كما هي
+        $this->business->update(['whatsapp_own_allowed' => false]);
+
         $this->actingAs($this->super)
             ->put(route('super-admin.businesses.whatsapp.update', $this->business->id), [
                 'whatsapp_own_allowed' => true,

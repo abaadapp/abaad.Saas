@@ -1,5 +1,5 @@
-import { useForm } from '@inertiajs/react';
-import { MessageCircle, Save } from 'lucide-react';
+import { router, useForm } from '@inertiajs/react';
+import { Check, MessageCircle, Save, X } from 'lucide-react';
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
@@ -20,8 +20,21 @@ export interface BusinessWhatsApp {
         unlimited: boolean;
         remaining: number | null;
         percentage: number | null;
+        credits: number;
+        monthly_exhausted: boolean;
         is_exhausted: boolean;
     };
+    /** حزمُ الرسائل التي طلبها هذا المتجر — الأحدثُ أوّلًا */
+    packs: {
+        id: number;
+        messages: number;
+        amount: number;
+        status: string;
+        invoice_number: string | null;
+        requested_by_name: string | null;
+        created_at: string;
+    }[];
+    pack_offer: { size: number; price: number };
     own_connection: {
         status: string;
         usable: boolean;
@@ -89,6 +102,12 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                     </dd>
                 </div>
                 <div className="flex justify-between gap-3">
+                    <dt className="text-[#6b7280]">{t('رصيد مشترًى')}</dt>
+                    <dd className="font-medium text-[#111]" dir="ltr">
+                        {String(data.usage.credits)}
+                    </dd>
+                </div>
+                <div className="flex justify-between gap-3">
                     <dt className="text-[#6b7280]">{t('رقم المتجر الخاص')}</dt>
                     <dd className="font-medium text-[#111]" dir="ltr">
                         {data.own_connection
@@ -109,7 +128,7 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                     on={form.data.whatsapp_own_allowed}
                     onChange={(v) => form.setData('whatsapp_own_allowed', v)}
                     label="صلاحية ربط رقمه الخاص"
-                    hint="ميزة مدفوعة — سحبها يوقف الإرسال من رقمه ولا يحذف وصلته"
+                    hint="ممنوحة لكل متجر افتراضًا — وسحبها يوقف الإرسال من رقمه ولا يحذف وصلته"
                 />
                 <Field
                     label={t('الحد الشهري لهذا المتجر')}
@@ -132,6 +151,84 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                     {t('حفظ')}
                 </Button>
             </div>
+
+            {/*
+                ═══ حزمُ الرسائل — وما ينتظر فعلًا منها ═══
+
+                طلبٌ `مطلوبة` ينتظر ضغطةً من هنا: تُصدَر فاتورتُه. وما بعدها
+                ينتظر مالًا لا ضغطة — فالسدادُ يُسجَّل في شاشة الفواتير،
+                والرصيدُ يُضاف وحدَه عندها (انظر `Billing::markPaid`).
+
+                ولا يُضاف رصيدٌ من هنا بزرّ: لو أُضيف لَصار الاعتمادُ هديّةً
+                تُعطى قبل أن يُدفع شيء.
+            */}
+            {data.packs.length > 0 && (
+                <div className="mt-6 border-t border-[#f0f0f0] pt-5">
+                    <h4 className="mb-3 text-[13px] font-bold text-[#111]">
+                        {t('حزم الرسائل')}
+                        <span className="me-2 font-normal text-[#6b7280]" dir="ltr">
+                            {' '}
+                            ({data.pack_offer.size} · {data.pack_offer.price.toFixed(3)})
+                        </span>
+                    </h4>
+
+                    <ul className="space-y-2">
+                        {data.packs.map((p) => (
+                            <li
+                                key={p.id}
+                                className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] bg-[#fafafa] px-3 py-2 text-[13px]"
+                            >
+                                <span className="text-[#111]">
+                                    <span dir="ltr">
+                                        {p.messages} · {p.amount.toFixed(3)}
+                                    </span>
+                                    <span className="me-2 text-[#6b7280]">
+                                        {' '}
+                                        {p.status}
+                                        {p.invoice_number ? ` · ${p.invoice_number}` : ''}
+                                    </span>
+                                </span>
+
+                                <span className="flex items-center gap-2">
+                                    <span className="text-[12px] text-[#9ca3af]" dir="ltr">
+                                        {p.created_at}
+                                    </span>
+                                    {p.status === 'مطلوبة' && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() =>
+                                                router.post(
+                                                    route('super-admin.whatsapp.packs.approve', p.id),
+                                                    {},
+                                                    { preserveScroll: true },
+                                                )
+                                            }
+                                        >
+                                            <Check />
+                                            {t('أصدر الفاتورة')}
+                                        </Button>
+                                    )}
+                                    {(p.status === 'مطلوبة' || p.status === 'مصدَّرة') && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            onClick={() =>
+                                                router.delete(route('super-admin.whatsapp.packs.cancel', p.id), {
+                                                    preserveScroll: true,
+                                                })
+                                            }
+                                        >
+                                            <X />
+                                            {t('إلغاء')}
+                                        </Button>
+                                    )}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
         </Card>
     );
 }

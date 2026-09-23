@@ -447,6 +447,15 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/whatsapp/sales', [WhatsAppController::class, 'connectSales'])->name('whatsapp.sales.connect');
     Route::delete('/whatsapp/sales', [WhatsAppController::class, 'disconnectSales'])->name('whatsapp.sales.disconnect');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
+
+    /*
+     * حزمُ الرسائل — اعتمادٌ يُصدر فاتورة، وإلغاءٌ يُنهي طلبًا.
+     *
+     * والرصيدُ لا يُضاف من هنا: يُضاف حين يُسجَّل سدادُ الفاتورة في
+     * `BillingController::pay`. فمن اعتمد لم يُعطِ شيئًا بعد.
+     */
+    Route::post('/whatsapp/packs/{id}/approve', [WhatsAppController::class, 'approvePack'])->name('whatsapp.packs.approve');
+    Route::delete('/whatsapp/packs/{id}', [WhatsAppController::class, 'cancelPack'])->name('whatsapp.packs.cancel');
 });
 
 /* ------------------------------- Admin ----------------------------- */
@@ -1110,6 +1119,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
             ->middleware('throttle:20,1')->name('whatsapp.test');
 
         Route::post('/whatsapp/auto-reply', [WhatsAppOnboardingController::class, 'autoReply'])->name('whatsapp.autoReply');
+
+        /*
+         * طلبُ حزمةِ رسائلَ إضافيّة — والحدُّ خمسٌ في الساعة.
+         *
+         * الطلبُ لا يُنشئ ثانيًا وله واحدٌ مفتوح (انظر `WhatsAppPacks::request`)،
+         * لكنّ من يضغط عشرين مرّةً يكتب عشرين سطرًا في سجلّ النشاط.
+         */
+        Route::post('/whatsapp/packs', [App\Http\Controllers\Admin\WhatsAppController::class, 'requestPack'])
+            ->middleware('throttle:5,60')->name('whatsapp.packs.request');
     });
 
     Route::get('/marketing/loyalty', [MarketingController::class, 'loyalty'])->name('marketing.loyalty');

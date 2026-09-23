@@ -736,7 +736,14 @@ class Demo
             'id' => $i->id,
             'number' => $i->number,
             'business' => $i->business?->name ?? '—',
-            'plan' => $i->plan?->name ?? '—',
+            /*
+             * وعمودُ «الباقة» يقول ما بيعَ لا ما فُقد.
+             *
+             * فاتورةُ حزمةِ رسائلَ لا باقةَ لها عمدًا (انظر `WhatsAppPacks::approve`)،
+             * فكانت تُقرأ «—» في دفتر التحصيل: صفٌّ بمبلغٍ ولا أحدَ يعرف
+             * مقابلَ ماذا. و`note` يحمل ما بيعَ بكلماتٍ تُقرأ.
+             */
+            'plan' => $i->plan?->name ?? ($i->note ?: '—'),
             'amount' => (float) $i->amount,
             'date' => optional($i->issued_at)->format('Y-m-d') ?? '—',
             'status' => $i->status,

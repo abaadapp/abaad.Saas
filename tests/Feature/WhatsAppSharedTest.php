@@ -330,7 +330,8 @@ class WhatsAppSharedTest extends TestCase
             WhatsAppQuota::reserve($business),
         ];
 
-        $this->assertSame([true, false, false], $results);
+        /* والمردودُ اسمُ الجيب لا `true`: عطيّةُ الشهر مرّةً، ثمّ لا شيء */
+        $this->assertSame([WhatsAppQuota::SOURCE_MONTHLY, null, null], $results);
         $this->assertSame(1, WhatsAppQuota::used($business));
     }
 

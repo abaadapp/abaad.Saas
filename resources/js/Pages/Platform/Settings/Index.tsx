@@ -83,6 +83,8 @@ const FIELD_TAB: Record<string, string> = {
     whatsapp_enabled: 'whatsapp',
     whatsapp_shared_enabled: 'whatsapp',
     whatsapp_shared_default_monthly_limit: 'whatsapp',
+    whatsapp_pack_size: 'whatsapp',
+    whatsapp_pack_price: 'whatsapp',
 
     crm_ai_mode: 'ai',
     crm_whatsapp_shared: 'whatsapp',
@@ -190,6 +192,8 @@ export default function PlatformSettings() {
         whatsapp_enabled: on('whatsapp_enabled'),
         whatsapp_shared_enabled: on('whatsapp_shared_enabled'),
         whatsapp_shared_default_monthly_limit: get('whatsapp_shared_default_monthly_limit'),
+        whatsapp_pack_size: get('whatsapp_pack_size'),
+        whatsapp_pack_price: get('whatsapp_pack_price'),
         crm_ai_mode: get('crm_ai_mode'),
         crm_whatsapp_shared: on('crm_whatsapp_shared'),
 
@@ -636,6 +640,23 @@ export default function PlatformSettings() {
                                 type: 'number',
                                 ltr: true,
                                 hint: 'يُطبَّق على كل متجرٍ لم يُحدَّد له حدٌّ خاص. و‎-1 تعني بلا حد.',
+                            })}
+
+                            {/*
+                                وما بعد الحصّة يُباع — وهذان يقولان بكم.
+
+                                يُقرآن ساعةَ يطلب التاجر حزمةً ويُنسخان في صفّ
+                                طلبه، فتعديلُهما يسري على ما يُطلب بعده ولا
+                                يُغيّر ثمنَ طلبٍ قائم (انظر `WhatsAppPacks`).
+                            */}
+                            {text('whatsapp_pack_size', 'رسائل الحزمة الإضافية', {
+                                type: 'number',
+                                ltr: true,
+                                hint: 'كم رسالةً تُضاف إلى رصيد المتجر حين يُسجَّل سداد فاتورته. والرصيد لا يسقط آخر الشهر.',
+                            })}
+                            {text('whatsapp_pack_price', 'ثمن الحزمة (ر.ع)', {
+                                ltr: true,
+                                hint: 'يُصدَر بهذا الثمن فاتورةُ منصةٍ برقمها، ولا يُضاف الرصيد قبل تسجيل سدادها.',
                             })}
                         </div>
 

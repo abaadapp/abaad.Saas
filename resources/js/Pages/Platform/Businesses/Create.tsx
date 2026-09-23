@@ -33,6 +33,8 @@ export default function BusinessCreate() {
                     status: 'نشط',
                     starts_at: '',
                     ends_at: '',
+                    // مطفأٌ صراحةً — ومفتاحٌ غائبٌ عن الحمولة لا يُقرأ «أُطفئ»
+                    boutiques_enabled: false,
                 }}
                 action={route('super-admin.businesses.store')}
                 method="post"

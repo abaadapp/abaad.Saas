@@ -21,6 +21,8 @@ interface EditableBusiness {
     ends_at: string | null;
     tier: string | null;
     storefront_theme: string | null;
+    /** يُؤوي بوتيكات — منطقٌ يُرسله `PageController::businessesEdit` */
+    boutiques_enabled: boolean;
     logo_url: string | null;
     owner_email: string | null;
 }
@@ -55,6 +57,16 @@ export default function BusinessEdit() {
                     ends_at: business.ends_at ?? '',
                     tier: business.tier ?? '',
                     storefront_theme: business.storefront_theme ?? '',
+                    /*
+                        ═══ ومفتاحُ البوتيكات يُقرأ من السجلّ ═══
+
+                        كان يسقط من هنا وحدَه، فيُعرض المربّعُ مطفأً مهما
+                        كان المحفوظ — ثمّ يُطفئه أوّلُ حفظٍ لاسمٍ أو هاتف.
+                        فيفقد التاجرُ تبويبَ «البوتيكات» بلا أن يمسّه أحد،
+                        ولا يشي به شيء: الفئةُ والواجهةُ تبقيان فيُقرأ
+                        الحفظُ سليمًا.
+                    */
+                    boutiques_enabled: business.boutiques_enabled ?? false,
                 }}
                 logoUrl={business.logo_url}
                 ownerEmail={business.owner_email}

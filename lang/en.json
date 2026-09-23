@@ -6444,5 +6444,22 @@
     "فارغًا يعني ٠٫٥٠٠ — واكتب صفرًا إن أردته مجّانًا": "Empty means 0.500 — write zero to make it free",
     "تنبيه الصورة": "Photo note",
     "يظهر تحت صورة المنتج، وفوق زرّ الطلب، وفي صفحة التأكيد. اتركه فارغًا إن لم تحتجه.": "Shown under the product photo, above the order button, and on the confirmation page. Leave it empty if you do not need it.",
-    "كل باقة تُنسَّق يدويًّا من ورد اليوم. قد يختلف صنفٌ أو لون حسب المتوفر — ونستبدله بما يساويه أو أفضل، بنفس الشكل والألوان.": "Every bouquet is arranged by hand from today's flowers. A stem or a shade may differ depending on what is available — we substitute it with an equal or better one, in the same style and colours."
+    "كل باقة تُنسَّق يدويًّا من ورد اليوم. قد يختلف صنفٌ أو لون حسب المتوفر — ونستبدله بما يساويه أو أفضل، بنفس الشكل والألوان.": "Every bouquet is arranged by hand from today's flowers. A stem or a shade may differ depending on what is available — we substitute it with an equal or better one, in the same style and colours.",
+    "حقول إتمام الطلب": "Checkout fields",
+    "الاسم والهاتف وطريقة الاستلام تبقى دائمًا — بها يُعرف الزبون ويُسلَّم الطلب.": "Name, phone and fulfilment method always stay — they are how the customer is known and the order delivered.",
+    "الحجز مقدّمًا (أيام)": "Booking window (days)",
+    "اختر طريقة استلامٍ واحدةً على الأقل.": "Pick at least one fulfilment method.",
+    "متجرٌ يوصّل يسأل عن المنطقة أو العنوان — لا يُخفيان معًا.": "A store that delivers asks for the area or the address — they cannot both be hidden.",
+    "طرق الاستلام": "Fulfilment methods",
+    "واحدة على الأقل — وإلا لم يبقَ للزبون سبيلٌ لاستلام طلبه": "At least one — otherwise the customer has no way to receive the order",
+    "أبعد موعدٍ يختاره الزبون — فارغًا يعني ٦٠ يومًا": "The furthest date the customer can pick — empty means 60 days",
+    "تُسأل عند التوصيل — ومن ضبط قائمة مناطق فالاختيار منها": "Asked when delivering — if an area list is set, the choice comes from it",
+    "العنوان بالتفصيل": "Full address",
+    "تُسأل عند التوصيل وحده": "Asked when delivering only",
+    "أطفئه إن كنت تسلّم ما هو جاهزٌ الآن": "Turn it off if you deliver what is ready now",
+    "وقت التسليم": "Delivery time",
+    "لا يظهر إلا إن ضبطت فتراتٍ أعلاه": "Only shows if you set time slots above",
+    "اسمه ورقمه حين يكون الطلب هديةً لغير مشتريه": "Their name and number when the order is a gift for someone else",
+    "أطفئه فلا يُطبَّق كوبونٌ من الموقع": "Turn it off so no coupon applies from the website",
+    "لا يُعرض": "Hidden"
 }

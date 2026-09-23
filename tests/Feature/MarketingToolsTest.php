@@ -99,6 +99,10 @@ class MarketingToolsTest extends TestCase
             'store_image_note',
             // وكرتُ الهدية وثمنُه — يقرؤهما إتمامُ الطلب (Store\GiftCard)
             'store_gift_card', 'store_gift_card_price',
+            // وحقولُ إتمام الطلب — تقرؤها الشاشةُ والخادم (Store\CheckoutFields)
+            'store_field_area', 'store_field_address', 'store_field_date',
+            'store_field_slot', 'store_field_recipient', 'store_field_promo',
+            'store_fulfil', 'store_max_days',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

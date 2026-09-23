@@ -13,6 +13,7 @@ use App\Support\FlowerOrder;
 use App\Support\Money;
 use App\Support\Seo;
 use App\Support\Store\RibbonTexts;
+use App\Support\Store\CheckoutFields;
 use App\Support\Store\GiftCard;
 use App\Support\Store\WebCheckout;
 use App\Support\Storefront;
@@ -216,7 +217,13 @@ class RibbonController extends Controller
             'payments' => array_keys(WebCheckout::payments($bid)),
             'accepts' => WebCheckout::accepts($business),
             'minDate' => today()->toDateString(),
-            'maxDate' => today()->addDays(WebCheckout::MAX_DAYS_AHEAD)->toDateString(),
+            'maxDate' => today()->addDays(CheckoutFields::maxDays($bid))->toDateString(),
+            /*
+             * وما انتقاه صاحبُ المحلّ من حقول — تقرؤه الشاشةُ كما يقرؤه
+             * الخادم، من موضعٍ واحد (`Store\CheckoutFields`).
+             */
+            'fields' => CheckoutFields::all($bid),
+            'fulfilments' => CheckoutFields::fulfilments($bid),
             /*
              * وكرتُ الهدية: أيُعرض، وبكم، وما يُقبل رفعه معه.
              *

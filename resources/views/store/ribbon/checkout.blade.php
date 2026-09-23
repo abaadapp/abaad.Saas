@@ -8,6 +8,16 @@
     @else
     <form data-rb-form novalidate style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:48px;align-items:start">
         <div style="display:flex;flex-direction:column;gap:36px;min-width:0">
+            @php
+                /*
+                    ما انتقاه صاحبُ المحلّ — والشاشةُ لا تحسبه، تقرؤه.
+                    `shows` يرسم الحقل، و`req` يضع النجمة. والخادمُ يشترط
+                    الشيءَ نفسَه من `CheckoutFields` — موضعٌ واحد لا اثنان.
+                */
+                $shows = fn ($f) => ($fields[$f] ?? 'optional') !== 'off';
+                $req = fn ($f) => ($fields[$f] ?? 'optional') === 'required';
+                $star = fn ($f) => $req($f) ? ' *' : '';
+            @endphp
             @php $step = fn ($n, $title) => '<h2 style="margin:0 0 14px;font-size:17px;font-weight:500;display:flex;align-items:center;gap:10px"><span style="width:24px;height:24px;border-radius:50%;background:var(--rb-olive);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px">'.$n.'</span>'.e($title).'</h2>'; @endphp
             <div>
                 {!! $step(1, $t['s1']) !!}
@@ -18,49 +28,71 @@
             </div>
             <div>
                 {!! $step(2, $t['s2']) !!}
-                <div style="display:flex;gap:8px;margin-bottom:14px" data-rb-fulfil>
-                    <button type="button" class="rb-pill on" data-v="delivery" style="flex:1;height:46px">{{ $t['delivery'] }}</button>
-                    <button type="button" class="rb-pill" data-v="pickup" style="flex:1;height:46px">{{ $t['pickup'] }}</button>
-                </div>
-                <div data-rb-delivery style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-                    <div>
-                        @if (count($delivery['areas']))
-                            <select class="rb-input" name="area" aria-label="{{ $t['fArea'] }}">
-                                <option value="">{{ $t['fArea'] }}</option>
-                                @foreach ($delivery['areas'] as $a)<option value="{{ $a }}">{{ $a }}</option>@endforeach
-                            </select>
-                        @else
-                            <input class="rb-input" name="area" placeholder="{{ $t['fArea'] }}" aria-label="{{ $t['fArea'] }}">
-                        @endif
-                        <div class="rb-error" data-err="area"></div>
+                {{-- ولا تُعرض طريقةٌ أغلقها صاحبُ المحلّ — ومن بقيت وحدَها لا تُسأل --}}
+                @if (count($fulfilments) > 1)
+                    <div style="display:flex;gap:8px;margin-bottom:14px" data-rb-fulfil>
+                        <button type="button" class="rb-pill on" data-v="delivery" style="flex:1;height:46px">{{ $t['delivery'] }}</button>
+                        <button type="button" class="rb-pill" data-v="pickup" style="flex:1;height:46px">{{ $t['pickup'] }}</button>
                     </div>
-                    <div><input class="rb-input" name="address" placeholder="{{ $t['fAddress'] }}" aria-label="{{ $t['fAddress'] }}"><div class="rb-error" data-err="address"></div></div>
-                </div>
-                <div data-rb-pickup style="display:none;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px;line-height:1.7">{{ $t['pickupAddr'] }}@if ($identity['address'] !== '') — {{ $identity['address'] }}@endif @if ($hours !== '') · {{ $hours }}@endif</div>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px">
-                    <div><input class="rb-input" type="date" name="date" min="{{ $minDate }}" max="{{ $maxDate }}" aria-label="{{ $t['date'] }}"><div class="rb-error" data-err="date"></div></div>
-                    @if (count($delivery['slots']))
+                @endif
+                <div data-rb-delivery style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                    @if ($shows('area'))
                         <div>
-                            <select class="rb-input" name="slot" aria-label="{{ $t['slot'] }}">
-                                @foreach ($delivery['slots'] as $s)<option value="{{ $s }}">{{ $s }}</option>@endforeach
-                            </select>
-                            <div class="rb-error" data-err="slot"></div>
+                            @if (count($delivery['areas']))
+                                <select class="rb-input" name="area" aria-label="{{ $t['fArea'] }}">
+                                    <option value="">{{ $t['fArea'] }}{{ $star('area') }}</option>
+                                    @foreach ($delivery['areas'] as $a)<option value="{{ $a }}">{{ $a }}</option>@endforeach
+                                </select>
+                            @else
+                                <input class="rb-input" name="area" placeholder="{{ $t['fArea'] }}{{ $star('area') }}" aria-label="{{ $t['fArea'] }}">
+                            @endif
+                            <div class="rb-error" data-err="area"></div>
                         </div>
                     @endif
+                    @if ($shows('address'))
+                        <div><input class="rb-input" name="address" placeholder="{{ $t['fAddress'] }}{{ $star('address') }}" aria-label="{{ $t['fAddress'] }}"><div class="rb-error" data-err="address"></div></div>
+                    @endif
                 </div>
+                <div data-rb-pickup style="display:none;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px;line-height:1.7">{{ $t['pickupAddr'] }}@if ($identity['address'] !== '') — {{ $identity['address'] }}@endif @if ($hours !== '') · {{ $hours }}@endif</div>
+                @if ($shows('date') || ($shows('slot') && count($delivery['slots'])))
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px">
+                        @if ($shows('date'))
+                            <div>
+                                <label for="rb-date" style="font-size:13px">{{ $t['date'] }}{{ $star('date') }}</label>
+                                <input id="rb-date" class="rb-input" type="date" name="date" min="{{ $minDate }}" max="{{ $maxDate }}" aria-label="{{ $t['date'] }}" style="margin-top:6px">
+                                <div class="rb-error" data-err="date"></div>
+                            </div>
+                        @endif
+                        @if ($shows('slot') && count($delivery['slots']))
+                            <div>
+                                <label for="rb-slot" style="font-size:13px">{{ $t['slot'] }}{{ $star('slot') }}</label>
+                                <select id="rb-slot" class="rb-input" name="slot" aria-label="{{ $t['slot'] }}" style="margin-top:6px">
+                                    @if (! $req('slot'))<option value="">—</option>@endif
+                                    @foreach ($delivery['slots'] as $s)<option value="{{ $s }}">{{ $s }}</option>@endforeach
+                                </select>
+                                <div class="rb-error" data-err="slot"></div>
+                            </div>
+                        @endif
+                    </div>
+                @endif
             </div>
             <div>
                 {!! $step(3, $t['s3']) !!}
 
                 {{-- المستلِمُ غيرُ المشتري — مطويٌّ حتى يُطلب، فلا يُثقل من يشتري لنفسه --}}
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;margin-bottom:12px">
-                    <input type="checkbox" data-rb-forother style="width:18px;height:18px;accent-color:var(--rb-olive)">
-                    <span>{{ $t['forOther'] }}</span>
-                </label>
-                <div data-rb-recipient style="display:none;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
-                    <div><input class="rb-input" name="recipient_name" placeholder="{{ $t['fRecipient'] }}" aria-label="{{ $t['fRecipient'] }}"><div class="rb-error" data-err="recipient_name"></div></div>
-                    <div><input class="rb-input" name="recipient_phone" dir="ltr" placeholder="{{ $t['fRecipientPhone'] }}" aria-label="{{ $t['fRecipientPhone'] }}"><div class="rb-error" data-err="recipient_phone"></div></div>
-                </div>
+                @if ($shows('recipient'))
+                    {{-- ومطلوبًا يُفتح بلا خانةٍ تُضغط: شرطٌ خلف طيّةٍ لا يُرى --}}
+                    @unless ($req('recipient'))
+                        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;margin-bottom:12px">
+                            <input type="checkbox" data-rb-forother style="width:18px;height:18px;accent-color:var(--rb-olive)">
+                            <span>{{ $t['forOther'] }}</span>
+                        </label>
+                    @endunless
+                    <div data-rb-recipient style="display:{{ $req('recipient') ? 'grid' : 'none' }};grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
+                        <div><input class="rb-input" name="recipient_name" placeholder="{{ $t['fRecipient'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipient'] }}"><div class="rb-error" data-err="recipient_name"></div></div>
+                        <div><input class="rb-input" name="recipient_phone" dir="ltr" placeholder="{{ $t['fRecipientPhone'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipientPhone'] }}"><div class="rb-error" data-err="recipient_phone"></div></div>
+                    </div>
+                @endif
 
                 @if ($giftCard['on'])
                     {{-- والكرتُ صنفٌ يُباع: ثمنُه مكتوبٌ حيث يُختار لا في الفاتورة وحدها --}}
@@ -115,10 +147,12 @@
         <aside class="rb-box">
             <h2 style="margin:0 0 16px;font-size:17px;font-weight:500">{{ $t['summary'] }}</h2>
             <div data-rb-summary style="display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--rb-line);padding-bottom:16px;font-size:14px"></div>
-            <div style="display:flex;gap:8px;margin:16px 0">
-                <input class="rb-input" name="promo" placeholder="{{ $t['promo'] }}" aria-label="{{ $t['promo'] }}" style="flex:1">
-                <button type="button" class="rb-btn-ghost" data-rb-apply style="height:46px;padding:0 16px">{{ $t['apply'] }}</button>
-            </div>
+            @if ($shows('promo'))
+                <div style="display:flex;gap:8px;margin:16px 0">
+                    <input class="rb-input" name="promo" placeholder="{{ $t['promo'] }}" aria-label="{{ $t['promo'] }}" style="flex:1">
+                    <button type="button" class="rb-btn-ghost" data-rb-apply style="height:46px;padding:0 16px">{{ $t['apply'] }}</button>
+                </div>
+            @endif
             <div class="rb-error" data-rb-promo-msg></div>
             <div style="display:flex;flex-direction:column;gap:10px;font-size:14px;margin-top:8px">
                 <div style="display:flex;justify-content:space-between"><span>{{ $t['subtotal'] }}</span><span data-rb-subtotal></span></div>
@@ -148,7 +182,8 @@
 @if ($accepts)
 <script>
 (function () {
-    var T = @json($t), fulfil = 'delivery', pay = @json($payments[0] ?? null), promo = '';
+    // والطريقةُ الابتدائيّة من المفتوح لا من ظنٍّ في الشاشة
+    var T = @json($t), fulfil = @json($fulfilments[0] ?? 'delivery'), pay = @json($payments[0] ?? null), promo = '';
     var form = document.querySelector('[data-rb-form]');
     // ورمزُ الحماية يُقرأ هنا كذلك: `RB.post` يحمله، ورفعُ الملفّ يخرج عنه
     var CSRF = document.querySelector('meta[name=csrf-token]').content;
@@ -256,16 +291,30 @@
         });
     }
 
-    $('[data-rb-fulfil]').addEventListener('click', function (e) {
-        var b = e.target.closest('button'); if (!b) return;
-        fulfil = b.dataset.v;
-        form.querySelectorAll('[data-rb-fulfil] button').forEach(function (x) { x.classList.toggle('on', x === b); });
-        $('[data-rb-delivery]').style.display = fulfil === 'delivery' ? 'grid' : 'none';
-        $('[data-rb-pickup]').style.display = fulfil === 'pickup' ? 'block' : 'none';
-        refresh();
-    });
+    /*
+     * وأزرارُ الاستلام قد لا تكون: من فتح طريقةً واحدةً لا يُسأل عنها،
+     * فتُقرأ من الخادم ولا تُعرض. وقارئٌ يفترض وجودَها يسقط الصفحةَ كلَّها.
+     */
+    var fulfilPills = form.querySelector('[data-rb-fulfil]');
+    function paintFulfil() {
+        var d = form.querySelector('[data-rb-delivery]');
+        var p = form.querySelector('[data-rb-pickup]');
+        if (d) d.style.display = fulfil === 'delivery' ? 'grid' : 'none';
+        if (p) p.style.display = fulfil === 'pickup' ? 'block' : 'none';
+    }
+    if (fulfilPills) {
+        fulfilPills.addEventListener('click', function (e) {
+            var b = e.target.closest('button'); if (!b) return;
+            fulfil = b.dataset.v;
+            form.querySelectorAll('[data-rb-fulfil] button').forEach(function (x) { x.classList.toggle('on', x === b); });
+            paintFulfil();
+            refresh();
+        });
+    }
+    paintFulfil();
     $('[data-rb-pay]').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; pay = b.dataset.v; paintPay(); });
-    $('[data-rb-apply]').addEventListener('click', function () { promo = $('[name=promo]').value.trim(); refresh(); });
+    var applyBtn = form.querySelector('[data-rb-apply]');
+    if (applyBtn) applyBtn.addEventListener('click', function () { promo = $('[name=promo]').value.trim(); refresh(); });
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         form.querySelectorAll('[data-err]').forEach(function (d) { d.textContent = ''; });
@@ -275,8 +324,10 @@
         var payload = {
             items: RB.read(), fulfil: fulfil, pay: pay, promo: promo,
             name: $('[name=name]').value, phone: $('[name=phone]').value,
-            area: $('[name=area]') ? $('[name=area]').value : '', address: $('[name=address]').value,
-            date: $('[name=date]').value, slot: $('[name=slot]') ? $('[name=slot]').value : '',
+            area: $('[name=area]') ? $('[name=area]').value : '',
+            address: $('[name=address]') ? $('[name=address]').value : '',
+            date: $('[name=date]') ? $('[name=date]').value : '',
+            slot: $('[name=slot]') ? $('[name=slot]').value : '',
             card: $('[name=card]') ? $('[name=card]').value : '',
             recipient_name: $('[name=recipient_name]') ? $('[name=recipient_name]').value : '',
             recipient_phone: $('[name=recipient_phone]') ? $('[name=recipient_phone]').value : '',

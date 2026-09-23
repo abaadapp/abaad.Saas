@@ -178,21 +178,6 @@ class MarketingSettings
              */
             'store_gift_card' => '0',
             'store_gift_card_price' => '',
-
-            /*
-             * وحقولُ إتمام الطلب — ما يُعرض منها وما يُشترط.
-             *
-             * والفراغُ يعني «ما كان» لا قيمةً يخترعها النظام: متجرٌ يعمل
-             * اليوم لا يتبدّل عليه شيءٌ بترقية. انظر `Store\CheckoutFields`.
-             */
-            'store_field_area' => '',
-            'store_field_address' => '',
-            'store_field_date' => '',
-            'store_field_slot' => '',
-            'store_field_recipient' => '',
-            'store_field_promo' => '',
-            'store_fulfil' => '',
-            'store_max_days' => '',
         ],
         /*
          * ولا مقبضَ هنا لا يقرؤه المُرسِل — ولا حدثَ يقرؤه ولا مقبضَ له.

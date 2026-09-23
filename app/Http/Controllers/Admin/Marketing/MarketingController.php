@@ -9,6 +9,7 @@ use App\Models\Customer;
 use App\Models\PointTransaction;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Rules\SafeLink;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Loyalty;
@@ -237,15 +238,24 @@ class MarketingController extends Controller
              * يعود منه — فالنموذجُ يبقى JSON ولا يصير `multipart` من أجل
              * حقلين. وهي قاعدةُ `GiftCard::hold` نفسُها.
              */
-            'store_hero_image' => ['nullable', 'string', 'max:2048'],
+            'store_hero_image' => ['nullable', 'string', 'max:2048', new SafeLink],
             'store_featured' => ['nullable', 'string', 'max:200'],
             'store_sections' => ['nullable', 'string', 'max:200'],
             'store_block_on' => ['sometimes', 'boolean'],
             'store_block_title' => ['nullable', 'string', 'max:120'],
             'store_block_text' => ['nullable', 'string', 'max:1000'],
-            'store_block_image' => ['nullable', 'string', 'max:2048'],
+            'store_block_image' => ['nullable', 'string', 'max:2048', new SafeLink],
             'store_block_cta' => ['nullable', 'string', 'max:40'],
-            'store_block_href' => ['nullable', 'string', 'max:2048'],
+            /*
+             * ووجهةُ الزرّ تُحرس بـ`SafeLink` — لا بـ`string` وحدها.
+             *
+             * الحقلُ نصٌّ حرٌّ يكتبه صاحبُ المحلّ، ويخرج في `href` على صفحةٍ
+             * عامّة. ووجهةٌ تبدأ بـ`javascript:` سطرُ كودٍ يُنفَّذ في متصفّح
+             * كلّ زائر — ومتاجرُ أبعاد على نطاقٍ واحد، فما يُحقن في صفحةِ
+             * متجرٍ يقرأ ما يخصّ النطاق نفسَه. والصورتان مثلُها: رابطُهما
+             * يعود من بابِ الرفع، ومن أرسل الحمولةَ بيده لا يمرّ بالباب.
+             */
+            'store_block_href' => ['nullable', 'string', 'max:2048', new SafeLink],
         ]);
 
         /*
@@ -288,7 +298,20 @@ class MarketingController extends Controller
             }
         }
 
-        $slug = Storefront::slug($request->input('site_slug'));
+        /*
+         * ═══ والعنوانُ لا يُمسّ إلّا إن أُرسل ═══
+         *
+         * `input` تردّ `null` على مفتاحٍ غائبٍ كما تردّها على حقلٍ فُرّغ —
+         * فحفظٌ لا يحمل العنوان كان يمحوه، ويصير المتجرُ «منشورًا» في شاشته
+         * و404 في كلّ رابط. وهي الحالةُ التي يرفض الحارسُ أدناه إنشاءها
+         * بالكتابة، فتُنشأ بالسكوت.
+         *
+         * و`exists` تقول «أُرسل» لا «مُلئ» — فيبقى تفريغُ الحقل محوًا كما
+         * قصده صاحبُه. وهي قاعدةُ `store_fulfil` نفسُها أعلاه.
+         */
+        $slug = $request->exists('site_slug')
+            ? Storefront::slug($request->input('site_slug'))
+            : $business->site_slug;
 
         if (filled($request->input('site_slug')) && $slug === null) {
             throw ValidationException::withMessages([
@@ -311,7 +334,17 @@ class MarketingController extends Controller
          * من أيّ رابط. والرفضُ هنا بكلمةٍ أوضح من تركه يُحفظ ثمّ يسأل صاحبُه
          * لماذا لا يعمل موقعه.
          */
-        if ($request->boolean('store_on') && $slug === null) {
+        /*
+         * والمنشورُ من لم يُرسل مفتاحَه يبقى منشورًا — فيُقرأ المحفوظ.
+         *
+         * ولولاه لَمُحي عنوانُ متجرٍ منشورٍ بحفظٍ لا يحمل `store_on`، ومرّ
+         * من هذا الحارس لأنّ السؤال وقع على الحمولة لا على الحال.
+         */
+        $published = $request->exists('store_on')
+            ? $request->boolean('store_on')
+            : (MarketingSettings::group($this->bid(), 'website')['store_on'] ?? '') === '1';
+
+        if ($published && $slug === null) {
             throw ValidationException::withMessages([
                 'site_slug' => __('اكتب عنوان متجرك قبل نشره — بلا عنوانٍ لا يُفتح من أيّ رابط.'),
             ]);

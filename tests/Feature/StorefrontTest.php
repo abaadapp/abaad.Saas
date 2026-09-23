@@ -140,6 +140,57 @@ class StorefrontTest extends TestCase
             ->assertSessionHasErrors('site_slug');
     }
 
+    /**
+     * ═══ وحفظٌ لا يحمل العنوانَ لا يمحوه ═══
+     *
+     * `input` تردّ `null` على مفتاحٍ غائبٍ كما تردّها على حقلٍ فُرّغ. فكلُّ
+     * حفظٍ لا يحمل `site_slug` كان يمسح عنوانَ المتجر: المفتاحُ يبقى
+     * مرفوعًا في شاشة صاحبه — «منشور» — وكلُّ رابطٍ يقع على ٤٠٤.
+     *
+     * وهي الحالةُ التي يرفض الحارسُ فوق هذا إنشاءها بالكتابة، فكانت تُنشأ
+     * بالسكوت. ولا تُكتشف إلّا من زبونٍ يقول «موقعك لا يفتح».
+     */
+    public function test_a_save_that_does_not_carry_the_address_keeps_it(): void
+    {
+        $this->publish();
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.store.save'), ['store_image_note' => 'التوصيل خلال ساعتين'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('ward-alkhuwair', $this->business->refresh()->site_slug);
+        $this->open()->assertOk();
+    }
+
+    /**
+     * ومنشورٌ يُفرَّغ عنوانُه يُردّ — ولو لم تحمل الحمولةُ مفتاحَ النشر.
+     *
+     * السؤالُ «أمنشورٌ هو؟» يقع على الحال لا على الحمولة: حفظٌ لا يحمل
+     * `store_on` كان يمرّ من الحارس فيُمحى العنوانُ ويبقى المفتاحُ مرفوعًا.
+     */
+    public function test_a_published_shop_is_not_stripped_of_its_address(): void
+    {
+        $this->publish();
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.store.save'), ['site_slug' => ''])
+            ->assertSessionHasErrors('site_slug');
+
+        $this->assertSame('ward-alkhuwair', $this->business->refresh()->site_slug);
+    }
+
+    /** وتفريغُ الحقل بيده يبقى محوًا — `exists` تقول «أُرسل» لا «مُلئ» */
+    public function test_clearing_the_field_himself_still_clears_it(): void
+    {
+        $this->publish();
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.store.save'), ['site_slug' => '', 'store_on' => false])
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull($this->business->refresh()->site_slug);
+    }
+
     /* ------------------- ولا يبتلع النظامَ نفسه ------------------- */
 
     /**

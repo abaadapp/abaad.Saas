@@ -2,6 +2,8 @@
 
 namespace App\Support\Website;
 
+use App\Rules\SafeLink;
+
 /**
  * ما يُكتب في القسم يُنظَّف قبل أن يُحفظ — لا قبل أن يُعرض.
  *
@@ -27,9 +29,6 @@ class Content
 {
     /** أطول قائمة في قسم — أربعون صورةً في معرضٍ واحد كثير */
     public const MAX_ITEMS = 40;
-
-    /** بروتوكولات الروابط المسموحة */
-    private const SCHEMES = ['https', 'http', 'mailto', 'tel'];
 
     /**
      * محتوى قسمٍ نظيفًا: ما يعرفه الوصف وحده، بأنواعه وحدوده.
@@ -110,23 +109,18 @@ class Content
         return mb_substr($clean, 0, max(1, $max));
     }
 
-    /** رابطٌ نسبيٌّ أو ببروتوكولٍ مأمون — وما سواه فراغ */
+    /**
+     * رابطٌ نسبيٌّ أو ببروتوكولٍ مأمون — وما سواه فراغ.
+     *
+     * والقاعدةُ في `SafeLink` لا هنا: شاشةُ إعدادات المتجر تسأل السؤالَ
+     * نفسَه، وقائمتان للبروتوكولات المأمونة تفترقان يومًا — فتُسدّ ثغرةٌ
+     * في بابٍ وتبقى مفتوحةً في الآخر.
+     */
     private static function url(mixed $value): string
     {
         $raw = trim((string) (is_scalar($value) ? $value : ''));
 
-        if ($raw === '') {
-            return '';
-        }
-
-        // النسبيّ: مسارٌ داخل الموقع نفسه. و`//host` ليس نسبيًّا رغم شكله
-        if (str_starts_with($raw, '/') && ! str_starts_with($raw, '//')) {
-            return mb_substr($raw, 0, 500);
-        }
-
-        $scheme = mb_strtolower((string) parse_url($raw, PHP_URL_SCHEME));
-
-        return in_array($scheme, self::SCHEMES, true) ? mb_substr($raw, 0, 500) : '';
+        return SafeLink::allows($raw) ? mb_substr($raw, 0, 500) : '';
     }
 
     private static function number(mixed $value, array $field): int

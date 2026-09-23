@@ -163,8 +163,19 @@ class RibbonController extends Controller
          */
         $picked = StorePage::featured($bid);
 
-        $best = $picked
-            ? $shown->whereIn('id', $picked)->sortBy(fn ($p) => array_search($p->id, $picked, true))->values()
+        $chosen = $shown->whereIn('id', $picked)
+            ->sortBy(fn ($p) => array_search($p->id, $picked, true))
+            ->values();
+
+        /*
+         * ومختاراتٌ لم يبقَ منها شيءٌ معروض تعود إلى الحسبة — لا إلى فراغ.
+         *
+         * صاحبُ المحلّ يختار أربعةً في العيد، ثمّ تنفد أو يُخفيها بعده.
+         * ولولا هذا لَاختفى القسمُ كلُّه من صفحته بلا أن يفعل شيئًا، ولا
+         * شيءَ في الشاشة يقول له لماذا — إعدادٌ قديمٌ يمحو قسمًا قائمًا.
+         */
+        $best = $chosen->isNotEmpty()
+            ? $chosen
             : $shown->sortByDesc(fn ($p) => [(int) ($sold[$p->id] ?? 0), $p->id])->take(4)->values();
 
         $new = $shown->sortByDesc('id')->take(4)->values();
@@ -178,7 +189,7 @@ class RibbonController extends Controller
             'hero' => StorePage::heroImage($bid),
             'block' => StorePage::block($bid),
             // وعنوانُ «الأكثر مبيعًا» يتبع مصدرَه: محسوبًا يُسمّى، ومختارًا يُسمّى
-            'bestPicked' => $picked !== [],
+            'bestPicked' => $chosen->isNotEmpty(),
             'reviews' => Review::where('business_id', $bid)->showable()->latest()->take(3)->get()
                 ->map(fn ($r) => ['name' => $r->displayName(), 'text' => (string) $r->comment, 'rating' => (int) $r->rating])
                 ->filter(fn ($r) => $r['text'] !== '')->values()->all(),

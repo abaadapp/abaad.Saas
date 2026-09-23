@@ -8,6 +8,7 @@ use App\Models\Currency;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
+use App\Rules\SafeLink;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\Store\StorePage;
@@ -310,5 +311,116 @@ class TheShopOwnerBuildsHisOwnPageTest extends TestCase
 
         $this->set(['store_sections' => 'about']);
         $this->assertStringContainsString('rb-landing', $this->page());
+    }
+
+    /* ═══════════ ٥) والوجهةُ رابطٌ لا سطرُ كود ═══════════ */
+
+    /**
+     * زرٌّ وجهتُه `javascript:` يُردّ عند الحفظ — لا يُعرض على صفحةٍ عامّة.
+     *
+     * ومتاجرُ أبعاد كلُّها على نطاقٍ واحد: ما يُنفَّذ في صفحةِ متجرٍ يقرأ ما
+     * يخصّ النطاق نفسَه. والقاعدةُ مكتوبةٌ في المستودع منذ البانِي — وكان
+     * هذا الحقلُ وحدَه خارجَها.
+     */
+    public function test_a_button_that_runs_code_is_refused(): void
+    {
+        $this->actingAs($this->owner)
+            ->from(route('admin.settings.index'))
+            ->post(route('admin.marketing.store.save'), [
+                'store_block_on' => true,
+                'store_block_title' => 'اشتراك الورد',
+                'store_block_text' => 'باقةٌ كلَّ أسبوع.',
+                'store_block_cta' => 'اشترك',
+                'store_block_href' => 'javascript:alert(document.cookie)',
+            ])
+            ->assertSessionHasErrors('store_block_href');
+
+        $this->assertSame('', MarketingSettings::group($this->shop->id, 'website')['store_block_href'] ?? '');
+    }
+
+    /** و`data:` و`//host` مثلُها — والشكلُ النسبيّ لا يخدعُ الحارس */
+    public function test_the_shapes_that_look_relative_but_are_not(): void
+    {
+        foreach (['data:text/html,<script>1</script>', '//evil.example/x', 'JaVaScRiPt:alert(1)'] as $bad) {
+            $this->assertFalse(SafeLink::allows($bad), "قُبلت وجهةٌ لا تصلح: {$bad}");
+        }
+    }
+
+    /** ورابطُه الصحيحُ يمرّ — كاملًا كان أو مسارًا داخل متجره */
+    public function test_the_destination_he_meant_is_saved(): void
+    {
+        foreach (['/shop', 'https://wa.me/96895259066', 'tel:+96895259066'] as $good) {
+            $this->actingAs($this->owner)
+                ->from(route('admin.settings.index'))
+                ->post(route('admin.marketing.store.save'), [
+                    'store_block_on' => true,
+                    'store_block_title' => 'اشتراك الورد',
+                    'store_block_text' => 'باقةٌ كلَّ أسبوع.',
+                    'store_block_cta' => 'اشترك',
+                    'store_block_href' => $good,
+                ])
+                ->assertSessionHasNoErrors();
+
+            $this->assertSame($good, MarketingSettings::group($this->shop->id, 'website')['store_block_href'] ?? null);
+            $this->assertStringContainsString('href="'.$good.'"', $this->page());
+        }
+    }
+
+    /** وصورةُ الواجهة رابطٌ كذلك — ومن أرسل الحمولةَ بيده لا يمرّ ببابِ الرفع */
+    public function test_a_picture_that_is_not_a_link_is_refused(): void
+    {
+        $this->actingAs($this->owner)
+            ->from(route('admin.settings.index'))
+            ->post(route('admin.marketing.store.save'), ['store_hero_image' => 'javascript:alert(1)'])
+            ->assertSessionHasErrors('store_hero_image');
+    }
+
+    /* ═══════════ ٦) والعنوانُ يتبع مصدرَه ═══════════ */
+
+    /**
+     * صفٌّ اختاره بيده يُسمّى «مختاراتنا» لا «الأكثر مبيعاً».
+     *
+     * والثانيةُ دعوى عن البيع يقرؤها الزبون ويبني عليها ثقتَه — فصفٌّ رتّبه
+     * صاحبُ المحلّ ثمّ سُمّي بها كذبٌ عليه وهو لا يدري.
+     */
+    public function test_what_he_arranged_is_not_called_what_sold_most(): void
+    {
+        $ids = Product::where('business_id', $this->shop->id)->orderByDesc('id')->pluck('id')->take(2)->all();
+        $this->set(['store_featured' => implode(',', $ids)]);
+
+        $page = $this->page();
+
+        $this->assertStringContainsString('مختاراتنا', $page);
+        $this->assertStringNotContainsString('الأكثر مبيعاً', $page);
+    }
+
+    /** ومن لم يختر يبقى عنوانُه على الدعوى الصحيحة */
+    public function test_the_counted_list_keeps_its_own_name(): void
+    {
+        $page = $this->page();
+
+        $this->assertStringContainsString('الأكثر مبيعاً', $page);
+        $this->assertStringNotContainsString('مختاراتنا', $page);
+    }
+
+    /**
+     * ومختاراتٌ لم يبقَ منها شيءٌ معروض تعود إلى الحسبة — لا إلى فراغ.
+     *
+     * يختار أربعةً في العيد ثمّ تنفد أو يُخفيها بعده، فيختفي القسمُ كلُّه
+     * من صفحته بلا أن يفعل شيئًا ولا شيءَ يقول له لماذا.
+     */
+    public function test_picks_that_all_went_away_do_not_empty_the_row(): void
+    {
+        $ids = Product::where('business_id', $this->shop->id)->pluck('id')->take(2)->all();
+        $this->set(['store_featured' => implode(',', $ids)]);
+
+        Product::whereIn('id', $ids)->update(['published' => false]);
+
+        $page = $this->page();
+
+        $this->assertNotEmpty($this->get('/s/ribbon')->viewData('best'), 'اختفى الصفُّ كلُّه لأنّ مختاراتِه أُخفيت');
+        $this->assertStringContainsString('rb-sec-best', $page);
+        // وعنوانُه يعود إلى الحسبة لأنّ المعروضَ صار محسوبًا
+        $this->assertStringContainsString('الأكثر مبيعاً', $page);
     }
 }

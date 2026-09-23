@@ -177,8 +177,13 @@ export default function ProfileEdit() {
                     {!limited && (
                         <Card className="p-6">
                             <h3 className="mb-1 font-bold text-[#111]">{t('تغيير كلمة المرور')}</h3>
+                            {/*
+                                والشرطُ يُقال قبل أن يُفرض — كما في شاشة التسجيل حرفًا بحرف.
+                                فمن لا يعرف ما ينقصه يجرّب ويُردّ ولا يدري لمَ.
+                            */}
                             <p className="mb-4 text-[12px] text-[#9ca3af]">
-                                {t('اتركها فارغة إن لم ترغب بتغييرها.')}
+                                {t('اتركها فارغة إن لم ترغب بتغييرها.')}{' '}
+                                {t('وكلمة المرور الجديدة ثمانية أحرف على الأقل، فيها حرف ورقم.')}
                             </p>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                                 <Field label="كلمة المرور الحالية" error={form.errors.current_password}>

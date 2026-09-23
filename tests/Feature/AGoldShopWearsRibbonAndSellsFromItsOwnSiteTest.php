@@ -133,9 +133,15 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
             'خطُّ التصميم غير مضبوطٍ على متن الصفحة',
         );
 
-        // ومن ملفّاتنا: رابطٌ صريحٌ إلى ملفّ الخطّ عندنا
+        /*
+         * ومن ملفّاتنا: رابطٌ صريحٌ إلى ملفّ الخطّ عندنا.
+         *
+         * والعنوانُ يخرج ببصمةٍ تتبع الملفّ (`StoreAsset`) — فلا يُشترط أن
+         * ينتهي عند `.css`: اشتراطُه كان يُسقط هذا الحارسَ يومَ صار العنوانُ
+         * يحمل بصمته، وهو تحسينٌ لا نكوص.
+         */
         $this->assertMatchesRegularExpression(
-            '#<link[^>]+href="/fonts/ibm-plex-arabic\\.css"#',
+            '#<link[^>]+/fonts/ibm-plex-arabic\\.css#',
             (string) $layout,
             'ملفُّ الخطّ غير مربوطٍ في الترويسة',
         );

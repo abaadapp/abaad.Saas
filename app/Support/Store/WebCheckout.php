@@ -65,6 +65,15 @@ final class WebCheckout
 
     public const PAY_TRANSFER = 'transfer';
 
+    /**
+     * الدفعُ بالبطاقة — ولا يُعرض إلّا لمن أكمل بوّابتَه.
+     *
+     * وليس مفتاحًا في الإعدادات كأختيه: مفتاحٌ يُرفع وبوّابةٌ ناقصةٌ يعني
+     * زبونًا يختار «بطاقة» فيقف على صفحةٍ بيضاء. فالسؤالُ عن اكتمال
+     * المفاتيح نفسِها (انظر `PaymentGateway::ready`).
+     */
+    public const PAY_CARD = 'card';
+
     /** أقصى أيامٍ يُحجز الموعدُ بعدها */
     public const MAX_DAYS_AHEAD = 60;
 
@@ -110,6 +119,9 @@ final class WebCheckout
         }
         if ($s['transfer']) {
             $out[self::PAY_TRANSFER] = PaymentMethods::TRANSFER;
+        }
+        if (Paymob::enabled($businessId)) {
+            $out[self::PAY_CARD] = PaymentMethods::CARD;
         }
 
         return $out;
@@ -235,7 +247,35 @@ final class WebCheckout
      *
      * @param  array<string, mixed>  $payload  البنودُ وبياناتُ الزبون والتسليم والدفع
      */
-    public static function place(Business $business, array $payload, string $lang = 'ar'): Order
+    /**
+     * الدفعُ بالبطاقة — يفتح صفحةَ البوّابة ويردّ رابطَها، ولا يكتب طلبًا.
+     *
+     * ═══ ولا طلبَ قبل أن يصل المال ═══
+     *
+     * الطلبُ يخصم المخزون. ولو كُتب قبل الدفع لَخصم كلُّ زائرٍ فتح صفحةَ
+     * البطاقة ثمّ أغلقها باقةً من الرفّ — فينفد ما هو موجود، ويُردّ زبونٌ
+     * حاضرٌ بالنقد عن صنفٍ يملأ الثلّاجة.
+     *
+     * والفحصُ هنا فحصُ `place` نفسُه: من أرسل حمولةً لا تصحّ يُردّ قبل أن
+     * تُفتح له دفعة، لا بعد أن يدفع.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public static function toCard(Business $business, array $payload, string $lang = 'ar'): string
+    {
+        $bid = (int) $business->id;
+
+        if (! self::accepts($business)) {
+            throw ValidationException::withMessages(['items' => __('المتجر لا يستقبل طلبات من الموقع الآن.')]);
+        }
+
+        $form = self::validated($bid, $payload);
+        $quote = self::quote($business, $payload + ['fulfil' => $form['fulfil']]);
+
+        return Paymob::open($business, $payload, $quote, $lang);
+    }
+
+    public static function place(Business $business, array $payload, string $lang = 'ar', bool $paid = false): Order
     {
         $bid = (int) $business->id;
 
@@ -245,7 +285,7 @@ final class WebCheckout
 
         $form = self::validated($bid, $payload);
 
-        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang) {
+        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid) {
             // بقفل: الفحصُ والخصم على كميّةٍ لا تتغيّر تحتهما — كما في الصندوق
             $q = self::quote($business, $payload + ['fulfil' => $form['fulfil']], lock: true);
             $lines = $q['_lines'];
@@ -274,8 +314,13 @@ final class WebCheckout
                 'channel' => SalesChannel::WEBSITE,
                 'bank_account_id' => null,
                 'payment_method' => $method,
-                // لا مالَ دخل بعد — تحويلًا كان أو عند الاستلام؛ الدفترُ يُدين الذمم
-                'payment_status' => 'غير مدفوع',
+                /*
+                 * ولا مالَ دخل بعد — تحويلًا كان أو عند الاستلام؛ الدفترُ
+                 * يُدين الذمم. إلّا ما دُفع بالبطاقة: هذا لا يُنشأ طلبُه
+                 * أصلًا حتّى يصل مالُه، فيُكتب مدفوعًا ويدخل البنكَ لا
+                 * الذمم (انظر `Books::recordSale`).
+                 */
+                'payment_status' => $paid ? 'مدفوع' : 'غير مدفوع',
                 'subtotal' => $q['subtotal'],
                 'discount' => $q['discount'],
                 'coupon_code' => $q['_coupon']?->code,

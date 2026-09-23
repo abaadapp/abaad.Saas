@@ -91,6 +91,7 @@ use App\Http\Controllers\PublicDocumentController;
 use App\Http\Controllers\PublishedSiteController;
 use App\Http\Controllers\ReviewInviteController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\Store\PaymobController;
 use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\BillingController;
@@ -944,6 +945,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/marketing/store/image', [MarketingController::class, 'uploadStoreImage'])
         ->name('marketing.store.image');
     Route::post('/marketing/store/products', [MarketingController::class, 'publishProducts'])->name('marketing.store.products');
+    Route::post('/marketing/store/gateway', [MarketingController::class, 'savePaymentGateway'])->name('marketing.store.gateway');
     /*
      * معاينةُ المتجر — خلف الحارس، وبلا معرّفٍ في الرابط.
      *
@@ -1794,5 +1796,14 @@ Route::post('/r/{token}', [ReviewInviteController::class, 'store'])
  * لا جلسة له ولا رمز CSRF. والتحقّق في المتحكّم — توقيع HMAC بسرّ التطبيق —
  * ولا يُقبل شيءٌ بدونه.
  */
+/*
+ * إشعارُ بوّابة الدفع — خارجَ كلّ حارس، ويحرسه توقيعُه وحدَه.
+ *
+ * لا جلسةَ فيه ولا CSRF: المُرسِل خادمُ Paymob لا متصفّحُ أحد. وصدقُه
+ * يُثبَت بـHMAC على حقولٍ بترتيبٍ تفرضه هي (انظر `Store\Paymob::verify`).
+ */
+Route::post('/webhooks/paymob', [PaymobController::class, 'callback'])
+    ->middleware('throttle:120,1')
+    ->name('webhooks.paymob');
 Route::get('/webhooks/whatsapp', [WebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
 Route::post('/webhooks/whatsapp', [WebhookController::class, 'handle'])->name('webhooks.whatsapp');

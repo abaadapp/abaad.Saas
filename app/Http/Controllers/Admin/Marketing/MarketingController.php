@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\WhatsAppController;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\PaymentGateway;
 use App\Models\PointTransaction;
 use App\Models\Product;
 use App\Models\Setting;
@@ -171,6 +172,71 @@ class MarketingController extends Controller
                 : __(':n صنفًا لم يعد يظهر في متجرك', ['n' => $count]),
             'type' => 'success',
         ]);
+    }
+
+    /**
+     * مفاتيحُ بوّابة الدفع — تُكتب ولا تُقرأ.
+     *
+     * ═══ وبابٌ على حدة ═══
+     *
+     * لا تُحفظ مع سائر الإعدادات في `settings`: ذاك جدولٌ نصّيٌّ مكشوف،
+     * وهذان سرّان يُقبض بهما المال. فلهما جدولُهما وعمودان مشفَّران —
+     * قاعدةُ `WhatsAppConnection` نفسُها في هذا المستودع.
+     *
+     * والفراغُ يعني «لا تبدّله»: الشاشةُ لا تعرض السرَّ فلا يُعاد إرسالُه،
+     * وحفظُ اسمٍ أو رقمٍ بجانبه كان يمحوه لو قُرئ الفراغُ محوًا.
+     */
+    public function savePaymentGateway(Request $request)
+    {
+        $data = $request->validate([
+            'active' => ['sometimes', 'boolean'],
+            'public_key' => ['nullable', 'string', 'max:255'],
+            'card_integration_id' => ['nullable', 'string', 'max:32'],
+            'secret_key' => ['nullable', 'string', 'max:255'],
+            'hmac_secret' => ['nullable', 'string', 'max:255'],
+        ], [], [
+            'public_key' => __('المفتاح العامّ'),
+            'card_integration_id' => __('رقم تكامل البطاقة'),
+            'secret_key' => __('المفتاح السرّي'),
+            'hmac_secret' => __('سرّ التوقيع'),
+        ]);
+
+        $gateway = PaymentGateway::firstOrNew([
+            'business_id' => $this->bid(),
+            'provider' => PaymentGateway::PAYMOB,
+        ]);
+
+        $gateway->public_key = trim((string) ($data['public_key'] ?? ''));
+        $gateway->card_integration_id = trim((string) ($data['card_integration_id'] ?? ''));
+
+        // والسرُّ لا يُمسّ إلّا إن كُتب من جديد
+        foreach (['secret_key', 'hmac_secret'] as $secret) {
+            if (filled($data[$secret] ?? null)) {
+                $gateway->{$secret} = trim((string) $data[$secret]);
+            }
+        }
+
+        $gateway->active = $request->boolean('active');
+        $gateway->save();
+
+        /*
+         * ولا تُرفع بوّابةٌ ناقصة.
+         *
+         * زبونٌ يختار «بطاقة» على بوّابةٍ بلا سرِّ توقيعٍ يدفع ولا يُصدَّق
+         * إشعارُه — فيخرج مالُه ولا يصله طلب. والشاشةُ تمنعه، ومن أرسل
+         * الحمولةَ بيده لا.
+         */
+        if ($gateway->active && ! $gateway->ready()) {
+            $gateway->forceFill(['active' => false])->save();
+
+            return back()->withErrors([
+                'active' => __('أكمل المفاتيح الأربعة قبل تشغيل الدفع بالبطاقة — بوّابةٌ ناقصة تأخذ المال ولا تُنشئ طلبًا.'),
+            ]);
+        }
+
+        Activity::log('updated', 'حدّث بوّابة الدفع');
+
+        return back()->with('toast', ['msg' => __('حُفظت بوّابة الدفع'), 'type' => 'success']);
     }
 
     public function saveStore(Request $request)

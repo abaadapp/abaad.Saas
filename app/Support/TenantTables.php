@@ -78,6 +78,8 @@ class TenantTables
          */
         'bank_accounts', 'bank_statement_lines',
         'pos_devices', 'pos_peripherals',
+        // وبوّابةُ الدفع — مفاتيحُ المحلّ التي يقبض بها، وسرّاها لا يخرجان
+        'payment_gateways',
         'journal_entries', 'journal_lines',
         'transactions', 'expenses',
         /*
@@ -89,6 +91,13 @@ class TenantTables
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',
         'orders', 'order_items', 'order_item_addons', 'order_item_components', 'order_edits',
+        /*
+         * ونيّاتُ الدفع بعد الطلبات: كلُّ نيّةٍ نجحت تشير إلى طلبها.
+         *
+         * وتُحفظ ولا تُهمَل: دفعةٌ وصلت ولم تجد طلبًا تُقرأ منها وحدها —
+         * وهي المال الذي يسأل عنه زبونٌ بعد شهر.
+         */
+        'store_payment_intents',
         // وعلاماتُ الطاولة بعد بنودها: مفتاحُها يشير إلى بندٍ أو إضافة
         'order_prep_checks',
         /*
@@ -291,6 +300,14 @@ class TenantTables
     public const SECRETS = [
         'users' => ['password', 'remember_token'],
         'whatsapp_connections' => ['access_token'],
+        /*
+         * ومفاتيحُ القبض لا تخرج في ملفٍّ يُنزَّل.
+         *
+         * من يملك المفتاحَ السرّيّ يفتح دفعاتٍ باسم المحلّ، ومن يملك سرَّ
+         * التوقيع يصنع إشعارًا مقبولًا فيُنشئ طلبًا مدفوعًا بلا مال. وملفُّ
+         * نسخةٍ يُرسَل في بريدٍ أو يُنسى في مجلّد تنزيلات.
+         */
+        'payment_gateways' => ['secret_key', 'hmac_secret'],
         /*
          * ورمزا Google لا يخرجان في ملفٍّ يُنزَّل.
          *

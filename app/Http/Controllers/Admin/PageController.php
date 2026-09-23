@@ -834,6 +834,26 @@ class PageController extends Controller
                  */
                 'serves' => $b ? Storefront::serves($b) : Storefront::SERVES_NONE,
                 /*
+                 * وبوّابةُ الدفع — حالُها لا مفاتيحُها.
+                 *
+                 * السرّان لا يخرجان من الخادم أبدًا: خصائصُ Inertia تُقرأ في
+                 * مصدر الصفحة بضغطةٍ على «عرض المصدر». فتُقال الحالُ — أهي
+                 * مضبوطةٌ ومكتملة — ويُكتبان من جديدٍ إن أراد تبديلهما.
+                 */
+                'gateway' => (function () {
+                    $g = \App\Models\PaymentGateway::where('business_id', Demo::bid())
+                        ->where('provider', \App\Models\PaymentGateway::PAYMOB)->first();
+
+                    return [
+                        'active' => (bool) ($g?->active ?? false),
+                        'public_key' => (string) ($g?->public_key ?? ''),
+                        'card_integration_id' => (string) ($g?->card_integration_id ?? ''),
+                        'has_secret' => filled($g?->secret_key),
+                        'has_hmac' => filled($g?->hmac_secret),
+                        'ready' => (bool) ($g?->ready() ?? false),
+                    ];
+                })(),
+                /*
                  * وهل في واجهته سلّةٌ وإتمامُ طلب؟ — تُفتح به بطاقةُ التوصيل.
                  *
                  * رسمُ التوصيل ومناطقُه وأوقاتُه يقرؤها إتمامُ الطلب وحده

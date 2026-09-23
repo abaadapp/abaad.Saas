@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\StorePaymentIntent;
 use App\Models\Review;
 use App\Support\FlowerOrder;
 use App\Support\Money;
@@ -40,7 +41,13 @@ use Illuminate\Validation\ValidationException;
  */
 class RibbonController extends Controller
 {
-    private const PATHS = ['shop', 'cart', 'checkout', 'p', 'done'];
+    /*
+     * و`paying` صفحةُ العودة من بوّابة الدفع — لا تكتب شيئًا.
+     *
+     * وهي من مسارات المتجر لا بابًا على حدة: فتُبنى لها الترويسةُ والتذييل
+     * وتُقرأ بلغتها كأيّ صفحة، ويصحّ رابطُها على الطرق الثلاث إلى العنوان.
+     */
+    private const PATHS = ['shop', 'cart', 'checkout', 'p', 'done', 'paying'];
 
     /* ═══════════ الصفحات ═══════════ */
 
@@ -63,6 +70,7 @@ class RibbonController extends Controller
             'cart' => $this->render('store.ribbon.cart', $ctx),
             'checkout' => $this->render('store.ribbon.checkout', $ctx + $this->checkoutData($business)),
             'done' => $this->render('store.ribbon.done', $ctx + $this->done($business, (int) $second, $lang)),
+            'paying' => $this->paying($business, (string) $second, $ctx),
         };
     }
 
@@ -84,9 +92,29 @@ class RibbonController extends Controller
     public function place(Business $business, Request $request, string $base): JsonResponse
     {
         try {
+            /*
+             * والبطاقةُ لا تُنشئ طلبًا هنا — تفتح صفحةَ البوّابة.
+             *
+             * الطلبُ يُكتب حين يصل المال، من الإشعار الموقَّع وحدَه (انظر
+             * `Store\PaymobController`). ولو كُتب قبله لَخصم كلُّ زائرٍ فتح
+             * صفحةَ الدفع ثمّ أغلقها باقةً من الرفّ.
+             */
+            if ($request->input('pay') === WebCheckout::PAY_CARD) {
+                return response()->json([
+                    'ok' => true,
+                    'redirect' => WebCheckout::toCard($business, $request->all(), $this->lang()),
+                ]);
+            }
+
             $order = WebCheckout::place($business, $request->all(), $this->lang());
         } catch (ValidationException $e) {
             return response()->json(['ok' => false, 'errors' => $e->errors()], 422);
+        } catch (\RuntimeException $e) {
+            // وبوّابةٌ لم تُجب لا تُترك صفحةً بيضاء: يُقال له ويُعرض عليه غيرُها
+            return response()->json([
+                'ok' => false,
+                'errors' => ['pay' => [__('تعذّر فتحُ صفحة الدفع — جرّب طريقةً أخرى أو أعد المحاولة.')]],
+            ], 422);
         }
 
         return response()->json([
@@ -282,10 +310,18 @@ class RibbonController extends Controller
         ];
     }
 
-    private function done(Business $business, int $id, string $lang): array
+    /**
+     * صفحةُ التأكيد — ومفتاحُها رمزٌ في الرابط لا رقمُ الطلب.
+     *
+     * و`$trusted` لمن وصل من صفحة العودة بعد الدفع: المرجعُ هناك أُثبت
+     * بالإشعار الموقَّع، فقد فُتح البابُ بمفتاحٍ أقوى من هذا. ولا تُقرأ
+     * إلّا من الكود — لا من الطلب، وإلّا صارت بابًا يُفتح بالرقم.
+     */
+    private function done(Business $business, int $id, string $lang, bool $trusted = false): array
     {
         $order = Order::where('business_id', $business->id)->with('items')->find($id);
-        abort_if($order === null || ! hash_equals(WebCheckout::token($order), (string) request()->query('t', '')), 404);
+        abort_if($order === null, 404);
+        abort_unless($trusted || hash_equals(WebCheckout::token($order), (string) request()->query('t', '')), 404);
 
         $currency = Storefront::currency($business);
         $s = WebCheckout::settings((int) $business->id);
@@ -351,6 +387,34 @@ class RibbonController extends Controller
         app()->setLocale($lang);
 
         return $lang;
+    }
+
+    /**
+     * عاد الزائرُ من بوّابة الدفع — فيُقرأ ما كتبه الإشعار.
+     *
+     * ولا يُقرأ شيءٌ ممّا في الرابط: هو في يد الزائر، ومن كتب فيه «نجح»
+     * بيده لا يُصدَّق. والمرجعُ وحده يُؤخذ منه — واسمٌ عشوائيٌّ لا يُخمَّن.
+     *
+     * وقد تسبق عودتُه الإشعارَ بثوانٍ، فيُقال له «نؤكّد دفعتك» ولا يُدَّعى
+     * فشلٌ لم يقع: صفحةٌ تقول «فشل» على مالٍ خرج من حسابه أسوأُ من انتظار.
+     */
+    private function paying(Business $business, string $reference, array $ctx): Response
+    {
+        $intent = StorePaymentIntent::where('business_id', $business->id)
+            ->where('reference', $reference)->firstOrFail();
+
+        if ($intent->order_id !== null) {
+            $order = Order::find($intent->order_id);
+
+            if ($order !== null) {
+                return $this->render(
+                    'store.ribbon.done',
+                    $ctx + $this->done($business, (int) $order->id, $ctx['lang'], trusted: true),
+                );
+            }
+        }
+
+        return $this->render('store.ribbon.paying', $ctx + ['paid' => $intent->status === StorePaymentIntent::PAID]);
     }
 
     private function render(string $view, array $data): Response

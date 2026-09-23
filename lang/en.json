@@ -6504,5 +6504,21 @@
     "يُكتب أسفل كل صفحة — واتركه فارغًا فيبقى «FLOWERS · LOUNGE · AND MORE»": "Printed at the foot of every page — leave it empty to keep “FLOWERS · LOUNGE · AND MORE”",
     "ثمانية أحرف على الأقل فيها حرف ورقم — أو اتركها فارغة فتُولَّد وتُعرض لك مرّةً واحدة": "At least eight characters with a letter and a digit — or leave it empty and one is generated and shown to you once",
     "اتركها فارغة للإبقاء على الحالية — والجديدة ثمانية أحرف فيها حرف ورقم": "Leave it empty to keep the current one — a new one is eight characters with a letter and a digit",
-    "اختر طريقةً واحدة للكرت: رسالةً تكتبها أو ملفًّا ترفعه.": "Choose one way for the card: a message you write, or a file you upload."
+    "اختر طريقةً واحدة للكرت: رسالةً تكتبها أو ملفًّا ترفعه.": "Choose one way for the card: a message you write, or a file you upload.",
+    "مفاتيحُك أنت من لوحة Paymob — والمال يصل حسابك البنكي مباشرةً ولا يمرّ بأبعاد.": "Your own keys from the Paymob dashboard — the money reaches your bank account directly and never passes through Abaad.",
+    "المفتاح العامّ": "Public key",
+    "رقم تكامل البطاقة": "Card integration ID",
+    "المفتاح السرّي": "Secret key",
+    "سرّ التوقيع": "HMAC secret",
+    "عنوان الإشعار (Callback URL)": "Callback URL",
+    "حفظ بوّابة الدفع": "Save payment gateway",
+    "دفعةٌ وصلت ولم يُنشأ لها طلب — :amount": "A payment arrived with no order behind it — :amount",
+    "أكمل المفاتيح الأربعة قبل تشغيل الدفع بالبطاقة — بوّابةٌ ناقصة تأخذ المال ولا تُنشئ طلبًا.": "Fill in all four keys before turning card payment on — a half-built gateway takes the money and creates no order.",
+    "حُفظت بوّابة الدفع": "Payment gateway saved",
+    "تعذّر فتحُ صفحة الدفع — جرّب طريقةً أخرى أو أعد المحاولة.": "We could not open the payment page — try another method or try again.",
+    "الدفع بالبطاقة": "Card payment",
+    "pk_live_… — يظهر للزائر، وهذا موضعه": "pk_live_… — visible to the visitor, and that is where it belongs",
+    "Integration ID من لوحة Paymob": "Integration ID from the Paymob dashboard",
+    "اقبل الدفع بالبطاقة": "Accept card payment",
+    "الصقه في لوحة Paymob — بلا هذا لا يصلك طلبٌ من دفعةٍ ناجحة": "Paste it into the Paymob dashboard — without it no successful payment reaches you as an order"
 }

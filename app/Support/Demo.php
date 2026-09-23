@@ -3844,6 +3844,31 @@ class Demo
             ]);
         }
 
+        /*
+         * ═══ ومالٌ وصل ولم يجد طلبًا يحمله ═══
+         *
+         * ينفد الصنفُ بين لحظةِ الدفع ولحظةِ تصديق البنك، فيُردّ إنشاءُ
+         * الطلب والمالُ مقبوض. ولا يُحلّ في كود: يردُّ صاحبُ المحلّ المالَ
+         * أو يجهّز بديلًا، وكلاهما قرارُه.
+         *
+         * وبلا هذا الصفّ لا يعرف أنّ شيئًا وقع: لا طلبَ في القائمة، ولا
+         * زبونَ يعرف بمن يتّصل — ومالٌ في حسابه لا يقابله شيء.
+         */
+        $stray = \App\Models\StorePaymentIntent::where('business_id', $bid)
+            ->where('status', \App\Models\StorePaymentIntent::PAID)
+            ->whereNull('order_id')->orderByDesc('id')->limit($limit)->get();
+
+        foreach ($stray as $s) {
+            $add('stray-payment-'.$s->id, [
+                'text' => __('دفعةٌ وصلت ولم يُنشأ لها طلب — :amount', ['amount' => $s->amount]),
+                'time' => optional($s->paid_at)->format('Y-m-d H:i'),
+                'section' => 'orders',
+                'icon' => 'credit-card',
+                'color' => 'danger',
+                'url' => route('admin.orders.index'),
+            ]);
+        }
+
         $pending = Order::where('business_id', $bid)->sold()
             ->whereIn('status', ['جديد', 'قيد التجهيز'])->orderByDesc('id')->limit($limit)->get();
         /*

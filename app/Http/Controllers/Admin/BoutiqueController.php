@@ -113,6 +113,14 @@ class BoutiqueController extends Controller
             'statement' => $statement,
             'period' => $period,
             'periods' => $this->periodOptions(),
+            /*
+             * وأُغلق الشهر؟ — يُقال للشاشة ولا تحسبه بنفسها.
+             *
+             * «الشهرُ الجاري» عند متصفّحٍ على توقيتٍ آخر غيرُه عند الخادم،
+             * فالزرُّ يُعطَّل بحساب الخادم نفسِه الذي يردّ الطلب — وإلّا
+             * عُرض زرٌّ حيّ يُردّ عند ضغطه بلا أن يفهم صاحبُه لِمَ.
+             */
+            'closed' => Boutiques::isClosed($period),
             'settlement' => $settlement ? [
                 'id' => $settlement->id,
                 'number' => $settlement->number,

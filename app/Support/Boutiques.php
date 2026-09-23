@@ -132,6 +132,23 @@ final class Boutiques
     }
 
     /**
+     * أانتهى هذا الشهرُ فصار يُسوَّى؟
+     *
+     * ═══ ولا تُصدَر تسويةُ شهرٍ ما زال يبيع ═══
+     *
+     * التسويةُ تُجمّد الأرقام، وفهرسُ القاعدة الفريد يمنع ثانيةً لشهرٍ
+     * واحد. فمن أصدرها في العاشر أخذ عشرةَ أيّام وأغلق البابَ على عشرين:
+     * ما يُباع في بقيّة الشهر يبقى في الكشف حيًّا ولا يجد تسويةً تحمله،
+     * ولا تصرخ شاشةٌ ولا يختلّ ميزان — يضيع مالُ البوتيك صامتًا.
+     *
+     * فالشهرُ الجاري — وما بعده — لا يُسوَّى حتّى يُغلق.
+     */
+    public static function isClosed(string $period): bool
+    {
+        return $period < now()->format('Y-m');
+    }
+
+    /**
      * ما بِيع لبوتيكٍ في شهر — صنفًا صنفًا، ثمّ مجموعًا.
      *
      * ═══ والحسبةُ من لقطة البند لا من بطاقة البوتيك ═══
@@ -239,6 +256,10 @@ final class Boutiques
      */
     public static function settle(Business $business, Boutique $boutique, string $period, ?string $employee = null): BoutiqueSettlement
     {
+        if (! self::isClosed($period)) {
+            throw new SettlementRefused(__('الشهرُ لم ينتهِ بعد — تُصدَر تسويتُه بعد آخر يومٍ فيه، وإلّا ضاع ما يُباع في بقيّته.'));
+        }
+
         $statement = self::statement((int) $business->id, (int) $boutique->id, $period);
 
         if ($statement['lines_count'] === 0) {

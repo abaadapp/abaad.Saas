@@ -53,6 +53,17 @@ class ProductController extends Controller
      *
      * وموضعٌ واحد للقاعدة كي لا يفترق البابان ثانيةً.
      */
+    /**
+     * البوتيكُ من بوتيكات هذا المتجر — أو لا شيء.
+     *
+     * ومن لا يُؤوي بوتيكاتٍ لا يُقبل منه الحقلُ أصلًا: `Rule::in([])` تردّ
+     * كلَّ قيمة، فلا يُسند صنفٌ إلى بوتيكٍ في متجرٍ أُطفئ عنده البابُ.
+     */
+    private function boutiqueRule(): array
+    {
+        return ['nullable', 'integer', Rule::exists('boutiques', 'id')->where('business_id', $this->bid())];
+    }
+
     private function categoryRule(): array
     {
         return ['nullable', 'integer', Rule::exists('categories', 'id')->where('business_id', $this->bid())];
@@ -167,6 +178,14 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
             'category_id' => $this->categoryRule(),
             /*
+             * وصاحبُ الصنف إن كان لبوتيك — ومن لا يُؤوي بوتيكاتٍ لا يُقبل منه.
+             *
+             * والقاعدةُ تُبنى في موضعٍ واحد (`boutiqueRule`): حقلٌ يُحرَس في
+             * الإنشاء ويُنسى في التعديل يُسند صنفًا إلى بوتيكِ متجرٍ آخر
+             * بتبديل رقمٍ في الطلب.
+             */
+            'boutique_id' => $this->boutiqueRule(),
+            /*
              * الرمز والباركود فريدان داخل المتجر.
              *
              * صنفان بباركودٍ واحد يجعلان الماسح يختار أحدهما — فيُخصم من
@@ -275,6 +294,14 @@ class ProductController extends Controller
             'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category_id' => $this->categoryRule(),
+            /*
+             * وصاحبُ الصنف إن كان لبوتيك — ومن لا يُؤوي بوتيكاتٍ لا يُقبل منه.
+             *
+             * والقاعدةُ تُبنى في موضعٍ واحد (`boutiqueRule`): حقلٌ يُحرَس في
+             * الإنشاء ويُنسى في التعديل يُسند صنفًا إلى بوتيكِ متجرٍ آخر
+             * بتبديل رقمٍ في الطلب.
+             */
+            'boutique_id' => $this->boutiqueRule(),
             /*
              * الرمز والباركود فريدان داخل المتجر.
              *
@@ -503,6 +530,14 @@ class ProductController extends Controller
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer'],
             'category_id' => $this->categoryRule(),
+            /*
+             * وصاحبُ الصنف إن كان لبوتيك — ومن لا يُؤوي بوتيكاتٍ لا يُقبل منه.
+             *
+             * والقاعدةُ تُبنى في موضعٍ واحد (`boutiqueRule`): حقلٌ يُحرَس في
+             * الإنشاء ويُنسى في التعديل يُسند صنفًا إلى بوتيكِ متجرٍ آخر
+             * بتبديل رقمٍ في الطلب.
+             */
+            'boutique_id' => $this->boutiqueRule(),
             // ±٩٠٪ سقفٌ يمنع الغلطة المطبعية: «٥٠٠» بدل «٥» تمسح تسعيرة متجر
             'percent' => ['nullable', 'numeric', 'min:-90', 'max:900'],
         ], ['category_id.exists' => __('قسم غير معروف')]);

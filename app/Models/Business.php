@@ -15,6 +15,8 @@ class Business extends Model
         'is_demo' => 'boolean',
         // ختمُ التاجر على هويّة متجره — انظر `Support\ShopIdentity`
         'identity_confirmed_at' => 'datetime',
+        // أيُؤوي بوتيكاتٍ تبيع تحت سقفه؟ — انظر `Support\Boutiques`
+        'boutiques_enabled' => 'boolean',
     ];
 
     /**
@@ -152,6 +154,7 @@ class Business extends Model
         return in_array($this->storefront_theme, self::THEMES, true) ? $this->storefront_theme : null;
     }
 
+    public function boutiques(): HasMany { return $this->hasMany(Boutique::class); }
     public function plan(): BelongsTo { return $this->belongsTo(Plan::class); }
     public function users(): HasMany { return $this->hasMany(User::class); }
     public function branches(): HasMany { return $this->hasMany(Branch::class); }

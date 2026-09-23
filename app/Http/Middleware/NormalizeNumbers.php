@@ -70,6 +70,8 @@ class NormalizeNumbers
         // النسب والحدود
         'vat_rate', 'loyalty_earn_rate', 'percent',
         'wastage_percent', 'threshold', 'monthly_target',
+        // ونسبةُ المحلّ من بوتيكٍ يبيع تحت سقفه — يكتبها بلوحةٍ عربيّة كغيرها
+        'commission_rate',
 
         // الكميّات — عشريّةٌ في التركيب والاستلام
         'quantity', 'inventory_quantity',

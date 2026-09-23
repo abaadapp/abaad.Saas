@@ -172,6 +172,8 @@ class PageController extends Controller
                 'ends_at' => optional($model?->ends_at)->format('Y-m-d'),
                 'tier' => $model?->tier,
                 'storefront_theme' => $model?->storefront_theme,
+                // ومفتاحُ البوتيكات — منطقٌ لا نصّ، والغائبُ مغلق
+                'boutiques_enabled' => (bool) ($model?->boutiques_enabled ?? false),
                 'logo_url' => self::logoUrl($model?->logo),
                 // حساب الدخول يُعرض ولا يُعاد إنشاؤه من هنا
                 'owner_email' => $model ? MerchantAccount::owner($model)?->email : null,

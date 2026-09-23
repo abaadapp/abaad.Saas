@@ -57,6 +57,13 @@ class TenantTables
          * قالب — لكنّها تسبق لأنّها وصفٌ يُقرأ قبل ما وُصف به.
          */
         'custom_order_templates', 'custom_order_fields', 'custom_order_field_options',
+        /*
+         * والبوتيكاتُ قبل الأصناف — لا بعدها.
+         *
+         * `products.boutique_id` مفتاحٌ أجنبيّ يشير إليها، فصفُّ صنفٍ يُكتب
+         * قبل صاحبه يردّه المفتاح وتسقط الاستعادةُ في منتصفها.
+         */
+        'boutiques',
         'products', 'product_variants', 'product_images',
         'addons', 'product_addons', 'recipe_items',
         /* والمواسمُ بعد الأصناف: صلتُها تشير إليها */
@@ -73,6 +80,11 @@ class TenantTables
         'pos_devices', 'pos_peripherals',
         'journal_entries', 'journal_lines',
         'transactions', 'expenses',
+        /*
+         * وتسوياتُ البوتيكات بعد المصروفات: كلُّ تسويةٍ تشير إلى مصروفها،
+         * وهو المستحقُّ الذي يُسدَّد به ما للبوتيك.
+         */
+        'boutique_settlements',
         'fixed_assets', 'inventory_movements', 'stock_adjustments', 'stock_transfers',
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',

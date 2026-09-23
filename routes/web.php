@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\CustomAlertController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
 use App\Http\Controllers\Admin\CustomerInvoiceController;
+use App\Http\Controllers\Admin\BoutiqueController;
 use App\Http\Controllers\Admin\CustomOrderTemplateController;
 use App\Http\Controllers\Admin\DocumentPrintController;
 use App\Http\Controllers\Admin\EmployeeController;
@@ -566,6 +567,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/products/seasons/{id}/reminders', [SeasonController::class, 'storeReminder'])->name('seasons.reminders.store');
     Route::patch('/products/seasons/{id}/reminders/{reminderId}', [SeasonController::class, 'updateReminder'])->name('seasons.reminders.update');
     Route::delete('/products/seasons/{id}/reminders/{reminderId}', [SeasonController::class, 'destroyReminder'])->name('seasons.reminders.destroy');
+    /*
+     * البوتيكات — تبويبٌ ثانٍ في قسم المنتجات، وأبوابُها تحت صلاحيّته.
+     *
+     * وقبل `products/{id}` للسبب نفسِه الذي سبقته المواسمُ لأجله: المعرّفُ
+     * نمطٌ يبتلع كلَّ كلمةٍ بعد `products/` إن تأخّرت عنه.
+     *
+     * ومن لا يُؤوي بوتيكاتٍ يُردّ ٤٠٤ من المتحكّم لا من هنا: الحارسُ على
+     * الشركة لا على المسار، فيُقرأ في موضعٍ واحد ولا يُنسى في بابٍ منها.
+     */
+    Route::get('/products/boutiques', [BoutiqueController::class, 'index'])->name('boutiques.index');
+    Route::post('/products/boutiques', [BoutiqueController::class, 'store'])->name('boutiques.store');
+    Route::get('/products/boutiques/{id}', [BoutiqueController::class, 'show'])->name('boutiques.show');
+    Route::put('/products/boutiques/{id}', [BoutiqueController::class, 'update'])->name('boutiques.update');
+    Route::delete('/products/boutiques/{id}', [BoutiqueController::class, 'destroy'])->name('boutiques.destroy');
+    Route::post('/products/boutiques/{id}/products', [BoutiqueController::class, 'attach'])->name('boutiques.attach');
+    Route::post('/products/boutiques/{id}/settle', [BoutiqueController::class, 'settle'])->name('boutiques.settle');
     Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');
     Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
     // تعطيلُ صنفٍ وتفعيلُه — البديلُ الذي يقصده أكثرُ من يضغط «حذف»

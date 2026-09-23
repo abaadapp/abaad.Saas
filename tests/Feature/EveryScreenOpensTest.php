@@ -38,6 +38,16 @@ class EveryScreenOpensTest extends TestCase
         ]);
 
         $business = DemoStore::create('متجر الفحص', 'صغير');
+
+        /*
+         * ومتجرُ الفحص يُؤوي كلَّ ما يُؤويه متجر.
+         *
+         * شاشةُ «البوتيكات» تردّ ٤٠٤ لمن لم يُفتح له بابُها — وهو صوابٌ لا
+         * عطب. لكنّ استثناءها من الكنس يتركها بلا حارسٍ يفتحها أصلًا، فيمرّ
+         * فيها ٥٠٠ بلا أن يراه أحد. ففتحُها هنا يكنسها حقًّا.
+         */
+        $business->update(['boutiques_enabled' => true]);
+
         $this->owner = $business->users()->where('role', 'admin')->firstOrFail();
 
         $platform = Business::create(['name' => 'المنصّة', 'type' => 'عام', 'status' => 'نشط']);

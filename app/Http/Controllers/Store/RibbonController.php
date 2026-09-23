@@ -13,6 +13,7 @@ use App\Support\FlowerOrder;
 use App\Support\Money;
 use App\Support\Seo;
 use App\Support\Store\RibbonTexts;
+use App\Support\Store\GiftCard;
 use App\Support\Store\WebCheckout;
 use App\Support\Storefront;
 use App\Support\Website\MerchantData;
@@ -93,6 +94,44 @@ class RibbonController extends Controller
         ]);
     }
 
+    /**
+     * يرفع الزائرُ ملفَّ كرت الهدية — صورةً بخطّ يده أو تصميمًا جاهزًا.
+     *
+     * ═══ ولمَ بابٌ على حدة ═══
+     *
+     * إتمامُ الطلب يُرسَل JSON ويُعاد تسعيرُه في الخادم مرّاتٍ قبل أن يُضغط
+     * «تأكيد». ورفعُ ملفٍّ في كلّ مرّةٍ يعني رفعَه مرارًا — أو تحويلَ البابِ
+     * كلِّه إلى `multipart` وهو يُستعمل في السلّة والتسعير أيضًا.
+     *
+     * فالملفُّ يُرفع مرّةً ويُعاد عنه رمز، ويُرسَل الرمزُ مع الطلب. وهو
+     * معلَّقٌ حتى يُتمّ صاحبُه، ويُكنس بعد يومٍ إن لم يُتمّ — انظر
+     * `Store\GiftCard`.
+     *
+     * والبابُ مفتوحٌ لزائرٍ مجهول، فحُدَّ بالنوع والحجم وبعدد المحاولات في
+     * المسار نفسِه.
+     */
+    public function giftCard(Business $business, Request $request): JsonResponse
+    {
+        $bid = (int) $business->id;
+
+        if (! GiftCard::enabled($bid)) {
+            return response()->json(['ok' => false, 'errors' => ['file' => [__('كرت الهدية غير متاح في هذا المتجر.')]]], 422);
+        }
+
+        try {
+            $request->validate([
+                'file' => ['required', 'file', 'mimes:'.implode(',', GiftCard::MIMES), 'max:'.GiftCard::MAX_KB],
+            ], [
+                'file.mimes' => __('نوع الملف غير مدعوم — صورة أو PDF.'),
+                'file.max' => __('الملف أكبر من المسموح.'),
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['ok' => false, 'errors' => $e->errors()], 422);
+        }
+
+        return response()->json(['ok' => true] + GiftCard::hold($request->file('file')));
+    }
+
     /* ═══════════ بيانات الصفحات ═══════════ */
 
     private function home(Business $business, string $lang): array
@@ -170,6 +209,7 @@ class RibbonController extends Controller
     {
         $bid = (int) $business->id;
         $s = WebCheckout::settings($bid);
+        $currency = Storefront::currency($business);
 
         return [
             'delivery' => $s,
@@ -177,6 +217,21 @@ class RibbonController extends Controller
             'accepts' => WebCheckout::accepts($business),
             'minDate' => today()->toDateString(),
             'maxDate' => today()->addDays(WebCheckout::MAX_DAYS_AHEAD)->toDateString(),
+            /*
+             * وكرتُ الهدية: أيُعرض، وبكم، وما يُقبل رفعه معه.
+             *
+             * والثمنُ يُبنى هنا لا في المتصفّح: عملةُ المحلّ وخاناتُها تُقرأ
+             * من إعداده، وحسبةٌ في الشاشة تكتب «0.5 ر.ع» حيث يكتب النظامُ
+             * كلُّه «٠٫٥٠٠ ر.ع».
+             */
+            'giftCard' => [
+                'on' => GiftCard::enabled($bid),
+                'price' => GiftCard::price($bid),
+                'price_text' => Money::format(GiftCard::price($bid), $currency),
+                'accept' => '.'.implode(',.', GiftCard::MIMES),
+                'max_kb' => GiftCard::MAX_KB,
+                'aligns' => GiftCard::ALIGNS,
+            ],
         ];
     }
 
@@ -226,6 +281,7 @@ class RibbonController extends Controller
             'identity' => $identity,
             'hours' => $s['hours'],
             'deliveryNote' => $s['note'],
+            'imageNote' => $s['image_note'],
             'accepts' => WebCheckout::accepts($business),
             'canonical' => Storefront::canonical($business->site_slug, $bid),
             'analytics' => Seo::tagFor($bid),

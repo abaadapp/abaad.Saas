@@ -162,6 +162,17 @@ class StorefrontController extends Controller
         return app(RibbonController::class)->place($this->themed($slug), $request, $this->base($slug));
     }
 
+    /** رفعُ ملفّ كرت الهدية — قبل الطلب لا معه (انظر `RibbonController::giftCard`) */
+    public function giftCard(Request $request, string $slug)
+    {
+        return app(RibbonController::class)->giftCard($this->themed($slug), $request);
+    }
+
+    public function giftCardByHost(Request $request, string $host)
+    {
+        return app(RibbonController::class)->giftCard($this->themedHost($host), $request);
+    }
+
     public function quoteByHost(Request $request, string $host)
     {
         return app(RibbonController::class)->quote($this->themedHost($host), $request);

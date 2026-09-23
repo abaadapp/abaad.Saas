@@ -192,6 +192,23 @@ class MarketingController extends Controller
             'store_delivery_slots' => ['nullable', 'string', 'max:400'],
             'store_hours' => ['nullable', 'string', 'max:120'],
             'store_delivery_note' => ['nullable', 'string', 'max:200'],
+            /*
+             * وتنبيهُ الصورة — سطرٌ لا فقرة.
+             *
+             * ومئتان حدُّه كحدّ أختِه: يُعرض تحت الصورة وفوق زرّ الطلب، وما
+             * طال هناك لا يُقرأ — يُدفع الزرُّ خارج الشاشة على الجوّال.
+             * والزائدُ يُردّ برسالةٍ ولا يُقصّ بصمت: من كتب ثلاثمئة وقُصّ له
+             * عند المئتين يقرأ جملتَه مبتورةً في وجه زبونه.
+             */
+            'store_image_note' => ['nullable', 'string', 'max:200'],
+            /*
+             * وكرتُ الهدية — صنفٌ يُباع في الموقع (انظر `Store\GiftCard`).
+             *
+             * والفراغُ في ثمنه يعني الافتراضيّ لا المجّان: من أراده مجّانًا
+             * كتب صفرًا، ومن تركه لم يبلغ الحقل.
+             */
+            'store_gift_card' => ['sometimes', 'boolean'],
+            'store_gift_card_price' => ['nullable', 'numeric', 'min:0', 'max:1000'],
         ]);
 
         $slug = Storefront::slug($request->input('site_slug'));

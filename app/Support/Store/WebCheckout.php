@@ -73,7 +73,7 @@ final class WebCheckout
     /**
      * إعداداتُ التوصيل والدفع كما ضبطها صاحبُ المحلّ.
      *
-     * @return array{fee: float, free_over: ?float, areas: list<string>, slots: list<string>, hours: string, note: string, cod: bool, transfer: bool, bank: string, allow_orders: bool}
+     * @return array{fee: float, free_over: ?float, areas: list<string>, slots: list<string>, hours: string, note: string, image_note: string, cod: bool, transfer: bool, bank: string, allow_orders: bool}
      */
     public static function settings(int $businessId): array
     {
@@ -87,6 +87,8 @@ final class WebCheckout
             'slots' => $list((string) $site['store_delivery_slots']),
             'hours' => trim((string) $site['store_hours']),
             'note' => trim((string) $site['store_delivery_note']),
+            /* وتنبيهُ الصورة — تقرؤه الصفحاتُ الثلاث من هنا لا من ثلاثة مواضع */
+            'image_note' => trim((string) $site['store_image_note']),
             'cod' => ($site['store_pay_cod'] ?? '1') === '1',
             'transfer' => ($site['store_pay_transfer'] ?? '0') === '1',
             'bank' => trim((string) $site['store_bank']),
@@ -140,6 +142,22 @@ final class WebCheckout
 
         $lines = $sale->priceItems($items, $lock);
         self::assertPublished($bid, $lines);
+
+        /*
+         * وكرتُ الهدية سطرٌ كأيّ سطر — يُضاف هنا وينتهي أمرُه.
+         *
+         * بعد `assertPublished` لا قبله: صنفُ الكرت غيرُ منشورٍ عمدًا (لا
+         * يُشترى وحدَه من الشبكة)، ولو مرّ على الفحص لَرُدّت كلُّ سلّةٍ
+         * فيها كرت بـ«صنفٌ لم يعد متاحًا».
+         *
+         * وبإدخاله في الأسطر يقرؤه ما بعده كلُّه بلا استثناء: المجموعُ
+         * الفرعيّ، والضريبةُ، وحصّةُ الخصم، وبندُ الطلب، وتقريرُ الأصناف.
+         * ولو حُسب رسمًا على حدةٍ — كرسم التوصيل — لَوجب أن يُذكر في كلّ
+         * موضعٍ من هذه، ويُنسى في واحد.
+         */
+        if (GiftCard::wanted($bid, $payload)) {
+            $lines[] = GiftCard::line($bid);
+        }
 
         $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty']), 3);
 
@@ -212,6 +230,8 @@ final class WebCheckout
             $customer = self::customer($bid, $form, $lang);
             $method = self::payments($bid)[$form['pay']];
             $scheduled = self::scheduledFor($form);
+            // وقد دخل الكرتُ الأسطرَ في `quote` — وهنا تُكتب أعمدتُه على الطلب
+            $wantsCard = GiftCard::wanted($bid, $payload);
 
             $order = (new OrderNumbers($bid))->createNumbered([
                 'business_id' => $bid,
@@ -239,10 +259,22 @@ final class WebCheckout
                 'ordered_at' => now(),
                 'status' => OrderStatus::PENDING,
                 'notes' => null,
-            ] + FlowerOrder::attributes([
+            ] + GiftCard::columns(
+                $wantsCard,
+                $form['card_align'] ?? null,
+                $wantsCard ? GiftCard::keep($bid, $form['card_file'] ?? null, $form['card_file_name'] ?? null) : null,
+            ) + FlowerOrder::attributes([
                 'fulfillment_type' => $form['fulfil'],
-                'recipient_name' => $form['name'],
-                'recipient_phone' => $form['phone'],
+                /*
+                 * والمستلِمُ من كتبه الزبون — وإلّا فهو نفسُه.
+                 *
+                 * الفراغُ يعني «أنا»: من لم يملأ الحقل يشتري لنفسه، فيُنسخ
+                 * اسمُه ليبقى للطلب مستلِمٌ في كل شاشةٍ تقرؤه.
+                 */
+                'recipient_name' => filled($form['recipient_name'] ?? null) ? $form['recipient_name'] : $form['name'],
+                'recipient_phone' => filled($form['recipient_phone'] ?? null) ? $form['recipient_phone'] : $form['phone'],
+                // واسمُ المُرسِل هو المشتري — فيُطبع على الكرت بلا أن يُسأل عنه
+                'sender_name' => $form['name'],
                 'scheduled_for' => $scheduled?->toDateTimeString(),
                 'card_message' => $form['card'] ?? null,
                 'delivery_address' => $form['fulfil'] === FlowerOrder::DELIVERY
@@ -280,6 +312,10 @@ final class WebCheckout
             $recipeUse = [];
             foreach ($lines as $l) {
                 if (! $l['product']) {
+                    continue;
+                }
+                // وما لا رفَّ له لا يُخصم — كرتُ الهدية، كما في `SaleLines::demand`
+                if ($l['no_stock'] ?? false) {
                     continue;
                 }
                 if (! ($l['has_recipe'] ?? false)) {
@@ -448,6 +484,31 @@ final class WebCheckout
             'slot' => ['nullable', 'string', 'max:60'],
             'card' => ['nullable', 'string', 'max:'.FlowerOrder::CARD_MAX],
             'pay' => ['required', 'in:'.implode(',', array_keys($payments) ?: ['-'])],
+
+            /*
+             * ═══ والمستلِمُ غيرُ المشتري ═══
+             *
+             * كان الاسمُ والهاتفُ يُنسخان مستلِمًا كما هما — فمن أهدى باقةً
+             * لأمّه سُجّل هو المستلِم، ووصل المنسّقُ إلى رقمه هو ليسأل عن
+             * عنوانٍ لا يعرفه. وهو أكثرُ ما يقع في محلّ ورد: أكثرُ الطلبات
+             * تُشترى لغير مشتريها.
+             *
+             * واختياريٌّ لا مطلوب: من يشتري لنفسه لا يُسأل عن مستلِمٍ، وحقلٌ
+             * يُفرض عليه يُملأ باسمه مرّتين فلا يفرّق أحدٌ بعدها.
+             */
+            'recipient_name' => ['nullable', 'string', 'max:120'],
+            'recipient_phone' => FlowerOrder::PHONE_RULE,
+
+            /*
+             * وكرتُ الهدية — اختيارٌ بثمنٍ لا خانةُ نصّ.
+             *
+             * والنصُّ اختياريٌّ فيه: من يشتري الكرتَ ليكتبه بيده في المحلّ
+             * يطلبه بلا نصّ، ومن أرفق تصميمًا لا يحتاج أن يكتب شيئًا.
+             */
+            'gift_card' => ['nullable', 'boolean'],
+            'card_align' => ['nullable', 'in:'.implode(',', GiftCard::ALIGNS)],
+            'card_file' => ['nullable', 'string', 'max:64'],
+            'card_file_name' => ['nullable', 'string', 'max:160'],
         ], [
             'name.required' => __('اكتب اسمك.'),
             'phone.required' => __('اكتب رقم هاتفك.'),
@@ -457,7 +518,17 @@ final class WebCheckout
             'pay.in' => __('اختر وسيلة الدفع.'),
         ]);
 
-        $v->after(function ($v) use ($payload, $settings) {
+        $v->after(function ($v) use ($bid, $payload, $settings) {
+            /*
+             * وكرتٌ يُطلب من متجرٍ أطفأه يُردّ — لا يُبتلع صامتًا.
+             *
+             * الشاشةُ لا تعرضه، لكنّ من يعرف شكلَ الحمولة يُرسلها. وبلا هذا
+             * يمرّ الطلبُ بلا كرتٍ ولا ثمن، فينتظر الزبونُ كرتًا لا يأتي.
+             */
+            if (filter_var($payload['gift_card'] ?? false, FILTER_VALIDATE_BOOL) && ! GiftCard::enabled($bid)) {
+                $v->errors()->add('gift_card', __('كرت الهدية غير متاح في هذا المتجر.'));
+            }
+
             if (($payload['fulfil'] ?? null) === FlowerOrder::DELIVERY) {
                 if (trim((string) ($payload['address'] ?? '')) === '') {
                     $v->errors()->add('address', __('اكتب العنوان بالتفصيل.'));

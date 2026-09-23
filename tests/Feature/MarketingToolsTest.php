@@ -91,6 +91,8 @@ class MarketingToolsTest extends TestCase
             // التوصيلُ والاستلام — يقرؤها إتمامُ الطلب في الواجهة الخاصّة (Store\WebCheckout)
             'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
             'store_delivery_slots', 'store_hours', 'store_delivery_note',
+            // وكرتُ الهدية وثمنُه — يقرؤهما إتمامُ الطلب (Store\GiftCard)
+            'store_gift_card', 'store_gift_card_price',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

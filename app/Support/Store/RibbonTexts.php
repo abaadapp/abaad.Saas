@@ -25,6 +25,12 @@ final class RibbonTexts
         'fName' => 'الاسم الكامل', 'fPhone' => 'رقم الهاتف', 'fArea' => 'المنطقة', 'fAddress' => 'العنوان بالتفصيل (المنطقة، الشارع، رقم المنزل)',
         'delivery' => 'توصيل للعنوان', 'pickup' => 'استلام من المحل', 'pickupAddr' => 'الاستلام من المحل',
         'fCard' => 'رسالة تُكتب على كرت الهدية (اختياري)', 'cardHint' => 'حتى 500 حرف',
+        // المستلِمُ غيرُ المشتري — وأكثرُ الطلبات تُشترى لغيرِ مشتريها
+        'forOther' => 'الطلب هدية لشخصٍ آخر', 'fRecipient' => 'اسم المستلِم', 'fRecipientPhone' => 'هاتف المستلِم',
+        // والكرتُ صنفٌ يُباع — فيُقال ثمنُه حيث يُختار، لا في الفاتورة وحدها
+        'addCard' => 'أضف كرت هدية', 'cardAlign' => 'ترتيب النص', 'alignRight' => 'يمين', 'alignCenter' => 'وسط', 'alignLeft' => 'يسار',
+        'cardFile' => 'أرفق ملفًّا (اختياري)', 'cardFileHint' => 'صورة أو PDF · حتى 5 ميغابايت', 'cardFileWait' => 'يُرفع…', 'cardFileErr' => 'تعذّر رفع الملف',
+        'cardPreview' => 'كما يظهر على الكرت', 'remove' => 'إزالة',
         'payCod' => 'الدفع عند الاستلام', 'payCodNote' => 'نقدًا عند التسليم', 'payBank' => 'تحويل بنكي', 'payBankNote' => 'تصلك بيانات الحساب',
         'bankNote' => 'بعد تأكيد الطلب تظهر لك بيانات الحساب البنكي، ويُجهَّز الطلب بعد استلام التحويل.',
         'summary' => 'ملخص الطلب', 'promo' => 'كود الخصم', 'apply' => 'تطبيق', 'shipping' => 'التوصيل', 'discount' => 'الخصم', 'tax' => 'الضريبة', 'total' => 'الإجمالي', 'free' => 'مجاني', 'freeOver' => 'مجاني فوق :amount',
@@ -48,6 +54,10 @@ final class RibbonTexts
         'fName' => 'Full name', 'fPhone' => 'Phone number', 'fArea' => 'Area', 'fAddress' => 'Full address (area, street, house no.)',
         'delivery' => 'Deliver to address', 'pickup' => 'Pick up in store', 'pickupAddr' => 'Pick up in store',
         'fCard' => 'Message for the gift card (optional)', 'cardHint' => 'Up to 500 characters',
+        'forOther' => 'This order is a gift for someone else', 'fRecipient' => 'Recipient name', 'fRecipientPhone' => 'Recipient phone',
+        'addCard' => 'Add a gift card', 'cardAlign' => 'Text alignment', 'alignRight' => 'Right', 'alignCenter' => 'Center', 'alignLeft' => 'Left',
+        'cardFile' => 'Attach a file (optional)', 'cardFileHint' => 'Image or PDF · up to 5 MB', 'cardFileWait' => 'Uploading…', 'cardFileErr' => 'Could not upload the file',
+        'cardPreview' => 'As it appears on the card', 'remove' => 'Remove',
         'payCod' => 'Cash on delivery', 'payCodNote' => 'Pay when you receive it', 'payBank' => 'Bank transfer', 'payBankNote' => 'Account details shown to you',
         'bankNote' => 'After confirming, the bank details are shown to you. The order is prepared once the transfer is received.',
         'summary' => 'Order summary', 'promo' => 'Promo code', 'apply' => 'Apply', 'shipping' => 'Delivery', 'discount' => 'Discount', 'tax' => 'VAT', 'total' => 'Total', 'free' => 'Free', 'freeOver' => 'Free over :amount',

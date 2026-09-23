@@ -62,7 +62,7 @@ class NormalizeNumbers
          */
         'paid_amount',
         // رسومُ توصيل الموقع وحدُّ مجّانه — يكتبهما صاحبُ المحلّ في إعداداته
-        'store_delivery_fee', 'store_free_delivery_over',
+        'store_delivery_fee', 'store_free_delivery_over', 'store_gift_card_price',
 
         // الرواتب — وكانت كلُّها خارج القائمة
         'salary', 'basic_salary', 'basic', 'allowances', 'deductions', 'overtime',

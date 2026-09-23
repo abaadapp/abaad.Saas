@@ -1286,6 +1286,10 @@ class Demo
             'scheduled_for' => optional($o->scheduled_for)->format('Y-m-d\TH:i'),
             'occasion_type' => $o->occasion_type,
             'card_message' => $o->card_message,
+            // وترتيبُ النصّ ومرفقُه — يُعرضان ولا يُعدَّلان هنا: هما ما اشتراه الزبون
+            'card_align' => $o->card_align,
+            'card_file' => filled($o->card_file) ? route('admin.orders.giftcard', $o->id) : null,
+            'card_file_name' => $o->card_file_name,
             'sender_name' => $o->sender_name,
             'hide_sender' => (bool) $o->hide_sender,
             'delivery_address' => $o->delivery_address,

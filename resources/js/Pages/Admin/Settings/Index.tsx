@@ -74,6 +74,33 @@ interface NotificationRow {
     url?: string;
 }
 
+/*
+ * ═══ الحقولُ التي يملك التاجرُ أمرَها ═══
+ *
+ * وقائمتُها هنا صورةٌ من `CheckoutFields::FIELDS`، والحارسُ يقارنهما:
+ * حقلٌ يُضاف في الخادم ولا يُضاف هنا لا يجد التاجرُ له مفتاحًا، وحقلٌ
+ * يُعرض هنا بلا مقابلٍ هناك مفتاحٌ يُحرَّك ولا يفعل شيئًا.
+ */
+const CHECKOUT_FIELDS = [
+    { key: 'area', label: 'المنطقة', hint: 'تُسأل عند التوصيل — ومن ضبط قائمة مناطق فالاختيار منها' },
+    { key: 'address', label: 'العنوان بالتفصيل', hint: 'تُسأل عند التوصيل وحده' },
+    { key: 'date', label: 'موعد التسليم', hint: 'أطفئه إن كنت تسلّم ما هو جاهزٌ الآن' },
+    { key: 'slot', label: 'وقت التسليم', hint: 'لا يظهر إلا إن ضبطت فتراتٍ أعلاه' },
+    { key: 'recipient', label: 'المستلِم', hint: 'اسمه ورقمه حين يكون الطلب هديةً لغير مشتريه' },
+    { key: 'promo', label: 'كود الخصم', hint: 'أطفئه فلا يُطبَّق كوبونٌ من الموقع' },
+] as const;
+
+const FIELD_STATES = [
+    { value: 'required', label: 'مطلوب' },
+    { value: 'optional', label: 'اختياري' },
+    { value: 'off', label: 'لا يُعرض' },
+];
+
+const FULFILMENTS = [
+    { value: 'delivery', label: 'توصيل' },
+    { value: 'pickup', label: 'استلام من المحل' },
+];
+
 interface Props {
     settings: Settings;
     /** حقولُ كل قسم — من `SettingController::fieldsBySection` لا مكتوبةً هنا */
@@ -84,6 +111,15 @@ interface Props {
     mail: { deliverable: boolean; reason: string | null };
     /** نطاق موقع التاجر — مجموعة `website` في MarketingSettings */
     site: Record<string, string>;
+    /**
+     * حالُ كلّ حقلٍ في إتمام الطلب، محسوبًا في الخادم.
+     *
+     * ولا يُشتقّ هنا من `site`: «الفراغ يعني ما كان» قاعدةٌ في
+     * `Store\CheckoutFields` — ولو حُسبت مرّةً ثانيةً في الشاشة لَافترقتا
+     * يومًا، فعُرض للتاجر حالٌ غيرُ الذي يعمل به متجرُه.
+     */
+    fieldStates?: Record<string, string>;
+    fulfilments?: string[];
     /** بطاقاتُ القوالب — تُبنى من `DocumentTemplates` لا تُكتب في الشاشة */
     templates?: { key: string; label: string; desc: string; section: string }[];
     store: {
@@ -238,7 +274,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, settingsFields, business, recovery, mail, site, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types, archive } =
         usePage<PageProps<Props>>().props;
@@ -484,6 +520,20 @@ export default function SettingsIndex() {
         store_free_delivery_over: site?.store_free_delivery_over ?? '',
         store_gift_card: (site?.store_gift_card ?? '0') === '1',
         store_gift_card_price: site?.store_gift_card_price ?? '',
+        /*
+         * وحقولُ إتمام الطلب — والفراغُ يُقرأ «ما كان» في الخادم.
+         *
+         * فتُعرض القائمةُ بما يعمل به المتجرُ الآن (`fieldStates` يصل
+         * محسوبًا من `CheckoutFields`) لا بفراغٍ يُربك من يفتح الشاشة.
+         */
+        store_field_area: fieldStates?.area ?? 'optional',
+        store_field_address: fieldStates?.address ?? 'required',
+        store_field_date: fieldStates?.date ?? 'required',
+        store_field_slot: fieldStates?.slot ?? 'optional',
+        store_field_recipient: fieldStates?.recipient ?? 'optional',
+        store_field_promo: fieldStates?.promo ?? 'optional',
+        store_fulfil: (fulfilments ?? ['pickup', 'delivery']).join(','),
+        store_max_days: site?.store_max_days ?? '',
         store_delivery_areas: site?.store_delivery_areas ?? '',
         store_delivery_slots: site?.store_delivery_slots ?? '',
         store_hours: site?.store_hours ?? '',
@@ -986,6 +1036,90 @@ export default function SettingsIndex() {
                                             placeholder={t('كل باقة تُنسَّق يدويًّا من ورد اليوم. قد يختلف صنفٌ أو لون حسب المتوفر — ونستبدله بما يساويه أو أفضل، بنفس الشكل والألوان.')}
                                         />
                                     </Field>
+                                </div>
+
+                                {/*
+                                    ═══ ما يُسأل عنه الزبون في إتمام الطلب ═══
+
+                                    الشاشةُ والخادمُ يقرآن من `CheckoutFields`،
+                                    فحقلٌ أُخفي هنا لا يبقى مشترَطًا هناك.
+                                    والاسمُ والهاتفُ وطريقةُ الاستلام ليست فيها:
+                                    الزبونُ يُعرف بهاتفه، والطلبُ بلا اسمٍ لا
+                                    يُنادى — فإخفاؤها ليس خيارًا يُتاح ويُندم عليه.
+                                */}
+                                <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-5">
+                                    <p className="mb-1 text-sm font-semibold text-[#111]">{t('حقول إتمام الطلب')}</p>
+                                    <p className="mb-3 text-[12px] text-[#6b7280]">
+                                        {t('الاسم والهاتف وطريقة الاستلام تبقى دائمًا — بها يُعرف الزبون ويُسلَّم الطلب.')}
+                                    </p>
+
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        {CHECKOUT_FIELDS.map((f) => (
+                                            <Field
+                                                key={f.key}
+                                                label={f.label}
+                                                hint={f.hint}
+                                                error={storeForm.errors[`store_field_${f.key}` as keyof typeof storeForm.errors]}
+                                            >
+                                                <Select
+                                                    value={storeForm.data[`store_field_${f.key}` as 'store_field_area']}
+                                                    onChange={(e) =>
+                                                        storeForm.setData(`store_field_${f.key}` as 'store_field_area', e.target.value)
+                                                    }
+                                                    options={FIELD_STATES}
+                                                    aria-label={t(f.label)}
+                                                />
+                                            </Field>
+                                        ))}
+                                    </div>
+
+                                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <Field
+                                            label="طرق الاستلام"
+                                            hint="واحدة على الأقل — وإلا لم يبقَ للزبون سبيلٌ لاستلام طلبه"
+                                            error={storeForm.errors.store_fulfil}
+                                        >
+                                            <div className="flex flex-wrap gap-4 pt-1">
+                                                {FULFILMENTS.map((o) => {
+                                                    const picked = storeForm.data.store_fulfil.split(',').filter(Boolean);
+                                                    const on = picked.includes(o.value);
+
+                                                    return (
+                                                        <label key={o.value} className="flex cursor-pointer items-center gap-2 text-[13px]">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={on}
+                                                                aria-label={t(o.label)}
+                                                                onChange={() =>
+                                                                    storeForm.setData(
+                                                                        'store_fulfil',
+                                                                        (on ? picked.filter((v) => v !== o.value) : [...picked, o.value]).join(','),
+                                                                    )
+                                                                }
+                                                                className="size-4 accent-[#111]"
+                                                            />
+                                                            {t(o.label)}
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </Field>
+                                        <Field
+                                            label="الحجز مقدّمًا (أيام)"
+                                            hint="أبعد موعدٍ يختاره الزبون — فارغًا يعني ٦٠ يومًا"
+                                            error={storeForm.errors.store_max_days}
+                                        >
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                max={365}
+                                                dir="ltr"
+                                                value={storeForm.data.store_max_days}
+                                                onChange={(e) => storeForm.setData('store_max_days', e.target.value)}
+                                                aria-label={t('الحجز مقدّمًا (أيام)')}
+                                            />
+                                        </Field>
+                                    </div>
                                 </div>
 
                                 {/*

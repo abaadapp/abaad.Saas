@@ -14,6 +14,8 @@ use App\Support\Demo;
 use App\Support\Loyalty;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
+use App\Support\FlowerOrder;
+use App\Support\Store\CheckoutFields;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
 use App\Support\WhatsAppEvent;
@@ -172,6 +174,9 @@ class MarketingController extends Controller
 
     public function saveStore(Request $request)
     {
+        // ثلاثُ حالاتٍ لا أكثر — والفراغُ رابعٌ يعني «ما كان»
+        $state = ['nullable', 'in:'.implode(',', CheckoutFields::STATES)];
+
         $business = Business::findOrFail($this->bid());
 
         $data = $request->validate([
@@ -209,7 +214,62 @@ class MarketingController extends Controller
              */
             'store_gift_card' => ['sometimes', 'boolean'],
             'store_gift_card_price' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+
+            /*
+             * وحقولُ إتمام الطلب — ما يُعرض منها وما يُشترط.
+             *
+             * والفراغُ مقبولٌ ويعني «ما كان» (انظر `Store\CheckoutFields`)،
+             * فشاشةٌ حُفظت قبل أن تُضاف هذه المفاتيح لا تُبدّل متجرًا.
+             */
+            'store_field_area' => $state,
+            'store_field_address' => $state,
+            'store_field_date' => $state,
+            'store_field_slot' => $state,
+            'store_field_recipient' => $state,
+            'store_field_promo' => $state,
+            'store_fulfil' => ['nullable', 'string', 'max:40'],
+            'store_max_days' => ['nullable', 'integer', 'min:0', 'max:365'],
         ]);
+
+        /*
+         * ═══ ومتجرٌ لا يُسلّم شيئًا لا يُحفظ ═══
+         *
+         * إطفاءُ التوصيل والاستلام معًا يترك زبونًا يملأ النموذجَ ثمّ يُردّ
+         * بخطأٍ عن حقلٍ لا يراه. والشاشةُ تمنعه، ومن أرسل الحمولةَ بيده لا.
+         */
+        /*
+         * والسؤالُ «أأرسلت الشاشةُ المفتاح؟» يُطرح على الطلب لا على المنقّى.
+         *
+         * `ConvertEmptyStringsToNull` تقلب الفراغَ إلى `null`، وقائمةُ
+         * `validated()` تُسقط المفتاحَ حينئذٍ — فيمرّ إطفاءُ الطريقتين معًا
+         * من هذا الحارس بلا أن يُقرأ. و`exists` تقول «أُرسل» لا «مُلئ».
+         */
+        if ($request->exists('store_fulfil')) {
+            $picked = array_values(array_intersect(
+                FlowerOrder::FULFILLMENT,
+                array_map('trim', explode(',', (string) $request->input('store_fulfil'))),
+            ));
+
+            if ($picked === []) {
+                return back()->withErrors(['store_fulfil' => __('اختر طريقة استلامٍ واحدةً على الأقل.')]);
+            }
+
+            $data['store_fulfil'] = implode(',', $picked);
+
+            /*
+             * ولا عنوانَ ولا منطقةَ في متجرٍ يوصّل يعني سائقًا بلا وجهة.
+             *
+             * وأحدُهما يكفي: من يوصّل داخل مناطقَ معدودةٍ ويتّصل ليسأل عن
+             * البيت يكتفي بالمنطقة — والاثنان معًا مُطفأان لا يُكتفى بهما.
+             */
+            $shown = fn (string $f) => ($data['store_field_'.$f] ?? '') !== CheckoutFields::OFF;
+
+            if (in_array(FlowerOrder::DELIVERY, $picked, true) && ! $shown('area') && ! $shown('address')) {
+                return back()->withErrors([
+                    'store_field_address' => __('متجرٌ يوصّل يسأل عن المنطقة أو العنوان — لا يُخفيان معًا.'),
+                ]);
+            }
+        }
 
         $slug = Storefront::slug($request->input('site_slug'));
 
@@ -251,7 +311,7 @@ class MarketingController extends Controller
          */
         Domains::sync($business->refresh());
 
-        foreach (['store_on', 'store_show_prices', 'store_pay_cod', 'store_pay_transfer'] as $flag) {
+        foreach (['store_on', 'store_show_prices', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card'] as $flag) {
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }

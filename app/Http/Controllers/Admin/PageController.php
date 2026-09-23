@@ -22,6 +22,7 @@ use App\Support\Emojis;
 use App\Support\InvoiceBranding;
 use App\Support\Mailer;
 use App\Support\MarketingSettings;
+use App\Support\Store\CheckoutFields;
 use App\Support\OrderNotice;
 use App\Support\OrderStatus;
 use App\Support\Permissions;
@@ -752,6 +753,15 @@ class PageController extends Controller
              * برحلةٍ إلى الخادم أغلى من إرسالها.
              */
             'site' => MarketingSettings::group(Demo::bid(), 'website'),
+            /*
+             * وحالُ حقول إتمام الطلب محسوبًا — لا مفاتيحَ خامًا تُفسَّر مرّتين.
+             *
+             * «الفراغ يعني ما كان» قاعدةٌ في `Store\CheckoutFields`؛ ولو
+             * أُعيدت في الشاشة لَافترقتا يومًا، فرأى التاجرُ في الإعدادات
+             * حالًا غيرَ الذي يبيع به متجرُه.
+             */
+            'fieldStates' => CheckoutFields::all(Demo::bid()),
+            'fulfilments' => CheckoutFields::fulfilments(Demo::bid()),
             /*
              * أيصل البريدُ فعلًا؟ — الجوابُ فوق مفاتيحه لا بعد شهرٍ من صمتها.
              *

@@ -64,6 +64,9 @@ interface OrderDetail {
     scheduled_for: string | null;
     occasion_type: string | null;
     card_message: string | null;
+    card_align: string | null;
+    card_file: string | null;
+    card_file_name: string | null;
     sender_name: string | null;
     hide_sender: boolean;
     delivery_address: string | null;
@@ -1053,9 +1056,26 @@ export default function OrderShow() {
                                     {order.card_message && (
                                         <div className="pt-3">
                                             <p className="mb-1 text-[13px] text-[#6b7280]">{t('نصّ البطاقة')}</p>
-                                            <p className="rounded-[10px] bg-[#faf5ff] p-3 text-sm leading-relaxed text-[#4b4b4b]">
+                                            {/* مرتَّبًا كما رتّبه صاحبُه — والأسطرُ جزءٌ ممّا كتب */}
+                                            <p
+                                                className="whitespace-pre-wrap rounded-[10px] bg-[#faf5ff] p-3 text-sm leading-relaxed text-[#4b4b4b]"
+                                                style={{ textAlign: (order.card_align as 'right' | 'center' | 'left') || 'right' }}
+                                            >
                                                 {order.card_message}
                                             </p>
+                                        </div>
+                                    )}
+                                    {order.card_file && (
+                                        <div className="pt-3">
+                                            <p className="mb-1 text-[13px] text-[#6b7280]">{t('ملفّ البطاقة')}</p>
+                                            <a
+                                                href={order.card_file}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-sm font-medium text-[#1d4ed8] underline"
+                                            >
+                                                {order.card_file_name || t('ملفٌّ مرفق')}
+                                            </a>
                                         </div>
                                     )}
                                 </Block>

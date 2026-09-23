@@ -51,8 +51,51 @@
             </div>
             <div>
                 {!! $step(3, $t['s3']) !!}
-                <textarea class="rb-input" name="card" rows="3" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
-                <div style="font-size:12px;margin-top:6px">{{ $t['cardHint'] }}</div>
+
+                {{-- المستلِمُ غيرُ المشتري — مطويٌّ حتى يُطلب، فلا يُثقل من يشتري لنفسه --}}
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;margin-bottom:12px">
+                    <input type="checkbox" data-rb-forother style="width:18px;height:18px;accent-color:var(--rb-olive)">
+                    <span>{{ $t['forOther'] }}</span>
+                </label>
+                <div data-rb-recipient style="display:none;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
+                    <div><input class="rb-input" name="recipient_name" placeholder="{{ $t['fRecipient'] }}" aria-label="{{ $t['fRecipient'] }}"><div class="rb-error" data-err="recipient_name"></div></div>
+                    <div><input class="rb-input" name="recipient_phone" dir="ltr" placeholder="{{ $t['fRecipientPhone'] }}" aria-label="{{ $t['fRecipientPhone'] }}"><div class="rb-error" data-err="recipient_phone"></div></div>
+                </div>
+
+                @if ($giftCard['on'])
+                    {{-- والكرتُ صنفٌ يُباع: ثمنُه مكتوبٌ حيث يُختار لا في الفاتورة وحدها --}}
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px" data-testid="rb-giftcard-toggle">
+                        <input type="checkbox" data-rb-giftcard style="width:18px;height:18px;accent-color:var(--rb-olive)">
+                        <span>{{ $t['addCard'] }}</span>
+                        <span style="margin-inline-start:auto;font-weight:500;color:var(--rb-olive)" data-rb-cardprice>{{ $giftCard['price_text'] }}</span>
+                    </label>
+                    <div class="rb-error" data-err="gift_card"></div>
+
+                    <div data-rb-cardbox style="display:none;margin-top:14px;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px">
+                        <textarea class="rb-input" name="card" rows="4" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
+                        <div style="font-size:12px;margin-top:6px">{{ $t['cardHint'] }}</div>
+
+                        <div style="margin-top:14px;font-size:13px">{{ $t['cardAlign'] }}</div>
+                        <div style="display:flex;gap:8px;margin-top:8px" data-rb-align>
+                            @foreach (['right' => 'alignRight', 'center' => 'alignCenter', 'left' => 'alignLeft'] as $v => $k)
+                                <button type="button" class="rb-pill{{ $v === 'right' ? ' on' : '' }}" data-v="{{ $v }}" style="flex:1;height:40px;font-size:13px">{{ $t[$k] }}</button>
+                            @endforeach
+                        </div>
+
+                        {{-- ويُرى النصُّ مرتَّبًا قبل أن يُدفع ثمنُه — لا بعد أن يُطبع --}}
+                        <div style="margin-top:14px;font-size:12px">{{ $t['cardPreview'] }}</div>
+                        <div data-rb-cardpreview style="margin-top:8px;min-height:92px;white-space:pre-wrap;word-break:break-word;border:1px dashed var(--rb-line);border-radius:var(--rb-r);background:var(--rb-soft);padding:14px;font-size:14px;line-height:1.9;text-align:right"></div>
+
+                        <div style="margin-top:14px;font-size:13px">{{ $t['cardFile'] }}</div>
+                        <input type="file" data-rb-cardfile accept="{{ $giftCard['accept'] }}" aria-label="{{ $t['cardFile'] }}" style="margin-top:8px;font-size:13px;max-width:100%">
+                        <div style="font-size:12px;margin-top:6px">{{ $t['cardFileHint'] }}</div>
+                        <div data-rb-cardfilemsg style="font-size:12px;margin-top:6px"></div>
+                        <div class="rb-error" data-err="card_file"></div>
+                    </div>
+                @else
+                    <textarea class="rb-input" name="card" rows="3" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
+                    <div style="font-size:12px;margin-top:6px">{{ $t['cardHint'] }}</div>
+                @endif
             </div>
             <div>
                 {!! $step(4, $t['s4']) !!}
@@ -84,6 +127,16 @@
                 <div style="display:flex;justify-content:space-between"><span>{{ $t['shipping'] }}</span><span data-rb-ship></span></div>
                 <div style="display:flex;justify-content:space-between;border-top:1px solid var(--rb-line);padding-top:12px;font-size:16px"><span>{{ $t['total'] }}</span><strong data-rb-total></strong></div>
             </div>
+            {{--
+                وفوق الزرّ لا تحته — هذه لحظةُ الدفع.
+
+                وهو السطرُ الذي يمنع النزاع فعلًا: لا درعًا قانونيًّا، بل
+                آخرَ ما قرأه قبل أن يدفع. وصفحةُ المنتج قد تكون قبل ثلاثة
+                أيّام، ولا أحدَ يتذكّر ما قرأه فيها.
+            --}}
+            @if ($imageNote !== '')
+                <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
+            @endif
             <div class="rb-error" data-rb-form-error style="margin-top:12px"></div>
             <button type="submit" class="rb-btn" style="width:100%;margin-top:16px" data-testid="rb-place"><span data-rb-place-label>{{ $t['place'] }}</span></button>
         </aside>
@@ -97,6 +150,8 @@
 (function () {
     var T = @json($t), fulfil = 'delivery', pay = @json($payments[0] ?? null), promo = '';
     var form = document.querySelector('[data-rb-form]');
+    // ورمزُ الحماية يُقرأ هنا كذلك: `RB.post` يحمله، ورفعُ الملفّ يخرج عنه
+    var CSRF = document.querySelector('meta[name=csrf-token]').content;
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
     function $(sel) { return form.querySelector(sel); }
     function paintPay() {
@@ -109,7 +164,7 @@
     }
     function refresh() {
         if (!RB.read().length) { location.href = RB.base + '/cart'; return; }
-        RB.quote({ fulfil: fulfil, promo: promo }).then(function (q) {
+        RB.quote({ fulfil: fulfil, promo: promo, gift_card: gift }).then(function (q) {
             var msg = $('[data-rb-promo-msg]'); msg.textContent = '';
             if (!q.ok) { $('[data-rb-form-error]').textContent = Object.values(q.errors || {}).flat().join(' · '); return; }
             $('[data-rb-summary]').innerHTML = q.lines.map(function (l) {
@@ -124,6 +179,83 @@
             if (q.promo_error) { msg.textContent = q.promo_error; } else if (q.coupon) { msg.style.color = 'var(--rb-olive)'; msg.textContent = '✓ ' + q.coupon; }
         });
     }
+    /*
+     * ═══ والكرتُ يُسعَّر في الخادم ═══
+     *
+     * ثمنُه يُقرأ من إعداد المحلّ، فلا يُجمع هنا على المجموع. وتبديلُ
+     * الخانة يُعيد التسعير كما يُعيده تبديلُ التوصيل — فما يُرى في الزرّ
+     * هو ما يُكتب في الفاتورة، لا ما حسبه المتصفّح.
+     */
+    var gift = false, align = 'right', cardFile = null, cardFileName = null;
+
+    var forOther = form.querySelector('[data-rb-forother]');
+    if (forOther) {
+        forOther.addEventListener('change', function () {
+            form.querySelector('[data-rb-recipient]').style.display = forOther.checked ? 'grid' : 'none';
+            if (!forOther.checked) {
+                form.querySelectorAll('[name=recipient_name],[name=recipient_phone]').forEach(function (i) { i.value = ''; });
+            }
+        });
+    }
+
+    var giftBox = form.querySelector('[data-rb-cardbox]');
+    var giftToggle = form.querySelector('[data-rb-giftcard]');
+    var preview = form.querySelector('[data-rb-cardpreview]');
+    var cardText = form.querySelector('[name=card]');
+
+    function paintPreview() {
+        if (!preview) return;
+        preview.style.textAlign = align;
+        preview.textContent = cardText ? cardText.value : '';
+    }
+
+    if (giftToggle) {
+        giftToggle.addEventListener('change', function () {
+            gift = giftToggle.checked;
+            giftBox.style.display = gift ? 'block' : 'none';
+            refresh();
+        });
+        form.querySelector('[data-rb-align]').addEventListener('click', function (e) {
+            var b = e.target.closest('button'); if (!b) return;
+            align = b.dataset.v;
+            form.querySelectorAll('[data-rb-align] button').forEach(function (x) { x.classList.toggle('on', x === b); });
+            paintPreview();
+        });
+        if (cardText) cardText.addEventListener('input', paintPreview);
+
+        /*
+         * والملفُّ يُرفع وحدَه قبل الطلب.
+         *
+         * فالطلبُ يُرسَل JSON ويُعاد تسعيرُه مرارًا، ورفعُ الملفّ معه في
+         * كلّ مرّةٍ يرفعه مرارًا. ويعود عنه رمزٌ يُرسَل مع الطلب — انظر
+         * `Store\GiftCard::hold`.
+         */
+        var fileInput = form.querySelector('[data-rb-cardfile]');
+        var fileMsg = form.querySelector('[data-rb-cardfilemsg]');
+        fileInput.addEventListener('change', function () {
+            var f = fileInput.files && fileInput.files[0];
+            cardFile = null; cardFileName = null;
+            form.querySelector('[data-err="card_file"]').textContent = '';
+            if (!f) { fileMsg.textContent = ''; return; }
+
+            fileMsg.textContent = T.cardFileWait;
+            var body = new FormData(); body.append('file', f);
+            fetch(RB.base + '/gift-card', { method: 'POST', headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: body })
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (!j.ok) {
+                        fileMsg.textContent = '';
+                        fileInput.value = '';
+                        form.querySelector('[data-err="card_file"]').textContent =
+                            Object.values(j.errors || {}).flat().join(' ') || T.cardFileErr;
+                        return;
+                    }
+                    cardFile = j.token; cardFileName = j.name; fileMsg.textContent = '✓ ' + j.name;
+                })
+                .catch(function () { fileMsg.textContent = ''; fileInput.value = ''; form.querySelector('[data-err="card_file"]').textContent = T.cardFileErr; });
+        });
+    }
+
     $('[data-rb-fulfil]').addEventListener('click', function (e) {
         var b = e.target.closest('button'); if (!b) return;
         fulfil = b.dataset.v;
@@ -144,7 +276,11 @@
             items: RB.read(), fulfil: fulfil, pay: pay, promo: promo,
             name: $('[name=name]').value, phone: $('[name=phone]').value,
             area: $('[name=area]') ? $('[name=area]').value : '', address: $('[name=address]').value,
-            date: $('[name=date]').value, slot: $('[name=slot]') ? $('[name=slot]').value : '', card: $('[name=card]').value,
+            date: $('[name=date]').value, slot: $('[name=slot]') ? $('[name=slot]').value : '',
+            card: $('[name=card]') ? $('[name=card]').value : '',
+            recipient_name: $('[name=recipient_name]') ? $('[name=recipient_name]').value : '',
+            recipient_phone: $('[name=recipient_phone]') ? $('[name=recipient_phone]').value : '',
+            gift_card: gift, card_align: align, card_file: cardFile, card_file_name: cardFileName,
         };
         RB.post('/checkout', payload).then(function (r) {
             btn.disabled = false;

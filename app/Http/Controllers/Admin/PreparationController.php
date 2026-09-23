@@ -353,6 +353,15 @@ class PreparationController extends Controller
             'address' => $o->delivery_address,
             'occasion' => FlowerOrder::occasionLabel($o->occasion_type),
             'card_message' => $o->card_message,
+            /*
+             * وترتيبُ النصّ يُرسَل معه — فمن يكتب الكرت يكتبه كما طُلب.
+             *
+             * وبلا هذا يصل النصُّ بلا ترتيبه، فيُكتب كما اعتاد الكاتبُ لا
+             * كما رتّبه من دفع ثمنه — وهو أوّلُ ما يُرى على الكرت.
+             */
+            'card_align' => $o->card_align,
+            'card_file' => filled($o->card_file) ? route('admin.orders.giftcard', $o->id) : null,
+            'card_file_name' => $o->card_file_name,
             // اسم المُهدي يبقى للموظّف: هو يكتب البطاقة، والإخفاء عن المستلِم
             // لا عن من يصنعها — انظر FlowerOrder::cardForRecipient
             'sender' => $o->sender_name,

@@ -56,6 +56,15 @@ export interface PrepOrder {
     address: string | null;
     occasion: string | null;
     card_message: string | null;
+    /*
+     * ترتيبُ النصّ على الكرت ومرفقُه.
+     *
+     * واختياريّةٌ في النوع لا في الحمولة: المتحكّمُ يُرسلها دائمًا، وإنّما
+     * تُبنى في الاختبارات طلباتٌ ناقصةٌ عمدًا لتُختبر شاشةٌ واحدة.
+     */
+    card_align?: string | null;
+    card_file?: string | null;
+    card_file_name?: string | null;
     sender: string | null;
     hide_sender: boolean;
     delivery_notes: string | null;

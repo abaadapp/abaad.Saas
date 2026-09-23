@@ -6432,5 +6432,14 @@
     "رسائل الحزمة الإضافية": "Messages per extra pack",
     "كم رسالةً تُضاف إلى رصيد المتجر حين يُسجَّل سداد فاتورته. والرصيد لا يسقط آخر الشهر.": "How many messages are added to the shop’s balance when its invoice is recorded as paid. The balance does not expire at month end.",
     "ثمن الحزمة (ر.ع)": "Pack price (OMR)",
-    "يُصدَر بهذا الثمن فاتورةُ منصةٍ برقمها، ولا يُضاف الرصيد قبل تسجيل سدادها.": "A numbered platform invoice is issued at this price, and the balance is not added before its payment is recorded."
+    "يُصدَر بهذا الثمن فاتورةُ منصةٍ برقمها، ولا يُضاف الرصيد قبل تسجيل سدادها.": "A numbered platform invoice is issued at this price, and the balance is not added before its payment is recorded.",
+    "سعر كرت الهدية": "Gift card price",
+    "ملفّ البطاقة": "Card file",
+    "ملفٌّ مرفق": "Attached file",
+    "كرت الهدية غير متاح في هذا المتجر.": "Gift cards are not available in this store.",
+    "نوع الملف غير مدعوم — صورة أو PDF.": "Unsupported file type — image or PDF.",
+    "الملف أكبر من المسموح.": "The file is larger than allowed.",
+    "كرت الهدية": "Gift card",
+    "يختاره الزبون في إتمام الطلب — نصًّا يرتّبه وملفًّا يرفقه": "The customer picks it at checkout — text they arrange and a file they attach",
+    "فارغًا يعني ٠٫٥٠٠ — واكتب صفرًا إن أردته مجّانًا": "Empty means 0.500 — write zero to make it free"
 }

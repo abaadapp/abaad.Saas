@@ -25,6 +25,7 @@ use App\Http\Controllers\Admin\Finance\JournalController;
 use App\Http\Controllers\Admin\Finance\OverviewController;
 use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\FinancialAttachmentController;
+use App\Http\Controllers\Admin\OrderAttachmentController;
 use App\Http\Controllers\Admin\GoalController;
 use App\Http\Controllers\Admin\GoogleBusinessController;
 use App\Http\Controllers\Admin\HelpController;
@@ -656,6 +657,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/orders/export-xlsx', [ReportExportController::class, 'ordersXlsx'])->name('orders.xlsx');
     Route::get('/orders/export-pdf', [PdfController::class, 'ordersReport'])->name('orders.exportPdf');
     Route::get('/orders/{number}', [PageController::class, 'ordersShow'])->name('orders.show');
+
+    /*
+     * ومرفقُ كرت الهدية — على قرصٍ خاصّ وببابٍ يسأل عن صاحب الطلب.
+     *
+     * يرفعه زبونٌ في الموقع، وهو رسالةٌ خاصّةٌ إلى شخصٍ بعينه. فلا يُخدَم
+     * من `public/` — انظر `OrderAttachmentController`.
+     */
+    Route::get('/orders/{id}/gift-card', [OrderAttachmentController::class, 'giftCard'])
+        ->whereNumber('id')->name('orders.giftcard');
     /*
      * تعديل بيانات التنفيذ ونقل الحالة — قسمُهما «المبيعات» يُشتقّ من الاسم.
      *
@@ -1667,6 +1677,17 @@ Route::domain('{slug}.'.config('storefront.domain'))
             ->where('slug', Storefront::pattern())->name('store.quote');
         Route::post('/checkout', [StorefrontController::class, 'place'])
             ->where('slug', Storefront::pattern())->name('store.checkout');
+
+        /*
+         * ورفعُ ملفّ كرت الهدية — بابٌ يفتحه زائرٌ مجهول.
+         *
+         * فمحدودٌ بعدد المحاولات في الدقيقة إلى جانب حدَّي النوع والحجم:
+         * بابُ رفعٍ بلا عدّادٍ يُملأ به القرصُ في دقائق، ولا حسابَ يُوقَف
+         * لأنّ لا حسابَ هناك.
+         */
+        Route::post('/gift-card', [StorefrontController::class, 'giftCard'])
+            ->where('slug', Storefront::pattern())
+            ->middleware('throttle:20,1')->name('store.giftcard');
     });
 
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
@@ -1674,6 +1695,8 @@ Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
     ->where('path', Storefront::PATH)->name('store.show.page');
 Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])->name('store.show.quote');
 Route::post('/s/{slug}/checkout', [StorefrontController::class, 'place'])->name('store.show.checkout');
+Route::post('/s/{slug}/gift-card', [StorefrontController::class, 'giftCard'])
+    ->middleware('throttle:20,1')->name('store.show.giftcard');
 
 /*
  * ونطاقُ التاجر نفسه — `myshop.om` يفتح موقعه.
@@ -1713,6 +1736,9 @@ Route::domain('{host}')
             ->where('host', Storefront::foreignHost())->name('store.custom.quote');
         Route::post('/checkout', [StorefrontController::class, 'placeByHost'])
             ->where('host', Storefront::foreignHost())->name('store.custom.checkout');
+        Route::post('/gift-card', [StorefrontController::class, 'giftCardByHost'])
+            ->where('host', Storefront::foreignHost())
+            ->middleware('throttle:20,1')->name('store.custom.giftcard');
     });
 
 /*

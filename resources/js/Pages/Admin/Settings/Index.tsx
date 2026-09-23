@@ -482,10 +482,13 @@ export default function SettingsIndex() {
         store_bank: site?.store_bank ?? '',
         store_delivery_fee: site?.store_delivery_fee ?? '',
         store_free_delivery_over: site?.store_free_delivery_over ?? '',
+        store_gift_card: (site?.store_gift_card ?? '0') === '1',
+        store_gift_card_price: site?.store_gift_card_price ?? '',
         store_delivery_areas: site?.store_delivery_areas ?? '',
         store_delivery_slots: site?.store_delivery_slots ?? '',
         store_hours: site?.store_hours ?? '',
         store_delivery_note: site?.store_delivery_note ?? '',
+        store_image_note: site?.store_image_note ?? '',
     });
 
     const saveStore = (e: React.FormEvent) => {
@@ -955,6 +958,51 @@ export default function SettingsIndex() {
                                     </Field>
                                     <Field label="ملاحظة التوصيل" hint="سطرٌ تحت زرّ الإضافة إلى السلّة" error={storeForm.errors.store_delivery_note}>
                                         <Input value={storeForm.data.store_delivery_note} onChange={(e) => storeForm.setData('store_delivery_note', e.target.value)} aria-label={t('ملاحظة التوصيل')} />
+                                    </Field>
+                                </div>
+
+                                {/*
+                                    ═══ تنبيهُ الصورة — وحقلٌ مستقلٌّ لا زيادةٌ على الذي فوقه ═══
+
+                                    «ملاحظة التوصيل» مشغولةٌ بما اسمُها، وجمعُهما يعني أن
+                                    يختار التاجرُ أحدَهما. وموضعاهما مختلفان أصلًا: تلك
+                                    تحت زرّ الإضافة، وهذا تحت الصورة نفسِها وفوق زرّ
+                                    الطلب وفي تأكيده.
+
+                                    والنصُّ المقترح في `placeholder` لا في القيمة: حقلٌ
+                                    يُملأ من تلقائه يُحفظ بلا قراءة، فيقول موقعُ محلّ
+                                    العطور شيئًا عن ورد اليوم.
+                                */}
+                                <div className="mt-4">
+                                    <Field
+                                        label="تنبيه الصورة"
+                                        hint="يظهر تحت صورة المنتج، وفوق زرّ الطلب، وفي صفحة التأكيد. اتركه فارغًا إن لم تحتجه."
+                                        error={storeForm.errors.store_image_note}
+                                    >
+                                        <Input
+                                            value={storeForm.data.store_image_note}
+                                            onChange={(e) => storeForm.setData('store_image_note', e.target.value)}
+                                            aria-label={t('تنبيه الصورة')}
+                                            placeholder={t('كل باقة تُنسَّق يدويًّا من ورد اليوم. قد يختلف صنفٌ أو لون حسب المتوفر — ونستبدله بما يساويه أو أفضل، بنفس الشكل والألوان.')}
+                                        />
+                                    </Field>
+                                </div>
+
+                                {/*
+                                    كرتُ الهدية — صنفٌ يُباع لا خانةُ نصٍّ مجّانية.
+
+                                    يدخل الفاتورةَ بندًا، ويُعدّ في تقرير الأصناف،
+                                    ولا رصيدَ له في المخزن يُجرَد.
+                                */}
+                                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                    <Toggle
+                                        on={storeForm.data.store_gift_card}
+                                        onChange={(v) => storeForm.setData('store_gift_card', v)}
+                                        label="كرت الهدية"
+                                        hint="يختاره الزبون في إتمام الطلب — نصًّا يرتّبه وملفًّا يرفقه"
+                                    />
+                                    <Field label="سعر كرت الهدية" hint="فارغًا يعني ٠٫٥٠٠ — واكتب صفرًا إن أردته مجّانًا" error={storeForm.errors.store_gift_card_price}>
+                                        <Input type="number" min={0} step="0.001" dir="ltr" value={storeForm.data.store_gift_card_price} onChange={(e) => storeForm.setData('store_gift_card_price', e.target.value)} aria-label={t('سعر كرت الهدية')} />
                                     </Field>
                                 </div>
                             </SettingsGroup>

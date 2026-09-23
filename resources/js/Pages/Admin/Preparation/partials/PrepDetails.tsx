@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Clock, Gift, History, MapPin, Phone, Printer, StickyNote, Store, Truck, User } from 'lucide-react';
+import { Clock, Gift, History, MapPin, Paperclip, Phone, Printer, StickyNote, Store, Truck, User } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -242,13 +242,37 @@ export default function PrepDetails({
                         </div>
                     </section>
 
-                    {o.card_message && (
+                    {(o.card_message || o.card_file) && (
                         <div className="rounded-[10px] bg-[#fdf2f8] p-3 text-[12px] text-[#831843]">
                             <p className="mb-1 flex items-center gap-1.5 font-medium">
                                 <Gift className="size-3.5" />
                                 {t('بطاقة الإهداء')}
                             </p>
-                            <p className="leading-relaxed">{o.card_message}</p>
+                            {/*
+                                والنصُّ يُعرض مرتَّبًا كما رتّبه من دفع ثمنه.
+
+                                `whitespace-pre-wrap` لأنّ أسطرَه جزءٌ ممّا كتب:
+                                بيتُ شعرٍ في سطرين يُقرأ سطرًا واحدًا بلا هذا.
+                            */}
+                            {o.card_message && (
+                                <p
+                                    className="whitespace-pre-wrap leading-relaxed"
+                                    style={{ textAlign: (o.card_align as 'right' | 'center' | 'left') || 'right' }}
+                                >
+                                    {o.card_message}
+                                </p>
+                            )}
+                            {o.card_file && (
+                                <a
+                                    href={o.card_file}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-1.5 inline-flex items-center gap-1.5 font-medium text-[#9d174d] underline"
+                                >
+                                    <Paperclip className="size-3.5" />
+                                    {o.card_file_name || t('ملفٌّ مرفق')}
+                                </a>
+                            )}
                             {o.sender && (
                                 <p className="mt-1 text-[#9d174d]">
                                     {t('من')}: {o.sender}

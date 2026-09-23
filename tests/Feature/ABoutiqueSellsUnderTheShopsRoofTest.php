@@ -20,6 +20,7 @@ use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
@@ -412,18 +413,88 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
         $this->assertSame(0, BoutiqueSettlement::count());
     }
 
-    /* ═══════════ البابُ مغلقٌ على من لم يُفتح له ═══════════ */
+    /* ═══════════ البابُ مغلقٌ على من لا شيءَ خلفه ═══════════ */
 
-    /** ومن لا يُؤوي بوتيكاتٍ لا يرى الشاشة — ولا يُكتب على بنوده شيء */
+    /** ومن لا بوتيكَ عنده أصلًا لا يرى الشاشة — ولا يُكتب على بنوده شيء */
     public function test_a_shop_that_hosts_none_sees_none(): void
+    {
+        $other = Business::create([
+            'name' => 'محل بلا بوتيكات', 'type' => 'عام', 'status' => 'نشط', 'boutiques_enabled' => false,
+        ]);
+        $stranger = User::create([
+            'business_id' => $other->id, 'name' => 'مالك آخر', 'email' => 'x@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+
+        $this->actingAs($stranger)->get(route('admin.boutiques.index'))->assertNotFound();
+        $this->actingAs($stranger)->get(route('admin.boutiques.show', $this->boutique->id))->assertNotFound();
+        $this->actingAs($stranger)
+            ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02'])
+            ->assertNotFound();
+    }
+
+    /* ═══════════ ولا يُغلق على من خلفه مالُه ═══════════ */
+
+    /**
+     * ومفتاحٌ أُطفئ لا يحبس كشفَ بوتيكٍ قائم.
+     *
+     * فالبيعُ لا يقف بإطفائه: `attribute` تقرأ البوتيك من بطاقة الصنف، فتبقى
+     * بنودُه تُكتب بنسبته وتكلفتُها صفر — ودَينُ صاحبها يكبر. فلو أُغلقت
+     * الشاشةُ لَبقي التاجرُ يبيع أمانةَ غيره ولا يرى كم عليه ولا يُسوّيه.
+     *
+     * وقد أُطفئ المفتاحُ فعلًا بلا أن يطلبه أحد: كلُّ حفظةِ اسمٍ أو هاتفٍ في
+     * شاشة الشركات كانت تُطفئه (أُصلح في a7ccf968) — فهذا ما وقع لا ما قد يقع.
+     */
+    public function test_a_shop_that_still_holds_a_boutique_keeps_its_screen(): void
+    {
+        $this->sellAtTill($this->theirs, 1);
+        $this->shop->update(['boutiques_enabled' => false]);
+
+        $this->actingAs($this->owner)->get(route('admin.boutiques.index'))->assertOk();
+        $this->actingAs($this->owner)->get(route('admin.boutiques.show', $this->boutique->id))->assertOk();
+    }
+
+    /** ويُسوّى ما تراكم — فالمالُ الذي كُتب يُدفع */
+    public function test_a_shop_with_the_key_off_can_still_settle_what_it_owes(): void
+    {
+        $this->sellAtTill($this->theirs, 2);
+        $this->monthEnds();
+        $this->shop->update(['boutiques_enabled' => false]);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(1, BoutiqueSettlement::count(), 'دَينُ بوتيكٍ قائمٍ لا يُسوَّى لأنّ مفتاحًا أُطفئ');
+    }
+
+    /** والتبويبُ يعود معها: شاشةٌ تُفتح بلا رابطٍ إليها شاشةٌ لا تُفتح */
+    public function test_the_tab_comes_back_with_the_screen(): void
     {
         $this->shop->update(['boutiques_enabled' => false]);
 
-        $this->actingAs($this->owner)->get(route('admin.boutiques.index'))->assertNotFound();
-        $this->actingAs($this->owner)->get(route('admin.boutiques.show', $this->boutique->id))->assertNotFound();
-        $this->actingAs($this->owner)
-            ->post(route('admin.boutiques.settle', $this->boutique->id), ['period' => '2027-02'])
-            ->assertNotFound();
+        $this->actingAs($this->owner)->get(route('admin.products.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('context.hosted', ['boutiques']));
+    }
+
+    /** ومحلٌّ فُتح له البابُ ولم يُدخل بوتيكَه الأوّل بعدُ يرى الشاشة — وإلّا لم يُدخله أبدًا */
+    public function test_a_shop_with_the_key_on_and_no_boutiques_yet_sees_its_screen(): void
+    {
+        Product::where('business_id', $this->shop->id)->update(['boutique_id' => null]);
+        Boutique::where('business_id', $this->shop->id)->delete();
+
+        $this->actingAs($this->owner)->get(route('admin.boutiques.index'))->assertOk();
+    }
+
+    /** ومن لا بوتيكَ عنده لا تبويبَ له */
+    public function test_a_shop_that_holds_none_has_no_tab(): void
+    {
+        Product::where('business_id', $this->shop->id)->update(['boutique_id' => null]);
+        Boutique::where('business_id', $this->shop->id)->delete();
+        $this->shop->update(['boutiques_enabled' => false]);
+
+        $this->actingAs($this->owner)->get(route('admin.products.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('context.hosted', []));
     }
 
     /** والنسبةُ لا تتجاوز المئة — وإلّا صار الصافي دَينًا على البوتيك */

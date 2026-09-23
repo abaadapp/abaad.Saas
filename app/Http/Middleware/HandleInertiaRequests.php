@@ -114,7 +114,7 @@ class HandleInertiaRequests extends Middleware
                  * في كلّ طبقةٍ بينه وبين الشاشة.
                  */
                 'hosted' => array_values(array_filter([
-                    Boutiques::hosts($user->business) ? 'boutiques' : null,
+                    Boutiques::holds($user->business) ? 'boutiques' : null,
                 ])),
                 // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،
                 // فصار مشتركًا لا خاصًّا باللوحة. null حين لم يُضبط بعد.

@@ -49,7 +49,32 @@ class LoginController extends Controller
         $key = 'login:'.mb_strtolower($credentials['email']).'|'.$request->ip();
         $slowKey = 'login-hour:'.mb_strtolower($credentials['email']).'|'.$request->ip();
 
-        foreach ([[$key, 5], [$slowKey, 20]] as [$k, $max]) {
+        /*
+         * ═══ وحدٌّ ثالثٌ على الحساب وحده — بلا عنوان ═══
+         *
+         * الحدّان فوقُ مربوطان بعنوان المُحاوِل. وهذا صوابٌ في نصفه: العنوانُ
+         * في المفتاح يمنع أن يُقفل مكتبٌ كاملٌ خلف موجّهٍ واحد لأنّ موظّفًا
+         * أخطأ ثلاثًا.
+         *
+         * لكنّه يعني أيضًا أنّ **من يبدّل عنوانه يبدأ عدًّا جديدًا**. فمئةُ
+         * عنوانٍ رخيصٍ تشتري ألفي محاولةٍ في الساعة على الحساب نفسِه، والنظامُ
+         * لا يرى إلّا عشرين من كلّ واحدٍ منها. ولم يكن في النظام كلِّه حدٌّ
+         * واحدٌ لا يتبع العنوان.
+         *
+         * فهذا يقيس ما يقع على **الحساب** أيًّا كان مصدرُه: خمسون فشلًا في
+         * الساعة ثمّ يُقفل البابُ على الجميع.
+         *
+         * وخمسون سخيّةٌ عمدًا: من ينسى كلمتَه يُخطئ خمسًا أو عشرًا لا خمسين،
+         * فلا يقع عليه هذا الحدُّ أبدًا. ومن يقصف حسابًا يهبط من ألفين في
+         * الساعة إلى خمسين — أربعون ضعفًا.
+         *
+         * وثمنُه مذكورٌ لا مخفيّ: من يُفشل خمسين محاولةً عمدًا يُقفل الحسابَ
+         * ساعةً على صاحبه. وهو ثمنٌ مقبولٌ هنا — الإقفالُ ساعةٌ تمضي، وكلمةُ
+         * المرور المكشوفة لا تمضي. ومن أراد رفعَه فالرقمُ في سطرٍ واحد.
+         */
+        $accountKey = 'login-account:'.mb_strtolower($credentials['email']);
+
+        foreach ([[$key, 5], [$slowKey, 20], [$accountKey, 50]] as [$k, $max]) {
             if (RateLimiter::tooManyAttempts($k, $max)) {
                 throw ValidationException::withMessages([
                     'email' => __('محاولات كثيرة. حاول بعد :seconds ثانية.', [
@@ -62,6 +87,7 @@ class LoginController extends Controller
         if (! Auth::attempt($credentials, $remember)) {
             RateLimiter::hit($key, 60);
             RateLimiter::hit($slowKey, 3600);
+            RateLimiter::hit($accountKey, 3600);
 
             // يُسجَّل الفشل بلا كلمة المرور — والبريد يبقى ليُعرف الحسابُ المستهدف
             Activity::log('login_failed', 'محاولة دخول فاشلة — '.$credentials['email']);
@@ -73,6 +99,8 @@ class LoginController extends Controller
 
         RateLimiter::clear($key);
         RateLimiter::clear($slowKey);
+        // ومن دخل بكلمته فليس هو من كان يجرّب — يُمحى عدُّه كما يُمحى الآخران
+        RateLimiter::clear($accountKey);
 
         $this->refuseBlocked(Auth::user(), 'email');
 

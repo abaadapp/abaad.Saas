@@ -94,11 +94,13 @@ class ANewEmployeeIsNotBornWithTheWordPasswordTest extends TestCase
 
     public function test_a_typed_password_is_the_one_that_opens_the_account(): void
     {
-        $this->hire(['password' => 'typed-by-hand'])->assertSessionMissing('issued_password');
+        // ورقمٌ في الكلمة لأنّ الشرطَ صار يطلبه — انظر `AStaffPasswordIsNotAFourDigitPinTest`.
+        // وما يقيسه هذا الاختبارُ لم يتبدّل: المكتوبةُ بيدٍ هي التي تفتح الحساب.
+        $this->hire(['password' => 'typed-by-hand2'])->assertSessionMissing('issued_password');
 
         $salim = User::where('business_id', $this->business->id)->where('name', 'سالم')->firstOrFail();
 
-        $this->assertTrue(Hash::check('typed-by-hand', $salim->password));
+        $this->assertTrue(Hash::check('typed-by-hand2', $salim->password));
     }
 
     /** ومحاسبٌ يُضاف بما تمنحه وظيفتُه — أقسامًا وأفعالًا — ليس تخصيصًا يُباع */

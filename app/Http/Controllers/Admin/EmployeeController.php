@@ -56,7 +56,30 @@ class EmployeeController extends Controller
              */
             'branches' => ['nullable', 'array'],
             'branches.*' => ['integer'],
-            'password' => ['nullable', 'string', 'min:4'],
+            /*
+             * ═══ وقفلُ الموظّف قفلُ صاحب المتجر نفسُه ═══
+             *
+             * كانت `min:4`: أربعةُ أحرفٍ بلا شرطٍ على حسابٍ يفتح نقطة البيع،
+             * ويبيع باسم المتجر، ويقرأ أسماء الزبائن وأرقامهم — ويُصحّح
+             * فاتورةً صدرت إن مُنح ذلك.
+             *
+             * وبابُ الدخول واحدٌ للجميع على الإنترنت العامّ: الموظّفُ يدخل من
+             * صفحة الدخول نفسِها التي يدخل منها صاحبُ المتجر، لا من لوحة
+             * أرقامٍ على الجهاز. وأربعةٌ بلا شرطٍ تعني `1234` و`0000` وسنةَ
+             * ميلاد — وهي أوّلُ ما يُجرَّب.
+             *
+             * ولا تشتري راحةً تُذكر: كلمةُ المرور تُكتب **مرّةً في الوردية**
+             * لا مرّةً في كلّ بيعة — ومبدّلُ الكاشير في نقطة البيع لا يسألها
+             * أصلًا (`PosCashier`: لافتةٌ لا بوّابة).
+             *
+             * ومن لا يريد أن يخترعها يتركها فارغةً فتُولَّد عشرةَ أحرفٍ
+             * وتُعرض مرّةً (`MerchantAccount::temporaryPassword`) — وهي أقوى
+             * ممّا يكتبه أحدٌ بيده.
+             *
+             * وما كُتب من كلماتٍ قديمة لا يُمسّ: الشرطُ على ما يُكتب بعده.
+             */
+            'password' => ['nullable', 'string', 'min:8', 'max:72',
+                'regex:/[A-Za-z]/', 'regex:/[0-9]/'],
             /*
              * الراتب وبدلاته — مصدرُ مسيرة الشهر.
              *
@@ -90,6 +113,8 @@ class EmployeeController extends Controller
         ], [
             'permissions.required_if' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'login_username.required' => __('اسم المستخدم مطلوب — وبه يدخل الموظف إلى النظام.'),
+            'password.regex' => __('كلمة المرور تحتاج حرفًا ورقمًا على الأقل.'),
+            'password.min' => __('كلمة المرور ثمانية أحرف على الأقل.'),
         ] + MerchantAccount::messages());
 
         // العنوان الكامل يُبنى هنا، والتفرّد يُفحص عليه لا على الاسم
@@ -538,7 +563,9 @@ class EmployeeController extends Controller
             'branches.*' => ['integer'],
             // كان النموذج يعرض حقل كلمة مرور والتحقق لا يقبله: كل محاولة
             // تغيير كانت تُبتلع بصمت ويظنّ المدير أنه غيّرها.
-            'password' => ['nullable', 'string', 'min:4'],
+            // والشرطُ شرطُ الإنشاء نفسُه — انظره هناك موضَّحًا
+            'password' => ['nullable', 'string', 'min:8', 'max:72',
+                'regex:/[A-Za-z]/', 'regex:/[0-9]/'],
             'status' => ['nullable', 'boolean'],
             /*
              * ولا `commission_rate` معه — رُفع الحقل.
@@ -581,6 +608,8 @@ class EmployeeController extends Controller
             'permissions.*' => ['string', Rule::in([...Permissions::sections(), ...Permissions::actions()])],
         ], [
             'permissions.required_if' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
+            'password.regex' => __('كلمة المرور تحتاج حرفًا ورقمًا على الأقل.'),
+            'password.min' => __('كلمة المرور ثمانية أحرف على الأقل.'),
         ] + MerchantAccount::messages());
 
         if (filled($data['login_username'] ?? null)) {

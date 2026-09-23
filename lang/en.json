@@ -6501,5 +6501,7 @@
     "سطر التذييل": "Footer line",
     "صورة شريط المناسبات": "Occasions banner image",
     "الشريطُ يَعِد بباقةٍ وكرتِ هدية — وبلا صورةٍ يبقى إلى جانب وعده مستطيلٌ مخطَّط": "The banner promises a bouquet and a gift card — without an image, a striped rectangle sits beside that promise",
-    "يُكتب أسفل كل صفحة — واتركه فارغًا فيبقى «FLOWERS · LOUNGE · AND MORE»": "Printed at the foot of every page — leave it empty to keep “FLOWERS · LOUNGE · AND MORE”"
+    "يُكتب أسفل كل صفحة — واتركه فارغًا فيبقى «FLOWERS · LOUNGE · AND MORE»": "Printed at the foot of every page — leave it empty to keep “FLOWERS · LOUNGE · AND MORE”",
+    "ثمانية أحرف على الأقل فيها حرف ورقم — أو اتركها فارغة فتُولَّد وتُعرض لك مرّةً واحدة": "At least eight characters with a letter and a digit — or leave it empty and one is generated and shown to you once",
+    "اتركها فارغة للإبقاء على الحالية — والجديدة ثمانية أحرف فيها حرف ورقم": "Leave it empty to keep the current one — a new one is eight characters with a letter and a digit"
 }

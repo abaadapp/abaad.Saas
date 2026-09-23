@@ -23,6 +23,7 @@ use App\Support\InvoiceBranding;
 use App\Support\Mailer;
 use App\Support\MarketingSettings;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\StorePage;
 use App\Support\OrderNotice;
 use App\Support\OrderStatus;
 use App\Support\Permissions;
@@ -762,6 +763,8 @@ class PageController extends Controller
              */
             'fieldStates' => CheckoutFields::all(Demo::bid()),
             'fulfilments' => CheckoutFields::fulfilments(Demo::bid()),
+            // وأقسامُ الصفحة مرتَّبةً — تُحسب في الخادم كما تُقرأ في المتجر
+            'pageSections' => StorePage::order(Demo::bid()),
             /*
              * أيصل البريدُ فعلًا؟ — الجوابُ فوق مفاتيحه لا بعد شهرٍ من صمتها.
              *

@@ -148,6 +148,8 @@ export interface SharedProps {
         status: string | null;
         /** كلمة مرورٍ وُلِّدت الآن — تمرّ مرّةً واحدة ولا تُحفظ */
         password?: string | null;
+        /** رابطُ صورةٍ رُفعت الآن — يقرؤه حقلُ الصورة بعد الرفع */
+        uploaded?: string | null;
     };
     /** رمز CSRF الخام — يتجدّد مع كل استجابة، بخلاف وسم <meta> */
     csrf: string;

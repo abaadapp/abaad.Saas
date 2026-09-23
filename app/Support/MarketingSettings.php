@@ -193,6 +193,23 @@ class MarketingSettings
             'store_field_promo' => '',
             'store_fulfil' => '',
             'store_max_days' => '',
+
+            /*
+             * وصفحةُ المتجر — ما فيها وترتيبُه، كما يضبطه صاحبُه.
+             *
+             * صورةُ الواجهة، وقسمٌ يكتبه بنفسه، وأصنافٌ يُبرزها، وترتيبُ
+             * الأقسام وظهورُها. والفراغُ في كلٍّ يعني «ما كان» —
+             * انظر `Store\StorePage`.
+             */
+            'store_hero_image' => '',
+            'store_featured' => '',
+            'store_sections' => '',
+            'store_block_on' => '0',
+            'store_block_title' => '',
+            'store_block_text' => '',
+            'store_block_image' => '',
+            'store_block_cta' => '',
+            'store_block_href' => '',
         ],
         /*
          * ولا مقبضَ هنا لا يقرؤه المُرسِل — ولا حدثَ يقرؤه ولا مقبضَ له.

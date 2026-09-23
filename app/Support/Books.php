@@ -192,8 +192,28 @@ class Books
     {
         $order->loadMissing('items.addons');
 
+        /*
+         * ═══ وصفرٌ مقصودٌ ليس صفرًا منسيًّا ═══
+         *
+         * السقوطُ إلى تكلفة البطاقة وُضع لطلباتٍ قديمة لم تُكتب لقطتُها —
+         * فبندٌ بصفرٍ يُقرأ «لم تُسجَّل» لا «لا تكلفة له».
+         *
+         * وبضاعةُ البوتيك تنقض ذلك: هي أمانةٌ لم يدفع المحلُّ ثمنَها، فصفرُها
+         * حقيقةٌ لا نقصان. ولو سقطت إلى بطاقتها لَكُتب لها قيدُ تكلفةٍ ثمّ
+         * كُتب ثمنُها ثانيةً مصروفًا يومَ التسوية — فيُقرأ الربحُ أقلَّ ممّا
+         * هو بكلّ قطعةٍ تُباع، والميزانُ متوازنٌ لا يشي بشيء.
+         *
+         * فما له بوتيكٌ لا يُسأل عن بطاقته — انظر `Boutiques::CONSIGNED_COST`.
+         */
+        /*
+         * ورأيٌ واحد يُقرأ مرّتين: هنا لجلب البطاقات، وفي الحلقة لاستعمالها.
+         * وشرطان متطابقان يُكتبان مرّتين يفترقان يومًا — فيُجلب ما لا يُستعمل،
+         * أو — وهو الأسوأ — يُستعمل ما لم يُجلب فيُقرأ صفرًا بلا أن يُخطئ شيء.
+         */
+        $fallsBackToCard = fn ($i) => (float) $i->cost <= 0 && $i->boutique_id === null;
+
         $missing = $order->items
-            ->filter(fn ($i) => (float) $i->cost <= 0)
+            ->filter($fallsBackToCard)
             ->pluck('product_id')->filter()->unique()->values()->all();
 
         $cards = $missing
@@ -205,7 +225,7 @@ class Books
 
         foreach ($order->items as $item) {
             $unit = (float) $item->cost;
-            if ($unit <= 0) {
+            if ($fallsBackToCard($item)) {
                 $unit = (float) ($cards[$item->product_id] ?? 0);
             }
             $cost += $unit * (int) $item->quantity;

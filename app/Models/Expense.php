@@ -14,6 +14,15 @@ class Expense extends Model
     /** الحالة التي تعني أن المال خرج فعلًا */
     public const PAID = 'مدفوع';
 
+    /**
+     * والتزامٌ لم يخرج بعد.
+     *
+     * كانت تُكتب نصًّا في الشاشة وفي المتحكّم — ومن كتبها في موضعٍ ثالث
+     * بحرفٍ مختلف صنع حالةً لا يعرفها مُرشِّحٌ ولا مجموع. والثابتُ يمنع
+     * الخطأ المطبعيّ لا يغيّر ما هو مكتوب في القاعدة.
+     */
+    public const UNPAID = 'غير مدفوع';
+
     protected $guarded = [];
     protected $casts = ['amount' => 'decimal:3', 'spent_at' => 'date', 'due_date' => 'date'];
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }

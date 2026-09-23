@@ -853,6 +853,8 @@ class Permissions
         'addons' => 'products',
         /* والمواسمُ تبويبٌ في المنتجات: من يملك المنتجات يملكها */
         'seasons' => 'products',
+        /* والبوتيكاتُ مثلُها — وحارسُها الثاني أنّ المحلّ يُؤويها أصلًا */
+        'boutiques' => 'products',
         'jobTitles' => 'employees',
         // مسيرة الرواتب وصرفها من قسم «الرواتب والموظفين» — لا مفتاح ثالث لها
         'payroll' => 'employees',

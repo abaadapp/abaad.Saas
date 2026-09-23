@@ -36,6 +36,13 @@ export interface BusinessValues {
     tier: string;
     /** الواجهة الخاصّة: '' كسائر المتاجر، 'ribbon' لواجهة RIBBON */
     storefront_theme: string;
+    /**
+     * أيُؤوي بوتيكاتٍ تبيع تحت سقفه؟ — مفتاحٌ يفتحه مديرُ المنصّة لا قدرةُ باقة.
+     *
+     * واختياريٌّ في النوع: الغائبُ مغلق. فلا يُجبَر كلُّ موضعٍ يبني نموذجًا
+     * — ومنها حرّاسٌ قائمة — على ذكر مفتاحٍ لا شأنَ له به.
+     */
+    boutiques_enabled?: boolean;
 }
 
 /* النطاق ومكوّنه في مكانٍ واحد — انظر Components/ui/username-input */
@@ -431,6 +438,26 @@ export default function BusinessForm({
                             aria-label={t('واجهة المتجر الإلكتروني')}
                         />
                     </Field>
+
+                    {/*
+                        والبوتيكاتُ مفتاحٌ لا قائمة.
+                        محلٌّ يُؤجّر أركانَه لبوتيكاتٍ تبيع تحته ويأخذ نسبةً
+                        ممّا تبيع — وهي صفةُ محلٍّ بعينه لا درجةُ اشتراك.
+                    */}
+                    <label className="flex cursor-pointer items-start gap-2.5 sm:col-span-2">
+                        <input
+                            type="checkbox"
+                            checked={form.data.boutiques_enabled ?? false}
+                            onChange={(e) => form.setData('boutiques_enabled', e.target.checked)}
+                            className="mt-0.5 size-4 rounded border-[#d1d5db] accent-[#111]"
+                        />
+                        <span>
+                            <span className="block text-sm text-[#374151]">{t('يُؤوي بوتيكات')}</span>
+                            <span className="block text-[12px] text-[#9ca3af]">
+                                {t('تبويب «البوتيكات» في المنتجات: نسبة المتجر وكشف حساب شهري لكل بوتيك')}
+                            </span>
+                        </span>
+                    </label>
                 </div>,
             )}
 

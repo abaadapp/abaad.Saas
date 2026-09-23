@@ -26,6 +26,14 @@ export interface SectionTab {
      * ومن مُنح القسم ولم يُمنح الفعل يرى التبويب ويُردّ بـ403.
      */
     action?: string;
+    /**
+     * ما يلزم أن يُؤويه المحلُّ ليُعرض هذا التبويب.
+     *
+     * وهو سؤالٌ ثالثٌ فوق القسم والفعل: القسمُ «أيّ شاشةٍ تفتح»، والفعلُ
+     * «كم من الضرر تستطيع»، وهذا «أهذه الشاشةُ من شأن محلّك أصلًا؟».
+     * فمن لا يُؤجّر ركنًا لبوتيك لا يُزاد في شريطه تبويبٌ يسأل عمّا لا يعرف.
+     */
+    hosts?: string;
 }
 
 interface Props {
@@ -49,13 +57,14 @@ interface Props {
  */
 export default function SectionTabs({ tabs: all, current, className }: Props) {
     const t = useTranslate();
-    const { auth } = usePage<PageProps>().props;
+    const { auth, context } = usePage<PageProps>().props;
 
     // بلا قسم يظهر التبويب دائمًا — انظر SectionTab.section
     const tabs = all.filter(
         (tb) =>
             (!tb.section || (auth?.abilities.includes(tb.section) ?? false)) &&
-            (!tb.action || (auth?.mayActions?.includes(tb.action) ?? false)),
+            (!tb.action || (auth?.mayActions?.includes(tb.action) ?? false)) &&
+            (!tb.hosts || (context?.hosted?.includes(tb.hosts) ?? false)),
     );
 
     /*
@@ -136,6 +145,14 @@ export const PRODUCT_TABS: SectionTab[] = [
     { label: 'المنتجات', routeName: 'admin.products.index', section: 'products' },
     /* والمواسمُ تبويبٌ بجانبها لا قسمٌ في الشريط: طبقةٌ فوق الأصناف لا تُعيد تعريفها */
     { label: 'المواسم', routeName: 'admin.seasons.index', section: 'products' },
+    /*
+     * والبوتيكاتُ مثلُها — لمن يُؤويها وحده.
+     *
+     * `hosts` مفتاحٌ على الشركة لا على الباقة: محلٌّ يُؤجّر أركانَه ليس
+     * باقةً تُشترى. ومن لا بوتيك عنده لا يُزاد في شريطه تبويبٌ يسأل عمّا
+     * لا يعرف — والخادمُ يردّه ٤٠٤ على كلّ حال.
+     */
+    { label: 'البوتيكات', routeName: 'admin.boutiques.index', section: 'products', hosts: 'boutiques' },
 ];
 
 /*

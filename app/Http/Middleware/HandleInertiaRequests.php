@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Support\CrmWhatsApp;
+use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
@@ -106,6 +107,15 @@ class HandleInertiaRequests extends Middleware
                 'tier' => $user->business?->tier,
                 // والواجهةُ الخاصّة إن لبسها — تُخفي شاشاتِ البانِي وقوالبَه عمّن لا يراها زبونُه
                 'storefrontTheme' => $user->business?->storefrontTheme(),
+                /*
+                 * وما يُؤويه هذا المحلُّ ممّا ليس لكلّ متجر.
+                 *
+                 * قائمةٌ لا مفتاحٌ واحد: الثاني يُضاف بكلمةٍ لا بحقلٍ جديد
+                 * في كلّ طبقةٍ بينه وبين الشاشة.
+                 */
+                'hosted' => array_values(array_filter([
+                    Boutiques::hosts($user->business) ? 'boutiques' : null,
+                ])),
                 // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،
                 // فصار مشتركًا لا خاصًّا باللوحة. null حين لم يُضبط بعد.
                 'website' => Demo::websiteUrl(),

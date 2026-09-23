@@ -422,6 +422,14 @@ class BusinessController extends Controller
             // الفئةُ والواجهةُ الخاصّة — من قائمةٍ مغلقة، وفراغُهما «كسائر المتاجر»
             'tier' => ['nullable', Rule::in(\App\Models\Business::TIERS)],
             'storefront_theme' => ['nullable', Rule::in(\App\Models\Business::THEMES)],
+            /*
+             * وأيُؤوي بوتيكاتٍ تبيع تحت سقفه؟
+             *
+             * مفتاحٌ يفتحه مديرُ المنصّة لمن طلبه — وليس قدرةَ باقةٍ تُشترى:
+             * محلٌّ يُؤجّر أركانَه صفةُ محلٍّ لا درجةُ اشتراك. ومن لم يُفتح
+             * له لا يرى تبويبًا ولا حقلًا، ولا يُكتب على بنوده شيء.
+             */
+            'boutiques_enabled' => ['nullable', 'boolean'],
         ]);
 
         /*
@@ -440,6 +448,8 @@ class BusinessController extends Controller
          * الملفّ المرفوع أو من علامة الحذف، وهما وحدهما.
          */
         unset($data['remove_logo'], $data['logo']);
+        // والمفتاحُ منطقٌ لا نصّ: FormData ترفعه «0»/«1» ونصًّا فارغًا حين لا يُرسل
+        $data['boutiques_enabled'] = $request->boolean('boutiques_enabled');
         // والفراغُ فراغٌ لا نصٌّ فارغ: `''` يسقط في `Rule::in` ويُقرأ «فئةً» في كلّ فحص
         foreach (['tier', 'storefront_theme'] as $k) {
             if (array_key_exists($k, $data) && (string) $data[$k] === '') {

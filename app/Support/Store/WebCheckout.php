@@ -17,6 +17,7 @@ use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\OrderNumbers;
 use App\Support\OrderStatus;
+use App\Support\Boutiques;
 use App\Support\PaymentMethods;
 use App\Support\Recipe;
 use App\Support\SaleLines;
@@ -250,7 +251,10 @@ final class WebCheckout
                 'delivery_notes' => $form['slot'] ?? null,
             ]), (new OrderNumbers($bid))->salePrefix(), max(1, (int) (Setting::where('business_id', $bid)->where('key', 'inv_start')->value('value') ?? 1)));
 
-            foreach ($lines as $l) {
+            // وصاحبُ الصنف ونسبتُه — القاعدةُ نفسُها التي يقرأ بها الصندوق
+            $boutiqueOf = Boutiques::attribute($bid, $lines);
+
+            foreach (array_values($lines) as $idx => $l) {
                 $order->items()->create([
                     'product_id' => $l['product']?->id,
                     'variant_id' => $l['variant']?->id,
@@ -258,8 +262,11 @@ final class WebCheckout
                     'variant_sku' => $l['variant']?->sku,
                     'name' => $l['name'],
                     'price' => $l['price'],
-                    // لقطةُ التكلفة يومَ البيع — القاعدةُ نفسُها في الصندوق
-                    'cost' => (float) ($l['cost'] ?? 0),
+                    /*
+                     * لقطةُ التكلفة يومَ البيع، وصاحبُ البند ونسبتُه —
+                     * القاعدةُ نفسُها في الصندوق، ومن موضعٍ واحد يكتبها.
+                     */
+                    ...Boutiques::itemColumns($boutiqueOf[$idx] ?? null, (float) ($l['cost'] ?? 0)),
                     'quantity' => $l['qty'],
                     'note' => null,
                     'total' => round($l['price'] * $l['qty'], 3),

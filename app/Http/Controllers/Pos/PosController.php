@@ -21,6 +21,7 @@ use App\Support\Activity;
 use App\Support\AddonStock;
 use App\Support\Bank;
 use App\Support\Books;
+use App\Support\Boutiques;
 use App\Support\Contention;
 use App\Support\CreditSales;
 use App\Support\CustomerInvoices;
@@ -487,6 +488,8 @@ class PosController extends Controller
              * بيعةٌ لأنّ موسمَها لم يصحّ — يُطرح الموسمُ وتمضي البيعة.
              */
             $seasonOf = SeasonSales::attribute($bid, $lines);
+            // وصاحبُ الصنف ونسبتُه — يُقرآن من الصنف لا ممّا أرسلته الشاشة
+            $boutiqueOf = Boutiques::attribute($bid, $lines);
 
             // الإضافات جزءٌ من ثمن البند لا سطرٌ منفصل: «بوكيه + شوكولاتة»
             // بندٌ واحد يقرؤه الزبون على الفاتورة، ومجموعُه يدخل الحساب معه
@@ -708,7 +711,14 @@ class PosController extends Controller
                      * رفع سعره اليوم. واللقطة تُثبّت ما مضى. ولذي الوصفة
                      * تكلفتُه مجموعُ مكوّناته بأسعار اليوم — انظر Recipe::unitCost.
                      */
-                    'cost' => (float) ($l['cost'] ?? 0),
+                    /*
+                     * وصاحبُ البند ونسبتُه وتكلفتُه — من موضعٍ واحد.
+                     *
+                     * وتكلفةُ ما هو أمانةٌ صفر: البوتيكُ يملكها حتّى تُباع،
+                     * فقيدُ تكلفةِ بضاعةٍ مباعة لها يحسب ثمنَها مرّتين —
+                     * مرّةً هنا ومرّةً مصروفًا يومَ التسوية. انظر `Boutiques`.
+                     */
+                    ...Boutiques::itemColumns($boutiqueOf[$idx] ?? null, (float) ($l['cost'] ?? 0)),
                     'quantity' => $l['qty'],
                     'note' => $l['note'],
                     'total' => round($l['price'] * $l['qty'], 3),
@@ -960,6 +970,7 @@ class PosController extends Controller
             $lines = $this->priceItems($data['items']);
             // والموسمُ يُعلَّق مع البند ليعود معه — ويُقرَّر ثانيةً عند الدفع
             $seasonOf = SeasonSales::attribute($this->bid(), $lines);
+            $boutiqueOf = Boutiques::attribute($this->bid(), $lines);
             // الإضافات جزءٌ من ثمن البند لا سطرٌ منفصل: «بوكيه + شوكولاتة»
             // بندٌ واحد يقرؤه الزبون على الفاتورة، ومجموعُه يدخل الحساب معه
             $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
@@ -1000,7 +1011,14 @@ class PosController extends Controller
                     'name' => $l['name'],
                     'price' => $l['price'],
                     // لقطة التكلفة — انظر التعليق في إتمام البيع
-                    'cost' => (float) ($l['cost'] ?? 0),
+                    /*
+                     * وصاحبُ البند ونسبتُه وتكلفتُه — من موضعٍ واحد.
+                     *
+                     * وتكلفةُ ما هو أمانةٌ صفر: البوتيكُ يملكها حتّى تُباع،
+                     * فقيدُ تكلفةِ بضاعةٍ مباعة لها يحسب ثمنَها مرّتين —
+                     * مرّةً هنا ومرّةً مصروفًا يومَ التسوية. انظر `Boutiques`.
+                     */
+                    ...Boutiques::itemColumns($boutiqueOf[$idx] ?? null, (float) ($l['cost'] ?? 0)),
                     'quantity' => $l['qty'],
                     'note' => $l['note'],
                     'total' => round($l['price'] * $l['qty'], 3),

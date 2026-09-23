@@ -17,13 +17,31 @@
                 $shows = fn ($f) => ($fields[$f] ?? 'optional') !== 'off';
                 $req = fn ($f) => ($fields[$f] ?? 'optional') === 'required';
                 $star = fn ($f) => $req($f) ? ' *' : '';
+                /*
+                    ونجمةٌ تُرى ولا تُقال ليست علامة.
+
+                    قارئُ الشاشة يقرأ الاسمَ ويُسقط الرمزَ، فيسمع الأعمى
+                    «المنطقة» ويسمع المبصرُ «المنطقة مطلوبة». و`aria-required`
+                    تقولها له كما تقولها النجمةُ لعينه.
+                */
+                $need = fn ($f) => $req($f) ? 'aria-required="true"' : '';
             @endphp
             @php $step = fn ($n, $title) => '<h2 style="margin:0 0 14px;font-size:17px;font-weight:500;display:flex;align-items:center;gap:10px"><span style="width:24px;height:24px;border-radius:50%;background:var(--rb-olive);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px">'.$n.'</span>'.e($title).'</h2>'; @endphp
             <div>
                 {!! $step(1, $t['s1']) !!}
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-                    <div><input class="rb-input" name="name" placeholder="{{ $t['fName'] }}" aria-label="{{ $t['fName'] }}"><div class="rb-error" data-err="name"></div></div>
-                    <div><input class="rb-input" name="phone" dir="ltr" placeholder="{{ $t['fPhone'] }}" aria-label="{{ $t['fPhone'] }}"><div class="rb-error" data-err="phone"></div></div>
+                    {{--
+                        والنجمةُ على المقفلين كذلك.
+
+                        هما أشدُّ الحقول إلزامًا — الزبونُ يُعرف بهاتفه، والطلبُ
+                        بلا اسمٍ لا يُنادى — ولا ينتقيهما أحد. وكانت النجمةُ
+                        تُوضع على ما يملك صاحبُ المحلّ أمرَه وحدَه، فخرج
+                        المقفلان بلا علامة: يرى الزبونُ نجمةً على «المنطقة»
+                        ولا يراها على «رقم الهاتف»، فيظنّ الثاني اختياريًّا
+                        ويتركه — ثمّ يُردّ طلبُه بعد أن ملأ النموذج كلَّه.
+                    --}}
+                    <div><input class="rb-input" name="name" placeholder="{{ $t['fName'] }} *" aria-label="{{ $t['fName'] }}" aria-required="true"><div class="rb-error" data-err="name"></div></div>
+                    <div><input class="rb-input" name="phone" dir="ltr" placeholder="{{ $t['fPhone'] }} *" aria-label="{{ $t['fPhone'] }}" aria-required="true"><div class="rb-error" data-err="phone"></div></div>
                 </div>
             </div>
             <div>
@@ -39,18 +57,18 @@
                     @if ($shows('area'))
                         <div>
                             @if (count($delivery['areas']))
-                                <select class="rb-input" name="area" aria-label="{{ $t['fArea'] }}">
+                                <select class="rb-input" name="area" aria-label="{{ $t['fArea'] }}" {!! $need('area') !!}>
                                     <option value="">{{ $t['fArea'] }}{{ $star('area') }}</option>
                                     @foreach ($delivery['areas'] as $a)<option value="{{ $a }}">{{ $a }}</option>@endforeach
                                 </select>
                             @else
-                                <input class="rb-input" name="area" placeholder="{{ $t['fArea'] }}{{ $star('area') }}" aria-label="{{ $t['fArea'] }}">
+                                <input class="rb-input" name="area" placeholder="{{ $t['fArea'] }}{{ $star('area') }}" aria-label="{{ $t['fArea'] }}" {!! $need('area') !!}>
                             @endif
                             <div class="rb-error" data-err="area"></div>
                         </div>
                     @endif
                     @if ($shows('address'))
-                        <div><input class="rb-input" name="address" placeholder="{{ $t['fAddress'] }}{{ $star('address') }}" aria-label="{{ $t['fAddress'] }}"><div class="rb-error" data-err="address"></div></div>
+                        <div><input class="rb-input" name="address" placeholder="{{ $t['fAddress'] }}{{ $star('address') }}" aria-label="{{ $t['fAddress'] }}" {!! $need('address') !!}><div class="rb-error" data-err="address"></div></div>
                     @endif
                 </div>
                 <div data-rb-pickup style="display:none;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px;line-height:1.7">{{ $t['pickupAddr'] }}@if ($identity['address'] !== '') — {{ $identity['address'] }}@endif @if ($hours !== '') · {{ $hours }}@endif</div>
@@ -59,14 +77,14 @@
                         @if ($shows('date'))
                             <div>
                                 <label for="rb-date" style="font-size:13px">{{ $t['date'] }}{{ $star('date') }}</label>
-                                <input id="rb-date" class="rb-input" type="date" name="date" min="{{ $minDate }}" max="{{ $maxDate }}" aria-label="{{ $t['date'] }}" style="margin-top:6px">
+                                <input id="rb-date" class="rb-input" type="date" name="date" min="{{ $minDate }}" max="{{ $maxDate }}" aria-label="{{ $t['date'] }}" {!! $need('date') !!} style="margin-top:6px">
                                 <div class="rb-error" data-err="date"></div>
                             </div>
                         @endif
                         @if ($shows('slot') && count($delivery['slots']))
                             <div>
                                 <label for="rb-slot" style="font-size:13px">{{ $t['slot'] }}{{ $star('slot') }}</label>
-                                <select id="rb-slot" class="rb-input" name="slot" aria-label="{{ $t['slot'] }}" style="margin-top:6px">
+                                <select id="rb-slot" class="rb-input" name="slot" aria-label="{{ $t['slot'] }}" {!! $need('slot') !!} style="margin-top:6px">
                                     @if (! $req('slot'))<option value="">—</option>@endif
                                     @foreach ($delivery['slots'] as $s)<option value="{{ $s }}">{{ $s }}</option>@endforeach
                                 </select>
@@ -89,8 +107,8 @@
                         </label>
                     @endunless
                     <div data-rb-recipient style="display:{{ $req('recipient') ? 'grid' : 'none' }};grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
-                        <div><input class="rb-input" name="recipient_name" placeholder="{{ $t['fRecipient'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipient'] }}"><div class="rb-error" data-err="recipient_name"></div></div>
-                        <div><input class="rb-input" name="recipient_phone" dir="ltr" placeholder="{{ $t['fRecipientPhone'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipientPhone'] }}"><div class="rb-error" data-err="recipient_phone"></div></div>
+                        <div><input class="rb-input" name="recipient_name" placeholder="{{ $t['fRecipient'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipient'] }}" {!! $need('recipient') !!}><div class="rb-error" data-err="recipient_name"></div></div>
+                        <div><input class="rb-input" name="recipient_phone" dir="ltr" placeholder="{{ $t['fRecipientPhone'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipientPhone'] }}" {!! $need('recipient') !!}><div class="rb-error" data-err="recipient_phone"></div></div>
                     </div>
                 @endif
 

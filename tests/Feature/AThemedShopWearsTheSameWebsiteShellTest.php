@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
+use App\Models\PaymentGateway;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\Ledger;
@@ -16,42 +17,69 @@ use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
- * صاحبُ الواجهة الخاصّة يفتح قسمَ موقعه فيجد ما يجده جارُه.
+ * ضبطُ متجر الواجهة الخاصّة — صفحةٌ واحدة، ومحرّرٌ إلى جانبها.
  *
- * ═══ العطب الذي وُضع له ═══
+ * ═══ العطبُ الأوّل: لوحتان للشيء نفسه ═══
  *
- * لوحتان مختلفتان للشيء نفسه. جارُه يفتح «الموقع الإلكتروني» فيجد ترويسةً
- * فيها اسمُ موقعه وثلاثةَ أزرار، وشريطَ تبويبات، وبطاقةَ حالٍ فيها رابطُه
- * وشاراتُه، وأبوابًا مرسومة. وهو كان يُساق إلى بطاقةٍ داخل «الإعدادات» فيها
- * ثلاثون مقبضًا بلا شريطٍ ولا أبواب.
+ * كان صاحبُ الواجهة يُساق إلى بطاقةٍ داخل «الإعدادات» فيها ثلاثون مقبضًا،
+ * وجارُه يفتح قسمًا كاملًا بترويسةٍ وشريطٍ وأبواب. فصار له مثلُ ما لجاره:
+ * ستُّ شاشاتٍ بشريط تبويبات. وهو ما كان يحرسه هذا الملفّ.
  *
- * ومن تعلّم إحدى اللوحتين لا يعرف أين يبحث في الأخرى — والشكلُ هنا ليس
- * زينةً بل خريطة.
+ * ═══ والعطبُ الثاني: الدواءُ صار داءً ═══
  *
- * ═══ وما يُحرَس ═══
+ * قِيست الشاشاتُ الستّ فوُجد التوزيعُ غيرَ عادل:
  *
- * أنّ الشاشات الأربع **ترتدي الترويسة نفسَها** من ملفٍّ واحد، وأنّ كلَّ
- * تبويبٍ يقود إلى شاشةٍ تُفتح، وأنّ مقبضًا لا يسكن شاشتين.
+ *   • «الدومين» ثلاثةُ مقابض، و«الظهور في البحث» ثلاثة، و«الصفحات» ثلاثة.
+ *   • و«المتجر والطلبات» **اثنان وثلاثون** ومعها **زرّا حفظٍ متجاوران**
+ *     لا يحفظ أحدُهما ما يحفظه الآخر.
+ *   • وفوقها «عام» — وهي **قائمةٌ ثانية**: سبعُ بطاقاتٍ تقود إلى التبويبات
+ *     نفسِها، فوقها شريطُها.
+ *
+ * فمن أراد تغيير رسم التوصيل مرّ بقائمتين وحمّل الصفحةَ مرّتين قبل أن يبلغ
+ * حقلًا واحدًا.
+ *
+ * ═══ وما صار ═══
+ *
+ * صفحةُ ضبطٍ واحدة بعمودٍ يقفز إلى قسمها، وزرُّ حفظٍ واحد يظهر عند أوّل
+ * تغيير. و«التصميم» تبقى شاشتَها: محرّرُ أقسامٍ بمعاينةٍ حيّة لا نموذجُ
+ * حقول. وقائمةُ الجاهزية انتقلت إلى لوحة التشغيل — «أين متجري الآن» سؤالُ
+ * لوحةٍ لا سؤالُ نموذج.
+ *
+ * ═══ وما يُحرَس هنا ═══
+ *
+ * أنّ الشاشتين ترتديان الترويسة نفسَها، وأنّ كلَّ عنوانٍ قديمٍ يصل قسمَه،
+ * وأنّ كلَّ مقبضٍ في الأقسام يصل مخزنَه، وأنّ مقبضًا لا يسكن قسمين.
  */
 class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
 {
     use RefreshDatabase;
 
     /**
-     * الشاشاتُ الستّ: الملفّ ← [التبويبُ الذي تُضيئه، المسارُ الذي يفتحها].
-     *
-     * و«التصميم» تبويبٌ يُضيئه المحرّر ولا يفتحه: هو يُحوّل إليه كما يُحوّل
-     * عند جاره إلى لوحة تصميمه (انظر `DesignController::index`).
+     * الشاشتان: الملفّ ← [التبويبُ الذي تُضيئه، المسارُ الذي يفتحها].
      *
      * @var array<string, array{0: string, 1: string}>
      */
     private const SCREENS = [
-        'ThemeSite.tsx' => ['admin.website.site', 'admin.website.site'],
-        'ThemeEditor.tsx' => ['admin.website.design', 'admin.website.editor'],
-        'ThemePages.tsx' => ['admin.website.pages', 'admin.website.pages'],
-        'ThemeShop.tsx' => ['admin.website.shop', 'admin.website.shop'],
-        'ThemeDomain.tsx' => ['admin.website.domain', 'admin.website.domain'],
-        'ThemeSeo.tsx' => ['admin.website.seo', 'admin.website.seo'],
+        'ThemeSettings.tsx' => ['admin.website.site', 'admin.website.site'],
+        'ThemeEditor.tsx' => ['admin.website.editor', 'admin.website.editor'],
+    ];
+
+    /** أقسامُ صفحة الضبط: الملفّ ← مُعرّفُ القسم في الصفحة وفي العمود */
+    private const SECTIONS = [
+        'Address.tsx' => 'address',
+        'Pages.tsx' => 'pages',
+        'Checkout.tsx' => 'checkout',
+        'Fields.tsx' => 'fields',
+        'Gateway.tsx' => 'gateway',
+        'Seo.tsx' => 'seo',
+    ];
+
+    /** ما كان شاشةً وصار قسمًا — المسارُ القديم ← القسمُ الذي يصله */
+    private const MOVED = [
+        'admin.website.shop' => 'checkout',
+        'admin.website.seo' => 'seo',
+        'admin.website.domain' => 'address',
+        'admin.website.pages' => 'pages',
     ];
 
     private Business $shop;
@@ -86,16 +114,20 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         return (string) file_get_contents(resource_path('js/Pages/Admin/Website/'.$file));
     }
 
+    private function section(string $file): string
+    {
+        return (string) file_get_contents(resource_path('js/Pages/Admin/Website/theme/sections/'.$file));
+    }
+
     /* ═══════════ الترويسةُ واحدة ═══════════ */
 
     /**
-     * والشاشاتُ الأربع تقرأ ترويستَها من ملفٍّ واحد.
+     * والشاشتان تقرآن ترويستَهما من ملفٍّ واحد.
      *
-     * ولو كُتبت في كلٍّ منها لاختلفت: زرٌّ يُسمّى «معاينة» هنا و«عرض المتجر»
-     * هناك، وشارةٌ تقول «منشور» في شاشةٍ و«يعمل» في أختها عن المتجر نفسِه —
-     * وهو ما وقع في شاشات البانِي قبل أن تُجمع في `shell`.
+     * ولو كُتبت في كلٍّ منهما لاختلفت: زرٌّ يُسمّى «معاينة» هنا و«عرض المتجر»
+     * هناك، وشارةٌ تقول «منشور» في شاشةٍ و«يعمل» في أختها عن المتجر نفسِه.
      */
-    public function test_the_four_screens_wear_one_header(): void
+    public function test_both_screens_wear_one_header(): void
     {
         foreach (self::SCREENS as $file => [$tab]) {
             $code = $this->screen($file);
@@ -119,31 +151,22 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             $seen[$tab] = $file;
         }
 
-        $this->assertCount(6, $seen);
+        $this->assertCount(2, $seen);
     }
 
     /**
-     * وكلُّ تبويبٍ في الشريط يقود إلى شاشةٍ تُفتح.
+     * وشريطُ الواجهة الخاصّة من تبويبين — ويفترق عن شريط جاره عن حقّ.
      *
-     * وتبويبٌ يُعرض ثمّ يردّ من ضغطه أسوأُ من تبويبٍ لا يُعرض: الأوّل
-     * يُعلّمه أنّ الشاشةَ تكذب، والثاني لا يَعِد بشيء.
+     * البانِي مواقعُ كثيرةٌ وصفحاتٌ تُضاف وقوالبُ تُبدَّل، فله ستّة. وهذه
+     * واجهةٌ واحدةٌ بصفحاتٍ أربعٍ مكتوبة، فلم يبقَ ممّا يُنتقل إليه إلّا
+     * وجهتان: صفحتُه التي تُرسَم، وضبطُه الذي يُملأ.
      */
-    public function test_every_tab_in_the_strip_opens(): void
+    public function test_the_strip_is_two_tabs_and_both_open(): void
     {
         $strip = (string) file_get_contents(resource_path('js/Components/SectionTabs.tsx'));
 
-        /*
-         * والشريطُ واحدٌ لا شريطان: `THEME_TABS` صار اسمًا آخر لـ`WEBSITE_TABS`
-         * بعد أن صار لصاحب الواجهة ما لجاره. فيُقرأ من موضع القيم.
-         */
-        $this->assertStringContainsString(
-            'export const THEME_TABS = WEBSITE_TABS;',
-            $strip,
-            'شريطُ الواجهة الخاصّة انفصل عن شريط جاره — وقائمتان تفترقان',
-        );
-
-        $from = strpos($strip, 'export const WEBSITE_TABS');
-        $this->assertNotFalse($from, 'لا شريطَ تبويباتٍ لقسم الموقع');
+        $from = strpos($strip, 'export const THEME_TABS');
+        $this->assertNotFalse($from, 'لا شريطَ تبويباتٍ للواجهة الخاصّة');
 
         preg_match_all(
             "/routeName: '([^']+)'/",
@@ -151,30 +174,75 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             $matches,
         );
 
-        $this->assertCount(6, $matches[1]);
+        $this->assertSame(
+            ['admin.website.editor', 'admin.website.site'],
+            $matches[1],
+            'شريطُ الواجهة الخاصّة تبويبان: صفحتُه وضبطُه',
+        );
 
         foreach ($matches[1] as $name) {
             $this->assertNotNull(Route::getRoutes()->getByName($name), $name.' تبويبٌ إلى مسارٍ لا وجود له');
 
-            // ويُتبَع التحويل: «التصميم» يصل إلى المحرّر لا إلى صفحةٍ له
             $this->actingAs($this->owner)->followingRedirects()->get(route($name))
                 ->assertOk($name.' تبويبٌ يُعرض ثمّ يردّ من ضغطه');
         }
     }
 
+    /* ═══════════ وما كان شاشةً صار قسمًا ═══════════ */
+
     /**
-     * ═══ وكلُّ خاصيّةٍ تقرؤها الشاشةُ يُرسلها الخادم ═══
+     * والعناوينُ القديمة تصل أقسامَها — لا 404 ولا أوّلَ الصفحة.
      *
-     * وهذا الحارسُ وُضع بعد شاشةٍ بيضاء.
+     * أربعةُ مساراتٍ كانت شاشاتٍ قائمة، وقد وُزّعت على زبائن ومُحفظت في
+     * متصفّحاتهم. ومن فتح إشارتَه المرجعية إلى «الدومين» يجب أن يقف على
+     * عنوان متجره لا على أوّل صفحةٍ طويلة يبحث فيها.
+     */
+    public function test_every_old_path_lands_on_its_section(): void
+    {
+        foreach (self::MOVED as $name => $anchor) {
+            $this->actingAs($this->owner)->get(route($name))
+                ->assertRedirect(route('admin.website.site').'#'.$anchor);
+        }
+    }
+
+    /**
+     * وكلُّ مدخلٍ في العمود يجد قسمَه في الصفحة.
      *
-     * «صفحة المتجر» كانت ترسل `published` و`url` بيدها. ثمّ ارتدت الترويسةَ
-     * المشتركة وصارت تقرأ `site` — ولم يُرسَل. فصار `site` غيرَ معرَّف،
-     * و`site.published` تُسقط الشاشةَ كلَّها عند أوّل تصيير: صفحةٌ بيضاء بلا
-     * رسالةٍ ولا سطرٍ في سجلّ الخادم — لأنّ العطب في المتصفّح لا فيه.
+     * والعمودُ يقفز بـ`getElementById`: مُعرّفٌ لا وجود له يعني ضغطةً لا
+     * يقع بها شيء — وهو أسوأُ من مدخلٍ لا يُرسم، لأنّ صاحبَه يظنّ الصفحةَ
+     * معطوبة.
+     */
+    public function test_every_rail_entry_finds_its_section(): void
+    {
+        $page = $this->screen('ThemeSettings.tsx');
+
+        preg_match_all("/id: '([a-z]+)',\n\s+label:/", $page, $rail);
+        $this->assertNotSame([], $rail[1], 'لا مداخلَ في العمود — الحارسُ يحرس لا شيء');
+
+        /* والمُعرّفاتُ تُقرأ من الأقسام نفسِها لا من قائمةٍ ثانيةٍ تُكتب هنا */
+        $ids = [];
+        foreach (self::SECTIONS as $file => $_) {
+            preg_match_all('/<section id="([a-z]+)"/', $this->section($file), $m);
+            $ids = array_merge($ids, $m[1]);
+        }
+
+        foreach ($rail[1] as $id) {
+            $this->assertContains($id, $ids, 'العمودُ يقفز إلى «'.$id.'» ولا قسمَ بهذا المُعرّف');
+        }
+
+        // ولا قسمَ بلا مدخلٍ يقود إليه: قسمٌ لا يُذكر في العمود لا يُعثر عليه
+        foreach ($ids as $id) {
+            $this->assertContains($id, $rail[1], 'قسمُ «'.$id.'» لا مدخلَ له في العمود');
+        }
+    }
+
+    /**
+     * ═══ وكلُّ خاصيّةٍ تقرؤها الصفحةُ يُرسلها الخادم ═══
      *
-     * ولم يكشفه حارسٌ قائم: فحصُ Inertia يسأل «أيُّ شاشةٍ تُعرض؟» ولا يُصيّر
-     * منها شيئًا، وحارسُ الواجهة يُمرّر الخصائصَ بيده فيكتب ما نسيه الخادم.
-     * فالسؤالُ يُطرح هنا: ما تطلبه الشاشةُ في `Props` — أيصلها؟
+     * وهذا الحارسُ وُضع بعد شاشةٍ بيضاء: شاشةٌ ارتدت الترويسةَ المشتركة
+     * فصارت تقرأ `site` — ولم يُرسَل. فصار `site` غيرَ معرَّف، و`site.published`
+     * تُسقط الشاشةَ كلَّها عند أوّل تصيير: صفحةٌ بيضاء بلا رسالةٍ ولا سطرٍ في
+     * سجلّ الخادم، لأنّ العطب في المتصفّح لا فيه.
      */
     public function test_every_property_the_screens_read_is_actually_sent(): void
     {
@@ -188,7 +256,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             preg_match_all('/^    ([a-zA-Z_]+): /m', $block, $m);
 
             $wanted = array_merge(['theme', 'site'], $m[1]);
-            $props = $this->actingAs($this->owner)->get(route($open))->assertOk()
+            $props = $this->actingAs($this->owner)->followingRedirects()->get(route($open))->assertOk()
                 ->viewData('page')['props'];
 
             foreach ($wanted as $key) {
@@ -202,16 +270,16 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         }
     }
 
-    /* ═══════════ والمقبضُ في شاشةٍ واحدة ═══════════ */
+    /* ═══════════ والمقبضُ في قسمٍ واحد ═══════════ */
 
     /**
-     * لا مفتاحَ يُحرَّر في شاشتين من شاشات القسم.
+     * لا مفتاحَ يُحرَّر في موضعين.
      *
      * وهو الحارسُ الذي يمنع العطبَ الصامت: نموذجُ Inertia يلتقط قيمَه حين
-     * تُفتح الشاشة، فلسانان مفتوحان على شاشتين يحملان المفتاحَ نفسَه —
-     * والحفظُ من الثاني يكتب فوق الأوّل بلا خطأٍ ولا رسالة.
+     * تُفتح الشاشة، فمقبضان لمفتاحٍ واحد — أحدُهما في المحرّر والآخرُ في
+     * الضبط — يعني أنّ الحفظَ من أحدهما يكتب فوق الآخر بلا خطأٍ ولا رسالة.
      */
-    public function test_no_key_is_edited_in_two_screens(): void
+    public function test_no_key_is_edited_in_two_places(): void
     {
         $where = [];
 
@@ -223,8 +291,8 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         }
         $where['store_sections'] = 'ThemeEditor.tsx';
 
-        foreach (['ThemeShop.tsx', 'ThemeDomain.tsx', 'ThemePages.tsx', 'ThemeSeo.tsx'] as $file) {
-            preg_match_all("/setData\('((?:store|site)_[a-z_]+)'/", $this->screen($file), $m);
+        foreach (array_keys(self::SECTIONS) as $file) {
+            preg_match_all("/setData\('((?:store|site)_[a-z_]+)'/", $this->section($file), $m);
 
             foreach (array_unique($m[1]) as $key) {
                 $this->assertArrayNotHasKey(
@@ -245,8 +313,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
      * وبطاقةُ المتجر في «الإعدادات» لا تُرسم لمن لبس واجهةً خاصّة.
      *
      * ولو رُسمت لَحملت نسخةً ثانية من كلّ مقبضٍ انتقل — ونصفُ شاشةٍ باقية
-     * أسوأُ من شاشةٍ كاملةٍ في الموضع الخطأ: يُبدَّل المقبضُ هناك فيكتب
-     * الحفظُ من هنا فوقه.
+     * أسوأُ من شاشةٍ كاملةٍ في الموضع الخطأ.
      */
     public function test_the_settings_card_is_not_drawn_for_a_themed_shop(): void
     {
@@ -260,19 +327,14 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     }
 
     /**
-     * ═══ وكلُّ مقبضٍ في الشاشة يصل مخزنَه فعلًا ═══
+     * ═══ وكلُّ مقبضٍ في الأقسام يصل مخزنَه فعلًا ═══
      *
-     * وهذا أقسى الحرّاس وأرخصُها: الشاشةُ ترسم المقبض، والنموذجُ يرسله،
+     * وهذا أقسى الحرّاس وأرخصُها: القسمُ يرسم المقبض، والنموذجُ يرسله،
      * والخادمُ يُصادق حمولتَه بقائمةٍ مكتوبةٍ بيده — فمفتاحٌ خارجَ القائمة
      * يُسقطه `validated()` بهدوء، ويُردّ «حُفظ متجرك الإلكتروني» ولا يُحفظ
-     * شيء. فيُقلَّب المقبضُ ويُحفظ ويُعاد فتحُ الشاشة على ما كان.
-     *
-     * ولا يكفي أن يكون المفتاحُ في `MarketingSettings::GROUPS`: تلك تقول
-     * «يصحّ تخزينه»، وهذه تسأل «أيكتبه البابُ الذي تطرقه الشاشة؟». وبينهما
-     * وقع العطب — `store_allow_orders` معرَّفٌ في المجموعة منذ نسخ، ولا
-     * تكتبه `MarketingController::saveStore`.
+     * شيء. فيُقلَّب المقبضُ ويُحفظ ويُعاد فتحُ الصفحة على ما كان.
      */
-    public function test_every_knob_the_screens_draw_really_reaches_its_store(): void
+    public function test_every_knob_the_sections_draw_really_reaches_its_store(): void
     {
         $sample = [
             'store_allow_orders' => '0',
@@ -289,7 +351,6 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'store_on' => '1',
             'store_pay_cod' => '0',
             'store_pay_transfer' => '1',
-            // وما أضافته «الصفحات» و«الظهور في البحث»
             'store_about_image' => '/storage/store/about.jpg',
             'store_pages' => 'contact',
             'store_seo_title' => 'ريبون لاونج — ورد وهدايا بمسقط',
@@ -298,67 +359,68 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         ];
 
         /*
-         * والمفاتيحُ تُقرأ من الشاشة نفسِها — فمقبضٌ يُضاف غدًا يدخل الحارس
+         * والمفاتيحُ تُقرأ من الأقسام نفسِها — فمقبضٌ يُضاف غدًا يدخل الحارس
          * بلا سطرٍ يُكتب له.
          *
          * و`site_slug` ليس منها: مخزنُه عمودٌ في `businesses` لا صفٌّ في
          * `settings`، وله حرّاسه (تفرّدُه، ورفضُ النشر بلا عنوان).
          */
         $drawn = [];
-        foreach (['ThemeShop.tsx', 'ThemeDomain.tsx', 'ThemePages.tsx', 'ThemeSeo.tsx'] as $file) {
-            preg_match_all("/setData\('(store_[a-z_]+)'/", $this->screen($file), $m);
+        foreach (array_keys(self::SECTIONS) as $file) {
+            preg_match_all("/setData\('(store_[a-z_]+)'/", $this->section($file), $m);
             $drawn = array_merge($drawn, $m[1]);
         }
-
-        /*
-         * و«الصفحات» تكتب مفتاحَها بـ`router.post` لا بنموذج — فلا تلتقطه
-         * `setData`. ويُضمّ بيده، وإلّا بقي أثقلُ مقبضٍ في الشاشة بلا حارس:
-         * إطفاءُ صفحةٍ على زبائن متجرٍ مفتوح.
-         */
-        $drawn[] = 'store_pages';
         $drawn = array_values(array_unique($drawn));
 
-        $this->assertNotSame([], $drawn, 'لم يُقرأ من الشاشات مقبضٌ واحد — الحارسُ يحرس لا شيء');
+        $this->assertNotSame([], $drawn, 'لم يُقرأ من الأقسام مقبضٌ واحد — الحارسُ يحرس لا شيء');
+        $this->assertContains('store_pages', $drawn, 'مفاتيحُ الصفحات لا تُحفظ مع الصفحة');
 
         foreach ($drawn as $key) {
             $this->assertArrayHasKey($key, $sample, $key.' مقبضٌ جديد بلا قيمةِ فحصٍ في هذا الحارس');
 
             $this->actingAs($this->owner)
-                ->from(route('admin.website.shop'))
+                ->from(route('admin.website.site'))
                 ->post(route('admin.marketing.store.save'), [$key => $sample[$key]])
                 ->assertRedirect();
 
             $this->assertSame(
                 $sample[$key],
                 (string) (MarketingSettings::group($this->shop->id, 'website')[$key] ?? ''),
-                $key.' يُرسَل من الشاشة ولا يكتبه الخادم — مقبضٌ لا يُدير شيئًا',
+                $key.' يُرسَل من القسم ولا يكتبه الخادم — مقبضٌ لا يُدير شيئًا',
             );
         }
     }
 
     /**
-     * وكلُّ بابٍ في شاشة «عام» يُفتح لمن يراه.
+     * ═══ وزرُّ الحفظ واحد — إلّا بوّابةَ الدفع ═══
      *
-     * والأبوابُ ليست تبويبات: `SmartLink` لا تُخفي شيئًا بالصلاحيات، فبابٌ
-     * يقود إلى قسمٍ لا يملكه من يراه يُصفع بـ٤٠٣ عند الضغط — وقد فُتحت له
-     * الشاشةُ التي فيها البابُ بحقّ.
+     * كانت شاشةُ «المتجر والطلبات» تحمل زرَّين متجاورين لا يحفظ أحدُهما ما
+     * يحفظه الآخر: من عدّل رسمَ التوصيل ثمّ ضغط الزرَّ الأسفل أضاع ما كتب
+     * ولا شيء يقول له ذلك.
+     *
+     * فصار الحفظُ شريطًا واحدًا، ولم يبقَ نموذجٌ بزرِّه إلّا بوّابةَ الدفع —
+     * وسببُه مكتوبٌ في ملفّها: حقلان فيها سرّان لا يُرسلان مع كلّ حفظ.
      */
-    public function test_every_door_on_the_general_screen_opens(): void
+    public function test_only_the_payment_gateway_keeps_a_button_of_its_own(): void
     {
-        preg_match_all("/route: '([a-z.]+)'/", $this->screen('ThemeSite.tsx'), $m);
+        $withButtons = [];
 
-        $this->assertNotSame([], $m[1], 'لا أبوابَ في شاشة «عام»');
-
-        foreach ($m[1] as $name) {
-            $this->assertNotNull(Route::getRoutes()->getByName($name), $name.' بابٌ إلى مسارٍ لا وجود له');
-
-            // ويُتبَع التحويل: «التصميم» بابٌ يصل إلى المحرّر لا إلى شاشةٍ له
-            $this->actingAs($this->owner)->followingRedirects()->get(route($name))
-                ->assertOk($name.' بابٌ يُرسم ثمّ يُصفع من يضغطه');
+        foreach (self::SECTIONS as $file => $id) {
+            if (str_contains($this->section($file), 'type="submit"')) {
+                $withButtons[] = $id;
+            }
         }
+
+        $this->assertSame(['gateway'], $withButtons, 'قسمٌ يحمل زرَّ حفظٍ خاصًّا به بلا سببٍ مكتوب');
+
+        $this->assertStringContainsString(
+            'data-testid="save-bar"',
+            (string) file_get_contents(resource_path('js/Pages/Admin/Website/theme/SaveBar.tsx')),
+            'لا شريطَ حفظٍ واحدًا للصفحة',
+        );
     }
 
-    /* ═══════════ وما تقوله بطاقةُ الحال يُقاس ═══════════ */
+    /* ═══════════ وما تقوله الصفحةُ يُقاس ═══════════ */
 
     /** ولا رابطَ يُعرض على متجرٍ لا يُفتح — زرٌّ يردّ «غير موجود» يُقرأ عطبًا */
     public function test_an_unpublished_shop_is_offered_no_link(): void
@@ -381,45 +443,70 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     }
 
     /**
-     * وعددُ طرق الدفع يُقرأ من قارئه لا من مفتاحين.
+     * وجاهزيةُ المتجر تُقرأ في لوحة التشغيل — حيث انتقلت.
      *
-     * بوّابةُ البطاقة طريقةٌ ثالثةٌ بلا مفتاحٍ في مجموعة `website` — فعدٌّ
-     * يقرأ المفاتيح يقول «اثنتان» ومتجرُه يقبض بثلاث.
+     * وكانت في شاشة «عام»: شاشةٌ لا يُضبط فيها شيء، قائمةُ جاهزيةٍ وسبعُ
+     * بطاقاتٍ تكرّر شريطَ التبويبات. فحُذفت الشاشةُ وبقي ما فيها حيث يُقرأ.
      */
-    public function test_the_payment_count_reads_what_the_store_really_takes(): void
+    public function test_the_readiness_list_is_read_on_the_operations_board(): void
     {
-        MarketingSettings::save($this->shop->id, 'website', ['store_pay_cod' => '1', 'store_pay_transfer' => '1']);
-
         $props = $this->actingAs($this->owner)
-            ->get(route('admin.website.site'))->viewData('page')['props'];
+            ->get(route('admin.website.index'))->assertOk()
+            ->viewData('page')['props'];
 
-        $this->assertSame(2, $props['counts']['payments']);
+        $this->assertNotSame([], $props['readiness'], 'لوحةُ التشغيل بلا جاهزية');
 
-        MarketingSettings::save($this->shop->id, 'website', ['store_pay_cod' => '0', 'store_pay_transfer' => '0']);
+        foreach ($props['readiness'] as $fact) {
+            foreach (['key', 'label', 'ok', 'optional', 'detail'] as $key) {
+                $this->assertArrayHasKey($key, $fact, 'سطرُ جاهزيةٍ بلا «'.$key.'»');
+            }
+        }
 
-        $props = $this->actingAs($this->owner)
-            ->get(route('admin.website.site'))->viewData('page')['props'];
-
-        $this->assertSame(0, $props['counts']['payments'], 'متجرٌ بلا طريقة دفعٍ يُقال عنه ذلك');
+        $keys = array_column($props['readiness'], 'key');
+        $this->assertContains('slug', $keys, 'الجاهزيةُ لا تسأل عن عنوان المتجر');
+        $this->assertContains('products', $keys, 'الجاهزيةُ لا تسأل عن بضاعةٍ معروضة');
     }
 
     /** وحقولُ إتمام الطلب تصل محسوبةً لا فارغة — فالفراغُ يُقرأ «ما كان» */
     public function test_the_checkout_fields_arrive_as_the_store_works_today(): void
     {
         $props = $this->actingAs($this->owner)
-            ->get(route('admin.website.shop'))->assertOk()
+            ->get(route('admin.website.site'))->assertOk()
             ->viewData('page')['props'];
 
         $this->assertNotSame([], $props['fieldStates']);
         $this->assertNotSame([], $props['fulfilments']);
     }
 
+    /**
+     * وما أذِن به من الصفحات يصل محسوبًا لا خامًا.
+     *
+     * الفراغُ في العمود يعني «كلُّها» (انظر `StoreNav::allowed`)، فإرسالُه
+     * فراغًا إلى الصفحة يجعل مفاتيحَ الصفحتين مطفأةً وهما مفتوحتان على
+     * زبائنه — ويكفي أن يُحفظ مرّةً ليصير الكذبُ حقيقة.
+     */
+    public function test_the_pages_arrive_as_the_store_really_shows_them(): void
+    {
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.website.site'))->assertOk()
+            ->viewData('page')['props'];
+
+        $this->assertSame('about,contact', $props['pages']['allowed'], 'متجرٌ جديد: صفحتاه مفتوحتان');
+
+        MarketingSettings::save($this->shop->id, 'website', ['store_pages' => 'none']);
+
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.website.site'))->viewData('page')['props'];
+
+        $this->assertSame('none', $props['pages']['allowed'], 'ومن أطفأهما يقرأ ذلك لا «كلُّها»');
+    }
+
     /** ولا يخرج سرُّ بوّابةٍ إلى المتصفّح — خصائصُ Inertia تُقرأ في مصدر الصفحة */
     public function test_no_gateway_secret_reaches_the_browser(): void
     {
-        \App\Models\PaymentGateway::create([
+        PaymentGateway::create([
             'business_id' => $this->shop->id,
-            'provider' => \App\Models\PaymentGateway::PAYMOB,
+            'provider' => PaymentGateway::PAYMOB,
             'public_key' => 'pk_live_x',
             'secret_key' => 'sk_live_secret',
             'hmac_secret' => 'hmac_secret',
@@ -427,7 +514,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'active' => true,
         ]);
 
-        $response = $this->actingAs($this->owner)->get(route('admin.website.shop'))->assertOk();
+        $response = $this->actingAs($this->owner)->get(route('admin.website.site'))->assertOk();
 
         $response->assertDontSee('sk_live_secret');
         $response->assertDontSee('hmac_secret');
@@ -435,5 +522,16 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         $props = $response->viewData('page')['props'];
         $this->assertTrue($props['gateway']['has_secret']);
         $this->assertTrue($props['gateway']['has_hmac']);
+    }
+
+    /** ولا شاشةَ من الخمسِ القديمة باقيةٌ تُنسى فتفترق عن الأقسام */
+    public function test_the_screens_that_became_sections_are_gone(): void
+    {
+        foreach (['ThemeSite', 'ThemeShop', 'ThemeSeo', 'ThemeDomain', 'ThemePages'] as $gone) {
+            $this->assertFileDoesNotExist(
+                resource_path('js/Pages/Admin/Website/'.$gone.'.tsx'),
+                $gone.' ما زالت قائمةً إلى جانب قسمها — نسختان تفترقان',
+            );
+        }
     }
 }

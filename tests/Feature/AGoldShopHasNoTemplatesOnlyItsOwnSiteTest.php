@@ -73,7 +73,16 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
         $this->assertSame('published', $page['props']['site']['state']);
         $this->assertSame('ribbon', $page['props']['site']['template']);
         $this->assertStringContainsString('ribbon', (string) $page['props']['site']['url']);
-        $this->assertSame([], $page['props']['readiness']);
+        /*
+         * وقائمةُ الجاهزية انتقلت إلى هنا من شاشة «عام» — تلك شاشةٌ لا
+         * يُضبط فيها شيء، وقد حُذفت حين صار الضبطُ صفحةً واحدة. و«أين
+         * متجري الآن» سؤالُ لوحةٍ لا سؤالُ نموذج.
+         */
+        $this->assertNotSame([], $page['props']['readiness']);
+
+        $facts = collect($page['props']['readiness'])->keyBy('key');
+        $this->assertTrue($facts['slug']['ok'], 'له عنوانٌ — فالسطرُ يقول ذلك');
+        $this->assertTrue($facts['published']['ok'], 'ومنشورٌ — فالسطرُ يقول ذلك');
         $this->assertSame('checkout', $page['props']['channel']);
         $this->assertSame(0, $page['props']['orders']['today']);
     }
@@ -101,9 +110,14 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
 
         $this->assertSame('draft', $props['site']['state']);
         $this->assertNull($props['site']['url']);
-        $this->assertCount(1, $props['readiness']);
-        $this->assertFalse($props['readiness'][0]['ok']);
-        $this->assertStringContainsString('نشر المتجر', $props['readiness'][0]['detail']);
+        /* وما ينقص يُقال في القائمة نفسِها — و«النشر» أوّلُ ما ينقص */
+        $missing = array_values(array_filter(
+            $props['readiness'],
+            fn ($f) => ! $f['ok'] && ! $f['optional'],
+        ));
+
+        $this->assertNotSame([], $missing, 'متجرٌ لم يُنشر ولا شيء يقول ذلك');
+        $this->assertContains('published', array_column($missing, 'key'));
     }
 
     /** وطلباتُ الموقع تُعدّ من الدفتر — بقناة الموقع ولليوم وحده، ولهذا المتجر وحده */
@@ -183,12 +197,12 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
     }
 
     /**
-     * ═══ وستُّ شاشاتٍ صارت له على مسارات جاره نفسِها ═══
+     * ═══ وشاشتان له على مسارات جاره نفسِها ═══
      *
-     * وهذا هو الشكلُ الذي طُلب: من فتح «الموقع الإلكتروني» في أيّ متجرٍ من
-     * متاجر أبعاد يجد ترويسةً وشريطَ تبويباتٍ وبطاقةَ حالٍ وأبوابًا. وكان
-     * صاحبُ الواجهة الخاصّة يُساق إلى بطاقةٍ في «الإعدادات» فيها ثلاثون
-     * مقبضًا بلا شريطٍ ولا أبواب — لوحتان مختلفتان للشيء نفسه.
+     * وكانت ستًّا. ثمّ قِيست فوُجد التوزيعُ غيرَ عادل: ثلاثٌ فيها ثلاثةُ
+     * مقابض، وواحدةٌ فيها اثنان وثلاثون، وفوقها «عام» التي هي قائمةٌ ثانية
+     * تكرّر شريطَ التبويبات في سبع بطاقات. فصار الضبطُ صفحةً واحدة بعمودٍ
+     * يقفز، وبقيت «التصميم» شاشتَها لأنّها محرّرٌ بمعاينةٍ حيّة.
      *
      * والمساراتُ نفسُها لا مساراتٌ ثانية: رابطٌ يُحفظ أو يُشارَك يعمل عند
      * الاثنين، ولا يتعلّم أحدُهما عنوانًا لا يعرفه الآخر.
@@ -198,13 +212,30 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
     public static function themedScreens(): array
     {
         return [
-            'عام' => ['admin.website.site', 'Admin/Website/ThemeSite'],
+            'الإعدادات' => ['admin.website.site', 'Admin/Website/ThemeSettings'],
             'صفحة المتجر' => ['admin.website.editor', 'Admin/Website/ThemeEditor'],
-            'الصفحات' => ['admin.website.pages', 'Admin/Website/ThemePages'],
-            'المتجر والطلبات' => ['admin.website.shop', 'Admin/Website/ThemeShop'],
-            'الدومين' => ['admin.website.domain', 'Admin/Website/ThemeDomain'],
-            'الظهور في البحث' => ['admin.website.seo', 'Admin/Website/ThemeSeo'],
         ];
+    }
+
+    /**
+     * وما كان شاشةً صار قسمًا — والعنوانُ القديم يصله بعد `#`.
+     *
+     * وُزّعت هذه المسارات على زبائن ومُحفظت في متصفّحاتهم، فلا تُردّ بـ404
+     * ولا إلى أوّل صفحةٍ طويلة يبحث فيها من فتح إشارتَه المرجعية.
+     */
+    public function test_the_screens_that_became_sections_land_on_them(): void
+    {
+        Builder::create($this->business, Blueprints::STORE, 'mono', $this->owner->id);
+
+        foreach ([
+            'admin.website.shop' => 'checkout',
+            'admin.website.seo' => 'seo',
+            'admin.website.domain' => 'address',
+            'admin.website.pages' => 'pages',
+        ] as $name => $anchor) {
+            $this->actingAs($this->owner)->get(route($name))
+                ->assertRedirect(route('admin.website.site').'#'.$anchor);
+        }
     }
 
     #[DataProvider('themedScreens')]

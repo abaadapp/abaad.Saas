@@ -1,55 +1,34 @@
 import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
+import PagesSection from '@/Pages/Admin/Website/theme/sections/Pages';
+import SeoSection from '@/Pages/Admin/Website/theme/sections/Seo';
 import { pageProps } from './setup';
-
-vi.mock('@/Layouts/AdminLayout', () => ({
-    default: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-}));
-
-const { default: ThemePages } = await import('@/Pages/Admin/Website/ThemePages');
-const { default: ThemeSeo } = await import('@/Pages/Admin/Website/ThemeSeo');
-
-const SITE = {
-    name: 'RIBBON',
-    published: true,
-    url: 'https://ribbon.abaadapp.om',
-    slug: 'ribbon',
-    host: 'abaadapp.om',
-};
-
-const BASE = {
-    translations: {},
-    auth: { abilities: ['website'], mayActions: [] },
-    theme: 'ribbon',
-    site: SITE,
-};
-
-const clear = () => {
-    for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
-};
+import { THEME_SITE, themeForm } from './theme-form';
 
 /**
- * «الصفحات» — أربعُ صفحاتٍ كصفحات كلّ متجرٍ في أبعاد.
+ * قسمُ «الصفحات» وقسمُ «الظهور في البحث» من صفحة ضبط الواجهة الخاصّة.
  *
- * ═══ وما يُحرَس ═══
+ * ═══ وكانا شاشتين ═══
  *
- * أنّها تقول ما يقع: صفحةٌ مُشغَّلةٌ ولا تظهر يُقال سببُها، ورابطٌ لا يُعرض
- * إلّا إن كان يُفتح، والرئيسيةُ والمتجرُ بلا مفتاحِ إطفاء.
+ * فصارا قسمين في صفحةٍ واحدة حين قِيس ضبطُ المتجر فوُجد ستَّ شاشاتٍ فيها
+ * ثلاثةُ مقابض لكلٍّ من ثلاثٍ، واثنان وثلاثون في واحدة. وما يُحرَس لم
+ * يتغيّر: أن يقولا ما يقع.
  */
-describe('شاشةُ «الصفحات» للواجهة الخاصّة', () => {
-    const draw = (rows: unknown[]) => {
-        clear();
-        Object.assign(pageProps, {
-            ...BASE,
-            rows,
-            optional: ['about', 'contact'],
-            aboutImage: '',
-        });
 
-        return render(<ThemePages />);
-    };
+const FALLBACK = { title: 'RIBBON', description: 'محلُّ وردٍ في الخوير.' };
+const LIMITS = { title: 60, desc: 160 };
 
+const reset = () => {
+    for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
+    Object.assign(pageProps, {
+        translations: {},
+        auth: { abilities: ['website'], mayActions: [] },
+        context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 } },
+    });
+};
+
+describe('قسمُ «الصفحات»', () => {
     const row = (key: string, over: Record<string, unknown> = {}) => ({
         key,
         path: key === 'home' ? '/' : '/' + key,
@@ -59,7 +38,17 @@ describe('شاشةُ «الصفحات» للواجهة الخاصّة', () => {
         ...over,
     });
 
-    beforeEach(clear);
+    const draw = (rows: unknown[], over: Record<string, unknown> = {}, site = THEME_SITE) =>
+        render(
+            <PagesSection
+                form={themeForm(over)}
+                site={site}
+                rows={rows as never}
+                optional={['about', 'contact']}
+            />,
+        );
+
+    beforeEach(reset);
 
     it('ترسم الصفحات الأربع بمساراتها', () => {
         draw(['home', 'shop', 'about', 'contact'].map((k) => row(k)));
@@ -100,14 +89,17 @@ describe('شاشةُ «الصفحات» للواجهة الخاصّة', () => {
         expect(screen.queryByTestId('blocked-contact')).toBeNull();
     });
 
-    /** ولا رابطَ يُعرض على صفحةٍ لا تُفتح — زرٌّ يردّ «غير موجود» يُقرأ عطبًا */
+    /**
+     * ولا رابطَ يُعرض على صفحةٍ لا تُفتح — زرٌّ يردّ «غير موجود» يُقرأ عطبًا.
+     *
+     * والإطفاءُ يُقرأ من **النموذج** لا من صفّ الخادم: القلبةُ تنتظر شريطَ
+     * الحفظ، فلو قُرئ الصفُّ لَبقي الرابطُ معروضًا على صفحةٍ أطفأها للتوّ.
+     */
     it('ولا تعرض رابطًا إلى صفحةٍ مطفأةٍ أو فارغة', () => {
-        draw([
-            row('home'),
-            row('shop', { blocked: 'لا صنفَ معروضًا' }),
-            row('about', { on: false }),
-            row('contact'),
-        ]);
+        draw(
+            [row('home'), row('shop', { blocked: 'لا صنفَ معروضًا' }), row('about'), row('contact')],
+            { store_pages: 'contact' },
+        );
 
         const links = screen.getAllByRole('link', { name: /افتحها/ });
 
@@ -119,15 +111,11 @@ describe('شاشةُ «الصفحات» للواجهة الخاصّة', () => {
 
     /** ومتجرٌ لم يُنشر لا يُعرض له رابطٌ أصلًا */
     it('ولا رابطَ على متجرٍ لم يُنشر', () => {
-        clear();
-        Object.assign(pageProps, {
-            ...BASE,
-            site: { ...SITE, published: false, url: null },
-            rows: ['home', 'shop', 'about', 'contact'].map((k) => row(k)),
-            optional: ['about', 'contact'],
-            aboutImage: '',
+        draw(['home', 'shop', 'about', 'contact'].map((k) => row(k)), {}, {
+            ...THEME_SITE,
+            published: false,
+            url: null as unknown as string,
         });
-        render(<ThemePages />);
 
         expect(screen.queryByRole('link', { name: /افتحها/ })).toBeNull();
     });
@@ -139,26 +127,27 @@ describe('شاشةُ «الصفحات» للواجهة الخاصّة', () => {
         expect(screen.queryByText(/صفحة جديدة/)).toBeNull();
         expect(screen.queryByText(/حذف/)).toBeNull();
     });
+
+    /**
+     * وحقلُ الصورة يُرسَم ولا يُترك للمتصفّح.
+     *
+     * `<input type=file>` يرسمه المتصفّحُ «Choose File · No file chosen»
+     * بالإنجليزية مهما كانت لغةُ اللوحة — سطرٌ إنجليزيٌّ واحد في لوحةٍ
+     * عربيّةٍ كلُّها، في موضعٍ يرفع فيه التاجرُ صورةَ متجره.
+     */
+    it('وحقلُ الصورة عربيٌّ لا «Choose File»', () => {
+        const { container } = draw(['home', 'shop', 'about', 'contact'].map((k) => row(k)));
+
+        expect(screen.getByRole('button', { name: /اختر صورة/ })).toBeInTheDocument();
+        expect(container.querySelector('input[type=file]')).toHaveClass('sr-only');
+    });
 });
 
-/**
- * «الظهور في البحث» — ما يُعرض في نتيجة غوغل قبل أن يُفتح المتجر.
- */
-describe('شاشةُ «الظهور في البحث»', () => {
-    const draw = (over: Record<string, unknown> = {}) => {
-        clear();
-        Object.assign(pageProps, {
-            ...BASE,
-            seo: { title: '', desc: '', index: true },
-            fallback: { title: 'RIBBON', description: 'محلُّ وردٍ في الخوير.' },
-            limits: { title: 60, desc: 160 },
-            ...over,
-        });
+describe('قسمُ «الظهور في البحث»', () => {
+    const draw = (over: Record<string, unknown> = {}) =>
+        render(<SeoSection form={themeForm(over)} site={THEME_SITE} fallback={FALLBACK} limits={LIMITS} />);
 
-        return render(<ThemeSeo />);
-    };
-
-    beforeEach(clear);
+    beforeEach(reset);
 
     /** والمعاينةُ تقول ما سيُكتب فعلًا — لا ما في الحقل وحده */
     it('تعرض المحسوب حين لا يكتب شيئًا', () => {
@@ -172,7 +161,7 @@ describe('شاشةُ «الظهور في البحث»', () => {
     });
 
     it('وتعرض ما كتبه حين يكتب', () => {
-        draw({ seo: { title: 'ورد وهدايا بمسقط', desc: 'توصيلٌ في اليوم نفسه.', index: true } });
+        draw({ store_seo_title: 'ورد وهدايا بمسقط', store_seo_desc: 'توصيلٌ في اليوم نفسه.' });
 
         const box = screen.getByTestId('seo-preview');
 
@@ -182,7 +171,7 @@ describe('شاشةُ «الظهور في البحث»', () => {
 
     /** والعدّادُ يقول كم كتب — ويحمرّ بعد الحدّ ولا يمنع الحفظ */
     it('وتعدّ حروفه وتحمرّ بعد الحدّ', () => {
-        draw({ seo: { title: 'ا'.repeat(61), desc: '', index: true } });
+        draw({ store_seo_title: 'ا'.repeat(61) });
 
         const count = screen.getByTestId('count-title');
 
@@ -194,13 +183,18 @@ describe('شاشةُ «الظهور في البحث»', () => {
      * وإطفاءُ الفهرسة ليس إغلاقًا — ولا يُترك يُخمَّن.
      *
      * من ظنّها مفتاحَ نشرٍ أطفأها ليُغلق متجره، وهو مفتوحٌ لكلّ من يملك
-     * الرابط.
+     * الرابط. ويُشار إلى المفتاح الذي يُغلق — وهو الآن قسمٌ في الصفحة
+     * نفسِها لا شاشةٌ أخرى.
      */
     it('وتقول إنّ إطفاء الفهرسة لا يُغلق المتجر', () => {
-        draw();
-        expect(screen.queryByTestId('seo-not-closed')).toBeNull();
+        draw({ store_seo_index: false });
 
-        draw({ seo: { title: '', desc: '', index: false } });
-        expect(screen.getByTestId('seo-not-closed')).toHaveTextContent('هذا لا يُغلق متجرك');
+        expect(screen.getByTestId('seo-not-closed')).toHaveTextContent(/العنوان والنشر/);
+    });
+
+    it('ولا تقول ذلك حين تكون الفهرسة مفتوحة', () => {
+        draw();
+
+        expect(screen.queryByTestId('seo-not-closed')).toBeNull();
     });
 });

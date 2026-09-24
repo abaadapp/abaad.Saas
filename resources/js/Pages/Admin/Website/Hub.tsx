@@ -3,6 +3,7 @@ import { Link, router, usePage } from '@inertiajs/react';
 import {
     AlertTriangle,
     Check,
+    ChevronDown,
     ExternalLink,
     Eye,
     EyeOff,
@@ -116,6 +117,9 @@ export default function Hub() {
 
     /* ما ينقص فعلًا — والاختياريُّ لا يُعدّ نقصًا */
     const missing = readiness.filter((f) => !f.ok && !f.optional);
+    const required = readiness.filter((f) => !f.optional);
+    const improves = readiness.filter((f) => f.optional);
+    const [openReadiness, setOpenReadiness] = useState(missing.length > 0);
 
     return (
         <AdminLayout title="الموقع الإلكتروني">
@@ -174,7 +178,14 @@ export default function Hub() {
                 صاحبُ متجرٍ نشر موقعه وأطفأ زرَّ الطلب لا يعرف لماذا لا تصله
                 رسائل — والسببُ مكتوبٌ عندنا.
             */}
-            {missing.length > 0 && (
+            {/*
+                ولا تُقال الجملةُ مرّتين في شاشةٍ واحدة.
+
+                الواجهةُ الخاصّة لها قائمةُ جاهزيةٍ تحت هذا تفتح على ما ينقص
+                وتقول سببَه. فبطاقةُ التحذير معها تكرّر النصَّ بحرفه — وقارئٌ
+                يقرأ الجملةَ نفسَها مرّتين يظنّ أنّهما عطبان.
+            */}
+            {! theme && missing.length > 0 && (
                 <Card className="mb-5 border-[#fde68a] bg-[#fffbeb] p-4">
                     <p className="flex items-center gap-2 text-[13px] font-semibold text-[#b45309]">
                         <AlertTriangle className="size-4 shrink-0" />
@@ -187,6 +198,58 @@ export default function Hub() {
                             </li>
                         ))}
                     </ul>
+                </Card>
+            )}
+
+            {/*
+                ═══ جاهزيةُ المتجر — وموضعُها هنا لا في شاشةِ ضبط ═══
+
+                كانت في شاشة «عام»، وهي شاشةٌ لا يُضبط فيها شيء: قائمةُ
+                جاهزيةٍ وسبعُ بطاقاتٍ تكرّر شريطَ التبويبات. فلمّا صار الضبطُ
+                صفحةً واحدة لم يبقَ لتلك الشاشة عمل، وانتقلت قائمتُها إلى
+                حيث تُقرأ — «أين متجري الآن» سؤالُ لوحةٍ لا سؤالُ نموذج.
+
+                واللازمُ يُعدّ وحدَه، والمُحسِّنُ يُطوى: قائمةٌ من أحدَ عشرَ
+                سطرًا مفتوحةً في وجه من فتح لوحته كلَّ صباح تُقرأ مرّةً ثمّ
+                تُتجاهَل.
+            */}
+            {theme && readiness.length > 0 && (
+                <Card className="mb-5 p-4" data-testid="readiness">
+                    <button
+                        type="button"
+                        onClick={() => setOpenReadiness((v) => !v)}
+                        className="flex w-full items-center justify-between gap-3 text-start"
+                    >
+                        <span className="text-[13px] font-semibold text-[#111]">
+                            {t('جاهزية متجرك')}
+                            <span className="ms-2 font-normal text-[#6b7280]">
+                                {t(':done من :all', {
+                                    done: number(required.filter((f) => f.ok).length),
+                                    all: number(required.length),
+                                })}
+                                {improves.length > 0 && ` · ${t('ويُحسنه :n', { n: number(improves.filter((f) => !f.ok).length) })}`}
+                            </span>
+                        </span>
+                        <ChevronDown className={cn('size-4 shrink-0 text-[#9ca3af]', openReadiness && 'rotate-180')} />
+                    </button>
+
+                    {openReadiness && (
+                        <ul className="mt-3 space-y-2 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
+                            {readiness.map((f) => (
+                                <li key={f.key} className="flex items-start gap-2 text-[13px]">
+                                    <Check
+                                        className={cn('mt-0.5 size-4 shrink-0', f.ok ? 'text-[#16a34a]' : 'text-[#d1d5db]')}
+                                    />
+                                    <span className="min-w-0">
+                                        <span className={cn(f.ok ? 'text-[#111]' : 'text-[#6b7280]')}>{f.label}</span>
+                                        {!f.ok && (
+                                            <span className="block text-[12px] leading-relaxed text-[#9ca3af]">{f.detail}</span>
+                                        )}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </Card>
             )}
 

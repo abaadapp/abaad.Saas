@@ -396,7 +396,7 @@ export default function ThemeEditor({ site: shell, rows, values, order, maxFeatu
             */}
             <ThemeHeader
                 site={shell}
-                current="admin.website.design"
+                current="admin.website.editor"
                 subtitle={t('رتّب أقسام صفحتك واكتب فيها — وما تحفظه يراه زبونك في الحال')}
             />
 

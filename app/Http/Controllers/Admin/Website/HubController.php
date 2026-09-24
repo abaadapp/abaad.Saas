@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Support\Permissions;
 use App\Support\SalesChannel;
+use App\Support\Store\StoreReadiness;
 use App\Support\Storefront;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Commerce;
@@ -119,15 +120,23 @@ class HubController extends Controller
             'theme' => $theme,
             /*
              * وما ينقص يُقال بلسان الواجهة لا بلسان البانِي: `Readiness` تقرأ
-             * صفَّ `websites` الذي لا وجود له هنا. والواجهةُ لا تحتاج إلّا
-             * مفتاحَ النشر وعنوانًا — وما عداهما اختياريّ.
+             * صفَّ `websites` الذي لا وجود له هنا، و`StoreReadiness` تقرأ
+             * حالَ هذا المتجر بعينه.
+             *
+             * ═══ وموضعُها هنا لا في شاشةِ ضبط ═══
+             *
+             * كانت في شاشة «عام» — وهي شاشةٌ لا يُضبط فيها شيء: قائمةُ
+             * جاهزيةٍ وسبعُ بطاقاتٍ تكرّر شريطَ التبويبات. فلمّا صار الضبطُ
+             * صفحةً واحدة لم يبقَ لتلك الشاشة عمل، وانتقلت قائمتُها إلى
+             * حيث تُقرأ: لوحةُ التشغيل هي «أين متجري الآن».
              */
-            'readiness' => $published ? [] : [[
-                'key' => 'published', 'label' => 'النشر', 'ok' => false, 'optional' => false,
-                'detail' => $business->site_slug === null
-                    ? __('لا عنوان لمتجرك بعد — اكتب اسمَ متجرك في الإعدادات ثمّ فعّل «نشر المتجر».')
-                    : __('«نشر المتجر» مُطفأ في الإعدادات — لا يفتح زبونٌ موقعك حتى تُفعّله.'),
-            ]],
+            'readiness' => collect(StoreReadiness::steps($business))->map(fn ($step) => [
+                'key' => $step['key'],
+                'label' => $step['label'],
+                'ok' => (bool) $step['done'],
+                'optional' => ! $step['required'],
+                'detail' => $step['why'],
+            ])->all(),
             'channel' => Commerce::channel($bid),
             'sells' => true,
             'counts' => $this->counts($bid),

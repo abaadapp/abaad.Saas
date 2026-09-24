@@ -13,6 +13,7 @@ use App\Support\Website\Domains;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Sections;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\RedirectResponse;
 
 /**
  * ما تشترك فيه شاشات الموقع: أيّ موقعٍ نحن فيه، وهل هو موقعُنا.
@@ -95,6 +96,18 @@ trait Concerns
     protected function theme(): ?string
     {
         return Business::find($this->bid())?->storefrontTheme();
+    }
+
+    /**
+     * ما كان شاشةً صار قسمًا — والروابطُ المحفوظةُ تُساق إليه.
+     *
+     * أربعةُ مساراتٍ كانت شاشاتٍ قائمة (`shop` و`seo` و`domain` و`pages`)،
+     * وقد وُزّعت على زبائن ومُحفظت في متصفّحاتهم. فلا تُردّ بـ404 ولا إلى
+     * أوّل الصفحة: تُساق إلى قسمها بعينه بعد `#`.
+     */
+    protected function themedSection(string $anchor): RedirectResponse
+    {
+        return redirect()->to(route('admin.website.site').'#'.$anchor);
     }
 
     /**

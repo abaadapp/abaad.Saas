@@ -66,8 +66,16 @@ describe('لوحةُ الواجهة الخاصّة', () => {
 
         expect(screen.getByText('غير منشور')).toBeInTheDocument();
         expect(screen.queryByText(/مسوّدة/)).toBeNull();
-        expect(screen.getByText('موقعك لا يفتح بعد:')).toBeInTheDocument();
-        expect(screen.getByText(/«نشر المتجر» مُطفأ/)).toBeInTheDocument();
+
+        /*
+         * وما ينقص يُقال في قائمة الجاهزية — مرّةً واحدة.
+         *
+         * كانت بطاقةُ تحذيرٍ فوقها تقول الجملةَ نفسَها بحرفها، فصار النصُّ
+         * مرّتين في شاشةٍ واحدة — ومن يقرؤه مرّتين يظنّهما عطبين.
+         * والقائمةُ تُفتح وحدَها متى نقص لازمٌ فلا يُخفى شيء.
+         */
+        expect(screen.getByTestId('readiness')).toHaveTextContent(/«نشر المتجر» مُطفأ/);
+        expect(screen.queryByText('موقعك لا يفتح بعد:')).toBeNull();
         expect(screen.queryByRole('link', { name: /افتح الموقع/ })).toBeNull();
     });
 

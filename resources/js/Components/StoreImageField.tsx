@@ -1,8 +1,9 @@
 import { router } from '@inertiajs/react';
-import { ImagePlus, Loader2, X } from 'lucide-react';
+import { ImagePlus, Loader2, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import Field from '@/Components/Field';
+import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
 
 /**
@@ -69,6 +70,18 @@ export default function StoreImageField({
                     </span>
                 )}
 
+                {/*
+                    ═══ والزرُّ يُرسم ولا يُترك للمتصفّح ═══
+
+                    `<input type=file>` يرسمه المتصفّحُ بنفسه: زرٌّ مكتوبٌ
+                    «Choose File» وبجانبه «No file chosen» — **بالإنجليزية
+                    مهما كانت لغةُ اللوحة**، ولا تبدّله `file:` التي لا تمسّ
+                    إلّا الزرّ. فكانت لوحةٌ عربيّةٌ كلُّها تحمل سطرًا
+                    إنجليزيًّا واحدًا في موضعٍ يرفع فيه التاجرُ صورةَ متجره.
+
+                    فالحقلُ يُخفى ويُنادى من زرٍّ من نظام التصميم نفسِه،
+                    واسمُ الملفّ المختار يُقال بالعربية.
+                */}
                 <input
                     ref={input}
                     type="file"
@@ -76,8 +89,24 @@ export default function StoreImageField({
                     aria-label={t(label)}
                     disabled={busy}
                     onChange={(e) => pick(e.target.files?.[0])}
-                    className="min-w-0 flex-1 text-[12px] file:me-3 file:rounded-full file:border-0 file:bg-[#f3f4f6] file:px-3 file:py-1.5 file:text-[12px]"
+                    className="sr-only"
                 />
+
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => input.current?.click()}
+                    >
+                        <Upload />
+                        {t(value ? 'استبدل الصورة' : 'اختر صورة')}
+                    </Button>
+                    <span className="min-w-0 truncate text-[12px] text-[#9ca3af]">
+                        {t(value ? 'صورةٌ مرفوعة' : 'لم تُختر صورة بعد')}
+                    </span>
+                </div>
 
                 {busy && <Loader2 className="size-4 shrink-0 animate-spin text-[#6b7280]" />}
 

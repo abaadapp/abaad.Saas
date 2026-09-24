@@ -17,10 +17,25 @@
                     شيء. ويقع ذلك في حالين — متجرٌ لا فئةَ فيه ذاتُ بضاعة،
                     وصاحبٌ أطفأ القسمَ بيده من «صفحة متجرك».
                 --}}
+                {{--
+                    ولا يُرسَم زرُّ التسوّق على رفٍّ خالٍ.
+
+                    «تسوّق الآن» يقود إلى `‎/shop‎`، وهي تردّ «لا منتجات هنا
+                    بعد» حين لا صنفَ معروضًا. فالزائر يضغط الوعدَ الوحيد على
+                    الصفحة فيجد صفحةً فارغة — وهو أسوأُ من صفحةٍ تقول الحقّ
+                    من أوّلها: من خُدع مرّةً لا يعود.
+
+                    وهي قاعدةُ الشريط نفسُها فوقه (`$shelf`)، وقاعدةُ
+                    «استكشف مجموعاتنا» إلى جانبه.
+                --}}
                 <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px">
-                    <a class="rb-btn" href="{{ $base }}/shop">{{ $t['shopNow'] }}</a>
-                    @if (count($categories) && in_array('cats', $sections, true))
-                        <a class="rb-btn-ghost" href="#rb-cats">{{ $t['explore'] }}</a>
+                    @if ($shelf)
+                        <a class="rb-btn" href="{{ $base }}/shop">{{ $t['shopNow'] }}</a>
+                        @if (count($categories) && in_array('cats', $sections, true))
+                            <a class="rb-btn-ghost" href="#rb-cats">{{ $t['explore'] }}</a>
+                        @endif
+                    @else
+                        <p style="margin:0;font-size:15px" data-testid="rb-empty-shelf">{{ $t['noProducts'] }}</p>
                     @endif
                 </div>
             </div>

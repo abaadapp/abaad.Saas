@@ -444,6 +444,39 @@ class TheShopOwnerBuildsHisOwnPageTest extends TestCase
         $this->assertStringContainsString('rb-landing', $page);
     }
 
+    /**
+     * ═══ ولا زرَّ تسوّقٍ على رفٍّ خالٍ ═══
+     *
+     * «تسوّق الآن» هو الوعدُ الأوّل على الصفحة وأكبرُها حجمًا، ويقود إلى
+     * `‎/shop‎` — وهي تردّ «لا منتجات هنا بعد».
+     *
+     * وكان يُرسم دائمًا: فالزائرُ على متجرٍ خالٍ يجد صفحةً فيها صورةٌ وعنوانٌ
+     * وزرٌّ واحد، يضغطه فيقع على الفراغ. وصفحةٌ تقول الحقّ من أوّلها أرحمُ —
+     * من خُدع مرّةً لا يعود.
+     */
+    public function test_an_empty_shelf_offers_no_shop_button(): void
+    {
+        Product::where('business_id', $this->shop->id)->update(['published' => false]);
+
+        $page = $this->page();
+
+        /*
+         * والمقصودُ زرُّ الواجهة وحده لا كلُّ رابطٍ إلى `‎/shop‎`: التذييلُ
+         * فيه «الكل» وحقلُ البحث يقصدها — وكلاهما ملاحةٌ لا وعد.
+         */
+        $this->assertStringNotContainsString('class="rb-btn" href="/s/ribbon/shop"', $page, 'زرُّ تسوّقٍ على رفٍّ خالٍ');
+        $this->assertStringContainsString('rb-empty-shelf', $page, 'ولا يُقال للزائر لماذا');
+    }
+
+    /** ورفٌّ عامرٌ يحمل زرَّه — فلا يُحرم متجرٌ عاملٌ من بابه */
+    public function test_a_full_shelf_keeps_its_shop_button(): void
+    {
+        $page = $this->page();
+
+        $this->assertStringContainsString('class="rb-btn" href="/s/ribbon/shop"', $page);
+        $this->assertStringNotContainsString('rb-empty-shelf', $page);
+    }
+
     /** ورفٌّ عامرٌ يُرسم عليه — ولو أُطفئ «وصل حديثًا» */
     public function test_a_full_shelf_still_promises(): void
     {

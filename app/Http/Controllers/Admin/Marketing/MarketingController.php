@@ -253,6 +253,18 @@ class MarketingController extends Controller
             'store_headline' => ['nullable', 'string', 'max:80'],
             'store_about' => ['nullable', 'string', 'max:400'],
             'store_show_prices' => ['sometimes', 'boolean'],
+            /*
+             * ═══ ومفتاحُ قبول الطلبات — وكان يُرسَل ولا يُكتب ═══
+             *
+             * معرَّفٌ في `MarketingSettings::GROUPS` منذ نسخ، وتقرؤه
+             * `WebCheckout::settings` فيحكم ظهورَ السلّة في الواجهة. وكاتبُه
+             * الوحيد كان شاشةَ متجر البانِي (`Website\SettingsController`) —
+             * وهي شاشةٌ يُردّ عنها صاحبُ الواجهة الخاصّة.
+             *
+             * فصار في شاشته مقبضٌ يُقلَّب ويُحفظ ويُردّ «حُفظ متجرك» ولا
+             * يتبدّل شيء: `validated()` تُسقط ما ليس في هذه القائمة بهدوء.
+             */
+            'store_allow_orders' => ['sometimes', 'boolean'],
             'store_whatsapp' => ['nullable', 'string', 'max:30'],
             'store_pay_cod' => ['sometimes', 'boolean'],
             'store_pay_transfer' => ['sometimes', 'boolean'],
@@ -429,7 +441,7 @@ class MarketingController extends Controller
          */
         Domains::sync($business->refresh());
 
-        foreach (['store_on', 'store_show_prices', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card', 'store_block_on'] as $flag) {
+        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card', 'store_block_on'] as $flag) {
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
-use App\Models\Business;
 use App\Models\Product;
 use App\Models\Website;
 use App\Models\WebsitePage;
@@ -11,10 +10,8 @@ use App\Models\WebsiteSection;
 use App\Support\ProductImages;
 use App\Support\Store\PageEditor;
 use App\Support\Store\StorePage;
-use App\Support\Storefront;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Content;
-use App\Support\Website\Domains;
 use App\Support\Website\Layout;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Preview;
@@ -148,10 +145,16 @@ class EditorController extends Controller
     private function themed(string $theme): Response
     {
         $bid = $this->bid();
-        $business = Business::findOrFail($bid);
 
-        return Inertia::render('Admin/Website/ThemeEditor', [
-            'theme' => $theme,
+        /*
+         * والترويسةُ من `themeShell` كأخواتها الثلاث — لا تُبنى هنا.
+         *
+         * وكانت هذه الشاشة تُرسل `published` و`url` بيدها، ثمّ صارت ترتدي
+         * الترويسة المشتركة وتقرأ `site` — ولم يُرسَل. فكان `site` غيرَ
+         * معرَّف، و`site.published` تُسقط الشاشةَ كلَّها بيضاء عند أوّل
+         * تصيير: لا رسالة، لا سطر، صفحةٌ فارغة.
+         */
+        return Inertia::render('Admin/Website/ThemeEditor', $this->themeShell($theme) + [
             'rows' => PageEditor::rows($bid),
             'values' => PageEditor::values($bid),
             'order' => StorePage::order($bid),
@@ -172,14 +175,6 @@ class EditorController extends Controller
                     // الخام لا المقروء: الصورةُ البديلة من الإنترنت ليست بضاعتَه
                     'image' => ProductImages::hasRealMain($p) ? $p->image : null,
                 ])->all(),
-            /*
-             * وحالُ العنوان — فالمحرّرُ يُفتح قبل النشر لا بعده.
-             *
-             * من يجهّز متجره يرتّب صفحتَه أوّلًا، فلا يُشترط عليه نشرٌ ليرى
-             * محرّرَه. ويُقال له إنّها لا تُفتح بعد، ويُشار إلى بابها.
-             */
-            'published' => Storefront::serves($business) === Storefront::SERVES_THEME,
-            'url' => Domains::canonical($bid),
         ]);
     }
 

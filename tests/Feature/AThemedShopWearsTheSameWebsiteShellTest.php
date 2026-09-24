@@ -142,6 +142,46 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         }
     }
 
+    /**
+     * ═══ وكلُّ خاصيّةٍ تقرؤها الشاشةُ يُرسلها الخادم ═══
+     *
+     * وهذا الحارسُ وُضع بعد شاشةٍ بيضاء.
+     *
+     * «صفحة المتجر» كانت ترسل `published` و`url` بيدها. ثمّ ارتدت الترويسةَ
+     * المشتركة وصارت تقرأ `site` — ولم يُرسَل. فصار `site` غيرَ معرَّف،
+     * و`site.published` تُسقط الشاشةَ كلَّها عند أوّل تصيير: صفحةٌ بيضاء بلا
+     * رسالةٍ ولا سطرٍ في سجلّ الخادم — لأنّ العطب في المتصفّح لا فيه.
+     *
+     * ولم يكشفه حارسٌ قائم: فحصُ Inertia يسأل «أيُّ شاشةٍ تُعرض؟» ولا يُصيّر
+     * منها شيئًا، وحارسُ الواجهة يُمرّر الخصائصَ بيده فيكتب ما نسيه الخادم.
+     * فالسؤالُ يُطرح هنا: ما تطلبه الشاشةُ في `Props` — أيصلها؟
+     */
+    public function test_every_property_the_screens_read_is_actually_sent(): void
+    {
+        foreach (self::SCREENS as $file => $tab) {
+            $code = $this->screen($file);
+
+            $block = substr($code, $from = strpos($code, 'interface Props extends ThemeShell {'));
+            $block = substr($block, 0, strpos($block, "\n}\n"));
+
+            // الأسماءُ في الجذر وحدها — وما كان اختياريًّا (`?:`) لا يُشترط
+            preg_match_all('/^    ([a-zA-Z_]+): /m', $block, $m);
+
+            $wanted = array_merge(['theme', 'site'], $m[1]);
+            $props = $this->actingAs($this->owner)->get(route($tab))->assertOk()
+                ->viewData('page')['props'];
+
+            foreach ($wanted as $key) {
+                $this->assertArrayHasKey($key, $props, $file.' تقرأ «'.$key.'» ولا يرسلها الخادم');
+            }
+
+            // والترويسةُ تقرأ منها خمسًا — وغيابُ أيّها يُسقط الشاشة
+            foreach (['name', 'published', 'url', 'slug', 'host'] as $key) {
+                $this->assertArrayHasKey($key, $props['site'], $file.' ترويستُها بلا «'.$key.'»');
+            }
+        }
+    }
+
     /* ═══════════ والمقبضُ في شاشةٍ واحدة ═══════════ */
 
     /**
@@ -197,6 +237,91 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             $screen,
             'بطاقةُ المتجر ما زالت تُرسم لمن لبس واجهةً خاصّة',
         );
+    }
+
+    /**
+     * ═══ وكلُّ مقبضٍ في الشاشة يصل مخزنَه فعلًا ═══
+     *
+     * وهذا أقسى الحرّاس وأرخصُها: الشاشةُ ترسم المقبض، والنموذجُ يرسله،
+     * والخادمُ يُصادق حمولتَه بقائمةٍ مكتوبةٍ بيده — فمفتاحٌ خارجَ القائمة
+     * يُسقطه `validated()` بهدوء، ويُردّ «حُفظ متجرك الإلكتروني» ولا يُحفظ
+     * شيء. فيُقلَّب المقبضُ ويُحفظ ويُعاد فتحُ الشاشة على ما كان.
+     *
+     * ولا يكفي أن يكون المفتاحُ في `MarketingSettings::GROUPS`: تلك تقول
+     * «يصحّ تخزينه»، وهذه تسأل «أيكتبه البابُ الذي تطرقه الشاشة؟». وبينهما
+     * وقع العطب — `store_allow_orders` معرَّفٌ في المجموعة منذ نسخ، ولا
+     * تكتبه `MarketingController::saveStore`.
+     */
+    public function test_every_knob_the_screens_draw_really_reaches_its_store(): void
+    {
+        $sample = [
+            'store_allow_orders' => '0',
+            'store_bank' => 'بنك مسقط — 1234',
+            'store_delivery_areas' => "الخوير\nالسيب",
+            'store_delivery_fee' => '1.500',
+            'store_delivery_note' => 'يُسلَّم خلال ساعتين',
+            'store_delivery_slots' => '9 ص – 12 م',
+            'store_free_delivery_over' => '20',
+            'store_gift_card' => '1',
+            'store_gift_card_price' => '0.750',
+            'store_image_note' => 'تُنسَّق يدويًّا',
+            'store_max_days' => '30',
+            'store_on' => '1',
+            'store_pay_cod' => '0',
+            'store_pay_transfer' => '1',
+        ];
+
+        /*
+         * والمفاتيحُ تُقرأ من الشاشة نفسِها — فمقبضٌ يُضاف غدًا يدخل الحارس
+         * بلا سطرٍ يُكتب له.
+         *
+         * و`site_slug` ليس منها: مخزنُه عمودٌ في `businesses` لا صفٌّ في
+         * `settings`، وله حرّاسه (تفرّدُه، ورفضُ النشر بلا عنوان).
+         */
+        $drawn = [];
+        foreach (['ThemeShop.tsx', 'ThemeDomain.tsx'] as $file) {
+            preg_match_all("/setData\('(store_[a-z_]+)'/", $this->screen($file), $m);
+            $drawn = array_merge($drawn, $m[1]);
+        }
+        $drawn = array_values(array_unique($drawn));
+
+        $this->assertNotSame([], $drawn, 'لم يُقرأ من الشاشتين مقبضٌ واحد — الحارسُ يحرس لا شيء');
+
+        foreach ($drawn as $key) {
+            $this->assertArrayHasKey($key, $sample, $key.' مقبضٌ جديد بلا قيمةِ فحصٍ في هذا الحارس');
+
+            $this->actingAs($this->owner)
+                ->from(route('admin.website.shop'))
+                ->post(route('admin.marketing.store.save'), [$key => $sample[$key]])
+                ->assertRedirect();
+
+            $this->assertSame(
+                $sample[$key],
+                (string) (MarketingSettings::group($this->shop->id, 'website')[$key] ?? ''),
+                $key.' يُرسَل من الشاشة ولا يكتبه الخادم — مقبضٌ لا يُدير شيئًا',
+            );
+        }
+    }
+
+    /**
+     * وكلُّ بابٍ في شاشة «عام» يُفتح لمن يراه.
+     *
+     * والأبوابُ ليست تبويبات: `SmartLink` لا تُخفي شيئًا بالصلاحيات، فبابٌ
+     * يقود إلى قسمٍ لا يملكه من يراه يُصفع بـ٤٠٣ عند الضغط — وقد فُتحت له
+     * الشاشةُ التي فيها البابُ بحقّ.
+     */
+    public function test_every_door_on_the_general_screen_opens(): void
+    {
+        preg_match_all("/route: '([a-z.]+)'/", $this->screen('ThemeSite.tsx'), $m);
+
+        $this->assertNotSame([], $m[1], 'لا أبوابَ في شاشة «عام»');
+
+        foreach ($m[1] as $name) {
+            $this->assertNotNull(Route::getRoutes()->getByName($name), $name.' بابٌ إلى مسارٍ لا وجود له');
+
+            $this->actingAs($this->owner)->get(route($name))
+                ->assertOk($name.' بابٌ يُرسم ثمّ يُصفع من يضغطه');
+        }
     }
 
     /* ═══════════ وما تقوله بطاقةُ الحال يُقاس ═══════════ */

@@ -143,7 +143,7 @@ final class WebCheckout
      * تُقرأ في صفحة السلّة وصفحة إتمام الطلب معًا، وتُعاد قراءتُها عند
      * الإتمام تحت قفل. والخطأُ يُقال بندًا بندًا كما يقوله الصندوق.
      *
-     * @param  array{items: list<array{id: int, variant_id?: ?int, qty: int}>, fulfil?: string, promo?: ?string}  $payload
+     * @param  array<string, mixed>  $payload  حمولةُ المتصفّح كما وصلت — لا يُوثَق بشكلها
      * @return array{lines: list<array>, subtotal: float, discount: float, delivery: float, tax: float, total: float, coupon: ?string, promo_error: ?string, free_over: ?float}
      */
     public static function quote(Business $business, array $payload, bool $lock = false): array
@@ -180,7 +180,7 @@ final class WebCheckout
          * إرسالَه. وبلا هذا يُخصم من فاتورته بكودٍ قديمٍ يعرفه زبونٌ واحد،
          * وهو لا يرى في شاشته حقلًا يشكّ فيه.
          */
-        $promo = CheckoutFields::shows($bid, 'promo') ? ($payload['promo'] ?? null) : null;
+        $promo = CheckoutFields::shows($bid, 'promo') ? self::text($payload['promo'] ?? null) : null;
 
         [$coupon, $discount, $promoError] = self::coupon($bid, $promo, $subtotal, $lock);
 
@@ -197,7 +197,7 @@ final class WebCheckout
          * يُطالَب به، ولا يفهم من أين جاء.
          */
         $offered = CheckoutFields::fulfilments($bid);
-        $asked = (string) ($payload['fulfil'] ?? '');
+        $asked = self::text($payload['fulfil'] ?? '');
 
         /*
          * والافتراضيُّ «توصيل» متى كان مفتوحًا — لا أوّلَ ما في القائمة.
@@ -449,11 +449,59 @@ final class WebCheckout
 
     /* ═══════════ أدوات ═══════════ */
 
-    /** البنودُ كما يقبلها `SaleLines::priceItems` — معرّفٌ ومقاسٌ وكميّة، لا سعرَ من المتصفّح */
-    private static function items(array $raw): array
+    /**
+     * نصٌّ من حمولة المتصفّح — وما ليس نصًّا فراغ.
+     *
+     * ═══ والعطبُ الذي وُضع لأجله ═══
+     *
+     * الحمولةُ JSON يكتبها المتصفّح، ومن كتبها بيده يكتب ما شاء. وكانت
+     * الحقولُ تُقرأ بـ`(string) ($payload['x'] ?? '')` أو تُمرَّر إلى وسيطٍ
+     * موسومٍ `?string` — وكلاهما **ينهار** على مصفوفة:
+     *
+     *   {"fulfil": ["x"]}  →  ErrorException: Array to string conversion
+     *   {"promo":  ["x"]}  →  TypeError: must be of type ?string
+     *
+     * وصفحةُ السلّة تردّ ٥٠٠ حيث كان يجب أن تردّ «اختر طريقة الاستلام».
+     * وضررُه أبعدُ من الرسالة: كلُّ ٥٠٠ يُسجَّل، فبابٌ عامٌّ يُردّ بـ٥٠٠ على
+     * مُدخَلٍ تافهٍ يُملأ به سجلُّ الأخطاء من هاتفٍ واحد.
+     *
+     * والتحقّقُ لا يسبق القراءة دائمًا: `quote` يُسعّر بلا `validated`
+     * أصلًا — هو بابٌ يُنادى مع كلّ تبديل، لا يُشترط فيه نموذجٌ كامل.
+     *
+     * فالقراءةُ نفسُها تحرس، في موضعٍ واحدٍ يقرأ منه كلُّ حقل.
+     */
+    private static function text(mixed $value): string
+    {
+        return is_scalar($value) ? trim((string) $value) : '';
+    }
+
+    /**
+     * البنودُ كما يقبلها `SaleLines::priceItems` — معرّفٌ ومقاسٌ وكميّة، لا سعرَ من المتصفّح.
+     *
+     * ═══ وما يصل من الشبكة ليس مصفوفةً حتّى يُثبَت ═══
+     *
+     * الحمولةُ JSON يكتبها المتصفّح، ومن كتبها بيده يكتب ما شاء. وكان
+     * التوقيعُ `array $raw` وحدَه هو الحارس، فـ`{"items":"x"}` يرمي
+     * `TypeError` قبل أن يبلغ سطرًا واحدًا هنا — وصفحةُ السلّة تردّ ٥٠٠،
+     * والزبون يرى انهيارًا حيث كان يجب أن يقرأ «السلة فارغة».
+     *
+     * وضررُه أبعدُ من الرسالة: كلُّ ٥٠٠ يُسجَّل في سجلّ الأخطاء، فبابٌ
+     * عامٌّ يُردّ بـ٥٠٠ على مُدخَلٍ تافهٍ يُملأ به السجلّ من هاتفٍ واحد.
+     *
+     * والبندُ الذي ليس مصفوفةً يُطرح بلا سطرٍ يطرحه: `$i['id'] ?? 0` على
+     * رقمٍ أو نصٍّ تعود `null` فيصير المعرّفُ صفرًا، والصفرُ مطروحٌ أسفلَه.
+     * وقد كُتب هنا `if (! is_array($i)) continue;` فنجا من الطفرة — أي
+     * أنّه لم يكن يحرس شيئًا. وما لا يحرس يُحذف ويُكتب سببُه، لا يُترك
+     * يُوهم قارئَه أنّ خلفه سؤالًا.
+     *
+     * و`(array) $raw` تعمل عملَ هذا الشرط حرفًا بحرف — `(array) 'x'` تعطي
+     * `['x']` فيُطرح بلا معرّف. فُضّل الشرطُ لأنّه يقول ما يقصد: «ما ليس
+     * قائمةَ بنودٍ فلا بنودَ فيه»، لا يُحوّل نصًّا إلى قائمةٍ من حرفٍ واحد.
+     */
+    private static function items(mixed $raw): array
     {
         $items = [];
-        foreach (array_slice(array_values($raw), 0, self::MAX_LINES) as $i) {
+        foreach (array_slice(array_values(is_array($raw) ? $raw : []), 0, self::MAX_LINES) as $i) {
             $id = (int) ($i['id'] ?? 0);
             $qty = (int) ($i['qty'] ?? 0);
             if ($id <= 0 || $qty <= 0) {
@@ -661,8 +709,8 @@ final class WebCheckout
              * والفراغُ يبقى مقبولًا كما كان: من يشتري الكرتَ ليكتبه بيده في
              * المحلّ يطلبه بلا نصٍّ ولا ملفّ. الممنوعُ الجمعُ لا الترك.
              */
-            $hasText = trim((string) ($payload['card'] ?? '')) !== '';
-            $hasFile = trim((string) ($payload['card_file'] ?? '')) !== '';
+            $hasText = self::text($payload['card'] ?? '') !== '';
+            $hasFile = self::text($payload['card_file'] ?? '') !== '';
 
             if ($hasText && $hasFile) {
                 $v->errors()->add('card', __('اختر طريقةً واحدة للكرت: رسالةً تكتبها أو ملفًّا ترفعه.'));
@@ -675,9 +723,9 @@ final class WebCheckout
              * ومن اختار الاستلامَ من المحلّ لا يُسأل عن عنوانه — وكان هذا
              * حالَ النظام قبل الشاشة ويبقى.
              */
-            if (($payload['fulfil'] ?? null) === FlowerOrder::DELIVERY) {
+            if (self::text($payload['fulfil'] ?? null) === FlowerOrder::DELIVERY) {
                 foreach (['address' => __('اكتب العنوان بالتفصيل.'), 'area' => __('اختر المنطقة.')] as $f => $msg) {
-                    if (CheckoutFields::requires($bid, $f) && trim((string) ($payload[$f] ?? '')) === '') {
+                    if (CheckoutFields::requires($bid, $f) && self::text($payload[$f] ?? '') === '') {
                         $v->errors()->add($f, $msg);
                     }
                 }

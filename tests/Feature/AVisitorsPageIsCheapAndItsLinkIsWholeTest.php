@@ -300,6 +300,73 @@ class AVisitorsPageIsCheapAndItsLinkIsWholeTest extends TestCase
         }
     }
 
+    /* ═══════════ وحمولةٌ يكتبها المتصفّح لا يُوثَق بشكلها ═══════════ */
+
+    /**
+     * كلُّ حقلٍ يصل من الشبكة يُقرأ بأيّ نوعٍ كان — ولا ينهار بابٌ.
+     *
+     * ═══ والأعطابُ الثلاثةُ التي وُضع لأجلها ═══
+     *
+     *   {"items":  "x"}   →  TypeError: must be of type array
+     *   {"fulfil": ["x"]} →  ErrorException: Array to string conversion
+     *   {"promo":  ["x"]} →  TypeError: must be of type ?string
+     *
+     * وصفحةُ السلّة كانت تردّ ٥٠٠ حيث يجب أن تردّ «اختر طريقة الاستلام».
+     * وضررُه أبعدُ من الرسالة: كلُّ ٥٠٠ يُسجَّل، فبابٌ عامٌّ يُردّ بـ٥٠٠ على
+     * مُدخَلٍ تافهٍ يُملأ به سجلُّ الأخطاء من هاتفٍ واحد.
+     *
+     * والتحقّقُ لا يسبق القراءة دائمًا: `quote` يُسعّر بلا نموذجٍ كامل —
+     * هو بابٌ يُنادى مع كلّ تبديلِ كمّية. فالقراءةُ نفسُها تحرس.
+     */
+    public function test_no_door_falls_over_on_a_payload_it_did_not_expect(): void
+    {
+        /*
+         * والعدّادُ يُرفع هنا وحدَه — وله حارسُه فوق.
+         *
+         * ولولا رفعُه لَردّ البابُ ما بعد العاشرة بـ٤٢٩ قبل أن تبلغ الحمولةُ
+         * سطرًا من الكود: يمرّ الحارسُ راضيًا وقد فحص عُشرَ ما يَعِد بفحصه.
+         */
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+
+        $this->stock(2);
+        $pid = (int) Product::where('business_id', $this->shop->id)->orderBy('id')->value('id');
+
+        $fields = [
+            'fulfil', 'promo', 'gift_card', 'card', 'card_file', 'card_align',
+            'name', 'phone', 'email', 'address', 'area', 'date', 'slot', 'pay',
+            'recipient_name', 'recipient_phone', 'items',
+        ];
+
+        $payloads = [
+            'بنودٌ نصّ' => ['items' => 'x'],
+            'بنودٌ أرقام' => ['items' => [1, 2, 3]],
+            'بندٌ نصّ' => ['items' => ['x']],
+            'بندٌ null' => ['items' => [null]],
+            'معرّفٌ مصفوفة' => ['items' => [['id' => ['x'], 'qty' => 1]]],
+            'كمّيةٌ مصفوفة' => ['items' => [['id' => $pid, 'qty' => ['x']]]],
+        ];
+
+        // وكلُّ حقلٍ نصّيٍّ مصفوفةً — وهو شكلُ العطبين الثاني والثالث
+        foreach ($fields as $f) {
+            $payloads[$f.' مصفوفة'] = ['items' => [['id' => $pid, 'qty' => 1]], $f => ['x']];
+            $payloads[$f.' كائن'] = ['items' => [['id' => $pid, 'qty' => 1]], $f => ['a' => 'b']];
+        }
+
+        $fell = [];
+
+        foreach ($payloads as $name => $body) {
+            foreach (['quote', 'checkout'] as $door) {
+                $code = $this->postJson('/s/ribbon/'.$door, $body)->getStatusCode();
+
+                if ($code >= 500) {
+                    $fell[] = $door.' · '.$name.' → '.$code;
+                }
+            }
+        }
+
+        $this->assertSame([], $fell, "بابٌ انهار على حمولةٍ لم يتوقّعها:\n".implode("\n", $fell));
+    }
+
     /* ═══════════ ولا بابَ يُغلق بلا كلمة ═══════════ */
 
     /**

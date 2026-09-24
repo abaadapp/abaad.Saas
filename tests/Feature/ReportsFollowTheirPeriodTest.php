@@ -31,12 +31,14 @@ class ReportsFollowTheirPeriodTest extends TestCase
 
     private User $owner;
 
+    private Branch $branch;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
-        Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
+        $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         $this->owner = User::create([
             'business_id' => $this->business->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
             'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
@@ -48,7 +50,7 @@ class ReportsFollowTheirPeriodTest extends TestCase
     private function order(float $total, string $when): void
     {
         Order::create([
-            'business_id' => $this->business->id, 'branch_id' => 1,
+            'business_id' => $this->business->id, 'branch_id' => $this->branch->id,
             'number' => 'INV-'.uniqid(), 'status' => 'مكتمل', 'is_held' => false,
             'payment_method' => 'نقدي', 'subtotal' => $total, 'total' => $total,
             'ordered_at' => $when, 'created_at' => $when, 'updated_at' => $when,

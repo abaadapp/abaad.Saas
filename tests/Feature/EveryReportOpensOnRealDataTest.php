@@ -51,12 +51,14 @@ class EveryReportOpensOnRealDataTest extends TestCase
 
     private User $owner;
 
+    private Branch $branch;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->shop = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
-        Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
+        $this->branch = Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
         JobTitle::create(['business_id' => $this->shop->id, 'name' => 'مدير', 'role' => 'admin']);
 
         $this->owner = User::create([
@@ -299,7 +301,7 @@ class EveryReportOpensOnRealDataTest extends TestCase
         /* طلباتٌ موزّعةٌ على الفترات: اليوم، وهذا الشهر، والعام الماضي */
         foreach ([now(), now()->copy()->subDays(10), now()->copy()->subMonths(8)] as $i => $when) {
             $order = Order::create([
-                'business_id' => $this->shop->id, 'branch_id' => 1,
+                'business_id' => $this->shop->id, 'branch_id' => $this->branch->id,
                 'customer_id' => $customer->id, 'customer_name' => 'زبونة',
                 'employee_name' => 'المالك', 'user_id' => $this->owner->id,
                 'number' => 'INV-'.($i + 1),

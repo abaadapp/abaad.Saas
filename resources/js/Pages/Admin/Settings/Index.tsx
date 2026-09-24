@@ -26,7 +26,6 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
-import StoreImageField from '@/Components/StoreImageField';
 import StoreReadinessList, { type ReadinessStep } from '@/Components/StoreReadinessList';
 import StatusPill from '@/Components/StatusPill';
 import Toggle from '@/Components/Toggle';
@@ -175,6 +174,15 @@ interface Props {
          * ما لا أثرَ له — وقائمةٌ تكذب أسوأُ من لا قائمة.
          */
         readiness: ReadinessStep[] | null;
+        /**
+         * ومن لبس واجهةً خاصّة يُحرّر صفحتَه في محرّرها — `null` لسواه.
+         *
+         * و`omit` ما **لا تُرسله** هذه البطاقة لا ما تُخفيه: النموذجُ يلتقط
+         * قيمَه حين تُفتح الشاشة، فمقبضٌ مخفيٌّ يبقى في الحمولة يحمل ما كان
+         * قبل أن يُفتح المحرّر — فيكتب حفظُ رسمِ توصيلٍ فوق ما رتّبه في
+         * صفحته قبل دقيقة، بلا خطأٍ ولا رسالة.
+         */
+        themed: { omit: string[] } | null;
         gateway: {
             active: boolean;
             public_key: string;
@@ -600,58 +608,6 @@ export default function SettingsIndex() {
     });
 
     /*
-     * ═══ أقسامُ الصفحة: قائمةٌ واحدة تحمل الترتيبَ والظهور ═══
-     *
-     * المختارُ أوّلًا بترتيبه، والمُطفأ بعده — فالمُطفأ يبقى في الشاشة
-     * ليُرفع ثانيةً، ولا يُرسَل إلى الخادم إلّا ما اختِير.
-     */
-    const chosenSections = storeForm.data.store_sections.split(',').filter(Boolean);
-
-    const sectionRows = [
-        ...chosenSections
-            .filter((k) => SECTION_KEYS.includes(k as (typeof SECTION_KEYS)[number]))
-            .map((k) => ({ key: k, label: SECTIONS.find((x) => x.key === k)!.label, on: true })),
-        ...SECTIONS.filter((x) => ! chosenSections.includes(x.key)).map((x) => ({ ...x, on: false })),
-    ];
-
-    const writeSections = (rows: { key: string; on: boolean }[]) =>
-        storeForm.setData('store_sections', rows.filter((r) => r.on).map((r) => r.key).join(','));
-
-    const toggleSection = (key: string) =>
-        writeSections(sectionRows.map((r) => (r.key === key ? { ...r, on: ! r.on } : r)));
-
-    /*
-     * والحركةُ تُبدّل الجارَين ثمّ تُعيد الكتابة.
-     *
-     * ولا تُحرَّك إلّا داخل المختار: رفعُ مُطفأٍ فوق مختارٍ يعني ترتيبًا لا
-     * يُرسَل، فيضغط صاحبُ المحلّ السهمَ ويرى الصفَّ يقفز ولا يتغيّر شيء.
-     */
-    const moveSection = (key: string, by: number) => {
-        const rows = [...sectionRows];
-        const i = rows.findIndex((r) => r.key === key);
-        const j = i + by;
-
-        if (i < 0 || j < 0 || j >= rows.length) return;
-
-        [rows[i], rows[j]] = [rows[j], rows[i]];
-        writeSections(rows);
-    };
-
-    /* المختارات — بترتيب اختيارها، وأربعةٌ لا أكثر */
-    const featuredIds = storeForm.data.store_featured
-        .split(',')
-        .map((v) => Number(v.trim()))
-        .filter((v) => Number.isInteger(v) && v > 0);
-
-    const toggleFeatured = (id: number) => {
-        const next = featuredIds.includes(id)
-            ? featuredIds.filter((v) => v !== id)
-            : [...featuredIds, id].slice(0, 4);
-
-        storeForm.setData('store_featured', next.join(','));
-    };
-
-    /*
      * ونموذجُ البوّابة على حدة — والسرّان يبدآن فارغَين دائمًا.
      *
      * الشاشةُ لا تعرض سرًّا محفوظًا (لا يصلها أصلًا)، والفراغُ عند الحفظ
@@ -678,9 +634,35 @@ export default function SettingsIndex() {
         });
     };
 
+    /*
+     * ═══ ولا تُرسل هذه البطاقةُ ما لا تملكه ═══
+     *
+     * من لبس واجهةً خاصّة صار يرتّب صفحتَه في محرّرها، ومقابضُ صفحته رُفعت
+     * من هنا. لكنّ رفعَ المقبض لا يرفع قيمتَه من الحمولة: `useForm` التقطها
+     * حين فُتحت الشاشة، فتُرسَل مع كلّ حفظٍ كما كانت.
+     *
+     * فمن رتّب أقسامه في المحرّر ثمّ عاد إلى لسانٍ مفتوحٍ على الإعدادات
+     * وحفظ رسمَ التوصيل، كتب الترتيبَ القديم فوق الجديد — بلا خطأٍ ولا
+     * رسالة، فقط تعديلٌ يختفي. والقائمةُ تأتي من الخادم لا تُكتب هنا:
+     * `Store\PageEditor::omitted` وحدها تعرف ما انتقل.
+     */
     const saveStore = (e: React.FormEvent) => {
         e.preventDefault();
-        storeForm.post(route('admin.marketing.store.save'), { preserveScroll: true, onSuccess: reloadPreview });
+
+        const omit = store.themed?.omit ?? [];
+
+        storeForm.transform((d) => {
+            const out = { ...d } as Record<string, unknown>;
+            for (const key of omit) delete out[key];
+
+            return out as typeof d;
+        });
+
+        storeForm.post(route('admin.marketing.store.save'), {
+            preserveScroll: true,
+            onSuccess: reloadPreview,
+            onFinish: () => storeForm.transform((d) => d),
+        });
     };
 
     /** العنوان كما سيقرؤه الزبون — يُبنى بقاعدة الخادم نفسها */
@@ -1033,7 +1015,15 @@ export default function SettingsIndex() {
 
                         </SettingsGroup>
 
-                        {/* ٢ — الشكل */}
+                        {/*
+                            ٢ — الشكل. ولا شكلَ هنا لمن لبس واجهةً خاصّة.
+
+                            اللونُ لونُ الصفحة البسيطة (`store.show.blade`) —
+                            وواجهةُ RIBBON ألوانُها في قالبها، فالمنتقي يُقلَّب
+                            ويُحفظ ولا يتبدّل في متجره شيء. والعنوانُ والنبذةُ
+                            انتقلا إلى محرّر الصفحة، كلٌّ في القسم الذي يظهر فيه.
+                        */}
+                        {! store.themed && (
                         <SettingsGroup title="شكل الصفحة">
                         <div>
                             <p className="mb-2 text-sm font-medium text-[#111]">{t('اللون')}</p>
@@ -1083,6 +1073,7 @@ export default function SettingsIndex() {
                         </div>
 
                         </SettingsGroup>
+                        )}
 
                         {/* ٣ — الطلب والدفع */}
                         <SettingsGroup title="الطلب والدفع">
@@ -1101,12 +1092,20 @@ export default function SettingsIndex() {
                             </Field>
 
                             <div className="mt-4 space-y-3">
+                                {/*
+                                    ومفتاحُ الأسعار للصفحة البسيطة والموقع
+                                    المبنيّ — لا للواجهة الخاصّة: بطاقتُها
+                                    تكتب السعر دائمًا (انظر `_card.blade.php`)،
+                                    ومتجرٌ فيه سلّةٌ وإتمامُ طلبٍ لا يبيع بلا ثمن.
+                                */}
+                                {! store.themed && (
                                 <Toggle
                                     on={storeForm.data.store_show_prices}
                                     onChange={(v) => storeForm.setData('store_show_prices', v)}
                                     label="إظهار الأسعار"
                                     hint="أطفئه إن كنت تسعّر حسب الطلب — ويبقى زرّ الطلب يعمل"
                                 />
+                                )}
                                 <Toggle
                                     on={storeForm.data.store_pay_cod}
                                     onChange={(v) => storeForm.setData('store_pay_cod', v)}
@@ -1382,192 +1381,36 @@ export default function SettingsIndex() {
                             </SettingsGroup>
                         )}
 
-                        {/* ٤ — النشر */}
                         {/*
-                            ═══ صفحةُ المتجر — ما فيها وترتيبُه ═══
+                            ═══ وصفحةُ المتجر انتقلت إلى محرّرها ═══
 
-                            وهي لصاحب الواجهة الخاصّة: من يُخدم بموقعٍ مبنيّ
-                            يضبط صفحتَه في البانِي، ومن يُخدم بالبسيطة لا
-                            أقسامَ له تُرتَّب. فلا يُعرض مقبضٌ لا يُحرّك شيئًا.
+                            كانت هنا: صورةُ الواجهة وصورةُ الشريط وسطرُ
+                            التذييل وقائمةُ الأقسام والمختاراتُ والقسمُ الحرّ
+                            — نحوُ عشرين مقبضًا مرتّبةً بترتيب ما أُضيف لا
+                            بترتيب ما يُرى. فصورةُ الشريط على بعد شاشتين من
+                            المفتاح الذي يُشغّل الشريط، وسطرُ التذييل فوق
+                            قائمة الأقسام وهو ليس قسمًا.
+
+                            وسائرُ متاجر أبعاد لها محرّرٌ يعرض أقسامَ الصفحة
+                            بترتيبها ومعاينةً إلى جانبها. فصار لصاحب الواجهة
+                            الخاصّة مثلُه — على المسار نفسِه.
+
+                            ولا يُترك هنا نصفُها: مقبضان لشيءٍ واحد في شاشتين
+                            يفترقان عند أوّل حفظ.
                         */}
-                        {/*
-                            وشرطُها لبسُ الواجهة لا نشرُ المتجر.
-
-                            كانت `serves === 'theme'`، وهي تعني «يُخدم الآن» —
-                            فتختفي المجموعةُ عن متجرٍ لم يُنشر بعد، أي عن
-                            صاحبها في اللحظة التي يجهّز فيها صفحته. فلا يستطيع
-                            ترتيبَ واجهةٍ قبل أن يفتحها، ولا يعرف لمَ اختفت.
-                        */}
-                        {store.checkout && (
-                        <SettingsGroup title="صفحة متجرك">
-                            {/*
-                                وأين يُرى أثرُ ما غُيّر — يُقال هنا لا يُترك يُبحث عنه.
-
-                                «المعاينة» في آخر الشاشة وتتحدّث وحدها بعد كلّ
-                                حفظ. ومن لا يعرف مكانها يحفظ ثمّ يفتح متجره في
-                                لسانٍ آخر ليرى ما صنع، أو يظنّ أنّ شيئًا لم يقع.
-                            */}
-                            <p className="mb-4 text-[12px] leading-relaxed text-[#6b7280]">
-                                {t('كلُّ ما هنا يظهر لزبونك فور الحفظ — لا نشرَ بعده.')}{' '}
-                                {t('وتراه في «المعاينة» أسفل هذه الصفحة: تتحدّث وحدها بعد كلّ حفظ.')}
-                            </p>
-
-                            <StoreImageField
-                                label="صورة الواجهة"
-                                hint="أوّل ما تقع عليه العين — وبلا اختيارك تُؤخذ من أوّل صنفٍ مبيعًا"
-                                value={storeForm.data.store_hero_image}
-                                onChange={(v) => storeForm.setData('store_hero_image', v)}
-                            />
-
-                            <StoreImageField
-                                label="صورة شريط المناسبات"
-                                hint="الشريطُ يَعِد بباقةٍ وكرتِ هدية — وبلا صورةٍ يبقى إلى جانب وعده مستطيلٌ مخطَّط"
-                                value={storeForm.data.store_banner_image}
-                                onChange={(v) => storeForm.setData('store_banner_image', v)}
-                            />
-
-                            <Field
-                                label="سطر التذييل"
-                                hint="يُكتب أسفل كل صفحة — واتركه فارغًا فيبقى «FLOWERS · LOUNGE · AND MORE»"
-                                error={storeForm.errors.store_tagline}
-                            >
-                                <Input
-                                    value={storeForm.data.store_tagline}
-                                    onChange={(e) => storeForm.setData('store_tagline', e.target.value)}
-                                    aria-label={t('سطر التذييل')}
-                                />
-                            </Field>
-
-                            {/* الأقسام: القائمةُ هي الترتيبُ والظهورُ معًا */}
-                            <div className="mt-5">
-                                <p className="mb-1 text-sm font-semibold text-[#111]">{t('أقسام الصفحة')}</p>
-                                <p className="mb-3 text-[12px] text-[#6b7280]">
-                                    {t('أطفئ ما لا تريده، وحرّك ما تريده إلى أعلى. والواجهة تبقى أوّلًا دائمًا.')}
+                        {store.themed && (
+                            <SettingsGroup title="صفحة متجرك">
+                                <p className="mb-4 text-[13px] leading-relaxed text-[#6b7280]">
+                                    {t('أقسامُ صفحتك وترتيبُها وصورُها ونصوصُها تُحرَّر في محرّر الصفحة — كلُّ حقلٍ في القسم الذي يظهر فيه، والصفحةُ إلى جانبها تتحدّث بعد كلّ حفظ.')}
                                 </p>
-                                <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] rounded-[12px] border border-[var(--ui-border,#e8e8e8)]">
-                                    {sectionRows.map((row, i) => (
-                                        <li key={row.key} className="flex items-center gap-3 px-3 py-2.5">
-                                            <input
-                                                type="checkbox"
-                                                checked={row.on}
-                                                aria-label={t(row.label)}
-                                                onChange={() => toggleSection(row.key)}
-                                                className="size-4 accent-[#111]"
-                                            />
-                                            <span className="min-w-0 flex-1 truncate text-[13px] text-[#111]">{t(row.label)}</span>
-                                            <button
-                                                type="button"
-                                                aria-label={`${t('ارفع')} ${t(row.label)}`}
-                                                disabled={i === 0}
-                                                onClick={() => moveSection(row.key, -1)}
-                                                className="rounded-md px-2 py-1 text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
-                                            >
-                                                ↑
-                                            </button>
-                                            <button
-                                                type="button"
-                                                aria-label={`${t('أنزل')} ${t(row.label)}`}
-                                                disabled={i === sectionRows.length - 1}
-                                                onClick={() => moveSection(row.key, 1)}
-                                                className="rounded-md px-2 py-1 text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
-                                            >
-                                                ↓
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-
-                            {/* المختارات: تتقدّم المحسوبَ إن اختار */}
-                            <div className="mt-5">
-                                <p className="mb-1 text-sm font-semibold text-[#111]">{t('مختاراتنا')}</p>
-                                <p className="mb-3 text-[12px] text-[#6b7280]">
-                                    {t('اختر حتى ٤ أصناف تتصدّر صفحتك — وبلا اختيار يبقى «الأكثر مبيعًا» محسوبًا من بيعك.')}
-                                </p>
-                                <ul className="max-h-[240px] divide-y divide-[var(--ui-border,#e8e8e8)] overflow-y-auto rounded-[12px] border border-[var(--ui-border,#e8e8e8)]">
-                                    {store.products.filter((p) => p.published).map((p) => {
-                                        const on = featuredIds.includes(p.id);
-
-                                        return (
-                                            <li key={p.id} className="flex items-center gap-3 px-3 py-2">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={on}
-                                                    aria-label={p.name}
-                                                    disabled={! on && featuredIds.length >= 4}
-                                                    onChange={() => toggleFeatured(p.id)}
-                                                    className="size-4 accent-[#111] disabled:opacity-30"
-                                                />
-                                                <span className="min-w-0 flex-1 truncate text-[13px] text-[#111]">{p.name}</span>
-                                                {on && (
-                                                    <span className="text-[11px] text-[#6b7280]">
-                                                        {featuredIds.indexOf(p.id) + 1}
-                                                    </span>
-                                                )}
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </div>
-
-                            {/* القسمُ الحرّ */}
-                            <div className="mt-5">
-                                <Toggle
-                                    on={storeForm.data.store_block_on}
-                                    onChange={(v) => storeForm.setData('store_block_on', v)}
-                                    label="قسمك الخاصّ"
-                                    hint="عنوانٌ ونصٌّ وصورةٌ وزرّ — لِما لا تقوله بضاعتك: اشتراك شهريّ، تنسيق أعراس، توصيلٌ إلى ولايتك"
-                                />
-                                {storeForm.data.store_block_on && (
-                                    <div className="mt-4 space-y-4 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
-                                        <Field label="العنوان" error={storeForm.errors.store_block_title}>
-                                            <Input
-                                                value={storeForm.data.store_block_title}
-                                                onChange={(e) => storeForm.setData('store_block_title', e.target.value)}
-                                                aria-label={t('العنوان')}
-                                            />
-                                        </Field>
-                                        <Field label="النصّ" hint="أسطرُك تبقى أسطرًا كما تكتبها" error={storeForm.errors.store_block_text}>
-                                            <Textarea
-                                                rows={4}
-                                                value={storeForm.data.store_block_text}
-                                                onChange={(e) => storeForm.setData('store_block_text', e.target.value)}
-                                                aria-label={t('النصّ')}
-                                            />
-                                        </Field>
-                                        <StoreImageField
-                                            label="صورة القسم"
-                                            hint="اختيارية"
-                                            value={storeForm.data.store_block_image}
-                                            onChange={(v) => storeForm.setData('store_block_image', v)}
-                                        />
-                                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                            <Field label="نصّ الزرّ" hint="اتركه فارغًا فلا زرّ" error={storeForm.errors.store_block_cta}>
-                                                <Input
-                                                    value={storeForm.data.store_block_cta}
-                                                    onChange={(e) => storeForm.setData('store_block_cta', e.target.value)}
-                                                    aria-label={t('نصّ الزرّ')}
-                                                />
-                                            </Field>
-                                            <Field label="وجهة الزرّ" hint="رابطٌ كامل أو /shop" error={storeForm.errors.store_block_href}>
-                                                <Input
-                                                    dir="ltr"
-                                                    value={storeForm.data.store_block_href}
-                                                    onChange={(e) => storeForm.setData('store_block_href', e.target.value)}
-                                                    aria-label={t('وجهة الزرّ')}
-                                                />
-                                            </Field>
-                                        </div>
-                                        {/* ولا نصفَ قسمٍ على صفحة: يُقال هنا قبل أن يُحفظ ولا يظهر */}
-                                        {(! storeForm.data.store_block_title.trim() || ! storeForm.data.store_block_text.trim()) && (
-                                            <p className="rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#b45309]">
-                                                {t('القسم لا يظهر حتى تكتب عنوانه ونصّه معًا.')}
-                                            </p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        </SettingsGroup>
+                                <Button type="button" variant="outline" asChild>
+                                    <Link href={route('admin.website.editor')}>
+                                        <LayoutTemplate />
+                                        {t('حرّر صفحة متجرك')}
+                                        <ChevronLeft />
+                                    </Link>
+                                </Button>
+                            </SettingsGroup>
                         )}
 
                         <SettingsGroup title="النشر">

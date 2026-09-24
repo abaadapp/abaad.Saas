@@ -7,6 +7,7 @@ import {
     Eye,
     EyeOff,
     Image as ImageIcon,
+    LayoutTemplate,
     Package,
     Pencil,
     Settings,
@@ -137,6 +138,21 @@ export default function Hub() {
                                     <ExternalLink />
                                     {t('افتح الموقع')}
                                 </a>
+                            </Button>
+                        )}
+                        {/*
+                            ومحرّرُ الصفحة بابُ صاحب الواجهة الخاصّة اليوميّ.
+
+                            وسائرُ المتاجر تبلغ محرّرَها من «إعدادات الموقع»
+                            ثمّ «الصفحات» — وهذا لا صفحاتِ له تُختار: صفحتُه
+                            واحدة، فيُفتح محرّرُها من هنا مباشرةً.
+                        */}
+                        {may.configure && theme && (
+                            <Button variant="outline" asChild>
+                                <Link href={route('admin.website.editor')}>
+                                    <LayoutTemplate />
+                                    {t('حرّر صفحتك')}
+                                </Link>
                             </Button>
                         )}
                         {/* والضبطُ لمن يملكه — انظر Permissions::WEBSITE_CONFIGURE */}

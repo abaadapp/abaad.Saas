@@ -159,7 +159,6 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
             'الإعدادات العامّة' => ['admin.website.site'],
             'التصميم' => ['admin.website.design'],
             'الصفحات' => ['admin.website.pages'],
-            'المحرّر' => ['admin.website.editor'],
             'الدومين' => ['admin.website.domain'],
             'المتجر' => ['admin.website.shop'],
             'السيو' => ['admin.website.seo'],
@@ -174,6 +173,27 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
 
         $this->actingAs($this->owner)->get(route($route))->assertRedirect(route('admin.website.index'));
         $this->actingAs($this->owner)->post(route('admin.website.publish'))->assertRedirect(route('admin.website.index'));
+    }
+
+    /**
+     * والمحرّرُ وحده ليس منها — صار له محرّرُ صفحته على المسار نفسِه.
+     *
+     * وكان يردّه كسائر شاشات البانِي، وهو الصوابُ يومَ لم يكن له محرّر: لا
+     * صفحاتِ له في `websites` ولا أقسامَ تُركَّب. فصار يفتح `ThemeEditor` —
+     * وهو يقرأ إعداداتِ متجره لا صفًّا في جدول البانِي.
+     *
+     * والأهمُّ أنّ موقعًا بُني له قبل أن يلبس واجهته **لا يُفتح** هنا: لو
+     * فُتح لَرتّب أقسامَ موقعٍ لا يراه زبونٌ أبدًا.
+     */
+    public function test_the_editor_opens_his_own_page_not_the_builders(): void
+    {
+        Builder::create($this->business, Blueprints::STORE, 'mono', $this->owner->id);
+
+        $this->assertSame('Admin/Website/ThemeEditor', $this->props($this->owner, 'admin.website.editor')['component']);
+
+        // والجارُ يبقى على محرّر البانِي
+        Builder::create($this->plain, Blueprints::STORE, 'mono', $this->plainOwner->id);
+        $this->assertSame('Admin/Website/Editor', $this->props($this->plainOwner, 'admin.website.editor')['component']);
     }
 
     /* ═══════════ والمعاينةُ تعاين الواجهة ═══════════ */

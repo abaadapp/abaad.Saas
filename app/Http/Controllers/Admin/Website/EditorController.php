@@ -3,11 +3,18 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
+use App\Models\Business;
+use App\Models\Product;
 use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
+use App\Support\ProductImages;
+use App\Support\Store\PageEditor;
+use App\Support\Store\StorePage;
+use App\Support\Storefront;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Content;
+use App\Support\Website\Domains;
 use App\Support\Website\Layout;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Preview;
@@ -37,6 +44,18 @@ class EditorController extends Controller
 
     public function show(Request $request, $pageId = null): Response
     {
+        /*
+         * ومن لبس واجهةً خاصّة يُحرّر صفحتَه هو — لا صفحةً في `websites`.
+         *
+         * و`siteOrFail` تردّه إلى اللوحة (انظر `Concerns`)، وكان ذلك صوابًا
+         * يوم لم يكن له محرّر. فصار له واحدٌ على هذا المسار نفسِه: الزرُّ
+         * الذي يضغطه صاحبُ أيّ متجرٍ في أبعاد يقوده إلى محرّر صفحته — أيًّا
+         * كانت الواجهة تحته.
+         */
+        if (($theme = $this->theme()) !== null) {
+            return $this->themed($theme);
+        }
+
         $site = $this->siteOrFail();
         $page = $pageId ? $this->page($site, $pageId) : $site->homePage();
 
@@ -104,6 +123,63 @@ class EditorController extends Controller
              * عليه يُشارَك ويُحفظ كما يُشارَك أيُّ عنوان.
              */
             'panel' => $request->query('panel') === 'design' ? 'design' : 'sections',
+        ]);
+    }
+
+    /**
+     * محرّرُ الواجهة الخاصّة — الصفحةُ إلى يمينه وصفوفُها إلى يساره.
+     *
+     * ═══ وهو محرّرُ البانِي نفسُه في مبناه ═══
+     *
+     * صفوفٌ بترتيب ما يُرى، وضغطةٌ على صفٍّ تفتح **حقولَه وحدها**، ومعاينةٌ
+     * حيّةٌ إلى جانبها. وذلك لأنّ صاحبَ المحلّ لا يتخيّل النتيجة — يراها.
+     *
+     * ═══ وما يختلف يختلف عن حقّ ═══
+     *
+     * لا مسوّدةَ هنا ولا «انشر»: الواجهةُ تقرأ الإعدادات مباشرةً، فما يُحفظ
+     * يصل زبونَه في اللحظة نفسِها (انظر `Store\RibbonController`). ولا مكتبةَ
+     * أقسامٍ تُضاف منها: أقسامُ الواجهة سبعةٌ مرسومةٌ في قالبها، تُرتَّب
+     * وتُطفأ ولا تُخلَق.
+     *
+     * والمعاينةُ صفحتُه نفسُها في إطار (`admin.store.preview`) لا رسمٌ
+     * يشبهها: عارضٌ ثانٍ يُكتب بيدٍ أخرى يقول غيرَ ما يقوله القالب، فيرتّب
+     * صاحبُ المحلّ صفحةً ويُنشر غيرُها.
+     */
+    private function themed(string $theme): Response
+    {
+        $bid = $this->bid();
+        $business = Business::findOrFail($bid);
+
+        return Inertia::render('Admin/Website/ThemeEditor', [
+            'theme' => $theme,
+            'rows' => PageEditor::rows($bid),
+            'values' => PageEditor::values($bid),
+            'order' => StorePage::order($bid),
+            'maxFeatured' => StorePage::MAX_FEATURED,
+            /*
+             * والمنتقي يعرض المعروضَ وحده.
+             *
+             * صنفٌ مخفيٌّ يُختار «مختارًا» لا يظهر — فالواجهةُ لا تُقحم في
+             * صفحتها ما أخفاه صاحبُه (انظر `RibbonController::home`). وعرضُه
+             * هنا يعني اختيارًا يُحفظ ولا أثرَ له.
+             */
+            'products' => Product::where('business_id', $bid)
+                ->where('active', true)->where('published', true)
+                ->orderBy('name')->get(['id', 'name', 'image'])
+                ->map(fn ($p) => [
+                    'id' => (int) $p->id,
+                    'name' => (string) $p->name,
+                    // الخام لا المقروء: الصورةُ البديلة من الإنترنت ليست بضاعتَه
+                    'image' => ProductImages::hasRealMain($p) ? $p->image : null,
+                ])->all(),
+            /*
+             * وحالُ العنوان — فالمحرّرُ يُفتح قبل النشر لا بعده.
+             *
+             * من يجهّز متجره يرتّب صفحتَه أوّلًا، فلا يُشترط عليه نشرٌ ليرى
+             * محرّرَه. ويُقال له إنّها لا تُفتح بعد، ويُشار إلى بابها.
+             */
+            'published' => Storefront::serves($business) === Storefront::SERVES_THEME,
+            'url' => Domains::canonical($bid),
         ]);
     }
 

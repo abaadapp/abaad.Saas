@@ -31,17 +31,38 @@ final class OrderTransition
     /**
      * ينقل الطلب إن جاز — ويردّ رسالة الرفض إن لم يجز.
      *
+     * ═══ و`$from` تخرج من هنا لا تُقرأ عند المنادي ═══
+     *
+     * البابان كانا يقرآنها من نسختهما قبل النداء ثمّ يكتبانها في السجلّ.
+     * وبين تلك القراءة وقراءةِ القفل فرجة — واللوحةُ معروضةٌ على كلّ شاشات
+     * المحلّ ولا تتحدّث إلّا كلّ عشرين ثانية.
+     *
+     * فطلبٌ «جديد» على شاشتين: يضغط الأوّل «قيد التجهيز» فينتقل، ويضغط
+     * الثاني «مؤكّد» — وهي مشروعةٌ من «قيد التجهيز» فتقع. ويُكتب «من «جديد»
+     * إلى «مؤكّد»»، فيُقرأ سطران متتاليان كلاهما يبدأ من «جديد»، ولا يُرى
+     * أنّ الطلبَ رجع من الطاولة.
+     *
+     * والحالُ التي قِيس عليها الجوازُ هي وحدها الحالُ التي تحرّك منها —
+     * فتُردّ من الموضع الذي قرأها مقفلةً. انظر
+     * `ALineSaysWhereTheOrderReallyStoodTest`.
+     *
+     * @param  string|null  $from  تُملأ بالحال التي كان عليها الطلبُ حقًّا
      * @return string|null  null تعني أنّ النقل تمّ
      */
-    public static function apply(Order $order, string $to): ?string
+    public static function apply(Order $order, string $to, ?string &$from = null): ?string
     {
-        return DB::transaction(function () use ($order, $to) {
+        $from = null;
+
+        return DB::transaction(function () use ($order, $to, &$from) {
             // الحال تُقرأ تحت قفل: ما قرأه المتصفّح قد تجاوزه غيرُه
             $fresh = Order::whereKey($order->id)->lockForUpdate()->first();
 
             if (! $fresh) {
                 return __('لم يعد هذا الطلب موجودًا.');
             }
+
+            // وهي المقيسُ عليها والمكتوبةُ في السجلّ — لا اثنتان تفترقان
+            $from = $fresh->status;
 
             if (! OrderStatus::canMove($fresh->status, $to)) {
                 return __('لا يمكن نقل الطلب من «:from» إلى «:to».', [

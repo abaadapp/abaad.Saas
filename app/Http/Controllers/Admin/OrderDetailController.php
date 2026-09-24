@@ -365,10 +365,11 @@ class OrderDetailController extends Controller
             'status' => ['required', 'string', Rule::in(OrderStatus::ALL)],
         ]);
 
-        $from = $order->status;
+        // و«من» تُقرأ مقفلةً داخل النقل لا هنا — انظر `OrderTransition::apply`
+        $from = null;
 
         // بابٌ واحد للنقل تدخل منه هذه الشاشة ولوحة التجهيز — انظر OrderTransition
-        if ($error = OrderTransition::apply($order, $data['status'])) {
+        if ($error = OrderTransition::apply($order, $data['status'], $from)) {
             return back()
                 ->with('toast', ['msg' => $error, 'type' => 'danger'])
                 ->withErrors(['status' => $error]);

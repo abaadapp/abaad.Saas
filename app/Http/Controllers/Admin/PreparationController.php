@@ -587,9 +587,17 @@ class PreparationController extends Controller
             ->where('number', $number)
             ->firstOrFail();
 
-        $from = $order->status;
+        /*
+         * و«من» تُقرأ مقفلةً داخل النقل لا هنا.
+         *
+         * بطاقةُ من يضغط قد تكون قديمةً بعشرين ثانية — وهي مدّةُ الاستطلاع.
+         * فلو كُتبت الحالُ من نسختنا لَقال السطرُ «من «جديد»» لطلبٍ تحرّك من
+         * «قيد التجهيز» بيد زميلٍ سبقنا. انظر
+         * `ALineSaysWhereTheOrderReallyStoodTest`.
+         */
+        $from = null;
 
-        if ($error = OrderTransition::apply($order, $data['status'])) {
+        if ($error = OrderTransition::apply($order, $data['status'], $from)) {
             /*
              * والرفض يُرى — واللوحة لا تعرض إلّا `flash.toast`.
              *

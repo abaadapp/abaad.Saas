@@ -56,6 +56,8 @@ const draw = (rows: EditorRow[], over: Record<string, unknown> = {}) => {
         <ThemeEditor
             theme="ribbon"
             site={{ name: 'RIBBON', published: true, url: 'https://ribbon.abaadapp.om', slug: 'ribbon', host: 'abaadapp.om' }}
+            /* والافتراضُ «لم يُفتح له النشر» — وهي حالُ كلّ متجرٍ قبل ترحيله */
+            publishing={null}
             rows={rows}
             values={{ store_headline: '', store_tagline: '', store_banner_image: '' }}
             order={order}

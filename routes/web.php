@@ -70,6 +70,7 @@ use App\Http\Controllers\Admin\Website\DomainController;
 use App\Http\Controllers\Admin\Website\EditorController;
 use App\Http\Controllers\Admin\Website\MediaController;
 use App\Http\Controllers\Admin\Website\SettingsController;
+use App\Http\Controllers\Admin\Website\StorePublishController;
 use App\Http\Controllers\Auth\AccountRecoveryController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
@@ -983,7 +984,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * تفتح القالب العامّ نفسه بحمولته نفسها لصاحب المتجر وحده، منشورًا كان
      * أو لم يُنشر. ولو قبِل معرّفًا لَعاين كلُّ تاجرٍ متجر جاره غير المنشور.
      */
-    Route::get('/store/preview', [StorefrontController::class, 'preview'])
+    /*
+     * و`POST` معها: المسوّدةُ تُرسَل في الجسد فتُعرَض كما ستُعرَض.
+     *
+     * والفعلان بابٌ واحد لأنّ الصفحةَ واحدة — ولو فُصلا لَكان لكلٍّ منهما
+     * حارسٌ يُنسى أحدُهما. والفرقُ في القراءة وحدَها: `GET` يُصيّر المحفوظ
+     * (وهو ما يفتحه زرُّ المعاينة في لوحة التشغيل والرابطُ المحفوظ في
+     * متصفّح)، و`POST` يُصيّر ما لم يُحفظ بعد — انظر
+     * `StorefrontController::overlayDraft`.
+     */
+    Route::match(['get', 'post'], '/store/preview', [StorefrontController::class, 'preview'])
         ->name('store.preview');
     Route::post('/marketing/domain-path', [MarketingController::class, 'saveDomainPath'])->name('marketing.domain.path');
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
@@ -1066,6 +1076,19 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
              * (سجلٌّ في لوحة مسجّله)، فيستحقّ عنوانًا يُحفظ ويُرسَل: «افتح هذا
              * الرابط وأضف السجلّ» أقصرُ من شرحٍ في رسالة.
              */
+            /*
+             * ═══ نشرُ الواجهة الخاصّة واسترجاعُها ═══
+             *
+             * وهي أبوابُ `BuilderController::publish` و`restore` نفسُها في
+             * معناها، ولها متحكّمُها لأنّ محرّكَ عرضها آخر — والدورةُ
+             * مشتركة (`Store\ThemePublisher`) لا الشاشة.
+             *
+             * وتحت حارس `WEBSITE_CONFIGURE` مع أخواتها: من مُنح «الموقع»
+             * ليتفقّد منتجاتِه كلَّ صباح لم يُمنح نشرَ تصميم متجره.
+             */
+            Route::post('/store/publish', [StorePublishController::class, 'publish'])->name('store.publish');
+            Route::post('/store/restore/{version}', [StorePublishController::class, 'restore'])->name('store.restore');
+
             Route::get('/domain', [DomainController::class, 'index'])->name('domain');
             Route::put('/domain', [DomainController::class, 'save'])->name('domain.save');
             Route::post('/domain/check', [DomainController::class, 'check'])->name('domain.check');

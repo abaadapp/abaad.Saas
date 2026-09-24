@@ -17,6 +17,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class WebsiteVersion extends Model
 {
+    /**
+     * محرّكُ العرض الذي نُشرت له هذه اللقطة.
+     *
+     * والتاريخُ واحدٌ للاثنين عمدًا: دورةُ النشر — القفلُ والرقمُ المتسلسل
+     * والحمايةُ من الضغط مرّتين — تُكتب مرّةً وتُصلَح مرّةً. وجدولان
+     * بالشكل نفسِه يفترقان عند أوّل إصلاحٍ يُنسى أحدُهما.
+     */
+    public const BUILDER = 'builder';
+
+    public const THEME = 'theme';
+
     protected $guarded = [];
 
     protected $casts = [
@@ -32,5 +43,12 @@ class WebsiteVersion extends Model
     public static function nextNumber(int $websiteId): int
     {
         return ((int) static::where('website_id', $websiteId)->max('number')) + 1;
+    }
+
+    /** ورقمُ نشرةِ الواجهة الخاصّة متسلسلٌ لنشاطها — لا صفَّ لها في `websites` */
+    public static function nextThemeNumber(int $businessId): int
+    {
+        return ((int) static::where('business_id', $businessId)
+            ->where('kind', self::THEME)->max('number')) + 1;
     }
 }

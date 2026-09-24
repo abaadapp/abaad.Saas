@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Link, router, useForm } from '@inertiajs/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     Check,
     ChevronDown,
@@ -7,8 +7,10 @@ import {
     CircleAlert,
     EyeOff,
     Loader2,
+    Monitor,
     RefreshCw,
     Save,
+    Smartphone,
 } from 'lucide-react';
 
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -19,6 +21,7 @@ import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 
 export interface EditorField {
@@ -42,6 +45,8 @@ export interface EditorRow {
 }
 
 interface Props extends ThemeShell {
+    /** حالُ النشر — و`null` لمن لم يُفتح له النظام بعد */
+    publishing: PublishState | null;
     rows: EditorRow[];
     values: Record<string, string>;
     order: string[];
@@ -70,7 +75,7 @@ type Status = 'clean' | 'saving' | 'saved' | 'failed';
  * الواجهةُ تقرأ الإعدادات مباشرةً، فما يُحفظ يراه زبونُه في اللحظة نفسِها.
  * وزرُّ نشرٍ لا يؤجّل شيئًا يَعِد بما لا يفعل.
  */
-export default function ThemeEditor({ site: shell, rows, values, order, maxFeatured, products }: Props) {
+export default function ThemeEditor({ site: shell, publishing, rows, values, order, maxFeatured, products }: Props) {
     const t = useTranslate();
 
     /* الترتيبُ محلّيٌّ لأنّه يُكتب بالضغط — والباقي يأتي من الخادم بعد كلّ حفظ */
@@ -79,7 +84,52 @@ export default function ThemeEditor({ site: shell, rows, values, order, maxFeatu
     const [status, setStatus] = useState<Status>('clean');
     const [frame, setFrame] = useState(0);
 
+    /* عرضُ المعاينة — والزبونُ يفتح متجرَ ورودٍ من هاتفه غالبًا */
+    const [wide, setWide] = useState(true);
+
     const form = useForm<Record<string, string>>({ ...values });
+
+    /*
+        ═══ المعاينةُ تُرسَل بنموذجٍ إلى الإطار — لا برابط ═══
+
+        وما يُعاين هو ما **لم يُحفظ بعد**: يكتب صاحبُ المحلّ عنوانًا فيراه
+        كما يراه زبونُه قبل أن يُطبّقه على موقعٍ يعمل.
+
+        وبنموذجٍ `POST` لا برابطٍ فيه القيم: الحمولةُ تبلغ آلافَ الحروف
+        (نبذةٌ ونصُّ قسمٍ وروابطُ صور)، ورابطٌ بهذا الطول يُقصّ في الطريق.
+        ولأنّه `POST` لا يُحفظ في تاريخ المتصفّح ولا يُشارَك: رابطُ معاينةٍ
+        مُشارَكٌ يجب أن يفتح المتجرَ كما هو محفوظ — لا كما كان أحدُهم يجرّب.
+
+        ولا حالةَ على الخادم: التراكبُ يعيش عمرَ الطلب ويموت معه — انظر
+        `MarketingSettings::overlay`.
+    */
+    const previewForm = useRef<HTMLFormElement>(null);
+
+    /*
+        والرمزُ من خصائص Inertia لا من وسم `meta`.
+
+        الوسمُ يُطبع مرّةً عند أوّل تحميل ولا يتغيّر، والدخولُ يجدّد رمزَ
+        الجلسة — فيبقى الوسمُ على رمزٍ مُبطَل ويُردّ كلُّ نموذجٍ يقرؤه
+        بـ٤١٩. وخاصّيةُ `csrf` تتجدّد مع كلّ استجابة. انظر `lib/csrf.ts`.
+    */
+    const token = String((usePage().props as { csrf?: string }).csrf ?? '');
+
+    const draft = useMemo(
+        () => JSON.stringify({ ...form.data, store_sections: chosen.join(',') }),
+        [form.data, chosen],
+    );
+
+    const paint = () => previewForm.current?.submit();
+
+    /*
+        وتُرسَل بعد أن يسكت القلم لا مع كلّ حرف: تصييرُ الصفحة كاملةً عند
+        كلّ ضغطةِ مفتاح يُثقل الخادمَ ويُرعش الإطار تحت عين الكاتب.
+    */
+    useEffect(() => {
+        const id = window.setTimeout(paint, 600);
+
+        return () => window.clearTimeout(id);
+    }, [draft, frame]);
 
     const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
@@ -397,8 +447,18 @@ export default function ThemeEditor({ site: shell, rows, values, order, maxFeatu
             <ThemeHeader
                 site={shell}
                 current="admin.website.editor"
-                subtitle={t('رتّب أقسام صفحتك واكتب فيها — وما تحفظه يراه زبونك في الحال')}
+                /*
+                    والوصفُ يقول الحقّ في الحالين: من فُتح له النشر يحفظ
+                    فينتظر، ومن لم يُفتح له يحفظ فيظهر. وسطرٌ واحدٌ لحالين
+                    يكذب على أحدهما.
+                */
+                subtitle={t(publishing
+                    ? 'رتّب أقسام صفحتك واكتب فيها — ثمّ انشر ليراه زبونك'
+                    : 'رتّب أقسام صفحتك واكتب فيها — وما تحفظه يراه زبونك في الحال')}
             />
+
+            {/* وشريطُ النشر لمن فُتح له وحدَه — ومقبضٌ لا يعمل أسوأ من غيابه */}
+            {publishing && <PublishBar state={publishing} />}
 
             <div className="mb-4 flex items-center justify-end gap-2">
                 <span className="flex items-center gap-1.5 text-[12px] text-[#6b7280]">
@@ -460,19 +520,62 @@ export default function ThemeEditor({ site: shell, rows, values, order, maxFeatu
 
                 {/* والمعاينةُ صفحتُه نفسُها في إطار — لا رسمٌ يشبهها */}
                 <div className="lg:sticky lg:top-4 lg:self-start">
-                    <div className="mb-2 flex items-center justify-between">
-                        <p className="text-[13px] font-semibold text-[#111]">{t('معاينة')}</p>
-                        <Button type="button" variant="ghost" size="sm" onClick={refresh}>
-                            <RefreshCw />
-                            {t('تحديث المعاينة')}
-                        </Button>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-[13px] font-semibold text-[#111]">
+                            {t('معاينة')}
+                            <span className="ms-2 font-normal text-[#6b7280]">{t('قبل الحفظ')}</span>
+                        </p>
+                        <div className="flex items-center gap-1">
+                            {/* والعرضان زرّان لا شاشتان — الصفحةُ واحدةٌ يضيق بها الإطار */}
+                            <div className="flex overflow-hidden rounded-[8px] border border-[var(--ui-border,#e8e8e8)]">
+                                {([true, false] as const).map((w) => (
+                                    <button
+                                        key={String(w)}
+                                        type="button"
+                                        onClick={() => setWide(w)}
+                                        aria-pressed={wide === w}
+                                        aria-label={t(w ? 'عرض الكمبيوتر' : 'عرض الجوال')}
+                                        data-testid={w ? 'preview-wide' : 'preview-narrow'}
+                                        className={cn(
+                                            'px-2.5 py-1.5',
+                                            wide === w ? 'bg-[#111] text-white' : 'text-[#6b7280]',
+                                        )}
+                                    >
+                                        {w ? <Monitor className="size-3.5" /> : <Smartphone className="size-3.5" />}
+                                    </button>
+                                ))}
+                            </div>
+                            <Button type="button" variant="ghost" size="sm" onClick={refresh}>
+                                <RefreshCw />
+                                {t('تحديث')}
+                            </Button>
+                        </div>
                     </div>
                     <div className="overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-2">
+                        {/*
+                            النموذجُ مخفيٌّ ويُصيب الإطارَ باسمه: هو الذي
+                            يحمل المسوّدة، والإطارُ يعرض جوابَه.
+                        */}
+                        <form
+                            ref={previewForm}
+                            method="POST"
+                            action={route('admin.store.preview')}
+                            target="rb-preview"
+                            className="hidden"
+                            data-testid="preview-form"
+                        >
+                            <input type="hidden" name="_token" value={token} />
+                            <input type="hidden" name="draft" value={draft} />
+                        </form>
                         <iframe
                             key={frame}
-                            src={route('admin.store.preview')}
+                            name="rb-preview"
                             title={t('معاينة المتجر')}
-                            className="h-[70vh] min-h-[480px] w-full rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-white"
+                            data-testid="preview-frame"
+                            className={cn(
+                                'h-[70vh] min-h-[480px] rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-white transition-[width]',
+                                wide ? 'w-full' : 'mx-auto w-[390px] max-w-full',
+                            )}
                         />
                     </div>
                 </div>

@@ -414,18 +414,103 @@ class MarketingSettings
      */
     private static array $memo = [];
 
+    /**
+     * تراكبُ المعاينة — انظر `overlay`.
+     *
+     * ويُنسى مع الذاكرة في `forget`: الاختبارُ والعاملُ يتشاركان العمليّة،
+     * وتراكبُ معاينةٍ يبقى بعد طلبه يُري متجرًا إعداداتِ غيره.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private static array $overlay = [];
+
+    /**
+     * قيمٌ تُقرأ بدل المحفوظ في هذا الطلب وحدَه — للمعاينة لا غير.
+     *
+     * ═══ لمَ هنا، ولمَ في الذاكرة لا في القاعدة ═══
+     *
+     * صاحبُ المتجر يكتب عنوانًا في المحرّر ويريد أن يراه كما يراه زبونُه
+     * **قبل أن يحفظ**. والطريقُ الوحيد لِأن يكون ما يراه صادقًا هو أن
+     * يُصيَّر القالبُ نفسُه بحروفه وCSSه — لا رسمٌ يشبهه: عارضٌ ثانٍ يُكتب
+     * بيدٍ أخرى يقول غيرَ ما يقوله القالب، فيرتّب صفحةً ويُنشر غيرُها.
+     *
+     * وكلُّ ما يرسم الواجهةَ الخاصّة يمرّ بـ`group` — `StorePage`
+     * و`StoreNav` و`StoreSeo` و`MerchantData` و`WebCheckout` كلُّها تقرأ
+     * منها. فالتراكبُ هنا يبلغ الصفحةَ كلَّها بخيطٍ واحد، ولا يُنثر في
+     * عشرة مواضع يُنسى أحدُها.
+     *
+     * ولا صفَّ يُكتب ولا ملفَّ: التراكبُ يعيش في الذاكرة ويموت بنهاية
+     * الطلب. فالموقعُ المنشور لا يمسّه شيء، ولا يبقى بعد المعاينة أثرٌ
+     * يُنشر سهوًا، ولا حاجةَ إلى كنسٍ ولا إلى انتهاء صلاحية.
+     *
+     * ═══ وما لا يمرّ ═══
+     *
+     * ما ليس من مفاتيح المجموعة يُطرح — بالقائمة نفسِها التي يُصفّي بها
+     * `save`. فبابُ المعاينة لا يقبل ما لا يقبله بابُ الحفظ.
+     *
+     * ═══ ولمَ لا يُوضع التراكبُ ثمّ يُصيَّر ═══
+     *
+     * لأنّه ثابتٌ يعيش أطولَ من الطلب حيث تُعاد العمليّة: عاملُ الطابور،
+     * وOctane، والاختبارات. وقد وقع فعلًا وكشفه حارسُ هذا الملفّ: عُوينت
+     * مسوّدةٌ ثمّ فُتح الموقعُ العامّ في الطلب التالي **فخرجت المسوّدةُ
+     * للزبون** — وهو أسوأُ ما يمكن أن يفعله بابُ معاينة.
+     *
+     * فلا بابَ يضع تراكبًا: يُمرَّر ما يُصيَّر، ويُنزَع في `finally` مهما
+     * وقع. والنسيانُ **مستحيلٌ** لا مستبعَد — لا سطرَ يُكتب ليُنظَّف فيُنسى.
+     *
+     * @param  array<string, mixed>  $values
+     * @template T
+     * @param  callable(): T  $render
+     * @return T
+     */
+    public static function withOverlay(int $businessId, string $group, array $values, callable $render)
+    {
+        $allowed = self::GROUPS[$group] ?? [];
+        $clean = [];
+
+        foreach ($values as $key => $value) {
+            if (! array_key_exists($key, $allowed) || ! is_scalar($value)) {
+                continue;
+            }
+
+            $clean[$key] = is_bool($value) ? ($value ? '1' : '0') : (string) $value;
+        }
+
+        if ($clean === []) {
+            return $render();
+        }
+
+        $slot = $businessId.':'.$group;
+        $had = self::$memo[$slot] ?? null;
+
+        self::$overlay[$slot] = $clean;
+        unset(self::$memo[$slot]);
+
+        try {
+            return $render();
+        } finally {
+            unset(self::$overlay[$slot], self::$memo[$slot]);
+
+            // وما كان محفوظًا في الذاكرة قبل التراكب يعود — فلا يُدفع ثمنُ المعاينة استعلامًا
+            if ($had !== null) {
+                self::$memo[$slot] = $had;
+            }
+        }
+    }
+
     /** يُنادى من `Setting` عند كلّ كتابةٍ أو حذف */
     public static function forget(?int $businessId = null): void
     {
         if ($businessId === null) {
             self::$memo = [];
+            self::$overlay = [];
 
             return;
         }
 
-        foreach (array_keys(self::$memo) as $key) {
+        foreach ([...array_keys(self::$memo), ...array_keys(self::$overlay)] as $key) {
             if (str_starts_with($key, $businessId.':')) {
-                unset(self::$memo[$key]);
+                unset(self::$memo[$key], self::$overlay[$key]);
             }
         }
     }
@@ -446,6 +531,14 @@ class MarketingSettings
             // القيمة المحفوظة فارغةً قصدٌ لا غياب: لا تُستبدل بالافتراضيّ
             $out[$key] = array_key_exists($key, $saved) && $saved[$key] !== null ? $saved[$key] : $default;
         }
+
+        /*
+         * والمعاينةُ فوق المحفوظ — انظر `overlay`.
+         *
+         * وموضعُه بعد الافتراضيّات لا قبلها: المعاين يرى ما كتب، وما لم
+         * يكتبه يبقى على حاله المحفوظ — لا يعود إلى فراغٍ لم يطلبه.
+         */
+        $out = array_merge($out, self::$overlay[$businessId.':'.$group] ?? []);
 
         return self::$memo[$businessId.':'.$group] = $out;
     }

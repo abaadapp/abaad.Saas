@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Support\MarketingSettings;
 use App\Support\Seo;
+use App\Support\Store\StoreContent;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
 use App\Support\Website\Published;
@@ -294,12 +296,31 @@ class StorefrontController extends Controller
      * والمسار خلف الحارس ولا يقبل معرّفًا: المتجر يُقرأ من جلسة صاحبه وحدها،
      * فلا يُعايَن متجرُ غيره بتبديل رقمٍ في الرابط.
      */
-    public function preview(): Response
+    public function preview(Request $request): Response
     {
         $business = Business::findOrFail(
             auth()->user()->business_id ?? \App\Support\Demo::bid()
         );
 
+        /*
+         * والمعاينةُ تُصيَّر على **المسوّدة** لا على المنشور.
+         *
+         * طبقتان: ما حُفظ في المسوّدة ولم يُنشر بعد، وفوقه ما لم يُحفظ بعدُ
+         * في الشاشة. فيرى صاحبُ المتجر ما سيصير إليه موقعُه لو نشر الآن.
+         *
+         * ومتجرٌ لم يُفتح له النشرُ تردّ مسوّدتُه المنشورَ نفسَه — فلا يتبدّل
+         * شيءٌ لمن لم يُرحَّل.
+         */
+        return MarketingSettings::withOverlay(
+            (int) $business->id, 'website',
+            array_merge(StoreContent::draft((int) $business->id), $this->draft($request)),
+            fn () => $this->render($business),
+        );
+    }
+
+    /** الصفحةُ كما يراها الزبون — وهي نفسُها في المعاينة وفي الموقع */
+    private function render(Business $business): Response
+    {
         /*
          * ومن لبس واجهةً خاصّة يُعايِنها هي — لا الصفحةَ البسيطة التي لن
          * يراها زبونُه. وروابطُها الداخليّة على عنوانه العامّ: المعاينةُ
@@ -317,5 +338,45 @@ class StorefrontController extends Controller
             // ومعاينةٌ لا تُخزَّن ولا تُفهرَس: هي حالُ لحظتها، ولصاحبها وحده
             ->header('Cache-Control', 'no-store')
             ->header('X-Robots-Tag', 'noindex, nofollow');
+    }
+
+    /**
+     * ما لم يُحفظ بعد يُعرض كما سيُعرض — والمنشورُ لا يمسّه شيء.
+     *
+     * ═══ العطبُ الذي وُضع لأجله ═══
+     *
+     * المعاينةُ كانت تُصيّر المحفوظ: يكتب صاحبُ المحلّ عنوانًا في المحرّر،
+     * فلا يراه حتّى يضغط «حفظ» — والحفظُ يبلغ زبونَه في اللحظة نفسِها. فلا
+     * معاينةَ قبل التطبيق أصلًا: التطبيقُ كان شرطَ المعاينة.
+     *
+     * وثلاثةُ قيودٍ تحرس البابَ بعد أن فُتح:
+     *
+     * ١) المفاتيحُ مصفّاةٌ بقائمة `MarketingSettings::GROUPS['website']` —
+     *    وهي القائمةُ نفسُها التي يُصفّي بها بابُ الحفظ. فما لا يُحفظ لا
+     *    يُعايَن.
+     * ٢) والنشاطُ من الجلسة لا من الطلب — كما يقول تعليقُ `preview` فوق:
+     *    لا معرّفَ في الرابط، فلا يُعاين تاجرٌ متجرَ جاره.
+     * ٣) والتراكبُ يُنزَع بانتهاء التصيير لا بانتهاء الطلب — انظر
+     *    `MarketingSettings::withOverlay`: ثابتٌ يعيش أطولَ من طلبه يُخرج
+     *    مسوّدةَ التاجر لزبونه.
+     *
+     * ولا يُقرأ إلّا على `POST`: الرابطُ المحفوظ في متصفّحٍ أو المُشارَك في
+     * رسالةٍ يجب أن يفتح المتجرَ كما هو محفوظ — لا كما كان أحدُهم يجرّب.
+     *
+     * @return array<string, mixed>
+     */
+    private function draft(Request $request): array
+    {
+        if (! $request->isMethod('post')) {
+            return [];
+        }
+
+        $draft = $request->input('draft');
+
+        if (is_string($draft)) {
+            $draft = json_decode($draft, true);
+        }
+
+        return is_array($draft) ? $draft : [];
     }
 }

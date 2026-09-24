@@ -6686,5 +6686,16 @@
     "لا يظهر إلا إن ضبطت فتراتٍ في «الدفع والاستلام»": "Shown only if you set time slots under Payment & pickup",
     "استبدل الصورة": "Replace image",
     "صورةٌ مرفوعة": "Image uploaded",
-    "لم تُختر صورة بعد": "No image chosen yet"
+    "لم تُختر صورة بعد": "No image chosen yet",
+    "قبل الحفظ": "Before saving",
+    "تبدّلت المسودة بعد أن فتحت الشاشة — راجعها ثم انشر.": "The draft changed after you opened this screen — review it, then publish.",
+    "الموقع محدّث": "Your site is up to date",
+    "نُشر متجرك — نشرة :n": "Your store is published — release :n",
+    "رجعت نشرة :n إلى مسودتك — راجعها ثم انشر": "Release :n is back in your draft — review it, then publish",
+    "حُفظت مسودتك — انشرها لتظهر لزبائنك": "Draft saved — publish it for your customers to see it",
+    "تغييرات غير منشورة": "Unpublished changes",
+    "آخر نشر": "Last published",
+    "ولا تُعيد أسعارًا ولا مخزونًا ولا إعدادات دفعٍ وتوصيل — تلك حال متجرك الآن.": "It restores no prices, stock, payment or delivery settings — those are your store as it is now.",
+    "ننشر تغييراتك الآن؟ سيراها زبائنك فورًا.": "Publish your changes now? Your customers will see them right away.",
+    "نُرجع هذه النشرة إلى محرّرك؟ لن يتغيّر موقعك حتى تنشرها.": "Bring this release back into your editor? Your site will not change until you publish it."
 }

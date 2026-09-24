@@ -18,6 +18,8 @@ use App\Support\MarketingSettings;
 use App\Support\Seo;
 use App\Support\FlowerOrder;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\StoreContent;
+use App\Support\Store\ThemePublisher;
 use App\Support\Store\StoreSeo;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
@@ -467,6 +469,28 @@ class MarketingController extends Controller
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }
+        }
+
+        /*
+         * ═══ ما يُنشر يذهب إلى المسوّدة، وما يسري فورًا يُكتب حيًّا ═══
+         *
+         * والقسمةُ في `StoreContent::split` لا هنا: هي العقدُ الذي يقول أيُّ
+         * مفتاحٍ يُجمَّد — ومفتاحٌ يُضاف غدًا يُقرَّر مرّةً في موضعٍ واحد.
+         *
+         * ومتجرٌ لم يُفتح له النشرُ بعدُ (لا صفَّ له في `store_sites`) يعمل
+         * كما كان **بالضبط**: كلُّ ما وصل يُكتب حيًّا. فالنظامُ لا يُفرَض
+         * دفعةً واحدة، والتراجعُ حذفُ صفٍّ لا ترحيلٌ عكسيّ.
+         */
+        if (StoreContent::usesDrafts($this->bid())) {
+            [$versioned, $liveNow] = StoreContent::split($data);
+
+            ThemePublisher::saveDraft($this->bid(), $versioned, auth()->id());
+            MarketingSettings::save($this->bid(), 'website', $liveNow);
+            Activity::log('updated', 'حفظ مسودة متجره الإلكتروني');
+
+            return back()->with('toast', [
+                'msg' => __('حُفظت مسودتك — انشرها لتظهر لزبائنك'), 'type' => 'success',
+            ]);
         }
 
         MarketingSettings::save($this->bid(), 'website', $data);

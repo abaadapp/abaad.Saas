@@ -240,13 +240,49 @@ final class PageEditor
     }
 
     /**
+     * اسمُ المفتاح كما يقرؤه صاحبُه — أو فراغٌ لمن لا اسمَ له في المحرّر.
+     *
+     * ويُقرأ من `FIELDS` لا من قائمةٍ ثانية: قائمتان تفترقان عند أوّل
+     * إعادةِ تسمية، فيقول سجلُّ النشر «العنوان الكبير» والشاشةُ «العنوان».
+     */
+    public static function labelOf(string $key): string
+    {
+        foreach (self::FIELDS as $fields) {
+            foreach ($fields as $field) {
+                if ($field['key'] === $key) {
+                    return (string) $field['label'];
+                }
+            }
+        }
+
+        return match ($key) {
+            'store_pages' => 'الصفحات',
+            'store_sections' => 'ترتيب الأقسام',
+            'store_about_image' => 'صورة «من نحن»',
+            'store_seo_title' => 'عنوان البحث',
+            'store_seo_desc' => 'وصف البحث',
+            default => '',
+        };
+    }
+
+    /**
      * قيمُ المفاتيح كما هي الآن — نصًّا، والمفاتيحُ الثنائية `'1'`/`'0'`.
      *
      * @return array<string, string>
      */
     public static function values(int $businessId): array
     {
-        $site = MarketingSettings::group($businessId, 'website');
+        /*
+         * والمحرّرُ يفتح على **المسوّدة** لا على المنشور.
+         *
+         * ولولا ذلك لَفتح صاحبُ المتجر شاشتَه بعد حفظٍ لم يُنشر فوجد ما
+         * كتبه قد ذهب — وهو لم يذهب، بل ينتظر النشر. ومن لا مسوّدةَ له
+         * تردّ `draft` المنشورَ نفسَه.
+         */
+        $site = array_merge(
+            MarketingSettings::group($businessId, 'website'),
+            StoreContent::draft($businessId),
+        );
         $out = [];
 
         foreach (self::FIELDS as $fields) {

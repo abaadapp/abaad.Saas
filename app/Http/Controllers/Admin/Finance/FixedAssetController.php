@@ -161,24 +161,89 @@ class FixedAssetController extends Controller
     {
         $bid = $this->bid();
         $through = $this->through($request);
-
-        $assets = FixedAsset::where('business_id', $bid)->where('status', 'نشط')->get()
-            ->map(fn ($a) => ['asset' => $a, 'due' => $a->dueThrough($through)])
-            ->filter(fn ($r) => $r['due'] > 0)->values();
-
-        if ($assets->isEmpty()) {
-            return back()->with('toast', ['msg' => __('لا إهلاك مستحقّ حتى هذا الشهر'), 'type' => 'info']);
-        }
-
-        $total = round($assets->sum('due'), 3);
+        $end = $through->copy()->endOfMonth();
 
         try {
-            DB::transaction(function () use ($bid, $assets, $total, $through) {
-                $lines = $assets->map(fn ($r) => [
+            $done = DB::transaction(function () use ($bid, $through, $end) {
+                /*
+                 * ═══ القراءةُ داخل المعاملة ومقفلة ═══
+                 *
+                 * كانت الأصولُ ومستحقُّها تُقرأ خارجها بلا قفل، ثمّ يُرحَّل
+                 * القيدُ وتُكتب الأصولُ داخلها. فنداءان يقعان قبل أن يكتب
+                 * أحدُهما — وهو ما يقع حين يبطؤ الردُّ فيُضغط الزرُّ ثانيةً،
+                 * أو حين يرحّله محاسبان في آخر الشهر — يقرآن المستحقَّ نفسَه
+                 * فيرحّلانه مرّتين.
+                 *
+                 * والضغطتان المتتاليتان كانتا محروستين: الأولى تكتب
+                 * `depreciated_through` فتجد الثانيةُ المستحقَّ صفرًا.
+                 * والمتزامنتان لا.
+                 */
+                /*
+                 * والقفلُ هنا لا يقيسه اختبار: SQLite — وهي قاعدةُ الفحص —
+                 * لا صفوفَ تُقفل فيها، فالمقياسُ كلُّه يقع على المقارنة
+                 * والتثبيت أدناه. وهو مقصود: حارسٌ يعمل بلا قفلٍ أصلًا خيرٌ
+                 * من حارسٍ لا يعمل إلّا حيث يُقاس.
+                 */
+                $assets = FixedAsset::where('business_id', $bid)->where('status', 'نشط')
+                    // بترتيب المعرّف كما في كلّ قفلٍ هنا: ترتيبان مختلفان يُنتجان تعارضًا دائريًّا
+                    ->orderBy('id')->lockForUpdate()->get()
+                    ->map(fn ($a) => ['asset' => $a, 'due' => $a->dueThrough($through)])
+                    ->filter(fn ($r) => $r['due'] > 0)->values();
+
+                $moved = [];
+
+                foreach ($assets as $r) {
+                    /*
+                     * ═══ ولا يُكتفى بالقفل: تُقارَن الحالُ ثمّ تُثبَّت ═══
+                     *
+                     * القفلُ يحرس حيث تُقفل الصفوف. والشرطُ على
+                     * `depreciated_through` يحرس في كلّ حال: الكتابةُ تقع على
+                     * الصفّ **إن كان ما زال على ما قُرئ**، وإلّا ردَّت صفرًا
+                     * فلا يدخل الأصلُ في القيد أصلًا.
+                     *
+                     * فمن سبقه غيرُه لا يُرحِّل له سطرًا — والقيدُ يُبنى ممّا
+                     * وقع فعلًا لا ممّا نُوي قبله.
+                     */
+                    $asset = $r['asset'];
+                    $was = $asset->depreciated_through;
+
+                    $affected = FixedAsset::whereKey($asset->id)
+                        ->where('business_id', $bid)
+                        ->where('status', 'نشط')
+                        ->when(
+                            $was === null,
+                            fn ($q) => $q->whereNull('depreciated_through'),
+                            fn ($q) => $q->whereDate('depreciated_through', $was->toDateString()),
+                        )
+                        ->update(['depreciated_through' => $end->toDateString()]);
+
+                    if ($affected === 0) {
+                        continue;
+                    }
+
+                    // والمجمَّعُ يُزاد على الصفّ لا يُكتب مجموعًا حُسب قبله
+                    FixedAsset::whereKey($asset->id)->increment('accumulated', $r['due']);
+
+                    $moved[] = ['name' => $asset->name, 'due' => $r['due']];
+                }
+
+                if ($moved === []) {
+                    return ['count' => 0, 'total' => 0.0];
+                }
+
+                $total = round(array_sum(array_column($moved, 'due')), 3);
+
+                /*
+                 * والقيدُ يُبنى بعد الكتابة لا قبلها — سطرٌ لكلّ أصلٍ تحرّك.
+                 *
+                 * سطرٌ لكل أصل لا سطرٌ جامع: بعد سنتين يُسأل «من أين جاء
+                 * مصروف الإهلاك هذا؟» فيُفتح القيد ويُقرأ اسم كل أصل ونصيبه.
+                 */
+                $lines = array_map(fn ($m) => [
                     'account' => 'depreciation',
-                    'debit' => $r['due'],
-                    'memo' => $r['asset']->name,
-                ])->all();
+                    'debit' => $m['due'],
+                    'memo' => $m['name'],
+                ], $moved);
 
                 $lines[] = ['account' => 'accumulated_depreciation', 'credit' => $total];
 
@@ -186,33 +251,32 @@ class FixedAssetController extends Controller
                     $bid,
                     __('إهلاك شهر :m', ['m' => $through->format('Y-m')]),
                     $lines,
-                    $through->copy()->endOfMonth(),
+                    $end,
                     'إهلاك',
                     null,
                     auth()->id(),
                 );
 
-                /*
-                 * الأصول تُحدَّث داخل المعاملة نفسها.
-                 *
-                 * قيدٌ يُرحَّل ثم يسقط التحديث يجعل الشهر يُهلَك مرّتين: الدفتر
-                 * يحمل المصروف و`depreciated_through` لا يزال يقول إنه لم يُهلك.
-                 */
-                foreach ($assets as $r) {
-                    $r['asset']->update([
-                        'accumulated' => round((float) $r['asset']->accumulated + $r['due'], 3),
-                        'depreciated_through' => $through->copy()->endOfMonth()->toDateString(),
-                    ]);
-                }
+                return ['count' => count($moved), 'total' => $total];
             });
         } catch (RuntimeException $e) {
             return back()->withErrors(['depreciate' => $e->getMessage()]);
         }
 
-        \App\Support\Activity::log('created', 'رحّل إهلاك '.$through->format('Y-m').' بقيمة '.$total);
+        /*
+         * ولا سطرَ في السجلّ لترحيلٍ لم يقع — والرسالةُ تقول ما جرى لا ما نُوي.
+         *
+         * وهذا هو ردُّ «سبقك غيرُك»: نفسُ ما يُقال حين لا مستحقَّ أصلًا،
+         * فالحالان واحدٌ عند من يقرأ الشاشة.
+         */
+        if (($done['count'] ?? 0) === 0) {
+            return back()->with('toast', ['msg' => __('لا إهلاك مستحقّ حتى هذا الشهر'), 'type' => 'info']);
+        }
+
+        \App\Support\Activity::log('created', 'رحّل إهلاك '.$through->format('Y-m').' بقيمة '.$done['total']);
 
         return back()->with('toast', [
-            'msg' => __('رُحّل إهلاك :n أصلًا بقيمة :v', ['n' => $assets->count(), 'v' => number_format($total, 3)]),
+            'msg' => __('رُحّل إهلاك :n أصلًا بقيمة :v', ['n' => $done['count'], 'v' => number_format($done['total'], 3)]),
             'type' => 'success',
         ]);
     }

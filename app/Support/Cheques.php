@@ -145,6 +145,34 @@ final class Cheques
 
         return DB::transaction(function () use ($payment, $date, $bankAccountId, $userId) {
             /*
+             * ═══ والحالُ تُقرأ من جديدٍ مقفلةً قبل أن يُرحَّل قيد ═══
+             *
+             * الحارسُ فوق يقرأ النسخةَ التي في اليد — وهي قديمةٌ بقدر ما
+             * بين الضغطة والضغطة. فنداءان يقعان قبل أن يكتب أحدُهما — وهو
+             * ما يقع حين يبطؤ الردُّ فيُضغط الزرُّ ثانيةً — يمرّان كلاهما:
+             * يُدين البنكُ مرّتين بشيكٍ واحد، ويُدان «شيكات تحت التحصيل»
+             * مرّتين فيصير سالبًا.
+             *
+             * قِسناه: شيكٌ بمئةٍ وخمسة أدخل البنكَ مئتين وعشرة، والوسيطَ إلى
+             * ناقص مئةٍ وخمسة. وصفُّ الشيك يبدو سليمًا — كلاهما يكتب
+             * «محصَّل» بالقيم نفسِها — فالخللُ كلُّه في الطرف الآخر، ولا
+             * يُكتشف إلّا عند مطابقة كشف الحساب.
+             *
+             * وأخوه `bounce` كان سليمًا بغيره: `Ledger::reverse` تُعيد قراءةَ
+             * القيد مقفلًا وتردّ `null` إن كان معكوسًا. و`clear` تنادي
+             * `Ledger::post` رأسًا ولا حارسَ فيها.
+             *
+             * انظر `AChequeIsBankedOnceTest`.
+             */
+            $fresh = CustomerPayment::whereKey($payment->id)->lockForUpdate()->first();
+
+            if (! $fresh) {
+                throw new RuntimeException(__('لم يعد هذا التحصيل موجودًا.'));
+            }
+
+            self::guard($fresh, self::PENDING, __('لا يُحصَّل إلّا شيكٌ تحت التحصيل.'));
+
+            /*
              * والحسابُ البنكيّ يُعاد اختيارُه هنا لا يُؤخذ من القبض.
              *
              * التاجر قد يودع الشيك في حسابٍ غير الذي كتبه يوم استلمه.
@@ -171,7 +199,7 @@ final class Cheques
                 $payment,
             );
 
-            $payment->forceFill([
+            $fresh->forceFill([
                 'cheque_status' => self::CLEARED,
                 'cheque_settled_at' => $date,
                 'bank_account_id' => $account,
@@ -206,6 +234,22 @@ final class Cheques
         }
 
         return DB::transaction(function () use ($payment, $reason, $userId) {
+            /*
+             * والحالُ تُقرأ مقفلةً كما في أخيه.
+             *
+             * والقيدُ هنا محروسٌ أصلًا (`Ledger::reverse` لا تعكس معكوسًا)،
+             * لكنّ الثاني كان يكتب «مرتدّ» من جديدٍ ويُقيّد سطرًا ثانيًا في
+             * سجلّ النشاط لارتدادٍ واحد — وهو أوّلُ ما يُقرأ حين يُسأل عن
+             * الورقة.
+             */
+            $fresh = CustomerPayment::whereKey($payment->id)->lockForUpdate()->first();
+
+            if (! $fresh) {
+                throw new RuntimeException(__('لم يعد هذا التحصيل موجودًا.'));
+            }
+
+            self::guard($fresh, self::PENDING, __('لا يرتدّ إلّا شيكٌ تحت التحصيل.'));
+
             $entry = JournalEntry::where('business_id', $payment->business_id)
                 ->where('sourceable_type', CustomerPayment::class)
                 ->where('sourceable_id', $payment->id)
@@ -216,7 +260,7 @@ final class Cheques
                 Ledger::reverse($entry, now(), $userId, __('ارتداد شيك ').$payment->number);
             }
 
-            $payment->forceFill([
+            $fresh->forceFill([
                 'cheque_status' => self::BOUNCED,
                 'cheque_settled_at' => now(),
                 'cheque_note' => mb_substr($reason, 0, 200),

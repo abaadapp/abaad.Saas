@@ -75,43 +75,18 @@ class ReportDownloadController extends Controller
     }
 
     /**
-     * المؤشّرات بطاقاتٍ للورق — بترتيب الشاشة نفسه.
+     * المؤشّرات بطاقاتٍ للورق — بترتيب الشاشة نفسه وبألفاظها.
      *
-     * والمبالغ تُنسَّق هنا لا في القالب: القالب لا يعرف أيُّ مفتاحٍ مبلغٌ
-     * وأيُّه عدد، فيطبع الرصيد بثلاث خاناتٍ عشرية والعدد كذلك.
+     * وكانت تُخمَّن هنا: أوّلُ أربعة مفاتيحَ غيرِ مصفوفة في الملخّص، بأسماءٍ
+     * من قاموسٍ ثانٍ في هذا الملفّ. فافترق الملفّ عن شاشته في أربعة تقارير،
+     * وخرج إقرارُ الضريبة ببطاقاتٍ مكتوبةٍ بالإنجليزية وبلا «الصافي
+     * المستحقّ» أصلًا. والتصريحُ الآن إلى جانب أعمدة الجدول — انظر
+     * `ReportColumns::CARDS`.
      */
-    private function cards(array $summary): array
+    private function cards(string $report, array $summary): array
     {
-        $out = [];
-        foreach ($summary as $key => $value) {
-            if (is_array($value)) {
-                continue;
-            }
-            $out[] = [
-                'label' => __(self::LABELS[$key] ?? $key),
-                'value' => is_float($value) ? Demo::money($value) : (string) ($value ?? '—'),
-            ];
-        }
-
-        return array_slice($out, 0, 4);
+        return ReportColumns::cards($report, $summary);
     }
-
-    /** أسماء مفاتيح المؤشّرات بالعربية — تُقرأ على الورق لا كمفاتيح */
-    private const LABELS = [
-        'income' => 'المقبوضات', 'outgo' => 'المدفوعات', 'net' => 'الصافي', 'count' => 'العدد',
-        'total' => 'الإجمالي', 'average' => 'المتوسّط', 'topType' => 'أعلى نوع', 'topTotal' => 'قيمته',
-        'lines' => 'الأسطر', 'matched' => 'المطابَق', 'unmatched' => 'غير المطابَق',
-        'cancelled' => 'الملغاة', 'products' => 'المنتجات', 'revenue' => 'الإيراد', 'profit' => 'الربح',
-        'sold' => 'ما بيع منها', 'items' => 'الأصناف', 'quantity' => 'الكمية', 'value' => 'القيمة',
-        'below' => 'تحت الحدّ', 'received' => 'المستلَمة', 'pending' => 'المعلّقة',
-        'suppliers' => 'المورّدون', 'active' => 'النشط', 'orders' => 'الطلبات',
-        'users' => 'المستخدمون', 'topAction' => 'أكثر إجراء', 'topCount' => 'مرّاته',
-        'coupons' => 'الكوبونات', 'used' => 'المستخدَم', 'uses' => 'مرات الاستخدام', 'discount' => 'الخصومات',
-        'operations' => 'عمليات الجرد', 'shortage' => 'قيمة النقص', 'surplus' => 'قيمة الزيادة',
-        'staff' => 'الموظفون', 'sellers' => 'من باع', 'topName' => 'الأعلى', 'topSales' => 'مبيعاته',
-        'customers' => 'العملاء',
-        'seasons' => 'المواسم', 'sales' => 'إجمالي المبيعات', 'gross_profit' => 'مجمل الربح',
-    ];
 
     /** ما يُكتب في ترويسة الملفّ عن مدّته — مسمّاةً كانت أو بحدّين */
     private function periodLabel(string $report, array $filters, array $data): string
@@ -253,7 +228,7 @@ class ReportDownloadController extends Controller
 
         // المؤشّرات فوق الجدول: من يفتح الورقة يقرأ الخلاصة قبل الصفوف
         $row = 5;
-        foreach ($this->cards($data['summary'] ?? []) as $card) {
+        foreach ($this->cards($report, $data['summary'] ?? []) as $card) {
             $sheet->setCellValue('A'.$row, $card['label']);
             $sheet->setCellValue('B'.$row, $card['value']);
             $row++;
@@ -310,7 +285,7 @@ class ReportDownloadController extends Controller
         $lines = [];
         $lines[] = [$this->title($report), $this->periodLabel($report, $filters, $data)];
         $lines[] = [];
-        foreach ($this->cards($data['summary'] ?? []) as $card) {
+        foreach ($this->cards($report, $data['summary'] ?? []) as $card) {
             $lines[] = [$card['label'], $card['value']];
         }
         if (ReportColumns::sectioned($report)) {
@@ -359,7 +334,7 @@ class ReportDownloadController extends Controller
             'title' => $this->title($report),
             'rangeLabel' => $this->periodLabel($report, $filters, $data),
             'generatedAt' => now()->format('Y-m-d H:i'),
-            'cards' => $this->cards($data['summary'] ?? []),
+            'cards' => $this->cards($report, $data['summary'] ?? []),
             'headings' => ReportColumns::sectioned($report) ? [] : ReportColumns::headings($report),
             'rows' => ReportColumns::sectioned($report)
                 ? []

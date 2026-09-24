@@ -70,6 +70,38 @@ class OrderCorrection
 
         return DB::transaction(function () use ($order, $item, $oldQty, $newQty, $reason) {
             $bid = (int) $order->business_id;
+
+            /*
+             * ═══ والبندُ يُقرأ من جديدٍ مقفلًا قبل أن يُكتب فوقه ═══
+             *
+             * ما في اليد نسخةُ شاشةٍ قُرئت قبل دقيقة، والفاتورةُ الواحدة تُفتح
+             * على صندوقين: الكاشير على الطاولة والمحاسبُ من شاشة المبيعات —
+             * البابُ واحدٌ تحتهما (`OrderEditController`).
+             *
+             * فلو خفضها الأوّلُ من ثلاثٍ إلى واحدة، ثمّ أرسل الثاني «اجعلها
+             * اثنتين» وهو يقرأ ثلاثًا: يُحسب الفرقُ ٣−٢ = ١ فيعود إلى الرفّ
+             * صنفٌ لم يُبَع أصلًا — قِسناه: الرفُّ يعود إلى ما كان **قبل
+             * البيع** والفاتورةُ تقول إنّ قطعتين بِيعتا. ولا يُكتشف ذلك إلّا
+             * في الجرد، ولا شيءَ فيه يقول من أين جاءت الزيادة.
+             *
+             * ═══ ولمَ الردّ لا الحسابُ من القيمة الجديدة ═══
+             *
+             * حسابُ الفرق من الجديدة يُصلح الرفّ ويُبقي فعلًا آخر: من أراد
+             * «٣ ← ٢» — وهي خفض — يقع أمرُه «١ ← ٢»، وهي زيادةُ بندٍ على
+             * فاتورةٍ ضريبيّةٍ سُلّمت. وليسا فعلًا واحدًا.
+             *
+             * انظر `ACorrectionReadsTheLineItRewritesTest`.
+             */
+            $locked = OrderItem::whereKey($item->id)->lockForUpdate()->first();
+
+            if (! $locked) {
+                throw new RuntimeException(__('حُذف هذا البند من الفاتورة قبل أن يصل تصحيحك.'));
+            }
+
+            if ((int) $locked->quantity !== $oldQty) {
+                throw new RuntimeException(__('تغيّر هذا البند من جهازٍ آخر — أعد فتح الفاتورة ثمّ صحّحها.'));
+            }
+
             $totalBefore = (float) $order->total;
             $itemName = $item->name;
             $itemId = $item->id;
@@ -563,6 +595,18 @@ class OrderCorrection
 
         return DB::transaction(function () use ($order, $item, $row, $oldQty, $newQty, $reason) {
             $bid = (int) $order->business_id;
+
+            // وصفُّ الإضافة يُقرأ مقفلًا كما يُقرأ البند — العلّةُ واحدة
+            $locked = OrderItemAddon::whereKey($row->id)->lockForUpdate()->first();
+
+            if (! $locked) {
+                throw new RuntimeException(__('حُذفت هذه الإضافة قبل أن يصل تصحيحك.'));
+            }
+
+            if ((int) $locked->quantity !== $oldQty) {
+                throw new RuntimeException(__('تغيّرت هذه الإضافة من جهازٍ آخر — أعد فتح الفاتورة ثمّ صحّحها.'));
+            }
+
             $totalBefore = (float) $order->total;
             $name = $row->name;
 

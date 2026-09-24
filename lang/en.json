@@ -6624,5 +6624,9 @@
     "غير منشور — لا يفتحه أحد": "Not published — nobody can open it",
     "يبقى": "Left",
     "نقاط مستبدَلة:": "Points redeemed:",
-    "الرصيد المتبقي:": "Remaining balance:"
+    "الرصيد المتبقي:": "Remaining balance:",
+    "حُذف هذا البند من الفاتورة قبل أن يصل تصحيحك.": "This line was removed from the invoice before your correction arrived.",
+    "تغيّر هذا البند من جهازٍ آخر — أعد فتح الفاتورة ثمّ صحّحها.": "Another device changed this line — reopen the invoice, then correct it.",
+    "حُذفت هذه الإضافة قبل أن يصل تصحيحك.": "This add-on was removed before your correction arrived.",
+    "تغيّرت هذه الإضافة من جهازٍ آخر — أعد فتح الفاتورة ثمّ صحّحها.": "Another device changed this add-on — reopen the invoice, then correct it."
 }

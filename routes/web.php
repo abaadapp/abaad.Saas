@@ -1714,10 +1714,31 @@ Route::domain('{slug}.'.config('storefront.domain'))
          * الطلب. ولا يُخدمان لمتجرٍ واجهتُه البانِي أو البسيطة — انظر
          * `StorefrontController::themed`.
          */
+        /*
+         * ═══ وبابا التسعير والإتمام بعدّاد ═══
+         *
+         * `‎/checkout‎` يكتب **طلبًا حقيقيًّا** في نظام التاجر: صفٌّ في
+         * `orders` وأصنافُه، وقيدٌ في الدفتر (`Books::recordSale`)، وإشعارٌ
+         * يُرسَل. وكان مفتوحًا بلا حدّ لزائرٍ مجهول — فبرنامجٌ صغير يُغرق
+         * تاجرًا بألف طلبٍ في دقيقة: دفترُه يمتلئ بقيودٍ لا بضاعةَ خلفها،
+         * وهاتفُه بإشعاراتٍ لا آخرَ لها، ولا حسابَ يُوقَف لأنّ لا حسابَ هناك.
+         *
+         * وهي حجّةُ `‎/gift-card‎` المكتوبةُ تحته حرفًا بحرف — والبابُ الذي
+         * يكتب في الدفتر أولى بها من البابِ الذي يكتب في القرص.
+         *
+         * والحدّان مختلفان لأنّ السؤالين مختلفان: التسعيرُ يُنادى كلّما
+         * بدّل الزبونُ كمّيةً أو طريقةَ استلامٍ أو جرّب رمزَ خصم — فحدُّه
+         * فسيح؛ والإتمامُ ضغطةٌ واحدةٌ تُنهي الزيارة.
+         *
+         * ولا يُحسب العدّادُ بحسابٍ — لا حسابَ للزائر — بل بعنوانه. وعشرُ
+         * محاولاتٍ في الدقيقة تكفي مَن أخطأ فأعاد، ولا تكفي مَن يُغرق.
+         */
         Route::post('/quote', [StorefrontController::class, 'quote'])
-            ->where('slug', Storefront::pattern())->name('store.quote');
+            ->where('slug', Storefront::pattern())
+            ->middleware('throttle:60,1')->name('store.quote');
         Route::post('/checkout', [StorefrontController::class, 'place'])
-            ->where('slug', Storefront::pattern())->name('store.checkout');
+            ->where('slug', Storefront::pattern())
+            ->middleware('throttle:10,1')->name('store.checkout');
 
         /*
          * ورفعُ ملفّ كرت الهدية — بابٌ يفتحه زائرٌ مجهول.
@@ -1734,8 +1755,11 @@ Route::domain('{slug}.'.config('storefront.domain'))
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
 Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
     ->where('path', Storefront::PATH)->name('store.show.page');
-Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])->name('store.show.quote');
-Route::post('/s/{slug}/checkout', [StorefrontController::class, 'place'])->name('store.show.checkout');
+// والعدّادان نفسُهما على المسار البديل — انظر حجّتهما في مجموعة النطاق الفرعيّ
+Route::post('/s/{slug}/quote', [StorefrontController::class, 'quote'])
+    ->middleware('throttle:60,1')->name('store.show.quote');
+Route::post('/s/{slug}/checkout', [StorefrontController::class, 'place'])
+    ->middleware('throttle:10,1')->name('store.show.checkout');
 Route::post('/s/{slug}/gift-card', [StorefrontController::class, 'giftCard'])
     ->middleware('throttle:20,1')->name('store.show.giftcard');
 
@@ -1773,10 +1797,13 @@ Route::domain('{host}')
             ->where(['host' => Storefront::foreignHost(), 'path' => Storefront::PATH])
             ->name('store.custom.page');
 
+        // وعليه أيضًا — الطرقُ ثلاثٌ والبابُ واحد
         Route::post('/quote', [StorefrontController::class, 'quoteByHost'])
-            ->where('host', Storefront::foreignHost())->name('store.custom.quote');
+            ->where('host', Storefront::foreignHost())
+            ->middleware('throttle:60,1')->name('store.custom.quote');
         Route::post('/checkout', [StorefrontController::class, 'placeByHost'])
-            ->where('host', Storefront::foreignHost())->name('store.custom.checkout');
+            ->where('host', Storefront::foreignHost())
+            ->middleware('throttle:10,1')->name('store.custom.checkout');
         Route::post('/gift-card', [StorefrontController::class, 'giftCardByHost'])
             ->where('host', Storefront::foreignHost())
             ->middleware('throttle:20,1')->name('store.custom.giftcard');

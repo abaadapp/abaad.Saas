@@ -38,6 +38,23 @@ class AppServiceProvider extends ServiceProvider
         \App\Support\PlatformConfig::apply();
 
         /*
+         * وذاكرةُ الإعدادات تموت مع الطلب — وعاملُ الطابور لا طلبَ له.
+         *
+         * `MarketingSettings::group` تحفظ ما قرأت لتُجيب مرّةً بدل سبعَ عشرةَ
+         * مرّةً في صفحةٍ واحدة، وتُبطَل عند كلّ كتابةٍ في هذه العمليّة
+         * (`Setting::booted`). وتحت php-fpm تموت الذاكرةُ بنهاية كلّ طلب،
+         * فلا يبقى إلّا العامل: يعيش ساعات، ويُبدّل تاجرٌ إعداداته من
+         * المتصفّح، فيبقى العاملُ يقرأ ما كان.
+         *
+         * وهي القاعدةُ المكتوبة فوق `Demo::$baseCur` نفسُها — ذاكرةٌ لا
+         * تُعرف حدودُها تُخدِّم متجرًا بإعدادات غيره.
+         */
+        \Illuminate\Support\Facades\Event::listen(
+            \Illuminate\Queue\Events\JobProcessing::class,
+            fn () => \App\Support\MarketingSettings::forget(),
+        );
+
+        /*
          * من يسمع تغيّر حالة الطلب.
          *
          * المراقب على النموذج لا على المتحكّمات: ثلاثة مواضع تكتب الحالة

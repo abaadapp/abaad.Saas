@@ -36,7 +36,7 @@ final class RibbonTexts
         'payCod' => 'الدفع عند الاستلام', 'payCodNote' => 'نقدًا عند التسليم', 'payBank' => 'تحويل بنكي', 'payBankNote' => 'تصلك بيانات الحساب',
         'bankNote' => 'بعد تأكيد الطلب تظهر لك بيانات الحساب البنكي، ويُجهَّز الطلب بعد استلام التحويل.',
         'summary' => 'ملخص الطلب', 'promo' => 'كود الخصم', 'apply' => 'تطبيق', 'shipping' => 'التوصيل', 'discount' => 'الخصم', 'tax' => 'الضريبة', 'total' => 'الإجمالي', 'free' => 'مجاني', 'freeOver' => 'مجاني فوق :amount',
-        'place' => 'تأكيد الطلب', 'date' => 'الموعد', 'slot' => 'وقت التسليم', 'errReq' => 'يرجى إكمال الحقول المحددة', 'errEmpty' => 'السلة فارغة', 'closed' => 'المتجر لا يستقبل طلبات من الموقع الآن — تواصل معنا.',
+        'place' => 'تأكيد الطلب', 'date' => 'الموعد', 'slot' => 'وقت التسليم', 'errReq' => 'يرجى إكمال الحقول المحددة', 'errEmpty' => 'السلة فارغة', 'errBusy' => 'محاولاتٌ كثيرة — انتظر دقيقةً ثمّ أعد المحاولة.', 'errStale' => 'انتهت جلستُك — أعد تحميل الصفحة ثمّ أكّد طلبك.', 'errServer' => 'تعذّر إتمام الطلب الآن — أعد المحاولة، أو تواصل معنا.', 'closed' => 'المتجر لا يستقبل طلبات من الموقع الآن — تواصل معنا.',
         'thanks' => 'شكراً لك، تم استلام طلبك', 'orderNo' => 'رقم الطلب', 'bankDetails' => 'بيانات الحساب البنكي', 'pay' => 'الدفع',
         'footShop' => 'تسوّق', 'footContact' => 'تواصل معنا', 'footHours' => 'ساعات العمل',
         'footPages' => 'الموقع',
@@ -72,7 +72,7 @@ final class RibbonTexts
         'payCod' => 'Cash on delivery', 'payCodNote' => 'Pay when you receive it', 'payBank' => 'Bank transfer', 'payBankNote' => 'Account details shown to you',
         'bankNote' => 'After confirming, the bank details are shown to you. The order is prepared once the transfer is received.',
         'summary' => 'Order summary', 'promo' => 'Promo code', 'apply' => 'Apply', 'shipping' => 'Delivery', 'discount' => 'Discount', 'tax' => 'VAT', 'total' => 'Total', 'free' => 'Free', 'freeOver' => 'Free over :amount',
-        'place' => 'Place order', 'date' => 'Date', 'slot' => 'Delivery time', 'errReq' => 'Please complete the highlighted fields', 'errEmpty' => 'Cart is empty', 'closed' => 'The store is not taking online orders right now — contact us.',
+        'place' => 'Place order', 'date' => 'Date', 'slot' => 'Delivery time', 'errReq' => 'Please complete the highlighted fields', 'errEmpty' => 'Cart is empty', 'errBusy' => 'Too many attempts — wait a minute and try again.', 'errStale' => 'Your session expired — reload the page, then confirm your order.', 'errServer' => 'We could not complete your order — try again, or contact us.', 'closed' => 'The store is not taking online orders right now — contact us.',
         'thanks' => 'Thank you, your order is received', 'orderNo' => 'Order no.', 'bankDetails' => 'Bank account details', 'pay' => 'Payment',
         'footShop' => 'Shop', 'footContact' => 'Contact', 'footHours' => 'Opening hours',
         'footPages' => 'Site',
@@ -88,5 +88,37 @@ final class RibbonTexts
     public static function for(string $lang): array
     {
         return $lang === 'en' ? self::EN : self::AR;
+    }
+
+    /**
+     * ما يُقال للزبون حين يُردّ بابٌ بحالةٍ ليست خطأَ حقلٍ في نموذجه.
+     *
+     * ═══ ولمَ تُبنى هنا لا في جافاسكربت الصفحة ═══
+     *
+     * لأنّ ما لا يُحرس ينكسر. وشرطٌ مكتوبٌ داخل وسمِ `‎<script>‎` في قالب
+     * بليد لا يبلغه اختبار: يُحذف فرعٌ منه فلا يسقط شيء، ويبقى بابٌ يُغلق
+     * في وجه الزبون بلا كلمة. فالقرارُ خريطةٌ يبنيها الخادم ويُسأل عنها،
+     * والصفحةُ تقرأ منها بمفتاحٍ واحد.
+     *
+     * و٤١٩ أكثرُها وقوعًا: يفتح الزبون الإتمام، يذهب يسأل من يُهدي، يعود
+     * بعد ساعةٍ وقد انتهت جلستُه. ولا يُقال له «أعد المحاولة» — تُعاد
+     * المحاولةُ ألفًا ولا تنجح — بل «أعد تحميل الصفحة».
+     *
+     * @return array<string, string>
+     */
+    public static function doorSays(string $lang): array
+    {
+        $t = self::for($lang);
+
+        return [
+            // بابٌ بعدّاد: الانتظارُ وحده يُصلحه
+            '429' => $t['errBusy'],
+            // جلسةٌ انتهت أو رمزٌ بطَل: التحميلُ من جديد وحده يُصلحه
+            '419' => $t['errStale'],
+            '401' => $t['errStale'],
+            '403' => $t['errStale'],
+            // وما سوى ذلك — ٥٠٠ و٥٠٢ وانقطاعُ الشبكة وجوابٌ ليس JSON أصلًا
+            '_' => $t['errServer'],
+        ];
     }
 }

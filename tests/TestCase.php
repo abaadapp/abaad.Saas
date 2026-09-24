@@ -20,6 +20,14 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         \App\Support\Demo::flushCurrency();
+
+        /*
+         * وذاكرةُ `MarketingSettings` مثلُها: تحفظ ما قرأت في الطلب الواحد
+         * فلا تسأل الجدولَ سبعَ عشرةَ مرّة، وتُبطَل عند كلّ كتابة (انظر
+         * `Setting::booted`). لكنّ الاختبارات تتشارك العمليّة والجدولُ يُلفّ
+         * بينها — فما قُرئ في اختبارٍ يُقرأ في الذي يليه وقد مُحيت قاعدتُه.
+         */
+        \App\Support\MarketingSettings::forget();
     }
 
     /**

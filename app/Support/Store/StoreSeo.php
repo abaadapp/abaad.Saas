@@ -4,6 +4,7 @@ namespace App\Support\Store;
 
 use App\Models\Business;
 use App\Support\MarketingSettings;
+use App\Support\Storefront;
 use Illuminate\Support\Str;
 
 /**
@@ -25,6 +26,46 @@ use Illuminate\Support\Str;
  */
 final class StoreSeo
 {
+    /**
+     * صفحاتٌ لا تُفهرَس — مهما أذِن صاحبُ المتجر بالفهرسة.
+     *
+     * ═══ والعطبُ الذي وُضع لأجله ═══
+     *
+     * صفحةُ التأكيد `‎/done/{id}?t=…‎` تعرض رقمَ طلبِ زبونٍ وأصنافَه
+     * ومبلغَه وحسابَ التحويل. ورابطُها لا يُخمَّن — لكنّ محرّك بحثٍ يزحف
+     * إليه من مشاركةٍ عابرة في منتدًى أو رسالةٍ عامّة يجعله مفهرسًا للجميع،
+     * فيصير طلبُ زبونٍ واحدٍ نتيجةَ بحثٍ عن اسم المحلّ.
+     *
+     * وهي حجّةُ `public/paper.blade.php` و`verify` و`review` أنفسُها،
+     * مكتوبةٌ هناك منذ كُتبت: «رابطُها لا يُخمَّن، لكنّ محرّك بحثٍ يزحف
+     * إليه من مشاركةٍ عابرة يجعله مفهرسًا للجميع».
+     *
+     * والسلّةُ والإتمامُ والعودةُ من البوّابة معها: ثلاثُ صفحاتٍ لا نصَّ
+     * فيها يُبحَث، تُفهرَس بعنوانٍ واحدٍ فتقسم ثقلَ المتجر على أربع.
+     *
+     * وإذنُ الفهرسة في الشاشة يبقى سؤالَ الصفحات العامّة وحدَها — وهذان
+     * سؤالان لا سؤال.
+     */
+    public const PRIVATE_PAGES = ['cart', 'checkout', 'done', 'paying'];
+
+    /**
+     * رابطٌ مطلقٌ لا نسبيّ.
+     *
+     * `og:image` يقرؤه واتساب من خادمٍ آخر لا من متصفّح الزائر، فلا مضيفَ
+     * يُكمل به `‎/storage/…‎`. ورابطٌ نسبيٌّ هناك لا صورةَ له — ولا خطأ:
+     * تُعرض البطاقةُ بلا صورةٍ ولا يُعرف لماذا.
+     */
+    private static function absolute(?string $url): ?string
+    {
+        if ($url === null || trim($url) === '') {
+            return null;
+        }
+
+        return str_starts_with($url, 'http://') || str_starts_with($url, 'https://')
+            ? $url
+            : url($url);
+    }
+
     /**
      * ولا يُقصّ ما كتبه: الحدُّ إرشادٌ في الشاشة، والقصُّ هنا يُخفي عنه
      * ما حفظه. وغوغل يقصّ في نتيجته ولا يُعاقب على الطول.
@@ -64,7 +105,7 @@ final class StoreSeo
      */
     public static function canonical(Business $business, string $base, string $path): ?string
     {
-        $root = \App\Support\Storefront::canonical($business->site_slug, (int) $business->id);
+        $root = Storefront::canonical($business->site_slug, (int) $business->id);
 
         if ($root === null) {
             return null;
@@ -88,7 +129,7 @@ final class StoreSeo
      *
      * @param  array<string, string>  $t  نصوصُ الواجهة بلغة الزائر
      * @param  array<string, string>  $identity
-     * @return array{brand: string, title: string, description: string, index: bool, canonical: ?string}
+     * @return array{brand: string, title: string, description: string, index: bool, canonical: ?string, image: ?string}
      */
     public static function head(Business $business, string $page, array $t, array $identity, string $base = '', string $path = '/'): array
     {
@@ -128,9 +169,18 @@ final class StoreSeo
              * البحث بعد. وإخفاؤه بإطفاء النشر يُغلقه على زبائنه أيضًا —
              * وهذان سؤالان لا سؤال.
              */
-            'index' => ($site['store_seo_index'] ?? '1') === '1',
+            'index' => ($site['store_seo_index'] ?? '1') === '1'
+                && ! in_array($page, self::PRIVATE_PAGES, true),
             // وكلُّ ما يقرؤه غوغل في موضعٍ واحد — العنوانُ الأصليّ منه
             'canonical' => self::canonical($business, $base, $path),
+            /*
+             * وصورةُ المشاركة: ما يظهر حين يُلصَق الرابطُ في واتساب.
+             *
+             * وصورةُ الواجهة قبل الشعار: الشعارُ مربّعٌ صغيرٌ على أبيض يظهر
+             * قصاصةً في بطاقة المحادثة، وصورةُ الواجهة بضاعةٌ تُشتهى. ومن
+             * لا واجهةَ له يبقى شعارُه خيرًا من فراغ.
+             */
+            'image' => self::absolute(StorePage::heroImage($bid) ?: ((string) $business->logo ?: null)),
         ];
     }
 }

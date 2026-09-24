@@ -247,10 +247,13 @@ class RibbonController extends Controller
 
         $new = $shown->sortByDesc('id')->take(4)->values();
 
+        // عملةٌ واحدةٌ للرفّ كلِّه — انظر `card`
+        $currency = Storefront::currency($business);
+
         return [
             'categories' => $this->categories($bid, $lang, $shown),
-            'best' => $best->map(fn ($p) => $this->card($p, $lang, $business))->all(),
-            'new' => $new->map(fn ($p) => $this->card($p, $lang, $business))->all(),
+            'best' => $best->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
+            'new' => $new->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
             /*
              * أفي المتجر بضاعةٌ أصلًا؟ — يسألها ما يَعِد الزبونَ بشيء.
              *
@@ -278,6 +281,8 @@ class RibbonController extends Controller
         $q = trim((string) $request->query('q', ''));
         $shown = $this->shown($bid)->with(['category:id,name,name_en', 'variants'])->orderBy('name')->get();
 
+        $currency = Storefront::currency($business);
+
         $list = $shown
             ->when($cat > 0, fn ($c) => $c->where('category_id', $cat))
             ->when($q !== '', fn ($c) => $c->filter(fn ($p) => mb_stripos($p->name.' '.$p->name_en, $q) !== false));
@@ -286,7 +291,7 @@ class RibbonController extends Controller
             'categories' => $this->categories($bid, $lang, $shown),
             'cat' => $cat,
             'q' => $q,
-            'products' => $list->map(fn ($p) => $this->card($p, $lang, $business))->values()->all(),
+            'products' => $list->map(fn ($p) => $this->card($p, $lang, $business, $currency))->values()->all(),
         ];
     }
 
@@ -345,7 +350,13 @@ class RibbonController extends Controller
         $currency = Storefront::currency($business);
 
         return [
-            'product' => $this->card($p, $lang, $business) + [
+            /*
+             * وصورةُ الصنف هي صورةُ مشاركته: من أرسل رابطَ باقةٍ إلى صديقه
+             * يريده يرى الباقةَ لا واجهةَ المحلّ. وتُطلَق مطلقةً لأنّ واتساب
+             * يقرؤها من خادمه لا من متصفّح القارئ.
+             */
+            'ogImage' => $p->image ? (str_starts_with((string) $p->image, 'http') ? $p->image : url($p->image)) : null,
+            'product' => $this->card($p, $lang, $business, $currency) + [
                 'description' => (string) $p->description,
                 'available' => $available,
                 'sizes' => $p->variants->map(fn ($v) => [
@@ -538,9 +549,21 @@ class RibbonController extends Controller
             ->values();
     }
 
-    private function card(Product $p, string $lang, Business $business): array
+    /**
+     * بطاقةُ صنفٍ في الرفّ.
+     *
+     * ═══ والعملةُ تُمرَّر ولا تُقرأ هنا ═══
+     *
+     * كانت `Storefront::currency` تُنادى داخل كلّ بطاقة، وهي استعلامان:
+     * جدولُ العملات وجدولُ الإعدادات. فرفٌّ بمئة صنفٍ يسأل القاعدةَ مئتي
+     * سؤالٍ زائدٍ عن عملةٍ واحدةٍ لا تتبدّل بين صنفٍ وآخر — وقد قِيسَ:
+     * ثلاثة عشر تكرارًا لكلٍّ منهما في صفحة رفٍّ باثني عشر صنفًا.
+     *
+     * والجوابُ محسوبٌ في السياق أصلًا (`context`) فيُمرَّر.
+     */
+    private function card(Product $p, string $lang, Business $business, ?array $currency = null): array
     {
-        $currency = Storefront::currency($business);
+        $currency ??= Storefront::currency($business);
         $prices = $p->variants->where('active', true)->pluck('price')->map(fn ($v) => (float) $v);
         $price = $prices->isEmpty() ? $p->sellingPrice() : (float) $prices->min();
 

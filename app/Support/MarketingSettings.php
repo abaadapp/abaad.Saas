@@ -396,9 +396,47 @@ class MarketingSettings
         ],
     ];
 
+    /**
+     * ما قُرئ في هذا الطلب — فلا يُسأل الجدولُ عن المجموعة نفسِها مرّتين.
+     *
+     * ═══ والعطبُ الذي وُضع لأجله ═══
+     *
+     * صفحةُ متجرٍ واحدةٌ يفتحها زائر كانت تسأل هذا الاستعلامَ **سبعَ عشرةَ
+     * مرّة**: القائمةُ تسأل عن كلّ صفحةٍ أهي قائمة، وكلُّ سؤالٍ يقرأ الهويّة،
+     * والهويّةُ تقرأ المجموعة؛ ثمّ يقرؤها السيو، والتذييل، وإتمامُ الطلب،
+     * وأقسامُ الصفحة. أربعةٌ وخمسون استعلامًا لصفحةٍ عامّةٍ يفتحها كلُّ زبون.
+     *
+     * والقيمُ لا تتبدّل داخل الطلب إلّا بكتابةٍ — وكلُّ كتابةٍ تُبطلها
+     * (انظر `Setting::booted`). والذاكرةُ تموت مع الطلب فلا تُقرأ قيمةٌ
+     * قديمة في طلبٍ تالٍ.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private static array $memo = [];
+
+    /** يُنادى من `Setting` عند كلّ كتابةٍ أو حذف */
+    public static function forget(?int $businessId = null): void
+    {
+        if ($businessId === null) {
+            self::$memo = [];
+
+            return;
+        }
+
+        foreach (array_keys(self::$memo) as $key) {
+            if (str_starts_with($key, $businessId.':')) {
+                unset(self::$memo[$key]);
+            }
+        }
+    }
+
     /** قيم مجموعةٍ كما هي محفوظة — والناقص يعود بافتراضيّه */
     public static function group(int $businessId, string $group): array
     {
+        if (isset(self::$memo[$businessId.':'.$group])) {
+            return self::$memo[$businessId.':'.$group];
+        }
+
         $defaults = self::GROUPS[$group] ?? [];
         $saved = Setting::where('business_id', $businessId)
             ->whereIn('key', array_keys($defaults))->pluck('value', 'key')->all();
@@ -409,7 +447,7 @@ class MarketingSettings
             $out[$key] = array_key_exists($key, $saved) && $saved[$key] !== null ? $saved[$key] : $default;
         }
 
-        return $out;
+        return self::$memo[$businessId.':'.$group] = $out;
     }
 
     /** يحفظ ما يخصّ المجموعة من المُدخَل، ويتجاهل ما ليس منها */

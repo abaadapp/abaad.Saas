@@ -41,8 +41,30 @@
         <link rel="alternate" hreflang="en" href="{{ $seo['canonical'] }}?lang=en">
         <link rel="alternate" hreflang="x-default" href="{{ $seo['canonical'] }}">
     @endif
-    @if ($logo)
-        <meta property="og:image" content="{{ $logo }}">
+    {{--
+        ═══ وما يُعرض حين يُلصَق الرابط ═══
+
+        زبونُ محلّ وردٍ في عُمان يصل من رسالةِ واتساب لا من بحثٍ غالبًا. وكانت
+        البطاقةُ تخرج بصورةٍ وحدَها (إن وُجد شعار) بلا عنوانٍ ولا وصف — فتبدو
+        رابطًا مكسورًا في محادثة، ولا يُضغط.
+
+        ومتجرُ البانِي يعلنها كاملةً منذ كُتب (`site/show.blade.php`)،
+        وانفردت هذه الواجهةُ بالنقص.
+    --}}
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ $business->name }}">
+    <meta property="og:title" content="@yield('title', $seo['title'])">
+    <meta property="og:description" content="{{ $seo['description'] }}">
+    @if ($seo['canonical'])
+        <meta property="og:url" content="{{ $seo['canonical'] }}">
+    @endif
+    {{-- وصورةُ الصفحة إن كان لها واحدة — صنفٌ بصورته، وإلّا واجهةُ المتجر --}}
+    @php $rbShare = ($ogImage ?? null) ?: $seo['image']; @endphp
+    @if ($rbShare)
+        <meta property="og:image" content="{{ $rbShare }}">
+        <meta name="twitter:card" content="summary_large_image">
+    @else
+        <meta name="twitter:card" content="summary">
     @endif
     {{-- أيقونةُ المتصفّح من دليل الهوية — لسانُ الزبون يحمل علامةَ المتجر --}}
     <link rel="icon" type="image/svg+xml" href="{{ \App\Support\Store\StoreAsset::url('/brand/ribbon/favicon.svg') }}">
@@ -312,6 +334,8 @@ window.RB = (function () {
     var KEY = 'ribbon-cart:{{ (int) $business->id }}';
     var BASE = @json($base);
     var CSRF = document.querySelector('meta[name=csrf-token]').content;
+    // وما يُقال للزبون حين يُردّ بابٌ — بلغته، وخريطتُه من الخادم لتُحرَس
+    var SAYS = @json(\App\Support\Store\RibbonTexts::doorSays($lang));
     function read() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
     function write(items) { try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {} paint(); }
     function count() { return read().reduce(function (a, b) { return a + (b.qty || 0); }, 0); }
@@ -328,10 +352,41 @@ window.RB = (function () {
         write(items);
     }
     function clear() { write([]); }
+    /*
+        وكلُّ جوابٍ يُقال للزبون — ولو لم يكن خطأَ حقلٍ في نموذجه.
+
+        ═══ والعطبُ الذي وُضع لأجله ═══
+
+        كانت الصفحتان تقرآن `errors` وحدَها: إن غابت كُتب `''` في موضع
+        الخطأ. فكلُّ جوابٍ ليس ٤٢٢ يخرج **صامتًا** — يضغط الزبون «تأكيد
+        الطلب»، يعود الزرُّ قابلًا للضغط، ولا تظهر كلمة.
+
+        وأكثرُه وقوعًا ٤١٩: يفتح الزبون الإتمام، يذهب يسأل من يُهدي، يعود
+        بعد ساعةٍ وقد انتهت جلستُه، فيملأ ويضغط ويضغط ولا شيء. ومن ملأ
+        نموذجًا كاملًا ثمّ لم يُجَب يترك السلّة ولا يعود.
+
+        ثمّ ٤٢٩ بعد أن صار للبابِ عدّاد، و٥٠٠، و٥٠٢ من الوسيط — وهذا
+        الأخيرُ ليس JSON أصلًا، فكان `r.json()` يرمي: السلّةُ بلا
+        `catch` فتصمت، والإتمامُ يقول «أكمل الحقول» وكلُّها مكتملة.
+
+        فيُقرأ النصُّ ثمّ يُحاوَل تحليلُه، ويُصنَع `errors` لمن لا `errors`
+        له — فلا يبقى بابٌ يُغلق بلا كلمة.
+    */
     function post(path, body) {
         return fetch(BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }, body: JSON.stringify(body) })
-            .then(function (r) { return r.json().then(function (j) { j._status = r.status; return j; }); });
+            .then(function (r) {
+                return r.text().then(function (text) {
+                    var j;
+                    try { j = JSON.parse(text); } catch (e) { j = null; }
+                    if (!j || typeof j !== 'object') { j = { ok: false }; }
+                    j._status = r.status;
+                    if (!j.ok && !j.errors) { j.errors = { _: [said(r.status)] }; }
+                    return j;
+                });
+            })
+            .catch(function () { return { ok: false, _status: 0, errors: { _: [SAYS._] } }; });
     }
+    function said(status) { return SAYS[String(status)] || SAYS._; }
     function quote(extra) { return post('/quote', Object.assign({ items: read() }, extra || {})); }
     document.addEventListener('DOMContentLoaded', paint);
     return { read: read, write: write, add: add, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE };

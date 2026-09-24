@@ -22,8 +22,24 @@
     @unless ($seo['index'])
         <meta name="robots" content="noindex, nofollow" data-testid="rb-noindex">
     @endunless
-    @if ($canonical)
-        <link rel="canonical" href="{{ $canonical }}{{ $base === '' ? request()->getPathInfo() : '' }}">
+    {{--
+        والعنوانُ الأصليُّ يُحسب في الخادم — انظر `Store\StoreSeo::canonical`.
+
+        وكان يُركَّب هنا بشرطٍ على `$base`، فكانت كلُّ صفحةٍ على الطريق
+        البديل تقول لغوغل إنّها نسخةٌ من الرئيسية.
+    --}}
+    @if ($seo['canonical'])
+        <link rel="canonical" href="{{ $seo['canonical'] }}">
+        {{--
+            والعربيّةُ والإنجليزيّةُ ترجمتان لا نسختان.
+
+            الصفحتان على العنوان نفسِه ويفرّق بينهما `‎?lang‎`، وأصلُهما
+            واحدٌ في `canonical`. فبلا هذين السطرين يقرأ غوغل الإنجليزيّةَ
+            نسخةً مكرَّرةً ويُسقطها — ولا يجدها من يبحث بالإنجليزيّة.
+        --}}
+        <link rel="alternate" hreflang="ar" href="{{ $seo['canonical'] }}">
+        <link rel="alternate" hreflang="en" href="{{ $seo['canonical'] }}?lang=en">
+        <link rel="alternate" hreflang="x-default" href="{{ $seo['canonical'] }}">
     @endif
     @if ($logo)
         <meta property="og:image" content="{{ $logo }}">

@@ -342,4 +342,99 @@ class AThemedStoreHasTheSamePagesAsEveryStoreTest extends TestCase
             ->assertSee('>About<', false)
             ->assertSee('>Contact<', false);
     }
+
+    /* ═══════════ وما يقوله المتجرُ لغوغل عن نفسه ═══════════ */
+
+    /**
+     * ═══ وكلُّ صفحةٍ عنوانُها الأصليُّ نفسُها ═══
+     *
+     * وهذا حارسٌ وُضع بعد عطبٍ كان على الإنتاج: العنوانُ الأصليّ كان
+     * يُركَّب في القالب بشرطٍ على قاعدة الرابط، فيُضمّ المسارُ حين يُخدَم
+     * المتجر على عنوانه وحده ويُسقَط حين يُخدَم على الطريق البديل.
+     *
+     * والأثرُ أنّ **كلَّ صفحةٍ على `‎/s/متجري‎` تقول لغوغل إنّها نسخةٌ من
+     * الرئيسية**. فلا يُفهرس رفٌّ ولا «من نحن» ولا «تواصل معنا» ولا صفحةُ
+     * صنفٍ واحدة — مهما كُتب لها في «الظهور في البحث».
+     */
+    public function test_every_page_is_its_own_canonical(): void
+    {
+        $this->stock();
+        $this->say(['store_about' => 'محلُّ وردٍ في الخوير.']);
+
+        $id = (int) Product::where('business_id', $this->shop->id)->value('id');
+
+        $want = [
+            '' => '/s/ribbon',
+            '/shop' => '/s/ribbon/shop',
+            '/about' => '/s/ribbon/about',
+            '/contact' => '/s/ribbon/contact',
+            '/p/'.$id => '/s/ribbon/p/'.$id,
+            '/cart' => '/s/ribbon/cart',
+        ];
+
+        $seen = [];
+
+        foreach ($want as $path => $tail) {
+            $html = $this->get('/s/ribbon'.$path)->getContent();
+            preg_match('/<link rel="canonical" href="([^"]*)"/', $html, $m);
+            $got = $m[1] ?? '';
+
+            $this->assertStringEndsWith($tail, $got, $path.' عنوانُها الأصليّ خطأ');
+            // ولا يُضاعَف الطريقُ: «‎…/s/متجري/s/متجري/shop‎» عنوانٌ لا يُفتح
+            $this->assertStringNotContainsString('/s/ribbon/s/', $got, $path.' ضُوعف طريقُها');
+
+            $this->assertArrayNotHasKey($got, $seen, $path.' و'.($seen[$got] ?? '').' تتشاركان عنوانًا أصليًّا واحدًا');
+            $seen[$got] = $path;
+        }
+    }
+
+    /**
+     * ورفٌّ مُرشَّحٌ ليس صفحةً أخرى — أصلُه الرفّ.
+     *
+     * و`‎?cat=3‎` و`‎?q=ورد‎` تُنشئان عناوينَ لا نهاية لها لمحتوًى واحد،
+     * فتُقسَم ثقةُ الصفحة على عشراتٍ منها إن لم يُقل أصلُها.
+     */
+    public function test_a_filtered_shelf_points_at_the_shelf(): void
+    {
+        $this->stock();
+
+        foreach (['/shop?cat=1', '/shop?q=ورد'] as $path) {
+            preg_match('/<link rel="canonical" href="([^"]*)"/', $this->get('/s/ribbon'.$path)->getContent(), $m);
+
+            $this->assertStringEndsWith('/s/ribbon/shop', $m[1] ?? '', $path);
+        }
+    }
+
+    /** والعربيّةُ والإنجليزيّةُ ترجمتان لا نسختان — وبلا هذا لا يجدها من يبحث بالإنجليزيّة */
+    public function test_the_two_languages_are_declared_translations(): void
+    {
+        $this->stock();
+
+        $html = $this->get('/s/ribbon/shop')->getContent();
+
+        $this->assertStringContainsString('hreflang="ar" href="http://localhost/s/ribbon/shop"', $html);
+        $this->assertStringContainsString('hreflang="en" href="http://localhost/s/ribbon/shop?lang=en"', $html);
+        $this->assertStringContainsString('hreflang="x-default"', $html);
+    }
+
+    /**
+     * ═══ ومقطعٌ ثانٍ على صفحةٍ لا تأخذه ليس عنوانَها ═══
+     *
+     * كان `‎/shop/أيّ-شيء‎` يردّ صفحةَ المتجر بـ٢٠٠، وكذلك السلّةُ والإتمامُ
+     * و«من نحن» و«تواصل معنا». فلكلّ صفحةٍ نسخٌ لا تُحصى على عناوين لا
+     * نهاية لها — يفهرسها غوغل، ويُفتح بها رابطٌ كُتب خطأً فيبدو سليمًا.
+     */
+    public function test_a_second_segment_is_not_an_address(): void
+    {
+        $this->stock();
+        $this->say(['store_about' => 'نبذة']);
+
+        foreach (['/shop/zzz', '/cart/zzz', '/checkout/zzz', '/about/zzz', '/contact/zzz', '/zzz/yyy'] as $path) {
+            $this->get('/s/ribbon'.$path)->assertNotFound($path.' تُفتح بمقطعٍ لا معنى له');
+        }
+
+        // والثلاثةُ التي تأخذه تبقى تأخذه
+        $id = (int) Product::where('business_id', $this->shop->id)->value('id');
+        $this->get('/s/ribbon/p/'.$id)->assertOk();
+    }
 }

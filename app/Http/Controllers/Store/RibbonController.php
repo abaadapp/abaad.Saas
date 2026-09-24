@@ -52,6 +52,24 @@ class RibbonController extends Controller
      */
     private const PATHS = ['shop', 'about', 'contact', 'cart', 'checkout', 'p', 'done', 'paying'];
 
+    /**
+     * ما يتبعه مقطعٌ ثانٍ — وما سواه لا يقبله.
+     *
+     * ═══ والعطبُ الذي وُضع لأجله ═══
+     *
+     * كان المقطعُ الثاني يُقرأ ويُهمَل: `‎/shop/أيّ-شيء‎` يردّ صفحةَ المتجر
+     * بـ٢٠٠، وكذلك `‎/cart/x‎` و`‎/checkout/x‎` و`‎/about/x‎` و`‎/contact/x‎`.
+     * فلكلّ صفحةٍ نسخٌ لا تُحصى على عناوين لا نهاية لها.
+     *
+     * وضررُه في موضعين: غوغل يفهرس النسخَ فيقسم ثقلَ الصفحة الواحدة على
+     * عشرٍ منها ويعرض أيَّها شاء؛ ورابطٌ كُتب خطأً يُفتح فيبدو سليمًا، فلا
+     * يكتشف أحدٌ أنّه خطأ حتّى يُوزَّع.
+     *
+     * والصفحاتُ الثلاثُ التي تقبله تحتاجه: صنفٌ بمعرّفه، وتأكيدٌ برقم طلبه،
+     * وعودةٌ من البوّابة بمرجعها.
+     */
+    private const TAKES_ID = ['p', 'done', 'paying'];
+
     /* ═══════════ الصفحات ═══════════ */
 
     public function page(Business $business, ?string $path, string $base): Response
@@ -61,6 +79,11 @@ class RibbonController extends Controller
         $first = $first === '' ? null : $first;
 
         if ($first !== null && ! in_array($first, self::PATHS, true)) {
+            abort(404);
+        }
+
+        // ومقطعٌ ثانٍ على صفحةٍ لا تأخذه ليس عنوانَها — انظر `TAKES_ID`
+        if ($second !== null && ! in_array($first, self::TAKES_ID, true)) {
             abort(404);
         }
 
@@ -428,7 +451,7 @@ class RibbonController extends Controller
             'deliveryNote' => $s['note'],
             'imageNote' => $s['image_note'],
             'accepts' => WebCheckout::accepts($business),
-            'canonical' => Storefront::canonical($business->site_slug, $bid),
+
             'analytics' => Seo::tagFor($bid),
             'catsNav' => $this->categories($bid, $lang, null)->take(6)->all(),
             // وسطرُ التذييل في كلّ صفحة — فهو في القالب العامّ لا في الرئيسية
@@ -440,7 +463,7 @@ class RibbonController extends Controller
              */
             'nav' => StoreNav::links($bid, $base, $t, $current),
             // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
-            'seo' => StoreSeo::head($business, $current, $t, $identity),
+            'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo()),
         ];
     }
 

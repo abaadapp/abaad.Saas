@@ -499,6 +499,22 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * والخطُّ `GET` يردّ JSON لا صفحةً: يُفتح في نافذة التفاصيل لطلبٍ واحد،
      * فجلبُه لمئتي بطاقةٍ مع اللوحة حِملٌ لا يُقرأ منه سطر.
      */
+    /*
+     * ومرفقُ كرت الهدية — نسخةُ بابٍ باسم اللوحة، للعلّة نفسِها.
+     *
+     * الملفُّ الذي يرفعه الزبون — صورةٌ بخطّ يده أو نصٌّ مكتوب — هو ما يُنسخ
+     * على الكرت. ورابطُه على البطاقة كان `orders.giftcard`، والقسمُ يُشتقّ
+     * من الاسم: فمن يجهّز يفتح لوحتَه ٢٠٠ ويضغط المرفقَ فيُردّ ٤٠٣.
+     *
+     * وفي `OrderAttachmentController::giftCard` حارسٌ يقبل الشاشتين كلتيهما
+     * — ولم يكن يُبلَغ أصلًا: الوسيطُ يردّ قبله. فالنيّةُ كانت مكتوبةً
+     * والبابُ مغلقًا.
+     *
+     * والمتحكّمُ واحدٌ للبابين: حقيقتان لقراءةِ ملفٍّ واحد تفترقان يوم يُشدَّد
+     * أحدُهما. ونسخةُ صفحة الطلب (`orders.giftcard`) تبقى كما هي.
+     */
+    Route::get('/preparation/{id}/gift-card', [OrderAttachmentController::class, 'giftCard'])
+        ->whereNumber('id')->name('preparation.giftcard');
     Route::post('/preparation/{number}/check', [PreparationController::class, 'check'])
         ->name('preparation.check');
     Route::get('/preparation/{number}/timeline', [PreparationController::class, 'timeline'])

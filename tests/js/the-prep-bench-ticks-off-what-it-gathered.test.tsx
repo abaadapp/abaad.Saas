@@ -226,6 +226,42 @@ describe('البطاقة المختصرة', () => {
     });
 
     /*
+     * ═══ وإشارةُ الكرت تُقال لمرفوعٍ كما تُقال لمكتوب ═══
+     *
+     * صار الكرتُ يُكتب أو يُرفع — واحدًا من اثنين لا كليهما (انظر
+     * `AGiftCardIsWrittenOrUploadedNotBothTest`). فمن رفع صورةً بخطّ يده لا
+     * `card_message` له أصلًا.
+     *
+     * وكانت الإشارةُ تُقاس بالنصّ وحده: فتمرّ البطاقةُ على لوحةٍ فيها ثلاثون
+     * بطاقةً بلا ما يقول إنّ معها كرتًا يُكتب — ولا يُفتح ما خلف الزرّ إلّا
+     * صدفة. وباقةٌ تخرج بلا كرتِها ليست سطرًا ناقصًا في شاشة.
+     */
+    it('تشير إلى الكرت المكتوب', () => {
+        render(<PrepCard order={order({ card_message: 'كل عام وأنتِ بخير' })} ageMs={0} onOpen={noop} onMove={noop} />);
+
+        expect(screen.getByTestId('prep-gift')).toHaveTextContent('بطاقة');
+    });
+
+    it('وتشير إلى الكرت المرفوع وإن لم يُكتب نصّ', () => {
+        render(
+            <PrepCard
+                order={order({ card_message: null, card_file: '/admin/preparation/9/gift-card', card_file_name: 'خطّي.png' })}
+                ageMs={0}
+                onOpen={noop}
+                onMove={noop}
+            />,
+        );
+
+        expect(screen.getByTestId('prep-gift')).toHaveTextContent('بطاقة');
+    });
+
+    it('ولا تشير حيث لا كرتَ أصلًا', () => {
+        render(<PrepCard order={order()} ageMs={0} onOpen={noop} onMove={noop} />);
+
+        expect(screen.queryByTestId('prep-gift')).toBeNull();
+    });
+
+    /*
      * وملاحظةُ السطر تُرفع إلى البطاقة حين لا ملاحظةَ داخليّة.
      *
      * البطاقةُ تعرض واحدةً فقط، والترتيبُ مقصود: الداخليّةُ أوّلًا لأنّها ما

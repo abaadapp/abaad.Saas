@@ -360,7 +360,14 @@ class PreparationController extends Controller
              * كما رتّبه من دفع ثمنه — وهو أوّلُ ما يُرى على الكرت.
              */
             'card_align' => $o->card_align,
-            'card_file' => filled($o->card_file) ? route('admin.orders.giftcard', $o->id) : null,
+            /*
+             * ورابطُ المرفق من باب اللوحة لا من باب المبيعات.
+             *
+             * القسمُ يُشتقّ من اسم المسار، فرابطُ `orders.giftcard` يُردّ
+             * بـ٤٠٣ عمّن مُنح التجهيزَ وحده — وهو من يكتب الكرت. انظر
+             * `ThePrepBenchOpensTheCardItWritesTest`.
+             */
+            'card_file' => filled($o->card_file) ? route('admin.preparation.giftcard', $o->id) : null,
             'card_file_name' => $o->card_file_name,
             // اسم المُهدي يبقى للموظّف: هو يكتب البطاقة، والإخفاء عن المستلِم
             // لا عن من يصنعها — انظر FlowerOrder::cardForRecipient

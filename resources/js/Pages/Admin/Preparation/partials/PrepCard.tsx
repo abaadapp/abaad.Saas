@@ -135,8 +135,18 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
                         {progress.done}/{progress.total}
                     </span>
                 )}
-                {o.card_message && (
-                    <span className="flex items-center gap-1 text-[#9d174d]">
+                {/*
+                  * وإشارةُ الكرت تُقال لمرفوعٍ كما تُقال لمكتوب.
+                  *
+                  * صار الكرتُ يُكتب أو يُرفع — واحدًا من اثنين لا كليهما. فمن
+                  * رفع صورةً بخطّ يده لا `card_message` له أصلًا، وكانت
+                  * الإشارةُ تُقاس به وحده: فتمرّ البطاقةُ على اللوحة بلا ما
+                  * يقول إنّ معها كرتًا يُكتب، ولا يُفتح ما خلف الزرّ إلّا صدفة.
+                  *
+                  * وباقةٌ تخرج بلا كرتِها ليست سطرًا ناقصًا في شاشة.
+                  */}
+                {(o.card_message || o.card_file) && (
+                    <span data-testid="prep-gift" className="flex items-center gap-1 text-[#9d174d]">
                         <Gift className="size-3.5" />
                         {t('بطاقة')}
                     </span>

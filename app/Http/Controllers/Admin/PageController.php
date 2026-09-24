@@ -834,6 +834,17 @@ class PageController extends Controller
                  */
                 'serves' => $b ? Storefront::serves($b) : Storefront::SERVES_NONE,
                 /*
+                 * وجاهزيّةُ المتجر — تُحسب في الخادم لا في الشاشة.
+                 *
+                 * كلُّ صفٍّ يُقاس بالمصدر الذي يقرؤه المتجرُ فعلًا (انظر
+                 * `Store\StoreReadiness`). ونسخةٌ ثانية من القاعدة في
+                 * الواجهة تقول «تمّ» على ما لا أثرَ له — وقائمةٌ تكذب أسوأُ
+                 * من لا قائمة.
+                 */
+                'readiness' => $b?->storefrontTheme() !== null
+                    ? \App\Support\Store\StoreReadiness::steps($b)
+                    : null,
+                /*
                  * وبوّابةُ الدفع — حالُها لا مفاتيحُها.
                  *
                  * السرّان لا يخرجان من الخادم أبدًا: خصائصُ Inertia تُقرأ في

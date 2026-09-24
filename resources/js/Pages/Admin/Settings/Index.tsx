@@ -27,6 +27,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
 import StoreImageField from '@/Components/StoreImageField';
+import StoreReadinessList, { type ReadinessStep } from '@/Components/StoreReadinessList';
 import StatusPill from '@/Components/StatusPill';
 import Toggle from '@/Components/Toggle';
 import {
@@ -166,6 +167,14 @@ interface Props {
          * السرّان لا يصلان المتصفّح: خصائصُ Inertia تُقرأ في مصدر الصفحة
          * بضغطةٍ واحدة. فيُقال أمضبوطان، ويُكتبان من جديدٍ إن أراد تبديلهما.
          */
+        /**
+         * جاهزيّةُ المتجر — تُحسب في الخادم لا هنا.
+         *
+         * `null` لمن لا يلبس واجهةً خاصّة. وكلُّ صفٍّ يُقاس بالمصدر الذي
+         * يقرؤه المتجرُ فعلًا، فنسخةٌ ثانية من القاعدة هنا تقول «تمّ» على
+         * ما لا أثرَ له — وقائمةٌ تكذب أسوأُ من لا قائمة.
+         */
+        readiness: ReadinessStep[] | null;
         gateway: {
             active: boolean;
             public_key: string;
@@ -976,6 +985,25 @@ export default function SettingsIndex() {
                         }
                         divided
                     >
+                        {/*
+                            ═══ ودليلُ التجهيز أوّلُ ما يُقرأ ═══
+
+                            صار في هذه الشاشة نحوُ ثلاثين مقبضًا للمتجر،
+                            وكلُّها تعمل — ولا شيءَ فيها يقول لصاحبها أين هو
+                            الآن. فيفتح متجرَه ويجده خاليًا ولا يعرف السبب،
+                            أو يُطفئ طريقتَي الدفع فيتوقّف القبولُ بلا كلمة.
+
+                            واللازمُ يُفصل عن المستحسن: «بلا عنوانٍ لا يُفتح»
+                            ليست كـ«بلا نبذةٍ يبدو أقلَّ ثقة»، وخلطُهما في
+                            قائمةٍ حمراءَ واحدة يجعله يقرأ الكلَّ تحذيرًا فلا
+                            يقرأ شيئًا.
+                        */}
+                        {store.readiness && (
+                            <SettingsGroup title="تجهيز متجرك">
+                                <StoreReadinessList steps={store.readiness} />
+                            </SettingsGroup>
+                        )}
+
                         <SettingsGroup title="عنوان متجرك">
                         {/* ١ — العنوان */}
                         <Field
@@ -1362,7 +1390,15 @@ export default function SettingsIndex() {
                             يضبط صفحتَه في البانِي، ومن يُخدم بالبسيطة لا
                             أقسامَ له تُرتَّب. فلا يُعرض مقبضٌ لا يُحرّك شيئًا.
                         */}
-                        {store.serves === 'theme' && (
+                        {/*
+                            وشرطُها لبسُ الواجهة لا نشرُ المتجر.
+
+                            كانت `serves === 'theme'`، وهي تعني «يُخدم الآن» —
+                            فتختفي المجموعةُ عن متجرٍ لم يُنشر بعد، أي عن
+                            صاحبها في اللحظة التي يجهّز فيها صفحته. فلا يستطيع
+                            ترتيبَ واجهةٍ قبل أن يفتحها، ولا يعرف لمَ اختفت.
+                        */}
+                        {store.checkout && (
                         <SettingsGroup title="صفحة متجرك">
                             {/*
                                 وأين يُرى أثرُ ما غُيّر — يُقال هنا لا يُترك يُبحث عنه.

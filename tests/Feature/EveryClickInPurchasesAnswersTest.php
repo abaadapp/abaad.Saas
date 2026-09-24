@@ -209,7 +209,7 @@ class EveryClickInPurchasesAnswersTest extends TestCase
             ->get(route('admin.inventory.receipts.attachment', $note->id))->assertOk();
 
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.approve', $note->id))->assertSessionHasNoErrors();
+            ->post(route('admin.inventory.receipts.approve', $note->id))->assertSessionHasNoErrors();
 
         $this->assertSame(GoodsReceipts::APPROVED, $note->fresh()->status);
         $this->assertSame(10, (int) $this->product->fresh()->quantity);
@@ -222,7 +222,7 @@ class EveryClickInPurchasesAnswersTest extends TestCase
         $note = GoodsReceipts::record($po, [$po->items()->first()->id => 10], [], $this->owner);
 
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.reject', $note->id), ['reason' => 'وصلت ناقصة'])
+            ->post(route('admin.inventory.receipts.reject', $note->id), ['reason' => 'وصلت ناقصة'])
             ->assertSessionHasNoErrors();
 
         $this->assertSame(GoodsReceipts::REJECTED, $note->fresh()->status);

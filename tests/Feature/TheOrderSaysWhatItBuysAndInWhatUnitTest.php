@@ -429,7 +429,7 @@ class TheOrderSaysWhatItBuysAndInWhatUnitTest extends TestCase
 
         $note = GoodsReceiptNote::firstOrFail();
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.reject', $note->id), ['reason' => 'ناقصة'])
+            ->post(route('admin.inventory.receipts.reject', $note->id), ['reason' => 'ناقصة'])
             ->assertSessionHasNoErrors();
 
         $this->assertSame(0, (int) $this->product->fresh()->quantity);

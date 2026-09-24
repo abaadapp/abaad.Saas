@@ -218,16 +218,16 @@ class TheMoneyActionsAreNamedOneByOneTest extends TestCase
 
         $note = $this->pendingNote();
         $this->actingAs($rejector)
-            ->post(route('admin.purchases.receipts.approve', $note->id))->assertForbidden();
+            ->post(route('admin.inventory.receipts.approve', $note->id))->assertForbidden();
         $this->assertSame(GoodsReceipts::PENDING, $note->fresh()->status);
 
         $this->actingAs($approver)
-            ->post(route('admin.purchases.receipts.reject', $note->id), ['reason' => 'ناقصة'])
+            ->post(route('admin.inventory.receipts.reject', $note->id), ['reason' => 'ناقصة'])
             ->assertForbidden();
         $this->assertSame(GoodsReceipts::PENDING, $note->fresh()->status);
 
         $this->actingAs($rejector)
-            ->post(route('admin.purchases.receipts.reject', $note->id), ['reason' => 'ناقصة'])
+            ->post(route('admin.inventory.receipts.reject', $note->id), ['reason' => 'ناقصة'])
             ->assertSessionHasNoErrors();
         $this->assertSame(GoodsReceipts::REJECTED, $note->fresh()->status);
     }

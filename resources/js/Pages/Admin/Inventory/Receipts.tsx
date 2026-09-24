@@ -89,7 +89,7 @@ export default function InventoryReceipts() {
     const reject = useForm({ reason: '' });
 
     const approve = (n: Note) =>
-        router.post(route('admin.purchases.receipts.approve', n.id), {}, { preserveScroll: true });
+        router.post(route('admin.inventory.receipts.approve', n.id), {}, { preserveScroll: true });
 
     const columns: Column<Note>[] = [
         {
@@ -303,7 +303,7 @@ export default function InventoryReceipts() {
                             disabled={reject.processing}
                             onClick={() =>
                                 rejecting &&
-                                reject.post(route('admin.purchases.receipts.reject', rejecting.id), {
+                                reject.post(route('admin.inventory.receipts.reject', rejecting.id), {
                                     preserveScroll: true,
                                     onSuccess: () => {
                                         reject.reset();

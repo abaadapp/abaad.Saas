@@ -83,11 +83,11 @@ export default function ReceiptShow() {
     const pending = note.status === PENDING;
 
     const approve = () =>
-        router.post(route('admin.purchases.receipts.approve', note.id), {}, { preserveScroll: true });
+        router.post(route('admin.inventory.receipts.approve', note.id), {}, { preserveScroll: true });
 
     const reject = () =>
         router.post(
-            route('admin.purchases.receipts.reject', note.id),
+            route('admin.inventory.receipts.reject', note.id),
             { reason },
             { preserveScroll: true, onFinish: () => setRejecting(false) },
         );

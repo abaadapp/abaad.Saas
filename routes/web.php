@@ -823,6 +823,30 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/inventory/receipts', [GoodsReceiptNoteController::class, 'index'])->name('inventory.receipts');
     Route::get('/inventory/receipts/{id}/pdf', [DocumentPrintController::class, 'grn'])->name('inventory.receipts.pdf');
     /*
+     * اعتمادُ الاستلام ورفضُه — على الإشعار لا على الأمر، وتحت قسم شاشته.
+     *
+     * الأمرُ الواحد له أوراقُ استلامٍ عدّة، وكلٌّ تُعتمد وحدَها: دفعةٌ وصلت
+     * سليمةً تدخل الرفّ، وأخرى وصلت ناقصةً تُرفض — ولا يُعلَّق الأمرُ كلُّه
+     * على أسوئهما.
+     *
+     * وكانا `purchases.receipts.*`، والقسمُ يُشتقّ من اسم المسار. والورقةُ
+     * ورقةُ المخزن: قائمتُها وصفحتُها وورقتُها ومرفقُها كلُّها
+     * `inventory.receipts.*`، ومتحكّمُها في `Admin\Inventory`. فأمينُ مخزنٍ
+     * مُنح «المخزون» وفعلَ الاعتماد — ولم يُمنح «المشتريات» ليُحجَب عنه ما
+     * دفعه صاحبُه للمورّد — يفتح قائمتَه ٢٠٠ ويرى الزرَّ معروضًا، فيضغطه
+     * فيُردّ ٤٠٣ عن قسمٍ لا شاشةَ له منه أصلًا.
+     *
+     * ولا شاشةَ في «المشتريات» تعرض الزرّين — فنُقل الاسمُ ولم يُزدَد بابٌ
+     * ثانٍ: بابان لفعلٍ واحد يفترقان يوم يُشدَّد أحدُهما. والفعلُ فوق القسم
+     * لا بدلًا منه — `receipt.approve` و`receipt.reject` يُفحصان في المتحكّم.
+     *
+     * انظر `TheStoreKeeperApprovesOnHisOwnScreenTest`.
+     */
+    Route::post('/inventory/receipts/{id}/approve', [PurchaseOrderController::class, 'approveReceipt'])
+        ->whereNumber('id')->name('inventory.receipts.approve');
+    Route::post('/inventory/receipts/{id}/reject', [PurchaseOrderController::class, 'rejectReceipt'])
+        ->whereNumber('id')->name('inventory.receipts.reject');
+    /*
      * مرفقاتُ المستندات المالية — على القرص الخاصّ، وتُقرأ ببابٍ يسأل.
      *
      * والقديمةُ على `public`: رابطُها يُفتح بلا تسجيل دخول. وورقةُ مورّدٍ
@@ -909,15 +933,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/purchases/{id}/attachment', [FinancialAttachmentController::class, 'purchaseOrder'])
         ->name('purchases.attachment');
     Route::post('/purchases/{id}/receive', [PurchaseOrderController::class, 'receive'])->name('purchases.receive');
-    /*
-     * اعتمادُ الاستلام ورفضُه — على الإشعار لا على الأمر.
-     *
-     * الأمرُ الواحد له أوراقُ استلامٍ عدّة، وكلٌّ تُعتمد وحدَها: دفعةٌ وصلت
-     * سليمةً تدخل الرفّ، وأخرى وصلت ناقصةً تُرفض — ولا يُعلَّق الأمرُ كلُّه
-     * على أسوئهما.
-     */
-    Route::post('/purchases/receipts/{id}/approve', [PurchaseOrderController::class, 'approveReceipt'])->name('purchases.receipts.approve');
-    Route::post('/purchases/receipts/{id}/reject', [PurchaseOrderController::class, 'rejectReceipt'])->name('purchases.receipts.reject');
     Route::delete('/purchases/{id}', [PurchaseOrderController::class, 'destroy'])->name('purchases.destroy');
     Route::get('/purchases/{id}/pdf', [DocumentPrintController::class, 'purchase'])->name('purchases.pdf');
     /*

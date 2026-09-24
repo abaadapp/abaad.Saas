@@ -120,7 +120,7 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $note = GoodsReceiptNote::firstOrFail();
 
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.approve', $note->id))
+            ->post(route('admin.inventory.receipts.approve', $note->id))
             ->assertSessionHasNoErrors();
 
         $this->assertSame(GoodsReceipts::APPROVED, $note->fresh()->status);
@@ -146,8 +146,8 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $this->actingAs($this->clerk)->post(route('admin.purchases.receive', $po->id));
         $note = GoodsReceiptNote::firstOrFail();
 
-        $this->actingAs($this->owner)->post(route('admin.purchases.receipts.approve', $note->id));
-        $this->actingAs($this->owner)->post(route('admin.purchases.receipts.approve', $note->id));
+        $this->actingAs($this->owner)->post(route('admin.inventory.receipts.approve', $note->id));
+        $this->actingAs($this->owner)->post(route('admin.inventory.receipts.approve', $note->id));
 
         $this->assertSame(200, (int) $this->product->fresh()->quantity);
         $this->assertSame(100, (int) $po->items()->first()->received_quantity);
@@ -164,7 +164,7 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $note = GoodsReceiptNote::firstOrFail();
 
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.reject', $note->id), ['reason' => 'الشحنة تالفة'])
+            ->post(route('admin.inventory.receipts.reject', $note->id), ['reason' => 'الشحنة تالفة'])
             ->assertSessionHasNoErrors();
 
         $this->assertSame(GoodsReceipts::REJECTED, $note->fresh()->status);
@@ -184,7 +184,7 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $this->actingAs($this->clerk)->post(route('admin.purchases.receive', $po->id));
 
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.reject', GoodsReceiptNote::firstOrFail()->id), [])
+            ->post(route('admin.inventory.receipts.reject', GoodsReceiptNote::firstOrFail()->id), [])
             ->assertSessionHasErrors('reason');
     }
 
@@ -194,10 +194,10 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $po = $this->order();
         $this->actingAs($this->clerk)->post(route('admin.purchases.receive', $po->id));
         $note = GoodsReceiptNote::firstOrFail();
-        $this->actingAs($this->owner)->post(route('admin.purchases.receipts.approve', $note->id));
+        $this->actingAs($this->owner)->post(route('admin.inventory.receipts.approve', $note->id));
 
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.reject', $note->id), ['reason' => 'تراجعت']);
+            ->post(route('admin.inventory.receipts.reject', $note->id), ['reason' => 'تراجعت']);
 
         $this->assertSame(GoodsReceipts::APPROVED, $note->fresh()->status);
     }
@@ -208,9 +208,9 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $po = $this->order();
         $this->actingAs($this->clerk)->post(route('admin.purchases.receive', $po->id));
         $note = GoodsReceiptNote::firstOrFail();
-        $this->actingAs($this->owner)->post(route('admin.purchases.receipts.reject', $note->id), ['reason' => 'تالفة']);
+        $this->actingAs($this->owner)->post(route('admin.inventory.receipts.reject', $note->id), ['reason' => 'تالفة']);
 
-        $this->actingAs($this->owner)->post(route('admin.purchases.receipts.approve', $note->id));
+        $this->actingAs($this->owner)->post(route('admin.inventory.receipts.approve', $note->id));
 
         $this->assertSame(GoodsReceipts::REJECTED, $note->fresh()->status);
         $this->assertSame(100, (int) $this->product->fresh()->quantity);
@@ -231,9 +231,9 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $note = GoodsReceiptNote::firstOrFail();
 
         $this->actingAs($this->clerk)
-            ->post(route('admin.purchases.receipts.approve', $note->id))->assertForbidden();
+            ->post(route('admin.inventory.receipts.approve', $note->id))->assertForbidden();
         $this->actingAs($this->clerk)
-            ->post(route('admin.purchases.receipts.reject', $note->id), ['reason' => 'x'])->assertForbidden();
+            ->post(route('admin.inventory.receipts.reject', $note->id), ['reason' => 'x'])->assertForbidden();
 
         $this->assertSame(GoodsReceipts::PENDING, $note->fresh()->status);
         $this->assertSame(100, (int) $this->product->fresh()->quantity);
@@ -249,7 +249,7 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $this->actingAs($this->clerk)->post(route('admin.purchases.receive', $po->id));
 
         $this->actingAs($this->clerk)
-            ->post(route('admin.purchases.receipts.approve', GoodsReceiptNote::firstOrFail()->id))
+            ->post(route('admin.inventory.receipts.approve', GoodsReceiptNote::firstOrFail()->id))
             ->assertSessionHasNoErrors();
 
         $this->assertSame(200, (int) $this->product->fresh()->quantity);
@@ -303,7 +303,7 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         $this->actingAs($this->clerk)->post(route('admin.purchases.receive', $po->id),
             ['items' => [['id' => $line->id, 'quantity' => 100]]]);
         $this->actingAs($this->owner)->post(
-            route('admin.purchases.receipts.reject', GoodsReceiptNote::firstOrFail()->id),
+            route('admin.inventory.receipts.reject', GoodsReceiptNote::firstOrFail()->id),
             ['reason' => 'تالفة'],
         );
 
@@ -335,7 +335,7 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
 
         // ورقةٌ بالمئة كلّها، تُعتمد فيمتلئ الأمر
         $this->actingAs($this->clerk)->post(route('admin.purchases.receive', $po->id));
-        $this->actingAs($this->owner)->post(route('admin.purchases.receipts.approve', GoodsReceiptNote::firstOrFail()->id));
+        $this->actingAs($this->owner)->post(route('admin.inventory.receipts.approve', GoodsReceiptNote::firstOrFail()->id));
         $this->assertSame(100, (int) $line->fresh()->received_quantity);
 
         // وورقةٌ ثانيةٌ تصل الاعتمادَ بعشرين لا موضعَ لها — تُكتب صنعًا
@@ -355,7 +355,7 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         ]);
 
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.approve', $stray->id))
+            ->post(route('admin.inventory.receipts.approve', $stray->id))
             ->assertSessionHasErrors('receive');
 
         $this->assertSame(GoodsReceipts::PENDING, $stray->fresh()->status);
@@ -396,7 +396,7 @@ class GoodsDoNotReachTheShelfUnseenTest extends TestCase
         ]);
 
         $this->actingAs($this->owner)
-            ->post(route('admin.purchases.receipts.approve', $theirs->id))->assertNotFound();
+            ->post(route('admin.inventory.receipts.approve', $theirs->id))->assertNotFound();
 
         $this->assertSame(GoodsReceipts::PENDING, $theirs->fresh()->status);
     }

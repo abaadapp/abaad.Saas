@@ -72,6 +72,10 @@ class StockAdjustmentController extends Controller
 
         $all = StockAdjustment::where('business_id', $bid)->get();
 
+        // مرّةً واحدة قبل الخريطة: `books` تُحمّل كلّ صفوف الفروع وكلّ منتجات
+        // النشاط في كلّ نداء — ومناداتُها لكلّ صنفٍ قراءةٌ كاملةٌ للجدولين
+        $books = BranchStock::books($bid);
+
         return Inertia::render('Admin/Inventory/Adjustments', [
             'adjustments' => collect($adjustments->items())->map(fn ($a) => [
                 'id' => $a->id,
@@ -96,12 +100,32 @@ class StockAdjustmentController extends Controller
             // الحاليّ في الجلسة قيمةٌ ابتدائية لا أكثر
             'branches' => Branch::where('business_id', $bid)->orderBy('id')->get(['id', 'name'])->all(),
             'currentBranchId' => Demo::currentBranchId(),
+            /*
+             * ورصيدُ كلّ فرعٍ يُرسَل مع الصنف — لا إجماليُّ الشركة وحدَه.
+             *
+             * كانت الشاشة تقول «المتوفّر: ٣٢» وتحسب عليه حدَّ الخصم،
+             * والكتابةُ تقع على **فرعٍ بعينه**. قِستُها: باقةٌ رصيدُها كلُّه
+             * في الرئيسيّ وصفرٌ في صلالة — تُختار صلالة فتقول الشاشةُ
+             * «المتوفّر: ٣٢» وتُقدّر الخسارةَ بثلاثين ريالًا وتفتح زرَّ
+             * التسجيل، فيُرسَل الطلبُ ويردّه الخادمُ «رصيد فرع صلالة من هذا
+             * الصنف 0 فقط».
+             *
+             * وهو عطبُ الخادم نفسُه الذي أُصلح في `store` — «الحارسُ يقيس
+             * إجماليّ الشركة والكتابةُ تقع على فرعٍ بعينه» — وبقي على
+             * الشاشة. ورقمٌ في وجه التاجر يخالف ما سيفعله الخادم أسوأ من لا
+             * رقم: عليه يقرّر كم يُتلف.
+             *
+             * والقاعدةُ قاعدةُ `books`: صنفٌ لم يُوزَّع رصيدُه كلُّه في الفرع
+             * الأوّل — وهي التي يطبّقها `ensureAllocated` عند أوّل حركة،
+             * وشاشةُ الجرد قبلها.
+             */
             'products' => Product::where('business_id', $bid)->orderBy('name')
                 ->get(['id', 'name', 'sku', 'quantity', 'cost'])
                 ->map(fn ($p) => [
                     'value' => $p->id,
                     'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
                     'quantity' => (int) $p->quantity,
+                    'stock' => $books[$p->id] ?? [],
                     'cost' => (float) $p->cost,
                 ])->all(),
             'summary' => [

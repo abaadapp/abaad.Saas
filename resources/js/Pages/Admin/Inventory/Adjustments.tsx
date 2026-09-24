@@ -16,6 +16,7 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import { availableIn } from './partials/available';
 
 interface Adjustment {
     id: number;
@@ -35,7 +36,10 @@ interface Adjustment {
 interface ProductOption {
     value: number;
     label: string;
+    /** إجماليّ الشركة — لا يُقاس عليه حدُّ الخصم، انظر `available` */
     quantity: number;
+    /** رصيد كل فرع [معرّف الفرع => الكمية] — وصنفٌ لم يُوزَّع كلُّه في الأوّل */
+    stock: Record<number, number>;
     cost: number;
 }
 
@@ -98,11 +102,16 @@ export default function Adjustments() {
         [products, form.data.product_id],
     );
 
+    const available = useMemo(
+        () => availableIn(product, form.data.branch_id),
+        [product, form.data.branch_id],
+    );
+
     // أعدادٌ صحيحة: العمودان في القاعدة صحيحان، والخادم يردّ الكسر
     const qty = Math.abs(parseInt(form.data.quantity_delta, 10) || 0);
     const fractional = /[.,]/.test(form.data.quantity_delta);
     const impact = qty * (product?.cost ?? 0);
-    const tooMuch = effectiveDirection === '-' && product ? qty > product.quantity : false;
+    const tooMuch = effectiveDirection === '-' && product ? qty > available : false;
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -241,7 +250,7 @@ export default function Adjustments() {
 
                         {product && (
                             <p className="text-[12px] text-[#9ca3af]">
-                                {t('المتوفّر')}: {number(product.quantity)} · {t('التكلفة')}: {m(product.cost)}
+                                {t('المتوفّر')}: {number(available)} · {t('التكلفة')}: {m(product.cost)}
                             </p>
                         )}
 
@@ -281,7 +290,7 @@ export default function Adjustments() {
 
                         {tooMuch && (
                             <p className="text-[12px] text-[#b91c1c]">
-                                {t('المتوفّر :n فقط', { n: number(product?.quantity ?? 0) })}
+                                {t('المتوفّر :n فقط', { n: number(available) })}
                             </p>
                         )}
 

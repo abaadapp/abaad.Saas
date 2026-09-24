@@ -349,6 +349,39 @@ class AShelfIsNotDrawnDownTwiceTest extends TestCase
         $this->assertSame(7, $this->total($p));
     }
 
+    /* ═══════════ وما ترسله الشاشة ═══════════ */
+
+    /** الشاشةُ تُعطى رصيدَ كلّ فرع — لا إجماليَّ الشركة وحدَه */
+    public function test_the_screen_is_given_each_branchs_balance(): void
+    {
+        $p = $this->rose(10);
+
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.inventory.adjustments'))
+            ->viewData('page')['props'];
+
+        $row = collect($props['products'])->firstWhere('value', $p->id);
+
+        $this->assertSame(10, (int) $row['quantity'], 'الإجماليّ كما كان');
+        $this->assertSame(10, (int) $row['stock'][$this->other->id], 'ورصيدُ صلالة');
+        $this->assertSame(0, (int) $row['stock'][$this->main->id], 'ورصيدُ الرئيسيّ صفر');
+    }
+
+    /** وصنفٌ لم يُوزَّع بعدُ رصيدُه كلُّه في الفرع الأوّل — قاعدةُ `books` */
+    public function test_an_undistributed_product_is_shown_in_the_first_branch(): void
+    {
+        $p = $this->undistributed(12);
+
+        $props = $this->actingAs($this->owner)
+            ->get(route('admin.inventory.adjustments'))
+            ->viewData('page')['props'];
+
+        $row = collect($props['products'])->firstWhere('value', $p->id);
+
+        $this->assertSame(12, (int) $row['stock'][$this->main->id]);
+        $this->assertArrayNotHasKey($this->other->id, $row['stock']);
+    }
+
     public function test_the_allocation_still_happens_when_no_one_races(): void
     {
         $p = $this->undistributed(10);

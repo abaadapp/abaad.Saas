@@ -200,15 +200,35 @@ interface OutboxEntry {
 export interface CheckoutResult {
     synced: boolean;
     invoice: string | null;
+    /** نقاطٌ كسبها من هذا الشراء */
     points: number;
+    /** نقاطٌ استُبدلت في هذه الفاتورة */
+    redeemed?: number;
+    /**
+     * رصيدُه بعدها — أو `null` حين لا يردّه الخادم.
+     *
+     * و`null` ليست صفرًا: بيعةٌ بلا اتصالٍ تبقى في الطابور فلا رصيدَ يُقال
+     * عنها، وردٌّ مكرَّرٌ لا يخصم شيئًا جديدًا. وصفرٌ يُعرض في الحالين يقول
+     * للزبون إنّ نقاطه نفدت.
+     */
+    balance?: number | null;
     /** رفضه الخادم (مخزون غير كافٍ أو صنف غير معروف) — لا يُعاد إلى الطابور */
     rejected?: boolean;
 }
 
 const OUTBOX_KEY = 'abadpos:pos:outbox';
 /* لا نسبة في الشيفرة: النسبة تصل من إعدادات المتجر (انظر VatSettings) */
-/** 100 نقطة = وحدة واحدة من العملة الأساسية */
-const POINTS_PER_UNIT = 100;
+/**
+ * 100 نقطة = وحدة واحدة من العملة الأساسية.
+ *
+ * ويجب أن يطابق `Loyalty::POINTS_PER_UNIT` في الخادم: الشاشة تحسب الخصم
+ * لتعرضه، والخادم يحسبه ليكتبه — ولو افترقا لقرأ الزبون رقمًا ودفع آخر.
+ *
+ * ويُصدَّر لأنّ الشاشة تعرض قيمة النقاط بالمال (انظر `Pos/Index`): كان
+ * الرقم مكتوبًا هناك بيده مرّتين، فصارت للمقسوم ثلاثةُ مواضع — واثنان منها
+ * لا يعلمان بتبديل الثالث.
+ */
+export const POINTS_PER_UNIT = 100;
 const CASH_CUSTOMER = 'عميل نقدي';
 
 function uuid(): string {
@@ -716,7 +736,18 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     }, []);
 
     const sendOne = useCallback(
-        async (payload: Record<string, unknown>): Promise<{ ok: boolean; drop?: boolean; invoice?: string; points?: number; error?: string }> => {
+        async (
+            payload: Record<string, unknown>,
+        ): Promise<{
+            ok: boolean;
+            drop?: boolean;
+            invoice?: string;
+            points?: number;
+            redeemed?: number;
+            /** رصيدُ العميل بعد البيعة — كما في القاعدة، لا محسوبًا هنا */
+            balance?: number | null;
+            error?: string;
+        }> => {
             try {
                 const res = await fetch('/pos/checkout', {
                     method: 'POST',
@@ -729,7 +760,20 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 });
                 if (res.ok) {
                     const d = await res.json();
-                    return { ok: true, invoice: d.invoice, points: d.points_earned || 0 };
+                    return {
+                        ok: true,
+                        invoice: d.invoice,
+                        points: d.points_earned || 0,
+                        redeemed: d.points_redeemed || 0,
+                        /*
+                         * و`null` تعني «لم يُردّ رصيد» لا «صفر».
+                         *
+                         * الردُّ المكرَّر (بيعةٌ أُعيد رفعها) لا يحمل نقاطًا:
+                         * لم يُخصم شيءٌ جديد. وصفرٌ يُكتب فوق رصيدٍ قائم
+                         * يقول للكاشير إنّ العميل أنفق نقاطه كلَّها.
+                         */
+                        balance: typeof d.points_balance === 'number' ? d.points_balance : null,
+                    };
                 }
                 // 419 جلسة منتهية و422 بيانات مرفوضة — إعادة المحاولة بلا فائدة.
                 // نستخرج السبب: الخادم يرفض هنا نقص المخزون وصنفًا غير معروف،
@@ -876,6 +920,24 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 savePending(readOutbox().filter((p) => p.uuid !== id));
             }
             if (res.ok) {
+                /*
+                 * ═══ ورصيدُ نقاطه يُصحَّح في الحال ═══
+                 *
+                 * `customers` حالةٌ محليّة تُملأ مرّةً عند فتح الشاشة، وما
+                 * يُجلب بعد البيع هو المنتجات وحدها. فكان الرصيدُ يبقى كما
+                 * كان قبل الخصم: يُستبدَل من خمسمئة فتبقى الشاشة تقول
+                 * «خمسمئة» — ثمّ تُرفض البيعةُ التالية بـ«تغيّر رصيد نقاط
+                 * العميل» ولا يفهم الكاشير لماذا.
+                 *
+                 * والمعرّفُ شرطٌ: زبونٌ نقديٌّ بلا معرّف لا رصيد له يُكتب،
+                 * ومطابقةٌ بالاسم تُصيب جاره.
+                 */
+                if (customerId !== null && typeof res.balance === 'number') {
+                    setCustomers((prev) =>
+                        prev.map((c) => (c.id === customerId ? { ...c, points: res.balance as number } : c)),
+                    );
+                }
+
                 onSynced?.();
             }
             if (res.drop && res.error) {
@@ -883,7 +945,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
             }
             setOnline(navigator.onLine);
 
-            return { synced: !!res.ok, invoice: res.invoice ?? null, points: res.points ?? 0, rejected: !!res.drop };
+            return {
+                synced: !!res.ok,
+                invoice: res.invoice ?? null,
+                points: res.points ?? 0,
+                redeemed: res.redeemed ?? 0,
+                balance: res.balance ?? null,
+                rejected: !!res.drop,
+            };
         },
         [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
     );

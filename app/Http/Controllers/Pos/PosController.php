@@ -438,6 +438,21 @@ class PosController extends Controller
             'total' => (float) $order->total,
             'points_earned' => $result['loyalty']['earned'],
             'points_redeemed' => $result['loyalty']['redeemed'],
+            /*
+             * ═══ والرصيدُ الباقي بعد البيعة — وهو ما كان يغيب ═══
+             *
+             * قائمةُ العملاء تصل الصندوقَ مرّةً حين تُفتح الشاشة، ولا تُجلب
+             * بعد البيع (`onSynced` تُعيد المنتجات وحدها). فالكاشير يخصم
+             * ثلاثمئة نقطةٍ من خمسمئة ويبقى أمامه «نقاط العميل: ٥٠٠».
+             *
+             * وليس العطبُ في الرقم المعروض وحده: البيعةُ التالية تُرسَل
+             * بنقاطٍ لا وجود لها، فيردّها الخادمُ بـ«تغيّر رصيد نقاط العميل»
+             * — ويقف الكاشير أمام رفضٍ لا يفهم سببه والزبون واقف.
+             *
+             * فيُردّ الرصيدُ مع الفاتورة: رقمٌ واحدٌ يُصحّح الشاشةَ في الحال،
+             * أرخصُ من جلب قائمة العملاء كلِّها بعد كلّ بيعة.
+             */
+            'points_balance' => $result['loyalty']['balance'],
         ]);
     }
 
@@ -446,7 +461,7 @@ class PosController extends Controller
      * المعلّق). انقطاعٌ في المنتصف كان يترك طلبًا بلا معاملة مالية أو مخزونًا
      * منقوصًا بلا فاتورة — فتُنفَّذ كلها أو لا تُنفَّذ أيٌّ منها.
      *
-     * @return array{order: Order, loyalty: array{earned: int, redeemed: int}}
+     * @return array{order: Order, loyalty: array{earned: int, redeemed: int, balance: int|null}}
      */
     private function completeSale(array $data): array
     {
@@ -1232,7 +1247,8 @@ class PosController extends Controller
 
     /**
      * نقاط الولاء للعميل المسجّل: تستبدل النقاط المطلوبة (خصم) ثم تمنح نقاط الشراء.
-     * تحترم إعداد التفعيل والمعدّل، وتربط الطلب بالعميل. تُرجِع ['earned'=>x, 'redeemed'=>y].
+     * تحترم إعداد التفعيل والمعدّل، وتربط الطلب بالعميل.
+     * تُرجِع ['earned'=>x, 'redeemed'=>y, 'balance'=>z|null] — و`null` تعني «لا رصيدَ يُقال».
      */
     /**
      * عميل النشاط — بالمعرّف، ثم بالهاتف، ثم بالاسم إن كان فريدًا.
@@ -1325,8 +1341,15 @@ class PosController extends Controller
     /** يقيّد الاستبدال والاكتساب على العميل بعد اكتمال الفاتورة */
     private function recordLoyalty(Order $order, ?Customer $customer, int $redeemPoints): array
     {
+        /*
+         * ولا رصيدَ يُقال حين لا يُسأل عنه — و`null` ليست صفرًا.
+         *
+         * زبونٌ نقديٌّ لا حساب له، وبرنامجٌ مُطفأ لا نقاطَ فيه تُعرض. وصفرٌ
+         * يُكتب في ورقة النجاح يقول للزبون إنّ نقاطه نفدت — وهي في حسابه كما
+         * هي تنتظر أن يُشغّل صاحبُ المحلّ البرنامج.
+         */
         if (! $customer || ! $this->loyaltyOn()) {
-            return ['earned' => 0, 'redeemed' => 0];
+            return ['earned' => 0, 'redeemed' => 0, 'balance' => null];
         }
 
         if ($redeemPoints > 0) {
@@ -1370,7 +1393,22 @@ class PosController extends Controller
         $order->redeemed_points = $redeemPoints;
         $order->save();
 
-        return ['earned' => $earned, 'redeemed' => $redeemPoints];
+        /*
+         * والرصيدُ يُقرأ من الصفّ لا يُحسب بالطرح والجمع.
+         *
+         * «خمسمئة ناقص ثلاثمئة زائد سبعةٍ وتسعين» تصدق ما دام لا أحدَ غيرُنا
+         * يكتب. وبين فتحِ البيعة وهذا السطر قد تقع بيعةٌ للزبون نفسه على
+         * صندوقٍ آخر، فيصير المحفوظُ في الذاكرة غيرَ ما في القاعدة — والرقمُ
+         * الذي يُعرض للكاشير هو ما يُستبدَل به غدًا.
+         *
+         * ولا حارسَ لهذه الحالة بعينها: تشابكُ صندوقين في لحظةٍ واحدة لا
+         * يُصطنع في اختبارٍ وظيفيّ. وهو مُصرَّحٌ به هنا لا مسكوتٌ عنه.
+         */
+        return [
+            'earned' => $earned,
+            'redeemed' => $redeemPoints,
+            'balance' => (int) $customer->refresh()->points,
+        ];
     }
 
     /** إشعار صاحب المتجر بطلب جديد عبر البريد (غير مُعطِّل عند الفشل، ويحترم إعداد التفعيل) */

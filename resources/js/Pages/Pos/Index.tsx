@@ -43,6 +43,7 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import useLiveStock from '@/hooks/useLiveStock';
 import {
+    POINTS_PER_UNIT,
     usePosCart,
     type LoyaltySettings,
     type PosCustomer,
@@ -875,7 +876,7 @@ export default function PosIndex() {
                                     <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-[#be185d]">
                                         <Award className="size-4 shrink-0" />
                                         <span className="truncate">{t('نقاط العميل:')} {cart.selectedPoints}</span>
-                                        <span className="shrink-0 text-[#ec4899]">({money(cart.selectedPoints / 100)})</span>
+                                        <span className="shrink-0 text-[#ec4899]">({money(cart.selectedPoints / POINTS_PER_UNIT)})</span>
                                     </span>
                                     {cart.canRedeem && (
                                         <button
@@ -907,12 +908,29 @@ export default function PosIndex() {
                                     </p>
                                 )}
 
+                                {/*
+                                    ═══ والباقي يُقال قبل أن يُسأل عنه ═══
+
+                                    «− ٣٫٠٠٠ (٣٠٠ نقطة)» تقول ما خرج ولا تقول
+                                    ما بقي. والزبون يسأل الكاشيرَ عن رصيده وهو
+                                    واقف، فيطرح الكاشيرُ في رأسه — أو يفتح شاشة
+                                    العملاء والطابور خلفه.
+                                */}
                                 {cart.redeemActive && cart.redeemPointsUsed > 0 && (
-                                    <p className="mt-1 text-[11px] font-semibold text-[#be185d]">
-                                        − {money(cart.redeemDiscount)} ({cart.redeemPointsUsed} {t('نقطة')})
+                                    <p
+                                        data-testid="redeem-line"
+                                        className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] font-semibold text-[#be185d]"
+                                    >
+                                        <span>
+                                            − {money(cart.redeemDiscount)} ({cart.redeemPointsUsed} {t('نقطة')})
+                                        </span>
+                                        <span className="font-normal text-[#ec4899]">
+                                            {t('يبقى')} {cart.selectedPoints - cart.redeemPointsUsed} {t('نقطة')}
+                                            {' '}({money((cart.selectedPoints - cart.redeemPointsUsed) / POINTS_PER_UNIT)})
+                                        </span>
                                     </p>
                                 )}
-                                {cart.redeemActive && cart.selectedPoints / 100 > cart.redeemCap && (
+                                {cart.redeemActive && cart.selectedPoints / POINTS_PER_UNIT > cart.redeemCap && (
                                     <p className="mt-1 text-[10px] text-[#ec4899]">
                                         {t('الحد الأقصى لهذه الفاتورة')} {cart.redeemMaxPct}% ({money(cart.redeemCap)})
                                     </p>

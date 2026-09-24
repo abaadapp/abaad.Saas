@@ -700,10 +700,41 @@ export default function PaymentDialog({
                             </div>
                         </div>
 
-                        {(result?.points ?? 0) > 0 && (
-                            <p className="flex items-center justify-center gap-2 rounded-xl bg-[#fdf2f8] px-3 py-2 text-sm font-bold text-[#be185d]">
-                                {t('نقاط ولاء مكتسبة:')} {result!.points}
-                            </p>
+                        {/*
+                            ═══ وورقةُ النقاط تقول الثلاثة ═══
+
+                            ما استُبدل، وما كُسب، وما بقي. وكانت تقول المكتسب
+                            وحده — فالزبون الذي استبدل ثلاثمئة يقرأ «نقاط ولاء
+                            مكتسبة: ٤٠» ولا يعرف ماذا بقي له، ويسأل الكاشيرَ
+                            والطابورُ خلفه.
+
+                            والصندوقُ كلُّه معلَّقٌ على سؤالٍ واحد: أردّ
+                            الخادمُ رصيدًا؟ فبيعةٌ بلا اتصالٍ تبقى في الطابور
+                            ولم تُخصم بعد، وزبونٌ نقديٌّ لا حساب له، وبرنامجٌ
+                            مُطفأ لا نقاطَ فيه — وفي الثلاثة `null` لا صفر.
+                        */}
+                        {typeof result?.balance === 'number' && (
+                            <div
+                                data-testid="points-summary"
+                                className="space-y-1 rounded-xl bg-[#fdf2f8] px-3 py-2 text-sm text-[#be185d]"
+                            >
+                                {(result?.redeemed ?? 0) > 0 && (
+                                    <p className="flex items-center justify-between gap-2">
+                                        <span>{t('نقاط مستبدَلة:')}</span>
+                                        <span className="font-bold">− {result!.redeemed}</span>
+                                    </p>
+                                )}
+                                {(result?.points ?? 0) > 0 && (
+                                    <p className="flex items-center justify-between gap-2">
+                                        <span>{t('نقاط ولاء مكتسبة:')}</span>
+                                        <span className="font-bold">+ {result!.points}</span>
+                                    </p>
+                                )}
+                                <p className="flex items-center justify-between gap-2 border-t border-dashed border-[#fbcfe8] pt-1 font-bold">
+                                    <span>{t('الرصيد المتبقي:')}</span>
+                                    <span>{result.balance} {t('نقطة')}</span>
+                                </p>
+                            </div>
                         )}
 
                         <div className="grid grid-cols-2 gap-3">

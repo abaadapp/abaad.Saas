@@ -104,7 +104,25 @@ class PayrollPaymentController extends Controller
         $method = $data['from'] === 'bank' ? 'تحويل بنكي' : 'نقدي';
 
         try {
-            DB::transaction(function () use ($bid, $run, $lines, $data, $method) {
+            /*
+             * ═══ وما يُقال للتاجر هو ما وقع تحت القفل ═══
+             *
+             * كانت المعاملةُ تُعيد قراءةَ السطور مقفلةً — وهو الصواب — ثمّ
+             * تكتب عددَها ومبلغها في متغيّرين **داخلها**. و`use` تأخذ نسخةً
+             * لا مرجعًا، فالمتغيّران خارجها يبقيان على ما قُرئ **قبل** القفل.
+             *
+             * فالضغطةُ الثانية — وهي ما يقع حين يبطؤ الردّ — لا تصرف شيئًا
+             * (القفلُ يمنعها، والدفترُ سليم)، ثمّ **تقول إنّها صرفت**: رسالةٌ
+             * خضراء «صُرف ٢ موظّفًا بقيمة ٧٠٠٫٠٠٠» وسطرٌ في سجلّ النشاط
+             * بالمبلغ نفسِه.
+             *
+             * فيقرأ التاجرُ أنّ ألفًا وأربعَ مئةٍ خرجت وقد خرجت سبعُ مئة،
+             * ويحمل السجلُّ صرفين لصرفٍ واحد — وهو أوّلُ ما يُرجَع إليه حين
+             * يُسأل «متى صُرف راتبُ سالم؟».
+             *
+             * فصارت المعاملةُ تردّ ما وقع فعلًا، ويُقال منه لا من نيّة ما قبله.
+             */
+            $done = DB::transaction(function () use ($bid, $run, $lines, $data, $method) {
                 /*
                  * والسطور تُقرأ ثانيةً تحت قفل — لا من مجموعةٍ قُرئت قبلها.
                  *
@@ -119,7 +137,7 @@ class PayrollPaymentController extends Controller
                     ->lockForUpdate()->get();
 
                 if ($ready->isEmpty()) {
-                    return;
+                    return ['count' => 0, 'total' => 0.0];
                 }
 
                 $total = round($ready->sum(fn ($l) => (float) $l->net), 3);
@@ -162,19 +180,31 @@ class PayrollPaymentController extends Controller
                 if (PayrollRunController::unpaidNet($run->fresh()) <= 0.0005) {
                     $run->update(['status' => 'مصروفة', 'paid_at' => Carbon::parse($data['paid_at'])]);
                 }
+
+                return ['count' => $lines->count(), 'total' => $total];
             });
         } catch (RuntimeException $e) {
             return back()->withErrors(['lines' => $e->getMessage()]);
         }
 
+        /*
+         * ولا سطرَ في السجلّ لصرفٍ لم يقع — والرسالةُ تقول ما جرى لا ما نُوي.
+         *
+         * وهذا هو ردُّ «سبقك غيرُك»: نفسُ ما يُقال حين لا يكون في المسيرة ما
+         * ينتظر الصرف أصلًا، فالحالان واحدٌ عند من يقرأ الشاشة.
+         */
+        if (($done['count'] ?? 0) === 0) {
+            return back()->with('toast', ['msg' => __('لا سطور تنتظر الصرف'), 'type' => 'info']);
+        }
+
         \App\Support\Activity::log(
             'updated',
-            'صرف رواتب '.$run->period->format('Y-m').' لـ'.$lines->count().' موظّفًا بقيمة '.$total,
+            'صرف رواتب '.$run->period->format('Y-m').' لـ'.$done['count'].' موظّفًا بقيمة '.$done['total'],
             ['subject_id' => $run->id]
         );
 
         return back()->with('toast', [
-            'msg' => __('صُرف :n موظّفًا بقيمة :v', ['n' => $lines->count(), 'v' => number_format($total, 3)]),
+            'msg' => __('صُرف :n موظّفًا بقيمة :v', ['n' => $done['count'], 'v' => number_format($done['total'], 3)]),
             'type' => 'success',
         ]);
     }

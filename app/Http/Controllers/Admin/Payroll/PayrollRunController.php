@@ -252,7 +252,19 @@ class PayrollRunController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($bid, $run) {
+            /*
+             * ═══ وما يُكتب في السجلّ هو ما وقع تحت القفل ═══
+             *
+             * المعاملةُ تُعيد قراءةَ الحال مقفلةً وتنصرف إن سبقها غيرُها —
+             * وهو الصواب، والدفترُ لا يحمل قيدين. لكنّ ما بعدها كان يُكتب
+             * على كلّ حال: سطرٌ في سجلّ النشاط يقول «اعتمد مسيرة ٢٠٢٧-٠٢»
+             * ورسالةٌ خضراء تقول «اعتُمدت وقُيّد المستحقّ».
+             *
+             * فضغطتان — أو مديران يفتحان المسيرة نفسَها — تكتبان **اعتمادين
+             * لاعتمادٍ واحد**، باسمين وساعتين. وهو أوّلُ ما يُرجَع إليه حين
+             * يُسأل «من اعتمد رواتب هذا الشهر؟» — فيُجيب باثنين.
+             */
+            $approved = DB::transaction(function () use ($bid, $run) {
                 /*
                  * والحال تُقرأ ثانيةً تحت قفل.
                  *
@@ -264,7 +276,7 @@ class PayrollRunController extends Controller
                  */
                 $fresh = PayrollRun::where('business_id', $bid)->lockForUpdate()->find($run->id);
                 if (! $fresh || $fresh->status !== 'مسودة') {
-                    return;
+                    return false;
                 }
 
                 $lines = [];
@@ -303,9 +315,16 @@ class PayrollRunController extends Controller
                 );
 
                 $run->update(['status' => 'معتمدة', 'approved_at' => now()]);
+
+                return true;
             });
         } catch (RuntimeException $e) {
             return back()->withErrors(['approve' => $e->getMessage()]);
+        }
+
+        // ومن سبقه غيرُه لا يُكتب له اعتماد: الردُّ ردُّ «معتمدةٌ أصلًا» نفسُه
+        if (! $approved) {
+            return back()->with('toast', ['msg' => __('المسيرة معتمدةٌ أصلًا'), 'type' => 'info']);
         }
 
         Activity::log('updated', 'اعتمد مسيرة '.$run->period->format('Y-m'), ['subject_id' => $run->id]);

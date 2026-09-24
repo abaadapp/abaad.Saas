@@ -37,7 +37,7 @@ class PdfController extends Controller
         // الفترة تُورَث من الشاشة وتُطبع في الترويسة: ورقةٌ مطبوعة لا مبدّل
         // فوقها، فإن لم تقل فترتها قُرئت على أنها فترة قارئها
         // الورقة من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
-        $report = Reports::salesReport(request()->query('range'));
+        $report = Reports::salesReport(request()->query('range'), request()->query('channel'));
         $range = $report['range'];
 
         $html = view('pdf.sales-report', [

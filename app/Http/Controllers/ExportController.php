@@ -19,7 +19,7 @@ class ExportController extends Controller
         // الفترة التي كان التاجر ينظر إليها — الملفّ يغادر الشاشة ولا يصحّحه
         // مبدّلٌ فوقه، فيحملها في أوّل سطرٍ منه وفي اسمه. والحمولة من مصدر
         // الشاشة نفسه — انظر Support\Reports::salesReport
-        $report = Reports::salesReport(request()->query('range'));
+        $report = Reports::salesReport(request()->query('range'), request()->query('channel'));
         $range = $report['range'];
 
         $rows = [];

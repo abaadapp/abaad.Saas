@@ -8,6 +8,7 @@ use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Transaction;
+use App\Support\SalesChannel;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -109,7 +110,7 @@ class Books
                 $lines = [['account' => $debit, 'debit' => $total]];
 
                 if ($subtotal > 0) {
-                    $lines[] = ['account' => 'sales', 'credit' => $subtotal];
+                    $lines[] = ['account' => self::salesAccount($order), 'credit' => $subtotal];
                 }
                 if ($tax > 0) {
                     $lines[] = ['account' => 'tax_payable', 'credit' => $tax];
@@ -160,6 +161,32 @@ class Books
      *
      * ولا يُعكس ما عُكس: `liveEntryFor` تتخطّى المعكوس، فنداءان لا يكتبان
      * عكسين.
+     */
+    /**
+     * ورقةُ الإيراد التي تُقيَّد فيها هذه البيعة — بحسب الباب الذي دخلت منه.
+     *
+     * ═══ ولمَ في الدفتر لا في تقريرٍ وحده ═══
+     *
+     * «كم باع موقعي؟» كان يُجاب من `orders.channel` في شاشة الطلبات
+     * والمواسم، ولا يبلغ الدفترَ حرفٌ منه: بيعةُ الصندوق وبيعةُ الموقع
+     * تُقيَّدان في 4100 نفسِه. فقائمةُ الدخل وميزانُ المراجعة وشجرةُ
+     * الحسابات تقول رقمًا واحدًا — ومن يسأل محاسبَه «ما نصيبُ المتجر
+     * الإلكترونيّ من إيرادي؟» لا يجد في دفتره جوابًا.
+     *
+     * ═══ وما لا قناةَ له يبقى حيث كان ═══
+     *
+     * طلباتُ ما قبل العمود قناتُها فارغة، والصندوقُ يكتب `pos`. وكلاهما
+     * إلى 4100 كما كان — فلا يتبدّل موضعُ شيءٍ إلّا ما جاء من الموقع.
+     */
+    private static function salesAccount(Order $order): string
+    {
+        return (string) $order->channel === SalesChannel::WEBSITE ? 'sales_website' : 'sales';
+    }
+
+    /**
+     * ونقضُ القيد لا يسأل هذا السؤال — `Ledger::reverse` تبني سطورَها من
+     * القيد المُرحَّل نفسِه، فتردّ كلَّ مبلغٍ إلى الورقة التي خرج منها. ولو
+     * حُسبت الورقةُ من جديد لَنقض تصحيحُ طلبٍ قديم في ورقةٍ لم يُقيَّد فيها.
      */
     public static function unpostSale(Order $order, ?int $userId = null, ?string $reason = null): void
     {

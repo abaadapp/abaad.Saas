@@ -312,16 +312,31 @@ class Reports
      *
      * وباجتماعها هنا لا يبقى للاختلاف موضع.
      */
-    public static function salesReport(?string $range): array
+    /**
+     * ملخّصُ المبيعات — لفترةٍ، ولقناةٍ إن اختيرت.
+     *
+     * ═══ والقناةُ تُنقّى هنا لا عند كلّ قارئ ═══
+     *
+     * خمسةٌ ينادون هذه الدالّة: الشاشةُ وثلاثةُ ملفّاتٍ تخرج منها ولقمةُ
+     * التحديث. ولو نقّى كلٌّ منهم المعامل بيده لَقبل أحدُهم قيمةً لا تصحّ،
+     * فخرج ملفٌّ بغير ما على الشاشة.
+     *
+     * وما لا يصحّ يُقرأ «المتجر كلُّه» لا يُردّ خطأً: هذا تقريرٌ يُقرأ، وسطرُ
+     * عنوانٍ معطوب لا يُبرّر شاشةً حمراء.
+     */
+    public static function salesReport(?string $range, ?string $channel = null): array
     {
         $range = Demo::range($range);
+        $channel = collect(SalesChannel::options())->pluck('value')->contains($channel) ? $channel : null;
 
         return [
-            'summary' => Demo::reportSummary($range),
-            'salesSeries' => Demo::salesTrend($range),
-            'paymentDistribution' => Demo::paymentDistribution($range),
-            'topSellingProducts' => Demo::topSellingProducts(5, $range),
+            'summary' => Demo::reportSummary($range, $channel),
+            'salesSeries' => Demo::salesTrend($range, $channel),
+            'paymentDistribution' => Demo::paymentDistribution($range, $channel),
+            'topSellingProducts' => Demo::topSellingProducts(5, $range, null, $channel),
             'range' => $range,
+            'channel' => $channel,
+            'channels' => SalesChannel::options(),
         ];
     }
 

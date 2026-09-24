@@ -129,7 +129,7 @@ class ReportExportController extends Controller
     {
         $range = $this->range();
         // الورقة تُبنى من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
-        $report = Reports::salesReport($range);
+        $report = Reports::salesReport($range, request()->query('channel'));
         $spreadsheet = new Spreadsheet;
         [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'), $range);
         $money = [];

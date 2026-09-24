@@ -1,4 +1,4 @@
-import { usePage } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import BackToReports from '@/Components/BackToReports';
@@ -27,6 +27,8 @@ interface Summary {
     sales: number;
     cogs: number;
     profit: number;
+    /** «صافٍ» للمتجر كلِّه، و«مُجمل» لقناةٍ بعينها — يسمّيه الخادم */
+    profit_kind: 'net' | 'gross';
     expenses: number;
     tax: number;
     products: number;
@@ -50,6 +52,10 @@ interface Props {
     range: ReportRange;
     paymentDistribution: { labels: string[]; series: number[] };
     topSellingProducts: TopProduct[];
+    /** القناةُ المختارة — أو null للمتجر كلِّه */
+    channel: string | null;
+    /** القنوات من مصدرها الواحد — انظر App\Support\SalesChannel */
+    channels: { value: string; label: string }[];
 }
 
 /** عنوان المخطّط بحسب دقّة محوره — انظر Demo::salesTrend */
@@ -72,8 +78,13 @@ export default function ReportsSales() {
        كانت تعرض أرقام الصباح بعد يوم بيع كامل — وعليها يُبنى قرار. */
     /* الفترة تُمرَّر إلى التغذية أيضًا، وإلا انقلبت أرقام «اليوم» إلى أرقام
        الشهر بعد أوّل تحديث تلقائيّ بلا أن يلمس التاجر شيئًا */
+    /*
+     * والقناةُ تُمرَّر إلى التغذية كما تُمرَّر الفترة — وإلّا انقلبت أرقامُ
+     * الموقع إلى أرقام المتجر كلِّه بعد أوّل تحديثٍ تلقائيّ بلا أن يلمس
+     * التاجر شيئًا. وهو العطبُ نفسُه المكتوب فوقه في الفترة.
+     */
     const { data: live, updatedAt } = useLiveFeed<Props>(
-        route('admin.reports.feed', { range: server.range }),
+        route('admin.reports.feed', { range: server.range, channel: server.channel ?? undefined }),
     );
     const { summary, salesSeries, paymentDistribution, topSellingProducts } = live ?? server;
 
@@ -81,17 +92,49 @@ export default function ReportsSales() {
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
+    const whole = summary.profit_kind === 'net';
+
+    /** والانتقالُ يحمل الفترةَ معه كما تحمل الفترةُ القناة */
+    const pickChannel = (next: string | null) => {
+        if (next === server.channel) return;
+
+        router.get(
+            window.location.pathname,
+            { range: server.range, ...(next ? { channel: next } : {}) },
+            { preserveState: true, preserveScroll: true, replace: true },
+        );
+    };
+
+    const chip = (on: boolean) =>
+        cn(
+            'rounded-full border px-4 py-1.5 text-[13px] transition',
+            on ? 'border-[#111] bg-[#111] text-white' : 'border-[#e5e7eb] bg-white text-[#4b5563] hover:border-[#d1d5db]',
+        );
+
     const stats = [
         { label: t('إجمالي المبيعات'), value: m(summary.sales), icon: 'wallet', color: 'primary' },
         // التكلفة بجانب الربح لا في ورقةٍ أخرى: من يقرأ ربحًا يحتاج أن يرى ممّ طُرح
         { label: t('تكلفة البضاعة المباعة'), value: m(summary.cogs), icon: 'package', color: 'info' },
         {
-            label: t('صافي الربح'),
+            /*
+             * والبطاقةُ تسمّي ما فيها: «صافي الربح» للمتجر كلِّه، و«مُجمل
+             * الربح» لقناةٍ بعينها. والاسمُ من الخادم لا من هنا — وإلّا
+             * افترق عن حسابه يومًا فقُرئ مُجملٌ باسم الصافي.
+             */
+            label: t(whole ? 'صافي الربح' : 'مُجمل الربح'),
             value: m(summary.profit),
             icon: summary.profit >= 0 ? 'trending-up' : 'trending-down',
             color: summary.profit >= 0 ? 'success' : 'danger',
         },
-        { label: t('المصروفات'), value: m(summary.expenses), icon: 'arrow-down-circle', color: 'warning' },
+        /*
+         * والمصروفاتُ تسقط من بطاقات القناة — لا تُعرض صفرًا.
+         *
+         * صفرٌ يُقرأ «لا مصروف على هذا الباب»، والحقُّ أنّها لا تُنسب إلى
+         * بابٍ أصلًا: الإيجارُ والراتبُ والكهرباء على المتجر كلِّه.
+         */
+        ...(whole
+            ? [{ label: t('المصروفات'), value: m(summary.expenses), icon: 'arrow-down-circle', color: 'warning' }]
+            : []),
         { label: t('الضريبة المحصّلة'), value: m(summary.tax), icon: 'receipt', color: 'info' },
     ];
 
@@ -113,9 +156,9 @@ export default function ReportsSales() {
                     /* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */
                     <ExportMenu
                         feature="reports_advanced"
-                        xlsx={route('admin.reports.xlsx', { range: server.range })}
-                        pdf={route('admin.reports.pdf', { range: server.range })}
-                        csv={route('admin.export.reports', { range: server.range })}
+                        xlsx={route('admin.reports.xlsx', { range: server.range, channel: server.channel ?? undefined })}
+                        pdf={route('admin.reports.pdf', { range: server.range, channel: server.channel ?? undefined })}
+                        csv={route('admin.export.reports', { range: server.range, channel: server.channel ?? undefined })}
                     />
                 }
             />
@@ -130,7 +173,54 @@ export default function ReportsSales() {
                 </p>
             )}
 
-            <RangeTabs current={server.range} />
+            {/* والفترةُ تحمل القناةَ معها — وإلّا فُقد المُرشِّحُ عند كلّ تبديل */}
+            <RangeTabs current={server.range} params={{ channel: server.channel ?? undefined }} />
+
+            {/*
+                ═══ ومن أين جاءت البيعة ═══
+
+                والسؤالُ «كم باع موقعي؟» كان يُجاب من شاشة الطلبات عددًا
+                ومبلغًا، ولا يبلغ التقريرَ الذي فيه الربحُ والتكلفةُ والمنحنى.
+
+                والقناةُ في الرابط لا في الجلسة، كالفترة: رابطٌ يُرسَل إلى
+                المحاسب يفتح على ما فُتح عليه.
+            */}
+            <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="channel-filter">
+                <button
+                    type="button"
+                    onClick={() => pickChannel(null)}
+                    className={chip(server.channel === null)}
+                >
+                    {t('كل القنوات')}
+                </button>
+                {server.channels.map((c) => (
+                    <button
+                        key={c.value}
+                        type="button"
+                        onClick={() => pickChannel(c.value)}
+                        className={chip(server.channel === c.value)}
+                        data-testid={`channel-${c.value}`}
+                    >
+                        {t(c.label)}
+                    </button>
+                ))}
+            </div>
+
+            {/*
+                وما لا يُنسب إلى قناةٍ يُقال — لا يُترك يُقرأ ناقصًا.
+
+                المصروفاتُ وتكلفةُ الإضافات على المتجر كلِّه، فبطاقةُ الربح
+                هنا مُجملٌ لا صافٍ. ومن قرأ «ربح» بلا هذا السطر قاس قناةً
+                بمقياس متجرٍ كامل.
+            */}
+            {!whole && (
+                <p
+                    data-testid="channel-note"
+                    className="mb-4 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] leading-relaxed text-[#1d4ed8]"
+                >
+                    {t('أرقام قناةٍ واحدة: الربح هنا مُجمل (المبيعات − الضريبة − تكلفة البضاعة). والمصروفات تُنفَق على المتجر كلّه فلا تُقسَم على القنوات.')}
+                </p>
+            )}
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {stats.map((s, i) => (

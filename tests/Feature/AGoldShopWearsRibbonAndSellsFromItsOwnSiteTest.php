@@ -450,8 +450,23 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
         $this->assertSame('website', Order::first()->channel);
     }
 
-    /** السلّةُ نفسُها من الموقع ومن الصندوق — والدفترُ واحد */
-    public function test_a_website_sale_posts_exactly_what_the_pos_posts_for_the_same_cart(): void
+    /**
+     * السلّةُ نفسُها من الموقع ومن الصندوق — والدفترُ واحدٌ إلّا ورقةَ الإيراد.
+     *
+     * ═══ وهذا الفرقُ الوحيد، وهو مقصود ═══
+     *
+     * كان الحارسُ يقول «الدفترُ واحد» بالحرف: المبالغُ والحساباتُ والمصادر
+     * كلُّها سواء. وصار لمبيعات الموقع ورقتُها (`sales_website`) ليُقرأ
+     * نصيبُ المتجر الإلكترونيّ في قائمة الدخل وميزان المراجعة — انظر
+     * `Books::salesAccount`.
+     *
+     * وما عدا ذلك يبقى حرفًا بحرف: التكلفةُ والضريبةُ والذمّةُ والحركةُ
+     * والمصادر. فبيعةُ الموقع ليست بيعةً من نوعٍ آخر — هي البيعةُ نفسُها
+     * دخلت من بابٍ آخر.
+     *
+     * وأبوهما واحد («الإيرادات»)، فمجموعُ الإيراد لا يتبدّل بحرف.
+     */
+    public function test_a_website_sale_posts_what_the_pos_posts_but_on_its_own_revenue_leaf(): void
     {
         Setting::where('business_id', $this->business->id)->where('key', 'vat_enabled')->update(['value' => '1']);
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_rate', 'value' => '5']);
@@ -480,7 +495,34 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
         $this->place(['items' => [['id' => $p->id, 'qty' => 2]], 'fulfil' => 'pickup'])->assertOk();
         $web = $snapshot(Order::where('channel', 'website')->firstOrFail());
 
-        $this->assertSame($pos, $web);
+        /*
+         * والمقارنةُ على ما سوى ورقة الإيراد: تُبدَّل `sales_website` إلى
+         * `sales` في لقطة الموقع، فإن بقي بينهما فرقٌ آخر سقط الحارس.
+         */
+        $folded = $web;
+        $folded['lines'] = array_map(
+            fn ($l) => [$l[0] === 'sales_website' ? 'sales' : $l[0], $l[1], $l[2]],
+            $web['lines'],
+        );
+
+        $this->assertSame($pos, $folded, 'الدفترُ يفترق في غير ورقة الإيراد');
+
+        // ثمّ الفرقُ المقصود: ورقةُ الإيراد وحدها
+        $leaf = fn (array $snap) => collect($snap['lines'])->pluck(0)
+            ->first(fn ($k) => in_array($k, ['sales', 'sales_website'], true));
+
+        $this->assertSame('sales', $leaf($pos));
+        $this->assertSame('sales_website', $leaf($web));
+
+        /*
+         * وأبوهما واحد — وإلّا لَقرأ صاحبُ المتجر إيرادَه مقسومًا على فرعين
+         * في قائمة الدخل ومجموعُه في موضعين.
+         */
+        $parent = fn (string $key) => \App\Models\Account::where('business_id', $this->business->id)
+            ->where('system_key', $key)->firstOrFail()->parent_id;
+
+        $this->assertSame($parent('sales'), $parent('sales_website'));
+
         $this->assertSame(18, (int) $p->fresh()->quantity + 2, 'الرفُّ خُصم مرّتين لبيعتين');
     }
 

@@ -1927,7 +1927,7 @@ class Demo
      * وتكلفة الإضافات معها: الإيراد يحمل مجموع الفاتورة بإضافاتها، فإغفالُ
      * تكلفتها يجعل كلّ دبٍّ بيع يظهر ربحًا صافيًا وهو مشترًى.
      */
-    public static function cogsFor(int $bid, ?\Illuminate\Support\Carbon $start, ?\Illuminate\Support\Carbon $end = null, ?int $branchId = null): float
+    public static function cogsFor(int $bid, ?\Illuminate\Support\Carbon $start, ?\Illuminate\Support\Carbon $end = null, ?int $branchId = null, ?string $channel = null): float
     {
         /*
          * والأسعارُ تُقرأ خامًا لا نماذجَ.
@@ -1940,13 +1940,20 @@ class Demo
             ->where('business_id', $bid)->pluck('cost', 'id');
         $cogs = 0.0;
 
-        OrderItem::whereHas('order', function ($q) use ($bid, $start, $end, $branchId) {
+        OrderItem::whereHas('order', function ($q) use ($bid, $start, $end, $branchId, $channel) {
             $q->where('business_id', $bid)->sold()
                 ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start))
                 // المدى والفرع يُطلبان من اللوحة وحدها — والتقاريرُ تمرّ بلا
                 // واحدٍ منهما فتبقى على معناها: من أوّل المدّة إلى الآن، وللمتجر كلِّه
                 ->when($end, fn ($x) => $x->where('ordered_at', '<', $end))
                 ->when($branchId, fn ($x) => $x->where('branch_id', $branchId));
+
+            /*
+             * والقناةُ تُحصر من `SalesChannel::scope` لا بشرطٍ يُكتب هنا:
+             * «غير محدّدة» فراغٌ في العمود لا قيمةٌ فيه، ومن أعاد كتابة
+             * القاعدة نسيها فردّ صفرًا على قناةٍ فيها مئات.
+             */
+            SalesChannel::scope($q, $channel);
         })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
             ->groupBy('product_id')->get()
             ->each(function ($r) use (&$cogs, $costs) {
@@ -1954,8 +1961,21 @@ class Demo
                     + (float) ($costs[$r->product_id] ?? 0) * ((int) $r->qty - (int) $r->costed_qty);
             });
 
-        foreach (self::addonProfitByProduct($bid, $start, $end, $branchId) as $extra) {
-            $cogs += $extra['cost'];
+        /*
+         * وتكلفةُ الإضافات لا تُقسَم على القنوات — فتُحسب للمتجر كلِّه أو
+         * تُترك.
+         *
+         * `addonProfitByProduct` تقرأ جدولَ الإضافات ولا تعرف الطلبَ الذي
+         * جاءت منه، فلا سبيلَ إلى حصرها بقناة. وجمعُها كاملةً على مبيعات
+         * قناةٍ واحدة يجعل ربحَها أقلَّ ممّا هو — وهو أسوأ من تركها: رقمٌ
+         * يُطمأنّ إليه وهو خطأ.
+         *
+         * فما لا يُنسب لا يُنسب بالظنّ، ويُقال ذلك في الشاشة.
+         */
+        if ($channel === null || $channel === '') {
+            foreach (self::addonProfitByProduct($bid, $start, $end, $branchId) as $extra) {
+                $cogs += $extra['cost'];
+            }
         }
 
         return $cogs;
@@ -2418,7 +2438,7 @@ class Demo
      * ولكل عمود عدد طلباته إلى جانب مبلغه: مئة ريالٍ من طلبٍ واحد غير مئةٍ من
      * أربعين طلبًا، والمبلغ وحده لا يفرّق بينهما.
      */
-    public static function salesTrend(string $range = 'month'): array
+    public static function salesTrend(string $range = 'month', ?string $channel = null): array
     {
         $bid = self::bid();
         $range = self::range($range);
@@ -2452,9 +2472,10 @@ class Demo
             },
         };
 
-        $rows = Order::where('business_id', $bid)
-            ->sold()
-            ->whereBetween('ordered_at', [$start, $cutoff])
+        $rows = SalesChannel::scope(
+            Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$start, $cutoff]),
+            $channel,
+        )
             ->selectRaw("{$format} as bucket, SUM(total) as s, COUNT(*) as c")
             ->groupBy('bucket')
             ->get();
@@ -2610,11 +2631,14 @@ class Demo
      *
      * والنسبة تُحسب من مجموع ما هنا لا من دفترٍ آخر، فتجمع مئةً دائمًا.
      */
-    public static function paymentBreakdown(string $range = 'month'): array
+    public static function paymentBreakdown(string $range = 'month', ?string $channel = null): array
     {
         $start = self::rangeStart(self::range($range));
-        $rows = Order::where('business_id', self::bid())->sold()
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+        $rows = SalesChannel::scope(
+            Order::where('business_id', self::bid())->sold()
+                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start)),
+            $channel,
+        )
             ->selectRaw('payment_method, SUM(total) as s, COUNT(*) as c')
             ->groupBy('payment_method')->orderByDesc('s')->get();
 
@@ -2630,9 +2654,9 @@ class Demo
     }
 
     /** المخطّط على الشاشة: أسماءٌ ومبالغ من التوزيع نفسه لا من استعلامٍ ثانٍ */
-    public static function paymentDistribution(string $range = 'month'): array
+    public static function paymentDistribution(string $range = 'month', ?string $channel = null): array
     {
-        $rows = self::paymentBreakdown($range);
+        $rows = self::paymentBreakdown($range, $channel);
 
         return [
             'labels' => array_column($rows, 'name'),
@@ -2845,7 +2869,7 @@ class Demo
     }
 
     /** ملخّص أرقام بطاقات التقارير — كلها محسوبة فعليًا من قاعدة البيانات (صفر عند فراغها) */
-    public static function reportSummary(string $range = 'month'): array
+    public static function reportSummary(string $range = 'month', ?string $channel = null): array
     {
         $bid = self::bid();
         /*
@@ -2858,12 +2882,33 @@ class Demo
          * الآن لا حصيلةُ فترة، و«منتجات تحت حدّ التنبيه» كذلك.
          */
         $start = self::rangeStart(self::range($range));
-        $ordersQ = Order::where('business_id', $bid)->sold()
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start));
+        $ordersQ = SalesChannel::scope(
+            Order::where('business_id', $bid)->sold()
+                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start)),
+            $channel,
+        );
         $sales = (float) (clone $ordersQ)->sum('total');
         $tax = (float) (clone $ordersQ)->sum('tax');
-        $expenses = (float) Expense::where('business_id', $bid)->paid()
-            ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
+
+        /*
+         * ═══ والمصروفاتُ لا تُنسب إلى قناة ═══
+         *
+         * إيجارُ المحلّ وراتبُ الموظّف وفاتورةُ الكهرباء تُنفَق على المتجر
+         * كلِّه، ولا في النظام ما يقول كم منها على المتجر الإلكترونيّ. فلو
+         * طُرحت كاملةً من مبيعات قناةٍ واحدة لَقرأ صاحبُها أنّ موقعه خاسرٌ
+         * وهو رابح — وهو رقمٌ يُتّخذ عليه قرارُ إغلاق.
+         *
+         * فحين تُختار قناةٌ لا يُحسب «صافي الربح» أصلًا: يُقال «مُجمل
+         * الربح» (المبيعات − الضريبة − تكلفة البضاعة)، وهي القاعدةُ نفسُها
+         * في تقرير المواسم (`SeasonSales::report`) — قناةٌ تُقاس بمجمل ربحها
+         * لا بصافيه.
+         */
+        $whole = $channel === null || $channel === '';
+
+        $expenses = $whole
+            ? (float) Expense::where('business_id', $bid)->paid()
+                ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount')
+            : 0.0;
 
         /*
          * «صافي الربح» ربحٌ لا فرقُ طرحٍ بين رقمين.
@@ -2878,11 +2923,17 @@ class Demo
          *
          * والضريبة تُطرح لأنها التزامٌ يُورَّد لا إيرادٌ يُملك.
          */
-        $cogs = self::cogsFor($bid, $start);
+        $cogs = self::cogsFor($bid, $start, null, null, $channel);
 
         return [
             'sales' => $sales,
+            /*
+             * و«الربح» يسمّي نفسَه: صافٍ للمتجر كلِّه، ومُجملٌ لقناةٍ بعينها.
+             * والاسمُ يُرسَل مع الرقم (`profit_kind`) فلا تُسمّيه الشاشةُ من
+             * عندها ثمّ تفترق عن حسابه.
+             */
             'profit' => round($sales - $tax - $cogs - $expenses, 3),
+            'profit_kind' => $whole ? 'net' : 'gross',
             'cogs' => round($cogs, 3),
             'expenses' => $expenses,
             'tax' => $tax,
@@ -2904,13 +2955,16 @@ class Demo
      * والتساوي يُفصَل بالاسم: صنفان بالإيراد نفسه كانا يتبادلان الموضع بين
      * فتحةٍ وأخرى بلا سبب، فتُقرأ الصدارةُ تبدّلًا وهي لم تتبدّل.
      */
-    public static function topSellingProducts(int $limit = 5, string $range = 'month', ?int $branchId = null): array
+    public static function topSellingProducts(int $limit = 5, string $range = 'month', ?int $branchId = null, ?string $channel = null): array
     {
         $bid = self::bid();
         $start = self::rangeStart(self::range($range));
-        $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
-            ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start))
-            ->when($branchId, fn ($x) => $x->where('branch_id', $branchId)))
+        $rows = OrderItem::whereHas('order', fn ($q) => SalesChannel::scope(
+            $q->where('business_id', $bid)->sold()
+                ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start))
+                ->when($branchId, fn ($x) => $x->where('branch_id', $branchId)),
+            $channel,
+        ))
             ->selectRaw('name, SUM(quantity) as sold, SUM(total) as revenue')
             ->groupBy('name')->orderByDesc('revenue')->orderBy('name')->limit($limit)->get();
         $totalRev = (float) $rows->sum('revenue');

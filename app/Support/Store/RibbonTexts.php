@@ -39,6 +39,13 @@ final class RibbonTexts
         'place' => 'تأكيد الطلب', 'date' => 'الموعد', 'slot' => 'وقت التسليم', 'errReq' => 'يرجى إكمال الحقول المحددة', 'errEmpty' => 'السلة فارغة', 'closed' => 'المتجر لا يستقبل طلبات من الموقع الآن — تواصل معنا.',
         'thanks' => 'شكراً لك، تم استلام طلبك', 'orderNo' => 'رقم الطلب', 'bankDetails' => 'بيانات الحساب البنكي', 'pay' => 'الدفع',
         'footShop' => 'تسوّق', 'footContact' => 'تواصل معنا', 'footHours' => 'ساعات العمل',
+        'footPages' => 'الموقع',
+        // أسماءُ الصفحات في القائمة — انظر `StoreNav::LABELS`
+        'navHome' => 'الرئيسية', 'navShop' => 'المتجر', 'navAbout' => 'من نحن', 'navContact' => 'تواصل معنا',
+        'aboutTitle' => 'من نحن', 'contactTitle' => 'تواصل معنا',
+        'contactSub' => 'نردّ على رسائلك في ساعات العمل — اختر ما يناسبك.',
+        'cPhone' => 'الهاتف', 'cWhatsapp' => 'واتساب', 'cEmail' => 'البريد الإلكتروني', 'cAddress' => 'العنوان', 'cHours' => 'ساعات العمل',
+        'openMap' => 'افتح في الخرائط', 'callNow' => 'اتصل الآن', 'waNow' => 'راسلنا على واتساب',
         'newsTitle' => 'اشترك في عروضنا', 'qty' => 'الكمية',
     ];
 
@@ -68,6 +75,12 @@ final class RibbonTexts
         'place' => 'Place order', 'date' => 'Date', 'slot' => 'Delivery time', 'errReq' => 'Please complete the highlighted fields', 'errEmpty' => 'Cart is empty', 'closed' => 'The store is not taking online orders right now — contact us.',
         'thanks' => 'Thank you, your order is received', 'orderNo' => 'Order no.', 'bankDetails' => 'Bank account details', 'pay' => 'Payment',
         'footShop' => 'Shop', 'footContact' => 'Contact', 'footHours' => 'Opening hours',
+        'footPages' => 'Site',
+        'navHome' => 'Home', 'navShop' => 'Shop', 'navAbout' => 'About', 'navContact' => 'Contact',
+        'aboutTitle' => 'About us', 'contactTitle' => 'Contact us',
+        'contactSub' => 'We reply during opening hours — pick whichever suits you.',
+        'cPhone' => 'Phone', 'cWhatsapp' => 'WhatsApp', 'cEmail' => 'Email', 'cAddress' => 'Address', 'cHours' => 'Opening hours',
+        'openMap' => 'Open in Maps', 'callNow' => 'Call now', 'waNow' => 'Message us on WhatsApp',
         'newsTitle' => 'Join our offers list', 'qty' => 'Quantity',
     ];
 

@@ -154,33 +154,36 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
     }
 
     /**
-     * وما بقي من شاشات البانِي — وهو ما **لا وجود له** عنده.
+     * وما يبقى ممنوعًا عليه — بناءُ موقعٍ من قالبٍ ونشرُه.
      *
-     * «التصميم» قالبٌ يُبدَّل وألوانٌ تُختار، وواجهتُه تصميمُ صاحبها في قالبٍ
-     * واحد. و«الصفحات» صفحاتٌ تُضاف وتُحذف، وواجهتُه صفحةٌ واحدة يفتح
-     * محرّرَها تبويبُ «صفحة المتجر». و«السيو» يكتب في صفٍّ لا يملكه.
+     * وهذا وحدَه: واجهتُه تقرأ إعداداته في اللحظة، فلا لقطةَ تُنشر ولا
+     * قالبَ يُبدَّل. وما عدا ذلك من شاشات القسم صار له مثلُه على المسارات
+     * نفسِها — انظر `themedScreens` أدناه.
      */
-    public static function builderScreens(): array
-    {
-        return [
-            'التصميم' => ['admin.website.design'],
-            'الصفحات' => ['admin.website.pages'],
-            'السيو' => ['admin.website.seo'],
-        ];
-    }
-
-    /** وحتى من بُني له موقعٌ قبل أن يلبس واجهته — شاشاتُ البانِي تردّه إلى لوحة واجهته */
-    #[DataProvider('builderScreens')]
-    public function test_builder_screens_send_the_themed_shop_back_to_its_hub(string $route): void
+    public function test_the_themed_shop_still_cannot_publish_a_built_site(): void
     {
         Builder::create($this->business, Blueprints::STORE, 'mono', $this->owner->id);
 
-        $this->actingAs($this->owner)->get(route($route))->assertRedirect(route('admin.website.index'));
-        $this->actingAs($this->owner)->post(route('admin.website.publish'))->assertRedirect(route('admin.website.index'));
+        $this->actingAs($this->owner)->post(route('admin.website.publish'))
+            ->assertRedirect(route('admin.website.index'));
     }
 
     /**
-     * ═══ وأربعُ شاشاتٍ صارت له على مسارات جاره نفسِها ═══
+     * و«التصميم» يصل إلى محرّر صفحته — كما يصل عند جاره إلى لوحة تصميمه.
+     *
+     * ولا يُردّ إلى لوحة التشغيل كما كان: تبويبٌ يُعرض ثمّ يقذف من ضغطه
+     * إلى شاشةٍ أخرى يُعلّمه أنّ الشريط لا يُصدَّق.
+     */
+    public function test_design_opens_his_page_editor(): void
+    {
+        Builder::create($this->business, Blueprints::STORE, 'mono', $this->owner->id);
+
+        $this->actingAs($this->owner)->get(route('admin.website.design'))
+            ->assertRedirect(route('admin.website.editor'));
+    }
+
+    /**
+     * ═══ وستُّ شاشاتٍ صارت له على مسارات جاره نفسِها ═══
      *
      * وهذا هو الشكلُ الذي طُلب: من فتح «الموقع الإلكتروني» في أيّ متجرٍ من
      * متاجر أبعاد يجد ترويسةً وشريطَ تبويباتٍ وبطاقةَ حالٍ وأبوابًا. وكان
@@ -197,8 +200,10 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
         return [
             'عام' => ['admin.website.site', 'Admin/Website/ThemeSite'],
             'صفحة المتجر' => ['admin.website.editor', 'Admin/Website/ThemeEditor'],
+            'الصفحات' => ['admin.website.pages', 'Admin/Website/ThemePages'],
             'المتجر والطلبات' => ['admin.website.shop', 'Admin/Website/ThemeShop'],
-            'العنوان والنشر' => ['admin.website.domain', 'Admin/Website/ThemeDomain'],
+            'الدومين' => ['admin.website.domain', 'Admin/Website/ThemeDomain'],
+            'الظهور في البحث' => ['admin.website.seo', 'Admin/Website/ThemeSeo'],
         ];
     }
 

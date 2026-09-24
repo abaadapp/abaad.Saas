@@ -1,5 +1,5 @@
 @extends('store.ribbon.layout')
-@section('title', $t['checkoutTitle'].' — '.$business->name)
+@section('title', $t['checkoutTitle'].' — '.$seo['brand'])
 @section('content')
 <section class="rb-screen rb-wrap" style="padding:40px 24px" data-testid="rb-checkout-page">
     <h1 class="rb-h1" style="margin-bottom:28px">{{ $t['checkoutTitle'] }}</h1>

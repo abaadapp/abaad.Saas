@@ -37,12 +37,21 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** الشاشاتُ الأربع: الملفّ ← اسمُ تبويبه */
+    /**
+     * الشاشاتُ الستّ: الملفّ ← [التبويبُ الذي تُضيئه، المسارُ الذي يفتحها].
+     *
+     * و«التصميم» تبويبٌ يُضيئه المحرّر ولا يفتحه: هو يُحوّل إليه كما يُحوّل
+     * عند جاره إلى لوحة تصميمه (انظر `DesignController::index`).
+     *
+     * @var array<string, array{0: string, 1: string}>
+     */
     private const SCREENS = [
-        'ThemeSite.tsx' => 'admin.website.site',
-        'ThemeEditor.tsx' => 'admin.website.editor',
-        'ThemeShop.tsx' => 'admin.website.shop',
-        'ThemeDomain.tsx' => 'admin.website.domain',
+        'ThemeSite.tsx' => ['admin.website.site', 'admin.website.site'],
+        'ThemeEditor.tsx' => ['admin.website.design', 'admin.website.editor'],
+        'ThemePages.tsx' => ['admin.website.pages', 'admin.website.pages'],
+        'ThemeShop.tsx' => ['admin.website.shop', 'admin.website.shop'],
+        'ThemeDomain.tsx' => ['admin.website.domain', 'admin.website.domain'],
+        'ThemeSeo.tsx' => ['admin.website.seo', 'admin.website.seo'],
     ];
 
     private Business $shop;
@@ -88,7 +97,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
      */
     public function test_the_four_screens_wear_one_header(): void
     {
-        foreach (self::SCREENS as $file => $tab) {
+        foreach (self::SCREENS as $file => [$tab]) {
             $code = $this->screen($file);
 
             $this->assertStringContainsString('ThemeHeader', $code, $file.' بلا الترويسة المشتركة');
@@ -105,12 +114,12 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     {
         $seen = [];
 
-        foreach (self::SCREENS as $file => $tab) {
+        foreach (self::SCREENS as $file => [$tab]) {
             $this->assertArrayNotHasKey($tab, $seen, $tab.' يُضيء من شاشتين: '.($seen[$tab] ?? '').' و'.$file);
             $seen[$tab] = $file;
         }
 
-        $this->assertCount(4, $seen);
+        $this->assertCount(6, $seen);
     }
 
     /**
@@ -123,8 +132,18 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     {
         $strip = (string) file_get_contents(resource_path('js/Components/SectionTabs.tsx'));
 
-        $from = strpos($strip, 'export const THEME_TABS');
-        $this->assertNotFalse($from, 'لا شريطَ تبويباتٍ للواجهة الخاصّة');
+        /*
+         * والشريطُ واحدٌ لا شريطان: `THEME_TABS` صار اسمًا آخر لـ`WEBSITE_TABS`
+         * بعد أن صار لصاحب الواجهة ما لجاره. فيُقرأ من موضع القيم.
+         */
+        $this->assertStringContainsString(
+            'export const THEME_TABS = WEBSITE_TABS;',
+            $strip,
+            'شريطُ الواجهة الخاصّة انفصل عن شريط جاره — وقائمتان تفترقان',
+        );
+
+        $from = strpos($strip, 'export const WEBSITE_TABS');
+        $this->assertNotFalse($from, 'لا شريطَ تبويباتٍ لقسم الموقع');
 
         preg_match_all(
             "/routeName: '([^']+)'/",
@@ -132,12 +151,13 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             $matches,
         );
 
-        $this->assertCount(4, $matches[1]);
+        $this->assertCount(6, $matches[1]);
 
         foreach ($matches[1] as $name) {
             $this->assertNotNull(Route::getRoutes()->getByName($name), $name.' تبويبٌ إلى مسارٍ لا وجود له');
 
-            $this->actingAs($this->owner)->get(route($name))
+            // ويُتبَع التحويل: «التصميم» يصل إلى المحرّر لا إلى صفحةٍ له
+            $this->actingAs($this->owner)->followingRedirects()->get(route($name))
                 ->assertOk($name.' تبويبٌ يُعرض ثمّ يردّ من ضغطه');
         }
     }
@@ -158,7 +178,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
      */
     public function test_every_property_the_screens_read_is_actually_sent(): void
     {
-        foreach (self::SCREENS as $file => $tab) {
+        foreach (self::SCREENS as $file => [, $open]) {
             $code = $this->screen($file);
 
             $block = substr($code, $from = strpos($code, 'interface Props extends ThemeShell {'));
@@ -168,7 +188,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             preg_match_all('/^    ([a-zA-Z_]+): /m', $block, $m);
 
             $wanted = array_merge(['theme', 'site'], $m[1]);
-            $props = $this->actingAs($this->owner)->get(route($tab))->assertOk()
+            $props = $this->actingAs($this->owner)->get(route($open))->assertOk()
                 ->viewData('page')['props'];
 
             foreach ($wanted as $key) {
@@ -203,7 +223,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         }
         $where['store_sections'] = 'ThemeEditor.tsx';
 
-        foreach (['ThemeShop.tsx', 'ThemeDomain.tsx'] as $file) {
+        foreach (['ThemeShop.tsx', 'ThemeDomain.tsx', 'ThemePages.tsx', 'ThemeSeo.tsx'] as $file) {
             preg_match_all("/setData\('((?:store|site)_[a-z_]+)'/", $this->screen($file), $m);
 
             foreach (array_unique($m[1]) as $key) {
@@ -269,6 +289,12 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'store_on' => '1',
             'store_pay_cod' => '0',
             'store_pay_transfer' => '1',
+            // وما أضافته «الصفحات» و«الظهور في البحث»
+            'store_about_image' => '/storage/store/about.jpg',
+            'store_pages' => 'contact',
+            'store_seo_title' => 'ريبون لاونج — ورد وهدايا بمسقط',
+            'store_seo_desc' => 'باقاتُ وردٍ تُوصَّل في مسقط خلال اليوم نفسه.',
+            'store_seo_index' => '0',
         ];
 
         /*
@@ -279,13 +305,20 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
          * `settings`، وله حرّاسه (تفرّدُه، ورفضُ النشر بلا عنوان).
          */
         $drawn = [];
-        foreach (['ThemeShop.tsx', 'ThemeDomain.tsx'] as $file) {
+        foreach (['ThemeShop.tsx', 'ThemeDomain.tsx', 'ThemePages.tsx', 'ThemeSeo.tsx'] as $file) {
             preg_match_all("/setData\('(store_[a-z_]+)'/", $this->screen($file), $m);
             $drawn = array_merge($drawn, $m[1]);
         }
+
+        /*
+         * و«الصفحات» تكتب مفتاحَها بـ`router.post` لا بنموذج — فلا تلتقطه
+         * `setData`. ويُضمّ بيده، وإلّا بقي أثقلُ مقبضٍ في الشاشة بلا حارس:
+         * إطفاءُ صفحةٍ على زبائن متجرٍ مفتوح.
+         */
+        $drawn[] = 'store_pages';
         $drawn = array_values(array_unique($drawn));
 
-        $this->assertNotSame([], $drawn, 'لم يُقرأ من الشاشتين مقبضٌ واحد — الحارسُ يحرس لا شيء');
+        $this->assertNotSame([], $drawn, 'لم يُقرأ من الشاشات مقبضٌ واحد — الحارسُ يحرس لا شيء');
 
         foreach ($drawn as $key) {
             $this->assertArrayHasKey($key, $sample, $key.' مقبضٌ جديد بلا قيمةِ فحصٍ في هذا الحارس');
@@ -319,7 +352,8 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         foreach ($m[1] as $name) {
             $this->assertNotNull(Route::getRoutes()->getByName($name), $name.' بابٌ إلى مسارٍ لا وجود له');
 
-            $this->actingAs($this->owner)->get(route($name))
+            // ويُتبَع التحويل: «التصميم» بابٌ يصل إلى المحرّر لا إلى شاشةٍ له
+            $this->actingAs($this->owner)->followingRedirects()->get(route($name))
                 ->assertOk($name.' بابٌ يُرسم ثمّ يُصفع من يضغطه');
         }
     }

@@ -108,6 +108,16 @@ class MarketingToolsTest extends TestCase
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',
             'store_banner_image', 'store_tagline',
+            /*
+             * وصفحاتُ المتجر وصورةُ «من نحن» — تقرؤهما القائمةُ والمتحكّم
+             * (`Store\StoreNav` و`RibbonController::about`).
+             */
+            'store_pages', 'store_about_image',
+            /*
+             * وما يقرؤه غوغل — يُكتب في `<head>` كلّ صفحة (`Store\StoreSeo`
+             * ثمّ `store.ribbon.layout`).
+             */
+            'store_seo_title', 'store_seo_desc', 'store_seo_index',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

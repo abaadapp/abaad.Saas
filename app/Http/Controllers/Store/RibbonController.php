@@ -11,11 +11,14 @@ use App\Models\Product;
 use App\Models\StorePaymentIntent;
 use App\Models\Review;
 use App\Support\FlowerOrder;
+use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\Seo;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\GiftCard;
+use App\Support\Store\StoreNav;
+use App\Support\Store\StoreSeo;
 use App\Support\Store\StorePage;
 use App\Support\Store\WebCheckout;
 use App\Support\Storefront;
@@ -47,7 +50,7 @@ class RibbonController extends Controller
      * وهي من مسارات المتجر لا بابًا على حدة: فتُبنى لها الترويسةُ والتذييل
      * وتُقرأ بلغتها كأيّ صفحة، ويصحّ رابطُها على الطرق الثلاث إلى العنوان.
      */
-    private const PATHS = ['shop', 'cart', 'checkout', 'p', 'done', 'paying'];
+    private const PATHS = ['shop', 'about', 'contact', 'cart', 'checkout', 'p', 'done', 'paying'];
 
     /* ═══════════ الصفحات ═══════════ */
 
@@ -61,11 +64,24 @@ class RibbonController extends Controller
             abort(404);
         }
 
-        $ctx = $this->context($business, $base, $lang);
+        /*
+         * وصفحةٌ أطفأها صاحبُها أو فرغت تُردّ «غير موجود» — لا صفحةً بيضاء.
+         *
+         * القائمةُ لا ترسم رابطَها أصلًا (انظر `StoreNav::links`)، والرابطُ
+         * يبقى محفوظًا في متصفّحٍ ومفهرَسًا عند غوغل بعد أن تُطفأ. فيُسأل
+         * السؤالُ هنا أيضًا ولا يُكتفى بإخفاء الرابط: إخفاءُ رابطٍ ليس حراسة.
+         */
+        if (in_array($first, StoreNav::OPTIONAL, true) && ! StoreNav::has((int) $business->id, $first)) {
+            abort(404);
+        }
+
+        $ctx = $this->context($business, $base, $lang, $first ?? StoreNav::HOME);
 
         return match ($first) {
             null => $this->render('store.ribbon.home', $ctx + $this->home($business, $lang)),
             'shop' => $this->render('store.ribbon.shop', $ctx + $this->shop($business, $lang, request())),
+            'about' => $this->render('store.ribbon.about', $ctx + $this->about($business)),
+            'contact' => $this->render('store.ribbon.contact', $ctx + $this->contact($business)),
             'p' => $this->render('store.ribbon.product', $ctx + $this->product($business, (int) $second, $lang)),
             'cart' => $this->render('store.ribbon.cart', $ctx),
             'checkout' => $this->render('store.ribbon.checkout', $ctx + $this->checkoutData($business)),
@@ -251,6 +267,51 @@ class RibbonController extends Controller
         ];
     }
 
+    /**
+     * «من نحن» — نبذتُه بحروفها، وصورةٌ إن رفعها.
+     *
+     * والنصُّ هو الصفحة: ما لا نبذةَ فيه لا يصل هذه الدالّة أصلًا
+     * (انظر `StoreNav::has`). والصورةُ زينةٌ تُترك فراغًا إن لم تكن.
+     *
+     * والرفُّ يُقرأ ليُعرف أيُرسم زرُّ «تسوّق الآن» تحتها: قاعدةُ الواجهة
+     * نفسُها — لا وعدَ ببضاعةٍ على رفٍّ خالٍ.
+     */
+    private function about(Business $business): array
+    {
+        $bid = (int) $business->id;
+        $image = trim((string) (MarketingSettings::group($bid, 'website')['store_about_image'] ?? ''));
+
+        return [
+            'aboutText' => MerchantData::identity($bid)['about'],
+            'aboutImage' => $image !== '' ? $image : null,
+            'shelf' => $this->shown($bid)->exists(),
+        ];
+    }
+
+    /**
+     * «تواصل معنا» — ما كتبه في بيانات نشاطه ومتجره، لا حقولَ تُملأ مرّتين.
+     *
+     * ولا خريطةَ مُضمَّنة: تلك تحتاج مفتاحَ خرائط غوغل وثمنًا شهريًّا، وهي
+     * إطارٌ ثقيل يُحمَّل في كلّ فتحة. والرابطُ يفتح خريطةَ الزائر التي يعرفها
+     * على عنوان المحلّ — بلا مفتاحٍ ولا ثمن.
+     *
+     * ولا يُبنى إلّا على عنوانٍ مكتوب: رابطُ خرائطَ باسم المحلّ وحدَه يفتح
+     * على نتيجةٍ في بلدٍ آخر.
+     */
+    private function contact(Business $business): array
+    {
+        $bid = (int) $business->id;
+        $lines = StoreNav::contactLines($bid);
+        $address = $lines['address'] ?? '';
+
+        return [
+            'lines' => $lines,
+            'mapUrl' => $address !== ''
+                ? 'https://www.google.com/maps/search/?api=1&query='.rawurlencode($business->name.'، '.$address)
+                : null,
+        ];
+    }
+
     private function product(Business $business, int $id, string $lang): array
     {
         $bid = (int) $business->id;
@@ -347,18 +408,19 @@ class RibbonController extends Controller
 
     /* ═══════════ أدوات ═══════════ */
 
-    private function context(Business $business, string $base, string $lang): array
+    private function context(Business $business, string $base, string $lang, string $current = StoreNav::HOME): array
     {
         $bid = (int) $business->id;
         $identity = MerchantData::identity($bid);
         $s = WebCheckout::settings($bid);
+        $t = RibbonTexts::for($lang);
 
         return [
             'business' => $business,
             'base' => $base,
             'lang' => $lang,
             'dir' => $lang === 'en' ? 'ltr' : 'rtl',
-            't' => RibbonTexts::for($lang),
+            't' => $t,
             'logo' => $business->logo ?: null,
             'currency' => Storefront::currency($business),
             'identity' => $identity,
@@ -371,6 +433,14 @@ class RibbonController extends Controller
             'catsNav' => $this->categories($bid, $lang, null)->take(6)->all(),
             // وسطرُ التذييل في كلّ صفحة — فهو في القالب العامّ لا في الرئيسية
             'tagline' => StorePage::tagline($bid),
+            /*
+             * وقائمةُ الصفحات — في الترويسة والتذييل معًا، ومن مصدرٍ واحد.
+             *
+             * ولو بُنيت في القالبين لَبقي في أحدهما رابطٌ إلى صفحةٍ أُطفئت.
+             */
+            'nav' => StoreNav::links($bid, $base, $t, $current),
+            // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
+            'seo' => StoreSeo::head($business, $current, $t, $identity),
         ];
     }
 

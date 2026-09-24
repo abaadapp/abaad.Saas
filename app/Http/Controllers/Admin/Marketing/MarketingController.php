@@ -18,6 +18,7 @@ use App\Support\MarketingSettings;
 use App\Support\Seo;
 use App\Support\FlowerOrder;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\StoreSeo;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
 use App\Support\WhatsAppEvent;
@@ -336,6 +337,27 @@ class MarketingController extends Controller
             'store_block_href' => ['nullable', 'string', 'max:2048', new SafeLink],
             'store_banner_image' => ['nullable', 'string', 'max:2048', new SafeLink],
             'store_tagline' => ['nullable', 'string', 'max:60'],
+
+            /*
+             * وصفحاتُ المتجر — ما أذِن به من «من نحن» و«تواصل معنا».
+             *
+             * والقيمُ محصورةٌ في `StoreNav::OPTIONAL`: القائمةُ تُقرأ في
+             * `allowed` وتُرشَّح هناك، فاسمٌ غريبٌ يسقط. والحدُّ هنا يمنع
+             * سطرًا طويلًا يُخزَّن بلا معنى.
+             */
+            'store_pages' => ['nullable', 'string', 'max:120'],
+            'store_about_image' => ['nullable', 'string', 'max:2048', new SafeLink],
+
+            /*
+             * وما يقرؤه غوغل — والحدّان أوسعُ ممّا تنصح به الشاشة.
+             *
+             * ستّون حرفًا للعنوان ومئةٌ وستّون للوصف حدُّ ما يُعرض في نتيجة
+             * البحث لا حدُّ ما يصحّ حفظُه. والشاشةُ تقول له أين يُقصّ، ولا
+             * يُردّ حفظُه برسالةٍ لأنّه تجاوزه بحرفين.
+             */
+            'store_seo_title' => ['nullable', 'string', 'max:'.StoreSeo::TITLE_MAX],
+            'store_seo_desc' => ['nullable', 'string', 'max:'.StoreSeo::DESC_MAX],
+            'store_seo_index' => ['sometimes', 'boolean'],
         ]);
 
         /*
@@ -441,7 +463,7 @@ class MarketingController extends Controller
          */
         Domains::sync($business->refresh());
 
-        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card', 'store_block_on'] as $flag) {
+        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card', 'store_block_on', 'store_seo_index'] as $flag) {
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }

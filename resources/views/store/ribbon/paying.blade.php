@@ -1,5 +1,5 @@
 @extends('store.ribbon.layout')
-@section('title', $t['payingTitle'].' — '.$business->name)
+@section('title', $t['payingTitle'].' — '.$seo['brand'])
 @section('content')
 {{--
     عاد الزائرُ من بوّابة الدفع ولم يصل إشعارُها بعد.

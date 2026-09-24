@@ -386,9 +386,17 @@ export default function ThemeEditor({ site: shell, rows, values, order, maxFeatu
 
     return (
         <AdminLayout title="الموقع الإلكتروني">
+            {/*
+                والتبويبُ المضيءُ «التصميم» لا «المحرّر».
+
+                فالمحرّرُ لم يعد تبويبًا في الشريط: صار ما يصل إليه «التصميم»
+                كما يصل إليه عند جاره (انظر `DesignController::index`). ولو
+                تُرك اسمُ مساره لَأضاء المُطابِقُ بالبادئة تبويبًا بالقرعة —
+                ستّتُها تبدأ بـ`admin.website.`.
+            */}
             <ThemeHeader
                 site={shell}
-                current="admin.website.editor"
+                current="admin.website.design"
                 subtitle={t('رتّب أقسام صفحتك واكتب فيها — وما تحفظه يراه زبونك في الحال')}
             />
 

@@ -4,6 +4,7 @@ import {
     Globe,
     LayoutTemplate,
     Package,
+    ScanSearch,
     Search,
     ShoppingBag,
 } from 'lucide-react';
@@ -27,6 +28,11 @@ interface Props extends ThemeShell {
         shown: number;
         active: number;
         payments: number;
+        /** ما يُفتح من صفحاته الأربع — لا ما أذِن به وحده */
+        pages: number;
+        allPages: number;
+        /** أكتب عنوانَ البحث ووصفَه بيده أم بقيا محسوبين؟ */
+        seo: boolean;
     };
 }
 
@@ -53,11 +59,18 @@ export default function ThemeSite() {
 
     const doors = [
         {
-            label: 'صفحة المتجر',
+            label: 'التصميم',
             hint: 'رتّب أقسام صفحتك واكتب فيها — وما تحفظه يظهر في الحال',
-            icon: FileText,
-            route: 'admin.website.editor',
+            icon: LayoutTemplate,
+            route: 'admin.website.design',
             meta: `${number(counts.sections)} ${t('قسمًا ظاهرًا من')} ${number(counts.allSections)}`,
+        },
+        {
+            label: 'الصفحات',
+            hint: 'صفحاتُ متجرك الأربع — ما يُفتح منها، وأين يُكتب ما فيها',
+            icon: FileText,
+            route: 'admin.website.pages',
+            meta: `${number(counts.pages)} ${t('صفحةً تُفتح من')} ${number(counts.allPages)}`,
         },
         {
             label: 'المتجر والطلبات',
@@ -76,7 +89,7 @@ export default function ThemeSite() {
                     : t('لا طريقة دفع — لا يقبل طلبًا'),
         },
         {
-            label: 'العنوان والنشر',
+            label: 'الدومين',
             hint: 'أين يُفتح متجرك، واسمُه على العنوان، ومفتاحُ نشره',
             icon: Globe,
             route: 'admin.website.domain',
@@ -91,8 +104,21 @@ export default function ThemeSite() {
         },
         {
             label: 'الظهور في البحث',
-            hint: 'يفتح متجرك ويقول ما يراه محرّك البحث فيه',
+            hint: 'عنوانُ متجرك ووصفُه في نتائج غوغل — كما يقرؤهما من يبحث',
             icon: Search,
+            route: 'admin.website.seo',
+            meta: counts.seo ? t('مكتوبٌ بيدك') : t('محسوبٌ من اسمك ونبذتك'),
+        },
+        /*
+         * وفحصُ الظهور بابٌ آخر — لا اسمٌ ثانٍ للأوّل.
+         *
+         * ذاك يفتح متجرك ويقرأ ما فيه ويقول أين الخلل، وهذا يكتب ما يُعرض
+         * في النتيجة. وبابان باسمٍ واحد يجعلان أحدهما لا يُفتح أبدًا.
+         */
+        {
+            label: 'فحص متجرك في البحث',
+            hint: 'يفتح متجرك ويقول ما يراه محرّك البحث فيه',
+            icon: ScanSearch,
             route: 'admin.marketing.seo',
             meta: site.name,
         },

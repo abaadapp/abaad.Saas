@@ -1,5 +1,5 @@
 @extends('store.ribbon.layout')
-@section('title', $t['thanks'].' — '.$business->name)
+@section('title', $t['thanks'].' — '.$seo['brand'])
 @section('content')
 <section class="rb-screen" style="max-width:560px;margin:40px auto;padding:0 24px;text-align:center" data-testid="rb-done">
     <div style="width:64px;height:64px;border-radius:50%;background:var(--rb-olive);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:28px">✓</div>

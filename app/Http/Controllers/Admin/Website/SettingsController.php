@@ -8,12 +8,17 @@ use App\Models\PaymentGateway;
 use App\Models\Product;
 use App\Models\WebsiteSection;
 use App\Support\MarketingSettings;
+use App\Support\Seo;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\RibbonTexts;
+use App\Support\Store\StoreNav;
+use App\Support\Store\StoreSeo;
 use App\Support\Store\StorePage;
 use App\Support\Store\StoreReadiness;
 use App\Support\Store\WebCheckout;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Commerce;
+use App\Support\Website\MerchantData;
 use App\Support\Website\Readiness;
 use App\Support\Website\Templates;
 use Illuminate\Http\Request;
@@ -123,6 +128,7 @@ class SettingsController extends Controller
     {
         $bid = $this->bid();
         $business = Business::findOrFail($bid);
+        $site = MarketingSettings::group($bid, 'website');
 
         $active = Product::where('business_id', $bid)->where('active', true);
 
@@ -141,6 +147,19 @@ class SettingsController extends Controller
                 'shown' => (clone $active)->where('published', true)->count(),
                 'active' => $active->count(),
                 'payments' => count(WebCheckout::payments($bid)),
+                /*
+                 * وعددُ الصفحات ما يُفتح منها — لا ما أذِن به.
+                 *
+                 * «٤ من ٤» على متجرٍ لا نبذةَ فيه ولا هاتف رقمٌ يطمئنه على
+                 * صفحتين يردّهما عنوانُهما «غير موجود». انظر `StoreNav::has`.
+                 */
+                'pages' => count(array_filter(
+                    StoreNav::ALL,
+                    fn ($p) => StoreNav::has($bid, $p),
+                )),
+                'allPages' => count(StoreNav::ALL),
+                'seo' => trim((string) ($site['store_seo_title'] ?? '')) !== ''
+                    || trim((string) ($site['store_seo_desc'] ?? '')) !== '',
             ],
         ]);
     }
@@ -288,6 +307,10 @@ class SettingsController extends Controller
      */
     public function seo(): Response
     {
+        if (($theme = $this->theme()) !== null) {
+            return $this->themedSeo($theme);
+        }
+
         $site = $this->siteOrFail();
         $seo = $site->seo ?? [];
 
@@ -306,6 +329,39 @@ class SettingsController extends Controller
                 'seo' => $p->seo ?? ['title' => '', 'description' => '', 'image' => ''],
             ])->all(),
             'domain' => $this->domainState(),
+        ]);
+    }
+
+    /**
+     * «الظهور في البحث» لصاحب الواجهة الخاصّة — عنوانٌ ووصفٌ وإذنُ فهرسة.
+     *
+     * وكان عنوانُ متجره اسمَ نشاطه ووصفُه أوّلَ سطورِ نبذته، يُكتبان في
+     * `<head>` ولا يملك إليهما بابًا — وهما ما يُضغط أو لا يُضغط في نتيجة
+     * غوغل. ولجاره شاشةٌ يكتبهما فيها منذ أوّل يوم.
+     *
+     * ولا «صورةُ المشاركة» هنا: تلك تُقرأ من شعار نشاطه (`og:image` في
+     * القالب)، وحقلٌ ثانٍ لها يعني صورتين تفترقان.
+     */
+    private function themedSeo(string $theme): Response
+    {
+        $bid = $this->bid();
+        $site = MarketingSettings::group($bid, 'website');
+        $business = Business::findOrFail($bid);
+
+        return Inertia::render('Admin/Website/ThemeSeo', $this->themeShell($theme) + [
+            'seo' => [
+                'title' => (string) ($site['store_seo_title'] ?? ''),
+                'desc' => (string) ($site['store_seo_desc'] ?? ''),
+                'index' => ($site['store_seo_index'] ?? '1') === '1',
+            ],
+            /*
+             * وما يُعرض في غوغل حين لا يكتب شيئًا — يُحسب هنا لا في الشاشة.
+             *
+             * فالشاشةُ تعرض المعاينةَ بما سيُكتب فعلًا، ولو حسبَته بنفسها
+             * لَقالت غيرَ ما يقوله `StoreSeo` يومَ يتبدّل أحدُهما.
+             */
+            'fallback' => StoreSeo::head($business, StoreNav::HOME, RibbonTexts::for('ar'), MerchantData::identity($bid)),
+            'limits' => ['title' => Seo::TITLE_MAX, 'desc' => Seo::DESC_MAX],
         ]);
     }
 

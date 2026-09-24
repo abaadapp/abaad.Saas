@@ -1,5 +1,5 @@
 @extends('store.ribbon.layout')
-@section('title', $business->name)
+@section('title', $seo['title'])
 @section('content')
 <section class="rb-screen" data-testid="rb-landing">
     {{-- Hero --}}

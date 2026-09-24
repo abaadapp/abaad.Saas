@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\WebsitePage;
+use App\Support\MarketingSettings;
+use App\Support\Store\StoreNav;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\MerchantData;
@@ -26,6 +28,10 @@ class PageController extends Controller
 
     public function index(): Response
     {
+        if (($theme = $this->theme()) !== null) {
+            return $this->themed($theme);
+        }
+
         $site = $this->siteOrFail();
         $pages = $site->pages()->withCount('sections')->get();
 
@@ -45,6 +51,30 @@ class PageController extends Controller
             'statuses' => collect(WebsitePage::STATUSES)->map(fn ($l, $v) => [
                 'value' => $v, 'label' => __($l),
             ])->values()->all(),
+        ]);
+    }
+
+    /**
+     * «الصفحات» لصاحب الواجهة الخاصّة — الأربعُ نفسُها، وما يُفتح منها.
+     *
+     * ═══ ولا تُضاف صفحةٌ ولا تُحذف ═══
+     *
+     * وهو الفرقُ الوحيد عن شاشة جاره، وسببُه أنّ الصفحاتِ هنا مكتوبةٌ في
+     * قوالبَ لا صفوفًا في جدول (`store.ribbon.*`). و«صفحة جديدة» تعني
+     * صفحةً بلا قالبٍ يرسمها — زرٌّ يُضغط فلا يقع شيء.
+     *
+     * وما يملكه صاحبُها هنا حقيقيّ: يُطفئ «من نحن» و«تواصل معنا» ويُشعلهما،
+     * ويرفع صورةَ «من نحن»، ويفتح كلَّ صفحةٍ كما يراها زبونُه.
+     */
+    private function themed(string $theme): Response
+    {
+        $bid = $this->bid();
+        $site = MarketingSettings::group($bid, 'website');
+
+        return Inertia::render('Admin/Website/ThemePages', $this->themeShell($theme) + [
+            'rows' => StoreNav::rows($bid),
+            'optional' => StoreNav::OPTIONAL,
+            'aboutImage' => (string) ($site['store_about_image'] ?? ''),
         ]);
     }
 

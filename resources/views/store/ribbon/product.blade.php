@@ -1,5 +1,5 @@
 @extends('store.ribbon.layout')
-@section('title', $product['name'].' — '.$business->name)
+@section('title', $product['name'].' — '.$seo['brand'])
 @section('content')
 <section class="rb-screen rb-wrap" style="padding:40px 24px" data-testid="rb-product-page">
     <a href="{{ $base }}/shop" style="font-size:13px;display:inline-flex;align-items:center;min-height:44px">{{ $t['back'] }}</a>

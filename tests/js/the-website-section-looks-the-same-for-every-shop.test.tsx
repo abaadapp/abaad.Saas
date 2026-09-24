@@ -34,7 +34,7 @@ const draw = (over: Record<string, unknown> = {}) => {
             host: 'abaadapp.om',
         },
         readiness: [],
-        counts: { sections: 5, allSections: 7, shown: 12, active: 40, payments: 2 },
+        counts: { sections: 5, allSections: 7, shown: 12, active: 40, payments: 2, pages: 3, allPages: 4, seo: false },
         ...over,
     });
 
@@ -46,7 +46,7 @@ describe('شاشةُ «عام» للواجهة الخاصّة', () => {
         for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     });
 
-    /** والأبوابُ الخمسة مرسومةٌ كأبواب جاره */
+    /** والأبوابُ السبعة مرسومةٌ كأبواب جاره */
     it('ترسم أبوابها وتقول ما وراء كلّ باب', () => {
         draw();
 
@@ -58,9 +58,13 @@ describe('شاشةُ «عام» للواجهة الخاصّة', () => {
         expect(screen.getByText(/كيف يدفع زبونك وكيف يستلم/)).toBeInTheDocument();
         expect(screen.getByText(/أين يُفتح متجرك/)).toBeInTheDocument();
         expect(screen.getByText(/الأصناف التي يراها زبونك/)).toBeInTheDocument();
+        expect(screen.getByText(/صفحاتُ متجرك الأربع/)).toBeInTheDocument();
+        expect(screen.getByText(/كما يقرؤهما من يبحث/)).toBeInTheDocument();
         expect(screen.getByText(/ما يراه محرّك البحث/)).toBeInTheDocument();
 
         expect(screen.getByText('5 قسمًا ظاهرًا من 7')).toBeInTheDocument();
+        expect(screen.getByText('3 صفحةً تُفتح من 4')).toBeInTheDocument();
+        expect(screen.getByText('محسوبٌ من اسمك ونبذتك')).toBeInTheDocument();
         expect(screen.getByText('12 صنفًا معروضًا من 40')).toBeInTheDocument();
         expect(screen.getByText('ribbon.abaadapp.om')).toBeInTheDocument();
     });
@@ -85,7 +89,7 @@ describe('شاشةُ «عام» للواجهة الخاصّة', () => {
 
     /** ومتجرٌ بلا طريقة دفعٍ يُقال عنه ذلك — لا يُترك يُكتشف من زبونٍ لم يستطع الطلب */
     it('وتقول إنّ متجرًا بلا طريقة دفعٍ لا يقبل طلبًا', () => {
-        draw({ counts: { sections: 5, allSections: 7, shown: 12, active: 40, payments: 0 } });
+        draw({ counts: { sections: 5, allSections: 7, shown: 12, active: 40, payments: 0, pages: 3, allPages: 4, seo: false } });
 
         expect(screen.getByText('لا طريقة دفع — لا يقبل طلبًا')).toBeInTheDocument();
     });

@@ -41,6 +41,20 @@ class DesignController extends Controller
      */
     public function index(): RedirectResponse
     {
+        /*
+         * ومن لبس واجهةً خاصّة يُردّ إلى محرّره كما يُردّ جارُه — لا إلى ٤٠٤.
+         *
+         * و«التصميم» عنده صورةُ الواجهة وصورةُ الشريط وترتيبُ الأقسام وسطرُ
+         * التذييل، وكلُّها في المحرّر. فالتبويبُ يصل إلى ما يصل إليه عند
+         * جاره: لوحةَ شكلِ صفحته.
+         *
+         * ولا `panel=design`: تلك لوحةُ ألوانٍ وقوالبَ في محرّر البانِي، ولا
+         * ألوانَ تُبدَّل في واجهةٍ تصميمُها تصميمُ صاحبها.
+         */
+        if ($this->theme() !== null) {
+            return redirect()->route('admin.website.editor');
+        }
+
         $this->siteOrFail();
 
         return redirect()->route('admin.website.editor', ['panel' => 'design']);

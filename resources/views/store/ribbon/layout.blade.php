@@ -11,8 +11,17 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', $business->name)</title>
-    <meta name="description" content="{{ Str::limit($identity['about'] !== '' ? $identity['about'] : $business->name, 155) }}">
+    <title>@yield('title', $seo['title'])</title>
+    <meta name="description" content="{{ $seo['description'] }}">
+    {{--
+        وإذنُ الفهرسة يكتبه صاحبُ المتجر من «الظهور في البحث».
+
+        ومن يجرّب متجره على عنوانٍ حقيقيّ لا يريده في نتائج غوغل بعد،
+        وإخفاؤه بإطفاء النشر يُغلقه على زبائنه أيضًا — وهذان سؤالان لا سؤال.
+    --}}
+    @unless ($seo['index'])
+        <meta name="robots" content="noindex, nofollow" data-testid="rb-noindex">
+    @endunless
     @if ($canonical)
         <link rel="canonical" href="{{ $canonical }}{{ $base === '' ? request()->getPathInfo() : '' }}">
     @endif
@@ -95,6 +104,21 @@
             .rb-search { max-width: none; }
         }
 
+        /* قائمةُ الصفحات — شريطٌ تحت الترويسة، بحروف الواجهة ومسافاتها */
+        .rb-nav { border-top: 1px solid rgba(239,234,219,.18); }
+        .rb-nav-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 28px; }
+        .rb-nav-a { color: rgba(239,234,219,.82); font-size: 13px; letter-spacing: .14em; min-height: 46px; display: inline-flex; align-items: center; border-bottom: 1px solid transparent; }
+        .rb-nav-a:hover { color: var(--rb-cream); }
+        .rb-nav-a.is-on { color: var(--rb-cream); border-bottom-color: var(--rb-cream); }
+        @media (max-width: 1023px) { .rb-nav-in { padding: 0 16px; gap: 2px 18px; } .rb-nav-a { font-size: 12px; min-height: 42px; } }
+
+        /* بطاقاتُ «تواصل معنا» — بإطار الصفحة ولونها، لا بلونٍ جديد */
+        .rb-cbox { border: 1px solid var(--rb-border); border-radius: var(--rb-r); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
+        .rb-clabel { font-size: 12px; letter-spacing: .18em; color: #6b6a55; }
+        .rb-cbox a { color: #000; font-size: 16px; min-height: 44px; display: inline-flex; align-items: center; }
+        .rb-cbox a:hover { text-decoration: underline; }
+        .rb-cbox span:not(.rb-clabel) { font-size: 16px; line-height: 1.7; }
+
         /* أزرار */
         .rb-btn { height: 50px; padding: 0 28px; border: 0; background: var(--rb-olive); color: var(--rb-cream); font-size: 15px; cursor: pointer; border-radius: var(--rb-r); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
         .rb-btn:hover { background: var(--rb-olive-dark); } .rb-btn[disabled] { opacity: .5; cursor: not-allowed; }
@@ -169,6 +193,31 @@
             <a class="rb-hbtn rb-cartbtn" href="{{ $base }}/cart" data-testid="rb-cart-btn"><span>{{ $t['cart'] }}</span><span class="rb-count" data-rb-count>0</span></a>
         </div>
     </div>
+    {{--
+        ═══ وقائمةُ الصفحات — شريطٌ تحت الترويسة ═══
+
+        ومتجرُ الواجهة الخاصّة كان صفحةً ورفًّا وسلّةً بلا قائمةٍ أصلًا:
+        الزبون الذي يريد «من نحن» أو «تواصل معنا» لا يجد إليهما بابًا،
+        وهما ما يسأل عنه قبل أن يدفع لمن لا يعرفه.
+
+        وموضعُه صفٌّ ثانٍ لا عمودٌ رابعٌ في الصفّ الأوّل: ذاك مبنيٌّ على
+        ثلاث مناطق (بحثٌ وشعارٌ ويمين) بمقاساتٍ محسوبة، وحشرُ القائمة فيه
+        يُضيّق البحثَ ويزحزح الشعارَ عن الوسط. والألوانُ والخطُّ كما هي.
+
+        ولا يُرسم الشريطُ على قائمةٍ فارغة — انظر `StoreNav::links`.
+    --}}
+    @if (count($nav))
+        <nav class="rb-nav" data-testid="rb-nav" aria-label="{{ $t['footPages'] }}">
+            <div class="rb-nav-in">
+                @foreach ($nav as $rbLink)
+                    <a href="{{ $rbLink['href'] }}"
+                       class="rb-nav-a @if ($rbLink['current']) is-on @endif"
+                       data-testid="rb-nav-{{ $rbLink['key'] }}"
+                       @if ($rbLink['current']) aria-current="page" @endif>{{ $rbLink['label'] }}</a>
+                @endforeach
+            </div>
+        </nav>
+    @endif
 </header>
 
 <main>
@@ -192,6 +241,17 @@
                     @endif
                 </div>
             </div>
+            @if (count($nav))
+                {{-- وعمودُ الصفحات في التذييل من مصدر القائمة نفسِه --}}
+                <div>
+                    <h3>{{ $t['footPages'] }}</h3>
+                    <div style="display:flex;flex-direction:column">
+                        @foreach ($nav as $rbLink)
+                            <a href="{{ $rbLink['href'] }}" data-testid="rb-foot-{{ $rbLink['key'] }}">{{ $rbLink['label'] }}</a>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
             <div>
                 <h3>{{ $t['footShop'] }}</h3>
                 <div style="display:flex;flex-direction:column">

@@ -1,5 +1,5 @@
 @extends('store.ribbon.layout')
-@section('title', $t['cartTitle'].' — '.$business->name)
+@section('title', $t['cartTitle'].' — '.$seo['brand'])
 @section('content')
 <section class="rb-screen" style="max-width:760px;margin:0 auto;padding:40px 24px" data-testid="rb-cart-page">
     <h1 class="rb-h1" style="margin-bottom:24px">{{ $t['cartTitle'] }}</h1>

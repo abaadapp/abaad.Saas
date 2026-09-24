@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Models\Product;
 use App\Support\Activity;
+use App\Support\MarketingSettings;
+use App\Support\Storefront;
 use App\Support\Website\Domains;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -31,6 +34,18 @@ class DomainController extends Controller
 
     public function index(): Response
     {
+        /*
+         * وعنوانُ صاحب الواجهة الخاصّة ليس نطاقًا وحده.
+         *
+         * عنوانُه `‎{اسمه}.abaadapp.om‎` يسكن عمودًا في `businesses`، ونشرُه
+         * مفتاحٌ في إعداداته — وكلاهما كان في بطاقة «الإعدادات». فيُجمعان
+         * هنا مع اختيار الطريق: سؤالُ «أين يُفتح متجري؟» واحدٌ لا سؤالان في
+         * شاشتين.
+         */
+        if (($theme = $this->theme()) !== null) {
+            return $this->themed($theme);
+        }
+
         $site = $this->siteOrFail();
 
         return Inertia::render('Admin/Website/Domain', $this->shell($site) + [
@@ -44,6 +59,34 @@ class DomainController extends Controller
             'connect' => Domains::connectHost(),
             // أيخدم هذا الخادمُ نطاقاتِ التجّار أصلًا؟ — تُقال ولا تُخفى
             'serves' => (bool) config('storefront.custom_domains'),
+        ]);
+    }
+
+    /**
+     * «العنوان والنشر» لصاحب الواجهة الخاصّة.
+     *
+     * وثلاثةُ أشياءَ في شاشةٍ واحدة لأنّها سؤالٌ واحد: أيَّ طريقٍ اخترتَ إلى
+     * عنوانك، وما اسمُك عليه، وأمفتوحٌ هو للزبائن. ومن فرّقها على شاشتين
+     * نشر متجرًا بلا عنوان — وهي الحالُ التي يرفض `saveStore` إنشاءها.
+     */
+    private function themed(string $theme): Response
+    {
+        $bid = $this->bid();
+        $business = Business::findOrFail($bid);
+
+        return Inertia::render('Admin/Website/ThemeDomain', $this->themeShell($theme) + [
+            'path' => Storefront::path($business),
+            'pricing' => Storefront::pricing(),
+            'suggestion' => Storefront::suggest((string) $business->name),
+            'storeOn' => (MarketingSettings::group($bid, 'website')['store_on'] ?? '0') === '1',
+            /*
+             * وعددُ المعروض يُقال عند زرّ النشر لا في شاشةٍ أخرى.
+             *
+             * صفحةٌ فارغةٌ تُفقد الزبونَ ثقتَه ولا يعود إليها بعد أن رآها
+             * خالية — والتحذيرُ قبل الضغط أنفعُ من تقريرٍ بعده.
+             */
+            'productCount' => Product::where('business_id', $bid)
+                ->where('active', true)->where('published', true)->count(),
         ]);
     }
 

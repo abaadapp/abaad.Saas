@@ -1,12 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link, router, useForm } from '@inertiajs/react';
 import {
-    ArrowRight,
     Check,
     ChevronDown,
     ChevronLeft,
     CircleAlert,
-    ExternalLink,
     EyeOff,
     Loader2,
     RefreshCw,
@@ -21,6 +19,7 @@ import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import ThemeHeader, { type ThemeShell } from './theme/Shell';
 
 export interface EditorField {
     key: string;
@@ -42,15 +41,12 @@ export interface EditorRow {
     fields: EditorField[];
 }
 
-interface Props {
-    theme: string;
+interface Props extends ThemeShell {
     rows: EditorRow[];
     values: Record<string, string>;
     order: string[];
     maxFeatured: number;
     products: { id: number; name: string; image: string | null }[];
-    published: boolean;
-    url: string | null;
 }
 
 /** ما يقوله سطرُ الحال — وكلٌّ منها حالٌ وقعت لا حالٌ مفترضة */
@@ -74,15 +70,7 @@ type Status = 'clean' | 'saving' | 'saved' | 'failed';
  * الواجهةُ تقرأ الإعدادات مباشرةً، فما يُحفظ يراه زبونُه في اللحظة نفسِها.
  * وزرُّ نشرٍ لا يؤجّل شيئًا يَعِد بما لا يفعل.
  */
-export default function ThemeEditor({
-    rows,
-    values,
-    order,
-    maxFeatured,
-    products,
-    published,
-    url,
-}: Props) {
+export default function ThemeEditor({ site: shell, rows, values, order, maxFeatured, products }: Props) {
     const t = useTranslate();
 
     /* الترتيبُ محلّيٌّ لأنّه يُكتب بالضغط — والباقي يأتي من الخادم بعد كلّ حفظ */
@@ -397,22 +385,14 @@ export default function ThemeEditor({
     const foot = byKey.get('foot');
 
     return (
-        <AdminLayout title="صفحة متجرك">
-            <div className="mb-4 flex flex-wrap items-center gap-3">
-                <Button variant="ghost" size="sm" asChild>
-                    <Link href={route('admin.website.index')}>
-                        <ArrowRight />
-                        {t('لوحة الموقع')}
-                    </Link>
-                </Button>
+        <AdminLayout title="الموقع الإلكتروني">
+            <ThemeHeader
+                site={shell}
+                current="admin.website.editor"
+                subtitle={t('رتّب أقسام صفحتك واكتب فيها — وما تحفظه يراه زبونك في الحال')}
+            />
 
-                <div className="min-w-0 flex-1">
-                    <h1 className="truncate text-[17px] font-semibold text-[#111]">{t('صفحة متجرك')}</h1>
-                    <p className="truncate text-[13px] text-[#6b7280]">
-                        {t('رتّب أقسامها واكتب فيها — وما تحفظه يراه زبونك في الحال.')}
-                    </p>
-                </div>
-
+            <div className="mb-4 flex items-center justify-end gap-2">
                 <span className="flex items-center gap-1.5 text-[12px] text-[#6b7280]">
                     {status === 'saving' && <Loader2 className="size-3.5 animate-spin" />}
                     {status === 'saved' && <Check className="size-3.5 text-[#059669]" />}
@@ -420,29 +400,17 @@ export default function ThemeEditor({
                     {status !== 'clean' &&
                         t(status === 'saving' ? 'يُحفظ…' : status === 'saved' ? 'حُفظ' : 'تعذّر الحفظ')}
                 </span>
-
-                {url && published && (
-                    <Button variant="outline" size="sm" asChild>
-                        <a href={url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink />
-                            {t('افتح متجري')}
-                        </a>
-                    </Button>
-                )}
             </div>
 
             {/*
                 ولا يُشترط النشرُ لفتح المحرّر — فمن يجهّز متجره يرتّب صفحتَه
                 قبل أن يفتحها، ويُقال له إنّها لا تُفتح بعد ويُشار إلى بابها.
             */}
-            {! published && (
+            {! shell.published && (
                 <p className="mb-4 flex flex-wrap items-center gap-1.5 rounded-[12px] bg-[#eff6ff] px-4 py-3 text-[13px] leading-relaxed text-[#1d4ed8]">
                     {t('متجرك لا يفتحه أحدٌ بعد — رتّب صفحتك هنا، ثمّ انشره من')}
-                    <Link
-                        href={route('admin.settings.index', { section: 'website' })}
-                        className="font-medium underline"
-                    >
-                        {t('إعدادات متجرك')}
+                    <Link href={route('admin.website.domain')} className="font-medium underline">
+                        {t('العنوان والنشر')}
                     </Link>
                 </p>
             )}
@@ -471,12 +439,12 @@ export default function ThemeEditor({
                         والعنوانُ والنشر بطاقةٌ في الإعدادات — لا صفٌّ هنا.
                     */}
                     <p className="mt-4 flex flex-wrap items-center gap-1.5 text-[13px] text-[#6b7280]">
-                        {t('والدفعُ والتوصيلُ وعنوانُ متجرك ونشرُه في')}
+                        {t('والدفعُ والتوصيلُ في')}
                         <Link
-                            href={route('admin.settings.index', { section: 'website' })}
+                            href={route('admin.website.shop')}
                             className="inline-flex items-center gap-1 font-medium text-[#111] underline"
                         >
-                            {t('إعدادات متجرك')}
+                            {t('المتجر والطلبات')}
                             <ChevronLeft className="size-3.5" />
                         </Link>
                     </p>

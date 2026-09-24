@@ -3,8 +3,15 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
+use App\Models\Business;
+use App\Models\PaymentGateway;
+use App\Models\Product;
 use App\Models\WebsiteSection;
 use App\Support\MarketingSettings;
+use App\Support\Store\CheckoutFields;
+use App\Support\Store\StorePage;
+use App\Support\Store\StoreReadiness;
+use App\Support\Store\WebCheckout;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Commerce;
 use App\Support\Website\Readiness;
@@ -54,6 +61,18 @@ class SettingsController extends Controller
      */
     public function general(): Response
     {
+        /*
+         * ومن لبس واجهةً خاصّة يرى الشاشةَ نفسَها بشكلها نفسِه.
+         *
+         * وكانت `siteOrFail` تردّه إلى لوحة التشغيل، فيبقى ضبطُ متجره كلُّه
+         * في بطاقةٍ داخل «الإعدادات» بينما لجاره ستُّ شاشاتٍ بشريط تبويبات.
+         * والشكلُ ليس زينة: من فتح لوحتين مختلفتين للشيء نفسه لا يعرف أين
+         * يبحث عن مقبض.
+         */
+        if (($theme = $this->theme()) !== null) {
+            return $this->themedGeneral($theme);
+        }
+
         $site = $this->siteOrFail();
         $pages = $site->pages()->withCount('sections')->get();
 
@@ -88,9 +107,93 @@ class SettingsController extends Controller
         ]);
     }
 
+    /**
+     * «عام» لصاحب الواجهة الخاصّة — حالُ متجره وأبوابُه.
+     *
+     * ═══ وما يختلف عن أختِها يختلف عن حقّ ═══
+     *
+     * لا «نشر التغييرات» ولا «النسخ السابقة» ولا «وضع الصيانة»: الواجهةُ
+     * تقرأ الإعدادات مباشرةً فما يُحفظ يصل زبونَه في اللحظة نفسِها، ولا
+     * مسوّدةَ لها تُنشر ولا لقطةَ تُستعاد. وزرٌّ يَعِد بتأجيلٍ لا يقع كذبةٌ
+     * تُقرأ مرّةً ثمّ يُترك الزرّ.
+     *
+     * والأبوابُ خمسةٌ كأبواب جاره — وكلُّها تقود إلى شاشةٍ قائمة.
+     */
+    private function themedGeneral(string $theme): Response
+    {
+        $bid = $this->bid();
+        $business = Business::findOrFail($bid);
+
+        $active = Product::where('business_id', $bid)->where('active', true);
+
+        return Inertia::render('Admin/Website/ThemeSite', $this->themeShell($theme) + [
+            /*
+             * ودليلُ التجهيز أوّلُ ما يُقرأ — وهو موضعُه.
+             *
+             * كان في بطاقةٍ داخل «الإعدادات»، وهذه شاشةُ «حالِ موقعك»:
+             * من يفتحها يفتحها ليعرف أين هو.
+             */
+            'readiness' => StoreReadiness::steps($business),
+            'counts' => [
+                'sections' => count(StorePage::order($bid)),
+                'allSections' => count(StorePage::SECTIONS),
+                // والمعروضُ لا الفعّال: تاجرٌ أخفى أصنافه كلَّها يقرأ رقمًا يطمئنه
+                'shown' => (clone $active)->where('published', true)->count(),
+                'active' => $active->count(),
+                'payments' => count(WebCheckout::payments($bid)),
+            ],
+        ]);
+    }
+
+    /**
+     * «المتجر والطلبات» لصاحب الواجهة الخاصّة — قبضُه وتسليمُه وما يسأل عنه.
+     *
+     * وكان هذا كلُّه في بطاقة «الإعدادات ‹ الموقع»، وهي بطاقةٌ واحدةٌ فيها
+     * ثلاثون مقبضًا: العنوانُ والنشرُ والدفعُ والتوصيلُ وحقولُ الطلب وكرتُ
+     * الهدية والصفحةُ — بلا فاصلٍ بين ما يُضبط مرّةً وما يُراجَع كلَّ موسم.
+     */
+    private function themedStore(string $theme): Response
+    {
+        $bid = $this->bid();
+
+        $gateway = PaymentGateway::where('business_id', $bid)
+            ->where('provider', PaymentGateway::PAYMOB)->first();
+
+        return Inertia::render('Admin/Website/ThemeShop', $this->themeShell($theme) + [
+            'settings' => MarketingSettings::group($bid, 'website'),
+            /*
+             * وحقولُ الطلب تصل محسوبةً لا فارغة.
+             *
+             * `CheckoutFields` تقرأ الفراغَ «ما كان» — فشاشةٌ تعرض فراغًا
+             * تقول لصاحبها إنّ حقلًا مطفأٌ وهو يُسأل عنه في متجره.
+             */
+            'fieldStates' => CheckoutFields::all($bid),
+            'fulfilments' => CheckoutFields::fulfilments($bid),
+            /*
+             * وبوّابةُ الدفع — حالُها لا مفاتيحُها.
+             *
+             * السرّان لا يخرجان من الخادم أبدًا: خصائصُ Inertia تُقرأ في
+             * مصدر الصفحة بضغطةٍ واحدة.
+             */
+            'gateway' => [
+                'active' => (bool) ($gateway?->active ?? false),
+                'public_key' => (string) ($gateway?->public_key ?? ''),
+                'card_integration_id' => (string) ($gateway?->card_integration_id ?? ''),
+                'has_secret' => filled($gateway?->secret_key),
+                'has_hmac' => filled($gateway?->hmac_secret),
+                'ready' => (bool) ($gateway?->ready() ?? false),
+            ],
+        ]);
+    }
+
     /** المتجر: ما يراه الزائر وما يستطيع فعله */
     public function store(): Response
     {
+        // والواجهةُ الخاصّة تبيع فعلًا — فتبويبُها يضبط قبضَها وتسليمَها
+        if (($theme = $this->theme()) !== null) {
+            return $this->themedStore($theme);
+        }
+
         $site = $this->siteOrFail();
         $bid = $this->bid();
         $marketing = MarketingSettings::group($bid, 'website');

@@ -158,14 +158,8 @@ export default function Hub() {
                         {/* والضبطُ لمن يملكه — انظر Permissions::WEBSITE_CONFIGURE */}
                         {may.configure && (
                             <Button variant="ghost" asChild>
-                                {/* ولمن لبس واجهةً خاصّة لا شاشاتِ بانٍ: ضبطُه في بطاقة المتجر بالإعدادات */}
-                                <Link
-                                    href={
-                                        theme
-                                            ? route('admin.settings.index', { section: 'website' })
-                                            : route('admin.website.site')
-                                    }
-                                >
+                                {/* والبابُ واحدٌ للطريقين: شاشاتُ الموقع بشريط تبويباتها */}
+                                <Link href={route('admin.website.site')}>
                                     <Settings />
                                     {t('إعدادات الموقع')}
                                 </Link>

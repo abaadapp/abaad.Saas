@@ -153,14 +153,18 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
         $this->assertSame(1, Website::where('business_id', $this->plain->id)->count());
     }
 
+    /**
+     * وما بقي من شاشات البانِي — وهو ما **لا وجود له** عنده.
+     *
+     * «التصميم» قالبٌ يُبدَّل وألوانٌ تُختار، وواجهتُه تصميمُ صاحبها في قالبٍ
+     * واحد. و«الصفحات» صفحاتٌ تُضاف وتُحذف، وواجهتُه صفحةٌ واحدة يفتح
+     * محرّرَها تبويبُ «صفحة المتجر». و«السيو» يكتب في صفٍّ لا يملكه.
+     */
     public static function builderScreens(): array
     {
         return [
-            'الإعدادات العامّة' => ['admin.website.site'],
             'التصميم' => ['admin.website.design'],
             'الصفحات' => ['admin.website.pages'],
-            'الدومين' => ['admin.website.domain'],
-            'المتجر' => ['admin.website.shop'],
             'السيو' => ['admin.website.seo'],
         ];
     }
@@ -176,24 +180,44 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
     }
 
     /**
-     * والمحرّرُ وحده ليس منها — صار له محرّرُ صفحته على المسار نفسِه.
+     * ═══ وأربعُ شاشاتٍ صارت له على مسارات جاره نفسِها ═══
      *
-     * وكان يردّه كسائر شاشات البانِي، وهو الصوابُ يومَ لم يكن له محرّر: لا
-     * صفحاتِ له في `websites` ولا أقسامَ تُركَّب. فصار يفتح `ThemeEditor` —
-     * وهو يقرأ إعداداتِ متجره لا صفًّا في جدول البانِي.
+     * وهذا هو الشكلُ الذي طُلب: من فتح «الموقع الإلكتروني» في أيّ متجرٍ من
+     * متاجر أبعاد يجد ترويسةً وشريطَ تبويباتٍ وبطاقةَ حالٍ وأبوابًا. وكان
+     * صاحبُ الواجهة الخاصّة يُساق إلى بطاقةٍ في «الإعدادات» فيها ثلاثون
+     * مقبضًا بلا شريطٍ ولا أبواب — لوحتان مختلفتان للشيء نفسه.
      *
-     * والأهمُّ أنّ موقعًا بُني له قبل أن يلبس واجهته **لا يُفتح** هنا: لو
-     * فُتح لَرتّب أقسامَ موقعٍ لا يراه زبونٌ أبدًا.
+     * والمساراتُ نفسُها لا مساراتٌ ثانية: رابطٌ يُحفظ أو يُشارَك يعمل عند
+     * الاثنين، ولا يتعلّم أحدُهما عنوانًا لا يعرفه الآخر.
+     *
+     * @return array<string, array{0: string, 1: string}>
      */
-    public function test_the_editor_opens_his_own_page_not_the_builders(): void
+    public static function themedScreens(): array
     {
+        return [
+            'عام' => ['admin.website.site', 'Admin/Website/ThemeSite'],
+            'صفحة المتجر' => ['admin.website.editor', 'Admin/Website/ThemeEditor'],
+            'المتجر والطلبات' => ['admin.website.shop', 'Admin/Website/ThemeShop'],
+            'العنوان والنشر' => ['admin.website.domain', 'Admin/Website/ThemeDomain'],
+        ];
+    }
+
+    #[DataProvider('themedScreens')]
+    public function test_the_themed_shop_has_its_own_screens_on_the_same_paths(string $route, string $component): void
+    {
+        // وحتى من بُني له موقعٌ قبل أن يلبس واجهته: لا يُفتح له البانِي هنا
         Builder::create($this->business, Blueprints::STORE, 'mono', $this->owner->id);
 
-        $this->assertSame('Admin/Website/ThemeEditor', $this->props($this->owner, 'admin.website.editor')['component']);
+        $this->assertSame($component, $this->props($this->owner, $route)['component']);
+    }
 
-        // والجارُ يبقى على محرّر البانِي
+    /** والجارُ يبقى على شاشات البانِي — لا يُساق إلى شاشات واجهةٍ لا يلبسها */
+    #[DataProvider('themedScreens')]
+    public function test_a_plain_shop_keeps_the_builder_screens(string $route, string $component): void
+    {
         Builder::create($this->plain, Blueprints::STORE, 'mono', $this->plainOwner->id);
-        $this->assertSame('Admin/Website/Editor', $this->props($this->plainOwner, 'admin.website.editor')['component']);
+
+        $this->assertNotSame($component, $this->props($this->plainOwner, $route)['component']);
     }
 
     /* ═══════════ والمعاينةُ تعاين الواجهة ═══════════ */

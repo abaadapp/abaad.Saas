@@ -55,13 +55,12 @@ const draw = (rows: EditorRow[], over: Record<string, unknown> = {}) => {
     return render(
         <ThemeEditor
             theme="ribbon"
+            site={{ name: 'RIBBON', published: true, url: 'https://ribbon.abaadapp.om', slug: 'ribbon', host: 'abaadapp.om' }}
             rows={rows}
             values={{ store_headline: '', store_tagline: '', store_banner_image: '' }}
             order={order}
             maxFeatured={4}
             products={[]}
-            published
-            url="https://ribbon.abaadapp.om"
             {...over}
         />,
     );
@@ -178,7 +177,7 @@ describe('محرّرُ صفحة المتجر', () => {
 
     /** ومتجرٌ لم يُنشر يُحرَّر — فمن يجهّزه يرتّب صفحتَه قبل أن يفتحها */
     it('ويُفتح لمتجرٍ لم يُنشر بعد', () => {
-        draw([HERO, FOOT], { published: false, url: null });
+        draw([HERO, FOOT], { site: { name: 'RIBBON', published: false, url: null, slug: null, host: 'abaadapp.om' } });
 
         expect(screen.getByText(/متجرك لا يفتحه أحدٌ بعد/)).toBeInTheDocument();
         expect(screen.getByText('الواجهة')).toBeInTheDocument();

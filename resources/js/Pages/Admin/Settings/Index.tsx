@@ -26,7 +26,7 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
-import StoreReadinessList, { type ReadinessStep } from '@/Components/StoreReadinessList';
+import { type ReadinessStep } from '@/Components/StoreReadinessList';
 import StatusPill from '@/Components/StatusPill';
 import Toggle from '@/Components/Toggle';
 import {
@@ -733,7 +733,17 @@ export default function SettingsIndex() {
     };
 
     const storeLive = (site?.store_on ?? '0') === '1';
-    const showStoreCard = store.path === 'sub' || storeLive;
+    /*
+     * ═══ وبطاقةُ المتجر لمن لا واجهةَ خاصّةَ له ═══
+     *
+     * من لبس واجهةً خاصّة صار ضبطُ متجره كلُّه في «الموقع الإلكتروني»:
+     * صفحتُه في محرّرها، ودفعُه وتوصيلُه في «المتجر والطلبات»، وعنوانُه
+     * ونشرُه في «العنوان والنشر» — بشريط تبويباتٍ كشريط جاره.
+     *
+     * وبقاءُ نصفها هنا يعني مقبضين لشيءٍ واحد في شاشتين: يُبدَّل في إحداهما
+     * فتكتب الأخرى فوقه عند أوّل حفظ — بلا خطأٍ ولا رسالة.
+     */
+    const showStoreCard = ! store.themed && (store.path === 'sub' || storeLive);
     const showOwnCard = store.path === 'own' || (site?.site_domain ?? '') !== '';
 
     /*
@@ -857,19 +867,19 @@ export default function SettingsIndex() {
                 {store.serves === 'theme' || context?.storefrontTheme ? (
                     <SettingsSection
                         title="موقعك"
-                        description="واجهةُ RIBBON — موقعُك بتصميمك، بلا قوالب جاهزة. وما تراه أدناه يضبطه: عنوانُه ونشرُه ودفعُه وتوصيلُه."
+                        description="واجهةُ RIBBON — موقعُك بتصميمك، بلا قوالب جاهزة. وضبطُه كلُّه في قسم «الموقع الإلكتروني»."
                         icon={LayoutTemplate}
                         action={
                             <Button variant="outline" size="sm" asChild>
-                                <Link href={route('admin.website.index')}>
-                                    {t('افتح لوحة موقعك')}
+                                <Link href={route('admin.website.site')}>
+                                    {t('افتح شاشات متجرك')}
                                     <ChevronLeft />
                                 </Link>
                             </Button>
                         }
                     >
                         <p className="text-[13px] leading-relaxed text-[#6b7280]">
-                            {t('ما يطلبه زبونك من الموقع يصل «الطلبات» طلبًا حقيقيًّا بقناة الموقع.')}
+                            {t('صفحتُه وعنوانُه ودفعُه وتوصيلُه — كلُّها في «الموقع الإلكتروني»، بشريط تبويباتٍ كشريط سائر المتاجر.')}
                         </p>
                     </SettingsSection>
                 ) : (
@@ -892,7 +902,7 @@ export default function SettingsIndex() {
                 </SettingsSection>
                 )}
 
-                {choosing ? (
+                {! store.themed && choosing ? (
                     <DomainChooser
                         pricing={store.pricing}
                         domain={store.domain}
@@ -903,13 +913,15 @@ export default function SettingsIndex() {
                     />
                 ) : (
                 <>
-                <DomainPathStrip
-                    path={store.path as Exclude<DomainPath, ''>}
-                    pricing={store.pricing}
-                    onChange={() => setChoosing(true)}
-                />
+                {! store.themed && (
+                    <DomainPathStrip
+                        path={store.path as Exclude<DomainPath, ''>}
+                        pricing={store.pricing}
+                        onChange={() => setChoosing(true)}
+                    />
+                )}
 
-                {store.path === 'new' && (
+                {! store.themed && store.path === 'new' && (
                     <NewDomainCard
                         pricing={store.pricing}
                         domain={store.domain}
@@ -967,25 +979,6 @@ export default function SettingsIndex() {
                         }
                         divided
                     >
-                        {/*
-                            ═══ ودليلُ التجهيز أوّلُ ما يُقرأ ═══
-
-                            صار في هذه الشاشة نحوُ ثلاثين مقبضًا للمتجر،
-                            وكلُّها تعمل — ولا شيءَ فيها يقول لصاحبها أين هو
-                            الآن. فيفتح متجرَه ويجده خاليًا ولا يعرف السبب،
-                            أو يُطفئ طريقتَي الدفع فيتوقّف القبولُ بلا كلمة.
-
-                            واللازمُ يُفصل عن المستحسن: «بلا عنوانٍ لا يُفتح»
-                            ليست كـ«بلا نبذةٍ يبدو أقلَّ ثقة»، وخلطُهما في
-                            قائمةٍ حمراءَ واحدة يجعله يقرأ الكلَّ تحذيرًا فلا
-                            يقرأ شيئًا.
-                        */}
-                        {store.readiness && (
-                            <SettingsGroup title="تجهيز متجرك">
-                                <StoreReadinessList steps={store.readiness} />
-                            </SettingsGroup>
-                        )}
-
                         <SettingsGroup title="عنوان متجرك">
                         {/* ١ — العنوان */}
                         <Field
@@ -1378,38 +1371,6 @@ export default function SettingsIndex() {
                                         <Input type="number" min={0} step="0.001" dir="ltr" value={storeForm.data.store_gift_card_price} onChange={(e) => storeForm.setData('store_gift_card_price', e.target.value)} aria-label={t('سعر كرت الهدية')} />
                                     </Field>
                                 </div>
-                            </SettingsGroup>
-                        )}
-
-                        {/*
-                            ═══ وصفحةُ المتجر انتقلت إلى محرّرها ═══
-
-                            كانت هنا: صورةُ الواجهة وصورةُ الشريط وسطرُ
-                            التذييل وقائمةُ الأقسام والمختاراتُ والقسمُ الحرّ
-                            — نحوُ عشرين مقبضًا مرتّبةً بترتيب ما أُضيف لا
-                            بترتيب ما يُرى. فصورةُ الشريط على بعد شاشتين من
-                            المفتاح الذي يُشغّل الشريط، وسطرُ التذييل فوق
-                            قائمة الأقسام وهو ليس قسمًا.
-
-                            وسائرُ متاجر أبعاد لها محرّرٌ يعرض أقسامَ الصفحة
-                            بترتيبها ومعاينةً إلى جانبها. فصار لصاحب الواجهة
-                            الخاصّة مثلُه — على المسار نفسِه.
-
-                            ولا يُترك هنا نصفُها: مقبضان لشيءٍ واحد في شاشتين
-                            يفترقان عند أوّل حفظ.
-                        */}
-                        {store.themed && (
-                            <SettingsGroup title="صفحة متجرك">
-                                <p className="mb-4 text-[13px] leading-relaxed text-[#6b7280]">
-                                    {t('أقسامُ صفحتك وترتيبُها وصورُها ونصوصُها تُحرَّر في محرّر الصفحة — كلُّ حقلٍ في القسم الذي يظهر فيه، والصفحةُ إلى جانبها تتحدّث بعد كلّ حفظ.')}
-                                </p>
-                                <Button type="button" variant="outline" asChild>
-                                    <Link href={route('admin.website.editor')}>
-                                        <LayoutTemplate />
-                                        {t('حرّر صفحة متجرك')}
-                                        <ChevronLeft />
-                                    </Link>
-                                </Button>
                             </SettingsGroup>
                         )}
 

@@ -31,14 +31,23 @@ describe('لوحةُ الواجهة الخاصّة', () => {
         Object.assign(pageProps, { translations: {}, context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 } } });
     });
 
-    it('تقول إنّ الموقع واجهةُ RIBBON وتقود الإعدادات إلى بطاقة المتجر لا إلى البانِي', () => {
+    /*
+     * و«إعدادات الموقع» تقود إلى شاشات موقعه — لا إلى بطاقةٍ في «الإعدادات».
+     *
+     * صار له أربعُ شاشاتٍ على مسارات جاره نفسِها بشريط تبويباتٍ واحد، فلا
+     * يُساق إلى لوحةٍ ثانيةٍ للشيء نفسِه. انظر `SectionTabs::THEME_TABS`.
+     */
+    it('تقول إنّ الموقع واجهةُ RIBBON وتقود الإعدادات إلى شاشات موقعه', () => {
         Object.assign(pageProps, base);
         render(<Hub />);
 
         expect(screen.getByText(/واجهة RIBBON/)).toBeInTheDocument();
         expect(screen.getByText('منشور')).toBeInTheDocument();
         expect(screen.getByRole('link', { name: /افتح الموقع/ })).toHaveAttribute('href', 'https://ribbon.abaadapp.om');
-        expect(screen.getByRole('link', { name: /إعدادات الموقع/ })).toHaveAttribute('href', '/admin.settings.index/website');
+        expect(screen.getByRole('link', { name: /إعدادات الموقع/ })).toHaveAttribute('href', '/admin.website.site');
+
+        // وزرٌّ يفتح محرّرَ صفحته مباشرةً — صفحتُه واحدة، فلا يمرّ بـ«الصفحات»
+        expect(screen.getByRole('link', { name: /حرّر صفحتك/ })).toHaveAttribute('href', '/admin.website.editor');
 
         // والطلباتُ حقيقيّةٌ تصل «الطلبات» — لا «تصلك على واتساب»
         expect(screen.getByText(/طلبًا حقيقيًّا بقناة الموقع/)).toBeInTheDocument();

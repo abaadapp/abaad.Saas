@@ -7,6 +7,7 @@ use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
 use App\Support\Permissions;
+use App\Support\Storefront;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Domains;
 use App\Support\Website\MerchantData;
@@ -82,8 +83,14 @@ trait Concerns
      * تعرض عليه أن يبني موقعًا ثانيًا لن يراه زبونٌ قطّ، وتقول له إنّ موقعه
      * الحقيقيّ ليس موقعه.
      *
-     * فمن لبس واجهةً خاصّة يرى لوحةَ تشغيلها في `‎/website‎`، وكلُّ شاشات
-     * البانِي — الاختيارُ والمحرّرُ والصفحاتُ والتصميم — تردّه إليها.
+     * فمن لبس واجهةً خاصّة يرى لوحةَ تشغيلها في `‎/website‎`، وله على
+     * المسارات نفسِها أربعُ شاشاتٍ من صنعها: «عام» و«صفحة المتجر»
+     * و«المتجر والطلبات» و«العنوان والنشر» — بشريط تبويباتٍ كشريط جاره
+     * (انظر `SectionTabs::THEME_TABS`).
+     *
+     * وما بقي من شاشات البانِي يردّه: «التصميم» قالبٌ يُبدَّل ولا قوالبَ
+     * له، و«الصفحات» صفحاتٌ تُضاف وصفحتُه واحدة، و«السيو» يكتب في صفٍّ لا
+     * يملكه.
      */
     protected function theme(): ?string
     {
@@ -102,7 +109,13 @@ trait Concerns
     {
         $site = $this->site();
 
-        // ومن لبس واجهةً خاصّة لا شاشاتِ بانٍ له — ولو بقي له موقعٌ بُني قبلها
+        /*
+         * ومن لبس واجهةً خاصّة لا يُفتح له البانِي — ولو بقي له موقعٌ بُني قبلها.
+         *
+         * والشاشاتُ التي صار له مثلُها لا تبلغ هنا أصلًا: تتفرّع قبلها إلى
+         * صنعتها (انظر `SettingsController::general` و`EditorController::show`).
+         * فما يصل هذه الدالّة هو ما لا وجود له عنده.
+         */
         if (! $site || $this->theme() !== null) {
             throw new HttpResponseException(redirect()->route('admin.website.index'));
         }
@@ -148,6 +161,45 @@ trait Concerns
                 'changes' => $site->hasUnpublishedChanges(),
                 'url' => $this->publicUrl(),
                 'tokens' => $site->tokens(),
+            ],
+        ];
+    }
+
+    /**
+     * ترويسةُ شاشات الواجهة الخاصّة — الاسمُ والحالُ والعنوان.
+     *
+     * ═══ ولمَ تُحسب هنا لا في كلّ شاشة ═══
+     *
+     * أربعُ شاشاتٍ تعرضها في رأسها (عام، صفحة المتجر، المتجر والطلبات،
+     * العنوان والنشر). ولو حُسبت في كلٍّ منها لقالت إحداها «منشور» وقالت
+     * أختُها «غير منشور» عن المتجر نفسه — وهو ما وقع في شاشات البانِي قبل
+     * أن تُجمع في `shell`.
+     *
+     * و«منشور» هنا **ما يُخدم على العنوان فعلًا** لا ما يقوله المفتاح:
+     * `Storefront::serves` تقرأ العنوانَ والمفتاحَ والواجهةَ معًا.
+     *
+     * @return array<string, mixed>
+     */
+    protected function themeShell(string $theme): array
+    {
+        $bid = $this->bid();
+        $business = Business::findOrFail($bid);
+        $published = Storefront::serves($business) === Storefront::SERVES_THEME;
+
+        return [
+            'theme' => $theme,
+            'site' => [
+                'name' => (string) $business->name,
+                'published' => $published,
+                /*
+                 * والعنوانُ لا يُعرض إلّا إن كان يُفتح.
+                 *
+                 * رابطٌ يُعرض على متجرٍ غير منشورٍ يُضغط فيردّ «غير موجود» —
+                 * فيظنّ صاحبُه العطبَ في النظام لا في مفتاحٍ أطفأه بيده.
+                 */
+                'url' => $published ? Domains::canonical($bid) : null,
+                'slug' => $business->site_slug,
+                'host' => Storefront::domain(),
             ],
         ];
     }

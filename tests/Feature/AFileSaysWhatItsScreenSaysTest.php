@@ -66,14 +66,26 @@ class AFileSaysWhatItsScreenSaysTest extends TestCase
 
     private User $owner;
 
+    private Branch $branch;
+
     protected function setUp(): void
     {
         parent::setUp();
         app()->setLocale('ar');
 
+        // فرعٌ يشغل الرقم 1 ثمّ يزول — فلا يحمله شيء. وليس تزيينًا: على
+        // PostgreSQL لا يتراجع العدّادُ مع تراجع المعاملة، فيعلو بين ملفٍّ
+        // وآخر ولا يبقى صفٌّ برقم 1. فاختبارٌ يكتب `branch_id => 1` بيده
+        // يمرّ على SQLite ويسقط على قاعدة الإنتاج بـ«مفتاحٌ غيرُ موجود»:
+        // وقع فعلًا في CI على 8ef8d2e4، وأسقط ستّ حالاتٍ من هذا الملفّ.
+        $neighbour = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
+        $gone = Branch::create(['business_id' => $neighbour->id, 'name' => 'فرعُ الجار']);
+
         $this->shop = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
-        Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
+        $this->branch = Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
         JobTitle::create(['business_id' => $this->shop->id, 'name' => 'مدير', 'role' => 'admin']);
+
+        $gone->forceDelete();   // حذفٌ ناعمٌ يُبقي الصفَّ، والمفتاحُ الأجنبيُّ يقنع به
 
         $this->owner = User::create([
             'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
@@ -91,7 +103,7 @@ class AFileSaysWhatItsScreenSaysTest extends TestCase
         $season = Season::create(['business_id' => $this->shop->id, 'name' => 'العيد',
             'starts_at' => now()->subDays(20), 'ends_at' => now()->addDays(20), 'active' => true]);
 
-        $order = Order::create(['business_id' => $this->shop->id, 'branch_id' => 1,
+        $order = Order::create(['business_id' => $this->shop->id, 'branch_id' => $this->branch->id,
             'customer_id' => $customer->id, 'customer_name' => 'زبونة', 'employee_name' => 'المالك',
             'user_id' => $this->owner->id, 'number' => 'INV-1', 'status' => 'مكتمل',
             'payment_status' => 'مدفوع', 'is_held' => false, 'payment_method' => 'نقدي',
@@ -114,7 +126,7 @@ class AFileSaysWhatItsScreenSaysTest extends TestCase
             'supplier_ref' => 'SI-1', 'issued_at' => now(), 'subtotal' => 100, 'tax' => 5,
             'total' => 105, 'approval_status' => 'معتمد', 'status' => 'غير مدفوعة']);
 
-        StockAdjustment::create(['business_id' => $this->shop->id, 'branch_id' => 1,
+        StockAdjustment::create(['business_id' => $this->shop->id, 'branch_id' => $this->branch->id,
             'product_id' => $product->id, 'number' => 'SA-1', 'quantity_delta' => -2,
             'cost_at_time' => 5, 'reason' => 'تلف', 'created_by' => $this->owner->id,
             'adjusted_at' => now()]);

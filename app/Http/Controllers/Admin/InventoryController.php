@@ -342,19 +342,29 @@ class InventoryController extends Controller
          * فرعٍ فيه عشرة يتركه سالبًا بخمسة — رقمٌ لا وجود له في الواقع، تقرؤه
          * التقارير وتطرحه من قيمة المخزون.
          */
-        if ($delta < 0 && $book + $delta < 0) {
-            return back()->withInput()->withErrors([
-                'quantity' => __('رصيد :branch من هذا الصنف :n فقط — لا يمكن صرف أكثر منه.', [
-                    'branch' => $branch->name, 'n' => $book,
-                ]),
-            ]);
-        }
-
         if ($delta === 0) {
             return back()->with('toast', ['msg' => __('لا فرق — لم تتغيّر الكمية'), 'type' => 'info']);
         }
 
-        \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
+        /*
+         * والحارسُ هو حارسُ شاشة التعديلات بعينه — لا قاعدةٌ ثانية.
+         *
+         * القفلُ أعلاه يُسلسل البابَ على نفسه، ولا يُقاس على SQLite. والشرطُ
+         * في `draw` يُنفَّذ في القاعدة مع الخصم نفسِه، فهو واحدٌ على
+         * القاعدتين. انظر `BranchStock::draw`.
+         */
+        if (! \App\Models\BranchStock::draw($branch->id, $product->id, max(0, -$delta))) {
+            return back()->withInput()->withErrors([
+                'quantity' => __('رصيد :branch من هذا الصنف :n فقط — لا يمكن صرف أكثر منه.', [
+                    'branch' => $branch->name,
+                    'n' => \App\Models\BranchStock::bookOf($this->bid(), $product->id, $branch->id),
+                ]),
+            ]);
+        }
+
+        if ($delta > 0) {
+            \App\Models\BranchStock::adjust($this->bid(), $branch->id, $product->id, $delta);
+        }
         // بلا قصٍّ عند الصفر: رصيد الفرع يأخذ الفرق كاملًا، فقصُّ الإجماليّ
         // وحده يكسر التوازن في صمت (والحارس أعلاه يمنع النزول تحت الصفر أصلًا)
         // وبزيادةٍ ذرّيّة لا بإسنادِ مجموعٍ حُسب قبل القفل

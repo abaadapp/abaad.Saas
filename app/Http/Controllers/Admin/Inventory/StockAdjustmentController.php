@@ -223,17 +223,30 @@ class StockAdjustmentController extends Controller
                  * والقراءةُ داخل المعاملة بعد التوزيع: منتجٌ لم يُوزَّع بعدُ
                  * رصيدُه كلُّه في الفرع الأوّل، وهي قاعدةُ `books` نفسُها.
                  */
-                $book = BranchStock::bookOf($bid, $product->id, $branch->id);
-
-                if ($delta < 0 && $book + $delta < 0) {
+                /*
+                 * ═══ والقياسُ والكتابةُ جملةٌ واحدة ═══
+                 *
+                 * كان الرصيد يُقرأ هنا ثمّ يُقارن ثمّ يُخصم في ثلاث جُمل.
+                 * وتلفان يقعان معًا على رصيدٍ عشرة يقرآن «عشرة» كلاهما
+                 * فيمرّان: قِستُها فوجدتُ **ناقصَ ستّة** في الفرع وفي
+                 * الإجماليّ، وسطرَي تعديلٍ كلاهما ‎−٨، بلا رسالةٍ تُردّ بها
+                 * الثانية. انظر `BranchStock::draw`.
+                 *
+                 * والرقمُ في الرسالة يُقرأ بعد الردّ لا قبله: من رُدّ يريد
+                 * أن يعرف ما في الرفّ **الآن**، لا ما كان قبل خصم زميله.
+                 */
+                if (! BranchStock::draw($branch->id, $product->id, max(0, -$delta))) {
                     throw new RuntimeException(__('رصيد :branch من هذا الصنف :n فقط — لا يمكن صرف أكثر منه.', [
-                        'branch' => $branch->name, 'n' => $book,
+                        'branch' => $branch->name,
+                        'n' => BranchStock::bookOf($bid, $product->id, $branch->id),
                     ]));
                 }
 
-                $product->increment('quantity', $delta);
+                if ($delta > 0) {
+                    BranchStock::adjust($bid, $branch->id, $product->id, $delta);
+                }
 
-                BranchStock::adjust($bid, $branch->id, $product->id, $delta);
+                $product->increment('quantity', $delta);
 
                 InventoryMovement::create([
                     'business_id' => $bid,

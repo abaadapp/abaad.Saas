@@ -501,6 +501,38 @@ class ACardIsNotAnOrderUntilTheMoneyArrivesTest extends TestCase
         $this->assertSame(5, (int) $this->rose->refresh()->quantity);
     }
 
+    /**
+     * والسرُّ المقروءُ سرُّ **صاحبِ النيّة** — لا سرُّ أوّلِ بوّابةٍ في الجدول.
+     *
+     * الحارسُ فوقه يردّ توقيعَ الجار، ويبقى أخضرَ لو قُرئت «أيُّ بوّابةٍ
+     * موجودة»: بوّابةُ هذا المحلّ أسبقُ في الجدول فتُصاب صدفةً. فيُقلب
+     * الترتيبُ هنا — بوّابةُ الجار تُكتب أوّلًا — ويُسأل السؤالُ المقابل:
+     * أيُصدَّق صاحبُ النيّة بسرّه هو؟
+     *
+     * ولو قُرئ سرُّ الجار لَرُدّ كلُّ إشعارٍ صحيح: يُقبض المالُ ولا يُنشأ
+     * طلبٌ أبدًا — ولا يظهر العطبُ إلّا من زبونٍ دفع ولم يصله شيء.
+     */
+    public function test_the_secret_read_is_the_intents_own_not_whichever_exists(): void
+    {
+        $neighbour = Business::create([
+            'name' => 'الجار', 'type' => 'محل ورد', 'status' => 'نشط', 'site_slug' => 'jar',
+        ]);
+
+        // أسبقُ صفٍّ في الجدول — فمن يقرأ «أوّلَ بوّابة» يقرأ هذه
+        PaymentGateway::create([
+            'business_id' => $neighbour->id, 'provider' => PaymentGateway::PAYMOB,
+            'active' => true, 'public_key' => 'pk_jar', 'secret_key' => 'sk_jar',
+            'hmac_secret' => 'jar_secret_value', 'card_integration_id' => '111',
+        ]);
+
+        $intent = $this->intent();
+
+        $this->fire($this->notice($intent))->assertOk();
+
+        $this->assertSame(1, Order::count(), 'رُدّ إشعارٌ صحيح — قُرئ سرُّ غيرِ صاحب النيّة');
+        $this->assertSame(StorePaymentIntent::PAID, $intent->refresh()->status);
+    }
+
     /* ═══════════ وصفحةُ العودة تقرأ ولا تكتب ═══════════ */
 
     /**
@@ -641,5 +673,26 @@ class ACardIsNotAnOrderUntilTheMoneyArrivesTest extends TestCase
     public function test_the_signature_reads_twenty_fields(): void
     {
         $this->assertCount(20, Paymob::HMAC_FIELDS);
+    }
+
+    /**
+     * وسرٌّ فارغٌ لا يُصدّق شيئًا — والفراغُ لا يُوقّع.
+     *
+     * `verify` بابٌ عامّ. ولو سقط شرطُه الأوّل لَصدَّق إشعارًا موقَّعًا
+     * بسرٍّ فارغ — وهو سرٌّ يعرفه كلُّ أحد، فيوقّع كلُّ أحد. ولا يمسك ذلك
+     * حارسٌ من حرّاس الباب: `Paymob::gateway` تردّ `null` لبوّابةٍ ناقصة
+     * فلا تصل هذه الحالُ إليه اليوم. فتُسأل الدالّةُ وحدَها — وهي التي
+     * يُنادى عليها من موضعٍ آخرَ غدًا.
+     */
+    public function test_an_empty_secret_verifies_nothing(): void
+    {
+        $obj = ['success' => true, 'id' => 998877];
+
+        $this->assertFalse(Paymob::verify($obj, Paymob::signature($obj, ''), ''), 'سرٌّ فارغٌ صدَّق إشعارًا');
+        $this->assertFalse(Paymob::verify($obj, '', 'hmac_secret_value'), 'توقيعٌ فارغٌ صُدِّق');
+        $this->assertFalse(Paymob::verify($obj, null, 'hmac_secret_value'), 'إشعارٌ بلا توقيعٍ صُدِّق');
+
+        // ولا يقول «لا» لكلّ شيء: الصحيحُ يمرّ
+        $this->assertTrue(Paymob::verify($obj, Paymob::signature($obj, 'hmac_secret_value'), 'hmac_secret_value'));
     }
 }

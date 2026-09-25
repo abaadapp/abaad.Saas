@@ -23,30 +23,40 @@ use Tests\TestCase;
  * نفسَها، فيمسك **الحقلَ القادم** الذي يُضاف غدًا بلا اسم — وهو الذي لا
  * يمسكه شيءٌ آخر.
  *
- * ═══ وما لا يحرسه بعد ═══
+ * ═══ ومداه لوحةُ التاجر كلُّها ═══
  *
- * المدى هنا قسمان: المالية وواتساب. ومسحٌ على متحكّمات `Admin` كلِّها يوم
- * كُتب هذا وجد **٢٣٣ حقلًا** بلا اسمٍ عربيّ في ٧٥ ملفًّا — أكثرُها في
- * المتجر الإلكترونيّ والمنتجات والرواتب. فالبقيّةُ عطبٌ قائمٌ **مُصرَّحٌ
- * به** لا مسكوتٌ عنه، وتوسيعُ `SECTIONS` سطرٌ واحد متى أُريد إغلاقُه.
+ * لا قائمةَ أقسامٍ تُكتب بيد: يمشي على `app/Http/Controllers/Admin` كلِّه.
+ * وقائمةٌ مكتوبةٌ تحرس ما فيها وتسكت عمّا حولها — وأوّلُ كتابةٍ لهذا الملفّ
+ * كانت كذلك: المالية وواتساب وحدهما، و**٢٢٣ حقلًا** في ٧٣ ملفًّا آخرَ تُنادى
+ * بأسماء أعمدتها ولا يقول الحارسُ شيئًا، لأنّه لا يقرؤها أصلًا.
+ *
+ * ومتحكّمُ المنصّة (`SuperAdmin`) خارجَه: من يقرأ رسائلَه مالكُ المنصّة، لا
+ * تاجرٌ يفتح شاشةً بالعربيّة.
  */
 class AFieldIsNamedInArabicBeforeItIsRefusedTest extends TestCase
 {
     /**
-     * المتحكّمات التي يُحرَس مداها — بمسارها تحت `app/Http/Controllers/Admin`.
+     * متحكّمات لوحة التاجر كلُّها — بمسارها النسبيّ، مرتَّبةً.
      *
-     * @var list<string>
+     * @return list<string>
      */
-    private const SECTIONS = [
-        // المالية
-        'Finance/BankAccountController', 'Finance/ChartController', 'Finance/FixedAssetController',
-        'Finance/JournalController', 'Finance/OverviewController', 'FinanceController',
-        'ExpenseController', 'ExpenseTypeController', 'ChequeController',
-        'BankStatementController', 'ReceivablesController',
+    private static function sections(): array
+    {
+        $base = app_path('Http/Controllers/Admin');
+        $found = [];
 
-        // واتساب
-        'WhatsAppController', 'WhatsAppOnboardingController',
-    ];
+        $walk = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($base));
+
+        foreach ($walk as $file) {
+            if ($file->getExtension() === 'php') {
+                $found[] = str_replace([$base.DIRECTORY_SEPARATOR, '.php'], '', $file->getPathname());
+            }
+        }
+
+        sort($found);
+
+        return $found;
+    }
 
     /** مفتاحُ قاعدةٍ في `validate` يبدأ بإحدى هذه — به يُعرف أنّه حقلٌ لا خيار */
     private const RULE_HEADS = 'required|nullable|sometimes|boolean|array|integer|numeric|string|date|file|image|in:';
@@ -102,7 +112,7 @@ class AFieldIsNamedInArabicBeforeItIsRefusedTest extends TestCase
         $names = (require base_path('lang/ar/validation.php'))['attributes'];
         $nameless = [];
 
-        foreach (self::SECTIONS as $section) {
+        foreach (self::sections() as $section) {
             $path = app_path('Http/Controllers/Admin/'.$section.'.php');
 
             $this->assertFileExists($path, 'مسارُ متحكّمٍ تبدّل — والحارسُ يمشي على ملفٍّ لا وجود له');
@@ -145,17 +155,26 @@ class AFieldIsNamedInArabicBeforeItIsRefusedTest extends TestCase
     }
 
     /**
-     * ومداه يشمل واتساب فعلًا — لا المالية وحدها.
+     * ومداه لوحةُ التاجر كلُّها — لا قسمًا منها.
      *
-     * حقولُ الردّ التلقائيّ وطريقةِ الإرسال تُقرأ من ملفّاتها، فلو ضاق
-     * `SECTIONS` يومًا إلى المالية سقط هذا لا الحارسُ الأوّل: ذاك يبقى
-     * أخضرَ لأنّه لا يجد مخالفةً فيما لم يعد يقرؤه.
+     * حارسُ «لا مخالفة» يبقى أخضرَ حين يضيق مداه: لا يجد مخالفةً فيما لم
+     * يعد يقرؤه. فيُسأل هنا عن العدد وعن أسماءٍ من أقسامٍ متباعدة — لو
+     * ضاقت الشجرةُ إلى مجلّدٍ واحد سقط هذا قبله.
      */
-    public function test_the_walk_actually_covers_the_whatsapp_screens(): void
+    public function test_the_walk_covers_the_whole_merchant_panel(): void
     {
+        $sections = self::sections();
+
+        $this->assertGreaterThan(60, count($sections), 'ضاق المدى إلى '.count($sections).' ملفًّا');
+
+        foreach (['Finance/JournalController', 'WhatsAppOnboardingController',
+            'Marketing/MarketingController', 'ProductController', 'Payroll/PayrollRunController'] as $section) {
+            $this->assertContains($section, $sections, 'خرج «'.$section.'» من مدى الحارس');
+        }
+
         $seen = [];
 
-        foreach (self::SECTIONS as $section) {
+        foreach ($sections as $section) {
             $path = app_path('Http/Controllers/Admin/'.$section.'.php');
 
             foreach (self::nameless((string) file_get_contents($path), []) as $field) {
@@ -163,7 +182,7 @@ class AFieldIsNamedInArabicBeforeItIsRefusedTest extends TestCase
             }
         }
 
-        foreach (['cooldown_hours', 'mode', 'waba_id', 'purchased_at', 'entry_date'] as $field) {
+        foreach (['cooldown_hours', 'mode', 'entry_date', 'store_headline', 'basic_salary'] as $field) {
             $this->assertContains($field, $seen, 'لم يمرّ الحارسُ على «'.$field.'» أصلًا');
         }
     }
@@ -171,9 +190,9 @@ class AFieldIsNamedInArabicBeforeItIsRefusedTest extends TestCase
     /**
      * والخريطةُ تُقرأ فعلًا — لا تُكتب فتُهمَل.
      *
-     * الحارسُ أعلاه يقرأ الملفَّ نصًّا، فلو تبدّل موضعُ `attributes` أو
-     * تبدّلت طريقةُ لارافل في قراءته لَبقي أخضرَ على رسائلَ إنجليزيّة. فيُسأل
-     * المترجمُ نفسُه عن حقلٍ واحد: أيُخرج عربيًّا؟
+     * الحارسان فوقه يقرآن الملفَّ نصًّا، فلو تبدّل موضعُ `attributes` أو
+     * تبدّلت طريقةُ لارافل في قراءته لَبقيا أخضرين على رسائلَ إنجليزيّة.
+     * فيُسأل المترجمُ نفسُه: أيُخرج عربيًّا؟
      */
     public function test_the_map_is_what_the_translator_actually_reads(): void
     {
@@ -182,6 +201,7 @@ class AFieldIsNamedInArabicBeforeItIsRefusedTest extends TestCase
         $validator = validator(['lines' => [['debit' => 'س']]], [
             'purchased_at' => ['required', 'date'],
             'cooldown_hours' => ['required', 'integer'],
+            'store_headline' => ['required', 'string'],
             'lines.*.debit' => ['required', 'numeric'],
         ]);
 
@@ -189,7 +209,7 @@ class AFieldIsNamedInArabicBeforeItIsRefusedTest extends TestCase
 
         $said = implode(' | ', $validator->errors()->all());
 
-        foreach (['تاريخ الشراء', 'المهلة بين ردّين', 'المدين'] as $arabic) {
+        foreach (['تاريخ الشراء', 'المهلة بين ردّين', 'عنوان المتجر', 'المدين'] as $arabic) {
             $this->assertStringContainsString($arabic, $said);
         }
 

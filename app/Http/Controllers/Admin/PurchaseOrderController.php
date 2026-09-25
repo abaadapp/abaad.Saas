@@ -438,13 +438,17 @@ class PurchaseOrderController extends Controller
             $data['items'] ?? [],
         ));
 
+        /*
+         * وبالنسبة التي سيحفظ بها `store` — لا بغيرها.
+         *
+         * المعاينةُ ورقةٌ يوقّع عليها التاجر، فلو حسبت الضريبةَ بقاعدةٍ ثانية
+         * لَخرج من الطابعة غيرُ ما حُفظ.
+         */
         $totals = PurchaseOrderTotals::compute(
             $lines,
             (float) ($data['supplier_discount'] ?? 0),
             (float) ($data['shipping_cost'] ?? 0),
-            ($data['tax_rate'] ?? null) !== null && $data['tax_rate'] !== ''
-                ? (float) $data['tax_rate']
-                : PurchaseOrderTotals::taxRateFor($bid),
+            $this->taxRate($request, $bid),
         );
 
         /*
@@ -533,6 +537,32 @@ class PurchaseOrderController extends Controller
                 : __('حُفظ المورد الافتراضي'),
             'type' => 'success',
         ]);
+    }
+
+    /**
+     * نسبةُ الضريبة على هذه الورقة — المكتوبةُ تعلو، والغائبةُ تسقط إلى المتجر.
+     *
+     * ═══ والفرقُ بين «أفرغَه» و«لم يُرسله» فرقٌ في المال ═══
+     *
+     * كان الفارغُ والغائبُ سواءً: كلاهما يسقط إلى نسبة المتجر. والشاشةُ ترسل
+     * الحقلَ دائمًا — فمن مسحه لأنّ مورّدَه غيرُ مسجَّلٍ ضريبيًّا كان يرى على
+     * شاشته مئةً ويُحفظ له مئةٌ وخمسة. لا رسالةَ ولا تنبيه: رقمٌ يُرى وغيرُه
+     * يُكتب، وهو بعينُه ما بُني `PurchaseOrderTotals` كلُّه ليمنعه.
+     *
+     * ولا يقف عند الورقة: `SupplierInvoices::match` تقابل سندَ المورّد
+     * بإجماليّ الأمر. فسندُه بمئةٍ يُقابَل بأمرٍ بمئةٍ وخمسة ⇒ **يُمنع**،
+     * بمقدار ضريبةٍ لم يفرضها أحد.
+     *
+     * والمفتاحُ الحاضر — ولو فارغًا — قولٌ صريح: «هذا المورّد لا يفرض شيئًا».
+     * والغائبُ سكوت: تكاملٌ قديم لا يعرف الحقلَ أصلًا يبقى على ما كان.
+     */
+    private function taxRate(Request $request, int $bid): float
+    {
+        if (! $request->has('tax_rate')) {
+            return PurchaseOrderTotals::taxRateFor($bid);
+        }
+
+        return (float) $request->input('tax_rate');
     }
 
     public function store(Request $request)
@@ -648,10 +678,8 @@ class PurchaseOrderController extends Controller
             $items,
             (float) ($data['supplier_discount'] ?? 0),
             (float) ($data['shipping_cost'] ?? 0),
-            // والمكتوبةُ على الورقة تعلو، وفارغةً تسقط إلى نسبة المتجر
-            ($data['tax_rate'] ?? null) !== null && $data['tax_rate'] !== ''
-                ? (float) $data['tax_rate']
-                : PurchaseOrderTotals::taxRateFor($bid),
+            // والمكتوبةُ تعلو، والغائبةُ وحدَها تسقط إلى نسبة المتجر — انظر `taxRate`
+            $this->taxRate($request, $bid),
         );
 
         // وخصمٌ أكبرُ من البضاعة يُردّ برسالة لا يُحصر صامتًا
@@ -745,6 +773,19 @@ class PurchaseOrderController extends Controller
             }
 
             throw $e;
+        }
+
+        /*
+         * ونموذجٌ أُرسل مرّتين لا يترك ورقتَه الثانية على القرص.
+         *
+         * المرفقُ يُخزَّن قبل المعاملة — فلو ردّ الحارسُ الطلبَ الثاني إلى
+         * أمره الأوّل بقيت نسخةٌ لا صفَّ يشير إليها: ورقةُ مورّدٍ فيها
+         * أسعارُ شرائك تجلس على القرص أبدًا، ولا يعرف بها أحد. والسؤالُ عن
+         * الصفّ لا عن المفتاح: إن لم يكن هذا المسارُ هو المكتوبَ فيه فهو
+         * يتيم.
+         */
+        if ($stored && $po->attachment !== $stored) {
+            Storage::disk('local')->delete($stored);
         }
 
         // وسطرُ السجلّ يُقرأ في شاشة «النشاط» — فالمبلغُ بعملة المتجر لا مثبَّتًا
@@ -1004,11 +1045,21 @@ class PurchaseOrderController extends Controller
             ]);
         }
 
+        /*
+         * والورقةُ المحذوفة تأخذ أوراقَها معها — المرفقَ والإيصالَ كليهما.
+         *
+         * كان الإيصالُ وحده يُمحى، فيبقى مرفقُ الأمر — عرضُ سعر المورّد —
+         * على القرص الخاصّ بلا صفٍّ يشير إليه: لا يُقرأ لأنّ بابَه يسأل عن
+         * أمرٍ لم يعد موجودًا، ولا يُمحى لأنّ لا أحد يعرف به. نفاياتٌ فيها
+         * أسعارُ شرائك، تتراكم مع كلّ أمرٍ كُتب خطأً ثمّ حُذف.
+         */
         $num = $po->number;
-        if ($po->receipt) {
-            Storage::disk('local')->delete($po->receipt);
-        }
+        $papers = array_filter([$po->attachment, $po->receipt]);
         $po->delete();
+
+        foreach ($papers as $paper) {
+            Storage::disk('local')->delete($paper);
+        }
         Activity::log('deleted', 'حذف أمر الشراء: '.$num);
 
         /*

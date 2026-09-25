@@ -636,7 +636,23 @@ class SupplierInvoiceController extends Controller
             ]);
         }
 
+        /*
+         * والسندُ المحذوف يأخذ ورقةَ مورّده معه.
+         *
+         * كان الصفُّ يُمحى ويبقى الملفُّ على القرص الخاصّ بلا ما يشير إليه:
+         * لا يُقرأ لأنّ بابَه يسأل عن سندٍ لم يعد موجودًا، ولا يُمحى لأنّ لا
+         * أحد يعرف به. وهي فاتورةُ مورّدٍ فيها أسعارُ شرائك — انظر أختَها
+         * في `PurchaseOrderController::destroy`.
+         *
+         * والملفُّ يُمحى **بعد** الصفّ: لو سقطت الكتابةُ بقيت الورقةُ مقروءةً
+         * من صفِّها، والعكسُ يترك صفًّا يعِد بملفٍّ لا وجود له.
+         */
+        $paper = $invoice->attachment;
         $invoice->delete();
+
+        if ($paper) {
+            Storage::disk('local')->delete($paper);
+        }
 
         Activity::log('deleted', 'حذف السند: '.$invoice->supplier_ref, ['subject_id' => $invoice->id]);
 

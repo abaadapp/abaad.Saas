@@ -42,7 +42,14 @@ class PurchaseRegisterController extends Controller
 
         $supplierId = $request->query('supplier');
 
-        $orders = PurchaseOrder::where('business_id', $bid)->with('supplier')
+        /*
+         * وعددُ الأصناف يُقرأ مع الصفّ لا بعده.
+         *
+         * كان `$o->items()->count()` داخل الرسم: استعلامٌ لكلّ سطر. وشهرٌ
+         * فيه مئتا أمرٍ يفتح مئتي استعلامٍ زائد لعمودٍ واحد — وهو حملٌ ينمو
+         * بنمو المتجر، فلا يُرى في متجرٍ جديد ويخنق القديم.
+         */
+        $orders = PurchaseOrder::where('business_id', $bid)->with('supplier')->withCount('items')
             ->when($span, fn ($q) => $q->whereBetween('ordered_at', $span))
             ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
             ->orderByDesc('ordered_at')->get()
@@ -63,7 +70,7 @@ class PurchaseRegisterController extends Controller
                 'source' => 'أمر شراء',
                 'total' => (float) $o->total,
                 'status' => $o->status,
-                'items' => $o->items()->count(),
+                'items' => (int) $o->items_count,
             ]);
 
         // السند المربوط بأمرٍ هو الشراء نفسه بورقةٍ ثانية — فلا يُعدّ معه

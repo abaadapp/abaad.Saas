@@ -103,7 +103,10 @@ class Bank
     public static function total(int $businessId): float
     {
         $accounts = BankAccount::where('business_id', $businessId)->with('account')->get();
-        $sum = (float) $accounts->sum(fn (BankAccount $a) => $a->balance());
+
+        // أرصدةُ الأوراق كلِّها باستعلامٍ واحد — انظر `Account::balancesFor`
+        $balances = Account::balancesFor($accounts->pluck('account'));
+        $sum = (float) $accounts->sum(fn (BankAccount $a) => $balances[$a->account_id] ?? 0.0);
 
         $system = Account::where('business_id', $businessId)->where('system_key', 'bank')->first();
         $owned = $accounts->pluck('account_id')->filter()->map(fn ($id) => (int) $id)->all();

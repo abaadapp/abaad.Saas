@@ -69,4 +69,40 @@ class Account extends Model
 
         return $this->normal_side === 'credit' ? -$diff : $diff;
     }
+
+    /**
+     * أرصدةُ أوراقٍ عدّة في استعلامٍ واحد — بمفتاح معرّف الحساب.
+     *
+     * ═══ ولمَ لا تُنادى `balance()` في حلقة ═══
+     *
+     * هي استعلامٌ لكلّ حساب. وشاشةُ «أين المال الآن» تسأل عن رصيد كلّ حسابٍ
+     * بنكيٍّ مرّةً لترسم صفَّه، و`Bank::total` تسأل عنه مرّةً أخرى لتجمع —
+     * فمتجرٌ بعشرة حساباتٍ يفتح عشرين استعلامًا لعمودين. ولا يُرى ذلك عند
+     * من له حسابٌ واحد.
+     *
+     * والحسابُ الذي لا سطرَ له يردّ صفرًا لا يغيب: صفٌّ ناقصٌ في الشاشة
+     * أسوأُ من صفرٍ صريح.
+     *
+     * @param  iterable<Account|null>  $accounts
+     * @return array<int, float>
+     */
+    public static function balancesFor(iterable $accounts): array
+    {
+        $byId = collect($accounts)->filter()->keyBy('id');
+
+        if ($byId->isEmpty()) {
+            return [];
+        }
+
+        $sums = JournalLine::whereIn('account_id', $byId->keys()->all())
+            ->selectRaw('account_id, COALESCE(SUM(debit),0) d, COALESCE(SUM(credit),0) c')
+            ->groupBy('account_id')->get()->keyBy('account_id');
+
+        return $byId->map(function (Account $account) use ($sums) {
+            $row = $sums[$account->id] ?? null;
+            $diff = (float) ($row->d ?? 0) - (float) ($row->c ?? 0);
+
+            return round($account->normal_side === 'credit' ? -$diff : $diff, 3);
+        })->all();
+    }
 }

@@ -93,7 +93,16 @@ class JournalController extends Controller
                 'mayReverse' => $e->source === 'يدوي'
                     && $e->reversed_at === null
                     && $e->reverses_id === null,
-                'total' => $e->totalDebit(),
+                /*
+                 * والمجموعُ يُجمع من السطور المحمولة لا يُسأل عنه ثانيةً.
+                 *
+                 * `totalDebit()` تسأل القاعدة دائمًا — وهو صوابٌ حيث تُنادى
+                 * قبل أن تُحمَل السطور (`post` تفحص التوازن قبل الترحيل).
+                 * أمّا هنا فالسطورُ في اليد بـ`with('lines.account')`، فكلُّ
+                 * نداءٍ استعلامٌ زائد: عشرون قيدًا في الصفحة عشرون استعلامًا
+                 * لجمعٍ مقروءٍ من الذاكرة.
+                 */
+                'total' => round((float) $e->lines->sum('debit'), 3),
                 'lines' => $e->lines->map(fn ($l) => [
                     'account' => $l->account?->code.' — '.$l->account?->name,
                     'debit' => (float) $l->debit,

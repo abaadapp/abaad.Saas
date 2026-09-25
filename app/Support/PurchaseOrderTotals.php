@@ -2,8 +2,6 @@
 
 namespace App\Support;
 
-use App\Models\Setting;
-
 /**
  * إجماليُّ أمر الشراء — صيغةٌ واحدة يقرؤها الخادمُ والشاشة.
  *
@@ -96,14 +94,23 @@ final class PurchaseOrderTotals
         return round($quantity * $factor, self::SCALE);
     }
 
-    /** نسبةُ ضريبة المتجر — أو صفرٌ إن أُطفئت */
+    /**
+     * نسبةُ ضريبة المتجر — أو صفرٌ إن أُطفئت.
+     *
+     * ═══ ولا تُقرأ هنا ثانيةً ═══
+     *
+     * كانت تقرأ صفَّ المتجر وحدَه ثمّ تسقط إلى خمسة — وتتخطّى افتراضيَّ
+     * المنصّة الذي تقرؤه المبيعات. فمنصّةٌ ضبطت عشرةً ومتجرٌ لم يكتب نسبتَه
+     * كان يبيع بعشرةٍ ويشتري بخمسة، والرقمُ واحدٌ في القانون.
+     *
+     * وأثرُه أبعدُ من ورقة: `SupplierInvoices::match` تقابل سندَ المورّد
+     * بإجماليّ الأمر، فيُردّ السندُ بفارق الخمسة.
+     *
+     * والتعريفُ في `Vat::rate` — «فصار موضعًا واحدًا يُسأل قبل كل احتساب»
+     * كما يقول رأسُ ذلك الملفّ. وهذا ثالثُ من نسيه.
+     */
     public static function taxRateFor(int $businessId): float
     {
-        if (! Vat::enabled($businessId)) {
-            return 0.0;
-        }
-
-        return (float) (Setting::where('business_id', $businessId)
-            ->where('key', 'vat_rate')->value('value') ?? 5);
+        return Vat::rate($businessId);
     }
 }

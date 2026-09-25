@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Finance;
 
 use App\Http\Controllers\Controller;
+use App\Models\Account;
 use App\Models\BankAccount;
 use App\Models\Expense;
 use App\Models\PayrollRun;
@@ -57,6 +58,8 @@ class OverviewController extends Controller
             ->groupBy('type')->pluck('total', 'type');
 
         $banks = BankAccount::where('business_id', $bid)->with('account')->get();
+        // وأرصدتُها باستعلامٍ واحد — انظر `Account::balancesFor`
+        $balances = Account::balancesFor($banks->pluck('account'));
 
         /*
          * صافي الربح يُقرأ من مستنداته لا من الحركة.
@@ -75,7 +78,7 @@ class OverviewController extends Controller
             'accounts' => $banks->map(fn ($a) => [
                 'id' => $a->id,
                 'label' => $a->displayName(),
-                'balance' => $a->balance(),
+                'balance' => $balances[$a->account_id] ?? 0.0,
                 'active' => (bool) $a->active,
             ])->values()->all(),
             'period' => [
@@ -117,8 +120,18 @@ class OverviewController extends Controller
             ->orderByRaw('due_date is null')->orderBy('due_date')->orderByDesc('id')
             ->limit(200)->get();
 
+        /*
+         * والمعتمَدةُ وحدَها دَين — انظر `SupplierInvoice::scopeOwed`.
+         *
+         * كانت تُجمع الحالاتُ كلُّها: سندٌ رُفض لأنّه مكرَّر، وسندٌ أُلغي
+         * وعُكس قيدُه، وسندٌ لم يوقّعه أحد بعد — كلُّها تقول للتاجر «عليك».
+         * وحسابُ الموردين في الدفتر لا يعرف منها شيئًا، ولا يُقبل سدادُ
+         * واحدةٍ منها أصلًا (`SupplierInvoiceController::pay` تردّ غيرَ
+         * المعتمَد). فيقرأ التاجرُ دَينًا لا وجود له، ويقرأ في سجلّ
+         * المشتريات غيرَه — فقد أُصلح هناك وحدَه.
+         */
         $invoices = SupplierInvoice::where('business_id', $bid)->with('supplier')
-            ->whereColumn('paid', '<', 'total')
+            ->owed()->whereColumn('paid', '<', 'total')
             ->orderByRaw('due_at is null')->orderBy('due_at')->orderByDesc('id')
             ->limit(200)->get();
 
@@ -169,7 +182,7 @@ class OverviewController extends Controller
         $expenses = (float) Expense::where('business_id', $bid)->unpaid()->sum('amount');
 
         $invoices = round((float) SupplierInvoice::where('business_id', $bid)
-            ->whereColumn('paid', '<', 'total')
+            ->owed()->whereColumn('paid', '<', 'total')
             ->selectRaw('COALESCE(SUM(total - paid),0) t')->value('t'), 3);
 
         $payroll = round((float) PayrollRun::where('business_id', $bid)->where('status', 'معتمدة')
@@ -183,7 +196,7 @@ class OverviewController extends Controller
             'total' => round($expenses + $invoices + $payroll, 3),
             'overdue' => Expense::where('business_id', $bid)->unpaid()
                 ->whereNotNull('due_date')->where('due_date', '<', now()->startOfDay())->count()
-                + SupplierInvoice::where('business_id', $bid)->whereColumn('paid', '<', 'total')
+                + SupplierInvoice::where('business_id', $bid)->owed()->whereColumn('paid', '<', 'total')
                     ->whereNotNull('due_at')->where('due_at', '<', now()->startOfDay())->count(),
         ];
     }

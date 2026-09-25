@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -80,15 +81,43 @@ class JournalEntry extends Model
         $this->update(['posted' => true, 'posted_at' => now()]);
     }
 
-    /** مرجعٌ متسلسل لكل نشاط — لا عشوائيٌّ يتكرّر */
+    /**
+     * مرجعٌ متسلسل لكل نشاط — يُقرأ تحت قفلٍ على صفّ المتجر.
+     *
+     * ═══ ولمَ قفلٌ لا إعادةُ محاولة ═══
+     *
+     * `(business_id, number)` فريدٌ في القاعدة، والقراءةُ ثمّ الزيادة بلا
+     * قفلٍ تجعل كاتبين في اللحظة نفسها يقرآن الرقمَ نفسَه. وقيسَ على
+     * PostgreSQL حقيقيّ: ستُّ كتاباتٍ متزامنة ⇒ **واحدةٌ تمرّ وخمسٌ تسقط**
+     * بـ`23505`. وكلُّ ما يمرّ من `Ledger::post` يقع فيه: بيعةُ صندوق،
+     * وسندُ مورّدٍ يُعتمد، ومصروفٌ، وراتبٌ، وشيكٌ يُحصَّل — فصندوقان يبيعان
+     * معًا يُردُّ أحدُهما بخطأ خادمٍ لا رسالةَ فيه.
+     *
+     * وجُرّبت `Contention::retry` أوّلًا — وهي جوابُ المستودع لرقم الفاتورة
+     * — فردّت خمسًا من ستٍّ وأسقطت السادسة. والفرقُ أنّ قيدَ الأستاذ يُكتب
+     * في معاملةٍ طويلة: رأسٌ ثمّ سطورٌ ثمّ ترحيل. فالمزاحمُ لم يُودع بعدُ
+     * حين تُعاد المحاولة، فتقرأ الأعلى نفسَه وتصطدم ثانيةً — وخمسُ محاولاتٍ
+     * تنفد. والفاتورةُ صفٌّ واحد يُودَع فورًا، فتنجح فيها الإعادة.
+     *
+     * فالقفلُ هو الجواب: يُقرأ الأعلى بعد أن يُودع من سبق — كما في
+     * `PurchaseOrders::nextNumber` بالحرف. والترتيبُ ثابتٌ في النظام كلِّه —
+     * صفُّ المستند أوّلًا ثمّ صفُّ المتجر — فلا ينعقد قفلان متعاكسان.
+     *
+     * ولا يُقرأ الأحدثُ صفًّا بل الأعلى عددًا: `orderByDesc('id')` كانت
+     * تكفي ما دام الترقيمُ متتابعًا، ولا تكفي لو دخل صفٌّ بأثرٍ رجعيّ.
+     */
     public static function nextNumber(int $businessId): string
     {
-        $last = static::where('business_id', $businessId)
-            ->where('number', 'like', 'JV-%')
-            ->orderByDesc('id')->value('number');
+        return DB::transaction(function () use ($businessId) {
+            Business::whereKey($businessId)->lockForUpdate()->first();
 
-        $n = $last ? ((int) substr($last, 3)) + 1 : 1;
+            $highest = (int) static::where('business_id', $businessId)
+                ->where('number', 'like', 'JV-%')
+                ->pluck('number')
+                ->map(fn ($number) => (int) substr($number, 3))
+                ->max();
 
-        return 'JV-'.str_pad((string) $n, 6, '0', STR_PAD_LEFT);
+            return 'JV-'.str_pad((string) ($highest + 1), 6, '0', STR_PAD_LEFT);
+        });
     }
 }

@@ -43,16 +43,16 @@ final class SaleLines
      */
     public function vatRate(): float
     {
-        $bid = $this->bid();
-
-        if (! Vat::enabled($bid)) {
-            return 0.0;
-        }
-
-        $v = Setting::where('business_id', $bid)->where('key', 'vat_rate')->value('value')
-            ?? Setting::whereNull('business_id')->where('key', 'vat_rate')->value('value');
-
-        return max(0.0, (float) ($v ?? 5));
+        /*
+         * والنسخةُ التي كانت هنا حرفًا بحرفٍ من `Vat::rate` رُفعت.
+         *
+         * تعريفان لرقمٍ واحد يفترقان يومًا — وقد افترقا فعلًا في ثالثهما:
+         * `PurchaseOrderTotals::taxRateFor` كانت تتخطّى افتراضيَّ المنصّة،
+         * فباع المتجرُ بعشرةٍ واشترى بخمسة.
+         *
+         * و`Vat::rate` تقرأ الإطفاءَ أوّلًا كما كانت تقرؤه هذه.
+         */
+        return Vat::rate($this->bid());
     }
 
     /**

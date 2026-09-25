@@ -61,6 +61,9 @@ class BankAccountController extends Controller
             ->selectRaw('bank_account_id, COUNT(*) total, SUM(CASE WHEN match_status = ? THEN 1 ELSE 0 END) matched', [BankStatementLine::MATCHED])
             ->groupBy('bank_account_id')->get()->keyBy('bank_account_id');
 
+        // وأرصدةُ الأوراق كلِّها باستعلامٍ واحد لا واحدٍ لكلّ صفّ
+        $balances = Account::balancesFor($accounts->pluck('account'));
+
         return Inertia::render('Admin/Finance/Banks', [
             'accounts' => $accounts->map(fn ($a) => [
                 'id' => $a->id,
@@ -72,7 +75,7 @@ class BankAccountController extends Controller
                 'opening_date' => optional($a->opening_date)->format('Y-m-d'),
                 'active' => (bool) $a->active,
                 'is_primary' => (bool) $a->is_primary,
-                'balance' => $a->balance(),
+                'balance' => $balances[$a->account_id] ?? 0.0,
                 'account_code' => $a->account?->code,
                 'lines' => (int) ($lineCounts[$a->id]->total ?? 0),
                 'matched' => (int) ($lineCounts[$a->id]->matched ?? 0),

@@ -340,6 +340,12 @@ class Ledger
         return DB::transaction(function () use (
             $businessId, $description, $lines, $date, $source, $branchId, $userId, $sourceable, $unwinding
         ) {
+            /*
+             * ورقمُ القيد يُقرأ تحت قفل — انظر `JournalEntry::nextNumber`.
+             *
+             * وهو الفرقُ بين صندوقين يبيعان معًا فيمرّان، وبينهما يقرآن
+             * الرقمَ نفسَه فيُردُّ أحدُهما بخطأ خادم.
+             */
             $entry = JournalEntry::create([
                 'business_id' => $businessId,
                 'branch_id' => $branchId,

@@ -259,6 +259,37 @@ return [
         'spent_at' => 'تاريخ الصرف',
         'opening_date' => 'تاريخ الافتتاح',
 
+        // المالية والقيود
+        'entry_date' => 'تاريخ القيد',
+        'lines' => 'سطور القيد',
+        'lines.*.account_id' => 'الحساب',
+        'lines.*.debit' => 'المدين',
+        'lines.*.credit' => 'الدائن',
+        'lines.*.memo' => 'بيان السطر',
+        'normal_side' => 'طبيعة الحساب',
+        'reason' => 'السبب',
+        'label' => 'الاسم المعروض',
+        'active' => 'التفعيل',
+        'bank_account_id' => 'الحساب البنكي',
+        'client_uuid' => 'مُعرّف الحركة',
+        'expense_type' => 'نوع المصروف',
+        'due_date' => 'تاريخ الاستحقاق',
+        'due_at' => 'تاريخ الاستحقاق',
+        'cleared_on' => 'تاريخ التحصيل',
+        'po_number' => 'رقم أمر الشراء',
+        'order_ids.*' => 'الفاتورة',
+        'allow_credit_sales' => 'البيع الآجل',
+        'monthly_billing' => 'الفوترة الشهرية',
+
+        // الأصول الثابتة
+        'category' => 'التصنيف',
+        'purchased_at' => 'تاريخ الشراء',
+        'salvage_value' => 'قيمة الخردة',
+        'life_months' => 'العمر الإنتاجي بالأشهر',
+        'paid_from' => 'مصدر الدفع',
+        'disposed_at' => 'تاريخ الاستبعاد',
+        'received_in' => 'وجهة المتحصَّل',
+
         // الفروع والشركات
         'branch' => 'الفرع',
         'branch_id' => 'الفرع',

@@ -667,6 +667,40 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
             ->filter(fn ($pair) => str_contains($pair[0]->url(), '/messages'))->count());
     }
 
+    /**
+     * وثلاثُ رسائلَ في حمولةٍ واحدة يُردّ عليها مرّةً.
+     *
+     * الحارسُ فوقه يُرسل إشعارين منفصلين، وميتا لا تفعل ذلك دائمًا: ما وصل
+     * في ثوانٍ يُجمع في `value.messages` واحدة. والتهدئةُ تُقرأ من صفٍّ
+     * مكتوب، فلو عولجت الحمولةُ دفعةً واحدةً قبل أن يُختم الأوّل لَخرجت
+     * ثلاثةُ ردودٍ متطابقة — وهو ما بُنيت التهدئةُ لمنعه.
+     */
+    public function test_three_messages_in_one_payload_are_answered_once(): void
+    {
+        $this->connected();
+        WhatsAppAutoReply::save($this->shop->id, [
+            'enabled' => true, 'ar' => 'أهلًا بك', 'en' => 'Welcome', 'cooldown_hours' => 12,
+        ]);
+
+        // ميتا تجمع ما وصل في حمولةٍ واحدة — «مرحبا» ثمّ «أبغى باقة» ثمّ «كم سعرها»
+        $this->webhook([
+            'metadata' => ['phone_number_id' => 'PN-1'],
+            'messages' => [
+                ['id' => 'wamid.B1', 'from' => '96891234567', 'type' => 'text',
+                    'timestamp' => (string) now()->timestamp, 'text' => ['body' => 'مرحبا']],
+                ['id' => 'wamid.B2', 'from' => '96891234567', 'type' => 'text',
+                    'timestamp' => (string) now()->timestamp, 'text' => ['body' => 'أبغى باقة']],
+                ['id' => 'wamid.B3', 'from' => '96891234567', 'type' => 'text',
+                    'timestamp' => (string) now()->timestamp, 'text' => ['body' => 'كم سعرها']],
+            ],
+        ])->assertOk();
+
+        $sent = collect(Http::recorded())
+            ->filter(fn ($pair) => str_contains($pair[0]->url(), '/messages'))->count();
+
+        $this->assertSame(1, $sent, 'خرجت '.$sent.' ردودٍ على حمولةٍ واحدة');
+    }
+
     /** والنصُّ بلغة الزبون إن عُرفت — لا بلغة حروف رسالته */
     public function test_the_reply_speaks_the_customers_language(): void
     {

@@ -109,7 +109,25 @@ class SendWhatsAppMessage implements ShouldQueue
          * الرسالة. فلولا العمود لَردّت كلَّ ما تردّه إلى عدّاد الشهر —
          * فيربح من اشترى رسالةً مجّانيّةً ويخسر ما دفع.
          */
-        $source = $shared ? WhatsAppQuota::reserve($business) : null;
+        /*
+         * ═══ وحجزٌ قائمٌ يُستأنَف ولا يُكرَّر ═══
+         *
+         * أوّلُ سطرٍ في هذه الدالّة يحرس التكرار بالحالة: ما خرج لا يخرج
+         * ثانية. ولا يحرس **ما حُجز ولم يخرج**: محاولةٌ سقطت باستثناءٍ بعد
+         * الحجز — عطلُ قاعدةٍ لحظةَ الحفظ، أو خطأٌ في بناء المتغيّرات —
+         * تترك الصفَّ «مُدرَجة» وقد نقص العدّاد. فتلتقطه المحاولةُ الثانية
+         * وتحجز من جديد: **حصّتان لرسالةٍ واحدة**، أو ريالان.
+         *
+         * والعمودُ هو الذاكرة: `quota_consumed` مكتوبٌ في الصفّ لا محمولٌ
+         * في متغيّر، فيعبر بين المحاولتين. و`quota_source` الفارغُ يُقرأ
+         * «عطيّةَ الشهر» كما تقرؤه `release` — صفٌّ كُتب قبل أن يوجد
+         * العمود لا يُحرم استئنافَه.
+         */
+        $source = match (true) {
+            ! $shared => null,
+            (bool) $message->quota_consumed => $message->quota_source ?: WhatsAppQuota::SOURCE_MONTHLY,
+            default => WhatsAppQuota::reserve($business),
+        };
 
         if ($shared && $source === null) {
             $this->stop($message, WhatsAppStatus::QUOTA_EXCEEDED, WhatsAppStatus::SKIP_QUOTA);
@@ -224,8 +242,33 @@ class SendWhatsAppMessage implements ShouldQueue
         ])->save();
     }
 
+    /**
+     * وقوفٌ نهائيّ — ولا يُترك في الجيب أثرُ حجزٍ لرسالةٍ لم تخرج.
+     *
+     * ═══ العطبُ الذي أغلقه هذا السطر ═══
+     *
+     * الحجزُ يقع **قبل** النداء — وهو الترتيب الوحيد الآمن. ثمّ يُقرأ مصدرُ
+     * المتغيّرات، فإن كان الطلبُ أو الفاتورةُ قد مُحيا بين الإدراج والتنفيذ
+     * وقفت الوظيفةُ بـ«لا موضوع لها». وكانت تقف بلا أن تردّ ما حجزت: يُنقص
+     * عدّادُ الشهر، أو **تحترق رسالةٌ دُفع ثمنُها**، ولا تخرج رسالة.
+     *
+     * ولا يُكتشف: هذه الدالّة تكتب `quota_consumed = false`، فيُنكر الصفُّ
+     * حجزًا وقع فعلًا. فلا مطابقةَ بين العدّاد والصفوف تجده.
+     *
+     * والردُّ هنا لا عند كلّ نداء: هي المخرجُ الوحيد الذي يُصفّر العمود،
+     * فمن صفّرَه ردَّ ما يقابله. والمخرجُ الآخر — رفضُ المزوّد — يردّ حصّته
+     * بنفسه ويُصفّر العمود قبل أن يصل إلى هنا، فلا يُردّ مرّتين.
+     */
     private function stop(WhatsAppMessage $message, string $status, ?string $code, ?string $reason = null): void
     {
+        if ($message->quota_consumed) {
+            $business = Business::find($message->business_id);
+
+            if ($business) {
+                WhatsAppQuota::release($business, $message->quota_source);
+            }
+        }
+
         $message->forceFill([
             'status' => $status,
             'quota_consumed' => false,

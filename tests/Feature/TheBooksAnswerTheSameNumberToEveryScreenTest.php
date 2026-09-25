@@ -39,6 +39,9 @@ use Tests\TestCase;
  *  • **حملٌ ينمو بالصفوف.** استعلامٌ لكلّ قيدٍ في اليوميّة، واستعلامان لكلّ
  *    حسابٍ بنكيّ في شاشتين.
  *
+ * وخامسٌ — الحقلُ الذي يُنادى باسمه البرمجيّ — انتقل إلى حارسٍ يمشي على
+ * الملفّات: `AFieldIsNamedInArabicBeforeItIsRefusedTest`.
+ *
  * ═══ ورابعٌ يسقط في وجه الكاشير ═══
  *
  * رقمُ القيد كان يُقرأ بلا قفل، و`(business_id, number)` فريدٌ في القاعدة:
@@ -305,64 +308,5 @@ class TheBooksAnswerTheSameNumberToEveryScreenTest extends TestCase
         }
 
         $this->assertSame($few, $this->queriesOn('/admin/finance/dues'), 'المستحقّات تنمو بعدد المستندات');
-    }
-
-    /* ───────────── خامسًا: ولا حقلَ يُنادى باسمه البرمجيّ ───────────── */
-
-    /**
-     * كلُّ حقلٍ في شاشات المالية له اسمٌ عربيّ.
-     *
-     * ═══ ولمَ حارسٌ يمشي على الملفّات ═══
-     *
-     * التاجرُ كان يُردّ بـ«حقل purchased at مطلوب» — اسمُ عمودٍ في قاعدة
-     * البيانات في جملةٍ عربيّة. والخريطةُ موجودةٌ من قبل في
-     * `lang/ar/validation.php`، وإنّما تُنسى عند كلّ حقلٍ جديد.
-     *
-     * فالحارسُ يقرأ نداءات `validate` نفسَها لا قائمةً أكتبها بيدي: قائمةٌ
-     * تحرس ما تذكّرتُه، وهذا يحرس **الحقلَ القادم** الذي يُضاف غدًا بلا
-     * اسم. ويقبل الاسمَ المُمرَّر في نداء `validate` مباشرةً كما يقبل
-     * الخريطة — كلاهما يُخرج جملةً عربيّة.
-     */
-    public function test_every_finance_field_has_an_arabic_name(): void
-    {
-        $names = (require base_path('lang/ar/validation.php'))['attributes'];
-
-        $files = [
-            'Finance/BankAccountController', 'Finance/ChartController', 'Finance/FixedAssetController',
-            'Finance/JournalController', 'Finance/OverviewController', 'FinanceController',
-            'ExpenseController', 'ExpenseTypeController', 'ChequeController',
-            'BankStatementController', 'ReceivablesController',
-        ];
-
-        $nameless = [];
-
-        foreach ($files as $file) {
-            $path = app_path('Http/Controllers/Admin/'.$file.'.php');
-
-            $this->assertFileExists($path, 'مسارُ متحكّمٍ تبدّل — والحارسُ يمشي على ملفّاتٍ لا وجود لها');
-
-            $source = (string) file_get_contents($path);
-
-            preg_match_all(
-                "/'([a-z0-9_.*]+)'\s*=>\s*\[\s*'(?:required|nullable|sometimes|boolean|array|integer|numeric|string|date|file|image|in:)/",
-                $source,
-                $found,
-            );
-
-            foreach (array_unique($found[1]) as $field) {
-                if (isset($names[$field])) {
-                    continue;
-                }
-
-                // اسمٌ مُمرَّر في نداء `validate` نفسِه — وهو كافٍ
-                if (preg_match("/'".preg_quote($field, '/')."'\s*=>\s*__\(/", $source)) {
-                    continue;
-                }
-
-                $nameless[] = $file.' › '.$field;
-            }
-        }
-
-        $this->assertSame([], $nameless, "حقولٌ تُنادى باسمها البرمجيّ في وجه التاجر:\n".implode("\n", $nameless));
     }
 }

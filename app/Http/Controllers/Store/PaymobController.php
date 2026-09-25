@@ -57,9 +57,72 @@ class PaymobController extends Controller
             return response('ok', 200);
         }
 
-        if (! filter_var(data_get($obj, 'success'), FILTER_VALIDATE_BOOL)) {
+        $flag = fn (string $key) => filter_var(data_get($obj, $key), FILTER_VALIDATE_BOOL);
+
+        /*
+         * ═══ و«نجحت» وحدَها لا تعني أنّ المالَ صار لصاحب المحلّ ═══
+         *
+         * كان هذا البابُ يسأل `success` ولا شيءَ غيرَها. و Paymob لا ترسل
+         * نوعَ حدثٍ، بل **أعلامًا** تُقرأ معًا — وتوقيعُنا يحمل منها
+         * `pending` و`is_voided` و`is_refunded` (انظر `Paymob::HMAC_FIELDS`)
+         * ثمّ لا يقرؤها أحد. فثلاثُ حالاتٍ تمرّ على أنّها بيعٌ تامّ:
+         *
+         *   ١) `pending` مع `success`: العمليّةُ **مُعلَّقةٌ بانتظار
+         *      التأكيد** — أُذن بها ولم تُقبض. فيُنشأ الطلبُ ويُخصم
+         *      المخزونُ على مالٍ قد لا يصل أبدًا.
+         *   ٢) `is_voided`: أُلغيت قبل التسوية، والمالُ رُدّ.
+         *   ٣) `is_refunded`: استُرجعت بعدها.
+         *
+         * والثانيةُ والثالثةُ تصلان بـ`success = true` لأنّ العمليّةَ
+         * الأصليّةَ نجحت فعلًا — فالإلغاءُ حدثٌ عليها لا نفيٌ لها. ولو
+         * سبق إشعارُ الإلغاءِ إشعارَ النجاح (أو ضاع الثاني) لَخرجت
+         * البضاعةُ من الرفّ على مالٍ عاد إلى الزبون.
+         *
+         * ولا يُشترط `is_capture`: هي `true` في **قبضٍ لاحقٍ لإذنٍ سابق**
+         * وحدَه، والدفعةُ العاديّةُ ذاتُ الخطوة الواحدة تصل بها `false`.
+         * فاشتراطُها يردّ كلّ دفعةٍ سليمة.
+         */
+        $settled = $flag('success') && ! $flag('pending') && ! $flag('is_voided') && ! $flag('is_refunded');
+
+        if (! $settled) {
+            /*
+             * والمعلَّقةُ ليست فشلًا فلا تُكتب خطأً: إشعارُها الأخيرُ آتٍ،
+             * وكتابةُ «رُدّت الدفعة» الآن تكذب على التاجر وعلى الزبون معًا.
+             */
+            if ($flag('pending') && $flag('success')) {
+                Log::info('paymob: دفعةٌ معلَّقةٌ بانتظار التأكيد', ['intent' => $intent->id]);
+
+                return response('ok', 200);
+            }
+
             // ومحاولةٌ ردّها البنكُ لا تُغلق النيّة: قد يعيد الكرّة ببطاقةٍ أخرى
-            $intent->fill(['error' => Str::limit((string) data_get($obj, 'data.message', 'رُدّت الدفعة'), 500)])->save();
+            $intent->fill(['error' => Str::limit($this->why($obj, $flag), 500)])->save();
+
+            return response('ok', 200);
+        }
+
+        /*
+         * ═══ وما قُبض هو ما طُلب — مبلغًا وعملة ═══
+         *
+         * التوقيعُ يشمل `amount_cents` و`currency`، فلا يبدّلهما غريب.
+         * لكنّه **لا يقول إنّهما يطابقان طلبَنا**: توقيعٌ صحيحٌ على مبلغٍ
+         * آخر يبقى صحيحًا. وتكاملٌ مضبوطٌ على عملةٍ أخرى، أو قبضٌ جزئيّ،
+         * أو نيّةٌ أُعيد استعمالُها بمبلغٍ مختلف — كلُّها تصل موقَّعةً
+         * وتمرّ. فتخرج باقةٌ بـ٢١ ريالًا على بيسةٍ واحدةٍ قُبضت.
+         *
+         * والمقارنةُ بوحدة القبض نفسِها: ألفُ بيسةٍ في الريال (انظر
+         * `Paymob::open`)، فلا يُقارَن عشريٌّ بعشريّ.
+         */
+        $wanted = (int) round(((float) $intent->amount) * 1000);
+        $got = (int) data_get($obj, 'amount_cents', 0);
+        $currency = mb_strtoupper(trim((string) data_get($obj, 'currency', '')));
+
+        if ($got !== $wanted || $currency !== mb_strtoupper((string) $intent->currency)) {
+            Log::warning('paymob: مبلغٌ أو عملةٌ لا تطابق النيّة', [
+                'intent' => $intent->id, 'wanted' => $wanted, 'got' => $got, 'currency' => $currency,
+            ]);
+
+            $intent->fill(['error' => 'المبلغُ أو العملةُ لا يطابقان ما طُلب'])->save();
 
             return response('ok', 200);
         }
@@ -67,6 +130,20 @@ class PaymobController extends Controller
         $this->settle($intent, (string) data_get($obj, 'id', ''));
 
         return response('ok', 200);
+    }
+
+    /** لمَ لم تُحتسب هذه الدفعة — بلفظٍ يقرؤه صاحبُ المحلّ في جرسه */
+    private function why(array $obj, callable $flag): string
+    {
+        if ($flag('is_voided')) {
+            return 'أُلغيت الدفعةُ قبل تسويتها';
+        }
+
+        if ($flag('is_refunded')) {
+            return 'استُرجعت الدفعةُ إلى الزبون';
+        }
+
+        return (string) data_get($obj, 'data.message', 'رُدّت الدفعة');
     }
 
     /**

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
+use App\Models\InventoryMovement;
 use App\Models\Order;
 use App\Models\PaymentGateway;
 use App\Models\Product;
@@ -290,6 +291,214 @@ class ACardIsNotAnOrderUntilTheMoneyArrivesTest extends TestCase
 
         $this->assertSame(0, Order::count());
         $this->assertSame(StorePaymentIntent::PENDING, $intent->refresh()->status);
+    }
+
+    /**
+     * ودفعةٌ **معلَّقةٌ** لا تُخرج بضاعةً — «نجحت» وحدَها ليست قبضًا.
+     *
+     * ═══ العطبُ الذي وُضعت له ═══
+     *
+     * البابُ كان يسأل `success` ولا شيءَ غيرَها. و Paymob لا ترسل نوعَ
+     * حدثٍ بل أعلامًا تُقرأ معًا — وتوقيعُنا يحمل `pending` و`is_voided`
+     * و`is_refunded` ثمّ لا يقرؤها أحد. فإشعارٌ بـ`success:true,
+     * pending:true` — وهو **إذنٌ بانتظار التأكيد لا قبض** — كان يُنشئ
+     * طلبًا «مدفوعًا» ويخصم المخزون. فتخرج الباقةُ من الرفّ على مالٍ قد
+     * لا يصل، ويقرأ التاجرُ في دفتره إيرادًا لم يُقبض.
+     */
+    public function test_a_pending_payment_is_not_a_sale_yet(): void
+    {
+        $intent = $this->intent();
+
+        $this->fire($this->notice($intent, ['pending' => true]))->assertOk();
+
+        $this->assertSame(0, Order::count(), 'أُنشئ طلبٌ على دفعةٍ معلَّقة');
+        $this->assertSame(5, (int) $this->rose->refresh()->quantity, 'خُصم المخزونُ قبل القبض');
+
+        $intent->refresh();
+        $this->assertSame(StorePaymentIntent::PENDING, $intent->status);
+        // ولا يُكتب خطأٌ: لم يفشل شيءٌ بعد، والإشعارُ الأخيرُ آتٍ
+        $this->assertNull($intent->error, 'قيل «فشلت» عن دفعةٍ ما زالت تنتظر');
+    }
+
+    /** ثمّ يصل تأكيدُها فتصير بيعًا — مرّةً واحدة */
+    public function test_and_when_its_confirmation_arrives_it_becomes_one_sale(): void
+    {
+        $intent = $this->intent();
+
+        $this->fire($this->notice($intent, ['pending' => true]))->assertOk();
+        $this->fire($this->notice($intent))->assertOk();
+
+        $this->assertSame(1, Order::count());
+        $this->assertSame(4, (int) $this->rose->refresh()->quantity);
+        $this->assertSame(StorePaymentIntent::PAID, $intent->refresh()->status);
+    }
+
+    /**
+     * ودفعةٌ أُلغيت لا تُخرج بضاعةً — ولو وصلت بـ«نجحت».
+     *
+     * الإلغاءُ حدثٌ **على** عمليّةٍ نجحت، فيصل بـ`success:true` ومعه
+     * `is_voided`. ولو سبق إشعارُه إشعارَ النجاح — أو ضاع الثاني —
+     * لخرجت البضاعةُ على مالٍ عاد إلى الزبون.
+     */
+    public function test_a_voided_payment_takes_nothing_off_the_shelf(): void
+    {
+        $intent = $this->intent();
+
+        $this->fire($this->notice($intent, ['is_voided' => true]))->assertOk();
+
+        $this->assertSame(0, Order::count(), 'أُنشئ طلبٌ على دفعةٍ أُلغيت');
+        $this->assertSame(5, (int) $this->rose->refresh()->quantity);
+        $this->assertSame(StorePaymentIntent::PENDING, $intent->refresh()->status);
+        $this->assertStringContainsString('أُلغيت', (string) $intent->refresh()->error);
+    }
+
+    /** وكذلك دفعةٌ استُرجعت إلى الزبون */
+    public function test_a_refunded_payment_takes_nothing_off_the_shelf(): void
+    {
+        $intent = $this->intent();
+
+        $this->fire($this->notice($intent, ['is_refunded' => true]))->assertOk();
+
+        $this->assertSame(0, Order::count(), 'أُنشئ طلبٌ على دفعةٍ استُرجعت');
+        $this->assertSame(5, (int) $this->rose->refresh()->quantity);
+        $this->assertStringContainsString('استُرجعت', (string) $intent->refresh()->error);
+    }
+
+    /**
+     * ولا يُشترط `is_capture`: الدفعةُ العاديّةُ تصل بها `false`.
+     *
+     * هذا حارسُ الإصلاحِ نفسِه: من يقرأ الأعلامَ قد يشترطها فيردّ كلَّ
+     * دفعةٍ سليمةٍ ذاتِ خطوةٍ واحدة — والمتجرُ يكفّ عن البيع صامتًا.
+     */
+    public function test_an_ordinary_one_step_payment_still_settles(): void
+    {
+        $intent = $this->intent();
+
+        $this->fire($this->notice($intent, ['is_capture' => false, 'is_auth' => false]))->assertOk();
+
+        $this->assertSame(1, Order::count(), 'رُدّت دفعةٌ سليمةٌ بلا سبب');
+        $this->assertSame(StorePaymentIntent::PAID, $intent->refresh()->status);
+    }
+
+    /**
+     * وحسابُ الطلب المدفوع بالبطاقة هو حسابُ السلّة نفسُه — ضريبةً وإجمالًا.
+     *
+     * هذه تحاكي متجرَ الإنتاج حرفًا: صنفٌ بعشرين ريالًا وضريبةٌ بخمسةٍ في
+     * المئة. فالزبونُ قرأ ٢١٫٠٠٠ على زرّ التأكيد، ويجب أن يكون ذلك ما
+     * كُتب في الدفتر — لا ما حسبه المتصفّح ولا ما أرسلته البوّابة.
+     */
+    public function test_the_paid_order_carries_the_same_tax_and_total_the_cart_showed(): void
+    {
+        Setting::where('business_id', $this->shop->id)->where('key', 'vat_enabled')->update(['value' => '1']);
+        Setting::updateOrCreate(
+            ['business_id' => $this->shop->id, 'key' => 'vat_rate'],
+            ['value' => '5'],
+        );
+
+        $intent = $this->intent();
+
+        // والبوّابةُ تُشعر بما قبضته فعلًا: ٢١ ريالًا = ٢١٠٠٠ بيسة
+        $this->assertSame('21.000', number_format((float) $intent->amount, 3, '.', ''));
+        $this->fire($this->notice($intent, ['amount_cents' => 21000]))->assertOk();
+
+        $order = Order::firstOrFail();
+
+        $this->assertSame('20.000', number_format((float) $order->subtotal, 3, '.', ''));
+        $this->assertSame('1.000', number_format((float) $order->tax, 3, '.', ''), 'الضريبةُ ليست خمسةً في المئة');
+        $this->assertSame('21.000', number_format((float) $order->total, 3, '.', ''));
+        $this->assertNotSame('', (string) $order->number, 'طلبٌ بلا رقمٍ متسلسل');
+    }
+
+    /**
+     * ولا يُقيَّد البيعُ مرّتين على إشعارٍ أُعيد — لا في الرفّ ولا في الدفتر.
+     *
+     * `test_a_repeated_notice_makes_one_order` تحرس الطلبَ والمخزون.
+     * وهذه تحرس ما بعدهما: حركةُ المخزون في دفترها، وأسطرُ الطلب. فدفترٌ
+     * يقول إنّ الباقةَ خرجت مرّتين يجعل جردَ آخر الشهر كاذبًا ولو كان
+     * عمودُ `quantity` صحيحًا.
+     */
+    public function test_a_repeated_notice_moves_the_shelf_ledger_once(): void
+    {
+        $intent = $this->intent();
+        $obj = $this->notice($intent);
+
+        $this->fire($obj)->assertOk();
+        $this->fire($obj)->assertOk();
+        $this->fire($obj)->assertOk();
+
+        $order = Order::firstOrFail();
+
+        $this->assertSame(1, \Illuminate\Support\Facades\DB::table('order_items')
+            ->where('order_id', $order->id)->count(), 'تكرّر سطرُ الطلب');
+
+        $moves = InventoryMovement::where('business_id', $this->shop->id)
+            ->where('product_id', $this->rose->id)
+            ->where('type', 'بيع')
+            ->get(['quantity']);
+
+        $this->assertCount(1, $moves, 'كُتبت حركةُ الرفّ أكثرَ من مرّة');
+        $this->assertSame(-1.0, (float) $moves->sum('quantity'), 'خرج من الرفّ أكثرُ من واحدة');
+    }
+
+    /**
+     * وإشعارٌ بمبلغٍ غير الذي طُلب لا يُخرج بضاعة — ولو كان توقيعُه صحيحًا.
+     *
+     * التوقيعُ يشمل `amount_cents`، فلا يبدّله غريب. لكنّه لا يقول إنّه
+     * **يطابق طلبَنا**: قبضٌ جزئيٌّ، أو تكاملٌ مضبوطٌ على مبلغٍ آخر، أو
+     * نيّةٌ أُعيد استعمالُها — كلُّها تصل موقَّعةً صحيحة. وبلا هذا الفحص
+     * تخرج باقةٌ بواحدٍ وعشرين ريالًا على بيسةٍ واحدةٍ قُبضت.
+     */
+    public function test_a_smaller_amount_buys_nothing(): void
+    {
+        $intent = $this->intent();
+
+        $this->fire($this->notice($intent, ['amount_cents' => 1]))->assertOk();
+
+        $this->assertSame(0, Order::count(), 'خرجت بضاعةٌ على مبلغٍ غير المطلوب');
+        $this->assertSame(5, (int) $this->rose->refresh()->quantity);
+        $this->assertStringContainsString('المبلغ', (string) $intent->refresh()->error);
+    }
+
+    /** وكذلك عملةٌ أخرى: ٢٠٠٠٠ جنيهًا ليست ٢٠٠٠٠ بيسة */
+    public function test_another_currency_buys_nothing(): void
+    {
+        $intent = $this->intent();
+
+        $this->fire($this->notice($intent, ['currency' => 'EGP']))->assertOk();
+
+        $this->assertSame(0, Order::count(), 'قُبل قبضٌ بعملةٍ أخرى');
+        $this->assertSame(5, (int) $this->rose->refresh()->quantity);
+    }
+
+    /**
+     * ولا يمسّ إشعارُ متجرٍ طلبَ متجرٍ آخر.
+     *
+     * كلُّ محلٍّ له `hmac_secret` خاصّ، والبابُ يقرأ بوّابةَ **صاحب
+     * النيّة** لا بوّابةَ من أرسل. فجارٌ يعرف مرجعَ نيّةٍ ويوقّع بسرّه هو
+     * لا يُصدَّق عليها — وإلّا لصار كلُّ تاجرٍ في المنصّة قادرًا على
+     * إخراج بضاعةِ جاره من رفّه.
+     */
+    public function test_a_neighbours_signature_cannot_settle_this_shops_intent(): void
+    {
+        $intent = $this->intent();
+
+        $neighbour = Business::create([
+            'name' => 'الجار', 'type' => 'محل ورد', 'status' => 'نشط', 'site_slug' => 'jar',
+        ]);
+        PaymentGateway::create([
+            'business_id' => $neighbour->id, 'provider' => PaymentGateway::PAYMOB,
+            'active' => true, 'public_key' => 'pk_jar', 'secret_key' => 'sk_jar',
+            'hmac_secret' => 'jar_secret_value', 'card_integration_id' => '111',
+        ]);
+
+        $obj = $this->notice($intent);
+
+        // موقَّعٌ بسرّ الجار، على مرجعِ نيّةِ هذا المحلّ
+        $this->fire($obj, Paymob::signature($obj, 'jar_secret_value'))->assertOk();
+
+        $this->assertSame(0, Order::count(), 'وقّع الجارُ فخرجت بضاعةُ غيره');
+        $this->assertSame(StorePaymentIntent::PENDING, $intent->refresh()->status);
+        $this->assertSame(5, (int) $this->rose->refresh()->quantity);
     }
 
     /* ═══════════ وصفحةُ العودة تقرأ ولا تكتب ═══════════ */

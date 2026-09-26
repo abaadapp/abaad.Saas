@@ -237,6 +237,63 @@ class BusinessController extends Controller
     }
 
     /**
+     * الحذفُ النهائيّ — بابٌ آخرُ غيرُ بابِ التعطيل.
+     *
+     * ═══ ولمَ مسارٌ مستقلّ ═══
+     *
+     * `destroy` أعلاه يكتب كلمةً في عمود، ويُردّ بـ`activate`. وهذا يمحو
+     * متجرًا ومَن فيه وملفّاتِه، ولا يُردّ بشيء. وفعلان متباعدان هكذا لا
+     * يُجمعان في مسارٍ واحدٍ يُفرَّق بينهما بحقلٍ في الطلب — فطلبٌ يُساء
+     * تكوينُه يمحو ما كان يُراد تعطيلُه.
+     *
+     * ═══ وثلاثةُ حرّاسٍ قبل أن يقع شيء ═══
+     *
+     * المفتاحُ على الخادم (`config/purge.php`) — مغلقٌ افتراضيًّا فيُردّ
+     * المسارُ ٤٠٤ ولو عُرف عنوانُه. ثمّ الدور: المجموعةُ خلف
+     * `role:super_admin`، ويُسأل هنا ثانيةً فلا يُعتمد على حارسٍ بعيد. ثمّ
+     * الاسمُ يُكتب كاملًا ويُقارَن **في الخادم** — إخفاءُ زرٍّ ليس حراسة.
+     */
+    public function purge(Request $request, $id)
+    {
+        abort_unless(\App\Support\BusinessPurge::enabled(), 404);
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $business = Business::findOrFail($id);
+
+        /*
+         * والاسمُ يُقارَن بعد تسويةِ المسافات وحدَها.
+         *
+         * من ينسخ الاسمَ من الشاشة قد يلتقط مسافةً في طرفه، وليست تلك خطأً
+         * يستحقّ أن يُردّ به. وما عدا ذلك يُطابَق حرفًا بحرف: اسمٌ مقاربٌ
+         * ليس هذا الاسم.
+         */
+        $typed = preg_replace('/\s+/u', ' ', trim((string) $request->input('confirm')));
+        $real = preg_replace('/\s+/u', ' ', trim((string) $business->name));
+
+        if ($typed === '' || $typed !== $real) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'confirm' => __('اكتب اسم الشركة كما هو مكتوب أعلاه — لم يُحذف شيء.'),
+            ]);
+        }
+
+        try {
+            $out = \App\Support\BusinessPurge::run($business, $request->user());
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['confirm' => $e->getMessage()]);
+        }
+
+        /* وما تعذّر حذفُه من ملفّاتٍ يُقال ولا يُبتلع — الصفوفُ مُحيت وهي باقية */
+        $msg = $out['failures'] === []
+            ? __('حُذفت الشركة نهائيًا. أُرشفت دفاترها في :path', ['path' => $out['archive']])
+            : __('حُذفت الشركة، وتعذّر حذف :n ملفًّا — راجع سجلّ النشاط.', ['n' => count($out['failures'])]);
+
+        return redirect()->route('super-admin.businesses.index')->with('toast', [
+            'msg' => $msg,
+            'type' => $out['failures'] === [] ? 'success' : 'warning',
+        ]);
+    }
+
+    /**
      * إعادة تشغيل شركةٍ معطَّلة — الطرف الآخر من زرّ التعطيل.
      *
      * كان التعطيل بابًا يُغلق ولا يُفتح: المسار الوحيد يكتب «معطل» ولا مسار

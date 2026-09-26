@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { KeyRound, Layers, LogIn, Pencil, Phone, Power, User } from 'lucide-react';
+import { AlertTriangle, KeyRound, Layers, LogIn, Pencil, Phone, Power, Trash2, User } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import DeleteButton from '@/Components/DeleteButton';
@@ -11,6 +11,8 @@ import GoldBadge from '@/Components/GoldBadge';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import { Input } from '@/Components/ui/input';
 import AccountCard from './partials/AccountCard';
 import WhatsAppCard, { type BusinessWhatsApp } from './partials/WhatsAppCard';
 import RecoveryCard, { type BusinessRecovery } from './partials/RecoveryCard';
@@ -92,6 +94,8 @@ interface Props {
     currency: Currency;
     whatsapp: BusinessWhatsApp | null;
     recovery: BusinessRecovery;
+    /** أمفتوحٌ بابُ الحذف النهائيّ على هذا الخادم؟ — `config/purge.php` */
+    purge: boolean;
 }
 
 const TABS = [
@@ -101,7 +105,7 @@ const TABS = [
 ];
 
 export default function BusinessShow() {
-    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp, recovery } =
+    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp, recovery, purge } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
@@ -490,6 +494,103 @@ export default function BusinessShow() {
                 )}
             </Card>
 
+            {purge && <DangerZone name={business.name} id={business.id} />}
+
         </PlatformLayout>
+    );
+}
+
+/**
+ * منطقةُ الخطر — الحذفُ النهائيّ وحدَه فيها.
+ *
+ * ═══ ولمَ بطاقةٌ في أسفل الصفحة لا زرٌّ في رأسها ═══
+ *
+ * زرُّ «تعطيل» في الرأس بين «تعديل» و«دخول كتاجر» — أفعالٌ يوميّةٌ تُضغط
+ * بلا تردّد. ووضعُ فعلٍ لا رجعةَ فيه بينها يجعله يُضغط بالعادة. فمكانُه
+ * أسفلَ الصفحة، خلف عنوانٍ يقول ما هو، وبإطارٍ أحمر.
+ *
+ * والتأكيدُ كتابةُ الاسم كاملًا: «هل أنت متأكّد؟» تُجاب بـ«نعم» بلا قراءة،
+ * وكتابةُ الاسم لا تقع إلا بعد أن تُقرأ الشاشة. والخادمُ يقارنه ثانيةً —
+ * فهذا الحقلُ راحةٌ لمن يضغط لا حراسةٌ للبيانات.
+ */
+export function DangerZone({ name, id }: { name: string; id: number }) {
+    const t = useTranslate();
+    const [open, setOpen] = useState(false);
+    const [typed, setTyped] = useState('');
+    const [busy, setBusy] = useState(false);
+
+    const tidy = (v: string) => v.replace(/\s+/g, ' ').trim();
+    const matches = tidy(typed) === tidy(name);
+
+    const submit = () => {
+        if (! matches || busy) return;
+
+        setBusy(true);
+        router.delete(route('super-admin.businesses.purge', id), {
+            data: { confirm: typed },
+            preserveScroll: true,
+            onFinish: () => setBusy(false),
+        });
+    };
+
+    return (
+        <Card className="mt-6 border-[#fecaca] bg-[#fffafa] p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                    <h2 className="flex items-center gap-2 text-[15px] font-bold text-[#b91c1c]">
+                        <AlertTriangle className="size-4" />
+                        {t('منطقة الخطر')}
+                    </h2>
+                    <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-[#7f1d1d]">
+                        {t('يمحو هذا الإجراء الشركة وكل بياناتها ومستخدميها وملفاتها. تُؤرشف دفاترها المحاسبية قبل المحو، وما عداها لا يُسترجع.')}
+                    </p>
+                </div>
+
+                <Button variant="danger" onClick={() => setOpen(true)}>
+                    <Trash2 />
+                    {t('حذف الشركة نهائيًا')}
+                </Button>
+            </div>
+
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="text-[#b91c1c]">{t('حذف الشركة نهائيًا')}</DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-3 px-5 pb-1">
+                        <p className="text-[13.5px] leading-relaxed text-[#4b4b4b]">
+                            {t('سيُحذف كل ما يخص «:name»: المنتجات والطلبات والعملاء والمخزون والمستخدمون والملفات. لا يمكن التراجع عن هذا الإجراء.', { name })}
+                        </p>
+                        <p className="text-[13px] leading-relaxed text-[#7f1d1d]">
+                            {t('تُؤرشف السجلات المحاسبية والمالية في ملف يُحفظ على الخادم قبل المحو.')}
+                        </p>
+
+                        <label className="block">
+                            <span className="mb-1.5 block text-[12.5px] text-[#4b4b4b]">
+                                {t('اكتب اسم الشركة للتأكيد:')} <span className="font-bold text-[#111]">{name}</span>
+                            </span>
+                            <Input
+                                value={typed}
+                                onChange={(e) => setTyped(e.target.value)}
+                                placeholder={name}
+                                aria-label={t('اسم الشركة للتأكيد')}
+                                autoComplete="off"
+                            />
+                        </label>
+                    </div>
+
+                    <div className="mt-4 flex justify-end gap-2 px-5 pb-5">
+                        <Button variant="outline" onClick={() => setOpen(false)}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button variant="danger" disabled={! matches || busy} onClick={submit}>
+                            <Trash2 />
+                            {t('احذف نهائيًا')}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </Card>
     );
 }

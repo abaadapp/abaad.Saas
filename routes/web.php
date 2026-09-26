@@ -313,6 +313,17 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/businesses/{id}/edit', [SuperAdminPageController::class, 'businessesEdit'])->name('businesses.edit');
     Route::put('/businesses/{id}', [BusinessController::class, 'update'])->name('businesses.update');
     Route::delete('/businesses/{id}', [BusinessController::class, 'destroy'])->name('businesses.destroy');
+    /*
+     * والحذفُ النهائيُّ بابٌ آخر — لا حقلٌ في بابِ التعطيل.
+     *
+     * `destroy` أعلاه يكتب «معطل» ويُردّ بـ`activate`. وهذا يمحو المتجرَ
+     * ومَن فيه وملفّاتِه ولا يُردّ. فمسارٌ بعنوانٍ مستقلٍّ لا يبلغه طلبٌ
+     * يقصد التعطيلَ فيُساء تكوينُه.
+     *
+     * ومفتاحُه مغلقٌ افتراضيًّا (`config/purge.php`): المسارُ مرسومٌ والكودُ
+     * منشور، ويردّ ٤٠٤ حتّى يُفتح على الخادم بقرار.
+     */
+    Route::delete('/businesses/{id}/purge', [BusinessController::class, 'purge'])->name('businesses.purge');
     // الطرف الآخر من التعطيل — بلا هذا المسار كان الباب يُغلق ولا يُفتح
     Route::post('/businesses/{id}/activate', [BusinessController::class, 'activate'])->name('businesses.activate');
 

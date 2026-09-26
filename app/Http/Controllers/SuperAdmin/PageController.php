@@ -14,6 +14,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Models\WhatsAppConnection;
 use App\Support\Billing;
+use App\Support\BusinessPurge;
 use App\Support\BusinessTypes;
 use App\Support\CrmAssistant;
 use App\Support\CrmWhatsApp;
@@ -122,6 +123,14 @@ class PageController extends Controller
              * الآخر وتاريخُ انتهائه. والأحدث أولى حين تكون له دورات كثيرة.
              */
             'subscription' => collect(Demo::subscriptions())->firstWhere('business_id', $business['id']),
+            /*
+             * وبابُ الحذف النهائيّ — يُرسم إن كان مفتوحًا على هذا الخادم.
+             *
+             * والشاشةُ تقرأ ولا تقرّر: المسارُ نفسُه يردّ ٤٠٤ حين يكون المفتاح
+             * مُقفلًا (`BusinessController::purge`)، فإخفاءُ الزرّ راحةٌ للعين
+             * لا حراسة.
+             */
+            'purge' => BusinessPurge::enabled(),
             'stats' => [
                 ['label' => __('الفروع'), 'value' => (string) $business['branches'], 'icon' => 'git-branch', 'color' => 'primary'],
                 ['label' => __('الموظفون'), 'value' => (string) $counts['employees'], 'icon' => 'users', 'color' => 'info'],

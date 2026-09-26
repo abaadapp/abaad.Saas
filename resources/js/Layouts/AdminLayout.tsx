@@ -70,8 +70,16 @@ export default function AdminLayout({ title, children, nav, sidebarSubtitle }: A
             }
             : confirm ? {
                 label: confirm.label ?? t('امضِ على أيّ حال'),
-                onClick: () => router.delete(confirm.url, {
-                    data: { ack_stock: true },
+                /*
+                 * والفعلُ من الخادم لا مفروضًا هنا: البابُ الجماعيّ يُعاد
+                 * بـ`post` ومعه مَن بقي، والمفردُ يبقى `delete` بعنوانه
+                 * وحده. وحارسٌ على أحد البابين لا يحرس شيئًا — وزرٌّ على
+                 * أحدهما دون الآخر يترك التاجر يقرأ «أعِد الحذف مؤكَّدًا»
+                 * ولا يجد ما يُعيده به.
+                 */
+                onClick: () => router.visit(confirm.url, {
+                    method: confirm.method ?? 'delete',
+                    data: { ack_stock: true, ...(confirm.data ?? {}) },
                     preserveScroll: true,
                 }),
             }

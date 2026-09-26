@@ -73,8 +73,17 @@ export interface Toast {
      *
      * والإقرارُ يُرسَل مع الطلب الثاني (`ack_stock`)، فالخادمُ هو الحارس لا
      * النافذة: نافذةٌ تُتخطّى بطلبٍ مباشر تترك العطبَ كما كان.
+     *
+     * و`method` و`data` للبابِ الجماعيّ: إعادةُ فعلٍ جماعيٍّ تحتاج أن تُقال
+     * لها على مَن تُعاد — والحذفُ المفرد يكفيه عنوانُه، فيبقى `delete` بلا
+     * حمولةٍ كما كان.
      */
-    confirm?: { url: string; label?: string };
+    confirm?: {
+        url: string;
+        label?: string;
+        method?: 'delete' | 'post';
+        data?: Record<string, unknown>;
+    };
     /** رابطٌ خارجيّ حين يكون الفعلُ التالي خارج النظام — كتذكير السداد على واتساب */
     link?: { url: string; label: string };
 }

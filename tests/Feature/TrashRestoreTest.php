@@ -313,6 +313,87 @@ class TrashRestoreTest extends TestCase
         $this->assertSame(0, Product::onlyTrashed()->where('business_id', $this->business->id)->count());
     }
 
+    /* ==================== رمزٌ شُغل بعد الحذف ==================== */
+
+    public function test_the_undo_is_refused_when_its_code_became_another_products(): void
+    {
+        /*
+         * قيدُ التفرّد يتجاوز المحذوف عمدًا: صنفٌ حُذف لا يحجز رمزَه. فيُحذف
+         * «أ» ويُضاف «ب» بالرمز نفسِه — وكلاهما صحيح. ثمّ تُضغط «تراجع»:
+         * صنفان حيّان برمزٍ واحد، والماسحُ يختار أحدهما فيُخصم من صنفٍ ويبقى
+         * الآخرُ على الرفّ، ويظهر الفرقُ في الجرد بلا سببٍ يُعرف.
+         *
+         * والردُّ أسلمُ من تسميةٍ صامتة: كتابةُ رمزٍ جديدٍ لصنفٍ يعود تكتب في
+         * بضاعة التاجر ما لم يطلبه. وهذا السلوكُ قائمٌ في المتحكّم ولم يكن له
+         * حارسٌ واحد.
+         */
+        $product = $this->product();
+
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true]);
+
+        // ورمزُه صار لغيره
+        Product::create([
+            'business_id' => $this->business->id, 'name' => 'وردٌ ثانٍ', 'sku' => 'FLW-00001',
+            'price' => 5, 'cost' => 2, 'quantity' => 0, 'alert_qty' => 2, 'active' => true,
+        ]);
+
+        $this->actingAs($this->owner)->post(route('admin.products.restore', $product->id));
+
+        // ما زال في السلّة — لم يعُد برمزٍ شُغل
+        $this->assertSoftDeleted('products', ['id' => $product->id]);
+    }
+
+    public function test_and_the_refusal_names_the_code_and_who_holds_it(): void
+    {
+        /*
+         * «تعذّرت الاستعادة» وحدها تجعل التاجر يعيد الضغط. والرمزُ واسمُ من
+         * أخذه هما ما يدلّه على الفعل التالي: يغيّر رمزَ الجديد ثمّ يعيد.
+         */
+        $product = $this->product();
+
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true]);
+
+        Product::create([
+            'business_id' => $this->business->id, 'name' => 'وردٌ ثانٍ', 'sku' => 'FLW-00001',
+            'price' => 5, 'cost' => 2, 'quantity' => 0, 'alert_qty' => 2, 'active' => true,
+        ]);
+
+        $this->actingAs($this->owner)->post(route('admin.products.restore', $product->id))
+            ->assertSessionHas('toast', function ($toast) {
+                return $toast['type'] === 'danger'
+                    && str_contains($toast['msg'], 'FLW-00001')
+                    && str_contains($toast['msg'], 'وردٌ ثانٍ');
+            });
+    }
+
+    public function test_a_free_code_lets_it_come_back(): void
+    {
+        // ومنعٌ يمنع كلَّ شيءٍ ليس حارسًا: الرمزُ الحرُّ يعود بلا سؤال
+        $product = $this->product();
+
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true]);
+        $this->actingAs($this->owner)->post(route('admin.products.restore', $product->id));
+
+        $this->assertNotSoftDeleted('products', ['id' => $product->id]);
+    }
+
+    public function test_a_neighbours_identical_code_does_not_block_the_undo(): void
+    {
+        /*
+         * والتعارضُ داخل المتجر لا في المنصّة: رمزُ «FLW-00001» في متجر الجار
+         * لا يمنع شيئًا — ولو منع لصار حذفُ صنفٍ عند تاجرٍ يُقفل استعادةَ صنفٍ
+         * عند آخر.
+         */
+        $product = $this->product();
+
+        $this->actingAs($this->owner)->delete(route('admin.products.destroy', $product->id), ['ack_stock' => true]);
+        $this->product($this->neighbour);
+
+        $this->actingAs($this->owner)->post(route('admin.products.restore', $product->id));
+
+        $this->assertNotSoftDeleted('products', ['id' => $product->id]);
+    }
+
     public function test_a_deleted_product_still_names_itself_in_past_sales(): void
     {
         $product = $this->product();

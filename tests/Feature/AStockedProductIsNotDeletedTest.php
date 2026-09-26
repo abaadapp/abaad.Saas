@@ -6,6 +6,8 @@ use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Business;
 use App\Models\Category;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -169,6 +171,75 @@ class AStockedProductIsNotDeletedTest extends TestCase
         $this->assertSoftDeleted('products', ['id' => $stocked->id]);
     }
 
+    public function test_the_bulk_warning_carries_the_button_that_confirms_it(): void
+    {
+        /*
+         * وهو الحارسُ نفسُه الذي يحرس البابَ المفرد أعلاه — وكان غائبًا هنا.
+         *
+         * الرسالةُ تقول «أعِد الحذف مؤكَّدًا» والشاشةُ لا ترسل الإقرار: فمن
+         * رُدَّ عن عشرين صنفًا يقرأ أمرًا لا سبيلَ إلى تنفيذه، ويعيد الضغط
+         * فيقرأ الرفضَ نفسَه. وسبيلُه الوحيد كان حذفَها واحدًا واحدًا — حيث
+         * الزرُّ موجود.
+         */
+        $stocked = $this->product(50, 'مخزون');
+
+        $this->post(route('admin.products.bulk'), [
+            'action' => 'delete', 'ids' => [$stocked->id],
+        ])->assertSessionHas('toast', function ($toast) {
+            return isset($toast['confirm']['url'])
+                && ($toast['confirm']['method'] ?? null) === 'post'
+                && ($toast['confirm']['data']['action'] ?? null) === 'delete';
+        });
+    }
+
+    public function test_the_bulk_button_carries_only_what_stayed(): void
+    {
+        /*
+         * وإعادةُ التحديد كلِّه تحمل معرّفاتِ ما حُذف للتوّ، فيُقرأ العددُ
+         * الثاني خطأً ويُحسب أنّ الفارغ حُذف مرّتين.
+         */
+        $empty = $this->product(0, 'فارغ');
+        $stocked = $this->product(50, 'مخزون');
+
+        $this->post(route('admin.products.bulk'), [
+            'action' => 'delete', 'ids' => [$empty->id, $stocked->id],
+        ])->assertSessionHas('toast', fn ($toast) => $toast['confirm']['data']['ids'] === [$stocked->id]);
+    }
+
+    public function test_pressing_that_button_does_delete_them(): void
+    {
+        // ومقبضٌ لا يُدير شيئًا أسوأ من غياب المقبض — كما في الباب المفرد
+        $stocked = $this->product(50, 'مخزون');
+
+        $this->post(route('admin.products.bulk'), ['action' => 'delete', 'ids' => [$stocked->id]]);
+
+        $toast = session('toast');
+
+        // ما يرسله الشريطُ حين يُضغط: حمولةُ الخادم ومعها الإقرار
+        $this->post($toast['confirm']['url'], $toast['confirm']['data'] + ['ack_stock' => true]);
+
+        $this->assertSoftDeleted('products', ['id' => $stocked->id]);
+    }
+
+    public function test_the_acknowledgement_does_not_reach_a_neighbours_product(): void
+    {
+        /*
+         * والإقرارُ ليس مفتاحًا عامًّا: طلبٌ يحمل `ack_stock` ومعرّفَ صنفٍ من
+         * متجرٍ آخر يمرّ على عزل المتجر قبل حارس المخزون.
+         */
+        $other = Business::create(['name' => 'الجارُ الثاني', 'type' => 'عام', 'status' => 'نشط']);
+        $theirs = Product::create([
+            'business_id' => $other->id, 'name' => 'صنفُ الجار', 'sku' => 'Y-1',
+            'price' => 1, 'cost' => 1, 'quantity' => 50, 'alert_qty' => 1, 'active' => true,
+        ]);
+
+        $this->post(route('admin.products.bulk'), [
+            'action' => 'delete', 'ids' => [$theirs->id], 'ack_stock' => true,
+        ]);
+
+        $this->assertNotSoftDeleted('products', ['id' => $theirs->id]);
+    }
+
     public function test_the_bulk_door_deletes_the_empty_and_names_what_it_kept(): void
     {
         $empty = $this->product(0, 'فارغ');
@@ -180,6 +251,66 @@ class AStockedProductIsNotDeletedTest extends TestCase
 
         $this->assertSoftDeleted('products', ['id' => $empty->id]);
         $this->assertNotSoftDeleted('products', ['id' => $stocked->id]);
+    }
+
+    /* ======================== ما بيع لا يُمَسّ ======================== */
+
+    public function test_a_sold_products_history_survives_its_deletion(): void
+    {
+        /*
+         * وهذا ما يجعل الحذفَ مقبولًا أصلًا: الفاتورةُ لا تُعاد كتابتُها.
+         *
+         * `order_items` يحمل لقطتَه — اسمًا وسعرًا ومجموعًا — و`product_id`
+         * عمودٌ بلا قيدٍ أجنبيّ. فحذفُ الصنف لا يُفرّغ بندًا ولا يُنقص مجموعَ
+         * طلبٍ مضى، ولا يُخفي اسمَه عمّن يقرأ الفاتورة بعد سنة.
+         */
+        $product = $this->product(0, 'وردٌ بِيع');
+
+        $order = Order::create([
+            'business_id' => $this->business->id, 'number' => 'INV-000001',
+            'payment_method' => 'نقدي', 'payment_status' => 'مدفوع', 'status' => 'مكتمل',
+            'subtotal' => 10, 'discount' => 0, 'tax' => 0, 'total' => 10,
+            'is_held' => false, 'ordered_at' => now()->subDays(3),
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id, 'product_id' => $product->id,
+            'name' => 'وردٌ بِيع', 'price' => 10, 'quantity' => 1, 'total' => 10,
+        ]);
+
+        $this->delete(route('admin.products.destroy', $product->id));
+        $this->assertSoftDeleted('products', ['id' => $product->id]);
+
+        $this->assertDatabaseHas('order_items', [
+            'id' => $item->id, 'name' => 'وردٌ بِيع', 'price' => 10, 'total' => 10,
+        ]);
+        $this->assertSame(10.0, (float) $order->fresh()->total, 'تبدّل مجموعُ طلبٍ مضى');
+    }
+
+    public function test_and_survives_the_final_purge_too(): void
+    {
+        /*
+         * والمحوُ النهائيُّ كذلك: يأخذ الصورةَ ورصيدَ الفروع، ولا يمسّ بندًا
+         * في فاتورة. ولو أخذه لصارت مهلةُ التسعين يومًا قنبلةً موقوتةً على
+         * تقارير السنة الماضية.
+         */
+        $product = $this->product(0, 'وردٌ مُحي');
+
+        $order = Order::create([
+            'business_id' => $this->business->id, 'number' => 'INV-000002',
+            'payment_method' => 'نقدي', 'payment_status' => 'مدفوع', 'status' => 'مكتمل',
+            'subtotal' => 7, 'discount' => 0, 'tax' => 0, 'total' => 7,
+            'is_held' => false, 'ordered_at' => now()->subDays(3),
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id, 'product_id' => $product->id,
+            'name' => 'وردٌ مُحي', 'price' => 7, 'quantity' => 1, 'total' => 7,
+        ]);
+
+        $this->delete(route('admin.products.destroy', $product->id));
+        $this->delete(route('admin.products.purge', $product->id));
+
+        $this->assertDatabaseMissing('products', ['id' => $product->id]);
+        $this->assertDatabaseHas('order_items', ['name' => 'وردٌ مُحي', 'total' => 7]);
     }
 
     /* ============================== البديل ============================== */

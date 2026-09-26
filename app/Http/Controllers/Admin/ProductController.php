@@ -647,6 +647,7 @@ class ProductController extends Controller
         $query = Product::where('business_id', $this->bid())->whereIn('id', $data['ids']);
         $count = 0;
         $skipped = [];
+        $kept = [];
 
         switch ($data['action']) {
             case 'activate':
@@ -681,6 +682,9 @@ class ProductController extends Controller
                      */
                     if ($this->stockWarning($p, $request->boolean('ack_stock'))) {
                         $skipped[] = $p->name;
+                        // ومعرّفُه معه: زرُّ «على أيّ حال» يُعاد على من بقي
+                        // وحدَهم، لا على التحديد كلِّه — فما حُذف قد ذهب
+                        $kept[] = $p->id;
 
                         continue;
                     }
@@ -717,6 +721,25 @@ class ProductController extends Controller
                     'names' => implode('، ', array_slice($skipped, 0, 3)).(count($skipped) > 3 ? '…' : ''),
                 ]),
                 'type' => 'warning',
+                /*
+                 * وزرُّ الإقرار هنا كما هو في الباب المفرد.
+                 *
+                 * كانت الرسالةُ تقول «أعِد الحذف مؤكَّدًا» ولا سبيلَ في
+                 * الواجهة إلى ذلك: تكرارُ الحذف الجماعيّ يُعيد الرفضَ نفسَه
+                 * أبدًا، لأن الشاشة لا ترسل الإقرار. فمن رُدَّ عن عشرين صنفًا
+                 * كان سبيلُه الوحيد حذفَها واحدًا واحدًا — حيث الزرُّ موجود.
+                 * بابٌ يُعرض ولا يُفتح.
+                 *
+                 * وعلى من بقي وحدَهم: إعادةُ التحديد كلِّه تحمل معرّفاتِ ما
+                 * حُذف للتوّ، فيُقرأ العددُ الثاني خطأً ويُحسب أنّها حُذفت
+                 * مرّتين.
+                 */
+                'confirm' => [
+                    'url' => route('admin.products.bulk'),
+                    'method' => 'post',
+                    'label' => __('احذفها على أيّ حال'),
+                    'data' => ['action' => 'delete', 'ids' => $kept],
+                ],
             ]);
         }
 

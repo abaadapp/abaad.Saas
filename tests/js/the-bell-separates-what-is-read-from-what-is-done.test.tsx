@@ -28,7 +28,8 @@ describe('جرسُ الإشعارات القابلةِ للإنجاز', () => {
         done: [],
     };
 
-    const bell = () => {
+    /** `at` قاعدةُ الأبواب كما يسلّمها الخادم — وغيابُها يعني لوحةَ التاجر */
+    const bell = (at?: string) => {
         Object.assign(pageProps, {
             auth: {
                 abilities: ['inventory', 'dashboard'],
@@ -37,7 +38,7 @@ describe('جرسُ الإشعارات القابلةِ للإنجاز', () => {
                 user: { name: 'المالك', avatar: null, roleLabel: 'مالك', role: 'admin', businessId: 1 },
             },
             context: { website: null, branches: [], branchId: null, branchName: '', currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 }, currencies: [] },
-            notifications: feed,
+            notifications: at ? { ...feed, at } : feed,
             reportPages: [],
             locale: 'ar',
             csrf: 'x',
@@ -93,6 +94,30 @@ describe('جرسُ الإشعارات القابلةِ للإنجاز', () => {
     });
 
     afterEach(() => vi.unstubAllGlobals());
+
+    it('وينادي أبوابَ اللوحة التي هو فيها — لا لوحةً واحدةً مفروضة', async () => {
+        /*
+         * لمدير المنصّة نسخةُ الأبواب في مجموعته: `RequiresBusiness` يسوقه عن
+         * أبواب لوحة النشاط، فكانت الثمانيةُ كلُّها تردّه بتحويلةٍ ولا يُرسم
+         * له جرسٌ أصلًا. والقاعدةُ تُسلَّم من الخادم في `at` — واختيارُها هنا
+         * يجعل المعرفةَ في موضعين يفترقان.
+         */
+        bell('/super-admin/notifications');
+        await userEvent.click(screen.getByRole('button', { name: /الإشعارات/ }));
+        await userEvent.click(screen.getByRole('tab', { name: /مكتملة/ }));
+
+        await waitFor(() => expect(calls.some((c) => c.url === '/super-admin/notifications/history')).toBe(true));
+        expect(calls.every((c) => !c.url.startsWith('/admin/notifications'))).toBe(true);
+    });
+
+    it('وبلا قاعدةٍ يبقى على أبواب لوحة النشاط كما كان', async () => {
+        // توافقٌ: الردُّ القديم لا يحمل `at`، فلا ينكسر جرسُ التاجر
+        bell();
+        await userEvent.click(screen.getByRole('button', { name: /الإشعارات/ }));
+        await userEvent.click(screen.getByRole('tab', { name: /مكتملة/ }));
+
+        await waitFor(() => expect(calls.some((c) => c.url === '/admin/notifications/history')).toBe(true));
+    });
 
     it('الشارةُ تعدّ ما يحتاج إجراءً — ولا تعدّ المؤجَّل', async () => {
         bell();

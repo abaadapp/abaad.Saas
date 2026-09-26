@@ -199,8 +199,20 @@ class HandleInertiaRequests extends Middleware
                     ->all()
                 : null,
 
-            // بناءٌ واحدٌ للصفوف والعدّاد — انظر `Demo::notificationFeed`
-            'notifications' => fn () => $user?->business_id ? Demo::notificationFeed() : null,
+            /*
+             * بناءٌ واحدٌ للصفوف والعدّاد — انظر `Demo::notificationFeed`.
+             *
+             * ومديرُ المنصّة معهم وإن لم يكن له متجر: `buildNotifications`
+             * تبني له محادثاتِ الدعم والاشتراكاتِ المنتهية، وكان الشرطُ
+             * بـ`business_id` وحده يُسقط الخاصّيّة فلا يُرسم الجرسُ أصلًا
+             * (`Topbar` يرسمه بـ`{feed && …}`) — فيُبنى ما لا يُعرَض.
+             *
+             * ولا يُوسَّع بذلك ما يُقرأ: فرعُه يردّ قبل أن يُقرأ صفُّ تاجرٍ
+             * واحد، ومن لا متجرَ له ولا إدارةَ منصّةٍ تبقى خاصّيّتُه `null`.
+             */
+            'notifications' => fn () => $user && ($user->business_id || $user->isSuperAdmin())
+                ? Demo::notificationFeed()
+                : null,
 
             /*
              * شارةُ الدعم — محسوبةٌ في كلّ طلب لا مكتوبةٌ في الشاشة.

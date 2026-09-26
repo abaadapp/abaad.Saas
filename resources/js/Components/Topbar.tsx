@@ -93,8 +93,21 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     const [feed, setFeed] = useState(notifications);
     useEffect(() => setFeed(notifications), [notifications]);
 
+    /*
+     * قاعدةُ أبواب الجرس — من الخادم لا مبنيّةً هنا.
+     *
+     * لوحةُ المنصّة لها نسخةُ الأبواب في مجموعتها (`super-admin.notifications.*`)
+     * لأنّ `RequiresBusiness` يسوق مديرَها عن أبواب لوحة النشاط. واختيارُ
+     * الشريطِ بينهما بنفسه يجعل المعرفةَ في موضعين يفترقان عند أوّل بابٍ
+     * يُضاف — فيُقرأ ما سلّمه `Demo::notificationFeed`.
+     *
+     * ويُقرأ من الخاصّيّة: هي أوّلُ ما يصل مع الصفحة، ولا تتبدّل قاعدةُ
+     * الأبواب في جلسةٍ واحدة.
+     */
+    const at = notifications?.at ?? '/admin/notifications';
+
     const pull = async () => {
-        const res = await fetch('/admin/notifications/feed', { headers: { Accept: 'application/json' } });
+        const res = await fetch(`${at}/feed`, { headers: { Accept: 'application/json' } });
         if (!res.ok) return null;
         const data = await res.json();
         return {
@@ -102,6 +115,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
             count: (data.count ?? 0) as number,
             snoozed: (data.snoozed ?? []) as Notification[],
             done: (data.done ?? []) as Notification[],
+            /* والاستطلاعُ ينقلها كما ينقل غيرَها — فلا تُفقَد بعد أوّل نبضة */
+            at: (data.at ?? at) as string,
         };
     };
 
@@ -175,7 +190,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     };
 
     const finish = async (key: string) => {
-        const { ok, data } = await send('/admin/notifications/done', { key });
+        const { ok, data } = await send(`${at}/done`, { key });
 
         if (!ok) {
             setBlocked((b) => ({ ...b, [key]: String(data.reason ?? t('تعذّر إنهاء هذا الإشعار')) }));
@@ -189,26 +204,26 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
     const snoozeFor = async (key: string, minutes: number) => {
         setPicking(null);
-        const { ok } = await send('/admin/notifications/snooze', { key, minutes });
+        const { ok } = await send(`${at}/snooze`, { key, minutes });
         if (!ok) return;
         setBlocked(({ [key]: _gone, ...rest }) => rest);
         await refresh();
     };
 
     const reopen = async (key: string) => {
-        const { ok } = await send('/admin/notifications/reopen', { key });
+        const { ok } = await send(`${at}/reopen`, { key });
         if (!ok) return;
         setPast(null);
         await refresh();
     };
 
     /* فُتح فقُرئ — ولا ينتظر أحدٌ الشبكةَ ليتنقّل */
-    const markSeen = (key: string) => void send('/admin/notifications/open', { key });
+    const markSeen = (key: string) => void send(`${at}/open`, { key });
 
     useEffect(() => {
         if (tab !== 'done' || past !== null) return;
         let alive = true;
-        void fetch('/admin/notifications/history', { headers: { Accept: 'application/json' } })
+        void fetch(`${at}/history`, { headers: { Accept: 'application/json' } })
             .then((r) => (r.ok ? r.json() : { items: [] }))
             .then((d) => alive && setPast((d.items ?? []) as NotificationPast[]))
             .catch(() => alive && setPast([]));
@@ -226,7 +241,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     const dismissOne = async (key: string) => {
         setFeed((f) => (f ? { ...f, items: f.items.filter((i) => i.key !== key), count: Math.max(0, f.count - 1) } : f));
 
-        const { ok, data } = await send('/admin/notifications/dismiss', { key });
+        const { ok, data } = await send(`${at}/dismiss`, { key });
 
         /* ردَّه الخادمُ — فيعود الصفُّ ويُكتب سببُه، ولا يختفي شيءٌ لم يُخفَ */
         if (!ok) {
@@ -243,7 +258,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
      * يفعل، والقائمةُ تُقرأ من الخادم بعده فلا تُصان باليد.
      */
     const hideNews = async () => {
-        await send('/admin/notifications/clear', {});
+        await send(`${at}/clear`, {});
         await refresh();
     };
 

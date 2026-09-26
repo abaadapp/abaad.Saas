@@ -343,10 +343,18 @@ class TheBellIsBuiltOnceAndSaysTheTruthTest extends TestCase
          * وشارتُه تُعدّ النشطَ وحدَه. و`snoozed` و`done` تبويبان جديدان،
          * ولا يُعدّان في الشارة.
          */
-        $this->assertSame(['items', 'count', 'snoozed', 'done'], array_keys($feed));
+        $this->assertSame(['items', 'count', 'snoozed', 'done', 'at'], array_keys($feed));
         $this->assertIsArray($feed['items']);
         $this->assertIsInt($feed['count']);
         $this->assertIsArray($feed['snoozed']);
         $this->assertIsArray($feed['done']);
+
+        /*
+         * و`at` خامسةً: قاعدةُ الأبواب تُسلَّم ولا تُبنى في الشريط.
+         *
+         * للتاجر أبوابُ لوحته، ولمدير المنصّة نسخةٌ في مجموعته — انظر
+         * `Demo::bellDoor` و`ABellRingsForThePlatformManagerTest`.
+         */
+        $this->assertSame('/admin/notifications', $feed['at']);
     }
 }

@@ -168,6 +168,12 @@ export interface SharedProps {
         count: number;
         snoozed: Notification[];
         done: Notification[];
+        /**
+         * قاعدةُ أبواب الجرس جاهزةً — `/admin/notifications` أو نسخةُ لوحة
+         * المنصّة. تُسلَّم من الخادم لأنّ المعرفةَ بأيّ لوحةٍ تنادي أيَّ باب
+         * موضعُها واحد — انظر `Demo::bellDoor`.
+         */
+        at: string;
     } | null;
     /** عددُ محادثات الدعم التي تنتظر هذا المستخدم — محسوبٌ في كلّ طلب */
     supportBadge: number;

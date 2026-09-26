@@ -35,6 +35,8 @@ use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\Supplier;
 use App\Models\SupportConversation;
+use App\Models\SupportMessage;
+use App\Models\SupportRead;
 use App\Models\Transaction;
 use App\Models\User;
 use Carbon\Carbon;
@@ -3560,8 +3562,36 @@ class Demo
                 ->orderByDesc('last_message_at')
                 ->limit($limit)->get();
 
+            /*
+             * ═══ والقراءةُ تُسأل مرّةً لا مرّةً لكلّ محادثة ═══
+             *
+             * كان `Support::unreadFor` يُنادى في الحلقة، وهي استعلامان لكلّ
+             * صفّ. ولم يكن ذلك ظاهرًا حين كانت خاصّيّةُ الجرس تُسقَط عن مدير
+             * المنصّة: الفرعُ لا يُشغَّل أصلًا. فلمّا صار جرسُه يُرسم، صار
+             * الفرعُ يجري في **كلّ صفحةٍ** يفتحها — فأسقط حارسَ الكلفة في
+             * `AShopSpeaksToAbaadTest::test_a_longer_page_does_not_cost_a_query_per_row`
+             * بعشرين استعلامًا زائدًا.
+             *
+             * والقاعدةُ هي هي: «غيرُ مقروءٍ» = ثمَّ رسالةٌ من متجرٍ رقمُها فوق
+             * آخرِ ما قرأه هذا المدير. فتُسأل مرّةً لكلّ المحادثات المرشَّحة:
+             * مؤشّراتُ القراءة في استعلام، وآخرُ رقمِ رسالةٍ من متجرٍ في
+             * استعلام. فالكلفةُ ثابتةٌ لا تنمو بعدد المحادثات.
+             */
+            $ids = $waiting->pluck('id');
+
+            $read = SupportRead::whereIn('conversation_id', $ids)
+                ->where('user_id', $u->id)
+                ->pluck('last_read_message_id', 'conversation_id');
+
+            $said = SupportMessage::whereIn('conversation_id', $ids)
+                ->where('sender_scope', 'business')
+                ->groupBy('conversation_id')
+                ->selectRaw('conversation_id, max(id) as last_id')
+                ->pluck('last_id', 'conversation_id');
+
             foreach ($waiting as $c) {
-                if (Support::unreadFor($c, $u) === 0) {
+                // ولا رسالةَ متجرٍ فيها، أو كلُّها مقروءة — فليست ممّا ينتظر
+                if ((int) ($said[$c->id] ?? 0) <= (int) ($read[$c->id] ?? 0)) {
                     continue;
                 }
 
@@ -4068,7 +4098,34 @@ class Demo
             'count' => count($sift['active']),
             'snoozed' => $sift['snoozed'],
             'done' => $sift['done'],
+            /*
+             * وعنوانُ الأبواب يُسلَّم جاهزًا — لا يُبنى في الواجهة.
+             *
+             * أبوابُ الجرس ثمانيةٌ، ولمدير المنصّة نسخةٌ منها في مجموعته
+             * (انظر `routes/web.php`). فلو اختار الشريطُ بينهما بنفسه لصارت
+             * معرفةُ «أيُّ لوحةٍ تنادي أيَّ باب» في موضعين يفترقان عند أوّل
+             * بابٍ يُضاف. وهو المبدأُ نفسُه الذي يُسلّم به زرُّ «تراجع»
+             * رابطَه جاهزًا — انظر `Toast.undo`.
+             */
+            'at' => self::bellDoor($u),
         ];
+    }
+
+    /**
+     * قاعدةُ أبواب الجرس لهذا القارئ — تُشتقّ من المسار نفسِه لا تُكتب نصًّا.
+     *
+     * ومديرُ المنصّة لا متجرَ له: `RequiresBusiness` يسوقه عن أبواب اللوحة،
+     * فأبوابُه في مجموعة `super-admin` بحرسها (`role:super_admin`).
+     */
+    private static function bellDoor(?User $u): string
+    {
+        $name = $u && ! $u->business_id && $u->isSuperAdmin()
+            ? 'super-admin.notifications.feed'
+            : 'admin.notifications.feed';
+
+        $feed = route($name, absolute: false);
+
+        return substr($feed, 0, (int) strrpos($feed, '/'));
     }
 
     /**

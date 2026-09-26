@@ -268,6 +268,40 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/demo/{id}/reseed', [DemoController::class, 'reseed'])->name('demo.reseed');
     Route::delete('/demo/{id}', [DemoController::class, 'destroy'])->name('demo.destroy');
 
+    /*
+     * جرسُ مدير المنصّة — أبوابُه هنا لأنّ لوحتَه هنا.
+     *
+     * ═══ وكان الخادمُ يبني له ولا بابَ يُسلّم ═══
+     *
+     * `Demo::buildNotifications` فيها فرعٌ كاملٌ لمن لا متجرَ له: محادثاتُ
+     * الدعم التي تنتظره، والاشتراكاتُ التي تنتهي — ثمّ تردّ قبل أن تقرأ صفَّ
+     * تاجرٍ واحد. وقِيس ذلك: صفّان يُبنيان له فعلًا.
+     *
+     * وأبوابُ اللوحة (`admin.notifications.*`) خلف `RequiresBusiness`، وهو
+     * يسوقه إلى لوحته: «لوحة النشاط تخصّ متجرًا بعينه». فكانت الثمانيةُ
+     * كلُّها تردّه بتحويلةٍ — لا JSON ولا جرس، وصفوفُه تُبنى في كلّ طلبٍ
+     * لتُطرَح.
+     *
+     * ═══ ولمَ نسخةٌ هنا لا نزعُ الحارس هناك ═══
+     *
+     * نزعُ `RequiresBusiness` عن أبواب اللوحة يُضعف حارسًا يحرس اثنتين
+     * وستّين شاشة لأجل ثمانية أبواب. وهذه المجموعةُ محروسةٌ بـ`role:super_admin`
+     * — أشدُّ ممّا يمرّ به التاجر لا أضعف — فمن ليس مديرَ منصّةٍ لا يبلغها،
+     * وأبوابُ التاجر تبقى بحرسها كما هي.
+     *
+     * والمتحكّمُ واحدٌ: `NotificationController` يقرأ قارئَه من الجلسة
+     * (`mine()`)، ومديرُ المنصّة لا يُكتب له صفُّ حالةٍ — أخبارٌ تُقرأ وتُخفى،
+     * لا مهامُّ تُنجَز. فلا منطقَ يُكرَّر ولا سلوكَ تاجرٍ يتبدّل.
+     */
+    Route::get('/notifications/feed', [NotificationController::class, 'feed'])->name('notifications.feed');
+    Route::post('/notifications/dismiss', [NotificationController::class, 'dismiss'])->name('notifications.dismiss');
+    Route::post('/notifications/clear', [NotificationController::class, 'clear'])->name('notifications.clear');
+    Route::post('/notifications/open', [NotificationController::class, 'open'])->name('notifications.open');
+    Route::post('/notifications/done', [NotificationController::class, 'done'])->name('notifications.done');
+    Route::post('/notifications/snooze', [NotificationController::class, 'snooze'])->name('notifications.snooze');
+    Route::post('/notifications/reopen', [NotificationController::class, 'reopen'])->name('notifications.reopen');
+    Route::get('/notifications/history', [NotificationController::class, 'history'])->name('notifications.history');
+
     // الشركات
     Route::get('/businesses', [BusinessController::class, 'index'])->name('businesses.index');
     // تصدير الشركات (قبل businesses/{id} حتى لا يبتلعها نمط المعرّف)

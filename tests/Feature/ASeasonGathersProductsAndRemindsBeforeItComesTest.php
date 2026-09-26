@@ -288,11 +288,12 @@ class ASeasonGathersProductsAndRemindsBeforeItComesTest extends TestCase
     }
 
     /**
-     * ولا يُخفى من الجرس ما ليس فيه.
+     * وبابُ الإخفاء العامُّ لا يُسكت تنبيهَ القسم.
      *
-     * بابُ الإخفاء العامّ يبقى لسكّانه، ومفتاحُ موسمٍ يُرسل إليه لا يكتب صفًّا
-     * ولا يمسّ التنبيهَ في قسمه: القراءةُ هناك `acknowledged_for` لا
-     * `DismissedNotification`.
+     * البابان لا يتبادلان إخفاءً: القراءةُ هنا `acknowledged_for` على صفّ
+     * التذكير، وهناك `DismissedNotification` على مفتاحٍ نصّيّ. ومن أرسل
+     * مفتاحَ موسمٍ إلى بابِ الجرس كتب صفًّا لا يُنتجه أحدٌ بعد اليوم — لا
+     * يُخفي شيئًا ولا يُقرأ.
      */
     public function test_dismissing_a_season_key_in_the_bell_changes_nothing(): void
     {
@@ -304,7 +305,21 @@ class ASeasonGathersProductsAndRemindsBeforeItComesTest extends TestCase
             ->assertOk();
 
         $this->assertTrue($r->fresh()->isDue($season->fresh()), 'الإخفاءُ العامُّ أسكت تنبيهَ القسم');
-        $this->assertSame(0, DismissedNotification::where('key', 'like', 'season-reminder-%')->count());
+
+        /*
+         * والشاشةُ نفسُها تُسأل لا الصفُّ وحدَه: بين الصفِّ والشاشة ترشيحٌ
+         * قد يقرأ إخفاءَ الجرس يومًا، فيُسأل ما يصل التاجرَ حقًّا.
+         *
+         * والعمودُ `notif_key` لا `key` — وSQLite تقرأ المعرِّفَ المجهولَ بين
+         * علامتَي اقتباسٍ نصًّا لا عمودًا، فيمرّ شرطٌ على عمودٍ لا وجودَ له
+         * كاذبًا بلا سؤال. فيُقرأ اسمُ العمود من الهجرة لا من النموذج.
+         */
+        $this->assertCount(1, $this->alerts(), 'التنبيهُ غاب عن شاشة المواسم بعد إخفاءٍ من الجرس');
+        $this->assertSame(
+            1,
+            DismissedNotification::where('notif_key', 'season-reminder-'.$r->id)->count(),
+            'بابُ الجرس كتب صفَّه كعادته — وهو صفٌّ لا يُنتج مفتاحَه أحد',
+        );
     }
 
     public function test_a_reminder_of_another_shop_is_neither_seen_nor_touched(): void

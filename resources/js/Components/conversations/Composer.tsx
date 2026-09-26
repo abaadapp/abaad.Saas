@@ -53,7 +53,7 @@ export function MessageComposer({
     const canSend = !processing && value.trim() !== '';
 
     return (
-        <div className="shrink-0 border-t border-[var(--ui-border,#e8e8e8)] bg-white p-2.5">
+        <div className="shrink-0 border-t border-[var(--cv-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-panel,#fff)] p-2.5">
             {above}
 
             {files.length > 0 && (
@@ -61,9 +61,9 @@ export function MessageComposer({
                     {files.map((f, i) => (
                         <li
                             key={`${f.name}-${i}`}
-                            className="flex max-w-full items-center gap-1.5 rounded-full border border-[var(--ui-border,#e8e8e8)] bg-[#fafaf9] ps-2.5 pe-1 py-1 text-[12px]"
+                            className="flex max-w-full items-center gap-1.5 rounded-full border border-[var(--cv-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-chip,#fafaf9)] ps-2.5 pe-1 py-1 text-[12px] text-[var(--cv-ink,#111)]"
                         >
-                            <Paperclip className="size-3.5 shrink-0 text-[#9ca3af]" />
+                            <Paperclip className="size-3.5 shrink-0 text-[var(--cv-faint,#9ca3af)]" />
                             <span className="min-w-0 truncate" dir="auto">
                                 {f.name}
                             </span>
@@ -71,7 +71,7 @@ export function MessageComposer({
                                 type="button"
                                 aria-label={t('إزالة')}
                                 onClick={() => onRemoveFile(i)}
-                                className="rounded-full p-0.5 text-[#9ca3af] hover:bg-[#fee2e2] hover:text-[#b91c1c]"
+                                className="rounded-full p-0.5 text-[var(--cv-faint,#9ca3af)] hover:bg-[#fee2e2] hover:text-[#b91c1c]"
                             >
                                 <X className="size-3.5" />
                             </button>
@@ -85,8 +85,8 @@ export function MessageComposer({
                 className={cn(
                     'flex min-w-0 flex-1 items-end gap-1 rounded-[22px] border px-2 py-1',
                     tone === 'internal'
-                        ? 'border-[#f59e0b] bg-[#fffbeb]'
-                        : 'border-[#e6e9f0] bg-[#f7f8fb] focus-within:border-[#2563eb] focus-within:bg-white',
+                        ? 'border-[var(--cv-note-border,#f59e0b)] bg-[var(--cv-note,#fffbeb)] text-[var(--cv-note-ink,#111)]'
+                        : 'border-[var(--cv-field-border,#e6e9f0)] bg-[var(--cv-field,#f7f8fb)] text-[var(--cv-ink,#111)] focus-within:border-[var(--cv-accent,#2563eb)] focus-within:bg-[var(--cv-field-focus,#fff)]',
                 )}
             >
                 <input
@@ -125,7 +125,7 @@ export function MessageComposer({
                     placeholder={placeholder}
                     aria-label={placeholder}
                     dir="auto"
-                    className="max-h-40 min-h-[38px] flex-1 resize-none self-center bg-transparent px-1.5 py-2 text-[13.5px] leading-[1.5] outline-none placeholder:text-[#9ca3af] field-sizing-content"
+                    className="max-h-40 min-h-[38px] flex-1 resize-none self-center bg-transparent px-1.5 py-2 text-[13.5px] leading-[1.5] text-inherit outline-none placeholder:text-[var(--cv-faint,#9ca3af)] field-sizing-content"
                 />
 
                 {trailing}
@@ -141,7 +141,9 @@ export function MessageComposer({
                     title={t('إرسال')}
                     className={cn(
                         'size-11 shrink-0 rounded-[14px] shadow-[0_2px_8px_rgba(37,99,235,0.3)]',
-                        tone === 'internal' ? 'bg-[#b45309] hover:bg-[#92400e]' : 'bg-[#2563eb] hover:bg-[#1d4ed8]',
+                        tone === 'internal'
+                            ? 'bg-[#b45309] hover:bg-[#92400e]'
+                            : 'bg-[var(--cv-accent,#2563eb)] text-[var(--cv-accent-ink,#fff)] hover:bg-[var(--cv-accent-hover,#1d4ed8)]',
                     )}
                 >
                     <Send className="size-5 rtl:-scale-x-100" />

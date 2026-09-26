@@ -61,7 +61,7 @@ export function ConversationShell({
         >
             <section
                 className={cn(
-                    'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white',
+                    'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[16px] border border-[var(--cv-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-panel,#fff)]',
                     pane !== 'list' && 'hidden lg:flex',
                 )}
             >
@@ -70,7 +70,7 @@ export function ConversationShell({
 
             <section
                 className={cn(
-                    'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white',
+                    'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[16px] border border-[var(--cv-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-panel,#fff)]',
                     pane === 'details' ? 'hidden xl:flex' : pane === 'list' ? 'hidden lg:flex' : 'flex',
                 )}
             >
@@ -79,7 +79,7 @@ export function ConversationShell({
 
             <section
                 className={cn(
-                    'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-white',
+                    'flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[16px] border border-[var(--cv-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-panel,#fff)]',
                     pane === 'details' ? 'flex' : 'hidden xl:flex',
                 )}
             >
@@ -139,9 +139,9 @@ export function ConversationList({
 }) {
     return (
         <>
-            <div className="shrink-0 border-b border-[var(--ui-border,#e8e8e8)] p-3">{header}</div>
-            <ul className="min-h-0 flex-1 divide-y divide-[#f1f1f0] overflow-y-auto">{children}</ul>
-            {footer && <div className="shrink-0 border-t border-[var(--ui-border,#e8e8e8)] p-2">{footer}</div>}
+            <div className="shrink-0 border-b border-[var(--cv-border,var(--ui-border,#e8e8e8))] p-3">{header}</div>
+            <ul className="min-h-0 flex-1 divide-y divide-[var(--cv-divide,#f1f1f0)] overflow-y-auto">{children}</ul>
+            {footer && <div className="shrink-0 border-t border-[var(--cv-border,var(--ui-border,#e8e8e8))] p-2">{footer}</div>}
         </>
     );
 }
@@ -163,14 +163,14 @@ export function ConversationSearch({
 }) {
     return (
         <div className="relative">
-            <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-[#9ca3af]" />
+            <Search className="pointer-events-none absolute inset-y-0 start-3 my-auto size-4 text-[var(--cv-faint,#9ca3af)]" />
             <Input
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
                 onBlur={onBlur}
                 placeholder={placeholder}
-                className="h-9 rounded-[12px] border-[#e6e9f0] bg-[#f7f8fb] ps-9 text-[13px] focus-visible:border-[#2563eb]"
+                className="h-9 rounded-[12px] border-[var(--cv-field-border,#e6e9f0)] bg-[var(--cv-field,#f7f8fb)] ps-9 text-[13px] text-[var(--cv-ink,#111)] placeholder:text-[var(--cv-faint,#9ca3af)] focus-visible:border-[var(--cv-accent,#2563eb)]"
                 aria-label={label}
             />
         </div>
@@ -205,7 +205,9 @@ export function FilterChips({
                         className={cn(
                             'rounded-full font-medium transition-colors',
                             size === 'md' ? 'px-2.5 py-1 text-[12px]' : 'px-2 py-0.5 text-[11px]',
-                            on ? 'bg-[#2563eb] text-white' : 'bg-[#f3f5f9] text-[#4b4b4b] hover:bg-[#e8ecf3]',
+                            on
+                                ? 'bg-[var(--cv-accent,#2563eb)] text-[var(--cv-accent-ink,#fff)]'
+                                : 'bg-[var(--cv-chip,#f3f5f9)] text-[var(--cv-chip-ink,#4b4b4b)] hover:bg-[var(--cv-chip-hover,#e8ecf3)]',
                         )}
                     >
                         {item.label}
@@ -213,7 +215,7 @@ export function FilterChips({
                             <span
                                 className={cn(
                                     'ms-1.5 rounded-full px-1.5 tabular-nums',
-                                    on ? 'bg-white/20' : 'bg-white text-[#71717a]',
+                                    on ? 'bg-white/20' : 'bg-[var(--cv-panel,#fff)] text-[var(--cv-muted,#71717a)]',
                                 )}
                             >
                                 {item.n}
@@ -238,7 +240,7 @@ export function Avatar({ name, src, size = 'md' }: { name: string; src?: string 
     return (
         <span
             className={cn(
-                'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e8efff] font-bold text-[#1d4ed8]',
+                'flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--cv-accent-soft,#e8efff)] font-bold text-[var(--cv-accent-soft-ink,#1d4ed8)]',
                 size === 'sm'
                     ? 'size-8 text-[11px]'
                     : size === 'md'
@@ -288,34 +290,35 @@ export function ConversationListItem({
                 onClick={onClick}
                 aria-current={active ? 'true' : undefined}
                 className={cn(
-                    'flex w-full gap-3 px-3 py-2.5 text-start transition-colors hover:bg-[#fafaf9]',
-                    active && 'bg-[#eef4ff] shadow-[inset_3px_0_0_#2563eb] hover:bg-[#eef4ff] rtl:shadow-[inset_-3px_0_0_#2563eb]',
+                    'flex w-full gap-3 px-3 py-2.5 text-start transition-colors hover:bg-[var(--cv-hover,#fafaf9)]',
+                    active &&
+                        'bg-[var(--cv-sel,#eef4ff)] shadow-[inset_3px_0_0_var(--cv-accent,#2563eb)] hover:bg-[var(--cv-sel,#eef4ff)] rtl:shadow-[inset_-3px_0_0_var(--cv-accent,#2563eb)]',
                 )}
             >
                 {avatar}
 
                 <span className="min-w-0 flex-1">
                     <span className="flex items-baseline gap-2">
-                        <span className={cn('truncate text-[14px] text-[#111]', unread > 0 ? 'font-bold' : 'font-semibold')}>
+                        <span className={cn('truncate text-[14px] text-[var(--cv-ink,#111)]', unread > 0 ? 'font-bold' : 'font-semibold')}>
                             {title}
                         </span>
-                        {time && <span className="ms-auto shrink-0 text-[11px] text-[#9ca3af]">{time}</span>}
+                        {time && <span className="ms-auto shrink-0 text-[11px] text-[var(--cv-faint,#9ca3af)]">{time}</span>}
                     </span>
 
-                    {subtitle && <span className="mt-px block truncate text-[12px] text-[#71717a]">{subtitle}</span>}
+                    {subtitle && <span className="mt-px block truncate text-[12px] text-[var(--cv-muted,#71717a)]">{subtitle}</span>}
 
                     <span className="mt-0.5 flex items-center gap-2">
                         <span
                             className={cn(
                                 'min-w-0 flex-1 truncate text-[12.5px]',
-                                unread > 0 ? 'font-medium text-[#111]' : 'text-[#71717a]',
+                                unread > 0 ? 'font-medium text-[var(--cv-ink,#111)]' : 'text-[var(--cv-muted,#71717a)]',
                             )}
                         >
                             {preview || '—'}
                         </span>
                         {unread > 0 && (
                             <span
-                                className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[#2563eb] px-1 text-[10px] font-bold tabular-nums text-white"
+                                className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--cv-accent,#2563eb)] px-1 text-[10px] font-bold tabular-nums text-[var(--cv-accent-ink,#fff)]"
                                 aria-label={String(unread)}
                             >
                                 {unread}
@@ -333,10 +336,10 @@ export function ConversationListItem({
 export function ConversationEmptyState({ text, icon }: { text: string; icon?: ReactNode }) {
     return (
         <div className="flex flex-1 flex-col items-center justify-center p-10 text-center">
-            <span className="flex size-14 items-center justify-center rounded-full bg-[#f4f4f5] text-[#a1a1aa]">
+            <span className="flex size-14 items-center justify-center rounded-full bg-[var(--cv-chip,#f4f4f5)] text-[var(--cv-faint,#a1a1aa)]">
                 {icon ?? <Inbox className="size-6" />}
             </span>
-            <p className="mt-3 text-[14px] text-[#71717a]">{text}</p>
+            <p className="mt-3 text-[14px] text-[var(--cv-muted,#71717a)]">{text}</p>
         </div>
     );
 }
@@ -372,7 +375,9 @@ export function PageLinks({
                     onClick={() => l.url && onGo(l.url)}
                     className={cn(
                         'min-w-7 rounded-[6px] px-2 py-1 text-[12px]',
-                        l.active ? 'bg-[#2563eb] text-white' : 'text-[#4b4b4b] hover:bg-[#fafafa]',
+                        l.active
+                            ? 'bg-[var(--cv-accent,#2563eb)] text-[var(--cv-accent-ink,#fff)]'
+                            : 'text-[var(--cv-chip-ink,#4b4b4b)] hover:bg-[var(--cv-hover,#fafafa)]',
                         !l.url && 'cursor-not-allowed opacity-40',
                     )}
                     dangerouslySetInnerHTML={{ __html: l.label }}

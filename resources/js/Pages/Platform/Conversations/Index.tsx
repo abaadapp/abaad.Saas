@@ -1,5 +1,5 @@
 import { router, useForm, usePage } from '@inertiajs/react';
-import { useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
     ArrowLeftRight,
@@ -173,24 +173,82 @@ const day = (iso: string | null) => (iso ? new Date(iso).toDateString() : '');
 const dayLabel = (iso: string | null, locale: string) =>
     iso ? new Date(iso).toLocaleDateString(tag(locale), { weekday: 'long', day: 'numeric', month: 'long' }) : '';
 
+/* ═══════════════════ اللوحُ الداكن ═══════════════════ */
+
+/**
+ * ألوانُ هذه الشاشة وحدَها.
+ *
+ * ═══ ولمَ متغيّراتٌ لا مكوّناتٌ ثانية ═══
+ *
+ * مكوّناتُ `Components/conversations` تُستعمل هنا وفي مبيعات CRM. ونسخُها
+ * لتُصبغ داكنةً يترك نسختين تفترقان أوّلَ إصلاحٍ يقع في إحداهما.
+ *
+ * فألوانُها صارت `var(--cv-*, <لونُها اليوم>)`: صفحةٌ لا تُعرّف شيئًا تبقى
+ * كما هي حرفًا بحرف — وCRM لا تُعرّف — وهذه الصفحةُ تُعرّفها فتُصبغ وحدَها.
+ *
+ * والنصُّ فوق كلّ لون: الحالةُ مكتوبةٌ في حبّتها، والتسليمُ بكلمته وأيقونته،
+ * فلا يُحمَّل اللونُ معنًى وحدَه — في الفاتح كان كذلك وفي الداكن يبقى.
+ */
+const DARK: CSSProperties = {
+    '--cv-panel': '#1b1b1f',
+    '--cv-thread': '#161619',
+    '--cv-border': '#2b2b32',
+    '--cv-divide': '#232329',
+    '--cv-ink': '#f4f4f5',
+    '--cv-muted': '#a1a1aa',
+    '--cv-faint': '#8a8a94',
+    '--cv-hover': '#232329',
+    '--cv-sel': '#26262e',
+    '--cv-accent': '#2f7df6',
+    '--cv-accent-hover': '#1f6ae0',
+    '--cv-accent-ink': '#ffffff',
+    '--cv-accent-soft': '#1d2b44',
+    '--cv-accent-soft-ink': '#93c5fd',
+    '--cv-chip': '#26262c',
+    '--cv-chip-ink': '#c9c9d2',
+    '--cv-chip-hover': '#303038',
+    '--cv-in': '#27272d',
+    '--cv-in-ink': '#ececee',
+    '--cv-out': '#2f7df6',
+    '--cv-out-ink': '#ffffff',
+    '--cv-field': '#232329',
+    '--cv-field-focus': '#1b1b1f',
+    '--cv-field-border': '#34343c',
+    '--cv-soft': '#202025',
+    '--cv-soft-border': '#2b2b32',
+    '--cv-note': '#2a2112',
+    '--cv-note-border': '#a16207',
+    '--cv-note-ink': '#fde68a',
+    '--cv-note-head': '#fbbf24',
+    '--cv-attach': '#1f1f25',
+    '--cv-attach-ink': '#ececee',
+    '--cv-attach-muted': '#a1a1aa',
+    '--cv-attach-hover': '#26262d',
+    colorScheme: 'dark',
+} as CSSProperties;
+
+/** زرٌّ محدَّدُ الإطار داخل اللوح الداكن — إطارُه من اللوح لا من الأبيض */
+const DARK_BTN =
+    'border-[#34343c] bg-[#232329] text-[#ececee] hover:bg-[#2c2c34] hover:text-[#fff]';
+
 /** لونُ حبّةِ الحالة — والمعنى قبل اللون: النصّ مكتوبٌ فيها دائمًا */
 const statusTone = (status: string) =>
     ({
-        new: 'bg-[#eef2ff] text-[#4338ca]',
-        open: 'bg-[#ecfdf5] text-[#047857]',
-        waiting_customer: 'bg-[#fffbeb] text-[#b45309]',
-        waiting_abaad: 'bg-[#fef2f2] text-[#b91c1c]',
-        resolved: 'bg-[#f0fdf4] text-[#15803d]',
-        closed: 'bg-[#f4f4f5] text-[#52525b]',
-    })[status] ?? 'bg-[#f4f4f5] text-[#52525b]';
+        new: 'bg-[#1e1b3a] text-[#a5b4fc]',
+        open: 'bg-[#0d2b22] text-[#6ee7b7]',
+        waiting_customer: 'bg-[#2a2112] text-[#fcd34d]',
+        waiting_abaad: 'bg-[#2e1616] text-[#fca5a5]',
+        resolved: 'bg-[#0f2a1a] text-[#86efac]',
+        closed: 'bg-[#26262c] text-[#a1a1aa]',
+    })[status] ?? 'bg-[#26262c] text-[#a1a1aa]';
 
 const priorityTone = (priority: string) =>
     ({
-        low: 'bg-[#f4f4f5] text-[#71717a]',
-        normal: 'bg-[#f4f4f5] text-[#52525b]',
-        high: 'bg-[#fff7ed] text-[#c2410c]',
-        urgent: 'bg-[#fef2f2] text-[#b91c1c]',
-    })[priority] ?? 'bg-[#f4f4f5] text-[#52525b]';
+        low: 'bg-[#26262c] text-[#9b9ba4]',
+        normal: 'bg-[#26262c] text-[#a1a1aa]',
+        high: 'bg-[#2c1d10] text-[#fdba74]',
+        urgent: 'bg-[#2e1616] text-[#fca5a5]',
+    })[priority] ?? 'bg-[#26262c] text-[#a1a1aa]';
 
 /* ═══════════════════ الشاشة ═══════════════════ */
 
@@ -290,6 +348,16 @@ export default function Conversations({
                 tone="green"
             />
 
+            {/*
+                واللوحُ الداكن يبدأ هنا وينتهي عند إغلاقه.
+                رأسُ الصفحة فوقه على أرضيّة اللوحة الفاتحة كبقيّة الشاشات،
+                والأعمدةُ الثلاثةُ داخله — فتُقرأ الرسائلُ في لوحٍ واحدٍ لا
+                في ثلاث بطاقاتٍ تسبح على أبيض.
+            */}
+            <div
+                style={DARK}
+                className="flex min-h-0 flex-1 flex-col rounded-[18px] bg-[#121214] p-2 shadow-[0_18px_50px_-24px_rgba(0,0,0,0.55)]"
+            >
             <ConversationShell
                 pane={pane}
                 list={
@@ -320,7 +388,7 @@ export default function Conversations({
                                 {channels.length > 1 && (
                                     <div className="flex gap-1.5">
                                         {channels.map((c) => (
-                                            <span key={c.value} className="text-[11px] text-[#9ca3af]">
+                                            <span key={c.value} className="text-[11px] text-[var(--cv-faint)]">
                                                 {c.label}
                                             </span>
                                         ))}
@@ -359,7 +427,7 @@ export default function Conversations({
                                             <Pill className={priorityTone(c.priority)}>{c.priorityLabel}</Pill>
                                         )}
                                         {c.assignee && (
-                                            <span className="truncate text-[10.5px] text-[#9ca3af]">{c.assignee}</span>
+                                            <span className="truncate text-[10.5px] text-[var(--cv-faint)]">{c.assignee}</span>
                                         )}
                                     </>
                                 }
@@ -378,13 +446,13 @@ export default function Conversations({
                                 subtitle={
                                     <>
                                         {active.subject}
-                                        <span className="mx-1.5 text-[#d4d4d8]">·</span>
+                                        <span className="mx-1.5 text-[var(--cv-faint)]">·</span>
                                         <span dir="ltr">{active.reference}</span>
                                     </>
                                 }
                                 badges={
                                     <>
-                                        <Pill className="bg-[#f4f4f5] text-[#52525b]">{active.channelLabel}</Pill>
+                                        <Pill className="bg-[#26262c] text-[#c9c9d2]">{active.channelLabel}</Pill>
                                         <Pill className={statusTone(active.status)}>{active.statusLabel}</Pill>
                                     </>
                                 }
@@ -411,6 +479,7 @@ export default function Conversations({
                     )
                 }
             />
+            </div>
             </ConversationPage>
         </PlatformLayout>
     );
@@ -464,11 +533,11 @@ function Thread({ active, messages }: { active: Active; messages: Message[] }) {
                                         className={cn(
                                             'mt-1 flex items-start gap-1 text-[10.5px]',
                                             m.delivery === 'sent'
-                                                ? 'text-[#15803d]'
+                                                ? 'text-[#4ade80]'
                                                 : /* وبعضُها خرج: لا أخضرَ يقول «وصل كلُّه» ولا أحمرَ يقول «لم يصل شيء» */
                                                   m.delivery === 'partial'
-                                                  ? 'text-[#b45309]'
-                                                  : 'text-[#b91c1c]',
+                                                  ? 'text-[#fbbf24]'
+                                                  : 'text-[#f87171]',
                                         )}
                                     >
                                         {m.delivery === 'sent' ? (
@@ -565,7 +634,7 @@ function Composer({
                     <div
                         role="tablist"
                         aria-label={t('وضع الإرسال')}
-                        className="inline-flex overflow-hidden rounded-[9px] border border-[var(--ui-border,#e8e8e8)]"
+                        className="inline-flex overflow-hidden rounded-[9px] border border-[var(--cv-field-border)]"
                     >
                         {[
                             { key: false, label: t('رد للعميل') },
@@ -581,9 +650,9 @@ function Composer({
                                     'px-2.5 py-1 text-[12px] font-medium transition-colors',
                                     internal === mode.key
                                         ? mode.key
-                                            ? 'bg-[#fffbeb] text-[#b45309]'
-                                            : 'bg-[#111] text-white'
-                                        : 'bg-white text-[#4b4b4b] hover:bg-[#fafafa]',
+                                            ? 'bg-[var(--cv-note)] text-[var(--cv-note-head)]'
+                                            : 'bg-[var(--cv-accent)] text-[var(--cv-accent-ink)]'
+                                        : 'bg-[var(--cv-field)] text-[var(--cv-muted)] hover:bg-[var(--cv-chip-hover)]',
                                 )}
                             >
                                 {mode.key && <Lock className="me-1 inline size-3" />}
@@ -593,7 +662,7 @@ function Composer({
                     </div>
 
                     {internal && (
-                        <p className="text-[11px] text-[#b45309]">
+                        <p className="text-[11px] text-[var(--cv-note-head)]">
                             {t('لا تظهر لصاحب المتجر ولا تُرسل إليه إشعارًا، ولا تخرج إلى واتساب.')}
                         </p>
                     )}
@@ -602,7 +671,7 @@ function Composer({
                         <p
                             className={cn(
                                 'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]',
-                                waBlocked ? 'bg-[#fef2f2] text-[#b91c1c]' : 'bg-[#f0fdf4] text-[#166534]',
+                                waBlocked ? 'bg-[#2e1616] text-[#fca5a5]' : 'bg-[#0d2b22] text-[#6ee7b7]',
                             )}
                         >
                             {waBlocked ? (
@@ -686,7 +755,7 @@ function Details({
                 subtitle={<span dir="ltr">{active.reference}</span>}
             >
                 <Pill className={statusTone(active.status)}>{active.statusLabel}</Pill>
-                {active.business.status && <Pill className="bg-[#ecfdf5] text-[#047857]">{t(active.business.status)}</Pill>}
+                {active.business.status && <Pill className="bg-[#0d2b22] text-[#6ee7b7]">{t(active.business.status)}</Pill>}
             </DetailIdentity>
 
             <DetailSection title={t('معلومات النشاط')}>
@@ -697,7 +766,7 @@ function Details({
                 </dl>
 
                 {active.business.url && (
-                    <Button variant="outline" size="sm" className="mt-3 w-full" asChild>
+                    <Button variant="outline" size="sm" className={cn('mt-3 w-full', DARK_BTN)} asChild>
                         <a href={active.business.url}>
                             <ExternalLink />
                             {t('فتح صفحة النشاط')}
@@ -745,6 +814,7 @@ function Details({
                     <Button
                         variant="outline"
                         size="sm"
+                        className={DARK_BTN}
                         onClick={() => post('super-admin.conversations.status', { status: 'resolved' })}
                         disabled={active.status === 'resolved'}
                     >
@@ -753,6 +823,7 @@ function Details({
                     <Button
                         variant="outline"
                         size="sm"
+                        className={DARK_BTN}
                         onClick={() =>
                             post('super-admin.conversations.status', {
                                 status: active.status === 'closed' ? 'open' : 'closed',
@@ -768,10 +839,10 @@ function Details({
 
             {active.channel === 'whatsapp' && (
                 <DetailSection title={t('ليست دعمًا؟')}>
-                    <p className="mb-2 text-[11.5px] text-[#71717a]">
+                    <p className="mb-2 text-[11.5px] text-[var(--cv-muted)]">
                         {t('سيتم نقل المحادثة إلى مسار المبيعات وإغلاق محادثة الدعم مع الاحتفاظ بالسجل.')}
                     </p>
-                    <Button variant="outline" size="sm" className="w-full" onClick={handover}>
+                    <Button variant="outline" size="sm" className={cn('w-full', DARK_BTN)} onClick={handover}>
                         <ArrowLeftRight />
                         {t('نقل إلى CRM')}
                     </Button>

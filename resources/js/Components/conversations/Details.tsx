@@ -26,8 +26,17 @@ export function ConversationDetailsPanel({
 
     return (
         <>
-            <div className="flex shrink-0 items-center gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-3 py-2">
-                <Button variant="ghost" size="icon" className="xl:hidden" onClick={onBack} aria-label={t('رجوع')}>
+            <div className="flex shrink-0 items-center gap-2 border-b border-[var(--cv-border,var(--ui-border,#e8e8e8))] px-3 py-2">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                        'xl:hidden',
+                        'text-[var(--cv-muted,#4b4b4b)] hover:bg-[var(--cv-hover,rgba(17,17,17,0.045))] hover:text-[var(--cv-ink,#111)]',
+                    )}
+                    onClick={onBack}
+                    aria-label={t('رجوع')}
+                >
                     <ArrowLeft className="rtl:rotate-180" />
                 </Button>
 
@@ -43,8 +52,8 @@ export function ConversationDetailsPanel({
                                 className={cn(
                                     'rounded-[8px] px-2.5 py-1.5 text-[13px] font-medium transition-colors',
                                     tabs.value === tab.key
-                                        ? 'bg-[#eef4ff] text-[#1d4ed8]'
-                                        : 'text-[#71717a] hover:bg-[#fafaf9] hover:text-[#111]',
+                                        ? 'bg-[var(--cv-accent-soft,#eef4ff)] text-[var(--cv-accent-soft-ink,#1d4ed8)]'
+                                        : 'text-[var(--cv-muted,#71717a)] hover:bg-[var(--cv-hover,#fafaf9)] hover:text-[var(--cv-ink,#111)]',
                                 )}
                             >
                                 {tab.label}
@@ -52,7 +61,7 @@ export function ConversationDetailsPanel({
                         ))}
                     </div>
                 ) : (
-                    <h2 className="flex-1 text-[14px] font-bold text-[#111]">{title}</h2>
+                    <h2 className="flex-1 text-[14px] font-bold text-[var(--cv-ink,#111)]">{title}</h2>
                 )}
             </div>
 
@@ -74,10 +83,10 @@ export function DetailSection({
     className?: string;
 }) {
     return (
-        <section className={cn('rounded-[12px] border border-[#f0f0ef] bg-[#fcfcfb] p-3', className)}>
+        <section className={cn('rounded-[12px] border border-[var(--cv-soft-border,#f0f0ef)] bg-[var(--cv-soft,#fcfcfb)] p-3', className)}>
             {(title || action) && (
                 <div className="mb-2 flex items-center justify-between gap-2">
-                    {title && <h3 className="text-[12.5px] font-bold text-[#111]">{title}</h3>}
+                    {title && <h3 className="text-[12.5px] font-bold text-[var(--cv-ink,#111)]">{title}</h3>}
                     {action}
                 </div>
             )}
@@ -107,12 +116,12 @@ export function DetailLine({
 
     return (
         <div className="flex items-start justify-between gap-3 py-1">
-            <dt className="flex shrink-0 items-center gap-1.5 text-[12px] text-[#71717a]">
+            <dt className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--cv-muted,#71717a)]">
                 {icon}
                 {label}
             </dt>
             <dd
-                className={cn('min-w-0 truncate text-end text-[12.5px]', missing ? 'text-[#a1a1aa]' : 'text-[#111]')}
+                className={cn('min-w-0 truncate text-end text-[12.5px]', missing ? 'text-[var(--cv-faint,#a1a1aa)]' : 'text-[var(--cv-ink,#111)]')}
                 dir={ltr && !missing ? 'ltr' : undefined}
             >
                 {missing ? empty : value}
@@ -135,12 +144,12 @@ export function DetailSelect({
 }) {
     return (
         <label className="block">
-            <span className="mb-1 block text-[11.5px] text-[#71717a]">{label}</span>
+            <span className="mb-1 block text-[11.5px] text-[var(--cv-muted,#71717a)]">{label}</span>
             <select
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 aria-label={label}
-                className="h-9 w-full rounded-[9px] border border-[var(--ui-border,#e8e8e8)] bg-white px-2 text-[12.5px] outline-none focus:border-[#2563eb]"
+                className="h-9 w-full rounded-[9px] border border-[var(--cv-field-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-field,#fff)] px-2 text-[12.5px] text-[var(--cv-ink,#111)] outline-none focus:border-[var(--cv-accent,#2563eb)]"
             >
                 {options.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -167,8 +176,8 @@ export function DetailIdentity({
     return (
         <div className="flex flex-col items-center py-3 text-center">
             {avatar}
-            <p className="mt-2.5 text-[15px] font-bold text-[#111]">{name}</p>
-            {subtitle && <div className="mt-0.5 text-[12px] text-[#71717a]">{subtitle}</div>}
+            <p className="mt-2.5 text-[15px] font-bold text-[var(--cv-ink,#111)]">{name}</p>
+            {subtitle && <div className="mt-0.5 text-[12px] text-[var(--cv-muted,#71717a)]">{subtitle}</div>}
             {children && <div className="mt-2 flex flex-wrap justify-center gap-1.5">{children}</div>}
         </div>
     );
@@ -189,7 +198,7 @@ export function DetailFiles({
     return (
         <DetailSection
             title={title}
-            action={<span className="rounded-full bg-[#eef4ff] px-2 py-0.5 text-[11px] font-bold text-[#1d4ed8]">{files.length}</span>}
+            action={<span className="rounded-full bg-[var(--cv-accent-soft,#eef4ff)] px-2 py-0.5 text-[11px] font-bold text-[var(--cv-accent-soft-ink,#1d4ed8)]">{files.length}</span>}
         >
             <ul className="space-y-1.5">
                 {files.slice(0, limit).map((f) => (
@@ -198,7 +207,7 @@ export function DetailFiles({
                             href={f.url}
                             target={f.image ? '_blank' : undefined}
                             rel={f.image ? 'noopener noreferrer' : undefined}
-                            className="flex items-center gap-2.5 rounded-[10px] bg-white p-1.5 text-[12px] hover:bg-[#f7f8fb]"
+                            className="flex items-center gap-2.5 rounded-[10px] bg-[var(--cv-panel,#fff)] p-1.5 text-[12px] hover:bg-[var(--cv-hover,#f7f8fb)]"
                         >
                             {f.image ? (
                                 <img src={f.url} alt="" className="size-9 shrink-0 rounded-[8px] object-cover" loading="lazy" />
@@ -208,10 +217,10 @@ export function DetailFiles({
                                 </span>
                             )}
                             <span className="min-w-0 flex-1">
-                                <span className="block truncate font-medium text-[#111]" dir="auto">
+                                <span className="block truncate font-medium text-[var(--cv-ink,#111)]" dir="auto">
                                     {f.name}
                                 </span>
-                                <span className="block text-[11px] text-[#9ca3af]">{fileSize(f.size)}</span>
+                                <span className="block text-[11px] text-[var(--cv-faint,#9ca3af)]">{fileSize(f.size)}</span>
                             </span>
                         </a>
                     </li>

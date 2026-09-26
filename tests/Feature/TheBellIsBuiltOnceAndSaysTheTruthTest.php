@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\Notifications;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -104,8 +105,18 @@ class TheBellIsBuiltOnceAndSaysTheTruthTest extends TestCase
         $feed = $this->queries(fn () => Demo::notificationFeed());
 
         $this->assertGreaterThan(1, $once, 'البناءُ بلا استعلامات — القياسُ لا يقيس شيئًا');
+
+        /*
+         * والثمنُ بناءٌ واحدٌ وفرزٌ واحد — لا بناءان.
+         *
+         * صار للتغذية فرزٌ يفصل المؤجَّلَ والمنجَزَ عن النشط، وثمنُه استعلامٌ
+         * واحدٌ مكتوبٌ في `Notifications::STATE_QUERIES`. والمقارنةُ تبقى
+         * **مساواةً لا أصغريّة**: أصغريّةٌ تمرّ على بناءٍ ثانٍ لو نقص شيءٌ
+         * آخر، وهذه تسقط على أيّ استعلامٍ يُضاف سهوًا إلى ما يُستطلع كلَّ
+         * ثلاثين ثانية.
+         */
         $this->assertSame(
-            $once,
+            $once + Notifications::STATE_QUERIES,
             $feed,
             'التغذيةُ تبني مرّتين: الصفوفُ والعدّادُ من بناءٍ واحد لا من بناءين',
         );
@@ -325,8 +336,17 @@ class TheBellIsBuiltOnceAndSaysTheTruthTest extends TestCase
     {
         $feed = Demo::notificationFeed();
 
-        $this->assertSame(['items', 'count'], array_keys($feed));
+        /*
+         * والشكلُ صار أربعةً: صارت للتنبيه حالةٌ تُتابَع.
+         *
+         * `items` و`count` كما كانا حرفًا — الشريطُ العلويُّ يقرؤهما،
+         * وشارتُه تُعدّ النشطَ وحدَه. و`snoozed` و`done` تبويبان جديدان،
+         * ولا يُعدّان في الشارة.
+         */
+        $this->assertSame(['items', 'count', 'snoozed', 'done'], array_keys($feed));
         $this->assertIsArray($feed['items']);
         $this->assertIsInt($feed['count']);
+        $this->assertIsArray($feed['snoozed']);
+        $this->assertIsArray($feed['done']);
     }
 }

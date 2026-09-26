@@ -4,7 +4,9 @@ namespace App\Console\Commands;
 
 use App\Http\Controllers\Admin\TrashController;
 use App\Models\DismissedNotification;
+use App\Models\NotificationState;
 use App\Support\Demo;
+use App\Support\Notifications;
 use Illuminate\Console\Command;
 
 /**
@@ -97,5 +99,34 @@ class TrashPurge extends Command
         $this->info($dry
             ? "سيُمحى {$count} صفَّ إخفاءٍ انقضت مدّته"
             : "مُحي {$count} صفَّ إخفاءٍ انقضت مدّته (أقدم من ".Demo::DISMISSAL_DAYS.' يومًا)');
+
+        $this->purgeFinished($dry);
+    }
+
+    /**
+     * ودوراتٌ انتهت وخرجت من السجلّ — تُمحى كما تُمحى الإخفاءات.
+     *
+     * سجلُّ «المكتملة» يعرض ثلاثين يومًا (`Notifications::HISTORY_DAYS`). وما
+     * قبلها صفٌّ لا تقرؤه شاشة: لا يُعرض، ولا يمنع تنبيهًا — الدورةُ مغلقةٌ
+     * فلا تحجب شيئًا. فبقاؤه نموٌّ بلا سقف.
+     *
+     * **والمفتوحةُ لا تُمسّ مهما قدُمت**: تأجيلٌ لأسبوعٍ على صفٍّ عمرُه شهران
+     * ما زال يحجب تنبيهًا قائمًا — ومحوُه يُعيده فجأةً إلى جرس صاحبه.
+     */
+    private function purgeFinished(bool $dry): void
+    {
+        $stale = NotificationState::whereNotNull('resolved_at')
+            ->where('resolved_at', '<', now()->subDays(Notifications::HISTORY_DAYS));
+
+        $count = $stale->count();
+
+        if (! $dry && $count > 0) {
+            $stale->delete();
+        }
+
+        $this->line(sprintf('  %-8s %d', 'دورات', $count));
+        $this->info($dry
+            ? "سيُمحى {$count} صفَّ متابعةٍ خرج من السجلّ"
+            : "مُحي {$count} صفَّ متابعةٍ خرج من السجلّ (أقدم من ".Notifications::HISTORY_DAYS.' يومًا)');
     }
 }

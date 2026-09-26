@@ -3470,11 +3470,27 @@ class Demo
     /**
      * يبني قائمة التنبيهات مع مفتاح ثابت لكل تنبيه، بعد استبعاد ما حذفه المستخدم.
      * المفتاح ثابت لكل مصدر (منتج/طلب/اشتراك) حتى يبقى محذوفًا بعد إعادة التحميل.
+     *
+     * ═══ و`$unfiltered` تسأل سؤالًا آخر: هل ما زال السببُ قائمًا؟ ═══
+     *
+     * البناءُ العاديُّ يجيب «ما الذي يراه هذا المستخدمُ الآن؟» — فيُسقط ما
+     * أخفاه، وما لا يفتح قسمَه، وما لا يملك فعلَه. وهو الصوابُ للعرض.
+     *
+     * وهو **خطأٌ قاتل** إن قُرئ دليلَ حلّ: موظّفٌ نُزعت منه صلاحيةُ المخزون
+     * يختفي تنبيهُ النقص من بنائه، والصنفُ على الرفّ ناقصٌ كما كان. فلو
+     * قُرئ غيابُه «حُلّ تلقائيًّا» لَكتب النظامُ في السجلّ أنّ مشكلةً انتهت
+     * ولم تنتهِ — وطمأنينةٌ كاذبةٌ أسوأ من تحذيرٍ كاذب.
+     *
+     * ومثلُه الإخفاءُ القديم: مفتاحٌ في `dismissed_notifications` يختفي من
+     * البناء ثلاثين يومًا وسببُه قائم.
+     *
+     * فحين يُسأل «أزال السبب؟» يُبنى بلا هذين المُرشِّحَين — يُسأل المصدرُ
+     * نفسُه لا شاشةُ المستخدم. انظر `Notifications::sift`.
      */
-    private static function buildNotifications(int $limit): array
+    private static function buildNotifications(int $limit, bool $unfiltered = false): array
     {
         $u = auth()->user();
-        $dismissed = self::dismissedNotificationKeys();
+        $dismissed = $unfiltered ? [] : self::dismissedNotificationKeys();
         $items = [];
 
         /*
@@ -3496,7 +3512,7 @@ class Demo
          * و`null` تعني «لا قسمَ يحرسه»: ردُّ الدعم يقود إلى شاشةٍ من هيكل
          * اللوحة (`Permissions::isShell`) تُفتح لكلّ من دخل.
          */
-        $add = function (string $key, array $item) use (&$items, $dismissed, $u) {
+        $add = function (string $key, array $item) use (&$items, $dismissed, $u, $unfiltered) {
             if (in_array($key, $dismissed, true)) {
                 return;
             }
@@ -3504,7 +3520,7 @@ class Demo
             $section = $item['section'] ?? null;
             unset($item['section']);
 
-            if ($section !== null && $u && ! $u->allows($section)) {
+            if (! $unfiltered && $section !== null && $u && ! $u->allows($section)) {
                 return;
             }
 
@@ -3522,7 +3538,7 @@ class Demo
             $action = $item['action'] ?? null;
             unset($item['action']);
 
-            if ($action !== null && $u && ! $u->may($action)) {
+            if (! $unfiltered && $action !== null && $u && ! $u->may($action)) {
                 return;
             }
 
@@ -3746,7 +3762,7 @@ class Demo
          * والفاشلُ يُقال كذلك: تقريرُ حالٍ كاذب أسوأ من غياب التقرير، وصمتٌ
          * عن أرشيفٍ سقط يجعل التاجر يظنّه في الطريق شهرًا كاملًا.
          */
-        if ($u && $u->may(Permissions::BUSINESS_EXPORT)) {
+        if ($unfiltered || ($u && $u->may(Permissions::BUSINESS_EXPORT))) {
             $archives = BusinessArchive::where('business_id', $bid)
                 ->whereIn('status', [
                     BusinessArchive::READY,
@@ -3825,7 +3841,7 @@ class Demo
          * والقراءةُ معه: الرابطُ يقود إلى شاشة الإشعارات، وهي تُحرَس بفعلها.
          * فمن مُنح الاعتماد ولم يُمنح القراءة كان الجرسُ يقوده إلى ٤٠٣.
          */
-        if ($u && $u->may(Permissions::RECEIPT_APPROVE) && $u->may(Permissions::RECEIPT_VIEW)) {
+        if ($unfiltered || ($u && $u->may(Permissions::RECEIPT_APPROVE) && $u->may(Permissions::RECEIPT_VIEW))) {
             $waiting = GoodsReceiptNote::where('business_id', $bid)
                 ->where('status', GoodsReceipts::PENDING)
                 ->with('supplier')->orderBy('id')->limit($limit)->get();
@@ -3895,6 +3911,14 @@ class Demo
 
             $add('custom-'.$alert->id, [
                 'text' => $alert->message,
+                /*
+                 * وقاعدةٌ تُقاس ليست تذكيرًا بموعد.
+                 *
+                 * القاعدةُ يسألها النظامُ فتُجيب (`AlertMetrics::triggered`)،
+                 * فزوالُها دليلُ حلٍّ يُقرأ. والتذكيرُ موعدٌ حان ولا سجلَّ
+                 * يقول إنّه نُفِّذ — فيُصدَّق صاحبُه ويُسجَّل اسمُه ووقتُه.
+                 */
+                'resolve' => $alert->type === 'reminder' ? Notifications::MANUAL : Notifications::AUTO,
                 'time' => $alert->type === 'reminder'
                     ? optional($alert->due_at)->format('Y-m-d')
                     : __('تنبيه مخصّص'),
@@ -4034,13 +4058,44 @@ class Demo
     {
         $all = self::buildNotifications(self::BELL_COUNT_CEILING + 1);
 
-        return ['items' => array_slice($all, 0, self::BELL_ROWS), 'count' => count($all)];
+        /*
+         * ═══ والمؤجَّلُ والمنجَزُ لا يُعدّان نشطَين ═══
+         *
+         * الفرزُ استعلامٌ واحدٌ فوق البناء — صفوفُ هذا المستخدم المفتوحة
+         * (`Notifications::STATE_QUERIES`). ومن لا حالةَ له يخرج من أوّل
+         * سطرٍ فيه بلا عملٍ إضافيّ، وهو حالُ أكثرِ من يفتح اللوحة.
+         *
+         * والبناءُ الكاملُ يُمرَّر دالّةً لا قيمة: لا يُستدعى إلّا حين يغيب
+         * مفتاحٌ متتبَّع، وهو انتقالٌ يقع مرّةً في الدورة لا في كلّ استطلاع.
+         */
+        $u = auth()->user();
+
+        $sift = Notifications::sift(
+            $all,
+            /* والشاهدُ على الزوال بناءٌ غيرُ مرشَّح — لا شاشةُ المستخدم */
+            fn () => self::buildNotifications(100, true),
+            $u,
+            $u?->business_id,
+        );
+
+        return [
+            'items' => array_slice($sift['active'], 0, self::BELL_ROWS),
+            'count' => count($sift['active']),
+            'snoozed' => $sift['snoozed'],
+            'done' => $sift['done'],
+        ];
     }
 
-    /** كامل قائمة التنبيهات المرسلة (بلا اختصار) — لعرضها في الإعدادات */
+    /**
+     * كامل قائمة التنبيهات المرسلة (بلا اختصار) — لعرضها في الإعدادات.
+     *
+     * وتحمل تصنيفَ كلّ صفّ (خبرٌ أم إجراء) كما يحمله الجرس: شاشةُ الإعدادات
+     * تعرض زرَّ حذفٍ لكلّ صفّ، والخادمُ يردّ حذفَ الإجراءات. فلولا التصنيفُ
+     * لَعُرض زرٌّ يُردّ كلَّ مرّة.
+     */
     public static function allNotifications(): array
     {
-        return self::buildNotifications(100);
+        return Notifications::describe(self::buildNotifications(100));
     }
 
     /* ============================ الحساب البنكي وكشف الحساب ============================ */

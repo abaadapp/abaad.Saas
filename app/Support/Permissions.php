@@ -821,6 +821,20 @@ class Permissions
         'admin.search', 'admin.currency.switch', 'admin.language.update',
         'admin.notifications.feed', 'admin.notifications.dismiss', 'admin.notifications.clear',
         /*
+         * ومتابعةُ التنبيه كقراءته — من الهيكل لا من الأقسام.
+         *
+         * وهذه الأبوابُ لا تُوسّع ما يراه أحد: كلٌّ منها يُعيد بناءَ قائمة
+         * صاحبها، والبناءُ يُرشّح بالقسم والفعل والنشاط. فكاشيرٌ يفتح
+         * «المبيعات» وحدها لا يجد مفتاحَ المخزون في قائمته، فلا يُنجزه ولا
+         * يؤجّله — ويُردّ بـ«لم يعد قائمًا» لا بصفعةِ ٤٠٣ على بابٍ عامّ.
+         *
+         * ونسبتُها إلى قسمٍ كانت ستمنع من يرى التنبيهَ من أن يتصرّف به:
+         * «notifications» ليس قسمًا في `SECTIONS`، فلا يملكه أحد.
+         */
+        'admin.notifications.open', 'admin.notifications.done',
+        'admin.notifications.snooze', 'admin.notifications.reopen',
+        'admin.notifications.history',
+        /*
          * و«المساعدة والدعم» من الهيكل لا من الأقسام.
          *
          * قسمٌ يُمنح يعني قسمًا يُمنع — وبابُ دعمٍ يُغلق أمام كاشيرٍ يرى

@@ -123,7 +123,21 @@ class DashboardCardsTest extends TestCase
         $this->assertNotContains($key, array_column(Demo::allNotifications(), 'key'));
     }
 
-    public function test_clearing_removes_them_all(): void
+    /**
+     * «إخفاء الأخبار» يُفرغ الأخبارَ ويُبقي ما يحتاج إجراءً.
+     *
+     * ═══ ولمَ تبدّل هذا الحارس ═══
+     *
+     * كان اسمُه «يحذفها كلَّها»، وكان صادقًا: ضغطةٌ واحدةٌ تكتب صفَّ إخفاءٍ
+     * لكلّ صفٍّ في القائمة — فتُسكت كلَّ صنفٍ ناقصٍ وكلَّ ورقةٍ تنتظر
+     * الاعتماد ثلاثين يومًا. وصار للتنبيه حالةُ إنجازٍ تُتحقَّق من مصدرها،
+     * فبقاءُ هذا البابِ يُفرغها: من رُدّت «تم»ه يضغط «حذف الكل» فيسكت كلُّ
+     * شيء.
+     *
+     * فالجماعيُّ لا يمسّ إلّا الأخبار. والطلبُ الذي ينتظر التجهيز يبقى —
+     * يُنجَز من الجرس أو يُؤجَّل، ولا يُسكت بضغطةٍ عامّة.
+     */
+    public function test_clearing_hides_the_news_and_keeps_what_needs_doing(): void
     {
         Order::create([
             'business_id' => $this->business->id, 'number' => 'INV-1', 'customer_name' => 'نقدي',
@@ -133,7 +147,14 @@ class DashboardCardsTest extends TestCase
 
         $this->postJson(route('admin.notifications.clear'))->assertOk();
 
-        $this->assertEmpty(Demo::allNotifications());
+        $left = array_column(Demo::allNotifications(), 'key');
+
+        $this->assertContains('order-INV-1', $left, 'ضغطةٌ واحدةٌ أسكتت طلبًا ينتظر التجهيز');
+        $this->assertSame(
+            [],
+            array_values(array_filter($left, fn (string $k) => ! str_starts_with($k, 'order-'))),
+            'بقي خبرٌ بعد «إخفاء الأخبار»',
+        );
     }
 
     /** والحذف لصاحبه وحده: زميلي لا يفقد تنبيهه لأنّي حذفتُ تنبيهي */

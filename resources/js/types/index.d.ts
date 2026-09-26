@@ -38,6 +38,24 @@ export interface Notification {
     color?: string;
     time?: string;
     url?: string;
+    /** خبرٌ يُقرأ ويُخفى، أم إجراءٌ يُتابَع بـ«تم» و«تأجيل» */
+    kind?: 'info' | 'task';
+    /** هل يُتحقَّق من حلّه بسؤال مصدره، أم يُصدَّق صاحبُه */
+    resolve?: 'auto' | 'manual';
+    /** فُتح فقُرئ — والقراءةُ ليست إنجازًا */
+    seen?: boolean;
+    snoozed_until?: string;
+    done_at?: string;
+}
+
+/** صفٌّ في سجلّ «المكتملة» — لقطةُ نصّه محفوظة، فمصدرُه لم يعد يبنيه */
+export interface NotificationPast {
+    key: string;
+    text: string;
+    url?: string | null;
+    /** أنجزه صاحبُه، أم زال سببُه فأُغلق وحدَه */
+    state: 'done' | 'auto';
+    at: string;
 }
 
 export interface Toast {
@@ -137,7 +155,10 @@ export interface SharedProps {
     reportPages: { title: string; href: string }[] | null;
     notifications: {
         items: Notification[];
+        /** النشطُ وحدَه — ولا يُعدّ المؤجَّلُ ولا المنجَز */
         count: number;
+        snoozed: Notification[];
+        done: Notification[];
     } | null;
     /** عددُ محادثات الدعم التي تنتظر هذا المستخدم — محسوبٌ في كلّ طلب */
     supportBadge: number;

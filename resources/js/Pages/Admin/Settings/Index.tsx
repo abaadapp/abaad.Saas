@@ -74,6 +74,10 @@ interface NotificationRow {
     icon?: string;
     color?: string;
     url?: string;
+    /** خبرٌ يُخفى، أم إجراءٌ يُتابَع من الجرس بـ«تم» و«تأجيل» */
+    kind?: 'info' | 'task';
+    /** هل يُتحقَّق من حلّه بسؤال مصدره — وهذا وحدَه يُمنع إخفاؤه */
+    resolve?: 'auto' | 'manual';
 }
 
 /*
@@ -1661,16 +1665,20 @@ export default function SettingsIndex() {
                                 size="sm"
                                 variant="danger"
                                 onClick={async () => {
-                                    if (! await ask({ message: 'حذف جميع التنبيهات المرسلة؟', danger: true, action: 'حذف' })) return;
+                                    if (! await ask({ message: 'إخفاء التنبيهات المعلوماتية؟ الإجراءات التي تحتاج متابعة تبقى.', danger: true, action: 'إخفاء' })) return;
                                     router.post(
                                         route('admin.notifications.clear'),
                                         {},
-                                        { preserveScroll: true, onSuccess: () => setNotifs([]) },
+                                        {
+                                            preserveScroll: true,
+                                            /* الإجراءاتُ تبقى — والخادمُ يردّ إخفاءَها */
+                                            onSuccess: () => setNotifs((prev) => prev.filter((n) => n.kind === 'task')),
+                                        },
                                     );
                                 }}
                             >
                                 <Trash2 />
-                                {t('حذف الكل')}
+                                {t('إخفاء الأخبار')}
                             </Button>
                         )
                     }
@@ -1705,24 +1713,43 @@ export default function SettingsIndex() {
                                         )}
                                         {n.time && <p className="mt-0.5 text-[12px] text-[#9ca3af]">{n.time}</p>}
                                     </div>
-                                    <button
-                                        type="button"
-                                        title={t('حذف')}
-                                        onClick={() =>
-                                            router.post(
-                                                route('admin.notifications.dismiss'),
-                                                { key: n.key },
-                                                {
-                                                    preserveScroll: true,
-                                                    onSuccess: () =>
-                                                        setNotifs((prev) => prev.filter((x) => x.key !== n.key)),
-                                                },
-                                            )
-                                        }
-                                        className="flex size-8 shrink-0 items-center justify-center rounded-full text-[#d1d5db] transition-colors hover:bg-[#fef2f2] hover:text-[#dc2626]"
-                                    >
-                                        <Trash2 className="size-4" />
-                                    </button>
+                                    {/* ═══ ولا زرَّ حذفٍ على ما يُتحقَّق منه ═══
+
+                                        الخادمُ يردّ إخفاءَه: إسكاتُ «نفد
+                                        المخزون» ثلاثين يومًا والرفُّ فارغ
+                                        يلتفّ على حارس «تم». وزرٌّ معروضٌ
+                                        يُردّ كلَّ مرّةٍ أسوأ من زرٍّ لا
+                                        يُعرض — يُتابَع من الجرس حيث «تم»
+                                        و«تأجيل».
+
+                                        وما لا دليلَ عليه — تذكيرُ موسمٍ أو
+                                        تذكيرٌ كتبه صاحبُه — يبقى زرُّه: لا
+                                        يملك النظامُ أن يكذّبه، وهذه الشاشةُ
+                                        لا «تم» فيها ولا «تأجيل». */}
+                                    {n.kind === 'task' && n.resolve === 'auto' ? (
+                                        <span className="shrink-0 self-center rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[11px] text-[#6b7280]">
+                                            {t('يحتاج إجراء')}
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            title={t('إخفاء')}
+                                            onClick={() =>
+                                                router.post(
+                                                    route('admin.notifications.dismiss'),
+                                                    { key: n.key },
+                                                    {
+                                                        preserveScroll: true,
+                                                        onSuccess: () =>
+                                                            setNotifs((prev) => prev.filter((x) => x.key !== n.key)),
+                                                    },
+                                                )
+                                            }
+                                            className="flex size-8 shrink-0 items-center justify-center rounded-full text-[#d1d5db] transition-colors hover:bg-[#fef2f2] hover:text-[#dc2626]"
+                                        >
+                                            <Trash2 className="size-4" />
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>

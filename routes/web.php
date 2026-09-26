@@ -1432,6 +1432,21 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/notifications/dismiss', [NotificationController::class, 'dismiss'])->name('notifications.dismiss');
     Route::post('/notifications/clear', [NotificationController::class, 'clear'])->name('notifications.clear');
 
+    /*
+     * ═══ والتنبيهُ إجراءٌ يُتابَع ═══
+     *
+     * لا حارسَ صلاحيّاتٍ على هذه المسارات، وهو مقصود: الحارسُ في البناء
+     * نفسِه — كلُّ بابٍ منها يُعيد بناءَ قائمة صاحبِه ولا يجد فيها إلّا ما
+     * يملك فتحَه (`Demo::buildNotifications` تُرشّح بالقسم والفعل والنشاط).
+     * فمفتاحُ نشاطٍ آخر أو قسمٍ لا يفتحه لا يُوجد أصلًا، فلا يُنجَز ولا
+     * يُؤجَّل. وطبقةُ إذنٍ ثانيةٌ فوقه تعني موضعين يفترقان.
+     */
+    Route::post('/notifications/open', [NotificationController::class, 'open'])->name('notifications.open');
+    Route::post('/notifications/done', [NotificationController::class, 'done'])->name('notifications.done');
+    Route::post('/notifications/snooze', [NotificationController::class, 'snooze'])->name('notifications.snooze');
+    Route::post('/notifications/reopen', [NotificationController::class, 'reopen'])->name('notifications.reopen');
+    Route::get('/notifications/history', [NotificationController::class, 'history'])->name('notifications.history');
+
     // النسخ الاحتياطي والاستعادة
     Route::get('/backup/download', [BackupController::class, 'download'])->name('backup.download');
     Route::post('/backup/restore', [BackupController::class, 'restore'])->name('backup.restore');

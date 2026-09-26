@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Models\Product;
 use App\Support\Activity;
+use App\Support\Storefront;
 use App\Support\Website\Domains;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -40,9 +42,26 @@ class DomainController extends Controller
          * هنا مع اختيار الطريق: سؤالُ «أين يُفتح متجري؟» واحدٌ لا سؤالان في
          * شاشتين.
          */
-        // وصاحبُ الواجهة الخاصّة يضبط عنوانه في قسمه من صفحةِ الضبط الواحدة
-        if ($this->theme() !== null) {
-            return $this->themedSection('address');
+        /*
+         * ولصاحب الواجهة الخاصّة شاشتُه على المسار نفسِه.
+         *
+         * والعنوانُ والنشرُ فيها معًا لأنّ الخادمَ يرفض فصلَهما: «لا يُنشر
+         * متجرٌ بلا عنوان» (انظر `MarketingController::saveStore`). فمفتاحُ
+         * نشرٍ في شاشةٍ وعنوانٌ في أخرى يعني تاجرًا يرفع المفتاحَ فيُردّ
+         * بخطأٍ عن حقلٍ لا يراه.
+         */
+        if (($theme = $this->theme()) !== null) {
+            $business = Business::findOrFail($this->bid());
+
+            return Inertia::render('Admin/Website/ThemeDomain', $this->themeShell($theme) + $this->themeSeed($business) + [
+                'domain' => [
+                    'path' => Storefront::path($business),
+                    'pricing' => Storefront::pricing(),
+                    'suggestion' => Storefront::suggest((string) $business->name),
+                ],
+                'productCount' => Product::where('business_id', $business->id)
+                    ->where('active', true)->where('published', true)->count(),
+            ]);
         }
 
         $site = $this->siteOrFail();

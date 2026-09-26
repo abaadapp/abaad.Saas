@@ -73,6 +73,36 @@ describe('محرّرُ صفحة المتجر', () => {
         for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     });
 
+    /**
+     * ═══ والمعاينةُ ثلاثةُ مقاسات — والتابلتُ ليس زينةً بينها ═══
+     *
+     * شبكةُ البطاقات في قالب الواجهة تنكسر عند التابلت لا عند الهاتف: ثلاثٌ
+     * في الصفّ تصير اثنتين. فمن عاين على الطرفين وحدَهما لم يرَ الحالَ التي
+     * تنكسر فيها صفحتُه، ورآها زبونُه.
+     *
+     * والعرضُ بالبكسل لا بالنسبة: `390` و`820` مقاسا ما يفتحه زبونُه فعلًا.
+     */
+    it('ويعاين بثلاثة مقاسات — والمقاسُ يتبدّل فعلًا', () => {
+        draw([HERO, FOOT]);
+
+        const frame = () => screen.getByTestId('preview-frame').className;
+
+        for (const key of ['desktop', 'tablet', 'phone']) {
+            expect(screen.getByTestId(`preview-${key}`), key).toBeInTheDocument();
+        }
+
+        // ويبدأ على الكمبيوتر: أوّلُ ما يفتحه التاجرُ شاشتُه هو
+        expect(screen.getByTestId('preview-desktop')).toHaveAttribute('aria-pressed', 'true');
+        expect(frame()).toContain('w-full');
+
+        fireEvent.click(screen.getByTestId('preview-tablet'));
+        expect(frame()).toContain('w-[820px]');
+
+        fireEvent.click(screen.getByTestId('preview-phone'));
+        expect(frame()).toContain('w-[390px]');
+        expect(screen.getByTestId('preview-desktop')).toHaveAttribute('aria-pressed', 'false');
+    });
+
     /** الواجهةُ أوّلًا والتذييلُ آخرًا — وبينهما ترتيبُ صاحبه */
     it('يعرض الصفوف بترتيب ما يراه الزبون', () => {
         draw([HERO, row({ key: 'about', label: 'عنّا' }), row({ key: 'cats', label: 'الفئات' }), FOOT]);

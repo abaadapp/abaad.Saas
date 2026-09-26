@@ -1,218 +1,406 @@
-import { useMemo } from 'react';
-import { useForm, usePage } from '@inertiajs/react';
+import { useState } from 'react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
+import {
+    AlertTriangle,
+    FileText,
+    Globe,
+    History,
+    Rocket,
+    RotateCcw,
+    Search,
+    ShoppingBag,
+    Store,
+} from 'lucide-react';
 
+import { useConfirm } from '@/Components/ConfirmDialog';
+import SmartLink from '@/Components/SmartLink';
+import Toggle from '@/Components/Toggle';
+import { Badge } from '@/Components/ui/badge';
+import { Button } from '@/Components/ui/button';
+import { Card } from '@/Components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { SettingsPage } from '@/Components/Settings';
-import { money, number } from '@/lib/format';
+import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
-import type { DomainPath, DomainPricing } from '../Settings/partials/DomainChooser';
-import ThemeHeader, { type ThemeShell } from './theme/Shell';
-import SaveBar from './theme/SaveBar';
-import SettingsRail, { type RailItem } from './theme/SettingsRail';
-import Address from './theme/sections/Address';
-import Checkout from './theme/sections/Checkout';
-import Fields from './theme/sections/Fields';
-import Gateway, { type GatewayState } from './theme/sections/Gateway';
-import PagesSection, { type PageRow } from './theme/sections/Pages';
-import Seo from './theme/sections/Seo';
-import { NO_PAGES, type ThemeSettingsData } from './theme/sections/form';
+import { domainHost, type DomainState } from './shell';
+import ThemeHeader, { ThemeState, type ThemeShell } from './theme/Shell';
+
+interface ThemeVersion {
+    id: number;
+    number: number;
+    at: string | null;
+    by: string | null;
+    note: string | null;
+    current: boolean;
+}
 
 interface Props extends ThemeShell {
-    settings: Record<string, string>;
-    fieldStates: Record<string, string>;
-    fulfilments: string[];
-    gateway: GatewayState;
-    pages: { rows: PageRow[]; optional: string[]; allowed: string };
-    domain: { path: DomainPath; pricing: DomainPricing; suggestion: string | null };
-    seo: { title: string; desc: string; index: boolean };
-    fallback: { title: string; description: string };
-    limits: { title: number; desc: number };
+    /** `null` لمن لم يُفتح له نظامُ المسوّدات — يُحفظ فيظهر */
+    publishing: {
+        changed: number;
+        fields: string[];
+        revision: number;
+        published_at: string | null;
+        versions: ThemeVersion[];
+    } | null;
+    domain: DomainState;
     storeOn: boolean;
     productCount: number;
+    cards: {
+        pages: { shown: number; all: number };
+        ways: string[];
+        seoIndexed: boolean;
+        gatewayReady: boolean;
+    };
 }
 
 /**
- * ضبطُ متجر الواجهة الخاصّة — صفحةٌ واحدة بعمودٍ يقفز.
+ * «الموقع الإلكتروني ‹ عام» لصاحب الواجهة الخاصّة — حالُ متجره وأبوابُه.
  *
- * ═══ ما كان ═══
+ * ═══ وهي شاشةُ جاره بعينها ═══
  *
- * ستُّ شاشاتٍ بشريط تبويبات، وفوقها شاشةُ «عام» التي هي **قائمةٌ ثانية**:
- * سبعُ بطاقاتٍ تقود إلى التبويبات نفسِها. فمن أراد تغيير رسم التوصيل مرّ
- * بقائمتين وحمّل الصفحةَ مرّتين قبل أن يبلغ حقلًا واحدًا.
+ * الحالُ في بطاقةٍ أولى: الاسمُ والشارةُ والرابطُ وآخرُ نشرة، وزرُّ النشر
+ * والنسخُ السابقة. ثمّ خمسةُ أبوابٍ في بطاقات. ثمّ مفتاحٌ أسفلَها.
  *
- * وكان التوزيعُ غيرَ عادل: «الدومين» ثلاثةُ مقابض، و«الظهور في البحث»
- * ثلاثة، و«الصفحات» ثلاثة — و«المتجر والطلبات» **اثنان وثلاثون** ومعها
- * زرّا حفظٍ متجاوران لا يحفظ أحدُهما ما يحفظه الآخر.
+ * وما يختلف يختلف عن حقّ: مكانَ «وضع الصيانة» عند جاره يقف **«نشر
+ * المتجر»** — فالواجهةُ الخاصّة لا صفَّ لها في `websites`، ومفتاحُ حياتها
+ * `store_on` في إعداداتها.
  *
- * ═══ وما صار ═══
+ * ═══ ولمَ عادت هذه الشاشة ═══
  *
- * صفحةٌ واحدة، أقسامُها سبعة، وعمودٌ لاصق يقفز إلى القسم بلا تحميل. وزرُّ
- * الحفظ واحدٌ يظهر عند أوّل تغيير — وهو صادقٌ لأنّ الأربعة كانت تكتب في
- * الباب نفسِه (`marketing.store.save`)، فالتفريقُ كان في الشاشة لا في
- * الحفظ.
+ * جُمعت الستُّ مرّةً في صفحةٍ واحدةٍ بعمودٍ يقفز، لأنّ «عام» كانت حينها
+ * **قائمةً ثانية** فوق شريطٍ يقول الشيءَ نفسَه. وعادت بقرارٍ من صاحب
+ * المنتج: أن يكون لصاحب الواجهة ما لجاره حرفًا بحرف.
  *
- * ولم تُنقل «التصميم»: تلك محرّرُ أقسامٍ بمعاينةٍ حيّة لا نموذجُ حقول،
- * وحشرُها في صفحةِ ضبطٍ يُفقدها المعاينةَ التي هي نصفُ عملها.
- *
- * ═══ وقائمةُ الجاهزية انتقلت إلى لوحة التشغيل ═══
- *
- * «أين متجري الآن» سؤالُ لوحةٍ لا سؤالُ نموذج. وكانت في شاشةٍ وسيطةٍ لا
- * تُضبط فيها شيءٌ — فحُذفت الشاشةُ وبقي ما فيها حيث يُقرأ.
+ * والعطبُ المقيسُ لم يُهمَل: بطاقةُ «المتجر» تقود إلى شاشةٍ **بزرّ حفظٍ
+ * واحد** لا زرّين متجاورين — انظر `ThemeStore`.
  */
 export default function ThemeSettings() {
-    const {
-        site, settings, fieldStates, fulfilments, gateway, pages, domain,
-        seo, fallback, limits, storeOn, productCount, context,
-    } = usePage<PageProps<Props>>().props;
+    const { site, publishing, domain, storeOn, productCount, cards } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const m = (v: number) => money(v, context!.currency);
+    const [ask, confirmDialog] = useConfirm();
 
-    const form = useForm<ThemeSettingsData>({
-        site_slug: site.slug ?? '',
-        store_on: storeOn,
+    const [publishOpen, setPublishOpen] = useState(false);
+    const [history, setHistory] = useState(false);
 
-        store_pages: pages.allowed,
-        store_about_image: settings.store_about_image ?? '',
+    const publishForm = useForm({ note: '' });
 
-        store_allow_orders: (settings.store_allow_orders ?? '1') === '1',
-        store_pay_cod: (settings.store_pay_cod ?? '1') === '1',
-        store_pay_transfer: (settings.store_pay_transfer ?? '0') === '1',
-        store_bank: settings.store_bank ?? '',
-        store_delivery_fee: settings.store_delivery_fee ?? '',
-        store_free_delivery_over: settings.store_free_delivery_over ?? '',
-        store_delivery_areas: settings.store_delivery_areas ?? '',
-        store_delivery_slots: settings.store_delivery_slots ?? '',
-        store_delivery_note: settings.store_delivery_note ?? '',
-        store_max_days: settings.store_max_days ?? '',
-        store_fulfil: fulfilments.join(','),
-
-        /*
-         * وحقولُ الطلب تبدأ بما يعمل به متجره الآن لا بفراغ.
-         *
-         * `CheckoutFields` تقرأ الفراغَ «ما كان» — فشاشةٌ تعرض فراغًا تقول
-         * لصاحبها إنّ حقلًا مطفأٌ وهو يُسأل عنه في متجره.
-         */
-        store_field_area: fieldStates.area ?? 'optional',
-        store_field_address: fieldStates.address ?? 'required',
-        store_field_date: fieldStates.date ?? 'required',
-        store_field_slot: fieldStates.slot ?? 'optional',
-        store_field_recipient: fieldStates.recipient ?? 'optional',
-        store_field_promo: fieldStates.promo ?? 'optional',
-        store_image_note: settings.store_image_note ?? '',
-
-        store_gift_card: (settings.store_gift_card ?? '0') === '1',
-        store_gift_card_price: settings.store_gift_card_price ?? '',
-
-        store_seo_title: seo.title,
-        store_seo_desc: seo.desc,
-        store_seo_index: seo.index,
-    });
-
-    const save = () => form.post(route('admin.marketing.store.save'), { preserveScroll: true });
-
-    /**
-     * ما في كلّ قسمٍ الآن — يُقرأ من العمود قبل القفز إليه.
-     *
-     * فمن يبحث عن رسم التوصيل يراه في العمود ولا يقفز أصلًا، ومن يريد أن
-     * يعرف أمنشورٌ متجره يقرأها بلا أن يفتح قسمًا.
-     */
-    const rail: RailItem[] = useMemo(() => {
-        const shownPages = form.data.store_pages === NO_PAGES
-            ? 0
-            : form.data.store_pages.split(',').filter(Boolean).length;
-
-        const ways = [
-            form.data.store_pay_cod && t('نقد'),
-            form.data.store_pay_transfer && t('تحويل'),
-            gateway.ready && t('بطاقة'),
-        ].filter(Boolean) as string[];
-
-        return [
-            {
-                id: 'address',
-                label: 'العنوان والنشر',
-                note: form.data.store_on ? t('منشور') : t('غير منشور'),
+    const publish = (e: React.FormEvent) => {
+        e.preventDefault();
+        publishForm.post(route('admin.website.store.publish'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setPublishOpen(false);
+                publishForm.reset();
             },
-            {
-                id: 'pages',
-                label: 'الصفحات',
-                note: t(':n من :all', { n: number(shownPages + 2), all: number(pages.rows.length) }),
-            },
-            {
-                id: 'checkout',
-                label: 'الدفع والاستلام',
-                note: ways.length ? ways.join(' · ') : t('لا طريقة دفع'),
-            },
-            {
-                id: 'fields',
-                label: 'حقول إتمام الطلب',
-                note: null,
-            },
-            {
-                id: 'gift',
-                label: 'كرت الهدية',
-                note: form.data.store_gift_card
-                    ? m(Number(form.data.store_gift_card_price || 0.5))
-                    : t('مطفأ'),
-            },
-            {
-                id: 'gateway',
-                label: 'الدفع بالبطاقة',
-                note: gateway.ready ? t('مربوطة') : t('غير مربوطة'),
-            },
-            {
-                id: 'seo',
-                label: 'الظهور في البحث',
-                note: form.data.store_seo_index ? t('يظهر في غوغل') : t('لا يُفهرس'),
-            },
-        ];
-    }, [form.data, gateway.ready, pages.rows.length, t, m]);
+        });
+    };
+
+    const doors = [
+        {
+            label: 'الصفحات والمحتوى',
+            hint: 'صفحاتُ متجرك الأربع — ما يُفتح منها، وأين يُكتب ما فيها',
+            icon: FileText,
+            route: 'admin.website.pages',
+            meta: t(':n من :all', { n: number(cards.pages.shown), all: number(cards.pages.all) }),
+        },
+        {
+            /*
+             * و«التصميم» يقود إلى محرّر صفحته لا إلى منتقي قوالب.
+             *
+             * `store_theme` ميّتٌ لواجهةٍ خاصّة (انظر `Store\PageEditor::DEAD`)
+             * وتصميمُها مثبَّتٌ في قالبها. فتصميمُها ترتيبُ أقسامها وما فيها
+             * — ولا تُخترع لها لوحةُ ألوانٍ لا يقرؤها قالبُها.
+             */
+            label: 'التصميم والمظهر',
+            hint: 'رتّب أقسام صفحتك واكتب ما تحفظه فيها',
+            icon: Store,
+            route: 'admin.website.design',
+            meta: t('واجهةٌ خاصّة'),
+        },
+        {
+            label: 'المتجر والطلبات',
+            hint: 'ما يقبضه متجرك من زبونه، وما يُسأل عنه قبل أن يؤكّد طلبه',
+            icon: ShoppingBag,
+            route: 'admin.website.shop',
+            meta: cards.ways.length ? cards.ways.join(' · ') : t('لا طريقة دفع'),
+        },
+        {
+            label: 'الظهور في البحث',
+            hint: 'عنوان متجرك في غوغل ووصفه وصورة المشاركة',
+            icon: Search,
+            route: 'admin.website.seo',
+            meta: cards.seoIndexed ? t('يظهر في غوغل') : t('لا يُفهرس'),
+        },
+        {
+            label: 'الدومين',
+            hint: 'عنوان متجرك على الإنترنت، وربط نطاقك الخاص',
+            icon: Globe,
+            route: 'admin.website.domain',
+            meta: domain.custom
+                ? `${domain.custom.host} · ${domain.custom.label}`
+                : (domainHost(domain) ?? t('بلا عنوان بعد')),
+        },
+    ];
 
     return (
         <AdminLayout title="الموقع الإلكتروني">
             <ThemeHeader
                 site={site}
                 current="admin.website.site"
-                subtitle={t('ضبطُ متجرك كلُّه في صفحةٍ واحدة — وما تحفظه يصل زبونك في الحال')}
+                subtitle={t('متجرك على الإنترنت — عدّله ثمّ انشره حين يجهز')}
             />
 
-            <SettingsPage width="full">
-                <div className="flex flex-col gap-6 lg:flex-row">
-                    {/* والعمودُ يُخفى على الجوّال: شاشةٌ ضيّقة تُمرَّر، ولا موضعَ فيها لعمودٍ لاصق */}
-                    <aside className="hidden w-56 shrink-0 lg:block">
-                        <SettingsRail items={rail} />
-                    </aside>
+            {/* ===== الحال ===== */}
+            <Card className="mb-6 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="font-bold text-[#111]">{site.name}</h2>
+                            <ThemeState published={site.published} />
+                            {publishing && publishing.changed > 0 && (
+                                <Badge variant="warning">{t('فيه تغييرات لم تُنشر')}</Badge>
+                            )}
+                        </div>
 
-                    <div className="min-w-0 flex-1 space-y-6">
-                        <Address
-                            form={form}
-                            site={site}
-                            path={domain.path}
-                            pricing={domain.pricing}
-                            suggestion={domain.suggestion}
-                            productCount={productCount}
-                        />
+                        <p className="mt-2 text-[13px] text-[#6b7280]">
+                            {site.url ? (
+                                <a
+                                    href={site.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    dir="ltr"
+                                    className="font-mono hover:underline"
+                                >
+                                    {site.url}
+                                </a>
+                            ) : (
+                                <span className="inline-flex flex-wrap items-center gap-2">
+                                    {t('متجرك لا يُفتح من أيّ رابط بعد')}
+                                    <Button variant="link" size="sm" asChild>
+                                        <Link href={route('admin.website.domain')}>
+                                            <Globe />
+                                            {t('اضبط العنوان')}
+                                        </Link>
+                                    </Button>
+                                </span>
+                            )}
+                        </p>
 
-                        <PagesSection form={form} site={site} rows={pages.rows} optional={pages.optional} />
-
-                        <Checkout form={form} gatewayReady={gateway.ready} />
-
-                        <Fields form={form} />
-
-                        <Gateway gateway={gateway} />
-
-                        <Seo form={form} site={site} fallback={fallback} limits={limits} />
-
-                        <SaveBar
-                            dirty={form.isDirty}
-                            processing={form.processing}
-                            onSave={save}
-                            onReset={() => form.reset()}
-                        />
+                        {publishing && (
+                            <p className="mt-1 text-[12px] text-[#9ca3af]">
+                                {publishing.published_at
+                                    ? `${t('آخر نشرة')} ${publishing.published_at}`
+                                    : t('لم يُنشر بعد')}
+                            </p>
+                        )}
                     </div>
+
+                    {/*
+                        ولا يُعرض زرُّ نشرٍ لمن لم يُفتح له النظام: متجرٌ بلا
+                        صفٍّ في `store_sites` يُحفظ فيظهر في الحال، ومقبضٌ
+                        موصولٌ بلا شيءٍ أسوأ من غيابه.
+                    */}
+                    {publishing && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            {publishing.versions.length > 0 && (
+                                <Button variant="ghost" onClick={() => setHistory(true)}>
+                                    <History />
+                                    {t('النسخ السابقة')}
+                                </Button>
+                            )}
+                            <Button onClick={() => setPublishOpen(true)} disabled={publishing.changed === 0}>
+                                <Rocket />
+                                {t(publishing.changed > 0 ? 'نشر التغييرات' : 'لا تغييرات للنشر')}
+                            </Button>
+                        </div>
+                    )}
                 </div>
-            </SettingsPage>
+
+                {publishing && publishing.changed > 0 && publishing.published_at && (
+                    <p className="mt-4 flex items-center gap-2 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#b45309]">
+                        <AlertTriangle className="size-4 shrink-0" />
+                        {t('عدّلت متجرك ولم تنشر التغييرات — زوّارك ما زالوا يرون النسخة السابقة.')}
+                    </p>
+                )}
+            </Card>
+
+            {/* ===== الأبواب ===== */}
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {doors.map((d) => (
+                    <SmartLink
+                        key={d.route}
+                        routeName={d.route}
+                        href={route(d.route)}
+                        className="group rounded-[14px] border border-[var(--ui-border,#e8e8e8)] bg-white p-5 transition-colors hover:border-[#c9c9c9]"
+                    >
+                        <span className="flex items-start gap-4">
+                            <span className="flex size-11 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f5] text-[#374151] transition-colors group-hover:bg-[#111] group-hover:text-white">
+                                <d.icon className="size-5" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block font-bold text-[#111]">{t(d.label)}</span>
+                                <span className="mt-1 block text-[13px] leading-6 text-[#6b7280]">{t(d.hint)}</span>
+                                <span className="mt-2 block truncate text-[12px] text-[#9ca3af]">{d.meta}</span>
+                            </span>
+                        </span>
+                    </SmartLink>
+                ))}
+            </div>
+
+            {/* ===== النشر ===== */}
+            <Card className="p-5">
+                {/*
+                    ولا مفتاحَ نشرٍ بلا عنوان — ولا مفتاحٌ مُعطَّل.
+
+                    الخادمُ يردّ النشرَ بلا عنوانٍ برسالةٍ عن حقلٍ ليس في هذه
+                    الشاشة (انظر `saveStore`). ومفتاحٌ يُضغط فيُردّ يُعلِّم
+                    صاحبَه ألّا يثق بالشاشة. فيُقال له ما ينقص ويُقاد إلى
+                    موضعه — و`Toggle` مشتركٌ بلا `disabled`، ولا يُعدَّل من
+                    أجل شاشةٍ واحدة.
+                */}
+                {site.slug ? (
+                    <Toggle
+                        on={storeOn}
+                        label="نشر المتجر"
+                        hint={
+                            storeOn
+                                ? 'متجرك مفتوحٌ لزبائنك الآن'
+                                : 'حتى يُنشر لا يفتحه أحد — والعنوان يردّ «غير موجود» لا صفحةً فارغة'
+                        }
+                        onChange={(on) =>
+                            router.post(
+                                route('admin.marketing.store.save'),
+                                { store_on: on },
+                                { preserveScroll: true },
+                            )
+                        }
+                    />
+                ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <p className="font-semibold text-[#111]">{t('نشر المتجر')}</p>
+                            <p className="mt-1 flex items-center gap-2 text-[12px] text-[#b45309]">
+                                <AlertTriangle className="size-3.5 shrink-0" />
+                                {t('اكتب عنوان متجرك قبل نشره — بلا عنوانٍ لا يُفتح من أيّ رابط.')}
+                            </p>
+                        </div>
+                        <Button variant="outline" size="sm" asChild>
+                            <Link href={route('admin.website.domain')}>
+                                <Globe />
+                                {t('اضبط العنوان')}
+                            </Link>
+                        </Button>
+                    </div>
+                )}
+
+                {storeOn && productCount === 0 && (
+                    <p className="mt-2 flex items-center gap-2 text-[12px] text-[#b45309]">
+                        <AlertTriangle className="size-3.5 shrink-0" />
+                        {t('لا منتجَ معروضًا — زائرُك يرى صفحةً خالية.')}
+                    </p>
+                )}
+            </Card>
+
+            {/* ===== نشر ===== */}
+            {publishing && (
+                <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>{t('نشر التغييرات')}</DialogTitle>
+                        </DialogHeader>
+
+                        <form onSubmit={publish} className="space-y-4 px-5 pb-5">
+                            <p className="text-[13px] leading-7 text-[#6b7280]">
+                                {t('سيصير ما في مسوّدتك هو ما يراه زوّارك. والنسخة الحالية تبقى محفوظة، فيمكنك الرجوع إليها.')}
+                            </p>
+
+                            {/*
+                                وأسماءُ ما تغيّر لا عددُه وحدَه: «٣ تغييرات»
+                                تُقلق ولا تُفيد، والأسماءُ تُراجَع في لحظة.
+                            */}
+                            {publishing.fields.length > 0 && (
+                                <ul className="space-y-1.5 rounded-[12px] bg-[#fafafa] px-4 py-3 text-[13px] text-[#374151]">
+                                    {publishing.fields.map((f) => (
+                                        <li key={f}>{f}</li>
+                                    ))}
+                                </ul>
+                            )}
+
+                            <div className="flex justify-end gap-2">
+                                <Button type="button" variant="ghost" onClick={() => setPublishOpen(false)}>
+                                    {t('إلغاء')}
+                                </Button>
+                                <Button type="submit" loading={publishForm.processing}>
+                                    <Rocket />
+                                    {t('انشر')}
+                                </Button>
+                            </div>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {/* ===== النسخ السابقة ===== */}
+            {publishing && (
+                <Dialog open={history} onOpenChange={setHistory}>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>{t('النسخ السابقة')}</DialogTitle>
+                        </DialogHeader>
+
+                        <div className="space-y-2 px-5 pb-5">
+                            <p className="text-[13px] text-[#6b7280]">
+                                {t('الاستعادة تُرجع النسخة إلى مسوّدتك — تعاينها ثمّ تنشرها إن رضيت.')}
+                            </p>
+
+                            {publishing.versions.map((v) => (
+                                <div
+                                    key={v.id}
+                                    className={cn(
+                                        'flex flex-wrap items-center justify-between gap-3 rounded-[12px] border px-4 py-3',
+                                        v.current ? 'border-[#111] bg-[#fafafa]' : 'border-[var(--ui-border,#e8e8e8)]',
+                                    )}
+                                >
+                                    <div className="min-w-0">
+                                        <p className="flex items-center gap-2 text-[13px] font-semibold text-[#111]">
+                                            {t('نشرة')} {number(v.number)}
+                                            {v.current && <Badge variant="success">{t('المنشورة الآن')}</Badge>}
+                                        </p>
+                                        <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                            {v.at} {v.by && `· ${v.by}`}
+                                            {v.note && ` · ${v.note}`}
+                                        </p>
+                                    </div>
+
+                                    {!v.current && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={async () => {
+                                                if (!(await ask({ message: 'استعادة هذه النسخة إلى المسوّدة؟', action: 'استعادة' }))) return;
+                                                router.post(
+                                                    route('admin.website.store.restore', v.id),
+                                                    {},
+                                                    { preserveScroll: true, onSuccess: () => setHistory(false) },
+                                                );
+                                            }}
+                                        >
+                                            <RotateCcw />
+                                            {t('استعادة')}
+                                        </Button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {confirmDialog}
         </AdminLayout>
     );
 }

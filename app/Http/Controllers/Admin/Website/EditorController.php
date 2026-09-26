@@ -4,14 +4,11 @@ namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
-use App\Models\StoreSite;
 use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
-use App\Models\WebsiteVersion;
 use App\Support\ProductImages;
 use App\Support\Store\PageEditor;
-use App\Support\Store\StoreContent;
 use App\Support\Store\StorePage;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Content;
@@ -165,7 +162,7 @@ class EditorController extends Controller
              * فيظهر كما كان، فلا يُعرض عليه زرُّ نشرٍ لا يعمل ولا سجلُّ
              * نشراتٍ فارغ. ومقبضٌ موصولٌ بلا شيءٍ أسوأ من غيابه.
              */
-            'publishing' => $this->publishState($bid),
+            'publishing' => $this->themePublishState($bid),
             'rows' => PageEditor::rows($bid),
             'values' => PageEditor::values($bid),
             'order' => StorePage::order($bid),
@@ -187,48 +184,6 @@ class EditorController extends Controller
                     'image' => ProductImages::hasRealMain($p) ? $p->image : null,
                 ])->all(),
         ]);
-    }
-
-    /**
-     * ما تعرضه شاشةُ النشر: أفيه ما لم يُنشر، وما سجلُّ النشرات.
-     *
-     * ولا يُعدّ سجلٌّ لا نهاية له: خمسٌ تكفي من يراجع ما فعل، ومن أراد
-     * أبعد منها أراد أرشيفًا لا شاشة.
-     *
-     * @return array<string, mixed>|null
-     */
-    private function publishState(int $bid): ?array
-    {
-        if (! StoreContent::usesDrafts($bid)) {
-            return null;
-        }
-
-        $site = StoreSite::where('business_id', $bid)->first();
-        $changed = StoreContent::changed($bid);
-
-        return [
-            'changed' => count($changed),
-            /*
-             * وأسماءُ ما تغيّر تُقال لا عددُه وحدَه: «٣ تغييرات» تُقلق ولا
-             * تُفيد، و«العنوان والنبذة والتذييل» تُراجَع في لحظة.
-             */
-            'fields' => collect($changed)
-                ->map(fn ($key) => __(PageEditor::labelOf($key)))->filter()->values()->all(),
-            'revision' => (int) ($site?->draft_revision ?? 0),
-            'published_at' => optional($site?->published_at)->format('Y-m-d H:i'),
-            'versions' => WebsiteVersion::where('business_id', $bid)
-                ->where('kind', WebsiteVersion::THEME)
-                ->with('creator:id,name')
-                ->orderByDesc('number')->limit(5)->get()
-                ->map(fn ($v) => [
-                    'id' => (int) $v->id,
-                    'number' => (int) $v->number,
-                    'at' => optional($v->published_at)->format('Y-m-d H:i'),
-                    'by' => $v->creator?->name,
-                    'note' => $v->note,
-                    'current' => (int) $v->id === (int) ($site?->published_version_id ?? 0),
-                ])->all(),
-        ];
     }
 
     /** @return array<string, mixed> */

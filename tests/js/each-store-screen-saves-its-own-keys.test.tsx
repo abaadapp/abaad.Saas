@@ -2,29 +2,30 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SaveBar from '@/Pages/Admin/Website/theme/SaveBar';
-import SettingsRail from '@/Pages/Admin/Website/theme/SettingsRail';
 import Address from '@/Pages/Admin/Website/theme/sections/Address';
 import Checkout from '@/Pages/Admin/Website/theme/sections/Checkout';
 import { pageProps } from './setup';
+import { SCREEN_KEYS, only } from '@/Pages/Admin/Website/theme/sections/form';
+import type { ThemeSettingsData } from '@/Pages/Admin/Website/theme/sections/form';
 import { THEME_SITE, themeForm } from './theme-form';
 
 /**
- * ضبطُ متجر الواجهة الخاصّة — صفحةٌ واحدة، وعمودٌ يقفز، وزرُّ حفظٍ واحد.
+ * ضبطُ متجر الواجهة الخاصّة — ستُّ شاشات، كلٌّ تحفظ مفاتيحَها وحدَها.
  *
- * ═══ ما كان ═══
+ * ═══ العطبُ الذي يحرسه هذا الملفّ ═══
  *
- * ستُّ شاشاتٍ بشريط تبويبات، وفوقها شاشةُ «عام» التي هي قائمةٌ ثانية: سبعُ
- * بطاقاتٍ تقود إلى التبويبات نفسِها. فمن أراد تغيير رسم التوصيل مرّ
- * بقائمتين وحمّل الصفحةَ مرّتين قبل أن يبلغ حقلًا واحدًا.
+ * الستُّ تكتب في البابِ نفسِه (`marketing.store.save`). فلو أرسلت كلُّ
+ * واحدةٍ نموذجَها **كاملًا** لَكتبت فوق ما ضبطته أختُها بقيمٍ التقطتها يومَ
+ * فُتحت: يضبط التاجرُ رسمَ التوصيل في «المتجر»، ثمّ يفتح «الظهور في البحث»
+ * في لسانٍ كان مفتوحًا قبله ويحفظ — فيعود الرسمُ إلى ما كان، بلا خطأٍ ولا
+ * رسالة. ولا يُكتشف إلّا من زبونٍ دفع رسمًا غيرَ الذي في الشاشة.
  *
- * وكان التوزيعُ غيرَ عادل: ثلاثُ شاشاتٍ فيها ثلاثةُ مقابض، وواحدةٌ فيها
- * اثنان وثلاثون ومعها زرّا حفظٍ متجاوران لا يحفظ أحدُهما ما يحفظه الآخر:
+ * فالقسمةُ في `SCREEN_KEYS`، والإرسالُ بـ`only` — وهما ما يُسأل عنه هنا.
+ *
+ * ═══ وزرُّ الحفظ واحدٌ في كلّ شاشة ═══
+ *
+ * وكان في «المتجر والطلبات» زرّان متجاوران لا يحفظ أحدُهما ما يحفظه الآخر:
  * من عدّل رسمَ التوصيل ثمّ ضغط الزرَّ الأسفل أضاع ما كتب ولا شيء يقول له.
- *
- * ═══ وما يُحرَس هنا ═══
- *
- * أنّ الشريطَ لا يظهر إلّا حين يكون له معنى، وأنّ العمودَ يقول ما في كلّ
- * قسمٍ قبل القفز إليه، وأنّ الأقسامَ تقول ما يقع.
  */
 
 const reset = () => {
@@ -78,42 +79,40 @@ describe('شريطُ الحفظ', () => {
     });
 });
 
-describe('عمودُ الأقسام', () => {
+describe('قسمةُ المفاتيح على الشاشات', () => {
     beforeEach(reset);
 
-    const items = [
-        { id: 'address', label: 'العنوان والنشر', note: 'منشور' },
-        { id: 'checkout', label: 'الدفع والاستلام', note: 'نقد · تحويل' },
-        { id: 'seo', label: 'الظهور في البحث', note: null },
-    ];
+    const full = themeForm().data as ThemeSettingsData;
 
-    it('يرسم مدخلًا لكلّ قسم', () => {
-        render(<SettingsRail items={items} />);
+    /** ولا شاشةَ ترسل مفتاحَ جارتها — فالحفظُ لا يكتب فوق ضبطٍ لم يُفتح */
+    it('ترسل كلُّ شاشةٍ مفاتيحَها وحدَها', () => {
+        for (const [screen, keys] of Object.entries(SCREEN_KEYS)) {
+            const sent = only(full, keys);
 
-        for (const item of items) {
-            expect(screen.getByTestId(`rail-${item.id}`)).toHaveTextContent(item.label);
+            expect(Object.keys(sent).sort(), screen).toEqual([...keys].sort());
         }
     });
 
-    /**
-     * وما في القسم الآن يُقرأ من العمود قبل القفز إليه.
-     *
-     * فمن يبحث عن حالِ متجره يقرأها بلا أن يفتح قسمًا — وهو ما كانت تفعله
-     * شاشةُ «عام» في سبع بطاقاتٍ تحمّل صفحةً كاملة.
-     */
-    it('ويقول ما في كلّ قسمٍ الآن', () => {
-        render(<SettingsRail items={items} />);
+    /** والقيمُ تُنسَخ كما هي — لا تُقلب منطقيّةٌ إلى نصٍّ في الطريق */
+    it('وتنسخ قيمَها كما هي', () => {
+        const sent = only(full, SCREEN_KEYS.seo);
 
-        expect(screen.getByTestId('rail-address')).toHaveTextContent('منشور');
-        expect(screen.getByTestId('rail-checkout')).toHaveTextContent('نقد · تحويل');
+        expect(sent.store_seo_title).toBe(full.store_seo_title);
+        expect(sent.store_seo_index).toBe(full.store_seo_index);
     });
 
-    /** والأوّلُ مضاءٌ حين تُفتح الصفحة — فلا يقف القارئ بلا موضع */
-    it('ويُضيء القسمَ الذي تقف عليه العين', () => {
-        render(<SettingsRail items={items} />);
+    /**
+     * والقسمةُ تامّةٌ: كلُّ مفتاحٍ في نموذجٍ له شاشةٌ ترسله، ولا مفتاحَ في
+     * شاشتين.
+     *
+     * فمفتاحٌ يسقط من القائمتين يُرسم ويُقلَّب ولا يُحفظ أبدًا — ومفتاحٌ في
+     * قائمتين تكتب إحدى الشاشتين فوق الأخرى.
+     */
+    it('ولا مفتاحَ بلا شاشة ولا مفتاحَ في شاشتين', () => {
+        const spread = Object.values(SCREEN_KEYS).flatMap((keys) => [...keys]);
 
-        expect(screen.getByTestId('rail-address')).toHaveAttribute('aria-current', 'true');
-        expect(screen.getByTestId('rail-seo')).not.toHaveAttribute('aria-current');
+        expect([...new Set(spread)].sort()).toEqual(Object.keys(full).sort());
+        expect(spread.length).toBe(new Set(spread).size);
     });
 });
 

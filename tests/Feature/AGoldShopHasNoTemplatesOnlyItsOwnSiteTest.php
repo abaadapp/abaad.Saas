@@ -197,44 +197,51 @@ class AGoldShopHasNoTemplatesOnlyItsOwnSiteTest extends TestCase
     }
 
     /**
-     * ═══ وشاشتان له على مسارات جاره نفسِها ═══
-     *
-     * وكانت ستًّا. ثمّ قِيست فوُجد التوزيعُ غيرَ عادل: ثلاثٌ فيها ثلاثةُ
-     * مقابض، وواحدةٌ فيها اثنان وثلاثون، وفوقها «عام» التي هي قائمةٌ ثانية
-     * تكرّر شريطَ التبويبات في سبع بطاقات. فصار الضبطُ صفحةً واحدة بعمودٍ
-     * يقفز، وبقيت «التصميم» شاشتَها لأنّها محرّرٌ بمعاينةٍ حيّة.
+     * ═══ وستُّ شاشاتٍ له على مسارات جاره نفسِها ═══
      *
      * والمساراتُ نفسُها لا مساراتٌ ثانية: رابطٌ يُحفظ أو يُشارَك يعمل عند
-     * الاثنين، ولا يتعلّم أحدُهما عنوانًا لا يعرفه الآخر.
+     * الاثنين، ولا يتعلّم أحدُهما عنوانًا لا يعرفه الآخر. وما خلفها من
+     * صنعةٍ أخرى: `Theme*` لمن لبس واجهةً خاصّة، وشاشاتُ البانِي لجاره.
+     *
+     * ═══ وقد جُمعت مرّةً ثمّ رُدّت ═══
+     *
+     * قِيست الستُّ يومًا فوُجد التوزيعُ غيرَ عادل: ثلاثٌ فيها ثلاثةُ مقابض،
+     * وواحدةٌ فيها اثنان وثلاثون ومعها زرّا حفظٍ متجاوران. فجُمعت في صفحةٍ
+     * واحدة بعمودٍ يقفز. ثمّ رُدّت ستًّا بقرارٍ من صاحب المنتج: أن يكون
+     * لصاحب الواجهة ما لجاره حرفًا بحرف.
+     *
+     * والعطبُ المقيسُ لم يُهمَل: «المتجر والطلبات» صارت مجموعاتٍ بزرّ حفظٍ
+     * **واحد** (انظر `ThemeStore`)، وكلُّ شاشةٍ تُرسل مفاتيحَها وحدَها فلا
+     * تمحو ما ضبطته أختُها (انظر `AThemedShopWearsTheSameWebsiteShellTest`).
      *
      * @return array<string, array{0: string, 1: string}>
      */
     public static function themedScreens(): array
     {
         return [
-            'الإعدادات' => ['admin.website.site', 'Admin/Website/ThemeSettings'],
+            'عام' => ['admin.website.site', 'Admin/Website/ThemeSettings'],
             'صفحة المتجر' => ['admin.website.editor', 'Admin/Website/ThemeEditor'],
+            'الصفحات' => ['admin.website.pages', 'Admin/Website/ThemePages'],
+            'المتجر والطلبات' => ['admin.website.shop', 'Admin/Website/ThemeStore'],
+            'الدومين' => ['admin.website.domain', 'Admin/Website/ThemeDomain'],
+            'الظهور في البحث' => ['admin.website.seo', 'Admin/Website/ThemeSeo'],
         ];
     }
 
     /**
-     * وما كان شاشةً صار قسمًا — والعنوانُ القديم يصله بعد `#`.
+     * ولا يُحوَّل مسارٌ منها إلى مرساةٍ في صفحةٍ أخرى.
      *
-     * وُزّعت هذه المسارات على زبائن ومُحفظت في متصفّحاتهم، فلا تُردّ بـ404
-     * ولا إلى أوّل صفحةٍ طويلة يبحث فيها من فتح إشارتَه المرجعية.
+     * وكانت الأربعةُ تُحوَّل إلى `site#anchor` يومَ كان الضبطُ صفحةً واحدة.
+     * فمن حفظ إشارةً مرجعيّةً إلى «الدومين» وقف على أوّل صفحةٍ طويلة يبحث
+     * فيها. والآن يقف على شاشته — ويُسأل هنا عن الجواب نفسِه: ٢٠٠ لا تحويل.
      */
-    public function test_the_screens_that_became_sections_land_on_them(): void
+    public function test_no_tab_is_a_redirect_to_an_anchor(): void
     {
         Builder::create($this->business, Blueprints::STORE, 'mono', $this->owner->id);
 
-        foreach ([
-            'admin.website.shop' => 'checkout',
-            'admin.website.seo' => 'seo',
-            'admin.website.domain' => 'address',
-            'admin.website.pages' => 'pages',
-        ] as $name => $anchor) {
+        foreach (['admin.website.shop', 'admin.website.seo', 'admin.website.domain', 'admin.website.pages'] as $name) {
             $this->actingAs($this->owner)->get(route($name))
-                ->assertRedirect(route('admin.website.site').'#'.$anchor);
+                ->assertOk($name.' ما زال يُحوَّل إلى مرساة');
         }
     }
 

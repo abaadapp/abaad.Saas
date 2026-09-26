@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
+use App\Models\Business;
 use App\Models\WebsitePage;
+use App\Support\Store\StoreNav;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
 use App\Support\Website\MerchantData;
@@ -27,9 +29,20 @@ class PageController extends Controller
 
     public function index(): Response|RedirectResponse
     {
-        // وصاحبُ الواجهة الخاصّة يضبط صفحاته في قسمها من صفحةِ الضبط الواحدة
-        if ($this->theme() !== null) {
-            return $this->themedSection('pages');
+        /*
+         * ولصاحب الواجهة الخاصّة شاشتُه على المسار نفسِه.
+         *
+         * وصفحاتُه أربعٌ يرسمها قالبُه: «الرئيسية» و«المتجر» ثابتتان،
+         * و«من نحن» و«تواصل معنا» يُؤذن بهما أو يُمنعان. فلا تُضاف ولا
+         * تُحذف — ولا يُعرض عليه زرُّ «صفحة جديدة» لا يعمل.
+         */
+        if (($theme = $this->theme()) !== null) {
+            $bid = $this->bid();
+
+            return Inertia::render('Admin/Website/ThemePages', $this->themeShell($theme) + $this->themeSeed(Business::findOrFail($bid)) + [
+                'pageRows' => StoreNav::rows($bid),
+                'optional' => StoreNav::OPTIONAL,
+            ]);
         }
 
         $site = $this->siteOrFail();

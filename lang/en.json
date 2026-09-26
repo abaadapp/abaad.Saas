@@ -6697,5 +6697,21 @@
     "آخر نشر": "Last published",
     "ولا تُعيد أسعارًا ولا مخزونًا ولا إعدادات دفعٍ وتوصيل — تلك حال متجرك الآن.": "It restores no prices, stock, payment or delivery settings — those are your store as it is now.",
     "ننشر تغييراتك الآن؟ سيراها زبائنك فورًا.": "Publish your changes now? Your customers will see them right away.",
-    "نُرجع هذه النشرة إلى محرّرك؟ لن يتغيّر موقعك حتى تنشرها.": "Bring this release back into your editor? Your site will not change until you publish it."
+    "نُرجع هذه النشرة إلى محرّرك؟ لن يتغيّر موقعك حتى تنشرها.": "Bring this release back into your editor? Your site will not change until you publish it.",
+    "كيف يظهر متجرك في غوغل وحين تُشارك رابطه": "How your store looks on Google and when you share its link",
+    "واجهةٌ خاصّة": "Custom storefront",
+    "متجرك على الإنترنت — عدّله ثمّ انشره حين يجهز": "Your store online — edit it, then publish when it's ready",
+    "فيه تغييرات لم تُنشر": "Has unpublished changes",
+    "متجرك لا يُفتح من أيّ رابط بعد": "Your store doesn't open from any link yet",
+    "اضبط العنوان": "Set the address",
+    "لم يُنشر بعد": "Not published yet",
+    "عدّلت متجرك ولم تنشر التغييرات — زوّارك ما زالوا يرون النسخة السابقة.": "You edited your store but didn't publish the changes — your visitors still see the previous version.",
+    "لا منتجَ معروضًا — زائرُك يرى صفحةً خالية.": "No products on display — your visitor sees an empty page.",
+    "سيصير ما في مسوّدتك هو ما يراه زوّارك. والنسخة الحالية تبقى محفوظة، فيمكنك الرجوع إليها.": "What's in your draft becomes what your visitors see. The current version stays saved, so you can go back to it.",
+    "الاستعادة تُرجع النسخة إلى مسوّدتك — تعاينها ثمّ تنشرها إن رضيت.": "Restoring brings the version back into your draft — preview it, then publish it if you're happy.",
+    "ما يقبضه متجرك من زبونه، وما يُسأل عنه قبل أن يؤكّد طلبه": "What your store collects from a customer, and what they're asked before confirming an order",
+    "رتّب أقسام صفحتك واكتب ما تحفظه فيها": "Arrange your page's sections and write what you save in them",
+    "عنوان متجرك في غوغل ووصفه وصورة المشاركة": "Your store's Google title, description and share image",
+    "عنوان متجرك على الإنترنت، وربط نطاقك الخاص": "Your store's address online, and connecting your own domain",
+    "استعادة هذه النسخة إلى المسوّدة؟": "Restore this version into the draft?"
 }

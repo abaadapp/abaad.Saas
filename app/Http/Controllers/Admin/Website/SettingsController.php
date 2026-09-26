@@ -9,8 +9,6 @@ use App\Models\Product;
 use App\Models\WebsiteSection;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
-use App\Support\Storefront;
-use App\Support\Store\CheckoutFields;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
@@ -140,23 +138,67 @@ class SettingsController extends Controller
     {
         $bid = $this->bid();
         $business = Business::findOrFail($bid);
-        $site = MarketingSettings::group($bid, 'website');
+        $values = MarketingSettings::group($bid, 'website');
 
         $gateway = PaymentGateway::where('business_id', $bid)
             ->where('provider', PaymentGateway::PAYMOB)->first();
 
+        $rows = StoreNav::rows($bid);
+        $allowed = StoreNav::allowed($bid);
+
+        $ways = array_values(array_filter([
+            ($values['store_pay_cod'] ?? '1') === '1' ? __('نقد') : null,
+            ($values['store_pay_transfer'] ?? '0') === '1' ? __('تحويل') : null,
+            $gateway?->ready() ? __('بطاقة') : null,
+        ]));
+
         return Inertia::render('Admin/Website/ThemeSettings', $this->themeShell($theme) + [
-            'settings' => $site,
+            'publishing' => $this->themePublishState($bid),
+            'domain' => $this->domainState(),
+            'storeOn' => ($values['store_on'] ?? '0') === '1',
+            /*
+             * وعددُ المعروض يُقال عند مفتاح النشر لا في شاشةٍ أخرى: صفحةٌ
+             * فارغةٌ تُفقد الزبونَ ثقتَه ولا يعود إليها بعد أن رآها خالية.
+             */
+            'productCount' => Product::where('business_id', $bid)
+                ->where('active', true)->where('published', true)->count(),
 
             /*
-             * وحقولُ الطلب تصل محسوبةً لا فارغة.
+             * وسطرُ كلّ بطاقةٍ يُحسب هنا لا في الشاشة.
              *
-             * `CheckoutFields` تقرأ الفراغَ «ما كان» — فشاشةٌ تعرض فراغًا
-             * تقول لصاحبها إنّ حقلًا مطفأٌ وهو يُسأل عنه في متجره.
+             * البطاقةُ التي تقول «٤ صفحات» ثمّ يفتحها فيجد ثلاثًا تكذب عليه
+             * مرّةً واحدةً فلا يصدّقها بعدها. والعدُّ من `StoreNav` نفسِها
+             * التي ترسم القائمةَ في متجره.
              */
-            'fieldStates' => CheckoutFields::all($bid),
-            'fulfilments' => CheckoutFields::fulfilments($bid),
+            'cards' => [
+                'pages' => ['shown' => count($allowed) + 2, 'all' => count($rows)],
+                'ways' => $ways,
+                'seoIndexed' => ($values['store_seo_index'] ?? '1') === '1',
+                'gatewayReady' => (bool) $gateway?->ready(),
+            ],
+        ]);
+    }
 
+    /**
+     * «المتجر والطلبات» لصاحب الواجهة الخاصّة — أثقلُ تبويباته.
+     *
+     * وفيه ما قِيس يومًا فوُجد ثقيلًا: اثنان وثلاثون مقبضًا. والعطبُ يومَها
+     * لم يكن العددَ بل **زرّي حفظٍ متجاورين** لا يحفظ أحدُهما ما يحفظه
+     * الآخر — فمن ضبط التوصيل وضغط زرَّ الحقول خسر ما كتب.
+     *
+     * فزرُّ الحفظ هنا واحد، والمجموعاتُ ثلاثٌ تحته. ويبقى لبوّابة البطاقة
+     * زرُّها وحدَها عن حقّ: أسرارُها تُكتب في `payment_gateways` لا في
+     * إعدادات المتجر، وخلطُ سرٍّ مشفَّرٍ في حمولةِ ضبطٍ عامّة بابُ تسريب.
+     */
+    private function themedStore(string $theme): Response
+    {
+        $bid = $this->bid();
+        $business = Business::findOrFail($bid);
+
+        $gateway = PaymentGateway::where('business_id', $bid)
+            ->where('provider', PaymentGateway::PAYMOB)->first();
+
+        return Inertia::render('Admin/Website/ThemeStore', $this->themeShell($theme) + $this->themeSeed($business) + [
             /*
              * وبوّابةُ الدفع — حالُها لا مفاتيحُها.
              *
@@ -171,38 +213,16 @@ class SettingsController extends Controller
                 'has_hmac' => filled($gateway?->hmac_secret),
                 'ready' => (bool) ($gateway?->ready() ?? false),
             ],
+        ]);
+    }
 
-            'pages' => [
-                'rows' => StoreNav::rows($bid),
-                'optional' => StoreNav::OPTIONAL,
-                /*
-                 * وما أذِن به يصل **محسوبًا** لا خامًا من الإعداد.
-                 *
-                 * الفراغُ في العمود يعني «كلُّها» (انظر `StoreNav::allowed`)،
-                 * فإرسالُه فراغًا إلى الشاشة يجعل مفاتيحَ الصفحتين مطفأةً
-                 * وهما مفتوحتان على زبائنه.
-                 */
-                'allowed' => implode(',', StoreNav::allowed($bid)) ?: StoreNav::NONE,
-            ],
+    /** «الظهور في البحث» لصاحب الواجهة الخاصّة */
+    private function themedSeo(string $theme): Response
+    {
+        $bid = $this->bid();
+        $business = Business::findOrFail($bid);
 
-            'domain' => [
-                'path' => Storefront::path($business),
-                'pricing' => Storefront::pricing(),
-                'suggestion' => Storefront::suggest((string) $business->name),
-            ],
-            'storeOn' => ($site['store_on'] ?? '0') === '1',
-            /*
-             * وعددُ المعروض يُقال عند مفتاح النشر لا في شاشةٍ أخرى: صفحةٌ
-             * فارغةٌ تُفقد الزبونَ ثقتَه ولا يعود إليها بعد أن رآها خالية.
-             */
-            'productCount' => Product::where('business_id', $bid)
-                ->where('active', true)->where('published', true)->count(),
-
-            'seo' => [
-                'title' => (string) ($site['store_seo_title'] ?? ''),
-                'desc' => (string) ($site['store_seo_desc'] ?? ''),
-                'index' => ($site['store_seo_index'] ?? '1') === '1',
-            ],
+        return Inertia::render('Admin/Website/ThemeSeo', $this->themeShell($theme) + $this->themeSeed($business) + [
             /*
              * وما يُعرض في غوغل حين لا يكتب شيئًا — يُحسب هنا لا في الشاشة.
              *
@@ -216,9 +236,9 @@ class SettingsController extends Controller
 
     public function store(): Response|RedirectResponse
     {
-        // وصاحبُ الواجهة الخاصّة يضبط هذا في قسمه من صفحةِ الضبط الواحدة
-        if ($this->theme() !== null) {
-            return $this->themedSection('checkout');
+        // ولصاحب الواجهة الخاصّة شاشتُه على المسار نفسِه — من صنعته
+        if (($theme = $this->theme()) !== null) {
+            return $this->themedStore($theme);
         }
 
         $site = $this->siteOrFail();
@@ -315,8 +335,8 @@ class SettingsController extends Controller
      */
     public function seo(): Response|RedirectResponse
     {
-        if ($this->theme() !== null) {
-            return $this->themedSection('seo');
+        if (($theme = $this->theme()) !== null) {
+            return $this->themedSeo($theme);
         }
 
         $site = $this->siteOrFail();

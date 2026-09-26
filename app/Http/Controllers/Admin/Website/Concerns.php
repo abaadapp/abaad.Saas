@@ -3,17 +3,23 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Models\Business;
+use App\Models\StoreSite;
 use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
+use App\Models\WebsiteVersion;
+use App\Support\MarketingSettings;
 use App\Support\Permissions;
+use App\Support\Store\CheckoutFields;
+use App\Support\Store\PageEditor;
+use App\Support\Store\StoreContent;
+use App\Support\Store\StoreNav;
 use App\Support\Storefront;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Domains;
 use App\Support\Website\MerchantData;
 use App\Support\Website\Sections;
 use Illuminate\Http\Exceptions\HttpResponseException;
-use Illuminate\Http\RedirectResponse;
 
 /**
  * ما تشترك فيه شاشات الموقع: أيّ موقعٍ نحن فيه، وهل هو موقعُنا.
@@ -96,18 +102,6 @@ trait Concerns
     protected function theme(): ?string
     {
         return Business::find($this->bid())?->storefrontTheme();
-    }
-
-    /**
-     * ما كان شاشةً صار قسمًا — والروابطُ المحفوظةُ تُساق إليه.
-     *
-     * أربعةُ مساراتٍ كانت شاشاتٍ قائمة (`shop` و`seo` و`domain` و`pages`)،
-     * وقد وُزّعت على زبائن ومُحفظت في متصفّحاتهم. فلا تُردّ بـ404 ولا إلى
-     * أوّل الصفحة: تُساق إلى قسمها بعينه بعد `#`.
-     */
-    protected function themedSection(string $anchor): RedirectResponse
-    {
-        return redirect()->to(route('admin.website.site').'#'.$anchor);
     }
 
     /**
@@ -214,6 +208,106 @@ trait Concerns
                 'slug' => $business->site_slug,
                 'host' => Storefront::domain(),
             ],
+        ];
+    }
+
+    /**
+     * حالُ متجر الواجهة الخاصّة كما تقرؤه شاشاتُه الستّ — بذرةٌ واحدة.
+     *
+     * ═══ ولمَ تُرسَل كاملةً إلى كلٍّ منها ═══
+     *
+     * قسمتُها على الشاشات تعني ستَّ صيغٍ للقراءة نفسِها، تفترق يومَ يُضاف
+     * مفتاح: شاشةٌ تقرأ الفراغَ «مطفأ» وأختُها تقرؤه «ما كان». وهي كلُّها
+     * صفٌّ واحدٌ من `MarketingSettings::group` — فالقسمةُ لا توفّر استعلامًا
+     * وتُكلّف اتّفاقًا.
+     *
+     * وما يُرسَل ليس ما يُحفظ: كلُّ شاشةٍ تُرسل مفاتيحَها وحدَها
+     * (`SCREEN_KEYS` في الواجهة)، والخادمُ يُسقط الغائبَ ولا يمحوه.
+     *
+     * @return array<string, mixed>
+     */
+    protected function themeSeed(Business $business): array
+    {
+        $bid = (int) $business->id;
+        $values = MarketingSettings::group($bid, 'website');
+
+        return [
+            'settings' => $values,
+            /*
+             * وحقولُ الطلب تصل محسوبةً لا فارغة.
+             *
+             * `CheckoutFields` تقرأ الفراغَ «ما كان» — فشاشةٌ تعرض فراغًا
+             * تقول لصاحبها إنّ حقلًا مطفأٌ وهو يُسأل عنه في متجره.
+             */
+            'fieldStates' => CheckoutFields::all($bid),
+            'fulfilments' => CheckoutFields::fulfilments($bid),
+            /*
+             * وما أذِن به من الصفحات يصل **محسوبًا** لا خامًا من الإعداد.
+             *
+             * الفراغُ في العمود يعني «كلُّها» (انظر `StoreNav::allowed`)،
+             * فإرسالُه فراغًا يجعل مفتاحَي الصفحتين مطفأين وهما مفتوحتان
+             * على زبائنه.
+             */
+            'pages' => ['allowed' => implode(',', StoreNav::allowed($bid)) ?: StoreNav::NONE],
+            'seo' => [
+                'title' => (string) ($values['store_seo_title'] ?? ''),
+                'desc' => (string) ($values['store_seo_desc'] ?? ''),
+                'index' => ($values['store_seo_index'] ?? '1') === '1',
+            ],
+            'storeOn' => ($values['store_on'] ?? '0') === '1',
+            'slug' => $business->site_slug,
+        ];
+    }
+
+    /**
+     * حالُ نشر الواجهة الخاصّة: أفيه ما لم يُنشر، وما سجلُّ النشرات.
+     *
+     * ═══ ولمَ في السمة لا في متحكّم ═══
+     *
+     * تقرؤها شاشتان: «عام» التي فيها زرُّ النشر، والمحرّرُ الذي يُنشر منه.
+     * ولو حُسبت في كلٍّ منهما لقالت إحداهما «فيه ثلاثةُ تغييرات» وقالت
+     * أختُها «لا تغييرات» عن المتجر نفسه — وهو العطبُ الذي جمع `shell`.
+     *
+     * و`null` تعني أنّ النظامَ لم يُفتح لهذا المتجر بعد (لا صفَّ له في
+     * `store_sites`): يُحفظ فيظهر، فلا يُعرض عليه زرُّ نشرٍ لا يعمل ولا
+     * سجلُّ نشراتٍ فارغ. ومقبضٌ موصولٌ بلا شيءٍ أسوأ من غيابه.
+     *
+     * ولا يُعدّ سجلٌّ لا نهاية له: خمسٌ تكفي من يراجع ما فعل، ومن أراد
+     * أبعد منها أراد أرشيفًا لا شاشة.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function themePublishState(int $bid): ?array
+    {
+        if (! StoreContent::usesDrafts($bid)) {
+            return null;
+        }
+
+        $site = StoreSite::where('business_id', $bid)->first();
+        $changed = StoreContent::changed($bid);
+
+        return [
+            'changed' => count($changed),
+            /*
+             * وأسماءُ ما تغيّر تُقال لا عددُه وحدَه: «٣ تغييرات» تُقلق ولا
+             * تُفيد، و«العنوان والنبذة والتذييل» تُراجَع في لحظة.
+             */
+            'fields' => collect($changed)
+                ->map(fn ($key) => __(PageEditor::labelOf($key)))->filter()->values()->all(),
+            'revision' => (int) ($site?->draft_revision ?? 0),
+            'published_at' => optional($site?->published_at)->format('Y-m-d H:i'),
+            'versions' => WebsiteVersion::where('business_id', $bid)
+                ->where('kind', WebsiteVersion::THEME)
+                ->with('creator:id,name')
+                ->orderByDesc('number')->limit(5)->get()
+                ->map(fn ($v) => [
+                    'id' => (int) $v->id,
+                    'number' => (int) $v->number,
+                    'at' => optional($v->published_at)->format('Y-m-d H:i'),
+                    'by' => $v->creator?->name,
+                    'note' => $v->note,
+                    'current' => (int) $v->id === (int) ($site?->published_version_id ?? 0),
+                ])->all(),
         ];
     }
 

@@ -11,6 +11,7 @@ import {
     RefreshCw,
     Save,
     Smartphone,
+    Tablet,
 } from 'lucide-react';
 
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -84,8 +85,17 @@ export default function ThemeEditor({ site: shell, publishing, rows, values, ord
     const [status, setStatus] = useState<Status>('clean');
     const [frame, setFrame] = useState(0);
 
-    /* عرضُ المعاينة — والزبونُ يفتح متجرَ ورودٍ من هاتفه غالبًا */
-    const [wide, setWide] = useState(true);
+    /*
+     * مقاسُ المعاينة — ثلاثةٌ كما عند جاره في البانِي.
+     *
+     * والتابلت ليس زينةً بين الاثنين: شبكةُ البطاقات في قالب الواجهة تنكسر
+     * عنده لا عند الهاتف (ثلاثٌ في الصفّ تصير اثنتين)، فمن عاين على
+     * الطرفين وحدَهما لم يرَ الحالَ التي تنكسر فيها صفحتُه.
+     *
+     * والعرضُ بالبكسل لا بالنسبة: `390` هاتفٌ و`820` تابلت — وهما مقاسا
+     * ما يفتحه زبونُه فعلًا، لا كسرٌ من عرض شاشة التاجر.
+     */
+    const [size, setSize] = useState<'desktop' | 'tablet' | 'phone'>('desktop');
 
     const form = useForm<Record<string, string>>({ ...values });
 
@@ -439,14 +449,15 @@ export default function ThemeEditor({ site: shell, publishing, rows, values, ord
             {/*
                 والتبويبُ المضيءُ «التصميم» لا «المحرّر».
 
-                فالمحرّرُ لم يعد تبويبًا في الشريط: صار ما يصل إليه «التصميم»
-                كما يصل إليه عند جاره (انظر `DesignController::index`). ولو
-                تُرك اسمُ مساره لَأضاء المُطابِقُ بالبادئة تبويبًا بالقرعة —
-                ستّتُها تبدأ بـ`admin.website.`.
+                فالمحرّرُ ليس تبويبًا في الشريط: هو ما يصل إليه «التصميم»
+                كما يصل إليه عند جاره (انظر `DesignController::index`).
+                و«التصميم» اسمُ مساره `admin.website.design` — فيُمرَّر هو،
+                ولو تُرك `…editor` لَأضاء المُطابِقُ بالبادئة تبويبًا
+                بالقرعة: ستّتُها تبدأ بـ`admin.website.`.
             */}
             <ThemeHeader
                 site={shell}
-                current="admin.website.editor"
+                current="admin.website.design"
                 /*
                     والوصفُ يقول الحقّ في الحالين: من فُتح له النشر يحفظ
                     فينتظر، ومن لم يُفتح له يحفظ فيظهر. وسطرٌ واحدٌ لحالين
@@ -526,22 +537,26 @@ export default function ThemeEditor({ site: shell, publishing, rows, values, ord
                             <span className="ms-2 font-normal text-[#6b7280]">{t('قبل الحفظ')}</span>
                         </p>
                         <div className="flex items-center gap-1">
-                            {/* والعرضان زرّان لا شاشتان — الصفحةُ واحدةٌ يضيق بها الإطار */}
+                            {/* والمقاساتُ أزرارٌ لا شاشات — الصفحةُ واحدةٌ يضيق بها الإطار */}
                             <div className="flex overflow-hidden rounded-[8px] border border-[var(--ui-border,#e8e8e8)]">
-                                {([true, false] as const).map((w) => (
+                                {([
+                                    ['desktop', Monitor, 'عرض الكمبيوتر'],
+                                    ['tablet', Tablet, 'عرض التابلت'],
+                                    ['phone', Smartphone, 'عرض الجوال'],
+                                ] as const).map(([key, Icon, label]) => (
                                     <button
-                                        key={String(w)}
+                                        key={key}
                                         type="button"
-                                        onClick={() => setWide(w)}
-                                        aria-pressed={wide === w}
-                                        aria-label={t(w ? 'عرض الكمبيوتر' : 'عرض الجوال')}
-                                        data-testid={w ? 'preview-wide' : 'preview-narrow'}
+                                        onClick={() => setSize(key)}
+                                        aria-pressed={size === key}
+                                        aria-label={t(label)}
+                                        data-testid={'preview-' + key}
                                         className={cn(
                                             'px-2.5 py-1.5',
-                                            wide === w ? 'bg-[#111] text-white' : 'text-[#6b7280]',
+                                            size === key ? 'bg-[#111] text-white' : 'text-[#6b7280]',
                                         )}
                                     >
-                                        {w ? <Monitor className="size-3.5" /> : <Smartphone className="size-3.5" />}
+                                        <Icon className="size-3.5" />
                                     </button>
                                 ))}
                             </div>
@@ -574,7 +589,9 @@ export default function ThemeEditor({ site: shell, publishing, rows, values, ord
                             data-testid="preview-frame"
                             className={cn(
                                 'h-[70vh] min-h-[480px] rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-white transition-[width]',
-                                wide ? 'w-full' : 'mx-auto w-[390px] max-w-full',
+                                size === 'desktop' && 'w-full',
+                                size === 'tablet' && 'mx-auto w-[820px] max-w-full',
+                                size === 'phone' && 'mx-auto w-[390px] max-w-full',
                             )}
                         />
                     </div>

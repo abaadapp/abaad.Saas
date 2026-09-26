@@ -9,6 +9,7 @@ use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
 use App\Support\ProductImages;
 use App\Support\Store\PageEditor;
+use App\Support\Store\StoreNav;
 use App\Support\Store\StorePage;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Content;
@@ -163,6 +164,19 @@ class EditorController extends Controller
              * نشراتٍ فارغ. ومقبضٌ موصولٌ بلا شيءٍ أسوأ من غيابه.
              */
             'publishing' => $this->themePublishState($bid),
+            /*
+             * صفحاتُ المتجر — منتقًى يُنقل إلى موضع تحرير كلٍّ منها.
+             *
+             * وهي أربعٌ يرسمها القالبُ لا تُخلَق ولا تُحذَف، ومحرّرُ الأقسام
+             * هذا للرئيسية وحدَها. فالمنتقي لا يُبدّل ما يُحرَّر في مكانه —
+             * وإنّما يفتح البابَ الذي يُكتب فيه محتوى الصفحة المختارة: وهو
+             * لكلٍّ منها بابٌ مختلف — والشاشةُ تعرف أيَّ بابٍ لأيّ مفتاح.
+             *
+             * وهي `StoreNav::rows` نفسُها التي تقرؤها شاشةُ «الصفحات»:
+             * مصدرٌ واحدٌ يقول ما هو قائمٌ وما أُطفئ وما لا محتوى له — فلا
+             * يعرض المنتقي صفحةً تردّ على زبونه «غير موجود».
+             */
+            'pages' => StoreNav::rows($bid),
             'rows' => PageEditor::rows($bid),
             'values' => PageEditor::values($bid),
             'order' => StorePage::order($bid),

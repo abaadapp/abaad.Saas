@@ -1,3 +1,4 @@
+import { Wallet } from 'lucide-react';
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { SettingsGroup, SettingsSection } from '@/Components/Settings';
@@ -22,6 +23,7 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
     return (
         <section id="checkout" className="scroll-mt-24">
             <SettingsSection
+                icon={Wallet}
                 title="الدفع والاستلام"
                 description="ما يقبضه متجرك من زبونه، وكيف يصله طلبه."
                 divided

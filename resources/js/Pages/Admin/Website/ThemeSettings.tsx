@@ -43,6 +43,7 @@ interface Props extends ThemeShell {
         fields: string[];
         revision: number;
         published_at: string | null;
+        saved_at: string | null;
         versions: ThemeVersion[];
     } | null;
     domain: DomainState;
@@ -191,10 +192,19 @@ export default function ThemeSettings() {
                         </p>
 
                         {publishing && (
-                            <p className="mt-1 text-[12px] text-[#9ca3af]">
-                                {publishing.published_at
-                                    ? `${t('آخر نشرة')} ${publishing.published_at}`
-                                    : t('لم يُنشر بعد')}
+                            <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] text-[#9ca3af]">
+                                <span>
+                                    {publishing.published_at
+                                        ? `${t('آخر نشرة')} ${publishing.published_at}`
+                                        : t('لم يُنشر بعد')}
+                                </span>
+                                {/* وآخرُ حفظٍ إلى جانبها — فيُعرف أحُفظ بعد النشر أم لا */}
+                                {publishing.saved_at && (
+                                    <>
+                                        <span aria-hidden>·</span>
+                                        <span>{`${t('آخر حفظ')} ${publishing.saved_at}`}</span>
+                                    </>
+                                )}
                             </p>
                         )}
                     </div>

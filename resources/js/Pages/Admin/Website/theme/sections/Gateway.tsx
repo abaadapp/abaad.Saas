@@ -1,5 +1,5 @@
 import { useForm } from '@inertiajs/react';
-import { Save } from 'lucide-react';
+import { CreditCard, Save } from 'lucide-react';
 
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
@@ -56,6 +56,7 @@ export default function Gateway({ gateway }: { gateway: GatewayState }) {
         <section id="gateway" className="scroll-mt-24">
             <form onSubmit={save}>
                 <SettingsSection
+                    icon={CreditCard}
                     title="الدفع بالبطاقة"
                     description="مفاتيحُك أنت من لوحة Paymob — والمال يصل حسابك البنكي مباشرةً ولا يمرّ بأبعاد."
                 >

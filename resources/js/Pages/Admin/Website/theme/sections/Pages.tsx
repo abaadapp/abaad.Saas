@@ -95,8 +95,11 @@ export default function Pages({
     return (
         <section id="pages" className="scroll-mt-24">
             <SettingsSection
-                title="الصفحات"
-                description="صفحاتُ متجرك الأربع — ما يُفتح منها، وأين يُكتب ما فيها."
+                /*
+                    ولا عنوانَ للبطاقة: ترويسةُ الشاشة فوقها تقول الجملةَ
+                    نفسَها. وعنوانان متطابقان فوق بعضهما يُقرآن مرّتين
+                    ويُفهمان مرّةً — وODAY تضع الصفوفَ تحت الترويسة رأسًا.
+                */
                 divided
             >
                 <SettingsGroup>

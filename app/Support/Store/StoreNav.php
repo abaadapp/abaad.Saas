@@ -84,7 +84,23 @@ final class StoreNav
      */
     public static function allowed(int $businessId): array
     {
-        $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_pages'] ?? ''));
+        return self::allowedFrom(MarketingSettings::group($businessId, 'website')['store_pages'] ?? '');
+    }
+
+    /**
+     * القاعدةُ نفسُها على نصٍّ يُعطى — لا على ما هو منشور.
+     *
+     * وفُصلت عن `allowed` لأنّ لوحةَ صاحب المتجر تقرأ **المسوّدة** لا
+     * المنشور: من أطفأ «من نحن» وحفظ ولم يَنشر يجب أن يرى مفتاحَه مطفأً
+     * حين يعود، لا مشتعلًا كما هو عند زبونه بعد.
+     *
+     * والمصدرُ وحدَه هو ما تبدّل — والقاعدةُ واحدةٌ في موضعٍ واحد.
+     *
+     * @return list<string>
+     */
+    public static function allowedFrom(?string $value): array
+    {
+        $raw = trim((string) $value);
 
         /*
          * والفراغُ وحدَه يعني «كلُّها» — لا كلُّ قائمةٍ لا يصحّ منها شيء.

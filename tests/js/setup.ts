@@ -38,7 +38,7 @@ vi.mock('@inertiajs/react', async () => {
     return {
         ...actual,
         usePage: () => ({ props: pageProps, url: '/', component: 'Test' }),
-        router: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), put: vi.fn(), on: vi.fn() },
+        router: { visit: vi.fn(), get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), put: vi.fn(), on: vi.fn() },
         /*
          * و`Head` جسدٌ فارغ.
          *

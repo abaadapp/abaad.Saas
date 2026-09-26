@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router } from '@inertiajs/react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Globe } from 'lucide-react';
 
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
@@ -88,6 +88,7 @@ export default function Address({
             {path === 'new' && <NewDomainCard pricing={pricing} domain={site.host} onPick={pickPath} busy={busy} />}
 
             <SettingsSection
+                icon={Globe}
                 title="العنوان والنشر"
                 description="الاسم الذي يُكتب قبل النطاق — يُوزَّع على زبائنك فيصعب تغييره بعدها."
                 status={<ThemeState published={site.published} />}
@@ -125,7 +126,13 @@ export default function Address({
                     </Field>
 
                     {slug && (
-                        <p dir="ltr" className="mt-2 text-[13px] font-medium text-[#111]">
+                        /*
+                            و`w-fit` ليست زينة: الفقرةُ بلا عرضٍ تملأ الصفَّ،
+                            و`dir="ltr"` يُلصق نصَّها بيسارها — فيقف العنوانُ
+                            على بُعد ثلاثِ مئةٍ وسبعين بكسلًا من الحقل الذي
+                            يصفه. والعرضُ بقدر النصّ يُعيده إلى بداية السطر.
+                        */
+                        <p dir="ltr" className="mt-2 w-fit text-[13px] font-medium text-[#111]">
                             https://{slug}.{site.host}
                         </p>
                     )}

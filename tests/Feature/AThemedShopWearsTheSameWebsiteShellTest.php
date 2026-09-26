@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\Store\PageEditor;
+use App\Support\Store\ThemePublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
@@ -118,6 +119,185 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     private function section(string $file): string
     {
         return (string) file_get_contents(resource_path('js/Pages/Admin/Website/theme/sections/'.$file));
+    }
+
+    /* ═══════════ والشاشاتُ تفتح على المسوّدة ═══════════ */
+
+    /**
+     * ما حُفظ ولم يُنشر يُرى حين يعود صاحبُه.
+     *
+     * ═══ والعطبُ الذي وقع ═══
+     *
+     * `StoreContent::VERSIONED` تُرسل سبعةَ عشرَ مفتاحًا إلى المسوّدة متى
+     * فُتح النظام، ومنها `store_seo_title`. وكانت `themeSeed` تقرأ المنشورَ
+     * وحدَه — فيكتب صاحبُ المتجر عنوانَ بحثه ويحفظ ويرى «حُفظ»، ثمّ يُحدّث
+     * الصفحةَ فيجده قد عاد إلى ما كان. وهو لم يذهب: هو في المسوّدة ينتظر
+     * النشر، والشاشةُ تنظر إلى غير موضعه.
+     *
+     * وهي عينُ الحال التي يحذّر منها `PageEditor::values` في المحرّر — فحُمل
+     * الحكمُ نفسُه إلى أخواته الأربع.
+     */
+    public function test_a_saved_but_unpublished_title_is_what_the_screen_shows(): void
+    {
+        MarketingSettings::save($this->shop->id, 'website', ['store_seo_title' => 'المنشور']);
+
+        // وبالبابِ الذي يُفتح به فعلًا — لا بصفٍّ يُركَّب بيدٍ
+        ThemePublisher::enable($this->shop, null);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.store.save'), ['store_seo_title' => 'ما لم يُنشر بعد'])
+            ->assertRedirect();
+
+        $page = $this->actingAs($this->owner)->get(route('admin.website.seo'))
+            ->assertOk()->viewData('page');
+
+        $this->assertSame('ما لم يُنشر بعد', $page['props']['seo']['title']);
+        $this->assertSame('ما لم يُنشر بعد', $page['props']['settings']['store_seo_title']);
+    }
+
+    /**
+     * ومفتاحُ صفحةٍ أُطفئ ولم يُنشر يبقى مطفأً في اللوحة.
+     *
+     * `store_pages` مُدارةٌ كذلك، و«الصفحات» تقرؤها عبر `StoreNav`. فلو
+     * قرأت المنشورَ لَعاد المفتاحُ مشتعلًا بعد أن أطفأه صاحبُه وحفظ.
+     */
+    public function test_a_page_switched_off_in_the_draft_reads_off(): void
+    {
+        MarketingSettings::save($this->shop->id, 'website', ['store_pages' => 'about,contact']);
+
+        ThemePublisher::enable($this->shop, null);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.store.save'), ['store_pages' => 'contact'])
+            ->assertRedirect();
+
+        $page = $this->actingAs($this->owner)->get(route('admin.website.pages'))
+            ->assertOk()->viewData('page');
+
+        $this->assertSame('contact', $page['props']['pages']['allowed']);
+    }
+
+    /**
+     * ومتجرٌ لم يُفتح له النظام لا يتبدّل له شيء — وهي حالُ كلّ متجرٍ اليوم.
+     *
+     * `StoreContent::draft` تردّ المنشورَ نفسَه لمن لا صفَّ له في
+     * `store_sites`، فالدمجُ لا يُدخل فراغًا فوق قيمةٍ قائمة.
+     */
+    public function test_a_shop_without_drafts_reads_what_is_published(): void
+    {
+        MarketingSettings::save($this->shop->id, 'website', ['store_seo_title' => 'المنشور وحدَه']);
+
+        $page = $this->actingAs($this->owner)->get(route('admin.website.seo'))
+            ->assertOk()->viewData('page');
+
+        $this->assertSame('المنشور وحدَه', $page['props']['seo']['title']);
+    }
+
+    /**
+     * واللوحةُ تقول متى نُشر ومتى حُفظ — والفرقُ بينهما هو الخبر.
+     *
+     * «آخر نشرة» وحدَها لا تقول أَحفِظ صاحبُها بعدها أم لا. فمن رأى حفظًا
+     * أحدثَ من نشرته علم أنّ عنده ما ينتظر، ومن رآهما سواءً اطمأنّ.
+     */
+    public function test_the_hub_says_when_it_was_published_and_when_it_was_saved(): void
+    {
+        ThemePublisher::enable($this->shop, null);
+
+        $page = $this->actingAs($this->owner)->get(route('admin.website.site'))
+            ->assertOk()->viewData('page');
+
+        $state = $page['props']['publishing'];
+
+        $this->assertNotNull($state['published_at']);
+        $this->assertNotNull($state['saved_at'], 'وقتُ آخرِ حفظٍ لا يصل الشاشة');
+    }
+
+    /**
+     * و«آخر حفظ» يتقدّم بالحفظ وحدَه — لا بالنشر.
+     *
+     * ═══ والعطبُ الذي وقع ═══
+     *
+     * قُرئ الوقتُ أوّلَ مرّةٍ من `updated_at`، وهو ختمٌ تلقائيٌّ يتبدّل عند
+     * كلّ كتابةٍ في الصفّ — والنشرُ يكتب فيه. فكان السطران يتساويان بعد كلّ
+     * نشرة، ويقول «آخر حفظ» لحظةً لم يحفظ صاحبُها فيها شيئًا.
+     *
+     * وهذا الحارسُ يمسكه: يُحفظ، ثمّ يُنشر، ثمّ يُسأل — فإن تحرّك الوقتُ
+     * بالنشر فالمصدرُ خاطئ.
+     */
+    public function test_publishing_does_not_move_the_last_saved_time(): void
+    {
+        ThemePublisher::enable($this->shop, null);
+
+        Carbon::setTestNow('2027-02-10 11:00:00');
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.store.save'), ['store_seo_title' => 'ما حُفظ'])
+            ->assertRedirect();
+
+        $saved = $this->hubState()['saved_at'];
+
+        // وبعد ساعةٍ يُنشر — والنشرُ ليس حفظًا
+        Carbon::setTestNow('2027-02-10 12:00:00');
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.website.store.publish'))
+            ->assertRedirect();
+
+        $after = $this->hubState();
+
+        $this->assertSame($saved, $after['saved_at'],
+            'تحرّك «آخر حفظ» بالنشر — فالمصدرُ ختمٌ تلقائيٌّ لا وقتُ حفظ');
+        $this->assertNotSame($saved, $after['published_at'],
+            'وقتُ النشر لم يتقدّم — فالاختبارُ لا يقيس شيئًا');
+    }
+
+    /** ويتقدّم بالحفظ فعلًا — وإلّا كان ثابتًا لا صادقًا */
+    public function test_saving_moves_the_last_saved_time(): void
+    {
+        ThemePublisher::enable($this->shop, null);
+
+        Carbon::setTestNow('2027-02-10 11:00:00');
+        $this->actingAs($this->owner)->post(route('admin.marketing.store.save'), ['store_seo_title' => 'الأولى']);
+        $first = $this->hubState()['saved_at'];
+
+        Carbon::setTestNow('2027-02-10 13:00:00');
+        $this->actingAs($this->owner)->post(route('admin.marketing.store.save'), ['store_seo_title' => 'الثانية']);
+        $second = $this->hubState()['saved_at'];
+
+        $this->assertNotSame($first, $second, '«آخر حفظ» لا يتقدّم بالحفظ');
+    }
+
+    /** @return array<string, mixed> */
+    private function hubState(): array
+    {
+        return $this->actingAs($this->owner)->get(route('admin.website.site'))
+            ->assertOk()->viewData('page')['props']['publishing'];
+    }
+
+    /**
+     * وعنوانُ المتجر يقف تحت حقله لا في الطرف المقابل.
+     *
+     * ═══ والعطبُ الذي وقع ═══
+     *
+     * `<p dir="ltr">` بلا عرضٍ تملأ الصفَّ، و`dir="ltr"` يُلصق نصَّها
+     * بيسارها — فوقف العنوانُ على بُعد ٣٧٣ بكسلًا من الحقل الذي يصفه،
+     * في الطرف المقابل من البطاقة. و`w-fit` تُعيده إلى بداية السطر.
+     *
+     * ═══ وما لا يقوله هذا الحارس ═══
+     *
+     * هو يقرأ المصدرَ لا التخطيط: jsdom لا ترسم فلا تقيس، فلا حارسَ وحدةٍ
+     * يستطيع قياسَ موضعٍ بالبكسل. فلو حُذف `w-fit` مات هذا الحارس، ولو
+     * أُبطل الأثرُ بطريقٍ آخر (حاويةٌ `flex` تُمدّد أبناءها مثلًا) لم يمُت.
+     * والقياسُ الحقيقيُّ في المتصفّح — وهو ما أثبت العطبَ أوّلًا.
+     */
+    public function test_the_shop_address_is_not_a_full_width_ltr_block(): void
+    {
+        $line = collect(explode("\n", $this->section('Address.tsx')))
+            ->first(fn (string $l) => str_contains($l, 'dir="ltr"') && str_contains($l, 'font-medium'));
+
+        $this->assertNotNull($line, 'سطرُ العنوان الناتج لم يعد موجودًا — راجع الحارس');
+        $this->assertStringContainsString('w-fit', $line,
+            'عنوانُ المتجر فقرةٌ بعرض الصفّ — فيقف نصُّها في الطرف المقابل لحقلها');
     }
 
     /* ═══════════ الترويسةُ واحدة ═══════════ */

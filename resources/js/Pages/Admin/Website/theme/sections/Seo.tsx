@@ -1,3 +1,4 @@
+import { Search } from 'lucide-react';
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { SettingsGroup, SettingsSection } from '@/Components/Settings';
@@ -43,6 +44,7 @@ export default function Seo({
     return (
         <section id="seo" className="scroll-mt-24">
             <SettingsSection
+                icon={Search}
                 title="الظهور في البحث"
                 description="العنوان والوصف اللذان يظهران في نتائج غوغل — اتركهما فارغين فيبقى ما يُحسب من اسمك ونبذتك."
                 divided

@@ -1,3 +1,4 @@
+import { ClipboardList, Gift } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { SettingsGroup, SettingsSection } from '@/Components/Settings';
@@ -35,6 +36,7 @@ export default function Fields({ form }: { form: ThemeForm }) {
         <>
             <section id="fields" className="scroll-mt-24">
                 <SettingsSection
+                    icon={ClipboardList}
                     title="حقول إتمام الطلب"
                     description="ما يُسأل عنه الزبون قبل أن يؤكّد طلبه."
                     divided
@@ -85,7 +87,7 @@ export default function Fields({ form }: { form: ThemeForm }) {
                 يدخل الفاتورةَ بندًا، ويُعدّ في تقرير الأصناف.
             */}
             <section id="gift" className="scroll-mt-24">
-                <SettingsSection title="كرت الهدية" description="بطاقةٌ يضيفها الزبون إلى طلبه — تُباع بندًا في فاتورته.">
+                <SettingsSection icon={Gift} title="كرت الهدية" description="بطاقةٌ يضيفها الزبون إلى طلبه — تُباع بندًا في فاتورته.">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <Toggle
                             on={form.data.store_gift_card}

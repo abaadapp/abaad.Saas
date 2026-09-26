@@ -229,7 +229,23 @@ trait Concerns
     protected function themeSeed(Business $business): array
     {
         $bid = (int) $business->id;
-        $values = MarketingSettings::group($bid, 'website');
+
+        /*
+         * والشاشاتُ تفتح على **المسوّدة** لا على المنشور — كالمحرّر سواء.
+         *
+         * `StoreContent::VERSIONED` تُرسل سبعةَ عشرَ مفتاحًا إلى المسوّدة حين
+         * يكون النظامُ مفتوحًا، ومنها `store_seo_title` و`store_pages`. فلو
+         * قرأت الشاشةُ المنشورَ وحدَه لَكتب صاحبُ المتجر عنوانَ بحثه وحفظ
+         * ثمّ حدّث الصفحةَ فوجده قد عاد إلى ما كان — وهو لم يذهب، بل ينتظر
+         * النشر. وهي عينُ الحال التي يحذّر منها `PageEditor::values`.
+         *
+         * ومن لا مسوّدةَ له تردّ `draft` المنشورَ نفسَه، فلا يتبدّل شيءٌ
+         * لمتجرٍ لم يُفتح له النظام — وهي حالُ كلّ متجرٍ قبل ترحيله.
+         */
+        $values = array_merge(
+            MarketingSettings::group($bid, 'website'),
+            StoreContent::draft($bid),
+        );
 
         return [
             'settings' => $values,
@@ -248,7 +264,7 @@ trait Concerns
              * فإرسالُه فراغًا يجعل مفتاحَي الصفحتين مطفأين وهما مفتوحتان
              * على زبائنه.
              */
-            'pages' => ['allowed' => implode(',', StoreNav::allowed($bid)) ?: StoreNav::NONE],
+            'pages' => ['allowed' => implode(',', StoreNav::allowedFrom($values['store_pages'] ?? '')) ?: StoreNav::NONE],
             'seo' => [
                 'title' => (string) ($values['store_seo_title'] ?? ''),
                 'desc' => (string) ($values['store_seo_desc'] ?? ''),
@@ -296,6 +312,25 @@ trait Concerns
                 ->map(fn ($key) => __(PageEditor::labelOf($key)))->filter()->values()->all(),
             'revision' => (int) ($site?->draft_revision ?? 0),
             'published_at' => optional($site?->published_at)->format('Y-m-d H:i'),
+            /*
+             * ووقتُ آخرِ حفظٍ إلى جانبه — وهو ما يُفرّق بين الحالَين.
+             *
+             * «آخر نشرة» وحدَها لا تقول أَحفِظتَ بعدها أم لا. فحفظٌ أحدثُ من
+             * النشرة يعني «عندك ما ينتظر»، ومساواتُهما تعني «كلُّ ما حفظتَ
+             * منشور».
+             *
+             * ═══ و`draft_saved_at` لا `updated_at` ═══
+             *
+             * `updated_at` ختمٌ تلقائيٌّ يتبدّل عند كلّ كتابةٍ في الصفّ —
+             * والنشرُ يكتب فيه (`published_at` و`published_version_id`). فلو
+             * قُرئ منه لَقفز «آخر حفظ» إلى لحظة النشر وصاحبُه لم يحفظ شيئًا،
+             * فيتساوى السطران أبدًا ولا يبقى في أحدهما خبر.
+             *
+             * و`draft_saved_at` لا تُكتب إلّا حين تُحفظ المسوّدةُ فعلًا
+             * (`ThemePublisher::saveDraft`) — وهي المصدرُ الذي تقرؤه شاشةُ
+             * البانِي في `shell()` منذ كُتبت.
+             */
+            'saved_at' => optional($site?->draft_saved_at)->format('Y-m-d H:i'),
             'versions' => WebsiteVersion::where('business_id', $bid)
                 ->where('kind', WebsiteVersion::THEME)
                 ->with('creator:id,name')

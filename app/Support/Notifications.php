@@ -53,7 +53,7 @@ class Notifications
      * والمفتاحُ بادئتُه، وأطولُ بادئةٍ تطابق هي الحاكمة — `support-reply-`
      * قبل `support-`، وإلّا قرأ ردُّ التاجر نفسَه صفَّ مدير المنصّة.
      *
-     * ولمَ `manual` لهذه الخمسة بالذات:
+     * ولمَ `manual` لهذه الأربعة بالذات:
      *
      *   `dormant-`       الردُّ اتّصالٌ أو رسالة، وعودةُ الزبون قرارُه لا قرارُ
      *                    التاجر. فاشتراطُ شرائه لإغلاق الصفّ يُبقيه مفتوحًا
@@ -61,7 +61,7 @@ class Notifications
      *   `gbp-review-`    الردُّ يقع في Google لا عندنا، ولا نقرأ منه شيئًا.
      *   `stray-payment-` يردّ التاجرُ المالَ أو يجهّز بديلًا — وكلاهما لا
      *                    يكتب `order_id`، فالغيابُ ليس دليلَ معالجة.
-     *   `season-reminder-` و`custom-` (تذكير): موعدٌ حان، ولا سجلَّ يقول إنّه نُفِّذ.
+     *   `custom-` (تذكيرًا): موعدٌ حان، ولا سجلَّ يقول إنّه نُفِّذ.
      *
      * و`custom-` تحتمل الوجهين — قاعدةٌ تُقاس أو تذكيرٌ بموعد — فالصفُّ
      * نفسُه يحمل `resolve` ويعلو على هذا الجدول. انظر `resolveOf`.
@@ -72,7 +72,6 @@ class Notifications
         'sub-' => [self::INFO, self::MANUAL],
         'gbp-review-' => [self::TASK, self::MANUAL],
         'wa-delivery' => [self::TASK, self::AUTO],
-        'season-reminder-' => [self::TASK, self::MANUAL],
         'daily-' => [self::INFO, self::MANUAL],
         'archive-' => [self::INFO, self::MANUAL],
         'grn-' => [self::TASK, self::AUTO],

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { CalendarDays, Globe, Plus, Store } from 'lucide-react';
+import { BellRing, CalendarDays, Globe, Plus, Store, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PRODUCT_TABS } from '@/Components/SectionTabs';
@@ -24,10 +24,39 @@ export interface SeasonRow extends SeasonFields {
     nextReminder: { at: string; message: string } | null;
 }
 
+/** تنبيهٌ حان وقتُه ولم يُقرأ في دورة موسمه */
+export interface SeasonAlert {
+    id: number;
+    seasonId: number;
+    season: string;
+    message: string;
+    /** أيّامٌ إلى بداية الموسم — سالبةٌ إن كان جاريًا */
+    days: number;
+    startsAt: string;
+    dueAt: string | null;
+}
+
 interface Props {
     seasons: SeasonRow[];
     filter: string;
     counts: Record<string, number>;
+    alerts: SeasonAlert[];
+}
+
+/**
+ * ما يُقرأ في رأس التنبيه — «باقي ٣٠ يومًا على موسم رمضان».
+ *
+ * والصفرُ «يبدأ اليوم» لا «باقي ٠ يومًا»، والسالبُ «جارٍ الآن»: موسمٌ بدأ
+ * ولمّا يُقرأ تنبيهُه يُقال فيه الحقّ لا عددٌ بالسالب.
+ */
+export function alertHeadline(
+    a: SeasonAlert,
+    t: (key: string, replace?: Record<string, string | number>) => string,
+): string {
+    if (a.days > 0) return t('باقي :n يومًا على موسم :season', { n: a.days, season: a.season });
+    if (a.days === 0) return t('موسم :season يبدأ اليوم', { season: a.season });
+
+    return t('موسم :season جارٍ الآن', { season: a.season });
 }
 
 export const STATUS_TONE: Record<SeasonRow['status'], 'info' | 'success' | 'neutral' | 'warning'> = {
@@ -51,8 +80,68 @@ export function reminderDate(iso: string, locale: string): string {
     return new Date(iso).toLocaleDateString(locale === 'en' ? 'en-u-nu-latn' : 'ar-u-nu-latn', { day: 'numeric', month: 'long' });
 }
 
+/**
+ * ═══ ما حان وينتظره ═══
+ *
+ * يُحسب عند كلّ فتحةٍ من بداية الموسم، فلا يُشترط أن تكون الصفحة مفتوحةً
+ * وقتَ الموعد: من غاب أسبوعًا وجد تنبيهَه واقفًا.
+ *
+ * وهنا وحدَه — لا في الجرس ولا في لوحة التحكّم.
+ */
+export function SeasonAlerts({ alerts }: { alerts: SeasonAlert[] }) {
+    const t = useTranslate();
+
+    if (alerts.length === 0) {
+        return null;
+    }
+
+    return (
+        <div data-testid="season-alerts" className="mb-4 space-y-2">
+            {alerts.map((a) => (
+                <div
+                    key={a.id}
+                    data-testid={'season-alert-' + a.id}
+                    className="flex flex-wrap items-start gap-3 rounded-[14px] border border-[#fcd34d] bg-[#fffbeb] px-4 py-3"
+                >
+                    <BellRing className="mt-0.5 size-4 shrink-0 text-[#b45309]" />
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[13.5px] font-semibold text-[#92400e]" dir="auto">
+                            {alertHeadline(a, t)}
+                        </p>
+                        <p className="mt-0.5 text-[12.5px] leading-relaxed text-[#b45309]" dir="auto">
+                            {a.message}
+                        </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <Button variant="ghost" size="sm" asChild>
+                            <SmartLink routeName="admin.seasons.show" href={route('admin.seasons.show', a.seasonId)}>
+                                {t('افتح الموسم')}
+                            </SmartLink>
+                        </Button>
+                        <button
+                            type="button"
+                            aria-label={t('أخفِ التنبيه')}
+                            data-testid={'season-alert-read-' + a.id}
+                            onClick={() =>
+                                router.post(
+                                    route('admin.seasons.reminders.read', [a.seasonId, a.id]),
+                                    {},
+                                    { preserveScroll: true },
+                                )
+                            }
+                            className="rounded-full p-1 text-[#b45309] hover:bg-[#fde68a]"
+                        >
+                            <X className="size-4" />
+                        </button>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export default function SeasonsIndex() {
-    const { seasons, filter, counts, locale } = usePage<PageProps<Props>>().props;
+    const { seasons, filter, counts, alerts, locale } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [dialog, setDialog] = useState<{ open: boolean; season: SeasonRow | null }>({ open: false, season: null });
 
@@ -78,6 +167,8 @@ export default function SeasonsIndex() {
             />
 
             <SectionTabs tabs={PRODUCT_TABS} current="admin.seasons.index" />
+
+            <SeasonAlerts alerts={alerts} />
 
             <div className="mb-4 flex flex-wrap gap-1.5" role="group" aria-label={t('الحالة')}>
                 {filters.map((f) => (

@@ -15,9 +15,18 @@ class SeasonReminder extends Model
 
     protected $casts = [
         'remind_at' => 'datetime',
+        'acknowledged_for' => 'date',
         'active' => 'boolean',
         'days_before' => 'integer',
     ];
+
+    /**
+     * ما يُختار بضغطةٍ — وما عداه يُكتب بالأيّام.
+     *
+     * والشهرُ ثلاثون والشهران ستّون: عددُ أيّامٍ ثابتٌ لا شهرٌ تقويميّ، فلا
+     * يتبدّل موعدُ التذكير بين فبراير وأغسطس لموسمٍ في اليوم نفسِه.
+     */
+    public const PRESETS = [7, 14, 30, 60];
 
     public const RELATIVE = 'relative';
 
@@ -52,5 +61,42 @@ class SeasonReminder extends Model
         }
 
         return $season->starts_at->copy()->startOfDay()->subDays($this->days_before)->setTime(9, 0);
+    }
+
+    /**
+     * أحان وقتُه ولم يُقرأ في هذه الدورة؟
+     *
+     * ═══ والدورةُ بدايةُ الموسم ═══
+     *
+     * لا «أُخفيَ» وحدَها: مواسمُ التاجر تعود كلَّ سنة، والهجريُّ منها يتقدّم
+     * أحدَ عشرَ يومًا في كلّ عام. فمن أخفى تذكيرَ رمضانَ هذا العام يجب أن
+     * يعودَ إليه العامَ القادم حين يُعاد تأريخُ الموسم.
+     *
+     * فالمقارنةُ ببداية الموسم اليومَ: ساوت ما أُخفي عليه فقد قرأه في هذه
+     * الدورة، واختلفت فهي دورةٌ أخرى.
+     */
+    public function isDue(?Season $season = null, ?Carbon $now = null): bool
+    {
+        $season ??= $this->season;
+        $now ??= now();
+
+        if (! $this->active || ! $season || ! $season->active) {
+            return false;
+        }
+
+        $at = $this->dueAt($season);
+
+        if ($at === null || $at->gt($now)) {
+            return false;
+        }
+
+        return ! $this->isAcknowledgedFor($season);
+    }
+
+    /** أقُرئ في دورة هذا الموسم؟ */
+    public function isAcknowledgedFor(Season $season): bool
+    {
+        return $this->acknowledged_for !== null
+            && $this->acknowledged_for->isSameDay($season->starts_at);
     }
 }

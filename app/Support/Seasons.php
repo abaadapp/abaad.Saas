@@ -97,11 +97,14 @@ final class Seasons
     }
 
     /**
-     * ما حان من تذكيرات هذا المتجر — للجرس.
+     * ما حان من تذكيرات هذا المتجر ولم يُقرأ — لقسم المواسم وحدَه.
      *
-     * يحين التذكيرُ حين يبلغ وقتَه، ويبقى معروضًا حتى يُخفيه صاحبُه أو ينتهي
-     * الموسم: تذكيرٌ يختفي وحدَه بعد ساعةٍ من حينه لا يقرؤه من فتح اللوحة
-     * مساءً. والمُطفأُ — تذكيرًا كان أو موسمًا — لا يُذكَّر به.
+     * بابٌ واحد: يقرؤه `SeasonController::index` ولا يقرؤه الجرسُ العامّ.
+     * فالإخفاءُ من القسم يُخفي التنبيهَ حقًّا، ولا يبقى له ظلٌّ في قائمةٍ
+     * أخرى يُقرأ منها مرّةً ثانية.
+     *
+     * والمحسوبُ عند كلّ قراءة لا مجدولٌ في مهمّة: من غاب حتى مرّ الموعدُ
+     * يجد تنبيهَه واقفًا حين يفتح، ولا صفَّ إشعارٍ يُكتب في كلّ فتحة.
      *
      * @return Collection<int, SeasonReminder>
      */
@@ -109,16 +112,17 @@ final class Seasons
     {
         $now ??= now();
 
-        return SeasonReminder::where('business_id', $businessId)->where('active', true)
+        return SeasonReminder::where('business_id', $businessId)
+            ->where('active', true)
+            /*
+             * والموسمُ المنتهي لا يُذكَّر به: تنبيهٌ لموسمٍ مضى لا يُستعدّ له.
+             * والمُطفأُ كذلك — أطفأه صاحبُه فلا يُلحّ عليه.
+             */
             ->whereHas('season', fn ($q) => $q->where('active', true)
                 ->whereDate('ends_at', '>=', $now->toDateString()))
             ->with('season')
             ->get()
-            ->filter(function (SeasonReminder $r) use ($now) {
-                $at = $r->dueAt();
-
-                return $at !== null && $at->lte($now);
-            })
+            ->filter(fn (SeasonReminder $r) => $r->isDue($r->season, $now))
             ->sortBy(fn (SeasonReminder $r) => $r->dueAt()?->timestamp ?? 0)
             ->values();
     }

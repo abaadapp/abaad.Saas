@@ -6742,5 +6742,20 @@
     "إخفاء الأخبار": "Hide news",
     "تعذّر إخفاء هذا الإشعار": "This notification could not be hidden",
     "هذا إجراءٌ يُتابَع لا خبرٌ يُخفى — أنجزه أو أجّله.": "This is an action to follow up, not news to hide — complete it or snooze it.",
-    "إخفاء التنبيهات المعلوماتية؟ الإجراءات التي تحتاج متابعة تبقى.": "Hide informational notifications? Actions that need follow-up will remain."
+    "إخفاء التنبيهات المعلوماتية؟ الإجراءات التي تحتاج متابعة تبقى.": "Hide informational notifications? Actions that need follow-up will remain.",
+    "باقي :n يومًا على موسم :season": ":n days left until :season",
+    "موسم :season يبدأ اليوم": ":season starts today",
+    "موسم :season جارٍ الآن": ":season is running now",
+    "افتح الموسم": "Open the season",
+    "أخفِ التنبيه": "Dismiss",
+    "قبل أسبوع": "A week before",
+    "قبل أسبوعين": "Two weeks before",
+    "قبل شهر": "A month before",
+    "قبل شهرين": "Two months before",
+    "قبل :n يومًا": ":n days before",
+    "متى يصلك التنبيه": "When you get the alert",
+    "عدد أيام مخصص": "Custom days",
+    "حان": "Due",
+    "قُرئ": "Read",
+    "عدّل الموعد": "Change the timing"
 }

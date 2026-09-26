@@ -58,6 +58,15 @@ class SeasonController extends Controller
             'seasons' => $seasons,
             'filter' => $filter,
             'counts' => $counts,
+            /*
+             * ما حان ولم يُقرأ — ينتظره حين يفتح القسم.
+             *
+             * ولا يُعتمد على بقاء الصفحة مفتوحةً وقتَ الموعد: الحسابُ يقع عند
+             * كلّ فتحةٍ من بداية الموسم، فمن غاب أسبوعًا وجد تنبيهَه واقفًا.
+             */
+            'alerts' => Seasons::due($this->bid())
+                ->map(fn (SeasonReminder $r) => $this->alertRow($r, $today))
+                ->values()->all(),
         ]);
     }
 
@@ -84,6 +93,7 @@ class SeasonController extends Controller
                 'reminders' => $season->reminders->map(fn (SeasonReminder $r) => $this->reminderRow($r, $season))->values()->all(),
             ],
             'maxReminders' => Seasons::MAX_REMINDERS,
+            'presets' => SeasonReminder::PRESETS,
             'performance' => auth()->user()?->allows('reports') ? SeasonSales::report($season, $channel) : null,
         ]);
     }
@@ -209,11 +219,65 @@ class SeasonController extends Controller
         return back()->with('toast', ['msg' => __('أُضيف التذكير'), 'type' => 'success']);
     }
 
+    /**
+     * تبديلُ التذكير — تشغيلًا وإطفاءً، أو تغييرَ موعدِه ونصِّه.
+     *
+     * والحقلُ الغائبُ لا يُمسّ (`exists`): مفتاحُ التشغيل يُرسل `active` وحدَه
+     * فلا يمحو موعدًا، ونموذجُ التعديل يُرسل الموعدَ فلا يُطفئ تذكيرًا.
+     */
     public function updateReminder(Request $request, int $id, int $reminderId)
     {
         $season = $this->mine($id);
         $reminder = $season->reminders()->findOrFail($reminderId);
-        $reminder->update(['active' => $request->boolean('active')]);
+
+        $data = $request->validate([
+            'active' => ['sometimes', 'boolean'],
+            'type' => ['sometimes', Rule::in(SeasonReminder::TYPES)],
+            'days_before' => ['nullable', 'integer', 'min:0', 'max:'.SeasonReminder::MAX_DAYS_BEFORE],
+            'remind_at' => ['nullable', 'date'],
+            'message' => ['sometimes', 'string', 'max:500'],
+        ], [], ['days_before' => __('عدد الأيام'), 'remind_at' => __('التاريخ'), 'message' => __('نص التذكير')]);
+
+        $fields = [];
+
+        if ($request->exists('active')) {
+            $fields['active'] = $request->boolean('active');
+        }
+
+        if ($request->exists('message')) {
+            $fields['message'] = $data['message'];
+        }
+
+        /*
+         * وتغييرُ الموعد يمحو القراءةَ السابقة.
+         *
+         * من نقل تذكيرَه من أسبوعٍ إلى شهرٍ يريد أن يُنبَّه بالموعد الجديد —
+         * ولو بقي «مقروءًا» لَما رآه، وهو لم يقرأ هذا الموعدَ قطُّ.
+         */
+        if ($request->exists('type')) {
+            $fields['type'] = $data['type'];
+            $fields['days_before'] = $data['type'] === SeasonReminder::RELATIVE ? (int) ($data['days_before'] ?? 0) : null;
+            $fields['remind_at'] = $data['type'] === SeasonReminder::FIXED ? ($data['remind_at'] ?? null) : null;
+            $fields['acknowledged_for'] = null;
+        }
+
+        $reminder->update($fields);
+
+        return back();
+    }
+
+    /**
+     * «قرأتُه» — فلا يُعاد عليه في هذه الدورة.
+     *
+     * ويُختم ببداية الموسم لا بيوم القراءة: فإن أعاد صاحبُه تأريخَ موسمه —
+     * وهو ما يقع كلَّ سنةٍ في الهجريّ — عاد التنبيهُ لأنّها دورةٌ أخرى.
+     */
+    public function acknowledgeReminder(int $id, int $reminderId)
+    {
+        $season = $this->mine($id);
+        $reminder = $season->reminders()->findOrFail($reminderId);
+
+        $reminder->update(['acknowledged_for' => $season->starts_at->toDateString()]);
 
         return back();
     }
@@ -292,6 +356,28 @@ class SeasonController extends Controller
         ];
     }
 
+    /**
+     * ما يُقرأ في التنبيه — «باقي كذا على موسم كذا»، والعدُّ من اليوم.
+     *
+     * والأيّامُ إلى **بداية الموسم** لا إلى موعد التذكير: التاجرُ يستعدّ
+     * للموسم لا للتذكير.
+     */
+    private function alertRow(SeasonReminder $r, $today): array
+    {
+        $season = $r->season;
+        $days = (int) $today->diffInDays($season->starts_at, false);
+
+        return [
+            'id' => $r->id,
+            'seasonId' => $season->id,
+            'season' => Demo::ln($season->name, $season->name_en),
+            'message' => $r->message,
+            'days' => $days,
+            'startsAt' => $season->starts_at->toDateString(),
+            'dueAt' => $r->dueAt($season)?->toIso8601String(),
+        ];
+    }
+
     private function reminderRow(SeasonReminder $r, Season $season): array
     {
         return [
@@ -302,6 +388,8 @@ class SeasonController extends Controller
             'due_at' => $r->dueAt($season)?->toIso8601String(),
             'message' => $r->message,
             'active' => $r->active,
+            'due' => $r->isDue($season),
+            'acknowledged' => $r->isAcknowledgedFor($season),
         ];
     }
 }

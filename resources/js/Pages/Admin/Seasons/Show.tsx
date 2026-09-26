@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Bell, CalendarClock, CalendarDays, Globe, Package, Plus, Search, Store, Trash2, X } from 'lucide-react';
+import { Bell, CalendarClock, CalendarDays, Globe, Package, Pencil, Plus, Search, Store, Trash2, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import { useConfirm } from '@/Components/ConfirmDialog';
@@ -37,11 +37,16 @@ interface Reminder {
     due_at: string | null;
     message: string;
     active: boolean;
+    /** حان وقتُه ولم يُقرأ في هذه الدورة */
+    due: boolean;
+    acknowledged: boolean;
 }
 
 interface Props {
     season: SeasonRow & { products: SeasonProduct[]; reminders: Reminder[] };
     maxReminders: number;
+    /** الاختصاراتُ الجاهزة بالأيّام — أسبوعٌ وأسبوعان وشهرٌ وشهران */
+    presets: number[];
     /** أداءُ الموسم — `null` لمن لا يقرأ التقارير، فلا يصل رقمٌ إلى شاشته */
     performance: SeasonPerformance | null;
 }
@@ -54,7 +59,7 @@ const when = (iso: string | null, locale: string) =>
         : '—';
 
 export default function SeasonShow() {
-    const { season, maxReminders, performance, locale, context } = usePage<PageProps<Props>>().props;
+    const { season, maxReminders, presets, performance, locale, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [edit, setEdit] = useState(false);
     const [picker, setPicker] = useState(false);
@@ -168,7 +173,7 @@ export default function SeasonShow() {
                 </Card>
 
                 {/* ═══ التذكيرات ═══ */}
-                <Reminders season={season} maxReminders={maxReminders} locale={locale} />
+                <Reminders season={season} maxReminders={maxReminders} presets={presets} locale={locale} />
             </div>
 
             <SeasonDialog open={edit} season={season} onClose={() => setEdit(false)} />
@@ -278,9 +283,95 @@ function ProductPicker({ open, seasonId, onClose }: { open: boolean; seasonId: n
 
 /* ═══════════════════ التذكيرات ═══════════════════ */
 
-function Reminders({ season, maxReminders, locale }: { season: Props['season']; maxReminders: number; locale: string }) {
+/** اسمُ المدّة بالعربيّة — والشهرُ ثلاثون يومًا لا شهرٌ تقويميّ */
+export function presetLabel(days: number, t: (k: string, v?: Record<string, string | number>) => string): string {
+    return (
+        {
+            7: t('قبل أسبوع'),
+            14: t('قبل أسبوعين'),
+            30: t('قبل شهر'),
+            60: t('قبل شهرين'),
+        }[days] ?? t('قبل :n يومًا', { n: days })
+    );
+}
+
+/**
+ * مُنتقي المدّة — أربعةُ اختصاراتٍ ومخصّص.
+ *
+ * والمخصّصُ يظهر حقلُه متى كان العددُ خارجَ الاختصارات، فمن فتح تذكيرًا
+ * عنده ٤٥ يومًا وجد حقلَه مفتوحًا على رقمه لا صفرًا يُعيد كتابتَه.
+ */
+export function DaysPicker({
+    presets,
+    value,
+    onChange,
+    error,
+}: {
+    presets: number[];
+    value: string;
+    onChange: (v: string) => void;
+    error?: string;
+}) {
+    const t = useTranslate();
+    const n = Number(value);
+    const isPreset = presets.includes(n);
+    const [custom, setCustom] = useState(! isPreset);
+
+    return (
+        <Field label="متى يصلك التنبيه" error={error}>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('متى يصلك التنبيه')}>
+                {presets.map((d) => (
+                    <button
+                        key={d}
+                        type="button"
+                        aria-pressed={! custom && n === d}
+                        data-testid={'preset-' + d}
+                        onClick={() => {
+                            setCustom(false);
+                            onChange(String(d));
+                        }}
+                        className={cn(
+                            'rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                            ! custom && n === d ? 'bg-[#111] text-white' : 'bg-[#f2f2f0] text-[#4b4b4b] hover:bg-[#e9e9e6]',
+                        )}
+                    >
+                        {presetLabel(d, t)}
+                    </button>
+                ))}
+                <button
+                    type="button"
+                    aria-pressed={custom}
+                    data-testid="preset-custom"
+                    onClick={() => setCustom(true)}
+                    className={cn(
+                        'rounded-full px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                        custom ? 'bg-[#111] text-white' : 'bg-[#f2f2f0] text-[#4b4b4b] hover:bg-[#e9e9e6]',
+                    )}
+                >
+                    {t('عدد أيام مخصص')}
+                </button>
+            </div>
+
+            {custom && (
+                <Input
+                    type="number"
+                    min={0}
+                    max={365}
+                    dir="ltr"
+                    className="mt-2 max-w-[10rem]"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    aria-label={t('عدد الأيام قبل البداية')}
+                />
+            )}
+        </Field>
+    );
+}
+
+function Reminders({ season, maxReminders, presets, locale }: { season: Props['season']; maxReminders: number; presets: number[]; locale: string }) {
     const t = useTranslate();
     const form = useForm({ type: 'relative' as 'relative' | 'fixed', days_before: '14', remind_at: '', message: '' });
+    const [editing, setEditing] = useState<number | null>(null);
     const full = season.reminders.length >= maxReminders;
 
     const submit = () => {
@@ -310,14 +401,48 @@ function Reminders({ season, maxReminders, locale }: { season: Props['season']; 
                                 <CalendarClock className="mt-0.5 size-4 shrink-0 text-[#71717a]" />
                                 <div className="min-w-0 flex-1">
                                     <p className="text-[13px] font-medium text-[#111]" dir="auto">{r.message}</p>
-                                    <p className="mt-0.5 text-[11.5px] text-[#71717a]">
-                                        {r.type === 'relative'
-                                            ? t('قبل بداية الموسم بـ :n يومًا', { n: r.days_before ?? 0 })
-                                            : t('تاريخ محدد')}
-                                        <span className="mx-1 text-[#d4d4d8]">·</span>
-                                        {when(r.due_at, locale)}
+                                    <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[11.5px] text-[#71717a]">
+                                        <span>
+                                            {r.type === 'relative'
+                                                ? presetLabel(r.days_before ?? 0, t)
+                                                : t('تاريخ محدد')}
+                                        </span>
+                                        <span className="text-[#d4d4d8]">·</span>
+                                        <span>{when(r.due_at, locale)}</span>
+                                        {/* وما حان يُقال إنّه حان — ومكانُه في قائمة المواسم */}
+                                        {r.due && <Badge variant="warning">{t('حان')}</Badge>}
+                                        {r.acknowledged && <span className="text-[#9ca3af]">{t('قُرئ')}</span>}
                                     </p>
+
+                                    {/* وتعديلُ الموعد في موضعه — لا حذفٌ وإعادةُ إنشاء */}
+                                    {r.type === 'relative' && editing === r.id && (
+                                        <div className="mt-2">
+                                            <DaysPicker
+                                                presets={presets}
+                                                value={String(r.days_before ?? 0)}
+                                                onChange={(v) =>
+                                                    router.patch(
+                                                        route('admin.seasons.reminders.update', [season.id, r.id]),
+                                                        { type: 'relative', days_before: v },
+                                                        { preserveScroll: true },
+                                                    )
+                                                }
+                                            />
+                                        </div>
+                                    )}
                                 </div>
+
+                                {r.type === 'relative' && (
+                                    <button
+                                        type="button"
+                                        aria-label={t('عدّل الموعد')}
+                                        data-testid={'edit-reminder-' + r.id}
+                                        onClick={() => setEditing(editing === r.id ? null : r.id)}
+                                        className="rounded-full p-1 text-[#9ca3af] hover:bg-[#f3f4f6] hover:text-[#111]"
+                                    >
+                                        <Pencil className="size-4" />
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     role="switch"
@@ -371,9 +496,12 @@ function Reminders({ season, maxReminders, locale }: { season: Props['season']; 
                     </div>
 
                     {form.data.type === 'relative' ? (
-                        <Field label="عدد الأيام قبل البداية" error={form.errors.days_before}>
-                            <Input type="number" min={0} max={365} dir="ltr" value={form.data.days_before} onChange={(e) => form.setData('days_before', e.target.value)} aria-label={t('عدد الأيام قبل البداية')} />
-                        </Field>
+                        <DaysPicker
+                            presets={presets}
+                            value={form.data.days_before}
+                            onChange={(v) => form.setData('days_before', v)}
+                            error={form.errors.days_before}
+                        />
                     ) : (
                         <Field label="التاريخ والوقت" error={form.errors.remind_at}>
                             <Input type="datetime-local" value={form.data.remind_at} onChange={(e) => form.setData('remind_at', e.target.value)} aria-label={t('التاريخ والوقت')} />

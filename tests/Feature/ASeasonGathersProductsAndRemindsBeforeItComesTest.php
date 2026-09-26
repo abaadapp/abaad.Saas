@@ -262,60 +262,57 @@ class ASeasonGathersProductsAndRemindsBeforeItComesTest extends TestCase
         $this->assertSame('2027-02-05 09:00', $r->fresh()->dueAt($s->fresh())->format('Y-m-d H:i'));
     }
 
-    public function test_a_due_reminder_rings_the_bell_and_links_to_its_season(): void
+    /**
+     * ولا تذكيرَ موسمٍ في الجرس العامّ — وبقيّةُ سكّانه على حالهم.
+     *
+     * تنبيهُ الموسم في قسمه وحدَه. وكان الجرسُ يعرضه، فكان للتنبيه الواحد
+     * بابان وإخفاءان: يُخفى من الجرس فيبقى في القسم، ويُقرأ في القسم فيبقى
+     * في الجرس.
+     *
+     * والحارسُ يشهد للأمرين معًا: غيابُ الموسم، وبقاءُ «مخزونٌ منخفض» —
+     * فحذفُ سطرِ المواسم من الجرس لا يجوز أن يكون حذفًا لسكّانه.
+     */
+    public function test_no_season_reminder_reaches_the_general_bell(): void
     {
-        $s = $this->season();
-        $s->reminders()->create(['business_id' => $this->business->id, 'type' => 'relative', 'days_before' => 7, 'message' => 'مراجعة المنتجات والمخزون', 'active' => true]);
-
-        $this->actingAs($this->owner);
-        $row = collect(Demo::allNotifications())->firstWhere('key', 'season-reminder-'.$s->reminders()->first()->id);
-
-        $this->assertNotNull($row, 'لم يرنّ الجرس');
-        $this->assertStringContainsString('مراجعة المنتجات والمخزون', $row['text']);
-        $this->assertStringContainsString('7', $row['time']);
-        $this->assertSame(route('admin.seasons.show', $s->id), $row['url']);
-    }
-
-    public function test_a_future_reminder_does_not_ring_early(): void
-    {
-        $s = $this->season();
-        $s->reminders()->create(['business_id' => $this->business->id, 'type' => 'relative', 'days_before' => 3, 'message' => 'x', 'active' => true]);
-
-        $this->actingAs($this->owner);
-        $this->assertNull(collect(Demo::allNotifications())->first(fn ($n) => str_starts_with($n['key'], 'season-reminder-')));
-    }
-
-    public function test_a_dismissed_reminder_stays_dismissed(): void
-    {
-        $s = $this->season();
-        $r = $s->reminders()->create(['business_id' => $this->business->id, 'type' => 'relative', 'days_before' => 7, 'message' => 'x', 'active' => true]);
-
-        $this->actingAs($this->owner)->postJson(route('admin.notifications.dismiss'), ['key' => 'season-reminder-'.$r->id])->assertOk();
-
-        $this->assertNull(collect(Demo::allNotifications())->firstWhere('key', 'season-reminder-'.$r->id));
-        $this->assertSame(1, DismissedNotification::count(), 'صفٌّ واحدٌ لا صفٌّ في كلّ استطلاع');
-    }
-
-    public function test_an_inactive_reminder_or_season_does_not_ring(): void
-    {
-        $s = $this->season();
-        $off = $s->reminders()->create(['business_id' => $this->business->id, 'type' => 'relative', 'days_before' => 7, 'message' => 'x', 'active' => false]);
-        $dead = $this->season(['name' => 'مطفأ', 'active' => false]);
-        $deadR = $dead->reminders()->create(['business_id' => $this->business->id, 'type' => 'relative', 'days_before' => 7, 'message' => 'y', 'active' => true]);
+        $low = $this->product(['name' => 'وردٌ أحمر', 'quantity' => 0, 'alert_qty' => 3]);
+        $season = $this->season();
+        $r = $this->reminder($season, ['days_before' => 7]);
 
         $this->actingAs($this->owner);
         $keys = collect(Demo::allNotifications())->pluck('key')->all();
-        $this->assertNotContains('season-reminder-'.$off->id, $keys);
-        $this->assertNotContains('season-reminder-'.$deadR->id, $keys);
+
+        $this->assertTrue($r->fresh()->isDue($season), 'التذكيرُ لم يحن، فالحارسُ لا يشهد بشيء');
+        $this->assertNotContains('season-reminder-'.$r->id, $keys, 'تنبيهُ الموسم في الجرس');
+        $this->assertEmpty(array_filter($keys, fn ($k) => str_starts_with($k, 'season-reminder-')));
+        $this->assertContains('low-'.$low->id, $keys, 'ذهب مع تذكير الموسم ساكنٌ آخر من الجرس');
+    }
+
+    /**
+     * ولا يُخفى من الجرس ما ليس فيه.
+     *
+     * بابُ الإخفاء العامّ يبقى لسكّانه، ومفتاحُ موسمٍ يُرسل إليه لا يكتب صفًّا
+     * ولا يمسّ التنبيهَ في قسمه: القراءةُ هناك `acknowledged_for` لا
+     * `DismissedNotification`.
+     */
+    public function test_dismissing_a_season_key_in_the_bell_changes_nothing(): void
+    {
+        $season = $this->season();
+        $r = $this->reminder($season, ['days_before' => 7]);
+
+        $this->actingAs($this->owner)
+            ->postJson(route('admin.notifications.dismiss'), ['key' => 'season-reminder-'.$r->id])
+            ->assertOk();
+
+        $this->assertTrue($r->fresh()->isDue($season->fresh()), 'الإخفاءُ العامُّ أسكت تنبيهَ القسم');
+        $this->assertSame(0, DismissedNotification::where('key', 'like', 'season-reminder-%')->count());
     }
 
     public function test_a_reminder_of_another_shop_is_neither_seen_nor_touched(): void
     {
         $s = $this->season();
-        $r = $s->reminders()->create(['business_id' => $this->business->id, 'type' => 'relative', 'days_before' => 7, 'message' => 'x', 'active' => true]);
+        $r = $this->reminder($s, ['days_before' => 7]);
 
         $this->actingAs($this->otherOwner);
-        $this->assertNull(collect(Demo::allNotifications())->firstWhere('key', 'season-reminder-'.$r->id));
         $this->delete(route('admin.seasons.reminders.destroy', [$s->id, $r->id]))->assertNotFound();
         $this->assertNotNull($r->fresh());
     }
@@ -468,5 +465,312 @@ class ASeasonGathersProductsAndRemindsBeforeItComesTest extends TestCase
         $this->assertCount(1, $page['seasons']);
         $this->assertSame('رمضان 2027', $page['seasons'][0]['name']);
         $this->assertSame([$p->id], $page['seasons'][0]['product_ids']);
+    }
+
+    /* ═══════════ تنبيهُ الموسم في قسمه ═══════════ */
+
+    private function reminder(Season $season, array $attrs = []): SeasonReminder
+    {
+        return $season->reminders()->create($attrs + [
+            'business_id' => $season->business_id,
+            'type' => SeasonReminder::RELATIVE,
+            'days_before' => 30,
+            'message' => 'راجع المخزون',
+            'active' => true,
+        ]);
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function alerts(?User $as = null): array
+    {
+        return $this->actingAs($as ?? $this->owner)->get(route('admin.seasons.index'))
+            ->assertOk()->viewData('page')['props']['alerts'];
+    }
+
+    /**
+     * التنبيهُ ينتظره حين يفتح القسم — لا يُشترط أن تكون الصفحةُ مفتوحةً وقتَه.
+     *
+     * وهو لبُّ الميزة: موعدُ التذكير يحين والتاجرُ نائم، فإذا فتح قسمَه بعد
+     * يومين وجده واقفًا. والحسابُ عند كلّ فتحةٍ من بداية الموسم، لا صفٌّ
+     * يُكتب في لحظة الموعد.
+     */
+    public function test_a_reminder_that_came_due_while_away_is_waiting(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $this->reminder($season, ['days_before' => 30]);   // يحين 2027-02-08 09:00
+
+        // وقد مضى على حينه يومان
+        Carbon::setTestNow('2027-02-10 20:00:00');
+
+        $alerts = $this->alerts();
+
+        $this->assertCount(1, $alerts);
+        $this->assertSame('راجع المخزون', $alerts[0]['message']);
+        $this->assertSame(28, $alerts[0]['days'], 'الأيّامُ إلى بداية الموسم لا إلى موعد التذكير');
+    }
+
+    /** ولا يظهر قبل موعده بدقيقة */
+    public function test_a_reminder_does_not_show_before_its_time(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $this->reminder($season, ['days_before' => 30]);
+
+        Carbon::setTestNow('2027-02-08 08:59:00');
+
+        $this->assertSame([], $this->alerts());
+    }
+
+    /** ومن قرأه لا يُعاد عليه في الدورة نفسِها */
+    public function test_an_acknowledged_reminder_does_not_come_back_in_the_same_cycle(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $r = $this->reminder($season, ['days_before' => 30]);
+
+        Carbon::setTestNow('2027-02-10 20:00:00');
+        $this->assertCount(1, $this->alerts());
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.seasons.reminders.read', [$season->id, $r->id]))
+            ->assertRedirect();
+
+        $this->assertSame([], $this->alerts(), 'عاد التنبيهُ بعد قراءته');
+
+        // وبعد يومٍ آخرَ ما زال مقروءًا
+        Carbon::setTestNow('2027-02-11 09:00:00');
+        $this->assertSame([], $this->alerts());
+    }
+
+    /**
+     * ويعود في الدورة التالية — وهي حالُ الموسم الهجريّ كلَّ عام.
+     *
+     * رمضانُ يتقدّم أحدَ عشرَ يومًا في كلّ سنة، فصاحبُه يُعيد تأريخَ موسمه.
+     * والتنبيهُ الذي قرأه العامَ الماضي يجب أن يعود — دورةٌ أخرى وموعدٌ آخر.
+     */
+    public function test_a_reshuffled_hijri_season_arms_the_reminder_again(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $r = $this->reminder($season, ['days_before' => 30]);
+
+        Carbon::setTestNow('2027-02-10 20:00:00');
+        $this->actingAs($this->owner)->post(route('admin.seasons.reminders.read', [$season->id, $r->id]));
+        $this->assertSame([], $this->alerts());
+
+        // وفي العام التالي: رمضانُ يتقدّم، فيُعاد تأريخُ الموسم
+        $season->update(['starts_at' => '2028-02-27', 'ends_at' => '2028-03-08']);
+        Carbon::setTestNow('2028-01-29 09:00:00');
+
+        $alerts = $this->alerts();
+
+        $this->assertCount(1, $alerts, 'لم يعد التنبيهُ في الدورة الجديدة');
+        $this->assertSame(29, $alerts[0]['days']);
+    }
+
+    /** والتنبيهُ يتبع بدايةَ الموسم: من أخّر موسمَه تأخّر تنبيهُه بلا أن يمسّه */
+    public function test_moving_the_season_moves_the_reminder(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $this->reminder($season, ['days_before' => 30]);
+
+        Carbon::setTestNow('2027-02-10 20:00:00');
+        $this->assertCount(1, $this->alerts());
+
+        // أُخِّر الموسمُ شهرًا — فلم يَحِن تنبيهُه بعد
+        $season->update(['starts_at' => '2027-04-10', 'ends_at' => '2027-04-20']);
+
+        $this->assertSame([], $this->alerts());
+    }
+
+    /** ولا يُنبَّه بموسمٍ مطفأٍ ولا بتذكيرٍ مطفأ */
+    public function test_a_switched_off_season_or_reminder_says_nothing(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $r = $this->reminder($season, ['days_before' => 30]);
+        Carbon::setTestNow('2027-02-10 20:00:00');
+
+        $r->update(['active' => false]);
+        $this->assertSame([], $this->alerts(), 'تذكيرٌ مطفأ');
+
+        $r->update(['active' => true]);
+        $season->update(['active' => false]);
+        $this->assertSame([], $this->alerts(), 'موسمٌ مطفأ');
+    }
+
+    /** وموسمٌ انتهى لا يُستعدّ له */
+    public function test_an_ended_season_says_nothing(): void
+    {
+        $season = $this->season(['starts_at' => '2027-01-01', 'ends_at' => '2027-01-10']);
+        $this->reminder($season, ['days_before' => 30]);
+
+        Carbon::setTestNow('2027-02-10 20:00:00');
+
+        $this->assertSame([], $this->alerts());
+    }
+
+    /** وتنبيهُ الجار لا يصل شاشتَه */
+    public function test_a_neighbours_alert_never_reaches_this_shop(): void
+    {
+        $mine = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $this->reminder($mine, ['days_before' => 30, 'message' => 'تذكيري']);
+
+        $theirs = Season::create([
+            'business_id' => $this->other->id, 'name' => 'موسمُ الجار',
+            'starts_at' => '2027-03-10', 'ends_at' => '2027-03-20', 'active' => true,
+        ]);
+        $theirs->reminders()->create([
+            'business_id' => $this->other->id, 'type' => SeasonReminder::RELATIVE,
+            'days_before' => 30, 'message' => 'تذكيرُ الجار', 'active' => true,
+        ]);
+
+        Carbon::setTestNow('2027-02-10 20:00:00');
+
+        $mineAlerts = $this->alerts();
+        $this->assertCount(1, $mineAlerts);
+        $this->assertSame('تذكيري', $mineAlerts[0]['message']);
+
+        $theirAlerts = $this->alerts($this->otherOwner);
+        $this->assertCount(1, $theirAlerts);
+        $this->assertSame('تذكيرُ الجار', $theirAlerts[0]['message']);
+    }
+
+    /** ولا يُقرأ تذكيرُ الجار من بابِ هذا المتجر */
+    public function test_a_neighbours_reminder_cannot_be_acknowledged_from_here(): void
+    {
+        $theirs = Season::create([
+            'business_id' => $this->other->id, 'name' => 'موسمُ الجار',
+            'starts_at' => '2027-03-10', 'ends_at' => '2027-03-20', 'active' => true,
+        ]);
+        $r = $theirs->reminders()->create([
+            'business_id' => $this->other->id, 'type' => SeasonReminder::RELATIVE,
+            'days_before' => 30, 'message' => 'تذكيرُ الجار', 'active' => true,
+        ]);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.seasons.reminders.read', [$theirs->id, $r->id]))
+            ->assertNotFound();
+
+        $this->assertNull($r->fresh()->acknowledged_for);
+    }
+
+    /**
+     * وصفُّ التذكير في صفحة الموسم يقول «حان» بصدق.
+     *
+     * و`due` تُرشِّح الموسمَ المطفأ في الاستعلام، فحذفُ الشرط من
+     * `isDue` لا يظهر هناك. لكنّ صفحةَ الموسم تسأل `isDue` مباشرةً لكلّ
+     * تذكير — وهنا يظهر.
+     */
+    public function test_the_row_does_not_call_a_switched_off_seasons_reminder_due(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $this->reminder($season, ['days_before' => 30]);
+        Carbon::setTestNow('2027-02-10 20:00:00');
+
+        $row = fn () => $this->actingAs($this->owner)->get(route('admin.seasons.show', $season->id))
+            ->assertOk()->viewData('page')['props']['season']['reminders'][0];
+
+        $this->assertTrue($row()['due'], 'حان ولم يُقل');
+
+        $season->update(['active' => false]);
+
+        $this->assertFalse($row()['due'], 'موسمٌ مطفأٌ وتذكيرُه يقول «حان»');
+    }
+
+    /**
+     * والاختصاراتُ أربعةٌ مختلفة — أسبوعٌ وأسبوعان وشهرٌ وشهران.
+     *
+     * وأربعةُ أزرارٍ تحمل العددَ نفسَه ليست اختصارات.
+     */
+    public function test_the_four_presets_are_four_distinct_spans(): void
+    {
+        $this->assertSame([7, 14, 30, 60], SeasonReminder::PRESETS);
+        $this->assertCount(4, array_unique(SeasonReminder::PRESETS));
+
+        /* ومحلُّها شاشةُ الموسم حيث يُختار الموعد — لا قائمةُ المواسم */
+        $season = $this->season();
+        $props = $this->actingAs($this->owner)->get(route('admin.seasons.show', $season->id))
+            ->assertOk()->viewData('page')['props'];
+
+        $this->assertSame([7, 14, 30, 60], $props['presets'], 'الاختصاراتُ لا تصل الشاشة');
+        $this->assertArrayNotHasKey(
+            'presets',
+            $this->get(route('admin.seasons.index'))->assertOk()->viewData('page')['props'],
+            'حمولةٌ لا تُقرأ في قائمة المواسم',
+        );
+    }
+
+    /* ═══════════ تعديلُ الموعد ═══════════ */
+
+    /** ويُعدَّل الموعدُ في موضعه — لا حذفٌ وإعادةُ إنشاء */
+    public function test_the_timing_can_be_changed_in_place(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $r = $this->reminder($season, ['days_before' => 7]);
+
+        $this->actingAs($this->owner)->patch(
+            route('admin.seasons.reminders.update', [$season->id, $r->id]),
+            ['type' => SeasonReminder::RELATIVE, 'days_before' => 60],
+        )->assertRedirect();
+
+        $this->assertSame(60, $r->fresh()->days_before);
+    }
+
+    /**
+     * وتغييرُ الموعد يمحو القراءةَ السابقة.
+     *
+     * من نقل تذكيرَه من أسبوعٍ إلى شهرَين يريد أن يُنبَّه بالموعد الجديد —
+     * ولو بقي «مقروءًا» لَما رآه، وهو لم يقرأ هذا الموعدَ قطُّ.
+     */
+    public function test_changing_the_timing_re_arms_a_read_reminder(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $r = $this->reminder($season, ['days_before' => 30]);
+
+        Carbon::setTestNow('2027-02-10 20:00:00');
+        $this->actingAs($this->owner)->post(route('admin.seasons.reminders.read', [$season->id, $r->id]));
+        $this->assertSame([], $this->alerts());
+
+        $this->actingAs($this->owner)->patch(
+            route('admin.seasons.reminders.update', [$season->id, $r->id]),
+            ['type' => SeasonReminder::RELATIVE, 'days_before' => 60],
+        );
+
+        $this->assertCount(1, $this->alerts(), 'لم يعد التنبيهُ بعد نقل موعده');
+    }
+
+    /** ومفتاحُ التشغيل وحدَه لا يمحو الموعد */
+    public function test_toggling_active_keeps_the_timing(): void
+    {
+        $season = $this->season();
+        $r = $this->reminder($season, ['days_before' => 45]);
+
+        $this->actingAs($this->owner)->patch(
+            route('admin.seasons.reminders.update', [$season->id, $r->id]),
+            ['active' => false],
+        )->assertRedirect();
+
+        $fresh = $r->fresh();
+        $this->assertFalse($fresh->active);
+        $this->assertSame(45, $fresh->days_before, 'مُحي الموعدُ بإطفاء التذكير');
+    }
+
+    /* ═══════════ ولا يخرج من قسمه ═══════════ */
+
+    /**
+     * التنبيهُ لا يُرسَل إلى بابٍ آخر.
+     *
+     * `alerts` خاصّيّةُ شاشة المواسم وحدَها — لا لوحةُ التحكّم ولا شاشةٌ
+     * أخرى تقرؤها، ولا بريدَ ولا واتساب.
+     */
+    public function test_the_alert_prop_exists_only_on_the_seasons_screen(): void
+    {
+        $season = $this->season(['starts_at' => '2027-03-10', 'ends_at' => '2027-03-20']);
+        $this->reminder($season, ['days_before' => 30]);
+        Carbon::setTestNow('2027-02-10 20:00:00');
+
+        foreach (['admin.dashboard', 'admin.products.index'] as $name) {
+            $props = $this->actingAs($this->owner)->get(route($name))
+                ->assertOk()->viewData('page')['props'];
+
+            $this->assertArrayNotHasKey('alerts', $props, $name.' تحمل تنبيهات المواسم');
+        }
     }
 }

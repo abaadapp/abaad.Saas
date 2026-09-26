@@ -594,6 +594,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::delete('/products/seasons/{id}/products/{productId}', [SeasonController::class, 'detach'])->name('seasons.detach');
     Route::post('/products/seasons/{id}/reminders', [SeasonController::class, 'storeReminder'])->name('seasons.reminders.store');
     Route::patch('/products/seasons/{id}/reminders/{reminderId}', [SeasonController::class, 'updateReminder'])->name('seasons.reminders.update');
+    Route::post('/products/seasons/{id}/reminders/{reminderId}/read', [SeasonController::class, 'acknowledgeReminder'])->name('seasons.reminders.read');
     Route::delete('/products/seasons/{id}/reminders/{reminderId}', [SeasonController::class, 'destroyReminder'])->name('seasons.reminders.destroy');
     /*
      * البوتيكات — تبويبٌ ثانٍ في قسم المنتجات، وأبوابُها تحت صلاحيّته.

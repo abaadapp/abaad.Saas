@@ -4,6 +4,7 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
+use App\Support\InvoiceBranding;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -170,19 +171,6 @@ class BusinessController extends Controller
         $data = $this->validateData($request);
 
         /*
-         * الشعار: ملفٌ جديد يحلّ محلّ القديم، وطلبُ الحذف يمسحه.
-         *
-         * وبلا أيٍّ منهما لا يُمسّ العمود — الحقل غائب عن الطلب حين لا
-         * يُختار ملف، فتمريره لـupdate كان سيمسح الشعار عند كل تعديلٍ
-         * لحقلٍ آخر لا صلة له به.
-         */
-        if ($request->hasFile('logo')) {
-            $data['logo'] = $request->file('logo')->store('logos', 'public');
-        } elseif ($request->boolean('remove_logo')) {
-            $data['logo'] = null;
-        }
-
-        /*
          * لا تُنزَّل باقةٌ يتجاوزها المتجر أصلًا.
          *
          * كان التغيير يمرّ بلا فحص: متجرٌ بثلاثة فروع يُنقَل إلى «الأساسية»
@@ -208,6 +196,31 @@ class BusinessController extends Controller
         }
 
         $business->update($data);
+
+        /*
+         * ═══ الشعار: من البابِ الواحد لا من هنا ═══
+         *
+         * ملفٌّ جديد يحلّ محلّ القديم، وطلبُ الحذف يمسحه. وبلا أيٍّ منهما لا
+         * يُمسّ العمود — الحقل غائبٌ عن الطلب حين لا يُختار ملف، فتمريرُه
+         * إلى `update` كان يمسح الشعار عند كلّ تعديلٍ لحقلٍ آخر لا صلة له به
+         * (ولهذا يُنزَع في `validateData`).
+         *
+         * وكان هذا البابُ يكتب العمودَ بيده فيترك الملفَّ القديم على القرص:
+         * من بدّل شعارَ متجرٍ عشر مرّاتٍ من لوحة المنصّة ترك عشرًا لا يشير
+         * إليها شيء، ومن ضغط «إزالة» قرأ «حُذف» والصورةُ تُخدَم برابطها.
+         * وهو العطبُ الذي أُغلق في بابَي التاجر — فافترق البابُ الثالث عنهما.
+         *
+         * و`InvoiceBranding::storeLogo` هي القاعدةُ في موضعٍ واحد: تقرأ
+         * العمودَ الخام (لا المُلحَق الذي يردّ رابطًا)، وتحفظ، ثمّ تمحو
+         * القديمَ بعد الحفظ لا قبله.
+         *
+         * وبعد `update` لا قبله: حارسُ الباقة أعلاه يردّ الحفظَ كلَّه
+         * بـ`back()`، فشعارٌ يُبدَّل قبله يُكتب على متجرٍ رُدَّ تعديلُه.
+         */
+        if ($request->hasFile('logo') || $request->boolean('remove_logo')) {
+            InvoiceBranding::storeLogo($business, $request->file('logo'), $request->boolean('remove_logo'));
+        }
+
         $extra = $this->syncAccount($request, $business);
         \App\Support\Activity::log('updated', 'عدّل الشركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 

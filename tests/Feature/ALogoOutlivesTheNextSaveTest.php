@@ -124,6 +124,90 @@ class ALogoOutlivesTheNextSaveTest extends TestCase
         $this->assertNull($b->fresh()->getRawOriginal('logo'));
     }
 
+    /* ═══════════ والقرصُ يُنظَّف كما يُنظَّف العمود ═══════════ */
+
+    /**
+     * ملفٌّ جديد يحلّ محلّ القديم — **ويمحوه من القرص**.
+     *
+     * ═══ العطبُ الذي وصفه رأسُ هذا الملفّ ولم يحرسه ═══
+     *
+     * «عشرةُ ملفّاتٍ في `logos/` وصفٌّ واحدٌ يشير إلى أحدها». وقد أُغلق
+     * هذا في بابَي التاجر («شعار المتجر» في الإعدادات، و«تخصيص التصميم»
+     * في الفاتورة) وبقي مفتوحًا في البابِ الثالث: لوحةُ المنصّة. فمن
+     * بدّل شعارَ متجرٍ من هنا ترك القديمَ حيث هو.
+     *
+     * والحارسان فوقه يقيسان العمودَ وحدَه، فيبقيان أخضرين والقرصُ يمتلئ.
+     */
+    public function test_a_replaced_logo_is_gone_from_the_disk(): void
+    {
+        Storage::fake('public');
+        $b = $this->shop();
+
+        $this->save($b, ['logo' => UploadedFile::fake()->image('one.png', 60, 60)])
+            ->assertSessionHasNoErrors();
+        $first = $b->fresh()->getRawOriginal('logo');
+        Storage::disk('public')->assertExists($first);
+
+        $this->save($b, ['logo' => UploadedFile::fake()->image('two.png', 60, 60)])
+            ->assertSessionHasNoErrors();
+        $second = $b->fresh()->getRawOriginal('logo');
+
+        $this->assertNotSame($first, $second);
+        Storage::disk('public')->assertMissing($first);
+        $this->assertSame([$second], Storage::disk('public')->allFiles('logos'), 'تراكمت الشعارات');
+    }
+
+    /**
+     * و«حذف الشعار» يحذفه من القرص — لا من الشاشة وحدَها.
+     *
+     * والقرصُ **عامّ**: صورةٌ تبقى عليه تُخدَم برابطها لمن يعرفه. وشعارُ
+     * متجرٍ ليس سرًّا، لكنّ «حُذف» كلمةٌ تعني ما تقول.
+     */
+    public function test_a_deleted_logo_is_gone_from_the_disk(): void
+    {
+        Storage::fake('public');
+        $b = $this->shop();
+
+        $this->save($b, ['logo' => UploadedFile::fake()->image('one.png', 60, 60)])
+            ->assertSessionHasNoErrors();
+        $path = $b->fresh()->getRawOriginal('logo');
+        Storage::disk('public')->assertExists($path);
+
+        $this->save($b, ['remove_logo' => '1'])->assertSessionHasNoErrors();
+
+        $this->assertNull($b->fresh()->getRawOriginal('logo'), 'لم يُفرَّغ العمود');
+        Storage::disk('public')->assertMissing($path);
+        $this->assertSame([], Storage::disk('public')->allFiles('logos'), 'بقي على القرص ما لا صاحبَ له');
+    }
+
+    /**
+     * وشعارُ متجرٍ آخر لا يُمسّ — والقرصُ مشتركٌ بين المتاجر كلِّها.
+     *
+     * الحارسان فوقه يقيسان القرصَ بمتجرٍ واحدٍ عليه، فيبقيان أخضرين لو
+     * محا المحوُ مجلّدَ `logos` كلَّه — فيُطفئ شعارَ تاجرٍ لم يفتح أحدٌ
+     * شاشتَه أصلًا.
+     */
+    public function test_another_shops_logo_is_untouched(): void
+    {
+        Storage::fake('public');
+        $jar = $this->shop(['name' => 'متجر الجار']);
+        $mine = $this->shop();
+
+        $this->save($jar, ['logo' => UploadedFile::fake()->image('jar.png', 60, 60)])
+            ->assertSessionHasNoErrors();
+        $his = $jar->fresh()->getRawOriginal('logo');
+
+        $this->save($mine, ['logo' => UploadedFile::fake()->image('one.png', 60, 60)])
+            ->assertSessionHasNoErrors();
+        $this->save($mine, ['logo' => UploadedFile::fake()->image('two.png', 60, 60)])
+            ->assertSessionHasNoErrors();
+        $this->save($mine, ['remove_logo' => '1'])->assertSessionHasNoErrors();
+
+        Storage::disk('public')->assertExists($his);
+        $this->assertSame($his, $jar->fresh()->getRawOriginal('logo'), 'تبدّل عمودُ الجار');
+        $this->assertSame([$his], Storage::disk('public')->allFiles('logos'));
+    }
+
     /** والإنشاء يحفظ الملفّ المرفوع لا اسمَه ولا فراغًا */
     public function test_creating_a_shop_keeps_the_uploaded_logo(): void
     {

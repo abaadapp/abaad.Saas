@@ -8,6 +8,7 @@ use App\Support\MarketingSettings;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use LogicException;
 
 /**
  * كرتُ الهدية — صنفٌ يُباع، لا خانةُ نصٍّ مجّانية.
@@ -31,9 +32,6 @@ use Illuminate\Support\Str;
  */
 final class GiftCard
 {
-    /** ثمنُه حين لا يكتب صاحبُ المحلّ ثمنًا — خمسُ مئةِ بيسة */
-    public const DEFAULT_PRICE = 0.5;
-
     /** اسمُ الصنف الذي يحمله في الفاتورة وفي التقارير */
     public const PRODUCT_NAME = 'كرت هدية';
 
@@ -62,23 +60,63 @@ final class GiftCard
 
     /* ═══════════ أيُعرض أصلًا ═══════════ */
 
-    /** أفعّل صاحبُ المحلّ الكرتَ في موقعه؟ */
+    /**
+     * أيُعرض الكرتُ للبيع في هذا المحلّ؟
+     *
+     * ═══ مفتاحٌ وثمنٌ معًا، لا مفتاحٌ وحدَه ═══
+     *
+     * لا ثمنَ افتراضيَّ في النظام. فصاحبُ المحلّ هو من يُسعّر كرتَه، والشاشةُ
+     * تمنع رفعَ المفتاح بلا ثمنٍ أكبرَ من صفر (`MarketingController::saveStore`).
+     *
+     * ويبقى السؤالُ هنا عن الاثنين لا عن المفتاح وحدَه: متجرٌ رفع مفتاحَه
+     * قبل هذه القاعدة وترك الثمنَ فارغًا لا يُعرض كرتُه بثمنٍ يخترعه النظام
+     * — يُطوى حتّى يُسعّره صاحبُه. وبابُ الرفع وبابُ الطلب يقرآن هذا الجواب،
+     * فلا يُقبل مرفقٌ لكرتٍ لا يُباع.
+     */
     public static function enabled(int $businessId): bool
     {
-        return (string) (MarketingSettings::group($businessId, 'website')['store_gift_card'] ?? '0') === '1';
+        $values = MarketingSettings::group($businessId, 'website');
+
+        return (string) ($values['store_gift_card'] ?? '0') === '1'
+            && self::readPrice($values) !== null;
     }
 
     /**
-     * ثمنُه كما كتبه — والفراغُ يعني الافتراضيّ لا المجّان.
+     * ثمنُه كما كتبه صاحبُ المحلّ — و`null` إن لم يكتب.
      *
-     * من تركه فارغًا لم يقصد أن يُعطيه، وإنّما لم يبلغ الحقل. ومن أراده
-     * مجّانًا كتب صفرًا صريحًا — فيُقرأ صفرًا ويُعرض بلا ثمن.
+     * ═══ ولا ثمنَ يخترعه النظام ═══
+     *
+     * كان الفراغُ يُقرأ «خمسَ مئةِ بيسة»، فيُباع في متجرٍ لم يُسعّر كرتَه
+     * بثمنٍ لم يختره أحد — ويدخل فاتورةَ زبونٍ وإيرادَ دفتر. فصار الفراغُ
+     * يُقرأ فراغًا: لا كرتَ يُعرض حتّى يُكتب ثمنُه.
+     *
+     * والصفرُ فراغٌ كذلك — لا «كرتٌ مجّانيّ»: بندٌ بصفرٍ في فاتورةٍ يقرؤه
+     * الزبونُ سهوًا لا عطيّة، والقاعدةُ اليومَ «ثمنٌ صالحٌ أكبرُ من صفر».
+     *
+     * والتقريبُ إلى ثلاث خانات: خاناتُ الريال العُمانيّ، وهي ما تُعرض به
+     * (`Money::format`) وما يُحسب به البند.
      */
-    public static function price(int $businessId): float
+    public static function price(int $businessId): ?float
     {
-        $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_gift_card_price'] ?? ''));
+        return self::readPrice(MarketingSettings::group($businessId, 'website'));
+    }
 
-        return $raw === '' ? self::DEFAULT_PRICE : round(max(0.0, (float) $raw), 3);
+    /**
+     * الثمنُ من قيمٍ مقروءةٍ سلفًا — فلا يُسأل الإعدادُ مرّتين في الطلب الواحد.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    private static function readPrice(array $values): ?float
+    {
+        $raw = trim((string) ($values['store_gift_card_price'] ?? ''));
+
+        if ($raw === '' || ! is_numeric($raw)) {
+            return null;
+        }
+
+        $price = round((float) $raw, 3);
+
+        return $price > 0 ? $price : null;
     }
 
     /** أطلب الزبونُ كرتًا؟ — وهو اختيارٌ صريح لا يُستنتج من كتابته نصًّا */
@@ -104,8 +142,11 @@ final class GiftCard
      *
      * وثمنُه يُكتب في البطاقة كذلك ليُقرأ في شاشة الأصناف، والمعتمَدُ في
      * البيع ثمنُ الإعداد — موضعٌ واحد يحكم.
+     *
+     * والثمنُ يصل وسيطًا لا يُقرأ هنا: الصنفُ لا يُنشأ إلّا في سطرِ بيعٍ
+     * قائم، وقد قُرئ ثمنُه هناك وتُحُقِّق أنّه موجود.
      */
-    public static function product(int $businessId): Product
+    public static function product(int $businessId, float $price): Product
     {
         $product = Product::where('business_id', $businessId)
             ->where('name', self::PRODUCT_NAME)->first();
@@ -115,7 +156,7 @@ final class GiftCard
                 'business_id' => $businessId,
                 'name' => self::PRODUCT_NAME,
                 'name_en' => 'Gift card',
-                'price' => self::price($businessId),
+                'price' => $price,
                 'cost' => 0,
                 'quantity' => 0,
                 'alert_qty' => 0,
@@ -145,13 +186,26 @@ final class GiftCard
      */
     public static function line(int $businessId): array
     {
-        $product = self::product($businessId);
+        $price = self::price($businessId);
+
+        /*
+         * ولا يُبنى سطرٌ بلا ثمن.
+         *
+         * البابُ الوحيد إلى هنا `wanted`، وهي تسأل `enabled` وهي تسأل عن
+         * الثمن. فبلوغُ هذا السطر بلا ثمنٍ يعني أنّ بابًا جديدًا فُتح ولم
+         * يسأل — ويُقال صراحةً لا يُسدّ بصفرٍ يدخل فاتورةَ زبون.
+         */
+        if ($price === null) {
+            throw new LogicException('سطرُ كرت هدية بلا ثمن — '.self::class.'::wanted هي البابُ الوحيد.');
+        }
+
+        $product = self::product($businessId, $price);
 
         return [
             'product' => $product,
             'variant' => null,
             'name' => $product->name,
-            'price' => self::price($businessId),
+            'price' => $price,
             'qty' => 1,
             'cost' => 0.0,
             'addons' => [],

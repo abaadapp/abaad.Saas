@@ -1371,8 +1371,8 @@ export default function SettingsIndex() {
                                         label="كرت الهدية"
                                         hint="يختاره الزبون في إتمام الطلب — نصًّا يرتّبه وملفًّا يرفقه"
                                     />
-                                    <Field label="سعر كرت الهدية" hint="فارغًا يعني ٠٫٥٠٠ — واكتب صفرًا إن أردته مجّانًا" error={storeForm.errors.store_gift_card_price}>
-                                        <Input type="number" min={0} step="0.001" dir="ltr" value={storeForm.data.store_gift_card_price} onChange={(e) => storeForm.setData('store_gift_card_price', e.target.value)} aria-label={t('سعر كرت الهدية')} />
+                                    <Field label="سعر كرت الهدية" hint="بالريال العُماني بثلاث خانات — ولا يُعرض الكرت بلا سعر" error={storeForm.errors.store_gift_card_price}>
+                                        <Input type="number" min={0.001} step="0.001" dir="ltr" required={storeForm.data.store_gift_card} value={storeForm.data.store_gift_card_price} onChange={(e) => storeForm.setData('store_gift_card_price', e.target.value)} aria-label={t('سعر كرت الهدية')} />
                                     </Field>
                                 </div>
                             </SettingsGroup>

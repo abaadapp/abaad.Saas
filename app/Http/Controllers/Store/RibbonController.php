@@ -374,6 +374,7 @@ class RibbonController extends Controller
         $bid = (int) $business->id;
         $s = WebCheckout::settings($bid);
         $currency = Storefront::currency($business);
+        $cardPrice = GiftCard::price($bid);
 
         return [
             'delivery' => $s,
@@ -393,11 +394,14 @@ class RibbonController extends Controller
              * والثمنُ يُبنى هنا لا في المتصفّح: عملةُ المحلّ وخاناتُها تُقرأ
              * من إعداده، وحسبةٌ في الشاشة تكتب «0.5 ر.ع» حيث يكتب النظامُ
              * كلُّه «٠٫٥٠٠ ر.ع».
+             *
+             * ومتجرٌ لم يُسعّر كرتَه لا `on` له — و`enabled` تسأل عن الثمن مع
+             * المفتاح، فالصفرُ هنا ثمنٌ لا يُقرأ لا ثمنٌ يُعرض.
              */
             'giftCard' => [
                 'on' => GiftCard::enabled($bid),
-                'price' => GiftCard::price($bid),
-                'price_text' => Money::format(GiftCard::price($bid), $currency),
+                'price' => $cardPrice ?? 0.0,
+                'price_text' => $cardPrice === null ? '' : Money::format($cardPrice, $currency),
                 'accept' => '.'.implode(',.', GiftCard::MIMES),
                 'max_kb' => GiftCard::MAX_KB,
                 'aligns' => GiftCard::ALIGNS,

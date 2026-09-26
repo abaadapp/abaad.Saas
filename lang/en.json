@@ -6757,5 +6757,7 @@
     "عدد أيام مخصص": "Custom days",
     "حان": "Due",
     "قُرئ": "Read",
-    "عدّل الموعد": "Change the timing"
+    "عدّل الموعد": "Change the timing",
+    "اكتب سعر كرت الهدية قبل تفعيله — سعرًا أكبر من صفر.": "Set the gift card price before switching it on — a price greater than zero.",
+    "بالريال العُماني بثلاث خانات — ولا يُعرض الكرت بلا سعر": "In Omani rials to three decimals — the card is not offered without a price"
 }

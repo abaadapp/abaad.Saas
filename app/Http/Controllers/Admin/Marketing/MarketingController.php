@@ -291,8 +291,9 @@ class MarketingController extends Controller
             /*
              * وكرتُ الهدية — صنفٌ يُباع في الموقع (انظر `Store\GiftCard`).
              *
-             * والفراغُ في ثمنه يعني الافتراضيّ لا المجّان: من أراده مجّانًا
-             * كتب صفرًا، ومن تركه لم يبلغ الحقل.
+             * ولا ثمنَ افتراضيَّ له: من رفع مفتاحَه سعّره، ومن تركه بلا ثمنٍ
+             * لا يُعرض كرتُه. والحارسُ على الاثنين معًا بعد التحقّق أدناه —
+             * فالقاعدةُ بين حقلين لا في حقل.
              */
             'store_gift_card' => ['sometimes', 'boolean'],
             'store_gift_card_price' => ['nullable', 'numeric', 'min:0', 'max:1000'],
@@ -398,6 +399,36 @@ class MarketingController extends Controller
             if (in_array(FlowerOrder::DELIVERY, $picked, true) && ! $shown('area') && ! $shown('address')) {
                 return back()->withErrors([
                     'store_field_address' => __('متجرٌ يوصّل يسأل عن المنطقة أو العنوان — لا يُخفيان معًا.'),
+                ]);
+            }
+        }
+
+        /*
+         * ═══ ولا يُرفع مفتاحُ كرت الهدية بلا ثمن ═══
+         *
+         * لا ثمنَ افتراضيَّ في النظام: صاحبُ المحلّ هو من يُسعّر كرتَه. فمفتاحٌ
+         * مرفوعٌ بلا ثمنٍ صالحٍ كان يعني كرتًا يُباع بخمسِ مئةِ بيسةٍ لم
+         * يخترها أحد — تدخل فاتورةَ زبونٍ وإيرادَ دفتر.
+         *
+         * والقاعدةُ بين حقلين، فمحلُّها هنا لا في جدول القواعد: من رفع
+         * المفتاح في هذه الحفظة، أو كان مرفوعًا من قبلُ وهو يُعدّل ثمنَه.
+         *
+         * و`exists` لا `filled`: حفظةٌ لا تحمل الحقلَ أصلًا تقرأ المحفوظ —
+         * فشاشةٌ تُرسل جزءًا لا تُطفئ كرتًا مُسعّرًا ولا تُجيز مفتاحًا بلا ثمن.
+         * وهي قاعدةُ `store_on` نفسُها أدناه.
+         */
+        $cardOn = $request->exists('store_gift_card')
+            ? $request->boolean('store_gift_card')
+            : (MarketingSettings::group($this->bid(), 'website')['store_gift_card'] ?? '') === '1';
+
+        if ($cardOn) {
+            $cardPrice = $request->exists('store_gift_card_price')
+                ? trim((string) $request->input('store_gift_card_price'))
+                : trim((string) (MarketingSettings::group($this->bid(), 'website')['store_gift_card_price'] ?? ''));
+
+            if ($cardPrice === '' || ! is_numeric($cardPrice) || round((float) $cardPrice, 3) <= 0) {
+                throw ValidationException::withMessages([
+                    'store_gift_card_price' => __('اكتب سعر كرت الهدية قبل تفعيله — سعرًا أكبر من صفر.'),
                 ]);
             }
         }

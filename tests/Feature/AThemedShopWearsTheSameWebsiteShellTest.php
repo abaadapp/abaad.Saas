@@ -693,6 +693,17 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         $this->assertNotSame([], $drawn, 'لم يُقرأ من الأقسام مقبضٌ واحد — الحارسُ يحرس لا شيء');
         $this->assertContains('store_pages', $drawn, 'مفاتيحُ الصفحات لا تُحفظ مع الصفحة');
 
+        /*
+         * وثمنُ كرت الهدية يُكتب قبل الدورة.
+         *
+         * مفتاحُ الكرت لا يُرفع بلا ثمنٍ صالح (`MarketingController::saveStore`)،
+         * وهذه الدورةُ تُقلّب كلَّ مقبضٍ وحدَه. فبلا ثمنٍ محفوظٍ يُردّ حفظُ
+         * المفتاح — رفضًا صحيحًا يقرؤه الحارسُ «مقبضًا لا يُدير شيئًا».
+         */
+        MarketingSettings::save($this->shop->id, 'website', [
+            'store_gift_card_price' => $sample['store_gift_card_price'],
+        ]);
+
         foreach ($drawn as $key) {
             $this->assertArrayHasKey($key, $sample, $key.' مقبضٌ جديد بلا قيمةِ فحصٍ في هذا الحارس');
 

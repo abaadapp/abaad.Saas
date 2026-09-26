@@ -12,7 +12,9 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
+use App\Support\Money;
 use App\Support\Store\GiftCard;
+use App\Support\Storefront;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -125,7 +127,7 @@ class AGiftCardIsAThingTheShopSellsTest extends TestCase
     /** ولا رفَّ له يُخصم — يُباع مئةً ولا ينفد */
     public function test_the_card_never_runs_out(): void
     {
-        $card = GiftCard::product($this->shop->id);
+        $card = GiftCard::product($this->shop->id, 0.5);
         $this->assertSame(0, (int) $card->quantity, 'الصنفُ يُنشأ برصيدٍ صفر — وهو المقصود');
 
         for ($i = 0; $i < 3; $i++) {
@@ -140,7 +142,7 @@ class AGiftCardIsAThingTheShopSellsTest extends TestCase
     /** وصنفُه مُطفأٌ وغيرُ منشور — لا يُشترى وحدَه من الشبكة */
     public function test_the_card_is_not_on_the_shelf(): void
     {
-        $card = GiftCard::product($this->shop->id);
+        $card = GiftCard::product($this->shop->id, 0.5);
 
         $this->assertFalse((bool) $card->active);
         $this->assertFalse((bool) $card->published);
@@ -325,24 +327,209 @@ class AGiftCardIsAThingTheShopSellsTest extends TestCase
         $this->assertNotContains(GiftCard::PRODUCT_NAME, array_column($quoted['lines'], 'name'));
     }
 
-    /** والثمنُ فارغًا يعني الافتراضيّ — وصفرًا صريحًا يعني مجّانًا */
-    public function test_an_empty_price_is_not_a_free_card(): void
+    /**
+     * لا ثمنَ يخترعه النظام — والفراغُ فراغ.
+     *
+     * ═══ وكان الفراغُ يُقرأ «خمسَ مئةِ بيسة» ═══
+     *
+     * فمتجرٌ لم يُسعّر كرتَه كان يبيعه بثمنٍ لم يختره أحد، يدخل فاتورةَ
+     * زبونٍ وإيرادَ دفتر. واليومَ: من لم يكتب ثمنًا لا كرتَ له.
+     *
+     * والصفرُ فراغٌ كذلك، لا «كرتٌ مجّانيّ»: القاعدةُ «ثمنٌ صالحٌ أكبرُ من
+     * صفر». وما ليس رقمًا فراغٌ ثالث — حقلٌ فيه نصٌّ لا يصير ثمنًا.
+     *
+     * والرقمُ ٠٫٥ مكتوبٌ هنا صراحةً: من أعاد الثمنَ الافتراضيَّ ثابتًا في
+     * الكود رآه يسقط، لأنّ التوكيدَ لا يقرأ ثابتَ الكود.
+     */
+    public function test_an_unpriced_card_has_no_price_at_all(): void
     {
-        /*
-         * والرقمُ مكتوبٌ هنا صراحةً لا `GiftCard::DEFAULT_PRICE`.
-         *
-         * توكيدٌ يقرأ الثابتَ يقارنه بنفسه: من بدّله إلى صفرٍ بدّل طرفَي
-         * المقارنة معًا فمرّ — وهو بالضبط ما نجا من الطفرات أوّل مرّة.
-         * و«خمسُ مئةِ بيسة» رقمٌ اختاره صاحبُ المحلّ، فيُكتب كما قاله.
-         */
-        $this->settings(['store_gift_card_price' => '']);
-        $this->assertSame(0.5, GiftCard::price($this->shop->id));
+        foreach (['', '0', '0.0000', '   ', 'مجّانًا', '-1'] as $raw) {
+            $this->settings(['store_gift_card_price' => $raw]);
 
-        $this->settings(['store_gift_card_price' => '0']);
-        $this->assertSame(0.0, GiftCard::price($this->shop->id));
+            $this->assertNull(GiftCard::price($this->shop->id), "«{$raw}» صار ثمنًا");
+            $this->assertNotSame(0.5, GiftCard::price($this->shop->id), 'عاد الثمنُ الافتراضيّ');
+        }
 
         $this->settings(['store_gift_card_price' => '1.25']);
         $this->assertSame(1.25, GiftCard::price($this->shop->id));
+    }
+
+    /**
+     * ومن لم يُسعّر كرتَه لا يُعرض كرتُه — ولو كان مفتاحُه مرفوعًا.
+     *
+     * حالةُ متجرٍ رفع مفتاحَه قبل هذه القاعدة: لا يُسعَّر له بثمنٍ يخترعه
+     * النظام، ولا يُباع بلا ثمن — يُطوى حتّى يُسعّره صاحبُه.
+     */
+    public function test_a_switched_on_but_unpriced_card_is_not_for_sale(): void
+    {
+        $this->settings(['store_gift_card' => '1', 'store_gift_card_price' => '']);
+
+        $this->assertFalse(GiftCard::enabled($this->shop->id), 'كرتٌ بلا ثمنٍ يُعرض');
+        $this->assertFalse(GiftCard::wanted($this->shop->id, ['gift_card' => true]));
+
+        $quoted = $this->postJson('/s/ribbon/quote', [
+            'items' => [['id' => $this->bouquet->id, 'qty' => 1]], 'fulfil' => 'pickup', 'gift_card' => true,
+        ])->assertOk()->json();
+
+        $this->assertSame(20.0, (float) $quoted['subtotal'], 'سُعِّر كرتٌ بلا ثمن');
+        $this->assertNotContains(GiftCard::PRODUCT_NAME, array_column($quoted['lines'], 'name'));
+
+        /* ولا يُنشأ له صنفٌ في الأصناف — كرتٌ لا يُباع لا سطرَ له */
+        $this->assertNull(Product::where('business_id', $this->shop->id)
+            ->where('name', GiftCard::PRODUCT_NAME)->first());
+    }
+
+    /**
+     * وثمنُ كلِّ محلٍّ له — يُقرأ من إعداده لا من جاره ولا من ثابت.
+     *
+     * وثلاثُ خاناتٍ للريال العُمانيّ: ٠٫٠٠١ ثمنٌ صالح، والرابعةُ تُقرّب.
+     */
+    public function test_each_shop_carries_its_own_price(): void
+    {
+        $other = Business::create(['name' => 'محلُّ الجار', 'type' => 'ورود', 'status' => 'نشط', 'site_slug' => 'jar']);
+        MarketingSettings::save($other->id, 'website', [
+            'store_on' => '1', 'store_gift_card' => '1', 'store_gift_card_price' => '2.750',
+        ]);
+
+        $this->settings(['store_gift_card_price' => '1.125']);
+
+        $this->assertSame(1.125, GiftCard::price($this->shop->id));
+        $this->assertSame(2.75, GiftCard::price($other->id), 'ثمنُ الجار تسرّب أو ضاع');
+
+        $this->settings(['store_gift_card_price' => '0.001']);
+        $this->assertSame(0.001, GiftCard::price($this->shop->id), 'أصغرُ بيسةٍ ثمنٌ صالح');
+
+        /* والرابعةُ تُقرَّب إلى الثالثة — خاناتُ الريال ثلاثٌ لا أربع */
+        $this->settings(['store_gift_card_price' => '1.2345']);
+        $this->assertSame(1.235, GiftCard::price($this->shop->id));
+    }
+
+    /**
+     * وثمنُه يُقرأ على الشاشة كما يُحسب في الفاتورة — بثلاث خانات.
+     *
+     * والنصُّ يُبنى في الخادم لا في المتصفّح (`RibbonController::checkoutData`):
+     * عملةُ المحلّ وخاناتُها من إعداده، فلا تكتب الشاشةُ «1.125 ر.ع» حيث
+     * يكتب النظامُ كلُّه «١٫١٢٥ ر.ع».
+     */
+    public function test_the_buyer_reads_the_price_the_shop_set(): void
+    {
+        $this->settings(['store_gift_card_price' => '1.125']);
+
+        $page = $this->get('/s/ribbon/checkout')->assertOk();
+        $shown = Money::format(1.125, Storefront::currency($this->shop));
+
+        $this->assertStringContainsString($shown, $page->getContent(), 'الثمنُ لا يُقرأ على الشاشة');
+        $this->assertMatchesRegularExpression('/1[.,٫]125/u', $shown, 'خاناتُ الريال ثلاثٌ في ما يُقرأ');
+
+        /* وما يُقرأ هو ما يُحسب — لا رقمان */
+        $quoted = $this->postJson('/s/ribbon/quote', [
+            'items' => [['id' => $this->bouquet->id, 'qty' => 1]], 'fulfil' => 'pickup', 'gift_card' => true,
+        ])->assertOk()->json();
+
+        $this->assertSame(21.125, (float) $quoted['subtotal']);
+        $this->assertSame(21.125, (float) $quoted['total']);
+
+        $this->place(['gift_card' => true])->assertOk();
+        $order = Order::where('business_id', $this->shop->id)->latest('id')->first();
+
+        $this->assertSame(21.125, (float) $order->total, 'الفاتورةُ تقول رقمًا آخر');
+    }
+
+    /** ومتجرٌ بلا ثمنٍ لا يعرض للزبون خانةَ كرتٍ أصلًا */
+    public function test_an_unpriced_shop_shows_the_buyer_no_card_box(): void
+    {
+        $this->settings(['store_gift_card' => '1', 'store_gift_card_price' => '']);
+
+        $this->get('/s/ribbon/checkout')->assertOk()
+            ->assertDontSee(GiftCard::PRODUCT_NAME, false);
+    }
+
+    /* ═══════════ وبابُ الحفظ ═══════════ */
+
+    /** صاحبُ المحلّ — يحفظ من شاشة موقعه */
+    private function saveSite(array $over = [])
+    {
+        return $this->actingAs(User::where('business_id', $this->shop->id)->first())
+            ->post(route('admin.marketing.store.save'), $over + [
+                'site_slug' => 'ribbon',
+                'store_on' => true,
+            ]);
+    }
+
+    /**
+     * ولا يُرفع المفتاحُ بلا ثمن — ويُقال أين.
+     *
+     * كان المفتاحُ يُرفع وحدَه فيُباع الكرتُ بخمسِ مئةِ بيسةٍ لم يخترها أحد.
+     * واليومَ يُردّ الحفظُ بوسمٍ على الحقل نفسِه، لا برسالةٍ عامّةٍ يبحث
+     * صاحبُها عن حقلها.
+     *
+     * والصفرُ كالفراغ: «سعرٌ صالحٌ أكبرُ من صفر».
+     */
+    public function test_the_switch_does_not_go_up_without_a_price(): void
+    {
+        foreach (['', '0', '0.000'] as $raw) {
+            $this->saveSite(['store_gift_card' => true, 'store_gift_card_price' => $raw])
+                ->assertSessionHasErrors('store_gift_card_price');
+        }
+
+        /* ولا يُكتب المفتاحُ في الإعدادات — رفضٌ لا يُبقي أثرًا */
+        $this->settings(['store_gift_card' => '0', 'store_gift_card_price' => '']);
+        $this->saveSite(['store_gift_card' => true, 'store_gift_card_price' => ''])
+            ->assertSessionHasErrors('store_gift_card_price');
+
+        $this->assertFalse(GiftCard::enabled($this->shop->id));
+    }
+
+    /** وبثمنٍ صالحٍ يُرفع ويُحفظ كما كُتب */
+    public function test_a_priced_switch_saves(): void
+    {
+        $this->saveSite(['store_gift_card' => true, 'store_gift_card_price' => '3.250'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue(GiftCard::enabled($this->shop->id));
+        $this->assertSame(3.25, GiftCard::price($this->shop->id));
+    }
+
+    /**
+     * ومُطفأً لا يُسأل عن ثمن — ولا يُمحى ثمنٌ كتبه من قبل.
+     *
+     * «الحفاظُ على الأسعار التي حدّدها التجّار»: من أطفأ كرتَه اليومَ وأعاده
+     * غدًا وجد ثمنَه كما تركه.
+     */
+    public function test_switching_off_asks_for_no_price_and_keeps_the_old_one(): void
+    {
+        $this->saveSite(['store_gift_card' => true, 'store_gift_card_price' => '2.125'])->assertSessionHasNoErrors();
+
+        $this->saveSite(['store_gift_card' => false, 'store_gift_card_price' => '2.125'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertFalse(GiftCard::enabled($this->shop->id), 'أُطفئ ولم يُطفأ');
+        $this->assertSame('2.125', MarketingSettings::group($this->shop->id, 'website')['store_gift_card_price'] ?? null);
+    }
+
+    /**
+     * وحفظةٌ لا تحمل الحقلين لا تُبطل كرتًا مُسعّرًا ولا تُجيز واحدًا بلا ثمن.
+     *
+     * شاشاتُ الموقع ستٌّ، كلٌّ ترسل مفاتيحَها وحدَها (`StoreContent`). فحفظُ
+     * شاشةِ «الشحن» لا يُسأل عن كرتٍ لم يُرسله، ويُقرأ المحفوظ لا الحمولة.
+     */
+    public function test_a_partial_save_reads_what_was_stored(): void
+    {
+        $this->saveSite(['store_gift_card' => true, 'store_gift_card_price' => '1.500'])->assertSessionHasNoErrors();
+
+        $this->actingAs(User::where('business_id', $this->shop->id)->first())
+            ->post(route('admin.marketing.store.save'), ['store_headline' => 'ورودٌ كلَّ يوم'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue(GiftCard::enabled($this->shop->id), 'حفظةٌ أخرى أطفأت الكرت');
+        $this->assertSame(1.5, GiftCard::price($this->shop->id));
+
+        /* وبالعكس: مفتاحٌ محفوظٌ بلا ثمنٍ يُردّ ولو لم تحمل الحمولةُ الحقلين */
+        MarketingSettings::save($this->shop->id, 'website', ['store_gift_card' => '1', 'store_gift_card_price' => '']);
+
+        $this->actingAs(User::where('business_id', $this->shop->id)->first())
+            ->post(route('admin.marketing.store.save'), ['store_headline' => 'ورودٌ كلَّ يوم'])
+            ->assertSessionHasErrors('store_gift_card_price');
     }
 
     /* ═══════════ والدفترُ يقرؤه ═══════════ */
@@ -367,7 +554,7 @@ class AGiftCardIsAThingTheShopSellsTest extends TestCase
         $this->place(['gift_card' => true])->assertOk();
         $this->place()->assertOk();
 
-        $card = GiftCard::product($this->shop->id);
+        $card = GiftCard::product($this->shop->id, 0.5);
         $sold = OrderItem::whereIn('order_id', Order::where('business_id', $this->shop->id)->sold()->select('id'))
             ->where('product_id', $card->id)->sum('quantity');
 

@@ -198,10 +198,19 @@ describe('والشاشةُ تقرأ ما يقرؤه الخادم', () => {
      *
      * ولو عادت `required_with` لَردّ الخادمُ كلَّ «اتبع الوظيفة» — والمقبضُ
      * الذي أُضيف هنا يصير بابًا معروضًا لا يُفتح.
+     *
+     * ═══ و`required_if:…,1` كانت تقيس القيمةَ ولا تقرؤها ═══
+     *
+     * Inertia ترسل جسمًا JSON، فيصل العلمُ `true` منطقيًّا لا `'1'` نصًّا —
+     * والمقارنةُ صارمةٌ فلا يتحقّق الشرطُ أبدًا. فكانت القاعدةُ **ميّتةً من
+     * الشاشة**: قائمةٌ فارغةٌ تمرّ ويُحفظ موظّفٌ لا يفتح شيئًا. فصارت
+     * `required_if_accepted` — تقرأ `true` و`'1'` و`'on'`، وهي قراءةُ
+     * `$request->boolean()` نفسُها التي يُكتب بها الصفّ.
      */
-    it('القاعدة في الخادم `required_if` لا `required_with`', () => {
-        expect(CONTROLLER).toContain("'permissions' => ['required_if:manual_permissions,1', 'array']");
+    it('القاعدة في الخادم تقرأ قيمةَ العلم لا حضورَه', () => {
+        expect(CONTROLLER).toContain("'permissions' => ['required_if_accepted:manual_permissions', 'array']");
         expect(CONTROLLER).not.toContain("'required_with:manual_permissions'");
+        expect(CONTROLLER).not.toContain("'required_if:manual_permissions,1'");
     });
 
     /** والنموذجُ يرسل العلمَ دائمًا — بلا ذلك لا يميّز الخادمُ الحالين */

@@ -106,12 +106,25 @@ class EmployeeController extends Controller
              * و`min:1` رُفعت لأنّها تكرارٌ: `required` تردّ المصفوفة الفارغة
              * أصلًا. وببقائها كانت تردّ `[]` حتى حين لا تخصيص — أي تردّ الحال
              * نفسَها من بابٍ ثانٍ.
+             *
+             * ═══ و«المقبولة» لا «تساوي ١»: العلمُ يصل منطقيًّا لا نصًّا ═══
+             *
+             * `required_if:…,1` تقارن قيمةَ العلم بالنصّ `'1'` — و`in_array`
+             * تقارن المنطقيَّ مقارنةً صارمة. وInertia ترسل جسمًا JSON، فيصل
+             * `true` منطقيًّا لا `'1'` — فالشرطُ لا يتحقّق أبدًا والقاعدةُ
+             * **ميّتةٌ من الشاشة**: قائمةٌ فارغةٌ تمرّ فيُحفظ موظّفٌ لا يفتح
+             * شيئًا. ولم يكشفها اختبارٌ لأنّ اختباراتنا تُرسل القائمةَ مملوءةً
+             * دائمًا — ومن أرسل `true` منها سلك الطريقَ الميّتَ نفسَه.
+             *
+             * و`required_if_accepted` تقرأ `true` و`'1'` و`'on'` و`'yes'` —
+             * وهي القراءةُ نفسُها التي يقرأ بها `$request->boolean()` أدناه،
+             * فلا يفترق الشرطُ عمّا يُكتب في الصفّ.
              */
-            'permissions' => ['required_if:manual_permissions,1', 'array'],
+            'permissions' => ['required_if_accepted:manual_permissions', 'array'],
             // والأفعالُ تُمنح من القائمة نفسها — انظر Permissions::ACTIONS
             'permissions.*' => ['string', Rule::in([...Permissions::sections(), ...Permissions::actions()])],
         ], [
-            'permissions.required_if' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
+            'permissions.required_if_accepted' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'login_username.required' => __('اسم المستخدم مطلوب — وبه يدخل الموظف إلى النظام.'),
             'password.regex' => __('كلمة المرور تحتاج حرفًا ورقمًا على الأقل.'),
             'password.min' => __('كلمة المرور ثمانية أحرف على الأقل.'),
@@ -602,12 +615,25 @@ class EmployeeController extends Controller
              * و`min:1` رُفعت لأنّها تكرارٌ: `required` تردّ المصفوفة الفارغة
              * أصلًا. وببقائها كانت تردّ `[]` حتى حين لا تخصيص — أي تردّ الحال
              * نفسَها من بابٍ ثانٍ.
+             *
+             * ═══ و«المقبولة» لا «تساوي ١»: العلمُ يصل منطقيًّا لا نصًّا ═══
+             *
+             * `required_if:…,1` تقارن قيمةَ العلم بالنصّ `'1'` — و`in_array`
+             * تقارن المنطقيَّ مقارنةً صارمة. وInertia ترسل جسمًا JSON، فيصل
+             * `true` منطقيًّا لا `'1'` — فالشرطُ لا يتحقّق أبدًا والقاعدةُ
+             * **ميّتةٌ من الشاشة**: قائمةٌ فارغةٌ تمرّ فيُحفظ موظّفٌ لا يفتح
+             * شيئًا. ولم يكشفها اختبارٌ لأنّ اختباراتنا تُرسل القائمةَ مملوءةً
+             * دائمًا — ومن أرسل `true` منها سلك الطريقَ الميّتَ نفسَه.
+             *
+             * و`required_if_accepted` تقرأ `true` و`'1'` و`'on'` و`'yes'` —
+             * وهي القراءةُ نفسُها التي يقرأ بها `$request->boolean()` أدناه،
+             * فلا يفترق الشرطُ عمّا يُكتب في الصفّ.
              */
-            'permissions' => ['required_if:manual_permissions,1', 'array'],
+            'permissions' => ['required_if_accepted:manual_permissions', 'array'],
             // والأفعالُ تُمنح من القائمة نفسها — انظر Permissions::ACTIONS
             'permissions.*' => ['string', Rule::in([...Permissions::sections(), ...Permissions::actions()])],
         ], [
-            'permissions.required_if' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
+            'permissions.required_if_accepted' => __('حدّد صلاحيات الموظف — قسمٌ واحد على الأقل.'),
             'password.regex' => __('كلمة المرور تحتاج حرفًا ورقمًا على الأقل.'),
             'password.min' => __('كلمة المرور ثمانية أحرف على الأقل.'),
         ] + MerchantAccount::messages());

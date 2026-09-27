@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Bell, CalendarClock, CalendarDays, Globe, Package, Pencil, Plus, Search, Store, Trash2, X } from 'lucide-react';
+import { Bell, CalendarClock, CalendarDays, Globe, Package, Pencil, Plus, Repeat, Search, Store, Trash2, X } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import { useConfirm } from '@/Components/ConfirmDialog';
@@ -42,8 +42,23 @@ interface Reminder {
     acknowledged: boolean;
 }
 
+/** دورةٌ من دورات الموسم — تواريخُها، وهل صحّحها صاحبُها بيده */
+interface Cycle {
+    cycle: string;
+    key: string;
+    starts_at: string;
+    ends_at: string;
+    overridden: boolean;
+}
+
 interface Props {
     season: SeasonRow & { products: SeasonProduct[]; reminders: Reminder[] };
+    /** دوراتُ الموسم المتكرّر — الأحدثُ أوّلًا. وفارغةٌ لموسم المرّة الواحدة */
+    cycles?: Cycle[];
+    /** الدورةُ التي يقرأ تقريرَها الآن */
+    cycle?: Cycle | null;
+    /** هل يحسب الخادمُ التقويمَ الهجريّ؟ */
+    hijriAvailable?: boolean;
     maxReminders: number;
     /** الاختصاراتُ الجاهزة بالأيّام — أسبوعٌ وأسبوعان وشهرٌ وشهران */
     presets: number[];
@@ -59,9 +74,11 @@ const when = (iso: string | null, locale: string) =>
         : '—';
 
 export default function SeasonShow() {
-    const { season, maxReminders, presets, performance, locale, context } = usePage<PageProps<Props>>().props;
+    const { season, cycles, cycle, hijriAvailable, maxReminders, presets, performance, locale, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [edit, setEdit] = useState(false);
+    const [fixing, setFixing] = useState(false);
     const [picker, setPicker] = useState(false);
     const [ask, confirmDialog] = useConfirm();
 
@@ -117,11 +134,66 @@ export default function SeasonShow() {
                         <CalendarDays className="size-3.5" /> {t('يبدأ بعد :n يومًا', { n: season.daysUntil })}
                     </span>
                 )}
+                {season.repeats && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#faf5ff] px-2.5 py-1 text-[#7e22ce]">
+                        <Repeat className="size-3.5" />
+                        {season.calendar === 'hijri' ? t('يتكرر كل سنة · هجري') : t('يتكرر كل سنة · ميلادي')}
+                    </span>
+                )}
+                {season.cycleOverridden && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#fffbeb] px-2.5 py-1 text-[#92400e]">
+                        {t('دورةٌ مصحَّحة يدويًّا')}
+                    </span>
+                )}
             </div>
+
+            {/*
+                ═══ ودورةُ هذا العام تُقرأ وتُصحَّح من مكانٍ واحد ═══
+
+                «أمّ القرى» تقويمٌ حسابيّ، والدولةُ تُعلن بالرؤية — فيفترقان
+                يومًا. فمن يبيع في رمضان يحتاج أن يبدأ موسمُه يومَ يبدأ الصيام.
+            */}
+            {season.repeats && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-3">
+                    <span className="text-[13px] text-[#6b7280]">{t('دورة هذا العام')}</span>
+                    <span className="text-[13px] font-semibold text-[#111]">
+                        {dateRange(season.starts_at, season.ends_at, locale)}
+                    </span>
+                    <Button variant="outline" size="sm" className="ms-auto" onClick={() => setFixing(true)}>
+                        {t('تصحيح هذه الدورة')}
+                    </Button>
+                </div>
+            )}
 
             {/* ═══ الأداء — لمن يقرأ التقارير؛ والخادمُ لا يرسله لسواه ═══ */}
             {performance && context && (
-                <div className="mb-4">
+                <div className="mb-4 space-y-2">
+                    {/*
+                        ولكلّ دورةٍ تقريرُها: موسمٌ يعود كلَّ سنةٍ تتراكم بيعاتُه
+                        على معرّفٍ واحد، فجمعُها في رقمٍ واحدٍ يُلبس ثلاثَ سنواتٍ
+                        ثوبَ سنة.
+                    */}
+                    {(cycles?.length ?? 0) > 1 && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[13px] text-[#6b7280]">{t('تقرير دورة')}</span>
+                            <select
+                                value={cycle?.cycle ?? ''}
+                                onChange={(e) =>
+                                    router.get(route('admin.seasons.show', season.id), { cycle: e.target.value }, {
+                                        preserveScroll: true, preserveState: true,
+                                    })
+                                }
+                                aria-label={t('تقرير دورة')}
+                                className="h-9 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-2 text-[13px]"
+                            >
+                                {cycles!.map((c) => (
+                                    <option key={c.cycle} value={c.cycle}>
+                                        {dateRange(c.starts_at, c.ends_at, locale)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                     <Performance seasonId={season.id} data={performance} currency={context.currency} />
                 </div>
             )}
@@ -176,7 +248,10 @@ export default function SeasonShow() {
                 <Reminders season={season} maxReminders={maxReminders} presets={presets} locale={locale} />
             </div>
 
-            <SeasonDialog open={edit} season={season} onClose={() => setEdit(false)} />
+            <SeasonDialog open={edit} season={season} hijriAvailable={hijriAvailable} onClose={() => setEdit(false)} />
+
+            {/* تصحيحُ دورةٍ بعينها — الحسابُ يقترح، والإعلانُ الرسميُّ يحكم */}
+            <CycleDialog open={fixing} season={season} cycle={cycle ?? null} onClose={() => setFixing(false)} />
             <ProductPicker open={picker} seasonId={season.id} onClose={() => setPicker(false)} />
         </AdminLayout>
     );
@@ -518,5 +593,104 @@ function Reminders({ season, maxReminders, presets, locale }: { season: Props['s
                 </form>
             )}
         </Card>
+    );
+}
+
+/**
+ * تصحيحُ دورةٍ بعينها.
+ *
+ * ولا يمسّ الموسمَ نفسَه: تُكتب تواريخُ هذه الدورة وحدَها، وما قبلها وما
+ * بعدها يبقى على الحساب. و«أعِدها إلى الحساب» تمحو التصحيح.
+ */
+function CycleDialog({
+    open,
+    onClose,
+    season,
+    cycle,
+}: {
+    open: boolean;
+    onClose: () => void;
+    season: SeasonRow;
+    cycle: Cycle | null;
+}) {
+    const t = useTranslate();
+    const form = useForm({
+        cycle: cycle?.cycle ?? '',
+        starts_at: cycle?.starts_at ?? '',
+        ends_at: cycle?.ends_at ?? '',
+        reset: false,
+    });
+
+    useEffect(() => {
+        if (open) {
+            form.setData({
+                cycle: cycle?.cycle ?? '',
+                starts_at: cycle?.starts_at ?? '',
+                ends_at: cycle?.ends_at ?? '',
+                reset: false,
+            });
+            form.clearErrors();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, cycle?.cycle]);
+
+    const send = (reset: boolean) => {
+        form.transform((d) => ({ ...d, reset }));
+        form.put(route('admin.seasons.cycle', season.id), {
+            preserveScroll: true,
+            onSuccess: () => onClose(),
+        });
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>{t('تصحيح هذه الدورة')}</DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4 px-5 pb-5">
+                    <p className="text-[13px] leading-6 text-[#6b7280]">
+                        {t('يُحسب الموعد من التقويم، وقد يفترق يومًا عن الإعلان الرسمي. وما تكتبه هنا يخصّ هذه الدورة وحدها — ولا يمسّ السنوات الأخرى ولا تقاريرها.')}
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <Field label="بداية الدورة" required error={form.errors.starts_at}>
+                            <Input
+                                type="date"
+                                value={form.data.starts_at}
+                                onChange={(e) => form.setData('starts_at', e.target.value)}
+                                aria-label={t('بداية الدورة')}
+                            />
+                        </Field>
+                        <Field label="نهاية الدورة" required error={form.errors.ends_at}>
+                            <Input
+                                type="date"
+                                min={form.data.starts_at || undefined}
+                                value={form.data.ends_at}
+                                onChange={(e) => form.setData('ends_at', e.target.value)}
+                                aria-label={t('نهاية الدورة')}
+                            />
+                        </Field>
+                    </div>
+
+                    {form.errors.cycle && <p className="text-[12px] text-[#b91c1c]">{form.errors.cycle}</p>}
+
+                    <div className="flex flex-wrap justify-end gap-2">
+                        {cycle?.overridden && (
+                            <Button type="button" variant="outline" onClick={() => send(true)}>
+                                {t('أعِدها إلى الحساب')}
+                            </Button>
+                        )}
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button type="button" loading={form.processing} onClick={() => send(false)}>
+                            {t('حفظ الدورة')}
+                        </Button>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }

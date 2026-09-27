@@ -8,11 +8,15 @@ use App\Models\Season;
 use App\Models\SeasonReminder;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Hijri;
 use App\Support\SalesChannel;
+use App\Support\SeasonCycle;
 use App\Support\Seasons;
 use App\Support\SeasonSales;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -58,6 +62,8 @@ class SeasonController extends Controller
             'seasons' => $seasons,
             'filter' => $filter,
             'counts' => $counts,
+            // وما لا يحسبه الخادمُ لا يُعرض خيارًا يُردّ عند الحفظ
+            'hijriAvailable' => Hijri::available(),
             /*
              * ما حان ولم يُقرأ — ينتظره حين يفتح القسم.
              *
@@ -87,6 +93,18 @@ class SeasonController extends Controller
         $channel = $request->query('channel');
         $channel = in_array($channel, [SalesChannel::POS, SalesChannel::WEBSITE, SalesChannel::UNKNOWN], true) ? $channel : null;
 
+        /*
+         * ═══ ودورةُ التقرير تُختار ═══
+         *
+         * موسمٌ يعود كلَّ سنةٍ تتراكم بيعاتُه على معرّفٍ واحد، فجمعُها في رقمٍ
+         * واحد يقول «مبيعات رمضان» وهي مبيعاتُ ثلاث سنوات. فتُقرأ دورةً دورة.
+         *
+         * وموسمُ المرّة الواحدة يبقى كما كان بلا قصّ: أرقامُه اليومَ هي أرقامُه
+         * أمس، ولا يُعاد حسابُ تاريخٍ قُرئ من قبل.
+         */
+        $cycles = $season->repeats ? SeasonCycle::past($season, $today) : [];
+        $picked = $this->pickCycle($season, $cycles, (string) $request->query('cycle', ''));
+
         return Inertia::render('Admin/Seasons/Show', [
             'season' => $this->row($season, $today) + [
                 'products' => $season->products->map(fn (Product $p) => $this->productRow($p))->values()->all(),
@@ -94,7 +112,13 @@ class SeasonController extends Controller
             ],
             'maxReminders' => Seasons::MAX_REMINDERS,
             'presets' => SeasonReminder::PRESETS,
-            'performance' => auth()->user()?->allows('reports') ? SeasonSales::report($season, $channel) : null,
+            'calendars' => SeasonCycle::CALENDARS,
+            'hijriAvailable' => Hijri::available(),
+            'cycles' => array_map(fn (array $c) => $this->cycleRow($c), $cycles),
+            'cycle' => $picked ? $this->cycleRow($picked) : null,
+            'performance' => auth()->user()?->allows('reports')
+                ? SeasonSales::report($season, $channel, $picked)
+                : null,
         ]);
     }
 
@@ -290,11 +314,92 @@ class SeasonController extends Controller
         return back()->with('toast', ['msg' => __('حُذف التذكير'), 'type' => 'success']);
     }
 
+    /**
+     * تصحيحُ دورةٍ بعينها — أو ردُّها إلى الحساب.
+     *
+     * ═══ ولمَ يُسمح بهذا أصلًا ═══
+     *
+     * «أمّ القرى» تقويمٌ حسابيٌّ مضبوطٌ سلفًا، والدولةُ تُعلن برؤية الهلال —
+     * فيفترقان يومًا. فمن يبيع في رمضان يحتاج أن يبدأ موسمُه يومَ يبدأ الصيام
+     * لا يومَ يقول الجدول. والتصحيحُ يقع على **دورةٍ واحدة** ولا يمسّ ما
+     * قبلها ولا ما بعدها، ولا يُعيد تأريخ الموسم.
+     */
+    public function updateCycle(Request $request, int $id)
+    {
+        $season = $this->mine($id);
+
+        if (! $season->repeats) {
+            return back()->withErrors(['cycle' => __('هذا موسمٌ لمرّةٍ واحدة — عدّل تاريخَه نفسَه.')]);
+        }
+
+        $data = $request->validate([
+            'cycle' => ['required', 'string', 'max:10'],
+            'reset' => ['nullable', 'boolean'],
+            'starts_at' => ['required_without:reset', 'nullable', 'date'],
+            'ends_at' => ['required_without:reset', 'nullable', 'date', 'after_or_equal:starts_at'],
+        ], [], [
+            'starts_at' => __('بداية الدورة'), 'ends_at' => __('نهاية الدورة'),
+        ]);
+
+        $fixes = $season->cycle_overrides ?? [];
+
+        if ($request->boolean('reset')) {
+            unset($fixes[$data['cycle']]);
+        } else {
+            $fixes[$data['cycle']] = [
+                'starts_at' => Carbon::parse($data['starts_at'])->toDateString(),
+                'ends_at' => Carbon::parse($data['ends_at'])->toDateString(),
+            ];
+        }
+
+        $season->update(['cycle_overrides' => $fixes ?: null]);
+        Activity::log('updated', 'صحّح دورة الموسم: '.$season->name.' — '.$data['cycle']);
+
+        return back()->with('toast', [
+            'msg' => $request->boolean('reset') ? __('أُعيدت الدورة إلى الحساب') : __('صُحّحت هذه الدورة'),
+            'type' => 'success',
+        ]);
+    }
+
     /* ═══════════ أدوات ═══════════ */
+
+    /**
+     * الدورةُ المطلوبةُ من القائمة — وإلّا الجاريةُ اليوم.
+     *
+     * و`null` لموسم المرّة الواحدة: تقريرُه كما كان، بلا قصٍّ بنافذة.
+     *
+     * @param  list<array<string, mixed>>  $cycles
+     */
+    private function pickCycle(Season $season, array $cycles, string $want): ?array
+    {
+        if (! $season->repeats) {
+            return null;
+        }
+
+        foreach ($cycles as $c) {
+            if ($c['cycle'] === $want) {
+                return $c;
+            }
+        }
+
+        return $cycles[0] ?? $season->cycle();
+    }
+
+    /** @param  array<string, mixed>  $c */
+    private function cycleRow(array $c): array
+    {
+        return [
+            'cycle' => $c['cycle'],
+            'key' => $c['key'],
+            'starts_at' => $c['starts_at']->toDateString(),
+            'ends_at' => $c['ends_at']->toDateString(),
+            'overridden' => $c['overridden'],
+        ];
+    }
 
     private function validated(Request $request): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'name_en' => ['nullable', 'string', 'max:120'],
             'starts_at' => ['required', 'date'],
@@ -303,13 +408,41 @@ class SeasonController extends Controller
             'active' => ['nullable', 'boolean'],
             'show_in_pos' => ['nullable', 'boolean'],
             'show_on_website' => ['nullable', 'boolean'],
+            /*
+             * ═══ ويعود كلَّ سنة — أو لا يعود ═══
+             *
+             * والأصلُ «لا»: المواسمُ القائمةُ اليومَ تبقى كما أُرّخت، ومن
+             * أراد التكرارَ طلبه. وتحويلُ موسمٍ قائمٍ إلى متكرّرٍ لا يمسّ
+             * تاريخَه ولا أصنافَه ولا تقاريرَه — التاريخان يصيران مرساةً
+             * تُحسب منها الدورات (انظر `SeasonCycle`).
+             */
+            'repeats' => ['nullable', 'boolean'],
+            'calendar' => ['nullable', 'string', Rule::in(SeasonCycle::CALENDARS)],
         ], [], [
             'name' => __('اسم الموسم'), 'starts_at' => __('بداية الموسم'), 'ends_at' => __('نهاية الموسم'),
         ]) + [
             'active' => $request->boolean('active', true),
             'show_in_pos' => $request->boolean('show_in_pos', true),
             'show_on_website' => $request->boolean('show_on_website', true),
+            'repeats' => $request->boolean('repeats'),
+            'calendar' => $request->boolean('repeats') && $request->input('calendar') === SeasonCycle::HIJRI
+                ? SeasonCycle::HIJRI
+                : SeasonCycle::GREGORIAN,
         ];
+
+        /*
+         * ولا يُختار تقويمٌ لا يستطيع الخادمُ حسابَه.
+         *
+         * `intl` على الإنتاج وفي CI. وحيث لا يكون، يُقال ذلك صريحًا — ولا
+         * يُخترع حسابٌ تقريبيٌّ يمشي سنةً ويضلّ في الثانية.
+         */
+        if ($data['calendar'] === SeasonCycle::HIJRI && ! Hijri::available()) {
+            throw ValidationException::withMessages([
+                'calendar' => __('التقويم الهجري غير متاح على هذا الخادم — اختر الميلادي.'),
+            ]);
+        }
+
+        return $data;
     }
 
     private function row(Season $s, $today): array
@@ -322,19 +455,32 @@ class SeasonController extends Controller
             ->sortBy(fn ($r) => $r['at']->timestamp)
             ->first();
 
+        $cycle = $s->cycle($today);
+
         return [
             'id' => $s->id,
             'name' => $s->name,
             'name_en' => $s->name_en,
             'label' => Demo::ln($s->name, $s->name_en),
-            'starts_at' => $s->starts_at->toDateString(),
-            'ends_at' => $s->ends_at->toDateString(),
+            /*
+             * والتاريخان المعروضان تاريخا **الدورة الجارية** لا المرساة:
+             * صاحبُ المتجر يسأل «متى يبدأ موسمي؟» لا «متى بدأ أوّلَ مرّة؟».
+             * والمرساةُ تُرسَل إلى جانبهما لشاشة التعديل وحدَها.
+             */
+            'starts_at' => $cycle['starts_at']->toDateString(),
+            'ends_at' => $cycle['ends_at']->toDateString(),
+            'anchor_starts_at' => $s->starts_at->toDateString(),
+            'anchor_ends_at' => $s->ends_at->toDateString(),
+            'repeats' => (bool) $s->repeats,
+            'calendar' => (string) ($s->calendar ?? SeasonCycle::GREGORIAN),
+            'cycle' => $cycle['cycle'],
+            'cycleOverridden' => $cycle['overridden'],
             'active' => $s->active,
             'show_in_pos' => $s->show_in_pos,
             'show_on_website' => $s->show_on_website,
             'status' => $status,
             'statusLabel' => Seasons::statusLabel($status),
-            'daysUntil' => $status === Season::UPCOMING ? (int) $today->diffInDays($s->starts_at, false) : null,
+            'daysUntil' => $status === Season::UPCOMING ? (int) $today->diffInDays($cycle['starts_at'], false) : null,
             'productsCount' => (int) ($s->products_count ?? $s->products()->count()),
             'remindersCount' => (int) ($s->reminders_count ?? $s->reminders->count()),
             'nextReminder' => $next ? ['at' => $next['at']->toIso8601String(), 'message' => $next['message']] : null,

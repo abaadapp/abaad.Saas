@@ -32,12 +32,18 @@ final class Seasons
         }
 
         $day = ($today ?? today())->startOfDay();
+        $cycle = SeasonCycle::current($season, $day);
 
-        if ($day->lt($season->starts_at->copy()->startOfDay())) {
+        if ($day->lt($cycle['starts_at'])) {
             return Season::UPCOMING;
         }
 
-        if ($day->gt($season->ends_at->copy()->startOfDay())) {
+        /*
+         * والمتكرّرُ لا ينتهي: آخرُ يومٍ فيه يبدأ العدُّ للسنة القادمة.
+         * و`SeasonCycle` تردّ الدورةَ القادمةَ حين تمضي الحاليّة، فلا يقع
+         * هذا السطرُ عليه أصلًا — ويبقى لموسم المرّة الواحدة.
+         */
+        if ($day->gt($cycle['ends_at'])) {
             return Season::ENDED;
         }
 
@@ -64,11 +70,7 @@ final class Seasons
      */
     public static function forPos(int $businessId, ?Carbon $today = null): array
     {
-        return Season::where('business_id', $businessId)->live($today)
-            ->where('show_in_pos', true)
-            ->orderBy('starts_at')->orderBy('id')
-            ->with(['products' => fn ($q) => $q->select('products.id')])
-            ->get()
+        return self::live($businessId, $today, fn ($q) => $q->where('show_in_pos', true))
             ->map(fn (Season $s) => [
                 'id' => $s->id,
                 'name' => Demo::ln($s->name, $s->name_en),
@@ -89,11 +91,32 @@ final class Seasons
      */
     public static function forWebsite(int $businessId, ?Carbon $today = null): Collection
     {
-        return Season::where('business_id', $businessId)->live($today)
-            ->where('show_on_website', true)
+        return self::live($businessId, $today, fn ($q) => $q->where('show_on_website', true));
+    }
+
+    /**
+     * مواسمُ هذا المتجر الجاريةُ اليوم — بابٌ واحدٌ للصندوق والموقع.
+     *
+     * والترشيحُ الأخيرُ بالحساب لا بالعمود: المتكرّرُ مرساتُه في سنةٍ مضت،
+     * وحدُّه اليومَ يُقرأ من `SeasonCycle` وحدها. فلا يُكتب «اليومُ داخل
+     * المدّة» في موضعين يفترقان.
+     *
+     * @param  callable(\Illuminate\Database\Eloquent\Builder): mixed  $filter
+     * @return Collection<int, Season>
+     */
+    private static function live(int $businessId, ?Carbon $today, callable $filter): Collection
+    {
+        $day = ($today ?? today())->copy()->startOfDay();
+
+        return Season::where('business_id', $businessId)
+            ->live($day)
+            ->tap($filter)
             ->orderBy('starts_at')->orderBy('id')
             ->with(['products' => fn ($q) => $q->select('products.id')])
-            ->get();
+            ->get()
+            ->filter(fn (Season $s) => $s->isLive($day))
+            ->sortBy(fn (Season $s) => $s->cycle($day)['starts_at']->timestamp)
+            ->values();
     }
 
     /**
@@ -118,8 +141,13 @@ final class Seasons
              * والموسمُ المنتهي لا يُذكَّر به: تنبيهٌ لموسمٍ مضى لا يُستعدّ له.
              * والمُطفأُ كذلك — أطفأه صاحبُه فلا يُلحّ عليه.
              */
+            /*
+             * والمتكرّرُ لا يُستبعَد بمرساته: `ends_at` فيه تاريخُ أوّل دورةٍ
+             * وقد مضت سنوات. فيُجلب ثمّ يُرشَّح بالحساب في `isDue`.
+             */
             ->whereHas('season', fn ($q) => $q->where('active', true)
-                ->whereDate('ends_at', '>=', $now->toDateString()))
+                ->where(fn ($w) => $w->where('repeats', true)
+                    ->orWhereDate('ends_at', '>=', $now->toDateString())))
             ->with('season')
             ->get()
             ->filter(fn (SeasonReminder $r) => $r->isDue($r->season, $now))

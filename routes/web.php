@@ -644,6 +644,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/products/seasons/{id}', [SeasonController::class, 'show'])->name('seasons.show');
     Route::put('/products/seasons/{id}', [SeasonController::class, 'update'])->name('seasons.update');
     Route::delete('/products/seasons/{id}', [SeasonController::class, 'destroy'])->name('seasons.destroy');
+    /* تصحيحُ دورةٍ بعينها — الحسابُ يقترح والإعلانُ الرسميُّ يحكم */
+    Route::put('/products/seasons/{id}/cycle', [SeasonController::class, 'updateCycle'])->name('seasons.cycle');
     Route::get('/products/seasons/{id}/products', [SeasonController::class, 'products'])->name('seasons.products');
     Route::post('/products/seasons/{id}/products', [SeasonController::class, 'attach'])->name('seasons.attach');
     Route::delete('/products/seasons/{id}/products/{productId}', [SeasonController::class, 'detach'])->name('seasons.detach');

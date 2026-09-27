@@ -22,6 +22,9 @@ export interface SeasonRow extends SeasonFields {
     productsCount: number;
     remindersCount: number;
     nextReminder: { at: string; message: string } | null;
+    /** مفتاحُ الدورة الجارية (سنتُها) وهل صُحّحت بيد صاحبها */
+    cycle?: string;
+    cycleOverridden?: boolean;
 }
 
 /** تنبيهٌ حان وقتُه ولم يُقرأ في دورة موسمه */
@@ -41,6 +44,8 @@ interface Props {
     filter: string;
     counts: Record<string, number>;
     alerts: SeasonAlert[];
+    /** هل يحسب الخادمُ التقويمَ الهجريّ؟ — بلا `intl` يُقفل الخيار */
+    hijriAvailable?: boolean;
 }
 
 /**
@@ -141,7 +146,7 @@ export function SeasonAlerts({ alerts }: { alerts: SeasonAlert[] }) {
 }
 
 export default function SeasonsIndex() {
-    const { seasons, filter, counts, alerts, locale } = usePage<PageProps<Props>>().props;
+    const { seasons, filter, counts, alerts, hijriAvailable, locale } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [dialog, setDialog] = useState<{ open: boolean; season: SeasonRow | null }>({ open: false, season: null });
 
@@ -204,7 +209,12 @@ export default function SeasonsIndex() {
                 </div>
             )}
 
-            <SeasonDialog open={dialog.open} season={dialog.season} onClose={() => setDialog({ open: false, season: null })} />
+            <SeasonDialog
+                open={dialog.open}
+                season={dialog.season}
+                hijriAvailable={hijriAvailable}
+                onClose={() => setDialog({ open: false, season: null })}
+            />
         </AdminLayout>
     );
 }

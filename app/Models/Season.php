@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SeasonCycle;
 use App\Support\Seasons;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,6 +26,8 @@ class Season extends Model
         'active' => 'boolean',
         'show_in_pos' => 'boolean',
         'show_on_website' => 'boolean',
+        'repeats' => 'boolean',
+        'cycle_overrides' => 'array',
     ];
 
     public const UPCOMING = 'upcoming';
@@ -51,6 +54,19 @@ class Season extends Model
         return $this->hasMany(SeasonReminder::class)->orderBy('id');
     }
 
+    /**
+     * دورتُه التي تخصّ اليومَ — تواريخُها ومفتاحُها.
+     *
+     * وتاريخا الصفّ مرساةٌ لا موعدٌ جارٍ حين يتكرّر: الحسابُ في
+     * `SeasonCycle`، وكلُّ شاشةٍ تقرأ منه لا من العمودين مباشرةً.
+     *
+     * @return array{starts_at: Carbon, ends_at: Carbon, key: string, cycle: string, overridden: bool}
+     */
+    public function cycle(?Carbon $today = null): array
+    {
+        return SeasonCycle::current($this, $today);
+    }
+
     /** حالتُه اليومَ — قاعدةٌ واحدةٌ للوحة والصندوق والموقع (انظر Seasons::status) */
     public function status(?Carbon $today = null): string
     {
@@ -63,13 +79,25 @@ class Season extends Model
         return $this->status($today) === self::ACTIVE;
     }
 
-    /** المواسمُ الجاريةُ اليوم — للصندوق والموقع، لا للوحة */
+    /**
+     * المواسمُ الجاريةُ اليوم — للصندوق والموقع، لا للوحة.
+     *
+     * ═══ والمتكرّرُ لا يُسأل عنه عمودًا ═══
+     *
+     * تاريخا الصفّ مرساةٌ، فموسمٌ يعود كلَّ سنةٍ تكون مرساتُه قبل سنواتٍ
+     * ولا تقول شيئًا عن اليوم. فيُجلب المتكرّرُ كلُّه ثمّ يُرشَّح بالحساب
+     * (`Seasons::live`)، ويبقى غيرُ المتكرّر على شرطه في القاعدة — وهو
+     * الأكثرُ، فلا يُحمَّل الصندوقُ ما لا يلزم.
+     */
     public function scopeLive($query, ?Carbon $today = null)
     {
         $day = ($today ?? today())->toDateString();
 
         return $query->where('active', true)
-            ->whereDate('starts_at', '<=', $day)
-            ->whereDate('ends_at', '>=', $day);
+            ->where(fn ($q) => $q
+                ->where('repeats', true)
+                ->orWhere(fn ($w) => $w
+                    ->whereDate('starts_at', '<=', $day)
+                    ->whereDate('ends_at', '>=', $day)));
     }
 }

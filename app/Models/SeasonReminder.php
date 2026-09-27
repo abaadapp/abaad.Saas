@@ -60,7 +60,13 @@ class SeasonReminder extends Model
             return null;
         }
 
-        return $season->starts_at->copy()->startOfDay()->subDays($this->days_before)->setTime(9, 0);
+        /*
+         * ومن دورته لا من مرساته: موسمٌ يعود كلَّ سنةٍ تبقى مرساتُه في سنةٍ
+         * مضت، فتذكيرُ «قبل أسبوع» يكون قد فات منذ أعوام. فيُحسب من بداية
+         * الدورة الجارية — انظر `SeasonCycle`.
+         */
+        return $season->cycle()['starts_at']->copy()->startOfDay()
+            ->subDays($this->days_before)->setTime(9, 0);
     }
 
     /**
@@ -93,10 +99,16 @@ class SeasonReminder extends Model
         return ! $this->isAcknowledgedFor($season);
     }
 
-    /** أقُرئ في دورة هذا الموسم؟ */
+    /**
+     * أقُرئ في دورة هذا الموسم؟
+     *
+     * والمقارنةُ ببداية الدورة الجارية لا بالمرساة: من قرأ تذكيرَ رمضانَ
+     * هذا العام لا يُعاد عليه في عامه، ويعود إليه في العام القادم لأنّ
+     * بدايةَ الدورة تبدّلت — بلا مهمّةٍ دوريّةٍ تُصفّر شيئًا.
+     */
     public function isAcknowledgedFor(Season $season): bool
     {
         return $this->acknowledged_for !== null
-            && $this->acknowledged_for->isSameDay($season->starts_at);
+            && $this->acknowledged_for->isSameDay($season->cycle()['starts_at']);
     }
 }

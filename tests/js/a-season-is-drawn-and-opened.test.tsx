@@ -56,15 +56,21 @@ describe('بطاقةُ الموسم', () => {
 });
 
 describe('نموذجُ الموسم', () => {
-    it('حقولُه السبعة مرسومة والمفاتيحُ الثلاثة مضاءةٌ افتراضًا', () => {
+    it('حقولُه السبعة مرسومة والمفاتيحُ الثلاثة مضاءةٌ افتراضًا — والتكرارُ مطفأ', () => {
         render(<SeasonDialog open onClose={() => {}} />);
 
         expect(screen.getByLabelText('اسم الموسم')).toBeInTheDocument();
         expect(screen.getByLabelText('بداية الموسم')).toBeInTheDocument();
         expect(screen.getByLabelText('نهاية الموسم')).toBeInTheDocument();
-        const switches = screen.getAllByRole('switch');
-        expect(switches).toHaveLength(3);
-        switches.forEach((s) => expect(s).toHaveAttribute('aria-checked', 'true'));
+
+        // المفاتيحُ الثلاثةُ الأصليّة مضاءةٌ افتراضًا — تُنادى بأسمائها لا بترتيبها.
+        ['فعال', 'إظهار في نقطة البيع', 'إظهار في الموقع الإلكتروني'].forEach((name) =>
+            expect(screen.getByRole('switch', { name })).toHaveAttribute('aria-checked', 'true'),
+        );
+
+        // والتكرارُ السنويُّ مطفأ: الموسمُ لمرّةٍ واحدةٍ حتّى يقول التاجرُ غيرَ ذلك.
+        expect(screen.getByRole('switch', { name: 'يتكرر كل سنة' })).toHaveAttribute('aria-checked', 'false');
+
         expect(screen.getByRole('button', { name: 'إنشاء الموسم' })).toBeInTheDocument();
     });
 
@@ -78,6 +84,6 @@ describe('نموذجُ الموسم', () => {
         render(<SeasonDialog open onClose={() => {}} season={season({ show_on_website: false })} />);
         expect(screen.getByLabelText('اسم الموسم')).toHaveValue('رمضان 2027');
         expect(screen.getByRole('button', { name: 'حفظ التغييرات' })).toBeInTheDocument();
-        expect(screen.getAllByRole('switch')[2]).toHaveAttribute('aria-checked', 'false');
+        expect(screen.getByRole('switch', { name: 'إظهار في الموقع الإلكتروني' })).toHaveAttribute('aria-checked', 'false');
     });
 });

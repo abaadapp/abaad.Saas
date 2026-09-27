@@ -90,12 +90,25 @@ final class SeasonSales
      * واحدة للتقارير كلِّها. والحصرُ بالمتجر مرّتين — على الموسم وعلى
      * الطلب — فلا يبلغ معرّفُ موسمٍ بيعةَ جارٍ ولو خُمّن.
      */
-    private static function lines(Season $season, ?string $channel = null): Builder
+    private static function lines(Season $season, ?string $channel = null, ?array $cycle = null): Builder
     {
+        /*
+         * ═══ ودورةٌ بعينها تُقرأ وحدَها ═══
+         *
+         * موسمٌ يعود كلَّ سنةٍ تتراكم بيعاتُه على معرّفٍ واحد. فجمعُها كلِّها
+         * في رقمٍ واحدٍ يقول «مبيعات رمضان ١٢ ألفًا» وهي مبيعاتُ ثلاث سنوات
+         * — ومقارنةُ السنة بالسنة تصير مستحيلة.
+         *
+         * فتُقصّ بنافذة الدورة. ولا يُكتب في صفٍّ قديمٍ شيء: القصُّ قراءةٌ
+         * على `ordered_at` لا تعديلٌ لبندٍ ولا لفاتورة.
+         */
         $orders = Order::where('business_id', $season->business_id)->sold()
             ->when($channel, fn ($q) => $channel === SalesChannel::UNKNOWN
                 ? $q->whereNull('channel')
                 : $q->where('channel', $channel))
+            ->when($cycle, fn ($q) => $q
+                ->whereDate('ordered_at', '>=', $cycle['starts_at']->toDateString())
+                ->whereDate('ordered_at', '<=', $cycle['ends_at']->toDateString()))
             ->select('id');
 
         return OrderItem::query()
@@ -121,10 +134,10 @@ final class SeasonSales
      *   channel: string|null
      * }
      */
-    public static function report(Season $season, ?string $channel = null): array
+    public static function report(Season $season, ?string $channel = null, ?array $cycle = null): array
     {
         $cards = self::cards((int) $season->business_id);
-        $rows = self::grouped($season, $channel, ['order_items.product_id', 'order_items.name'])
+        $rows = self::grouped($season, $channel, ['order_items.product_id', 'order_items.name'], $cycle)
             ->map(fn ($r) => self::costed($cards, $r));
 
         $sales = round((float) $rows->sum('sales'), 3);
@@ -137,7 +150,7 @@ final class SeasonSales
             'gross_profit' => $profit,
             // كما في `Demo::productProfitability`: منزلةٌ واحدة، وصفرٌ حين لا بيع
             'margin' => $sales > 0 ? round($profit / $sales * 100, 1) : 0.0,
-            'orders' => (int) self::lines($season, $channel)->distinct()->count('order_items.order_id'),
+            'orders' => (int) self::lines($season, $channel, $cycle)->distinct()->count('order_items.order_id'),
             'units' => (int) $rows->sum('units'),
         ];
 
@@ -152,9 +165,9 @@ final class SeasonSales
 
         return [
             'summary' => $summary,
-            'channels' => self::channels($season, $cards),
+            'channels' => self::channels($season, $cards, $cycle),
             'top' => $top,
-            'unattributed' => self::unattributed($season),
+            'unattributed' => self::unattributed($season, $cycle),
             'channel' => $channel,
         ];
     }
@@ -237,13 +250,13 @@ final class SeasonSales
      * يبيع ويُحصى، وهو اليومَ لا يُنشئ طلبًا. والطلباتُ التي سبقت عمودَ
      * القناة تُقرأ «غير محدّدة» لا «صندوق».
      */
-    private static function channels(Season $season, array $cards): array
+    private static function channels(Season $season, array $cards, ?array $cycle = null): array
     {
-        $byChannel = self::grouped($season, null, ['orders.channel', 'order_items.product_id'])
+        $byChannel = self::grouped($season, null, ['orders.channel', 'order_items.product_id'], $cycle)
             ->map(fn ($r) => self::costed($cards, $r))
             ->groupBy(fn ($r) => $r['channel'] ?? SalesChannel::UNKNOWN);
 
-        $orders = self::lines($season)
+        $orders = self::lines($season, null, $cycle)
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->groupBy('orders.channel')
             ->selectRaw('orders.channel as channel, COUNT(DISTINCT order_items.order_id) as n')
@@ -271,16 +284,19 @@ final class SeasonSales
      * ولا يُضاف إلى الأرقام: بيعةٌ من شاشة «الكل» قد تكون للموسم وقد لا
      * تكون، والعدُّ يقول «انظر» لا «هذا لك».
      */
-    private static function unattributed(Season $season): array
+    private static function unattributed(Season $season, ?array $cycle = null): array
     {
         $productIds = $season->products()->pluck('products.id');
         if ($productIds->isEmpty()) {
             return ['orders' => 0, 'units' => 0];
         }
 
+        // ونافذةُ الدورة لا المرساة — وإلّا قِيس «ما فات النسبة» على سنةٍ مضت
+        $cycle ??= $season->cycle();
+
         $orders = Order::where('business_id', $season->business_id)->sold()
-            ->whereDate('ordered_at', '>=', $season->starts_at->toDateString())
-            ->whereDate('ordered_at', '<=', $season->ends_at->toDateString())
+            ->whereDate('ordered_at', '>=', $cycle['starts_at']->toDateString())
+            ->whereDate('ordered_at', '<=', $cycle['ends_at']->toDateString())
             ->select('id');
 
         $row = OrderItem::query()
@@ -302,9 +318,9 @@ final class SeasonSales
      *
      * @param  list<string>  $by  أعمدةُ التجميع
      */
-    private static function grouped(Season $season, ?string $channel, array $by)
+    private static function grouped(Season $season, ?string $channel, array $by, ?array $cycle = null)
     {
-        $lines = self::lines($season, $channel)
+        $lines = self::lines($season, $channel, $cycle)
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->groupBy($by)
             ->selectRaw(implode(', ', array_map(fn ($c) => "$c as ".last(explode('.', $c)), $by))

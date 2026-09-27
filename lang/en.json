@@ -6779,5 +6779,8 @@
     "سيُحذف كل ما يخص «:name»: المنتجات والطلبات والعملاء والمخزون والمستخدمون والملفات. لا يمكن التراجع عن هذا الإجراء.": "Everything belonging to “:name” will be deleted: products, orders, customers, inventory, users and files. This cannot be undone.",
     "منطقة الخطر": "Danger zone",
     "يمحو هذا الإجراء الشركة وكل بياناتها ومستخدميها وملفاتها. تُؤرشف دفاترها المحاسبية قبل المحو، وما عداها لا يُسترجع.": "This erases the business with all its data, users and files. Its accounting books are archived first; nothing else can be recovered.",
-    "هذا الجهاز صندوقٌ لمتجرٍ آخر. اضغط «ليس هذا متجرك؟» في شاشة الدخول لنسيانه.": "This device is a register for another shop. Tap “Not your shop?” on the sign-in screen to forget it."
+    "هذا الجهاز صندوقٌ لمتجرٍ آخر. اضغط «ليس هذا متجرك؟» في شاشة الدخول لنسيانه.": "This device is a register for another shop. Tap “Not your shop?” on the sign-in screen to forget it.",
+    "هذا الجهاز صندوقٌ لمتجرٍ آخر. انسَه ليفتح صندوقُ متجرك على هذا الجهاز.": "This device is another shop’s register. Forget it so your own register can open here.",
+    "انسَ هذا الجهاز": "Forget this device",
+    "نُسي هذا الجهاز — يُفتح صندوقُ متجرك عليه الآن.": "This device was forgotten — your own register can open on it now."
 }

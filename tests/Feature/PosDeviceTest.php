@@ -162,6 +162,98 @@ class PosDeviceTest extends TestCase
         $this->assertAuthenticated();
     }
 
+    /**
+     * ═══ والمخرجُ يُعطى في يده، لا يُشار إلى شاشةٍ لا يبلغها ═══
+     *
+     * «اضغط ليس هذا متجرك؟ في شاشة الدخول» تُقال لمن يقف في شاشة الدخول.
+     * أمّا من دخل إلى لوحته فلا يبلغ ذلك الزرَّ إلّا أن يخرج من النظام ثمّ
+     * يعود — فيبقى يضغط «نقطة البيع» ويُردّ كلَّ مرّة. وقد وقعت على صاحب
+     * متجرٍ حقيقيّ بعد أن كُفّ عنه الطرد.
+     */
+    public function test_and_the_warning_carries_the_way_out(): void
+    {
+        [$devB, $rawB] = $this->device($this->branchB);
+
+        $this->enterPos($devB, $rawB, $this->ownerA);
+
+        $toast = session('toast');
+
+        $this->assertSame(route('device.forget'), $toast['confirm']['url'] ?? null, 'التنبيهُ بلا زرِّ نسيان');
+        $this->assertSame('post', $toast['confirm']['method'] ?? null);
+        $this->assertStringContainsString('انسَه', $toast['msg']);
+    }
+
+    /** وفرعٌ في متجره لم يُسنَد إليه لا زرَّ له: ذاك إسنادٌ يُصلحه مديرُه */
+    public function test_but_a_branch_he_is_not_assigned_to_offers_no_such_button(): void
+    {
+        $manager = User::create([
+            'business_id' => $this->a->id, 'name' => 'مدير الخوير', 'email' => 'm2@abaad.om',
+            'password' => 'password', 'role' => 'manager', 'status' => 'نشط',
+        ]);
+        $manager->branches()->sync([$this->khuwair->id]);
+
+        [$devMain, $rawMain] = $this->device($this->seeb, 'صندوق السيب');
+
+        $this->enterPos($devMain, $rawMain, $manager);
+
+        $this->assertArrayNotHasKey('confirm', session('toast') ?? [], 'يُعرض نسيانُ صندوقٍ من متجره هو');
+    }
+
+    /** والنسيانُ من داخل اللوحة يفتح الصندوق — لا يُرسله إلى شاشة الدخول */
+    public function test_forgetting_from_inside_opens_the_till(): void
+    {
+        [$devB, $rawB] = $this->device($this->branchB);
+
+        $this->onDevice($devB, $rawB)->actingAs($this->ownerA)
+            ->post(route('device.forget'))
+            ->assertRedirect(route('pos.index'))
+            ->assertCookieExpired(PosTerminal::COOKIE);
+
+        $this->assertAuthenticated();
+
+        /*
+         * والكعكةُ تُسقط في الردّ لا في عميل الاختبار — فتُمحى هنا بيدٍ لتُقاس
+         * الطلبةُ التالية كما يقيسها متصفّحٌ نسيَها.
+         */
+        $this->defaultCookies = [];
+
+        // فلا يردّه حارسُ الفرع إلى لوحته: البابُ التالي بابُ تفعيلٍ لمتجره هو
+        $this->actingAs($this->ownerA)->get(route('pos.index'))
+            ->assertRedirect(route('pos.setup'));
+    }
+
+    /** ومتجرُ الفرع الواحد يُفتح صندوقُه من فوره — بلا شاشة تفعيل */
+    public function test_and_a_one_branch_shop_opens_its_till_at_once(): void
+    {
+        $shop = Business::create(['name' => 'متجر الفرع الواحد', 'type' => 'عام', 'status' => 'نشط']);
+        $only = Branch::create(['business_id' => $shop->id, 'name' => 'الوحيد']);
+        $owner = User::create([
+            'business_id' => $shop->id, 'name' => 'مالك', 'email' => 'one@abaad.om',
+            'password' => 'password', 'role' => 'admin', 'status' => 'نشط',
+        ]);
+
+        [$devB, $rawB] = $this->device($this->branchB);
+
+        $this->onDevice($devB, $rawB)->actingAs($owner)
+            ->post(route('device.forget'))
+            ->assertRedirect(route('pos.index'));
+
+        $this->defaultCookies = [];
+
+        $this->actingAs($owner)->get(route('pos.index'))->assertRedirect(route('pos.index'));
+
+        $this->assertDatabaseHas('pos_devices', ['business_id' => $shop->id, 'branch_id' => $only->id]);
+    }
+
+    /** ومن يقف في شاشة الدخول يبقى بابُه كما كان */
+    public function test_and_a_guest_who_forgets_still_lands_on_the_login_screen(): void
+    {
+        [$devB, $rawB] = $this->device($this->branchB);
+
+        $this->onDevice($devB, $rawB)->post(route('device.forget'))
+            ->assertRedirect(route('login'));
+    }
+
     public function test_and_the_loop_that_trapped_him_is_cut(): void
     {
         /*

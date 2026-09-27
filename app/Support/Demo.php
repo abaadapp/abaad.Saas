@@ -3965,7 +3965,17 @@ class Demo
          */
         $stray = \App\Models\StorePaymentIntent::where('business_id', $bid)
             ->where('status', \App\Models\StorePaymentIntent::PAID)
-            ->whereNull('order_id')->orderByDesc('id')->limit($limit)->get();
+            ->whereNull('order_id')
+            /*
+             * وما رُدّ من نفسه لا يُوقظه: المسألةُ أُغلقت والزبونُ استعاد
+             * مالَه (انظر `Paymob::refund`). وجرسٌ يرنّ لما انتهى يُدرَّب
+             * الناظرُ على تخطّيه — ثمّ يتخطّى ما لم ينتهِ معه.
+             *
+             * وما فشل ردُّه يبقى يرنّ: مالٌ محتجزٌ لا طلبَ له ولا رُدّ.
+             */
+            ->where(fn ($q) => $q->whereNull('refund_status')
+                ->orWhere('refund_status', '!=', \App\Models\StorePaymentIntent::REFUND_SENT))
+            ->orderByDesc('id')->limit($limit)->get();
 
         foreach ($stray as $s) {
             $add('stray-payment-'.$s->id, [

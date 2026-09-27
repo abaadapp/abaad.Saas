@@ -223,6 +223,14 @@
 (function () {
     // والطريقةُ الابتدائيّة من المفتوح لا من ظنٍّ في الشاشة
     var T = @json($t), fulfil = @json($fulfilments[0] ?? 'delivery'), pay = @json($payments[0] ?? null), promo = '';
+    /*
+     * الإجماليُّ الذي عُرض للزبون آخرَ مرّة — يُرسَل مع الطلب.
+     *
+     * لا يُحسب منه شيء: التسعيرُ في الخادم وحده. وإنّما يقول «هذا ما رآه
+     * ووافق عليه»، فإن سقط الخصمُ بين التسعيرة والإتمام عُلم أنّه لم يوافق
+     * على الجديد، فيُردّ ويُقال له — لا يمضي بسعرٍ لم يره.
+     */
+    var shownTotal = null;
     var form = document.querySelector('[data-rb-form]');
     // ورمزُ الحماية يُقرأ هنا كذلك: `RB.post` يحمله، ورفعُ الملفّ يخرج عنه
     var CSRF = document.querySelector('meta[name=csrf-token]').content;
@@ -249,6 +257,7 @@
             $('[data-rb-tax-row]').style.display = q.tax > 0 ? 'flex' : 'none'; $('[data-rb-tax]').textContent = q.tax_text;
             $('[data-rb-ship]').textContent = q.delivery > 0 ? q.delivery_text : T.free;
             $('[data-rb-total]').textContent = q.total_text;
+            shownTotal = q.total;
             $('[data-rb-place-label]').textContent = T.place + ' · ' + q.total_text;
             if (q.promo_error) { msg.textContent = q.promo_error; } else if (q.coupon) { msg.style.color = 'var(--rb-olive)'; msg.textContent = '✓ ' + q.coupon; }
         });
@@ -403,11 +412,22 @@
             recipient_name: $('[name=recipient_name]') ? $('[name=recipient_name]').value : '',
             recipient_phone: $('[name=recipient_phone]') ? $('[name=recipient_phone]').value : '',
             gift_card: gift, card_align: align,
+            // ما رآه ووافق عليه — انظر `shownTotal` أعلاه
+            agreed_total: shownTotal,
             card_file: cardWay === 'file' ? cardFile : null,
             card_file_name: cardWay === 'file' ? cardFileName : null,
         };
         RB.post('/checkout', payload).then(function (r) {
             btn.disabled = false;
+            /*
+             * وخطأُ الكود يُقرأ تحت حقله، وتُعاد التسعيرةُ ليرى الإجماليَّ
+             * الجديد قبل أن يُرسل ثانيةً. فالإقرارُ سعرٌ رآه لا مقبضٌ يُضغط.
+             */
+            if (r && r.errors && r.errors.promo) {
+                var pm = $('[data-rb-promo-msg]');
+                if (pm) { pm.style.color = 'var(--rb-clay, #b91c1c)'; pm.textContent = [].concat(r.errors.promo).join(' · '); }
+                refresh();
+            }
             if (r.ok) { RB.clear(); location.href = r.redirect; return; }
             var errs = r.errors || {}; var any = false;
             Object.keys(errs).forEach(function (k) {

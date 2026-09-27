@@ -256,6 +256,23 @@ final class CouponLimits
             return false;
         }
 
+        /*
+         * وما انقضى يُحرَّر صريحًا لا يُتجاهَل وحدَه.
+         *
+         * الاستعلامُ يتجاهله على كلّ حال، لكنّ صفًّا يبقى إلى الأبد عن دفعةٍ
+         * لم تقع يُثقل الجدولَ ويُربك من يقرؤه بعد سنة. فيُكنس حجزُ هذا الكود
+         * كلَّ مرّةٍ يُحجز فيه — كنسٌ محدودٌ بصفٍّ واحدٍ وفهرسِه، لا مهمّةٌ
+         * مجدولةٌ تُنسى.
+         *
+         * ولا يُكنس ما صار استعمالًا: شرطُ `order_id IS NULL`.
+         */
+        DB::table('coupon_redemptions')
+            ->where('business_id', $coupon->business_id)
+            ->where('coupon_id', $coupon->id)
+            ->whereNull('order_id')
+            ->where('reserved_until', '<', now())
+            ->delete();
+
         return DB::table('coupon_redemptions')->insertOrIgnore([
             'business_id' => (int) $coupon->business_id,
             'coupon_id' => (int) $coupon->id,
@@ -263,7 +280,13 @@ final class CouponLimits
             'store_payment_intent_id' => (int) $intent->id,
             'customer_id' => $customerId,
             'customer_key' => $key ?? self::BY_CARD.$customerId,
-            'reserved_until' => now()->addSeconds(Paymob::EXPIRES),
+            /*
+             * ومدّةُ الحجز مهلةُ جلسة الدفع نفسُها — تُقرأ من النيّة لا تُحسب
+             * هنا. فلو حُسبت في موضعين لَافترقتا يومَ تتبدّل مهلةُ البوّابة:
+             * حجزٌ أقصرُ يُفرِج عن الفرصة وزبونٌ ما زال يدفع، وحجزٌ أطولُ
+             * يُمسكها بعد أن أُغلقت صفحتُه.
+             */
+            'reserved_until' => $intent->expires_at ?? now()->addSeconds(Paymob::EXPIRES),
             'redeemed_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),

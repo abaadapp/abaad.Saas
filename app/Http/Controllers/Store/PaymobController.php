@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\StorePaymentIntent;
 use App\Support\CouponLimits;
 use App\Support\Store\Paymob;
+use App\Support\Store\PriceMovedAfterPayment;
 use App\Support\Store\WebCheckout;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -209,6 +210,29 @@ class PaymobController extends Controller
             $order = WebCheckout::place($business, (array) $intent->payload, (string) $intent->lang, paid: true, intent: $intent);
 
             $intent->fill(['order_id' => $order->id, 'error' => null])->save();
+        } catch (PriceMovedAfterPayment $e) {
+            /*
+             * ═══ وتبدُّلُ المبلغ لا قرارَ فيه — يُردّ المال ═══
+             *
+             * الزبونُ وافق على سعرٍ ودفعه. فلا يُكتب له طلبٌ بغيره، ولا
+             * يُحتجز مالُه على طلبٍ لن يُكتب حتّى يفتح صاحبُ المحلّ جرسَه.
+             *
+             * ويقع هذا حين ينقضي حجزُ الكوبون قبل أن يصل تصديقُ الدفع —
+             * تأكيدٌ متأخّرٌ على فرصةٍ أُفرِج عنها — أو حين يتبدّل سعرُ صنفٍ
+             * في أثناء الدفع.
+             *
+             * والردُّ مرّةً واحدةً: `Paymob::refund` تُطالب بالحال في القاعدة
+             * قبل الإرسال، فإشعارٌ أُعيد إرسالُه لا يردّ ثانيةً. وإن لم تقبل
+             * البوّابةُ الردَّ بقي الجرسُ يرنّ لصاحب المحلّ ليردّ بيده —
+             * ولا يُكتب «رُدّ» إلّا إن قالت البوّابةُ ذلك.
+             */
+            Log::warning('paymob: تبدّل المبلغ بعد الدفع — يُردّ المال', [
+                'intent' => $intent->id, 'charged' => $e->charged, 'now' => $e->now,
+            ]);
+
+            $intent->fill(['error' => Str::limit($e->getMessage(), 500)])->save();
+
+            Paymob::refund($intent->refresh(), 'تبدّل مبلغُ الطلب بعد الدفع');
         } catch (\Throwable $e) {
             Log::error('paymob: دُفع ولم يُنشأ طلب', ['intent' => $intent->id, 'why' => $e->getMessage()]);
 

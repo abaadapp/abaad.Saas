@@ -6902,5 +6902,6 @@
     "يبدأ حساب الحد لكل زبون من لحظة تفعيله — وما استُخدم قبله لا يُحسب.": "The per-customer limit is counted from the moment it is switched on — uses before that are not counted.",
     "حفظ الحدود": "Save limits",
     "تغيّر مبلغُ الطلب بعد الدفع — لم يُنشأ الطلب، وسيتواصل معك المتجر.": "The order total changed after payment — the order was not created, and the shop will contact you.",
-    "تم تحديث حدود الكوبون": "The coupon's limits were updated"
+    "تم تحديث حدود الكوبون": "The coupon's limits were updated",
+    ":why الإجمالي الجديد :total — أكّد الطلب مرّة أخرى للموافقة عليه.": ":why The new total is :total — confirm the order again to agree to it."
 }

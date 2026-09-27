@@ -347,6 +347,65 @@ class EachCustomerHasHisOwnShareOfTheCouponTest extends TestCase
         $this->assertSame(1, (int) $coupon->fresh()->per_customer_limit);
     }
 
+    public function test_lowering_the_limit_bites_at_once_on_what_was_already_used(): void
+    {
+        /*
+         * استعمله مرّتين بحدٍّ من ثلاث، ثمّ خفّض التاجرُ الحدَّ إلى واحدة.
+         * فلا يُفتح له المزيدُ: الحدُّ يُقرأ الآن، والمسجَّلُ لا يُمحى.
+         */
+        $coupon = $this->coupon(['per_customer_limit' => 3, 'per_customer_since' => now()->subDay()]);
+        $ahmed = $this->buyer('91234567', 'أحمد');
+
+        $this->sell($ahmed)->assertOk();
+        $this->sell($ahmed)->assertOk();
+
+        $this->actingAs($this->owner)
+            ->patch(route('admin.coupons.limits', $coupon->id), ['per_customer_limit' => 1])
+            ->assertRedirect();
+
+        $this->sell($ahmed)->assertStatus(422);
+        $this->assertSame(2, DB::table('coupon_redemptions')->count(), 'مُحي استعمالٌ بتعديل الحدّ');
+    }
+
+    public function test_the_limits_door_never_touches_the_code_or_its_value(): void
+    {
+        // الكودُ وقيمتُه وتاريخُه ونوعُه وحالُه لا تُعدَّل من هذا الباب
+        $coupon = $this->coupon(['type' => 'نسبة', 'value' => 10, 'min_order' => 5, 'expires_at' => now()->addWeek()]);
+
+        $this->actingAs($this->owner)->patch(route('admin.coupons.limits', $coupon->id), [
+            'per_customer_limit' => 2,
+            // ما يُدسّ في الحمولة لا يبلغ الصفَّ: القواعدُ لا تقبله
+            'code' => 'HACKED', 'value' => 99, 'type' => 'مبلغ', 'active' => false,
+            'min_order' => 0, 'expires_at' => now()->addYear()->format('Y-m-d'),
+        ])->assertRedirect();
+
+        $coupon->refresh();
+        $this->assertSame('SAVE10', $coupon->code);
+        $this->assertSame('10.000', (string) $coupon->value);
+        $this->assertSame('نسبة', $coupon->type);
+        $this->assertSame('5.000', (string) $coupon->min_order);
+        $this->assertTrue((bool) $coupon->active);
+        $this->assertSame(2, (int) $coupon->per_customer_limit);
+    }
+
+    public function test_the_total_limit_can_be_added_later_without_wiping_the_counter(): void
+    {
+        $coupon = $this->coupon();
+        $ahmed = $this->buyer('91234567', 'أحمد');
+
+        $this->sell($ahmed)->assertOk();
+        $this->sell($ahmed)->assertOk();
+
+        $this->actingAs($this->owner)
+            ->patch(route('admin.coupons.limits', $coupon->id), ['max_uses' => 2])
+            ->assertRedirect();
+
+        $coupon->refresh();
+        $this->assertSame(2, (int) $coupon->used_count, 'صُفِّر العدّادُ الإجماليّ');
+        $this->assertTrue($coupon->isExhausted());
+        $this->sell($ahmed)->assertStatus(422);
+    }
+
     /* ═════════ ومجهولٌ لا يُحسب له حدّ ═════════ */
 
     public function test_a_limited_coupon_asks_for_a_phone_when_the_buyer_is_unknown(): void

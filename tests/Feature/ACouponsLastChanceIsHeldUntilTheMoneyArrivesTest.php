@@ -13,6 +13,7 @@ use App\Models\Setting;
 use App\Models\StorePaymentIntent;
 use App\Models\User;
 use App\Support\CouponLimits;
+use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\OrderCorrection;
@@ -51,6 +52,9 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
 
     private Product $rose;
 
+    /** بابُ ردّ المال عند Paymob — يُزيَّف وحدَه ليُقاس أنّه نُودي */
+    private const REFUND_URL = 'oman.paymob.com/api/acceptance/void_refund/refund';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -87,9 +91,11 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
 
     private function gateway(): PaymentGateway
     {
-        return PaymentGateway::create([
+        // ولا تُنشأ مرّتين: `openCard` قد يُنادى مرّتين في اختبارٍ واحد
+        return PaymentGateway::firstOrCreate([
             'business_id' => $this->shop->id,
             'provider' => PaymentGateway::PAYMOB,
+        ], [
             // مفاتيحُ تجريبيّةٌ — لا مفتاحَ حقيقيٍّ في اختبار، ولا دفعةَ حقيقيّة
             'public_key' => 'pk_test_x', 'secret_key' => 'sk_test_x',
             'hmac_secret' => 'hmac_secret_value', 'card_integration_id' => '4569876',
@@ -116,11 +122,24 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         ];
     }
 
+    /**
+     * يزيّف بابَي البوّابة: فتحُ الدفعة، وردُّ المال.
+     *
+     * ولا اتّصالَ حقيقيٌّ ولا مفتاحَ حقيقيّ — ولا ريالٌ يتحرّك.
+     */
+    private function fakeGateway(?array $refund = null, int $refundStatus = 200): void
+    {
+        Http::fake([
+            self::REFUND_URL => Http::response($refund ?? ['id' => 55443322, 'success' => true], $refundStatus),
+            'oman.paymob.com/v1/intention/' => Http::response(['client_secret' => 'csk_x', 'intention_order_id' => '777'], 201),
+        ]);
+    }
+
     /** يفتح صفحةَ الدفع — ويردّ نيّتَها */
     private function openCard(array $over = []): StorePaymentIntent
     {
         $this->gateway();
-        Http::fake(['oman.paymob.com/*' => Http::response(['client_secret' => 'csk_x', 'intention_order_id' => '777'], 201)]);
+        $this->fakeGateway();
 
         $this->postJson('/s/ribbon/checkout', $this->order($over))->assertOk();
 
@@ -288,9 +307,236 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         $this->fire($this->notice($intent))->assertOk();
 
         $this->assertSame(0, Order::count(), 'كُتب طلبٌ بمبلغٍ غير الذي قُبض');
+
         $intent->refresh();
-        $this->assertTrue($intent->strayPayment(), 'لم يُعلَّم أنّ مالًا وصل بلا طلب');
-        $this->assertStringContainsString('تغيّر مبلغُ الطلب', (string) $intent->error);
+        $this->assertStringContainsString('تبدّل المبلغ بعد الدفع', (string) $intent->error);
+
+        // ورُدّ المالُ من نفسه — لا يُحتجز حتّى يفتح صاحبُ المحلّ جرسَه
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'void_refund/refund')
+            && $r['transaction_id'] === '998877'
+            && $r['amount_cents'] === 20000);
+
+        $this->assertSame(StorePaymentIntent::REFUND_SENT, $intent->refund_status);
+        $this->assertSame('55443322', (string) $intent->provider_refund_id);
+        $this->assertNotNull($intent->refunded_at);
+        $this->assertFalse($intent->needsAttention(), 'يرنّ الجرسُ لمالٍ رُدّ');
+    }
+
+    /* ═════════════ ومهلةُ الحجز مهلةُ الجلسة نفسُها ═════════════ */
+
+    public function test_the_hold_lasts_exactly_as_long_as_the_payment_session(): void
+    {
+        $this->coupon(['per_customer_limit' => 1]);
+        $intent = $this->openCard();
+
+        $held = DB::table('coupon_redemptions')->firstOrFail();
+
+        $this->assertNotNull($intent->expires_at, 'مهلةُ الجلسة لم تُكتب على النيّة');
+        $this->assertSame(
+            $intent->expires_at->toDateTimeString(),
+            (string) $held->reserved_until,
+            'مدّةُ الحجز تُحسب على حدة — فتفترق عن مهلة الصفحة يوم تتبدّل',
+        );
+        $this->assertSame(now()->addSeconds(Paymob::EXPIRES)->toDateTimeString(), $intent->expires_at->toDateTimeString());
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/v1/intention/') && $r['expiration'] === Paymob::EXPIRES);
+    }
+
+    public function test_an_expired_hold_is_swept_not_merely_ignored(): void
+    {
+        $this->coupon(['per_customer_limit' => 2]);
+        $this->openCard();
+
+        $this->assertSame(1, DB::table('coupon_redemptions')->count());
+
+        Carbon::setTestNow(now()->addSeconds(Paymob::EXPIRES + 60));
+
+        // حجزٌ جديدٌ يكنس المنقضي — لا صفَّ يبقى إلى الأبد عن دفعةٍ لم تقع
+        $this->openCard();
+
+        $rows = DB::table('coupon_redemptions')->get();
+        $this->assertCount(1, $rows, 'بقي حجزٌ منقضٍ في الجدول');
+    }
+
+    /* ═════════════ وتأكيدٌ متأخّرٌ بعد انقضاء الحجز ═════════════ */
+
+    public function test_a_late_confirmation_on_a_lost_slot_refunds_instead_of_writing_a_wrong_order(): void
+    {
+        /*
+         * فتح صفحةَ الدفع على آخر فرصة، فانقضت المهلةُ قبل أن يُصدَّق دفعُه،
+         * وأخذ غيرُه الفرصةَ في أثنائها. فلا طلبَ بالسعر الكامل — هو وافق
+         * على المخفَّض ودفعه — ولا مالٌ يُحتجز حتّى يفتح صاحبُ المحلّ جرسَه.
+         */
+        $this->coupon(['max_uses' => 1]);
+        $intent = $this->openCard();
+
+        Carbon::setTestNow(now()->addSeconds(Paymob::EXPIRES + 60));
+
+        $this->cod(['name' => 'سالم', 'phone' => '96899220002'])->assertOk();
+        $this->assertSame(1, Order::count());
+
+        $this->fire($this->notice($intent))->assertOk();
+
+        $this->assertSame(1, Order::count(), 'كُتب طلبٌ ثانٍ بمبلغٍ غير الذي قُبض');
+
+        $intent->refresh();
+        $this->assertNull($intent->order_id);
+        $this->assertSame(StorePaymentIntent::REFUND_SENT, $intent->refund_status, 'احتُجز مالُه ولم يُردّ');
+        $this->assertFalse($intent->needsAttention());
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'void_refund/refund') && $r['amount_cents'] === 15000);
+    }
+
+    public function test_a_repeated_confirmation_never_refunds_twice(): void
+    {
+        $this->coupon(['max_uses' => 1]);
+        $intent = $this->openCard();
+
+        Carbon::setTestNow(now()->addSeconds(Paymob::EXPIRES + 60));
+        $this->cod(['name' => 'سالم', 'phone' => '96899220002'])->assertOk();
+
+        // ثلاثةُ إشعاراتٍ بالمعرّف نفسِه — Paymob تُعيد الإرسال
+        $this->fire($this->notice($intent))->assertOk();
+        $this->fire($this->notice($intent))->assertOk();
+        $this->fire($this->notice($intent))->assertOk();
+
+        $this->assertSame(
+            1,
+            Http::recorded(fn ($r) => str_contains($r->url(), 'void_refund/refund'))->count(),
+            'رُدّ المالُ مرّتين',
+        );
+    }
+
+    public function test_a_refund_the_gateway_refuses_keeps_the_bell_ringing(): void
+    {
+        /*
+         * ولا يُكتب «رُدّ» إلّا إن قالت البوّابةُ ذلك: طمأنينةٌ كاذبةٌ بردٍّ
+         * لم يقع أسوأُ من غياب الردّ — صاحبُ المحلّ يقرأ «انتهت» ومالُ الزبون
+         * عنده.
+         */
+        $this->coupon(['max_uses' => 1]);
+        $this->gateway();
+        $this->fakeGateway(['detail' => 'transaction not refundable'], refundStatus: 422);
+
+        $this->postJson('/s/ribbon/checkout', $this->order())->assertOk();
+        $intent = StorePaymentIntent::latest('id')->firstOrFail();
+
+        Carbon::setTestNow(now()->addSeconds(Paymob::EXPIRES + 60));
+        $this->cod(['name' => 'سالم', 'phone' => '96899220002'])->assertOk();
+
+        $this->fire($this->notice($intent))->assertOk();
+
+        $intent->refresh();
+        $this->assertSame(StorePaymentIntent::REFUND_FAILED, $intent->refund_status);
+        $this->assertStringContainsString('not refundable', (string) $intent->refund_error);
+        $this->assertTrue($intent->needsAttention(), 'سكت الجرسُ عن مالٍ لم يُردّ');
+    }
+
+    public function test_the_bell_falls_silent_for_money_that_came_back(): void
+    {
+        /*
+         * وجرسُ «دفعةٌ وصلت ولم يُنشأ لها طلب» يُقرأ من `Demo` لا من النموذج.
+         * فيُقاس من حيث يقرؤه التاجر: ما رُدّ انتهى، وما لم يُردّ يبقى يرنّ.
+         */
+        $this->coupon(['max_uses' => 1]);
+        $intent = $this->openCard();
+
+        Carbon::setTestNow(now()->addSeconds(Paymob::EXPIRES + 60));
+        $this->cod(['name' => 'سالم', 'phone' => '96899220002'])->assertOk();
+        $this->fire($this->notice($intent))->assertOk();
+
+        $this->actingAs($this->owner);
+        $keys = array_column(Demo::notifications(), 'key');
+
+        $this->assertNotContains('stray-payment-'.$intent->id, $keys, 'يرنّ الجرسُ لمالٍ رُدّ');
+
+        // وما فشل ردُّه يبقى يرنّ — مالٌ محتجزٌ لا طلبَ له ولا رُدّ
+        $intent->forceFill([
+            'refund_status' => StorePaymentIntent::REFUND_FAILED,
+            'provider_refund_id' => null,
+        ])->save();
+
+        $this->assertContains(
+            'stray-payment-'.$intent->id,
+            array_column(Demo::notifications(), 'key'),
+            'سكت الجرسُ عن مالٍ لم يُردّ',
+        );
+    }
+
+    public function test_the_refund_is_claimed_before_it_is_sent(): void
+    {
+        /*
+         * والمطالبةُ حارسٌ ثانٍ تحت حارسِ `settle`: نداءان متقاربان على
+         * `refund` — من مسارٍ آخر، أو من محاولةٍ تُعاد — لا يُرسلان ردَّين
+         * على المال نفسِه. ويُقاس هنا مباشرةً لأنّ `settle` تحجب الثاني قبله.
+         */
+        $this->coupon(['max_uses' => 1]);
+        $intent = $this->openCard();
+        $intent->forceFill([
+            'status' => StorePaymentIntent::PAID,
+            'provider_transaction_id' => '998877',
+            'paid_at' => now(),
+        ])->save();
+
+        $this->assertTrue(Paymob::refund($intent->refresh(), 'سبب'));
+        $this->assertFalse(Paymob::refund($intent->refresh(), 'سبب'), 'رُدّ المالُ مرّةً ثانية');
+
+        $this->assertSame(
+            1,
+            Http::recorded(fn ($r) => str_contains($r->url(), 'void_refund/refund'))->count(),
+            'أُرسل ردَّان على المال نفسِه',
+        );
+    }
+
+    /* ═════════════ وخصمٌ سقط في الدفع عند الاستلام يُقال ═════════════ */
+
+    public function test_a_discount_that_vanished_before_placing_is_told_not_swallowed(): void
+    {
+        /*
+         * كتب كودَه ورأى السعرَ المخفَّض، ثمّ نفدت مرّاتُ الكود من صندوقٍ آخر
+         * قبل أن يضغط «أكمل الطلب». وكان الطلبُ يمضي بالسعر الكامل صامتًا.
+         */
+        $this->coupon(['max_uses' => 1]);
+
+        $this->postJson('/s/ribbon/checkout', $this->order(['pay' => 'cod', 'name' => 'سالم', 'phone' => '96899220002']))->assertOk();
+
+        $res = $this->cod(['agreed_total' => 15]);
+
+        $res->assertStatus(422);
+        $said = implode(' ', (array) ($res->json('errors.promo') ?? []));
+        $this->assertStringContainsString('انتهت مرات استخدام الكوبون', $said, 'لم يُقل له لماذا سقط الخصم');
+        $this->assertStringContainsString('20', $said, 'لم يُقل له الإجماليُّ الجديد');
+        $this->assertSame(1, Order::count(), 'كُتب طلبٌ بسعرٍ لم يوافق عليه');
+    }
+
+    public function test_the_same_order_goes_through_once_he_agrees_to_the_new_total(): void
+    {
+        $this->coupon(['max_uses' => 1]);
+        $this->postJson('/s/ribbon/checkout', $this->order(['pay' => 'cod', 'name' => 'سالم', 'phone' => '96899220002']))->assertOk();
+
+        $this->cod(['agreed_total' => 15])->assertStatus(422);
+
+        // فيقرّ بالإجماليّ الجديد — وهو ما ترسله الصفحةُ بعد إعادة التسعير
+        $this->cod(['agreed_total' => 20])->assertOk();
+
+        $mine = Order::where('customer_name', 'مريم')->firstOrFail();
+        $this->assertSame('20.000', (string) $mine->total);
+        $this->assertNull($mine->coupon_code, 'كُتب كوبونٌ لم يُقبل');
+    }
+
+    public function test_an_order_without_a_code_is_never_asked_to_agree_again(): void
+    {
+        $this->cod(['promo' => ''])->assertOk();
+
+        $this->assertSame(1, Order::count());
+    }
+
+    public function test_a_coupon_that_still_works_needs_no_second_confirmation(): void
+    {
+        $this->coupon(['max_uses' => 5]);
+
+        $this->cod()->assertOk();
+
+        $this->assertSame('15.000', (string) Order::firstOrFail()->total);
     }
 
     /* ═════════════ وفشلُ الدفع يردّ الفرصة ═════════════ */

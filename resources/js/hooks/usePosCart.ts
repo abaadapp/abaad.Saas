@@ -648,7 +648,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                      * يُعلَن السعرُ للزبون. والمعاينةُ لا تحتسب استعمالًا —
                      * الاحتسابُ عند الدفع وحده (`CouponLimits::record`).
                      */
-                    body: JSON.stringify({ code, subtotal, customer_id: customerId }),
+                    body: JSON.stringify({ code, subtotal, customer_id: customerId, customer }),
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok) {
@@ -665,8 +665,38 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 setCouponLoading(false);
             }
         },
-        [couponCode, subtotal, customerId, onToast],
+        [couponCode, subtotal, customerId, customer, onToast],
     );
+
+    /**
+     * ═══ وتغييرُ الزبون يُعيد فحصَ الكوبون في حينه ═══
+     *
+     * الكودُ قد يكون محدودًا «مرّتين لكلّ زبون». فلو طبّقه الكاشيرُ على أحمد
+     * ثمّ بدّل الزبونَ إلى محمّد لَبقي خصمُ أحمد معروضًا على فاتورة محمّد —
+     * ويُردّ عند الدفع بعد أن أُعلن السعر. وإن كان محمّدٌ قد بلغ حدَّه فالخصمُ
+     * يُسقط هنا ويُقال السبب، لا عند الدرج.
+     *
+     * والنداءُ هو نداءُ المعاينة نفسُه: الخادمُ يقول، والشاشةُ لا تفترض. وهو
+     * لا يحتسب استعمالًا — الاحتسابُ عند الدفع وحدَه. والدفعُ يُعيد الفحصَ
+     * مرّةً أخيرةً على كلّ حال، فنجاحُ المعاينة ليس إذنًا.
+     */
+    const couponCustomer = useRef<string>(`${customerId ?? ''}|${customer}`);
+
+    useEffect(() => {
+        const now = `${customerId ?? ''}|${customer}`;
+
+        if (couponCustomer.current === now) {
+            return;
+        }
+
+        couponCustomer.current = now;
+
+        if (!coupon) {
+            return;
+        }
+
+        void applyCoupon(coupon.code);
+    }, [customerId, customer, coupon, applyCoupon]);
 
     /**
      * إعادة تطبيق كوبون الطلب المستأنف — مرة واحدة عند فتح السلة.

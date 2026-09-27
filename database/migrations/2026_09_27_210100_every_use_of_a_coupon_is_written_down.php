@@ -29,6 +29,22 @@ use Illuminate\Support\Facades\Schema;
  *
  * والعزلُ بـ`business_id`: كوبوناتُ التجّار لا تختلط، ورقمُ الهاتف ليس
  * فريدًا في الدنيا — هو فريدٌ في متجرٍ واحد.
+ *
+ * ═══ وصفٌّ بلا طلبٍ بعد: حجزُ الفرصة ═══
+ *
+ * الدفعُ بالبطاقة لا يُنشئ طلبَه في حينه — يُنشأ من إشعار البوّابة بعد أن
+ * يُقبض المال. وبين الصفحتين دقائق: يفتح فلانٌ صفحةَ الدفع على آخر فرصةٍ
+ * في الكود، ويستعملها غيرُه في أثنائها، فيدفع فلانٌ سعرًا مخفَّضًا ويصل
+ * إشعارُه إلى كودٍ نفد — فإمّا كُتب طلبُه بسعرٍ غير الذي دفع، أو رُدّ
+ * والمالُ مقبوض.
+ *
+ * فتُحجز الفرصةُ عند فتح صفحة الدفع: صفٌّ بلا `order_id` وله `reserved_until`.
+ * يُحسب في الحدّ ما دام حيًّا، ويصير استعمالًا حين يُنشأ الطلب، ويُطرح إذا
+ * فشل الدفعُ أو انقضت مدّته — فلا فرصةٌ تُؤكل بمن لم يدفع، ولا سعرٌ يُعرض
+ * ويُقبض غيرُه.
+ *
+ * و`store_payment_intent_id` فريدٌ: نيّةُ دفعٍ واحدة حجزٌ واحد، فتحديثُ
+ * الصفحة أو إعادةُ المحاولة لا يحجز مرّتين.
  */
 return new class extends Migration
 {
@@ -38,8 +54,23 @@ return new class extends Migration
             $table->id();
             $table->foreignId('business_id')->constrained('businesses')->cascadeOnDelete();
             $table->foreignId('coupon_id')->constrained('coupons')->cascadeOnDelete();
-            // الطلبُ يُحذف فيسقط سجلُّه معه: استعمالٌ لطلبٍ لا وجودَ له ليس استعمالًا
-            $table->foreignId('order_id')->constrained('orders')->cascadeOnDelete();
+            /*
+             * والطلبُ يُحذف فيسقط سجلُّه معه: استعمالٌ لطلبٍ لا وجودَ له ليس
+             * استعمالًا. ويقبل الفراغَ لأنّ الحجزَ يسبق الطلب.
+             */
+            $table->foreignId('order_id')->nullable()->constrained('orders')->cascadeOnDelete();
+            /*
+             * ونيّةُ الدفع التي حُجزت لها الفرصة — تُفرَّغ حين يُنشأ الطلب؟ لا:
+             * تبقى لتُقرأ، والحجزُ يُعرف بفراغ `order_id` لا بغياب النيّة.
+             */
+            $table->foreignId('store_payment_intent_id')->nullable()->unique()
+                ->constrained('store_payment_intents')->nullOnDelete();
+            /*
+             * وإلى متى يُحسب الحجزُ حيًّا — ساعةٌ كمدّة صفحة الدفع
+             * (`Paymob::EXPIRES`). وما انقضى لا يُحسب ولا يُحذف في حينه: لا
+             * مهمّةَ مجدولةٍ لأجله، والاستعلامُ يتجاهله.
+             */
+            $table->timestamp('reserved_until')->nullable();
             /*
              * والعميلُ يُحفظ مرجعًا ضعيفًا: بطاقتُه قد تُحذف حذفًا ناعمًا،
              * ولا يجوز أن يسقط سجلُّ استعماله معها فيُفتح له الحدُّ من جديد.
@@ -49,11 +80,18 @@ return new class extends Migration
             $table->timestamp('redeemed_at');
             $table->timestamps();
 
-            // طلبٌ واحدٌ استعمالٌ واحد — القيدُ في القاعدة
+            /*
+             * طلبٌ واحدٌ استعمالٌ واحد — القيدُ في القاعدة لا فحصٌ في الكود.
+             *
+             * والفراغُ يتكرّر: الفهرسُ الفريد يسمح بأكثر من `NULL` في
+             * PostgreSQL وSQLite معًا، فالحجوزُ لا تتزاحم عليه.
+             */
             $table->unique('order_id');
             // والسؤالُ الذي يُسأل في كلّ بيعة: كم مرّةً استعمل هذا الزبونُ هذا الكود؟
             $table->index(['business_id', 'coupon_id', 'customer_key']);
             $table->index(['business_id', 'coupon_id', 'customer_id']);
+            // والحجوزُ الحيّة تُقرأ بمدّتها
+            $table->index('reserved_until');
         });
     }
 

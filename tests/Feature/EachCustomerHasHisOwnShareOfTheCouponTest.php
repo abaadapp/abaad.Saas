@@ -20,6 +20,7 @@ use App\Support\OrderCorrection;
 use App\Support\OrderStatus;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -81,6 +82,12 @@ class EachCustomerHasHisOwnShareOfTheCouponTest extends TestCase
         ]);
 
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_enabled', 'value' => '0']);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     /* ═══════════════════════ أدواتٌ ═══════════════════════ */
@@ -212,6 +219,132 @@ class EachCustomerHasHisOwnShareOfTheCouponTest extends TestCase
         $this->coupon();
 
         $this->sell(null, ['customer' => 'عميل نقدي'])->assertOk();
+    }
+
+    /* ═════════ والعدُّ من لحظة القرار، لا من قبله ═════════ */
+
+    public function test_uses_that_happened_before_the_limit_was_switched_on_are_not_counted(): void
+    {
+        /*
+         * كودٌ يعمل منذ شهور، والزبونُ استعمله ثلاثًا. ثمّ يضبط التاجرُ
+         * «مرّتان لكلّ زبون». فلو حُسب ما مضى لَاستيقظ الزبونُ ممنوعًا على حدٍّ
+         * لم يكن موجودًا يوم اشترى — وهو لم يخالف شيئًا.
+         */
+        $coupon = $this->coupon();
+        $ahmed = $this->buyer('91234567', 'أحمد');
+
+        // ثلاثُ بيعاتٍ في رمضان، والقرارُ بعدها بأسبوع
+        Carbon::setTestNow('2027-03-01 12:00:00');
+
+        foreach (range(1, 3) as $ignored) {
+            $this->sell($ahmed)->assertOk();
+        }
+
+        Carbon::setTestNow('2027-03-08 09:00:00');
+
+        $this->actingAs($this->owner)
+            ->patch(route('admin.coupons.limits', $coupon->id), ['per_customer_limit' => 2])
+            ->assertRedirect();
+
+        $coupon->refresh();
+        $this->assertNotNull($coupon->per_customer_since, 'لحظةُ التفعيل لم تُكتب');
+        $this->assertSame(0, CouponLimits::countFor($coupon, 'phone:96891234567', $ahmed->id), 'حُسب ما وقع قبل القرار');
+
+        // فله مرّتان من اليوم
+        $this->sell($ahmed)->assertOk();
+        $this->sell($ahmed)->assertOk();
+        $this->sell($ahmed)->assertStatus(422);
+
+        $this->assertSame(5, (int) $coupon->fresh()->used_count, 'العدّادُ الإجماليُّ لا يُصفَّر');
+    }
+
+    public function test_switching_the_limit_off_and_on_again_never_wipes_what_was_recorded(): void
+    {
+        /*
+         * وإلّا كان الإطفاءُ والإشعالُ مقبضًا يُفتح به الكودُ كلَّ يوم:
+         * «مرّتان لكلّ زبون» تصير مرّتين في كلّ ضغطتين.
+         */
+        $coupon = $this->coupon(['per_customer_limit' => 1, 'per_customer_since' => now()->subDay()]);
+        $ahmed = $this->buyer('91234567', 'أحمد');
+
+        $this->sell($ahmed)->assertOk();
+        $this->sell($ahmed)->assertStatus(422);
+
+        $since = $coupon->fresh()->per_customer_since;
+
+        // أطفأه
+        $this->actingAs($this->owner)
+            ->patch(route('admin.coupons.limits', $coupon->id), ['per_customer_limit' => null])
+            ->assertRedirect();
+
+        $this->assertNull($coupon->fresh()->per_customer_limit);
+        $this->assertNotNull($coupon->fresh()->per_customer_since, 'مُحيت لحظةُ التفعيل بالإطفاء');
+        // وبلا حدٍّ يمضي البيع، كما هي القاعدة
+        $this->sell($ahmed)->assertOk();
+
+        // ثمّ أعاده
+        $this->actingAs($this->owner)
+            ->patch(route('admin.coupons.limits', $coupon->id), ['per_customer_limit' => 1])
+            ->assertRedirect();
+
+        $this->assertEquals($since, $coupon->fresh()->per_customer_since, 'أُزيحت لحظةُ التفعيل فانفتح الحدُّ من جديد');
+        $this->sell($ahmed)->assertStatus(422);
+    }
+
+    public function test_raising_the_limit_does_not_move_the_day_it_started(): void
+    {
+        $coupon = $this->coupon(['per_customer_limit' => 1, 'per_customer_since' => now()->subWeek()]);
+        $since = $coupon->per_customer_since;
+
+        $this->actingAs($this->owner)
+            ->patch(route('admin.coupons.limits', $coupon->id), ['per_customer_limit' => 5, 'max_uses' => 100])
+            ->assertRedirect();
+
+        $coupon->refresh();
+        $this->assertSame(5, (int) $coupon->per_customer_limit);
+        $this->assertSame(100, (int) $coupon->max_uses);
+        $this->assertEquals($since, $coupon->per_customer_since);
+    }
+
+    public function test_a_new_coupon_created_with_the_limit_counts_from_its_birth(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.coupons.store'), [
+            'code' => 'NEW10', 'type' => 'مبلغ', 'value' => 10, 'per_customer_limit' => 1,
+        ])->assertRedirect();
+
+        $coupon = Coupon::where('code', 'NEW10')->firstOrFail();
+
+        $this->assertSame(1, (int) $coupon->per_customer_limit);
+        $this->assertNotNull($coupon->per_customer_since, 'كودٌ جديدٌ بلا لحظةِ تفعيل');
+    }
+
+    public function test_a_coupon_created_without_the_limit_has_no_start_day(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.coupons.store'), [
+            'code' => 'PLAIN', 'type' => 'مبلغ', 'value' => 10,
+        ])->assertRedirect();
+
+        $coupon = Coupon::where('code', 'PLAIN')->firstOrFail();
+
+        $this->assertNull($coupon->per_customer_limit);
+        $this->assertNull($coupon->per_customer_since);
+    }
+
+    public function test_a_stranger_never_edits_my_coupons_limits(): void
+    {
+        $coupon = $this->coupon(['per_customer_limit' => 1]);
+
+        $jar = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
+        $stranger = User::create([
+            'business_id' => $jar->id, 'name' => 'جار', 'email' => 'jar@share.local',
+            'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+
+        $this->actingAs($stranger)
+            ->patch(route('admin.coupons.limits', $coupon->id), ['per_customer_limit' => 99])
+            ->assertNotFound();
+
+        $this->assertSame(1, (int) $coupon->fresh()->per_customer_limit);
     }
 
     /* ═════════ ومجهولٌ لا يُحسب له حدّ ═════════ */

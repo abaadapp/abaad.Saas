@@ -10,6 +10,8 @@ class Coupon extends Model
     protected $casts = [
         'value' => 'decimal:3', 'min_order' => 'decimal:3',
         'expires_at' => 'datetime', 'active' => 'boolean',
+        // لحظةُ تفعيل الحدّ لكلّ زبون — منها يبدأ العدّ
+        'per_customer_since' => 'datetime',
     ];
 
     /**

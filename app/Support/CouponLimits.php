@@ -5,6 +5,8 @@ namespace App\Support;
 use App\Models\Coupon;
 use App\Models\Customer;
 use App\Models\Order;
+use App\Models\StorePaymentIntent;
+use App\Support\Store\Paymob;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -74,7 +76,7 @@ final class CouponLimits
      *
      * فلا يُفلت أحدُهما.
      */
-    public static function countFor(Coupon $coupon, ?string $key, ?int $customerId): int
+    public static function countFor(Coupon $coupon, ?string $key, ?int $customerId, ?StorePaymentIntent $except = null): int
     {
         if ($key === null && $customerId === null) {
             return 0;
@@ -97,6 +99,40 @@ final class CouponLimits
                     $q->orWhere('customer_id', $customerId);
                 }
             })
+            /*
+             * ═══ ولا يُحسب إلّا ما وقع بعد قرار التاجر ═══
+             *
+             * كودٌ يعمل منذ شهور، ثمّ يضبط عليه التاجرُ «مرّتان لكلّ زبون».
+             * فلو حُسبت استعمالاتُ ما قبل قراره لَاستيقظ زبائنُه ممنوعين على
+             * حدٍّ لم يكن موجودًا يوم اشتروا. والعدُّ من لحظة التفعيل
+             * (`per_customer_since`) — وهي محفوظةٌ لكلّ كوبونٍ على حدة.
+             *
+             * وكوبونٌ بلا تاريخِ تفعيلٍ (وهو ما لا يقع: التاريخُ يُكتب مع
+             * الحدّ) يُحسب كلُّه — فالغيابُ لا يُفتح به الحدُّ على مصراعيه.
+             */
+            ->when($coupon->per_customer_since, fn ($q) => $q->where(
+                fn ($w) => $w->where('redeemed_at', '>=', $coupon->per_customer_since)
+                    // والحجزُ الحيُّ يُحسب أيًّا كان تاريخُ تفعيلِه: هو الآن
+                    ->orWhereNotNull('reserved_until'),
+            ))
+            /*
+             * وما يُحسب: استعمالٌ وقع (له طلب)، أو حجزٌ لم تنقضِ مدّتُه.
+             *
+             * وحجزٌ انقضى لا يُحسب ولا يُحذف في حينه — لا مهمّةَ مجدولةٍ
+             * لأجله، ولا صفٌّ يُمحى من تحت نيّةِ دفعٍ قد يصل إشعارُها متأخّرًا.
+             */
+            ->where(fn ($q) => $q->whereNotNull('order_id')
+                ->orWhere('reserved_until', '>', now()))
+            /*
+             * وحجزُ النيّةِ التي نفحصها لا يُحسب عليها.
+             *
+             * الزبونُ حجز فرصتَه بنفسه عند فتح صفحة الدفع. فلو حُسبت عليه
+             * لَردّ الحدُّ طلبَه هو — دفع، وحُجزت له، ثمّ مُنع بحجزه.
+             */
+            ->when($except, fn ($q) => $q->where(
+                fn ($w) => $w->whereNull('store_payment_intent_id')
+                    ->orWhere('store_payment_intent_id', '!=', $except->id),
+            ))
             ->count();
     }
 
@@ -106,9 +142,18 @@ final class CouponLimits
      * وكوبونٌ بلا حدٍّ لكلّ زبون يُردّ `null` دائمًا: هو كلُّ كوبونٍ في
      * القاعدة اليوم، فلا يتبدّل عليه شيء.
      */
-    public static function refusal(?Coupon $coupon, ?string $key, ?int $customerId): ?string
+    public static function refusal(?Coupon $coupon, ?string $key, ?int $customerId, ?StorePaymentIntent $except = null): ?string
     {
-        if ($coupon === null || $coupon->per_customer_limit === null) {
+        if ($coupon === null) {
+            return null;
+        }
+
+        // والحدُّ الإجماليُّ أوّلًا: من نفد كودُه لا يُسأل عن نصيبه منه
+        if ($why = self::totalRefusal($coupon, $except)) {
+            return $why;
+        }
+
+        if ($coupon->per_customer_limit === null) {
             return null;
         }
 
@@ -127,11 +172,117 @@ final class CouponLimits
             return __('هذا الكوبون محدودٌ لكلّ زبون — أضف رقم هاتف الزبون ليُحسب له.');
         }
 
-        if (self::countFor($coupon, $key, $customerId) >= $limit) {
+        if (self::countFor($coupon, $key, $customerId, $except) >= $limit) {
             return __('حدُّ هذا الكوبون :n استخدام لكل زبون، وقد بلغه هذا الزبون.', ['n' => $limit]);
         }
 
         return null;
+    }
+
+    /**
+     * كم فرصةً محجوزةً الآن على هذا الكود — لكلّ الزبائن.
+     *
+     * والحجوزُ لا تدخل `used_count`: ذاك عدّادُ ما وقع فعلًا، ويُقرأ في
+     * الفواتير والتقارير. فالحجزُ يُحسب هنا ويُضاف إليه عند الفحص وحده.
+     */
+    private static function reservedFor(Coupon $coupon, ?StorePaymentIntent $except = null): int
+    {
+        return DB::table('coupon_redemptions')
+            ->where('business_id', $coupon->business_id)
+            ->where('coupon_id', $coupon->id)
+            ->whereNull('order_id')
+            ->where('reserved_until', '>', now())
+            // وحجزُ النيّةِ التي نفحصها لا يُحسب عليها — انظر `countFor`
+            ->when($except, fn ($q) => $q->where('store_payment_intent_id', '!=', $except->id))
+            ->count();
+    }
+
+    /**
+     * سببُ ردِّ الكوبون بحدِّه الإجماليّ — والحجوزُ محسوبةٌ فيه.
+     *
+     * ═══ العطبُ الذي يُغلقه ═══
+     *
+     * `used_count` لا يعرف من فتح صفحةَ الدفع ولم يُنشأ طلبُه بعد. فكودٌ
+     * بقيت له فرصةٌ واحدة: يفتح فلانٌ صفحةَ البنك عليها، ويشتري غيرُه بالدفع
+     * عند الاستلام في أثنائها، فيصل إشعارُ فلانٍ إلى كودٍ نفد — وقد دفع
+     * سعرًا مخفَّضًا. فتُحسب الحجوزُ مع العدّاد، ويُردّ الثاني عند السلّة قبل
+     * أن يدفع أحدٌ شيئًا.
+     *
+     * واللفظُ لفظُ الردِّ نفسُه الذي تقوله الأبوابُ الأربعة — لا لفظٌ خامسٌ
+     * يسأل التاجرُ عن معناه.
+     */
+    public static function totalRefusal(?Coupon $coupon, ?StorePaymentIntent $except = null): ?string
+    {
+        if ($coupon === null || $coupon->max_uses === null) {
+            return null;
+        }
+
+        if ((int) $coupon->used_count + self::reservedFor($coupon, $except) >= (int) $coupon->max_uses) {
+            return __('انتهت مرات استخدام الكوبون');
+        }
+
+        return null;
+    }
+
+    /**
+     * يحجز فرصةَ استعمالٍ لنيّةِ دفعٍ — قبل أن يُفتح للزبون بابُ البنك.
+     *
+     * ═══ ولمَ حجزٌ لا فحصٌ وحدَه ═══
+     *
+     * الفحصُ يقول «بقيت فرصة» ثمّ يمضي الزبونُ إلى صفحة الدفع. وبين
+     * اللحظتين دقائق يستعمل فيها غيرُه آخرَ فرصة. فيدفع هذا سعرًا مخفَّضًا
+     * ويصل إشعارُه إلى كودٍ نفد: إمّا كُتب طلبُه بسعرٍ غير الذي دفعه، أو
+     * رُدّ والمالُ مقبوض. والحجزُ يمنع الاثنين.
+     *
+     * ونيّةٌ واحدةٌ حجزٌ واحد — القيدُ الفريد على `store_payment_intent_id`.
+     * فتحديثُ الصفحة لا يحجز مرّتين.
+     *
+     * @return bool هل حُجزت؟ (`false` إن لم يكن للكوبون حدٌّ لكلّ زبون)
+     */
+    public static function reserve(?Coupon $coupon, StorePaymentIntent $intent, ?string $key, ?int $customerId): bool
+    {
+        /*
+         * ويُحجز لأيّ حدٍّ كان — لا للذي لكلّ زبون وحده.
+         *
+         * الفرصةُ الأخيرةُ في الحدّ **الإجماليّ** يأخذها زبونٌ آخر بالدفع عند
+         * الاستلام في الدقائق التي يمضيها هذا في صفحة البنك: فيصل إشعارُه إلى
+         * كودٍ نفد. وكودٌ بلا حدٍّ من أيّ نوعٍ لا يُحجز له: لا فرصةَ تُزاحم.
+         */
+        if ($coupon === null || $key === null && $customerId === null) {
+            return false;
+        }
+
+        if (! $coupon->isPerCustomerLimited() && $coupon->max_uses === null) {
+            return false;
+        }
+
+        return DB::table('coupon_redemptions')->insertOrIgnore([
+            'business_id' => (int) $coupon->business_id,
+            'coupon_id' => (int) $coupon->id,
+            'order_id' => null,
+            'store_payment_intent_id' => (int) $intent->id,
+            'customer_id' => $customerId,
+            'customer_key' => $key ?? self::BY_CARD.$customerId,
+            'reserved_until' => now()->addSeconds(Paymob::EXPIRES),
+            'redeemed_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]) > 0;
+    }
+
+    /**
+     * يُطرح الحجزُ — دفعةٌ فشلت، أو أُلغيت، أو استُرجعت.
+     *
+     * ولا يُطرح حجزٌ صار استعمالًا: من دفع وأُنشئ طلبُه لا تُعاد فرصتُه
+     * بإشعارٍ متأخّر. وشرطُ `order_id IS NULL` هو الذي يقول ذلك — فإشعارُ
+     * فشلٍ مكرَّرٌ لا يُعيد الفرصةَ مرّتين ولا يمحو استعمالًا قائمًا.
+     */
+    public static function releaseReservation(StorePaymentIntent $intent): void
+    {
+        DB::table('coupon_redemptions')
+            ->where('store_payment_intent_id', $intent->id)
+            ->whereNull('order_id')
+            ->delete();
     }
 
     /**
@@ -140,20 +291,47 @@ final class CouponLimits
      * و`insertOrIgnore` تتّكئ على القيد الفريد في القاعدة لا على فحصٍ يقرأ
      * ثمّ يكتب: إشعارُ بوّابةٍ أُعيد إرسالُه، أو طلبان متزامنان، يمرّان من
      * الفحص معًا ويُردّان عند القيد.
+     *
+     * وحجزٌ سابقٌ لهذه النيّة **يُحوَّل** ولا يُضاف إليه صفٌّ ثانٍ: وإلّا
+     * حُسب الزبونُ مرّتين — حجزًا واستعمالًا — على شراءٍ واحد.
      */
-    public static function record(?Coupon $coupon, Order $order, ?string $key, ?int $customerId): void
+    public static function record(?Coupon $coupon, Order $order, ?string $key, ?int $customerId, ?StorePaymentIntent $intent = null): void
     {
         if ($coupon === null || $key === null && $customerId === null) {
             return;
+        }
+
+        if ($intent !== null) {
+            $turned = DB::table('coupon_redemptions')
+                ->where('store_payment_intent_id', $intent->id)
+                ->whereNull('order_id')
+                ->update([
+                    'order_id' => (int) $order->id,
+                    'reserved_until' => null,
+                    'redeemed_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+            /*
+             * والخروجُ هنا توفيرُ محاولةٍ لا حارس: القيدُ الفريد على
+             * `store_payment_intent_id` هو الذي يمنع الصفَّ الثاني فعلًا —
+             * قِستُه بطفرةٍ تحذف هذا الشرطَ فلا يتغيّر شيء. فلا يُحذف الفهرسُ
+             * الفريدُ على أنّ هذا يكفي.
+             */
+            if ($turned > 0) {
+                return;
+            }
         }
 
         DB::table('coupon_redemptions')->insertOrIgnore([
             'business_id' => (int) $coupon->business_id,
             'coupon_id' => (int) $coupon->id,
             'order_id' => (int) $order->id,
+            'store_payment_intent_id' => $intent?->id,
             'customer_id' => $customerId,
             // هويّةٌ لا رقمَ لها: البطاقةُ وحدَها — والعمودُ لا يقبل الفراغ
             'customer_key' => $key ?? self::BY_CARD.$customerId,
+            'reserved_until' => null,
             'redeemed_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),

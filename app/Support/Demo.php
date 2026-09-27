@@ -1736,6 +1736,8 @@ class Demo
              * وعرضُ أحدهما مكانَ الآخر يجعل التاجر يظنّ كودَه انتهى وهو يعمل.
              */
             'per_customer_limit' => $c->per_customer_limit,
+            // ومنذ متى يُحسب — يُقرأ في الشاشة لئلّا يُظنّ الحدُّ ساريًا على ما مضى
+            'per_customer_since' => optional($c->per_customer_since)->format('Y-m-d'),
             'used_count' => (int) $c->used_count,
             'expires' => optional($c->expires_at)->format('Y-m-d'),
             // نهاية اليوم لا أوّله — انظر Coupon::endsAt

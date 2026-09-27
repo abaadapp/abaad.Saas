@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\StorePaymentIntent;
+use App\Support\CouponLimits;
 use App\Support\Store\Paymob;
 use App\Support\Store\WebCheckout;
 use Illuminate\Database\QueryException;
@@ -98,6 +99,21 @@ class PaymobController extends Controller
             // ومحاولةٌ ردّها البنكُ لا تُغلق النيّة: قد يعيد الكرّة ببطاقةٍ أخرى
             $intent->fill(['error' => Str::limit($this->why($obj, $flag), 500)])->save();
 
+            /*
+             * ═══ وفرصةُ الكوبون تُردّ إلى الناس ═══
+             *
+             * حُجزت له عند فتح صفحة الدفع، فلو بقيت بعد أن ردّ البنكُ بطاقتَه
+             * لَأكلت ساعةً من آخر فرصةٍ في الكود على زبونٍ لم يدفع شيئًا.
+             *
+             * ولا تُردّ فرصةٌ صارت استعمالًا: شرطُ `order_id IS NULL` في
+             * `releaseReservation`. فإشعارُ استرجاعٍ يصل بعد أن أُنشئ الطلبُ لا
+             * يمحو استعمالًا قائمًا — الإلغاءُ الكاملُ للطلب هو الذي يردّه،
+             * بقرار صاحب المحلّ (`OrderCorrection::cancel`).
+             *
+             * وتكرارُ الإشعار لا يردّ مرّتين: الحذفُ بالمعرّف لا يُكرَّر أثرُه.
+             */
+            CouponLimits::releaseReservation($intent);
+
             return response('ok', 200);
         }
 
@@ -123,6 +139,9 @@ class PaymobController extends Controller
             ]);
 
             $intent->fill(['error' => 'المبلغُ أو العملةُ لا يطابقان ما طُلب'])->save();
+
+            // ولا فرصةَ كوبونٍ تبقى محجوزةً لدفعةٍ لن تُحتسب
+            CouponLimits::releaseReservation($intent);
 
             return response('ok', 200);
         }
@@ -187,7 +206,7 @@ class PaymobController extends Controller
          * له في جرسه (انظر `StorePaymentIntent::strayPayment`).
          */
         try {
-            $order = WebCheckout::place($business, (array) $intent->payload, (string) $intent->lang, paid: true);
+            $order = WebCheckout::place($business, (array) $intent->payload, (string) $intent->lang, paid: true, intent: $intent);
 
             $intent->fill(['order_id' => $order->id, 'error' => null])->save();
         } catch (\Throwable $e) {

@@ -67,12 +67,72 @@ class CouponController extends Controller
             'min_order' => $data['min_order'] ?? 0,
             'max_uses' => $data['max_uses'] ?? null,
             'per_customer_limit' => $data['per_customer_limit'] ?? null,
+            /*
+             * ولحظةُ التفعيل تُكتب مع الحدّ — لا تُستنتج من تاريخ نشرٍ.
+             *
+             * كودٌ جديدٌ ضُبط حدُّه عند إنشائه لا استعمالاتَ قبله، فالتاريخُ
+             * هو ميلادُه نفسُه. والفائدةُ في الأكواد القائمة (انظر `limits`).
+             */
+            'per_customer_since' => isset($data['per_customer_limit']) ? now() : null,
             'expires_at' => $data['expires_at'] ?? null,
             'active' => true,
         ]);
         Activity::log('created', 'أنشأ كوبون خصم: '.strtoupper($data['code']));
 
         return back()->with('toast', ['msg' => __('تم إنشاء الكوبون'), 'type' => 'success']);
+    }
+
+    /**
+     * تعديلُ حدَّي الكوبون — الإجماليّ والذي لكلّ زبون.
+     *
+     * ═══ ولمَ بابٌ لهذين وحدَهما ═══
+     *
+     * الكودُ نفسُه ونوعُه وقيمتُه لا تُعدَّل: زبائنٌ قرؤوا «SAVE10 خصم ١٠٪»
+     * على لافتةٍ ووصلتهم رسالة. وتبديلُ معناه تحت أقدامهم وعدٌ مكسور — من
+     * أراد غيرَه أنشأ كودًا غيرَه.
+     *
+     * أمّا الحدودُ فسياسةُ التاجر في متجره: يفتح كودَه القديم ويقول «مرّتان
+     * لكلّ زبون» — وهذا هو البابُ الذي يجعل القاعدة الثانية ممكنةً أصلًا:
+     * العدُّ يبدأ من لحظة قوله، لا من استعمالاتٍ مضت قبل أن يقول.
+     */
+    public function limits(Request $request, $id)
+    {
+        $coupon = Coupon::where('business_id', $this->bid())->findOrFail($id);
+
+        $data = $request->validate([
+            'max_uses' => ['nullable', 'integer', 'min:1'],
+            'per_customer_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
+        ]);
+
+        $limit = $data['per_customer_limit'] ?? null;
+
+        /*
+         * ═══ ولحظةُ التفعيل تُكتب مرّةً ولا تُمحى ═══
+         *
+         * مَن أطفأ الحدَّ ثمّ أعاده لا تُصفَّر استعمالاتُ زبائنه: وإلّا كان
+         * الإطفاءُ والإشعالُ مقبضًا يُفتح به الكودُ من جديد كلَّ يوم — «مرّتان
+         * لكلّ زبون» تصير مرّتين في كلّ ضغطتين.
+         *
+         * فالتاريخُ يُكتب حين لا يكون، ويبقى بعد ذلك على حاله: إطفاءً
+         * وإشعالًا ورفعًا للحدّ وخفضًا.
+         */
+        $since = $coupon->per_customer_since;
+
+        if ($limit !== null && $since === null) {
+            $since = now();
+        }
+
+        $coupon->update([
+            'max_uses' => $data['max_uses'] ?? null,
+            'per_customer_limit' => $limit,
+            'per_customer_since' => $since,
+        ]);
+
+        Activity::log('updated', 'عدّل حدود الكوبون: '.$coupon->code
+            .' — إجمالًا: '.($data['max_uses'] ?? 'بلا حدّ')
+            .' · لكل زبون: '.($limit ?? 'بلا حدّ'));
+
+        return back()->with('toast', ['msg' => __('تم تحديث حدود الكوبون'), 'type' => 'success']);
     }
 
     public function toggle($id)

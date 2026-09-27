@@ -22,6 +22,16 @@ use Illuminate\Support\Facades\Schema;
  * ولا يُصفَّر `used_count`، ولا تُبنى استعمالاتٌ ماضيةٌ بالتخمين: من استعمل
  * كودًا قبل اليوم لا سجلَّ له، ولا يُختلق له سجلٌّ. والحدُّ لكلّ زبون يُحسب
  * ممّا يُسجَّل بعد تفعيله — وهو أصدقُ من رقمٍ يُخترع.
+ *
+ * ═══ ولحظةُ التفعيل تُكتب، ولا تُستنتج من تاريخ الإصدار ═══
+ *
+ * التاجر يضبط الحدَّ على كودٍ يعمل منذ شهور. فمن أين يبدأ العدّ؟ من
+ * استعمالاتٍ مضت قبل أن يقرّر؟ لا — يبدأ من قراره. و`per_customer_since`
+ * هي لحظةُ القرار، تُكتب صفًّا صفًّا: كوبونُ فلانٍ فُعِّل أمس، وكوبونُ غيره
+ * اليوم، ولا تاريخَ نشرٍ واحدٌ يُنسب إلى الجميع.
+ *
+ * ولا تُمحى إن أطفأ الحدَّ ثمّ أعاده: من أطفأه ليُعيده فارغًا يُعيده فارغًا
+ * أبدًا، ويستعمل الزبونُ كودَه كلَّ يوم. فالتاريخُ يُكتب مرّةً واحدةً ويبقى.
  */
 return new class extends Migration
 {
@@ -29,13 +39,15 @@ return new class extends Migration
     {
         Schema::table('coupons', function (Blueprint $table) {
             $table->unsignedInteger('per_customer_limit')->nullable()->after('max_uses');
+            // لحظةُ تفعيل الحدّ — منها يبدأ العدّ، وتبقى بعد إطفائه
+            $table->timestamp('per_customer_since')->nullable()->after('per_customer_limit');
         });
     }
 
     public function down(): void
     {
         Schema::table('coupons', function (Blueprint $table) {
-            $table->dropColumn('per_customer_limit');
+            $table->dropColumn(['per_customer_limit', 'per_customer_since']);
         });
     }
 };

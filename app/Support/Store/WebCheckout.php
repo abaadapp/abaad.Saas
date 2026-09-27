@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Models\StorePaymentIntent;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
@@ -274,27 +275,35 @@ final class WebCheckout
         $quote = self::quote($business, $payload + ['fulfil' => $form['fulfil']]);
 
         /*
-         * ═══ وحدُّ الكوبون يُفحص هنا قبل صفحة الدفع ═══
+         * ═══ وحدُّ الكوبون يُفحص هنا قبل صفحة الدفع، ثمّ تُحجز فرصتُه ═══
          *
          * الطلبُ في هذا المسار يُكتب من إشعار البوّابة بعد أن يُقبض المال.
          * فلو تُرك الفحصُ لهناك لَدفع الزبونُ ثمّ رُدّ طلبُه، وصار مالٌ مقبوضًا
          * بلا طلب — يردُّه صاحبُ المحلّ بيده. فيُقال له قبل أن يدفع.
          *
-         * والفحصُ يُعاد في `place` كذلك: بين الصفحتين دقائق، وقد يُستهلك
-         * الحدُّ من بابٍ آخر في أثنائها.
+         * والفحصُ وحدَه لا يكفي: بين هذه اللحظة ووصول الإشعار دقائق يستعمل
+         * فيها غيرُه آخرَ فرصةٍ في الكود — من هذا الباب أو من الدفع عند
+         * الاستلام. فتُحجز الفرصةُ باسم هذه النيّة، وتُحسب في الحدّين حتّى
+         * تصير استعمالًا أو تنقضي مدّتُها.
          */
-        if ($quote['_coupon']) {
-            $customer = self::existingCustomer($bid, $form['phone']);
+        $customer = $quote['_coupon'] ? self::existingCustomer($bid, $form['phone']) : null;
+        $couponKey = $quote['_coupon'] ? CouponLimits::identity($customer, $form['phone']) : null;
 
-            if ($why = CouponLimits::refusal($quote['_coupon'], CouponLimits::identity($customer, $form['phone']), $customer?->id)) {
-                throw ValidationException::withMessages(['promo' => $why]);
-            }
+        if ($quote['_coupon'] && $why = CouponLimits::refusal($quote['_coupon'], $couponKey, $customer?->id)) {
+            throw ValidationException::withMessages(['promo' => $why]);
         }
 
-        return Paymob::open($business, $payload, $quote, $lang);
+        $opened = Paymob::open($business, $payload, $quote, $lang);
+
+        CouponLimits::reserve($quote['_coupon'], $opened['intent'], $couponKey, $customer?->id);
+
+        return $opened['url'];
     }
 
-    public static function place(Business $business, array $payload, string $lang = 'ar', bool $paid = false): Order
+    /**
+     * @param  StorePaymentIntent|null  $intent  نيّةُ الدفع التي قُبض بها المال — لمسار البطاقة
+     */
+    public static function place(Business $business, array $payload, string $lang = 'ar', bool $paid = false, ?StorePaymentIntent $intent = null): Order
     {
         $bid = (int) $business->id;
 
@@ -304,7 +313,7 @@ final class WebCheckout
 
         $form = self::validated($bid, $payload);
 
-        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid) {
+        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid, $intent) {
             // بقفل: الفحصُ والخصم على كميّةٍ لا تتغيّر تحتهما — كما في الصندوق
             $q = self::quote($business, $payload + ['fulfil' => $form['fulfil']], lock: true);
             $lines = $q['_lines'];
@@ -327,8 +336,36 @@ final class WebCheckout
              */
             $couponKey = CouponLimits::identity($customer, $form['phone']);
 
-            if ($q['_coupon'] && $why = CouponLimits::refusal($q['_coupon'], $couponKey, $customer->id)) {
+            if ($q['_coupon'] && $why = CouponLimits::refusal($q['_coupon'], $couponKey, $customer->id, $intent)) {
                 throw ValidationException::withMessages(['promo' => $why]);
+            }
+
+            /*
+             * ═══ وما يُكتب هو ما قُبض — أو لا يُكتب ═══
+             *
+             * المالُ خرج من الزبون بمبلغِ النيّة، والطلبُ يُسعَّر من القاعدة
+             * ثانيةً هنا. وبين اللحظتين قد يتبدّل شيء: كوبونٌ نفد، أو سعرُ
+             * صنفٍ رُفع. فيُكتب الطلبُ بمبلغٍ غير الذي دفعه الزبون — يقرأ
+             * فاتورةً بواحدٍ وعشرين وقد دفع تسعةَ عشر، ولا شيء يقول لأحدٍ
+             * ما وقع.
+             *
+             * فإن اختلفا لا يُكتب طلبٌ بمبلغٍ آخر: تبقى الدفعةُ بلا طلب،
+             * ويُوقَظ صاحبُ المحلّ في جرسه (`StorePaymentIntent::strayPayment`)
+             * ليردّ المالَ أو يجهّز الطلبَ بيده — وكلاهما قرارُه لا قرارُنا.
+             *
+             * والحجزُ يجعل هذا بابًا لا يُطرق في الكوبونات: الفرصةُ محفوظةٌ
+             * باسم هذه النيّة حتّى يصل إشعارُها. وهو مفتوحٌ لما لا نحجزه —
+             * سعرُ صنفٍ تبدّل — فلا يُبتلع فرقٌ ماليٌّ صامتًا.
+             */
+            if ($paid && $intent !== null) {
+                $charged = (int) round(((float) $intent->amount) * 1000);
+                $now = (int) round(((float) $q['total']) * 1000);
+
+                if ($charged !== $now) {
+                    throw ValidationException::withMessages([
+                        'items' => __('تغيّر مبلغُ الطلب بعد الدفع — لم يُنشأ الطلب، وسيتواصل معك المتجر.'),
+                    ]);
+                }
             }
 
             $method = self::payments($bid)[$form['pay']];
@@ -442,8 +479,12 @@ final class WebCheckout
 
             if ($q['_coupon']) {
                 $q['_coupon']->increment('used_count');
-                // والسجلُّ بمعرّف الطلب: إشعارُ بوّابةٍ أُعيد إرسالُه لا يُحتسب ثانيةً
-                CouponLimits::record($q['_coupon'], $order, $couponKey, $customer->id);
+                /*
+                 * والسجلُّ بمعرّف الطلب: إشعارُ بوّابةٍ أُعيد إرسالُه لا يُحتسب
+                 * ثانيةً. والحجزُ — إن كان — يُحوَّل ولا يُضاف إليه صفٌّ ثانٍ،
+                 * فلا يُحسب الزبونُ مرّتين على شراءٍ واحد.
+                 */
+                CouponLimits::record($q['_coupon'], $order, $couponKey, $customer->id, $intent);
             }
 
             // معاملةُ الدخل كما يكتبها الصندوق — والقيدُ يقرأ حالَ السداد

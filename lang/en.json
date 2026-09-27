@@ -6893,5 +6893,14 @@
     "كم مرّة يستخدمه الزبون الواحد — يُعرف برقم هاتفه": "How many times a single customer may use it — identified by their phone number",
     "دفاتر الشركات المحذوفة — محفوظة ومشفَّرة على هذا الخادم": "Books of deleted businesses — kept and encrypted on this server",
     "النسخة على هذا الخادم — لا تخزين مستقل.": "The copy lives on this server — no independent storage.",
-    "عطب القرص أو إعادة بناء الخادم يأخذ الشركة وأرشيفها معًا، ولا شيء يرجع دفاترها بعد ذلك.": "A disk failure or a server rebuild takes the business and its archive together, and nothing brings its books back."
+    "عطب القرص أو إعادة بناء الخادم يأخذ الشركة وأرشيفها معًا، ولا شيء يرجع دفاترها بعد ذلك.": "A disk failure or a server rebuild takes the business and its archive together, and nothing brings its books back.",
+    "منذ": "since",
+    "تعديل الحدود": "Edit limits",
+    "حدود الكوبون": "Coupon limits",
+    "يُحسب الحد لكل زبون من": "The per-customer limit is counted from",
+    "وما قبله لا يُحسب. وإطفاء الحد وإعادته لا يُصفّر الاستخدامات.": "and anything before it is not counted. Switching the limit off and on again does not reset the recorded uses.",
+    "يبدأ حساب الحد لكل زبون من لحظة تفعيله — وما استُخدم قبله لا يُحسب.": "The per-customer limit is counted from the moment it is switched on — uses before that are not counted.",
+    "حفظ الحدود": "Save limits",
+    "تغيّر مبلغُ الطلب بعد الدفع — لم يُنشأ الطلب، وسيتواصل معك المتجر.": "The order total changed after payment — the order was not created, and the shop will contact you.",
+    "تم تحديث حدود الكوبون": "The coupon's limits were updated"
 }

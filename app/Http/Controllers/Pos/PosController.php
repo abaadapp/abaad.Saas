@@ -299,6 +299,7 @@ class PosController extends Controller
              * يُرفض بعد أن أعلن الكاشيرُ السعرَ للزبون إحراجٌ لا داعي له،
              * والحقلُ في الشاشة نفسِها. والمعاينةُ لا تحتسب استعمالًا.
              */
+            'customer' => ['nullable', 'string'],
             'customer_id' => ['nullable', 'integer'],
             'customer_phone' => ['nullable', 'string', 'max:50'],
         ]);
@@ -306,7 +307,12 @@ class PosController extends Controller
         $coupon = $this->findCoupon($data['code']);
         $subtotal = (float) $data['subtotal'];
 
-        $customer = $this->customerFor(null, $data['customer_id'] ?? null, $data['customer_phone'] ?? null);
+        /*
+         * والزبونُ يُعرف بالطريقة التي يعرفه بها الدفعُ نفسُه — معرّفًا واسمًا
+         * ورقمًا. ولو اختلفت المعاينةُ عن الدفع في طريقة المطابقة لَقالت
+         * «مقبول» ثمّ ردّ الدرجُ، وهو أسوأ من ردٍّ مبكّر.
+         */
+        $customer = $this->customerFor($data['customer'] ?? null, $data['customer_id'] ?? null, $data['customer_phone'] ?? null);
 
         $error = match (true) {
             ! $coupon => __('كود الخصم غير صحيح'),

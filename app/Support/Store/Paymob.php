@@ -118,15 +118,21 @@ final class Paymob
     /* ═══════════ فتحُ الدفعة ═══════════ */
 
     /**
-     * يحفظ نيّةَ الشراء ويفتح صفحةَ الدفع — ويردّ رابطَها.
+     * يحفظ نيّةَ الشراء ويفتح صفحةَ الدفع — ويردّ رابطَها ونيّتَها.
      *
      * والمبلغُ من التسعير لا من المتصفّح، وبالبيسة لا بالريال: Paymob تقرأ
      * الأصغر دائمًا (`amount_cents`). وألفُ بيسةٍ في الريال العُمانيّ.
      *
+     * ═══ ولمَ تُردّ النيّةُ مع الرابط ═══
+     *
+     * ما يُحجز على الكوبون يُربط بنيّةٍ بعينها: نيّةٌ واحدةٌ حجزٌ واحد، ويُطرح
+     * حجزُها إن فشل دفعُها. ولا يُعرف ذلك من رابطٍ نصًّا — فتُردّ معه.
+     *
      * @param  array<string, mixed>  $payload  حمولةُ الطلب كما أرسلها الزائر
      * @param  array<string, mixed>  $quote    التسعيرُ المحسوب في الخادم
+     * @return array{url: string, intent: StorePaymentIntent}
      */
-    public static function open(Business $business, array $payload, array $quote, string $lang = 'ar'): string
+    public static function open(Business $business, array $payload, array $quote, string $lang = 'ar'): array
     {
         $bid = (int) $business->id;
         $gateway = self::gateway($bid);
@@ -193,8 +199,11 @@ final class Paymob
 
         $intent->update(['provider_order_id' => (string) $response->json('intention_order_id', '')]);
 
-        return self::BASE.'/unifiedcheckout/?publicKey='.urlencode((string) $gateway->public_key)
-            .'&clientSecret='.urlencode($secret);
+        return [
+            'url' => self::BASE.'/unifiedcheckout/?publicKey='.urlencode((string) $gateway->public_key)
+                .'&clientSecret='.urlencode($secret),
+            'intent' => $intent->refresh(),
+        ];
     }
 
     /**

@@ -129,40 +129,65 @@ BUSINESS_PURGE_ARCHIVE_KEY=<الناتج>
 
 ## ٣) عامل الطابور دائمًا
 
+**افحص أولًا — قد يكون موجودًا:**
+
 ```bash
-sudo cp /var/www/abaad/deploy/abaad-queue.service /etc/systemd/system/
+systemctl status abaad-queue --no-pager
+```
+
+### إن كان يعمل (وهذه حال خادم الإنتاج اليوم)
+
+**لا تنسخ شيئًا فوقه.** الوحدة الحيّة تخدم طوابير أخرى — طابور واتساب منها —
+ونسخ ملف «أصحّ» فوقها يوقف رسائل التجّار.
+
+وهي كافية للحذف النهائي كما هي: خصائص المهمّة تعلو خيارات سطر الأمر
+(`Worker::timeoutForJob` و`markJobAsFailedIfWillExceedMaxAttempts`)، و
+`PurgeBusiness` تعلن `$timeout = 3600` و`$tries = 1` — فلا تُقطع وهي تمحو،
+ولا تُعاد تلقائيًّا، مهما كان في `ExecStart`.
+
+وبعد كل تعديل على `.env` أعِد تشغيله ليقرأ الجديد:
+
+```bash
+systemctl restart abaad-queue
+```
+
+**ولإضافة تنبيه السقوط** بلا مساس بالوحدة:
+
+```bash
+sudo mkdir -p /etc/systemd/system/abaad-queue.service.d
+sudo cp /var/www/abaad/deploy/abaad-queue-alert.conf /etc/systemd/system/abaad-queue.service.d/
+sudo cp /var/www/abaad/deploy/abaad-queue-alert@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+systemctl cat abaad-queue
+```
+
+فيصل خبر السقوط بريدًا إلى مديري المنصّة. وللتجربة:
+
+```bash
+sudo systemctl start 'abaad-queue-alert@abaad-queue.service'
+```
+
+### إن لم يكن ثمّ وحدة (خادم جديد)
+
+```bash
+sudo cp /var/www/abaad/deploy/abaad-queue.service.example /etc/systemd/system/abaad-queue.service
 sudo cp /var/www/abaad/deploy/abaad-queue-alert@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now abaad-queue
-systemctl status abaad-queue
 ```
 
-ما تضمنه الوحدتان:
+ما يضمنه الملف:
 
 | الحاجة | كيف |
 |---|---|
 | يعود بعد إعادة تشغيل الخادم | `enable` + `WantedBy=multi-user.target` |
 | يعود بعد أي سقوط | `Restart=always` مع `RestartSec=5` |
 | لا يُقتل في منتصف محو | `KillSignal=SIGTERM` و`TimeoutStopSec=3720` |
-| لا يُقتل قبل أن تنتهي مهمّته | `--timeout=3700` أوسع من مهلة المهمّة (3600) |
-| لا إعادة تلقائية لمهمّة تمحو | `--tries=1` |
 | لا يحتفظ بكود قديم بعد النشر | `--max-time=3600` ثم يعيده systemd |
-| تنبيه عند سقوط متكرّر | `OnFailure=` → بريد إلى مديري المنصّة |
+| تنبيه عند سقوط متكرّر | drop-in أعلاه → بريد لمديري المنصّة |
 
-تجربة التنبيه بلا انتظار سقوط:
-
-```bash
-sudo systemctl start 'abaad-queue-alert@abaad-queue.service'
-```
-
-وبعد كل نشر يُعاد العامل ليأخذ الكود الجديد:
-
-```bash
-sudo systemctl restart abaad-queue
-```
-
-> **أضِف هذا السطر إلى `scripts/deploy.sh` بعد `migrate`** إن أردته تلقائيًا
-> — لم أضفه لأن الملف يعمل على خادم الإنتاج وتعديله يحتاج موافقتك.
+> **وأضِف `systemctl restart abaad-queue` إلى `scripts/deploy.sh` بعد `migrate`**
+> إن أردته تلقائيًا — لم أضفه لأن الملف يعمل على خادم الإنتاج وتعديله يحتاج موافقتك.
 
 ---
 

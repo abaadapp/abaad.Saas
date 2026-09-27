@@ -1,0 +1,78 @@
+# ══════════════════════════════════════════════════════════════════════
+#  مرجعٌ لخادمٍ جديد — وليس ملفًّا يُنسخ فوق الموجود.
+#
+#  خادمُ الإنتاج الحاليّ فيه وحدةٌ حيّةٌ بالاسم `abaad-queue.service`
+#  تخدم طابورَ واتساب أيضًا. ونسخُ هذا فوقها **يوقف رسائل واتساب**.
+#
+#  فإن أردتَ تغييرًا على الوحدة القائمة فاستعمل drop-in لا استبدالًا:
+#  انظر `abaad-queue-alert.conf` في هذا المجلّد.
+#
+#  وللفحص قبل أيّ شيء:
+#      systemctl cat abaad-queue
+# ══════════════════════════════════════════════════════════════════════
+#
+# التثبيت — على خادمٍ **لا وحدةَ فيه**:
+#
+#     sudo cp abaad-queue.service.example /etc/systemd/system/abaad-queue.service
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now abaad-queue
+#
+# ولمَ systemd لا supervisor: الخادمُ يشغّل nginx وphp-fpm وPostgreSQL
+# بـsystemd أصلًا، فلا يُضاف مشرفُ عمليّاتٍ ثانٍ ليُراقَب هو أيضًا.
+
+[Unit]
+Description=Abaad queue worker
+# والقاعدةُ قبله: عاملٌ يبدأ قبل PostgreSQL يسقط في أوّل محاولةٍ ويُعيد
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/abaad
+
+# ═══ الطوابيرُ بترتيب الأولويّة ═══
+#
+# `whatsapp` أوّلًا لأنّ رسالةً تتأخّر دقيقةً تُقرأ تأخّرًا، والحذفُ
+# النهائيُّ يُصفّ في `default` ويحتمل الانتظار. ومن أسقط `whatsapp` من
+# هذا السطر أوقف رسائلَ التجّار وهو يظنّ أنّه يضبط الحذف.
+#
+# ═══ ولا حاجةَ لـ`--timeout` ولا لـ`--tries` من أجل الحذف ═══
+#
+# خصائصُ المهمّة تعلو خياراتِ سطر الأمر: `Worker::timeoutForJob` يقرأ
+# `$job->timeout()` أوّلًا، و`markJobAsFailedIfWillExceedMaxAttempts`
+# يقرأ `$job->maxTries()`. و`PurgeBusiness` تعلن `$timeout = 3600`
+# و`$tries = 1` — فلا تُقطع وهي تمحو، ولا تُعاد تلقائيًّا.
+#
+# فتُترك هذه الخياراتُ لبقيّة المهامّ: ثلاثُ محاولاتٍ لإشعارٍ عابرٍ صواب.
+#
+# ═══ و`--max-time` كي يُعاد العاملُ دوريًّا ═══
+#
+# عمليّةُ PHP طويلةُ العمر تحتفظ بالكودِ القديمِ في ذاكرتها بعد كلّ نشر.
+# فيُقتل العاملُ كلَّ ساعةٍ ويُعيده `Restart=always` بالكود الجديد. وهو
+# يُفحص **بين** المهامّ لا في أثنائها، فلا يقطع محوًا جاريًا.
+ExecStart=/usr/bin/php /var/www/abaad/artisan queue:work \
+    --queue=whatsapp,default \
+    --sleep=3 \
+    --tries=3 \
+    --backoff=10 \
+    --max-time=3600
+
+# ═══ ويُعاد دائمًا — وهذه هي «المراقبة» الأولى ═══
+#
+# انقطاعٌ، أو قتلٌ بنقص ذاكرة، أو إعادةُ تشغيل الخادم: يعود من نفسه.
+# و`enable` يجعله يبدأ مع الإقلاع.
+Restart=always
+RestartSec=5
+
+# وإن عاد خمسَ مرّاتٍ في دقيقةٍ فالعطبُ ليس عابرًا — يُترك ساقطًا ليُرى
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# وإيقافٌ لطيف: يُنهي العاملُ مهمّتَه الحاليّةَ ولا يُقتل في منتصف محو
+KillSignal=SIGTERM
+TimeoutStopSec=3720
+
+[Install]
+WantedBy=multi-user.target

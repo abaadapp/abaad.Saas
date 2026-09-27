@@ -1,0 +1,71 @@
+# عاملُ الطابور — وحدةُ systemd
+#
+# التثبيت (على الخادم، بيدِ من يملكه):
+#
+#     sudo cp /var/www/abaad/deploy/abaad-queue.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now abaad-queue
+#     systemctl status abaad-queue
+#
+# ولمَ systemd لا supervisor: الخادمُ يشغّل nginx وphp-fpm وPostgreSQL
+# بـsystemd أصلًا، فلا يُضاف مشرفُ عمليّاتٍ ثانٍ ليُراقَب هو أيضًا.
+
+[Unit]
+Description=Abaad queue worker
+# والقاعدةُ قبله: عاملٌ يبدأ قبل PostgreSQL يسقط في أوّل محاولةٍ ويُعيد
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/abaad
+
+# ═══ المهلةُ أوسعُ من مهلةِ المهمّة ═══
+#
+# `PurgeBusiness::$timeout = 3600`. ومهلةُ العاملِ إن كانت أقصرَ قُتلت
+# المهمّةُ **وهي تمحو الصفوف** — فيبقى نصفُ محوٍ لا يقول أحدٌ أين وقف.
+# فتُكتب 3700: أوسعُ من الساعةِ بهامش.
+#
+# ═══ ومرّةٌ واحدةٌ لا ثلاث ═══
+#
+# `--tries=1` يطابق المهمّةَ نفسَها: الإعادةُ التلقائيّةُ تُفيد في فعلٍ
+# يُقرأ، وهذا فعلٌ يمحو. وإعادتُه بيدِ مديرِ المنصّة بعد أن يقرأ أين وقف.
+#
+# ═══ و`--max-time` كي يُعاد العاملُ دوريًّا ═══
+#
+# عمليّةُ PHP طويلةُ العمر تحتفظ بالكودِ القديمِ في ذاكرتها بعد كلّ نشر.
+# فيُقتل العاملُ كلَّ ساعةٍ ويُعيده `Restart=always` بالكود الجديد.
+ExecStart=/usr/bin/php /var/www/abaad/artisan queue:work \
+    --queue=default \
+    --sleep=3 \
+    --tries=1 \
+    --timeout=3700 \
+    --max-time=3600
+
+# ═══ ويُعاد دائمًا — وهذه هي «المراقبة» الأولى ═══
+#
+# انقطاعٌ، أو قتلٌ بنقص ذاكرة، أو إعادةُ تشغيل الخادم: يعود من نفسه.
+# و`enable` يجعله يبدأ مع الإقلاع.
+Restart=always
+RestartSec=5
+
+# وإن عاد خمسَ مرّاتٍ في دقيقةٍ فالعطبُ ليس عابرًا — يُترك ساقطًا ليُرى
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# ═══ وتنبيهٌ عند السقوط ═══
+#
+# يُشغَّل `abaad-queue-alert@.service` (في هذا المجلّد) عند كلّ سقوط.
+OnFailure=abaad-queue-alert@%n.service
+
+# وإيقافٌ لطيف: يُنهي العاملُ مهمّتَه الحاليّةَ ولا يُقتل في منتصف محو
+KillSignal=SIGTERM
+TimeoutStopSec=3720
+
+StandardOutput=append:/var/log/abaad-queue.log
+StandardError=append:/var/log/abaad-queue.log
+
+[Install]
+WantedBy=multi-user.target

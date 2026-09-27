@@ -6873,5 +6873,15 @@
     "ميلادي": "Gregorian",
     "في اليوم نفسه من كل سنة — كعيد الأم واليوم الوطني": "On the same day every year — like Mother’s Day and National Day",
     "هجري": "Hijri",
-    "كرمضان والعيدين — يتقدّم نحو ١١ يومًا في السنة الميلادية": "Like Ramadan and the two Eids — it moves about 11 days earlier each Gregorian year"
+    "كرمضان والعيدين — يتقدّم نحو ١١ يومًا في السنة الميلادية": "Like Ramadan and the two Eids — it moves about 11 days earlier each Gregorian year",
+    "توقّف عامل الطابور": "Queue worker stopped",
+    "ما دام متوقّفًا فكلُّ مهمّة تُصفّ في الطابور تبقى بلا تنفيذ — ومنها الحذف النهائي للشركات.": "While it is down, every queued job stays unprocessed — including permanent business deletion.",
+    "الوحدة": "Unit",
+    "للفحص على الخادم:": "To check on the server:",
+    "رسالة آلية من نظام أبعاد": "Automated message from Abaad",
+    "أبعاد — توقّف عامل الطابور": "Abaad — queue worker stopped",
+    "مفتاح تشفير الأرشيف هو APP_KEY نفسه — ولا بدّ من مفتاح مستقلّ. أُلغي الحذف ولم يُمسّ شيء.": "The archive encryption key is the same as APP_KEY — an independent key is required. The deletion was cancelled and nothing was touched.",
+    "الأرشيف لا يُفتح — تحقّق من الملفّ.": "The archive will not open — check the file.",
+    "الأرشيف بلا بيانٍ يُقرأ (manifest.json).": "The archive has no readable manifest (manifest.json).",
+    "صفٌّ في الأرشيف عددُ أعمدته لا يطابق رؤوسَه — الملفّ معطوب.": "A row in the archive has a different column count than its header — the file is corrupt."
 }

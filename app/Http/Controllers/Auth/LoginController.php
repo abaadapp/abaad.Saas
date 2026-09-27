@@ -84,7 +84,28 @@ class LoginController extends Controller
             }
         }
 
-        if (! Auth::attempt($credentials, $remember)) {
+        /*
+         * ═══ وحرفٌ كبيرٌ في العنوان ليس كلمةَ مرورٍ خاطئة ═══
+         *
+         * عناوينُ الحسابات تُخزَّن صغيرةً كلُّها (`MerchantAccount::email`
+         * تُصغّرها عند الإنشاء)، والمقارنةُ في القاعدة حسّاسةٌ للحالة على
+         * PostgreSQL. ولوحةُ الهاتف تُكبّر أوّلَ حرفٍ بنفسها — فيكتب الموظّفُ
+         * عنوانَه الصحيحَ فيُقال له «بيانات الدخول غير صحيحة»، ويعيد المديرُ
+         * تعيينَ كلمة المرور مرّةً بعد مرّةٍ وهي ليست المشكلة أصلًا.
+         *
+         * والمحاولةُ الثانيةُ لا استبدالٌ للأولى: حسابٌ خُزّن عنوانُه بحرفٍ
+         * كبيرٍ يومًا (بريدٌ خارجيٌّ يكتبه صاحبُه بيده) يبقى يُفتح كما هو.
+         * فتُجرَّب الكلمةُ على العنوان كما كُتب، ثمّ على صورته الصغيرة إن
+         * اختلفت — والحارسُ واحدٌ في الحالين: `Auth::attempt` نفسُها، بلا
+         * تخفيفٍ ولا التفافٍ حولها.
+         */
+        $lowered = mb_strtolower(trim($credentials['email']));
+
+        $entered = Auth::attempt($credentials, $remember)
+            || ($lowered !== $credentials['email']
+                && Auth::attempt(['email' => $lowered, 'password' => $credentials['password']], $remember));
+
+        if (! $entered) {
             RateLimiter::hit($key, 60);
             RateLimiter::hit($slowKey, 3600);
             RateLimiter::hit($accountKey, 3600);

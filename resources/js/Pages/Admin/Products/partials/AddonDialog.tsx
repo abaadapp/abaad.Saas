@@ -29,11 +29,12 @@ interface Props {
  * مدى الإضافة.
  *
  * وكان ثالثًا: «هذا المنتج فقط» — إضافةٌ تخصّ منتجًا بعينه لا المتجر. وزال
- * بزوال قسم التركيب: هو وحدَه كان يعرضها ويعدّلها ويفكُّ ربطها، وقائمةُ
- * إضافات المتجر تستثنيها (`private`). فبابٌ يُنشئ ما لا تُديره شاشةٌ بعده
- * ليس بابًا.
+ * بزوال قسم التركيب: لا تُنشأ واحدةٌ بعد اليوم، لا من هنا ولا من الخادم
+ * (انظر `noOwnership` في `CatalogQuickAddController`).
  *
- * والصفوفُ المكتوبةُ قبل ذلك تبقى: تُعرض في الكاشير وتُباع كما كانت.
+ * أمّا المكتوبةُ قبل ذلك فتُعدَّل وتُعطَّل من هنا: هي في شاشة مالكها وحدَه،
+ * ولا يُعرض لها مدًى لأنّ مداها ملكيّتُها. ومن لم يجد لها بابًا بقي يراها
+ * في الكاشير ولا يملك تغيير سعرها.
  */
 type Scope = 'all' | 'selected';
 
@@ -65,8 +66,16 @@ export default function AddonDialog({
     const [each, setEach] = useState<string>(
         addon?.inventory_quantity != null ? String(addon.inventory_quantity) : '1',
     );
-    /* و«هذا المنتج فقط» لا تصل هنا: الخاصّةُ بمنتجٍ تُستثنى من القائمة أصلًا */
+    /**
+     * مملوكةٌ لمنتج — تُعدَّل وتُعطَّل، ولا يُمسّ مداها ولا مالكُها.
+     *
+     * ولا حالةَ لها تُبدَّل: تُقرأ من الصفّ نفسه، ولو أُتيح تبديلُها لصار
+     * في الشاشة بابٌ يحوّل الخاصّة إلى عامّة — وهو ما يردّه الخادم.
+     */
+    const owned = addon?.private === true;
     const [scope, setScope] = useState<Scope>(addon?.scope === 'selected' ? 'selected' : 'all');
+    /* والتعطيل بابُها الوحيد: لا شاشةَ أخرى في النظام تُطفئ إضافة */
+    const [active, setActive] = useState<boolean>(addon?.active !== false);
     const [picked, setPicked] = useState<number[]>(addon?.product_ids ?? []);
     const searchRef = useAsciiDigits<HTMLInputElement>();
     const [search, setSearch] = useState('');
@@ -94,7 +103,7 @@ export default function AddonDialog({
 
             return;
         }
-        if (scope === 'selected' && picked.length === 0) {
+        if (! owned && scope === 'selected' && picked.length === 0) {
             setError(t('اختر منتجًا واحدًا على الأقل'));
 
             return;
@@ -106,11 +115,15 @@ export default function AddonDialog({
             // بضاعته من قاموس. انظر Lexicon::fill
             name_en: nameEn.trim() || null,
             price: price || 0,
-            scope,
-            product_id: null,
             inventory_product_id: stock ? Number(stockId) : null,
             inventory_quantity: stock ? (each || 1) : null,
-            product_ids: scope === 'selected' ? picked : [],
+            /*
+             * المملوكةُ لا يُرسل لها مدًى ولا مالك: الخادم يردّ ذلك ردًّا
+             * صريحًا (`ownershipStays`)، والشاشةُ لا تطلب ما يُردّ.
+             */
+            ...(owned
+                ? { active }
+                : { scope, product_id: null, product_ids: scope === 'selected' ? picked : [] }),
         };
 
         setSaving(true);
@@ -132,7 +145,8 @@ export default function AddonDialog({
                 const errors = payload?.errors ?? {};
                 setError(
                     errors.name?.[0] ?? errors.price?.[0] ?? errors.inventory_quantity?.[0]
-                    ?? errors.inventory_product_id?.[0] ?? t('تعذّر حفظ الإضافة'),
+                    ?? errors.inventory_product_id?.[0] ?? errors.product_id?.[0]
+                    ?? errors.scope?.[0] ?? errors.product_ids?.[0] ?? t('تعذّر حفظ الإضافة'),
                 );
 
                 return;
@@ -248,15 +262,40 @@ export default function AddonDialog({
                     )}
 
                     {/* -------------------------- المدى -------------------------- */}
-                    <div>
-                        <span className="mb-1.5 block text-[13px] font-medium text-[#111]">{t('تظهر مع')}</span>
-                        <div className="flex gap-2">
-                            {choice(scope === 'all', 'جميع المنتجات', () => setScope('all'))}
-                            {choice(scope === 'selected', 'منتجات محددة', () => setScope('selected'))}
+                    {owned ? (
+                        /* مداها ملكيّتُها فلا يُعرض خيارًا — ويُقال نصًّا لئلّا
+                           يُقاس غيابُ الخيار على أنّها تظهر مع الكلّ */
+                        <div>
+                            <span className="mb-1.5 block text-[13px] font-medium text-[#111]">{t('تظهر مع')}</span>
+                            <p className="rounded-[10px] border border-[#e8e8e8] bg-[#f7f7f5] px-3 py-2 text-[13px] text-[#4b4b4b]">
+                                {t('هذا المنتج وحده — ولا يُغيَّر مداها.')}
+                            </p>
                         </div>
-                    </div>
+                    ) : (
+                        <div>
+                            <span className="mb-1.5 block text-[13px] font-medium text-[#111]">{t('تظهر مع')}</span>
+                            <div className="flex gap-2">
+                                {choice(scope === 'all', 'جميع المنتجات', () => setScope('all'))}
+                                {choice(scope === 'selected', 'منتجات محددة', () => setScope('selected'))}
+                            </div>
+                        </div>
+                    )}
 
-                    {scope === 'selected' && (
+                    {owned && (
+                        /* بابُ التعطيل: المعطّلةُ لا تُعرض في الكاشير ولا تُباع،
+                           ولا يُحذف صفٌّ ولا تُمسّ فاتورةٌ مضت */
+                        <div>
+                            <span className="mb-1.5 block text-[13px] font-medium text-[#111]">
+                                {t('هل تُعرض في الكاشير؟')}
+                            </span>
+                            <div className="flex gap-2">
+                                {choice(active, 'مفعّلة', () => setActive(true))}
+                                {choice(! active, 'معطّلة', () => setActive(false))}
+                            </div>
+                        </div>
+                    )}
+
+                    {! owned && scope === 'selected' && (
                         <div className="rounded-[12px] border border-[#e8e8e8]">
                             <div className="flex items-center gap-2 border-b border-[#e8e8e8] px-3 py-2">
                                 <Search className="size-4 text-[#9ca3af]" />

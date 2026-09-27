@@ -6886,5 +6886,13 @@
     "صفٌّ في الأرشيف عددُ أعمدته لا يطابق رؤوسَه — الملفّ معطوب.": "A row in the archive has a different column count than its header — the file is corrupt.",
     "دفاتر الشركات المحذوفة — محفوظة ومشفَّرة على هذا الخادم": "Books of deleted businesses — kept and encrypted on this server",
     "النسخة على هذا الخادم — لا تخزين مستقل.": "The copy lives on this server — no independent storage.",
-    "عطب القرص أو إعادة بناء الخادم يأخذ الشركة وأرشيفها معًا، ولا شيء يرجع دفاترها بعد ذلك.": "A disk failure or a server rebuild takes the business and its archive together, and nothing brings its books back."
+    "عطب القرص أو إعادة بناء الخادم يأخذ الشركة وأرشيفها معًا، ولا شيء يرجع دفاترها بعد ذلك.": "A disk failure or a server rebuild takes the business and its archive together, and nothing brings its books back.",
+    "إضافات خاصّة بهذا المنتج": "Add-ons private to this product",
+    "تظهر معه وحده. اضغطها لتعديل سعرها أو تعطيلها — ولا تُنشأ جديدة.": "Shown with this product only. Tap one to change its price or switch it off — new ones cannot be created.",
+    "معطّلة": "Off",
+    "هذا المنتج وحده — ولا يُغيَّر مداها.": "This product only — its reach cannot be changed.",
+    "هل تُعرض في الكاشير؟": "Show it at the register?",
+    "لا تُنشأ إضافةٌ خاصّةٌ بمنتجٍ واحد — تُنشأ للمتجر ثمّ يُضيَّق مداها.": "An add-on private to a single product cannot be created — create it for the shop, then narrow its reach.",
+    "هذه الإضافة خاصّةٌ بمنتجها ولا يُغيَّر مداها.": "This add-on is private to its product and its reach cannot be changed.",
+    "هذه الإضافة خاصّةٌ بمنتجها ولا تُعرض مع غيره.": "This add-on is private to its product and is not shown with any other."
 }

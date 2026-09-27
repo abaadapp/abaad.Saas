@@ -167,6 +167,22 @@ export default function ProductForm({ categories, product, description, currency
     const shopAddons = addonList.filter((a) => !a.private);
 
     /**
+     * إضافاتُ هذا المنتج وحدَه — ما بقي منها في القاعدة.
+     *
+     * كتبها قسمُ التركيب قبل أن يزول، وكان بابَها الوحيد. فبلا هذا الحقل
+     * يبقى للتاجر إضافةٌ تُعرض في الكاشير ولا يملك تصحيح سعرها ولا إطفاءها.
+     *
+     * ولا بابَ لإنشاء واحدةٍ جديدة: لا زرَّ هنا، والخادمُ يردّ الطلب
+     * (`noOwnership`). فالحقلُ يعرض ما وُجد ولا يصنع.
+     *
+     * والخادمُ لا يرسل إلّا إضافاتِ هذا المنتج (`addonOptions`)، والشرطُ
+     * هنا ثانيًا: منتجٌ آخرَ لا تُعرض إضافتُه في شاشته، ولا في شاشة إنشاء.
+     */
+    const ownAddons = product?.id
+        ? addonList.filter((a) => a.private && a.product_id === product.id)
+        : [];
+
+    /**
      * تُضاف أو تُستبدل — لا تُلحق دائمًا.
      *
      * تعديلُ إضافةٍ كان يُلحقها بالقائمة مرّةً ثانية، فيرى التاجر «شوكولاتة»
@@ -442,6 +458,33 @@ export default function ProductForm({ categories, product, description, currency
                                         </Button>
                                     </span>
                                 </Field>
+
+                                {/* ولا يُعرض الحقلُ لمن لا صفوفَ له: حقلٌ فارغٌ
+                                    في كلّ شاشةٍ يسأل عن بابٍ لا وجود له */}
+                                {ownAddons.length > 0 && (
+                                    <Field
+                                        label="إضافات خاصّة بهذا المنتج"
+                                        hint="تظهر معه وحده. اضغطها لتعديل سعرها أو تعطيلها — ولا تُنشأ جديدة."
+                                    >
+                                        <span className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-[10px] border border-[#e8e8e8] px-2 py-1.5">
+                                            {ownAddons.map((a) => (
+                                                <button
+                                                    key={a.value}
+                                                    type="button"
+                                                    onClick={() => setAddonOpen(a)}
+                                                    className="rounded-[8px] bg-[#f3f3f1] px-2 py-1 text-[12px] text-[#4b4b4b] hover:bg-[#e8e8e6]"
+                                                >
+                                                    {a.label}
+                                                    <span className="ms-1 tabular-nums opacity-60">
+                                                        {a.price} {currencyLabel}
+                                                    </span>
+                                                    {/* والمعطّلةُ تُقال: وإلّا بدت كالمعروضة */}
+                                                    {!a.active && <span className="ms-1 opacity-60">· {t('معطّلة')}</span>}
+                                                </button>
+                                            ))}
+                                        </span>
+                                    </Field>
+                                )}
                                 <Field
                                     label="رمز المنتج SKU"
                                     hint="اتركه فارغًا ليُولَّد تلقائيًا"

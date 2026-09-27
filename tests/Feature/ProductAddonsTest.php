@@ -437,48 +437,14 @@ class ProductAddonsTest extends TestCase
         );
     }
 
-    /** وإضافةٌ تُنشأ من شاشة المنتج تُولد خاصّةً به إن قيل ذلك */
-    public function test_the_quick_form_can_create_a_private_addon(): void
-    {
-        $this->actingAs($this->owner)->postJson(route('admin.products.addons.store'), [
-            'name' => 'شريط ذهبي', 'price' => 0.5, 'product_id' => $this->bouquet->id,
-        ])->assertOk()->assertJsonPath('addon.private', true);
-
-        $this->assertSame(
-            $this->bouquet->id,
-            (int) Addon::where('name', 'شريط ذهبي')->value('product_id'),
-        );
-    }
-
-    /** واسمٌ واحد يجوز لمنتجين: «تغليف» لكلٍّ تغليفُه وسعرُه */
-    public function test_the_same_private_name_is_free_on_another_product(): void
-    {
-        $chocolateBox = Product::create([
-            'business_id' => $this->business->id, 'name' => 'علبة شوكولاتة',
-            'price' => 6, 'cost' => 3, 'quantity' => 10, 'active' => true,
-        ]);
-
-        foreach ([$this->bouquet->id, $chocolateBox->id] as $id) {
-            $this->actingAs($this->owner)->postJson(route('admin.products.addons.store'), [
-                'name' => 'تغليف', 'price' => 1, 'product_id' => $id,
-            ])->assertOk();
-        }
-
-        $this->assertSame(2, Addon::where('name', 'تغليف')->count());
-    }
-
-    /** ولا تُنسب إضافةٌ إلى منتج متجرٍ آخر */
-    public function test_an_addon_cannot_be_owned_by_another_shops_product(): void
-    {
-        $other = Business::create(['name' => 'محل آخر', 'email' => 'own@a.local', 'status' => 'نشط']);
-        $theirs = Product::create([
-            'business_id' => $other->id, 'name' => 'باقتهم', 'price' => 9, 'cost' => 3, 'quantity' => 5,
-        ]);
-
-        $this->actingAs($this->owner)->postJson(route('admin.products.addons.store'), [
-            'name' => 'شريط', 'price' => 1, 'product_id' => $theirs->id,
-        ])->assertStatus(422)->assertJsonValidationErrors('product_id');
-    }
+    /*
+     * وثلاثةُ حرّاسٍ كانت هنا زالت بزوال بابها: إنشاءُ إضافةٍ خاصّةٍ بمنتج
+     * من هذه الوجهة، واسمٌ يتكرّر لمنتجين، ونسبتُها إلى منتج متجرٍ آخر. لا
+     * يُنشأ من هذه الوجهة مالكٌ بعد اليوم — لمنتجِ صاحبها ولا لمنتج غيره.
+     *
+     * والصفوفُ المكتوبةُ قبل ذلك تبقى، وبابُ تعديلها وتعطيلها في شاشة
+     * مالكها — وحرّاسُ ذلك كلِّه في `APrivateAddonIsEditedNotBornTest`.
+     */
     /**
      * إضافةُ المنتج تُعرض معه ولو ضاق الربط على غيرها.
      *

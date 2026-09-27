@@ -72,15 +72,14 @@ class CatalogQuickAddController extends Controller
     {
         $bid = $this->bid();
 
-        $data = $request->validate(self::addonRules($bid), self::addonMessages());
-
-        $owner = self::owner($data);
+        $data = $request->validate(self::noOwnership() + self::addonRules($bid), self::addonMessages());
 
         $addon = Addon::create(\App\Support\Lexicon::fill(collect($data)->only(['name', 'name_en', 'price'])->all()) + [
             'business_id' => $bid,
             'active' => true,
-            'product_id' => $owner,
-        ] + self::stockAttributes($data) + self::scopeAttributes($data, $owner));
+            // لا مالك: بابُ الإضافة الخاصّة بمنتجٍ مغلقٌ — انظر `noOwnership`
+            'product_id' => null,
+        ] + self::stockAttributes($data) + self::scopeAttributes($data, null));
 
         self::syncScopeProducts($addon, $bid, $data);
 
@@ -105,12 +104,15 @@ class CatalogQuickAddController extends Controller
 
         $model = Addon::where('business_id', $bid)->findOrFail($addon);
 
-        $data = $request->validate(self::addonRules($bid, $model->id), self::addonMessages());
+        // الملكيّةُ تُقرأ من الصفّ لا من الطلب: لا يُحوِّلها حفظٌ ولا يُلغيها
+        $owner = $model->product_id === null ? null : (int) $model->product_id;
 
-        $owner = self::owner($data);
+        $data = $request->validate(
+            self::ownershipStays($owner) + self::addonRules($bid, $model->id, $owner),
+            self::addonMessages(),
+        );
 
         $model->update(\App\Support\Lexicon::fill(collect($data)->only(['name', 'name_en', 'price'])->all()) + [
-            'product_id' => $owner,
             'active' => array_key_exists('active', $data) ? (bool) $data['active'] : (bool) $model->active,
         ] + self::stockAttributes($data) + self::scopeAttributes($data, $owner));
 
@@ -130,7 +132,7 @@ class CatalogQuickAddController extends Controller
      *
      * @return array<string, mixed>
      */
-    private static function addonRules(int $bid, ?int $ignore = null): array
+    private static function addonRules(int $bid, ?int $ignore = null, ?int $owner = null): array
     {
         $ofBusiness = fn () => Rule::exists('products', 'id')->where('business_id', $bid)->whereNull('deleted_at');
 
@@ -140,13 +142,14 @@ class CatalogQuickAddController extends Controller
                 // التفرّد يتبع المدى: «تغليف» لباقة الورد لا يمنع «تغليف»
                 // لعلبة الشوكولاتة، ولا يمنع «تغليف» المتجر كلِّه
                 Rule::unique('addons', 'name')->where('business_id', $bid)
-                    ->where('product_id', self::owner(request()->all()))
+                    ->where('product_id', $owner)
                     ->ignore($ignore),
             ],
             'name_en' => ['nullable', 'string', 'max:100'],
             'price' => ['required', 'numeric', 'min:0'],
             'active' => ['nullable', 'boolean'],
-            'product_id' => ['nullable', $ofBusiness()],
+            // ولا قاعدةَ لـ`product_id` هنا: الوجهتان كلتاهما تمنعه، فقاعدةُ
+            // «من هذا المتجر» لا تُقرأ أبدًا — انظر `noOwnership`
             'inventory_product_id' => ['nullable', $ofBusiness()],
             /*
              * الكمية المستهلَكة لا تُقبل صفرًا — وغيابُها واحدة.
@@ -171,28 +174,58 @@ class CatalogQuickAddController extends Controller
         return [
             'name.unique' => __('توجد إضافةٌ بهذا الاسم.'),
             'inventory_quantity.gt' => __('الكمية المستهلكة تكون أكبر من صفر.'),
+            'product_id.prohibited' => __('لا تُنشأ إضافةٌ خاصّةٌ بمنتجٍ واحد — تُنشأ للمتجر ثمّ يُضيَّق مداها.'),
+            'scope.prohibited' => __('هذه الإضافة خاصّةٌ بمنتجها ولا يُغيَّر مداها.'),
+            'product_ids.prohibited' => __('هذه الإضافة خاصّةٌ بمنتجها ولا تُعرض مع غيره.'),
         ];
     }
 
     /**
-     * المنتج المالك — «هذا المنتج فقط» وحده يجعل للإضافة مالكًا.
+     * لا تُنشأ إضافةٌ مملوكةٌ لمنتج — والطلبُ الذي يحاول يُردّ لا يُفسَّر.
      *
-     * والمدى الغائب مع منتجٍ مذكور يُقرأ ملكيّة: هو ما كانت تفعله الشاشة
-     * قبل وجود حقل المدى، ونسخةٌ قديمة منها ما زالت ترسل هكذا.
+     * كان «هذا المنتج فقط» مدًى ثالثًا، وزال بزوال قسم التركيب: هو وحدَه
+     * كان يعرض تلك الإضافة ويعدّلها ويفكُّ ربطها. فلا يُفتح بابٌ يكتب صفًّا
+     * لا تُديره شاشةٌ بعده.
      *
-     * @param  array<string, mixed>  $data
+     * والردُّ صريحٌ لا صامت: طلبٌ يذكر منتجًا مالكًا لو أُهمل ذكرُه لصارت
+     * الإضافةُ إضافةَ متجرٍ تظهر مع كلّ منتجاته — وهو عكسُ ما أراده صاحبُ
+     * الطلب تمامًا.
+     *
+     * @return array<string, mixed>
      */
-    private static function owner(array $data): ?int
+    private static function noOwnership(): array
     {
-        $scope = $data['scope'] ?? null;
+        return [
+            'product_id' => ['prohibited'],
+            'scope' => ['nullable', Rule::in([Addon::SCOPE_ALL, Addon::SCOPE_SELECTED])],
+        ];
+    }
 
-        if ($scope !== null && $scope !== 'product') {
-            return null;
+    /**
+     * ملكيّةُ إضافةٍ قائمةٍ لا تُنقل ولا تُرفع — بالخادم لا بالشاشة.
+     *
+     * والصفوفُ المكتوبةُ قبل زوال القسم تبقى تُعدَّل وتُعطَّل من «المعلومات
+     * الأساسية» في شاشة مالكها. فلزم أن يكون الحاجزُ هنا: طلبُ الحفظ يصل
+     * من متصفّحٍ قد تكون شاشتُه قديمة — أو مُلاعَبة. وإضافةٌ خاصّةٌ تُحوَّل
+     * إلى عامّةٍ بحفظِ سعرٍ تظهر فجأةً مع كلّ منتجات المتجر، ولا أحد طلب
+     * ذلك ولا أحد يراه.
+     *
+     * فالمملوكةُ يُمنع أن يُرسل لها مدًى أو منتجاتُ مدًى؛ والعامّةُ يُمنع أن
+     * يُرسل لها مالك. والفراغُ ليس طلبًا: `null` و`[]` تمرّان.
+     *
+     * @return array<string, mixed>
+     */
+    private static function ownershipStays(?int $owner): array
+    {
+        if ($owner === null) {
+            return self::noOwnership();
         }
 
-        $owner = $data['product_id'] ?? null;
-
-        return ($owner === null || $owner === '') ? null : (int) $owner;
+        return [
+            'product_id' => ['prohibited'],
+            'scope' => ['prohibited'],
+            'product_ids' => ['prohibited'],
+        ];
     }
 
     /**
@@ -235,9 +268,9 @@ class CatalogQuickAddController extends Controller
      */
     private static function syncScopeProducts(Addon $addon, int $bid, array $data): void
     {
+        // المملوكةُ لمنتجٍ لا صفوفَ مدًى لها تُكتب — وما كُتب قبل اليوم يبقى:
+        // صفوفُ إنتاجٍ كتبها قسمٌ زال، وحفظُ سعرٍ لا يمحو بيانات
         if ($addon->product_id !== null) {
-            \Illuminate\Support\Facades\DB::table('product_addons')->where('addon_id', $addon->id)->delete();
-
             return;
         }
 

@@ -6778,5 +6778,6 @@
     "حُذفت الشركة، وتعذّر حذف :n ملفًّا — راجع سجلّ النشاط.": "The business was deleted, but :n files could not be removed — check the activity log.",
     "سيُحذف كل ما يخص «:name»: المنتجات والطلبات والعملاء والمخزون والمستخدمون والملفات. لا يمكن التراجع عن هذا الإجراء.": "Everything belonging to “:name” will be deleted: products, orders, customers, inventory, users and files. This cannot be undone.",
     "منطقة الخطر": "Danger zone",
-    "يمحو هذا الإجراء الشركة وكل بياناتها ومستخدميها وملفاتها. تُؤرشف دفاترها المحاسبية قبل المحو، وما عداها لا يُسترجع.": "This erases the business with all its data, users and files. Its accounting books are archived first; nothing else can be recovered."
+    "يمحو هذا الإجراء الشركة وكل بياناتها ومستخدميها وملفاتها. تُؤرشف دفاترها المحاسبية قبل المحو، وما عداها لا يُسترجع.": "This erases the business with all its data, users and files. Its accounting books are archived first; nothing else can be recovered.",
+    "هذا الجهاز صندوقٌ لمتجرٍ آخر. اضغط «ليس هذا متجرك؟» في شاشة الدخول لنسيانه.": "This device is a register for another shop. Tap “Not your shop?” on the sign-in screen to forget it."
 }

@@ -133,6 +133,78 @@ class PosDeviceTest extends TestCase
         $this->assertGuest();
     }
 
+    /** ورسالتُه تقول الحقيقة: الجهازُ لمتجرٍ آخر، لا صلاحيّةٌ تنقصه */
+    public function test_and_he_is_told_the_device_belongs_to_another_shop(): void
+    {
+        $cashier = $this->cashier($this->a, 'a2@abaad.om');
+        [$devB, $rawB] = $this->device($this->branchB);
+
+        $this->enterPos($devB, $rawB, $cashier)
+            ->assertSessionHasErrors(['email' => 'هذا الجهاز صندوقٌ لمتجرٍ آخر. اضغط «ليس هذا متجرك؟» في شاشة الدخول لنسيانه.']);
+    }
+
+    /* ═══════ ومن له بابٌ غيرُ الصندوق لا تُهدَم جلستُه ═══════ */
+
+    public function test_an_owner_on_another_shops_till_keeps_his_session(): void
+    {
+        /*
+         * ═══ وهذه وقعت على صاحب متجرٍ حقيقيّ ═══
+         *
+         * جهازُ متجرٍ مفعَّلٌ على هاتفه، ثمّ دخل بحساب متجرٍ آخر: فكلُّ فتحةٍ
+         * لنقطة البيع تُخرجه من النظام كلِّه — لا من الشاشة وحدها. وهو لا
+         * يحتاج صندوقَ ذلك المتجر أصلًا، ولوحتُه مفتوحةٌ له.
+         */
+        [$devB, $rawB] = $this->device($this->branchB);
+
+        $this->enterPos($devB, $rawB, $this->ownerA)
+            ->assertRedirect(route('admin.dashboard'));
+
+        $this->assertAuthenticated();
+    }
+
+    public function test_and_the_loop_that_trapped_him_is_cut(): void
+    {
+        /*
+         * الخروجُ كان يحفظ الوجهة المقصودة، فيدخل من جديدٍ فيُردّ إلى `/pos`
+         * فيُخرَج ثانيةً — دورةٌ لا مخرج منها إلّا زرٌّ رماديٌّ لا يعرفه أحد.
+         */
+        [$devB, $rawB] = $this->device($this->branchB);
+
+        $this->onDevice($devB, $rawB)->actingAs($this->ownerA)
+            ->withSession(['url.intended' => route('pos.index')])
+            ->get(route('pos.index'));
+
+        $this->assertNull(session('url.intended'), 'الوجهةُ المحفوظة باقيةٌ — تعيده الدورة');
+    }
+
+    public function test_a_manager_of_the_wrong_branch_is_sent_home_not_out(): void
+    {
+        // وداخلَ متجره كذلك: القاعدةُ في البابِ لا في المتجر
+        $manager = User::create([
+            'business_id' => $this->a->id, 'name' => 'مدير الخوير', 'email' => 'm@abaad.om',
+            'password' => 'password', 'role' => 'manager', 'status' => 'نشط',
+        ]);
+        $manager->branches()->sync([$this->khuwair->id]);
+
+        [$dev, $raw] = $this->device($this->seeb);
+
+        $this->enterPos($dev, $raw, $manager)->assertRedirect(route('admin.dashboard'));
+        $this->assertAuthenticated();
+    }
+
+    public function test_but_a_cashier_is_still_put_out_at_the_door(): void
+    {
+        /*
+         * ولا يُنقض الحارسُ القائم: صفحةُ الكاشير هي نقطةُ البيع نفسُها، فردُّه
+         * إليها يدور بلا نهاية. فيبقى الخروجُ له وحدَه.
+         */
+        $cashier = $this->cashier($this->a, 'a3@abaad.om', [$this->khuwair->id]);
+        [$dev, $raw] = $this->device($this->seeb);
+
+        $this->enterPos($dev, $raw, $cashier)->assertRedirect(route('login'));
+        $this->assertGuest();
+    }
+
     /* ---------------------------- إذن الفرع ---------------------------- */
 
     /** ممنوعٌ من فرعٍ لا يبيع على جهازه ولو دخل ببريدٍ صحيح */

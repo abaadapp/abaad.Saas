@@ -113,6 +113,8 @@ class BusinessController extends Controller
                 + \App\Support\Sort::params($request, self::SORTS),
             'sorts' => \App\Support\Sort::keys(self::SORTS),
             'options' => PageController::filterOptions($request),
+            /* بابُ أرشيفات الحذف — يُرسم إن كان المفتاح مفتوحًا على هذا الخادم */
+            'purge' => \App\Support\BusinessPurge::enabled(),
         ]);
     }
 
@@ -276,21 +278,125 @@ class BusinessController extends Controller
             ]);
         }
 
+        /*
+         * وبوّاباتُ التخزين والطابور تُسأل قبل أن يُصفَّ شيء.
+         *
+         * لا نسخةَ بعيدةً مهيَّأةً، أو لا مفتاحَ تشفير، أو لا عاملَ طابور:
+         * يُردّ الطلبُ بكلمةٍ تُقرأ تحت الحقل، ولا يُنشأ صفٌّ ولا تُصفّ
+         * مهمّةٌ تنتظر ما لا يأتي.
+         */
         try {
-            $out = \App\Support\BusinessPurge::run($business, $request->user());
+            \App\Support\BusinessPurge::gate();
         } catch (\RuntimeException $e) {
             return back()->withErrors(['confirm' => $e->getMessage()]);
         }
 
-        /* وما تعذّر حذفُه من ملفّاتٍ يُقال ولا يُبتلع — الصفوفُ مُحيت وهي باقية */
-        $msg = $out['failures'] === []
-            ? __('حُذفت الشركة نهائيًا. أُرشفت دفاترها في :path', ['path' => $out['archive']])
-            : __('حُذفت الشركة، وتعذّر حذف :n ملفًّا — راجع سجلّ النشاط.', ['n' => count($out['failures'])]);
+        /*
+         * صفٌّ واحدٌ لكلّ شركة — والفريدُ في القاعدة هو الحارس.
+         *
+         * ضغطتان متلاحقتان تصلان معًا: الأولى تُنشئ الصفَّ، والثانية تسقط
+         * على الفهرس الفريد فتُقرأ «جارٍ الآن». ولا يُعتمد على قراءةٍ ثمّ
+         * كتابةٍ: بينهما نافذةٌ يمرّ منها الطلبُ الثاني.
+         */
+        $run = \App\Models\PurgeRun::firstOrNew(['business_id' => (int) $business->id]);
 
-        return redirect()->route('super-admin.businesses.index')->with('toast', [
-            'msg' => $msg,
-            'type' => $out['failures'] === [] ? 'success' : 'warning',
+        if ($run->exists && $run->isActive()) {
+            return back()->withErrors(['confirm' => __('حذفُ هذه الشركة جارٍ الآن — انتظر حتّى ينتهي.')]);
+        }
+
+        try {
+            $run->fill([
+                'business_name' => (string) $business->name,
+                'requested_by' => $request->user()->id,
+                'requested_by_name' => (string) $request->user()->name,
+                'status' => \App\Models\PurgeRun::PENDING,
+                'stage' => \App\Models\PurgeRun::QUEUED,
+                'error' => null,
+                'started_at' => null,
+                'finished_at' => null,
+            ])->save();
+        } catch (\Illuminate\Database\QueryException $e) {
+            return back()->withErrors(['confirm' => __('حذفُ هذه الشركة جارٍ الآن — انتظر حتّى ينتهي.')]);
+        }
+
+        \App\Jobs\PurgeBusiness::dispatch($run->id);
+
+        return back()->with('toast', [
+            'msg' => __('بدأ الحذف النهائي في الخلفية — تابع حالته في هذه الصفحة.'),
+            'type' => 'info',
         ]);
+    }
+
+    /**
+     * حالُ الحذف — تُقرأ من الشاشة كلَّ ثوانٍ.
+     *
+     * ولا تحمل مسارًا داخليًّا ولا بصمةً ولا اسمَ قرص: الشاشةُ تحتاج «أين
+     * وصل» لا «أين الملفّ». ومن أراد الملفَّ يمرّ ببابِ التنزيل وحدَه.
+     */
+    public function purgeStatus(Request $request, $id)
+    {
+        abort_unless(\App\Support\BusinessPurge::enabled(), 404);
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $run = \App\Models\PurgeRun::where('business_id', (int) $id)->first();
+
+        if ($run === null) {
+            return response()->json(['status' => null]);
+        }
+
+        return response()->json([
+            'status' => $run->status,
+            'stage' => $run->stage,
+            'label' => \App\Support\Purge\Stages::label($run),
+            'rows' => $run->rows_total,
+            'users' => $run->users_deleted,
+            'files' => $run->files_deleted,
+            'verified' => $run->verified_at !== null,
+            'failures' => count($run->failures ?? []),
+            'error' => $run->error,
+            'done' => $run->status === \App\Models\PurgeRun::DONE,
+        ]);
+    }
+
+    /**
+     * تنزيلُ أرشيفِ شركةٍ محذوفة — لمدير المنصّة وحدَه، ويُقيَّد في السجلّ.
+     *
+     * ═══ ولمَ لا رابطَ مباشرٌ للتخزين ═══
+     *
+     * رابطٌ موقَّعٌ من S3 يخرج من النظام فلا يُقيَّد من فتحه ولا متى، ويُنسخ
+     * فيُقرأ بعد ذلك بلا تخويل. فالملفُّ يمرّ من هنا: يُنزَّل إلى ملفٍّ
+     * مؤقّت، ويُفكّ تشفيرُه، ويُسلَّم، ويُمحى المؤقّتُ بعد التسليم.
+     *
+     * والاسمُ المعروضُ من معرّف الصفّ لا من مسار التخزين — فلا يُكشف مسارٌ
+     * داخليٌّ ولا اسمُ دلو.
+     */
+    public function purgeDownload(Request $request, $runId)
+    {
+        abort_unless(\App\Support\BusinessPurge::enabled(), 404);
+        abort_unless($request->user()?->isSuperAdmin(), 403);
+
+        $run = \App\Models\PurgeRun::findOrFail($runId);
+
+        try {
+            $tmp = \App\Support\Purge\Vault::open($run);
+        } catch (\RuntimeException $e) {
+            return back()->withErrors(['archive' => $e->getMessage()]);
+        }
+
+        \App\Support\Activity::log('downloaded', __('نزّل أرشيف الحذف النهائي: :name (#:id)', [
+            'name' => $run->business_name,
+            'id' => $run->business_id,
+        ]), [
+            'business_id' => null,
+            'subject_type' => \App\Models\PurgeRun::class,
+            'subject_id' => $run->id,
+            'icon' => 'download',
+            'color' => 'warning',
+        ]);
+
+        return response()
+            ->download($tmp, 'purge-'.$run->business_id.'-'.$run->created_at->format('Ymd').'.zip')
+            ->deleteFileAfterSend(true);
     }
 
     /**

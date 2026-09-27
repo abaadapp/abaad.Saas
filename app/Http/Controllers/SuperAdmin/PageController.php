@@ -9,10 +9,12 @@ use App\Models\BranchGooglePlace;
 use App\Models\Business;
 use App\Models\Invoice;
 use App\Models\Plan;
+use App\Models\PurgeRun;
 use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Models\WhatsAppConnection;
+use App\Support\Activity;
 use App\Support\Billing;
 use App\Support\BusinessPurge;
 use App\Support\BusinessTypes;
@@ -26,6 +28,8 @@ use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
 use App\Support\PlatformConfig;
+use App\Support\Purge\Stages;
+use App\Support\Purge\Vault;
 use App\Support\Roles;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppConnections;
@@ -131,6 +135,14 @@ class PageController extends Controller
              * لا حراسة.
              */
             'purge' => BusinessPurge::enabled(),
+            /*
+             * وحالُ آخرِ محاولةٍ — فمن فتح الصفحة بعد أن أغلقها يجد أين وصلت.
+             *
+             * ولا بصمةَ ولا مسارَ هنا: الشاشةُ تقول «أين وصل» لا «أين الملفّ».
+             */
+            'purgeRun' => BusinessPurge::enabled()
+                ? PurgeRun::where('business_id', (int) $business['id'])->first(['status', 'stage', 'error'])
+                : null,
             'stats' => [
                 ['label' => __('الفروع'), 'value' => (string) $business['branches'], 'icon' => 'git-branch', 'color' => 'primary'],
                 ['label' => __('الموظفون'), 'value' => (string) $counts['employees'], 'icon' => 'users', 'color' => 'info'],
@@ -161,6 +173,56 @@ class PageController extends Controller
             'whatsapp' => WhatsAppController::businessView($model),
             // ووسيلة استعادته: العنوان وحاله — أوّل ما يُسأل عنه حين يتّصل صاحبه
             'recovery' => RecoveryController::view($model),
+        ]);
+    }
+
+    /**
+     * أرشيفاتُ الشركات المحذوفة — لمدير المنصّة وحدَه.
+     *
+     * ═══ وما يُعرض وما لا يُعرض ═══
+     *
+     * يُعرض: اسمُ الشركة ومعرّفُها، ومن حذفها ومتى، وأين وصلت العمليّة،
+     * وأعدادُ ما مُحي، وبصمةُ الأرشيف — بها يُتحقّق من الملفّ بعد تنزيله.
+     *
+     * ولا يُعرض: مسارٌ على القرص، ولا مسارٌ في التخزين البعيد، ولا اسمُ
+     * دلوٍ ولا مفتاح. فمن أراد الملفَّ يمرّ ببابِ التنزيل، وهو يُقيَّد.
+     *
+     * وفتحُ الصفحة نفسُه يُقيَّد: «مَن نظر في أرشيفات الحذف ومتى» سؤالٌ
+     * يُسأل يومَ يُسأل عن بيانات تاجرٍ مُحيت.
+     */
+    public function businessesPurges(): Response
+    {
+        abort_unless(BusinessPurge::enabled(), 404);
+
+        $runs = PurgeRun::orderByDesc('id')->get();
+
+        Activity::log('viewed', __('فتح أرشيفات الحذف النهائي (:n)', ['n' => $runs->count()]), [
+            'business_id' => null,
+            'icon' => 'archive',
+            'color' => 'secondary',
+        ]);
+
+        return $this->page('Platform/Businesses/Purges', [
+            'runs' => $runs->map(fn (PurgeRun $r) => [
+                'id' => $r->id,
+                'business_id' => $r->business_id,
+                'business_name' => $r->business_name,
+                'by' => $r->requested_by_name,
+                'status' => $r->status,
+                'label' => Stages::label($r),
+                'touched' => Stages::touched($r),
+                'rows' => $r->rows_total,
+                'users' => $r->users_deleted,
+                'files' => $r->files_deleted,
+                'failures' => count($r->failures ?? []),
+                'verified' => $r->verified_at !== null,
+                /* بصمةٌ مقتطعة — تكفي للمطابقة بالعين ولا تُطيل السطر */
+                'sha' => $r->archive_sha256 === null ? null : substr($r->archive_sha256, 0, 16),
+                'bytes' => $r->archive_bytes,
+                'available' => Vault::available($r),
+                'error' => $r->error,
+                'at' => $r->created_at?->format('Y-m-d H:i'),
+            ])->all(),
         ]);
     }
 

@@ -174,6 +174,14 @@ class EveryScreenOpensTest extends TestCase
 
     public function test_every_platform_screen_opens(): void
     {
+        /*
+         * وشاشةُ أرشيفات الحذف النهائيّ خلف مفتاحٍ مغلقٍ افتراضيًّا: مسارُها
+         * يردّ ٤٠٤ حتّى يُفتح على الخادم. فيُفتح هنا كي تُفحص الشاشةُ نفسُها
+         * — أمّا كونُ البابِ مغلقًا بلا مفتاح فله حرّاسه في
+         * `APurgeArchiveIsKeptFarFromTheServerTest`.
+         */
+        config(['purge.enabled' => true]);
+
         $this->sweep($this->super, 'super-admin.');
     }
 

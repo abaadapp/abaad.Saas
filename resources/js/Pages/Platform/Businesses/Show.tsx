@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, KeyRound, Layers, LogIn, Pencil, Phone, Power, Trash2, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, router, usePage } from '@inertiajs/react';
+import { AlertTriangle, Archive, KeyRound, Layers, Loader2, LogIn, Pencil, Phone, Power, Trash2, User } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import DeleteButton from '@/Components/DeleteButton';
@@ -28,6 +28,7 @@ import {
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { isDisabled } from '@/lib/tenancy';
+import { cn } from '@/lib/utils';
 import type { Currency, PageProps } from '@/types';
 
 interface Business {
@@ -96,6 +97,8 @@ interface Props {
     recovery: BusinessRecovery;
     /** أمفتوحٌ بابُ الحذف النهائيّ على هذا الخادم؟ — `config/purge.php` */
     purge: boolean;
+    /** حالُ آخرِ محاولةِ حذفٍ نهائيّ لهذه الشركة — أو `null` إن لم تكن */
+    purgeRun: PurgeRunState | null;
 }
 
 const TABS = [
@@ -105,7 +108,7 @@ const TABS = [
 ];
 
 export default function BusinessShow() {
-    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp, recovery, purge } =
+    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp, recovery, purge, purgeRun } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
@@ -494,7 +497,7 @@ export default function BusinessShow() {
                 )}
             </Card>
 
-            {purge && <DangerZone name={business.name} id={business.id} />}
+            {purge && <DangerZone name={business.name} id={business.id} run={purgeRun} />}
 
         </PlatformLayout>
     );
@@ -513,14 +516,62 @@ export default function BusinessShow() {
  * وكتابةُ الاسم لا تقع إلا بعد أن تُقرأ الشاشة. والخادمُ يقارنه ثانيةً —
  * فهذا الحقلُ راحةٌ لمن يضغط لا حراسةٌ للبيانات.
  */
-export function DangerZone({ name, id }: { name: string; id: number }) {
+/** حالُ محاولةِ حذفٍ — كما يقرؤها الخادمُ من صفّها */
+export interface PurgeRunState {
+    status: 'pending' | 'running' | 'done' | 'failed';
+    stage: string;
+    label?: string;
+    error?: string | null;
+    done?: boolean;
+}
+
+const ACTIVE = ['pending', 'running'];
+
+export function DangerZone({ name, id, run }: { name: string; id: number; run: PurgeRunState | null }) {
     const t = useTranslate();
     const [open, setOpen] = useState(false);
     const [typed, setTyped] = useState('');
     const [busy, setBusy] = useState(false);
+    const [state, setState] = useState<PurgeRunState | null>(run);
 
     const tidy = (v: string) => v.replace(/\s+/g, ' ').trim();
     const matches = tidy(typed) === tidy(name);
+    const running = state !== null && ACTIVE.includes(state.status);
+
+    /*
+     * والحالُ تُسأل كلَّ ثلاثِ ثوانٍ ما دامت تعمل.
+     *
+     * والسؤالُ يتوقّف حين تنتهي: طلبٌ كلَّ ثلاثِ ثوانٍ إلى الأبد على شاشةٍ
+     * تُركت مفتوحةً حملٌ بلا فائدة. ومتى تمّ المحوُ لم تبقَ الصفحةُ صالحة
+     * — الشركةُ التي تعرضها لم تعد موجودة — فيُنتقل إلى القائمة.
+     */
+    useEffect(() => {
+        if (! running) return;
+
+        const tick = async () => {
+            try {
+                const res = await fetch(route('super-admin.businesses.purgeStatus', id), {
+                    headers: { Accept: 'application/json' },
+                });
+
+                if (! res.ok) return;
+
+                const next: PurgeRunState = await res.json();
+                setState(next);
+
+                if (next.done) {
+                    router.visit(route('super-admin.businesses.index'));
+                }
+            } catch {
+                /* انقطاعُ شبكةٍ لحظيّ لا يُبطل المتابعة — تُسأل في الدورة التالية */
+            }
+        };
+
+        const timer = window.setInterval(tick, 3000);
+        void tick();
+
+        return () => window.clearInterval(timer);
+    }, [running, id]);
 
     const submit = () => {
         if (! matches || busy) return;
@@ -529,6 +580,11 @@ export function DangerZone({ name, id }: { name: string; id: number }) {
         router.delete(route('super-admin.businesses.purge', id), {
             data: { confirm: typed },
             preserveScroll: true,
+            onSuccess: () => {
+                setOpen(false);
+                setTyped('');
+                setState({ status: 'pending', stage: 'queued' });
+            },
             onFinish: () => setBusy(false),
         });
     };
@@ -542,15 +598,40 @@ export function DangerZone({ name, id }: { name: string; id: number }) {
                         {t('منطقة الخطر')}
                     </h2>
                     <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-[#7f1d1d]">
-                        {t('يمحو هذا الإجراء الشركة وكل بياناتها ومستخدميها وملفاتها. تُؤرشف دفاترها المحاسبية قبل المحو، وما عداها لا يُسترجع.')}
+                        {t('يمحو هذا الإجراء الشركة وكل بياناتها ومستخدميها وملفاتها. تُؤرشف دفاترها المحاسبية وتُنسخ مشفَّرةً إلى تخزين مستقل، ويُتحقق من استعادتها قبل المحو.')}
                     </p>
+                    <Link
+                        href={route('super-admin.businesses.purges')}
+                        className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#b91c1c] underline-offset-4 hover:underline"
+                    >
+                        <Archive className="size-3.5" />
+                        {t('أرشيفات الحذف النهائي')}
+                    </Link>
                 </div>
 
-                <Button variant="danger" onClick={() => setOpen(true)}>
+                <Button variant="danger" onClick={() => setOpen(true)} disabled={running}>
                     <Trash2 />
                     {t('حذف الشركة نهائيًا')}
                 </Button>
             </div>
+
+            {state !== null && (
+                <div
+                    className={cn(
+                        'mt-4 flex items-start gap-2 rounded-[10px] border p-3 text-[12.5px] leading-relaxed',
+                        state.status === 'failed'
+                            ? 'border-[#fecaca] bg-white text-[#b91c1c]'
+                            : 'border-[#fed7aa] bg-white text-[#9a3412]',
+                    )}
+                    role="status"
+                >
+                    {running ? <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" /> : <AlertTriangle className="mt-0.5 size-4 shrink-0" />}
+                    <span className="min-w-0">
+                        <span className="font-bold">{state.label ?? t('الحذف النهائي')}</span>
+                        {state.error && <span className="block text-[#7f1d1d]">{state.error}</span>}
+                    </span>
+                </div>
+            )}
 
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-w-lg">
@@ -563,7 +644,7 @@ export function DangerZone({ name, id }: { name: string; id: number }) {
                             {t('سيُحذف كل ما يخص «:name»: المنتجات والطلبات والعملاء والمخزون والمستخدمون والملفات. لا يمكن التراجع عن هذا الإجراء.', { name })}
                         </p>
                         <p className="text-[13px] leading-relaxed text-[#7f1d1d]">
-                            {t('تُؤرشف السجلات المحاسبية والمالية في ملف يُحفظ على الخادم قبل المحو.')}
+                            {t('تُؤرشف السجلات المحاسبية والمالية، وتُنسخ مشفَّرةً إلى تخزين مستقل، وتُستعاد للتحقق — ولا يُمحى شيء قبل نجاح ذلك.')}
                         </p>
 
                         <label className="block">

@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { router } from '@inertiajs/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { DangerZone } from '@/Pages/Platform/Businesses/Show';
+import { DangerZone, type PurgeRunState } from '@/Pages/Platform/Businesses/Show';
 import { pageProps } from './setup';
 
 /**
@@ -18,9 +18,9 @@ import { pageProps } from './setup';
  * راحةٌ لمن يضغط لا حراسةٌ للبيانات، وله حرّاسه في PHP.
  */
 describe('منطقةُ الخطر', () => {
-    const open = () => {
+    const open = (run: PurgeRunState | null = null) => {
         Object.assign(pageProps, { translations: {} });
-        render(<DangerZone name="متجر الورد" id={7} />);
+        render(<DangerZone name="متجر الورد" id={7} run={run} />);
         fireEvent.click(screen.getByRole('button', { name: /حذف الشركة نهائيًا/ }));
     };
 
@@ -65,5 +65,54 @@ describe('منطقةُ الخطر', () => {
         expect(url).toContain('super-admin.businesses.purge');
         expect(url).not.toContain('destroy');
         expect(opts?.data?.confirm).toBe('متجر الورد');
+    });
+
+    /* ═══════════ وحالُ ما يجري تُقرأ في الشاشة ═══════════ */
+
+    it('وما دامت تعمل يُقفل الزرُّ ويُقرأ أين وصلت', () => {
+        Object.assign(pageProps, { translations: {} });
+        render(
+            <DangerZone
+                name="متجر الورد"
+                id={7}
+                run={{ status: 'running', stage: 'verifying', label: 'التحقّق من استعادة النسخة' }}
+            />,
+        );
+
+        expect(screen.getByRole('button', { name: /حذف الشركة نهائيًا/ })).toBeDisabled();
+        expect(screen.getByRole('status')).toHaveTextContent('التحقّق من استعادة النسخة');
+    });
+
+    it('وسقوطُها يُقرأ بسببه — لا «فشل» صامتة', () => {
+        Object.assign(pageProps, { translations: {} });
+        render(
+            <DangerZone
+                name="متجر الورد"
+                id={7}
+                run={{ status: 'failed', stage: 'uploading', label: 'فشلت عند: رفع النسخة المشفَّرة', error: 'لا تخزين مستقلّ مهيَّأ' }}
+            />,
+        );
+
+        const box = screen.getByRole('status');
+        expect(box).toHaveTextContent('رفع النسخة المشفَّرة');
+        expect(box).toHaveTextContent('لا تخزين مستقلّ مهيَّأ');
+
+        /* وسقوطٌ انتهى يُعيد فتحَ الزرّ — فالإعادةُ بيد من يقرأ */
+        expect(screen.getByRole('button', { name: /حذف الشركة نهائيًا/ })).toBeEnabled();
+    });
+
+    it('ولا حالَ تُعرض قبل أن تُطلب', () => {
+        Object.assign(pageProps, { translations: {} });
+        render(<DangerZone name="متجر الورد" id={7} run={null} />);
+
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('وبابُ الأرشيفات مطروقٌ من منطقة الخطر', () => {
+        Object.assign(pageProps, { translations: {} });
+        render(<DangerZone name="متجر الورد" id={7} run={null} />);
+
+        const link = screen.getByRole('link', { name: /أرشيفات الحذف النهائي/ });
+        expect(link).toHaveAttribute('href', expect.stringContaining('purges'));
     });
 });

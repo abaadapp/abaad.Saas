@@ -307,6 +307,14 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // تصدير الشركات (قبل businesses/{id} حتى لا يبتلعها نمط المعرّف)
     Route::get('/businesses/xlsx', [ReportExportController::class, 'businessesXlsx'])->name('businesses.xlsx');
     Route::get('/businesses/export-pdf', [PdfController::class, 'businessesReport'])->name('businesses.exportPdf');
+    /*
+     * أرشيفاتُ الحذف النهائيّ — قبل `businesses/{id}` كي لا يبتلعها نمطُ المعرّف.
+     *
+     * وبابُ التنزيل يمرّ بالمتحكّم لا برابطٍ موقَّعٍ من التخزين: فيُقيَّد من
+     * نزّل ومتى، ولا يخرج الملفُّ من حراسة النظام. انظر `Purge\Vault`.
+     */
+    Route::get('/businesses/purges', [SuperAdminPageController::class, 'businessesPurges'])->name('businesses.purges');
+    Route::get('/businesses/purges/{runId}/download', [BusinessController::class, 'purgeDownload'])->name('businesses.purgeDownload');
     Route::get('/businesses/create', [SuperAdminPageController::class, 'businessesCreate'])->name('businesses.create');
     Route::post('/businesses', [BusinessController::class, 'store'])->name('businesses.store');
     Route::get('/businesses/{id}', [SuperAdminPageController::class, 'businessesShow'])->name('businesses.show');
@@ -324,6 +332,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
      * منشور، ويردّ ٤٠٤ حتّى يُفتح على الخادم بقرار.
      */
     Route::delete('/businesses/{id}/purge', [BusinessController::class, 'purge'])->name('businesses.purge');
+    /* وحالُ الحذف تُقرأ من الشاشة كلَّ ثوانٍ — ولا تحمل مسارًا ولا بصمة */
+    Route::get('/businesses/{id}/purge-status', [BusinessController::class, 'purgeStatus'])->name('businesses.purgeStatus');
     // الطرف الآخر من التعطيل — بلا هذا المسار كان الباب يُغلق ولا يُفتح
     Route::post('/businesses/{id}/activate', [BusinessController::class, 'activate'])->name('businesses.activate');
 

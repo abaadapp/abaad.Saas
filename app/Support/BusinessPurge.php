@@ -3,13 +3,16 @@
 namespace App\Support;
 
 use App\Models\Business;
-use App\Models\User;
+use App\Models\PurgeRun;
+use App\Support\Purge\Offsite;
+use App\Support\Purge\Worker;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Throwable;
 use ZipArchive;
 
 /**
@@ -116,42 +119,198 @@ final class BusinessPurge
     }
 
     /**
-     * يُمحى المتجرُ ويُعاد بيانُ ما جرى.
+     * بوّابةُ الطلب — تُسأل قبل أن يُنشأ صفٌّ أو تُصفَّ مهمّة.
      *
-     * @return array{archive:string, sha256:string, bytes:int, rows:array<string,int>, users:int, files:int, failures:list<string>}
+     * ثلاثٌ معًا: المفتاحُ مفتوح، وعاملُ طابورٍ يسحب، وتخزينٌ مستقلٌّ
+     * يُكتب عليه ويُقرأ. وتُسأل في المتحكّم ليقرأ من ضغط ما ينقص في
+     * شاشته — لا أن يُصفَّ عملٌ ينتظر ما لا يأتي.
+     *
+     * @throws RuntimeException بكلمةٍ تُقرأ على الشاشة
      */
-    public static function run(Business $business, User $actor): array
+    public static function gate(): void
+    {
+        self::assertOpen();
+
+        Worker::assertReady();
+        Offsite::assertReady();
+    }
+
+    /**
+     * وبوّابةُ التنفيذ — والعاملُ لا يُسأل عن نفسه.
+     *
+     * ═══ ولمَ سؤالان لا سؤال ═══
+     *
+     * بين الضغطة والتنفيذ طابور: عاملٌ يلتقط المهمّةَ بعد دقائقَ قد تكون
+     * الإعداداتُ فيها تبدّلت — أُقفل المفتاح، أو سُحبت مفاتيحُ التخزين.
+     * فيُسأل المفتاحُ والتخزينُ ثانيةً عند الفعل.
+     *
+     * أمّا «أثمّ عاملٌ يسحب من الطابور؟» فسؤالٌ لا معنى له في جوف العامل
+     * وهو يسحب: جوابُه ماثلٌ في أنّ هذا السطرَ يُنفَّذ. وسؤالُه هنا كان
+     * يُسقط الحذفَ بجوابٍ خاطئ — `pgrep` من داخل المهمّة ردّ صفرًا وعاملُها
+     * قائمٌ يعمل. وحارسٌ يمنع الفعلَ الصحيحَ ليس حراسة.
+     *
+     * @throws RuntimeException بكلمةٍ تُقرأ على الشاشة
+     */
+    public static function gateAtRun(): void
+    {
+        self::assertOpen();
+
+        Offsite::assertReady();
+    }
+
+    private static function assertOpen(): void
     {
         if (! self::enabled()) {
             throw new RuntimeException(__('الحذف النهائي مُقفل على هذا الخادم.'));
         }
+    }
 
-        $bid = (int) $business->id;
-        $name = (string) $business->name;
+    /**
+     * يُنفَّذ الحذفُ على مراحل، وصفُّه يقول أين وصل.
+     *
+     * ═══ والترتيبُ حارسٌ لا تنظيم ═══
+     *
+     * أرشفةٌ ← تحقّقٌ محلّيّ ← نسخةٌ مشفَّرةٌ بعيدة ← **استعادةٌ حقيقيّة**
+     * ← محوُ صفوفٍ ← محوُ ملفّاتٍ ← سجلّ. ولا يُمحى صفٌّ واحدٌ قبل أن
+     * تُنزَّل النسخةُ البعيدةُ وتُفكّ ويُفتح ملفُّها ويُقرأ بيانُه — فما
+     * لم يُستعَد الأرشيفُ بالفعل لم يُثبت أنّه أرشيف.
+     *
+     * @return array{archive:string, sha256:string, bytes:int, rows:array<string,int>, users:int, files:int, failures:list<string>}
+     */
+    public static function execute(PurgeRun $run): array
+    {
+        self::gateAtRun();
+
+        $bid = (int) $run->business_id;
 
         /*
          * ولا تُنفَّذ مرّتين بالتزامن.
          *
-         * ضغطتان على الزرّ، أو طلبٌ يُعاد إرساله، يُشغّلان مساريَن على الصفوف
-         * نفسِها: الثاني يقرأ ما محاه الأوّل فيكتب أرشيفًا ناقصًا ويسجّل
-         * نجاحًا لم يقع. والقفلُ لا يُنتظر — الثاني يُردّ بكلمته.
+         * ضغطتان على الزرّ، أو عاملان يلتقطان مهمّتين، يُشغّلان مساريَن على
+         * الصفوف نفسِها: الثاني يقرأ ما محاه الأوّل فيكتب أرشيفًا ناقصًا
+         * ويسجّل نجاحًا لم يقع. والقفلُ لا يُنتظر — الثاني يُردّ بكلمته.
+         *
+         * وفريدُ `business_id` في القاعدة هو الحارسُ الدائم؛ وهذا يمنع
+         * التزامنَ في اللحظة. ولكلٍّ موضعُه.
          */
-        $lock = Cache::lock('business-purge:'.$bid, 600);
+        $lock = Cache::lock('business-purge:'.$bid, 3600);
 
         if (! $lock->get()) {
             throw new RuntimeException(__('حذفُ هذه الشركة جارٍ الآن — انتظر حتّى ينتهي.'));
         }
 
         try {
-            $counts = self::counts($bid);
-            $archive = self::archive($business, $actor, $counts);
+            $business = Business::find($bid);
 
-            self::verify($archive['path']);
+            /*
+             * شركةٌ لا وجودَ لها ومحاولةٌ تُعاد: تمّ الفعلُ في مرّةٍ سابقة.
+             *
+             * وإعادةُ محاولةٍ على ما تمّ لا تُعيد محوًا ولا تُنشئ أرشيفًا
+             * ثانيًا — تقول «تمّ» وتسكت. وهذا معنى أن تكون الإعادةُ آمنة.
+             */
+            if ($business === null) {
+                $run->update([
+                    'status' => PurgeRun::DONE,
+                    'stage' => PurgeRun::FINISHED,
+                    'finished_at' => $run->finished_at ?? now(),
+                    'error' => null,
+                ]);
+
+                return [
+                    'archive' => (string) $run->archive_path,
+                    'sha256' => (string) $run->archive_sha256,
+                    'bytes' => (int) $run->archive_bytes,
+                    'rows' => [],
+                    'users' => (int) $run->users_deleted,
+                    'files' => (int) $run->files_deleted,
+                    'failures' => $run->failures ?? [],
+                ];
+            }
+
+            $name = (string) $business->name;
+
+            $run->update([
+                'status' => PurgeRun::RUNNING,
+                'started_at' => $run->started_at ?? now(),
+                'error' => null,
+            ]);
+
+            $counts = self::counts($bid);
+
+            /*
+             * وأرشيفٌ ثبتت استعادتُه لا يُعاد بناؤه.
+             *
+             * محاولةٌ سقطت وهي تمحو الصفوفَ وقد تمّ أرشيفُها: إعادةُ الأرشفة
+             * تقرأ صفوفًا نصفَ ممحوّةٍ فتكتب أرشيفًا أنقصَ من الأوّل، ثمّ
+             * تدفع الأوّلَ الصحيحَ عن مكانه. فيُقرأ الصفُّ ويُكمل من حيث وقف.
+             */
+            if ($run->archiveProven()) {
+                $archive = [
+                    'path' => (string) $run->archive_path,
+                    'sha256' => (string) $run->archive_sha256,
+                    'bytes' => (int) $run->archive_bytes,
+                    'entries' => 0,
+                ];
+            } else {
+                $run->update(['stage' => PurgeRun::ARCHIVING]);
+
+                $archive = self::archive($business, [
+                    'id' => $run->requested_by,
+                    'name' => (string) ($run->requested_by_name ?? '—'),
+                ], $counts);
+
+                self::verify($archive['path']);
+
+                $run->update([
+                    'archive_path' => $archive['path'],
+                    'archive_sha256' => $archive['sha256'],
+                    'archive_bytes' => $archive['bytes'],
+                    'rows_total' => array_sum($counts),
+                ]);
+
+                $run->update(['stage' => PurgeRun::UPLOADING]);
+
+                $offsite = Offsite::store(
+                    Storage::disk(self::DISK)->path($archive['path']),
+                    $archive['sha256'],
+                    $bid,
+                );
+
+                $run->update([
+                    'offsite_disk' => Offsite::disk(),
+                    'offsite_path' => $offsite['path'],
+                    'offsite_sha256' => $offsite['sha256'],
+                    'offsite_bytes' => $offsite['bytes'],
+                ]);
+
+                /* واستعادةٌ حقيقيّةٌ من البعيد — تُنزَّل وتُفكّ وتُفتح وتُقرأ */
+                $run->update(['stage' => PurgeRun::VERIFYING]);
+
+                Offsite::assertRestorable((string) Offsite::disk(), $offsite['path'], $archive['sha256']);
+
+                $run->update(['verified_at' => now()]);
+            }
+
+            /*
+             * وحارسٌ أخيرٌ قبل أوّل حذف.
+             *
+             * الشروطُ أعلاه تكفي، وهذا يسألها مرّةً أخرى من القاعدة لا من
+             * الذاكرة: فرعٌ جديدٌ يُكتب غدًا فوق هذا الملفّ وينسى خطوةً
+             * يجد هنا بابًا مغلقًا. وما لا تراجعَ فيه يُسأل مرّتين.
+             */
+            if (! $run->fresh()?->archiveProven()) {
+                throw new RuntimeException(__('لم يثبت الأرشيف ولا نسخته — أُلغي الحذف ولم يُمسّ شيء.'));
+            }
 
             /* مساراتُ `public` تُقرأ قبل المحو — بعده لا صفَّ يُقرأ منه مسار */
             $shared = self::publicPaths($bid);
 
+            $run->update(['stage' => PurgeRun::DELETING]);
+
             $users = self::wipe($bid);
+
+            $run->update(['stage' => PurgeRun::FILES, 'users_deleted' => $users]);
+
             $files = self::files($bid, $shared);
 
             Activity::log('deleted', self::record($name, $bid, $archive, $counts, $users, $files), [
@@ -159,6 +318,14 @@ final class BusinessPurge
                 'business_id' => null,
                 'subject_type' => Business::class,
                 'subject_id' => $bid,
+            ]);
+
+            $run->update([
+                'status' => PurgeRun::DONE,
+                'stage' => PurgeRun::FINISHED,
+                'files_deleted' => $files['deleted'],
+                'failures' => $files['failures'] === [] ? null : $files['failures'],
+                'finished_at' => now(),
             ]);
 
             return [
@@ -170,6 +337,20 @@ final class BusinessPurge
                 'files' => $files['deleted'],
                 'failures' => $files['failures'],
             ];
+        } catch (Throwable $e) {
+            /*
+             * والسقوطُ يُكتب في الصفّ ثمّ يُرفع كما هو.
+             *
+             * يُكتب ليقرأه من ينظر في الشاشة، ويُرفع ليراه الطابورُ فيضع
+             * المهمّةَ في الفاشلات — فلا تُقرأ «فشلت» في مكانٍ و«نجحت» في آخر.
+             */
+            $run->update([
+                'status' => PurgeRun::FAILED,
+                'error' => mb_substr($e->getMessage(), 0, 480),
+                'finished_at' => now(),
+            ]);
+
+            throw $e;
         } finally {
             $lock->release();
         }
@@ -203,8 +384,18 @@ final class BusinessPurge
     /** @return list<string> */
     public static function scoped(): array
     {
+        /*
+         * وجداولُ تُستثنى — ومنها ما يوثّق الفعلَ نفسَه.
+         *
+         * `business_purges` يحمل `business_id` ككلّ جدولٍ آخر، فكان يدخل
+         * المحوَ فيمحو صفَّه الذي يقول «مُحيت هذه الشركة ومن محاها ومتى».
+         * وهو الخطرُ عينُه الذي جُعل من أجله `business_id = null` في سطر
+         * سجلّ النشاط: دليلٌ يُمحى مع المدلول لا يُقرأ بعد.
+         *
+         * وكشفه حارسٌ لا مراجعة: المحوُ نجح، ثمّ لم يبقَ ما يقول إنّه نجح.
+         */
         $skip = ['migrations', 'cache', 'cache_locks', 'jobs', 'job_batches', 'failed_jobs',
-            'sessions', 'password_reset_tokens', 'businesses'];
+            'sessions', 'password_reset_tokens', 'businesses', 'business_purges'];
 
         return collect(Schema::getTableListing())
             ->map(fn ($t) => str_contains($t, '.') ? substr(strrchr($t, '.'), 1) : $t)
@@ -219,10 +410,11 @@ final class BusinessPurge
     /**
      * ملفٌّ واحدٌ يحمل الدفاترَ والمرفقاتِ وبيانًا بما فيه.
      *
+     * @param  array{id:int|null, name:string}  $actor  من طلب الحذف — اسمٌ ومعرّف، لا أكثر
      * @param  array<string,int>  $counts
      * @return array{path:string, sha256:string, bytes:int, entries:int}
      */
-    private static function archive(Business $business, User $actor, array $counts): array
+    private static function archive(Business $business, array $actor, array $counts): array
     {
         $disk = Storage::disk(self::DISK);
         $disk->makeDirectory(self::DIR);
@@ -276,7 +468,7 @@ final class BusinessPurge
             'schema' => 1,
             'business' => ['id' => $bid, 'name' => $business->name, 'created_at' => (string) $business->created_at],
             'purged_at' => now()->toIso8601String(),
-            'purged_by' => ['id' => $actor->id, 'name' => $actor->name],
+            'purged_by' => ['id' => $actor['id'], 'name' => $actor['name']],
             'retention' => 'سجلات محاسبية — تُحفظ ولا تُحذف. انظر config/purge.php وتقرير المهمة.',
             'books' => $sheets,
             'files' => $files,
@@ -543,7 +735,7 @@ final class BusinessPurge
                     $deleted += count($local->allFiles($folder));
                     $local->deleteDirectory($folder);
                 }
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $failures[] = $folder.' — '.$e->getMessage();
             }
         }
@@ -556,7 +748,7 @@ final class BusinessPurge
                     $public->delete($path);
                     $deleted++;
                 }
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $failures[] = $path.' — '.$e->getMessage();
             }
         }

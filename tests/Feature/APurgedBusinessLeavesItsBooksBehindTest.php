@@ -8,14 +8,17 @@ use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\PurgeRun;
 use App\Models\User;
 use App\Support\BusinessPurge;
 use App\Support\Ledger;
+use Illuminate\Bus\UniqueLock;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
+use Throwable;
 use ZipArchive;
 
 /**
@@ -32,6 +35,9 @@ class APurgedBusinessLeavesItsBooksBehindTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** قرصٌ يقوم مقامَ التخزين المستقلّ في الاختبار */
+    private const OFFSITE = 'offsite-test';
+
     private Business $shop;
 
     private Business $neighbour;
@@ -47,7 +53,32 @@ class APurgedBusinessLeavesItsBooksBehindTest extends TestCase
         parent::setUp();
         Storage::fake('local');
         Storage::fake('public');
-        config(['purge.enabled' => true]);
+
+        /*
+         * بيئةٌ معزولةٌ كاملة: قرصان محلّيّان مُزيَّفان، وقرصٌ ثالثٌ يقوم
+         * مقامَ التخزين المستقلّ، ومفتاحُ تشفيرٍ يُولَّد لكلّ اختبار.
+         *
+         * ولا شيءَ من هذا يمسّ إنتاجًا: `Storage::fake` مجلّدٌ مؤقّت، والمفتاحُ
+         * عشوائيٌّ يُنسى بانتهاء الاختبار.
+         */
+        Storage::fake(self::OFFSITE);
+
+        /* و`Storage::fake` لا تكتب القرصَ في الإعدادات — فيُعرَّف كما في الواقع */
+        config(['filesystems.disks.'.self::OFFSITE => [
+            'driver' => 'local',
+            'root' => storage_path('framework/testing/disks/'.self::OFFSITE),
+        ]]);
+
+        config([
+            'purge.enabled' => true,
+            'purge.key' => base64_encode(random_bytes(32)),
+            'purge.offsite.disk' => self::OFFSITE,
+            'purge.offsite.prefix' => 'purges',
+            /* عاملُ الطابور يُفترض موجودًا — وله حارسُه في الطرفين */
+            'purge.assume_worker' => true,
+            /* وطابورٌ حقيقيٌّ في القاعدة لا `sync`: فالمسارُ كلُّه يُختبر */
+            'queue.default' => 'database',
+        ]);
 
         $this->shop = $this->business('متجر الورد', 'wrood');
         $this->neighbour = $this->business('متجر الجار', 'jar');
@@ -122,12 +153,83 @@ class APurgedBusinessLeavesItsBooksBehindTest extends TestCase
         return $b;
     }
 
+    /**
+     * يُطلب الحذفُ ثمّ يُشغَّل الطابورُ — فيُختبر المسارُ كما يجري حقًّا.
+     *
+     * والمهمّةُ تُصفّ في جدول `jobs` ويسحبها `queue:work` كما يسحبها عاملٌ
+     * على الخادم: فتُختبر الأسطرُ التي تُسلسل المهمّةَ وتفكُّها، لا دالّةٌ
+     * تُنادى مباشرةً. وطلبٌ مرفوضٌ لا يُصفّ شيئًا، فالتشغيلُ لا يضرّه.
+     */
     private function purge(?User $as = null, ?string $confirm = null)
+    {
+        $res = $this->request($as, $confirm);
+        $this->work();
+
+        return $res;
+    }
+
+    /** الطلبُ وحدَه — بلا تشغيلِ الطابور */
+    private function request(?User $as = null, ?string $confirm = null)
     {
         return $this->actingAs($as ?? $this->root)
             ->delete(route('super-admin.businesses.purge', $this->shop->id), [
                 'confirm' => $confirm ?? $this->shop->name,
             ]);
+    }
+
+    /**
+     * يسحب ما في الطابور كما يسحبه عامل — بلا هويّةٍ في يده، ومن الصفّ نفسِه.
+     *
+     * ═══ ولمَ لا يُستدعى `queue:work` ═══
+     *
+     * استدعاؤه داخل الاختبار يفتح اتّصالًا ثانيًا بالقاعدة ويتركه بمعاملةٍ
+     * مفتوحة، فيقف عليه `migrate` الذي يبدأ به صنفُ الاختبار التالي —
+     * وتقع **عقدةُ قفلٍ** على PostgreSQL تُسقط اختبارًا لا علاقةَ له
+     * بالحذف. وحارسٌ يُسقط جارَه ليس حارسًا.
+     *
+     * فيُقرأ الصفُّ من `jobs` كما يقرؤه العامل، **ويُفكّ تسلسلُ حمولته**
+     * — فتبقى الأسطرُ التي تُسلسل المهمّةَ وتفكُّها مشمولةً — ثمّ تُنفَّذ.
+     * وما يسقط يُمرَّر إلى `failed` كما يفعل العاملُ عند `tries = 1`.
+     *
+     * ═══ وتُنسى الهويّةُ قبل السحب ═══
+     *
+     * الاختبارُ يعمل في العمليّة التي دخلت بـ`actingAs`، وعاملُ الخادم لا
+     * جلسةَ له. فاختبارٌ لا ينسى الهويّةَ يُخفي كلَّ ما يعتمد عليها، ويقول
+     * «السجلُّ يعرف من حذف» وهو على الخادم لا يعرف.
+     */
+    private function work(): void
+    {
+        auth()->logout();
+
+        foreach (DB::table('jobs')->orderBy('id')->get() as $row) {
+            DB::table('jobs')->where('id', $row->id)->delete();
+
+            $payload = json_decode((string) $row->payload, true);
+            $job = unserialize($payload['data']['command']);
+
+            try {
+                $job->handle();
+            } catch (Throwable $e) {
+                /* `tries = 1`: لا إعادةَ — يُكتب السقوطُ ويُمضى */
+                $job->failed($e);
+            } finally {
+                /*
+                 * وقفلُ الوحدانيّة يُفكّ كما يفكُّه الإطارُ بعد كلّ مهمّة.
+                 *
+                 * `ShouldBeUnique` تأخذ قفلًا عند الصفّ ويُفكّ عند الانتهاء —
+                 * نجاحًا كان أو سقوطًا. وتركُه مأخوذًا هنا يجعل إعادةَ
+                 * المحاولة تُطوى في صمت، فيُقرأ «لم تُعد» حيث الإعادةُ
+                 * تعمل على الخادم.
+                 */
+                (new UniqueLock(app('cache.store')))->release($job);
+            }
+        }
+    }
+
+    /** صفُّ الحذف لهذا المتجر */
+    private function purgeRow(): ?PurgeRun
+    {
+        return PurgeRun::where('business_id', $this->shop->id)->first();
     }
 
     /* ═══════════ المحو ═══════════ */
@@ -149,7 +251,7 @@ class APurgedBusinessLeavesItsBooksBehindTest extends TestCase
 
         $this->assertGreaterThan(0, $lines->count(), 'الحارسُ لا يحرس شيئًا — لا سطورَ قيدٍ أصلًا');
 
-        $this->purge()->assertRedirect(route('super-admin.businesses.index'));
+        $this->purge()->assertRedirect();
 
         $this->assertNull(Business::find($bid), 'بقي صفُّ الشركة');
 
@@ -228,10 +330,16 @@ class APurgedBusinessLeavesItsBooksBehindTest extends TestCase
         /* مجلّدُ الأرشيف يصير ملفًّا، فيتعذّر إنشاء الملفّ فيه */
         Storage::disk(BusinessPurge::DISK)->put(BusinessPurge::DIR, 'ليس مجلّدًا');
 
-        $this->purge()->assertSessionHasErrors('confirm');
+        $this->purge();
 
         $this->assertNotNull(Business::find($bid), 'مُحيت الشركة والأرشيفُ لم يُكتب');
         $this->assertSame(1, DB::table('products')->where('business_id', $bid)->count());
+
+        /* والصفُّ يقول أين سقطت — في الأرشفة، قبل أن يُمسّ شيء */
+        $run = $this->purgeRow();
+        $this->assertSame(PurgeRun::FAILED, $run?->status);
+        $this->assertSame(PurgeRun::ARCHIVING, $run?->stage, 'قيل إنّها سقطت في غير الأرشفة');
+        $this->assertNotNull($run?->error, 'سقطت بلا سببٍ مكتوب');
     }
 
     /* ═══════════ الجار ═══════════ */
@@ -359,16 +467,32 @@ class APurgedBusinessLeavesItsBooksBehindTest extends TestCase
         $this->assertSame([], Storage::disk(BusinessPurge::DISK)->files(BusinessPurge::DIR));
     }
 
-    /** ولا تُنفَّذ مرّتين بالتزامن — والقفلُ يردّ الثانية */
-    public function test_a_second_run_while_the_first_holds_the_lock_is_refused(): void
+    /** وعاملان على شركةٍ واحدة: القفلُ يردّ الثاني ولا يمحو على ما مُحي */
+    public function test_the_lock_stops_a_second_worker_on_the_same_business(): void
     {
         $lock = cache()->lock('business-purge:'.$this->shop->id, 60);
         $this->assertTrue($lock->get());
 
-        $this->purge()->assertSessionHasErrors('confirm');
+        $this->purge();
+
         $this->assertNotNull(Business::find($this->shop->id), 'مُحيت والقفلُ بيد غيرها');
+        $this->assertSame(PurgeRun::FAILED, $this->purgeRow()?->status);
 
         $lock->release();
+    }
+
+    /** وطلبان متلاحقان: الثاني يُردّ ما دامت الأولى تعمل */
+    public function test_a_second_request_while_one_is_active_is_refused(): void
+    {
+        $this->request()->assertSessionHasNoErrors();
+
+        /* والأولى ما زالت في الطابور لم يسحبها عامل */
+        $this->assertSame(PurgeRun::PENDING, $this->purgeRow()?->status);
+
+        $this->request()->assertSessionHasErrors('confirm');
+
+        $this->assertSame(1, PurgeRun::count(), 'أُنشئ صفٌّ ثانٍ للشركة نفسِها');
+        $this->assertSame(1, DB::table('jobs')->count(), 'صُفّت مهمّةٌ ثانية');
     }
 
     /* ═══════════ وما كان يعمل يبقى ═══════════ */
@@ -402,7 +526,15 @@ class APurgedBusinessLeavesItsBooksBehindTest extends TestCase
 
         $this->assertNotNull($row, 'لا سطرَ في السجلّ');
         $this->assertNull($row->business_id, 'قُيّد على شركةٍ لم تعد موجودة');
-        $this->assertSame($this->root->id, (int) $row->user_id);
+        /*
+         * والهويّةُ تُقرأ من السطر لا من الجلسة.
+         *
+         * المهمّةُ تعمل في عاملٍ لا جلسةَ له، فكان السطرُ يقول «زائر» —
+         * وأصلُ الشرط أن يُثبت السجلُّ مَن أجرى الحذف. انظر
+         * `PurgeBusiness::handle`.
+         */
+        $this->assertSame($this->root->id, (int) $row->user_id, 'لا يُعرف من محا');
+        $this->assertSame($this->root->name, (string) $row->user_name, 'قُيّد باسمٍ غير اسم من محا');
         $this->assertStringContainsString($this->shop->name, $row->description);
         $this->assertStringContainsString(BusinessPurge::DIR, $row->description, 'لا يقول أين الأرشيف');
 

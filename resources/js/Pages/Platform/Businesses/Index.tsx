@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { Ban, LogIn, Plus, Power } from 'lucide-react';
+import { Archive, Ban, LogIn, Plus, Power } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
@@ -44,10 +44,12 @@ interface Props {
     /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
     sorts: string[];
     options: { types: string[]; statuses: string[]; plans: string[] };
+    /** أمفتوحٌ بابُ الحذف النهائيّ؟ — فيُعرض بابُ أرشيفاته */
+    purge: boolean;
 }
 
 export default function BusinessesIndex() {
-    const { businesses, pagination, filters, sorts, options } = usePage<PageProps<Props>>().props;
+    const { businesses, pagination, filters, sorts, options, purge } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const columns: Column<BusinessRow>[] = [
@@ -257,6 +259,17 @@ export default function BusinessesIndex() {
                 subtitle={t('إدارة جميع الشركات المسجلة في المنصة')}
                 actions={
                     <>
+                        {purge && (
+                            <Button variant="outline" asChild>
+                                <SmartLink
+                                    routeName="super-admin.businesses.purges"
+                                    href={route('super-admin.businesses.purges')}
+                                >
+                                    <Archive />
+                                    {t('أرشيفات الحذف')}
+                                </SmartLink>
+                            </Button>
+                        )}
                         <ExportMenu
                             xlsx={route('super-admin.businesses.xlsx')}
                             pdf={route('super-admin.businesses.exportPdf')}

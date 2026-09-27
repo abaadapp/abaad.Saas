@@ -19,6 +19,8 @@ interface Props {
      * وجودها هو الإذن بعرض اسم المتجر فوق النموذج وبابِ نسيانه: على متصفّحٍ
      * لم يُعرف بعد لا شيء من ذلك — انظر LoginController::showLogin.
      */
+    /** جهازُ متجرٍ آخر ردَّ صاحبَه عند الباب — فيُعرض المخرجُ زرًّا لا رابطًا رماديًّا */
+    foreignDevice?: boolean;
     device: {
         business: string | null;
         branch: string | null;
@@ -46,7 +48,7 @@ interface Props {
  * الاستعادة الذي يظهر بحسب وجود مُرسِل بريد.
  */
 export default function Login() {
-    const { device, year, canRecover, canRegister, errors } = usePage<PageProps<Props>>().props;
+    const { device, foreignDevice, year, canRecover, canRegister, errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [forgetting, setForgetting] = useState(false);
 
@@ -98,7 +100,28 @@ export default function Login() {
                     className="mt-6 flex items-start gap-2 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]"
                 >
                     <TriangleAlert className="mt-px size-4 shrink-0" />
-                    <span>{failure}</span>
+                    <div className="min-w-0">
+                        <span>{failure}</span>
+
+                        {/*
+                            والمخرجُ في الرسالة نفسِها.
+
+                            من ردّه جهازُ متجرٍ آخر كان يُحال إلى رابطٍ رماديٍّ
+                            أسفل الشاشة لا يراه أحد — فيعيد المحاولةَ ببريدٍ
+                            صحيحٍ وكلمةٍ صحيحة، ويُردّ كلَّ مرّة. والزرُّ يفتح
+                            التأكيدَ نفسَه، فتبقى وقفةُ «جهازٌ مفعَّل يحتاج
+                            مديرًا لإعادة تفعيله» كما هي.
+                        */}
+                        {foreignDevice && device && (
+                            <button
+                                type="button"
+                                onClick={() => setForgetting(true)}
+                                className="mt-2 block rounded-[8px] bg-[#b91c1c] px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-[#991b1b]"
+                            >
+                                {t('انسَ هذا الجهاز')}
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
 

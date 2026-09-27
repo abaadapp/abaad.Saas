@@ -6849,5 +6849,6 @@
     "كل تنزيل يُقيَّد في سجل النشاط باسم من نزّله ووقته. والملف يمر بالنظام — ولا رابط مباشر إلى التخزين.": "Every download is recorded in the activity log with who downloaded it and when. The file passes through the system — there is no direct link to storage.",
     "قرص النسخة الاحتياطية هو قرص الأرشيف نفسه — هذه ليست نسخة مستقلة. أُلغي الحذف.": "The backup disk is the same disk as the archive — that is not an independent copy. The deletion was cancelled.",
     "قرص النسخة الاحتياطية محلّي على هذا الخادم — ليس تخزينًا مستقلًّا. أُلغي الحذف.": "The backup disk is local to this server — it is not independent storage. The deletion was cancelled.",
-    "قرص النسخة الاحتياطية يشترك في مجلّد الأرشيف نفسه — هذه ليست نسخة مستقلة. أُلغي الحذف.": "The backup disk shares the archive's own folder — that is not an independent copy. The deletion was cancelled."
+    "قرص النسخة الاحتياطية يشترك في مجلّد الأرشيف نفسه — هذه ليست نسخة مستقلة. أُلغي الحذف.": "The backup disk shares the archive's own folder — that is not an independent copy. The deletion was cancelled.",
+    "هذا الجهاز صندوقٌ لمتجرٍ آخر — انسَه ليفتح صندوقُ متجرك عليه.": "This device is another shop’s register — forget it so your own register can open on it."
 }

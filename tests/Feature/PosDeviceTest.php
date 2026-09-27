@@ -140,7 +140,41 @@ class PosDeviceTest extends TestCase
         [$devB, $rawB] = $this->device($this->branchB);
 
         $this->enterPos($devB, $rawB, $cashier)
-            ->assertSessionHasErrors(['email' => 'هذا الجهاز صندوقٌ لمتجرٍ آخر. اضغط «ليس هذا متجرك؟» في شاشة الدخول لنسيانه.']);
+            ->assertSessionHasErrors(['email' => 'هذا الجهاز صندوقٌ لمتجرٍ آخر — انسَه ليفتح صندوقُ متجرك عليه.']);
+    }
+
+    /**
+     * ومخرجُه يُعرض زرًّا في الرسالة، لا رابطًا رماديًّا أسفل الشاشة.
+     *
+     * وقعت على موظّفٍ حقيقيّ: دخل ببريده الصحيح وكلمته الصحيحة فأُخرج عند
+     * الباب مرّةً بعد مرّة — وظنّ صاحبُ المتجر أنّ كلمة المرور هي العطب
+     * فأعاد تعيينها مرارًا، وهي ليست المشكلة أصلًا.
+     */
+    public function test_and_the_login_screen_shows_him_the_way_out(): void
+    {
+        $cashier = $this->cashier($this->a, 'a3@abaad.om');
+        [$devB, $rawB] = $this->device($this->branchB);
+
+        $this->enterPos($devB, $rawB, $cashier);
+
+        $this->assertTrue(session('foreign_device'), 'لم يُعلَّم البابُ أنّ السببَ جهازُ متجرٍ آخر');
+
+        $this->get(route('login'))->assertInertia(
+            fn (\Inertia\Testing\AssertableInertia $page) => $page
+                ->component('Auth/Login')
+                ->where('foreignDevice', true)
+        );
+    }
+
+    /** وفرعٌ في متجره لم يُسنَد إليه لا زرَّ له — ذاك إسنادٌ يُصلحه مديرُه */
+    public function test_but_a_branch_of_his_own_shop_raises_no_such_button(): void
+    {
+        $cashier = $this->cashier($this->a, 'a4@abaad.om', [$this->khuwair->id]);
+        [$devSeeb, $rawSeeb] = $this->device($this->seeb, 'صندوق السيب');
+
+        $this->enterPos($devSeeb, $rawSeeb, $cashier);
+
+        $this->assertNotTrue(session('foreign_device'), 'عُرض نسيانُ صندوقٍ من متجره هو');
     }
 
     /* ═══════ ومن له بابٌ غيرُ الصندوق لا تُهدَم جلستُه ═══════ */

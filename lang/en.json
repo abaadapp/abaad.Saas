@@ -6890,5 +6890,8 @@
     "أقصى عدد استخدامات (إجمالًا)": "Maximum uses (in total)",
     "لكل الزبائن معًا — يُغلق الكود حين يبلغه": "For all customers together — the code closes when it is reached",
     "الحد لكل زبون": "Limit per customer",
-    "كم مرّة يستخدمه الزبون الواحد — يُعرف برقم هاتفه": "How many times a single customer may use it — identified by their phone number"
+    "كم مرّة يستخدمه الزبون الواحد — يُعرف برقم هاتفه": "How many times a single customer may use it — identified by their phone number",
+    "دفاتر الشركات المحذوفة — محفوظة ومشفَّرة على هذا الخادم": "Books of deleted businesses — kept and encrypted on this server",
+    "النسخة على هذا الخادم — لا تخزين مستقل.": "The copy lives on this server — no independent storage.",
+    "عطب القرص أو إعادة بناء الخادم يأخذ الشركة وأرشيفها معًا، ولا شيء يرجع دفاترها بعد ذلك.": "A disk failure or a server rebuild takes the business and its archive together, and nothing brings its books back."
 }

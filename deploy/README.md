@@ -15,7 +15,51 @@ php artisan purge:check
 
 ---
 
-## ١) مساحة التخزين المستقلة (DigitalOcean Spaces)
+## ٠) أين تُحفظ النسخة؟ — طريقان
+
+| | تخزين مستقل (Spaces) | مجلّد على هذا الخادم |
+|---|---|---|
+| الكلفة | 5 دولار/شهر | صفر |
+| عطب القرص أو إعادة بناء الخادم | الأرشيف سالم | **الشركة وأرشيفها يذهبان معًا** |
+| الإعداد | §1 أدناه | §1-ب أدناه |
+
+**والفرق ليس نظريًا:** الأرشيف هو الشيء الوحيد الباقي بعد محو الشركة. فإن
+ذهب معها لم يبقَ ما يُرجع دفاترها — لا للتاجر، ولا لمفتّش ضريبي بعد سنوات.
+ولهذا كان الأصل تخزينًا مستقلًا.
+
+ومن اختار الخادم يكتب ذلك صراحةً (`BUSINESS_PURGE_ALLOW_LOCAL=true`)، فتُقال
+الحال بعدها في كل فحص وفي شاشة الأرشيفات. والممنوع أن تقع صامتة.
+
+---
+
+## ١-ب) الطريق الثاني: مجلّد على هذا الخادم
+
+```bash
+sudo mkdir -p /var/abaad-purge-copies
+sudo chown www-data:www-data /var/abaad-purge-copies
+sudo chmod 700 /var/abaad-purge-copies
+```
+
+وفي `.env`:
+
+```
+BUSINESS_PURGE_OFFSITE_DISK=purge-copy
+BUSINESS_PURGE_ALLOW_LOCAL=true
+BUSINESS_PURGE_LOCAL_ROOT=/var/abaad-purge-copies
+BUSINESS_PURGE_OFFSITE_PREFIX=business-purges
+```
+
+ثم `php artisan config:clear && php artisan purge:check`.
+
+- **خارج `/var/www/abaad`** عن قصد: نشرٌ أو `git clean` لا يمسّه.
+- ولو كان لك **قرص آخر موصول بالخادم** (Volume) فوجّه `BUSINESS_PURGE_LOCAL_ROOT`
+  إليه: ليس استقلالًا، لكنه يسلم من امتلاء قرصٍ أو حذف مجلّد.
+- ويُرفض أي مجلّد يحتوي مجلّد الأرشيف أو يقع فيه — تلك نسخة واحدة كُتبت مرتين.
+- **وأضِفه إلى نسختك الاحتياطية اليومية** إن أمكن، وإلا فالنسخة والأصل على قرصٍ واحد.
+
+---
+
+## ١) الطريق الأول: مساحة التخزين المستقلة (DigitalOcean Spaces)
 
 **الكلفة:** 5 دولار شهريًا — 250 GiB تخزينًا و1 TiB صادرًا، وما زاد
 0.02 دولار/GiB. أرشيف متجر عندنا بالميغابايتات، فالفاتورة 5 دولار عمليًا.
@@ -85,40 +129,65 @@ BUSINESS_PURGE_ARCHIVE_KEY=<الناتج>
 
 ## ٣) عامل الطابور دائمًا
 
+**افحص أولًا — قد يكون موجودًا:**
+
 ```bash
-sudo cp /var/www/abaad/deploy/abaad-queue.service /etc/systemd/system/
+systemctl status abaad-queue --no-pager
+```
+
+### إن كان يعمل (وهذه حال خادم الإنتاج اليوم)
+
+**لا تنسخ شيئًا فوقه.** الوحدة الحيّة تخدم طوابير أخرى — طابور واتساب منها —
+ونسخ ملف «أصحّ» فوقها يوقف رسائل التجّار.
+
+وهي كافية للحذف النهائي كما هي: خصائص المهمّة تعلو خيارات سطر الأمر
+(`Worker::timeoutForJob` و`markJobAsFailedIfWillExceedMaxAttempts`)، و
+`PurgeBusiness` تعلن `$timeout = 3600` و`$tries = 1` — فلا تُقطع وهي تمحو،
+ولا تُعاد تلقائيًّا، مهما كان في `ExecStart`.
+
+وبعد كل تعديل على `.env` أعِد تشغيله ليقرأ الجديد:
+
+```bash
+systemctl restart abaad-queue
+```
+
+**ولإضافة تنبيه السقوط** بلا مساس بالوحدة:
+
+```bash
+sudo mkdir -p /etc/systemd/system/abaad-queue.service.d
+sudo cp /var/www/abaad/deploy/abaad-queue-alert.conf /etc/systemd/system/abaad-queue.service.d/
+sudo cp /var/www/abaad/deploy/abaad-queue-alert@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+systemctl cat abaad-queue
+```
+
+فيصل خبر السقوط بريدًا إلى مديري المنصّة. وللتجربة:
+
+```bash
+sudo systemctl start 'abaad-queue-alert@abaad-queue.service'
+```
+
+### إن لم يكن ثمّ وحدة (خادم جديد)
+
+```bash
+sudo cp /var/www/abaad/deploy/abaad-queue.service.example /etc/systemd/system/abaad-queue.service
 sudo cp /var/www/abaad/deploy/abaad-queue-alert@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now abaad-queue
-systemctl status abaad-queue
 ```
 
-ما تضمنه الوحدتان:
+ما يضمنه الملف:
 
 | الحاجة | كيف |
 |---|---|
 | يعود بعد إعادة تشغيل الخادم | `enable` + `WantedBy=multi-user.target` |
 | يعود بعد أي سقوط | `Restart=always` مع `RestartSec=5` |
 | لا يُقتل في منتصف محو | `KillSignal=SIGTERM` و`TimeoutStopSec=3720` |
-| لا يُقتل قبل أن تنتهي مهمّته | `--timeout=3700` أوسع من مهلة المهمّة (3600) |
-| لا إعادة تلقائية لمهمّة تمحو | `--tries=1` |
 | لا يحتفظ بكود قديم بعد النشر | `--max-time=3600` ثم يعيده systemd |
-| تنبيه عند سقوط متكرّر | `OnFailure=` → بريد إلى مديري المنصّة |
+| تنبيه عند سقوط متكرّر | drop-in أعلاه → بريد لمديري المنصّة |
 
-تجربة التنبيه بلا انتظار سقوط:
-
-```bash
-sudo systemctl start 'abaad-queue-alert@abaad-queue.service'
-```
-
-وبعد كل نشر يُعاد العامل ليأخذ الكود الجديد:
-
-```bash
-sudo systemctl restart abaad-queue
-```
-
-> **أضِف هذا السطر إلى `scripts/deploy.sh` بعد `migrate`** إن أردته تلقائيًا
-> — لم أضفه لأن الملف يعمل على خادم الإنتاج وتعديله يحتاج موافقتك.
+> **وأضِف `systemctl restart abaad-queue` إلى `scripts/deploy.sh` بعد `migrate`**
+> إن أردته تلقائيًا — لم أضفه لأن الملف يعمل على خادم الإنتاج وتعديله يحتاج موافقتك.
 
 ---
 

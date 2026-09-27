@@ -37,8 +37,8 @@ const row = (over: Partial<Record<string, unknown>> = {}) => ({
     ...over,
 });
 
-const show = async (rows: unknown[]) => {
-    Object.assign(pageProps, { translations: {}, runs: rows });
+const show = async (rows: unknown[], sameServer = false) => {
+    Object.assign(pageProps, { translations: {}, runs: rows, same_server: sameServer });
     const { default: BusinessPurges } = await import('@/Pages/Platform/Businesses/Purges');
     render(<BusinessPurges />);
 };
@@ -90,5 +90,27 @@ describe('قائمةُ أرشيفات الحذف', () => {
         await show([]);
 
         expect(screen.getByText(/لا شركة حُذفت نهائيًا بعد/)).toBeInTheDocument();
+    });
+});
+
+describe('وأين النسخة؟ — تُقال في الشاشة لا في إعدادات الخادم', () => {
+    /*
+     * من ضبط النسخةَ على الخادم نفسِه يعرف ما فعل يومَها. ومن يفتح هذه
+     * الشاشة بعد سنتين ليطلب أرشيفَ شركةٍ زالت لا يقرأ `.env` — فيحسب أنّ
+     * للأرشيف نسخةً بعيدةً. والفرقُ يظهر يومَ يعطب القرص، وحينها تكون
+     * الشركةُ قد مُحيت ولا شيءَ يُرجع دفاترَها.
+     */
+    it('تقول إنّ النسخة على هذا الخادم حين تكون كذلك', async () => {
+        await show([row()], true);
+
+        expect(screen.getByRole('status')).toHaveTextContent(/النسخة على هذا الخادم/);
+        expect(screen.getByRole('status')).toHaveTextContent(/يأخذ الشركة وأرشيفها معًا/);
+    });
+
+    it('ولا تقولها حين تكون النسخة على تخزين مستقلّ', async () => {
+        await show([row()], false);
+
+        expect(screen.queryByRole('status')).toBeNull();
+        expect(screen.getByText(/منسوخة إلى تخزين مستقل/)).toBeTruthy();
     });
 });

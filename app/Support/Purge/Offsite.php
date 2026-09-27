@@ -123,23 +123,62 @@ final class Offsite
             throw new RuntimeException(__('قرص النسخة الاحتياطية هو قرص الأرشيف نفسه — هذه ليست نسخة مستقلة. أُلغي الحذف.'));
         }
 
-        $driver = (string) config("filesystems.disks.{$name}.driver");
-
-        if ($driver !== 'local') {
+        if (! self::isLocal($name)) {
             return;
         }
 
-        if (app()->isProduction()) {
+        /*
+         * والمحلّيُّ في الإنتاج لا يُقبل إلّا بقرارٍ مكتوب.
+         *
+         * `BUSINESS_PURGE_ALLOW_LOCAL=true` يُكتب بيدِ من يملك الخادم بعد
+         * أن يقرأ ما يعنيه. والمنعُ الأصليُّ لم يكن منعَ المحلّيّ في ذاته
+         * بل منعَ وقوعه **صمتًا** — أن يظنّ صاحبُه أنّ له نسخةً بعيدةً
+         * وليست له. فالسطرُ في `.env` هو الفرقُ بين الاثنين.
+         *
+         * وخارجَ الإنتاج يُقبل بلا سطرٍ: بيئةُ اختبارٍ لا تُهيَّأ بدلوٍ.
+         */
+        if (app()->isProduction() && ! (bool) config('purge.allow_local')) {
             throw new RuntimeException(__('قرص النسخة الاحتياطية محلّي على هذا الخادم — ليس تخزينًا مستقلًّا. أُلغي الحذف.'));
         }
 
-        /* وخارجَ الإنتاج يُقبل المحلّيُّ للتجربة، ما لم يكن جذرُه جذرَ الأرشيف */
+        /*
+         * ويبقى التداخلُ مرفوضًا ولو أُذن بالمحلّيّ.
+         *
+         * مجلّدٌ يحتوي مجلّدَ الأرشيف — أو يقع فيه — ليس «نسخةً» بأيّ قراءة:
+         * أمرُ حذفٍ واحدٌ يأخذهما، وامتلاءُ القرص يمنع كتابتَهما معًا. وهذا
+         * ليس تشدّدًا زائدًا على من اختار الخادم: هو الفرقُ الوحيدُ الباقي
+         * بين نسختين ونسخةٍ واحدةٍ كُتبت مرّتين.
+         */
         $mine = rtrim((string) config('filesystems.disks.'.BusinessPurge::DISK.'.root'), '/');
         $theirs = rtrim((string) config("filesystems.disks.{$name}.root"), '/');
 
-        if ($mine !== '' && $mine === $theirs) {
+        if ($mine === '' || $theirs === '') {
+            return;
+        }
+
+        if ($mine === $theirs || str_starts_with($mine.'/', $theirs.'/') || str_starts_with($theirs.'/', $mine.'/')) {
             throw new RuntimeException(__('قرص النسخة الاحتياطية يشترك في مجلّد الأرشيف نفسه — هذه ليست نسخة مستقلة. أُلغي الحذف.'));
         }
+    }
+
+    /** أقرصٌ على هذا الخادم؟ — يُسأل للحكم وللقول في الشاشة */
+    public static function isLocal(?string $name = null): bool
+    {
+        $name ??= self::disk();
+
+        return $name !== null && (string) config("filesystems.disks.{$name}.driver") === 'local';
+    }
+
+    /**
+     * أنسخةُ الأرشيف على الخادم نفسِه؟ — سؤالٌ يُقال جوابُه حيثما قُرئ.
+     *
+     * ولا يُكتفى بأن يُسمح به في الإعداد: من يقرأ شاشةَ الأرشيفات بعد
+     * سنتين لا يقرأ `.env`، فيحسب أنّ له نسخةً بعيدةً. فتُقال الحالُ في
+     * الشاشة وفي الفحص.
+     */
+    public static function onSameServer(): bool
+    {
+        return self::disk() !== null && self::isLocal();
     }
 
     /**

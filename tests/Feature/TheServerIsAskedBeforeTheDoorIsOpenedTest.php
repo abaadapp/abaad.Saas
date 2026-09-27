@@ -146,6 +146,24 @@ class TheServerIsAskedBeforeTheDoorIsOpenedTest extends TestCase
         $this->assertStringContainsString('اضبط visibility=private', $out, 'لم يُقل إنّ الرفعَ ليس خاصًّا');
     }
 
+    /**
+     * ونسخةٌ على الخادم نفسِه تُقال في كلّ فحص — لا مرّةً عند ضبطها.
+     *
+     * من كتب `BUSINESS_PURGE_ALLOW_LOCAL=true` يعرف ما فعل يومَها. ومن يقرأ
+     * هذا الفحصَ بعد سنتين — أو خلَفٌ جاء بعده — لا يقرأ `.env`، فيحسب أنّ
+     * للأرشيف نسخةً بعيدةً. فتُقال الحالُ في كلّ مرّة، ملاحظةً لا عائقًا:
+     * القرارُ قرارُ صاحبه، والصمتُ وحدَه ممنوع.
+     */
+    public function test_a_copy_that_lives_on_this_server_is_said_every_time(): void
+    {
+        $code = Artisan::call('purge:check');
+        $out = Artisan::output();
+
+        $this->assertSame(0, $code, $out);
+        $this->assertStringContainsString('النسخة على الخادم نفسه', $out);
+        $this->assertStringContainsString('يأخذ الشركةَ وأرشيفَها معًا', $out);
+    }
+
     /* ═══════════════════ وخصوصيّةُ الدلو تُسأل من الشبكة ═══════════════════ */
 
     /**

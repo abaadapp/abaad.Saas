@@ -353,17 +353,68 @@ class APurgeArchiveIsKeptFarFromTheServerTest extends TestCase
      * ويُسأل الحارسُ في موضعه لا عبر HTTP: تبديلُ البيئة إلى الإنتاج يُشعل
      * فحصَ CSRF فيردّ الطلبَ ٤١٩ قبل أن يبلغ البوّابة — فيُقاس غيرُ المقصود.
      */
-    public function test_in_production_a_local_disk_is_never_independent_enough(): void
+    public function test_in_production_a_local_disk_is_refused_unless_it_was_chosen_in_writing(): void
     {
         $this->app->detectEnvironment(fn () => 'production');
         $this->assertTrue(app()->isProduction(), 'لم تتبدّل البيئة — فالحارسُ لا يقيس شيئًا');
 
         try {
             Offsite::assertReady();
-            $this->fail('قُبل قرصٌ محلّيٌّ نسخةً مستقلّةً في الإنتاج');
+            $this->fail('قُبل قرصٌ محلّيٌّ في الإنتاج بلا قرارٍ مكتوب');
         } catch (RuntimeException $e) {
             $this->assertSame(
                 __('قرص النسخة الاحتياطية محلّي على هذا الخادم — ليس تخزينًا مستقلًّا. أُلغي الحذف.'),
+                $e->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * وبقرارٍ مكتوبٍ يُقبل — والمنعُ لم يكن منعَ المحلّيّ بل منعَ الصمت.
+     *
+     * ═══ ولمَ تبدّل الحارس ═══
+     *
+     * كان يقول «لا محلّيَّ في الإنتاج بحال». وصاحبُ النظام قرأ ما يعنيه
+     * وقرّر أن يكتفي بمجلّدٍ على الخادم. وذاك قرارُه: هو من يملك الخادمَ
+     * ويتحمّل عطبَ قرصه.
+     *
+     * والشرطُ الأصليُّ كان «**ولا تستخدم التخزين المحلي وحده بديلًا
+     * صامتًا**» — والصمتُ هو المنهيُّ عنه. فسطرٌ في `.env` يُكتب بيدٍ،
+     * وملاحظةٌ في كلّ فحص، ولافتةٌ في شاشة الأرشيفات: ثلاثتُها تنفي الصمت.
+     */
+    public function test_in_production_a_local_disk_is_accepted_when_it_was_chosen_in_writing(): void
+    {
+        $this->app->detectEnvironment(fn () => 'production');
+        config(['purge.allow_local' => true]);
+
+        Offsite::assertReady();
+
+        $this->assertTrue(Offsite::onSameServer(), 'لم تُقل الحالُ لمن يسأل عنها');
+    }
+
+    /**
+     * ويبقى التداخلُ مرفوضًا ولو أُذن بالمحلّيّ.
+     *
+     * مجلّدٌ يحتوي مجلّدَ الأرشيف ليس «نسخةً» بأيّ قراءة: أمرُ حذفٍ واحدٌ
+     * يأخذهما، وامتلاءُ القرص يمنع كتابتَهما معًا. وهو الفرقُ الوحيدُ
+     * الباقي بين نسختين ونسخةٍ واحدةٍ كُتبت مرّتين.
+     */
+    public function test_a_folder_that_contains_the_archive_is_refused_even_when_local_is_allowed(): void
+    {
+        $this->app->detectEnvironment(fn () => 'production');
+        config(['purge.allow_local' => true]);
+
+        /* جذرُ النسخة يحتوي جذرَ الأرشيف */
+        config([
+            'filesystems.disks.'.self::OFFSITE.'.root' => dirname((string) config('filesystems.disks.local.root')),
+        ]);
+
+        try {
+            Offsite::assertReady();
+            $this->fail('قُبل مجلّدٌ يحتوي مجلّدَ الأرشيف');
+        } catch (RuntimeException $e) {
+            $this->assertSame(
+                __('قرص النسخة الاحتياطية يشترك في مجلّد الأرشيف نفسه — هذه ليست نسخة مستقلة. أُلغي الحذف.'),
                 $e->getMessage(),
             );
         }

@@ -1,6 +1,7 @@
 # تنبيهٌ عند سقوط عاملِ الطابور — يشغّله `OnFailure=` من الوحدة الساقطة
 #
-# التثبيت:
+# التثبيت — ومعه `abaad-queue-alert.conf` الذي يربطها بالوحدة القائمة
+# بلا أن يستبدلها. انظر `README.md`.
 #
 #     sudo cp /var/www/abaad/deploy/abaad-queue-alert@.service /etc/systemd/system/
 #     sudo systemctl daemon-reload

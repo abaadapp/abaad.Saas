@@ -8,7 +8,7 @@ import { csrfHeaders } from '@/lib/csrf';
 import { useAsciiDigits } from '@/lib/numerals';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import type { AddonOption } from './Composition';
+import type { AddonOption } from './addons';
 
 export interface PickerOption {
     value: number;
@@ -19,25 +19,23 @@ export interface PickerOption {
 interface Props {
     /** إضافةٌ تُعدَّل، أو غيابُها إنشاءٌ جديد */
     addon: AddonOption | null;
-    /** المنتج الذي فُتحت من شاشته — يُتيح «هذا المنتج فقط» */
-    productId?: number | null;
-    /** غياب المعرّف يعني منتجًا لم يُحفظ بعد: تُكتب الإضافة مسوّدةً معه */
-    drafting?: boolean;
-    /**
-     * مدى الإضافة الجديدة قبل أن يُغيّره المستخدم.
-     *
-     * قسمُ «إضافات هذا المنتج» يبدأ بـ«هذا المنتج فقط»: من فتحه يريد إضافةً
-     * لباقته هو. وكان يبدأ بـ«جميع المنتجات» فتُكتب إضافةُ متجرٍ من قسمٍ
-     * عنوانُه غير ذلك — ولا تظهر في قائمته بعد الحفظ، فتبدو كأنها ضاعت.
-     */
-    defaultScope?: Scope;
     stockItems: PickerOption[];
     products: PickerOption[];
     onClose: () => void;
     onSaved: (addon: AddonOption) => void;
 }
 
-type Scope = 'all' | 'selected' | 'product';
+/**
+ * مدى الإضافة.
+ *
+ * وكان ثالثًا: «هذا المنتج فقط» — إضافةٌ تخصّ منتجًا بعينه لا المتجر. وزال
+ * بزوال قسم التركيب: هو وحدَه كان يعرضها ويعدّلها ويفكُّ ربطها، وقائمةُ
+ * إضافات المتجر تستثنيها (`private`). فبابٌ يُنشئ ما لا تُديره شاشةٌ بعده
+ * ليس بابًا.
+ *
+ * والصفوفُ المكتوبةُ قبل ذلك تبقى: تُعرض في الكاشير وتُباع كما كانت.
+ */
+type Scope = 'all' | 'selected';
 
 /**
  * إضافةٌ تُنشأ أو تُعدَّل — بمداها وبما تأكله من الرفّ.
@@ -53,7 +51,7 @@ type Scope = 'all' | 'selected' | 'product';
  * ولا تصميم جديد: نفس النافذة والحقول والأزرار التي في بقيّة الشاشات.
  */
 export default function AddonDialog({
-    addon, productId, drafting, defaultScope, stockItems, products, onClose, onSaved,
+    addon, stockItems, products, onClose, onSaved,
 }: Props) {
     const t = useTranslate();
 
@@ -67,9 +65,8 @@ export default function AddonDialog({
     const [each, setEach] = useState<string>(
         addon?.inventory_quantity != null ? String(addon.inventory_quantity) : '1',
     );
-    const [scope, setScope] = useState<Scope>(
-        (addon?.scope as Scope) ?? defaultScope ?? 'all',
-    );
+    /* و«هذا المنتج فقط» لا تصل هنا: الخاصّةُ بمنتجٍ تُستثنى من القائمة أصلًا */
+    const [scope, setScope] = useState<Scope>(addon?.scope === 'selected' ? 'selected' : 'all');
     const [picked, setPicked] = useState<number[]>(addon?.product_ids ?? []);
     const searchRef = useAsciiDigits<HTMLInputElement>();
     const [search, setSearch] = useState('');
@@ -110,37 +107,11 @@ export default function AddonDialog({
             name_en: nameEn.trim() || null,
             price: price || 0,
             scope,
-            product_id: scope === 'product' ? productId : null,
+            product_id: null,
             inventory_product_id: stock ? Number(stockId) : null,
             inventory_quantity: stock ? (each || 1) : null,
             product_ids: scope === 'selected' ? picked : [],
         };
-
-        /*
-         * المنتج الذي لم يُحفظ بعد لا معرّف له يُعلَّق به شيء.
-         *
-         * فالإضافة تبقى مسوّدةً في الشاشة وتُكتب مع المنتج في طلب الحفظ
-         * نفسه — وإلّا صار على التاجر أن يحفظ الباقة ثم يعود إليها ليقول
-         * ماذا يُضاف معها.
-         */
-        if (drafting && scope === 'product') {
-            onSaved({
-                value: 0,
-                label: clean,
-                name_en: nameEn.trim() || null,
-                price: Number(price) || 0,
-                active: true,
-                private: true,
-                product_id: null,
-                scope: 'product',
-                inventory_product_id: stock ? Number(stockId) : null,
-                inventory_quantity: stock ? Number(each) || 1 : null,
-                product_ids: [],
-            });
-            onClose();
-
-            return;
-        }
 
         setSaving(true);
         setError(null);
@@ -282,9 +253,6 @@ export default function AddonDialog({
                         <div className="flex gap-2">
                             {choice(scope === 'all', 'جميع المنتجات', () => setScope('all'))}
                             {choice(scope === 'selected', 'منتجات محددة', () => setScope('selected'))}
-                            {productId != null || drafting
-                                ? choice(scope === 'product', 'هذا المنتج فقط', () => setScope('product'))
-                                : null}
                         </div>
                     </div>
 

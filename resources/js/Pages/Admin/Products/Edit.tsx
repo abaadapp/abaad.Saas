@@ -4,7 +4,7 @@ import PageHeader from '@/Components/PageHeader';
 import ProductForm from './partials/ProductForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
-import type { CompositionData } from './partials/Composition';
+import type { CompositionData } from './partials/addons';
 import type { GalleryImage } from './partials/Gallery';
 import type { Category, Product } from '@/types/models';
 
@@ -37,7 +37,6 @@ export default function ProductEdit() {
                 description={description}
                 currencyLabel={context!.currency.symbol || context!.currency.code}
                 composition={composition}
-                currency={context!.currency}
                 gallery={gallery}
                 galleryMax={galleryMax}
                 galleryLimits={galleryLimits}

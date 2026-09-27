@@ -11,9 +11,8 @@ import { useTranslate } from '@/lib/i18n';
 import { csrfHeaders } from '@/lib/csrf';
 import { cn } from '@/lib/utils';
 import AddonDialog from './AddonDialog';
-import Composition, { emptyDraft, type AddonOption, type CompositionData, type CompositionDraft } from './Composition';
+import type { AddonOption, CompositionData } from './addons';
 import Gallery, { type GalleryImage } from './Gallery';
-import type { Currency } from '@/types';
 import type { Category, Product } from '@/types/models';
 
 interface Props {
@@ -24,7 +23,6 @@ interface Props {
     currencyLabel: string;
     /** المقاسات والوصفة والإضافات — قوائمُ الاختيار في الحالتين */
     composition?: CompositionData | null;
-    currency?: Currency;
     /** معرض الصور — في التعديل وحده: المعرّض يُعلَّق بمنتجٍ له معرّف */
     gallery?: GalleryImage[];
     galleryMax?: number;
@@ -36,14 +34,6 @@ const NAV = [
     { key: 'pricing', label: 'التسعير' },
     { key: 'stock', label: 'المخزون' },
     { key: 'media', label: 'صور المنتج' },
-    /*
-     * التركيب: المقاسات والوصفة والإضافات.
-     *
-     * يُعرض عند الإنشاء أيضًا — يبقى مسوّدةً في الشاشة ويُكتب مع المنتج في
-     * طلب الحفظ نفسه. وكان يُخفى فيُجبَر التاجر على حفظ الباقة ثم العودة
-     * إليها ليقول ممّ تتركّب: خطوتان لفعلٍ واحد في ذهنه.
-     */
-    { key: 'composition', label: 'التركيب' },
 ] as const;
 
 type TabKey = (typeof NAV)[number]['key'];
@@ -84,7 +74,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
  * المستخدم يرى أين هو وكم بقي. والحقول المخفيّة تبقى قيمها محفوظة في حالة
  * النموذج، فالتنقّل بين الأقسام لا يفقد شيئًا.
  */
-export default function ProductForm({ categories, product, description, currencyLabel, composition, currency, gallery, galleryMax, galleryLimits }: Props) {
+export default function ProductForm({ categories, product, description, currencyLabel, composition, gallery, galleryMax, galleryLimits }: Props) {
     const t = useTranslate();
     const editing = !!product;
     const [tab, setTab] = useState<TabKey>('basic');
@@ -108,9 +98,6 @@ export default function ProductForm({ categories, product, description, currency
         active: product ? product.active : true,
         published: product?.published ?? true,
         image: null as File | null,
-        // مسوّدة التركيب — تُملأ عند الإنشاء وتُكتب في الخادم بعد إنشاء
-        // المنتج مباشرة. وفي التعديل تبقى فارغةً: هناك لكلّ فعلٍ مسارُه
-        composition: emptyDraft() as CompositionDraft,
         // Inertia لا يرسل PUT مع ملف؛ التزييف هو الطريق الرسمي
         ...(editing ? { _method: 'put' } : {}),
     });
@@ -163,14 +150,14 @@ export default function ProductForm({ categories, product, description, currency
     };
 
     /*
-     * إضافاتٌ تُعرض مع كلّ المنتجات — بجانب القسم لأنّها تُقرَّر معه.
+     * إضافاتُ المتجر — تُقرَّر مع المعلومات الأساسية.
      *
      * «تغليف» و«بطاقة معايدة» يريدهما المتجر على كلّ شيء يبيعه، فمكانُهما
-     * الصفُّ الأول لا قسمٌ داخليّ يُفتح لكلّ منتجٍ على حدة. والخاصّة بمنتجٍ
-     * بعينه تبقى في «التركيب» — هناك يُقرَّر ما يخصّه وحده.
+     * الصفُّ الأول. ومداها يُختار في نافذتها: مع الجميع، أو مع منتجاتٍ
+     * محدّدة.
      *
-     * والقائمة يملكها النموذج لا القسمان: إضافةٌ تُنشأ هنا يجب أن تُرى هناك
-     * في اللحظة نفسها، وحالتان منفصلتان تفترقان بلا سبب.
+     * والإضافاتُ الخاصّة بمنتجٍ بعينه (`private`) تُستثنى من هذه القائمة
+     * كما كانت — ولا سبيلَ إلى إنشاء واحدةٍ بعد اليوم. انظر `addons.ts`.
      */
     const [addonList, setAddonList] = useState<AddonOption[]>(composition?.addons ?? []);
 
@@ -200,33 +187,6 @@ export default function ProductForm({ categories, product, description, currency
         });
 
     /**
-     * منتجٌ لم يُحفظ بعد: الإضافة تبقى مسوّدةً وتُنشأ معه في طلبٍ واحد.
-     *
-     * ومعرّفُها سالبٌ للعرض وحده — لا يُرسل إلى الخادم، انظر تمرير `addons`
-     * إلى قسم التركيب أدناه. والخاصّةُ بالمنتج تُعرض هناك من `new_addons`
-     * نفسها، فلا تُضاف إلى قائمة الشرائح هنا مرّةً ثانية.
-     */
-    const draftAddon = (saved: AddonOption) => {
-        const own = saved.scope === 'product';
-
-        form.setData('composition', {
-            ...form.data.composition,
-            new_addons: [...form.data.composition.new_addons, {
-                name: saved.label,
-                name_en: saved.name_en ?? null,
-                price: String(saved.price),
-                private: own,
-                inventory_product_id: saved.inventory_product_id,
-                inventory_quantity: saved.inventory_quantity ?? null,
-            }],
-        });
-
-        if (! own) {
-            setAddonList((prev) => [...prev, { ...saved, value: -(prev.length + 1) }]);
-        }
-    };
-
-    /**
      * الشريط العلوي قد يخرج عن الشاشة بعد التمرير داخل قسم طويل، فالقفزُ إليه
      * يُبقي التبويبات في المشهد ويُظهر أن القسم تبدّل فعلًا.
      */
@@ -239,16 +199,12 @@ export default function ProductForm({ categories, product, description, currency
     };
 
     /**
-     * القسم الذي يقع فيه الخطأ — والتركيب حقولُه مركّبة.
+     * القسم الذي يقع فيه الخطأ — وما ليس في الخريطة يقع في الأساسيّة.
      *
-     * `composition.recipe.0.quantity` لا يوجد في الخريطة، فكان يسقط على
-     * «المعلومات الأساسية» ولا حقلَ هناك يعرضه: يُردّ الحفظ ولا يُرى سببه،
-     * فيبدو الزرّ كأنه لا يعمل.
+     * وكان ثمّ فرعٌ ثالثٌ يردّ حقولَ `composition` المركّبة إلى قسم التركيب،
+     * وزال معه: النموذجُ لم يعد يرسل `composition` أصلًا، فلا خطأ يعود منها.
      */
-    const sectionOf = (field: string): TabKey =>
-        field === 'composition' || field.startsWith('composition.')
-            ? 'composition'
-            : (FIELD_SECTION[field] ?? 'basic');
+    const sectionOf = (field: string): TabKey => FIELD_SECTION[field] ?? 'basic';
 
     const sectionsWithErrors = new Set(Object.keys(form.errors).map(sectionOf));
 
@@ -732,27 +688,6 @@ export default function ProductForm({ categories, product, description, currency
                     </div>
                 )}
 
-                {tab === 'composition' &&
-                    (composition && currency ? (
-                        <Composition
-                            productId={product ? Number(product.id) : null}
-                            data={composition}
-                            currency={currency}
-                            draft={form.data.composition}
-                            onDraft={(next) => form.setData('composition', next)}
-                            /* المسوّدة تُعرض هناك من `new_addons` نفسها — ومعرّفها
-                               الموجب لم يوجد بعد، فلا يُعرض مرّتين ولا يُرسَل */
-                            addons={addonList.filter((a) => a.value > 0)}
-                            onAddonSaved={upsertAddon}
-                        />
-                    ) : (
-                        <Card className="p-6">
-                            <p className="text-[13px] leading-relaxed text-[#6b7280]">
-                                {t('احفظ المنتج أوّلًا، ثم أضف مقاساته ووصفته وإضافاته.')}
-                            </p>
-                        </Card>
-                    ))}
-
                 {errorList.length > 0 && (
                     <Card className="mt-6 border-[#fca5a5] bg-[#fef2f2] p-4">
                         <p className="mb-1 text-[13px] font-semibold text-[#b91c1c]">
@@ -769,13 +704,10 @@ export default function ProductForm({ categories, product, description, currency
                 {addonOpen !== undefined && (
                     <AddonDialog
                         addon={addonOpen}
-                        productId={product ? Number(product.id) : null}
-                        drafting={!product}
                         stockItems={composition?.stock_items ?? []}
                         products={composition?.products ?? []}
                         onClose={() => setAddonOpen(undefined)}
-                        /* المعرّف صفرًا يعني مسوّدةً لم تُكتب في القاعدة بعد */
-                        onSaved={(saved) => (saved.value === 0 ? draftAddon(saved) : upsertAddon(saved))}
+                        onSaved={upsertAddon}
                     />
                 )}
 

@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
+use App\Support\CouponLimits;
 use App\Support\Customers;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
@@ -272,6 +273,24 @@ final class WebCheckout
         $form = self::validated($bid, $payload);
         $quote = self::quote($business, $payload + ['fulfil' => $form['fulfil']]);
 
+        /*
+         * ═══ وحدُّ الكوبون يُفحص هنا قبل صفحة الدفع ═══
+         *
+         * الطلبُ في هذا المسار يُكتب من إشعار البوّابة بعد أن يُقبض المال.
+         * فلو تُرك الفحصُ لهناك لَدفع الزبونُ ثمّ رُدّ طلبُه، وصار مالٌ مقبوضًا
+         * بلا طلب — يردُّه صاحبُ المحلّ بيده. فيُقال له قبل أن يدفع.
+         *
+         * والفحصُ يُعاد في `place` كذلك: بين الصفحتين دقائق، وقد يُستهلك
+         * الحدُّ من بابٍ آخر في أثنائها.
+         */
+        if ($quote['_coupon']) {
+            $customer = self::existingCustomer($bid, $form['phone']);
+
+            if ($why = CouponLimits::refusal($quote['_coupon'], CouponLimits::identity($customer, $form['phone']), $customer?->id)) {
+                throw ValidationException::withMessages(['promo' => $why]);
+            }
+        }
+
         return Paymob::open($business, $payload, $quote, $lang);
     }
 
@@ -295,6 +314,23 @@ final class WebCheckout
             (new SaleLines($bid))->assertStock($lines, $branchId);
 
             $customer = self::customer($bid, $form, $lang);
+
+            /*
+             * ═══ وحدُّ الكوبون لكلّ زبون — بعد أن يُعرف الزبون ═══
+             *
+             * والموقعُ يعرفه دائمًا: الهاتفُ حقلٌ لا يملك صاحبُ المحلّ إخفاءَه
+             * (`CheckoutFields::FIELDS` لا تحمله)، فالزبونُ مُعرَّفٌ في كلّ
+             * طلبٍ يدخل من هنا — بطاقةً ورقمًا.
+             *
+             * ويُردّ صريحًا ولا يُبتلع: لو أُسقط الخصمُ صامتًا لَقرأ الزبونُ
+             * سعرًا في السلّة ودفع غيرَه.
+             */
+            $couponKey = CouponLimits::identity($customer, $form['phone']);
+
+            if ($q['_coupon'] && $why = CouponLimits::refusal($q['_coupon'], $couponKey, $customer->id)) {
+                throw ValidationException::withMessages(['promo' => $why]);
+            }
+
             $method = self::payments($bid)[$form['pay']];
             $scheduled = self::scheduledFor($form);
             // وقد دخل الكرتُ الأسطرَ في `quote` — وهنا تُكتب أعمدتُه على الطلب
@@ -406,6 +442,8 @@ final class WebCheckout
 
             if ($q['_coupon']) {
                 $q['_coupon']->increment('used_count');
+                // والسجلُّ بمعرّف الطلب: إشعارُ بوّابةٍ أُعيد إرسالُه لا يُحتسب ثانيةً
+                CouponLimits::record($q['_coupon'], $order, $couponKey, $customer->id);
             }
 
             // معاملةُ الدخل كما يكتبها الصندوق — والقيدُ يقرأ حالَ السداد
@@ -779,23 +817,43 @@ final class WebCheckout
         return $day->copy()->setTime(9, 0);
     }
 
+    /**
+     * الزبونُ القائمُ بهذا الرقم — بحثًا لا إنشاءً.
+     *
+     * يقرؤه بابان: الإتمامُ ليعرف من يشتري، وبابُ البطاقة ليفحص حدَّ الكوبون
+     * **قبل** أن يُفتح للزبون صفحةُ دفع. ولو فُحص بعدها لَدفع ثمّ رُدّ طلبُه،
+     * فيصير مالٌ مقبوضًا بلا طلب — وهو أسوأُ ما يقع في هذا المسار.
+     *
+     * والمطابقةُ بالرقم مطبَّعًا: البطاقتان بالرقم نفسِه زبونٌ واحد.
+     */
+    private static function existingCustomer(int $bid, ?string $phone): ?Customer
+    {
+        if (blank($phone)) {
+            return null;
+        }
+
+        $wanted = WhatsAppPhone::normalize($phone);
+
+        $found = Customer::where('business_id', $bid)
+            ->whereNotNull('phone')->where('phone', '!=', '')
+            ->get(['id', 'name', 'name_en', 'phone', 'language'])
+            ->first(fn ($c) => (string) $c->phone === (string) $phone
+                || ($wanted !== null && WhatsAppPhone::normalize($c->phone) === $wanted));
+
+        return $found ? Customer::find($found->id) : null;
+    }
+
     /** الزبونُ بهاتفه: يُعرف إن كان معروفًا، ويُكتب إن لم يكن */
     private static function customer(int $bid, array $form, string $lang): Customer
     {
-        $wanted = WhatsAppPhone::normalize($form['phone']);
-
-        $existing = Customer::where('business_id', $bid)
-            ->whereNotNull('phone')->where('phone', '!=', '')
-            ->get(['id', 'name', 'name_en', 'phone', 'language'])
-            ->first(fn ($c) => (string) $c->phone === (string) $form['phone']
-                || ($wanted !== null && WhatsAppPhone::normalize($c->phone) === $wanted));
+        $existing = self::existingCustomer($bid, $form['phone']);
 
         if ($existing) {
             if ($existing->language === null) {
                 $existing->forceFill(['language' => in_array($lang, ['ar', 'en'], true) ? $lang : 'ar'])->save();
             }
 
-            return Customer::find($existing->id);
+            return $existing->refresh();
         }
 
         $data = Customers::localizeName([

@@ -641,7 +641,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                         ...csrfHeaders(),
                         Accept: 'application/json',
                     },
-                    body: JSON.stringify({ code, subtotal }),
+                    /*
+                     * والزبونُ يُرسل مع المعاينة.
+                     *
+                     * كودٌ حدُّه «مرّتان لكلّ زبون» يُقال عند السلّة لا بعد أن
+                     * يُعلَن السعرُ للزبون. والمعاينةُ لا تحتسب استعمالًا —
+                     * الاحتسابُ عند الدفع وحده (`CouponLimits::record`).
+                     */
+                    body: JSON.stringify({ code, subtotal, customer_id: customerId }),
                 });
                 const data = await res.json();
                 if (!res.ok || !data.ok) {
@@ -658,7 +665,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 setCouponLoading(false);
             }
         },
-        [couponCode, subtotal, onToast],
+        [couponCode, subtotal, customerId, onToast],
     );
 
     /**

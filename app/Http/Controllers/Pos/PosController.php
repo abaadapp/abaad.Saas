@@ -27,6 +27,7 @@ use App\Support\CreditSales;
 use App\Support\CustomerInvoices;
 use App\Support\CustomArrangement;
 use App\Support\CustomerPayments;
+use App\Support\CouponLimits;
 use App\Support\CustomerFlags;
 use App\Support\Customers;
 use App\Support\Demo;
@@ -291,10 +292,21 @@ class PosController extends Controller
         $data = $request->validate([
             'code' => ['required', 'string', 'max:40'],
             'subtotal' => ['required', 'numeric', 'min:0'],
+            /*
+             * والزبونُ يُرسل مع المعاينة — اختياريًّا.
+             *
+             * كودٌ حدُّه مرّتان لكلّ زبون يُقال عند السلّة لا عند الدفع: أن
+             * يُرفض بعد أن أعلن الكاشيرُ السعرَ للزبون إحراجٌ لا داعي له،
+             * والحقلُ في الشاشة نفسِها. والمعاينةُ لا تحتسب استعمالًا.
+             */
+            'customer_id' => ['nullable', 'integer'],
+            'customer_phone' => ['nullable', 'string', 'max:50'],
         ]);
 
         $coupon = $this->findCoupon($data['code']);
         $subtotal = (float) $data['subtotal'];
+
+        $customer = $this->customerFor(null, $data['customer_id'] ?? null, $data['customer_phone'] ?? null);
 
         $error = match (true) {
             ! $coupon => __('كود الخصم غير صحيح'),
@@ -302,7 +314,11 @@ class PosController extends Controller
             $coupon->isExpired() => __('انتهت صلاحية الكوبون'),
             $coupon->max_uses !== null && $coupon->used_count >= $coupon->max_uses => __('انتهت مرات استخدام الكوبون'),
             $subtotal < (float) $coupon->min_order => __('الحد الأدنى للطلب :amount', ['amount' => Demo::money($coupon->min_order)]),
-            default => null,
+            default => CouponLimits::refusal(
+                $coupon,
+                CouponLimits::identity($customer, $data['customer_phone'] ?? null),
+                $customer?->id,
+            ),
         };
 
         if ($error) {
@@ -558,6 +574,24 @@ class PosController extends Controller
                 auth()->user(),
                 $data['block_override_reason'] ?? null,
             );
+
+            /*
+             * ═══ وحدُّ الكوبون لكلّ زبون — هنا لا فوق ═══
+             *
+             * السؤالُ «كم مرّةً استعمله **هذا** الزبون؟» لا يُسأل قبل أن
+             * يُعرف الزبون، والزبونُ يُعرف في السطر الذي فوق. وهو تحت القفل
+             * الذي أخذه `findCoupon` على صفّ الكوبون، ففحصان متزامنان على
+             * الكود نفسِه يصطفّان ولا يمرّان معًا.
+             *
+             * ويُردّ بالحقل نفسِه (`coupon_code`) لتقرأه الشاشةُ تحت الكود.
+             */
+            $couponKey = CouponLimits::identity($customer, $data['customer_phone'] ?? null);
+
+            if ($couponApplied) {
+                if ($why = CouponLimits::refusal($coupon, $couponKey, $customer?->id)) {
+                    throw ValidationException::withMessages(['coupon_code' => $why]);
+                }
+            }
             /*
              * ولا تُتمّ بيعةٌ لزبونٍ لا يُعرف بأيّ لغةٍ يُراسَل.
              *
@@ -699,6 +733,15 @@ class PosController extends Controller
                     : OrderStatus::COMPLETED,
             ] + FlowerOrder::attributes($data),
                 $this->salePrefix(), max(1, (int) $this->setting('inv_start', 1)));
+
+            /*
+             * وسجلُّ استعمال الكوبون يُكتب مع الطلب — لا قبله.
+             *
+             * السجلُّ يحمل معرّفَ الطلب، وهو القيدُ الذي يمنع احتسابَ الطلب
+             * الواحد مرّتين. فلا يُكتب إلّا وقد صار للطلب صفٌّ. والعدّادُ
+             * الإجماليّ زِيد فوق — وهما حدّان، لا حدٌّ مكتوبٌ مرّتين.
+             */
+            CouponLimits::record($coupon, $order, $couponKey, $customer?->id);
 
             foreach ($lines as $idx => $l) {
                 $item = $order->items()->create([

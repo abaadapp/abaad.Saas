@@ -20,6 +20,41 @@ interface Props {
     coupons: Coupon[];
 }
 
+/**
+ * سطرُ حدودِ الكوبون — العدُّ والحدّان والانتهاء، كلٌّ باسمه.
+ *
+ * ═══ ولمَ دالّةٌ تُقاس ═══
+ *
+ * «استُخدم ٣ / ١٠٠» عدٌّ إجماليّ، و«لكل زبون ٢» حدٌّ لكلّ واحد. وعرضُ
+ * أحدهما مكانَ الآخر يجعل التاجر يظنّ كودَه انتهى وهو يعمل لزبونٍ جديد —
+ * أو يظنّه بلا حدٍّ وهو مقيَّد بمرّةٍ واحدة. وهذا ما يُسأل عنه في
+ * `each-customer-reads-his-own-share-of-the-coupon`.
+ */
+export function limitsLine(
+    c: Pick<Coupon, 'min_order' | 'used_count' | 'max_uses' | 'per_customer_limit' | 'expires'>,
+    t: (k: string) => string,
+    currency: Parameters<typeof money>[1],
+): string {
+    const parts: string[] = [];
+
+    if (c.min_order > 0) {
+        parts.push(`${t('حد أدنى')} ${money(c.min_order, currency)}`);
+    }
+
+    // العدُّ الإجماليُّ وحدُّه معه — بشُرطةٍ مائلة كما كان
+    parts.push(`${t('استُخدم')} ${number(c.used_count)}${c.max_uses ? ` / ${number(c.max_uses)}` : ''}`);
+
+    if (c.per_customer_limit) {
+        parts.push(`${t('لكل زبون')} ${number(c.per_customer_limit)}`);
+    }
+
+    if (c.expires) {
+        parts.push(`${t('ينتهي')} ${c.expires}`);
+    }
+
+    return parts.join(' · ');
+}
+
 export default function Coupons() {
     const { stats, coupons, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
@@ -33,6 +68,7 @@ export default function Coupons() {
         value: '',
         min_order: '0',
         max_uses: '',
+        per_customer_limit: '',
         expires_at: '',
     });
 
@@ -100,14 +136,7 @@ export default function Coupons() {
                                             {t('خصم')} {c.display}
                                         </p>
                                         <p className="text-[12px] text-[#9ca3af]">
-                                            {c.min_order > 0 && (
-                                                <>
-                                                    {t('حد أدنى')} {money(c.min_order, currency)} ·{' '}
-                                                </>
-                                            )}
-                                            {t('استُخدم')} {number(c.used_count)}
-                                            {c.max_uses ? ` / ${number(c.max_uses)}` : ''}
-                                            {c.expires ? ` · ${t('ينتهي')} ${c.expires}` : ''}
+                                            {limitsLine(c, t, currency)}
                                         </p>
                                     </div>
                                 </div>
@@ -219,7 +248,11 @@ export default function Coupons() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="أقصى عدد استخدامات" error={form.errors.max_uses}>
+                            <Field
+                                label="أقصى عدد استخدامات (إجمالًا)"
+                                hint="لكل الزبائن معًا — يُغلق الكود حين يبلغه"
+                                error={form.errors.max_uses}
+                            >
                                 <Input
                                     type="number"
                                     min="1"
@@ -229,6 +262,30 @@ export default function Coupons() {
                                     placeholder={t('بلا حدّ')}
                                 />
                             </Field>
+                            {/*
+                              * وحدٌّ ثانٍ مستقلّ — لا صياغةٌ أخرى للأوّل.
+                              *
+                              * «مرّتان لكلّ زبون» بلا حدٍّ إجماليّ: أحمدُ مرّتان
+                              * ومحمّدٌ مرّتان ولا ينتهي الكود. والفراغُ يعني بلا
+                              * حدٍّ لكلّ زبون — وهو حالُ الكوبونات القائمة كلِّها.
+                              */}
+                            <Field
+                                label="الحد لكل زبون"
+                                hint="كم مرّة يستخدمه الزبون الواحد — يُعرف برقم هاتفه"
+                                error={form.errors.per_customer_limit}
+                            >
+                                <Input
+                                    type="number"
+                                    min="1"
+                                    dir="ltr"
+                                    value={form.data.per_customer_limit}
+                                    onChange={(e) => form.setData('per_customer_limit', e.target.value)}
+                                    placeholder={t('بلا حدّ')}
+                                />
+                            </Field>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
                             <Field label="تاريخ الانتهاء" error={form.errors.expires_at}>
                                 <Input
                                     type="date"

@@ -1729,6 +1729,13 @@ class Demo
             'value' => (float) $c->value,
             'min_order' => (float) $c->min_order,
             'max_uses' => $c->max_uses,
+            /*
+             * والحدُّ لكلّ زبون يُرسل صريحًا — لا يُخلط بالعدّاد.
+             *
+             * «استُخدم ٣» عدٌّ إجماليّ، و«مرّتان لكلّ زبون» حدٌّ لكلّ واحد.
+             * وعرضُ أحدهما مكانَ الآخر يجعل التاجر يظنّ كودَه انتهى وهو يعمل.
+             */
+            'per_customer_limit' => $c->per_customer_limit,
             'used_count' => (int) $c->used_count,
             'expires' => optional($c->expires_at)->format('Y-m-d'),
             // نهاية اليوم لا أوّله — انظر Coupon::endsAt

@@ -43,6 +43,16 @@ class CouponController extends Controller
             'value' => ['required', 'numeric', 'min:0', 'max:'.($request->input('type') === 'نسبة' ? 100 : 1000000)],
             'min_order' => ['nullable', 'numeric', 'min:0'],
             'max_uses' => ['nullable', 'integer', 'min:1'],
+            /*
+             * والحدُّ لكلّ زبون حدٌّ آخر، لا صياغةٌ أخرى للأوّل.
+             *
+             * «مرّتان لكلّ زبون» بلا حدٍّ إجماليّ: أحمدُ مرّتان ومحمّدٌ مرّتان
+             * ولا ينتهي الكود. وبحدٍّ إجماليّ معه: يُطبَّقان معًا — الكودُ
+             * يُغلق حين يبلغ الإجماليُّ حدَّه، والزبونُ يُردّ حين يبلغ حدَّه هو.
+             *
+             * والفراغُ يعني بلا حدٍّ لكلّ زبون — وهو حالُ كوبونات اليوم كلِّها.
+             */
+            'per_customer_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
             // كوبونٌ ينتهي أمس ميّتٌ يوم يُنشأ: يُعرض في القائمة، ويُكتب على
             // اللافتة، ويُردّ عند الصندوق — ولا شيء قاله عند الحفظ
             'expires_at' => ['nullable', 'date', 'after_or_equal:today'],
@@ -56,6 +66,7 @@ class CouponController extends Controller
             'value' => $data['value'],
             'min_order' => $data['min_order'] ?? 0,
             'max_uses' => $data['max_uses'] ?? null,
+            'per_customer_limit' => $data['per_customer_limit'] ?? null,
             'expires_at' => $data['expires_at'] ?? null,
             'active' => true,
         ]);

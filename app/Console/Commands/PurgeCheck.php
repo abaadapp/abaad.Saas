@@ -115,6 +115,18 @@ class PurgeCheck extends Command
         $driver = (string) config("filesystems.disks.{$name}.driver");
         $this->line("  القرص: <options=bold>{$name}</> (محوّل: {$driver})");
 
+        /*
+         * ونسخةٌ على الخادم نفسِه تُقال في كلّ فحصٍ — لا مرّةً عند ضبطها.
+         *
+         * من كتب `BUSINESS_PURGE_ALLOW_LOCAL=true` يعرف ما فعل يومَها. ومن
+         * يقرأ هذا الفحصَ بعد سنتين — أو خلَفٌ جاء بعده — لا يقرأ `.env`،
+         * فيحسب أنّ للأرشيف نسخةً بعيدةً. فتُقال الحالُ كما هي في كلّ مرّة،
+         * ملاحظةً لا عائقًا: القرارُ قرارُ صاحبه، والصمتُ وحدَه ممنوع.
+         */
+        if (Offsite::isLocal($name)) {
+            $this->warn2('النسخة على الخادم نفسه — لا تخزين مستقلّ. عطبُ القرص أو إعادةُ بناء الخادم يأخذ الشركةَ وأرشيفَها معًا.');
+        }
+
         if ($driver === 's3') {
             $this->conf($name, 'bucket', 'اسم الدلو');
             $this->conf($name, 'endpoint', 'نقطة الوصول');

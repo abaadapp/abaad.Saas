@@ -57,6 +57,24 @@ return [
          * ولا مفاتيحَ هنا: كلُّها من البيئة. ومَن لم يضبطها لا يعمل عنده
          * الحذفُ النهائيّ — وذاك مقصود، انظر `config/purge.php`.
          */
+        /*
+         * نسخةُ أرشيفِ الحذف على الخادم نفسِه — لمن اختار ذلك صراحةً.
+         *
+         * جذرُه خارج `storage/app` افتراضًا كي لا يقع في مجلّدٍ يحتوي
+         * الأرشيفَ الأصليّ — و`Offsite` يرفض التداخل على كلّ حال. ومن له
+         * قرصٌ آخرُ موصولٌ بالخادم يوجّهه إليه بـ`BUSINESS_PURGE_LOCAL_ROOT`:
+         * ليس استقلالًا، لكنّه يَسلم من امتلاء قرصٍ أو حذفِ مجلّد.
+         *
+         * ولا يعمل بلا `BUSINESS_PURGE_ALLOW_LOCAL=true` — انظر `config/purge.php`.
+         */
+        'purge-copy' => [
+            'driver' => 'local',
+            'root' => env('BUSINESS_PURGE_LOCAL_ROOT', storage_path('purge-copies')),
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => false,
+        ],
+
         'spaces' => [
             'driver' => 's3',
             'key' => env('BUSINESS_PURGE_SPACES_KEY'),

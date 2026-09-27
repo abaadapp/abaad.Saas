@@ -56,15 +56,44 @@ interface PurgeRow {
 }
 
 export default function BusinessPurges() {
-    const { runs } = usePage<PageProps<{ runs: PurgeRow[] }>>().props;
+    const { runs, same_server: sameServer } = usePage<
+        PageProps<{ runs: PurgeRow[]; same_server: boolean }>
+    >().props;
     const t = useTranslate();
 
     return (
         <PlatformLayout title={t('أرشيفات الحذف النهائي')}>
             <PageHeader
                 title={t('أرشيفات الحذف النهائي')}
-                subtitle={t('دفاتر الشركات المحذوفة — محفوظة ومشفَّرة ومنسوخة إلى تخزين مستقل')}
+                subtitle={
+                    sameServer
+                        ? t('دفاتر الشركات المحذوفة — محفوظة ومشفَّرة على هذا الخادم')
+                        : t('دفاتر الشركات المحذوفة — محفوظة ومشفَّرة ومنسوخة إلى تخزين مستقل')
+                }
             />
+
+            {/*
+              * ونسخةٌ على الخادم نفسِه تُقال هنا — لا في `.env` وحدَه.
+              *
+              * من ضبط ذلك يعرف ما فعل يومَها. ومن يفتح هذه الشاشة بعد سنتين
+              * ليطلب أرشيفَ شركةٍ زالت لا يقرأ إعداداتِ الخادم، فيحسب أنّ
+              * للأرشيف نسخةً بعيدةً. والفرقُ يظهر يومَ يعطب القرص — وحينها
+              * تكون الشركةُ قد مُحيت ولا شيءَ يُرجع دفاترَها.
+              */}
+            {sameServer && (
+                <div
+                    role="status"
+                    className="mb-4 rounded-xl border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-[12.5px] leading-relaxed text-[#92400e]"
+                >
+                    <span className="flex items-start gap-2">
+                        <AlertTriangle className="mt-[1px] size-4 shrink-0" />
+                        <span>
+                            <strong className="font-semibold">{t('النسخة على هذا الخادم — لا تخزين مستقل.')}</strong>{' '}
+                            {t('عطب القرص أو إعادة بناء الخادم يأخذ الشركة وأرشيفها معًا، ولا شيء يرجع دفاترها بعد ذلك.')}
+                        </span>
+                    </span>
+                </div>
+            )}
 
             <Card className="p-0">
                 <Table>

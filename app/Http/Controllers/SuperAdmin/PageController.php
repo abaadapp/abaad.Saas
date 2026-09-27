@@ -28,6 +28,7 @@ use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
 use App\Support\PlatformConfig;
+use App\Support\Purge\Offsite;
 use App\Support\Purge\Stages;
 use App\Support\Purge\Vault;
 use App\Support\Roles;
@@ -203,6 +204,15 @@ class PageController extends Controller
         ]);
 
         return $this->page('Platform/Businesses/Purges', [
+            /*
+             * أنسخةُ الأرشيف على الخادم نفسِه؟ — تُقال في الشاشة لا في `.env`.
+             *
+             * من ضبط ذلك يعرف ما فعل يومَها. ومن يفتح هذه الشاشة بعد سنتين
+             * ليطلب أرشيفَ شركةٍ زالت لا يقرأ إعداداتِ الخادم — فيحسب أنّ
+             * للأرشيف نسخةً بعيدةً. والفرقُ يظهر يومَ يعطب القرص، وحينها لا
+             * شيءَ يُقال.
+             */
+            'same_server' => Offsite::onSameServer(),
             'runs' => $runs->map(fn (PurgeRun $r) => [
                 'id' => $r->id,
                 'business_id' => $r->business_id,

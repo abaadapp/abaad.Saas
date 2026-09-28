@@ -90,7 +90,7 @@ class PreparationController extends Controller
         /*
          * الاستعلام لا يحمل تاريخًا لا يلزم.
          *
-         * `awaitingPreparation` يستبعد المغلق والمعلَّق وما لا موعد له، فلا
+         * `awaitingPreparation` يستبعد المغلق والمعلَّق وبيعةَ المنضدة، فلا
          * تُحمَّل ستّمئة فاتورةٍ أُغلقت منذ شهور. والفهرس المركّب
          * [business_id, scheduled_for] يخدم الترشيح والترتيب معًا.
          *
@@ -128,7 +128,18 @@ class PreparationController extends Controller
          * على الاستعلام نفسه بنافذته ومرشّحه، لا على «الكلّ» فوقه.
          */
         $total = (clone $q)->count();
-        $orders = $q->orderBy('scheduled_for')->limit(self::BOARD_LIMIT)->get();
+        /*
+         * والترتيبُ بالموعد، ومن لا موعدَ له بساعة وصوله.
+         *
+         * `orderBy('scheduled_for')` وحدَها تُرتّب الفراغَ بما يقوله المحرّك:
+         * PostgreSQL تضعه آخرًا وSQLite أوّلًا. فطلبُ الموقع بلا موعد يقف على
+         * الإنتاج في ذيلٍ يقصّه `BOARD_LIMIT` — يظهر في العدّاد ولا يُرى.
+         *
+         * و`coalesce` لا تبدّل ترتيبَ ما هو على اللوحة اليوم: كلُّ بطاقةٍ
+         * عليها لها موعد، فتقرأ موعدَها نفسَه.
+         */
+        $orders = $q->orderByRaw('coalesce(scheduled_for, ordered_at)')
+            ->limit(self::BOARD_LIMIT)->get();
 
         /*
          * والعلاماتُ تُقرأ دفعةً واحدة.

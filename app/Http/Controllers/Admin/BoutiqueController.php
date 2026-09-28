@@ -7,14 +7,16 @@ use App\Http\Controllers\Controller;
 use App\Models\Boutique;
 use App\Models\BoutiqueSettlement;
 use App\Models\Business;
+use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\Boutiques;
 use App\Support\Demo;
+use App\Support\Search;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -131,6 +133,23 @@ class BoutiqueController extends Controller
             'period' => $period,
             'periods' => $this->periodOptions(),
             /*
+             * أصنافُ هذا البوتيك — وهي غيرُ «المنتجات المباعة» أسفلَ الكشف.
+             *
+             * ذاك جدولُ شهرٍ مضى، وهذا ما يحمله البوتيكُ اليوم: يُقرأ ليُعرف
+             * ما عنده، ويُنزع منه صنفٌ رُدّ إلى صاحبه. ولولاه لبقي الإسنادُ
+             * في بطاقة كلّ صنفٍ على حدة — وصاحبُ البوتيك يأتي بعشرين قطعة.
+             */
+            'products' => $this->attached($business->id, $boutique->id),
+            /*
+             * وما يُختار منه — مُرشَّحًا في الخادم لا مُرسَلًا كلُّه.
+             *
+             * كتالوجُ محلٍّ يكبر، وإرسالُه كلَّه في كلّ فتحةِ شاشةٍ حِملٌ
+             * يثقل مع كلّ صنفٍ يُضاف. فيُبحث فيه من هنا (`only: ['catalog']`)
+             * ويُقطع عند حدٍّ يُقال للقارئ أنّه قُطع.
+             */
+            'catalog' => $this->catalog($business->id),
+            'q' => Search::term(request()),
+            /*
              * وأُغلق الشهر؟ — في الكشف نفسِه (`partial`) لا في خاصيّةٍ ثانية.
              *
              * كانت `closed` هنا و`partial` هناك يقولان الشيء نفسَه مقلوبًا،
@@ -202,7 +221,7 @@ class BoutiqueController extends Controller
         $boutique = $this->find($id);
 
         if (BoutiqueSettlement::where('boutique_id', $boutique->id)->whereHas('expense', fn ($q) => $q
-            ->where('status', '!=', \App\Models\Expense::PAID))->exists()) {
+            ->where('status', '!=', Expense::PAID))->exists()) {
             return back()->withErrors(['boutique' => __('عليه تسويةٌ لم تُسدَّد — سدّدها قبل حذفه.')]);
         }
 
@@ -254,6 +273,31 @@ class BoutiqueController extends Controller
 
         $detach = (bool) ($data['detach'] ?? false);
 
+        /*
+         * ولا يُنقل صنفٌ من بوتيكٍ إلى بوتيكٍ في صمت.
+         *
+         * `update` لا تسأل عمّا كان: صنفُ «دانة» يصير صنفَ «ريم» بضغطةٍ من
+         * شاشة ريم، ولا أحد يُخبر دانة. وكشفُ حسابها بعدها ينقص صنفًا كانت
+         * تبيعه — لا لأنّه رُدّ إليها بل لأنّه نُسب لغيرها.
+         *
+         * فمن أراد النقلَ ينزعه من الأوّل ثمّ يُسنده إلى الثاني: خطوتان
+         * يراهما صاحبُهما، لا خطوةٌ واحدةٌ لا تُرى. والشاشةُ تمنع اختيارَه
+         * أصلًا وتقول أين هو — وهذا الحاجزُ لمن لم يمرّ بالشاشة.
+         */
+        if (! $detach) {
+            $held = Product::where('business_id', $business->id)
+                ->whereIn('id', $data['product_ids'])
+                ->whereNotNull('boutique_id')
+                ->where('boutique_id', '!=', $boutique->id)
+                ->count();
+
+            if ($held > 0) {
+                throw ValidationException::withMessages([
+                    'product_ids' => __(':n صنفًا مرتبطًا ببوتيكٍ آخر — انزعه من بوتيكه أوّلًا.', ['n' => $held]),
+                ]);
+            }
+        }
+
         $n = Product::where('business_id', $business->id)
             ->whereIn('id', $data['product_ids'])
             ->when($detach, fn ($q) => $q->where('boutique_id', $boutique->id))
@@ -268,6 +312,74 @@ class BoutiqueController extends Controller
     }
 
     /* ═══════════ مساعدات ═══════════ */
+
+    /** حدُّ ما يُرسل من الكتالوج في الفتحة الواحدة — ويُقال للقارئ إن قُطع */
+    private const PICK = 50;
+
+    /**
+     * أصنافُ البوتيك كما تُقرأ في شاشته — استعلامٌ واحد بلا استعلامٍ لكلّ صفّ.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function attached(int $businessId, int $boutiqueId): array
+    {
+        return Product::where('business_id', $businessId)
+            ->where('boutique_id', $boutiqueId)
+            ->orderBy('name')
+            ->get(['id', 'name', 'sku', 'active', 'quantity', 'alert_qty', 'tracks_stock'])
+            ->map(fn (Product $p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'active' => (bool) $p->active,
+                // ومن لا يمسك جردًا لا رقمَ له: صفرٌ يُقرأ «نفد» وهو لم ينفد
+                'quantity' => $p->tracksStock() ? (int) $p->quantity : null,
+                'stock' => $p->tracksStock()
+                    ? Product::statusFor((int) $p->quantity, (int) $p->alert_qty)
+                    : null,
+            ])->all();
+    }
+
+    /**
+     * ما يُعرض في نافذة الاختيار — أصنافُ هذا المحلّ وحدَه.
+     *
+     * والمحذوفُ ناعمًا خارجٌ من نفسه: النموذجُ عليه `SoftDeletes`. ويُقال عن
+     * كلّ صنفٍ أين هو الآن، فلا يُختار ما هو عند بوتيكٍ آخر بلا علمِ مختاره.
+     *
+     * وأسماءُ البوتيكات تُقرأ دفعةً واحدة: جدولٌ صغيرٌ وصفٌّ لكلّ منها، لا
+     * استعلامٌ لكلّ صنفٍ في القائمة.
+     *
+     * @return array{rows: list<array<string, mixed>>, more: bool}
+     */
+    private function catalog(int $businessId): array
+    {
+        $term = Search::term(request());
+
+        $rows = Product::where('business_id', $businessId)
+            ->when($term !== '', fn ($q) => $q->where(function ($w) use ($term) {
+                $like = Search::like();
+                $w->where('name', $like, '%'.$term.'%')
+                    ->orWhere('name_en', $like, '%'.$term.'%')
+                    ->orWhere('sku', $like, '%'.$term.'%');
+            }))
+            ->orderBy('name')
+            ->limit(self::PICK + 1)
+            ->get(['id', 'name', 'sku', 'boutique_id']);
+
+        $more = $rows->count() > self::PICK;
+        $names = Boutique::where('business_id', $businessId)->pluck('name', 'id');
+
+        return [
+            'rows' => $rows->take(self::PICK)->map(fn (Product $p) => [
+                'id' => $p->id,
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'boutique_id' => $p->boutique_id ? (int) $p->boutique_id : null,
+                'boutique_name' => $p->boutique_id ? ($names[$p->boutique_id] ?? null) : null,
+            ])->values()->all(),
+            'more' => $more,
+        ];
+    }
 
     /**
      * إجماليُّ ما بِيع لكلّ بوتيك في الشهر — استعلامٌ واحد لا استعلامٌ لكلّ صفّ.

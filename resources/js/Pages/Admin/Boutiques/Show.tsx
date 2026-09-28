@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { ArrowRight, FileCheck2, Receipt } from 'lucide-react';
+import { ArrowRight, FileCheck2, Plus, Receipt } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -11,6 +12,7 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import ProductsDialog, { type PickRow } from './ProductsDialog';
 
 interface Line {
     product_id: number | null;
@@ -42,6 +44,16 @@ interface Props {
         issued_at: string | null; paid: boolean; expense_reference: string | null;
     } | null;
     history: { id: number; number: string; period: string; gross: number; commission: number; net: number; paid: boolean }[];
+    /** أصنافُ هذا البوتيك اليوم — لا ما بِيع منها في شهر */
+    products: {
+        id: number; name: string; sku: string | null; active: boolean;
+        /** `null` لصنفٍ لا يمسك جردًا — وصفرٌ يُقرأ «نفد» وهو لم ينفد */
+        quantity: number | null;
+        stock: string | null;
+    }[];
+    /** ما يُختار منه في النافذة — مُرشَّحٌ في الخادم ومقطوعٌ عند حدّ */
+    catalog: { rows: PickRow[]; more: boolean };
+    q: string;
 }
 
 /**
@@ -51,8 +63,9 @@ interface Props {
  * الكشفُ لأجله)، ثمّ ما بُني منه صنفًا صنفًا، ثمّ ما صدر من قبل.
  */
 export default function BoutiqueShow() {
-    const { boutique, statement, period, periods, settlement, history, context } =
+    const { boutique, statement, period, periods, settlement, history, products, catalog, q, context } =
         usePage<PageProps<Props>>().props;
+    const [picking, setPicking] = useState(false);
     const t = useTranslate();
     const currency = context!.currency;
 
@@ -69,6 +82,18 @@ export default function BoutiqueShow() {
     const go = (value: string) =>
         router.get(route('admin.boutiques.show', boutique.id), { period: value }, {
             preserveState: true, preserveScroll: true, replace: true,
+        });
+
+    /*
+     * والنزعُ لا يحذف شيئًا.
+     *
+     * `boutique_id = null` وحدها: الصنفُ يبقى بمخزونه وصوره وسعره، وبنودُ
+     * ما بِيع منه تحمل لقطتَها (اسمُ البوتيك ونسبتُه) فلا يتغيّر كشفُ شهرٍ
+     * مضى ولا ورقةٌ صدرت. وأثرُه على ما يُباع بعد اليوم وحدَه.
+     */
+    const drop = (id: number) =>
+        router.post(route('admin.boutiques.attach', boutique.id), { product_ids: [id], detach: true }, {
+            preserveScroll: true,
         });
 
     const issue = () => {
@@ -193,6 +218,84 @@ export default function BoutiqueShow() {
                     <p className="w-full text-[12px] text-[#b91c1c]">{errors.settlement}</p>
                 )}
             </Card>
+
+            {/*
+                أصنافُ البوتيك — ما يحمله اليوم، لا ما بِيع منه في شهر.
+                وبابُ إضافتها هنا: صاحبُ البوتيك يأتي بعشرين قطعةً دفعةً
+                واحدة، وفتحُ بطاقةِ كلّ صنفٍ لأجل حقلٍ واحدٍ عشرون رحلة.
+            */}
+            <Card className="mb-5 overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3">
+                    <span className="text-sm font-semibold text-[#111]">
+                        {t('منتجات البوتيك')}
+                        <span className="ms-2 text-[12px] font-normal text-[#9ca3af]">
+                            {number(products.length)}
+                        </span>
+                    </span>
+                    <Button type="button" size="sm" onClick={() => setPicking(true)}>
+                        <Plus />
+                        {t('إضافة منتجات')}
+                    </Button>
+                </div>
+
+                {products.length === 0 ? (
+                    <p className="px-4 py-10 text-center text-[13px] text-[#9ca3af]">
+                        {t('لا أصناف في هذا البوتيك بعد')}
+                    </p>
+                ) : (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-[#fafafa] text-[12px] text-[#6b7280]">
+                                <tr>
+                                    <th className="px-4 py-2 text-start font-medium">{t('الصنف')}</th>
+                                    <th className="px-4 py-2 text-start font-medium">{t('الرمز')}</th>
+                                    <th className="px-4 py-2 text-end font-medium">{t('المخزون')}</th>
+                                    <th className="px-4 py-2 text-end font-medium">{t('الحالة')}</th>
+                                    <th className="px-4 py-2 text-end font-medium" />
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {products.map((p) => (
+                                    <tr key={p.id} className="border-t border-[var(--ui-border,#e8e8e8)]">
+                                        <td className="px-4 py-2.5 text-[#111]">{p.name}</td>
+                                        <td className="px-4 py-2.5 text-[12px] text-[#9ca3af]">{p.sku ?? '—'}</td>
+                                        <td className="px-4 py-2.5 text-end tabular-nums">
+                                            {p.quantity === null ? '—' : number(p.quantity)}
+                                            {p.stock && (
+                                                <span className="ms-1 text-[12px] text-[#9ca3af]">{t(p.stock)}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-end">
+                                            <Badge variant={p.active ? 'success' : 'neutral'}>
+                                                {t(p.active ? 'مفعّل' : 'معطّل')}
+                                            </Badge>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-end">
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => drop(p.id)}
+                                            >
+                                                {t('إزالة من البوتيك')}
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </Card>
+
+            <ProductsDialog
+                open={picking}
+                onOpenChange={setPicking}
+                boutiqueId={boutique.id}
+                period={period}
+                catalog={catalog}
+                q={q}
+            />
 
             {/* ما بُني منه الرقم — صنفًا صنفًا */}
             <Card className="mb-5 overflow-hidden">

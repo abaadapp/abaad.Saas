@@ -43,6 +43,10 @@ const draw = (props: Record<string, unknown>) => {
         periods: [{ value: '2027-02', label: 'فبراير 2027' }],
         settlement: null,
         history: [],
+        // ما تحمله الشاشةُ من أصنافٍ — تُرسل دائمًا، وهذا الملفّ يسأل عن التسوية
+        products: [],
+        catalog: { rows: [], more: false },
+        q: '',
         ...props,
     });
 

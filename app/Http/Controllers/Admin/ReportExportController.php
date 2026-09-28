@@ -7,6 +7,7 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\OrderStatus;
 use App\Support\Reports;
+use App\Support\SalesChannel;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -131,7 +132,27 @@ class ReportExportController extends Controller
         // الورقة تُبنى من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
         $report = Reports::salesReport($range, request()->query('channel'));
         $spreadsheet = new Spreadsheet;
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'), $range);
+        // `perBranch: true` — صارت أرقامُ هذه الورقة تُرشَّح بالفرع المختار
+        // فعلًا، فترويستُها تقول اسمَه. وبقيّةُ الأوراق على حالها.
+        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('تقرير المبيعات'), $range, perBranch: true);
+
+        /*
+         * والقناةُ في ترويسة هذه الورقة وحدَها — لا في `sheet()` المشترك.
+         *
+         * أوراقُ الجرد والمنتجات والموردين لا تُرشَّح بقناةٍ أصلًا، وسطرٌ
+         * يقول «القناة: كل القنوات» في ورقةِ جردٍ يوهم أنّها تعرفها.
+         *
+         * ويُكتب في السطر الذي قبل أوّل جدول ثمّ يُدفَع الجدولُ سطرًا: فيبقى
+         * الفراغُ الفاصلُ كما كان ولا تلتصق الترويسةُ بأوّل عنوان. ويُحسب
+         * الموضعُ من `row` ولا يُكتب رقمًا، فلا يزحف إن زاد سطرٌ في الترويسة.
+         *
+         * و«كل القنوات» لا «غير محدّدة» — انظر `PdfController::salesReport`.
+         */
+        $sheet->setCellValue('A'.($this->row - 1), __('القناة').': '.($report['channel'] === null
+            ? __('كل القنوات')
+            : SalesChannel::label($report['channel'])));
+        $this->row++;
+
         $money = [];
 
         /*
@@ -173,9 +194,10 @@ class ReportExportController extends Controller
         $this->row++;
 
         // وسائل الدفع — من الطلبات كما في مخطّط الشاشة، لا من دفتر المقبوضات
+        // وبنطاقها نفسِه: الفرعُ والقناةُ من الحمولة المطبَّعة
         $title(__('توزيع وسائل الدفع'));
         $head([__('الوسيلة'), $this->moneyHead('الإجمالي'), __('عدد العمليات')]);
-        foreach (Demo::paymentBreakdown($range) as $m) {
+        foreach (Demo::paymentBreakdown($range, $report['channel'], $report['branchId']) as $m) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $m['name']);
             $sheet->setCellValue("B{$r}", $m['total']);

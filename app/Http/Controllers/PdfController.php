@@ -26,6 +26,7 @@ use App\Support\PosTerminal;
 use App\Support\PublicDocument;
 use App\Support\Receivables;
 use App\Support\Reports;
+use App\Support\SalesChannel;
 use App\Support\ShopIdentity;
 use Illuminate\Http\Request;
 
@@ -42,10 +43,29 @@ class PdfController extends Controller
 
         $html = view('pdf.sales-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::scopeName(false),
+            // وصار تقريرُ المبيعات يرشّح بالفرع فعلًا، فجاز أن يُسمّيه —
+            // وقبلها كانت أرقامُه للمتجر كلِّه فكانت الترويسة «كل الفروع»
+            'branch' => $report['branchName'],
+            /*
+             * والقناةُ تُسمّى كما تُسمّى على الشاشة فوقها.
+             *
+             * و`null` هنا **غيابُ المُرشِّح** — أي القنواتُ كلُّها. وهو غيرُ
+             * `SalesChannel::label(null)` التي تقول «غير محدّدة»: تلك صفةُ
+             * طلبٍ لا يُعرف من أيّ بابٍ دخل (طلباتُ ما قبل العمود). فلو
+             * قيلت هنا لَقرأ التاجر «غير محدّدة» فوق بيعه كلِّه.
+             *
+             * أمّا قناةُ «غير محدّدة» المختارةُ مُرشِّحًا فتبقى على اسمها،
+             * لأنّها تصل قيمةً (`unknown`) لا `null`.
+             */
+            'channel' => $report['channel'] === null
+                ? __('كل القنوات')
+                : SalesChannel::label($report['channel']),
             'stats' => Reports::summaryRows($report['summary']),
             'salesSeries' => $report['salesSeries'],
-            'payments' => Demo::paymentBreakdown($range),
+            // ووسائلُ الدفع بنطاق التقرير نفسِه — فرعًا وقناةً معًا: ورقةٌ
+            // نصفُها فرعٌ ونصفُها شركةٌ أسوأ من ورقتين. والقيمتان تُقرآن
+            // مطبَّعتين من الحمولة، فلا يُطبَّع الاستعلامُ الخام مرّتين
+            'payments' => Demo::paymentBreakdown($range, $report['channel'], $report['branchId']),
             'topProducts' => $report['topSellingProducts'],
             'rangeLabel' => Demo::rangeLabel($range),
             'generatedAt' => now()->format('Y-m-d H:i'),

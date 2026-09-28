@@ -211,6 +211,25 @@
                 <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
             @endif
             <div class="rb-error" data-rb-form-error style="margin-top:12px"></div>
+
+            {{--
+                ═══ وموافقةٌ صريحةٌ على سعرٍ تبدّل ═══
+
+                الكودُ قد ينتهي بين لحظةِ التسعير ولحظةِ التأكيد. فلا يمضي
+                الطلبُ بسعرٍ لم يره الزبون، ولا تكفي إعادةُ إرسالٍ صامتة:
+                يُقال له السببُ والإجماليُّ الجديد، ويُقرّ بضغطةٍ واحدة.
+
+                ومن لم يوافق فلا طلبَ — «تراجَع» تُغلق الصندوق ويبقى في صفحته.
+            --}}
+            <div data-rb-agree-box style="display:none;margin-top:14px;border:1px solid var(--rb-line);border-radius:var(--rb-r);padding:14px;background:var(--rb-sand,#faf8f5)">
+                <p style="margin:0 0 6px;font-weight:500">{{ $t['priceChanged'] }}</p>
+                <p data-rb-agree-why style="margin:0 0 12px;font-size:14px;color:var(--rb-ink-soft,#6b6b6b)"></p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="rb-btn" data-rb-agree style="flex:1;min-width:160px">{{ $t['agreeNew'] }}</button>
+                    <button type="button" class="rb-btn-ghost" data-rb-agree-no style="flex:1;min-width:120px">{{ $t['keepBrowsing'] }}</button>
+                </div>
+            </div>
+
             <button type="submit" class="rb-btn" style="width:100%;margin-top:16px" data-testid="rb-place"><span data-rb-place-label>{{ $t['place'] }}</span></button>
         </aside>
     </form>
@@ -395,6 +414,16 @@
     $('[data-rb-pay]').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; pay = b.dataset.v; paintPay(); });
     var applyBtn = form.querySelector('[data-rb-apply]');
     if (applyBtn) applyBtn.addEventListener('click', function () { promo = $('[name=promo]').value.trim(); refresh(); });
+    /*
+     * والموافقةُ تُرسل الطلبَ بالإجماليّ الذي صار إليه — وهو ما في `shownTotal`
+     * بعد إعادةِ التسعير. و«تراجَع» تُغلق الصندوق ولا تُنشئ شيئًا.
+     */
+    var agreeBtn = $('[data-rb-agree]'), agreeNo = $('[data-rb-agree-no]');
+    if (agreeBtn) agreeBtn.addEventListener('click', function () {
+        $('[data-rb-agree-box]').style.display = 'none';
+        form.dispatchEvent(new Event('submit', { cancelable: true }));
+    });
+    if (agreeNo) agreeNo.addEventListener('click', function () { $('[data-rb-agree-box]').style.display = 'none'; });
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         form.querySelectorAll('[data-err]').forEach(function (d) { d.textContent = ''; });
@@ -420,12 +449,16 @@
         RB.post('/checkout', payload).then(function (r) {
             btn.disabled = false;
             /*
-             * وخطأُ الكود يُقرأ تحت حقله، وتُعاد التسعيرةُ ليرى الإجماليَّ
-             * الجديد قبل أن يُرسل ثانيةً. فالإقرارُ سعرٌ رآه لا مقبضٌ يُضغط.
+             * وخطأُ الكود يُقرأ تحت حقله، ويُفتح صندوقُ الموافقة بالسبب
+             * والإجماليّ الجديد. ولا يُرسَل الطلبُ من نفسه: الإقرارُ ضغطةٌ.
              */
             if (r && r.errors && r.errors.promo) {
+                var why = [].concat(r.errors.promo).join(' · ');
                 var pm = $('[data-rb-promo-msg]');
-                if (pm) { pm.style.color = 'var(--rb-clay, #b91c1c)'; pm.textContent = [].concat(r.errors.promo).join(' · '); }
+                if (pm) { pm.style.color = 'var(--rb-clay, #b91c1c)'; pm.textContent = why; }
+                var box = $('[data-rb-agree-box]');
+                if (box) { $('[data-rb-agree-why]').textContent = why; box.style.display = 'block'; }
+                // وتُعاد التسعيرةُ ليقرأ في الملخّص ما سيدفعه فعلًا
                 refresh();
             }
             if (r.ok) { RB.clear(); location.href = r.redirect; return; }

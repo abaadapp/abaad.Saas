@@ -234,13 +234,37 @@ final class Paymob
      * بخطأ، يُكتب `failed` ويبقى الجرسُ يرنّ لصاحب المحلّ — طمأنينةٌ كاذبةٌ
      * بردٍّ لم يقع أسوأُ من غياب الردّ.
      *
-     * @return bool هل قبلته البوّابة؟
+     * @return bool هل قبلته البوّابة؟ — و`false` كذلك إن عُلِّق للمراجعة
      */
     public static function refund(StorePaymentIntent $intent, string $why): bool
     {
         $transaction = trim((string) $intent->provider_transaction_id);
 
         if ($transaction === '') {
+            return false;
+        }
+
+        /*
+         * ═══ وبابٌ ماليٌّ لم يُجرَّب لا يُنادى على بوّابة تاجر ═══
+         *
+         * المسلكُ موثَّقٌ في مجموعة Paymob الرسميّة، ولم يُجرَّب على حساب:
+         * لا حسابَ تجريبيٌّ في اليد، ولا بوّابةَ مفعَّلةٌ على الإنتاج. فيبقى
+         * المقبضُ مطفأً (`storefront.paymob_auto_refund`) وتُعلَّق الدفعةُ
+         * للمراجعة اليدويّة: يُكتب «معلَّق» بالسبب، ويُنبَّه مديرُ المتجر
+         * بالمبلغ في جرسه ليردَّ من لوحة Paymob بيده.
+         *
+         * ولا يُكتب «رُدّ» ولا تُخترع عمليّةُ ردٍّ لم تقع: طمأنينةٌ كاذبةٌ
+         * بمالٍ عاد وهو لم يعد أسوأُ من غياب الردّ كلِّه.
+         */
+        if (! config('storefront.paymob_auto_refund')) {
+            StorePaymentIntent::whereKey($intent->id)
+                ->whereNull('refund_status')
+                ->update([
+                    'refund_status' => StorePaymentIntent::REFUND_PENDING,
+                    'refund_error' => Str::limit($why.' — يلزم ردٌّ يدويّ من لوحة Paymob', 500),
+                    'updated_at' => now(),
+                ]);
+
             return false;
         }
 
@@ -278,8 +302,12 @@ final class Paymob
             $response = Http::withHeaders(['Authorization' => 'Token '.$gateway->secret_key])
                 ->acceptJson()
                 ->timeout(20)
+                /*
+                 * والحمولةُ كما توثّقها مجموعةُ Paymob الرسميّة حرفًا: المسلكُ
+                 * والترويسةُ ورقمُ العمليّة **رقمًا** لا نصًّا.
+                 */
                 ->post(self::BASE.'/api/acceptance/void_refund/refund', [
-                    'transaction_id' => $transaction,
+                    'transaction_id' => (int) $transaction,
                     'amount_cents' => $cents,
                 ]);
         } catch (\Throwable $e) {

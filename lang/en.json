@@ -6903,5 +6903,9 @@
     "حفظ الحدود": "Save limits",
     "تغيّر مبلغُ الطلب بعد الدفع — لم يُنشأ الطلب، وسيتواصل معك المتجر.": "The order total changed after payment — the order was not created, and the shop will contact you.",
     "تم تحديث حدود الكوبون": "The coupon's limits were updated",
-    ":why الإجمالي الجديد :total — أكّد الطلب مرّة أخرى للموافقة عليه.": ":why The new total is :total — confirm the order again to agree to it."
+    ":why الإجمالي الجديد :total — أكّد الطلب مرّة أخرى للموافقة عليه.": ":why The new total is :total — confirm the order again to agree to it.",
+    "دفعةٌ تحتاج ردًّا للزبون — :amount · لم يُنشأ لها طلب": "A payment must be refunded to the customer — :amount · no order was created for it",
+    "رُدَّها من لوحة Paymob، فالمبلغ الذي وافق عليه الزبون لم يصر طلبًا.": "Refund it from the Paymob dashboard — the amount the customer agreed to never became an order.",
+    "استُرجعت دفعةُ الطلب :number — والطلبُ ما زال قائمًا": "The payment for order :number was refunded — and the order is still standing",
+    "ألغِ الطلب إن لم يُسلَّم — فيعود المخزون وفرصة الكوبون معًا.": "Cancel the order if it was not handed over — the stock and the coupon use both come back."
 }

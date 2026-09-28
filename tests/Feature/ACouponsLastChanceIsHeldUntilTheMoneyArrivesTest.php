@@ -11,6 +11,7 @@ use App\Models\PaymentGateway;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\StorePaymentIntent;
+use App\Models\Transaction;
 use App\Models\User;
 use App\Support\CouponLimits;
 use App\Support\Demo;
@@ -19,6 +20,7 @@ use App\Support\MarketingSettings;
 use App\Support\OrderCorrection;
 use App\Support\OrderStatus;
 use App\Support\Store\Paymob;
+use App\Support\Store\RibbonTexts;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -144,6 +146,17 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         $this->postJson('/s/ribbon/checkout', $this->order($over))->assertOk();
 
         return StorePaymentIntent::latest('id')->firstOrFail();
+    }
+
+    /**
+     * يُشعل الردَّ الآليّ — مطفأٌ في الإنتاج حتّى يُجرَّب على حساب.
+     *
+     * فحالتان تُقاسان: المطفأةُ (تُعلَّق الدفعةُ للمراجعة) والمشتعلةُ (يُنادى
+     * بابُ البوّابة). ولا يُقاس أحدُهما ويُظنّ الآخر.
+     */
+    private function autoRefund(): void
+    {
+        config(['storefront.paymob_auto_refund' => true]);
     }
 
     /** إشعارٌ موقَّعٌ كما تُرسله Paymob */
@@ -311,15 +324,61 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         $intent->refresh();
         $this->assertStringContainsString('تبدّل المبلغ بعد الدفع', (string) $intent->error);
 
-        // ورُدّ المالُ من نفسه — لا يُحتجز حتّى يفتح صاحبُ المحلّ جرسَه
-        Http::assertSent(fn ($r) => str_contains($r->url(), 'void_refund/refund')
-            && $r['transaction_id'] === '998877'
-            && $r['amount_cents'] === 20000);
+        /*
+         * والأصلُ أن يُعلَّق للمراجعة اليدويّة: بابُ الردّ لم يُجرَّب على حساب،
+         * فلا يُنادى على بوّابة تاجرٍ حقيقيّ، ولا يُكتب «رُدّ» وهو لم يُردّ.
+         */
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'void_refund/refund'));
+        $this->assertSame(StorePaymentIntent::REFUND_PENDING, $intent->refund_status);
+        $this->assertNull($intent->refunded_at, 'كُتب تاريخُ ردٍّ لم يقع');
+        $this->assertNull($intent->provider_refund_id);
+        $this->assertStringContainsString('يلزم ردٌّ يدويّ', (string) $intent->refund_error);
+        $this->assertTrue($intent->needsAttention(), 'سكت الجرسُ عن مالٍ لم يُردّ');
+    }
 
+    public function test_the_manager_is_told_plainly_that_money_must_go_back(): void
+    {
+        $this->coupon(['max_uses' => 1]);
+        $intent = $this->openCard();
+
+        Carbon::setTestNow(now()->addSeconds(Paymob::EXPIRES + 60));
+        $this->cod(['name' => 'سالم', 'phone' => '96899220002'])->assertOk();
+        $this->fire($this->notice($intent))->assertOk();
+
+        $this->actingAs($this->owner);
+        $bell = collect(Demo::notifications());
+
+        $row = $bell->firstWhere('key', 'refund-due-'.$intent->id);
+
+        $this->assertNotNull($row, 'لا صفَّ يقول لمدير المتجر إنّ مالًا يلزمه ردّ');
+        $this->assertStringContainsString('تحتاج ردًّا', (string) $row['text']);
+        $this->assertStringContainsString('15', (string) $row['text'], 'لم يُقل المبلغُ');
+        $this->assertStringContainsString('Paymob', (string) $row['hint'], 'لم يُقل من أين يُردّ');
+
+        // ولا يُقال له «دفعةٌ وصلت» وحدَها — فلا يعرف ماذا يفعل بها
+        $this->assertNull($bell->firstWhere('key', 'stray-payment-'.$intent->id));
+    }
+
+    public function test_with_the_switch_on_the_gateway_is_called_and_only_it_confirms(): void
+    {
+        $this->autoRefund();
+        $this->coupon(['max_uses' => 1]);
+        $intent = $this->openCard();
+
+        Carbon::setTestNow(now()->addSeconds(Paymob::EXPIRES + 60));
+        $this->cod(['name' => 'سالم', 'phone' => '96899220002'])->assertOk();
+        $this->fire($this->notice($intent))->assertOk();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'void_refund/refund')
+            // ورقمُ العمليّة رقمٌ كما توثّقه مجموعةُ Paymob الرسميّة
+            && $r['transaction_id'] === 998877
+            && $r['amount_cents'] === 15000);
+
+        $intent->refresh();
         $this->assertSame(StorePaymentIntent::REFUND_SENT, $intent->refund_status);
         $this->assertSame('55443322', (string) $intent->provider_refund_id);
         $this->assertNotNull($intent->refunded_at);
-        $this->assertFalse($intent->needsAttention(), 'يرنّ الجرسُ لمالٍ رُدّ');
+        $this->assertFalse($intent->needsAttention());
     }
 
     /* ═════════════ ومهلةُ الحجز مهلةُ الجلسة نفسُها ═════════════ */
@@ -379,15 +438,31 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         $this->assertSame(1, Order::count(), 'كُتب طلبٌ ثانٍ بمبلغٍ غير الذي قُبض');
 
         $intent->refresh();
-        $this->assertNull($intent->order_id);
-        $this->assertSame(StorePaymentIntent::REFUND_SENT, $intent->refund_status, 'احتُجز مالُه ولم يُردّ');
-        $this->assertFalse($intent->needsAttention());
+        $this->assertNull($intent->order_id, 'كُتب له طلبٌ بمبلغٍ آخر');
+        // ولا يُترك بلا معالجة: إمّا رُدّ، وإمّا عُلِّق ونُبِّه عليه
+        $this->assertSame(StorePaymentIntent::REFUND_PENDING, $intent->refund_status);
+        $this->assertTrue($intent->needsAttention());
+    }
 
+    public function test_a_late_confirmation_refunds_when_the_switch_is_on(): void
+    {
+        $this->autoRefund();
+        $this->coupon(['max_uses' => 1]);
+        $intent = $this->openCard();
+
+        Carbon::setTestNow(now()->addSeconds(Paymob::EXPIRES + 60));
+        $this->cod(['name' => 'سالم', 'phone' => '96899220002'])->assertOk();
+
+        $this->fire($this->notice($intent))->assertOk();
+
+        $this->assertSame(1, Order::count(), 'كُتب طلبٌ ثانٍ بمبلغٍ غير الذي قُبض');
+        $this->assertSame(StorePaymentIntent::REFUND_SENT, $intent->refresh()->refund_status);
         Http::assertSent(fn ($r) => str_contains($r->url(), 'void_refund/refund') && $r['amount_cents'] === 15000);
     }
 
     public function test_a_repeated_confirmation_never_refunds_twice(): void
     {
+        $this->autoRefund();
         $this->coupon(['max_uses' => 1]);
         $intent = $this->openCard();
 
@@ -413,6 +488,7 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
          * لم يقع أسوأُ من غياب الردّ — صاحبُ المحلّ يقرأ «انتهت» ومالُ الزبون
          * عنده.
          */
+        $this->autoRefund();
         $this->coupon(['max_uses' => 1]);
         $this->gateway();
         $this->fakeGateway(['detail' => 'transaction not refundable'], refundStatus: 422);
@@ -437,6 +513,7 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
          * وجرسُ «دفعةٌ وصلت ولم يُنشأ لها طلب» يُقرأ من `Demo` لا من النموذج.
          * فيُقاس من حيث يقرؤه التاجر: ما رُدّ انتهى، وما لم يُردّ يبقى يرنّ.
          */
+        $this->autoRefund();
         $this->coupon(['max_uses' => 1]);
         $intent = $this->openCard();
 
@@ -447,7 +524,8 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         $this->actingAs($this->owner);
         $keys = array_column(Demo::notifications(), 'key');
 
-        $this->assertNotContains('stray-payment-'.$intent->id, $keys, 'يرنّ الجرسُ لمالٍ رُدّ');
+        $this->assertNotContains('refund-due-'.$intent->id, $keys, 'يرنّ الجرسُ لمالٍ رُدّ');
+        $this->assertNotContains('stray-payment-'.$intent->id, $keys);
 
         // وما فشل ردُّه يبقى يرنّ — مالٌ محتجزٌ لا طلبَ له ولا رُدّ
         $intent->forceFill([
@@ -456,7 +534,7 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         ])->save();
 
         $this->assertContains(
-            'stray-payment-'.$intent->id,
+            'refund-due-'.$intent->id,
             array_column(Demo::notifications(), 'key'),
             'سكت الجرسُ عن مالٍ لم يُردّ',
         );
@@ -469,6 +547,7 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
          * `refund` — من مسارٍ آخر، أو من محاولةٍ تُعاد — لا يُرسلان ردَّين
          * على المال نفسِه. ويُقاس هنا مباشرةً لأنّ `settle` تحجب الثاني قبله.
          */
+        $this->autoRefund();
         $this->coupon(['max_uses' => 1]);
         $intent = $this->openCard();
         $intent->forceFill([
@@ -537,6 +616,54 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         $this->cod()->assertOk();
 
         $this->assertSame('15.000', (string) Order::firstOrFail()->total);
+    }
+
+    public function test_the_page_asks_for_an_explicit_agreement_not_a_silent_resend(): void
+    {
+        /*
+         * والموافقةُ ضغطةٌ لا إعادةُ إرسال: يقرأ السببَ والإجماليَّ الجديد في
+         * صندوقٍ يُفتح له، ويُقرّ بزرٍّ — أو يتراجع فلا يُنشأ طلب.
+         *
+         * ويُقاس من الصفحة نفسِها: لا vitest لها (قالبُ Blade لا React)، فما
+         * يُقاس وجودُ الصندوق ومقبضيه ونصوصِه بلغتي المتجر.
+         */
+        $blade = (string) file_get_contents(resource_path('views/store/ribbon/checkout.blade.php'));
+
+        foreach (['data-rb-agree-box', 'data-rb-agree-why', 'data-rb-agree]', 'data-rb-agree-no'] as $hook) {
+            $this->assertStringContainsString($hook, $blade, 'صندوقُ الموافقة ناقصٌ: '.$hook);
+        }
+
+        $this->assertStringContainsString("\$t['priceChanged']", $blade);
+        $this->assertStringContainsString("\$t['agreeNew']", $blade);
+        $this->assertStringContainsString("\$t['keepBrowsing']", $blade);
+        // والإجماليُّ المُقَرُّ يُرسَل مع الطلب
+        $this->assertStringContainsString('agreed_total: shownTotal', $blade);
+
+        foreach (['ar', 'en'] as $lang) {
+            $texts = RibbonTexts::for($lang);
+            foreach (['priceChanged', 'agreeNew', 'keepBrowsing'] as $key) {
+                $this->assertNotEmpty($texts[$key] ?? null, "نصُّ {$key} غائبٌ بلغة {$lang}");
+            }
+        }
+    }
+
+    public function test_refusing_the_new_total_writes_no_order(): void
+    {
+        /*
+         * ومن لم يوافق فلا طلب: الخادمُ لا يقبل إلّا إجماليًّا يطابق ما صار
+         * إليه التسعير. فمن أغلق الصندوق ولم يُقرّ لا يصل منه شيء — ولو أُرسل
+         * الإجماليُّ القديم رُدّ.
+         */
+        $this->coupon(['max_uses' => 1]);
+        $this->postJson('/s/ribbon/checkout', $this->order(['pay' => 'cod', 'name' => 'سالم', 'phone' => '96899220002']))->assertOk();
+
+        $before = Order::count();
+
+        $this->cod(['agreed_total' => 15])->assertStatus(422);
+        $this->cod(['agreed_total' => null])->assertStatus(422);
+        $this->cod()->assertStatus(422);
+
+        $this->assertSame($before, Order::count(), 'كُتب طلبٌ بسعرٍ لم يُقَرّ');
     }
 
     /* ═════════════ وفشلُ الدفع يردّ الفرصة ═════════════ */
@@ -678,6 +805,92 @@ class ACouponsLastChanceIsHeldUntilTheMoneyArrivesTest extends TestCase
         $this->assertSame(OrderStatus::CANCELLED, $order->fresh()->status);
         $this->assertSame(0, DB::table('coupon_redemptions')->count());
         $this->assertSame(0, (int) $coupon->fresh()->used_count);
+    }
+
+    public function test_a_partial_return_owes_the_difference_and_sends_no_automatic_refund(): void
+    {
+        /*
+         * ═══ والإرجاعُ الجزئيُّ يمشي بسياسة المشروع كما هي ═══
+         *
+         * الفاتورةُ تُصحَّح فيتبعها قيدُها (`syncTransaction`)، فيُقرأ المستحقُّ
+         * للزبون فرقًا بين ما دفع وما صار عليه الطلب. وردُّ ذلك الفرق إلى
+         * البطاقة يبقى بيد صاحب المحلّ — كما كان قبل هذا التغيير، ولأنّ بابَ
+         * الردّ لم يُجرَّب على حساب.
+         *
+         * ولا تُردّ فرصةُ الكوبون: الزبونُ انتفع به على ما أبقاه.
+         */
+        $this->autoRefund();
+        $this->coupon(['per_customer_limit' => 1]);
+        $intent = $this->openCard(['items' => [['id' => $this->rose->id, 'qty' => 3]]]);
+        $this->fire($this->notice($intent, ['amount_cents' => 55000]))->assertOk();
+
+        $order = Order::firstOrFail();
+        $this->assertSame('55.000', (string) $order->total, 'ثلاثُ باقاتٍ بخمسةٍ خصمًا');
+
+        OrderCorrection::setQuantity($order, $order->items()->firstOrFail(), 1, 'أرجع اثنتين');
+
+        $fresh = $order->fresh();
+        $owed = 55.0 - (float) $fresh->total;
+
+        $this->assertGreaterThan(0, $owed, 'لا مستحقَّ للزبون بعد إرجاعٍ جزئيّ');
+        // والقيدُ يتبع الفاتورة — فالمستحقُّ مقروءٌ في الدفاتر لا مخمَّن
+        $this->assertSame(
+            (string) $fresh->total,
+            (string) Transaction::where('order_id', $order->id)->value('amount'),
+            'القيدُ بقي على المبلغ القديم — فلا يُعرف كم للزبون',
+        );
+
+        // ولا ردَّ آليٌّ يُرسَل على إرجاعٍ جزئيّ
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), 'void_refund/refund'));
+        $this->assertNull($intent->refresh()->refund_status);
+
+        // ولا فرصةَ كوبونٍ تُردّ
+        $this->assertSame(1, DB::table('coupon_redemptions')->whereNotNull('order_id')->count());
+    }
+
+    public function test_a_partial_refund_notice_never_returns_the_coupon_use(): void
+    {
+        /*
+         * وإشعارُ إرجاعٍ جزئيٍّ من لوحة البوّابة يُقرأ جزئيًّا: يُكتب أنّه وقع
+         * ويُنبَّه عليه، ولا يردّ الفرصة.
+         */
+        $this->coupon(['per_customer_limit' => 1]);
+        $intent = $this->openCard();
+        $this->fire($this->notice($intent))->assertOk();
+
+        // نصفُ المبلغ فقط
+        $this->fire($this->notice($intent, ['id' => 998899, 'is_refunded' => true, 'amount_cents' => 7000]))->assertOk();
+
+        $intent->refresh();
+        $this->assertSame(StorePaymentIntent::REFUND_SENT, $intent->refund_status);
+        $this->assertStringContainsString('جزء', (string) $intent->refund_error, 'قُرئ الإرجاعُ الجزئيُّ ردًّا كاملًا');
+        $this->assertSame(1, DB::table('coupon_redemptions')->whereNotNull('order_id')->count(), 'أُعيدت الفرصةُ بإرجاعٍ جزئيّ');
+    }
+
+    public function test_a_refunded_order_still_standing_is_put_before_the_merchant(): void
+    {
+        $this->coupon(['per_customer_limit' => 1]);
+        $intent = $this->openCard();
+        $this->fire($this->notice($intent))->assertOk();
+        $order = Order::firstOrFail();
+
+        $this->fire($this->notice($intent, ['id' => 998899, 'is_refunded' => true]))->assertOk();
+
+        $this->actingAs($this->owner);
+        $row = collect(Demo::notifications())->firstWhere('key', 'refunded-order-'.$intent->id);
+
+        $this->assertNotNull($row, 'استُرجعت دفعةٌ وطلبُها قائمٌ ولا شيء يقول');
+        $this->assertStringContainsString($order->number, (string) $row['text']);
+        $this->assertStringContainsString('ألغِ الطلب', (string) $row['hint']);
+
+        // ثمّ يُلغيه بيده — فتعود الفرصةُ والعدّادُ معًا، مرّةً واحدة
+        OrderCorrection::cancel($order, 'استُرجعت الدفعة');
+        OrderCorrection::cancel($order->fresh(), 'استُرجعت الدفعة');
+
+        $this->assertSame(0, DB::table('coupon_redemptions')->count());
+        $this->assertSame(0, (int) Coupon::firstOrFail()->used_count);
+        // ويسكت الصفُّ بعد الإلغاء
+        $this->assertNull(collect(Demo::notifications())->firstWhere('key', 'refunded-order-'.$intent->id));
     }
 
     public function test_a_partial_return_keeps_the_use_as_it_was(): void

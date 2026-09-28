@@ -18,6 +18,7 @@ use App\Support\Website\Builder;
 use App\Support\Website\Publisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -363,6 +364,9 @@ class ASettingThatRefusesSaysWhereTest extends TestCase
 
     public function test_an_unconfirmed_restore_wipes_nothing(): void
     {
+        // والاستعادةُ تكتب نسخةَ أمانٍ قبلها — على قرصٍ وهميّ لا على storage الحقيقيّ
+        Storage::fake('local');
+
         Product::create([
             'business_id' => $this->business->id, 'name' => 'صنفٌ قائم', 'price' => 3, 'active' => true,
         ]);
@@ -379,6 +383,9 @@ class ASettingThatRefusesSaysWhereTest extends TestCase
 
     public function test_a_confirmed_restore_goes_through(): void
     {
+        // والاستعادةُ تكتب نسخةَ أمانٍ قبلها — على قرصٍ وهميّ لا على storage الحقيقيّ
+        Storage::fake('local');
+
         Product::create([
             'business_id' => $this->business->id, 'name' => 'صنفٌ قبل النسخة', 'price' => 3, 'active' => true,
         ]);

@@ -5,7 +5,6 @@ import {
     BellOff,
     BellRing,
     ChevronLeft,
-    Download,
     ExternalLink,
     FileText,
     Globe,
@@ -58,6 +57,7 @@ import ActivityPanel, { type ActivityData } from './panels/ActivityPanel';
 import TrashPanel, { type TrashData } from './panels/TrashPanel';
 import ChartPanel, { type ChartData } from './panels/ChartPanel';
 import ArchivePanel, { type ArchiveData } from './panels/ArchivePanel';
+import BackupStatusPanel, { type BackupStatus } from './panels/BackupStatusPanel';
 import RecoveryEmailSection, { type Recovery } from './panels/RecoveryEmailSection';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
@@ -226,6 +226,8 @@ interface Props {
     types?: ChartData['types'];
     /** قائمةُ الأرشيف الشهريّ — تصل مع `?section=backup` وحدها */
     archive?: ArchiveData;
+    /** النسخُ على الخادم: التكرارُ وآخرُ نسخةٍ ناجحة — مع `?section=backup` وحدها */
+    backups?: BackupStatus;
 }
 
 /**
@@ -334,7 +336,7 @@ const NOTIF_COLORS: Record<string, string> = {
 export default function SettingsIndex() {
     const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, pageSections, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
-        accounts, trial, types, archive } =
+        accounts, trial, types, archive, backups } =
         usePage<PageProps<Props>>().props;
     const { auth, context } = usePage<PageProps>().props;
     const t = useTranslate();
@@ -379,6 +381,7 @@ export default function SettingsIndex() {
     }, []);
     const [pickedLocale, setPickedLocale] = useState(locale === 'en' ? 'en' : 'ar');
     const [backupFile, setBackupFile] = useState<File | null>(null);
+    const [restoreError, setRestoreError] = useState<string | undefined>();
     const [notifs, setNotifs] = useState<NotificationRow[]>(notificationsAll ?? []);
 
     const pick = (key: string) => {
@@ -1789,33 +1792,30 @@ export default function SettingsIndex() {
                 />
             ) : tab === 'backup' ? (
                 <div className="space-y-6">
-                    <SettingsSection
-                        title="تنزيل نسخة احتياطية"
-                        description="يشمل الملف كامل بيانات متجرك: المنتجات، الأقسام، العملاء، الطلبات، المصروفات وغيرها."
-                        icon={Download}
-                    >
-                        <PageActions>
-                            <Button asChild>
-                                <a href={route('admin.backup.download')}>
-                                    <Download />
-                                    {t('تنزيل النسخة الآن')}
-                                </a>
-                            </Button>
-                        </PageActions>
-                    </SettingsSection>
+                    {/*
+                        والنسخُ على الخادم أوّلًا: هو ما يعود به المتجرُ بعد
+                        عطب، ولا يحتاج التاجرُ فيه ملفًّا على جهازه.
+                    */}
+                    {backups && <BackupStatusPanel data={backups} />}
 
                     {/*
-                        والأرشيفُ بين التنزيل والاستعادة — لا فوقهما ولا بعدهما.
+                        والأرشيفُ بين النسخ والاستعادة — لا فوقهما ولا بعدهما.
 
                         فوقَهما يُزيح ما كان يفتحه التاجرُ هنا منذ شهور. وبعد
                         الاستعادة يجعل أخطرَ فعلٍ في الشاشة يتوسّطها. والترتيبُ
                         الآن: خُذ نسخةً، ثمّ خُذ أرشيفَ شهر، ثمّ — بحذر — أعِد.
+
+                        و«تنزيل النسخة الآن» القديمُ لم يعد يُعرض: كان يُنشئ
+                        ملفًّا غيرَ مضغوط بجانب «إنشاء نسخة الآن» — بابان لشيءٍ
+                        واحد لا يُعرف أيُّهما يُضغط. ومسارُه باقٍ لمن يستدعيه.
                     */}
                     {archive && <ArchivePanel archive={archive} />}
 
+                    {/* والاستعادةُ من ملفٍّ لصاحب النشاط وحده — كآخر نسخة؛ الخادمُ هو ما يردّ */}
+                    {backups?.can_restore !== false && (
                     <SettingsSection
-                        title="استعادة من نسخة احتياطية"
-                        description="ما في الملفّ يحلّ محلّ ما في متجرك — فاقرأ التحذير قبل أن تختار."
+                        title="استعادة من ملف خارجي"
+                        description="نسخة محفوظة على جهازك (.json أو .json.gz) تحلّ محلّ ما في متجرك — وسيتم إنشاء نسخة أمان داخلية قبل الاستعادة."
                         icon={Upload}
                     >
                         <p className="mb-4 flex items-start gap-2 rounded-[12px] bg-[#fef2f2] px-3 py-2.5 text-[12px] text-[#b91c1c]">
@@ -1847,14 +1847,20 @@ export default function SettingsIndex() {
                                     route('admin.backup.restore'),
                                     // والتأكيدُ يُرسَل: الخادمُ يشترطه لأنّ الشاشة تُتخطّى
                                     { backup: backupFile, confirm: true },
-                                    { forceFormData: true },
+                                    {
+                                        forceFormData: true,
+                                        // والملفُّ المرفوض (أكبرُ من الحدّ بعد فكّه) يُقرأ تحت حقله
+                                        onStart: () => setRestoreError(undefined),
+                                        onError: (errors) => setRestoreError(errors.backup),
+                                    },
                                 );
                             }}
                         >
-                            <Field label="اختر ملف النسخة الاحتياطية (JSON)">
+                            {/* والمضغوطةُ تُقبل كالقديمة: ما يُنزَّل من «تحميل آخر نسخة» يُرفع هنا كما هو */}
+                            <Field label="اختر ملف النسخة الاحتياطية (.json أو .json.gz)" error={restoreError}>
                                 <Input
                                     type="file"
-                                    accept=".json,application/json"
+                                    accept=".json,.gz,application/json,application/gzip"
                                     onChange={(e) => setBackupFile(e.target.files?.[0] ?? null)}
                                     className="h-auto py-2 file:me-3 file:rounded-lg file:bg-[#111] file:px-4 file:py-2 file:text-white"
                                 />
@@ -1867,6 +1873,7 @@ export default function SettingsIndex() {
                             </PageActions>
                         </form>
                     </SettingsSection>
+                    )}
                 </div>
             ) : (
                 /*

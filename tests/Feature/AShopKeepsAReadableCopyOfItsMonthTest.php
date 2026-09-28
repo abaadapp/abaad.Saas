@@ -852,7 +852,11 @@ class AShopKeepsAReadableCopyOfItsMonthTest extends TestCase
         $this->artisan('backup:run')->assertSuccessful();
 
         $this->assertNotEmpty(
-            array_filter(Storage::disk('local')->allFiles('backups'), fn ($f) => str_ends_with($f, '.json')),
+            /*
+             * والنسخةُ نفسُها لا أيُّ ملفٍّ في المجلّد: بصمةُ التشغيل
+             * (`last-run.json`) تُكتب ولو سقط النسخ كلُّه، فتُمرّر الحارس.
+             */
+            array_filter(Storage::disk('local')->allFiles('backups'), fn ($f) => str_ends_with($f, '.json.gz')),
             'سقط النسخُ المحلّيُّ بسبب قرصٍ بعيدٍ لا يعمل',
         );
     }

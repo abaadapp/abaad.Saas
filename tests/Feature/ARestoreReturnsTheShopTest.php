@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -32,6 +33,14 @@ class ARestoreReturnsTheShopTest extends TestCase
         'migrations', 'jobs', 'job_batches', 'failed_jobs', 'cache', 'cache_locks',
         'sessions', 'password_reset_tokens',
     ];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // والاستعادةُ تكتب نسخةَ أمانٍ قبلها — على قرصٍ وهميّ لا على storage الحقيقيّ
+        Storage::fake('local');
+    }
 
     /* ======================= الحارس: لا جدولَ منسيّ ======================= */
 

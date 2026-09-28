@@ -3,10 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\Business;
-use App\Models\Order;
 use App\Support\Archive\Policy as ArchivePolicy;
 use App\Support\BackupService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -37,14 +37,25 @@ use Illuminate\Support\Facades\Storage;
  * يُثبَّت هنا، ولا مفتاحَ يُخترع. المشغّلُ يُعرّف القرصَ في
  * `config/filesystems.php` ويكتب اسمَه في إعدادات المنصّة — وما لم يفعل،
  * يبقى النسخُ المحلّيُّ يعمل كما كان بلا حرفٍ يتغيّر.
+ *
+ * ═══ وخامسٌ: لكلّ متجرٍ تكرارُه ═══
+ *
+ * يعمل الأمرُ كلَّ ليلة، ويسأل `BackupService::due` عن كلّ متجر: اليوميُّ
+ * يُنسخ كلَّ ليلةٍ كما كان، والأسبوعيُّ والشهريُّ متى مضت مدّتُه منذ آخر
+ * نسخة، واليدويُّ لا يُنسخ هنا أبدًا. و`--force` يتخطّى السؤال.
+ *
+ * والكتابةُ والتحقّقُ والنسخُ البعيد صارت في `BackupService::store` — يقرؤها
+ * هذا الأمرُ وزرُّ «إنشاء نسخة الآن» معًا، فلا تفترق نسخةُ الليل عن نسخة
+ * الزرّ في شيء.
  */
 class BackupRun extends Command
 {
     protected $signature = 'backup:run
         {--business= : معرّف متجر محدّد (اختياري)}
-        {--keep=14 : كم يومًا تُحفظ النسخ قبل حذفها}';
+        {--keep=14 : كم يومًا تُحفظ النسخ قبل حذفها}
+        {--force : انسخ كلّ متجرٍ الآن ولو لم يحن موعدُه بحسب تكراره}';
 
-    protected $description = 'إنشاء نسخة احتياطية JSON لبيانات كل المتاجر — مع التحقّق منها';
+    protected $description = 'إنشاء نسخة احتياطية مضغوطة (.json.gz) لبيانات المتاجر التي حان موعدها — مع التحقّق منها';
 
     /** بصمة آخر تشغيل — يقرؤها abaad:preflight */
     public const STAMP = 'backups/last-run.json';
@@ -64,29 +75,37 @@ class BackupRun extends Command
         }
 
         $disk = Storage::disk('local');
-        $dir = 'backups/'.now()->format('Y-m-d');
+        $dir = BackupService::DIR.'/'.now()->format('Y-m-d');
         $done = 0;
         $offsite = 0;
+        $skipped = 0;
         $failed = [];
+        $force = (bool) $this->option('force');
 
         foreach ($businesses as $business) {
-            $path = $dir.'/'.BackupService::filename($business->id);
+            if (! $force && ! BackupService::due($business->id)) {
+                $skipped++;
+                $this->line("  · {$business->name} — ".BackupService::frequency($business->id));
+
+                continue;
+            }
 
             try {
-                $disk->put($path, BackupService::json($business->id));
-                $this->verify($disk, $path, $business->id);
-                $copied = $this->copyOffsite($disk, $path);
-                $this->line("  ✓ {$business->name} → {$path}".($copied ? ' ⇄' : ''));
+                $record = BackupService::store($business->id);
+                $this->line("  ✓ {$business->name} → {$record['path']}".($record['offsite'] ? ' ⇄' : ''));
                 $done++;
-                $offsite += $copied ? 1 : 0;
+                $offsite += $record['offsite'] ? 1 : 0;
+
+                if (! $record['offsite'] && ArchivePolicy::backupRemoteEnabled()) {
+                    $this->line('  <fg=yellow>!</> '.__('تعذّر النسخ إلى القرص البعيد — والنسخة المحلّية سليمة.'));
+                }
             } catch (\Throwable $e) {
                 /*
-                 * الملف المعطوب يُحذف لا يُترك.
+                 * الملف المعطوب حذفه `store` قبل أن يرمي — لا يُترك.
                  *
                  * تركُه يجعله يبدو نسخةً في القائمة، فيُطمأنّ إليه ولا يُفتح
                  * إلا في الأزمة. وغيابُه يُرى في العدّ.
                  */
-                $disk->delete($path);
                 $failed[$business->id] = $business->name.': '.$e->getMessage();
                 $this->line("  <fg=red>✗</> {$business->name} — {$e->getMessage()}");
             }
@@ -98,6 +117,8 @@ class BackupRun extends Command
             'finished_at' => now()->toIso8601String(),
             'businesses' => $businesses->count(),
             'written' => $done,
+            // متاجرُ لم يحن موعدُها بحسب تكرارها — لا فشلٌ ولا إهمال
+            'skipped' => $skipped,
             'failed' => $failed,
             'pruned_days' => $pruned,
             /*
@@ -139,92 +160,21 @@ class BackupRun extends Command
     }
 
     /**
-     * يُعيد قراءة الملف من القرص ويطابق ما فيه.
+     * يحذف مجلّدات الأيام الأقدم من المدة، ويرجع عددها.
      *
-     * لا يكفي أن تنجح الكتابة: القرص الممتلئ يكتب نصف ملف بلا خطأ في كثيرٍ
-     * من أنظمة الملفات. والعدّ يُطابق طلبات المتجر لأنها أكثر ما يُستعاد وأثقله.
+     * ═══ إلّا آخرَ نسخةٍ لكلّ متجر ═══
+     *
+     * كان يحذف المجلّدَ كلَّه. ومتجرٌ أسبوعيٌّ أو شهريٌّ أو يدويٌّ نسختُه
+     * الأخيرة في مجلّدٍ قديم — فتُحذف ولا يبقى له شيء يعود إليه. فيُترك ذلك
+     * الملفُّ وحده، ويُحذف ما سواه، ولا يُحذف المجلّدُ ما دام فيه ما يُحفظ.
      */
-    private function verify($disk, string $path, int $bid): void
-    {
-        if (! $disk->exists($path)) {
-            throw new \RuntimeException(__('الملف لم يُكتب على القرص.'));
-        }
-
-        $raw = $disk->get($path);
-        $data = json_decode((string) $raw, true);
-
-        if (! is_array($data) || json_last_error() !== JSON_ERROR_NONE) {
-            throw new \RuntimeException(__('الملف مكتوب لكنه لا يُقرأ (JSON معطوب).'));
-        }
-
-        if (($data['meta']['business_id'] ?? null) !== $bid) {
-            throw new \RuntimeException(__('الملف يحمل معرّف متجر مختلفًا.'));
-        }
-
-        $expected = Order::where('business_id', $bid)->count();
-        $actual = count($data['orders'] ?? []);
-
-        if ($actual !== $expected) {
-            throw new \RuntimeException(__('عدد الطلبات ناقص: :actual من :expected.', [
-                'actual' => $actual, 'expected' => $expected,
-            ]));
-        }
-    }
-
-    /**
-     * ينسخ الملفَّ إلى القرص البعيد إن كان مضبوطًا — ويردّ أنُسخ أم لا.
-     *
-     * ═══ ولمَ لا يُسقط فشلُه النسخةَ المحلّيّة ═══
-     *
-     * المحلّيّةُ كُتبت وتُحقّق منها قبل هذا السطر. ورميُ استثناءٍ هنا يجعل
-     * الملتقِطَ يحذفها — فينتهي المتجر **بلا نسخةٍ أصلًا** لأنّ مزوّدًا
-     * بعيدًا لم يُجب. وهو أن تُفقد نسخةٌ موجودة لأجل نسخةٍ إضافيّة.
-     *
-     * فالفشلُ يُقيَّد في السجلّ ويُردّ `false`، والعدُّ في البصمة يقول كم
-     * نُسخ بعيدًا فعلًا — فيُرى الانقطاعُ ولا يُخفى.
-     *
-     * والمفاتيحُ لا تُلمس هنا ولا تُطبع: القرصُ باسمه، وما خلفه في `.env`
-     * عند المشغّل.
-     */
-    private function copyOffsite($disk, string $path): bool
-    {
-        if (! ArchivePolicy::backupRemoteEnabled()) {
-            return false;
-        }
-
-        $remote = ArchivePolicy::remoteDisk();
-
-        try {
-            $stream = $disk->readStream($path);
-
-            if ($stream === null || $stream === false) {
-                return false;
-            }
-
-            try {
-                $ok = Storage::disk($remote)->put($path, $stream);
-            } finally {
-                if (is_resource($stream)) {
-                    fclose($stream);
-                }
-            }
-
-            return $ok !== false;
-        } catch (\Throwable $e) {
-            report($e);
-            $this->line('  <fg=yellow>!</> '.__('تعذّر النسخ إلى القرص البعيد — والنسخة المحلّية سليمة.'));
-
-            return false;
-        }
-    }
-
-    /** يحذف مجلّدات الأيام الأقدم من المدة، ويرجع عددها */
     private function prune($disk, int $keepDays): int
     {
         $cutoff = now()->subDays($keepDays)->startOfDay();
+        $keep = BackupService::protectedPaths();
         $gone = 0;
 
-        foreach ($disk->directories('backups') as $dir) {
+        foreach ($disk->directories(BackupService::DIR) as $dir) {
             $day = basename($dir);
 
             // المجلّدات باسم التاريخ وحدها؛ ما لا يُطابق يُترك ولا يُخمَّن فيه
@@ -233,13 +183,29 @@ class BackupRun extends Command
             }
 
             try {
-                if (\Illuminate\Support\Carbon::parse($day)->lt($cutoff)) {
-                    $disk->deleteDirectory($dir);
-                    $gone++;
+                if (! Carbon::parse($day)->lt($cutoff)) {
+                    continue;
                 }
             } catch (\Throwable) {
                 // تاريخ لا يُفهم يبقى: الحذف الخاطئ لا يُستدرك
                 continue;
+            }
+
+            $held = false;
+
+            foreach ($disk->allFiles($dir) as $file) {
+                if (isset($keep[$file])) {
+                    $held = true;
+
+                    continue;
+                }
+
+                $disk->delete($file);
+            }
+
+            if (! $held) {
+                $disk->deleteDirectory($dir);
+                $gone++;
             }
         }
 

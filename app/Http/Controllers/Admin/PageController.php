@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Admin\Finance\ChartController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\PdfController;
 use App\Http\Controllers\Pos\DeviceController;
@@ -992,7 +993,11 @@ class PageController extends Controller
              * في الشهر مرّة — والقاعدةُ هنا قاعدةُ `activity` و`trash`
              * نفسُها: ما يُقرأ من القاعدة يُطلب بقسمه.
              */
-            'backup' => ['archive' => BusinessArchiveController::panel(Demo::bid(), $request->user())],
+            'backup' => [
+                'archive' => BusinessArchiveController::panel(Demo::bid(), $request->user()),
+                // وآخرُ نسخةٍ على الخادم وتكرارُها — من القرص لا من القاعدة
+                'backups' => BackupController::panel(Demo::bid()),
+            ],
             /*
              * الشجرة صلاحيتها «المالية» لا «الإعدادات».
              *

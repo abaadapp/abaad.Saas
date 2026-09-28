@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -286,6 +287,9 @@ class TrashRestoreTest extends TestCase
 
     public function test_restoring_a_backup_wipes_instead_of_hiding(): void
     {
+        // والاستعادةُ تكتب نسخةَ أمانٍ قبلها — على قرصٍ وهميّ لا على storage الحقيقيّ
+        Storage::fake('local');
+
         $old = $this->product();
 
         $payload = [

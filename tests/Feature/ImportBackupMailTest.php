@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -143,6 +144,9 @@ class ImportBackupMailTest extends TestCase
 
     public function test_a_backup_restores_what_it_carried(): void
     {
+        // والاستعادةُ تكتب نسخةَ أمانٍ قبلها — على قرصٍ وهميّ لا على storage الحقيقيّ
+        Storage::fake('local');
+
         Product::create([
             'business_id' => $this->business->id, 'name' => 'قبل النسخة',
             'price' => 10, 'quantity' => 5, 'active' => true,
@@ -170,6 +174,9 @@ class ImportBackupMailTest extends TestCase
 
     public function test_restoring_does_not_lock_the_restoring_user_out(): void
     {
+        // والاستعادةُ تكتب نسخةَ أمانٍ قبلها — على قرصٍ وهميّ لا على storage الحقيقيّ
+        Storage::fake('local');
+
         $body = $this->actingAs($this->owner)
             ->get(route('admin.backup.download'))->getContent();
 

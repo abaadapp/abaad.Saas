@@ -56,7 +56,9 @@ class BackupIntegrityTest extends TestCase
         $files = $disk->files('backups/'.now()->format('Y-m-d'));
         $this->assertCount(1, $files);
 
-        $data = json_decode($disk->get($files[0]), true);
+        // مضغوطةٌ صارت (.json.gz) — وتُفكّ فتُقرأ كما كانت تُقرأ
+        $this->assertStringEndsWith('.json.gz', $files[0]);
+        $data = json_decode(gzdecode($disk->get($files[0])), true);
         $this->assertSame($this->business->id, $data['meta']['business_id']);
         $this->assertCount(3, $data['orders']);
     }

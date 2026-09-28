@@ -1512,6 +1512,21 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/backup/restore', [BackupController::class, 'restore'])->name('backup.restore');
 
     /*
+     * والنسخُ على الخادم: تكرارُه، وزرُّ «الآن»، وآخرُ نسخةٍ تحميلًا واستعادة.
+     *
+     * ولا يأخذ أيٌّ منها مسارَ ملفٍّ ولا معرّفَ نسخة: المتجرُ من الحساب
+     * وحده — فلا تُطلب نسخةُ متجرٍ آخر بتبديل رقمٍ في الرابط.
+     *
+     * و«الآن» محدودٌ بستٍّ في الدقيقة: كلُّ ضغطةٍ تقرأ المتجرَ كلَّه وتكتبه
+     * على القرص.
+     */
+    Route::post('/backup/frequency', [BackupController::class, 'frequency'])->name('backup.frequency');
+    Route::post('/backup/create', [BackupController::class, 'create'])
+        ->middleware('throttle:6,1')->name('backup.create');
+    Route::get('/backup/latest/download', [BackupController::class, 'downloadLatest'])->name('backup.latest.download');
+    Route::post('/backup/latest/restore', [BackupController::class, 'restoreLatest'])->name('backup.latest.restore');
+
+    /*
      * الأرشيفُ الشهريّ — خلف فعلٍ يُمنح بالاسم لا خلف قسم «الإعدادات».
      *
      * ملفٌّ واحد فيه مبيعاتُ الشهر وأسعارُ الشراء وأسماءُ العملاء والميزان،

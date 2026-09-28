@@ -201,18 +201,84 @@ class ProductCompositionDraftTest extends TestCase
 
     /* ------------------------------ الإضافات ------------------------------ */
 
-    public function test_a_new_addon_written_beside_the_product_is_born_private_to_it(): void
+    /**
+     * ولا تُولد إضافةٌ خاصّةٌ بمنتجٍ من هذه المسوّدة.
+     *
+     * كانت تُولد: `private => true` يكتب صفًّا مملوكًا للمنتج. وزال قسمُ
+     * التركيب وكان بابَ تلك الصفوف الوحيد — يعرضها ويعدّلها ويفكُّ ربطها.
+     * فبابٌ يكتب ما لا تُديره شاشةٌ بعده أُغلق.
+     *
+     * والمكتوبُ قبل اليوم يبقى ويُعدَّل ويُعطَّل من شاشة مالكه — انظر
+     * `APrivateAddonIsEditedNotBornTest`.
+     */
+    public function test_no_new_private_addon_is_born_from_the_draft(): void
     {
         $this->create([
             'new_addons' => [['name' => 'شريط ذهبي', 'price' => 0.5, 'private' => true]],
-        ])->assertSessionHasNoErrors();
+        ])->assertSessionHasErrors('composition.new_addons.0.private');
 
-        $addon = Addon::where('name', 'شريط ذهبي')->firstOrFail();
+        $this->assertSame(0, Addon::where('name', 'شريط ذهبي')->count());
+        // ولا يُكتب نصفُ حفظ: الردُّ قبل أن يُنشأ المنتج أصلًا
+        $this->assertSame(0, Product::where('name', 'بوكيه الحب')->count());
+    }
 
-        $this->assertSame($this->product()->id, (int) $addon->product_id);
-        $this->assertTrue((bool) $addon->active);
-        // وتُربط بالمنتج فورًا: من كتبها وهو يُعدّه يريدها معه
-        $this->assertSame(1, DB::table('product_addons')->where('addon_id', $addon->id)->count());
+    /**
+     * والغيابُ ليس إذنًا.
+     *
+     * كان `private` الغائبُ يُقرأ «خاصّة» — فحذفُ الشرط وحده يترك البابَ
+     * مفتوحًا لمن لا يذكر الحقل. ولا يُقرأ «عامّة» أيضًا: تلك تظهر مع كلّ
+     * منتجات المتجر، فيكون الطلبُ قد قُلب معناه في صمت.
+     */
+    public function test_a_draft_addon_that_does_not_say_its_reach_is_refused(): void
+    {
+        $this->create([
+            'new_addons' => [['name' => 'شريط ذهبي', 'price' => 0.5]],
+        ])->assertSessionHasErrors('composition.new_addons.0.private');
+
+        $this->assertSame(0, Addon::where('name', 'شريط ذهبي')->count());
+    }
+
+    /** ويُقال السببُ بالعربية لا باسم الحقل */
+    public function test_the_refusal_says_why_in_arabic(): void
+    {
+        $this->create([
+            'new_addons' => [['name' => 'شريط ذهبي', 'price' => 0.5, 'private' => true]],
+        ])->assertSessionHasErrors();
+
+        $message = (string) collect(session('errors')->getBag('default')->all())->first();
+
+        $this->assertStringContainsString('لا تُنشأ إضافةٌ خاصّةٌ بمنتجٍ واحد', $message);
+        $this->assertStringNotContainsString('composition', $message);
+    }
+
+    /**
+     * والكاتبُ نفسُه يردّ — ولو نُودي بمصفوفةٍ لم تمرّ بالفحص.
+     *
+     * `applyDraft` عامّةٌ ساكنة: الفحصُ في `draftRules` هو البابُ الأوّل،
+     * وهذا الثاني. ومن استدعاها غدًا من مسارٍ جديد لا يفتح بابًا أُغلق.
+     */
+    public function test_the_writer_itself_refuses_an_unchecked_private_draft(): void
+    {
+        $product = Product::create([
+            'business_id' => $this->business->id, 'name' => 'باقة مباشرة',
+            'price' => 9, 'cost' => 3, 'quantity' => 1, 'active' => true,
+        ]);
+
+        foreach ([['private' => true], []] as $said) {
+            $threw = false;
+
+            try {
+                \App\Http\Controllers\Admin\ProductCompositionController::applyDraft($product, [
+                    'new_addons' => [['name' => 'شريط فضّي', 'price' => 0.5] + $said],
+                ]);
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                $threw = true;
+            }
+
+            // والغيابُ كالتصريح: هو ما كان يُقرأ «خاصّة» قبل أن يُغلق الباب
+            $this->assertTrue($threw, 'مرَّت مسوّدةٌ خاصّة: '.json_encode($said));
+            $this->assertSame(0, Addon::where('name', 'شريط فضّي')->count());
+        }
     }
 
     public function test_an_addon_marked_for_all_products_stays_shop_wide(): void
@@ -265,6 +331,20 @@ class ProductCompositionDraftTest extends TestCase
             ->assertSessionHasErrors('composition.addon_ids.0');
     }
 
+    /** ولا تُلتقط إضافةُ متجرٍ آخر ولو كانت إضافةَ متجرٍ عامّة */
+    public function test_an_addon_of_another_shop_cannot_be_picked(): void
+    {
+        $other = Business::create(['name' => 'محل ثالث', 'email' => 't@d.local', 'status' => 'نشط']);
+        $theirs = Addon::create([
+            'business_id' => $other->id, 'name' => 'تغليفهم', 'price' => 1, 'active' => true,
+        ]);
+
+        $this->create(['addon_ids' => [$theirs->id]])
+            ->assertSessionHasErrors('composition.addon_ids.0');
+
+        $this->assertSame(0, DB::table('product_addons')->where('addon_id', $theirs->id)->count());
+    }
+
     /* ------------------------------ التوافق ------------------------------- */
 
     public function test_a_product_saved_with_no_composition_behaves_exactly_as_before(): void
@@ -315,7 +395,7 @@ class ProductCompositionDraftTest extends TestCase
     {
         $this->create([
             'new_addons' => [
-                ['name' => 'شوكولاتة بلجيكية', 'name_en' => 'Belgian chocolate', 'price' => 3, 'private' => true],
+                ['name' => 'شوكولاتة بلجيكية', 'name_en' => 'Belgian chocolate', 'price' => 3, 'private' => false],
             ],
         ])->assertSessionHasNoErrors();
 
@@ -323,14 +403,16 @@ class ProductCompositionDraftTest extends TestCase
 
         // المكتوب بيده لا يُترجَم فوقه: القاموس لا يعرف «بلجيكية»
         $this->assertSame('Belgian chocolate', $addon->name_en);
-        $this->assertSame($this->product()->id, (int) $addon->product_id);
+        // وتُربط بالمنتج الذي كُتبت معه: من كتبها وهو يُعدّه يريدها معه
+        $this->assertSame(1, DB::table('product_addons')
+            ->where('product_id', $this->product()->id)->where('addon_id', $addon->id)->count());
     }
 
     public function test_a_new_addon_may_be_tied_to_stock_from_the_create_screen(): void
     {
         $this->create([
             'new_addons' => [[
-                'name' => 'زيادة 3 وردات', 'price' => 2.5, 'private' => true,
+                'name' => 'زيادة 3 وردات', 'price' => 2.5, 'private' => false,
                 'inventory_product_id' => $this->rose->id, 'inventory_quantity' => 3,
             ]],
         ])->assertSessionHasNoErrors();

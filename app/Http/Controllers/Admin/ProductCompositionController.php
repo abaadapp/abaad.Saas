@@ -424,7 +424,21 @@ class ProductCompositionController extends Controller
             'composition.new_addons.*.name' => ['required', 'string', 'max:100'],
             'composition.new_addons.*.name_en' => ['nullable', 'string', 'max:100'],
             'composition.new_addons.*.price' => ['required', 'numeric', 'min:0'],
-            'composition.new_addons.*.private' => ['nullable', 'boolean'],
+            /*
+             * ولا تُولد خاصّةً بمنتج.
+             *
+             * زال قسمُ التركيب وكان بابَ هذه الإضافات الوحيد: يعرضها
+             * ويعدّلها ويفكُّ ربطها. فصفٌّ يُكتب اليوم لا تُديره شاشةٌ بعده.
+             *
+             * و`declined` تردّ الغيابَ كما تردّ `true`: كان الغائبُ يُقرأ
+             * «خاصّة» (انظر `applyDraft`)، فلو صار يُقرأ «عامّة» لَصارت
+             * إضافةً تظهر مع كلّ منتجات المتجر من طلبٍ أراد عكسَ ذلك —
+             * تبديلُ معنًى في صمت. فمن أراد إضافةَ متجرٍ قالها.
+             *
+             * ولا `required` معها: تلك لا تضيف ردًّا ولا رسالة — أثبتته
+             * الطفرة، فلا تُكتب قاعدةٌ لا تُغيّر جوابًا.
+             */
+            'composition.new_addons.*.private' => ['boolean', 'declined'],
             // والمسوّدة تربط بالمخزون كما تربط الشاشة المحفوظة: من يكتب
             // «زيادة ثلاث وردات» وهو ينشئ الباقة لا يُطالَب بحفظها ثم
             // العودة إليها ليقول ممّ تُخصم
@@ -458,6 +472,7 @@ class ProductCompositionController extends Controller
             'composition.new_addons.*.price.required' => __('اكتب سعر الإضافة.'),
             'composition.new_addons.*.price.numeric' => __('سعر الإضافة رقمٌ.'),
             'composition.new_addons.*.inventory_quantity.gt' => __('الكمية المستهلكة تكون أكبر من صفر.'),
+            'composition.new_addons.*.private.declined' => __('لا تُنشأ إضافةٌ خاصّةٌ بمنتجٍ واحد — تُنشأ للمتجر ثمّ يُضيَّق مداها.'),
         ];
     }
 
@@ -527,32 +542,35 @@ class ProductCompositionController extends Controller
             $ids = array_map('intval', $composition['addon_ids'] ?? []);
 
             foreach ($composition['new_addons'] ?? [] as $a) {
-                $private = filter_var($a['private'] ?? true, FILTER_VALIDATE_BOOLEAN);
+                /*
+                 * والحاجزُ هنا ثانيًا لا استظهارًا.
+                 *
+                 * `draftRules` تردّ الطلبَ قبل أن يُكتب المنتجُ أصلًا — وهي
+                 * الموضعُ الصحيح. لكنّ هذه دالّةٌ عامّةٌ ساكنةٌ تُستدعى
+                 * بمصفوفة: من ناداها غدًا بمصفوفةٍ لم تمرّ بالفحص لا يفتح
+                 * بابًا أُغلق. والغيابُ يُقرأ «خاصّة» كما كان يُقرأ، فيُردّ.
+                 */
+                if (filter_var($a['private'] ?? true, FILTER_VALIDATE_BOOLEAN)) {
+                    throw ValidationException::withMessages([
+                        'composition.new_addons' => __('لا تُنشأ إضافةٌ خاصّةٌ بمنتجٍ واحد — تُنشأ للمتجر ثمّ يُضيَّق مداها.'),
+                    ]);
+                }
 
-                // إضافةُ متجرٍ بالاسم نفسه تُعاد لا تُكرَّر: اسمان متطابقان في
-                // قائمة الكاشير يجعلانه يختار عشوائيًا
                 $stock = ($a['inventory_product_id'] ?? null) ? (int) $a['inventory_product_id'] : null;
                 $each = $stock && ($a['inventory_quantity'] ?? null) !== null
                     ? (float) $a['inventory_quantity']
                     : null;
 
-                $addon = $private
-                    ? Addon::create(\App\Support\Lexicon::fill([
+                // إضافةُ متجرٍ بالاسم نفسه تُعاد لا تُكرَّر: اسمان متطابقان في
+                // قائمة الكاشير يجعلانه يختار عشوائيًا
+                $addon = Addon::firstOrCreate(
+                    ['business_id' => $bid, 'product_id' => null, 'name' => $a['name']],
+                    \App\Support\Lexicon::fill([
                         'name' => $a['name'],
                         'name_en' => $a['name_en'] ?? null,
-                    ]) + [
-                        'business_id' => $bid, 'product_id' => $product->id,
-                        'price' => $a['price'], 'active' => true,
-                        'inventory_product_id' => $stock, 'inventory_quantity' => $each,
-                    ])
-                    : Addon::firstOrCreate(
-                        ['business_id' => $bid, 'product_id' => null, 'name' => $a['name']],
-                        \App\Support\Lexicon::fill([
-                            'name' => $a['name'],
-                            'name_en' => $a['name_en'] ?? null,
-                        ]) + ['price' => $a['price'], 'active' => true,
-                            'inventory_product_id' => $stock, 'inventory_quantity' => $each],
-                    );
+                    ]) + ['price' => $a['price'], 'active' => true,
+                        'inventory_product_id' => $stock, 'inventory_quantity' => $each],
+                );
 
                 $ids[] = (int) $addon->id;
             }

@@ -4,7 +4,7 @@ import PageHeader from '@/Components/PageHeader';
 import ProductForm from './partials/ProductForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
-import type { CompositionData } from './partials/Composition';
+import type { CompositionData } from './partials/addons';
 import type { Category } from '@/types/models';
 
 export default function ProductCreate() {
@@ -23,7 +23,6 @@ export default function ProductCreate() {
                 categories={categories}
                 currencyLabel={context!.currency.symbol || context!.currency.code}
                 composition={composition}
-                currency={context!.currency}
             />
         </AdminLayout>
     );

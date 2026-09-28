@@ -32,6 +32,7 @@ use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
 use App\Models\RecipeItem;
 use App\Models\Setting;
+use App\Models\StorePaymentIntent;
 use App\Models\Subscription;
 use App\Models\Supplier;
 use App\Models\SupportConversation;
@@ -1619,24 +1620,24 @@ class Demo
     {
         return Supplier::where('business_id', self::bid())
             ->withCount(['purchaseOrders', 'invoices'])->orderBy('name')->get()->map(fn ($s) => [
-            'id' => $s->id,
-            'name' => $s->name,
-            'name_en' => $s->name_en,
-            // ما يُعرض — ويبقى `name` هو ما يُبحث به ويُطبع في أمر الشراء
-            'label' => self::ln($s->name, $s->name_en),
-            'phone' => $s->phone,
-            'email' => $s->email,
-            'contact' => $s->contact_person,
-            'notes' => $s->notes,
-            'orders_count' => $s->purchase_orders_count,
-            /*
+                'id' => $s->id,
+                'name' => $s->name,
+                'name_en' => $s->name_en,
+                // ما يُعرض — ويبقى `name` هو ما يُبحث به ويُطبع في أمر الشراء
+                'label' => self::ln($s->name, $s->name_en),
+                'phone' => $s->phone,
+                'email' => $s->email,
+                'contact' => $s->contact_person,
+                'notes' => $s->notes,
+                'orders_count' => $s->purchase_orders_count,
+                /*
              * ومن اشتُري منه مرّةً لا يُحذف — والزرُّ لا يُرسم عليه.
              *
              * القاعدةُ نفسُها التي يقرؤها `SupplierController::destroy`: هناك
              * تُردّ المحاولة برسالة، وهنا لا تُعرض أصلًا.
              */
-            'can_delete' => $s->purchase_orders_count === 0 && $s->invoices_count === 0,
-        ])->all();
+                'can_delete' => $s->purchase_orders_count === 0 && $s->invoices_count === 0,
+            ])->all();
     }
 
     public static function purchaseOrders(): array
@@ -1729,6 +1730,15 @@ class Demo
             'value' => (float) $c->value,
             'min_order' => (float) $c->min_order,
             'max_uses' => $c->max_uses,
+            /*
+             * والحدُّ لكلّ زبون يُرسل صريحًا — لا يُخلط بالعدّاد.
+             *
+             * «استُخدم ٣» عدٌّ إجماليّ، و«مرّتان لكلّ زبون» حدٌّ لكلّ واحد.
+             * وعرضُ أحدهما مكانَ الآخر يجعل التاجر يظنّ كودَه انتهى وهو يعمل.
+             */
+            'per_customer_limit' => $c->per_customer_limit,
+            // ومنذ متى يُحسب — يُقرأ في الشاشة لئلّا يُظنّ الحدُّ ساريًا على ما مضى
+            'per_customer_since' => optional($c->per_customer_since)->format('Y-m-d'),
             'used_count' => (int) $c->used_count,
             'expires' => optional($c->expires_at)->format('Y-m-d'),
             // نهاية اليوم لا أوّله — انظر Coupon::endsAt
@@ -3954,17 +3964,86 @@ class Demo
          * وبلا هذا الصفّ لا يعرف أنّ شيئًا وقع: لا طلبَ في القائمة، ولا
          * زبونَ يعرف بمن يتّصل — ومالٌ في حسابه لا يقابله شيء.
          */
-        $stray = \App\Models\StorePaymentIntent::where('business_id', $bid)
-            ->where('status', \App\Models\StorePaymentIntent::PAID)
-            ->whereNull('order_id')->orderByDesc('id')->limit($limit)->get();
+        $stray = StorePaymentIntent::where('business_id', $bid)
+            ->where('status', StorePaymentIntent::PAID)
+            ->whereNull('order_id')
+            /*
+             * وما رُدّ من نفسه لا يُوقظه: المسألةُ أُغلقت والزبونُ استعاد
+             * مالَه (انظر `Paymob::refund`). وجرسٌ يرنّ لما انتهى يُدرَّب
+             * الناظرُ على تخطّيه — ثمّ يتخطّى ما لم ينتهِ معه.
+             *
+             * وما فشل ردُّه يبقى يرنّ: مالٌ محتجزٌ لا طلبَ له ولا رُدّ.
+             */
+            ->where(fn ($q) => $q->whereNull('refund_status')
+                ->orWhere('refund_status', '!=', StorePaymentIntent::REFUND_SENT))
+            ->orderByDesc('id')->limit($limit)->get();
 
         foreach ($stray as $s) {
+            /*
+             * ═══ وصفٌّ يقول ما على مدير المتجر أن يفعله ═══
+             *
+             * «دفعةٌ وصلت ولم يُنشأ لها طلب» يقرؤها فلا يعرف: أينتظر؟ أيجهّز
+             * بديلًا؟ أيردّ المال؟ والجوابُ يفترق بالسبب:
+             *
+             *   تبدّل المبلغُ بعد الدفع ⇒ **يلزم ردٌّ** بالمبلغ كلِّه: الزبونُ
+             *   وافق على سعرٍ ولا طلبَ له به. فيُقال صريحًا، ويُقال المبلغُ،
+             *   ويُشار إلى لوحة Paymob لأنّ الردَّ يقع هناك لا عندنا.
+             *
+             *   وما عدا ذلك — نفدَ صنفٌ مثلًا — يبقى قرارَه هو كما كان.
+             */
+            $needsRefund = $s->refund_status === StorePaymentIntent::REFUND_PENDING
+                || $s->refund_status === StorePaymentIntent::REFUND_FAILED;
+
+            if ($needsRefund) {
+                $add('refund-due-'.$s->id, [
+                    'text' => __('دفعةٌ تحتاج ردًّا للزبون — :amount · لم يُنشأ لها طلب', ['amount' => $s->amount]),
+                    'hint' => __('رُدَّها من لوحة Paymob، فالمبلغ الذي وافق عليه الزبون لم يصر طلبًا.'),
+                    'time' => optional($s->paid_at)->format('Y-m-d H:i'),
+                    'section' => 'orders',
+                    'icon' => 'credit-card',
+                    'color' => 'danger',
+                    'url' => route('admin.orders.index'),
+                ]);
+
+                continue;
+            }
+
             $add('stray-payment-'.$s->id, [
                 'text' => __('دفعةٌ وصلت ولم يُنشأ لها طلب — :amount', ['amount' => $s->amount]),
                 'time' => optional($s->paid_at)->format('Y-m-d H:i'),
                 'section' => 'orders',
                 'icon' => 'credit-card',
                 'color' => 'danger',
+                'url' => route('admin.orders.index'),
+            ]);
+        }
+
+        /*
+         * ═══ وطلبٌ استُرجعت دفعتُه ═══
+         *
+         * المالُ عاد إلى الزبون والطلبُ ما زال قائمًا في لوحة التجهيز. ولا
+         * يُلغى من نفسه: الإلغاءُ يُعيد البضاعةَ إلى الرفّ ويسحب النقاط
+         * ويردّ فرصةَ الكوبون — وقد يكون الطلبُ سُلِّم. فيُقرَّر بيد صاحبه،
+         * وإلغاؤه هو الطريقُ الواحدُ الذي تعود منه الفرصةُ والعدّادُ معًا.
+         */
+        $refunded = StorePaymentIntent::where('business_id', $bid)
+            ->whereNotNull('order_id')
+            ->where('refund_status', StorePaymentIntent::REFUND_SENT)
+            ->with('order')
+            ->orderByDesc('id')->limit($limit)->get();
+
+        foreach ($refunded as $r) {
+            if ($r->order === null || $r->order->status === OrderStatus::CANCELLED) {
+                continue;
+            }
+
+            $add('refunded-order-'.$r->id, [
+                'text' => __('استُرجعت دفعةُ الطلب :number — والطلبُ ما زال قائمًا', ['number' => $r->order->number]),
+                'hint' => __('ألغِ الطلب إن لم يُسلَّم — فيعود المخزون وفرصة الكوبون معًا.'),
+                'time' => optional($r->refunded_at)->format('Y-m-d H:i'),
+                'section' => 'orders',
+                'icon' => 'credit-card',
+                'color' => 'warning',
                 'url' => route('admin.orders.index'),
             ]);
         }

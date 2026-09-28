@@ -79,6 +79,18 @@ class Notifications
         'dormant-' => [self::TASK, self::MANUAL],
         'custom-' => [self::TASK, self::MANUAL],
         'stray-payment-' => [self::TASK, self::MANUAL],
+        /*
+         * ودفعةٌ يلزمها ردٌّ يدويّ: مالٌ قُبض ولم يصر طلبًا بالسعر الذي وافق
+         * عليه الزبون. يردُّه مديرُ المتجر من لوحة Paymob — ولا سجلَّ عندنا
+         * يقول إنّه فعل، فالغيابُ ليس دليلَ معالجة.
+         */
+        'refund-due-' => [self::TASK, self::MANUAL],
+        /*
+         * وطلبٌ استُرجعت دفعتُه: المالُ عاد إلى الزبون والطلبُ ما زال قائمًا.
+         * يقرّر صاحبُ المحلّ — يُلغيه فتعود البضاعةُ وفرصةُ الكوبون معًا، أو
+         * يُسلّمه ويُحصّل بطريقةٍ أخرى.
+         */
+        'refunded-order-' => [self::TASK, self::MANUAL],
         'order-' => [self::TASK, self::AUTO],
     ];
 

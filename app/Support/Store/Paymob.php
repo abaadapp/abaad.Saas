@@ -118,15 +118,21 @@ final class Paymob
     /* ═══════════ فتحُ الدفعة ═══════════ */
 
     /**
-     * يحفظ نيّةَ الشراء ويفتح صفحةَ الدفع — ويردّ رابطَها.
+     * يحفظ نيّةَ الشراء ويفتح صفحةَ الدفع — ويردّ رابطَها ونيّتَها.
      *
      * والمبلغُ من التسعير لا من المتصفّح، وبالبيسة لا بالريال: Paymob تقرأ
      * الأصغر دائمًا (`amount_cents`). وألفُ بيسةٍ في الريال العُمانيّ.
      *
+     * ═══ ولمَ تُردّ النيّةُ مع الرابط ═══
+     *
+     * ما يُحجز على الكوبون يُربط بنيّةٍ بعينها: نيّةٌ واحدةٌ حجزٌ واحد، ويُطرح
+     * حجزُها إن فشل دفعُها. ولا يُعرف ذلك من رابطٍ نصًّا — فتُردّ معه.
+     *
      * @param  array<string, mixed>  $payload  حمولةُ الطلب كما أرسلها الزائر
-     * @param  array<string, mixed>  $quote    التسعيرُ المحسوب في الخادم
+     * @param  array<string, mixed>  $quote  التسعيرُ المحسوب في الخادم
+     * @return array{url: string, intent: StorePaymentIntent}
      */
-    public static function open(Business $business, array $payload, array $quote, string $lang = 'ar'): string
+    public static function open(Business $business, array $payload, array $quote, string $lang = 'ar'): array
     {
         $bid = (int) $business->id;
         $gateway = self::gateway($bid);
@@ -154,6 +160,13 @@ final class Paymob
             'amount' => $total,
             'currency' => $currency['code'] ?? 'OMR',
             'status' => StorePaymentIntent::PENDING,
+            /*
+             * ومهلةُ الجلسة تُكتب هنا لا تُحسب في موضعين.
+             *
+             * `expiration` أدناه تُعطى للبوّابة، وحجزُ فرصة الكوبون يُقرأ من
+             * هذا العمود. فهما مهلةٌ واحدة، ولا يفترقان يوم تتبدّل.
+             */
+            'expires_at' => now()->addSeconds(self::EXPIRES),
         ]);
 
         /*
@@ -193,8 +206,137 @@ final class Paymob
 
         $intent->update(['provider_order_id' => (string) $response->json('intention_order_id', '')]);
 
-        return self::BASE.'/unifiedcheckout/?publicKey='.urlencode((string) $gateway->public_key)
-            .'&clientSecret='.urlencode($secret);
+        return [
+            'url' => self::BASE.'/unifiedcheckout/?publicKey='.urlencode((string) $gateway->public_key)
+                .'&clientSecret='.urlencode($secret),
+            'intent' => $intent->refresh(),
+        ];
+    }
+
+    /* ═══════════ ردُّ المال ═══════════ */
+
+    /**
+     * يردّ دفعةً قُبضت — مرّةً واحدةً، ويُكتب ما جرى.
+     *
+     * ═══ ومتى يُردّ من نفسه ═══
+     *
+     * حين يتبدّل المبلغُ بعد الدفع فلا يصير الطلبُ بالسعر الذي وافق عليه
+     * الزبون (انظر `PriceMovedAfterPayment`). وما عدا ذلك يبقى قرارَ صاحب
+     * المحلّ: نفد الصنفُ فيجهّز بديلًا أو يردّ بيده.
+     *
+     * ═══ ولا ردَّ مرّتين ═══
+     *
+     * الطلبُ يُطالَب به قبل الإرسال بتحديثٍ شرطيّ على `refund_status`: أوّلُ
+     * إشعارٍ يأخذه، والثاني يقرأ أنّه مأخوذٌ فينصرف. فإشعاران متقاربان — أو
+     * إشعارٌ أُعيد إرسالُه بعد دقائق — لا يُرسلان ردَّين على المال نفسِه.
+     *
+     * ولا يُكتب «رُدّ» إلّا إن قالت البوّابةُ ذلك: ما لم تُجب، أو أجابت
+     * بخطأ، يُكتب `failed` ويبقى الجرسُ يرنّ لصاحب المحلّ — طمأنينةٌ كاذبةٌ
+     * بردٍّ لم يقع أسوأُ من غياب الردّ.
+     *
+     * @return bool هل قبلته البوّابة؟ — و`false` كذلك إن عُلِّق للمراجعة
+     */
+    public static function refund(StorePaymentIntent $intent, string $why): bool
+    {
+        $transaction = trim((string) $intent->provider_transaction_id);
+
+        if ($transaction === '') {
+            return false;
+        }
+
+        /*
+         * ═══ وبابٌ ماليٌّ لم يُجرَّب لا يُنادى على بوّابة تاجر ═══
+         *
+         * المسلكُ موثَّقٌ في مجموعة Paymob الرسميّة، ولم يُجرَّب على حساب:
+         * لا حسابَ تجريبيٌّ في اليد، ولا بوّابةَ مفعَّلةٌ على الإنتاج. فيبقى
+         * المقبضُ مطفأً (`storefront.paymob_auto_refund`) وتُعلَّق الدفعةُ
+         * للمراجعة اليدويّة: يُكتب «معلَّق» بالسبب، ويُنبَّه مديرُ المتجر
+         * بالمبلغ في جرسه ليردَّ من لوحة Paymob بيده.
+         *
+         * ولا يُكتب «رُدّ» ولا تُخترع عمليّةُ ردٍّ لم تقع: طمأنينةٌ كاذبةٌ
+         * بمالٍ عاد وهو لم يعد أسوأُ من غياب الردّ كلِّه.
+         */
+        if (! config('storefront.paymob_auto_refund')) {
+            StorePaymentIntent::whereKey($intent->id)
+                ->whereNull('refund_status')
+                ->update([
+                    'refund_status' => StorePaymentIntent::REFUND_PENDING,
+                    'refund_error' => Str::limit($why.' — يلزم ردٌّ يدويّ من لوحة Paymob', 500),
+                    'updated_at' => now(),
+                ]);
+
+            return false;
+        }
+
+        $gateway = self::gateway((int) $intent->business_id);
+
+        if ($gateway === null) {
+            $intent->forceFill([
+                'refund_status' => StorePaymentIntent::REFUND_FAILED,
+                'refund_error' => 'لا بوّابةَ يُردّ منها',
+            ])->save();
+
+            return false;
+        }
+
+        /*
+         * والمطالبةُ شرطيّةٌ في القاعدة: من لم يكن حالُه فارغًا أو فاشلًا فقد
+         * طالب به غيرُنا. و`failed` يُعاد طلبُه — محاولةٌ فشلت ليست ردًّا وقع.
+         */
+        $claimed = StorePaymentIntent::whereKey($intent->id)
+            ->where(fn ($q) => $q->whereNull('refund_status')
+                ->orWhere('refund_status', StorePaymentIntent::REFUND_FAILED))
+            ->update([
+                'refund_status' => StorePaymentIntent::REFUND_PENDING,
+                'refund_error' => $why,
+                'updated_at' => now(),
+            ]);
+
+        if ($claimed === 0) {
+            return false;
+        }
+
+        $cents = (int) round(((float) $intent->amount) * 1000);
+
+        try {
+            $response = Http::withHeaders(['Authorization' => 'Token '.$gateway->secret_key])
+                ->acceptJson()
+                ->timeout(20)
+                /*
+                 * والحمولةُ كما توثّقها مجموعةُ Paymob الرسميّة حرفًا: المسلكُ
+                 * والترويسةُ ورقمُ العمليّة **رقمًا** لا نصًّا.
+                 */
+                ->post(self::BASE.'/api/acceptance/void_refund/refund', [
+                    'transaction_id' => (int) $transaction,
+                    'amount_cents' => $cents,
+                ]);
+        } catch (\Throwable $e) {
+            $intent->forceFill([
+                'refund_status' => StorePaymentIntent::REFUND_FAILED,
+                'refund_error' => Str::limit($why.' — تعذّر الاتّصال: '.$e->getMessage(), 500),
+            ])->save();
+
+            return false;
+        }
+
+        if (! $response->successful()) {
+            $intent->forceFill([
+                'refund_status' => StorePaymentIntent::REFUND_FAILED,
+                'refund_error' => Str::limit($why.' — ردّت البوّابة: '.$response->body(), 500),
+            ])->save();
+
+            return false;
+        }
+
+        $intent->forceFill([
+            'refund_status' => StorePaymentIntent::REFUND_SENT,
+            // معرّفُ عمليّة الردّ عند البوّابة — به يُسأل عنها بعد شهر
+            'provider_refund_id' => (string) ($response->json('id') ?? '') ?: null,
+            'refunded_at' => now(),
+            'refund_error' => $why,
+        ])->save();
+
+        return true;
     }
 
     /**

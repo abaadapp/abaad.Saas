@@ -156,6 +156,10 @@ export interface Coupon {
     value: number;
     min_order: number;
     max_uses: number | null;
+    /** حدُّ الاستخدام لكلّ زبون — `null` يعني بلا حدّ، وهو حالُ الكوبونات القديمة */
+    per_customer_limit: number | null;
+    /** ومنذ متى يُحسب — لا يُحسب ما وقع قبل تفعيله */
+    per_customer_since: string | null;
     used_count: number;
     expires: string;
     expired: boolean;

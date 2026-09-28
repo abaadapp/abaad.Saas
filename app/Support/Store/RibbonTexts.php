@@ -37,6 +37,14 @@ final class RibbonTexts
         'bankNote' => 'بعد تأكيد الطلب تظهر لك بيانات الحساب البنكي، ويُجهَّز الطلب بعد استلام التحويل.',
         'summary' => 'ملخص الطلب', 'promo' => 'كود الخصم', 'apply' => 'تطبيق', 'shipping' => 'التوصيل', 'discount' => 'الخصم', 'tax' => 'الضريبة', 'total' => 'الإجمالي', 'free' => 'مجاني', 'freeOver' => 'مجاني فوق :amount',
         'place' => 'تأكيد الطلب', 'date' => 'الموعد', 'slot' => 'وقت التسليم', 'errReq' => 'يرجى إكمال الحقول المحددة', 'errEmpty' => 'السلة فارغة', 'errBusy' => 'محاولاتٌ كثيرة — انتظر دقيقةً ثمّ أعد المحاولة.', 'errStale' => 'انتهت جلستُك — أعد تحميل الصفحة ثمّ أكّد طلبك.', 'errServer' => 'تعذّر إتمام الطلب الآن — أعد المحاولة، أو تواصل معنا.', 'closed' => 'المتجر لا يستقبل طلبات من الموقع الآن — تواصل معنا.',
+        /*
+         * ═══ ونصُّ الموافقة الصريحة على سعرٍ تبدّل ═══
+         *
+         * الكودُ قد ينتهي بين لحظةِ التسعير ولحظةِ التأكيد — فيُقال السببُ
+         * والسعرُ الجديد، ويُطلب إقرارٌ بضغطةٍ لا بإعادةِ إرسالٍ صامتة. ومن
+         * لم يوافق لا يُنشأ له طلبٌ بالسعر الجديد.
+         */
+        'priceChanged' => 'تغيّر إجمالي طلبك', 'agreeNew' => 'أوافق وأكمل الطلب', 'keepBrowsing' => 'تراجَع',
         'thanks' => 'شكراً لك، تم استلام طلبك', 'orderNo' => 'رقم الطلب', 'bankDetails' => 'بيانات الحساب البنكي', 'pay' => 'الدفع',
         'footShop' => 'تسوّق', 'footContact' => 'تواصل معنا', 'footHours' => 'ساعات العمل',
         'footPages' => 'الموقع',
@@ -73,6 +81,7 @@ final class RibbonTexts
         'bankNote' => 'After confirming, the bank details are shown to you. The order is prepared once the transfer is received.',
         'summary' => 'Order summary', 'promo' => 'Promo code', 'apply' => 'Apply', 'shipping' => 'Delivery', 'discount' => 'Discount', 'tax' => 'VAT', 'total' => 'Total', 'free' => 'Free', 'freeOver' => 'Free over :amount',
         'place' => 'Place order', 'date' => 'Date', 'slot' => 'Delivery time', 'errReq' => 'Please complete the highlighted fields', 'errEmpty' => 'Cart is empty', 'errBusy' => 'Too many attempts — wait a minute and try again.', 'errStale' => 'Your session expired — reload the page, then confirm your order.', 'errServer' => 'We could not complete your order — try again, or contact us.', 'closed' => 'The store is not taking online orders right now — contact us.',
+        'priceChanged' => 'Your order total has changed', 'agreeNew' => 'I agree — place the order', 'keepBrowsing' => 'Go back',
         'thanks' => 'Thank you, your order is received', 'orderNo' => 'Order no.', 'bankDetails' => 'Bank account details', 'pay' => 'Payment',
         'footShop' => 'Shop', 'footContact' => 'Contact', 'footHours' => 'Opening hours',
         'footPages' => 'Site',

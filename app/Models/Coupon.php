@@ -10,6 +10,8 @@ class Coupon extends Model
     protected $casts = [
         'value' => 'decimal:3', 'min_order' => 'decimal:3',
         'expires_at' => 'datetime', 'active' => 'boolean',
+        // لحظةُ تفعيل الحدّ لكلّ زبون — منها يبدأ العدّ
+        'per_customer_since' => 'datetime',
     ];
 
     /**
@@ -41,6 +43,18 @@ class Coupon extends Model
     public function isExhausted(): bool
     {
         return $this->max_uses !== null && $this->used_count >= $this->max_uses;
+    }
+
+    /**
+     * هل له حدٌّ لكلّ زبون؟ — والحدُّ الإجماليُّ حدٌّ آخر يعمل معه.
+     *
+     * حدَّان مستقلّان: «مئة مرّة إجمالًا» و«مرّتان لكلّ زبون» يُطبَّقان معًا
+     * حين يُكتبان معًا، وكلٌّ منهما وحدَه حين يُكتب وحدَه. والفراغُ في هذا
+     * العمود هو كلُّ كوبونٍ في القاعدة قبل اليوم — فلا يتبدّل عليه شيء.
+     */
+    public function isPerCustomerLimited(): bool
+    {
+        return $this->per_customer_limit !== null;
     }
 
     /**

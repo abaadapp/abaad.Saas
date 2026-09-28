@@ -8,9 +8,11 @@ use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Models\StorePaymentIntent;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
+use App\Support\CouponLimits;
 use App\Support\Customers;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
@@ -22,6 +24,7 @@ use App\Support\PaymentMethods;
 use App\Support\Recipe;
 use App\Support\SaleLines;
 use App\Support\SalesChannel;
+use App\Support\Store\PriceMovedAfterPayment;
 use App\Support\StockLedger;
 use App\Support\Vat;
 use App\Support\Website\Shelf;
@@ -272,10 +275,36 @@ final class WebCheckout
         $form = self::validated($bid, $payload);
         $quote = self::quote($business, $payload + ['fulfil' => $form['fulfil']]);
 
-        return Paymob::open($business, $payload, $quote, $lang);
+        /*
+         * ═══ وحدُّ الكوبون يُفحص هنا قبل صفحة الدفع، ثمّ تُحجز فرصتُه ═══
+         *
+         * الطلبُ في هذا المسار يُكتب من إشعار البوّابة بعد أن يُقبض المال.
+         * فلو تُرك الفحصُ لهناك لَدفع الزبونُ ثمّ رُدّ طلبُه، وصار مالٌ مقبوضًا
+         * بلا طلب — يردُّه صاحبُ المحلّ بيده. فيُقال له قبل أن يدفع.
+         *
+         * والفحصُ وحدَه لا يكفي: بين هذه اللحظة ووصول الإشعار دقائق يستعمل
+         * فيها غيرُه آخرَ فرصةٍ في الكود — من هذا الباب أو من الدفع عند
+         * الاستلام. فتُحجز الفرصةُ باسم هذه النيّة، وتُحسب في الحدّين حتّى
+         * تصير استعمالًا أو تنقضي مدّتُها.
+         */
+        $customer = $quote['_coupon'] ? self::existingCustomer($bid, $form['phone']) : null;
+        $couponKey = $quote['_coupon'] ? CouponLimits::identity($customer, $form['phone']) : null;
+
+        if ($quote['_coupon'] && $why = CouponLimits::refusal($quote['_coupon'], $couponKey, $customer?->id)) {
+            throw ValidationException::withMessages(['promo' => $why]);
+        }
+
+        $opened = Paymob::open($business, $payload, $quote, $lang);
+
+        CouponLimits::reserve($quote['_coupon'], $opened['intent'], $couponKey, $customer?->id);
+
+        return $opened['url'];
     }
 
-    public static function place(Business $business, array $payload, string $lang = 'ar', bool $paid = false): Order
+    /**
+     * @param  StorePaymentIntent|null  $intent  نيّةُ الدفع التي قُبض بها المال — لمسار البطاقة
+     */
+    public static function place(Business $business, array $payload, string $lang = 'ar', bool $paid = false, ?StorePaymentIntent $intent = null): Order
     {
         $bid = (int) $business->id;
 
@@ -285,7 +314,7 @@ final class WebCheckout
 
         $form = self::validated($bid, $payload);
 
-        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid) {
+        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid, $intent) {
             // بقفل: الفحصُ والخصم على كميّةٍ لا تتغيّر تحتهما — كما في الصندوق
             $q = self::quote($business, $payload + ['fulfil' => $form['fulfil']], lock: true);
             $lines = $q['_lines'];
@@ -295,6 +324,88 @@ final class WebCheckout
             (new SaleLines($bid))->assertStock($lines, $branchId);
 
             $customer = self::customer($bid, $form, $lang);
+
+            /*
+             * ═══ وحدُّ الكوبون لكلّ زبون — بعد أن يُعرف الزبون ═══
+             *
+             * والموقعُ يعرفه دائمًا: الهاتفُ حقلٌ لا يملك صاحبُ المحلّ إخفاءَه
+             * (`CheckoutFields::FIELDS` لا تحمله)، فالزبونُ مُعرَّفٌ في كلّ
+             * طلبٍ يدخل من هنا — بطاقةً ورقمًا.
+             *
+             * ويُردّ صريحًا ولا يُبتلع: لو أُسقط الخصمُ صامتًا لَقرأ الزبونُ
+             * سعرًا في السلّة ودفع غيرَه.
+             */
+            $couponKey = CouponLimits::identity($customer, $form['phone']);
+
+            if ($q['_coupon'] && $why = CouponLimits::refusal($q['_coupon'], $couponKey, $customer->id, $intent)) {
+                throw ValidationException::withMessages(['promo' => $why]);
+            }
+
+            /*
+             * ═══ وخصمٌ سقط بين التسعيرة والإتمام يُقال، لا يُبتلع ═══
+             *
+             * الزبونُ كتب كودَه ورأى السعرَ المخفَّض، ثمّ مضى إلى «أكمل الطلب».
+             * وبين اللحظتين قد ينتهي الكودُ: تاريخُه انقضى عند منتصف الليل،
+             * أو نفدت مرّاتُه من صندوقٍ آخر، أو أوقفه صاحبُ المحلّ.
+             *
+             * وكان `quote` تردُّه وتُفرِغ `_coupon`، فيمضي الطلبُ **بالسعر
+             * الكامل** ولا شيء يقول للزبون. فيصله طلبٌ بواحدٍ وعشرين وقد وافق
+             * على تسعةَ عشر — ويكتشفه عند التسليم أو في الفاتورة.
+             *
+             * فيُردّ الطلبُ ويُقال له السببُ والإجماليُّ الجديد. فإن قبله بعث
+             * به ثانيةً وقد رأى ما يدفع — والصفحةُ ترسل `agreed_total` كما
+             * عُرض له، فيُقابَل بما صار إليه. وهذا هو الإقرارُ: لا مقبضٌ
+             * يُضغط، بل سعرٌ رآه وأرسله.
+             *
+             * ولا يقع هذا في مسار البطاقة: هناك الفرصةُ محجوزةٌ والمبلغُ
+             * مقبوضٌ، وحسابُه بابٌ آخر (`PriceMovedAfterPayment`).
+             */
+            if (! $paid && $q['promo_error'] !== null) {
+                $agreed = $form['agreed_total'] ?? null;
+                $same = $agreed !== null
+                    && (int) round(((float) $agreed) * 1000) === (int) round(((float) $q['total']) * 1000);
+
+                if (! $same) {
+                    throw ValidationException::withMessages([
+                        'promo' => __(':why الإجمالي الجديد :total — أكّد الطلب مرّة أخرى للموافقة عليه.', [
+                            'why' => $q['promo_error'],
+                            'total' => Money::format((float) $q['total'], Money::of($bid)),
+                        ]),
+                    ]);
+                }
+            }
+
+            /*
+             * ═══ وما يُكتب هو ما قُبض — أو لا يُكتب ═══
+             *
+             * المالُ خرج من الزبون بمبلغِ النيّة، والطلبُ يُسعَّر من القاعدة
+             * ثانيةً هنا. وبين اللحظتين قد يتبدّل شيء: كوبونٌ نفد، أو سعرُ
+             * صنفٍ رُفع. فيُكتب الطلبُ بمبلغٍ غير الذي دفعه الزبون — يقرأ
+             * فاتورةً بواحدٍ وعشرين وقد دفع تسعةَ عشر، ولا شيء يقول لأحدٍ
+             * ما وقع.
+             *
+             * فإن اختلفا لا يُكتب طلبٌ بمبلغٍ آخر: تبقى الدفعةُ بلا طلب،
+             * ويُوقَظ صاحبُ المحلّ في جرسه (`StorePaymentIntent::strayPayment`)
+             * ليردّ المالَ أو يجهّز الطلبَ بيده — وكلاهما قرارُه لا قرارُنا.
+             *
+             * والحجزُ يجعل هذا بابًا لا يُطرق في الكوبونات: الفرصةُ محفوظةٌ
+             * باسم هذه النيّة حتّى يصل إشعارُها. وهو مفتوحٌ لما لا نحجزه —
+             * سعرُ صنفٍ تبدّل — فلا يُبتلع فرقٌ ماليٌّ صامتًا.
+             */
+            if ($paid && $intent !== null) {
+                $charged = (int) round(((float) $intent->amount) * 1000);
+                $now = (int) round(((float) $q['total']) * 1000);
+
+                if ($charged !== $now) {
+                    /*
+                     * وبنوعه يُميَّز لا برسالته: `settle` تقرأ هذا النوعَ وحدَه
+                     * فتردّ المال. ومطابقةُ نصٍّ عربيٍّ لتقرير ردٍّ ماليٍّ تكسر
+                     * يومَ يُحرَّر حرفٌ في الرسالة.
+                     */
+                    throw new PriceMovedAfterPayment($charged, $now);
+                }
+            }
+
             $method = self::payments($bid)[$form['pay']];
             $scheduled = self::scheduledFor($form);
             // وقد دخل الكرتُ الأسطرَ في `quote` — وهنا تُكتب أعمدتُه على الطلب
@@ -406,6 +517,12 @@ final class WebCheckout
 
             if ($q['_coupon']) {
                 $q['_coupon']->increment('used_count');
+                /*
+                 * والسجلُّ بمعرّف الطلب: إشعارُ بوّابةٍ أُعيد إرسالُه لا يُحتسب
+                 * ثانيةً. والحجزُ — إن كان — يُحوَّل ولا يُضاف إليه صفٌّ ثانٍ،
+                 * فلا يُحسب الزبونُ مرّتين على شراءٍ واحد.
+                 */
+                CouponLimits::record($q['_coupon'], $order, $couponKey, $customer->id, $intent);
             }
 
             // معاملةُ الدخل كما يكتبها الصندوق — والقيدُ يقرأ حالَ السداد
@@ -659,6 +776,20 @@ final class WebCheckout
              * والنصُّ اختياريٌّ فيه: من يشتري الكرتَ ليكتبه بيده في المحلّ
              * يطلبه بلا نصّ، ومن أرفق تصميمًا لا يحتاج أن يكتب شيئًا.
              */
+            /*
+             * ═══ والإجماليُّ الذي رآه الزبونُ ووافق عليه ═══
+             *
+             * تُرسله الصفحةُ كما عُرض له. ولا يُحسب منه شيء — التسعيرُ من
+             * القاعدة وحدها — وإنّما يُقابَل بما صار إليه: فإن سقط الخصمُ
+             * بين التسعيرة والإتمام (كودٌ انتهت صلاحيتُه، أو نفدت مرّاتُه من
+             * صندوقٍ آخر) عُلم أنّه لم يوافق على السعر الجديد، فيُقال له
+             * ويُطلَب إقرارُه — ولا يمضي الطلبُ بسعرٍ لم يره.
+             *
+             * واختياريٌّ لأنّ الردَّ لا يقع إلّا حين يسقط الخصم: طلبٌ بلا
+             * كوبونٍ لا يُسأل عن إقرارٍ لم يتبدّل فيه شيء.
+             */
+            'agreed_total' => ['nullable', 'numeric', 'min:0'],
+
             'gift_card' => ['nullable', 'boolean'],
             'card_align' => ['nullable', 'in:'.implode(',', GiftCard::ALIGNS)],
             'card_file' => ['nullable', 'string', 'max:64'],
@@ -779,23 +910,43 @@ final class WebCheckout
         return $day->copy()->setTime(9, 0);
     }
 
+    /**
+     * الزبونُ القائمُ بهذا الرقم — بحثًا لا إنشاءً.
+     *
+     * يقرؤه بابان: الإتمامُ ليعرف من يشتري، وبابُ البطاقة ليفحص حدَّ الكوبون
+     * **قبل** أن يُفتح للزبون صفحةُ دفع. ولو فُحص بعدها لَدفع ثمّ رُدّ طلبُه،
+     * فيصير مالٌ مقبوضًا بلا طلب — وهو أسوأُ ما يقع في هذا المسار.
+     *
+     * والمطابقةُ بالرقم مطبَّعًا: البطاقتان بالرقم نفسِه زبونٌ واحد.
+     */
+    private static function existingCustomer(int $bid, ?string $phone): ?Customer
+    {
+        if (blank($phone)) {
+            return null;
+        }
+
+        $wanted = WhatsAppPhone::normalize($phone);
+
+        $found = Customer::where('business_id', $bid)
+            ->whereNotNull('phone')->where('phone', '!=', '')
+            ->get(['id', 'name', 'name_en', 'phone', 'language'])
+            ->first(fn ($c) => (string) $c->phone === (string) $phone
+                || ($wanted !== null && WhatsAppPhone::normalize($c->phone) === $wanted));
+
+        return $found ? Customer::find($found->id) : null;
+    }
+
     /** الزبونُ بهاتفه: يُعرف إن كان معروفًا، ويُكتب إن لم يكن */
     private static function customer(int $bid, array $form, string $lang): Customer
     {
-        $wanted = WhatsAppPhone::normalize($form['phone']);
-
-        $existing = Customer::where('business_id', $bid)
-            ->whereNotNull('phone')->where('phone', '!=', '')
-            ->get(['id', 'name', 'name_en', 'phone', 'language'])
-            ->first(fn ($c) => (string) $c->phone === (string) $form['phone']
-                || ($wanted !== null && WhatsAppPhone::normalize($c->phone) === $wanted));
+        $existing = self::existingCustomer($bid, $form['phone']);
 
         if ($existing) {
             if ($existing->language === null) {
                 $existing->forceFill(['language' => in_array($lang, ['ar', 'en'], true) ? $lang : 'ar'])->save();
             }
 
-            return Customer::find($existing->id);
+            return $existing->refresh();
         }
 
         $data = Customers::localizeName([

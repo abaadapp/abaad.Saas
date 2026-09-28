@@ -18,6 +18,7 @@ use App\Models\Transaction;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use App\Support\CouponLimits;
 use App\Support\PaymentMethods;
 
 /**
@@ -861,6 +862,15 @@ class OrderCorrection
             ->where('code', $order->coupon_code)
             ->where('used_count', '>', 0)
             ->decrement('used_count');
+
+        /*
+         * وسجلُّ استعمال هذا الزبون يُمحى معه.
+         *
+         * وإلّا بقي ممنوعًا بكوبونٍ لم ينتفع به: طلبٌ ألغاه المحلُّ نفسُه —
+         * نفد الصنف، أو غيَّر الزبون رأيه — يأكل مرّةً من مرّاته ولا يردّها
+         * شيء. والعدّادُ الإجماليُّ يُردّ في السطر الذي فوق، فيُردّ الحدّان معًا.
+         */
+        CouponLimits::release($order);
     }
 
     /**

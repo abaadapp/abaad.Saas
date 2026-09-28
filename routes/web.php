@@ -1287,6 +1287,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/marketing/whatsapp/log', [App\Http\Controllers\Admin\WhatsAppController::class, 'log'])->name('marketing.whatsapp.log');
 
     Route::post('/coupons', [CouponController::class, 'store'])->name('coupons.store');
+    // حدّاه وحدَهما يُعدَّلان — لا كودُه ولا قيمتُه (انظر `CouponController::limits`)
+    Route::patch('/coupons/{id}/limits', [CouponController::class, 'limits'])->name('coupons.limits');
     Route::post('/coupons/{id}/toggle', [CouponController::class, 'toggle'])->name('coupons.toggle');
     Route::delete('/coupons/{id}', [CouponController::class, 'destroy'])->name('coupons.destroy');
 

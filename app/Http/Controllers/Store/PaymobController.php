@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Store;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\StorePaymentIntent;
+use App\Support\CouponLimits;
 use App\Support\Store\Paymob;
+use App\Support\Store\PriceMovedAfterPayment;
 use App\Support\Store\WebCheckout;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -98,6 +100,51 @@ class PaymobController extends Controller
             // ومحاولةٌ ردّها البنكُ لا تُغلق النيّة: قد يعيد الكرّة ببطاقةٍ أخرى
             $intent->fill(['error' => Str::limit($this->why($obj, $flag), 500)])->save();
 
+            /*
+             * ═══ واسترجاعٌ أكّدته البوّابةُ يُكتب أنّه وقع ═══
+             *
+             * قد يردُّ صاحبُ المحلّ المالَ من لوحة Paymob بيده، فيصل الإشعارُ
+             * بـ`is_refunded`. وهو **تأكيدُ البوّابة** لا ظنُّنا — فيُكتب على
+             * النيّة، ومنه يُقرأ الجرسُ لطلبٍ استُرجعت دفعتُه وما زال قائمًا.
+             *
+             * ولا يُلغى الطلبُ من نفسه، ولا تُردّ فرصةُ الكوبون هنا: الإلغاءُ
+             * يُعيد البضاعةَ ويسحب النقاط ويردّ الفرصةَ والعدّادَ معًا، وقد
+             * يكون الطلبُ سُلِّم. فالإلغاءُ طريقٌ واحدٌ بيد صاحبه — ولو رُدّت
+             * الفرصةُ هنا لَافترق عدّادُ الكوبون عن سجلّ الزبون عن الطلب، وهي
+             * الثلاثةُ التي يجب أن تتطابق.
+             *
+             * وتكرارُ الإشعار لا يُكرّر شيئًا: كتابةُ القيمة نفسِها، وصفُّ
+             * الجرس بمعرّف النيّة لا يتعدّد.
+             */
+            if ($flag('is_refunded')) {
+                $back = (int) data_get($obj, 'amount_cents', 0);
+                $paid = (int) round(((float) $intent->amount) * 1000);
+
+                $intent->forceFill([
+                    'refund_status' => StorePaymentIntent::REFUND_SENT,
+                    'refunded_at' => $intent->refunded_at ?? now(),
+                    'refund_error' => $back > 0 && $back < $paid
+                        // وإرجاعٌ جزئيٌّ لا يُقرأ ردًّا كاملًا — ولا يردّ فرصةَ الكوبون
+                        ? 'استُرجع جزءٌ من الدفعة عبر البوّابة'
+                        : 'استُرجعت الدفعةُ عبر البوّابة',
+                ])->save();
+            }
+
+            /*
+             * ═══ وفرصةُ الكوبون تُردّ إلى الناس ═══
+             *
+             * حُجزت له عند فتح صفحة الدفع، فلو بقيت بعد أن ردّ البنكُ بطاقتَه
+             * لَأكلت ساعةً من آخر فرصةٍ في الكود على زبونٍ لم يدفع شيئًا.
+             *
+             * ولا تُردّ فرصةٌ صارت استعمالًا: شرطُ `order_id IS NULL` في
+             * `releaseReservation`. فإشعارُ استرجاعٍ يصل بعد أن أُنشئ الطلبُ لا
+             * يمحو استعمالًا قائمًا — الإلغاءُ الكاملُ للطلب هو الذي يردّه،
+             * بقرار صاحب المحلّ (`OrderCorrection::cancel`).
+             *
+             * وتكرارُ الإشعار لا يردّ مرّتين: الحذفُ بالمعرّف لا يُكرَّر أثرُه.
+             */
+            CouponLimits::releaseReservation($intent);
+
             return response('ok', 200);
         }
 
@@ -123,6 +170,9 @@ class PaymobController extends Controller
             ]);
 
             $intent->fill(['error' => 'المبلغُ أو العملةُ لا يطابقان ما طُلب'])->save();
+
+            // ولا فرصةَ كوبونٍ تبقى محجوزةً لدفعةٍ لن تُحتسب
+            CouponLimits::releaseReservation($intent);
 
             return response('ok', 200);
         }
@@ -187,9 +237,32 @@ class PaymobController extends Controller
          * له في جرسه (انظر `StorePaymentIntent::strayPayment`).
          */
         try {
-            $order = WebCheckout::place($business, (array) $intent->payload, (string) $intent->lang, paid: true);
+            $order = WebCheckout::place($business, (array) $intent->payload, (string) $intent->lang, paid: true, intent: $intent);
 
             $intent->fill(['order_id' => $order->id, 'error' => null])->save();
+        } catch (PriceMovedAfterPayment $e) {
+            /*
+             * ═══ وتبدُّلُ المبلغ لا قرارَ فيه — يُردّ المال ═══
+             *
+             * الزبونُ وافق على سعرٍ ودفعه. فلا يُكتب له طلبٌ بغيره، ولا
+             * يُحتجز مالُه على طلبٍ لن يُكتب حتّى يفتح صاحبُ المحلّ جرسَه.
+             *
+             * ويقع هذا حين ينقضي حجزُ الكوبون قبل أن يصل تصديقُ الدفع —
+             * تأكيدٌ متأخّرٌ على فرصةٍ أُفرِج عنها — أو حين يتبدّل سعرُ صنفٍ
+             * في أثناء الدفع.
+             *
+             * والردُّ مرّةً واحدةً: `Paymob::refund` تُطالب بالحال في القاعدة
+             * قبل الإرسال، فإشعارٌ أُعيد إرسالُه لا يردّ ثانيةً. وإن لم تقبل
+             * البوّابةُ الردَّ بقي الجرسُ يرنّ لصاحب المحلّ ليردّ بيده —
+             * ولا يُكتب «رُدّ» إلّا إن قالت البوّابةُ ذلك.
+             */
+            Log::warning('paymob: تبدّل المبلغ بعد الدفع — يُردّ المال', [
+                'intent' => $intent->id, 'charged' => $e->charged, 'now' => $e->now,
+            ]);
+
+            $intent->fill(['error' => Str::limit($e->getMessage(), 500)])->save();
+
+            Paymob::refund($intent->refresh(), 'تبدّل مبلغُ الطلب بعد الدفع');
         } catch (\Throwable $e) {
             Log::error('paymob: دُفع ولم يُنشأ طلب', ['intent' => $intent->id, 'why' => $e->getMessage()]);
 

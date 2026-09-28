@@ -335,8 +335,61 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
              * فصار صفًّا من القوائم يزاحم بعضه على الشاشات المتوسطة. واللغة
              * والفرع ليسا وجهتين بل تفضيلان يُضبطان ثم يُنسيان، فموضعهما قائمة
              * الحساب حيث بقيّة ما يخصّ من يقف أمام الشاشة.
+             *
+             * ═══ ثمّ عاد الفرعُ وحدَه ═══
+             *
+             * اللغةُ تُضبط مرّةً في العمر، والفرعُ يُبدَّل في اليوم مرارًا —
+             * وهو يرشّح كلَّ رقمٍ في اللوحة وفي تقرير المبيعات. فمن يقرأ
+             * «مبيعات الشهر» لا بدّ أن يرى نطاقَها بلا أن يفتح قائمةً
+             * ليسأل عنه. وقاعدةُ «لا تزدحم» محفوظة: لم يُزد عددُ المداخل —
+             * نُقل الفرعُ من قائمة الحساب إلى الشريط، ولم يُترك في الاثنين.
+             *
+             * وعلى الشاشات الضيّقة اسمٌ لا يُعرض: أيقونةٌ وحدها بعنوانٍ
+             * مقروءٍ للقارئ الصوتيّ، فلا يُزاح البحثُ ولا الحساب.
              */}
             <div className="ms-auto flex shrink-0 items-center gap-1.5">
+                {context && context.branches.length > 0 && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                className="h-9 max-w-[11rem] gap-1.5 px-2 text-[13px] font-medium text-[#111]"
+                                title={t('الفرع')}
+                            >
+                                <Building2 className="size-4 shrink-0 text-[#6b7280]" />
+                                <span className="hidden truncate sm:inline">
+                                    {context.branchName || t('كل الفروع')}
+                                </span>
+                                <ChevronDown className="size-3.5 shrink-0 opacity-50" />
+                                <span className="sr-only sm:hidden">
+                                    {t('الفرع')}: {context.branchName || t('كل الفروع')}
+                                </span>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-60">
+                            <DropdownMenuLabel className="text-[12px] font-normal text-[#9ca3af]">
+                                {t('الفرع')}
+                            </DropdownMenuLabel>
+                            {/* المسارُ هو القائم: `admin.branch.switch` بـ`all`
+                                أو بمعرّف الفرع — والخادمُ يحرس الانتماء */}
+                            <DropdownMenuItem asChild>
+                                <a href={route('admin.branch.switch', 'all')} className="text-[14px]">
+                                    <span className="flex-1">{t('كل الفروع')}</span>
+                                    {!context.branchId && <Check className="size-4" />}
+                                </a>
+                            </DropdownMenuItem>
+                            {context.branches.map((branch) => (
+                                <DropdownMenuItem key={branch.id} asChild>
+                                    <a href={route('admin.branch.switch', branch.id)} className="text-[14px]">
+                                        <span className="flex-1 truncate">{branch.name}</span>
+                                        {context.branchId === branch.id && <Check className="size-4" />}
+                                    </a>
+                                </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
+
                 {context && (
                     <>
                         {/*
@@ -646,34 +699,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
                         <DropdownMenuSeparator />
 
-                        {/* الفرع الافتراضي — مرشِّح كل رقمٍ في اللوحة، فاسمه
-                            مكتوبٌ في العنوان لا في القائمة وحدها */}
-                        {context && context.branches.length > 0 && (
-                            <>
-                                <DropdownMenuLabel className="flex items-center gap-2 text-[12px] font-normal text-[#9ca3af]">
-                                    <Building2 className="size-3.5" />
-                                    {t('الفرع')}
-                                    <span className="ms-auto truncate font-medium text-[#111]">
-                                        {context.branchName || t('كل الفروع')}
-                                    </span>
-                                </DropdownMenuLabel>
-                                <DropdownMenuItem asChild>
-                                    <a href={route('admin.branch.switch', 'all')} className="text-[14px]">
-                                        <span className="flex-1">{t('كل الفروع')}</span>
-                                        {!context.branchId && <Check className="size-4" />}
-                                    </a>
-                                </DropdownMenuItem>
-                                {context.branches.map((branch) => (
-                                    <DropdownMenuItem key={branch.id} asChild>
-                                        <a href={route('admin.branch.switch', branch.id)} className="text-[14px]">
-                                            <span className="flex-1 truncate">{branch.name}</span>
-                                            {context.branchId === branch.id && <Check className="size-4" />}
-                                        </a>
-                                    </DropdownMenuItem>
-                                ))}
-                                <DropdownMenuSeparator />
-                            </>
-                        )}
+                        {/* والفرعُ لا يُعاد هنا: موضعُه الشريطُ نفسُه الآن
+                            (أعلى الملفّ)، وبابان لاختيارٍ واحدٍ يفترقان يومًا */}
 
                         {/* اللغة — والتبديل يُرسَل إلى مسار اللوحة التي يقف
                             عليها: لمدير المنصة مسارُه وللتاجر مسارُه، ومسارٌ

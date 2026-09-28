@@ -76,17 +76,36 @@ class ReportsTellTheirScopeTest extends TestCase
 
     /* ==================== نطاق الورقة ==================== */
 
-    public function test_a_sheet_that_counts_every_branch_does_not_name_one(): void
+    /**
+     * وورقةُ المبيعات صارت ترشّح بالفرع — فصار لها أن تُسمّيه.
+     *
+     * كان هذا الحارسُ يقول عكسَه: «لا تنسب نفسها إلى فرع»، لأنّ أرقامَها
+     * كانت للمتجر كلِّه مهما اختار الشريط. فلمّا صار تقريرُ المبيعات
+     * يُرشَّح بالفرع المختار (انظر `Reports::salesReport`) صار السكوتُ عن
+     * اسمه هو الكذب: ورقةُ فرعٍ بترويسة «كل الفروع».
+     *
+     * والقاعدةُ لم تتبدّل: الورقةُ تقول ما تقيس. وبقيّةُ الأوراق — المالية
+     * وغيرها — تُجمع على المتجر كلِّه فتبقى «كل الفروع»، وحارسُها أدناه.
+     */
+    public function test_the_sales_sheet_names_the_branch_it_now_filters(): void
     {
         $res = $this->actingAs($this->owner)
             ->withSession(['current_branch' => $this->muscat->id])
             ->get(route('admin.reports.xlsx'));
 
         $this->assertStringContainsString(
-            'كل الفروع',
+            'مسقط',
             $this->branchLine($res),
-            'ورقة المبيعات تُجمع على المتجر كلّه، فلا يجوز أن تنسب نفسها إلى فرع',
+            'ورقة المبيعات تُرشّح بالفرع المختار، فترويستها تقول اسمه',
         );
+    }
+
+    /** وبلا اختيارٍ تبقى للمتجر كلِّه — وتقول ذلك */
+    public function test_the_sales_sheet_says_every_branch_when_none_is_chosen(): void
+    {
+        $res = $this->actingAs($this->owner)->get(route('admin.reports.xlsx'));
+
+        $this->assertStringContainsString('كل الفروع', $this->branchLine($res));
     }
 
     public function test_the_finance_sheet_does_not_name_a_branch_it_never_filtered(): void

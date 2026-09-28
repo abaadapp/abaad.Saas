@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Support\Demo;
 use App\Support\Reports;
+use App\Support\SalesChannel;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -23,6 +24,14 @@ class ExportController extends Controller
         $range = $report['range'];
 
         $rows = [];
+        // والفرعُ يُكتب كما تُكتب الفترة: الملفّ يغادر الشاشة ولا مبدّلَ
+        // فوقه، فإن لم يقل نطاقَه قُرئ على أنّه المتجر كلُّه
+        $rows[] = [__('الفرع'), $report['branchName'], ''];
+        // و«كل القنوات» لا «غير محدّدة»: `null` غيابُ المُرشِّح، وتلك صفةُ
+        // طلبٍ لا يُعرف بابُه — والمختارةُ مُرشِّحًا تصل قيمةً فتبقى باسمها
+        $rows[] = [__('القناة'), $report['channel'] === null
+            ? __('كل القنوات')
+            : SalesChannel::label($report['channel']), ''];
         $rows[] = [__('الفترة'), Demo::rangeLabel($range), ''];
         $rows[] = ['', '', ''];
         $rows[] = [__('— المؤشرات الرئيسية —'), '', ''];
@@ -44,7 +53,9 @@ class ExportController extends Controller
         $rows[] = ['', '', ''];
         $rows[] = [__('— توزيع وسائل الدفع —'), '', ''];
         $rows[] = [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')];
-        foreach (Demo::paymentBreakdown($range) as $m) {
+        // بنطاق الحمولة نفسِه — فرعًا وقناةً: جدولٌ يعدّ قنواتٍ لم تُختر
+        // يخالف الملخّصَ فوقه في الملفّ الواحد
+        foreach (Demo::paymentBreakdown($range, $report['channel'], $report['branchId']) as $m) {
             $rows[] = [$m['name'], number_format((float) $m['total'], 3, '.', ''), $m['count']];
         }
         $rows[] = ['', '', ''];

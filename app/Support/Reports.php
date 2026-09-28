@@ -329,14 +329,34 @@ class Reports
         $range = Demo::range($range);
         $channel = collect(SalesChannel::options())->pluck('value')->contains($channel) ? $channel : null;
 
+        /*
+         * والفرعُ يُقرأ هنا مرّةً ويُمرَّر — لا تقرؤه كلُّ دالّةٍ من الجلسة.
+         *
+         * لأنّ لتلك الدوالّ قرّاءً آخرين يريدون المتجر كلَّه: `reportSummary`
+         * تُنادى من نظرة المالية، و`paymentBreakdown` من ملفّات التصدير.
+         * فلو قرأت الفرعَ من نفسها لَتغيّر معنى تقاريرَ لم يطلب أحدٌ تغييرَها.
+         *
+         * و`null` تعني «كل الفروع» — وهي حصيلةُ النشاط كما كانت.
+         *
+         * والحصرُ آمنٌ من نفسه: `currentBranchId` تردّ `null` لفرعٍ ليس
+         * لهذا المتجر، فجلسةٌ قديمة تحمل فرعَ جارٍ لا تُرشِّح ولا تُسمّي.
+         */
+        $branch = Demo::currentBranchId();
+
         return [
-            'summary' => Demo::reportSummary($range, $channel),
-            'salesSeries' => Demo::salesTrend($range, $channel),
-            'paymentDistribution' => Demo::paymentDistribution($range, $channel),
-            'topSellingProducts' => Demo::topSellingProducts(5, $range, null, $channel),
+            'summary' => Demo::reportSummary($range, $channel, $branch),
+            'salesSeries' => Demo::salesTrend($range, $channel, $branch),
+            'paymentDistribution' => Demo::paymentDistribution($range, $channel, $branch),
+            'topSellingProducts' => Demo::topSellingProducts(5, $range, $branch, $channel),
             'range' => $range,
             'channel' => $channel,
             'channels' => SalesChannel::options(),
+            /*
+             * وما تقيسه الورقةُ يُقال فيها: الشاشةُ فوقها مبدّلٌ يقول الفرع،
+             * والملفُّ يغادرها فلا مبدّلَ فوقه. وتُقرأ من هنا لا تُحسب مرّتين.
+             */
+            'branchName' => Demo::scopeName(true),
+            'branchId' => $branch,
         ];
     }
 

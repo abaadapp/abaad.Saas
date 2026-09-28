@@ -2457,7 +2457,7 @@ class Demo
      * ولكل عمود عدد طلباته إلى جانب مبلغه: مئة ريالٍ من طلبٍ واحد غير مئةٍ من
      * أربعين طلبًا، والمبلغ وحده لا يفرّق بينهما.
      */
-    public static function salesTrend(string $range = 'month', ?string $channel = null): array
+    public static function salesTrend(string $range = 'month', ?string $channel = null, ?int $branchId = null): array
     {
         $bid = self::bid();
         $range = self::range($range);
@@ -2492,7 +2492,8 @@ class Demo
         };
 
         $rows = SalesChannel::scope(
-            Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$start, $cutoff]),
+            Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$start, $cutoff])
+                ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
             $channel,
         )
             ->selectRaw("{$format} as bucket, SUM(total) as s, COUNT(*) as c")
@@ -2650,12 +2651,13 @@ class Demo
      *
      * والنسبة تُحسب من مجموع ما هنا لا من دفترٍ آخر، فتجمع مئةً دائمًا.
      */
-    public static function paymentBreakdown(string $range = 'month', ?string $channel = null): array
+    public static function paymentBreakdown(string $range = 'month', ?string $channel = null, ?int $branchId = null): array
     {
         $start = self::rangeStart(self::range($range));
         $rows = SalesChannel::scope(
             Order::where('business_id', self::bid())->sold()
-                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start)),
+                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+                ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
             $channel,
         )
             ->selectRaw('payment_method, SUM(total) as s, COUNT(*) as c')
@@ -2673,9 +2675,9 @@ class Demo
     }
 
     /** المخطّط على الشاشة: أسماءٌ ومبالغ من التوزيع نفسه لا من استعلامٍ ثانٍ */
-    public static function paymentDistribution(string $range = 'month', ?string $channel = null): array
+    public static function paymentDistribution(string $range = 'month', ?string $channel = null, ?int $branchId = null): array
     {
-        $rows = self::paymentBreakdown($range, $channel);
+        $rows = self::paymentBreakdown($range, $channel, $branchId);
 
         return [
             'labels' => array_column($rows, 'name'),
@@ -2888,7 +2890,7 @@ class Demo
     }
 
     /** ملخّص أرقام بطاقات التقارير — كلها محسوبة فعليًا من قاعدة البيانات (صفر عند فراغها) */
-    public static function reportSummary(string $range = 'month', ?string $channel = null): array
+    public static function reportSummary(string $range = 'month', ?string $channel = null, ?int $branchId = null): array
     {
         $bid = self::bid();
         /*
@@ -2903,7 +2905,10 @@ class Demo
         $start = self::rangeStart(self::range($range));
         $ordersQ = SalesChannel::scope(
             Order::where('business_id', $bid)->sold()
-                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start)),
+                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+                // والفرعُ يُمرَّر ولا يُقرأ من الجلسة هنا: لهذه الدالّة قارئٌ
+                // آخر (نظرةُ المالية) يريد المتجر كلَّه — انظر `Reports::salesReport`
+                ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
             $channel,
         );
         $sales = (float) (clone $ordersQ)->sum('total');
@@ -2922,7 +2927,18 @@ class Demo
          * في تقرير المواسم (`SeasonSales::report`) — قناةٌ تُقاس بمجمل ربحها
          * لا بصافيه.
          */
-        $whole = $channel === null || $channel === '';
+        /*
+         * والفرعُ كالقناة في هذا بعينه.
+         *
+         * جدولُ المصروفات لا عمودَ فرعٍ فيه أصلًا: الإيجارُ والرواتبُ
+         * والكهرباء تُكتب للمتجر، ولا في النظام ما يقول كم منها على فرع
+         * مسقط. فطرحُها كاملةً من مبيعات فرعٍ واحد يجعله خاسرًا وهو رابح —
+         * ورقمٌ كهذا يُتّخذ عليه قرارُ إغلاق فرع.
+         *
+         * فيُقال «مُجمل الربح» حين يُحصر التقريرُ بفرع، كما يُقال حين
+         * يُحصر بقناة — والاسمُ يُرسَل مع الرقم (`profit_kind`).
+         */
+        $whole = ($channel === null || $channel === '') && $branchId === null;
 
         $expenses = $whole
             ? (float) Expense::where('business_id', $bid)->paid()
@@ -2942,7 +2958,7 @@ class Demo
          *
          * والضريبة تُطرح لأنها التزامٌ يُورَّد لا إيرادٌ يُملك.
          */
-        $cogs = self::cogsFor($bid, $start, null, null, $channel);
+        $cogs = self::cogsFor($bid, $start, null, $branchId, $channel);
 
         return [
             'sales' => $sales,

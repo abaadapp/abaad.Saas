@@ -44,6 +44,7 @@ import { cn } from '@/lib/utils';
 import useLiveStock from '@/hooks/useLiveStock';
 import {
     POINTS_PER_UNIT,
+    cartLineTotal,
     usePosCart,
     type LoyaltySettings,
     type PosCustomer,
@@ -748,8 +749,9 @@ export default function PosIndex() {
                                                         <Plus className="size-4" />
                                                     </button>
                                                 </div>
-                                                {/* ثمن البند كاملًا: سعره في كميّته وإضافاته — وهو ما
-                                                    يجمعه المجموع الفرعيّ في الخادم أيضًا */}
+                                                {/* ثمن البند كاملًا: سعره في كميّته وإضافاته المدفوعة — وهو ما
+                                                    يجمعه المجموع الفرعيّ هنا وفي الخادم. و«السعرُ النهائيّ»
+                                                    رقمُه وحده: إضافاتُه داخلَه — انظر `cartLineTotal` */}
                                                 <div className="flex items-center gap-2">
                                                     {/*
                                                       * «تعديل» للطلب المخصَّص وحدَه — وتعود به الاختيارات
@@ -766,10 +768,7 @@ export default function PosIndex() {
                                                         </button>
                                                     )}
                                                     <p className="text-sm font-bold text-gray-800">
-                                                        {money(
-                                                            item.price * item.qty +
-                                                                (item.addons ?? []).reduce((s, a) => s + a.price * a.qty, 0),
-                                                        )}
+                                                        {money(cartLineTotal(item))}
                                                     </p>
                                                 </div>
                                             </div>

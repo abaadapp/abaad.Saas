@@ -231,6 +231,39 @@ const OUTBOX_KEY = 'abadpos:pos:outbox';
 export const POINTS_PER_UNIT = 100;
 const CASH_CUSTOMER = 'عميل نقدي';
 
+/**
+ * «السعر النهائيّ» في الطلب المخصَّص — `CustomArrangement::MODE_BUDGET` في الخادم.
+ */
+export const CUSTOM_BUDGET = 'budget';
+
+/**
+ * ما يُدفع من إضافات البند — كمياتٌ مطلقة لا مضروبة في كمية البند.
+ *
+ * ═══ و«السعرُ النهائيّ» لا تُدفع إضافاتُه فوقه ═══
+ *
+ * الزبون قال «سبعة عشر ومئتان للطلب كلّه»: الكرتُ داخلَها لا فوقها. فسعرُ
+ * البند هو الرقمُ نفسُه (`CustomArrangementDialog` يرسله كما هو)، والإضافاتُ
+ * تبقى على البند — تُعرض وتُعدَّل وتُخصم من الرفّ — ولا تُجمع إلى ما يُدفع.
+ * وهي قاعدةُ `SaleLines` في الخادم: `addons_total` صفرٌ في هذا الوضع.
+ *
+ * وكانت السلّة تجمعها لكلّ بند، فتقرأ الشاشةُ ١٧٫٤٠٠ لطلبٍ بـ١٧٫٢٠٠،
+ * ويُشتقّ منها الخصمُ والضريبةُ والنقاطُ وزرُّ الدفع — والخادمُ يقبض ١٧٫٢٠٠.
+ *
+ * وفي «قيمة + إضافات» يُرسَل السعرُ ناقصَها، فتُجمع هنا مرّةً — كالمنتج.
+ */
+export const billableAddons = (item: Pick<CartItem, 'addons' | 'custom'>): number =>
+    item.custom?.mode === CUSTOM_BUDGET ? 0 : (item.addons ?? []).reduce((s, a) => s + a.price * a.qty, 0);
+
+/**
+ * ثمنُ البند كما يجمعه المجموعُ الفرعيّ — سعرُه في كميّته، وإضافاتُه المدفوعة.
+ *
+ * المصدرُ الواحد لكلّ رقمٍ ماليّ في الصندوق: المجموع والخصم والضريبة
+ * والنقاط وزرّ الدفع، وسطرُ البند في السلّة (`Pos/Index`). ويطابق صافيَ
+ * البند في الخادم: `price × qty + addons_total` (`SaleLines::taxFor`).
+ */
+export const cartLineTotal = (item: Pick<CartItem, 'price' | 'qty' | 'addons' | 'custom'>): number =>
+    item.price * item.qty + billableAddons(item);
+
 function uuid(): string {
     try {
         if (crypto?.randomUUID) return crypto.randomUUID();
@@ -350,11 +383,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     /* ----------------------------- الحسابات ----------------------------- */
 
     const count = useMemo(() => items.reduce((s, i) => s + i.qty, 0), [items]);
-    /** ثمن البند كاملًا: سعره في كميّته، وإضافاتُه — وهي كمياتٌ مطلقة لا مضروبة */
-    const lineTotal = (i: CartItem) =>
-        i.price * i.qty + (i.addons ?? []).reduce((s, a) => s + a.price * a.qty, 0);
-
-    const subtotal = useMemo(() => items.reduce((s, i) => s + lineTotal(i), 0), [items]);
+    /** ثمنُ البند — والسعرُ النهائيّ لا تُجمع إضافاتُه فوقه. انظر `cartLineTotal` */
+    const subtotal = useMemo(() => items.reduce((s, i) => s + cartLineTotal(i), 0), [items]);
 
     const couponDiscount = useMemo(() => {
         if (!coupon) return 0;
@@ -409,7 +439,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         if (vat?.enabled === false || subtotal <= 0) return 0;
 
         return items.reduce((sum, i) => {
-            const net = lineTotal(i);
+            const net = cartLineTotal(i);
             const taxableLine = net - discountAmount * (net / subtotal);
             const rate = Math.max(0, Number(i.tax ?? vatRate) || 0);
 

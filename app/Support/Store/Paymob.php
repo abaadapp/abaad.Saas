@@ -35,6 +35,16 @@ final class Paymob
     public const EXPIRES = 3600;
 
     /**
+     * بريدُ من لم يُسأل عن بريده — صالحُ الصيغة، ولا يصل إلى أحد.
+     *
+     * Paymob عُمان تردّ فتحَ الدفعة كلَّها ببريدٍ غير صالح (`NA` كان يُرسَل
+     * فتُردّ كلُّ دفعة: «Enter a valid email address»). وصفحةُ الإتمام لا
+     * تسأل عن بريد. و`example.com` نطاقٌ محجوزٌ للأمثلة لا يستقبل رسالة
+     * (RFC 2606): فإيصالُ البوّابة لا يبلغ غريبًا، ولا يُخترع بريدٌ لأحد.
+     */
+    public const NO_EMAIL = 'no-email@example.com';
+
+    /**
      * حقولُ التوقيع بترتيبها الذي تفرضه Paymob — لا ترتيبَ حروفٍ ولا ترتيبَنا.
      *
      * تُقرأ قيمُها من `obj` في الإشعار، وتُوصَل بلا فاصل، ويُحسب عليها
@@ -390,6 +400,7 @@ final class Paymob
      *
      * وما لا يجمعه صاحبُ المحلّ من حقولٍ (انظر `CheckoutFields`) يُملأ
      * بـ`NA`: حقلٌ فارغٌ يردّه Paymob، وحقلٌ لم يُسأل عنه لا يُخترع له جواب.
+     * إلّا البريد: `NA` فيه يردّ الدفعةَ كلَّها — انظر `NO_EMAIL`.
      *
      * @param  array<string, mixed>  $payload
      * @return array<string, string>
@@ -403,7 +414,7 @@ final class Paymob
             'first_name' => $parts[0] ?? 'NA',
             'last_name' => $parts[1] ?? 'NA',
             'phone_number' => trim((string) ($payload['phone'] ?? '')),
-            'email' => trim((string) ($payload['email'] ?? '')) ?: 'NA',
+            'email' => filter_var(trim((string) ($payload['email'] ?? '')), FILTER_VALIDATE_EMAIL) ?: self::NO_EMAIL,
             'street' => trim((string) ($payload['address'] ?? '')) ?: 'NA',
             'building' => 'NA', 'floor' => 'NA', 'apartment' => 'NA',
             'city' => trim((string) ($payload['area'] ?? '')) ?: 'NA',

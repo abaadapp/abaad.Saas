@@ -50,6 +50,8 @@ class ACardIsNotAnOrderUntilTheMoneyArrivesTest extends TestCase
             'name' => 'RIBBON', 'type' => 'محل ورد', 'status' => 'نشط', 'phone' => '96895259066',
             'city' => 'مسقط', 'site_slug' => 'ribbon', 'tier' => 'gold', 'storefront_theme' => 'ribbon',
         ]);
+        // Paymob لمن في قائمة المالك وحده (`storefront.paymob_businesses`) — ومتجرُ هذا الاختبار منها
+        config(['storefront.paymob_businesses' => [$this->shop->id]]);
         Currency::create(['business_id' => $this->shop->id, 'code' => 'OMR', 'name' => 'ريال عماني', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true]);
         Ledger::seedChart($this->shop->id);
         Branch::create(['business_id' => $this->shop->id, 'name' => 'الخوير']);

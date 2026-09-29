@@ -904,7 +904,10 @@ class PageController extends Controller
                         'card_integration_id' => (string) ($g?->card_integration_id ?? ''),
                         'has_secret' => filled($g?->secret_key),
                         'has_hmac' => filled($g?->hmac_secret),
-                        'ready' => (bool) ($g?->ready() ?? false),
+                        // «جاهزة» تعني أنّ الزبون يدفع بها فعلًا — فلا تكون لمن ليس في القائمة
+                        'ready' => \App\Support\Store\Paymob::enabled(Demo::bid()),
+                        // ومن ليس في قائمة المالك لا تُرسم له البطاقةُ أصلًا — انظر `Paymob::allowed`
+                        'allowed' => \App\Support\Store\Paymob::allowed(Demo::bid()),
                     ];
                 })(),
                 /*

@@ -111,9 +111,18 @@ final class WebCheckout
     /**
      * وسائلُ الدفع المتاحة على الموقع — بمفاتيحها ووسيلتها في الطلب.
      *
-     * @return array<string, string> [cod|transfer => وسيلةُ الدفع كما تُكتب في الطلب]
+     * ═══ والبطاقةُ لطلبٍ جديد غيرُها لدفعةٍ قُبضت ═══
+     *
+     * لطلبٍ جديد تُعرض لمن في قائمة المالك وبوّابتُه مكتملة (`Paymob::enabled`).
+     * أمّا إتمامُ دفعةٍ قُبض مالُها فيُعطى نيّتَها (`$settling`): بدأت والمتجرُ
+     * مسموحٌ له، فلا يُردّ طلبُها لأنّ القائمةَ تبدّلت والزبونُ على صفحة البنك.
+     * والنيّةُ تُسأل عنها القاعدةُ لا يُصدَّق وجودُها (`settles`) — فلا تُصنَع
+     * بها بطاقةٌ لطلبٍ لم يُدفع.
+     *
+     * @param  StorePaymentIntent|null  $settling  نيّةُ الدفعة التي يُتمّ `place` طلبَها
+     * @return array<string, string> [cod|transfer|card => وسيلةُ الدفع كما تُكتب في الطلب]
      */
-    public static function payments(int $businessId): array
+    public static function payments(int $businessId, ?StorePaymentIntent $settling = null): array
     {
         $s = self::settings($businessId);
         $out = [];
@@ -123,19 +132,36 @@ final class WebCheckout
         if ($s['transfer']) {
             $out[self::PAY_TRANSFER] = PaymentMethods::TRANSFER;
         }
-        if (Paymob::enabled($businessId)) {
+        if (Paymob::enabled($businessId) || self::settles($businessId, $settling)) {
             $out[self::PAY_CARD] = PaymentMethods::CARD;
         }
 
         return $out;
     }
 
+    /**
+     * أهذه دفعةُ بطاقةٍ قُبض مالُها لهذا المتجر؟ — من القاعدة لا من الذاكرة.
+     *
+     * `PaymobController::settle` يكتب «مدفوعة» ورقمَ العمليّة بعد أن يُصدِّق
+     * التوقيع، ثمّ يُتمّ الطلب. ونسختُه في الذاكرة ما زالت «معلَّقة» — فتُقرأ
+     * الحالُ من الصفّ. ونيّةُ متجرٍ آخر، أو نيّةٌ لم يُقبض مالُها، لا تفتح شيئًا.
+     */
+    private static function settles(int $bid, ?StorePaymentIntent $intent): bool
+    {
+        return $intent !== null
+            && StorePaymentIntent::whereKey($intent->id)
+                ->where('business_id', $bid)
+                ->where('status', StorePaymentIntent::PAID)
+                ->whereNotNull('provider_transaction_id')
+                ->exists();
+    }
+
     /** أيقبل هذا المتجر طلبًا من موقعه الآن؟ */
-    public static function accepts(Business $business): bool
+    public static function accepts(Business $business, ?StorePaymentIntent $settling = null): bool
     {
         return $business->storefrontTheme() !== null
             && self::settings((int) $business->id)['allow_orders']
-            && self::payments((int) $business->id) !== [];
+            && self::payments((int) $business->id, $settling) !== [];
     }
 
     /* ═══════════ التسعير ═══════════ */
@@ -307,14 +333,16 @@ final class WebCheckout
     public static function place(Business $business, array $payload, string $lang = 'ar', bool $paid = false, ?StorePaymentIntent $intent = null): Order
     {
         $bid = (int) $business->id;
+        // دفعةٌ قُبضت تُتمّ طلبَها ولو رُفع المتجرُ من قائمة Paymob بعد فتحها — انظر `payments`
+        $settling = $paid ? $intent : null;
 
-        if (! self::accepts($business)) {
+        if (! self::accepts($business, $settling)) {
             throw ValidationException::withMessages(['items' => __('المتجر لا يستقبل طلبات من الموقع الآن.')]);
         }
 
-        $form = self::validated($bid, $payload);
+        $form = self::validated($bid, $payload, $settling);
 
-        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid, $intent) {
+        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid, $intent, $settling) {
             // بقفل: الفحصُ والخصم على كميّةٍ لا تتغيّر تحتهما — كما في الصندوق
             $q = self::quote($business, $payload + ['fulfil' => $form['fulfil']], lock: true);
             $lines = $q['_lines'];
@@ -406,7 +434,7 @@ final class WebCheckout
                 }
             }
 
-            $method = self::payments($bid)[$form['pay']];
+            $method = self::payments($bid, $settling)[$form['pay']];
             $scheduled = self::scheduledFor($form);
             // وقد دخل الكرتُ الأسطرَ في `quote` — وهنا تُكتب أعمدتُه على الطلب
             $wantsCard = GiftCard::wanted($bid, $payload);
@@ -705,11 +733,15 @@ final class WebCheckout
         return $settings['fee'];
     }
 
-    /** بياناتُ الزبون والتسليم والدفع — تُفحص قبل أن يُقرأ صفٌّ واحد */
-    private static function validated(int $bid, array $payload): array
+    /**
+     * بياناتُ الزبون والتسليم والدفع — تُفحص قبل أن يُقرأ صفٌّ واحد
+     *
+     * @param  StorePaymentIntent|null  $settling  نيّةُ دفعةٍ قُبضت — انظر `payments`
+     */
+    private static function validated(int $bid, array $payload, ?StorePaymentIntent $settling = null): array
     {
         $settings = self::settings($bid);
-        $payments = self::payments($bid);
+        $payments = self::payments($bid, $settling);
 
         /*
          * ═══ والقواعدُ تُبنى ممّا انتقاه صاحبُ المحلّ ═══

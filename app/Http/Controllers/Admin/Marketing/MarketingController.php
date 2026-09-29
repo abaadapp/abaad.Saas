@@ -18,6 +18,7 @@ use App\Support\MarketingSettings;
 use App\Support\Seo;
 use App\Support\FlowerOrder;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\Paymob;
 use App\Support\Store\StoreContent;
 use App\Support\Store\ThemePublisher;
 use App\Support\Store\StoreSeo;
@@ -191,6 +192,9 @@ class MarketingController extends Controller
      */
     public function savePaymentGateway(Request $request)
     {
+        // Paymob لمن في قائمة المالك وحده — والردُّ قبل أيّ تحقّقٍ أو كتابة
+        abort_unless(Paymob::allowed($this->bid()), 403);
+
         $data = $request->validate([
             'active' => ['sometimes', 'boolean'],
             'public_key' => ['nullable', 'string', 'max:255'],

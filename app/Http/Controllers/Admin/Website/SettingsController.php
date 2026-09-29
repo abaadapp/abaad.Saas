@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\WebsiteSection;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
+use App\Support\Store\Paymob;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
@@ -140,16 +141,13 @@ class SettingsController extends Controller
         $business = Business::findOrFail($bid);
         $values = MarketingSettings::group($bid, 'website');
 
-        $gateway = PaymentGateway::where('business_id', $bid)
-            ->where('provider', PaymentGateway::PAYMOB)->first();
-
         $rows = StoreNav::rows($bid);
         $allowed = StoreNav::allowed($bid);
 
         $ways = array_values(array_filter([
             ($values['store_pay_cod'] ?? '1') === '1' ? __('نقد') : null,
             ($values['store_pay_transfer'] ?? '0') === '1' ? __('تحويل') : null,
-            $gateway?->ready() ? __('بطاقة') : null,
+            Paymob::enabled($bid) ? __('بطاقة') : null,
         ]));
 
         return Inertia::render('Admin/Website/ThemeSettings', $this->themeShell($theme) + [
@@ -174,7 +172,7 @@ class SettingsController extends Controller
                 'pages' => ['shown' => count($allowed) + 2, 'all' => count($rows)],
                 'ways' => $ways,
                 'seoIndexed' => ($values['store_seo_index'] ?? '1') === '1',
-                'gatewayReady' => (bool) $gateway?->ready(),
+                'gatewayReady' => Paymob::enabled($bid),
             ],
         ]);
     }
@@ -211,7 +209,9 @@ class SettingsController extends Controller
                 'card_integration_id' => (string) ($gateway?->card_integration_id ?? ''),
                 'has_secret' => filled($gateway?->secret_key),
                 'has_hmac' => filled($gateway?->hmac_secret),
-                'ready' => (bool) ($gateway?->ready() ?? false),
+                'ready' => Paymob::enabled($bid),
+                // ومن ليس في قائمة المالك لا تُرسم له البطاقةُ أصلًا — انظر `Paymob::allowed`
+                'allowed' => Paymob::allowed($bid),
             ],
         ]);
     }

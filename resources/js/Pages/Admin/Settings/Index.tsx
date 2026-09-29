@@ -194,6 +194,8 @@ interface Props {
             has_secret: boolean;
             has_hmac: boolean;
             ready: boolean;
+            /** أفي قائمة المالك؟ — انظر `Paymob::allowed` */
+            allowed: boolean;
         };
     };
     notificationsAll: NotificationRow[];
@@ -1141,7 +1143,7 @@ export default function SettingsIndex() {
                             ونموذجٌ على حدة: السرّان يُرسلان وحدهما، فلا يَعبُران
                             الشبكةَ مع كلّ حفظِ اسمٍ أو رسمِ توصيل.
                         */}
-                        {store.checkout && (
+                        {store.checkout && store.gateway.allowed && (
                             <SettingsGroup title="الدفع بالبطاقة">
                                 <p className="mb-4 text-[12px] leading-relaxed text-[#6b7280]">
                                     {t('مفاتيحُك أنت من لوحة Paymob — والمال يصل حسابك البنكي مباشرةً ولا يمرّ بأبعاد.')}

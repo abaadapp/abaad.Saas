@@ -63,10 +63,29 @@ final class Paymob
         return $row?->ready() === true ? $row : null;
     }
 
-    /** أيقبل هذا المتجر البطاقةَ الآن؟ */
+    /**
+     * أيُفتح Paymob لهذا المتجر أصلًا؟ — من قائمة المالك لا من المفاتيح.
+     *
+     * بابٌ قبل البوّابة: متجرٌ ليس في `storefront.paymob_businesses` لا
+     * يُعرض له الدفعُ بالبطاقة ولا تُحفظ مفاتيحُه، ولو أُعطي واجهةً خاصّةً
+     * فيها سلّة. والمفاتيحُ وحدها لا تفتحه.
+     */
+    public static function allowed(int $businessId): bool
+    {
+        return in_array($businessId, array_map('intval', (array) config('storefront.paymob_businesses', [])), true);
+    }
+
+    /**
+     * أيقبل هذا المتجر البطاقةَ لطلبٍ جديد؟ — مسموحٌ له، وبوّابتُه مكتملة.
+     *
+     * والقائمةُ بابٌ **لبدء** الدفع وحدَه. و`gateway` لا تسأل عنها عمدًا:
+     * دفعةٌ فُتحت قبل أن يُرفع المتجرُ من القائمة يُصدَّق إشعارُها بها، ويُتمّ
+     * طلبُها (`WebCheckout::payments` بنيّتها)، ويُردّ مالُها إن لزم (`refund`)
+     * — فالزبونُ الذي دفع لا يدفع ثمنَ قرارٍ اتُّخذ وهو على صفحة البنك.
+     */
     public static function enabled(int $businessId): bool
     {
-        return self::gateway($businessId) !== null;
+        return self::allowed($businessId) && self::gateway($businessId) !== null;
     }
 
     /* ═══════════ التوقيع ═══════════ */
@@ -135,7 +154,8 @@ final class Paymob
     public static function open(Business $business, array $payload, array $quote, string $lang = 'ar'): array
     {
         $bid = (int) $business->id;
-        $gateway = self::gateway($bid);
+        // ولا تُفتح دفعةٌ لمن ليس في القائمة — ولو وصل الطلبُ إلى هنا من بابٍ لم يسأل
+        $gateway = self::allowed($bid) ? self::gateway($bid) : null;
 
         if ($gateway === null) {
             throw new \RuntimeException('بوّابةُ الدفع غير مكتملة');

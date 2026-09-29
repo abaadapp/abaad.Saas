@@ -100,7 +100,12 @@ class ReportPageController extends Controller
 
     public function orders(Request $request): Response
     {
-        return $this->report($request, 'orders', 'Orders', ['status', 'branch_id', 'payment_method']);
+        return $this->report($request, 'orders', 'Orders', ['status', 'branch_id', 'payment_method', 'fulfillment']);
+    }
+
+    public function addons(Request $request): Response
+    {
+        return $this->report($request, 'addons', 'Addons', ['branch_id', 'channel']);
     }
 
     public function products(Request $request): Response

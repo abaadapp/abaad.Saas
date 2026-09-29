@@ -1608,6 +1608,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/reports/activity', [ReportPageController::class, 'activity'])->name('reports.activity');
     Route::get('/reports/marketing', [ReportPageController::class, 'marketing'])->name('reports.marketing');
     Route::get('/reports/seasons', [ReportPageController::class, 'seasons'])->name('reports.seasons');
+    // ما بيع من الإضافات — من لقطة البيع، جزءًا من المبيعات لا فوقها
+    Route::get('/reports/addons', [ReportPageController::class, 'addons'])->name('reports.addons');
     // عمليات جرد المخزون — أين فارق الدفترُ الواقع، وبكم
     Route::get('/reports/stocktake', [ReportPageController::class, 'stocktake'])->name('reports.stocktake');
 

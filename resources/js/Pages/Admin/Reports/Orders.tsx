@@ -23,13 +23,26 @@ interface Row {
     branch: string | null;
     status: string;
     method: string | null;
+    /** «توصيل» أو «استلام من المحل» — وبيعةُ المنضدة بلا نوع */
+    fulfillment: string | null;
     total: number;
     at: string | null;
 }
 
 interface Props {
     rows: Row[];
-    summary: { count: number; total: number; average: number; cancelled: number };
+    summary: {
+        count: number;
+        total: number;
+        average: number;
+        cancelled: number;
+        /** طلبات التوصيل والاستلام غير الملغاة — من نوع التنفيذ لا من الرسوم */
+        delivery: number;
+        pickup: number;
+        /** رسومُ التوصيل وثمنُ الإضافات — داخلان في `total` لا فوقه */
+        delivery_fees: number;
+        addons: number;
+    };
     filters: Record<string, string | null>;
     options: Record<string, Option[]>;
     truncated: { shown: number; total: number } | null;
@@ -54,6 +67,7 @@ export default function ReportsOrders() {
         { kind: 'select', key: 'status', label: 'الحالة', options: options.statuses ?? [] },
         { kind: 'select', key: 'branch_id', label: 'الفرع', options: options.branches ?? [] },
         { kind: 'select', key: 'payment_method', label: 'وسيلة الدفع', options: options.methods ?? [] },
+        { kind: 'select', key: 'fulfillment', label: 'نوع التنفيذ', options: options.fulfillments ?? [] },
     ];
 
     const stats = [
@@ -61,6 +75,17 @@ export default function ReportsOrders() {
         { label: t('إجمالي المبيعات'), value: m(summary.total), icon: 'wallet', color: 'primary' },
         { label: t('متوسّط قيمة الطلب'), value: m(summary.average), icon: 'calculator', color: 'success' },
         { label: t('الملغاة'), value: number(summary.cancelled), icon: 'circle-alert', color: summary.cancelled > 0 ? 'warning' : 'success' },
+        /*
+         * وما في الإجمالي — لا ما يُضاف إليه.
+         *
+         * رسومُ التوصيل وثمنُ الإضافات في `orders.total` منذ البيع، فتُسمّى
+         * البطاقتان «ضمن الإجمالي». والعدّان على غير الملغى: طلبٌ أُلغي ليس
+         * توصيلًا تمّ — وإن بقي في الجدول موسومًا.
+         */
+        { label: t('طلبات التوصيل (غير الملغاة)'), value: number(summary.delivery), icon: 'truck', color: 'info' },
+        { label: t('طلبات الاستلام (غير الملغاة)'), value: number(summary.pickup), icon: 'store', color: 'info' },
+        { label: t('رسوم التوصيل — ضمن الإجمالي'), value: m(summary.delivery_fees), icon: 'truck', color: 'primary' },
+        { label: t('قيمة الإضافات — ضمن الإجمالي'), value: m(summary.addons), icon: 'layers', color: 'primary' },
     ];
 
     return (
@@ -85,12 +110,13 @@ export default function ReportsOrders() {
                             <TableHead>{t('الفرع')}</TableHead>
                             <TableHead>{t('وسيلة الدفع')}</TableHead>
                             <TableHead>{t('الحالة')}</TableHead>
+                            <TableHead>{t('نوع التنفيذ')}</TableHead>
                             <TableHead className="text-end">{t('الإجمالي')}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {rows.length === 0 ? (
-                            <TableEmpty colSpan={7}>{t('لا طلبات في هذه الفترة')}</TableEmpty>
+                            <TableEmpty colSpan={8}>{t('لا طلبات في هذه الفترة')}</TableEmpty>
                         ) : (
                             rows.map((r) => (
                                 <TableRow key={r.id}>
@@ -100,6 +126,7 @@ export default function ReportsOrders() {
                                     <TableCell className="text-[#6b7280]">{r.branch ?? '—'}</TableCell>
                                     <TableCell className="text-[#6b7280]">{r.method ?? '—'}</TableCell>
                                     <TableCell>{r.status ? <Badge status={r.status} /> : null}</TableCell>
+                                    <TableCell className="text-[#6b7280]">{r.fulfillment ?? '—'}</TableCell>
                                     <TableCell className="text-end tabular-nums">{m(r.total)}</TableCell>
                                 </TableRow>
                             ))

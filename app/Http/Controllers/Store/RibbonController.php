@@ -10,6 +10,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\StorePaymentIntent;
 use App\Models\Review;
+use App\Support\CategoryName;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
 use App\Support\Money;
@@ -541,7 +542,14 @@ class RibbonController extends Controller
         return Product::where('business_id', $bid)->where('active', true)->where('published', true);
     }
 
-    /** الأقسامُ التي فيها صنفٌ معروض — قسمٌ فارغ لا يُرسم */
+    /**
+     * الأقسامُ التي فيها صنفٌ معروض — قسمٌ فارغ لا يُرسم.
+     *
+     * واسمُ القسم من `CategoryName` — قاعدةُ الصندوق والموقع المبنيّ نفسُها:
+     * كانت هنا نسخةٌ تقع على العربيّ متى فرغ `name_en`، فتعرض الصفحةُ
+     * الإنجليزيّة «منتجات» و«الإضافات» وسطَ واجهةٍ إنجليزيّة، والمعجمُ
+     * يعرفهما يقينًا. والمعرّفُ كما هو: به يُرشَّح الرفّ.
+     */
     private function categories(int $bid, string $lang, $shown)
     {
         $shown ??= $this->shown($bid)->get(['id', 'category_id']);
@@ -549,7 +557,7 @@ class RibbonController extends Controller
 
         return Category::where('business_id', $bid)->orderBy('name')->get()
             ->filter(fn ($c) => (int) ($counts[$c->id] ?? 0) > 0)
-            ->map(fn ($c) => ['id' => $c->id, 'name' => $lang === 'en' && filled($c->name_en) ? $c->name_en : $c->name, 'count' => (int) $counts[$c->id]])
+            ->map(fn ($c) => ['id' => $c->id, 'name' => CategoryName::display($c->name, $c->name_en, $lang), 'count' => (int) $counts[$c->id]])
             ->values();
     }
 
@@ -574,7 +582,8 @@ class RibbonController extends Controller
         return [
             'id' => $p->id,
             'name' => $lang === 'en' && filled($p->name_en) ? $p->name_en : $p->name,
-            'category' => $p->category ? ($lang === 'en' && filled($p->category->name_en) ? $p->category->name_en : $p->category->name) : null,
+            // والقاعدةُ نفسُها التي يُسمّى بها القسمُ في المرشّح — فلا يفترق اسماه
+            'category' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, $lang) : null,
             'category_id' => $p->category_id,
             'image' => $p->image,
             'price' => $price,

@@ -1,6 +1,7 @@
 @extends('store.ribbon.layout')
 @section('title', $product['name'].' — '.$seo['brand'])
 @section('content')
+@php($offers = $product['available'] && count($upsells ?? []) > 0)
 <section class="rb-screen rb-wrap" style="padding:40px 24px" data-testid="rb-product-page">
     <a href="{{ $base }}/shop" style="font-size:13px;display:inline-flex;align-items:center;min-height:44px">{{ $t['back'] }}</a>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:48px;margin-top:20px;align-items:start">
@@ -51,7 +52,51 @@
                     </div>
                 </div>
             @endif
-            @if ($product['available'])
+            @if ($offers)
+                {{--
+                    ═══ «أضف مع طلبك» — لمن في قائمة المالك وحده (`RibbonUpsells`) ═══
+
+                    الكمّيّةُ ثمّ الإضافاتُ ثمّ الزرّ: يختار الزبونُ كلَّ شيءٍ ثمّ
+                    يضغط مرّةً واحدة. ومن ليس في القائمة يبقى على الصفّ القديم أدناه.
+                --}}
+                <div class="rb-qty" style="align-self:flex-start">
+                    <button type="button" data-rb-dec aria-label="−">−</button>
+                    <span data-rb-qty>1</span>
+                    <button type="button" data-rb-inc aria-label="+">+</button>
+                </div>
+                <div data-rb-upsells data-testid="rb-upsells">
+                    <h2 style="margin:0 0 8px;font-size:15px;font-weight:500">{{ $t['upsellTitle'] }}</h2>
+                    <div class="rb-ups">
+                        @foreach ($upsells as $u)
+                            <div class="rb-up" data-rb-up="{{ $u['id'] }}" @if (count($u['sizes'])) data-needs-variant @endif data-testid="rb-upsell">
+                                <button type="button" class="rb-up-pick" data-rb-up-pick aria-pressed="false">
+                                    <span class="rb-up-img">
+                                        @if ($u['image'])
+                                            <img src="{{ $u['image'] }}" alt="" loading="lazy">
+                                        @else
+                                            <span class="rb-stripes" style="display:block;--tint: {{ $u['tint'] }}"></span>
+                                        @endif
+                                    </span>
+                                    <span style="flex:1;min-width:0">
+                                        <span class="rb-up-name">{{ $u['name'] }}</span>
+                                        <span class="rb-up-price">@if ($u['from']){{ $t['from'] }} @endif{{ $u['price_text'] }}</span>
+                                    </span>
+                                    <span class="rb-up-tick" aria-hidden="true"></span>
+                                </button>
+                                @if (count($u['sizes']))
+                                    <div class="rb-up-sizes" data-rb-up-sizes hidden>
+                                        @foreach ($u['sizes'] as $s)
+                                            <button type="button" class="rb-pill" data-rb-up-size="{{ $s['id'] }}" aria-pressed="false">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
+                                        @endforeach
+                                    </div>
+                                    <p class="rb-error" style="margin:0 12px 12px" data-rb-up-need hidden>{{ $t['upsellChoose'] }}</p>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+                <button type="button" class="rb-btn" style="width:100%;height:48px" data-rb-add data-testid="rb-add">{{ $t['add'] }}</button>
+            @elseif ($product['available'])
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
                     <div class="rb-qty">
                         <button type="button" data-rb-dec aria-label="−">−</button>
@@ -71,6 +116,25 @@
 </section>
 @endsection
 @section('scripts')
+@if ($offers)
+<style>
+    .rb-ups { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .rb-up { border: 1px solid var(--rb-border); border-radius: var(--rb-r); background: #fff; }
+    .rb-up.on { border-color: var(--rb-olive); box-shadow: inset 0 0 0 1px var(--rb-olive); }
+    .rb-up-pick { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 72px; padding: 8px 12px; border: 0; background: transparent; color: #000; cursor: pointer; text-align: start; font: inherit; }
+    .rb-up-img { width: 56px; height: 56px; flex: none; border-radius: var(--rb-r-sm); overflow: hidden; background: var(--rb-soft); }
+    .rb-up-img img, .rb-up-img .rb-stripes { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .rb-up-name { display: block; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+    .rb-up-price { display: block; font-size: 13px; font-weight: 600; margin-top: 2px; }
+    .rb-up-tick { width: 22px; height: 22px; flex: none; border: 1.5px solid var(--rb-border); border-radius: 50%; }
+    .rb-up.on .rb-up-tick { border-color: var(--rb-olive); background: var(--rb-olive) radial-gradient(circle, #fff 0 3px, transparent 4px); }
+    .rb-up-sizes { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 12px 12px; }
+    .rb-up-sizes .rb-pill { min-height: 44px; }
+    /* و`display` أعلاه يغلب `hidden` لولا هذا — فتظهر المقاساتُ قبل الاختيار */
+    .rb-up-sizes[hidden], .rb-up [data-rb-up-need][hidden] { display: none; }
+</style>
+<script>{!! file_get_contents(resource_path('js/store/ribbon-upsells.js')) !!}</script>
+@endif
 <script>
 (function () {
     var id = {{ (int) $product['id'] }}, variant = null, qty = 1;
@@ -88,11 +152,30 @@
     var dec = document.querySelector('[data-rb-dec]'), inc = document.querySelector('[data-rb-inc]'), add = document.querySelector('[data-rb-add]');
     if (dec) dec.addEventListener('click', function () { qty = Math.max(1, qty - 1); q.textContent = qty; });
     if (inc) inc.addEventListener('click', function () { qty = Math.min({{ \App\Support\Store\WebCheckout::MAX_QTY }}, qty + 1); q.textContent = qty; });
+@if ($offers)
+    // الصنفُ بمقاسه وكمّيّته، ومعه ما اختير من الإضافات — في ضغطةٍ واحدة
+    if (add) RBUpsells.mount(document.querySelector('[data-rb-upsells]'), {
+        button: add,
+        main: function () { return { id: id, variant_id: variant, qty: qty }; },
+        add: RB.add,
+        done: function () {
+            add.textContent = @json($t['added']); RB.toast(@json($t['added']));
+            setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
+        },
+        /*
+            والتنبيهُ عند البطاقة لا في الشريط العائم: الشريطُ سطرٌ قصير،
+            وجملةٌ بطولها تنقصّ فيه على الجوّال. فتُقال حيث يُختار المقاس،
+            وتُساق الصفحةُ إليها.
+        */
+        missing: function (cards) { cards[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' }); },
+    });
+@else
     if (add) add.addEventListener('click', function () {
         RB.add(id, variant, qty);
         add.textContent = @json($t['added']); RB.toast(@json($t['added']));
         setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
     });
+@endif
 })();
 </script>
 @endsection

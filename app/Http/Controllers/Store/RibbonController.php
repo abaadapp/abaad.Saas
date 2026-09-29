@@ -16,6 +16,7 @@ use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\Seo;
 use App\Support\Store\RibbonTexts;
+use App\Support\Store\RibbonUpsells;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\GiftCard;
 use App\Support\Store\StoreNav;
@@ -360,14 +361,31 @@ class RibbonController extends Controller
             'product' => $this->card($p, $lang, $business, $currency) + [
                 'description' => (string) $p->description,
                 'available' => $available,
-                'sizes' => $p->variants->map(fn ($v) => [
-                    'id' => $v->id,
-                    'name' => $lang === 'en' && filled($v->name_en) ? $v->name_en : $v->name,
-                    'price' => (float) $v->price,
-                    'price_text' => Money::format((float) $v->price, $currency),
-                ])->values()->all(),
+                'sizes' => $this->sizes($p, $lang, $currency),
             ],
+            /*
+             * «أضف مع طلبك» — لمن في قائمة المالك وحده (`RibbonUpsells`).
+             *
+             * وصنفٌ نفد لا زرَّ سلّةٍ له، فلا يُقترح معه شيء. والأسعارُ
+             * للعرض: الإتمامُ يسعّر البنودَ من القاعدة كأيّ صنف.
+             */
+            'upsells' => $available
+                ? RibbonUpsells::for($bid, $p, $this->shown($bid))
+                    ->map(fn (Product $u) => $this->card($u, $lang, $business, $currency) + ['sizes' => $this->sizes($u, $lang, $currency)])
+                    ->all()
+                : [],
         ];
+    }
+
+    /** مقاساتُ الصنف المفعّلة — بأسمائها بلغة الصفحة وأسعارها من القاعدة */
+    private function sizes(Product $p, string $lang, array $currency): array
+    {
+        return $p->variants->map(fn ($v) => [
+            'id' => $v->id,
+            'name' => $lang === 'en' && filled($v->name_en) ? $v->name_en : $v->name,
+            'price' => (float) $v->price,
+            'price_text' => Money::format((float) $v->price, $currency),
+        ])->values()->all();
     }
 
     private function checkoutData(Business $business): array

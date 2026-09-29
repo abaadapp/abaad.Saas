@@ -56,6 +56,8 @@ final class RibbonTexts
         'cPhone' => 'الهاتف', 'cWhatsapp' => 'واتساب', 'cEmail' => 'البريد الإلكتروني', 'cAddress' => 'العنوان', 'cHours' => 'ساعات العمل',
         'openMap' => 'افتح في الخرائط', 'callNow' => 'اتصل الآن', 'waNow' => 'راسلنا على واتساب',
         'newsTitle' => 'اشترك في عروضنا', 'qty' => 'الكمية',
+        // «أضف مع طلبك» في صفحة الصنف — انظر `RibbonUpsells`
+        'upsellTitle' => 'أضف مع طلبك', 'upsellChoose' => 'اختر خيارًا لهذه الإضافة قبل الإضافة إلى السلة',
     ];
 
     private const EN = [
@@ -93,6 +95,7 @@ final class RibbonTexts
         'cPhone' => 'Phone', 'cWhatsapp' => 'WhatsApp', 'cEmail' => 'Email', 'cAddress' => 'Address', 'cHours' => 'Opening hours',
         'openMap' => 'Open in Maps', 'callNow' => 'Call now', 'waNow' => 'Message us on WhatsApp',
         'newsTitle' => 'Join our offers list', 'qty' => 'Quantity',
+        'upsellTitle' => 'Add to your order', 'upsellChoose' => 'Choose an option for this add-on before adding to cart',
     ];
 
     /** @return array<string, string> */

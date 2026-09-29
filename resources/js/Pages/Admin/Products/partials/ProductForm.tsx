@@ -14,6 +14,7 @@ import AddonDialog from './AddonDialog';
 import type { AddonOption, CompositionData } from './addons';
 import Gallery, { type GalleryImage } from './Gallery';
 import { boutiqueMove, type BoutiqueOption } from './boutique';
+import AddonsLayoutSwitch from './AddonsLayoutSwitch';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import type { Category, Product } from '@/types/models';
 
@@ -36,6 +37,11 @@ interface Props {
     boutiques?: BoutiqueOption[];
     /** بوتيكُ الصنف اليوم — في التعديل */
     boutiqueId?: number | null;
+    /**
+     * طريقةُ عرض الإضافات في نقطة البيع — إعدادٌ للنشاط لا للمنتج، ويُحفظ
+     * بطلبه المستقلّ. انظر `AddonsLayoutSwitch`.
+     */
+    addonsDisplay?: { layout: string; can_change: boolean };
 }
 
 const NAV = [
@@ -95,6 +101,7 @@ export default function ProductForm({
     galleryLimits,
     boutiques = [],
     boutiqueId = null,
+    addonsDisplay,
 }: Props) {
     const t = useTranslate();
     const editing = !!product;
@@ -517,6 +524,12 @@ export default function ProductForm({
                                             <Plus />
                                         </Button>
                                     </span>
+                                    {addonsDisplay && (
+                                        <AddonsLayoutSwitch
+                                            initial={addonsDisplay.layout}
+                                            canChange={addonsDisplay.can_change}
+                                        />
+                                    )}
                                 </Field>
 
                                 {/* ولا يُعرض الحقلُ لمن لا صفوفَ له: حقلٌ فارغٌ

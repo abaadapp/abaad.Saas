@@ -12,7 +12,6 @@ import {
     Minus,
     PauseCircle,
     Plus,
-    PlusCircle,
     Save,
     ScanBarcode,
     ScanLine,
@@ -34,6 +33,7 @@ import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDi
 import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
 import CustomOrderCard from '@/Pages/Pos/partials/CustomOrderCard';
 import ItemOptionsDialog from '@/Pages/Pos/partials/ItemOptionsDialog';
+import { ADDONS_TAB, AddonsBar, AddonsSection, addonsLayoutOf, addonsView, shownAddons } from '@/Pages/Pos/partials/PosAddons';
 import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
@@ -61,6 +61,8 @@ interface Props {
     seasons?: { id: number; name: string; product_ids: number[] }[];
     customers: (PosCustomer & { avatar?: string | null })[];
     addons: Addon[];
+    /** كيف تُعرض الإضافات — شريطًا أم قسمًا كاملًا. انظر `PosAddonsLayout` */
+    addonsLayout?: string;
     coupons: PosCoupon[];
     resumeCart: ResumeCart | null;
     settings: LoyaltySettings & {
@@ -96,7 +98,7 @@ export function seasonOfLine(season: number | null, seasonIds: Set<number>, prod
 }
 
 export default function PosIndex() {
-    const { products: serverProducts, categories, seasons = [], customers, addons, coupons, resumeCart, settings, orderOptions, customOrder, context } =
+    const { products: serverProducts, categories, seasons = [], customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -178,7 +180,10 @@ export default function PosIndex() {
             maximumFractionDigits: decimalsFor(currency.code),
         })} ${currency.symbol || currency.code}`;
 
-    const activeAddons = useMemo(() => addons.filter((a) => a.active), [addons]);
+    const activeAddons = useMemo(() => shownAddons(addons), [addons]);
+    /* طريقةُ عرضها وما يُرسم منها مع التبويب المختار — انظر `addonsView` */
+    const layout = addonsLayoutOf(addonsLayout);
+    const view = addonsView(layout, cat);
 
     /*
      * المنتج البسيط يدخل السلّة بنقرة، وذو الخيارات يُسأل.
@@ -410,6 +415,25 @@ export default function PosIndex() {
                                 {c.label}
                             </button>
                         ))}
+                        {/*
+                            وتبويبُ «الإضافات» في القسم الكامل وحده — بقيمةٍ داخليّة
+                            لا بالاسم، فلا يختلط بقسمٍ حقيقيّ بهذا الاسم.
+                        */}
+                        {layout === 'section' && activeAddons.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setCat(ADDONS_TAB)}
+                                data-testid="pos-addons-tab"
+                                className={cn(
+                                    'whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors touch:px-5 touch:py-2.5',
+                                    cat === ADDONS_TAB
+                                        ? 'bg-[#7c3aed] text-white shadow-sm'
+                                        : 'border border-[#ddd6fe] bg-[#f5f3ff] text-[#7c3aed] hover:bg-[#ede9fe]',
+                                )}
+                            >
+                                {t('الإضافات')}
+                            </button>
+                        )}
                     </div>
 
                     {/*
@@ -440,35 +464,14 @@ export default function PosIndex() {
                         </div>
                     )}
 
-                    {/* الإضافات — تُضاف كبنود بلا مخزون */}
-                    {activeAddons.length > 0 && (
-                        <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1">
-                            <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-bold text-[#7c3aed]">
-                                <PlusCircle className="size-4" /> {t('الإضافات')}:
-                            </span>
-                            {activeAddons.map((a) => {
-                                const emoji = /[^\x00-\x7F]/.test(a.icon) ? a.icon : '🎁';
-                                return (
-                                    <button
-                                        key={a.id}
-                                        type="button"
-                                        onClick={() =>
-                                            cart.add({ key: `a${a.id}`, id: null, addon_id: a.id, name: a.label, price: a.price, icon: emoji, image: null })
-                                        }
-                                        className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#c4b5fd] hover:bg-[#f5f3ff]"
-                                    >
-                                        <span className="text-base leading-none">{emoji}</span>
-                                        <span>{a.label}</span>
-                                        <span className="text-xs font-bold text-[#7c3aed]">{money(a.price)}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
+                    {/* الإضافات — تُضاف كبنود بلا مخزون. شريطٌ كما كان ما لم يختر صاحبُ النشاط القسم */}
+                    {view.bar && <AddonsBar addons={activeAddons} money={money} onAdd={cart.add} />}
 
                     {/* شبكة المنتجات */}
                     <div className="-mx-1 flex-1 overflow-y-auto overscroll-contain px-1">
-                        {visibleProducts.length === 0 && customTemplates.length === 0 ? (
+                        {/* القسمُ الكامل فوق المنتجات في «الكل»، ووحدَه في تبويبه */}
+                        {view.section && <AddonsSection addons={activeAddons} money={money} onAdd={cart.add} />}
+                        {!view.products ? null : visibleProducts.length === 0 && customTemplates.length === 0 ? (
                             <p className="py-16 text-center text-sm text-gray-400">
                                 {q.trim() || cat !== 'الكل' ? t('لا نتائج مطابقة للبحث أو التصفية') : t('لا توجد منتجات بعد')}
                             </p>

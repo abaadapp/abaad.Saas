@@ -9,8 +9,15 @@ import type { Category } from '@/types/models';
 import type { BoutiqueOption } from './partials/boutique';
 
 export default function ProductCreate() {
-    const { categories, composition, boutiques, context } =
-        usePage<PageProps<{ categories: Category[]; composition: CompositionData; boutiques?: BoutiqueOption[] }>>().props;
+    const { categories, composition, boutiques, addonsDisplay, context } =
+        usePage<
+            PageProps<{
+                categories: Category[];
+                composition: CompositionData;
+                boutiques?: BoutiqueOption[];
+                addonsDisplay?: { layout: string; can_change: boolean };
+            }>
+        >().props;
     const t = useTranslate();
 
     return (
@@ -25,6 +32,7 @@ export default function ProductCreate() {
                 currencyLabel={context!.currency.symbol || context!.currency.code}
                 composition={composition}
                 boutiques={boutiques}
+                addonsDisplay={addonsDisplay}
             />
         </AdminLayout>
     );

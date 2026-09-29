@@ -6971,5 +6971,11 @@
     "التبعية": "Owner",
     "هذا المنتج مرتبط حاليًا بـ :from. تغييره سينقله إلى :to.": "This product currently belongs to :from. Changing it will move it to :to.",
     "بدون بوتيك = منتج المتجر. ما بِيع من قبل يبقى لصاحبه وقت البيع.": "No boutique = a shop product. Past sales stay with whoever owned it at the time of sale.",
-    "أرقام بنود البيع وحدها بسعرها وقت البيع، والعمولة بنسبة البوتيك وقت البيع. الضريبة ووسائل الدفع وخصم الفاتورة والمصروفات وصافي الربح تُسجَّل على الطلب كاملًا فلا تُنسب لبند — لذلك لا تظهر هنا. والتسوية الفعلية من شاشة البوتيكات.": "Sold line items only, at their price at the time of sale; commission uses the boutique rate at the time of sale. Tax, payment methods, invoice discounts, expenses and net profit are recorded on the whole order and cannot be attributed to a line — so they are not shown here. Actual settlement is done from the Boutiques screen."
+    "أرقام بنود البيع وحدها بسعرها وقت البيع، والعمولة بنسبة البوتيك وقت البيع. الضريبة ووسائل الدفع وخصم الفاتورة والمصروفات وصافي الربح تُسجَّل على الطلب كاملًا فلا تُنسب لبند — لذلك لا تظهر هنا. والتسوية الفعلية من شاشة البوتيكات.": "Sold line items only, at their price at the time of sale; commission uses the boutique rate at the time of sale. Tax, payment methods, invoice discounts, expenses and net profit are recorded on the whole order and cannot be attributed to a line — so they are not shown here. Actual settlement is done from the Boutiques screen.",
+    "طريقة عرض الإضافات في نقطة البيع": "How add-ons appear at the point of sale",
+    "شريط أفقي": "Bar",
+    "قسم كامل": "Full section",
+    "يطبّق على نقطة البيع في جميع أجهزة النشاط.": "Applies to the point of sale on all of the business’s devices.",
+    "تعذّر حفظ طريقة العرض": "Could not save the display option",
+    "طريقة عرض الإضافات": "Add-on display"
 }

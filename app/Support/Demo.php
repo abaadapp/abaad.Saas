@@ -427,7 +427,16 @@ class Demo
          * ينشر — أو لمن له موقعٌ آخر ولم يفتح متجرًا هنا.
          */
         if ($business && Storefront::published($business)) {
-            return Storefront::url($business->site_slug);
+            /*
+             * والعنوانُ ما يُخدَم لا ما يُبنى — `canonical` مصدرُه الواحد.
+             *
+             * كان `Storefront::url` يبني النطاقَ الفرعيّ دائمًا، ولو كانت
+             * النطاقاتُ الفرعيّة مطفأة (`storefront.subdomains`): فيفتح الزرُّ
+             * `slug.abaadapp.om` ولا شيءَ يُجيب عليه، والمتجرُ حيٌّ على
+             * `/s/{slug}`. و`canonical` يعرف الثلاثة: نطاقَ التاجر النشط،
+             * ثمّ الفرعيَّ إن فُعّل، ثمّ `/s/` — وبمعرّف النشاط يُحترم نطاقُه.
+             */
+            return Storefront::canonical($business->site_slug, (int) $business->id);
         }
 
         $site = MarketingSettings::group(self::bid(), 'website');

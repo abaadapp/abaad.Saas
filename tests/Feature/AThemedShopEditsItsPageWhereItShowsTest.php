@@ -12,10 +12,12 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
+use App\Support\Store\CatalogTools;
 use App\Support\Store\PageEditor;
 use App\Support\Store\StorePage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
@@ -463,5 +465,273 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
                 $this->assertContains($shown->id, $ids);
                 $this->assertNotContains($hidden->id, $ids, 'مخفيٌّ يُعرض للاختيار — فيُختار ولا يظهر');
             });
+    }
+
+    /* ═══════════ ولوحتا الفئات و«وصل حديثًا» — لمتجر سعود وحده ═══════════ */
+
+    /** يفتح اللوحتين لهذا المتجر بالقائمة — كما يُفتح متجرُ سعود على الإنتاج */
+    private function allowCatalogTools(?int $businessId = null): void
+    {
+        config(['storefront.ribbon_catalog_editor_businesses' => [$businessId ?? $this->shop->id]]);
+    }
+
+    /** @return array<string, mixed>|null */
+    private function catalogTools(): ?array
+    {
+        return $this->actingAs($this->owner)
+            ->get(route('admin.website.editor'))
+            ->assertOk()
+            ->viewData('page')['props']['catalogTools'] ?? null;
+    }
+
+    private function product(string $name, array $over = []): Product
+    {
+        return Product::create($over + [
+            'business_id' => $this->shop->id, 'name' => $name, 'price' => 10,
+            'cost' => 4, 'quantity' => 5, 'alert_qty' => 1, 'active' => true, 'published' => true,
+        ]);
+    }
+
+    /**
+     * متجرُ RIBBON آخرُ ليس في القائمة: لا لوحةَ ولا حمولة — وصفّاه كما كانا.
+     *
+     * ولبسُ الواجهة لا يكفي، وقائمةُ Paymob لا تُستعار: متجرٌ فيها وحده لا
+     * يُفتح له هذا.
+     */
+    public function test_a_ribbon_shop_outside_the_list_keeps_the_editor_it_had(): void
+    {
+        $other = Business::create(['name' => 'متجر آخر', 'type' => 'عام', 'status' => 'نشط', 'site_slug' => 'other-ribbon', 'storefront_theme' => 'ribbon']);
+        $this->allowCatalogTools($other->id);
+        config(['storefront.paymob_businesses' => [$this->shop->id]]);
+        $this->sell();
+
+        $response = $this->actingAs($this->owner)->get(route('admin.website.editor'))->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $this->assertArrayHasKey('catalogTools', $props);
+        $this->assertNull($props['catalogTools'], 'لوحتا سعود وصلتا متجرًا ليس في قائمتهما');
+        $this->assertFalse(CatalogTools::allowed($this->shop->id));
+
+        // وسطرُ «يُكتب في…» باقٍ في الصفّين — فالمصدرُ لم يُحذف من `PageEditor`
+        $rows = array_column($props['rows'], null, 'key');
+        $this->assertSame('admin.products.index', $rows['cats']['source']['route']);
+        $this->assertSame('admin.products.index', $rows['new']['source']['route']);
+    }
+
+    /** وقائمةٌ فارغة لا تفتحها لأحد */
+    public function test_an_empty_list_opens_it_for_nobody(): void
+    {
+        config(['storefront.ribbon_catalog_editor_businesses' => []]);
+
+        $this->assertNull($this->catalogTools());
+    }
+
+    /** والقائمةُ على الإنتاج متجرُ سعود وحده — ولا تُقرأ من `env` */
+    public function test_the_shipped_list_is_saud_alone(): void
+    {
+        $config = require config_path('storefront.php');
+
+        $this->assertSame([5], $config['ribbon_catalog_editor_businesses']);
+    }
+
+    /** ومن في القائمة تصله اللوحتان — ولا سعرَ ولا مخزونَ ولا كلفةَ فيهما */
+    public function test_the_listed_shop_receives_both_panels_and_nothing_financial(): void
+    {
+        $this->allowCatalogTools();
+        $this->sell();
+
+        $tools = $this->catalogTools();
+
+        $this->assertIsArray($tools);
+        $this->assertSame(['categories', 'new_arrivals'], array_keys($tools));
+        $this->assertSame(['id', 'name', 'name_en', 'shown_count'], array_keys($tools['categories'][0]));
+        $this->assertSame(['id', 'name', 'image', 'category'], array_keys($tools['new_arrivals'][0]));
+    }
+
+    /** فئاتُ متجرٍ آخر وأصنافُه لا تظهر أبدًا — ولا تُعدّ في فئات هذا */
+    public function test_another_shops_categories_and_products_never_appear(): void
+    {
+        $this->allowCatalogTools();
+        $mine = $this->sell();
+
+        $stranger = Business::create(['name' => 'غريب', 'type' => 'عام', 'status' => 'نشط', 'site_slug' => 'stranger', 'storefront_theme' => 'ribbon']);
+        $theirs = Category::create(['business_id' => $stranger->id, 'name' => 'فئة الغريب']);
+        $foreign = Product::create([
+            'business_id' => $stranger->id, 'name' => 'صنف الغريب', 'price' => 1, 'category_id' => $theirs->id,
+            'cost' => 0, 'quantity' => 1, 'alert_qty' => 0, 'active' => true, 'published' => true,
+        ]);
+        // وصنفٌ غريبٌ مُلصَقٌ بفئةٍ من هذا المتجر لا يُحسب فيها
+        Product::create([
+            'business_id' => $stranger->id, 'name' => 'متسلّل', 'price' => 1, 'category_id' => $mine->category_id,
+            'cost' => 0, 'quantity' => 1, 'alert_qty' => 0, 'active' => true, 'published' => true,
+        ]);
+
+        $tools = $this->catalogTools();
+
+        $this->assertSame([$mine->category_id], array_column($tools['categories'], 'id'));
+        $this->assertSame(1, $tools['categories'][0]['shown_count'], 'صنفُ متجرٍ آخر عُدّ في فئةٍ من هذا');
+        $this->assertSame([$mine->id], array_column($tools['new_arrivals'], 'id'));
+        $this->assertNotContains($foreign->id, array_column($tools['new_arrivals'], 'id'));
+    }
+
+    /**
+     * العدُّ للمفعَّل المنشور وحده — والفئةُ الفارغةُ تبقى وتُعدّ صفرًا.
+     *
+     * والصنفُ بلا فئة لا يصنع فئةً وهميّة: القائمةُ من جدول الفئات لا من الأصناف.
+     */
+    public function test_each_category_counts_only_what_is_active_and_published(): void
+    {
+        $this->allowCatalogTools();
+        $roses = Category::create(['business_id' => $this->shop->id, 'name' => 'ورد', 'name_en' => 'Roses']);
+        $empty = Category::create(['business_id' => $this->shop->id, 'name' => 'هدايا']);
+
+        $this->product('وردة ١', ['category_id' => $roses->id]);
+        $this->product('وردة ٢', ['category_id' => $roses->id]);
+        $this->product('وردة مطفأة', ['category_id' => $roses->id, 'active' => false]);
+        $this->product('وردة مخفيّة', ['category_id' => $roses->id, 'published' => false]);
+        $this->product('هديّة مخفيّة', ['category_id' => $empty->id, 'published' => false]);
+        $this->product('بلا فئة');
+
+        $cats = array_column($this->catalogTools()['categories'], null, 'id');
+
+        $this->assertSame([$empty->id, $roses->id], array_keys($cats), 'فئةٌ وهميّةٌ ظهرت، أو غابت فئةٌ قائمة');
+        $this->assertSame(2, $cats[$roses->id]['shown_count'], 'المطفأُ أو المخفيُّ عُدّ');
+        $this->assertSame('Roses', $cats[$roses->id]['name_en']);
+        $this->assertSame(0, $cats[$empty->id]['shown_count'], 'فئةٌ لا يُعرض فيها شيءٌ عُدّت');
+        $this->assertNull($cats[$empty->id]['name_en']);
+    }
+
+    /**
+     * «وصل حديثًا» = أحدثُ أربعةٍ مفعَّلةٍ منشورة بالمعرّف — وتعديلُ قديمٍ لا يرفعه.
+     *
+     * والتاريخان يُحرَّكان عمدًا: صنفٌ قديمٌ عُدّل اليوم، وقديمٌ آخرُ بتاريخ
+     * إنشاءٍ متأخّر (استيرادٌ مثلًا). فلو رتّبت اللوحةُ بغير المعرّف لظهر
+     * أحدُهما — والواجهةُ لا تُظهره.
+     */
+    public function test_new_arrivals_are_the_newest_four_shown_by_id(): void
+    {
+        $this->allowCatalogTools();
+        $cat = Category::create(['business_id' => $this->shop->id, 'name' => 'باقات']);
+
+        $old = $this->product('قديم عُدّل', ['category_id' => $cat->id]);
+        $backdated = $this->product('قديم بتاريخٍ متأخّر');
+        $a = $this->product('أ', ['category_id' => $cat->id]);
+        $b = $this->product('ب');
+        $this->product('مطفأ', ['active' => false]);
+        $c = $this->product('ج');
+        $d = $this->product('د');
+        $this->product('مخفيّ', ['published' => false]);
+
+        Carbon::setTestNow('2027-03-01 10:00:00');
+        $old->update(['name' => 'قديم عُدّل اليوم']);
+        DB::table('products')->where('id', $backdated->id)->update(['created_at' => '2030-01-01 00:00:00']);
+
+        $arrivals = $this->catalogTools()['new_arrivals'];
+
+        $this->assertSame([$d->id, $c->id, $b->id, $a->id], array_column($arrivals, 'id'), 'ليس أحدثَ أربعةٍ معروضةٍ بالمعرّف');
+        $this->assertSame('باقات', $arrivals[3]['category']);
+        $this->assertNull($arrivals[0]['category']);
+        $this->assertNull($arrivals[0]['image'], 'صورةٌ بديلةٌ من الإنترنت عُرضت كأنّها بضاعتُه');
+    }
+
+    /** وأقلُّ من أربعة يُعرض كما هو — ولا شيءَ يُعرض قائمةً فارغة */
+    public function test_new_arrivals_show_what_there_is_and_nothing_when_nothing(): void
+    {
+        $this->allowCatalogTools();
+
+        $this->assertSame([], $this->catalogTools()['new_arrivals']);
+
+        $only = $this->product('وحيد');
+        $this->assertSame([$only->id], array_column($this->catalogTools()['new_arrivals'], 'id'));
+    }
+
+    /**
+     * ═══ والقاعدةُ قاعدةُ الواجهة — بالمقارنة لا بالنسخ ═══
+     *
+     * `RibbonController` لا يُمسّ في هذا العمل، وقاعدتُه خاصّةٌ فيه. فتُطلب
+     * الصفحةُ الرئيسيّة نفسُها ويُقارن ما تعرضه بما تقوله اللوحتان — فإن
+     * تبدّلت إحداهما دون الأخرى سقط هذا.
+     */
+    public function test_the_panels_say_exactly_what_the_storefront_shows(): void
+    {
+        $this->allowCatalogTools();
+        MarketingSettings::save($this->shop->id, 'website', ['store_on' => '1']);
+
+        $roses = Category::create(['business_id' => $this->shop->id, 'name' => 'ورد']);
+        $gifts = Category::create(['business_id' => $this->shop->id, 'name' => 'هدايا']);
+        Category::create(['business_id' => $this->shop->id, 'name' => 'فارغة']);
+
+        foreach (range(1, 6) as $n) {
+            $this->product('صنف '.$n, ['category_id' => $n % 2 ? $roses->id : $gifts->id]);
+        }
+        $this->product('مطفأ', ['category_id' => $gifts->id, 'active' => false]);
+        $this->product('مخفيّ', ['category_id' => $roses->id, 'published' => false]);
+
+        $tools = $this->catalogTools();
+        $home = $this->get('/s/ribbon')->assertOk();
+
+        $this->assertSame(
+            array_column($home->viewData('new'), 'id'),
+            array_column($tools['new_arrivals'], 'id'),
+            '«وصل حديثًا» في المحرّر غيرُ ما تعرضه الواجهة',
+        );
+
+        $shown = array_values(array_filter($tools['categories'], fn ($c) => $c['shown_count'] > 0));
+        $this->assertSame(
+            collect($home->viewData('categories'))->map(fn ($c) => [$c['id'], $c['count']])->all(),
+            array_map(fn ($c) => [$c['id'], $c['shown_count']], $shown),
+            'الفئاتُ «الظاهرة» في المحرّر غيرُ ما تعرضه الواجهة',
+        );
+    }
+
+    /**
+     * والفئةُ تُضاف من المحرّر بالباب القائم — وتعود في اللوحة فارغةً «لن تظهر».
+     *
+     * ولا بابَ ثانٍ لإنشاء الفئات: واحدٌ يحمل قواعدَها وحصرَها بالمتجر.
+     */
+    public function test_a_category_added_from_the_editor_uses_the_one_existing_door(): void
+    {
+        $this->allowCatalogTools();
+
+        $doors = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn ($r) => str_ends_with((string) $r->getActionName(), 'CatalogQuickAddController@storeCategory'))
+            ->map(fn ($r) => $r->getName())->values()->all();
+        $this->assertSame(['admin.products.categories.store'], $doors, 'بابٌ ثانٍ لإنشاء الفئات');
+
+        $panel = file_get_contents(resource_path('js/Pages/Admin/Website/theme/CatalogTools.tsx'));
+        $this->assertStringContainsString("route('admin.products.categories.store')", $panel);
+
+        $this->actingAs($this->owner)
+            ->postJson(route('admin.products.categories.store'), ['name' => 'شوكولاتة', 'name_en' => 'Chocolate'])
+            ->assertOk();
+
+        $this->actingAs($this->owner)
+            ->postJson(route('admin.products.categories.store'), ['name' => 'شوكولاتة'])
+            ->assertStatus(422)->assertJsonValidationErrors('name');
+
+        $made = collect($this->catalogTools()['categories'])->firstWhere('name', 'شوكولاتة');
+        $this->assertSame(['Chocolate', 0], [$made['name_en'], $made['shown_count']]);
+        $this->assertSame(0, Product::where('business_id', $this->shop->id)->count(), 'إضافةُ فئةٍ أنشأت صنفًا');
+    }
+
+    /**
+     * ولا معرّفَ متجرٍ مكتوبًا في الشاشة ولا في المتحكّم — القائمةُ وحدها تقرّر.
+     */
+    public function test_no_business_id_is_written_outside_the_list(): void
+    {
+        $files = [
+            resource_path('js/Pages/Admin/Website/ThemeEditor.tsx'),
+            resource_path('js/Pages/Admin/Website/theme/CatalogTools.tsx'),
+            app_path('Http/Controllers/Admin/Website/EditorController.php'),
+            app_path('Support/Store/CatalogTools.php'),
+        ];
+
+        foreach ($files as $file) {
+            $this->assertDoesNotMatchRegularExpression(
+                '/(business_?[iI]d|bid|id)\s*(===?|!==?)\s*5\b|\[\s*5\s*\]/',
+                file_get_contents($file),
+                basename($file).' يسأل عن متجرٍ بمعرّفه',
+            );
+        }
     }
 }

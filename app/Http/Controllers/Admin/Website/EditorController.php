@@ -8,6 +8,7 @@ use App\Models\Website;
 use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
 use App\Support\ProductImages;
+use App\Support\Store\CatalogTools;
 use App\Support\Store\PageEditor;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StorePage;
@@ -197,6 +198,13 @@ class EditorController extends Controller
                     // الخام لا المقروء: الصورةُ البديلة من الإنترنت ليست بضاعتَه
                     'image' => ProductImages::hasRealMain($p) ? $p->image : null,
                 ])->all(),
+            /*
+             * لوحتا الفئات و«وصل حديثًا» — لمن في قائمتها وحده، و`null` لغيره.
+             *
+             * ومن ليس فيها يبقى صفّاه على سطر «يُكتب في…» كما كانا. انظر
+             * `CatalogTools`.
+             */
+            'catalogTools' => CatalogTools::for($bid),
         ]);
     }
 

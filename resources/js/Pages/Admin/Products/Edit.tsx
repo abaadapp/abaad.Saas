@@ -21,10 +21,12 @@ interface Props {
     /** بوتيكاتُ المتجر — فارغةٌ لمن لا بوتيكَ عنده. انظر `Boutiques::options` */
     boutiques?: BoutiqueOption[];
     boutiqueId?: number | null;
+    /** طريقةُ عرض الإضافات في نقطة البيع — إعدادٌ للنشاط. انظر `AddonsLayoutSwitch` */
+    addonsDisplay?: { layout: string; can_change: boolean };
 }
 
 export default function ProductEdit() {
-    const { product, categories, description, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, context } =
+    const { product, categories, description, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, addonsDisplay, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -46,6 +48,7 @@ export default function ProductEdit() {
                 galleryLimits={galleryLimits}
                 boutiques={boutiques}
                 boutiqueId={boutiqueId}
+                addonsDisplay={addonsDisplay}
             />
         </AdminLayout>
     );

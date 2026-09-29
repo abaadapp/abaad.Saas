@@ -705,6 +705,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      */
     Route::post('/products/categories', [CatalogQuickAddController::class, 'storeCategory'])->name('products.categories.store');
     Route::post('/products/addons', [CatalogQuickAddController::class, 'storeAddon'])->name('products.addons.store');
+    // طريقةُ عرض الإضافات في نقطة البيع — لصاحب النشاط، ويُحرس في المتحكّم.
+    // ويسبق «products/addons/{addon}» فلا تُقرأ «display» معرّفَ إضافة
+    Route::put('/products/addons/display', [CatalogQuickAddController::class, 'addonsDisplay'])->name('products.addons.display');
     // تعديل إضافةٍ قائمة — سعرها ومداها وما تأكله من الرفّ. ويسبق مسار
     // «products/{id}/addons» فلا يبتلعه: هذا معرّف إضافةٍ لا معرّف منتج
     Route::put('/products/addons/{addon}', [CatalogQuickAddController::class, 'updateAddon'])->name('products.addons.update');

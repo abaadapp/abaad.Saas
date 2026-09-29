@@ -24,6 +24,7 @@ import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 
@@ -153,6 +154,11 @@ interface Props extends ThemeShell {
     order: string[];
     maxFeatured: number;
     products: { id: number; name: string; image: string | null }[];
+    /**
+     * لوحتا الفئات و«وصل حديثًا» — لمتجرٍ في قائمتها وحده (`CatalogTools`).
+     * وغيابُها يعني الشاشةَ كما كانت: سطرُ «يُكتب في…» في الصفّين.
+     */
+    catalogTools?: CatalogTools | null;
 }
 
 /** ما يقوله سطرُ الحال — وكلٌّ منها حالٌ وقعت لا حالٌ مفترضة */
@@ -176,7 +182,17 @@ type Status = 'clean' | 'saving' | 'saved' | 'failed';
  * الواجهةُ تقرأ الإعدادات مباشرةً، فما يُحفظ يراه زبونُه في اللحظة نفسِها.
  * وزرُّ نشرٍ لا يؤجّل شيئًا يَعِد بما لا يفعل.
  */
-export default function ThemeEditor({ site: shell, publishing, pages, rows, values, order, maxFeatured, products }: Props) {
+export default function ThemeEditor({
+    site: shell,
+    publishing,
+    pages,
+    rows,
+    values,
+    order,
+    maxFeatured,
+    products,
+    catalogTools = null,
+}: Props) {
     const t = useTranslate();
 
     /* الترتيبُ محلّيٌّ لأنّه يُكتب بالضغط — والباقي يأتي من الخادم بعد كلّ حفظ */
@@ -464,6 +480,17 @@ export default function ThemeEditor({ site: shell, publishing, pages, rows, valu
         const expanded = open === r.key;
         const i = chosen.indexOf(r.key);
 
+        /*
+            ولوحةُ الصفّ تُغني عن سطر «يُكتب في…» حين تصل: فيها أبوابُه كلُّها.
+            ومن لم تصله يبقى على السطر — فالمصدرُ لا يُحذف من `PageEditor`.
+        */
+        const panel =
+            catalogTools && r.key === 'cats' ? (
+                <CategoriesPanel categories={catalogTools.categories} />
+            ) : catalogTools && r.key === 'new' ? (
+                <NewArrivalsPanel items={catalogTools.new_arrivals} />
+            ) : null;
+
         return (
             <li key={r.key} className="bg-white" data-testid={`row-${r.key}`}>
                 <div className="flex items-center gap-3 px-4 py-3">
@@ -553,6 +580,8 @@ export default function ThemeEditor({ site: shell, publishing, pages, rows, valu
                     <div className="border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-4 py-4">
                         <div className="space-y-4">{r.fields.map(field)}</div>
 
+                        {panel}
+
                         {/*
                             وما لا يُكتب هنا يُقال أين يُكتب.
 
@@ -560,7 +589,7 @@ export default function ThemeEditor({ site: shell, publishing, pages, rows, valu
                             ممّا نشره منها. وحقلٌ يُنسخ إلى هنا يعني عمودًا
                             يُكتب من بابين — فيُشار إلى بابه بدل أن يُفتح ثانٍ.
                         */}
-                        {r.source && (
+                        {r.source && ! panel && (
                             <p className="mt-4 flex flex-wrap items-center gap-1.5 text-[12px] text-[#6b7280]">
                                 {t('محتوى هذا القسم يُكتب في:')}
                                 <Link

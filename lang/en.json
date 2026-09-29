@@ -7005,5 +7005,16 @@
     "لم تُبع إضافاتٌ في هذه الفترة": "No add-ons were sold in this period",
     "من الطلبات غير الملغاة وحدها. القيمة بأسعار الإضافات كما بيعت قبل خصم الفاتورة، والتكلفة بلقطتها يوم البيع — فلا يتحرّك الماضي إن تغيّر اسم إضافةٍ أو سعرها أو حُذفت.": "From orders that were not cancelled. Value is at the add-on prices as sold, before invoice discounts, and cost is as recorded on the day of sale — so the past does not move if an add-on is renamed, repriced or deleted.",
     "صفوفٌ موسومة «باسمها يوم البيع» (:value): مبيعاتٌ لا تحمل معرّف إضافة — إضافةٌ حُذفت بعد بيعها، أو بندٌ مستقلّ قديم — فتُجمع باسمها كما بيعت ولا تُنسب إلى إضافةٍ حاليّة بالظنّ.": "Rows marked “By its name at the time of sale” (:value): sales that carry no add-on ID — an add-on deleted after it was sold, or an older standalone line — so they are grouped by the name they were sold under and are not guessed onto a current add-on.",
-    "منها إضافات: :value — جزءٌ من إجمالي المبيعات لا مضافٌ إليه.": "Of which add-ons: :value — part of total sales, not added to it."
+    "منها إضافات: :value — جزءٌ من إجمالي المبيعات لا مضافٌ إليه.": "Of which add-ons: :value — part of total sales, not added to it.",
+    "الفئات في الموقع": "Categories on the website",
+    "تظهر الفئة في الموقع عندما يكون فيها منتج مفعّل ومنشور.": "A category appears on the website once it has an active, published product.",
+    "لا فئات بعد.": "No categories yet.",
+    "تظهر في الموقع": "Shown on the website",
+    "لن تظهر — لا يوجد منتج مفعّل ومنشور": "Won't appear — no active, published product",
+    ":count منتج مفعّل ومنشور": ":count active, published products",
+    "إدارة كل المنتجات": "Manage all products",
+    "يظهر هنا تلقائيًا آخر 4 منتجات مفعّلة ومنشورة أضفتها إلى المتجر.": "This automatically shows the last 4 active, published products you added to the store.",
+    "تعديل منتج قديم لا يجعله «وصل حديثًا»؛ الترتيب حسب وقت إضافته للنظام.": "Editing an older product doesn't make it a \"New arrival\"; the order follows when it was added to the system.",
+    "لا يوجد منتج مفعّل ومنشور بعد — أضف منتجًا ليظهر هنا.": "No active, published product yet — add a product to see it here.",
+    "إضافة منتج جديد": "Add new product"
 }

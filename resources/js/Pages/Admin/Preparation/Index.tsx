@@ -10,6 +10,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import useBoardLive from '@/hooks/useBoardLive';
 import useNewArrivals from '@/hooks/useNewArrivals';
+import { type PrintAttempt, prepareWebsiteConfirmPrint, websiteConfirmPrintCallbacks } from '@/lib/website-confirm-print';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -182,14 +183,16 @@ export default function PreparationIndex() {
      * أن يقرأ من يجهّز رفضًا سبّبه هو.
      */
     const move = useCallback(
-        (number: string, status: string) => {
+        (number: string, status: string, print: PrintAttempt | null = null) => {
             setBusy((b) => (b.includes(number) ? b : [...b, number]));
             setWriting((n) => n + 1);
+            const printing = websiteConfirmPrintCallbacks(print, number, t);
             router.post(
                 route('admin.preparation.move', number),
                 { status },
                 {
                     preserveScroll: true,
+                    onSuccess: printing.onSuccess,
                     /*
                      * ولا `preserveState`: الردُّ يعيد الصفحةَ بخصائصَ جديدة،
                      * وبها تُقرأ الحالُ الحقيقيّة بعد النقل — أو بعد رفضِه.
@@ -199,11 +202,12 @@ export default function PreparationIndex() {
                     onFinish: () => {
                         setBusy((b) => b.filter((n) => n !== number));
                         setWriting((n) => n - 1);
+                        printing.onFinish();
                     },
                 },
             );
         },
-        [],
+        [t],
     );
 
     /*
@@ -229,9 +233,28 @@ export default function PreparationIndex() {
                 }
             }
 
-            move(o.number, status);
+            /*
+             * وطلبُ الموقع يُطبع عند تأكيده إن ضُبطت طابعةُ هذا الصندوق.
+             *
+             * والنافذةُ تُفتح هنا — في الضغطة، قبل أيّ انتظارٍ للخادم — ولا
+             * `await` يسبقها لـ«مؤكّد»: السؤالُ أعلاه لـ«جاهز» وحدها. انظر
+             * `lib/website-confirm-print`.
+             */
+            const print = prepareWebsiteConfirmPrint({
+                peripherals: page.context?.peripherals,
+                /*
+                 * بابُ اللوحة لا «الطلبات» ولا «نقطة البيع»: من خُصّص له
+                 * التجهيزُ وحده يؤكّد هنا، ويطبع هنا — `PreparationController::receipt`.
+                 */
+                receipt: 'admin.preparation.receipt',
+                channel: o.channel,
+                from: o.status,
+                to: status,
+            });
+
+            move(o.number, status, print);
         },
-        [ask, move],
+        [ask, move, page.context],
     );
 
     const toggle = useCallback((number: string, key: string, checked: boolean) => {

@@ -148,6 +148,7 @@ class DeviceController extends Controller
                         'port' => $p->port,
                         'paperWidth' => $p->paper_width,
                         'autoPrint' => $p->auto_print,
+                        'autoPrintWebsite' => (bool) $p->auto_print_website_confirm,
                         'notes' => $p->notes,
                         'active' => $p->active,
                         // تقودها نقطة البيع فعلًا، أم تُسجَّل للجرد وحده

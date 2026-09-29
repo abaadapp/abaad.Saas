@@ -42,6 +42,7 @@ import {
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useTranslate } from "@/lib/i18n";
+import { prepareWebsiteConfirmPrint, websiteConfirmPrintCallbacks } from '@/lib/website-confirm-print';
 import type { PageProps } from '@/types';
 
 interface OrderDetail {
@@ -74,6 +75,8 @@ interface OrderDetail {
     internal_notes: string | null;
     status: string;
     next_statuses: string[];
+    /** قناةُ الطلب — `website` لطلب الموقع */
+    channel?: string | null;
     occasions: { value: string; label: string }[];
     fulfillments: { value: string; label: string }[];
     subtotal: number;
@@ -829,13 +832,30 @@ export default function OrderShow() {
                                             key={s}
                                             variant="outline"
                                             size="sm"
-                                            onClick={() =>
+                                            onClick={() => {
+                                                /*
+                                                    وطلبُ الموقع يُطبع عند تأكيده إن ضُبطت طابعةُ هذا
+                                                    الصندوق — والنافذةُ تُفتح هنا في الضغطة، وتُوجَّه
+                                                    بعد أن يقول الخادم إنّ النقلَ تمّ. انظر
+                                                    `lib/website-confirm-print`.
+                                                */
+                                                const print = prepareWebsiteConfirmPrint({
+                                                    peripherals: context?.peripherals,
+                                                    // وشاشةُ الطلب قسمُ «الطلبات» — فبابُه بابُها
+                                                    receipt: 'admin.orders.receipt',
+                                                    channel: order.channel,
+                                                    from: order.status,
+                                                    to: s,
+                                                });
                                                 router.post(
                                                     route('admin.orders.status', order.id),
                                                     { status: s },
-                                                    { preserveScroll: true },
-                                                )
-                                            }
+                                                    {
+                                                        preserveScroll: true,
+                                                        ...websiteConfirmPrintCallbacks(print, order.id, t),
+                                                    },
+                                                );
+                                            }}
                                         >
                                             {t(s)}
                                         </Button>

@@ -45,6 +45,8 @@ export interface PrepCheck {
 export interface PrepOrder {
     number: string;
     status: string;
+    /** قناةُ الطلب — `website` لطلب الموقع؛ تقرؤها طباعةُ التأكيد */
+    channel?: string | null;
     /** صاحب الطلب — لا مستلِمه */
     customer: string | null;
     fulfillment: string | null;

@@ -47,6 +47,7 @@ class PosPeripheral extends Model
         return [
             'active' => 'boolean',
             'auto_print' => 'boolean',
+            'auto_print_website_confirm' => 'boolean',
             'paper_width' => 'integer',
             'port' => 'integer',
         ];

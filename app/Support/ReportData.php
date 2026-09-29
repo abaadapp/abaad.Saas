@@ -514,17 +514,26 @@ class ReportData
         $status = self::pick($filters, 'status');
         $branch = self::pick($filters, 'branch_id');
         $method = self::pick($filters, 'payment_method');
+        $fulfillment = self::fulfillment($filters);
 
         $base = Order::where('business_id', $bid)->where('is_held', false)
             ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
             ->when($status, fn ($q) => $q->where('status', $status))
             ->when($branch, fn ($q) => $q->where('branch_id', $branch))
-            ->when($method, fn ($q) => $q->where('payment_method', $method));
+            ->when($method, fn ($q) => $q->where('payment_method', $method))
+            /*
+             * ونوعُ التنفيذ من عموده لا من رسومه.
+             *
+             * طلبُ توصيلٍ قد يُعفى من رسومه — داخل الحيّ، أو لزبونٍ عزيز —
+             * فرسومٌ صفرٌ لا تجعله استلامًا. والعمودُ هو ما كُتب ساعةَ البيع.
+             */
+            ->when($fulfillment, fn ($q) => $q->where('fulfillment_type', $fulfillment));
 
         $count = (clone $base)->count();
         // الملغى لا يُحسب في الإيراد — انظر Order::scopeSold
-        $soldSum = (float) (clone $base)->where('status', '!=', Order::CANCELLED)->sum('total');
-        $soldCount = (clone $base)->where('status', '!=', Order::CANCELLED)->count();
+        $sold = (clone $base)->where('status', '!=', Order::CANCELLED);
+        $soldSum = (float) (clone $sold)->sum('total');
+        $soldCount = (clone $sold)->count();
         $cancelled = (clone $base)->where('status', Order::CANCELLED)->count();
 
         $rows = (clone $base)->orderByDesc('ordered_at')->orderByDesc('id')->limit(self::LIMIT)->get()
@@ -535,9 +544,23 @@ class ReportData
                 'branch' => $o->branch,
                 'status' => $o->status,
                 'method' => $o->payment_method,
+                // بيعةُ المنضدة لا نوعَ تنفيذٍ لها — تُكتب شرطةً لا «استلام»
+                'fulfillment' => FlowerOrder::fulfillmentLabel($o->fulfillment_type),
                 'total' => round((float) $o->total, 3),
                 'at' => optional($o->ordered_at)->format('Y-m-d'),
             ]);
+
+        /*
+         * ═══ وما في الإجمالي من توصيلٍ وإضافات ═══
+         *
+         * يُقاس على المُباع وحده — كالإجمالي نفسه — والجدولُ يبقى كما كان:
+         * الملغى يظهر فيه موسومًا، ولا يُعدّ توصيلًا تمّ.
+         *
+         * والرقمان **منه لا فوقه**: `orders.total` يحمل رسومَ التوصيل وثمنَ
+         * الإضافات منذ البيع. فتقولهما الشاشةُ «ضمن الإجمالي» — ومن جمعهما
+         * عليه عدّهما مرّتين.
+         */
+        $addons = AddonSales::totals($sold);
 
         return array_merge(self::capped($rows, $count), [
             'summary' => [
@@ -546,6 +569,10 @@ class ReportData
                 // المتوسّط على المُباع لا على الكلّ: الملغى يُنقص المتوسّط بلا أن يُنقص الإيراد
                 'average' => $soldCount > 0 ? round($soldSum / $soldCount, 3) : 0.0,
                 'cancelled' => $cancelled,
+                'delivery' => (clone $sold)->where('fulfillment_type', FlowerOrder::DELIVERY)->count(),
+                'pickup' => (clone $sold)->where('fulfillment_type', FlowerOrder::PICKUP)->count(),
+                'delivery_fees' => round((float) (clone $sold)->sum('delivery_fee'), 3),
+                'addons' => $addons['revenue'],
             ],
             'options' => [
                 'statuses' => collect(Order::where('business_id', $bid)->distinct()->pluck('status'))
@@ -553,6 +580,55 @@ class ReportData
                 'branches' => self::branchOptions($bid),
                 'methods' => collect(Order::where('business_id', $bid)->distinct()->pluck('payment_method'))
                     ->filter()->values()->map(fn ($m) => ['value' => $m, 'label' => $m])->all(),
+                'fulfillments' => FlowerOrder::fulfillmentOptions(),
+            ],
+        ]);
+    }
+
+    /** نوعُ التنفيذ المطلوب — أحدُ الاثنين أو لا شيء؛ وما سواهما لا يُرشَّح به */
+    private static function fulfillment(array $filters): ?string
+    {
+        $value = self::pick($filters, 'fulfillment');
+
+        return in_array($value, FlowerOrder::FULFILLMENT, true) ? $value : null;
+    }
+
+    /* ============================ الإضافات ============================ */
+
+    /**
+     * ما بيع من الإضافات — على البنود وبنودًا مستقلّة، من لقطة البيع.
+     *
+     * والطلباتُ تُحصر هنا قبل أن يُلمس بند: المتجرُ والمبيعُ (`sold` — لا
+     * معلَّقًا ولا ملغى) والمدّةُ والفرعُ والقناة. ثمّ تُجمع الإضافاتُ من
+     * `AddonSales` — الموضعِ الذي يقرأ منه ملخّصُ الطلبات والمبيعات أيضًا.
+     */
+    public static function addons(int $bid, array $filters): array
+    {
+        $range = Demo::range($filters['range'] ?? 'month');
+        $start = Demo::rangeStart($range);
+        $branch = self::pick($filters, 'branch_id');
+        // قناةٌ لا تُعرف تُقرأ «الكل» لا خطأً — كما في ملخّص المبيعات
+        $channel = collect(SalesChannel::options())->pluck('value')->contains($filters['channel'] ?? null)
+            ? $filters['channel'] : null;
+
+        $orders = SalesChannel::scope(
+            Order::where('business_id', $bid)->sold()
+                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+                ->when($branch, fn ($q) => $q->where('branch_id', $branch)),
+            $channel,
+        );
+
+        $totals = AddonSales::totals($orders);
+        $rows = collect(AddonSales::rows($orders, self::LIMIT));
+
+        return array_merge(self::capped($rows, AddonSales::count($orders)), [
+            'summary' => $totals + [
+                // إجمالي مبيعات الطلبات نفسِها — لتُقرأ الإضافاتُ جزءًا منه لا فوقه
+                'sales' => round((float) (clone $orders)->sum('total'), 3),
+            ],
+            'options' => [
+                'branches' => self::branchOptions($bid),
+                'channels' => SalesChannel::options(),
             ],
         ]);
     }

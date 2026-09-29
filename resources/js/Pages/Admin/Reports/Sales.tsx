@@ -25,6 +25,8 @@ import type { PageProps } from '@/types';
 
 interface Summary {
     sales: number;
+    /** ثمنُ الإضافات — جزءٌ من `sales` لا فوقه (انظر `AddonSales`) */
+    addons?: number;
     cogs: number;
     profit: number;
     /** «صافٍ» للمتجر كلِّه، و«مُجمل» لقناةٍ بعينها — يسمّيه الخادم */
@@ -337,6 +339,17 @@ export default function ReportsSales() {
                     <StatCard key={s.label} stat={s} index={i} />
                 ))}
             </div>
+
+            {/*
+                «منها إضافات» سطرٌ تحت البطاقات لا بطاقةٌ بجانبها: بطاقةٌ
+                سادسةٌ بجوار «إجمالي المبيعات» تُقرأ رقمًا آخر يُجمع عليه.
+                وهي منه — دُفعت مع البند في الفاتورة نفسها.
+            */}
+            {summary && (summary.addons ?? 0) > 0 && (
+                <p data-testid="sales-addons-note" className="-mt-3 mb-6 text-[12.5px] text-[#4b5563]">
+                    {t('منها إضافات: :value — جزءٌ من إجمالي المبيعات لا مضافٌ إليه.', { value: m(summary.addons ?? 0) })}
+                </p>
+            )}
 
             <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
                 {/*

@@ -35,7 +35,13 @@ class ReportColumns
         'orders' => [
             ['at', 'التاريخ', 'text'], ['number', 'رقم الطلب', 'text'], ['customer', 'العميل', 'text'],
             ['branch', 'الفرع', 'text'], ['method', 'وسيلة الدفع', 'text'], ['status', 'الحالة', 'text'],
-            ['total', 'الإجمالي', 'money'],
+            ['fulfillment', 'نوع التنفيذ', 'text'], ['total', 'الإجمالي', 'money'],
+        ],
+        'addons' => [
+            ['name', 'الإضافة', 'text'], ['link', 'الربط', 'text'],
+            ['orders', 'عدد الطلبات', 'number'], ['uses', 'مرات الاستخدام', 'number'],
+            ['quantity', 'الكمية', 'number'], ['revenue', 'قيمة المبيعات', 'money'],
+            ['cost', 'التكلفة', 'money'], ['profit', 'الربح', 'money'], ['average', 'متوسّط سعر الوحدة', 'money'],
         ],
         'products' => [
             ['name', 'المنتج', 'text'], ['category', 'القسم', 'text'], ['price', 'السعر', 'money'],
@@ -183,6 +189,23 @@ class ReportColumns
             ['total', 'إجمالي المبيعات', 'money'],
             ['average', 'متوسّط قيمة الطلب', 'money'],
             ['cancelled', 'الملغاة', 'number'],
+            /*
+             * وما في الإجمالي — لا ما يُضاف إليه.
+             *
+             * رسومُ التوصيل وثمنُ الإضافات داخلان في `orders.total` منذ البيع.
+             * فيُسمّيان هنا «ضمن الإجمالي» صراحةً: ورقةٌ تكتب «رسوم التوصيل»
+             * تحت «إجمالي المبيعات» يجمعها قارئُها عليه فيعدّها مرّتين.
+             */
+            ['delivery', 'طلبات التوصيل (غير الملغاة)', 'number'],
+            ['pickup', 'طلبات الاستلام (غير الملغاة)', 'number'],
+            ['delivery_fees', 'رسوم التوصيل — ضمن الإجمالي', 'money'],
+            ['addons', 'قيمة الإضافات — ضمن الإجمالي', 'money'],
+        ],
+        'addons' => [
+            ['uses', 'مرات استخدام الإضافات', 'number'],
+            ['orders', 'طلبات فيها إضافات', 'number'],
+            ['revenue', 'قيمة الإضافات — ضمن إجمالي المبيعات', 'money'],
+            ['profit', 'ربح الإضافات', 'money'],
         ],
         'products' => [
             ['products', 'عدد المنتجات', 'number'],

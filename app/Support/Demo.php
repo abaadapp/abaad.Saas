@@ -3403,14 +3403,16 @@ class Demo
 
     /**
      * أقسام نقطة البيع: القيمة تبقى الاسم العربي (لمطابقة الفلترة)،
-     * والتسمية المعروضة تُترجَم حسب اللغة.
+     * والتسمية المعروضة تُترجَم حسب اللغة — `name_en` ثمّ المعجم ثمّ الاسم.
+     * انظر `CategoryName`.
      */
     public static function posCategories(): array
     {
         $cats = Category::where('business_id', self::bid())->orderBy('id')->get(['name', 'name_en']);
+        $locale = app()->getLocale();
         $list = [['value' => 'الكل', 'label' => __('الكل')]];
         foreach ($cats as $c) {
-            $list[] = ['value' => $c->name, 'label' => self::ln($c->name, $c->name_en)];
+            $list[] = ['value' => $c->name, 'label' => CategoryName::display($c->name, $c->name_en, $locale)];
         }
 
         return $list;

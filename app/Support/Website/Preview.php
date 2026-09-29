@@ -7,6 +7,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Review;
 use App\Models\Website;
+use App\Support\CategoryName;
 use App\Support\Demo;
 
 /**
@@ -73,9 +74,16 @@ class Preview
         $snapshot = Publication::upgrade($snapshot);
 
         $needs = self::needs($snapshot);
+
+        /*
+         * ولغةُ الموقع قبل المحتوى: اسمُ القسم يخرج بها (انظر `categories`)
+         * — لغةُ النشاط لا لغةُ لوحة من يفتح المعاينة.
+         */
+        $locale = self::locale($businessId);
+
         $bag = [
             'products' => $needs['products'] ? self::products($businessId, $needs['products']) : [],
-            'categories' => $needs['categories'] ? self::categories($businessId, $needs['categories']) : [],
+            'categories' => $needs['categories'] ? self::categories($businessId, $needs['categories'], $locale) : [],
             'reviews' => $needs['reviews'] ? self::reviews($businessId, $needs['reviews']) : [],
             'best' => $needs['best'] ? self::bestSellers($businessId, $needs['best'], $needs['best_days']) : [],
         ];
@@ -126,8 +134,6 @@ class Preview
          * موقعٍ نُشر قبل سنة. وهي أيضًا تصل بها النسخُ المنشورة قديمًا،
          * إذ تُحقن على اللقطة أيًّا كان تاريخُها.
          */
-        $locale = self::locale($businessId);
-
         $snapshot['brand'] = self::brand($businessId, $snapshot, $locale);
         $snapshot['currency'] = Demo::currencyFor($businessId);
         $snapshot['locale'] = $locale;
@@ -577,16 +583,26 @@ class Preview
         return str_contains($raw, 'picsum.photos') ? null : Media::url($raw);
     }
 
-    private static function categories(int $businessId, int $limit): array
+    /**
+     * تصنيفاتُ النشاط — واسمُ كلٍّ منها بلغة الموقع.
+     *
+     * كان `name` يخرج كما كُتب، فيعرض الموقعُ الإنجليزيّ «منتجات» و«عروض»
+     * وإن كتب التاجر `name_en`. فيُختار الاسمُ هنا (`CategoryName`) لا في
+     * العارض: الخادمُ يعرف لغةَ الموقع وحقلَيه، والعارضُ يرسم ما يصله —
+     * والمعاينةُ والمنشورُ يمرّان من هنا معًا فلا يفترقان.
+     *
+     * والمعرّفُ كما هو: به يُرشَّح الكتالوج (`Catalog`)، لا بالاسم.
+     */
+    private static function categories(int $businessId, int $limit, string $locale): array
     {
         $rows = Category::where('business_id', $businessId)->orderBy('name')
-            ->limit(max($limit, self::MAX))->get(['id', 'name', 'icon', 'color']);
+            ->limit(max($limit, self::MAX))->get(['id', 'name', 'name_en', 'icon', 'color']);
 
         $covers = self::covers($businessId, $rows->pluck('id')->all());
 
         return $rows->map(fn ($c) => [
             'id' => $c->id,
-            'name' => $c->name,
+            'name' => CategoryName::display($c->name, $c->name_en, $locale),
             'icon' => $c->icon,
             'color' => $c->color,
             'image' => $covers[(int) $c->id] ?? null,

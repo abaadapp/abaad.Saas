@@ -198,8 +198,13 @@ class PosSecondPassAuditTest extends TestCase
         // والمعادلةُ صارت في `SaleLines` — يقرؤها الصندوقُ والموقعُ معًا
         $server = file_get_contents(app_path('Support/SaleLines.php'));
 
+        /*
+         * و`cartLineTotal` هي `lineTotal` نفسُها وقد صُدّرت — ومعها أنّ «السعر
+         * النهائيّ» لا تُجمع إضافاتُه فوقه، كما لا يجمعها الخادم (`addons_total`
+         * صفرٌ فيه). انظر `AFinalPriceHoldsItsAddOnsInsideTest`.
+         */
         $this->assertStringContainsString(
-            'const net = lineTotal(i);',
+            'const net = cartLineTotal(i);',
             $screen,
             'الشاشة لم تعد تحسب وعاءها من ثمن البند كاملًا',
         );

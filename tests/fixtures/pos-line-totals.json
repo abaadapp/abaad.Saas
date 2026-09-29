@@ -1,0 +1,12 @@
+{
+    "_about": "ثمنُ البند في الصندوق وفي الخادم — حالاتٌ واحدةٌ يقرؤها الطرفان. الواجهة: tests/js/a-final-price-holds-its-add-ons-inside.test.tsx (cartLineTotal). الخادم: tests/Feature/AFinalPriceHoldsItsAddOnsInsideTest.php (SaleLines عبر /pos/checkout). والإضافة في كلّ حالة سعرُها 0.200.",
+    "addon_price": 0.2,
+    "cases": [
+        { "name": "سعرٌ نهائيّ", "kind": "custom", "mode": "budget", "price": 17.2, "qty": 1, "addon_qty": 1, "line": 17.2 },
+        { "name": "سعرٌ نهائيّ بكمّيتين", "kind": "custom", "mode": "budget", "price": 17.2, "qty": 2, "addon_qty": 1, "line": 34.4 },
+        { "name": "قيمةٌ + إضافات", "kind": "custom", "mode": "value", "price": 17.0, "qty": 1, "addon_qty": 1, "line": 17.2 },
+        { "name": "قيمةٌ + إضافات بكمّيتين", "kind": "custom", "mode": "value", "price": 17.0, "qty": 2, "addon_qty": 1, "line": 34.2 },
+        { "name": "منتجٌ عاديّ", "kind": "product", "price": 10, "qty": 1, "addon_qty": 1, "line": 10.2 },
+        { "name": "إضافةٌ مستقلّة", "kind": "standalone", "price": 0.2, "qty": 3, "addon_qty": 0, "line": 0.6 }
+    ]
+}

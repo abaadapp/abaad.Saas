@@ -547,6 +547,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/preparation/{number}/delivery-note', [PreparationController::class, 'deliveryNote'])
         ->name('preparation.deliveryNote');
     /*
+     * وإيصالُ الصندوق الحراريّ — تفتحه طباعةُ تأكيد طلب الموقع من اللوحة.
+     * باسم اللوحة فيتبع قسمَها: من يؤكّد هنا يطبع هنا، بلا «الطلبات» ولا
+     * «نقطة البيع». والورقةُ `orderThermal` نفسُها — انظر `PreparationController::receipt`.
+     */
+    Route::get('/preparation/{number}/receipt', [PreparationController::class, 'receipt'])
+        ->name('preparation.receipt');
+    /*
      * وعلامةُ التجهيز وخطُّ الحال — بابان صغيران تحت القسم نفسِه.
      *
      * `preparation.*` فيتبعان صلاحيّة من يجهّز لا «المبيعات»: كلاهما يقرأ

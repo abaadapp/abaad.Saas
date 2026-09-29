@@ -1301,6 +1301,8 @@ class Demo
             'internal_notes' => $o->internal_notes,
             // ما يجوز الانتقال إليه من الحالة الحالية — لا كلّ الحالات
             'next_statuses' => OrderStatus::nextFrom($o->status),
+            // قناةُ الطلب — تقرؤها «طباعة تلقائية عند تأكيد طلب الموقع» لتفتح نافذتها في الضغطة
+            'channel' => $o->channel,
             'occasions' => FlowerOrder::occasionOptions(),
             'fulfillments' => FlowerOrder::fulfillmentOptions(),
             'items' => $items,

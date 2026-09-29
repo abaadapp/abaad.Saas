@@ -69,6 +69,7 @@ class PeripheralController extends Controller
             'port' => ['nullable', 'integer', 'min:1', 'max:65535'],
             'paper_width' => ['nullable', Rule::in(PosPeripheral::PAPER_WIDTHS)],
             'auto_print' => ['boolean'],
+            'auto_print_website_confirm' => ['boolean'],
             'notes' => ['nullable', 'string', 'max:500'],
             'active' => ['boolean'],
         ], [], [
@@ -88,9 +89,16 @@ class PeripheralController extends Controller
         if ($data['type'] === PosPeripheral::PRINTER) {
             $data['paper_width'] = $data['paper_width'] ?? 80;
             $data['auto_print'] = $request->boolean('auto_print');
+            /*
+             * وطباعةُ طلب الموقع عند تأكيده خيارٌ مستقلّ عن «بعد البيع» —
+             * لا يُشتقّ منه ولا يُغيّره. انظر `WebsiteConfirmPrint`.
+             */
+            $data['auto_print_website_confirm'] = $request->boolean('auto_print_website_confirm');
         } else {
             $data['paper_width'] = null;
             $data['auto_print'] = false;
+            // والماسحُ والدرجُ والشاشةُ والميزانُ لا يطبعون — فلا يحملون الخيار
+            $data['auto_print_website_confirm'] = false;
         }
 
         return $data;

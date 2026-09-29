@@ -13,6 +13,7 @@ use App\Support\Reports;
 use App\Support\ShopIdentity;
 use App\Support\Support;
 use App\Support\Tenancy;
+use App\Support\WebsiteConfirmPrint;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -139,6 +140,15 @@ class HandleInertiaRequests extends Middleware
                         'name' => $p->name,
                         'paperWidth' => $p->paper_width,
                         'autoPrint' => $p->auto_print,
+                        /*
+                         * وطباعةُ طلب الموقع عند تأكيده — مستقلّةٌ عن «بعد البيع».
+                         *
+                         * ومشروطةٌ بأن يكون الصندوقُ صندوقَ متجره: متصفّحٌ مربوطٌ
+                         * بصندوق متجرٍ آخر لا يفتح نافذةَ طباعةٍ لطلبات هذا.
+                         * انظر `WebsiteConfirmPrint`.
+                         */
+                        'autoPrintWebsite' => (bool) $p->auto_print_website_confirm
+                            && (int) $p->business_id === (int) $user->business_id,
                     ])->values()->all() ?? [],
                 'currency' => Demo::displayCurrency(),
                 'currencies' => collect(Demo::currencies())->where('active', true)->values()->all(),
@@ -264,6 +274,11 @@ class HandleInertiaRequests extends Middleware
                  * الصورةُ وتُحفظ على القرص، ولا يظهر في الشاشة شيء.
                  */
                 'uploaded' => $request->session()->get('uploaded'),
+                /*
+                 * رقمُ طلب الموقع الذي أُكّد الآن من «جديد» — تطبع عليه طابعةُ
+                 * الصندوق إن ضُبطت. ويمرّ في الردّ الذي يلي النقلَ وحده.
+                 */
+                'websiteConfirmed' => $request->session()->get(WebsiteConfirmPrint::FLASH),
             ],
 
             // الرمز الخام مع كل استجابة: وسم <meta> يُطبع مرّة عند أول تحميل

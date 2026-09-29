@@ -13,6 +13,7 @@ use App\Support\OrderNotice;
 use App\Support\OrderStatus;
 use App\Support\OrderTransition;
 use App\Support\ReviewInvite;
+use App\Support\WebsiteConfirmPrint;
 use App\Support\WhatsAppPhone;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -380,10 +381,13 @@ class OrderDetailController extends Controller
             'subject_type' => 'order',
         ]);
 
-        return back()->with('toast', [
-            'msg' => __('حالة الطلب: :status', ['status' => $data['status']]),
-            'type' => 'success',
-        ]);
+        // وطلبُ الموقع المؤكَّد الآن يُومَض رقمُه لطابعة الصندوق — انظر WebsiteConfirmPrint
+        return back()->with([
+            'toast' => [
+                'msg' => __('حالة الطلب: :status', ['status' => $data['status']]),
+                'type' => 'success',
+            ],
+        ] + WebsiteConfirmPrint::flash($order, $from, $data['status']));
     }
 
     /**

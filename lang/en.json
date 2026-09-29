@@ -6971,5 +6971,10 @@
     "التبعية": "Owner",
     "هذا المنتج مرتبط حاليًا بـ :from. تغييره سينقله إلى :to.": "This product currently belongs to :from. Changing it will move it to :to.",
     "بدون بوتيك = منتج المتجر. ما بِيع من قبل يبقى لصاحبه وقت البيع.": "No boutique = a shop product. Past sales stay with whoever owned it at the time of sale.",
-    "أرقام بنود البيع وحدها بسعرها وقت البيع، والعمولة بنسبة البوتيك وقت البيع. الضريبة ووسائل الدفع وخصم الفاتورة والمصروفات وصافي الربح تُسجَّل على الطلب كاملًا فلا تُنسب لبند — لذلك لا تظهر هنا. والتسوية الفعلية من شاشة البوتيكات.": "Sold line items only, at their price at the time of sale; commission uses the boutique rate at the time of sale. Tax, payment methods, invoice discounts, expenses and net profit are recorded on the whole order and cannot be attributed to a line — so they are not shown here. Actual settlement is done from the Boutiques screen."
+    "أرقام بنود البيع وحدها بسعرها وقت البيع، والعمولة بنسبة البوتيك وقت البيع. الضريبة ووسائل الدفع وخصم الفاتورة والمصروفات وصافي الربح تُسجَّل على الطلب كاملًا فلا تُنسب لبند — لذلك لا تظهر هنا. والتسوية الفعلية من شاشة البوتيكات.": "Sold line items only, at their price at the time of sale; commission uses the boutique rate at the time of sale. Tax, payment methods, invoice discounts, expenses and net profit are recorded on the whole order and cannot be attributed to a line — so they are not shown here. Actual settlement is done from the Boutiques screen.",
+    "طباعة تلقائية عند تأكيد طلب الموقع": "Auto-print when a website order is confirmed",
+    "فتح إيصال طلب الموقع عند تأكيده على هذا الجهاز.": "Open the website order's receipt when it is confirmed on this device.",
+    "فتح إيصال الطباعة فور إتمام البيع في نقطة البيع.": "Open the receipt for printing as soon as a sale is completed at the POS.",
+    "طباعة طلب الموقع عند تأكيده": "Prints website orders on confirm",
+    "منع المتصفح فتح نافذة الطباعة — اطبع فاتورة طلب الموقع يدويًّا.": "The browser blocked the print window — print the website order's invoice manually."
 }

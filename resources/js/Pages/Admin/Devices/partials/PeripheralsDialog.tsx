@@ -18,6 +18,8 @@ export interface Peripheral {
     port: number | null;
     paperWidth: number | null;
     autoPrint: boolean;
+    /** طباعة طلب الموقع عند تأكيده على هذا الجهاز — مستقلّةٌ عن «بعد البيع» */
+    autoPrintWebsite: boolean;
     notes: string | null;
     active: boolean;
     /** تقودها نقطة البيع فعلًا، أم تُسجَّل للجرد وحده */
@@ -57,6 +59,7 @@ const EMPTY = {
     port: '',
     paper_width: '80',
     auto_print: false as boolean,
+    auto_print_website_confirm: false as boolean,
     notes: '',
     active: true as boolean,
 };
@@ -95,6 +98,7 @@ export default function PeripheralsDialog({
                 port: p.port ? String(p.port) : '',
                 paper_width: String(p.paperWidth ?? 80),
                 auto_print: p.autoPrint,
+                auto_print_website_confirm: p.autoPrintWebsite,
                 notes: p.notes ?? '',
                 active: p.active,
             });
@@ -181,6 +185,7 @@ export default function PeripheralsDialog({
                                             {p.address ? ` · ${p.address}${p.port ? ':' + p.port : ''}` : ''}
                                             {p.paperWidth ? ` · ${p.paperWidth}mm` : ''}
                                             {p.autoPrint ? ` · ${t('طباعة تلقائية')}` : ''}
+                                            {p.autoPrintWebsite ? ` · ${t('طباعة طلب الموقع عند تأكيده')}` : ''}
                                         </p>
                                     </div>
 
@@ -309,13 +314,30 @@ export default function PeripheralsDialog({
                             </p>
                         )}
 
+                        {/*
+                            خياران مستقلّان للطابعة وحدها — لا يُشتقّ أحدُهما من الآخر.
+
+                            والثاني يقع في المتصفّح الذي ضُغط فيه «مؤكّد»، على طابعة
+                            الصندوق المربوط به. فلا يُوعَد بطباعةٍ من هاتفٍ بعيد: لا
+                            جسرَ في النظام يوصل أمرًا إلى طابعة المحلّ.
+                        */}
                         {isPrinter && (
-                            <Toggle
-                                label={t('طباعة تلقائية بعد البيع')}
-                                hint={t('يفتح حوار الطباعة فور إتمام الفاتورة')}
-                                on={form.data.auto_print}
-                                onToggle={() => form.setData('auto_print', !form.data.auto_print)}
-                            />
+                            <>
+                                <Toggle
+                                    label={t('طباعة تلقائية بعد البيع')}
+                                    hint={t('فتح إيصال الطباعة فور إتمام البيع في نقطة البيع.')}
+                                    on={form.data.auto_print}
+                                    onToggle={() => form.setData('auto_print', !form.data.auto_print)}
+                                />
+                                <Toggle
+                                    label={t('طباعة تلقائية عند تأكيد طلب الموقع')}
+                                    hint={t('فتح إيصال طلب الموقع عند تأكيده على هذا الجهاز.')}
+                                    on={form.data.auto_print_website_confirm}
+                                    onToggle={() =>
+                                        form.setData('auto_print_website_confirm', !form.data.auto_print_website_confirm)
+                                    }
+                                />
+                            </>
                         )}
 
                         <Toggle

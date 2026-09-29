@@ -141,6 +141,8 @@ export interface SharedProps {
             name: string;
             paperWidth: number | null;
             autoPrint: boolean;
+            /** يطبع طلبَ الموقع عند تأكيده في هذا المتصفّح — انظر `lib/websiteConfirmPrint` */
+            autoPrintWebsite?: boolean;
         }[];
         branches: Branch[];
         currency: Currency;
@@ -186,6 +188,8 @@ export interface SharedProps {
         password?: string | null;
         /** رابطُ صورةٍ رُفعت الآن — يقرؤه حقلُ الصورة بعد الرفع */
         uploaded?: string | null;
+        /** رقمُ طلب الموقع الذي أُكّد الآن من «جديد» — يمرّ في ردّ النقل وحده */
+        websiteConfirmed?: string | null;
     };
     /** رمز CSRF الخام — يتجدّد مع كل استجابة، بخلاف وسم <meta> */
     csrf: string;

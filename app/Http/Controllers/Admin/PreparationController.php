@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\PdfController;
 use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Support\Activity;
@@ -13,6 +14,7 @@ use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
 use App\Support\OrderTransition;
 use App\Support\PrepChecklist;
+use App\Support\WebsiteConfirmPrint;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -324,6 +326,8 @@ class PreparationController extends Controller
         return [
             'number' => $o->number,
             'status' => $o->status,
+            // قناةُ الطلب — انظر `WebsiteConfirmPrint`: تُفتح نافذةُ الطباعة في ضغطة «مؤكّد»
+            'channel' => $o->channel,
             // اسم العميل — صاحبُ الطلب لا مستلِمُه. وكانا يُخلطان: بطاقةٌ
             // تعرض المستلِم وحدها لا تقول لمن تُسلَّم عند الاستلام من المحل
             'customer' => $o->customer_name,
@@ -510,6 +514,33 @@ class PreparationController extends Controller
     }
 
     /**
+     * إيصالُ الصندوق الحراريّ لطلبٍ على اللوحة — تفتحه «طباعة تلقائية عند
+     * تأكيد طلب الموقع» حين يُؤكَّد من هنا.
+     *
+     * ═══ ولمَ بابٌ باسم اللوحة ═══
+     *
+     * القسمُ يُشتقّ من اسم المسار. وبابا الإيصال القائمان `orders.receipt`
+     * و`pos.receipt.pdf` — فمن خُصّص له «لوحة التجهيز» وحدها يؤكّد الطلبَ
+     * ثمّ تُفتح له نافذةٌ تردّ ٤٠٣. وهذا البابُ لا يمنحه «الطلبات» ولا
+     * «نقطة البيع»: يفتح ورقةً واحدة لطلبٍ على لوحته، ولا يفتح غيرها.
+     *
+     * ═══ والورقةُ ورقتُهما ═══
+     *
+     * الرسمُ كلُّه في `PdfController::orderThermal` — القالبُ نفسُه،
+     * و`DocumentRenderer` نفسُه، وعرضُ طابعة الصندوق (٥٨ أو ٨٠). لا نسخةَ
+     * هنا تفترق عنها يوم يُضاف إلى الإيصال سطر.
+     *
+     * والحصرُ حصرُ اللوحة (`base()`) قبلها: متجرُه، وفرعُه المختار، وما لم
+     * يُغلق — كسند التسليم أعلاه.
+     */
+    public function receipt(string $number)
+    {
+        $this->base()->where('number', $number)->firstOrFail();
+
+        return app(PdfController::class)->orderThermal($number);
+    }
+
+    /**
      * وضعُ علامةِ تجهيزٍ أو رفعُها — ولا شيء سواها.
      *
      * ═══ ما لا تفعله هذه الدالّة ═══
@@ -636,9 +667,12 @@ class PreparationController extends Controller
             'subject_type' => 'order',
         ]);
 
-        return back()->with('toast', [
-            'msg' => __('حالة الطلب: :status', ['status' => $data['status']]),
-            'type' => 'success',
-        ]);
+        // والبابُ الثاني يُومِض كالأوّل — انظر WebsiteConfirmPrint
+        return back()->with([
+            'toast' => [
+                'msg' => __('حالة الطلب: :status', ['status' => $data['status']]),
+                'type' => 'success',
+            ],
+        ] + WebsiteConfirmPrint::flash($order, $from, $data['status']));
     }
 }

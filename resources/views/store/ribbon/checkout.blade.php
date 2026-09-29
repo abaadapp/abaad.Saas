@@ -171,11 +171,18 @@
             <div>
                 {!! $step(4, $t['s4']) !!}
                 <div style="display:flex;flex-direction:column;gap:8px" data-rb-pay>
+                    {{--
+                        كلُّ وسيلةٍ باسمها — لا «تحويلٌ وما سواه نقد».
+                        كانت البطاقةُ تُكتب «الدفع عند الاستلام» فيختارها الزبونُ
+                        ظانًّا أنّه يدفع عند الباب، ثمّ تفتح له صفحةُ البنك. ووسيلةٌ
+                        لا اسمَ لها هنا تُكتب بمفتاحها — لا باسمِ وسيلةٍ أخرى.
+                    --}}
+                    @php($payLabel = ['cod' => 'payCod', 'transfer' => 'payBank', 'card' => 'payCard'])
                     @foreach ($payments as $i => $p)
                         <button type="button" class="rb-payopt {{ $i === 0 ? 'on' : '' }}" data-v="{{ $p }}" style="display:flex;align-items:center;gap:12px;height:52px;border:1px solid var(--rb-border);border-radius:var(--rb-r);background:#fff;padding:0 16px;font-size:14px;cursor:pointer;text-align:start">
                             <span style="width:18px;height:18px;border-radius:50%;border:1.5px solid var(--rb-olive);display:inline-flex;align-items:center;justify-content:center;flex:none"><span class="dot" style="width:10px;height:10px;border-radius:50%"></span></span>
-                            <span style="flex:1">{{ $p === 'transfer' ? $t['payBank'] : $t['payCod'] }}</span>
-                            <span style="font-size:12px">{{ $p === 'transfer' ? $t['payBankNote'] : $t['payCodNote'] }}</span>
+                            <span style="flex:1">{{ isset($payLabel[$p]) ? $t[$payLabel[$p]] : $p }}</span>
+                            <span style="font-size:12px">{{ isset($payLabel[$p]) ? $t[$payLabel[$p].'Note'] : '' }}</span>
                         </button>
                     @endforeach
                 </div>

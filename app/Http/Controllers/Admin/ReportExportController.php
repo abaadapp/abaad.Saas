@@ -130,7 +130,7 @@ class ReportExportController extends Controller
     {
         $range = $this->range();
         // الورقة تُبنى من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
-        $report = Reports::salesReport($range, request()->query('channel'));
+        $report = Reports::salesReport($range, request()->query('channel'), request()->query('boutique'));
         $spreadsheet = new Spreadsheet;
         // `perBranch: true` — صارت أرقامُ هذه الورقة تُرشَّح بالفرع المختار
         // فعلًا، فترويستُها تقول اسمَه. وبقيّةُ الأوراق على حالها.
@@ -153,6 +153,12 @@ class ReportExportController extends Controller
             : SalesChannel::label($report['channel'])));
         $this->row++;
 
+        // ونطاقُ البوتيك تحتها بالطريقة نفسها — لمن عنده بوتيكات وحده
+        if ($report['boutiques'] !== []) {
+            $sheet->setCellValue('A'.($this->row - 1), __('نطاق التقرير').': '.$report['boutiqueLabel']);
+            $this->row++;
+        }
+
         $money = [];
 
         /*
@@ -164,7 +170,7 @@ class ReportExportController extends Controller
          */
         $title(__('المؤشرات الرئيسية'));
         $head([__('المؤشر'), __('القيمة')]);
-        foreach (Reports::summaryRows($report['summary']) as $s) {
+        foreach (Reports::rowsFor($report) as $s) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $s['label']);
             $sheet->setCellValue("B{$r}", $s['value']);
@@ -196,8 +202,13 @@ class ReportExportController extends Controller
         // وسائل الدفع — من الطلبات كما في مخطّط الشاشة، لا من دفتر المقبوضات
         // وبنطاقها نفسِه: الفرعُ والقناةُ من الحمولة المطبَّعة
         $title(__('توزيع وسائل الدفع'));
+        if ($report['boutique'] !== null) {
+            // الدفعُ على الطلب كاملًا لا على بنده — فلا يُنسب إلى نطاقٍ بالظنّ
+            $sheet->setCellValue("A{$this->row}", __('لا يُنسب إلى بوتيك: الدفع يُسجَّل على الطلب كاملًا.'));
+            $this->row++;
+        }
         $head([__('الوسيلة'), $this->moneyHead('الإجمالي'), __('عدد العمليات')]);
-        foreach (Demo::paymentBreakdown($range, $report['channel'], $report['branchId']) as $m) {
+        foreach ($report['boutique'] !== null ? [] : Demo::paymentBreakdown($range, $report['channel'], $report['branchId']) as $m) {
             $r = $this->row;
             $sheet->setCellValue("A{$r}", $m['name']);
             $sheet->setCellValue("B{$r}", $m['total']);

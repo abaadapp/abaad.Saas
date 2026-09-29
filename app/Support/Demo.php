@@ -6,6 +6,7 @@ use App\Models\ActivityLog;
 use App\Models\Addon;
 use App\Models\BankAccount;
 use App\Models\BankStatementLine;
+use App\Models\Boutique;
 use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Business;
@@ -2472,7 +2473,7 @@ class Demo
      * ولكل عمود عدد طلباته إلى جانب مبلغه: مئة ريالٍ من طلبٍ واحد غير مئةٍ من
      * أربعين طلبًا، والمبلغ وحده لا يفرّق بينهما.
      */
-    public static function salesTrend(string $range = 'month', ?string $channel = null, ?int $branchId = null): array
+    public static function salesTrend(string $range = 'month', ?string $channel = null, ?int $branchId = null, string|Boutique|null $boutique = null): array
     {
         $bid = self::bid();
         $range = self::range($range);
@@ -2506,14 +2507,27 @@ class Demo
             },
         };
 
-        $rows = SalesChannel::scope(
-            Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$start, $cutoff])
-                ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
-            $channel,
-        )
-            ->selectRaw("{$format} as bucket, SUM(total) as s, COUNT(*) as c")
-            ->groupBy('bucket')
-            ->get();
+        /*
+         * ونطاقُ البوتيك يُقرأ من البنود لا من الطلبات — انظر `Boutiques::soldLines`.
+         *
+         * فاتورةٌ فيها صنفُ المحلّ وصنفُ بوتيك لا يُنسب مجموعُها إلى أحدهما،
+         * وعددُ العمود طلباتٌ فيها بندٌ من النطاق. وبلا نطاقٍ يبقى الاستعلامُ
+         * كما كان حرفًا بحرف.
+         */
+        $rows = $boutique === null
+            ? SalesChannel::scope(
+                Order::where('business_id', $bid)->sold()->whereBetween('ordered_at', [$start, $cutoff])
+                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
+                $channel,
+            )
+                ->selectRaw("{$format} as bucket, SUM(total) as s, COUNT(*) as c")
+                ->groupBy('bucket')
+                ->get()
+            : Boutiques::soldLines($bid, $boutique, $start, $cutoff, $branchId, $channel)
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->selectRaw("{$format} as bucket, SUM(order_items.total) as s, COUNT(DISTINCT order_items.order_id) as c")
+                ->groupBy('bucket')
+                ->get();
 
         $sums = $rows->pluck('s', 'bucket');
         $counts = $rows->pluck('c', 'bucket');
@@ -3005,16 +3019,19 @@ class Demo
      * والتساوي يُفصَل بالاسم: صنفان بالإيراد نفسه كانا يتبادلان الموضع بين
      * فتحةٍ وأخرى بلا سبب، فتُقرأ الصدارةُ تبدّلًا وهي لم تتبدّل.
      */
-    public static function topSellingProducts(int $limit = 5, string $range = 'month', ?int $branchId = null, ?string $channel = null): array
+    public static function topSellingProducts(int $limit = 5, string $range = 'month', ?int $branchId = null, ?string $channel = null, string|Boutique|null $boutique = null): array
     {
         $bid = self::bid();
         $start = self::rangeStart(self::range($range));
-        $rows = OrderItem::whereHas('order', fn ($q) => SalesChannel::scope(
-            $q->where('business_id', $bid)->sold()
-                ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start))
-                ->when($branchId, fn ($x) => $x->where('branch_id', $branchId)),
-            $channel,
-        ))
+        // ونطاقُ البوتيك من بنوده وحدها — انظر `Boutiques::soldLines`
+        $rows = ($boutique === null
+            ? OrderItem::whereHas('order', fn ($q) => SalesChannel::scope(
+                $q->where('business_id', $bid)->sold()
+                    ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start))
+                    ->when($branchId, fn ($x) => $x->where('branch_id', $branchId)),
+                $channel,
+            ))
+            : Boutiques::soldLines($bid, $boutique, $start, null, $branchId, $channel))
             ->selectRaw('name, SUM(quantity) as sold, SUM(total) as revenue')
             ->groupBy('name')->orderByDesc('revenue')->orderBy('name')->limit($limit)->get();
         $totalRev = (float) $rows->sum('revenue');

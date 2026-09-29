@@ -16,6 +16,7 @@ use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\Boutiques;
 use App\Support\BranchGoogle;
 use App\Support\Demo;
 use App\Support\DocumentTemplates;
@@ -63,6 +64,8 @@ class PageController extends Controller
             'composition' => ProductCompositionController::blank(
                 auth()->user()->business_id ?? Demo::bid(),
             ),
+            // حقلُ «البوتيك» لمن خلف بابه شيء — انظر `Boutiques::options`
+            'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
         ]);
     }
 
@@ -132,6 +135,12 @@ class PageController extends Controller
             'gallery' => $model ? ProductImages::gallery($model) : [],
             'galleryMax' => ProductImages::MAX,
             'galleryLimits' => ProductImages::uploadLimits(),
+            /*
+             * والبوتيكُ الحاليّ من الصفّ نفسه — لا من حمولة `Demo::products`
+             * التي تقرؤها نقطةُ البيع كذلك، فلا يُثقلها حقلٌ لا تحتاجه.
+             */
+            'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
+            'boutiqueId' => $model?->boutique_id ? (int) $model->boutique_id : null,
         ]);
     }
 
@@ -717,7 +726,9 @@ class PageController extends Controller
     {
         // الحمولة من Support\Reports لا تُجمع هنا: الملفّات الثلاثة تقرأ
         // المصدر نفسه، فلا يخرج ملفٌّ بغير ما على الشاشة
-        return Inertia::render('Admin/Reports/Sales', Reports::salesReport($request->query('range'), $request->query('channel')));
+        return Inertia::render('Admin/Reports/Sales', Reports::salesReport(
+            $request->query('range'), $request->query('channel'), $request->query('boutique'),
+        ));
     }
 
     public function settingsIndex(Request $request): Response

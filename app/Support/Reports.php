@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Http\Middleware\CheckPlanFeature;
+use App\Models\Business;
 use App\Models\User;
 use Illuminate\Support\Collection;
 
@@ -324,10 +325,19 @@ class Reports
      * وما لا يصحّ يُقرأ «المتجر كلُّه» لا يُردّ خطأً: هذا تقريرٌ يُقرأ، وسطرُ
      * عنوانٍ معطوب لا يُبرّر شاشةً حمراء.
      */
-    public static function salesReport(?string $range, ?string $channel = null): array
+    public static function salesReport(?string $range, ?string $channel = null, mixed $boutique = null): array
     {
         $range = Demo::range($range);
         $channel = collect(SalesChannel::options())->pluck('value')->contains($channel) ? $channel : null;
+
+        /*
+         * ═══ والبوتيكُ يُنقّى هنا كذلك ═══
+         *
+         * `Boutiques::scope` تردّ `null` لكلّ ما لا يصحّ — بوتيكُ متجرٍ آخر،
+         * أو متجرٌ لا بوتيكَ عنده — فيُقرأ «كل المبيعات» ولا يُكشف شيء.
+         */
+        $business = Business::find(Demo::bid());
+        $scope = Boutiques::scope($business, $boutique);
 
         /*
          * والفرعُ يُقرأ هنا مرّةً ويُمرَّر — لا تقرؤه كلُّ دالّةٍ من الجلسة.
@@ -343,11 +353,39 @@ class Reports
          */
         $branch = Demo::currentBranchId();
 
+        /*
+         * ═══ ونطاقُ البوتيك يُقرأ من البنود وحدها ═══
+         *
+         * فاتورةٌ واحدة تجمع صنفَ المحلّ وصنفَ بوتيكين، فمجموعُها ليس لأحدهم.
+         * فما يُحسب هنا من بنود النطاق: إجماليُّها، والعمولةُ بنسبة كلّ بندٍ
+         * ساعةَ بيعه، والكميّة، والمنحنى، والأكثرُ مبيعًا — انظر `Boutiques::soldLines`.
+         *
+         * وما يُكتب على الطلب كاملًا لا يُحسب: الضريبة، ووسائلُ الدفع،
+         * وخصمُ الفاتورة، والمصروفات، وصافي الربح. لا يُنسب منها شيءٌ إلى
+         * بندٍ بالظنّ ولا يُقسَم بنسبة — فتسقط من الحمولة (`null`) وتقول
+         * الشاشةُ لماذا.
+         *
+         * وبلا نطاقٍ تبقى الحمولةُ كما كانت رقمًا برقم.
+         */
+        $scoped = $scope !== null;
+
         return [
-            'summary' => Demo::reportSummary($range, $channel, $branch),
-            'salesSeries' => Demo::salesTrend($range, $channel, $branch),
-            'paymentDistribution' => Demo::paymentDistribution($range, $channel, $branch),
-            'topSellingProducts' => Demo::topSellingProducts(5, $range, $branch, $channel),
+            'summary' => $scoped ? null : Demo::reportSummary($range, $channel, $branch),
+            'salesSeries' => Demo::salesTrend($range, $channel, $branch, $scope),
+            'paymentDistribution' => $scoped ? null : Demo::paymentDistribution($range, $channel, $branch),
+            'topSellingProducts' => Demo::topSellingProducts(5, $range, $branch, $channel, $scope),
+            'boutiqueTotals' => $scoped
+                ? Boutiques::soldTotals((int) Demo::bid(), $scope, Demo::rangeStart($range), $branch, $channel)
+                : null,
+            'boutique' => match (true) {
+                $scope === null => null,
+                $scope === Boutiques::OWN => ['kind' => Boutiques::OWN, 'id' => null, 'name' => null],
+                default => ['kind' => 'boutique', 'id' => (int) $scope->id, 'name' => $scope->label()],
+            },
+            // وما يُطبع فوق الورقة: «كل المبيعات» أو «منتجات المتجر» أو «بوتيك: …»
+            'boutiqueLabel' => Boutiques::scopeLabel($scope),
+            // والخياراتُ فارغةٌ لمن لا بوتيكَ عنده — فلا يُرسم المُرشِّح ولا يُطبع سطرُه
+            'boutiques' => Boutiques::options($business),
             'range' => $range,
             'channel' => $channel,
             'channels' => SalesChannel::options(),
@@ -386,6 +424,41 @@ class Reports
         return collect($rows)->map(fn ($r) => [
             'label' => __($r[0]),
             'value' => $r[2] ? round((float) ($summary[$r[1]] ?? 0), 3) : (int) ($summary[$r[1]] ?? 0),
+            'money' => $r[2],
+        ])->all();
+    }
+
+    /**
+     * صفوفُ المؤشّرات لورقةٍ من حمولة التقرير — بنطاقه.
+     *
+     * بلا نطاق بوتيك هي `summaryRows` كما كانت. وبنطاقٍ هي أرقامُ البنود
+     * وحدها — ولا صفَّ لما لا يُنسب إلى بند (الضريبة والمصروفات والربح).
+     */
+    public static function rowsFor(array $report): array
+    {
+        $totals = $report['boutiqueTotals'] ?? null;
+
+        if ($totals === null) {
+            return self::summaryRows($report['summary']);
+        }
+
+        $rows = ($report['boutique']['kind'] ?? null) === Boutiques::OWN
+            ? [
+                ['مبيعات منتجات المتجر', 'gross', true],
+                ['الكمية المباعة', 'quantity', false],
+                ['طلبات فيها منتجات المتجر', 'orders', false],
+            ]
+            : [
+                ['إجمالي مبيعات البوتيك', 'gross', true],
+                ['عمولة المتجر', 'commission', true],
+                ['المستحق للبوتيك', 'net', true],
+                ['الكمية المباعة', 'quantity', false],
+                ['طلبات فيها منتجات البوتيك', 'orders', false],
+            ];
+
+        return collect($rows)->map(fn ($r) => [
+            'label' => __($r[0]),
+            'value' => $r[2] ? round((float) ($totals[$r[1]] ?? 0), 3) : (int) ($totals[$r[1]] ?? 0),
             'money' => $r[2],
         ])->all();
     }

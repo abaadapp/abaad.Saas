@@ -46,12 +46,31 @@ interface TopProduct {
     pct: string;
 }
 
+/** أرقامُ نطاق البوتيك — من بنوده وحدها. انظر `Boutiques::soldTotals` */
+interface BoutiqueTotals {
+    gross: number;
+    commission: number;
+    net: number;
+    quantity: number;
+    orders: number;
+    lines: number;
+}
+
+/** النطاقُ المختار — `null` لكلّ المبيعات */
+type BoutiqueScope = { kind: 'own'; id: null; name: null } | { kind: 'boutique'; id: number; name: string } | null;
+
 interface Props {
-    summary: Summary;
+    /** `null` بنطاق بوتيك: أرقامُ الطلب كاملًا لا تُنسب إلى بند */
+    summary: Summary | null;
     salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[]; range: ReportRange };
     range: ReportRange;
-    paymentDistribution: { labels: string[]; series: number[] };
+    /** `null` بنطاق بوتيك: الدفعُ على الطلب كاملًا */
+    paymentDistribution: { labels: string[]; series: number[] } | null;
     topSellingProducts: TopProduct[];
+    boutiqueTotals: BoutiqueTotals | null;
+    boutique: BoutiqueScope;
+    /** بوتيكاتُ المتجر — فارغةٌ لمن لا بوتيكَ عنده فلا يُرسم المُرشِّح */
+    boutiques: { value: number; label: string; active: boolean }[];
     /** القناةُ المختارة — أو null للمتجر كلِّه */
     channel: string | null;
     /** القنوات من مصدرها الواحد — انظر App\Support\SalesChannel */
@@ -83,24 +102,48 @@ export default function ReportsSales() {
      * الموقع إلى أرقام المتجر كلِّه بعد أوّل تحديثٍ تلقائيّ بلا أن يلمس
      * التاجر شيئًا. وهو العطبُ نفسُه المكتوب فوقه في الفترة.
      */
-    const { data: live, updatedAt } = useLiveFeed<Props>(
-        route('admin.reports.feed', { range: server.range, channel: server.channel ?? undefined }),
-    );
-    const { summary, salesSeries, paymentDistribution, topSellingProducts } = live ?? server;
+    /*
+     * والبوتيكُ كالقناة: يُحمل في كلّ رابطٍ يخرج من الشاشة — التغذيةِ
+     * والفترةِ والقناةِ والملفّاتِ الثلاثة. وإلّا انقلبت أرقامُ بوتيكٍ إلى
+     * أرقام المتجر كلِّه بعد أوّل تحديثٍ أو أوّل ضغطة.
+     */
+    const boutiques = server.boutiques ?? [];
+    const boutiqueParam = server.boutique
+        ? server.boutique.kind === 'own'
+            ? 'own'
+            : String(server.boutique.id)
+        : undefined;
+    const params = { range: server.range, channel: server.channel ?? undefined, boutique: boutiqueParam };
+
+    const { data: live, updatedAt } = useLiveFeed<Props>(route('admin.reports.feed', params));
+    const { summary, salesSeries, paymentDistribution, topSellingProducts, boutiqueTotals } = live ?? server;
 
     const t = useTranslate();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
-    const whole = summary.profit_kind === 'net';
+    const whole = summary?.profit_kind === 'net';
+    /** أنطاقُ بوتيكٍ هذا؟ — أرقامُه من البنود، وما على الطلب كاملًا يسقط */
+    const scoped = boutiqueTotals != null;
 
-    /** والانتقالُ يحمل الفترةَ معه كما تحمل الفترةُ القناة */
+    /** والانتقالُ يحمل الفترةَ معه كما تحمل الفترةُ القناة — والبوتيكَ كذلك */
     const pickChannel = (next: string | null) => {
         if (next === server.channel) return;
 
         router.get(
             window.location.pathname,
-            { range: server.range, ...(next ? { channel: next } : {}) },
+            { range: server.range, ...(next ? { channel: next } : {}), ...(boutiqueParam ? { boutique: boutiqueParam } : {}) },
+            { preserveState: true, preserveScroll: true, replace: true },
+        );
+    };
+
+    /** واختيارُ البوتيك يحمل الفترةَ والقناة */
+    const pickBoutique = (next: string | undefined) => {
+        if (next === boutiqueParam) return;
+
+        router.get(
+            window.location.pathname,
+            { range: server.range, ...(server.channel ? { channel: server.channel } : {}), ...(next ? { boutique: next } : {}) },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
@@ -111,7 +154,28 @@ export default function ReportsSales() {
             on ? 'border-[#111] bg-[#111] text-white' : 'border-[#e5e7eb] bg-white text-[#4b5563] hover:border-[#d1d5db]',
         );
 
-    const stats = [
+    /*
+     * ═══ وبطاقاتُ النطاق من بنوده ═══
+     *
+     * إجماليُّ بنود البوتيك، وعمولةُ المتجر بنسبة كلّ بندٍ ساعةَ بيعه،
+     * والمستحقُّ له، والكميّة. ولا ضريبةَ ولا ربحَ ولا مصروفات: تلك على
+     * الطلب كاملًا، ولا يُنسب منها إلى بندٍ شيءٌ بالظنّ.
+     */
+    const scopedStats = !boutiqueTotals
+        ? []
+        : server.boutique?.kind === 'own'
+          ? [
+                { label: t('مبيعات منتجات المتجر'), value: m(boutiqueTotals.gross), icon: 'wallet', color: 'primary' },
+                { label: t('الكمية المباعة'), value: number(boutiqueTotals.quantity), icon: 'package', color: 'info' },
+            ]
+          : [
+                { label: t('إجمالي مبيعات البوتيك'), value: m(boutiqueTotals.gross), icon: 'wallet', color: 'primary' },
+                { label: t('عمولة المتجر'), value: m(boutiqueTotals.commission), icon: 'trending-up', color: 'success' },
+                { label: t('المستحق للبوتيك'), value: m(boutiqueTotals.net), icon: 'arrow-down-circle', color: 'warning' },
+                { label: t('الكمية المباعة'), value: number(boutiqueTotals.quantity), icon: 'package', color: 'info' },
+            ];
+
+    const stats = !summary ? scopedStats : [
         { label: t('إجمالي المبيعات'), value: m(summary.sales), icon: 'wallet', color: 'primary' },
         // التكلفة بجانب الربح لا في ورقةٍ أخرى: من يقرأ ربحًا يحتاج أن يرى ممّ طُرح
         { label: t('تكلفة البضاعة المباعة'), value: m(summary.cogs), icon: 'package', color: 'info' },
@@ -138,7 +202,8 @@ export default function ReportsSales() {
         { label: t('الضريبة المحصّلة'), value: m(summary.tax), icon: 'receipt', color: 'info' },
     ];
 
-    const counters = [
+    // حالُ المتجر الآن لا حصيلةُ نطاق — فلا تُعرض بنطاق بوتيك
+    const counters = !summary ? [] : [
         { label: 'المنتجات', value: summary.products },
         { label: 'تنبيهات المخزون', value: summary.inventory_alerts },
         { label: 'الموظفون', value: summary.employees },
@@ -156,9 +221,9 @@ export default function ReportsSales() {
                     /* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */
                     <ExportMenu
                         feature="reports_advanced"
-                        xlsx={route('admin.reports.xlsx', { range: server.range, channel: server.channel ?? undefined })}
-                        pdf={route('admin.reports.pdf', { range: server.range, channel: server.channel ?? undefined })}
-                        csv={route('admin.export.reports', { range: server.range, channel: server.channel ?? undefined })}
+                        xlsx={route('admin.reports.xlsx', params)}
+                        pdf={route('admin.reports.pdf', params)}
+                        csv={route('admin.export.reports', params)}
                     />
                 }
             />
@@ -174,7 +239,7 @@ export default function ReportsSales() {
             )}
 
             {/* والفترةُ تحمل القناةَ معها — وإلّا فُقد المُرشِّحُ عند كلّ تبديل */}
-            <RangeTabs current={server.range} params={{ channel: server.channel ?? undefined }} />
+            <RangeTabs current={server.range} params={{ channel: server.channel ?? undefined, boutique: boutiqueParam }} />
 
             {/*
                 ═══ ومن أين جاءت البيعة ═══
@@ -207,13 +272,58 @@ export default function ReportsSales() {
             </div>
 
             {/*
+                ═══ ولمن البيع: المحلُّ أم بوتيكٌ بعينه ═══
+
+                لمن عنده بوتيكات وحده. والأرقامُ تحته من بنود البيع ولقطتها
+                ساعةَ البيع — لا من صاحب الصنف اليوم.
+            */}
+            {boutiques.length > 0 && (
+                <div className="mb-4 flex flex-wrap items-center gap-2" data-testid="boutique-filter">
+                    <button type="button" onClick={() => pickBoutique(undefined)} className={chip(!boutiqueParam)}>
+                        {t('كل المبيعات')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => pickBoutique('own')}
+                        className={chip(boutiqueParam === 'own')}
+                        data-testid="boutique-own"
+                    >
+                        {t('منتجات المتجر')}
+                    </button>
+                    {boutiques.map((b) => (
+                        <button
+                            key={b.value}
+                            type="button"
+                            onClick={() => pickBoutique(String(b.value))}
+                            className={chip(boutiqueParam === String(b.value))}
+                            data-testid={`boutique-${b.value}`}
+                        >
+                            {b.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {/*
+                وما لا يُنسب إلى بندٍ يُقال — لا يُعرض رقمًا ولا يُترك يُقرأ ناقصًا.
+            */}
+            {scoped && (
+                <p
+                    data-testid="boutique-note"
+                    className="mb-4 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] leading-relaxed text-[#1d4ed8]"
+                >
+                    {t('أرقام بنود البيع وحدها بسعرها وقت البيع، والعمولة بنسبة البوتيك وقت البيع. الضريبة ووسائل الدفع وخصم الفاتورة والمصروفات وصافي الربح تُسجَّل على الطلب كاملًا فلا تُنسب لبند — لذلك لا تظهر هنا. والتسوية الفعلية من شاشة البوتيكات.')}
+                </p>
+            )}
+
+            {/*
                 وما لا يُنسب إلى قناةٍ يُقال — لا يُترك يُقرأ ناقصًا.
 
                 المصروفاتُ وتكلفةُ الإضافات على المتجر كلِّه، فبطاقةُ الربح
                 هنا مُجملٌ لا صافٍ. ومن قرأ «ربح» بلا هذا السطر قاس قناةً
                 بمقياس متجرٍ كامل.
             */}
-            {!whole && (
+            {!whole && !scoped && (
                 <p
                     data-testid="channel-note"
                     className="mb-4 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] leading-relaxed text-[#1d4ed8]"
@@ -235,7 +345,7 @@ export default function ReportsSales() {
                     الفترة وحدها. وبقيّة الفترات كما هي.
                 */}
                 {server.range !== 'all' && (
-                    <Card className="lg:col-span-2">
+                    <Card className={cn(paymentDistribution ? 'lg:col-span-2' : 'lg:col-span-3')}>
                         <CardHeader>
                             {/* عنوان المخطّط يتبع دقّته: ساعات اليوم، أو أيّام الشهر، أو أشهر السنة */}
                             <CardTitle>{t(CHART_TITLE[server.range])}</CardTitle>
@@ -253,21 +363,25 @@ export default function ReportsSales() {
                 )}
 
                 {/* بلا المخطّط تأخذ البطاقة العرض كلّه بدل ثلثٍ وفراغين */}
-                <Card className={cn(server.range === 'all' && 'lg:col-span-3')}>
-                    <CardHeader>
-                        <CardTitle>{t('توزيع وسائل الدفع')}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <BarChart
-                            labels={paymentDistribution.labels.map((l) => t(l))}
-                            series={paymentDistribution.series}
-                            format={m}
-                        />
-                    </CardContent>
-                </Card>
+                {/* وبنطاق بوتيكٍ لا بطاقةَ دفع: الدفعُ على الطلب كاملًا لا على بنده */}
+                {paymentDistribution && (
+                    <Card className={cn(server.range === 'all' && 'lg:col-span-3')}>
+                        <CardHeader>
+                            <CardTitle>{t('توزيع وسائل الدفع')}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <BarChart
+                                labels={paymentDistribution.labels.map((l) => t(l))}
+                                series={paymentDistribution.series}
+                                format={m}
+                            />
+                        </CardContent>
+                    </Card>
+                )}
             </div>
 
 
+            {counters.length > 0 && (
             <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                 {counters.map((c) => (
                     <Card key={c.label} className="p-4 text-center">
@@ -276,6 +390,7 @@ export default function ReportsSales() {
                     </Card>
                 ))}
             </div>
+            )}
 
             <Card className="overflow-hidden">
                 <div className="border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">

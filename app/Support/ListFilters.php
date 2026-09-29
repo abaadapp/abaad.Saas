@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Business;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -104,6 +105,25 @@ class ListFilters
 
         if (($st = $request->query('status')) !== null && $st !== '') {
             $q->where('active', $st === 'active');
+        }
+
+        /*
+         * ولمن الصنف: المحلُّ أم بوتيكٌ بعينه — بـ`Boutiques::scope` وحدها.
+         *
+         * وبوتيكُ متجرٍ آخر يُقرأ «الكلّ» هناك، فلا يُرشِّح هنا شيئًا ولا
+         * يكشف أنّه موجود.
+         */
+        if ($request->filled('boutique')) {
+            $scope = Boutiques::scope(
+                Business::find(Demo::bid()),
+                $request->query('boutique'),
+            );
+
+            if ($scope === Boutiques::OWN) {
+                $q->whereNull('boutique_id');
+            } elseif ($scope !== null) {
+                $q->where('boutique_id', $scope->id);
+            }
         }
 
         if ($stock = $request->query('stock')) {

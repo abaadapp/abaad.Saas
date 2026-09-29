@@ -78,6 +78,154 @@ final class Boutiques
         abort_unless(self::holds($business), 404);
     }
 
+    /* ═══════════ مُرشِّحُ «لمن هذا الصنف؟» ═══════════ */
+
+    /** قيمةُ المُرشِّح لأصناف المحلّ نفسِه — ما لا بوتيكَ عليه */
+    public const OWN = 'own';
+
+    /**
+     * بوتيكاتُ هذا المحلّ خياراتٍ لقائمة — أو لا شيء لمن لا شيءَ خلف بابه.
+     *
+     * وبـ`holds` لا بـ`hosts`: مفتاحٌ أُطفئ لا يُخفي بوتيكًا ما زال على
+     * رفّه صنفٌ يُباع — انظر `holds`.
+     *
+     * @return list<array{value: int, label: string, active: bool}>
+     */
+    public static function options(?Business $business): array
+    {
+        if (! self::holds($business)) {
+            return [];
+        }
+
+        return Boutique::where('business_id', $business->id)->orderBy('name')->orderBy('id')
+            ->get(['id', 'name', 'name_en', 'active'])
+            ->map(fn (Boutique $b) => ['value' => (int) $b->id, 'label' => $b->label(), 'active' => (bool) $b->active])
+            ->values()->all();
+    }
+
+    /**
+     * ما يطلبه الرابطُ مُرشِّحًا: `null` للكلّ، و`OWN` لأصناف المحلّ، أو بوتيكٌ بعينه.
+     *
+     * وموضعٌ واحد يُقرأ منه — قائمةُ المنتجات والتقريرُ وملفّاتُه — فلا
+     * يقبل أحدُها قيمةً يردّها الآخر.
+     *
+     * ═══ وما لا يصحّ يُقرأ «الكلّ» ═══
+     *
+     * بوتيكٌ من متجرٍ آخر لا يُرشَّح به ولا يُسمّى: يُردّ `null` كأنّه لم
+     * يُطلب، فلا يُعرف من الردّ أهو موجودٌ عند غيرك أم لا. ومن لا بوتيكَ
+     * عنده يُردّ كذلك — فلا يتغيّر عليه شيء ولو كتب المُرشِّحَ بيده.
+     */
+    public static function scope(?Business $business, mixed $raw): string|Boutique|null
+    {
+        if (! is_string($raw) && ! is_int($raw)) {
+            return null;
+        }
+
+        $raw = trim((string) $raw);
+
+        if ($raw === '' || ! self::holds($business)) {
+            return null;
+        }
+
+        if ($raw === self::OWN) {
+            return self::OWN;
+        }
+
+        if (! ctype_digit($raw)) {
+            return null;
+        }
+
+        return Boutique::where('business_id', $business->id)->find((int) $raw);
+    }
+
+    /** اسمُ المُرشِّح كما يُطبع فوق ورقة — انظر `scope` */
+    public static function scopeLabel(string|Boutique|null $scope): string
+    {
+        return match (true) {
+            $scope === null => __('كل المبيعات'),
+            $scope === self::OWN => __('منتجات المتجر'),
+            default => __('بوتيك: :name', ['name' => $scope->label()]),
+        };
+    }
+
+    /**
+     * بنودُ ما بِيع في نطاقٍ — لبوتيكٍ، أو لأصناف المحلّ.
+     *
+     * ═══ والبندُ هو الوحدة لا الطلب ═══
+     *
+     * فاتورةٌ واحدة قد تجمع صنفَ المحلّ وصنفَ بوتيكين. فلو قيس البوتيكُ
+     * بمجموع الطلب لَنُسب إليه ما باعه غيرُه. فيُجمع من بنوده وحدها.
+     *
+     * ═══ والنسبةُ من لقطة البند ═══
+     *
+     * `order_items.boutique_id` و`boutique_rate` كُتبا ساعةَ البيع — لا
+     * `products.boutique_id` اليوم ولا `commission_rate` اليوم. فصنفٌ يُنقل
+     * أو نسبةٌ تُرفع لا يُغيّران رقمًا من الماضي.
+     *
+     * و«ما بِيع» هو `Order::scopeSold` كما في النظام كلّه، والقناةُ من
+     * `SalesChannel::scope` — لا قاعدةَ ثانيةً تُكتب هنا.
+     */
+    public static function soldLines(
+        int $businessId,
+        string|Boutique $scope,
+        ?Carbon $start = null,
+        ?Carbon $end = null,
+        ?int $branchId = null,
+        ?string $channel = null,
+    ) {
+        $orders = SalesChannel::scope(
+            Order::where('business_id', $businessId)->sold()
+                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+                ->when($end, fn ($q) => $q->where('ordered_at', '<=', $end))
+                ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
+            $channel,
+        )->select('id');
+
+        return OrderItem::query()
+            ->whereIn('order_items.order_id', $orders)
+            ->when(
+                $scope === self::OWN,
+                fn ($q) => $q->whereNull('order_items.boutique_id'),
+                fn ($q) => $q->where('order_items.boutique_id', $scope->id),
+            );
+    }
+
+    /**
+     * أرقامُ النطاق من بنوده — إجماليٌّ وعمولةٌ وصافٍ وكميّة.
+     *
+     * والعمولةُ بنسبة كلّ بندٍ ساعةَ بيعه: `SUM(total × boutique_rate ÷ 100)`.
+     * ولأصناف المحلّ لا عمولةَ ولا مستحقّ — فهما صفر.
+     *
+     * @return array{gross: float, commission: float, net: float, quantity: float, orders: int, lines: int}
+     */
+    public static function soldTotals(
+        int $businessId,
+        string|Boutique $scope,
+        ?Carbon $start = null,
+        ?int $branchId = null,
+        ?string $channel = null,
+    ): array {
+        $row = self::soldLines($businessId, $scope, $start, null, $branchId, $channel)
+            ->selectRaw('COALESCE(SUM(order_items.total), 0) as gross')
+            ->selectRaw('COALESCE(SUM(order_items.total * COALESCE(order_items.boutique_rate, 0) / 100), 0) as commission')
+            ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as quantity')
+            ->selectRaw('COUNT(DISTINCT order_items.order_id) as order_count')
+            ->selectRaw('COUNT(*) as line_count')
+            ->toBase()->first();
+
+        $gross = round((float) $row->gross, 3);
+        $commission = $scope === self::OWN ? 0.0 : round((float) $row->commission, 3);
+
+        return [
+            'gross' => $gross,
+            'commission' => $commission,
+            'net' => $scope === self::OWN ? 0.0 : round($gross - $commission, 3),
+            'quantity' => round((float) $row->quantity, 3),
+            'orders' => (int) $row->order_count,
+            'lines' => (int) $row->line_count,
+        ];
+    }
+
     /* ═══════════ النسبةُ ساعةَ البيع ═══════════ */
 
     /**

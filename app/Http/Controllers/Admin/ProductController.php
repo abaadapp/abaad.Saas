@@ -9,6 +9,7 @@ use App\Models\Business;
 use App\Models\ImportBatch;
 use App\Models\Product;
 use App\Support\Activity;
+use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Lexicon;
 use App\Support\ListFilters;
@@ -208,7 +209,13 @@ class ProductController extends Controller
 
     public function index(Request $request)
     {
-        $q = Product::where('business_id', $this->bid())->with('category');
+        $business = Business::find($this->bid());
+        // وبوتيكاتُه للعمود والمُرشِّح — فارغةٌ لمن لا بوتيكَ عنده فلا يُرسمان
+        $boutiques = Boutiques::options($business);
+
+        $q = Product::where('business_id', $this->bid())->with('category')
+            // واسمُ البوتيك بضمٍّ واحد للصفحة لا باستعلامٍ لكلّ صفّ
+            ->when($boutiques !== [], fn ($w) => $w->with('boutique:id,name,name_en'));
 
         // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
         ListFilters::products($q, $request);
@@ -233,6 +240,13 @@ class ProductController extends Controller
             'stock_status' => $p->stock_status, 'active' => (bool) $p->active,
             'alert' => $p->alert_qty, 'tax' => (float) $p->tax, 'discount' => (float) $p->discount,
             'tracks_stock' => $p->tracksStock(),
+            /*
+             * لمن الصنفُ اليوم — `null` لصنف المحلّ.
+             *
+             * ولا يُرسل لمن لا بوتيكَ عنده: الحمولةُ تبقى كما كانت، والعمودُ
+             * لا يُرسم.
+             */
+            ...($boutiques !== [] ? ['boutique' => $p->boutique?->label()] : []),
         ]);
 
         return Inertia::render('Admin/Products/Index', [
@@ -240,8 +254,9 @@ class ProductController extends Controller
             // الترقيم يبقى خادميًا: DataTable في وضعه الخادمي يقرأ هذه الحقول
             'pagination' => Pagination::meta($products),
             'categories' => Demo::categories(),
-            'filters' => $request->only('q', 'category', 'status', 'stock')
+            'filters' => $request->only('q', 'category', 'status', 'stock', 'boutique')
                 + Sort::params($request, self::SORTS),
+            'boutiques' => $boutiques,
             'sorts' => Sort::keys(self::SORTS),
             // لاستيراد ملف: الكميات المستوردة يجب أن تُودَع في فرع محدّد،
             // وإلا اختلّ التوازن «مجموع الفروع = كمية المنتج»

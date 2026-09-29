@@ -7,6 +7,7 @@ import type { PageProps } from '@/types';
 import type { CompositionData } from './partials/addons';
 import type { GalleryImage } from './partials/Gallery';
 import type { Category, Product } from '@/types/models';
+import type { BoutiqueOption } from './partials/boutique';
 
 interface Props {
     product: Product;
@@ -17,10 +18,13 @@ interface Props {
     gallery: GalleryImage[];
     galleryMax: number;
     galleryLimits: { perFile: number; batch: number };
+    /** بوتيكاتُ المتجر — فارغةٌ لمن لا بوتيكَ عنده. انظر `Boutiques::options` */
+    boutiques?: BoutiqueOption[];
+    boutiqueId?: number | null;
 }
 
 export default function ProductEdit() {
-    const { product, categories, description, composition, gallery, galleryMax, galleryLimits, context } =
+    const { product, categories, description, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -40,6 +44,8 @@ export default function ProductEdit() {
                 gallery={gallery}
                 galleryMax={galleryMax}
                 galleryLimits={galleryLimits}
+                boutiques={boutiques}
+                boutiqueId={boutiqueId}
             />
         </AdminLayout>
     );

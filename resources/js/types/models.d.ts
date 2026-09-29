@@ -35,6 +35,11 @@ export interface Product {
     has_recipe?: boolean;
     /** مرتبطٌ بالمخزون — و`false` خدمةٌ لا تُخصم ولا تنفد ولا تُنبَّه */
     tracks_stock?: boolean;
+    /**
+     * بوتيكُه اليوم — `null` لصنف المحلّ، وغائبٌ لمن لا بوتيكَ عنده.
+     * انظر `ProductController::index`.
+     */
+    boutique?: string | null;
 }
 
 export interface Category {

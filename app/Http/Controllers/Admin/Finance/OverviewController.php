@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\BankAccount;
+use App\Models\BoutiqueSettlement;
 use App\Models\Expense;
 use App\Models\PayrollRun;
 use App\Models\SupplierInvoice;
@@ -140,12 +141,29 @@ class OverviewController extends Controller
 
         $today = now()->startOfDay();
 
+        /*
+         * ═══ ولمن التسوية: البوتيكُ باسمه ═══
+         *
+         * مصروفُ التسوية يقول «تسوية بوتيكات» نوعًا — ولا يقول لأيّ بوتيك.
+         * والاسمُ يُقرأ من العلاقة لا من نصّ الوصف: `boutique_settlements.expense_id`
+         * ← `boutique_id` ← `Boutique`. الوصفُ نصٌّ يُكتب ويُترجم، والعلاقةُ لا.
+         *
+         * واستعلامٌ واحد للصفحة كلّها — لا استعلامٌ لكلّ صفّ.
+         */
+        $boutiqueOf = BoutiqueSettlement::where('business_id', $bid)
+            ->whereIn('expense_id', $expenses->pluck('id'))
+            ->with('boutique:id,name,name_en')
+            ->get(['expense_id', 'boutique_id'])
+            ->mapWithKeys(fn ($s) => [(int) $s->expense_id => $s->boutique?->label()]);
+
         return Inertia::render('Admin/Finance/Dues', [
             'expenses' => $expenses->map(fn ($e) => [
                 'id' => $e->id,
                 'reference' => $e->reference,
                 'title' => $e->description ?: $e->type,
                 'type' => $e->type,
+                // اسمُ البوتيك لمصروف تسويته — `null` لكلّ مصروفٍ آخر
+                'boutique' => $boutiqueOf[$e->id] ?? null,
                 'amount' => (float) $e->amount,
                 'due' => optional($e->due_date)->format('Y-m-d'),
                 'overdue' => $e->due_date !== null && $e->due_date->lt($today),

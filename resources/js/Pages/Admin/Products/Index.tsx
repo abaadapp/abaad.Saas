@@ -44,6 +44,7 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import type { Category, Product } from '@/types/models';
+import type { BoutiqueOption } from './partials/boutique';
 
 interface Props {
     products: Product[];
@@ -55,11 +56,23 @@ interface Props {
     branches: { id: number; name: string }[];
     currentBranchId: number | null;
     lastImport: { file: string; added: number; updated: number; created_at: string } | null;
+    /** بوتيكاتُ المتجر — فارغةٌ لمن لا بوتيكَ عنده فلا عمودَ ولا مُرشِّح */
+    boutiques?: BoutiqueOption[];
 }
 
 export default function ProductsIndex() {
-    const { products: serverProducts, pagination, categories, filters, sorts, branches, currentBranchId, lastImport, context } =
-        usePage<PageProps<Props>>().props;
+    const {
+        products: serverProducts,
+        pagination,
+        categories,
+        filters,
+        sorts,
+        branches,
+        currentBranchId,
+        lastImport,
+        boutiques = [],
+        context,
+    } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -174,6 +187,26 @@ export default function ProductsIndex() {
             ),
         },
         { key: 'cat', header: 'القسم', cell: (p) => p.cat || '—' },
+        /*
+         * لمن الصنف — والعمودُ لمن عنده بوتيكات وحده.
+         *
+         * «منتج المتجر» يُكتب ولا يُترك فراغًا: الفراغُ يُقرأ «لم يُحمَّل»،
+         * والصنفُ للمحلّ قولٌ لا غياب.
+         */
+        ...(boutiques.length > 0
+            ? [
+                  {
+                      key: 'boutique',
+                      header: 'التبعية',
+                      cell: (p: Product) =>
+                          p.boutique ? (
+                              <Badge variant="info">{p.boutique}</Badge>
+                          ) : (
+                              <span className="text-[12px] text-[#6b7280]">{t('منتج المتجر')}</span>
+                          ),
+                  } satisfies Column<Product>,
+              ]
+            : []),
         {
             key: 'price',
             header: 'السعر',
@@ -244,6 +277,22 @@ export default function ProductsIndex() {
             param: 'category',
             options: categories.map((c) => ({ label: c.name, value: c.name })),
         },
+        /*
+         * ولمن الصنف — يُرشَّح في الخادم لا في الصفحة: الترقيمُ خادميّ، ومُرشِّحٌ
+         * على صفحةٍ من اثني عشر يُخفي ما في الصفحات الأخرى.
+         */
+        ...(boutiques.length > 0
+            ? [
+                  {
+                      label: 'كل المنتجات',
+                      param: 'boutique',
+                      options: [
+                          { label: 'منتجات المتجر', value: 'own' },
+                          ...boutiques.map((b) => ({ label: b.label, value: String(b.value) })),
+                      ],
+                  } satisfies Filter<Product>,
+              ]
+            : []),
         {
             label: 'كل الحالات',
             asTabs: true,

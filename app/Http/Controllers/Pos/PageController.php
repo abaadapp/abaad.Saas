@@ -13,6 +13,7 @@ use App\Support\Demo;
 use App\Support\Seasons;
 use App\Support\FlowerOrder;
 use App\Support\PlanFeatures;
+use App\Support\PosAddonsLayout;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
 use App\Support\ReceiptVisibility;
@@ -127,6 +128,11 @@ class PageController extends Controller
             // ومع كلّ زبونٍ ما يُقال عنه للكاشير — بالإعدادات، وبلا ملاحظةٍ أُطفئت
             'customers' => $this->customersWithContext(),
             'addons' => Demo::addons(),
+            /*
+             * وكيف تُعرض — شريطًا (الافتراض) أم قسمًا كاملًا. صفٌّ واحد،
+             * والقديمُ والمفقودُ والفاسدُ «شريط» — انظر `PosAddonsLayout`.
+             */
+            'addonsLayout' => PosAddonsLayout::for(Demo::bid()),
             'coupons' => Demo::activeCoupons(),
             /*
              * قوالبُ الطلب المخصَّص — النشطةُ وحدها، وبلغة الواجهة.

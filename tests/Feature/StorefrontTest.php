@@ -349,9 +349,16 @@ class StorefrontTest extends TestCase
 
     /* --------------------------- الترويسة --------------------------- */
 
-    /** ومتجرُ أبعاد يسبق الرابط الخارجيّ: زرُّ الترويسة يفتح المتجر الحيّ */
+    /**
+     * ومتجرُ أبعاد يسبق الرابط الخارجيّ: زرُّ الترويسة يفتح المتجر الحيّ.
+     *
+     * والحيُّ هو ما يُخدَم (`Storefront::canonical`). وكان هذا الحارسُ يطلب
+     * النطاقَ الفرعيّ مهما كان الإعداد — وهو ما يفتح بابًا مغلقًا حين تكون
+     * النطاقاتُ الفرعيّة مطفأة. فيُثبَّت الإعدادُ هنا صراحةً.
+     */
     public function test_the_header_button_prefers_the_shop_hosted_here(): void
     {
+        config(['storefront.subdomains' => true, 'storefront.custom_domains' => false]);
         MarketingSettings::save($this->business->id, 'website', [
             'site_on' => '1', 'site_domain' => 'old-site.om',
         ]);

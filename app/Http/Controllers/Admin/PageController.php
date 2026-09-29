@@ -29,6 +29,7 @@ use App\Support\Store\StorePage;
 use App\Support\OrderNotice;
 use App\Support\OrderStatus;
 use App\Support\Permissions;
+use App\Support\PosAddonsLayout;
 use App\Support\ProductImages;
 use App\Support\PurchaseOrders;
 use App\Support\PurchaseOrderTotals;
@@ -55,6 +56,22 @@ class PageController extends Controller
 {
     /* ------------------------------ المنتجات ------------------------------ */
 
+    /**
+     * طريقةُ عرض الإضافات في نقطة البيع — ومن يملك تغييرها.
+     *
+     * إعدادٌ للنشاط كلِّه يُعرض في شاشة المنتج لأنّه يجاور «إضافات مع كلّ
+     * المنتجات». ويُقرأ صفًّا واحدًا، والغيابُ «شريط» — انظر `PosAddonsLayout`.
+     *
+     * @return array{layout: string, can_change: bool}
+     */
+    private function addonsDisplay(): array
+    {
+        return [
+            'layout' => PosAddonsLayout::for(auth()->user()->business_id ?? Demo::bid()),
+            'can_change' => Permissions::isOwner(auth()->user()),
+        ];
+    }
+
     public function productsCreate(): Response
     {
         // التركيب يُملأ مع المنتج: القوائم (المكوّنات والإضافات) تُرسل فارغةَ
@@ -66,6 +83,7 @@ class PageController extends Controller
             ),
             // حقلُ «البوتيك» لمن خلف بابه شيء — انظر `Boutiques::options`
             'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
+            'addonsDisplay' => $this->addonsDisplay(),
         ]);
     }
 
@@ -141,6 +159,7 @@ class PageController extends Controller
              */
             'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
             'boutiqueId' => $model?->boutique_id ? (int) $model->boutique_id : null,
+            'addonsDisplay' => $this->addonsDisplay(),
         ]);
     }
 

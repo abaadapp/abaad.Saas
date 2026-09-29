@@ -5,7 +5,10 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Addon;
 use App\Models\Category;
+use App\Models\Setting;
 use App\Support\Demo;
+use App\Support\Permissions;
+use App\Support\PosAddonsLayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -98,6 +101,35 @@ class CatalogQuickAddController extends Controller
      * ولا تُمسّ فواتير مضت: اسمُها وسعرُها ولقطةُ ما أكلته منسوخةٌ في
      * `order_item_addons` لحظة البيع.
      */
+    /**
+     * كيف تُعرض إضافاتُ المتجر في نقطة البيع — لصاحب النشاط وحده.
+     *
+     * يُحفظ بطلبٍ مستقلّ لا مع نموذج المنتج: هو إعدادٌ للنشاط كلِّه، ولو
+     * رُكّب على حفظة المنتج لَحُفظ منتجٌ نصفُ مكتوب لأجل تبديل عرض.
+     *
+     * والمالكُ بتعريف النظام الواحد (`Permissions::isOwner`)، والردُّ قبل
+     * أيّ كتابة: الإخفاءُ في الشاشة لا يمنع طلبًا مباشرًا. ولا يُقرأ
+     * `business_id` من الطلب — المتجرُ متجرُ من سجّل الدخول.
+     */
+    public function addonsDisplay(Request $request): JsonResponse
+    {
+        abort_unless(Permissions::isOwner(auth()->user()), 403);
+
+        // والاسمُ العربيّ في النداء لا في الخريطة العامّة: `layout` هناك «تخطيط» في بانِي الموقع
+        $data = $request->validate([
+            'layout' => ['required', Rule::in(PosAddonsLayout::VALUES)],
+        ], [], ['layout' => __('طريقة عرض الإضافات')]);
+
+        Setting::updateOrCreate(
+            ['business_id' => $this->bid(), 'key' => PosAddonsLayout::KEY],
+            ['value' => $data['layout']],
+        );
+
+        \App\Support\Activity::log('updated', 'غيّر عرض الإضافات في نقطة البيع إلى «'.$data['layout'].'»');
+
+        return response()->json(['ok' => true, 'layout' => $data['layout']]);
+    }
+
     public function updateAddon(Request $request, int $addon): JsonResponse
     {
         $bid = $this->bid();

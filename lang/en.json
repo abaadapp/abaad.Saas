@@ -6976,5 +6976,11 @@
     "فتح إيصال طلب الموقع عند تأكيده على هذا الجهاز.": "Open the website order's receipt when it is confirmed on this device.",
     "فتح إيصال الطباعة فور إتمام البيع في نقطة البيع.": "Open the receipt for printing as soon as a sale is completed at the POS.",
     "طباعة طلب الموقع عند تأكيده": "Prints website orders on confirm",
-    "منع المتصفح فتح نافذة الطباعة — اطبع فاتورة طلب الموقع يدويًّا.": "The browser blocked the print window — print the website order's invoice manually."
+    "منع المتصفح فتح نافذة الطباعة — اطبع فاتورة طلب الموقع يدويًّا.": "The browser blocked the print window — print the website order's invoice manually.",
+    "طريقة عرض الإضافات في نقطة البيع": "How add-ons appear at the point of sale",
+    "شريط أفقي": "Bar",
+    "قسم كامل": "Full section",
+    "يطبّق على نقطة البيع في جميع أجهزة النشاط.": "Applies to the point of sale on all of the business’s devices.",
+    "تعذّر حفظ طريقة العرض": "Could not save the display option",
+    "طريقة عرض الإضافات": "Add-on display"
 }

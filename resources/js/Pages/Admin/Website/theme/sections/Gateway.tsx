@@ -16,6 +16,8 @@ export interface GatewayState {
     has_secret: boolean;
     has_hmac: boolean;
     ready: boolean;
+    /** أفي قائمة المالك هذا المتجر؟ — ومن ليس فيها لا تُرسم له البطاقة (`Paymob::allowed`) */
+    allowed: boolean;
 }
 
 /**

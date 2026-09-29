@@ -78,7 +78,11 @@ export default function ThemeStore() {
                         onReset={() => form.reset()}
                     />
 
-                    <Gateway gateway={gateway} />
+                    {/*
+                        وPaymob لمن في قائمة المالك وحده — ومن ليس فيها لا يرى
+                        بطاقتَه، والخادمُ يردّ حفظَ مفاتيحه بـ403 على كلّ حال.
+                    */}
+                    {gateway.allowed && <Gateway gateway={gateway} />}
                 </div>
             </SettingsPage>
         </AdminLayout>

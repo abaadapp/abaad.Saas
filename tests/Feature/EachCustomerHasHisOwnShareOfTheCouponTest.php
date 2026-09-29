@@ -69,6 +69,8 @@ class EachCustomerHasHisOwnShareOfTheCouponTest extends TestCase
             // وبابُ السلّة لا يُخدم إلّا لمتجرٍ واجهتُه خاصّة — انظر `Storefront::serves`
             'site_slug' => 'mine', 'tier' => 'gold', 'storefront_theme' => 'ribbon',
         ]);
+        // Paymob لمن في قائمة المالك وحده (`storefront.paymob_businesses`) — ومتجرُ هذا الاختبار منها
+        config(['storefront.paymob_businesses' => [$this->business->id]]);
         Currency::create(['business_id' => $this->business->id, 'code' => 'OMR', 'name' => 'ريال', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true]);
         Ledger::seedChart($this->business->id);
         $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);

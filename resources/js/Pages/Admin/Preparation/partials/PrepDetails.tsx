@@ -61,6 +61,18 @@ export default function PrepDetails({
     const number = o?.number ?? null;
 
     /*
+     * الملاحظاتُ الثلاث على الطلب — كلٌّ باسمه، وما فرغ منها لا يُرسم.
+     *
+     * والعنوانُ مفتاحٌ يُترجَم عند الرسم، والنصُّ لا: ما كتبه صاحبُه
+     * بالعربيّة أو بالإنجليزيّة يُقرأ كما كتبه.
+     */
+    const notesList = [
+        { key: 'order', label: 'ملاحظات الطلب', text: o?.order_notes },
+        { key: 'delivery', label: 'تعليمات التوصيل', text: o?.delivery_notes },
+        { key: 'internal', label: 'ملاحظات داخلية', text: o?.internal_notes },
+    ].filter((n): n is { key: string; label: string; text: string } => !!n.text && n.text.trim() !== '');
+
+    /*
      * الخطُّ الزمنيّ يُجلب عند الفتح لا مع اللوحة.
      *
      * مئتا بطاقةٍ تُعرض، وواحدةٌ تُفتح. فجلبُه للكلّ يعني مئتي استعلامٍ في كلّ
@@ -282,14 +294,24 @@ export default function PrepDetails({
                         </div>
                     )}
 
-                    {(o.delivery_notes || o.internal_notes) && (
-                        <div className="rounded-[10px] bg-gray-50 p-3 text-[12px] text-[#6b7280]">
+                    {/*
+                        وكلُّ ملاحظةٍ باسمها — لا نصوصٌ متراصّةٌ لا يُعرف أيُّها للسائق
+                        وأيُّها لمن يجهّز. والعنوانُ يُترجَم، والنصُّ نصُّ كاتبه كما هو.
+                    */}
+                    {notesList.length > 0 && (
+                        <div className="rounded-[10px] bg-gray-50 p-3 text-[12px] text-[#6b7280]" data-testid="prep-notes">
                             <p className="mb-1 flex items-center gap-1.5 font-medium text-[#4b4b4b]">
                                 <StickyNote className="size-3.5" />
                                 {t('ملاحظات')}
                             </p>
-                            {o.delivery_notes && <p>{o.delivery_notes}</p>}
-                            {o.internal_notes && <p className="mt-1">{o.internal_notes}</p>}
+                            {notesList.map((n, i) => (
+                                <div key={n.label} className={cn(i > 0 && 'mt-2')} data-testid={`prep-note-${n.key}`}>
+                                    <p className="font-medium text-[#4b4b4b]">{t(n.label)}:</p>
+                                    <p className="whitespace-pre-line" dir="auto">
+                                        {n.text}
+                                    </p>
+                                </div>
+                            ))}
                         </div>
                     )}
 

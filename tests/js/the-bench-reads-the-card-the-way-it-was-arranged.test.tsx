@@ -33,6 +33,7 @@ const order = (over: Partial<PrepOrder> = {}): PrepOrder => ({
     hide_sender: false,
     delivery_notes: null,
     internal_notes: null,
+    order_notes: null,
     branch: null,
     items: [{ id: 7, name: 'باقة', qty: 1, note: null, image: null, addons: [] }],
     next: ['جاهز'],

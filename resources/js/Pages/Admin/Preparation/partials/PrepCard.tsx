@@ -50,10 +50,13 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
      * والداخليّةُ أوّلًا: هي ما يكتبه صاحبُ المحلّ لمن يجهّز («زبونٌ مهمّ،
      * غلّفها في العلبة الفاخرة»). ثمّ ملاحظةُ أوّل بندٍ تحملها — وهي أوجبُ ما
      * يُقرأ عند الطاولة: الاسمُ يقول ماذا، والملاحظةُ تقول كيف.
+     *
+     * وملاحظةُ الطلب العامّة بعد الداخليّة وقبل ملاحظة البند: هي ما كُتب
+     * على الطلب كلِّه، فتسبق ما كُتب على بندٍ واحد منه.
      */
     const itemNote = o.items.find((i) => i.note)?.note ?? null;
-    const note = o.internal_notes || itemNote || o.delivery_notes || null;
-    const notes = [o.internal_notes, o.delivery_notes, ...o.items.map((i) => i.note)].filter(Boolean);
+    const note = o.internal_notes || o.order_notes || itemNote || o.delivery_notes || null;
+    const notes = [o.internal_notes, o.order_notes, o.delivery_notes, ...o.items.map((i) => i.note)].filter(Boolean);
 
     return (
         <Card

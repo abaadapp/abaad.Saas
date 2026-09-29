@@ -69,6 +69,8 @@ export interface PrepOrder {
     hide_sender: boolean;
     delivery_notes: string | null;
     internal_notes: string | null;
+    /** ملاحظةُ الطلب العامّة (`orders.notes`) — نصُّ كاتبها كما هو، لا يُترجَم */
+    order_notes: string | null;
     branch: string | null;
     items: PrepItem[];
     /** ما يجوز الانتقال إليه — يصل من الخادم، والحارس هناك أيضًا */

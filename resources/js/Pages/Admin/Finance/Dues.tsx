@@ -31,6 +31,8 @@ interface ExpenseDue extends Due {
     reference: string | null;
     title: string;
     type: string;
+    /** اسمُ البوتيك لمصروف تسويته — من العلاقة لا من الوصف. انظر `OverviewController::dues` */
+    boutique?: string | null;
 }
 
 interface InvoiceDue extends Due {
@@ -133,7 +135,18 @@ export default function Dues() {
                                                 <TableCell className="font-mono text-[13px] text-[#6b7280]">
                                                     {e.reference || '—'}
                                                 </TableCell>
-                                                <TableCell className="text-[#111]">{e.title}</TableCell>
+                                                <TableCell className="text-[#111]">
+                                                    {e.title}
+                                                    {/* لمن التسوية — يُقال باسمه لا يُستنتج من الوصف */}
+                                                    {e.boutique && (
+                                                        <span
+                                                            className="block text-[12px] text-[#6d28d9]"
+                                                            data-testid={`due-boutique-${e.id}`}
+                                                        >
+                                                            {t('بوتيك: :name', { name: e.boutique })}
+                                                        </span>
+                                                    )}
+                                                </TableCell>
                                                 <TableCell>
                                                     <Badge variant="neutral">{e.type}</Badge>
                                                 </TableCell>

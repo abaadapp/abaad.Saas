@@ -38,7 +38,7 @@ class PdfController extends Controller
         // الفترة تُورَث من الشاشة وتُطبع في الترويسة: ورقةٌ مطبوعة لا مبدّل
         // فوقها، فإن لم تقل فترتها قُرئت على أنها فترة قارئها
         // الورقة من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
-        $report = Reports::salesReport(request()->query('range'), request()->query('channel'));
+        $report = Reports::salesReport(request()->query('range'), request()->query('channel'), request()->query('boutique'));
         $range = $report['range'];
 
         $html = view('pdf.sales-report', [
@@ -60,12 +60,17 @@ class PdfController extends Controller
             'channel' => $report['channel'] === null
                 ? __('كل القنوات')
                 : SalesChannel::label($report['channel']),
-            'stats' => Reports::summaryRows($report['summary']),
+            'stats' => Reports::rowsFor($report),
+            // ونطاقُ البوتيك لمن عنده بوتيكات — `null` لا يُطبع سطرُه
+            'scope' => $report['boutiques'] !== [] ? $report['boutiqueLabel'] : null,
             'salesSeries' => $report['salesSeries'],
             // ووسائلُ الدفع بنطاق التقرير نفسِه — فرعًا وقناةً معًا: ورقةٌ
             // نصفُها فرعٌ ونصفُها شركةٌ أسوأ من ورقتين. والقيمتان تُقرآن
             // مطبَّعتين من الحمولة، فلا يُطبَّع الاستعلامُ الخام مرّتين
-            'payments' => Demo::paymentBreakdown($range, $report['channel'], $report['branchId']),
+            // وبنطاق بوتيكٍ لا وسائلَ دفع: الدفعُ على الطلب كاملًا لا على بنده
+            'payments' => $report['boutique'] === null
+                ? Demo::paymentBreakdown($range, $report['channel'], $report['branchId'])
+                : null,
             'topProducts' => $report['topSellingProducts'],
             'rangeLabel' => Demo::rangeLabel($range),
             'generatedAt' => now()->format('Y-m-d H:i'),

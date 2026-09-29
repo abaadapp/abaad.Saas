@@ -20,7 +20,7 @@ class ExportController extends Controller
         // الفترة التي كان التاجر ينظر إليها — الملفّ يغادر الشاشة ولا يصحّحه
         // مبدّلٌ فوقه، فيحملها في أوّل سطرٍ منه وفي اسمه. والحمولة من مصدر
         // الشاشة نفسه — انظر Support\Reports::salesReport
-        $report = Reports::salesReport(request()->query('range'), request()->query('channel'));
+        $report = Reports::salesReport(request()->query('range'), request()->query('channel'), request()->query('boutique'));
         $range = $report['range'];
 
         $rows = [];
@@ -32,11 +32,15 @@ class ExportController extends Controller
         $rows[] = [__('القناة'), $report['channel'] === null
             ? __('كل القنوات')
             : SalesChannel::label($report['channel']), ''];
+        // ونطاقُ البوتيك لمن عنده بوتيكات — ومن لا، يبقى ملفُّه كما كان
+        if ($report['boutiques'] !== []) {
+            $rows[] = [__('نطاق التقرير'), $report['boutiqueLabel'], ''];
+        }
         $rows[] = [__('الفترة'), Demo::rangeLabel($range), ''];
         $rows[] = ['', '', ''];
         $rows[] = [__('— المؤشرات الرئيسية —'), '', ''];
         $rows[] = [__('المؤشر'), __('القيمة'), ''];
-        foreach (Reports::summaryRows($report['summary']) as $s) {
+        foreach (Reports::rowsFor($report) as $s) {
             $rows[] = [$s['label'], $s['money'] ? number_format((float) $s['value'], 3, '.', '') : $s['value'], ''];
         }
         $rows[] = ['', '', ''];
@@ -52,11 +56,16 @@ class ExportController extends Controller
         }
         $rows[] = ['', '', ''];
         $rows[] = [__('— توزيع وسائل الدفع —'), '', ''];
-        $rows[] = [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')];
-        // بنطاق الحمولة نفسِه — فرعًا وقناةً: جدولٌ يعدّ قنواتٍ لم تُختر
-        // يخالف الملخّصَ فوقه في الملفّ الواحد
-        foreach (Demo::paymentBreakdown($range, $report['channel'], $report['branchId']) as $m) {
-            $rows[] = [$m['name'], number_format((float) $m['total'], 3, '.', ''), $m['count']];
+        if ($report['boutique'] !== null) {
+            // الدفعُ على الطلب كاملًا لا على بنده — فلا يُنسب إلى نطاقٍ بالظنّ
+            $rows[] = [__('لا يُنسب إلى بوتيك: الدفع يُسجَّل على الطلب كاملًا.'), '', ''];
+        } else {
+            $rows[] = [__('الوسيلة'), __('الإجمالي'), __('عدد العمليات')];
+            // بنطاق الحمولة نفسِه — فرعًا وقناةً: جدولٌ يعدّ قنواتٍ لم تُختر
+            // يخالف الملخّصَ فوقه في الملفّ الواحد
+            foreach (Demo::paymentBreakdown($range, $report['channel'], $report['branchId']) as $m) {
+                $rows[] = [$m['name'], number_format((float) $m['total'], 3, '.', ''), $m['count']];
+            }
         }
         $rows[] = ['', '', ''];
         $rows[] = [__('— الأكثر مبيعًا —'), '', ''];

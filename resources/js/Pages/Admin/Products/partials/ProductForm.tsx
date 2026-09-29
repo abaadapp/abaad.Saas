@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils';
 import AddonDialog from './AddonDialog';
 import type { AddonOption, CompositionData } from './addons';
 import Gallery, { type GalleryImage } from './Gallery';
+import { boutiqueMove, type BoutiqueOption } from './boutique';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import type { Category, Product } from '@/types/models';
 
 interface Props {
@@ -27,6 +29,13 @@ interface Props {
     gallery?: GalleryImage[];
     galleryMax?: number;
     galleryLimits?: { perFile: number; batch: number };
+    /**
+     * بوتيكاتُ المتجر — فارغةٌ أو غائبةٌ لمن لا بوتيكَ عنده، فلا يُرسم الحقلُ
+     * ولا يُرسَل. انظر `Boutiques::options`.
+     */
+    boutiques?: BoutiqueOption[];
+    /** بوتيكُ الصنف اليوم — في التعديل */
+    boutiqueId?: number | null;
 }
 
 const NAV = [
@@ -50,6 +59,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
     name_en: 'basic',
     description: 'basic',
     category_id: 'basic',
+    boutique_id: 'basic',
     sku: 'basic',
     barcode: 'basic',
     active: 'basic',
@@ -74,16 +84,33 @@ const FIELD_SECTION: Record<string, TabKey> = {
  * المستخدم يرى أين هو وكم بقي. والحقول المخفيّة تبقى قيمها محفوظة في حالة
  * النموذج، فالتنقّل بين الأقسام لا يفقد شيئًا.
  */
-export default function ProductForm({ categories, product, description, currencyLabel, composition, gallery, galleryMax, galleryLimits }: Props) {
+export default function ProductForm({
+    categories,
+    product,
+    description,
+    currencyLabel,
+    composition,
+    gallery,
+    galleryMax,
+    galleryLimits,
+    boutiques = [],
+    boutiqueId = null,
+}: Props) {
     const t = useTranslate();
     const editing = !!product;
     const [tab, setTab] = useState<TabKey>('basic');
+    const [ask, confirmDialog] = useConfirm();
+    /** أيُعرض حقلُ البوتيك؟ — ومن لا يُعرض له لا يُرسَل منه شيء */
+    const offersBoutiques = boutiques.length > 0;
+    const initialBoutique = boutiqueId == null ? '' : String(boutiqueId);
 
     const form = useForm({
         name: product?.name ?? '',
         name_en: product?.name_en ?? '',
         description: description ?? '',
         category_id: String(categories.find((c) => c.name === product?.cat)?.id ?? ''),
+        // فراغٌ = «بدون بوتيك»: صنفُ المحلّ
+        boutique_id: initialBoutique,
         sku: product?.sku ?? '',
         barcode: product?.barcode ?? '',
         price: product ? String(product.price) : '',
@@ -232,7 +259,7 @@ export default function ProductForm({ categories, product, description, currency
      */
     const errorList = Object.values(form.errors).filter(Boolean) as string[];
 
-    const submit = (e: React.FormEvent) => {
+    const submit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         /*
@@ -257,7 +284,39 @@ export default function ProductForm({ categories, product, description, currency
             return;
         }
 
+        /*
+         * ونقلُ الصنف من بوتيكٍ إلى آخر يُسأل عنه قبل الحفظ.
+         *
+         * ربطٌ جديد أو فكٌّ إلى «بدون بوتيك» لا يُسأل عنهما — انظر `boutiqueMove`.
+         */
+        const move = offersBoutiques ? boutiqueMove(initialBoutique, form.data.boutique_id, boutiques) : null;
+
+        if (
+            move &&
+            !(await ask({
+                message: 'هذا المنتج مرتبط حاليًا بـ :from. تغييره سينقله إلى :to.',
+                values: { from: move.from, to: move.to },
+                action: 'انقله',
+            }))
+        ) {
+            return;
+        }
+
         form.clearErrors();
+
+        /*
+         * ومن لا يُعرض له الحقلُ لا يُرسل منه شيئًا.
+         *
+         * الفراغُ يصل الخادمَ `null` فيفكّ الربط — فلو أُرسل من شاشةٍ لا حقلَ
+         * فيها لَفكّ صنفًا عن بوتيكه بحفظةِ سعر.
+         */
+        form.transform((data) => {
+            if (offersBoutiques) return data;
+
+            const { boutique_id: _omit, ...rest } = data;
+
+            return rest as typeof data;
+        });
 
         const url = editing
             ? route('admin.products.update', product!.id)
@@ -285,6 +344,7 @@ export default function ProductForm({ categories, product, description, currency
        (max-w-4xl) فيتّسق النموذجان. */
     return (
         <form onSubmit={submit} ref={contentRef} className="mx-auto min-w-0 max-w-4xl scroll-mt-4">
+            {confirmDialog}
             <Tabs
                 tabs={NAV.map((x) => ({
                     key: x.key,
@@ -483,6 +543,31 @@ export default function ProductForm({ categories, product, description, currency
                                                 </button>
                                             ))}
                                         </span>
+                                    </Field>
+                                )}
+                                {/*
+                                    لمن الصنف: المحلُّ أم بوتيكٌ يبيع تحت سقفه.
+
+                                    ويُحفظ في `products.boutique_id` نفسِه — والخادمُ
+                                    يردّ بوتيكَ متجرٍ آخر (`boutiqueRule`). وما بِيع
+                                    قبل التغيير يبقى على لقطة بنده.
+                                */}
+                                {offersBoutiques && (
+                                    <Field
+                                        label="البوتيك"
+                                        hint="بدون بوتيك = منتج المتجر. ما بِيع من قبل يبقى لصاحبه وقت البيع."
+                                        error={form.errors.boutique_id}
+                                    >
+                                        <Select
+                                            aria-label={t('البوتيك')}
+                                            value={form.data.boutique_id}
+                                            onChange={(e) => form.setData('boutique_id', e.target.value)}
+                                            options={boutiques.map((b) => ({
+                                                label: b.active ? b.label : `${b.label} — ${t('موقوف')}`,
+                                                value: b.value,
+                                            }))}
+                                            placeholder="بدون بوتيك"
+                                        />
                                     </Field>
                                 )}
                                 <Field

@@ -6,10 +6,11 @@ import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { CompositionData } from './partials/addons';
 import type { Category } from '@/types/models';
+import type { BoutiqueOption } from './partials/boutique';
 
 export default function ProductCreate() {
-    const { categories, composition, context } =
-        usePage<PageProps<{ categories: Category[]; composition: CompositionData }>>().props;
+    const { categories, composition, boutiques, context } =
+        usePage<PageProps<{ categories: Category[]; composition: CompositionData; boutiques?: BoutiqueOption[] }>>().props;
     const t = useTranslate();
 
     return (
@@ -23,6 +24,7 @@ export default function ProductCreate() {
                 categories={categories}
                 currencyLabel={context!.currency.symbol || context!.currency.code}
                 composition={composition}
+                boutiques={boutiques}
             />
         </AdminLayout>
     );

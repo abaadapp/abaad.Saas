@@ -24,7 +24,10 @@ class ReportFeedController extends Controller
      */
     public function reports(Request $request)
     {
-        return $this->feed(\App\Support\Reports::salesReport($request->query('range'), $request->query('channel')));
+        // والبوتيكُ كالقناة: تغذيةٌ بلا مُرشِّحها تقلب أرقامَ بوتيكٍ إلى أرقام المتجر كلِّه
+        return $this->feed(\App\Support\Reports::salesReport(
+            $request->query('range'), $request->query('channel'), $request->query('boutique'),
+        ));
     }
 
     private function feed(array $payload)

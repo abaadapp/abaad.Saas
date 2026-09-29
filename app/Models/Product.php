@@ -35,6 +35,17 @@ class Product extends Model
         return $this->belongsTo(Category::class);
     }
 
+    /**
+     * البوتيكُ الذي يملك الصنفَ اليوم — أو لا شيء: صنفُ المحلّ.
+     *
+     * للعرض وحده: ما بِيع يُقرأ من لقطة البند (`order_items.boutique_*`)
+     * لا من هنا — فنقلُ الصنف غدًا لا يُعيد نسبةَ ما بِيع أمس.
+     */
+    public function boutique(): BelongsTo
+    {
+        return $this->belongsTo(Boutique::class);
+    }
+
     /** مقاسات هذا المنتج — الفارغة تعني منتجًا بسيطًا يُباع بسعره */
     public function variants(): HasMany
     {

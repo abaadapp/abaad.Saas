@@ -752,6 +752,8 @@ class PosController extends Controller
             foreach ($lines as $idx => $l) {
                 $item = $order->items()->create([
                     'product_id' => $l['product']?->id,
+                    // وأيُّ إضافةٍ هو البندُ المستقلّ — هويّةٌ لتقرير الإضافات لا رقمٌ يُحسب
+                    'standalone_addon_id' => ($l['standalone_addon'] ?? null)?->id,
                     // موسمُ البند كما نُسب ساعةَ البيع — معرّفًا واسمًا، انظر SeasonSales
                     'season_id' => $seasonOf[$idx]['id'] ?? null,
                     'season_name' => $seasonOf[$idx]['name'] ?? null,
@@ -1066,6 +1068,7 @@ class PosController extends Controller
             foreach ($lines as $idx => $l) {
                 $item = $order->items()->create([
                     'product_id' => $l['product']?->id,
+                    'standalone_addon_id' => ($l['standalone_addon'] ?? null)?->id,
                     // موسمُ البند كما نُسب ساعةَ البيع — معرّفًا واسمًا، انظر SeasonSales
                     'season_id' => $seasonOf[$idx]['id'] ?? null,
                     'season_name' => $seasonOf[$idx]['name'] ?? null,

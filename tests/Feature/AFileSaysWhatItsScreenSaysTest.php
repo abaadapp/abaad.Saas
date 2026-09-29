@@ -60,6 +60,7 @@ class AFileSaysWhatItsScreenSaysTest extends TestCase
         'products' => 'Products', 'inventory' => 'Inventory', 'stocktake' => 'Stocktake',
         'purchases' => 'Purchases', 'suppliers' => 'Suppliers', 'activity' => 'Activity',
         'seasons' => 'Seasons', 'marketing' => 'Marketing', 'waste' => 'Waste',
+        'addons' => 'Addons',
     ];
 
     private Business $shop;

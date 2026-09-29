@@ -1839,6 +1839,21 @@ class Demo
             ]])->all();
     }
 
+    /**
+     * الكميّةُ التي لا تسقط إلى بطاقة الصنف — لقطتُها مكتوبة، أو بندُ بوتيك.
+     *
+     * ═══ وصفرُ البوتيك ليس صفرًا منسيًّا ═══
+     *
+     * السقوطُ إلى البطاقة وُضع لبيعاتٍ قديمةٍ سبقت اللقطة، فصفرُها «لم
+     * يُكتب». وبضاعةُ البوتيك أمانة: صفرُها حقيقة (`Boutiques::CONSIGNED_COST`).
+     * فلو سقطت إلى بطاقتها لَحُمِّل المحلُّ ثمنَ ما لم يشترِه، ثمّ يُدفع
+     * ثمنُها ثانيةً يومَ التسوية — ويُقرأ الربحُ أقلَّ بكلّ قطعة.
+     *
+     * والقاعدةُ هي قاعدةُ `Books` نفسُها (`$fallsBackToCard`): لا يسقط إلّا
+     * ما صفرُه وليس له بوتيك. وموضعٌ واحد تقرؤه الدوالُّ الثلاث هنا.
+     */
+    private const COSTED_QTY = 'SUM(CASE WHEN cost > 0 OR boutique_id IS NOT NULL THEN quantity ELSE 0 END) as costed_qty';
+
     /** ربح كل منتج = (سعر البيع - التكلفة) × الكمية المباعة، من عناصر الطلبات الفعلية */
     public static function productProfitability(string $range = 'month'): array
     {
@@ -1854,7 +1869,7 @@ class Demo
 
         $rows = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
-            ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
+            ->selectRaw('product_id, name, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, '.self::COSTED_QTY)
             ->groupBy('product_id', 'name')->get()->map(function ($r) use ($costs, $addons, &$spent) {
                 $cost = (float) ($costs[$r->product_id] ?? 0);
                 $cogs = (float) $r->cost_snapshot + $cost * ((int) $r->qty - (int) $r->costed_qty);
@@ -1903,7 +1918,7 @@ class Demo
         $addons = self::addonProfitByProduct($bid, $start);
         $items = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $bid)->sold()
             ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start)))
-            ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
+            ->selectRaw('product_id, SUM(quantity) as qty, SUM(total) as revenue, SUM(cost * quantity) as cost_snapshot, '.self::COSTED_QTY)
             ->groupBy('product_id')->get();
         foreach ($items as $it) {
             $info = $products[$it->product_id] ?? ['cat' => __('غير مصنّف'), 'cost' => 0];
@@ -1974,7 +1989,7 @@ class Demo
              * القاعدة نسيها فردّ صفرًا على قناةٍ فيها مئات.
              */
             SalesChannel::scope($q, $channel);
-        })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, SUM(CASE WHEN cost > 0 THEN quantity ELSE 0 END) as costed_qty')
+        })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, '.self::COSTED_QTY)
             ->groupBy('product_id')->get()
             ->each(function ($r) use (&$cogs, $costs) {
                 $cogs += (float) $r->cost_snapshot

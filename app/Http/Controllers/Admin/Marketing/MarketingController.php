@@ -18,6 +18,7 @@ use App\Support\MarketingSettings;
 use App\Support\Seo;
 use App\Support\FlowerOrder;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\NewArrivals;
 use App\Support\Store\Paymob;
 use App\Support\Store\StoreContent;
 use App\Support\Store\ThemePublisher;
@@ -326,6 +327,9 @@ class MarketingController extends Controller
              */
             'store_hero_image' => ['nullable', 'string', 'max:2048', new SafeLink],
             'store_featured' => ['nullable', 'string', 'max:200'],
+            // و«وصل حديثًا» اليدويّ — قواعدُه وإذنُه في `NewArrivals::validated` أدناه
+            'store_new_arrivals_mode' => ['nullable', 'string', 'max:10'],
+            'store_new_arrivals' => ['nullable', 'string', 'max:200'],
             'store_sections' => ['nullable', 'string', 'max:200'],
             'store_block_on' => ['sometimes', 'boolean'],
             'store_block_title' => ['nullable', 'string', 'max:120'],
@@ -366,6 +370,21 @@ class MarketingController extends Controller
             'store_seo_desc' => ['nullable', 'string', 'max:'.StoreSeo::DESC_MAX],
             'store_seo_index' => ['sometimes', 'boolean'],
         ]);
+
+        /*
+         * ═══ و«وصل حديثًا» اليدويّ — لمن في قائمته وحده ═══
+         *
+         * يُسأل قبل أن يُكتب شيء، ولو كان في الحمولة غيرُه: من ليس في
+         * `storefront.ribbon_curated_new_arrivals_businesses` يُردّ بـ403،
+         * والشاشةُ التي لا تعرض المقبضَ لا تحرس الباب. ومن فيها تُقرأ
+         * قائمتُه بصرامة: أصنافُ متجره المعروضةُ وحدها، أربعةٌ لا أكثر.
+         *
+         * و`exists` لا `filled` كما في `store_fulfil` أعلاه: تفريغُ القائمة
+         * سؤالٌ يُجاب، لا مفتاحٌ يُسقَط بصمت.
+         */
+        if ($request->exists('store_new_arrivals_mode') || $request->exists('store_new_arrivals')) {
+            $data = array_merge($data, NewArrivals::validated($this->bid(), $request, StoreContent::draft($this->bid())));
+        }
 
         /*
          * ═══ ومتجرٌ لا يُسلّم شيئًا لا يُحفظ ═══

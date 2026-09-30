@@ -104,7 +104,10 @@ class MarketingToolsTest extends TestCase
             'store_field_slot', 'store_field_recipient', 'store_field_promo',
             'store_fulfil', 'store_max_days',
             // وصفحةُ المتجر — ما فيها وترتيبُه (Store\StorePage)
-            'store_hero_image', 'store_featured', 'store_sections',
+            'store_hero_image', 'store_featured',
+            // و«وصل حديثًا» اليدويّ — يقرؤه `Store\NewArrivals::pick` لمن في قائمته
+            'store_new_arrivals_mode', 'store_new_arrivals',
+            'store_sections',
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',
             'store_banner_image', 'store_tagline',

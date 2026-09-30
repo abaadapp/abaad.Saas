@@ -7016,5 +7016,18 @@
     "يظهر هنا تلقائيًا آخر 4 منتجات مفعّلة ومنشورة أضفتها إلى المتجر.": "This automatically shows the last 4 active, published products you added to the store.",
     "تعديل منتج قديم لا يجعله «وصل حديثًا»؛ الترتيب حسب وقت إضافته للنظام.": "Editing an older product doesn't make it a \"New arrival\"; the order follows when it was added to the system.",
     "لا يوجد منتج مفعّل ومنشور بعد — أضف منتجًا ليظهر هنا.": "No active, published product yet — add a product to see it here.",
-    "إضافة منتج جديد": "Add new product"
+    "إضافة منتج جديد": "Add new product",
+    "طريقة العرض": "Display mode",
+    "تلقائي — آخر 4 منتجات أضفتها": "Automatic — your 4 newest products",
+    "اختيار يدوي": "Manual selection",
+    "اختر حتى 4 منتجات ورتّبها كما تريد أن تظهر في «وصل حديثًا».": "Choose up to 4 products and arrange them in the order you want them to appear in New arrivals.",
+    "إضافة إلى وصل حديثًا": "Add to New arrivals",
+    "إزالة من وصل حديثًا": "Remove from New arrivals",
+    "اختر منتجًا واحدًا على الأقل أو ارجع إلى الترتيب التلقائي.": "Choose at least one product, or switch back to automatic order.",
+    "اخترت 4 منتجات — أزل واحدًا لتضيف غيره.": "You have chosen 4 products — remove one to add another.",
+    "منتجات يمكن إضافتها": "Products you can add",
+    "اختر طريقة العرض: تلقائي أو اختيار يدوي.": "Choose a display mode: automatic or manual selection.",
+    "قائمة «وصل حديثًا» غير صالحة — أعد اختيار المنتجات.": "The New arrivals list is not valid — choose the products again.",
+    "اختر حتى :max منتجات فقط.": "Choose up to :max products only.",
+    "منتجٌ في «وصل حديثًا» غير متاح — اختر من منتجاتك المفعّلة والمنشورة.": "A product in New arrivals is not available — choose from your active, published products."
 }

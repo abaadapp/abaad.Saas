@@ -29,6 +29,15 @@ final class StorePage
     /** أكثرُ ما يُبرزه من الأصناف — أربعةٌ كما يتّسع الصفّ */
     public const MAX_FEATURED = 4;
 
+    /** وكم صنفًا يعرض «وصل حديثًا» — تلقائيًّا كان أو يدويًّا */
+    public const NEW_ARRIVALS = 4;
+
+    /** «وصل حديثًا»: أحدثُ الأصناف بالمعرّف — وهو الأصل */
+    public const NEW_AUTO = 'auto';
+
+    /** «وصل حديثًا»: ما اختاره بيده، بترتيبه */
+    public const NEW_MANUAL = 'manual';
+
     /* ═══════════ الأقسام ═══════════ */
 
     /**
@@ -169,14 +178,49 @@ final class StorePage
      */
     public static function featured(int $businessId): array
     {
-        $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_featured'] ?? ''));
+        return self::ids(MarketingSettings::group($businessId, 'website')['store_featured'] ?? '', self::MAX_FEATURED);
+    }
 
+    /* ═══════════ وصل حديثًا ═══════════ */
+
+    /**
+     * أتلقائيٌّ هو أم يدويّ — كما حُفظ، وكلُّ ما سوى `manual` تلقائيّ.
+     *
+     * والقراءةُ وحدها هنا: من يُسمح له باليدويّ سؤالٌ آخر في `NewArrivals`.
+     */
+    public static function newArrivalsMode(int $businessId): string
+    {
+        return self::mode(MarketingSettings::group($businessId, 'website')['store_new_arrivals_mode'] ?? '');
+    }
+
+    /** ما اختاره بيده بترتيبه — معرّفاتٌ موجبةٌ فريدة، أربعةٌ لا أكثر */
+    public static function newArrivalIds(int $businessId): array
+    {
+        return self::ids(MarketingSettings::group($businessId, 'website')['store_new_arrivals'] ?? '', self::NEW_ARRIVALS);
+    }
+
+    /** قيمةُ الطريقة المخزّنة ← `auto` أو `manual` */
+    public static function mode(?string $raw): string
+    {
+        return $raw === self::NEW_MANUAL ? self::NEW_MANUAL : self::NEW_AUTO;
+    }
+
+    /**
+     * قائمةُ معرّفاتٍ مفصولةٍ بفواصل ← معرّفاتٌ موجبةٌ فريدة بترتيبها، إلى الحدّ.
+     *
+     * قارئٌ واحدٌ للمختارات ولـ«وصل حديثًا»: فلا يُفصَّل النصُّ في المتحكّم
+     * وفي الشاشة وفي الواجهة بثلاث قواعد.
+     *
+     * @return list<int>
+     */
+    public static function ids(?string $raw, int $max): array
+    {
         // والفراغُ يؤول إلى `[]` بالترشيح نفسِه — فلا فحصَ ثانٍ له
         $ids = array_values(array_unique(array_filter(
-            array_map('intval', explode(',', $raw)),
+            array_map('intval', explode(',', trim((string) $raw))),
             fn ($id) => $id > 0,
         )));
 
-        return array_slice($ids, 0, self::MAX_FEATURED);
+        return array_slice($ids, 0, $max);
     }
 }

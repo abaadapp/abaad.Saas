@@ -105,8 +105,9 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         $versioned = StoreContent::VERSIONED;
         $live = array_values(array_diff($all, $versioned));
 
-        $this->assertCount(48, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
-        $this->assertCount(17, $versioned, 'تبدّل عددُ ما يُنشر');
+        // و«وصل حديثًا» اليدويّ (مفتاحان) قرارُ عرضٍ كالمختارات — يُنشر
+        $this->assertCount(50, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        $this->assertCount(19, $versioned, 'تبدّل عددُ ما يُنشر');
         $this->assertCount(31, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),
@@ -162,6 +163,7 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
             'store_headline', 'store_about', 'store_tagline',
             'store_hero_image', 'store_banner_image', 'store_about_image',
             'store_featured', 'store_sections', 'store_pages',
+            'store_new_arrivals_mode', 'store_new_arrivals',
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',
             'store_seo_title', 'store_seo_desc',

@@ -58,6 +58,8 @@ final class RibbonTexts
         'newsTitle' => 'اشترك في عروضنا', 'qty' => 'الكمية',
         // «أضف مع طلبك» في صفحة الصنف — انظر `RibbonUpsells`
         'upsellTitle' => 'أضف مع طلبك', 'upsellChoose' => 'اختر خيارًا لهذه الإضافة قبل الإضافة إلى السلة',
+        // رسالةُ الكرت بلا ثمن — انظر `GiftCard::messageOnly`
+        'addCardMessage' => 'أضف رسالة على كرت الهدية', 'cardMessageHint' => 'اكتب رسالتك التي تريد إرفاقها مع الطلب',
     ];
 
     private const EN = [
@@ -96,6 +98,7 @@ final class RibbonTexts
         'openMap' => 'Open in Maps', 'callNow' => 'Call now', 'waNow' => 'Message us on WhatsApp',
         'newsTitle' => 'Join our offers list', 'qty' => 'Quantity',
         'upsellTitle' => 'Add to your order', 'upsellChoose' => 'Choose an option for this add-on before adding to cart',
+        'addCardMessage' => 'Add a gift card message', 'cardMessageHint' => 'Write the message you want included with the order',
     ];
 
     /** @return array<string, string> */

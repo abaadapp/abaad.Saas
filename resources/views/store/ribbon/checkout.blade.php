@@ -163,6 +163,26 @@
                         <div class="rb-error" data-err="card_file"></div>
                         </div>
                     </div>
+                @elseif ($giftCard['message_only'])
+                    {{--
+                        ═══ رسالةٌ بلا ثمن — لا كرتٌ يُباع (`GiftCard::messageOnly`) ═══
+
+                        خانةٌ بلا ثمنٍ بجانبها ولا «مجّانيّ»، ونصٌّ وحده بلا رفع
+                        ملفّ. وتبديلُها لا يُعيد التسعير: الإجماليُّ لا يتبدّل بها.
+                        والنصُّ يذهب في `card` وحده — انظر `js/store/ribbon-card-message.js`.
+                    --}}
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;min-height:44px" data-testid="rb-cardmsg-toggle">
+                        <input type="checkbox" data-rb-cardmsg style="width:18px;height:18px;accent-color:var(--rb-olive)">
+                        <span>{{ $t['addCardMessage'] }}</span>
+                    </label>
+                    <div data-rb-cardmsgbox hidden data-testid="rb-cardmsg-box" style="margin-top:10px;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px">
+                        <div style="font-size:13px;margin-bottom:8px">{{ $t['cardMessageHint'] }}</div>
+                        <textarea class="rb-input" name="card" rows="4" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
+                        <div style="font-size:12px;margin-top:6px">{{ $t['cardHint'] }}</div>
+                        <div class="rb-error" data-err="card"></div>
+                        <div style="margin-top:14px;font-size:12px">{{ $t['cardPreview'] }}</div>
+                        <div data-rb-cardmsgpreview style="margin-top:8px;min-height:72px;white-space:pre-wrap;word-break:break-word;border:1px dashed var(--rb-line);border-radius:var(--rb-r);background:var(--rb-soft);padding:14px;font-size:14px;line-height:1.9;text-align:start"></div>
+                    </div>
                 @else
                     <textarea class="rb-input" name="card" rows="3" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
                     <div style="font-size:12px;margin-top:6px">{{ $t['cardHint'] }}</div>
@@ -245,6 +265,9 @@
 @endsection
 @section('scripts')
 @if ($accepts)
+@if ($giftCard['message_only'])
+<script>{!! file_get_contents(resource_path('js/store/ribbon-card-message.js')) !!}</script>
+@endif
 <script>
 (function () {
     // والطريقةُ الابتدائيّة من المفتوح لا من ظنٍّ في الشاشة
@@ -306,6 +329,13 @@
             }
         });
     }
+
+    /*
+     * والرسالةُ المجّانيّة لا تمسّ `gift` ولا تُعيد التسعير — انظر
+     * `js/store/ribbon-card-message.js`. وحيث لا خانةَ لها يبقى `null`.
+     */
+    var msgToggle = form.querySelector('[data-rb-cardmsg]');
+    var cardMsg = msgToggle ? RBCardMessage.mount(msgToggle, form.querySelector('[data-rb-cardmsgbox]'), form.querySelector('[name=card]'), form.querySelector('[data-rb-cardmsgpreview]')) : null;
 
     var giftBox = form.querySelector('[data-rb-cardbox]');
     var giftToggle = form.querySelector('[data-rb-giftcard]');
@@ -444,7 +474,7 @@
             address: $('[name=address]') ? $('[name=address]').value : '',
             date: $('[name=date]') ? $('[name=date]').value : '',
             slot: $('[name=slot]') ? $('[name=slot]').value : '',
-            card: (cardWay === 'text' && $('[name=card]')) ? $('[name=card]').value : '',
+            card: cardMsg ? cardMsg.card() : ((cardWay === 'text' && $('[name=card]')) ? $('[name=card]').value : ''),
             recipient_name: $('[name=recipient_name]') ? $('[name=recipient_name]').value : '',
             recipient_phone: $('[name=recipient_phone]') ? $('[name=recipient_phone]').value : '',
             gift_card: gift, card_align: align,

@@ -38,6 +38,15 @@ class AGiftCardIsAThingTheShopSellsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        /*
+         * الكرتُ المدفوع هنا — فلا يُفتح لمتجرِ الاختبار وضعُ الرسالة المجّانيّة.
+         *
+         * القائمةُ المشحونة تسمّي المعرّف ٥، وتسلسلاتُ PostgreSQL لا تعود إلى
+         * الواحد بين الاختبارات: متجرٌ يُنشأ هنا قد يأخذ ٥ صدفةً فيصير كرتُه
+         * رسالةً بلا ثمن ويسقط الحارسُ بترتيب التشغيل. انظر `GiftCard::messageOnly`.
+         */
+        config(['storefront.ribbon_free_gift_card_message_businesses' => []]);
         Carbon::setTestNow('2027-02-01 10:00:00');
         $this->app->setLocale('ar');
         Storage::fake('local');

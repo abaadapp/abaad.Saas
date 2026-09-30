@@ -2,6 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Business;
+use App\Models\Invoice;
+use App\Models\User;
+use App\Support\Billing;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -104,5 +108,182 @@ class ChartSeriesTest extends TestCase
         $this->assertSame(0.0, $series['data'][11], 'ديسمبر الماضي تسرّب إلى ديسمبر هذه السنة');
 
         Carbon::setTestNow();
+    }
+
+    /* ═══════════ إيراداتُ المنصّة ونموُّها: بياناتٌ لا تسمياتٌ فقط ═══════════ */
+
+    private function shop(string $name, string $starts, bool $demo = false): Business
+    {
+        return Business::create(['name' => $name, 'type' => 'عام', 'status' => 'نشط', 'starts_at' => $starts, 'is_demo' => $demo]);
+    }
+
+    private function invoice(Business $b, string $issued, float $amount, string $status = Billing::PAID): Invoice
+    {
+        static $n = 0;
+
+        return Invoice::create(['number' => 'INV-C'.(++$n), 'business_id' => $b->id, 'amount' => $amount, 'issued_at' => $issued, 'status' => $status]);
+    }
+
+    private function platformAdmin(): User
+    {
+        return User::create(['name' => 'المنصّة', 'email' => 'platform-charts@abaadapp.om', 'password' => bcrypt('x'), 'role' => 'super_admin', 'status' => 'نشط']);
+    }
+
+    /**
+     * «الإيرادات» ما دُفع — كبطاقتَي الإيرادات فوقه وفي التقارير.
+     *
+     * كانت تجمع الفواتير كلَّها بتاريخ إصدارها، فيقرأ الرسمُ «إيرادًا» فيه ما
+     * لم يُسدَّد، والبطاقةُ فوقه تقرأ المدفوعَ وحده.
+     */
+    public function test_platform_revenue_reads_paid_invoices_in_their_month_of_this_year(): void
+    {
+        Carbon::setTestNow('2026-09-15 10:00:00');
+        $b = $this->shop('متجر', '2025-06-01');
+
+        $this->invoice($b, '2025-12-20', 900);                        // السنة الماضية
+        $this->invoice($b, '2026-01-05', 10);
+        $this->invoice($b, '2026-09-01', 20);
+        $this->invoice($b, '2026-09-30', 5);                          // آخر الشهر الجاري من شهره
+        $this->invoice($b, '2026-09-02', 700, Billing::UNPAID);       // لم يُسدَّد — ليس إيرادًا
+
+        $data = Demo::revenueSeries()['data'];
+
+        $this->assertCount(12, $data);
+        $this->assertSame(10.0, $data[0]);
+        $this->assertSame(0.0, $data[1], 'شهرٌ مضى بلا إيرادٍ صفرٌ لا فراغ');
+        $this->assertSame(25.0, $data[8], 'فاتورةٌ غيرُ مدفوعة دخلت «الإيرادات»، أو مدفوعةٌ غابت');
+        $this->assertSame([null, null, null], array_slice($data, 9), 'شهرٌ لم يأتِ رُسم صفرًا — أو ديسمبرُ الماضي تسرّب');
+
+        Carbon::setTestNow();
+    }
+
+    /** ونموُّ الشركات: الحقيقيّةُ وحدها في شهر بدئها من هذه السنة */
+    public function test_platform_growth_counts_real_businesses_in_their_month_of_this_year(): void
+    {
+        Carbon::setTestNow('2026-09-15 10:00:00');
+
+        $this->shop('قديم', '2025-12-10');
+        $this->shop('يناير', '2026-01-03');
+        $this->shop('سبتمبر ١', '2026-09-01');
+        $this->shop('سبتمبر ٢', '2026-09-14');
+        $this->shop('تجريبيّ', '2026-09-10', demo: true);
+
+        $data = Demo::businessesGrowthSeries()['data'];
+
+        $this->assertCount(12, $data);
+        $this->assertSame(1, $data[0]);
+        $this->assertSame(0, $data[1]);
+        $this->assertSame(2, $data[8], 'متجرٌ تجريبيّ عُدّ، أو حقيقيٌّ غاب');
+        $this->assertSame([null, null, null], array_slice($data, 9), 'شهرٌ لم يأتِ رُسم صفرًا — أو ديسمبرُ الماضي تسرّب');
+
+        Carbon::setTestNow();
+    }
+
+    /** والرسمان في نبضة اللوحة — فاتورةٌ تُسدَّد وشركةٌ تُسجَّل والصفحةُ مفتوحة تظهران */
+    public function test_the_platform_pulse_carries_both_charts_with_the_cards(): void
+    {
+        Carbon::setTestNow('2026-09-15 10:00:00');
+        $b = $this->shop('متجر', '2026-02-01');
+        $this->actingAs($this->platformAdmin());
+
+        $page = $this->get(route('super-admin.dashboard'))->assertOk()->viewData('page')['props'];
+        $this->assertSame(0.0, $page['revenueSeries']['data'][8]);
+
+        $this->invoice($b, '2026-09-15', 42);
+        $this->shop('جديد', '2026-09-15');
+
+        $pulse = $this->getJson(route('super-admin.dashboard.stats'))->assertOk()->json();
+
+        $this->assertSame(['stats', 'revenueSeries', 'growthSeries', 'updated_at'], array_keys($pulse));
+        $this->assertNotEmpty($pulse['stats']);
+        $this->assertEquals(42, $pulse['revenueSeries']['data'][8], '«الإيرادات الشهرية» لم تتحدّث');
+        $this->assertSame(1, $pulse['growthSeries']['data'][8], '«نمو الشركات» لم يتحدّث');
+        $this->assertNull($pulse['growthSeries']['data'][9]);
+
+        Carbon::setTestNow();
+    }
+
+    /** والتقاريرُ تقرأ الإيراداتِ بتعريف اللوحة نفسِه — وتتحدّث وهي مفتوحة */
+    public function test_the_reports_read_the_same_revenue_as_the_dashboard_and_stay_current(): void
+    {
+        Carbon::setTestNow('2026-09-15 10:00:00');
+        $b = $this->shop('متجر', '2026-02-01');
+        $this->invoice($b, '2026-03-03', 15);
+        $this->invoice($b, '2026-03-04', 99, Billing::UNPAID);
+        $this->actingAs($this->platformAdmin());
+
+        $page = $this->get(route('super-admin.reports.index'))->assertOk()->viewData('page')['props'];
+        $this->invoice($b, '2026-09-10', 30);
+
+        $feed = $this->getJson(route('super-admin.reports.feed'))->assertOk()->json();
+        $pulse = $this->getJson(route('super-admin.dashboard.stats'))->json();
+
+        $report = ['cards', 'revenueSeries', 'planDistribution', 'planSummary', 'currency'];
+        $this->assertSame([...$report, 'updated_at'], array_keys($feed), 'النبضةُ تحمل غيرَ حمولة الصفحة');
+        foreach ($report as $key) {
+            $this->assertArrayHasKey($key, $page, "الصفحةُ بلا {$key} والنبضةُ تحمله");
+        }
+        $this->assertEquals($pulse['revenueSeries'], $feed['revenueSeries'], 'تعريفان للإيرادات الشهرية');
+        $this->assertEquals(15, $feed['revenueSeries']['data'][2]);
+        $this->assertEquals(30, $feed['revenueSeries']['data'][8], 'التقرير لم يتحدّث');
+        $this->assertSame(Demo::money(45), $feed['cards'][0]['value'], 'البطاقةُ فوق الرسم لم تتحدّث معه');
+        // والتوزيعُ فئويّ لا شهريّ: اسمُ الباقة لا اسمُ الشهر
+        $this->assertSame(['labels', 'series'], array_keys($feed['planDistribution']));
+
+        Carbon::setTestNow();
+    }
+
+    /** وملفُّ PDF لا يطبع الأشهر التي لم تأتِ أصفارًا، ولا يسمّي السنةَ «آخر ستّة أشهر» */
+    public function test_the_platform_pdf_prints_only_the_months_that_happened(): void
+    {
+        Carbon::setTestNow('2026-09-15 10:00:00');
+        app()->setLocale('ar');
+        $b = $this->shop('متجر', '2026-02-01');
+        $this->invoice($b, '2026-09-10', 30);
+
+        $html = view('pdf.platform-report', [
+            'stats' => [],
+            'revenueSeries' => Demo::revenueSeries(),
+            'growthSeries' => Demo::businessesGrowthSeries(),
+            'planDistribution' => ['labels' => [], 'series' => []],
+            'topBusinesses' => [],
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        $this->assertStringContainsString('سبتمبر', $html);
+        $this->assertStringNotContainsString('أكتوبر', $html, 'شهرٌ لم يأتِ طُبع');
+        $this->assertStringNotContainsString('آخر 6 أشهر', $html);
+
+        Carbon::setTestNow();
+    }
+
+    /**
+     * «توزيع الباقات» يعدّ الشركات الحقيقيّة وحدها — كبطاقة «الشركات المسجّلة» بجانبه.
+     *
+     * ويبقى حالةً حاليّة فئويّة: اسمُ الباقة لا اسمُ الشهر.
+     */
+    public function test_plan_distribution_counts_real_businesses_only_and_the_feed_says_the_same(): void
+    {
+        $gold = \App\Models\Plan::create(['name' => 'ذهبيّة', 'monthly_price' => 10, 'yearly_price' => 100]);
+        $basic = \App\Models\Plan::create(['name' => 'أساسيّة', 'monthly_price' => 5, 'yearly_price' => 50]);
+
+        foreach ([['أ', $gold], ['ب', $gold], ['ج', $basic]] as [$name, $plan]) {
+            $this->shop($name, '2026-01-01')->forceFill(['plan_id' => $plan->id])->save();
+        }
+        foreach ([['تجريبيّ ١', $gold], ['تجريبيّ ٢', $gold], ['تجريبيّ ٣', $basic]] as [$name, $plan]) {
+            $this->shop($name, '2026-01-01', demo: true)->forceFill(['plan_id' => $plan->id])->save();
+        }
+        $this->shop('تجريبيّ بلا باقة', '2026-01-01', demo: true);
+
+        $counts = fn (array $d) => array_combine($d['labels'], $d['series']);
+
+        $this->assertSame(['ذهبيّة' => 2, 'أساسيّة' => 1], $counts(Demo::planDistribution()), 'متجرٌ تجريبيّ عُدّ في باقته');
+
+        $this->actingAs($this->platformAdmin());
+        $page = $this->get(route('super-admin.reports.index'))->assertOk()->viewData('page')['props'];
+        $feed = $this->getJson(route('super-admin.reports.feed'))->assertOk()->json();
+
+        $this->assertSame(['ذهبيّة' => 2, 'أساسيّة' => 1], $counts($feed['planDistribution']), 'النبضةُ تعدّ غيرَ ما تعدّه الصفحة');
+        $this->assertEquals($page['planDistribution'], $feed['planDistribution']);
     }
 }

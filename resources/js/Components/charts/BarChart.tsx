@@ -4,7 +4,14 @@ import { cn } from '@/lib/utils';
 
 interface BarChartProps {
     labels: string[];
-    series: number[];
+    /**
+     * `null` = لم يأتِ بعد، لا صفر.
+     *
+     * «نمو الشركات» يُرسم بهذا المكوّن شهرًا بشهر، وأكتوبر في سبتمبر لم
+     * يُقَس ليكون صفرًا. فيُكتب اسمُه باهتًا و«لم يأتِ بعد» بلا شريطٍ ولا
+     * نسبة، ولا يدخل المجموعَ الذي تُقسم عليه النِّسَب.
+     */
+    series: (number | null)[];
     format?: (value: number) => string;
     className?: string;
 }
@@ -22,8 +29,9 @@ const CATEGORICAL = ['#7c3aed', '#059669', '#2563eb', '#d97706', '#ec4899', '#08
  */
 export default function BarChart({ labels, series, format = String, className }: BarChartProps) {
     const t = useTranslate();
-    const max = Math.max(...series, 1);
-    const total = series.reduce((sum, value) => sum + value, 0);
+    const known = series.filter((v): v is number => v !== null);
+    const max = Math.max(...known, 1);
+    const total = known.reduce((sum, value) => sum + value, 0);
 
     if (series.length === 0) {
         return (
@@ -36,7 +44,24 @@ export default function BarChart({ labels, series, format = String, className }:
     return (
         <div className={cn('flex flex-col gap-3', className)}>
             {labels.map((label, i) => {
-                const value = series[i] ?? 0;
+                const raw = series[i];
+
+                if (raw === null) {
+                    return (
+                        <div key={label} className="group" data-future="true">
+                            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                                <span className="flex items-center gap-2 text-[13px] text-[#c4c4c4]">
+                                    <span className="size-2.5 shrink-0 rounded-full bg-[#e5e7eb]" />
+                                    {label}
+                                </span>
+                                <span className="text-[12px] text-[#c7c7c7]">{t('لم يأتِ بعد')}</span>
+                            </div>
+                            <div className="h-2 w-full rounded-full bg-[#f7f7f5]" />
+                        </div>
+                    );
+                }
+
+                const value = raw ?? 0;
                 const share = total > 0 ? (value / total) * 100 : 0;
 
                 return (

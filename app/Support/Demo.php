@@ -2410,9 +2410,9 @@ class Demo
      * فتقرأ سبتمبر · أكتوبر … أغسطس. صحيحةٌ حسابيًّا، لكن العين تقرأ محور
      * الأشهر بترتيبه المعروف، فمن ينظر سريعًا يظن العمود الأول يناير.
      *
-     * والثمن مذكورٌ لا مخفيّ: الأشهر التي لم تأتِ بعد تُرسم أصفارًا حتى آخر
-     * السنة، وما قبل يناير يخرج من الرسم — فمقارنة العام بالعام لا تُقرأ من
-     * هنا، بل من تقرير الفترات في «تحليلات متقدمة».
+     * والثمن مذكورٌ لا مخفيّ: ما قبل يناير يخرج من الرسم — فمقارنة العام
+     * بالعام لا تُقرأ من هنا، بل من تقرير الفترات في «تحليلات متقدمة». والأشهر
+     * التي لم تأتِ بعد `null` لا صفر — انظر `yearSeries`.
      *
      * startOfMonth ثم setMonth: البناء من يوم اليوم يفيض في ٢٩–٣١ (٣٠ يوليو
      * ← ٣٠ فبراير ← ٢ مارس) فيتكرّر شهر ويسقط آخر.
@@ -2424,6 +2424,52 @@ class Demo
         $start = now()->startOfYear();
 
         return array_map(fn (int $m) => $start->copy()->setMonth($m), range(1, 12));
+    }
+
+    /**
+     * سلسلةُ السنة التقويميّة من استعلامٍ واحدٍ مجمَّع — يناير … ديسمبر.
+     *
+     * ═══ واستعلامٌ واحد لا اثنا عشر ═══
+     *
+     * كانت كلُّ سلسلةٍ تسأل القاعدةَ مرّةً لكلّ شهر. وصارت اللوحاتُ تُحدَّث
+     * كلَّ بضع ثوانٍ وهي مفتوحة، فاثنا عشر سؤالًا في كلّ نبضةٍ لكلّ رسمٍ ثمنٌ
+     * بلا مقابل. فالتقويمُ من المحرّك كما في `salesTrend`.
+     *
+     * ═══ والصفرُ غيرُ الفراغ ═══
+     *
+     * شهرٌ مضى بلا شيءٍ صفرٌ حقيقيّ. وشهرٌ لم يأتِ بعد `null`: لم يُقَس بعدُ
+     * ليكون صفرًا — و«٠» عن أكتوبر في سبتمبر خبرٌ كاذبٌ عن الغد. والرسمُ يقول
+     * عنه «لم يأتِ بعد» (انظر `AreaChart` و`BarChart`).
+     *
+     * و`$from`/`$to` يمرّرهما المنادي بشكل عموده: تاريخٌ بلا ساعة لـ`issued_at`
+     * و`starts_at`، ولحظةٌ لـ`ordered_at`.
+     *
+     * @return array{labels: list<string>, data: list<float|int|null>}
+     */
+    private static function yearSeries($query, string $column, string $aggregate, mixed $from, mixed $to, bool $money = true): array
+    {
+        $bucket = match (DB::connection()->getDriverName()) {
+            'pgsql' => "to_char({$column}, 'YYYY-MM')",
+            'mysql', 'mariadb' => "DATE_FORMAT({$column}, '%Y-%m')",
+            default => "strftime('%Y-%m', {$column})",
+        };
+
+        $values = $query->whereBetween($column, [$from, $to])
+            ->selectRaw("{$bucket} as bucket, {$aggregate} as v")
+            ->groupBy('bucket')
+            ->pluck('v', 'bucket');
+
+        $current = now()->startOfMonth();
+        $labels = [];
+        $data = [];
+
+        foreach (self::yearMonths() as $m) {
+            $labels[] = self::monthLabel($m);
+            $v = $values[$m->format('Y-m')] ?? 0;
+            $data[] = $m->gt($current) ? null : ($money ? round((float) $v, 3) : (int) $v);
+        }
+
+        return ['labels' => $labels, 'data' => $data];
     }
 
     /** الفترات التي تفهمها التقارير — مصدرٌ واحد يقرأه الخادم والواجهة */
@@ -2650,18 +2696,11 @@ class Demo
          */
         $exists = User::where('business_id', $bid)->whereKey($id)->exists();
 
-        $labels = [];
-        $data = [];
-        foreach (self::yearMonths() as $m) {
-            $labels[] = self::monthLabel($m);
-            $data[] = ! $exists ? 0 : round((float) Order::where('business_id', $bid)
-                ->sold()
-                ->where('user_id', $id)
-                ->whereYear('ordered_at', $m->year)->whereMonth('ordered_at', $m->month)
-                ->sum('total'), 3);
-        }
-
-        return ['labels' => $labels, 'data' => $data];
+        // ومن ليس من هذا المتجر لا يُسأل عنه — أصفارُ ما مضى وفراغُ ما لم يأتِ
+        return self::yearSeries(
+            Order::where('business_id', $bid)->sold()->where('user_id', $exists ? $id : 0),
+            'ordered_at', 'SUM(total)', now()->startOfYear(), now(),
+        );
     }
 
     /** توزيع المبيعات حسب وسيلة الدفع للنشاط الحالي */
@@ -3295,36 +3334,48 @@ class Demo
         return ['labels' => $rows->pluck('cat')->all(), 'series' => $rows->pluck('s')->map(fn ($v) => round((float) $v, 3))->all()];
     }
 
-    /** إيرادات المنصة (فواتير) في السنة الجارية — يناير … ديسمبر */
+    /**
+     * إيراداتُ المنصّة في السنة الجارية — يناير … ديسمبر.
+     *
+     * ═══ والإيرادُ ما دُفع ═══
+     *
+     * كانت تجمع الفواتير كلَّها بتاريخ إصدارها — مدفوعةً وغيرَ مدفوعة. فيقرأ
+     * مديرُ المنصّة «الإيرادات» في الرسم رقمًا فيه ما لم يدخل بعد، وبطاقةُ
+     * «الإيرادات» فوقه في `superStats` وبطاقةُ «إجمالي إيرادات الاشتراكات» في
+     * التقارير تقرآن المدفوعَ وحده. فصار الرسمُ يقرأ ما تقرآنه: الفواتيرُ
+     * المدفوعة (`Billing::PAID`) منسوبةً إلى شهر إصدارها — ولا عمودَ تاريخِ
+     * سدادٍ في `invoices` يُنسب إليه غيرُه.
+     *
+     * والحدُّ الأعلى آخرُ السنة لا اليوم، كما في بطاقة الشهر: `issued_at`
+     * تاريخٌ بلا ساعة، وفاتورةٌ صدرت لآخر الشهر الجاري من شهره.
+     */
     public static function revenueSeries(): array
     {
-        $labels = [];
-        $data = [];
-        foreach (self::yearMonths() as $m) {
-            $labels[] = self::monthLabel($m);
-            $data[] = round((float) Invoice::whereYear('issued_at', $m->year)->whereMonth('issued_at', $m->month)->sum('amount'), 3);
-        }
-
-        return ['labels' => $labels, 'data' => $data];
+        return self::yearSeries(
+            Invoice::where('status', Billing::PAID),
+            'issued_at', 'SUM(amount)', now()->startOfYear()->toDateString(), now()->endOfYear()->toDateString(),
+        );
     }
 
-    /** نمو الشركات (عدد التسجيلات) في السنة الجارية — يناير … ديسمبر */
+    /** نمو الشركات (عدد التسجيلات الحقيقيّة) في السنة الجارية — يناير … ديسمبر */
     public static function businessesGrowthSeries(): array
     {
-        $labels = [];
-        $data = [];
-        foreach (self::yearMonths() as $m) {
-            $labels[] = self::monthLabel($m);
-            $data[] = Business::real()->whereYear('starts_at', $m->year)->whereMonth('starts_at', $m->month)->count();
-        }
-
-        return ['labels' => $labels, 'data' => $data];
+        return self::yearSeries(
+            Business::real(),
+            'starts_at', 'COUNT(*)', now()->startOfYear()->toDateString(), now()->endOfYear()->toDateString(), money: false,
+        );
     }
 
-    /** توزيع الشركات على الباقات */
+    /**
+     * توزيع الشركات على الباقات — الآن، لا شهرًا بشهر.
+     *
+     * والحقيقيّةُ وحدها (`Business::real`) كسائر أرقام المنصّة: كان يعدّ
+     * المتاجرَ التجريبيّة فيقول «الباقة الذهبيّة: ٧» وبطاقةُ «الشركات
+     * المسجّلة» بجانبه تقول أربعًا.
+     */
     public static function planDistribution(): array
     {
-        $rows = Business::with('plan')->get()->groupBy(fn ($b) => $b->plan?->name ?? __('بدون باقة'))->map->count();
+        $rows = Business::real()->with('plan')->get()->groupBy(fn ($b) => $b->plan?->name ?? __('بدون باقة'))->map->count();
 
         return ['labels' => $rows->keys()->all(), 'series' => $rows->values()->all()];
     }

@@ -4,17 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Support\DashboardMetrics;
 use App\Support\Demo;
+use App\Support\PlatformMetrics;
 use Inertia\Inertia;
 
 /**
- * لوحات التحكم: صفحات Inertia + نقاط نهاية JSON لتحديث البطاقات لحظيًا.
+ * لوحات التحكم: صفحات Inertia + نقاط نهاية JSON لتحديث البطاقات والرسوم لحظيًا.
  */
 class DashboardController extends Controller
 {
     public function adminStats()
     {
-        return response()->json([
-            'stats' => Demo::adminStats(),
+        // البطاقاتُ والرسمان معًا — انظر `DashboardMetrics::snapshot`
+        return response()->json(DashboardMetrics::snapshot() + [
             'updated_at' => now()->format('H:i:s'),
         ]);
     }
@@ -25,15 +26,13 @@ class DashboardController extends Controller
      */
     public function admin()
     {
-        return Inertia::render('Admin/Dashboard', [
-            'stats' => Demo::adminStats(),
+        return Inertia::render('Admin/Dashboard', DashboardMetrics::snapshot() + [
             // بطاقات اختيارية من مقاييس التقارير — تُرسل كاملةً وتختار الواجهة
             // منها: سبعة تجميعات خفيفة، وطلبُ الخادم عند كل إضافة أثقل منها
             'statCatalog' => \App\Support\AlertMetrics::catalog(Demo::bid()),
-            // مخططات اللوحة تتبع الفرع المختار مثل البطاقات وأحدث الطلبات.
-            // التقارير العامة تبقى مستقلة عن هذا العقد ولا نغيّر معناها هنا.
-            'salesSeries' => DashboardMetrics::salesYear(),
-            'paymentDistribution' => DashboardMetrics::paymentDistribution(),
+            // والبطاقاتُ والرسمان في اللقطة أعلاه: تتبع الفرعَ المختار كأحدث
+            // الطلبات، وتتحدّث معًا في نبضة `adminStats`. والتقارير العامة
+            // تبقى مستقلة عن هذا العقد ولا نغيّر معناها هنا.
             /*
              * أحدث ستّة طلباتٍ وأفضل خمسة أصنافٍ وأعلى خمسةِ موظّفين.
              *
@@ -64,8 +63,8 @@ class DashboardController extends Controller
 
     public function superStats()
     {
-        return response()->json([
-            'stats' => Demo::superStats(),
+        // البطاقاتُ والرسمان معًا — انظر `PlatformMetrics::dashboard`
+        return response()->json(PlatformMetrics::dashboard() + [
             'updated_at' => now()->format('H:i:s'),
         ]);
     }

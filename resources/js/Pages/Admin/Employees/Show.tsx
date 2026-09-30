@@ -31,7 +31,8 @@ import type { Employee } from '@/types/models';
 interface Props {
     employee: Employee;
     orderCount: number;
-    salesSeries: { labels: string[]; data: number[] };
+    /** `null` لشهرٍ لم يأتِ بعد — لا صفرٌ عن الغد */
+    salesSeries: { labels: string[]; data: (number | null)[] };
     /*
      * ما يفتحه هذا الموظّف فعلًا — أسماءُ ما مُنح، لا خريطةُ نعم/لا ثابتة.
      *

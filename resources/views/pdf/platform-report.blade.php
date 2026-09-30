@@ -37,10 +37,12 @@
         @endforeach
     </table>
 
-    <h2>{{ __('الإيرادات (آخر 6 أشهر)') }}</h2>
+    {{-- يناير … ديسمبر من السنة الجارية لا «آخر ستّة أشهر»، وما لم يأتِ من أشهرها لا يُطبع صفرًا --}}
+    <h2>{{ __('الإيرادات الشهرية') }} — {{ __('هذه السنة') }}</h2>
     <table class="grid">
         @foreach ($revenueSeries['labels'] as $i => $label)
-            @php $val = $revenueSeries['data'][$i] ?? 0; @endphp
+            @continue(($revenueSeries['data'][$i] ?? null) === null)
+            @php $val = $revenueSeries['data'][$i]; @endphp
             <tr>
                 <td style="width:16%;">{{ __($label) }}</td>
                 <td style="width:60%;"><div class="barwrap"><div class="bar" style="width: {{ $pbar($val / $maxRev * 100) }}%;"></div></div></td>
@@ -52,7 +54,8 @@
     <h2>{{ __('نمو الشركات (تسجيلات جديدة)') }}</h2>
     <table class="grid">
         @foreach ($growthSeries['labels'] as $i => $label)
-            @php $val = $growthSeries['data'][$i] ?? 0; @endphp
+            @continue(($growthSeries['data'][$i] ?? null) === null)
+            @php $val = $growthSeries['data'][$i]; @endphp
             <tr>
                 <td style="width:16%;">{{ __($label) }}</td>
                 <td style="width:60%;"><div class="barwrap"><div class="bar bar-2" style="width: {{ $pbar($val / $maxGrow * 100) }}%;"></div></div></td>

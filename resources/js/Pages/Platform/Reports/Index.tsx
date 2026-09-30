@@ -17,6 +17,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
+import useLiveFeed from '@/hooks/useLiveFeed';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency, PageProps } from '@/types';
@@ -39,15 +40,27 @@ interface PlanSummaryRow {
 
 interface Props {
     cards: ReportCard[];
-    revenueSeries: { labels: string[]; data: number[] };
+    /** `null` لشهرٍ لم يأتِ بعد — لا صفرٌ عن الغد */
+    revenueSeries: { labels: string[]; data: (number | null)[] };
     planDistribution: { labels: string[]; series: number[] };
     planSummary: PlanSummaryRow[];
     currency: Currency;
 }
 
 export default function Reports() {
-    const { cards, revenueSeries, planDistribution, planSummary, currency } = usePage<PageProps<Props>>().props;
+    const server = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+
+    /*
+     * والتقريرُ يتحدّث وهو مفتوح — كلُّه من نبضةٍ واحدة.
+     *
+     * «الإيرادات الشهرية» وبطاقةُ «إجمالي إيرادات الاشتراكات» تتبدّلان بفاتورةٍ
+     * تُسدَّد، و«توزيع الباقات» بشركةٍ تتبدّل باقتُها. فالنبضةُ تحمل الحمولةَ
+     * نفسَها التي فُتحت بها الصفحة (`PageController::reportsPayload`) كنبضة
+     * تقارير التاجر، لا الرسمَ وحده فتقول الشاشةُ رقمين عن لحظةٍ واحدة.
+     */
+    const { data: live } = useLiveFeed<Props>(route('super-admin.reports.feed'));
+    const { cards, revenueSeries, planDistribution, planSummary, currency } = live ?? server;
 
     return (
         <PlatformLayout title="التقارير">

@@ -19,7 +19,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
-import useLiveStats from '@/hooks/useLiveStats';
+import useLiveFeed from '@/hooks/useLiveFeed';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -64,14 +64,27 @@ interface DashboardProps {
     topEmployees: Employee[];
 }
 
+/** ما تُحدِّثه النبضة وهي مفتوحة — البطاقاتُ والرسمان معًا (`DashboardMetrics::snapshot`) */
+type LiveSnapshot = Pick<DashboardProps, 'stats' | 'salesSeries' | 'paymentDistribution'>;
+
 export default function Dashboard() {
-    const { stats, statCatalog, salesSeries, paymentDistribution, recentOrders, topProducts, topEmployees, context } =
-        usePage<PageProps<DashboardProps>>().props;
+    const server = usePage<PageProps<DashboardProps>>().props;
+    const { statCatalog, recentOrders, topProducts, topEmployees, context } = server;
 
     const t = useTranslate();
     const currency = context!.currency;
     const fmt = (value: number) => money(value, currency);
-    const { stats: liveStats, updatedAt } = useLiveStats(route('admin.dashboard.stats'), stats);
+
+    /*
+     * والرسمان يتحدّثان مع البطاقات — من نبضةٍ واحدة.
+     *
+     * كانت النبضةُ تحمل البطاقات وحدها، فبيعةٌ بعد فتح اللوحة ترفع «مبيعات
+     * اليوم» ولا تمسّ عمودَ الشهر ولا توزيعَ الدفع تحتها. والنبضةُ نفسُها
+     * تتوقّف واللسانُ مخفيّ، وتعود إلى خصائص الخادم بعد كلّ تنقّل — فتبديلُ
+     * الفرع يرسم الفرعَ الجديد لا لقطةً قديمة من غيره. انظر `useLiveFeed`.
+     */
+    const { data: live, updatedAt } = useLiveFeed<LiveSnapshot>(route('admin.dashboard.stats'), 15000);
+    const { stats: liveStats, salesSeries, paymentDistribution } = live ?? server;
 
     return (
         <AdminLayout title="لوحة التحكم">
@@ -106,8 +119,10 @@ export default function Dashboard() {
                 </Card>
 
                 <Card>
-                    <CardHeader>
+                    <CardHeader className="flex-row items-center justify-between">
                         <CardTitle>{t('طرق الدفع')}</CardTitle>
+                        {/* فترتُه تُقال: الشهر الجاري لا السنة التي يرسمها جارُه */}
+                        <span className="text-[12px] text-[#9ca3af]">{t('هذا الشهر')}</span>
                     </CardHeader>
                     <CardContent>
                         <BarChart

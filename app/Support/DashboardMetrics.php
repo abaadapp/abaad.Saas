@@ -13,6 +13,30 @@ use Illuminate\Support\Facades\DB;
  */
 class DashboardMetrics
 {
+    /**
+     * ما يتبدّل في اللوحة وهي مفتوحة — لقطةٌ واحدة تقرؤها الصفحةُ ونبضُها.
+     *
+     * ═══ العطب الذي وُضعت له ═══
+     *
+     * كانت نبضةُ اللوحة (`admin.dashboard.stats`) تردّ البطاقات وحدها،
+     * والرسمان خصائصُ الصفحة لحظةَ فتحها. فبيعةٌ بعد الفتح ترفع «مبيعات
+     * اليوم» في البطاقة ولا تمسّ عمودَ الشهر ولا توزيعَ الدفع تحتها: شاشةٌ
+     * واحدة تقول رقمين عن اللحظة نفسِها.
+     *
+     * فالبطاقاتُ والرسمان من دالّةٍ واحدة، تنادي بها الصفحةُ عند الفتح
+     * والنبضةُ في كلّ دورة — ولا يفترق ما يُرسم أوّلًا عمّا يُحدَّث به.
+     *
+     * @return array{stats: array, salesSeries: array, paymentDistribution: array}
+     */
+    public static function snapshot(): array
+    {
+        return [
+            'stats' => Demo::adminStats(),
+            'salesSeries' => self::salesYear(),
+            'paymentDistribution' => self::paymentDistribution(),
+        ];
+    }
+
     /** مخطط مبيعات السنة الجارية، مع فراغ الأشهر المستقبلية كما في Demo::salesTrend. */
     public static function salesYear(): array
     {

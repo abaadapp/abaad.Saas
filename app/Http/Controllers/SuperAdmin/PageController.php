@@ -28,6 +28,7 @@ use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
 use App\Support\PlatformConfig;
+use App\Support\PlatformMetrics;
 use App\Support\Purge\Offsite;
 use App\Support\Purge\Stages;
 use App\Support\Purge\Vault;
@@ -36,6 +37,7 @@ use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppTemplates;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -84,10 +86,8 @@ class PageController extends Controller
 
     public function dashboard(): Response
     {
-        return $this->page('Platform/Dashboard', [
-            'stats' => Demo::superStats(),
-            'revenueSeries' => Demo::revenueSeries(),
-            'growthSeries' => Demo::businessesGrowthSeries(),
+        // البطاقاتُ والرسمان من اللقطة التي تُحدِّثها النبضة — انظر `PlatformMetrics`
+        return $this->page('Platform/Dashboard', PlatformMetrics::dashboard() + [
             'latestBusinesses' => array_slice(Demo::businesses(), 0, 6),
             'activities' => Demo::activities(),
             'expiringSubscriptions' => array_slice(Demo::subscriptions(), 0, 5),
@@ -396,10 +396,29 @@ class PageController extends Controller
 
     public function reports(): Response
     {
+        return $this->page('Platform/Reports/Index', $this->reportsPayload());
+    }
+
+    /**
+     * نبضةُ التقارير — الحمولةُ نفسُها التي فُتحت بها الصفحة، لا بعضُها.
+     *
+     * «الإيرادات الشهرية» وبطاقةُ «إجمالي إيرادات الاشتراكات» فوقها تتبدّلان
+     * بفاتورةٍ تُسدَّد والصفحةُ مفتوحة. فلو حُدِّث الرسمُ وحده لقالت الشاشةُ
+     * رقمين عن اللحظة نفسِها — فتُحدَّث كلُّها من دالّةٍ واحدة، كنبضة تقارير
+     * التاجر (`ReportFeedController`).
+     */
+    public function reportsFeed(): JsonResponse
+    {
+        return response()->json($this->reportsPayload() + ['updated_at' => now()->format('H:i:s')]);
+    }
+
+    /** @return array<string, mixed> */
+    private function reportsPayload(): array
+    {
         $subs = Demo::subscriptionStats();
         $dist = Demo::planDistribution();
 
-        return $this->page('Platform/Reports/Index', [
+        return [
             // كانت هذه البطاقات أرقامًا ثابتة (52,640 ر.ع و120 و128 …)
             'cards' => [
                 ['title' => __('تقرير الإيرادات'), 'desc' => __('إجمالي إيرادات الاشتراكات'), 'icon' => 'wallet', 'color' => 'primary',
@@ -411,10 +430,13 @@ class PageController extends Controller
                 ['title' => __('تقرير الأنشطة'), 'desc' => __('سجل الأنشطة والعمليات'), 'icon' => 'activity', 'color' => 'warning',
                     'value' => (string) ActivityLog::count()],
             ],
+            // والتعريفُ تعريفُ لوحة المنصّة: الدالّةُ نفسُها لا نسخةٌ منها
             'revenueSeries' => Demo::revenueSeries(),
             'planDistribution' => $dist,
             'planSummary' => $this->planSummary(),
-        ]);
+            // والعملةُ كما يضيفها `page` — فالنبضةُ تُرسل ما تُرسله الصفحة
+            'currency' => Demo::displayCurrency(),
+        ];
     }
 
     /**

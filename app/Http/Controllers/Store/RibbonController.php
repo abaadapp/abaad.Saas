@@ -19,6 +19,7 @@ use App\Support\Store\RibbonTexts;
 use App\Support\Store\RibbonUpsells;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\GiftCard;
+use App\Support\Store\NewArrivals;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
 use App\Support\Store\StorePage;
@@ -247,7 +248,12 @@ class RibbonController extends Controller
             ? $chosen
             : $shown->sortByDesc(fn ($p) => [(int) ($sold[$p->id] ?? 0), $p->id])->take(4)->values();
 
-        $new = $shown->sortByDesc('id')->take(4)->values();
+        /*
+         * و«وصل حديثًا» أحدثُ أربعةٍ بالمعرّف — إلّا لمن في قائمة الاختيار
+         * اليدويّ واختار: فما اختاره بترتيبه، من `$shown` وحدها، وإلى
+         * الأحدث إن لم يبقَ ممّا اختاره شيءٌ معروض. انظر `NewArrivals`.
+         */
+        $new = NewArrivals::pick($bid, $shown);
 
         // عملةٌ واحدةٌ للرفّ كلِّه — انظر `card`
         $currency = Storefront::currency($business);

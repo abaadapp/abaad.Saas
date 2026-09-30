@@ -45,7 +45,7 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — ثمانيةَ عشرَ مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — تسعةَ عشرَ مفتاحًا.
      *
      * @var list<string>
      */
@@ -56,6 +56,7 @@ final class StoreContent
         'store_hero_image', 'store_banner_image', 'store_about_image',
         // ما يُعرض وبأيّ ترتيب
         'store_featured', 'store_sections', 'store_pages',
+        'store_new_arrivals_mode', 'store_new_arrivals',
         // القسمُ الحرّ
         'store_block_on', 'store_block_title', 'store_block_text',
         'store_block_image', 'store_block_cta', 'store_block_href',

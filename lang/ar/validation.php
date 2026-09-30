@@ -463,6 +463,8 @@ return [
         'store_hero_image' => 'صورة الواجهة',
         'store_banner_image' => 'صورة الشريط',
         'store_featured' => 'الأصناف المميّزة',
+        'store_new_arrivals_mode' => 'طريقة عرض «وصل حديثًا»',
+        'store_new_arrivals' => 'منتجات «وصل حديثًا»',
         'store_sections' => 'أقسام الصفحة',
         'store_pages' => 'صفحات المتجر',
         'store_block_on' => 'تشغيل الشريط',

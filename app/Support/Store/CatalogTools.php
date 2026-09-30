@@ -26,16 +26,17 @@ use App\Support\ProductImages;
  * RIBBON لا يكفي ليُفتح لمتجرٍ آخر، ولا قائمةُ Paymob تُستعار له: قراران
  * منفصلان يُرفع أحدهما ولا يُرفع الآخر. انظر `storefront.ribbon_catalog_editor_businesses`.
  *
- * ═══ والقاعدةُ مكتوبةٌ هنا ثانيةً — ومحروسةٌ بالمقارنة ═══
+ * ═══ والقاعدةُ واحدة — ومحروسةٌ بالمقارنة ═══
  *
- * «المعروض» = مفعَّلٌ ومنشور، و«وصل حديثًا» = أحدثُ أربعةٍ منه بالمعرّف.
- * وهي في `RibbonController` خاصّةٌ لا تُنادى من خارجه، ولا يُعدَّل هو في هذا
- * العمل. فحارسُها يطلب الواجهةَ نفسَها ويقارن — فإن افترقتا سقط.
+ * «المعروض» = مفعَّلٌ ومنشور — مكتوبٌ هنا كما في `RibbonController::shown`.
+ * و«وصل حديثًا» لا يُكتب هنا: تبنيه `NewArrivals::pick` للواجهة وللمحرّر
+ * معًا، تلقائيًّا أو يدويًّا. وحارسُها يطلب الواجهةَ نفسَها ويقارن — فإن
+ * افترقتا سقط.
  */
 final class CatalogTools
 {
     /** كم صنفًا يعرض «وصل حديثًا» — عددُ الواجهة لا عددٌ يُختار */
-    public const NEW_ARRIVALS = 4;
+    public const NEW_ARRIVALS = StorePage::NEW_ARRIVALS;
 
     /** أمفتوحةٌ لهذا المتجر؟ — من القائمة وحدها */
     public static function allowed(int $businessId): bool
@@ -52,7 +53,12 @@ final class CatalogTools
      * وفئاتُها بضمّة) — مهما كثرت الفئات. ولا سعرَ ولا مخزونَ ولا كلفة:
      * اللوحتان لا تقرأ شيئًا منها.
      *
-     * @return array{categories: list<array{id: int, name: string, name_en: ?string, shown_count: int}>, new_arrivals: list<array{id: int, name: string, image: ?string, category: ?string}>}|null
+     * ولمن في قائمة الاختيار اليدويّ (`NewArrivals::allowed`) مفتاحان
+     * زائدان: الطريقةُ والمعرّفاتُ كما يحرّرها — من المسوّدة إن كانت، كما
+     * يقرأ المحرّرُ سائرَ حقوله (`PageEditor::values`). ومن ليس فيها لا
+     * يصله منهما شيء.
+     *
+     * @return array{categories: list<array{id: int, name: string, name_en: ?string, shown_count: int}>, new_arrivals: list<array{id: int, name: string, image: ?string, category: ?string}>, new_arrivals_mode?: string, new_arrival_ids?: list<int>}|null
      */
     public static function for(int $businessId): ?array
     {
@@ -76,11 +82,13 @@ final class CatalogTools
                 'shown_count' => (int) ($counts[$c->id] ?? 0),
             ])->all();
 
-        $newArrivals = self::shown($businessId)
-            ->with('category:id,name')
-            ->orderByDesc('id')
-            ->limit(self::NEW_ARRIVALS)
-            ->get(['id', 'name', 'image', 'category_id'])
+        /*
+         * وما يعرضه القسمُ الآن — بقاعدة الواجهة نفسِها (`NewArrivals::pick`)
+         * لا بنسخةٍ ثانية منها: تلقائيًّا أو يدويًّا، وبرجوعه إلى الأحدث.
+         */
+        $shown = self::shown($businessId)->with('category:id,name')->get(['id', 'name', 'image', 'category_id']);
+
+        $newArrivals = NewArrivals::pick($businessId, $shown)
             ->map(fn (Product $p) => [
                 'id' => (int) $p->id,
                 'name' => (string) $p->name,
@@ -89,7 +97,15 @@ final class CatalogTools
                 'category' => $p->category?->name,
             ])->all();
 
-        return ['categories' => $categories, 'new_arrivals' => $newArrivals];
+        $out = ['categories' => $categories, 'new_arrivals' => $newArrivals];
+
+        if (NewArrivals::allowed($businessId)) {
+            $draft = StoreContent::draft($businessId);
+            $out['new_arrivals_mode'] = StorePage::mode($draft['store_new_arrivals_mode'] ?? '');
+            $out['new_arrival_ids'] = StorePage::ids($draft['store_new_arrivals'] ?? '', StorePage::NEW_ARRIVALS);
+        }
+
+        return $out;
     }
 
     /** ما تعرضه الواجهة — قاعدةُ `RibbonController::shown` نفسُها */

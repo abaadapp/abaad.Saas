@@ -713,6 +713,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * يقيسها الحارس بصلاحية «المنتجات» بلا صلاحيةٍ جديدة.
      */
     Route::post('/products/categories', [CatalogQuickAddController::class, 'storeCategory'])->name('products.categories.store');
+    // وتسميةُ قسمٍ قائم — في صفّه لا بقسمٍ جديد، فلا تنفصل عنه أصنافُه
+    Route::patch('/products/categories/{category}', [CatalogQuickAddController::class, 'updateCategory'])
+        ->whereNumber('category')->name('products.categories.update');
     Route::post('/products/addons', [CatalogQuickAddController::class, 'storeAddon'])->name('products.addons.store');
     // طريقةُ عرض الإضافات في نقطة البيع — لصاحب النشاط، ويُحرس في المتحكّم.
     // ويسبق «products/addons/{addon}» فلا تُقرأ «display» معرّفَ إضافة

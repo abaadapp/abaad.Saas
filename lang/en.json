@@ -6572,7 +6572,7 @@
     "لِما لا تقوله بضاعتك: اشتراكٌ شهريّ، تنسيقُ أعراس، توصيلٌ إلى ولايتك": "For what your goods do not say: a monthly subscription, wedding arrangements, delivery to your wilaya",
     "نبذتك": "Your blurb",
     "تُقرأ في هذا القسم وفي تذييل كلّ صفحة — وفي نتائج البحث": "Read in this section, in every page footer — and in search results",
-    "أسفل كلّ صفحة — واتركه فارغًا فيبقى «FLOWERS · LOUNGE · AND MORE»": "At the foot of every page — leave it empty and “FLOWERS · LOUNGE · AND MORE” stays",
+    "أسفل كلّ صفحة — واتركه فارغًا فلا يُكتب سطر": "At the foot of every page — leave it empty and no line is printed",
     "زرٌّ في التذييل يفتح محادثةً — ورقمُ متجرك إن تركته فارغًا": "A footer button that opens a chat — your store number if you leave it empty",
     "اسمُ الحساب بلا «@» ولا رابط": "The account name, without “@” and without a link",
     "تُكتب في التذييل، ويقرؤها من يستلم من المحلّ": "Written in the footer, and read by whoever collects from the shop",
@@ -7030,5 +7030,12 @@
     "قائمة «وصل حديثًا» غير صالحة — أعد اختيار المنتجات.": "The New arrivals list is not valid — choose the products again.",
     "اختر حتى :max منتجات فقط.": "Choose up to :max products only.",
     "منتجٌ في «وصل حديثًا» غير متاح — اختر من منتجاتك المفعّلة والمنشورة.": "A product in New arrivals is not available — choose from your active, published products.",
-    "هذه النسخة تُشير إلى بياناتٍ ليست لمتجرك — لم تُستعد، ولم يتغيّر شيء.": "This backup points to data that is not your shop’s — it was not restored, and nothing changed."
+    "هذه النسخة تُشير إلى بياناتٍ ليست لمتجرك — لم تُستعد، ولم يتغيّر شيء.": "This backup points to data that is not your shop’s — it was not restored, and nothing changed.",
+    "تعديل اسم القسم": "Rename category",
+    "تعذّر تعديل القسم": "Couldn't update the category",
+    "اسم القسم بالعربية": "Category name in Arabic",
+    "اسم القسم بالإنجليزية": "Category name in English",
+    "اسم المنتج بالعربية": "Product name in Arabic",
+    "اسم المنتج بالإنجليزية": "Product name in English",
+    "اختياري — يظهر في الموقع حين تكون لغته الإنجليزية، ويُبحث به في أيّ لغة": "Optional — shown on the website when its language is English, and searchable in either language"
 }

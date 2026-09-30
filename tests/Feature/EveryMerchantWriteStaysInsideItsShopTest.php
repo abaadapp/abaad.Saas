@@ -69,6 +69,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['الإضافات', 'put', 'admin.products.addons.sync', ['id' => 'product']],
                 ['الإضافات', 'delete', 'admin.products.addons.destroy', ['id' => 'product', 'addon' => 'addon'], ['id']],
                 ['الإضافات', 'put', 'admin.products.addons.update', ['addon' => 'addon']],
+                ['الأقسام', 'patch', 'admin.products.categories.update', ['category' => 'category'], [], ['name' => 'مسروق', 'name_en' => 'Stolen']],
                 ['المواسم', 'put', 'admin.seasons.update', ['id' => 'season']],
                 ['المواسم', 'put', 'admin.seasons.cycle', ['id' => 'season']],
                 ['المواسم', 'delete', 'admin.seasons.destroy', ['id' => 'season']],

@@ -14,6 +14,7 @@ use App\Support\CategoryName;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
 use App\Support\Money;
+use App\Support\PaymentMethods;
 use App\Support\Seo;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\RibbonUpsells;
@@ -463,8 +464,20 @@ class RibbonController extends Controller
                 'number' => $order->number,
                 'fulfil' => $order->fulfillment_type === FlowerOrder::PICKUP ? $t['pickup'] : $t['delivery'],
                 'date' => optional($order->scheduled_for)->format('Y-m-d').($order->delivery_notes ? ' · '.$order->delivery_notes : ''),
-                'pay' => $order->payment_method === 'تحويل بنكي' ? $t['payBank'] : $t['payCod'],
-                'transfer' => $order->payment_method === 'تحويل بنكي',
+                /*
+                 * وطريقةُ الدفع كما كُتبت على الطلب — ثلاثٌ لا اثنتان.
+                 *
+                 * كُتب هذا قبل البطاقة: التحويلُ تحويلٌ وما سواه «عند
+                 * الاستلام». فلمّا جاءت Paymob صار زبونٌ دفع ببطاقته يُقال
+                 * له في صفحة الشكر «الدفع عند الاستلام» — فيظنّ أنّ ماله لم
+                 * يُقبض، أو يُطالَب به مرّتين عند التسليم.
+                 */
+                'pay' => match ($order->payment_method) {
+                    PaymentMethods::TRANSFER => $t['payBank'],
+                    PaymentMethods::CARD => $t['payCard'],
+                    default => $t['payCod'],
+                },
+                'transfer' => $order->payment_method === PaymentMethods::TRANSFER,
                 'total' => Money::format((float) $order->total, $currency),
                 'lines' => $order->items->map(fn ($i) => [
                     'name' => $i->displayName(),

@@ -5,12 +5,15 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
+use App\Models\Order;
 use App\Models\PaymentGateway;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
+use App\Support\PaymentMethods;
 use App\Support\Store\RibbonTexts;
+use App\Support\Store\WebCheckout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -162,5 +165,59 @@ class ARibbonCheckoutCallsTheCardACardTest extends TestCase
                 $this->assertNotSame('', trim($t[$key]));
             }
         }
+    }
+
+    /* ═══════════════ وصفحةُ الشكر تقول ما دفع به ═══════════════ */
+
+    /** طلبٌ من الموقع بطريقة دفعٍ بعينها — كما يكتبه `WebCheckout` */
+    private function placed(string $method): Order
+    {
+        static $n = 0;
+
+        return Order::create([
+            'business_id' => $this->shop->id, 'number' => 'INV-DONE-'.(++$n), 'customer_name' => 'زبون',
+            'subtotal' => 0.2, 'tax' => 0, 'discount' => 0, 'total' => 0.2,
+            'payment_method' => $method, 'status' => 'جديد', 'is_held' => false,
+            'channel' => 'website', 'ordered_at' => now(),
+        ]);
+    }
+
+    /** سطرُ «الدفع» في صفحة الشكر وحده — لا كلمةٌ في مكانٍ آخر من الصفحة */
+    private function paidWith(Order $order, string $lang = 'ar'): string
+    {
+        $this->pays(cod: true, transfer: true);
+
+        return $this->get('/s/ribbon/done/'.$order->id.'?t='.WebCheckout::token($order).($lang === 'en' ? '&lang=en' : ''))
+            ->assertOk()->viewData('order')['pay'];
+    }
+
+    /**
+     * ومن دفع ببطاقته لا يُقال له «الدفع عند الاستلام».
+     *
+     * كانت الصفحةُ تعرف طريقتين: التحويلُ تحويلٌ وما سواه «عند الاستلام».
+     * فدفع أوّلُ زبونٍ ببطاقته عبر Paymob وقرأ تحته «الدفع عند الاستلام» —
+     * والطلبُ مكتوبٌ «بطاقة» ومالُه مقبوض.
+     */
+    public function test_the_thank_you_page_names_each_way_he_paid(): void
+    {
+        foreach (['ar', 'en'] as $lang) {
+            $t = RibbonTexts::for($lang);
+
+            $this->assertSame($t['payCard'], $this->paidWith($this->placed(PaymentMethods::CARD), $lang), "البطاقة في «{$lang}» قيلت غيرَ بطاقة");
+            $this->assertSame($t['payBank'], $this->paidWith($this->placed(PaymentMethods::TRANSFER), $lang));
+            $this->assertSame($t['payCod'], $this->paidWith($this->placed(PaymentMethods::CASH), $lang));
+        }
+    }
+
+    /** وما يُقال يُكتب في الصفحة نفسِها — لا في الحمولة وحدها */
+    public function test_the_card_line_is_printed_on_the_page(): void
+    {
+        $this->pays(cod: true, transfer: true);
+        $order = $this->placed(PaymentMethods::CARD);
+
+        $html = $this->get('/s/ribbon/done/'.$order->id.'?t='.WebCheckout::token($order))->assertOk()->getContent();
+
+        $this->assertStringContainsString(RibbonTexts::for('ar')['payCard'], $html);
+        $this->assertStringNotContainsString(RibbonTexts::for('ar')['payCod'], $html, 'بطاقةٌ مدفوعة قيل عنها «الدفع عند الاستلام»');
     }
 }

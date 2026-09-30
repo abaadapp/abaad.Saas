@@ -888,28 +888,13 @@ class PageController extends Controller
                     ? ['omit' => \App\Support\Store\PageEditor::omitted()]
                     : null,
                 /*
-                 * وبوّابةُ الدفع — حالُها لا مفاتيحُها.
+                 * وبوّابةُ الدفع — حالُها لا مفاتيحُها ولا نموذجُها.
                  *
-                 * السرّان لا يخرجان من الخادم أبدًا: خصائصُ Inertia تُقرأ في
-                 * مصدر الصفحة بضغطةٍ على «عرض المصدر». فتُقال الحالُ — أهي
-                 * مضبوطةٌ ومكتملة — ويُكتبان من جديدٍ إن أراد تبديلهما.
+                 * بيتُ المفاتيح «التطبيقات التكاملية ← Paymob» وحده. وهنا يُقال
+                 * أمربوطةٌ هي، وأفي الموقع سلّةٌ تُستعمل فيها — انظر
+                 * `Store\PaymobSettings::summary`.
                  */
-                'gateway' => (function () {
-                    $g = \App\Models\PaymentGateway::where('business_id', Demo::bid())
-                        ->where('provider', \App\Models\PaymentGateway::PAYMOB)->first();
-
-                    return [
-                        'active' => (bool) ($g?->active ?? false),
-                        'public_key' => (string) ($g?->public_key ?? ''),
-                        'card_integration_id' => (string) ($g?->card_integration_id ?? ''),
-                        'has_secret' => filled($g?->secret_key),
-                        'has_hmac' => filled($g?->hmac_secret),
-                        // «جاهزة» تعني أنّ الزبون يدفع بها فعلًا — فلا تكون لمن ليس في القائمة
-                        'ready' => \App\Support\Store\Paymob::enabled(Demo::bid()),
-                        // ومن ليس في قائمة المالك لا تُرسم له البطاقةُ أصلًا — انظر `Paymob::allowed`
-                        'allowed' => \App\Support\Store\Paymob::allowed(Demo::bid()),
-                    ];
-                })(),
+                'gateway' => \App\Support\Store\PaymobSettings::summary(Demo::bid()),
                 /*
                  * وهل في واجهته سلّةٌ وإتمامُ طلب؟ — تُفتح به بطاقةُ التوصيل.
                  *

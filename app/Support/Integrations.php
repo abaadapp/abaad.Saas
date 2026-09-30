@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Support\Store\PaymobSettings;
 
 /**
  * دليلُ التطبيقات التكاملية — قائمةٌ مغلقة يقرؤها بابٌ واحد.
@@ -27,10 +28,10 @@ class Integrations
 
     public const WHATSAPP = 'whatsapp';
 
-    public const AMWALPAY = 'amwalpay';
+    public const PAYMOB = 'paymob';
 
     /** الترتيب ترتيبُ العرض — الأقربُ إلى عمل المتجر أوّلًا */
-    public const ALL = [self::GOOGLE, self::WHATSAPP, self::AMWALPAY];
+    public const ALL = [self::GOOGLE, self::WHATSAPP, self::PAYMOB];
 
     /**
      * ما يُعرّف الأداة ولا يتبدّل بمتجر: اسمُها وموقعُها ولونُها وبابُها.
@@ -57,25 +58,18 @@ class Integrations
             'route' => 'admin.integrations.whatsapp',
             'feature' => 'whatsapp',
         ],
-        self::AMWALPAY => [
-            'name' => 'AmwalPay',
-            'site' => 'amwalpay.com',
-            'line' => 'بوّابةُ دفعٍ عُمانية — يدفع الزبون ببطاقته، ويصل المال إلى حسابك.',
+        self::PAYMOB => [
+            'name' => 'Paymob',
+            'site' => 'paymob.com',
+            'line' => 'يدفع زبونُك على موقعك بالبطاقة — وبـApple Pay إن فعّلته Paymob لحسابك. المفاتيحُ مفاتيحُك، والمالُ يصل حسابَك.',
             'category' => 'المدفوعات',
-            'tint' => '#1b3a93',
+            'tint' => '#1a3fbf',
+            'route' => 'admin.integrations.paymob',
             /*
-             * لا باب — ولا يُخترع لها باب.
-             *
-             * ليس في النظام حرفٌ واحد من AmwalPay: لا مفتاحَ إعدادٍ، ولا
-             * عمودَ حساب، ولا نداءَ جلسةِ دفع. و«طرق الدفع» عند الصندوق
-             * نصوصٌ تُسجَّل بعد أن يقع الدفع، لا بوّابةٌ تُوقعه.
-             *
-             * فتُعرض كما هي: معروفةً في الدليل، مطفأةً بلا مقبضٍ يُضغط.
-             * وبطاقةٌ تعد بالربط ثمّ تفتح شاشةً فارغة أسوأ من بطاقةٍ تقول
-             * «لم تُهيّأ بعد» — الأولى يجرّبها التاجر مرّتين ثمّ يراجعنا،
-             * والثانية يقرؤها مرّةً ويعرف.
+             * ولا باقةَ تحرسها: لا ميزةَ مدفوعة في الباقات اسمُها بوّابةُ
+             * الدفع، ولا يُخترع لها قيدٌ هنا. واستعمالُها على الموقع يحرسه
+             * شرطٌ آخر — سلّةٌ حقيقيّة (`Store\Paymob::enabled`).
              */
-            'route' => null,
             'feature' => null,
         ],
     ];
@@ -101,6 +95,8 @@ class Integrations
         return match ($key) {
             self::GOOGLE => self::googleStatus($business),
             self::WHATSAPP => self::whatsappStatus($business),
+            // من صفّ هذا المتجر وحده — ولا تسأل عن سلّة الموقع: الربطُ غيرُ الاستعمال
+            self::PAYMOB => self::state(PaymobSettings::state((int) $business->id)),
             // ولا حالَ لما لم يُبنَ: لا مفتاحَ يُقرأ ولا مرحلةَ تُقاس
             default => self::state('unbuilt'),
         };

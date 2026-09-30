@@ -1050,7 +1050,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::post('/marketing/store/image', [MarketingController::class, 'uploadStoreImage'])
         ->name('marketing.store.image');
     Route::post('/marketing/store/products', [MarketingController::class, 'publishProducts'])->name('marketing.store.products');
-    Route::post('/marketing/store/gateway', [MarketingController::class, 'savePaymentGateway'])->name('marketing.store.gateway');
     /*
      * معاينةُ المتجر — خلف الحارس، وبلا معرّفٍ في الرابط.
      *
@@ -1189,6 +1188,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
          */
         Route::post('/connect/{tool}', [IntegrationsController::class, 'connect'])
             ->whereIn('tool', ['whatsapp', 'google'])->name('connect');
+
+        /*
+         * ربطُ Paymob — بيتُ مفاتيح الدفع الإلكترونيّ الوحيد.
+         *
+         * لكلّ متجرٍ حسابُه، ويُفتح لكلّ متجر: لا قائمةَ بمعرّفات. وشاشاتُ
+         * الموقع تعرض الحالَ وتُحيل إلى هنا ولا تحرّر شيئًا.
+         */
+        Route::get('/paymob', [IntegrationsController::class, 'paymob'])->name('paymob');
+        Route::post('/paymob', [IntegrationsController::class, 'savePaymob'])->name('paymob.save');
 
         /*
          * ربط خرائط Google — صفحةٌ في النظام لا رابطٌ يخرج منه.

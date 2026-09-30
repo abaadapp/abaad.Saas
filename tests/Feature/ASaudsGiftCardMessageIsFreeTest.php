@@ -133,7 +133,7 @@ class ASaudsGiftCardMessageIsFreeTest extends TestCase
         $config = require config_path('storefront.php');
 
         $this->assertSame([5], $config['ribbon_free_gift_card_message_businesses']);
-        $this->assertSame([5], $config['paymob_businesses'], 'قائمةُ البوّابة كما هي');
+        $this->assertArrayNotHasKey('paymob_businesses', $config, 'البوّابةُ لا قائمةَ لها — لكلّ متجرٍ ذي سلّةٍ مفاتيحُه');
     }
 
     public function test_no_business_id_is_written_outside_the_list(): void
@@ -274,7 +274,6 @@ class ASaudsGiftCardMessageIsFreeTest extends TestCase
 
     public function test_paymob_is_asked_for_the_same_amount_with_or_without_the_message(): void
     {
-        config(['storefront.paymob_businesses' => [$this->free->id]]);
         PaymentGateway::create([
             'business_id' => $this->free->id, 'provider' => PaymentGateway::PAYMOB,
             'public_key' => 'pk_test_abc', 'secret_key' => 'sk_test_abc', 'hmac_secret' => 'hmac_secret_value',

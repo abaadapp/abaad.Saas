@@ -97,8 +97,6 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'name' => 'RIBBON', 'type' => 'محل ورد', 'status' => 'نشط', 'phone' => '96895259066',
             'city' => 'مسقط', 'site_slug' => 'ribbon', 'tier' => 'gold', 'storefront_theme' => 'ribbon',
         ]);
-        // Paymob لمن في قائمة المالك وحده (`storefront.paymob_businesses`) — ومتجرُ هذا الاختبار منها
-        config(['storefront.paymob_businesses' => [$this->shop->id]]);
         Currency::create(['business_id' => $this->shop->id, 'code' => 'OMR', 'name' => 'ريال عماني', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true]);
         Ledger::seedChart($this->shop->id);
         Branch::create(['business_id' => $this->shop->id, 'name' => 'الخوير']);
@@ -723,16 +721,17 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     }
 
     /**
-     * ═══ وزرُّ الحفظ واحد — إلّا بوّابةَ الدفع ═══
+     * ═══ وزرُّ الحفظ واحد ═══
      *
      * كانت شاشةُ «المتجر والطلبات» تحمل زرَّين متجاورين لا يحفظ أحدُهما ما
      * يحفظه الآخر: من عدّل رسمَ التوصيل ثمّ ضغط الزرَّ الأسفل أضاع ما كتب
      * ولا شيء يقول له ذلك.
      *
-     * فصار الحفظُ شريطًا واحدًا، ولم يبقَ نموذجٌ بزرِّه إلّا بوّابةَ الدفع —
-     * وسببُه مكتوبٌ في ملفّها: حقلان فيها سرّان لا يُرسلان مع كلّ حفظ.
+     * فصار الحفظُ شريطًا واحدًا. وبقيت بوّابةُ الدفع بزرِّها زمنًا لأنّ فيها
+     * سرّين — ثمّ انتقلت مفاتيحُها إلى «التطبيقات التكاملية ← Paymob»، فلم
+     * يبقَ هنا قسمٌ بزرٍّ خاصّ: بطاقتُها حالٌ ورابط.
      */
-    public function test_only_the_payment_gateway_keeps_a_button_of_its_own(): void
+    public function test_no_section_keeps_a_button_of_its_own(): void
     {
         $withButtons = [];
 
@@ -742,7 +741,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             }
         }
 
-        $this->assertSame(['gateway'], $withButtons, 'قسمٌ يحمل زرَّ حفظٍ خاصًّا به بلا سببٍ مكتوب');
+        $this->assertSame([], $withButtons, 'قسمٌ يحمل زرَّ حفظٍ خاصًّا به بلا سببٍ مكتوب');
 
         $this->assertStringContainsString(
             'data-testid="save-bar"',
@@ -850,9 +849,12 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         $response->assertDontSee('sk_live_secret');
         $response->assertDontSee('hmac_secret');
 
+        // ولا مفتاحَ أصلًا — حالٌ لا غير، والمفاتيحُ في بيتها
         $props = $response->viewData('page')['props'];
-        $this->assertTrue($props['gateway']['has_secret']);
-        $this->assertTrue($props['gateway']['has_hmac']);
+        $this->assertSame('ready', $props['gateway']['state']);
+        $this->assertArrayNotHasKey('public_key', $props['gateway']);
+        $this->assertArrayNotHasKey('has_secret', $props['gateway']);
+        $response->assertDontSee('pk_live_x');
     }
 
     /**

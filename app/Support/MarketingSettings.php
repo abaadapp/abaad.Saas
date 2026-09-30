@@ -203,6 +203,13 @@ class MarketingSettings
              */
             'store_hero_image' => '',
             'store_featured' => '',
+            /*
+             * و«وصل حديثًا»: تلقائيٌّ (أحدثُ أربعة) أو يدويٌّ بترتيبه —
+             * لمن في `storefront.ribbon_curated_new_arrivals_businesses`
+             * وحده. والأصلُ `auto` فلا يتبدّل قسمُ متجرٍ قائم.
+             */
+            'store_new_arrivals_mode' => 'auto',
+            'store_new_arrivals' => '',
             'store_sections' => '',
             'store_block_on' => '0',
             'store_block_title' => '',

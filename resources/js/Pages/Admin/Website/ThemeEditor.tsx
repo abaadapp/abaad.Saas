@@ -24,7 +24,7 @@ import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
+import { type ArrivalsCuration, CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 
@@ -251,7 +251,26 @@ export default function ThemeEditor({
     const want = DEVICE_WIDTH[size];
     const scale = previewFit(want, avail);
 
-    const form = useForm<Record<string, string>>({ ...values });
+    /*
+        و«وصل حديثًا» اليدويّ في النموذج نفسِه — لمن وصله وحده.
+
+        فالمعاينةُ ترسم ما اختاره قبل أن يحفظ كسائر الحقول، والحفظُ يمرّ بـ
+        `save` بمفتاحَيه. والقائمةُ تبدأ بما يُعرض الآن وحده: صنفٌ أُخفي بعد
+        اختياره لا يُرسَل فيُردّ الحفظُ كلُّه من أجله.
+    */
+    const curated = catalogTools?.new_arrivals_mode !== undefined && catalogTools?.new_arrival_ids !== undefined;
+
+    const form = useForm<Record<string, string>>({
+        ...values,
+        ...(curated
+            ? {
+                  store_new_arrivals_mode: catalogTools!.new_arrivals_mode!,
+                  store_new_arrivals: catalogTools!.new_arrival_ids!
+                      .filter((id) => products.some((p) => p.id === id))
+                      .join(','),
+              }
+            : {}),
+    });
 
     /*
         ═══ المعاينةُ تُرسَل بنموذجٍ إلى الإطار — لا برابط ═══
@@ -388,6 +407,23 @@ export default function ThemeEditor({
             ).join(','),
         );
 
+    const curation: ArrivalsCuration | null = curated
+        ? {
+              mode: form.data.store_new_arrivals_mode === 'manual' ? 'manual' : 'auto',
+              ids: (form.data.store_new_arrivals ?? '')
+                  .split(',')
+                  .map((v) => Number(v.trim()))
+                  .filter((v) => Number.isInteger(v) && v > 0),
+              products,
+              onChange: (mode, ids) =>
+                  form.setData((d) => ({ ...d, store_new_arrivals_mode: mode, store_new_arrivals: ids.join(',') })),
+              onSave: () => save(['store_new_arrivals_mode', 'store_new_arrivals']),
+              saving: form.processing,
+              error: (form.errors as Record<string, string | undefined>).store_new_arrivals
+                  ?? (form.errors as Record<string, string | undefined>).store_new_arrivals_mode,
+          }
+        : null;
+
     const field = (f: EditorField) => {
         if (f.gate && (form.data[f.gate] ?? '0') !== '1') return null;
 
@@ -488,7 +524,7 @@ export default function ThemeEditor({
             catalogTools && r.key === 'cats' ? (
                 <CategoriesPanel categories={catalogTools.categories} />
             ) : catalogTools && r.key === 'new' ? (
-                <NewArrivalsPanel items={catalogTools.new_arrivals} />
+                <NewArrivalsPanel items={catalogTools.new_arrivals} curation={curation} />
             ) : null;
 
         return (

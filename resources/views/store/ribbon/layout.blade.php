@@ -310,15 +310,17 @@
             </div>
         </div>
         <div class="rb-foot-bottom">
-            <span>© {{ date('Y') }} {{ $business->name }}</span>
+            <span>© {{ now()->year }} {{ $business->name }}</span>
             {{--
-                وسطرُ التذييل يكتبه صاحبُ المحلّ.
+                وسطرُ التذييل يكتبه صاحبُ المحلّ — أو لا سطر.
 
-                «FLOWERS · LOUNGE · AND MORE» وصفُ محلٍّ بعينه، وكان مكتوبًا
-                بحروفه في هذا القالب. ومحلٌّ آخر يلبس الواجهةَ نفسَها كان
-                يُذيّل صفحتَه بوصفِ غيره.
+                كان الفراغُ يقع على وصفِ محلٍّ بعينه مكتوبٍ في هذا القالب، فكلُّ
+                محلٍّ يلبس الواجهةَ ولم يكتب سطرَه يُذيَّل بوصفِ غيره. فما لم
+                يُكتب لا يُرسم، ولا يُخترع له بديل.
             --}}
-            <span style="letter-spacing:.18em" data-testid="rb-tagline">{{ $tagline ?? 'FLOWERS · LOUNGE · AND MORE' }}</span>
+            @if (filled($tagline))
+                <span style="letter-spacing:.18em" data-testid="rb-tagline">{{ $tagline }}</span>
+            @endif
         </div>
     </div>
 </footer>

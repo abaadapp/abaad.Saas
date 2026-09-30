@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Review;
 use App\Models\Website;
 use App\Support\CategoryName;
+use App\Support\ProductName;
 use App\Support\Demo;
 
 /**
@@ -77,15 +78,16 @@ class Preview
 
         /*
          * ولغةُ الموقع قبل المحتوى: اسمُ القسم يخرج بها (انظر `categories`)
-         * — لغةُ النشاط لا لغةُ لوحة من يفتح المعاينة.
+         * واسمُ الصنف كذلك (انظر `product`) — لغةُ النشاط لا لغةُ لوحة من
+         * يفتح المعاينة.
          */
         $locale = self::locale($businessId);
 
         $bag = [
-            'products' => $needs['products'] ? self::products($businessId, $needs['products']) : [],
+            'products' => $needs['products'] ? self::products($businessId, $needs['products'], $locale) : [],
             'categories' => $needs['categories'] ? self::categories($businessId, $needs['categories'], $locale) : [],
             'reviews' => $needs['reviews'] ? self::reviews($businessId, $needs['reviews']) : [],
-            'best' => $needs['best'] ? self::bestSellers($businessId, $needs['best'], $needs['best_days']) : [],
+            'best' => $needs['best'] ? self::bestSellers($businessId, $needs['best'], $needs['best_days'], $locale) : [],
         ];
 
         foreach ($snapshot['pages'] as &$page) {
@@ -97,7 +99,7 @@ class Preview
         }
         unset($page);
 
-        $snapshot = self::withSeasons($snapshot, $businessId);
+        $snapshot = self::withSeasons($snapshot, $businessId, $locale);
 
         foreach ($snapshot['globals'] as &$slot) {
             $slot['data'] = Media::absolute($slot['type'], $slot['data'] ?? []);
@@ -407,14 +409,14 @@ class Preview
      * وصاحبُ المتجر لا يُترك يحزر أين ذهبت أصنافُه: لوحةُ تشغيل الموقع تقول
      * كم صنفًا نفد وأيُّها — انظر `Admin\Website\HubController`.
      */
-    private static function products(int $businessId, int $limit): array
+    private static function products(int $businessId, int $limit, string $locale): array
     {
         $rows = Product::where('business_id', $businessId)
             ->where('active', true)->where('published', true)
             ->orderByDesc('id')->limit(max($limit, self::MAX))
-            ->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id']);
+            ->get(['id', 'name', 'name_en', 'description', 'price', 'discount', 'image', 'category_id']);
 
-        return self::onShelf($businessId, $rows);
+        return self::onShelf($businessId, $rows, $locale);
     }
 
     /**
@@ -435,7 +437,7 @@ class Preview
      * والمنتهي يسقط وحدَه: `Seasons::forWebsite` تقرأ الجاريَ اليوم، والصنفُ
      * يبقى في مكانه المعتاد — انتهاءُ الموسم ليس إلغاءَ نشر.
      */
-    private static function withSeasons(array $snapshot, int $businessId): array
+    private static function withSeasons(array $snapshot, int $businessId, string $locale): array
     {
         $seasons = \App\Support\Seasons::forWebsite($businessId);
 
@@ -455,9 +457,9 @@ class Preview
             $rows = Product::where('business_id', $businessId)
                 ->where('active', true)->where('published', true)
                 ->whereIn('id', $ids)->orderByDesc('id')->limit(self::CATALOG_MAX)
-                ->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id']);
+                ->get(['id', 'name', 'name_en', 'description', 'price', 'discount', 'image', 'category_id']);
 
-            $items = self::onShelf($businessId, $rows);
+            $items = self::onShelf($businessId, $rows, $locale);
 
             if ($items === []) {
                 continue;
@@ -499,12 +501,12 @@ class Preview
      * @param  \Illuminate\Support\Collection<int, Product>  $rows
      * @return array<int, array<string, mixed>>
      */
-    private static function onShelf(int $businessId, $rows): array
+    private static function onShelf(int $businessId, $rows, string $locale): array
     {
         $have = Shelf::availability($businessId, $rows->pluck('id')->all());
 
         return $rows->filter(fn ($p) => $have[(int) $p->id] ?? false)
-            ->map(fn ($p) => self::product($p))->values()->all();
+            ->map(fn ($p) => self::product($p, $locale))->values()->all();
     }
 
     /**
@@ -522,7 +524,7 @@ class Preview
      * والإقرار الضريبيّ ولوحة التاجر. فيُقرأ منه هنا أيضًا، لا يُعاد كتابةُ
      * الشرطين بيدٍ تنسى أحدهما.
      */
-    private static function bestSellers(int $businessId, int $limit, int $days): array
+    private static function bestSellers(int $businessId, int $limit, int $days, string $locale): array
     {
         $ids = OrderItem::whereHas('order', fn ($q) => $q->where('business_id', $businessId)->sold()
             ->where('ordered_at', '>=', now()->subDays(max(7, $days))))
@@ -539,7 +541,7 @@ class Preview
         // والشروطُ الثلاثة هنا أيضًا: صنفٌ باع أمس ونفد اليوم لا يُعرض اليوم
         $products = collect(self::onShelf($businessId, Product::where('business_id', $businessId)
             ->where('active', true)->where('published', true)
-            ->whereIn('id', $ids)->get(['id', 'name', 'description', 'price', 'discount', 'image', 'category_id'])))
+            ->whereIn('id', $ids)->get(['id', 'name', 'name_en', 'description', 'price', 'discount', 'image', 'category_id']), $locale))
             ->keyBy('id');
 
         // ترتيبُ المبيعات لا ترتيبُ المعرّفات: `whereIn` لا تحفظ ترتيب القائمة
@@ -547,14 +549,26 @@ class Preview
             ->filter()->values()->all();
     }
 
-    private static function product(Product $p): array
+    /**
+     * بطاقةُ الصنف — واسمُه بلغة الموقع.
+     *
+     * كان `name` يخرج كما كُتب، فيعرض الموقعُ الإنجليزيّ الصنفَ بحروفه
+     * العربيّة وإن كتب التاجر `name_en` — وأقسامُه فوقه بالإنجليزيّة. فيُختار
+     * الاسمُ هنا (`ProductName`) كما يُختار اسمُ القسم، والمعاينةُ والمنشورُ
+     * يمرّان من هنا معًا.
+     *
+     * و`other_name` الاسمُ الآخر — لا يُرسم، ويُبحث به: الزبونُ يجد الصنفَ
+     * نفسَه بأيّ الاسمين كتب (انظر `Catalog` في العارض).
+     */
+    private static function product(Product $p, string $locale): array
     {
         $price = round((float) $p->price, 3);
         $discount = round((float) $p->discount, 2);
 
         return [
             'id' => $p->id,
-            'name' => $p->name,
+            'name' => ProductName::display($p->name, $p->name_en, $locale),
+            'other_name' => ProductName::other($p->name, $p->name_en, $locale),
             'excerpt' => mb_substr(trim((string) $p->description), 0, 120),
             'price' => $price,
             // السعر بعد الخصم يُحسب هنا لا في العارض: حسابُ مالٍ في موضعٍ واحد

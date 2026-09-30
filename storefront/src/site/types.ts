@@ -57,7 +57,13 @@ export interface Currency {
 
 export interface DocProduct {
     id: number;
+    /** الاسمُ بلغة الموقع */
     name: string;
+    /**
+     * الاسمُ الآخر — لا يُرسم، ويُبحث به: الصنفُ نفسُه بأيّ اسمَيه كُتب.
+     * ويغيب في مستندٍ قديم، أو حين لا اسمَ آخر للصنف.
+     */
+    other_name?: string | null;
     excerpt: string;
     price: number;
     /** السعر قبل الخصم — أو null إن لا خصم */

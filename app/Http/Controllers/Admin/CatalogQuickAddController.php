@@ -66,6 +66,49 @@ class CatalogQuickAddController extends Controller
     }
 
     /**
+     * تسميةُ قسمٍ قائم — بالعربيّة والإنجليزيّة، والقسمُ هو هو.
+     *
+     * لم يكن للقسم بابُ تعديل: يُنشأ ثمّ لا يُمسّ. فمن كتب اسمه الإنجليزيّ
+     * خطأً — أو لم يكتبه — لم يكن أمامه إلّا قسمٌ جديد، فتنقسم أصنافُه بين
+     * اسمين. وهنا يُعاد اسمُه في صفّه: المعرّفُ كما هو، والأصنافُ مربوطةٌ به
+     * كما كانت، والمرشِّحُ في الموقع بالمعرّف فلا يتبدّل ما تحته.
+     *
+     * والصفُّ من متجر من سجّل الدخول وإلّا فـ٤٠٤: «ليس لك» و«غير موجود»
+     * جوابٌ واحد، فلا يُخمَّن رقمُ قسمِ غيره بالردّ.
+     */
+    public function updateCategory(Request $request, int $category): JsonResponse
+    {
+        $bid = $this->bid();
+        $model = Category::where('business_id', $bid)->findOrFail($category);
+
+        $data = $request->validate([
+            'name' => [
+                'required', 'string', 'max:100',
+                Rule::unique('categories', 'name')->where('business_id', $bid)->ignore($model->id),
+            ],
+            'name_en' => ['nullable', 'string', 'max:100'],
+        ], [
+            'name.unique' => __('يوجد قسمٌ بهذا الاسم.'),
+        ]);
+
+        $model->update(\App\Support\Lexicon::fill([
+            'name' => trim((string) $data['name']),
+            'name_en' => trim((string) ($data['name_en'] ?? '')) ?: null,
+        ]));
+
+        \App\Support\Activity::log('updated', 'عدّل اسم قسم «'.$model->name.'»', ['subject_id' => $model->id]);
+
+        return response()->json([
+            'ok' => true,
+            'category' => [
+                'id' => $model->id,
+                'name' => $model->name,
+                'name_en' => $model->name_en,
+            ],
+        ]);
+    }
+
+    /**
      * إضافةٌ جديدة — بسعرها، وبمداها، وبربطٍ اختياريّ ببضاعةٍ في الرفّ.
      *
      * تُنشأ فعّالةً: من يضيفها وهو يجهّز منتجًا يريدها الآن، ومطالبتُه

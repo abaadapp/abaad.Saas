@@ -13,7 +13,11 @@
         @endforeach
     </div>
     @if (count($products) === 0)
-        <p style="padding:60px 0;text-align:center">{{ $t['noProducts'] }}</p>
+        {{--
+            ورفٌّ فارغ غيرُ بحثٍ لم يُصب: «لا منتجات هنا بعد» تقول إنّ المحلّ
+            خالٍ، وهو لا يُقال لمن في رفّه بضاعةٌ لم يطابقها ما كُتب.
+        --}}
+        <p style="padding:60px 0;text-align:center" data-testid="rb-empty">{{ ! $hasAny ? $t['noProducts'] : ($q !== '' ? $t['noMatch'] : $t['noInCategory']) }}</p>
     @else
         <div class="rb-grid">
             @foreach ($products as $p) @include('store.ribbon._card', ['p' => $p]) @endforeach

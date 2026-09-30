@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\StorePaymentIntent;
 use App\Models\Review;
 use App\Support\CategoryName;
+use App\Support\ProductName;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
 use App\Support\Money;
@@ -294,12 +295,23 @@ class RibbonController extends Controller
 
         $list = $shown
             ->when($cat > 0, fn ($c) => $c->where('category_id', $cat))
-            ->when($q !== '', fn ($c) => $c->filter(fn ($p) => mb_stripos($p->name.' '.$p->name_en, $q) !== false));
+            /*
+             * والبحثُ بالاسمين معًا أيًّا كانت لغةُ الصفحة: زبونٌ على الصفحة
+             * الإنجليزيّة يكتب «ورد» فيجد الباقة، وعلى العربيّة يكتب «Flower»
+             * فيجدها — الصنفُ نفسُه بمعرّفه. ولا ترجمةَ ولا نقحرة: ما كُتب وحده.
+             */
+            ->when($q !== '', fn ($c) => $c->filter(fn ($p) => mb_stripos(ProductName::searchable($p->name, $p->name_en), $q) !== false));
 
         return [
             'categories' => $this->categories($bid, $lang, $shown),
             'cat' => $cat,
             'q' => $q,
+            /*
+             * أفي الرفّ شيءٌ أصلًا؟ — ليُفرَّق «لا شيء يطابق بحثك» عن «لا
+             * منتجات بعد». وكانت الصفحةُ تقول الثانيةَ لكلّ بحثٍ لم يُصب،
+             * فيظنّ الزبونُ أنّ المحلّ فارغ وهو مليء.
+             */
+            'hasAny' => $shown->isNotEmpty(),
             'products' => $list->map(fn ($p) => $this->card($p, $lang, $business, $currency))->values()->all(),
         ];
     }
@@ -625,7 +637,7 @@ class RibbonController extends Controller
 
         return [
             'id' => $p->id,
-            'name' => $lang === 'en' && filled($p->name_en) ? $p->name_en : $p->name,
+            'name' => ProductName::display($p->name, $p->name_en, $lang),
             // والقاعدةُ نفسُها التي يُسمّى بها القسمُ في المرشّح — فلا يفترق اسماه
             'category' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, $lang) : null,
             'category_id' => $p->category_id,
@@ -649,7 +661,7 @@ class RibbonController extends Controller
         return [
             'lines' => array_map(fn ($l) => [
                 'id' => $l['id'], 'variant_id' => $l['variant_id'],
-                'name' => $lang === 'en' && filled($l['name_en']) ? $l['name_en'] : $l['name'],
+                'name' => ProductName::display($l['name'], $l['name_en'], $lang),
                 'variant' => $lang === 'en' && filled($l['variant_en']) ? $l['variant_en'] : $l['variant'],
                 'image' => $l['image'], 'qty' => $l['qty'], 'price' => $l['price'],
                 'price_text' => $m($l['price']), 'line_text' => $m($l['line']),

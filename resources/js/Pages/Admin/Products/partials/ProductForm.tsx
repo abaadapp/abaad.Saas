@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Check, ImagePlus, Plus, X } from 'lucide-react';
+import { Check, ImagePlus, Pencil, Plus, X } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Tabs from '@/Components/Tabs';
 import Field, { Select } from '@/Components/Field';
@@ -147,41 +147,71 @@ export default function ProductForm({
      *
      * وبـfetch لا بتنقّل: النموذج نصفُه مملوء، وإعادةُ تحميل الصفحة تمحو ما
      * كُتب ولم يُحفظ.
+     *
+     * ═══ وباسمين — والقسمُ واحد ═══
+     *
+     * كان يُرسل العربيَّ وحده، فيبقى الموقعُ الإنجليزيّ يعرض القسمَ بحروفه
+     * العربيّة. فصار الحقلان معًا، والإنجليزيُّ اختياريّ. والتعديلُ يُعيد
+     * تسميةَ القسم في صفّه (`categories.update`): المعرّفُ هو هو، والأصنافُ
+     * مربوطةٌ به كما كانت.
      */
     const [cats, setCats] = useState(categories);
-    const [newCat, setNewCat] = useState<string | null>(null);
+    /** القسمُ الذي يُكتب الآن — `id: null` قسمٌ جديد، وإلّا فتسميةُ قائم */
+    const [catDraft, setCatDraft] = useState<{ id: number | null; name: string; name_en: string } | null>(null);
     const [catError, setCatError] = useState<string | null>(null);
     const [savingCat, setSavingCat] = useState(false);
 
-    const addCategory = async () => {
-        const name = (newCat ?? '').trim();
+    const closeCat = () => {
+        setCatDraft(null);
+        setCatError(null);
+    };
+
+    const saveCategory = async () => {
+        if (catDraft === null) return;
+        const name = catDraft.name.trim();
         if (!name) return;
+
+        const editing = catDraft.id !== null;
 
         setSavingCat(true);
         setCatError(null);
         try {
-            const res = await fetch(route('admin.products.categories.store'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
-                body: JSON.stringify({ name }),
-            });
+            const res = await fetch(
+                editing
+                    ? route('admin.products.categories.update', catDraft.id as number)
+                    : route('admin.products.categories.store'),
+                {
+                    method: editing ? 'PATCH' : 'POST',
+                    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                    body: JSON.stringify({ name, name_en: catDraft.name_en.trim() || null }),
+                },
+            );
             const body = await res.json();
 
             if (!res.ok) {
-                setCatError(body?.errors?.name?.[0] ?? t('تعذّر إضافة القسم'));
+                setCatError(
+                    body?.errors?.name?.[0] ??
+                        body?.errors?.name_en?.[0] ??
+                        t(editing ? 'تعذّر تعديل القسم' : 'تعذّر إضافة القسم'),
+                );
 
                 return;
             }
 
-            setCats((prev) => [...prev, body.category]);
-            form.setData('category_id', String(body.category.id));
-            setNewCat(null);
+            const saved = body.category as Category;
+            setCats((prev) =>
+                editing ? prev.map((c) => (c.id === saved.id ? { ...c, ...saved } : c)) : [...prev, saved],
+            );
+            form.setData('category_id', String(saved.id));
+            closeCat();
         } catch {
             setCatError(t('تعذّر الاتصال بالخادم'));
         } finally {
             setSavingCat(false);
         }
     };
+
+    const selectedCat = cats.find((c) => String(c.id) === String(form.data.category_id)) ?? null;
 
     /*
      * إضافاتُ المتجر — تُقرَّر مع المعلومات الأساسية.
@@ -370,7 +400,8 @@ export default function ProductForm({
                             <h3 className="mb-4 font-bold text-[#111]">{t('المعلومات الأساسية')}</h3>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                 <div className="space-y-4 md:col-span-2">
-                                    <Field label="اسم المنتج" required error={form.errors.name}>
+                                    {/* صنفٌ واحد باسمين — لا منتجٌ لكلّ لغة: المعرّفُ والمخزونُ والسعرُ واحد */}
+                                    <Field label="اسم المنتج بالعربية" required error={form.errors.name}>
                                         <Input
                                             value={form.data.name}
                                             onChange={(e) => form.setData('name', e.target.value)}
@@ -378,8 +409,8 @@ export default function ProductForm({
                                         />
                                     </Field>
                                     <Field
-                                        label="الاسم بالإنجليزية (اختياري)"
-                                        hint="يظهر تلقائيًا عند تشغيل الواجهة بالإنجليزية"
+                                        label="اسم المنتج بالإنجليزية"
+                                        hint="اختياري — يظهر في الموقع حين تكون لغته الإنجليزية، ويُبحث به في أيّ لغة"
                                         error={form.errors.name_en}
                                     >
                                         <Input
@@ -402,7 +433,7 @@ export default function ProductForm({
                                 </div>
 
                                 <Field label="القسم" error={form.errors.category_id ?? catError ?? undefined}>
-                                    {newCat === null ? (
+                                    {catDraft === null ? (
                                         <span className="flex items-center gap-2">
                                             <Select
                                                 className="flex-1"
@@ -414,6 +445,25 @@ export default function ProductForm({
                                                 }))}
                                                 placeholder="اختر القسم"
                                             />
+                                            {selectedCat && (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="icon"
+                                                    aria-label={t('تعديل اسم القسم')}
+                                                    title={t('تعديل اسم القسم')}
+                                                    onClick={() => {
+                                                        setCatDraft({
+                                                            id: selectedCat.id,
+                                                            name: selectedCat.name,
+                                                            name_en: selectedCat.name_en ?? '',
+                                                        });
+                                                        setCatError(null);
+                                                    }}
+                                                >
+                                                    <Pencil />
+                                                </Button>
+                                            )}
                                             <Button
                                                 type="button"
                                                 variant="outline"
@@ -421,7 +471,7 @@ export default function ProductForm({
                                                 aria-label={t('إضافة قسم')}
                                                 title={t('إضافة قسم')}
                                                 onClick={() => {
-                                                    setNewCat('');
+                                                    setCatDraft({ id: null, name: '', name_en: '' });
                                                     setCatError(null);
                                                 }}
                                             >
@@ -429,33 +479,39 @@ export default function ProductForm({
                                             </Button>
                                         </span>
                                     ) : (
-                                        <span className="flex items-center gap-2">
-                                            <Input
-                                                autoFocus
-                                                className="flex-1"
-                                                value={newCat}
-                                                placeholder={t('اسم القسم الجديد')}
-                                                onChange={(e) => setNewCat(e.target.value)}
-                                                /* «إدخال» يحفظ القسم ولا يُرسل المنتج: النموذج
-                                                   محيطٌ بهذا الحقل، وتركُ الحدث يصعد كان يحفظ
-                                                   منتجًا نصفَ مكتمل */
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        void addCategory();
-                                                    }
-                                                    if (e.key === 'Escape') {
-                                                        setNewCat(null);
-                                                        setCatError(null);
-                                                    }
-                                                }}
-                                            />
+                                        <span className="flex flex-wrap items-center gap-2" data-testid="category-draft">
+                                            {(['name', 'name_en'] as const).map((key) => (
+                                                <Input
+                                                    key={key}
+                                                    autoFocus={key === 'name'}
+                                                    dir={key === 'name_en' ? 'ltr' : undefined}
+                                                    className="min-w-[10rem] flex-1"
+                                                    value={catDraft[key]}
+                                                    aria-label={t(key === 'name' ? 'اسم القسم بالعربية' : 'اسم القسم بالإنجليزية')}
+                                                    placeholder={key === 'name' ? t('اسم القسم بالعربية') : 'Category name in English'}
+                                                    onChange={(e) => setCatDraft({ ...catDraft, [key]: e.target.value })}
+                                                    /* «إدخال» يحفظ القسم ولا يُرسل المنتج: النموذج
+                                                       محيطٌ بهذا الحقل، وتركُ الحدث يصعد كان يحفظ
+                                                       منتجًا نصفَ مكتمل */
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            e.preventDefault();
+                                                            void saveCategory();
+                                                        }
+                                                        if (e.key === 'Escape') {
+                                                            e.preventDefault();
+                                                            closeCat();
+                                                        }
+                                                    }}
+                                                />
+                                            ))}
                                             <Button
                                                 type="button"
                                                 size="icon"
                                                 aria-label={t('حفظ القسم')}
                                                 loading={savingCat}
-                                                onClick={() => void addCategory()}
+                                                disabled={!catDraft.name.trim()}
+                                                onClick={() => void saveCategory()}
                                             >
                                                 <Check />
                                             </Button>
@@ -464,10 +520,7 @@ export default function ProductForm({
                                                 variant="outline"
                                                 size="icon"
                                                 aria-label={t('إلغاء')}
-                                                onClick={() => {
-                                                    setNewCat(null);
-                                                    setCatError(null);
-                                                }}
+                                                onClick={closeCat}
                                             >
                                                 <X />
                                             </Button>

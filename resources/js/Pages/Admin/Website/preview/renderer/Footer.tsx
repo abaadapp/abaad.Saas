@@ -20,6 +20,13 @@ import type { DocSection, DocSocial, Mode, SiteDocument } from './types';
  *
  * وعمودٌ بلا بيانات لا يُرسم عنوانًا فارغًا: تاجرٌ بلا حسابات تواصل لا يريد
  * كلمة «تابعنا» تحتها فراغ.
+ *
+ * ═══ والسطرُ الأخير في الأشكال الأربعة — من موضعٍ واحد ═══
+ *
+ * كانت الحقوقُ تُرسم إن كتبها التاجر وحدها، وفي «نحيف» بنسخةٍ ثانيةٍ تُكتب
+ * بيدها. فصار لكلّ تذييلٍ سطرٌ أخير (`MetaBar`): الحقوقُ كما كتبها، أو
+ * «© السنة اسم المتجر» إن لم يكتبها؛ وسطرُ تعريفه (`brand.tagline`) إن
+ * كان له سطر. ويُكتب مرّةً — لا نسخةٌ في كلّ شكل.
  */
 export function Footer({
     section,
@@ -101,20 +108,8 @@ export function Footer({
         </footer>
     );
 
-    const rights = copyright && (
-        <p
-            style={{
-                maxWidth: 'var(--w-content)',
-                margin: '28px auto 0',
-                paddingTop: 16,
-                borderTop: '1px solid var(--w-border)',
-                color: 'var(--w-muted)',
-                fontSize: 12,
-                textAlign: 'center',
-            }}
-        >
-            {copyright}
-        </p>
+    const meta = (center?: boolean) => (
+        <MetaBar copyright={copyright} name={name} tagline={brand?.tagline ?? ''} center={center} />
     );
 
     /* ---------------------------- نحيف ---------------------------- */
@@ -159,11 +154,7 @@ export function Footer({
 
                 <SocialRow list={social} mode={mode} bare />
 
-                {copyright && (
-                    <p style={{ color: 'var(--w-muted)', fontSize: 12, margin: 0, width: '100%', textAlign: 'center' }}>
-                        {copyright}
-                    </p>
-                )}
+                <div style={{ width: '100%' }}>{meta()}</div>
             </div>,
         );
     }
@@ -242,7 +233,7 @@ export function Footer({
                 )}
 
                 <PaymentsRow list={payments} label={t.payments} center />
-                {rights}
+                {meta(true)}
             </>,
         );
     }
@@ -319,7 +310,7 @@ export function Footer({
                     </div>
                 </div>
 
-                {rights}
+                {meta()}
             </>,
         );
     }
@@ -393,8 +384,63 @@ export function Footer({
                 )}
             </div>
 
-            {rights}
+            {meta()}
         </>,
+    );
+}
+
+/**
+ * السطرُ الأخير — الحقوقُ وسطرُ التعريف.
+ *
+ * الحقوقُ كما كتبها التاجر بحروفها، وإلّا «© السنة اسم المتجر» — والسنةُ
+ * سنةُ العرض لا سنةُ النشر: موقعٌ نُشر العامَ الماضي لا يقول عامَه الماضي.
+ * وسطرُ التعريف إن كتبه؛ وإلّا فلا شيءَ مكانه — لا فراغٌ محجوز ولا وصفٌ
+ * يُخترع.
+ *
+ * و`flex` بلا يمينٍ ولا يسار: الحقوقُ في أوّل السطر وسطرُ التعريف في آخره
+ * أيًّا كان اتّجاهُ الصفحة (`dir` في `Site`).
+ */
+function MetaBar({
+    copyright,
+    name,
+    tagline,
+    center,
+}: {
+    copyright: string;
+    name: string;
+    tagline: string;
+    center?: boolean;
+}) {
+    const rights = copyright.trim() || `© ${new Date().getFullYear()} ${name}`.trim();
+    const line = tagline.trim();
+
+    return (
+        <div
+            data-footer-meta=""
+            style={{
+                maxWidth: 'var(--w-content)',
+                margin: '28px auto 0',
+                paddingTop: 16,
+                borderTop: '1px solid var(--w-border)',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: center ? 'center' : 'space-between',
+                gap: '6px 18px',
+                color: 'var(--w-muted)',
+                fontSize: 12,
+                textAlign: center ? 'center' : 'start',
+            }}
+        >
+            <p data-footer-rights="" style={{ margin: 0 }}>
+                {rights}
+            </p>
+            {line !== '' && (
+                <p data-footer-tagline="" dir="auto" style={{ margin: 0 }}>
+                    {line}
+                </p>
+            )}
+        </div>
     );
 }
 

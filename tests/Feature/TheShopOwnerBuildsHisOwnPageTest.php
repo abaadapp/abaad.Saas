@@ -539,14 +539,16 @@ class TheShopOwnerBuildsHisOwnPageTest extends TestCase
     }
 
     /**
-     * وسطرُ التذييل يكتبه — وبلا كتابةٍ يبقى ما كان.
+     * وسطرُ التذييل يكتبه — وبلا كتابةٍ لا سطر.
      *
-     * «FLOWERS · LOUNGE · AND MORE» وصفُ محلٍّ بعينه، وكان مكتوبًا بحروفه في
-     * القالب. ومحلٌّ آخر يلبس الواجهةَ نفسَها يُذيّل صفحتَه بوصفِ غيره.
+     * «FLOWERS · LOUNGE · AND MORE» وصفُ محلٍّ بعينه، وكان الفراغُ يقع عليه:
+     * فمحلٌّ آخر يلبس الواجهةَ نفسَها ولم يكتب سطرَه يُذيَّل بوصفِ غيره.
      */
     public function test_the_footer_line_is_his_to_write(): void
     {
-        $this->assertStringContainsString('FLOWERS · LOUNGE · AND MORE', $this->page());
+        $blank = $this->page();
+        $this->assertStringNotContainsString('FLOWERS · LOUNGE · AND MORE', $blank);
+        $this->assertStringNotContainsString('data-testid="rb-tagline"', $blank, 'رُسم سطرُ تذييلٍ لم يكتبه');
 
         $this->set(['store_tagline' => 'ورودٌ · هدايا · توصيل']);
         $page = $this->page();

@@ -117,7 +117,8 @@ export default function Catalog({
         }
 
         if (needle !== '') {
-            list = list.filter((p) => norm(`${p.name} ${p.excerpt}`).includes(needle));
+            // والاسمان معًا: زبونُ الموقع العربيّ يكتب «Flower» فيجد الباقةَ نفسَها
+            list = list.filter((p) => norm(`${p.name} ${p.other_name ?? ''} ${p.excerpt}`).includes(needle));
         }
 
         if (sort === 'price-asc') list = [...list].sort((a, b) => a.final - b.final);

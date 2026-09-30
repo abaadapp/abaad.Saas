@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
+use App\Support\ImportSession;
 use App\Support\Pdf;
 use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -319,7 +320,7 @@ class CustomerImportExportController extends Controller
             $rows[] = compact('name', 'phone', 'email', 'address', 'points', 'language', 'birthday', 'branchId', 'branchDisplay', 'status', 'note', 'targetId', 'stated');
         }
 
-        session()->put(self::SESSION_KEY, [
+        ImportSession::put(self::SESSION_KEY, [
             'rows' => $rows,
             'default_branch_id' => $defaultBranchId,
             'file' => $file->getClientOriginalName(),
@@ -330,13 +331,13 @@ class CustomerImportExportController extends Controller
 
     public function preview()
     {
-        $payload = session(self::SESSION_KEY);
+        $payload = ImportSession::get(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.customers.index')
                 ->with('toast', ['msg' => __('لا يوجد ملف للمعاينة. ارفع ملفًا أولًا.'), 'type' => 'warning']);
         }
 
-        $default = $payload['default_branch_id'] ? Branch::find($payload['default_branch_id']) : null;
+        $default = $payload['default_branch_id'] ? Branch::where('business_id', $this->bid())->find($payload['default_branch_id']) : null;
         $rows = $payload['rows'];
         $counts = [
             'total' => count($rows),
@@ -367,7 +368,7 @@ class CustomerImportExportController extends Controller
 
     public function confirm()
     {
-        $payload = session(self::SESSION_KEY);
+        $payload = ImportSession::get(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.customers.index')
                 ->with('toast', ['msg' => __('انتهت الجلسة. أعد رفع الملف.'), 'type' => 'warning']);

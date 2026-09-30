@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\User;
 use App\Support\Activity;
 use App\Support\Permissions;
+use App\Support\TenantSwitch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -53,8 +54,6 @@ class ImpersonationController extends Controller
         ]);
 
         $impersonator = $request->user()->id;
-        Auth::login($target);
-        $request->session()->put('impersonator_id', $impersonator);
 
         /*
          * والخروجُ يعيده إلى حيث دخل، لا إلى قائمة الشركات دائمًا.
@@ -64,9 +63,14 @@ class ImpersonationController extends Controller
          *
          * ويُقبل المرجع إن كان داخل لوحة المنصة وحدها: القيمة تأتي من ترويسة
          * المتصفّح، وإعادةُ التوجيه إلى ما فيها بلا فحصٍ تُخرج المستخدم إلى
-         * أي موقع.
+         * أي موقع. ويُقرأ **قبل** تفريغ الجلسة: هي التي تحمله.
          */
         $back = (string) url()->previous();
+
+        // ولا يرث المتجرُ ما تركه في الجلسة متجرٌ قبله — انظر `TenantSwitch`
+        TenantSwitch::reset($request);
+        Auth::login($target);
+        $request->session()->put('impersonator_id', $impersonator);
         $request->session()->put(
             'impersonate_return',
             str_starts_with($back, url('/super-admin')) ? $back : route('super-admin.businesses.index'),
@@ -83,6 +87,9 @@ class ImpersonationController extends Controller
         $id = $request->session()->pull('impersonator_id');
         $return = (string) $request->session()->pull('impersonate_return');
         $admin = $id ? User::find($id) : null;
+
+        // ولا تعود لوحةُ المنصّة وفي الجلسة بقايا المتجر — انظر `TenantSwitch`
+        TenantSwitch::reset($request);
 
         if (! $admin || ! $admin->isSuperAdmin()) {
             Auth::logout();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from '@inertiajs/react';
 import { Check, KeyRound, Plus, ShieldCheck, Target, UserRound, Wallet } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
@@ -155,11 +155,25 @@ export default function EmployeeForm({
     const editing = !!employee;
 
     /*
-     * القائمة محلّية لأن الوظيفة الجديدة تُضاف بلا إعادة تحميل الصفحة:
-     * الاعتماد على الخاصية القادمة من الخادم كان سيتطلّب reload يمحو ما
-     * كُتب في بقيّة الحقول.
+     * القائمةُ قائمةُ الخادم الآن — وما أُضيف هنا يُلحق بها ما دامت هي هي.
+     *
+     * كانت `useState(jobTitles)`: تُقرأ مرّةً عند أوّل رسمٍ ثمّ لا تتبع
+     * الخاصّية. وInertia تُبقي المكوّنَ حيًّا عبر الزيارات التي تحفظ الحالة
+     * (`preserveState` — وهي أصلُ كلّ POST، وأصلُ «رجوع» و«تقدّم»)، فتصل
+     * خاصّيّةُ متجرٍ آخر والقائمةُ على ما كانت: مسمّياتُ المتجر السابق،
+     * وما أضافه فيه، ظاهرةٌ تحت متجرٍ جديد.
+     *
+     * فالإضافةُ المحلّيّة تُعلَّق **بالقائمة التي أُضيفت إليها**: إن جاءت
+     * قائمةٌ غيرها من الخادم سقطت الإضافة — والخادمُ بعد الحفظ يردّ قائمةً
+     * فيها المسمّى الجديد أصلًا، فلا يضيع شيء. ولا reload يمحو ما كُتب في
+     * بقيّة الحقول: الحفظُ يبقى `preserveState`.
      */
-    const [titles, setTitles] = useState<string[]>(jobTitles);
+    const [added, setAdded] = useState<{ base: string[]; names: string[] }>({ base: jobTitles, names: [] });
+    const titles = useMemo(() => {
+        const extra = added.base === jobTitles ? added.names.filter((n) => !jobTitles.includes(n)) : [];
+
+        return extra.length ? [...jobTitles, ...extra].sort() : jobTitles;
+    }, [jobTitles, added]);
     const [addingTitle, setAddingTitle] = useState(false);
     /*
      * الوظيفة المضافة تُختار بعد أن تصير القائمة تعرفها لا معها: ضبط القيمة
@@ -285,6 +299,25 @@ export default function EmployeeForm({
     }, [pendingTitle, titles]);
 
     /*
+     * ومسمًّى مختارٌ خرج من القائمة لا يبقى مختارًا.
+     *
+     * وصلت قائمةُ متجرٍ آخر والحقلُ على مسمًّى من المتجر السابق: يبقى نصُّه
+     * في النموذج ويُرسَل مع الحفظ. والخادمُ يردّه — لكنّ الحقلَ يكون قد
+     * حمل اسمًا من متجرٍ غيره. فيُفرَّغ ليختار من قائمته.
+     *
+     * إلّا مسمّى الموظّف نفسِه: مسمًّى قديمٌ لا صفَّ له يبقى عليه حتّى
+     * يُبدَّل (انظر `titleKnown`).
+     */
+    useEffect(() => {
+        const picked = form.data.job_title;
+
+        if (picked && picked !== employee?.job_title && picked !== pendingTitle && !titles.includes(picked)) {
+            form.setData('job_title', '');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [titles]);
+
+    /*
      * تُحفظ عبر مسار الوظائف نفسه — لا مسار ثانٍ يكرّر التحقق ويفترق عنه.
      * وعند النجاح تُضاف إلى القائمة وتُختار مباشرة، فلا يعيد المستخدم
      * اختيارها، ولا يُعاد تحميل الصفحة فيضيع ما كُتب في بقيّة الحقول.
@@ -295,7 +328,7 @@ export default function EmployeeForm({
             preserveState: true,
             onSuccess: () => {
                 const name = titleForm.data.name.trim();
-                setTitles((list) => (list.includes(name) ? list : [...list, name].sort()));
+                setAdded((prev) => ({ base: jobTitles, names: prev.base === jobTitles ? [...prev.names, name] : [name] }));
                 setPendingTitle(name);
                 titleForm.reset();
                 setAddingTitle(false);

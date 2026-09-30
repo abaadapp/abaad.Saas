@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import type { ComponentType } from 'react';
 import ErrorBoundary from '@/Components/ErrorBoundary';
 import { enterEndsTypingOnTouch } from '@/lib/enter-key';
+import { dropBootPayload, followIdentity } from '@/lib/identity-history';
 import { markTouchDevice } from '@/lib/touch';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Abad POS';
@@ -64,6 +65,10 @@ createInertiaApp({
             router.on('success', (event) => {
                 syncDirection(event.detail.page.props as Record<string, unknown>);
             });
+            // وسجلُّ المتصفّح لا يعرض لمن جلس ما رآه من قبله — انظر `lib/identity-history`
+            followIdentity(props.initialPage.props as Record<string, unknown>, router);
+            // وقد قُرئت الصفحةُ الأولى — فلا تبقى خصائصُها في مصدر المستند
+            dropBootPayload();
             /*
              * حدّ الانهيار صفحةٌ واحدة لا التطبيق كلّه.
              *

@@ -10,6 +10,8 @@ use App\Support\BackupService;
 use App\Support\BackupTooLarge;
 use App\Support\Demo;
 use App\Support\Permissions;
+use App\Support\RestoreCrossesTenant;
+use App\Support\RestoreIsolation;
 use App\Support\TenantTables;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -253,7 +255,20 @@ class BackupController extends Controller
             ]);
         }
 
-        $this->apply($data, $bid);
+        try {
+            $this->apply($data, $bid);
+        } catch (RestoreCrossesTenant $e) {
+            /*
+             * نسخةٌ تُشير إلى صفوفِ متجرٍ آخر لا تُستعاد — والمعاملةُ أُلغيت
+             * كلُّها فلم يُمحَ شيءٌ ولم يُكتب. انظر `RestoreIsolation`.
+             */
+            report($e);
+
+            return back()->with('toast', [
+                'msg' => __('هذه النسخة تُشير إلى بياناتٍ ليست لمتجرك — لم تُستعد، ولم يتغيّر شيء.'),
+                'type' => 'danger',
+            ]);
+        }
 
         Activity::log('restore', $what.' بعد نسخة أمان: '.$safety['name']);
 
@@ -301,10 +316,17 @@ class BackupController extends Controller
         $currentUserId = auth()->id();
 
         DB::transaction(function () use ($data, $bid, $currentUserId) {
+            // ما يملكه المتجرُ الآن يُقرأ قبل المحو: به يُعرف ما في الملفّ له
+            $paths = RestoreIsolation::ownedPaths($bid);
+            $hosts = RestoreIsolation::ownedHosts($bid);
+
             $this->wipe($bid);
-            $this->restoreBusiness($data, $bid);
-            $this->insertAll($data, $bid, $currentUserId);
-            $this->restoreUsers($data, $bid, $currentUserId);
+            $this->restoreBusiness($data, $bid, $paths);
+            $this->insertAll($data, $bid, $currentUserId, $paths, $hosts);
+            $this->restoreUsers($data, $bid, $currentUserId, $paths);
+
+            // وكلُّ ما استُعيد يُشير إلى صفوف متجره — وإلّا أُلغي كلُّه هنا
+            RestoreIsolation::assertReferences($bid);
         });
     }
 
@@ -332,15 +354,23 @@ class BackupController extends Controller
     }
 
     /** حقولُ ملفّ المتجر الآمنة — لا الباقةُ ولا الاشتراك */
-    private function restoreBusiness(array $data, int $bid): void
+    private function restoreBusiness(array $data, int $bid, array $paths): void
     {
         if (empty($data['business']) || ! is_array($data['business'])) {
             return;
         }
 
-        Business::where('id', $bid)->update(
-            collect($data['business'])->only(Business::BACKUP_FIELDS)->all()
-        );
+        $fields = collect($data['business'])->only(Business::BACKUP_FIELDS)->all();
+
+        /*
+         * والشعارُ مسارُ ملفّ: ما لم يكن شعارَ هذا المتجر لا يُكتب — شعارٌ
+         * يُبدَّل يُحذف قديمُه، فمسارُ شعارِ غيره هنا يحذف ملفَّ غيره.
+         */
+        if (filled($fields['logo'] ?? null) && ! isset($paths[(string) $fields['logo']])) {
+            unset($fields['logo']);
+        }
+
+        Business::where('id', $bid)->update($fields);
     }
 
     /**
@@ -349,7 +379,7 @@ class BackupController extends Controller
      * `websites.published_version_id` يشير إلى نسخةٍ لم تُدرج بعد، ونسخُها
      * تشير إليه: حلقةٌ لا يحلّها ترتيب. فيُدرَج بلا مؤشّرٍ ثمّ يُعاد إليه.
      */
-    private function insertAll(array $data, int $bid, ?int $currentUserId): void
+    private function insertAll(array $data, int $bid, ?int $currentUserId, array $paths = [], array $hosts = []): void
     {
         $deferred = [];
 
@@ -380,6 +410,13 @@ class BackupController extends Controller
                     $row['business_id'] = $bid;
                 }
 
+                // مسارُ ملفٍّ ليس له يُفرَّغ، ونطاقٌ ليس له لا يُدرج — انظر `RestoreIsolation`
+                $row = RestoreIsolation::clean($table, $row, $paths, $hosts);
+
+                if ($row === null) {
+                    continue;
+                }
+
                 foreach ($hold as $column) {
                     if (($row[$column] ?? null) !== null) {
                         $deferred[$table][$row['id']][$column] = $row[$column];
@@ -389,6 +426,9 @@ class BackupController extends Controller
 
                 $clean[] = $row;
             }
+
+            // والابنُ تحت أبٍ لهذا المتجر — أو تُلغى الاستعادة كلُّها
+            RestoreIsolation::assertParents($table, $clean, $bid);
 
             foreach (array_chunk($clean, 500) as $chunk) {
                 DB::table($table)->insert($chunk);
@@ -409,21 +449,47 @@ class BackupController extends Controller
      * بكلمته، والجديدُ يُنشأ بكلمةٍ عشوائية تُلزم صاحبَها بإعادة تعيينها.
      * وحسابُ من ينفّذ الاستعادة لا يُمسّ: لا يُطرد أحدٌ في منتصف عمله.
      */
-    private function restoreUsers(array $data, int $bid, ?int $currentUserId): void
+    private function restoreUsers(array $data, int $bid, ?int $currentUserId, array $paths = []): void
     {
         foreach ($data['users'] ?? [] as $row) {
             if (! is_array($row) || empty($row['email'])) {
                 continue;
             }
 
-            unset($row['password'], $row['remember_token'], $row['id']);
+            $email = (string) $row['email'];
+            // والمحذوفُ يُرى أيضًا: البريدُ فريدٌ معه، ولو غاب عن البحث لاصطدم الإنشاءُ به
+            $existing = User::withTrashed()->where('email', $email)->first();
 
-            $existing = User::where('email', $row['email'])->first();
+            /*
+             * ═══ وحسابُ غيره لا يُمسّ ═══
+             *
+             * البريدُ فريدٌ على المنصّة كلّها، فكانت المطابقةُ به تصل حسابَ
+             * متجرٍ آخر — أو حسابَ مدير المنصّة — ثمّ تكتب عليه أعمدةَ الملفّ:
+             * بريدَ استرجاعٍ «موثَّقًا» يملكه صاحبُ الملفّ، فيُسترجع الحسابُ منه.
+             * فمن ليس من هذا المتجر يُترك كما هو.
+             */
+            if ($existing && (int) $existing->business_id !== $bid) {
+                continue;
+            }
+
+            // وما يُكتب بياناتُ عملٍ لا مفاتيحُ حساب — انظر `RestoreIsolation::USER_FIELDS`
+            $fields = collect($row)->only(RestoreIsolation::USER_FIELDS)->all();
+
+            if (($fields['role'] ?? null) === RestoreIsolation::PLATFORM_ROLE) {
+                unset($fields['role']);
+            }
+
+            if (filled($fields['avatar'] ?? null) && ! isset($paths[(string) $fields['avatar']])) {
+                $fields['avatar'] = null;
+            }
 
             if (! $existing) {
-                $row['business_id'] = $bid;
-                $row['password'] = bcrypt(Str::random(40));
-                User::create($row);
+                User::create($fields + [
+                    'email' => $email,
+                    'business_id' => $bid,
+                    'role' => 'cashier',
+                    'password' => bcrypt(Str::random(40)),
+                ]);
 
                 continue;
             }
@@ -432,7 +498,7 @@ class BackupController extends Controller
                 continue;
             }
 
-            $existing->update(collect($row)->except(['business_id'])->all());
+            $existing->update($fields);
         }
     }
 }

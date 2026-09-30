@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\ImportSession;
 use App\Support\StockLedger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -198,7 +199,7 @@ class ProductImportExportController extends Controller
 
         // كل الصفوف تُحفظ بما فيها المرشَّح للترويسة: ملفٌ عناوينه غير معروفة
         // («عمود أول») لا يُكتشف أنه ترويسة، والتاجر وحده يستطيع أن يقول ذلك.
-        session()->put(self::SESSION_KEY, [
+        ImportSession::put(self::SESSION_KEY, [
             'all' => array_slice($data, 0, self::MAX_ROWS + 1),
             'truncated' => max(0, count($data) - (self::MAX_ROWS + 1)),
             'has_header' => $map['isHeader'],
@@ -225,7 +226,7 @@ class ProductImportExportController extends Controller
      */
     public function remap(Request $request)
     {
-        $payload = session(self::SESSION_KEY);
+        $payload = ImportSession::get(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.products.index')
                 ->with('toast', ['msg' => __('انتهت الجلسة. أعد رفع الملف.'), 'type' => 'warning']);
@@ -255,14 +256,14 @@ class ProductImportExportController extends Controller
             'prices_include_tax' => $request->boolean('prices_include_tax'),
             'branch_mode' => $request->input('branch_mode', 'single') === 'columns' ? 'columns' : 'single',
         ];
-        session()->put(self::SESSION_KEY, $payload);
+        ImportSession::put(self::SESSION_KEY, $payload);
 
         return redirect()->route('admin.products.import.preview');
     }
 
     public function preview()
     {
-        $payload = session(self::SESSION_KEY);
+        $payload = ImportSession::get(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.products.index')
                 ->with('toast', ['msg' => __('لا يوجد ملف للمعاينة. ارفع ملفًا أولًا.'), 'type' => 'warning']);
@@ -313,7 +314,7 @@ class ProductImportExportController extends Controller
             'rows' => $rows,
             'counts' => $counts,
             'untouched' => $untouched,
-            'branchName' => $payload['branch_id'] ? Branch::find($payload['branch_id'])?->name : null,
+            'branchName' => $payload['branch_id'] ? Branch::where('business_id', $this->bid())->find($payload['branch_id'])?->name : null,
             'newCategories' => $analysis['new_categories'],
             'file' => $payload['file'],
             'fileColumns' => $fileColumns,
@@ -331,7 +332,7 @@ class ProductImportExportController extends Controller
 
     public function confirm()
     {
-        $payload = session(self::SESSION_KEY);
+        $payload = ImportSession::get(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.products.index')
                 ->with('toast', ['msg' => __('انتهت الجلسة. أعد رفع الملف.'), 'type' => 'warning']);

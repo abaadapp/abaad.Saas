@@ -7029,5 +7029,6 @@
     "اختر طريقة العرض: تلقائي أو اختيار يدوي.": "Choose a display mode: automatic or manual selection.",
     "قائمة «وصل حديثًا» غير صالحة — أعد اختيار المنتجات.": "The New arrivals list is not valid — choose the products again.",
     "اختر حتى :max منتجات فقط.": "Choose up to :max products only.",
-    "منتجٌ في «وصل حديثًا» غير متاح — اختر من منتجاتك المفعّلة والمنشورة.": "A product in New arrivals is not available — choose from your active, published products."
+    "منتجٌ في «وصل حديثًا» غير متاح — اختر من منتجاتك المفعّلة والمنشورة.": "A product in New arrivals is not available — choose from your active, published products.",
+    "هذه النسخة تُشير إلى بياناتٍ ليست لمتجرك — لم تُستعد، ولم يتغيّر شيء.": "This backup points to data that is not your shop’s — it was not restored, and nothing changed."
 }

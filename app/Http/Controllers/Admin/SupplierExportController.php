@@ -8,6 +8,7 @@ use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Support\ImportSession;
 use App\Support\Pdf;
 use App\Support\Sheet;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -213,14 +214,14 @@ class SupplierExportController extends Controller
             $rows[] = compact('name', 'phone', 'email', 'contact', 'notes', 'status', 'note', 'targetId', 'stated');
         }
 
-        session()->put(self::SESSION_KEY, ['rows' => $rows, 'file' => $file->getClientOriginalName()]);
+        ImportSession::put(self::SESSION_KEY, ['rows' => $rows, 'file' => $file->getClientOriginalName()]);
 
         return redirect()->route('admin.suppliers.import.preview');
     }
 
     public function preview()
     {
-        $payload = session(self::SESSION_KEY);
+        $payload = ImportSession::get(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.suppliers.index')
                 ->with('toast', ['msg' => __('لا يوجد ملف للمعاينة. ارفع ملفًا أولًا.'), 'type' => 'warning']);
@@ -255,7 +256,7 @@ class SupplierExportController extends Controller
 
     public function confirm()
     {
-        $payload = session(self::SESSION_KEY);
+        $payload = ImportSession::get(self::SESSION_KEY);
         if (! $payload) {
             return redirect()->route('admin.suppliers.index')
                 ->with('toast', ['msg' => __('انتهت الجلسة. أعد رفع الملف.'), 'type' => 'warning']);

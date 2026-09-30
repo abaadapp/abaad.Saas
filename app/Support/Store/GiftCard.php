@@ -75,10 +75,37 @@ final class GiftCard
      */
     public static function enabled(int $businessId): bool
     {
+        if (self::messageOnly($businessId)) {
+            return false;
+        }
+
         $values = MarketingSettings::group($businessId, 'website');
 
         return (string) ($values['store_gift_card'] ?? '0') === '1'
             && self::readPrice($values) !== null;
+    }
+
+    /**
+     * أرسالةٌ مجّانيّةٌ هنا بدل الكرت المدفوع؟ — من القائمة وحدها.
+     *
+     * ═══ ولمَ داخل `enabled` لا بجانبها ═══
+     *
+     * `enabled` هي البابُ الذي يمرّ به كلُّ ما يجعل الكرتَ مالًا: `wanted`
+     * فسطرُ البيع في `WebCheckout::quote`، وقبولُ `gift_card` في الطلب،
+     * وبابُ رفع الملفّ، وخانةُ الثمن في الإتمام. فسؤالٌ واحدٌ هنا يُغلقها
+     * كلَّها — ولا يُنسى بابٌ منها. ومن أرسل `gift_card=true` بيده من متجرٍ
+     * في القائمة يُردّ طلبُه كما يُردّ من متجرٍ أطفأ كرتَه، ولا يُبنى له سطر.
+     *
+     * والإعدادُ المدفوع لا يُمسّ: مفتاحُه وثمنُه يبقيان في الجدول، فمتجرٌ
+     * يُرفع من القائمة يعود كرتُه يُباع كما كان.
+     *
+     * انظر `storefront.ribbon_free_gift_card_message_businesses`.
+     */
+    public static function messageOnly(int $businessId): bool
+    {
+        $list = array_map('intval', (array) config('storefront.ribbon_free_gift_card_message_businesses', []));
+
+        return in_array($businessId, $list, true);
     }
 
     /**

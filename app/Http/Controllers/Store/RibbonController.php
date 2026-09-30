@@ -399,7 +399,9 @@ class RibbonController extends Controller
         $bid = (int) $business->id;
         $s = WebCheckout::settings($bid);
         $currency = Storefront::currency($business);
-        $cardPrice = GiftCard::price($bid);
+        // ومن رسالتُه مجّانيّة لا يصل الشاشةَ ثمنٌ يُكتب — ولو سُعّر كرتُه
+        $messageOnly = GiftCard::messageOnly($bid);
+        $cardPrice = $messageOnly ? null : GiftCard::price($bid);
 
         return [
             'delivery' => $s,
@@ -425,6 +427,11 @@ class RibbonController extends Controller
              */
             'giftCard' => [
                 'on' => GiftCard::enabled($bid),
+                /*
+                 * رسالةٌ بلا ثمن بدل الكرت المدفوع (`GiftCard::messageOnly`):
+                 * خانةٌ ونصٌّ فقط — لا ثمنَ ولا ملفَّ ولا إعادةَ تسعير.
+                 */
+                'message_only' => $messageOnly,
                 'price' => $cardPrice ?? 0.0,
                 'price_text' => $cardPrice === null ? '' : Money::format($cardPrice, $currency),
                 'accept' => '.'.implode(',.', GiftCard::MIMES),

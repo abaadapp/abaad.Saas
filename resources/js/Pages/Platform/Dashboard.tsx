@@ -19,7 +19,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/Components/ui/table';
-import useLiveStats from '@/hooks/useLiveStats';
+import useLiveFeed from '@/hooks/useLiveFeed';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency, PageProps } from '@/types';
@@ -51,8 +51,9 @@ interface ActivityRow {
 
 interface Props {
     stats: Stat[];
-    revenueSeries: { labels: string[]; data: number[] };
-    growthSeries: { labels: string[]; data: number[] };
+    /** `null` لشهرٍ لم يأتِ بعد — لا صفرٌ عن الغد */
+    revenueSeries: { labels: string[]; data: (number | null)[] };
+    growthSeries: { labels: string[]; data: (number | null)[] };
     latestBusinesses: BusinessRow[];
     activities: ActivityRow[];
     expiringSubscriptions: SubscriptionRow[];
@@ -72,10 +73,22 @@ const TONE: Record<string, string> = {
 export default function PlatformDashboard() {
     // العملة تأتي كخاصية صفحة لا من context: مدير المنصة بلا business_id
     // فالسياق المشترك يصله null — انظر PageController::page
-    const { stats, revenueSeries, growthSeries, latestBusinesses, activities, expiringSubscriptions, currency } =
-        usePage<PageProps<Props>>().props;
+    const server = usePage<PageProps<Props>>().props;
+    const { latestBusinesses, activities, expiringSubscriptions, currency } = server;
     const t = useTranslate();
-    const { stats: liveStats, updatedAt } = useLiveStats(route('super-admin.dashboard.stats'), stats);
+
+    /*
+     * والرسمان يتحدّثان مع البطاقات — من نبضةٍ واحدة (`PlatformMetrics::dashboard`).
+     *
+     * كانت النبضةُ تحمل البطاقات وحدها: شركةٌ تُسجَّل أو فاتورةٌ تُسدَّد
+     * والصفحةُ مفتوحة ترفع البطاقة ولا تمسّ «الإيرادات الشهرية» ولا «نمو
+     * الشركات». وتتوقّف النبضةُ واللسانُ مخفيّ كأخواتها.
+     */
+    const { data: live, updatedAt } = useLiveFeed<Pick<Props, 'stats' | 'revenueSeries' | 'growthSeries'>>(
+        route('super-admin.dashboard.stats'),
+        15000,
+    );
+    const { stats: liveStats, revenueSeries, growthSeries } = live ?? server;
 
     return (
         <PlatformLayout title="لوحة التحكم">

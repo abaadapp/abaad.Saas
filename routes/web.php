@@ -393,6 +393,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 
     // التقارير والإعدادات وسجل النشاط
     Route::get('/reports', [SuperAdminPageController::class, 'reports'])->name('reports.index');
+    // نبضةُ التقارير وهي مفتوحة — الحمولةُ نفسُها، لمدير المنصّة وحده كأختها
+    Route::get('/reports/feed', [SuperAdminPageController::class, 'reportsFeed'])->name('reports.feed');
     Route::get('/reports/pdf', [PdfController::class, 'platformReport'])->name('reports.pdf');
     /*
      * مركزُ المحادثات — دعمُ أبعاد لأصحاب المتاجر.

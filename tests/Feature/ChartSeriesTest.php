@@ -275,15 +275,29 @@ class ChartSeriesTest extends TestCase
         }
         $this->shop('تجريبيّ بلا باقة', '2026-01-01', demo: true);
 
-        $counts = fn (array $d) => array_combine($d['labels'], $d['series']);
+        /*
+         * عددُ كلّ باقةٍ باسمها — لا ترتيبُ الباقات.
+         *
+         * `planDistribution` لا ترتّب، والرسمُ فئويٌّ لا يقرأ ترتيبًا. و PostgreSQL
+         * تردّ الصفوفَ بلا `ORDER BY` بأيّ ترتيب — في الحزمة الكاملة تقع الصفوفُ
+         * المحدَّثة في فراغٍ تركته اختباراتٌ قبلها — فسقط هنا مرّةً على ترتيبٍ
+         * والأعدادُ صحيحة.
+         */
+        $counts = function (array $d): array {
+            $c = array_combine($d['labels'], $d['series']);
+            ksort($c);
 
-        $this->assertSame(['ذهبيّة' => 2, 'أساسيّة' => 1], $counts(Demo::planDistribution()), 'متجرٌ تجريبيّ عُدّ في باقته');
+            return $c;
+        };
+        $expected = $counts(['labels' => ['ذهبيّة', 'أساسيّة'], 'series' => [2, 1]]);
+
+        $this->assertSame($expected, $counts(Demo::planDistribution()), 'متجرٌ تجريبيّ عُدّ في باقته');
 
         $this->actingAs($this->platformAdmin());
         $page = $this->get(route('super-admin.reports.index'))->assertOk()->viewData('page')['props'];
         $feed = $this->getJson(route('super-admin.reports.feed'))->assertOk()->json();
 
-        $this->assertSame(['ذهبيّة' => 2, 'أساسيّة' => 1], $counts($feed['planDistribution']), 'النبضةُ تعدّ غيرَ ما تعدّه الصفحة');
-        $this->assertEquals($page['planDistribution'], $feed['planDistribution']);
+        $this->assertSame($expected, $counts($feed['planDistribution']), 'النبضةُ تعدّ غيرَ ما تعدّه الصفحة');
+        $this->assertSame($counts($page['planDistribution']), $counts($feed['planDistribution']));
     }
 }

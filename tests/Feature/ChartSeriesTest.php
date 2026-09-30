@@ -256,4 +256,34 @@ class ChartSeriesTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    /**
+     * «توزيع الباقات» يعدّ الشركات الحقيقيّة وحدها — كبطاقة «الشركات المسجّلة» بجانبه.
+     *
+     * ويبقى حالةً حاليّة فئويّة: اسمُ الباقة لا اسمُ الشهر.
+     */
+    public function test_plan_distribution_counts_real_businesses_only_and_the_feed_says_the_same(): void
+    {
+        $gold = \App\Models\Plan::create(['name' => 'ذهبيّة', 'monthly_price' => 10, 'yearly_price' => 100]);
+        $basic = \App\Models\Plan::create(['name' => 'أساسيّة', 'monthly_price' => 5, 'yearly_price' => 50]);
+
+        foreach ([['أ', $gold], ['ب', $gold], ['ج', $basic]] as [$name, $plan]) {
+            $this->shop($name, '2026-01-01')->forceFill(['plan_id' => $plan->id])->save();
+        }
+        foreach ([['تجريبيّ ١', $gold], ['تجريبيّ ٢', $gold], ['تجريبيّ ٣', $basic]] as [$name, $plan]) {
+            $this->shop($name, '2026-01-01', demo: true)->forceFill(['plan_id' => $plan->id])->save();
+        }
+        $this->shop('تجريبيّ بلا باقة', '2026-01-01', demo: true);
+
+        $counts = fn (array $d) => array_combine($d['labels'], $d['series']);
+
+        $this->assertSame(['ذهبيّة' => 2, 'أساسيّة' => 1], $counts(Demo::planDistribution()), 'متجرٌ تجريبيّ عُدّ في باقته');
+
+        $this->actingAs($this->platformAdmin());
+        $page = $this->get(route('super-admin.reports.index'))->assertOk()->viewData('page')['props'];
+        $feed = $this->getJson(route('super-admin.reports.feed'))->assertOk()->json();
+
+        $this->assertSame(['ذهبيّة' => 2, 'أساسيّة' => 1], $counts($feed['planDistribution']), 'النبضةُ تعدّ غيرَ ما تعدّه الصفحة');
+        $this->assertEquals($page['planDistribution'], $feed['planDistribution']);
+    }
 }

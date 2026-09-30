@@ -3366,10 +3366,16 @@ class Demo
         );
     }
 
-    /** توزيع الشركات على الباقات */
+    /**
+     * توزيع الشركات على الباقات — الآن، لا شهرًا بشهر.
+     *
+     * والحقيقيّةُ وحدها (`Business::real`) كسائر أرقام المنصّة: كان يعدّ
+     * المتاجرَ التجريبيّة فيقول «الباقة الذهبيّة: ٧» وبطاقةُ «الشركات
+     * المسجّلة» بجانبه تقول أربعًا.
+     */
     public static function planDistribution(): array
     {
-        $rows = Business::with('plan')->get()->groupBy(fn ($b) => $b->plan?->name ?? __('بدون باقة'))->map->count();
+        $rows = Business::real()->with('plan')->get()->groupBy(fn ($b) => $b->plan?->name ?? __('بدون باقة'))->map->count();
 
         return ['labels' => $rows->keys()->all(), 'series' => $rows->values()->all()];
     }

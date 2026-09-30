@@ -303,6 +303,13 @@ class LoginController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
+        /*
+         * وسجلُّ المتصفّح يُمسح **بعد** تفريغ الجلسة لا قبله: العلامةُ تُحفظ
+         * فيها، و`invalidate` كانت ستمحوها. فيقف من يأتي بعده أمام شاشة
+         * الدخول و«رجوع» لا يعرض شيئًا ممّا رآه من خرج.
+         */
+        \Inertia\Inertia::clearHistory();
+
         return redirect()->route('login');
     }
 

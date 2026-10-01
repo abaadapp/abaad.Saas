@@ -35,6 +35,12 @@ use App\Support\MarketingSettings;
  */
 final class PageEditor
 {
+    /**
+     * رأسُ المتجر: فوق كلّ شيءٍ وفي كلّ صفحة — شريطُ الإعلان واختصاراتُ
+     * صفّ «المتجر». وليس قسمًا يُطفأ: فارغُه لا يُرسم. انظر `StoreHeader`.
+     */
+    public const HEAD = 'head';
+
     /** الواجهة: فوق الأقسام دائمًا، وليست قسمًا يُطفأ */
     public const HERO = 'hero';
 
@@ -60,9 +66,18 @@ final class PageEditor
      * (انظر `StoreImageField`)، و`featured` تنتقي أصنافًا، و`toggle` تُحفظ
      * `'1'`/`'0'`. و`gate` مفتاحٌ لا يُعرض الحقلُ إلّا إن رُفع.
      *
+     * و`align` ثلاثةُ أزرارٍ مغلقة (`StoreHeader::ALIGNS`)، و`shortcuts`
+     * تختار فئاتٍ من متجره وترتّبها — معرّفاتٍ لا روابط.
+     *
      * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string}>>
      */
     public const FIELDS = [
+        self::HEAD => [
+            ['key' => 'store_announcement_ar', 'kind' => 'text', 'label' => 'نص الشريط بالعربية', 'hint' => 'أعلى كلّ صفحةٍ عربيّة — واتركه فارغًا فلا شريط'],
+            ['key' => 'store_announcement_en', 'kind' => 'text', 'label' => 'Announcement text in English', 'hint' => 'أعلى كلّ صفحةٍ إنجليزيّة — ولا يُترجَم النصُّ العربيّ إليها', 'dir' => 'ltr'],
+            ['key' => 'store_announcement_align', 'kind' => 'align', 'label' => 'محاذاة النص'],
+            ['key' => 'store_shop_nav_categories', 'kind' => 'shortcuts', 'label' => 'اختصارات صفحة المتجر', 'hint' => 'بعد «كل المنتجات» و«الأكثر مبيعًا» — حتى ٦ فئات بترتيبك، والفئةُ بلا منتجٍ معروض لا تظهر'],
+        ],
         self::HERO => [
             ['key' => 'store_headline', 'kind' => 'text', 'label' => 'العنوان الكبير', 'hint' => 'أوّلُ سطرٍ يقرؤه زبونك — واسمُ متجرك إن تركته فارغًا'],
             ['key' => 'store_hero_image', 'kind' => 'image', 'label' => 'صورة الواجهة', 'hint' => 'إلى جانب العنوان — وبلا اختيارك تُؤخذ من أوّل صنفٍ مبيعًا'],
@@ -105,6 +120,7 @@ final class PageEditor
      * @var array<string, array{label: string, hint: string, fixed: bool, source: array{0: string, 1: string}|null}>
      */
     public const ROWS = [
+        self::HEAD => ['label' => 'رأس المتجر', 'hint' => 'شريطُ إعلانٍ أعلى كلّ صفحة، واختصاراتُ الفئات في صفحة المتجر', 'fixed' => true, 'source' => null],
         self::HERO => ['label' => 'الواجهة', 'hint' => 'أعلى الصفحة — عنوانٌ وصورةٌ وزرُّ تسوّق', 'fixed' => true, 'source' => null],
         'cats' => ['label' => 'تسوّق حسب الفئة', 'hint' => 'فئاتُك التي فيها بضاعةٌ معروضة، كلٌّ ببطاقتها', 'fixed' => false, 'source' => ['الأصناف والفئات', 'admin.products.index']],
         'best' => ['label' => 'الأكثر مبيعًا', 'hint' => 'أربعةُ أصنافٍ تتصدّر — محسوبةً من بيعك أو مختارةً بيدك', 'fixed' => false, 'source' => null],
@@ -224,7 +240,8 @@ final class PageEditor
             'reviews' => $hasReviews ? null : self::SILENT['reviews'],
         ];
 
-        $rows = [self::row(self::HERO, true, null)];
+        // والرأسُ فوق الواجهة: هو أوّلُ ما يُرى في كلّ صفحة
+        $rows = [self::row(self::HEAD, true, null), self::row(self::HERO, true, null)];
 
         // المختارُ بترتيبه، ثمّ المطفأُ بترتيبه الأصليّ — كما في `StorePage::SECTIONS`
         foreach (array_merge($order, array_values(array_diff(StorePage::SECTIONS, $order))) as $key) {

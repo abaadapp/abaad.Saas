@@ -51,6 +51,8 @@ final class RibbonTexts
         'footPages' => 'الموقع',
         // أسماءُ الصفحات في القائمة — انظر `StoreNav::LABELS`
         'navHome' => 'الرئيسية', 'navShop' => 'المتجر', 'navAbout' => 'من نحن', 'navContact' => 'تواصل معنا',
+        // صفُّ خيارات المتجر في الترويسة — انظر `StoreHeader::shopOptions`
+        'allProducts' => 'كل المنتجات', 'bestSellers' => 'الأكثر مبيعًا', 'shopOptions' => 'تصفّح المتجر', 'noBest' => 'لا توجد منتجات مباعة بعد.',
         'aboutTitle' => 'من نحن', 'contactTitle' => 'تواصل معنا',
         'contactSub' => 'نردّ على رسائلك في ساعات العمل — اختر ما يناسبك.',
         'cPhone' => 'الهاتف', 'cWhatsapp' => 'واتساب', 'cEmail' => 'البريد الإلكتروني', 'cAddress' => 'العنوان', 'cHours' => 'ساعات العمل',
@@ -92,6 +94,7 @@ final class RibbonTexts
         'footShop' => 'Shop', 'footContact' => 'Contact', 'footHours' => 'Opening hours',
         'footPages' => 'Site',
         'navHome' => 'Home', 'navShop' => 'Shop', 'navAbout' => 'About', 'navContact' => 'Contact',
+        'allProducts' => 'All Products', 'bestSellers' => 'Best Sellers', 'shopOptions' => 'Browse the shop', 'noBest' => 'No best sellers yet.',
         'aboutTitle' => 'About us', 'contactTitle' => 'Contact us',
         'contactSub' => 'We reply during opening hours — pick whichever suits you.',
         'cPhone' => 'Phone', 'cWhatsapp' => 'WhatsApp', 'cEmail' => 'Email', 'cAddress' => 'Address', 'cHours' => 'Opening hours',

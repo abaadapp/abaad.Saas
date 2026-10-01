@@ -1492,6 +1492,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/expenses/export-pdf', [PdfController::class, 'expensesReport'])->name('expenses.exportPdf');
     Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
     Route::post('/expenses/{id}/paid', [ExpenseController::class, 'markPaid'])->name('expenses.paid');
+    // نطاقُ المصروف وحده — لفرع، أو موزَّعٌ على فروع، أو للنشاط كلِّه
+    Route::put('/expenses/{id}/scope', [ExpenseController::class, 'updateScope'])->whereNumber('id')->name('expenses.scope');
     // وفاتورةُ المصروف تُقرأ ببابٍ يسأل — لا من `public/storage` بلا سؤال
     Route::get('/expenses/{id}/attachment', [FinancialAttachmentController::class, 'expense'])
         ->name('expenses.attachment');
@@ -1610,6 +1612,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * وشاشاتُ الأقسام باقيةٌ في القائمة الجانبية كما هي — تغيّرت وجهةُ
      * البطاقة لا الشاشة.
      */
+    // صافي الربح — للنشاط كلِّه أو لفرعٍ بعينه، بمصروفاته المنسوبة إليه
+    Route::get('/reports/profit', [ReportPageController::class, 'profit'])->name('reports.profit');
     Route::get('/reports/finance', [ReportPageController::class, 'finance'])->name('reports.finance');
     Route::get('/reports/expenses', [ReportPageController::class, 'expenses'])->name('reports.expenses');
     Route::get('/reports/bank', [ReportPageController::class, 'bank'])->name('reports.bank');

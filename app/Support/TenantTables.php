@@ -83,6 +83,11 @@ class TenantTables
         'journal_entries', 'journal_lines',
         'transactions', 'expenses',
         /*
+         * وتوزيعُ المصروف على الفروع بعد مصروفه: كلُّ صفٍّ يشير إليه. ومن
+         * استعاد نسختَه بلاه يجد إيجارَه الموزَّع «للنشاط كلِّه» من جديد.
+         */
+        'expense_branch_allocations',
+        /*
          * وتسوياتُ البوتيكات بعد المصروفات: كلُّ تسويةٍ تشير إلى مصروفها،
          * وهو المستحقُّ الذي يُسدَّد به ما للبوتيك.
          */
@@ -213,6 +218,7 @@ class TenantTables
         'customer_payment_allocations' => ['customer_payments', 'customer_payment_id'],
         'payroll_lines' => ['payroll_runs', 'payroll_run_id'],
         'purchase_order_items' => ['purchase_orders', 'purchase_order_id'],
+        'expense_branch_allocations' => ['expenses', 'expense_id'],
     ];
 
     /**

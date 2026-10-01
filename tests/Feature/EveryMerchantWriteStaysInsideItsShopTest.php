@@ -141,6 +141,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['إذونات الاستلام', 'post', 'admin.inventory.receipts.approve', ['id' => 'grn']],
                 ['إذونات الاستلام', 'post', 'admin.inventory.receipts.reject', ['id' => 'grn']],
                 ['المصروفات', 'post', 'admin.expenses.paid', ['id' => 'expense']],
+                ['المصروفات', 'put', 'admin.expenses.scope', ['id' => 'expense'], [], ['scope' => 'business']],
                 ['المصروفات', 'delete', 'admin.expenses.destroy', ['id' => 'expense']],
                 ['المصروفات', 'post', 'admin.expenses.restore', ['id' => 'expense']],
                 ['المصروفات', 'delete', 'admin.expenses.purge', ['id' => 'expense']],

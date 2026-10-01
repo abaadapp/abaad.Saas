@@ -94,7 +94,13 @@ final class StockLosses
 
         Expense::create([
             'business_id' => $businessId,
-            // لا عمود فرعٍ في المصروفات — فالفرع في الوصف ليُقرأ في التقرير
+            /*
+             * وفرعُ الهالك فرعُ مصروفه — قيدُه يحمله أعلاه، والمصروفُ معه.
+             *
+             * كان «لا عمودَ فرعٍ في المصروفات»، فبقي الفرعُ في الوصف وحده. ورفٌّ
+             * تلف في صحار يقع اليوم على صحار في تقرير صافي الربح.
+             */
+            'branch_id' => $branchId,
             'reference' => 'SHR-'.$when->format('YmdHis').'-'.random_int(100, 999),
             'type' => $expenseType,
             'description' => $description,

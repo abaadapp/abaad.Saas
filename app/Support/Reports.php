@@ -54,6 +54,20 @@ class Reports
             'icon' => 'trending-up',
             'route' => 'admin.reports.sales',
         ],
+        /*
+         * صافي الربح — للنشاط كلِّه أو لفرعٍ بعينه.
+         *
+         * تحت «التقارير» كملخّص المبيعات: قراءةٌ لا كتابة، والصلاحيةُ صلاحيتُها.
+         */
+        [
+            'key' => 'profit',
+            'category' => 'financial',
+            'section' => 'reports',
+            'title' => 'صافي الربح',
+            'desc' => 'الإيرادات والتكلفة والمصروفات وصافي الربح وهامش الربح للنشاط أو الفرع خلال الفترة المختارة.',
+            'icon' => 'scale',
+            'route' => 'admin.reports.profit',
+        ],
         [
             'key' => 'finance',
             'category' => 'financial',

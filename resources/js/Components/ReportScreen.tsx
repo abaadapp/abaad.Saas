@@ -18,7 +18,7 @@ export interface Option {
 }
 
 export type Filter =
-    | { kind: 'select'; key: string; label: string; options: Option[] }
+    | { kind: 'select'; key: string; label: string; options: Option[]; /** نصُّ «الكل» — «كل الفروع» أدقّ حين يُقال */ placeholder?: string }
     | { kind: 'toggle'; key: string; label: string }
     /**
      * حقلُ بحثٍ نصّيّ — يُرشَّح عند الخادم كبقيّة المرشّحات.
@@ -144,7 +144,7 @@ export default function ReportScreen({
                                         <Select
                                             value={filters[c.key] ?? ''}
                                             onChange={(e) => go({ [c.key]: e.target.value || null })}
-                                            placeholder="الكل"
+                                            placeholder={c.placeholder ?? 'الكل'}
                                             options={c.options}
                                             aria-label={t(c.label)}
                                         />

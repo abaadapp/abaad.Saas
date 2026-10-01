@@ -7068,5 +7068,13 @@
     "غير مُضاف": "Not added",
     "ربط Paymob": "Connect Paymob",
     "إكمال الربط": "Finish connecting",
-    "إدارة Paymob": "Manage Paymob"
+    "إدارة Paymob": "Manage Paymob",
+    "ضريبة المبيعات": "Sales tax",
+    "فواتير الموردين": "Supplier invoices",
+    "مصروفات غير مدفوعة": "Unpaid expenses",
+    "رواتب مستحقة": "Salaries due",
+    "فواتير بانتظار الاعتماد": "Invoices awaiting approval",
+    "لا تدخل في المستحق حتى تُعتمد": "Not counted as owed until approved",
+    "يستحق قريبًا": "Due soon",
+    "مجمل الربح = المبيعات − ضريبة المبيعات − تكلفة البضاعة المباعة · صافي الربح = مجمل الربح − المصروفات التشغيلية": "Gross profit = Sales − Sales tax − Cost of goods sold · Net profit = Gross profit − Operating expenses"
 }

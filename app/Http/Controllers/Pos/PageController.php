@@ -153,6 +153,8 @@ class PageController extends Controller
             // سلة مستعادة من طلب معلّق (تُمرَّر عبر الجلسة من PosController::resume)
             'resumeCart' => session('resume_cart'),
             'settings' => $this->loyaltySettings(),
+            // القيدُ المبسّط من الدرج — فارغٌ لمن لا يملك `pos.movement` فيغيب زرُّه
+            'movement' => MovementController::props(),
             // خيارات طلب الورد من مصدرها الواحد — لا تُكتب في الشاشة ثانيةً
             'orderOptions' => [
                 'occasions' => FlowerOrder::occasionOptions(),

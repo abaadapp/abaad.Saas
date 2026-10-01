@@ -1748,6 +1748,13 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
     Route::get('/currency/{code}/switch', [CurrencyController::class, 'switch'])->name('currency.switch');
 
     Route::post('/checkout', [PosController::class, 'checkout'])->name('checkout');
+    /*
+     * قيدٌ مبسّط من الدرج — مصروفٌ أو دخلٌ أو إيداعٌ بغير بيع.
+     *
+     * الوصفةُ وصفةُ شاشة المالية نفسُها (`Books::recordMovement`)، والفعلُ
+     * `pos.movement` يُسأل في المتحكّم: القسمُ وحده يفتح البيع لا الدرج.
+     */
+    Route::post('/movements', [App\Http\Controllers\Pos\MovementController::class, 'store'])->name('movements.store');
     Route::post('/coupon', [PosController::class, 'applyCoupon'])->name('coupon.apply');
     Route::post('/hold', [PosController::class, 'hold'])->name('hold');
     Route::get('/stock-feed', [PosController::class, 'stockFeed'])->name('stock-feed');

@@ -10,6 +10,7 @@ import {
     CreditCard,
     Lightbulb,
     Minus,
+    NotebookPen,
     PauseCircle,
     Plus,
     Save,
@@ -28,6 +29,7 @@ import { toast } from 'sonner';
 import PosLayout from '@/Layouts/PosLayout';
 import NewCustomerDialog from '@/Pages/Pos/partials/NewCustomerDialog';
 import LanguageChoice from '@/Components/LanguageChoice';
+import MovementForm, { type Movement } from '@/Components/MovementForm';
 import CustomerContextCard from '@/Pages/Pos/partials/CustomerContextCard';
 import PaymentDialog, { type OrderOptions } from '@/Pages/Pos/partials/PaymentDialog';
 import CustomArrangementDialog, { type PosTemplate } from '@/Pages/Pos/partials/CustomArrangementDialog';
@@ -83,6 +85,13 @@ interface Props {
      * «مقبضٌ لا يُدير شيئًا أسوأ من غياب المقبض».
      */
     customOrder?: { templates: PosTemplate[] };
+    /**
+     * القيدُ المبسّط من الدرج — أنواعُ ما حدث وأنواعُ المصروفات.
+     *
+     * `null` لمن لا يملك `pos.movement`، فيغيب الزرّ: الخادمُ يقرّر ويقيس
+     * ثانيةً عند الحفظ (`Pos\MovementController`).
+     */
+    movement?: { kinds: Movement[]; expenseTypes: string[] } | null;
 }
 
 /**
@@ -99,7 +108,7 @@ export function seasonOfLine(season: number | null, seasonIds: Set<number>, prod
 }
 
 export default function PosIndex() {
-    const { products: serverProducts, categories, seasons = [], customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, context } =
+    const { products: serverProducts, categories, seasons = [], customers, addons, addonsLayout, coupons, resumeCart, settings, orderOptions, customOrder, movement, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -118,6 +127,7 @@ export default function PosIndex() {
     const [payOpen, setPayOpen] = useState(false);
     const [newCustomerOpen, setNewCustomerOpen] = useState(false);
     const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
+    const [movementOpen, setMovementOpen] = useState(false);
     const barcodeRef = useRef<HTMLInputElement>(null);
 
     /*
@@ -388,6 +398,18 @@ export default function PosIndex() {
                                 <ScanLine />
                                 {t('مسح')}
                             </Button>
+                            {/* قيدٌ مبسّط من الدرج — لمن يملك الفعل وحده */}
+                            {movement && (
+                                <Button
+                                    variant="outline"
+                                    className="shrink-0"
+                                    data-testid="pos-movement"
+                                    onClick={() => setMovementOpen(true)}
+                                >
+                                    <NotebookPen />
+                                    {t('قيد')}
+                                </Button>
+                            )}
                         </div>
                     </div>
 
@@ -1187,6 +1209,28 @@ export default function PosIndex() {
                 onOpenChange={setNewCustomerOpen}
                 onSubmit={cart.addCustomer}
             />
+
+            {movement && (
+                <Dialog open={movementOpen} onOpenChange={(o) => !o && setMovementOpen(false)}>
+                    <DialogContent className="sm:max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>{t('قيد مبسّط — ماذا حدث؟')}</DialogTitle>
+                            <DialogDescription>
+                                {t('مالٌ خرج من الدرج أو دخله بغير بيع — والنظام يكتب قيده.')}
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <MovementForm
+                            pos
+                            movements={movement.kinds}
+                            expenseTypes={movement.expenseTypes}
+                            today=""
+                            onCancel={() => setMovementOpen(false)}
+                            onSuccess={() => setMovementOpen(false)}
+                        />
+                    </DialogContent>
+                </Dialog>
+            )}
         </PosLayout>
     );
 }

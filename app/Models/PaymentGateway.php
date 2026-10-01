@@ -53,4 +53,32 @@ class PaymentGateway extends Model
             && filled($this->hmac_secret)
             && filled($this->card_integration_id);
     }
+
+    /**
+     * أرقامُ التكامل التي تُفتح بها الدفعة — من هذا الصفّ وحده.
+     *
+     * البطاقةُ أوّلًا ثمّ Apple Pay إن كُتب. ولا شرطَ لـApple Pay في `ready`:
+     * متجرٌ بالبطاقة وحدها كاملٌ كما كان.
+     *
+     * والرقمُ يُقرأ من العمود لا من طلب المتصفّح أبدًا: زبونٌ يُرسل رقمَ
+     * تكاملٍ بيده يفتح دفعةً على حسابٍ ليس لصاحب المحلّ. ويُقصّ، ويُسقط
+     * الفارغُ والصفرُ وما ليس رقمًا، ولا يُكرَّر: رقمٌ كُتب في الخانتين معًا
+     * يُرسَل مرّةً.
+     *
+     * @return list<int>
+     */
+    public function paymentMethodIds(): array
+    {
+        $ids = [];
+
+        foreach ([$this->card_integration_id, $this->apple_pay_integration_id] as $raw) {
+            $raw = trim((string) $raw);
+
+            if ($raw !== '' && ctype_digit($raw) && (int) $raw > 0) {
+                $ids[] = (int) $raw;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
 }

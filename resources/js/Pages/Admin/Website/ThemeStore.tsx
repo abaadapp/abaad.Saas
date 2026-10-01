@@ -30,9 +30,8 @@ interface Props extends ThemeShell, ThemeSeed {
  * والمجموعاتُ ثلاثٌ تحته لا ثلاثُ نماذج: «الدفع والاستلام» و«حقول إتمام
  * الطلب» و«كرت الهدية».
  *
- * ويبقى لبوّابة البطاقة زرُّها وحدَها — وذلك عن حقّ لا سهو: أسرارُها تُكتب
- * في `payment_gateways` لا في إعدادات المتجر، وبابُها آخر. وخلطُ سرٍّ
- * مشفَّرٍ في حمولةِ ضبطٍ عامّة بابُ تسريبٍ لا اختصارُ نقرة.
+ * وبوّابةُ البطاقة لا تُحرَّر هنا: مفاتيحُها في «التطبيقات التكاملية ←
+ * Paymob» وحدها، وهنا حالُها ورابطٌ إليها (`sections/Gateway`).
  */
 export default function ThemeStore() {
     const props = usePage<PageProps<Props>>().props;
@@ -62,14 +61,14 @@ export default function ThemeStore() {
 
             <SettingsPage>
                 <div className="space-y-6">
-                    <Checkout form={form} gatewayReady={gateway.ready} />
+                    <Checkout form={form} gatewayReady={gateway.online} />
 
                     <Fields form={form} />
 
                     {/*
-                        والحفظُ قبل بوّابة البطاقة لا بعدها: ما فوقه يحفظه،
-                        وللبوّابة زرُّها. وزرُّ حفظٍ أسفلَ الصفحة كلِّها يقول
-                        للناظر إنّه يحفظ البوّابةَ أيضًا — وهو لا يفعل.
+                        والحفظُ قبل حال البوّابة لا بعدها: ما فوقه يحفظه،
+                        والبوّابةُ تُحرَّر في بيتها. وزرُّ حفظٍ أسفلَ الصفحة
+                        كلِّها يقول للناظر إنّه يحفظ البوّابةَ أيضًا — وهو لا يفعل.
                     */}
                     <SaveBar
                         dirty={form.isDirty}
@@ -78,11 +77,8 @@ export default function ThemeStore() {
                         onReset={() => form.reset()}
                     />
 
-                    {/*
-                        وPaymob لمن في قائمة المالك وحده — ومن ليس فيها لا يرى
-                        بطاقتَه، والخادمُ يردّ حفظَ مفاتيحه بـ403 على كلّ حال.
-                    */}
-                    {gateway.allowed && <Gateway gateway={gateway} />}
+                    {/* حالُ Paymob ورابطٌ إلى بيتها — لكلّ متجر، بلا قائمة */}
+                    <Gateway gateway={gateway} />
                 </div>
             </SettingsPage>
         </AdminLayout>

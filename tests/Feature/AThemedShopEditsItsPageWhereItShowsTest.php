@@ -502,7 +502,6 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
     {
         $other = Business::create(['name' => 'متجر آخر', 'type' => 'عام', 'status' => 'نشط', 'site_slug' => 'other-ribbon', 'storefront_theme' => 'ribbon']);
         $this->allowCatalogTools($other->id);
-        config(['storefront.paymob_businesses' => [$this->shop->id]]);
         $this->sell();
 
         $response = $this->actingAs($this->owner)->get(route('admin.website.editor'))->assertOk();

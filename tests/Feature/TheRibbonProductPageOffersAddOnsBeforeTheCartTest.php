@@ -130,7 +130,7 @@ class TheRibbonProductPageOffersAddOnsBeforeTheCartTest extends TestCase
 
         // الاسمُ كما كتبه سعود في قاعدته: «الاضافات» بلا همزة — والمطابقةُ حرفيّة
         $this->assertSame([5 => ['category' => 'الاضافات', 'limit' => 6]], $config['ribbon_product_upsells']);
-        $this->assertSame([5], $config['paymob_businesses'], 'قائمةُ البوّابة كما هي');
+        $this->assertArrayNotHasKey('paymob_businesses', $config, 'البوّابةُ لا قائمةَ لها — لكلّ متجرٍ ذي سلّةٍ مفاتيحُه');
     }
 
     public function test_a_ribbon_shop_outside_the_list_keeps_its_page_as_it_was(): void

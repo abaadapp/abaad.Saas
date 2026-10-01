@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\PaymentGateway;
 use App\Models\StorePaymentIntent;
 use App\Support\Storefront;
+use App\Support\Website\Commerce;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -74,28 +75,23 @@ final class Paymob
     }
 
     /**
-     * أيُفتح Paymob لهذا المتجر أصلًا؟ — من قائمة المالك لا من المفاتيح.
+     * أيقبل موقعُ هذا المتجر البطاقةَ لطلبٍ جديد؟ — سلّةٌ حقيقيّة، وبوّابتُه مكتملة.
      *
-     * بابٌ قبل البوّابة: متجرٌ ليس في `storefront.paymob_businesses` لا
-     * يُعرض له الدفعُ بالبطاقة ولا تُحفظ مفاتيحُه، ولو أُعطي واجهةً خاصّةً
-     * فيها سلّة. والمفاتيحُ وحدها لا تفتحه.
-     */
-    public static function allowed(int $businessId): bool
-    {
-        return in_array($businessId, array_map('intval', (array) config('storefront.paymob_businesses', [])), true);
-    }
-
-    /**
-     * أيقبل هذا المتجر البطاقةَ لطلبٍ جديد؟ — مسموحٌ له، وبوّابتُه مكتملة.
+     * ═══ والربطُ غيرُ الاستعمال ═══
      *
-     * والقائمةُ بابٌ **لبدء** الدفع وحدَه. و`gateway` لا تسأل عنها عمدًا:
-     * دفعةٌ فُتحت قبل أن يُرفع المتجرُ من القائمة يُصدَّق إشعارُها بها، ويُتمّ
-     * طلبُها (`WebCheckout::payments` بنيّتها)، ويُردّ مالُها إن لزم (`refund`)
-     * — فالزبونُ الذي دفع لا يدفع ثمنَ قرارٍ اتُّخذ وهو على صفحة البنك.
+     * كلُّ متجرٍ يربط حسابَه في Paymob من «التطبيقات التكاملية» — ولا قائمةَ
+     * متاجرَ بمعرّفها تفتح ذلك أو تغلقه. أمّا أن يدفع زبونُه بالبطاقة على
+     * موقعه فيلزمه موقعٌ فيه سلّةٌ وإتمامُ طلب (`Commerce::checkout`): موقعٌ
+     * طلبُه محادثةُ واتساب لا يُعرض فيه «ادفع بالبطاقة» ولو اكتملت مفاتيحُه.
+     *
+     * و`gateway` لا تسأل عن السلّة عمدًا: دفعةٌ فُتحت ثمّ تبدّل الموقع يُصدَّق
+     * إشعارُها بها، ويُتمّ طلبُها (`WebCheckout::payments` بنيّتها)، ويُردّ
+     * مالُها إن لزم (`refund`) — فالزبونُ الذي دفع لا يدفع ثمنَ قرارٍ اتُّخذ
+     * وهو على صفحة البنك.
      */
     public static function enabled(int $businessId): bool
     {
-        return self::allowed($businessId) && self::gateway($businessId) !== null;
+        return Commerce::checkout($businessId) && self::gateway($businessId) !== null;
     }
 
     /* ═══════════ التوقيع ═══════════ */
@@ -164,8 +160,8 @@ final class Paymob
     public static function open(Business $business, array $payload, array $quote, string $lang = 'ar'): array
     {
         $bid = (int) $business->id;
-        // ولا تُفتح دفعةٌ لمن ليس في القائمة — ولو وصل الطلبُ إلى هنا من بابٍ لم يسأل
-        $gateway = self::allowed($bid) ? self::gateway($bid) : null;
+        // ولا تُفتح دفعةٌ لموقعٍ بلا سلّة — ولو وصل الطلبُ إلى هنا من بابٍ لم يسأل
+        $gateway = Commerce::checkout($bid) ? self::gateway($bid) : null;
 
         if ($gateway === null) {
             throw new \RuntimeException('بوّابةُ الدفع غير مكتملة');
@@ -216,7 +212,13 @@ final class Paymob
                 // بالأصغر: الريالُ ألفُ بيسة، ولا كسرَ يُرسَل
                 'amount' => (int) round($total * 1000),
                 'currency' => $intent->currency,
-                'payment_methods' => [(int) $gateway->card_integration_id],
+                /*
+                 * أرقامُ تكامل هذا المحلّ من صفّه — البطاقةُ ثمّ Apple Pay إن
+                 * كُتب (`PaymentGateway::paymentMethodIds`). وما تعرضه صفحةُ
+                 * Paymob منها تقرّره هي: Apple Pay يظهر لمن فعّلته له Paymob
+                 * وعلى جهازٍ يقبله، لا لأنّ رقمَه أُرسل.
+                 */
+                'payment_methods' => $gateway->paymentMethodIds(),
                 'items' => self::items($quote),
                 'billing_data' => self::billing($payload),
                 'special_reference' => $intent->reference,

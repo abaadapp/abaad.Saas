@@ -37,13 +37,13 @@ import {
 } from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
-import { PasswordInput } from '@/Components/ui/password-input';
 import CustomAlerts, {
     type AlertMetric,
     type CustomAlertRow,
 } from './partials/CustomAlerts';
 import { SETTINGS_NAV } from './partials/SettingsNav';
 import BackToSettings from './partials/BackToSettings';
+import { PaymobStatus, type GatewayState } from '@/Pages/Admin/Website/theme/sections/Gateway';
 import DomainChooser, {
     DomainPathStrip,
     NewDomainCard,
@@ -187,16 +187,8 @@ interface Props {
          * صفحته قبل دقيقة، بلا خطأٍ ولا رسالة.
          */
         themed: { omit: string[] } | null;
-        gateway: {
-            active: boolean;
-            public_key: string;
-            card_integration_id: string;
-            has_secret: boolean;
-            has_hmac: boolean;
-            ready: boolean;
-            /** أفي قائمة المالك؟ — انظر `Paymob::allowed` */
-            allowed: boolean;
-        };
+        /** حالُ Paymob لا مفاتيحُها — `Store\PaymobSettings::summary` */
+        gateway: GatewayState;
     };
     notificationsAll: NotificationRow[];
     customAlerts: CustomAlertRow[];
@@ -615,33 +607,6 @@ export default function SettingsIndex() {
         store_delivery_note: site?.store_delivery_note ?? '',
         store_image_note: site?.store_image_note ?? '',
     });
-
-    /*
-     * ونموذجُ البوّابة على حدة — والسرّان يبدآن فارغَين دائمًا.
-     *
-     * الشاشةُ لا تعرض سرًّا محفوظًا (لا يصلها أصلًا)، والفراغُ عند الحفظ
-     * يعني «لا تبدّله». ولو خُلطا بنموذج المتجر لَعبَرا الشبكةَ مع كلّ حفظِ
-     * اسمٍ أو رسمِ توصيل بلا سبب.
-     */
-    // وعنوانُ الإشعار من المتصفّح لا من إعدادٍ يُنسى تحديثُه عند تبديل النطاق
-    const hookUrl = `${typeof window === 'undefined' ? '' : window.location.origin}/webhooks/paymob`;
-
-    const gatewayForm = useForm({
-        active: store.gateway.active,
-        public_key: store.gateway.public_key,
-        card_integration_id: store.gateway.card_integration_id,
-        secret_key: '',
-        hmac_secret: '',
-    });
-
-    const saveGateway = (e: React.FormEvent) => {
-        e.preventDefault();
-        gatewayForm.post(route('admin.marketing.store.gateway'), {
-            preserveScroll: true,
-            // والسرّان لا يبقيان في الشاشة بعد أن حُفظا
-            onSuccess: () => gatewayForm.setData((d) => ({ ...d, secret_key: '', hmac_secret: '' })),
-        });
-    };
 
     /*
      * ═══ ولا تُرسل هذه البطاقةُ ما لا تملكه ═══
@@ -1138,88 +1103,17 @@ export default function SettingsIndex() {
                         </SettingsGroup>
 
                         {/*
-                            الدفعُ بالبطاقة — بحساب صاحب المحلّ لا بحساب أبعاد.
+                            الدفعُ الإلكترونيّ — حالُ Paymob ورابطٌ إلى بيتها.
 
-                            ونموذجٌ على حدة: السرّان يُرسلان وحدهما، فلا يَعبُران
-                            الشبكةَ مع كلّ حفظِ اسمٍ أو رسمِ توصيل.
+                            لا نموذجَ هنا: مفاتيحُ Paymob تُحرَّر في «التطبيقات
+                            التكاملية ← Paymob» وحدها. ولكلّ متجرٍ لا لقائمةٍ منها.
                         */}
-                        {store.checkout && store.gateway.allowed && (
-                            <SettingsGroup title="الدفع بالبطاقة">
-                                <p className="mb-4 text-[12px] leading-relaxed text-[#6b7280]">
-                                    {t('مفاتيحُك أنت من لوحة Paymob — والمال يصل حسابك البنكي مباشرةً ولا يمرّ بأبعاد.')}
-                                </p>
-
-                                <form onSubmit={saveGateway} className="space-y-4">
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                        <Field label="المفتاح العامّ" hint="pk_live_… — يظهر للزائر، وهذا موضعه" error={gatewayForm.errors.public_key}>
-                                            <Input
-                                                dir="ltr"
-                                                value={gatewayForm.data.public_key}
-                                                onChange={(e) => gatewayForm.setData('public_key', e.target.value)}
-                                                aria-label={t('المفتاح العامّ')}
-                                            />
-                                        </Field>
-                                        <Field label="رقم تكامل البطاقة" hint="Integration ID من لوحة Paymob" error={gatewayForm.errors.card_integration_id}>
-                                            <Input
-                                                dir="ltr"
-                                                value={gatewayForm.data.card_integration_id}
-                                                onChange={(e) => gatewayForm.setData('card_integration_id', e.target.value)}
-                                                aria-label={t('رقم تكامل البطاقة')}
-                                            />
-                                        </Field>
-                                        <Field
-                                            label="المفتاح السرّي"
-                                            hint={store.gateway.has_secret ? 'مضبوط — اكتبه من جديد لتبديله' : 'sk_live_…'}
-                                            error={gatewayForm.errors.secret_key}
-                                        >
-                                            {/* والعينُ المشتركة: حقلُ سرٍّ يُرسم بيده يفقد زرَّ الكشف */}
-                                            <PasswordInput
-                                                dir="ltr"
-                                                autoComplete="new-password"
-                                                value={gatewayForm.data.secret_key}
-                                                onChange={(e) => gatewayForm.setData('secret_key', e.target.value)}
-                                                aria-label={t('المفتاح السرّي')}
-                                            />
-                                        </Field>
-                                        <Field
-                                            label="سرّ التوقيع"
-                                            hint={store.gateway.has_hmac ? 'مضبوط — اكتبه من جديد لتبديله' : 'HMAC Secret — به يُصدَّق إشعار الدفع'}
-                                            error={gatewayForm.errors.hmac_secret}
-                                        >
-                                            {/* والعينُ المشتركة: حقلُ سرٍّ يُرسم بيده يفقد زرَّ الكشف */}
-                                            <PasswordInput
-                                                dir="ltr"
-                                                autoComplete="new-password"
-                                                value={gatewayForm.data.hmac_secret}
-                                                onChange={(e) => gatewayForm.setData('hmac_secret', e.target.value)}
-                                                aria-label={t('سرّ التوقيع')}
-                                            />
-                                        </Field>
-                                    </div>
-
-                                    <Toggle
-                                        on={gatewayForm.data.active}
-                                        onChange={(v) => gatewayForm.setData('active', v)}
-                                        label="اقبل الدفع بالبطاقة"
-                                    />
-                                    {gatewayForm.errors.active && (
-                                        <p className="text-[12px] text-[#b91c1c]">{gatewayForm.errors.active}</p>
-                                    )}
-
-                                    {/* وعنوانُ الإشعار يُلصَق في لوحة Paymob — وبلا لصقه لا يصل طلبٌ أبدًا */}
-                                    <Field label="عنوان الإشعار (Callback URL)" hint="الصقه في لوحة Paymob — بلا هذا لا يصلك طلبٌ من دفعةٍ ناجحة">
-                                        <Input dir="ltr" readOnly value={hookUrl} aria-label={t('عنوان الإشعار (Callback URL)')} />
-                                    </Field>
-
-                                    <PageActions>
-                                        <Button type="submit" loading={gatewayForm.processing}>
-                                            <Save />
-                                            {t('حفظ بوّابة الدفع')}
-                                        </Button>
-                                    </PageActions>
-                                </form>
-                            </SettingsGroup>
-                        )}
+                        <SettingsGroup title="الدفع الإلكتروني">
+                            <p className="mb-4 text-[12px] leading-relaxed text-[#6b7280]">
+                                {t('مفاتيحك أنت من حساب Paymob الخاص بك، والمال يصل إلى حسابك ولا يمر عبر أبعاد.')}
+                            </p>
+                            <PaymobStatus gateway={store.gateway} />
+                        </SettingsGroup>
 
                         {/*
                             التوصيل — لمن في واجهته سلّةٌ وإتمامُ طلب (RIBBON).

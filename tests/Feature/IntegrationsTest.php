@@ -61,7 +61,7 @@ class IntegrationsTest extends TestCase
         $cards = $this->cards();
 
         $this->assertSame(
-            [Integrations::GOOGLE, Integrations::WHATSAPP, Integrations::AMWALPAY],
+            [Integrations::GOOGLE, Integrations::WHATSAPP, Integrations::PAYMOB],
             array_keys($cards),
             'الترتيب ترتيبُ الدليل — لا ترتيبٌ يتبدّل بحال المتجر',
         );
@@ -141,30 +141,31 @@ class IntegrationsTest extends TestCase
         $this->assertSame('ready', $this->cards()[Integrations::GOOGLE]['status']['state']);
     }
 
-    /* ------------------------------ ما لم يُبنَ ------------------------------ */
+    /* ------------------------------ المدفوعات ------------------------------ */
 
     /**
-     * AmwalPay في الدليل ولمّا تُبنَ — وتُقال كما هي.
+     * بوّابةُ الدفع في الدليل هي Paymob — مبنيّةٌ ولها باب.
      *
-     * وبطاقةٌ تعد بالربط ثمّ تفتح شاشةً فارغة أسوأ من بطاقةٍ تقول «لم
-     * تُهيّأ بعد»: الأولى يجرّبها التاجر مرّتين ثمّ يظنّ العطب في متصفّحه.
+     * كانت في موضعها AmwalPay: بطاقةٌ بلا بابٍ ولا حرفٍ واحدٍ في النظام. ولا
+     * يُعرض في الدليل ما لم يُبنَ حين يكون المبنيُّ في مكانه.
      */
-    public function test_a_tool_that_was_never_built_says_so_and_offers_no_door(): void
+    public function test_paymob_is_the_built_payment_tool_with_its_own_door(): void
     {
-        $card = $this->cards()[Integrations::AMWALPAY];
+        $card = $this->cards()[Integrations::PAYMOB];
 
-        $this->assertFalse($card['built']);
-        $this->assertNull($card['route'], 'ما لم يُبنَ لا بابَ له — ولا يُخترع له باب');
-        $this->assertSame('unbuilt', $card['status']['state']);
+        $this->assertTrue($card['built']);
+        $this->assertSame('admin.integrations.paymob', $card['route']);
+        $this->assertTrue(app('router')->has('admin.integrations.paymob'));
+        $this->assertSame('off', $card['status']['state'], 'متجرٌ لم يربط شيئًا يُقرأ مربوطًا');
+        $this->assertTrue($card['licensed'], 'لا باقةَ تحرس Paymob');
     }
 
-    /** ولا مسارَ في النظام باسمها: البطاقةُ لا تخفي بابًا مفتوحًا */
-    public function test_no_route_answers_for_the_unbuilt_tool(): void
+    /** ولا أثرَ لـAmwalPay: لا ثابتٌ ولا بطاقةٌ ولا مسار */
+    public function test_nothing_of_amwalpay_is_left(): void
     {
-        $this->assertFalse(
-            app('router')->has('admin.integrations.amwalpay'),
-            'وُجد مسارٌ لأداةٍ الدليلُ يقول إنّها لم تُبنَ',
-        );
+        $this->assertFalse(defined(Integrations::class.'::AMWALPAY'));
+        $this->assertArrayNotHasKey('amwalpay', Integrations::CATALOG);
+        $this->assertFalse(app('router')->has('admin.integrations.amwalpay'));
     }
 
     /* ------------------------------- الباقة ------------------------------- */

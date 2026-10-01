@@ -4,12 +4,12 @@ namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Business;
-use App\Models\PaymentGateway;
 use App\Models\Product;
 use App\Models\WebsiteSection;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
 use App\Support\Store\Paymob;
+use App\Support\Store\PaymobSettings;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
@@ -184,35 +184,23 @@ class SettingsController extends Controller
      * لم يكن العددَ بل **زرّي حفظٍ متجاورين** لا يحفظ أحدُهما ما يحفظه
      * الآخر — فمن ضبط التوصيل وضغط زرَّ الحقول خسر ما كتب.
      *
-     * فزرُّ الحفظ هنا واحد، والمجموعاتُ ثلاثٌ تحته. ويبقى لبوّابة البطاقة
-     * زرُّها وحدَها عن حقّ: أسرارُها تُكتب في `payment_gateways` لا في
-     * إعدادات المتجر، وخلطُ سرٍّ مشفَّرٍ في حمولةِ ضبطٍ عامّة بابُ تسريب.
+     * فزرُّ الحفظ هنا واحد، والمجموعاتُ ثلاثٌ تحته. وبوّابةُ البطاقة لا
+     * تُحرَّر هنا: مفاتيحُها في «التطبيقات التكاملية ← Paymob» وحدها، وهنا
+     * حالُها ورابطٌ إليها — انظر `Store\PaymobSettings`.
      */
     private function themedStore(string $theme): Response
     {
         $bid = $this->bid();
         $business = Business::findOrFail($bid);
 
-        $gateway = PaymentGateway::where('business_id', $bid)
-            ->where('provider', PaymentGateway::PAYMOB)->first();
-
         return Inertia::render('Admin/Website/ThemeStore', $this->themeShell($theme) + $this->themeSeed($business) + [
             /*
-             * وبوّابةُ الدفع — حالُها لا مفاتيحُها.
+             * وبوّابةُ الدفع — حالُها لا مفاتيحُها ولا نموذجُها.
              *
-             * السرّان لا يخرجان من الخادم أبدًا: خصائصُ Inertia تُقرأ في
-             * مصدر الصفحة بضغطةٍ واحدة.
+             * لا مفتاحَ عامًّا ولا رقمَ تكاملٍ ولا سرّ: بيتُها «التطبيقات
+             * التكاملية»، وهذه الشاشةُ تقول أمربوطةٌ هي وتُحيل إليها.
              */
-            'gateway' => [
-                'active' => (bool) ($gateway?->active ?? false),
-                'public_key' => (string) ($gateway?->public_key ?? ''),
-                'card_integration_id' => (string) ($gateway?->card_integration_id ?? ''),
-                'has_secret' => filled($gateway?->secret_key),
-                'has_hmac' => filled($gateway?->hmac_secret),
-                'ready' => Paymob::enabled($bid),
-                // ومن ليس في قائمة المالك لا تُرسم له البطاقةُ أصلًا — انظر `Paymob::allowed`
-                'allowed' => Paymob::allowed($bid),
-            ],
+            'gateway' => PaymobSettings::summary($bid),
         ]);
     }
 

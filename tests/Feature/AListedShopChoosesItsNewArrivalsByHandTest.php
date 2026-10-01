@@ -135,7 +135,7 @@ class AListedShopChoosesItsNewArrivalsByHandTest extends TestCase
 
         $this->assertSame([5], $config['ribbon_curated_new_arrivals_businesses']);
         $this->assertSame([5], $config['ribbon_catalog_editor_businesses'], 'قائمةُ لوحتَي المحرّر كما هي');
-        $this->assertSame([5], $config['paymob_businesses'], 'قائمةُ البوّابة كما هي');
+        $this->assertArrayNotHasKey('paymob_businesses', $config, 'البوّابةُ لا قائمةَ لها — لكلّ متجرٍ ذي سلّةٍ مفاتيحُه');
     }
 
     public function test_no_business_id_is_written_outside_the_list(): void

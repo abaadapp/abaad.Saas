@@ -13,6 +13,7 @@ use App\Support\GooglePlaces;
 use App\Support\GoogleReviews;
 use App\Support\Integrations;
 use App\Support\MarketingSettings;
+use App\Support\Store\PaymobSettings;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -325,5 +326,32 @@ class IntegrationsController extends Controller
              */
             'automation' => WhatsAppController::view($business),
         ]);
+    }
+
+    /* ------------------------------ Paymob ------------------------------ */
+
+    /**
+     * ربطُ Paymob — مفاتيحُ حساب التاجر هو، وبيتُها الوحيد.
+     *
+     * تُفتح لكلّ متجر، ولو لم يكن في موقعه سلّةٌ بعد: الربطُ شيءٌ واستعمالُه
+     * على الموقع شيءٌ آخر. فتقول الشاشةُ أيّهما تمّ — «مربوط» و«يُقبض على
+     * موقعك» أو «لا سلّة في موقعك بعد» — ولا تخلطهما.
+     *
+     * وكانت المفاتيحُ تُحرَّر في شاشتَي الموقع. فصارت هنا وحدها، وتلك تعرض
+     * الحالَ وتُحيل إلى هنا — انظر `Store\PaymobSettings`.
+     */
+    public function paymob(): Response
+    {
+        return Inertia::render('Admin/Integrations/Paymob', [
+            'gateway' => PaymobSettings::view($this->bid()),
+        ]);
+    }
+
+    /** حفظُ المفاتيح — بمتجر الجلسة وحده، والسرُّ الفارغ لا يمحو المحفوظ */
+    public function savePaymob(Request $request)
+    {
+        PaymobSettings::save($this->bid(), $request);
+
+        return back()->with('toast', ['msg' => __('حُفظ ربط Paymob'), 'type' => 'success']);
     }
 }

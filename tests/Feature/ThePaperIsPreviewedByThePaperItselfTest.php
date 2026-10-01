@@ -66,7 +66,7 @@ class ThePaperIsPreviewedByThePaperItselfTest extends TestCase
 
         $this->customer = Customer::create([
             'business_id' => $this->business->id, 'name' => 'وزارة الثقافة',
-            'customer_type' => 'جهة حكومية',
+            'customer_type' => 'جهة حكومية', 'allow_credit_sales' => true,
             'payment_terms_days' => 45,
             'billing_address' => 'الخوير، مبنى الوزارة، الطابق الثالث',
             'tax_number' => 'OM1100234455',

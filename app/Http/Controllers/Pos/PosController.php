@@ -381,6 +381,7 @@ class PosController extends Controller
             'credit' => ['nullable', 'boolean'],
             'paid_now' => ['nullable', 'numeric', 'min:0'],
             'due_at' => ['nullable', 'date'],
+            'credit_override_reason' => ['nullable', 'string', 'max:200'],
             // سببُ تجاوز حظر البيع — يُقرأ في CustomerFlags::assertSellable وحدَها
             'block_override_reason' => ['nullable', 'string', 'max:200'],
             'delivery_fee' => ['nullable', 'numeric', 'min:0'],
@@ -641,7 +642,18 @@ class PosController extends Controller
             $creditAmount = $isCredit ? round($total - $paidNow, 3) : 0.0;
 
             if ($isCredit) {
-                CreditSales::assertAllowed($customer);
+                // مقبضُ الإعدادات قبل شروط العميل: من أطفأ الآجلَ لا يُسأل عن حدّه
+                if (! PaymentMethods::creditAllowedFor($bid)) {
+                    throw ValidationException::withMessages([
+                        'credit' => __('البيع الآجل مُطفأ في إعدادات المتجر — يُفعَّل من الإعدادات: طرق الدفع.'),
+                    ]);
+                }
+                CreditSales::assertAllowed(
+                    $customer,
+                    $creditAmount,
+                    auth()->user(),
+                    $data['credit_override_reason'] ?? null,
+                );
             }
 
             if ($couponApplied) {

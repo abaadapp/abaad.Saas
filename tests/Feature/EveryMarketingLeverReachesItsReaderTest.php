@@ -434,7 +434,7 @@ class EveryMarketingLeverReachesItsReaderTest extends TestCase
         $company = Customer::create([
             'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'شركة ABC', 'phone' => '99887766',
-            'monthly_billing' => true, 'payment_terms_days' => 30,
+            'allow_credit_sales' => true, 'monthly_billing' => true, 'payment_terms_days' => 30,
         ]);
 
         $this->actingAs($this->owner)->postJson('/pos/checkout', [

@@ -16,7 +16,9 @@ interface Props {
         id: number;
         name: string;
         type: string;
+        allow_credit_sales: boolean;
         monthly_billing: boolean;
+        credit_limit: number | null;
         payment_terms_days: number | null;
     };
     /** بيعاتٌ آجلةٌ لم تُطبع لها ورقةٌ بعد — ذمّةٌ قائمةٌ من لحظة البيع */
@@ -26,10 +28,10 @@ interface Props {
         rows: { at: string | null; kind: string; ref: string; debit: number; credit: number; balance: number }[];
         closing: number;
     };
-    summary: { outstanding: number; credit: number };
+    summary: { outstanding: number; credit: number; headroom: number | null };
     range: { from: string; to: string };
     /** ما يستطيع فاتحُ الشاشة حفظَه — انظر `ReceivablesController::statement` */
-    may: { bill: boolean };
+    may: { credit: boolean; bill: boolean };
 }
 
 /** حسابُ العميل — رصيدُه وحركتُه وشروطُ ائتمانه في شاشةٍ واحدة */
@@ -38,8 +40,10 @@ export default function CustomerStatement({ customer, statement, summary, range,
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
-    const terms = useForm({
+    const credit = useForm({
+        allow_credit_sales: customer.allow_credit_sales,
         monthly_billing: customer.monthly_billing,
+        credit_limit: customer.credit_limit === null ? '' : String(customer.credit_limit),
         payment_terms_days: customer.payment_terms_days === null ? '' : String(customer.payment_terms_days),
     });
 
@@ -62,36 +66,73 @@ export default function CustomerStatement({ customer, statement, summary, range,
                 }
             />
 
-            <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
+            <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <StatCard stat={{ label: t('المستحق'), value: m(summary.outstanding), icon: 'wallet', color: 'primary' }} index={0} />
                 <StatCard stat={{ label: t('رصيد دائن'), value: m(summary.credit), icon: 'coins', color: 'success' }} index={1} />
-                <StatCard stat={{ label: t('رصيد آخر المدة'), value: m(statement.closing), icon: 'file-text', color: 'primary' }} index={2} />
+                <StatCard
+                    stat={{
+                        label: t('المتاح من حد الائتمان'),
+                        value: summary.headroom === null ? t('بلا حد') : m(summary.headroom),
+                        icon: 'shield',
+                        color: 'warning',
+                    }}
+                    index={2}
+                />
+                <StatCard stat={{ label: t('رصيد آخر المدة'), value: m(statement.closing), icon: 'file-text', color: 'primary' }} index={3} />
             </div>
 
             {/*
-                شروطُ السداد — مدّتُه وفوترتُه الشهريّة. ولا إذنَ آجلٍ ولا حدّ:
-                أيُّ عميلٍ مسجَّلٍ يُباع له آجلًا (انظر `CreditSales`).
+                شروطُ الائتمان تُكتب بفعلٍ يُمنح باسمه — «تجاوز حدّ الائتمان».
+                ومن لا يملكه يقرأ الشروط ولا يكتبها: كان النموذج يُرسم له
+                كاملًا ويُردّ عند الحفظ بـ٤٠٣.
             */}
+            {may.credit ? (
             <Card className="mb-4 flex flex-wrap items-end gap-3 p-4">
                 <label className="flex items-center gap-2 text-[13px]">
                     <input
                         type="checkbox"
-                        checked={terms.data.monthly_billing}
-                        onChange={(e) => terms.setData('monthly_billing', e.target.checked)}
+                        checked={credit.data.allow_credit_sales}
+                        onChange={(e) => credit.setData('allow_credit_sales', e.target.checked)}
+                    />
+                    {t('السماح بالبيع الآجل')}
+                </label>
+                <label className="flex items-center gap-2 text-[13px]">
+                    <input
+                        type="checkbox"
+                        checked={credit.data.monthly_billing}
+                        onChange={(e) => credit.setData('monthly_billing', e.target.checked)}
                     />
                     {t('فوترة شهرية')}
                 </label>
                 <label className="text-[13px]">
+                    {t('حد الائتمان')}
+                    <Input value={credit.data.credit_limit} onChange={(e) => credit.setData('credit_limit', e.target.value)} />
+                </label>
+                <label className="text-[13px]">
                     {t('مدة السداد (يومًا)')}
-                    <Input value={terms.data.payment_terms_days} onChange={(e) => terms.setData('payment_terms_days', e.target.value)} />
+                    <Input value={credit.data.payment_terms_days} onChange={(e) => credit.setData('payment_terms_days', e.target.value)} />
                 </label>
                 <Button
-                    disabled={terms.processing}
-                    onClick={() => terms.put(route('admin.finance.customerTerms', customer.id), { preserveScroll: true })}
+                    disabled={credit.processing}
+                    onClick={() => credit.put(route('admin.finance.customerCredit', customer.id), { preserveScroll: true })}
                 >
                     {t('حفظ')}
                 </Button>
             </Card>
+            ) : (
+                <Card className="mb-4 flex flex-wrap items-center gap-4 p-4 text-[13px]">
+                    <span>
+                        {t('البيع الآجل')}: <b>{customer.allow_credit_sales ? t('مسموح') : t('ممنوع')}</b>
+                    </span>
+                    <span>
+                        {t('حد الائتمان')}: <b>{customer.credit_limit === null ? t('بلا حد') : m(customer.credit_limit)}</b>
+                    </span>
+                    <span>
+                        {t('مدة السداد (يومًا)')}: <b>{customer.payment_terms_days ?? '—'}</b>
+                    </span>
+                    <span className="text-[12px] text-[#9ca3af]">{t('تعديلُها صلاحيةٌ لا تملكها.')}</span>
+                </Card>
+            )}
 
             {uninvoiced.length > 0 && <BillMonth customer={customer} rows={uninvoiced} m={m} mayBill={may.bill} />}
 

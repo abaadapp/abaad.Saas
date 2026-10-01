@@ -43,6 +43,7 @@ interface CustomerRow {
     customer_reference: string | null;
     contact_person: string | null;
     payment_terms_days: number | null;
+    allow_credit_sales: boolean;
 }
 
 interface ProductRow {

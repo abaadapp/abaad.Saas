@@ -1438,8 +1438,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      *
      * فصار اسمُهما وعنوانُهما تحت المالية: ما يُفتح هناك يُحفظ هناك.
      */
-    // شروطُ سداد العميل: مدّتُه وفوترتُه الشهريّة — لا إذنَ آجلٍ ولا حدّ (انظر `CreditSales`)
-    Route::put('/finance/receivables/{customer}/terms', [ReceivablesController::class, 'terms'])->name('finance.customerTerms');
+    Route::put('/finance/receivables/{customer}/credit', [ReceivablesController::class, 'credit'])->name('finance.customerCredit');
     // فوترةُ الشهر: ورقةٌ واحدة على طلباتٍ آجلةٍ لم تُفوتَر بعد
     Route::post('/finance/receivables/{customer}/bill', [ReceivablesController::class, 'bill'])->name('finance.customerBill');
 

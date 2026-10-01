@@ -69,6 +69,7 @@ interface Props {
     settings: LoyaltySettings & {
         loyaltyEnabled?: boolean;
         paymentMethods?: string[];
+        creditSale?: boolean;
         /** يملك تجاوز حظر البيع ومقبضُه مفتوح — يقوله الخادم ويقيسه ثانيةً */
         canOverrideBlock?: boolean;
         vat?: VatSettings;
@@ -1058,6 +1059,7 @@ export default function PosIndex() {
                 money={money}
                 fmt={fmt}
                 methods={settings.paymentMethods}
+                creditSale={settings.creditSale ?? true}
                 orderOptions={orderOptions}
                 onCheckout={cart.checkoutSale}
                 onNewOrder={() => { cart.reset(); toast.success(t('طلب جديد جاهز')); }}

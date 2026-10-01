@@ -39,7 +39,7 @@ class CustomerInvoiceDoorsTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
         ]);
         $this->customer = Customer::create([
-            'business_id' => $this->business->id, 'name' => 'وزارة الثقافة',
+            'business_id' => $this->business->id, 'name' => 'وزارة الثقافة', 'allow_credit_sales' => true,
         ]);
     }
 
@@ -195,14 +195,14 @@ class CustomerInvoiceDoorsTest extends TestCase
         $this->actingAs($cashier)->get('/admin/customer-invoices')->assertForbidden();
     }
 
-    public function test_payment_terms_are_written_through_one_door(): void
+    public function test_credit_settings_are_written_through_one_door(): void
     {
-        $this->actingAs($this->owner)->put(route('admin.finance.customerTerms', $this->customer->id), [
-            'payment_terms_days' => 45, 'monthly_billing' => true,
+        $this->actingAs($this->owner)->put(route('admin.finance.customerCredit', $this->customer->id), [
+            'allow_credit_sales' => true, 'credit_limit' => 500, 'payment_terms_days' => 45,
         ])->assertSessionHasNoErrors();
 
         $this->assertSame(45, (int) $this->customer->fresh()->payment_terms_days);
-        $this->assertTrue((bool) $this->customer->fresh()->monthly_billing);
+        $this->assertSame(500.0, (float) $this->customer->fresh()->credit_limit);
     }
 
     public function test_a_payment_reports_where_it_went(): void

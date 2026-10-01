@@ -65,7 +65,7 @@ class ACreditSaleOwesWithoutDoublePostingTest extends TestCase
         $this->company = Customer::create([
             'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'شركة ABC',
-            'customer_type' => 'شركة', 'payment_terms_days' => 30,
+            'customer_type' => 'شركة', 'allow_credit_sales' => true, 'payment_terms_days' => 30,
         ]);
     }
 
@@ -186,33 +186,76 @@ class ACreditSaleOwesWithoutDoublePostingTest extends TestCase
         $this->assertSame(0, Order::count());
     }
 
-    /** وأيُّ عميلٍ مسجَّلٍ يُباع له آجلًا — بقيمه الافتراضيّة، بلا إذنٍ ولا حدّ */
-    public function test_a_new_customer_with_defaults_buys_on_credit(): void
+    public function test_a_customer_without_permission_to_owe_is_refused(): void
     {
-        $walkin = Customer::create(['language' => 'ar', 'business_id' => $this->business->id, 'name' => 'زبون جديد']);
+        $walkin = Customer::create(['language' => 'ar', 'business_id' => $this->business->id, 'name' => 'زبون مارّ']);
 
-        $this->checkout(['credit' => true, 'customer_id' => $walkin->id])->assertOk();
+        $this->checkout(['credit' => true, 'customer_id' => $walkin->id])
+            ->assertStatus(422)->assertJsonValidationErrors('credit');
 
-        $this->assertSame(100.0, Ledger::balance($this->business->id, 'receivable'));
-        $this->assertSame(100.0, Receivables::customerOutstanding($this->business->id, $walkin->id));
+        $this->assertSame(0, Order::count());
     }
 
-    /** والكاشيرُ يبيع آجلًا كما يبيع المالك — لا فعلَ يُطلب ولا سببَ يُكتب */
-    public function test_a_cashier_sells_on_credit_without_any_permission(): void
+    public function test_the_credit_limit_is_enforced(): void
     {
-        $this->checkout(['credit' => true, 'customer_id' => $this->company->id], $this->cashier)->assertOk();
+        $this->company->update(['credit_limit' => 60]);
+
+        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])
+            ->assertStatus(422)->assertJsonValidationErrors('credit');
+    }
+
+    public function test_the_limit_counts_what_is_already_owed(): void
+    {
+        $this->company->update(['credit_limit' => 150]);
+        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])->assertOk();
+
+        // ١٠٠ عليه بالفعل، فلم يبقَ إلّا ٥٠ — والمئة الثانية تتجاوز
+        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])
+            ->assertStatus(422)->assertJsonValidationErrors('credit');
+    }
+
+    public function test_a_cashier_cannot_override_the_limit(): void
+    {
+        $this->company->update(['credit_limit' => 60]);
+
+        $this->checkout([
+            'credit' => true, 'customer_id' => $this->company->id,
+            'credit_override_reason' => 'المدير وافق',
+        ], $this->cashier)->assertStatus(422)->assertJsonValidationErrors('credit');
+    }
+
+    public function test_an_authorised_manager_overrides_with_a_reason(): void
+    {
+        $this->company->update(['credit_limit' => 60]);
+
+        $this->checkout([
+            'credit' => true, 'customer_id' => $this->company->id,
+            'credit_override_reason' => 'فعالية وزارة — بعلم المالك',
+        ])->assertOk();
 
         $this->assertSame(100.0, Ledger::balance($this->business->id, 'receivable'));
     }
 
-    /** ولا سقفَ يُحسب على ما عليه — البيعةُ الثانية تمرّ كالأولى */
-    public function test_no_ceiling_counts_what_is_already_owed(): void
+    public function test_an_override_without_a_reason_is_still_refused(): void
     {
-        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])->assertOk();
-        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])->assertOk();
+        // إذنٌ بلا سبب يجعل الحدَّ زينة: يُضغط الزرّ ولا يُعرف بعد شهرٍ لماذا
+        $this->company->update(['credit_limit' => 60]);
 
-        $this->assertSame(200.0, Receivables::customerOutstanding($this->business->id, $this->company->id));
-        $this->assertSame(0, DB::table('activity_logs')->where('description', 'like', '%تجاوز%')->count());
+        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])
+            ->assertStatus(422)->assertJsonValidationErrors('credit');
+    }
+
+    public function test_the_override_is_written_in_the_activity_log(): void
+    {
+        $this->company->update(['credit_limit' => 60]);
+        $this->checkout([
+            'credit' => true, 'customer_id' => $this->company->id,
+            'credit_override_reason' => 'فعالية وزارة',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('activity_logs', ['subject_type' => 'customer']);
+        $this->assertStringContainsString('تجاوز حدَّ ائتمان', (string) DB::table('activity_logs')
+            ->where('description', 'like', '%تجاوز%')->value('description'));
     }
 
     // ————— التعدّد المستأجَر —————
@@ -222,41 +265,55 @@ class ACreditSaleOwesWithoutDoublePostingTest extends TestCase
         $other = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
         $theirs = Customer::create([
             'language' => 'ar',
-            'business_id' => $other->id, 'name' => 'عميلهم',
+            'business_id' => $other->id, 'name' => 'عميلهم', 'allow_credit_sales' => true,
         ]);
 
         $this->checkout(['credit' => true, 'customer_id' => $theirs->id])
             ->assertStatus(422)->assertJsonValidationErrors('customer_id');
     }
 
-    /* ————— ولا مقبضَ في الإعدادات يطفئه —————
+    /* ————— ومقبضُ الإعدادات يطفئه كلَّه —————
      *
-     * كان في «طرق الدفع» مقبضٌ `pay_credit` يُطفئ الآجلَ للمتجر كلّه، فحُذف:
-     * الشرطُ الوحيد عميلٌ مختار. ومتجرٌ أطفأه قبل الحذف بقي صفُّه في
-     * `settings` — والصفُّ الباقي لا يُقرأ، فلا يمنع بيعةً ولا يُخفي الصندوق.
+     * «طرق الدفع» في الإعدادات تُطفئ البطاقةَ والتحويل، فيبحث التاجر عن
+     * الآجل هناك. والمقبضُ يُقرأ في الخادم لا في الشاشة وحدها: طلبٌ يصل من
+     * شاشةٍ قديمة يُردّ، ومن أطفأه لا يُسأل عن حدّ العميل ولا عن إذنه.
+     * والغيابُ إذنٌ كأخواته — متجرٌ لم يلمس الإعداد يبيع آجلًا كما كان.
      */
 
-    public function test_a_switch_left_off_before_the_removal_stops_nothing(): void
+    public function test_credit_sales_can_be_switched_off_from_the_shop_settings(): void
     {
         Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'pay_credit'], ['value' => '0']);
 
-        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])->assertOk();
-        $this->assertSame(1, Order::count(), 'صفُّ المقبض القديم ما زال يردّ الآجل');
+        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])
+            ->assertStatus(422)->assertJsonValidationErrors('credit');
+        $this->assertSame(0, Order::count(), 'بيعةٌ آجلة مرّت والآجلُ مُطفأ');
+
+        // والنقدُ لا يتأثّر
+        $this->checkout(['customer_id' => $this->company->id])->assertOk();
     }
 
-    public function test_the_settings_screen_no_longer_writes_a_credit_switch(): void
+    public function test_the_switch_is_saved_from_the_settings_screen_and_reaches_the_till(): void
     {
         $this->actingAs($this->owner)
             ->post(route('admin.settings.update'), ['pay_credit' => '0'])
             ->assertSessionHasNoErrors();
-        $this->assertNull(Setting::where('business_id', $this->business->id)->where('key', 'pay_credit')->first(),
-            'الإعداداتُ ما زالت تحفظ مقبضًا لا يُقرأ');
+        $this->assertSame('0', Setting::where('business_id', $this->business->id)->where('key', 'pay_credit')->value('value'));
 
         $branch = \App\Models\Branch::firstOrCreate(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         $this->activatePosDevice($this->business->id, $branch->id);
         $props = $this->actingAs($this->owner)->get(route('pos.index'))->viewData('page')['props']['settings'];
-        $this->assertArrayNotHasKey('creditSale', $props, 'الصندوقُ ما زال يُسأل عن مقبضٍ محذوف');
+        $this->assertFalse($props['creditSale'], 'الصندوقُ ما زال يعرض الآجلَ وهو مُطفأ');
 
-        $this->assertFalse(method_exists(\App\Support\PaymentMethods::class, 'creditAllowedFor'));
+        $this->actingAs($this->owner)
+            ->post(route('admin.settings.update'), ['pay_credit' => '1'])
+            ->assertSessionHasNoErrors();
+        $props = $this->actingAs($this->owner)->get(route('pos.index'))->viewData('page')['props']['settings'];
+        $this->assertTrue($props['creditSale']);
+    }
+
+    public function test_a_shop_that_never_touched_the_switch_still_sells_on_credit(): void
+    {
+        $this->assertNull(Setting::where('business_id', $this->business->id)->where('key', 'pay_credit')->first());
+        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])->assertOk();
     }
 }

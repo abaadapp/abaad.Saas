@@ -86,7 +86,7 @@ class AMessageNamesThePaperItSpeaksOfTest extends TestCase
         $this->product = Product::create(['business_id' => $this->business->id, 'name' => 'باقة',
             'price' => 10, 'cost' => 4, 'quantity' => 500, 'active' => true]);
         $this->company = Customer::create(['language' => 'ar', 'business_id' => $this->business->id, 'name' => 'شركة',
-            'phone' => '99887766', 'monthly_billing' => true,
+            'phone' => '99887766', 'allow_credit_sales' => true, 'monthly_billing' => true,
             'payment_terms_days' => 30]);
     }
 

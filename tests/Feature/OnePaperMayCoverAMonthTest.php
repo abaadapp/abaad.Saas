@@ -61,7 +61,7 @@ class OnePaperMayCoverAMonthTest extends TestCase
         $this->company = Customer::create([
             'language' => 'ar',
             'business_id' => $this->business->id, 'name' => 'شركة ABC',
-            'monthly_billing' => true, 'payment_terms_days' => 30,
+            'allow_credit_sales' => true, 'monthly_billing' => true, 'payment_terms_days' => 30,
         ]);
         $this->actingAs($this->owner);
     }
@@ -172,7 +172,7 @@ class OnePaperMayCoverAMonthTest extends TestCase
 
     public function test_a_paid_order_is_not_billed(): void
     {
-        $this->company->update(['monthly_billing' => false]);
+        $this->company->update(['monthly_billing' => false, 'allow_credit_sales' => false]);
         $this->postJson('/pos/checkout', [
             'items' => [['id' => $this->product->id, 'name' => 'باقة ورد', 'qty' => 3, 'price' => 10]],
             'payment_method' => 'نقدي',

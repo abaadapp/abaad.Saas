@@ -378,7 +378,7 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
     public function test_a_blocked_customer_gets_no_invoice_from_the_admin_screen_either(): void
     {
         Ledger::seedChart($this->shop->id);
-        $c = $this->customer(['alert_type' => 'block', 'alert_reason' => 'سرّ']);
+        $c = $this->customer(['alert_type' => 'block', 'alert_reason' => 'سرّ', 'allow_credit_sales' => true]);
 
         $invoice = fn () => $this->actingAs($this->owner)->post(route('admin.customerInvoices.store'), [
             'customer_id' => $c->id, 'payment_method' => 'آجل', 'issued_at' => now()->toDateString(), 'issue' => true,

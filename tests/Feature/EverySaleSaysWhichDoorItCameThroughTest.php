@@ -62,6 +62,7 @@ class EverySaleSaysWhichDoorItCameThroughTest extends TestCase
         Ledger::seedChart($this->business->id);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الخوير']);
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_enabled', 'value' => '0']);
+        Setting::create(['business_id' => $this->business->id, 'key' => 'pay_credit', 'value' => '1']);
 
         $this->owner = User::create(['business_id' => $this->business->id, 'name' => 'سعود', 'email' => 'ribbon@abaad.om', 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط']);
 
@@ -98,7 +99,7 @@ class EverySaleSaysWhichDoorItCameThroughTest extends TestCase
     {
         $customer = Customer::firstOrCreate(
             ['business_id' => $this->business->id, 'phone' => '96899220002'],
-            ['name' => 'سالم', 'language' => 'ar'],
+            ['name' => 'سالم', 'language' => 'ar', 'allow_credit_sales' => true, 'credit_limit' => 5000],
         );
 
         $this->actingAs($this->owner)->postJson('/pos/checkout', [

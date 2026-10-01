@@ -45,7 +45,7 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
         ]);
         $this->customer = Customer::create([
             'business_id' => $this->business->id, 'name' => 'وزارة الثقافة',
-            'customer_type' => 'جهة حكومية', 'payment_terms_days' => 45,
+            'customer_type' => 'جهة حكومية', 'allow_credit_sales' => true, 'payment_terms_days' => 45,
         ]);
     }
 
@@ -281,5 +281,32 @@ class TheInvoiceFormIsAScreenNotAPanelTest extends TestCase
 
         $this->assertSame('2026-10-31', $invoice->due_at->toDateString());
         $this->assertSame(60, (int) $invoice->payment_terms_days);
+    }
+
+    /**
+     * و«آجل» يصدر لعميلٍ لم يُفتح له الآجل — ذمّةً كاملة، بلا تنبيهٍ يردّه.
+     *
+     * كانت الشاشة تقول «البيع الآجل غير مفتوح لهذا العميل» والخادمُ يقبلها:
+     * تنبيهٌ يوقف المستخدمَ عن فاتورةٍ لا يمنعها شيء. و`allow_credit_sales`
+     * باقٍ لنقطة البيع — الفاتورةُ اليدويّة لا تسأله.
+     */
+    public function test_credit_issues_for_a_customer_not_opened_for_credit(): void
+    {
+        $walkIn = Customer::create(['business_id' => $this->business->id, 'name' => 'شركة الريان']);
+        $this->assertFalse((bool) $walkIn->fresh()->allow_credit_sales);
+
+        $this->actingAs($this->owner)->post('/admin/customer-invoices', [
+            'customer_id' => $walkIn->id,
+            'issue' => true,
+            'payment_method' => 'آجل',
+            'items' => [['description' => 'توريد', 'quantity' => 4, 'unit_price' => 100, 'tax_rate' => 0]],
+        ])->assertSessionHasNoErrors();
+
+        $invoice = CustomerInvoice::where('customer_id', $walkIn->id)->firstOrFail();
+        $this->assertSame(400.0, $invoice->outstanding());
+        $this->assertSame(0, CustomerPayment::count());
+
+        $screen = file_get_contents(resource_path('js/Pages/Admin/CustomerInvoices/Create.tsx'));
+        $this->assertStringNotContainsString('البيع الآجل غير مفتوح لهذا العميل', $screen);
     }
 }

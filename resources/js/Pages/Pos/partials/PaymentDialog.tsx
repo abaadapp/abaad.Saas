@@ -55,6 +55,8 @@ const BLANK: FlowerDetails = {
 interface Props {
     /** الوسائل المأذونة من الإعدادات؛ غيابها يعني الثلاث (شاشة قديمة) */
     methods?: string[];
+    /** البيعُ الآجل مأذونٌ في إعدادات المتجر — وإلّا لا يُعرض صندوقُه أصلًا */
+    creditSale?: boolean;
     /** خيارات طلب الورد؛ غيابها يعني شاشةً قديمة فيُخفى القسم كلّه */
     orderOptions?: OrderOptions;
     open: boolean;
@@ -71,6 +73,7 @@ interface Props {
 
 export default function PaymentDialog({
     open, onOpenChange, total, displayTotal, customer, money, fmt, onCheckout, onNewOrder, methods, orderOptions,
+    creditSale = true,
 }: Props) {
     const t = useTranslate();
     const { context } = usePage<PageProps>().props;
@@ -92,6 +95,7 @@ export default function PaymentDialog({
     const [credit, setCredit] = useState(false);
     const [paidNow, setPaidNow] = useState('');
     const [dueAt, setDueAt] = useState('');
+    const [overrideReason, setOverrideReason] = useState('');
     const [methodError, setMethodError] = useState(false);
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<CheckoutResult | null>(null);
@@ -285,13 +289,14 @@ export default function PaymentDialog({
              * البيعُ الآجل — والحقولُ الثلاثة وحدها، بلا مصطلحٍ محاسبيّ.
              *
              * والكاشيرُ لا يُسأل عن «ذمّة» ولا «مدين»: يُسأل كم دُفع الآن ومتى
-             * يُسدَّد الباقي. وشرطُه في الخادم — عميلٌ مختار ومقبضُ المتجر —
-             * فيصله سببُ الرفض مكتوبًا لا «تعذّر إتمام البيع».
+             * يُسدَّد الباقي. وشروطُه كلُّها في الخادم — الإذنُ للعميل وحدُّ
+             * ائتمانه — فيصله سببُ الرفض مكتوبًا لا «تعذّر إتمام البيع».
              */
             if (credit) {
                 details.credit = true;
                 if (paidNow.trim() !== '') details.paid_now = paidNow;
                 if (dueAt.trim() !== '') details.due_at = dueAt;
+                if (overrideReason.trim() !== '') details.credit_override_reason = overrideReason;
             }
 
             const res = await onCheckout(method, details);
@@ -411,6 +416,7 @@ export default function PaymentDialog({
                             ولا مصطلحَ محاسبيًّا هنا: لا «ذمّة» ولا «مدين» —
                             كم دُفع الآن، ومتى يُسدَّد الباقي.
                         */}
+                        {creditSale && (
                         <div className="rounded-xl border border-[var(--ui-border,#e8e8e8)] p-3">
                             <label className="flex items-center gap-2 text-[13px] font-medium">
                                 <input
@@ -454,9 +460,19 @@ export default function PaymentDialog({
                                             onChange={(e) => setDueAt(e.target.value)}
                                         />
                                     </label>
+                                    {/* وسببُ التجاوز يُكتب حين يُطلب — والخادم يقبله أو يردّه */}
+                                    <label className="text-[12px] text-gray-500 sm:col-span-3">
+                                        {t('سبب تجاوز حد الائتمان (إن لزم)')}
+                                        <Input
+                                            className="mt-1"
+                                            value={overrideReason}
+                                            onChange={(e) => setOverrideReason(e.target.value)}
+                                        />
+                                    </label>
                                 </div>
                             )}
                         </div>
+                        )}
 
                         {/*
                             تفاصيل طلب الورد — داخل نافذة الدفع نفسها لا في خطوةٍ ثانية.

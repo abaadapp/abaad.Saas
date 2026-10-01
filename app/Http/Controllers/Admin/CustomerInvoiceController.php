@@ -416,7 +416,7 @@ class CustomerInvoiceController extends Controller
                 'id', 'name', 'customer_type', 'legal_name', 'tax_number',
                 'commercial_registration', 'phone', 'contact_phone', 'email', 'contact_email',
                 'address', 'billing_address', 'department', 'customer_reference',
-                'contact_person', 'payment_terms_days',
+                'contact_person', 'payment_terms_days', 'allow_credit_sales',
             ])->all(),
             /*
              * والكتالوج للاختيار لا للإلزام: بندٌ مخصَّصٌ يُكتب بيده كذلك.

@@ -62,7 +62,6 @@ class EverySaleSaysWhichDoorItCameThroughTest extends TestCase
         Ledger::seedChart($this->business->id);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الخوير']);
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_enabled', 'value' => '0']);
-        Setting::create(['business_id' => $this->business->id, 'key' => 'pay_credit', 'value' => '1']);
 
         $this->owner = User::create(['business_id' => $this->business->id, 'name' => 'سعود', 'email' => 'ribbon@abaad.om', 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط']);
 

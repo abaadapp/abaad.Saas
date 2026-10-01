@@ -65,7 +65,6 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
         Ledger::seedChart($this->shop->id);
         Branch::create(['business_id' => $this->shop->id, 'name' => 'الخوير']);
         Setting::create(['business_id' => $this->shop->id, 'key' => 'vat_enabled', 'value' => '0']);
-        Setting::create(['business_id' => $this->shop->id, 'key' => 'pay_credit', 'value' => '1']);
 
         $this->owner = User::create(['business_id' => $this->shop->id, 'name' => 'سعود', 'email' => 'saud@abaad.om', 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط']);
 

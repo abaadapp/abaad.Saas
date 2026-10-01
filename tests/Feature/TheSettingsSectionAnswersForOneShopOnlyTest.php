@@ -183,7 +183,6 @@ class TheSettingsSectionAnswersForOneShopOnlyTest extends TestCase
             'pay_cash' => '1',
             'pay_card' => '0',
             'pay_transfer' => '1',
-            'pay_credit' => '0',
             'inv_prefix' => 'WRD-',
             'inv_start' => '500',
             'staff_sees_performance' => '1',

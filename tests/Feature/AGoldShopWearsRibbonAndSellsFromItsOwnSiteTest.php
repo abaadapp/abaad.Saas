@@ -484,7 +484,6 @@ class AGoldShopWearsRibbonAndSellsFromItsOwnSiteTest extends TestCase
         };
 
         // الصندوق — آجلًا، لأنّ طلبَ الموقع «غير مدفوع» حتى يُقبض
-        Setting::create(['business_id' => $this->business->id, 'key' => 'pay_credit', 'value' => '1']);
         $customer = Customer::create(['business_id' => $this->business->id, 'name' => 'مريم', 'phone' => '96899110001', 'language' => 'ar']);
         $this->actingAs($this->owner)->postJson('/pos/checkout', [
             'items' => [['id' => $p->id, 'name' => $p->name, 'qty' => 2, 'price' => 12.5]],

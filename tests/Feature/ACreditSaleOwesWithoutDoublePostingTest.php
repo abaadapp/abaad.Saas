@@ -229,48 +229,34 @@ class ACreditSaleOwesWithoutDoublePostingTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('customer_id');
     }
 
-    /* ————— ومقبضُ الإعدادات يطفئه كلَّه —————
+    /* ————— ولا مقبضَ في الإعدادات يطفئه —————
      *
-     * «طرق الدفع» في الإعدادات تُطفئ البطاقةَ والتحويل، فيبحث التاجر عن
-     * الآجل هناك. والمقبضُ يُقرأ في الخادم لا في الشاشة وحدها: طلبٌ يصل من
-     * شاشةٍ قديمة يُردّ، ولا يُسأل بعده عن العميل.
-     * والغيابُ إذنٌ كأخواته — متجرٌ لم يلمس الإعداد يبيع آجلًا كما كان.
+     * كان في «طرق الدفع» مقبضٌ `pay_credit` يُطفئ الآجلَ للمتجر كلّه، فحُذف:
+     * الشرطُ الوحيد عميلٌ مختار. ومتجرٌ أطفأه قبل الحذف بقي صفُّه في
+     * `settings` — والصفُّ الباقي لا يُقرأ، فلا يمنع بيعةً ولا يُخفي الصندوق.
      */
 
-    public function test_credit_sales_can_be_switched_off_from_the_shop_settings(): void
+    public function test_a_switch_left_off_before_the_removal_stops_nothing(): void
     {
         Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'pay_credit'], ['value' => '0']);
 
-        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])
-            ->assertStatus(422)->assertJsonValidationErrors('credit');
-        $this->assertSame(0, Order::count(), 'بيعةٌ آجلة مرّت والآجلُ مُطفأ');
-
-        // والنقدُ لا يتأثّر
-        $this->checkout(['customer_id' => $this->company->id])->assertOk();
+        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])->assertOk();
+        $this->assertSame(1, Order::count(), 'صفُّ المقبض القديم ما زال يردّ الآجل');
     }
 
-    public function test_the_switch_is_saved_from_the_settings_screen_and_reaches_the_till(): void
+    public function test_the_settings_screen_no_longer_writes_a_credit_switch(): void
     {
         $this->actingAs($this->owner)
             ->post(route('admin.settings.update'), ['pay_credit' => '0'])
             ->assertSessionHasNoErrors();
-        $this->assertSame('0', Setting::where('business_id', $this->business->id)->where('key', 'pay_credit')->value('value'));
+        $this->assertNull(Setting::where('business_id', $this->business->id)->where('key', 'pay_credit')->first(),
+            'الإعداداتُ ما زالت تحفظ مقبضًا لا يُقرأ');
 
         $branch = \App\Models\Branch::firstOrCreate(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         $this->activatePosDevice($this->business->id, $branch->id);
         $props = $this->actingAs($this->owner)->get(route('pos.index'))->viewData('page')['props']['settings'];
-        $this->assertFalse($props['creditSale'], 'الصندوقُ ما زال يعرض الآجلَ وهو مُطفأ');
+        $this->assertArrayNotHasKey('creditSale', $props, 'الصندوقُ ما زال يُسأل عن مقبضٍ محذوف');
 
-        $this->actingAs($this->owner)
-            ->post(route('admin.settings.update'), ['pay_credit' => '1'])
-            ->assertSessionHasNoErrors();
-        $props = $this->actingAs($this->owner)->get(route('pos.index'))->viewData('page')['props']['settings'];
-        $this->assertTrue($props['creditSale']);
-    }
-
-    public function test_a_shop_that_never_touched_the_switch_still_sells_on_credit(): void
-    {
-        $this->assertNull(Setting::where('business_id', $this->business->id)->where('key', 'pay_credit')->first());
-        $this->checkout(['credit' => true, 'customer_id' => $this->company->id])->assertOk();
+        $this->assertFalse(method_exists(\App\Support\PaymentMethods::class, 'creditAllowedFor'));
     }
 }

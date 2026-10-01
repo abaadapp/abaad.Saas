@@ -1834,12 +1834,6 @@ function CustomerCard({ customer, onClear }: { customer: CustomerRow; onClear: (
                     ))}
                 </ul>
             )}
-
-            {!customer.allow_credit_sales && (
-                <p className="mt-3 text-[12px] text-[#b45309]">
-                    {t('البيع الآجل غير مفتوح لهذا العميل — تُفتح صلاحيته من صفحته.')}
-                </p>
-            )}
         </div>
     );
 }

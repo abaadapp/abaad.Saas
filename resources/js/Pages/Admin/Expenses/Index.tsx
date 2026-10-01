@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Check, CheckCircle2, FolderOpen, Paperclip, Pencil, Plus, Tags } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, FolderOpen, GitBranch, Paperclip, Pencil, Plus, Tags } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
@@ -18,6 +18,7 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import ScopeFields, { EMPTY_SCOPE, scopeReady, type BranchOption, type ExpenseScopeKind, type ScopeValue } from './ScopeFields';
 
 interface ExpenseRow {
     id: number;
@@ -29,6 +30,11 @@ interface ExpenseRow {
     attachment: string | null;
     attachment_name: string | null;
     description: string | null;
+    /** لمن يُحسب في ربح الفروع — انظر `ExpenseScope` */
+    scope: ExpenseScopeKind;
+    branch_id: number | null;
+    branch: string | null;
+    allocations: { branch_id: number; branch: string | null; amount: number }[];
 }
 
 interface ExpenseType {
@@ -65,11 +71,13 @@ interface Props {
     /** الشهور التي فيها مصروفٌ فعلًا — أحدثها أوّلًا */
     months: string[];
     today: string;
+    /** فروعُ المتجر — خياراتُ «فرع محدد» و«موزع على عدة فروع» */
+    branches: BranchOption[];
 }
 
 export default function ExpensesIndex() {
     const { expenses, pagination, types, accountOptions, filters, sorts, totalAmount, totalCount, unpaidAmount, unpaidCount,
-        dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, context } =
+        dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, branches, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -88,7 +96,7 @@ export default function ExpensesIndex() {
         method: string;
         status: string;
         attachment: File | null;
-    }>({
+    } & ScopeValue>({
         type: '',
         amount: '',
         description: '',
@@ -97,7 +105,32 @@ export default function ExpensesIndex() {
         method: 'نقدي',
         status: 'مدفوع',
         attachment: null,
+        // للنشاط كلِّه افتراضًا — لا يتبع فرعَ الجلسة: إيجارُ المتجر لا يصير مصروفَ فرع الكاشير
+        ...EMPTY_SCOPE,
     });
+
+    /** المصروفُ الذي يُعاد نطاقُه — ونموذجُه وحده: لا مبلغَ فيه ولا تاريخ */
+    const [scoping, setScoping] = useState<ExpenseRow | null>(null);
+    const scopeForm = useForm<ScopeValue>(EMPTY_SCOPE);
+
+    const openScope = (row: ExpenseRow) => {
+        scopeForm.setData({
+            scope: row.scope,
+            branch_id: row.branch_id ? String(row.branch_id) : '',
+            allocations: row.allocations.map((a) => ({ branch_id: String(a.branch_id), amount: String(a.amount) })),
+        });
+        scopeForm.clearErrors();
+        setScoping(row);
+    };
+
+    const submitScope = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!scoping) return;
+        scopeForm.put(route('admin.expenses.scope', scoping.id), {
+            preserveScroll: true,
+            onSuccess: () => setScoping(null),
+        });
+    };
 
     const typeForm = useForm({ name: '', description: '', account_key: '' });
     /** النوع الجاري تعديله — وnull يعني «نوعٌ جديد»، والنموذج واحد للحالتين */
@@ -155,6 +188,19 @@ export default function ExpensesIndex() {
         },
         { key: 'type', header: 'أنواع المصروفات', cell: (e) => <Badge variant="primary">{e.type}</Badge> },
         {
+            key: 'scope',
+            header: 'نطاق المصروف',
+            cell: (e) => (
+                <span className="text-[12.5px] text-[#4b4b4b]">
+                    {e.scope === 'branch'
+                        ? e.branch
+                        : e.scope === 'split'
+                          ? `${t('موزع على عدة فروع')} (${e.allocations.length})`
+                          : t('النشاط بالكامل')}
+                </span>
+            ),
+        },
+        {
             key: 'amount',
             header: 'المبلغ',
             align: 'end',
@@ -188,8 +234,13 @@ export default function ExpensesIndex() {
             cell: (e) => (
                 <RowActions
                     destroy={{ url: route('admin.expenses.destroy', e.id), message: 'حذف هذا المصروف؟' }}
-                    extra={
-                        e.status === 'مدفوع'
+                    extra={[
+                        {
+                            label: 'نطاق المصروف',
+                            icon: <GitBranch className="size-4" />,
+                            onSelect: () => openScope(e),
+                        },
+                        ...(e.status === 'مدفوع'
                             ? []
                             : [
                                   {
@@ -199,8 +250,8 @@ export default function ExpensesIndex() {
                                       onSelect: () =>
                                           router.post(route('admin.expenses.paid', e.id), {}, { preserveScroll: true }),
                                   },
-                              ]
-                    }
+                              ]),
+                    ]}
                 />
             ),
         },
@@ -501,6 +552,15 @@ export default function ExpensesIndex() {
                             </Field>
                         </div>
 
+                        <ScopeFields
+                            value={{ scope: expense.data.scope, branch_id: expense.data.branch_id, allocations: expense.data.allocations }}
+                            onChange={(v) => expense.setData((d) => ({ ...d, ...v }))}
+                            amount={expense.data.amount}
+                            branches={branches}
+                            currency={currency}
+                            errors={expense.errors as Record<string, string | undefined>}
+                        />
+
                         <Field
                             label="الحالة"
                             hint="«غير مدفوع» التزامٌ عليك لا نقدٌ خرج — لا يُخصم من الربح حتى تسدّده"
@@ -544,9 +604,50 @@ export default function ExpensesIndex() {
                             <Button type="button" variant="ghost" onClick={() => setAddingExpense(false)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" loading={expense.processing}>
+                            <Button
+                                type="submit"
+                                loading={expense.processing}
+                                disabled={!scopeReady(expense.data, expense.data.amount)}
+                            >
                                 <Check />
                                 {t('حفظ المصروف')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* نطاقُ مصروفٍ قائم — لمن يُحسب، لا مبلغُه */}
+            <Dialog open={scoping !== null} onOpenChange={(open) => !open && setScoping(null)}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {t('نطاق المصروف')} — {scoping?.reference ?? ''}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitScope} className="space-y-4 px-5 pb-5" data-testid="scope-dialog">
+                        <p className="text-[12.5px] text-[#6b7280]">
+                            {t('يغيّر لمن يُحسب المصروف في ربح الفروع وحده — المبلغ والتاريخ والحالة لا تتغيّر.')}
+                        </p>
+                        <ScopeFields
+                            value={scopeForm.data}
+                            onChange={(v) => scopeForm.setData(v)}
+                            amount={scoping?.amount ?? 0}
+                            branches={branches}
+                            currency={currency}
+                            errors={scopeForm.errors as Record<string, string | undefined>}
+                        />
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="ghost" onClick={() => setScoping(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button
+                                type="submit"
+                                loading={scopeForm.processing}
+                                disabled={!scopeReady(scopeForm.data, scoping?.amount ?? 0)}
+                            >
+                                <Check />
+                                {t('حفظ النطاق')}
                             </Button>
                         </div>
                     </form>

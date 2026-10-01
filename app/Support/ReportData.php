@@ -459,6 +459,93 @@ class ReportData
         ]);
     }
 
+    /* =========================== صافي الربح =========================== */
+
+    /**
+     * صافي الربح — للنشاط كلِّه أو لفرعٍ بعينه، والحسابُ في `Profitability`.
+     *
+     * ═══ ومصدرٌ واحد للشاشة والملفّات الثلاثة ═══
+     *
+     * الملخّصُ والمقارنةُ والمنحنى والجدولُ تُبنى هنا كلُّها، والشاشةُ تعرضها
+     * ولا تحسب شيئًا (لا جمعَ ولا طرحَ ولا نسبة): رقمٌ يُحسب مرّتين يفترق يومًا.
+     *
+     * ═══ والفرعُ من فروع المتجر — وإلّا فلا تقرير ═══
+     *
+     * رقمُ فرعٍ لمتجرٍ آخر يُردّ بـ٤٠٤ لا بتقريرٍ فارغ ولا بالنشاط كلِّه: الأوّلُ
+     * يقول «لا مبيعات» وهو لم يُسأل، والثاني يُعرض تحت اسمٍ لم يُختر. والمحذوفُ
+     * حذفًا ناعمًا يبقى مقروءًا — تاريخُه تاريخُه.
+     */
+    public static function profit(int $bid, array $filters): array
+    {
+        $range = Demo::range($filters['range'] ?? 'month');
+        $raw = self::pick($filters, 'branch_id');
+        $branch = null;
+
+        if ($raw !== null) {
+            $id = filter_var($raw, FILTER_VALIDATE_INT);
+            $branch = $id === false ? null
+                : Branch::withTrashed()->where('business_id', $bid)->whereKey($id)->first(['id', 'name']);
+            abort_if($branch === null, 404);
+        }
+
+        $branchId = $branch?->id;
+        $start = Demo::rangeStart($range);
+
+        $summary = Profitability::summary($bid, $start, null, $branchId);
+        $rows = Profitability::rows($bid, $range, $branchId);
+
+        $prev = Demo::rangePrev($range);
+        $before = $prev ? Profitability::summary($bid, $prev[0], $prev[1], $branchId) : null;
+
+        $scopeName = $branch ? __('فرع :name', ['name' => $branch->name]) : __('النشاط بالكامل');
+
+        /*
+         * و«غير الموزّعة» مفتاحٌ في الملخّص دائمًا — وقيمتُه حين تُقال وحدها.
+         *
+         * للنشاط كلِّه هي من مصروفاته أصلًا، ولفرعٍ بلا عامٍّ غيرِ موزّع لا
+         * شيء يُقال: فارغةٌ، والملفُّ لا يطبع بطاقتها (`ReportColumns::WHEN_SET`).
+         */
+        $card = $summary;
+        unset($card['unallocated_count']);
+        $card['unallocated'] = $branchId !== null && $summary['unallocated'] > 0 ? $summary['unallocated'] : null;
+        $card['scope_name'] = $scopeName;
+
+        return [
+            'summary' => $card + ['unallocated_count' => $summary['unallocated_count']],
+            'unallocated' => $branchId === null ? null : [
+                'amount' => $summary['unallocated'],
+                'count' => $summary['unallocated_count'],
+            ],
+            'scope' => [
+                'kind' => $branchId === null ? 'business' : 'branch',
+                'branch_id' => $branchId,
+                'name' => $scopeName,
+            ],
+            'comparison' => $before === null ? null : array_map(fn (string $key) => [
+                'key' => $key,
+                'current' => $summary[$key],
+                'previous' => $before[$key],
+                // والهامشُ يُقارَن بنقاطٍ مئويّة لا بنسبةٍ من نسبة
+                'diff' => $summary[$key] === null || $before[$key] === null
+                    ? null
+                    : round($summary[$key] - $before[$key], $key === 'margin' ? 1 : 3),
+            ], ['net_revenue', 'cogs', 'gross_profit', 'expenses', 'net_profit', 'margin']),
+            'series' => [
+                'labels' => array_column($rows, 'period'),
+                'net_revenue' => array_column($rows, 'net_revenue'),
+                'gross_profit' => array_column($rows, 'gross_profit'),
+                'net_profit' => array_column($rows, 'net_profit'),
+            ],
+            'rows' => $rows,
+            'truncated' => null,
+            // والفترةُ والنطاقُ معًا في ترويسة كلّ ملفّ — ورقةُ فرعٍ لا تُقرأ ورقةَ متجر
+            'periodLabel' => Demo::rangeLabel($range).' — '.$scopeName,
+            'options' => [
+                'branches' => self::branchOptions($bid),
+            ],
+        ];
+    }
+
     /* ======================== كشف الحساب البنكي ======================== */
 
     public static function bank(int $bid, array $filters): array

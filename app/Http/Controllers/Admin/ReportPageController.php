@@ -83,6 +83,12 @@ class ReportPageController extends Controller
         ]));
     }
 
+    /** صافي الربح — والفرعُ مرشِّحُه الوحيد (`ReportData::profit`) */
+    public function profit(Request $request): Response
+    {
+        return $this->report($request, 'profit', 'Profit', ['branch_id']);
+    }
+
     public function finance(Request $request): Response
     {
         return $this->report($request, 'finance', 'Finance', ['method', 'type', 'q']);

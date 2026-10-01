@@ -28,6 +28,12 @@ class ReportColumns
             ['at', 'التاريخ', 'text'], ['type', 'النوع', 'text'], ['description', 'البيان', 'text'],
             ['method', 'الوسيلة', 'text'], ['status', 'الحالة', 'text'], ['amount', 'المبلغ', 'money'],
         ],
+        'profit' => [
+            ['period', 'الفترة', 'text'], ['sales', 'إجمالي المبيعات', 'money'], ['tax', 'الضريبة المحصلة', 'money'],
+            ['net_revenue', 'صافي الإيرادات', 'money'], ['cogs', 'تكلفة البضاعة المباعة', 'money'],
+            ['gross_profit', 'مجمل الربح', 'money'], ['expenses', 'المصروفات', 'money'],
+            ['net_profit', 'صافي الربح', 'money'], ['margin', 'هامش صافي الربح %', 'number'],
+        ],
         'bank' => [
             ['at', 'التاريخ', 'text'], ['description', 'البيان', 'text'], ['reference', 'المرجع', 'text'],
             ['status', 'المطابقة', 'text'], ['amount', 'المبلغ', 'money'],
@@ -172,6 +178,25 @@ class ReportColumns
             ['net', 'صافي الحركة', 'money'],
             ['count', 'عدد الحركات', 'number'],
         ],
+        'profit' => [
+            ['net_profit', 'صافي الربح', 'money'],
+            ['margin', 'هامش صافي الربح', 'percent'],
+            ['net_revenue', 'صافي الإيرادات', 'money'],
+            ['gross_profit', 'مجمل الربح', 'money'],
+            ['sales', 'إجمالي المبيعات', 'money'],
+            ['tax', 'الضريبة المحصلة', 'money'],
+            ['cogs', 'تكلفة البضاعة المباعة', 'money'],
+            ['expenses', 'المصروفات', 'money'],
+            /*
+             * وللفرع وحده، وحين يكون: ما لم يُطرح منه.
+             *
+             * ورقةُ فرعٍ تكتب صافيَ ربحه بلا هذا السطر تُقرأ على أنّها تحمل
+             * إيجارَ المتجر كلِّه — وهي لا تحمله.
+             */
+            ['unallocated', 'المصروفات العامة غير الموزعة (لم تُخصم من الفرع)', 'money'],
+            // والنطاقُ آخرًا: الشاشةُ تكتبه في رأسها لا في بطاقة، والملفُّ يبدأ بما تبدأ به
+            ['scope_name', 'نطاق التقرير', 'text'],
+        ],
         'expenses' => [
             ['total', 'إجمالي المصروفات', 'money'],
             ['count', 'عدد المصروفات', 'number'],
@@ -274,6 +299,16 @@ class ReportColumns
      *
      * @return list<array{label: string, value: string}>
      */
+    /**
+     * بطاقاتٌ تُطبع حين يكون لها ما تقوله — وفارغُها لا يصير شرطة.
+     *
+     * «غيرُ الموزّعة» تخصّ ورقةَ فرعٍ عليه عامٌّ لم يُوزَّع. وللنشاط كلِّه هي
+     * من مصروفاته أصلًا: شرطةٌ مكانها تُقرأ «لا شيء» وهي ليست كذلك.
+     */
+    private const WHEN_SET = [
+        'profit' => ['unallocated'],
+    ];
+
     public static function cards(string $report, array $summary): array
     {
         $out = [];
@@ -282,6 +317,10 @@ class ReportColumns
             [$key, $label, $kind] = $card;
 
             if (! array_key_exists($key, $summary)) {
+                continue;
+            }
+
+            if ($summary[$key] === null && in_array($key, self::WHEN_SET[$report] ?? [], true)) {
                 continue;
             }
 
@@ -314,6 +353,8 @@ class ReportColumns
         return match ($kind) {
             'money' => Demo::money((float) $value),
             'number' => number_format((float) $value, 0),
+            // والهامشُ بخانةٍ عشريّة — «١٦» تُخفي الفرق بين ١٥٫٦ و١٦٫٤
+            'percent' => number_format((float) $value, 1).'%',
             default => (string) $value,
         };
     }

@@ -293,7 +293,8 @@ class Books
             ],
             Carbon::parse($expense->spent_at ?? now()),
             self::EXPENSE,
-            null,
+            // فرعُ المصروف المباشر — والموزَّعُ قيدٌ واحد للنشاط لا قيدٌ لكلّ فرع
+            ExpenseScope::journalBranch($expense),
             null,
             $expense,
         );
@@ -681,6 +682,13 @@ class Books
             'employee_name' => $employee,
             'spent_at' => Carbon::parse($transaction->occurred_at)->toDateString(),
             'transaction_id' => $transaction->id,
+            /*
+             * وفرعُ الحركة فرعُ المصروف.
+             *
+             * كان يُنسى هنا: الحركةُ وقيدُها يحملان الفرع والمصروفُ بلا فرع، فيقع
+             * إيجارُ فرع صحار على النشاط كلِّه في تقرير صافي الربح.
+             */
+            'branch_id' => $transaction->branch_id,
         ]);
     }
 

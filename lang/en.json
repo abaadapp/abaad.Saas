@@ -7136,5 +7136,12 @@
     "اكتملت الاختصارات": "Shortcuts are full",
     "قائمة اختصارات المتجر غير صالحة — أعد اختيار الفئات.": "The shop shortcuts list is invalid — choose the categories again.",
     "اختر حتى :max فئات فقط.": "Choose up to :max categories only.",
-    "فئةٌ في اختصارات المتجر ليست من فئاتك — أعد اختيارها.": "A category in the shop shortcuts is not one of yours — choose it again."
+    "فئةٌ في اختصارات المتجر ليست من فئاتك — أعد اختيارها.": "A category in the shop shortcuts is not one of yours — choose it again.",
+    "قيد مبسّط من نقطة البيع": "Simple journal entry from the POS",
+    "اختر ما حدث.": "Choose what happened.",
+    "سُجّل القيد ورُحّل إلى الدفتر": "Entry recorded and posted to the ledger",
+    "من درج الصندوق — نقدًا، بتاريخ اليوم.": "From the cash drawer — in cash, dated today.",
+    "قيد": "Entry",
+    "قيد مبسّط — ماذا حدث؟": "Simple entry — what happened?",
+    "مالٌ خرج من الدرج أو دخله بغير بيع — والنظام يكتب قيده.": "Money that left or entered the drawer other than a sale — the system writes the entry."
 }

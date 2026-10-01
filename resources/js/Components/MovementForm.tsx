@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { ArrowLeftRight, Check } from 'lucide-react';
+import { ArrowLeftRight, Check, Wallet } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -22,6 +22,13 @@ interface Props {
     today: string;
     onCancel: () => void;
     onSuccess: () => void;
+    /**
+     * نقطة البيع: الجهةُ الدرجُ والتاريخُ الآن — فلا يُسألان.
+     *
+     * والخادمُ يفرضهما هناك ولا يقرؤهما من الطلب (`Pos\MovementController`)،
+     * فإخفاؤهما هنا تبسيطٌ للشاشة لا حارس.
+     */
+    pos?: boolean;
 }
 
 /**
@@ -32,12 +39,13 @@ interface Props {
  * الخادم (`Books::MOVEMENTS`) ولا تُرسَل إلى هنا: شاشةٌ تعرف الحسابات تُغري
  * بأن تجعل التاجر يختار منها.
  *
- * ويعيش في موضعين: شاشة الحركة المالية حيث هو البابُ الوحيد، وتبويب «مبسّط»
+ * ويعيش في ثلاثة مواضع: شاشة الحركة المالية حيث هو البابُ الوحيد، وتبويب «مبسّط»
  * في نافذة القيد الجديد حيث هو البابُ الذي يُغني المحاسبَ عن كتابة سطرين
- * بيده لحركةٍ يعرفها النظام. ونسختان منه كانتا ستفترقان: يُضاف حقلٌ هنا ولا
+ * بيده لحركةٍ يعرفها النظام. وفي نقطة البيع ثالثًا (`pos`): الدرجُ جهتُه
+ * والتاريخُ اليوم. ونسختان منه كانتا ستفترقان: يُضاف حقلٌ هنا ولا
  * يُضاف هناك، ولا يُنبّه شيء.
  */
-export default function MovementForm({ movements, expenseTypes, today, onCancel, onSuccess }: Props) {
+export default function MovementForm({ movements, expenseTypes, today, onCancel, onSuccess, pos = false }: Props) {
     const t = useTranslate();
 
     /*
@@ -67,7 +75,7 @@ export default function MovementForm({ movements, expenseTypes, today, onCancel,
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
-        form.post(route('admin.finance.store'), {
+        form.post(route(pos ? 'pos.movements.store' : 'admin.finance.store'), {
             preserveScroll: true,
             onSuccess,
         });
@@ -92,7 +100,17 @@ export default function MovementForm({ movements, expenseTypes, today, onCancel,
                 />
             </Field>
 
-            {selected?.asks && (
+            {selected?.asks && pos && (
+                <p
+                    data-testid="movement-drawer"
+                    className="flex items-center gap-2 rounded-[10px] bg-[#f5f5f5] px-3 py-2 text-[13px] text-[#6b7280]"
+                >
+                    <Wallet className="size-4 shrink-0" />
+                    {t('من درج الصندوق — نقدًا، بتاريخ اليوم.')}
+                </p>
+            )}
+
+            {selected?.asks && !pos && (
                 <Field label={selected.asks} error={form.errors.side} required>
                     <Select
                         options={[
@@ -130,25 +148,28 @@ export default function MovementForm({ movements, expenseTypes, today, onCancel,
                 </p>
             )}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className={pos ? 'grid grid-cols-1 gap-4' : 'grid grid-cols-1 gap-4 sm:grid-cols-2'}>
                 <Field label="المبلغ" error={form.errors.amount} required>
                     <Input
                         type="number"
                         step="0.001"
                         min="0.001"
                         dir="ltr"
+                        aria-label={t('المبلغ')}
                         value={form.data.amount}
                         onChange={(e) => form.setData('amount', e.target.value)}
                     />
                 </Field>
-                <Field label="التاريخ" error={form.errors.occurred_at}>
-                    <Input
-                        type="date"
-                        dir="ltr"
-                        value={form.data.occurred_at}
-                        onChange={(e) => form.setData('occurred_at', e.target.value)}
-                    />
-                </Field>
+                {!pos && (
+                    <Field label="التاريخ" error={form.errors.occurred_at}>
+                        <Input
+                            type="date"
+                            dir="ltr"
+                            value={form.data.occurred_at}
+                            onChange={(e) => form.setData('occurred_at', e.target.value)}
+                        />
+                    </Field>
+                )}
             </div>
 
             <Field

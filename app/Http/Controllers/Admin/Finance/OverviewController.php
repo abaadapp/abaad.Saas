@@ -14,6 +14,7 @@ use App\Support\Bank;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Receivables;
+use App\Support\SupplierInvoices;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -71,6 +72,18 @@ class OverviewController extends Controller
          */
         $report = Demo::reportSummary($range);
 
+        /*
+         * ومُجملُ الربح من القيم نفسِها — لا حسابٌ ثانٍ لتكلفة البضاعة.
+         *
+         * `cogs` يحسبه `reportSummary` أصلًا ويطرحه داخل `profit`، فكان
+         * صافي الربح يُقرأ بلا ما يشرحه. فيُعرض الطرحُ خطوتين:
+         *   مجمل الربح = المبيعات − ضريبة المبيعات − تكلفة البضاعة المباعة
+         *   صافي الربح = مجمل الربح − المصروفات التشغيلية
+         * و`profit` يبقى كما حسبه `reportSummary` — لا يُعاد حسابُه هنا.
+         */
+        $cogs = round((float) $report['cogs'], 3);
+        $gross = round((float) $report['sales'] - (float) $report['tax'] - $cogs, 3);
+
         return Inertia::render('Admin/Finance/Summary', [
             'range' => $range,
             'cash' => round(Ledger::account($bid, 'cash')?->balance() ?? 0.0, 3),
@@ -84,6 +97,8 @@ class OverviewController extends Controller
             ])->values()->all(),
             'period' => [
                 'sales' => round((float) $report['sales'], 3),
+                'cogs' => $cogs,
+                'gross_profit' => $gross,
                 'expenses' => round((float) $report['expenses'], 3),
                 'profit' => round((float) $report['profit'], 3),
                 'tax' => round((float) $report['tax'], 3),
@@ -93,6 +108,15 @@ class OverviewController extends Controller
                 'transfers' => round((float) ($byType['تحويل'] ?? 0), 3),
             ],
             'dues' => $this->dueTotals($bid),
+            /*
+             * وسنداتٌ وصلت ولم تُعتمد — معلومةٌ بجوار الدَّين لا داخله.
+             *
+             * لا تدخل `dues`: الذمّةُ تنشأ بالاعتماد وحده (`SupplierInvoice::scopeOwed`)،
+             * ولا قيدَ لها في الدفتر بعد. لكنّ من يقرّر أيدفع اليوم يريد أن
+             * يعرف أنّ وراء «عليك الآن» أوراقًا تنتظر توقيعه. والمرفوضةُ
+             * والملغاة ليست هنا ولا هناك.
+             */
+            'pending_invoices' => $this->pendingInvoices($bid),
             /*
              * و«ما لك» بجوار «ما عليك».
              *
@@ -185,6 +209,22 @@ class OverviewController extends Controller
             ])->filter(fn ($r) => $r['amount'] > 0)->values()->all(),
             'totals' => $this->dueTotals($bid),
         ]);
+    }
+
+    /**
+     * سنداتُ الموردين بانتظار الاعتماد — عددُها ومجموعُها.
+     *
+     * @return array{count: int, total: float}
+     */
+    private function pendingInvoices(int $bid): array
+    {
+        $pending = SupplierInvoice::where('business_id', $bid)
+            ->where('approval_status', SupplierInvoices::PENDING);
+
+        return [
+            'count' => (clone $pending)->count(),
+            'total' => round((float) (clone $pending)->sum('total'), 3),
+        ];
     }
 
     /**

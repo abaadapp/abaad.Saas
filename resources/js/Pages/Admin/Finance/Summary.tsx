@@ -22,7 +22,13 @@ interface Props {
     accounts: { id: number; label: string; balance: number; active: boolean }[];
     period: {
         sales: number;
+        /** تكلفة البضاعة المباعة — من `Demo::reportSummary` كما حسبها */
+        cogs: number;
+        /** المبيعات − ضريبة المبيعات − تكلفة البضاعة المباعة */
+        gross_profit: number;
+        /** المصروفات التشغيلية المدفوعة — لا سندات شراء المخزون */
         expenses: number;
+        /** مجمل الربح − المصروفات التشغيلية */
         profit: number;
         tax: number;
         in: number;
@@ -30,6 +36,8 @@ interface Props {
         transfers: number;
     };
     dues: { expenses: number; invoices: number; payroll: number; total: number; overdue: number };
+    /** سندات موردين بانتظار الاعتماد — معلومةٌ بجوار الدَّين لا داخله */
+    pending_invoices: { count: number; total: number };
     /** «ما لك» — ذمم العملاء، من `Receivables` نفسها التي تقرأ منها شاشة الذمم */
     receivables: { total: number; overdue: number; due_soon: number; credit: number; invoices: number; customers: number };
 }
@@ -41,8 +49,19 @@ interface Props {
  * ملخّص المبيعات، والمستحقّ في ثلاثة جداول لا يجمعها شيء. فمن أراد أن يعرف
  * هل يستطيع الدفع اليوم كان عليه أن يفتح خمس شاشات ويجمع بالعين.
  */
+/** سطرٌ من تفصيل بطاقة: اسمٌ ومبلغ */
+function Line({ label, value, tone }: { label: string; value: string; tone?: string }) {
+    return (
+        <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-[12px] text-[#6b7280]">{label}</dt>
+            <dd className={cn('text-[13px] font-semibold tabular-nums', tone ?? 'text-[#111]')}>{value}</dd>
+        </div>
+    );
+}
+
 export default function Summary() {
-    const { range, cash, bank, accounts, period, dues, receivables, context } = usePage<PageProps<Props>>().props;
+    const { range, cash, bank, accounts, period, dues, pending_invoices, receivables, context } =
+        usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -56,7 +75,8 @@ export default function Summary() {
             <SectionTabs tabs={FINANCE_TABS} current="admin.finance.summary" />
 
             {/* أين المال الآن — حالةٌ لا حصيلةُ فترة، فلا يمسّها المبدّل تحتها */}
-            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* أربعُ بطاقات: صفّان متوازنان على الشاشة المتوسّطة، وصفٌّ واحد على العريضة */}
+            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Card className="p-5">
                     <div className="flex items-start justify-between gap-3">
                         <div>
@@ -112,9 +132,22 @@ export default function Summary() {
                             >
                                 {m(dues.total)}
                             </p>
+                            {/* والإجماليُّ مجموعُ هذه الثلاثة لا غير — انظر `dueTotals` */}
+                            <dl className="mt-3 space-y-1.5" data-testid="dues-breakdown">
+                                <Line label={t('فواتير الموردين')} value={m(dues.invoices)} />
+                                <Line label={t('مصروفات غير مدفوعة')} value={m(dues.expenses)} />
+                                <Line label={t('رواتب مستحقة')} value={m(dues.payroll)} />
+                            </dl>
                             {dues.overdue > 0 && (
-                                <p className="mt-1 text-[12px] text-[#b91c1c]">
+                                <p className="mt-2 text-[12px] text-[#b91c1c]">
                                     {dues.overdue} {t('متأخّرة عن موعدها')}
+                                </p>
+                            )}
+                            {/* لم تصر دَينًا بعد — تُذكر ولا تُجمع */}
+                            {pending_invoices.count > 0 && (
+                                <p className="mt-2 text-[12px] text-[#6b7280]" data-testid="pending-invoices">
+                                    {t('فواتير بانتظار الاعتماد')}: {pending_invoices.count} · {m(pending_invoices.total)}
+                                    <span className="block text-[11px] text-[#9ca3af]">{t('لا تدخل في المستحق حتى تُعتمد')}</span>
                                 </p>
                             )}
                         </div>
@@ -139,11 +172,17 @@ export default function Summary() {
                             <p className="mt-1 text-[22px] font-bold tabular-nums tracking-tight text-[#111]">
                                 {m(receivables.total)}
                             </p>
-                            {receivables.overdue > 0 && (
-                                <p className="mt-1 text-[12px] text-[#b91c1c]">
-                                    {m(receivables.overdue)} {t('متأخّر عن موعده')}
-                                </p>
-                            )}
+                            <dl className="mt-3 space-y-1.5" data-testid="receivables-breakdown">
+                                <Line
+                                    label={t('المتأخر')}
+                                    value={m(receivables.overdue)}
+                                    tone={receivables.overdue > 0 ? 'text-[#b91c1c]' : undefined}
+                                />
+                                <Line label={t('يستحق قريبًا')} value={m(receivables.due_soon)} />
+                                {receivables.credit > 0 && (
+                                    <Line label={t('رصيد دائن للعملاء')} value={m(receivables.credit)} />
+                                )}
+                            </dl>
                         </div>
                         <Button variant="outline" size="sm" className="self-start" asChild>
                             <SmartLink routeName="admin.finance.receivables" href={route('admin.finance.receivables')}>
@@ -158,12 +197,25 @@ export default function Summary() {
             <h2 className="mb-3 text-[15px] font-bold text-[#111]">{t('ما جرى في المدة')}</h2>
             <RangeTabs current={range} />
 
-            <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/*
+                نتيجةُ المدة خطوةً خطوة بترتيب الطرح — ستُّ بطاقات: صفّان من ثلاث.
+
+                كانت تكلفةُ البضاعة تُطرح داخل «صافي الربح» ولا تُرى، فيقرأ
+                التاجرُ مبيعاتٍ ومصروفاتٍ وربحًا لا يساوي فرقَهما. وسنداتُ شراء
+                المخزون لا تُضاف إلى «المصروفات التشغيلية»: كلفتُها تصل الربحَ
+                عبر تكلفة البضاعة حين تُباع — ولو أُضيفت لَحُسبت مرّتين.
+            */}
+            <div className="mb-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="period-result">
                 <StatCard stat={{ label: t('المبيعات'), value: m(period.sales), icon: 'shopping-cart', color: 'primary' }} index={0} />
-                <StatCard stat={{ label: t('المصروفات'), value: m(period.expenses), icon: 'arrow-down-circle', color: 'danger' }} index={1} />
-                <StatCard stat={{ label: t('صافي الربح'), value: m(period.profit), icon: 'trending-up', color: 'success' }} index={2} />
-                <StatCard stat={{ label: t('ضريبة محصّلة'), value: m(period.tax), icon: 'receipt', color: 'warning' }} index={3} />
+                <StatCard stat={{ label: t('ضريبة المبيعات'), value: m(period.tax), icon: 'receipt', color: 'warning' }} index={1} />
+                <StatCard stat={{ label: t('تكلفة البضاعة المباعة'), value: m(period.cogs), icon: 'boxes', color: 'info' }} index={2} />
+                <StatCard stat={{ label: t('مجمل الربح'), value: m(period.gross_profit), icon: 'coins', color: 'secondary' }} index={3} />
+                <StatCard stat={{ label: t('المصروفات التشغيلية'), value: m(period.expenses), icon: 'arrow-down-circle', color: 'danger' }} index={4} />
+                <StatCard stat={{ label: t('صافي الربح'), value: m(period.profit), icon: 'trending-up', color: 'success' }} index={5} />
             </div>
+            <p className="mb-6 text-[12px] leading-relaxed text-[#9ca3af]">
+                {t('مجمل الربح = المبيعات − ضريبة المبيعات − تكلفة البضاعة المباعة · صافي الربح = مجمل الربح − المصروفات التشغيلية')}
+            </p>
 
             <Card className="p-5">
                 <h3 className="mb-4 text-[14px] font-bold text-[#111]">{t('حركة المال في المدة')}</h3>

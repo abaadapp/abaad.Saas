@@ -119,7 +119,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.attach', ['id' => 'invoice']],
                 ['فواتير العملاء', 'delete', 'admin.customerInvoices.detach', ['id' => 'invoice', 'attachment' => 'invoice_attachment'], ['id']],
                 ['سندات القبض', 'post', 'admin.customerPayments.cancel', ['id' => 'payment']],
-                ['الذمم', 'put', 'admin.finance.customerCredit', ['customer' => 'customer']],
+                ['الذمم', 'put', 'admin.finance.customerTerms', ['customer' => 'customer']],
                 ['الذمم', 'post', 'admin.finance.customerBill', ['customer' => 'customer']],
                 ['الشيكات', 'post', 'admin.finance.cheques.clear', ['id' => 'payment']],
                 ['الشيكات', 'post', 'admin.finance.cheques.bounce', ['id' => 'payment']],

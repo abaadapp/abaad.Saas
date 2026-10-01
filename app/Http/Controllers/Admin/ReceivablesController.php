@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Support\Activity;
-use App\Support\CreditSales;
 use App\Support\CustomerInvoices;
 use App\Support\Demo;
 use App\Support\Permissions;
@@ -64,9 +63,7 @@ class ReceivablesController extends Controller
                 'id' => $customer->id,
                 'name' => $customer->name,
                 'type' => $customer->customer_type,
-                'allow_credit_sales' => (bool) $customer->allow_credit_sales,
                 'monthly_billing' => (bool) $customer->monthly_billing,
-                'credit_limit' => $customer->credit_limit !== null ? (float) $customer->credit_limit : null,
                 'payment_terms_days' => $customer->payment_terms_days,
             ],
             'statement' => Receivables::statement($bid, (int) $customer->id, $from, $to),
@@ -86,18 +83,16 @@ class ReceivablesController extends Controller
             'summary' => [
                 'outstanding' => Receivables::customerOutstanding($bid, (int) $customer->id),
                 'credit' => Receivables::customerCredit($bid, (int) $customer->id),
-                'headroom' => Receivables::creditHeadroom($customer),
             ],
             'range' => ['from' => $from->format('Y-m-d'), 'to' => $to->format('Y-m-d')],
             /*
              * وما لا يُحفظ لا يُرسم.
              *
-             * نموذجُ شروط الائتمان وزرُّ «أصدر فاتورة بها» كانا يُرسمان لكلّ
+             * زرُّ «أصدر فاتورة بها» كان يُرسم لكلّ
              * من فتح الشاشة، ويُردّان عند الضغط بـ٤٠٣. والموظّف يظنّ العطبَ
              * في النظام فيعيد المحاولة — وزرٌّ لا يُدير شيئًا أسوأ من غيابه.
              */
             'may' => [
-                'credit' => (bool) auth()->user()?->may(CreditSales::OVERRIDE),
                 'bill' => (bool) auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE),
             ],
         ]);
@@ -147,46 +142,27 @@ class ReceivablesController extends Controller
     }
 
     /**
-     * إعداداتُ ائتمان العميل — بابٌ واحدٌ يكتبها، ويُسجَّل تغييرُها.
+     * شروطُ سداد العميل — مدّتُه وفوترتُه الشهريّة، ويُسجَّل تغييرُها.
      *
-     * ═══ ومن يضع الحدَّ هو من يتجاوزه ═══
-     *
-     * كان هذا البابُ مفتوحًا بقسم «العملاء» وحده، بلا فعلٍ يُمنح باسمه —
-     * و`credit.override` (تجاوزُ الحدّ في البيع) للمالك ومدير الفرع وحدهما.
-     * فالحارسُ كان يُتجاوَز بطلبٍ واحد: من لا يملك التجاوز يرفع الحدَّ، أو
-     * يمحوه فيصير `null` — و`Receivables::creditHeadroom` تقرأ الفراغَ «بلا
-     * حدّ». ثمّ يبيع آجلًا بلا سقفٍ ولا سببٍ مكتوبٍ ولا سطرٍ في السجلّ.
-     *
-     * ويفتح «السماحَ بالبيع الآجل» كذلك — والقاعدةُ الأصل «لا آجلَ إلّا
-     * بإذن» (انظر `CreditSales`). فزبونُ المارّة يصير مدينًا بضغطة.
-     *
-     * فصارا فعلًا واحدًا: من يُؤتمن على تجاوز السقف يُؤتمن على وضعه، ولا
-     * يُؤتمن على وضعه من لا يُؤتمن على تجاوزه. ومفتاحان لثقةٍ واحدة
-     * يفترقان يومًا.
+     * ولا إذنَ ولا حدَّ ائتمانٍ هنا: أيُّ عميلٍ مسجَّلٍ يُباع له آجلًا (انظر
+     * `CreditSales`). والبابُ تحت «المالية» كشاشته — ما يُفتح هناك يُحفظ هناك.
      */
-    public function credit(Request $request, int|string $customer)
+    public function terms(Request $request, int|string $customer)
     {
-        abort_if(! auth()->user()?->may(CreditSales::OVERRIDE), 403);
-
         $data = $request->validate([
-            'allow_credit_sales' => ['required', 'boolean'],
             'monthly_billing' => ['sometimes', 'boolean'],
-            'credit_limit' => ['nullable', 'numeric', 'min:0'],
             'payment_terms_days' => ['nullable', 'integer', 'min:0', 'max:365'],
         ], [], [
-            'credit_limit' => __('حد الائتمان'),
             'payment_terms_days' => __('مدة السداد'),
         ]);
 
         $customer = Customer::where('business_id', $this->bid())->whereKey($customer)->firstOrFail();
         $customer->update($data);
 
-        Activity::log('updated', 'عدّل إعدادات ائتمان «'.$customer->name.'»: '
-            .($data['allow_credit_sales'] ? 'آجل مسموح' : 'آجل ممنوع')
-            .'، حدّ '.($data['credit_limit'] ?? '—'), [
-                'subject_id' => $customer->id, 'subject_type' => 'customer',
-            ]);
+        Activity::log('updated', 'عدّل شروط سداد «'.$customer->name.'»: مدّة '.($data['payment_terms_days'] ?? '—'), [
+            'subject_id' => $customer->id, 'subject_type' => 'customer',
+        ]);
 
-        return back()->with('toast', ['msg' => __('حُفظت إعدادات الائتمان'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('حُفظت الإعدادات'), 'type' => 'success']);
     }
 }

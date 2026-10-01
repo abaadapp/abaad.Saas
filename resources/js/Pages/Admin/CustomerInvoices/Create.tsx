@@ -43,7 +43,6 @@ interface CustomerRow {
     customer_reference: string | null;
     contact_person: string | null;
     payment_terms_days: number | null;
-    allow_credit_sales: boolean;
 }
 
 interface ProductRow {
@@ -1833,12 +1832,6 @@ function CustomerCard({ customer, onClear }: { customer: CustomerRow; onClear: (
                         <li key={f}>{f}</li>
                     ))}
                 </ul>
-            )}
-
-            {!customer.allow_credit_sales && (
-                <p className="mt-3 text-[12px] text-[#b45309]">
-                    {t('البيع الآجل غير مفتوح لهذا العميل — تُفتح صلاحيته من صفحته.')}
-                </p>
             )}
         </div>
     );

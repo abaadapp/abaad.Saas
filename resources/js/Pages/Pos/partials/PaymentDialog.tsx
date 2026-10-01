@@ -95,7 +95,6 @@ export default function PaymentDialog({
     const [credit, setCredit] = useState(false);
     const [paidNow, setPaidNow] = useState('');
     const [dueAt, setDueAt] = useState('');
-    const [overrideReason, setOverrideReason] = useState('');
     const [methodError, setMethodError] = useState(false);
     const [busy, setBusy] = useState(false);
     const [result, setResult] = useState<CheckoutResult | null>(null);
@@ -289,14 +288,13 @@ export default function PaymentDialog({
              * البيعُ الآجل — والحقولُ الثلاثة وحدها، بلا مصطلحٍ محاسبيّ.
              *
              * والكاشيرُ لا يُسأل عن «ذمّة» ولا «مدين»: يُسأل كم دُفع الآن ومتى
-             * يُسدَّد الباقي. وشروطُه كلُّها في الخادم — الإذنُ للعميل وحدُّ
-             * ائتمانه — فيصله سببُ الرفض مكتوبًا لا «تعذّر إتمام البيع».
+             * يُسدَّد الباقي. وشرطُه في الخادم — عميلٌ مختار ومقبضُ المتجر —
+             * فيصله سببُ الرفض مكتوبًا لا «تعذّر إتمام البيع».
              */
             if (credit) {
                 details.credit = true;
                 if (paidNow.trim() !== '') details.paid_now = paidNow;
                 if (dueAt.trim() !== '') details.due_at = dueAt;
-                if (overrideReason.trim() !== '') details.credit_override_reason = overrideReason;
             }
 
             const res = await onCheckout(method, details);
@@ -458,15 +456,6 @@ export default function PaymentDialog({
                                             className="mt-1"
                                             value={dueAt}
                                             onChange={(e) => setDueAt(e.target.value)}
-                                        />
-                                    </label>
-                                    {/* وسببُ التجاوز يُكتب حين يُطلب — والخادم يقبله أو يردّه */}
-                                    <label className="text-[12px] text-gray-500 sm:col-span-3">
-                                        {t('سبب تجاوز حد الائتمان (إن لزم)')}
-                                        <Input
-                                            className="mt-1"
-                                            value={overrideReason}
-                                            onChange={(e) => setOverrideReason(e.target.value)}
                                         />
                                     </label>
                                 </div>

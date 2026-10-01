@@ -99,7 +99,7 @@ class EverySaleSaysWhichDoorItCameThroughTest extends TestCase
     {
         $customer = Customer::firstOrCreate(
             ['business_id' => $this->business->id, 'phone' => '96899220002'],
-            ['name' => 'سالم', 'language' => 'ar', 'allow_credit_sales' => true, 'credit_limit' => 5000],
+            ['name' => 'سالم', 'language' => 'ar'],
         );
 
         $this->actingAs($this->owner)->postJson('/pos/checkout', [

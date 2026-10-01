@@ -550,7 +550,6 @@ return [
         'cleared_on' => 'تاريخ التحصيل',
         'po_number' => 'رقم أمر الشراء',
         'order_ids.*' => 'الفاتورة',
-        'allow_credit_sales' => 'البيع الآجل',
         'monthly_billing' => 'الفوترة الشهرية',
 
         // الأصول الثابتة

@@ -59,7 +59,7 @@ class TheOrganisationFieldsBelongToThePaperTest extends TestCase
         ]);
         $this->customer = Customer::create([
             'business_id' => $this->business->id, 'name' => 'وزارة الثقافة',
-            'customer_type' => 'جهة حكومية', 'allow_credit_sales' => true,
+            'customer_type' => 'جهة حكومية',
         ]);
     }
 

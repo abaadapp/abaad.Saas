@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\Order;
@@ -94,17 +93,6 @@ final class Receivables
         return round(CustomerPayment::where('business_id', $businessId)
             ->where('customer_id', $customerId)->live()->get()
             ->sum(fn (CustomerPayment $p) => $p->unallocated()), 3);
-    }
-
-    /** ما يستطيع العميل أن يستدينه بعد — `null` حين لا حدَّ له */
-    public static function creditHeadroom(Customer $customer): ?float
-    {
-        if ($customer->credit_limit === null) {
-            return null;
-        }
-
-        return round((float) $customer->credit_limit
-            - self::customerOutstanding((int) $customer->business_id, (int) $customer->id), 3);
     }
 
     /**

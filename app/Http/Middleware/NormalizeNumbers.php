@@ -54,7 +54,7 @@ class NormalizeNumbers
         'yearly_price', 'free_threshold', 'fee', 'paid', 'unit_price', 'balance',
         'min_order', 'value', 'salvage_value',
         // البيعُ الآجل: المدفوعُ الآن وحدُّ الائتمان يُكتبان بأرقامٍ عربيّة كغيرها
-        'paid_now', 'credit_limit', 'tax_amount',
+        'paid_now', 'tax_amount',
         /*
          * والمقبوضُ مع الفاتورة: صاحبُ المحلّ يكتب «٤٠٫٥٠٠» بلوحةٍ عربيّة
          * فيُردّ بـ«يجب أن يكون رقمًا» على رقمٍ صحيح — وهو واقفٌ والعميل

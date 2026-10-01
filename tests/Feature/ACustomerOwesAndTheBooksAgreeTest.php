@@ -49,7 +49,7 @@ class ACustomerOwesAndTheBooksAgreeTest extends TestCase
         ]);
         $this->ministry = Customer::create([
             'business_id' => $this->business->id, 'name' => 'وزارة الثقافة',
-            'customer_type' => 'جهة حكومية', 'allow_credit_sales' => true, 'payment_terms_days' => 30,
+            'customer_type' => 'جهة حكومية', 'payment_terms_days' => 30,
         ]);
 
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_enabled', 'value' => '1']);

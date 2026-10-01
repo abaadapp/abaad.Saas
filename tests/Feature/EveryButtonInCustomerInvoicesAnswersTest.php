@@ -53,7 +53,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         ]);
         $this->customer = Customer::create([
             'business_id' => $this->business->id, 'name' => 'وزارة الثقافة',
-            'phone' => '91234567', 'allow_credit_sales' => true,
+            'phone' => '91234567',
         ]);
     }
 

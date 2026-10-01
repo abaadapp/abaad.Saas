@@ -25,6 +25,7 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { type ArrivalsCuration, CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
+import { AlignField, type ShortcutCategory, ShortcutsField } from './theme/HeaderFields';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 
@@ -126,7 +127,7 @@ export function previewFit(want: number, avail: number): number {
 
 export interface EditorField {
     key: string;
-    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured';
+    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts';
     label: string;
     hint?: string;
     dir?: string;
@@ -154,6 +155,9 @@ interface Props extends ThemeShell {
     order: string[];
     maxFeatured: number;
     products: { id: number; name: string; image: string | null }[];
+    /** فئاتُ متجره لاختصارات صفّ «المتجر» في رأسه — انظر `StoreHeader` */
+    shortcutCategories?: ShortcutCategory[];
+    maxShortcuts?: number;
     /**
      * لوحتا الفئات و«وصل حديثًا» — لمتجرٍ في قائمتها وحده (`CatalogTools`).
      * وغيابُها يعني الشاشةَ كما كانت: سطرُ «يُكتب في…» في الصفّين.
@@ -191,6 +195,8 @@ export default function ThemeEditor({
     order,
     maxFeatured,
     products,
+    shortcutCategories = [],
+    maxShortcuts = 6,
     catalogTools = null,
 }: Props) {
     const t = useTranslate();
@@ -453,6 +459,33 @@ export default function ThemeEditor({
             );
         }
 
+        if (f.kind === 'align') {
+            return (
+                <AlignField
+                    key={f.key}
+                    label={f.label}
+                    value={form.data[f.key] ?? ''}
+                    onChange={(v) => form.setData(f.key, v)}
+                    error={error}
+                />
+            );
+        }
+
+        if (f.kind === 'shortcuts') {
+            return (
+                <ShortcutsField
+                    key={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={form.data[f.key] ?? ''}
+                    categories={shortcutCategories}
+                    max={maxShortcuts}
+                    onChange={(v) => form.setData(f.key, v)}
+                    error={error}
+                />
+            );
+        }
+
         if (f.kind === 'featured') {
             return (
                 <Field key={f.key} label={f.label} hint={f.hint} error={error}>
@@ -657,6 +690,7 @@ export default function ThemeEditor({
         );
     };
 
+    const head = byKey.get('head');
     const hero = byKey.get('hero');
     const foot = byKey.get('foot');
 
@@ -794,6 +828,8 @@ export default function ThemeEditor({
                         {t('أقسام «الرئيسية»')}
                     </p>
                     <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)]">
+                        {/* ورأسُ المتجر فوق الواجهة — أوّلُ ما يُرى في كلّ صفحة */}
+                        {head && row(head)}
                         {hero && row(hero)}
                         {movable.map((k) => {
                             const r = byKey.get(k);

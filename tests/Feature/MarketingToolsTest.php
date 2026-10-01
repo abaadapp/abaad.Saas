@@ -112,6 +112,12 @@ class MarketingToolsTest extends TestCase
             'store_block_image', 'store_block_cta', 'store_block_href',
             'store_banner_image', 'store_tagline',
             /*
+             * ورأسُ متجر RIBBON — الإعلانان ومحاذاتُهما واختصاراتُ صفّ المتجر،
+             * يقرؤها `Store\StoreHeader` في `RibbonController::context` و`shop`.
+             */
+            'store_announcement_ar', 'store_announcement_en', 'store_announcement_align',
+            'store_shop_nav_categories',
+            /*
              * وصفحاتُ المتجر وصورةُ «من نحن» — تقرؤهما القائمةُ والمتحكّم
              * (`Store\StoreNav` و`RibbonController::about`).
              */

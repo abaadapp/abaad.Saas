@@ -45,7 +45,7 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — تسعةَ عشرَ مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — ثلاثةٌ وعشرون مفتاحًا.
      *
      * @var list<string>
      */
@@ -62,6 +62,9 @@ final class StoreContent
         'store_block_image', 'store_block_cta', 'store_block_href',
         // وما يقرؤه غوغل من نصّ — أمّا إذنُ الفهرسة فيسري فورًا
         'store_seo_title', 'store_seo_desc',
+        // ورأسُ المتجر: شريطُ الإعلان واختصاراتُ الفئات — انظر `StoreHeader`
+        'store_announcement_ar', 'store_announcement_en', 'store_announcement_align',
+        'store_shop_nav_categories',
     ];
 
     /**

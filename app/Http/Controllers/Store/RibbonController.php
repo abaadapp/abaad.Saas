@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Category;
 use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\StorePaymentIntent;
 use App\Models\Review;
@@ -17,11 +16,13 @@ use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\PaymentMethods;
 use App\Support\Seo;
+use App\Support\Store\BestSellers;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\RibbonUpsells;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\GiftCard;
 use App\Support\Store\NewArrivals;
+use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
 use App\Support\Store\StorePage;
@@ -107,7 +108,7 @@ class RibbonController extends Controller
 
         return match ($first) {
             null => $this->render('store.ribbon.home', $ctx + $this->home($business, $lang)),
-            'shop' => $this->render('store.ribbon.shop', $ctx + $this->shop($business, $lang, request())),
+            'shop' => $this->render('store.ribbon.shop', $ctx + $this->shop($business, $lang, request(), $base)),
             'about' => $this->render('store.ribbon.about', $ctx + $this->about($business)),
             'contact' => $this->render('store.ribbon.contact', $ctx + $this->contact($business)),
             'p' => $this->render('store.ribbon.product', $ctx + $this->product($business, (int) $second, $lang)),
@@ -214,15 +215,11 @@ class RibbonController extends Controller
         $shown = $this->shown($bid)->with(['category:id,name,name_en', 'variants'])->get();
 
         /*
-         * الأكثرُ مبيعًا ممّا بيع فعلًا (بقاعدة `Order::sold`)، والواصلُ حديثًا
+         * الأكثرُ مبيعًا ممّا بيع فعلًا (`BestSellers` بقاعدة `Order::sold`)، والواصلُ حديثًا
          * بتاريخ إضافته. ولا يُخترع ترتيب: متجرٌ لم يبع بعدُ يعرض أحدثَ أصنافه
          * في الموضعين.
          */
-        $sold = OrderItem::query()
-            ->whereIn('order_id', Order::where('business_id', $bid)->sold()->select('id'))
-            ->whereIn('product_id', $shown->pluck('id'))
-            ->groupBy('product_id')->selectRaw('product_id, SUM(quantity) as q')
-            ->pluck('q', 'product_id');
+        $sold = BestSellers::quantities($bid, $shown->pluck('id'));
 
         /*
          * والمختاراتُ تتقدّم الحسبة — إن اختار.
@@ -284,16 +281,29 @@ class RibbonController extends Controller
         ];
     }
 
-    private function shop(Business $business, string $lang, Request $request): array
+    /**
+     * رفُّ المتجر — وعقدُ رابطه ثلاثةُ مدخلاتٍ لا أكثر.
+     *
+     *  • `view=best`  ← ما بيع فعلًا، من الأكثر (`BestSellers`)، وله الغلبة:
+     *                   مع `cat` يُهمَل `cat` — الخياراتُ في الصفّ واحدٌ منها.
+     *  • `cat={id}`   ← فئةٌ بمعرّفها، لا باسمها.
+     *  • `q`          ← يبحث **داخل** ما سبق: في الكلّ، أو الفئة، أو الأكثر
+     *                   مبيعًا بترتيبه.
+     *
+     * وقيمةٌ أخرى لـ`view` تُقرأ «الكلّ» — لا خطأ، ولا رفَّين متناقضين.
+     */
+    private function shop(Business $business, string $lang, Request $request, string $base): array
     {
         $bid = (int) $business->id;
-        $cat = (int) $request->query('cat', 0);
+        $best = $request->query('view') === StoreHeader::VIEW_BEST;
+        $cat = $best ? 0 : (int) $request->query('cat', 0);
         $q = trim((string) $request->query('q', ''));
         $shown = $this->shown($bid)->with(['category:id,name,name_en', 'variants'])->orderBy('name')->get();
 
         $currency = Storefront::currency($business);
+        $categories = $this->categories($bid, $lang, $shown);
 
-        $list = $shown
+        $list = ($best ? BestSellers::ranked($bid, $shown) : $shown)
             ->when($cat > 0, fn ($c) => $c->where('category_id', $cat))
             /*
              * والبحثُ بالاسمين معًا أيًّا كانت لغةُ الصفحة: زبونٌ على الصفحة
@@ -303,8 +313,19 @@ class RibbonController extends Controller
             ->when($q !== '', fn ($c) => $c->filter(fn ($p) => mb_stripos(ProductName::searchable($p->name, $p->name_en), $q) !== false));
 
         return [
-            'categories' => $this->categories($bid, $lang, $shown),
+            'categories' => $categories,
             'cat' => $cat,
+            'best' => $best,
+            /*
+             * واسمُ الفئة عنوانًا للرفّ — فمن وصل من بطاقةٍ في الرئيسية أو من
+             * التذييل يعرف أين هو، وصفُّ الترويسة قد لا يحمل فئتَه.
+             */
+            'catName' => $cat > 0 ? ($categories->firstWhere('id', $cat)['name'] ?? null) : null,
+            /*
+             * صفُّ خيارات المتجر — يُرسم داخل الترويسة اللاصقة (`layout`)
+             * لا في جسم الصفحة: موضعٌ واحدٌ للترشيح لا اثنان.
+             */
+            'shopOptions' => StoreHeader::shopOptions($bid, $categories, RibbonTexts::for($lang), $base, $cat, $best),
             'q' => $q,
             /*
              * أفي الرفّ شيءٌ أصلًا؟ — ليُفرَّق «لا شيء يطابق بحثك» عن «لا
@@ -534,6 +555,11 @@ class RibbonController extends Controller
              * ولو بُنيت في القالبين لَبقي في أحدهما رابطٌ إلى صفحةٍ أُطفئت.
              */
             'nav' => StoreNav::links($bid, $base, $t, $current),
+            /*
+             * وشريطُ الإعلان أعلى كلّ صفحة — بلغة الزائر وحدها، أو لا شريط.
+             * انظر `StoreHeader::announcement`.
+             */
+            'announcement' => StoreHeader::announcement($bid, $lang),
             // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
             'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo()),
         ];

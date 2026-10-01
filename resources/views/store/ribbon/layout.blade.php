@@ -150,6 +150,46 @@
         .rb-nav-a.is-on { color: var(--rb-cream); border-bottom-color: var(--rb-cream); }
         @media (max-width: 1023px) { .rb-nav-in { padding: 0 16px; gap: 2px 18px; } .rb-nav-a { font-size: 12px; min-height: 42px; } }
 
+        /*
+         * ═══ شريطُ الإعلان — أوّلُ صفوف الترويسة ═══
+         *
+         * بلا خلفيّةٍ له: لونُه لونُ الترويسة التي هو فيها (`--rb-olive`)،
+         * فلا يفترقان يومًا بدرجةٍ كُتبت تقريبًا. والمحاذاةُ صنفٌ من ثلاثةٍ
+         * مكانًا لا اتّجاهًا — اليسارُ يسارٌ في الصفحتين، ولا نصَّ حرٌّ في `style`.
+         */
+        .rb-ann { border-bottom: 1px solid rgba(239,234,219,.18); }
+        .rb-ann-in { max-width: 1280px; margin: 0 auto; padding: 8px 24px; color: var(--rb-cream); font-size: 13px; line-height: 1.5; letter-spacing: .04em; }
+        .rb-ann-left { text-align: left; } .rb-ann-center { text-align: center; } .rb-ann-right { text-align: right; }
+        @media (max-width: 1023px) { .rb-ann-in { padding: 7px 16px; font-size: 12px; } }
+
+        /*
+         * ═══ وصفُّ خيارات المتجر — آخرُ صفوف الترويسة، في «المتجر» وحدها ═══
+         *
+         * سطرٌ واحدٌ يُمرَّر بالإصبع على الهاتف لا أسطرٌ تلتفّ: الترويسةُ هناك
+         * طويلةٌ أصلًا. والهامشُ التلقائيّ على الطرفين يوسّطه حين يتّسع ولا
+         * يقصّ أوّلَه حين يضيق (`justify-content:center` تقصّه)، والفاصلان
+         * قبله وبعده يُبقيان آخرَ زرٍّ كاملًا لا ملتصقًا بحافّة الشاشة.
+         */
+        .rb-opts { border-top: 1px solid rgba(239,234,219,.18); }
+        .rb-opts-in { max-width: 1280px; margin: 0 auto; padding: 6px 0; display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+        .rb-opts-in::-webkit-scrollbar { display: none; }
+        .rb-opts-in::before, .rb-opts-in::after { content: ''; flex: none; width: 16px; }
+        .rb-opts-in > :first-child { margin-inline-start: auto; } .rb-opts-in > :last-child { margin-inline-end: auto; }
+        .rb-opt { flex: none; white-space: nowrap; min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; border: 1px solid rgba(239,234,219,.45); border-radius: 999px; color: var(--rb-cream); font-size: 13px; }
+        .rb-opt:hover { background: rgba(239,234,219,.12); }
+        .rb-opt.is-on { background: var(--rb-cream); border-color: var(--rb-cream); color: var(--rb-olive); }
+        @media (max-width: 1023px) { .rb-opts-in::before, .rb-opts-in::after { width: 8px; } .rb-opt { padding: 0 14px; font-size: 12px; } }
+
+        /*
+         * ═══ والقفزُ إلى قسمٍ لا يقع تحت الترويسة ═══
+         *
+         * «استكشف مجموعاتنا» يقفز إلى قسم الفئات، والترويسةُ لاصقةٌ وطولُها
+         * يتبدّل: شريطٌ أو لا شريط، وصفٌّ للبحث على الهاتف. فلا رقمَ يُكتب
+         * لجهازٍ بعينه — طولُها يُقاس ويُوضع في `--rb-head-h` (آخرَ الصفحة)،
+         * وبلا قياسٍ يبقى القفزُ كما كان.
+         */
+        html { scroll-padding-top: var(--rb-head-h, 0px); }
+
         /* بطاقاتُ «تواصل معنا» — بإطار الصفحة ولونها، لا بلونٍ جديد */
         .rb-cbox { border: 1px solid var(--rb-border); border-radius: var(--rb-r); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
         .rb-clabel { font-size: 12px; letter-spacing: .18em; color: #6b6a55; }
@@ -213,6 +253,21 @@
 </head>
 <body>
 <header class="rb-head">
+    {{--
+        ═══ والترويسةُ عنصرٌ لاصقٌ واحد، وصفوفُها في جريانه ═══
+
+        إعلانٌ ← شعارٌ وبحثٌ وسلّة ← صفحاتُ المتجر ← خياراتُ «المتجر».
+        ولا يُثبَّت صفٌّ منها وحدَه بإزاحةٍ محسوبة: أربعةُ شرائطَ ثابتةٍ
+        بأرقامٍ تتراكب على الهاتف متى التفّ سطرُ الإعلان.
+
+        وشريطُ الإعلان بلغة الزائر وحدها، ولا يُرسم إن فرغ نصُّها — فلا
+        يأخذ ارتفاعًا. انظر `Store\StoreHeader::announcement`.
+    --}}
+    @if ($announcement ?? null)
+        <div class="rb-ann" data-testid="rb-announcement" data-align="{{ $announcement['align'] }}">
+            <p class="rb-ann-in rb-ann-{{ $announcement['align'] }}" style="margin:0">{{ $announcement['text'] }}</p>
+        </div>
+    @endif
     <div class="rb-head-in">
         <form class="rb-search" action="{{ $base }}/shop" method="get" role="search">
             <span></span>
@@ -252,6 +307,25 @@
                        class="rb-nav-a @if ($rbLink['current']) is-on @endif"
                        data-testid="rb-nav-{{ $rbLink['key'] }}"
                        @if ($rbLink['current']) aria-current="page" @endif>{{ $rbLink['label'] }}</a>
+                @endforeach
+            </div>
+        </nav>
+    @endif
+    {{--
+        ═══ وخياراتُ «المتجر» — في صفحته وحدها، وداخلَ الترويسة ═══
+
+        «كل المنتجات» و«الأكثر مبيعًا» ثمّ الفئاتُ التي اختارها صاحبُ المتجر
+        بترتيبه، كلٌّ بمعرّفه. وهي الترشيحُ الوحيد في الصفحة — لا صفَّ ثانيًا
+        في جسمها. انظر `Store\StoreHeader::shopOptions`.
+    --}}
+    @if (! empty($shopOptions ?? []))
+        <nav class="rb-opts" data-testid="rb-shop-options" aria-label="{{ $t['shopOptions'] }}">
+            <div class="rb-opts-in" data-rb-opts>
+                @foreach ($shopOptions as $rbOpt)
+                    <a href="{{ $rbOpt['href'] }}"
+                       class="rb-opt @if ($rbOpt['current']) is-on @endif"
+                       data-testid="rb-opt-{{ $rbOpt['key'] }}"
+                       @if ($rbOpt['current']) aria-current="page" @endif>{{ $rbOpt['label'] }}</a>
                 @endforeach
             </div>
         </nav>
@@ -392,6 +466,36 @@ window.RB = (function () {
     function quote(extra) { return post('/quote', Object.assign({ items: read() }, extra || {})); }
     document.addEventListener('DOMContentLoaded', paint);
     return { read: read, write: write, add: add, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE };
+})();
+</script>
+<script>
+/*
+ * ما لا يقدر عليه CSS وحده — سطران، وبلاهما تبقى الصفحةُ كما كانت.
+ *
+ * ١) طولُ الترويسة اللاصقة يتبدّل (شريطٌ يلتفّ، صفُّ بحثٍ على الهاتف)،
+ *    فيُقاس ويُوضع في `--rb-head-h` ليقع القفزُ إلى قسمٍ تحتها لا خلفها.
+ * ٢) والخيارُ المختار في صفّ المتجر قد يقع خارجَ الشاشة على الهاتف، فيُمرَّر
+ *    الصفُّ إليه وحدَه — أفقيًّا، ولا تتحرّك الصفحة.
+ */
+(function () {
+    var head = document.querySelector('header.rb-head');
+    if (head) {
+        var put = function () { document.documentElement.style.setProperty('--rb-head-h', head.offsetHeight + 'px'); };
+        put();
+        if (window.ResizeObserver) { new ResizeObserver(put).observe(head); }
+    }
+    var row = document.querySelector('[data-rb-opts]');
+    var on = row && row.querySelector('.is-on');
+    var center = function () {
+        if (row.scrollWidth > row.clientWidth) {
+            row.scrollLeft += (on.getBoundingClientRect().left + on.offsetWidth / 2) - (row.getBoundingClientRect().left + row.clientWidth / 2);
+        }
+    };
+    if (on) {
+        center();
+        // والخطُّ يصل بعد الرسم فتتّسع الأزرارُ ويزيح المختار — فيُعاد حين يجهز
+        if (document.fonts && document.fonts.ready) { document.fonts.ready.then(center); }
+    }
 })();
 </script>
 @yield('scripts')

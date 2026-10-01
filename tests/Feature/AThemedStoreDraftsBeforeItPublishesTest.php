@@ -106,8 +106,9 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         $live = array_values(array_diff($all, $versioned));
 
         // و«وصل حديثًا» اليدويّ (مفتاحان) قرارُ عرضٍ كالمختارات — يُنشر
-        $this->assertCount(50, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
-        $this->assertCount(19, $versioned, 'تبدّل عددُ ما يُنشر');
+        // ورأسُ المتجر (أربعة: إعلانان ومحاذاةٌ واختصارات) نصٌّ وترتيبٌ يراه الزائر — يُنشر
+        $this->assertCount(54, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        $this->assertCount(23, $versioned, 'تبدّل عددُ ما يُنشر');
         $this->assertCount(31, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),
@@ -167,6 +168,8 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',
             'store_seo_title', 'store_seo_desc',
+            'store_announcement_ar', 'store_announcement_en', 'store_announcement_align',
+            'store_shop_nav_categories',
         ] as $key) {
             $this->assertContains($key, StoreContent::VERSIONED,
                 'المفتاح «'.$key.'» يسري بالحفظ — ونصفُ نبذةٍ يقرؤها زبون.');

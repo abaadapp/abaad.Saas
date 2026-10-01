@@ -1975,6 +1975,27 @@ class Demo
      */
     public static function cogsFor(int $bid, ?\Illuminate\Support\Carbon $start, ?\Illuminate\Support\Carbon $end = null, ?int $branchId = null, ?string $channel = null): float
     {
+        // والمجموعُ مجموعُ التقسيم نفسِه — صيغةٌ واحدة، لا اثنتان تفترقان يومًا
+        return array_sum(self::cogsByBucket($bid, $start, $end, $branchId, $channel));
+    }
+
+    /**
+     * تكلفةُ البضاعة المباعة مقسومةً على أعمدة الزمن — أو جملةً واحدة.
+     *
+     * هي `cogsFor` نفسُها (و`cogsFor` مجموعُها): لقطةُ التكلفة يوم البيع،
+     * وبطاقةُ الصنف لما بيع قبل اللقطة، وصفرُ البوتيك حقيقة لا نقص، وتكلفةُ
+     * الإضافات معها. والفرقُ وحده أنّ الصفوف تُجمَّع بعمود زمن الطلب حين يُطلب.
+     *
+     * ═══ ولمَ في استعلامٍ لا عمودًا عمودًا ═══
+     *
+     * تقرير صافي الربح يرسم الشهر بأيّامه والسنة بأشهرها. ونداءُ `cogsFor` لكلّ
+     * يوم واحدٌ وثلاثون نداءً بثلاثة استعلاماتٍ لكلٍّ منها — والتكلفةُ هي هي.
+     *
+     * @param  string|null  $unit  `hour` أو `day` أو `month` — أو `null` لجملةٍ واحدة
+     * @return array<string, float> [مفتاحُ العمود => التكلفة]؛ ومفتاحُ الجملة `all`
+     */
+    public static function cogsByBucket(int $bid, ?\Illuminate\Support\Carbon $start, ?\Illuminate\Support\Carbon $end = null, ?int $branchId = null, ?string $channel = null, ?string $unit = null): array
+    {
         /*
          * والأسعارُ تُقرأ خامًا لا نماذجَ.
          *
@@ -1984,7 +2005,12 @@ class Demo
          */
         $costs = DB::table('products')
             ->where('business_id', $bid)->pluck('cost', 'id');
-        $cogs = 0.0;
+        $cogs = [];
+
+        // وعمودُ الزمن من الطلب نفسِه — استعلامٌ مضمَّن لا ربطٌ يُربك أسماء الأعمدة
+        $bucket = $unit === null
+            ? "'all'"
+            : '(select '.self::bucketSql('ordered_at', $unit).' from orders where orders.id = order_items.order_id)';
 
         OrderItem::whereHas('order', function ($q) use ($bid, $start, $end, $branchId, $channel) {
             $q->where('business_id', $bid)->sold()
@@ -2000,10 +2026,11 @@ class Demo
              * القاعدة نسيها فردّ صفرًا على قناةٍ فيها مئات.
              */
             SalesChannel::scope($q, $channel);
-        })->selectRaw('product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, '.self::COSTED_QTY)
-            ->groupBy('product_id')->get()
+        })->selectRaw("{$bucket} as bucket, product_id, SUM(quantity) as qty, SUM(cost * quantity) as cost_snapshot, ".self::COSTED_QTY)
+            ->groupBy('bucket', 'product_id')->get()
             ->each(function ($r) use (&$cogs, $costs) {
-                $cogs += (float) $r->cost_snapshot
+                $key = (string) $r->bucket;
+                $cogs[$key] = ($cogs[$key] ?? 0.0) + (float) $r->cost_snapshot
                     + (float) ($costs[$r->product_id] ?? 0) * ((int) $r->qty - (int) $r->costed_qty);
             });
 
@@ -2019,12 +2046,59 @@ class Demo
          * فما لا يُنسب لا يُنسب بالظنّ، ويُقال ذلك في الشاشة.
          */
         if ($channel === null || $channel === '') {
-            foreach (self::addonProfitByProduct($bid, $start, $end, $branchId) as $extra) {
-                $cogs += $extra['cost'];
+            foreach (self::addonCostByBucket($bid, $start, $end, $branchId, $bucket) as $key => $cost) {
+                $cogs[$key] = ($cogs[$key] ?? 0.0) + $cost;
             }
         }
 
         return $cogs;
+    }
+
+    /**
+     * تكلفةُ الإضافات مقسومةً بعمود الزمن — بشروط `addonProfitByProduct` نفسِها.
+     *
+     * @return array<string, float>
+     */
+    private static function addonCostByBucket(int $bid, ?\Illuminate\Support\Carbon $start, ?\Illuminate\Support\Carbon $end, ?int $branchId, string $bucket): array
+    {
+        $orders = Order::where('business_id', $bid)->sold()
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            ->when($end, fn ($q) => $q->where('ordered_at', '<', $end))
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->select('id');
+
+        return OrderItemAddon::query()
+            ->join('order_items', 'order_items.id', '=', 'order_item_addons.order_item_id')
+            ->whereIn('order_items.order_id', $orders)
+            ->selectRaw("{$bucket} as bucket, SUM(COALESCE(order_item_addons.cost, 0) * order_item_addons.quantity) as cost")
+            ->groupBy('bucket')
+            ->get()
+            ->mapWithKeys(fn ($r) => [(string) $r->bucket => (float) $r->cost])->all();
+    }
+
+    /**
+     * عمودُ الزمن بلغة المحرّك — ساعةً أو يومًا أو شهرًا.
+     *
+     * `strftime` دالّةُ SQLite وحدها: تنفجر على PostgreSQL وMySQL. والمفاتيحُ
+     * بالشكل نفسه على الثلاثة (`H`، `Y-m-d`، `Y-m`) فتُقرأ من PHP بلا تحويل.
+     */
+    public static function bucketSql(string $column, string $unit): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        return match ([$driver === 'mariadb' ? 'mysql' : $driver, $unit]) {
+            ['pgsql', 'hour'] => "to_char({$column}, 'HH24')",
+            ['pgsql', 'day'] => "to_char({$column}, 'YYYY-MM-DD')",
+            ['pgsql', 'month'] => "to_char({$column}, 'YYYY-MM')",
+            ['mysql', 'hour'] => "DATE_FORMAT({$column}, '%H')",
+            ['mysql', 'day'] => "DATE_FORMAT({$column}, '%Y-%m-%d')",
+            ['mysql', 'month'] => "DATE_FORMAT({$column}, '%Y-%m')",
+            default => match ($unit) {
+                'hour' => "strftime('%H', {$column})",
+                'day' => "strftime('%Y-%m-%d', {$column})",
+                default => "strftime('%Y-%m', {$column})",
+            },
+        };
     }
 
     /**

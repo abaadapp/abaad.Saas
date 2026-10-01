@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Expense;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
 use App\Support\Demo;
+use App\Support\ExpenseScope;
 use App\Support\ListFilters;
 use App\Support\Pagination;
 use App\Support\Permissions;
@@ -81,7 +83,8 @@ class ExpenseController extends Controller
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
 
-        $expenses = $q->paginate(Pagination::perPage($request, 10))->withQueryString();
+        $expenses = $q->with(['branch:id,name', 'allocations.branch:id,name'])
+            ->paginate(Pagination::perPage($request, 10))->withQueryString();
 
         $mayRead = (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW);
 
@@ -104,7 +107,19 @@ class ExpenseController extends Controller
                     : null,
                 'attachment_name' => $e->attachment_name,
                 'description' => $e->description,
+                // ونطاقُه — يقرؤه زرُّ «نطاق المصروف» ليُفتح على ما هو عليه
+                'scope' => ExpenseScope::of($e),
+                'branch_id' => $e->branch_id,
+                'branch' => $e->branch?->name,
+                'allocations' => $e->allocations->map(fn ($a) => [
+                    'branch_id' => (int) $a->branch_id,
+                    'branch' => $a->branch?->name,
+                    'amount' => (float) $a->amount,
+                ])->values()->all(),
             ])->all(),
+            // فروعُ المتجر — خياراتُ «فرع محدّد» و«موزَّع على عدة فروع»
+            'branches' => Branch::where('business_id', $bid)->orderBy('id')
+                ->get(['id', 'name'])->map(fn ($b) => ['id' => $b->id, 'name' => $b->name])->all(),
             'pagination' => Pagination::meta($expenses),
             'types' => Demo::expenseTypes(),
             // خيارات الحساب — مصدرها واحد مع ما يقبله التحقّق
@@ -155,6 +170,13 @@ class ExpenseController extends Controller
             'attachment.max' => __('أقصى حجم للمرفق 10 ميجابايت.'),
         ], ['attachment' => __('المرفق')]);
 
+        /*
+         * ونطاقُه — للنشاط كلِّه افتراضًا، أو لفرع، أو موزَّعٌ على فروع.
+         *
+         * يُقرأ قبل رفع المرفق: نطاقٌ مرفوض لا يترك ملفًّا على القرص بلا صفّ.
+         */
+        $scope = ExpenseScope::read($bid, $request->all(), (float) $data['amount']);
+
         // رفع المرفق (إن وُجد)
         $attachment = null;
         $attachmentName = null;
@@ -187,9 +209,12 @@ class ExpenseController extends Controller
          *
          * والثلاثةُ معًا أو لا شيء — انظر `postToLedger`.
          */
+        $data['branch_id'] = $scope['branch_id'];
+
         try {
-            $expense = DB::transaction(function () use ($data) {
+            $expense = DB::transaction(function () use ($data, $scope) {
                 $expense = Expense::create($data);
+                ExpenseScope::apply($expense, $scope);
 
                 if ($expense->isPaid()) {
                     $this->postToLedger($expense);
@@ -233,6 +258,8 @@ class ExpenseController extends Controller
     {
         $transaction = Transaction::create([
             'business_id' => $expense->business_id,
+            // فرعُ المصروف المباشر — والموزَّعُ دفعةٌ واحدة للنشاط (`ExpenseScope::journalBranch`)
+            'branch_id' => ExpenseScope::journalBranch($expense),
             'reference' => Transaction::nextReference($expense->business_id),
             // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
             'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
@@ -279,6 +306,56 @@ class ExpenseController extends Controller
      * نقدٌ نقص. ولا تعديل للمصروفات بعدُ، فبدون هذا الزرّ تبقى «غير مدفوع»
      * إلى الأبد.
      */
+    /**
+     * نطاقُ مصروفٍ قائم — لمن يُحسب في ربح الفروع، لا مبلغُه ولا تاريخُه.
+     *
+     * لم يكن للمصروف بابُ تعديل، وكلُّ ما سُجّل قبل الفروع «للنشاط كلِّه».
+     * فهذا يُعيد نسبتَه وحدها: إلى فرع، أو موزَّعًا، أو إلى النشاط. والمبلغُ
+     * والتاريخ والحالة لا تُمسّ من هنا.
+     *
+     * ═══ وقيدُ الدفتر يتبع فرعَه — بالعكس لا بالتعديل ═══
+     *
+     * قيدُ المصروف المباشر يحمل فرعَه (`ExpenseScope::journalBranch`). فإن
+     * تبدّل فرعُ القيد عُكس القيدُ ورُحّل من جديد — طريقةُ الدفتر نفسُها في
+     * الحذف والاستعادة — فلا يُعدَّل قيدٌ مرحَّل، وصافي أثره صفرٌ مع الجديد.
+     * وما رحّلته حركةٌ من شاشة المالية قيدُه على حركتها لا على المصروف:
+     * يقول من أيّ صندوقٍ خرج المال، فلا يُمسّ.
+     */
+    public function updateScope(Request $request, $id)
+    {
+        $bid = $this->bid();
+        $expense = Expense::where('business_id', $bid)->findOrFail($id);
+
+        $scope = ExpenseScope::read($bid, $request->all(), (float) $expense->amount);
+        $before = ExpenseScope::journalBranch($expense);
+
+        try {
+            DB::transaction(function () use ($expense, $scope, $before) {
+                ExpenseScope::apply($expense, $scope);
+                $expense->refresh();
+
+                $after = ExpenseScope::journalBranch($expense);
+                $own = Books::liveEntriesFor($expense)->isNotEmpty();
+
+                if ($own && $before !== $after) {
+                    Books::unpostExpense($expense, auth()->id(), __('تغيير نطاق المصروف'));
+                    Books::recordExpense($expense);
+                }
+
+                // والحركةُ التي أنشأها المصروفُ نفسُه تتبعه — لا حركةُ المالية
+                if ($own && $expense->transaction_id) {
+                    Transaction::whereKey($expense->transaction_id)->update(['branch_id' => $after]);
+                }
+            });
+        } catch (Throwable $e) {
+            return back()->withErrors(['scope' => $this->postingFailed($e)]);
+        }
+
+        Activity::log('updated', 'غيّر نطاق المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
+
+        return back()->with('toast', ['msg' => __('حُفظ نطاق المصروف'), 'type' => 'success']);
+    }
+
     public function markPaid($id)
     {
         $expense = Expense::where('business_id', $this->bid())->findOrFail($id);

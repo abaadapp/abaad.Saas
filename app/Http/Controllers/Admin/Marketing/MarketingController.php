@@ -19,6 +19,7 @@ use App\Support\FlowerOrder;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\NewArrivals;
 use App\Support\Store\StoreContent;
+use App\Support\Store\StoreHeader;
 use App\Support\Store\ThemePublisher;
 use App\Support\Store\StoreSeo;
 use App\Support\Storefront;
@@ -280,6 +281,16 @@ class MarketingController extends Controller
             'store_tagline' => ['nullable', 'string', 'max:60'],
 
             /*
+             * ورأسُ المتجر (انظر `Store\StoreHeader`): سطرٌ لكلّ لغة، ومحاذاةٌ
+             * من ثلاثٍ مغلقة — لا قيمةُ CSS حرّة تبلغ الصفحة. والاختصاراتُ
+             * تُقرأ بصرامةٍ أدناه.
+             */
+            'store_announcement_ar' => ['nullable', 'string', 'max:'.StoreHeader::ANNOUNCEMENT_MAX],
+            'store_announcement_en' => ['nullable', 'string', 'max:'.StoreHeader::ANNOUNCEMENT_MAX],
+            'store_announcement_align' => ['nullable', Rule::in(StoreHeader::ALIGNS)],
+            'store_shop_nav_categories' => ['nullable', 'string', 'max:200'],
+
+            /*
              * وصفحاتُ المتجر — ما أذِن به من «من نحن» و«تواصل معنا».
              *
              * والقيمُ محصورةٌ في `StoreNav::OPTIONAL`: القائمةُ تُقرأ في
@@ -314,6 +325,17 @@ class MarketingController extends Controller
          */
         if ($request->exists('store_new_arrivals_mode') || $request->exists('store_new_arrivals')) {
             $data = array_merge($data, NewArrivals::validated($this->bid(), $request, StoreContent::draft($this->bid())));
+        }
+
+        /*
+         * ═══ واختصاراتُ المتجر — فئاتُه وحده ═══
+         *
+         * معرّفاتٌ موجبةٌ فريدة، ستٌّ لا أكثر، وكلُّها من فئات متجره —
+         * فلا يُحفظ معرّفُ فئةِ غيره ولو أرسله بيده. و`exists` لا `filled`:
+         * تفريغُ القائمة سؤالٌ يُجاب، لا مفتاحٌ يُسقَط بصمت.
+         */
+        if ($request->exists(StoreHeader::SHORTCUTS)) {
+            $data[StoreHeader::SHORTCUTS] = StoreHeader::validatedShortcuts($this->bid(), $request);
         }
 
         /*

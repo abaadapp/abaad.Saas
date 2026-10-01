@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Expense extends Model
@@ -29,6 +30,23 @@ class Expense extends Model
 
     /** قيد الدفتر المقابل — يُنشأ يوم السداد لا يوم التسجيل */
     public function transaction(): BelongsTo { return $this->belongsTo(Transaction::class); }
+
+    /**
+     * الفرعُ الذي يقع عليه المصروف كاملًا — أو `null`: للنشاط كلِّه، أو موزَّعٌ.
+     *
+     * والحالةُ تُقرأ من `ExpenseScope::of` لا من هذا العمود وحده: الفراغُ
+     * يعني «النشاط كلُّه» حين لا توزيع، و«موزَّع» حين توجد صفوفُه.
+     */
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class)->withTrashed();
+    }
+
+    /** حصصُ الفروع من مصروفٍ موزَّع — ومجموعُها مبلغُه */
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(ExpenseBranchAllocation::class);
+    }
 
     /**
      * المدفوع وحده مصروف.

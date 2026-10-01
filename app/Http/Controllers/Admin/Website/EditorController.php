@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Website;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\Website;
 use App\Models\WebsitePage;
@@ -10,6 +11,7 @@ use App\Models\WebsiteSection;
 use App\Support\ProductImages;
 use App\Support\Store\CatalogTools;
 use App\Support\Store\PageEditor;
+use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StorePage;
 use App\Support\Website\Blueprints;
@@ -183,6 +185,14 @@ class EditorController extends Controller
             'order' => StorePage::order($bid),
             'maxFeatured' => StorePage::MAX_FEATURED,
             /*
+             * فئاتُ متجره لمنتقي اختصارات «المتجر» — كلُّها، وكم فيها ممّا يُعرض.
+             *
+             * والفارغةُ تُعرض لتُختار وتُوسَم: الواجهةُ لا ترسم زرًّا إلى رفٍّ
+             * خالٍ (`StoreHeader::shopOptions`)، فيُقال له ذلك قبل أن يحفظ.
+             */
+            'shortcutCategories' => $this->shortcutCategories($bid),
+            'maxShortcuts' => StoreHeader::MAX_SHORTCUTS,
+            /*
              * والمنتقي يعرض المعروضَ وحده.
              *
              * صنفٌ مخفيٌّ يُختار «مختارًا» لا يظهر — فالواجهةُ لا تُقحم في
@@ -206,6 +216,25 @@ class EditorController extends Controller
              */
             'catalogTools' => CatalogTools::for($bid),
         ]);
+    }
+
+    /**
+     * فئاتُ المتجر للمنتقي — باسمها العربيّ كما في شاشة الأصناف، وعددِ ما
+     * يُعرض فيها. ومن متجره وحده: المعرّفُ يُحفظ ثمّ يُفحص في الحفظ ثانيةً.
+     *
+     * @return list<array{id: int, name: string, shown: int}>
+     */
+    private function shortcutCategories(int $bid): array
+    {
+        $shown = Product::where('business_id', $bid)
+            ->where('active', true)->where('published', true)
+            ->whereNotNull('category_id')
+            ->groupBy('category_id')->selectRaw('category_id, COUNT(*) as n')
+            ->pluck('n', 'category_id');
+
+        return Category::where('business_id', $bid)->orderBy('name')->get(['id', 'name'])
+            ->map(fn ($c) => ['id' => (int) $c->id, 'name' => (string) $c->name, 'shown' => (int) ($shown[$c->id] ?? 0)])
+            ->all();
     }
 
     /** @return array<string, mixed> */

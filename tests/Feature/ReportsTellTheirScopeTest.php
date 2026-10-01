@@ -171,6 +171,9 @@ class ReportsTellTheirScopeTest extends TestCase
 
     public function test_the_finance_file_carries_the_whole_ledger_not_its_first_five_hundred(): void
     {
+        // منتصفُ الشهر ظهرًا: الصفوفُ ترجع ٥١٩ دقيقةً (إلى ٣:٢١ فجرًا من اليوم نفسه) فلا
+        // تعبر أوّلَ الشهر. وبلا هذا يسقط الاختبارُ في ساعاته الأولى
+        $this->travelTo(now()->startOfMonth()->addDays(14)->setTime(12, 0));
         $this->actingAs($this->owner);
 
         $rows = [];

@@ -7149,5 +7149,8 @@
     "لا تملك صلاحيّة إلغاء الطلب من لوحة التجهيز.": "You don't have permission to cancel orders from the preparation board.",
     "«:status» لا تناسب طلب استلامٍ من المحل.": "“:status” does not apply to an in-store pickup order.",
     "«:status» لا تناسب طلب توصيل.": "“:status” does not apply to a delivery order.",
-    "+ :n أصناف أخرى": "+ :n more items"
+    "+ :n أصناف أخرى": "+ :n more items",
+    "حذف البيعة": "Delete sale",
+    "هل تريد حذف هذه البيعة؟ سيُلغى أثرها المالي ويُعاد المخزون.": "Delete this sale? Its financial effect will be reversed and the stock returned.",
+    "حُذفت البيعة — أُلغي أثرها المالي وعاد المخزون": "Sale deleted — its financial effect was reversed and the stock returned"
 }

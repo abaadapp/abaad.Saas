@@ -1,6 +1,7 @@
-import { usePage } from '@inertiajs/react';
-import { Eye, Globe, Plus, Store } from 'lucide-react';
+import { router, usePage } from '@inertiajs/react';
+import { Eye, Globe, Plus, Store, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
@@ -29,15 +30,32 @@ interface Props {
     statusOptions: { value: string; label: string }[];
     /** القنوات من مصدرها الواحد كذلك — انظر App\Support\SalesChannel */
     channelOptions: { value: string; label: string }[];
+    /** زرُّ «حذف» لصاحب النشاط وحده (`role === 'admin'`) — والخادمُ يردّ غيرَه بـ403 */
+    mayDelete: boolean;
 }
 
 export default function OrdersIndex() {
     const {
         orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount,
-        websiteCount, websiteAmount, statusOptions, channelOptions, context,
+        websiteCount, websiteAmount, statusOptions, channelOptions, mayDelete, context,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
+    const [ask, confirmDialog] = useConfirm();
+
+    /*
+     * «حذف» البيعة إلغاؤها ماليًّا — `OrderController::destroy` ← `OrderCorrection::cancel`.
+     * والصفُّ يبقى بحالة «ملغي»: الصفحةُ تُعاد من الخادم بالترشيح نفسه.
+     */
+    const remove = async (o: Order) => {
+        const ok = await ask({
+            title: 'حذف البيعة',
+            message: 'هل تريد حذف هذه البيعة؟ سيُلغى أثرها المالي ويُعاد المخزون.',
+            action: 'حذف البيعة',
+            danger: true,
+        });
+        if (ok) router.delete(route('admin.orders.destroy', o.id), { preserveScroll: true });
+    };
 
     const columns: Column<Order>[] = [
         { key: 'id', header: 'رقم الطلب', cell: (o) => <span className="font-medium text-[#111]">{o.id}</span> },
@@ -136,12 +154,27 @@ export default function OrdersIndex() {
             header: 'إجراءات',
             align: 'end',
             cell: (o) => (
-                <Button variant="ghost" size="sm" asChild>
-                    <SmartLink routeName="admin.orders.show" href={route('admin.orders.show', o.id)}>
-                        <Eye />
-                        {t('عرض')}
-                    </SmartLink>
-                </Button>
+                <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" asChild>
+                        <SmartLink routeName="admin.orders.show" href={route('admin.orders.show', o.id)}>
+                            <Eye />
+                            {t('عرض')}
+                        </SmartLink>
+                    </Button>
+                    {/* والملغاةُ لا تُحذف ثانيةً — لا أثرَ ماليًّا بقي لها */}
+                    {mayDelete && o.status !== 'ملغي' && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-[#b91c1c] hover:bg-[#fef2f2] hover:text-[#991b1b]"
+                            onClick={() => remove(o)}
+                            data-testid="order-delete"
+                        >
+                            <Trash2 />
+                            {t('حذف')}
+                        </Button>
+                    )}
+                </div>
             ),
         },
     ];
@@ -258,6 +291,7 @@ export default function OrdersIndex() {
                     )}
                 </div>
             </Card>
+            {confirmDialog}
         </AdminLayout>
     );
 }

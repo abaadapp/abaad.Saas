@@ -107,6 +107,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['الطلبات', 'post', 'admin.orders.reviewRequest', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.reviewInvite', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.statusNotice', ['number' => 'order_number']],
+                // «حذف» البيعة لصاحب النشاط — إلغاءٌ ماليّ لا يبلغ طلبَ متجرٍ آخر
+                ['الطلبات', 'delete', 'admin.orders.destroy', ['number' => 'order_number']],
                 ['تصحيح الطلب', 'put', 'admin.orders.items.update', ['number' => 'order_number', 'item' => 'item'], ['number']],
                 ['تصحيح الطلب', 'put', 'admin.orders.items.addons.update', ['number' => 'order_number', 'item' => 'item', 'addon' => 'item_addon'], ['number']],
                 ['تصحيح الطلب', 'put', 'admin.orders.payment.update', ['number' => 'order_number']],

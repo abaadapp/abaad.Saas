@@ -476,7 +476,8 @@ class ThePrepBenchTicksOffWhatItGatheredTest extends TestCase
         $payload = json_encode($this->props(), JSON_UNESCAPED_UNICODE)
             .json_encode($this->getJson(route('admin.preparation.timeline', $o->number))->json(), JSON_UNESCAPED_UNICODE);
 
-        foreach (['price', 'cost', 'total', 'subtotal', 'profit'] as $forbidden) {
+        // ما يدفعه الزبون صار على البطاقة (قرارُ المالك 2026-10-02) — والتكلفةُ لا
+        foreach (['cost', 'subtotal', 'profit'] as $forbidden) {
             $this->assertStringNotContainsString('"'.$forbidden.'"', $payload,
                 "حقلٌ محاسبيّ «{$forbidden}» وصل إلى لوحة التجهيز");
         }

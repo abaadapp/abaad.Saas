@@ -7144,5 +7144,10 @@
     "قيد": "Entry",
     "قيد مبسّط — ماذا حدث؟": "Simple entry — what happened?",
     "مالٌ خرج من الدرج أو دخله بغير بيع — والنظام يكتب قيده.": "Money that left or entered the drawer other than a sale — the system writes the entry.",
-    "حدد عدد النقاط التي يحصل عليها العميل مقابل كل 1 ريال يشتري به.": "Set how many points the customer earns for every 1 rial spent."
+    "حدد عدد النقاط التي يحصل عليها العميل مقابل كل 1 ريال يشتري به.": "Set how many points the customer earns for every 1 rial spent.",
+    "إلغاء طلب من لوحة التجهيز": "Cancel an order from the preparation board",
+    "لا تملك صلاحيّة إلغاء الطلب من لوحة التجهيز.": "You don't have permission to cancel orders from the preparation board.",
+    "«:status» لا تناسب طلب استلامٍ من المحل.": "“:status” does not apply to an in-store pickup order.",
+    "«:status» لا تناسب طلب توصيل.": "“:status” does not apply to a delivery order.",
+    "+ :n أصناف أخرى": "+ :n more items"
 }

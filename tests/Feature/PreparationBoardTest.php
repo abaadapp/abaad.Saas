@@ -260,18 +260,27 @@ class PreparationBoardTest extends TestCase
     /* ---------------------------- ما لا يظهر ---------------------------- */
 
     /**
-     * لا سعر ولا تكلفة ولا إجمالي.
+     * ما يدفعه الزبون يصل — وما اشتراه به المتجر لا يصل.
      *
-     * والفحص على ما يُرسل لا على ما يُرسَم: عمودٌ يصل إلى الشاشة مقروءٌ لكل
-     * من يفتح أدوات المتصفّح، رُسم أم لم يُرسم.
+     * كانت اللوحة بلا مبلغٍ أصلًا. وصار من يجهّز يسلّم ويُسأل عند التسليم،
+     * فيصلها الإجماليُّ وحالُ الدفع وسعرُ البند (قرارُ المالك 2026-10-02).
+     * والتكلفةُ والربحُ يبقيان خارجها: والفحصُ على ما يُرسل لا على ما يُرسَم —
+     * عمودٌ يصل إلى الشاشة مقروءٌ لكل من يفتح أدوات المتصفّح.
      */
-    public function test_no_money_reaches_the_board(): void
+    public function test_what_the_customer_pays_reaches_the_board_and_what_it_cost_does_not(): void
     {
         $this->order();
 
+        $card = $this->board()[0];
+        $this->assertSame(25.0, $card['total']);
+        $this->assertSame('مدفوع', $card['payment_status']);
+        $this->assertSame('نقدي', $card['payment_method']);
+        $this->assertSame(25.0, $card['items'][0]['price']);
+        $this->assertSame(50.0, $card['items'][0]['total']);
+
         $payload = json_encode($this->board(), JSON_UNESCAPED_UNICODE);
 
-        foreach (['price', 'cost', 'total', 'subtotal', 'profit'] as $forbidden) {
+        foreach (['cost', 'profit', 'subtotal'] as $forbidden) {
             $this->assertStringNotContainsString('"'.$forbidden.'"', $payload,
                 "حقلٌ محاسبيّ «{$forbidden}» وصل إلى لوحة التجهيز");
         }

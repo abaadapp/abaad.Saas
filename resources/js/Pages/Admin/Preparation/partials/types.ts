@@ -1,9 +1,9 @@
 /**
  * ما يصل لوحةَ التجهيز من الخادم — ولا شيء سواه.
  *
- * ولا حقلَ مالٍ في أيٍّ منها: لا `price` ولا `cost` ولا `total`. الخادمُ لا
- * يرسلها أصلًا (انظر `PreparationController::card`)، وهذه الأنواع تقول ذلك
- * للمحرّر فيصير إضافتُها خطأَ ترجمةٍ لا سهوًا يُكتشف في الشاشة.
+ * وما يدفعه الزبون يصل (`price` و`total` وحالُ الدفع) — من يجهّز يسلّم، ويُسأل
+ * عند التسليم. والتكلفةُ والربحُ لا يصلان أبدًا: لا حقلَ لهما هنا، فإضافتُهما
+ * خطأُ ترجمةٍ لا سهوٌ يُكتشف في الشاشة. انظر `PreparationController::card`.
  */
 
 export interface PrepItem {
@@ -11,6 +11,9 @@ export interface PrepItem {
     id: number;
     name: string;
     qty: number;
+    /** سعرُ الوحدة وإجماليُّ السطر كما بيع — اختياريّان لطلبات الاختبار الناقصة عمدًا */
+    price?: number;
+    total?: number;
     note: string | null;
     image: string | null;
     addons?: { id: number; name: string; qty: number }[];
@@ -49,6 +52,12 @@ export interface PrepOrder {
     channel?: string | null;
     /** صاحب الطلب — لا مستلِمه */
     customer: string | null;
+    /** هاتفُ صاحب الطلب — من سجلّ العميل */
+    customer_phone?: string | null;
+    /** ما يُحصَّل عند التسليم: الإجماليُّ وحالُ الدفع ووسيلتُه */
+    total?: number;
+    payment_status?: string | null;
+    payment_method?: string | null;
     fulfillment: string | null;
     scheduled_for: string | null;
     scheduled: PrepSchedule | null;

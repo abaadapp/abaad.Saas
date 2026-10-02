@@ -13,6 +13,7 @@ use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\OrderStatus;
 use App\Support\OrderTransition;
+use App\Support\Permissions;
 use App\Support\PrepChecklist;
 use App\Support\WebsiteConfirmPrint;
 use Illuminate\Http\Request;
@@ -104,12 +105,14 @@ class PreparationController extends Controller
             ->with([
                 // `variant_name` في الانتقاء وإلّا عاد الاسم بلا مقاسه:
                 // عمودٌ لم يُنتقَ يُقرأ فارغًا لا مفقودًا، فيصمت العطب
-                'items:id,order_id,name,variant_name,quantity,note,product_id,custom_details',
+                'items:id,order_id,name,variant_name,quantity,note,product_id,custom_details,price,total',
                 // موادُّ الطلب المخصَّص — تُحمَّل مع البنود لا باستعلامٍ لكلّ بطاقة
                 'items.components',
                 // الصورة وحدها من المنتج — لا سعرَه ولا تكلفتَه
                 'items.product:id,image',
                 'items.addons',
+                // وهاتفُ صاحب الطلب — من سجلّ العميل، فالطلبُ لا يحمله
+                'customer:id,phone',
             ]);
 
         $this->applyWindow($q, $filter);
@@ -151,9 +154,10 @@ class PreparationController extends Controller
          * شاشةٍ مفتوحةٍ طولَ اليوم أمام الطاولة.
          */
         $checks = PrepChecklist::forOrders($orders->pluck('id')->all());
+        $mayCancel = (bool) auth()->user()?->may(Permissions::PREPARATION_CANCEL);
 
         return Inertia::render('Admin/Preparation/Index', [
-            'orders' => $orders->map(fn ($o) => $this->card($o, $checks[$o->id] ?? []))->values()->all(),
+            'orders' => $orders->map(fn ($o) => $this->card($o, $checks[$o->id] ?? [], $mayCancel))->values()->all(),
             'filters' => ['when' => $filter, 'type' => $type],
             'counts' => $this->counts($type),
             'typeCounts' => $this->typeCounts($filter),
@@ -315,13 +319,17 @@ class PreparationController extends Controller
     }
 
     /**
-     * بطاقة الطلب على اللوحة — ما يُصنَع به لا ما يُحاسَب عليه.
+     * بطاقة الطلب على اللوحة — ما يُصنَع به، وما يُسلَّم به.
      *
-     * لا `price` ولا `cost` ولا `total`: العمود موجودٌ في البند، وإرسالُه
-     * إلى الشاشة يجعله مقروءًا لكلّ من يفتح أدوات المتصفّح — سواءٌ رُسم أم
-     * لم يُرسم.
+     * ═══ والمبلغُ صار عليها — والتكلفةُ لا ═══
+     *
+     * كانت بلا سعرٍ ولا إجمالي: «شاشةُ من يصنع لا من يحاسب». لكنّ من يجهّز
+     * هو غالبًا من يسلّم — فيقف أمام الزبون عند الاستلام لا يعرف أمدفوعٌ
+     * الطلبُ أم يُحصَّل، ولا كم. فصار عليها إجماليُّ الطلب وحالُ دفعه ووسيلتُه
+     * وسعرُ كلّ بند (قرارُ المالك 2026-10-02). والتكلفةُ والربحُ لا يُرسلان:
+     * ما يدفعه الزبون يُقال له، وما اشتراه المتجر به لا يُقال لأحد هنا.
      */
-    private function card(Order $o, array $checks = []): array
+    private function card(Order $o, array $checks = [], bool $mayCancel = false): array
     {
         return [
             'number' => $o->number,
@@ -331,6 +339,12 @@ class PreparationController extends Controller
             // اسم العميل — صاحبُ الطلب لا مستلِمُه. وكانا يُخلطان: بطاقةٌ
             // تعرض المستلِم وحدها لا تقول لمن تُسلَّم عند الاستلام من المحل
             'customer' => $o->customer_name,
+            // وهاتفُه — يُتّصل به حين يتأخّر الاستلام أو يُسأل عن تفصيل
+            'customer_phone' => $o->customer?->phone,
+            // ما يُحصَّل عند التسليم: الإجماليُّ وحالُ الدفع ووسيلتُه
+            'total' => round((float) $o->total, 3),
+            'payment_status' => $o->payment_status,
+            'payment_method' => $o->payment_method,
             'fulfillment' => $o->fulfillment_type,
             'scheduled_for' => optional($o->scheduled_for)->format('Y-m-d H:i'),
             /*
@@ -416,6 +430,9 @@ class PreparationController extends Controller
                 'id' => $i->id,
                 'name' => $i->displayName(),
                 'qty' => (int) $i->quantity,
+                // سعرُ الوحدة وإجماليُّ السطر كما بيع — لا تكلفتُه
+                'price' => round((float) $i->price, 3),
+                'total' => round((float) $i->total, 3),
                 'note' => $i->note,
                 'image' => $i->product?->image,
                 'addons' => $i->addons->map(fn ($a) => [
@@ -459,7 +476,7 @@ class PreparationController extends Controller
                 })() : null,
             ])->values()->all(),
             // ما يجوز الانتقال إليه من هنا — تُبنى منه أزرار البطاقة
-            'next' => OrderStatus::nextFrom($o->status),
+            'next' => self::nextOnBoard($o, $mayCancel),
             /*
              * وعلاماتُ التجهيز — ما أُشّر منها ومن أشّره ومتى.
              *
@@ -627,6 +644,46 @@ class PreparationController extends Controller
         ]);
     }
 
+    /**
+     * حالاتٌ لا تخصّ نوعَ الطلب — فلا تُعرض له على اللوحة.
+     *
+     * طلبُ الاستلام لا يخرج للتوصيل ولا يُسلَّم بسائق، وطلبُ التوصيل لا
+     * «يُستلم من المحل». وكانت أزرارُ «جاهز» واحدةً للنوعين، فيضغط من يجهّز
+     * «خرج للتوصيل» لطلبٍ ينتظر صاحبُه في المحل. وما لا نوعَ له يبقى كما كان.
+     */
+    private const NOT_FOR = [
+        FlowerOrder::PICKUP => [OrderStatus::OUT_FOR_DELIVERY, OrderStatus::DELIVERED, OrderStatus::DELIVERY_FAILED],
+        FlowerOrder::DELIVERY => [OrderStatus::PICKED_UP],
+    ];
+
+    /** أزرارُ الحال على اللوحة: الانتقالاتُ المسموحة، بلا ما لا يناسب النوع، وبلا الإلغاء لمن لا يملكه */
+    private static function nextOnBoard(Order $o, bool $mayCancel): array
+    {
+        $hidden = self::NOT_FOR[$o->fulfillment_type] ?? [];
+
+        if (! $mayCancel) {
+            $hidden[] = OrderStatus::CANCELLED;
+        }
+
+        return array_values(array_diff(OrderStatus::nextFrom($o->status), $hidden));
+    }
+
+    /** سببُ ردّ الانتقال من اللوحة — أو null إن جاز */
+    private static function refusedOnBoard(Order $o, string $to): ?string
+    {
+        if ($to === OrderStatus::CANCELLED && ! auth()->user()?->may(Permissions::PREPARATION_CANCEL)) {
+            return __('لا تملك صلاحيّة إلغاء الطلب من لوحة التجهيز.');
+        }
+
+        if (in_array($to, self::NOT_FOR[$o->fulfillment_type] ?? [], true)) {
+            return $o->fulfillment_type === FlowerOrder::PICKUP
+                ? __('«:status» لا تناسب طلب استلامٍ من المحل.', ['status' => $to])
+                : __('«:status» لا تناسب طلب توصيل.', ['status' => $to]);
+        }
+
+        return null;
+    }
+
     public function move(Request $request, string $number)
     {
         $data = $request->validate([
@@ -648,6 +705,18 @@ class PreparationController extends Controller
          * `ALineSaysWhereTheOrderReallyStoodTest`.
          */
         $from = null;
+
+        /*
+         * وما لا تعرضه اللوحةُ زرًّا لا يُقبل منها طلبًا.
+         *
+         * الإلغاءُ لمن مُنح `preparation.cancel`، والحالُ تناسب نوعَ الطلب —
+         * والزرُّ يغيب في البطاقة، والبابُ يردّ هنا: الطلبُ قد يصل من غير الزرّ.
+         */
+        if ($refusal = self::refusedOnBoard($order, $data['status'])) {
+            return back()
+                ->with('toast', ['msg' => $refusal, 'type' => 'danger'])
+                ->withErrors(['status' => $refusal]);
+        }
 
         if ($error = OrderTransition::apply($order, $data['status'], $from)) {
             /*

@@ -254,6 +254,115 @@ class ASaudsGiftCardIsAProductWithItsMessageTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('gift_card');
     }
 
+    /* ═══════════ الكرتُ في «المنتجات»: اسمٌ ثابت وخارجَ المخزون ═══════════ */
+
+    private function owner(Business $shop): User
+    {
+        return User::where('business_id', $shop->id)->firstOrFail();
+    }
+
+    private function saveProduct(Business $shop, ?Product $p, array $fields)
+    {
+        $req = $this->actingAs($this->owner($shop));
+
+        return $p === null
+            ? $req->post('/admin/products', $fields + ['price' => 1])
+            : $req->put('/admin/products/'.$p->id, $fields + ['name' => $p->name, 'price' => (float) $p->price]);
+    }
+
+    public function test_the_card_name_is_fixed_but_its_price_description_and_publishing_are_not(): void
+    {
+        $this->saveProduct($this->saud, $this->card, ['name' => 'Gift'])
+            ->assertSessionHasErrors(['name' => 'اسم منتج كرت الهدية ثابت ولا يمكن تغييره.']);
+        $this->assertSame(GiftCard::PRODUCT_NAME, $this->card->fresh()->name);
+
+        $this->saveProduct($this->saud, $this->card, [
+            'price' => 2.25, 'description' => 'كرت مطبوع', 'name_en' => 'Printed gift card',
+            'published' => '0', 'tracks_stock' => '0',
+        ])->assertSessionHasNoErrors();
+        $this->assertFalse(GiftCardProduct::is($this->saud->id, $this->card->fresh()), 'كرتٌ غيرُ منشورٍ عُدّ كرتًا');
+
+        $this->saveProduct($this->saud, $this->card, [
+            'price' => 2.25, 'description' => 'كرت مطبوع', 'name_en' => 'Printed gift card', 'published' => '1',
+        ])->assertSessionHasNoErrors();
+
+        $card = $this->card->fresh();
+        $this->assertSame([2.25, 'كرت مطبوع', 'Printed gift card', false, 0], [(float) $card->price, $card->description, $card->name_en, $card->tracksStock(), (int) $card->quantity]);
+        $this->assertTrue(GiftCardProduct::is($this->saud->id, $card), 'التعديلُ أفقد الصنفَ تعريفَه');
+    }
+
+    public function test_a_new_card_is_kept_out_of_the_stock_book_even_when_sent_tracked(): void
+    {
+        $this->card->delete();
+
+        $this->saveProduct($this->saud, null, ['name' => GiftCard::PRODUCT_NAME, 'price' => 1.5, 'tracks_stock' => '1', 'quantity' => 7])
+            ->assertSessionHasNoErrors();
+
+        $card = Product::where('business_id', $this->saud->id)->where('name', GiftCard::PRODUCT_NAME)->sole();
+        $this->assertFalse($card->tracksStock());
+        $this->assertSame(0, (int) $card->quantity);
+        $this->assertTrue(GiftCardProduct::is($this->saud->id, $card));
+    }
+
+    public function test_an_existing_card_cannot_be_tied_to_the_stock_book(): void
+    {
+        $this->saveProduct($this->saud, $this->card, ['tracks_stock' => '1', 'quantity' => 4])
+            ->assertSessionHasErrors(['tracks_stock' => 'كرت الهدية غير مرتبط بالمخزون.']);
+
+        $card = $this->card->fresh();
+        $this->assertFalse($card->tracksStock());
+        $this->assertSame(0, (int) $card->quantity);
+    }
+
+    public function test_a_second_card_cannot_be_made_in_the_same_shop(): void
+    {
+        $this->saveProduct($this->saud, null, ['name' => GiftCard::PRODUCT_NAME])->assertSessionHasErrors('name');
+
+        // ولا بإعادة تسمية صنفٍ آخر إليه
+        $this->saveProduct($this->saud, $this->rose, ['name' => GiftCard::PRODUCT_NAME])->assertSessionHasErrors('name');
+
+        $this->assertSame(1, Product::where('business_id', $this->saud->id)->where('name', GiftCard::PRODUCT_NAME)->count());
+        $this->assertSame('باقة ورد', $this->rose->fresh()->name);
+    }
+
+    public function test_a_tracked_or_twinned_card_is_not_a_card_and_is_refused_not_sold_bare(): void
+    {
+        // برصيدٍ يمرّ به فحصُ الرفّ — فيُسأل عنه حارسُ الكرت لا «نفد»
+        $this->card->update(['tracks_stock' => true, 'quantity' => 5]);
+        $this->assertFalse(GiftCardProduct::is($this->saud->id, $this->card->fresh()), 'صنفٌ مرتبطٌ بالمخزون عُدّ كرتًا');
+        $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem('Hi')]))
+            ->assertStatus(422)->assertJsonPath('errors.items.0', 'كرت الهدية غير متاح الآن.');
+
+        // وتوأمان معروضان (بيانٌ قديم) لا يُختار أحدُهما
+        $this->card->update(['tracks_stock' => false, 'quantity' => 0]);
+        Product::create([
+            'business_id' => $this->saud->id, 'name' => GiftCard::PRODUCT_NAME, 'price' => 9, 'cost' => 0,
+            'quantity' => 0, 'alert_qty' => 0, 'tracks_stock' => false, 'active' => true, 'published' => true,
+        ]);
+        $this->assertFalse(GiftCardProduct::is($this->saud->id, $this->card->fresh()));
+        $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem('Hi')]))
+            ->assertStatus(422)->assertJsonPath('errors.items.0', 'كرت الهدية غير متاح الآن.');
+        $this->assertSame(0, Order::count());
+    }
+
+    public function test_saud_ordinary_products_and_another_shop_are_left_alone(): void
+    {
+        // صنفُ سعود العاديّ: يُسمّى ويُربط بالمخزون كما كان
+        $this->saveProduct($this->saud, $this->rose, ['name' => 'باقة جوري', 'tracks_stock' => '1', 'quantity' => 12])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(['باقة جوري', true, 12], [$this->rose->fresh()->name, $this->rose->fresh()->tracksStock(), (int) $this->rose->fresh()->quantity]);
+
+        // والمتجرُ الآخر: «كرت هدية» صنفٌ عاديٌّ يُربط ويُكرَّر ويُسمّى
+        $this->saveProduct($this->other, null, ['name' => GiftCard::PRODUCT_NAME, 'tracks_stock' => '1', 'quantity' => 5])->assertSessionHasNoErrors();
+        $this->saveProduct($this->other, null, ['name' => GiftCard::PRODUCT_NAME, 'tracks_stock' => '1', 'quantity' => 3])->assertSessionHasNoErrors();
+
+        $theirs = Product::where('business_id', $this->other->id)->where('name', GiftCard::PRODUCT_NAME)->orderBy('id')->get();
+        $this->assertSame([[true, 5], [true, 3]], $theirs->map(fn ($p) => [$p->tracksStock(), (int) $p->quantity])->all());
+
+        $this->saveProduct($this->other, $theirs[0], ['name' => 'كرت معايدة'])->assertSessionHasNoErrors();
+        $this->assertSame('كرت معايدة', $theirs[0]->fresh()->name);
+    }
+
     /* ═══════════ الإنجليزيّة لسعود وحده ═══════════ */
 
     public function test_saud_takes_english_names_and_addresses_only(): void

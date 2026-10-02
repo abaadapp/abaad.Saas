@@ -18,6 +18,7 @@ use App\Support\PlanLimits;
 use App\Support\ProductImages;
 use App\Support\Sort;
 use App\Support\StockLedger;
+use App\Support\Store\GiftCardProduct;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -325,6 +326,8 @@ class ProductController extends Controller
          */
         $data['tracks_stock'] = $request->boolean('tracks_stock', true);
         $data['quantity'] = $data['tracks_stock'] ? ($data['quantity'] ?? 0) : 0;
+        // وكرتُ الهدية صنفًا: اسمُه واحدٌ في المتجر، وخارجَ المخزون دائمًا (`GiftCardProduct`)
+        $data = GiftCardProduct::forSave($this->bid(), $data, null);
         $data['alert_qty'] = $data['alert_qty'] ?? 10;
         // الضريبة الفارغة تبقى فارغة: «اتبع نسبة المتجر» لا «صفر»
         $data['tax'] = ($data['tax'] ?? '') === '' ? null : $data['tax'];
@@ -467,6 +470,8 @@ class ProductController extends Controller
         if ($request->has('tracks_stock')) {
             $data['tracks_stock'] = $request->boolean('tracks_stock');
         }
+        // وكرتُ الهدية صنفًا: اسمُه ثابت، ولا يُربط بالمخزون (`GiftCardProduct`)
+        $data = GiftCardProduct::forSave($this->bid(), $data, $product);
         $data['quantity'] = $data['quantity'] ?? 0;
         $data['alert_qty'] = $data['alert_qty'] ?? 10;
         // الضريبة الفارغة تبقى فارغة: «اتبع نسبة المتجر» لا «صفر»

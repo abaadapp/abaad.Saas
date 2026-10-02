@@ -78,19 +78,26 @@ describe('كرتُ الهدية على طاولة التجهيز', () => {
         expect(screen.getByText(/كل عام/)).toHaveClass('whitespace-pre-wrap');
     });
 
-    it('ويُفتح الملفُّ المرفق باسمه', () => {
+    /**
+     * ورابطُ الملفّ المرفق حُذف من التفاصيل (قرارُ المالك 2026-10-02) —
+     * والباقي كما هو: النصُّ والمُهدي يُعرضان.
+     */
+    it('لا رابطَ للملفّ المرفق — والنصُّ والمُهدي باقيان', () => {
         draw({ card_message: 'مرحبًا', card_file: '/admin/orders/5/gift-card', card_file_name: 'خطّي.png' });
 
-        const link = screen.getByRole('link', { name: 'خطّي.png' });
-        expect(link).toHaveAttribute('href', '/admin/orders/5/gift-card');
+        expect(screen.queryByRole('link', { name: 'خطّي.png' })).toBeNull();
+        expect(screen.queryByText('خطّي.png')).toBeNull();
+        expect(document.querySelector('a[href="/admin/orders/5/gift-card"]')).toBeNull();
+        expect(screen.getByText('مرحبًا')).toBeInTheDocument();
+        expect(screen.getByText(/من: مريم/)).toBeInTheDocument();
     });
 
-    /** وطلبٌ بمرفقٍ بلا نصّ يُعرض — وإلّا ضاع الملفُّ الذي دُفع ثمنُه */
-    it('ومرفقٌ بلا نصٍّ لا يختفي', () => {
+    /** وطلبٌ بمرفقٍ بلا نصّ يبقى صندوقُه — يقول إنّ للطلب كرتًا */
+    it('ومرفقٌ بلا نصٍّ يبقى صندوقُه بلا رابط', () => {
         draw({ card_message: null, card_file: '/admin/orders/5/gift-card', card_file_name: 'تصميم.pdf' });
 
-        expect(screen.getByRole('link', { name: 'تصميم.pdf' })).toBeInTheDocument();
         expect(screen.getByText('بطاقة الإهداء')).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'تصميم.pdf' })).toBeNull();
     });
 
     /** وطلبٌ بلا كرتٍ أصلًا لا يعرض صندوقًا فارغًا */

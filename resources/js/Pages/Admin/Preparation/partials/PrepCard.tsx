@@ -1,9 +1,12 @@
-import { AlertTriangle, CheckSquare, Clock, Gift, ListChecks, Package, Store, StickyNote, Truck } from 'lucide-react';
+import { usePage } from '@inertiajs/react';
+import { AlertTriangle, CheckSquare, Clock, Gift, ListChecks, Package, Phone, Store, StickyNote, Truck, Wallet } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import type { PageProps } from '@/types';
 import { minutesLeft, spanOf, urgencyOf } from './schedule';
 import { checkProgress, type PrepOrder } from './types';
 
@@ -36,8 +39,13 @@ interface Props {
     onMove: (status: string) => void;
 }
 
+/** أسماءُ الأصناف على البطاقة — وما زاد خلف «تفاصيل التجهيز» */
+const ITEMS_ON_CARD = 4;
+
 export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove }: Props) {
     const t = useTranslate();
+    const currency = usePage<PageProps>().props.context?.currency;
+    const m = (v: number) => (currency ? money(v, currency) : String(v));
     const left = minutesLeft(o.scheduled, ageMs);
     const urgency = urgencyOf(left);
     const span = spanOf(left);
@@ -75,6 +83,18 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
                 <div className="min-w-0">
                     <p className="truncate font-bold text-[#111]">{o.customer ?? t('بلا اسم')}</p>
                     <p className="mt-0.5 text-[12px] text-[#9ca3af]">{o.number}</p>
+                    {/* هاتفُ صاحب الطلب — يُتّصل به من البطاقة بلا فتح شيء */}
+                    {o.customer_phone && (
+                        <a
+                            href={`tel:${o.customer_phone}`}
+                            data-testid="prep-customer-phone"
+                            className="mt-0.5 flex items-center gap-1 text-[12px] text-[#4b4b4b]"
+                            dir="ltr"
+                        >
+                            <Phone className="size-3" />
+                            {o.customer_phone}
+                        </a>
+                    )}
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <Badge status={o.status}>{t(o.status)}</Badge>
@@ -155,6 +175,37 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
                     </span>
                 )}
             </div>
+
+            {/*
+              * أسماءُ الأصناف — من يقف عند الطاولة يعرف ما يجمع بلا فتح التفاصيل.
+              * وأربعةٌ تكفي البطاقة، وما زاد يُقال عددُه.
+              */}
+            {o.items.length > 0 && (
+                <ul data-testid="prep-items" className="flex flex-col gap-0.5 text-[13px] text-[#111]">
+                    {o.items.slice(0, ITEMS_ON_CARD).map((i) => (
+                        <li key={i.id} className="truncate">
+                            {i.name} <span className="text-[#6b7280]">×{i.qty}</span>
+                        </li>
+                    ))}
+                    {o.items.length > ITEMS_ON_CARD && (
+                        <li className="text-[12px] text-[#6b7280]">
+                            {t('+ :n أصناف أخرى', { n: o.items.length - ITEMS_ON_CARD })}
+                        </li>
+                    )}
+                </ul>
+            )}
+
+            {/* ما يُحصَّل عند التسليم: الإجماليُّ وحالُ الدفع ووسيلتُه */}
+            {o.total !== undefined && (
+                <div data-testid="prep-money" className="flex flex-wrap items-center gap-2 text-[12px]">
+                    <span className="flex items-center gap-1 font-bold tabular-nums text-[#111]">
+                        <Wallet className="size-3.5" />
+                        {m(o.total)}
+                    </span>
+                    {o.payment_status && <Badge status={o.payment_status}>{t(o.payment_status)}</Badge>}
+                    {o.payment_method && <span className="text-[#6b7280]">{t(o.payment_method)}</span>}
+                </div>
+            )}
 
             {note && (
                 <p className="flex items-start gap-1.5 rounded-[10px] bg-[#fffbeb] p-2.5 text-[12px] text-[#92400e]">

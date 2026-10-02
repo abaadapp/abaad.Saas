@@ -296,17 +296,20 @@ class PreparationFlowAuditTest extends TestCase
 
     /* ------------------- ما لا يُعرض على الطاولة ------------------- */
 
-    public function test_the_card_never_carries_money(): void
+    // ما يدفعه الزبون على البطاقة، وما كلّف المتجرَ لا — انظر PreparationBoardTest
+    public function test_the_card_never_carries_what_the_order_cost(): void
     {
         $this->order();
 
         $this->get(route('admin.preparation.index'))
             ->assertInertia(function ($p) {
                 $card = $p->toArray()['props']['orders'][0];
-                foreach (['price', 'cost', 'total', 'subtotal'] as $money) {
+                foreach (['cost', 'subtotal', 'profit'] as $money) {
                     $this->assertArrayNotHasKey($money, $card);
                     $this->assertArrayNotHasKey($money, $card['items'][0]);
                 }
+                $this->assertArrayHasKey('total', $card);
+                $this->assertArrayHasKey('payment_status', $card);
             });
     }
 }

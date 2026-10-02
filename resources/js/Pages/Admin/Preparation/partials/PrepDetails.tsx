@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Clock, Gift, History, MapPin, Paperclip, Phone, Printer, StickyNote, Store, Truck, User } from 'lucide-react';
+import { usePage } from '@inertiajs/react';
+import { Clock, Gift, History, MapPin, Phone, Printer, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
-import { number as fmt } from '@/lib/format';
+import { money, number as fmt } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import type { PageProps } from '@/types';
 import { checklistKeys, TASK_LABELS, type PrepOrder } from './types';
 
 /**
@@ -56,6 +58,8 @@ export default function PrepDetails({
     timelineUrl,
 }: Props) {
     const t = useTranslate();
+    const currency = usePage<PageProps>().props.context?.currency;
+    const m = (v: number) => (currency ? money(v, currency) : String(v));
     const [events, setEvents] = useState<Timeline[] | null>(null);
     const [failed, setFailed] = useState(false);
     const number = o?.number ?? null;
@@ -169,6 +173,18 @@ export default function PrepDetails({
                                 {o.branch}
                             </span>
                         )}
+                        {/* هاتفُ صاحب الطلب — غيرُ هاتف المستلِم بعده */}
+                        {o.customer_phone && (
+                            <a
+                                href={`tel:${o.customer_phone}`}
+                                data-testid="prep-details-customer-phone"
+                                className="flex items-center gap-1.5"
+                                dir="ltr"
+                            >
+                                <Phone className="size-3.5" />
+                                {o.customer_phone}
+                            </a>
+                        )}
                         {o.recipient && (
                             <span className="flex items-center gap-1.5">
                                 <User className="size-3.5" />
@@ -209,7 +225,17 @@ export default function PrepDetails({
                                             <span className="mt-2 size-9 shrink-0 rounded-[8px] bg-gray-100" />
                                         )}
                                         <div className="min-w-0 flex-1">
-                                            {box(`item:${i.id}`, `${i.name} ×${i.qty}`, i.note ?? undefined)}
+                                            <div className="flex items-start gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    {box(`item:${i.id}`, `${i.name} ×${i.qty}`, i.note ?? undefined)}
+                                                </div>
+                                                {/* إجماليُّ السطر كما بيع — لا تكلفتُه */}
+                                                {i.total !== undefined && (
+                                                    <span className="mt-2 shrink-0 text-[12px] tabular-nums text-[#6b7280]">
+                                                        {m(i.total)}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="ms-6">
                                                 {(i.addons ?? []).map((a) => (
                                                     <div key={a.id} className="text-[#7c3aed]">
@@ -274,23 +300,27 @@ export default function PrepDetails({
                                     {o.card_message}
                                 </p>
                             )}
-                            {o.card_file && (
-                                <a
-                                    href={o.card_file}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="mt-1.5 inline-flex items-center gap-1.5 font-medium text-[#9d174d] underline"
-                                >
-                                    <Paperclip className="size-3.5" />
-                                    {o.card_file_name || t('ملفٌّ مرفق')}
-                                </a>
-                            )}
                             {o.sender && (
                                 <p className="mt-1 text-[#9d174d]">
                                     {t('من')}: {o.sender}
                                     {o.hide_sender && ` · ${t('مخفيّ عن المستلِم')}`}
                                 </p>
                             )}
+                        </div>
+                    )}
+
+                    {/* ═══ ما يُحصَّل عند التسليم ═══ */}
+                    {o.total !== undefined && (
+                        <div
+                            data-testid="prep-details-money"
+                            className="flex flex-wrap items-center gap-3 rounded-[10px] bg-gray-50 p-3 text-[13px]"
+                        >
+                            <span className="flex items-center gap-1.5 font-bold tabular-nums text-[#111]">
+                                <Wallet className="size-4" />
+                                {t('الإجمالي')}: {m(o.total)}
+                            </span>
+                            {o.payment_status && <Badge status={o.payment_status}>{t(o.payment_status)}</Badge>}
+                            {o.payment_method && <span className="text-[12px] text-[#6b7280]">{t(o.payment_method)}</span>}
                         </div>
                     )}
 

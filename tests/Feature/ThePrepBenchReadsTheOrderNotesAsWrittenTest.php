@@ -147,12 +147,17 @@ class ThePrepBenchReadsTheOrderNotesAsWrittenTest extends TestCase
         $this->assertSame('أحمد', $card['sender']);
     }
 
-    /** ٩ — ولا سعرَ ولا تكلفةَ ولا مجموعَ يصل الطاولة */
-    public function test_no_money_reaches_the_bench(): void
+    /**
+     * ٩ — وما كلّف المتجرَ لا يصل الطاولة.
+     *
+     * والإجماليُّ وسعرُ البند صارا عليها: من يجهّز يسلّم ويُسأل عمّا يُحصَّل
+     * (قرارُ المالك 2026-10-02). والتكلفةُ ومكوّناتُ الفاتورة لا.
+     */
+    public function test_no_cost_reaches_the_bench(): void
     {
         $card = $this->card($this->order(['notes' => 'x']));
 
-        foreach (['price', 'cost', 'total', 'subtotal', 'tax', 'discount'] as $money) {
+        foreach (['cost', 'subtotal', 'tax', 'discount', 'profit'] as $money) {
             $this->assertArrayNotHasKey($money, $card, "وصل «{$money}» إلى البطاقة");
             $this->assertArrayNotHasKey($money, $card['items'][0], "وصل «{$money}» إلى البند");
         }

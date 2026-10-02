@@ -1,11 +1,20 @@
 name: CI
 
 # البوابة كانت تعيش في خطّاف Claude على جهاز واحد: أي تعديل من جهاز آخر
-# أو من واجهة GitHub كان يمرّ بلا فحص. هنا تُفرض على كل دفعة وكل PR.
+# أو من واجهة GitHub كان يمرّ بلا فحص. هنا تُفرض على كل PR.
+#
+# ═══ وعلى الطلب وحده — لا على main بعد دمجه ═══
+#
+# كانت تعمل ثانيةً على main بعد الدمج، فتختبر الشجرةَ نفسها مرّتين وتؤخّر النشر
+# ساعة. صار الطلبُ يرفع في آخره إثباتَ الشجرة التي اجتازت (`pr-proof`)، و«Main
+# Gate» على main يتحقّق أنّ شجرة main هي إيّاها قبل أن يُنشر شيء. وما لا يُثبَت
+# لا يُنشر تلقائيًّا — دفعةٌ مباشرة منه. انظر `main-gate.yml`.
+#
+# و`workflow_dispatch` بابٌ يدويّ لتشغيلها على أيّ فرعٍ عند الحاجة — ولا يرفع
+# إثباتًا: الإثباتُ للطلبات وحدها.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   # دفعة جديدة تُلغي فحص الدفعة السابقة لنفس الفرع — لا داعي لانتظار القديم
@@ -165,3 +174,91 @@ jobs:
 
       - name: البناء
         run: npx vite build
+
+  # ---------------------------------------------------------------------
+  # إثباتُ الشجرة التي اجتازت — يقرؤه «Main Gate» بعد الدمج بدل إعادة الاختبارات
+  #
+  # لا يعمل إلّا بعد نجاح الوظائف الثلاث، وعلى الطلبات وحدها. ويُسحب `github.sha`
+  # لا الاسمُ `refs/pull/N/merge`: هو إيداعُ ذلك الاسم الذي سحبته الوظائفُ الثلاث
+  # بعينه، والاسمُ نفسُه يُعاد حسابُه كلّما تحرّك main — فسحبُه هنا بعد ساعةٍ قد
+  # يُعطي شجرةً لم تُختبر. والخطوةُ تتحقّق أنّ الاسم هو اسمُ هذا الطلب.
+  #
+  # ولا يُرفع إثباتٌ إن تحرّك main أثناء الاختبار: أساسُ ما اختُبر (`HEAD^1`)
+  # يجب أن يكون رأسَ main الآن — وإلّا تسقط الوظيفةُ وتطلب تحديثَ الطلب.
+  # ---------------------------------------------------------------------
+  pr-proof:
+    name: إثبات الشجرة المختبَرة
+    if: github.event_name == 'pull_request'
+    needs: [tests-sqlite, tests-postgres, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+
+      - name: كتابة الإثبات
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          TESTED_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+
+          # الإيداعُ المختبَر إيداعُ دمج هذا الطلب — لا شيءٌ آخر سُحب صدفة
+          [ "$GITHUB_REF" = "refs/pull/${PR_NUMBER}/merge" ] \
+            || { echo "::error::المرجع ${GITHUB_REF} ليس refs/pull/${PR_NUMBER}/merge"; exit 1; }
+          [ "$(git rev-parse HEAD)" = "$TESTED_SHA" ] \
+            || { echo "::error::المسحوب ليس ${TESTED_SHA}"; exit 1; }
+
+          # ولا إثباتَ لمزيجٍ تقادم: إن تحرّك main أثناء الاختبار (طلبٌ آخر دُمج
+          # في الساعة نفسها) فما اختُبر هو main القديم مع الطلب — ودمجُه الآن
+          # يُنتج شجرةً لم تُختبر. فيُقال هنا، قبل الدمج، لا بعده في Main Gate.
+          # والمرجعُ صريح: يكتب origin/main ولو لم يُضبط للبعيد مسارُ تتبّع.
+          git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
+          TESTED_BASE=$(git rev-parse 'HEAD^1')
+          CURRENT_MAIN=$(git rev-parse origin/main)
+          if [ "$TESTED_BASE" != "$CURRENT_MAIN" ]; then
+            msg="main moved while this PR was being tested; update the PR with latest main and rerun CI before merging."
+            echo "::error title=PR proof::${msg} (tested base ${TESTED_BASE}, main now ${CURRENT_MAIN})"
+            {
+              echo "### ⛔ لا إثبات — main تحرّك أثناء الاختبار"
+              echo
+              echo "**${msg}**"
+              echo
+              echo "- tested base: \`${TESTED_BASE}\`"
+              echo "- main now: \`${CURRENT_MAIN}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          jq -n \
+            --argjson pr_number "$PR_NUMBER" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg base_sha "$BASE_SHA" \
+            --arg tested_base_sha "$TESTED_BASE" \
+            --arg tested_commit_sha "$TESTED_SHA" \
+            --arg tested_ref "$GITHUB_REF" \
+            --arg tested_tree_sha "$(git rev-parse 'HEAD^{tree}')" \
+            --argjson workflow_run_id "$RUN_ID" \
+            --argjson workflow_run_attempt "$RUN_ATTEMPT" \
+            '{pr_number: $pr_number, head_sha: $head_sha, base_sha: $base_sha,
+              tested_base_sha: $tested_base_sha, tested_commit_sha: $tested_commit_sha,
+              tested_ref: $tested_ref, tested_tree_sha: $tested_tree_sha,
+              workflow_run_id: $workflow_run_id, workflow_run_attempt: $workflow_run_attempt}' \
+            > pr-proof.json
+
+          cat pr-proof.json
+          echo "### إثبات الشجرة المختبَرة" >> "$GITHUB_STEP_SUMMARY"
+          printf '```json\n%s\n```\n' "$(cat pr-proof.json)" >> "$GITHUB_STEP_SUMMARY"
+
+      # والاسمُ فريدٌ لكلّ تشغيلٍ ومحاولة: Main Gate يطلب `pr-proof-<PR>-<run>-`
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-proof-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: pr-proof.json
+          if-no-files-found: error
+          retention-days: 30

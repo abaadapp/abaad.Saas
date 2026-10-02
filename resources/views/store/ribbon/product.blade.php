@@ -131,8 +131,8 @@
             @if ($imageNote !== '')
                 <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
             @endif
-            @if ($deliveryNote !== '')
-                <div style="font-size:13px;line-height:1.8">{{ $deliveryNote }}</div>
+            @if (($showDeliveryNote ?? true) && $deliveryNote !== '')
+                <div style="font-size:13px;line-height:1.8" data-testid="rb-delivery-note">{{ $deliveryNote }}</div>
             @endif
         </div>
     </div>

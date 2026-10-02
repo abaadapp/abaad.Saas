@@ -145,6 +145,39 @@ class TheRibbonProductPageShowsItsWholeGalleryTest extends TestCase
         $this->get('/s/ribbon/p/'.$theirs->id)->assertNotFound();
     }
 
+    /* ═══════════ تحت زرّ السلّة ═══════════ */
+
+    public function test_saud_shows_the_image_note_alone_under_the_cart_button_and_others_keep_both(): void
+    {
+        $notes = ['store_image_note' => 'قد يختلف لون الورد حسب المتوفر', 'store_delivery_note' => 'التوصيل داخل مسقط خلال اليوم نفسه'];
+        MarketingSettings::save($this->shop->id, 'website', $notes);
+        MarketingSettings::save($this->other->id, 'website', $notes);
+        config(['storefront.ribbon_product_page_without_delivery_note_businesses' => [$this->shop->id]]);
+
+        $theirRose = Product::create([
+            'business_id' => $this->other->id, 'name' => 'باقتهم', 'price' => 9, 'cost' => 1,
+            'quantity' => 3, 'alert_qty' => 0, 'active' => true, 'published' => true,
+        ]);
+
+        // سعود: تنبيهُ الصورة تحت الزرّ مباشرةً، ولا ملاحظةَ توصيل بعده
+        $html = $this->get('/s/ribbon/p/'.$this->lily->id)->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/data-testid="rb-add">[^<]*<\/button>\s*<\/div>\s*<p class="rb-note" data-testid="rb-image-note">قد يختلف لون الورد حسب المتوفر<\/p>/u', $html);
+        $this->assertStringNotContainsString('التوصيل داخل مسقط خلال اليوم نفسه', $html);
+        $this->assertStringNotContainsString('rb-delivery-note', $html);
+
+        // والمتجرُ الآخر كما كان: التنبيهُ ثمّ ملاحظةُ التوصيل
+        $theirs = $this->get('/s/other/p/'.$theirRose->id)->assertOk()->getContent();
+        $this->assertMatchesRegularExpression('/rb-image-note">قد يختلف لون الورد حسب المتوفر<\/p>\s*<div[^>]*data-testid="rb-delivery-note">التوصيل داخل مسقط خلال اليوم نفسه<\/div>/u', $theirs);
+
+        // والإعدادُ لا يُمسّ، والإتمامُ على حاله
+        $this->assertSame('التوصيل داخل مسقط خلال اليوم نفسه', MarketingSettings::group($this->shop->id, 'website')['store_delivery_note']);
+        $this->get('/s/ribbon/checkout')->assertOk()->assertSee('قد يختلف لون الورد حسب المتوفر');
+        $this->get('/s/ribbon')->assertOk();
+        $this->get('/s/ribbon/shop')->assertOk();
+
+        $this->assertSame([5], (require config_path('storefront.php'))['ribbon_product_page_without_delivery_note_businesses']);
+    }
+
     /* ═══════════ شرحُ اللوحة ═══════════ */
 
     public function test_the_admin_gallery_says_where_each_photo_appears(): void

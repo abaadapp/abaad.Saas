@@ -423,6 +423,11 @@ class RibbonController extends Controller
                 'card_max' => GiftCardProduct::MAX,
             ],
             /*
+             * وملاحظةُ التوصيل تحت زرّ السلّة — إلّا لمن طلب تنبيهَ الصورة
+             * وحده هناك (`storefront.ribbon_product_page_without_delivery_note_businesses`).
+             */
+            'showDeliveryNote' => ! in_array($bid, array_map('intval', (array) config('storefront.ribbon_product_page_without_delivery_note_businesses', [])), true),
+            /*
              * «أضف مع طلبك» — لمن في قائمة المالك وحده (`RibbonUpsells`).
              *
              * وصنفٌ نفد لا زرَّ سلّةٍ له، فلا يُقترح معه شيء. والأسعارُ

@@ -194,4 +194,14 @@ return [
      */
     'ribbon_english_checkout_businesses' => [5],
 
+    /*
+     * صفحةُ صنف RIBBON بلا ملاحظة التوصيل — لمن في هذه القائمة وحده.
+     *
+     * قرارُ المالك: لمتجر سعود (RIBBON، `businesses.id = 5`) وحده. تحت زرّ
+     * «أضف إلى السلة» تنبيهُ الصورة (`store_image_note`) وحدَه. وملاحظةُ
+     * التوصيل (`store_delivery_note`) باقيةٌ في الإعداد ولا تُمسّ، وتُعرض
+     * لغيره في صفحة الصنف كما كانت.
+     */
+    'ribbon_product_page_without_delivery_note_businesses' => [5],
+
 ];

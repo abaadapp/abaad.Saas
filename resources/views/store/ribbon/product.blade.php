@@ -2,19 +2,38 @@
 @section('title', $product['name'].' — '.$seo['brand'])
 @section('content')
 @php($offers = $product['available'] && count($upsells ?? []) > 0)
+@php($gallery = $product['gallery'] ?? [])
 <section class="rb-screen rb-wrap" style="padding:40px 24px" data-testid="rb-product-page">
     <a href="{{ $base }}/shop" style="font-size:13px;display:inline-flex;align-items:center;min-height:44px">{{ $t['back'] }}</a>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:48px;margin-top:20px;align-items:start">
-        <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
-            @if ($product['image'])
-                <img src="{{ $product['image'] }}" alt="{{ $product['name'] }}" style="width:100%;height:100%;object-fit:cover;display:block">
-            @else
-                <div class="rb-stripes" style="--tint: {{ $product['tint'] }}"></div>
+        {{--
+            ═══ معرضُ الصنف — هنا وحده ═══
+
+            الرئيسيّةُ كبيرةً ثمّ الإضافيّةُ مصغّراتٍ بترتيبها، والضغطُ على
+            مصغّرةٍ يُبدّل الكبيرة. والرفُّ والرئيسيّةُ يعرضان صورةً واحدة.
+            وصنفٌ بصورةٍ واحدة لا شريطَ مصغّراتٍ له.
+        --}}
+        <div data-testid="rb-gallery">
+            <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
+                @if (count($gallery))
+                    <img src="{{ $gallery[0] }}" alt="{{ $product['name'] }}" style="width:100%;height:100%;object-fit:cover;display:block" data-rb-main data-testid="rb-main-image">
+                @else
+                    <div class="rb-stripes" style="--tint: {{ $product['tint'] }}"></div>
+                @endif
+            </div>
+            @if (count($gallery) > 1)
+                <div class="rb-thumbs" role="group" aria-label="{{ $t['photos'] }}" data-rb-thumbs data-testid="rb-thumbs">
+                    @foreach ($gallery as $i => $src)
+                        <button type="button" class="rb-thumb{{ $i === 0 ? ' is-on' : '' }}" data-src="{{ $src }}" aria-pressed="{{ $i === 0 ? 'true' : 'false' }}" aria-label="{{ strtr($t['showPhoto'], [':n' => $i + 1, ':total' => count($gallery)]) }}" data-testid="rb-thumb">
+                            <img src="{{ $src }}" alt="" loading="lazy">
+                        </button>
+                    @endforeach
+                </div>
             @endif
         </div>
         <div style="display:flex;flex-direction:column;gap:20px">
             <div>
-                @if ($product['category'])<div style="font-size:12px;letter-spacing:.15em">{{ $product['category'] }}</div>@endif
+                @if ($product['category'])<div class="rb-track" style="font-size:12px;--rb-track:.15em">{{ $product['category'] }}</div>@endif
                 <h1 style="margin:6px 0 0;font-size:30px;font-weight:500">{{ $product['name'] }}</h1>
                 <div style="font-size:22px;margin-top:8px;font-weight:600" data-rb-price>{{ $product['price_text'] }}</div>
             </div>
@@ -76,6 +95,20 @@
                 </div>
                 <button type="button" class="rb-btn" style="width:100%;height:48px" data-rb-add data-testid="rb-add">{{ $t['add'] }}</button>
             @elseif ($product['available'])
+                @if ($product['gift_card'])
+                    {{--
+                        ═══ نصُّ كرت الهدية — خانةٌ واحدة، مطلوبةٌ قبل السلّة ═══
+
+                        لا رفعَ ملفٍّ ولا محاذاةَ ولا اختيار. والنصُّ يُحفظ مع
+                        البند في السلّة، والخادمُ يردّ الكرتَ بلا نصّ
+                        (`GiftCardProduct`).
+                    --}}
+                    <div data-testid="rb-card-note-box">
+                        <label for="rb-card-note" style="display:block;font-size:13px;margin-bottom:8px">{{ $t['giftCardMessage'] }}</label>
+                        <textarea id="rb-card-note" class="rb-input" rows="4" maxlength="{{ $product['card_max'] }}" data-rb-card-note aria-describedby="rb-card-note-err" data-testid="rb-card-note"></textarea>
+                        <p id="rb-card-note-err" class="rb-error" style="margin:6px 0 0" data-rb-card-note-err hidden role="alert">{{ $t['giftCardNeeded'] }}</p>
+                    </div>
+                @endif
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
                     <div class="rb-qty">
                         <button type="button" data-rb-dec aria-label="−">−</button>
@@ -106,6 +139,22 @@
 </section>
 @endsection
 @section('scripts')
+@if (count($gallery) > 1)
+<style>
+    .rb-thumbs { display: flex; gap: 10px; margin-top: 12px; overflow-x: auto; padding: 2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .rb-thumbs::-webkit-scrollbar { display: none; }
+    .rb-thumb { flex: none; width: 72px; height: 72px; padding: 0; border: 1px solid var(--rb-border); border-radius: var(--rb-r-sm); overflow: hidden; background: var(--rb-soft); cursor: pointer; opacity: .75; }
+    .rb-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .rb-thumb.is-on { border-color: var(--rb-olive); box-shadow: inset 0 0 0 1px var(--rb-olive); opacity: 1; }
+    .rb-thumb:focus-visible { outline: 2px solid var(--rb-olive); outline-offset: 2px; }
+    @media (max-width: 1023px) { .rb-thumb { width: 60px; height: 60px; } }
+</style>
+<script>{!! file_get_contents(resource_path('js/store/ribbon-gallery.js')) !!}</script>
+<script>RBGallery.mount(document.querySelector('[data-rb-thumbs]'), document.querySelector('[data-rb-main]'));</script>
+@endif
+@if ($product['gift_card'])
+<script>{!! file_get_contents(resource_path('js/store/ribbon-card-note.js')) !!}</script>
+@endif
 @if ($offers)
 <style>
     .rb-ups { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
@@ -158,6 +207,15 @@
             وتُساق الصفحةُ إليها.
         */
         missing: function (cards) { cards[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' }); },
+    });
+@elseif ($product['gift_card'])
+    // والكرتُ لا يدخل السلّةَ بلا نصّ — والنصُّ يُحفظ مع بنده
+    var note = RBCardNote.mount(document.querySelector('[data-rb-card-note]'), document.querySelector('[data-rb-card-note-err]'));
+    if (add) add.addEventListener('click', function () {
+        var text = note.take(); if (text === null) return;
+        RB.add(id, variant, qty, text);
+        add.textContent = @json($t['added']); RB.toast(@json($t['added']));
+        setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
     });
 @else
     if (add) add.addEventListener('click', function () {

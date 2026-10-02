@@ -128,11 +128,17 @@ class ASaudsGiftCardMessageIsFreeTest extends TestCase
 
     /* ═══════════ لمن ═══════════ */
 
-    public function test_the_shipped_list_is_saud_alone_and_apart_from_the_others(): void
+    /*
+     * وخرج منها سعود (2026-10-02): كرتُه صار صنفًا من رفّه
+     * (`ribbon_gift_card_product_businesses`) — فالقائمةُ تُشحن فارغة،
+     * والسلوكُ باقٍ لمن يُكتب فيها. انظر `ASaudsGiftCardIsAProductWithItsMessageTest`.
+     */
+    public function test_the_shipped_list_is_empty_now_that_saud_sells_his_card_as_a_product(): void
     {
         $config = require config_path('storefront.php');
 
-        $this->assertSame([5], $config['ribbon_free_gift_card_message_businesses']);
+        $this->assertSame([], $config['ribbon_free_gift_card_message_businesses']);
+        $this->assertSame([5], $config['ribbon_gift_card_product_businesses']);
         $this->assertArrayNotHasKey('paymob_businesses', $config, 'البوّابةُ لا قائمةَ لها — لكلّ متجرٍ ذي سلّةٍ مفاتيحُه');
     }
 

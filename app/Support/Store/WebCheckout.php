@@ -183,6 +183,8 @@ final class WebCheckout
 
         $lines = $sale->priceItems($items, $lock);
         self::assertPublished($bid, $lines);
+        // ونصُّ كرت الهدية مع بنده — يُردّ الكرتُ بلا نصّ، ويُمحى عمّا سواه
+        $lines = GiftCardProduct::settle($bid, $lines);
 
         /*
          * وكرتُ الهدية سطرٌ كأيّ سطر — يُضاف هنا وينتهي أمرُه.
@@ -254,6 +256,9 @@ final class WebCheckout
                 'price' => (float) $l['price'],
                 'qty' => (int) $l['qty'],
                 'line' => round($l['price'] * $l['qty'], 3),
+                // نصُّ الكرت يعود إلى السلّة لتُراجعه — ولا نصَّ لبندٍ سواه
+                'gift_card' => (bool) ($l['gift_card'] ?? false),
+                'note' => ($l['gift_card'] ?? false) ? $l['note'] : null,
             ], $lines, array_keys($lines)),
             'subtotal' => $subtotal,
             'discount' => $discount,
@@ -487,7 +492,13 @@ final class WebCheckout
                 // واسمُ المُرسِل هو المشتري — فيُطبع على الكرت بلا أن يُسأل عنه
                 'sender_name' => $form['name'],
                 'scheduled_for' => $scheduled?->toDateTimeString(),
-                'card_message' => $form['card'] ?? null,
+                /*
+                 * ومن كرتُه صنفٌ من رفّه فنصُّه من بنده لا من خانة الإتمام —
+                 * مصدرٌ واحد (`GiftCardProduct::orderMessage`).
+                 */
+                'card_message' => GiftCardProduct::on($bid)
+                    ? GiftCardProduct::orderMessage($lines)
+                    : ($form['card'] ?? null),
                 'delivery_address' => $form['fulfil'] === FlowerOrder::DELIVERY
                     ? trim(($form['area'] ?? '').' — '.($form['address'] ?? ''), " —\t")
                     : null,
@@ -511,7 +522,8 @@ final class WebCheckout
                      */
                     ...Boutiques::itemColumns($boutiqueOf[$idx] ?? null, (float) ($l['cost'] ?? 0)),
                     'quantity' => $l['qty'],
-                    'note' => null,
+                    // نصُّ كرت الهدية وحده — وسائرُ البنود بلا نصّ (`GiftCardProduct::settle`)
+                    'note' => $l['note'] ?? null,
                     'total' => round($l['price'] * $l['qty'], 3),
                     'addons_total' => 0,
                     'custom_details' => null,
@@ -657,7 +669,8 @@ final class WebCheckout
                 'variant_id' => ! empty($i['variant_id']) ? (int) $i['variant_id'] : null,
                 'qty' => min(self::MAX_QTY, $qty),
                 'name' => '',
-                'note' => null,
+                // يُقرأ لبند كرت الهدية وحده، ويُمحى عمّا سواه بعد التسعير
+                'note' => GiftCardProduct::message($i['note'] ?? null),
             ];
         }
 
@@ -760,7 +773,7 @@ final class WebCheckout
         };
 
         $rules = array_filter([
-            'name' => ['required', 'string', 'max:120'],
+            'name' => EnglishCheckout::rules($bid, ['required', 'string', 'max:120'], EnglishCheckout::NAME),
             'phone' => ['required', 'string', 'max:32', 'regex:/^[0-9+()\-\s]{8,}$/'],
             'fulfil' => ['required', 'in:'.implode(',', CheckoutFields::fulfilments($bid))],
             /*
@@ -774,7 +787,7 @@ final class WebCheckout
              * ولولا هذا لَرُدّ كلُّ طلبِ استلامٍ من المحلّ بـ«اكتب العنوان».
              */
             'area' => CheckoutFields::shows($bid, 'area') ? ['nullable', 'string', 'max:120'] : null,
-            'address' => CheckoutFields::shows($bid, 'address') ? ['nullable', 'string', 'max:500'] : null,
+            'address' => EnglishCheckout::rules($bid, CheckoutFields::shows($bid, 'address') ? ['nullable', 'string', 'max:500'] : null, EnglishCheckout::ADDRESS),
             'date' => $field('date', [
                 'date', 'after_or_equal:today',
                 'before_or_equal:'.today()->addDays(CheckoutFields::maxDays($bid))->toDateString(),
@@ -794,7 +807,8 @@ final class WebCheckout
              * واختياريٌّ لا مطلوب: من يشتري لنفسه لا يُسأل عن مستلِمٍ، وحقلٌ
              * يُفرض عليه يُملأ باسمه مرّتين فلا يفرّق أحدٌ بعدها.
              */
-            'recipient_name' => $field('recipient', ['string', 'max:120']),
+            // والثلاثةُ بالإنجليزيّة لمن في قائمتها — انظر `EnglishCheckout`
+            'recipient_name' => EnglishCheckout::rules($bid, $field('recipient', ['string', 'max:120']), EnglishCheckout::NAME),
             'recipient_phone' => CheckoutFields::shows($bid, 'recipient')
                 ? array_merge(
                     [CheckoutFields::requires($bid, 'recipient') ? 'required' : 'nullable'],
@@ -846,7 +860,7 @@ final class WebCheckout
             'date.required' => __('اختر موعد التسليم.'),
             'date.after_or_equal' => __('الموعد لا يكون في الماضي.'),
             'pay.in' => __('اختر وسيلة الدفع.'),
-        ]);
+        ] + EnglishCheckout::messages());
 
         $v->after(function ($v) use ($bid, $payload, $settings) {
             /*

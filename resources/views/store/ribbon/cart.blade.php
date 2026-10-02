@@ -35,10 +35,16 @@
             var box = document.querySelector('[data-rb-lines]'), err = document.querySelector('[data-rb-errors]');
             err.textContent = '';
             if (!q.ok) { err.textContent = Object.values(q.errors || {}).flat().join(' · '); box.innerHTML = ''; return; }
+            /*
+                والبندُ يُعرَف بنصّ كرته كذلك (`ribbon-cart-lines.js`): الكمّيّةُ
+                والحذفُ على البند نفسِه لا على كلّ كرتٍ في السلّة. والنصُّ
+                يُعرض تحت اسم الكرت وحده ليُراجعه الزبون.
+            */
             box.innerHTML = q.lines.map(function (l) {
-                return '<div style="display:grid;grid-template-columns:88px 1fr auto;gap:18px;align-items:center;padding:18px 0;border-bottom:1px solid var(--rb-line)" data-rb-line data-id="' + l.id + '" data-variant="' + (l.variant_id || '') + '">'
+                return '<div style="display:grid;grid-template-columns:88px 1fr auto;gap:18px;align-items:center;padding:18px 0;border-bottom:1px solid var(--rb-line)" data-rb-line data-id="' + l.id + '" data-variant="' + (l.variant_id || '') + '" data-note="' + esc(l.gift_card ? l.note : '') + '">'
                     + '<div style="width:88px;height:88px;border-radius:var(--rb-r);overflow:hidden;background:var(--rb-soft)">' + (l.image ? '<img src="' + esc(l.image) + '" alt="" style="width:100%;height:100%;object-fit:cover">' : '') + '</div>'
                     + '<div><div style="font-size:15px">' + esc(l.name) + '</div>' + (l.variant ? '<div style="font-size:13px;margin-top:2px">' + esc(l.variant) + '</div>' : '')
+                    + (l.gift_card && l.note ? '<div style="font-size:13px;margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere" data-testid="rb-cart-card-note">' + esc(T.cartCardMessage) + ' ' + esc(l.note) + '</div>' : '')
                     + '<div style="display:flex;align-items:center;gap:14px;margin-top:10px"><div class="rb-qty" style="height:34px"><button type="button" data-dec style="width:36px;height:34px">−</button><span style="min-width:24px;font-size:14px">' + l.qty + '</span><button type="button" data-inc style="width:36px;height:34px">+</button></div>'
                     + '<button type="button" data-remove style="border:0;background:transparent;color:#8a6d3b;font-size:13px;cursor:pointer;padding:0;text-decoration:underline">' + esc(T.remove) + '</button></div></div>'
                     + '<div style="font-size:17px;font-weight:600">' + esc(l.line_text) + '</div></div>';
@@ -48,11 +54,11 @@
     }
     document.addEventListener('click', function (e) {
         var row = e.target.closest('[data-rb-line]'); if (!row) return;
-        var id = +row.dataset.id, v = row.dataset.variant ? +row.dataset.variant : null;
-        var cur = (RB.read().find(function (it) { return it.id === id && (it.variant_id || null) === v; }) || { qty: 0 }).qty;
-        if (e.target.closest('[data-inc]')) RB.set(id, v, cur + 1);
-        else if (e.target.closest('[data-dec]')) RB.set(id, v, Math.max(1, cur - 1));
-        else if (e.target.closest('[data-remove]')) RB.set(id, v, 0);
+        var id = +row.dataset.id, v = row.dataset.variant ? +row.dataset.variant : null, note = row.dataset.note || '';
+        var cur = (RB.read().find(function (it) { return RBLines.same(it, id, v, note); }) || { qty: 0 }).qty;
+        if (e.target.closest('[data-inc]')) RB.set(id, v, cur + 1, note);
+        else if (e.target.closest('[data-dec]')) RB.set(id, v, Math.max(1, cur - 1), note);
+        else if (e.target.closest('[data-remove]')) RB.set(id, v, 0, note);
         else return;
         render();
     });

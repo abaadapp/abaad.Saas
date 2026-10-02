@@ -7152,5 +7152,11 @@
     "+ :n أصناف أخرى": "+ :n more items",
     "حذف البيعة": "Delete sale",
     "هل تريد حذف هذه البيعة؟ سيُلغى أثرها المالي ويُعاد المخزون.": "Delete this sale? Its financial effect will be reversed and the stock returned.",
-    "حُذفت البيعة — أُلغي أثرها المالي وعاد المخزون": "Sale deleted — its financial effect was reversed and the stock returned"
+    "حُذفت البيعة — أُلغي أثرها المالي وعاد المخزون": "Sale deleted — its financial effect was reversed and the stock returned",
+    "الصورة الرئيسية تظهر في قائمة المنتجات، والصور الإضافية تظهر داخل صفحة المنتج.": "The main photo appears in the product list; additional photos appear on the product page.",
+    "اكتب الاسم بالإنجليزية فقط.": "Write the name in English only.",
+    "اكتب اسم المستلم بالإنجليزية فقط.": "Write the recipient's name in English only.",
+    "اكتب العنوان بالإنجليزية فقط.": "Write the address in English only.",
+    "اكتب رسالة كرت الهدية قبل إضافته إلى الطلب.": "Write the gift card message before adding it to the order.",
+    "رسالة كرت الهدية أطول من :max حرفًا.": "The gift card message is longer than :max characters."
 }

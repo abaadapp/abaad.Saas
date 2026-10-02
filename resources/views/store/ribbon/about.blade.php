@@ -13,7 +13,7 @@
 <section class="rb-screen" data-testid="rb-about">
     <div style="background:var(--rb-soft)">
         <div class="rb-wrap" style="padding:clamp(32px,4.5vw,64px) 24px;display:flex;flex-direction:column;gap:14px">
-            <div style="font-size:12px;letter-spacing:.22em">{{ $t['aboutKicker'] }}</div>
+            <div class="rb-track" style="font-size:12px;--rb-track:.22em">{{ $t['aboutKicker'] }}</div>
             <h1 class="rb-h1" style="margin:0">{{ $t['aboutTitle'] }}</h1>
         </div>
     </div>

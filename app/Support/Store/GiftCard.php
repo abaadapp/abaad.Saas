@@ -75,7 +75,11 @@ final class GiftCard
      */
     public static function enabled(int $businessId): bool
     {
-        if (self::messageOnly($businessId)) {
+        /*
+         * ومن كرتُه صنفٌ من رفّه لا يُباع له كرتٌ هنا — ولو بقي مفتاحُه
+         * وثمنُه في الإعداد (`GiftCardProduct`).
+         */
+        if (self::messageOnly($businessId) || GiftCardProduct::on($businessId)) {
             return false;
         }
 

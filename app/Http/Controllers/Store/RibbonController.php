@@ -20,7 +20,9 @@ use App\Support\Store\BestSellers;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\RibbonUpsells;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\EnglishCheckout;
 use App\Support\Store\GiftCard;
+use App\Support\Store\GiftCardProduct;
 use App\Support\Store\NewArrivals;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
@@ -385,11 +387,21 @@ class RibbonController extends Controller
     private function product(Business $business, int $id, string $lang): array
     {
         $bid = (int) $business->id;
-        $p = $this->shown($bid)->with(['category:id,name,name_en', 'variants' => fn ($q) => $q->where('active', true)->orderBy('sort_order')->orderBy('id')])->find($id);
+        /*
+         * والصورُ الإضافيّة تُحمَّل هنا وحدَها — الرئيسيّةُ والرفُّ والبحثُ
+         * يعرضون صورةً واحدة ولا يسألون عنها. وبمعرّف المتجر مع معرّف
+         * الصنف: صفٌّ في الجدول لمتجرٍ آخر لا يدخل معرضَ هذا.
+         */
+        $p = $this->shown($bid)->with([
+            'category:id,name,name_en',
+            'variants' => fn ($q) => $q->where('active', true)->orderBy('sort_order')->orderBy('id'),
+            'images' => fn ($q) => $q->where('business_id', $bid),
+        ])->find($id);
         abort_if($p === null, 404);
 
         $available = Shelf::availability($bid, [$p->id])[$p->id] ?? false;
         $currency = Storefront::currency($business);
+        $giftCard = GiftCardProduct::is($bid, $p);
 
         return [
             /*
@@ -402,6 +414,13 @@ class RibbonController extends Controller
                 'description' => (string) $p->description,
                 'available' => $available,
                 'sizes' => $this->sizes($p, $lang, $currency),
+                'gallery' => $this->gallery($p),
+                /*
+                 * كرتُ الهدية صنفًا (`GiftCardProduct`) — تُعرض على صفحته
+                 * خانةُ نصّه، ويُردّ في الخادم بلا نصّ.
+                 */
+                'gift_card' => $giftCard,
+                'card_max' => GiftCardProduct::MAX,
             ],
             /*
              * «أضف مع طلبك» — لمن في قائمة المالك وحده (`RibbonUpsells`).
@@ -409,12 +428,28 @@ class RibbonController extends Controller
              * وصنفٌ نفد لا زرَّ سلّةٍ له، فلا يُقترح معه شيء. والأسعارُ
              * للعرض: الإتمامُ يسعّر البنودَ من القاعدة كأيّ صنف.
              */
-            'upsells' => $available
+            // وصفحةُ الكرت نصُّه وحده — لا إضافاتٌ تُقترح معه
+            'upsells' => $available && ! $giftCard
                 ? RibbonUpsells::for($bid, $p, $this->shown($bid))
                     ->map(fn (Product $u) => $this->card($u, $lang, $business, $currency) + ['sizes' => $this->sizes($u, $lang, $currency)])
                     ->all()
                 : [],
         ];
+    }
+
+    /**
+     * صورُ صفحة الصنف — الرئيسيّةُ أوّلًا ثمّ الإضافيّةُ بترتيبها.
+     *
+     * والرئيسيّةُ في `products.image` لا في الجدول (`ProductImage`)، فتُضاف
+     * أوّلًا بيدها. وصورةٌ مكرّرةٌ لا تُعرض مرّتين.
+     *
+     * @return list<string>
+     */
+    private function gallery(Product $p): array
+    {
+        $urls = array_merge([(string) $p->image], $p->images->map(fn ($i) => (string) $i->url)->all());
+
+        return array_values(array_unique(array_filter($urls, fn ($u) => $u !== '')));
     }
 
     /** مقاساتُ الصنف المفعّلة — بأسمائها بلغة الصفحة وأسعارها من القاعدة */
@@ -435,6 +470,7 @@ class RibbonController extends Controller
         $currency = Storefront::currency($business);
         // ومن رسالتُه مجّانيّة لا يصل الشاشةَ ثمنٌ يُكتب — ولو سُعّر كرتُه
         $messageOnly = GiftCard::messageOnly($bid);
+        $asProduct = GiftCardProduct::on($bid);
         $cardPrice = $messageOnly ? null : GiftCard::price($bid);
 
         return [
@@ -449,6 +485,8 @@ class RibbonController extends Controller
              */
             'fields' => CheckoutFields::all($bid),
             'fulfilments' => CheckoutFields::fulfilments($bid),
+            // الاسمان والعنوانُ بالإنجليزيّة — والخادمُ يحرسها (`EnglishCheckout`)
+            'englishOnly' => EnglishCheckout::on($bid),
             /*
              * وكرتُ الهدية: أيُعرض، وبكم، وما يُقبل رفعه معه.
              *
@@ -466,6 +504,8 @@ class RibbonController extends Controller
                  * خانةٌ ونصٌّ فقط — لا ثمنَ ولا ملفَّ ولا إعادةَ تسعير.
                  */
                 'message_only' => $messageOnly,
+                // وكرتُه صنفٌ من الرفّ: لا شيءَ منه في الإتمام (`GiftCardProduct`)
+                'as_product' => $asProduct,
                 'price' => $cardPrice ?? 0.0,
                 'price_text' => $cardPrice === null ? '' : Money::format($cardPrice, $currency),
                 'accept' => '.'.implode(',.', GiftCard::MIMES),
@@ -691,6 +731,7 @@ class RibbonController extends Controller
                 'variant' => $lang === 'en' && filled($l['variant_en']) ? $l['variant_en'] : $l['variant'],
                 'image' => $l['image'], 'qty' => $l['qty'], 'price' => $l['price'],
                 'price_text' => $m($l['price']), 'line_text' => $m($l['line']),
+                'gift_card' => $l['gift_card'], 'note' => $l['note'],
             ], $q['lines']),
             'subtotal' => $q['subtotal'], 'subtotal_text' => $m($q['subtotal']),
             'discount' => $q['discount'], 'discount_text' => $m($q['discount']),

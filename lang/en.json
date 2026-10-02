@@ -7143,5 +7143,6 @@
     "من درج الصندوق — نقدًا، بتاريخ اليوم.": "From the cash drawer — in cash, dated today.",
     "قيد": "Entry",
     "قيد مبسّط — ماذا حدث؟": "Simple entry — what happened?",
-    "مالٌ خرج من الدرج أو دخله بغير بيع — والنظام يكتب قيده.": "Money that left or entered the drawer other than a sale — the system writes the entry."
+    "مالٌ خرج من الدرج أو دخله بغير بيع — والنظام يكتب قيده.": "Money that left or entered the drawer other than a sale — the system writes the entry.",
+    "حدد عدد النقاط التي يحصل عليها العميل مقابل كل 1 ريال يشتري به.": "Set how many points the customer earns for every 1 rial spent."
 }

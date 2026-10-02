@@ -96,7 +96,7 @@ export default function Loyalty() {
                         <div className="space-y-4">
                             <Field
                                 label="نقاط لكل وحدة شراء"
-                                hint="١٠٠ نقطة = وحدة عملة واحدة عند الاستبدال — فما فوق ١٠٠ يعيد للزبون فاتورته كاملة"
+                                hint="حدد عدد النقاط التي يحصل عليها العميل مقابل كل 1 ريال يشتري به."
                                 error={form.errors.loyalty_earn_rate}
                             >
                                 <Input

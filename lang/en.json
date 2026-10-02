@@ -7146,5 +7146,6 @@
     "مالٌ خرج من الدرج أو دخله بغير بيع — والنظام يكتب قيده.": "Money that left or entered the drawer other than a sale — the system writes the entry.",
     "حذف البيعة": "Delete sale",
     "هل تريد حذف هذه البيعة؟ سيُلغى أثرها المالي ويُعاد المخزون.": "Delete this sale? Its financial effect will be reversed and the stock returned.",
-    "حُذفت البيعة — أُلغي أثرها المالي وعاد المخزون": "Sale deleted — its financial effect was reversed and the stock returned"
+    "حُذفت البيعة — أُلغي أثرها المالي وعاد المخزون": "Sale deleted — its financial effect was reversed and the stock returned",
+    "حدد عدد النقاط التي يحصل عليها العميل مقابل كل 1 ريال يشتري به.": "Set how many points the customer earns for every 1 rial spent."
 }

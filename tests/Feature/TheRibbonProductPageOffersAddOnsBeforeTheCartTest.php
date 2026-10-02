@@ -133,6 +133,40 @@ class TheRibbonProductPageOffersAddOnsBeforeTheCartTest extends TestCase
         $this->assertArrayNotHasKey('paymob_businesses', $config, 'البوّابةُ لا قائمةَ لها — لكلّ متجرٍ ذي سلّةٍ مفاتيحُه');
     }
 
+    /**
+     * وتنبيهُ الصورة تحت زرّ الإضافة في الصفحة ذات الإضافات أيضًا — بعد
+     * الإضافات والزرّ، وقبل ملاحظة التوصيل. والصفحةُ بلا إضافات حارسُها
+     * `ASitesPhotoIsNotAPromiseTest`.
+     */
+    public function test_the_image_note_sits_under_the_add_button_after_the_add_ons(): void
+    {
+        MarketingSettings::save($this->shop->id, 'website', [
+            'store_delivery_note' => 'التوصيل خلال اليوم',
+            'store_image_note' => 'قد يختلف اللون حسب المتوفر',
+        ]);
+
+        $html = $this->page($this->p['main'])->getContent();
+
+        $ups = mb_strpos($html, 'data-testid="rb-upsells"');
+        $add = mb_strpos($html, 'data-testid="rb-add"');
+        $note = mb_strpos($html, 'data-testid="rb-image-note"');
+        $delivery = mb_strpos($html, 'التوصيل خلال اليوم');
+
+        $this->assertNotFalse($ups, 'الصفحةُ بلا إضافات — الاختبارُ لا يقيس ما سُمّي له');
+        $this->assertNotFalse($note);
+        $this->assertGreaterThan($ups, $add);
+        $this->assertGreaterThan($add, $note, 'التنبيهُ قبل زرّ الإضافة');
+        $this->assertLessThan($delivery, $note, 'التنبيهُ بعد ملاحظة التوصيل');
+        $this->assertSame(1, mb_substr_count($html, 'data-testid="rb-image-note"'));
+    }
+
+    public function test_an_empty_image_note_draws_nothing_on_the_add_ons_page(): void
+    {
+        MarketingSettings::save($this->shop->id, 'website', ['store_image_note' => '']);
+
+        $this->assertStringNotContainsString('rb-image-note', $this->page($this->p['main'])->getContent());
+    }
+
     public function test_a_ribbon_shop_outside_the_list_keeps_its_page_as_it_was(): void
     {
         config(['storefront.ribbon_product_upsells' => []]);

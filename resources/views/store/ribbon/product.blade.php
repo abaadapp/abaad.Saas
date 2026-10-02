@@ -17,27 +17,6 @@
                 @if ($product['category'])<div style="font-size:12px;letter-spacing:.15em">{{ $product['category'] }}</div>@endif
                 <h1 style="margin:6px 0 0;font-size:30px;font-weight:500">{{ $product['name'] }}</h1>
                 <div style="font-size:22px;margin-top:8px;font-weight:600" data-rb-price>{{ $product['price_text'] }}</div>
-                {{--
-                    ═══ ولمَ هنا لا تحت الصورة ═══
-
-                    كان تحتها — والادّعاءُ عنها، فبدا موضعَه. وعلى الجوّال
-                    كان صحيحًا: الصورةُ أوّلًا ثمّ السطرُ ثمّ الزرّ.
-
-                    ثمّ فُتحت الصفحةُ على شاشةٍ عريضة: عمودان، الصورةُ في
-                    أحدهما بستّمئة بكسل، والاسمُ والثمنُ والزرُّ في الآخر
-                    عند ثلاثمئة. فصار السطرُ عند ٨٣٠ والزرُّ عند ٣٦٣ — أي
-                    **تحت الزرّ بأربعمئة بكسل**، ويُشترى المنتج بلا أن يُقرأ.
-
-                    وهو العطبُ الذي كُتب هذا السطرُ كلُّه لأجله، في صورةٍ
-                    أخرى. ولم يكشفه اختبارٌ: الترتيبُ في المصدر كان صحيحًا
-                    — عمودُ الصورة يسبق — وكشفته لقطةُ شاشة.
-
-                    فمكانُه عمودُ القرار: آخرُ ما يُقرأ قبل الضغطة، في
-                    العرضين معًا.
-                --}}
-                @if ($imageNote !== '')
-                    <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
-                @endif
             </div>
             @if ($product['description'] !== '')
                 <p style="margin:0;font-size:15px;line-height:1.7;text-wrap:pretty">{{ $product['description'] }}</p>
@@ -107,6 +86,17 @@
                 </div>
             @else
                 <div style="border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px" data-testid="rb-soldout">{{ $t['soldOut'] }}</div>
+            @endif
+            {{--
+                ═══ تنبيهُ الصورة تحت زرّ الإضافة مباشرةً ═══
+
+                في عمود القرار لا تحت الصورة: على الشاشة العريضة يقع عمودُ
+                الصورة بجانب الزرّ، فسطرٌ هناك يهبط بعيدًا عنه ولا يُقرأ.
+                وهنا يلاصق الزرَّ في العرضين — بإضافاتٍ أو بلا — ثمّ تليه
+                ملاحظةُ التوصيل. وكان تحت الثمن، ونُقل بقرار المالك.
+            --}}
+            @if ($imageNote !== '')
+                <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
             @endif
             @if ($deliveryNote !== '')
                 <div style="font-size:13px;line-height:1.8">{{ $deliveryNote }}</div>

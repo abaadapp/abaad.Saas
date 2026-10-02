@@ -166,36 +166,42 @@ class ASitesPhotoIsNotAPromiseTest extends TestCase
     }
 
     /**
-     * ═══ وفي عمود القرار بين الثمن والزرّ ═══
+     * ═══ وفي عمود القرار تحت زرّ الإضافة مباشرةً ═══
      *
-     * الموضعُ هو المسألةُ كلُّها، و«قبل الزرّ في المصدر» لا يكفي لقياسه.
+     * الموضعُ قرارُ المالك: الزرّ ثمّ تنبيهُ الصورة ثمّ ملاحظةُ التوصيل.
+     * وكان بين الثمن والزرّ، ثمّ نُقل تحت الزرّ.
      *
-     * كان السطرُ تحت الصورة — وعمودُ الصورة يسبق في المصدر، فمرّ اختبارٌ
-     * يسأل «أيسبق الزرَّ؟». ثمّ فُتحت الصفحةُ على شاشةٍ عريضة: الصورةُ
-     * عمودٌ بستّمئة بكسل، والزرُّ في العمود المقابل عند ٣٦٣، فالسطرُ عند
-     * ٨٣٠ — تحت الزرّ. يُشترى المنتجُ بلا أن يُقرأ، وهو العطبُ عينُه الذي
-     * كُتب السطرُ لأجله.
+     * و«بعد الزرّ في المصدر» لا يكفي وحده: سطرٌ في عمود الصورة يقع بعد
+     * الزرّ في المصدر أيضًا؟ لا — عمودُ الصورة يسبق. لكنّه كان مرّةً تحت
+     * الصورة فهبط على الشاشة العريضة بعيدًا عن الزرّ ولم يُقرأ. فيُقاس
+     * بثلاثة حدود: **بعد الثمن** (في عمود القرار)، و**بعد زرّ الإضافة**،
+     * و**قبل ملاحظة التوصيل**.
      *
-     * فيُقاس بحدّين لا بواحد: **بعد الثمن** — أي في عمود القرار لا في عمود
-     * الصورة — و**قبل زرّ الإضافة**. والحدّان معًا يمنعان عودتَه إلى حيث
-     * كان.
+     * والصفحةُ بإضافاتٍ حارسُها `TheRibbonProductPageOffersAddOnsBeforeTheCartTest`.
      */
-    public function test_on_the_product_page_it_sits_between_the_price_and_the_add_button(): void
+    public function test_on_the_product_page_it_sits_right_under_the_add_button(): void
     {
-        $this->note('قد يختلف صنفٌ أو لون حسب المتوفر');
+        MarketingSettings::save($this->shop->id, 'website', [
+            'store_delivery_note' => 'التوصيل داخل مسقط خلال اليوم نفسه',
+            'store_image_note' => 'قد يختلف صنفٌ أو لون حسب المتوفر',
+        ]);
 
         $html = $this->get('/s/ribbon/p/'.$this->bouquet->id)->assertOk()->getContent();
 
         $price = mb_strpos($html, 'data-rb-price');
-        $note = mb_strpos($html, 'rb-image-note');
         $add = mb_strpos($html, 'data-testid="rb-add"');
+        $note = mb_strpos($html, 'rb-image-note');
+        $delivery = mb_strpos($html, 'التوصيل داخل مسقط خلال اليوم نفسه');
 
         $this->assertNotFalse($price);
-        $this->assertNotFalse($note);
         $this->assertNotFalse($add);
+        $this->assertNotFalse($note);
+        $this->assertNotFalse($delivery);
 
-        $this->assertGreaterThan($price, $note, 'التنبيهُ خارج عمود القرار — يهبط تحت الزرّ على الشاشة العريضة');
-        $this->assertLessThan($add, $note, 'التنبيهُ بعد زرّ الإضافة — يُقرأ بعد القرار');
+        $this->assertGreaterThan($price, $note, 'التنبيهُ خارج عمود القرار — يهبط بعيدًا عن الزرّ على الشاشة العريضة');
+        $this->assertGreaterThan($add, $note, 'التنبيهُ قبل زرّ الإضافة — موضعُه تحته');
+        $this->assertLessThan($delivery, $note, 'ملاحظةُ التوصيل قبل التنبيه — الترتيب: الزرّ ثمّ التنبيه ثمّ التوصيل');
+        $this->assertSame(1, mb_substr_count($html, 'data-testid="rb-image-note"'), 'التنبيهُ مرّةً واحدة — لا بقيّةَ تحت الثمن');
     }
 
     /** وفوق زرّ الطلب لا تحته — هذه لحظةُ الدفع */

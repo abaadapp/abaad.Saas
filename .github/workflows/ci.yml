@@ -182,6 +182,9 @@ jobs:
   # لا الاسمُ `refs/pull/N/merge`: هو إيداعُ ذلك الاسم الذي سحبته الوظائفُ الثلاث
   # بعينه، والاسمُ نفسُه يُعاد حسابُه كلّما تحرّك main — فسحبُه هنا بعد ساعةٍ قد
   # يُعطي شجرةً لم تُختبر. والخطوةُ تتحقّق أنّ الاسم هو اسمُ هذا الطلب.
+  #
+  # ولا يُرفع إثباتٌ إن تحرّك main أثناء الاختبار: أساسُ ما اختُبر (`HEAD^1`)
+  # يجب أن يكون رأسَ main الآن — وإلّا تسقط الوظيفةُ وتطلب تحديثَ الطلب.
   # ---------------------------------------------------------------------
   pr-proof:
     name: إثبات الشجرة المختبَرة
@@ -211,11 +214,32 @@ jobs:
           [ "$(git rev-parse HEAD)" = "$TESTED_SHA" ] \
             || { echo "::error::المسحوب ليس ${TESTED_SHA}"; exit 1; }
 
+          # ولا إثباتَ لمزيجٍ تقادم: إن تحرّك main أثناء الاختبار (طلبٌ آخر دُمج
+          # في الساعة نفسها) فما اختُبر هو main القديم مع الطلب — ودمجُه الآن
+          # يُنتج شجرةً لم تُختبر. فيُقال هنا، قبل الدمج، لا بعده في Main Gate.
+          # والمرجعُ صريح: يكتب origin/main ولو لم يُضبط للبعيد مسارُ تتبّع.
+          git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
+          TESTED_BASE=$(git rev-parse 'HEAD^1')
+          CURRENT_MAIN=$(git rev-parse origin/main)
+          if [ "$TESTED_BASE" != "$CURRENT_MAIN" ]; then
+            msg="main moved while this PR was being tested; update the PR with latest main and rerun CI before merging."
+            echo "::error title=PR proof::${msg} (tested base ${TESTED_BASE}, main now ${CURRENT_MAIN})"
+            {
+              echo "### ⛔ لا إثبات — main تحرّك أثناء الاختبار"
+              echo
+              echo "**${msg}**"
+              echo
+              echo "- tested base: \`${TESTED_BASE}\`"
+              echo "- main now: \`${CURRENT_MAIN}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
           jq -n \
             --argjson pr_number "$PR_NUMBER" \
             --arg head_sha "$HEAD_SHA" \
             --arg base_sha "$BASE_SHA" \
-            --arg tested_base_sha "$(git rev-parse 'HEAD^1')" \
+            --arg tested_base_sha "$TESTED_BASE" \
             --arg tested_commit_sha "$TESTED_SHA" \
             --arg tested_ref "$GITHUB_REF" \
             --arg tested_tree_sha "$(git rev-parse 'HEAD^{tree}')" \

@@ -1,0 +1,53 @@
+# Main Gate — بوّابةُ main السريعة: لا تُعيد الاختبارات، تُثبت أنّها جرت.
+#
+# ═══ لمَ لا CI على main ═══
+#
+# كانت CI تعمل مرّتين للتغيير الواحد: على الطلب، ثمّ على main بعد دمجه — ووظيفةُ
+# PostgreSQL وحدها قرابةَ ساعة، و«Deploy Main» لا يبدأ إلّا بعد الثانية. والثانيةُ
+# تختبر الشجرةَ نفسها التي اختُبرت في الأولى ما دام main لم يتحرّك بينهما.
+#
+# ═══ فما يُثبَت هنا ═══
+#
+# أنّ **شجرةَ** الإيداع الواصل إلى main (`HEAD^{tree}`) هي بعينها الشجرةُ التي
+# اجتازت CI الطلب كاملةً (SQLite + PostgreSQL + الواجهة)، كما رفعها تشغيلُ CI في
+# إثبات `pr-proof`. الشجرةُ لا البصمة: الدمجُ والضغطُ يُغيّران البصمة ولا يُغيّران
+# المحتوى. انظر `.github/scripts/main-gate-verify.sh`.
+#
+# ═══ وما لا يُثبَت لا يُنشر ═══
+#
+# دفعةٌ مباشرة، أو طلبٌ بلا CI ناجح، أو بلا إثبات، أو main تحرّك بعد الاختبار
+# فاختلفت الشجرة — تسقط البوّابةُ برسالةٍ صريحة، و«Deploy Main» لا يبدأ إلّا على
+# نجاحها. ولا بديلَ صامت.
+name: Main Gate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+# بوّابةٌ لكلّ إيداع — لا تُلغي إحداها الأخرى: لكلٍّ حكمُها في السجلّ
+concurrency:
+  group: main-gate-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: شجرة main هي ما اجتاز CI الطلب
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: إثبات الشجرة المختبَرة
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MAIN_SHA: ${{ github.sha }}
+        run: bash .github/scripts/main-gate-verify.sh

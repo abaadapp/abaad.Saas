@@ -748,6 +748,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/orders/export-xlsx', [ReportExportController::class, 'ordersXlsx'])->name('orders.xlsx');
     Route::get('/orders/export-pdf', [PdfController::class, 'ordersReport'])->name('orders.exportPdf');
     Route::get('/orders/{number}', [PageController::class, 'ordersShow'])->name('orders.show');
+    // «حذف» البيعة لصاحب النشاط وحده — إلغاءٌ ماليّ لا محو. انظر `OrderController::destroy`
+    Route::delete('/orders/{number}', [OrderController::class, 'destroy'])->name('orders.destroy');
 
     /*
      * ومرفقُ كرت الهدية — على قرصٍ خاصّ وببابٍ يسأل عن صاحب الطلب.

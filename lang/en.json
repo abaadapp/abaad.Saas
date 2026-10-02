@@ -7143,5 +7143,8 @@
     "من درج الصندوق — نقدًا، بتاريخ اليوم.": "From the cash drawer — in cash, dated today.",
     "قيد": "Entry",
     "قيد مبسّط — ماذا حدث؟": "Simple entry — what happened?",
-    "مالٌ خرج من الدرج أو دخله بغير بيع — والنظام يكتب قيده.": "Money that left or entered the drawer other than a sale — the system writes the entry."
+    "مالٌ خرج من الدرج أو دخله بغير بيع — والنظام يكتب قيده.": "Money that left or entered the drawer other than a sale — the system writes the entry.",
+    "حذف البيعة": "Delete sale",
+    "هل تريد حذف هذه البيعة؟ سيُلغى أثرها المالي ويُعاد المخزون.": "Delete this sale? Its financial effect will be reversed and the stock returned.",
+    "حُذفت البيعة — أُلغي أثرها المالي وعاد المخزون": "Sale deleted — its financial effect was reversed and the stock returned"
 }

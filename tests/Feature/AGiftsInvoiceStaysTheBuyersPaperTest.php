@@ -159,14 +159,30 @@ class AGiftsInvoiceStaysTheBuyersPaperTest extends TestCase
         $this->assertStringNotContainsString(self::RECIPIENT_PHONE, $public);
     }
 
-    public function test_a_gift_card_message_never_reaches_the_invoice_or_the_receipt(): void
+    /** الكرتُ معلَّمًا كما يولد في «المنتجات» (`products.is_gift_card`) */
+    private function card(): Product
     {
         config(['storefront.ribbon_gift_card_product_businesses' => [$this->shop->id]]);
-        $card = Product::create([
-            'business_id' => $this->shop->id, 'name' => GiftCard::PRODUCT_NAME, 'price' => 3, 'cost' => 0,
-            'quantity' => 0, 'tracks_stock' => false, 'alert_qty' => 0, 'active' => true, 'published' => true,
-        ]);
 
+        return Product::create([
+            'business_id' => $this->shop->id, 'name' => GiftCard::PRODUCT_NAME, 'price' => 3, 'cost' => 0,
+            'quantity' => 0, 'tracks_stock' => false, 'is_gift_card' => true,
+            'alert_qty' => 0, 'active' => true, 'published' => true,
+        ]);
+    }
+
+    /** الفاتورةُ والإيصالُ والرابطُ العامّ — نصًّا واحدًا لكلٍّ */
+    private function allPapers(Order $order): array
+    {
+        $papers = $this->papers($order);
+        $papers['public'] = $this->get((string) PublicDocument::url($order))->assertOk()->getContent();
+
+        return $papers;
+    }
+
+    public function test_a_gift_card_message_never_reaches_the_invoice_the_receipt_or_the_public_paper(): void
+    {
+        $card = $this->card();
         $o = $this->giftOrder(['items' => [
             ['id' => $this->rose->id, 'qty' => 1],
             ['id' => $card->id, 'qty' => 1, 'note' => self::MESSAGE],
@@ -176,8 +192,7 @@ class AGiftsInvoiceStaysTheBuyersPaperTest extends TestCase
         $this->assertSame(self::MESSAGE, $o->items()->where('product_id', $card->id)->value('note'));
         $this->assertSame(self::MESSAGE, $o->card_message);
 
-        ['a4' => $a4, 'strip' => $strip] = $this->papers($o);
-        foreach (['a4' => $a4, 'strip' => $strip] as $paper => $html) {
+        foreach ($this->allPapers($o) as $paper => $html) {
             $this->assertStringNotContainsString(self::MESSAGE, $html, "{$paper}: رسالةُ الكرت الخاصّة طُبعت على الورقة الماليّة");
             // والبندُ وثمنُه باقيان: الكرتُ مبيعٌ يُحاسَب
             $this->assertStringContainsString(GiftCard::PRODUCT_NAME, $html, "{$paper}: بندُ الكرت سقط من الورقة");
@@ -185,16 +200,41 @@ class AGiftsInvoiceStaysTheBuyersPaperTest extends TestCase
 
         $this->actingAs($this->owner())->get(route('admin.orders.show', $o->number))->assertOk()
             ->assertInertia(fn ($p) => $p->where('order.card_message', self::MESSAGE));
+    }
 
-        // ورسالةُ الطلب عُدّلت في الشاشة بعد البيع: البندُ بندُ كرتٍ بصنفه — فلا يُطبع
-        $item = $o->items()->where('product_id', $card->id)->firstOrFail();
-        $this->assertNull(GiftCardProduct::paperNote($item, $o->replicate()->fill(['card_message' => 'نصٌّ آخر'])));
+    public function test_a_renamed_card_is_still_known_by_its_mark_and_its_message_stays_off_paper(): void
+    {
+        $card = $this->card();
+        $o = $this->giftOrder(['items' => [['id' => $card->id, 'qty' => 1, 'note' => self::MESSAGE], ['id' => $this->rose->id, 'qty' => 1]]]);
 
-        // وصنفٌ تغيّر اسمُه بعد البيع: نصُّه من رسالة الطلب — فلا يُطبع كذلك
-        $card->update(['name' => 'Card']);
+        // يُعاد تسميتُه بعد البيع — بالاسمين — والعلامةُ هي الهويّة (#63)
+        $card->update(['name' => 'Bouquet note', 'name_en' => 'Bouquet note']);
+        $o->items()->where('product_id', $card->id)->update(['name' => 'Bouquet note']);
+        // ورسالةُ الطلب عُدّلت في الشاشة بعدُ: لا لقطةَ تحمي — العلامةُ وحدها
+        $o->forceFill(['card_message' => 'نصٌّ آخر للكرت'])->save();
+
+        foreach ($this->allPapers($o->fresh()) as $paper => $html) {
+            $this->assertStringContainsString('Bouquet note', $html, "{$paper}: بندُ الكرت المُعاد تسميتُه سقط");
+            $this->assertStringNotContainsString(self::MESSAGE, $html, "{$paper}: كرتٌ أُعيدت تسميتُه سرّب رسالتَه");
+        }
+
+        // ويُحذف صنفُه بعد البيع: العلامةُ تُقرأ من المحذوف كذلك
+        $card->delete();
         $item = $o->items()->where('product_id', $card->id)->firstOrFail();
-        $item->forceFill(['name' => 'Card'])->save();
-        $this->assertNull(GiftCardProduct::paperNote($item->fresh(), $o->fresh()));
+        $this->assertNull(GiftCardProduct::paperNote($item, $o->fresh()));
+    }
+
+    public function test_an_old_order_whose_card_lost_its_mark_is_protected_by_its_snapshot(): void
+    {
+        $card = $this->card();
+        $o = $this->giftOrder(['items' => [['id' => $card->id, 'qty' => 1, 'note' => self::MESSAGE], ['id' => $this->rose->id, 'qty' => 1]]]);
+
+        // لا علامةَ اليوم (سبق البيعُ العلامةَ أو نُزعت) — ورسالةُ الطلب لقطةُ يوم البيع
+        $card->forceFill(['is_gift_card' => false])->save();
+        $item = $o->items()->where('product_id', $card->id)->firstOrFail();
+
+        $this->assertNull(GiftCardProduct::paperNote($item, $o->fresh()));
+        $this->assertStringNotContainsString(self::MESSAGE, $this->papers($o)['a4']);
     }
 
     public function test_an_ordinary_item_note_still_prints_as_before(): void
@@ -204,11 +244,29 @@ class AGiftsInvoiceStaysTheBuyersPaperTest extends TestCase
         $line->forceFill(['note' => 'بلا شريط'])->save();
 
         $this->assertSame('بلا شريط', GiftCardProduct::paperNote($line->fresh(), $o->fresh()));
-        ['a4' => $a4, 'strip' => $strip] = $this->papers($o);
-        $this->assertStringContainsString('بلا شريط', $a4);
-        $this->assertStringContainsString('بلا شريط', $strip);
+        // والرابطُ العامّ لا يطبع ملاحظاتِ البنود أصلًا — فالفاتورةُ والإيصال
+        foreach ($this->papers($o) as $paper => $html) {
+            $this->assertStringContainsString('بلا شريط', $html, "{$paper}: ملاحظةُ بندٍ عاديّ سقطت");
+        }
 
         $this->assertNull(GiftCardProduct::paperNote(new OrderItem(['note' => '  ']), $o));
+
+        // والاسمُ ليس هويّة: صنفٌ بلا علامةٍ يحمل «كرت هدية» اسمًا تُطبع ملاحظتُه
+        $named = Product::create([
+            'business_id' => $this->shop->id, 'name' => GiftCard::PRODUCT_NAME, 'price' => 1, 'cost' => 0,
+            'quantity' => 5, 'alert_qty' => 0, 'active' => true, 'published' => true,
+        ]);
+        $line->forceFill(['product_id' => $named->id, 'name' => GiftCard::PRODUCT_NAME])->save();
+        $this->assertSame('بلا شريط', GiftCardProduct::paperNote($line->fresh(), $o->fresh()));
+
+        // وعلامةُ صنفٍ في متجرٍ آخر لا تُقرأ هنا
+        $elsewhere = Business::create(['name' => 'متجر آخر', 'status' => 'نشط']);
+        $theirs = Product::create([
+            'business_id' => $elsewhere->id, 'name' => 'x', 'price' => 1, 'cost' => 0, 'quantity' => 0,
+            'alert_qty' => 0, 'active' => true, 'published' => true, 'is_gift_card' => true,
+        ]);
+        $line->forceFill(['product_id' => $theirs->id])->save();
+        $this->assertSame('بلا شريط', GiftCardProduct::paperNote($line->fresh(), $o->fresh()));
     }
 
     /* ═══════════ رسائلُ المشتري ═══════════ */

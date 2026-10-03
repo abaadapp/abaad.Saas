@@ -139,9 +139,17 @@ final class GiftCardProduct
      * الخاصّة تخرج على الفاتورة وشريطِ الصندوق ورابطِ الورقة العامّ — وهي
      * للمستلِم على كرته، لا لورقة حساب.
      *
-     * فبندُ الكرت بلا ملاحظةٍ على الورقة: صنفُه «كرت هدية»، أو نصُّه من
-     * رسالة الطلب (`orders.card_message`) إن تغيّر صنفُه بعد البيع. وسائرُ
-     * الملاحظات تُطبع كما كانت. والبندُ وثمنُه باقيان: الكرتُ مبيعٌ يُحاسَب.
+     * فبندُ الكرت بلا ملاحظةٍ على الورقة، ويُعرف بأحد اثنين:
+     *
+     * - **علامةُ صنفه** (`products.is_gift_card`) — الهويّةُ نفسُها التي يُباع
+     *   بها (`marked`)، لا الاسم: كرتٌ أُعيدت تسميتُه يبقى كرتًا. وتُقرأ ولو
+     *   حُذف الصنفُ بعد البيع، ومن صنفٍ في متجر الطلب وحده.
+     * - **أو نصُّه في رسالة الطلب** (`orders.card_message`) — لقطةُ يوم البيع:
+     *   تُكتب من بنود الكرت نفسِها (`orderMessage`)، فتحمي بندًا سبق العلامةَ
+     *   أو فقد صنفَه أو نُزعت علامتُه بعد البيع.
+     *
+     * ولا اسمَ في السؤال. وسائرُ الملاحظات تُطبع كما كانت. والبندُ وثمنُه
+     * باقيان: الكرتُ مبيعٌ يُحاسَب.
      */
     public static function paperNote(OrderItem $item, Order $order): ?string
     {
@@ -151,7 +159,8 @@ final class GiftCardProduct
             return null;
         }
 
-        if ($item->name === GiftCard::PRODUCT_NAME || $item->product?->name === GiftCard::PRODUCT_NAME) {
+        if ($item->product_id && Product::withTrashed()->whereKey($item->product_id)
+            ->where('business_id', $order->business_id)->where('is_gift_card', true)->exists()) {
             return null;
         }
 

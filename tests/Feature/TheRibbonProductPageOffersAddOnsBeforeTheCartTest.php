@@ -432,7 +432,7 @@ class TheRibbonProductPageOffersAddOnsBeforeTheCartTest extends TestCase
         config(['storefront.ribbon_gift_card_product_businesses' => [$this->shop->id]]);
 
         return $this->product($this->shop, $this->cat['addons'], GiftCard::PRODUCT_NAME, [
-            'name_en' => 'Gift card', 'price' => 1.5, 'cost' => 0, 'quantity' => 0, 'tracks_stock' => false,
+            'name_en' => 'Gift card', 'price' => 1.5, 'cost' => 0, 'quantity' => 0, 'tracks_stock' => false, 'is_gift_card' => true,
         ]);
     }
 
@@ -487,9 +487,11 @@ class TheRibbonProductPageOffersAddOnsBeforeTheCartTest extends TestCase
 
     /* ═══════════ وكرتٌ أُنشئ قبل أن يصير صنفًا ═══════════ */
 
+    /** هجرتا الكرت القائم كما تجريان على الإنتاج: فكُّ الربط، ثمّ العلامة */
     private function freeLegacyCards(): void
     {
         (require base_path('database/migrations/2026_10_03_200000_a_gift_card_made_before_it_was_a_card_leaves_the_stock_book.php'))->up();
+        (require base_path('database/migrations/2026_10_03_230100_the_shops_existing_gift_card_gets_its_mark.php'))->up();
     }
 
     /**

@@ -94,16 +94,12 @@ class IntegrationsController extends Controller
             'link' => GoogleReviews::forBusiness($bid),
             'keyHint' => GoogleReviews::keyHint($bid),
             /*
-             * أَلأبعادَ مفتاحٌ يقرأ به كلُّ تاجرٍ لم يلصق مفتاحه؟
+             * أخرائطُ Google مفعّلةٌ لهذا المتجر؟ — بمفتاحه هو وحده.
              *
-             * تقرؤه الشاشةُ لتقول الصدق في بطاقة المفتاح: «اختياريّ» حين
-             * يكون لأبعادَ مفتاح، و«مطلوب» حين لا يكون. وبلا هذا الحقل كانت
-             * تقول «تُقرأ تقييماتك بمفتاح أبعاد» لمنصّةٍ بلا مفتاح — فينتظر
-             * التاجر قراءةً لا تأتي، ولا يشكو لأنّه صُدِّق.
-             *
-             * ولا يُرسَل المفتاح ولا طرفٌ منه — نعم أو لا وحسب.
+             * ولا مفتاحَ لأبعادَ يقع عليه (`GoogleReviews::apiKey`): الميزةُ
+             * اختياريّة، ونداءاتُها على حساب التاجر في Google لا على أبعاد.
              */
-            'platformKey' => GoogleReviews::platformKey() !== null,
+            'enabled' => GoogleReviews::enabled($bid),
             /*
              * عنوانُ خادمنا — ليقيّد التاجر مفتاحه به.
              *
@@ -147,7 +143,7 @@ class IntegrationsController extends Controller
         if ($key === null) {
             return response()->json([
                 'ok' => false,
-                'error' => __('خدمة Google Maps غير مفعلة حاليًا.'),
+                'error' => __('اربط Google Maps بمفتاحك لتفعيل هذه الميزة.'),
                 'results' => [],
             ]);
         }
@@ -245,6 +241,26 @@ class IntegrationsController extends Controller
         Activity::log('updated', 'حدّث مفتاح Google Places');
 
         return back()->with('toast', ['msg' => __('حُفظ المفتاح'), 'type' => 'success']);
+    }
+
+    /**
+     * يفعّل خرائط Google لهذا المتجر أو يطفئها — بمفتاحه المحفوظ.
+     *
+     * والإطفاءُ يُوقف النداءات ولا يمحو شيئًا: المفتاحُ محفوظ، وأماكنُ
+     * الفروع ورابطُ التقييم في الإيصال باقية. والتفعيلُ بلا مفتاحٍ يُردّ.
+     */
+    public function setGoogleEnabled(Request $request)
+    {
+        $request->validate(['enabled' => ['required', 'boolean']]);
+        $on = $request->boolean('enabled');
+
+        if (! GoogleReviews::setEnabled($this->bid(), $on)) {
+            return back()->withErrors(['google_api_key' => __('الصق مفتاحك من Google Cloud أوّلًا ثمّ فعّل الخرائط.')]);
+        }
+
+        Activity::log('updated', $on ? 'فعّل خرائط Google' : 'أطفأ خرائط Google');
+
+        return back()->with('toast', ['msg' => $on ? __('فُعّلت خرائط Google') : __('أُطفئت خرائط Google'), 'type' => $on ? 'success' : 'warning']);
     }
 
     public function forgetGoogleKey()

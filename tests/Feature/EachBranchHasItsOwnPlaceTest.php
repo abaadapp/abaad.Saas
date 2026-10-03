@@ -9,7 +9,6 @@ use App\Models\Customer;
 use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\Product;
-use App\Models\Setting;
 use App\Models\User;
 use App\Support\BranchGoogle;
 use App\Support\GoogleReviews;
@@ -18,7 +17,6 @@ use App\Support\OrderStatus;
 use App\Support\Storefront;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -77,12 +75,10 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
     /* ═══════════════ أدوات ═══════════════ */
 
-    private function platformKey(string $key = 'platform-places-key'): void
+    /** مفتاحُ التاجر من مشروعه في Google Cloud — ولا مفتاحَ لأبعاد يقع عليه (`GoogleReviews::apiKey`) */
+    private function merchantKey(string $key = 'merchant-places-key'): void
     {
-        Setting::updateOrCreate(
-            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
-            ['value' => Crypt::encryptString($key)],
-        );
+        GoogleReviews::storeKey($this->shop->id, $key);
     }
 
     /** ردُّ «تفاصيل المكان» كما ترسله Google — بحقولها هي */
@@ -125,19 +121,21 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
         ]);
     }
 
-    /* ═══════════════ ١ · إعداد المنصّة ═══════════════ */
+    /* ═══════════════ ١ · لا مفتاحَ للمنصّة ═══════════════ */
 
-    /** المفتاح يُحفظ معمًّى — ونصُّه لا يُقرأ من القاعدة */
-    public function test_the_platform_key_is_stored_encrypted(): void
+    /**
+     * أبعاد لا تحمل مفتاحًا لخرائط Google — لا دالّةَ تقرؤه ولا تحفظه.
+     *
+     * كان `storePlatformKey`/`platformKey` يحفظان مفتاحًا تقع عليه نداءاتُ كلّ
+     * تاجرٍ بلا مفتاح. فحُذفا، وحُذف صفُّه بهجرة.
+     */
+    public function test_the_platform_has_no_google_key_to_store_or_read(): void
     {
-        GoogleReviews::storePlatformKey('AIzaSy-PLATFORM-0000000000');
+        foreach (['platformKey', 'storePlatformKey', 'platformKeyHint'] as $method) {
+            $this->assertFalse(method_exists(GoogleReviews::class, $method), "ما زال لأبعاد مفتاح: $method");
+        }
 
-        $stored = (string) Setting::whereNull('business_id')
-            ->where('key', GoogleReviews::PLATFORM_KEY)->value('value');
-
-        $this->assertNotSame('AIzaSy-PLATFORM-0000000000', $stored, 'المفتاح مكتوبٌ نصًّا في القاعدة');
-        $this->assertSame('AIzaSy-PLATFORM-0000000000', Crypt::decryptString($stored));
-        $this->assertSame('AIzaSy-PLATFORM-0000000000', GoogleReviews::platformKey());
+        $this->assertFalse(defined(GoogleReviews::class.'::PLATFORM_KEY'));
     }
 
     /**
@@ -148,12 +146,12 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
      */
     public function test_the_merchant_screen_never_carries_the_key(): void
     {
-        $this->platformKey('AIzaSy-SECRET-9999');
+        $this->merchantKey('AIzaSy-SECRET-9999');
         GoogleReviews::storeKey($this->shop->id, 'AIzaSy-MERCHANT-8888');
 
         $body = $this->get(route('admin.integrations.google'))->assertOk()->getContent();
 
-        $this->assertStringNotContainsString('AIzaSy-SECRET-9999', $body, 'مفتاح المنصّة خرج إلى الشاشة');
+        $this->assertStringNotContainsString('AIzaSy-SECRET-9999', $body, 'المفتاح القديم خرج إلى الشاشة');
         $this->assertStringNotContainsString('AIzaSy-MERCHANT-8888', $body, 'مفتاح التاجر خرج إلى الشاشة');
     }
 
@@ -163,7 +161,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
         $this->post(route('admin.integrations.google.search'), ['q' => 'ورد'])
             ->assertOk()
             ->assertJson(['ok' => false, 'results' => []])
-            ->assertJsonPath('error', __('خدمة Google Maps غير مفعلة حاليًا.'));
+            ->assertJsonPath('error', __('اربط Google Maps بمفتاحك لتفعيل هذه الميزة.'));
 
         Http::assertNothingSent();
     }
@@ -180,12 +178,9 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** ومفتاحٌ لا يُفكّ تعميتُه يُعدّ غائبًا لا صفحةً مكسورة */
     public function test_an_undecryptable_key_counts_as_missing(): void
     {
-        Setting::updateOrCreate(
-            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
-            ['value' => 'not-encrypted-at-all'],
-        );
+        MarketingSettings::save($this->shop->id, 'google', ['google_api_key' => 'not-encrypted-at-all', 'google_enabled' => '1']);
 
-        $this->assertNull(GoogleReviews::platformKey());
+        $this->assertNull(GoogleReviews::apiKey($this->shop->id));
         $this->get(route('admin.integrations.google'))->assertOk();
     }
 
@@ -193,7 +188,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
     public function test_the_merchant_searches_by_name_through_our_server(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->fakeSearch([[
             'id' => self::A,
             'displayName' => ['text' => 'ورد أبعاد — الخوض'],
@@ -221,7 +216,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
      */
     public function test_a_query_shorter_than_the_minimum_calls_nobody(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         Http::fake(['places.googleapis.com/*' => Http::response(['places' => []], 200)]);
 
         $this->post(route('admin.integrations.google.search'), ['q' => 'ور'])
@@ -234,7 +229,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** ولا نتيجة: يُقال ما يُفعل لا «لا شيء» */
     public function test_no_result_is_said_plainly(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->fakeSearch([]);
 
         $this->post(route('admin.integrations.google.search'), ['q' => 'محلٌّ لا وجود له'])
@@ -246,7 +241,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** وخطأُ Google لا يخرج بنصّه الخام — يخرج بما يُفعل */
     public function test_a_refused_key_says_what_to_fix(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         Http::fake(['places.googleapis.com/*' => Http::response([
             'error' => ['message' => 'API key not valid'],
         ], 403)]);
@@ -262,7 +257,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
     public function test_a_branch_is_linked_to_its_own_place(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->fakeDetails();
 
         $this->linkVia($this->khoud)->assertSessionHasNoErrors();
@@ -286,7 +281,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
      */
     public function test_place_data_sent_from_the_browser_is_ignored(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->fakeDetails(name: 'الاسم الحقيقي', rating: 3.1, count: 9);
 
         $this->linkVia($this->khoud, self::A, [
@@ -307,7 +302,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** ومعرّفٌ لا تعرفه Google لا يُكتب صفًّا */
     public function test_a_place_google_does_not_know_is_not_stored(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         Http::fake(['places.googleapis.com/*' => Http::response(['error' => ['message' => 'Not found']], 404)]);
 
         $this->linkVia($this->khoud)->assertSessionHasErrors('place_id');
@@ -318,7 +313,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** ومعرّفٌ غيرُ مقروءٍ يُردّ قبل أن يُنادى أحد */
     public function test_an_unreadable_place_id_never_reaches_google(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
 
         $this->linkVia($this->khoud, 'ليس معرّفًا')->assertSessionHasErrors('place_id');
 
@@ -329,7 +324,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** وردٌّ ناجحٌ بلا اسمٍ لا يُقبل: «تمّ الربط» تحته سطرٌ فارغ لا يُتحقّق منه */
     public function test_a_nameless_place_is_refused(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         Http::fake(['places.googleapis.com/*' => Http::response([
             'id' => self::A, 'displayName' => ['text' => '  '],
         ], 200)]);
@@ -367,7 +362,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** وفرعُ متجرٍ آخر لا يُربط ولا يُفكّ — ويُردّ كما يُردّ غيرُ الموجود */
     public function test_a_branch_of_another_shop_cannot_be_touched(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->fakeDetails();
 
         $neighbour = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
@@ -404,7 +399,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
         $this->linked($this->khoud);
         BranchGoogle::unlink($this->khoud);
 
-        $this->platformKey();
+        $this->merchantKey();
         $this->fakeDetails();
         $this->linkVia($this->khoud)->assertSessionHasNoErrors();
 
@@ -477,7 +472,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
      */
     public function test_opening_the_screen_again_costs_nothing(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->linked($this->khoud);
         $this->fakeDetails();
 
@@ -492,7 +487,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** وربطٌ حديثٌ لا يُزامَن أصلًا — المزامنةُ للقديم وحده */
     public function test_a_fresh_link_is_not_synced(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $place = $this->linked($this->khoud, rating: 4.0, count: 10);
         $this->fakeDetails(rating: 4.9, count: 200);
 
@@ -506,7 +501,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** والقديمُ يُزامَن مرّةً ثمّ يصير حديثًا فلا يُزامَن ثانية */
     public function test_a_stale_link_is_synced_once(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $place = $this->linked($this->khoud, rating: 4.0, count: 10);
         $place->forceFill(['synced_at' => now()->subHours(BranchGoogle::STALE_HOURS + 1)])->save();
 
@@ -530,7 +525,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
      */
     public function test_a_google_failure_keeps_the_last_known_numbers(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $place = $this->linked($this->khoud, rating: 4.8, count: 127);
         $place->forceFill(['synced_at' => now()->subDays(2)])->save();
 
@@ -545,7 +540,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** و«حدِّث الآن» يسأل Google ولو كان المحفوظ حديثًا */
     public function test_refresh_asks_google_even_when_fresh(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->linked($this->khoud, rating: 4.0, count: 10);
         $this->fakeDetails(rating: 4.9, count: 200);
 
@@ -757,7 +752,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
     /** وصفحةُ المتجر لا تُنادي Google مهما فُتحت — حصّةٌ تنفد بزوّار لا بتجّار */
     public function test_the_public_page_never_calls_google(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->publish();
         $this->linked($this->khoud);
         MarketingSettings::save($this->shop->id, 'google', ['google_show_on_site' => '1']);
@@ -771,10 +766,10 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
     /* ═══════════════ ١١ · لوحة المنصّة ═══════════════ */
 
-    /** ومديرُ المنصّة يقرأ حالَ التهيئة وعددَ المربوط — لا مفتاحًا ولا رمزًا */
-    public function test_the_platform_reads_the_configuration_health(): void
+    /** ومديرُ المنصّة يقرأ أعدادًا — كم متجرًا ربط مفتاحه وكم فرعًا رُبط — لا مفتاحًا ولا تلميحًا */
+    public function test_the_platform_reads_counts_not_keys(): void
     {
-        $this->platformKey('AIzaSy-PLATFORM-HEALTH');
+        GoogleReviews::storeKey($this->shop->id, 'AIzaSy-MERCHANT-HEALTH');
         $this->linked($this->khoud);
 
         $admin = User::create([
@@ -786,8 +781,11 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
         $props = $response->viewData('page')['props'];
 
-        $this->assertTrue($props['googleHealth']['configured']);
+        $this->assertSame(1, $props['googleHealth']['shopsWithKey']);
         $this->assertSame(1, $props['googleHealth']['linkedBranches']);
-        $this->assertStringNotContainsString('AIzaSy-PLATFORM-HEALTH', $response->getContent());
+        $this->assertArrayNotHasKey('configured', $props['googleHealth']);
+        $this->assertArrayNotHasKey('googleKeyHint', $props);
+        $this->assertStringNotContainsString('AIzaSy-MERCHANT-HEALTH', $response->getContent());
+        $this->assertStringNotContainsString('ALTH', json_encode($props), 'وصل المنصّةَ طرفٌ من مفتاح التاجر');
     }
 }

@@ -7,7 +7,6 @@ use App\Models\BusinessArchive;
 use App\Models\User;
 use App\Rules\PlatformEmailDomain;
 use App\Support\Archive\Policy as ArchivePolicy;
-use App\Support\GoogleBilling;
 use App\Support\Mailer;
 use App\Support\WhatsAppHealth;
 use Illuminate\Console\Command;
@@ -235,16 +234,6 @@ class Preflight extends Command
         }
 
         /*
-         * فوترةُ Google — تنبيهٌ يصل مع كلّ نشر، لا في شاشةٍ تُفتح شهريًّا.
-         *
-         * ومفتاحُ المنصّة واحدٌ لكلّ التجّار: يومَ تنتهي التجربة ولا يُرفع
-         * الحساب تتوقّف الخرائط عن الجميع دفعةً واحدة — ولا يقول شيءٌ لماذا،
-         * فيرى التاجر «رفضت Google المفتاح» ويظنّ العطبَ عندنا.
-         *
-         * ولا يُنبَّه على منصّةٍ بلا مفتاح: لا شيء يُحمى، وتحذيرٌ لا يقابل
-         * خطرًا يُقرأ مرّتين ثمّ يُتخطّى — ويمرّ معه الصادقُ يومًا.
-         */
-        /*
          * رسائلُ واتساب التي لم تصل — عبر المنصّة كلِّها.
          *
          * وهذا عطبٌ يُصيب كلَّ تاجرٍ دفعةً واحدة حين يكون سببُه عندنا: تطبيقٌ
@@ -259,16 +248,6 @@ class Preflight extends Command
                 $wa['failed'].' رسالة لم تصل في آخر يوم ('.$wa['shops'].' متجرًا'
                 .($wa['ours'] > 0 ? '، منها '.$wa['ours'].' سببُها عندنا' : '').') — '
                 .Str::limit((string) ($wa['last_error'] ?? ''), 100),
-                warnOnly: true,
-            );
-        }
-
-        $billing = GoogleBilling::alert();
-        if ($billing !== null) {
-            $this->check(
-                'فوترة خرائط Google مسجَّلة وسليمة',
-                false,
-                $billing['text'].' — لوحة المنصّة ‹ الإعدادات ‹ خرائط Google',
                 warnOnly: true,
             );
         }

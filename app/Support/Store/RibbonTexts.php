@@ -66,6 +66,8 @@ final class RibbonTexts
         'photos' => 'صور المنتج', 'showPhoto' => 'اعرض الصورة :n من :total',
         'giftCardMessage' => 'رسالة كرت الهدية', 'giftCardNeeded' => 'اكتب رسالة كرت الهدية قبل إضافته إلى السلة.',
         'cartCardMessage' => 'رسالة الكرت:',
+        // زرُّ واتساب العائم — انظر `storefront.ribbon_floating_whatsapp_businesses`
+        'waFloat' => 'تواصل معنا عبر واتساب', 'waFloatText' => 'السلام عليكم، أحتاج مساعدة بخصوص طلبي من متجر RIBBON.',
     ];
 
     private const EN = [
@@ -109,6 +111,7 @@ final class RibbonTexts
         'photos' => 'Product photos', 'showPhoto' => 'Show photo :n of :total',
         'giftCardMessage' => 'Gift card message', 'giftCardNeeded' => 'Write the gift card message before adding it to the cart.',
         'cartCardMessage' => 'Card message:',
+        'waFloat' => 'Chat with us on WhatsApp', 'waFloatText' => 'Hello, I need help with my order from RIBBON.',
     ];
 
     /** @return array<string, string> */

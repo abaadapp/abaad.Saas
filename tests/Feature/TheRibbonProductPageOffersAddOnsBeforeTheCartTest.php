@@ -485,6 +485,76 @@ class TheRibbonProductPageOffersAddOnsBeforeTheCartTest extends TestCase
         ]])->assertStatus(422);
     }
 
+    /* ═══════════ وكرتٌ أُنشئ قبل أن يصير صنفًا ═══════════ */
+
+    private function freeLegacyCards(): void
+    {
+        (require base_path('database/migrations/2026_10_03_200000_a_gift_card_made_before_it_was_a_card_leaves_the_stock_book.php'))->up();
+    }
+
+    /**
+     * ما وقع في متجر سعود: كرتٌ أُنشئ من «المنتجات» قبل قائمة الكرت بافتراض
+     * الشاشة (`tracks_stock = true`) وبرصيدٍ يضعه على الرفّ — فيُعرض إضافةً
+     * ولا يُعرف كرتًا، فلا تُفتح خانةُ رسالته. والهجرةُ تفكّ ربطَه وحده.
+     */
+    public function test_a_card_made_before_the_list_was_tracked_and_is_freed_into_a_card(): void
+    {
+        config(['storefront.ribbon_gift_card_product_businesses' => [$this->shop->id]]);
+        $card = $this->product($this->shop, $this->cat['addons'], GiftCard::PRODUCT_NAME, [
+            'name_en' => 'Gift card', 'price' => 1.5, 'quantity' => 7, 'tracks_stock' => true,
+        ]);
+        // وصنفٌ باسم الكرت في متجرٍ خارج القائمة — لا يُمسّ
+        $theirs = $this->product($this->other, $this->category($this->other, 'كروت', null), GiftCard::PRODUCT_NAME, ['tracks_stock' => true]);
+
+        $before = $this->page($this->p['main']);
+        $this->assertFalse(collect($before->viewData('upsells'))->keyBy('id')[$card]['gift_card'], 'الحالُ التي وقعت لم تُستعد');
+        // والبحثُ في وسم البطاقة: سكربتُ الإضافات المضمَّن في الصفحة يذكر العلامةَ نصًّا
+        $this->assertDoesNotMatchRegularExpression('/<div class="rb-up"[^>]*data-gift-card/', $before->getContent());
+
+        $this->freeLegacyCards();
+
+        $after = $this->page($this->p['main']);
+        $this->assertTrue(collect($after->viewData('upsells'))->keyBy('id')[$card]['gift_card']);
+        $this->assertMatchesRegularExpression('/data-rb-up="'.$card.'"[^>]*data-gift-card/', $after->getContent());
+        $this->assertMatchesRegularExpression('/data-rb-up-note-box hidden/', $after->getContent());
+
+        // فكُّ الربط وحده: الكميّةُ والثمنُ كما هما، والأصنافُ الأخرى والمتجرُ الآخر على حالهم
+        $row = DB::table('products')->where('id', $card)->first();
+        $this->assertFalse((bool) $row->tracks_stock);
+        $this->assertSame(7, (int) $row->quantity);
+        $this->assertEquals(1.5, (float) $row->price);
+        $this->assertTrue((bool) DB::table('products')->where('id', $this->p['balloon'])->value('tracks_stock'));
+        $this->assertTrue((bool) DB::table('products')->where('id', $this->p['empty'])->value('tracks_stock'));
+        $this->assertTrue((bool) DB::table('products')->where('id', $theirs)->value('tracks_stock'));
+
+        // والكرتُ بعدها يدخل برسالته — ويُردّ بلاها
+        $this->postJson('/s/saud/quote', ['items' => [['id' => $card, 'qty' => 1, 'note' => 'مبروك']], 'fulfil' => 'pickup'])
+            ->assertOk()->assertJsonPath('lines.0.note', 'مبروك');
+        $this->postJson('/s/saud/quote', ['items' => [['id' => $card, 'qty' => 1]]])->assertStatus(422);
+    }
+
+    public function test_twin_cards_are_left_for_the_owner_not_picked_by_the_migration(): void
+    {
+        config(['storefront.ribbon_gift_card_product_businesses' => [$this->shop->id]]);
+        $a = $this->product($this->shop, $this->cat['addons'], GiftCard::PRODUCT_NAME, ['tracks_stock' => true]);
+        $b = $this->product($this->shop, $this->cat['addons'], GiftCard::PRODUCT_NAME, ['tracks_stock' => true]);
+
+        $this->freeLegacyCards();
+
+        $this->assertSame([true, true], DB::table('products')->whereIn('id', [$a, $b])->orderBy('id')->pluck('tracks_stock')->map(fn ($v) => (bool) $v)->all());
+    }
+
+    public function test_a_shop_outside_the_card_list_keeps_its_card_named_product_tracked(): void
+    {
+        config(['storefront.ribbon_gift_card_product_businesses' => []]);
+        $card = $this->product($this->shop, $this->cat['addons'], GiftCard::PRODUCT_NAME, ['tracks_stock' => true]);
+
+        $this->freeLegacyCards();
+
+        $this->assertTrue((bool) DB::table('products')->where('id', $card)->value('tracks_stock'));
+        $this->assertFalse(collect($this->page($this->p['main'])->viewData('upsells'))->keyBy('id')[$card]['gift_card']);
+    }
+
     public function test_an_add_on_from_another_shop_is_refused_at_the_quote(): void
     {
         $this->postJson('/s/saud/quote', ['items' => [

@@ -204,4 +204,14 @@ return [
      */
     'ribbon_product_page_without_delivery_note_businesses' => [5],
 
+    /*
+     * زرُّ واتساب عائمٌ في كلّ صفحات RIBBON — لمن في هذه القائمة وحده.
+     *
+     * قرارُ المالك: لمتجر سعود (RIBBON، `businesses.id = 5`) وحده. الرقمُ
+     * رقمُ «بيانات المتجر» نفسُه الذي يحمله رابطُ التذييل
+     * (`MerchantData::identity()['whatsapp']`) — لا إعدادَ جديد. ومن لم يكتب
+     * رقمًا لا زرَّ له. ومن ليس فيها تبقى صفحاتُه كما كانت.
+     */
+    'ribbon_floating_whatsapp_businesses' => [5],
+
 ];

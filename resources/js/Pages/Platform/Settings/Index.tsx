@@ -113,12 +113,11 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, googleKeyHint, googleBilling } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
             plans: SelectOption[];
-            googleKeyHint?: string | null;
             whatsapp?: SharedConnection | null;
             /* ورقمُ المبيعات وصلةٌ ثانيةٌ بالشكل نفسه وغرضٍ آخر */
             salesWhatsapp?: SharedConnection | null;
@@ -133,14 +132,8 @@ export default function PlatformSettings() {
             /* وحالُ مزوّد الذكاء — وجودُه لا قيمتُه */
             aiProvider?: { ready: boolean; name: string } | null;
             supportReach?: { reachable: number; total: number; ambiguous: number };
-            googleHealth?: { configured: boolean; linkedBranches: number; branches: number };
-            /* حالُ فوترة Google — انظر App\Support\GoogleBilling */
-            googleBilling?: {
-                state: 'unknown' | 'trial' | 'paid';
-                ends_at: string | null;
-                days_left: number | null;
-                alert: { level: string; text: string } | null;
-            };
+            /* خرائطُ Google — أعدادٌ لا مفاتيح: كلُّ تاجرٍ يربطها بمفتاحه */
+            googleHealth?: { shopsWithKey: number; linkedBranches: number; branches: number };
         }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
@@ -234,20 +227,6 @@ export default function PlatformSettings() {
         waba_id: '',
         display_phone_number: '',
         access_token: '',
-    });
-
-    /* مفتاح الخرائط — سرٌّ كالرمز: يُرسل مرّةً ولا يعود إلى الشاشة */
-    const googleForm = useForm({ google_places_key: '' });
-
-    /*
-     * وحالُ الفوترة — نموذجٌ مستقلٌّ عن المفتاح.
-     *
-     * جمعُهما يعني أنّ تصحيح تاريخٍ يمرّ بحقل مفتاحٍ فارغ، وأنّ حفظ مفتاحٍ
-     * جديدٍ يكتب تاريخًا لم يُقصد. وهما شيئان يُبدَّلان في وقتين.
-     */
-    const billingForm = useForm({
-        state: googleBilling?.state ?? 'unknown',
-        ends_at: googleBilling?.ends_at ?? '',
     });
 
     type Key = keyof typeof form.data;
@@ -1052,159 +1031,34 @@ export default function PlatformSettings() {
                     </Card>
                 )}
 
+                {/*
+                    ═══ خرائطُ Google — لا مفتاحَ لأبعاد ═══
+
+                    كان هنا مفتاحٌ واحدٌ يقرأ لكلّ التجّار على فاتورة أبعاد،
+                    وحالُ فوترته. فصارت الخرائطُ ميزةً اختياريّةً يربطها كلُّ
+                    تاجرٍ بمفتاحه من مشروعه في Google Cloud ويدفع لـGoogle هو.
+                    فلا حقلَ هنا ولا تلميحَ مفتاح — أعدادٌ تقول كم وصلت الميزة.
+                */}
                 {tab === 'google' && (
                     <Card className="p-6">
                         <h3 className="mb-1 text-[18px] font-bold text-[#111]">{t('خرائط Google')}</h3>
-                        <p className="mb-6 text-[13px] text-[#6b7280]">
-                            {t('مفتاحٌ واحدٌ لكلّ المتاجر: به تُقرأ تقييمات محلّاتهم ومعدّلاتها. وبدونه على كلّ تاجرٍ أن يفتح حسابًا في Google Cloud بنفسه — فلا يفعل.')}
+                        <p className="mb-6 text-[13px] leading-relaxed text-[#6b7280]">
+                            {t('خرائط Google اختيارية ويربطها كل تاجر بنفسه بمفتاحه من مشروعه في Google Cloud. استخدام Google وفوترته على حساب التاجر في Google، لا على أبعاد — ولا تحمل المنصة مفتاحًا لأحد.')}
                         </p>
 
-                        {/* حال المفتاح أوّل ما يُقرأ: بلا مفتاحٍ لا تُقرأ تقييمةٌ واحدة في المنصّة كلّها */}
-                        <div
-                            className={
-                                'mb-5 flex items-start gap-2 rounded-[10px] p-3 text-[13px] ' +
-                                (googleKeyHint ? 'bg-[#f0fdf4] text-[#166534]' : 'bg-[#fef2f2] text-[#b91c1c]')
-                            }
-                        >
-                            {googleKeyHint ? (
-                                <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-                            ) : (
-                                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                            )}
-                            <span dir={googleKeyHint ? 'ltr' : undefined}>
-                                {googleKeyHint
-                                    ? `${t('المفتاح محفوظ')} — ${googleKeyHint}`
-                                    : t('لا مفتاح — «ربط خرائط Google» عند التجّار يقف عند خطوته الأولى.')}
-                            </span>
-                        </div>
-
-                        {/*
-                            وتنبيهُ الفوترة فوق كلّ شيء — لأنّه وحده يُطفئ الميزة
-                            عن كلّ التجّار في يومٍ واحد، والباقي يُنقصها لواحد.
-                        */}
-                        {googleBilling?.alert && (
-                            <div
-                                className={
-                                    'mb-5 flex items-start gap-2 rounded-[10px] p-3 text-[13px] ' +
-                                    (googleBilling.alert.level === 'danger'
-                                        ? 'bg-[#fef2f2] text-[#b91c1c]'
-                                        : 'bg-[#fffbeb] text-[#b45309]')
-                                }
-                            >
-                                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                                <span>{googleBilling.alert.text}</span>
-                            </div>
-                        )}
-
-                        {/*
-                            وكم فرعًا رُبط فعلًا — عددٌ محسوب.
-                            مفتاحٌ محفوظٌ وصفرُ فروع يعني أنّ الميزة لم تصل التجّار،
-                            وهو خبرٌ يُقرأ هنا لا يُكتشف بعد شهر.
-                        */}
                         {googleHealth && (
-                            <p className="mb-5 text-[12px] leading-relaxed text-[#6b7280]">
-                                {t(':n من :total فرعًا مربوطٌ بملفّه على الخرائط.', {
-                                    n: googleHealth.linkedBranches,
-                                    total: googleHealth.branches,
-                                })}
-                            </p>
+                            <ul className="space-y-1.5 text-[13px] text-[#374151]">
+                                <li>
+                                    {t(':n متجرًا ربط مفتاحه.', { n: googleHealth.shopsWithKey })}
+                                </li>
+                                <li>
+                                    {t(':n من :total فرعًا مربوطٌ بملفّه على الخرائط.', {
+                                        n: googleHealth.linkedBranches,
+                                        total: googleHealth.branches,
+                                    })}
+                                </li>
+                            </ul>
                         )}
-
-                        <Field
-                            label={t('مفتاح Places API (New)')}
-                            hint={t('من مشروع أبعاد في Google Cloud — يُخزَّن معمًّى ولا يُعرض بعد الحفظ.')}
-                            error={googleForm.errors.google_places_key}
-                        >
-                            <PasswordInput
-                                dir="ltr"
-                                value={googleForm.data.google_places_key}
-                                onChange={(e) => googleForm.setData('google_places_key', e.target.value)}
-                            />
-                        </Field>
-
-                        <div className="mt-5 flex justify-end gap-2">
-                            {googleKeyHint && (
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() =>
-                                        router.delete(route('super-admin.settings.googleKey.forget'), {
-                                            preserveScroll: true,
-                                        })
-                                    }
-                                >
-                                    {t('حذف المفتاح')}
-                                </Button>
-                            )}
-                            <Button
-                                type="button"
-                                loading={googleForm.processing}
-                                onClick={() =>
-                                    googleForm.post(route('super-admin.settings.googleKey'), {
-                                        preserveScroll: true,
-                                        onSuccess: () => googleForm.reset('google_places_key'),
-                                    })
-                                }
-                            >
-                                <Save />
-                                {t('حفظ المفتاح')}
-                            </Button>
-                        </div>
-
-                        {/*
-                            ═══ حالُ الفوترة ═══
-
-                            وتُكتب بيد: Google لا تخبر واجهةَ Places متى تنتهي
-                            تجربةُ مشروعها، فلا سبيل لنا إلى قراءتها. وبلا كتابتها
-                            يُكتشف الانتهاءُ يومَ يشكو أوّلُ تاجرٍ من اختفاء تقييماته.
-                        */}
-                        <div className="mt-8 border-t border-[var(--ui-border,#e8e8e8)] pt-6">
-                            <h4 className="text-[15px] font-bold text-[#111]">{t('حال فوترة Google')}</h4>
-                            <p className="mt-1 mb-5 text-[13px] leading-relaxed text-[#6b7280]">
-                                {t('تجربة Google تسعون يومًا ثمّ يتوقّف المشروع ما لم ترفع الحساب بيدك — ويومها تتوقّف الخرائط عن كلّ تجّارك دفعةً واحدة. اكتب الموعد ليُنبّهك النظام قبله بأسبوعين.')}
-                            </p>
-
-                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <Field label={t('الحال')} error={billingForm.errors.state}>
-                                    <Select
-                                        value={billingForm.data.state}
-                                        onChange={(e) => billingForm.setData('state', e.target.value as 'unknown' | 'trial' | 'paid')}
-                                        options={[
-                                            { value: 'unknown', label: t('لم يُحدَّد') },
-                                            { value: 'trial', label: t('تجربة مجانية') },
-                                            { value: 'paid', label: t('حساب مدفوع') },
-                                        ]}
-                                    />
-                                </Field>
-
-                                {/* والموعدُ يُعرض مع التجربة وحدها: تاريخٌ تحت «مدفوع» لا يعني شيئًا */}
-                                {billingForm.data.state === 'trial' && (
-                                    <Field label={t('تنتهي التجربة في')} error={billingForm.errors.ends_at}>
-                                        <Input
-                                            type="date"
-                                            dir="ltr"
-                                            value={billingForm.data.ends_at}
-                                            onChange={(e) => billingForm.setData('ends_at', e.target.value)}
-                                        />
-                                    </Field>
-                                )}
-                            </div>
-
-                            <div className="mt-5 flex justify-end">
-                                <Button
-                                    type="button"
-                                    loading={billingForm.processing}
-                                    onClick={() =>
-                                        billingForm.post(route('super-admin.settings.googleBilling'), {
-                                            preserveScroll: true,
-                                        })
-                                    }
-                                >
-                                    <Save />
-                                    {t('حفظ حال الفوترة')}
-                                </Button>
-                            </div>
-                        </div>
                     </Card>
                 )}
             </form>

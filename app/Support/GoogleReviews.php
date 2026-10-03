@@ -3,7 +3,6 @@
 namespace App\Support;
 
 use App\Models\Branch;
-use App\Models\Setting;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 
@@ -28,15 +27,6 @@ use Illuminate\Support\Facades\Crypt;
  */
 class GoogleReviews
 {
-    /**
-     * مفتاح أبعاد في إعدادات المنصّة (business_id = null) — **مهجور**.
-     *
-     * كان يُقرأ لكلّ تاجرٍ لم يلصق مفتاحه، فتقع نداءاتُ كلّ المتاجر على
-     * فاتورة أبعاد. ولم يعد يُقرأ لتاجر: `apiKey` مفتاحُ التاجر وحده. ويبقى
-     * الحقلُ في شاشة المنصّة حتّى يُزال بقرار — لا تاجرَ يعتمد عليه.
-     */
-    public const PLATFORM_KEY = 'google_places_key';
-
     /**
      * معرّفُ المكان — أو null إن لم يُقرأ.
      *
@@ -198,10 +188,8 @@ class GoogleReviews
         /*
          * وبصمةُ المفتاح جزءٌ منه — لا مسحَ ذاكرةٍ عند تبديله.
          *
-         * المفتاح قد يكون مفتاح المنصّة، يقرؤه مئةُ متجر. فتبديلُه بمسح
-         * الذاكرة كلِّها يعني `Cache::flush()` — وهي تُسقط ما ليس لنا في
-         * مخزنٍ مشترك. وبالبصمة يسقط المحفوظ بالمفتاح القديم وحده، من
-         * تلقائه، في كلّ متجرٍ دفعةً واحدة.
+         * من بدّل مفتاحه يسقط ما حُفظ بالقديم من تلقائه، بلا `Cache::flush()`
+         * يُسقط ما ليس لنا في مخزنٍ مشترك.
          */
         return 'google-reviews:'.$businessId.':'.sha1($placeId)
             .':'.substr(sha1((string) self::apiKey($businessId)), 0, 8);
@@ -314,13 +302,11 @@ class GoogleReviews
             $started === '1' || $placeId !== null,
             [
                 /*
-             * المفتاح أوّلًا لأنّه شرطُ القراءة — وهو على أبعاد لا عليه.
-             *
-             * وكان على التاجر أن يفتح حسابًا في Google Cloud ويُنشئ مشروعًا
-             * ويربط بطاقة ليقرأ تقييمات محلّه. فلا يفعل، فتبقى الشاشة فارغة.
-             */
+                 * المفتاح أوّلًا لأنّه شرطُ القراءة — مفتاحُ التاجر من مشروعه في
+                 * Google Cloud، ولا مفتاحَ لأبعاد يقوم مقامه.
+                 */
                 Integration::step(
-                    'platform',
+                    'key',
                     'مفتاحك من Google Cloud مفعّل',
                     self::apiKey($businessId) !== null,
                     detail: $own ? __('تُقرأ بمفتاحك أنت — والنداءات على حسابك في Google.') : null,
@@ -362,39 +348,6 @@ class GoogleReviews
                     theirs: ($pulled['state'] ?? '') === 'nokey',
                 ),
             ]);
-    }
-
-    /**
-     * مفتاح أبعاد — **مهجور**: لا يقرؤه تاجر (انظر `apiKey`).
-     *
-     * يبقى لشاشة المنصّة وتنبيه فوترتها وحدهما حتّى يُزال الحقل.
-     */
-    public static function platformKey(): ?string
-    {
-        return self::decrypt(
-            Setting::whereNull('business_id')->where('key', self::PLATFORM_KEY)->value('value')
-        );
-    }
-
-    /** يحفظ مفتاح المنصّة معمًّى — و`null` محوٌ صريح */
-    public static function storePlatformKey(?string $plain): void
-    {
-        $plain = trim((string) $plain);
-
-        Setting::updateOrCreate(
-            ['business_id' => null, 'key' => self::PLATFORM_KEY],
-            ['value' => $plain === '' ? '' : Crypt::encryptString($plain)],
-        );
-
-        // ولا مسحَ ذاكرة: بصمةُ المفتاح في مفتاحها — انظر cacheKey
-    }
-
-    /** آخرُ أربعةِ أحرفٍ من مفتاح المنصّة — أو null إن لم يُحفظ */
-    public static function platformKeyHint(): ?string
-    {
-        $key = self::platformKey();
-
-        return $key === null ? null : '••••'.substr($key, -4);
     }
 
     /** فكُّ التعمية — والفشلُ غيابٌ لا استثناء (انظر apiKey) */

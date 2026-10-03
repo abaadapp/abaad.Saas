@@ -236,7 +236,7 @@ class GoogleReviewLinkTest extends TestCase
     public function test_the_screen_says_whether_google_is_enabled_by_the_merchants_own_key(): void
     {
         Setting::updateOrCreate(
-            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
+            ['business_id' => null, 'key' => 'google_places_key'],
             ['value' => Crypt::encryptString('platform-key')],
         );
 
@@ -255,7 +255,7 @@ class GoogleReviewLinkTest extends TestCase
     public function test_the_platform_key_itself_never_reaches_the_screen(): void
     {
         Setting::updateOrCreate(
-            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
+            ['business_id' => null, 'key' => 'google_places_key'],
             ['value' => Crypt::encryptString('AIzaSyPLATFORMSECRET')],
         );
 
@@ -271,8 +271,9 @@ class GoogleReviewLinkTest extends TestCase
 
         $this->assertStringNotContainsString('platformKey', $source, 'الشاشة ما زالت تقرأ مفتاح المنصّة');
         $this->assertStringNotContainsString('بمفتاح أبعاد', $source);
-        $this->assertStringContainsString('اربط Google Maps لتفعيل هذه الميزة', $source);
-        $this->assertStringContainsString('النداءات والفوترة على حسابك في Google، لا على أبعاد', $source);
+        $this->assertStringContainsString('ربط Google Maps اختياري', $source);
+        $this->assertStringContainsString('استخدام Google وفوترته يكونان على حسابك في Google مباشرة', $source);
+        $this->assertStringContainsString('الفوترة واستهلاك Google على حسابك في Google، وليس على أبعاد.', $source);
         $this->assertStringContainsString("route('admin.integrations.google.enabled')", $source);
     }
 

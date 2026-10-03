@@ -9,7 +9,6 @@ use App\Models\Customer;
 use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\Product;
-use App\Models\Setting;
 use App\Models\User;
 use App\Support\BranchGoogle;
 use App\Support\GoogleReviews;
@@ -18,7 +17,6 @@ use App\Support\OrderStatus;
 use App\Support\Storefront;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -123,19 +121,21 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
         ]);
     }
 
-    /* ═══════════════ ١ · إعداد المنصّة ═══════════════ */
+    /* ═══════════════ ١ · لا مفتاحَ للمنصّة ═══════════════ */
 
-    /** المفتاح يُحفظ معمًّى — ونصُّه لا يُقرأ من القاعدة */
-    public function test_the_platform_key_is_stored_encrypted(): void
+    /**
+     * أبعاد لا تحمل مفتاحًا لخرائط Google — لا دالّةَ تقرؤه ولا تحفظه.
+     *
+     * كان `storePlatformKey`/`platformKey` يحفظان مفتاحًا تقع عليه نداءاتُ كلّ
+     * تاجرٍ بلا مفتاح. فحُذفا، وحُذف صفُّه بهجرة.
+     */
+    public function test_the_platform_has_no_google_key_to_store_or_read(): void
     {
-        GoogleReviews::storePlatformKey('AIzaSy-PLATFORM-0000000000');
+        foreach (['platformKey', 'storePlatformKey', 'platformKeyHint'] as $method) {
+            $this->assertFalse(method_exists(GoogleReviews::class, $method), "ما زال لأبعاد مفتاح: $method");
+        }
 
-        $stored = (string) Setting::whereNull('business_id')
-            ->where('key', GoogleReviews::PLATFORM_KEY)->value('value');
-
-        $this->assertNotSame('AIzaSy-PLATFORM-0000000000', $stored, 'المفتاح مكتوبٌ نصًّا في القاعدة');
-        $this->assertSame('AIzaSy-PLATFORM-0000000000', Crypt::decryptString($stored));
-        $this->assertSame('AIzaSy-PLATFORM-0000000000', GoogleReviews::platformKey());
+        $this->assertFalse(defined(GoogleReviews::class.'::PLATFORM_KEY'));
     }
 
     /**
@@ -151,7 +151,7 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
         $body = $this->get(route('admin.integrations.google'))->assertOk()->getContent();
 
-        $this->assertStringNotContainsString('AIzaSy-SECRET-9999', $body, 'مفتاح المنصّة خرج إلى الشاشة');
+        $this->assertStringNotContainsString('AIzaSy-SECRET-9999', $body, 'المفتاح القديم خرج إلى الشاشة');
         $this->assertStringNotContainsString('AIzaSy-MERCHANT-8888', $body, 'مفتاح التاجر خرج إلى الشاشة');
     }
 
@@ -766,11 +766,10 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
     /* ═══════════════ ١١ · لوحة المنصّة ═══════════════ */
 
-    /** ومديرُ المنصّة يقرأ حالَ التهيئة وعددَ المربوط — لا مفتاحًا ولا رمزًا */
-    public function test_the_platform_reads_the_configuration_health(): void
+    /** ومديرُ المنصّة يقرأ أعدادًا — كم متجرًا ربط مفتاحه وكم فرعًا رُبط — لا مفتاحًا ولا تلميحًا */
+    public function test_the_platform_reads_counts_not_keys(): void
     {
-        // حقلُ المنصّة المهجور — تقرؤه شاشتُها وحدها، ولا يقع على تاجر
-        GoogleReviews::storePlatformKey('AIzaSy-PLATFORM-HEALTH');
+        GoogleReviews::storeKey($this->shop->id, 'AIzaSy-MERCHANT-HEALTH');
         $this->linked($this->khoud);
 
         $admin = User::create([
@@ -782,8 +781,11 @@ class EachBranchHasItsOwnPlaceTest extends TestCase
 
         $props = $response->viewData('page')['props'];
 
-        $this->assertTrue($props['googleHealth']['configured']);
+        $this->assertSame(1, $props['googleHealth']['shopsWithKey']);
         $this->assertSame(1, $props['googleHealth']['linkedBranches']);
-        $this->assertStringNotContainsString('AIzaSy-PLATFORM-HEALTH', $response->getContent());
+        $this->assertArrayNotHasKey('configured', $props['googleHealth']);
+        $this->assertArrayNotHasKey('googleKeyHint', $props);
+        $this->assertStringNotContainsString('AIzaSy-MERCHANT-HEALTH', $response->getContent());
+        $this->assertStringNotContainsString('ALTH', json_encode($props), 'وصل المنصّةَ طرفٌ من مفتاح التاجر');
     }
 }

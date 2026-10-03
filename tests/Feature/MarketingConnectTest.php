@@ -14,6 +14,8 @@ use App\Support\Integration;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
@@ -138,22 +140,31 @@ class MarketingConnectTest extends TestCase
         $this->assertTrue($this->props('admin.integrations.google')['readiness']['connected']);
     }
 
-    /* --------------------- أبعاد مهيّأةٌ للربط أوّلًا --------------------- */
+    /* --------------------- مفتاحُ التاجر وحده --------------------- */
 
     /**
-     * مفتاحُ الخرائط على أبعاد لا على التاجر.
+     * صفُّ مفتاحٍ قديمٍ لأبعاد — كما قد يبقى على قاعدةٍ لم تُرحَّل بعد.
      *
-     * وكان عليه أن يفتح حسابًا في Google Cloud وينشئ مشروعًا ويربط بطاقةً
-     * ليقرأ تقييمات محلّه — فلا يفعل، فتبقى الشاشة فارغة ولا شيء يقول إنّ
-     * الطريق لم يكن معبَّدًا أصلًا.
+     * لا دالّةَ تكتبه بعد اليوم، فيُكتب خامًا: ليُثبَت أنّ وجودَه لا يُغيّر شيئًا.
      */
-    public function test_the_platform_key_completes_nothing_only_the_merchants_own_key_does(): void
+    private function leftoverPlatformKey(string $plain): void
+    {
+        Setting::updateOrCreate(
+            ['business_id' => null, 'key' => 'google_places_key'],
+            ['value' => Crypt::encryptString($plain)],
+        );
+    }
+
+    /**
+     * الخطوةُ الأولى مفتاحُ التاجر — ولا يُتمّها صفٌّ قديمٌ لأبعاد.
+     */
+    public function test_a_leftover_platform_key_completes_nothing_only_the_merchants_own_key_does(): void
     {
         $first = fn () => $this->props('admin.integrations.google')['readiness']['steps'][0];
 
         $this->assertFalse($first()['done']);
 
-        GoogleReviews::storePlatformKey('AIza-platform-key');
+        $this->leftoverPlatformKey('AIza-platform-key');
         $this->assertFalse($first()['done'], 'مفتاحُ أبعاد أتمّ خطوةَ التاجر — والنداءاتُ على فاتورة أبعاد');
         $this->assertStringContainsString('اربط Google Maps لتفعيل هذه الميزة', (string) $first()['fix']);
 
@@ -161,18 +172,18 @@ class MarketingConnectTest extends TestCase
         $this->assertTrue($first()['done']);
     }
 
-    /** ومفتاحُ أبعاد لا يُقال للتاجر «مفتاحك محفوظ» — هو لم يحفظ شيئًا */
-    public function test_the_platform_key_is_not_shown_as_the_merchants_own(): void
+    /** وصفُّ أبعاد القديم لا يُقال للتاجر «مفتاحك محفوظ» — هو لم يحفظ شيئًا */
+    public function test_a_leftover_platform_key_is_not_shown_as_the_merchants_own(): void
     {
-        GoogleReviews::storePlatformKey('AIza-platform-key');
+        $this->leftoverPlatformKey('AIza-platform-key');
 
         $this->assertNull($this->props('admin.integrations.google')['keyHint']);
     }
 
-    /** ومفتاحُ التاجر وحده يُقرأ — ومفتاحُ المنصّة لا يقع عليه أحد */
+    /** ومفتاحُ التاجر وحده يُقرأ */
     public function test_only_the_merchants_own_key_is_read(): void
     {
-        GoogleReviews::storePlatformKey('AIza-platform-key');
+        $this->leftoverPlatformKey('AIza-platform-key');
         $this->assertNull(GoogleReviews::apiKey($this->business->id), 'مفتاحُ أبعاد وقع على تاجرٍ بلا مفتاح');
 
         GoogleReviews::storeKey($this->business->id, 'AIza-merchant-key');
@@ -181,15 +192,10 @@ class MarketingConnectTest extends TestCase
         $this->assertSame('••••-key', $this->props('admin.integrations.google')['keyHint']);
     }
 
-    /**
-     * والمفتاح لا يبلغ المتصفّح — لا في شاشة التاجر ولا في شاشة المنصّة.
-     *
-     * عليه تُحتسب فاتورةُ نداءات كلّ متاجر المنصّة، ومن فتح أدوات المتصفّح
-     * أخذه.
-     */
-    public function test_the_platform_key_never_reaches_the_browser(): void
+    /** ولا يبلغ المتصفّحَ — لا في شاشة التاجر ولا في شاشة المنصّة */
+    public function test_a_leftover_platform_key_never_reaches_the_browser(): void
     {
-        GoogleReviews::storePlatformKey('AIza-platform-key');
+        $this->leftoverPlatformKey('AIza-platform-key');
 
         $merchant = $this->actingAs($this->owner)->get(route('admin.integrations.google'));
         $merchant->assertOk()->assertDontSee('AIza-platform-key', false);
@@ -201,42 +207,26 @@ class MarketingConnectTest extends TestCase
 
         $platform = $this->actingAs($admin)->get(route('super-admin.settings.index'));
         $platform->assertOk()->assertDontSee('AIza-platform-key', false);
-        $this->assertSame('••••-key', $platform->viewData('page')['props']['googleKeyHint']);
+        $this->assertArrayNotHasKey('googleKeyHint', $platform->viewData('page')['props']);
     }
 
-    /* ----------------------- مفتاح المنصّة يُدار ----------------------- */
+    /* ----------------------- ولا بابَ لمفتاح المنصّة ----------------------- */
 
-    public function test_the_operator_saves_and_forgets_the_platform_key(): void
+    /** مساراتُ مفتاح المنصّة وفوترته حُذفت — لا يُحفظ لأبعاد مفتاحٌ من أيّ باب */
+    public function test_the_platform_key_routes_are_gone(): void
     {
+        foreach (['super-admin.settings.googleKey', 'super-admin.settings.googleKey.forget', 'super-admin.settings.googleBilling'] as $name) {
+            $this->assertFalse(Route::has($name), "ما زال مسار: $name");
+        }
+
         $admin = User::create([
             'business_id' => null, 'name' => 'المشغّل', 'email' => 'p2@abaadapp.om',
             'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
 
-        $this->actingAs($admin)
-            ->post(route('super-admin.settings.googleKey'), ['google_places_key' => 'AIza-1234'])
-            ->assertSessionHasNoErrors();
-        $this->assertSame('AIza-1234', GoogleReviews::platformKey());
+        $this->actingAs($admin)->post('/super-admin/settings/google-key', ['google_places_key' => 'AIza-1234']);
 
-        $this->actingAs($admin)->delete(route('super-admin.settings.googleKey.forget'));
-        $this->assertNull(GoogleReviews::platformKey());
-    }
-
-    /** وحقلٌ فارغٌ لا يمحو: صفحةٌ تُحفظ لسببٍ آخر لا تُسقط مفتاح المنصّة كلَّها */
-    public function test_an_empty_field_does_not_erase_the_platform_key(): void
-    {
-        GoogleReviews::storePlatformKey('AIza-1234');
-
-        $admin = User::create([
-            'business_id' => null, 'name' => 'المشغّل', 'email' => 'p3@abaadapp.om',
-            'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
-        ]);
-
-        $this->actingAs($admin)
-            ->post(route('super-admin.settings.googleKey'), ['google_places_key' => '   '])
-            ->assertSessionHasErrors('google_places_key');
-
-        $this->assertSame('AIza-1234', GoogleReviews::platformKey());
+        $this->assertNull(Setting::whereNull('business_id')->where('key', 'google_places_key')->value('value'));
     }
 
     /* -------------------------- شكلٌ واحدٌ لهما -------------------------- */

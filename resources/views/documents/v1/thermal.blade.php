@@ -108,8 +108,10 @@
             <tr>
                 <td>
                     {{ $it->name }}
-                    @if ($it->note)
-                        <div class="muted tiny">— {{ $it->note }}</div>
+                    {{-- ورسالةُ كرت الهدية لا تُطبع على الإيصال — كما على الفاتورة (`paperNote`) --}}
+                    @php($itemNote = \App\Support\Store\GiftCardProduct::paperNote($it, $order))
+                    @if ($itemNote)
+                        <div class="muted tiny">— {{ $itemNote }}</div>
                     @endif
                     {{--
                         وخياراتُ الطلب المخصَّص على الشريط كما هي على الورقة.

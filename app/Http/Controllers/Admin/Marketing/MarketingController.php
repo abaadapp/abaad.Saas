@@ -225,6 +225,7 @@ class MarketingController extends Controller
              * عند المئتين يقرأ جملتَه مبتورةً في وجه زبونه.
              */
             'store_image_note' => ['nullable', 'string', 'max:200'],
+            'store_image_note_en' => ['nullable', 'string', 'max:300'],
             /*
              * وكرتُ الهدية — صنفٌ يُباع في الموقع (انظر `Store\GiftCard`).
              *
@@ -233,6 +234,8 @@ class MarketingController extends Controller
              * فالقاعدةُ بين حقلين لا في حقل.
              */
             'store_gift_card' => ['sometimes', 'boolean'],
+            // وميزةُ الإهداء — مفتاحٌ لهذا المتجر وحده (`Store\GiftOrders`)
+            'store_gift_checkout' => ['sometimes', 'boolean'],
             'store_gift_card_price' => ['nullable', 'numeric', 'min:0', 'max:1000'],
 
             /*
@@ -473,7 +476,7 @@ class MarketingController extends Controller
          */
         Domains::sync($business->refresh());
 
-        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card', 'store_block_on', 'store_seo_index'] as $flag) {
+        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card', 'store_gift_checkout', 'store_block_on', 'store_seo_index'] as $flag) {
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }

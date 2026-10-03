@@ -101,8 +101,20 @@
             <div>
                 {!! $step(3, $t['s3']) !!}
 
+                {{--
+                    ═══ وميزةُ الإهداء — لمن رفعها من متجره (`GiftOrders`) ═══
+
+                    «هذا الطلب هدية» يفتح المستلِمَ والمناسبةَ وإخفاءَ الاسم وطريقةَ
+                    تحديد موقع المستلِم. وخانتا المستلِم تنتقلان إليها — إلّا إن
+                    اشترطهما صاحبُ المحلّ لكلّ طلب، فتبقيان في مكانهما ظاهرتين.
+                --}}
+                @php
+                    $giftOn = (bool) ($giftOrder['on'] ?? false);
+                    $recipInGift = $giftOn && ! $req('recipient');
+                @endphp
+
                 {{-- المستلِمُ غيرُ المشتري — مطويٌّ حتى يُطلب، فلا يُثقل من يشتري لنفسه --}}
-                @if ($shows('recipient'))
+                @if ($shows('recipient') && ! $recipInGift)
                     {{-- ومطلوبًا يُفتح بلا خانةٍ تُضغط: شرطٌ خلف طيّةٍ لا يُرى --}}
                     @unless ($req('recipient'))
                         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;margin-bottom:12px">
@@ -113,6 +125,52 @@
                     <div data-rb-recipient style="display:{{ $req('recipient') ? 'grid' : 'none' }};grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
                         <div><input class="rb-input" name="recipient_name" {!! $en !!} placeholder="{{ $t['fRecipient'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipient'] }}" {!! $need('recipient') !!}><div class="rb-error" data-err="recipient_name"></div></div>
                         <div><input class="rb-input" name="recipient_phone" dir="ltr" placeholder="{{ $t['fRecipientPhone'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipientPhone'] }}" {!! $need('recipient') !!}><div class="rb-error" data-err="recipient_phone"></div></div>
+                    </div>
+                @endif
+
+                @if ($giftOn)
+                    {{-- و`display` في `style` يغلب `hidden` لولا هذا — فيظهر المطويّ --}}
+                    <style>[data-rb-giftbox][hidden], [data-rb-giftloc][hidden], [data-rb-locnote][hidden], [data-rb-occasion-other][hidden] { display: none !important; }</style>
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;min-height:44px;margin-bottom:8px" data-testid="rb-gift-toggle">
+                        <input type="checkbox" data-rb-gift style="width:18px;height:18px;accent-color:var(--rb-olive)">
+                        <span>{{ $t['giftOrder'] }}</span>
+                    </label>
+                    <div data-rb-giftbox hidden data-testid="rb-gift-box" style="border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;margin-bottom:16px;display:flex;flex-direction:column;gap:14px">
+                        @if ($recipInGift)
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                                <div><input class="rb-input" name="recipient_name" {!! $en !!} placeholder="{{ $t['fRecipient'] }} *" aria-label="{{ $t['fRecipient'] }}" aria-required="true"><div class="rb-error" data-err="recipient_name"></div></div>
+                                <div><input class="rb-input" name="recipient_phone" dir="ltr" placeholder="{{ $t['fRecipientPhone'] }} *" aria-label="{{ $t['fRecipientPhone'] }}" aria-required="true"><div class="rb-error" data-err="recipient_phone"></div></div>
+                            </div>
+                        @endif
+                        <div>
+                            <label for="rb-occasion" style="font-size:13px">{{ $t['occasionOptional'] }}</label>
+                            <select id="rb-occasion" class="rb-input" name="occasion" data-rb-occasion style="margin-top:6px">
+                                <option value="">—</option>
+                                @foreach ($giftOrder['occasions'] as $o)<option value="{{ $o['value'] }}">{{ $o['label'] }}</option>@endforeach
+                            </select>
+                            <div data-rb-occasion-other hidden style="margin-top:8px">
+                                <input class="rb-input" name="occasion_text" maxlength="{{ $giftOrder['occasion_max'] }}" placeholder="{{ $t['enterOccasion'] }}" aria-label="{{ $t['enterOccasion'] }}">
+                            </div>
+                            <div class="rb-error" data-err="occasion"></div><div class="rb-error" data-err="occasion_text"></div>
+                        </div>
+                        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;min-height:44px">
+                            <input type="checkbox" name="hide_sender" data-rb-hide-sender style="width:18px;height:18px;accent-color:var(--rb-olive)">
+                            <span>{{ $t['hideSender'] }}</span>
+                        </label>
+                        {{-- وموقعُ المستلِم للتوصيل وحده: يكتبه الآن، أو نتواصل معه --}}
+                        <fieldset data-rb-giftloc style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
+                            <legend style="font-size:13px;margin-bottom:6px;padding:0">{{ $t['recipientLocation'] }}</legend>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;min-height:40px">
+                                <input type="radio" name="recipient_location" value="provided" checked style="width:18px;height:18px;accent-color:var(--rb-olive)">
+                                <span>{{ $t['locProvided'] }}</span>
+                            </label>
+                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;min-height:40px">
+                                <input type="radio" name="recipient_location" value="contact_recipient" style="width:18px;height:18px;accent-color:var(--rb-olive)">
+                                <span>{{ $t['locContact'] }}</span>
+                            </label>
+                            <p data-rb-locnote hidden style="margin:0;font-size:12px;line-height:1.7">{{ $t['locContactNote'] }}</p>
+                            <div class="rb-error" data-err="recipient_location"></div>
+                        </fieldset>
                     </div>
                 @endif
 
@@ -279,6 +337,9 @@
 @if ($giftCard['message_only'])
 <script>{!! file_get_contents(resource_path('js/store/ribbon-card-message.js')) !!}</script>
 @endif
+@if ($giftOrder['on'] ?? false)
+<script>{!! file_get_contents(resource_path('js/store/ribbon-gift-order.js')) !!}</script>
+@endif
 <script>
 (function () {
     // والطريقةُ الابتدائيّة من المفتوح لا من ظنٍّ في الشاشة
@@ -443,12 +504,22 @@
      * فتُقرأ من الخادم ولا تُعرض. وقارئٌ يفترض وجودَها يسقط الصفحةَ كلَّها.
      */
     var fulfilPills = form.querySelector('[data-rb-fulfil]');
+    /*
+        والهديّةُ — انظر `js/store/ribbon-gift-order.js`. وحيث لا ميزةَ يبقى
+        `null` ولا يُرسَل منها شيء.
+    */
+    var giftOrderToggle = form.querySelector('[data-rb-gift]');
+    var giftOrder = giftOrderToggle ? RBGiftOrder.mount(form, giftOrderToggle) : null;
     function paintFulfil() {
         var d = form.querySelector('[data-rb-delivery]');
         var p = form.querySelector('[data-rb-pickup]');
-        if (d) d.style.display = fulfil === 'delivery' ? 'grid' : 'none';
+        // وهديّةٌ يتواصل المتجرُ مع مستلِمها لا تُسأل عن عنوانٍ لا يعرفه المشتري
+        var askAddress = fulfil === 'delivery' && !(giftOrder && giftOrder.contacts(fulfil));
+        if (d) d.style.display = askAddress ? 'grid' : 'none';
         if (p) p.style.display = fulfil === 'pickup' ? 'block' : 'none';
+        if (giftOrder) giftOrder.fulfil(fulfil);
     }
+    if (giftOrder) giftOrder.onChange(paintFulfil);
     if (fulfilPills) {
         fulfilPills.addEventListener('click', function (e) {
             var b = e.target.closest('button'); if (!b) return;
@@ -494,6 +565,8 @@
             card_file: cardWay === 'file' ? cardFile : null,
             card_file_name: cardWay === 'file' ? cardFileName : null,
         };
+        // وحقولُ الهديّة إن كانت هديّة — وإلّا `is_gift: false` وحدها
+        if (giftOrder) Object.assign(payload, giftOrder.payload(fulfil));
         RB.post('/checkout', payload).then(function (r) {
             btn.disabled = false;
             /*

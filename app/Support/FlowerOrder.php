@@ -224,6 +224,15 @@ class FlowerOrder
             'delivery_address' => __('عنوان التوصيل مطلوب لطلبات التوصيل.'),
         ];
 
+        /*
+         * وهديّةٌ يتواصل المتجرُ مع مستلِمها لموقعه (`Store\GiftOrders::CONTACT`)
+         * لا يُشترط عنوانُها حتّى يُعرف — وإلّا لم يُصحَّح فيها هاتفٌ ولا موعد
+         * قبل أن يُكتب عنوانٌ لا يعرفه أحدٌ بعد.
+         */
+        if ($effective('is_gift') && $effective('recipient_location_mode') === Store\GiftOrders::CONTACT) {
+            unset($required['delivery_address']);
+        }
+
         foreach ($required as $field => $message) {
             if (blank($effective($field))) {
                 $errors[$field] = $message;

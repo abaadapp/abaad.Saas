@@ -70,6 +70,17 @@ interface OrderDetail {
     card_file_name: string | null;
     sender_name: string | null;
     hide_sender: boolean;
+    /* الهديّةُ لغير مشتريها — انظر Store\GiftOrders */
+    is_gift?: boolean;
+    recipient_location_mode?: string | null;
+    /** «الموقع: بانتظار التواصل مع المستلم» وأخواتها — مترجمةً من الخادم */
+    location_label?: string | null;
+    /** هديّةٌ تُوصَّل تنتظر موقعَ مستلِمها — يظهر زرُّ التواصل معه */
+    awaiting_location?: boolean;
+    /** المناسبةُ كما تُقرأ — و«أخرى» بنصّها */
+    occasion_label?: string | null;
+    /** رقمُ المشتري في كتلة الهديّة — `null` لمن لا يرى العملاء */
+    buyer_phone?: string | null;
     delivery_address: string | null;
     delivery_notes: string | null;
     internal_notes: string | null;
@@ -233,8 +244,10 @@ export default function OrderShow() {
 
     /* إرسالُ الفاتورة — نموذجٌ فارغ: النصُّ كلُّه يُكتب في الخادم */
     const sending = useForm({});
+    const contacting = useForm({});
 
-    const occasionLabel = order.occasions.find((o) => o.value === order.occasion_type)?.label;
+    // ومن الخادم أوّلًا: «أخرى» بنصّها الذي كتبه المشتري (`GiftOrders::occasionLabel`)
+    const occasionLabel = order.occasion_label ?? order.occasions.find((o) => o.value === order.occasion_type)?.label;
     const fulfillmentLabel = order.fulfillments.find((f) => f.value === order.fulfillment_type)?.label;
 
     /*
@@ -244,7 +257,8 @@ export default function OrderShow() {
      * يعرف صاحبه أن للتفاصيل موضعًا أصلًا — ولا كيف يضيفها.
      */
     const hasSheet = Boolean(
-        order.fulfillment_type ||
+        order.is_gift ||
+            order.fulfillment_type ||
             order.scheduled_for ||
             order.recipient_name ||
             order.recipient_phone ||
@@ -273,6 +287,34 @@ export default function OrderShow() {
             </dd>
         </div>
     );
+
+    /* نصُّ البطاقة وملفُّها — في كتلة الهديّة أو كتلة المناسبة، من موضعٍ واحد */
+    const cardMessage = order.card_message ? (
+        <div className="pt-3">
+            <p className="mb-1 text-[13px] text-[#6b7280]">{t('نصّ البطاقة')}</p>
+            {/* مرتَّبًا كما رتّبه صاحبُه — والأسطرُ جزءٌ ممّا كتب */}
+            <p
+                className="whitespace-pre-wrap rounded-[10px] bg-[#faf5ff] p-3 text-sm leading-relaxed text-[#4b4b4b]"
+                style={{ textAlign: (order.card_align as 'right' | 'center' | 'left') || 'right' }}
+            >
+                {order.card_message}
+            </p>
+        </div>
+    ) : null;
+
+    const cardFile = order.card_file ? (
+        <div className="pt-3">
+            <p className="mb-1 text-[13px] text-[#6b7280]">{t('ملفّ البطاقة')}</p>
+            <a
+                href={order.card_file}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-[#1d4ed8] underline"
+            >
+                {order.card_file_name || t('ملفٌّ مرفق')}
+            </a>
+        </div>
+    ) : null;
 
     /** كتلةٌ في الورقة: عنوانٌ بأيقونة وما تحته */
     const Block = ({
@@ -825,6 +867,15 @@ export default function OrderShow() {
                                 <span className="text-sm text-[#6b7280]">{t('الحالة')}</span>
                                 <Badge status={order.status}>{t(order.status)}</Badge>
                             </div>
+                            {/* والهديّةُ تُرى من النظرة الأولى — لغير مشتريها، والمشتري يبقى صاحبَ الطلب */}
+                            {order.is_gift && (
+                                <div className="mb-3 flex items-center justify-between" data-testid="gift-order-badge">
+                                    <span className="text-sm text-[#6b7280]">{t('نوع الطلب')}</span>
+                                    <span className="rounded-full bg-[#fdf2f8] px-2.5 py-1 text-[12px] font-semibold text-[#9d174d]">
+                                        🎁 {t('طلب هدية')}
+                                    </span>
+                                </div>
+                            )}
                             {actionable && order.next_statuses.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                     {order.next_statuses.map((s) => (
@@ -1051,54 +1102,106 @@ export default function OrderShow() {
                                     />
                                 </Block>
 
-                                <Block icon={Phone} title="المستلِم">
-                                    <Row label="الاسم" value={order.recipient_name} />
-                                    <Row label="الهاتف" value={order.recipient_phone} ltr />
-                                </Block>
+                                {/*
+                                    ═══ طلبُ الهديّة كتلةٌ واحدة لمن يجهّزه ═══
+
+                                    المشتري والمستلِم والمُهدي والموقع والرسالة في موضعٍ واحد —
+                                    لا ثلاثُ كتلٍ يُجمع منها. و«لا تذكر اسمي» يُخفي المشتريَ عن
+                                    المستلِم وحده: هنا يُرى دائمًا، وهاتفُه لمن يرى العملاء.
+                                */}
+                                {order.is_gift && (
+                                    <div
+                                        className="rounded-[12px] border border-[#fbcfe8] bg-[#fdf2f8]/40 p-4 md:col-span-2"
+                                        data-testid="gift-order-block"
+                                    >
+                                        <h4 className="mb-1 text-[13px] font-bold text-[#9d174d]">🎁 {t('طلب هدية')}</h4>
+                                        <dl className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
+                                            <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                                <Row label="المشتري" value={order.customer} />
+                                                {order.buyer_phone && <Row label="هاتف المشتري" value={order.buyer_phone} ltr />}
+                                                <Row label="اسم المُهدي" value={order.sender_name} />
+                                                <Row
+                                                    label="اسم المُهدي للمستلِم"
+                                                    value={t(order.hide_sender ? 'مخفيّ عن المستلِم' : 'ظاهر للمستلِم')}
+                                                />
+                                                <Row label="المناسبة" value={occasionLabel ? t(occasionLabel) : null} />
+                                            </div>
+                                            <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                                <Row label="اسم المستلِم" value={order.recipient_name} />
+                                                <Row label="هاتف المستلِم" value={order.recipient_phone} ltr />
+                                                {order.location_label && (
+                                                    <div className="flex items-start justify-between gap-4 py-2">
+                                                        <dt className="shrink-0 text-[13px] text-[#6b7280]">{t('موقع المستلِم')}</dt>
+                                                        <dd
+                                                            className={
+                                                                order.awaiting_location
+                                                                    ? 'rounded-md bg-[#fffbeb] px-2 py-0.5 text-end text-sm font-semibold text-[#92400e]'
+                                                                    : 'text-end text-sm font-medium text-[#111]'
+                                                            }
+                                                            data-testid="gift-location-state"
+                                                        >
+                                                            {order.location_label}
+                                                        </dd>
+                                                    </div>
+                                                )}
+                                                {order.delivery_address && <Row label="عنوان التوصيل" value={order.delivery_address} />}
+                                            </div>
+                                        </dl>
+                                        {/*
+                                            والتواصلُ مع المستلِم ليُعرف موقعُه — رسالةٌ تُجهَّز في
+                                            واتساب التاجر ولا تُرسَل من هنا، ولا تذكر المُهديَ ولا الثمن.
+                                        */}
+                                        {order.awaiting_location && order.recipient_phone && (
+                                            <div className="pt-3">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={contacting.processing}
+                                                    onClick={() =>
+                                                        contacting.post(route('admin.orders.contactRecipient', order.id), { preserveScroll: true })
+                                                    }
+                                                    data-testid="contact-recipient"
+                                                >
+                                                    <MessageCircle />
+                                                    {t('تواصل مع المستلم للحصول على الموقع')}
+                                                </Button>
+                                            </div>
+                                        )}
+                                        {cardMessage}
+                                        {cardFile}
+                                    </div>
+                                )}
+
+                                {/* والهديّةُ قالت مستلِمَها ومناسبتَها أعلاه — فلا تُعادان هنا */}
+                                {!order.is_gift && (
+                                    <Block icon={Phone} title="المستلِم">
+                                        <Row label="الاسم" value={order.recipient_name} />
+                                        <Row label="الهاتف" value={order.recipient_phone} ltr />
+                                    </Block>
+                                )}
 
                                 <Block icon={MapPin} title="العنوان والتعليمات">
                                     <Row label="عنوان التوصيل" value={order.delivery_address} />
                                     <Row label="تعليمات التوصيل" value={order.delivery_notes} />
                                 </Block>
 
-                                <Block icon={Gift} title="المناسبة والبطاقة">
-                                    <Row label="المناسبة" value={occasionLabel ? t(occasionLabel) : null} />
-                                    <Row
-                                        label="اسم المُهدي"
-                                        value={
-                                            order.sender_name
-                                                ? order.hide_sender
-                                                    ? `${order.sender_name} · ${t('مخفيّ عن المستلِم')}`
-                                                    : order.sender_name
-                                                : null
-                                        }
-                                    />
-                                    {order.card_message && (
-                                        <div className="pt-3">
-                                            <p className="mb-1 text-[13px] text-[#6b7280]">{t('نصّ البطاقة')}</p>
-                                            {/* مرتَّبًا كما رتّبه صاحبُه — والأسطرُ جزءٌ ممّا كتب */}
-                                            <p
-                                                className="whitespace-pre-wrap rounded-[10px] bg-[#faf5ff] p-3 text-sm leading-relaxed text-[#4b4b4b]"
-                                                style={{ textAlign: (order.card_align as 'right' | 'center' | 'left') || 'right' }}
-                                            >
-                                                {order.card_message}
-                                            </p>
-                                        </div>
-                                    )}
-                                    {order.card_file && (
-                                        <div className="pt-3">
-                                            <p className="mb-1 text-[13px] text-[#6b7280]">{t('ملفّ البطاقة')}</p>
-                                            <a
-                                                href={order.card_file}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="text-sm font-medium text-[#1d4ed8] underline"
-                                            >
-                                                {order.card_file_name || t('ملفٌّ مرفق')}
-                                            </a>
-                                        </div>
-                                    )}
-                                </Block>
+                                {!order.is_gift && (
+                                    <Block icon={Gift} title="المناسبة والبطاقة">
+                                        <Row label="المناسبة" value={occasionLabel ? t(occasionLabel) : null} />
+                                        <Row
+                                            label="اسم المُهدي"
+                                            value={
+                                                order.sender_name
+                                                    ? order.hide_sender
+                                                        ? `${order.sender_name} · ${t('مخفيّ عن المستلِم')}`
+                                                        : order.sender_name
+                                                    : null
+                                            }
+                                        />
+                                        {cardMessage}
+                                        {cardFile}
+                                    </Block>
+                                )}
 
                                 {order.internal_notes && (
                                     <div className="md:col-span-2">

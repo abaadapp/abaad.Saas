@@ -104,9 +104,11 @@ final class PageEditor
         'reviews' => [],
         self::FOOT => [
             ['key' => 'store_tagline', 'kind' => 'text', 'label' => 'سطر التذييل', 'hint' => 'أسفل كلّ صفحة — واتركه فارغًا فلا يُكتب سطر'],
+            ['key' => 'store_tagline_en', 'kind' => 'text', 'label' => 'سطر التذييل (English)', 'hint' => 'للصفحة الإنجليزيّة — واتركه فارغًا فلا يُكتب فيها سطر', 'dir' => 'ltr'],
             ['key' => 'store_whatsapp', 'kind' => 'text', 'label' => 'واتساب', 'hint' => 'زرٌّ في التذييل يفتح محادثةً — ورقمُ متجرك إن تركته فارغًا', 'dir' => 'ltr'],
             ['key' => 'store_instagram', 'kind' => 'text', 'label' => 'إنستغرام', 'hint' => 'اسمُ الحساب بلا «@» ولا رابط', 'dir' => 'ltr'],
             ['key' => 'store_hours', 'kind' => 'text', 'label' => 'ساعات العمل', 'hint' => 'تُكتب في التذييل، ويقرؤها من يستلم من المحلّ'],
+            ['key' => 'store_hours_en', 'kind' => 'text', 'label' => 'ساعات العمل (English)', 'hint' => 'للصفحة الإنجليزيّة — مثل: Daily 10 AM – 10 PM', 'dir' => 'ltr'],
         ],
     ];
 

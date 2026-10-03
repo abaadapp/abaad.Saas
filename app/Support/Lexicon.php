@@ -257,6 +257,15 @@ class Lexicon
      */
     private static function classify(string $bare): ?array
     {
+        /*
+         * واللفظُ بلا همزةٍ هو اللفظُ نفسُه: «الاضافات» كما تُكتب على لوحة
+         * المفاتيح هي «الإضافات» في المعجم. والمطابقةُ الحرفيّة أوّلًا، فما
+         * يُعرف اليومَ يُترجَم كما كان — وهذه لما لا يُعرف إلّا بها.
+         */
+        if (! isset(self::ADJECTIVES[$bare]) && ! isset(self::NOUNS[$bare])) {
+            $bare = self::folded()[self::fold($bare)] ?? $bare;
+        }
+
         if (isset(self::ADJECTIVES[$bare])) {
             return ['kind' => 'adj', 'head' => self::ADJECTIVES[$bare], 'attr' => self::ADJECTIVES[$bare]];
         }
@@ -270,6 +279,29 @@ class Lexicon
         }
 
         return null;
+    }
+
+    /** الألفُ بهمزتها أو مدّتها ألفٌ — «إضافة» و«اضافة» و«آضافة» لفظٌ واحد */
+    private static function fold(string $word): string
+    {
+        return str_replace(['أ', 'إ', 'آ'], 'ا', $word);
+    }
+
+    /** @var array<string, string>|null مفاتيحُ المعجم مطويّةَ الهمزة ← مفتاحُها كما كُتب */
+    private static ?array $folded = null;
+
+    /** @return array<string, string> */
+    private static function folded(): array
+    {
+        if (self::$folded === null) {
+            self::$folded = [];
+            // الأوّلُ يبقى: لفظان يتطابقان بلا همزة لا يُبدَّل أحدُهما بالآخر
+            foreach ([...array_keys(self::ADJECTIVES), ...array_keys(self::NOUNS)] as $key) {
+                self::$folded[self::fold((string) $key)] ??= (string) $key;
+            }
+        }
+
+        return self::$folded;
     }
 
     /** يُسقط التشكيل والتطويل ويوحّد الهمزات كي لا يُفوَّت لفظٌ لشكلة */

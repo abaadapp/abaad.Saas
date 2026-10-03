@@ -112,7 +112,7 @@ class RibbonController extends Controller
             null => $this->render('store.ribbon.home', $ctx + $this->home($business, $lang)),
             'shop' => $this->render('store.ribbon.shop', $ctx + $this->shop($business, $lang, request(), $base)),
             'about' => $this->render('store.ribbon.about', $ctx + $this->about($business)),
-            'contact' => $this->render('store.ribbon.contact', $ctx + $this->contact($business)),
+            'contact' => $this->render('store.ribbon.contact', $ctx + $this->contact($business, $lang)),
             'p' => $this->render('store.ribbon.product', $ctx + $this->product($business, (int) $second, $lang)),
             'cart' => $this->render('store.ribbon.cart', $ctx),
             'checkout' => $this->render('store.ribbon.checkout', $ctx + $this->checkoutData($business)),
@@ -370,10 +370,10 @@ class RibbonController extends Controller
      * ولا يُبنى إلّا على عنوانٍ مكتوب: رابطُ خرائطَ باسم المحلّ وحدَه يفتح
      * على نتيجةٍ في بلدٍ آخر.
      */
-    private function contact(Business $business): array
+    private function contact(Business $business, string $lang): array
     {
         $bid = (int) $business->id;
-        $lines = StoreNav::contactLines($bid);
+        $lines = StoreNav::contactLines($bid, $lang);
         $address = $lines['address'] ?? '';
 
         return [
@@ -585,7 +585,8 @@ class RibbonController extends Controller
             'logo' => $business->logo ?: null,
             'currency' => Storefront::currency($business),
             'identity' => $identity,
-            'hours' => $s['hours'],
+            // ساعاتُ العمل بلغة الصفحة — التذييلُ وسطرُ الاستلام في الإتمام
+            'hours' => StorePage::hours($bid, $lang),
             'deliveryNote' => $s['note'],
             'imageNote' => $s['image_note'],
             'accepts' => WebCheckout::accepts($business),
@@ -593,7 +594,7 @@ class RibbonController extends Controller
             'analytics' => Seo::tagFor($bid),
             'catsNav' => $this->categories($bid, $lang, null)->take(6)->all(),
             // وسطرُ التذييل في كلّ صفحة — فهو في القالب العامّ لا في الرئيسية
-            'tagline' => StorePage::tagline($bid),
+            'tagline' => StorePage::tagline($bid, $lang),
             /*
              * وقائمةُ الصفحات — في الترويسة والتذييل معًا، ومن مصدرٍ واحد.
              *

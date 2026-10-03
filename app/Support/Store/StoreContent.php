@@ -30,7 +30,7 @@ use App\Support\MarketingSettings;
  * ولمَ يبقى `store_on` حيًّا: هو مفتاحُ الخدمة نفسِها. ولو جُمِّد لَدار
  * المنطقُ على نفسه — مفتاحُ النشر لا يُنشَر.
  *
- * ولمَ تبقى `store_whatsapp` و`store_hours` و`store_instagram` حيّةً وهي
+ * ولمَ تبقى `store_whatsapp` و`store_hours` (و`store_hours_en`) و`store_instagram` حيّةً وهي
  * في المحرّر: الأوّلُ يُبنى منه زرُّ التواصل (`Storefront::whatsappLink`)،
  * والثاني يُقرأ في **إتمام الطلب** (`WebCheckout::settings`)، والثالثُ
  * رابطٌ في التذييل. وثلاثتُها بيانُ تواصلٍ: رقمٌ خطأ أو ساعةٌ خطأ يجب أن
@@ -45,13 +45,13 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — ثلاثةٌ وعشرون مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — أربعةٌ وعشرون مفتاحًا.
      *
      * @var list<string>
      */
     public const VERSIONED = [
         // نصوصُ الصفحة
-        'store_headline', 'store_about', 'store_tagline',
+        'store_headline', 'store_about', 'store_tagline', 'store_tagline_en',
         // صورُها
         'store_hero_image', 'store_banner_image', 'store_about_image',
         // ما يُعرض وبأيّ ترتيب

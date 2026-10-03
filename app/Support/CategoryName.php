@@ -35,10 +35,21 @@ final class CategoryName
             return $name;
         }
 
-        if (filled($nameEn)) {
+        /*
+         * و«اسمٌ إنجليزيّ» كلُّه عربيّ ليس ترجمة: نُسخ فيه الاسمُ العربيّ
+         * فيُعرض عربيًّا في الصفحة الإنجليزيّة. فيُترك ويُسأل المعجم — وما
+         * كتبه التاجرُ بحروفٍ لاتينيّة يبقى كما كتبه. ولا يُكتب شيءٌ في القاعدة.
+         */
+        if (filled($nameEn) && ! self::arabicOnly((string) $nameEn)) {
             return (string) $nameEn;
         }
 
         return Lexicon::translate($name) ?? $name;
+    }
+
+    /** حروفٌ عربيّة ولا حرفَ لاتينيًّا واحدًا */
+    private static function arabicOnly(string $text): bool
+    {
+        return preg_match('/\p{Arabic}/u', $text) === 1 && preg_match('/[A-Za-z]/', $text) === 0;
     }
 }

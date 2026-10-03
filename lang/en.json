@@ -7162,5 +7162,10 @@
     "اسم منتج كرت الهدية ثابت ولا يمكن تغييره.": "The gift card product's name is fixed and cannot be changed.",
     "كرت الهدية غير مرتبط بالمخزون.": "The gift card is not tracked in stock.",
     "كرت الهدية موجود في منتجاتك — عدّله بدل إضافة كرت آخر.": "The gift card is already in your products — edit it instead of adding another.",
-    "كرت الهدية غير متاح الآن.": "The gift card is not available right now."
+    "كرت الهدية غير متاح الآن.": "The gift card is not available right now.",
+    "سطر التذييل (English)": "Footer line (English)",
+    "للصفحة الإنجليزيّة — واتركه فارغًا فلا يُكتب فيها سطر": "For the English page — leave it empty and no line is shown there",
+    "ساعات العمل (English)": "Opening hours (English)",
+    "للصفحة الإنجليزيّة — مثل: Daily 10 AM – 10 PM": "For the English page — e.g. Daily 10 AM – 10 PM",
+    "للصفحة الإنجليزية — واتركها فارغة فلا تُكتب فيها": "For the English page — leave it empty and nothing is shown there"
 }

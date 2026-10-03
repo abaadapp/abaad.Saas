@@ -601,9 +601,11 @@ export default function SettingsIndex() {
         store_block_href: site?.store_block_href ?? '',
         store_banner_image: site?.store_banner_image ?? '',
         store_tagline: site?.store_tagline ?? '',
+        store_tagline_en: site?.store_tagline_en ?? '',
         store_delivery_areas: site?.store_delivery_areas ?? '',
         store_delivery_slots: site?.store_delivery_slots ?? '',
         store_hours: site?.store_hours ?? '',
+        store_hours_en: site?.store_hours_en ?? '',
         store_delivery_note: site?.store_delivery_note ?? '',
         store_image_note: site?.store_image_note ?? '',
     });
@@ -1140,6 +1142,9 @@ export default function SettingsIndex() {
                                 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <Field label="ساعات العمل" hint="تظهر في تذييل الموقع وعند الاستلام من المحل" error={storeForm.errors.store_hours}>
                                         <Input value={storeForm.data.store_hours} onChange={(e) => storeForm.setData('store_hours', e.target.value)} aria-label={t('ساعات العمل')} />
+                                    </Field>
+                                    <Field label="ساعات العمل (English)" hint="للصفحة الإنجليزية — واتركها فارغة فلا تُكتب فيها" error={storeForm.errors.store_hours_en}>
+                                        <Input dir="ltr" value={storeForm.data.store_hours_en} onChange={(e) => storeForm.setData('store_hours_en', e.target.value)} aria-label={t('ساعات العمل (English)')} placeholder="Daily 10 AM – 10 PM" />
                                     </Field>
                                     <Field label="ملاحظة التوصيل" hint="سطرٌ تحت زرّ الإضافة إلى السلّة" error={storeForm.errors.store_delivery_note}>
                                         <Input value={storeForm.data.store_delivery_note} onChange={(e) => storeForm.setData('store_delivery_note', e.target.value)} aria-label={t('ملاحظة التوصيل')} />

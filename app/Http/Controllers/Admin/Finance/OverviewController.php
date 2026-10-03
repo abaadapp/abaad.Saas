@@ -126,8 +126,31 @@ class OverviewController extends Controller
              * ويُقرأ من `Receivables` نفسها التي تقرأ منها شاشةُ الذمم وصفحةُ
              * العميل: ثلاث شاشاتٍ برقمٍ واحد.
              */
-            'receivables' => Receivables::totals($bid),
+            'receivables' => $this->receivableCard($bid),
         ]);
+    }
+
+    /**
+     * «لك الآن» مفصّلًا — من `Receivables::totals` كما هي، وقيمتان مشتقّتان.
+     *
+     * `total` إجماليُّ الذمم **قبل** الرصيد الدائن: الفواتيرُ المفتوحة ومعها
+     * البيعاتُ الآجلة التي لم تُفوتَر. فلا يُسمّى «صافيًا»:
+     *
+     *   invoiced = total − uninvoiced   فواتيرُ العملاء وحدها
+     *   net      = total − credit       ما يبقى لك بعد ما دفعوه مقدّمًا
+     *
+     * ولا يُمسّ حسابُ الذمم نفسُه: طرحٌ للعرض، والأصلُ في `Receivables`.
+     *
+     * @return array<string, float|int>
+     */
+    private function receivableCard(int $bid): array
+    {
+        $r = Receivables::totals($bid);
+
+        return $r + [
+            'invoiced' => round($r['total'] - $r['uninvoiced'], 3),
+            'net' => round($r['total'] - $r['credit'], 3),
+        ];
     }
 
     /**
@@ -247,15 +270,50 @@ class OverviewController extends Controller
             ->with('lines')->get()
             ->sum(fn ($r) => $r->lines->where('paid', false)->sum('net')), 3);
 
+        /*
+         * والمتأخّرُ وما يستحقّ خلال سبعة أيام — عددًا ومبلغًا.
+         *
+         * من المصدرين اللذين لهما تاريخُ استحقاق: المصروفُ غيرُ المدفوع
+         * (`due_date`) وسندُ المورّد المعتمَد (`due_at`). والرواتبُ لا تاريخَ
+         * استحقاقٍ لها في المسيرة، فلا يُخترع لها موعد: تبقى في «عليك الآن»
+         * ولا تدخل هنا.
+         *
+         * والحدُّ الأعلى «قبل اليوم الثامن» لا «حتّى السابع»: SQLite يقرأ العمودَ
+         * نصًّا (`2026-10-10 00:00:00`)، فـ`<= 2026-10-10` تُسقط اليومَ السابع
+         * عليه وحده. و«أصغرُ من» صحيحةٌ على المحرّكين. وما يستحقّ قريبًا من اليوم
+         * حتّى نهاية اليوم السابع، والمتأخّرُ خارجه — التعريفُ نفسُه في
+         * `Receivables::totals`.
+         */
+        $today = now()->toDateString();
+        $afterWeek = now()->addDays(8)->toDateString();
+
+        $expenseDue = fn () => Expense::where('business_id', $bid)->unpaid()->whereNotNull('due_date');
+        $invoiceDue = fn () => SupplierInvoice::where('business_id', $bid)->owed()
+            ->whereColumn('paid', '<', 'total')->whereNotNull('due_at');
+
+        $late = [
+            $expenseDue()->where('due_date', '<', $today)
+                ->selectRaw('COUNT(*) c, COALESCE(SUM(amount),0) s')->first(),
+            $invoiceDue()->where('due_at', '<', $today)
+                ->selectRaw('COUNT(*) c, COALESCE(SUM(total - paid),0) s')->first(),
+        ];
+
+        $soon = (float) $expenseDue()->where('due_date', '>=', $today)->where('due_date', '<', $afterWeek)->sum('amount')
+            + (float) $invoiceDue()->where('due_at', '>=', $today)->where('due_at', '<', $afterWeek)
+                ->selectRaw('COALESCE(SUM(total - paid),0) s')->value('s');
+
+        $lateCount = (int) $late[0]->c + (int) $late[1]->c;
+
         return [
             'expenses' => round($expenses, 3),
             'invoices' => $invoices,
             'payroll' => $payroll,
             'total' => round($expenses + $invoices + $payroll, 3),
-            'overdue' => Expense::where('business_id', $bid)->unpaid()
-                ->whereNotNull('due_date')->where('due_date', '<', now()->startOfDay())->count()
-                + SupplierInvoice::where('business_id', $bid)->owed()->whereColumn('paid', '<', 'total')
-                    ->whereNotNull('due_at')->where('due_at', '<', now()->startOfDay())->count(),
+            // العددُ باسمه القديم أيضًا — تقرؤه شاشةُ المستحقّات
+            'overdue' => $lateCount,
+            'overdue_count' => $lateCount,
+            'overdue_amount' => round((float) $late[0]->s + (float) $late[1]->s, 3),
+            'due_soon_amount' => round($soon, 3),
         ];
     }
 }

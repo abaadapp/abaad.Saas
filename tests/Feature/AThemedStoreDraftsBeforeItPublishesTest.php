@@ -107,9 +107,9 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
 
         // و«وصل حديثًا» اليدويّ (مفتاحان) قرارُ عرضٍ كالمختارات — يُنشر
         // ورأسُ المتجر (أربعة: إعلانان ومحاذاةٌ واختصارات) نصٌّ وترتيبٌ يراه الزائر — يُنشر
-        $this->assertCount(54, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
-        $this->assertCount(23, $versioned, 'تبدّل عددُ ما يُنشر');
-        $this->assertCount(31, $live, 'تبدّل عددُ ما يسري فورًا');
+        $this->assertCount(56, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        $this->assertCount(24, $versioned, 'تبدّل عددُ ما يُنشر');
+        $this->assertCount(32, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),
             'مفتاحٌ في العقد وليس في المجموعة: '.implode(', ', array_diff($versioned, $all)));
@@ -139,7 +139,7 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
             // نطاقٌ وخدمة
             'site_on', 'site_domain', 'site_domain_mode', 'site_path', 'store_on',
             // تواصلٌ تشغيليّ — رقمٌ خطأ أو ساعةٌ خطأ يُصحَّحان الآن
-            'store_whatsapp', 'store_hours', 'store_instagram',
+            'store_whatsapp', 'store_hours', 'store_hours_en', 'store_instagram',
             // وإذنُ الفهرسة: «لا تُفهرسني» طلبٌ يُستعجَل
             'store_seo_index',
             // وقرارٌ تجاريٌّ قد يُتَّخذ فجأة
@@ -153,7 +153,7 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
                 'المفتاح «'.$key.'» دخل النشر — وهو يسري على زبونٍ يشتري الآن.');
         }
 
-        $this->assertCount(31, $mustStayLive, 'قائمةُ الحيّ ناقصةٌ أو زائدة');
+        $this->assertCount(32, $mustStayLive, 'قائمةُ الحيّ ناقصةٌ أو زائدة');
         $this->assertSame([], array_diff($mustStayLive, array_keys(MarketingSettings::GROUPS['website'])));
     }
 
@@ -161,7 +161,7 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
     public function test_everything_the_visitor_only_reads_is_versioned(): void
     {
         foreach ([
-            'store_headline', 'store_about', 'store_tagline',
+            'store_headline', 'store_about', 'store_tagline', 'store_tagline_en',
             'store_hero_image', 'store_banner_image', 'store_about_image',
             'store_featured', 'store_sections', 'store_pages',
             'store_new_arrivals_mode', 'store_new_arrivals',

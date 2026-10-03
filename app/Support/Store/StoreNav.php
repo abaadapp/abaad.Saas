@@ -167,10 +167,11 @@ final class StoreNav
      *
      * @return array<string, string>
      */
-    public static function contactLines(int $businessId): array
+    public static function contactLines(int $businessId, string $lang = 'ar'): array
     {
         $identity = MerchantData::identity($businessId);
-        $hours = trim((string) (MarketingSettings::group($businessId, 'website')['store_hours'] ?? ''));
+        // بلغة الصفحة — انظر `StorePage::hours`
+        $hours = StorePage::hours($businessId, $lang);
 
         return array_filter([
             'phone' => $identity['phone'],

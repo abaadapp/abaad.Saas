@@ -348,6 +348,19 @@
     @yield('content')
 </main>
 
+{{--
+    ═══ والتذييلُ يُضغط — لا يُنسخ ═══
+
+    الهاتفُ يتّصل (`tel:`)، والبريدُ يفتح البريد (`mailto:`)، وواتساب يفتح
+    محادثةَ المحلّ مباشرةً (`https://wa.me/…` — التطبيقُ على الهاتف وWhatsApp
+    Web على الحاسوب)، بالطريقة نفسِها في صفحة «تواصل معنا». والأرقامُ والبريدُ
+    من اليسار (`bdi dir="ltr"`) في الصفحتين، والسطرُ يتبع اتّجاهَ صفحته.
+--}}
+@php
+    $rbTel = preg_replace('/[^\d+]/', '', $identity['phone']);
+    $rbWa = preg_replace('/\D/', '', $identity['whatsapp']);
+    $rbIg = $identity['instagram'] !== '' ? 'https://instagram.com/'.rawurlencode($identity['instagram']) : '';
+@endphp
 <footer class="rb-foot">
     <div class="rb-foot-in">
         <div class="rb-foot-grid">
@@ -357,11 +370,11 @@
                     <p style="margin:0;line-height:1.8;max-width:300px">{{ $identity['about'] }}</p>
                 @endif
                 <div class="rb-social" style="display:flex;gap:10px;flex-wrap:wrap">
-                    @if ($identity['instagram'] !== '')
-                        <a href="https://instagram.com/{{ $identity['instagram'] }}" target="_blank" rel="noopener">Instagram</a>
+                    @if ($rbIg !== '')
+                        <a href="{{ $rbIg }}" target="_blank" rel="noopener" data-testid="rb-foot-instagram">Instagram</a>
                     @endif
-                    @if ($identity['whatsapp'] !== '')
-                        <a href="https://wa.me/{{ preg_replace('/\D/', '', $identity['whatsapp']) }}" target="_blank" rel="noopener">WhatsApp</a>
+                    @if ($rbWa !== '')
+                        <a href="https://wa.me/{{ $rbWa }}" target="_blank" rel="noopener" data-testid="rb-foot-whatsapp">WhatsApp</a>
                     @endif
                 </div>
             </div>
@@ -388,8 +401,9 @@
             <div>
                 <h3>{{ $t['footContact'] }}</h3>
                 <div style="display:flex;flex-direction:column;gap:10px;line-height:1.6">
-                    @if ($identity['phone'] !== '')<span dir="ltr" style="display:block;text-align:start">{{ $identity['phone'] }}</span>@endif
-                    @if ($identity['email'] !== '')<span>{{ $identity['email'] }}</span>@endif
+                    @if ($rbTel !== '')<a href="tel:{{ $rbTel }}" data-testid="rb-foot-phone"><bdi dir="ltr">{{ $identity['phone'] }}</bdi></a>@endif
+                    @if ($rbWa !== '')<a href="https://wa.me/{{ $rbWa }}" target="_blank" rel="noopener" data-testid="rb-foot-whatsapp-line">{{ $t['cWhatsapp'] }}&nbsp;·&nbsp;<bdi dir="ltr">{{ $identity['whatsapp'] }}</bdi></a>@endif
+                    @if ($identity['email'] !== '')<a href="mailto:{{ $identity['email'] }}" data-testid="rb-foot-email"><bdi dir="ltr">{{ $identity['email'] }}</bdi></a>@endif
                     @if ($identity['address'] !== '')<span>{{ $identity['address'] }}</span>@endif
                     @if ($hours !== '')<span>{{ $hours }}</span>@endif
                 </div>

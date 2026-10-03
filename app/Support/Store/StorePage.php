@@ -117,11 +117,24 @@ final class StorePage
      * كان الفراغُ يقع على وصفِ محلٍّ بعينه مكتوبٍ في القالب، فمحلٌّ آخر يلبس
      * الواجهةَ نفسَها يُذيّل صفحتَه بوصفِ غيره. ولا بديلَ يُخترع اليوم.
      */
-    public static function tagline(int $businessId): ?string
+    public static function tagline(int $businessId, string $lang = 'ar'): ?string
     {
-        $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_tagline'] ?? ''));
+        // ولكلّ لغةٍ سطرُها — وفارغُها لا يقع على الأخرى فتختلط اللغتان
+        $key = $lang === 'en' ? 'store_tagline_en' : 'store_tagline';
+        $raw = trim((string) (MarketingSettings::group($businessId, 'website')[$key] ?? ''));
 
         return $raw !== '' ? $raw : null;
+    }
+
+    /**
+     * ساعاتُ العمل بلغة الصفحة — `store_hours` للعربيّة و`store_hours_en`
+     * للإنجليزيّة. وفارغُ اللغة فراغٌ: «يوميًا 10 ص» لا تُكتب في صفحةٍ إنجليزيّة.
+     */
+    public static function hours(int $businessId, string $lang = 'ar'): string
+    {
+        $key = $lang === 'en' ? 'store_hours_en' : 'store_hours';
+
+        return trim((string) (MarketingSettings::group($businessId, 'website')[$key] ?? ''));
     }
 
     /* ═══════════ القسمُ الذي يكتبه بنفسه ═══════════ */

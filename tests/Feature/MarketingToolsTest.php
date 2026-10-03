@@ -90,7 +90,8 @@ class MarketingToolsTest extends TestCase
             'store_pay_cod', 'store_pay_transfer', 'store_bank',
             // التوصيلُ والاستلام — يقرؤها إتمامُ الطلب في الواجهة الخاصّة (Store\WebCheckout)
             'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
-            'store_delivery_slots', 'store_hours', 'store_delivery_note',
+            // وساعاتُ العمل بالإنجليزيّة بجانب العربيّة — للصفحة الإنجليزيّة (`StorePage::hours`)
+            'store_delivery_slots', 'store_hours', 'store_hours_en', 'store_delivery_note',
             /*
              * وتنبيهُ الصورة — تقرؤه صفحاتُ المنتج والإتمام والتأكيد في
              * الواجهة الخاصّة (`Store\WebCheckout::settings` ثمّ
@@ -110,7 +111,8 @@ class MarketingToolsTest extends TestCase
             'store_sections',
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',
-            'store_banner_image', 'store_tagline',
+            // وسطرُ التذييل بالإنجليزيّة بجانب العربيّ (`StorePage::tagline`)
+            'store_banner_image', 'store_tagline', 'store_tagline_en',
             /*
              * ورأسُ متجر RIBBON — الإعلانان ومحاذاتُهما واختصاراتُ صفّ المتجر،
              * يقرؤها `Store\StoreHeader` في `RibbonController::context` و`shop`.

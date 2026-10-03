@@ -3,6 +3,7 @@
 namespace App\Support\Store;
 
 use App\Models\Order;
+use App\Models\User;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
 use App\Support\WhatsAppPhone;
@@ -179,6 +180,24 @@ final class GiftOrders
             $order->recipient_location_mode === self::PROVIDED => __('سأدخل الموقع الآن'),
             default => null,
         };
+    }
+
+    /**
+     * هاتفُ المشتري في كتلة الهديّة — لمن يرى العملاءَ أصلًا.
+     *
+     * لا صلاحيةَ جديدةً للإهداء: من يفتح الطلبَ يراه بقسم «المبيعات»،
+     * ورقمُ العميل خلف قسم «العملاء» كما في صفحته. فموظّفٌ يجهّز الطلبَ
+     * ولا يرى العملاءَ لا يبلغ رقمَ المشتري لأنّ الطلبَ هديّة.
+     *
+     * و«لا تذكر اسمي» لا يمسّه: يُخفي المشتريَ عن المستلِم وحده.
+     */
+    public static function buyerPhone(Order $order, ?User $viewer): ?string
+    {
+        if (! $order->is_gift || ! $viewer?->allows('customers')) {
+            return null;
+        }
+
+        return $order->customer?->phone ?: null;
     }
 
     /**

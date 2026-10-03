@@ -1315,6 +1315,8 @@ class Demo
             'location_label' => GiftOrders::locationLabel($o),
             'awaiting_location' => GiftOrders::awaitingLocation($o),
             'occasion_label' => GiftOrders::occasionLabel($o),
+            // ورقمُ المشتري في كتلة الهديّة — لمن يرى العملاءَ وحده (`GiftOrders::buyerPhone`)
+            'buyer_phone' => GiftOrders::buyerPhone($o, auth()->user()),
             'delivery_address' => $o->delivery_address,
             'delivery_notes' => $o->delivery_notes,
             'internal_notes' => $o->internal_notes,

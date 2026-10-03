@@ -7193,5 +7193,8 @@
     "كل باقة تُنسَّق يدويًا من ورد اليوم. قد يختلف نوع أو لون بعض الزهور حسب المتوفر، ويتم استبدالها بما يعادلها أو أفضل مع الحفاظ على طابع الباقة.": "Each bouquet is handcrafted using the freshest flowers available. Flower varieties or colours may vary depending on availability and may be substituted with an equal or better alternative while preserving the overall look of the arrangement.",
     "ميزة الإهداء": "Gifting",
     "تسمح للعميل بإرسال الطلب كهدية لشخص آخر، مع بيانات المستلم والمناسبة وخيار التواصل معه للحصول على موقع التوصيل.": "Allow customers to send an order as a gift to another recipient, including recipient details, occasion, and the option to contact the recipient for the delivery location.",
-    "يظهر للعميل «هذا الطلب هدية» في إتمام الطلب": "Customers see «This order is a gift» at checkout"
+    "يظهر للعميل «هذا الطلب هدية» في إتمام الطلب": "Customers see «This order is a gift» at checkout",
+    "هاتف المشتري": "Buyer phone",
+    "اسم المُهدي للمستلِم": "Sender name for the recipient",
+    "ظاهر للمستلِم": "Shown to the recipient"
 }

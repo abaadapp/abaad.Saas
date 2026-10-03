@@ -15,7 +15,6 @@ use App\Support\OrderTransition;
 use App\Support\ReviewInvite;
 use App\Support\Store\GiftOrders;
 use App\Support\WebsiteConfirmPrint;
-use App\Support\WhatsAppPhone;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -67,9 +66,8 @@ class OrderDetailController extends Controller
     {
         $order = $this->find($number);
 
-        $phone = WhatsAppPhone::normalize(
-            $order->customer?->phone ?: $order->recipient_phone
-        );
+        // رقمُ المشتري — ولا يرجع إلى المستلِم في طلب هديّة (`OrderNotice::phone`)
+        $phone = OrderNotice::phone($order);
 
         if (! $phone) {
             /*
@@ -186,7 +184,7 @@ class OrderDetailController extends Controller
             ]);
         }
 
-        $phone = WhatsAppPhone::normalize($order->customer?->phone ?: $order->recipient_phone);
+        $phone = OrderNotice::phone($order);
 
         if (! $phone) {
             return back()->with('toast', [
@@ -248,7 +246,7 @@ class OrderDetailController extends Controller
             ]);
         }
 
-        $phone = WhatsAppPhone::normalize($order->customer?->phone ?: $order->recipient_phone);
+        $phone = OrderNotice::phone($order);
 
         if (! $phone) {
             return back()->with('toast', [

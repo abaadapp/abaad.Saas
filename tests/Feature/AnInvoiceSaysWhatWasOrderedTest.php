@@ -127,7 +127,13 @@ class AnInvoiceSaysWhatWasOrderedTest extends TestCase
             'هاتفُ المستلِم مطبوعٌ تحت «العميل» — ومن يتّصل به يكشف هديّةً لم تصل');
     }
 
-    /** والمستلِمُ طرفٌ بذاته — اسمُه ورقمُه وعنوانُه */
+    /**
+     * والمستلِمُ طرفٌ بذاته — اسمُه وعنوانُه، بلا رقمه.
+     *
+     * كان رقمُه هنا، والفاتورةُ ورقةُ المشتري تُرسَل إليه وتُفتح من رابطها
+     * العامّ: رقمُ شخصٍ آخر في يد من لم يُعطه إيّاه. فخرج — والسائقُ يقرؤه
+     * من شاشة التجهيز. انظر `AGiftsInvoiceStaysTheBuyersPaperTest`.
+     */
     public function test_the_recipient_is_a_party_of_his_own(): void
     {
         $doc = DocumentPaper::forSale($this->giftOrder());
@@ -135,7 +141,7 @@ class AnInvoiceSaysWhatWasOrderedTest extends TestCase
 
         $this->assertNotNull($recipient, 'لا طرفَ للمستلِم على ورقة هديّة');
         $this->assertContains('سارة', $recipient['lines']);
-        $this->assertContains('96899220002', $recipient['lines']);
+        $this->assertNotContains('96899220002', $recipient['lines'], 'رقمُ المستلِم على فاتورة المشتري');
         // والعنوانُ يُحفظ منطقةً وتفصيلًا معًا: «الخوير — بيت ١٢، شارع ٨»
         $this->assertStringContainsString('بيت 12، شارع 8', implode(' | ', $recipient['lines']),
             'العنوانُ ليس في طرف المستلِم');

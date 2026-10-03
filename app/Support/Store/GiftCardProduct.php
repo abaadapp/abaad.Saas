@@ -2,6 +2,8 @@
 
 namespace App\Support\Store;
 
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\FlowerOrder;
 use Illuminate\Validation\ValidationException;
@@ -121,6 +123,37 @@ final class GiftCardProduct
         }
 
         return $data;
+    }
+
+    /**
+     * ملاحظةُ البند كما تُطبع على الفاتورة والإيصال — ورسالةُ الكرت لا تُطبع.
+     *
+     * نصُّ الكرت يُحفظ في `order_items.note` لأنّه نصُّ بنده (`settle`)،
+     * والورقةُ الماليّة تطبع ملاحظةَ كلّ بندٍ تحت اسمه. فكانت الرسالةُ
+     * الخاصّة تخرج على الفاتورة وشريطِ الصندوق ورابطِ الورقة العامّ — وهي
+     * للمستلِم على كرته، لا لورقة حساب.
+     *
+     * فبندُ الكرت بلا ملاحظةٍ على الورقة: صنفُه «كرت هدية»، أو نصُّه من
+     * رسالة الطلب (`orders.card_message`) إن تغيّر صنفُه بعد البيع. وسائرُ
+     * الملاحظات تُطبع كما كانت. والبندُ وثمنُه باقيان: الكرتُ مبيعٌ يُحاسَب.
+     */
+    public static function paperNote(OrderItem $item, Order $order): ?string
+    {
+        $note = trim((string) $item->note);
+
+        if ($note === '') {
+            return null;
+        }
+
+        if ($item->name === GiftCard::PRODUCT_NAME || $item->product?->name === GiftCard::PRODUCT_NAME) {
+            return null;
+        }
+
+        if (filled($order->card_message) && str_contains((string) $order->card_message, $note)) {
+            return null;
+        }
+
+        return $item->note;
     }
 
     /** نصُّ البند كما وصل — وما ليس نصًّا فراغ */

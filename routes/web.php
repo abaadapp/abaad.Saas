@@ -1618,6 +1618,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/reports/profit', [ReportPageController::class, 'profit'])->name('reports.profit');
     Route::get('/reports/finance', [ReportPageController::class, 'finance'])->name('reports.finance');
     Route::get('/reports/expenses', [ReportPageController::class, 'expenses'])->name('reports.expenses');
+    // التكاليف والخسائر — من دفتر الأستاذ، وسطورُ كلّ صفٍّ للقراءة
+    Route::get('/reports/costs', [ReportPageController::class, 'costs'])->name('reports.costs');
+    Route::get('/reports/costs/lines', [ReportPageController::class, 'costLines'])->name('reports.costs.lines');
     Route::get('/reports/bank', [ReportPageController::class, 'bank'])->name('reports.bank');
     Route::get('/reports/orders', [ReportPageController::class, 'orders'])->name('reports.orders');
     Route::get('/reports/products', [ReportPageController::class, 'products'])->name('reports.products');

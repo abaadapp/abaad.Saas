@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Account;
+use App\Support\CostsAndLosses;
 use App\Support\Demo;
 use App\Support\ReportData;
 use App\Support\Reports;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -87,6 +90,64 @@ class ReportPageController extends Controller
     public function profit(Request $request): Response
     {
         return $this->report($request, 'profit', 'Profit', ['branch_id']);
+    }
+
+    /** مرشّحاتُ التكاليف والخسائر كما وصلت — والتنقيةُ في `CostsAndLosses::scope` */
+    private function costFilters(Request $request): array
+    {
+        $filters = [];
+        foreach (['from', 'to', 'branch_id', 'category'] as $name) {
+            $value = $request->query($name);
+            $filters[$name] = is_string($value) && $value !== '' ? $value : null;
+        }
+
+        return $filters;
+    }
+
+    /**
+     * التكاليفُ والخسائر — من دفتر الأستاذ (`ReportData::costs`).
+     *
+     * مدّةٌ بحدّين لا فترةٌ مسمّاة: المقارنةُ بالمدّة السابقة المكافئة تحتاج
+     * حدّين. والقسمُ «المالية» (`Reports::ALL`): التقريرُ يفتح قيودَ الدفتر
+     * سطرًا سطرًا، وهو ما تحرسه شاشةُ القيود نفسُها.
+     */
+    public function costs(Request $request): Response
+    {
+        $this->guard('admin.reports.costs');
+
+        $data = ReportData::costs(Demo::bid(), $this->costFilters($request));
+
+        return Inertia::render('Admin/Reports/Costs', $data + [
+            'filters' => [
+                'from' => $data['scope']['from'],
+                'to' => $data['scope']['to'],
+                'branch_id' => $data['scope']['branch_id'] !== null ? (string) $data['scope']['branch_id'] : null,
+                'category' => $data['scope']['category'],
+            ],
+        ]);
+    }
+
+    /**
+     * سطورُ صفٍّ من التكاليف والخسائر — قراءةٌ بالحارس والنطاق نفسيهما.
+     *
+     * والحسابُ يُسأل عنه في المتجر: معرّفٌ من متجرٍ آخر ⇒ ٤٠٤ لا قائمةٌ فارغة.
+     */
+    public function costLines(Request $request): JsonResponse
+    {
+        $this->guard('admin.reports.costs');
+
+        $bid = Demo::bid();
+        $scope = CostsAndLosses::scope($bid, $this->costFilters($request), auth()->user());
+
+        $raw = $request->query('account_id');
+        $accountId = null;
+        if (is_string($raw) && $raw !== '') {
+            $id = filter_var($raw, FILTER_VALIDATE_INT);
+            abort_if($id === false || ! Account::where('business_id', $bid)->whereKey($id)->exists(), 404);
+            $accountId = (int) $id;
+        }
+
+        return response()->json(CostsAndLosses::drill($bid, $scope, $accountId, (int) $request->query('page', 1)));
     }
 
     public function finance(Request $request): Response

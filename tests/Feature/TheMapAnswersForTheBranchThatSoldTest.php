@@ -80,12 +80,10 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
 
     /* ═══════════════════ أدوات ═══════════════════ */
 
-    private function platformKey(string $key = 'platform-places-key'): void
+    /** مفتاحُ التاجر من مشروعه في Google Cloud — ولا مفتاحَ لأبعاد يقع عليه (`GoogleReviews::apiKey`) */
+    private function merchantKey(string $key = 'merchant-places-key'): void
     {
-        Setting::updateOrCreate(
-            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
-            ['value' => Crypt::encryptString($key)],
-        );
+        GoogleReviews::storeKey($this->shop->id, $key);
     }
 
     private function linked(Branch $branch, string $placeId = self::A, ?float $rating = 4.8, int $count = 127): BranchGooglePlace
@@ -208,7 +206,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
     /** فرعٌ من فرعين مربوطٌ — والخطوةُ ليست تامّة */
     public function test_one_linked_branch_does_not_complete_the_step(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->linked($this->khoud, self::A);
 
         $step = $this->placeStep();
@@ -219,7 +217,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
     /** وتُسمّي الناقصَ بالاسم — لا «ابحث عن فرعك» لمن له ثلاثة */
     public function test_the_step_names_the_unlinked_branch(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->linked($this->khoud, self::A);
 
         $this->assertStringContainsString('فرع المعبيلة', (string) $this->placeStep()['fix']);
@@ -229,7 +227,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
     /** وتكتمل حين تُربط كلُّها */
     public function test_the_step_completes_when_every_branch_is_linked(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $this->linked($this->khoud, self::A);
         $this->linked($this->mawaleh, self::B);
 
@@ -243,7 +241,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
      */
     public function test_a_shop_with_no_branches_is_not_complete(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         Branch::where('business_id', $this->shop->id)->delete();
 
         $step = $this->placeStep();
@@ -275,7 +273,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
      */
     public function test_googles_own_reason_reaches_the_merchant(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $place = $this->linked($this->khoud, self::A);
         $place->forceFill(['synced_at' => now()->subDay()])->save();
 
@@ -298,7 +296,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
         $out = BranchGoogle::sync(BranchGoogle::for($this->khoud), force: true);
 
         $this->assertFalse($out['ok']);
-        $this->assertStringContainsString('غير مفعلة', (string) $out['error']);
+        $this->assertStringContainsString('اربط Google Maps', (string) $out['error']);
         Http::assertNothingSent();
     }
 
@@ -311,7 +309,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
     public function test_a_fresh_row_is_a_success_that_wrote_nothing(): void
     {
         Http::fake();
-        $this->platformKey();
+        $this->merchantKey();
         $this->linked($this->khoud, self::A);
 
         $out = BranchGoogle::sync(BranchGoogle::for($this->khoud));
@@ -332,7 +330,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
      */
     public function test_the_pulled_rating_and_the_row_agree(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $place = $this->linked($this->khoud, self::A, rating: 4.8, count: 127);
         $this->fakeDetails(rating: 4.2, count: 300);
 
@@ -352,7 +350,7 @@ class TheMapAnswersForTheBranchThatSoldTest extends TestCase
      */
     public function test_the_screen_does_not_call_google_twice_for_one_place(): void
     {
-        $this->platformKey();
+        $this->merchantKey();
         $place = $this->linked($this->khoud, self::A);
         $place->forceFill(['synced_at' => now()->subDay()])->save();
         $this->fakeDetails();

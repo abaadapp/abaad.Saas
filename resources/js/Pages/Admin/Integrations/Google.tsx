@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { useEffect, useRef } from 'react';
-import { Check, ExternalLink, Info, KeyRound, Link2Off, MapPin, QrCode, RefreshCw, Search, Star, Store, Trash2 } from 'lucide-react';
+import { Check, CheckCircle2, Circle, ExternalLink, Info, KeyRound, Link2Off, MapPin, QrCode, RefreshCw, Search, Star, Store, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import CopyButton from '@/Components/CopyButton';
 import Field from '@/Components/Field';
 import StatusPill, { readinessState } from '@/Components/StatusPill';
 import { Advanced, PageActions, SettingsGroup, SettingsPage, SettingsSection } from '@/Components/Settings';
+import Toggle from '@/Components/Toggle';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { Button } from '@/Components/ui/button';
 import SmartLink from '@/Components/SmartLink';
@@ -80,8 +81,8 @@ interface Props {
     settings: Record<string, string>;
     link: Link;
     keyHint: string | null;
-    /** أَلأبعادَ مفتاحٌ يقرأ به من لم يلصق مفتاحه — نعم أو لا، ولا طرفَ منه */
-    platformKey: boolean;
+    /** أخرائطُ Google مفعّلةٌ لهذا المتجر — بمفتاحه هو وحده، ولا مفتاحَ لأبعاد */
+    enabled: boolean;
     /** عنوانُ خادمنا ليقيّد به مفتاحه — و`null` حين لا يكون مضبوطًا */
     serverIp: string | null;
     google: Pulled;
@@ -135,19 +136,34 @@ function Stars({ value, size = 14 }: { value: number; size?: number }) {
     );
 }
 
+/** روابطُ Google الرسميّة — يفتحها التاجر من حسابه، ولا يمرّ شيءٌ منها بنا */
+const GOOGLE_LINKS = {
+    project: 'https://console.cloud.google.com/projectcreate',
+    billing: 'https://console.cloud.google.com/billing',
+    pricing: 'https://mapsplatform.google.com/pricing/',
+    placesApi: 'https://console.cloud.google.com/apis/library/places.googleapis.com',
+    credentials: 'https://console.cloud.google.com/apis/credentials',
+    security: 'https://developers.google.com/maps/api-security-best-practices',
+};
+
 /**
- * دليلُ المفتاح — ما كان يُطلب من التاجر ولا يُمكَّن منه.
+ * «كيف أحصل على مفتاح Google؟» — الطريقُ كلُّه، ليُتمّه التاجر وحده.
  *
  * ═══ ولمَ يُكتب هنا لا يُترك للدعم ═══
  *
- * البطاقةُ تقول له «قيّد المفتاح بعنوان خادمنا»، وعنوانُ خادمنا لم يكن
- * مكتوبًا في شاشةٍ واحدة. فإمّا أن يسألنا — فما عاد يُتمّها وحده — وإمّا أن
- * يترك مفتاحه بلا قيد، فيُنفِق غيرُه رصيدَه يومَ يُسرَّب، والفاتورةُ فاتورتُه.
+ * المفتاحُ مفتاحُه والفاتورةُ فاتورتُه، فلا يصحّ أن يحتاجنا ليُنشئه. والخطواتُ
+ * سبعٌ بترتيب ما يراه في Google Cloud: مشروع، فوترة، واجهة، مفتاح، قيد، لصق،
+ * ثمّ ربطُ الفروع — ومفتاحٌ واحدٌ لكلّها.
  *
  * ═══ والأسماءُ إنجليزيّةٌ عمدًا ═══
  *
  * `Credentials` و`API restrictions` كما تظهر على شاشته حرفًا بحرف. وترجمتُها
  * تجعله يبحث عن كلمةٍ عربيّةٍ لا وجودَ لها عند Google.
+ *
+ * ═══ ولا سعرَ مكتوب ═══
+ *
+ * أسعارُ Google تتبدّل، ورقمٌ محفورٌ هنا يبقى يُعرض بعد أن يصير خطأً. فيُحال
+ * إلى صفحة أسعارها الرسميّة، ويُقال من يدفع — لا كم.
  */
 function KeyGuide({ serverIp, start }: { serverIp: string | null; start: boolean }) {
     const t = useTranslate();
@@ -158,60 +174,125 @@ function KeyGuide({ serverIp, start }: { serverIp: string | null; start: boolean
         <span dir="ltr" className="inline-block font-medium text-[#111]">{text}</span>
     );
 
+    const go = (href: string, label: string) => (
+        <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-flex items-center gap-1 text-[12px] font-medium text-[#2563eb] hover:underline"
+        >
+            <ExternalLink className="size-3" />
+            {t(label)}
+        </a>
+    );
+
+    const step = (n: string, title: string, body: React.ReactNode) => (
+        <li className="flex gap-2.5">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-bold text-[#111]">
+                {n}
+            </span>
+            <div className="min-w-0">
+                <p className="font-medium text-[#111]">{t(title)}</p>
+                <div className="mt-0.5">{body}</div>
+            </div>
+        </li>
+    );
+
     return (
-        <div className="mt-3 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
-            <Button type="button" size="sm" variant="link" className="px-0" onClick={() => setOpen(!open)}>
-                {open ? t('إخفاء الدليل') : t('كيف أحصل على مفتاح؟')}
-            </Button>
+        <div className="mt-4 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-3" data-testid="google-key-guide">
+            <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 text-start text-[13px] font-bold text-[#111]"
+                aria-expanded={open}
+                onClick={() => setOpen(!open)}
+            >
+                <span className="flex items-center gap-1.5">
+                    <Info className="size-4 text-[#2563eb]" />
+                    {t('كيف أحصل على مفتاح Google؟')}
+                </span>
+                <span className="text-[12px] font-medium text-[#2563eb]">{open ? t('إخفاء') : t('عرض الخطوات')}</span>
+            </button>
 
             {open && (
-                <ol className="mt-2 space-y-2.5 text-[12px] leading-relaxed text-[#6b7280]">
-                    <li>
-                        <span className="font-bold text-[#111]">١. </span>
-                        {t('أنشئ مشروعًا في')} {en('console.cloud.google.com')}
-                    </li>
-                    <li>
-                        <span className="font-bold text-[#111]">٢. </span>
-                        {t('فعّل')} {en('Places API (New)')} —{' '}
-                        {/*
-                            وهذا أشيعُ ما يُخطئ فيه: الاسمان متجاوران في القائمة،
-                            والقديمةُ تُفعَّل فتُردّ نداءاتُنا بـ403 بلا سببٍ يُفهم.
-                        */}
-                        <span className="font-medium text-[#b91c1c]">
-                            {t('وهي غير «Places API» القديمة — القديمة تُرجع رفضًا بلا سبب مفهوم.')}
-                        </span>
-                    </li>
-                    <li>
-                        <span className="font-bold text-[#111]">٣. </span>
-                        {t('اربط الفوترة. لكل واجهة ١٠٬٠٠٠ نداء شهريًّا مجانًا، ولا تُخصم بطاقتك قبل أن ترفع الحساب بيدك.')}
-                    </li>
-                    <li>
-                        <span className="font-bold text-[#111]">٤. </span>
-                        {t('أنشئ المفتاح من')} {en('APIs and services → Credentials → Create credentials → API key')}
-                    </li>
-                    <li>
-                        <span className="font-bold text-[#111]">٥. </span>
-                        {t('قيّده بعنوان خادمنا من')} {en('Application restrictions → IP addresses')}
-                        {serverIp ? (
-                            <span className="mt-1.5 flex items-center gap-2 rounded-[8px] bg-[#f3f4f6] px-2.5 py-1.5">
-                                <span className="text-[11px] text-[#6b7280]">{t('عنوان خادمنا')}</span>
-                                <span dir="ltr" className="font-mono text-[12px] font-bold text-[#111]">{serverIp}</span>
-                                <CopyButton text={serverIp} label="نسخ" />
+                <ol className="mt-3 space-y-3.5 text-[12px] leading-relaxed text-[#6b7280]">
+                    {step('١', 'مشروع في Google Cloud', (
+                        <>
+                            <p>{t('افتح Google Cloud وأنشئ مشروعًا جديدًا، أو اختر مشروعًا موجودًا خاصًا بنشاطك.')} {en('console.cloud.google.com')}</p>
+                            {go(GOOGLE_LINKS.project, 'إنشاء مشروع في Google Cloud')}
+                        </>
+                    ))}
+
+                    {step('٢', 'الفوترة', (
+                        <>
+                            <p>{t('اربط مشروعك بحساب فوترة في Google. رسوم Google — إن وجدت — تُخصم من حسابك في Google مباشرة، ولا تدفعها أبعاد نيابةً عنك.')}</p>
+                            <p className="mt-1">{t('الأسعار والحصص المجانية تحددها Google وقد تتغير — راجعها في صفحتها الرسمية.')}</p>
+                            <span className="flex flex-wrap gap-x-4">
+                                {go(GOOGLE_LINKS.billing, 'حساب الفوترة في Google Cloud')}
+                                {go(GOOGLE_LINKS.pricing, 'أسعار Google Maps Platform')}
                             </span>
-                        ) : (
-                            /* ولا يُخمَّن عنوان: مفتاحٌ مقيَّدٌ بعنوانٍ خاطئ لا يعمل، ولا يُفهم لماذا */
-                            <span className="mt-1.5 block text-[11px] font-medium text-[#b45309]">
-                                {t('اطلب عنوان خادمنا من الدعم قبل أن تقيّد المفتاح — ولا تتركه بلا قيد.')}
-                            </span>
-                        )}
-                    </li>
-                    <li>
-                        <span className="font-bold text-[#111]">٦. </span>
-                        {t('وقيّده بالواجهة وحدها من')} {en('API restrictions → Restrict key → Places API (New)')}
-                    </li>
-                    <li className="border-t border-[var(--ui-border,#e8e8e8)] pt-2.5 text-[#9ca3af]">
-                        {t('مفتاح بلا قيد يُسرَّق فيُنفق غيرك رصيدك — والنداءات تُحسب على حسابك أنت.')}
-                    </li>
+                        </>
+                    ))}
+
+                    {step('٣', 'تفعيل الواجهة', (
+                        <>
+                            <p>
+                                {t('فعّل')} {en('Places API (New)')} — {t('وهي وحدها ما يحتاجه أبعاد.')}{' '}
+                                {/*
+                                    وهذا أشيعُ ما يُخطئ فيه: الاسمان متجاوران في القائمة،
+                                    والقديمةُ تُفعَّل فتُردّ نداءاتُنا بـ403 بلا سببٍ يُفهم.
+                                */}
+                                <span className="font-medium text-[#b91c1c]">
+                                    {t('وهي غير «Places API» القديمة — القديمة تُرجع رفضًا بلا سبب مفهوم.')}
+                                </span>
+                            </p>
+                            {go(GOOGLE_LINKS.placesApi, 'فتح Places API (New)')}
+                        </>
+                    ))}
+
+                    {step('٤', 'إنشاء المفتاح', (
+                        <>
+                            <p>{t('من قسم Credentials أنشئ API Key جديدًا:')} {en('APIs and services → Credentials → Create credentials → API key')}</p>
+                            <p className="mt-1 font-medium text-[#b91c1c]">{t('لا تشارك مفتاحك مع أي شخص ولا ترسله في المحادثات أو البريد.')}</p>
+                            {go(GOOGLE_LINKS.credentials, 'فتح Credentials')}
+                        </>
+                    ))}
+
+                    {step('٥', 'تقييد المفتاح', (
+                        <>
+                            <p>
+                                {t('لحماية المفتاح، قيّد استخدامه بعنوان IP الخاص بخادم أبعاد الموضح هنا، واجعل API restrictions مقتصرة على Places API (New).')}
+                            </p>
+                            <p className="mt-1">{en('Application restrictions → IP addresses')}</p>
+                            {serverIp ? (
+                                <span className="mt-1.5 flex flex-wrap items-center gap-2 rounded-[8px] bg-white px-2.5 py-1.5" data-testid="google-server-ip">
+                                    <span className="text-[11px] text-[#6b7280]">{t('عنوان خادم أبعاد')}</span>
+                                    <span dir="ltr" className="font-mono text-[12px] font-bold text-[#111]">{serverIp}</span>
+                                    <CopyButton text={serverIp} label="نسخ" />
+                                </span>
+                            ) : (
+                                /*
+                                    ولا يُخمَّن عنوان: مفتاحٌ مقيَّدٌ بعنوانٍ خاطئ يُرفض عند كلّ
+                                    نداء ولا يُفهم لماذا. فيُقال الواقعُ كما هو.
+                                */
+                                <span className="mt-1.5 block rounded-[8px] bg-[#fffbeb] px-2.5 py-1.5 text-[11px] font-medium text-[#92400e]" data-testid="google-server-ip-missing">
+                                    {t('عنوان خادم أبعاد غير مُعلن في هذه الصفحة بعد، فلا تقيّد المفتاح بعنوان IP تخمينًا — مفتاحٌ مقيّد بعنوان خاطئ يُرفض. اكتفِ الآن بتقييده بالواجهة (الخطوة التالية).')}
+                                </span>
+                            )}
+                            <p className="mt-1.5">{en('API restrictions → Restrict key → Places API (New)')}</p>
+                            {go(GOOGLE_LINKS.security, 'إرشادات Google لحماية المفتاح')}
+                        </>
+                    ))}
+
+                    {step('٦', 'الصق المفتاح في أبعاد', (
+                        <p>{t('الصق مفتاح Google هنا واضغط حفظ. بعد الحفظ لا يُعرض المفتاح مرة أخرى — تظهر آخر أربعة أحرف منه فقط.')}</p>
+                    ))}
+
+                    {step('٧', 'اربط فروعك', (
+                        <>
+                            <p>{t('بعد حفظ المفتاح، اربط كل فرع بالموقع الصحيح له في Google.')}</p>
+                            <p className="mt-1 font-medium text-[#111]">{t('مفتاح واحد يكفي لجميع فروع متجرك. لا تحتاج إلى إنشاء مفتاح جديد لكل فرع.')}</p>
+                        </>
+                    ))}
                 </ol>
             )}
         </div>
@@ -219,26 +300,56 @@ function KeyGuide({ serverIp, start }: { serverIp: string | null; start: boolean
 }
 
 /**
- * نموذجُ المفتاح — جسدٌ واحد، وموضعان.
+ * نموذجُ المفتاح — مفتاحُ التاجر وحده، ومفتاحٌ واحدٌ لكلّ فروعه.
  *
- * وموضعُه يتبع دورَه لا شكلَه: حين يكون لأبعادَ مفتاحٌ فهذا اختياريٌّ يُطوى
- * آخرَ الصفحة، وحين لا يكون فهو **الشرط** الذي لا تُقرأ قبله تقييمة — فيعلو
- * فوق كلّ ما لا يعمل بدونه. وطيُّ الشرطِ يجعل صاحبَه ينتظر قراءةً لا تأتي.
+ * والحالُ تُقال بجملتها لا بلونٍ وحده: غير مربوط، مطفأ، مفعّل — ولكلٍّ منها
+ * ما يحدث لمتجره وما لا يحدث.
  */
 function KeyForm({
     keyHint,
     serverIp,
-    platformKey,
+    enabled,
 }: {
     keyHint: string | null;
     serverIp: string | null;
-    platformKey: boolean;
+    enabled: boolean;
 }) {
     const t = useTranslate();
     const keyForm = useForm({ google_api_key: '' });
 
     return (
         <>
+            {/*
+                والتشغيلُ بيد التاجر: يُطفئ فتتوقّف النداءات ويبقى مفتاحُه وأماكنُ
+                فروعه ورابطُ التقييم في الإيصال. ولا يُعرض قبل أن يُحفظ مفتاح —
+                لصقُ المفتاح تفعيل، ولا شيء يُفعَّل بلا مفتاح.
+            */}
+            {/* الحالُ بجملتها — ولا يُفهم من «مطفأ» أنّ شيئًا مُحي */}
+            <p
+                data-testid="google-state"
+                className={cn(
+                    'mb-4 rounded-[10px] px-3 py-2.5 text-[13px] leading-relaxed',
+                    !keyHint ? 'bg-[#fafafa] text-[#374151]' : enabled ? 'bg-[#f0fdf4] text-[#166534]' : 'bg-[#fffbeb] text-[#92400e]',
+                )}
+            >
+                {!keyHint
+                    ? t('لم تربط Google بعد. متجرك وفروعك ومبيعاتك تعمل بشكل طبيعي، لكن ميزات Google ستبقى متوقفة.')
+                    : enabled
+                      ? t('Google Maps مفعّلة بمفتاحك. مفتاح واحد يكفي لجميع فروع متجرك.')
+                      : t('Google Maps متوقفة لهذا المتجر. لن تُرسل طلبات جديدة إلى Google، وستبقى بيانات الفروع المحفوظة وروابط التقييم كما هي.')}
+            </p>
+
+            {keyHint && (
+                <div className="mb-4" data-testid="google-enabled">
+                    <Toggle
+                        on={enabled}
+                        onChange={(v) => router.post(route('admin.integrations.google.enabled'), { enabled: v }, { preserveScroll: true })}
+                        label="تفعيل خرائط Google"
+                        hint={enabled ? 'الفوترة واستهلاك Google على حسابك في Google، وليس على أبعاد.' : 'مطفأة — لا يُنادى Google عن متجرك، وبياناتك المحفوظة باقية.'}
+                    />
+                </div>
+            )}
+
             {keyHint && (
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[10px] bg-[#f0fdf4] px-3 py-2">
                     <span className="flex items-center gap-1.5 text-[12px] text-[#047857]">
@@ -266,7 +377,7 @@ function KeyForm({
                         value={keyForm.data.google_api_key}
                         onChange={(e) => keyForm.setData('google_api_key', e.target.value)}
                         placeholder={keyHint ? t('الصق مفتاحًا جديدًا لتبديله') : 'AIza…'}
-                        aria-label={t('مفتاح Places API')}
+                        aria-label={t('مفتاح Google')}
                     />
                 </Field>
 
@@ -288,11 +399,8 @@ function KeyForm({
                 </PageActions>
             </form>
 
-            {/*
-                والدليلُ مفتوحٌ من أوّله حين لا يكون له ولا لأبعادَ مفتاح:
-                تلك وحدها الحالُ التي لا تُقرأ فيها تقييمةٌ قبل أن يتحرّك.
-            */}
-            <KeyGuide serverIp={serverIp} start={!keyHint && !platformKey} />
+            {/* والدليلُ مفتوحٌ من أوّله حين لا مفتاحَ له — ليُتمّه وحده بلا دعم */}
+            <KeyGuide serverIp={serverIp} start={!keyHint} />
         </>
     );
 }
@@ -309,7 +417,7 @@ function KeyForm({
  * تقييماتِه ومعدّلَه من Google بمفتاح Places فتُقرأ هنا بلا مغادرة اللوحة.
  */
 export default function MarketingGoogle() {
-    const { settings, link, keyHint, platformKey, serverIp, google, internal, readiness, branches, searchMin } =
+    const { settings, link, keyHint, enabled, serverIp, google, internal, readiness, branches, searchMin } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -346,9 +454,9 @@ export default function MarketingGoogle() {
     */
     if (! readiness.connected) {
         return (
-            <AdminLayout title="ربط خرائط Google">
+            <AdminLayout title="ربط Google Maps">
                 <PageHeader
-                    title="ربط خرائط Google"
+                    title="ربط Google Maps"
                     subtitle={t('اربط محلّك بملفّه على الخرائط: رابطٌ لطلب التقييم، وتقييماتُ Google تُقرأ هنا')}
                 />
                 <ConnectGate
@@ -362,9 +470,9 @@ export default function MarketingGoogle() {
     }
 
     return (
-        <AdminLayout title="ربط خرائط Google">
+        <AdminLayout title="ربط Google Maps">
             <PageHeader
-                title="ربط خرائط Google"
+                title="ربط Google Maps"
                 subtitle={t('اربط محلّك بملفّه على الخرائط: رابطٌ لطلب التقييم، وتقييماتُ Google تُقرأ هنا')}
                 actions={<StatusPill state={readinessState(readiness)} connected />}
             />
@@ -385,29 +493,36 @@ export default function MarketingGoogle() {
                     عنده، ومن كان شرطًا عنده ظنّه اختيارًا فمضى ينتظر قراءةً
                     لا تأتي.
                 */}
-                {! platformKey && (
-                    <SettingsSection
-                        title="مفتاح Google Maps"
-                        description="مطلوب — لا تُقرأ تقييماتك قبل أن تلصق مفتاحك من Google Cloud."
-                        icon={KeyRound}
-                        status={
-                            keyHint
-                                ? <StatusPill state="ready" label="محفوظ" />
-                                : <StatusPill state="action" label="ينقصه المفتاح" />
-                        }
-                    >
-                        <KeyForm keyHint={keyHint} serverIp={serverIp} platformKey={platformKey} />
-                    </SettingsSection>
-                )}
+                {/*
+                    ═══ مفتاحُ التاجر — ولا مفتاحَ لأبعاد ═══
+
+                    خرائطُ Google اختياريّة: يربطها التاجر بمفتاحه من مشروعه في
+                    Google Cloud، ونداءاتُها على حسابه هو. ومن لم يربطها يعمل
+                    متجرُه كلُّه كما هو — هذه الصفحةُ وحدها تنتظره.
+                */}
+                <SettingsSection
+                    title="ربط Google Maps"
+                    description="ربط Google Maps اختياري. إذا أردت قراءة بيانات موقعك وتقييمات Google داخل أبعاد، اربط مفتاحك من مشروعك في Google Cloud. استخدام Google وفوترته يكونان على حسابك في Google مباشرة."
+                    icon={KeyRound}
+                    status={
+                        !keyHint
+                            ? <StatusPill state="action" label="غير مربوط" />
+                            : enabled
+                              ? <StatusPill state="ready" label="مفعّل" />
+                              : <StatusPill state="idle" label="مطفأ" />
+                    }
+                >
+                    <KeyForm keyHint={keyHint} serverIp={serverIp} enabled={enabled} />
+                </SettingsSection>
 
                 {/* ---------------------- فروعك على الخرائط ---------------------- */}
                 <SettingsSection
-                    title="موقع المتجر على خرائط Google"
+                    title="الفروع المرتبطة"
                     /*
                         ولمَ لكلّ فرعٍ ربطُه — يُقال هنا لا يُترك للاكتشاف:
                         رمزٌ على إيصال فرعٍ يفتح ملفَّ فرعٍ آخر عطبٌ لا يراه صاحبه.
                     */
-                    description="لكلّ فرعٍ ملفُّه على Google بتقييماته. اربط كلّ فرعٍ بملفّه ليصل تقييم الزبون إلى الفرع الذي اشترى منه."
+                    description="مفتاح واحد يكفي لجميع فروع متجرك. بعد حفظ المفتاح، اربط كل فرع بالموقع الصحيح له في Google — ليصل تقييم الزبون إلى الفرع الذي اشترى منه."
                     icon={MapPin}
                     status={
                         <span className="text-[13px] font-medium tabular-nums text-[#6b7280]" dir="ltr">
@@ -556,7 +671,9 @@ export default function MarketingGoogle() {
 
                     {google.state === 'nokey' && (
                         <p className="rounded-[12px] bg-[#fffbeb] p-4 text-[13px] text-[#92400e]">
-                            {t('مفتاح الخرائط غير مهيّأ في أبعاد بعد — راجعنا، أو الصق مفتاحك الخاص في قسم المفتاح.')}
+                            {keyHint
+                                ? t('Google Maps متوقفة لهذا المتجر. لن تُرسل طلبات جديدة إلى Google، وستبقى بيانات الفروع المحفوظة وروابط التقييم كما هي.')
+                                : t('لم تربط Google بعد. متجرك وفروعك ومبيعاتك تعمل بشكل طبيعي، لكن ميزات Google ستبقى متوقفة.')}
                         </p>
                     )}
 
@@ -654,18 +771,6 @@ export default function MarketingGoogle() {
                     }
                 />
 
-                {/* والمفتاحُ الاختياريّ مطويٌّ آخرَ الصفحة — لا يزاحم ما قبله */}
-                {platformKey && (
-                    <Advanced
-                        title="مفتاحك الخاص لـ Places"
-                        description="اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد. والصقْ مفتاحك من Google Cloud إن أردت أن تُحتسب النداءات على حسابك."
-                        icon={KeyRound}
-                        status={keyHint ? <StatusPill state="ready" label="محفوظ" /> : undefined}
-                    >
-                        <KeyForm keyHint={keyHint} serverIp={serverIp} platformKey={platformKey} />
-                    </Advanced>
-                )}
-
                 {/*
                     الفرق بين التقييمين يُقال صراحةً: تقييمات النظام تُكتب
                     داخله وتُنشر بإذنه، وتقييمات Google تُكتب هناك — تُقرأ
@@ -702,9 +807,18 @@ function BranchRow({ branch, min }: { branch: BranchLink; min: number }) {
         <li className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 font-medium text-[#111]">
+                    {/* ✓ مربوط · ○ يحتاج ربط — لكلّ فرعٍ حالُه، وربطُ فرعٍ لا يمسّ غيره */}
+                    <p className="flex items-center gap-1.5 font-medium text-[#111]" data-testid="branch-google-status">
+                        {branch.linked ? (
+                            <CheckCircle2 className="size-4 shrink-0 text-[#047857]" aria-hidden />
+                        ) : (
+                            <Circle className="size-4 shrink-0 text-[#9ca3af]" aria-hidden />
+                        )}
                         <Store className="size-4 shrink-0 text-[#9ca3af]" />
                         {branch.name}
+                        <span className={cn('text-[12px] font-normal', branch.linked ? 'text-[#047857]' : 'text-[#b45309]')}>
+                            — {branch.linked ? t('مربوط') : t('يحتاج ربط')}
+                        </span>
                     </p>
 
                     {branch.linked ? (
@@ -730,7 +844,7 @@ function BranchRow({ branch, min }: { branch: BranchLink; min: number }) {
                             </p>
                         </>
                     ) : (
-                        <p className="mt-1 text-[13px] text-[#9ca3af]">{t('غير مربوط')}</p>
+                        <p className="mt-1 text-[13px] text-[#9ca3af]">{t('ابحث عن هذا الفرع في Google واختر موقعه الصحيح — بالمفتاح نفسه.')}</p>
                     )}
                 </div>
 

@@ -190,7 +190,11 @@ class Permissions
     public const POS_MOVEMENT = 'pos.movement';
 
     public const ACTIONS = [
-        'order.edit' => 'تصحيح فاتورة مكتملة',
+        /*
+         * والاسمُ يقول ما يشمل: فاتورةُ الصندوق وطلبُ الموقع كلاهما `Order`،
+         * ويُصحَّحان من المسار نفسِه — فالمفتاحُ واحدٌ كما كان.
+         */
+        'order.edit' => 'تعديل فواتير المبيعات وطلبات الموقع',
         self::WEBSITE_CONFIGURE => 'ضبط الموقع: التصميم والصفحات والنطاق',
         self::ORDER_WEBSITE_NOTIFY => 'تنبيهُ طلبات الموقع الإلكتروني',
         self::PREPARATION_CANCEL => 'إلغاء طلب من لوحة التجهيز',
@@ -587,6 +591,21 @@ class Permissions
     public static function actionLabels(): array
     {
         return collect(self::ACTIONS)->map(fn ($label) => __($label))->all();
+    }
+
+    /**
+     * سطرٌ يشرح الفعلَ تحت اسمه في «صلاحيات الموظفين» — لما لا يكفيه اسمُه.
+     *
+     * عرضٌ لا قاعدة: لا يمنح ولا يمنع شيئًا.
+     */
+    public const ACTION_HINTS = [
+        'order.edit' => 'يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني.',
+    ];
+
+    /** @return array<string, string> */
+    public static function actionHints(): array
+    {
+        return collect(self::ACTION_HINTS)->map(fn ($hint) => __($hint))->all();
     }
 
     /** هل يفعلها هذا الدور بلا منحٍ باسمه؟ */

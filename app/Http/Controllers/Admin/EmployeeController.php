@@ -530,6 +530,7 @@ class EmployeeController extends Controller
             ],
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
+            'actionHints' => Permissions::actionHints(),
             // وما يملك الفاعلُ منحَه — سواه يُعطَّل بسببه مكتوبًا لا يُرفع
             'grantable' => Permissions::grantable(auth()->user()),
             'blockedTitles' => JobTitle::where('business_id', Demo::bid())->orderBy('name')->get()

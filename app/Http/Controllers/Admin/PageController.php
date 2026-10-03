@@ -499,6 +499,7 @@ class PageController extends Controller
             'currentBranchName' => Demo::currentBranchName(),
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
+            'actionHints' => Permissions::actionHints(),
             /*
              * وما يملك الفاعلُ منحَه — تُعطَّل سواه ولا تُرفع من الشاشة.
              *

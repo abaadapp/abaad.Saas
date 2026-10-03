@@ -57,6 +57,8 @@ interface Props {
     sections?: Record<string, string>;
     /** أفعالٌ تُمنح بأسمائها — لا أقسامٌ تُفتح. انظر Permissions::ACTIONS */
     actions?: Record<string, string>;
+    /** سطرٌ يشرح الفعلَ تحت اسمه — انظر Permissions::ACTION_HINTS */
+    actionHints?: Record<string, string>;
     /**
      * ما يملك الفاعلُ منحَه — وسواه يُعطَّل بسببه مكتوبًا.
      *
@@ -137,6 +139,7 @@ export default function EmployeeForm({
     defaultBranch,
     sections,
     actions,
+    actionHints = {},
     grantable,
     blockedTitles,
     titleGrants,
@@ -770,7 +773,7 @@ export default function EmployeeForm({
                                 <div className="space-y-2.5 border-t border-[#e5e7eb] pt-4">
                                     {/*
                                         والفعلُ يُعرض تحت عنوانه لا مع الأقسام: «المبيعات»
-                                        تفتح شاشة، و«تصحيح فاتورة مكتملة» تعيد كتابة مستندٍ
+                                        تفتح شاشة، و«تعديل فواتير المبيعات» تعيد كتابة مستندٍ
                                         ضريبيّ — وصفٌّ واحد يجمعهما يجعل الثانية تُعلَّم سهوًا.
                                     */}
                                     <p className="text-[13px] font-semibold text-[#374151]">
@@ -785,7 +788,8 @@ export default function EmployeeForm({
                                             key={key}
                                             title={mayGrant(key) ? undefined : t('لا تملك هذه الصلاحية — ولا تُمنح ما لا تملك.')}
                                             className={cn(
-                                                'flex items-center gap-2.5',
+                                                'flex gap-2.5',
+                                                actionHints[key] ? 'items-start' : 'items-center',
                                                 boxesLive && mayGrant(key)
                                                     ? 'cursor-pointer'
                                                     : 'cursor-not-allowed opacity-60',
@@ -796,9 +800,16 @@ export default function EmployeeForm({
                                                 checked={shown.includes(key)}
                                                 onChange={() => togglePermission(key)}
                                                 disabled={! boxesLive || ! mayGrant(key)}
-                                                className="size-4 rounded border-[#d1d5db] accent-[#111]"
+                                                className={cn('size-4 rounded border-[#d1d5db] accent-[#111]', actionHints[key] && 'mt-0.5')}
                                             />
-                                            <span className="text-sm text-[#374151]">{label}</span>
+                                            <span>
+                                                <span className="block text-sm text-[#374151]">{label}</span>
+                                                {actionHints[key] && (
+                                                    <span className="mt-0.5 block text-[12px] leading-5 text-[#6b7280]" data-testid={`action-hint-${key}`}>
+                                                        {actionHints[key]}
+                                                    </span>
+                                                )}
+                                            </span>
                                         </label>
                                     ))}
                                 </div>

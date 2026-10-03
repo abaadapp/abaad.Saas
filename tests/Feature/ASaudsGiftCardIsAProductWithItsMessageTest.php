@@ -24,7 +24,8 @@ use Tests\TestCase;
  * ═══ ما يُحرس ═══
  *
  *   - الإتمامُ عنده بلا شيءٍ من الكرت: لا رسالةٌ مجّانيّة ولا كرتٌ مدفوع.
- *   - صفحةُ صنف «كرت هدية» تطلب نصَّه، وصفحةُ الصنف العاديّ لا.
+ *   - صفحةُ الكرت تطلب نصَّه، وصفحةُ الصنف العاديّ لا. والكرتُ يُعرف بعلامته
+ *     (`is_gift_card`) لا باسمه: يُغيَّر اسمُه ويبقى كرتًا.
  *   - الخادمُ يردّ الكرتَ بلا نصّ في التسعيرة والإتمام، ويُسعّره من الصنف.
  *   - النصُّ في بند الطلب وفي `orders.card_message`، وكرتان بنصّين بندان.
  *   - صنفٌ بالاسم نفسِه في متجرٍ آخر ليس كرتًا هنا.
@@ -61,7 +62,7 @@ class ASaudsGiftCardIsAProductWithItsMessageTest extends TestCase
         $this->card = Product::create([
             'business_id' => $this->saud->id, 'name' => GiftCard::PRODUCT_NAME, 'name_en' => 'Gift card',
             'price' => 1.5, 'cost' => 0, 'quantity' => 0, 'alert_qty' => 0, 'tracks_stock' => false,
-            'active' => true, 'published' => true,
+            'is_gift_card' => true, 'active' => true, 'published' => true,
         ]);
 
         config([
@@ -254,7 +255,7 @@ class ASaudsGiftCardIsAProductWithItsMessageTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors('gift_card');
     }
 
-    /* ═══════════ الكرتُ في «المنتجات»: اسمٌ ثابت وخارجَ المخزون ═══════════ */
+    /* ═══════════ الكرتُ في «المنتجات»: علامةٌ لا اسم، وخارجَ المخزون ═══════════ */
 
     private function owner(Business $shop): User
     {
@@ -270,19 +271,25 @@ class ASaudsGiftCardIsAProductWithItsMessageTest extends TestCase
             : $req->put('/admin/products/'.$p->id, $fields + ['name' => $p->name, 'price' => (float) $p->price]);
     }
 
-    public function test_the_card_name_is_fixed_but_its_price_description_and_publishing_are_not(): void
+    /**
+     * والاسمُ اسمُ عرضٍ لا هويّة: يُغيَّر الاسمان ويبقى الكرتُ كرتًا — بعلامته
+     * (`is_gift_card`). كان الاسمُ العربيّ ثابتًا لأنّه كان التعريف.
+     */
+    public function test_the_card_may_be_renamed_and_stays_the_card_with_its_price_and_publishing(): void
     {
-        $this->saveProduct($this->saud, $this->card, ['name' => 'Gift'])
-            ->assertSessionHasErrors(['name' => 'اسم منتج كرت الهدية ثابت ولا يمكن تغييره.']);
-        $this->assertSame(GiftCard::PRODUCT_NAME, $this->card->fresh()->name);
+        $this->saveProduct($this->saud, $this->card, ['name' => 'بطاقة إهداء', 'name_en' => 'Greeting card', 'tracks_stock' => '0'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('بطاقة إهداء', $this->card->fresh()->name);
+        $this->assertTrue(GiftCardProduct::is($this->saud->id, $this->card->fresh()), 'تغييرُ الاسم أسقط الكرت');
+        $this->get('/s/ribbon/p/'.$this->card->id)->assertOk()->assertSee('data-testid="rb-card-note-box"', false);
 
-        $this->saveProduct($this->saud, $this->card, [
+        $this->saveProduct($this->saud, $this->card->fresh(), [
             'price' => 2.25, 'description' => 'كرت مطبوع', 'name_en' => 'Printed gift card',
             'published' => '0', 'tracks_stock' => '0',
         ])->assertSessionHasNoErrors();
         $this->assertFalse(GiftCardProduct::is($this->saud->id, $this->card->fresh()), 'كرتٌ غيرُ منشورٍ عُدّ كرتًا');
 
-        $this->saveProduct($this->saud, $this->card, [
+        $this->saveProduct($this->saud, $this->card->fresh(), [
             'price' => 2.25, 'description' => 'كرت مطبوع', 'name_en' => 'Printed gift card', 'published' => '1',
         ])->assertSessionHasNoErrors();
 
@@ -333,11 +340,11 @@ class ASaudsGiftCardIsAProductWithItsMessageTest extends TestCase
         $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem('Hi')]))
             ->assertStatus(422)->assertJsonPath('errors.items.0', 'كرت الهدية غير متاح الآن.');
 
-        // وتوأمان معروضان (بيانٌ قديم) لا يُختار أحدُهما
+        // وتوأمان معلَّمان معروضان (بيانٌ قديم) لا يُختار أحدُهما
         $this->card->update(['tracks_stock' => false, 'quantity' => 0]);
         Product::create([
-            'business_id' => $this->saud->id, 'name' => GiftCard::PRODUCT_NAME, 'price' => 9, 'cost' => 0,
-            'quantity' => 0, 'alert_qty' => 0, 'tracks_stock' => false, 'active' => true, 'published' => true,
+            'business_id' => $this->saud->id, 'name' => 'كرت آخر', 'price' => 9, 'cost' => 0,
+            'quantity' => 0, 'alert_qty' => 0, 'tracks_stock' => false, 'is_gift_card' => true, 'active' => true, 'published' => true,
         ]);
         $this->assertFalse(GiftCardProduct::is($this->saud->id, $this->card->fresh()));
         $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem('Hi')]))

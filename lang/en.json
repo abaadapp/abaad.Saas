@@ -7138,7 +7138,6 @@
     "اكتب العنوان بالإنجليزية فقط.": "Write the address in English only.",
     "اكتب رسالة كرت الهدية قبل إضافته إلى الطلب.": "Write the gift card message before adding it to the order.",
     "رسالة كرت الهدية أطول من :max حرفًا.": "The gift card message is longer than :max characters.",
-    "اسم منتج كرت الهدية ثابت ولا يمكن تغييره.": "The gift card product's name is fixed and cannot be changed.",
     "كرت الهدية غير مرتبط بالمخزون.": "The gift card is not tracked in stock.",
     "كرت الهدية موجود في منتجاتك — عدّله بدل إضافة كرت آخر.": "The gift card is already in your products — edit it instead of adding another.",
     "كرت الهدية غير متاح الآن.": "The gift card is not available right now.",
@@ -7205,5 +7204,7 @@
     "واجهة Places API (New) غير مفعّلة في مشروعك على Google Cloud — فعّلها ثمّ حاول.": "Places API (New) is not enabled on your Google Cloud project — enable it, then try again.",
     "قيود مفتاح Google تمنع خادم أبعاد من استخدامه — اسمح بعنوان خادم أبعاد وبـ Places API (New) في قيود المفتاح.": "Your Google key's restrictions block the Abaad server — allow the Abaad server address and Places API (New) in the key restrictions.",
     "مفتاح Google غير صالح أو أُلغي — أنشئ مفتاحًا جديدًا من مشروعك في Google Cloud والصقه هنا.": "The Google key is invalid or was revoked — create a new key in your Google Cloud project and paste it here.",
-    "تعذر استخدام مفتاح Google. تحقق من أن Places API (New) مفعّلة، وأن الفوترة مفعّلة، وأن قيود المفتاح تسمح لخادم أبعاد باستخدامه.": "The Google key could not be used. Check that Places API (New) is enabled, that billing is enabled, and that the key restrictions allow the Abaad server to use it."
+    "تعذر استخدام مفتاح Google. تحقق من أن Places API (New) مفعّلة، وأن الفوترة مفعّلة، وأن قيود المفتاح تسمح لخادم أبعاد باستخدامه.": "The Google key could not be used. Check that Places API (New) is enabled, that billing is enabled, and that the key restrictions allow the Abaad server to use it.",
+    "تعديل فواتير المبيعات وطلبات الموقع": "Edit sales invoices and website orders",
+    "يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني.": "Allows changing item quantities or the payment method on the day of the sale, whether the invoice came from the point of sale or the website."
 }

@@ -521,7 +521,8 @@ class ProductController extends Controller
         $source = Product::where('business_id', $this->bid())->findOrFail($id);
         PlanLimits::enforce(auth()->user()->business, 'products');
 
-        $copy = $source->replicate(['sku', 'barcode', 'quantity', 'created_at', 'updated_at']);
+        // وعلامةُ الكرت لا تُنسخ: النسخةُ صنفٌ عاديّ، والكرتُ واحدٌ في متجره (`GiftCardProduct`)
+        $copy = $source->replicate(['sku', 'barcode', 'quantity', 'is_gift_card', 'created_at', 'updated_at']);
         $copy->name = $source->name.' — '.__('نسخة');
         $copy->sku = $this->generateSku();
         $copy->barcode = $this->generateBarcode();

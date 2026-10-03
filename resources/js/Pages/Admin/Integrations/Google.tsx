@@ -8,6 +8,7 @@ import CopyButton from '@/Components/CopyButton';
 import Field from '@/Components/Field';
 import StatusPill, { readinessState } from '@/Components/StatusPill';
 import { Advanced, PageActions, SettingsGroup, SettingsPage, SettingsSection } from '@/Components/Settings';
+import Toggle from '@/Components/Toggle';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { Button } from '@/Components/ui/button';
 import SmartLink from '@/Components/SmartLink';
@@ -80,8 +81,8 @@ interface Props {
     settings: Record<string, string>;
     link: Link;
     keyHint: string | null;
-    /** أَلأبعادَ مفتاحٌ يقرأ به من لم يلصق مفتاحه — نعم أو لا، ولا طرفَ منه */
-    platformKey: boolean;
+    /** أخرائطُ Google مفعّلةٌ لهذا المتجر — بمفتاحه هو وحده، ولا مفتاحَ لأبعاد */
+    enabled: boolean;
     /** عنوانُ خادمنا ليقيّد به مفتاحه — و`null` حين لا يكون مضبوطًا */
     serverIp: string | null;
     google: Pulled;
@@ -228,17 +229,33 @@ function KeyGuide({ serverIp, start }: { serverIp: string | null; start: boolean
 function KeyForm({
     keyHint,
     serverIp,
-    platformKey,
+    enabled,
 }: {
     keyHint: string | null;
     serverIp: string | null;
-    platformKey: boolean;
+    enabled: boolean;
 }) {
     const t = useTranslate();
     const keyForm = useForm({ google_api_key: '' });
 
     return (
         <>
+            {/*
+                والتشغيلُ بيد التاجر: يُطفئ فتتوقّف النداءات ويبقى مفتاحُه وأماكنُ
+                فروعه ورابطُ التقييم في الإيصال. ولا يُعرض قبل أن يُحفظ مفتاح —
+                لصقُ المفتاح تفعيل، ولا شيء يُفعَّل بلا مفتاح.
+            */}
+            {keyHint && (
+                <div className="mb-4" data-testid="google-enabled">
+                    <Toggle
+                        on={enabled}
+                        onChange={(v) => router.post(route('admin.integrations.google.enabled'), { enabled: v }, { preserveScroll: true })}
+                        label="تفعيل خرائط Google"
+                        hint={enabled ? 'تُقرأ بمفتاحك — والنداءات على حسابك في Google.' : 'مطفأة — لا يُنادى Google عن متجرك، وبياناتك المحفوظة باقية.'}
+                    />
+                </div>
+            )}
+
             {keyHint && (
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[10px] bg-[#f0fdf4] px-3 py-2">
                     <span className="flex items-center gap-1.5 text-[12px] text-[#047857]">
@@ -288,11 +305,8 @@ function KeyForm({
                 </PageActions>
             </form>
 
-            {/*
-                والدليلُ مفتوحٌ من أوّله حين لا يكون له ولا لأبعادَ مفتاح:
-                تلك وحدها الحالُ التي لا تُقرأ فيها تقييمةٌ قبل أن يتحرّك.
-            */}
-            <KeyGuide serverIp={serverIp} start={!keyHint && !platformKey} />
+            {/* والدليلُ مفتوحٌ من أوّله حين لا مفتاحَ له — ولا مفتاحَ لأبعادَ يقرأ عنه */}
+            <KeyGuide serverIp={serverIp} start={!keyHint} />
         </>
     );
 }
@@ -309,7 +323,7 @@ function KeyForm({
  * تقييماتِه ومعدّلَه من Google بمفتاح Places فتُقرأ هنا بلا مغادرة اللوحة.
  */
 export default function MarketingGoogle() {
-    const { settings, link, keyHint, platformKey, serverIp, google, internal, readiness, branches, searchMin } =
+    const { settings, link, keyHint, enabled, serverIp, google, internal, readiness, branches, searchMin } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -385,20 +399,27 @@ export default function MarketingGoogle() {
                     عنده، ومن كان شرطًا عنده ظنّه اختيارًا فمضى ينتظر قراءةً
                     لا تأتي.
                 */}
-                {! platformKey && (
-                    <SettingsSection
-                        title="مفتاح Google Maps"
-                        description="مطلوب — لا تُقرأ تقييماتك قبل أن تلصق مفتاحك من Google Cloud."
-                        icon={KeyRound}
-                        status={
-                            keyHint
-                                ? <StatusPill state="ready" label="محفوظ" />
-                                : <StatusPill state="action" label="ينقصه المفتاح" />
-                        }
-                    >
-                        <KeyForm keyHint={keyHint} serverIp={serverIp} platformKey={platformKey} />
-                    </SettingsSection>
-                )}
+                {/*
+                    ═══ مفتاحُ التاجر — ولا مفتاحَ لأبعاد ═══
+
+                    خرائطُ Google اختياريّة: يربطها التاجر بمفتاحه من مشروعه في
+                    Google Cloud، ونداءاتُها على حسابه هو. ومن لم يربطها يعمل
+                    متجرُه كلُّه كما هو — هذه الصفحةُ وحدها تنتظره.
+                */}
+                <SettingsSection
+                    title="مفتاح Google Maps"
+                    description="اختياري — اربط Google Maps لتفعيل هذه الميزة بمفتاحك من مشروعك في Google Cloud. النداءات والفوترة على حسابك في Google، لا على أبعاد."
+                    icon={KeyRound}
+                    status={
+                        !keyHint
+                            ? <StatusPill state="action" label="غير مربوط" />
+                            : enabled
+                              ? <StatusPill state="ready" label="مفعّل" />
+                              : <StatusPill state="idle" label="مطفأ" />
+                    }
+                >
+                    <KeyForm keyHint={keyHint} serverIp={serverIp} enabled={enabled} />
+                </SettingsSection>
 
                 {/* ---------------------- فروعك على الخرائط ---------------------- */}
                 <SettingsSection
@@ -653,18 +674,6 @@ export default function MarketingGoogle() {
                         </Button>
                     }
                 />
-
-                {/* والمفتاحُ الاختياريّ مطويٌّ آخرَ الصفحة — لا يزاحم ما قبله */}
-                {platformKey && (
-                    <Advanced
-                        title="مفتاحك الخاص لـ Places"
-                        description="اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد. والصقْ مفتاحك من Google Cloud إن أردت أن تُحتسب النداءات على حسابك."
-                        icon={KeyRound}
-                        status={keyHint ? <StatusPill state="ready" label="محفوظ" /> : undefined}
-                    >
-                        <KeyForm keyHint={keyHint} serverIp={serverIp} platformKey={platformKey} />
-                    </Advanced>
-                )}
 
                 {/*
                     الفرق بين التقييمين يُقال صراحةً: تقييمات النظام تُكتب

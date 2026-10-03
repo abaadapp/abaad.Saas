@@ -147,15 +147,17 @@ class MarketingConnectTest extends TestCase
      * ليقرأ تقييمات محلّه — فلا يفعل، فتبقى الشاشة فارغة ولا شيء يقول إنّ
      * الطريق لم يكن معبَّدًا أصلًا.
      */
-    public function test_the_platform_key_completes_the_first_stage_for_every_merchant(): void
+    public function test_the_platform_key_completes_nothing_only_the_merchants_own_key_does(): void
     {
         $first = fn () => $this->props('admin.integrations.google')['readiness']['steps'][0];
 
-        $this->assertFalse($first()['done'], 'الخطوة الأولى تمّت بلا مفتاحٍ في المنصّة');
-        $this->assertTrue($first()['theirs'], 'خطوةُ أبعاد تُقال للتاجر بصيغة الأمر');
+        $this->assertFalse($first()['done']);
 
         GoogleReviews::storePlatformKey('AIza-platform-key');
+        $this->assertFalse($first()['done'], 'مفتاحُ أبعاد أتمّ خطوةَ التاجر — والنداءاتُ على فاتورة أبعاد');
+        $this->assertStringContainsString('اربط Google Maps لتفعيل هذه الميزة', (string) $first()['fix']);
 
+        GoogleReviews::storeKey($this->business->id, 'AIza-merchant-key');
         $this->assertTrue($first()['done']);
     }
 
@@ -167,10 +169,12 @@ class MarketingConnectTest extends TestCase
         $this->assertNull($this->props('admin.integrations.google')['keyHint']);
     }
 
-    /** ومفتاحُ التاجر يتقدّم على مفتاح المنصّة: فاتورتُه فاتورتُه */
-    public function test_a_merchants_own_key_wins_over_the_platform_key(): void
+    /** ومفتاحُ التاجر وحده يُقرأ — ومفتاحُ المنصّة لا يقع عليه أحد */
+    public function test_only_the_merchants_own_key_is_read(): void
     {
         GoogleReviews::storePlatformKey('AIza-platform-key');
+        $this->assertNull(GoogleReviews::apiKey($this->business->id), 'مفتاحُ أبعاد وقع على تاجرٍ بلا مفتاح');
+
         GoogleReviews::storeKey($this->business->id, 'AIza-merchant-key');
 
         $this->assertSame('AIza-merchant-key', GoogleReviews::apiKey($this->business->id));

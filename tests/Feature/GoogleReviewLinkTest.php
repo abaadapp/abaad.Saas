@@ -67,10 +67,8 @@ class GoogleReviewLinkTest extends TestCase
      */
     private function link(string $placeId = self::PLACE, ?int $branchId = null, string $name = 'محل الورد')
     {
-        Setting::updateOrCreate(
-            ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
-            ['value' => Crypt::encryptString('platform-key')],
-        );
+        // مفتاحُ التاجر نفسِه — لا مفتاحَ لأبعاد يقع عليه
+        GoogleReviews::storeKey($this->business->id, 'merchant-key');
 
         Http::fake(['places.googleapis.com/*' => Http::response([
             'id' => $placeId,
@@ -230,23 +228,12 @@ class GoogleReviewLinkTest extends TestCase
     }
 
     /**
-     * لا يُقال للتاجر «بمفتاح أبعاد» ولأبعادَ لا مفتاح.
+     * الشاشةُ تقول أمفعّلةٌ خرائطُ Google لهذا المتجر — بمفتاحه هو.
      *
-     * وبطاقةُ المفتاح في الشاشة تقول إمّا «اختياريّ — تُقرأ تقييماتك بمفتاح
-     * أبعاد» وإمّا «مطلوب». والأولى على منصّةٍ بلا مفتاحٍ كذبٌ لا يُكتشف:
-     * التاجر يقرأ أنّ المفتاح اختياريّ فلا يلصق شيئًا، ثمّ ينتظر تقييماتٍ لا
-     * تأتي — ولا يشكو، لأنّ الشاشة طمأنته.
+     * ومفتاحُ أبعاد لا يجعلها مفعّلةً لتاجر: كانت تقول «تُقرأ تقييماتك بمفتاح
+     * أبعاد»، والنداءاتُ على فاتورة أبعاد. فصارت ميزةً يفعّلها التاجر بمفتاحه.
      */
-    public function test_the_screen_does_not_claim_a_key_the_platform_does_not_have(): void
-    {
-        Setting::where('business_id', null)->where('key', GoogleReviews::PLATFORM_KEY)->delete();
-
-        $this->get(route('admin.integrations.google'))
-            ->assertOk()
-            ->assertInertia(fn ($p) => $p->where('platformKey', false)->etc());
-    }
-
-    public function test_the_screen_says_the_platform_has_a_key_when_it_does(): void
+    public function test_the_screen_says_whether_google_is_enabled_by_the_merchants_own_key(): void
     {
         Setting::updateOrCreate(
             ['business_id' => null, 'key' => GoogleReviews::PLATFORM_KEY],
@@ -255,7 +242,13 @@ class GoogleReviewLinkTest extends TestCase
 
         $this->get(route('admin.integrations.google'))
             ->assertOk()
-            ->assertInertia(fn ($p) => $p->where('platformKey', true)->etc());
+            ->assertInertia(fn ($p) => $p->where('enabled', false)->missing('platformKey')->etc());
+
+        GoogleReviews::storeKey($this->business->id, 'merchant-key');
+
+        $this->get(route('admin.integrations.google'))
+            ->assertOk()
+            ->assertInertia(fn ($p) => $p->where('enabled', true)->etc());
     }
 
     /** ولا يُرسَل المفتاح نفسه إلى الشاشة — ولا طرفٌ منه */
@@ -271,14 +264,16 @@ class GoogleReviewLinkTest extends TestCase
             ->assertDontSee('AIzaSyPLATFORMSECRET');
     }
 
-    /** والنصّان موجودان في الشاشة — فالحقل بلا نصَّين مقبضٌ لا يُدير شيئًا */
-    public function test_the_card_carries_both_wordings(): void
+    /** وبطاقةُ المفتاح تقول إنّه مفتاحُ التاجر ونداءاتُه على حسابه — ولا ذكرَ لمفتاح أبعاد */
+    public function test_the_card_says_the_key_and_the_bill_are_the_merchants(): void
     {
         $source = file_get_contents(resource_path('js/Pages/Admin/Integrations/Google.tsx'));
 
-        $this->assertStringContainsString('platformKey', $source, 'الشاشة لا تقرأ حال مفتاح المنصّة');
-        $this->assertStringContainsString('مطلوب — لا تُقرأ تقييماتك قبل أن تلصق مفتاحك', $source);
-        $this->assertStringContainsString('اختياريّ — تُقرأ تقييماتك بمفتاح أبعاد', $source);
+        $this->assertStringNotContainsString('platformKey', $source, 'الشاشة ما زالت تقرأ مفتاح المنصّة');
+        $this->assertStringNotContainsString('بمفتاح أبعاد', $source);
+        $this->assertStringContainsString('اربط Google Maps لتفعيل هذه الميزة', $source);
+        $this->assertStringContainsString('النداءات والفوترة على حسابك في Google، لا على أبعاد', $source);
+        $this->assertStringContainsString("route('admin.integrations.google.enabled')", $source);
     }
 
     /* ==================== دليلُ المفتاح ==================== */

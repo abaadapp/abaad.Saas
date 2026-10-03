@@ -7172,5 +7172,17 @@
     "للصفحة الإنجليزيّة — واتركه فارغًا فلا يُكتب فيها سطر": "For the English page — leave it empty and no line is shown there",
     "ساعات العمل (English)": "Opening hours (English)",
     "للصفحة الإنجليزيّة — مثل: Daily 10 AM – 10 PM": "For the English page — e.g. Daily 10 AM – 10 PM",
-    "للصفحة الإنجليزية — واتركها فارغة فلا تُكتب فيها": "For the English page — leave it empty and nothing is shown there"
+    "للصفحة الإنجليزية — واتركها فارغة فلا تُكتب فيها": "For the English page — leave it empty and nothing is shown there",
+    "اربط Google Maps بمفتاحك لتفعيل هذه الميزة.": "Connect Google Maps with your own key to enable this feature.",
+    "الصق مفتاحك من Google Cloud أوّلًا ثمّ فعّل الخرائط.": "Paste your Google Cloud key first, then enable Maps.",
+    "فُعّلت خرائط Google": "Google Maps enabled",
+    "أُطفئت خرائط Google": "Google Maps disabled",
+    "مفتاحك من Google Cloud مفعّل": "Your Google Cloud key is enabled",
+    "تُقرأ بمفتاحك أنت — والنداءات على حسابك في Google.": "Read with your own key — calls are billed to your Google account.",
+    "مفتاحك محفوظ وخرائط Google مطفأة — فعّلها لتُقرأ.": "Your key is saved and Google Maps is off — turn it on to read.",
+    "اربط Google Maps لتفعيل هذه الميزة — الصق مفتاحك من مشروعك في Google Cloud.": "Connect Google Maps to enable this feature — paste the key from your Google Cloud project.",
+    "تفعيل خرائط Google": "Enable Google Maps",
+    "تُقرأ بمفتاحك — والنداءات على حسابك في Google.": "Read with your key — calls are billed to your Google account.",
+    "مطفأة — لا يُنادى Google عن متجرك، وبياناتك المحفوظة باقية.": "Off — Google is not called for your shop, and your saved data stays.",
+    "اختياري — اربط Google Maps لتفعيل هذه الميزة بمفتاحك من مشروعك في Google Cloud. النداءات والفوترة على حسابك في Google، لا على أبعاد.": "Optional — connect Google Maps with the key from your own Google Cloud project. Calls and billing are on your Google account, not Abaad."
 }

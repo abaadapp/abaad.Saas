@@ -436,7 +436,11 @@ class RibbonController extends Controller
             // وصفحةُ الكرت نصُّه وحده — لا إضافاتٌ تُقترح معه
             'upsells' => $available && ! $giftCard
                 ? RibbonUpsells::for($bid, $p, $this->shown($bid))
-                    ->map(fn (Product $u) => $this->card($u, $lang, $business, $currency) + ['sizes' => $this->sizes($u, $lang, $currency)])
+                    ->map(fn (Product $u) => $this->card($u, $lang, $business, $currency) + [
+                        'sizes' => $this->sizes($u, $lang, $currency),
+                        // وكرتُ الهدية إضافةً تُفتح له خانةُ نصّه — الحكمُ نفسُه الذي يسعّره
+                        'gift_card' => GiftCardProduct::is($bid, $u),
+                    ])
                     ->all()
                 : [],
         ];

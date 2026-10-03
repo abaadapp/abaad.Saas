@@ -41,8 +41,13 @@
             --}}
             @php $rbAbout = $aboutImage ?: $logo; @endphp
             @if ($rbAbout)
-                <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
-                    <img src="{{ $rbAbout }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" data-testid="rb-about-image">
+                {{--
+                    وبنسبة الملفّ نفسِه لا بإطارٍ يقصّه: صورةٌ طويلةٌ أو عريضة
+                    كانت تُكبَّر في ٤:٣ ويُقطع طرفاها. والإطارُ يدوّر الأركان
+                    وحدها — ارتفاعُه ارتفاعُ الصورة.
+                --}}
+                <div style="border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)" data-testid="rb-about-frame">
+                    <img src="{{ $rbAbout }}" alt="" style="width:100%;height:auto;display:block" data-testid="rb-about-image">
                 </div>
             @endif
         </div>

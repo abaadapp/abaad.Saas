@@ -66,7 +66,7 @@
                     <h2 style="margin:0 0 8px;font-size:15px;font-weight:500">{{ $t['upsellTitle'] }}</h2>
                     <div class="rb-ups">
                         @foreach ($upsells as $u)
-                            <div class="rb-up" data-rb-up="{{ $u['id'] }}" @if (count($u['sizes'])) data-needs-variant @endif data-testid="rb-upsell">
+                            <div class="rb-up" data-rb-up="{{ $u['id'] }}" @if (count($u['sizes'])) data-needs-variant @endif @if ($u['gift_card'] ?? false) data-gift-card @endif data-testid="rb-upsell">
                                 <button type="button" class="rb-up-pick" data-rb-up-pick aria-pressed="false">
                                     <span class="rb-up-img">
                                         @if ($u['image'])
@@ -88,6 +88,20 @@
                                         @endforeach
                                     </div>
                                     <p class="rb-error" style="margin:0 12px 12px" data-rb-up-need hidden>{{ $t['upsellChoose'] }}</p>
+                                @endif
+                                @if ($u['gift_card'] ?? false)
+                                    {{--
+                                        ═══ كرتُ الهدية إضافةً — خانةُ نصّه حين يُختار ═══
+
+                                        الخانةُ نفسُها التي على صفحة الكرت (`rb-card-note`): النصُّ
+                                        يدخل مع بند الكرت وحده، والخادمُ يردّه بلا نصّ
+                                        (`GiftCardProduct::settle`). وتُطوى وتُمحى إن تُرك الكرت.
+                                    --}}
+                                    <div class="rb-up-note" data-rb-up-note-box hidden data-testid="rb-upsell-card-note-box">
+                                        <label for="rb-up-note-{{ $u['id'] }}" style="display:block;font-size:13px;margin-bottom:8px">{{ $t['giftCardMessage'] }}</label>
+                                        <textarea id="rb-up-note-{{ $u['id'] }}" class="rb-input" rows="3" maxlength="{{ $product['card_max'] }}" data-rb-up-note aria-describedby="rb-up-note-err-{{ $u['id'] }}" data-testid="rb-upsell-card-note"></textarea>
+                                        <p id="rb-up-note-err-{{ $u['id'] }}" class="rb-error" style="margin:6px 0 0" data-rb-up-note-err hidden role="alert">{{ $t['giftCardNeeded'] }}</p>
+                                    </div>
                                 @endif
                             </div>
                         @endforeach
@@ -170,7 +184,8 @@
     .rb-up-sizes { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 12px 12px; }
     .rb-up-sizes .rb-pill { min-height: 44px; }
     /* و`display` أعلاه يغلب `hidden` لولا هذا — فتظهر المقاساتُ قبل الاختيار */
-    .rb-up-sizes[hidden], .rb-up [data-rb-up-need][hidden] { display: none; }
+    .rb-up-sizes[hidden], .rb-up [data-rb-up-need][hidden], .rb-up-note[hidden], .rb-up [data-rb-up-note-err][hidden] { display: none; }
+    .rb-up-note { padding: 0 12px 12px; }
 </style>
 <script>{!! file_get_contents(resource_path('js/store/ribbon-upsells.js')) !!}</script>
 @endif

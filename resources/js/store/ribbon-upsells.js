@@ -17,6 +17,13 @@
  *
  * والبنودُ بصيغة السلّة نفسِها `{id, variant_id, qty}`، والإتمامُ يسعّرها
  * من القاعدة كأيّ صنف. فلا ثمنَ ولا اسمَ يُقرأ من الصفحة.
+ *
+ * ═══ وكرتُ الهدية إضافةً ═══
+ *
+ * بطاقتُه (`data-gift-card`) تفتح خانةَ نصّه حين تُختار، والنصُّ يدخل مع
+ * بنده هو وحده — الوسيطُ الرابع لـ`RB.add`، كما تُدخله صفحةُ الكرت نفسُها
+ * (`ribbon-card-note.js`). ولا يدخل الكرتُ بلا نصّ: الخادمُ يردّه كذلك
+ * (`GiftCardProduct::settle`)، فيُقال عند البطاقة قبل أن يُرسل شيء.
  */
 window.RBUpsells = (function () {
     /* ما اختاره الزبون، بترتيب البطاقات */
@@ -26,23 +33,42 @@ window.RBUpsells = (function () {
                 id: +card.getAttribute('data-rb-up'),
                 needs: card.hasAttribute('data-needs-variant'),
                 variant: card.getAttribute('data-variant') ? +card.getAttribute('data-variant') : null,
+                gift: card.hasAttribute('data-gift-card'),
+                note: noteOf(card),
                 card: card,
             };
         });
     }
 
-    /* البنود — أو ما ينقصه مقاس، ولا بندَ حينها */
+    /* نصُّ كرت الهدية في بطاقته — مقصوصَ الأطراف، أو '' */
+    function noteOf(card) {
+        var box = card.querySelector('[data-rb-up-note]');
+
+        return box ? box.value.trim() : '';
+    }
+
+    /* البنود — أو ما ينقصه مقاسٌ أو نصُّ كرت، ولا بندَ حينها */
     function compose(main, picks) {
-        var missing = picks.filter(function (p) { return p.needs && !p.variant; });
+        var missing = picks.filter(function (p) { return (p.needs && !p.variant) || (p.gift && !p.note); });
         if (missing.length) return { ok: false, missing: missing, lines: [] };
 
         return {
             ok: true,
             missing: [],
             lines: [{ id: main.id, variant_id: main.variant_id || null, qty: main.qty }].concat(picks.map(function (p) {
-                return { id: p.id, variant_id: p.variant || null, qty: 1 };
+                var line = { id: p.id, variant_id: p.variant || null, qty: 1 };
+                // والنصُّ لبند الكرت وحده — لا يُلصق بالصنف ولا بإضافةٍ أخرى
+                if (p.gift) line.note = p.note;
+
+                return line;
             })),
         };
+    }
+
+    /* ما ينقص البطاقة يُقال تحتها: المقاسُ أو نصُّ الكرت */
+    function flag(p, on) {
+        show(p.card.querySelector('[data-rb-up-need]'), on && p.needs && !p.variant);
+        show(p.card.querySelector('[data-rb-up-note-err]'), on && p.gift && !p.note);
     }
 
     function show(el, on) { if (el) el.hidden = !on; }
@@ -51,11 +77,16 @@ window.RBUpsells = (function () {
         card.classList.toggle('on', on);
         card.querySelector('[data-rb-up-pick]').setAttribute('aria-pressed', on ? 'true' : 'false');
         show(card.querySelector('[data-rb-up-sizes]'), on);
+        show(card.querySelector('[data-rb-up-note-box]'), on);
         if (!on) {
             // من أعاد الاختيار يختار المقاسَ من جديد — لا يُحفظ له ما تركه
             card.removeAttribute('data-variant');
             card.querySelectorAll('[data-rb-up-size]').forEach(function (b) { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); });
             show(card.querySelector('[data-rb-up-need]'), false);
+            // ونصُّ كرتٍ تُرك يُمحى معه — لا يعود بلا قصد مع اختيارٍ تالٍ
+            var note = card.querySelector('[data-rb-up-note]');
+            if (note) note.value = '';
+            show(card.querySelector('[data-rb-up-note-err]'), false);
         }
     }
 
@@ -64,6 +95,11 @@ window.RBUpsells = (function () {
      * done() بعد الإضافة، missing(cards) ببطاقات ما ينقصه مقاس، wait — مدّةُ قفل الزرّ.
      */
     function mount(box, opts) {
+        // من بدأ يكتب نصَّ الكرت لا يبقى تحته «اكتب الرسالة»
+        box.addEventListener('input', function (e) {
+            var note = e.target.closest && e.target.closest('[data-rb-up-note]');
+            if (note && note.value.trim() !== '') show(note.closest('[data-rb-up]').querySelector('[data-rb-up-note-err]'), false);
+        });
         box.addEventListener('click', function (e) {
             var size = e.target.closest('[data-rb-up-size]');
             if (size) {
@@ -87,14 +123,17 @@ window.RBUpsells = (function () {
             if (busy) return;
             var picks = picked(box);
             var r = compose(opts.main(), picks);
-            picks.forEach(function (p) { show(p.card.querySelector('[data-rb-up-need]'), false); });
+            picks.forEach(function (p) { flag(p, false); });
             if (!r.ok) {
-                r.missing.forEach(function (p) { show(p.card.querySelector('[data-rb-up-need]'), true); });
+                r.missing.forEach(function (p) { flag(p, true); });
                 opts.missing(r.missing.map(function (p) { return p.card; }));
                 return;
             }
             busy = true; opts.button.disabled = true;
-            r.lines.forEach(function (l) { opts.add(l.id, l.variant_id, l.qty); });
+            r.lines.forEach(function (l) {
+                if (l.note) opts.add(l.id, l.variant_id, l.qty, l.note);
+                else opts.add(l.id, l.variant_id, l.qty);
+            });
             // ما دخل السلّة لا يبقى مختارًا — فلا تُعيده ضغطةٌ تالية بلا قصد
             picks.forEach(function (p) { toggle(p.card, false); });
             opts.done();

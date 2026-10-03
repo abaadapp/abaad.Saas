@@ -28,6 +28,15 @@ class ReportColumns
             ['at', 'التاريخ', 'text'], ['type', 'النوع', 'text'], ['description', 'البيان', 'text'],
             ['method', 'الوسيلة', 'text'], ['status', 'الحالة', 'text'], ['amount', 'المبلغ', 'money'],
         ],
+        /*
+         * التكاليفُ والخسائر: حسابٌ في فئته — بأرقام الشاشة نفسِها.
+         * و«التغيّر %» فارغٌ حين لا سابقَ موجب: نسبةٌ من صفر لا تُكتب.
+         */
+        'costs' => [
+            ['category_label', 'الفئة', 'text'], ['code', 'الرمز', 'text'], ['account', 'الحساب', 'text'],
+            ['current', 'هذه المدّة', 'money'], ['share', 'من الإجمالي %', 'number'],
+            ['previous', 'المدّة السابقة', 'money'], ['delta', 'الفرق', 'money'], ['change_pct', 'التغيّر %', 'text'],
+        ],
         'profit' => [
             ['period', 'الفترة', 'text'], ['sales', 'إجمالي المبيعات', 'money'], ['tax', 'الضريبة المحصلة', 'money'],
             ['net_revenue', 'صافي الإيرادات', 'money'], ['cogs', 'تكلفة البضاعة المباعة', 'money'],
@@ -141,6 +150,14 @@ class ReportColumns
      * @var array<string, list<array{0: string, 1: string, 2: string, 3?: array{0: string, 1: string, 2: string}}>>
      */
     public const CARDS = [
+        // والإجماليُّ مجموعُ الأربع بعده — بترتيب الشاشة
+        'costs' => [
+            ['total', 'إجمالي التكاليف والخسائر', 'money'],
+            ['cost_of_sales', 'تكلفة المبيعات', 'money'],
+            ['operating', 'مصروفات التشغيل', 'money'],
+            ['losses', 'الخسائر', 'money'],
+            ['other', 'مصروفات وخسائر أخرى', 'money'],
+        ],
         'vat' => [
             ['taxable', 'المبيعات الخاضعة', 'money'],
             ['output', 'ضريبة المخرجات', 'money'],

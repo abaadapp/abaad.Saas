@@ -459,6 +459,64 @@ class ReportData
         ]);
     }
 
+    /* ======================== التكاليف والخسائر ======================== */
+
+    /**
+     * التكاليفُ والخسائر — من دفتر الأستاذ وحده (`CostsAndLosses`).
+     *
+     * ومصدرٌ واحد للشاشة والملفّات الثلاثة: الملخّصُ والفئاتُ وصفوفُ الحسابات
+     * تُبنى هنا، والملفُّ يقرأ `rows` و`summary` كما تقرؤهما الشاشة. والنطاقُ
+     * يُقرأ بمن طلب — فمن قُيِّد بفرعٍ لا يُنزِّل غيرَه.
+     */
+    public static function costs(int $bid, array $filters): array
+    {
+        $scope = CostsAndLosses::scope($bid, $filters, auth()->user());
+        $report = CostsAndLosses::report($bid, $scope);
+
+        $branch = $scope['branch_id'] !== null
+            ? Branch::withTrashed()->whereKey($scope['branch_id'])->value('name')
+            : null;
+        $scopeName = $branch !== null ? __('فرع :name', ['name' => $branch]) : __('النشاط بالكامل');
+
+        $allowed = CostsAndLosses::allowedBranches($bid, auth()->user());
+
+        // صفوفُ الملفّ: حسابٌ في فئته، بترتيب الجدول على الشاشة
+        $rows = [];
+        foreach ($report['categories'] as $category) {
+            foreach ($category['rows'] as $row) {
+                $rows[] = ['category_label' => $category['label']] + $row;
+            }
+        }
+
+        return $report + [
+            'rows' => $rows,
+            'truncated' => null,
+            'scope' => [
+                'from' => $scope['from'],
+                'to' => $scope['to'],
+                'branch_id' => $scope['branch_id'],
+                'category' => $scope['category'],
+                'name' => $scopeName,
+                'restricted' => $allowed !== null,
+                'previous' => CostsAndLosses::previous($scope),
+            ],
+            'reconciliation' => CostsAndLosses::reconciliation($bid, $scope),
+            // المدّةُ والنطاقُ في ترويسة كلّ ملفّ — ورقةُ فرعٍ لا تُقرأ ورقةَ متجر
+            'periodLabel' => $scope['from'].' → '.$scope['to'].' — '.$scopeName,
+            'options' => [
+                'branches' => Branch::where('business_id', $bid)
+                    ->when($allowed !== null, fn ($q) => $q->whereIn('id', $allowed))
+                    ->orderBy('id')->get(['id', 'name'])
+                    ->map(fn ($b) => ['value' => (string) $b->id, 'label' => $b->name])->all(),
+                'categories' => array_map(
+                    fn ($key, $label) => ['value' => $key, 'label' => __($label)],
+                    array_keys(CostsAndLosses::CATEGORIES),
+                    CostsAndLosses::CATEGORIES,
+                ),
+            ],
+        ];
+    }
+
     /* =========================== صافي الربح =========================== */
 
     /**

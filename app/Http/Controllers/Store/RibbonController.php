@@ -612,6 +612,30 @@ class RibbonController extends Controller
             'announcement' => StoreHeader::announcement($bid, $lang),
             // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
             'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo()),
+        ] + $this->floatingWhatsapp($bid, $identity, $t);
+    }
+
+    /**
+     * زرُّ واتساب العائم — في القالب العامّ، فيظهر في كلّ صفحة.
+     *
+     * لمن في `storefront.ribbon_floating_whatsapp_businesses` وحده، وبرقم
+     * «بيانات المتجر» نفسِه الذي يحمله رابطُ التذييل — أرقامًا وحدها كما
+     * ينظّفه التذييل. ومعه رسالةٌ جاهزةٌ بلغة الصفحة. وبلا رقمٍ لا زرّ.
+     *
+     * @return array{showFloatingWhatsapp: bool, floatingWhatsappUrl: string|null}
+     */
+    private function floatingWhatsapp(int $bid, array $identity, array $t): array
+    {
+        $listed = in_array($bid, array_map('intval', (array) config('storefront.ribbon_floating_whatsapp_businesses', [])), true);
+        $digits = preg_replace('/\D/', '', (string) ($identity['whatsapp'] ?? ''));
+
+        if (! $listed || $digits === '') {
+            return ['showFloatingWhatsapp' => false, 'floatingWhatsappUrl' => null];
+        }
+
+        return [
+            'showFloatingWhatsapp' => true,
+            'floatingWhatsappUrl' => 'https://wa.me/'.$digits.'?text='.rawurlencode($t['waFloatText']),
         ];
     }
 

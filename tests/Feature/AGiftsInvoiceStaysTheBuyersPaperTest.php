@@ -235,6 +235,52 @@ class AGiftsInvoiceStaysTheBuyersPaperTest extends TestCase
 
         $this->assertNull(GiftCardProduct::paperNote($item, $o->fresh()));
         $this->assertStringNotContainsString(self::MESSAGE, $this->papers($o)['a4']);
+
+        // وكرتان في الطلب: كلُّ رسالةٍ بتمامها لقطةٌ — `orderMessage` تفصلها بسطرٍ فارغ
+        foreach (["أخرى\n\n".self::MESSAGE, self::MESSAGE."\n\nأخرى", "أ\n\n".self::MESSAGE."\n\nب"] as $both) {
+            $this->assertNull(GiftCardProduct::paperNote($item, $o->fresh()->fill(['card_message' => $both])));
+        }
+
+        // وصنفُه ذهب من القاعدة كلّها: لا صنفَ يُثبت أنّه عاديّ — اللقطةُ تحمي
+        $card->forceDelete();
+        $this->assertNull(GiftCardProduct::paperNote($item->fresh(), $o->fresh()));
+
+        // ولا لقطةَ لغير طلب الموقع: ملاحظةُ الصندوق تُطبع ولو طابقت رسالتَه
+        $till = $o->fresh()->fill(['channel' => 'pos']);
+        $this->assertSame(self::MESSAGE, GiftCardProduct::paperNote($item->fresh(), $till));
+    }
+
+    /**
+     * ملاحظةُ بندٍ عاديّ تُطبع ولو طابقت رسالةَ الكرت نصًّا أو كانت جزءًا منها.
+     *
+     * اللقطةُ (`orders.card_message`) احتياطٌ لبند كرتٍ قديم لا علامةَ له —
+     * لا مصفاةُ نصوصٍ تحجب كلَّ ما يشبه رسالةً على الطلب.
+     */
+    public function test_an_ordinary_note_matching_or_inside_the_card_message_still_prints(): void
+    {
+        $card = $this->card();
+        $o = $this->giftOrder(['items' => [['id' => $this->rose->id, 'qty' => 1], ['id' => $card->id, 'qty' => 1, 'note' => self::MESSAGE]]]);
+        $rose = $o->items()->where('product_id', $this->rose->id)->firstOrFail();
+        $cardLine = $o->items()->where('product_id', $card->id)->firstOrFail();
+
+        foreach (['نصًّا' => self::MESSAGE, 'جزءًا' => 'كل عام'] as $how => $note) {
+            $rose->forceFill(['note' => $note])->save();
+
+            $this->assertSame($note, GiftCardProduct::paperNote($rose->fresh(), $o->fresh()),
+                "ملاحظةُ بندٍ عاديّ طابقت رسالةَ الكرت {$how} فحُجبت");
+            $this->assertNull(GiftCardProduct::paperNote($cardLine->fresh(), $o->fresh()), 'رسالةُ الكرت ظهرت');
+        }
+
+        // وصنفٌ عاديّ خارجَ دفتر المخزون: بعضُ الرسالة ليس رسالةً — يُطبع
+        $this->rose->forceFill(['tracks_stock' => false])->save();
+        $this->assertSame('كل عام', GiftCardProduct::paperNote($rose->fresh(), $o->fresh()),
+            'بعضُ رسالة الكرت على بندٍ عاديّ لا يتتبّع المخزون حُجب');
+        $this->rose->forceFill(['tracks_stock' => true])->save();
+
+        // وعلى الورقة: ملاحظةُ الورد تُطبع مرّةً واحدة — ورسالةُ الكرت تحت بندها لا
+        foreach ($this->papers($o) as $paper => $html) {
+            $this->assertSame(1, substr_count($html, 'كل عام'), "{$paper}: الملاحظةُ العاديّة غابت أو ظهرت معها رسالةُ الكرت");
+        }
     }
 
     public function test_an_ordinary_item_note_still_prints_as_before(): void

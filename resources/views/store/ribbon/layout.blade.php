@@ -105,14 +105,23 @@
          * يرثه، فلا يبقى في الصفحة موضعٌ يسقط إلى Times.
          */
         /*
-         * وأوّلُ السلسلة خطُّ الهوية `GE Hili` — واسمًا لا ملفًّا.
+         * و`IBM Plex Sans Arabic` أوّلُ السلسلة — للعربيّة والإنجليزيّة معًا.
          *
-         * حزمةُ الهوية لا تحمل ملفّاته، ورخصتُه لا تُجيز استخراجَه من ملفّ
-         * الدليل. فيُذكر أوّلًا ليتولّى يومَ تُضاف ملفّاتُه المرخَّصة، ويقع
-         * اليومَ على `IBM Plex Sans Arabic` المخزَّن عندنا.
+         * كان قبله `GE Hili` اسمًا بلا ملفّ، وبعده `Noto Kufi Arabic`: جهازٌ
+         * فيه أحدُهما يرسم به بعضَ الصفحة قبل أن يصل خطُّنا أو مكانه، فتختلط
+         * الحروف. وما بعد IBM خطوطُ النظام احتياطًا وحدها.
          */
-        html { font-family: 'GE Hili', 'IBM Plex Sans Arabic', 'Noto Kufi Arabic', system-ui, Arial, sans-serif; }
-        body { margin: 0; background: var(--rb-bg); color: #000; font-family: 'GE Hili', 'IBM Plex Sans Arabic', 'Noto Kufi Arabic', system-ui, Arial, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+        html { font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI', Tahoma, Arial, sans-serif; }
+        body { margin: 0; background: var(--rb-bg); color: #000; font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, 'Segoe UI', Tahoma, Arial, sans-serif; -webkit-font-smoothing: antialiased; min-height: 100vh; display: flex; flex-direction: column; }
+        /*
+         * ═══ وتباعدُ الحروف للإنجليزيّة وحدها ═══
+         *
+         * الحروفُ العربيّة متّصلة: مسافةٌ بينها (`letter-spacing`) تقطع
+         * الكلمةَ حروفًا منفصلة — «الرئيسية» تُقرأ «ا ل ر ئ ي س ي ة». فالتباعدُ
+         * يُكتب على `html[lang="en"]` وحدها، والعربيّةُ بلا تباعد. و`.rb-track`
+         * لعنصرٍ يريد تباعدًا بالإنجليزيّة، ومقدارُه في `--rb-track`.
+         */
+        html[lang="en"] .rb-track { letter-spacing: var(--rb-track, .18em); }
         a { color: #000; text-decoration: none; }
         input, select, textarea, button { font-family: inherit; }
         input:focus, select:focus, textarea:focus { outline: 2px solid var(--rb-olive); outline-offset: 0; }
@@ -145,7 +154,8 @@
         /* قائمةُ الصفحات — شريطٌ تحت الترويسة، بحروف الواجهة ومسافاتها */
         .rb-nav { border-top: 1px solid rgba(239,234,219,.18); }
         .rb-nav-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 28px; }
-        .rb-nav-a { color: rgba(239,234,219,.82); font-size: 13px; letter-spacing: .14em; min-height: 46px; display: inline-flex; align-items: center; border-bottom: 1px solid transparent; }
+        .rb-nav-a { color: rgba(239,234,219,.82); font-size: 13px; min-height: 46px; display: inline-flex; align-items: center; border-bottom: 1px solid transparent; }
+        html[lang="en"] .rb-nav-a { letter-spacing: .14em; }
         .rb-nav-a:hover { color: var(--rb-cream); }
         .rb-nav-a.is-on { color: var(--rb-cream); border-bottom-color: var(--rb-cream); }
         @media (max-width: 1023px) { .rb-nav-in { padding: 0 16px; gap: 2px 18px; } .rb-nav-a { font-size: 12px; min-height: 42px; } }
@@ -158,7 +168,8 @@
          * مكانًا لا اتّجاهًا — اليسارُ يسارٌ في الصفحتين، ولا نصَّ حرٌّ في `style`.
          */
         .rb-ann { border-bottom: 1px solid rgba(239,234,219,.18); }
-        .rb-ann-in { max-width: 1280px; margin: 0 auto; padding: 8px 24px; color: var(--rb-cream); font-size: 13px; line-height: 1.5; letter-spacing: .04em; }
+        .rb-ann-in { max-width: 1280px; margin: 0 auto; padding: 8px 24px; color: var(--rb-cream); font-size: 13px; line-height: 1.5; }
+        html[lang="en"] .rb-ann-in { letter-spacing: .04em; }
         .rb-ann-left { text-align: left; } .rb-ann-center { text-align: center; } .rb-ann-right { text-align: right; }
         @media (max-width: 1023px) { .rb-ann-in { padding: 7px 16px; font-size: 12px; } }
 
@@ -192,7 +203,8 @@
 
         /* بطاقاتُ «تواصل معنا» — بإطار الصفحة ولونها، لا بلونٍ جديد */
         .rb-cbox { border: 1px solid var(--rb-border); border-radius: var(--rb-r); padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; background: #fff; }
-        .rb-clabel { font-size: 12px; letter-spacing: .18em; color: #6b6a55; }
+        .rb-clabel { font-size: 12px; color: #6b6a55; }
+        html[lang="en"] .rb-clabel { letter-spacing: .18em; }
         .rb-cbox a { color: #000; font-size: 16px; min-height: 44px; display: inline-flex; align-items: center; }
         .rb-cbox a:hover { text-decoration: underline; }
         .rb-cbox span:not(.rb-clabel) { font-size: 16px; line-height: 1.7; }
@@ -393,7 +405,7 @@
                 يُكتب لا يُرسم، ولا يُخترع له بديل.
             --}}
             @if (filled($tagline))
-                <span style="letter-spacing:.18em" data-testid="rb-tagline">{{ $tagline }}</span>
+                <span class="rb-track" style="--rb-track:.18em" data-testid="rb-tagline">{{ $tagline }}</span>
             @endif
         </div>
     </div>
@@ -401,6 +413,7 @@
 
 <div class="rb-toast" data-rb-toast></div>
 
+<script>{!! file_get_contents(resource_path('js/store/ribbon-cart-lines.js')) !!}</script>
 <script>
 /*
  * سلّةُ RIBBON — في المتصفّح، وتُسعَّر من الخادم.
@@ -417,16 +430,9 @@ window.RB = (function () {
     function count() { return read().reduce(function (a, b) { return a + (b.qty || 0); }, 0); }
     function paint() { document.querySelectorAll('[data-rb-count]').forEach(function (el) { el.textContent = count(); }); }
     function toast(msg) { var el = document.querySelector('[data-rb-toast]'); el.textContent = msg; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(function () { el.classList.remove('show'); }, 1600); }
-    function add(id, variantId, qty) {
-        var items = read(); var hit = null;
-        items.forEach(function (it) { if (it.id === id && (it.variant_id || null) === (variantId || null)) hit = it; });
-        if (hit) hit.qty += qty; else items.push({ id: id, variant_id: variantId || null, qty: qty });
-        write(items);
-    }
-    function set(id, variantId, qty) {
-        var items = read().map(function (it) { if (it.id === id && (it.variant_id || null) === (variantId || null)) it.qty = qty; return it; }).filter(function (it) { return it.qty > 0; });
-        write(items);
-    }
+    // والبندُ صنفٌ ومقاسٌ ونصُّ كرتٍ إن كان — انظر `ribbon-cart-lines.js`
+    function add(id, variantId, qty, note) { write(RBLines.add(read(), id, variantId, qty, note)); }
+    function set(id, variantId, qty, note) { write(RBLines.set(read(), id, variantId, qty, note)); }
     function clear() { write([]); }
     /*
         وكلُّ جوابٍ يُقال للزبون — ولو لم يكن خطأَ حقلٍ في نموذجه.

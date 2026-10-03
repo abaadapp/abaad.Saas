@@ -6,6 +6,10 @@
     @if (! $accepts)
         <div class="rb-box" data-testid="rb-closed">{{ $t['closed'] }}</div>
     @else
+    {{-- الاسمان والعنوانُ بالإنجليزيّة لمن في قائمتها — والخادمُ يحرسها (`EnglishCheckout`) --}}
+    @php
+        $en = ($englishOnly ?? false) ? 'dir="ltr" lang="en"' : '';
+    @endphp
     <form data-rb-form novalidate style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:48px;align-items:start">
         <div style="display:flex;flex-direction:column;gap:36px;min-width:0">
             @php
@@ -40,7 +44,7 @@
                         ولا يراها على «رقم الهاتف»، فيظنّ الثاني اختياريًّا
                         ويتركه — ثمّ يُردّ طلبُه بعد أن ملأ النموذج كلَّه.
                     --}}
-                    <div><input class="rb-input" name="name" placeholder="{{ $t['fName'] }} *" aria-label="{{ $t['fName'] }}" aria-required="true"><div class="rb-error" data-err="name"></div></div>
+                    <div><input class="rb-input" name="name" {!! $en !!} placeholder="{{ $t['fName'] }} *" aria-label="{{ $t['fName'] }}" aria-required="true"><div class="rb-error" data-err="name"></div></div>
                     <div><input class="rb-input" name="phone" dir="ltr" placeholder="{{ $t['fPhone'] }} *" aria-label="{{ $t['fPhone'] }}" aria-required="true"><div class="rb-error" data-err="phone"></div></div>
                 </div>
             </div>
@@ -68,7 +72,7 @@
                         </div>
                     @endif
                     @if ($shows('address'))
-                        <div><input class="rb-input" name="address" placeholder="{{ $t['fAddress'] }}{{ $star('address') }}" aria-label="{{ $t['fAddress'] }}" {!! $need('address') !!}><div class="rb-error" data-err="address"></div></div>
+                        <div><input class="rb-input" name="address" {!! $en !!} placeholder="{{ $t['fAddress'] }}{{ $star('address') }}" aria-label="{{ $t['fAddress'] }}" {!! $need('address') !!}><div class="rb-error" data-err="address"></div></div>
                     @endif
                 </div>
                 <div data-rb-pickup style="display:none;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px;line-height:1.7">{{ $t['pickupAddr'] }}@if ($identity['address'] !== '') — {{ $identity['address'] }}@endif @if ($hours !== '') · {{ $hours }}@endif</div>
@@ -107,7 +111,7 @@
                         </label>
                     @endunless
                     <div data-rb-recipient style="display:{{ $req('recipient') ? 'grid' : 'none' }};grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
-                        <div><input class="rb-input" name="recipient_name" placeholder="{{ $t['fRecipient'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipient'] }}" {!! $need('recipient') !!}><div class="rb-error" data-err="recipient_name"></div></div>
+                        <div><input class="rb-input" name="recipient_name" {!! $en !!} placeholder="{{ $t['fRecipient'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipient'] }}" {!! $need('recipient') !!}><div class="rb-error" data-err="recipient_name"></div></div>
                         <div><input class="rb-input" name="recipient_phone" dir="ltr" placeholder="{{ $t['fRecipientPhone'] }}{{ $star('recipient') }}" aria-label="{{ $t['fRecipientPhone'] }}" {!! $need('recipient') !!}><div class="rb-error" data-err="recipient_phone"></div></div>
                     </div>
                 @endif
@@ -183,6 +187,13 @@
                         <div style="margin-top:14px;font-size:12px">{{ $t['cardPreview'] }}</div>
                         <div data-rb-cardmsgpreview style="margin-top:8px;min-height:72px;white-space:pre-wrap;word-break:break-word;border:1px dashed var(--rb-line);border-radius:var(--rb-r);background:var(--rb-soft);padding:14px;font-size:14px;line-height:1.9;text-align:start"></div>
                     </div>
+                @elseif ($giftCard['as_product'])
+                    {{--
+                        ═══ ولا شيءَ من الكرت هنا — كرتُه صنفٌ من الرفّ ═══
+
+                        يُشترى من صفحته ونصُّه معه (`GiftCardProduct`): لا رسالةٌ
+                        ولا كرتٌ مدفوعٌ ولا رفعُ ملفّ في الإتمام.
+                    --}}
                 @else
                     <textarea class="rb-input" name="card" rows="3" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
                     <div style="font-size:12px;margin-top:6px">{{ $t['cardHint'] }}</div>

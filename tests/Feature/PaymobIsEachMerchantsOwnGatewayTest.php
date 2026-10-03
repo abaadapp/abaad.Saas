@@ -15,6 +15,7 @@ use App\Support\Integrations;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\PaymentMethods;
+use App\Support\Store\EnglishCheckout;
 use App\Support\Store\Paymob;
 use App\Support\Store\PaymobSettings;
 use App\Support\Store\WebCheckout;
@@ -128,7 +129,9 @@ class PaymobIsEachMerchantsOwnGatewayTest extends TestCase
     {
         return [
             'items' => [['id' => Product::where('business_id', $shop->id)->value('id'), 'qty' => 1]],
-            'name' => 'زبون تجربة', 'phone' => '95259066', 'fulfil' => 'pickup',
+            // ومتجرُ سعود (المعرّف ٥) يأخذ الاسمَ بالإنجليزيّة — انظر `EnglishCheckout`
+            'name' => EnglishCheckout::on((int) $shop->id) ? 'Test Customer' : 'زبون تجربة',
+            'phone' => '95259066', 'fulfil' => 'pickup',
             'date' => '2027-02-12', 'pay' => $pay,
         ];
     }

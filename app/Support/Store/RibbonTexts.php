@@ -62,6 +62,10 @@ final class RibbonTexts
         'upsellTitle' => 'أضف مع طلبك', 'upsellChoose' => 'اختر خيارًا لهذه الإضافة قبل الإضافة إلى السلة',
         // رسالةُ الكرت بلا ثمن — انظر `GiftCard::messageOnly`
         'addCardMessage' => 'أضف رسالة على كرت الهدية', 'cardMessageHint' => 'اكتب رسالتك التي تريد إرفاقها مع الطلب',
+        // معرضُ صفحة الصنف، وكرتُ الهدية صنفًا — انظر `GiftCardProduct`
+        'photos' => 'صور المنتج', 'showPhoto' => 'اعرض الصورة :n من :total',
+        'giftCardMessage' => 'رسالة كرت الهدية', 'giftCardNeeded' => 'اكتب رسالة كرت الهدية قبل إضافته إلى السلة.',
+        'cartCardMessage' => 'رسالة الكرت:',
     ];
 
     private const EN = [
@@ -102,6 +106,9 @@ final class RibbonTexts
         'newsTitle' => 'Join our offers list', 'qty' => 'Quantity',
         'upsellTitle' => 'Add to your order', 'upsellChoose' => 'Choose an option for this add-on before adding to cart',
         'addCardMessage' => 'Add a gift card message', 'cardMessageHint' => 'Write the message you want included with the order',
+        'photos' => 'Product photos', 'showPhoto' => 'Show photo :n of :total',
+        'giftCardMessage' => 'Gift card message', 'giftCardNeeded' => 'Write the gift card message before adding it to the cart.',
+        'cartCardMessage' => 'Card message:',
     ];
 
     /** @return array<string, string> */

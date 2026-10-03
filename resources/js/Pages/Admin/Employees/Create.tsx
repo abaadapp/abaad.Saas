@@ -14,6 +14,7 @@ interface Props {
     currentBranchName: string | null;
     sections: Record<string, string>;
     actions: Record<string, string>;
+    actionHints?: Record<string, string>;
     /**
      * ما يملك الفاعلُ منحَه — يُعطَّل سواه بسببه مكتوبًا.
      *
@@ -32,7 +33,7 @@ interface Props {
 }
 
 export default function EmployeeCreate() {
-    const { branches, branchOptions, jobTitles, currentBranchName, sections, actions, may_read_payroll, grantable, blockedTitles, titleGrants } =
+    const { branches, branchOptions, jobTitles, currentBranchName, sections, actions, actionHints, may_read_payroll, grantable, blockedTitles, titleGrants } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -55,6 +56,7 @@ export default function EmployeeCreate() {
                 defaultBranch={currentBranchName}
                 sections={sections}
                 actions={actions}
+                actionHints={actionHints}
                 grantable={grantable}
                 blockedTitles={blockedTitles}
                 titleGrants={titleGrants}

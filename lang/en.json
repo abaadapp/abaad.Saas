@@ -7181,7 +7181,7 @@
     "اعرض السطور": "Show lines",
     "الأرقام من القيود المرحّلة في دفتر الأستاذ وحده، وكل حدثٍ مرّة واحدة: الراتب يوم اعتماد المسيرة لا يوم صرفها، والهالك بقيده لا بصفّ مصروفه.": "Figures come only from posted ledger entries, and each event counts once: salaries when the payroll is approved, not when it is paid out, and stock losses by their entry, not by their expense row.",
     "الإهلاك": "Depreciation",
-    "الإهلاك المرحّل وحده يُحسب — ما لم يُرحَّل من شاشة الأصول لا يظهر. وخسارة استبعاد الأصل تقع في «مصروفات وخسائر أخرى».": "Only posted depreciation counts — depreciation not yet posted from the assets screen does not appear. A loss on disposing of an asset falls under “Other expenses & losses”.",
+    "الإهلاك المرحّل وحده يُحسب — ما لم يُرحَّل من شاشة الأصول لا يظهر. وخسارة استبعاد الأصل تُقرأ بمبلغها المرحّل ضمن «الخسائر».": "Only posted depreciation counts — depreciation not yet posted from the assets screen does not appear. A loss on disposing of an asset is read at its posted amount under “Losses”.",
     "التغيّر %": "Change %",
     "التكاليف والخسائر": "Costs & Losses",
     "الخسائر": "Losses",
@@ -7211,5 +7211,6 @@
     "إهلاك": "Depreciation",
     "تكلفة بيع": "Cost of sale",
     "أصل ثابت": "Fixed asset",
-    "يدوي": "Manual"
+    "يدوي": "Manual",
+    "خسائر استبعاد الأصول": "Asset disposal losses"
 }

@@ -310,6 +310,89 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $this->assertSame('عمولات المنصّات', $this->category($r, CostsAndLosses::OTHER)['rows'][0]['account']);
     }
 
+    /* ═══════════ استبعادُ الأصل ═══════════ */
+
+    /** أصلٌ يُشترى ويُهلَك ويُستبعد من أبوابه هو — لا قيودٌ تُكتب باليد */
+    private function assetSoldAtALoss(): FixedAsset
+    {
+        $this->actingAs($this->owner)->post(route('admin.finance.assets.store'), [
+            'name' => 'ثلاجة عرض', 'purchased_at' => '2026-09-01', 'cost' => 1200, 'life_months' => 12, 'paid_from' => 'cash',
+        ])->assertSessionHasNoErrors();
+        $asset = FixedAsset::where('business_id', $this->shop->id)->sole();
+
+        $this->actingAs($this->owner)->post(route('admin.finance.assets.depreciate'), ['month' => '2026-09'])->assertSessionHasNoErrors();
+        // ١٢٠٠ − ١٠٠ إهلاكًا = ١١٠٠ دفتريًّا، بيعت بـ٥٠٠ ⇒ خسارةٌ مرحَّلة ٦٠٠
+        $this->actingAs($this->owner)->post(route('admin.finance.assets.dispose', $asset->id), [
+            'disposed_at' => '2026-09-30', 'amount' => 500, 'received_in' => 'cash',
+        ])->assertSessionHasNoErrors();
+
+        return $asset->fresh();
+    }
+
+    public function test_a_posted_disposal_loss_is_a_loss_and_depreciation_and_purchase_stay_apart(): void
+    {
+        $this->assetSoldAtALoss();
+
+        $r = $this->report();
+        $this->assertSame(600.0, $this->category($r, CostsAndLosses::ASSET_DISPOSAL_LOSSES)['current']);
+        $this->assertSame(100.0, $this->category($r, CostsAndLosses::DEPRECIATION)['current'], 'الإهلاكُ عُدّ خسارةَ استبعاد');
+        $this->assertSame([600.0, 100.0, 0.0, 700.0], [$r['summary']['losses'], $r['summary']['operating'], $r['summary']['other'], $r['summary']['total']]);
+
+        // والمبلغُ المرحَّل نفسُه — لا قيمةٌ تُحسب من الأصل
+        $posted = (float) JournalLine::whereHas('entry', fn ($q) => $q->where('sourceable_type', FixedAsset::class))
+            ->whereHas('account', fn ($q) => $q->where('system_key', 'other_expenses'))->sum('debit');
+        $this->assertSame(600.0, $posted);
+
+        $drill = CostsAndLosses::drill($this->shop->id, $this->scope(['category' => CostsAndLosses::ASSET_DISPOSAL_LOSSES]), null);
+        $this->assertSame([600.0, 1], [$drill['total'], $drill['count']]);
+    }
+
+    public function test_a_disposal_at_a_gain_adds_no_cost(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.finance.assets.store'), [
+            'name' => 'مكيّف', 'purchased_at' => '2026-09-01', 'cost' => 100, 'life_months' => 12, 'paid_from' => 'cash',
+        ]);
+        $asset = FixedAsset::where('business_id', $this->shop->id)->sole();
+        $this->actingAs($this->owner)->post(route('admin.finance.assets.dispose', $asset->id), [
+            'disposed_at' => '2026-09-15', 'amount' => 150,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(0.0, $this->report()['summary']['total'], 'ربحُ البيع إيرادٌ لا تكلفة');
+    }
+
+    public function test_depreciation_is_never_a_disposal_loss_even_on_an_asset_entry(): void
+    {
+        $asset = FixedAsset::create(['business_id' => $this->shop->id, 'name' => 'ثلاجة', 'cost' => 1200,
+            'salvage_value' => 0, 'life_months' => 12, 'purchased_at' => '2026-01-01', 'status' => 'نشط', 'accumulated' => 0]);
+        $this->entry([['account' => 'depreciation', 'debit' => 100], ['account' => 'accumulated_depreciation', 'credit' => 100]], '2026-09-30', 'إهلاك', null, $asset);
+
+        $r = $this->report();
+        $this->assertSame(100.0, $this->category($r, CostsAndLosses::DEPRECIATION)['current']);
+        $this->assertSame(0.0, $r['summary']['losses']);
+    }
+
+    public function test_a_reversed_disposal_stays_in_its_category(): void
+    {
+        $asset = $this->assetSoldAtALoss();
+        $entry = JournalEntry::where('sourceable_type', FixedAsset::class)->where('sourceable_id', $asset->id)
+            ->whereHas('lines.account', fn ($q) => $q->where('system_key', 'other_expenses'))->sole();
+
+        // والعكسُ يكتب مصدرَه مترجَمًا — فيُقرأ بأصله في أيّ لغة
+        app()->setLocale('en');
+        Ledger::reverse($entry, Carbon::parse('2026-10-05'));
+        app()->setLocale('ar');
+
+        $this->assertSame(600.0, $this->report()['summary']['losses'], 'سبتمبر تغيّر بعكسٍ في أكتوبر');
+
+        $october = $this->report(['from' => '2026-10-01', 'to' => '2026-10-31']);
+        $this->assertSame(-600.0, $this->category($october, CostsAndLosses::ASSET_DISPOSAL_LOSSES)['current']);
+        $this->assertSame([-600.0, 0.0], [$october['summary']['losses'], $october['summary']['other']]);
+
+        // وفي مدّةٍ تجمعهما: صفر
+        $both = $this->report(['from' => '2026-09-01', 'to' => '2026-10-31']);
+        $this->assertSame(0.0, $this->category($both, CostsAndLosses::ASSET_DISPOSAL_LOSSES)['current']);
+    }
+
     /* ═══════════ المطابقة ═══════════ */
 
     private function busyMonth(): void
@@ -634,7 +717,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $this->owner->update(['locale' => 'en']);
         $en = $this->page()->assertOk()->viewData('page')['props'];
         $labels = array_column($en['categories'], 'label');
-        $this->assertSame(['Cost of sales', 'Employee costs', 'Operating expenses', 'Depreciation', 'Inventory losses', 'Other expenses & losses'], $labels);
+        $this->assertSame(['Cost of sales', 'Employee costs', 'Operating expenses', 'Depreciation', 'Inventory losses', 'Asset disposal losses', 'Other expenses & losses'], $labels);
         foreach ($labels as $label) {
             $this->assertDoesNotMatchRegularExpression('/\p{Arabic}/u', $label);
         }

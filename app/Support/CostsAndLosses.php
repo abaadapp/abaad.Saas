@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Branch;
 use App\Models\Expense;
+use App\Models\FixedAsset;
 use App\Models\JournalEntry;
 use App\Models\User;
 use Illuminate\Database\Query\Builder;
@@ -37,16 +38,24 @@ use Throwable;
  * ═══ والتصنيفُ بمفتاح الحساب لا باسمه ═══
  *
  * `system_key` الذي يُرحّل إليه النظامُ نفسُه — والاسمُ يكتبه التاجر ويغيّره.
- * والهالكُ وحده يُعرف بمصدر قيده (`StockLosses::SOURCE`) لا بحسابه: يُرحَّل
- * إلى «مصروفات أخرى» مع غيره. ومصدرُ العكس مصدرُ أصله — العكسُ يكتب مصدرَه
- * مترجَمًا («عكس …»)، فيُقرأ أصلُه لا نصُّه. وما لا يُعرف مفتاحُه يقع في
- * «مصروفات وخسائر أخرى» ولا يسقط.
+ * والخسارتان تُعرفان بقيدهما لا بحسابهما — كلتاهما تُرحَّل إلى «مصروفات
+ * أخرى» مع غيرها:
+ *
+ *   - الهالكُ بمصدر قيده (`StockLosses::SOURCE`).
+ *   - وخسارةُ استبعاد الأصل بمستند قيده (`sourceable_type = FixedAsset`): لا
+ *     بابَ يُرحّل سطرَ مصروفٍ على قيدٍ مستندُه أصلٌ إلّا الاستبعاد
+ *     (`FixedAssetController::dispose`). شراءُ الأصل أصلٌ مقابلَ نقدٍ أو بنكٍ أو
+ *     ذمّة، والإهلاكُ قيدٌ بلا مستند — ويُستثنى حسابُه صراحةً على كلّ حال.
+ *
+ * ومصدرُ العكس ومستندُه مصدرُ أصله ومستندُه — العكسُ يكتب مصدرَه مترجَمًا
+ * («عكس …»)، فيُقرأ أصلُه لا نصُّه. وما لا يُعرف مفتاحُه يقع في «مصروفات
+ * وخسائر أخرى» ولا يسقط.
  *
  * ═══ وما لا يُختلق ═══
  *
  * إهلاكٌ لم يُرحَّل لا يُحسب من `FixedAsset` (الترحيلُ بزرّ «إهلاك» شهرًا
- * بشهر)، وخسارةُ استبعاد أصلٍ تُقرأ حيث رُحّلت — «مصروفات أخرى» — لا
- * تُحسب من قيمته الدفتريّة. والقراءةُ لا تكتب شيئًا.
+ * بشهر)، وخسارةُ استبعاد أصلٍ مبلغُها المرحَّل — لا تُحسب من قيمته
+ * الدفتريّة. والقراءةُ لا تكتب شيئًا.
  */
 final class CostsAndLosses
 {
@@ -60,6 +69,8 @@ final class CostsAndLosses
 
     public const INVENTORY_LOSSES = 'inventory_losses';
 
+    public const ASSET_DISPOSAL_LOSSES = 'asset_disposal_losses';
+
     public const OTHER = 'other';
 
     /** الفئاتُ بترتيب عرضها — وأسماؤها مفاتيحُ ترجمة */
@@ -69,6 +80,7 @@ final class CostsAndLosses
         self::OPERATING => 'مصروفات التشغيل',
         self::DEPRECIATION => 'الإهلاك',
         self::INVENTORY_LOSSES => 'خسائر المخزون',
+        self::ASSET_DISPOSAL_LOSSES => 'خسائر استبعاد الأصول',
         self::OTHER => 'مصروفات وخسائر أخرى',
     ];
 
@@ -92,6 +104,9 @@ final class CostsAndLosses
 
     /** بطاقةُ «مصروفات التشغيل»: الموظفون والتشغيلُ والإهلاكُ المرحَّل */
     public const OPERATING_GROUP = [self::EMPLOYEE, self::OPERATING, self::DEPRECIATION];
+
+    /** بطاقةُ «الخسائر»: ما يُعرف خسارةً بقيده — الهالكُ واستبعادُ الأصل */
+    public const LOSS_GROUP = [self::INVENTORY_LOSSES, self::ASSET_DISPOSAL_LOSSES];
 
     /** نوعُ الحساب كما يُكتب في الشجرة (`Account::TYPES`) */
     private const EXPENSE_TYPE = 'مصروف';
@@ -200,8 +215,11 @@ final class CostsAndLosses
      */
     public static function lines(int $bid, array $scope): Builder
     {
+        $pdo = DB::getPdo();
         $category = 'CASE'
-            .' WHEN COALESCE(orig.source, je.source) = '.DB::getPdo()->quote(StockLosses::SOURCE)." THEN '".self::INVENTORY_LOSSES."'"
+            .' WHEN COALESCE(orig.source, je.source) = '.$pdo->quote(StockLosses::SOURCE)." THEN '".self::INVENTORY_LOSSES."'"
+            .' WHEN COALESCE(orig.sourceable_type, je.sourceable_type) = '.$pdo->quote(FixedAsset::class)
+            ." AND (a.system_key IS NULL OR a.system_key <> 'depreciation') THEN '".self::ASSET_DISPOSAL_LOSSES."'"
             .self::keyCases()
             ." ELSE '".self::OTHER."' END";
 
@@ -349,8 +367,8 @@ final class CostsAndLosses
     /**
      * البطاقات — كلٌّ مجموعُ فئاتٍ بعينها، والإجماليُّ مجموعُها كلِّها.
      *
-     * و«الخسائر» ما يُعرف خسارةً بيقين: الهالكُ بمصدر قيده. وخسارةُ استبعاد
-     * أصلٍ تُرحَّل إلى «مصروفات أخرى» مع غيرها، فتبقى في «الأخرى» ولا تُخمَّن.
+     * و«الخسائر» ما يُعرف خسارةً بقيده بيقين: الهالكُ بمصدره، واستبعادُ الأصل
+     * بمستنده. وما سواهما في «مصروفات أخرى» يبقى في «الأخرى» ولا يُخمَّن.
      *
      * @param  array<string, float>  $byCategory
      * @return array{total: float, cost_of_sales: float, operating: float, losses: float, other: float}
@@ -363,7 +381,7 @@ final class CostsAndLosses
             'total' => $sum(array_keys(self::CATEGORIES)),
             'cost_of_sales' => $sum([self::COST_OF_SALES]),
             'operating' => $sum(self::OPERATING_GROUP),
-            'losses' => $sum([self::INVENTORY_LOSSES]),
+            'losses' => $sum(self::LOSS_GROUP),
             'other' => $sum([self::OTHER]),
         ];
     }

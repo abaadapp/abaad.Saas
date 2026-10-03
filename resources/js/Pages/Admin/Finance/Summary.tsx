@@ -35,11 +35,34 @@ interface Props {
         out: number;
         transfers: number;
     };
-    dues: { expenses: number; invoices: number; payroll: number; total: number; overdue: number };
+    dues: {
+        expenses: number;
+        invoices: number;
+        payroll: number;
+        total: number;
+        overdue: number;
+        /** المتأخّر والمستحقّ خلال ٧ أيام — من المصروفات وسندات الموردين وحدها؛ الرواتب بلا تاريخ استحقاق */
+        overdue_count: number;
+        overdue_amount: number;
+        due_soon_amount: number;
+    };
     /** سندات موردين بانتظار الاعتماد — معلومةٌ بجوار الدَّين لا داخله */
     pending_invoices: { count: number; total: number };
     /** «ما لك» — ذمم العملاء، من `Receivables` نفسها التي تقرأ منها شاشة الذمم */
-    receivables: { total: number; overdue: number; due_soon: number; credit: number; invoices: number; customers: number };
+    receivables: {
+        /** إجمالي الذمم قبل الرصيد الدائن: الفواتير المفتوحة + البيعات الآجلة غير المفوترة */
+        total: number;
+        uninvoiced: number;
+        /** total − uninvoiced */
+        invoiced: number;
+        /** total − credit */
+        net: number;
+        overdue: number;
+        due_soon: number;
+        credit: number;
+        invoices: number;
+        customers: number;
+    };
 }
 
 /**
@@ -138,11 +161,18 @@ export default function Summary() {
                                 <Line label={t('مصروفات غير مدفوعة')} value={m(dues.expenses)} />
                                 <Line label={t('رواتب مستحقة')} value={m(dues.payroll)} />
                             </dl>
-                            {dues.overdue > 0 && (
-                                <p className="mt-2 text-[12px] text-[#b91c1c]">
-                                    {dues.overdue} {t('متأخّرة عن موعدها')}
-                                </p>
-                            )}
+                            {/* ومتى: المتأخّرُ وما يستحقّ خلال أسبوع — مبلغًا لا عددًا فقط */}
+                            <dl
+                                className="mt-3 space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-3"
+                                data-testid="dues-timing"
+                            >
+                                <Line
+                                    label={dues.overdue_count > 0 ? `${t('المتأخر')} (${dues.overdue_count})` : t('المتأخر')}
+                                    value={m(dues.overdue_amount)}
+                                    tone={dues.overdue_amount > 0 ? 'text-[#b91c1c]' : undefined}
+                                />
+                                <Line label={t('يستحق خلال 7 أيام')} value={m(dues.due_soon_amount)} />
+                            </dl>
                             {/* لم تصر دَينًا بعد — تُذكر ولا تُجمع */}
                             {pending_invoices.count > 0 && (
                                 <p className="mt-2 text-[12px] text-[#6b7280]" data-testid="pending-invoices">
@@ -172,17 +202,42 @@ export default function Summary() {
                             <p className="mt-1 text-[22px] font-bold tabular-nums tracking-tight text-[#111]">
                                 {m(receivables.total)}
                             </p>
+                            {/* الرقمُ إجماليُّ الذمم قبل الرصيد الدائن — يُقال معناه تحته، ولا يُسمّى «صافيًا» */}
+                            <p className="text-[11px] text-[#9ca3af]">{t('إجمالي ذمم العملاء')}</p>
+                            {receivables.invoices > 0 && (
+                                <p className="mt-1 text-[12px] text-[#6b7280]" data-testid="receivables-count">
+                                    {t(':invoices فواتير على :customers عملاء', {
+                                        invoices: receivables.invoices,
+                                        customers: receivables.customers,
+                                    })}
+                                </p>
+                            )}
+                            {/* والإجماليُّ مجموعُ السطرين الأوّلين — انظر `receivableCard` */}
                             <dl className="mt-3 space-y-1.5" data-testid="receivables-breakdown">
+                                <Line label={t('فواتير العملاء')} value={m(receivables.invoiced)} />
+                                <Line label={t('مبيعات آجلة لم تُفوتر')} value={m(receivables.uninvoiced)} />
+                            </dl>
+                            <dl
+                                className="mt-3 space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-3"
+                                data-testid="receivables-timing"
+                            >
                                 <Line
                                     label={t('المتأخر')}
                                     value={m(receivables.overdue)}
                                     tone={receivables.overdue > 0 ? 'text-[#b91c1c]' : undefined}
                                 />
                                 <Line label={t('يستحق قريبًا')} value={m(receivables.due_soon)} />
-                                {receivables.credit > 0 && (
-                                    <Line label={t('رصيد دائن للعملاء')} value={m(receivables.credit)} />
-                                )}
                             </dl>
+                            {/* والرصيدُ الدائن يُطرح في سطرٍ مسمّى — لا داخل الإجماليّ صامتًا */}
+                            {receivables.credit > 0 && (
+                                <dl
+                                    className="mt-3 space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-3"
+                                    data-testid="receivables-credit"
+                                >
+                                    <Line label={t('رصيد دائن للعملاء')} value={`− ${m(receivables.credit)}`} />
+                                    <Line label={t('صافي لك')} value={m(receivables.net)} />
+                                </dl>
+                            )}
                         </div>
                         <Button variant="outline" size="sm" className="self-start" asChild>
                             <SmartLink routeName="admin.finance.receivables" href={route('admin.finance.receivables')}>

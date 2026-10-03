@@ -5,6 +5,9 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
+use App\Models\Customer;
+use App\Models\CustomerInvoice;
+use App\Models\CustomerPayment;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -292,5 +295,102 @@ class TheFinanceSummaryShowsWhatMakesItsNumbersTest extends TestCase
         $this->assertSame($before['cogs'], $after['period']['cogs']);
         $this->assertSame($before['profit'], $after['period']['profit']);
         $this->assertSame(500.0, $after['dues']['invoices'], 'وصار دَينًا بالاعتماد');
+    }
+
+    /* ═══════════════ ٤ · «عليك الآن»: متى ═══════════════ */
+
+    private function expenseDue(float $amount, ?string $due): void
+    {
+        Expense::create([
+            'business_id' => $this->business->id, 'reference' => 'EXP-D-'.uniqid(), 'type' => 'إيجار',
+            'description' => 'إيجار', 'amount' => $amount, 'method' => 'نقدي',
+            'status' => Expense::UNPAID, 'spent_at' => now()->toDateString(), 'due_date' => $due,
+        ]);
+    }
+
+    private function invoiceDue(string $ref, float $total, string $approval, ?string $due, float $paid = 0): void
+    {
+        $this->invoice($ref, $total, $approval, $paid)->update(['due_at' => $due]);
+    }
+
+    /**
+     * المتأخّرُ وما يستحقّ خلال سبعة أيام — مبلغًا، من المصروفات والسندات المعتمدة.
+     *
+     *   متأخّر:  مصروف ١٠٠ (أمس) + سند ٢٠٠ مدفوعٌ منه ٥٠ (قبل ثلاثة أيام) = ٢٥٠
+     *   قريب:    مصروف ٤٠ (اليوم) + مصروف ٣٠ (بعد ٧) + سند ٧٠ (بعد يومين) = ١٤٠
+     *   خارجهما: مصروف ٢٠ (بعد ٨)، ومصروف ١٥ بلا موعد، والرواتب (لا موعدَ لها)،
+     *            وسنداتٌ معلّقةٌ ومرفوضةٌ وملغاة — ولو فات موعدُها
+     */
+    public function test_the_overdue_and_the_due_within_a_week_are_told_in_money(): void
+    {
+        $this->travelTo(now()->setTime(10, 0));
+        $day = fn (int $d) => now()->addDays($d)->toDateString();
+
+        $this->expenseDue(100, $day(-1));
+        $this->expenseDue(40, $day(0));
+        $this->expenseDue(30, $day(7));
+        $this->expenseDue(20, $day(8));
+        $this->expenseDue(15, null);
+        $this->invoiceDue('A-1', 200, SupplierInvoices::APPROVED, $day(-3), paid: 50);
+        $this->invoiceDue('A-2', 70, SupplierInvoices::APPROVED, $day(2));
+        $this->invoiceDue('P-1', 999, SupplierInvoices::PENDING, $day(-1));
+        $this->invoiceDue('R-1', 888, SupplierInvoices::REJECTED, $day(-1));
+        $this->invoiceDue('C-1', 777, SupplierInvoices::CANCELLED, $day(1));
+        $this->salaryDue(80);
+
+        $dues = $this->summary()['dues'];
+
+        $this->assertSame(250.0, $dues['overdue_amount']);
+        $this->assertSame(2, $dues['overdue_count']);
+        $this->assertSame($dues['overdue_count'], $dues['overdue'], 'العددُ باسمه القديم كما هو');
+        $this->assertSame(140.0, $dues['due_soon_amount'], 'المتأخّرُ لا يُعدّ قريبًا، ولا ما بعد السابع');
+
+        // والتعريفُ نفسُه لـ«عليك الآن»: الأقسامُ الثلاثة، والمعلّقُ خارجها
+        $this->assertSame(205.0, $dues['expenses']);
+        $this->assertSame(220.0, $dues['invoices']);
+        $this->assertSame(80.0, $dues['payroll']);
+        $this->assertSame(505.0, $dues['total']);
+    }
+
+    /* ═══════════════ ٥ · «لك الآن»: ممّ يتكوّن ═══════════════ */
+
+    /**
+     * فاتورةٌ صادرة بـ٣٠٠ فات موعدُها، وبيعةٌ آجلة بـ١٢٠ لم تُفوتَر، ودفعةٌ
+     * مقدّمة بـ٥٠ لم تُخصَّص.
+     *
+     *   total    = ٣٠٠ + ١٢٠ = ٤٢٠   (قبل الرصيد الدائن — كما يحسبه Receivables)
+     *   invoiced = ٤٢٠ − ١٢٠ = ٣٠٠
+     *   net      = ٤٢٠ − ٥٠  = ٣٧٠
+     */
+    public function test_customer_invoices_uninvoiced_sales_and_credit_are_each_named(): void
+    {
+        $customer = Customer::create(['business_id' => $this->business->id, 'name' => 'شركة الورد', 'phone' => '96890000001']);
+
+        CustomerInvoice::create([
+            'business_id' => $this->business->id, 'customer_id' => $customer->id, 'number' => 'CI-1',
+            'status' => CustomerInvoice::ISSUED, 'issued_at' => now()->subDays(40)->toDateString(),
+            'due_at' => now()->subDays(10)->toDateString(), 'subtotal' => 300, 'total' => 300,
+        ]);
+        Order::create([
+            'business_id' => $this->business->id, 'branch_id' => $this->branch->id, 'customer_id' => $customer->id,
+            'customer_name' => 'شركة الورد', 'number' => 'INV-CR-1', 'status' => 'مكتمل', 'is_held' => false,
+            'payment_method' => 'آجل', 'payment_status' => 'غير مدفوع',
+            'subtotal' => 120, 'total' => 120, 'ordered_at' => now(),
+        ]);
+        CustomerPayment::create([
+            'business_id' => $this->business->id, 'customer_id' => $customer->id,
+            'number' => 'RC-1', 'amount' => 50, 'method' => 'نقدي', 'occurred_at' => now()->toDateString(),
+        ]);
+
+        $r = $this->summary()['receivables'];
+
+        $this->assertSame(420.0, $r['total'], 'الإجماليُّ قبل الرصيد الدائن — لم يتغيّر حسابُه');
+        $this->assertSame(120.0, $r['uninvoiced']);
+        $this->assertSame(300.0, $r['invoiced'], 'فواتير العملاء وحدها');
+        $this->assertSame(50.0, $r['credit']);
+        $this->assertSame(370.0, $r['net'], 'الصافي بعد الرصيد الدائن');
+        $this->assertSame(300.0, $r['overdue']);
+        $this->assertSame(1, $r['invoices']);
+        $this->assertSame(1, $r['customers']);
     }
 }

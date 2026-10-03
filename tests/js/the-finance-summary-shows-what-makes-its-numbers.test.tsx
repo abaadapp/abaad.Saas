@@ -27,9 +27,15 @@ const draw = (over: Record<string, unknown> = {}) => {
         bank: 200,
         accounts: [],
         period: { sales: 1000, tax: 50, cogs: 600, gross_profit: 350, expenses: 200, profit: 150, in: 0, out: 0, transfers: 0 },
-        dues: { invoices: 250, expenses: 120, payroll: 80, total: 450, overdue: 0 },
+        dues: {
+            invoices: 250, expenses: 120, payroll: 80, total: 450,
+            overdue: 2, overdue_count: 2, overdue_amount: 175, due_soon_amount: 60,
+        },
         pending_invoices: { count: 3, total: 620 },
-        receivables: { total: 90, overdue: 40, due_soon: 30, credit: 0, invoices: 2, customers: 2 },
+        receivables: {
+            total: 90, uninvoiced: 25, invoiced: 65, net: 90,
+            overdue: 40, due_soon: 30, credit: 0, invoices: 2, customers: 2,
+        },
         ...over,
     });
 
@@ -55,6 +61,13 @@ describe('«عليك الآن» تفصّل إجماليّها', () => {
         expect(pending).toHaveTextContent('لا تدخل في المستحق حتى تُعتمد');
     });
 
+    it('ومتى: مبلغُ المتأخّر وعددُه، وما يستحقّ خلال سبعة أيام', () => {
+        const timing = within(screen.getByTestId('dues-timing'));
+
+        expect(timing.getByText('المتأخر (2)').nextSibling).toHaveTextContent('175');
+        expect(timing.getByText('يستحق خلال 7 أيام').nextSibling).toHaveTextContent('60');
+    });
+
     it('ولا يُذكر المعلَّقُ حين لا يوجد', () => {
         draw({ pending_invoices: { count: 0, total: 0 } });
 
@@ -63,19 +76,45 @@ describe('«عليك الآن» تفصّل إجماليّها', () => {
 });
 
 describe('«لك الآن» تفصّل إجماليّها', () => {
-    it('المتأخّر ويستحقّ قريبًا — والرصيدُ الدائن حين يكون', () => {
-        draw({ receivables: { total: 90, overdue: 40, due_soon: 30, credit: 15, invoices: 2, customers: 2 } });
+    const receivables = (over: Record<string, number> = {}) => ({
+        total: 90, uninvoiced: 25, invoiced: 65, net: 90,
+        overdue: 40, due_soon: 30, credit: 0, invoices: 7, customers: 4,
+        ...over,
+    });
+
+    it('فواتير العملاء منفصلةً عن البيعات الآجلة غير المفوترة', () => {
+        draw({ receivables: receivables() });
         const r = within(screen.getByTestId('receivables-breakdown'));
+
+        expect(r.getByText('فواتير العملاء').nextSibling).toHaveTextContent('65');
+        expect(r.getByText('مبيعات آجلة لم تُفوتر').nextSibling).toHaveTextContent('25');
+        expect(screen.getByText('إجمالي ذمم العملاء')).toBeInTheDocument();
+        expect(screen.getByTestId('receivables-count')).toHaveTextContent('7 فواتير على 4 عملاء');
+    });
+
+    it('المتأخّر ويستحقّ قريبًا', () => {
+        draw({ receivables: receivables() });
+        const r = within(screen.getByTestId('receivables-timing'));
 
         expect(r.getByText('المتأخر').nextSibling).toHaveTextContent('40');
         expect(r.getByText('يستحق قريبًا').nextSibling).toHaveTextContent('30');
-        expect(r.getByText('رصيد دائن للعملاء').nextSibling).toHaveTextContent('15');
     });
 
-    it('ولا رصيدَ دائنًا يُذكر وهو صفر', () => {
-        draw();
+    it('والرصيدُ الدائن سطرٌ مطروحٌ باسمه، والصافي بعده — لا داخل الإجماليّ', () => {
+        draw({ receivables: receivables({ credit: 15, net: 75 }) });
+        const c = within(screen.getByTestId('receivables-credit'));
 
-        expect(within(screen.getByTestId('receivables-breakdown')).queryByText('رصيد دائن للعملاء')).toBeNull();
+        expect(c.getByText('رصيد دائن للعملاء').nextSibling).toHaveTextContent('15');
+        expect(c.getByText('صافي لك').nextSibling).toHaveTextContent('75');
+        // والرقمُ الكبير يبقى الإجماليَّ، لا الصافي
+        expect(screen.getByText('إجمالي ذمم العملاء').previousSibling).toHaveTextContent('90');
+    });
+
+    it('ولا رصيدَ دائنًا ولا «صافي» يُذكران والرصيدُ صفر', () => {
+        draw({ receivables: receivables() });
+
+        expect(screen.queryByTestId('receivables-credit')).toBeNull();
+        expect(screen.queryByText('صافي لك')).toBeNull();
     });
 });
 

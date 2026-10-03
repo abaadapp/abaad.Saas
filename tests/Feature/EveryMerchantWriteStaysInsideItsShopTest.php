@@ -104,6 +104,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['الطلبات', 'put', 'admin.orders.details.update', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.status', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.send', ['number' => 'order_number']],
+                // رسالةٌ لمستلِم الهديّة ليُعرف موقعُه — لا تبلغ طلبَ متجرٍ آخر (GiftOrders)
+                ['الطلبات', 'post', 'admin.orders.contactRecipient', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.reviewRequest', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.reviewInvite', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.statusNotice', ['number' => 'order_number']],

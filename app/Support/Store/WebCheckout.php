@@ -101,6 +101,8 @@ final class WebCheckout
             'note' => trim((string) $site['store_delivery_note']),
             /* وتنبيهُ الصورة — تقرؤه الصفحاتُ الثلاث من هنا لا من ثلاثة مواضع */
             'image_note' => trim((string) $site['store_image_note']),
+            // وبالإنجليزيّة للصفحة الإنجليزيّة — ولا يقع أحدُهما على الآخر
+            'image_note_en' => trim((string) ($site['store_image_note_en'] ?? '')),
             'cod' => ($site['store_pay_cod'] ?? '1') === '1',
             'transfer' => ($site['store_pay_transfer'] ?? '0') === '1',
             'bank' => trim((string) $site['store_bank']),
@@ -475,7 +477,10 @@ final class WebCheckout
                 'ordered_at' => now(),
                 'status' => OrderStatus::PENDING,
                 'notes' => null,
-            ] + GiftCard::columns(
+            ]
+            // والهديّةُ لغير مشتريها — ولا شيءَ لطلبٍ ليس هديّة (`GiftOrders`)
+            + GiftOrders::columns($bid, $form)
+            + GiftCard::columns(
                 $wantsCard,
                 $form['card_align'] ?? null,
                 $wantsCard ? GiftCard::keep($bid, $form['card_file'] ?? null, $form['card_file_name'] ?? null) : null,
@@ -499,7 +504,11 @@ final class WebCheckout
                 'card_message' => GiftCardProduct::on($bid)
                     ? GiftCardProduct::orderMessage($lines)
                     : ($form['card'] ?? null),
-                'delivery_address' => $form['fulfil'] === FlowerOrder::DELIVERY
+                /*
+                 * ولا عنوانَ لهديّةٍ يتواصل المتجرُ مع مستلِمها — يبقى فارغًا
+                 * حتّى يُعرف، لا نصًّا يقول «سيُتواصل» يُقرأ عنوانًا.
+                 */
+                'delivery_address' => $form['fulfil'] === FlowerOrder::DELIVERY && ! GiftOrders::contactsRecipient($bid, $form)
                     ? trim(($form['area'] ?? '').' — '.($form['address'] ?? ''), " —\t")
                     : null,
                 'delivery_notes' => $form['slot'] ?? null,
@@ -766,6 +775,8 @@ final class WebCheckout
          * و«مطلوب» تُكتب `required` وما سواها `nullable` — وحقلٌ مُطفأٌ
          * يخرج من القواعد كلِّها — و`validate()` لا تُرجع إلّا ما له قاعدة.
          */
+        $gifts = GiftOrders::on($bid);
+
         $field = fn (string $name, array $rules) => match (CheckoutFields::state($bid, $name)) {
             CheckoutFields::OFF => null,
             CheckoutFields::REQUIRED => array_merge(['required'], $rules),
@@ -807,14 +818,23 @@ final class WebCheckout
              * واختياريٌّ لا مطلوب: من يشتري لنفسه لا يُسأل عن مستلِمٍ، وحقلٌ
              * يُفرض عليه يُملأ باسمه مرّتين فلا يفرّق أحدٌ بعدها.
              */
-            // والثلاثةُ بالإنجليزيّة لمن في قائمتها — انظر `EnglishCheckout`
-            'recipient_name' => EnglishCheckout::rules($bid, $field('recipient', ['string', 'max:120']), EnglishCheckout::NAME),
+            /*
+             * والثلاثةُ بالإنجليزيّة لمن في قائمتها — انظر `EnglishCheckout`.
+             *
+             * ومن رفع ميزةَ الإهداء يُقرأ منه المستلِمُ ولو أطفأ خانتَه في
+             * الطلب العاديّ: الهديّةُ تشترطه (`GiftOrders::after`).
+             */
+            'recipient_name' => EnglishCheckout::rules(
+                $bid,
+                $field('recipient', ['string', 'max:120']) ?? ($gifts ? ['nullable', 'string', 'max:120'] : null),
+                EnglishCheckout::NAME,
+            ),
             'recipient_phone' => CheckoutFields::shows($bid, 'recipient')
                 ? array_merge(
                     [CheckoutFields::requires($bid, 'recipient') ? 'required' : 'nullable'],
                     array_slice(FlowerOrder::PHONE_RULE, 1),
                 )
-                : null,
+                : ($gifts ? FlowerOrder::PHONE_RULE : null),
 
             /*
              * وكرتُ الهدية — اختيارٌ بثمنٍ لا خانةُ نصّ.
@@ -840,7 +860,7 @@ final class WebCheckout
             'card_align' => ['nullable', 'in:'.implode(',', GiftCard::ALIGNS)],
             'card_file' => ['nullable', 'string', 'max:64'],
             'card_file_name' => ['nullable', 'string', 'max:160'],
-        ]);
+        ] + GiftOrders::rules($bid));
 
         /*
          * ═══ وقائمةُ القواعد هي الحارسُ وحدَها ═══
@@ -900,7 +920,11 @@ final class WebCheckout
              * ومن اختار الاستلامَ من المحلّ لا يُسأل عن عنوانه — وكان هذا
              * حالَ النظام قبل الشاشة ويبقى.
              */
-            if (self::text($payload['fulfil'] ?? null) === FlowerOrder::DELIVERY) {
+            /*
+             * وهديّةٌ يتواصل المتجرُ مع مستلِمها لموقعه لا تُسأل عن عنوان —
+             * المشتري لا يعرفه، وهو ما اختاره (`GiftOrders::CONTACT`).
+             */
+            if (self::text($payload['fulfil'] ?? null) === FlowerOrder::DELIVERY && ! GiftOrders::contactsRecipient($bid, $payload)) {
                 foreach (['address' => __('اكتب العنوان بالتفصيل.'), 'area' => __('اختر المنطقة.')] as $f => $msg) {
                     if (CheckoutFields::requires($bid, $f) && self::text($payload[$f] ?? '') === '') {
                         $v->errors()->add($f, $msg);
@@ -915,6 +939,9 @@ final class WebCheckout
              * يريد منطقةً من خارجها — يريد أن يُقبل الفراغ. وقيمةٌ من خارج
              * القائمة تعني سائقًا يُرسَل إلى حيث لا يُوصَّل.
              */
+            // والهديّةُ تشترط مستلِمَها — انظر `GiftOrders::after`
+            GiftOrders::after($v, $bid, $payload);
+
             foreach (['area' => ['areas', __('اختر المنطقة.')], 'slot' => ['slots', __('اختر وقت التسليم.')]] as $f => [$list, $msg]) {
                 if ($settings[$list] !== [] && CheckoutFields::shows($bid, $f)
                     && filled($payload[$f] ?? null) && ! in_array(trim((string) $payload[$f]), $settings[$list], true)) {

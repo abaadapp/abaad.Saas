@@ -70,6 +70,15 @@ interface OrderDetail {
     card_file_name: string | null;
     sender_name: string | null;
     hide_sender: boolean;
+    /* الهديّةُ لغير مشتريها — انظر Store\GiftOrders */
+    is_gift?: boolean;
+    recipient_location_mode?: string | null;
+    /** «الموقع: بانتظار التواصل مع المستلم» وأخواتها — مترجمةً من الخادم */
+    location_label?: string | null;
+    /** هديّةٌ تُوصَّل تنتظر موقعَ مستلِمها — يظهر زرُّ التواصل معه */
+    awaiting_location?: boolean;
+    /** المناسبةُ كما تُقرأ — و«أخرى» بنصّها */
+    occasion_label?: string | null;
     delivery_address: string | null;
     delivery_notes: string | null;
     internal_notes: string | null;
@@ -233,8 +242,10 @@ export default function OrderShow() {
 
     /* إرسالُ الفاتورة — نموذجٌ فارغ: النصُّ كلُّه يُكتب في الخادم */
     const sending = useForm({});
+    const contacting = useForm({});
 
-    const occasionLabel = order.occasions.find((o) => o.value === order.occasion_type)?.label;
+    // ومن الخادم أوّلًا: «أخرى» بنصّها الذي كتبه المشتري (`GiftOrders::occasionLabel`)
+    const occasionLabel = order.occasion_label ?? order.occasions.find((o) => o.value === order.occasion_type)?.label;
     const fulfillmentLabel = order.fulfillments.find((f) => f.value === order.fulfillment_type)?.label;
 
     /*
@@ -244,7 +255,8 @@ export default function OrderShow() {
      * يعرف صاحبه أن للتفاصيل موضعًا أصلًا — ولا كيف يضيفها.
      */
     const hasSheet = Boolean(
-        order.fulfillment_type ||
+        order.is_gift ||
+            order.fulfillment_type ||
             order.scheduled_for ||
             order.recipient_name ||
             order.recipient_phone ||
@@ -825,6 +837,15 @@ export default function OrderShow() {
                                 <span className="text-sm text-[#6b7280]">{t('الحالة')}</span>
                                 <Badge status={order.status}>{t(order.status)}</Badge>
                             </div>
+                            {/* والهديّةُ تُرى من النظرة الأولى — لغير مشتريها، والمشتري يبقى صاحبَ الطلب */}
+                            {order.is_gift && (
+                                <div className="mb-3 flex items-center justify-between" data-testid="gift-order-badge">
+                                    <span className="text-sm text-[#6b7280]">{t('نوع الطلب')}</span>
+                                    <span className="rounded-full bg-[#fdf2f8] px-2.5 py-1 text-[12px] font-semibold text-[#9d174d]">
+                                        🎁 {t('طلب هدية')}
+                                    </span>
+                                </div>
+                            )}
                             {actionable && order.next_statuses.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                     {order.next_statuses.map((s) => (
@@ -1057,8 +1078,28 @@ export default function OrderShow() {
                                 </Block>
 
                                 <Block icon={MapPin} title="العنوان والتعليمات">
+                                    {order.location_label && <Row label="موقع المستلِم" value={order.location_label} />}
                                     <Row label="عنوان التوصيل" value={order.delivery_address} />
                                     <Row label="تعليمات التوصيل" value={order.delivery_notes} />
+                                    {/*
+                                        والتواصلُ مع المستلِم ليُعرف موقعُه — رسالةٌ تُجهَّز في
+                                        واتساب التاجر ولا تُرسَل من هنا، ولا تذكر المُهديَ ولا الثمن.
+                                    */}
+                                    {order.awaiting_location && order.recipient_phone && (
+                                        <div className="pt-3">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={contacting.processing}
+                                                onClick={() =>
+                                                    contacting.post(route('admin.orders.contactRecipient', order.id), { preserveScroll: true })
+                                                }
+                                                data-testid="contact-recipient"
+                                            >
+                                                {t('تواصل مع المستلم للحصول على الموقع')}
+                                            </Button>
+                                        </div>
+                                    )}
                                 </Block>
 
                                 <Block icon={Gift} title="المناسبة والبطاقة">

@@ -782,6 +782,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::put('/orders/{number}/payment', [OrderEditController::class, 'payment'])->name('orders.payment.update');
     // إرسالُ الفاتورة إلى الزبون — نصٌّ يُكتب في الخادم ويُفتح على واتساب التاجر
     Route::post('/orders/{number}/send', [OrderDetailController::class, 'send'])->name('orders.send');
+    // رسالةٌ لمستلِم الهديّة ليُعرف موقعُه — تُجهَّز ولا تُرسَل (GiftOrders)
+    Route::post('/orders/{number}/contact-recipient', [OrderDetailController::class, 'contactRecipient'])->name('orders.contactRecipient');
     /* إبلاغُ الزبون بحالة طلبه يدويًّا — لا يمرّ بميتا، فيعمل والحظرُ قائم */
     Route::post('/orders/{number}/status-notice', [OrderDetailController::class, 'statusNotice'])
         ->name('orders.statusNotice');

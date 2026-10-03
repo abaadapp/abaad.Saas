@@ -11,16 +11,20 @@ use Illuminate\Validation\ValidationException;
  *
  * ═══ وما الصنف ═══
  *
- * صنفُ المتجر نفسِه، نشطٌ ومنشورٌ وخارجَ دفتر المخزون، اسمُه «كرت هدية»
- * حرفًا بحرف (`GiftCard::PRODUCT_NAME`) — وهو وحده بهذا الاسم في متجره.
- * يُديره صاحبُه من «المنتجات»: الثمنُ والصورةُ والوصفُ والنشرُ والاسمُ
- * الإنجليزيّ. أمّا الاسمُ العربيّ فثابت: هو ما يُعرَف به الكرت، فلا يُغيَّر
- * (`forSave`). ولا يُنشأ هنا صنفٌ ولا يُكتب ثمن — والثمنُ يُقرأ من الصنف
- * بالتسعير القائم (`SaleLines::priceItems`) كأيّ صنف.
+ * صنفُ المتجر نفسِه **المعلَّمُ** كرتًا (`products.is_gift_card`)، نشطٌ ومنشورٌ
+ * وخارجَ دفتر المخزون — وهو وحده المعلَّمُ المعروضُ في متجره. يُديره صاحبُه
+ * من «المنتجات»: الثمنُ والصورةُ والوصفُ والنشرُ والاسمان. والاسمُ اسمُ عرضٍ
+ * لا هويّة: يُغيَّر ولا يسقط الكرت. ولا يُنشأ هنا صنفٌ ولا يُكتب ثمن —
+ * والثمنُ يُقرأ من الصنف بالتسعير القائم (`SaleLines::priceItems`) كأيّ صنف.
  *
- * والسؤالُ دائمًا عن صنفٍ **في هذا المتجر**: صنفٌ بالاسم نفسِه في متجرٍ
- * آخر لا يُعدّ كرتًا هنا، ولا يُقرأ معرّفٌ من خارجه. ولا معرّفَ ثابتٌ ولا
- * عمودٌ جديد: الاسمُ الثابت هو التعريف.
+ * ولمَ علامةٌ لا اسم: كان الكرتُ يُعرف بالاسم «كرت هدية» حرفًا بحرف، فاسمٌ
+ * بفارقِ حرفٍ يُسقطه صامتًا — يُعرض صنفًا عاديًّا ولا تُفتح خانةُ رسالته.
+ * والاسمُ الحرفيّ (`GiftCard::PRODUCT_NAME`) صار بابَ الولادة وحده: صنفٌ
+ * يُحفظ به ولا كرتَ معلَّمٌ في متجره يُعلَّم (`forSave`). والكرتُ القائم
+ * عُلِّم بهجرة (`..._230100_...`).
+ *
+ * والسؤالُ دائمًا عن صنفٍ **في هذا المتجر**: صنفٌ معلَّمٌ في متجرٍ آخر لا
+ * يُعدّ كرتًا هنا، ولا يُقرأ معرّفٌ من خارجه.
  *
  * ═══ ونصُّه مع بنده ═══
  *
@@ -46,42 +50,44 @@ final class GiftCardProduct
         return in_array($businessId, $list, true);
     }
 
-    /** أيحمل هذا الصنفُ اسمَ الكرت في متجرٍ من القائمة؟ — بلا سؤالٍ عن حاله */
-    public static function named(int $businessId, ?Product $product): bool
+    /** أهذا الصنفُ معلَّمٌ كرتًا في متجرٍ من القائمة؟ — بلا سؤالٍ عن حاله */
+    public static function marked(int $businessId, ?Product $product): bool
     {
         return $product !== null
             && self::on($businessId)
             && (int) $product->business_id === $businessId
-            && $product->name === GiftCard::PRODUCT_NAME;
+            && (bool) $product->is_gift_card;
     }
 
     /**
      * أهذا الصنفُ كرتُ الهدية في هذا المتجر؟
      *
-     * باسمه، نشطًا ومنشورًا، خارجَ دفتر المخزون — ووحيدًا بهذا الاسم بين
-     * المعروض. فصنفان معروضان بالاسم نفسِه لا يُختار أحدُهما: لا كرتَ
-     * حتّى يُصلَح (`settle` تردّ بندَه بسببه).
+     * بعلامته لا باسمه، نشطًا ومنشورًا، خارجَ دفتر المخزون — ووحيدًا بين
+     * المعلَّم المعروض. فكرتان معروضان لا يُختار أحدُهما: لا كرتَ حتّى
+     * يُصلَح (`settle` تردّ بندَه بسببه).
      */
     public static function is(int $businessId, ?Product $product): bool
     {
-        return self::named($businessId, $product)
+        return self::marked($businessId, $product)
             && (bool) $product->active
             && (bool) $product->published
             && ! $product->tracksStock()
-            && Product::where('business_id', $businessId)->where('name', GiftCard::PRODUCT_NAME)
+            && Product::where('business_id', $businessId)->where('is_gift_card', true)
                 ->where('active', true)->where('published', true)->count() === 1;
     }
 
     /**
      * ما يُحفظ من «المنتجات» لصنفٍ هو الكرتُ أو يصير إليه — في متاجر القائمة.
      *
-     * - الاسمُ العربيّ ثابت: صنفٌ اسمُه «كرت هدية» لا يُسمّى غيرَه.
-     * - ولا صنفان بهذا الاسم في المتجر الواحد: الكرتُ يُعدَّل لا يُكرَّر.
-     * - وخارجَ دفتر المخزون دائمًا: في الإضافة يُفرض (`tracks_stock=false`
+     * - الكرتُ المعلَّمُ يبقى معلَّمًا، واسماه يُغيَّران بحرّيّة.
+     * - وصنفٌ غيرُ معلَّمٍ يُحفظ بالاسم «كرت هدية» حرفًا بحرف يصير الكرت —
+     *   إن لم يكن في المتجر كرتٌ معلَّم. وإن كان: يُردّ، فالكرتُ يُعدَّل لا
+     *   يُكرَّر. ولا علامةَ تُرسل من الشاشة: لا مفتاحَ يجعل صنفًا ما كرتًا.
+     * - والكرتُ خارجَ دفتر المخزون دائمًا: في الإضافة يُفرض (`tracks_stock=false`
      *   وكميّةٌ صفر) ولو أُرسل غيرُه، وفي التعديل يُردّ ربطُه بالمخزون.
      *
-     * وما سوى ذلك يُحفظ كما أُرسل: الثمنُ والصورةُ والوصفُ والنشرُ والاسمُ
-     * الإنجليزيّ. ومتجرٌ خارج القائمة لا يُسأل عن شيء.
+     * وما سوى ذلك يُحفظ كما أُرسل. ومتجرٌ خارج القائمة لا يُسأل عن شيء،
+     * ولا يُعلَّم له صنف.
      *
      * @param  array<string, mixed>  $data  ما تحقّق منه المتحكّم
      * @param  Product|null  $existing  الصنفُ قبل التعديل — `null` في الإضافة
@@ -89,25 +95,25 @@ final class GiftCardProduct
      */
     public static function forSave(int $businessId, array $data, ?Product $existing): array
     {
+        unset($data['is_gift_card']);
+
         if (! self::on($businessId)) {
             return $data;
         }
 
-        $name = (string) ($data['name'] ?? $existing?->name ?? '');
+        if (! self::marked($businessId, $existing)) {
+            if ((string) ($data['name'] ?? $existing?->name ?? '') !== GiftCard::PRODUCT_NAME) {
+                return $data;
+            }
 
-        if (self::named($businessId, $existing) && $name !== GiftCard::PRODUCT_NAME) {
-            throw ValidationException::withMessages(['name' => __('اسم منتج كرت الهدية ثابت ولا يمكن تغييره.')]);
-        }
+            $twin = Product::where('business_id', $businessId)->where('is_gift_card', true)
+                ->when($existing, fn ($q) => $q->whereKeyNot($existing->id))->exists();
 
-        if ($name !== GiftCard::PRODUCT_NAME) {
-            return $data;
-        }
+            if ($twin) {
+                throw ValidationException::withMessages(['name' => __('كرت الهدية موجود في منتجاتك — عدّله بدل إضافة كرت آخر.')]);
+            }
 
-        $twin = Product::where('business_id', $businessId)->where('name', GiftCard::PRODUCT_NAME)
-            ->when($existing, fn ($q) => $q->whereKeyNot($existing->id))->exists();
-
-        if ($twin) {
-            throw ValidationException::withMessages(['name' => __('كرت الهدية موجود في منتجاتك — عدّله بدل إضافة كرت آخر.')]);
+            $data['is_gift_card'] = true;
         }
 
         if ($existing === null) {
@@ -144,10 +150,10 @@ final class GiftCardProduct
         foreach ($lines as $i => $l) {
             if (! self::is($businessId, $l['product'] ?? null)) {
                 /*
-                 * وصنفٌ باسم الكرت ليس كرتًا (مرتبطٌ بالمخزون، أو له توأمٌ
+                 * وصنفٌ معلَّمٌ ليس كرتًا (مرتبطٌ بالمخزون، أو له توأمٌ
                  * معروض) لا يُباع صنفًا عاديًّا بلا نصّ — يُردّ حتّى يُصلَح.
                  */
-                if (self::named($businessId, $l['product'] ?? null)) {
+                if (self::marked($businessId, $l['product'] ?? null)) {
                     throw ValidationException::withMessages(['items' => __('كرت الهدية غير متاح الآن.')]);
                 }
 

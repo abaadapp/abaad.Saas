@@ -143,6 +143,8 @@ class MarketingSettings
             'store_delivery_areas' => '',
             'store_delivery_slots' => '',
             'store_hours' => '',
+            // وساعاتُ العمل بالإنجليزيّة — للصفحة الإنجليزيّة وحدها، وفارغُها لا يُرسم
+            'store_hours_en' => '',
             'store_delivery_note' => '',
 
             /*
@@ -231,6 +233,8 @@ class MarketingSettings
              * الواجهةَ نفسَها يُذيّل صفحتَه بوصفِ محلٍّ ليس هو.
              */
             'store_tagline' => '',
+            // وسطرُه بالإنجليزيّة — للصفحة الإنجليزيّة وحدها، ولا يقع على العربيّ
+            'store_tagline_en' => '',
 
             /*
              * ═══ ورأسُ متجر RIBBON — شريطُ إعلانٍ واختصاراتُ فئات ═══

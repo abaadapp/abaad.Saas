@@ -214,6 +214,7 @@ class MarketingController extends Controller
             'store_delivery_areas' => ['nullable', 'string', 'max:1000'],
             'store_delivery_slots' => ['nullable', 'string', 'max:400'],
             'store_hours' => ['nullable', 'string', 'max:120'],
+            'store_hours_en' => ['nullable', 'string', 'max:120'],
             'store_delivery_note' => ['nullable', 'string', 'max:200'],
             /*
              * وتنبيهُ الصورة — سطرٌ لا فقرة.
@@ -279,6 +280,7 @@ class MarketingController extends Controller
             'store_block_href' => ['nullable', 'string', 'max:2048', new SafeLink],
             'store_banner_image' => ['nullable', 'string', 'max:2048', new SafeLink],
             'store_tagline' => ['nullable', 'string', 'max:60'],
+            'store_tagline_en' => ['nullable', 'string', 'max:60'],
 
             /*
              * ورأسُ المتجر (انظر `Store\StoreHeader`): سطرٌ لكلّ لغة، ومحاذاةٌ

@@ -27,6 +27,27 @@ const COLORS = ['#2a78d6', '#eb6834', '#1baf7a'];
 
 const PAD = { top: 14, bottom: 26, gutter: 64, edge: 10 };
 
+/**
+ * أيُّ التسميات تُكتب على المحور — والفاصلُ بينها لا يقلّ عن `every`.
+ *
+ * كانت كلُّ `every`-ـيّةٍ ومعها الأخيرةُ دائمًا: فتقع الأخيرةُ أحيانًا بجوار
+ * سابقتها بنقطةٍ واحدة فتركبها. فالأخيرةُ تحلّ محلَّ سابقتها إن ضاق ما بينهما.
+ * والترتيبُ ترتيبُ الخادم — لا يُعكس شيء.
+ */
+export function axisIndexes(count: number, every: number): number[] {
+    if (count <= 0) return [];
+    const shown: number[] = [];
+    for (let i = 0; i < count; i += every) shown.push(i);
+    const last = count - 1;
+    const prev = shown[shown.length - 1];
+    if (prev !== last) {
+        if (last - prev >= every || shown.length === 1) shown.push(last);
+        else shown[shown.length - 1] = last;
+    }
+
+    return shown;
+}
+
 /** سقفٌ «مستدير» للمحور — ١٢٣٤ يُقرأ ١٥٠٠ لا ١٢٣٤ */
 function nice(v: number): number {
     if (v <= 0) return 0;
@@ -43,6 +64,13 @@ function nice(v: number): number {
  * تحته يُقرأ تحته.
  *
  * والزمنُ يجري باتّجاه القراءة كما في `AreaChart`: من اليمين في العربيّة.
+ *
+ * ═══ والنصوصُ HTML داخل foreignObject — لا <text> ═══
+ *
+ * WebKit (Safari وآيباد) لا يُشكّل العربيّة ولا يرتّبها داخل <text>: أسماءُ
+ * الأيّام والأشهر تخرج حروفًا مفكّكةً معكوسة، و«ر.ع» تنقلب حول الرقم. والنصُّ
+ * في DOM سليم، فلا يراه إلّا من فتح الصفحة على Safari. وهو حلُّ `AreaChart`
+ * نفسُه: الخطوطُ SVG، والنصُّ لمحرّك النصّ.
  */
 export default function MultiLineChart({ labels, series, format = (v) => String(v), height = 280, className }: Props) {
     const t = useTranslate();
@@ -70,6 +98,12 @@ export default function MultiLineChart({ labels, series, format = (v) => String(
 
     // تسمياتٌ متباعدة على المحور: واحدٌ وثلاثون يومًا لا تتّسع لواحدٍ وثلاثين اسمًا
     const every = Math.max(1, Math.ceil(labels.length / 8));
+    const shown = axisIndexes(labels.length, every);
+    /*
+     * حصّةُ التسمية: ما بين نقطتها والتسمية التالية — لا حصّةُ نقطةٍ واحدة.
+     * فلا تمتدّ واحدةٌ على جارتها مهما طال الاسم، و`truncate` يقصّ ما يفيض.
+     */
+    const labelW = labels.length > 1 ? Math.min(geo.slot * every, innerW) : innerW;
 
     return (
         <div className={cn('w-full', className)} data-testid="profit-chart">
@@ -93,14 +127,25 @@ export default function MultiLineChart({ labels, series, format = (v) => String(
                     {geo.ticks.map((v) => (
                         <g key={v}>
                             <line x1={plotStart} x2={plotEnd} y1={geo.y(v)} y2={geo.y(v)} stroke="#eeeeee" strokeWidth={1} />
-                            <text
-                                x={rtl ? plotEnd + 6 : plotStart - 6}
-                                y={geo.y(v) + 4}
-                                textAnchor={rtl ? 'start' : 'end'}
-                                className="fill-[#9ca3af] text-[10px]"
+                            {/*
+                                الرقمُ وعملتُه LTR في الصفحة العربيّة أيضًا — «١٬٥٠٠ ر.ع» لا
+                                «ر.ع ١٬٥٠٠» مقلوبةً. والحصّةُ في جهة البداية: يمينًا في العربيّة.
+                            */}
+                            <foreignObject
+                                x={rtl ? plotEnd + 6 : 0}
+                                y={geo.y(v) - 7}
+                                width={PAD.gutter - 6}
+                                height={14}
+                                className="pointer-events-none"
+                                data-axis="y"
                             >
-                                {format(v)}
-                            </text>
+                                <div
+                                    dir="ltr"
+                                    className={cn('truncate text-[10px] leading-[14px] text-[#9ca3af]', rtl ? 'text-start' : 'text-end')}
+                                >
+                                    {format(v)}
+                                </div>
+                            </foreignObject>
                         </g>
                     ))}
 
@@ -128,13 +173,41 @@ export default function MultiLineChart({ labels, series, format = (v) => String(
                             <circle key={s.key} cx={geo.x(hover)} cy={geo.y(s.data[hover] ?? 0)} r={4} fill={COLORS[si]} stroke="#ffffff" strokeWidth={2} />
                         ))}
 
-                    {labels.map((label, i) =>
-                        i % every === 0 || i === labels.length - 1 ? (
-                            <text key={i} x={geo.x(i)} y={height - 6} textAnchor="middle" className="fill-[#9ca3af] text-[10px]">
-                                {label}
-                            </text>
-                        ) : null,
-                    )}
+                    {shown.map((i) => {
+                        /*
+                         * والتسميةُ داخل الإطار: حصّةُ الأولى والأخيرة تُزاح إلى الداخل
+                         * ويُحاذي نصُّها طرفَها — كما في `AreaChart` — فلا يُقصّ نصفُ
+                         * الاسم ولا يركب جارتَه. و`dir="auto"`: الاسمُ العربيّ يُقرأ من
+                         * اليمين والإنجليزيّ من اليسار، والأرقامُ في مكانها منه.
+                         */
+                        const raw = geo.x(i) - labelW / 2;
+                        const x = Math.min(Math.max(raw, 0), width - labelW);
+                        const align = x > raw ? 'text-left' : x < raw ? 'text-right' : 'text-center';
+
+                        return (
+                            <foreignObject
+                                key={i}
+                                x={x}
+                                y={height - 18}
+                                width={labelW}
+                                height={14}
+                                className="pointer-events-none"
+                                data-axis="x"
+                                data-index={i}
+                            >
+                                <div
+                                    dir="auto"
+                                    className={cn(
+                                        'truncate px-0.5 text-[10px] leading-[14px]',
+                                        align,
+                                        hover === i ? 'font-bold text-[#374151]' : 'text-[#9ca3af]',
+                                    )}
+                                >
+                                    {labels[i]}
+                                </div>
+                            </foreignObject>
+                        );
+                    })}
 
                     {/* مساحاتُ اللمس أعرضُ من الخطّ — عمودٌ كاملٌ لكلّ نقطة */}
                     {labels.map((_, i) => (

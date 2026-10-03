@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Support\MarketingSettings;
+use App\Support\Store\GiftCard;
 use App\Support\Store\RibbonUpsells;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -421,6 +422,67 @@ class TheRibbonProductPageOffersAddOnsBeforeTheCartTest extends TestCase
 
         $this->assertSame([30.0, 1.5, 4.0], array_map(fn ($l) => (float) $l['price'] * $l['qty'], $q['lines']));
         $this->assertSame(35.5, (float) $q['subtotal']);
+    }
+
+    /* ═══════════ وكرتُ الهدية إضافةً ═══════════ */
+
+    /** كرتُ الهدية في قسم الإضافات — صنفٌ بلا مخزون، ومتجرُه في قائمة الكرت */
+    private function giftCardAddOn(): int
+    {
+        config(['storefront.ribbon_gift_card_product_businesses' => [$this->shop->id]]);
+
+        return $this->product($this->shop, $this->cat['addons'], GiftCard::PRODUCT_NAME, [
+            'name_en' => 'Gift card', 'price' => 1.5, 'cost' => 0, 'quantity' => 0, 'tracks_stock' => false,
+        ]);
+    }
+
+    public function test_the_gift_card_add_on_opens_its_own_message_box_and_no_other_does(): void
+    {
+        $card = $this->giftCardAddOn();
+
+        $res = $this->page($this->p['main']);
+        $ups = collect($res->viewData('upsells'))->keyBy('id');
+
+        $this->assertTrue($ups[$card]['gift_card'], 'الكرتُ إضافةً لا يُعرف كرتًا');
+        $this->assertFalse($ups[$this->p['balloon']]['gift_card']);
+        $this->assertFalse($ups[$this->p['choc']]['gift_card']);
+
+        $html = $res->getContent();
+        $this->assertSame(1, preg_match_all('/<div class="rb-up"[^>]*data-gift-card/', $html), 'خانةُ النصّ لبطاقة الكرت وحدها');
+        $this->assertSame(1, substr_count($html, 'data-testid="rb-upsell-card-note"'));
+        $this->assertMatchesRegularExpression('/data-rb-up="'.$card.'"[^>]*data-gift-card/', $html);
+        // مطويّةٌ حتّى يُختار الكرت — والتسميةُ تسميةُ صفحة الكرت نفسِها
+        $this->assertMatchesRegularExpression('/data-rb-up-note-box hidden/', $html);
+        $this->assertStringContainsString('رسالة كرت الهدية', $html);
+        $this->assertStringNotContainsString('data-testid="rb-card-note"', $html, 'ولا خانةَ للصنف الرئيسيّ');
+    }
+
+    public function test_the_card_message_rides_on_the_card_line_only(): void
+    {
+        $card = $this->giftCardAddOn();
+        $small = ProductVariant::where('product_id', $this->p['main'])->where('name', 'صغير')->value('id');
+
+        // كما يركّبها `RBUpsells`: الصنفُ بلا نصّ، والكرتُ بنصّه — بصيغة صفحة الكرت نفسِها
+        $q = $this->postJson('/s/saud/quote', ['items' => [
+            ['id' => $this->p['main'], 'variant_id' => $small, 'qty' => 1, 'note' => 'لا يُكتب على الباقة'],
+            ['id' => $card, 'variant_id' => null, 'qty' => 1, 'note' => '  كل عام وأنت بخير  '],
+        ], 'fulfil' => 'pickup'])->assertOk()->json();
+
+        $this->assertSame(
+            [[false, null], [true, 'كل عام وأنت بخير']],
+            array_map(fn ($l) => [(bool) $l['gift_card'], $l['note']], $q['lines']),
+            'النصُّ انتقل إلى غير الكرت — أو لم يصل الكرت',
+        );
+    }
+
+    public function test_the_card_add_on_without_its_message_is_refused_like_on_its_own_page(): void
+    {
+        $card = $this->giftCardAddOn();
+
+        $this->postJson('/s/saud/quote', ['items' => [
+            ['id' => $this->p['main'], 'qty' => 1],
+            ['id' => $card, 'qty' => 1],
+        ]])->assertStatus(422);
     }
 
     public function test_an_add_on_from_another_shop_is_refused_at_the_quote(): void

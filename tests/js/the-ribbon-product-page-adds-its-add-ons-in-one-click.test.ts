@@ -19,19 +19,19 @@ import { resolve } from 'node:path';
  */
 
 type Line = { id: number; variant_id: number | null; qty: number };
-type Pick = { id: number; needs: boolean; variant: number | null };
+type Pick = { id: number; needs: boolean; variant: number | null; gift?: boolean; note?: string };
 type Main = { id: number; variant_id: number | null; qty: number };
 
 type Api = {
     mount: (box: Element, opts: {
         button: HTMLButtonElement;
         main: () => Main;
-        add: (id: number, variantId: number | null, qty: number) => void;
+        add: (id: number, variantId: number | null, qty: number, note?: string) => void;
         done: () => void;
         missing: (cards: HTMLElement[]) => void;
         wait?: number;
     }) => void;
-    compose: (main: Main, picks: Pick[]) => { ok: boolean; lines: Line[]; missing: Pick[] };
+    compose: (main: Main, picks: Pick[]) => { ok: boolean; lines: (Line & { note?: string })[]; missing: Pick[] };
 };
 
 const LIB = resolve(__dirname, '../../resources/js/store/ribbon-upsells.js');
@@ -231,4 +231,130 @@ describe('القالبُ يرسم ما تبحث عنه المكتبة', () => {
             expect(view).toContain(attr);
         },
     );
+});
+
+/*
+ * ═══ كرتُ الهدية إضافةً ═══
+ *
+ * بطاقتُه (`data-gift-card`) تفتح خانةَ نصّه حين تُختار، والنصُّ يدخل مع بنده
+ * وحده — الوسيطُ الرابع لـ`RB.add` كما في صفحة الكرت. ولا يدخل بلا نصّ.
+ */
+const GIFT = 14;
+
+function giftPage(main: Main = { id: 1, variant_id: 5, qty: 2 }) {
+    document.body.innerHTML = `
+        <div data-rb-upsells>
+            <div class="rb-up" data-rb-up="${BALLOON}">
+                <button type="button" data-rb-up-pick aria-pressed="false">بالون</button>
+            </div>
+            <div class="rb-up" data-rb-up="${GIFT}" data-gift-card>
+                <button type="button" data-rb-up-pick aria-pressed="false">كرت هدية</button>
+                <div data-rb-up-note-box hidden>
+                    <textarea data-rb-up-note></textarea>
+                    <p data-rb-up-note-err hidden>اكتب رسالة كرت الهدية</p>
+                </div>
+            </div>
+        </div>
+        <button type="button" data-rb-add>أضف إلى السلة</button>`;
+
+    const box = document.querySelector('[data-rb-upsells]')!;
+    const button = document.querySelector<HTMLButtonElement>('[data-rb-add]')!;
+    const add = vi.fn();
+    const done = vi.fn();
+    const missing = vi.fn();
+    api().mount(box, { button, main: () => main, add, done, missing, wait: 0 });
+
+    const card = (id: number) => box.querySelector<HTMLElement>(`[data-rb-up="${id}"]`)!;
+    const text = () => card(GIFT).querySelector<HTMLTextAreaElement>('[data-rb-up-note]')!;
+
+    return {
+        add, done, missing, card, text,
+        pick: (id: number) => card(id).querySelector<HTMLButtonElement>('[data-rb-up-pick]')!.click(),
+        submit: () => button.click(),
+        write: (v: string) => {
+            text().value = v;
+            text().dispatchEvent(new Event('input', { bubbles: true }));
+        },
+        noteBox: () => card(GIFT).querySelector<HTMLElement>('[data-rb-up-note-box]')!,
+        noteErr: () => card(GIFT).querySelector<HTMLElement>('[data-rb-up-note-err]')!,
+    };
+}
+
+describe('كرتُ الهدية في «أضف مع طلبك»', () => {
+    it('خانةُ النصّ مطويّةٌ حتّى يُختار الكرت', () => {
+        const p = giftPage();
+        expect(p.noteBox().hidden).toBe(true);
+
+        p.pick(GIFT);
+        expect(p.noteBox().hidden).toBe(false);
+    });
+
+    it('يدخل بنصّه على بنده وحده — لا على الصنف ولا على إضافةٍ أخرى', () => {
+        const p = giftPage();
+        p.pick(BALLOON);
+        p.pick(GIFT);
+        p.write('  كل عام وأنت بخير  ');
+        p.submit();
+
+        expect(p.add.mock.calls).toEqual([
+            [1, 5, 2],
+            [BALLOON, null, 1],
+            [GIFT, null, 1, 'كل عام وأنت بخير'],
+        ]);
+    });
+
+    it('وبلا نصٍّ لا يدخل شيء — ويُقال عند البطاقة', () => {
+        const p = giftPage();
+        p.pick(GIFT);
+        p.write('   ');
+        p.submit();
+
+        expect(p.add).not.toHaveBeenCalled();
+        expect(p.noteErr().hidden).toBe(false);
+        expect(p.missing).toHaveBeenCalledWith([p.card(GIFT)]);
+
+        // ومن بدأ يكتب لا يبقى تحته التنبيه
+        p.write('مبروك');
+        expect(p.noteErr().hidden).toBe(true);
+    });
+
+    it('ومن ترك الكرتَ تُطوى خانتُه ويُمحى نصُّه — ولا يدخل', () => {
+        const p = giftPage();
+        p.pick(GIFT);
+        p.write('رسالة');
+        p.submit();
+        p.add.mockClear();
+
+        // ما دخل السلّة تُرك اختيارُه: الخانةُ مطويّةٌ فارغة
+        expect(p.noteBox().hidden).toBe(true);
+        expect(p.text().value).toBe('');
+
+        p.pick(GIFT);
+        p.write('أخرى');
+        p.pick(GIFT);
+        expect(p.noteBox().hidden).toBe(true);
+        expect(p.text().value).toBe('');
+        expect(p.noteErr().hidden).toBe(true);
+    });
+
+    it('والبنودُ: النصُّ مفتاحٌ في بند الكرت وحده', () => {
+        const r = api().compose({ id: 1, variant_id: null, qty: 1 }, [
+            { id: BALLOON, needs: false, variant: null, gift: false, note: '' },
+            { id: GIFT, needs: false, variant: null, gift: true, note: 'مبروك' },
+        ]);
+
+        expect(r.lines).toEqual([
+            { id: 1, variant_id: null, qty: 1 },
+            { id: BALLOON, variant_id: null, qty: 1 },
+            { id: GIFT, variant_id: null, qty: 1, note: 'مبروك' },
+        ]);
+    });
+
+    it('والقالبُ يرسم بطاقةَ الكرت بخانتها', () => {
+        const view = readFileSync(VIEW, 'utf8');
+
+        for (const attr of ['data-gift-card', 'data-rb-up-note-box hidden', 'data-rb-up-note ', 'data-rb-up-note-err hidden', "$t['giftCardMessage']"]) {
+            expect(view).toContain(attr);
+        }
+    });
 });

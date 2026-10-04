@@ -54,10 +54,16 @@ class OrderNotice
         return $event !== null && isset(self::LINES[$event]) ? $event : null;
     }
 
-    /** رقمُ واتساب لهذا الطلب — رقمُ العميل، وإلّا رقمُ المستلِم */
+    /**
+     * رقمُ واتساب لهذا الطلب — رقمُ العميل، وإلّا رقمُ المستلِم.
+     *
+     * إلّا في طلب هديّة: المستلِمُ فيه غيرُ المشتري، ورسالةُ المشتري —
+     * فاتورتُه وثمنُها وحالُ طلبه — تُفسد عليه هديّتَه وتكشف مُهديًا ربّما
+     * طلب ألّا يُذكر. فلا رقمَ حتّى يُضاف رقمُ العميل.
+     */
     public static function phone(Order $order): ?string
     {
-        return WhatsAppPhone::normalize($order->customer?->phone ?: $order->recipient_phone);
+        return WhatsAppPhone::normalize($order->customer?->phone ?: ($order->is_gift ? null : $order->recipient_phone));
     }
 
     /**

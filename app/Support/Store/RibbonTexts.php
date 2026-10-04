@@ -66,6 +66,11 @@ final class RibbonTexts
         'photos' => 'صور المنتج', 'showPhoto' => 'اعرض الصورة :n من :total',
         'giftCardMessage' => 'رسالة كرت الهدية', 'giftCardNeeded' => 'اكتب رسالة كرت الهدية قبل إضافته إلى السلة.',
         'cartCardMessage' => 'رسالة الكرت:',
+        // ميزةُ الإهداء — انظر `GiftOrders`
+        'giftOrder' => 'هذا الطلب هدية', 'occasionOptional' => 'المناسبة — اختياري', 'enterOccasion' => 'اكتب المناسبة',
+        'hideSender' => 'لا تذكر اسمي للمستلم', 'recipientLocation' => 'طريقة تحديد موقع المستلم',
+        'locProvided' => 'سأدخل الموقع الآن', 'locContact' => 'تواصلوا مع المستلم للحصول على الموقع',
+        'locContactNote' => 'سنتواصل مع المستلم على رقمه لنعرف موقع التوصيل.',
         // زرُّ واتساب العائم — انظر `storefront.ribbon_floating_whatsapp_businesses`
         'waFloat' => 'تواصل معنا عبر واتساب', 'waFloatText' => 'السلام عليكم، أحتاج مساعدة بخصوص طلبي من متجر RIBBON.',
     ];
@@ -111,6 +116,10 @@ final class RibbonTexts
         'photos' => 'Product photos', 'showPhoto' => 'Show photo :n of :total',
         'giftCardMessage' => 'Gift card message', 'giftCardNeeded' => 'Write the gift card message before adding it to the cart.',
         'cartCardMessage' => 'Card message:',
+        'giftOrder' => 'This order is a gift', 'occasionOptional' => 'Occasion — optional', 'enterOccasion' => 'Enter the occasion',
+        'hideSender' => 'Do not reveal my name to the recipient', 'recipientLocation' => 'Recipient location',
+        'locProvided' => "I'll provide the location now", 'locContact' => 'Contact the recipient for the location',
+        'locContactNote' => "We'll contact the recipient on their number to get the delivery location.",
         'waFloat' => 'Chat with us on WhatsApp', 'waFloatText' => 'Hello, I need help with my order from RIBBON.',
     ];
 

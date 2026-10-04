@@ -37,10 +37,14 @@ export interface ThemeSettingsData {
     store_field_recipient: string;
     store_field_promo: string;
     store_image_note: string;
+    store_image_note_en: string;
 
     /* كرت الهدية */
     store_gift_card: boolean;
     store_gift_card_price: string;
+
+    /* ميزة الإهداء — انظر Store\GiftOrders */
+    store_gift_checkout: boolean;
 
     /* الظهور في البحث */
     store_seo_title: string;
@@ -108,9 +112,11 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
         store_field_recipient: f.recipient ?? 'optional',
         store_field_promo: f.promo ?? 'optional',
         store_image_note: v.store_image_note ?? '',
+        store_image_note_en: v.store_image_note_en ?? '',
 
         store_gift_card: (v.store_gift_card ?? '0') === '1',
         store_gift_card_price: v.store_gift_card_price ?? '',
+        store_gift_checkout: (v.store_gift_checkout ?? '0') === '1',
 
         store_seo_title: s.seo.title,
         store_seo_desc: s.seo.desc,
@@ -138,8 +144,8 @@ export const SCREEN_KEYS = {
         'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
         'store_delivery_slots', 'store_delivery_note', 'store_max_days', 'store_fulfil',
         'store_field_area', 'store_field_address', 'store_field_date', 'store_field_slot',
-        'store_field_recipient', 'store_field_promo', 'store_image_note',
-        'store_gift_card', 'store_gift_card_price',
+        'store_field_recipient', 'store_field_promo', 'store_image_note', 'store_image_note_en',
+        'store_gift_card', 'store_gift_card_price', 'store_gift_checkout',
     ],
     seo: ['store_seo_title', 'store_seo_desc', 'store_seo_index'],
 } as const satisfies Record<string, readonly (keyof ThemeSettingsData)[]>;

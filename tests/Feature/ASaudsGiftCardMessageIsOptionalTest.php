@@ -17,6 +17,7 @@ use App\Support\Store\GiftCard;
 use App\Support\Store\GiftCardProduct;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -201,11 +202,23 @@ class ASaudsGiftCardMessageIsOptionalTest extends TestCase
         $this->assertSame("مبروك\n\nكل عام وأنت بخير", $o->card_message);
     }
 
+    /**
+     * والرسالةُ بطولها المسموح تُحفظ كلُّها على البند.
+     *
+     * `order_items.note` كان 255 والحدُّ 500: تمرّ على SQLite وتسقط على
+     * PostgreSQL بـ«تعذّر فتحُ صفحة الدفع». فيُسأل عن المحفوظ لا عن الردّ وحده.
+     */
     public function test_a_written_message_still_has_its_limit(): void
     {
-        $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem(str_repeat('a', GiftCardProduct::MAX + 1))]))
+        $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem(str_repeat('ب', GiftCardProduct::MAX + 1))]))
             ->assertStatus(422)->assertJsonValidationErrors('items');
-        $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem(str_repeat('a', GiftCardProduct::MAX))]))->assertOk();
+
+        $full = str_repeat('ب', GiftCardProduct::MAX);
+        $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem($full)]))->assertOk();
+
+        $o = Order::sole();
+        $this->assertSame($full, DB::table('order_items')->where('order_id', $o->id)->value('note'), 'رسالةُ الكرت قُصّت على البند');
+        $this->assertSame($full, $o->card_message);
     }
 
     /** ورسالةٌ على صنفٍ ليس كرتًا تُمحى — لا تلتصق بالورد */

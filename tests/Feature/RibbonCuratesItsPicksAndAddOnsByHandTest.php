@@ -269,7 +269,8 @@ class RibbonCuratesItsPicksAndAddOnsByHandTest extends TestCase
         $this->assertSame($this->cat['bouquets'], (int) Product::find($this->p['rose'])->category_id);
 
         // وإعادةُ تسمية «الاضافات» لا تمسّ القسم
-        DB::table('categories')->whereKey($this->cat['addons'])->update(['name' => 'هدايا صغيرة']);
+        DB::table('categories')->where('id', $this->cat['addons'])->update(['name' => 'هدايا صغيرة']);
+        $this->assertSame('هدايا صغيرة', DB::table('categories')->where('id', $this->cat['addons'])->value('name'), 'لم تُبدَّل التسمية — الحارسُ يحرس لا شيء');
         $this->assertSame([$this->p['choc'], $this->p['rose']], $this->picksShown());
 
         $source = (string) file_get_contents(app_path('Support/Store/RibbonPicks.php'));

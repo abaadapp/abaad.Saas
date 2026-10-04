@@ -498,8 +498,8 @@ class RibbonController extends Controller
             // الاسمان والعنوانُ بالإنجليزيّة — والخادمُ يحرسها (`EnglishCheckout`)
             'englishOnly' => EnglishCheckout::on($bid),
             /*
-             * وميزةُ الإهداء — لمن رفعها من متجره (`GiftOrders`). والمناسباتُ
-             * الثابتةُ بلغة الصفحة؛ والخادمُ يحرس ما يُرسَل.
+             * وميزةُ الإهداء — لمن فتحها له مديرُ المنصّة (`GiftOrders::on`).
+             * والمناسباتُ الثابتةُ بلغة الصفحة؛ والخادمُ يحرس ما يُرسَل.
              */
             'giftOrder' => [
                 'on' => GiftOrders::on($bid),
@@ -608,6 +608,8 @@ class RibbonController extends Controller
              * يقع على الأخرى فتختلط اللغتان.
              */
             'imageNote' => $lang === 'en' ? $s['image_note_en'] : $s['image_note'],
+            // وتنبيهُ نطاق التوصيل بلغة الصفحة — بلا وقوعٍ على الأخرى
+            'deliveryAreaNote' => $lang === 'en' ? $s['area_note_en'] : $s['area_note'],
             'accepts' => WebCheckout::accepts($business),
 
             'analytics' => Seo::tagFor($bid),

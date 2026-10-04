@@ -100,8 +100,8 @@ class MarketingToolsTest extends TestCase
             'store_image_note', 'store_image_note_en',
             // وكرتُ الهدية وثمنُه — يقرؤهما إتمامُ الطلب (Store\GiftCard)
             'store_gift_card', 'store_gift_card_price',
-            // وميزةُ الإهداء — يقرؤها إتمامُ الطلب (Store\GiftOrders)
-            'store_gift_checkout',
+            // وتنبيها نطاق التوصيل — يقرؤهما إتمامُ RIBBON بلغة الصفحة (`WebCheckout::settings`)
+            'store_delivery_area_note', 'store_delivery_area_note_en',
             // وحقولُ إتمام الطلب — تقرؤها الشاشةُ والخادم (Store\CheckoutFields)
             'store_field_area', 'store_field_address', 'store_field_date',
             'store_field_slot', 'store_field_recipient', 'store_field_promo',

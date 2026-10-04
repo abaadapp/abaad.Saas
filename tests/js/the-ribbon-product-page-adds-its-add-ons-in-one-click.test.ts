@@ -251,7 +251,6 @@ function giftPage(main: Main = { id: 1, variant_id: 5, qty: 2 }) {
                 <button type="button" data-rb-up-pick aria-pressed="false">كرت هدية</button>
                 <div data-rb-up-note-box hidden>
                     <textarea data-rb-up-note></textarea>
-                    <p data-rb-up-note-err hidden>اكتب رسالة كرت الهدية</p>
                 </div>
             </div>
         </div>
@@ -276,7 +275,6 @@ function giftPage(main: Main = { id: 1, variant_id: 5, qty: 2 }) {
             text().dispatchEvent(new Event('input', { bubbles: true }));
         },
         noteBox: () => card(GIFT).querySelector<HTMLElement>('[data-rb-up-note-box]')!,
-        noteErr: () => card(GIFT).querySelector<HTMLElement>('[data-rb-up-note-err]')!,
     };
 }
 
@@ -303,19 +301,40 @@ describe('كرتُ الهدية في «أضف مع طلبك»', () => {
         ]);
     });
 
-    it('وبلا نصٍّ لا يدخل شيء — ويُقال عند البطاقة', () => {
+    it('وبلا نصٍّ يدخل الكرتُ كما هو — الرسالةُ اختياريّة ولا تُعدّ نقصًا', () => {
         const p = giftPage();
         p.pick(GIFT);
         p.write('   ');
         p.submit();
 
-        expect(p.add).not.toHaveBeenCalled();
-        expect(p.noteErr().hidden).toBe(false);
-        expect(p.missing).toHaveBeenCalledWith([p.card(GIFT)]);
+        expect(p.missing).not.toHaveBeenCalled();
+        expect(p.add.mock.calls).toEqual([
+            [1, 5, 2],
+            // بلا وسيطٍ رابع: لا `note` فارغٌ يُكتب في السلّة
+            [GIFT, null, 1],
+        ]);
+        expect(p.done).toHaveBeenCalled();
+    });
 
-        // ومن بدأ يكتب لا يبقى تحته التنبيه
-        p.write('مبروك');
-        expect(p.noteErr().hidden).toBe(true);
+    it('والمقاسُ الناقص يمنع وحده — والكرتُ بلا رسالةٍ ليس نقصًا', () => {
+        const r = api().compose({ id: 1, variant_id: null, qty: 1 }, [
+            { id: BALLOON, needs: true, variant: null, gift: false, note: '' },
+            { id: GIFT, needs: false, variant: null, gift: true, note: '' },
+        ]);
+
+        expect(r.ok).toBe(false);
+        expect(r.missing.map((m: { id: number }) => m.id)).toEqual([BALLOON]);
+
+        const ok = api().compose({ id: 1, variant_id: null, qty: 1 }, [
+            { id: BALLOON, needs: true, variant: 9, gift: false, note: '' },
+            { id: GIFT, needs: false, variant: null, gift: true, note: '' },
+        ]);
+        expect(ok.ok).toBe(true);
+        expect(ok.lines).toEqual([
+            { id: 1, variant_id: null, qty: 1 },
+            { id: BALLOON, variant_id: 9, qty: 1 },
+            { id: GIFT, variant_id: null, qty: 1 },
+        ]);
     });
 
     it('ومن ترك الكرتَ تُطوى خانتُه ويُمحى نصُّه — ولا يدخل', () => {
@@ -334,7 +353,6 @@ describe('كرتُ الهدية في «أضف مع طلبك»', () => {
         p.pick(GIFT);
         expect(p.noteBox().hidden).toBe(true);
         expect(p.text().value).toBe('');
-        expect(p.noteErr().hidden).toBe(true);
     });
 
     it('والبنودُ: النصُّ مفتاحٌ في بند الكرت وحده', () => {
@@ -353,8 +371,11 @@ describe('كرتُ الهدية في «أضف مع طلبك»', () => {
     it('والقالبُ يرسم بطاقةَ الكرت بخانتها', () => {
         const view = readFileSync(VIEW, 'utf8');
 
-        for (const attr of ['data-gift-card', 'data-rb-up-note-box hidden', 'data-rb-up-note ', 'data-rb-up-note-err hidden', "$t['giftCardMessage']"]) {
+        for (const attr of ['data-gift-card', 'data-rb-up-note-box hidden', 'data-rb-up-note ', "$t['giftCardMessage']"]) {
             expect(view).toContain(attr);
         }
+        // ولا خطأَ «اكتب الرسالة» تحت الخانة — الرسالةُ اختياريّة
+        expect(view).not.toContain('data-rb-up-note-err');
+        expect(view).not.toContain('giftCardNeeded');
     });
 });

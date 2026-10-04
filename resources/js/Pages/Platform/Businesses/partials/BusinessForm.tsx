@@ -43,6 +43,8 @@ export interface BusinessValues {
      * — ومنها حرّاسٌ قائمة — على ذكر مفتاحٍ لا شأنَ له به.
      */
     boutiques_enabled?: boolean;
+    /** الإهداءُ في المتجر الإلكترونيّ — مثلُ البوتيكات: الغائبُ مغلق */
+    gift_orders_enabled?: boolean;
 }
 
 /* النطاق ومكوّنه في مكانٍ واحد — انظر Components/ui/username-input */
@@ -455,6 +457,25 @@ export default function BusinessForm({
                             <span className="block text-sm text-[#374151]">{t('يُؤوي بوتيكات')}</span>
                             <span className="block text-[12px] text-[#9ca3af]">
                                 {t('تبويب «البوتيكات» في المنتجات: نسبة المتجر وكشف حساب شهري لكل بوتيك')}
+                            </span>
+                        </span>
+                    </label>
+
+                    {/*
+                        والإهداءُ في المتجر الإلكترونيّ مفتاحٌ يُفتح لنشاطٍ بعينه —
+                        لا يفتحه التاجرُ من إعدادات موقعه (`Store\GiftOrders::on`).
+                    */}
+                    <label className="flex cursor-pointer items-start gap-2.5 sm:col-span-2" data-testid="gift-orders-enabled">
+                        <input
+                            type="checkbox"
+                            checked={form.data.gift_orders_enabled ?? false}
+                            onChange={(e) => form.setData('gift_orders_enabled', e.target.checked)}
+                            className="mt-0.5 size-4 rounded border-[#d1d5db] accent-[#111]"
+                        />
+                        <span>
+                            <span className="block text-sm text-[#374151]">{t('الإهداء في المتجر الإلكتروني')}</span>
+                            <span className="block text-[12px] text-[#9ca3af]">
+                                {t('السماح لهذا النشاط باستقبال طلبات هدايا لمستلمين آخرين عبر المتجر الإلكتروني.')}
                             </span>
                         </span>
                     </label>

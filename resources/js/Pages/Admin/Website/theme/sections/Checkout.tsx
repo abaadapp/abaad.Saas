@@ -108,6 +108,39 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                         </Field>
                     </div>
 
+                    {/*
+                        تنبيهُ نطاق التوصيل — سطرٌ في قسم التوصيل في الإتمام، لكلّ
+                        طلبٍ هديّةً كان أو لا. لكلّ لغةٍ نصُّها بلا وقوعٍ على الأخرى،
+                        وإخبارٌ وحده: لا يمسّ قواعد المنطقة والعنوان.
+                    */}
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <Field
+                            label="تنبيه نطاق التوصيل — العربية"
+                            hint="اختياري — فارغًا لا يُعرض تنبيه في الصفحة العربية"
+                            error={form.errors.store_delivery_area_note}
+                        >
+                            <Input
+                                value={form.data.store_delivery_area_note}
+                                onChange={(e) => form.setData('store_delivery_area_note', e.target.value)}
+                                aria-label={t('تنبيه نطاق التوصيل — العربية')}
+                                placeholder={t('التوصيل متاح داخل المناطق المحددة فقط. يرجى اختيار منطقة التوصيل الصحيحة قبل تأكيد الطلب.')}
+                            />
+                        </Field>
+                        <Field
+                            label="Delivery area notice — English"
+                            hint="اختياري — فارغًا لا يُعرض تنبيه في الصفحة الإنجليزية"
+                            error={form.errors.store_delivery_area_note_en}
+                        >
+                            <Input
+                                dir="ltr"
+                                value={form.data.store_delivery_area_note_en}
+                                onChange={(e) => form.setData('store_delivery_area_note_en', e.target.value)}
+                                aria-label="Delivery area notice — English"
+                                placeholder="Delivery is available only within the listed service areas. Please select the correct delivery area before confirming your order."
+                            />
+                        </Field>
+                    </div>
+
                     <div className="mt-4">
                         <Field
                             label="طرق الاستلام"

@@ -24,9 +24,9 @@ use Tests\TestCase;
  * ═══ ما يُحرس ═══
  *
  *   - الإتمامُ عنده بلا شيءٍ من الكرت: لا رسالةٌ مجّانيّة ولا كرتٌ مدفوع.
- *   - صفحةُ الكرت تطلب نصَّه، وصفحةُ الصنف العاديّ لا. والكرتُ يُعرف بعلامته
+ *   - صفحةُ الكرت تعرض خانةَ نصّه (اختياريّة)، وصفحةُ الصنف العاديّ لا. والكرتُ يُعرف بعلامته
  *     (`is_gift_card`) لا باسمه: يُغيَّر اسمُه ويبقى كرتًا.
- *   - الخادمُ يردّ الكرتَ بلا نصّ في التسعيرة والإتمام، ويُسعّره من الصنف.
+ *   - الخادمُ يقبل الكرتَ بلا نصّ في التسعيرة والإتمام، ويُسعّره من الصنف.
  *   - النصُّ في بند الطلب وفي `orders.card_message`، وكرتان بنصّين بندان.
  *   - صنفٌ بالاسم نفسِه في متجرٍ آخر ليس كرتًا هنا.
  *   - الاسمان والعنوانُ بالإنجليزيّة عنده وحده.
@@ -153,20 +153,24 @@ class ASaudsGiftCardIsAProductWithItsMessageTest extends TestCase
 
     /* ═══════════ الخادمُ يحرس ═══════════ */
 
-    public function test_a_forged_card_without_its_message_is_refused_on_quote_and_checkout(): void
+    /**
+     * كرتٌ بلا رسالةٍ يُقبل — والرسالةُ اختياريّة (`GiftCardProduct::settle`).
+     *
+     * كان يُردّ «اكتب رسالة كرت الهدية». وبقي الثمنُ والبندُ كما هما: لا
+     * يُعفى الكرتُ من ثمنه لأنّه بلا رسالة، ولا تُخترع له رسالة.
+     */
+    public function test_a_card_without_a_message_is_accepted_on_quote_and_checkout(): void
     {
         foreach (['', '   ', null] as $note) {
             $this->postJson('/s/ribbon/quote', ['items' => [$this->cardItem((string) $note)]])
-                ->assertStatus(422)
-                ->assertJsonPath('errors.items.0', 'اكتب رسالة كرت الهدية قبل إضافته إلى الطلب.');
-
-            $this->postJson('/s/ribbon/checkout', $this->order([$this->cardItem((string) $note)]))
-                ->assertStatus(422)
-                ->assertJsonPath('errors.items.0', 'اكتب رسالة كرت الهدية قبل إضافته إلى الطلب.');
+                ->assertOk()->assertJsonPath('lines.0.gift_card', true)->assertJsonPath('lines.0.note', null);
         }
 
-        $this->postJson('/s/ribbon/checkout', $this->order([['id' => $this->card->id, 'qty' => 1]]))->assertStatus(422);
-        $this->assertSame(0, Order::count());
+        $this->postJson('/s/ribbon/checkout', $this->order([['id' => $this->card->id, 'qty' => 1]]))->assertOk();
+        $o = Order::sole();
+        $this->assertNull($o->card_message);
+        $this->assertEquals(1.5, (float) $o->items()->sole()->price);
+        $this->assertNull($o->items()->sole()->note);
     }
 
     public function test_a_message_longer_than_the_card_is_refused_not_cut(): void

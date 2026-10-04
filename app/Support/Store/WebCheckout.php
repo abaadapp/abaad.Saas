@@ -85,7 +85,7 @@ final class WebCheckout
     /**
      * إعداداتُ التوصيل والدفع كما ضبطها صاحبُ المحلّ.
      *
-     * @return array{fee: float, free_over: ?float, areas: list<string>, slots: list<string>, hours: string, note: string, image_note: string, cod: bool, transfer: bool, bank: string, allow_orders: bool}
+     * @return array{fee: float, free_over: ?float, areas: list<string>, slots: list<string>, hours: string, note: string, image_note: string, image_note_en: string, area_note: string, area_note_en: string, cod: bool, transfer: bool, bank: string, allow_orders: bool}
      */
     public static function settings(int $businessId): array
     {
@@ -103,6 +103,9 @@ final class WebCheckout
             'image_note' => trim((string) $site['store_image_note']),
             // وبالإنجليزيّة للصفحة الإنجليزيّة — ولا يقع أحدُهما على الآخر
             'image_note_en' => trim((string) ($site['store_image_note_en'] ?? '')),
+            // وتنبيهُ نطاق التوصيل — لكلّ لغةٍ نصُّها، ولا يمسّ قواعدَ المنطقة
+            'area_note' => trim((string) ($site['store_delivery_area_note'] ?? '')),
+            'area_note_en' => trim((string) ($site['store_delivery_area_note_en'] ?? '')),
             'cod' => ($site['store_pay_cod'] ?? '1') === '1',
             'transfer' => ($site['store_pay_transfer'] ?? '0') === '1',
             'bank' => trim((string) $site['store_bank']),
@@ -505,10 +508,10 @@ final class WebCheckout
                     ? GiftCardProduct::orderMessage($lines)
                     : ($form['card'] ?? null),
                 /*
-                 * ولا عنوانَ لهديّةٍ يتواصل المتجرُ مع مستلِمها — يبقى فارغًا
-                 * حتّى يُعرف، لا نصًّا يقول «سيُتواصل» يُقرأ عنوانًا.
+                 * والعنوانُ من قسم التوصيل لكلّ طلب — وفي الهديّة هو عنوانُ
+                 * المستلِم. لا عنوانَ ثانٍ ولا طلبَ بلا عنوان (`GiftOrders`).
                  */
-                'delivery_address' => $form['fulfil'] === FlowerOrder::DELIVERY && ! GiftOrders::contactsRecipient($bid, $form)
+                'delivery_address' => $form['fulfil'] === FlowerOrder::DELIVERY
                     ? trim(($form['area'] ?? '').' — '.($form['address'] ?? ''), " —\t")
                     : null,
                 'delivery_notes' => $form['slot'] ?? null,
@@ -921,10 +924,10 @@ final class WebCheckout
              * حالَ النظام قبل الشاشة ويبقى.
              */
             /*
-             * وهديّةٌ يتواصل المتجرُ مع مستلِمها لموقعه لا تُسأل عن عنوان —
-             * المشتري لا يعرفه، وهو ما اختاره (`GiftOrders::CONTACT`).
+             * والهديّةُ كأيّ طلب: لا تُعفى من العنوان ولا من المنطقة. كان
+             * «تواصلوا مع المستلم» يُعفيها — ورُفع للطلبات الجديدة (`GiftOrders`).
              */
-            if (self::text($payload['fulfil'] ?? null) === FlowerOrder::DELIVERY && ! GiftOrders::contactsRecipient($bid, $payload)) {
+            if (self::text($payload['fulfil'] ?? null) === FlowerOrder::DELIVERY) {
                 foreach (['address' => __('اكتب العنوان بالتفصيل.'), 'area' => __('اختر المنطقة.')] as $f => $msg) {
                     if (CheckoutFields::requires($bid, $f) && self::text($payload[$f] ?? '') === '') {
                         $v->errors()->add($f, $msg);

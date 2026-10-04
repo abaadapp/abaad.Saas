@@ -19,7 +19,7 @@ import { resolve } from 'node:path';
 type Item = { id: number; variant_id: number | null; qty: number; note?: string };
 
 type Gallery = { mount: (row: HTMLElement, main: HTMLImageElement) => { pick: (i: number) => void } | null };
-type CardNote = { mount: (text: HTMLTextAreaElement, error: HTMLElement) => { take: () => string | null } };
+type CardNote = { mount: (text: HTMLTextAreaElement) => { take: () => string } };
 type Lines = {
     same: (it: Item, id: number, v: number | null, note?: string | null) => boolean;
     add: (items: Item[], id: number, v: number | null, qty: number, note?: string | null) => Item[];
@@ -83,41 +83,48 @@ describe('معرضُ صفحة الصنف', () => {
     });
 });
 
-describe('نصُّ كرت الهدية على صفحته', () => {
+describe('نصُّ كرت الهدية على صفحته — اختياريّ', () => {
     function page() {
-        document.body.innerHTML = `
-            <textarea data-rb-card-note></textarea>
-            <p data-rb-card-note-err hidden>اكتب رسالة كرت الهدية قبل إضافته إلى السلة.</p>`;
+        document.body.innerHTML = `<textarea data-rb-card-note></textarea>`;
         const text = document.querySelector<HTMLTextAreaElement>('[data-rb-card-note]')!;
-        const error = document.querySelector<HTMLElement>('[data-rb-card-note-err]')!;
         text.scrollIntoView = vi.fn();
-        return { text, error, note: w().RBCardNote.mount(text, error) };
+        return { text, note: w().RBCardNote.mount(text) };
     }
 
-    it('الفارغُ لا يُعطى: يُقال تحت الخانة ويُنقل إليها المؤشّر', () => {
-        const { text, error, note } = page();
+    it('الفارغُ يُعطى فراغًا ولا يمنع شيئًا — لا تنبيهَ ولا نقلَ مؤشّر', () => {
+        const { text, note } = page();
         text.value = '   ';
 
-        expect(note.take()).toBeNull();
-        expect(error.hidden).toBe(false);
-        expect(document.activeElement).toBe(text);
-        expect(text.scrollIntoView).toHaveBeenCalled();
+        expect(note.take()).toBe('');
+        expect(document.activeElement).not.toBe(text);
+        expect(text.scrollIntoView).not.toHaveBeenCalled();
     });
 
-    it('المكتوبُ يُعطى مقصوصَ الأطراف وتُطوى الرسالة', () => {
-        const { text, error, note } = page();
-        note.take();
+    it('المكتوبُ يُعطى مقصوصَ الأطراف', () => {
+        const { text, note } = page();
         text.value = '  Happy birthday  ';
-        text.dispatchEvent(new Event('input'));
 
-        expect(error.hidden).toBe(true);
         expect(note.take()).toBe('Happy birthday');
     });
 
-    it('صفحةُ الكرت لا تُضيف إلى السلّة بلا نصّ، وتحفظه مع البند', () => {
+    it('صفحةُ الكرت تُضيفه إلى السلّة بنصّه أو بلاه', () => {
         const product = readFileSync(VIEW('product.blade.php'), 'utf8');
-        expect(product).toContain('var text = note.take(); if (text === null) return;');
-        expect(product).toContain('RB.add(id, variant, qty, text);');
+        expect(product).not.toContain('if (text === null) return;');
+        expect(product).toContain('if (text) RB.add(id, variant, qty, text); else RB.add(id, variant, qty);');
+        expect(product).not.toContain('data-rb-card-note-err');
+    });
+
+    it('وكرتان بلا رسالةٍ بندٌ واحد، وكرتٌ برسالةٍ بندٌ آخر', () => {
+        const L = w().RBLines;
+        let items: Item[] = [];
+        items = L.add(items, 7, null, 1);
+        items = L.add(items, 7, null, 1);
+        items = L.add(items, 7, null, 1, 'مبروك');
+
+        expect(items).toEqual([
+            { id: 7, variant_id: null, qty: 2 },
+            { id: 7, variant_id: null, qty: 1, note: 'مبروك' },
+        ]);
     });
 });
 

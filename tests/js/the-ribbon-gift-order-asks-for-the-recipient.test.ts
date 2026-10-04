@@ -6,10 +6,11 @@ import { resolve } from 'node:path';
  *
  * ═══ ما يُحرس ═══
  *
- *   - الخانةُ تفتح المستلِمَ والمناسبةَ وإخفاءَ الاسم وطريقةَ الموقع، وطيُّها
- *     يمحو المستلِم المكتوب ولا يُرسل غير `is_gift: false`.
+ *   - الخانةُ تفتح المستلِمَ والمناسبةَ وإخفاءَ الاسم، وطيُّها يمحو المستلِم
+ *     المكتوب ولا يُرسل غير `is_gift: false`.
  *   - «أخرى» وحدها تفتح نصَّ المناسبة.
- *   - «تواصلوا مع المستلم» تُعلَم للصفحة (`contacts`) فتُخفي العنوان — للتوصيل وحده.
+ *   - ولا طريقةَ موقعٍ تُختار ولا يُخفى العنوان: الهديّةُ تُوصَّل بقسم التوصيل
+ *     نفسِه، وسطرٌ يقول ذلك للتوصيل وحده — ولا `recipient_location` يُرسَل.
  *
  * والمكتبةُ تُضمَّن في `store/ribbon/checkout.blade.php` كما هي، وما يحرسه
  * الخادمُ في `AnOrderMayBeAGiftForSomeoneElseTest`.
@@ -17,10 +18,9 @@ import { resolve } from 'node:path';
 
 type Api = {
     mount: (form: HTMLFormElement, toggle: HTMLInputElement) => {
-        contacts: (fulfil: string) => boolean;
         fulfil: (fulfil: string) => void;
         onChange: (fn: () => void) => void;
-        payload: (fulfil: string) => Record<string, unknown>;
+        payload: () => Record<string, unknown>;
     };
 };
 
@@ -42,11 +42,7 @@ function page() {
                 </select>
                 <div data-rb-occasion-other hidden><input name="occasion_text"></div>
                 <input type="checkbox" name="hide_sender" data-rb-hide-sender>
-                <fieldset data-rb-giftloc>
-                    <input type="radio" name="recipient_location" value="provided" checked>
-                    <input type="radio" name="recipient_location" value="contact_recipient">
-                    <p data-rb-locnote hidden></p>
-                </fieldset>
+                <p data-rb-gift-address-hint></p>
             </div>
         </form>`;
 
@@ -66,8 +62,7 @@ it('مطويّةٌ حتّى تُختار، ولا يُرسَل من طلبٍ ع�
     const { gift, $ } = page();
 
     expect($<HTMLElement>('[data-rb-giftbox]').hidden).toBe(true);
-    expect(gift.payload('delivery')).toEqual({ is_gift: false });
-    expect(gift.contacts('delivery')).toBe(false);
+    expect(gift.payload()).toEqual({ is_gift: false });
 });
 
 it('تفتح الهديّةَ وتُرسل ما فيها — وطيُّها يمحو المستلِم', () => {
@@ -79,13 +74,14 @@ it('تفتح الهديّةَ وتُرسل ما فيها — وطيُّها يم
     $<HTMLSelectElement>('[data-rb-occasion]').value = 'birthday';
     $<HTMLInputElement>('[data-rb-hide-sender]').checked = true;
 
-    expect(gift.payload('delivery')).toEqual({
-        is_gift: true, occasion: 'birthday', occasion_text: '', hide_sender: true, recipient_location: 'provided',
+    // ولا طريقةَ موقع: العنوانُ من قسم التوصيل
+    expect(gift.payload()).toEqual({
+        is_gift: true, occasion: 'birthday', occasion_text: '', hide_sender: true,
     });
 
     check(false);
     expect($<HTMLInputElement>('[name=recipient_name]').value).toBe('');
-    expect(gift.payload('delivery')).toEqual({ is_gift: false });
+    expect(gift.payload()).toEqual({ is_gift: false });
 });
 
 it('«أخرى» وحدها تفتح نصَّ المناسبة، والمناسبةُ الأخرى تمحوه', () => {
@@ -97,40 +93,40 @@ it('«أخرى» وحدها تفتح نصَّ المناسبة، والمناس�
     occasion.dispatchEvent(new Event('change'));
     expect($<HTMLElement>('[data-rb-occasion-other]').hidden).toBe(false);
     $<HTMLInputElement>('[name=occasion_text]').value = 'Store opening';
-    expect(gift.payload('delivery')).toMatchObject({ occasion: 'other', occasion_text: 'Store opening' });
+    expect(gift.payload()).toMatchObject({ occasion: 'other', occasion_text: 'Store opening' });
 
     occasion.value = 'birthday';
     occasion.dispatchEvent(new Event('change'));
     expect($<HTMLElement>('[data-rb-occasion-other]').hidden).toBe(true);
-    expect(gift.payload('delivery')).toMatchObject({ occasion: 'birthday', occasion_text: '' });
+    expect(gift.payload()).toMatchObject({ occasion: 'birthday', occasion_text: '' });
 });
 
-it('«تواصلوا مع المستلم» تُخفي العنوان للتوصيل وحده، ولا طريقةَ موقعٍ للاستلام', () => {
+it('لا طريقةَ موقعٍ ولا عنوانَ يُخفى — وسطرُ العنوان للتوصيل وحده', () => {
     const { gift, $, check } = page();
     const changed = vi.fn();
     gift.onChange(changed);
     check(true);
 
-    const contact = $<HTMLInputElement>('[value=contact_recipient]');
-    contact.checked = true;
-    contact.dispatchEvent(new Event('change'));
-
     expect(changed).toHaveBeenCalled();
-    expect(gift.contacts('delivery')).toBe(true);
-    expect($<HTMLElement>('[data-rb-locnote]').hidden).toBe(false);
-    expect(gift.payload('delivery')).toMatchObject({ recipient_location: 'contact_recipient' });
+    expect('contacts' in gift).toBe(false);
+    expect(gift.payload()).not.toHaveProperty('recipient_location');
+    expect($<HTMLElement>('[data-rb-gift-address-hint]').hidden).toBe(false);
 
     gift.fulfil('pickup');
-    expect(gift.contacts('pickup')).toBe(false);
-    expect($<HTMLElement>('[data-rb-giftloc]').hidden).toBe(true);
-    expect(gift.payload('pickup')).toMatchObject({ recipient_location: null });
+    expect($<HTMLElement>('[data-rb-gift-address-hint]').hidden).toBe(true);
+    expect(gift.payload()).not.toHaveProperty('recipient_location');
+
+    gift.fulfil('delivery');
+    expect($<HTMLElement>('[data-rb-gift-address-hint]').hidden).toBe(false);
 });
 
-it('موصولةٌ في صفحة الإتمام لمن رفع الميزة، والعنوانُ يُخفى بسؤالها', () => {
+it('موصولةٌ في صفحة الإتمام لمن فُتح له الإهداء، والعنوانُ لا يُخفى بها', () => {
     const view = readFileSync(VIEW, 'utf8');
 
     expect(view).toContain("resource_path('js/store/ribbon-gift-order.js')");
     expect(view).toContain("@if ($giftOrder['on'] ?? false)");
-    expect(view).toContain("!(giftOrder && giftOrder.contacts(fulfil))");
-    expect(view).toContain('if (giftOrder) Object.assign(payload, giftOrder.payload(fulfil));');
+    expect(view).not.toContain('giftOrder.contacts');
+    expect(view).not.toContain('recipient_location');
+    expect(view).toContain("if (d) d.style.display = fulfil === 'delivery' ? 'grid' : 'none';");
+    expect(view).toContain('if (giftOrder) Object.assign(payload, giftOrder.payload());');
 });

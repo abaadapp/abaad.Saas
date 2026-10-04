@@ -1,4 +1,4 @@
-import { ClipboardList, Gift, HeartHandshake } from 'lucide-react';
+import { ClipboardList, Gift } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { SettingsGroup, SettingsSection } from '@/Components/Settings';
@@ -102,23 +102,9 @@ export default function Fields({ form }: { form: ThemeForm }) {
             </section>
 
             {/*
-                ميزةُ الإهداء — الطلبُ هديّةٌ لغير مشتريه، لهذا المتجر وحده.
-                وغيرُ كرت الهدية أسفلَه: لا تُضيف كرتًا ولا ثمنًا.
+                ولا مفتاحَ للإهداء هنا: «الإهداء في المتجر الإلكتروني» يفتحه مديرُ
+                المنصّة من شاشة النشاط (`Store\GiftOrders::on`) — لا التاجر.
             */}
-            <section id="gifting" className="scroll-mt-24">
-                <SettingsSection
-                    icon={HeartHandshake}
-                    title="ميزة الإهداء"
-                    description="تسمح للعميل بإرسال الطلب كهدية لشخص آخر، مع بيانات المستلم والمناسبة وخيار التواصل معه للحصول على موقع التوصيل."
-                >
-                    <Toggle
-                        on={form.data.store_gift_checkout}
-                        onChange={(v) => form.setData('store_gift_checkout', v)}
-                        label="ميزة الإهداء"
-                        hint="يظهر للعميل «هذا الطلب هدية» في إتمام الطلب"
-                    />
-                </SettingsSection>
-            </section>
 
             {/*
                 كرتُ الهدية — صنفٌ يُباع لا خانةُ نصٍّ مجّانية.

@@ -144,7 +144,9 @@ class ASaudsGiftCardIsKnownByItsMarkNotItsNameTest extends TestCase
         // وصفحةُ الكرت بلا «أضف مع طلبك»
         $this->assertSame([], $after->viewData('upsells'));
 
-        $this->quote([['id' => $card, 'qty' => 1]])->assertStatus(422);
+        // والرسالةُ اختياريّة: كرتٌ بلا رسالةٍ يبقى كرتًا بلا نصّ
+        $this->quote([['id' => $card, 'qty' => 1]])
+            ->assertOk()->assertJsonPath('lines.0.gift_card', true)->assertJsonPath('lines.0.note', null);
         $this->quote([['id' => $card, 'qty' => 1, 'note' => '  مبروك التخرّج  ']])
             ->assertOk()->assertJsonPath('lines.0.gift_card', true)->assertJsonPath('lines.0.note', 'مبروك التخرّج');
     }
@@ -175,7 +177,9 @@ class ASaudsGiftCardIsKnownByItsMarkNotItsNameTest extends TestCase
         ])->assertOk()->json('lines');
         $this->assertSame([[false, null], [true, 'كل عام وأنت بخير']], array_map(fn ($l) => [(bool) $l['gift_card'], $l['note']], $lines));
 
-        $this->quote([['id' => $this->rose, 'qty' => 1], ['id' => $card, 'qty' => 1]])->assertStatus(422);
+        // وكرتٌ إضافةً بلا رسالةٍ مقبول — والرسالةُ اختياريّة
+        $blank = $this->quote([['id' => $this->rose, 'qty' => 1], ['id' => $card, 'qty' => 1]])->assertOk()->json('lines');
+        $this->assertSame([[false, null], [true, null]], array_map(fn ($l) => [(bool) $l['gift_card'], $l['note']], $blank));
     }
 
     /* ═══════════ ج) الحماية ═══════════ */

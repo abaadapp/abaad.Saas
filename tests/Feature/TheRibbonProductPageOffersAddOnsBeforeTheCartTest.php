@@ -529,10 +529,11 @@ class TheRibbonProductPageOffersAddOnsBeforeTheCartTest extends TestCase
         $this->assertTrue((bool) DB::table('products')->where('id', $this->p['empty'])->value('tracks_stock'));
         $this->assertTrue((bool) DB::table('products')->where('id', $theirs)->value('tracks_stock'));
 
-        // والكرتُ بعدها يدخل برسالته — ويُردّ بلاها
+        // والكرتُ بعدها يدخل برسالته — وبلاها، فالرسالةُ اختياريّة
         $this->postJson('/s/saud/quote', ['items' => [['id' => $card, 'qty' => 1, 'note' => 'مبروك']], 'fulfil' => 'pickup'])
             ->assertOk()->assertJsonPath('lines.0.note', 'مبروك');
-        $this->postJson('/s/saud/quote', ['items' => [['id' => $card, 'qty' => 1]]])->assertStatus(422);
+        $this->postJson('/s/saud/quote', ['items' => [['id' => $card, 'qty' => 1]]])
+            ->assertOk()->assertJsonPath('lines.0.gift_card', true)->assertJsonPath('lines.0.note', null);
     }
 
     public function test_twin_cards_are_left_for_the_owner_not_picked_by_the_migration(): void

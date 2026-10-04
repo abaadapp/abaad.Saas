@@ -37,6 +37,8 @@ final class RibbonTexts
         'cardPreview' => 'كما يظهر على الكرت', 'remove' => 'إزالة',
         'payCod' => 'الدفع عند الاستلام', 'payCodNote' => 'نقدًا عند التسليم', 'payBank' => 'تحويل بنكي', 'payBankNote' => 'تصلك بيانات الحساب',
         'payCard' => 'الدفع بالبطاقة', 'payCardNote' => 'فيزا أو ماستركارد',
+        // إيصالُ الدفع في صفحة الشكر — انظر `PaidReceipt`
+        'viewReceipt' => 'عرض الفاتورة',
         'bankNote' => 'بعد تأكيد الطلب تظهر لك بيانات الحساب البنكي، ويُجهَّز الطلب بعد استلام التحويل.',
         'summary' => 'ملخص الطلب', 'promo' => 'كود الخصم', 'apply' => 'تطبيق', 'shipping' => 'التوصيل', 'discount' => 'الخصم', 'tax' => 'الضريبة', 'total' => 'الإجمالي', 'free' => 'مجاني', 'freeOver' => 'مجاني فوق :amount',
         'place' => 'تأكيد الطلب', 'date' => 'الموعد', 'slot' => 'وقت التسليم', 'errReq' => 'يرجى إكمال الحقول المحددة', 'errEmpty' => 'السلة فارغة', 'errBusy' => 'محاولاتٌ كثيرة — انتظر دقيقةً ثمّ أعد المحاولة.', 'errStale' => 'انتهت جلستُك — أعد تحميل الصفحة ثمّ أكّد طلبك.', 'errServer' => 'تعذّر إتمام الطلب الآن — أعد المحاولة، أو تواصل معنا.', 'closed' => 'المتجر لا يستقبل طلبات من الموقع الآن — تواصل معنا.',
@@ -101,6 +103,7 @@ final class RibbonTexts
         'cardPreview' => 'As it appears on the card', 'remove' => 'Remove',
         'payCod' => 'Cash on delivery', 'payCodNote' => 'Pay when you receive it', 'payBank' => 'Bank transfer', 'payBankNote' => 'Account details shown to you',
         'payCard' => 'Pay by card', 'payCardNote' => 'Visa or Mastercard',
+        'viewReceipt' => 'View invoice',
         'bankNote' => 'After confirming, the bank details are shown to you. The order is prepared once the transfer is received.',
         'summary' => 'Order summary', 'promo' => 'Promo code', 'apply' => 'Apply', 'shipping' => 'Delivery', 'discount' => 'Discount', 'tax' => 'VAT', 'total' => 'Total', 'free' => 'Free', 'freeOver' => 'Free over :amount',
         'place' => 'Place order', 'date' => 'Date', 'slot' => 'Delivery time', 'errReq' => 'Please complete the highlighted fields', 'errEmpty' => 'Cart is empty', 'errBusy' => 'Too many attempts — wait a minute and try again.', 'errStale' => 'Your session expired — reload the page, then confirm your order.', 'errServer' => 'We could not complete your order — try again, or contact us.', 'closed' => 'The store is not taking online orders right now — contact us.',

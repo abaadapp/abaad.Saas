@@ -68,6 +68,19 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                         </div>
                     )}
 
+                    {/*
+                        وإيصالُ الدفع للزبون — يظهر في صفحة الشكر لمن دفع ببطاقته دفعًا
+                        ثبت، ويفتح الإيصالَ الحراريّ بقالب «فاتورة البيع» نفسِه.
+                    */}
+                    <div className="mt-4">
+                        <Toggle
+                            on={form.data.store_paid_receipt}
+                            onChange={(v) => form.setData('store_paid_receipt', v)}
+                            label="أعطِ الزبون فاتورته بعد الدفع الإلكتروني"
+                            hint="زرّ «عرض الفاتورة» في صفحة الشكر بعد تأكيد الدفع بالبطاقة — بشكل فاتورة البيع الحرارية نفسها"
+                        />
+                    </div>
+
                     {/* ولا طريقةَ دفعٍ يعني متجرًا لا يقبل طلبًا — يُقال قبل أن يُكتشف */}
                     {! form.data.store_pay_cod && ! form.data.store_pay_transfer && ! gatewayReady && (
                         <p className="mt-4 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] leading-relaxed text-[#b45309]">

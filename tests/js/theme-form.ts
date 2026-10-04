@@ -21,6 +21,7 @@ const BLANK: ThemeSettingsData = {
     store_allow_orders: true,
     store_pay_cod: true,
     store_pay_transfer: false,
+    store_paid_receipt: false,
     store_bank: '',
     store_delivery_fee: '',
     store_free_delivery_over: '',

@@ -20,6 +20,8 @@ export interface ThemeSettingsData {
     store_allow_orders: boolean;
     store_pay_cod: boolean;
     store_pay_transfer: boolean;
+    /* إيصالُ الدفع الإلكترونيّ في صفحة الشكر — انظر `Store\PaidReceipt` */
+    store_paid_receipt: boolean;
     store_bank: string;
     store_delivery_fee: string;
     store_free_delivery_over: string;
@@ -94,6 +96,7 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
         store_allow_orders: (v.store_allow_orders ?? '1') === '1',
         store_pay_cod: (v.store_pay_cod ?? '1') === '1',
         store_pay_transfer: (v.store_pay_transfer ?? '0') === '1',
+        store_paid_receipt: (v.store_paid_receipt ?? '0') === '1',
         store_bank: v.store_bank ?? '',
         store_delivery_fee: v.store_delivery_fee ?? '',
         store_free_delivery_over: v.store_free_delivery_over ?? '',
@@ -148,7 +151,7 @@ export const SCREEN_KEYS = {
     domain: ['site_slug', 'store_on'],
     pages: ['store_pages', 'store_about_image'],
     store: [
-        'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_bank',
+        'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_paid_receipt', 'store_bank',
         'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
         'store_delivery_slots', 'store_delivery_note', 'store_delivery_note_en', 'store_delivery_area_note', 'store_delivery_area_note_en',
         'store_max_days', 'store_fulfil',

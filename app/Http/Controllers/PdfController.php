@@ -29,6 +29,7 @@ use App\Support\Reports;
 use App\Support\SalesChannel;
 use App\Support\ShopIdentity;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class PdfController extends Controller
 {
@@ -128,6 +129,21 @@ class PdfController extends Controller
         $bid = auth()->user()->business_id ?? Demo::bid();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
+        return self::thermal($bid, $order);
+    }
+
+    /**
+     * الإيصالُ الحراريّ لطلبٍ عُرف متجرُه — بلا سؤالٍ عن الجالس.
+     *
+     * بابان يطبعانه: الصندوقُ واللوحةُ من هنا (`orderThermal`)، والزبونُ من
+     * صفحة الشكر على موقع المتجر (`Store\RibbonController::receipt`). والورقةُ
+     * واحدة — `saleHtml` بقالب البيع وإعداداته — فلا يستلم الزبونُ على هاتفه
+     * غيرَ ما يطبعه المحلّ.
+     *
+     * والحصرُ على من يناديها: هي ترسم الطلبَ الذي تُعطاه.
+     */
+    public static function thermal(int $bid, Order $order): Response
+    {
         ['html' => $html, 'paper' => $paper] = self::saleHtml($bid, $order, thermal: true);
 
         return Pdf::strip($html, 'receipt-'.$order->number, self::stripWidth($paper));
@@ -182,7 +198,11 @@ class PdfController extends Controller
          * الجديد يقرأ أسماءَ السجلّ. و`legacy()` تحوّلها للشريط وحده.
          */
         $extra = [
-            'qr' => EInvoice::forOrder($order, Demo::vatSettings(), Demo::business($bid)),
+            /*
+             * والرقمُ الضريبيُّ لمتجر الطلب لا لمتجر الجلسة: إيصالُ الزبون على
+             * موقع المتجر يُرسم بلا جلسة، و`vatSettings()` بلا متجرٍ تقرأ لا شيء.
+             */
+            'qr' => EInvoice::forOrder($order, Demo::vatSettings($bid), Demo::business($bid)),
             /*
              * ورمزُ الورقة أونلاين.
              *

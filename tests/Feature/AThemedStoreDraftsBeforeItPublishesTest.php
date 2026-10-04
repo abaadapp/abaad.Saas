@@ -113,9 +113,10 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         // و«اختيارات RIBBON» (ثلاثة)، و«أضف مع طلبك» بيده (واحد)، والبحثُ بالإنجليزيّة
         // (اثنان) — نصٌّ واختيارٌ يراه الزائر، يُنشر. وملاحظةُ التوصيل بالإنجليزيّة تسري
         // فورًا كأختها العربيّة. والنبذةُ بالإنجليزيّة نصٌّ يراه الزائر كأختها — يُنشر
-        $this->assertCount(74, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        // وإيصالُ الدفع للزبون (`PaidReceipt`) قرارُ دفعٍ كأخواته في الإتمام — يسري فورًا
+        $this->assertCount(75, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
         $this->assertCount(38, $versioned, 'تبدّل عددُ ما يُنشر');
-        $this->assertCount(36, $live, 'تبدّل عددُ ما يسري فورًا');
+        $this->assertCount(37, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),
             'مفتاحٌ في العقد وليس في المجموعة: '.implode(', ', array_diff($versioned, $all)));

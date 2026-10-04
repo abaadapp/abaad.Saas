@@ -75,6 +75,36 @@ runs=$(gh api -X GET "repos/${GH_REPO}/actions/workflows/ci.yml/runs" \
 
 [ -n "$runs" ] || fail "لا تشغيلَ CI ناجحًا (pull_request) لرأس الطلب #${pr_number} ${head_sha}"
 
+# ─── وثائقُ تخطيطٍ فقط بين المختبَر وmain؟ ───
+#
+# إن دُفع إلى main أثناء ساعة الاختبار (أو بعدها وقبل الدمج) ملفُّ تخطيط، فشجرةُ
+# main ليست الشجرةَ المختبَرة — والكودُ فيهما واحد. فتُقبل حين يكون **كلُّ** فرقٍ
+# بينهما في القائمة الضيّقة (`docs-only-change.sh`)، وإلّا يبقى الرفض كما كان.
+#
+# والشجرةُ المختبَرة لا تُؤخذ من الإثبات على عِلّاتها: تُبنى من جديد من أساسها
+# ورأسِ الطلب (`git merge-tree`) ويُشترط أن تطابق ما في الإثبات. فما لا يُعاد
+# بناؤه بعينه لا يُقارن، ويُرفض.
+docs_only_drift() {
+    local proof="$1" base head tree
+    base=$(jq -r '.tested_base_sha // empty' "$proof")
+    head=$(jq -r '.head_sha // empty' "$proof")
+    [ -n "$base" ] && [ -n "$head" ] || { echo "  الإثبات بلا أساسٍ أو رأس"; return 1; }
+
+    git cat-file -e "${head}^{commit}" 2>/dev/null \
+        || git fetch --no-tags --quiet origin "+refs/pull/${pr_number}/head:refs/remotes/origin/pr-${pr_number}" \
+        || true
+    git cat-file -e "${base}^{commit}" 2>/dev/null && git cat-file -e "${head}^{commit}" 2>/dev/null \
+        || { echo "  تعذّر الوصول إلى ${base} أو ${head}"; return 1; }
+
+    tree=$(git merge-tree --write-tree "$base" "$head" 2>/dev/null | head -n1) \
+        || { echo "  تعذّر إعادة بناء الشجرة المختبَرة"; return 1; }
+    [ "$tree" = "$(jq -r '.tested_tree_sha' "$proof")" ] \
+        || { echo "  الشجرةُ المعاد بناؤها ${tree} ليست شجرةَ الإثبات"; return 1; }
+
+    echo "main ≠ الشجرة المختبَرة — ما الذي اختلف؟"
+    bash "$(dirname "$0")/docs-only-change.sh" "$tree" "$main_tree"
+}
+
 # ─── ٣) الإثبات: ملفّ pr-proof.json من التشغيل، وشجرتُه شجرةُ main ───
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -114,8 +144,13 @@ for run_id in $runs; do
     if [ "$p_run" != "$run_id" ]; then
         reasons+=("التشغيل ${run_id}: الإثبات يذكر تشغيلًا آخر (${p_run})"); continue
     fi
+    note=""
     if [ "$p_tree" != "$main_tree" ]; then
-        reasons+=("التشغيل ${run_id}: الشجرة المختبَرة ${p_tree} ≠ شجرة main ${main_tree} — تحرّك main بعد الاختبار؟"); continue
+        if ! docs_only_drift "$proof"; then
+            reasons+=("التشغيل ${run_id}: الشجرة المختبَرة ${p_tree} ≠ شجرة main ${main_tree} — تحرّك main بعد الاختبار؟"); continue
+        fi
+        note="main changed during CI, but only approved planning/documentation files changed. Existing test result remains valid."
+        echo "$note"
     fi
 
     echo "✓ شجرة main ${main_tree} هي ما اجتاز CI — PR #${pr_number}، التشغيل ${run_id}"
@@ -128,6 +163,7 @@ for run_id in $runs; do
         echo "| head | \`${head_sha}\` |"
         echo "| CI run | ${run_id} |"
         echo "| tree | \`${main_tree}\` |"
+        [ -z "$note" ] || { echo; echo "ℹ️ ${note} (tested tree \`${p_tree}\`)"; }
     } >> "$SUMMARY"
     exit 0
 done

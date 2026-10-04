@@ -185,6 +185,8 @@ jobs:
   #
   # ولا يُرفع إثباتٌ إن تحرّك main أثناء الاختبار: أساسُ ما اختُبر (`HEAD^1`)
   # يجب أن يكون رأسَ main الآن — وإلّا تسقط الوظيفةُ وتطلب تحديثَ الطلب.
+  # إلّا أن يكون كلُّ ما وصل main بعده وثائقَ تخطيط (`docs-only-change.sh`):
+  # فالكودُ هو ما اختُبر، ولا تُعاد ساعةُ PostgreSQL لسطرٍ في BACKLOG.md.
   # ---------------------------------------------------------------------
   pr-proof:
     name: إثبات الشجرة المختبَرة
@@ -221,18 +223,39 @@ jobs:
           git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main
           TESTED_BASE=$(git rev-parse 'HEAD^1')
           CURRENT_MAIN=$(git rev-parse origin/main)
+          # فإن تحرّك يُسأل: ماذا وصل؟ الفرقُ بين الشجرتين لا رسالةُ آخر إيداع —
+          # فيشمل كلَّ ما دُفع في الساعة، إيداعًا واحدًا أو عشرة.
           if [ "$TESTED_BASE" != "$CURRENT_MAIN" ]; then
-            msg="main moved while this PR was being tested; update the PR with latest main and rerun CI before merging."
-            echo "::error title=PR proof::${msg} (tested base ${TESTED_BASE}, main now ${CURRENT_MAIN})"
-            {
-              echo "### ⛔ لا إثبات — main تحرّك أثناء الاختبار"
-              echo
-              echo "**${msg}**"
-              echo
-              echo "- tested base: \`${TESTED_BASE}\`"
-              echo "- main now: \`${CURRENT_MAIN}\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
+            echo "main moved: tested base ${TESTED_BASE}, main now ${CURRENT_MAIN}"
+            set +e
+            bash .github/scripts/docs-only-change.sh "$TESTED_BASE" "$CURRENT_MAIN"
+            docs_only=$?
+            set -e
+
+            if [ "$docs_only" -eq 0 ]; then
+              echo "main changed during CI, but only approved planning/documentation files changed."
+              echo "Existing test result remains valid."
+              {
+                echo "### ℹ️ main تحرّك أثناء الاختبار — وثائقُ تخطيطٍ فقط"
+                echo
+                echo "main changed during CI, but only approved planning/documentation files changed. Existing test result remains valid."
+                echo
+                echo "- tested base: \`${TESTED_BASE}\`"
+                echo "- main now: \`${CURRENT_MAIN}\`"
+              } >> "$GITHUB_STEP_SUMMARY"
+            else
+              msg="main moved while this PR was being tested and the change is not documentation-only (files marked ✗ above); update the PR with latest main and rerun CI before merging."
+              echo "::error title=PR proof::${msg} (tested base ${TESTED_BASE}, main now ${CURRENT_MAIN})"
+              {
+                echo "### ⛔ لا إثبات — main تحرّك أثناء الاختبار"
+                echo
+                echo "**${msg}**"
+                echo
+                echo "- tested base: \`${TESTED_BASE}\`"
+                echo "- main now: \`${CURRENT_MAIN}\`"
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
           fi
 
           jq -n \

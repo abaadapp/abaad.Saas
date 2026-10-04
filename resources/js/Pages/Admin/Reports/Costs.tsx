@@ -427,66 +427,68 @@ function DrillDialog({
                 <DialogHeader>
                     <DialogTitle>{drill?.title}</DialogTitle>
                 </DialogHeader>
-                {failed && <p className="text-[13px] text-[#b91c1c]">{t('تعذّر تحميل السطور — حاول مرّة أخرى.')}</p>}
-                {data && (
-                    <div data-testid="costs-drill">
-                        <p className="mb-2 text-[12.5px] text-[#374151]">
-                            {t('مجموع السطور')}: <strong className="tabular-nums">{m(data.total)}</strong> · {t(':count سطرًا', { count: String(data.count) })}
-                        </p>
-                        <div className="max-h-[60vh] overflow-auto">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow className="hover:bg-transparent">
-                                        <TableHead>{t('التاريخ')}</TableHead>
-                                        <TableHead>{t('القيد')}</TableHead>
-                                        <TableHead>{t('البيان')}</TableHead>
-                                        <TableHead>{t('الفرع')}</TableHead>
-                                        <TableHead>{t('الحساب')}</TableHead>
-                                        <TableHead>{t('المصدر')}</TableHead>
-                                        <TableHead className="text-end">{t('الصافي')}</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {data.lines.length === 0 ? (
-                                        <TableEmpty colSpan={7}>{t('لا سطور')}</TableEmpty>
-                                    ) : (
-                                        data.lines.map((l) => (
-                                            <TableRow key={l.id}>
-                                                <TableCell dir="ltr" className="whitespace-nowrap tabular-nums">{l.date}</TableCell>
-                                                <TableCell dir="ltr" className="whitespace-nowrap">{l.number}</TableCell>
-                                                <TableCell>
-                                                    {l.description}
-                                                    {l.memo && <span className="block text-[11px] text-[#9ca3af]">{l.memo}</span>}
-                                                </TableCell>
-                                                <TableCell>{l.branch ?? t('النشاط بالكامل')}</TableCell>
-                                                <TableCell>{l.account}</TableCell>
-                                                <TableCell>
-                                                    {l.source}
-                                                    {l.reference && <span className="block text-[11px] text-[#9ca3af]" dir="ltr">{l.reference}</span>}
-                                                </TableCell>
-                                                <Money value={l.net} money={m} />
-                                            </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </div>
-                        {data.last_page > 1 && (
-                            <div className="mt-3 flex items-center justify-between text-[12.5px]">
-                                <button type="button" className="rounded border px-3 py-1 disabled:opacity-40" disabled={loading || data.page <= 1} onClick={() => load(data.page - 1)}>
-                                    {t('السابق')}
-                                </button>
-                                <span className="tabular-nums">
-                                    {data.page} / {data.last_page}
-                                </span>
-                                <button type="button" className="rounded border px-3 py-1 disabled:opacity-40" disabled={loading || data.page >= data.last_page} onClick={() => load(data.page + 1)}>
-                                    {t('التالي')}
-                                </button>
+                <div className="px-5 pb-5">
+                    {failed && <p className="text-[13px] text-[#b91c1c]">{t('تعذّر تحميل السطور — حاول مرّة أخرى.')}</p>}
+                    {data && (
+                        <div data-testid="costs-drill">
+                            <p className="mb-2 text-[12.5px] text-[#374151]">
+                                {t('مجموع السطور')}: <strong className="tabular-nums">{m(data.total)}</strong> · {t(':count سطرًا', { count: String(data.count) })}
+                            </p>
+                            <div className="max-h-[60vh] overflow-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableHead>{t('التاريخ')}</TableHead>
+                                            <TableHead>{t('القيد')}</TableHead>
+                                            <TableHead>{t('البيان')}</TableHead>
+                                            <TableHead>{t('الفرع')}</TableHead>
+                                            <TableHead>{t('الحساب')}</TableHead>
+                                            <TableHead>{t('المصدر')}</TableHead>
+                                            <TableHead className="text-end">{t('الصافي')}</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {data.lines.length === 0 ? (
+                                            <TableEmpty colSpan={7}>{t('لا سطور')}</TableEmpty>
+                                        ) : (
+                                            data.lines.map((l) => (
+                                                <TableRow key={l.id}>
+                                                    <TableCell dir="ltr" className="whitespace-nowrap tabular-nums">{l.date}</TableCell>
+                                                    <TableCell dir="ltr" className="whitespace-nowrap">{l.number}</TableCell>
+                                                    <TableCell>
+                                                        {l.description}
+                                                        {l.memo && <span className="block text-[11px] text-[#9ca3af]">{l.memo}</span>}
+                                                    </TableCell>
+                                                    <TableCell>{l.branch ?? t('النشاط بالكامل')}</TableCell>
+                                                    <TableCell>{l.account}</TableCell>
+                                                    <TableCell>
+                                                        {l.source}
+                                                        {l.reference && <span className="block text-[11px] text-[#9ca3af]" dir="ltr">{l.reference}</span>}
+                                                    </TableCell>
+                                                    <Money value={l.net} money={m} />
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
                             </div>
-                        )}
-                    </div>
-                )}
-                {loading && !data && <p className="text-[13px] text-[#6b7280]">{t('جارٍ التحميل…')}</p>}
+                            {data.last_page > 1 && (
+                                <div className="mt-3 flex items-center justify-between text-[12.5px]">
+                                    <button type="button" className="rounded border px-3 py-1 disabled:opacity-40" disabled={loading || data.page <= 1} onClick={() => load(data.page - 1)}>
+                                        {t('السابق')}
+                                    </button>
+                                    <span className="tabular-nums">
+                                        {data.page} / {data.last_page}
+                                    </span>
+                                    <button type="button" className="rounded border px-3 py-1 disabled:opacity-40" disabled={loading || data.page >= data.last_page} onClick={() => load(data.page + 1)}>
+                                        {t('التالي')}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {loading && !data && <p className="text-[13px] text-[#6b7280]">{t('جارٍ التحميل…')}</p>}
+                </div>
             </DialogContent>
         </Dialog>
     );

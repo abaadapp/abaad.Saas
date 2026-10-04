@@ -45,13 +45,13 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — سبعةٌ وثلاثون مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — ثمانيةٌ وثلاثون مفتاحًا.
      *
      * @var list<string>
      */
     public const VERSIONED = [
         // نصوصُ الصفحة — وعنوانُ الواجهة ووصفُها لكلّ لغة
-        'store_headline', 'store_about', 'store_tagline', 'store_tagline_en',
+        'store_headline', 'store_about', 'store_about_en', 'store_tagline', 'store_tagline_en',
         'store_hero_title', 'store_hero_title_en', 'store_hero_sub', 'store_hero_sub_en',
         // صورُها
         'store_hero_image', 'store_banner_image', 'store_about_image',

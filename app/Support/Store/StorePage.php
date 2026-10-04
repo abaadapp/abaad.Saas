@@ -134,6 +134,23 @@ final class StorePage
         return $text !== '' ? $text : null;
     }
 
+    /* ═══════════ النبذة ═══════════ */
+
+    /**
+     * نبذةُ النشاط بلغة الصفحة — `store_about` للعربيّة و`store_about_en`
+     * للإنجليزيّة. وفارغُ اللغة فراغٌ: لا قسمَ «عنّا» ولا صفحةَ «من نحن» ولا
+     * سطرَ تذييلٍ بها في تلك اللغة — لا تُعرض فيها نبذةُ الأخرى.
+     *
+     * ويُقرأ كلُّ ما في RIBBON منها من هنا: القسم، والصفحة، والتذييل،
+     * ووصفُ البحث المحسوب (`StoreSeo::head`)، وإذنُ صفحة «من نحن» (`StoreNav::has`).
+     */
+    public static function about(int $businessId, string $lang = 'ar'): string
+    {
+        $key = $lang === 'en' ? 'store_about_en' : 'store_about';
+
+        return trim((string) (MarketingSettings::group($businessId, 'website')[$key] ?? ''));
+    }
+
     /* ═══════════ صورةُ الواجهة ═══════════ */
 
     /**

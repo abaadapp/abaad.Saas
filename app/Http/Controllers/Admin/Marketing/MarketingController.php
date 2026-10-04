@@ -193,6 +193,8 @@ class MarketingController extends Controller
             'store_theme' => ['sometimes', Rule::in(array_keys(Storefront::THEMES))],
             'store_headline' => ['nullable', 'string', 'max:80'],
             'store_about' => ['nullable', 'string', 'max:400'],
+            // والنبذةُ بالإنجليزيّة — بحدّ العربيّة، ولا تقع إحداهما على الأخرى (`StorePage::about`)
+            'store_about_en' => ['nullable', 'string', 'max:400'],
             'store_show_prices' => ['sometimes', 'boolean'],
             /*
              * ═══ ومفتاحُ قبول الطلبات — وكان يُرسَل ولا يُكتب ═══

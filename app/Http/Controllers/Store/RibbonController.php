@@ -104,7 +104,7 @@ class RibbonController extends Controller
          * يبقى محفوظًا في متصفّحٍ ومفهرَسًا عند غوغل بعد أن تُطفأ. فيُسأل
          * السؤالُ هنا أيضًا ولا يُكتفى بإخفاء الرابط: إخفاءُ رابطٍ ليس حراسة.
          */
-        if (in_array($first, StoreNav::OPTIONAL, true) && ! StoreNav::has((int) $business->id, $first)) {
+        if (in_array($first, StoreNav::OPTIONAL, true) && ! StoreNav::has((int) $business->id, $first, $lang)) {
             abort(404);
         }
 
@@ -113,7 +113,7 @@ class RibbonController extends Controller
         return match ($first) {
             null => $this->render('store.ribbon.home', $ctx + $this->home($business, $lang)),
             'shop' => $this->render('store.ribbon.shop', $ctx + $this->shop($business, $lang, request(), $base)),
-            'about' => $this->render('store.ribbon.about', $ctx + $this->about($business)),
+            'about' => $this->render('store.ribbon.about', $ctx + $this->about($business, $lang)),
             'contact' => $this->render('store.ribbon.contact', $ctx + $this->contact($business, $lang)),
             'p' => $this->render('store.ribbon.product', $ctx + $this->product($business, (int) $second, $lang)),
             'cart' => $this->render('store.ribbon.cart', $ctx),
@@ -362,13 +362,14 @@ class RibbonController extends Controller
      * والرفُّ يُقرأ ليُعرف أيُرسم زرُّ «تسوّق الآن» تحتها: قاعدةُ الواجهة
      * نفسُها — لا وعدَ ببضاعةٍ على رفٍّ خالٍ.
      */
-    private function about(Business $business): array
+    private function about(Business $business, string $lang): array
     {
         $bid = (int) $business->id;
         $image = trim((string) (MarketingSettings::group($bid, 'website')['store_about_image'] ?? ''));
 
         return [
-            'aboutText' => MerchantData::identity($bid)['about'],
+            // نبذةُ لغة الصفحة وحدها — `StorePage::about`
+            'aboutText' => StorePage::about($bid, $lang),
             'aboutImage' => $image !== '' ? $image : null,
             'shelf' => $this->shown($bid)->exists(),
         ];
@@ -600,6 +601,11 @@ class RibbonController extends Controller
     {
         $bid = (int) $business->id;
         $identity = MerchantData::identity($bid);
+        /*
+         * والنبذةُ بلغة الصفحة — قسمُ «عنّا» والتذييلُ ووصفُ البحث المحسوب
+         * يقرؤونها من هنا. وفارغُ اللغة لا تقع عليه نبذةُ الأخرى.
+         */
+        $identity['about'] = StorePage::about($bid, $lang);
         $s = WebCheckout::settings($bid);
         $t = RibbonTexts::for($lang);
 
@@ -635,7 +641,7 @@ class RibbonController extends Controller
              *
              * ولو بُنيت في القالبين لَبقي في أحدهما رابطٌ إلى صفحةٍ أُطفئت.
              */
-            'nav' => StoreNav::links($bid, $base, $t, $current),
+            'nav' => StoreNav::links($bid, $base, $t, $current, $lang),
             /*
              * وشريطُ الإعلان أعلى كلّ صفحة — بلغة الزائر وحدها، أو لا شريط.
              * انظر `StoreHeader::announcement`.

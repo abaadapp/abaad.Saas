@@ -83,7 +83,8 @@ class MarketingToolsTest extends TestCase
             // طريقُ العنوان واسمُ النطاق الفرعي — تقرؤهما `DomainOptions`
             'site_domain_mode',
             'site_path',
-            'store_on', 'store_theme', 'store_headline', 'store_about', 'store_show_prices',
+            // والنبذةُ بالإنجليزيّة بجانب العربيّة — للصفحة الإنجليزيّة (`StorePage::about`)
+            'store_on', 'store_theme', 'store_headline', 'store_about', 'store_about_en', 'store_show_prices',
             'store_whatsapp',
             // إنستغرام وقبولُ الطلبات — يقرؤهما بانِي الموقع (MerchantData, SettingsController)
             'store_instagram', 'store_allow_orders',

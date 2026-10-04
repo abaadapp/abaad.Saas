@@ -259,7 +259,7 @@ class ARibbonPageSpeaksEachLanguageItsOwnWordsTest extends TestCase
     /** ١٦: لكلّ لغةٍ عنوانُها ووصفُها — وفارغُ الإنجليزيّة يُحسب كما كان، لا من العربيّ */
     public function test_search_texts_are_kept_apart_by_language(): void
     {
-        MarketingSettings::save($this->shop->id, 'website', ['store_about' => 'Ribbon is a gifting house.']);
+        MarketingSettings::save($this->shop->id, 'website', ['store_about' => 'بيتُ هدايا.', 'store_about_en' => 'Ribbon is a gifting house.']);
         $this->save(['store_seo_title' => 'ريبون — ورد مسقط', 'store_seo_desc' => 'باقاتٌ تُوصَّل في مسقط.'])->assertSessionHasNoErrors();
 
         $ar = $this->home('ar');
@@ -268,7 +268,7 @@ class ARibbonPageSpeaksEachLanguageItsOwnWordsTest extends TestCase
         $this->assertSame('ريبون — ورد مسقط', $this->meta($ar, '#<title>(.*?)</title>#s'));
         $this->assertSame('باقاتٌ تُوصَّل في مسقط.', $this->meta($ar, '#<meta name="description" content="([^"]*)"#'));
 
-        // والإنجليزيّةُ لم يُكتب لها شيء: اسمُ النشاط والنبذة كما كانا — لا عنوانُ البحث العربيّ
+        // والإنجليزيّةُ لم يُكتب لها شيء: اسمُ النشاط ونبذتُها الإنجليزيّة — لا عنوانُ البحث العربيّ
         $this->assertSame('RIBBON', $this->meta($en, '#<title>(.*?)</title>#s'));
         $this->assertSame('Ribbon is a gifting house.', $this->meta($en, '#<meta name="description" content="([^"]*)"#'));
         $this->assertStringNotContainsString('ريبون — ورد مسقط', $en);
@@ -282,6 +282,101 @@ class ARibbonPageSpeaksEachLanguageItsOwnWordsTest extends TestCase
         $this->assertSame('Bouquets delivered in Muscat.', $this->meta($en, '#<meta name="description" content="([^"]*)"#'));
         $this->assertStringNotContainsString('Ribbon — Muscat flowers', $ar);
         $this->assertSame('ريبون — ورد مسقط', $this->meta($ar, '#<title>(.*?)</title>#s'), 'حفظُ الإنجليزيّ مسّ العربيّ');
+    }
+
+    /* ═══════════ النبذة ═══════════ */
+
+    /** ما تقرؤه الصفحةُ من النبذة: قسمُ «عنّا» وصفحةُ «من نحن» والتذييل */
+    private function aboutEverywhere(string $lang): string
+    {
+        $home = $this->home($lang);
+        $page = (string) $this->get('/s/ribbon/about?lang='.$lang)->getContent();
+
+        return $home."\n".$page;
+    }
+
+    /** ١ و٢: لكلّ لغةٍ نبذتُها — في القسم والصفحة والتذييل */
+    public function test_each_page_reads_its_own_about_text(): void
+    {
+        $this->save(['store_about' => 'بيتُ هدايا يُعنى بالتفاصيل.', 'store_about_en' => 'A gifting house built on detail.'])->assertSessionHasNoErrors();
+
+        $ar = $this->home('ar');
+        $en = $this->home('en');
+
+        $this->assertStringContainsString('rb-sec-about', $ar);
+        $this->assertStringContainsString('rb-sec-about', $en);
+        // في جسد الصفحة: القسمُ والتذييل — ووسما الوصف في الرأس شأنُ البحث أدناه
+        $body = fn (string $html) => (string) strstr($html, '<body');
+        $this->assertSame(2, substr_count($body($ar), 'بيتُ هدايا يُعنى بالتفاصيل.'), 'النبذةُ العربيّة ليست في القسم والتذييل');
+        $this->assertSame(2, substr_count($body($en), 'A gifting house built on detail.'), 'النبذةُ الإنجليزيّة ليست في القسم والتذييل');
+
+        // وصفحةُ «من نحن» نفسُها — نصُّ لغتها وحده، لا نصُّ الأخرى
+        $aboutAr = (string) $this->get('/s/ribbon/about?lang=ar')->assertOk()->getContent();
+        $aboutEn = (string) $this->get('/s/ribbon/about?lang=en')->assertOk()->getContent();
+        $this->assertStringContainsString('بيتُ هدايا يُعنى بالتفاصيل.', $aboutAr);
+        $this->assertStringNotContainsString('A gifting house built on detail.', $aboutAr);
+        $this->assertStringContainsString('A gifting house built on detail.', $aboutEn);
+        $this->assertStringNotContainsString('بيتُ هدايا يُعنى بالتفاصيل.', $aboutEn);
+    }
+
+    /** ٣ و٤: ولا تقع نبذةٌ على لغةٍ أخرى — والفارغةُ لا يُرسم بها شيء */
+    public function test_about_text_never_crosses_languages(): void
+    {
+        $this->set(['store_about' => 'نبذةٌ عربيّةٌ وحدها.']);
+
+        $en = $this->aboutEverywhere('en');
+        $this->assertStringNotContainsString('نبذةٌ عربيّةٌ وحدها.', $en, 'النبذةُ العربيّة في الصفحة الإنجليزيّة');
+        $this->assertStringNotContainsString('rb-sec-about', $this->home('en'));
+        $this->get('/s/ribbon/about?lang=en')->assertNotFound();
+        $this->assertNotContains('about', collect($this->get('/s/ribbon?lang=en')->viewData('nav'))->pluck('key')->all());
+        $this->assertStringContainsString('نبذةٌ عربيّةٌ وحدها.', $this->aboutEverywhere('ar'));
+
+        $this->set(['store_about' => '', 'store_about_en' => 'English bio alone.']);
+
+        $ar = $this->aboutEverywhere('ar');
+        $this->assertStringNotContainsString('English bio alone.', $ar, 'النبذةُ الإنجليزيّة في الصفحة العربيّة');
+        $this->assertStringNotContainsString('rb-sec-about', $this->home('ar'));
+        $this->get('/s/ribbon/about?lang=ar')->assertNotFound();
+        $this->assertStringContainsString('English bio alone.', $this->aboutEverywhere('en'));
+
+        // ووصفُ البحث المحسوب يقرأ نبذةَ لغته — لا الأخرى
+        $this->assertSame('RIBBON', $this->meta($this->home('ar'), '#<meta name="description" content="([^"]*)"#'));
+        $this->assertSame('English bio alone.', $this->meta($this->home('en'), '#<meta name="description" content="([^"]*)"#'));
+    }
+
+    /** ٥ و٦: حفظُ لغةٍ لا يمحو الأخرى */
+    public function test_saving_one_about_text_keeps_the_other(): void
+    {
+        $this->save(['store_about' => 'عربيّ', 'store_about_en' => 'English'])->assertSessionHasNoErrors();
+
+        $this->save(['store_about' => 'عربيٌّ جديد'])->assertSessionHasNoErrors();
+        $this->assertSame('English', MarketingSettings::group($this->shop->id, 'website')['store_about_en'], 'حفظُ العربيّ محا الإنجليزيّ');
+
+        $this->save(['store_about_en' => 'New English'])->assertSessionHasNoErrors();
+        $this->assertSame('عربيٌّ جديد', MarketingSettings::group($this->shop->id, 'website')['store_about'], 'حفظُ الإنجليزيّ محا العربيّ');
+
+        $this->save(['store_about_en' => str_repeat('a', 401)])->assertSessionHasErrors('store_about_en');
+    }
+
+    /**
+     * ٧: والنبذةُ المحفوظةُ قبل اليوم لا تُعاد كتابتُها — تبقى عربيّةً كما هي،
+     * ولو كان نصُّها إنجليزيًّا (حالُ سعود): لا تُنقل ولا تُنسخ ولا تُترجَم.
+     */
+    public function test_an_existing_about_is_left_exactly_as_stored(): void
+    {
+        Setting::create(['business_id' => $this->shop->id, 'key' => 'store_about', 'value' => 'Ribbon is a gifting house built on simplicity.']);
+        MarketingSettings::forget($this->shop->id);
+
+        $this->assertStringContainsString('Ribbon is a gifting house built on simplicity.', $this->aboutEverywhere('ar'));
+        $this->assertStringNotContainsString('Ribbon is a gifting house built on simplicity.', $this->aboutEverywhere('en'));
+
+        $this->assertSame('Ribbon is a gifting house built on simplicity.', Setting::where('business_id', $this->shop->id)->where('key', 'store_about')->value('value'));
+        $this->assertNull(Setting::where('business_id', $this->shop->id)->where('key', 'store_about_en')->value('value'), 'كُتبت نبذةٌ إنجليزيّة لم يكتبها صاحبُها');
+
+        // ولا هجرةَ تمسّها
+        foreach (glob(database_path('migrations/*.php')) as $file) {
+            $this->assertStringNotContainsString('store_about_en', (string) file_get_contents($file), basename($file).' تنقل النبذة');
+        }
     }
 
     /* ═══════════ وما كُتب قبل اليوم ═══════════ */

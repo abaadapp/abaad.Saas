@@ -7313,5 +7313,9 @@
     "Search description — English": "Search description — English",
     "للصفحة الإنجليزيّة — واتركه فارغًا فيبقى ما يُحسب من نبذتك": "For the English page — leave it empty to keep what is built from your bio",
     "قائمة «:label» غير صالحة — أعد اختيار المنتجات.": "The “:label” list is not valid — pick the products again.",
-    "منتجٌ في «:label» غير متاح — اختر من منتجاتك المفعّلة والمنشورة.": "A product in “:label” is not available — pick from your active, published products."
+    "منتجٌ في «:label» غير متاح — اختر من منتجاتك المفعّلة والمنشورة.": "A product in “:label” is not available — pick from your active, published products.",
+    "نبذة النشاط — العربية": "About description — Arabic",
+    "About description — English": "About description — English",
+    "تُقرأ في هذا القسم، وفي صفحة «من نحن»، وفي تذييل كلّ صفحةٍ عربيّة": "Read in this section, on the About page, and in the footer of every Arabic page",
+    "للصفحة الإنجليزيّة — ولا تُعرض فيها النبذةُ العربيّة، وبلا نبذةٍ إنجليزيّة لا يظهر القسمُ فيها": "For the English page — the Arabic bio is never shown there, and without an English bio the section does not show there"
 }

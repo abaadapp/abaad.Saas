@@ -493,6 +493,7 @@ return [
         'store_delivery_slots' => 'مواعيد التوصيل',
         'store_delivery_note' => 'ملاحظة التوصيل',
         'store_delivery_note_en' => 'ملاحظة التوصيل بالإنجليزية',
+        'store_about_en' => 'النبذة بالإنجليزية',
         'store_hero_title' => 'عنوان الواجهة بالعربية',
         'store_hero_title_en' => 'عنوان الواجهة بالإنجليزية',
         'store_hero_sub' => 'وصف الواجهة بالعربية',

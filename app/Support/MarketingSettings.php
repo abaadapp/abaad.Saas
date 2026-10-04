@@ -99,6 +99,11 @@ class MarketingSettings
             'store_theme' => 'rose',
             'store_headline' => '',
             'store_about' => '',
+            /*
+             * والنبذةُ بالإنجليزيّة — للصفحة الإنجليزيّة في RIBBON وحدها (`StorePage::about`).
+             * و`store_about` نبذتُها العربيّة. ولا تقع إحداهما على الأخرى.
+             */
+            'store_about_en' => '',
             'store_show_prices' => '1',
             'store_whatsapp' => '',
             /*

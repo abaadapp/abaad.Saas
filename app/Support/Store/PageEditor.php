@@ -126,7 +126,8 @@ final class PageEditor
             ['key' => 'store_picks', 'kind' => 'products', 'label' => 'الأصناف', 'hint' => 'اخترها ورتّبها كما تريد أن تظهر — والصنفُ يبقى في قسمه', 'max' => RibbonPicks::MAX],
         ],
         'about' => [
-            ['key' => 'store_about', 'kind' => 'textarea', 'label' => 'نبذتك', 'hint' => 'تُقرأ في هذا القسم، وفي صفحة «من نحن»، وفي تذييل كلّ صفحة'],
+            ['key' => 'store_about', 'kind' => 'textarea', 'label' => 'نبذة النشاط — العربية', 'hint' => 'تُقرأ في هذا القسم، وفي صفحة «من نحن»، وفي تذييل كلّ صفحةٍ عربيّة'],
+            ['key' => 'store_about_en', 'kind' => 'textarea', 'label' => 'About description — English', 'hint' => 'للصفحة الإنجليزيّة — ولا تُعرض فيها النبذةُ العربيّة، وبلا نبذةٍ إنجليزيّة لا يظهر القسمُ فيها', 'dir' => 'ltr'],
         ],
         'reviews' => [],
         self::UPSELLS => [
@@ -285,7 +286,7 @@ final class PageEditor
             'new' => $hasProducts ? null : self::SILENT['new'],
             'banner' => $hasProducts ? null : self::SILENT['banner'],
             'block' => $blockReady ? null : self::SILENT['block'],
-            'about' => trim((string) ($site['store_about'] ?? '')) !== '' ? null : self::SILENT['about'],
+            'about' => trim((string) ($site['store_about'] ?? '')) !== '' || trim((string) ($site['store_about_en'] ?? '')) !== '' ? null : self::SILENT['about'],
             'reviews' => $hasReviews ? null : self::SILENT['reviews'],
             RibbonPicks::SECTION => $picksShown ? null : self::SILENT[RibbonPicks::SECTION],
         ];

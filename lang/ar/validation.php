@@ -492,6 +492,8 @@ return [
         'store_delivery_areas' => 'مناطق التوصيل',
         'store_delivery_slots' => 'مواعيد التوصيل',
         'store_delivery_note' => 'ملاحظة التوصيل',
+        'store_delivery_area_note' => 'تنبيه نطاق التوصيل بالعربية',
+        'store_delivery_area_note_en' => 'تنبيه نطاق التوصيل بالإنجليزية',
         'store_image_note' => 'ملاحظة الصور',
         'store_image_note_en' => 'تنبيه الصورة بالإنجليزية',
         'store_gift_card' => 'بطاقة الإهداء',

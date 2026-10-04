@@ -7,6 +7,7 @@ use App\Jobs\SendWhatsAppInvoice;
 use App\Models\Business;
 use App\Models\CustomerInvoice;
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppTemplateMapping;
 use App\Support\Activity;
 use App\Support\PublicDocument;
 use App\Support\WhatsAppConnections;
@@ -14,6 +15,7 @@ use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppPhone;
 use App\Support\WhatsAppStatus;
+use App\Support\WhatsAppTemplates;
 use Illuminate\Support\Str;
 
 /** إرسالُ فاتورة العميل من رقم المتجر نفسه عبر WhatsApp Cloud API. */
@@ -89,8 +91,34 @@ class WhatsAppInvoiceController extends Controller
             ]);
         }
 
-        $template = (string) config('whatsapp.invoice_template', 'abaad_customer_invoice');
-        $language = (string) config('whatsapp.invoice_template_language', config('whatsapp.language', 'ar'));
+        /*
+         * نسجّل القالب في نفس سجلّ القوالب الموجود كي تلتقطه مزامنة Meta
+         * الدورية وتكتب APPROVED/PENDING/REJECTED. لا جدولًا موازيًا للفواتير.
+         */
+        $mapping = WhatsAppTemplateMapping::firstOrCreate(
+            [
+                'scope_type' => WhatsAppMode::OWNER_BUSINESS,
+                'business_id' => $businessId,
+                'event_type' => 'invoice_document',
+            ],
+            [
+                'template_name' => (string) config('whatsapp.invoice_template', 'abaad_customer_invoice'),
+                'language_code' => (string) config('whatsapp.invoice_template_language', config('whatsapp.language', 'ar')),
+                'enabled' => true,
+                'variable_mapping' => [
+                    '1' => 'business_name',
+                    '2' => 'invoice_number',
+                    '3' => 'invoice_url',
+                ],
+            ],
+        );
+
+        if (! $mapping->enabled || (filled($mapping->meta_status) && $mapping->meta_status !== WhatsAppTemplates::APPROVED)) {
+            return back()->with('toast', [
+                'msg' => __('قالب إرسال الفاتورة غير معتمَد لدى واتساب بعد — راجع حالة القوالب في إعدادات واتساب.'),
+                'type' => 'danger',
+            ]);
+        }
 
         $message = WhatsAppMessage::create([
             'business_id' => $businessId,
@@ -102,8 +130,8 @@ class WhatsAppInvoiceController extends Controller
             'event_type' => 'invoice_document',
             'direction' => 'outbound',
             'recipient_phone' => $phone,
-            'template_name' => $template,
-            'language_code' => $language,
+            'template_name' => $mapping->template_name,
+            'language_code' => $mapping->languageFor($invoice->customer?->language),
             /* الإرسال اليدوي يجوز تكراره؛ كل ضغطة محاولة مستقلة قابلة للتدقيق. */
             'dedupe_key' => 'invoice-send:'.$businessId.':'.$invoice->id.':'.Str::ulid(),
             'status' => WhatsAppStatus::QUEUED,

@@ -7317,5 +7317,17 @@
     "نبذة النشاط — العربية": "About description — Arabic",
     "About description — English": "About description — English",
     "تُقرأ في هذا القسم، وفي صفحة «من نحن»، وفي تذييل كلّ صفحةٍ عربيّة": "Read in this section, on the About page, and in the footer of every Arabic page",
-    "للصفحة الإنجليزيّة — ولا تُعرض فيها النبذةُ العربيّة، وبلا نبذةٍ إنجليزيّة لا يظهر القسمُ فيها": "For the English page — the Arabic bio is never shown there, and without an English bio the section does not show there"
+    "للصفحة الإنجليزيّة — ولا تُعرض فيها النبذةُ العربيّة، وبلا نبذةٍ إنجليزيّة لا يظهر القسمُ فيها": "For the English page — the Arabic bio is never shown there, and without an English bio the section does not show there",
+    "التحصيل والسداد في المدة": "Collections and payments during the period",
+    "تحصيلات العملاء": "Customer collections",
+    "مدفوعات الموردين": "Supplier payments",
+    "عملية تحصيل واحدة": "1 collection transaction",
+    "عمليتا تحصيل": "2 collection transactions",
+    ":n عمليات تحصيل": ":n collection transactions",
+    ":n عمليةَ تحصيل": ":n collection transactions",
+    "عملية سداد واحدة": "1 payment transaction",
+    "عمليتا سداد": "2 payment transactions",
+    ":n عمليات سداد": ":n payment transactions",
+    ":n عمليةَ سداد": ":n payment transactions",
+    "مبالغ تم تحصيلها من العملاء أو سدادها للموردين فعليًا خلال المدة. لا تدخل هذه الأرقام مرة أخرى في احتساب صافي الربح.": "Amounts actually collected from customers or paid to suppliers during the period. These figures are not counted again when calculating net profit."
 }

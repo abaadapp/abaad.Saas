@@ -27,6 +27,7 @@ const draw = (over: Record<string, unknown> = {}) => {
         bank: 200,
         accounts: [],
         period: { sales: 1000, tax: 50, cogs: 600, gross_profit: 350, expenses: 200, profit: 150, in: 0, out: 0, transfers: 0 },
+        settlements: { collections: { amount: 0, count: 0 }, supplier_payments: { amount: 0, count: 0 } },
         dues: {
             invoices: 250, expenses: 120, payroll: 80, total: 450,
             overdue: 2, overdue_count: 2, overdue_amount: 175, due_soon_amount: 60,

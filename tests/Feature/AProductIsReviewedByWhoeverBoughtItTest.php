@@ -442,6 +442,41 @@ class AProductIsReviewedByWhoeverBoughtItTest extends TestCase
         ]);
     }
 
+    /**
+     * ═══ وقسمُ «آراء العملاء» في الرئيسية لآراء الطلب وحدها ═══
+     *
+     * رأيُ الصنف المنشور يظهر على صفحة صنفه ولا يظهر في الرئيسية. وقواعدُ
+     * العرض كما هي: المعلّقُ لا يظهر، والنجومُ بلا كلامٍ لا تُعرض شهادة.
+     * وقرّاءُ القسم الآخرون (المحرّر والبانِي) يقرؤون القاعدةَ نفسَها.
+     */
+    public function test_the_store_testimonials_carry_order_reviews_only(): void
+    {
+        $order = $this->order([]);
+        Review::create([
+            'business_id' => $this->shop->id, 'order_id' => $order->id, 'customer_id' => $this->customer->id,
+            'rating' => 5, 'comment' => 'خدمةُ المحلّ رائعة', 'status' => 'منشور',
+        ]);
+        Review::create([
+            'business_id' => $this->shop->id, 'order_id' => $this->order([])->id,
+            'rating' => 4, 'comment' => 'رأيُ طلبٍ معلّق', 'status' => 'معلّق',
+        ]);
+        $this->productReview($this->rose, 4, 'منشور', ['comment' => 'الباقةُ نفسُها جميلة']);
+
+        $home = (string) $this->get('/s/ribbon')->assertOk()->getContent();
+        $this->assertStringContainsString('data-testid="rb-sec-reviews"', $home);
+        $this->assertStringContainsString('خدمةُ المحلّ رائعة', $home);
+        $this->assertStringNotContainsString('الباقةُ نفسُها جميلة', $home, 'رأيُ صنفٍ ظهر في آراء المتجر');
+        $this->assertStringNotContainsString('رأيُ طلبٍ معلّق', $home);
+
+        $this->assertStringContainsString('الباقةُ نفسُها جميلة', $this->productPage($this->rose));
+
+        // ومتجرٌ ليس له إلّا آراءُ أصنافٍ لا شهادةَ له في القسم — ولا عدّادٌ يقول غيرَ ذلك
+        Review::where('type', Review::TYPE_ORDER)->delete();
+        $this->assertFalse(Review::where('business_id', $this->shop->id)->testimonial()->exists());
+        $this->assertStringNotContainsString('rb-sec-reviews', (string) $this->get('/s/ribbon')->getContent());
+        $this->assertSame(1, ProductReviews::for($this->shop->id, $this->rose->id)['count']);
+    }
+
     /** وطلبٌ بلا صنفٍ يُقيَّم يُكتب فيه رأيُه الواحد كما كان */
     public function test_an_order_without_products_keeps_its_single_form(): void
     {

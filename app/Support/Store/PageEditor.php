@@ -264,7 +264,7 @@ final class PageEditor
         $hasProducts = $shown->isNotEmpty();
         $hasCats = Category::where('business_id', $businessId)
             ->whereIn('id', $shown->filter()->unique()->all())->exists();
-        $hasReviews = Review::where('business_id', $businessId)->showable()->exists();
+        $hasReviews = Review::where('business_id', $businessId)->testimonial()->exists();
 
         // والقسمُ الحرُّ يظهر بلغةٍ كُتب لها عنوانُه ونصُّه — بأيّهما
         $written = fn (string $suffix) => trim((string) ($site['store_block_title'.$suffix] ?? '')) !== ''

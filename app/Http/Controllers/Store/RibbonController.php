@@ -299,7 +299,7 @@ class RibbonController extends Controller
             'picksTitle' => RibbonPicks::title($bid, $lang, RibbonTexts::for($lang)),
             // وعنوانُ «الأكثر مبيعًا» يتبع مصدرَه: محسوبًا يُسمّى، ومختارًا يُسمّى
             'bestPicked' => $chosen->isNotEmpty(),
-            'reviews' => Review::where('business_id', $bid)->showable()->latest()->take(3)->get()
+            'reviews' => Review::where('business_id', $bid)->testimonial()->latest()->take(3)->get()
                 ->map(fn ($r) => ['name' => $r->displayName(), 'text' => (string) $r->comment, 'rating' => (int) $r->rating])
                 ->filter(fn ($r) => $r['text'] !== '')->values()->all(),
         ];

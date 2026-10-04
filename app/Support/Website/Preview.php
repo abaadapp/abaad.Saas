@@ -700,7 +700,7 @@ class Preview
      */
     private static function reviews(int $businessId, int $limit): array
     {
-        return Review::where('business_id', $businessId)->showable()
+        return Review::where('business_id', $businessId)->testimonial()
             ->with('customer:id,name')
             ->orderByDesc('id')
             ->limit(max($limit, self::MAX))->get(['id', 'customer_id', 'author_name', 'rating', 'comment'])

@@ -134,7 +134,7 @@ class BuilderController extends Controller
                 'products' => Product::where('business_id', $bid)->where('active', true)->count(),
                 'categories' => Category::where('business_id', $bid)->count(),
                 /* وما يُعرض لا ما يُنشر: عدّادٌ يقول خمسةً وقسمٌ يخرج فارغًا */
-                'reviews' => Review::where('business_id', $bid)->showable()->count(),
+                'reviews' => Review::where('business_id', $bid)->testimonial()->count(),
             ],
             'domain' => $this->domainState(),
         ]);

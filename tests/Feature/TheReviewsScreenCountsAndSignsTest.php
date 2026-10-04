@@ -278,13 +278,25 @@ class TheReviewsScreenCountsAndSignsTest extends TestCase
      *
      * «فحصان لسؤالٍ واحد يفترقان يوم يُبدَّل أحدهما» — وقد افترقا فعلًا.
      * فالشرطُ في `Review::scopeShowable` وحدَه، ومن نسخه هنا يسقط.
+     *
+     * والقسمُ يقرأ `testimonial()` منذ صارت للأصناف آراؤها: شرطُ العرض نفسُه
+     * (`showable`) ومعه «رأيُ طلب» — فرأيُ الصنف لصفحة صنفه لا للقسم العامّ.
      */
     public function test_no_reader_rewrites_the_showable_rule(): void
     {
+        $scope = (string) file_get_contents(base_path('app/Models/Review.php'));
+        $this->assertMatchesRegularExpression(
+            '/function scopeTestimonial\(Builder \$query\): Builder\s*\{\s*return \$query->showable\(\)/',
+            $scope,
+            'شهادةُ المتجر لا تبني على شرط العرض الواحد',
+        );
+
         $files = [
             base_path('app/Support/Website/MerchantData.php'),
             base_path('app/Support/Website/Preview.php'),
             base_path('app/Http/Controllers/Admin/Website/BuilderController.php'),
+            base_path('app/Support/Store/PageEditor.php'),
+            base_path('app/Http/Controllers/Store/RibbonController.php'),
         ];
 
         foreach ($files as $file) {
@@ -295,7 +307,7 @@ class TheReviewsScreenCountsAndSignsTest extends TestCase
                 $source,
                 basename($file).' يعيد كتابة شرط العرض بيده',
             );
-            $this->assertStringContainsString('showable()', $source, basename($file).' لا يقرأ من المصدر الواحد');
+            $this->assertStringContainsString('testimonial()', $source, basename($file).' لا يقرأ من المصدر الواحد');
         }
     }
 

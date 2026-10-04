@@ -8,7 +8,7 @@ import SmartLink from '@/Components/SmartLink';
 import StatCard from '@/Components/StatCard';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
-import { money } from '@/lib/format';
+import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -34,6 +34,14 @@ interface Props {
         in: number;
         out: number;
         transfers: number;
+    };
+    /**
+     * التحصيلُ والسدادُ في المدة — مالٌ قُبض من العملاء أو دُفع للموردين فعلًا.
+     * للعلم وحده: لا يدخل `period` ولا يمسّ ربحًا ولا ذمّة (`Settlements`).
+     */
+    settlements: {
+        collections: { amount: number; count: number };
+        supplier_payments: { amount: number; count: number };
     };
     dues: {
         expenses: number;
@@ -72,6 +80,25 @@ interface Props {
  * ملخّص المبيعات، والمستحقّ في ثلاثة جداول لا يجمعها شيء. فمن أراد أن يعرف
  * هل يستطيع الدفع اليوم كان عليه أن يفتح خمس شاشات ويجمع بالعين.
  */
+/**
+ * عددُ العمليات بصيغته العربيّة — مفتاحٌ لكلّ صيغة، ولكلٍّ ترجمتُه.
+ *
+ * والعربيّةُ لا تقول «11 عمليات»: الواحدُ والاثنان صيغتان، ومن ثلاثةٍ إلى
+ * عشرةٍ جمع، وما فوقها مفردٌ منصوب. ومفتاحٌ واحدٌ لكلّ عددٍ كان سيكتب
+ * أحدَها خطأً — وتُترجَم كلٌّ إلى المفرد أو الجمع الإنجليزيّ.
+ */
+export function countKey(n: number, forms: { one: string; two: string; few: string; many: string }): string {
+    if (n === 1) return forms.one;
+    if (n === 2) return forms.two;
+
+    const r = n % 100;
+
+    return n === 0 || (r >= 3 && r <= 10) ? forms.few : forms.many;
+}
+
+const COLLECTIONS = { one: 'عملية تحصيل واحدة', two: 'عمليتا تحصيل', few: ':n عمليات تحصيل', many: ':n عمليةَ تحصيل' };
+const PAYMENTS = { one: 'عملية سداد واحدة', two: 'عمليتا سداد', few: ':n عمليات سداد', many: ':n عمليةَ سداد' };
+
 /** سطرٌ من تفصيل بطاقة: اسمٌ ومبلغ */
 function Line({ label, value, tone }: { label: string; value: string; tone?: string }) {
     return (
@@ -83,7 +110,7 @@ function Line({ label, value, tone }: { label: string; value: string; tone?: str
 }
 
 export default function Summary() {
-    const { range, cash, bank, accounts, period, dues, pending_invoices, receivables, context } =
+    const { range, cash, bank, accounts, period, settlements, dues, pending_invoices, receivables, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -297,6 +324,44 @@ export default function Summary() {
                  */}
                 <p className="mt-4 text-[12px] text-[#9ca3af]">
                     {t('التحويل بين الصندوق والبنك لا يُقرأ دخلًا ولا مصروفًا — المال انتقل ولم يدخل ولم يخرج.')}
+                </p>
+            </Card>
+
+            {/*
+                التحصيلُ والسدادُ في المدة — بالفترة نفسِها، ومفصولٌ عمّا فوقه.
+
+                تسويةُ ذمّةٍ لا ربحٌ جديد: التحصيلُ ثمنُ بيعٍ عُدّ في «المبيعات» يومَ
+                البيع، والسدادُ ثمنُ سندٍ دخل المخزونَ يومَ اعتُمد. فيُعرضان للعلم
+                ولا يُضافان إلى شيءٍ فوقهما.
+            */}
+            <Card className="mt-4 p-5" data-testid="period-settlements">
+                <h3 className="mb-4 text-[14px] font-bold text-[#111]">{t('التحصيل والسداد في المدة')}</h3>
+                <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div data-testid="settlement-collections">
+                        <dt className="text-[12px] text-[#9ca3af]">{t('تحصيلات العملاء')}</dt>
+                        <dd className="mt-0.5 text-[18px] font-semibold tabular-nums text-[#15803d]">
+                            {m(settlements.collections.amount)}
+                        </dd>
+                        <dd className="mt-0.5 text-[12px] text-[#6b7280]">
+                            {t(countKey(settlements.collections.count, COLLECTIONS), {
+                                n: number(settlements.collections.count),
+                            })}
+                        </dd>
+                    </div>
+                    <div data-testid="settlement-supplier-payments">
+                        <dt className="text-[12px] text-[#9ca3af]">{t('مدفوعات الموردين')}</dt>
+                        <dd className="mt-0.5 text-[18px] font-semibold tabular-nums text-[#b91c1c]">
+                            {m(settlements.supplier_payments.amount)}
+                        </dd>
+                        <dd className="mt-0.5 text-[12px] text-[#6b7280]">
+                            {t(countKey(settlements.supplier_payments.count, PAYMENTS), {
+                                n: number(settlements.supplier_payments.count),
+                            })}
+                        </dd>
+                    </div>
+                </dl>
+                <p className="mt-4 text-[12px] text-[#9ca3af]">
+                    {t('مبالغ تم تحصيلها من العملاء أو سدادها للموردين فعليًا خلال المدة. لا تدخل هذه الأرقام مرة أخرى في احتساب صافي الربح.')}
                 </p>
             </Card>
         </AdminLayout>

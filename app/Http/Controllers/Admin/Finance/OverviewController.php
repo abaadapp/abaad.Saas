@@ -14,6 +14,7 @@ use App\Support\Bank;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Receivables;
+use App\Support\Settlements;
 use App\Support\SupplierInvoices;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -106,6 +107,15 @@ class OverviewController extends Controller
                 'out' => round((float) ($byType['مصروف'] ?? 0), 3),
                 // التحويل ينتقل ولا يدخل ولا يخرج — يُعرض وحده أو لا يُعرض
                 'transfers' => round((float) ($byType['تحويل'] ?? 0), 3),
+            ],
+            /*
+             * والتحصيلُ والسدادُ في المدة — مالٌ قُبض أو دُفع فعلًا، بالفترة
+             * نفسِها. للعلم وحده: لا يدخل `period` ولا يمسّ ربحًا ولا ذمّة.
+             * انظر `Settlements`.
+             */
+            'settlements' => [
+                'collections' => Settlements::collections($bid, $start),
+                'supplier_payments' => Settlements::supplierPayments($bid, $start),
             ],
             'dues' => $this->dueTotals($bid),
             /*

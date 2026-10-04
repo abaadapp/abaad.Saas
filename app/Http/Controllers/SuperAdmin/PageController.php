@@ -21,8 +21,6 @@ use App\Support\BusinessTypes;
 use App\Support\CrmAssistant;
 use App\Support\CrmWhatsApp;
 use App\Support\Demo;
-use App\Support\GoogleBilling;
-use App\Support\GoogleReviews;
 use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
@@ -485,24 +483,17 @@ class PageController extends Controller
              * `publicView` هو الباب: تمرير النموذج نفسه كان يُخرج الرمز إلى
              * المتصفّح مهما كان `$hidden` عليه.
              */
-            /* تلميحُ مفتاح الخرائط لا المفتاح — أربعةُ أحرفٍ ليُعرف أيُّه محفوظ */
-            'googleKeyHint' => GoogleReviews::platformKeyHint(),
             /*
-             * حالُ خرائط Google في المنصّة — مهيَّأةٌ أو لا، وكم فرعًا رُبط.
+             * خرائطُ Google في المنصّة — أعدادٌ لا مفاتيح.
              *
-             * والعددُ محسوبٌ لا موعود: مفتاحٌ محفوظٌ وصفرُ فروعٍ مربوطة يعني
-             * أنّ الميزة لم تصل التجّار، وذلك خبرٌ يُقرأ في سطرٍ لا يُكتشف
-             * بعد شهر.
+             * لا مفتاحَ لأبعاد: كلُّ تاجرٍ يربطها بمفتاحه من مشروعه في Google
+             * Cloud ويدفع لـGoogle هو. فلا يصل هذه الشاشةَ مفتاحٌ ولا تلميحُ
+             * مفتاح — كم متجرًا ربطها، وكم فرعًا رُبط، وحسب.
              */
-            /*
-             * حالُ فوترة Google وموعدُ انتهاء التجربة.
-             *
-             * وهو أخطرُ ما في هذه الشاشة صمتًا: يومَ تنتهي التجربة تتوقّف
-             * الخرائط عن كلّ التجّار دفعةً واحدة، ولا يقول شيءٌ لماذا.
-             */
-            'googleBilling' => GoogleBilling::view(),
             'googleHealth' => [
-                'configured' => GoogleReviews::platformKey() !== null,
+                'shopsWithKey' => Setting::whereNotNull('business_id')
+                    ->where('key', 'google_api_key')->where('value', '!=', '')
+                    ->distinct()->count('business_id'),
                 'linkedBranches' => BranchGooglePlace::query()->linked()->count(),
                 'branches' => Branch::count(),
             ],
@@ -585,13 +576,12 @@ class PageController extends Controller
          * ═══ ولا يُقرأ الجدول كلُّه — بل ما لهذه الشاشة وحده ═══
          *
          * كانت تنشر كلَّ صفوف `business_id = null` فوق الافتراضيّات. وفي
-         * الجدول ما ليس لها: `google_places_key` مفتاحُ خرائط المنصّة —
-         * معمًّى، لكنّه وصل حمولةَ الصفحة كاملًا (٢٥٦ حرفًا) فقرأه من فتح
-         * «مصدر الصفحة».
+         * الجدول ما ليس لها: كان فيه يومًا مفتاحُ خرائط المنصّة — معمًّى،
+         * لكنّه وصل حمولةَ الصفحة كاملًا (٢٥٦ حرفًا) فقرأه من فتح «مصدر
+         * الصفحة». (وقد حُذف ذاك المفتاح وصفُّه: خرائطُ Google بمفتاح التاجر.)
          *
-         * وقد عرف الكودُ الخطرَ ولم يُغلقه: `SettingController::googleKey`
-         * يشرح أنّ المفتاح لا يمرّ في `KEYS` «لأنّ تلك تُقرأ في
-         * `platformSettings` فتصل المتصفّح» — ثمّ تقرأ `platformSettings`
+         * وقد عرف الكودُ الخطرَ ولم يُغلقه: استثناه من `KEYS` «لأنّ تلك تُقرأ
+         * في `platformSettings` فتصل المتصفّح» — ثمّ تقرأ `platformSettings`
          * الجدولَ كلَّه لا `KEYS`. فالاستثناءُ حرسَ بابًا والتسريبُ من آخر.
          *
          * والقائمةُ تُشتقّ من الافتراضيّات لا تُكتب ثانية: مفتاحٌ يُضاف

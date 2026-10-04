@@ -2,8 +2,11 @@
 
 namespace App\Support\Store;
 
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\FlowerOrder;
+use App\Support\SalesChannel;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -127,6 +130,74 @@ final class GiftCardProduct
         }
 
         return $data;
+    }
+
+    /**
+     * ملاحظةُ البند كما تُطبع على الفاتورة والإيصال — ورسالةُ الكرت لا تُطبع.
+     *
+     * نصُّ الكرت يُحفظ في `order_items.note` لأنّه نصُّ بنده (`settle`)،
+     * والورقةُ الماليّة تطبع ملاحظةَ كلّ بندٍ تحت اسمه. فكانت الرسالةُ
+     * الخاصّة تخرج على الفاتورة وشريطِ الصندوق ورابطِ الورقة العامّ — وهي
+     * للمستلِم على كرته، لا لورقة حساب.
+     *
+     * فبندُ الكرت بلا ملاحظةٍ على الورقة، ويُعرف بأحد اثنين:
+     *
+     * - **علامةُ صنفه** (`products.is_gift_card`) — الهويّةُ نفسُها التي يُباع
+     *   بها (`marked`)، لا الاسم: كرتٌ أُعيدت تسميتُه يبقى كرتًا. وتُقرأ ولو
+     *   حُذف الصنفُ بعد البيع، ومن صنفٍ في متجر الطلب وحده.
+     * - **أو لقطةُ يوم البيع** — احتياطٌ لبندٍ سبق العلامةَ (هجرةُ التعليم
+     *   تترك الملتبسَ والمحذوفَ بلا علامة) أو فقد صنفَه. ولا تحجب إلّا ما
+     *   لا يُثبَت أنّه عاديّ (`legacyCardLine`).
+     *
+     * ولا اسمَ في السؤال. وسائرُ الملاحظات تُطبع كما كانت — ولو طابق نصُّها
+     * رسالةَ الكرت. والبندُ وثمنُه باقيان: الكرتُ مبيعٌ يُحاسَب.
+     */
+    public static function paperNote(OrderItem $item, Order $order): ?string
+    {
+        $note = trim((string) $item->note);
+
+        if ($note === '') {
+            return null;
+        }
+
+        $product = $item->product_id
+            ? Product::withTrashed()->whereKey($item->product_id)->where('business_id', $order->business_id)->first()
+            : null;
+
+        if ($product?->is_gift_card || self::legacyCardLine($note, $product, $order)) {
+            return null;
+        }
+
+        return $item->note;
+    }
+
+    /**
+     * بندُ كرتٍ بلا علامة — من وقائع يوم البيع، لا من نصّ الملاحظة وحده.
+     *
+     * كان الاحتياطُ «الملاحظةُ جزءٌ من `card_message`» — فحجب ملاحظةَ بندِ
+     * وردٍ عاديّ طابقت الرسالةَ أو كانت بعضَها («كل عام»). والشروطُ الآن معًا:
+     *
+     * - **طلبُ الموقع:** إتمامُ الموقع وحده كتب نصَّ الكرت في بنده، ويمحو
+     *   ملاحظةَ كلّ بندٍ سواه (`settle`). وملاحظاتُ الصندوق لا تُمسّ.
+     * - **رسالةٌ كاملة لا بعضُها:** `orderMessage` تكتب نصوصَ الكروت بسطرٍ
+     *   فارغٍ بينها، فالملاحظةُ إحداها بتمامها.
+     * - **وصنفُه لا يتتبّع المخزون أو ذهب:** الكرتُ خارجَ الدفتر دائمًا
+     *   (`is`, `forSave`)، فصنفٌ يُعدّ في المخزون ليس كرتًا.
+     */
+    private static function legacyCardLine(string $note, ?Product $product, Order $order): bool
+    {
+        $message = trim((string) $order->card_message);
+
+        if ($order->channel !== SalesChannel::WEBSITE || $message === '') {
+            return false;
+        }
+
+        $whole = $message === $note
+            || str_starts_with($message, $note."\n\n")
+            || str_ends_with($message, "\n\n".$note)
+            || str_contains($message, "\n\n".$note."\n\n");
+
+        return $whole && ($product === null || ! $product->tracksStock());
     }
 
     /** نصُّ البند كما وصل — وما ليس نصًّا فراغ */

@@ -1,4 +1,4 @@
-import { ClipboardList, Gift } from 'lucide-react';
+import { ClipboardList, Gift, HeartHandshake } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { SettingsGroup, SettingsSection } from '@/Components/Settings';
@@ -65,20 +65,58 @@ export default function Fields({ form }: { form: ThemeForm }) {
                         </div>
                     </SettingsGroup>
 
+                    {/*
+                        تنبيهُ الصورة بلغتين — العربيُّ للصفحة العربيّة والإنجليزيُّ
+                        للإنجليزيّة، ولا يقع أحدُهما على الآخر: فارغُ اللغة لا يُرسم.
+                    */}
                     <SettingsGroup title="تنبيه الصورة">
-                        <Field
-                            label="تنبيه الصورة"
-                            hint="يظهر تحت صورة المنتج، وفوق زرّ الطلب، وفي صفحة التأكيد. اتركه فارغًا إن لم تحتجه."
-                            error={form.errors.store_image_note}
-                        >
-                            <Input
-                                value={form.data.store_image_note}
-                                onChange={(e) => form.setData('store_image_note', e.target.value)}
-                                aria-label={t('تنبيه الصورة')}
-                                placeholder={t('كل باقة تُنسَّق يدويًّا من ورد اليوم. قد يختلف صنفٌ أو لون حسب المتوفر — ونستبدله بما يساويه أو أفضل، بنفس الشكل والألوان.')}
-                            />
-                        </Field>
+                        <div className="grid grid-cols-1 gap-3">
+                            <Field
+                                label="تنبيه الصورة — العربية"
+                                hint="يظهر تحت صورة المنتج، وفوق زرّ الطلب، وفي صفحة التأكيد. اتركه فارغًا إن لم تحتجه."
+                                error={form.errors.store_image_note}
+                            >
+                                <Input
+                                    value={form.data.store_image_note}
+                                    onChange={(e) => form.setData('store_image_note', e.target.value)}
+                                    aria-label={t('تنبيه الصورة — العربية')}
+                                    placeholder={t('كل باقة تُنسَّق يدويًا من ورد اليوم. قد يختلف نوع أو لون بعض الزهور حسب المتوفر، ويتم استبدالها بما يعادلها أو أفضل مع الحفاظ على طابع الباقة.')}
+                                />
+                            </Field>
+                            <Field
+                                label="Image notice — English"
+                                hint="للصفحة الإنجليزية — واتركه فارغًا فلا يُعرض فيها تنبيه."
+                                error={form.errors.store_image_note_en}
+                            >
+                                <Input
+                                    dir="ltr"
+                                    value={form.data.store_image_note_en}
+                                    onChange={(e) => form.setData('store_image_note_en', e.target.value)}
+                                    aria-label="Image notice — English"
+                                    placeholder="Each bouquet is handcrafted using the freshest flowers available. Flower varieties or colours may vary depending on availability and may be substituted with an equal or better alternative while preserving the overall look of the arrangement."
+                                />
+                            </Field>
+                        </div>
                     </SettingsGroup>
+                </SettingsSection>
+            </section>
+
+            {/*
+                ميزةُ الإهداء — الطلبُ هديّةٌ لغير مشتريه، لهذا المتجر وحده.
+                وغيرُ كرت الهدية أسفلَه: لا تُضيف كرتًا ولا ثمنًا.
+            */}
+            <section id="gifting" className="scroll-mt-24">
+                <SettingsSection
+                    icon={HeartHandshake}
+                    title="ميزة الإهداء"
+                    description="تسمح للعميل بإرسال الطلب كهدية لشخص آخر، مع بيانات المستلم والمناسبة وخيار التواصل معه للحصول على موقع التوصيل."
+                >
+                    <Toggle
+                        on={form.data.store_gift_checkout}
+                        onChange={(v) => form.setData('store_gift_checkout', v)}
+                        label="ميزة الإهداء"
+                        hint="يظهر للعميل «هذا الطلب هدية» في إتمام الطلب"
+                    />
                 </SettingsSection>
             </section>
 

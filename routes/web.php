@@ -479,11 +479,10 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/settings', [SuperAdminPageController::class, 'settings'])->name('settings.index');
     Route::post('/settings', [SettingController::class, 'update'])->name('settings.update');
     Route::post('/settings/test-email', [SettingController::class, 'testEmail'])->name('settings.testEmail');
-    /* مفتاح خرائط Google — مسارُه مستقلٌّ لأنّه سرٌّ لا يمرّ مع بقيّة الإعدادات */
-    Route::post('/settings/google-key', [SettingController::class, 'googleKey'])->name('settings.googleKey');
-    Route::delete('/settings/google-key', [SettingController::class, 'forgetGoogleKey'])->name('settings.googleKey.forget');
-    /* وحالُ الفوترة — مسارٌ مستقلٌّ لأنّها تُحفظ وحدها بلا لمس المفتاح */
-    Route::post('/settings/google-billing', [SettingController::class, 'googleBilling'])->name('settings.googleBilling');
+    /*
+     * ولا مفتاحَ لخرائط Google هنا: يربطها كلُّ تاجرٍ بمفتاحه من مشروعه في
+     * Google Cloud (`admin.integrations.google.key`). لا مفتاحَ لأبعاد يقع على أحد.
+     */
 
     /*
      * واتساب — الرقم المشترك وأذونات المتاجر.
@@ -782,6 +781,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::put('/orders/{number}/payment', [OrderEditController::class, 'payment'])->name('orders.payment.update');
     // إرسالُ الفاتورة إلى الزبون — نصٌّ يُكتب في الخادم ويُفتح على واتساب التاجر
     Route::post('/orders/{number}/send', [OrderDetailController::class, 'send'])->name('orders.send');
+    // رسالةٌ لمستلِم الهديّة ليُعرف موقعُه — تُجهَّز ولا تُرسَل (GiftOrders)
+    Route::post('/orders/{number}/contact-recipient', [OrderDetailController::class, 'contactRecipient'])->name('orders.contactRecipient');
     /* إبلاغُ الزبون بحالة طلبه يدويًّا — لا يمرّ بميتا، فيعمل والحظرُ قائم */
     Route::post('/orders/{number}/status-notice', [OrderDetailController::class, 'statusNotice'])
         ->name('orders.statusNotice');
@@ -1210,6 +1211,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         Route::post('/google', [IntegrationsController::class, 'saveGoogle'])->name('google.save');
         Route::post('/google/key', [IntegrationsController::class, 'saveGoogleKey'])->name('google.key');
         Route::delete('/google/key', [IntegrationsController::class, 'forgetGoogleKey'])->name('google.key.forget');
+        // تفعيلُ خرائط Google أو إطفاؤها — بمفتاح التاجر وحده (`GoogleReviews::apiKey`)
+        Route::post('/google/enabled', [IntegrationsController::class, 'setGoogleEnabled'])->name('google.enabled');
         Route::post('/google/refresh', [IntegrationsController::class, 'refreshGoogle'])->name('google.refresh');
 
         /*

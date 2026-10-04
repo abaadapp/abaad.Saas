@@ -99,7 +99,7 @@ class GooglePlaces
         if (! $response->successful()) {
             return [
                 'ok' => false,
-                'error' => self::message($response->status(), (string) ($response->json('error.message') ?? '')),
+                'error' => self::message($response->status(), (string) ($response->json('error.message') ?? ''), self::reason($response->json())),
                 'results' => [],
             ];
         }
@@ -153,28 +153,56 @@ class GooglePlaces
             return ['ok' => true, 'error' => null, 'place' => self::shape($response->json() ?? [])];
         }
 
-        return self::fail(self::message($response->status(), (string) ($response->json('error.message') ?? '')));
+        return self::fail(self::message($response->status(), (string) ($response->json('error.message') ?? ''), self::reason($response->json())));
     }
 
     /**
      * رسالةٌ تقول ما يُفعل، لا ما حدث.
      *
-     * «403» وحدها لا تُصلح شيئًا: أشيع أسبابها ثلاثةٌ يعرفها صاحبُ المشروع في
-     * Google Cloud — واجهةٌ غير مُفعَّلة، ومفتاحٌ مقيَّد بنطاقٍ لا يشمل خادمنا،
-     * وفوترةٌ غير مربوطة. فتُذكر بأسمائها.
+     * «403» وحدها لا تُصلح شيئًا. والمفتاحُ مفتاحُ التاجر من مشروعه في Google
+     * Cloud، فالإصلاحُ عنده هو: مفتاحٌ أُلغي، أو فوترةٌ غير مربوطة، أو واجهةٌ
+     * غير مفعّلة، أو قيدٌ لا يشمل خادمنا. فتُسمّى بأسمائها حين تقولها Google
+     * في `error.details[].reason`.
+     *
+     * ═══ و400 قد تكون المفتاح لا المعرّف ═══
+     *
+     * Google تردّ المفتاحَ غيرَ الصالح بـ400 (`API_KEY_INVALID`) لا بـ403. وكانت
+     * كلُّ 400 تُقرأ «رفضت Google معرّف المكان» — فيبحث التاجر عن عيبٍ في
+     * محلّه والعيبُ في مفتاحه.
      */
-    private static function message(int $status, string $detail): string
+    private static function message(int $status, string $detail, string $reason = ''): string
     {
         $said = trim($detail) === '' ? '' : ' ('.Str::limit($detail, 160).')';
+        $keySaid = $reason === 'API_KEY_INVALID' || stripos($detail, 'API key') !== false;
 
         return match (true) {
+            $reason === 'BILLING_DISABLED' => __('الفوترة غير مفعّلة في مشروعك على Google Cloud — اربط حساب فوترة بالمشروع ثمّ حاول.'),
+            $reason === 'SERVICE_DISABLED', $reason === 'API_DISABLED' => __('واجهة Places API (New) غير مفعّلة في مشروعك على Google Cloud — فعّلها ثمّ حاول.'),
+            in_array($reason, ['API_KEY_IP_ADDRESS_BLOCKED', 'API_KEY_SERVICE_BLOCKED', 'API_KEY_HTTP_REFERRER_BLOCKED', 'API_KEY_ANDROID_APP_BLOCKED', 'API_KEY_IOS_APP_BLOCKED'], true) => __('قيود مفتاح Google تمنع خادم أبعاد من استخدامه — اسمح بعنوان خادم أبعاد وبـ Places API (New) في قيود المفتاح.'),
+            $reason === 'API_KEY_INVALID', $reason === 'API_KEY_EXPIRED', $status === 400 && $keySaid => __('مفتاح Google غير صالح أو أُلغي — أنشئ مفتاحًا جديدًا من مشروعك في Google Cloud والصقه هنا.'),
             $status === 400 => __('رفضت Google معرّف المكان — تأكّد أنّه معرّفُ محلّك.').$said,
-            $status === 401, $status === 403 => __('رفضت Google المفتاح. تأكّد من تفعيل «Places API (New)» في مشروعك، ومن أنّ قيود المفتاح تسمح لخادمنا، ومن ربط الفوترة.').$said,
+            $status === 401, $status === 403 => __('تعذر استخدام مفتاح Google. تحقق من أن Places API (New) مفعّلة، وأن الفوترة مفعّلة، وأن قيود المفتاح تسمح لخادم أبعاد باستخدامه.').$said,
             $status === 404 => __('لم تجد Google مكانًا بهذا المعرّف.'),
             $status === 429 => __('تجاوزتَ حصّة Google لهذه الفترة. حاول لاحقًا.'),
             $status >= 500 => __('عطلٌ عند Google. حاول بعد قليل.'),
             default => __('لم تُتِمّ Google الطلب (:code).', ['code' => $status]).$said,
         };
+    }
+
+    /**
+     * سببُ الرفض كما تسمّيه Google — `error.details[].reason`، أو فراغ.
+     *
+     * @param  mixed  $body
+     */
+    private static function reason($body): string
+    {
+        foreach ((array) (is_array($body) ? ($body['error']['details'] ?? []) : []) as $detail) {
+            if (is_array($detail) && is_string($detail['reason'] ?? null) && $detail['reason'] !== '') {
+                return $detail['reason'];
+            }
+        }
+
+        return '';
     }
 
     private static function fail(string $error): array

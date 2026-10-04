@@ -41,6 +41,7 @@ use App\Models\SupportMessage;
 use App\Models\SupportRead;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Store\GiftOrders;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Request;
@@ -1305,6 +1306,17 @@ class Demo
             'card_file_name' => $o->card_file_name,
             'sender_name' => $o->sender_name,
             'hide_sender' => (bool) $o->hide_sender,
+            /*
+             * والهديّةُ لغير مشتريها — شارتُها وطريقةُ موقع مستلِمها، و«أخرى»
+             * بنصّها، وزرُّ التواصل معه حين ينتظر الطلبُ موقعَه (`GiftOrders`).
+             */
+            'is_gift' => (bool) $o->is_gift,
+            'recipient_location_mode' => $o->recipient_location_mode,
+            'location_label' => GiftOrders::locationLabel($o),
+            'awaiting_location' => GiftOrders::awaitingLocation($o),
+            'occasion_label' => GiftOrders::occasionLabel($o),
+            // ورقمُ المشتري في كتلة الهديّة — لمن يرى العملاءَ وحده (`GiftOrders::buyerPhone`)
+            'buyer_phone' => GiftOrders::buyerPhone($o, auth()->user()),
             'delivery_address' => $o->delivery_address,
             'delivery_notes' => $o->delivery_notes,
             'internal_notes' => $o->internal_notes,

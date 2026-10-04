@@ -7,8 +7,6 @@ use App\Models\Plan;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\CrmAssistant;
-use App\Support\GoogleBilling;
-use App\Support\GoogleReviews;
 use App\Support\PlatformConfig;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -176,65 +174,5 @@ class SettingController extends Controller
 
             return back()->with('toast', ['msg' => __('تعذّر إرسال البريد التجريبي'), 'type' => 'danger']);
         }
-    }
-
-    /**
-     * مفتاح خرائط Google للمنصّة — يُحفظ وحده، معمًّى، ولا يعود إلى الشاشة.
-     *
-     * ولا يمرّ في `KEYS` مع بقيّة الإعدادات: تلك تُكتب خامًا وتُقرأ في
-     * `platformSettings` فتصل المتصفّح. وهذا مفتاحٌ تُحتسب عليه فاتورةُ
-     * نداءات كلّ متاجر المنصّة — ظهورُه في حمولةِ صفحةٍ يعني أنّ من فتح
-     * أدوات المتصفّح أخذه.
-     *
-     * وهو ما يجعل «ربط مع أبعاد» صادقًا في خرائط Google: بلا مفتاحٍ هنا،
-     * كلُّ تاجرٍ عليه أن يفتح حسابًا في Google Cloud بنفسه.
-     */
-    public function googleKey(Request $request)
-    {
-        $request->validate(['google_places_key' => ['nullable', 'string', 'max:255']]);
-
-        $key = trim((string) $request->input('google_places_key'));
-
-        // وحقلٌ فارغٌ لا يمحو: المحو يُطلب بزرّه — انظر Marketing\MarketingController::saveGoogleKey
-        if ($key === '') {
-            return back()->withErrors([
-                'google_places_key' => __('الصق المفتاح، أو اضغط «حذف المفتاح» لإزالته.'),
-            ]);
-        }
-
-        GoogleReviews::storePlatformKey($key);
-        // ولا يُكتب المفتاح في السجلّ
-        Activity::log('updated', 'حدّث مفتاح خرائط Google للمنصّة');
-
-        return back()->with('toast', ['msg' => __('حُفظ المفتاح'), 'type' => 'success']);
-    }
-
-    /**
-     * حالُ فوترة Google — تُسجَّل بيد مدير المنصّة لأنّها ليست عندنا.
-     *
-     * ولا سبيل لنا إلى معرفتها: Google لا تخبر واجهةَ Places متى تنتهي
-     * تجربةُ مشروعها. فإمّا أن تُكتب هنا، وإمّا أن تُكتشف يومَ يشكو أوّلُ
-     * تاجرٍ من أنّ تقييماته اختفت.
-     */
-    public function googleBilling(Request $request)
-    {
-        $data = $request->validate([
-            'state' => ['required', 'string', 'in:'.implode(',', GoogleBilling::STATES)],
-            // والموعدُ شرطٌ في التجربة وحدها: «تجربة» بلا موعدٍ حالٌ لا تُنبّه عن شيء
-            'ends_at' => ['nullable', 'required_if:state,'.GoogleBilling::TRIAL, 'date'],
-        ]);
-
-        GoogleBilling::store($data['state'], $data['ends_at'] ?? null);
-        Activity::log('updated', 'حدّث حال فوترة خرائط Google');
-
-        return back()->with('toast', ['msg' => __('حُفظت حال الفوترة'), 'type' => 'success']);
-    }
-
-    public function forgetGoogleKey()
-    {
-        GoogleReviews::storePlatformKey(null);
-        Activity::log('updated', 'حذف مفتاح خرائط Google للمنصّة');
-
-        return back()->with('toast', ['msg' => __('حُذف المفتاح'), 'type' => 'warning']);
     }
 }

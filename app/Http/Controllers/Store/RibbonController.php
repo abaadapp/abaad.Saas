@@ -23,6 +23,7 @@ use App\Support\Store\CheckoutFields;
 use App\Support\Store\EnglishCheckout;
 use App\Support\Store\GiftCard;
 use App\Support\Store\GiftCardProduct;
+use App\Support\Store\GiftOrders;
 use App\Support\Store\NewArrivals;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
@@ -497,6 +498,15 @@ class RibbonController extends Controller
             // الاسمان والعنوانُ بالإنجليزيّة — والخادمُ يحرسها (`EnglishCheckout`)
             'englishOnly' => EnglishCheckout::on($bid),
             /*
+             * وميزةُ الإهداء — لمن رفعها من متجره (`GiftOrders`). والمناسباتُ
+             * الثابتةُ بلغة الصفحة؛ والخادمُ يحرس ما يُرسَل.
+             */
+            'giftOrder' => [
+                'on' => GiftOrders::on($bid),
+                'occasions' => GiftOrders::occasionOptions(),
+                'occasion_max' => FlowerOrder::CUSTOM_LABEL_MAX,
+            ],
+            /*
              * وكرتُ الهدية: أيُعرض، وبكم، وما يُقبل رفعه معه.
              *
              * والثمنُ يُبنى هنا لا في المتصفّح: عملةُ المحلّ وخاناتُها تُقرأ
@@ -592,7 +602,12 @@ class RibbonController extends Controller
             // ساعاتُ العمل بلغة الصفحة — التذييلُ وسطرُ الاستلام في الإتمام
             'hours' => StorePage::hours($bid, $lang),
             'deliveryNote' => $s['note'],
-            'imageNote' => $s['image_note'],
+            /*
+             * تنبيهُ الصورة بلغة الصفحة — `store_image_note` للعربيّة و
+             * `store_image_note_en` للإنجليزيّة. وفارغُ اللغة لا يُرسم، ولا
+             * يقع على الأخرى فتختلط اللغتان.
+             */
+            'imageNote' => $lang === 'en' ? $s['image_note_en'] : $s['image_note'],
             'accepts' => WebCheckout::accepts($business),
 
             'analytics' => Seo::tagFor($bid),

@@ -15,6 +15,7 @@ use App\Support\OrderStatus;
 use App\Support\OrderTransition;
 use App\Support\Permissions;
 use App\Support\PrepChecklist;
+use App\Support\Store\GiftOrders;
 use App\Support\WebsiteConfirmPrint;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -380,7 +381,10 @@ class PreparationController extends Controller
             'recipient' => $o->recipient_name,
             'recipient_phone' => $o->recipient_phone,
             'address' => $o->delivery_address,
-            'occasion' => FlowerOrder::occasionLabel($o->occasion_type),
+            // والهديّةُ تُرى على الطاولة — وموقعُ مستلِمها إن كان ينتظر (`GiftOrders`)
+            'is_gift' => (bool) $o->is_gift,
+            'location_label' => GiftOrders::locationLabel($o),
+            'occasion' => GiftOrders::occasionLabel($o),
             'card_message' => $o->card_message,
             /*
              * وترتيبُ النصّ يُرسَل معه — فمن يكتب الكرت يكتبه كما طُلب.

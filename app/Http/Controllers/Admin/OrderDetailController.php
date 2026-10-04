@@ -13,8 +13,8 @@ use App\Support\OrderNotice;
 use App\Support\OrderStatus;
 use App\Support\OrderTransition;
 use App\Support\ReviewInvite;
+use App\Support\Store\GiftOrders;
 use App\Support\WebsiteConfirmPrint;
-use App\Support\WhatsAppPhone;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -66,9 +66,8 @@ class OrderDetailController extends Controller
     {
         $order = $this->find($number);
 
-        $phone = WhatsAppPhone::normalize(
-            $order->customer?->phone ?: $order->recipient_phone
-        );
+        // رقمُ المشتري — ولا يرجع إلى المستلِم في طلب هديّة (`OrderNotice::phone`)
+        $phone = OrderNotice::phone($order);
 
         if (! $phone) {
             /*
@@ -106,6 +105,36 @@ class OrderDetailController extends Controller
              */
             'type' => 'info',
             'link' => ['url' => 'https://wa.me/'.$phone.'?text='.rawurlencode($text), 'label' => __('فتح واتساب')],
+        ]);
+    }
+
+    /**
+     * تواصلٌ مع مستلِم الهديّة ليُعرف موقعُه — رسالةٌ تُجهَّز ولا تُرسَل.
+     *
+     * لهديّةٍ تُوصَّل اختار مشتريها «تواصلوا مع المستلم»، ولم يُكتب عنوانُها
+     * بعد، ولمستلِمها رقمٌ صالح. والنصُّ لا يذكر المُهدي ولا الثمنَ ولا شيئًا
+     * من الدفع (`GiftOrders::contactLink`). والطلبُ من متجر المستخدم وفرعه
+     * (`find`) — رقمُ طلبٍ مُخمَّنٌ لمتجرٍ آخر يُردّ ٤٠٤.
+     */
+    public function contactRecipient(string $number)
+    {
+        $order = $this->find($number);
+        $url = GiftOrders::contactLink($order, Demo::businessName());
+
+        if ($url === null) {
+            return back()->with('toast', [
+                'msg' => __('لا ينتظر هذا الطلب موقعًا من مستلِمه، أو لا رقمَ صالحًا له.'), 'type' => 'danger',
+            ]);
+        }
+
+        Activity::log('updated', 'أعدّ رسالةً لمستلِم هديّة الطلب '.$order->number.' ليُعرف موقعُه', [
+            'subject_id' => $order->id, 'subject_type' => 'order',
+        ]);
+
+        return back()->with('toast', [
+            'msg' => __('جُهِّزت الرسالة — افتح واتساب واضغط «إرسال» فيه.'),
+            'type' => 'info',
+            'link' => ['url' => $url, 'label' => __('فتح واتساب')],
         ]);
     }
 
@@ -155,7 +184,7 @@ class OrderDetailController extends Controller
             ]);
         }
 
-        $phone = WhatsAppPhone::normalize($order->customer?->phone ?: $order->recipient_phone);
+        $phone = OrderNotice::phone($order);
 
         if (! $phone) {
             return back()->with('toast', [
@@ -217,7 +246,7 @@ class OrderDetailController extends Controller
             ]);
         }
 
-        $phone = WhatsAppPhone::normalize($order->customer?->phone ?: $order->recipient_phone);
+        $phone = OrderNotice::phone($order);
 
         if (! $phone) {
             return back()->with('toast', [
@@ -311,6 +340,8 @@ class OrderDetailController extends Controller
             // الموعد واسم العميل يدخلان في حكم «طلبٌ يُجهَّز» — وقيمتُهما
             // المحفوظة هي المعتبَرة حين لا تفتحهما الشاشة
             'scheduled_for', 'customer_name',
+            // وهديّةٌ بانتظار موقع مستلِمها لا يُشترط عنوانُها (`GiftOrders::CONTACT`)
+            'is_gift', 'recipient_location_mode',
         ]))) {
             return back()->withInput()->withErrors($errors);
         }

@@ -87,7 +87,7 @@ final class BranchGoogle
         $key = GoogleReviews::apiKey($branch->business_id);
 
         if ($key === null) {
-            return self::fail(__('خدمة Google Maps غير مفعلة حاليًا.'));
+            return self::fail(__('اربط Google Maps بمفتاحك لتفعيل هذه الميزة.'));
         }
 
         $result = GooglePlaces::details($id, $key);
@@ -205,7 +205,7 @@ final class BranchGoogle
         $key = $branch ? GoogleReviews::apiKey($branch->business_id) : null;
 
         if ($key === null) {
-            return ['ok' => false, 'wrote' => false, 'error' => __('خدمة Google Maps غير مفعلة حاليًا.')];
+            return ['ok' => false, 'wrote' => false, 'error' => __('اربط Google Maps بمفتاحك لتفعيل هذه الميزة.')];
         }
 
         $result = GooglePlaces::details($place->place_id, $key);

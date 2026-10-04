@@ -200,10 +200,20 @@ export default function PrepDetails({
                         {o.occasion && <span>{t(o.occasion)}</span>}
                     </div>
 
+                    {o.is_gift && (
+                        <p className="text-[12px] font-semibold text-[#9d174d]" data-testid="prep-gift-badge">🎁 {t('طلب هدية')}</p>
+                    )}
+
                     {o.address && (
                         <p className="flex items-start gap-1.5 text-[12px] text-[#6b7280]">
                             <MapPin className="mt-0.5 size-3.5 shrink-0" />
                             {o.address}
+                        </p>
+                    )}
+                    {!o.address && o.location_label && (
+                        <p className="flex items-start gap-1.5 text-[12px] text-[#b45309]">
+                            <MapPin className="mt-0.5 size-3.5 shrink-0" />
+                            {o.location_label}
                         </p>
                     )}
 

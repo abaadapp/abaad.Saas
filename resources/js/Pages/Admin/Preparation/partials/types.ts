@@ -65,6 +65,9 @@ export interface PrepOrder {
     recipient: string | null;
     recipient_phone: string | null;
     address: string | null;
+    /** هديّةٌ لغير مشتريها، وموقعُ مستلِمها كما يُقرأ — انظر Store\GiftOrders */
+    is_gift?: boolean;
+    location_label?: string | null;
     occasion: string | null;
     card_message: string | null;
     /*

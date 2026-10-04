@@ -6,7 +6,6 @@ use App\Http\Controllers\SuperAdmin\PageController;
 use App\Models\Business;
 use App\Models\Setting;
 use App\Models\User;
-use App\Support\GoogleReviews;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Tests\TestCase;
@@ -63,15 +62,28 @@ class ThePlatformScreenCarriesOnlyItsOwnSettingsTest extends TestCase
             ->get(route('super-admin.settings.index'))->assertOk()->getContent();
     }
 
+    /**
+     * صفُّ مفتاحِ خرائطٍ قديمٍ لأبعاد — كما قد يبقى على قاعدةٍ لم تُرحَّل.
+     *
+     * لا دالّةَ تكتبه بعد اليوم (خرائطُ Google بمفتاح التاجر)، فيُكتب خامًا:
+     * سرٌّ في الجدول لا يصل الشاشة، أيًّا كان مصدرُه.
+     */
+    private function leftoverKey(): string
+    {
+        Setting::updateOrCreate(
+            ['business_id' => null, 'key' => 'google_places_key'],
+            ['value' => Crypt::encryptString('AIzaSy-PLATFORM-SECRET-0000-wXyZ')],
+        );
+
+        return (string) Setting::whereNull('business_id')->where('key', 'google_places_key')->value('value');
+    }
+
     /* ------------------------- ما لا يتسرّب ------------------------- */
 
     /** المفتاحُ المعمّى لا يصل حمولةَ الصفحة — وهو ما كان يصل */
     public function test_the_encrypted_platform_key_never_reaches_the_page(): void
     {
-        GoogleReviews::storePlatformKey('AIzaSy-PLATFORM-SECRET-0000-wXyZ');
-
-        $stored = (string) Setting::whereNull('business_id')
-            ->where('key', GoogleReviews::PLATFORM_KEY)->value('value');
+        $stored = $this->leftoverKey();
 
         $this->assertNotSame('', $stored, 'لم يُحفظ شيءٌ — فالحارس لا يقيس شيئًا');
 
@@ -82,7 +94,7 @@ class ThePlatformScreenCarriesOnlyItsOwnSettingsTest extends TestCase
     /** ولا خامُه بحال */
     public function test_the_plain_platform_key_never_reaches_the_page(): void
     {
-        GoogleReviews::storePlatformKey('AIzaSy-PLATFORM-SECRET-0000-wXyZ');
+        $this->leftoverKey();
 
         $this->assertStringNotContainsString('AIzaSy-PLATFORM-SECRET-0000-wXyZ', $this->body());
     }
@@ -90,9 +102,9 @@ class ThePlatformScreenCarriesOnlyItsOwnSettingsTest extends TestCase
     /** ولا يظهر في `settings` مفتاحًا باسمه */
     public function test_the_key_is_not_listed_among_the_settings(): void
     {
-        GoogleReviews::storePlatformKey('AIzaSy-PLATFORM-SECRET-0000-wXyZ');
+        $this->leftoverKey();
 
-        $this->assertArrayNotHasKey(GoogleReviews::PLATFORM_KEY, $this->props()['settings']);
+        $this->assertArrayNotHasKey('google_places_key', $this->props()['settings']);
     }
 
     /**
@@ -118,7 +130,7 @@ class ThePlatformScreenCarriesOnlyItsOwnSettingsTest extends TestCase
     /** والشاشة تحمل مفاتيحَها هي لا أكثر */
     public function test_the_screen_carries_exactly_its_own_keys(): void
     {
-        GoogleReviews::storePlatformKey('AIzaSy-PLATFORM-SECRET-0000-wXyZ');
+        $this->leftoverKey();
         Setting::create(['business_id' => null, 'key' => 'google_billing_state', 'value' => 'trial']);
 
         $allowed = array_keys(
@@ -153,12 +165,18 @@ class ThePlatformScreenCarriesOnlyItsOwnSettingsTest extends TestCase
         $this->assertSame($defaults['locale'], $this->props()['settings']['locale']);
     }
 
-    /** وتلميحُ المفتاح يصل — أربعةُ أحرفٍ ليُعرف أيُّه محفوظ */
-    public function test_the_hint_still_reaches_the_screen(): void
+    /** ولا مفتاحَ لخرائط Google في الشاشة — لا حقلَ ولا تلميحَ ولا حالَ فوترة */
+    public function test_the_screen_carries_no_google_key_of_abaad(): void
     {
-        GoogleReviews::storePlatformKey('AIzaSy-PLATFORM-SECRET-0000-wXyZ');
+        $this->leftoverKey();
+        $props = $this->props();
 
-        $this->assertSame('••••wXyZ', $this->props()['googleKeyHint']);
+        $this->assertArrayNotHasKey('googleKeyHint', $props);
+        $this->assertArrayNotHasKey('googleBilling', $props);
+
+        $source = file_get_contents(resource_path('js/Pages/Platform/Settings/Index.tsx'));
+        $this->assertStringNotContainsString('google_places_key', $source, 'ما زال في شاشة المنصّة حقلُ مفتاح');
+        $this->assertStringNotContainsString('settings.googleBilling', $source);
     }
 
     /** ولا شاشةَ لمن ليس مدير المنصّة */

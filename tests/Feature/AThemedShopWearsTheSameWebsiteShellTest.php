@@ -665,6 +665,8 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'store_gift_card' => '1',
             'store_gift_card_price' => '0.750',
             'store_image_note' => 'تُنسَّق يدويًّا',
+            'store_image_note_en' => 'Handcrafted daily',
+            'store_gift_checkout' => '1',
             'store_max_days' => '30',
             'store_on' => '1',
             'store_pay_cod' => '0',

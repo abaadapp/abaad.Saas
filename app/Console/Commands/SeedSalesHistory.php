@@ -2,11 +2,15 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Business;
+use App\Models\Category;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Support\Demo;
+use App\Support\SeedData;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -17,17 +21,50 @@ use Illuminate\Support\Facades\DB;
  * الطلبات المولّدة تُوسَم برقم يبدأ بـ H- لتكون قابلة للتمييز والحذف الآمن.
  * تشغيل: php artisan demo:seed-sales            (يتوقّف إن كانت موجودة)
  *        php artisan demo:seed-sales --fresh    (يحذف المولّدة سابقًا ويعيد التوليد)
+ *
+ * ولحسابٍ بعينه (لقطاتُ العرض): --email يختار متجرَ صاحبه بدل أوّل متجر، فإن
+ * كان فارغًا زُرع له كتالوجٌ موسومٌ بـ MK- ليُحذف وحده. و--shop-name يسمّي المتجر
+ * فيختفي شريط التهيئة. و--purge يزيل كلّ ما زرعه الأمر لذلك المتجر.
+ *        php artisan demo:seed-sales --email=x@y.om --months=3 --shop-name="زهرة مسقط"
+ *        php artisan demo:seed-sales --email=x@y.om --purge
  */
 class SeedSalesHistory extends Command
 {
-    protected $signature = 'demo:seed-sales {--fresh : حذف المبيعات المولّدة سابقًا وإعادة توليدها} {--months=12 : عدد الأشهر للخلف}';
+    protected $signature = 'demo:seed-sales {--fresh : حذف المبيعات المولّدة سابقًا وإعادة توليدها} {--months=12 : عدد الأشهر للخلف} {--email= : متجر صاحب هذا البريد بدل أوّل متجر} {--shop-name= : تسمية المتجر وإقرار هويّته} {--purge : حذف كلّ ما زرعه الأمر لهذا المتجر}';
 
     protected $description = 'توليد تاريخ مبيعات واقعي لآخر 12 شهرًا لرسم حركة المبيعات والمالية';
 
     public function handle(): int
     {
         $bid = Demo::bid();
+        if ($email = $this->option('email')) {
+            $bid = (int) User::where('email', $email)->value('business_id');
+            if ($bid === 0) {
+                $this->error("لا متجر لصاحب البريد {$email}.");
+
+                return self::FAILURE;
+            }
+        }
         $months = max(1, (int) $this->option('months'));
+
+        if ($this->option('purge')) {
+            $ids = Order::where('business_id', $bid)->where('number', 'like', 'H-%')->pluck('id');
+            Transaction::whereIn('order_id', $ids)->delete();
+            \App\Models\OrderItem::whereIn('order_id', $ids)->delete();
+            Order::whereIn('id', $ids)->delete();
+            Product::where('business_id', $bid)->where('sku', 'like', 'MK-%')->delete();
+            Customer::where('business_id', $bid)->where('email', 'like', 'mk-%@example.com')->delete();
+            $this->info("حُذفت {$ids->count()} طلب والكتالوج الموسوم MK-.");
+
+            return self::SUCCESS;
+        }
+
+        if ($name = $this->option('shop-name')) {
+            Business::whereKey($bid)->update(['name' => $name, 'identity_confirmed_at' => now()]);
+            $this->line("سُمّي المتجر «{$name}».");
+        }
+
+        $this->ensureCatalog($bid);
 
         $existing = Order::where('business_id', $bid)->where('number', 'like', 'H-%')->count();
         if ($existing > 0) {
@@ -52,6 +89,7 @@ class SeedSalesHistory extends Command
         }
         $customers = Customer::where('business_id', $bid)->pluck('name')->all();
         $employees = ['أحمد محمد', 'خالد علي', 'سارة حسن', 'مريم عبدالله'];
+        $branch = Business::find($bid)?->branches()->orderBy('id')->first();
 
         // معاملات الدفع بأوزان واقعية
         $payPick = function () {
@@ -71,7 +109,7 @@ class SeedSalesHistory extends Command
         $txCount = 0;
         $sumTotal = 0.0;
 
-        DB::transaction(function () use ($bid, $products, $customers, $employees, $payPick, $weekday, $start, $end, $totalDays, &$seq, &$orderCount, &$txCount, &$sumTotal) {
+        DB::transaction(function () use ($bid, $branch, $products, $customers, $employees, $payPick, $weekday, $start, $end, $totalDays, &$seq, &$orderCount, &$txCount, &$sumTotal) {
             $day = $start->copy();
             while ($day->lte($end)) {
                 // نمو تدريجي: من ~0.45 قبل سنة إلى 1.0 الآن
@@ -121,7 +159,8 @@ class SeedSalesHistory extends Command
                         'number' => 'H-' . str_pad((string) $seq, 6, '0', STR_PAD_LEFT),
                         'customer_name' => $customerName,
                         'employee_name' => $employees[array_rand($employees)],
-                        'branch' => 'الفرع الرئيسي',
+                        'branch_id' => $branch?->id,
+                        'branch' => $branch?->name ?? 'الفرع الرئيسي',
                         'status' => $status,
                         'payment_method' => $method,
                         'payment_status' => $cancelled ? 'غير مدفوع' : 'مدفوع',
@@ -162,5 +201,44 @@ class SeedSalesHistory extends Command
         $this->info("تم توليد {$orderCount} طلب و{$txCount} معاملة دخل عبر {$months} شهرًا. إجمالي المبيعات ≈ " . number_format($sumTotal, 3) . ' ر.ع');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * متجرٌ بلا منتجات لا تُولَّد له مبيعات — فيُزرع له كتالوجٌ وعملاء موسومون
+     * (MK- في الرمز، mk- في البريد) ليمسحهم --purge وحدهم دون ما أدخله صاحبه.
+     */
+    private function ensureCatalog(int $bid): void
+    {
+        if (Product::where('business_id', $bid)->exists()) {
+            return;
+        }
+
+        $catByName = [];
+        foreach (SeedData::categories() as $c) {
+            $catByName[$c['name']] = Category::firstOrCreate(
+                ['business_id' => $bid, 'name' => $c['name']],
+                ['icon' => $c['icon'], 'color' => $c['color']]
+            )->id;
+        }
+        foreach (SeedData::products() as $p) {
+            Product::create([
+                'business_id' => $bid, 'category_id' => $catByName[$p['cat']] ?? null,
+                'name' => $p['name'], 'sku' => 'MK-'.$p['sku'], 'barcode' => $p['barcode'],
+                'price' => $p['price'], 'cost' => $p['cost'], 'quantity' => max(10, $p['qty']),
+                'alert_qty' => $p['alert'], 'tax' => $p['tax'], 'discount' => $p['discount'],
+                'image' => $p['image'], 'active' => true,
+            ]);
+        }
+
+        if (! Customer::where('business_id', $bid)->exists()) {
+            foreach (SeedData::customers() as $i => $c) {
+                Customer::create([
+                    'business_id' => $bid, 'name' => $c['name'], 'phone' => $c['phone'],
+                    'email' => 'mk-'.$i.'@example.com', 'points' => $c['points'], 'address' => 'مسقط',
+                ]);
+            }
+        }
+
+        $this->line('زُرع كتالوجٌ موسوم (MK-) لمتجرٍ فارغ.');
     }
 }

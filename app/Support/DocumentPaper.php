@@ -15,6 +15,8 @@ use App\Models\SupplierInvoice;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\Document\Snapshot;
+use App\Support\Store\GiftCardProduct;
+use App\Support\Store\GiftOrders;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -176,7 +178,8 @@ class DocumentPaper
                     default => '',
                 }],
                 ['label' => 'موعد التسليم', 'value' => optional($order->scheduled_for)->format('Y-m-d H:i') ?: ''],
-                ['label' => 'المناسبة', 'value' => (string) ($order->occasion_type ?: '')],
+                // باسمها لا بمفتاحها (`birthday`)، و«أخرى» بنصّها — `GiftOrders::occasionLabel`
+                ['label' => 'المناسبة', 'value' => (string) (GiftOrders::occasionLabel($order) ?? '')],
             ], fn (array $r) => filled($r['value']))),
             'parties' => array_values(array_filter([
                 [
@@ -201,18 +204,28 @@ class DocumentPaper
                             : null,
                     ])),
                 ],
+                /*
+                 * ═══ والمستلِمُ اسمًا وعنوانًا — بلا هاتف ═══
+                 *
+                 * الفاتورةُ ورقةُ المشتري: هو صاحبُها ودافعُها، وتُرسَل إليه
+                 * وتُفتح من رابطها العامّ. ورقمُ المستلِم عليها رقمُ شخصٍ آخر
+                 * في يد من لم يُعطه إيّاه. والسائقُ يقرؤه من شاشة التجهيز.
+                 *
+                 * ولا «بانتظار التواصل مع المستلم» هنا: سيرُ العمل الداخليّ
+                 * لا يُطبع، والعنوانُ الفارغ لا سطرَ له.
+                 */
                 [
                     'cap' => 'المستلِم',
                     'lines' => array_values(array_filter([
                         $order->recipient_name ?: null,
-                        $order->recipient_phone ?: null,
                         $order->delivery_address ?: null,
                     ])),
                 ],
             ], fn (array $p) => count(array_filter($p['lines'])) > 0)),
             'items' => $order->items->map(fn ($i) => [
                 'name' => $i->name,
-                'note' => $i->note,
+                // ورسالةُ كرت الهدية لا تُطبع تحت بندها — `GiftCardProduct::paperNote`
+                'note' => GiftCardProduct::paperNote($i, $order),
                 /*
                  * وخياراتُ الطلب المخصَّص تحت اسمه.
                  *

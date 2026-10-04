@@ -37,9 +37,11 @@ const BLANK: ThemeSettingsData = {
     store_field_recipient: 'optional',
     store_field_promo: 'optional',
     store_image_note: '',
+    store_image_note_en: '',
 
     store_gift_card: false,
     store_gift_card_price: '',
+    store_gift_checkout: false,
 
     store_seo_title: '',
     store_seo_desc: '',

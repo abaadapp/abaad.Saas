@@ -20,6 +20,8 @@ class Order extends Model
         'ordered_at' => 'datetime',
         'scheduled_for' => 'datetime',
         'hide_sender' => 'boolean',
+        // هديّةٌ لغير مشتريها — انظر `Store\GiftOrders`
+        'is_gift' => 'boolean',
         /*
          * وختمان يُقرآن في الشاشة — وبلا `cast` يعودان نصًّا.
          *

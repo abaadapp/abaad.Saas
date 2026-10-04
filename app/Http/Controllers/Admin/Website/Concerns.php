@@ -268,6 +268,9 @@ trait Concerns
             'seo' => [
                 'title' => (string) ($values['store_seo_title'] ?? ''),
                 'desc' => (string) ($values['store_seo_desc'] ?? ''),
+                // وللصفحة الإنجليزيّة عنوانُها ووصفُها — لا يقع أحدُهما على الآخر (`StoreSeo::head`)
+                'title_en' => (string) ($values['store_seo_title_en'] ?? ''),
+                'desc_en' => (string) ($values['store_seo_desc_en'] ?? ''),
                 'index' => ($values['store_seo_index'] ?? '1') === '1',
             ],
             'storeOn' => ($values['store_on'] ?? '0') === '1',

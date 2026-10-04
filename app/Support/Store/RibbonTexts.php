@@ -17,6 +17,8 @@ final class RibbonTexts
         'shopNow' => 'تسوّق الآن', 'explore' => 'استكشف مجموعاتنا',
         'payingTitle' => 'نؤكّد دفعتك', 'payingWait' => 'خرجت دفعتُك من البنك ونحن ننتظر تأكيدها. لا تُعد الدفع — ستظهر فاتورتك هنا بعد قليل.', 'payingPaid' => 'وصلت دفعتُك، ونجهّز فاتورتك الآن.', 'payingNote' => 'إن طال الأمر أكثر من دقيقة فاتصل بنا ومعك وقتُ الدفع.',
         'catsTitle' => 'تسوّق حسب الفئة', 'viewAll' => 'عرض الكل', 'bestTitle' => 'الأكثر مبيعاً', 'pickedTitle' => 'مختاراتنا', 'newTitle' => 'وصل حديثاً',
+        // اسمُ «اختيارات RIBBON» حين لا يكتب صاحبُه عنوانًا للّغة — انظر `RibbonPicks::title`
+        'picksTitle' => 'اختيارات RIBBON',
         'bannerKicker' => 'المناسبات والهدايا', 'bannerTitle' => 'لكل مناسبة باقة تليق بها', 'bannerSub' => 'أعياد ميلاد، تخرّج، خطوبة، أو شكر بسيط. نجهّز الباقة مع كرت هدية بخط أنيق ونوصلها في الوقت الذي تحدده.', 'bannerBtn' => 'تسوّق الهدايا',
         'aboutKicker' => 'عن المتجر', 'reviewsTitle' => 'آراء عملائنا',
         'shopTitle' => 'جميع المنتجات', 'shopSub' => 'اختر باقتك، حدّد الحجم وموعد التوصيل، وأتمّ الطلب في صفحة واحدة.', 'all' => 'الكل', 'noProducts' => 'لا منتجات هنا بعد.', 'noMatch' => 'لا توجد منتجات تطابق بحثك.', 'noInCategory' => 'لا توجد منتجات في هذا القسم.',
@@ -82,6 +84,7 @@ final class RibbonTexts
         'shopNow' => 'Shop now', 'explore' => 'Explore collections',
         'payingTitle' => 'Confirming your payment', 'payingWait' => 'Your payment has left the bank and we are waiting for confirmation. Do not pay again — your receipt will appear here shortly.', 'payingPaid' => 'Your payment arrived, and we are preparing your receipt.', 'payingNote' => 'If this takes more than a minute, contact us with the time of payment.',
         'catsTitle' => 'Shop by category', 'viewAll' => 'View all', 'bestTitle' => 'Best sellers', 'pickedTitle' => 'Our picks', 'newTitle' => 'New arrivals',
+        'picksTitle' => 'RIBBON picks',
         'bannerKicker' => 'OCCASIONS & GIFTS', 'bannerTitle' => 'A bouquet for every occasion', 'bannerSub' => 'Birthdays, graduations, engagements, or a simple thank-you. We prepare the bouquet with a hand-written card and deliver at the time you choose.', 'bannerBtn' => 'Shop gifts',
         'aboutKicker' => 'ABOUT US', 'reviewsTitle' => 'What customers say',
         'shopTitle' => 'All products', 'shopSub' => 'Pick a bouquet, choose a size and delivery time, and order on a single page.', 'all' => 'All', 'noProducts' => 'No products here yet.', 'noMatch' => 'No products match your search.', 'noInCategory' => 'No products in this category.',

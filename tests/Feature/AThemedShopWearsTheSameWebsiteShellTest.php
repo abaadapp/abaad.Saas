@@ -660,6 +660,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'store_delivery_areas' => "الخوير\nالسيب",
             'store_delivery_fee' => '1.500',
             'store_delivery_note' => 'يُسلَّم خلال ساعتين',
+            'store_delivery_note_en' => 'Delivered within two hours',
             'store_delivery_slots' => '9 ص – 12 م',
             'store_free_delivery_over' => '20',
             'store_gift_card' => '1',
@@ -676,6 +677,8 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'store_pages' => 'contact',
             'store_seo_title' => 'ريبون لاونج — ورد وهدايا بمسقط',
             'store_seo_desc' => 'باقاتُ وردٍ تُوصَّل في مسقط خلال اليوم نفسه.',
+            'store_seo_title_en' => 'Ribbon Lounge — flowers & gifts in Muscat',
+            'store_seo_desc_en' => 'Bouquets delivered across Muscat the same day.',
             'store_seo_index' => '0',
         ];
 

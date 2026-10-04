@@ -48,6 +48,12 @@ final class PageEditor
     public const FOOT = 'foot';
 
     /**
+     * و«أضف مع طلبك» — في صفحة المنتج لا في الرئيسية، فليس قسمًا يُرتَّب.
+     * ولمن له القسم وحده (`RibbonUpsells::settings`).
+     */
+    public const UPSELLS = 'upsells';
+
+    /**
      * مقابضُ الصفحة البسيطة — لا تُحرّك واجهةً خاصّة فلا تُعرض لصاحبها.
      *
      * `store_theme` لونُ `store.show.blade`، و`store_show_prices` مفتاحُها
@@ -56,8 +62,13 @@ final class PageEditor
      *
      * ومقبضٌ يُعرض ولا يُدير شيئًا أسوأُ من غياب المقبض: يُقلَّب ويُحفظ
      * ويُنتظر أثرُه، ثمّ يُظنّ العطبُ في الصفحة.
+     *
+     * و`store_headline` («العنوان الكبير») حلّ محلَّه عنوانُ الواجهة لكلّ لغة
+     * (`store_hero_title` و`_en`). ويبقى مقروءًا سابقًا للعربيّ وحده لمن
+     * كتبه قبلُ (`StorePage::heroTitle`) — فلا يتبدّل عنوانُ متجرٍ قائم —
+     * ولا يُحرَّر من بابين.
      */
-    public const DEAD = ['store_theme', 'store_show_prices'];
+    public const DEAD = ['store_theme', 'store_show_prices', 'store_headline'];
 
     /**
      * حقولُ كلّ صفٍّ بترتيب ظهورها فيه.
@@ -67,9 +78,14 @@ final class PageEditor
      * `'1'`/`'0'`. و`gate` مفتاحٌ لا يُعرض الحقلُ إلّا إن رُفع.
      *
      * و`align` ثلاثةُ أزرارٍ مغلقة (`StoreHeader::ALIGNS`)، و`shortcuts`
-     * تختار فئاتٍ من متجره وترتّبها — معرّفاتٍ لا روابط.
+     * تختار فئاتٍ من متجره وترتّبها — معرّفاتٍ لا روابط. و`products` تختار
+     * أصنافًا من المعروض وترتّبها إلى `max`.
      *
-     * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string}>>
+     * والنصُّ الذي يكتبه صاحبُ المحلّ لزبونه حقلان: عربيٌّ وإنجليزيّ (`_en`)،
+     * لا يقع أحدُهما على الآخر. ونصوصُ القالب نفسِه (الأزرارُ وأسماءُ الأقسام)
+     * ليست هنا — هي في `RibbonTexts`.
+     *
+     * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string, max?: int}>>
      */
     public const FIELDS = [
         self::HEAD => [
@@ -79,7 +95,10 @@ final class PageEditor
             ['key' => 'store_shop_nav_categories', 'kind' => 'shortcuts', 'label' => 'اختصارات صفحة المتجر', 'hint' => 'بعد «كل المنتجات» و«الأكثر مبيعًا» — حتى ٦ فئات بترتيبك، والفئةُ بلا منتجٍ معروض لا تظهر'],
         ],
         self::HERO => [
-            ['key' => 'store_headline', 'kind' => 'text', 'label' => 'العنوان الكبير', 'hint' => 'أوّلُ سطرٍ يقرؤه زبونك — واسمُ متجرك إن تركته فارغًا'],
+            ['key' => 'store_hero_title', 'kind' => 'text', 'label' => 'عنوان الواجهة — العربية', 'hint' => 'أوّلُ سطرٍ يقرؤه زبونك — واتركه فارغًا فيبقى العنوانُ الأصليّ'],
+            ['key' => 'store_hero_title_en', 'kind' => 'text', 'label' => 'Hero title — English', 'hint' => 'للصفحة الإنجليزيّة — ولا يُترجَم العنوانُ العربيّ إليها', 'dir' => 'ltr'],
+            ['key' => 'store_hero_sub', 'kind' => 'textarea', 'label' => 'وصف الواجهة — العربية', 'hint' => 'تحت العنوان — واتركه فارغًا فيبقى الوصفُ الأصليّ'],
+            ['key' => 'store_hero_sub_en', 'kind' => 'textarea', 'label' => 'Hero description — English', 'hint' => 'للصفحة الإنجليزيّة — واتركه فارغًا فيبقى الوصفُ الإنجليزيّ الأصليّ', 'dir' => 'ltr'],
             ['key' => 'store_hero_image', 'kind' => 'image', 'label' => 'صورة الواجهة', 'hint' => 'إلى جانب العنوان — وبلا اختيارك تُؤخذ من أوّل صنفٍ مبيعًا'],
         ],
         'cats' => [],
@@ -92,16 +111,27 @@ final class PageEditor
         ],
         'block' => [
             ['key' => 'store_block_on', 'kind' => 'toggle', 'label' => 'اكتب قسمك', 'hint' => 'لِما لا تقوله بضاعتك: اشتراكٌ شهريّ، تنسيقُ أعراس، توصيلٌ إلى ولايتك'],
-            ['key' => 'store_block_title', 'kind' => 'text', 'label' => 'العنوان', 'gate' => 'store_block_on'],
-            ['key' => 'store_block_text', 'kind' => 'textarea', 'label' => 'النصّ', 'hint' => 'أسطرُك تبقى أسطرًا كما تكتبها', 'gate' => 'store_block_on'],
-            ['key' => 'store_block_image', 'kind' => 'image', 'label' => 'صورة القسم', 'hint' => 'اختيارية', 'gate' => 'store_block_on'],
-            ['key' => 'store_block_cta', 'kind' => 'text', 'label' => 'نصّ الزرّ', 'hint' => 'اتركه فارغًا فلا زرّ', 'gate' => 'store_block_on'],
-            ['key' => 'store_block_href', 'kind' => 'text', 'label' => 'وجهة الزرّ', 'hint' => 'رابطٌ كامل أو /shop', 'dir' => 'ltr', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_title', 'kind' => 'text', 'label' => 'العنوان — العربية', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_title_en', 'kind' => 'text', 'label' => 'Title — English', 'hint' => 'للصفحة الإنجليزيّة — وبلا عنوانٍ ونصٍّ إنجليزيَّين لا يظهر القسمُ فيها', 'dir' => 'ltr', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_text', 'kind' => 'textarea', 'label' => 'النصّ — العربية', 'hint' => 'أسطرُك تبقى أسطرًا كما تكتبها', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_text_en', 'kind' => 'textarea', 'label' => 'Text — English', 'dir' => 'ltr', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_image', 'kind' => 'image', 'label' => 'صورة القسم', 'hint' => 'اختيارية — واحدةٌ للّغتين', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_cta', 'kind' => 'text', 'label' => 'نصّ الزرّ — العربية', 'hint' => 'اتركه فارغًا فلا زرّ', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_cta_en', 'kind' => 'text', 'label' => 'Button text — English', 'hint' => 'اتركه فارغًا فلا زرّ في الصفحة الإنجليزيّة', 'dir' => 'ltr', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_href', 'kind' => 'text', 'label' => 'وجهة الزرّ', 'hint' => 'رابطٌ كامل أو /shop — واحدةٌ للّغتين', 'dir' => 'ltr', 'gate' => 'store_block_on'],
+        ],
+        RibbonPicks::SECTION => [
+            ['key' => 'store_picks_title', 'kind' => 'text', 'label' => 'عنوان القسم — العربية', 'hint' => 'واتركه فارغًا فيبقى «اختيارات RIBBON»'],
+            ['key' => 'store_picks_title_en', 'kind' => 'text', 'label' => 'Section title — English', 'hint' => 'واتركه فارغًا فيبقى «RIBBON picks»', 'dir' => 'ltr'],
+            ['key' => 'store_picks', 'kind' => 'products', 'label' => 'الأصناف', 'hint' => 'اخترها ورتّبها كما تريد أن تظهر — والصنفُ يبقى في قسمه', 'max' => RibbonPicks::MAX],
         ],
         'about' => [
             ['key' => 'store_about', 'kind' => 'textarea', 'label' => 'نبذتك', 'hint' => 'تُقرأ في هذا القسم، وفي صفحة «من نحن»، وفي تذييل كلّ صفحة'],
         ],
         'reviews' => [],
+        self::UPSELLS => [
+            ['key' => RibbonUpsells::KEY, 'kind' => 'products', 'label' => 'أضف مع طلبك', 'hint' => 'أصنافٌ تُقترح في صفحة كلّ منتج قبل زرّ السلّة — وبلا اختيارٍ تبقى من قسم الإضافات كما كانت', 'max' => 6],
+        ],
         self::FOOT => [
             ['key' => 'store_tagline', 'kind' => 'text', 'label' => 'سطر التذييل', 'hint' => 'أسفل كلّ صفحة — واتركه فارغًا فلا يُكتب سطر'],
             ['key' => 'store_tagline_en', 'kind' => 'text', 'label' => 'سطر التذييل (English)', 'hint' => 'للصفحة الإنجليزيّة — واتركه فارغًا فلا يُكتب فيها سطر', 'dir' => 'ltr'],
@@ -129,8 +159,10 @@ final class PageEditor
         'new' => ['label' => 'وصل حديثًا', 'hint' => 'أحدثُ ما أضفتَه إلى متجرك — يُرتَّب وحده', 'fixed' => false, 'source' => ['الأصناف', 'admin.products.index']],
         'banner' => ['label' => 'شريط المناسبات والهدايا', 'hint' => 'شريطٌ عريضٌ يَعِد بباقاتِ المناسبات وكرتِ الهدية', 'fixed' => false, 'source' => null],
         'block' => ['label' => 'قسمك الخاصّ', 'hint' => 'عنوانٌ ونصٌّ وصورةٌ وزرّ — تكتبه بنفسك', 'fixed' => false, 'source' => null],
+        RibbonPicks::SECTION => ['label' => 'اختيارات RIBBON', 'hint' => 'أصنافٌ تختارها بيدك وترتّبها — لا يظهر حتى ترفعه', 'fixed' => false, 'source' => null],
         'about' => ['label' => 'عنّا', 'hint' => 'نبذتُك إلى جانب شعارك', 'fixed' => false, 'source' => null],
         'reviews' => ['label' => 'آراء الزبائن', 'hint' => 'ما نشرتَه من آراءٍ وصلتك', 'fixed' => false, 'source' => ['آراء الزبائن', 'admin.marketing.reviews']],
+        self::UPSELLS => ['label' => 'أضف مع طلبك', 'hint' => 'في صفحة المنتج — أصنافٌ تختارها بيدك بدل قسم الإضافات', 'fixed' => true, 'source' => null],
         self::FOOT => ['label' => 'التذييل', 'hint' => 'أسفل كلّ صفحة — لا الرئيسية وحدها', 'fixed' => true, 'source' => ['هاتفك وبريدك وعنوانك', 'admin.settings.index']],
     ];
 
@@ -149,12 +181,17 @@ final class PageEditor
         'new' => 'لا صنفَ معروضًا في متجرك بعد.',
         'banner' => 'الشريطُ يَعِد ببضاعةٍ — ولا صنفَ معروضًا بعد، فلا يُرسم.',
         'block' => 'لا يظهر حتى تُشغّله وتكتب عنوانه ونصّه معًا.',
+        RibbonPicks::SECTION => 'لا صنفَ مختارًا معروضًا — اختر أصنافًا ليظهر القسم.',
         'about' => 'اكتب نبذتك ليظهر القسم — وتُفتح بها صفحة «من نحن».',
         'reviews' => 'لا رأيَ معروضًا بعد.',
     ];
 
-    /** صفٌّ واحدٌ كما تقرؤه الشاشة */
-    private static function row(string $key, bool $on, ?string $silent): array
+    /**
+     * صفٌّ واحدٌ كما تقرؤه الشاشة.
+     *
+     * @param  list<array<string, mixed>>|null  $fields  حقولُه إن خالفت `FIELDS` (حدٌّ يُقرأ من القائمة)
+     */
+    private static function row(string $key, bool $on, ?string $silent, ?array $fields = null): array
     {
         $spec = self::ROWS[$key];
 
@@ -168,7 +205,7 @@ final class PageEditor
             'source' => $spec['source'] === null
                 ? null
                 : ['label' => $spec['source'][0], 'route' => $spec['source'][1]],
-            'fields' => self::FIELDS[$key],
+            'fields' => $fields ?? self::FIELDS[$key],
         ];
     }
 
@@ -228,9 +265,19 @@ final class PageEditor
             ->whereIn('id', $shown->filter()->unique()->all())->exists();
         $hasReviews = Review::where('business_id', $businessId)->showable()->exists();
 
-        $blockReady = ($site['store_block_on'] ?? '0') === '1'
-            && trim((string) ($site['store_block_title'] ?? '')) !== ''
-            && trim((string) ($site['store_block_text'] ?? '')) !== '';
+        // والقسمُ الحرُّ يظهر بلغةٍ كُتب لها عنوانُه ونصُّه — بأيّهما
+        $written = fn (string $suffix) => trim((string) ($site['store_block_title'.$suffix] ?? '')) !== ''
+            && trim((string) ($site['store_block_text'.$suffix] ?? '')) !== '';
+        $blockReady = ($site['store_block_on'] ?? '0') === '1' && ($written('') || $written('_en'));
+
+        /*
+         * و«اختيارات RIBBON» لمن فُتحت له وحده — ومن ليس فيها لا يُرسَل له صفُّها.
+         * و«يظهر» إن بقي ممّا اختاره صنفٌ معروض — قاعدةُ الواجهة نفسُها.
+         */
+        $picksOn = RibbonPicks::allowed($businessId);
+        $picksShown = $picksOn && RibbonPicks::ids($businessId) !== []
+            && Product::where('business_id', $businessId)->where('active', true)->where('published', true)
+                ->whereIn('id', RibbonPicks::ids($businessId))->exists();
 
         $silent = [
             'cats' => $hasCats ? null : self::SILENT['cats'],
@@ -240,13 +287,16 @@ final class PageEditor
             'block' => $blockReady ? null : self::SILENT['block'],
             'about' => trim((string) ($site['store_about'] ?? '')) !== '' ? null : self::SILENT['about'],
             'reviews' => $hasReviews ? null : self::SILENT['reviews'],
+            RibbonPicks::SECTION => $picksShown ? null : self::SILENT[RibbonPicks::SECTION],
         ];
+
+        $sections = $picksOn ? StorePage::SECTIONS : StorePage::DEFAULT_ORDER;
 
         // والرأسُ فوق الواجهة: هو أوّلُ ما يُرى في كلّ صفحة
         $rows = [self::row(self::HEAD, true, null), self::row(self::HERO, true, null)];
 
         // المختارُ بترتيبه، ثمّ المطفأُ بترتيبه الأصليّ — كما في `StorePage::SECTIONS`
-        foreach (array_merge($order, array_values(array_diff(StorePage::SECTIONS, $order))) as $key) {
+        foreach (array_merge($order, array_values(array_diff($sections, $order))) as $key) {
             $on = in_array($key, $order, true);
 
             // ولا يُقال «لا يظهر» لقسمٍ أطفأه صاحبُه: هو يعرف لمَ أطفأه
@@ -254,6 +304,17 @@ final class PageEditor
         }
 
         $rows[] = self::row(self::FOOT, true, null);
+
+        /*
+         * و«أضف مع طلبك» لمن له القسم وحده — وحدُّه حدُّ القائمة نفسُها
+         * (`storefront.ribbon_product_upsells`)، لا رقمٌ ثانٍ يفترق عنه.
+         */
+        if (($upsells = RibbonUpsells::settings($businessId)) !== null) {
+            $rows[] = self::row(self::UPSELLS, true, null, array_map(
+                fn (array $f) => ['max' => $upsells['limit']] + $f,
+                self::FIELDS[self::UPSELLS],
+            ));
+        }
 
         return $rows;
     }
@@ -280,6 +341,9 @@ final class PageEditor
             'store_about_image' => 'صورة «من نحن»',
             'store_seo_title' => 'عنوان البحث',
             'store_seo_desc' => 'وصف البحث',
+            'store_seo_title_en' => 'عنوان البحث بالإنجليزية',
+            'store_seo_desc_en' => 'وصف البحث بالإنجليزية',
+            'store_headline' => 'العنوان الكبير',
             default => '',
         };
     }

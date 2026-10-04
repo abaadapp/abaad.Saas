@@ -99,6 +99,10 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                         <Field label="ملاحظة التوصيل" hint="سطرٌ تحت زرّ الإضافة إلى السلّة" error={form.errors.store_delivery_note}>
                             <Input value={form.data.store_delivery_note} onChange={(e) => form.setData('store_delivery_note', e.target.value)} aria-label={t('ملاحظة التوصيل')} />
                         </Field>
+                        {/* وبالإنجليزيّة للصفحة الإنجليزيّة وحدها — ولا تُعرض العربيّةُ فيها */}
+                        <Field label="Delivery note — English" hint="للصفحة الإنجليزيّة — واتركه فارغًا فلا ملاحظة فيها" error={form.errors.store_delivery_note_en}>
+                            <Input dir="ltr" value={form.data.store_delivery_note_en} onChange={(e) => form.setData('store_delivery_note_en', e.target.value)} aria-label={t('Delivery note — English')} />
+                        </Field>
                         <Field
                             label="الحجز مقدّمًا (أيام)"
                             hint="أبعد موعدٍ يختاره الزبون — فارغًا يعني ٦٠ يومًا"

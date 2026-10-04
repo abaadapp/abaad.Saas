@@ -218,6 +218,8 @@ class SettingsController extends Controller
              * لَقالت غيرَ ما يقوله `StoreSeo` يومَ يتبدّل أحدُهما.
              */
             'fallback' => StoreSeo::head($business, StoreNav::HOME, RibbonTexts::for('ar'), MerchantData::identity($bid)),
+            // وما يُكتب في الصفحة الإنجليزيّة حين لا يكتب لها شيئًا — يُحسب بالقاعدة نفسِها
+            'fallbackEn' => StoreSeo::head($business, StoreNav::HOME, RibbonTexts::for('en'), MerchantData::identity($bid), lang: 'en'),
             'limits' => ['title' => Seo::TITLE_MAX, 'desc' => Seo::DESC_MAX],
         ]);
     }

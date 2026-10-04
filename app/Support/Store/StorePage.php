@@ -24,7 +24,16 @@ final class StorePage
      * و`block` — القسمُ الذي يكتبه بنفسه — في الترتيب منذ البداية وإن كان
      * مُطفأً: فمن فتحه ولم يمسّ الترتيبَ يجده في موضعه المعقول.
      */
-    public const SECTIONS = ['cats', 'best', 'new', 'banner', 'block', 'about', 'reviews'];
+    public const DEFAULT_ORDER = ['cats', 'best', 'new', 'banner', 'block', 'about', 'reviews'];
+
+    /**
+     * وكلُّ قسمٍ يعرفه القالب — الأصليّةُ ثمّ «اختيارات RIBBON».
+     *
+     * و`picks` ليس في الترتيب الأصليّ عمدًا: الفراغُ يُقرأ «ما كان»، فلو
+     * دخله لَظهر في كلّ متجرٍ لم يرتّب صفحتَه. فيبقى مطفأً حتّى يُرفع بيده،
+     * ولمن في قائمته وحده (`RibbonPicks::allowed`).
+     */
+    public const SECTIONS = [...self::DEFAULT_ORDER, RibbonPicks::SECTION];
 
     /** أكثرُ ما يُبرزه من الأصناف — أربعةٌ كما يتّسع الصفّ */
     public const MAX_FEATURED = 4;
@@ -53,9 +62,12 @@ final class StorePage
     {
         $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_sections'] ?? ''));
 
+        // و«اختيارات RIBBON» لمن فُتحت له وحده — ومن ليس في قائمتها لا يُضمّ له ولو حُفظ
+        $known = RibbonPicks::allowed($businessId) ? self::SECTIONS : self::DEFAULT_ORDER;
+
         $picked = array_values(array_unique(array_filter(
             array_map('trim', explode(',', $raw)),
-            fn ($s) => in_array($s, self::SECTIONS, true),
+            fn ($s) => in_array($s, $known, true),
         )));
 
         /*
@@ -71,13 +83,55 @@ final class StorePage
          * والأثرُ أنّ إعدادًا حُفظ خطأً لا يجعل الصفحةَ واجهةً عاريةً بلا
          * صنفٍ ولا فئة — وصفحةٌ فارغةٌ تُفقد الزبونَ ثقتَه فلا يعود.
          */
-        return $picked ?: self::SECTIONS;
+        return $picked ?: self::DEFAULT_ORDER;
     }
 
     /** أيُعرض هذا القسم؟ */
     public static function shows(int $businessId, string $section): bool
     {
         return in_array($section, self::order($businessId), true);
+    }
+
+    /* ═══════════ عنوانُ الواجهة ووصفُها ═══════════ */
+
+    /**
+     * عنوانُ الواجهة بلغة الصفحة — ما كتبه لها، وإلّا ما كان.
+     *
+     * ═══ وما كان ═══
+     *
+     * للعربيّة: `store_headline` («العنوان الكبير» في المحرّر قبل هذا)، ثمّ
+     * نصُّ القالب. وللإنجليزيّة: نصُّ القالب الإنجليزيّ وحده — فلا يُكتب
+     * عنوانٌ عربيٌّ في صفحةٍ إنجليزيّة، ولا إنجليزيٌّ في عربيّة.
+     *
+     * @param  array<string, string>  $t  نصوصُ القالب بلغة الصفحة (`RibbonTexts::for`)
+     */
+    public static function heroTitle(int $businessId, string $lang, array $t): string
+    {
+        $site = MarketingSettings::group($businessId, 'website');
+
+        if ($lang === 'en') {
+            return self::text($site['store_hero_title_en'] ?? '') ?? $t['heroTitle'];
+        }
+
+        return self::text($site['store_hero_title'] ?? '')
+            ?? self::text($site['store_headline'] ?? '')
+            ?? $t['heroTitle'];
+    }
+
+    /** ووصفُها — بالقاعدة نفسِها، ولا سابقَ له غيرُ نصّ القالب */
+    public static function heroSub(int $businessId, string $lang, array $t): string
+    {
+        $key = $lang === 'en' ? 'store_hero_sub_en' : 'store_hero_sub';
+
+        return self::text(MarketingSettings::group($businessId, 'website')[$key] ?? '') ?? $t['heroSub'];
+    }
+
+    /** نصٌّ مكتوبٌ بعد التشذيب — أو `null` لفراغه */
+    private static function text(mixed $raw): ?string
+    {
+        $text = trim((string) $raw);
+
+        return $text !== '' ? $text : null;
     }
 
     /* ═══════════ صورةُ الواجهة ═══════════ */
@@ -149,9 +203,15 @@ final class StorePage
      * ولا يُعرض بعنوانٍ بلا نصٍّ ولا بنصٍّ بلا عنوان: نصفُ قسمٍ على صفحةٍ
      * أسوأُ من لا شيء.
      *
+     * ═══ ولكلّ لغةٍ نصُّها ═══
+     *
+     * العنوانُ والنصُّ والزرُّ من مفاتيح اللغة (`_en` للإنجليزيّة)، والصورةُ
+     * والوجهةُ واحدتان. ولا تقع لغةٌ على أخرى: صفحةٌ إنجليزيّةٌ لم يُكتب
+     * لها القسمُ لا يُرسم فيها — لا يُعرض فيها نصُّه العربيّ.
+     *
      * @return array{title: string, text: string, image: ?string, cta: ?string, href: ?string}|null
      */
-    public static function block(int $businessId): ?array
+    public static function block(int $businessId, string $lang = 'ar'): ?array
     {
         $site = MarketingSettings::group($businessId, 'website');
 
@@ -159,14 +219,15 @@ final class StorePage
             return null;
         }
 
-        $title = trim((string) ($site['store_block_title'] ?? ''));
-        $text = trim((string) ($site['store_block_text'] ?? ''));
+        $suffix = $lang === 'en' ? '_en' : '';
+        $title = trim((string) ($site['store_block_title'.$suffix] ?? ''));
+        $text = trim((string) ($site['store_block_text'.$suffix] ?? ''));
 
         if ($title === '' || $text === '') {
             return null;
         }
 
-        $cta = trim((string) ($site['store_block_cta'] ?? ''));
+        $cta = trim((string) ($site['store_block_cta'.$suffix] ?? ''));
         $href = trim((string) ($site['store_block_href'] ?? ''));
 
         return [

@@ -89,7 +89,9 @@ class TheShopOwnerBuildsHisOwnPageTest extends TestCase
     /** متجرٌ لم يمسّ الشاشةَ تبقى صفحتُه كما كانت — أقسامُها كلُّها بترتيبها */
     public function test_a_shop_that_touched_nothing_keeps_the_page_it_had(): void
     {
-        $this->assertSame(StorePage::SECTIONS, StorePage::order($this->shop->id));
+        // والترتيبُ الأصليّ لا «اختيارات RIBBON» فيه — قسمٌ جديدٌ لا يظهر بلا أن يُرفع
+        $this->assertSame(StorePage::DEFAULT_ORDER, StorePage::order($this->shop->id));
+        $this->assertNotContains('picks', StorePage::order($this->shop->id));
         $this->assertNull(StorePage::heroImage($this->shop->id));
         $this->assertNull(StorePage::block($this->shop->id));
         $this->assertSame([], StorePage::featured($this->shop->id));
@@ -105,7 +107,7 @@ class TheShopOwnerBuildsHisOwnPageTest extends TestCase
     {
         $this->set(['store_sections' => 'عبث,لا شيء']);
 
-        $this->assertSame(StorePage::SECTIONS, StorePage::order($this->shop->id));
+        $this->assertSame(StorePage::DEFAULT_ORDER, StorePage::order($this->shop->id));
         $this->assertStringContainsString('rb-sec-cats', $this->page());
     }
 

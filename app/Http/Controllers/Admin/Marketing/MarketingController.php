@@ -18,6 +18,8 @@ use App\Support\Seo;
 use App\Support\FlowerOrder;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\NewArrivals;
+use App\Support\Store\RibbonPicks;
+use App\Support\Store\RibbonUpsells;
 use App\Support\Store\StoreContent;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\ThemePublisher;
@@ -216,6 +218,8 @@ class MarketingController extends Controller
             'store_hours' => ['nullable', 'string', 'max:120'],
             'store_hours_en' => ['nullable', 'string', 'max:120'],
             'store_delivery_note' => ['nullable', 'string', 'max:200'],
+            // وبالإنجليزيّة — للصفحة الإنجليزيّة وحدها، بالحدّ نفسِه
+            'store_delivery_note_en' => ['nullable', 'string', 'max:200'],
             /*
              * وتنبيهُ الصورة — سطرٌ لا فقرة.
              *
@@ -266,6 +270,11 @@ class MarketingController extends Controller
              * حقلين. وهي قاعدةُ `GiftCard::hold` نفسُها.
              */
             'store_hero_image' => ['nullable', 'string', 'max:2048', new SafeLink],
+            // وعنوانُ الواجهة ووصفُها لكلّ لغة — والفراغُ يُبقي نصَّ القالب (`StorePage::heroTitle`)
+            'store_hero_title' => ['nullable', 'string', 'max:80'],
+            'store_hero_title_en' => ['nullable', 'string', 'max:80'],
+            'store_hero_sub' => ['nullable', 'string', 'max:200'],
+            'store_hero_sub_en' => ['nullable', 'string', 'max:200'],
             'store_featured' => ['nullable', 'string', 'max:200'],
             // و«وصل حديثًا» اليدويّ — قواعدُه وإذنُه في `NewArrivals::validated` أدناه
             'store_new_arrivals_mode' => ['nullable', 'string', 'max:10'],
@@ -276,6 +285,17 @@ class MarketingController extends Controller
             'store_block_text' => ['nullable', 'string', 'max:1000'],
             'store_block_image' => ['nullable', 'string', 'max:2048', new SafeLink],
             'store_block_cta' => ['nullable', 'string', 'max:40'],
+            // والقسمُ الحرُّ بالإنجليزيّة — بحدود العربيّة نفسِها، والصورةُ والوجهةُ واحدتان
+            'store_block_title_en' => ['nullable', 'string', 'max:120'],
+            'store_block_text_en' => ['nullable', 'string', 'max:1000'],
+            'store_block_cta_en' => ['nullable', 'string', 'max:40'],
+            /*
+             * و«اختيارات RIBBON» — عنوانٌ لكلّ لغة. والقائمةُ وإذنُ القسم
+             * في `RibbonPicks::validated` أدناه، و«أضف مع طلبك» في
+             * `RibbonUpsells::validated` — لا قاعدةَ نصٍّ لهما هنا.
+             */
+            'store_picks_title' => ['nullable', 'string', 'max:'.RibbonPicks::TITLE_MAX],
+            'store_picks_title_en' => ['nullable', 'string', 'max:'.RibbonPicks::TITLE_MAX],
             /*
              * ووجهةُ الزرّ تُحرس بـ`SafeLink` — لا بـ`string` وحدها.
              *
@@ -319,6 +339,8 @@ class MarketingController extends Controller
              */
             'store_seo_title' => ['nullable', 'string', 'max:'.StoreSeo::TITLE_MAX],
             'store_seo_desc' => ['nullable', 'string', 'max:'.StoreSeo::DESC_MAX],
+            'store_seo_title_en' => ['nullable', 'string', 'max:'.StoreSeo::TITLE_MAX],
+            'store_seo_desc_en' => ['nullable', 'string', 'max:'.StoreSeo::DESC_MAX],
             'store_seo_index' => ['sometimes', 'boolean'],
         ]);
 
@@ -335,6 +357,27 @@ class MarketingController extends Controller
          */
         if ($request->exists('store_new_arrivals_mode') || $request->exists('store_new_arrivals')) {
             $data = array_merge($data, NewArrivals::validated($this->bid(), $request, StoreContent::draft($this->bid())));
+        }
+
+        /*
+         * ═══ و«اختيارات RIBBON» — لمن في قائمتها وحده ═══
+         *
+         * أيُّ مفاتيحها أُرسل يسأل الإذن (403) قبل أن يُكتب شيء، ولو كان
+         * العنوانَ وحده. والقائمةُ تُقرأ بصرامة: أصنافُ متجره المعروضة،
+         * ثمانيةٌ لا أكثر. انظر `Store\RibbonPicks`.
+         */
+        if (collect(RibbonPicks::KEYS)->contains(fn ($key) => $request->exists($key))) {
+            $data = array_merge($data, RibbonPicks::validated($this->bid(), $request));
+        }
+
+        /*
+         * ═══ و«أضف مع طلبك» بيده — لمن له القسم وحده ═══
+         *
+         * من ليس في `storefront.ribbon_product_upsells` يُردّ بـ403. والفراغُ
+         * يُحفظ فارغًا: يعود القسمُ إلى «الاضافات» كما كان.
+         */
+        if ($request->exists(RibbonUpsells::KEY)) {
+            $data[RibbonUpsells::KEY] = RibbonUpsells::validated($this->bid(), $request);
         }
 
         /*

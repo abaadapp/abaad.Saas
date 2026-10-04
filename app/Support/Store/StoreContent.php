@@ -45,13 +45,14 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — أربعةٌ وعشرون مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — سبعةٌ وثلاثون مفتاحًا.
      *
      * @var list<string>
      */
     public const VERSIONED = [
-        // نصوصُ الصفحة
+        // نصوصُ الصفحة — وعنوانُ الواجهة ووصفُها لكلّ لغة
         'store_headline', 'store_about', 'store_tagline', 'store_tagline_en',
+        'store_hero_title', 'store_hero_title_en', 'store_hero_sub', 'store_hero_sub_en',
         // صورُها
         'store_hero_image', 'store_banner_image', 'store_about_image',
         // ما يُعرض وبأيّ ترتيب
@@ -60,8 +61,11 @@ final class StoreContent
         // القسمُ الحرّ
         'store_block_on', 'store_block_title', 'store_block_text',
         'store_block_image', 'store_block_cta', 'store_block_href',
+        'store_block_title_en', 'store_block_text_en', 'store_block_cta_en',
+        // «اختيارات RIBBON» و«أضف مع طلبك» بيده — انظر `RibbonPicks` و`RibbonUpsells`
+        'store_picks', 'store_picks_title', 'store_picks_title_en', 'store_ribbon_upsells',
         // وما يقرؤه غوغل من نصّ — أمّا إذنُ الفهرسة فيسري فورًا
-        'store_seo_title', 'store_seo_desc',
+        'store_seo_title', 'store_seo_desc', 'store_seo_title_en', 'store_seo_desc_en',
         // ورأسُ المتجر: شريطُ الإعلان واختصاراتُ الفئات — انظر `StoreHeader`
         'store_announcement_ar', 'store_announcement_en', 'store_announcement_align',
         'store_shop_nav_categories',

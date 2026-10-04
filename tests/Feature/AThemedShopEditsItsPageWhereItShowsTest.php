@@ -14,6 +14,7 @@ use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\Store\CatalogTools;
 use App\Support\Store\PageEditor;
+use App\Support\Store\RibbonPicks;
 use App\Support\Store\StorePage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -132,9 +133,16 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
         $this->assertSame(['about', 'cats'], array_slice($keys, 2, 2), 'الترتيبُ ليس ترتيبَ صاحبه');
 
         // والمطفأُ يبقى معروضًا ليُرفع ثانية — لا يخرج من الشاشة إلى العدم
-        foreach (StorePage::SECTIONS as $section) {
+        foreach (StorePage::DEFAULT_ORDER as $section) {
             $this->assertContains($section, $keys, "القسم {$section} اختفى من المحرّر");
         }
+
+        // و«اختيارات RIBBON» صفٌّ لمن فُتحت له وحده — انظر `RibbonPicksTest`
+        $this->assertSame(
+            RibbonPicks::allowed($this->shop->id),
+            in_array(RibbonPicks::SECTION, $keys, true),
+            'صفُّ «اختيارات RIBBON» يتبع قائمتَه',
+        );
     }
 
     /** وما أطفأه صاحبُه يُقال إنّه مطفأ — لا يُعرض كأنّه يعمل */

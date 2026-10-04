@@ -7,8 +7,12 @@
         <div class="rb-wrap" style="padding:clamp(32px,5vw,72px) 24px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:clamp(28px,4vw,56px);align-items:center">
             <div style="display:flex;flex-direction:column;gap:20px">
                 <div class="rb-track" style="font-size:12px;--rb-track:.22em">{{ $t['heroKicker'] }}@if ($identity['city'] !== '') · {{ $identity['city'] }}@endif</div>
-                <h1 style="margin:0;font-size:clamp(32px,4.4vw,58px);line-height:1.15;font-weight:500;text-wrap:balance">{{ $identity['tagline'] !== '' ? $identity['tagline'] : $t['heroTitle'] }}</h1>
-                <p style="margin:0;font-size:clamp(15px,1.3vw,18px);line-height:1.7;max-width:520px;text-wrap:pretty">{{ $t['heroSub'] }}</p>
+                <h1 style="margin:0;font-size:clamp(32px,4.4vw,58px);line-height:1.15;font-weight:500;text-wrap:balance" data-testid="rb-hero-title">{{ $heroTitle }}</h1>
+                {{--
+                    والعنوانُ والوصفُ بلغة الصفحة — ما كتبه صاحبُ المحلّ لها،
+                    وإلّا نصُّ القالب للّغة نفسِها (`StorePage::heroTitle`).
+                --}}
+                <p style="margin:0;font-size:clamp(15px,1.3vw,18px);line-height:1.7;max-width:520px;text-wrap:pretty" data-testid="rb-hero-sub">{{ $heroSub }}</p>
                 {{--
                     و«استكشف مجموعاتنا» قفزةٌ إلى قسمٍ في هذه الصفحة — لا
                     وجهةٌ أخرى. فإن لم يكن القسمُ عليها لم يُرسم الزرّ.

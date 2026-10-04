@@ -17,6 +17,7 @@ use App\Support\Money;
 use App\Support\PaymentMethods;
 use App\Support\Seo;
 use App\Support\Store\BestSellers;
+use App\Support\Store\RibbonPicks;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\RibbonUpsells;
 use App\Support\Store\CheckoutFields;
@@ -275,7 +276,19 @@ class RibbonController extends Controller
             'sections' => StorePage::order($bid),
             'hero' => StorePage::heroImage($bid),
             'bannerImage' => StorePage::bannerImage($bid),
-            'block' => StorePage::block($bid),
+            'block' => StorePage::block($bid, $lang),
+            /*
+             * وعنوانُ الواجهة ووصفُها بلغة الصفحة — ما كتبه لها، وإلّا نصُّ
+             * القالب للّغة نفسِها (`StorePage::heroTitle`).
+             */
+            'heroTitle' => StorePage::heroTitle($bid, $lang, RibbonTexts::for($lang)),
+            'heroSub' => StorePage::heroSub($bid, $lang, RibbonTexts::for($lang)),
+            /*
+             * و«اختيارات RIBBON» — أصنافُه بيده من `$shown` وحدها، بترتيبه.
+             * ولا يُرسم القسمُ إلّا إن رفعه في الترتيب (`StorePage::order`).
+             */
+            'picks' => RibbonPicks::pick($bid, $shown)->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
+            'picksTitle' => RibbonPicks::title($bid, $lang, RibbonTexts::for($lang)),
             // وعنوانُ «الأكثر مبيعًا» يتبع مصدرَه: محسوبًا يُسمّى، ومختارًا يُسمّى
             'bestPicked' => $chosen->isNotEmpty(),
             'reviews' => Review::where('business_id', $bid)->showable()->latest()->take(3)->get()
@@ -601,7 +614,8 @@ class RibbonController extends Controller
             'identity' => $identity,
             // ساعاتُ العمل بلغة الصفحة — التذييلُ وسطرُ الاستلام في الإتمام
             'hours' => StorePage::hours($bid, $lang),
-            'deliveryNote' => $s['note'],
+            // وملاحظةُ التوصيل بلغة الصفحة — وفارغُ اللغة لا يُرسم ولا يقع على الأخرى
+            'deliveryNote' => $lang === 'en' ? $s['note_en'] : $s['note'],
             /*
              * تنبيهُ الصورة بلغة الصفحة — `store_image_note` للعربيّة و
              * `store_image_note_en` للإنجليزيّة. وفارغُ اللغة لا يُرسم، ولا
@@ -628,7 +642,7 @@ class RibbonController extends Controller
              */
             'announcement' => StoreHeader::announcement($bid, $lang),
             // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
-            'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo()),
+            'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo(), $lang),
         ] + $this->floatingWhatsapp($bid, $identity, $t);
     }
 

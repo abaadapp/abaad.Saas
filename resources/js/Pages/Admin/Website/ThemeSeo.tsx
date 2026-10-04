@@ -11,6 +11,7 @@ import ThemeHeader, { type ThemeShell } from './theme/Shell';
 
 interface Props extends ThemeShell, ThemeSeed {
     fallback: { title: string; description: string };
+    fallbackEn?: { title: string; description: string };
     limits: { title: number; desc: number };
 }
 
@@ -23,7 +24,7 @@ interface Props extends ThemeShell, ThemeSeed {
  */
 export default function ThemeSeo() {
     const props = usePage<PageProps<Props>>().props;
-    const { site, fallback, limits } = props;
+    const { site, fallback, fallbackEn, limits } = props;
     const t = useTranslate();
 
     const form = useForm<ThemeSettingsData>(seed(props));
@@ -44,7 +45,7 @@ export default function ThemeSeo() {
 
             <SettingsPage>
                 <div className="space-y-6">
-                    <SeoSection form={form} site={site} fallback={fallback} limits={limits} />
+                    <SeoSection form={form} site={site} fallback={fallback} fallbackEn={fallbackEn} limits={limits} />
 
                     <SaveBar
                         dirty={form.isDirty}

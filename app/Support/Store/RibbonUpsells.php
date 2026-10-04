@@ -4,8 +4,10 @@ namespace App\Support\Store;
 
 use App\Models\Category;
 use App\Models\Product;
+use App\Support\MarketingSettings;
 use App\Support\Website\Shelf;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 
 /**
@@ -23,9 +25,47 @@ use Illuminate\Support\Collection;
  *
  * لمن في `storefront.ribbon_product_upsells` وحده — لا لكلّ من يلبس RIBBON.
  * ومن ليس فيها لا يُسأل عنه في القاعدة شيء.
+ *
+ * ═══ ومن أين تُؤخذ الأصناف ═══
+ *
+ * ما اختاره صاحبُ المتجر بيده وبترتيبه (`store_ribbon_upsells`) أوّلًا —
+ * أيَّ صنفٍ من متجره المعروض، من أيّ قسم، ويبقى في قسمه. فإن لم يختر شيئًا
+ * بقي القسمُ على القسم المكتوب في القائمة («الاضافات») كما كان: فلا يختفي
+ * «أضف مع طلبك» يومَ النشر، ويختار هو حين يشاء.
+ *
+ * والاختيارُ متى كُتب حكم: صنفٌ مختارٌ أُخفي أو نفد يسقط وحده، ولا يُحشى
+ * مكانَه شيءٌ من «الاضافات» — قائمتان لا تُخلطان في صفٍّ واحد.
  */
 final class RibbonUpsells
 {
+    /** مفتاحُ ما يختاره بيده — معرّفاتٌ مرتّبةٌ بفواصل */
+    public const KEY = 'store_ribbon_upsells';
+
+    /** ما اختاره بيده بترتيبه — إلى حدّ القائمة. وفارغٌ لمن لم يختر أو لا قائمةَ له */
+    public static function manualIds(int $businessId): array
+    {
+        $settings = self::settings($businessId);
+
+        if ($settings === null) {
+            return [];
+        }
+
+        return StorePage::ids(MarketingSettings::group($businessId, 'website')[self::KEY] ?? '', $settings['limit']);
+    }
+
+    /**
+     * القائمةُ كما تُحفظ — أو رفض. ومن لا قسمَ «أضف مع طلبك» له يُردّ بـ403
+     * قبل أن يُكتب شيء: الشاشةُ التي لا تعرض الصفَّ لا تحرس الباب.
+     */
+    public static function validated(int $businessId, Request $request): string
+    {
+        $settings = self::settings($businessId);
+
+        abort_if($settings === null, 403);
+
+        return ProductList::validated($businessId, self::KEY, $request->input(self::KEY), $settings['limit'], 'أضف مع طلبك');
+    }
+
     /**
      * ما كُتب لهذا المتجر في القائمة — أو `null` إن لم يُكتب له شيء.
      *
@@ -66,6 +106,12 @@ final class RibbonUpsells
             return collect();
         }
 
+        $manual = self::manualIds($businessId);
+
+        if ($manual !== []) {
+            return self::chosen($businessId, $current, $shown, $manual, $settings['limit']);
+        }
+
         $categories = Category::where('business_id', $businessId)
             ->where('name', $settings['category'])
             ->pluck('id')->map(fn ($id) => (int) $id);
@@ -85,6 +131,33 @@ final class RibbonUpsells
         return $candidates
             ->filter(fn (Product $p) => $available[$p->id] ?? false)
             ->take($settings['limit'])
+            ->values();
+    }
+
+    /**
+     * ما اختاره بيده — بترتيبه، ممّا يُعرض وعلى الرفّ فعلًا.
+     *
+     * وصفحةُ صنفٍ من المختارة نفسِها لا يُعرض فيها القسم — قاعدةُ «إضافةٌ
+     * لا تقترح إضافة» نفسُها التي تُسقطه في صفحة صنفٍ من «الاضافات».
+     *
+     * @param  list<int>  $ids
+     * @return Collection<int, Product>
+     */
+    private static function chosen(int $businessId, Product $current, Builder $shown, array $ids, int $limit): Collection
+    {
+        if (in_array((int) $current->id, $ids, true)) {
+            return collect();
+        }
+
+        $candidates = $shown
+            ->whereIn('id', $ids)
+            ->with(['category:id,name,name_en', 'variants' => fn ($q) => $q->where('active', true)->orderBy('sort_order')->orderBy('id')])
+            ->get();
+
+        $available = Shelf::availability($businessId, $candidates->pluck('id')->all());
+
+        return ProductList::pick($candidates->filter(fn (Product $p) => $available[$p->id] ?? false), $ids)
+            ->take($limit)
             ->values();
     }
 }

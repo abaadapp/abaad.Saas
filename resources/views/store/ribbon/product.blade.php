@@ -36,6 +36,15 @@
                 @if ($product['category'])<div class="rb-track" style="font-size:12px;--rb-track:.15em">{{ $product['category'] }}</div>@endif
                 <h1 style="margin:6px 0 0;font-size:30px;font-weight:500">{{ $product['name'] }}</h1>
                 <div style="font-size:22px;margin-top:8px;font-weight:600" data-rb-price>{{ $product['price_text'] }}</div>
+                {{-- وملخّصُ الآراء تحت السعر — يقود إلى قسمها. ولا شيء لصنفٍ بلا رأيٍ منشور --}}
+                @if ($reviews['count'] > 0)
+                    @php($avgText = number_format($reviews['average'], 1))
+                    <a href="#rb-reviews" style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:14px;min-height:32px" aria-label="{{ strtr($t['ratingOutOf'], [':avg' => $avgText]) }} — {{ strtr($t['reviewsCount'], [':n' => $reviews['count']]) }}" data-testid="rb-rating-summary">
+                        <span style="color:#b8860b;letter-spacing:2px" aria-hidden="true">{{ str_repeat('★', (int) round($reviews['average'])) }}{{ str_repeat('☆', 5 - (int) round($reviews['average'])) }}</span>
+                        <strong dir="ltr">{{ $avgText }}</strong>
+                        <span style="color:#555" dir="ltr">({{ $reviews['count'] }})</span>
+                    </a>
+                @endif
             </div>
             @if ($product['description'] !== '')
                 <p style="margin:0;font-size:15px;line-height:1.7;text-wrap:pretty">{{ $product['description'] }}</p>
@@ -148,6 +157,61 @@
             @endif
         </div>
     </div>
+    {{--
+        ═══ آراءُ الصنف — ما كتبه من اشتراه ونشره صاحبُ المحلّ ═══
+
+        المعدّلُ والعددُ والتوزيعُ من كلّ رأيٍ منشورٍ في الصنف، والقائمةُ ما فيه
+        كلام (`ProductReviews`). و«شراء موثّق» لرأيٍ كُتب عن بندٍ اشتُري، و«ردّ
+        المتجر» باسم المتجر لا باسم من كتبه. وصنفٌ بلا رأيٍ منشور لا قسمَ له.
+    --}}
+    @if ($reviews['count'] > 0)
+        <div id="rb-reviews" style="margin-top:56px;scroll-margin-top:96px" data-testid="rb-product-reviews">
+            <div class="rb-section-head"><h2 class="rb-h2">{{ $t['productReviews'] }}</h2></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:24px;align-items:start">
+                <div class="rb-box" data-testid="rb-reviews-summary">
+                    <div style="display:flex;align-items:baseline;gap:8px">
+                        <strong style="font-size:34px;font-weight:600" dir="ltr" data-testid="rb-reviews-average">{{ number_format($reviews['average'], 1) }}</strong>
+                        <span style="color:#b8860b;letter-spacing:2px" aria-hidden="true">{{ str_repeat('★', (int) round($reviews['average'])) }}{{ str_repeat('☆', 5 - (int) round($reviews['average'])) }}</span>
+                    </div>
+                    <div style="font-size:13px;color:#555;margin-top:4px" data-testid="rb-reviews-count">{{ strtr($t['reviewsCount'], [':n' => $reviews['count']]) }}</div>
+                    <div style="margin-top:14px;display:flex;flex-direction:column;gap:6px">
+                        @foreach ($reviews['distribution'] as $stars => $n)
+                            <div style="display:flex;align-items:center;gap:8px;font-size:13px" aria-label="{{ strtr($t['starsLabel'], [':n' => $stars]) }}: {{ $n }}" data-testid="rb-reviews-bar-{{ $stars }}">
+                                <span style="width:28px" dir="ltr">{{ $stars }} ★</span>
+                                <span style="flex:1;height:8px;border-radius:999px;background:var(--rb-soft);overflow:hidden">
+                                    <span style="display:block;height:100%;width:{{ $reviews['count'] ? round($n * 100 / $reviews['count']) : 0 }}%;background:var(--rb-olive)"></span>
+                                </span>
+                                <span style="width:28px;text-align:end" dir="ltr">{{ $n }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:16px">
+                    @foreach ($reviews['list'] as $r)
+                        <div class="rb-box" data-testid="rb-review">
+                            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+                                <span style="color:#b8860b;letter-spacing:2px;font-size:13px" aria-label="{{ strtr($t['starsLabel'], [':n' => $r['rating']]) }}">{{ str_repeat('★', $r['rating']) }}{{ str_repeat('☆', 5 - $r['rating']) }}</span>
+                                @if ($r['date'])<span style="font-size:12px;color:#777" dir="ltr">{{ $r['date'] }}</span>@endif
+                            </div>
+                            <p style="margin:10px 0;font-size:15px;line-height:1.7;white-space:pre-line">{{ $r['comment'] }}</p>
+                            <div style="font-size:13px;color:#555;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <span>{{ $r['name'] }}</span>
+                                @if ($r['verified'])
+                                    <span style="color:var(--rb-olive);font-weight:600" data-testid="rb-review-verified">✓ {{ $t['verifiedPurchase'] }}</span>
+                                @endif
+                            </div>
+                            @if ($r['reply'])
+                                <div style="margin-top:12px;padding:12px 14px;border-radius:var(--rb-r);background:var(--rb-soft);font-size:14px;line-height:1.7" data-testid="rb-review-reply">
+                                    <div style="font-size:12px;font-weight:600;margin-bottom:4px">{{ $t['storeReply'] }}@if ($r['reply']['date']) <span style="font-weight:400;color:#777" dir="ltr">· {{ $r['reply']['date'] }}</span>@endif</div>
+                                    <div style="white-space:pre-line">{{ $r['reply']['text'] }}</div>
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    @endif
 </section>
 @endsection
 @section('scripts')

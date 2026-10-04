@@ -21,6 +21,9 @@ final class RibbonTexts
         'picksTitle' => 'اختيارات RIBBON',
         'bannerKicker' => 'المناسبات والهدايا', 'bannerTitle' => 'لكل مناسبة باقة تليق بها', 'bannerSub' => 'أعياد ميلاد، تخرّج، خطوبة، أو شكر بسيط. نجهّز الباقة مع كرت هدية بخط أنيق ونوصلها في الوقت الذي تحدده.', 'bannerBtn' => 'تسوّق الهدايا',
         'aboutKicker' => 'عن المتجر', 'reviewsTitle' => 'آراء عملائنا',
+        // آراءُ الصنف على صفحته — انظر `ProductReviews`
+        'productReviews' => 'تقييمات المنتج', 'reviewsCount' => 'عدد التقييمات: :n', 'ratingOutOf' => 'التقييم :avg من 5',
+        'verifiedPurchase' => 'شراء موثّق', 'storeReply' => 'ردّ المتجر', 'starsLabel' => ':n نجوم',
         'shopTitle' => 'جميع المنتجات', 'shopSub' => 'اختر باقتك، حدّد الحجم وموعد التوصيل، وأتمّ الطلب في صفحة واحدة.', 'all' => 'الكل', 'noProducts' => 'لا منتجات هنا بعد.', 'noMatch' => 'لا توجد منتجات تطابق بحثك.', 'noInCategory' => 'لا توجد منتجات في هذا القسم.',
         'back' => '← الرجوع للمنتجات', 'size' => 'الحجم', 'add' => 'أضف إلى السلة', 'added' => 'تمت الإضافة ✓', 'soldOut' => 'نفد من المتجر', 'from' => 'من',
         'cartTitle' => 'السلة', 'cartEmpty' => 'سلتك فارغة', 'continueShopping' => 'متابعة التسوّق', 'remove' => 'حذف', 'subtotal' => 'المجموع الفرعي', 'toCheckout' => 'إتمام الطلب',
@@ -89,6 +92,8 @@ final class RibbonTexts
         'picksTitle' => 'RIBBON picks',
         'bannerKicker' => 'OCCASIONS & GIFTS', 'bannerTitle' => 'A bouquet for every occasion', 'bannerSub' => 'Birthdays, graduations, engagements, or a simple thank-you. We prepare the bouquet with a hand-written card and deliver at the time you choose.', 'bannerBtn' => 'Shop gifts',
         'aboutKicker' => 'ABOUT US', 'reviewsTitle' => 'What customers say',
+        'productReviews' => 'Product reviews', 'reviewsCount' => 'Reviews: :n', 'ratingOutOf' => 'Rated :avg out of 5',
+        'verifiedPurchase' => 'Verified purchase', 'storeReply' => 'Store reply', 'starsLabel' => ':n stars',
         'shopTitle' => 'All products', 'shopSub' => 'Pick a bouquet, choose a size and delivery time, and order on a single page.', 'all' => 'All', 'noProducts' => 'No products here yet.', 'noMatch' => 'No products match your search.', 'noInCategory' => 'No products in this category.',
         'back' => '← Back to products', 'size' => 'Size', 'add' => 'Add to cart', 'added' => 'Added ✓', 'soldOut' => 'Sold out', 'from' => 'from',
         'cartTitle' => 'Your cart', 'cartEmpty' => 'Your cart is empty', 'continueShopping' => 'Continue shopping', 'remove' => 'Remove', 'subtotal' => 'Subtotal', 'toCheckout' => 'Checkout',

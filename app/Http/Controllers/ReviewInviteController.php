@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Review;
 use App\Support\Activity;
 use App\Support\Contention;
@@ -70,7 +71,23 @@ class ReviewInviteController extends Controller
         $data = $request->validate([
             'rating' => ['required', 'integer', 'min:1', 'max:5'],
             'comment' => ['nullable', 'string', 'max:2000'],
+            'order_item_id' => ['nullable', 'integer'],
         ]);
+
+        /*
+         * ═══ ورأيٌ في بندٍ — والبندُ من هذا الطلب وحده ═══
+         *
+         * المعرّفُ من المتصفّح، فيُطلب بين بنود الطلب الذي فتحه الرمز
+         * (`ReviewInvite::item`): بندُ طلبٍ آخر أو متجرٍ آخر لا يوجد هنا، ويُردّ
+         * ٤٠٤. والصنفُ يُقرأ من البند — لا يُقبل `product_id` من أحد.
+         */
+        if (filled($data['order_item_id'] ?? null)) {
+            $item = ReviewInvite::item($order, (int) $data['order_item_id']);
+
+            abort_if($item === null, 404);
+
+            return $this->storeForItem($order, $item, $data, $token);
+        }
 
         /*
          * ═══ ورأيٌ واحدٌ لكلّ طلب — بالقيد وحدَه ═══
@@ -91,6 +108,7 @@ class ReviewInviteController extends Controller
             'business_id' => (int) $order->business_id,
             'customer_id' => $order->customer_id,
             'order_id' => $order->getKey(),
+            'type' => Review::TYPE_ORDER,
             'author_name' => ReviewInvite::author($order),
             'rating' => (int) $data['rating'],
             'comment' => $data['comment'] ?? null,
@@ -121,18 +139,77 @@ class ReviewInviteController extends Controller
     }
 
     /**
+     * رأيٌ في بندٍ اشتُري — واحدٌ لكلّ بند، بالقيد.
+     *
+     * والحارسُ كحارس رأي الطلب: الفهرسُ الفريد على `order_item_id`، ونقرتان
+     * متزامنتان تُلتقط ثانيتُهما ويُقال شكرًا (`Contention`). وبندٌ آخر من
+     * الطلب نفسِه يبقى مفتوحًا.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function storeForItem(Order $order, OrderItem $item, array $data, string $token): RedirectResponse
+    {
+        $review = Contention::attempt(fn () => Review::create([
+            'business_id' => (int) $order->business_id,
+            'type' => Review::TYPE_PRODUCT,
+            'customer_id' => $order->customer_id,
+            'order_id' => $order->getKey(),
+            'order_item_id' => $item->getKey(),
+            // من البند لا من الطلب: البندُ هو ما اشتُري
+            'product_id' => (int) $item->product_id,
+            'author_name' => ReviewInvite::author($order),
+            'rating' => (int) $data['rating'],
+            'comment' => $data['comment'] ?? null,
+            /* معلَّقًا — كرأي الطلب: لا يظهر حتى يقرأه صاحبُ المحلّ ويأذن */
+            'status' => 'معلّق',
+        ]));
+
+        if ($review !== null) {
+            Activity::log(
+                'created',
+                'كتب زبونٌ تقييمًا بـ'.$review->rating.' نجوم عن «'.$item->displayName().'» في الطلب '.$order->number,
+                [
+                    'business_id' => (int) $order->business_id,
+                    'subject_id' => $review->id,
+                    'subject_type' => 'review',
+                ],
+            );
+        }
+
+        return redirect()->route('review.write', $token)->with('reviewed', (int) $item->getKey());
+    }
+
+    /**
      * ما تُرسم به الصفحة — والبيانُ واحدٌ للعرض وللشكر.
      *
      * @return array<string, mixed>
      */
     private function canvas(Order $order): array
     {
+        $items = ReviewInvite::items($order);
+
         return [
             'brand' => Paper::brand($order->business),
             'number' => (string) $order->number,
             'token' => (string) $order->review_token,
-            /* وقد كتب من قبل: تُعرض الشكرُ لا النموذج — لا رأيان عن طلبٍ واحد */
-            'done' => session('done') === true || ReviewInvite::written($order),
+            /*
+             * وبنودُ الطلب — لكلٍّ نموذجُه أو «وصل رأيك». وطلبٌ بلا صنفٍ يُقيَّم
+             * يبقى على نموذجه الواحد كما كان.
+             */
+            'items' => $items->map(fn (OrderItem $i) => [
+                'id' => (int) $i->getKey(),
+                'name' => $i->displayName(),
+                'image' => $i->product?->image,
+                'reviewed' => $i->review_id !== null,
+            ])->all(),
+            'justReviewed' => (int) session('reviewed', 0),
+            /*
+             * وقد أتمّ: تُعرض الشكرُ لا النموذج — لا رأيان عن بندٍ واحد. وطلبُ
+             * الأصناف يتمّ بآخر بنوده لا بأوّل رأي (`ReviewInvite::written`).
+             */
+            'done' => $items->isEmpty()
+                ? session('done') === true || ReviewInvite::written($order)
+                : $items->every(fn (OrderItem $i) => $i->review_id !== null),
         ];
     }
 }

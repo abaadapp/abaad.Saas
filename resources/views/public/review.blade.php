@@ -88,6 +88,16 @@
         .done { text-align: center; }
         .tick { font-size: 44px; line-height: 1; color: var(--ok); }
         .foot { text-align: center; padding: 14px 18px 18px; }
+
+        /* ---------------------------- البنود ---------------------------- */
+        .item { border-top: 1px solid var(--rule); }
+        .item-head { display: flex; align-items: center; gap: 12px; }
+        .item-img {
+            width: 56px; height: 56px; flex: none; border-radius: 10px;
+            object-fit: cover; background: #f3f4f6; border: 1px solid var(--rule);
+        }
+        .item-name { font-weight: 600; font-size: 15px; margin: 0; }
+        .item-ok { color: var(--ok); font-size: 14px; font-weight: 600; margin-top: 2px; }
     </style>
 </head>
 <body>
@@ -114,6 +124,73 @@
             <h2>{{ __('وصلنا رأيك — شكرًا لك') }}</h2>
             <p class="muted sm">{{ __('يقرؤه صاحبُ المحلّ، ويختار ما يُعرض منه على موقعه.') }}</p>
         </div>
+    @elseif (count($items))
+        {{--
+            ═══ طلبٌ فيه أصناف — لكلّ بندٍ رأيُه ═══
+
+            نموذجٌ لكلّ بندٍ لم يُكتب فيه بعد، و«وصلنا رأيك ✓» لما كُتب. ورأيٌ
+            في بندٍ لا يُغلق الباقي: الصفحةُ تعود بعد الإرسال إلى البنود نفسِها.
+            والنجومُ CSS كما في النموذج الواحد — ومعرّفاتُها برقم البند، فلا
+            تختلط نجومُ بندين.
+        --}}
+        <div class="pad" style="padding-bottom:6px">
+            <h2>{{ __('كيف وجدت ما اشتريت؟') }}</h2>
+            <p class="muted sm" style="margin:0">
+                {{ __('عن طلبك رقم') }} <span class="ltr">{{ $number }}</span> — {{ __('قيّم كلّ صنفٍ وحده') }}
+            </p>
+        </div>
+
+        @foreach ($items as $item)
+            <section class="pad item" data-testid="review-item-{{ $item['id'] }}">
+                <div class="item-head">
+                    @if ($item['image'])
+                        <img class="item-img" src="{{ $item['image'] }}" alt="">
+                    @else
+                        <span class="item-img" aria-hidden="true"></span>
+                    @endif
+                    <div>
+                        <p class="item-name">{{ $item['name'] }}</p>
+                        @if ($item['reviewed'])
+                            <div class="item-ok">✓ {{ __('وصلنا رأيك في هذا الصنف') }}</div>
+                        @endif
+                    </div>
+                </div>
+
+                @unless ($item['reviewed'])
+                    @php($mine = (int) old('order_item_id') === $item['id'])
+                    <form method="POST" action="{{ route('review.submit', $token) }}">
+                        @csrf
+                        <input type="hidden" name="order_item_id" value="{{ $item['id'] }}">
+
+                        <div class="stars">
+                            @foreach ([5, 4, 3, 2, 1] as $n)
+                                <input type="radio" id="star-{{ $item['id'] }}-{{ $n }}" name="rating" value="{{ $n }}"
+                                       @checked($mine && old('rating') == $n) required>
+                                <label for="star-{{ $item['id'] }}-{{ $n }}" title="{{ $n }}"
+                                       aria-label="{{ __('التقييم :n من 5', ['n' => $n]) }}">★</label>
+                            @endforeach
+                        </div>
+
+                        @if ($mine)
+                            @error('rating')
+                                <div class="err">{{ $message }}</div>
+                            @enderror
+                        @endif
+
+                        <textarea name="comment" maxlength="2000" aria-label="{{ __('رأيك في :name', ['name' => $item['name']]) }}"
+                                  placeholder="{{ __('واكتب كلمةً إن أحببت — وهي ما قد يُعرض على صفحة الصنف') }}">{{ $mine ? old('comment') : '' }}</textarea>
+
+                        @if ($mine)
+                            @error('comment')
+                                <div class="err">{{ $message }}</div>
+                            @enderror
+                        @endif
+
+                        <button type="submit">{{ __('أرسِل رأيي في هذا الصنف') }}</button>
+                    </form>
+                @endunless
+            </section>
+        @endforeach
     @else
         <form class="pad" method="POST" action="{{ route('review.submit', $token) }}">
             @csrf

@@ -27,6 +27,7 @@ use App\Support\Store\GiftCard;
 use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
 use App\Support\Store\NewArrivals;
+use App\Support\Store\ProductReviews;
 use App\Support\Store\PaidReceipt;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
@@ -444,6 +445,11 @@ class RibbonController extends Controller
                 'gift_card' => $giftCard,
                 'card_max' => GiftCardProduct::MAX,
             ],
+            /*
+             * وآراءُ الصنف — ما كتبه من اشتراه ونشره صاحبُ المحلّ (`ProductReviews`).
+             * وتُسأل هنا وحدَها: الرفُّ والرئيسيّةُ لا يحملانها.
+             */
+            'reviews' => ProductReviews::for($bid, (int) $p->id),
             /*
              * وملاحظةُ التوصيل تحت زرّ السلّة — إلّا لمن طلب تنبيهَ الصورة
              * وحده هناك (`storefront.ribbon_product_page_without_delivery_note_businesses`).

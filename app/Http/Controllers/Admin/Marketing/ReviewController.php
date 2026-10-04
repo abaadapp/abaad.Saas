@@ -64,7 +64,8 @@ class ReviewController extends Controller
          * يُقرأ اسمُه في الترتيب وقد سقط من الشاشة (`belongsTo` يردّ
          * فارغًا للمحذوف)، فيفترق المعروضُ عن المرتَّب من جديد.
          */
-        $q = Review::where('reviews.business_id', $bid)->with(['customer', 'product'])
+        $q = Review::where('reviews.business_id', $bid)
+            ->with(['customer', 'product', 'order:id,number', 'orderItem:id,name,variant_name'])
             ->leftJoin('customers', function ($join) {
                 $join->on('customers.id', '=', 'reviews.customer_id')
                     ->whereNull('customers.deleted_at');
@@ -88,6 +89,10 @@ class ReviewController extends Controller
         if ($rating = $request->query('rating')) {
             $q->where('reviews.rating', (int) $rating);
         }
+        // رأيُ الطلب أم رأيُ الصنف — وما ليس منهما لا يُرشِّح شيئًا
+        if (in_array($type = $request->query('type'), [Review::TYPE_ORDER, Review::TYPE_PRODUCT], true)) {
+            $q->where('reviews.type', $type);
+        }
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('reviews.id'));
 
@@ -101,7 +106,16 @@ class ReviewController extends Controller
             'reviews' => collect($reviews->items())->map(fn ($r) => [
                 'id' => $r->id,
                 'author' => $r->displayName(),
-                'product' => $r->product?->name,
+                /*
+                 * والصنفُ لرأي الصنف من البند الذي اشتُري — باسمه ومقاسه كما بيع،
+                 * فلا يُخلط بين مقاسين من صنفٍ واحد. وصنفٌ حُذف يبقى اسمُه على البند.
+                 */
+                'product' => $r->type === Review::TYPE_PRODUCT
+                    ? ($r->orderItem?->displayName() ?? $r->product?->name)
+                    : $r->product?->name,
+                'kind' => $r->type === Review::TYPE_PRODUCT ? Review::TYPE_PRODUCT : Review::TYPE_ORDER,
+                'order' => $r->order?->number,
+                'verified' => $r->verifiedPurchase(),
                 'rating' => (int) $r->rating,
                 'comment' => $r->comment,
                 'status' => $r->status,
@@ -121,7 +135,7 @@ class ReviewController extends Controller
                 'byCustomer' => $r->order_id !== null,
             ])->all(),
             'pagination' => Pagination::meta($reviews),
-            'filters' => $request->only('q', 'status', 'rating')
+            'filters' => $request->only('q', 'status', 'rating', 'type')
                 + Sort::params($request, self::SORTS),
             'sorts' => Sort::keys(self::SORTS),
             'products' => Product::where('business_id', $bid)->orderBy('name')

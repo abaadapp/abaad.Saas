@@ -3,7 +3,9 @@
 namespace App\Support;
 
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Review;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -89,12 +91,62 @@ class ReviewInvite
             ->first();
     }
 
-    /** أكتب صاحبُ هذا الطلب رأيَه؟ — يُقرأ من التقييم لا من ختمٍ في الطلب */
+    /**
+     * أأتمّ صاحبُ هذا الطلب ما يُكتب عنه؟ — يُقرأ من التقييمات لا من ختمٍ في الطلب.
+     *
+     * ═══ ولم يعد «رأيٌ واحد يكفي» ═══
+     *
+     * طلبٌ فيه أصنافٌ يُكتب لكلّ بندٍ رأيُه: فلا يُغلق حتّى يُكتب لكلّها.
+     * ورأيُ صنفٍ واحد — أو رأيٌ في الطلب كُتب قبل آراء الأصناف — لا يُغلق
+     * الباقي. وطلبٌ بلا صنفٍ يُقيَّم يبقى على حاله: رأيٌ واحدٌ فيه.
+     */
     public static function written(?Order $order): bool
     {
-        return $order !== null
-            && $order->exists
-            && Review::where('order_id', $order->getKey())->exists();
+        if ($order === null || ! $order->exists) {
+            return false;
+        }
+
+        $items = self::items($order);
+
+        if ($items->isEmpty()) {
+            return Review::where('order_id', $order->getKey())
+                ->where('type', Review::TYPE_ORDER)->exists();
+        }
+
+        return $items->every(fn (OrderItem $i) => $i->review_id !== null);
+    }
+
+    /**
+     * بنودُ الطلب التي يُكتب فيها رأي — ومع كلٍّ رأيُه إن كُتب (`review_id`).
+     *
+     * بندٌ لصنفٍ من **متجر الطلب** ما زال قائمًا. وما لا صنفَ له — طلبٌ
+     * مخصَّصٌ بلا صنف، أو صنفٌ حُذف — لا صفحةَ له يُعرض عليها رأي.
+     *
+     * @return Collection<int, OrderItem>
+     */
+    public static function items(Order $order): Collection
+    {
+        return OrderItem::where('order_items.order_id', $order->getKey())
+            ->whereNotNull('order_items.product_id')
+            ->whereHas('product', fn ($q) => $q->where('business_id', $order->business_id))
+            ->with('product:id,name,name_en,image')
+            ->addSelect(['review_id' => Review::select('id')
+                ->whereColumn('reviews.order_item_id', 'order_items.id')
+                ->where('reviews.type', Review::TYPE_PRODUCT)
+                ->limit(1)])
+            ->orderBy('order_items.id')
+            ->get();
+    }
+
+    /**
+     * بندٌ من هذا الطلب يُكتب فيه رأي — أو null.
+     *
+     * والمعرّفُ يأتي من المتصفّح فلا يُصدَّق: يُطلب بين بنود **هذا الطلب**
+     * وحدها. بندُ طلبٍ آخر — في المتجر نفسِه أو في غيره — لا يوجد هنا.
+     */
+    public static function item(Order $order, int $itemId): ?OrderItem
+    {
+        return self::items($order)->firstWhere('id', $itemId);
     }
 
     /**

@@ -7331,5 +7331,15 @@
     "عمليتا سداد": "2 payment transactions",
     ":n عمليات سداد": ":n payment transactions",
     ":n عمليةَ سداد": ":n payment transactions",
-    "مبالغ تم تحصيلها من العملاء أو سدادها للموردين فعليًا خلال المدة. لا تدخل هذه الأرقام مرة أخرى في احتساب صافي الربح.": "Amounts actually collected from customers or paid to suppliers during the period. These figures are not counted again when calculating net profit."
+    "مبالغ تم تحصيلها من العملاء أو سدادها للموردين فعليًا خلال المدة. لا تدخل هذه الأرقام مرة أخرى في احتساب صافي الربح.": "Amounts actually collected from customers or paid to suppliers during the period. These figures are not counted again when calculating net profit.",
+    "رأيٌ في الصنف · شراء موثّق": "Product review · Verified purchase",
+    "رأيٌ في الصنف": "Product review",
+    "عن الطلب والمتجر": "About the order & store",
+    "عن صنف": "About a product",
+    "كيف وجدت ما اشتريت؟": "How did you find what you bought?",
+    "قيّم كلّ صنفٍ وحده": "rate each product on its own",
+    "وصلنا رأيك في هذا الصنف": "We received your review of this product",
+    "رأيك في :name": "Your review of :name",
+    "واكتب كلمةً إن أحببت — وهي ما قد يُعرض على صفحة الصنف": "Add a few words if you like — this is what may appear on the product page",
+    "أرسِل رأيي في هذا الصنف": "Send my review of this product"
 }

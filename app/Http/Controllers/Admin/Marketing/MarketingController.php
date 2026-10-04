@@ -14,10 +14,12 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Loyalty;
 use App\Support\MarketingSettings;
+use App\Support\Permissions;
 use App\Support\Seo;
 use App\Support\FlowerOrder;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\NewArrivals;
+use App\Support\Store\PaidReceipt;
 use App\Support\Store\RibbonPicks;
 use App\Support\Store\RibbonUpsells;
 use App\Support\Store\StoreContent;
@@ -211,6 +213,8 @@ class MarketingController extends Controller
             'store_whatsapp' => ['nullable', 'string', 'max:30'],
             'store_pay_cod' => ['sometimes', 'boolean'],
             'store_pay_transfer' => ['sometimes', 'boolean'],
+            // إيصالُ الدفع الإلكترونيّ للزبون — انظر `Store\PaidReceipt` وحارسَه تحت
+            'store_paid_receipt' => ['sometimes', 'boolean'],
             'store_bank' => ['nullable', 'string', 'max:400'],
             // التوصيل — يقرؤه إتمامُ الطلب في الواجهة الخاصّة وحده
             'store_delivery_fee' => ['nullable', 'numeric', 'min:0', 'max:1000'],
@@ -383,6 +387,17 @@ class MarketingController extends Controller
         }
 
         /*
+         * ═══ وإيصالُ الدفع للزبون — لمن يضبط الموقع ═══
+         *
+         * مقبضُه في شاشة «المتجر والطلبات» وهي تحت `WEBSITE_CONFIGURE`، وهذا
+         * البابُ تحت قسم «التسويق» وحده. فيُسأل هنا أيضًا: الشاشةُ التي لا
+         * تُفتح لا تحرس بابًا يُرسَل إليه بيد. انظر `Store\PaidReceipt`.
+         */
+        if ($request->exists(PaidReceipt::KEY)) {
+            abort_unless((bool) $request->user()?->may(Permissions::WEBSITE_CONFIGURE), 403);
+        }
+
+        /*
          * ═══ واختصاراتُ المتجر — فئاتُه وحده ═══
          *
          * معرّفاتٌ موجبةٌ فريدة، ستٌّ لا أكثر، وكلُّها من فئات متجره —
@@ -526,7 +541,7 @@ class MarketingController extends Controller
          */
         Domains::sync($business->refresh());
 
-        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_gift_card', 'store_block_on', 'store_seo_index'] as $flag) {
+        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_paid_receipt', 'store_gift_card', 'store_block_on', 'store_seo_index'] as $flag) {
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }

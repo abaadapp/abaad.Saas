@@ -6591,6 +6591,8 @@
     "الدفع والاستلام": "Payment and collection",
     "ما يقبضه متجرك من زبونه، وكيف يصله طلبه.": "What your store takes from its customer, and how the order reaches them.",
     "اقبل الطلبات من المتجر": "Accept orders from the store",
+    "أعطِ الزبون فاتورته بعد الدفع الإلكتروني": "Give the customer their invoice after online payment",
+    "زرّ «عرض الفاتورة» في صفحة الشكر بعد تأكيد الدفع بالبطاقة — بشكل فاتورة البيع الحرارية نفسها": "A “View invoice” button on the thank-you page once the card payment is confirmed — in the same thermal sale invoice layout",
     "أطفئه فيبقى متجرك معرضًا يُتصفَّح بلا سلّة — والأسعار تبقى ظاهرة": "Switch it off and your store stays a browsable showcase with no cart — prices remain visible",
     "تظهر للزبون في صفحة إتمام الطلب — اسم البنك ورقم الحساب والآيبان": "Shown to the customer at checkout — bank name, account number and IBAN",
     "الاسم الذي يُكتب قبل النطاق — يُوزَّع على زبائنك فيصعب تغييره بعدها.": "The name written before the domain — it is handed to your customers, so it is hard to change later.",

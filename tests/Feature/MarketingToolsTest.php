@@ -89,6 +89,8 @@ class MarketingToolsTest extends TestCase
             // إنستغرام وقبولُ الطلبات — يقرؤهما بانِي الموقع (MerchantData, SettingsController)
             'store_instagram', 'store_allow_orders',
             'store_pay_cod', 'store_pay_transfer', 'store_bank',
+            // وإيصالُ الدفع للزبون في صفحة الشكر — يقرؤه `Store\PaidReceipt`
+            'store_paid_receipt',
             // التوصيلُ والاستلام — يقرؤها إتمامُ الطلب في الواجهة الخاصّة (Store\WebCheckout)
             'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
             // وساعاتُ العمل بالإنجليزيّة بجانب العربيّة — للصفحة الإنجليزيّة (`StorePage::hours`)

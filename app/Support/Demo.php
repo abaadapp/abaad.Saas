@@ -1809,9 +1809,10 @@ class Demo
 
     /* ============================ ضريبة القيمة المضافة ============================ */
 
-    public static function vatSettings(): array
+    public static function vatSettings(?int $businessId = null): array
     {
-        $bid = self::bid();
+        // ومتجرٌ يُسمّى يُقرأ هو — لمن يرسم ورقةً بلا جلسة (`PdfController::saleHtml`)
+        $bid = $businessId ?? self::bid();
         $get = fn ($k, $d) => Setting::where('business_id', $bid)->where('key', $k)->value('value') ?? $d;
 
         // مطفأةً: النسبة صفرٌ والرقم الضريبي لا يُطبع — ورقةٌ تحمل رقمًا

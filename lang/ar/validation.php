@@ -486,6 +486,7 @@ return [
         'store_hours_en' => 'ساعات العمل بالإنجليزية',
         'store_pay_cod' => 'الدفع عند الاستلام',
         'store_pay_transfer' => 'الدفع بالتحويل',
+        'store_paid_receipt' => 'فاتورة الزبون بعد الدفع الإلكتروني',
         'store_bank' => 'بيانات الحساب البنكي',
         'store_delivery_fee' => 'رسوم التوصيل',
         'store_free_delivery_over' => 'التوصيل مجانًا فوق',

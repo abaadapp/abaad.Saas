@@ -194,4 +194,20 @@ describe('قسمُ «الدفع والاستلام»', () => {
         draw({ store_pay_transfer: true });
         expect(screen.getByLabelText(/بيانات الحساب البنكي/)).toBeInTheDocument();
     });
+
+    /**
+     * وإيصالُ الدفع للزبون مقبضٌ هنا — مطفأٌ حتّى يُفتح، ويُحفظ مع الشاشة.
+     * وقاعدتُه في الخادم (`Store\PaidReceipt`): الشاشةُ تقول ولا تحرس.
+     */
+    it('وتحمل مقبضَ فاتورة الزبون بعد الدفع — مطفأً حتّى يُفتح', () => {
+        const form = themeForm();
+        render(<Checkout form={form} gatewayReady />);
+
+        const knob = screen.getByRole('switch', { name: 'أعطِ الزبون فاتورته بعد الدفع الإلكتروني' });
+        expect(knob).toHaveAttribute('aria-checked', 'false');
+
+        fireEvent.click(knob);
+        expect(form.setData).toHaveBeenCalledWith('store_paid_receipt', true);
+        expect(SCREEN_KEYS.store).toContain('store_paid_receipt');
+    });
 });

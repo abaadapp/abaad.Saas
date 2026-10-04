@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Store;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\PdfController;
 use App\Models\Business;
 use App\Models\Category;
 use App\Models\Order;
@@ -26,6 +27,7 @@ use App\Support\Store\GiftCard;
 use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
 use App\Support\Store\NewArrivals;
+use App\Support\Store\PaidReceipt;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
@@ -60,7 +62,7 @@ class RibbonController extends Controller
      * وهي من مسارات المتجر لا بابًا على حدة: فتُبنى لها الترويسةُ والتذييل
      * وتُقرأ بلغتها كأيّ صفحة، ويصحّ رابطُها على الطرق الثلاث إلى العنوان.
      */
-    private const PATHS = ['shop', 'about', 'contact', 'cart', 'checkout', 'p', 'done', 'paying'];
+    private const PATHS = ['shop', 'about', 'contact', 'cart', 'checkout', 'p', 'done', 'paying', 'receipt'];
 
     /**
      * ما يتبعه مقطعٌ ثانٍ — وما سواه لا يقبله.
@@ -75,10 +77,10 @@ class RibbonController extends Controller
      * عشرٍ منها ويعرض أيَّها شاء؛ ورابطٌ كُتب خطأً يُفتح فيبدو سليمًا، فلا
      * يكتشف أحدٌ أنّه خطأ حتّى يُوزَّع.
      *
-     * والصفحاتُ الثلاثُ التي تقبله تحتاجه: صنفٌ بمعرّفه، وتأكيدٌ برقم طلبه،
-     * وعودةٌ من البوّابة بمرجعها.
+     * والصفحاتُ التي تقبله تحتاجه: صنفٌ بمعرّفه، وتأكيدٌ برقم طلبه، وعودةٌ
+     * من البوّابة بمرجعها، وإيصالُ الدفع برقم طلبه.
      */
-    private const TAKES_ID = ['p', 'done', 'paying'];
+    private const TAKES_ID = ['p', 'done', 'paying', 'receipt'];
 
     /* ═══════════ الصفحات ═══════════ */
 
@@ -106,6 +108,11 @@ class RibbonController extends Controller
          */
         if (in_array($first, StoreNav::OPTIONAL, true) && ! StoreNav::has((int) $business->id, $first, $lang)) {
             abort(404);
+        }
+
+        // والإيصالُ ملفٌّ لا صفحة: لا ترويسةَ له ولا تذييل
+        if ($first === 'receipt') {
+            return $this->receipt($business, (string) $second);
         }
 
         $ctx = $this->context($business, $base, $lang, $first ?? StoreNav::HOME);
@@ -584,6 +591,16 @@ class RibbonController extends Controller
                     default => $t['payCod'],
                 },
                 'transfer' => $order->payment_method === PaymentMethods::TRANSFER,
+                /*
+                 * وإيصالُ الدفع — لمن دفع دفعًا ثبت ومتجرُه فتحه (`PaidReceipt`).
+                 *
+                 * والرابطُ يحمل رمزَ الطلب نفسَه: يُبنى هنا لمن فتح هذه الصفحة
+                 * برمزها أو عاد من البوّابة بمرجعٍ ثبت. ولا يُقرأ للدفع شيءٌ من
+                 * رابط هذه الصفحة.
+                 */
+                'receipt' => PaidReceipt::offered($order)
+                    ? '/receipt/'.$order->id.'?t='.WebCheckout::token($order)
+                    : null,
                 'total' => Money::format((float) $order->total, $currency),
                 'lines' => $order->items->map(fn ($i) => [
                     'name' => $i->displayName(),
@@ -593,6 +610,37 @@ class RibbonController extends Controller
             ],
             'bank' => $s['bank'],
         ];
+    }
+
+    /**
+     * إيصالُ الدفع الحراريّ — ملفُّ PDF يفتحه الزبونُ من صفحة الشكر.
+     *
+     * ═══ ثلاثةُ أقفالٍ قبل أن يُرسم شيء ═══
+     *
+     *   ١) الطلبُ من **هذا المتجر** — المتجرُ عُرف من العنوان لا من الرابط،
+     *      فرقمُ طلبٍ لمتجرٍ آخر لا يوجد هنا أصلًا.
+     *   ٢) **رمزُ الطلب** (`WebCheckout::token`) يطابق، بمقارنةٍ لا تُقاس
+     *      بالوقت. فرقمُ الطلب وحده لا يفتح شيئًا.
+     *   ٣) **دفعٌ ثبت** ومتجرٌ فتح الإيصال (`PaidReceipt::offered`) — والدفعُ
+     *      من نيّةٍ ثبّتها الإشعارُ الموقَّع، لا من شيءٍ في الرابط.
+     *
+     * وكلُّ رفضٍ ٤٠٤ لا ٤٠٣: لا يُقال لمن يجرّب الأرقامَ أيُّها موجود.
+     *
+     * والورقةُ ورقةُ الصندوق نفسُها (`PdfController::thermal`) لا تُكتب هنا.
+     */
+    private function receipt(Business $business, string $id): Response
+    {
+        abort_unless(ctype_digit($id), 404);
+
+        $order = Order::where('business_id', $business->id)->with('items')->find((int) $id);
+        abort_if($order === null, 404);
+        abort_unless(hash_equals(WebCheckout::token($order), (string) request()->query('t', '')), 404);
+        abort_unless(PaidReceipt::offered($order), 404);
+
+        return PdfController::thermal((int) $business->id, $order)
+            ->header('Cache-Control', 'no-store, private')
+            // ورقةُ زبونٍ برمزه — لا تُفهرس ولو وصل رابطُها إلى محرّك بحث
+            ->header('X-Robots-Tag', 'noindex, nofollow');
     }
 
     /* ═══════════ أدوات ═══════════ */

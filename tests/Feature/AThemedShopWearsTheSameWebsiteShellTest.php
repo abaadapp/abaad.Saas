@@ -673,6 +673,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'store_on' => '1',
             'store_pay_cod' => '0',
             'store_pay_transfer' => '1',
+            'store_paid_receipt' => '1',
             'store_about_image' => '/storage/store/about.jpg',
             'store_pages' => 'contact',
             'store_seo_title' => 'ريبون لاونج — ورد وهدايا بمسقط',

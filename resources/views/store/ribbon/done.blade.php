@@ -32,6 +32,16 @@
             <div style="white-space:pre-line;margin-top:6px">{{ $bank }}</div>
         </div>
     @endif
+    {{--
+        وإيصالُ الدفع — زرٌّ لا نافذةٌ تُفتح وحدها: الجوّالُ يحجب ما يُفتح بلا
+        ضغطة. وفي تبويبٍ جديد: يقرؤه ويطبعه أو يحفظه ثمّ يعود إلى صفحته.
+        ولا يُرسم إلّا لدفعٍ ثبت ومتجرٍ فتحه (`PaidReceipt`).
+    --}}
+    @if ($order['receipt'])
+        <p style="margin:0 0 16px">
+            <a class="rb-btn" href="{{ $base }}{{ $order['receipt'] }}" target="_blank" rel="noopener" data-testid="rb-receipt">{{ $t['viewReceipt'] }}</a>
+        </p>
+    @endif
     <a class="rb-btn-ghost" href="{{ $base }}/">{{ $t['continueShopping'] }}</a>
 </section>
 @endsection

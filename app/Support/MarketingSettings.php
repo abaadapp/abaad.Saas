@@ -134,6 +134,11 @@ class MarketingSettings
             'store_pay_cod' => '1',
             'store_pay_transfer' => '0',
             'store_bank' => '',
+            /*
+             * وإيصالُ الدفع الإلكترونيّ في صفحة الشكر — مغلقٌ حتّى يفتحه صاحبُه.
+             * انظر `Store\PaidReceipt`.
+             */
+            'store_paid_receipt' => '0',
 
             /*
              * والتوصيلُ — لمن في واجهته سلّةٌ وإتمامُ طلب (انظر `Store\WebCheckout`).

@@ -22,7 +22,7 @@ final class RibbonTexts
         'shopTitle' => 'جميع المنتجات', 'shopSub' => 'اختر باقتك، حدّد الحجم وموعد التوصيل، وأتمّ الطلب في صفحة واحدة.', 'all' => 'الكل', 'noProducts' => 'لا منتجات هنا بعد.', 'noMatch' => 'لا توجد منتجات تطابق بحثك.', 'noInCategory' => 'لا توجد منتجات في هذا القسم.',
         'back' => '← الرجوع للمنتجات', 'size' => 'الحجم', 'add' => 'أضف إلى السلة', 'added' => 'تمت الإضافة ✓', 'soldOut' => 'نفد من المتجر', 'from' => 'من',
         'cartTitle' => 'السلة', 'cartEmpty' => 'سلتك فارغة', 'continueShopping' => 'متابعة التسوّق', 'remove' => 'حذف', 'subtotal' => 'المجموع الفرعي', 'toCheckout' => 'إتمام الطلب',
-        'checkoutTitle' => 'إتمام الطلب', 's1' => 'بياناتك', 's2' => 'التوصيل', 's3' => 'كرت الهدية', 's4' => 'الدفع',
+        'checkoutTitle' => 'إتمام الطلب', 's1' => 'بياناتك', 's2' => 'التوصيل', 's3' => 'بيانات المستلم', 's3card' => 'كرت الهدية', 's4' => 'الدفع',
         'fName' => 'الاسم الكامل', 'fPhone' => 'رقم الهاتف', 'fArea' => 'المنطقة', 'fAddress' => 'العنوان بالتفصيل (المنطقة، الشارع، رقم المنزل)',
         'delivery' => 'توصيل للعنوان', 'pickup' => 'استلام من المحل', 'pickupAddr' => 'الاستلام من المحل',
         'fCard' => 'رسالة تُكتب على كرت الهدية (اختياري)', 'cardHint' => 'حتى 500 حرف',
@@ -64,13 +64,14 @@ final class RibbonTexts
         'addCardMessage' => 'أضف رسالة على كرت الهدية', 'cardMessageHint' => 'اكتب رسالتك التي تريد إرفاقها مع الطلب',
         // معرضُ صفحة الصنف، وكرتُ الهدية صنفًا — انظر `GiftCardProduct`
         'photos' => 'صور المنتج', 'showPhoto' => 'اعرض الصورة :n من :total',
-        'giftCardMessage' => 'رسالة كرت الهدية', 'giftCardNeeded' => 'اكتب رسالة كرت الهدية قبل إضافته إلى السلة.',
+        // والرسالةُ اختياريّة: كرتٌ بلا رسالة يُشترى ويُحاسَب كما هو
+        'giftCardMessage' => 'رسالة كرت الهدية — اختياري',
         'cartCardMessage' => 'رسالة الكرت:',
         // ميزةُ الإهداء — انظر `GiftOrders`
         'giftOrder' => 'هذا الطلب هدية', 'occasionOptional' => 'المناسبة — اختياري', 'enterOccasion' => 'اكتب المناسبة',
-        'hideSender' => 'لا تذكر اسمي للمستلم', 'recipientLocation' => 'طريقة تحديد موقع المستلم',
-        'locProvided' => 'سأدخل الموقع الآن', 'locContact' => 'تواصلوا مع المستلم للحصول على الموقع',
-        'locContactNote' => 'سنتواصل مع المستلم على رقمه لنعرف موقع التوصيل.',
+        'hideSender' => 'لا تذكر اسمي للمستلم',
+        // وعنوانُ المستلِم يُكتب في «التوصيل» — سطرٌ يقوله لمن فتح الهديّة
+        'giftAddressHint' => 'اكتب عنوان المستلم في قسم التوصيل أعلاه.',
         // زرُّ واتساب العائم — انظر `storefront.ribbon_floating_whatsapp_businesses`
         'waFloat' => 'تواصل معنا عبر واتساب', 'waFloatText' => 'السلام عليكم، أحتاج مساعدة بخصوص طلبي من متجر RIBBON.',
     ];
@@ -86,7 +87,7 @@ final class RibbonTexts
         'shopTitle' => 'All products', 'shopSub' => 'Pick a bouquet, choose a size and delivery time, and order on a single page.', 'all' => 'All', 'noProducts' => 'No products here yet.', 'noMatch' => 'No products match your search.', 'noInCategory' => 'No products in this category.',
         'back' => '← Back to products', 'size' => 'Size', 'add' => 'Add to cart', 'added' => 'Added ✓', 'soldOut' => 'Sold out', 'from' => 'from',
         'cartTitle' => 'Your cart', 'cartEmpty' => 'Your cart is empty', 'continueShopping' => 'Continue shopping', 'remove' => 'Remove', 'subtotal' => 'Subtotal', 'toCheckout' => 'Checkout',
-        'checkoutTitle' => 'Checkout', 's1' => 'Your details', 's2' => 'Delivery', 's3' => 'Gift card', 's4' => 'Payment',
+        'checkoutTitle' => 'Checkout', 's1' => 'Your details', 's2' => 'Delivery', 's3' => 'Recipient details', 's3card' => 'Gift card', 's4' => 'Payment',
         'fName' => 'Full name', 'fPhone' => 'Phone number', 'fArea' => 'Area', 'fAddress' => 'Full address (area, street, house no.)',
         'delivery' => 'Deliver to address', 'pickup' => 'Pick up in store', 'pickupAddr' => 'Pick up in store',
         'fCard' => 'Message for the gift card (optional)', 'cardHint' => 'Up to 500 characters',
@@ -114,12 +115,11 @@ final class RibbonTexts
         'upsellTitle' => 'Add to your order', 'upsellChoose' => 'Choose an option for this add-on before adding to cart',
         'addCardMessage' => 'Add a gift card message', 'cardMessageHint' => 'Write the message you want included with the order',
         'photos' => 'Product photos', 'showPhoto' => 'Show photo :n of :total',
-        'giftCardMessage' => 'Gift card message', 'giftCardNeeded' => 'Write the gift card message before adding it to the cart.',
+        'giftCardMessage' => 'Gift card message — optional',
         'cartCardMessage' => 'Card message:',
         'giftOrder' => 'This order is a gift', 'occasionOptional' => 'Occasion — optional', 'enterOccasion' => 'Enter the occasion',
-        'hideSender' => 'Do not reveal my name to the recipient', 'recipientLocation' => 'Recipient location',
-        'locProvided' => "I'll provide the location now", 'locContact' => 'Contact the recipient for the location',
-        'locContactNote' => "We'll contact the recipient on their number to get the delivery location.",
+        'hideSender' => 'Do not reveal my name to the recipient',
+        'giftAddressHint' => "Enter the recipient's address in the Delivery section above.",
         'waFloat' => 'Chat with us on WhatsApp', 'waFloatText' => 'Hello, I need help with my order from RIBBON.',
     ];
 

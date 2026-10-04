@@ -27,6 +27,8 @@ const BLANK: ThemeSettingsData = {
     store_delivery_areas: '',
     store_delivery_slots: '',
     store_delivery_note: '',
+    store_delivery_area_note: '',
+    store_delivery_area_note_en: '',
     store_max_days: '',
     store_fulfil: 'delivery',
 
@@ -41,7 +43,6 @@ const BLANK: ThemeSettingsData = {
 
     store_gift_card: false,
     store_gift_card_price: '',
-    store_gift_checkout: false,
 
     store_seo_title: '',
     store_seo_desc: '',

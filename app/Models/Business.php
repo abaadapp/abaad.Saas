@@ -17,6 +17,8 @@ class Business extends Model
         'identity_confirmed_at' => 'datetime',
         // أيُؤوي بوتيكاتٍ تبيع تحت سقفه؟ — انظر `Support\Boutiques`
         'boutiques_enabled' => 'boolean',
+        // أيستقبل طلباتِ هدايا في متجره الإلكترونيّ؟ — يفتحه مديرُ المنصّة (`Store\GiftOrders`)
+        'gift_orders_enabled' => 'boolean',
     ];
 
     /**

@@ -23,6 +23,8 @@ interface EditableBusiness {
     storefront_theme: string | null;
     /** يُؤوي بوتيكات — منطقٌ يُرسله `PageController::businessesEdit` */
     boutiques_enabled: boolean;
+    /** الإهداءُ في المتجر الإلكترونيّ — يفتحه مديرُ المنصّة وحده */
+    gift_orders_enabled: boolean;
     logo_url: string | null;
     owner_email: string | null;
 }
@@ -67,6 +69,7 @@ export default function BusinessEdit() {
                         الحفظُ سليمًا.
                     */
                     boutiques_enabled: business.boutiques_enabled ?? false,
+                    gift_orders_enabled: business.gift_orders_enabled ?? false,
                 }}
                 logoUrl={business.logo_url}
                 ownerEmail={business.owner_email}

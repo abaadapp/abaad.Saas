@@ -2,22 +2,23 @@
 
 namespace App\Support\Store;
 
+use App\Models\Business;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\FlowerOrder;
-use App\Support\MarketingSettings;
 use App\Support\WhatsAppPhone;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
- * ميزةُ الإهداء — الطلبُ هديّةٌ لغير مشتريه، لأيّ متجرٍ يرفع مفتاحَها.
+ * ميزةُ الإهداء — الطلبُ هديّةٌ لغير مشتريه، لمن فتحها له مديرُ المنصّة.
  *
- * ═══ ولمَ مشتركةٌ لا لمتجرٍ بعينه ═══
+ * ═══ ومن يفتحها ═══
  *
- * المفتاحُ في إعدادات المتجر نفسِه (`store_gift_checkout`)، مطفأٌ حتّى يرفعه
- * صاحبُه، ولا يُسأل فيه عن معرّفٍ ولا عن واجهة. والقواعدُ والحفظُ هنا، يقرؤها
- * `WebCheckout` — بابُ إتمام الطلب المشترك. والواجهةُ ترسم الخانات وحدها.
+ * مديرُ المنصّة وحده، من شاشة النشاط (`businesses.gift_orders_enabled`)، كما
+ * يفتح إيواءَ البوتيكات. مغلقةٌ افتراضًا، ولا يفتحها التاجرُ من إعدادات موقعه
+ * ولا بحمولةٍ يكتبها: `store_gift_checkout` القديمُ لا يُقرأ لشيء. والقواعدُ
+ * والحفظُ هنا، يقرؤها `WebCheckout` — بابُ إتمام الطلب المشترك.
  *
  * ═══ وما الهديّة ═══
  *
@@ -28,29 +29,36 @@ use Illuminate\Validation\Validator;
  *   و«أخرى» يكتبها الزبونُ بيده (`occasion_text`).
  * - **و«لا تذكر اسمي»** (`hide_sender`) يخفيه عن المستلِم وحده — التاجرُ
  *   يرى المشتري دائمًا (`FlowerOrder::cardForRecipient`).
- * - **وموقعُ المستلِم:** يكتبه المشتري الآن (`provided`) فتبقى قواعدُ العنوان
- *   كما هي، أو يتواصل المتجرُ مع المستلِم (`contact_recipient`) فيُقبل الطلبُ
- *   بلا عنوان — ويبقى العنوانُ فارغًا حتّى يُعرف، لا نصًّا يقول «سيُتواصل».
+ * - **والتوصيلُ توصيلُ كلّ طلب:** المنطقةُ والعنوانُ والموعدُ من قسم التوصيل
+ *   نفسِه، بقواعده نفسِها — والعنوانُ فيه عنوانُ المستلِم. ولا مناطقَ للهدايا
+ *   ولا عنوانَ ثانٍ ولا طريقَ بلا عنوان.
+ *
+ * ═══ و«تواصلوا مع المستلم» — للطلبات القديمة وحدها ═══
+ *
+ * كان المشتري يختار أن يتواصل المتجرُ مع المستلِم لموقعه (`contact_recipient`)
+ * فيُقبل الطلبُ بلا عنوان. رُفع للطلبات الجديدة: لا يُكتب `CONTACT` لطلبٍ
+ * بعد اليوم، ولا يُعفى طلبٌ من العنوان. وما كُتب قبلُ يبقى يُقرأ ويُتمَّم
+ * (`awaitingLocation`, `contactLink`) حتّى يُسلَّم.
  *
  * ولا تمسّ مالًا: لا ثمنَ للهديّة، ولا كرتَ يُضاف معها — كرتُ الهدية
  * (`GiftCard`, `GiftCardProduct`) شيءٌ آخر يبقى كما هو.
  */
 final class GiftOrders
 {
-    public const KEY = 'store_gift_checkout';
-
-    /** يكتب المشتري موقعَ المستلِم الآن */
+    /** يكتب المشتري موقعَ المستلِم — طلباتٌ قديمةٌ وحدها */
     public const PROVIDED = 'provided';
 
-    /** يتواصل المتجرُ مع المستلِم ليعرف موقعَه */
+    /** يتواصل المتجرُ مع المستلِم ليعرف موقعَه — طلباتٌ قديمةٌ وحدها، لا يُكتب لجديد */
     public const CONTACT = 'contact_recipient';
 
-    public const MODES = [self::PROVIDED, self::CONTACT];
-
-    /** هل رفع هذا المتجرُ ميزةَ الإهداء؟ — مفتاحُه وحده */
+    /**
+     * هل فتح مديرُ المنصّة الإهداءَ لهذا النشاط؟ — عمودُه وحده.
+     *
+     * ولا يُسأل عن إعدادات الموقع: ما يكتبه التاجرُ هناك لا يفتح شيئًا.
+     */
     public static function on(int $businessId): bool
     {
-        return (string) (MarketingSettings::group($businessId, 'website')[self::KEY] ?? '0') === '1';
+        return (bool) Business::whereKey($businessId)->value('gift_orders_enabled');
     }
 
     /**
@@ -69,7 +77,6 @@ final class GiftOrders
             'occasion' => ['nullable', Rule::in(FlowerOrder::OCCASIONS)],
             'occasion_text' => ['nullable', 'string', 'max:'.FlowerOrder::CUSTOM_LABEL_MAX],
             'hide_sender' => ['nullable', 'boolean'],
-            'recipient_location' => ['nullable', Rule::in(self::MODES)],
         ];
     }
 
@@ -77,14 +84,6 @@ final class GiftOrders
     public static function wanted(int $businessId, array $payload): bool
     {
         return self::on($businessId) && filter_var($payload['is_gift'] ?? false, FILTER_VALIDATE_BOOL);
-    }
-
-    /** هديّةٌ تُوصَّل ويتواصل المتجرُ مع مستلِمها لموقعه — فلا يُشترط عنوان */
-    public static function contactsRecipient(int $businessId, array $payload): bool
-    {
-        return self::wanted($businessId, $payload)
-            && self::text($payload['fulfil'] ?? '') === FlowerOrder::DELIVERY
-            && self::text($payload['recipient_location'] ?? '') === self::CONTACT;
     }
 
     /**
@@ -122,8 +121,6 @@ final class GiftOrders
 
         $occasion = self::text($form['occasion'] ?? '');
         $custom = self::text($form['occasion_text'] ?? '');
-        $delivery = self::text($form['fulfil'] ?? '') === FlowerOrder::DELIVERY;
-        $mode = self::text($form['recipient_location'] ?? '');
 
         return [
             'is_gift' => true,
@@ -131,8 +128,13 @@ final class GiftOrders
             'occasion_type' => $occasion !== '' ? $occasion : null,
             // نصُّ «أخرى» وحدها — ولا يُكتب لمناسبةٍ من القائمة
             'occasion_text' => $occasion === 'other' && $custom !== '' ? $custom : null,
-            // ولا طريقةَ موقعٍ لاستلامٍ من المحلّ
-            'recipient_location_mode' => $delivery ? (in_array($mode, self::MODES, true) ? $mode : self::PROVIDED) : null,
+            /*
+             * ولا طريقةَ موقعٍ لطلبٍ جديد — `null` لا `provided`.
+             *
+             * العنوانُ يُكتب في قسم التوصيل بقواعده كأيّ طلب، فلا شيءَ يُختار
+             * ليُحفظ. و`CONTACT` لا يُكتب أبدًا: يُعفي من العنوان، وقد رُفع.
+             */
+            'recipient_location_mode' => null,
         ];
     }
 

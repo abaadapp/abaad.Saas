@@ -197,7 +197,14 @@ class BusinessController extends Controller
             }
         }
 
+        $giftingBefore = (bool) $business->gift_orders_enabled;
+
         $business->update($data);
+
+        // وفتحُ الإهداء أو إغلاقُه يُقيَّد باسمه — إذنٌ يُسأل عنه لاحقًا
+        if ((bool) $business->gift_orders_enabled !== $giftingBefore) {
+            \App\Support\Activity::log('updated', ($business->gift_orders_enabled ? 'فتح' : 'أغلق').' الإهداء في المتجر الإلكتروني: '.$business->name, ['business_id' => null, 'subject_id' => $business->id]);
+        }
 
         /*
          * ═══ الشعار: من البابِ الواحد لا من هنا ═══
@@ -606,6 +613,12 @@ class BusinessController extends Controller
              * له لا يرى تبويبًا ولا حقلًا، ولا يُكتب على بنوده شيء.
              */
             'boutiques_enabled' => ['nullable', 'boolean'],
+            /*
+             * والإهداءُ في المتجر الإلكترونيّ — مفتاحٌ يفتحه مديرُ المنصّة لمن
+             * طلبه، كالبوتيكات (`Store\GiftOrders::on`). لا يفتحه التاجرُ من
+             * إعدادات موقعه، ولا يُكتب إلّا من هذا الباب.
+             */
+            'gift_orders_enabled' => ['nullable', 'boolean'],
         ]);
 
         /*
@@ -637,10 +650,12 @@ class BusinessController extends Controller
          *
          * فصار كسائر الحقول: الغائبُ لا يُمسّ، والمرسَلُ يُكتب كما أُرسل.
          */
-        if ($request->has('boutiques_enabled')) {
-            $data['boutiques_enabled'] = $request->boolean('boutiques_enabled');
-        } else {
-            unset($data['boutiques_enabled']);
+        foreach (['boutiques_enabled', 'gift_orders_enabled'] as $flag) {
+            if ($request->has($flag)) {
+                $data[$flag] = $request->boolean($flag);
+            } else {
+                unset($data[$flag]);
+            }
         }
         // والفراغُ فراغٌ لا نصٌّ فارغ: `''` يسقط في `Rule::in` ويُقرأ «فئةً» في كلّ فحص
         foreach (['tier', 'storefront_theme'] as $k) {

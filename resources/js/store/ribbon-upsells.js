@@ -13,7 +13,8 @@
  * ضغطةٌ واحدة تُدخل الصنفَ بمقاسه وكمّيّته، وكلَّ إضافةٍ مختارة بندًا
  * عاديًّا بكمّيّة ١ — لا تُضرب في كمّيّة الصنف، والسلّةُ تعدّلها بعد ذلك.
  * وإضافةٌ لها مقاساتٌ لا يُختار لها مقاسٌ بالنيابة عن الزبون: إن لم يختر
- * لا يدخل شيء — لا الصنفُ ولا غيرُه — ويُقال له أيّها ينقصه.
+ * لا يدخل شيء — لا الصنفُ ولا غيرُه — ويُقال له أيّها ينقصه. والمقاسُ وحده
+ * ما ينقص: رسالةُ كرت الهدية لا تُعدّ نقصًا.
  *
  * والبنودُ بصيغة السلّة نفسِها `{id, variant_id, qty}`، والإتمامُ يسعّرها
  * من القاعدة كأيّ صنف. فلا ثمنَ ولا اسمَ يُقرأ من الصفحة.
@@ -22,8 +23,8 @@
  *
  * بطاقتُه (`data-gift-card`) تفتح خانةَ نصّه حين تُختار، والنصُّ يدخل مع
  * بنده هو وحده — الوسيطُ الرابع لـ`RB.add`، كما تُدخله صفحةُ الكرت نفسُها
- * (`ribbon-card-note.js`). ولا يدخل الكرتُ بلا نصّ: الخادمُ يردّه كذلك
- * (`GiftCardProduct::settle`)، فيُقال عند البطاقة قبل أن يُرسل شيء.
+ * (`ribbon-card-note.js`). **والنصُّ اختياريّ:** كرتٌ بلا رسالةٍ يدخل بلا
+ * `note`، والخادمُ يقبله كذلك (`GiftCardProduct::settle`).
  */
 window.RBUpsells = (function () {
     /* ما اختاره الزبون، بترتيب البطاقات */
@@ -47,9 +48,9 @@ window.RBUpsells = (function () {
         return box ? box.value.trim() : '';
     }
 
-    /* البنود — أو ما ينقصه مقاسٌ أو نصُّ كرت، ولا بندَ حينها */
+    /* البنود — أو ما ينقصه مقاس، ولا بندَ حينها. ورسالةُ الكرت ليست نقصًا */
     function compose(main, picks) {
-        var missing = picks.filter(function (p) { return (p.needs && !p.variant) || (p.gift && !p.note); });
+        var missing = picks.filter(function (p) { return p.needs && !p.variant; });
         if (missing.length) return { ok: false, missing: missing, lines: [] };
 
         return {
@@ -57,18 +58,17 @@ window.RBUpsells = (function () {
             missing: [],
             lines: [{ id: main.id, variant_id: main.variant_id || null, qty: main.qty }].concat(picks.map(function (p) {
                 var line = { id: p.id, variant_id: p.variant || null, qty: 1 };
-                // والنصُّ لبند الكرت وحده — لا يُلصق بالصنف ولا بإضافةٍ أخرى
-                if (p.gift) line.note = p.note;
+                // والنصُّ لبند الكرت وحده إن كُتب — لا يُلصق بالصنف ولا بإضافةٍ أخرى
+                if (p.gift && p.note) line.note = p.note;
 
                 return line;
             })),
         };
     }
 
-    /* ما ينقص البطاقة يُقال تحتها: المقاسُ أو نصُّ الكرت */
+    /* ما ينقص البطاقة يُقال تحتها: المقاسُ وحده */
     function flag(p, on) {
         show(p.card.querySelector('[data-rb-up-need]'), on && p.needs && !p.variant);
-        show(p.card.querySelector('[data-rb-up-note-err]'), on && p.gift && !p.note);
     }
 
     function show(el, on) { if (el) el.hidden = !on; }
@@ -86,7 +86,6 @@ window.RBUpsells = (function () {
             // ونصُّ كرتٍ تُرك يُمحى معه — لا يعود بلا قصد مع اختيارٍ تالٍ
             var note = card.querySelector('[data-rb-up-note]');
             if (note) note.value = '';
-            show(card.querySelector('[data-rb-up-note-err]'), false);
         }
     }
 
@@ -95,11 +94,6 @@ window.RBUpsells = (function () {
      * done() بعد الإضافة، missing(cards) ببطاقات ما ينقصه مقاس، wait — مدّةُ قفل الزرّ.
      */
     function mount(box, opts) {
-        // من بدأ يكتب نصَّ الكرت لا يبقى تحته «اكتب الرسالة»
-        box.addEventListener('input', function (e) {
-            var note = e.target.closest && e.target.closest('[data-rb-up-note]');
-            if (note && note.value.trim() !== '') show(note.closest('[data-rb-up]').querySelector('[data-rb-up-note-err]'), false);
-        });
         box.addEventListener('click', function (e) {
             var size = e.target.closest('[data-rb-up-size]');
             if (size) {

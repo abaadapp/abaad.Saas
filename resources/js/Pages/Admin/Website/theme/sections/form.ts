@@ -26,6 +26,9 @@ export interface ThemeSettingsData {
     store_delivery_areas: string;
     store_delivery_slots: string;
     store_delivery_note: string;
+    /* تنبيهُ نطاق التوصيل — لكلّ لغةٍ نصُّها، ولا يمسّ قواعد المنطقة */
+    store_delivery_area_note: string;
+    store_delivery_area_note_en: string;
     store_max_days: string;
     store_fulfil: string;
 
@@ -42,9 +45,6 @@ export interface ThemeSettingsData {
     /* كرت الهدية */
     store_gift_card: boolean;
     store_gift_card_price: string;
-
-    /* ميزة الإهداء — انظر Store\GiftOrders */
-    store_gift_checkout: boolean;
 
     /* الظهور في البحث */
     store_seo_title: string;
@@ -96,6 +96,8 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
         store_delivery_areas: v.store_delivery_areas ?? '',
         store_delivery_slots: v.store_delivery_slots ?? '',
         store_delivery_note: v.store_delivery_note ?? '',
+        store_delivery_area_note: v.store_delivery_area_note ?? '',
+        store_delivery_area_note_en: v.store_delivery_area_note_en ?? '',
         store_max_days: v.store_max_days ?? '',
         store_fulfil: s.fulfilments.join(','),
 
@@ -116,7 +118,6 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
 
         store_gift_card: (v.store_gift_card ?? '0') === '1',
         store_gift_card_price: v.store_gift_card_price ?? '',
-        store_gift_checkout: (v.store_gift_checkout ?? '0') === '1',
 
         store_seo_title: s.seo.title,
         store_seo_desc: s.seo.desc,
@@ -142,10 +143,11 @@ export const SCREEN_KEYS = {
     store: [
         'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_bank',
         'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
-        'store_delivery_slots', 'store_delivery_note', 'store_max_days', 'store_fulfil',
+        'store_delivery_slots', 'store_delivery_note', 'store_delivery_area_note', 'store_delivery_area_note_en',
+        'store_max_days', 'store_fulfil',
         'store_field_area', 'store_field_address', 'store_field_date', 'store_field_slot',
         'store_field_recipient', 'store_field_promo', 'store_image_note', 'store_image_note_en',
-        'store_gift_card', 'store_gift_card_price', 'store_gift_checkout',
+        'store_gift_card', 'store_gift_card_price',
     ],
     seo: ['store_seo_title', 'store_seo_desc', 'store_seo_index'],
 } as const satisfies Record<string, readonly (keyof ThemeSettingsData)[]>;

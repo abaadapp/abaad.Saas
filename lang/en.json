@@ -7136,7 +7136,6 @@
     "اكتب الاسم بالإنجليزية فقط.": "Write the name in English only.",
     "اكتب اسم المستلم بالإنجليزية فقط.": "Write the recipient's name in English only.",
     "اكتب العنوان بالإنجليزية فقط.": "Write the address in English only.",
-    "اكتب رسالة كرت الهدية قبل إضافته إلى الطلب.": "Write the gift card message before adding it to the order.",
     "رسالة كرت الهدية أطول من :max حرفًا.": "The gift card message is longer than :max characters.",
     "كرت الهدية غير مرتبط بالمخزون.": "The gift card is not tracked in stock.",
     "كرت الهدية موجود في منتجاتك — عدّله بدل إضافة كرت آخر.": "The gift card is already in your products — edit it instead of adding another.",
@@ -7267,5 +7266,11 @@
     "يظهر للعميل «هذا الطلب هدية» في إتمام الطلب": "Customers see «This order is a gift» at checkout",
     "هاتف المشتري": "Buyer phone",
     "اسم المُهدي للمستلِم": "Sender name for the recipient",
-    "ظاهر للمستلِم": "Shown to the recipient"
+    "ظاهر للمستلِم": "Shown to the recipient",
+    "الإهداء في المتجر الإلكتروني": "Storefront gifting",
+    "السماح لهذا النشاط باستقبال طلبات هدايا لمستلمين آخرين عبر المتجر الإلكتروني.": "Allow this business to accept storefront gift orders for other recipients.",
+    "تنبيه نطاق التوصيل — العربية": "Delivery area notice — Arabic",
+    "التوصيل متاح داخل المناطق المحددة فقط. يرجى اختيار منطقة التوصيل الصحيحة قبل تأكيد الطلب.": "Delivery is available only within the listed service areas. Please select the correct delivery area before confirming your order.",
+    "اختياري — فارغًا لا يُعرض تنبيه في الصفحة العربية": "Optional — leave empty and no notice is shown on the Arabic page",
+    "اختياري — فارغًا لا يُعرض تنبيه في الصفحة الإنجليزية": "Optional — leave empty and no notice is shown on the English page"
 }

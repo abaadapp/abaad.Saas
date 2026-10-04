@@ -58,6 +58,13 @@
                     </div>
                 @endif
                 <div data-rb-delivery style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                    {{--
+                        تنبيهُ نطاق التوصيل بلغة الصفحة — لكلّ طلبٍ هديّةً كان أو لا.
+                        إخبارٌ وحده: قواعدُ المنطقة والعنوان في الخادم كما هي.
+                    --}}
+                    @if (($deliveryAreaNote ?? '') !== '')
+                        <p class="rb-note" data-testid="rb-delivery-area-note" style="grid-column:1/-1;margin:0">{{ $deliveryAreaNote }}</p>
+                    @endif
                     @if ($shows('area'))
                         <div>
                             @if (count($delivery['areas']))
@@ -98,20 +105,28 @@
                     </div>
                 @endif
             </div>
-            <div>
+            {{--
+                ═══ «بيانات المستلم» قسمٌ، و«كرت الهدية» قسمٌ آخر ═══
+
+                كان القسمُ الثالث اسمُه «كرت الهدية» وفيه المستلِمُ والإهداء — فيقرأ
+                الزبونُ بياناتِ من يُهدى إليه تحت اسم صنفٍ يُباع. فالمستلِمُ والإهداء
+                تحت «بيانات المستلم»، والكرتُ تحت اسمه حيث يُعرض في الإتمام وحده
+                (لا عند من كرتُه صنفٌ من الرفّ — `GiftCardProduct`).
+
+                والإهداءُ لمن فتحه له مديرُ المنصّة (`GiftOrders::on`). و«هذا الطلب
+                هدية» يفتح المستلِمَ والمناسبةَ وإخفاءَ الاسم — وعنوانُ المستلِم في
+                «التوصيل» أعلاه، لا عنوانَ ثانٍ هنا.
+            --}}
+            @php
+                $giftOn = (bool) ($giftOrder['on'] ?? false);
+                $recipInGift = $giftOn && ! $req('recipient');
+                $hasRecipient = $shows('recipient') || $giftOn;
+                $hasCard = ! $giftCard['as_product'];
+                $payStep = 3 + ($hasRecipient ? 1 : 0) + ($hasCard ? 1 : 0);
+            @endphp
+            @if ($hasRecipient)
+            <div data-testid="rb-recipient-section">
                 {!! $step(3, $t['s3']) !!}
-
-                {{--
-                    ═══ وميزةُ الإهداء — لمن رفعها من متجره (`GiftOrders`) ═══
-
-                    «هذا الطلب هدية» يفتح المستلِمَ والمناسبةَ وإخفاءَ الاسم وطريقةَ
-                    تحديد موقع المستلِم. وخانتا المستلِم تنتقلان إليها — إلّا إن
-                    اشترطهما صاحبُ المحلّ لكلّ طلب، فتبقيان في مكانهما ظاهرتين.
-                --}}
-                @php
-                    $giftOn = (bool) ($giftOrder['on'] ?? false);
-                    $recipInGift = $giftOn && ! $req('recipient');
-                @endphp
 
                 {{-- المستلِمُ غيرُ المشتري — مطويٌّ حتى يُطلب، فلا يُثقل من يشتري لنفسه --}}
                 @if ($shows('recipient') && ! $recipInGift)
@@ -130,7 +145,7 @@
 
                 @if ($giftOn)
                     {{-- و`display` في `style` يغلب `hidden` لولا هذا — فيظهر المطويّ --}}
-                    <style>[data-rb-giftbox][hidden], [data-rb-giftloc][hidden], [data-rb-locnote][hidden], [data-rb-occasion-other][hidden] { display: none !important; }</style>
+                    <style>[data-rb-giftbox][hidden], [data-rb-gift-address-hint][hidden], [data-rb-occasion-other][hidden] { display: none !important; }</style>
                     <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;min-height:44px;margin-bottom:8px" data-testid="rb-gift-toggle">
                         <input type="checkbox" data-rb-gift style="width:18px;height:18px;accent-color:var(--rb-olive)">
                         <span>{{ $t['giftOrder'] }}</span>
@@ -157,23 +172,15 @@
                             <input type="checkbox" name="hide_sender" data-rb-hide-sender style="width:18px;height:18px;accent-color:var(--rb-olive)">
                             <span>{{ $t['hideSender'] }}</span>
                         </label>
-                        {{-- وموقعُ المستلِم للتوصيل وحده: يكتبه الآن، أو نتواصل معه --}}
-                        <fieldset data-rb-giftloc style="border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:6px">
-                            <legend style="font-size:13px;margin-bottom:6px;padding:0">{{ $t['recipientLocation'] }}</legend>
-                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;min-height:40px">
-                                <input type="radio" name="recipient_location" value="provided" checked style="width:18px;height:18px;accent-color:var(--rb-olive)">
-                                <span>{{ $t['locProvided'] }}</span>
-                            </label>
-                            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;min-height:40px">
-                                <input type="radio" name="recipient_location" value="contact_recipient" style="width:18px;height:18px;accent-color:var(--rb-olive)">
-                                <span>{{ $t['locContact'] }}</span>
-                            </label>
-                            <p data-rb-locnote hidden style="margin:0;font-size:12px;line-height:1.7">{{ $t['locContactNote'] }}</p>
-                            <div class="rb-error" data-err="recipient_location"></div>
-                        </fieldset>
+                        <p style="margin:0;font-size:12px;line-height:1.7" data-rb-gift-address-hint>{{ $t['giftAddressHint'] }}</p>
                     </div>
                 @endif
 
+            </div>
+            @endif
+            @if ($hasCard)
+            <div data-testid="rb-card-section">
+                {!! $step($hasRecipient ? 4 : 3, $t['s3card']) !!}
                 @if ($giftCard['on'])
                     {{-- والكرتُ صنفٌ يُباع: ثمنُه مكتوبٌ حيث يُختار لا في الفاتورة وحدها --}}
                     <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px" data-testid="rb-giftcard-toggle">
@@ -245,20 +252,19 @@
                         <div style="margin-top:14px;font-size:12px">{{ $t['cardPreview'] }}</div>
                         <div data-rb-cardmsgpreview style="margin-top:8px;min-height:72px;white-space:pre-wrap;word-break:break-word;border:1px dashed var(--rb-line);border-radius:var(--rb-r);background:var(--rb-soft);padding:14px;font-size:14px;line-height:1.9;text-align:start"></div>
                     </div>
-                @elseif ($giftCard['as_product'])
-                    {{--
-                        ═══ ولا شيءَ من الكرت هنا — كرتُه صنفٌ من الرفّ ═══
-
-                        يُشترى من صفحته ونصُّه معه (`GiftCardProduct`): لا رسالةٌ
-                        ولا كرتٌ مدفوعٌ ولا رفعُ ملفّ في الإتمام.
-                    --}}
                 @else
                     <textarea class="rb-input" name="card" rows="3" maxlength="500" placeholder="{{ $t['fCard'] }}" aria-label="{{ $t['fCard'] }}"></textarea>
                     <div style="font-size:12px;margin-top:6px">{{ $t['cardHint'] }}</div>
                 @endif
+                {{--
+                    ومن كرتُه صنفٌ من الرفّ لا يُرسم له هذا القسمُ أصلًا: يُشترى من
+                    صفحته ورسالتُه معه (`GiftCardProduct`) — لا رسالةٌ ولا كرتٌ مدفوعٌ
+                    ولا رفعُ ملفّ في الإتمام.
+                --}}
             </div>
+            @endif
             <div>
-                {!! $step(4, $t['s4']) !!}
+                {!! $step($payStep, $t['s4']) !!}
                 <div style="display:flex;flex-direction:column;gap:8px" data-rb-pay>
                     {{--
                         كلُّ وسيلةٍ باسمها — لا «تحويلٌ وما سواه نقد».
@@ -513,9 +519,8 @@
     function paintFulfil() {
         var d = form.querySelector('[data-rb-delivery]');
         var p = form.querySelector('[data-rb-pickup]');
-        // وهديّةٌ يتواصل المتجرُ مع مستلِمها لا تُسأل عن عنوانٍ لا يعرفه المشتري
-        var askAddress = fulfil === 'delivery' && !(giftOrder && giftOrder.contacts(fulfil));
-        if (d) d.style.display = askAddress ? 'grid' : 'none';
+        // والهديّةُ تُوصَّل كأيّ طلب: العنوانُ هنا عنوانُ المستلِم
+        if (d) d.style.display = fulfil === 'delivery' ? 'grid' : 'none';
         if (p) p.style.display = fulfil === 'pickup' ? 'block' : 'none';
         if (giftOrder) giftOrder.fulfil(fulfil);
     }
@@ -566,7 +571,7 @@
             card_file_name: cardWay === 'file' ? cardFileName : null,
         };
         // وحقولُ الهديّة إن كانت هديّة — وإلّا `is_gift: false` وحدها
-        if (giftOrder) Object.assign(payload, giftOrder.payload(fulfil));
+        if (giftOrder) Object.assign(payload, giftOrder.payload());
         RB.post('/checkout', payload).then(function (r) {
             btn.disabled = false;
             /*

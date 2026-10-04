@@ -35,6 +35,7 @@ export default function BusinessCreate() {
                     ends_at: '',
                     // مطفأٌ صراحةً — ومفتاحٌ غائبٌ عن الحمولة لا يُقرأ «أُطفئ»
                     boutiques_enabled: false,
+                    gift_orders_enabled: false,
                 }}
                 action={route('super-admin.businesses.store')}
                 method="post"

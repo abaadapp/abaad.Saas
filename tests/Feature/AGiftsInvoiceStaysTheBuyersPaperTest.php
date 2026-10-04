@@ -21,6 +21,7 @@ use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -72,8 +73,9 @@ class AGiftsInvoiceStaysTheBuyersPaperTest extends TestCase
         MarketingSettings::save($this->shop->id, 'website', [
             'store_on' => '1', 'store_pay_cod' => '1', 'store_delivery_areas' => 'الخوير',
             'store_delivery_slots' => '9 ص – 12 م', 'store_delivery_fee' => '2', 'store_free_delivery_over' => '',
-            GiftOrders::KEY => '1',
         ]);
+        // والإهداءُ يفتحه مديرُ المنصّة — عمودُ النشاط (`GiftOrders::on`)
+        $this->shop->update(['gift_orders_enabled' => true]);
 
         $this->rose = Product::create([
             'business_id' => $this->shop->id, 'name' => 'باقة ورد', 'price' => 20, 'cost' => 8,
@@ -100,18 +102,28 @@ class AGiftsInvoiceStaysTheBuyersPaperTest extends TestCase
         ]);
     }
 
-    /** هديّةٌ ينتظر المتجرُ موقعَ مستلِمها، أُخفي فيها المُهدي */
+    /**
+     * هديّةٌ قديمةٌ ينتظر المتجرُ موقعَ مستلِمها، أُخفي فيها المُهدي.
+     *
+     * لا يُنشئ الإتمامُ `contact_recipient` بعد اليوم (`GiftOrders`) — فتُوضَع
+     * هديّةٌ بعنوانها ثمّ يُكتب عليها حالُ طلبٍ سبق ذلك، كما في القاعدة: بلا
+     * عنوانٍ وبانتظار التواصل. والورقةُ لا تطبع شيئًا من سير العمل هذا.
+     */
     private function giftOrder(array $over = []): Order
     {
         $this->postJson('/s/ribbon/checkout', $over + [
             'items' => [['id' => $this->rose->id, 'qty' => 1]],
             'fulfil' => 'delivery', 'pay' => 'cod', 'name' => 'مريم المُهدية', 'phone' => self::BUYER_PHONE,
-            'area' => 'الخوير', 'address' => '', 'date' => '2027-02-03', 'slot' => '9 ص – 12 م',
+            'area' => 'الخوير', 'address' => 'شارع ١٨', 'date' => '2027-02-03', 'slot' => '9 ص – 12 م',
             'is_gift' => true, 'recipient_name' => 'سارة', 'recipient_phone' => self::RECIPIENT_PHONE,
-            'recipient_location' => GiftOrders::CONTACT, 'hide_sender' => true, 'occasion' => 'birthday',
+            'hide_sender' => true, 'occasion' => 'birthday',
         ])->assertOk();
 
-        return Order::latest('id')->firstOrFail();
+        $order = Order::latest('id')->firstOrFail();
+        DB::table('orders')->where('id', $order->id)
+            ->update(['recipient_location_mode' => GiftOrders::CONTACT, 'delivery_address' => null]);
+
+        return $order->fresh();
     }
 
     /** @return array{a4: string, strip: string} */

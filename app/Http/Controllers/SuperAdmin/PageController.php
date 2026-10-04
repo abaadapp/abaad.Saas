@@ -253,6 +253,8 @@ class PageController extends Controller
                 'storefront_theme' => $model?->storefront_theme,
                 // ومفتاحُ البوتيكات — منطقٌ لا نصّ، والغائبُ مغلق
                 'boutiques_enabled' => (bool) ($model?->boutiques_enabled ?? false),
+                // والإهداءُ في المتجر الإلكترونيّ — مثلُه، والغائبُ مغلق (`Store\GiftOrders`)
+                'gift_orders_enabled' => (bool) ($model?->gift_orders_enabled ?? false),
                 'logo_url' => self::logoUrl($model?->logo),
                 // حساب الدخول يُعرض ولا يُعاد إنشاؤه من هنا
                 'owner_email' => $model ? MerchantAccount::owner($model)?->email : null,

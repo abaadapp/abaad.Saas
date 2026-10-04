@@ -94,13 +94,12 @@
                                         ═══ كرتُ الهدية إضافةً — خانةُ نصّه حين يُختار ═══
 
                                         الخانةُ نفسُها التي على صفحة الكرت (`rb-card-note`): النصُّ
-                                        يدخل مع بند الكرت وحده، والخادمُ يردّه بلا نصّ
-                                        (`GiftCardProduct::settle`). وتُطوى وتُمحى إن تُرك الكرت.
+                                        اختياريٌّ، ويدخل مع بند الكرت وحده — وكرتٌ بلا رسالةٍ يُضاف
+                                        كما هو (`GiftCardProduct::settle`). وتُطوى وتُمحى إن تُرك الكرت.
                                     --}}
                                     <div class="rb-up-note" data-rb-up-note-box hidden data-testid="rb-upsell-card-note-box">
                                         <label for="rb-up-note-{{ $u['id'] }}" style="display:block;font-size:13px;margin-bottom:8px">{{ $t['giftCardMessage'] }}</label>
-                                        <textarea id="rb-up-note-{{ $u['id'] }}" class="rb-input" rows="3" maxlength="{{ $product['card_max'] }}" data-rb-up-note aria-describedby="rb-up-note-err-{{ $u['id'] }}" data-testid="rb-upsell-card-note"></textarea>
-                                        <p id="rb-up-note-err-{{ $u['id'] }}" class="rb-error" style="margin:6px 0 0" data-rb-up-note-err hidden role="alert">{{ $t['giftCardNeeded'] }}</p>
+                                        <textarea id="rb-up-note-{{ $u['id'] }}" class="rb-input" rows="3" maxlength="{{ $product['card_max'] }}" data-rb-up-note data-testid="rb-upsell-card-note"></textarea>
                                     </div>
                                 @endif
                             </div>
@@ -111,16 +110,15 @@
             @elseif ($product['available'])
                 @if ($product['gift_card'])
                     {{--
-                        ═══ نصُّ كرت الهدية — خانةٌ واحدة، مطلوبةٌ قبل السلّة ═══
+                        ═══ نصُّ كرت الهدية — خانةٌ واحدة، اختياريّة ═══
 
                         لا رفعَ ملفٍّ ولا محاذاةَ ولا اختيار. والنصُّ يُحفظ مع
-                        البند في السلّة، والخادمُ يردّ الكرتَ بلا نصّ
-                        (`GiftCardProduct`).
+                        البند في السلّة؛ وكرتٌ بلا رسالةٍ يُشترى ويُحاسَب كما هو
+                        (`GiftCardProduct::settle`).
                     --}}
                     <div data-testid="rb-card-note-box">
                         <label for="rb-card-note" style="display:block;font-size:13px;margin-bottom:8px">{{ $t['giftCardMessage'] }}</label>
-                        <textarea id="rb-card-note" class="rb-input" rows="4" maxlength="{{ $product['card_max'] }}" data-rb-card-note aria-describedby="rb-card-note-err" data-testid="rb-card-note"></textarea>
-                        <p id="rb-card-note-err" class="rb-error" style="margin:6px 0 0" data-rb-card-note-err hidden role="alert">{{ $t['giftCardNeeded'] }}</p>
+                        <textarea id="rb-card-note" class="rb-input" rows="4" maxlength="{{ $product['card_max'] }}" data-rb-card-note data-testid="rb-card-note"></textarea>
                     </div>
                 @endif
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -184,7 +182,7 @@
     .rb-up-sizes { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 12px 12px; }
     .rb-up-sizes .rb-pill { min-height: 44px; }
     /* و`display` أعلاه يغلب `hidden` لولا هذا — فتظهر المقاساتُ قبل الاختيار */
-    .rb-up-sizes[hidden], .rb-up [data-rb-up-need][hidden], .rb-up-note[hidden], .rb-up [data-rb-up-note-err][hidden] { display: none; }
+    .rb-up-sizes[hidden], .rb-up [data-rb-up-need][hidden], .rb-up-note[hidden] { display: none; }
     .rb-up-note { padding: 0 12px 12px; }
 </style>
 <script>{!! file_get_contents(resource_path('js/store/ribbon-upsells.js')) !!}</script>
@@ -224,11 +222,11 @@
         missing: function (cards) { cards[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' }); },
     });
 @elseif ($product['gift_card'])
-    // والكرتُ لا يدخل السلّةَ بلا نصّ — والنصُّ يُحفظ مع بنده
-    var note = RBCardNote.mount(document.querySelector('[data-rb-card-note]'), document.querySelector('[data-rb-card-note-err]'));
+    // والنصُّ اختياريّ يُحفظ مع بنده — وكرتٌ بلا رسالةٍ يدخل السلّة كما هو
+    var note = RBCardNote.mount(document.querySelector('[data-rb-card-note]'));
     if (add) add.addEventListener('click', function () {
-        var text = note.take(); if (text === null) return;
-        RB.add(id, variant, qty, text);
+        var text = note.take();
+        if (text) RB.add(id, variant, qty, text); else RB.add(id, variant, qty);
         add.textContent = @json($t['added']); RB.toast(@json($t['added']));
         setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
     });

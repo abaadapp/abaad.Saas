@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -18,9 +17,9 @@ use Illuminate\Support\Facades\Schema;
  *
  * - عمودٌ على النشاط نفسِه (`businesses.gift_orders_enabled`)، مغلقٌ افتراضًا،
  *   لا يكتبه إلّا مديرُ المنصّة من شاشة النشاط.
- * - ومن كان قد رفع المفتاحَ بنفسه قبل اليوم يُنقل إليه مرّةً واحدة — فلا
- *   يختفي «هذا الطلب هدية» من متجرٍ حيٍّ يومَ النشر. ومديرُ المنصّة يُطفئه
- *   إن شاء. وبعدها لا يُقرأ `store_gift_checkout` لشيء؛ صفُّه يبقى كما هو.
+ * - ويبدأ مغلقًا لكلّ نشاطٍ بلا استثناء — قرارُ المالك. ما رفعه تاجرٌ بنفسه
+ *   من `store_gift_checkout` لا يُنقل ولا يُقرأ لشيء؛ صفُّه يبقى في الجدول بلا
+ *   أثر. ومديرُ المنصّة يفتحه بعد النشر لكلّ نشاطٍ يُراد له، واحدًا واحدًا.
  */
 return new class extends Migration
 {
@@ -30,16 +29,6 @@ return new class extends Migration
             Schema::table('businesses', function (Blueprint $table) {
                 $table->boolean('gift_orders_enabled')->default(false);
             });
-        }
-
-        $carried = DB::table('settings')
-            ->whereNotNull('business_id')
-            ->where('key', 'store_gift_checkout')
-            ->where('value', '1')
-            ->pluck('business_id');
-
-        if ($carried->isNotEmpty()) {
-            DB::table('businesses')->whereIn('id', $carried)->update(['gift_orders_enabled' => true]);
         }
     }
 

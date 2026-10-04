@@ -18,6 +18,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -220,25 +221,58 @@ class AnOrderMayBeAGiftForSomeoneElseTest extends TestCase
     }
 
     /**
-     * والهجرةُ تنقل من رفع المفتاحَ بنفسه قبل اليوم — مرّةً، ولا تفتحه لغيره.
+     * والهجرةُ لا تنقل شيئًا — الإهداءُ يبدأ مغلقًا لكلّ نشاط، قرارُ المالك.
      *
-     * فلا يختفي «هذا الطلب هدية» من متجرٍ حيٍّ يومَ النشر. وبعدها لا يُقرأ
-     * المفتاحُ القديم لشيء، وصفُّه يبقى في الجدول كما هو.
+     * يُعاد بناءُ ما قبل الهجرة: العمودُ غائب، ونشاطٌ رفع `store_gift_checkout`
+     * بنفسه وآخرُ لم يرفعه. وبعدها كلاهما مغلق، ولا يفتحه للتاجر مفتاحُه القديم
+     * ولا حمولتُه؛ ومديرُ المنصّة يفتحه لواحدٍ فلا ينفتح الآخر.
      */
-    public function test_the_migration_carries_an_existing_self_enabled_shop_once(): void
+    public function test_the_migration_starts_every_business_closed_whatever_it_had_set(): void
     {
-        $this->a->update(['gift_orders_enabled' => false]);
-        $c = Business::create(['name' => 'ثالث', 'type' => 'عام', 'status' => 'نشط']);
+        $migration = require database_path('migrations/2026_10_04_110000_the_platform_decides_who_may_take_gift_orders.php');
+        $migration->down();
+        $this->assertFalse(Schema::hasColumn('businesses', 'gift_orders_enabled'));
+
+        // ما قبل الهجرة: الأوّلُ رفع المفتاحَ بنفسه، والثاني تركه مغلقًا
         Setting::create(['business_id' => $this->a->id, 'key' => 'store_gift_checkout', 'value' => '1']);
-        Setting::create(['business_id' => $c->id, 'key' => 'store_gift_checkout', 'value' => '0']);
+        Setting::create(['business_id' => $this->b->id, 'key' => 'store_gift_checkout', 'value' => '0']);
         Setting::create(['business_id' => null, 'key' => 'store_gift_checkout', 'value' => '1']);
 
-        (require database_path('migrations/2026_10_04_110000_the_platform_decides_who_may_take_gift_orders.php'))->up();
+        $migration->up();
+        MarketingSettings::forget($this->a->id);
+        MarketingSettings::forget($this->b->id);
 
-        $this->assertTrue(GiftOrders::on($this->a->id));
+        // ١ و٢: كلاهما مغلق — الخامُ لا النموذج
+        $this->assertSame(
+            [false, false],
+            [(bool) DB::table('businesses')->where('id', $this->a->id)->value('gift_orders_enabled'),
+                (bool) DB::table('businesses')->where('id', $this->b->id)->value('gift_orders_enabled')],
+            'الهجرةُ نقلت `store_gift_checkout` إلى الإذن',
+        );
+        $this->assertFalse(GiftOrders::on($this->a->id));
         $this->assertFalse(GiftOrders::on($this->b->id));
-        $this->assertFalse(GiftOrders::on($c->id));
         $this->assertSame(3, Setting::where('key', 'store_gift_checkout')->count(), 'الهجرةُ محت صفوفًا');
+
+        // ٣: نشاطٌ جديدٌ بعدها مغلق
+        $fresh = Business::create(['name' => 'نشاط جديد', 'type' => 'عام', 'status' => 'نشط']);
+        $this->assertFalse((bool) DB::table('businesses')->where('id', $fresh->id)->value('gift_orders_enabled'));
+        $this->assertFalse(GiftOrders::on($fresh->id));
+
+        // ٤: التاجرُ يرسل المفتاحَ القديم — فلا ينفتح، ولا يُعرض في إتمامه
+        $this->actingAs($this->owner($this->a))
+            ->post(route('admin.marketing.store.save'), ['store_gift_checkout' => '1', 'gift_orders_enabled' => '1'])
+            ->assertSessionHasNoErrors();
+        MarketingSettings::forget($this->a->id);
+        $this->assertFalse(GiftOrders::on($this->a->id), 'التاجرُ فتح الإهداءَ بنفسه');
+        $this->assertStringNotContainsString('rb-gift-toggle', $this->get('/s/ribbon/checkout')->assertOk()->getContent());
+
+        // ٥: مديرُ المنصّة يفتحه للأوّل صراحةً
+        $this->platformSave($this->a, true)->assertSessionHasNoErrors();
+        $this->assertTrue(GiftOrders::on($this->a->id));
+
+        // ٦: ولا ينفتح الثاني ولا الجديد
+        $this->assertFalse(GiftOrders::on($this->b->id), 'فتحُه لنشاطٍ فتحه لآخر');
+        $this->assertFalse(GiftOrders::on($fresh->id));
     }
 
     public function test_the_merchant_screen_carries_no_gifting_switch(): void

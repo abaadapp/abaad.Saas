@@ -62,6 +62,15 @@ return [
     /** لغة القوالب الافتراضية */
     'language' => env('META_WHATSAPP_LANGUAGE', 'ar'),
 
+    /*
+     * قالب إرسال فاتورة العميل من رقم المتجر الخاص.
+     *
+     * Utility Template معتمد لدى Meta بثلاثة متغيّرات:
+     * {{1}} اسم النشاط، {{2}} رقم الفاتورة، {{3}} رابط الفاتورة الآمن.
+     */
+    'invoice_template' => env('META_WHATSAPP_INVOICE_TEMPLATE', 'abaad_customer_invoice'),
+    'invoice_template_language' => env('META_WHATSAPP_INVOICE_TEMPLATE_LANGUAGE', 'ar'),
+
     /** مفتاح الدولة الافتراضي لأرقامٍ كُتبت محليًّا — عُمان */
     'default_country_code' => env('META_WHATSAPP_COUNTRY_CODE', '968'),
 ];

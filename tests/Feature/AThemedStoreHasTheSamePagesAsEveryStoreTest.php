@@ -334,7 +334,8 @@ class AThemedStoreHasTheSamePagesAsEveryStoreTest extends TestCase
     public function test_the_menu_reads_in_the_visitors_language(): void
     {
         $this->stock();
-        $this->say(['store_about' => 'A flower shop in Al Khuwair.']);
+        // و«من نحن» الإنجليزيّة تُفتح بنبذتها الإنجليزيّة — لا بالعربيّة (`StorePage::about`)
+        $this->say(['store_about_en' => 'A flower shop in Al Khuwair.']);
 
         $this->get('/s/ribbon?lang=en')
             ->assertOk()

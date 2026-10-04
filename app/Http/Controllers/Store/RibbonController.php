@@ -17,6 +17,7 @@ use App\Support\Money;
 use App\Support\PaymentMethods;
 use App\Support\Seo;
 use App\Support\Store\BestSellers;
+use App\Support\Store\RibbonPicks;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\RibbonUpsells;
 use App\Support\Store\CheckoutFields;
@@ -103,7 +104,7 @@ class RibbonController extends Controller
          * يبقى محفوظًا في متصفّحٍ ومفهرَسًا عند غوغل بعد أن تُطفأ. فيُسأل
          * السؤالُ هنا أيضًا ولا يُكتفى بإخفاء الرابط: إخفاءُ رابطٍ ليس حراسة.
          */
-        if (in_array($first, StoreNav::OPTIONAL, true) && ! StoreNav::has((int) $business->id, $first)) {
+        if (in_array($first, StoreNav::OPTIONAL, true) && ! StoreNav::has((int) $business->id, $first, $lang)) {
             abort(404);
         }
 
@@ -112,7 +113,7 @@ class RibbonController extends Controller
         return match ($first) {
             null => $this->render('store.ribbon.home', $ctx + $this->home($business, $lang)),
             'shop' => $this->render('store.ribbon.shop', $ctx + $this->shop($business, $lang, request(), $base)),
-            'about' => $this->render('store.ribbon.about', $ctx + $this->about($business)),
+            'about' => $this->render('store.ribbon.about', $ctx + $this->about($business, $lang)),
             'contact' => $this->render('store.ribbon.contact', $ctx + $this->contact($business, $lang)),
             'p' => $this->render('store.ribbon.product', $ctx + $this->product($business, (int) $second, $lang)),
             'cart' => $this->render('store.ribbon.cart', $ctx),
@@ -275,7 +276,19 @@ class RibbonController extends Controller
             'sections' => StorePage::order($bid),
             'hero' => StorePage::heroImage($bid),
             'bannerImage' => StorePage::bannerImage($bid),
-            'block' => StorePage::block($bid),
+            'block' => StorePage::block($bid, $lang),
+            /*
+             * وعنوانُ الواجهة ووصفُها بلغة الصفحة — ما كتبه لها، وإلّا نصُّ
+             * القالب للّغة نفسِها (`StorePage::heroTitle`).
+             */
+            'heroTitle' => StorePage::heroTitle($bid, $lang, RibbonTexts::for($lang)),
+            'heroSub' => StorePage::heroSub($bid, $lang, RibbonTexts::for($lang)),
+            /*
+             * و«اختيارات RIBBON» — أصنافُه بيده من `$shown` وحدها، بترتيبه.
+             * ولا يُرسم القسمُ إلّا إن رفعه في الترتيب (`StorePage::order`).
+             */
+            'picks' => RibbonPicks::pick($bid, $shown)->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
+            'picksTitle' => RibbonPicks::title($bid, $lang, RibbonTexts::for($lang)),
             // وعنوانُ «الأكثر مبيعًا» يتبع مصدرَه: محسوبًا يُسمّى، ومختارًا يُسمّى
             'bestPicked' => $chosen->isNotEmpty(),
             'reviews' => Review::where('business_id', $bid)->showable()->latest()->take(3)->get()
@@ -349,13 +362,14 @@ class RibbonController extends Controller
      * والرفُّ يُقرأ ليُعرف أيُرسم زرُّ «تسوّق الآن» تحتها: قاعدةُ الواجهة
      * نفسُها — لا وعدَ ببضاعةٍ على رفٍّ خالٍ.
      */
-    private function about(Business $business): array
+    private function about(Business $business, string $lang): array
     {
         $bid = (int) $business->id;
         $image = trim((string) (MarketingSettings::group($bid, 'website')['store_about_image'] ?? ''));
 
         return [
-            'aboutText' => MerchantData::identity($bid)['about'],
+            // نبذةُ لغة الصفحة وحدها — `StorePage::about`
+            'aboutText' => StorePage::about($bid, $lang),
             'aboutImage' => $image !== '' ? $image : null,
             'shelf' => $this->shown($bid)->exists(),
         ];
@@ -587,6 +601,11 @@ class RibbonController extends Controller
     {
         $bid = (int) $business->id;
         $identity = MerchantData::identity($bid);
+        /*
+         * والنبذةُ بلغة الصفحة — قسمُ «عنّا» والتذييلُ ووصفُ البحث المحسوب
+         * يقرؤونها من هنا. وفارغُ اللغة لا تقع عليه نبذةُ الأخرى.
+         */
+        $identity['about'] = StorePage::about($bid, $lang);
         $s = WebCheckout::settings($bid);
         $t = RibbonTexts::for($lang);
 
@@ -601,7 +620,8 @@ class RibbonController extends Controller
             'identity' => $identity,
             // ساعاتُ العمل بلغة الصفحة — التذييلُ وسطرُ الاستلام في الإتمام
             'hours' => StorePage::hours($bid, $lang),
-            'deliveryNote' => $s['note'],
+            // وملاحظةُ التوصيل بلغة الصفحة — وفارغُ اللغة لا يُرسم ولا يقع على الأخرى
+            'deliveryNote' => $lang === 'en' ? $s['note_en'] : $s['note'],
             /*
              * تنبيهُ الصورة بلغة الصفحة — `store_image_note` للعربيّة و
              * `store_image_note_en` للإنجليزيّة. وفارغُ اللغة لا يُرسم، ولا
@@ -621,14 +641,14 @@ class RibbonController extends Controller
              *
              * ولو بُنيت في القالبين لَبقي في أحدهما رابطٌ إلى صفحةٍ أُطفئت.
              */
-            'nav' => StoreNav::links($bid, $base, $t, $current),
+            'nav' => StoreNav::links($bid, $base, $t, $current, $lang),
             /*
              * وشريطُ الإعلان أعلى كلّ صفحة — بلغة الزائر وحدها، أو لا شريط.
              * انظر `StoreHeader::announcement`.
              */
             'announcement' => StoreHeader::announcement($bid, $lang),
             // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
-            'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo()),
+            'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo(), $lang),
         ] + $this->floatingWhatsapp($bid, $identity, $t);
     }
 

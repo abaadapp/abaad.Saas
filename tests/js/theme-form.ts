@@ -27,6 +27,7 @@ const BLANK: ThemeSettingsData = {
     store_delivery_areas: '',
     store_delivery_slots: '',
     store_delivery_note: '',
+    store_delivery_note_en: '',
     store_delivery_area_note: '',
     store_delivery_area_note_en: '',
     store_max_days: '',
@@ -46,6 +47,8 @@ const BLANK: ThemeSettingsData = {
 
     store_seo_title: '',
     store_seo_desc: '',
+    store_seo_title_en: '',
+    store_seo_desc_en: '',
     store_seo_index: true,
 };
 

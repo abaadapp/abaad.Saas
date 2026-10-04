@@ -127,17 +127,24 @@ final class StoreSeo
      * الصفحة، ثمّ اسمُ النشاط وحدَه للرئيسية. واسمُ الصفحة يُضمّ إليه لا
      * يُبدّله: نتيجتان في غوغل بعنوانٍ واحد لا تُميَّزان.
      *
+     * ═══ ولكلّ لغةٍ ما كُتب لها ═══
+     *
+     * الصفحةُ الإنجليزيّة تقرأ `store_seo_title_en` و`store_seo_desc_en`،
+     * والعربيّةُ مفتاحَيها. وفارغُ اللغة يُحسب كما كان (اسمُ النشاط، ثمّ
+     * النبذة) — لا يُكتب في وسمٍ إنجليزيّ ما كتبه صاحبُه للعربيّة.
+     *
      * @param  array<string, string>  $t  نصوصُ الواجهة بلغة الزائر
      * @param  array<string, string>  $identity
      * @return array{brand: string, title: string, description: string, index: bool, canonical: ?string, image: ?string}
      */
-    public static function head(Business $business, string $page, array $t, array $identity, string $base = '', string $path = '/'): array
+    public static function head(Business $business, string $page, array $t, array $identity, string $base = '', string $path = '/', string $lang = 'ar'): array
     {
         $bid = (int) $business->id;
         $site = MarketingSettings::group($bid, 'website');
+        $suffix = $lang === 'en' ? '_en' : '';
 
         $name = (string) $business->name;
-        $written = trim((string) ($site['store_seo_title'] ?? ''));
+        $written = trim((string) ($site['store_seo_title'.$suffix] ?? ''));
         $label = $page === StoreNav::HOME ? '' : (string) ($t[StoreNav::LABELS[$page] ?? ''] ?? '');
 
         /*
@@ -147,7 +154,7 @@ final class StoreSeo
          */
         $brand = $written !== '' ? $written : $name;
 
-        $desc = trim((string) ($site['store_seo_desc'] ?? ''));
+        $desc = trim((string) ($site['store_seo_desc'.$suffix] ?? ''));
 
         if ($desc === '') {
             $desc = $identity['about'] !== '' ? $identity['about'] : $name;

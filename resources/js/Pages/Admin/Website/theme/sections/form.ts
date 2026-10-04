@@ -26,6 +26,7 @@ export interface ThemeSettingsData {
     store_delivery_areas: string;
     store_delivery_slots: string;
     store_delivery_note: string;
+    store_delivery_note_en: string;
     /* تنبيهُ نطاق التوصيل — لكلّ لغةٍ نصُّها، ولا يمسّ قواعد المنطقة */
     store_delivery_area_note: string;
     store_delivery_area_note_en: string;
@@ -49,6 +50,9 @@ export interface ThemeSettingsData {
     /* الظهور في البحث */
     store_seo_title: string;
     store_seo_desc: string;
+    /* وللصفحة الإنجليزيّة عنوانُها ووصفُها — لا يقع أحدُهما على الآخر */
+    store_seo_title_en: string;
+    store_seo_desc_en: string;
     store_seo_index: boolean;
 }
 
@@ -71,7 +75,7 @@ export interface ThemeSeed {
     fieldStates: Record<string, string>;
     fulfilments: string[];
     pages: { allowed: string };
-    seo: { title: string; desc: string; index: boolean };
+    seo: { title: string; desc: string; title_en: string; desc_en: string; index: boolean };
     storeOn: boolean;
     slug: string | null;
 }
@@ -96,6 +100,7 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
         store_delivery_areas: v.store_delivery_areas ?? '',
         store_delivery_slots: v.store_delivery_slots ?? '',
         store_delivery_note: v.store_delivery_note ?? '',
+        store_delivery_note_en: v.store_delivery_note_en ?? '',
         store_delivery_area_note: v.store_delivery_area_note ?? '',
         store_delivery_area_note_en: v.store_delivery_area_note_en ?? '',
         store_max_days: v.store_max_days ?? '',
@@ -121,6 +126,8 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
 
         store_seo_title: s.seo.title,
         store_seo_desc: s.seo.desc,
+        store_seo_title_en: s.seo.title_en ?? '',
+        store_seo_desc_en: s.seo.desc_en ?? '',
         store_seo_index: s.seo.index,
     };
 }
@@ -143,13 +150,13 @@ export const SCREEN_KEYS = {
     store: [
         'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_bank',
         'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
-        'store_delivery_slots', 'store_delivery_note', 'store_delivery_area_note', 'store_delivery_area_note_en',
+        'store_delivery_slots', 'store_delivery_note', 'store_delivery_note_en', 'store_delivery_area_note', 'store_delivery_area_note_en',
         'store_max_days', 'store_fulfil',
         'store_field_area', 'store_field_address', 'store_field_date', 'store_field_slot',
         'store_field_recipient', 'store_field_promo', 'store_image_note', 'store_image_note_en',
         'store_gift_card', 'store_gift_card_price',
     ],
-    seo: ['store_seo_title', 'store_seo_desc', 'store_seo_index'],
+    seo: ['store_seo_title', 'store_seo_desc', 'store_seo_title_en', 'store_seo_desc_en', 'store_seo_index'],
 } as const satisfies Record<string, readonly (keyof ThemeSettingsData)[]>;
 
 /** ما تحمله هذه الشاشةُ وحدَها من النموذج */

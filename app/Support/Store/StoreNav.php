@@ -126,7 +126,7 @@ final class StoreNav
      * ويُسأل في المتحكّم قبل الرسم: رابطٌ محفوظٌ إلى صفحةٍ أُطفئت أو فرغت
      * يردّ «غير موجود» لا صفحةً بيضاء.
      */
-    public static function has(int $businessId, string $page): bool
+    public static function has(int $businessId, string $page, string $lang = 'ar'): bool
     {
         return match ($page) {
             self::HOME => true,
@@ -138,8 +138,9 @@ final class StoreNav
              * زائرٍ إلى «لا منتجات هنا بعد».
              */
             self::SHOP => self::shelf($businessId),
+            // و«من نحن» بنبذة لغة الصفحة — لا تُفتح الإنجليزيّةُ على نبذةٍ عربيّة
             self::ABOUT => in_array(self::ABOUT, self::allowed($businessId), true)
-                && MerchantData::identity($businessId)['about'] !== '',
+                && StorePage::about($businessId, $lang) !== '',
             self::CONTACT => in_array(self::CONTACT, self::allowed($businessId), true)
                 && self::contactLines($businessId) !== [],
             default => false,
@@ -188,12 +189,12 @@ final class StoreNav
      * @param  array<string, string>  $t  نصوصُ الواجهة بلغة الزائر
      * @return list<array{key: string, label: string, href: string, current: bool}>
      */
-    public static function links(int $businessId, string $base, array $t, string $current = self::HOME): array
+    public static function links(int $businessId, string $base, array $t, string $current = self::HOME, string $lang = 'ar'): array
     {
         $out = [];
 
         foreach (self::ALL as $page) {
-            if (! self::has($businessId, $page)) {
+            if (! self::has($businessId, $page, $lang)) {
                 continue;
             }
 
@@ -236,7 +237,8 @@ final class StoreNav
             self::SHOP => self::shelf($businessId)
                 ? null
                 : 'لا صنفَ معروضًا في متجرك — فلا رفَّ تُفتح عليه.',
-            self::ABOUT => MerchantData::identity($businessId)['about'] !== ''
+            // ويُقال «لا تظهر» إن لم تُكتب بأيّ لغة — ومكتوبةٌ بإحداهما تظهر بها
+            self::ABOUT => StorePage::about($businessId, 'ar') !== '' || StorePage::about($businessId, 'en') !== ''
                 ? null
                 : 'اكتب نبذتك لتُفتح الصفحة — وهي نفسُها التي تظهر في قسم «عنّا».',
             self::CONTACT => self::contactLines($businessId) !== []

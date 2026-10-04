@@ -19,12 +19,15 @@ export default function Seo({
     form,
     site,
     fallback,
+    fallbackEn,
     limits,
 }: {
     form: ThemeForm;
     site: ThemeSite;
     /** ما يُكتب في `<head>` حين لا يكتب شيئًا — يُحسب في الخادم لا هنا */
     fallback: { title: string; description: string };
+    /** وما يُكتب في الصفحة الإنجليزيّة حين لا يكتب لها شيئًا */
+    fallbackEn?: { title: string; description: string };
     /** ما يُعرض في نتيجة غوغل — إرشادٌ لا شرطُ حفظ */
     limits: { title: number; desc: number };
 }) {
@@ -94,6 +97,49 @@ export default function Seo({
                         />
                         <p className="mt-1 text-[12px]" data-testid="count-desc">
                             {count(form.data.store_seo_desc, limits.desc)}
+                        </p>
+                    </Field>
+                </SettingsGroup>
+
+                {/*
+                    وللصفحة الإنجليزيّة ما يُكتب لها — ولا يُعرض فيها ما كُتب للعربيّة.
+                    وفارغُها يُحسب كما كان: اسمُ متجرك ونبذتُه.
+                */}
+                <SettingsGroup title="للصفحة الإنجليزيّة">
+                    <Field
+                        label="Search title — English"
+                        hint="للصفحة الإنجليزيّة — واتركه فارغًا فيبقى ما يُحسب من اسمك"
+                        error={form.errors.store_seo_title_en}
+                    >
+                        <Input
+                            dir="ltr"
+                            value={form.data.store_seo_title_en}
+                            onChange={(e) => form.setData('store_seo_title_en', e.target.value)}
+                            placeholder={fallbackEn?.title ?? fallback.title}
+                            aria-label={t('Search title — English')}
+                        />
+                        <p className="mt-1 text-[12px]" data-testid="count-title-en">
+                            {count(form.data.store_seo_title_en, limits.title)}
+                        </p>
+                    </Field>
+
+                    <Field
+                        label="Search description — English"
+                        hint="للصفحة الإنجليزيّة — واتركه فارغًا فيبقى ما يُحسب من نبذتك"
+                        error={form.errors.store_seo_desc_en}
+                    >
+                        <Textarea
+                            rows={3}
+                            dir="ltr"
+                            value={form.data.store_seo_desc_en}
+                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                                form.setData('store_seo_desc_en', e.target.value)
+                            }
+                            placeholder={fallbackEn?.description ?? fallback.description}
+                            aria-label={t('Search description — English')}
+                        />
+                        <p className="mt-1 text-[12px]" data-testid="count-desc-en">
+                            {count(form.data.store_seo_desc_en, limits.desc)}
                         </p>
                     </Field>
                 </SettingsGroup>

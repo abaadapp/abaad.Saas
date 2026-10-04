@@ -83,7 +83,8 @@ class MarketingToolsTest extends TestCase
             // طريقُ العنوان واسمُ النطاق الفرعي — تقرؤهما `DomainOptions`
             'site_domain_mode',
             'site_path',
-            'store_on', 'store_theme', 'store_headline', 'store_about', 'store_show_prices',
+            // والنبذةُ بالإنجليزيّة بجانب العربيّة — للصفحة الإنجليزيّة (`StorePage::about`)
+            'store_on', 'store_theme', 'store_headline', 'store_about', 'store_about_en', 'store_show_prices',
             'store_whatsapp',
             // إنستغرام وقبولُ الطلبات — يقرؤهما بانِي الموقع (MerchantData, SettingsController)
             'store_instagram', 'store_allow_orders',
@@ -92,6 +93,8 @@ class MarketingToolsTest extends TestCase
             'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
             // وساعاتُ العمل بالإنجليزيّة بجانب العربيّة — للصفحة الإنجليزيّة (`StorePage::hours`)
             'store_delivery_slots', 'store_hours', 'store_hours_en', 'store_delivery_note',
+            // وملاحظةُ التوصيل بالإنجليزيّة — تقرؤها صفحةُ المنتج الإنجليزيّة (`RibbonController::context`)
+            'store_delivery_note_en',
             /*
              * وتنبيهُ الصورة — تقرؤه صفحاتُ المنتج والإتمام والتأكيد في
              * الواجهة الخاصّة (`Store\WebCheckout::settings` ثمّ
@@ -107,12 +110,19 @@ class MarketingToolsTest extends TestCase
             'store_field_slot', 'store_field_recipient', 'store_field_promo',
             'store_fulfil', 'store_max_days',
             // وصفحةُ المتجر — ما فيها وترتيبُه (Store\StorePage)
-            'store_hero_image', 'store_featured',
+            'store_hero_image',
+            // وعنوانُ الواجهة ووصفُها لكلّ لغة (`StorePage::heroTitle` و`heroSub`)
+            'store_hero_title', 'store_hero_title_en', 'store_hero_sub', 'store_hero_sub_en',
+            'store_featured',
             // و«وصل حديثًا» اليدويّ — يقرؤه `Store\NewArrivals::pick` لمن في قائمته
             'store_new_arrivals_mode', 'store_new_arrivals',
             'store_sections',
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',
+            // والقسمُ الحرُّ بالإنجليزيّة (`StorePage::block`)
+            'store_block_title_en', 'store_block_text_en', 'store_block_cta_en',
+            // و«اختيارات RIBBON» (`Store\RibbonPicks`) و«أضف مع طلبك» بيده (`Store\RibbonUpsells`)
+            'store_picks', 'store_picks_title', 'store_picks_title_en', 'store_ribbon_upsells',
             // وسطرُ التذييل بالإنجليزيّة بجانب العربيّ (`StorePage::tagline`)
             'store_banner_image', 'store_tagline', 'store_tagline_en',
             /*
@@ -130,7 +140,7 @@ class MarketingToolsTest extends TestCase
              * وما يقرؤه غوغل — يُكتب في `<head>` كلّ صفحة (`Store\StoreSeo`
              * ثمّ `store.ribbon.layout`).
              */
-            'store_seo_title', 'store_seo_desc', 'store_seo_index',
+            'store_seo_title', 'store_seo_desc', 'store_seo_title_en', 'store_seo_desc_en', 'store_seo_index',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

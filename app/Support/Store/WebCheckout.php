@@ -99,6 +99,8 @@ final class WebCheckout
             'slots' => $list((string) $site['store_delivery_slots']),
             'hours' => trim((string) $site['store_hours']),
             'note' => trim((string) $site['store_delivery_note']),
+            // وملاحظةُ التوصيل بالإنجليزيّة — لا تقع العربيّةُ عليها ولا هي على العربيّة
+            'note_en' => trim((string) ($site['store_delivery_note_en'] ?? '')),
             /* وتنبيهُ الصورة — تقرؤه الصفحاتُ الثلاث من هنا لا من ثلاثة مواضع */
             'image_note' => trim((string) $site['store_image_note']),
             // وبالإنجليزيّة للصفحة الإنجليزيّة — ولا يقع أحدُهما على الآخر

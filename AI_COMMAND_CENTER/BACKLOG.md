@@ -11,6 +11,7 @@ Items here are candidates for investigation/planning. They are NOT implementatio
 - Audit inventory movement traceability.
 - Audit permissions around sensitive financial and stock operations.
 - Audit reporting gaps and reconciliation workflows.
+- Plan Saud WhatsApp invoice delivery: keep Saud's number active in WhatsApp Business while enabling official API-based invoice sending from Abaad only (no chat inbox), including PDF/link delivery, delivery status tracking, secure credentials, and webhook handling.
 
 ## Engineering
 

@@ -51,6 +51,13 @@ class DocumentTemplates
          */
         'show_phone' => ['label' => 'هاتف المتجر', 'hint' => 'على الإيصال الحراري — من ملف النشاط'],
         'show_website' => ['label' => 'عنوان المتجر الإلكتروني', 'hint' => 'على الإيصال الحراري — يظهر إن كان لمتجرك عنوانٌ منشور'],
+        /*
+         * وحالُ الدفع سطرٌ بجانب وسيلته — مطفأٌ افتراضًا.
+         *
+         * لم يكن على الإيصال قطّ، وإشعالُه للجميع يُضيف سطرًا إلى كلّ إيصال
+         * صندوقٍ في كلّ متجرٍ لم يطلبه. فيُشعله من يريده لمتجره.
+         */
+        'show_payment_status' => ['label' => 'حالة الدفع', 'hint' => 'على الإيصال الحراري — بجانب وسيلة الدفع'],
     ];
 
     /**
@@ -85,7 +92,7 @@ class DocumentTemplates
                 'show_customer' => true, 'show_datetime' => true, 'show_items_count' => true,
                 'show_vat_no' => false, 'show_qr' => true,
                 // والهاتفُ كان يُطبع دائمًا — فيبقى ظاهرًا لمن لم يُطفئه
-                'show_phone' => true, 'show_website' => false,
+                'show_phone' => true, 'show_website' => false, 'show_payment_status' => false,
             ],
         ],
         /*

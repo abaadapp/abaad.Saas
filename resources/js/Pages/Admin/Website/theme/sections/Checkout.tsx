@@ -19,10 +19,10 @@ const THANKS = [
         arDefault: 'شكراً لك، تم استلام طلبك', enDefault: 'Thank you, your order is received',
     },
     {
+        /* والرسالةُ اختياريّة: فارغُها لا يُعرض — فلا علامةَ مائيّةَ توحي بنصٍّ يظهر */
         key: 'store_thanks_message', enKey: 'store_thanks_message_en', max: 300, long: true,
         ar: 'الرسالة تحت العنوان', en: 'Message — English',
-        arDefault: 'تم استلام طلبك بنجاح، وسنقوم بتجهيزه في أقرب وقت.',
-        enDefault: 'Your order has been received successfully and will be prepared shortly.',
+        arDefault: '', enDefault: '',
     },
     {
         key: 'store_thanks_receipt', enKey: 'store_thanks_receipt_en', max: 40, long: false,
@@ -177,7 +177,7 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                         ))}
                     </div>
                     <p className="mt-3 text-[12px] leading-relaxed text-[#6b7280]">
-                        {t('اتركه فارغًا فيظهر النص الظاهر في الخانة بلغة الصفحة. ورقم الطلب وأصنافه ومبالغه يكتبها النظام.')}
+                        {t('اتركه فارغًا فيظهر النص الظاهر في الخانة بلغة الصفحة — والرسالة فارغةً لا تظهر. ورقم الطلب وأصنافه ومبالغه يكتبها النظام.')}
                     </p>
                 </SettingsGroup>
 

@@ -33,6 +33,9 @@ use Tests\TestCase;
  *
  *   · العنوانُ والرسالةُ والزرّان بما كتبه التاجر لكلّ لغة، والفارغُ نصُّ
  *     النظام بلغة الصفحة — ولا يقع نصُّ لغةٍ على الأخرى.
+ *   · ومتجرٌ لم يكتب شيئًا يرى صفحتَه كما كانت قبلها: العنوانُ نفسُه و«عرض
+ *     الفاتورة» نفسُه، ولا رسالةَ جديدة. فالقدرةُ لكلّ متجر، ولا يُفتح بها
+ *     شيءٌ لمتجرٍ لم يطلبه.
  *   · رقمُ الطلب وأصنافُه ومبالغُه وطريقةُ دفعه باقيةٌ أيًّا كان ما كُتب.
  *   · زرُّ الإيصال لمن دفع دفعًا ثبت ومتجرُه فتحه، وحده — والنصوصُ لا تفتحه.
  *   · والنصُّ نصٌّ: لا وسمَ يُرسم منه، ولا متجرَ يقرأ نصوصَ غيره.
@@ -221,26 +224,74 @@ class AThankYouPageSpeaksTheShopsWordsTest extends TestCase
 
         $ar = $this->done($order, 'ar');
         $this->assertSame('شكرًا من ريبون', $this->text($ar, 'rb-thanks-title'));
-        $this->assertSame('تم استلام طلبك بنجاح، وسنقوم بتجهيزه في أقرب وقت.', $this->text($ar, 'rb-thanks-message'));
+        $this->assertNull($this->text($ar, 'rb-thanks-message'), 'رسالةٌ فارغةٌ لا تُعرض');
         $this->assertSame('عرض الفاتورة', $this->text($ar, 'rb-receipt'));
         $this->assertSame('متابعة التسوّق', $this->text($ar, 'rb-continue'));
 
         $en = $this->done($order, 'en');
         $this->assertSame('Thank you, your order is received', $this->text($en, 'rb-thanks-title'));
-        $this->assertSame('Your order has been received successfully and will be prepared shortly.', $this->text($en, 'rb-thanks-message'));
+        $this->assertNull($this->text($en, 'rb-thanks-message'));
         $this->assertSame('View invoice', $this->text($en, 'rb-receipt'));
         $this->assertSame('Continue shopping', $this->text($en, 'rb-continue'));
     }
 
-    /** ومتجرٌ لم يكتب شيئًا يرى صفحتَه كما كانت — بعنوانها وزرّيها */
+    /**
+     * ومتجرٌ لم يكتب شيئًا يرى صفحتَه كما كانت — بعنوانها وزرّيها، ولا سطرَ جديدًا.
+     *
+     * ونصوصُ النظام هي ما كان يُعرض بعينه — لا «عرض الإيصال الحراري»: تلك
+     * عبارةُ من يختارها لمتجره، لا عبارةٌ تُفرض على كلّ متجر.
+     */
     public function test_a_shop_that_wrote_nothing_keeps_its_page(): void
     {
         $this->assertSame([
             'title' => 'شكراً لك، تم استلام طلبك',
-            'message' => 'تم استلام طلبك بنجاح، وسنقوم بتجهيزه في أقرب وقت.',
+            'message' => '',
             'receipt' => 'عرض الفاتورة',
             'continue' => 'متابعة التسوّق',
         ], ThankYouPage::texts($this->shop->id, 'ar'));
+
+        $this->assertSame([
+            'title' => 'Thank you, your order is received',
+            'message' => '',
+            'receipt' => 'View invoice',
+            'continue' => 'Continue shopping',
+        ], ThankYouPage::texts($this->shop->id, 'en'));
+
+        MarketingSettings::save($this->shop->id, 'website', [PaidReceipt::KEY => '1']);
+        $html = $this->done($this->order());
+        $this->assertNull($this->text($html, 'rb-thanks-message'));
+        $this->assertSame('عرض الفاتورة', $this->text($html, 'rb-receipt'));
+    }
+
+    /**
+     * ومتجرٌ يسمّي زرَّه لنفسه — ولا يبلغ اسمُه متجرًا آخر، ولا لغتَه الأخرى.
+     *
+     * وهي الحالُ التي بُنيت لها القدرة: متجرٌ يريد «عرض الإيصال الحراري»
+     * و«View thermal receipt»، وغيرُه يبقى على «عرض الفاتورة».
+     */
+    public function test_one_shop_names_its_receipt_button_and_no_other_shop_hears_it(): void
+    {
+        $bloom = $this->storefront('BLOOM', 'bloom');
+        MarketingSettings::save($this->shop->id, 'website', [PaidReceipt::KEY => '1']);
+        MarketingSettings::save($bloom->id, 'website', [PaidReceipt::KEY => '1']);
+        $this->words($this->shop, [
+            'store_thanks_receipt' => 'عرض الإيصال الحراري',
+            'store_thanks_receipt_en' => 'View thermal receipt',
+        ]);
+
+        $mine = $this->order();
+        $theirs = $this->order('bloom', $this->product($bloom));
+
+        $this->assertSame('عرض الإيصال الحراري', $this->text($this->done($mine), 'rb-receipt'));
+        $this->assertSame('View thermal receipt', $this->text($this->done($mine, 'en'), 'rb-receipt'));
+
+        $this->assertSame('عرض الفاتورة', $this->text($this->done($theirs, 'ar', 'bloom'), 'rb-receipt'));
+        $this->assertSame('View invoice', $this->text($this->done($theirs, 'en', 'bloom'), 'rb-receipt'));
+
+        // ولا تقع لغةٌ على الأخرى: كتب العربيّةَ وحدها فبقيت الإنجليزيّةُ نصَّ النظام
+        $this->words($this->shop, ['store_thanks_receipt_en' => '']);
+        $this->assertSame('View invoice', $this->text($this->done($mine, 'en'), 'rb-receipt'));
+        $this->assertSame('عرض الإيصال الحراري', $this->text($this->done($mine), 'rb-receipt'));
     }
 
     /* ═════════════ ٥ · الطلبُ باقٍ أيًّا كان النصّ ═════════════ */

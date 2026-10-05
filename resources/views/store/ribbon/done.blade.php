@@ -5,7 +5,9 @@
     <div style="width:64px;height:64px;border-radius:50%;background:var(--rb-olive);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:28px">✓</div>
     {{-- والعنوانُ والرسالةُ بلغة الصفحة — ما كتبه التاجر أو نصُّ النظام (`Store\ThankYouPage`) --}}
     <h1 class="rb-h1" style="margin-top:18px" data-testid="rb-thanks-title">{{ $thanks['title'] }}</h1>
-    <p style="margin:8px 0 0;font-size:15px" data-testid="rb-thanks-message">{{ $thanks['message'] }}</p>
+    @if ($thanks['message'] !== '')
+        <p style="margin:8px 0 0;font-size:15px" data-testid="rb-thanks-message">{{ $thanks['message'] }}</p>
+    @endif
     <p style="margin:8px 0 0;font-size:15px">{{ $t['orderNo'] }}: <strong dir="ltr" data-testid="rb-order-number">{{ $order['number'] }}</strong></p>
     <div class="rb-box" style="margin:28px 0;text-align:start;font-size:14px;line-height:1.9;padding:20px">
         @foreach ($order['lines'] as $l)

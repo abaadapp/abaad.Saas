@@ -23,10 +23,17 @@ use App\Support\MarketingSettings;
  */
 final class ThankYouPage
 {
-    /** الحقلُ ومفتاحُه في `RibbonTexts` — نصُّ النظام حين لا يكتب التاجر شيئًا */
+    /**
+     * الحقلُ ومفتاحُه في `RibbonTexts` — نصُّ النظام حين لا يكتب التاجر شيئًا.
+     *
+     * والرسالةُ بلا نصِّ نظام: لم تكن في الصفحة قبلها، فمتجرٌ لم يكتبها لا
+     * يُضاف إلى صفحته سطر. ونصوصُ الأزرار والعنوان هي ما كان يُعرض بعينه.
+     *
+     * @var array<string, string|null>
+     */
     public const FIELDS = [
         'title' => 'thanks',
-        'message' => 'thanksMsg',
+        'message' => null,
         'receipt' => 'viewReceipt',
         'continue' => 'continueShopping',
     ];
@@ -52,7 +59,7 @@ final class ThankYouPage
 
         foreach (self::FIELDS as $field => $fallback) {
             $mine = trim((string) ($site[self::key($field, $lang)] ?? ''));
-            $out[$field] = $mine !== '' ? $mine : (string) $system[$fallback];
+            $out[$field] = $mine !== '' ? $mine : ($fallback === null ? '' : (string) $system[$fallback]);
         }
 
         return $out;

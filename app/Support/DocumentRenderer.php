@@ -76,10 +76,10 @@ class DocumentRenderer
      * والعربيّةُ نصُّ الورقة كما كان (`header` و`footer`)، والإنجليزيّةُ
      * حقلاها (`header_en` و`footer_en`). والفارغُ منهما لا يُفرغ الورقة:
      *
-     *   · ترويسةٌ إنجليزيّةٌ فارغة تأخذ الترويسةَ التي كتبها التاجر — وهي ما
-     *     كان يُطبع على الإيصال الإنجليزيّ قبلها، فلا يفقده أحد.
-     *   · وتذييلٌ إنجليزيٌّ فارغ يأخذ ما كتبه التاجر، إلّا التذييلَ
-     *     الافتراضيّ: ذاك نصُّ النظام لا نصُّه، فيُقال بلغة الورقة.
+     *   · ترويسةٌ أو تذييلٌ إنجليزيٌّ فارغ يُبقي ما كان يُطبع على الإيصال
+     *     الإنجليزيّ قبلها — حرفًا حرفًا، والتذييلُ الافتراضيُّ معه. فمتجرٌ
+     *     لم يفتح الحقلين لا يتغيّر إيصالُه، لا في الصندوق ولا في الموقع.
+     *     ومن أراد إيصالًا إنجليزيًّا كتبه لمتجره.
      *
      * والأرقامُ لا تمرّ من هنا: المبالغُ واحدةٌ في اللغتين، والمسمّياتُ
      * وحدَها تتبع اللغة.
@@ -102,11 +102,6 @@ class DocumentRenderer
 
         if ($footer !== '') {
             $values['footer'] = $footer;
-        } elseif (($values['footer'] ?? null) === DocumentTemplates::DEFAULT_FOOTER) {
-            $values['footer'] = implode("\n", array_map(
-                fn (string $line) => __($line),
-                explode("\n", DocumentTemplates::DEFAULT_FOOTER),
-            ));
         }
 
         return $values;
@@ -380,7 +375,7 @@ class DocumentRenderer
         ]));
     }
 
-    /** عنوانُ المتجر المنشور — `ribbon.om` لا `https://ribbon.om/` — أو فراغ */
+    /** عنوانُ المتجر المنشور — `example.om` لا `https://example.om/` — أو فراغ */
     private static function website(int $businessId): string
     {
         $url = Domains::canonical($businessId, Business::whereKey($businessId)->value('site_slug'));

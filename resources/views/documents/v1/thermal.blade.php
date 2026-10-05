@@ -191,12 +191,12 @@
     <tr class="grand"><td>{{ __('الإجمالي') }}</td><td class="l"><span dir="ltr">{{ $money($order->total) }}</span></td></tr>
     <tr><td class="k">{{ __('وسيلة الدفع') }}</td><td class="l">{{ $order->payment_method === 'بطاقة' ? __('فيزا') : __($order->payment_method) }}</td></tr>
     {{--
-        وحالُ الدفع بجانب وسيلته — ولا مقبضَ يُخفيهما.
+        وحالُ الدفع بجانب وسيلته — لمن أشعله (`show_payment_status`).
 
-        إيصالُ الموقع يُعطى لمن دفع ببطاقته، وهو ورقتُه أنّ مالَه قُبض. فوسيلةٌ
-        بلا حال تقول «بطاقة» ولا تقول أكان الدفعُ تمّ.
+        إيصالُ الموقع يُعطى لمن دفع ببطاقته، وهو ورقتُه أنّ مالَه قُبض. ومطفأٌ
+        افتراضًا: لم يكن على الإيصال قطّ، فلا يُضاف إلى إيصال متجرٍ لم يطلبه.
     --}}
-    @if (filled($order->payment_status))
+    @if ($show('tpl_show_payment_status', false) && filled($order->payment_status))
         <tr><td class="k">{{ __('حالة الدفع') }}</td><td class="l">{{ __($order->payment_status) }}</td></tr>
     @endif
     @if (($order->points_earned ?? 0) > 0)

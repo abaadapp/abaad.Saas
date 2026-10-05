@@ -65,6 +65,8 @@ class EveryKnobOnThePaperTurnsSomethingTest extends TestCase
          */
         'sale.show_phone',
         'sale.show_website',
+        // وحالُ الدفع سطرٌ على الشريط وحده كذلك — يقيسه الحارسُ نفسُه
+        'sale.show_payment_status',
     ];
 
     protected function setUp(): void

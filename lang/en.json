@@ -7349,7 +7349,6 @@
     "ربطُ رقم المتجر غير مفعّلٍ لحسابك — راجعنا لتفعيله.": "Connecting your store's number is not enabled for your account — contact us to enable it.",
     "اربط رقم متجرك أدناه — تخرج الرسائل منه وحده.": "Connect your store's number below — messages will be sent from it only.",
     "واتساب غير مربوط — اربط رقم متجرك لتخرج رسائلك منه. لا رسالةَ تخرج قبل ذلك.": "WhatsApp is not connected — connect your store's number to send messages from it. Nothing is sent until then.",
-    "اتركه فارغًا فيظهر النص الظاهر في الخانة بلغة الصفحة. ورقم الطلب وأصنافه ومبالغه يكتبها النظام.": "Leave it empty to show the text shown in the field, in the page's language. The order number, items and amounts are written by the system.",
     "للإيصال الإنجليزي — اتركه فارغًا فيُطبع السطر العربي كما كان": "For the English receipt — leave it empty to print the Arabic line as before",
     "للإيصال الإنجليزي — اتركه فارغًا فيُطبع التذييل كما كان": "For the English receipt — leave it empty to print the footer as before",
     "صفحة الشكر": "Thank-you page",
@@ -7360,5 +7359,7 @@
     "هاتف المتجر": "Store phone",
     "على الإيصال الحراري — من ملف النشاط": "On the thermal receipt — from the business profile",
     "عنوان المتجر الإلكتروني": "Online store address",
-    "على الإيصال الحراري — يظهر إن كان لمتجرك عنوانٌ منشور": "On the thermal receipt — shown if your store has a published address"
+    "على الإيصال الحراري — يظهر إن كان لمتجرك عنوانٌ منشور": "On the thermal receipt — shown if your store has a published address",
+    "اتركه فارغًا فيظهر النص الظاهر في الخانة بلغة الصفحة — والرسالة فارغةً لا تظهر. ورقم الطلب وأصنافه ومبالغه يكتبها النظام.": "Leave it empty to show the text shown in the field, in the page's language — an empty message is not shown. The order number, items and amounts are written by the system.",
+    "على الإيصال الحراري — بجانب وسيلة الدفع": "On the thermal receipt — next to the payment method"
 }

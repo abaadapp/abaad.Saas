@@ -386,6 +386,25 @@ class GoogleReviews
     }
 
     /**
+     * اختبارُ الاتّصال — بالمفتاح الملصوق الآن، أو بمفتاح هذا المتجر المحفوظ.
+     *
+     * ولا مفتاحَ لغيره يقع عليه: لا مفتاحَ لأبعاد، ولا مفتاحَ لمتجرٍ آخر. ومن
+     * لا مفتاحَ له يُقال له ذلك ولا يُنادى Google عنه.
+     *
+     * @return array{ok:bool, error:?string}
+     */
+    public static function testKey(int $businessId, ?string $submitted = null): array
+    {
+        $key = trim((string) $submitted) !== '' ? trim((string) $submitted) : self::ownKey($businessId);
+
+        if ($key === null) {
+            return ['ok' => false, 'error' => __('الصق مفتاحك من Google Cloud أوّلًا.')];
+        }
+
+        return GooglePlaces::verify($key);
+    }
+
+    /**
      * آخرُ أربعةِ أحرفٍ من المفتاح — ليعرف التاجر أيَّ مفتاحٍ حفظ.
      *
      * ولا يُرسل المفتاح إلى الشاشة كاملًا: صفحةُ الإعدادات تُفتح على شاشةٍ في

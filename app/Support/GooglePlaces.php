@@ -99,7 +99,7 @@ class GooglePlaces
         if (! $response->successful()) {
             return [
                 'ok' => false,
-                'error' => self::message($response->status(), (string) ($response->json('error.message') ?? ''), self::reason($response->json())),
+                'error' => self::message($response->status(), self::said($response->json('error.message'), $apiKey), self::reason($response->json())),
                 'results' => [],
             ];
         }
@@ -153,7 +153,54 @@ class GooglePlaces
             return ['ok' => true, 'error' => null, 'place' => self::shape($response->json() ?? [])];
         }
 
-        return self::fail(self::message($response->status(), (string) ($response->json('error.message') ?? ''), self::reason($response->json())));
+        return self::fail(self::message($response->status(), self::said($response->json('error.message'), $apiKey), self::reason($response->json())));
+    }
+
+    /**
+     * أيعمل هذا المفتاح على Places API (New)؟ — نداءٌ واحدٌ لا يُحتسب.
+     *
+     * بحثٌ بقناعِ المعرّفات وحدها (`places.id`): أرخصُ ما في Places API
+     * (New)، ولا يقرأ اسمًا ولا معدّلًا. فيعرف التاجر قبل أن يربط فرعًا أنّ
+     * مفتاحه وفوترته وقيوده سليمة — وسببُ الرفض يُقال باسمه.
+     *
+     * @return array{ok:bool, error:?string}
+     */
+    public static function verify(string $apiKey): array
+    {
+        try {
+            $response = Http::withHeaders([
+                'X-Goog-Api-Key' => $apiKey,
+                'X-Goog-FieldMask' => 'places.id',
+            ])->timeout(12)->acceptJson()->post(self::SEARCH_URL, [
+                'textQuery' => 'Muscat',
+                'regionCode' => self::REGION,
+                'maxResultCount' => 1,
+            ]);
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => __('تعذّر الوصول إلى Google. حاول بعد قليل.')];
+        }
+
+        if ($response->successful()) {
+            return ['ok' => true, 'error' => null];
+        }
+
+        return [
+            'ok' => false,
+            'error' => self::message($response->status(), self::said($response->json('error.message'), $apiKey), self::reason($response->json())),
+        ];
+    }
+
+    /**
+     * نصُّ Google في الخطأ — وقد مُحي منه المفتاح إن ورد فيه.
+     *
+     * الرسالةُ تُعرض للتاجر وتُكتب في التنبيه، وGoogle تقتبس الطلبَ أحيانًا.
+     * والمفتاحُ لا يُكتب في رسالةٍ تُقرأ على شاشةٍ في المحلّ.
+     */
+    private static function said(mixed $detail, string $apiKey): string
+    {
+        $detail = (string) ($detail ?? '');
+
+        return $apiKey === '' ? $detail : str_replace($apiKey, '••••', $detail);
     }
 
     /**

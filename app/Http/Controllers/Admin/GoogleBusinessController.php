@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\BranchGooglePlace;
+use App\Models\GoogleBusinessAccount;
 use App\Models\GoogleBusinessReview;
 use App\Support\Demo;
 use App\Support\GoogleBusiness;
@@ -32,6 +33,9 @@ class GoogleBusinessController extends Controller
 {
     private const STATE_KEY = 'google_business_state';
 
+    /** عمرُ طلب الإذن — من ضغط الزرّ إلى العودة من Google */
+    private const STATE_MINUTES = 10;
+
     private function bid(): int
     {
         return Demo::bid();
@@ -47,6 +51,11 @@ class GoogleBusinessController extends Controller
             /* حالُ التهيئة أوّلُ ما يُقرأ — ولا يُعرض زرٌّ يقود إلى خطأ */
             'configured' => GoogleBusiness::configured(),
             'connected' => $account !== null,
+            /* انقطع الإذنُ من جهة Google — فيُعرض «أعِد الربط» لا «لم يُربط بعد» */
+            'reconnect' => $account === null && GoogleBusiness::needsReconnect($bid),
+            'lastError' => $account === null
+                ? GoogleBusinessAccount::where('business_id', $bid)->value('last_error')
+                : null,
             'account' => $account ? [
                 'email' => $account->account_email,
                 'accountName' => $account->account_name,
@@ -75,28 +84,37 @@ class GoogleBusinessController extends Controller
     {
         if (! GoogleBusiness::configured()) {
             return back()->with('toast', [
-                'msg' => __('تكامل Google Business غير مهيّأ في أبعاد بعد.'), 'type' => 'danger',
+                'msg' => __('إدارة تقييمات Google غير متاحة على المنصّة بعد.'), 'type' => 'danger',
             ]);
         }
 
         $state = GoogleBusiness::newState();
-        $request->session()->put(self::STATE_KEY, $state);
+
+        /*
+         * والحالةُ تحمل المتجرَ والمستخدمَ ووقتَ الطلب — لا الكلمةَ وحدها.
+         *
+         * الكلمةُ وحدها تحمي من موقعٍ آخر، ولا تحمي من الجلسة نفسِها: من
+         * بدأ الربط في متجرٍ ثمّ بدّل المتجرَ في تبويبٍ آخر قبل أن يعود من
+         * Google، كان إذنُه يُحفظ على المتجر الذي صار فيه — فيقرأ متجرٌ
+         * تقييماتِ حسابِ متجرٍ آخر ويردّ باسمه.
+         */
+        $request->session()->put(self::STATE_KEY, [
+            'state' => $state,
+            'business' => $this->bid(),
+            'user' => $request->user()?->id,
+            'at' => now()->getTimestamp(),
+        ]);
 
         return redirect()->away(GoogleBusiness::authUrl($state));
     }
 
     public function callback(Request $request): RedirectResponse
     {
-        $expected = (string) $request->session()->pull(self::STATE_KEY, '');
+        // `pull` لا `get`: الحالةُ تُستعمل مرّةً واحدة، فلا يُعاد العنوانُ نفسُه
+        $pending = $request->session()->pull(self::STATE_KEY);
         $back = redirect()->route('admin.integrations.googleBusiness');
 
-        /*
-         * الحالةُ تُقارَن بـ`hash_equals` وتُشترط غيرَ فارغة.
-         *
-         * وفارغةٌ تساوي فارغةً لو قُورنت بـ`===` — فيمرّ من يصل إلى هذا
-         * الباب بلا أن يمرّ بصفحة الإذن أصلًا.
-         */
-        if ($expected === '' || ! hash_equals($expected, (string) $request->query('state'))) {
+        if (! $this->stateMatches($pending, (string) $request->query('state'), $request)) {
             return $back->with('toast', ['msg' => __('طلبُ الربط غير صالح — أعد المحاولة.'), 'type' => 'danger']);
         }
 
@@ -120,6 +138,33 @@ class GoogleBusinessController extends Controller
         GoogleBusiness::store($this->bid(), (array) $result['data'], $request->user());
 
         return $back->with('toast', ['msg' => __('تم ربط حساب Google بنجاح'), 'type' => 'success']);
+    }
+
+    /**
+     * أتعود هذه العودةُ إلى الطلب الذي بدأه هذا المستخدم في هذا المتجر؟
+     *
+     * ═══ وأربعةٌ معًا ═══
+     *
+     * الكلمةُ تُقارَن بـ`hash_equals` وتُشترط غيرَ فارغة — وفارغةٌ تساوي
+     * فارغةً لو قُورنت بـ`===`، فيمرّ من يصل إلى هذا الباب بلا أن يمرّ بصفحة
+     * الإذن أصلًا. والمتجرُ والمستخدمُ هما من بدأ الطلب. والوقتُ لم يتجاوز
+     * عمرَ الطلب: رابطُ عودةٍ قديمٌ لا يُستعمل بعد ساعات.
+     *
+     * @param  mixed  $pending  ما حُفظ في الجلسة عند `connect`
+     */
+    private function stateMatches(mixed $pending, string $given, Request $request): bool
+    {
+        if (! is_array($pending)) {
+            return false;
+        }
+
+        $expected = (string) ($pending['state'] ?? '');
+
+        return $expected !== ''
+            && hash_equals($expected, $given)
+            && (int) ($pending['business'] ?? 0) === $this->bid()
+            && ($pending['user'] ?? null) === $request->user()?->id
+            && now()->getTimestamp() - (int) ($pending['at'] ?? 0) <= self::STATE_MINUTES * 60;
     }
 
     public function disconnect(): RedirectResponse
@@ -174,7 +219,11 @@ class GoogleBusinessController extends Controller
             'account' => ['required', 'string', 'max:255'],
         ]);
 
-        if (! GoogleBusiness::for($this->bid())) {
+        // الفرعُ أوّلًا: فرعُ متجرٍ آخر يُردّ ٤٠٤ قبل أن يُسأل Google عن شيء
+        $target = $this->branch($branch);
+        $account = GoogleBusiness::for($this->bid());
+
+        if (! $account) {
             return back()->withErrors(['location' => __('اربط حساب Google أوّلًا.')]);
         }
 
@@ -192,7 +241,14 @@ class GoogleBusinessController extends Controller
             return back()->withErrors(['location' => __('هذا الموقع مربوطٌ بفرعٍ آخر.')]);
         }
 
-        GoogleBusiness::linkLocation($this->branch($branch), $data['location'], $data['account']);
+        /* والموقعُ من مواقع هذا الإذن كما تردّها Google — لا كما وصل في الطلب */
+        $owned = GoogleBusiness::ownedLocation($account, $data['account'], $data['location']);
+
+        if (! $owned['ok']) {
+            return back()->withErrors(['location' => $owned['error']]);
+        }
+
+        GoogleBusiness::linkLocation($target, $data['location'], $data['account']);
 
         return back()->with('toast', ['msg' => __('تم ربط الفرع بموقعه'), 'type' => 'success']);
     }

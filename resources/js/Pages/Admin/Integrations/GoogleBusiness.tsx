@@ -50,6 +50,9 @@ interface LocationRow {
 interface Props {
     configured: boolean;
     connected: boolean;
+    /** انقطع الإذنُ من جهة Google — يُعيده التاجر بنفسه */
+    reconnect?: boolean;
+    lastError?: string | null;
     account: {
         email: string | null;
         accountName: string | null;
@@ -76,7 +79,7 @@ function Stars({ value }: { value: number }) {
 }
 
 export default function GoogleBusinessPage() {
-    const { configured, connected, account, branches, reviews, alerts } =
+    const { configured, connected, reconnect = false, lastError = null, account, branches, reviews, alerts } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
@@ -103,17 +106,22 @@ export default function GoogleBusinessPage() {
                 <PageHeader
                     title={t('تقييمات Google')}
                     subtitle={t('اقرأ تقييماتك كلّها وردّ عليها باسم متجرك')}
-                    actions={<StatusPill state="progress" label="عند أبعاد" />}
+                    actions={<StatusPill state="progress" label="غير متاحة بعد" />}
                 />
                 <Gate
                     mark={<GoogleMapsMark size={80} />}
-                    title="إدارة تقييمات Google غير مهيّأة في أبعاد بعد"
+                    title="إدارة تقييمات Google غير متاحة على المنصّة بعد"
                     /*
                         والفرقُ بينها وبين «ربط خرائط Google» يُقال هنا: اسمان
                         متقاربان، ومن ظنّهما واحدًا يعود يبحث عمّا ربطه.
                     */
                     description="وهي غير «ربط خرائط Google»: تلك تقرأ المعدّل وعدد التقييمات، وهذه تفتح ملفّ متجرك لتقرأ تقييماته كلّها وتردّ عليها باسمك."
-                    note={t('راجعنا لتفعيلها — ولا شيء عليك أن تفعله حتى ذلك.')}
+                    /*
+                        وهذه حالُ المنصّة لا حالُ المتجر: عميلُ OAuth لأبعاد لم يُهيَّأ.
+                        فلا يُطلب من التاجر أن يراسل أحدًا — يظهر زرُّ الربط هنا
+                        وحده متى صارت متاحة، ويربط حسابه بنفسه.
+                    */
+                    note={t('متى أُتيحت سيظهر هنا زر «ربط حساب Google» لتربط حسابك بنفسك — لا شيء عليك أن تفعله الآن.')}
                 />
             </AdminLayout>
         );
@@ -132,21 +140,29 @@ export default function GoogleBusinessPage() {
                 <PageHeader
                     title={t('تقييمات Google')}
                     subtitle={t('اقرأ تقييماتك كلّها وردّ عليها باسم متجرك')}
-                    actions={<StatusPill state="idle" label="غير مربوط" />}
+                    actions={<StatusPill state={reconnect ? 'error' : 'idle'} label={reconnect ? 'انقطع الربط' : 'غير مربوط'} />}
                 />
+                {/*
+                    وانقطاعُ الإذن غيرُ «لم يُربط بعد»: سحبته Google أو انتهى، والتاجر
+                    يُعيده بنفسه من الزرّ نفسِه — لا يراسل أحدًا ليُعيده له.
+                */}
                 <Gate
                     mark={<GoogleMapsMark size={80} />}
-                    title="لم يُربط حساب Google بعد"
-                    description="ولا تُقرأ تقييمة واحدة قبله — الربط بإذنك على حسابك، ويُلغى متى شئت."
+                    title={reconnect ? 'انقطع ربط حساب Google' : 'لم يُربط حساب Google بعد'}
+                    description={
+                        reconnect
+                            ? 'انتهى الإذن أو سُحب من حساب Google. أعِد الربط بحسابك لتعود قراءة التقييمات والرد عليها.'
+                            : 'ولا تُقرأ تقييمة واحدة قبله — الربط بإذنك على حسابك، ويُلغى متى شئت.'
+                    }
                     action={
                         <Button asChild size="lg">
-                            <a href={route('admin.integrations.googleBusiness.connect')}>
-                                {t('ربط حساب Google Business')}
+                            <a href={route('admin.integrations.googleBusiness.connect')} data-testid="gbp-connect">
+                                {t(reconnect ? 'إعادة ربط حساب Google' : 'ربط حساب Google Business')}
                             </a>
                         </Button>
                     }
                     /* وخطأُ Google الأخير يُقال بنصّه: «لم تُسحب» لا تقول ما يُصلَح */
-                    note={account?.error}
+                    note={lastError ?? account?.error}
                 />
             </AdminLayout>
         );
@@ -205,9 +221,16 @@ export default function GoogleBusinessPage() {
 
                     {/* وخطأُ Google الأخير يُقال بنصّه: «لم تُسحب» لا تقول ما يُصلَح */}
                     {account?.error && (
-                        <p className="mt-3 rounded-[10px] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
-                            {account.error}
-                        </p>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[10px] bg-[#fef2f2] p-3">
+                            <p className="text-[13px] text-[#b91c1c]">{account.error}</p>
+                            {/* والإصلاحُ بيده: إعادةُ الإذن من حسابه هو */}
+                            <Button asChild size="sm" variant="outline">
+                                <a href={route('admin.integrations.googleBusiness.connect')} data-testid="gbp-reconnect">
+                                    <RefreshCw />
+                                    {t('إعادة ربط حساب Google')}
+                                </a>
+                            </Button>
+                        </div>
                     )}
                 </SettingsSection>
 

@@ -133,7 +133,14 @@ export default function PlatformSettings() {
             aiProvider?: { ready: boolean; name: string } | null;
             supportReach?: { reachable: number; total: number; ambiguous: number };
             /* خرائطُ Google — أعدادٌ لا مفاتيح: كلُّ تاجرٍ يربطها بمفتاحه */
-            googleHealth?: { shopsWithKey: number; linkedBranches: number; branches: number };
+            googleHealth?: {
+                shopsWithKey: number;
+                linkedBranches: number;
+                branches: number;
+                gbpConfigured?: boolean;
+                gbpConnected?: number;
+                gbpErrors?: number;
+            };
         }>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('general');
@@ -1058,6 +1065,30 @@ export default function PlatformSettings() {
                                     })}
                                 </li>
                             </ul>
+                        )}
+
+                        {/*
+                            وتقييماتُ Google (ملفُّ الأعمال) بابٌ آخر: عميلُ OAuth واحدٌ للمنصّة،
+                            وكلُّ تاجرٍ يأذن له من حسابه هو. فالمنصّةُ ترى أمهيّأٌ العميل،
+                            وكم متجرًا ربط، وكم انقطع — ولا رمزَ ولا زرَّ يربط عن أحد.
+                        */}
+                        {googleHealth && googleHealth.gbpConfigured !== undefined && (
+                            <div className="mt-6 border-t border-[var(--ui-border,#e8e8e8)] pt-5" data-testid="gbp-health">
+                                <h4 className="mb-2 text-[15px] font-bold text-[#111]">{t('تقييمات Google')}</h4>
+                                <ul className="space-y-1.5 text-[13px] text-[#374151]">
+                                    <li className={googleHealth.gbpConfigured ? '' : 'font-medium text-[#b91c1c]'}>
+                                        {googleHealth.gbpConfigured
+                                            ? t('عميل OAuth للمنصة مهيّأ — يربط كل تاجر حسابه بنفسه.')
+                                            : t('عميل OAuth للمنصة غير مهيّأ — اضبط GOOGLE_BUSINESS_CLIENT_ID وGOOGLE_BUSINESS_CLIENT_SECRET وGOOGLE_BUSINESS_REDIRECT على الخادم.')}
+                                    </li>
+                                    <li>{t(':n متجرًا ربط حسابه في Google.', { n: googleHealth.gbpConnected ?? 0 })}</li>
+                                    {(googleHealth.gbpErrors ?? 0) > 0 && (
+                                        <li className="text-[#b45309]">
+                                            {t(':n متجرًا آخر سحبٍ له تعثّر.', { n: googleHealth.gbpErrors ?? 0 })}
+                                        </li>
+                                    )}
+                                </ul>
+                            </div>
                         )}
                     </Card>
                 )}

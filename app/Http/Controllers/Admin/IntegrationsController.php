@@ -263,6 +263,26 @@ class IntegrationsController extends Controller
         return back()->with('toast', ['msg' => $on ? __('فُعّلت خرائط Google') : __('أُطفئت خرائط Google'), 'type' => $on ? 'success' : 'warning']);
     }
 
+    /**
+     * اختبارُ المفتاح — بمفتاح هذا المتجر وحده، والردُّ نعم أو سببُ الرفض.
+     *
+     * ويُقبل مفتاحٌ ملصوقٌ لم يُحفظ بعد: من يختبر قبل أن يحفظ لا يكتب فوق
+     * مفتاحٍ يعمل مفتاحًا لا يعمل. ولا يعود المفتاحُ في الردّ بحال.
+     */
+    public function testGoogleKey(Request $request)
+    {
+        $request->validate([
+            'google_api_key' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $result = GoogleReviews::testKey($this->bid(), $request->input('google_api_key'));
+
+        return response()->json([
+            'ok' => $result['ok'],
+            'message' => $result['ok'] ? __('المفتاح يعمل — Places API (New) تقبله.') : $result['error'],
+        ]);
+    }
+
     public function forgetGoogleKey()
     {
         GoogleReviews::storeKey($this->bid(), null);

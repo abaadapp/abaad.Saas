@@ -72,6 +72,35 @@ class TheShopAnswersItsOwnReviewsTest extends TestCase
 
     /* ═══════════════ أدوات ═══════════════ */
 
+    /**
+     * طلبُ إذنٍ محفوظٌ في الجلسة كما يحفظه `connect`: الكلمةُ والمتجرُ
+     * والمستخدمُ ووقتُ الطلب — لا الكلمةُ وحدها.
+     *
+     * @return array<string, mixed>
+     */
+    private function pending(string $state): array
+    {
+        return ['google_business_state' => [
+            'state' => $state,
+            'business' => $this->shop->id,
+            'user' => $this->owner->id,
+            'at' => now()->getTimestamp(),
+        ]];
+    }
+
+    /** مواقعُ الحساب كما تردّها Google لهذا الإذن */
+    private function fakeOwnedLocations(): void
+    {
+        Http::fake([
+            'mybusinessaccountmanagement.googleapis.com/*' => Http::response([
+                'accounts' => [['name' => self::ACCOUNT, 'accountName' => 'ورد أبعاد']],
+            ], 200),
+            'mybusinessbusinessinformation.googleapis.com/*' => Http::response([
+                'locations' => [['name' => self::LOCATION, 'title' => 'ورد أبعاد — الخوض']],
+            ], 200),
+        ]);
+    }
+
     private function connected(?string $refresh = 'refresh-token-value'): GoogleBusinessAccount
     {
         return GoogleBusinessAccount::create([
@@ -179,7 +208,7 @@ class TheShopAnswersItsOwnReviewsTest extends TestCase
             'access_token' => 'a', 'refresh_token' => 'r', 'expires_in' => 3600,
         ], 200)]);
 
-        $this->withSession(['google_business_state' => 'the-real-state'])
+        $this->withSession($this->pending('the-real-state'))
             ->get(route('admin.integrations.googleBusiness.callback', ['code' => 'c', 'state' => 'forged']))
             ->assertRedirect();
 
@@ -210,7 +239,7 @@ class TheShopAnswersItsOwnReviewsTest extends TestCase
     /** ومن ألغى الإذن عند Google يُقال له ذلك لا «عطل» */
     public function test_a_denied_consent_is_not_reported_as_a_failure(): void
     {
-        $this->withSession(['google_business_state' => 'st'])
+        $this->withSession($this->pending('st'))
             ->get(route('admin.integrations.googleBusiness.callback', ['state' => 'st', 'error' => 'access_denied']))
             ->assertRedirect();
 
@@ -229,7 +258,7 @@ class TheShopAnswersItsOwnReviewsTest extends TestCase
             'scope' => GoogleBusiness::SCOPE,
         ], 200)]);
 
-        $this->withSession(['google_business_state' => 'st'])
+        $this->withSession($this->pending('st'))
             ->get(route('admin.integrations.googleBusiness.callback', ['state' => 'st', 'code' => 'the-code']))
             ->assertRedirect();
 
@@ -339,6 +368,7 @@ class TheShopAnswersItsOwnReviewsTest extends TestCase
     public function test_a_branch_is_mapped_to_its_location(): void
     {
         $this->connected();
+        $this->fakeOwnedLocations();
 
         $this->post(route('admin.integrations.googleBusiness.branch.link', $this->branch->id), [
             'location' => self::LOCATION, 'account' => self::ACCOUNT,

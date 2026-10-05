@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\Branch;
 use App\Models\BranchGooglePlace;
 use App\Models\Business;
+use App\Models\GoogleBusinessAccount;
 use App\Models\Invoice;
 use App\Models\Plan;
 use App\Models\PurgeRun;
@@ -21,6 +22,8 @@ use App\Support\BusinessTypes;
 use App\Support\CrmAssistant;
 use App\Support\CrmWhatsApp;
 use App\Support\Demo;
+use App\Support\GoogleBusiness;
+use App\Support\GoogleReviews;
 use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
@@ -93,6 +96,30 @@ class PageController extends Controller
     }
 
     /* ------------------------------ الشركات ------------------------------ */
+
+    /**
+     * Google لهذا المتجر كما تراه المنصّة — حالٌ لا إعداد.
+     *
+     * يربطه التاجر بنفسه: مفتاحُ الخرائط من مشروعه، وحسابُ ملفّ الأعمال
+     * بإذنه. والمنصّةُ ترى أمربوطٌ هو أم لا، وأين انقطع — ولا ترى مفتاحًا
+     * ولا آخرَ أحرفه ولا رمزًا، ولا زرَّ فيها يربط عن التاجر.
+     *
+     * @return array<string, mixed>
+     */
+    private static function googleView(Business $business): array
+    {
+        $branches = Branch::where('business_id', $business->id)->pluck('id');
+
+        return [
+            'maps' => [
+                'hasKey' => GoogleReviews::keyHint($business->id) !== null,
+                'enabled' => GoogleReviews::enabled($business->id),
+                'linkedBranches' => BranchGooglePlace::query()->linked()->whereIn('branch_id', $branches)->count(),
+                'branches' => $branches->count(),
+            ],
+            'business' => ['configured' => GoogleBusiness::configured()] + GoogleBusiness::status($business->id),
+        ];
+    }
 
     public function businessesCreate(): Response
     {
@@ -172,6 +199,7 @@ class PageController extends Controller
             'whatsapp' => WhatsAppController::businessView($model),
             // ووسيلة استعادته: العنوان وحاله — أوّل ما يُسأل عنه حين يتّصل صاحبه
             'recovery' => RecoveryController::view($model),
+            'google' => self::googleView($model),
         ]);
     }
 
@@ -498,6 +526,13 @@ class PageController extends Controller
                     ->distinct()->count('business_id'),
                 'linkedBranches' => BranchGooglePlace::query()->linked()->count(),
                 'branches' => Branch::count(),
+                /*
+                 * وملفُّ الأعمال (التقييمات والردّ): عميلُ OAuth للمنصّة مهيّأ؟
+                 * وكم متجرًا ربط حسابه، وكم انقطع إذنُه. أعدادٌ لا رموز.
+                 */
+                'gbpConfigured' => GoogleBusiness::configured(),
+                'gbpConnected' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('refresh_token')->count(),
+                'gbpErrors' => GoogleBusinessAccount::whereNull('revoked_at')->whereNotNull('last_error')->count(),
             ],
             /*
              * ومن يستطيع أن يكلّمنا على واتساب — عددٌ محسوبٌ لا وعد.

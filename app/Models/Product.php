@@ -72,6 +72,12 @@ class Product extends Model
      * مرتّبةٌ بموضعها ثمّ بمعرّفها: ترتيبان متساويان يجب أن يُقرآ بالترتيب
      * نفسه في كلّ مرّة، وإلّا تحرّكت الصور في الشاشة بلا سبب.
      */
+    /** الآراءُ فيه — كلُّها؛ وما يُعرض على صفحته `Review::forProductPage` */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
     public function images(): HasMany
     {
         return $this->hasMany(ProductImage::class)->orderBy('sort_order')->orderBy('id');

@@ -29,6 +29,12 @@ interface Review {
     at: string | null;
     /** كتبه الزبونُ بيده من رابط الدعوة — لا سجّله المتجر عنه */
     byCustomer: boolean;
+    /** رأيٌ في الطلب أو في صنفٍ بعينه — انظر `Review::TYPE_*` */
+    kind: 'order' | 'product';
+    /** رقمُ الطلب الذي كُتب عنه — أو null لما سُجّل باليد */
+    order: string | null;
+    /** شراءٌ موثَّق: رأيُ صنفٍ كُتب عن بندٍ اشتُري */
+    verified: boolean;
 }
 
 interface Props {
@@ -132,7 +138,29 @@ export default function Reviews() {
                 </>
             ),
         },
-        { key: 'product', header: 'المنتج', cell: (r) => r.product ?? '—' },
+        {
+            key: 'product',
+            header: 'المنتج',
+            /*
+                ورأيُ الصنف يقول عن أيّ صنفٍ كُتب وفي أيّ طلب — وهو ما يحتاجه
+                صاحبُ المحلّ ليعرف ما الذي قيل فيه. ورأيُ الطلب يبقى كما كان.
+            */
+            cell: (r) => (
+                <>
+                    <span>{r.product ?? '—'}</span>
+                    {r.kind === 'product' && (
+                        <span className="mt-0.5 block text-[11px] font-medium text-[#047857]" data-testid={`review-${r.id}-product`}>
+                            {t(r.verified ? 'رأيٌ في الصنف · شراء موثّق' : 'رأيٌ في الصنف')}
+                        </span>
+                    )}
+                    {r.order && (
+                        <span className="block text-[12px] text-[#9ca3af]">
+                            {t('الطلب')} <span dir="ltr">{r.order}</span>
+                        </span>
+                    )}
+                </>
+            ),
+        },
         { key: 'rating', header: 'التقييم', cell: (r) => <Stars value={r.rating} /> },
         {
             key: 'comment',
@@ -213,6 +241,14 @@ export default function Reviews() {
             label: 'كل التقييمات',
             param: 'rating',
             options: [5, 4, 3, 2, 1].map((n) => ({ label: `${n} ★`, value: String(n) })),
+        },
+        {
+            label: 'كل الأنواع',
+            param: 'type',
+            options: [
+                { label: 'عن الطلب والمتجر', value: 'order' },
+                { label: 'عن صنف', value: 'product' },
+            ],
         },
     ];
 

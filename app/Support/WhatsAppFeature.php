@@ -53,15 +53,37 @@ class WhatsAppFeature
     }
 
     /**
+     * هل يُرسل هذا المتجر من رقم أبعاد المشترك أصلًا؟
+     *
+     * مفتوحٌ لكلّ متجرٍ افتراضًا، ويُغلقه مديرُ المنصّة لمتجرٍ بعينه. والعمودُ
+     * الغائب يُقرأ مفتوحًا: متجرٌ يُنشأ في الذاكرة لم يُغلق عنه شيء — وما
+     * يُغلق يُكتب `false` صريحًا.
+     */
+    public static function canUseShared(Business $business): bool
+    {
+        return $business->whatsapp_shared_allowed === null || (bool) $business->whatsapp_shared_allowed;
+    }
+
+    /**
      * الوضع الفعّال — وهو غير الوضع المحفوظ.
      *
      * متجرٌ اختار رقمه ثمّ سُحبت منه الميزة يبقى في صفّه `business_own`؛
      * والوصلة لا تُحذف ولا يُعبَث بالعمود. لكنّه لا يُرسل من رقمه، ولا
      * يُدفَع إلى الرقم المشترك بصمت — يقف. وسحبُ إذنٍ لا يُتلف بيانات:
      * إعادةُ المنح تُعيد كلّ شيء كما كان.
+     *
+     * ═══ ومتجرٌ أُغلق عنه رقمُ أبعاد على رقمه وحده ═══
+     *
+     * أيًّا كان المحفوظُ في صفّه. فصفٌّ بقي `abaad_shared` منذ أُنشئ — وهو
+     * حالُ كلّ متجرٍ لم يربط رقمه — لا يُرجعه إلى رقم أبعاد. والوضعُ الخاصّ
+     * بلا وصلةٍ يعني «غير مربوط»: لا رسالة حتّى يربط رقمه.
      */
     public static function effectiveMode(Business $business): string
     {
+        if (! self::canUseShared($business)) {
+            return WhatsAppMode::BUSINESS_OWN;
+        }
+
         if ($business->whatsapp_mode === WhatsAppMode::BUSINESS_OWN && self::canUseOwnNumber($business)) {
             return WhatsAppMode::BUSINESS_OWN;
         }
@@ -138,6 +160,9 @@ class WhatsAppFeature
                  * ما عليه أن يفعله، أو حاول ما لا يملكه.
                  */
                 fix: match (true) {
+                    /* ومن أُغلق عنه رقمُ أبعاد لا يُدَلّ عليه — ذاك بابٌ لا يُفتح له */
+                    $own && ! $ownAllowed && ! self::canUseShared($business) => 'ربطُ رقم المتجر غير مفعّلٍ لحسابك — راجعنا لتفعيله.',
+                    $own && ! self::canUseShared($business) => 'اربط رقم متجرك أدناه — تخرج الرسائل منه وحده.',
                     // سُحبت الميزة وهو عليها: يُقال ما جرى، ويُدَلّ على المخرج
                     $own && ! $ownAllowed => 'ميزةُ رقم المتجر سُحبت من حسابك — بدّل الإرسال إلى رقم أبعاد أدناه، أو راجعنا لإعادتها.',
                     $own => 'اربط رقم متجرك أدناه — أو بدّل الإرسال إلى رقم أبعاد.',

@@ -54,6 +54,11 @@ interface Props {
     link: WhatsappLink;
     config: EmbeddedConfig;
     mayManage: boolean;
+    /**
+     * أيُرسل المتجر من رقم أبعاد ما دام رقمُه غيرَ مربوط؟ — مفتوحٌ افتراضًا.
+     * ومن أُغلق عنه لا يُقال له إنّ رسائله تخرج من رقم أبعاد: لا تخرج.
+     */
+    sharedAllowed?: boolean;
 }
 
 /**
@@ -66,7 +71,7 @@ interface Props {
  * ضغطةً: لا حساب مطوّرين، ولا رمزٌ دائمٌ يُصنع بيد التاجر ويُلصق في حقلٍ
  * يمرّ بالمتصفّح.
  */
-export default function WhatsappLinkCard({ link, config, mayManage }: Props) {
+export default function WhatsappLinkCard({ link, config, mayManage, sharedAllowed = true }: Props) {
     const t = useTranslate();
     const [sending, setSending] = useState(false);
     /* نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog */
@@ -116,7 +121,10 @@ export default function WhatsappLinkCard({ link, config, mayManage }: Props) {
             >
                 {state === 'connected' && t('رقمك مربوط، والرسائل تخرج منه.')}
                 {state === 'connecting' && t('تمّ التفويض — وحسابك لم يُظهر رقمًا بعد. تكتمل عادةً خلال دقائق.')}
-                {state === 'disconnected' && t('لم يُربط رقمٌ بعد — تخرج رسائلك من رقم أبعاد المشترك.')}
+                {state === 'disconnected' &&
+                    (sharedAllowed
+                        ? t('لم يُربط رقمٌ بعد — تخرج رسائلك من رقم أبعاد المشترك.')
+                        : t('واتساب غير مربوط — اربط رقم متجرك لتخرج رسائلك منه. لا رسالةَ تخرج قبل ذلك.'))}
                 {state === 'reauthorization_required' &&
                     (link.alert_days
                         ? t('ينتهي تفويض واتساب خلال أقل من :d يومًا — جدّده قبل أن تقف الرسائل.', {

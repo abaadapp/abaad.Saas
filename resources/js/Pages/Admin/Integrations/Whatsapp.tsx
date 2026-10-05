@@ -32,6 +32,8 @@ export interface Automation {
         phone_number_id?: string | null;
     } | null;
     shared_active: boolean;
+    /** أيُرسل متجرك من رقم أبعاد أصلًا؟ — ومن أُغلق عنه لا يُعرض له زرُّه */
+    shared_allowed: boolean;
     /** ما تحتاجه الشاشةُ لتفتح نافذة ميتا — ولا سرَّ فيه */
     embedded: EmbeddedConfig;
     /** حالُ الربط بحالاتها الستّ — من الخادم لا تُستنتج هنا */
@@ -120,7 +122,11 @@ export default function IntegrationsWhatsapp() {
         );
     }
 
-    const onOwn = automation.mode === 'business_own';
+    /*
+        والوضعُ الفعّال لا المحفوظ: من أُغلق عنه رقمُ أبعاد على رقمه وإن بقي
+        صفُّه `abaad_shared` — فلا يُقال له «تخرج الرسائل من رقم أبعاد».
+    */
+    const onOwn = automation.effective_mode === 'business_own';
 
     return (
         <AdminLayout title="واتساب بزنس">
@@ -162,6 +168,7 @@ export default function IntegrationsWhatsapp() {
                         link={automation.link}
                         config={automation.embedded}
                         mayManage={automation.may_manage}
+                        sharedAllowed={automation.shared_allowed}
                     />
                 )}
 
@@ -233,11 +240,13 @@ export default function IntegrationsWhatsapp() {
                         icon={Smartphone}
                         status={<StatusPill state="error" label="لا تخرج رسالة" />}
                     >
-                        <PageActions>
-                            <Button type="button" onClick={() => setMode('abaad_shared')}>
-                                {t('أرسل عبر أبعاد')}
-                            </Button>
-                        </PageActions>
+                        {automation.shared_allowed && (
+                            <PageActions>
+                                <Button type="button" onClick={() => setMode('abaad_shared')}>
+                                    {t('أرسل عبر أبعاد')}
+                                </Button>
+                            </PageActions>
+                        )}
                     </SettingsSection>
                 )}
 
@@ -288,13 +297,16 @@ export default function IntegrationsWhatsapp() {
                                     >
                                         {t('فصل الرقم')}
                                     </Button>
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={() => setMode(onOwn ? 'abaad_shared' : 'business_own')}
-                                    >
-                                        {t(onOwn ? 'أرسل عبر أبعاد بدلًا منه' : 'أرسل من رقم متجري')}
-                                    </Button>
+                                    {/* ومن أُغلق عنه رقمُ أبعاد لا زرَّ له إليه */}
+                                    {(automation.shared_allowed || ! onOwn) && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => setMode(onOwn ? 'abaad_shared' : 'business_own')}
+                                        >
+                                            {t(onOwn ? 'أرسل عبر أبعاد بدلًا منه' : 'أرسل من رقم متجري')}
+                                        </Button>
+                                    )}
                                 </PageActions>
                             </>
                         ) : (

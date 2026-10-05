@@ -75,7 +75,9 @@ class WhatsAppController extends Controller
             'own_allowed' => $ownAllowed,
             // معرّفات وصلة المحلّ تُعرض له: هي حسابه. والرمز لا يُعرض لأحد
             'own_connection' => WhatsAppConnections::publicView($own, withIds: true),
-            'shared_active' => WhatsAppConnections::platform() !== null,
+            /* ومن أُغلق عنه رقمُ أبعاد لا يُعرض له متاحًا — ولا يُعرض زرُّه */
+            'shared_allowed' => WhatsAppFeature::canUseShared($business),
+            'shared_active' => WhatsAppFeature::canUseShared($business) && WhatsAppConnections::platform() !== null,
 
             /*
              * ═══ التسجيل المدمج: ما تحتاجه الشاشة لتفتح نافذة ميتا ═══
@@ -181,6 +183,16 @@ class WhatsAppController extends Controller
         $data = $request->validate([
             'mode' => ['required', Rule::in(WhatsAppMode::ALL)],
         ]);
+
+        /*
+         * ومن أُغلق عنه رقمُ أبعاد لا يفتحه بطلبٍ يكتبه بيده.
+         *
+         * الزرُّ لا يظهر له، والبابُ يُغلق هنا لا في الشاشة: من يعرف العنوان
+         * يُرسل `abaad_shared` بلا زرّ.
+         */
+        if ($data['mode'] === WhatsAppMode::ABAAD_SHARED && ! WhatsAppFeature::canUseShared($business)) {
+            return back()->withErrors(['mode' => __('الإرسال عبر رقم أبعاد غير متاحٍ لحسابك — اربط رقم متجرك.')]);
+        }
 
         if ($data['mode'] === WhatsAppMode::BUSINESS_OWN) {
             if (! WhatsAppFeature::canUseOwnNumber($business)) {
@@ -311,7 +323,8 @@ class WhatsAppController extends Controller
             ]);
         }
 
-        if ($business->whatsapp_mode === WhatsAppMode::BUSINESS_OWN) {
+        // ومن أُغلق عنه رقمُ أبعاد يبقى على رقمه غيرَ مربوط — لا يُرجَع إليه
+        if ($business->whatsapp_mode === WhatsAppMode::BUSINESS_OWN && WhatsAppFeature::canUseShared($business)) {
             $business->update(['whatsapp_mode' => WhatsAppMode::ABAAD_SHARED]);
         }
 

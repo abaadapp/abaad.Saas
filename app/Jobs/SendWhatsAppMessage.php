@@ -7,6 +7,7 @@ use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessage;
 use App\Support\MetaWhatsAppClient;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppQuota;
 use App\Support\WhatsAppStatus;
@@ -76,16 +77,32 @@ class SendWhatsAppMessage implements ShouldQueue
             return;
         }
 
-        // الوصلة قد تكون انقطعت بين الحجز والتنفيذ — تُعاد قراءتها لا تُفترض
-        if (! $connection || ! $connection->isUsable()) {
-            $current = WhatsAppConnections::resolve($business);
+        /*
+         * الوصلةُ تُعاد قراءتها وقتَ التنفيذ — لا تُصدَّق كما حُجزت.
+         *
+         * كانت تُعاد قراءتها إن انقطعت وحدها. فرسالةٌ حُجزت على رقم أبعاد ثمّ
+         * أُغلق رقمُ أبعاد عن متجرها كانت تخرج منه بعد الإغلاق: الوصلةُ صالحةٌ
+         * عند ميتا، والوظيفةُ لا تسأل أهي ما زالت **له**. ومحاولاتُ الطابور
+         * الثلاث كلُّها تمرّ من هنا — فالإعادةُ لا تجد بابًا آخر.
+         *
+         * فالسؤالُ الآن «بأيّ وصلةٍ يُرسل هذا المتجر الآن؟» — وجوابُه من
+         * `resolve` وحدها. ولا جوابَ يعني لا رسالة.
+         *
+         * ═══ ولا تعبر رسالةٌ من وضعٍ إلى وضع ═══
+         *
+         * رسالةٌ قُرّرت على رقم أبعاد — بقالبه وحصّته — لا تخرج من رقم المحلّ
+         * إن ربطه بعدها، ولا العكس: تقف بسببها. وداخل الوضع نفسِه تُبدَّل
+         * الوصلةُ بالحاليّة كما كانت تُبدَّل.
+         */
+        $current = WhatsAppConnections::resolve($business);
 
-            if (! $current) {
-                $this->stop($message, WhatsAppStatus::SKIPPED, WhatsAppStatus::SKIP_NO_CONNECTION);
+        if (! $current || $message->source_mode !== WhatsAppFeature::effectiveMode($business)) {
+            $this->stop($message, WhatsAppStatus::SKIPPED, WhatsAppStatus::SKIP_NO_CONNECTION);
 
-                return;
-            }
+            return;
+        }
 
+        if (! $connection || $connection->id !== $current->id) {
             $connection = $current;
             $message->whatsapp_connection_id = $connection->id;
         }

@@ -7341,5 +7341,12 @@
     "وصلنا رأيك في هذا الصنف": "We received your review of this product",
     "رأيك في :name": "Your review of :name",
     "واكتب كلمةً إن أحببت — وهي ما قد يُعرض على صفحة الصنف": "Add a few words if you like — this is what may appear on the product page",
-    "أرسِل رأيي في هذا الصنف": "Send my review of this product"
+    "أرسِل رأيي في هذا الصنف": "Send my review of this product",
+    "الإرسال عبر رقم أبعاد": "Sending via Abaad's number",
+    "الإرسال عبر رقم أبعاد المشترك": "Sending via Abaad's shared number",
+    "مسموحٌ لكل متجر افتراضًا — وإطفاؤه يجعله على رقمه وحده: يربطه فيُرسل منه، وإلا فلا رسالة. ولا يمسّ رقم أبعاد ولا غيره": "Allowed for every store by default — turning it off puts the store on its own number only: once connected it sends from it, otherwise nothing is sent. It does not touch Abaad's number or any other store",
+    "الإرسال عبر رقم أبعاد غير متاحٍ لحسابك — اربط رقم متجرك.": "Sending via Abaad's number is not available for your account — connect your store's number.",
+    "ربطُ رقم المتجر غير مفعّلٍ لحسابك — راجعنا لتفعيله.": "Connecting your store's number is not enabled for your account — contact us to enable it.",
+    "اربط رقم متجرك أدناه — تخرج الرسائل منه وحده.": "Connect your store's number below — messages will be sent from it only.",
+    "واتساب غير مربوط — اربط رقم متجرك لتخرج رسائلك منه. لا رسالةَ تخرج قبل ذلك.": "WhatsApp is not connected — connect your store's number to send messages from it. Nothing is sent until then."
 }

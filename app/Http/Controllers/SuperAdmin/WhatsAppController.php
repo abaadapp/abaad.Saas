@@ -8,6 +8,7 @@ use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessagePack;
 use App\Support\Activity;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
@@ -271,6 +272,11 @@ class WhatsAppController extends Controller
             'whatsapp_enabled' => ['sometimes', 'boolean'],
             'whatsapp_own_allowed' => ['sometimes', 'boolean'],
             /*
+             * هل يُرسل من رقم أبعاد المشترك — وإغلاقُه يجعله على رقمه وحده.
+             * انظر `WhatsAppFeature::canUseShared`.
+             */
+            'whatsapp_shared_allowed' => ['sometimes', 'boolean'],
+            /*
              * الحدّ: فارغٌ يعني «افتراضيّ المنصّة»، و‎-1 بلا حدّ.
              *
              * ولا تُنسخ قيمة الافتراضيّ هنا: لو نُسخت لَما غيّرها تعديلُ
@@ -280,7 +286,7 @@ class WhatsAppController extends Controller
             'whatsapp_mode' => ['sometimes', Rule::in(WhatsAppMode::ALL)],
         ]);
 
-        $before = $business->only(['whatsapp_enabled', 'whatsapp_own_allowed', 'whatsapp_monthly_limit', 'whatsapp_mode']);
+        $before = $business->only(['whatsapp_enabled', 'whatsapp_own_allowed', 'whatsapp_shared_allowed', 'whatsapp_monthly_limit', 'whatsapp_mode']);
 
         /*
          * وضعٌ خاصٌّ بلا إذنٍ لا يُكتب.
@@ -307,6 +313,7 @@ class WhatsAppController extends Controller
         $labels = [
             'whatsapp_enabled' => 'تفعيل واتساب',
             'whatsapp_own_allowed' => 'صلاحية الرقم الخاص',
+            'whatsapp_shared_allowed' => 'الإرسال عبر رقم أبعاد',
             'whatsapp_monthly_limit' => 'حدّ الرسائل الشهري',
             'whatsapp_mode' => 'وضع الإرسال',
         ];
@@ -373,7 +380,10 @@ class WhatsAppController extends Controller
         return [
             'enabled' => (bool) $business->whatsapp_enabled,
             'mode' => $business->whatsapp_mode,
+            /* والفعّالُ ما يُقرأ: من أُغلق عنه رقمُ أبعاد على رقمه وإن بقي صفُّه `abaad_shared` */
+            'effective_mode' => WhatsAppFeature::effectiveMode($business),
             'own_allowed' => (bool) $business->whatsapp_own_allowed,
+            'shared_allowed' => WhatsAppFeature::canUseShared($business),
             'limit_override' => $business->whatsapp_monthly_limit,
             'platform_default' => WhatsAppQuota::platformDefault(),
             'usage' => WhatsAppQuota::snapshot($business),

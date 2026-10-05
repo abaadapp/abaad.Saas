@@ -19,6 +19,8 @@ class Business extends Model
         'boutiques_enabled' => 'boolean',
         // أيستقبل طلباتِ هدايا في متجره الإلكترونيّ؟ — يفتحه مديرُ المنصّة (`Store\GiftOrders`)
         'gift_orders_enabled' => 'boolean',
+        // أيُرسل من رقم أبعاد المشترك؟ — يُغلقه مديرُ المنصّة (`WhatsAppFeature::canUseShared`)
+        'whatsapp_shared_allowed' => 'boolean',
     ];
 
     /**

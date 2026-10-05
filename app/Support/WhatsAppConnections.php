@@ -54,7 +54,29 @@ class WhatsAppConnections
             ? self::forBusiness($business->id)
             : self::platform();
 
-        return $connection && $connection->isUsable() ? $connection : null;
+        if (! $connection || ! $connection->isUsable()) {
+            return null;
+        }
+
+        /*
+         * ═══ وما يخرج من هنا يُقاس بصاحبه مرّةً ثانية ═══
+         *
+         * متجرٌ أُغلق عنه رقمُ أبعاد لا تُرجَع له وصلةُ منصّةٍ أبدًا، ولا
+         * يُرجَع لمتجرٍ وصلةُ متجرٍ غيره. و`effectiveMode` تمنع ذلك اليوم —
+         * وهذا السطرُ لا يثق بأنّها تبقى كذلك: من يُعدّلها غدًا لا يفتح
+         * بابًا مغلقًا بصمت.
+         */
+        $platform = $connection->owner_type === WhatsAppMode::OWNER_PLATFORM;
+
+        if ($platform && ! WhatsAppFeature::canUseShared($business)) {
+            return null;
+        }
+
+        if (! $platform && (int) $connection->business_id !== (int) $business->id) {
+            return null;
+        }
+
+        return $connection;
     }
 
     /**

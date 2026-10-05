@@ -11,7 +11,11 @@ import { useTranslate } from '@/lib/i18n';
 export interface BusinessWhatsApp {
     enabled: boolean;
     mode: string;
+    /** الوضعُ الذي يُرسل به فعلًا — من أُغلق عنه رقمُ أبعاد على رقمه وإن بقي صفُّه `abaad_shared` */
+    effective_mode: string;
     own_allowed: boolean;
+    /** أيُرسل من رقم أبعاد المشترك؟ — انظر `WhatsAppFeature::canUseShared` */
+    shared_allowed: boolean;
     limit_override: number | null;
     platform_default: number;
     usage: {
@@ -56,6 +60,7 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
     const form = useForm({
         whatsapp_enabled: data.enabled,
         whatsapp_own_allowed: data.own_allowed,
+        whatsapp_shared_allowed: data.shared_allowed,
         // فارغٌ يعني «افتراضي المنصّة» — لا صفرًا، والصفر يعني المنع
         whatsapp_monthly_limit: data.limit_override === null ? '' : String(data.limit_override),
     });
@@ -84,7 +89,7 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                 <div className="flex justify-between gap-3">
                     <dt className="text-[#6b7280]">{t('وضع الإرسال')}</dt>
                     <dd className="font-medium text-[#111]">
-                        {t(data.mode === 'business_own' ? 'رقم المتجر' : 'رقم أبعاد')}
+                        {t(data.effective_mode === 'business_own' ? 'رقم المتجر' : 'رقم أبعاد')}
                     </dd>
                 </div>
                 <div className="flex justify-between gap-3">
@@ -129,6 +134,12 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                     onChange={(v) => form.setData('whatsapp_own_allowed', v)}
                     label="صلاحية ربط رقمه الخاص"
                     hint="ممنوحة لكل متجر افتراضًا — وسحبها يوقف الإرسال من رقمه ولا يحذف وصلته"
+                />
+                <Toggle
+                    on={form.data.whatsapp_shared_allowed}
+                    onChange={(v) => form.setData('whatsapp_shared_allowed', v)}
+                    label="الإرسال عبر رقم أبعاد المشترك"
+                    hint="مسموحٌ لكل متجر افتراضًا — وإطفاؤه يجعله على رقمه وحده: يربطه فيُرسل منه، وإلا فلا رسالة. ولا يمسّ رقم أبعاد ولا غيره"
                 />
                 <Field
                     label={t('الحد الشهري لهذا المتجر')}

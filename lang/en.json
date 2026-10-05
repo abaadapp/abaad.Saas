@@ -7361,5 +7361,15 @@
     "عنوان المتجر الإلكتروني": "Online store address",
     "على الإيصال الحراري — يظهر إن كان لمتجرك عنوانٌ منشور": "On the thermal receipt — shown if your store has a published address",
     "اتركه فارغًا فيظهر النص الظاهر في الخانة بلغة الصفحة — والرسالة فارغةً لا تظهر. ورقم الطلب وأصنافه ومبالغه يكتبها النظام.": "Leave it empty to show the text shown in the field, in the page's language — an empty message is not shown. The order number, items and amounts are written by the system.",
-    "على الإيصال الحراري — بجانب وسيلة الدفع": "On the thermal receipt — next to the payment method"
+    "على الإيصال الحراري — بجانب وسيلة الدفع": "On the thermal receipt — next to the payment method",
+    "زادت :pct عن الفترة السابقة": "Increased :pct from the previous period",
+    "انخفضت :pct عن الفترة السابقة": "Decreased :pct from the previous period",
+    "لم تتغير عن الفترة السابقة": "No change from the previous period",
+    "جديد في هذه الفترة": "New in this period",
+    "لا مقارنة مع الفترة السابقة": "No comparison with the previous period",
+    "أكبر سبب للزيادة": "Biggest reason for the increase",
+    "أكبر سبب للانخفاض": "Biggest reason for the decrease",
+    "لا يوجد تغير ملحوظ عن الفترة السابقة": "No notable change from the previous period",
+    "تكاليف التشغيل": "Operating costs",
+    "تشمل الموظفين والمصروفات التشغيلية والإهلاك": "Includes employee costs, operating expenses and depreciation"
 }

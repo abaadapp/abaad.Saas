@@ -23,6 +23,7 @@ import {
     Hourglass,
     Landmark,
     Layers,
+    Minus,
     Package,
     PackageCheck,
     Percent,
@@ -53,6 +54,33 @@ export interface Stat {
     color: string;
     trend?: string;
     up?: boolean;
+    /**
+     * معنى الاتجاه — حسنٌ أم سيّئ — مستقلًّا عن جهته.
+     *
+     * `up` وحده يقول الجهةَ واللونَ معًا: الصاعدُ أخضر. وهذا صوابٌ في
+     * المبيعات وخطأٌ في التكاليف: تكلفةٌ زادت سهمُها صاعدٌ ومعناها سيّئ.
+     * فمن مرّر `tone` لوّن به، والسهمُ يبقى من `up`، و`neutral` بلا سهم.
+     * ومن لم يمرّره يبقى كما كان بالضبط — الصاعدُ أخضر والنازلُ أحمر.
+     */
+    tone?: 'good' | 'bad' | 'neutral';
+    /** سطرٌ صغيرٌ تحت الرقم يقول ما يجمعه — اختياريّ */
+    hint?: string;
+}
+
+/** ألوانُ معنى الاتجاه — من ألوان البطاقة نفسِها لا لوحةٍ جديدة */
+const TREND_TONE: Record<NonNullable<Stat['tone']>, string> = {
+    good: 'text-[#047857]',
+    bad: 'text-[#b91c1c]',
+    neutral: 'text-[#6b7280]',
+};
+
+/** لونُ سطر الاتجاه — بمعناه إن قيل، وإلّا بجهته كما كان */
+export function trendClass(stat: Pick<Stat, 'up' | 'tone'>): string {
+    if (stat.tone) {
+        return TREND_TONE[stat.tone];
+    }
+
+    return stat.up ? 'text-[#047857]' : 'text-[#b91c1c]';
 }
 
 const TONE: Record<string, string> = {
@@ -137,6 +165,11 @@ export default function StatCard({ stat, index = 0 }: { stat: Stat; index?: numb
                         <p className="mt-1.5 text-[20px] font-bold tracking-tight text-[#111]">
                             {stat.value}
                         </p>
+                        {stat.hint && (
+                            <p className="mt-1 text-[11.5px] leading-snug text-[#9ca3af]" data-testid="stat-hint">
+                                {t(stat.hint)}
+                            </p>
+                        )}
                     </div>
                     <span
                         className={cn(
@@ -150,15 +183,16 @@ export default function StatCard({ stat, index = 0 }: { stat: Stat; index?: numb
 
                 {stat.trend && (
                     <p
-                        className={cn(
-                            'mt-3 flex items-center gap-1 text-[12px] font-medium',
-                            stat.up ? 'text-[#047857]' : 'text-[#b91c1c]',
-                        )}
+                        className={cn('mt-3 flex items-center gap-1 text-[12px] font-medium', trendClass(stat))}
+                        data-testid="stat-trend"
+                        data-tone={stat.tone ?? (stat.up ? 'up' : 'down')}
                     >
-                        {stat.up ? (
-                            <ArrowUpRight className="size-3.5" />
+                        {stat.tone === 'neutral' ? (
+                            <Minus className="size-3.5" aria-hidden />
+                        ) : stat.up ? (
+                            <ArrowUpRight className="size-3.5" aria-hidden />
                         ) : (
-                            <ArrowDownRight className="size-3.5" />
+                            <ArrowDownRight className="size-3.5" aria-hidden />
                         )}
                         {t(stat.trend)}
                     </p>

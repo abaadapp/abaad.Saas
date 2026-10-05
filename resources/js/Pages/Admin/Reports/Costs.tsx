@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { Info } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Info } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import BackToReports from '@/Components/BackToReports';
 import ExportMenu from '@/Components/ExportMenu';
-import StatCard from '@/Components/StatCard';
+import StatCard, { type Stat } from '@/Components/StatCard';
 import { Select } from '@/Components/Field';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -107,7 +107,13 @@ interface Props {
 const COMPARE_LABELS: Record<keyof Summary, string> = {
     total: 'إجمالي التكاليف والخسائر',
     cost_of_sales: 'تكلفة المبيعات',
-    operating: 'مصروفات التشغيل',
+    /*
+     * «تكاليف» لا «مصروفات»: البطاقةُ تجمع الموظفين والتشغيلَ والإهلاك
+     * (`CostsAndLosses::OPERATING_GROUP`)، وفي الجدول فئةٌ اسمُها «مصروفات
+     * التشغيل» هي جزءٌ منها وحدَه. فاسمٌ واحدٌ لشيئين يُقرأ تناقضًا: البطاقةُ
+     * أكبرُ من الفئة التي تحمل اسمَها.
+     */
+    operating: 'تكاليف التشغيل',
     losses: 'الخسائر',
     other: 'مصروفات وخسائر أخرى',
 };
@@ -117,6 +123,107 @@ export function pctText(v: number | null | undefined): string {
     if (v === null || v === undefined) return '—';
 
     return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+}
+
+/** النسبةُ بلا إشارة — «18.4%» — والجهةُ تقولها الكلمة */
+const pctAbs = (v: number) => `${Math.abs(v).toFixed(1)}%`;
+
+/**
+ * اتجاهُ تكلفةٍ بلغة التاجر — والجهةُ والمعنى معًا.
+ *
+ * ═══ ولمَ ليست كاتجاه المبيعات ═══
+ *
+ * تكلفةٌ زادت سهمُها صاعدٌ ومعناها سيّئ، وتكلفةٌ نقصت سهمُها نازلٌ ومعناها
+ * حسن. والكلمةُ تقول ذلك مع اللون — «زادت»، «انخفضت» — فلا يُحمَّل اللونُ
+ * المعنى وحدَه.
+ *
+ * ═══ والنسبةُ من الخادم ═══
+ *
+ * `change_pct` فارغةٌ حين لا سابقَ موجب (`CostsAndLosses::change`) — ولا
+ * تُخترع هنا. فتكلفةٌ لم تكن ثمّ صارت «جديدة في هذه الفترة»، وما سوى ذلك
+ * بلا نسبةٍ يُقال بلا رقم.
+ *
+ * @return جزءُ `Stat` الذي يحمل الاتجاه
+ */
+export function costTrend(
+    current: number,
+    previous: number,
+    pct: number | null | undefined,
+    t: (s: string, r?: Record<string, string>) => string,
+): Pick<Stat, 'trend' | 'up' | 'tone'> {
+    if (current === previous) {
+        return { trend: t('لم تتغير عن الفترة السابقة'), up: false, tone: 'neutral' };
+    }
+
+    const up = current > previous;
+
+    if (pct === null || pct === undefined) {
+        return previous <= 0 && current > 0
+            ? { trend: t('جديد في هذه الفترة'), up: true, tone: 'bad' }
+            : { trend: t('لا مقارنة مع الفترة السابقة'), up, tone: 'neutral' };
+    }
+
+    return up
+        ? { trend: t('زادت :pct عن الفترة السابقة', { pct: pctAbs(pct) }), up: true, tone: 'bad' }
+        : { trend: t('انخفضت :pct عن الفترة السابقة', { pct: pctAbs(pct) }), up: false, tone: 'good' };
+}
+
+export interface Driver {
+    /** اسمُ الحساب — أو الفئة حين لا حسابَ يصلح */
+    name: string;
+    /** فئتُه، إن كان حسابًا */
+    category: string | null;
+    delta: number;
+    up: boolean;
+}
+
+/**
+ * أكبرُ سببٍ لتغيّر التكاليف — بالمبلغ لا بالنسبة.
+ *
+ * ═══ ولمَ المبلغ ═══
+ *
+ * نسبةٌ من خمسةٍ إلى ثلاثين «+500%» تعلو زيادةً من خمسمئةٍ إلى ستّمئةٍ
+ * وخمسين، وهذه هي التي غيّرت الربح. فالسببُ يُقاس بالفرق نفسِه (`delta`،
+ * من الخادم) لا بنسبته.
+ *
+ * ═══ وفي جهة الإجمالي ═══
+ *
+ * زاد الإجماليّ: أكبرُ فرقٍ موجب. نقص: أكبرُ فرقٍ سالبٍ بقيمته. وحسابٌ
+ * سار عكسَ الإجماليّ لا يُسمّى سببَه.
+ *
+ * ═══ والحسابُ قبل الفئة ═══
+ *
+ * «التسويق» يُعمل به؛ «مصروفات التشغيل» يُقرأ ثمّ يُسأل «أيُّها؟». فإن
+ * لم يكن حسابٌ في الجهة نفسِها رُجع إلى الفئة.
+ *
+ * @return `null` حين لا تغيّرَ في الإجماليّ، أو لا سببَ في جهته
+ */
+export function biggestDriver(categories: CostCategory[], current: number, previous: number): Driver | null {
+    if (current === previous) return null;
+
+    const up = current > previous;
+    const fits = (delta: number) => (up ? delta > 0 : delta < 0);
+    const bigger = (a: number, b: number) => Math.abs(a) > Math.abs(b);
+
+    let best: Driver | null = null;
+
+    for (const c of categories) {
+        for (const r of c.rows) {
+            if (fits(r.delta) && (best === null || bigger(r.delta, best.delta))) {
+                best = { name: r.account, category: c.label, delta: r.delta, up };
+            }
+        }
+    }
+
+    if (best !== null) return best;
+
+    for (const c of categories) {
+        if (fits(c.delta) && (best === null || bigger(c.delta, best.delta))) {
+            best = { name: c.label, category: null, delta: c.delta, up };
+        }
+    }
+
+    return best;
 }
 
 /**
@@ -145,8 +252,15 @@ export default function ReportsCosts() {
             replace: true,
         });
 
-    const trend = (current: number, previous: number, pct: number | null) =>
-        pct === null ? undefined : { trend: pctText(pct), up: current > previous };
+    /* اتجاهُ كلّ بطاقة من صفّها في المقارنة — والأرقامُ كلُّها من الخادم */
+    const trendOf = (key: keyof Summary) => {
+        const c = comparison.find((x) => x.key === key);
+
+        return c ? costTrend(c.current, c.previous, c.change_pct, t) : {};
+    };
+
+    const driver = biggestDriver(categories, summary.total, previousSummary.total);
+    const hasRows = categories.some((c) => c.rows.length > 0);
 
     return (
         <AdminLayout title={t('التكاليف والخسائر')}>
@@ -204,14 +318,58 @@ export default function ReportsCosts() {
                         value: m(summary.total),
                         icon: 'trending-down',
                         color: 'danger',
-                        ...trend(summary.total, previousSummary.total, comparison[0]?.change_pct ?? null),
+                        ...trendOf('total'),
                     }}
                 />
-                <StatCard stat={{ label: t('تكلفة المبيعات'), value: m(summary.cost_of_sales), icon: 'package', color: 'warning' }} />
-                <StatCard stat={{ label: t('مصروفات التشغيل'), value: m(summary.operating), icon: 'wallet', color: 'primary' }} />
-                <StatCard stat={{ label: t('الخسائر'), value: m(summary.losses), icon: 'alert-triangle', color: 'secondary' }} />
-                <StatCard stat={{ label: t('مصروفات وخسائر أخرى'), value: m(summary.other), icon: 'receipt', color: 'info' }} />
+                <StatCard stat={{ label: t('تكلفة المبيعات'), value: m(summary.cost_of_sales), icon: 'package', color: 'warning', ...trendOf('cost_of_sales') }} />
+                <StatCard
+                    stat={{
+                        label: t('تكاليف التشغيل'),
+                        value: m(summary.operating),
+                        icon: 'wallet',
+                        color: 'primary',
+                        hint: t('تشمل الموظفين والمصروفات التشغيلية والإهلاك'),
+                        ...trendOf('operating'),
+                    }}
+                />
+                <StatCard stat={{ label: t('الخسائر'), value: m(summary.losses), icon: 'alert-triangle', color: 'secondary', ...trendOf('losses') }} />
+                <StatCard stat={{ label: t('مصروفات وخسائر أخرى'), value: m(summary.other), icon: 'receipt', color: 'info', ...trendOf('other') }} />
             </div>
+
+            {/*
+                أكبرُ سببٍ للتغيّر — سطرٌ يجيب قبل الجدول عن «ما الذي غيّرها؟».
+                ومن الفروق التي في الجدول نفسِه، لا من حسابٍ ثانٍ. ولا يُرسم
+                لتقريرٍ فارغ: لا شيءَ يُسأل عنه.
+            */}
+            {hasRows && (
+                <Card className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 p-4 text-[13px]" data-testid="costs-driver">
+                    {driver ? (
+                        <>
+                            <span className="text-[#6b7280]">
+                                {t(driver.up ? 'أكبر سبب للزيادة' : 'أكبر سبب للانخفاض')}
+                            </span>
+                            <strong className="text-[#111]" data-testid="costs-driver-name">
+                                {driver.name}
+                            </strong>
+                            {driver.category && <span className="text-[12px] text-[#9ca3af]">{driver.category}</span>}
+                            <span
+                                className={cn(
+                                    'ms-auto flex items-center gap-1 font-medium tabular-nums',
+                                    driver.up ? 'text-[#b91c1c]' : 'text-[#047857]',
+                                )}
+                                data-testid="costs-driver-delta"
+                                data-tone={driver.up ? 'bad' : 'good'}
+                            >
+                                {driver.up ? <ArrowUpRight className="size-3.5" aria-hidden /> : <ArrowDownRight className="size-3.5" aria-hidden />}
+                                {driver.delta > 0 ? '+' : ''}
+                                {m(driver.delta)}
+                            </span>
+                        </>
+                    ) : (
+                        <span className="text-[#6b7280]">{t('لا يوجد تغير ملحوظ عن الفترة السابقة')}</span>
+                    )}
+                </Card>
+            )}
 
             <p className="mb-6 text-[12px] leading-relaxed text-[#71717a]" data-testid="costs-period">
                 {scope.name} · {scope.from} → {scope.to} · {t('مقارنة بالفترة السابقة')}: {scope.previous.from} → {scope.previous.to}

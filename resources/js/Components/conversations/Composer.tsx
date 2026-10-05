@@ -53,7 +53,7 @@ export function MessageComposer({
     const canSend = !processing && value.trim() !== '';
 
     return (
-        <div className="shrink-0 border-t border-[var(--cv-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-panel,#fff)] p-2.5">
+        <div className="shrink-0 bg-[var(--cv-bar,#f0f2f5)] px-3 py-2.5">
             {above}
 
             {files.length > 0 && (
@@ -61,9 +61,9 @@ export function MessageComposer({
                     {files.map((f, i) => (
                         <li
                             key={`${f.name}-${i}`}
-                            className="flex max-w-full items-center gap-1.5 rounded-full border border-[var(--cv-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-chip,#fafaf9)] ps-2.5 pe-1 py-1 text-[12px] text-[var(--cv-ink,#111)]"
+                            className="flex max-w-full items-center gap-1.5 rounded-[8px] bg-[var(--cv-field,#fff)] ps-2.5 pe-1 py-1 text-[12.5px] text-[var(--cv-ink,#111b21)] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]"
                         >
-                            <Paperclip className="size-3.5 shrink-0 text-[var(--cv-faint,#9ca3af)]" />
+                            <Paperclip className="size-3.5 shrink-0 text-[var(--cv-icon,#54656f)]" />
                             <span className="min-w-0 truncate" dir="auto">
                                 {f.name}
                             </span>
@@ -71,7 +71,7 @@ export function MessageComposer({
                                 type="button"
                                 aria-label={t('إزالة')}
                                 onClick={() => onRemoveFile(i)}
-                                className="rounded-full p-0.5 text-[var(--cv-faint,#9ca3af)] hover:bg-[#fee2e2] hover:text-[#b91c1c]"
+                                className="rounded-full p-0.5 text-[var(--cv-faint,#667781)] hover:bg-[#fee2e2] hover:text-[#b91c1c]"
                             >
                                 <X className="size-3.5" />
                             </button>
@@ -83,10 +83,10 @@ export function MessageComposer({
             <div className="flex items-end gap-2">
             <div
                 className={cn(
-                    'flex min-w-0 flex-1 items-end gap-1 rounded-[22px] border px-2 py-1',
+                    'flex min-w-0 flex-1 items-end gap-1 rounded-[8px] px-1.5 py-[3px]',
                     tone === 'internal'
-                        ? 'border-[var(--cv-note-border,#f59e0b)] bg-[var(--cv-note,#fffbeb)] text-[var(--cv-note-ink,#111)]'
-                        : 'border-[var(--cv-field-border,#e6e9f0)] bg-[var(--cv-field,#f7f8fb)] text-[var(--cv-ink,#111)] focus-within:border-[var(--cv-accent,#2563eb)] focus-within:bg-[var(--cv-field-focus,#fff)]',
+                        ? 'border border-[var(--cv-note-border,#f59e0b)] bg-[var(--cv-note,#fffbeb)] text-[var(--cv-note-ink,#111b21)]'
+                        : 'bg-[var(--cv-field,#fff)] text-[var(--cv-ink,#111b21)]',
                 )}
             >
                 <input
@@ -107,6 +107,7 @@ export function MessageComposer({
                     onClick={() => picker.current?.click()}
                     disabled={files.length >= maxFiles}
                     aria-label={t('إرفاق ملف')}
+                    className="text-[var(--cv-icon,#54656f)] hover:bg-transparent hover:text-[var(--cv-ink,#111b21)]"
                     title={t('حتى :n ملفات، :kb ميغابايت للملف', { n: maxFiles, kb: Math.round(maxKb / 1024) })}
                 >
                     <Paperclip />
@@ -125,7 +126,7 @@ export function MessageComposer({
                     placeholder={placeholder}
                     aria-label={placeholder}
                     dir="auto"
-                    className="max-h-40 min-h-[38px] flex-1 resize-none self-center bg-transparent px-1.5 py-2 text-[13.5px] leading-[1.5] text-inherit outline-none placeholder:text-[var(--cv-faint,#9ca3af)] field-sizing-content"
+                    className="max-h-40 min-h-[40px] flex-1 resize-none self-center bg-transparent px-1.5 py-[9px] text-[15px] leading-[1.45] text-inherit outline-none placeholder:text-[var(--cv-faint,#667781)] field-sizing-content"
                 />
 
                 {trailing}
@@ -140,10 +141,10 @@ export function MessageComposer({
                     aria-label={t('إرسال')}
                     title={t('إرسال')}
                     className={cn(
-                        'size-11 shrink-0 rounded-[14px] shadow-[0_2px_8px_rgba(37,99,235,0.3)]',
+                        'size-[46px] shrink-0 rounded-full disabled:opacity-60',
                         tone === 'internal'
                             ? 'bg-[#b45309] hover:bg-[#92400e]'
-                            : 'bg-[var(--cv-accent,#2563eb)] text-[var(--cv-accent-ink,#fff)] hover:bg-[var(--cv-accent-hover,#1d4ed8)]',
+                            : 'bg-[var(--cv-accent,#00a884)] text-[var(--cv-accent-ink,#fff)] hover:bg-[var(--cv-accent-hover,#008f6f)]',
                     )}
                 >
                     <Send className="size-5 rtl:-scale-x-100" />

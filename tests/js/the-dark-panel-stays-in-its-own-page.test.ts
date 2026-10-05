@@ -43,20 +43,27 @@ describe('اللوحُ الداكن لا يخرج من صفحته', () => {
     });
 
     /**
-     * والبديلُ هو لونُ اليوم — عيّنةٌ من أكثرها أثرًا.
+     * والبديلُ هو لونُ واتساب ويب الفاتح — عيّنةٌ من أكثرها أثرًا.
      *
-     * لو صار بديلُ `--cv-panel` داكنًا لَأسودّت لوحةُ CRM كلُّها بلا أن
-     * تُفتح، ولا اختبارَ بصريَّ يقف في الطريق.
+     * صارت الشاشتان بشكل واتساب ويب بطلب المالك (2026-10-05): CRM بألوانه
+     * الفاتحة — وهي البدائلُ هنا — والدعمُ بألوانه الداكنة في لوحه. ولو صار
+     * بديلُ `--cv-panel` داكنًا لَأسودّت لوحةُ CRM كلُّها بلا أن تُفتح، ولا
+     * اختبارَ بصريَّ يقف في الطريق.
      */
-    it('والبديلُ هو اللونُ الذي كان', () => {
+    it('والبديلُ هو لونُ واتساب ويب الفاتح', () => {
         const shell = read(SHARED[0]);
         const thread = read(SHARED[1]);
+        const composer = read(SHARED[3]);
 
         expect(shell).toContain('bg-[var(--cv-panel,#fff)]');
-        expect(shell).toContain('bg-[var(--cv-accent,#2563eb)]');
-        expect(shell).toContain('text-[var(--cv-ink,#111)]');
-        expect(thread).toContain('bg-[var(--cv-out,#2563eb)]');
-        expect(thread).toContain('bg-[var(--cv-in,#f3f5f9)]');
+        expect(shell).toContain('bg-[var(--cv-thread,#efeae2)]');
+        expect(shell).toContain('bg-[var(--cv-unread,#25d366)]');
+        expect(shell).toContain('text-[var(--cv-ink,#111b21)]');
+        expect(thread).toContain('bg-[var(--cv-bar,#f0f2f5)]');
+        expect(thread).toContain('bg-[var(--cv-out,#d9fdd3)]');
+        expect(thread).toContain('bg-[var(--cv-in,#fff)]');
+        expect(thread).toContain('text-[var(--cv-tick-read,#53bdeb)]');
+        expect(composer).toContain('bg-[var(--cv-accent,#00a884)]');
     });
 
     it('وصفحةُ CRM لا تُعرّف لوحًا ولا متغيّرًا', () => {

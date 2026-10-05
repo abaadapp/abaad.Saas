@@ -45,6 +45,7 @@ import {
     MessageBubble,
     SystemRow,
 } from '@/Components/conversations/Thread';
+import { DOODLE_DARK } from '@/Components/conversations/wallpaper';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -190,46 +191,69 @@ const dayLabel = (iso: string | null, locale: string) =>
  * فلا يُحمَّل اللونُ معنًى وحدَه — في الفاتح كان كذلك وفي الداكن يبقى.
  */
 const DARK: CSSProperties = {
-    '--cv-panel': '#1b1b1f',
-    '--cv-thread': '#161619',
-    '--cv-border': '#2b2b32',
-    '--cv-divide': '#232329',
-    '--cv-ink': '#f4f4f5',
-    '--cv-muted': '#a1a1aa',
-    '--cv-faint': '#8a8a94',
-    '--cv-hover': '#232329',
-    '--cv-sel': '#26262e',
-    '--cv-accent': '#2f7df6',
-    '--cv-accent-hover': '#1f6ae0',
-    '--cv-accent-ink': '#ffffff',
-    '--cv-accent-soft': '#1d2b44',
-    '--cv-accent-soft-ink': '#93c5fd',
-    '--cv-chip': '#26262c',
-    '--cv-chip-ink': '#c9c9d2',
-    '--cv-chip-hover': '#303038',
-    '--cv-in': '#27272d',
-    '--cv-in-ink': '#ececee',
-    '--cv-out': '#2f7df6',
-    '--cv-out-ink': '#ffffff',
-    '--cv-field': '#232329',
-    '--cv-field-focus': '#1b1b1f',
-    '--cv-field-border': '#34343c',
-    '--cv-soft': '#202025',
-    '--cv-soft-border': '#2b2b32',
+    /* ═══ ألوانُ واتساب ويب الداكن ═══ */
+    '--cv-panel': '#111b21',
+    '--cv-bar': '#202c33',
+    '--cv-thread': '#0b141a',
+    '--cv-doodle': DOODLE_DARK,
+    '--cv-details': '#0b141a',
+    '--cv-empty': '#222e35',
+    '--cv-border': '#2a3942',
+    '--cv-divide': '#222d34',
+    '--cv-ink': '#e9edef',
+    '--cv-muted': '#8696a0',
+    '--cv-faint': '#8696a0',
+    '--cv-icon': '#aebac1',
+    '--cv-icon-hover': 'rgba(233,237,239,0.08)',
+    '--cv-hover': '#202c33',
+    '--cv-sel': '#2a3942',
+    '--cv-search': '#202c33',
+    '--cv-accent': '#00a884',
+    '--cv-accent-hover': '#06cf9c',
+    '--cv-accent-ink': '#111b21',
+    '--cv-accent-soft': '#005c4b',
+    '--cv-accent-soft-ink': '#e9edef',
+    '--cv-avatar': '#6a7175',
+    '--cv-avatar-ink': '#e9edef',
+    '--cv-unread': '#00a884',
+    '--cv-unread-ink': '#111b21',
+    '--cv-chip': '#202c33',
+    '--cv-chip-ink': '#8696a0',
+    '--cv-chip-hover': '#2a3942',
+    '--cv-chip-on': '#0a332c',
+    '--cv-chip-on-ink': '#00a884',
+    '--cv-in': '#202c33',
+    '--cv-in-ink': '#e9edef',
+    '--cv-out': '#005c4b',
+    '--cv-out-ink': '#e9edef',
+    '--cv-meta': 'rgba(233,237,239,0.6)',
+    '--cv-out-meta': 'rgba(233,237,239,0.6)',
+    '--cv-sender': '#53bdeb',
+    '--cv-tick': 'rgba(233,237,239,0.6)',
+    '--cv-tick-read': '#53bdeb',
+    '--cv-fail': '#f15c6d',
+    '--cv-warn': '#fbbf24',
+    '--cv-system': '#182229',
+    '--cv-system-ink': '#8696a0',
+    '--cv-field': '#2a3942',
+    '--cv-field-focus': '#2a3942',
+    '--cv-field-border': '#2a3942',
+    '--cv-soft': '#111b21',
+    '--cv-soft-border': '#222d34',
     '--cv-note': '#2a2112',
     '--cv-note-border': '#a16207',
     '--cv-note-ink': '#fde68a',
     '--cv-note-head': '#fbbf24',
-    '--cv-attach': '#1f1f25',
-    '--cv-attach-ink': '#ececee',
-    '--cv-attach-muted': '#a1a1aa',
-    '--cv-attach-hover': '#26262d',
+    '--cv-attach': 'rgba(11,20,26,0.35)',
+    '--cv-attach-ink': '#e9edef',
+    '--cv-attach-muted': '#8696a0',
+    '--cv-attach-hover': 'rgba(11,20,26,0.5)',
     colorScheme: 'dark',
 } as CSSProperties;
 
 /** زرٌّ محدَّدُ الإطار داخل اللوح الداكن — إطارُه من اللوح لا من الأبيض */
 const DARK_BTN =
-    'border-[#34343c] bg-[#232329] text-[#ececee] hover:bg-[#2c2c34] hover:text-[#fff]';
+    'border-[#2a3942] bg-[#202c33] text-[#e9edef] hover:bg-[#2a3942] hover:text-[#fff]';
 
 /** لونُ حبّةِ الحالة — والمعنى قبل اللون: النصّ مكتوبٌ فيها دائمًا */
 const statusTone = (status: string) =>
@@ -239,16 +263,16 @@ const statusTone = (status: string) =>
         waiting_customer: 'bg-[#2a2112] text-[#fcd34d]',
         waiting_abaad: 'bg-[#2e1616] text-[#fca5a5]',
         resolved: 'bg-[#0f2a1a] text-[#86efac]',
-        closed: 'bg-[#26262c] text-[#a1a1aa]',
-    })[status] ?? 'bg-[#26262c] text-[#a1a1aa]';
+        closed: 'bg-[#202c33] text-[#8696a0]',
+    })[status] ?? 'bg-[#202c33] text-[#8696a0]';
 
 const priorityTone = (priority: string) =>
     ({
-        low: 'bg-[#26262c] text-[#9b9ba4]',
-        normal: 'bg-[#26262c] text-[#a1a1aa]',
+        low: 'bg-[#202c33] text-[#8696a0]',
+        normal: 'bg-[#202c33] text-[#8696a0]',
         high: 'bg-[#2c1d10] text-[#fdba74]',
         urgent: 'bg-[#2e1616] text-[#fca5a5]',
-    })[priority] ?? 'bg-[#26262c] text-[#a1a1aa]';
+    })[priority] ?? 'bg-[#202c33] text-[#8696a0]';
 
 /* ═══════════════════ الشاشة ═══════════════════ */
 
@@ -452,7 +476,7 @@ export default function Conversations({
                                 }
                                 badges={
                                     <>
-                                        <Pill className="bg-[#26262c] text-[#c9c9d2]">{active.channelLabel}</Pill>
+                                        <Pill className="bg-[#202c33] text-[#aebac1]">{active.channelLabel}</Pill>
                                         <Pill className={statusTone(active.status)}>{active.statusLabel}</Pill>
                                     </>
                                 }
@@ -497,10 +521,17 @@ function Thread({ active, messages }: { active: Active; messages: Message[] }) {
 
     return (
         <ConversationThread threadKey={active.id} count={messages.length}>
-            {messages.map((m, i) => (
-                <div key={m.id} className="space-y-2">
+            {messages.map((m, i) => {
+                const prev = messages[i - 1];
+                const newDay = i === 0 || day(m.at) !== day(prev?.at ?? null);
+                /* أوّلُ فقاعةٍ في سلسلة جهتها لها الذيل — كما في واتساب */
+                const first = newDay || !!prev?.event || !!m.event || prev?.scope !== m.scope || prev?.internal !== m.internal;
+                const failed = m.delivery === 'failed' || m.delivery === 'blocked' || m.delivery === 'partial';
+
+                return (
+                <div key={m.id} className="space-y-1">
                     {/* فاصلُ اليوم مرّةً فوق أوّل رسائله */}
-                    {(i === 0 || day(m.at) !== day(messages[i - 1].at)) && m.at && (
+                    {newDay && m.at && (
                         <SystemRow>{dayLabel(m.at, locale)}</SystemRow>
                     )}
 
@@ -515,36 +546,31 @@ function Thread({ active, messages }: { active: Active; messages: Message[] }) {
                                 لا تعرف إلا جهةً ونبرة.
                             */
                             side={m.scope === 'platform' ? 'out' : 'in'}
-                            avatar={<Avatar name={active.business.name} src={active.business.logo} size="sm" />}
+                            first={first}
                             tone={m.internal ? 'internal' : 'default'}
                             internalLabel={t('ملاحظة داخلية')}
                             body={m.body}
                             sender={m.sender}
                             time={clock(m.at, locale)}
                             files={m.files.map((f) => ({ ...f, image: f.isImage }))}
+                            /* وحالُ الخروج علامةٌ في الفقاعة، وكلمتُها لقارئ الشاشة */
+                            status={m.delivery}
+                            statusLabel={m.deliveryLabel}
                             footer={
                                 /*
-                                    وحالُ الخروج تُقرأ تحت الرسالة نفسِها.
+                                    وما لم يخرج يُقال بكلمته تحت الرسالة نفسِها.
                                     ردٌّ حُفظ ولم يخرج إلى هاتف التاجر هو ردٌّ لم يصل — وصمتُ
                                     الشاشة عنه يجعل الدعمَ ينتظر جوابًا على كلامٍ لم يقرأه أحد.
                                 */
-                                m.deliveryLabel ? (
+                                failed && m.deliveryLabel ? (
                                     <p
                                         className={cn(
-                                            'mt-1 flex items-start gap-1 text-[10.5px]',
-                                            m.delivery === 'sent'
-                                                ? 'text-[#4ade80]'
-                                                : /* وبعضُها خرج: لا أخضرَ يقول «وصل كلُّه» ولا أحمرَ يقول «لم يصل شيء» */
-                                                  m.delivery === 'partial'
-                                                  ? 'text-[#fbbf24]'
-                                                  : 'text-[#f87171]',
+                                            'mt-1 flex items-start gap-1 px-1 text-[11px]',
+                                            /* وبعضُها خرج: لا أحمرَ يقول «لم يصل شيء» */
+                                            m.delivery === 'partial' ? 'text-[#fbbf24]' : 'text-[#f15c6d]',
                                         )}
                                     >
-                                        {m.delivery === 'sent' ? (
-                                            <CheckCircle2 className="mt-px size-3 shrink-0" />
-                                        ) : (
-                                            <AlertTriangle className="mt-px size-3 shrink-0" />
-                                        )}
+                                        <AlertTriangle className="mt-px size-3 shrink-0" />
                                         <span>
                                             {m.deliveryLabel}
                                             {m.deliveryError && ` — ${m.deliveryError}`}
@@ -555,7 +581,8 @@ function Thread({ active, messages }: { active: Active; messages: Message[] }) {
                         />
                     )}
                 </div>
-            ))}
+                );
+            })}
         </ConversationThread>
     );
 }

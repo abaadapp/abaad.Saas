@@ -31,7 +31,7 @@ import {
     type Pane,
     Pill,
 } from '@/Components/conversations/Shell';
-import { ConversationHeader, ConversationThread, MessageBubble } from '@/Components/conversations/Thread';
+import { ConversationHeader, ConversationThread, MessageBubble, SystemRow } from '@/Components/conversations/Thread';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
@@ -350,46 +350,58 @@ export default function CrmConversations() {
                                 <ConversationEmptyState text={t('لا رسائل بعد.')} />
                             ) : (
                                 <ConversationThread threadKey={active.id} count={messages.length}>
-                                    {messages.map((m) => (
-                                        <MessageBubble
-                                            key={m.id}
-                                            /* والمعنى معنى المبيعات: `out` منّا و`in` منه — لا غير */
-                                            side={m.direction}
-                                            avatar={<Avatar name={active.name} size="sm" />}
-                                            body={m.body}
-                                            sender={m.sender}
-                                            time={m.at}
-                                            files={m.files}
-                                            footer={
-                                                /*
-                                                    وحالُ التسليم تُعرض كما قالتها ميتا.
-                                                    وصمتٌ بعد الإرسال يُقرأ نجاحًا — وهو ما
-                                                    لا يجوز أن يُترك للتأويل.
-                                                */
-                                                m.deliveryLabel || m.deliveryError ? (
-                                                    <p
-                                                        className={cn(
-                                                            'mt-0.5 flex items-start gap-1 text-[10.5px]',
-                                                            m.delivery === 'failed' || m.delivery === 'blocked'
-                                                                ? 'font-medium text-[#b91c1c]'
-                                                                : /* وبعضُها خرج: لا أحمرَ يقول «ضاع» ولا رماديٌّ يقول «تمّ» */
-                                                                  m.delivery === 'partial'
-                                                                  ? 'font-medium text-[#b45309]'
-                                                                  : 'text-[#8a8a8a]',
-                                                        )}
-                                                    >
-                                                        {(m.delivery === 'failed' || m.delivery === 'blocked' || m.delivery === 'partial') && (
-                                                            <AlertTriangle className="mt-px size-3 shrink-0" />
-                                                        )}
-                                                        <span>
-                                                            {m.deliveryLabel}
-                                                            {m.deliveryError && ` — ${m.deliveryError}`}
-                                                        </span>
-                                                    </p>
-                                                ) : null
-                                            }
-                                        />
-                                    ))}
+                                    {messages.map((m, i) => {
+                                        const prev = messages[i - 1];
+                                        /* والوقتُ «Y-m-d H:i» من الخادم: اليومُ فاصلٌ، والساعةُ في الفقاعة */
+                                        const date = m.at?.slice(0, 10) ?? '';
+                                        const newDay = i === 0 || date !== (prev?.at?.slice(0, 10) ?? '');
+                                        const failed = m.delivery === 'failed' || m.delivery === 'blocked' || m.delivery === 'partial';
+
+                                        return (
+                                            <div key={m.id} className="space-y-1">
+                                                {newDay && date && <SystemRow>{date}</SystemRow>}
+                                                <MessageBubble
+                                                    /* والمعنى معنى المبيعات: `out` منّا و`in` منه — لا غير */
+                                                    side={m.direction}
+                                                    /* أوّلُ فقاعةٍ في سلسلة جهتها لها الذيل — كما في واتساب */
+                                                    first={newDay || prev?.direction !== m.direction}
+                                                    body={m.body}
+                                                    sender={m.sender}
+                                                    time={m.at?.slice(11, 16) ?? null}
+                                                    files={m.files}
+                                                    /* وحالُ التسليم علامةٌ في الفقاعة كما قالتها ميتا — وكلمتُها لقارئ الشاشة */
+                                                    status={m.delivery}
+                                                    statusLabel={m.deliveryLabel}
+                                                    footer={
+                                                        /*
+                                                            وما لم يخرج يُقال بكلمته تحت الفقاعة.
+                                                            وصمتٌ بعد الإرسال يُقرأ نجاحًا — وهو ما
+                                                            لا يجوز أن يُترك للتأويل.
+                                                        */
+                                                        failed || m.deliveryError ? (
+                                                            <p
+                                                                className={cn(
+                                                                    'mt-0.5 flex items-start gap-1 px-1 text-[11px]',
+                                                                    m.delivery === 'failed' || m.delivery === 'blocked'
+                                                                        ? 'font-medium text-[#b91c1c]'
+                                                                        : /* وبعضُها خرج: لا أحمرَ يقول «ضاع» ولا رماديٌّ يقول «تمّ» */
+                                                                          m.delivery === 'partial'
+                                                                          ? 'font-medium text-[#b45309]'
+                                                                          : 'text-[#667781]',
+                                                                )}
+                                                            >
+                                                                <AlertTriangle className="mt-px size-3 shrink-0" />
+                                                                <span>
+                                                                    {m.deliveryLabel}
+                                                                    {m.deliveryError && ` — ${m.deliveryError}`}
+                                                                </span>
+                                                            </p>
+                                                        ) : null
+                                                    }
+                                                />
+                                            </div>
+                                        );
+                                    })}
                                 </ConversationThread>
                             )}
 

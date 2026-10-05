@@ -26,13 +26,13 @@ export function ConversationDetailsPanel({
 
     return (
         <>
-            <div className="flex shrink-0 items-center gap-2 border-b border-[var(--cv-border,var(--ui-border,#e8e8e8))] px-3 py-2">
+            <div className="flex min-h-[59px] shrink-0 items-center gap-2 border-b border-[var(--cv-border,#e9edef)] bg-[var(--cv-bar,#f0f2f5)] px-3 py-2">
                 <Button
                     variant="ghost"
                     size="icon"
                     className={cn(
                         'xl:hidden',
-                        'text-[var(--cv-muted,#4b4b4b)] hover:bg-[var(--cv-hover,rgba(17,17,17,0.045))] hover:text-[var(--cv-ink,#111)]',
+                        'text-[var(--cv-icon,#54656f)] hover:bg-[var(--cv-icon-hover,rgba(11,20,26,0.06))] hover:text-[var(--cv-ink,#111b21)]',
                     )}
                     onClick={onBack}
                     aria-label={t('رجوع')}
@@ -50,10 +50,10 @@ export function ConversationDetailsPanel({
                                 aria-selected={tabs.value === tab.key}
                                 onClick={() => tabs.onChange(tab.key)}
                                 className={cn(
-                                    'rounded-[8px] px-2.5 py-1.5 text-[13px] font-medium transition-colors',
+                                    'rounded-full px-3 py-1 text-[13px] transition-colors',
                                     tabs.value === tab.key
-                                        ? 'bg-[var(--cv-accent-soft,#eef4ff)] text-[var(--cv-accent-soft-ink,#1d4ed8)]'
-                                        : 'text-[var(--cv-muted,#71717a)] hover:bg-[var(--cv-hover,#fafaf9)] hover:text-[var(--cv-ink,#111)]',
+                                        ? 'bg-[var(--cv-chip-on,#e7fce3)] font-medium text-[var(--cv-chip-on-ink,#008069)]'
+                                        : 'text-[var(--cv-chip-ink,#54656f)] hover:bg-[var(--cv-chip-hover,#e9edef)]',
                                 )}
                             >
                                 {tab.label}
@@ -61,11 +61,12 @@ export function ConversationDetailsPanel({
                         ))}
                     </div>
                 ) : (
-                    <h2 className="flex-1 text-[14px] font-bold text-[var(--cv-ink,#111)]">{title}</h2>
+                    <h2 className="flex-1 text-[16px] font-medium text-[var(--cv-ink,#111b21)]">{title}</h2>
                 )}
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">{children}</div>
+            {/* أقسامٌ بيضاءُ على رماديّ — كمعلومات جهة الاتّصال في واتساب */}
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto bg-[var(--cv-details,#f0f2f5)] py-2.5">{children}</div>
         </>
     );
 }
@@ -83,10 +84,10 @@ export function DetailSection({
     className?: string;
 }) {
     return (
-        <section className={cn('rounded-[12px] border border-[var(--cv-soft-border,#f0f0ef)] bg-[var(--cv-soft,#fcfcfb)] p-3', className)}>
+        <section className={cn('bg-[var(--cv-soft,#fff)] px-4 py-3.5 shadow-[0_1px_3px_rgba(11,20,26,0.08)]', className)}>
             {(title || action) && (
                 <div className="mb-2 flex items-center justify-between gap-2">
-                    {title && <h3 className="text-[12.5px] font-bold text-[var(--cv-ink,#111)]">{title}</h3>}
+                    {title && <h3 className="text-[14px] text-[var(--cv-muted,#667781)]">{title}</h3>}
                     {action}
                 </div>
             )}
@@ -116,12 +117,12 @@ export function DetailLine({
 
     return (
         <div className="flex items-start justify-between gap-3 py-1">
-            <dt className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--cv-muted,#71717a)]">
+            <dt className="flex shrink-0 items-center gap-1.5 text-[12px] text-[var(--cv-muted,#667781)]">
                 {icon}
                 {label}
             </dt>
             <dd
-                className={cn('min-w-0 truncate text-end text-[12.5px]', missing ? 'text-[var(--cv-faint,#a1a1aa)]' : 'text-[var(--cv-ink,#111)]')}
+                className={cn('min-w-0 truncate text-end text-[12.5px]', missing ? 'text-[var(--cv-faint,#8696a0)]' : 'text-[var(--cv-ink,#111b21)]')}
                 dir={ltr && !missing ? 'ltr' : undefined}
             >
                 {missing ? empty : value}
@@ -144,12 +145,12 @@ export function DetailSelect({
 }) {
     return (
         <label className="block">
-            <span className="mb-1 block text-[11.5px] text-[var(--cv-muted,#71717a)]">{label}</span>
+            <span className="mb-1 block text-[11.5px] text-[var(--cv-muted,#667781)]">{label}</span>
             <select
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 aria-label={label}
-                className="h-9 w-full rounded-[9px] border border-[var(--cv-field-border,var(--ui-border,#e8e8e8))] bg-[var(--cv-field,#fff)] px-2 text-[12.5px] text-[var(--cv-ink,#111)] outline-none focus:border-[var(--cv-accent,#2563eb)]"
+                className="h-9 w-full rounded-[9px] border border-[var(--cv-field-border,#e9edef)] bg-[var(--cv-field,#fff)] px-2 text-[12.5px] text-[var(--cv-ink,#111b21)] outline-none focus:border-[var(--cv-accent,#00a884)]"
             >
                 {options.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -176,8 +177,8 @@ export function DetailIdentity({
     return (
         <div className="flex flex-col items-center py-3 text-center">
             {avatar}
-            <p className="mt-2.5 text-[15px] font-bold text-[var(--cv-ink,#111)]">{name}</p>
-            {subtitle && <div className="mt-0.5 text-[12px] text-[var(--cv-muted,#71717a)]">{subtitle}</div>}
+            <p className="mt-2.5 text-[15px] font-bold text-[var(--cv-ink,#111b21)]">{name}</p>
+            {subtitle && <div className="mt-0.5 text-[12px] text-[var(--cv-muted,#667781)]">{subtitle}</div>}
             {children && <div className="mt-2 flex flex-wrap justify-center gap-1.5">{children}</div>}
         </div>
     );
@@ -198,7 +199,7 @@ export function DetailFiles({
     return (
         <DetailSection
             title={title}
-            action={<span className="rounded-full bg-[var(--cv-accent-soft,#eef4ff)] px-2 py-0.5 text-[11px] font-bold text-[var(--cv-accent-soft-ink,#1d4ed8)]">{files.length}</span>}
+            action={<span className="rounded-full bg-[var(--cv-accent-soft,#d9fdd3)] px-2 py-0.5 text-[11px] font-bold text-[var(--cv-accent-soft-ink,#008069)]">{files.length}</span>}
         >
             <ul className="space-y-1.5">
                 {files.slice(0, limit).map((f) => (
@@ -207,7 +208,7 @@ export function DetailFiles({
                             href={f.url}
                             target={f.image ? '_blank' : undefined}
                             rel={f.image ? 'noopener noreferrer' : undefined}
-                            className="flex items-center gap-2.5 rounded-[10px] bg-[var(--cv-panel,#fff)] p-1.5 text-[12px] hover:bg-[var(--cv-hover,#f7f8fb)]"
+                            className="flex items-center gap-2.5 rounded-[10px] bg-[var(--cv-panel,#fff)] p-1.5 text-[12px] hover:bg-[var(--cv-hover,#f5f6f6)]"
                         >
                             {f.image ? (
                                 <img src={f.url} alt="" className="size-9 shrink-0 rounded-[8px] object-cover" loading="lazy" />
@@ -217,10 +218,10 @@ export function DetailFiles({
                                 </span>
                             )}
                             <span className="min-w-0 flex-1">
-                                <span className="block truncate font-medium text-[var(--cv-ink,#111)]" dir="auto">
+                                <span className="block truncate font-medium text-[var(--cv-ink,#111b21)]" dir="auto">
                                     {f.name}
                                 </span>
-                                <span className="block text-[11px] text-[var(--cv-faint,#9ca3af)]">{fileSize(f.size)}</span>
+                                <span className="block text-[11px] text-[var(--cv-faint,#667781)]">{fileSize(f.size)}</span>
                             </span>
                         </a>
                     </li>

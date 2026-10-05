@@ -1,9 +1,10 @@
 import { type ReactNode, useLayoutEffect, useRef } from 'react';
-import { ArrowLeft, Download, FileText, Lock, PanelRightOpen } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, CheckCheck, Download, FileText, Lock, PanelRightOpen } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { fileSize } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { DOODLE_LIGHT } from './wallpaper';
 
 /**
  * العمودُ الأوسط: ترويسةٌ ثابتة، وخيطٌ يتمرّر، ومُحرِّرٌ في القاع.
@@ -18,7 +19,7 @@ import { cn } from '@/lib/utils';
  * والافتراضيُّ ألوانُ `ghost` نفسُها حرفًا بحرف — فصفحةٌ لا تُعرّف
  * `--cv-*` لا يتبدّل فيها شيء.
  */
-const GHOST_ON_THEME = 'text-[var(--cv-muted,#4b4b4b)] hover:bg-[var(--cv-hover,rgba(17,17,17,0.045))] hover:text-[var(--cv-ink,#111)]';
+const GHOST_ON_THEME = 'text-[var(--cv-icon,#54656f)] hover:bg-[var(--cv-icon-hover,rgba(11,20,26,0.06))] hover:text-[var(--cv-ink,#111b21)]';
 
 export function ConversationHeader({
     avatar,
@@ -40,7 +41,7 @@ export function ConversationHeader({
     const t = useTranslate();
 
     return (
-        <header className="flex shrink-0 items-center gap-3 border-b border-[var(--cv-border,var(--ui-border,#e8e8e8))] px-3 py-2.5">
+        <header className="flex min-h-[59px] shrink-0 items-center gap-3 border-b border-[var(--cv-border,#e9edef)] bg-[var(--cv-bar,#f0f2f5)] px-4 py-2">
             <Button
                 variant="ghost"
                 size="icon"
@@ -54,8 +55,8 @@ export function ConversationHeader({
             {avatar}
 
             <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-bold text-[var(--cv-ink,#111)]">{title}</p>
-                {subtitle && <p className="truncate text-[12px] text-[var(--cv-muted,#71717a)]">{subtitle}</p>}
+                <p className="truncate text-[16px] font-medium text-[var(--cv-ink,#111b21)]">{title}</p>
+                {subtitle && <p className="truncate text-[13px] text-[var(--cv-muted,#667781)]">{subtitle}</p>}
             </div>
 
             {badges && <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{badges}</div>}
@@ -135,7 +136,12 @@ export function ConversationThread({
             ref={box}
             onScroll={track}
             onLoadCapture={settle}
-            className={cn('min-h-0 flex-1 space-y-3 overflow-y-auto bg-[var(--cv-thread,var(--cv-panel,#fff))] px-4 py-3', className)}
+            /*
+                خلفيّةُ واتساب: لونُ الخيط ونقشُه المتكرّر. والرسائلُ في الوسط
+                بهامشين كما هناك — لا ملتصقةً بحافّتَي الشاشة العريضة.
+            */
+            style={{ backgroundImage: `var(--cv-doodle, ${DOODLE_LIGHT})`, backgroundSize: '360px' }}
+            className={cn('min-h-0 flex-1 space-y-1 overflow-y-auto bg-[var(--cv-thread,#efeae2)] px-3 py-4 sm:px-[5%] xl:px-[7%]', className)}
         >
             {children}
         </div>
@@ -145,23 +151,62 @@ export function ConversationThread({
 /** فاصلُ يومٍ أو حدثُ نظام: سطرٌ محايدٌ في الوسط لا فقاعة */
 export function SystemRow({ children }: { children: ReactNode }) {
     return (
-        <div className="flex justify-center py-1">
-            <span className="max-w-[85%] rounded-full bg-[var(--cv-chip,#f3f5f9)] px-3 py-1 text-center text-[11px] text-[var(--cv-muted,#71717a)]">
+        <div className="flex justify-center py-1.5">
+            <span className="max-w-[85%] rounded-[7.5px] bg-[var(--cv-system,#fff)] px-3 py-1.5 text-center text-[12.5px] text-[var(--cv-system-ink,#54656f)] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
                 {children}
             </span>
         </div>
     );
 }
 
+/** حالُ التسليم كما تُرسم في الفقاعة — علامةٌ أو علامتان، وحمراءُ لما لم يخرج */
+export type DeliveryMark = 'sent' | 'delivered' | 'read' | 'failed' | 'blocked' | 'partial' | null;
+
+function Ticks({ status, label }: { status: DeliveryMark; label?: string | null }) {
+    if (!status) return null;
+
+    const common = { 'aria-label': label ?? undefined, role: label ? 'img' : undefined } as const;
+
+    if (status === 'failed' || status === 'blocked') {
+        return (
+            <span {...common} title={label ?? undefined} className="text-[var(--cv-fail,#ea0038)]">
+                <AlertCircle className="size-[15px]" />
+            </span>
+        );
+    }
+
+    if (status === 'partial') {
+        return (
+            <span {...common} title={label ?? undefined} className="text-[var(--cv-warn,#d97706)]">
+                <AlertCircle className="size-[15px]" />
+            </span>
+        );
+    }
+
+    return (
+        <span
+            {...common}
+            title={label ?? undefined}
+            className={status === 'read' ? 'text-[var(--cv-tick-read,#53bdeb)]' : 'text-[var(--cv-tick,#8696a0)]'}
+        >
+            {status === 'sent' ? <Check className="size-4" /> : <CheckCheck className="size-4" />}
+        </span>
+    );
+}
+
 /**
- * الفقاعة.
+ * الفقاعة — كما في واتساب ويب.
  *
- * `side`: `out` منّا (زرقاءُ بنصٍّ أبيض)، `in` منهم (رماديّةٌ فاتحة). واسمُ
- * الكاتب ووقتُه فوق الفقاعة لا داخلها، ووجهُ الوارد بجانبه — كما في
- * تطبيقات الرسائل، فتُقرأ «من» و«متى» قبل «ماذا».
+ * `side`: `out` منّا (خضراءُ فاتحة)، `in` منهم (بيضاء). ولأوّل فقاعةٍ في
+ * سلسلة الجهة ذيلٌ عند زاويتها العليا (`first`)، وما يتلوها بلا ذيل. والوقتُ
+ * وعلامتا التسليم داخلها في الزاوية السفلى، واسمُ الكاتب أعلاها.
  *
  * و`tone: 'internal'` لما لا يخرج إلى الطرف الآخر — لونٌ آخر وقفلٌ وكلمةٌ
  * صريحة، فلا يُعتمد على اللون وحدَه.
+ *
+ * و`status` حالُ التسليم علامةً (✓ ✓✓ ✓✓ زرقاء، أو تنبيه)، ومعناها بكلمته
+ * في `statusLabel` لقارئ الشاشة ولمن يمرّ عليها. وما يحتاج شرحًا — خطأٌ من
+ * ميتا مثلًا — يمرّ في `footer` تحت الفقاعة.
  */
 export function MessageBubble({
     side,
@@ -173,67 +218,102 @@ export function MessageBubble({
     files,
     internalLabel,
     avatar,
+    status = null,
+    statusLabel,
+    first = true,
 }: {
     side: 'in' | 'out';
     tone?: 'default' | 'internal';
     body: string | null;
     sender?: string | null;
     time?: string | null;
-    /** ما يُكتب تحت النصّ: حالُ التسليم مثلًا — بمعناه من الصفحة */
+    /** ما يُكتب تحت الفقاعة: شرحُ تسليمٍ لم يتمّ مثلًا — بمعناه من الصفحة */
     footer?: ReactNode;
     files?: { id: number; name: string; size: number; image: boolean; url: string }[];
     internalLabel?: string;
-    /** وجهُ الكاتب — يُرسم بجانب الوارد وحدَه */
+    /** وجهُ الكاتب — لا يُرسم في شكل واتساب، ويبقى المقبضُ لمن يمرّره */
     avatar?: ReactNode;
+    /** حالُ التسليم — للصادر وحدَه */
+    status?: DeliveryMark;
+    statusLabel?: string | null;
+    /** أوّلُ فقاعةٍ في سلسلة جهتها — لها الذيل */
+    first?: boolean;
 }) {
     const internal = tone === 'internal';
     const out = side === 'out';
+    const mark = out && !internal ? status : null;
+    const hasFiles = !!files && files.length > 0;
+
+    /* مكانُ الوقت والعلامة في آخر السطر — يُحجز فلا يقع النصُّ تحته */
+    const reserve = (time?.length ?? 0) * 6.5 + (mark ? 22 : 0) + 10;
+
+    void avatar;
 
     return (
-        <div className={cn('flex gap-2', out ? 'justify-end' : 'justify-start')}>
-            {!out && avatar && <span className="mt-5 shrink-0">{avatar}</span>}
-
-            <div className={cn('flex max-w-[78%] flex-col', out ? 'items-end' : 'items-start', files && files.length > 0 && 'sm:max-w-[420px]')}>
-                {(sender || time) && (
-                    <p className={cn('mb-1 flex items-baseline gap-1.5 px-1 text-[11px]', out && 'flex-row-reverse')}>
-                        {sender && <span className="font-semibold text-[var(--cv-ink,#111)]">{sender}</span>}
-                        {time && (
-                            <span className="text-[var(--cv-faint,#9ca3af)]" dir="ltr">
-                                {time}
-                            </span>
-                        )}
-                    </p>
-                )}
-
+        <div className={cn('flex', out ? 'justify-end' : 'justify-start', first && 'pt-1.5')}>
+            <div className={cn('flex max-w-[85%] flex-col sm:max-w-[65%]', out ? 'items-end' : 'items-start', hasFiles && 'sm:max-w-[360px]')}>
                 <div
                     className={cn(
-                        'w-fit max-w-full rounded-[14px] px-3.5 py-2.5',
+                        'relative w-fit max-w-full rounded-[7.5px] px-[9px] pb-[7px] pt-[6px] text-[14.2px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]',
                         internal
-                            ? 'border border-dashed border-[var(--cv-note-border,#f59e0b)] bg-[var(--cv-note,#fffbeb)] text-[var(--cv-note-ink,#111)]'
+                            ? 'border border-dashed border-[var(--cv-note-border,#f59e0b)] bg-[var(--cv-note,#fffbeb)] text-[var(--cv-note-ink,#111b21)]'
                             : out
-                              ? 'rounded-se-[4px] bg-[var(--cv-out,#2563eb)] text-[var(--cv-out-ink,#fff)] shadow-[0_2px_8px_rgba(37,99,235,0.25)]'
-                              : 'rounded-ss-[4px] bg-[var(--cv-in,#f3f5f9)] text-[var(--cv-in-ink,#111)]',
+                              ? 'bg-[var(--cv-out,#d9fdd3)] text-[var(--cv-out-ink,#111b21)]'
+                              : 'bg-[var(--cv-in,#fff)] text-[var(--cv-in-ink,#111b21)]',
+                        first && !internal && (out ? 'rounded-se-none' : 'rounded-ss-none'),
                     )}
                 >
+                    {/* الذيل — مثلّثٌ بلون الفقاعة عند زاويتها العليا، ويُقلب مع الاتّجاه */}
+                    {first && !internal && (
+                        <span
+                            aria-hidden="true"
+                            className={cn(
+                                'absolute top-0 h-[13px] w-[8px] rtl:-scale-x-100',
+                                out
+                                    ? '-end-[8px] bg-[var(--cv-out,#d9fdd3)] [clip-path:polygon(0_0,100%_0,0_100%)]'
+                                    : '-start-[8px] bg-[var(--cv-in,#fff)] [clip-path:polygon(0_0,100%_0,100%_100%)]',
+                            )}
+                        />
+                    )}
+
                     {internal && internalLabel && (
-                        <p className="mb-1 flex items-center gap-1 text-[10.5px] font-bold text-[var(--cv-note-head,#b45309)]">
+                        <p className="mb-1 flex items-center gap-1 text-[11px] font-bold text-[var(--cv-note-head,#b45309)]">
                             <Lock className="size-3" />
                             {internalLabel}
                         </p>
                     )}
 
-                    {body && (
-                        <p className="whitespace-pre-wrap break-words text-[13.5px] leading-[1.55]" dir="auto">
-                            {body}
+                    {sender && (
+                        <p className="mb-0.5 text-[12.8px] font-medium text-[var(--cv-sender,#008069)]" dir="auto">
+                            {sender}
                         </p>
                     )}
 
-                    {files && files.length > 0 && (
-                        <div className={cn('space-y-1.5', body && 'mt-2')}>
-                            {files.map((f) => (
+                    {hasFiles && (
+                        <div className={cn('space-y-1', body ? 'mb-1' : 'mb-4')}>
+                            {files!.map((f) => (
                                 <AttachmentCard key={f.id} {...f} />
                             ))}
                         </div>
+                    )}
+
+                    {body && (
+                        <p className="whitespace-pre-wrap break-words leading-[19px]" dir="auto">
+                            {body}
+                            <span aria-hidden="true" className="inline-block align-middle" style={{ width: reserve }} />
+                        </p>
+                    )}
+
+                    {(time || mark) && (
+                        <span
+                            className={cn(
+                                'absolute bottom-[3px] end-[7px] flex items-center gap-[3px] text-[11px] leading-none',
+                                out ? 'text-[var(--cv-out-meta,#667781)]' : 'text-[var(--cv-meta,#667781)]',
+                            )}
+                        >
+                            {time && <span dir="ltr">{time}</span>}
+                            <Ticks status={mark} label={statusLabel} />
+                        </span>
                     )}
                 </div>
 
@@ -268,11 +348,11 @@ export function AttachmentCard({
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block overflow-hidden rounded-[10px] border border-black/5 bg-[var(--cv-attach,#fff)]"
+                className="block overflow-hidden rounded-[6px] bg-[var(--cv-attach,#f7f8fa)]"
                 title={name}
             >
                 <img src={url} alt={name} className="max-h-44 w-auto max-w-full object-contain" loading="lazy" />
-                <span className="flex items-center gap-2 px-2 py-1 text-[11px] text-[var(--cv-attach-muted,#71717a)]">
+                <span className="flex items-center gap-2 px-2 py-1 text-[11px] text-[var(--cv-attach-muted,#667781)]">
                     <span className="min-w-0 flex-1 truncate">{name}</span>
                     <span className="shrink-0">{fileSize(size)}</span>
                 </span>
@@ -283,19 +363,19 @@ export function AttachmentCard({
     return (
         <a
             href={url}
-            className="flex items-center gap-2.5 rounded-[10px] border border-black/5 bg-[var(--cv-attach,#fff)] p-2 text-[12px] text-[var(--cv-attach-ink,#111)] hover:bg-[var(--cv-attach-hover,#fafafa)]"
+            className="flex min-w-[220px] items-center gap-2.5 rounded-[6px] bg-[var(--cv-attach,#f7f8fa)] p-2.5 text-[13px] text-[var(--cv-attach-ink,#111b21)] hover:bg-[var(--cv-attach-hover,#eef0f2)]"
             title={t('تنزيل')}
         >
             <span className="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-[#fef2f2] text-[#dc2626]">
                 <FileText className="size-4" />
             </span>
             <span className="min-w-0 flex-1">
-                <span className="block truncate font-medium text-[var(--cv-attach-ink,#111)]" dir="auto">
+                <span className="block truncate font-medium text-[var(--cv-attach-ink,#111b21)]" dir="auto">
                     {name}
                 </span>
-                <span className="block text-[11px] text-[var(--cv-attach-muted,#9ca3af)]">{fileSize(size)}</span>
+                <span className="block text-[11px] text-[var(--cv-attach-muted,#667781)]">{fileSize(size)}</span>
             </span>
-            <Download className="size-4 shrink-0 text-[var(--cv-attach-muted,#71717a)]" />
+            <Download className="size-4 shrink-0 text-[var(--cv-attach-muted,#667781)]" />
         </a>
     );
 }

@@ -324,7 +324,7 @@ export default function ReportsCosts() {
                 <StatCard stat={{ label: t('تكلفة المبيعات'), value: m(summary.cost_of_sales), icon: 'package', color: 'warning', ...trendOf('cost_of_sales') }} />
                 <StatCard
                     stat={{
-                        label: t(COMPARE_LABELS.operating),
+                        label: t('تكاليف التشغيل'),
                         value: m(summary.operating),
                         icon: 'wallet',
                         color: 'primary',

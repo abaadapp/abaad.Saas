@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Http\Controllers\Admin\CustomerInvoiceController;
 use App\Models\BankAccount;
+use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
@@ -17,6 +18,7 @@ use App\Support\Document\Branding;
 use App\Support\Document\PaperSize;
 use App\Support\Document\Snapshot;
 use App\Support\Document\Version;
+use App\Support\Website\Domains;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 
@@ -66,6 +68,48 @@ class DocumentRenderer
         $out['vat_number'] = Paper::vatNumber($businessId);
 
         return $out;
+    }
+
+    /**
+     * ترويسةُ ورقة البيع وتذييلُها بلغة من تُطبع له.
+     *
+     * والعربيّةُ نصُّ الورقة كما كان (`header` و`footer`)، والإنجليزيّةُ
+     * حقلاها (`header_en` و`footer_en`). والفارغُ منهما لا يُفرغ الورقة:
+     *
+     *   · ترويسةٌ إنجليزيّةٌ فارغة تأخذ الترويسةَ التي كتبها التاجر — وهي ما
+     *     كان يُطبع على الإيصال الإنجليزيّ قبلها، فلا يفقده أحد.
+     *   · وتذييلٌ إنجليزيٌّ فارغ يأخذ ما كتبه التاجر، إلّا التذييلَ
+     *     الافتراضيّ: ذاك نصُّ النظام لا نصُّه، فيُقال بلغة الورقة.
+     *
+     * والأرقامُ لا تمرّ من هنا: المبالغُ واحدةٌ في اللغتين، والمسمّياتُ
+     * وحدَها تتبع اللغة.
+     *
+     * @param  array<string,mixed>  $values
+     * @return array<string,mixed>
+     */
+    public static function speak(array $values): array
+    {
+        if (app()->getLocale() !== 'en') {
+            return $values;
+        }
+
+        $header = trim((string) ($values['header_en'] ?? ''));
+        $footer = trim((string) ($values['footer_en'] ?? ''));
+
+        if ($header !== '') {
+            $values['header'] = $header;
+        }
+
+        if ($footer !== '') {
+            $values['footer'] = $footer;
+        } elseif (($values['footer'] ?? null) === DocumentTemplates::DEFAULT_FOOTER) {
+            $values['footer'] = implode("\n", array_map(
+                fn (string $line) => __($line),
+                explode("\n", DocumentTemplates::DEFAULT_FOOTER),
+            ));
+        }
+
+        return $values;
     }
 
     /**
@@ -183,19 +227,28 @@ class DocumentRenderer
     {
         $values = DocumentTemplates::settings($businessId, 'sale', $override);
 
-        $order = Order::where('business_id', $businessId)
-            ->where('is_held', false)
-            ->with('items', 'customerInvoices')
-            ->latest('id')
-            ->first() ?? self::sampleOrder($businessId);
-
         if (! $thermal) {
+            $order = Order::where('business_id', $businessId)
+                ->where('is_held', false)
+                ->with('items', 'customerInvoices')
+                ->latest('id')
+                ->first() ?? self::sampleOrder($businessId);
+
             return self::saleSheet($businessId, $order, $values, [
                 'paper' => (string) ($values['paper'] ?? PaperSize::A4),
             ]);
         }
 
         $paper = (string) ($values['strip'] ?? PaperSize::T80);
+
+        /*
+         * ═══ والإيصالُ يُعاين بطلبٍ مثاليّ — لا بآخر بيعة ═══
+         *
+         * كان يُرسم بأحدث طلبٍ في الدفتر: اسمُ زبونٍ حقيقيٍّ وما اشتراه
+         * وبكم، على شاشةٍ يفتحها من يضبط ترويسةً. والإيصالُ الآن يُضبط
+         * لزبائن الموقع أيضًا — فلا يُعرض في محرّره زبونٌ لم يُسأل.
+         */
+        $order = self::sampleOrder($businessId);
 
         /*
          * ولا رمزَ ولا رابطَ في المعاينة.
@@ -219,6 +272,7 @@ class DocumentRenderer
      */
     public static function saleSheet(int $businessId, Order $order, array $values, array $extra = []): string
     {
+        $values = self::speak($values);
         $scale = self::scale((string) $values['font']);
         $snapshot = Snapshot::of($order, $businessId);
 
@@ -302,6 +356,7 @@ class DocumentRenderer
      */
     public static function saleStrip(int $businessId, Order $order, array $values, int $width, array $extra = []): string
     {
+        $values = self::speak($values);
         $snapshot = Snapshot::of($order, $businessId);
 
         return self::html(view(Version::views($extra['version'] ?? null).'.thermal', [
@@ -317,7 +372,20 @@ class DocumentRenderer
             'paperUrl' => $extra['paperUrl'] ?? '',
             'customerTax' => $extra['customerTax'] ?? null,
             'googleReview' => $extra['googleReview'] ?? null,
+            /*
+             * وعنوانُ المتجر الإلكترونيّ كما يُخدَم — اسمُ النطاق بلا بروتوكول.
+             * ولا يُسأل عنه إلّا إن طُلب: لا استعلامَ لإيصالٍ لا يطبعه.
+             */
+            'website' => ($values['show_website'] ?? false) ? self::website($businessId) : '',
         ]));
+    }
+
+    /** عنوانُ المتجر المنشور — `ribbon.om` لا `https://ribbon.om/` — أو فراغ */
+    private static function website(int $businessId): string
+    {
+        $url = Domains::canonical($businessId, Business::whereKey($businessId)->value('site_slug'));
+
+        return $url ? rtrim((string) preg_replace('#^https?://#', '', $url), '/') : '';
     }
 
     /** طلبٌ للمعاينة وحدها — لا يُحفظ ولا يُعدّ في بيع */
@@ -330,6 +398,7 @@ class DocumentRenderer
             'employee_name' => __('موظف المبيعات'),
             'branch' => __('الفرع الرئيسي'),
             'payment_method' => 'نقدي',
+            'payment_status' => 'مدفوع',
             'subtotal' => 13.500, 'discount' => 0, 'tax' => 0, 'delivery_fee' => 0, 'total' => 13.500,
             'ordered_at' => now(),
         ]);

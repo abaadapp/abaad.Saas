@@ -59,6 +59,12 @@ class EveryKnobOnThePaperTurnsSomethingTest extends TestCase
     private const NOT_IN_PREVIEW = [
         // المعاينةُ لا تحمل رمزًا: طلبٌ مُخترعٌ برمزٍ يقود إلى ٤٠٤ في يد التاجر
         'sale.show_qr',
+        /*
+         * ومقبضا التواصل للإيصال الحراريّ وحده — وهذا الحارسُ يرسم وجهَ A4.
+         * يقيسهما على الشريط `AThermalReceiptSpeaksItsCustomersLanguageTest`.
+         */
+        'sale.show_phone',
+        'sale.show_website',
     ];
 
     protected function setUp(): void

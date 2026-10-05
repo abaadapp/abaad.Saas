@@ -29,6 +29,7 @@ use App\Support\Store\GiftOrders;
 use App\Support\Store\NewArrivals;
 use App\Support\Store\ProductReviews;
 use App\Support\Store\PaidReceipt;
+use App\Support\Store\ThankYouPage;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
@@ -615,6 +616,11 @@ class RibbonController extends Controller
                 ])->all(),
             ],
             'bank' => $s['bank'],
+            /*
+             * ونصوصُ الصفحة بلغتها — ما كتبه التاجر أو نصُّ النظام (`ThankYouPage`).
+             * والطلبُ وأرقامُه أعلاه من الطلب نفسِه، لا من نصٍّ يُكتب.
+             */
+            'thanks' => ThankYouPage::texts((int) $business->id, $lang),
         ];
     }
 

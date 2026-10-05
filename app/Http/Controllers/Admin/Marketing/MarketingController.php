@@ -215,6 +215,19 @@ class MarketingController extends Controller
             'store_pay_transfer' => ['sometimes', 'boolean'],
             // إيصالُ الدفع الإلكترونيّ للزبون — انظر `Store\PaidReceipt` وحارسَه تحت
             'store_paid_receipt' => ['sometimes', 'boolean'],
+            /*
+             * ونصوصُ صفحة الشكر — نصٌّ حرٌّ يُطبع مُهرَّبًا، لا وسمَ فيه يُرسم.
+             * والحدودُ حدودُ موضعها: عنوانٌ سطر، ورسالةٌ فقرةٌ قصيرة، وزرٌّ
+             * كلمات. انظر `Store\ThankYouPage`.
+             */
+            'store_thanks_title' => ['nullable', 'string', 'max:120'],
+            'store_thanks_title_en' => ['nullable', 'string', 'max:120'],
+            'store_thanks_message' => ['nullable', 'string', 'max:300'],
+            'store_thanks_message_en' => ['nullable', 'string', 'max:300'],
+            'store_thanks_receipt' => ['nullable', 'string', 'max:40'],
+            'store_thanks_receipt_en' => ['nullable', 'string', 'max:40'],
+            'store_thanks_continue' => ['nullable', 'string', 'max:40'],
+            'store_thanks_continue_en' => ['nullable', 'string', 'max:40'],
             'store_bank' => ['nullable', 'string', 'max:400'],
             // التوصيل — يقرؤه إتمامُ الطلب في الواجهة الخاصّة وحده
             'store_delivery_fee' => ['nullable', 'numeric', 'min:0', 'max:1000'],

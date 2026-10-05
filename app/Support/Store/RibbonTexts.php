@@ -53,7 +53,7 @@ final class RibbonTexts
          * لم يوافق لا يُنشأ له طلبٌ بالسعر الجديد.
          */
         'priceChanged' => 'تغيّر إجمالي طلبك', 'agreeNew' => 'أوافق وأكمل الطلب', 'keepBrowsing' => 'تراجَع',
-        'thanks' => 'شكراً لك، تم استلام طلبك', 'orderNo' => 'رقم الطلب', 'bankDetails' => 'بيانات الحساب البنكي', 'pay' => 'الدفع',
+        'thanks' => 'شكراً لك، تم استلام طلبك', 'thanksMsg' => 'تم استلام طلبك بنجاح، وسنقوم بتجهيزه في أقرب وقت.', 'orderNo' => 'رقم الطلب', 'bankDetails' => 'بيانات الحساب البنكي', 'pay' => 'الدفع',
         'footShop' => 'تسوّق', 'footContact' => 'تواصل معنا', 'footHours' => 'ساعات العمل',
         'footPages' => 'الموقع',
         // أسماءُ الصفحات في القائمة — انظر `StoreNav::LABELS`
@@ -113,7 +113,7 @@ final class RibbonTexts
         'summary' => 'Order summary', 'promo' => 'Promo code', 'apply' => 'Apply', 'shipping' => 'Delivery', 'discount' => 'Discount', 'tax' => 'VAT', 'total' => 'Total', 'free' => 'Free', 'freeOver' => 'Free over :amount',
         'place' => 'Place order', 'date' => 'Date', 'slot' => 'Delivery time', 'errReq' => 'Please complete the highlighted fields', 'errEmpty' => 'Cart is empty', 'errBusy' => 'Too many attempts — wait a minute and try again.', 'errStale' => 'Your session expired — reload the page, then confirm your order.', 'errServer' => 'We could not complete your order — try again, or contact us.', 'closed' => 'The store is not taking online orders right now — contact us.',
         'priceChanged' => 'Your order total has changed', 'agreeNew' => 'I agree — place the order', 'keepBrowsing' => 'Go back',
-        'thanks' => 'Thank you, your order is received', 'orderNo' => 'Order no.', 'bankDetails' => 'Bank account details', 'pay' => 'Payment',
+        'thanks' => 'Thank you, your order is received', 'thanksMsg' => 'Your order has been received successfully and will be prepared shortly.', 'orderNo' => 'Order no.', 'bankDetails' => 'Bank account details', 'pay' => 'Payment',
         'footShop' => 'Shop', 'footContact' => 'Contact', 'footHours' => 'Opening hours',
         'footPages' => 'Site',
         'navHome' => 'Home', 'navShop' => 'Shop', 'navAbout' => 'About', 'navContact' => 'Contact',

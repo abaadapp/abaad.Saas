@@ -156,8 +156,30 @@ class TemplateController extends Controller
             ? (string) ($data['strip'] ?? DocumentTemplates::settings($this->bid(), $type)['strip'] ?? $strips[0])
             : (string) ($data['paper'] ?? PaperSize::A4);
 
+        /*
+         * ولغةُ المعاينة لما له نصٌّ بالإنجليزيّة — تُرى ترويستُه وتذييلُه
+         * كما يقرؤهما زبونٌ إنجليزيّ. وتُعاد اللغةُ بعد الرسم: الطلبُ نفسُه
+         * يُكمل بلغة صاحبه.
+         */
+        $lang = (DocumentTemplates::TYPES[$type]['localized'] ?? false) === true
+            && in_array($request->input('lang'), ['ar', 'en'], true)
+                ? (string) $request->input('lang')
+                : null;
+
+        $was = app()->getLocale();
+
+        try {
+            if ($lang !== null) {
+                app()->setLocale($lang);
+            }
+
+            $html = DocumentRenderer::preview($this->bid(), $type, $data, $thermal);
+        } finally {
+            app()->setLocale($was);
+        }
+
         return response()->json([
-            'html' => DocumentRenderer::preview($this->bid(), $type, $data, $thermal),
+            'html' => $html,
             'size' => $size,
         ]);
     }

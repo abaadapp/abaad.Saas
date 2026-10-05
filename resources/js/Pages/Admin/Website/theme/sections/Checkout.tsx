@@ -6,6 +6,36 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import type { ThemeForm } from './form';
 
+/**
+ * نصوصُ صفحة الشكر — لكلّ نصٍّ خانتان: عربيّةٌ وإنجليزيّة.
+ *
+ * والعلامةُ المائيّةُ نصُّ النظام نفسُه (`RibbonTexts`): ما يراه الزبونُ إن
+ * تُركت الخانةُ فارغة. والحدُّ حدُّ الخادم — `MarketingController::saveStore`.
+ */
+const THANKS = [
+    {
+        key: 'store_thanks_title', enKey: 'store_thanks_title_en', max: 120, long: false,
+        ar: 'عنوان الصفحة', en: 'Page title — English',
+        arDefault: 'شكراً لك، تم استلام طلبك', enDefault: 'Thank you, your order is received',
+    },
+    {
+        key: 'store_thanks_message', enKey: 'store_thanks_message_en', max: 300, long: true,
+        ar: 'الرسالة تحت العنوان', en: 'Message — English',
+        arDefault: 'تم استلام طلبك بنجاح، وسنقوم بتجهيزه في أقرب وقت.',
+        enDefault: 'Your order has been received successfully and will be prepared shortly.',
+    },
+    {
+        key: 'store_thanks_receipt', enKey: 'store_thanks_receipt_en', max: 40, long: false,
+        ar: 'زر الإيصال', en: 'Receipt button — English',
+        arDefault: 'عرض الفاتورة', enDefault: 'View invoice',
+    },
+    {
+        key: 'store_thanks_continue', enKey: 'store_thanks_continue_en', max: 40, long: false,
+        ar: 'زر متابعة التسوق', en: 'Continue shopping button — English',
+        arDefault: 'متابعة التسوّق', enDefault: 'Continue shopping',
+    },
+] as const;
+
 const FULFILMENTS = [
     { value: 'delivery', label: 'توصيل' },
     { value: 'pickup', label: 'استلام من المحل' },
@@ -87,6 +117,68 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                             {t('لا طريقة دفعٍ مفتوحة — متجرك يُتصفَّح ولا يقبل طلبًا.')}
                         </p>
                     )}
+                </SettingsGroup>
+
+                {/*
+                    ═══ صفحةُ الشكر — ما يقرؤه الزبونُ بعد أن يطلب ═══
+
+                    أربعةُ نصوصٍ لكلّ لغة، والفارغُ يأخذ نصَّ النظام بلغة الصفحة
+                    (ويظهر هنا علامةً مائيّة). ولا يقع نصُّ لغةٍ على الأخرى.
+                    ورقمُ الطلب وأصنافُه ومبالغُه يكتبها النظام من الطلب — لا
+                    حقلَ لها هنا. انظر `Store\ThankYouPage`.
+                */}
+                <SettingsGroup title="صفحة الشكر">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="thanks-settings">
+                        {THANKS.map((f) => (
+                            <div key={f.key} className="contents">
+                                <Field label={f.ar} error={form.errors[f.key]}>
+                                    {f.long ? (
+                                        <Textarea
+                                            rows={2}
+                                            value={form.data[f.key]}
+                                            onChange={(e) => form.setData(f.key, e.target.value)}
+                                            aria-label={t(f.ar)}
+                                            placeholder={f.arDefault}
+                                            maxLength={f.max}
+                                        />
+                                    ) : (
+                                        <Input
+                                            value={form.data[f.key]}
+                                            onChange={(e) => form.setData(f.key, e.target.value)}
+                                            aria-label={t(f.ar)}
+                                            placeholder={f.arDefault}
+                                            maxLength={f.max}
+                                        />
+                                    )}
+                                </Field>
+                                <Field label={f.en} error={form.errors[f.enKey]}>
+                                    {f.long ? (
+                                        <Textarea
+                                            dir="ltr"
+                                            rows={2}
+                                            value={form.data[f.enKey]}
+                                            onChange={(e) => form.setData(f.enKey, e.target.value)}
+                                            aria-label={f.en}
+                                            placeholder={f.enDefault}
+                                            maxLength={f.max}
+                                        />
+                                    ) : (
+                                        <Input
+                                            dir="ltr"
+                                            value={form.data[f.enKey]}
+                                            onChange={(e) => form.setData(f.enKey, e.target.value)}
+                                            aria-label={f.en}
+                                            placeholder={f.enDefault}
+                                            maxLength={f.max}
+                                        />
+                                    )}
+                                </Field>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="mt-3 text-[12px] leading-relaxed text-[#6b7280]">
+                        {t('اتركه فارغًا فيظهر النص الظاهر في الخانة بلغة الصفحة. ورقم الطلب وأصنافه ومبالغه يكتبها النظام.')}
+                    </p>
                 </SettingsGroup>
 
                 <SettingsGroup title="التوصيل والاستلام">

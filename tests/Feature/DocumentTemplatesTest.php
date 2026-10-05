@@ -224,13 +224,20 @@ class DocumentTemplatesTest extends TestCase
         ]);
     }
 
+    /**
+     * والإيصالُ يُعاين بالقالب الذي يُطبع — وبطلبٍ مثاليّ لا بآخر بيعة.
+     *
+     * كان يُرسم بأحدث طلبٍ في الدفتر، فيظهر في المحرّر زبونٌ حقيقيٌّ وما
+     * اشتراه. والمتجرُ نفسُه حقيقيّ: اسمُه وترويستُه كما ستُطبع.
+     */
     public function test_the_sale_preview_draws_the_real_receipt(): void
     {
         $html = $this->postJson(route('admin.settings.templates.preview', 'sale'), [
             'strip' => '80mm', 'thermal' => true, 'show_employee' => true,
         ])->assertOk()->json('html');
 
-        $this->assertStringContainsString('INV-000001', $html);
+        $this->assertStringContainsString('INV-000123', $html, 'طلبُ المعاينة المثاليّ');
+        $this->assertStringNotContainsString('INV-000001', $html, 'لا آخرَ بيعةٍ حقيقيّة في المحرّر');
         $this->assertStringContainsString('ورد الخوير', $html);
     }
 

@@ -37,6 +37,11 @@
 
     $width = $width ?? 80;
     $vat = $line('vat_number');
+    /*
+     * والهاتفُ كان يُطبع دائمًا، فغيابُ مقبضه يُقرأ «ظاهرًا» — إيصالٌ رُسم
+     * قبل المقبض يبقى كما كان. والمدينةُ ليست تواصلًا: تبقى معه أو بدونه.
+     */
+    $phone = $show('tpl_show_phone') ? ($stamped->phone ?? null) : null;
 @endphp
 @include('documents.v1.partials.thermal-tokens')
 
@@ -54,10 +59,14 @@
     @if ($show('tpl_show_branch'))
         <div class="muted tiny">{{ $order->branch ?? __('الفرع الرئيسي') }}</div>
     @endif
-    @if ($stamped->city || $stamped->phone)
+    @if ($stamped->city || $phone)
         <div class="muted tiny">
-            {{ $stamped->city }}@if ($stamped->city && $stamped->phone) · @endif<span dir="ltr">{{ $stamped->phone }}</span>
+            {{ $stamped->city }}@if ($stamped->city && $phone) · @endif<span dir="ltr">{{ $phone }}</span>
         </div>
+    @endif
+    {{-- وعنوانُ المتجر الإلكترونيّ — من نطاقه المنشور لا من نصٍّ يُكتب (`DocumentRenderer::website`) --}}
+    @if (($website ?? '') !== '')
+        <div class="muted tiny" dir="ltr">{{ $website }}</div>
     @endif
     @if ($show('tpl_show_vat_no', false) && $vat !== '')
         <div class="muted tiny">{{ __('الرقم الضريبي') }}: <span dir="ltr">{{ $vat }}</span></div>
@@ -181,6 +190,15 @@
     @endif
     <tr class="grand"><td>{{ __('الإجمالي') }}</td><td class="l"><span dir="ltr">{{ $money($order->total) }}</span></td></tr>
     <tr><td class="k">{{ __('وسيلة الدفع') }}</td><td class="l">{{ $order->payment_method === 'بطاقة' ? __('فيزا') : __($order->payment_method) }}</td></tr>
+    {{--
+        وحالُ الدفع بجانب وسيلته — ولا مقبضَ يُخفيهما.
+
+        إيصالُ الموقع يُعطى لمن دفع ببطاقته، وهو ورقتُه أنّ مالَه قُبض. فوسيلةٌ
+        بلا حال تقول «بطاقة» ولا تقول أكان الدفعُ تمّ.
+    --}}
+    @if (filled($order->payment_status))
+        <tr><td class="k">{{ __('حالة الدفع') }}</td><td class="l">{{ __($order->payment_status) }}</td></tr>
+    @endif
     @if (($order->points_earned ?? 0) > 0)
         <tr><td class="k">{{ __('نقاط ولاء مكتسبة') }}</td><td class="l" dir="ltr">{{ $order->points_earned }}</td></tr>
     @endif

@@ -91,6 +91,9 @@ class MarketingToolsTest extends TestCase
             'store_pay_cod', 'store_pay_transfer', 'store_bank',
             // وإيصالُ الدفع للزبون في صفحة الشكر — يقرؤه `Store\PaidReceipt`
             'store_paid_receipt',
+            // ونصوصُ صفحة الشكر لكلّ لغة — تقرؤها `Store\ThankYouPage` في صفحة التأكيد
+            'store_thanks_title', 'store_thanks_title_en', 'store_thanks_message', 'store_thanks_message_en',
+            'store_thanks_receipt', 'store_thanks_receipt_en', 'store_thanks_continue', 'store_thanks_continue_en',
             // التوصيلُ والاستلام — يقرؤها إتمامُ الطلب في الواجهة الخاصّة (Store\WebCheckout)
             'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
             // وساعاتُ العمل بالإنجليزيّة بجانب العربيّة — للصفحة الإنجليزيّة (`StorePage::hours`)

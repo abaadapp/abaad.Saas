@@ -139,6 +139,18 @@ class MarketingSettings
              * انظر `Store\PaidReceipt`.
              */
             'store_paid_receipt' => '0',
+            /*
+             * ونصوصُ صفحة الشكر — لكلّ لغةٍ نصُّها، والفارغُ يأخذ نصَّ النظام
+             * بلغة الصفحة. انظر `Store\ThankYouPage`.
+             */
+            'store_thanks_title' => '',
+            'store_thanks_title_en' => '',
+            'store_thanks_message' => '',
+            'store_thanks_message_en' => '',
+            'store_thanks_receipt' => '',
+            'store_thanks_receipt_en' => '',
+            'store_thanks_continue' => '',
+            'store_thanks_continue_en' => '',
 
             /*
              * والتوصيلُ — لمن في واجهته سلّةٌ وإتمامُ طلب (انظر `Store\WebCheckout`).

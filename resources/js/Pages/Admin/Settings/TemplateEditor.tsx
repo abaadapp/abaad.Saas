@@ -23,6 +23,8 @@ type Template = {
     section: string;
     hasPaper: boolean;
     hasStrip: boolean;
+    /** للورقة ترويسةٌ وتذييلٌ بالإنجليزيّة — تُطبع لمن يُطبع له بها */
+    hasEnglish?: boolean;
     fields: FieldRow[];
     fonts: string[];
     papers: string[];
@@ -64,6 +66,14 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
      */
     const [thermal, setThermal] = useState(false);
 
+    /*
+     * ولغةُ المعاينة — لمن له نصٌّ بالإنجليزيّة.
+     *
+     * الإيصالُ يُطبع بلغة من يطبعه، وزبونُ الموقع الإنجليزيّ يقرأ ترويسته
+     * وتذييله الإنجليزيّين. فيُرى ذلك هنا قبل أن يُرى في يده.
+     */
+    const [lang, setLang] = useState<'ar' | 'en'>('ar');
+
     const [html, setHtml] = useState<string>('');
     const [paper, setPaper] = useState<string>('A4');
     const [drawing, setDrawing] = useState(true);
@@ -98,7 +108,7 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify({ ...form.data, thermal }),
+                body: JSON.stringify({ ...form.data, thermal, ...(template.hasEnglish ? { lang } : {}) }),
             });
 
             const body = await res.json();
@@ -114,7 +124,7 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
                 setDrawing(false);
             }
         }
-    }, [form.data, template.key, brandStamp, thermal]);
+    }, [form.data, template.key, brandStamp, thermal, lang, template.hasEnglish]);
 
     // تأخيرٌ قصير: الكتابة في التذييل لا ترسل طلبًا لكل حرف
     useEffect(() => {
@@ -193,6 +203,32 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
                                 </div>
                             )}
 
+                            {template.hasEnglish && (
+                                <div className="flex rounded-[10px] border border-[var(--ui-border,#e8e8e8)] p-0.5">
+                                    {(
+                                        [
+                                            { on: 'ar', label: 'عربي' },
+                                            { on: 'en', label: 'English' },
+                                        ] as const
+                                    ).map((face) => (
+                                        <button
+                                            key={face.on}
+                                            type="button"
+                                            aria-pressed={lang === face.on}
+                                            onClick={() => setLang(face.on)}
+                                            className={cn(
+                                                'rounded-[8px] px-2.5 py-1 text-[12px]',
+                                                lang === face.on
+                                                    ? 'bg-[#111] text-white'
+                                                    : 'text-[#6b7280] hover:bg-[#fafafa]',
+                                            )}
+                                        >
+                                            {face.on === 'en' ? face.label : t(face.label)}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
                             {drawing && <RefreshCw className="size-3.5 animate-spin text-[#d1d5db]" />}
                         </div>
                     </div>
@@ -242,6 +278,48 @@ export default function TemplateEditor({ template, templates, brand }: Props) {
                                 />
                             </Field>
                         </div>
+
+                        {/*
+                            والنصّان بالإنجليزيّة — لما يُطبع بها: إيصالُ زبون الموقع
+                            الإنجليزيّ، وصندوقٌ لغتُه الإنجليزيّة.
+
+                            والفارغُ لا يُفرغ الورقة: يُطبع ما فوقه كما كان يُطبع.
+                            نصٌّ حرٌّ بلا وسوم — والمبالغُ والأصنافُ ليست هنا.
+                        */}
+                        {template.hasEnglish && (
+                            <>
+                                <div className="mt-4">
+                                    <Field
+                                        label="Line under the store name — English"
+                                        hint="للإيصال الإنجليزي — اتركه فارغًا فيُطبع السطر العربي كما كان"
+                                        error={form.errors.header_en}
+                                    >
+                                        <Input
+                                            dir="ltr"
+                                            value={(form.data.header_en as string) ?? ''}
+                                            onChange={(e) => form.setData('header_en', e.target.value)}
+                                            aria-label="Line under the store name — English"
+                                        />
+                                    </Field>
+                                </div>
+
+                                <div className="mt-4">
+                                    <Field
+                                        label="Footer — English"
+                                        hint="للإيصال الإنجليزي — اتركه فارغًا فيُطبع التذييل كما كان"
+                                        error={form.errors.footer_en}
+                                    >
+                                        <Textarea
+                                            dir="ltr"
+                                            rows={3}
+                                            value={(form.data.footer_en as string) ?? ''}
+                                            onChange={(e) => form.setData('footer_en', e.target.value)}
+                                            aria-label="Footer — English"
+                                        />
+                                    </Field>
+                                </div>
+                            </>
+                        )}
 
                         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <Field label="حجم الخط" error={form.errors.font}>

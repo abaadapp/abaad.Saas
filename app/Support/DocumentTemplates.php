@@ -42,6 +42,22 @@ class DocumentTemplates
         'show_prices' => ['label' => 'الأسعار والإجمالي', 'hint' => 'أطفئه في ورقةٍ يحملها سائق أو يوقّعها مستلم — فلا يرى ما لا يخصّه'],
         'show_notes' => ['label' => 'الملاحظات'],
         'show_signature' => ['label' => 'خانة التوقيع', 'hint' => 'سطرٌ يُوقَّع عليه عند التسليم — ورقةٌ بلا توقيع لا تُثبت شيئًا'],
+        /*
+         * ووسائلُ التواصل على الإيصال الحراريّ — من ملفّ المتجر لا من حقلٍ يُكتب هنا.
+         *
+         * الهاتفُ هاتفُ النشاط، والموقعُ عنوانُ متجره الإلكترونيّ كما يُخدَم
+         * (`Website\Domains::canonical`). ونسخةٌ ثانيةٌ منهما في القالب تفترق
+         * عن الأصل يومَ يُبدَّل الرقم في موضعٍ ويُنسى في الآخر.
+         */
+        'show_phone' => ['label' => 'هاتف المتجر', 'hint' => 'على الإيصال الحراري — من ملف النشاط'],
+        'show_website' => ['label' => 'عنوان المتجر الإلكتروني', 'hint' => 'على الإيصال الحراري — يظهر إن كان لمتجرك عنوانٌ منشور'],
+        /*
+         * وحالُ الدفع سطرٌ بجانب وسيلته — مطفأٌ افتراضًا.
+         *
+         * لم يكن على الإيصال قطّ، وإشعالُه للجميع يُضيف سطرًا إلى كلّ إيصال
+         * صندوقٍ في كلّ متجرٍ لم يطلبه. فيُشعله من يريده لمتجره.
+         */
+        'show_payment_status' => ['label' => 'حالة الدفع', 'hint' => 'على الإيصال الحراري — بجانب وسيلة الدفع'],
     ];
 
     /**
@@ -62,10 +78,21 @@ class DocumentTemplates
             'legacy' => true,
             'paper' => true,
             'strip' => true,
+            /*
+             * وترويسةٌ وتذييلٌ بالإنجليزيّة — لمن يُطبع له بها.
+             *
+             * الإيصالُ يُرسم بلغة من يطبعه: الصندوقُ بلغة الموظّف، وإيصالُ
+             * الموقع بلغة الزبون. وكانت الترويسةُ والتذييلُ نصًّا واحدًا،
+             * فيقرأ زبونٌ إنجليزيٌّ إيصالًا مسمّياتُه إنجليزيّة وتذييلُه عربيّ.
+             * انظر `DocumentRenderer::speak`.
+             */
+            'localized' => true,
             'fields' => [
                 'show_logo' => false, 'show_branch' => true, 'show_employee' => true,
                 'show_customer' => true, 'show_datetime' => true, 'show_items_count' => true,
                 'show_vat_no' => false, 'show_qr' => true,
+                // والهاتفُ كان يُطبع دائمًا — فيبقى ظاهرًا لمن لم يُطفئه
+                'show_phone' => true, 'show_website' => false, 'show_payment_status' => false,
             ],
         ],
         /*
@@ -267,6 +294,12 @@ class DocumentTemplates
         $out['footer'] = $spec['footer'] ?? self::DEFAULT_FOOTER;
         $out['font'] = 'عادي';
 
+        /* والإنجليزيّةُ فارغةٌ افتراضًا: فارغُها يأخذ نصَّ الورقة كما كان */
+        if (($spec['localized'] ?? false) === true) {
+            $out['header_en'] = '';
+            $out['footer_en'] = '';
+        }
+
         /*
          * وورقةُ البيع A4 — والشريطُ مخرجٌ ثانٍ لا بديلٌ عنها.
          *
@@ -395,7 +428,7 @@ class DocumentTemplates
                 $field === 'font' => ['sometimes', 'in:'.implode(',', self::FONTS)],
                 $field === 'paper' => ['sometimes', 'in:'.implode(',', self::papers())],
                 $field === 'strip' => ['sometimes', 'in:'.implode(',', self::strips())],
-                $field === 'header' => ['sometimes', 'nullable', 'string', 'max:120'],
+                $field === 'header', $field === 'header_en' => ['sometimes', 'nullable', 'string', 'max:120'],
                 default => ['sometimes', 'nullable', 'string', 'max:500'],
             };
         }
@@ -464,6 +497,7 @@ class DocumentTemplates
             'section' => __($spec['section']),
             'hasPaper' => ($spec['paper'] ?? false) === true,
             'hasStrip' => ($spec['strip'] ?? false) === true,
+            'hasEnglish' => ($spec['localized'] ?? false) === true,
             'fields' => $fields,
             'fonts' => self::FONTS,
             'papers' => self::papers(),

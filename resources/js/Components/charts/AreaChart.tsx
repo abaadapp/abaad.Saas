@@ -103,7 +103,14 @@ export default function AreaChart({
                 full: fullLabels?.[i] ?? labels[i] ?? '',
                 count: counts?.[i],
             })),
-            ticks: Array.from({ length: 4 }, (_, i) => {
+            /*
+             * ولا علامةَ فوق الصفر حين لا قيمةَ فوقه.
+             *
+             * سقفُ الأصفار واحدٌ ليُقسم عليه (`niceCeiling`)، فكانت العلاماتُ
+             * ٠ و٠٫٣٣٣ و٠٫٦٦٧ و١ على رسمٍ كلُّه صفر — أرقامٌ لم يبلغها شيء.
+             * فالصفرُ وحده، على خطّ القاع.
+             */
+            ticks: (Math.max(...known, 0) > 0 ? [0, 1, 2, 3] : [0]).map((i) => {
                 const value = (niceMax / 3) * i;
                 return { value, y: PAD.top + innerH - (value / niceMax) * innerH };
             }),

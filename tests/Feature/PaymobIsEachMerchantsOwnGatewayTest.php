@@ -111,7 +111,7 @@ class PaymobIsEachMerchantsOwnGatewayTest extends TestCase
         return User::where('business_id', $shop->id)->firstOrFail();
     }
 
-    private function gateway(Business $shop, string $card, ?string $apple = null, string $hmac = 'hmac-default', string $secret = 'secret-default'): PaymentGateway
+    private function gateway(Business $shop, string $card, ?string $apple = null, string $hmac = 'hmac-default', string $secret = 'secret-default', ?string $omannet = null): PaymentGateway
     {
         return PaymentGateway::create([
             'business_id' => $shop->id,
@@ -120,6 +120,7 @@ class PaymobIsEachMerchantsOwnGatewayTest extends TestCase
             'secret_key' => $secret,
             'hmac_secret' => $hmac,
             'card_integration_id' => $card,
+            'omannet_integration_id' => $omannet,
             'apple_pay_integration_id' => $apple,
             'active' => true,
         ]);
@@ -722,5 +723,226 @@ class PaymobIsEachMerchantsOwnGatewayTest extends TestCase
 
         $this->assertNull($row->fresh()->apple_pay_integration_id);
         $this->assertTrue($row->fresh()->ready());
+    }
+
+    /* ═══════════════ ١١ · OmanNet — تكاملٌ ثالثٌ لكلّ متجرٍ برقمه ═══════════════ */
+
+    public function test_omannet_sits_between_the_card_and_apple_pay_and_changes_nothing_when_empty(): void
+    {
+        $g = new PaymentGateway;
+
+        $cases = [
+            // بلا OmanNet: كما كان قبله حرفًا بحرف
+            [['111', null, null], [111]],
+            [['111', '', '222'], [111, 222]],
+            [['111', null, '222'], [111, 222]],
+            // وبه: البطاقةُ ثمّ OmanNet ثمّ Apple Pay
+            [['111', '333', null], [111, 333]],
+            [['111', '333', '222'], [111, 333, 222]],
+            [[' 111 ', ' 333 ', ' 222 '], [111, 333, 222]],
+            // والصفرُ والنصُّ يسقطان، والمكرَّرُ يُرسَل مرّة
+            [['111', '0', '222'], [111, 222]],
+            [['111', 'on-1', '222'], [111, 222]],
+            [['111', '111', '222'], [111, 222]],
+            [['111', '222', '222'], [111, 222]],
+            [['', '333', ''], [333]],
+        ];
+
+        foreach ($cases as [[$card, $omannet, $apple], $want]) {
+            $g->card_integration_id = $card;
+            $g->omannet_integration_id = $omannet;
+            $g->apple_pay_integration_id = $apple;
+            $this->assertSame($want, $g->paymentMethodIds(), json_encode([$card, $omannet, $apple]));
+        }
+    }
+
+    public function test_omannet_is_not_needed_for_a_ready_gateway(): void
+    {
+        $this->assertTrue($this->gateway($this->a, '111')->ready());
+        $this->assertNull(PaymobSettings::row($this->a->id)->omannet_integration_id);
+    }
+
+    public function test_a_shop_with_omannet_sends_card_omannet_then_apple_pay(): void
+    {
+        $this->gateway($this->a, '111', '222', omannet: '333');
+        $intent = $this->openCard($this->a);
+
+        $sent = $this->intention();
+        $this->assertSame([111, 333, 222], $sent['payment_methods']);
+        // ودفعةٌ واحدةٌ وصفحةُ Paymob الموحّدة — لا بابَ ثانٍ لـOmanNet
+        $this->assertSame(1, StorePaymentIntent::where('business_id', $this->a->id)->count());
+        $this->assertSame($intent->reference, $sent['special_reference']);
+    }
+
+    public function test_two_merchants_send_their_own_three_ids_and_nothing_of_each_other(): void
+    {
+        $this->gateway($this->a, '1001', '1003', 'hmac-a', 'secret-a', omannet: '1002');
+        $this->gateway($this->b, '2001', '2003', 'hmac-b', 'secret-b', omannet: '2002');
+
+        $this->openCard($this->a);
+        $a = $this->intention();
+        $this->assertSame([1001, 1002, 1003], $a['payment_methods']);
+        $this->assertSame('Token secret-a', $a->header('Authorization')[0]);
+
+        $this->openCard($this->b);
+        $b = $this->intention();
+        $this->assertSame([2001, 2002, 2003], $b['payment_methods']);
+        $this->assertSame('Token secret-b', $b->header('Authorization')[0]);
+    }
+
+    public function test_a_shop_without_omannet_never_receives_anothers(): void
+    {
+        $this->gateway($this->a, '111', null, omannet: '333');
+        $this->gateway($this->b, '444');
+
+        $this->openCard($this->b);
+
+        $this->assertSame([444], $this->intention()['payment_methods']);
+    }
+
+    public function test_the_browser_cannot_add_an_omannet_id(): void
+    {
+        $this->gateway($this->a, '111');
+        $this->fakePaymob();
+
+        $this->postJson('/s/bloom-a/checkout', $this->order($this->a) + [
+            'omannet_integration_id' => '999', 'payment_methods' => [999],
+        ])->assertOk();
+
+        $this->assertSame([111], $this->intention()['payment_methods']);
+    }
+
+    public function test_omannet_is_saved_shown_and_cleared_for_the_merchant_itself(): void
+    {
+        $owner = $this->owner($this->a);
+
+        $this->actingAs($owner)->post(route('admin.integrations.paymob.save'), $this->keys(['omannet_integration_id' => ' 333 ']))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('333', PaymobSettings::row($this->a->id)->omannet_integration_id);
+
+        $gateway = $this->actingAs($owner)->get(route('admin.integrations.paymob'))->viewData('page')['props']['gateway'];
+        $this->assertSame('333', $gateway['omannet_integration_id']);
+        $this->assertTrue($gateway['omannet']);
+
+        $this->actingAs($owner)->post(route('admin.integrations.paymob.save'), $this->keys([
+            'omannet_integration_id' => '', 'secret_key' => '', 'hmac_secret' => '',
+        ]))->assertSessionHasNoErrors();
+
+        $row = PaymobSettings::row($this->a->id);
+        $this->assertNull($row->omannet_integration_id);
+        $this->assertSame([111, 222], $row->paymentMethodIds());
+        // والسرّان الفارغان لا يمحوان المحفوظ
+        $this->assertSame('secret-new', $row->secret_key);
+        $this->assertSame('hmac-new', $row->hmac_secret);
+    }
+
+    public function test_a_save_without_the_omannet_field_leaves_it_empty_as_before(): void
+    {
+        $this->actingAs($this->owner($this->a))->post(route('admin.integrations.paymob.save'), $this->keys())
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull(PaymobSettings::row($this->a->id)->omannet_integration_id);
+        $this->assertSame([111, 222], PaymobSettings::row($this->a->id)->paymentMethodIds());
+    }
+
+    public function test_omannet_must_be_a_positive_number_of_its_own(): void
+    {
+        $owner = $this->owner($this->a);
+
+        foreach (['abc', '33x', '3 3', '0', '000', '-5'] as $bad) {
+            $this->actingAs($owner)->post(route('admin.integrations.paymob.save'), $this->keys(['omannet_integration_id' => $bad]))
+                ->assertSessionHasErrors('omannet_integration_id');
+        }
+
+        // ولا يكون رقمَ البطاقة، ولا يكون رقمُ Apple Pay رقمَه
+        $this->actingAs($owner)->post(route('admin.integrations.paymob.save'), $this->keys(['omannet_integration_id' => '111']))
+            ->assertSessionHasErrors('omannet_integration_id');
+        $this->actingAs($owner)->post(route('admin.integrations.paymob.save'), $this->keys([
+            'omannet_integration_id' => '333', 'apple_pay_integration_id' => '333',
+        ]))->assertSessionHasErrors('apple_pay_integration_id');
+
+        $this->assertNull(PaymobSettings::row($this->a->id));
+    }
+
+    public function test_a_merchant_never_sees_or_edits_anothers_omannet(): void
+    {
+        $this->gateway($this->b, '333', '444', 'hmac-b', 'secret-b', omannet: '555');
+
+        $gateway = $this->actingAs($this->owner($this->a))->get(route('admin.integrations.paymob'))
+            ->viewData('page')['props']['gateway'];
+        $this->assertSame('', $gateway['omannet_integration_id']);
+        $this->assertFalse($gateway['omannet']);
+
+        $this->actingAs($this->owner($this->a))->post(route('admin.integrations.paymob.save'), $this->keys([
+            'business_id' => $this->b->id, 'omannet_integration_id' => '666',
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame('555', PaymobSettings::row($this->b->id)->omannet_integration_id);
+        $this->assertSame('666', PaymobSettings::row($this->a->id)->omannet_integration_id);
+    }
+
+    /** وإشعارُ دفعةِ OmanNet يُصدَّق بسرّ متجرها هو — كالبطاقة وApple Pay */
+    public function test_a_notice_from_the_omannet_integration_settles_with_its_shops_secret_only(): void
+    {
+        $this->gateway($this->a, '111', null, 'hmac-a', omannet: '333');
+        $this->gateway($this->b, '444', null, 'hmac-b', omannet: '555');
+        $intent = $this->openCard($this->a);
+
+        $omannet = ['integration_id' => 333, 'source_data' => ['pan' => '4321', 'sub_type' => 'OmanNet', 'type' => 'omannet']];
+
+        // بسرّ الجار: لا شيء
+        $this->notify($intent, 'hmac-b', $omannet);
+        $this->assertSame(0, Order::count());
+
+        // ومبلغٌ أو عملةٌ غيرُ المطلوبة: لا شيء
+        $this->notify($intent, 'hmac-a', $omannet + ['amount_cents' => 1]);
+        $this->notify($intent, 'hmac-a', $omannet + ['currency' => 'EGP']);
+        $this->assertSame(0, Order::count());
+
+        // وبسرّه هو: طلبٌ واحد
+        $this->notify($intent, 'hmac-a', $omannet);
+        $this->notify($intent, 'hmac-a', $omannet);
+        $this->assertSame(1, Order::where('business_id', $this->a->id)->count());
+        $this->assertSame(StorePaymentIntent::PAID, $intent->refresh()->status);
+    }
+
+    public function test_the_omannet_column_is_nullable_and_existing_rows_keep_their_methods(): void
+    {
+        $this->assertTrue(Schema::hasColumn('payment_gateways', 'omannet_integration_id'));
+
+        $row = $this->gateway($this->a, '111', '222');
+
+        $this->assertNull($row->fresh()->omannet_integration_id);
+        $this->assertTrue($row->fresh()->ready());
+        $this->assertSame([111, 222], $row->fresh()->paymentMethodIds());
+    }
+
+    /** ومن كتب رقمَ OmanNet وحده بدأ الربطَ ولم يُكمله — لا «غير مربوط» */
+    public function test_an_omannet_id_alone_is_a_started_link_not_an_empty_one(): void
+    {
+        PaymentGateway::create([
+            'business_id' => $this->a->id, 'provider' => PaymentGateway::PAYMOB,
+            'omannet_integration_id' => '333', 'active' => false,
+        ]);
+
+        $this->assertSame('partial', PaymobSettings::state($this->a->id));
+        $this->assertSame('off', PaymobSettings::state($this->b->id));
+    }
+
+    public function test_no_merchant_or_integration_number_is_written_into_the_omannet_code(): void
+    {
+        foreach ([
+            'app/Models/PaymentGateway.php',
+            'app/Support/Store/PaymobSettings.php',
+            'app/Support/Store/Paymob.php',
+            'resources/js/Pages/Admin/Integrations/Paymob.tsx',
+            'database/migrations/2026_10_06_120000_a_gateway_may_carry_an_omannet_integration.php',
+        ] as $file) {
+            $code = file_get_contents(base_path($file));
+
+            $this->assertDoesNotMatchRegularExpression('/\b7160[45]\b|\b7152[57]\b/', $code, $file);
+            $this->assertDoesNotMatchRegularExpression('/RIBBON|\bsaud\b|سعود/iu', $code, $file);
+            $this->assertDoesNotMatchRegularExpression('/business_id\s*(===?|==)\s*\d+/', $code, $file);
+        }
     }
 }

@@ -1,5 +1,5 @@
 import { useForm, usePage } from '@inertiajs/react';
-import { Apple, CreditCard, Info, Save, Webhook } from 'lucide-react';
+import { Apple, CreditCard, Info, Landmark, Save, Webhook } from 'lucide-react';
 
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -23,7 +23,11 @@ export interface PaymobGateway {
     active: boolean;
     public_key: string;
     card_integration_id: string;
+    /** OmanNet — تكاملٌ ثالثٌ مستقلّ، اختياريّ، من حساب هذا المتجر وحده */
+    omannet_integration_id: string;
     apple_pay_integration_id: string;
+    /** رقمُ OmanNet محفوظ؟ — «مُضاف» لا «مفعّل» */
+    omannet: boolean;
     has_secret: boolean;
     has_hmac: boolean;
     state: 'off' | 'partial' | 'ready';
@@ -59,6 +63,7 @@ export default function Paymob() {
         active: gateway.active,
         public_key: gateway.public_key,
         card_integration_id: gateway.card_integration_id,
+        omannet_integration_id: gateway.omannet_integration_id,
         apple_pay_integration_id: gateway.apple_pay_integration_id,
         secret_key: '',
         hmac_secret: '',
@@ -151,6 +156,41 @@ export default function Paymob() {
                         </div>
                     </SettingsSection>
 
+                    {/*
+                        OmanNet بابٌ مستقلٌّ لا خانةُ Apple Pay ولا خانةُ البطاقة.
+
+                        شبكةُ بطاقات الخصم العُمانيّة، ولها عند Paymob تكاملٌ برقمه.
+                        ويُرسَل رقمُه مع رقم البطاقة في الدفعة نفسِها، وصفحةُ Paymob
+                        تعرض ما فعّلته منها. ورقمُه من وضع المفاتيح نفسِه: حيٌّ مع
+                        الحيّ وتجريبيٌّ مع التجريبيّ.
+                    */}
+                    <SettingsSection
+                        icon={Landmark}
+                        title="OmanNet"
+                        description="بطاقات الخصم العُمانية — تكامل مستقل في حسابك في Paymob، غير تكامل البطاقة وغير Apple Pay."
+                        status={
+                            <StatusPill
+                                state={gateway.omannet ? 'ready' : 'idle'}
+                                label={gateway.omannet ? 'مُضاف' : 'غير مُضاف'}
+                            />
+                        }
+                    >
+                        <Field
+                            label="رقم تكامل OmanNet"
+                            hint="اختياري — انسخ Integration ID الخاص بـ OmanNet من حسابك في Paymob ← Payment Integrations. استخدم رقمًا من نفس الوضع Live أو Test المستخدم في مفاتيحك."
+                            error={form.errors.omannet_integration_id}
+                        >
+                            <Input
+                                dir="ltr"
+                                inputMode="numeric"
+                                value={form.data.omannet_integration_id}
+                                onChange={(e) => form.setData('omannet_integration_id', e.target.value)}
+                                aria-label={t('رقم تكامل OmanNet')}
+                                data-testid="paymob-omannet"
+                            />
+                        </Field>
+                    </SettingsSection>
+
                     <SettingsSection
                         icon={Apple}
                         title="Apple Pay"
@@ -183,7 +223,7 @@ export default function Paymob() {
                     <SettingsSection
                         icon={Webhook}
                         title="عنوان الإشعار"
-                        description="الصقه في لوحة Paymob ← Payment Integrations (في الوضع Live) على تكامل البطاقة وعلى تكامل Apple Pay كليهما — بلا هذا لا يصلك طلبٌ من دفعةٍ ناجحة."
+                        description="الصقه في لوحة Paymob ← Payment Integrations (في الوضع Live) على كل تكامل تستعمله: البطاقة، وOmanNet، وApple Pay — بلا هذا لا يصلك طلبٌ من دفعةٍ ناجحة."
                     >
                         <div className="flex items-center gap-2">
                             <Input dir="ltr" readOnly value={gateway.webhook} aria-label={t('عنوان الإشعار (Callback URL)')} />

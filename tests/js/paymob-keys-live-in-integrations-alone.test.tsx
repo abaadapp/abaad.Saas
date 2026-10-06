@@ -141,7 +141,9 @@ describe('صفحةُ Paymob في التطبيقات التكاملية', () => {
         active: true,
         public_key: 'public-a',
         card_integration_id: '111',
+        omannet_integration_id: '',
         apple_pay_integration_id: '',
+        omannet: false,
         has_secret: true,
         has_hmac: true,
         state: 'ready',
@@ -181,7 +183,8 @@ describe('صفحةُ Paymob في التطبيقات التكاملية', () => {
         expect(screen.getByText(/لا يملك Test Integration ID/)).toBeInTheDocument();
         expect(screen.getByText('يجب أن يكون Apple Pay مفعّلًا أولًا في حساب Paymob الخاص بك.')).toBeInTheDocument();
         expect(screen.getByTestId('paymob-test-warning')).toHaveTextContent('فاترك هذا الحقل فارغًا');
-        expect(screen.getByText('غير مُضاف')).toBeInTheDocument();
+        // وOmanNet بجانبه غيرُ مُضافٍ كذلك — حالان لا حالٌ واحد
+        expect(screen.getAllByText('غير مُضاف')).toHaveLength(2);
     });
 
     it('وتقول إنّ المال يصل حسابَ التاجر، وتعرض عنوانَ الإشعار للتكاملين', () => {
@@ -189,7 +192,7 @@ describe('صفحةُ Paymob في التطبيقات التكاملية', () => {
 
         expect(screen.getByText('مفاتيحك أنت من حساب Paymob الخاص بك، والمال يصل إلى حسابك ولا يمر عبر أبعاد.')).toBeInTheDocument();
         expect(screen.getByDisplayValue('https://app.test/webhooks/paymob')).toBeInTheDocument();
-        expect(screen.getByText(/على تكامل البطاقة وعلى تكامل Apple Pay كليهما/)).toBeInTheDocument();
+        expect(screen.getByText(/على كل تكامل تستعمله: البطاقة، وOmanNet، وApple Pay/)).toBeInTheDocument();
     });
 
     it('والسرّان يبدآن فارغين — لا يصل نصُّهما الشاشة', () => {
@@ -240,5 +243,66 @@ describe('صفحةُ Paymob في التطبيقات التكاملية', () => {
 
         expect(screen.getByText('مُضاف')).toBeInTheDocument();
         expect(screen.queryByText('مفعّل')).toBeNull();
+    });
+
+    /*
+        OmanNet — خانةٌ ثالثةٌ مستقلّة، لا خانةُ Apple Pay ولا خانةُ البطاقة.
+        والقرارُ في الخادم: `PaymobIsEachMerchantsOwnGatewayTest` (القسم ١١).
+    */
+    it('فيها حقلُ OmanNet بتسميته وتنبيه الوضع — منفصلًا عن البطاقة و Apple Pay', () => {
+        drawPage(gateway());
+
+        const omannet = screen.getByLabelText('رقم تكامل OmanNet');
+        expect(omannet).toBeInTheDocument();
+        expect(omannet).not.toBe(screen.getByLabelText('رقم تكامل Apple Pay'));
+        expect(omannet).not.toBe(screen.getByLabelText('رقم تكامل البطاقة'));
+        expect(screen.getByText(/انسخ Integration ID الخاص بـ OmanNet/)).toHaveTextContent('نفس الوضع Live أو Test');
+    });
+
+    it('والحفظُ يرسل OmanNet في خانته هو — ولا يمسّ Apple Pay', async () => {
+        drawPage(gateway({ apple_pay_integration_id: '222', apple_pay: true }));
+
+        fireEvent.change(screen.getByLabelText('رقم تكامل OmanNet'), { target: { value: '333' } });
+        await act(async () => {
+            fireEvent.submit(document.querySelector('form')!);
+        });
+
+        expect(sent[0].data).toMatchObject({
+            card_integration_id: '111',
+            omannet_integration_id: '333',
+            apple_pay_integration_id: '222',
+        });
+    });
+
+    it('و OmanNet المحفوظ يبقى في خانته ويُقال «مُضاف»', async () => {
+        drawPage(gateway({ omannet_integration_id: '333', omannet: true }));
+
+        expect((screen.getByLabelText('رقم تكامل OmanNet') as HTMLInputElement).value).toBe('333');
+        expect(screen.getByText('مُضاف')).toBeInTheDocument();
+
+        await act(async () => {
+            fireEvent.submit(document.querySelector('form')!);
+        });
+        expect(sent[0].data.omannet_integration_id).toBe('333');
+    });
+
+    it('وبالإنجليزيّة', () => {
+        reset();
+        Object.assign(pageProps, {
+            translations: {
+                'رقم تكامل OmanNet': 'OmanNet Integration ID',
+                'اختياري — انسخ Integration ID الخاص بـ OmanNet من حسابك في Paymob ← Payment Integrations. استخدم رقمًا من نفس الوضع Live أو Test المستخدم في مفاتيحك.':
+                    'Optional — copy the OmanNet Integration ID from your Paymob Payment Integrations. Use an ID from the same Live/Test mode as your Paymob credentials.',
+            },
+            locale: 'en',
+            dir: 'ltr',
+            auth: { abilities: ['integrations'], mayActions: [] },
+            context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 } },
+            gateway: gateway(),
+        });
+        render(<Paymob />);
+
+        expect(screen.getByLabelText('OmanNet Integration ID')).toBeInTheDocument();
+        expect(screen.getByText(/same Live\/Test mode as your Paymob credentials/)).toBeInTheDocument();
     });
 });

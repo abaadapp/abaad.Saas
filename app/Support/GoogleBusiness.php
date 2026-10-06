@@ -215,7 +215,19 @@ final class GoogleBusiness
         ]);
 
         if (! $result['ok']) {
-            $account->forceFill(['last_error' => $result['error']])->save();
+            /*
+             * وإذنٌ سحبته Google يُمحى عندنا — لا يُبقى رمزٌ لا يفتح شيئًا.
+             *
+             * وبقاؤه كان يعني شاشةً تقول «مربوط» بخطأٍ أحمر تحتها ولا زرَّ
+             * يُصلحه. فيُمحى الرمزان، ويبقى `revoked_at` فارغًا ليُعرف أنّ
+             * التاجر لم يفصله بيده: فتعرض الشاشة «أعِد ربط حساب Google».
+             */
+            $account->forceFill(($result['revoked'] ?? false) ? [
+                'access_token' => null,
+                'refresh_token' => null,
+                'token_expires_at' => null,
+                'last_error' => __('انتهت صلاحية الإذن — أعِد ربط حساب Google.'),
+            ] : ['last_error' => $result['error']])->save();
 
             return null;
         }
@@ -256,6 +268,47 @@ final class GoogleBusiness
             'ok' => false,
             'error' => self::readable($response->status(), (string) ($response->json('error_description') ?? $response->json('error') ?? '')),
             'data' => null,
+            /*
+             * وإذنٌ لم تعد Google تعترف به — سحبه صاحبُه من حسابه، أو انتهى.
+             *
+             * وهو غيرُ عطلٍ عابر: لا يزول بالانتظار ولا بالتكرار، وعلاجُه
+             * إعادةُ الربط بيد التاجر نفسِه.
+             */
+            'revoked' => $response->json('error') === 'invalid_grant',
+        ];
+    }
+
+    /**
+     * هل انقطع إذنُ هذا المتجر من جهة Google؟
+     *
+     * صفٌّ قائمٌ لم يفصله التاجر بزرّه (`revoked_at` فارغ) ولا رمزَ تجديدٍ
+     * فيه: سحبت Google الإذن أو انتهى. فتقول الشاشة «أعِد الربط» بزرٍّ
+     * يفتح صفحة الإذن له هو — لا «لم يُربط بعد»، ولا «راجعنا».
+     */
+    public static function needsReconnect(int $businessId): bool
+    {
+        $account = GoogleBusinessAccount::where('business_id', $businessId)->first();
+
+        return $account !== null && $account->revoked_at === null && blank($account->refresh_token);
+    }
+
+    /**
+     * حالُ ملفّ الأعمال لمتجرٍ — كما تراه المنصّة: نعم ولا وتاريخ، بلا رمز.
+     *
+     * @return array{connected:bool, reconnect:bool, locations:int, syncedAt:?string, error:bool}
+     */
+    public static function status(int $businessId): array
+    {
+        $account = GoogleBusinessAccount::where('business_id', $businessId)->first();
+
+        return [
+            'connected' => $account !== null && $account->isLive(),
+            'reconnect' => self::needsReconnect($businessId),
+            'locations' => BranchGooglePlace::whereNotNull('gbp_location')
+                ->whereIn('branch_id', Branch::where('business_id', $businessId)->pluck('id'))
+                ->count(),
+            'syncedAt' => optional($account?->synced_at)->toIso8601String(),
+            'error' => filled($account?->last_error),
         ];
     }
 
@@ -328,6 +381,43 @@ final class GoogleBusiness
     }
 
     /**
+     * هل هذا الموقعُ من مواقع هذا الإذن؟ — يُسأل Google لا الطلب.
+     *
+     * المتصفّح يُرسل اسمَ حسابٍ واسمَ موقع، وكلاهما نصٌّ يُكتب بأيّ شيء. ولو
+     * حُفظ كما وصل لَربط متجرٌ فرعه بموقعِ غيره، فتُسحب إليه تقييماتُ محلٍّ
+     * لا يملكه — أو يُرفض كلُّ سحبٍ بعده بلا سببٍ مفهوم. فيُقرأ الموقع من
+     * قائمة الحساب كما تردّها Google لهذا الإذن نفسِه.
+     *
+     * @return array{ok:bool, error:?string, location:?array<string,string>}
+     */
+    public static function ownedLocation(GoogleBusinessAccount $account, string $accountName, string $location): array
+    {
+        $accounts = self::accounts($account);
+
+        if (! $accounts['ok']) {
+            return ['ok' => false, 'error' => $accounts['error'], 'location' => null];
+        }
+
+        if (! in_array($accountName, array_column($accounts['accounts'], 'name'), true)) {
+            return ['ok' => false, 'error' => __('هذا الموقع ليس من مواقع حساب Google المربوط.'), 'location' => null];
+        }
+
+        $found = self::locations($account, $accountName);
+
+        if (! $found['ok']) {
+            return ['ok' => false, 'error' => $found['error'], 'location' => null];
+        }
+
+        foreach ($found['locations'] as $row) {
+            if ($row['name'] === $location) {
+                return ['ok' => true, 'error' => null, 'location' => $row];
+            }
+        }
+
+        return ['ok' => false, 'error' => __('هذا الموقع ليس من مواقع حساب Google المربوط.'), 'location' => null];
+    }
+
+    /**
      * ربطُ فرعٍ بموقعٍ في ملفّ الأعمال.
      *
      * والموقعُ لا يُربط بفرعين: تفرّدٌ في القاعدة يحرسه، ولولاه لَسُحبت
@@ -393,8 +483,21 @@ final class GoogleBusiness
                 continue;
             }
 
-            $seen[] = $id;
             $existing = GoogleBusinessReview::where('review_id', $id)->first();
+
+            /*
+             * وتقييمٌ محفوظٌ على فرعِ متجرٍ آخر لا يُنقل إلى هنا.
+             *
+             * المعرّفُ فريدٌ في الجدول كلِّه، فكان الصفُّ يُقرأ أينما كان ثمّ
+             * يُكتب عليه فرعُ هذا السحب — فيخرج تقييمٌ من متجرٍ ويدخل متجرًا
+             * آخر بردّه وتنبيهه. يُترك في موضعه، ولا يُعدّ في هذا السحب.
+             */
+            if ($existing && $existing->branch_id !== $branch->id
+                && ! Branch::withTrashed()->where('business_id', $branch->business_id)->whereKey($existing->branch_id)->exists()) {
+                continue;
+            }
+
+            $seen[] = $id;
 
             $fields = [
                 'branch_id' => $branch->id,

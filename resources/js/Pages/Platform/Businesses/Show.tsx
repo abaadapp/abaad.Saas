@@ -16,6 +16,7 @@ import { Input } from '@/Components/ui/input';
 import AccountCard from './partials/AccountCard';
 import WhatsAppCard, { type BusinessWhatsApp } from './partials/WhatsAppCard';
 import RecoveryCard, { type BusinessRecovery } from './partials/RecoveryCard';
+import GoogleCard, { type BusinessGoogle } from './partials/GoogleCard';
 import {
     Table,
     TableBody,
@@ -95,6 +96,8 @@ interface Props {
     currency: Currency;
     whatsapp: BusinessWhatsApp | null;
     recovery: BusinessRecovery;
+    /** حالُ Google لهذا المتجر — نعم ولا، بلا مفتاحٍ ولا رمز */
+    google?: BusinessGoogle;
     /** أمفتوحٌ بابُ الحذف النهائيّ على هذا الخادم؟ — `config/purge.php` */
     purge: boolean;
     /** حالُ آخرِ محاولةِ حذفٍ نهائيّ لهذه الشركة — أو `null` إن لم تكن */
@@ -108,7 +111,7 @@ const TABS = [
 ];
 
 export default function BusinessShow() {
-    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp, recovery, purge, purgeRun } =
+    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp, recovery, google, purge, purgeRun } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
@@ -245,6 +248,9 @@ export default function BusinessShow() {
 
             {/* واتساب — بطاقةٌ في ملفّ المتجر لا شاشة ثالثة */}
             {whatsapp && <WhatsAppCard businessId={business.id} data={whatsapp} />}
+
+            {/* Google — حالٌ تُقرأ لا إعدادٌ يُضبط: يربطه التاجر بنفسه */}
+            {google && <GoogleCard data={google} />}
 
             <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 {stats.map((s, i) => (

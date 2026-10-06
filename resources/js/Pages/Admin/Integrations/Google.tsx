@@ -279,6 +279,15 @@ function KeyGuide({ serverIp, start }: { serverIp: string | null; start: boolean
                                 </span>
                             )}
                             <p className="mt-1.5">{en('API restrictions → Restrict key → Places API (New)')}</p>
+                            {/*
+                                ولا تقييدَ بنطاق الموقع: المفتاحُ يُستعمل من خادم أبعاد وحده
+                                ولا يصل المتصفّح، لا في لوحتك ولا في متجرك ولا على نطاقك
+                                الخاصّ إن كان لك. ومفتاحٌ مقيّدٌ بـ«HTTP referrers» يُرفض
+                                عند كلّ نداءٍ من الخادم — فيُقال قبل أن يُجرَّب.
+                            */}
+                            <p className="mt-1.5 font-medium text-[#111]" data-testid="google-no-referrer">
+                                {t('لا تقيّد المفتاح بنطاق موقعك (HTTP referrers): أبعاد يستعمله من الخادم فقط ولا يصل إلى المتصفح، لا في لوحتك ولا في متجرك ولا على نطاقك الخاص — والتقييد بالنطاق يجعل Google ترفضه.')}
+                            </p>
                             {go(GOOGLE_LINKS.security, 'إرشادات Google لحماية المفتاح')}
                         </>
                     ))}
@@ -316,6 +325,36 @@ function KeyForm({
 }) {
     const t = useTranslate();
     const keyForm = useForm({ google_api_key: '' });
+    const [test, setTest] = useState<{ state: 'idle' | 'loading' | 'ok' | 'error'; message: string | null }>({
+        state: 'idle',
+        message: null,
+    });
+
+    /*
+        اختبارُ الاتّصال — بالمفتاح الملصوق إن وُجد، وإلّا بالمحفوظ.
+
+        والنداءُ من خادمنا لا من المتصفّح، والردُّ نعم أو سببُ الرفض — ولا
+        يعود المفتاح فيه. فيعرف التاجر قبل أن يربط فرعًا أنّ مفتاحه يعمل.
+    */
+    const runTest = async () => {
+        setTest({ state: 'loading', message: null });
+
+        try {
+            const res = await fetch(route('admin.integrations.google.key.test'), {
+                method: 'POST',
+                headers: { ...csrfHeaders(), 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ google_api_key: keyForm.data.google_api_key }),
+            });
+            const body = (await res.json()) as { ok?: boolean; message?: string };
+
+            setTest({
+                state: body.ok ? 'ok' : 'error',
+                message: body.message ?? t('تعذّر الوصول إلى Google. حاول بعد قليل.'),
+            });
+        } catch {
+            setTest({ state: 'error', message: t('تعذّر الوصول إلى Google. حاول بعد قليل.') });
+        }
+    };
 
     return (
         <>
@@ -381,7 +420,33 @@ function KeyForm({
                     />
                 </Field>
 
+                {test.message && (
+                    <p
+                        data-testid="google-key-test"
+                        data-state={test.state}
+                        className={cn(
+                            'mt-3 rounded-[10px] px-3 py-2 text-[13px]',
+                            test.state === 'ok' ? 'bg-[#f0fdf4] text-[#166534]' : 'bg-[#fef2f2] text-[#b91c1c]',
+                        )}
+                    >
+                        {test.message}
+                    </p>
+                )}
+
                 <PageActions className="mt-4">
+                    {(keyHint || keyForm.data.google_api_key.trim() !== '') && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            loading={test.state === 'loading'}
+                            onClick={runTest}
+                            data-testid="google-key-test-button"
+                        >
+                            <RefreshCw />
+                            {t('اختبار الاتصال')}
+                        </Button>
+                    )}
                     {keyHint && (
                         <Button
                             type="button"

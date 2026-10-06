@@ -1211,6 +1211,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         Route::post('/google', [IntegrationsController::class, 'saveGoogle'])->name('google.save');
         Route::post('/google/key', [IntegrationsController::class, 'saveGoogleKey'])->name('google.key');
         Route::delete('/google/key', [IntegrationsController::class, 'forgetGoogleKey'])->name('google.key.forget');
+        /*
+         * اختبارُ المفتاح — نداءٌ على Google، فبحدٍّ كالبحث.
+         *
+         * وبعدّادٍ له وحده (البادئةُ الثالثة): عدّادُ `throttle` بلا بادئة
+         * واحدٌ للمستخدم في المسارات كلّها، فكان كلُّ اختبارٍ يُنقص من حدِّ
+         * طلب باقة واتساب (خمسٌ في الساعة).
+         */
+        Route::post('/google/key/test', [IntegrationsController::class, 'testGoogleKey'])
+            ->middleware('throttle:20,1,google-key-test')->name('google.key.test');
         // تفعيلُ خرائط Google أو إطفاؤها — بمفتاح التاجر وحده (`GoogleReviews::apiKey`)
         Route::post('/google/enabled', [IntegrationsController::class, 'setGoogleEnabled'])->name('google.enabled');
         Route::post('/google/refresh', [IntegrationsController::class, 'refreshGoogle'])->name('google.refresh');

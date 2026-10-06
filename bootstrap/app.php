@@ -66,4 +66,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        /*
+         * ومفتاحُ Google لا يُحفظ في الجلسة حين يُرفض حقلٌ معه.
+         *
+         * Laravel يحفظ المدخَلات في الجلسة عند كلّ رفضٍ ليعيدها إلى الحقول —
+         * والمفتاحُ يُخزَّن عندنا معمًّى، فلا يُترك نصًّا صريحًا في ملفّ جلسة.
+         */
+        $exceptions->dontFlash(['google_api_key']);
     })->create();

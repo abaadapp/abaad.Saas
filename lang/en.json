@@ -7396,5 +7396,14 @@
     "إدارة تقييمات Google غير متاحة على المنصّة بعد.": "Google review management is not available on the platform yet.",
     "إدارة تقييمات Google غير متاحة على المنصّة بعد": "Google review management is not available on the platform yet",
     "غير متاحة بعد": "Not available yet",
-    "Google": "Google"
+    "Google": "Google",
+    "رقم تكامل OmanNet": "OmanNet Integration ID",
+    "اختياري — انسخ Integration ID الخاص بـ OmanNet من حسابك في Paymob ← Payment Integrations. استخدم رقمًا من نفس الوضع Live أو Test المستخدم في مفاتيحك.": "Optional — copy the OmanNet Integration ID from your Paymob Payment Integrations. Use an ID from the same Live/Test mode as your Paymob credentials.",
+    "بطاقات الخصم العُمانية — تكامل مستقل في حسابك في Paymob، غير تكامل البطاقة وغير Apple Pay.": "Omani debit cards — a separate integration in your Paymob account, distinct from the card integration and from Apple Pay.",
+    "رقم تكامل OmanNet أرقامٌ فقط — كما يظهر في لوحة Paymob.": "The OmanNet Integration ID is digits only — as shown in your Paymob dashboard.",
+    "رقم تكامل OmanNet لا يكون صفرًا — انسخه كما يظهر في لوحة Paymob.": "The OmanNet Integration ID cannot be zero — copy it as shown in your Paymob dashboard.",
+    "رقم تكامل OmanNet غيرُ رقم تكامل البطاقة — لكلٍّ منهما رقمُه في لوحة Paymob.": "The OmanNet Integration ID must differ from the card Integration ID — each has its own ID in Paymob.",
+    "رقم تكامل Apple Pay غيرُ رقمَي البطاقة وOmanNet — لكلٍّ منها رقمُه في لوحة Paymob.": "The Apple Pay Integration ID must differ from the card and OmanNet IDs — each has its own ID in Paymob.",
+    "الصقه في لوحة Paymob ← Payment Integrations (في الوضع Live) على كل تكامل تستعمله: البطاقة، وOmanNet، وApple Pay — بلا هذا لا يصلك طلبٌ من دفعةٍ ناجحة.": "Paste it in Paymob → Payment Integrations (Live mode) on every integration you use: card, OmanNet and Apple Pay — without it, a successful payment does not create an order.",
+    "OmanNet": "OmanNet"
 }

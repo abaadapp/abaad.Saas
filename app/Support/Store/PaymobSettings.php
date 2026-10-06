@@ -61,6 +61,7 @@ final class PaymobSettings
             || filled($row->secret_key)
             || filled($row->hmac_secret)
             || filled($row->card_integration_id)
+            || filled($row->omannet_integration_id)
             || filled($row->apple_pay_integration_id);
 
         return $touched ? 'partial' : 'off';
@@ -107,7 +108,10 @@ final class PaymobSettings
             'active' => (bool) ($row?->active ?? false),
             'public_key' => (string) ($row?->public_key ?? ''),
             'card_integration_id' => (string) ($row?->card_integration_id ?? ''),
+            'omannet_integration_id' => (string) ($row?->omannet_integration_id ?? ''),
             'apple_pay_integration_id' => (string) ($row?->apple_pay_integration_id ?? ''),
+            // كـApple Pay: «مُضاف» — رقمٌ محفوظ، لا شهادةٌ بأنّ Paymob فعّلته
+            'omannet' => filled(trim((string) ($row?->omannet_integration_id ?? ''))),
             'has_secret' => filled($row?->secret_key),
             'has_hmac' => filled($row?->hmac_secret),
         ] + self::summary($businessId) + [
@@ -116,7 +120,7 @@ final class PaymobSettings
         ];
     }
 
-    /** عنوانُ الإشعار — واحدٌ لتكامل البطاقة ولتكامل Apple Pay */
+    /** عنوانُ الإشعار — واحدٌ لتكامل البطاقة ولتكامل OmanNet ولتكامل Apple Pay */
     public static function webhook(): string
     {
         return rtrim((string) config('app.url'), '/').'/webhooks/paymob';
@@ -128,9 +132,10 @@ final class PaymobSettings
      * الشاشةُ لا تعرض السرَّ فلا يُعاد إرسالُه، وحفظُ اسمٍ أو رقمٍ بجانبه
      * كان يمحوه لو قُرئ الفراغُ محوًا.
      *
-     * ورقما التكامل أرقامٌ لا نصوص: يُرسَلان في `payment_methods` أعدادًا،
-     * ونصٌّ فيهما يفتح دفعةً بلا وسيلة. ورقمُ Apple Pay لا يكون رقمَ
-     * البطاقة: من نسخ رقمَ البطاقة إليه لم يكتب رقمَ Apple Pay.
+     * وأرقامُ التكامل أرقامٌ لا نصوص: تُرسَل في `payment_methods` أعدادًا،
+     * ونصٌّ فيها يفتح دفعةً بلا وسيلة. ولكلّ وسيلةٍ رقمُها: البطاقةُ وOmanNet
+     * وApple Pay ثلاثةُ تكاملاتٍ في لوحة Paymob، ومن نسخ رقمًا إلى خانتين
+     * لم يكتب رقمَ الثانية — فيُردّ ويُقال أيُّ خانتين.
      *
      * @throws ValidationException
      */
@@ -138,6 +143,7 @@ final class PaymobSettings
     {
         $request->merge([
             'card_integration_id' => trim((string) $request->input('card_integration_id', '')),
+            'omannet_integration_id' => trim((string) $request->input('omannet_integration_id', '')),
             'apple_pay_integration_id' => trim((string) $request->input('apple_pay_integration_id', '')),
         ]);
 
@@ -145,16 +151,22 @@ final class PaymobSettings
             'active' => ['sometimes', 'boolean'],
             'public_key' => ['nullable', 'string', 'max:255'],
             'card_integration_id' => ['nullable', 'regex:/^[0-9]{1,32}$/'],
-            'apple_pay_integration_id' => ['nullable', 'regex:/^[0-9]{1,32}$/', 'different:card_integration_id'],
+            /* ولا صفرَ: رقمُ تكاملٍ صفرٌ لا يفتح شيئًا، و`paymentMethodIds` يُسقطه صامتًا */
+            'omannet_integration_id' => ['nullable', 'regex:/^[0-9]{1,32}$/', 'not_regex:/^0+$/', 'different:card_integration_id'],
+            'apple_pay_integration_id' => ['nullable', 'regex:/^[0-9]{1,32}$/', 'different:card_integration_id', 'different:omannet_integration_id'],
             'secret_key' => ['nullable', 'string', 'max:255'],
             'hmac_secret' => ['nullable', 'string', 'max:255'],
         ], [
             'card_integration_id.regex' => __('رقم تكامل البطاقة أرقامٌ فقط — كما يظهر في لوحة Paymob.'),
+            'omannet_integration_id.regex' => __('رقم تكامل OmanNet أرقامٌ فقط — كما يظهر في لوحة Paymob.'),
+            'omannet_integration_id.not_regex' => __('رقم تكامل OmanNet لا يكون صفرًا — انسخه كما يظهر في لوحة Paymob.'),
+            'omannet_integration_id.different' => __('رقم تكامل OmanNet غيرُ رقم تكامل البطاقة — لكلٍّ منهما رقمُه في لوحة Paymob.'),
             'apple_pay_integration_id.regex' => __('رقم تكامل Apple Pay أرقامٌ فقط — كما يظهر في لوحة Paymob.'),
-            'apple_pay_integration_id.different' => __('رقم تكامل Apple Pay غيرُ رقم تكامل البطاقة — لكلٍّ منهما رقمُه في لوحة Paymob.'),
+            'apple_pay_integration_id.different' => __('رقم تكامل Apple Pay غيرُ رقمَي البطاقة وOmanNet — لكلٍّ منها رقمُه في لوحة Paymob.'),
         ], [
             'public_key' => __('المفتاح العامّ'),
             'card_integration_id' => __('رقم تكامل البطاقة'),
+            'omannet_integration_id' => __('رقم تكامل OmanNet'),
             'apple_pay_integration_id' => __('رقم تكامل Apple Pay'),
             'secret_key' => __('المفتاح السرّي'),
             'hmac_secret' => __('سرّ التوقيع'),
@@ -167,6 +179,9 @@ final class PaymobSettings
 
         $gateway->public_key = trim((string) ($data['public_key'] ?? ''));
         $gateway->card_integration_id = (string) ($data['card_integration_id'] ?? '');
+        $gateway->omannet_integration_id = ($data['omannet_integration_id'] ?? '') !== ''
+            ? (string) $data['omannet_integration_id']
+            : null;
         $gateway->apple_pay_integration_id = ($data['apple_pay_integration_id'] ?? '') !== ''
             ? (string) $data['apple_pay_integration_id']
             : null;

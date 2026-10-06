@@ -57,8 +57,9 @@ class PaymentGateway extends Model
     /**
      * أرقامُ التكامل التي تُفتح بها الدفعة — من هذا الصفّ وحده.
      *
-     * البطاقةُ أوّلًا ثمّ Apple Pay إن كُتب. ولا شرطَ لـApple Pay في `ready`:
-     * متجرٌ بالبطاقة وحدها كاملٌ كما كان.
+     * البطاقةُ أوّلًا، ثمّ OmanNet إن كُتب، ثمّ Apple Pay إن كُتب. ولا شرطَ
+     * لأيٍّ منهما في `ready`: متجرٌ بالبطاقة وحدها كاملٌ كما كان، ومتجرٌ لم
+     * يكتب رقمَ OmanNet تخرج دفعتُه كما كانت تخرج حرفًا بحرف.
      *
      * والرقمُ يُقرأ من العمود لا من طلب المتصفّح أبدًا: زبونٌ يُرسل رقمَ
      * تكاملٍ بيده يفتح دفعةً على حسابٍ ليس لصاحب المحلّ. ويُقصّ، ويُسقط
@@ -71,7 +72,7 @@ class PaymentGateway extends Model
     {
         $ids = [];
 
-        foreach ([$this->card_integration_id, $this->apple_pay_integration_id] as $raw) {
+        foreach ([$this->card_integration_id, $this->omannet_integration_id, $this->apple_pay_integration_id] as $raw) {
             $raw = trim((string) $raw);
 
             if ($raw !== '' && ctype_digit($raw) && (int) $raw > 0) {

@@ -56,6 +56,62 @@ function nice(v: number): number {
     return (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
 }
 
+export interface LineDomain {
+    top: number;
+    bottom: number;
+    /** علاماتُ المحور — كلُّها داخل [bottom, top] */
+    ticks: number[];
+}
+
+/**
+ * مدى المحور الرأسيّ من القيم — والعلاماتُ منه هو لا من مدًى مُفترَض.
+ *
+ * ═══ ولمَ صار دالّةً مستقلّة ═══
+ *
+ * كان المدى يُحسب في الرسم: `span = top - bottom || 1`. فإن كانت القيمُ كلُّها
+ * أصفارًا صار `top` و`bottom` صفرين والمدى واحدًا — فخرجت العلاماتُ ٠ و٠٫٢٥
+ * و٠٫٥ و٠٫٧٥ و١، بينما الموضعُ يُقاس من `top = 0`. فوقعت العلاماتُ الموجبة
+ * فوق الرسم بإحداثيّاتٍ سالبة، و`overflow-visible` أخرجها فوق بطاقات الصفحة:
+ * «1.000 ر.ع» تطفو على صافي الربح وهو صفر.
+ *
+ * فالمدى الذي لا سعةَ له (كلُّها أصفار، أو لا قيم) علامتُه واحدة: الصفر. ولا
+ * يُكتب على المحور رقمٌ لم يبلغه شيء — محورٌ يقول «١ ر.ع» وصافي الربح صفرٌ
+ * يُقرأ ربحًا لم يقع.
+ */
+export function lineDomain(values: number[]): LineDomain {
+    const finite = values.filter((v) => Number.isFinite(v));
+    const top = nice(Math.max(0, ...finite));
+    // و`|| 0`: سالبُ الصفر يُكتب «-0» في بعض التنسيقات
+    const bottom = -nice(Math.max(0, ...finite.map((v) => -v))) || 0;
+
+    if (top === bottom) {
+        return { top: 0, bottom: 0, ticks: [0] };
+    }
+
+    const span = top - bottom;
+
+    return { top, bottom, ticks: Array.from({ length: 5 }, (_, i) => bottom + (span / 4) * i) };
+}
+
+/**
+ * موضعُ قيمةٍ على المحور — داخل `[padTop, padTop + innerH]` أبدًا.
+ *
+ * والمدى بلا سعةٍ يضع كلَّ شيءٍ على خطّ القاع: صفرٌ مستوٍ يُقرأ صفرًا. وما ليس
+ * رقمًا يُرسم صفرًا، وما جاوز المدى (فاصلةٌ عشريّةٌ فيه) يُحبس عند حدّه — فلا
+ * يخرج خطٌّ ولا علامةٌ من الإطار مهما جاءت القيم.
+ */
+export function yPosition(domain: LineDomain, v: number, innerH: number, padTop: number): number {
+    const span = domain.top - domain.bottom;
+
+    if (!(span > 0)) {
+        return padTop + innerH;
+    }
+
+    const value = Number.isFinite(v) ? Math.min(Math.max(v, domain.bottom), domain.top) : 0;
+
+    return padTop + ((domain.top - value) / span) * innerH;
+}
+
 /**
  * منحنياتٌ على محورٍ واحد — وقد تنزل تحت الصفر.
  *
@@ -84,16 +140,12 @@ export default function MultiLineChart({ labels, series, format = (v) => String(
     const plotEnd = plotStart + innerW;
 
     const geo = useMemo(() => {
-        const all = series.flatMap((s) => s.data);
-        const top = nice(Math.max(0, ...all));
-        const bottom = -nice(Math.max(0, ...all.map((v) => -v)));
-        const span = top - bottom || 1;
-        const y = (v: number) => PAD.top + ((top - v) / span) * innerH;
+        const domain = lineDomain(series.flatMap((s) => s.data));
+        const y = (v: number) => yPosition(domain, v, innerH, PAD.top);
         const stepX = labels.length > 1 ? innerW / (labels.length - 1) : 0;
         const x = (i: number) => (labels.length === 1 ? (plotStart + plotEnd) / 2 : rtl ? plotEnd - i * stepX : plotStart + i * stepX);
-        const ticks = Array.from({ length: 5 }, (_, i) => bottom + (span / 4) * i);
 
-        return { y, x, ticks, zero: y(0), slot: stepX || innerW };
+        return { y, x, ticks: domain.ticks, zero: y(0), slot: stepX || innerW };
     }, [series, labels.length, innerH, innerW, plotStart, plotEnd, rtl]);
 
     // تسمياتٌ متباعدة على المحور: واحدٌ وثلاثون يومًا لا تتّسع لواحدٍ وثلاثين اسمًا
@@ -119,7 +171,12 @@ export default function MultiLineChart({ labels, series, format = (v) => String(
             <div className="relative">
                 <svg
                     viewBox={`0 0 ${width} ${height}`}
-                    className="h-auto w-full overflow-visible"
+                    /*
+                        `overflow-hidden` حارسٌ ثانٍ لا الإصلاح: المدى أعلاه يضع كلَّ
+                        شيءٍ داخل الإطار. وكان `overflow-visible` يُخرج ما شذّ عنه فوق
+                        بطاقات الصفحة. وكلُّ ما يُرسم هنا داخل viewBox أصلًا.
+                    */
+                    className="h-auto w-full overflow-hidden"
                     role="img"
                     aria-label={series.map((s) => s.label).join('، ')}
                     onMouseLeave={() => setHover(null)}

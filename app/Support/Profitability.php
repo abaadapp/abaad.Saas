@@ -11,13 +11,15 @@ use Illuminate\Support\Carbon;
  *
  * ═══ التعريفُ نفسُه في النظام كلّه ═══
  *
- *   صافي الإيرادات = المبيعات − الضريبة
+ *   صافي الإيرادات = حساباتُ الإيراد في الدفتر، دائنٌ − مدين (`Ledger::netRevenue`)
+ *   إجمالي المبيعات = صافي الإيرادات + ضريبتُها في القيود نفسِها (`Ledger::outputTax`)
  *   مجمل الربح     = صافي الإيرادات − تكلفة البضاعة المباعة
  *   صافي الربح     = مجمل الربح − المصروفات التشغيليّة
  *   هامش صافي الربح = صافي الربح ÷ صافي الإيرادات × ١٠٠
  *
- * والمبيعاتُ ما بيع فعلًا (`Order::sold`)، والتكلفةُ من `Demo::cogsFor` —
- * لقطةُ التكلفة يوم البيع لا بطاقةُ اليوم — والمصروفُ للنشاط كلِّه من الدفتر
+ * والإيرادُ من الدفتر بفرع القيد — بيعُ الصندوق والموقع والفاتورةُ اليدويّة
+ * مرّةً واحدة —، والتكلفةُ من `Demo::cogsFor` — لقطةُ التكلفة يوم البيع لا
+ * بطاقةُ اليوم — والمصروفُ للنشاط كلِّه من الدفتر
  * (`Ledger::operatingExpenses`). فصافي ربح النشاط كلِّه هنا هو
  * `Demo::reportSummary` حرفًا، وهو رقمُ اللوحة والمالية.
  *
@@ -40,9 +42,11 @@ final class Profitability
      */
     public static function summary(int $bid, ?Carbon $start, ?Carbon $end = null, ?int $branchId = null): array
     {
-        $orders = self::orders($bid, $start, $end, $branchId);
-        $sales = (float) (clone $orders)->sum('total');
-        $tax = (float) (clone $orders)->sum('tax');
+        // الإيرادُ وضريبتُه من الدفتر بفرع القيد — والفرعُ هنا يُقرأ منه بلا نقص:
+        // البيعةُ والفاتورةُ تُقيَّدان بفرعهما، ولا توزيعَ للإيراد كما للمصروف
+        $revenue = Ledger::netRevenue($bid, $start, $end, $branchId);
+        $tax = Ledger::outputTax($bid, $start, $end, $branchId);
+        $sales = $revenue + $tax;
         $cogs = Demo::cogsFor($bid, $start, $end, $branchId);
 
         /*
@@ -166,10 +170,9 @@ final class Profitability
         [$unit, $axisStart, $axisEnd] = self::axis($bid, $range, $branchId);
         $start = Demo::rangeStart($range);
 
-        $orderBucket = Demo::bucketSql('ordered_at', $unit);
-        $orders = self::orders($bid, $start, null, $branchId)
-            ->selectRaw("{$orderBucket} as bucket, SUM(total) as s, SUM(tax) as t")
-            ->groupBy('bucket')->get()->keyBy('bucket');
+        // الإيرادُ وضريبتُه من الدفتر — كجملتهما في `summary`، فيساوي مجموعُ الصفوف جملتَها
+        $revenue = Ledger::creditByBucket(Ledger::revenueLines($bid, $start, null, $branchId), $unit);
+        $taxes = Ledger::creditByBucket(Ledger::outputTaxLines($bid, $start, null, $branchId), $unit);
 
         $cogs = Demo::cogsByBucket($bid, $start, null, $branchId, null, $unit);
 
@@ -200,7 +203,7 @@ final class Profitability
                 default => [$cursor->format('Y-m-d'), $cursor->translatedFormat('l j F')],
             };
 
-            $o = $orders[$key] ?? null;
+            $tax = (float) ($taxes[$key] ?? 0);
             $spent = (float) ($expenses[$key] ?? 0);
 
             /*
@@ -213,8 +216,8 @@ final class Profitability
             }
 
             $rows[] = ['key' => $key, 'period' => $label] + self::derive(
-                (float) ($o->s ?? 0),
-                (float) ($o->t ?? 0),
+                (float) ($revenue[$key] ?? 0) + $tax,
+                $tax,
                 (float) ($cogs[$key] ?? 0),
                 $spent,
             );
@@ -246,16 +249,17 @@ final class Profitability
         };
     }
 
-    /** أوّلُ شهرٍ فيه بيعٌ أو مصروفٌ في النطاق — أو هذا الشهر */
+    /** أوّلُ شهرٍ فيه بيعٌ أو إيرادٌ أو مصروفٌ في النطاق — أو هذا الشهر */
     private static function firstMonth(int $bid, ?int $branchId): Carbon
     {
         $order = self::orders($bid, null, null, $branchId)->min('ordered_at');
+        $revenue = Ledger::revenueLines($bid, null, null, $branchId)->min('journal_entries.entry_date');
         // وأوّلُ مصروفٍ من مصدره: الدفترُ للنشاط كلِّه، والجدولُ للفرع
         $expense = $branchId === null
             ? Ledger::operatingExpenseLines($bid)->min('journal_entries.entry_date')
             : self::expenses($bid, null)->min('spent_at');
 
-        $dates = array_filter([$order, $expense]);
+        $dates = array_filter([$order, $revenue, $expense]);
         $first = $dates === [] ? now() : Carbon::parse(min(array_map(fn ($d) => Carbon::parse($d)->toDateTimeString(), $dates)));
 
         return $first->copy()->startOfMonth()->min(now()->startOfMonth());

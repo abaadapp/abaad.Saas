@@ -278,6 +278,14 @@ class TheDashboardDoesNotComfortWithALieTest extends TestCase
             'total' => $p->price * $qty,
         ]);
 
+        // يُرحَّل كما يُرحّله الصندوق، والملغى يُعكس — الإيرادُ يُقرأ من الدفتر
+        if (! $order->is_held) {
+            Books::recordSale($order);
+            if ($order->status === 'ملغي') {
+                Books::unpostSale($order);
+            }
+        }
+
         return $order;
     }
 }

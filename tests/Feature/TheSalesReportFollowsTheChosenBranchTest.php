@@ -113,6 +113,9 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
             'cost' => (float) $p->cost, 'total' => $total,
         ]);
 
+        // يُرحَّل كما يُرحّله الصندوق — الإيرادُ يُقرأ من الدفتر
+        Books::recordSale($order);
+
         return $order;
     }
 

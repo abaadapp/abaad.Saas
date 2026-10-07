@@ -281,6 +281,9 @@ class ReportsTellTheirScopeTest extends TestCase
             'price' => 950, 'cost' => 600, 'total' => 950,
         ]);
 
+        // يُرحَّل كما يُرحّله الصندوق — الإيرادُ يُقرأ من الدفتر
+        Books::recordSale($order);
+
         Books::recordExpense(Expense::create([
             'business_id' => $this->business->id, 'type' => 'إيجار', 'description' => 'إيجار',
             'amount' => 200, 'method' => 'نقدي', 'status' => 'مدفوع',

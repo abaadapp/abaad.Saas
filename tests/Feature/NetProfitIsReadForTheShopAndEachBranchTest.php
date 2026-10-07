@@ -111,6 +111,9 @@ class NetProfitIsReadForTheShopAndEachBranchTest extends TestCase
             'price' => $total / $qty, 'quantity' => $qty, 'cost' => $cost / $qty, 'total' => $total,
         ]);
 
+        // يُرحَّل كما يُرحّله الصندوق — الإيرادُ يُقرأ من الدفتر
+        Books::recordSale($order);
+
         return $order;
     }
 

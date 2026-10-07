@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\Order;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -49,12 +50,15 @@ class ReportsFollowTheirPeriodTest extends TestCase
 
     private function order(float $total, string $when): void
     {
-        Order::create([
+        $order = Order::create([
             'business_id' => $this->business->id, 'branch_id' => $this->branch->id,
             'number' => 'INV-'.uniqid(), 'status' => 'مكتمل', 'is_held' => false,
             'payment_method' => 'نقدي', 'subtotal' => $total, 'total' => $total,
             'ordered_at' => $when, 'created_at' => $when, 'updated_at' => $when,
         ]);
+
+        // يُرحَّل كما يُرحّله الصندوق — الإيرادُ يُقرأ من الدفتر
+        Books::recordSale($order);
     }
 
     private function trx(float $amount, string $when): void

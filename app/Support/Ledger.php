@@ -5,6 +5,8 @@ namespace App\Support;
 use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
+use App\Models\Order;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -527,6 +529,187 @@ class Ledger
         $diff = $debit - $credit;
 
         return round($account->normal_side === 'credit' ? -$diff : $diff, 3);
+    }
+
+    /** نوعُ حساب المصروف في الشجرة — وتحته تكلفةُ البضاعة وما سواها */
+    public const EXPENSE_TYPE = 'مصروف';
+
+    /**
+     * المصروفاتُ التشغيليّة — من الدفتر وحده، والمصدرُ الرسميّ لها في النظام كلّه.
+     *
+     * ═══ لمَ الدفترُ لا جدولُ المصروفات ═══
+     *
+     * جدولُ المصروفات سجلُّ ما كُتب من شاشته: لا رواتبَ فيه ولا إهلاك. فكان
+     * «صافي الربح» على اللوحة يطرح الإيجارَ ولا يطرح الرواتب — ربحٌ أعلى من
+     * الحقيقة بقدر مسيرة الشهر. والدفترُ يجمع كلَّ حدثٍ مرّةً واحدة بقيده:
+     * المصروفُ اليدويّ المدفوع (`ExpenseController::postToLedger`)، والراتبُ
+     * عند اعتماد المسيرة لا عند صرفها (الصرفُ يسدّد «رواتب مستحقّة» ولا يمسّ
+     * المصروف)، والإهلاكُ، وأيُّ حساب «مصروف» يُضاف غدًا بلا تعديلٍ هنا.
+     *
+     * ═══ وما لا يدخل ═══
+     *
+     *   - تكلفةُ البضاعة المباعة (`cogs`): بندٌ مستقلٌّ في قائمة الدخل، تُقرأ
+     *     من لقطة التكلفة يوم البيع (`Demo::cogsFor`).
+     *   - فاتورةُ المورّد للمخزون: مخزونٌ مقابلَ ذمّة، لا مصروف. والتكلفةُ
+     *     تظهر يوم يُباع في تكلفة البضاعة.
+     *   - المصروفُ غيرُ المدفوع: لا قيدَ له اليوم، فلا يُعدّ.
+     *
+     * ═══ والقراءة ═══
+     *
+     * قيدٌ مرحَّل لهذا النشاط، على حسابٍ نوعُه «مصروف» من حساباته، مدينٌ
+     * ناقصَ دائن. والقيدُ العكسيّ يُجمع مع أصله فيصيران صفرًا — لا يُستثنى
+     * أحدُهما. والفترةُ بتاريخ القيد `[start, end)` بالتاريخ وحده، والفرعُ
+     * فرعُ القيد إن طُلب.
+     */
+    public static function operatingExpenses(
+        int $businessId,
+        ?Carbon $start = null,
+        ?Carbon $end = null,
+        ?int $branchId = null,
+    ): float {
+        return round((float) self::operatingExpenseLines($businessId, $start, $end, $branchId)
+            ->sum(DB::raw('journal_lines.debit - journal_lines.credit')), 3);
+    }
+
+    /**
+     * سطورُ المصروفات التشغيليّة — الاستعلامُ الذي يقرؤه المجموعُ والتوزيعُ على الزمن.
+     *
+     * @return Builder
+     */
+    public static function operatingExpenseLines(
+        int $businessId,
+        ?Carbon $start = null,
+        ?Carbon $end = null,
+        ?int $branchId = null,
+    ) {
+        return self::postedLines($businessId, $start, $end, $branchId)
+            ->where('accounts.type', self::EXPENSE_TYPE)
+            // `IS NULL OR <>`: حسابٌ بلا مفتاح (أنشأه التاجر) مصروفٌ تشغيليّ، و`<>` وحدها تُسقطه
+            ->where(fn ($q) => $q->whereNull('accounts.system_key')->orWhere('accounts.system_key', '<>', 'cogs'));
+    }
+
+    /**
+     * سطورُ القيود المرحَّلة لهذا النشاط في الفترة والفرع — أساسُ كلّ قراءةٍ للربح.
+     *
+     * والفترةُ بتاريخ القيد `[start, end)` بالتاريخ وحده، والفرعُ فرعُ القيد إن طُلب.
+     *
+     * @return Builder
+     */
+    private static function postedLines(int $businessId, ?Carbon $start, ?Carbon $end, ?int $branchId)
+    {
+        return DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->where('journal_entries.business_id', $businessId)
+            ->where('accounts.business_id', $businessId)
+            ->where('journal_entries.posted', true)
+            ->when($start, fn ($q) => $q->where('journal_entries.entry_date', '>=', $start->toDateString()))
+            ->when($end, fn ($q) => $q->where('journal_entries.entry_date', '<', $end->toDateString()))
+            ->when($branchId !== null, fn ($q) => $q->where('journal_entries.branch_id', $branchId));
+    }
+
+    /** نوعُ حساب الإيراد في الشجرة — المبيعات ومبيعات الموقع والإيرادات الأخرى والمردودات */
+    public const REVENUE_TYPE = 'إيراد';
+
+    /**
+     * صافي الإيرادات — من الدفتر وحده، والمصدرُ الرسميّ للإيراد في النظام كلّه.
+     *
+     * ═══ لمَ الدفترُ لا الطلباتُ ولا الحركة ═══
+     *
+     * الطلباتُ لا تعرف فاتورةَ العميل اليدويّة: تُرحَّل إلى «إيراد المبيعات»
+     * (`CustomerInvoices::post`) ولا طلبَ لها ولا حركةَ دخل. فكان صافي الربح
+     * يُسقطها، والميزانيّةُ تعدّها. وجمعُ الطلبات والفواتير بيدٍ يعدّ مرّتين
+     * الفاتورةَ المولودة من طلب — وهي لا قيدَ لها لهذا السبب نفسه.
+     *
+     * والدفترُ يعدّ كلَّ بيعةٍ مرّةً بقيدها: الصندوقُ والموقع
+     * (`Books::recordSale`)، والفاتورةُ اليدويّة الصادرة، وأيُّ حساب «إيراد»
+     * يُضاف غدًا.
+     *
+     * ═══ والقراءة ═══
+     *
+     * دائنٌ ناقصَ مدين على كلّ حسابٍ نوعُه «إيراد». فالضريبةُ خارجه (خصمٌ في
+     * «ضريبة مستحقّة»)، والمردوداتُ وإشعارُ الدائن يُنقصانه (حسابٌ طبيعتُه
+     * مدينة تحت الإيرادات)، والقيدُ العكسيّ لإلغاء بيعةٍ أو فاتورة يُجمع في
+     * يومه هو — الإلغاءُ حدثٌ في يومه، لا محوٌ لما وقع قبله.
+     */
+    public static function netRevenue(
+        int $businessId,
+        ?Carbon $start = null,
+        ?Carbon $end = null,
+        ?int $branchId = null,
+    ): float {
+        return round((float) self::revenueLines($businessId, $start, $end, $branchId)
+            ->sum(DB::raw('journal_lines.credit - journal_lines.debit')), 3);
+    }
+
+    /** @return Builder */
+    public static function revenueLines(int $businessId, ?Carbon $start = null, ?Carbon $end = null, ?int $branchId = null)
+    {
+        return self::postedLines($businessId, $start, $end, $branchId)
+            ->where('accounts.type', self::REVENUE_TYPE);
+    }
+
+    /**
+     * ضريبةُ المبيعات في الدفتر — «ضريبة مستحقّة» في القيود التي فيها إيراد.
+     *
+     * لا رصيدُ الحساب كلُّه: سدادُ الضريبة للجهاز يُنقصه ولا يُنقص ما بيع.
+     * فتُقرأ في قيد البيعة والفاتورة وإشعار الدائن وعكوسها وحدها — وبها
+     * يصير «إجمالي المبيعات» صافيَ الإيرادات مع ضريبته من الدفتر نفسِه.
+     */
+    public static function outputTax(int $businessId, ?Carbon $start = null, ?Carbon $end = null, ?int $branchId = null): float
+    {
+        return round((float) self::outputTaxLines($businessId, $start, $end, $branchId)
+            ->sum(DB::raw('journal_lines.credit - journal_lines.debit')), 3);
+    }
+
+    /** @return Builder */
+    public static function outputTaxLines(int $businessId, ?Carbon $start = null, ?Carbon $end = null, ?int $branchId = null)
+    {
+        return self::postedLines($businessId, $start, $end, $branchId)
+            ->where('accounts.system_key', 'tax_payable')
+            ->whereExists(fn ($q) => $q->selectRaw('1')
+                ->from('journal_lines as rl')
+                ->join('accounts as ra', 'ra.id', '=', 'rl.account_id')
+                ->whereColumn('rl.journal_entry_id', 'journal_entries.id')
+                ->where('ra.type', self::REVENUE_TYPE));
+    }
+
+    /**
+     * سطورُ الإيراد أو ضريبته مقسومةً على الزمن — `[مفتاح الخانة => دائن − مدين]`.
+     *
+     * ويومُ القيد لا ساعةَ فيه: فساعةُ البيعة تُقرأ من طلبها (`ordered_at`)،
+     * وما لا طلبَ له (فاتورةٌ يدويّة) يقع في أوّل ساعات اليوم — كالمصروف.
+     *
+     * @param  Builder  $lines  من `revenueLines` أو `outputTaxLines`
+     * @return array<string, float>
+     */
+    public static function creditByBucket($lines, string $unit): array
+    {
+        if ($unit === 'hour') {
+            $lines->leftJoin('orders', fn ($j) => $j->on('orders.id', '=', 'journal_entries.sourceable_id')
+                ->where('journal_entries.sourceable_type', Order::class));
+            $bucket = 'COALESCE('.Demo::bucketSql('COALESCE(orders.ordered_at, orders.created_at)', 'hour').", '00')";
+        } else {
+            $bucket = Demo::bucketSql('journal_entries.entry_date', $unit);
+        }
+
+        return $lines->selectRaw("{$bucket} as bucket, SUM(journal_lines.credit - journal_lines.debit) as v")
+            ->groupBy('bucket')->get()
+            ->mapWithKeys(fn ($r) => [(string) $r->bucket => (float) $r->v])->all();
+    }
+
+    /**
+     * المصروفاتُ التشغيليّة مقسومةً على الزمن — `[مفتاح الخانة => المبلغ]`.
+     *
+     * @param  string  $bucketSql  تعبيرُ الخانة على `journal_entries.entry_date`
+     * @return array<string, float>
+     */
+    public static function operatingExpensesByBucket(int $businessId, string $bucketSql, ?Carbon $start = null, ?Carbon $end = null): array
+    {
+        return self::operatingExpenseLines($businessId, $start, $end)
+            ->selectRaw("{$bucketSql} as bucket, SUM(journal_lines.debit - journal_lines.credit) as v")
+            ->groupBy('bucket')->get()
+            ->mapWithKeys(fn ($r) => [(string) $r->bucket => (float) $r->v])->all();
     }
 
     public static function trialBalance(int $businessId, ?Carbon $through = null): array

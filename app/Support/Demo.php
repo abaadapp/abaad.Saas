@@ -822,7 +822,18 @@ class Demo
         $count = $orders()->count();
         $avg = $count ? $sales / $count : 0;
         $newCustomers = Customer::where('business_id', $bid)->whereBetween('created_at', [$start, $end])->count();
-        $expenses = (float) Expense::where('business_id', $bid)->paid()->whereBetween('spent_at', [$start, $end])->sum('amount');
+        // المصروفاتُ التشغيليّة من الدفتر — المصدرُ الواحد (`Ledger::operatingExpenses`)
+        $expenses = Ledger::operatingExpenses($bid, $start, $start->copy()->addDay());
+
+        /*
+         * و«صافي الأرباح» ربحٌ لا «المبيعات − المصروفات».
+         *
+         * كان إجماليَّ الطلبات بضريبتها ناقصَ المصروف: بلا تكلفةِ بضاعة، وبضريبةٍ
+         * تُورَّد داخلَ الربح، وبلا فاتورةٍ يدويّة. فالتعريفُ تعريفُ اللوحة:
+         * صافي الإيرادات من الدفتر − تكلفة البضاعة − المصروفات التشغيليّة.
+         */
+        $revenue = Ledger::netRevenue($bid, $start, $start->copy()->addDay());
+        $cogs = self::cogsFor($bid, $start, $start->copy()->addDay());
 
         $top = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start, $end]))
@@ -839,7 +850,7 @@ class Demo
             'avg' => round($avg, 3),
             'new_customers' => $newCustomers,
             'expenses' => round($expenses, 3),
-            'net' => round($sales - $expenses, 3),
+            'net' => round($revenue - $cogs - $expenses, 3),
             'top_product' => $top?->name,
             'top_qty' => (int) ($top->q ?? 0),
             'trend' => self::trend($sales, $prevSales),
@@ -916,10 +927,16 @@ class Demo
             ? self::lowStockInBranch($bid, (int) self::currentBranchId())
             : Product::where('business_id', $bid)->needsStockAlert()->count();
 
-        // المصروفات وصافي الأرباح: هذا الشهر مقابل السابق
-        $expMonth = (float) Expense::where('business_id', $bid)->paid()->where('spent_at', '>=', $mStart)->sum('amount');
-        $expLastMonth = (float) Expense::where('business_id', $bid)->paid()
-            ->where('spent_at', '>=', $lmStart)->where('spent_at', '<', $mStart)->sum('amount');
+        /*
+         * المصروفات وصافي الأرباح: هذا الشهر مقابل السابق — من الدفتر.
+         *
+         * كانت جدولَ المصروفات المدفوعة وحده: الإيجارُ يُطرح والرواتبُ
+         * والإهلاكُ لا. فالرقمُ المصروفاتُ التشغيليّة كلُّها (`Ledger::
+         * operatingExpenses`)، وهو نفسُه في التقارير والمالية. ونطاقُه
+         * النشاطُ كلُّه كما كان — البطاقةُ لم تكن تُرشَّح بالفرع.
+         */
+        $expMonth = Ledger::operatingExpenses($bid, $mStart);
+        $expLastMonth = Ledger::operatingExpenses($bid, $lmStart, $mStart);
 
         /*
          * ═══ «صافي الأرباح» ربحٌ لا فرقُ طرحٍ بين رقمين ═══
@@ -930,27 +947,26 @@ class Demo
          * شاشةٍ يفتحها صاحب المحلّ كلَّ صباح، وفي الملخّص اليوميّ الذي يصله
          * بالبريد.
          *
-         * والتعريفُ الصحيح مكتوبٌ في هذا الملفّ منذ أُصلحت شاشةُ التقارير
-         * (انظر `profitStats` و`reportSummary`):
-         *   (المبيعات − الضريبة) − تكلفة البضاعة المباعة − المصروفات
+         * والتعريفُ واحدٌ هنا وفي التقارير والمالية (`reportSummary` و
+         * `Profitability`):
+         *   صافي الإيرادات − تكلفة البضاعة المباعة − المصروفات التشغيليّة
          *
-         * فأُصلحت الشاشتان وبقيت اللوحة تحسبها بيدها — وهو ما يقع كلَّ مرّة
-         * يُكتب فيها الحسابُ مرّتين.
+         * وصافي الإيرادات من الدفتر (`Ledger::netRevenue`) لا من الطلبات: بلا
+         * ضريبة — التزامٌ يُورَّد لا إيرادٌ يُملك —، وبفاتورة العميل اليدويّة
+         * التي لا طلبَ لها، والفاتورةُ المولودة من طلب لا تُعدّ ثانيةً.
          *
-         * والضريبة تُطرح لأنها التزامٌ يُورَّد لا إيرادٌ يُملك. والتكلفةُ
-         * والضريبةُ تتبعان الفرعَ المختار كما تتبعه المبيعات: بطاقاتُ اللوحة
-         * كلُّها مقيَّدةٌ به، ولو بقيت التكلفةُ على المتجر كلِّه لَقرأ صاحبُ
-         * فرعٍ صغيرٍ خسارةً من بضاعةٍ باعها غيرُه.
+         * والإيرادُ والتكلفةُ يتبعان الفرعَ المختار كما تتبعه المبيعات:
+         * بطاقاتُ اللوحة كلُّها مقيَّدةٌ به، ولو بقيت التكلفةُ على المتجر كلِّه
+         * لَقرأ صاحبُ فرعٍ صغيرٍ خسارةً من بضاعةٍ باعها غيرُه.
          */
         $branch = self::currentBranchId();
-        $taxMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('tax');
-        $taxLastMonth = (float) $orders()->where('ordered_at', '>=', $lmStart)
-            ->where('ordered_at', '<', $mStart)->sum('tax');
+        $revenueMonth = Ledger::netRevenue($bid, $mStart, null, $branch);
+        $revenueLastMonth = Ledger::netRevenue($bid, $lmStart, $mStart, $branch);
         $cogsMonth = self::cogsFor($bid, $mStart, null, $branch);
         $cogsLastMonth = self::cogsFor($bid, $lmStart, $mStart, $branch);
 
-        $net = $salesMonth - $taxMonth - $cogsMonth - $expMonth;
-        $netLast = $salesLastMonth - $taxLastMonth - $cogsLastMonth - $expLastMonth;
+        $net = $revenueMonth - $cogsMonth - $expMonth;
+        $netLast = $revenueLastMonth - $cogsLastMonth - $expLastMonth;
 
         // اتجاه المصروفات معكوس: زيادتها اتجاه سلبي (أحمر)
         $expTrend = self::trend($expMonth, $expLastMonth);
@@ -963,7 +979,7 @@ class Demo
             array_merge(['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'color' => 'secondary'], self::trend($avg, $avgLast)),
             array_merge(['label' => __('عدد العملاء'), 'value' => (string) $customersTotal, 'icon' => 'users', 'color' => 'primary'], self::trend($customersMonth, $customersLastMonth)),
             ['label' => __('منتجات منخفضة المخزون'), 'value' => (string) $lowStock, 'icon' => 'alert-triangle', 'trend' => __('تنبيه'), 'up' => false, 'color' => 'warning'],
-            array_merge(['label' => __('المصروفات'), 'value' => self::money($expMonth), 'icon' => 'arrow-down-circle', 'color' => 'danger'], $expTrend),
+            array_merge(['label' => __('إجمالي المصروفات'), 'value' => self::money($expMonth), 'icon' => 'arrow-down-circle', 'color' => 'danger'], $expTrend),
             /*
              * وخسارةٌ لا تُرسم خضراء.
              *
@@ -2116,25 +2132,21 @@ class Demo
 
     /**
      * صورة الربح الكاملة لفترة: صافي الإيرادات − تكلفة البضاعة المباعة − المصروفات = صافي الربح.
-     * صافي الإيراد من معاملات الدخل (بلا ضريبة)، والتكلفة من تكلفة المنتجات × الكميات المباعة.
+     * صافي الإيراد من الدفتر (`Ledger::netRevenue`)، والتكلفة من لقطة التكلفة يوم البيع.
      */
     public static function profitStats(string $range = 'month'): array
     {
         $bid = self::bid();
         $start = self::rangeStart($range);
 
-        // صافي الإيرادات (بلا ضريبة) من معاملات الدخل في الفترة
-        // والملغاة لا تُجمع — التعريف واحدٌ هنا وفي الحركة وفي التقارير
-        $income = Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
-            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
-        $netRevenue = (float) (clone $income)->sum('amount') - (float) (clone $income)->sum('tax_amount');
+        // صافي الإيرادات (بلا ضريبة) من الدفتر — المصدرُ الواحد في اللوحة والمالية والتقارير
+        $netRevenue = Ledger::netRevenue($bid, $start);
 
         // تكلفة البضاعة المباعة — من الباب الواحد لا بحسابٍ ثانٍ هنا
         $cogs = self::cogsFor($bid, $start);
 
-        // المصروفات التشغيلية في الفترة
-        $expenses = (float) Expense::where('business_id', $bid)->paid()
-            ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
+        // المصروفات التشغيلية في الفترة — من الدفتر
+        $expenses = Ledger::operatingExpenses($bid, $start);
 
         $grossProfit = $netRevenue - $cogs;
         $netProfit = $grossProfit - $expenses;
@@ -2359,36 +2371,40 @@ class Demo
         // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
         $start = self::rangeStart(self::range($range));
         /*
-         * والملغاة لا تُجمع — التعريف واحدٌ هنا وفي الحركة وفي التقارير.
+         * الإيرادُ وضريبتُه من الدفتر — الرقمُ نفسُه في اللوحة والتقارير.
          *
-         * وأخطرُ ما كانت تنفخه هذه البطاقاتُ الأربع: «ضريبة القيمة المضافة
-         * المحصّلة». ضريبةٌ على بيعةٍ أُلغيت لم تُحصَّل، ومن يقرأ الرقم
-         * ليقرّره يُقرّ بما لا يملك.
+         * كانت من حركات الدخل: ما قُبض في الدرج. ففاتورةُ العميل اليدويّة —
+         * ولا حركةَ لها — تغيب عن «صافي الإيرادات» هنا وتحضر في الميزانيّة.
+         * والدفترُ يعدّ كلَّ بيعةٍ مرّةً بقيدها (`Ledger::netRevenue`)،
+         * والضريبةَ في القيود نفسِها (`Ledger::outputTax`)، والإلغاءُ عكسٌ
+         * يُنقصهما في يومه.
+         *
+         * و«المدفوعات النقدية» مالٌ دخل الدرج فعلًا: تبقى من الحركة، والملغاةُ
+         * لا تُجمع.
          */
-        $income = Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
-            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
-        $total = (float) (clone $income)->sum('amount');       // إجمالي المقبوض (شامل الضريبة)
-        $tax = (float) (clone $income)->sum('tax_amount');     // ضريبة القيمة المضافة المحصّلة (التزام)
-        $net = $total - $tax;                                  // صافي الإيرادات (بلا ضريبة)
-        $cash = (float) (clone $income)->where('method', 'نقدي')->sum('amount');
+        $net = Ledger::netRevenue($bid, $start);
+        $tax = Ledger::outputTax($bid, $start);
+        $total = $net + $tax;
+        $cash = (float) Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
+            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
+            ->where('method', 'نقدي')->sum('amount');
 
         // الفترة السابقة المكافئة لحساب الاتجاه الحقيقي
         $prev = self::rangePrev($range);
         $pTotal = $pTax = $pNet = $pCash = 0.0;
         if ($prev) {
             // والفترةُ السابقة تُقاس بالمقياس نفسه، وإلا كان الاتجاهُ فرقَ تعريفين
-            $pIncome = Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
-                ->whereBetween('occurred_at', $prev);
-            $pTotal = (float) (clone $pIncome)->sum('amount');
-            $pTax = (float) (clone $pIncome)->sum('tax_amount');
-            $pNet = $pTotal - $pTax;
-            $pCash = (float) (clone $pIncome)->where('method', 'نقدي')->sum('amount');
+            $pNet = Ledger::netRevenue($bid, $prev[0], $prev[1]);
+            $pTax = Ledger::outputTax($bid, $prev[0], $prev[1]);
+            $pTotal = $pNet + $pTax;
+            $pCash = (float) Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
+                ->whereBetween('occurred_at', $prev)->where('method', 'نقدي')->sum('amount');
         }
 
         return [
             array_merge(['label' => __('إجمالي المبيعات (شامل الضريبة)'), 'value' => self::money($total), 'icon' => 'wallet', 'color' => 'primary'], self::trend($total, $pTotal)),
             array_merge(['label' => __('صافي الإيرادات (بلا ضريبة)'), 'value' => self::money($net), 'icon' => 'trending-up', 'color' => 'success'], self::trend($net, $pNet)),
-            array_merge(['label' => __('ضريبة القيمة المضافة المحصّلة'), 'value' => self::money($tax), 'icon' => 'receipt', 'color' => 'warning'], self::trend($tax, $pTax)),
+            array_merge(['label' => __('ضريبة القيمة المضافة على المبيعات'), 'value' => self::money($tax), 'icon' => 'receipt', 'color' => 'warning'], self::trend($tax, $pTax)),
             array_merge(['label' => __('المدفوعات النقدية'), 'value' => self::money($cash), 'icon' => 'banknote', 'color' => 'info'], self::trend($cash, $pCash)),
         ];
     }
@@ -3077,8 +3093,29 @@ class Demo
                 ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
             $channel,
         );
-        $sales = (float) (clone $ordersQ)->sum('total');
-        $tax = (float) (clone $ordersQ)->sum('tax');
+        /*
+         * ═══ والإيرادُ من الدفتر — إلّا لقناة ═══
+         *
+         * المتجرُ كلُّه أو فرعٌ: صافي الإيرادات من حسابات الإيراد في الدفتر
+         * (`Ledger::netRevenue`)، والضريبةُ من القيود نفسِها، والإجماليُّ
+         * مجموعُهما. فتدخل فاتورةُ العميل اليدويّة — ولا طلبَ لها —، ولا
+         * تُعدّ الفاتورةُ المولودة من طلبٍ مرّتين، والإلغاءُ وإشعارُ الدائن
+         * يُنقصان في يومهما.
+         *
+         * والقناةُ لا تُقرأ من الدفتر: بيعاتُ الموقع قبل ورقتها (4150) في
+         * «إيراد المبيعات» مع الصندوق والفواتير، ولا يفصلها شيء. فتبقى من
+         * الطلبات (`orders.channel`) — وتقريرُها مُجملُ ربحٍ لا صافٍ أصلًا.
+         */
+        $byChannel = $channel !== null && $channel !== '';
+        if ($byChannel) {
+            $sales = (float) (clone $ordersQ)->sum('total');
+            $tax = (float) (clone $ordersQ)->sum('tax');
+            $netRevenue = $sales - $tax;
+        } else {
+            $netRevenue = Ledger::netRevenue($bid, $start, null, $branchId);
+            $tax = Ledger::outputTax($bid, $start, null, $branchId);
+            $sales = round($netRevenue + $tax, 3);
+        }
 
         /*
          * ═══ والمصروفاتُ لا تُنسب إلى قناة ═══
@@ -3104,12 +3141,10 @@ class Demo
          * فيُقال «مُجمل الربح» حين يُحصر التقريرُ بفرع، كما يُقال حين
          * يُحصر بقناة — والاسمُ يُرسَل مع الرقم (`profit_kind`).
          */
-        $whole = ($channel === null || $channel === '') && $branchId === null;
+        $whole = ! $byChannel && $branchId === null;
 
-        $expenses = $whole
-            ? (float) Expense::where('business_id', $bid)->paid()
-                ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount')
-            : 0.0;
+        // المصروفاتُ التشغيليّة من الدفتر — الرقمُ نفسُه في اللوحة والمالية
+        $expenses = $whole ? Ledger::operatingExpenses($bid, $start) : 0.0;
 
         /*
          * «صافي الربح» ربحٌ لا فرقُ طرحٍ بين رقمين.
@@ -3120,7 +3155,7 @@ class Demo
          * شاشة التقارير وفي الملفّات الثلاثة التي تخرج منها إلى المحاسب.
          *
          * والتعريف واحدٌ في النظام كلّه (انظر profitStats):
-         *   (المبيعات − الضريبة) − تكلفة البضاعة المباعة − المصروفات
+         *   صافي الإيرادات − تكلفة البضاعة المباعة − المصروفات
          *
          * والضريبة تُطرح لأنها التزامٌ يُورَّد لا إيرادٌ يُملك.
          */
@@ -3141,8 +3176,9 @@ class Demo
              * والاسمُ يُرسَل مع الرقم (`profit_kind`) فلا تُسمّيه الشاشةُ من
              * عندها ثمّ تفترق عن حسابه.
              */
-            'profit' => round($sales - $tax - $cogs - $expenses, 3),
+            'profit' => round($netRevenue - $cogs - $expenses, 3),
             'profit_kind' => $whole ? 'net' : 'gross',
+            'net_revenue' => round($netRevenue, 3),
             'cogs' => round($cogs, 3),
             'expenses' => $expenses,
             'tax' => $tax,

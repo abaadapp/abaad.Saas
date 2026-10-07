@@ -258,10 +258,10 @@ class TheBookTellsWhatTheWebsiteSoldTest extends TestCase
      */
     public function test_expenses_are_not_split_across_channels(): void
     {
-        \App\Models\Expense::create([
+        Books::recordExpense(\App\Models\Expense::create([
             'business_id' => $this->shop->id, 'type' => 'إيجار', 'description' => 'إيجار المحلّ',
             'amount' => 100, 'spent_at' => now(), 'status' => 'مدفوع',
-        ]);
+        ]));
 
         $this->sell(SalesChannel::WEBSITE, 30, 3);
 

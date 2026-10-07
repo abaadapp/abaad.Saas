@@ -9,6 +9,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\Demo;
 use App\Support\ReportData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -71,13 +72,21 @@ class CancelledOrderTest extends TestCase
             'price' => $total, 'cost' => 60, 'quantity' => 1, 'total' => $total,
         ]);
 
+        // يُرحَّل كما يُرحّله الصندوق، والملغى يُعكس — الإيرادُ يُقرأ من الدفتر
+        if (! $order->is_held) {
+            Books::recordSale($order);
+            if ($order->status === 'ملغي') {
+                Books::unpostSale($order);
+            }
+        }
+
         return $order;
     }
 
     /** بيعةٌ كاملة: طلبٌ وصفٌّ في دفتر الحركة معلّقٌ به — كما تكتبها نقطة البيع */
-    private function sale(string $status, float $total, string $method = 'نقدي'): Order
+    private function sale(string $status, float $total, string $method = 'نقدي', float $tax = 0): Order
     {
-        $order = $this->order($status, $total);
+        $order = $this->order($status, $total, $tax);
 
         Transaction::create([
             'business_id' => $this->business->id,
@@ -229,11 +238,10 @@ class CancelledOrderTest extends TestCase
      */
     public function test_the_finance_cards_are_not_inflated_by_a_cancelled_sale(): void
     {
-        $live = $this->sale('مكتمل', 100);
-        $live->update(['tax' => 5]);
+        $live = $this->sale('مكتمل', 100, tax: 5);
         Transaction::where('order_id', $live->id)->update(['tax_amount' => 5]);
 
-        $dead = $this->sale('ملغي', 900);
+        $dead = $this->sale('ملغي', 900, tax: 45);
         Transaction::where('order_id', $dead->id)->update(['tax_amount' => 45]);
 
         // وتُقرأ بمواضعها لا بأسمائها: الاسم يمرّ بالترجمة فيختلف بلغة الجلسة

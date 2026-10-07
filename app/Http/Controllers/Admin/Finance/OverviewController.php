@@ -78,12 +78,14 @@ class OverviewController extends Controller
          *
          * `cogs` يحسبه `reportSummary` أصلًا ويطرحه داخل `profit`، فكان
          * صافي الربح يُقرأ بلا ما يشرحه. فيُعرض الطرحُ خطوتين:
-         *   مجمل الربح = المبيعات − ضريبة المبيعات − تكلفة البضاعة المباعة
+         *   مجمل الربح = صافي الإيرادات − تكلفة البضاعة المباعة
          *   صافي الربح = مجمل الربح − المصروفات التشغيلية
          * و`profit` يبقى كما حسبه `reportSummary` — لا يُعاد حسابُه هنا.
+         * وصافي الإيرادات من الدفتر (`Ledger::netRevenue`)، والمبيعاتُ
+         * والضريبةُ من القيود نفسِها — فالمبيعات − الضريبة = صافي الإيرادات.
          */
         $cogs = round((float) $report['cogs'], 3);
-        $gross = round((float) $report['sales'] - (float) $report['tax'] - $cogs, 3);
+        $gross = round((float) $report['net_revenue'] - $cogs, 3);
 
         return Inertia::render('Admin/Finance/Summary', [
             'range' => $range,

@@ -111,16 +111,26 @@ class NetProfitIsReadForTheShopAndEachBranchTest extends TestCase
             'price' => $total / $qty, 'quantity' => $qty, 'cost' => $cost / $qty, 'total' => $total,
         ]);
 
+        // يُرحَّل كما يُرحّله الصندوق — الإيرادُ يُقرأ من الدفتر
+        Books::recordSale($order);
+
         return $order;
     }
 
     /** مصروفٌ مباشر بلا شاشة — كما يكتبه أيّ بابٍ في النظام */
     private function spend(float $amount, ?Branch $branch = null, string $status = Expense::PAID, string $at = '2027-03-10', ?Business $shop = null): Expense
     {
-        return Expense::create([
+        $expense = Expense::create([
             'business_id' => ($shop ?? $this->shop)->id, 'branch_id' => $branch?->id,
             'type' => 'إيجار', 'amount' => $amount, 'status' => $status, 'spent_at' => $at,
         ]);
+
+        // والمدفوعُ يُرحَّل يومَ يُدفع — كما يفعل `ExpenseController::postToLedger`
+        if ($status === Expense::PAID) {
+            Books::recordExpense($expense);
+        }
+
+        return $expense;
     }
 
     /** مصروفٌ موزَّع — صفٌّ واحد وحصصُه */
@@ -296,6 +306,8 @@ class NetProfitIsReadForTheShopAndEachBranchTest extends TestCase
     public function test_a_deleted_expense_and_its_shares_leave_the_profit(): void
     {
         $e = $this->split(400, [[$this->muscat, 300], [$this->sohar, 100]]);
+        // كما يحذفه `ExpenseController::destroy`: قيدُه يُعكس ثمّ يُحذف صفُّه
+        Books::unpostExpense($e);
         $e->delete();
 
         $this->assertSame(0.0, $this->page()['summary']['expenses']);

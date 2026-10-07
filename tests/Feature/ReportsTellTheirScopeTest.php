@@ -11,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Permissions;
 use Carbon\CarbonInterface;
@@ -280,11 +281,14 @@ class ReportsTellTheirScopeTest extends TestCase
             'price' => 950, 'cost' => 600, 'total' => 950,
         ]);
 
-        Expense::create([
+        // يُرحَّل كما يُرحّله الصندوق — الإيرادُ يُقرأ من الدفتر
+        Books::recordSale($order);
+
+        Books::recordExpense(Expense::create([
             'business_id' => $this->business->id, 'type' => 'إيجار', 'description' => 'إيجار',
             'amount' => 200, 'method' => 'نقدي', 'status' => 'مدفوع',
             'spent_at' => now(), 'employee_name' => 'المالك',
-        ]);
+        ]));
     }
 
     public function test_net_profit_subtracts_what_the_goods_cost(): void

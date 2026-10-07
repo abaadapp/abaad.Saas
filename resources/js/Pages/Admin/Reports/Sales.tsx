@@ -199,7 +199,7 @@ export default function ReportsSales() {
          * بابٍ أصلًا: الإيجارُ والراتبُ والكهرباء على المتجر كلِّه.
          */
         ...(whole
-            ? [{ label: t('المصروفات'), value: m(summary.expenses), icon: 'arrow-down-circle', color: 'warning' }]
+            ? [{ label: t('المصروفات التشغيلية'), value: m(summary.expenses), icon: 'arrow-down-circle', color: 'warning' }]
             : []),
         { label: t('الضريبة المحصّلة'), value: m(summary.tax), icon: 'receipt', color: 'info' },
     ];

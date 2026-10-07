@@ -322,7 +322,7 @@ export default function ExpensesIndex() {
         <AdminLayout title="مصاريف شهرية">
             <PageHeader
                 title="مصاريف شهرية"
-                subtitle={t('ما أُنفق في الشهر المعروض — وأنواع المصروفات')}
+                subtitle={t('المصروفات المسجلة من هذه الشاشة في الشهر المعروض — وأنواعها')}
                 actions={
                     <>
                         {/*
@@ -388,7 +388,7 @@ export default function ExpensesIndex() {
                 الشريط، منذ صار للنظام شكل تبويبٍ واحد. */}
             <Tabs
                 tabs={[
-                    { key: 'expenses', label: 'المصروفات' },
+                    { key: 'expenses', label: 'المصروفات المسجلة' },
                     { key: 'types', label: 'أنواع المصروفات' },
                 ]}
                 current={tab}
@@ -433,7 +433,7 @@ export default function ExpensesIndex() {
                         */}
                         {month && monthTotal !== null && (
                             <div className="border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-4 py-3 text-sm text-[#374151]">
-                                <span className="font-medium">{month}</span> — {t('المدفوع')}:{' '}
+                                <span className="font-medium">{month}</span> — {t('إجمالي المصروفات المسجلة والمدفوعة')}:{' '}
                                 <span className="font-semibold text-[#111]">{m(monthTotal)}</span>
                                 {(monthUnpaid ?? 0) > 0 && (
                                     <>
@@ -446,7 +446,7 @@ export default function ExpensesIndex() {
                             </div>
                         )}
                         <div className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm text-[#6b7280]">
-                            {t('كل الشهور')}: {number(totalCount)} — {t('المدفوع')}:{' '}
+                            {t('كل الشهور')}: {number(totalCount)} — {t('إجمالي المصروفات المسجلة والمدفوعة')}:{' '}
                             <span className="font-semibold text-[#111]">{m(totalAmount)}</span>
                             {/* المستحقّ لا يُجمع مع المدفوع: الأول التزامٌ عليك والثاني نقدٌ خرج */}
                             {unpaidCount > 0 && (
@@ -458,6 +458,14 @@ export default function ExpensesIndex() {
                                 </>
                             )}
                         </div>
+                        {/*
+                            وهذا سجلُّ الشاشة لا مصروفاتُ النشاط كلُّها: الرواتبُ والإهلاكُ
+                            تُرحَّل إلى الدفتر من بابها، ولا صفَّ لها هنا. فيُقال أين تُقرأ
+                            جملتُها — لا يُظنّ مجموعُ الجدول «كلَّ ما أنفقتُه».
+                        */}
+                        <p className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-2.5 text-[12px] text-[#9ca3af]" data-testid="expenses-ledger-note">
+                            {t('هذا مجموع ما سُجّل من هذه الشاشة. الرواتب والإهلاك تدخل في «المصروفات التشغيلية» في لوحة التحكم والتقارير.')}
+                        </p>
                     </Card>
                 )
             ) : types.length === 0 ? (

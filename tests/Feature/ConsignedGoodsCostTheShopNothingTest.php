@@ -97,6 +97,9 @@ class ConsignedGoodsCostTheShopNothingTest extends TestCase
             ]);
         }
 
+        // يُرحَّل كما يُرحّله الصندوق — الإيرادُ يُقرأ من الدفتر
+        Books::recordSale($order);
+
         return $order;
     }
 

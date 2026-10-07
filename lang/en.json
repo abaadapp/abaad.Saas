@@ -3464,6 +3464,7 @@
     "ضريبة الصنف": "Product VAT",
     "ضريبة القيمة المضافة": "VAT",
     "ضريبة القيمة المضافة المحصّلة": "VAT collected",
+    "ضريبة القيمة المضافة على المبيعات": "VAT on sales",
     "ضريبة القيمة المضافة ورمز العملة ووسائل الدفع": "VAT, currency symbol and payment methods",
     "ضريبة القيمة المضافة ونسبتها والرقم الضريبي": "VAT, its rate and the tax number",
     "ضريبة المخرجات": "Output VAT",
@@ -7405,5 +7406,9 @@
     "رقم تكامل OmanNet غيرُ رقم تكامل البطاقة — لكلٍّ منهما رقمُه في لوحة Paymob.": "The OmanNet Integration ID must differ from the card Integration ID — each has its own ID in Paymob.",
     "رقم تكامل Apple Pay غيرُ رقمَي البطاقة وOmanNet — لكلٍّ منها رقمُه في لوحة Paymob.": "The Apple Pay Integration ID must differ from the card and OmanNet IDs — each has its own ID in Paymob.",
     "الصقه في لوحة Paymob ← Payment Integrations (في الوضع Live) على كل تكامل تستعمله: البطاقة، وOmanNet، وApple Pay — بلا هذا لا يصلك طلبٌ من دفعةٍ ناجحة.": "Paste it in Paymob → Payment Integrations (Live mode) on every integration you use: card, OmanNet and Apple Pay — without it, a successful payment does not create an order.",
-    "OmanNet": "OmanNet"
+    "OmanNet": "OmanNet",
+    "المصروفات المسجلة من هذه الشاشة في الشهر المعروض — وأنواعها": "Expenses recorded on this screen for the selected month — and their types",
+    "إجمالي المصروفات المسجلة والمدفوعة": "Total recorded and paid expenses",
+    "هذا مجموع ما سُجّل من هذه الشاشة. الرواتب والإهلاك تدخل في «المصروفات التشغيلية» في لوحة التحكم والتقارير.": "This is the total recorded on this screen. Salaries and depreciation are included in “Operating expenses” on the dashboard and in reports.",
+    "المصروفات المسجلة": "Recorded expenses"
 }

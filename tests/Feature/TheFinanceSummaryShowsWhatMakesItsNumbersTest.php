@@ -17,6 +17,7 @@ use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\SupplierInvoices;
@@ -147,11 +148,14 @@ class TheFinanceSummaryShowsWhatMakesItsNumbersTest extends TestCase
             'quantity' => 1, 'price' => 950, 'cost' => 600, 'total' => 950,
         ]);
 
-        Expense::create([
+        // يُرحَّل كما يُرحّله الصندوق — الإيرادُ يُقرأ من الدفتر
+        Books::recordSale($order);
+
+        Books::recordExpense(Expense::create([
             'business_id' => $this->business->id, 'type' => 'إيجار', 'description' => 'إيجار',
             'amount' => 200, 'method' => 'نقدي', 'status' => Expense::PAID,
             'spent_at' => now(), 'employee_name' => 'المالك',
-        ]);
+        ]));
     }
 
     /* ═══════════════ ١ · سنداتُ الموردين في «عليك الآن» ═══════════════ */

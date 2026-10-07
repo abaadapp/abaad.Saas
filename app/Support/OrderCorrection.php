@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\BranchStock;
 use App\Models\Coupon;
 use App\Models\Customer;
+use App\Models\CustomerInvoice;
 use App\Models\InventoryMovement;
 use App\Models\Order;
 use App\Models\OrderEdit;
@@ -15,8 +16,10 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Models\Transaction;
+use App\Support\Store\GiftCardProduct;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use App\Support\CouponLimits;
 use App\Support\PaymentMethods;
@@ -119,6 +122,8 @@ class OrderCorrection
 
             self::recompute($order->fresh('items'));
             $order->refresh();
+            // وما نقص يُنقص المتبقّي على العميل أوّلًا — لا أثرَ حيث لا متبقّي
+            self::absorb($order, $totalBefore);
 
             self::syncTransaction($order);
             self::syncBooks($order, $reason);
@@ -653,6 +658,7 @@ class OrderCorrection
 
             self::recompute($order->fresh('items'));
             $order->refresh();
+            self::absorb($order, $totalBefore);
 
             self::syncTransaction($order);
             self::syncBooks($order, $reason);
@@ -742,6 +748,518 @@ class OrderCorrection
     }
 
     /** المعاملة المالية تتبع الفاتورة — رقمٌ في المالية لا يقابله بيعٌ يضلّل التقرير */
+    /* ═══════════════ إضافةُ صنفٍ واستبدالُه وملاحظتُه — بعد صدور الفاتورة ═══════════════ */
+
+    /** الفرقُ في فاتورةٍ مدفوعة: حُصِّل الآن، أو يبقى على العميل، أو رُدّ إليه يدويًّا */
+    public const SETTLE_COLLECTED = 'collected';
+
+    public const SETTLE_DUE = 'due';
+
+    public const SETTLE_REFUNDED = 'refunded';
+
+    public const SETTLES = [self::SETTLE_COLLECTED, self::SETTLE_DUE, self::SETTLE_REFUNDED];
+
+    /**
+     * يُضيف صنفًا إلى فاتورةٍ صدرت — بسعر القاعدة، ومخزونِه، وضريبتِه، وقيدِه.
+     *
+     * لا بندًا يُكتب ثمّ إجماليٌّ يُغيَّر بيد: السعرُ من `SaleLines::priceItems`
+     * (لا من الشاشة)، والبندُ يُكتب كما يكتبه الصندوق، والمخزونُ من بابه
+     * (`moveStock`)، ثمّ الحسابُ والمعاملةُ والدفترُ والنقاط من الأبواب نفسِها
+     * التي يمرّ بها تصحيحُ الكمّيّة. وكلُّه في معاملةٍ واحدة: يسقط شيءٌ فلا
+     * يبقى شيء.
+     *
+     * @param  array{product_id: int, variant_id?: ?int, qty: int, addons?: array<int, array{addon_id: int, qty: int}>, note?: ?string}  $wanted
+     *
+     * @throws RuntimeException|ValidationException
+     */
+    public static function addLine(Order $order, array $wanted, string $reason, ?string $settle = null): OrderEdit
+    {
+        self::assertLinesMayChange($order);
+
+        return DB::transaction(function () use ($order, $wanted, $reason, $settle) {
+            $order = self::lockOrder($order);
+            $totalBefore = (float) $order->total;
+
+            $item = self::writeLine($order, self::priceOne($order, $wanted));
+            self::takeStock($order, $item);
+
+            self::recompute($order->fresh('items'));
+            $order->refresh();
+            self::settleDifference($order, $totalBefore, $settle);
+
+            self::syncTransaction($order);
+            self::syncBooks($order, $reason);
+            self::syncLoyalty($order);
+
+            $edit = self::trace($order, OrderEdit::ADD_LINE, $item->displayName(), $totalBefore, $reason, [
+                'order_item_id' => $item->id,
+                'qty_before' => 0,
+                'qty_after' => (int) $item->quantity,
+                'value_after' => self::describe($item),
+            ]);
+
+            Activity::log('updated', 'أضاف «'.$item->displayName().'» ×'.$item->quantity.' إلى الفاتورة '.$order->number.' — '.$reason,
+                ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            return $edit;
+        });
+    }
+
+    /**
+     * يستبدل صنفًا بآخر — يُحذف القديمُ ويُكتب الجديد، ولا يُغيَّر صنفُ بندٍ في مكانه.
+     *
+     * بندٌ يتبدّل صنفُه في صفّه يكذب على كلّ ما قرأه قبلُ: لقطةُ التكلفة،
+     * ومقاسُه، وإضافاتُه، وحركةُ المخزون التي خرج بها. فالقديمُ يعود إلى الرفّ
+     * بطريقه ويُحذف (كما يحذفه تصحيحُ الكمّيّة إلى صفر)، والجديدُ يُسعَّر
+     * ويُكتب ويُخصم كأيّ إضافة — في معاملةٍ واحدة: إن ردّ الجديدَ المخزونُ أو
+     * السعرُ بقي القديمُ كما كان.
+     *
+     * @param  array{product_id: int, variant_id?: ?int, qty: int, addons?: array<int, array{addon_id: int, qty: int}>, note?: ?string}  $wanted
+     *
+     * @throws RuntimeException|ValidationException
+     */
+    public static function replaceLine(Order $order, OrderItem $old, array $wanted, string $reason, ?string $settle = null): OrderEdit
+    {
+        if ($old->order_id !== $order->id) {
+            throw new RuntimeException(__('هذا البند ليس من هذه الفاتورة.'));
+        }
+
+        self::assertLinesMayChange($order);
+        self::assertNotCardLine($order, $old);
+
+        return DB::transaction(function () use ($order, $old, $wanted, $reason, $settle) {
+            $order = self::lockOrder($order);
+            $locked = OrderItem::whereKey($old->id)->lockForUpdate()->first();
+
+            if (! $locked || $locked->order_id !== $order->id) {
+                throw new RuntimeException(__('حُذف هذا البند من الفاتورة قبل أن يصل تصحيحك.'));
+            }
+
+            $totalBefore = (float) $order->total;
+            $oldName = $locked->displayName();
+            $oldQty = (int) $locked->quantity;
+            $oldDesc = self::describe($locked);
+
+            // القديمُ يعود إلى الرفّ بطريقه — ثمّ يُحذف كما يحذفه تصحيحُ الكمّيّة إلى صفر
+            self::moveStock($order, $locked, $oldQty);
+            $locked->loadMissing('addons.addon');
+            self::releaseAddons($order, $locked);
+            $locked->delete();
+
+            $item = self::writeLine($order, self::priceOne($order, $wanted));
+            self::takeStock($order, $item);
+
+            self::recompute($order->fresh('items'));
+            $order->refresh();
+            self::settleDifference($order, $totalBefore, $settle);
+
+            self::syncTransaction($order);
+            self::syncBooks($order, $reason);
+            self::syncLoyalty($order);
+
+            $edit = self::trace($order, OrderEdit::REPLACE_LINE, $oldName.' ← '.$item->displayName(), $totalBefore, $reason, [
+                'order_item_id' => $item->id,
+                'qty_before' => $oldQty,
+                'qty_after' => (int) $item->quantity,
+                'value_before' => $oldDesc,
+                'value_after' => self::describe($item),
+            ]);
+
+            Activity::log('updated', 'استبدل «'.$oldName.'» بـ«'.$item->displayName().'» في الفاتورة '.$order->number.' — '.$reason,
+                ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            return $edit;
+        });
+    }
+
+    /**
+     * يعدّل ملاحظةَ منتجٍ في فاتورة — نصٌّ وحده، لا مالَ ولا مخزون.
+     *
+     * لا يمسّ الكمّيّةَ ولا الإجماليَّ ولا المعاملةَ ولا القيد، فلا يُقفل بانتهاء
+     * اليوم: طلبُ موقعٍ يُسلَّم غدًا يُصحَّح وصفُ تغليفه اليوم. والإلغاءُ وحده
+     * يُغلقه — طلبٌ لن يُجهَّز لا تُكتب له ملاحظة.
+     *
+     * والموظّفُ يكتب بما شاء: «بالإنجليزيّة وحدها» قاعدةُ العميل في الموقع.
+     * ورسالةُ كرت الهدية ليست ملاحظةَ منتج — لها بابُها في تفاصيل الطلب.
+     *
+     * @throws RuntimeException
+     */
+    public static function setNote(Order $order, OrderItem $item, ?string $note, string $reason): OrderEdit
+    {
+        if ($item->order_id !== $order->id) {
+            throw new RuntimeException(__('هذا البند ليس من هذه الفاتورة.'));
+        }
+
+        self::assertFeatureOn($order);
+
+        if ($order->status === Order::CANCELLED) {
+            throw new RuntimeException(__('الفاتورة ملغاة — لا تُعدَّل.'));
+        }
+
+        self::assertNotCardLine($order, $item);
+
+        $text = trim(str_replace("\r\n", "\n", (string) $note));
+        $text = $text === '' ? null : $text;
+
+        if ($text !== null && mb_strlen($text) > NotesAndEdits::PRODUCT_NOTE_MAX) {
+            throw new RuntimeException(__('ملاحظة المنتج أطول من :max حرفًا.', ['max' => NotesAndEdits::PRODUCT_NOTE_MAX]));
+        }
+
+        return DB::transaction(function () use ($order, $item, $text, $reason) {
+            $locked = OrderItem::whereKey($item->id)->lockForUpdate()->first();
+
+            if (! $locked || $locked->order_id !== $order->id) {
+                throw new RuntimeException(__('حُذف هذا البند من الفاتورة قبل أن يصل تصحيحك.'));
+            }
+
+            $before = $locked->note;
+
+            if ((string) $before === (string) $text) {
+                throw new RuntimeException(__('لم تتغيّر الملاحظة.'));
+            }
+
+            $locked->update(['note' => $text]);
+
+            $edit = self::trace($order, OrderEdit::NOTE, $locked->displayName(), (float) $order->total, $reason, [
+                'order_item_id' => $locked->id,
+                'value_before' => self::clip($before),
+                'value_after' => self::clip($text),
+            ]);
+
+            Activity::log('updated', 'عدّل ملاحظة «'.$locked->displayName().'» في الفاتورة '.$order->number.' — '.$reason,
+                ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            return $edit;
+        });
+    }
+
+    /**
+     * يُحصِّل ما بقي على فاتورةٍ دُفعت ثمّ زادت — قيدُ تحصيلٍ يومَ يقع، لا إعادةُ كتابةٍ للبيعة.
+     *
+     * المالُ دخل اليومَ لا يومَ البيع: فلا يُعاد ترحيلُ البيعة بتاريخها (كان
+     * سيُدخل في صندوقِ يومٍ أُقفل مالًا لم يكن فيه). يُكتب قيدٌ بتاريخه: مدينٌ
+     * الصندوقُ أو البنك، دائنٌ ذممُ العملاء — وصفٌّ في الحركة الماليّة بوقته.
+     *
+     * @throws RuntimeException
+     */
+    public static function collectBalance(Order $order, string $method, string $reason): OrderEdit
+    {
+        self::assertFeatureOn($order);
+
+        if ($order->status === Order::CANCELLED) {
+            throw new RuntimeException(__('الفاتورة ملغاة — لا تُعدَّل.'));
+        }
+
+        $allowed = PaymentMethods::enabled(
+            Setting::where('business_id', $order->business_id)->pluck('value', 'key')->all()
+        );
+
+        if (! in_array($method, $allowed, true)) {
+            throw new RuntimeException(__('وسيلة دفع غير مأذون بها في هذا المتجر.'));
+        }
+
+        return DB::transaction(function () use ($order, $method, $reason) {
+            $order = self::lockOrder($order);
+            $amount = round((float) $order->balance_due, 3);
+
+            if ($amount <= 0) {
+                throw new RuntimeException(__('لا متبقّي على هذه الفاتورة.'));
+            }
+
+            $order->update(['balance_due' => 0]);
+
+            Transaction::create([
+                'business_id' => $order->business_id,
+                'order_id' => $order->id,
+                'reference' => $order->number,
+                'description' => __('تحصيل متبقّي الفاتورة ').$order->number,
+                'kind' => Transaction::ORDER_BALANCE,
+                'method' => $method,
+                'type' => 'دخل',
+                'amount' => $amount,
+                'tax_amount' => 0,
+                'employee_name' => auth()->user()?->name,
+                'occurred_at' => now(),
+            ]);
+
+            Ledger::post(
+                (int) $order->business_id,
+                __('تحصيل متبقّي الفاتورة ').$order->number,
+                [
+                    ['account' => in_array($method, ['نقدي', 'كاش'], true) ? 'cash' : (Bank::leaf((int) $order->business_id) ?? 'bank'), 'debit' => $amount],
+                    ['account' => 'receivable', 'credit' => $amount],
+                ],
+                now(),
+                self::BALANCE_SOURCE,
+                $order->branch_id,
+                auth()->id(),
+                $order,
+            );
+
+            $edit = self::trace($order, OrderEdit::COLLECT, $order->number, (float) $order->total, $reason, [
+                'value_before' => (string) $amount,
+                'value_after' => $method,
+            ]);
+
+            Activity::log('updated', 'حصّل متبقّي الفاتورة '.$order->number.' ('.$amount.') — '.$method,
+                ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            return $edit;
+        });
+    }
+
+    /** مصدرُ قيد تحصيل المتبقّي في الدفتر */
+    public const BALANCE_SOURCE = 'تحصيل متبقّي';
+
+    /**
+     * ما يحرس الإضافةَ والاستبدال — قيودُ التصحيح كلُّها، وما يخصّهما.
+     *
+     * يومُ البيع وإقرارُ الضريبة كما في تصحيح الكمّيّة. وفاتورةٌ ملغاة لا تُعدَّل.
+     * وطلبٌ صدرت له فاتورةُ عميل لا تُغيَّر بنودُه من هنا: تلك ورقةٌ في يد
+     * الشركة بمبلغها، وتغييرُ الطلب تحتها يُفرّق الذمّةَ عن الورقة — تصحيحُها
+     * بإشعار دائن.
+     */
+    private static function assertLinesMayChange(Order $order): void
+    {
+        self::assertFeatureOn($order);
+
+        if ($order->status === Order::CANCELLED) {
+            throw new RuntimeException(__('الفاتورة ملغاة — لا تُعدَّل.'));
+        }
+
+        self::assertSameDay($order);
+        self::assertNotFiled($order);
+
+        if ($order->customerInvoices()->where('status', '!=', CustomerInvoice::CANCELLED)->exists()) {
+            throw new RuntimeException(__('صدرت لهذا الطلب فاتورة عميل — صحّحها بإشعار دائن لا بتعديل البنود.'));
+        }
+    }
+
+    /** والميزةُ لنشاطٍ فُتحت له — والخادمُ يسأل ولو أُخفي الزرّ */
+    private static function assertFeatureOn(Order $order): void
+    {
+        if (! NotesAndEdits::on((int) $order->business_id)) {
+            throw new RuntimeException(__('تعديل أصناف الفاتورة غير متاح في هذا النشاط.'));
+        }
+    }
+
+    /** بندُ كرت الهدية: نصُّه رسالةٌ لا ملاحظة، ولا يُستبدل من هنا */
+    private static function assertNotCardLine(Order $order, OrderItem $item): void
+    {
+        if (GiftCardProduct::cardLine($item, $order)) {
+            throw new RuntimeException(__('هذا بند كرت هدية — رسالته تُعدَّل من تفاصيل الطلب.'));
+        }
+    }
+
+    private static function lockOrder(Order $order): Order
+    {
+        $locked = Order::whereKey($order->id)->where('business_id', $order->business_id)->lockForUpdate()->first();
+
+        if (! $locked || $locked->status === Order::CANCELLED) {
+            throw new RuntimeException(__('الفاتورة ملغاة — لا تُعدَّل.'));
+        }
+
+        return $locked;
+    }
+
+    /**
+     * سطرٌ واحد بسعر القاعدة — بالباب الذي يسعّر به الصندوقُ والموقع.
+     *
+     * لا طلبًا مخصَّصًا (سعرُه من الطلب نفسِه، وموادُّه تُبنى في الصندوق)، ولا
+     * كرتَ هدية (رسالتُه وثمنُه من صفحته)، ولا إضافةً مستقلّة.
+     *
+     * @return array<string, mixed>
+     */
+    private static function priceOne(Order $order, array $wanted): array
+    {
+        $productId = (int) ($wanted['product_id'] ?? 0);
+        $qty = (int) ($wanted['qty'] ?? 0);
+
+        if ($productId <= 0) {
+            throw new RuntimeException(__('اختر الصنف.'));
+        }
+        if ($qty < 1 || $qty > 9999) {
+            throw new RuntimeException(__('الكمية بين 1 و9999.'));
+        }
+
+        $note = trim(str_replace("\r\n", "\n", (string) ($wanted['note'] ?? '')));
+        if (mb_strlen($note) > NotesAndEdits::PRODUCT_NOTE_MAX) {
+            throw new RuntimeException(__('ملاحظة المنتج أطول من :max حرفًا.', ['max' => NotesAndEdits::PRODUCT_NOTE_MAX]));
+        }
+
+        $lines = (new SaleLines((int) $order->business_id))->priceItems([[
+            'id' => $productId,
+            'variant_id' => ! empty($wanted['variant_id']) ? (int) $wanted['variant_id'] : null,
+            'qty' => $qty,
+            'name' => '',
+            'note' => $note === '' ? null : $note,
+            'addons' => array_values(array_filter((array) ($wanted['addons'] ?? []), fn ($a) => (int) ($a['qty'] ?? 0) > 0)),
+        ]], lock: true);
+
+        $line = $lines[0];
+
+        if ($line['product']?->is_gift_card) {
+            throw new RuntimeException(__('كرت الهدية لا يُضاف بتعديل الفاتورة — يُباع من صفحته برسالته.'));
+        }
+
+        return $line;
+    }
+
+    /** البندُ يُكتب كما يكتبه الصندوق — لقطةُ المقاس والتكلفة والبوتيك والإضافات */
+    private static function writeLine(Order $order, array $l): OrderItem
+    {
+        $boutique = Boutiques::attribute((int) $order->business_id, [$l])[0] ?? null;
+
+        $item = $order->items()->create([
+            'product_id' => $l['product']?->id,
+            'variant_id' => $l['variant']?->id,
+            'variant_name' => $l['variant']?->name,
+            'variant_sku' => $l['variant']?->sku,
+            'name' => $l['name'],
+            'price' => $l['price'],
+            ...Boutiques::itemColumns($boutique, (float) ($l['cost'] ?? 0)),
+            'quantity' => $l['qty'],
+            'note' => $l['note'],
+            'total' => round($l['price'] * $l['qty'], 3),
+            'addons_total' => (float) ($l['addons_total'] ?? 0),
+            'custom_details' => null,
+        ]);
+
+        foreach ($l['addons'] ?? [] as $a) {
+            $item->addons()->create([
+                'addon_id' => $a['addon']->id,
+                'name' => $a['addon']->name,
+                'name_en' => $a['addon']->name_en,
+                'unit_price' => $a['price'],
+                'quantity' => $a['qty'],
+                'total' => $a['total'],
+                'cost' => $a['cost'],
+                'inventory_product_id' => $a['inventory_product_id'] ?? null,
+                'inventory_quantity' => ($a['inventory_product_id'] ?? null) ? $a['each'] : null,
+            ]);
+        }
+
+        return $item->fresh(['addons.addon']);
+    }
+
+    /** البندُ الجديد يأخذ من الرفّ بالحارس نفسِه — صنفُه أو وصفتُه، ثمّ إضافاتُه */
+    private static function takeStock(Order $order, OrderItem $item): void
+    {
+        self::moveStock($order, $item, -(int) $item->quantity);
+
+        $units = AddonStock::units(AddonStock::consumedBy($item->addons));
+
+        if ($units) {
+            self::assertAvailable($order, $units, $order->branch_id);
+            StockLedger::move(
+                (int) $order->business_id, $order->branch_id,
+                array_map(fn ($q) => -$q, $units),
+                StockLedger::CORRECTION,
+                auth()->user()?->name,
+                $order->number,
+            );
+        }
+    }
+
+    /**
+     * الفرقُ في فاتورةٍ مدفوعة لا يُكتب مدفوعًا من تلقاء نفسه.
+     *
+     * - **زاد الإجماليّ:** يُسأل الموظّف: حُصِّل الفرقُ الآن (`collected`)، أم
+     *   يبقى على العميل (`due` ⇦ `orders.balance_due`، والدفترُ يُدين به
+     *   الذمم). ولا تُشحن بطاقةٌ ولا يُطلب من Paymob شيء.
+     * - **نقص:** يُنقص المتبقّي أوّلًا، وما زاد عنه لا يُردّ إلّا بإقرار
+     *   الموظّف أنّه ردّه بيده (`refunded`) — ولا استردادَ آليّ.
+     *
+     * وفاتورةٌ غيرُ مدفوعة كلُّها ذمّة أصلًا (`Books::recordSale`): لا سؤال.
+     *
+     * @throws RuntimeException
+     */
+    private static function settleDifference(Order $order, float $before, ?string $settle): void
+    {
+        $dueBefore = (float) $order->balance_due;
+        self::absorb($order, $before);
+
+        if ((string) $order->payment_status === 'غير مدفوع') {
+            return;
+        }
+
+        $delta = round((float) $order->total - $before, 3);
+
+        if ($delta > 0) {
+            if ($settle === self::SETTLE_DUE) {
+                $order->update(['balance_due' => round((float) $order->balance_due + $delta, 3)]);
+            } elseif ($settle !== self::SETTLE_COLLECTED) {
+                throw new RuntimeException(__('الفاتورة مدفوعة وزاد إجماليها :amount — حدّد: حُصِّل الفرق الآن، أم يبقى على العميل.', ['amount' => number_format($delta, 3)]));
+            }
+
+            return;
+        }
+
+        // ما نقص فوق المتبقّي يُردّ للعميل — بإقرارٍ لا آليًّا
+        $refund = round(-$delta - ($dueBefore - (float) $order->balance_due), 3);
+        if ($delta < 0 && $refund > 0.0005 && $settle !== self::SETTLE_REFUNDED) {
+            throw new RuntimeException(__('الفاتورة مدفوعة ونقص إجماليها :amount — أكّد أنّك ستردّ الفرق للعميل بنفسك؛ النظام لا يستردّ آليًّا.', ['amount' => number_format($refund, 3)]));
+        }
+    }
+
+    /**
+     * ما نقص من الإجماليّ يُنقص المتبقّي أوّلًا — ولا يزيد المتبقّي على الإجماليّ.
+     *
+     * يقرؤه كلُّ تصحيحٍ يغيّر الإجماليّ، وأثرُه صفرٌ على فاتورةٍ لا متبقّيَ عليها.
+     */
+    private static function absorb(Order $order, float $before): void
+    {
+        $due = (float) $order->balance_due;
+
+        if ($due <= 0) {
+            return;
+        }
+
+        $drop = max(0.0, $before - (float) $order->total);
+        $left = round(min(max(0.0, $due - $drop), (float) $order->total), 3);
+
+        if ($left !== round($due, 3)) {
+            $order->update(['balance_due' => $left]);
+        }
+    }
+
+    /** وصفُ البند في الأثر: اسمُه ومقاسُه وكمّيّتُه وإضافاتُه */
+    private static function describe(OrderItem $item): string
+    {
+        $item->loadMissing('addons');
+        $addons = $item->addons->map(fn ($a) => $a->name.' ×'.$a->quantity)->implode('، ');
+
+        return self::clip($item->displayName().' ×'.$item->quantity.($addons !== '' ? ' + '.$addons : '')) ?? '';
+    }
+
+    private static function clip(?string $text): ?string
+    {
+        return $text === null ? null : mb_substr($text, 0, 255);
+    }
+
+    /**
+     * أثرُ التعديل — والفاعلُ هو الحسابُ المسجَّل فعلًا.
+     *
+     * الإذنُ يُسأل عن الحساب المسجَّل لا عن الكاشير المختار في الصندوق
+     * (`OrderEditController::mayEdit`)، فالأثرُ يقول من أذن له النظام.
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    private static function trace(Order $order, string $kind, string $subject, float $totalBefore, string $reason, array $extra = []): OrderEdit
+    {
+        return OrderEdit::create([
+            'business_id' => $order->business_id,
+            'order_id' => $order->id,
+            'kind' => $kind,
+            'subject' => mb_substr($subject, 0, 255),
+            'order_total_before' => $totalBefore,
+            'order_total_after' => (float) $order->total,
+            'reason' => mb_substr($reason, 0, 255),
+            'user_id' => auth()->id(),
+            'employee_name' => auth()->user()?->name,
+        ] + $extra);
+    }
+
     /**
      * إلغاء الطلب — ولا يكفي أن تُكتب كلمة «ملغي» في عمود.
      *
@@ -910,12 +1428,24 @@ class OrderCorrection
         $order->save();
     }
 
+    /**
+     * صفُّ البيعة في الحركة يتبع الفاتورة — بما دخل الدرجَ منها.
+     *
+     * ما بقي على العميل (`balance_due`) لم يدخل، وما حُصِّل بعدُ صفٌّ مستقلٌّ
+     * بيومه (`collectBalance`) لا يُكتب فوقه. وفاتورةٌ بلا متبقٍّ ولا تحصيلٍ
+     * لاحق يُكتب صفُّها بإجماليّها كما كان.
+     */
     private static function syncTransaction(Order $order): void
     {
-        Transaction::where('order_id', $order->id)->update([
-            'amount' => (float) $order->total,
-            'tax_amount' => (float) $order->tax,
-        ]);
+        $collected = (float) Transaction::where('order_id', $order->id)
+            ->where('kind', Transaction::ORDER_BALANCE)->sum('amount');
+
+        Transaction::where('order_id', $order->id)
+            ->where(fn ($q) => $q->whereNull('kind')->orWhere('kind', '!=', Transaction::ORDER_BALANCE))
+            ->update([
+                'amount' => round((float) $order->total - (float) $order->balance_due - $collected, 3),
+                'tax_amount' => (float) $order->tax,
+            ]);
     }
 
     /**

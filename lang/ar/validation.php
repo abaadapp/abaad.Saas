@@ -340,6 +340,12 @@ return [
         'composition.new_addons.*.price' => 'سعر الإضافة',
         'composition.new_addons.*.private' => 'إضافةٌ خاصّة بالمنتج',
         'composition.new_addons.*.inventory_product_id' => 'صنف مخزون الإضافة',
+
+        // إضافةُ صنفٍ إلى فاتورةٍ صدرت أو استبدالُه (`OrderEditController::store`)
+        'addons' => 'الإضافات',
+        'addons.*.addon_id' => 'الإضافة',
+        'addons.*.qty' => 'كمية الإضافة',
+        'settle' => 'فرق الفاتورة المدفوعة',
         'composition.new_addons.*.inventory_quantity' => 'كمية مخزون الإضافة',
         'composition.recipe' => 'المكوّنات',
         'composition.recipe.*.component_product_id' => 'المكوّن',

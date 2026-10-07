@@ -66,6 +66,19 @@
                     الكمّيّةُ ثمّ الإضافاتُ ثمّ الزرّ: يختار الزبونُ كلَّ شيءٍ ثمّ
                     يضغط مرّةً واحدة. ومن ليس في القائمة يبقى على الصفّ القديم أدناه.
                 --}}
+                @if ($product['note_on'] ?? false)
+                    {{--
+                        ═══ ملاحظةُ المنتج — خانةٌ حرّة، اختياريّة، بالإنجليزيّة ═══
+
+                        العنوانُ بلغة الموقع، والنصُّ بالإنجليزيّة (`NotesAndEdits`).
+                        ولا خيارَ جاهز ولا اقتراح: يكتبها العميل بنفسه.
+                    --}}
+                    <div data-testid="rb-product-note-box">
+                        <label for="rb-product-note" style="display:block;font-size:13px;margin-bottom:8px">{{ $t['productNote'] }}</label>
+                        <textarea id="rb-product-note" class="rb-input" rows="3" dir="ltr" lang="en" maxlength="{{ $product['note_max'] }}" placeholder="{{ $t['productNotePh'] }}" data-rb-product-note data-testid="rb-product-note"></textarea>
+                        <p class="rb-field-error" style="color:#b91c1c;font-size:12px;margin:6px 0 0" data-rb-product-note-error data-testid="rb-product-note-error" hidden></p>
+                    </div>
+                @endif
                 <div class="rb-qty" style="align-self:flex-start">
                     <button type="button" data-rb-dec aria-label="−">−</button>
                     <span data-rb-qty>1</span>
@@ -128,6 +141,19 @@
                     <div data-testid="rb-card-note-box">
                         <label for="rb-card-note" style="display:block;font-size:13px;margin-bottom:8px">{{ $t['giftCardMessage'] }}</label>
                         <textarea id="rb-card-note" class="rb-input" rows="4" maxlength="{{ $product['card_max'] }}" data-rb-card-note data-testid="rb-card-note"></textarea>
+                    </div>
+                @endif
+                @if ($product['note_on'] ?? false)
+                    {{--
+                        ═══ ملاحظةُ المنتج — خانةٌ حرّة، اختياريّة، بالإنجليزيّة ═══
+
+                        العنوانُ بلغة الموقع، والنصُّ بالإنجليزيّة (`NotesAndEdits`).
+                        ولا خيارَ جاهز ولا اقتراح: يكتبها العميل بنفسه.
+                    --}}
+                    <div data-testid="rb-product-note-box">
+                        <label for="rb-product-note" style="display:block;font-size:13px;margin-bottom:8px">{{ $t['productNote'] }}</label>
+                        <textarea id="rb-product-note" class="rb-input" rows="3" dir="ltr" lang="en" maxlength="{{ $product['note_max'] }}" placeholder="{{ $t['productNotePh'] }}" data-rb-product-note data-testid="rb-product-note"></textarea>
+                        <p class="rb-field-error" style="color:#b91c1c;font-size:12px;margin:6px 0 0" data-rb-product-note-error data-testid="rb-product-note-error" hidden></p>
                     </div>
                 @endif
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -231,6 +257,9 @@
 @if ($product['gift_card'])
 <script>{!! file_get_contents(resource_path('js/store/ribbon-card-note.js')) !!}</script>
 @endif
+@if ($product['note_on'] ?? false)
+<script>{!! file_get_contents(resource_path('js/store/ribbon-notes.js')) !!}</script>
+@endif
 @if ($offers)
 <style>
     .rb-ups { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
@@ -268,13 +297,25 @@
     var dec = document.querySelector('[data-rb-dec]'), inc = document.querySelector('[data-rb-inc]'), add = document.querySelector('[data-rb-add]');
     if (dec) dec.addEventListener('click', function () { qty = Math.max(1, qty - 1); q.textContent = qty; });
     if (inc) inc.addEventListener('click', function () { qty = Math.min({{ \App\Support\Store\WebCheckout::MAX_QTY }}, qty + 1); q.textContent = qty; });
+@if ($product['note_on'] ?? false)
+    // ملاحظةُ المنتج: `''` بلا ملاحظة، و`null` نصٌّ مردودٌ لا يدخل السلّة (`ribbon-notes.js`)
+    var pnote = RBNotes.mount(document.querySelector('[data-rb-product-note]'), document.querySelector('[data-rb-product-note-error]'), @json($t['noteEnglishOnly']), {{ (int) $product['note_max'] }});
+@else
+    var pnote = null;
+@endif
 @if ($offers)
     // الصنفُ بمقاسه وكمّيّته، ومعه ما اختير من الإضافات — في ضغطةٍ واحدة
     if (add) RBUpsells.mount(document.querySelector('[data-rb-upsells]'), {
         button: add,
-        main: function () { return { id: id, variant_id: variant, qty: qty }; },
+        main: function () {
+            var text = pnote ? pnote.take() : '';
+            if (text === null) return null;
+
+            return text ? { id: id, variant_id: variant, qty: qty, note: text } : { id: id, variant_id: variant, qty: qty };
+        },
         add: RB.add,
         done: function () {
+            if (pnote) pnote.clear();
             add.textContent = @json($t['added']); RB.toast(@json($t['added']));
             setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
         },
@@ -296,7 +337,10 @@
     });
 @else
     if (add) add.addEventListener('click', function () {
-        RB.add(id, variant, qty);
+        var text = pnote ? pnote.take() : '';
+        if (text === null) return;
+        if (text) RB.add(id, variant, qty, text); else RB.add(id, variant, qty);
+        if (pnote) pnote.clear();
         add.textContent = @json($t['added']); RB.toast(@json($t['added']));
         setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
     });

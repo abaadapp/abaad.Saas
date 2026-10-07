@@ -41,6 +41,7 @@ use App\Models\SupportMessage;
 use App\Models\SupportRead;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -1244,6 +1245,12 @@ class Demo
              * (`DocumentPaper`) ولا تُقرأ في شاشة الطلب أبدًا.
              */
             'note' => $it->note,
+            /*
+             * وبندُ كرت الهدية نصُّه رسالةٌ لا ملاحظةُ منتج — تُسمّيه الشاشةُ
+             * باسمه ولا تعرض له «تعديل الملاحظة» (`GiftCardProduct::cardLine`).
+             */
+            'card_line' => GiftCardProduct::cardLine($it, $o),
+            'variant_id' => $it->variant_id,
             'addons' => $it->addons->map(fn ($a) => [
                 'name' => $a->name,
                 'qty' => (int) $a->quantity,
@@ -1336,6 +1343,8 @@ class Demo
             'delivery_address' => $o->delivery_address,
             'delivery_notes' => $o->delivery_notes,
             'internal_notes' => $o->internal_notes,
+            // ما بقي على فاتورةٍ مدفوعة ثمّ زادت ولم يُحصَّل بعد (`OrderCorrection::addLine`)
+            'balance_due' => (float) $o->balance_due,
             // ما يجوز الانتقال إليه من الحالة الحالية — لا كلّ الحالات
             'next_statuses' => OrderStatus::nextFrom($o->status),
             // قناةُ الطلب — تقرؤها «طباعة تلقائية عند تأكيد طلب الموقع» لتفتح نافذتها في الضغطة

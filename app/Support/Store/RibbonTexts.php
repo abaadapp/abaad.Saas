@@ -81,6 +81,11 @@ final class RibbonTexts
         'giftAddressHint' => 'اكتب عنوان المستلم في قسم التوصيل أعلاه.',
         // زرُّ واتساب العائم — انظر `storefront.ribbon_floating_whatsapp_businesses`
         'waFloat' => 'تواصل معنا عبر واتساب', 'waFloatText' => 'السلام عليكم، أحتاج مساعدة بخصوص طلبي من متجر RIBBON.',
+        // ملاحظةُ المنتج وملاحظاتُ الطلب — العنوانُ بلغة الموقع والنصُّ بالإنجليزيّة (`OrderExtras`)
+        'productNote' => 'ملاحظة المنتج (اختياري)', 'productNotePh' => 'اكتب ملاحظتك بالإنجليزية — مثال: No plastic wrapping',
+        'cartProductNote' => 'ملاحظة المنتج:',
+        'orderNotes' => 'ملاحظات الطلب (اختياري)', 'orderNotesPh' => 'اكتب ملاحظتك بالإنجليزية — مثال: Please call before delivery',
+        'noteEnglishOnly' => 'يرجى كتابة الملاحظة باللغة الإنجليزية فقط.', 'noteTooLong' => 'الملاحظة أطول من :max حرفًا.',
     ];
 
     private const EN = [
@@ -132,6 +137,10 @@ final class RibbonTexts
         'hideSender' => 'Do not reveal my name to the recipient',
         'giftAddressHint' => "Enter the recipient's address in the Delivery section above.",
         'waFloat' => 'Chat with us on WhatsApp', 'waFloatText' => 'Hello, I need help with my order from RIBBON.',
+        'productNote' => 'Product note (optional)', 'productNotePh' => 'Write your note in English — e.g. No plastic wrapping',
+        'cartProductNote' => 'Product note:',
+        'orderNotes' => 'Order notes (optional)', 'orderNotesPh' => 'Write your note in English — e.g. Please call before delivery',
+        'noteEnglishOnly' => 'Please enter your note in English only.', 'noteTooLong' => 'The note is longer than :max characters.',
     ];
 
     /** @return array<string, string> */

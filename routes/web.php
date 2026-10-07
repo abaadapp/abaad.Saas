@@ -779,6 +779,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::put('/orders/{number}/items/{item}/addons/{addon}', [OrderEditController::class, 'addon'])
         ->name('orders.items.addons.update');
     Route::put('/orders/{number}/payment', [OrderEditController::class, 'payment'])->name('orders.payment.update');
+    // وإضافةُ صنفٍ واستبدالُه وملاحظتُه وتحصيلُ المتبقّي — لنشاطٍ فُتحت له الميزة (`NotesAndEdits`)
+    Route::post('/orders/{number}/items', [OrderEditController::class, 'store'])->name('orders.items.store');
+    Route::post('/orders/{number}/items/{item}/replace', [OrderEditController::class, 'replace'])->name('orders.items.replace');
+    Route::put('/orders/{number}/items/{item}/note', [OrderEditController::class, 'note'])->name('orders.items.note');
+    Route::post('/orders/{number}/balance', [OrderEditController::class, 'collect'])->name('orders.balance.collect');
     // إرسالُ الفاتورة إلى الزبون — نصٌّ يُكتب في الخادم ويُفتح على واتساب التاجر
     Route::post('/orders/{number}/send', [OrderDetailController::class, 'send'])->name('orders.send');
     // رسالةٌ لمستلِم الهديّة ليُعرف موقعُه — تُجهَّز ولا تُرسَل (GiftOrders)
@@ -1788,6 +1793,10 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'a
     Route::put('/orders/{number}/items/{item}', [OrderEditController::class, 'update'])->name('orders.items.update');
     Route::put('/orders/{number}/items/{item}/addons/{addon}', [OrderEditController::class, 'addon'])->name('orders.items.addons.update');
     Route::put('/orders/{number}/payment', [OrderEditController::class, 'payment'])->name('orders.payment.update');
+    Route::post('/orders/{number}/items', [OrderEditController::class, 'store'])->name('orders.items.store');
+    Route::post('/orders/{number}/items/{item}/replace', [OrderEditController::class, 'replace'])->name('orders.items.replace');
+    Route::put('/orders/{number}/items/{item}/note', [OrderEditController::class, 'note'])->name('orders.items.note');
+    Route::post('/orders/{number}/balance', [OrderEditController::class, 'collect'])->name('orders.balance.collect');
     Route::get('/orders/{number}', [App\Http\Controllers\Pos\PageController::class, 'orderDetails'])->name('order-details');
     // المدفوعات تسقط على صلاحية finance لا pos (انظر sectionFromRoute):
     // شاشةٌ مالية تعرض حصيلة الصندوق، فيراها صاحب النشاط والمدير والمحاسب

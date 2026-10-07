@@ -221,16 +221,16 @@ class AnOrderThatIsPreparedHasADateTest extends TestCase
     {
         $dir = base_path(dirname(self::BOARD)).'/partials/';
 
-        // على البطاقة: أوّلُ بندٍ يحمل ملاحظةً يُعرض نصُّها مختصرًا
+        // على البطاقة: أوّلُ بندٍ يحمل ملاحظةً يُعرض نصُّها مختصرًا — ورسالةُ الكرت ليست ملاحظةَ منتج
         $this->assertStringContainsString(
-            'o.items.find((i) => i.note)',
+            'o.items.find((i) => i.note && !i.card_line)',
             file_get_contents($dir.'PrepCard.tsx'),
             'البطاقةُ لم تعد تعرض ملاحظةَ السطر',
         );
 
-        // وفي التفاصيل: تحت اسم البند في صفّ التحقّق الخاصّ به
+        // وفي التفاصيل: تحت اسم البند في صفّ التحقّق الخاصّ به — باسمها
         $this->assertStringContainsString(
-            'i.note ?? undefined',
+            '<span dir="auto">{i.note}</span>',
             file_get_contents($dir.'PrepDetails.tsx'),
             'نافذةُ التفاصيل لم تعد تعرض ملاحظةَ السطر',
         );

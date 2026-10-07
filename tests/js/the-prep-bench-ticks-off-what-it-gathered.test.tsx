@@ -450,6 +450,8 @@ describe('نافذة التفاصيل', () => {
         );
 
         expect(screen.getByText('بلا ورد أحمر')).toBeInTheDocument();
+        // والملاحظةُ باسمها — لا يُخمَّن أهي للمنتج أم رسالةُ كرت
+        expect(screen.getByTestId('prep-item-note-kind').textContent).toBe('ملاحظة المنتج:');
 
         vi.unstubAllGlobals();
     });

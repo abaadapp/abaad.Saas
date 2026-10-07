@@ -45,6 +45,7 @@ export interface BusinessValues {
     boutiques_enabled?: boolean;
     /** الإهداءُ في المتجر الإلكترونيّ — مثلُ البوتيكات: الغائبُ مغلق */
     gift_orders_enabled?: boolean;
+    order_notes_and_edits_enabled?: boolean;
 }
 
 /* النطاق ومكوّنه في مكانٍ واحد — انظر Components/ui/username-input */
@@ -476,6 +477,25 @@ export default function BusinessForm({
                             <span className="block text-sm text-[#374151]">{t('الإهداء في المتجر الإلكتروني')}</span>
                             <span className="block text-[12px] text-[#9ca3af]">
                                 {t('السماح لهذا النشاط باستقبال طلبات هدايا لمستلمين آخرين عبر المتجر الإلكتروني.')}
+                            </span>
+                        </span>
+                    </label>
+
+                    {/*
+                        وملاحظاتُ العميل وتعديلُ أصناف الفاتورة بعد صدورها — مفتاحٌ
+                        يُفتح لنشاطٍ بعينه (`NotesAndEdits::on`).
+                    */}
+                    <label className="flex cursor-pointer items-start gap-2.5 sm:col-span-2" data-testid="order-notes-and-edits-enabled">
+                        <input
+                            type="checkbox"
+                            checked={form.data.order_notes_and_edits_enabled ?? false}
+                            onChange={(e) => form.setData('order_notes_and_edits_enabled', e.target.checked)}
+                            className="mt-0.5 size-4 rounded border-[#d1d5db] accent-[#111]"
+                        />
+                        <span>
+                            <span className="block text-sm text-[#374151]">{t('ملاحظات العميل وتعديل أصناف الفاتورة')}</span>
+                            <span className="block text-[12px] text-[#9ca3af]">
+                                {t('ملاحظة المنتج وملاحظات الطلب في الموقع بالإنجليزية، وإضافة صنف أو استبداله في الفاتورة بعد صدورها لمن يملك صلاحية تعديل الفواتير.')}
                             </span>
                         </span>
                     </label>

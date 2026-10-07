@@ -62,8 +62,16 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
      * وملاحظةُ الطلب العامّة بعد الداخليّة وقبل ملاحظة البند: هي ما كُتب
      * على الطلب كلِّه، فتسبق ما كُتب على بندٍ واحد منه.
      */
-    const itemNote = o.items.find((i) => i.note)?.note ?? null;
+    const itemNote = o.items.find((i) => i.note && !i.card_line)?.note ?? null;
     const note = o.internal_notes || o.order_notes || itemNote || o.delivery_notes || null;
+    // واسمُ الملاحظة معها — لا يُخمَّن مصدرُها على البطاقة
+    const noteKind = o.internal_notes
+        ? 'ملاحظات داخلية'
+        : o.order_notes
+          ? 'ملاحظات الطلب'
+          : itemNote
+            ? 'ملاحظة المنتج'
+            : 'تعليمات التوصيل';
     const notes = [o.internal_notes, o.order_notes, o.delivery_notes, ...o.items.map((i) => i.note)].filter(Boolean);
 
     return (
@@ -210,7 +218,10 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
             {note && (
                 <p className="flex items-start gap-1.5 rounded-[10px] bg-[#fffbeb] p-2.5 text-[12px] text-[#92400e]">
                     <StickyNote className="mt-0.5 size-3.5 shrink-0" />
-                    <span className="line-clamp-2">{note}</span>
+                    <span className="line-clamp-2">
+                        <span className="font-medium" data-testid="prep-card-note-kind">{t(noteKind)}:</span>{' '}
+                        <span dir="auto">{note}</span>
+                    </span>
                     {notes.length > 1 && (
                         <span className="shrink-0 font-medium">+{notes.length - 1}</span>
                     )}

@@ -108,10 +108,18 @@ describe('نصُّ كرت الهدية على صفحته — اختياريّ', 
     });
 
     it('صفحةُ الكرت تُضيفه إلى السلّة بنصّه أو بلاه', () => {
-        const product = readFileSync(VIEW('product.blade.php'), 'utf8');
+        const file = readFileSync(VIEW('product.blade.php'), 'utf8');
+        /*
+            ويُقرأ فرعُ صفحة الكرت وحده: ملاحظةُ المنتج (`ribbon-notes.js`) قد تردّ
+            نصًّا غيرَ إنجليزيّ في صفحة صنفٍ عاديّ — ورسالةُ الكرت لا تُردّ أبدًا.
+        */
+        const start = file.indexOf("@elseif ($product['gift_card'])");
+        const product = file.slice(start, file.indexOf('@else\n', start));
+        expect(start).toBeGreaterThan(-1);
         expect(product).not.toContain('if (text === null) return;');
+        expect(product).not.toContain('RBNotes');
         expect(product).toContain('if (text) RB.add(id, variant, qty, text); else RB.add(id, variant, qty);');
-        expect(product).not.toContain('data-rb-card-note-err');
+        expect(file).not.toContain('data-rb-card-note-err');
     });
 
     it('وكرتان بلا رسالةٍ بندٌ واحد، وكرتٌ برسالةٍ بندٌ آخر', () => {

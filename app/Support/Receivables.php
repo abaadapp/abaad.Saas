@@ -72,7 +72,24 @@ final class Receivables
     public static function uninvoicedTotal(int $businessId, ?int $customerId = null): float
     {
         return round(self::uninvoicedOrders($businessId, $customerId)
-            ->sum(fn (Order $o) => (float) $o->total), 3);
+            ->sum(fn (Order $o) => (float) $o->total) + self::orderBalances($businessId, $customerId), 3);
+    }
+
+    /**
+     * ما بقي على فواتيرَ دُفعت ثمّ زادت — `orders.balance_due`.
+     *
+     * صنفٌ أُضيف بعد الدفع ولم يُحصَّل فرقُه: قيدُه أدان به الذممَ
+     * (`Books::recordSale`)، فيُعدّ هنا وإلّا قالت الشاشةُ أقلَّ من الدفتر
+     * وانكسرت المطابقة. ويُعدّ بلا عميلٍ أيضًا حين يُسأل عن المتجر كلِّه.
+     */
+    public static function orderBalances(int $businessId, ?int $customerId = null): float
+    {
+        return round((float) Order::where('business_id', $businessId)
+            ->where('payment_status', '!=', 'غير مدفوع')
+            ->where('status', '!=', Order::CANCELLED)
+            ->where('balance_due', '>', 0)
+            ->when($customerId !== null, fn ($q) => $q->where('customer_id', $customerId))
+            ->sum('balance_due'), 3);
     }
 
     /** ما على عميلٍ واحد — مفوترًا كان أو لم يُفوتَر بعد */

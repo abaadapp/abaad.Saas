@@ -6,8 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Support\Demo;
+use App\Support\NotesAndEdits;
 use App\Support\OrderCorrection;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -183,5 +186,148 @@ class OrderEditController extends Controller
         }
 
         return back()->with('toast', ['msg' => __('صُحّحت وسيلة الدفع'), 'type' => 'success']);
+    }
+
+    /* ═══════════════ إضافةُ صنفٍ واستبدالُه وملاحظتُه وتحصيلُ المتبقّي ═══════════════ */
+
+    /**
+     * والميزةُ لنشاطٍ فُتحت له (`NotesAndEdits::on`) — والبابُ مغلقٌ لسواه
+     * كأنّه لم يكن، ولو عُرف شكلُ الحمولة.
+     */
+    private function feature(): void
+    {
+        abort_unless(NotesAndEdits::on($this->bid()), 404);
+    }
+
+    /** @return array<string, array<int, mixed>> */
+    private function lineRules(): array
+    {
+        return [
+            'product_id' => ['required', 'integer'],
+            'variant_id' => ['nullable', 'integer'],
+            'qty' => ['required', 'integer', 'min:1', 'max:9999'],
+            'addons' => ['nullable', 'array', 'max:20'],
+            'addons.*.addon_id' => ['required', 'integer'],
+            'addons.*.qty' => ['required', 'integer', 'min:0', 'max:99'],
+            'note' => ['nullable', 'string', 'max:'.NotesAndEdits::PRODUCT_NOTE_MAX],
+            'settle' => ['nullable', Rule::in(OrderCorrection::SETTLES)],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    private function reasonMessages(): array
+    {
+        return [
+            'reason.required' => __('اكتب سبب التعديل — بدونه لا يُعرف لماذا تغيّرت الفاتورة.'),
+            'reason.min' => __('السبب قصير جدًّا — اكتب ما يفهمه من يقرأ الفاتورة لاحقًا.'),
+        ];
+    }
+
+    /** ردُّ الخدمة يُقال تحت الحوار — سعرٌ أو مخزونٌ أو قيد */
+    private function failed(\Throwable $e)
+    {
+        $message = $e instanceof ValidationException
+            ? (string) collect($e->errors())->flatten()->first()
+            : $e->getMessage();
+
+        return back()->withErrors(['line' => $message]);
+    }
+
+    /**
+     * إضافةُ صنفٍ إلى فاتورةٍ صدرت.
+     *
+     * والسعرُ لا يُقرأ من الطلب: يُرسَل الصنفُ ومقاسُه وكمّيّتُه وإضافاتُه،
+     * ويُسعَّر في الخادم (`OrderCorrection::addLine`).
+     */
+    public function store(Request $request, string $number)
+    {
+        $this->feature();
+        $data = $request->validate($this->lineRules(), $this->reasonMessages());
+
+        $order = $this->find($number);
+
+        if (! $this->mayEdit()) {
+            return $this->refuse();
+        }
+
+        try {
+            OrderCorrection::addLine($order, $data, trim($data['reason']), $data['settle'] ?? null);
+        } catch (RuntimeException|ValidationException $e) {
+            return $this->failed($e);
+        }
+
+        return back()->with('toast', ['msg' => __('أُضيف الصنف وصُحّحت الفاتورة'), 'type' => 'success']);
+    }
+
+    /** استبدالُ صنفٍ بآخر — حذفٌ وكتابةٌ في معاملةٍ واحدة (`OrderCorrection::replaceLine`) */
+    public function replace(Request $request, string $number, int $itemId)
+    {
+        $this->feature();
+        $data = $request->validate($this->lineRules(), $this->reasonMessages());
+
+        $order = $this->find($number);
+        $item = OrderItem::where('order_id', $order->id)->findOrFail($itemId);
+
+        if (! $this->mayEdit()) {
+            return $this->refuse();
+        }
+
+        try {
+            OrderCorrection::replaceLine($order, $item, $data, trim($data['reason']), $data['settle'] ?? null);
+        } catch (RuntimeException|ValidationException $e) {
+            return $this->failed($e);
+        }
+
+        return back()->with('toast', ['msg' => __('استُبدل الصنف وصُحّحت الفاتورة'), 'type' => 'success']);
+    }
+
+    /** ملاحظةُ منتجٍ في فاتورة — نصٌّ وحده (`OrderCorrection::setNote`) */
+    public function note(Request $request, string $number, int $itemId)
+    {
+        $this->feature();
+        $data = $request->validate([
+            'note' => ['nullable', 'string', 'max:'.NotesAndEdits::PRODUCT_NOTE_MAX],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], $this->reasonMessages());
+
+        $order = $this->find($number);
+        $item = OrderItem::where('order_id', $order->id)->findOrFail($itemId);
+
+        if (! $this->mayEdit()) {
+            return $this->refuse();
+        }
+
+        try {
+            OrderCorrection::setNote($order, $item, $data['note'] ?? null, trim($data['reason']));
+        } catch (RuntimeException $e) {
+            return $this->failed($e);
+        }
+
+        return back()->with('toast', ['msg' => __('عُدّلت ملاحظة المنتج'), 'type' => 'success']);
+    }
+
+    /** تحصيلُ ما بقي على فاتورةٍ مدفوعة (`OrderCorrection::collectBalance`) */
+    public function collect(Request $request, string $number)
+    {
+        $this->feature();
+        $data = $request->validate([
+            'payment_method' => ['required', 'string', 'max:50'],
+            'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ], $this->reasonMessages());
+
+        $order = $this->find($number);
+
+        if (! $this->mayEdit()) {
+            return $this->refuse();
+        }
+
+        try {
+            OrderCorrection::collectBalance($order, $data['payment_method'], trim($data['reason']));
+        } catch (RuntimeException $e) {
+            return $this->failed($e);
+        }
+
+        return back()->with('toast', ['msg' => __('حُصِّل المتبقّي'), 'type' => 'success']);
     }
 }

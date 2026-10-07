@@ -198,8 +198,14 @@ class BusinessController extends Controller
         }
 
         $giftingBefore = (bool) $business->gift_orders_enabled;
+        $notesBefore = (bool) $business->order_notes_and_edits_enabled;
 
         $business->update($data);
+
+        // وملاحظاتُ العميل وتعديلُ أصناف الفاتورة كذلك (`NotesAndEdits`)
+        if ((bool) $business->order_notes_and_edits_enabled !== $notesBefore) {
+            \App\Support\Activity::log('updated', ($business->order_notes_and_edits_enabled ? 'فتح' : 'أغلق').' ملاحظات العميل وتعديل أصناف الفاتورة: '.$business->name, ['business_id' => null, 'subject_id' => $business->id]);
+        }
 
         // وفتحُ الإهداء أو إغلاقُه يُقيَّد باسمه — إذنٌ يُسأل عنه لاحقًا
         if ((bool) $business->gift_orders_enabled !== $giftingBefore) {
@@ -619,6 +625,8 @@ class BusinessController extends Controller
              * إعدادات موقعه، ولا يُكتب إلّا من هذا الباب.
              */
             'gift_orders_enabled' => ['nullable', 'boolean'],
+            // وملاحظاتُ العميل وتعديلُ أصناف الفاتورة بعد صدورها (`NotesAndEdits::on`)
+            'order_notes_and_edits_enabled' => ['nullable', 'boolean'],
         ]);
 
         /*
@@ -650,7 +658,7 @@ class BusinessController extends Controller
          *
          * فصار كسائر الحقول: الغائبُ لا يُمسّ، والمرسَلُ يُكتب كما أُرسل.
          */
-        foreach (['boutiques_enabled', 'gift_orders_enabled'] as $flag) {
+        foreach (['boutiques_enabled', 'gift_orders_enabled', 'order_notes_and_edits_enabled'] as $flag) {
             if ($request->has($flag)) {
                 $data[$flag] = $request->boolean($flag);
             } else {

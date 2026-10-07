@@ -11,8 +11,10 @@ import {
     MessageSquareQuote,
     PencilLine,
     Phone,
+    Plus,
     Printer,
     ReceiptText,
+    Repeat,
     Send,
     Star,
     Truck,
@@ -20,9 +22,14 @@ import {
 } from 'lucide-react';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import {
+    CollectDialog,
     CorrectItemDialog,
     CorrectPaymentDialog,
+    LineDialog,
+    NoteDialog,
+    correctionLabel,
     type CorrectableItem,
+    type LineEdit,
     type OrderEditRecord,
 } from '@/Components/InvoiceCorrection';
 import Field, { Select } from '@/Components/Field';
@@ -84,6 +91,8 @@ interface OrderDetail {
     delivery_address: string | null;
     delivery_notes: string | null;
     internal_notes: string | null;
+    /** ما بقي على فاتورةٍ مدفوعة ثمّ زادت ولم يُحصَّل — `OrderCorrection::addLine` */
+    balance_due?: number;
     status: string;
     next_statuses: string[];
     /** قناةُ الطلب — `website` لطلب الموقع */
@@ -102,6 +111,9 @@ interface OrderDetail {
         qty: number;
         price: number;
         total: number;
+        /** ملاحظةُ المنتج — أو رسالةُ الكرت حين `card_line` (`GiftCardProduct::cardLine`) */
+        note?: string | null;
+        card_line?: boolean;
         /**
          * وصفُ الطلب المخصَّص كما بيع — لقطةٌ لا مرجع.
          *
@@ -143,10 +155,12 @@ interface OrderDetail {
  * صلاحيةُ `order.edit` ويومُ البيع، يقيسهما الخادم قبل الرسم وعند الكتابة.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch } =
+    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch, lineEdit } =
         usePage<
         PageProps<{
             order: OrderDetail;
+            /** إضافةُ صنفٍ واستبدالُه وملاحظتُه — `null` لنشاطٍ لم تُفتح له (`NotesAndEdits::screen`) */
+            lineEdit?: LineEdit | null;
             /** أيُصحَّح متنُ الفاتورة الآن — وإن لم يُصحَّح فلمَ. يُقاس في الخادم */
             invoiceEdit: { can: boolean; reason: string | null };
             /** فرعُ الطلب حين لا يكون الفرعَ المختار — و`null` حين يكون */
@@ -227,6 +241,11 @@ export default function OrderShow() {
     const [correcting, setCorrecting] = useState(false);
     const [correctingItem, setCorrectingItem] = useState<CorrectableItem | null>(null);
     const [fixingPayment, setFixingPayment] = useState(false);
+    const [adding, setAdding] = useState(false);
+    const [replacingItem, setReplacingItem] = useState<{ id: number; name: string } | null>(null);
+    const [notingItem, setNotingItem] = useState<{ id: number; name: string; note: string | null } | null>(null);
+    const [collecting, setCollecting] = useState(false);
+    const paidInvoice = order.payment_status !== 'غير مدفوع';
     const form = useForm({
         fulfillment_type: order.fulfillment_type ?? '',
         recipient_name: order.recipient_name ?? '',
@@ -265,6 +284,7 @@ export default function OrderShow() {
             order.delivery_address ||
             order.card_message ||
             order.sender_name ||
+            order.delivery_notes ||
             order.internal_notes,
     );
 
@@ -587,6 +607,14 @@ export default function OrderShow() {
                             </Button>
                         )}
 
+                        {/* وإضافةُ صنفٍ بعد الإصدار — لنشاطٍ فُتحت له ولمن يملك «order.edit» */}
+                        {lineEdit?.lines && (
+                            <Button variant="outline" onClick={() => setAdding(true)} data-testid="add-line">
+                                <Plus />
+                                {t('إضافة صنف')}
+                            </Button>
+                        )}
+
                         {/*
                             وورقةُ التفاصيل بابُها زرُّها: ضغطةٌ منفصلة باسمٍ
                             يقول إلى أين تمضي — لا «تعديل» يُفهم منه المال.
@@ -691,6 +719,28 @@ export default function OrderShow() {
                                                 <TableCell className="font-medium text-[#111]">
                                                     {line.name}
                                                     {/*
+                                                        وملاحظةُ المنتج تحت بندها باسمها — ورسالةُ الكرت باسمها
+                                                        هي، لا «ملاحظة» عامّة. ونصُّ العميل كما كتبه، بلا ترجمة.
+                                                    */}
+                                                    {line.note && (
+                                                        <p className="mt-1 text-[12px] font-normal text-[#4b4b4b]" data-testid="item-note">
+                                                            <span className="text-[#6b7280]">
+                                                                {t(line.card_line ? 'رسالة الكرت' : 'ملاحظة المنتج')}:
+                                                            </span>{' '}
+                                                            <span dir="auto" className="whitespace-pre-wrap">{line.note}</span>
+                                                        </p>
+                                                    )}
+                                                    {lineEdit?.notes && !line.card_line && (
+                                                        <button
+                                                            type="button"
+                                                            className="mt-1 block text-[12px] font-normal text-[#6d28d9] underline"
+                                                            onClick={() => setNotingItem({ id: line.id, name: line.name, note: line.note ?? null })}
+                                                            data-testid="edit-item-note"
+                                                        >
+                                                            {t(line.note ? 'تعديل ملاحظة المنتج' : 'إضافة ملاحظة المنتج')}
+                                                        </button>
+                                                    )}
+                                                    {/*
                                                         وما اختاره الزبونُ تحت اسم بنده.
 
                                                         كان البندُ المخصَّص سطرًا واحدًا هنا — اسمًا وسعرًا —
@@ -739,6 +789,17 @@ export default function OrderShow() {
                                                         >
                                                             <PencilLine />
                                                         </Button>
+                                                        {lineEdit?.lines && !line.card_line && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                aria-label={t('استبدال الصنف')}
+                                                                onClick={() => setReplacingItem({ id: line.id, name: line.name })}
+                                                                data-testid="replace-line"
+                                                            >
+                                                                <Repeat />
+                                                            </Button>
+                                                        )}
                                                     </TableCell>
                                                 )}
                                             </TableRow>
@@ -852,6 +913,23 @@ export default function OrderShow() {
                                 <span className="text-sm text-[#6b7280]">{t('حالة الدفع')}</span>
                                 <Badge variant="success">{t(order.payment_status)}</Badge>
                             </div>
+                            {/*
+                                وما بقي على العميل بعد صنفٍ أُضيف إلى فاتورةٍ مدفوعة — ذمّةٌ لا
+                                تُكتب مدفوعةً من نفسها، وتُحصَّل بقيدٍ بيومها.
+                            */}
+                            {(order.balance_due ?? 0) > 0 && (
+                                <div className="mt-3 flex items-center justify-between gap-2" data-testid="balance-due">
+                                    <span className="text-sm text-[#b45309]">{t('المتبقّي على العميل')}</span>
+                                    <span className="flex items-center gap-2">
+                                        <span className="font-semibold tabular-nums text-[#b45309]">{m(order.balance_due ?? 0)}</span>
+                                        {lineEdit?.notes && (
+                                            <Button variant="outline" size="sm" onClick={() => setCollecting(true)}>
+                                                {t('تحصيل المتبقّي')}
+                                            </Button>
+                                        )}
+                                    </span>
+                                </div>
+                            )}
                         </Card>
 
                         {/*
@@ -918,7 +996,10 @@ export default function OrderShow() {
                         {order.notes && (
                             <Card className="p-6">
                                 <h3 className="mb-3 font-bold text-[#111]">{t('ملاحظات الطلب')}</h3>
-                                <p className="text-sm leading-relaxed text-[#4b4b4b]">{order.notes}</p>
+                                {/* ونصُّ العميل كما كتبه — لا يُترجم */}
+                                <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#4b4b4b]" dir="auto" data-testid="order-notes">
+                                    {order.notes}
+                                </p>
                             </Card>
                         )}
 
@@ -936,13 +1017,7 @@ export default function OrderShow() {
                                 <ul className="flex flex-col gap-3 text-sm">
                                     {order.edits.map((e, i) => (
                                         <li key={i} className="rounded-[10px] bg-[#fffbeb] p-3">
-                                            <p className="font-medium text-[#111]">
-                                                {e.kind === 'وسيلة دفع'
-                                                    ? `${t('وسيلة الدفع')}: ${t(e.value_before ?? '')} ← ${t(e.value_after ?? '')}`
-                                                    : e.qty_after === 0
-                                                      ? `${t('حُذف')} «${e.subject}»`
-                                                      : `«${e.subject}» ${e.qty_before} ← ${e.qty_after}`}
-                                            </p>
+                                            <p className="font-medium text-[#111]">{correctionLabel(e, t)}</p>
                                             <p className="mt-0.5 text-[#92400e]">{e.reason}</p>
                                             <p className="mt-1 text-[12px] text-[#a16207]">
                                                 {/* الإجمالي يُذكر حين يتغيّر — وسيلةُ الدفع لا تمسّه */}
@@ -1205,8 +1280,9 @@ export default function OrderShow() {
 
                                 {order.internal_notes && (
                                     <div className="md:col-span-2">
-                                        <p className="rounded-[10px] bg-gray-50 p-3 text-[13px] text-[#6b7280]">
-                                            {t('ملاحظات داخلية')} · {t('لا تُطبع للزبون')}: {order.internal_notes}
+                                        <p className="rounded-[10px] bg-gray-50 p-3 text-[13px] text-[#6b7280]" data-testid="internal-notes">
+                                            {t('ملاحظات داخلية')} · {t('لا تُطبع للزبون')}:{' '}
+                                            <span dir="auto" className="whitespace-pre-wrap">{order.internal_notes}</span>
                                         </p>
                                     </div>
                                 )}
@@ -1271,6 +1347,44 @@ export default function OrderShow() {
                     current={order.payment}
                     methods={order.payment_methods}
                     onClose={() => setFixingPayment(false)}
+                />
+            )}
+
+            {/* وإضافةُ صنفٍ واستبدالُه وملاحظتُه وتحصيلُ المتبقّي — `NotesAndEdits` */}
+            {adding && lineEdit && (
+                <LineDialog
+                    url={route('admin.orders.items.store', order.id)}
+                    title={t('إضافة صنف إلى الفاتورة')}
+                    catalog={lineEdit.catalog}
+                    paid={paidInvoice}
+                    format={m}
+                    onClose={() => setAdding(false)}
+                />
+            )}
+            {replacingItem && lineEdit && (
+                <LineDialog
+                    url={route('admin.orders.items.replace', [order.id, replacingItem.id])}
+                    title={t('استبدال الصنف')}
+                    catalog={lineEdit.catalog}
+                    paid={paidInvoice}
+                    replacing={replacingItem.name}
+                    format={m}
+                    onClose={() => setReplacingItem(null)}
+                />
+            )}
+            {notingItem && (
+                <NoteDialog
+                    url={route('admin.orders.items.note', [order.id, notingItem.id])}
+                    item={notingItem}
+                    onClose={() => setNotingItem(null)}
+                />
+            )}
+            {collecting && (
+                <CollectDialog
+                    url={route('admin.orders.balance.collect', order.id)}
+                    amount={m(order.balance_due ?? 0)}
+                    methods={order.payment_methods}
+                    onClose={() => setCollecting(false)}
                 />
             )}
         </AdminLayout>

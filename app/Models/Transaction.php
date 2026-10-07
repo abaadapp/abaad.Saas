@@ -37,6 +37,12 @@ class Transaction extends Model
     /** البيعُ بنوعيه — بابُه الصندوقُ أو الموقع */
     public const SALE_KINDS = [self::SALE, self::WEB_SALE];
 
+    /**
+     * تحصيلُ ما بقي على فاتورةٍ دُفعت ثمّ زادت — صفٌّ بيومه لا يُكتب فوقه
+     * (`OrderCorrection::collectBalance`). وليس بيعًا: البيعُ صفُّه الأوّل.
+     */
+    public const ORDER_BALANCE = 'order_balance';
+
     /** قيدُها في دفتر الأستاذ — إن رُحّلت */
     public function journalEntry(): BelongsTo { return $this->belongsTo(JournalEntry::class); }
 

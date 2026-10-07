@@ -105,6 +105,8 @@ class DocumentPaper
      */
     public static function forSale(Order $order, array $extra = []): array
     {
+        $notesOn = NotesAndEdits::on((int) $order->business_id);
+
         $cur = self::currency($order->business_id, $order);
         $pay = self::payment($order);
 
@@ -227,6 +229,11 @@ class DocumentPaper
                 // ورسالةُ كرت الهدية لا تُطبع تحت بندها — `GiftCardProduct::paperNote`
                 'note' => GiftCardProduct::paperNote($i, $order),
                 /*
+                 * وملاحظةُ المنتج تُسمّى باسمها لمتجرٍ فُتحت له الميزة
+                 * (`NotesAndEdits`) — فلا تُقرأ ملاحظةً عامّة. وسواه كما كان.
+                 */
+                'note_cap' => $notesOn ? 'ملاحظة المنتج' : null,
+                /*
                  * وخياراتُ الطلب المخصَّص تحت اسمه.
                  *
                  * بندٌ مخصَّص اسمُه اسمُ القالب — «باقة» — وسعرُه. وما سُئل
@@ -243,6 +250,11 @@ class DocumentPaper
             ])->all(),
             'totals' => $totals,
             'notes' => (string) ($order->notes ?: ''),
+            /*
+             * وملاحظاتُ الطلب كما كتبها العميل — قسمٌ مستقلٌّ باسمه، لمتجرٍ
+             * فُتحت له الميزة. والداخليّةُ لا تبلغ الورقةَ أبدًا: ليست هنا.
+             */
+            'order_notes' => $notesOn ? (string) ($order->notes ?: '') : '',
         ];
     }
 

@@ -100,6 +100,8 @@
     @include('documents.v1.partials.close', [
         'panels' => [
             $show('show_notes', false) ? ['cap' => 'ملاحظات', 'text' => $doc['notes']] : [],
+            // ملاحظاتُ الطلب كما كتبها العميل — قسمٌ باسمه حيث فُتحت الميزة (`NotesAndEdits`)
+            filled($doc['order_notes'] ?? '') ? ['cap' => 'ملاحظات الطلب', 'text' => $doc['order_notes']] : [],
         ],
         'eInvoice' => $show('show_qr') ? ($qr ?? '') : '',
         'paperUrl' => $paperUrl ?? '',

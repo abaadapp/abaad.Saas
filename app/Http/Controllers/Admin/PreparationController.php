@@ -15,6 +15,7 @@ use App\Support\OrderStatus;
 use App\Support\OrderTransition;
 use App\Support\Permissions;
 use App\Support\PrepChecklist;
+use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
 use App\Support\WebsiteConfirmPrint;
 use Illuminate\Http\Request;
@@ -111,8 +112,9 @@ class PreparationController extends Controller
                 'items:id,order_id,name,variant_name,quantity,note,product_id,custom_details,price,total',
                 // موادُّ الطلب المخصَّص — تُحمَّل مع البنود لا باستعلامٍ لكلّ بطاقة
                 'items.components',
-                // الصورة وحدها من المنتج — لا سعرَه اليوم ولا تكلفتَه: سعرُ البيع على البند
-                'items.product:id,image',
+                // الصورة من المنتج — لا سعرَه اليوم ولا تكلفتَه: سعرُ البيع على البند
+                // والعلامةُ والمتجرُ معها: بندُ الكرت يُعرف بها بلا سؤالٍ لكلّ بند (`GiftCardProduct::cardLine`)
+                'items.product:id,business_id,image,is_gift_card,tracks_stock',
                 'items.addons',
                 // وهاتفُ صاحب الطلب — من سجلّ العميل، فالطلبُ لا يحمله
                 'customer:id,phone',
@@ -440,6 +442,8 @@ class PreparationController extends Controller
                 'price' => round((float) $i->price, 3),
                 'total' => round((float) $i->total, 3),
                 'note' => $i->note,
+                // وبندُ كرت الهدية نصُّه رسالةٌ لا ملاحظةُ منتج (`GiftCardProduct::cardLine`)
+                'card_line' => GiftCardProduct::cardLine($i, $o),
                 'image' => $i->product?->image,
                 'addons' => $i->addons->map(fn ($a) => [
                     'id' => $a->id,

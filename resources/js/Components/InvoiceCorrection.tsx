@@ -1,6 +1,6 @@
 import { type FormEvent } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Repeat, Trash2, Wallet } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -51,6 +51,20 @@ export interface OrderEditRecord {
 export function correctionLabel(e: OrderEditRecord, t: (s: string) => string): string {
     if (e.kind === 'وسيلة دفع') {
         return `${t('وسيلة الدفع')}: ${t(e.value_before ?? '')} ← ${t(e.value_after ?? '')}`;
+    }
+
+    // وما بعد الإصدار لنشاطٍ فُتحت له الميزة — اسمُ العملية بلغة الشاشة، والنصُّ كما كُتب
+    if (e.kind === 'صنف مضاف') {
+        return `${t('أُضيف')} «${e.value_after ?? e.subject}»`;
+    }
+    if (e.kind === 'صنف مستبدل') {
+        return `${t('استُبدل')} «${e.value_before ?? ''}» ← «${e.value_after ?? ''}»`;
+    }
+    if (e.kind === 'ملاحظة منتج') {
+        return `${t('ملاحظة المنتج')} «${e.subject}»: ${e.value_before ?? '—'} ← ${e.value_after ?? '—'}`;
+    }
+    if (e.kind === 'تحصيل متبقّي') {
+        return `${t('تحصيل المتبقّي')}: ${e.value_before ?? ''} — ${t(e.value_after ?? '')}`;
     }
 
     return e.qty_after === 0
@@ -232,6 +246,352 @@ export function CorrectPaymentDialog({
                         <Button type="submit" loading={form.processing}>
                             <Pencil />
                             {t('حفظ التصحيح')}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/* ═══════════════ إضافةُ صنفٍ واستبدالُه وملاحظتُه وتحصيلُ المتبقّي ═══════════════ */
+
+/** صنفٌ يُضاف إلى فاتورة — الأسعارُ للعرض، والخادمُ يسعّر من القاعدة */
+export interface CatalogProduct {
+    id: number;
+    name: string;
+    price: number;
+    variants: { id: number; name: string; price: number }[];
+    addons: { id: number; name: string; price: number }[];
+}
+
+/** ما يُفتح على شاشة الطلب — `null` لنشاطٍ لم تُفتح له الميزة (`NotesAndEdits::screen`) */
+export interface LineEdit {
+    lines: boolean;
+    notes: boolean;
+    catalog: CatalogProduct[];
+}
+
+/** خطأُ الخدمة تحت الحوار — سعرٌ أو مخزونٌ أو قيد */
+function LineError({ text }: { text?: string }) {
+    if (!text) {
+        return null;
+    }
+
+    return (
+        <p className="rounded-[10px] bg-[#fef2f2] px-3 py-2 text-[12px] text-[#b91c1c]" data-testid="line-error">
+            {text}
+        </p>
+    );
+}
+
+/**
+ * إضافةُ صنفٍ أو استبدالُه — صنفٌ ومقاسٌ وكمّيّةٌ وإضافاتٌ وملاحظةٌ وسبب.
+ *
+ * ولا سعرَ يُكتب هنا: يُعرض ثمنُ القاعدة للعلم، ويُسعَّر في الخادم
+ * (`OrderCorrection::addLine`). وفاتورةٌ مدفوعة يُسأل فيها عن الفرق: حُصِّل
+ * الآن، أم يبقى على العميل، أم يُردّ له بيد الموظّف — ولا شيءَ آليّ.
+ */
+export function LineDialog({
+    url,
+    title,
+    catalog,
+    paid,
+    replacing,
+    format,
+    onClose,
+}: {
+    url: string;
+    title: string;
+    catalog: CatalogProduct[];
+    paid: boolean;
+    replacing?: string;
+    format: (v: number) => string;
+    onClose: () => void;
+}) {
+    const t = useTranslate();
+    const denied = useDenial();
+    const form = useForm<{
+        product_id: string;
+        variant_id: string;
+        qty: string;
+        addons: { addon_id: number; qty: number }[];
+        note: string;
+        reason: string;
+        settle: string;
+    }>({ product_id: '', variant_id: '', qty: '1', addons: [], note: '', reason: '', settle: '' });
+
+    const product = catalog.find((p) => String(p.id) === form.data.product_id);
+    const errors = form.errors as Record<string, string | undefined>;
+
+    const pick = (id: string) => {
+        const next = catalog.find((p) => String(p.id) === id);
+        form.setData({
+            ...form.data,
+            product_id: id,
+            variant_id: next?.variants[0] ? String(next.variants[0].id) : '',
+            addons: (next?.addons ?? []).map((a) => ({ addon_id: a.id, qty: 0 })),
+        });
+    };
+
+    const submit = (e: FormEvent) => {
+        e.preventDefault();
+        form.transform((d) => ({ ...d, addons: d.addons.filter((a) => a.qty > 0), settle: d.settle || null }));
+        form.post(url, { preserveScroll: true, onSuccess: () => onClose() });
+    };
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>{title}</DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={submit} className="space-y-4 px-5 pb-5" data-testid="line-dialog">
+                    {replacing && (
+                        <p className="rounded-[10px] bg-[#f5f3ff] px-3 py-2 text-[12px] text-[#5b21b6]">
+                            {t('يُحذف من الفاتورة')}: «{replacing}» — {t('ويعود مخزونه إلى الرفّ')}
+                        </p>
+                    )}
+
+                    <Field label="المنتج" required error={errors.product_id}>
+                        <Select
+                            required
+                            value={form.data.product_id}
+                            onChange={(e) => pick(e.target.value)}
+                            placeholder="اختر المنتج"
+                            options={catalog.map((p) => ({ label: `${p.name} — ${format(p.price)}`, value: String(p.id) }))}
+                        />
+                    </Field>
+
+                    {product && product.variants.length > 0 && (
+                        <Field label="المقاس" required error={errors.variant_id}>
+                            <Select
+                                required
+                                value={form.data.variant_id}
+                                onChange={(e) => form.setData('variant_id', e.target.value)}
+                                options={product.variants.map((v) => ({ label: `${v.name} — ${format(v.price)}`, value: String(v.id) }))}
+                            />
+                        </Field>
+                    )}
+
+                    <Field label="الكمية" required error={errors.qty}>
+                        <Input
+                            type="number"
+                            min="1"
+                            dir="ltr"
+                            required
+                            value={form.data.qty}
+                            onChange={(e) => form.setData('qty', e.target.value)}
+                        />
+                    </Field>
+
+                    {product && product.addons.length > 0 && (
+                        <fieldset className="space-y-2">
+                            <legend className="mb-1 text-[13px] font-medium text-[#374151]">{t('الإضافات')}</legend>
+                            {product.addons.map((a, i) => (
+                                <label key={a.id} className="flex items-center justify-between gap-3 text-[13px]">
+                                    <span>
+                                        {a.name} <span className="text-[#6b7280]">— {format(a.price)}</span>
+                                    </span>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        dir="ltr"
+                                        className="w-20"
+                                        aria-label={a.name}
+                                        value={String(form.data.addons[i]?.qty ?? 0)}
+                                        onChange={(e) =>
+                                            form.setData(
+                                                'addons',
+                                                form.data.addons.map((x, k) => (k === i ? { ...x, qty: Math.max(0, Number(e.target.value) || 0) } : x)),
+                                            )
+                                        }
+                                    />
+                                </label>
+                            ))}
+                        </fieldset>
+                    )}
+
+                    <Field label="ملاحظة المنتج" error={errors.note}>
+                        <textarea
+                            className="min-h-[72px] w-full rounded-[10px] border border-[#e5e7eb] px-3 py-2 text-sm"
+                            maxLength={500}
+                            dir="auto"
+                            value={form.data.note}
+                            onChange={(e) => form.setData('note', e.target.value)}
+                        />
+                    </Field>
+
+                    {/*
+                        والفرقُ في فاتورةٍ مدفوعة لا يُكتب مدفوعًا من تلقاء نفسه، ولا
+                        يُشحن له شيء — يُسأل الموظّف (`OrderCorrection::settleDifference`).
+                    */}
+                    {paid && (
+                        <Field label="فرق الفاتورة المدفوعة" hint="إن تغيّر الإجمالي — النظام لا يشحن البطاقة ولا يستردّ آليًّا" error={errors.settle}>
+                            <Select
+                                value={form.data.settle}
+                                onChange={(e) => form.setData('settle', e.target.value)}
+                                placeholder="اختر"
+                                options={[
+                                    { label: t('زاد — يبقى على العميل حتى يُحصَّل'), value: 'due' },
+                                    { label: t('زاد — حُصِّل الفرق الآن'), value: 'collected' },
+                                    { label: t('نقص — سأردّ الفرق للعميل بنفسي'), value: 'refunded' },
+                                ]}
+                            />
+                        </Field>
+                    )}
+
+                    <Field label="سبب التعديل" required hint="يُقرأ في سجلّ الفاتورة — اكتب ما يفهمه غيرك" error={form.errors.reason}>
+                        <Input
+                            required
+                            minLength={3}
+                            value={form.data.reason}
+                            onChange={(e) => form.setData('reason', e.target.value)}
+                        />
+                    </Field>
+
+                    <LineError text={errors.line} />
+                    <Denial text={denied} />
+
+                    <p className="rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]">
+                        {t('السعر من النظام، ويُخصم المخزون وتُحتسب الضريبة والقيد والنقاط من جديد، ويبقى التعديل مقيَّدًا باسمك في سجلّ الفاتورة.')}
+                    </p>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button type="submit" loading={form.processing} data-testid="line-submit">
+                            {replacing ? <Repeat /> : <Plus />}
+                            {t(replacing ? 'استبدال الصنف' : 'إضافة الصنف')}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/**
+ * ملاحظةُ المنتج بعد الإصدار — نصٌّ وحده: لا مخزونَ ولا ضريبةَ ولا قيد.
+ *
+ * والموظّفُ يكتب بما شاء — «بالإنجليزيّة وحدها» قاعدةُ العميل في الموقع.
+ */
+export function NoteDialog({
+    url,
+    item,
+    onClose,
+}: {
+    url: string;
+    item: { name: string; note: string | null };
+    onClose: () => void;
+}) {
+    const t = useTranslate();
+    const denied = useDenial();
+    const form = useForm({ note: item.note ?? '', reason: '' });
+    const errors = form.errors as Record<string, string | undefined>;
+
+    const submit = (e: FormEvent) => {
+        e.preventDefault();
+        form.put(url, { preserveScroll: true, onSuccess: () => onClose() });
+    };
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>
+                        {t('ملاحظة المنتج')} — «{item.name}»
+                    </DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={submit} className="space-y-4 px-5 pb-5" data-testid="note-dialog">
+                    <Field label="ملاحظة المنتج" error={errors.note}>
+                        <textarea
+                            className="min-h-[88px] w-full rounded-[10px] border border-[#e5e7eb] px-3 py-2 text-sm"
+                            maxLength={500}
+                            dir="auto"
+                            value={form.data.note}
+                            onChange={(e) => form.setData('note', e.target.value)}
+                        />
+                    </Field>
+                    <Field label="سبب التعديل" required error={form.errors.reason}>
+                        <Input required minLength={3} value={form.data.reason} onChange={(e) => form.setData('reason', e.target.value)} />
+                    </Field>
+
+                    <LineError text={errors.line} />
+                    <Denial text={denied} />
+
+                    <div className="flex justify-end gap-2 pt-1">
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button type="submit" loading={form.processing}>
+                            <Pencil />
+                            {t('حفظ الملاحظة')}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/** تحصيلُ ما بقي على فاتورةٍ مدفوعة — قيدٌ بيومه، لا إعادةُ كتابةٍ للبيعة */
+export function CollectDialog({
+    url,
+    amount,
+    methods,
+    onClose,
+}: {
+    url: string;
+    amount: string;
+    methods: string[];
+    onClose: () => void;
+}) {
+    const t = useTranslate();
+    const denied = useDenial();
+    const form = useForm({ payment_method: methods[0] ?? 'نقدي', reason: '' });
+    const errors = form.errors as Record<string, string | undefined>;
+
+    const submit = (e: FormEvent) => {
+        e.preventDefault();
+        form.post(url, { preserveScroll: true, onSuccess: () => onClose() });
+    };
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>
+                        {t('تحصيل المتبقّي')} — {amount}
+                    </DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={submit} className="space-y-4 px-5 pb-5" data-testid="collect-dialog">
+                    <Field label="وسيلة الدفع" required error={form.errors.payment_method}>
+                        <Select
+                            required
+                            value={form.data.payment_method}
+                            onChange={(e) => form.setData('payment_method', e.target.value)}
+                            options={methods.map((x) => ({ label: t(x === 'بطاقة' ? 'فيزا' : x), value: x }))}
+                        />
+                    </Field>
+                    <Field label="سبب التعديل" required error={form.errors.reason}>
+                        <Input required minLength={3} value={form.data.reason} onChange={(e) => form.setData('reason', e.target.value)} />
+                    </Field>
+
+                    <LineError text={errors.line} />
+                    <Denial text={denied} />
+
+                    <div className="flex justify-end gap-2 pt-1">
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button type="submit" loading={form.processing}>
+                            <Wallet />
+                            {t('تسجيل التحصيل')}
                         </Button>
                     </div>
                 </form>

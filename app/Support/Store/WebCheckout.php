@@ -17,6 +17,7 @@ use App\Support\Customers;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
 use App\Support\Money;
+use App\Support\NotesAndEdits;
 use App\Support\OrderNumbers;
 use App\Support\OrderStatus;
 use App\Support\Boutiques;
@@ -265,7 +266,8 @@ final class WebCheckout
                 'line' => round($l['price'] * $l['qty'], 3),
                 // نصُّ الكرت يعود إلى السلّة لتُراجعه — ولا نصَّ لبندٍ سواه
                 'gift_card' => (bool) ($l['gift_card'] ?? false),
-                'note' => ($l['gift_card'] ?? false) ? $l['note'] : null,
+                // ونصُّ الكرت لبنده، وملاحظةُ المنتج لبندها حين تُفتح الميزة (`NotesAndEdits`)
+                'note' => $l['note'] ?? null,
             ], $lines, array_keys($lines)),
             'subtotal' => $subtotal,
             'discount' => $discount,
@@ -481,7 +483,8 @@ final class WebCheckout
                 'total' => $q['total'],
                 'ordered_at' => now(),
                 'status' => OrderStatus::PENDING,
-                'notes' => null,
+                // ملاحظاتُ الطلب كما كتبها العميل — لا الداخليّة ولا تعليماتُ التوصيل
+                'notes' => filled($form['notes'] ?? null) ? trim(str_replace("\r\n", "\n", (string) $form['notes'])) : null,
             ]
             // والهديّةُ لغير مشتريها — ولا شيءَ لطلبٍ ليس هديّة (`GiftOrders`)
             + GiftOrders::columns($bid, $form)
@@ -536,7 +539,7 @@ final class WebCheckout
                      */
                     ...Boutiques::itemColumns($boutiqueOf[$idx] ?? null, (float) ($l['cost'] ?? 0)),
                     'quantity' => $l['qty'],
-                    // نصُّ كرت الهدية وحده — وسائرُ البنود بلا نصّ (`GiftCardProduct::settle`)
+                    // نصُّ كرت الهدية، أو ملاحظةُ المنتج حين تُفتح الميزة (`GiftCardProduct::settle`)
                     'note' => $l['note'] ?? null,
                     'total' => round($l['price'] * $l['qty'], 3),
                     'addons_total' => 0,
@@ -683,7 +686,7 @@ final class WebCheckout
                 'variant_id' => ! empty($i['variant_id']) ? (int) $i['variant_id'] : null,
                 'qty' => min(self::MAX_QTY, $qty),
                 'name' => '',
-                // يُقرأ لبند كرت الهدية وحده، ويُمحى عمّا سواه بعد التسعير
+                // نصُّ كرت الهدية لبنده، وملاحظةُ المنتج لسواه حين تُفتح الميزة — ويُمحى ما عداهما (`GiftCardProduct::settle`)
                 'note' => GiftCardProduct::message($i['note'] ?? null),
             ];
         }
@@ -865,7 +868,7 @@ final class WebCheckout
             'card_align' => ['nullable', 'in:'.implode(',', GiftCard::ALIGNS)],
             'card_file' => ['nullable', 'string', 'max:64'],
             'card_file_name' => ['nullable', 'string', 'max:160'],
-        ] + GiftOrders::rules($bid));
+        ] + GiftOrders::rules($bid) + NotesAndEdits::checkoutRules($bid));
 
         /*
          * ═══ وقائمةُ القواعد هي الحارسُ وحدَها ═══
@@ -885,7 +888,7 @@ final class WebCheckout
             'date.required' => __('اختر موعد التسليم.'),
             'date.after_or_equal' => __('الموعد لا يكون في الماضي.'),
             'pay.in' => __('اختر وسيلة الدفع.'),
-        ] + EnglishCheckout::messages());
+        ] + EnglishCheckout::messages() + NotesAndEdits::checkoutMessages());
 
         $v->after(function ($v) use ($bid, $payload, $settings) {
             /*

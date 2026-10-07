@@ -10,6 +10,7 @@ use App\Support\Activity;
 use App\Support\CustomArrangement;
 use App\Support\CustomerFlags;
 use App\Support\Demo;
+use App\Support\NotesAndEdits;
 use App\Support\Seasons;
 use App\Support\FlowerOrder;
 use App\Support\PlanFeatures;
@@ -273,6 +274,13 @@ class PageController extends Controller
              * الضغط يجعل الكاشير يظنّ العطب في النظام فيعيد المحاولة.
              */
             'canEdit' => $this->correctable($number),
+            // وإضافةُ صنفٍ واستبدالُه وملاحظتُه — لنشاطٍ فُتحت له الميزة (`NotesAndEdits::screen`)
+            'lineEdit' => NotesAndEdits::screen(
+                Demo::bid(),
+                (bool) auth()->user()?->may('order.edit'),
+                $this->correctable($number),
+                ($order['status'] ?? null) === Order::CANCELLED,
+            ),
         ]);
     }
 

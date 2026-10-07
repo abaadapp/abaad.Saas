@@ -104,10 +104,24 @@ class Books
             default => Bank::leaf((int) $order->business_id, $order->bank_account_id) ?? 'bank',
         };
 
-        DB::transaction(function () use ($order, $debit, $total, $subtotal, $tax, $cost, $at) {
+        /*
+         * ═══ وما بقي على فاتورةٍ مدفوعة ذمّةٌ لا نقد ═══
+         *
+         * صنفٌ أُضيف بعد الدفع رفع الإجماليّ، والفرقُ لم يدخل الدرج ولا البنك
+         * (`orders.balance_due`، انظر `OrderCorrection::addLine`). فيُدين به
+         * الذممَ والباقي حيث دخل المال. وفاتورةٌ بلا متبقٍّ قيدُها كما كان.
+         */
+        $due = $debit === 'receivable' ? 0.0 : round(min(max(0.0, (float) ($order->balance_due ?? 0)), $total), 3);
+
+        DB::transaction(function () use ($order, $debit, $total, $subtotal, $tax, $cost, $at, $due) {
             // ‏ولا قيدَ إيرادٍ بصفر: طرفاه صفران، وهو سطرٌ يقول لا شيء
             if ($total > 0) {
-                $lines = [['account' => $debit, 'debit' => $total]];
+                $lines = $due > 0
+                    ? array_values(array_filter([
+                        $total - $due > 0 ? ['account' => $debit, 'debit' => round($total - $due, 3)] : null,
+                        ['account' => 'receivable', 'debit' => $due],
+                    ]))
+                    : [['account' => $debit, 'debit' => $total]];
 
                 if ($subtotal > 0) {
                     $lines[] = ['account' => self::salesAccount($order), 'credit' => $subtotal];
@@ -476,6 +490,8 @@ class Books
         Transaction::SALE => 'مبيعات نقطة البيع',
         // والموقعُ يُسمّى باسمه: «مبيعات» واحدةٌ تجمع البابين لا تقول أيّهما يبيع
         Transaction::WEB_SALE => 'مبيعات الموقع الإلكتروني',
+        // ما بقي على فاتورةٍ مدفوعة ثمّ حُصِّل — من تفاصيل الطلب (`OrderCorrection::collectBalance`)
+        Transaction::ORDER_BALANCE => 'تحصيل متبقّي فاتورة',
     ];
 
     /**

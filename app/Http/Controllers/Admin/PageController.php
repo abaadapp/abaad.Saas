@@ -24,6 +24,7 @@ use App\Support\Emojis;
 use App\Support\InvoiceBranding;
 use App\Support\Mailer;
 use App\Support\MarketingSettings;
+use App\Support\NotesAndEdits;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\StorePage;
 use App\Support\OrderNotice;
@@ -202,8 +203,20 @@ class PageController extends Controller
         $order = Demo::orderDetails($number);
         abort_if(empty($order), 404);
 
+        $invoiceEdit = $this->invoiceEditState($number);
+
         return Inertia::render('Admin/Orders/Show', [
             'order' => $order,
+            /*
+             * وإضافةُ صنفٍ واستبدالُه وتعديلُ ملاحظته — لنشاطٍ فُتحت له الميزة
+             * (`NotesAndEdits::screen`). والحكمُ في الخادم (`OrderEditController`).
+             */
+            'lineEdit' => NotesAndEdits::screen(
+                Demo::bid(),
+                (bool) auth()->user()?->may('order.edit'),
+                $invoiceEdit['can'],
+                ($order['status'] ?? null) === Order::CANCELLED,
+            ),
             /*
              * هل تُعرض «فاتورة ضريبية» على هذا الطلب — وإن لم تُعرض فلمَ.
              *
@@ -271,7 +284,7 @@ class PageController extends Controller
              * يملكها وانتهى يومُ فاتورته يراه معطَّلًا بسببه مكتوبًا عليه: هذا
              * حدٌّ زمنيّ يعرفه غدًا ويُقدّر له، لا رفضٌ لشخصه.
              */
-            'invoiceEdit' => $this->invoiceEditState($number),
+            'invoiceEdit' => $invoiceEdit,
             /*
              * أهذا الطلب من الفرع الذي تقف عليه — وإن لم يكن، فمن أيّ فرع.
              *

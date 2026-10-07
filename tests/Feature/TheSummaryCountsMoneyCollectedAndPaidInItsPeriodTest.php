@@ -18,6 +18,7 @@ use App\Models\Supplier;
 use App\Models\SupplierInvoice;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\Cheques;
 use App\Support\Ledger;
 use App\Support\Receivables;
@@ -183,11 +184,11 @@ class TheSummaryCountsMoneyCollectedAndPaidInItsPeriodTest extends TestCase
             'order_id' => $order->id, 'product_id' => $product->id, 'name' => 'باقة',
             'quantity' => 1, 'price' => 950, 'cost' => 600, 'total' => 950,
         ]);
-        Expense::create([
+        Books::recordExpense(Expense::create([
             'business_id' => $this->business->id, 'type' => 'إيجار', 'description' => 'إيجار',
             'amount' => 200, 'method' => 'نقدي', 'status' => Expense::PAID,
             'spent_at' => now(), 'employee_name' => 'المالك',
-        ]);
+        ]));
     }
 
     /* ═══════════════ التحصيل ═══════════════ */

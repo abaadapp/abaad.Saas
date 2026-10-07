@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Document\Pdf\Driver as PdfDriver;
 use App\Support\Pdf;
@@ -177,11 +178,11 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
     public function test_a_branch_report_reads_gross_profit_and_carries_no_company_expense(): void
     {
         $this->sell($this->muscat, 100);
-        Expense::create([
+        Books::recordExpense(Expense::create([
             'business_id' => $this->shop->id, 'type' => 'إيجار', 'description' => 'إيجار المحلّ',
             'amount' => 400, 'method' => 'نقدي', 'employee_name' => 'المالك',
             'status' => 'مدفوع', 'spent_at' => now(),
-        ]);
+        ]));
 
         $branch = $this->report($this->muscat->id)['summary'];
 

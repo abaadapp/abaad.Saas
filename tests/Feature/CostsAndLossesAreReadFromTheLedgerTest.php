@@ -682,8 +682,8 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $expenses = ReportData::expenses($this->shop->id, ['range' => 'month']);
         $this->assertSame([39.0, 2], [$expenses['summary']['total'], $expenses['summary']['count']]);
 
-        // و«صافي الربح» يقرأ المصروفاتِ المدفوعة من جدولها كما كان
-        $this->assertSame(39.0, Profitability::summary($this->shop->id, Carbon::parse('2026-09-01'), Carbon::parse('2026-10-01'))['expenses']);
+        // و«صافي الربح» صار يقرأ المصروفاتِ التشغيليّة من الدفتر (`Ledger::operatingExpenses`) — المصروفُ والهالكُ والرواتب
+        $this->assertSame(439.0, Profitability::summary($this->shop->id, Carbon::parse('2026-09-01'), Carbon::parse('2026-10-01'))['expenses']);
 
         // والتقريرُ الجديد من الدفتر: المصروفُ والهالكُ والرواتب
         $this->assertSame(439.0, $this->report()['summary']['total']);

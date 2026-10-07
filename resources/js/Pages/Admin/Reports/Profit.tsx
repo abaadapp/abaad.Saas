@@ -61,7 +61,7 @@ const COMPARE_LABELS: Record<string, string> = {
     net_revenue: 'صافي الإيرادات',
     cogs: 'تكلفة البضاعة المباعة',
     gross_profit: 'مجمل الربح',
-    expenses: 'المصروفات',
+    expenses: 'المصروفات التشغيلية',
     net_profit: 'صافي الربح',
     margin: 'هامش صافي الربح',
 };
@@ -107,7 +107,7 @@ export default function ReportsProfit() {
         { label: t('الضريبة المحصلة'), value: m(summary.tax), icon: 'receipt', color: 'secondary' },
         { label: t('تكلفة البضاعة المباعة'), value: m(summary.cogs), icon: 'package', color: 'warning' },
         {
-            label: branch ? t('مصروفات الفرع') : t('المصروفات'),
+            label: branch ? t('مصروفات الفرع') : t('المصروفات التشغيلية'),
             value: m(summary.expenses),
             icon: 'arrow-down-circle',
             color: 'danger',
@@ -226,7 +226,7 @@ export default function ReportsProfit() {
                             <TableHead className="text-end">{t('صافي الإيرادات')}</TableHead>
                             <TableHead className="text-end">{t('تكلفة البضاعة المباعة')}</TableHead>
                             <TableHead className="text-end">{t('مجمل الربح')}</TableHead>
-                            <TableHead className="text-end">{t('المصروفات')}</TableHead>
+                            <TableHead className="text-end">{t('المصروفات التشغيلية')}</TableHead>
                             <TableHead className="text-end">{t('صافي الربح')}</TableHead>
                             <TableHead className="text-end">{t('هامش صافي الربح')}</TableHead>
                         </TableRow>

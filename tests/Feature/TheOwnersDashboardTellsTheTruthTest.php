@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -129,10 +130,10 @@ class TheOwnersDashboardTellsTheTruthTest extends TestCase
     {
         $rose = $this->product('باقة', 100, 60);
         $this->sell($rose, 10);                                  // بيع 1000، تكلفة 600
-        Expense::create([
+        Books::recordExpense(Expense::create([
             'business_id' => $this->business->id, 'type' => 'إيجار',
             'amount' => 200, 'status' => 'مدفوع', 'spent_at' => now(),
-        ]);
+        ]));
 
         // 1000 − 0 ضريبة − 600 تكلفة − 200 مصروف = 200
         $this->assertSame(200.0, $this->amount($this->card('صافي الأرباح')['value']));
@@ -158,10 +159,10 @@ class TheOwnersDashboardTellsTheTruthTest extends TestCase
     {
         $rose = $this->product('باقة', 100, 60);
         $this->sell($rose, 1);
-        Expense::create([
+        Books::recordExpense(Expense::create([
             'business_id' => $this->business->id, 'type' => 'إيجار',
             'amount' => 500, 'status' => 'مدفوع', 'spent_at' => now(),
-        ]);
+        ]));
 
         $this->assertSame(-460.0, $this->amount($this->card('صافي الأرباح')['value']));
     }

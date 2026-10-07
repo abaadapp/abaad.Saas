@@ -10,6 +10,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -79,10 +80,10 @@ class TheDashboardDoesNotComfortWithALieTest extends TestCase
 
     private function expense(float $amount, string $on): void
     {
-        Expense::create([
+        Books::recordExpense(Expense::create([
             'business_id' => $this->shop->id, 'type' => 'إيجار', 'description' => 'إيجار',
             'amount' => $amount, 'status' => 'مدفوع', 'spent_at' => $on,
-        ]);
+        ]));
     }
 
     /* ═════════════ خسارةٌ لا تُرسم خضراء ═════════════ */

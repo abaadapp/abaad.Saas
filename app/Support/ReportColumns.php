@@ -40,7 +40,7 @@ class ReportColumns
         'profit' => [
             ['period', 'الفترة', 'text'], ['sales', 'إجمالي المبيعات', 'money'], ['tax', 'الضريبة المحصلة', 'money'],
             ['net_revenue', 'صافي الإيرادات', 'money'], ['cogs', 'تكلفة البضاعة المباعة', 'money'],
-            ['gross_profit', 'مجمل الربح', 'money'], ['expenses', 'المصروفات', 'money'],
+            ['gross_profit', 'مجمل الربح', 'money'], ['expenses', 'المصروفات التشغيلية', 'money'],
             ['net_profit', 'صافي الربح', 'money'], ['margin', 'هامش صافي الربح %', 'number'],
         ],
         'bank' => [
@@ -203,7 +203,7 @@ class ReportColumns
             ['sales', 'إجمالي المبيعات', 'money'],
             ['tax', 'الضريبة المحصلة', 'money'],
             ['cogs', 'تكلفة البضاعة المباعة', 'money'],
-            ['expenses', 'المصروفات', 'money'],
+            ['expenses', 'المصروفات التشغيلية', 'money'],
             /*
              * وللفرع وحده، وحين يكون: ما لم يُطرح منه.
              *

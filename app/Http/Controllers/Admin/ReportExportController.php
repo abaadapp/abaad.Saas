@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Expense;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\ListFilters;
 use App\Support\OrderStatus;
 use App\Support\Reports;
 use App\Support\SalesChannel;
@@ -424,27 +426,78 @@ class ReportExportController extends Controller
     }
 
     /** تصدير المصروفات كملف Excel */
+    /**
+     * المصروفاتُ المسجّلة لشهر الشاشة — كلُّها لا صفحتُها.
+     *
+     * الشهرُ شهرُ الصفحة نفسُها (`ListFilters::expenseSpan`): زرُّ التصدير يحمل
+     * ما في الرابط (`ExportMenu`)، فمن يعرض ٢٠٢٦-١٠ يُنزّل أكتوبر وحده. و«كل
+     * الشهور» يُنزّل العمرَ كلَّه. ولا ترقيم: الترقيمُ يقصّ الصفوف ولا يقصّ
+     * السؤال — «كم سُجّل هذا الشهر؟».
+     *
+     * وفي آخرها ما في أسفل الشاشة: المدفوعُ، والمستحقُّ إن وُجد، والعدد.
+     */
     public function expensesXlsx()
     {
+        $bid = auth()->user()->business_id ?? Demo::bid();
+        $span = ListFilters::expenseSpan(request());
+        $month = $span ? $span[0]->format('Y-m') : null;
+
+        $rows = ListFilters::expenses(
+            Expense::where('business_id', $bid)->orderBy('spent_at')->orderBy('id'),
+            request(),
+        )->get();
+
         $spreadsheet = new Spreadsheet;
-        [$sheet] = $this->sheet($spreadsheet, __('المصروفات'));
-        $firstDataRow = $this->tableHead($sheet, [__('التاريخ'), __('النوع'), __('الوصف'), $this->moneyHead('المبلغ'), __('الطريقة'), __('الموظف')]);
+        [$sheet] = $this->sheet($spreadsheet, __('المصروفات المسجلة'));
+        $sheet->setCellValue('A4', __('الشهر').': '.($month ?? __('كل الشهور')));
+        $sheet->getStyle('A4')->getFont()->setBold(true);
+        $this->row = 6;
+
+        $firstDataRow = $this->tableHead($sheet, [
+            __('التاريخ'), __('النوع'), __('الوصف'), $this->moneyHead('المبلغ'), __('الحالة'), __('الطريقة'), __('الموظف'),
+        ]);
         $money = [];
-        foreach (Demo::expenses(request()) as $e) {
+
+        foreach ($rows as $e) {
             $r = $this->row;
-            $sheet->setCellValue("A{$r}", $e['date']);
-            $sheet->setCellValue("B{$r}", $e['type']);
-            $sheet->setCellValue("C{$r}", $e['description']);
-            $sheet->setCellValue("D{$r}", round((float) $e['amount'], 3));
-            $sheet->setCellValue("E{$r}", $e['method']);
-            $sheet->setCellValue("F{$r}", $e['employee']);
+            $sheet->setCellValue("A{$r}", optional($e->spent_at)->format('Y-m-d') ?? '—');
+            $sheet->setCellValue("B{$r}", $e->type);
+            $sheet->setCellValue("C{$r}", $e->description);
+            $sheet->setCellValue("D{$r}", round((float) $e->amount, 3));
+            $sheet->setCellValue("E{$r}", __($e->status));
+            $sheet->setCellValue("F{$r}", $e->method);
+            $sheet->setCellValue("G{$r}", $e->employee_name);
             $money[] = "D{$r}";
             $this->row++;
         }
-        $sheet->freezePane("A{$firstDataRow}");
-        Activity::log('report', 'صدّر المصروفات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'expenses-'.now()->format('Y-m-d').'.xlsx');
+        $sheet->freezePane("A{$firstDataRow}");
+
+        // والجملةُ من الصفوف نفسِها — لا استعلامٌ ثانٍ يفترق عنها
+        $paid = round((float) $rows->where('status', Expense::PAID)->sum('amount'), 3);
+        $unpaid = round((float) $rows->where('status', '!=', Expense::PAID)->sum('amount'), 3);
+
+        $this->row++;
+        $totals = [[__('إجمالي المصروفات المسجلة والمدفوعة'), $paid, true]];
+        if ($unpaid > 0) {
+            $totals[] = [__('إجمالي غير المدفوع'), $unpaid, true];
+        }
+        $totals[] = [__('عدد السجلات'), $rows->count(), false];
+
+        foreach ($totals as [$label, $value, $isMoney]) {
+            $r = $this->row;
+            $sheet->setCellValue("C{$r}", $label);
+            $sheet->setCellValue("D{$r}", $value);
+            $sheet->getStyle("C{$r}:D{$r}")->getFont()->setBold(true);
+            if ($isMoney) {
+                $money[] = "D{$r}";
+            }
+            $this->row++;
+        }
+
+        Activity::log('report', 'صدّر المصروفات المسجلة (Excel) — '.($month ?? 'كل الشهور'));
+
+        return $this->download($spreadsheet, $sheet, $money, 'expenses-'.($month ?? 'all').'.xlsx');
     }
 
     /** تصدير الشركات كملف Excel (لوحة المنصة) */

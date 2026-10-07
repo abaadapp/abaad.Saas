@@ -110,7 +110,7 @@ describe('مُرشِّحُ القناة في «ملخّص المبيعات»', (
 
         expect(screen.getByText('صافي الربح')).toBeInTheDocument();
         expect(screen.queryByText('مُجمل الربح')).toBeNull();
-        expect(screen.getByText('المصروفات')).toBeInTheDocument();
+        expect(screen.getByText('المصروفات التشغيلية')).toBeInTheDocument();
         expect(screen.queryByTestId('channel-note')).toBeNull();
     });
 
@@ -128,7 +128,7 @@ describe('مُرشِّحُ القناة في «ملخّص المبيعات»', (
 
         expect(screen.getByText('مُجمل الربح')).toBeInTheDocument();
         expect(screen.queryByText('صافي الربح')).toBeNull();
-        expect(screen.queryByText('المصروفات')).toBeNull();
+        expect(screen.queryByText('المصروفات التشغيلية')).toBeNull();
         expect(screen.getByTestId('channel-note')).toHaveTextContent('تُنفَق على المتجر كلّه');
     });
 });

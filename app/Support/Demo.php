@@ -822,7 +822,8 @@ class Demo
         $count = $orders()->count();
         $avg = $count ? $sales / $count : 0;
         $newCustomers = Customer::where('business_id', $bid)->whereBetween('created_at', [$start, $end])->count();
-        $expenses = (float) Expense::where('business_id', $bid)->paid()->whereBetween('spent_at', [$start, $end])->sum('amount');
+        // المصروفاتُ التشغيليّة من الدفتر — المصدرُ الواحد (`Ledger::operatingExpenses`)
+        $expenses = Ledger::operatingExpenses($bid, $start, $start->copy()->addDay());
 
         $top = OrderItem::whereHas('order', fn ($w) => $w->where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start, $end]))
@@ -916,10 +917,16 @@ class Demo
             ? self::lowStockInBranch($bid, (int) self::currentBranchId())
             : Product::where('business_id', $bid)->needsStockAlert()->count();
 
-        // المصروفات وصافي الأرباح: هذا الشهر مقابل السابق
-        $expMonth = (float) Expense::where('business_id', $bid)->paid()->where('spent_at', '>=', $mStart)->sum('amount');
-        $expLastMonth = (float) Expense::where('business_id', $bid)->paid()
-            ->where('spent_at', '>=', $lmStart)->where('spent_at', '<', $mStart)->sum('amount');
+        /*
+         * المصروفات وصافي الأرباح: هذا الشهر مقابل السابق — من الدفتر.
+         *
+         * كانت جدولَ المصروفات المدفوعة وحده: الإيجارُ يُطرح والرواتبُ
+         * والإهلاكُ لا. فالرقمُ المصروفاتُ التشغيليّة كلُّها (`Ledger::
+         * operatingExpenses`)، وهو نفسُه في التقارير والمالية. ونطاقُه
+         * النشاطُ كلُّه كما كان — البطاقةُ لم تكن تُرشَّح بالفرع.
+         */
+        $expMonth = Ledger::operatingExpenses($bid, $mStart);
+        $expLastMonth = Ledger::operatingExpenses($bid, $lmStart, $mStart);
 
         /*
          * ═══ «صافي الأرباح» ربحٌ لا فرقُ طرحٍ بين رقمين ═══
@@ -963,7 +970,7 @@ class Demo
             array_merge(['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'color' => 'secondary'], self::trend($avg, $avgLast)),
             array_merge(['label' => __('عدد العملاء'), 'value' => (string) $customersTotal, 'icon' => 'users', 'color' => 'primary'], self::trend($customersMonth, $customersLastMonth)),
             ['label' => __('منتجات منخفضة المخزون'), 'value' => (string) $lowStock, 'icon' => 'alert-triangle', 'trend' => __('تنبيه'), 'up' => false, 'color' => 'warning'],
-            array_merge(['label' => __('المصروفات'), 'value' => self::money($expMonth), 'icon' => 'arrow-down-circle', 'color' => 'danger'], $expTrend),
+            array_merge(['label' => __('إجمالي المصروفات'), 'value' => self::money($expMonth), 'icon' => 'arrow-down-circle', 'color' => 'danger'], $expTrend),
             /*
              * وخسارةٌ لا تُرسم خضراء.
              *
@@ -2132,9 +2139,8 @@ class Demo
         // تكلفة البضاعة المباعة — من الباب الواحد لا بحسابٍ ثانٍ هنا
         $cogs = self::cogsFor($bid, $start);
 
-        // المصروفات التشغيلية في الفترة
-        $expenses = (float) Expense::where('business_id', $bid)->paid()
-            ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount');
+        // المصروفات التشغيلية في الفترة — من الدفتر
+        $expenses = Ledger::operatingExpenses($bid, $start);
 
         $grossProfit = $netRevenue - $cogs;
         $netProfit = $grossProfit - $expenses;
@@ -3106,10 +3112,8 @@ class Demo
          */
         $whole = ($channel === null || $channel === '') && $branchId === null;
 
-        $expenses = $whole
-            ? (float) Expense::where('business_id', $bid)->paid()
-                ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))->sum('amount')
-            : 0.0;
+        // المصروفاتُ التشغيليّة من الدفتر — الرقمُ نفسُه في اللوحة والمالية
+        $expenses = $whole ? Ledger::operatingExpenses($bid, $start) : 0.0;
 
         /*
          * «صافي الربح» ربحٌ لا فرقُ طرحٍ بين رقمين.

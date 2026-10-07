@@ -529,6 +529,85 @@ class Ledger
         return round($account->normal_side === 'credit' ? -$diff : $diff, 3);
     }
 
+    /** نوعُ حساب المصروف في الشجرة — وتحته تكلفةُ البضاعة وما سواها */
+    public const EXPENSE_TYPE = 'مصروف';
+
+    /**
+     * المصروفاتُ التشغيليّة — من الدفتر وحده، والمصدرُ الرسميّ لها في النظام كلّه.
+     *
+     * ═══ لمَ الدفترُ لا جدولُ المصروفات ═══
+     *
+     * جدولُ المصروفات سجلُّ ما كُتب من شاشته: لا رواتبَ فيه ولا إهلاك. فكان
+     * «صافي الربح» على اللوحة يطرح الإيجارَ ولا يطرح الرواتب — ربحٌ أعلى من
+     * الحقيقة بقدر مسيرة الشهر. والدفترُ يجمع كلَّ حدثٍ مرّةً واحدة بقيده:
+     * المصروفُ اليدويّ المدفوع (`ExpenseController::postToLedger`)، والراتبُ
+     * عند اعتماد المسيرة لا عند صرفها (الصرفُ يسدّد «رواتب مستحقّة» ولا يمسّ
+     * المصروف)، والإهلاكُ، وأيُّ حساب «مصروف» يُضاف غدًا بلا تعديلٍ هنا.
+     *
+     * ═══ وما لا يدخل ═══
+     *
+     *   - تكلفةُ البضاعة المباعة (`cogs`): بندٌ مستقلٌّ في قائمة الدخل، تُقرأ
+     *     من لقطة التكلفة يوم البيع (`Demo::cogsFor`).
+     *   - فاتورةُ المورّد للمخزون: مخزونٌ مقابلَ ذمّة، لا مصروف. والتكلفةُ
+     *     تظهر يوم يُباع في تكلفة البضاعة.
+     *   - المصروفُ غيرُ المدفوع: لا قيدَ له اليوم، فلا يُعدّ.
+     *
+     * ═══ والقراءة ═══
+     *
+     * قيدٌ مرحَّل لهذا النشاط، على حسابٍ نوعُه «مصروف» من حساباته، مدينٌ
+     * ناقصَ دائن. والقيدُ العكسيّ يُجمع مع أصله فيصيران صفرًا — لا يُستثنى
+     * أحدُهما. والفترةُ بتاريخ القيد `[start, end)` بالتاريخ وحده، والفرعُ
+     * فرعُ القيد إن طُلب.
+     */
+    public static function operatingExpenses(
+        int $businessId,
+        ?Carbon $start = null,
+        ?Carbon $end = null,
+        ?int $branchId = null,
+    ): float {
+        return round((float) self::operatingExpenseLines($businessId, $start, $end, $branchId)
+            ->sum(DB::raw('journal_lines.debit - journal_lines.credit')), 3);
+    }
+
+    /**
+     * سطورُ المصروفات التشغيليّة — الاستعلامُ الذي يقرؤه المجموعُ والتوزيعُ على الزمن.
+     *
+     * @return \Illuminate\Database\Query\Builder
+     */
+    public static function operatingExpenseLines(
+        int $businessId,
+        ?Carbon $start = null,
+        ?Carbon $end = null,
+        ?int $branchId = null,
+    ) {
+        return DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->where('journal_entries.business_id', $businessId)
+            ->where('accounts.business_id', $businessId)
+            ->where('journal_entries.posted', true)
+            ->where('accounts.type', self::EXPENSE_TYPE)
+            // `IS NULL OR <>`: حسابٌ بلا مفتاح (أنشأه التاجر) مصروفٌ تشغيليّ، و`<>` وحدها تُسقطه
+            ->where(fn ($q) => $q->whereNull('accounts.system_key')->orWhere('accounts.system_key', '<>', 'cogs'))
+            ->when($start, fn ($q) => $q->where('journal_entries.entry_date', '>=', $start->toDateString()))
+            ->when($end, fn ($q) => $q->where('journal_entries.entry_date', '<', $end->toDateString()))
+            ->when($branchId !== null, fn ($q) => $q->where('journal_entries.branch_id', $branchId));
+    }
+
+    /**
+     * المصروفاتُ التشغيليّة مقسومةً على الزمن — `[مفتاح الخانة => المبلغ]`.
+     *
+     * @param  string  $bucketSql  تعبيرُ الخانة على `journal_entries.entry_date`
+     * @return array<string, float>
+     */
+    public static function operatingExpensesByBucket(int $businessId, string $bucketSql, ?Carbon $start = null, ?Carbon $end = null): array
+    {
+        return self::operatingExpenseLines($businessId, $start, $end)
+            ->selectRaw("{$bucketSql} as bucket, SUM(journal_lines.debit - journal_lines.credit) as v")
+            ->groupBy('bucket')->get()
+            ->mapWithKeys(fn ($r) => [(string) $r->bucket => (float) $r->v])->all();
+    }
+
     public static function trialBalance(int $businessId, ?Carbon $through = null): array
     {
         $rows = Account::where('accounts.business_id', $businessId)

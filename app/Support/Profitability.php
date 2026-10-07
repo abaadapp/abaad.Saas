@@ -13,12 +13,13 @@ use Illuminate\Support\Carbon;
  *
  *   صافي الإيرادات = المبيعات − الضريبة
  *   مجمل الربح     = صافي الإيرادات − تكلفة البضاعة المباعة
- *   صافي الربح     = مجمل الربح − المصروفات المدفوعة
+ *   صافي الربح     = مجمل الربح − المصروفات التشغيليّة
  *   هامش صافي الربح = صافي الربح ÷ صافي الإيرادات × ١٠٠
  *
  * والمبيعاتُ ما بيع فعلًا (`Order::sold`)، والتكلفةُ من `Demo::cogsFor` —
- * لقطةُ التكلفة يوم البيع لا بطاقةُ اليوم — والمصروفُ ما خرج مالُه
- * (`Expense::paid`). فصافي ربح النشاط كلِّه هنا هو `Demo::reportSummary` حرفًا.
+ * لقطةُ التكلفة يوم البيع لا بطاقةُ اليوم — والمصروفُ للنشاط كلِّه من الدفتر
+ * (`Ledger::operatingExpenses`). فصافي ربح النشاط كلِّه هنا هو
+ * `Demo::reportSummary` حرفًا، وهو رقمُ اللوحة والمالية.
  *
  * ═══ ومصروفاتُ الفرع ما نُسب إليه وحده ═══
  *
@@ -44,8 +45,16 @@ final class Profitability
         $tax = (float) (clone $orders)->sum('tax');
         $cogs = Demo::cogsFor($bid, $start, $end, $branchId);
 
+        /*
+         * والنشاطُ كلُّه من الدفتر: المصروفاتُ التشغيليّة (`Ledger::operatingExpenses`)
+         * — اليدويُّ المدفوع والرواتبُ والإهلاك — لا جدولُ المصروفات وحده.
+         *
+         * والفرعُ على ما كان: المباشرُ وحصّتُه من الموزَّع. الدفترُ يحمل فرعًا
+         * واحدًا للقيد ولا حصصَ فيه (الموزَّعُ قيدُه على النشاط —
+         * `ExpenseScope::journalBranch`)، فقراءةُ الفرع منه تُسقط حصصَه.
+         */
         $expenses = $branchId === null
-            ? (float) self::expenses($bid, $start, $end)->sum('amount')
+            ? Ledger::operatingExpenses($bid, $start, $end)
             : self::attributed($bid, $start, $end, $branchId);
 
         // والعامُّ غيرُ الموزّع يُقال للفرع ولا يُطرح منه — وللنشاط هو من مصروفاته أصلًا
@@ -166,10 +175,13 @@ final class Profitability
 
         // ويومُ المصروف لا ساعةَ فيه: يقع في أوّل ساعات اليوم
         $expenseBucket = $unit === 'hour' ? "'00'" : Demo::bucketSql('spent_at', $unit);
-        $expenses = self::bucketSums(
-            ($branchId === null ? self::expenses($bid, $start) : self::expenses($bid, $start)->where('expenses.branch_id', $branchId))
-                ->selectRaw("{$expenseBucket} as bucket, SUM(amount) as v"),
-        );
+        // والنشاطُ كلُّه من الدفتر بتاريخ القيد — كجملته في `summary`، فيساوي مجموعُ الصفوف جملتَها
+        $expenses = $branchId === null
+            ? Ledger::operatingExpensesByBucket($bid, $unit === 'hour' ? "'00'" : Demo::bucketSql('journal_entries.entry_date', $unit), $start)
+            : self::bucketSums(
+                self::expenses($bid, $start)->where('expenses.branch_id', $branchId)
+                    ->selectRaw("{$expenseBucket} as bucket, SUM(amount) as v"),
+            );
 
         if ($branchId !== null) {
             foreach (self::bucketSums(self::shares($bid, $start, null, $branchId)->selectRaw("{$expenseBucket} as bucket, SUM(a.amount) as v")) as $key => $v) {
@@ -238,7 +250,10 @@ final class Profitability
     private static function firstMonth(int $bid, ?int $branchId): Carbon
     {
         $order = self::orders($bid, null, null, $branchId)->min('ordered_at');
-        $expense = self::expenses($bid, null)->min('spent_at');
+        // وأوّلُ مصروفٍ من مصدره: الدفترُ للنشاط كلِّه، والجدولُ للفرع
+        $expense = $branchId === null
+            ? Ledger::operatingExpenseLines($bid)->min('journal_entries.entry_date')
+            : self::expenses($bid, null)->min('spent_at');
 
         $dates = array_filter([$order, $expense]);
         $first = $dates === [] ? now() : Carbon::parse(min(array_map(fn ($d) => Carbon::parse($d)->toDateTimeString(), $dates)));

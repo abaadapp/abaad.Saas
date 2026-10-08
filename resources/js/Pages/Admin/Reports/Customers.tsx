@@ -125,6 +125,13 @@ export default function ReportsCustomers() {
                         {t('تُعرض أعلى :n عميلًا إنفاقًا في هذه الفترة.', { n: limit })}
                     </p>
                 )}
+
+                {/* والبطاقاتُ على الكلّ والجدولُ على الأعلى — يُقال حين يفترقان */}
+                {summary.customers > rows.length && (
+                    <p data-testid="customers-cards-note" className="mt-1 text-[12px] text-[#9ca3af]">
+                        {t('البطاقات أعلاه لجميع العملاء الذين اشتروا في هذه الفترة (:n عميلًا).', { n: summary.customers })}
+                    </p>
+                )}
             </div>
         </AdminLayout>
     );

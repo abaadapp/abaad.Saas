@@ -157,7 +157,7 @@ class ReportPageController extends Controller
 
     public function expenses(Request $request): Response
     {
-        return $this->report($request, 'expenses', 'Expenses', ['type']);
+        return $this->report($request, 'expenses', 'Expenses', ['type', 'status']);
     }
 
     public function bank(Request $request): Response

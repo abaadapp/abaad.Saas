@@ -28,11 +28,13 @@ interface Row {
 
 interface Props {
     rows: Row[];
-    summary: { items: number; quantity: number; value: number; below: number };
+    summary: { items: number; quantity: number; value: number; below: number; scope_name: string };
     filters: Record<string, string | null>;
     options: Record<string, Option[]>;
     truncated: { shown: number; total: number } | null;
-    rangeLabel: string;
+    /** «الرصيد الحالي» — رصيدُ اللحظة لا مدّة */
+    periodLabel: string;
+    note: string;
 }
 
 /**
@@ -42,7 +44,7 @@ interface Props {
  * لا يغيّر شيئًا أسوأ من غيابه — يظنّه التاجر عاملًا فيبني على فرقٍ لا وجود له.
  */
 export default function ReportsInventory() {
-    const { rows, summary, filters, options, truncated, rangeLabel, context } =
+    const { rows, summary, filters, options, truncated, periodLabel, note, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -65,10 +67,12 @@ export default function ReportsInventory() {
             title="المخزون والكميات"
             subtitle="رصيد كل صنف وحدّه الأدنى وقيمته وما بلغ حدّ إعادة الطلب"
             range={null}
-            rangeLabel={rangeLabel}
+            // النطاقُ لا الفرعُ المختار في الشريط: الأرقامُ للنشاط كلِّه
+            rangeLabel={`${summary.scope_name} · ${periodLabel}`}
             filters={filters}
             controls={controls}
             stats={stats}
+            note={note}
             truncated={truncated}
         >
             <Card className="overflow-hidden">

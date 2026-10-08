@@ -101,6 +101,27 @@ class ReportDownloadController extends Controller
     }
 
     /**
+     * سطورُ الرأس بعد الفترة: ما اختير من مرشّحات، ثمّ ملاحظةُ التقرير.
+     *
+     * والتقريرُ يقولها في بياناته (`activeFilters` و`note`) فتقرؤها الشاشةُ
+     * والصيغُ الثلاث من موضعٍ واحد — لا نصٌّ في الشاشة ونصٌّ آخر في الملفّ.
+     *
+     * @return list<string>
+     */
+    private function headLines(array $data): array
+    {
+        $lines = [];
+        foreach ($data['activeFilters'] ?? [] as $label => $value) {
+            $lines[] = $label.': '.__((string) $value);
+        }
+        if (! empty($data['note'])) {
+            $lines[] = $data['note'];
+        }
+
+        return $lines;
+    }
+
+    /**
      * هل يحتاج هذا التقرير ورقةً عرضيّة؟
      *
      * سبعةُ أعمدةٍ على عرض A4 القائم تعني ٢٦ مم للعمود الواحد — أي أنّ
@@ -219,8 +240,11 @@ class ReportDownloadController extends Controller
         $book = Workbook::blank($this->title($report))
             ->line(Workbook::businessName(), bold: true, size: 14)
             ->line($this->title($report).' — '.now()->format('Y-m-d H:i'))
-            ->line(__('الفترة').': '.$this->periodLabel($report, $filters, $data), bold: true)
-            ->gap();
+            ->line(__('الفترة').': '.$this->periodLabel($report, $filters, $data), bold: true);
+        foreach ($this->headLines($data) as $line) {
+            $book->line($line);
+        }
+        $book->gap();
 
         // المؤشّرات فوق الجدول: من يفتح الورقة يقرأ الخلاصة قبل الصفوف
         foreach ($this->cards($report, $data['summary'] ?? []) as $card) {
@@ -253,6 +277,9 @@ class ReportDownloadController extends Controller
 
         $lines = [];
         $lines[] = [$this->title($report), $this->periodLabel($report, $filters, $data)];
+        foreach ($this->headLines($data) as $line) {
+            $lines[] = [$line];
+        }
         $lines[] = [];
         foreach ($this->cards($report, $data['summary'] ?? []) as $card) {
             $lines[] = [$card['label'], $card['value']];
@@ -314,6 +341,8 @@ class ReportDownloadController extends Controller
             'rangeLabel' => $this->periodLabel($report, $filters, $data),
             'generatedAt' => now()->format('Y-m-d H:i'),
             'cards' => $this->cards($report, $data['summary'] ?? []),
+            'activeFilters' => $data['activeFilters'] ?? [],
+            'note' => $data['note'] ?? null,
             'headings' => ReportColumns::sectioned($report) ? [] : ReportColumns::headings($report),
             'rows' => ReportColumns::sectioned($report)
                 ? []

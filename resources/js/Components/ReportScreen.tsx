@@ -54,6 +54,8 @@ interface Props {
     controls?: Filter[];
     stats: Stat[];
     truncated?: { shown: number; total: number } | null;
+    /** كيف يُقرأ التقرير — جملةٌ من الخادم (`note`) تُكتب في ملفّاته أيضًا */
+    note?: string | null;
     children: ReactNode;
 }
 
@@ -70,7 +72,7 @@ interface Props {
  */
 export default function ReportScreen({
     title, subtitle, reportKey, range, rangeLabel,
-    filters, controls, stats, truncated, children,
+    filters, controls, stats, truncated, note, children,
     exportFeature = 'reports_advanced',
 }: Props) {
     const t = useTranslate();
@@ -189,6 +191,12 @@ export default function ReportScreen({
                 )}
 
                 <p className="mb-3 text-[12px] text-[#9ca3af]">{rangeLabel}</p>
+
+                {note && (
+                    <p data-testid="report-note" className="mb-3 text-[12px] text-[#6b7280]">
+                        {note}
+                    </p>
+                )}
 
                 {children}
             </div>

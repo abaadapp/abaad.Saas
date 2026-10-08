@@ -7478,5 +7478,16 @@
     "عدد الموردين": "Number of suppliers",
     "لا توجد نتائج": "No results",
     "لم تُحدَّد": "Not set",
-    "جاري التصدير…": "Exporting…"
+    "جاري التصدير…": "Exporting…",
+    "إجمالي المصروفات المسجلة": "Total recorded expenses",
+    "غير المدفوع": "Unpaid",
+    "البطاقات أعلاه لجميع العملاء الذين اشتروا في هذه الفترة (:n عميلًا).": "The cards above cover every customer who bought in this period (:n customers).",
+    "هذا التقرير يعرض سجلات المصروفات، أما المصروف التشغيلي المستخدم في صافي الربح فيُقرأ من دفتر الأستاذ.": "This report lists expense records. The operating expense used in net profit is read from the ledger.",
+    "يُحسب باستخدام تكلفة المنتج الحالية، لذلك هو تقدير وليس ربحًا محاسبيًا.": "Calculated with each product's current cost, so it is an estimate, not accounting profit.",
+    "النشاط بالكامل — كل الفروع": "Whole business — all branches",
+    "الكميات والقيمة على مستوى النشاط كلّه، ولا تتغيّر باختيار الفرع.": "Quantities and value are for the whole business and do not change with the selected branch.",
+    "ما بيع من كل منتج وإيراده وربحه التقديري في الفترة المختارة": "What each product sold, its revenue and estimated profit in the selected period",
+    "المقبوضات والمدفوعات وصافي الحركة المالية خلال الفترة المختارة.": "Receipts, payments and net cash movement in the selected period.",
+    "مبيعات كل موظف في الفترة المختارة وفرعه وحالته.": "Each employee's sales in the selected period, with their branch and status.",
+    "استخدام الكوبونات وقيمة الخصومات والإيراد المرتبط بها.": "Coupon usage, discount value and the revenue linked to them."
 }

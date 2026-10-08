@@ -61,7 +61,7 @@ class ReportColumns
         'products' => [
             ['name', 'المنتج', 'text'], ['category', 'القسم', 'text'], ['price', 'السعر', 'money'],
             ['quantity', 'الرصيد', 'number'], ['units', 'المُباع', 'number'],
-            ['revenue', 'الإيراد', 'money'], ['profit', 'الربح', 'money'],
+            ['revenue', 'الإيراد', 'money'], ['profit', 'الربح التقديري', 'money'],
         ],
         'inventory' => [
             ['name', 'الصنف', 'text'], ['sku', 'الرمز', 'text'], ['category', 'القسم', 'text'],
@@ -215,10 +215,10 @@ class ReportColumns
             ['scope_name', 'نطاق التقرير', 'text'],
         ],
         'expenses' => [
-            ['total', 'إجمالي المصروفات', 'money'],
+            ['total', 'إجمالي المصروفات المسجلة', 'money'],
+            ['paid', 'المدفوع', 'money'],
+            ['unpaid', 'غير المدفوع', 'money'],
             ['count', 'عدد المصروفات', 'number'],
-            ['average', 'متوسّط المصروف', 'money'],
-            ['topType', 'أعلى نوع', 'text', ['topTotal', 'money', ' · ']],
         ],
         'bank' => [
             ['lines', 'أسطر الكشف', 'number'],
@@ -260,6 +260,8 @@ class ReportColumns
             ['quantity', 'إجمالي الكمية', 'number'],
             ['value', 'قيمة المخزون', 'money'],
             ['below', 'تحت الحدّ', 'number'],
+            // والنطاقُ آخرًا كما في «صافي الربح»: الشاشةُ تكتبه في رأسها، والملفُّ يحمله
+            ['scope_name', 'نطاق التقرير', 'text'],
         ],
         'stocktake' => [
             ['operations', 'عمليات الجرد', 'number'],

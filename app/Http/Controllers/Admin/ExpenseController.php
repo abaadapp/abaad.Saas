@@ -11,9 +11,9 @@ use App\Support\Books;
 use App\Support\Demo;
 use App\Support\ExpenseScope;
 use App\Support\ListFilters;
+use App\Support\Lists\ExpensesList;
 use App\Support\Pagination;
 use App\Support\Permissions;
-use App\Support\Search;
 use App\Support\Sort;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,13 +30,7 @@ class ExpenseController extends Controller
      * والنوع نصٌّ في الصف نفسه فيُرتَّب، والمرفق لا — وجودُه من عدمه ليس
      * ترتيبًا.
      */
-    private const SORTS = [
-        'reference' => 'reference',
-        'due_date' => 'due_date',
-        'type' => 'type',
-        'amount' => 'amount',
-        'status' => 'status',
-    ];
+    private const SORTS = ExpensesList::SORTS;
 
     private function bid(): int
     {
@@ -46,42 +40,24 @@ class ExpenseController extends Controller
     public function index(Request $request)
     {
         $bid = $this->bid();
-        $q = Expense::where('business_id', $bid);
 
         /*
          * الشاشة شهريّة: المصروف يُقرأ بالشهر لا بالعمر كلّه.
          *
          * «كم أنفقتُ هذا الشهر؟» سؤالٌ يُسأل كلّ شهر، وقائمةٌ تعرض ثلاث سنوات
-         * دفعةً واحدة لا تجيبه — يُجمع منها بالعين فيُخطئ الجمع. و«كل الشهور»
-         * تبقى خيارًا لمن يبحث عن فاتورةٍ قديمة بعينها.
+         * دفعةً واحدة لا تجيبه. و«كل الشهور» تبقى خيارًا لمن يبحث عن فاتورةٍ
+         * قديمة بعينها.
          */
-        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
         $span = ListFilters::expenseSpan($request);
         $month = $span ? $span[0]->format('Y-m') : '';
-
-        if ($span) {
-            $q->whereBetween('spent_at', $span);
-        }
 
         // مجموع الشهر يُحسب على الشهر كلّه لا على صفحته: الترقيم يقصّ الصفوف
         // ولا يقصّ السؤال — «كم أنفقتُ هذا الشهر؟» جوابُه واحدٌ مهما تصفّحت
         $base = Expense::where('business_id', $bid)
             ->when($span, fn ($w) => $w->whereBetween('spent_at', $span));
 
-        if ($s = Search::term($request)) {
-            $like = Search::like();
-            $q->where(fn ($w) => $w->where('reference', $like, "%{$s}%")
-                ->orWhere('description', $like, "%{$s}%")
-                ->orWhere('type', $like, "%{$s}%"));
-        }
-        if ($type = $request->query('type')) {
-            $q->where('type', $type);
-        }
-        if ($status = $request->query('status')) {
-            $q->where('status', $status);
-        }
-
-        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('spent_at')->orderByDesc('id'));
+        // الاستعلامُ نفسُه الذي تقرؤه ملفّاتُ التصدير الثلاثة — انظر `ExpensesList`
+        $q = ExpensesList::query($request);
 
         $expenses = $q->with(['branch:id,name', 'allocations.branch:id,name'])
             ->paginate(Pagination::perPage($request, 10))->withQueryString();

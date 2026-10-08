@@ -3,17 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Exports\PdfRows;
+use App\Support\Exports\Workbook;
 use App\Support\Pdf;
 use App\Support\ReportColumns;
 use App\Support\ReportData;
 use App\Support\Reports;
 use Illuminate\Http\Request;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
  * تنزيل أيّ تقريرٍ بالصيغ الثلاث المعتمدة — إكسل وPDF وCSV.
@@ -59,7 +58,14 @@ class ReportDownloadController extends Controller
             $filters['range'] = Demo::range($request->query('range'));
         }
 
-        return [$filters, ReportData::$report(Demo::bid(), $filters)];
+        /*
+         * والملفُّ بلا سقف الشاشة — بصيغه الثلاث.
+         *
+         * الشاشةُ تعرض خمسمئةً وتقول إنّها مبتورة، والملفُّ وعدُه «كلُّ ما
+         * طابق». وورقةُ PDF كذلك: تحمل كلَّ ما طابق أو تُرفض بكلامٍ يُقرأ
+         * (`PdfRows`) — لا ورقةٌ ناقصةٌ تُقرأ على أنّها الكلّ.
+         */
+        return [$filters, ReportData::uncapped(fn () => ReportData::$report(Demo::bid(), $filters))];
     }
 
     /** عنوان التقرير كما في الفهرس — لا اسمٌ ثانٍ للشيء الواحد */
@@ -112,9 +118,18 @@ class ReportDownloadController extends Controller
         return count(ReportColumns::headings($report)) >= 7;
     }
 
-    private function filename(string $report, array $filters): string
+    /**
+     * `report-costs-2026-03-01-to-2026-03-31` حين تُرشَّح المدّةُ بحدّين، وإلّا باسم فترتها.
+     *
+     * وكان تقريرُ التكاليف يُسمّى `-month-` وهو مرشَّحٌ بتاريخين: `range` يُقحم عليه.
+     */
+    private function filename(string $report, array $filters, string $ext): string
     {
-        return 'report-'.$report.'-'.($filters['range'] ?? ($filters['from'] ?? 'all')).'-'.now()->format('Y-m-d');
+        $from = (string) ($filters['from'] ?? '');
+        $to = (string) ($filters['to'] ?? '');
+        $period = $from !== '' || $to !== '' ? [$from ?: 'start', 'to', $to ?: now()->format('Y-m-d')] : [$filters['range'] ?? 'all'];
+
+        return Workbook::filename('report-'.$report, [...$period, now()->format('Y-m-d')], $ext);
     }
 
     /**
@@ -145,62 +160,50 @@ class ReportDownloadController extends Controller
      */
     private function sectionedXlsx(string $report, array $filters, array $data)
     {
-        $spreadsheet = new Spreadsheet;
-        $business = Demo::business(auth()->user()->business_id ?? Demo::bid());
-        $first = true;
+        $book = null;
 
         foreach ($data['sections'] as $section => $rows) {
-            $sheet = $first ? $spreadsheet->getActiveSheet() : $spreadsheet->createSheet();
-            $first = false;
-            $sheet->setRightToLeft(true);
-            // اسمُ اللسان يُقصّ عند ٣١ محرفًا في إكسل، ويرفض بعض الرموز
-            $sheet->setTitle(mb_substr(__($section), 0, 30));
+            // اللسانُ الأوّل هو ما يُفتح عليه الملفّ — بترتيب الشاشة
+            $book = $book === null ? Workbook::blank(__($section)) : $book->newSheet(__($section));
 
-            $sheet->setCellValue('A1', $business['name'] ?? 'Abad POS');
-            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-            $sheet->setCellValue('A2', $this->title($report).' — '.__($section));
-            $sheet->setCellValue('A3', __('المدّة').': '.$this->periodLabel($report, $filters, $data));
-            $sheet->getStyle('A3')->getFont()->setBold(true);
+            $book->line(Workbook::businessName(), bold: true, size: 14)
+                ->line($this->title($report).' — '.__($section))
+                ->line(__('المدّة').': '.$this->periodLabel($report, $filters, $data), bold: true)
+                ->gap();
 
-            $columns = ReportColumns::sectionColumns($report, $section);
-            $row = 5;
-            $last = chr(ord('A') + max(0, count($columns) - 1));
-            $sheet->fromArray(array_column($columns, 'label'), null, 'A'.$row);
-            $sheet->getStyle("A{$row}:{$last}{$row}")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
-            $sheet->getStyle("A{$row}:{$last}{$row}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
-            $sheet->getStyle("A{$row}:{$last}{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-            $row++;
-
-            $start = $row;
+            $book->table($this->columns(ReportColumns::sectionColumns($report, $section)));
             foreach ($rows as $line) {
-                $sheet->fromArray(ReportColumns::sectionCells($report, $section, $line), null, 'A'.$row);
-                $row++;
+                $book->row(ReportColumns::sectionCells($report, $section, $line));
             }
-
-            foreach ($columns as $i => $column) {
-                if ($column['kind'] === 'money' && $row > $start) {
-                    $letter = chr(ord('A') + $i);
-                    $sheet->getStyle("{$letter}{$start}:{$letter}".($row - 1))
-                        ->getNumberFormat()->setFormatCode('#,##0.000');
-                }
-            }
-            foreach (range('A', $sheet->getHighestColumn()) as $col) {
-                $sheet->getColumnDimension($col)->setAutoSize(true);
-            }
+            $book->endTable();
         }
 
-        // اللسان الأوّل هو ما يُفتح عليه الملفّ لا آخرُ ما كُتب
-        $spreadsheet->setActiveSheetIndex(0);
+        $book ??= Workbook::blank($this->title($report))->endTable();
 
         Activity::log('report', 'صدّر '.$this->title($report).' (Excel)');
 
-        $writer = new Xlsx($spreadsheet);
+        return $book->download($this->filename($report, $filters, 'xlsx'));
+    }
 
-        return response()->streamDownload(function () use ($writer) {
-            $writer->save('php://output');
-        }, $this->filename($report, $filters).'.xlsx', [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
+    /**
+     * أعمدةُ التقرير بأنواع الورقة: المبلغُ بمنازل عملة النشاط، والعددُ رقم،
+     * وما سواهما رقمٌ إن بدا رقمًا ونصٌّ إن لم يبدُ — كما كُتب منذ كان.
+     *
+     * @param  list<array{key: string, label: string, kind: string}>  $columns
+     * @return array<string, string>
+     */
+    private function columns(array $columns): array
+    {
+        $out = [];
+        foreach ($columns as $column) {
+            $out[$column['label']] = match ($column['kind']) {
+                'money' => Workbook::MONEY,
+                'number' => Workbook::NUMBER,
+                default => Workbook::AUTO,
+            };
+        }
+
+        return $out;
     }
 
     /* ============================== إكسل ============================== */
@@ -213,67 +216,33 @@ class ReportDownloadController extends Controller
             return $this->sectionedXlsx($report, $filters, $data);
         }
 
-        $columns = ReportColumns::for($report);
-
-        $spreadsheet = new Spreadsheet;
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setRightToLeft(true);
-
-        $business = Demo::business(auth()->user()->business_id ?? Demo::bid());
-        $sheet->setCellValue('A1', $business['name'] ?? 'Abad POS');
-        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
-        $sheet->setCellValue('A2', $this->title($report).' — '.now()->format('Y-m-d H:i'));
-        $sheet->setCellValue('A3', __('الفترة').': '.$this->periodLabel($report, $filters, $data));
-        $sheet->getStyle('A3')->getFont()->setBold(true);
+        $book = Workbook::blank($this->title($report))
+            ->line(Workbook::businessName(), bold: true, size: 14)
+            ->line($this->title($report).' — '.now()->format('Y-m-d H:i'))
+            ->line(__('الفترة').': '.$this->periodLabel($report, $filters, $data), bold: true)
+            ->gap();
 
         // المؤشّرات فوق الجدول: من يفتح الورقة يقرأ الخلاصة قبل الصفوف
-        $row = 5;
         foreach ($this->cards($report, $data['summary'] ?? []) as $card) {
-            $sheet->setCellValue('A'.$row, $card['label']);
-            $sheet->setCellValue('B'.$row, $card['value']);
-            $row++;
+            $book->pair($card['label'], $card['value']);
         }
-        $row++;
-
-        $last = chr(ord('A') + max(0, count($columns) - 1));
-        $sheet->fromArray(ReportColumns::headings($report), null, 'A'.$row);
-        $sheet->getStyle("A{$row}:{$last}{$row}")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
-        $sheet->getStyle("A{$row}:{$last}{$row}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
-        $sheet->getStyle("A{$row}:{$last}{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-        $row++;
-
-        $first = $row;
-        foreach ($data['rows'] ?? [] as $line) {
-            $sheet->fromArray(ReportColumns::cells($report, $line), null, 'A'.$row);
-            $row++;
-        }
+        $book->gap();
 
         /*
-         * أعمدة المبالغ تُنسَّق أرقامًا لا نصوصًا.
+         * أعمدة المبالغ أرقامٌ لا نصوص.
          *
          * وهي مكتوبةٌ أرقامًا خامًا أصلًا (انظر ReportColumns::cells): من يفتح
          * الورقة أوّلُ ما يفعله أن يجمع عمودًا، ونصٌّ منسَّق لا يُجمع.
          */
-        foreach ($columns as $i => $column) {
-            if ($column['kind'] === 'money' && $row > $first) {
-                $letter = chr(ord('A') + $i);
-                $sheet->getStyle("{$letter}{$first}:{$letter}".($row - 1))
-                    ->getNumberFormat()->setFormatCode('#,##0.000');
-            }
+        $book->table($this->columns(ReportColumns::for($report)));
+        foreach ($data['rows'] ?? [] as $line) {
+            $book->row(ReportColumns::cells($report, $line));
         }
-        foreach (range('A', $sheet->getHighestColumn()) as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
+        $book->endTable();
 
         Activity::log('report', 'صدّر '.$this->title($report).' (Excel)');
 
-        $writer = new Xlsx($spreadsheet);
-
-        return response()->streamDownload(function () use ($writer) {
-            $writer->save('php://output');
-        }, $this->filename($report, $filters).'.xlsx', [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
+        return $book->download($this->filename($report, $filters, 'xlsx'));
     }
 
     /* =============================== CSV =============================== */
@@ -311,7 +280,7 @@ class ReportDownloadController extends Controller
 
         Activity::log('report', 'صدّر '.$this->title($report).' (CSV)');
 
-        return response()->streamDownload(function () use ($lines) {
+        return Workbook::signal(response()->streamDownload(function () use ($lines) {
             $out = fopen('php://output', 'w');
             // BOM: بلا هذه تفتح إكسل العربيةَ رموزًا
             fwrite($out, "\xEF\xBB\xBF");
@@ -319,7 +288,7 @@ class ReportDownloadController extends Controller
                 fputcsv($out, $line, escape: '');
             }
             fclose($out);
-        }, $this->filename($report, $filters).'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }, $this->filename($report, $filters, 'csv'), ['Content-Type' => 'text/csv; charset=UTF-8']));
     }
 
     /* =============================== PDF =============================== */
@@ -328,9 +297,19 @@ class ReportDownloadController extends Controller
     {
         [$filters, $data] = $this->load($request, $report);
 
+        $rows = ReportColumns::sectioned($report)
+            ? array_sum(array_map('count', $data['sections'] ?? []))
+            : count($data['rows'] ?? []);
+        if ($refused = PdfRows::refuse($rows)) {
+            return $refused;
+        }
+
         $html = view('pdf.report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
-            'branch' => Demo::scopeName(false),
+            // والفرعُ الذي رشّح به التقرير إن رشّح — لا «كل الفروع» وهو فرعٌ واحد
+            'branch' => ($b = $filters['branch_id'] ?? null)
+                ? (string) (Branch::where('business_id', Demo::bid())->whereKey((int) $b)->value('name') ?? Demo::scopeName(false))
+                : Demo::scopeName(false),
             'title' => $this->title($report),
             'rangeLabel' => $this->periodLabel($report, $filters, $data),
             'generatedAt' => now()->format('Y-m-d H:i'),
@@ -353,6 +332,6 @@ class ReportDownloadController extends Controller
          * كلمة. والقرار يُقرأ من عدد الأعمدة نفسه لا من قائمةٍ بأسماء
          * تقاريرَ تُنسى عند أوّل تقريرٍ يُضاف.
          */
-        return Pdf::a4($html, $this->filename($report, $filters), $this->wide($report));
+        return Pdf::a4($html, pathinfo($this->filename($report, $filters, 'pdf'), PATHINFO_FILENAME), $this->wide($report));
     }
 }

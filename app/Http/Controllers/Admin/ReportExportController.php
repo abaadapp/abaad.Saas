@@ -3,18 +3,25 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Expense;
 use App\Support\Activity;
 use App\Support\Demo;
-use App\Support\ListFilters;
-use App\Support\OrderStatus;
+use App\Support\Exports\Exports;
+use App\Support\Exports\Workbook;
+use App\Support\Lists\BusinessesList;
+use App\Support\Lists\CustomersList;
+use App\Support\Lists\ExpensesList;
+use App\Support\Lists\InventoryList;
+use App\Support\Lists\OrdersList;
+use App\Support\Lists\PlatformInvoicesList;
+use App\Support\Lists\ProductsList;
+use App\Support\Lists\SuppliersList;
+use App\Support\Lists\TransactionsList;
 use App\Support\Reports;
 use App\Support\SalesChannel;
-use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class ReportExportController extends Controller
 {
@@ -93,38 +100,19 @@ class ReportExportController extends Controller
         return [$sheet, $title, $head];
     }
 
-    /** رأس جدول مسطّح بخلفية سوداء — يُرجع رقم أول صف بيانات */
-    private function tableHead($sheet, array $cols): int
-    {
-        $r = $this->row;
-        $last = chr(ord('A') + count($cols) - 1);
-        $sheet->fromArray($cols, null, "A{$r}");
-        $sheet->getStyle("A{$r}:{$last}{$r}")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
-        $sheet->getStyle("A{$r}:{$last}{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
-        $sheet->getStyle("A{$r}:{$last}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-        $this->row++;
-
-        return $this->row;
-    }
-
-    /** إنهاء الورقة: تنسيق المبالغ + عرض تلقائي + تنزيل */
+    /** إنهاء الورقة: تنسيق المبالغ بمنازل عملة النشاط + عرض تلقائي لكلّ عمود + تنزيل */
     private function download(Spreadsheet $spreadsheet, $sheet, array $moneyCells, string $filename)
     {
-        // تنسيق الأرقام بثلاث خانات عشرية (يمنع ظهور 132.02000000000001)
+        // يمنع ظهور 132.02000000000001 — وبمنازل العملة لا بثلاثٍ لكلّ عملة
         foreach ($moneyCells as $cell) {
-            $sheet->getStyle($cell)->getNumberFormat()->setFormatCode('#,##0.000');
+            $sheet->getStyle($cell)->getNumberFormat()->setFormatCode(Workbook::moneyFormat());
         }
-        foreach (range('A', $sheet->getHighestColumn()) as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
+        $highest = Coordinate::columnIndexFromString($sheet->getHighestColumn());
+        for ($i = 1; $i <= $highest; $i++) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
         }
 
-        $writer = new Xlsx($spreadsheet);
-
-        return response()->streamDownload(function () use ($writer) {
-            $writer->save('php://output');
-        }, $filename, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
+        return Workbook::stream($spreadsheet, $filename);
     }
 
     /** تصدير المنتجات كملف Excel حقيقي (xlsx) */
@@ -238,321 +226,94 @@ class ReportExportController extends Controller
         return $this->download($spreadsheet, $sheet, $money, 'sales-report-'.$range.'-'.now()->format('Y-m-d').'.xlsx');
     }
 
+    /** المنتجات — ما في الشاشة بمرشِّحاتها وترتيبها (`ProductsList`) */
     public function productsXlsx()
     {
-        $spreadsheet = new Spreadsheet;
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المنتجات'));
-
-        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), $this->moneyHead('السعر'), $this->moneyHead('التكلفة'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')]);
-        $money = [];
-        foreach (Demo::products(null, request()) as $p) {
-            $r = $this->row;
-            $sheet->setCellValue("A{$r}", (int) $p['id']);
-            $sheet->setCellValue("B{$r}", $p['name']);
-            $sheet->setCellValue("C{$r}", $p['cat']);
-            $sheet->setCellValueExplicit("D{$r}", (string) $p['sku'], DataType::TYPE_STRING);
-            $sheet->setCellValueExplicit("E{$r}", (string) $p['barcode'], DataType::TYPE_STRING);
-            $sheet->setCellValue("F{$r}", round((float) $p['price'], 3));
-            $sheet->setCellValue("G{$r}", round((float) $p['cost'], 3));
-            $sheet->setCellValue("H{$r}", (int) $p['qty']);
-            $sheet->setCellValue("I{$r}", (int) $p['alert']);
-            $sheet->setCellValue("J{$r}", $p['stock_status']);
-            $sheet->setCellValue("K{$r}", $p['active'] ? __('مفعّل') : __('معطّل'));
-            $money[] = "F{$r}";
-            $money[] = "G{$r}";
-            $this->row++;
-        }
-
-        // تجميد الترويسة حتى تبقى أسماء الأعمدة ظاهرة عند التمرير
-        $sheet->freezePane("A{$firstDataRow}");
-
         Activity::log('report', 'صدّر المنتجات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'products-'.now()->format('Y-m-d').'.xlsx');
+        return Exports::xlsx(ProductsList::export(request()));
     }
 
-    /** تصدير جرد المخزون كملف Excel حقيقي (xlsx) */
+    /**
+     * العملاء — تقريرُ الشاشة بمرشِّحاتها وترتيبها (`CustomersList`).
+     *
+     * وملفُّ الاستيراد بابُه `customers.export.xlsx`: أعمدةُ الاستيراد بلا ترويسة.
+     */
+    public function customersXlsx()
+    {
+        Activity::log('report', 'صدّر تقرير العملاء (Excel)');
+
+        return Exports::xlsx(CustomersList::export(request()));
+    }
+
+    /** جرد المخزون — بحثُ الشاشة وحالتُها وترتيبُها، للفرع المختار (`InventoryList`) */
     public function inventoryXlsx()
     {
-        $spreadsheet = new Spreadsheet;
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('جرد المخزون'), null, perBranch: true);
-
-        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), $this->moneyHead('القيمة'), __('حالة المخزون'), __('آخر تحديث')]);
-        $money = [];
-
-        foreach (Demo::inventory() as $i) {
-            $r = $this->row;
-            $sheet->setCellValue("A{$r}", (int) $i['id']);
-            $sheet->setCellValue("B{$r}", $i['name']);
-            $sheet->setCellValueExplicit("C{$r}", (string) $i['sku'], DataType::TYPE_STRING);
-            $sheet->setCellValue("D{$r}", (int) $i['qty']);
-            $sheet->setCellValue("E{$r}", (int) $i['min']);
-            $sheet->setCellValue("F{$r}", round((float) $i['value'], 3));
-            $sheet->setCellValue("G{$r}", $i['status']);
-            $sheet->setCellValue("H{$r}", $i['updated']);
-            $money[] = "F{$r}";
-
-            // إبراز الأصناف المنخفضة أو المنتهية بلون تحذيري
-            if ((int) $i['qty'] <= 0) {
-                $sheet->getStyle("A{$r}:H{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDE8E8');
-            } elseif ((int) $i['qty'] <= (int) $i['min']) {
-                $sheet->getStyle("A{$r}:H{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEF3E2');
-            }
-            $this->row++;
-        }
-
-        $sheet->freezePane("A{$firstDataRow}");
-
         Activity::log('report', 'صدّر جرد المخزون (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'inventory-'.now()->format('Y-m-d').'.xlsx');
+        return Exports::xlsx(InventoryList::export(request()));
     }
 
-    /** تصدير المعاملات المالية كملف Excel حقيقي (xlsx) */
+    /** المورّدون — تقريرُ الشاشة ببحثها وترتيبها (`SuppliersList`) */
+    public function suppliersXlsx()
+    {
+        Activity::log('report', 'صدّر تقرير الموردين (Excel)');
+
+        return Exports::xlsx(SuppliersList::export(request()));
+    }
+
+    /**
+     * الحركةُ الماليّة — بحثُ الشاشة ونوعُها ومن/إلى وترتيبُها، كلُّها لا صفحتُها.
+     *
+     * كانت تقرأ `range` وحده — وليس في الشاشة — فتخرج «هذا الشهر» مهما رشّح
+     * التاجر. والمجاميعُ (الدخلُ والمصروفُ والتحويلاتُ) على ما رُشّح كلِّه.
+     */
     public function financeXlsx()
     {
-        /*
-         * نصفا الملفّ على فترةٍ واحدة.
-         *
-         * كانت المؤشّرات تُقرأ بلا فترةٍ فتسقط على الشهر، والجدولُ بلا فترةٍ
-         * فيسقط على كلّ الفترات — فيقرأ التاجر «الدخل ١٠٠» فوق جدولٍ مجموعُه
-         * ألف، ولا سطر في الورقة يقول إنهما لا يقيسان الشيء نفسه. ولم يكن
-         * الملفّ يقبل فترةً أصلًا: يخرج بفترته الخاصّة مهما اختار.
-         */
-        $range = $this->range();
-
-        $spreadsheet = new Spreadsheet;
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('المعاملات المالية'), $range);
-        $money = [];
-
-        // المؤشرات المالية
-        $title(__('المؤشرات المالية'));
-        $head([__('المؤشر'), __('القيمة'), __('التغيّر')]);
-        foreach (Demo::financeStats($range) as $st) {
-            $sheet->fromArray([$st['label'], $st['value'], $st['trend'] ?? '—'], null, 'A'.$this->row);
-            $this->row++;
-        }
-        $this->row++;
-
-        // المعاملات
-        // و«الحالة» عمودٌ في الملفّ: الملغاة تُوسم كما تُوسم في الشاشة
-        $firstDataRow = $this->tableHead($sheet, [__('المرجع'), __('التاريخ'), __('البيان'), __('الوسيلة'), __('النوع'), $this->moneyHead('المبلغ'), __('الموظف'), __('الحالة')]);
-        // بلا سقف: هذا هو الباب إلى الدفتر كاملًا (انظر Demo::transactions)
-        foreach (Demo::transactions($range, null) as $t) {
-            $r = $this->row;
-            $sheet->setCellValueExplicit("A{$r}", (string) $t['id'], DataType::TYPE_STRING);
-            $sheet->setCellValue("B{$r}", $t['date']);
-            $sheet->setCellValue("C{$r}", $t['description']);
-            $sheet->setCellValue("D{$r}", $t['method']);
-            $sheet->setCellValue("E{$r}", $t['type']);
-            $sheet->setCellValue("F{$r}", round((float) $t['amount'], 3));
-            $sheet->setCellValue("G{$r}", $t['employee']);
-            $sheet->setCellValue("H{$r}", $t['cancelled'] ? __('ملغاة') : '—');
-            $money[] = "F{$r}";
-
-            // والملغاة أوّلًا: صفٌّ لا يُجمع لا يُقرأ كصفٍّ يُجمع
-            if ($t['cancelled']) {
-                $sheet->getStyle("A{$r}:H{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FEF3C7');
-            } elseif ($t['type'] !== 'دخل') {
-                // تمييز المصروفات بالأحمر الفاتح لتُقرأ بنظرة
-                $sheet->getStyle("A{$r}:H{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('FDF0F0');
-            }
-            $this->row++;
-        }
-        $sheet->freezePane("A{$firstDataRow}");
-
         Activity::log('report', 'صدّر المعاملات المالية (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'finance-'.now()->format('Y-m-d').'.xlsx');
+        return Exports::xlsx(TransactionsList::export(request()));
     }
 
-    /** تصدير قائمة الطلبات كملف Excel حقيقي (xlsx) */
+    /**
+     * قائمةُ الطلبات — ما في الشاشة بمرشِّحاتها وترتيبها، كلُّه لا صفحتُه.
+     *
+     * الصفوفُ والمجاميعُ من `OrdersList` الذي ترقّمه الشاشة نفسُه.
+     */
     public function ordersXlsx()
     {
-        $spreadsheet = new Spreadsheet;
-        [$sheet, $title, $head] = $this->sheet($spreadsheet, __('الطلبات'), null, perBranch: true);
-        $money = [];
-
-        $orders = Demo::orders(request());
-
-        /*
-         * ملخّصٌ يقول ما تقوله الشاشة.
-         *
-         * والملغى خارج المجموع وداخل العدّ: الشاشة تعرضه في الجدول وتحسب
-         * إجماليّها بلا قيمته — وجمعُه هنا كان سيجعل الملفّ يقول مبيعاتٍ لم
-         * تقع، ويخالف الرقم الذي قرأه التاجر قبل أن يضغط «تصدير».
-         */
-        $cancelled = array_values(array_filter($orders, fn ($o) => $o['status'] === OrderStatus::CANCELLED));
-
-        $title(__('ملخّص الطلبات'));
-        $head([__('عدد الطلبات'), $this->moneyHead('إجمالي القيمة'), __('منها ملغاة')]);
-        $sheet->setCellValue('A'.$this->row, count($orders));
-        $sheet->setCellValue('B'.$this->row, round(array_sum(array_map(
-            fn ($o) => $o['status'] === OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
-            $orders,
-        )), 3));
-        $sheet->setCellValue('C'.$this->row, count($cancelled));
-        $money[] = 'B'.$this->row;
-        $this->row += 2;
-
-        // جدول الطلبات
-        $firstDataRow = $this->tableHead($sheet, [
-            __('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'),
-            __('عدد الأصناف'), $this->moneyHead('الإجمالي'), __('الدفع'), __('الحالة'), __('التاريخ'),
-            __('موعد التسليم'), __('نوع التنفيذ'),
-        ]);
-        foreach ($orders as $o) {
-            $r = $this->row;
-            $sheet->setCellValueExplicit("A{$r}", (string) $o['id'], DataType::TYPE_STRING);
-            $sheet->setCellValue("B{$r}", $o['customer']);
-            $sheet->setCellValue("C{$r}", $o['employee']);
-            $sheet->setCellValue("D{$r}", $o['branch']);
-            $sheet->setCellValue("E{$r}", (int) $o['items_count']);
-            $sheet->setCellValue("F{$r}", round((float) $o['total'], 3));
-            $sheet->setCellValue("G{$r}", $o['payment']);
-            $sheet->setCellValue("H{$r}", $o['status']);
-            $sheet->setCellValue("I{$r}", $o['date']);
-            // والموعدُ ونوعُ التنفيذ: عليهما تقوم مُرشِّحاتُ الشاشة، والملفّ يتبعها
-            $sheet->setCellValue("J{$r}", $o['scheduled']);
-            $sheet->setCellValue("K{$r}", $o['fulfillment']);
-            $money[] = "F{$r}";
-            $this->row++;
-        }
-        $sheet->freezePane("A{$firstDataRow}");
-
         Activity::log('report', 'صدّر قائمة الطلبات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'orders-'.now()->format('Y-m-d').'.xlsx');
+        return Exports::xlsx(OrdersList::export(request()));
     }
 
-    /** تصدير المصروفات كملف Excel */
     /**
-     * المصروفاتُ المسجّلة لشهر الشاشة — كلُّها لا صفحتُها.
+     * المصروفاتُ المسجّلة — شهرُ الشاشة ومرشِّحاتُها وترتيبُها، كلُّها لا صفحتُها.
      *
-     * الشهرُ شهرُ الصفحة نفسُها (`ListFilters::expenseSpan`): زرُّ التصدير يحمل
-     * ما في الرابط (`ExportMenu`)، فمن يعرض ٢٠٢٦-١٠ يُنزّل أكتوبر وحده. و«كل
-     * الشهور» يُنزّل العمرَ كلَّه. ولا ترقيم: الترقيمُ يقصّ الصفوف ولا يقصّ
-     * السؤال — «كم سُجّل هذا الشهر؟».
-     *
-     * وفي آخرها ما في أسفل الشاشة: المدفوعُ، والمستحقُّ إن وُجد، والعدد.
+     * الشهرُ شهرُ الصفحة (`ListFilters::expenseSpan`): زرُّ التصدير يحمل ما في
+     * الرابط، فمن يعرض ٢٠٢٦-١٠ يُنزّل أكتوبر وحده، و«كل الشهور» العمرَ كلَّه.
+     * وفي آخرها المدفوعُ والمستحقُّ والعدد — انظر `ExpensesList::export`.
      */
     public function expensesXlsx()
     {
-        $bid = auth()->user()->business_id ?? Demo::bid();
-        $span = ListFilters::expenseSpan(request());
-        $month = $span ? $span[0]->format('Y-m') : null;
+        Activity::log('report', 'صدّر المصروفات المسجلة (Excel) — '.(ExpensesList::month(request()) ?? 'كل الشهور'));
 
-        $rows = ListFilters::expenses(
-            Expense::where('business_id', $bid)->orderBy('spent_at')->orderBy('id'),
-            request(),
-        )->get();
-
-        $spreadsheet = new Spreadsheet;
-        [$sheet] = $this->sheet($spreadsheet, __('المصروفات المسجلة'));
-        $sheet->setCellValue('A4', __('الشهر').': '.($month ?? __('كل الشهور')));
-        $sheet->getStyle('A4')->getFont()->setBold(true);
-        $this->row = 6;
-
-        $firstDataRow = $this->tableHead($sheet, [
-            __('التاريخ'), __('النوع'), __('الوصف'), $this->moneyHead('المبلغ'), __('الحالة'), __('الطريقة'), __('الموظف'),
-        ]);
-        $money = [];
-
-        foreach ($rows as $e) {
-            $r = $this->row;
-            $sheet->setCellValue("A{$r}", optional($e->spent_at)->format('Y-m-d') ?? '—');
-            $sheet->setCellValue("B{$r}", $e->type);
-            $sheet->setCellValue("C{$r}", $e->description);
-            $sheet->setCellValue("D{$r}", round((float) $e->amount, 3));
-            $sheet->setCellValue("E{$r}", __($e->status));
-            $sheet->setCellValue("F{$r}", $e->method);
-            $sheet->setCellValue("G{$r}", $e->employee_name);
-            $money[] = "D{$r}";
-            $this->row++;
-        }
-
-        $sheet->freezePane("A{$firstDataRow}");
-
-        // والجملةُ من الصفوف نفسِها — لا استعلامٌ ثانٍ يفترق عنها
-        $paid = round((float) $rows->where('status', Expense::PAID)->sum('amount'), 3);
-        $unpaid = round((float) $rows->where('status', '!=', Expense::PAID)->sum('amount'), 3);
-
-        $this->row++;
-        $totals = [[__('إجمالي المصروفات المسجلة والمدفوعة'), $paid, true]];
-        if ($unpaid > 0) {
-            $totals[] = [__('إجمالي غير المدفوع'), $unpaid, true];
-        }
-        $totals[] = [__('عدد السجلات'), $rows->count(), false];
-
-        foreach ($totals as [$label, $value, $isMoney]) {
-            $r = $this->row;
-            $sheet->setCellValue("C{$r}", $label);
-            $sheet->setCellValue("D{$r}", $value);
-            $sheet->getStyle("C{$r}:D{$r}")->getFont()->setBold(true);
-            if ($isMoney) {
-                $money[] = "D{$r}";
-            }
-            $this->row++;
-        }
-
-        Activity::log('report', 'صدّر المصروفات المسجلة (Excel) — '.($month ?? 'كل الشهور'));
-
-        return $this->download($spreadsheet, $sheet, $money, 'expenses-'.($month ?? 'all').'.xlsx');
+        return Exports::xlsx(ExpensesList::export(request()));
     }
 
-    /** تصدير الشركات كملف Excel (لوحة المنصة) */
+    /** شركاتُ المنصّة — بحثُ الشاشة ونوعُها وباقتُها وحالتُها وترتيبُها (`BusinessesList`) */
     public function businessesXlsx()
     {
-        $spreadsheet = new Spreadsheet;
-        [$sheet] = $this->sheet($spreadsheet, __('الشركات'));
-        $firstDataRow = $this->tableHead($sheet, [__('المعرّف'), __('الشركة'), __('النوع'), __('المالك'), __('الهاتف'), __('البريد'), __('المدينة'), __('الباقة'), __('الحالة'), __('الفروع'), __('التسجيل')]);
-        foreach (Demo::businesses() as $b) {
-            $r = $this->row;
-            $sheet->setCellValue("A{$r}", (int) $b['id']);
-            $sheet->setCellValue("B{$r}", $b['name']);
-            $sheet->setCellValue("C{$r}", $b['type']);
-            $sheet->setCellValue("D{$r}", $b['owner']);
-            $sheet->setCellValueExplicit("E{$r}", (string) $b['phone'], DataType::TYPE_STRING);
-            $sheet->setCellValue("F{$r}", $b['email']);
-            $sheet->setCellValue("G{$r}", $b['city']);
-            $sheet->setCellValue("H{$r}", $b['plan']);
-            $sheet->setCellValue("I{$r}", $b['status']);
-            $sheet->setCellValue("J{$r}", (int) $b['branches']);
-            $sheet->setCellValue("K{$r}", $b['registered']);
-            $this->row++;
-        }
-        $sheet->freezePane("A{$firstDataRow}");
         Activity::log('report', 'صدّر الشركات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, [], 'businesses-'.now()->format('Y-m-d').'.xlsx');
+        return Exports::xlsx(BusinessesList::export(request()));
     }
 
-    /** تصدير فواتير الاشتراكات كملف Excel (لوحة المنصة) */
+    /** فواتيرُ الاشتراكات — بحثُ الشاشة وحالتُها وترتيبُها (`PlatformInvoicesList`) */
     public function invoicesXlsx()
     {
-        $spreadsheet = new Spreadsheet;
-        [$sheet] = $this->sheet($spreadsheet, __('فواتير الاشتراكات'));
-        /*
-         * وهذه ورقةُ المنصّة لا ورقةُ متجر: أبعادُ بائعةٌ والمحلُّ مشترٍ،
-         * والاشتراكُ يُفوتَر بالريال العمانيّ دائمًا — لا بعملة المتجر.
-         * فالرمزُ هنا مثبَّتٌ عن قصد، كما في `pdf/platform-invoice`.
-         */
-        $firstDataRow = $this->tableHead($sheet, [__('رقم الفاتورة'), __('الشركة'), __('الباقة'), __('المبلغ (ر.ع)'), __('التاريخ'), __('الحالة')]);
-        $money = [];
-        foreach (Demo::invoices() as $i) {
-            $r = $this->row;
-            $sheet->setCellValueExplicit("A{$r}", (string) $i['number'], DataType::TYPE_STRING);
-            $sheet->setCellValue("B{$r}", $i['business']);
-            $sheet->setCellValue("C{$r}", $i['plan']);
-            $sheet->setCellValue("D{$r}", round((float) $i['amount'], 3));
-            $sheet->setCellValue("E{$r}", $i['date']);
-            $sheet->setCellValue("F{$r}", $i['status']);
-            $money[] = "D{$r}";
-            $this->row++;
-        }
-        $sheet->freezePane("A{$firstDataRow}");
         Activity::log('report', 'صدّر فواتير الاشتراكات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'invoices-'.now()->format('Y-m-d').'.xlsx');
+        return Exports::xlsx(PlatformInvoicesList::export(request()));
     }
 }

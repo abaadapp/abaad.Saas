@@ -17,9 +17,16 @@
                 </td>
             <td>
                 
-                    <div class="lbl">{{ __('إجمالي المصروفات') }}</div>
+                    {{-- المدفوعُ وحده هو المصروف، والمستحقُّ بجواره — كما في الشاشة وملفّ Excel --}}
+                    <div class="lbl">{{ __('إجمالي المصروفات المسجلة والمدفوعة') }}</div>
                     <div class="val">{{ \App\Support\Demo::moneyBase($total) }}</div>
                 </td>
+            @if (($unpaid ?? 0) > 0)
+                <td>
+                    <div class="lbl">{{ __('إجمالي غير المدفوع') }}</div>
+                    <div class="val">{{ \App\Support\Demo::moneyBase($unpaid) }}</div>
+                </td>
+            @endif
         </tr>
     </table>
 
@@ -30,6 +37,7 @@
             <th>{{ __('النوع') }}</th>
             <th>{{ __('الوصف') }}</th>
             <th>{{ __('المبلغ') }}</th>
+            <th>{{ __('الحالة') }}</th>
             <th>{{ __('الطريقة') }}</th>
             <th>{{ __('الموظف') }}</th>
         </tr>
@@ -39,6 +47,7 @@
                 <td>{{ __($e['type']) }}</td>
                 <td>{{ $e['description'] }}</td>
                 <td>{{ \App\Support\Demo::moneyBase($e['amount']) }}</td>
+                <td>{{ __($e['status']) }}</td>
                 <td>{{ __($e['method']) }}</td>
                 <td>{{ $e['employee'] }}</td>
             </tr>

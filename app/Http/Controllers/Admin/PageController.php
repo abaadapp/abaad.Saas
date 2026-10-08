@@ -22,13 +22,15 @@ use App\Support\Demo;
 use App\Support\DocumentTemplates;
 use App\Support\Emojis;
 use App\Support\InvoiceBranding;
+use App\Support\Lists\InMemory;
+use App\Support\Lists\InventoryList;
+use App\Support\Lists\SuppliersList;
 use App\Support\Mailer;
 use App\Support\MarketingSettings;
 use App\Support\NotesAndEdits;
-use App\Support\Store\CheckoutFields;
-use App\Support\Store\StorePage;
 use App\Support\OrderNotice;
 use App\Support\OrderStatus;
+use App\Support\Pagination;
 use App\Support\Permissions;
 use App\Support\PosAddonsLayout;
 use App\Support\ProductImages;
@@ -38,7 +40,10 @@ use App\Support\PurchaseUnits;
 use App\Support\Reports;
 use App\Support\ReviewInvite;
 use App\Support\Roles;
+use App\Support\Search;
 use App\Support\ShopIdentity;
+use App\Support\Store\CheckoutFields;
+use App\Support\Store\StorePage;
 use App\Support\Storefront;
 use App\Support\Website\Commerce;
 use Carbon\Carbon;
@@ -607,15 +612,28 @@ class PageController extends Controller
 
     public function inventoryIndex(): Response
     {
-        // الحالات المسموحة فقط — أي قيمة أخرى في الرابط تُهمَل بدل أن تُمرَّر
-        $stock = request('stock');
-        $allowed = ['متوفر', 'منخفض', 'نفد المخزون'];
+        $request = request();
+        $all = Demo::inventory();
+        // البحثُ والحالةُ والترتيبُ على الخادم — والتصديرُ يقرأ الصفوفَ نفسَها كلَّها
+        $page = InMemory::page(InventoryList::rows($request, $all), $request, 25);
 
         return Inertia::render('Admin/Inventory/Index', [
-            'inventory' => Demo::inventory(),
+            'inventory' => $page->items(),
+            'pagination' => Pagination::meta($page),
+            'filters' => [
+                'q' => Search::term($request),
+                'stock' => InventoryList::status($request),
+                'sort' => in_array($request->query('sort'), InventoryList::SORTS, true) ? $request->query('sort') : null,
+                'dir' => $request->query('dir') === 'asc' ? 'asc' : 'desc',
+            ],
+            'sorts' => InventoryList::SORTS,
+            // عددُ الأصناف وقيمتُها في الترويسة للمخزن كلِّه لا لما رُشّح — كما كانا
+            'summary' => [
+                'count' => count($all),
+                'value' => round(array_sum(array_column($all, 'value')), 3),
+            ],
             'branches' => Demo::branches(),
             'currentBranchId' => Demo::currentBranchId(),
-            'stockFilter' => in_array($stock, $allowed, true) ? $stock : null,
         ]);
     }
 
@@ -623,8 +641,25 @@ class PageController extends Controller
 
     public function suppliersIndex(): Response
     {
+        $request = request();
+        $all = Demo::suppliers();
+        $page = InMemory::page(SuppliersList::rows($request, $all), $request, 25);
+
         return Inertia::render('Admin/Suppliers/Index', [
-            'suppliers' => Demo::suppliers(),
+            'suppliers' => $page->items(),
+            'pagination' => Pagination::meta($page),
+            'filters' => [
+                'q' => Search::term($request),
+                'sort' => in_array($request->query('sort'), SuppliersList::SORTS, true) ? $request->query('sort') : null,
+                'dir' => $request->query('dir') === 'asc' ? 'asc' : 'desc',
+            ],
+            'sorts' => SuppliersList::SORTS,
+            // البطاقاتُ للمورّدين كلِّهم لا لصفحةٍ منهم
+            'summary' => [
+                'count' => count($all),
+                'withOrders' => count(array_filter($all, fn ($s) => $s['orders_count'] > 0)),
+                'orders' => array_sum(array_column($all, 'orders_count')),
+            ],
         ]);
     }
 

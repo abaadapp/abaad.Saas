@@ -12,6 +12,7 @@ use App\Models\Product;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Exports\PdfRows;
 use App\Support\ImportSession;
 use App\Support\StockLedger;
 use Illuminate\Http\Request;
@@ -134,6 +135,9 @@ class ProductImportExportController extends Controller
     public function exportPdf()
     {
         $bid = $this->bid();
+        if ($refused = PdfRows::refuse(Product::where('business_id', $bid)->count())) {
+            return $refused;
+        }
         $products = Product::where('business_id', $bid)->with('category')->orderBy('id')->get();
 
         $html = view('pdf.products-list', [

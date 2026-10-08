@@ -70,6 +70,21 @@ class ReportsTellTheirScopeTest extends TestCase
         return $sheet;
     }
 
+    /** صفُّ رأس الجدول — الذي فيه `$label` — وأعمدتُه بعناوينها */
+    private function headerOf($sheet, string $label): array
+    {
+        foreach ($sheet->getRowIterator() as $r) {
+            $cols = [];
+            foreach ($r->getCellIterator() as $cell) {
+                $cols[(string) $cell->getValue()] = $cell->getColumn();
+            }
+            if (isset($cols[$label])) {
+                return [$r->getRowIndex(), $cols];
+            }
+        }
+        $this->fail("لا رأسَ فيه «{$label}»");
+    }
+
     private function branchLine(TestResponse $res): string
     {
         return (string) $this->sheetOf($res)->getCell('A3')->getValue();
@@ -163,9 +178,12 @@ class ReportsTellTheirScopeTest extends TestCase
             ->withSession(['current_branch' => $this->muscat->id])
             ->get(route('admin.inventory.xlsx')));
 
-        // الكمية في D والقيمة في F على الصف الأول من البيانات
-        $this->assertSame(10, (int) $sheet->getCell('D6')->getValue());
-        $this->assertSame(100.0, (float) $sheet->getCell('F6')->getValue());
+        // الكمية والقيمة بعنوانيهما لا بموضعيهما: عمودُ المعرّف خرج من الملفّ
+        // (عمودٌ تقنيّ لا يقرؤه التاجر)، فتغيّرت المواضع ولم تتغيّر القيمتان
+        [$headRow, $cols] = $this->headerOf($sheet, 'الكمية الحالية');
+        $row = $headRow + 1;
+        $this->assertSame(10, (int) $sheet->getCell($cols['الكمية الحالية'].$row)->getValue());
+        $this->assertSame(100.0, (float) $sheet->getCell($cols['القيمة (OMR)'].$row)->getValue());
     }
 
     /* ==================== الدفتر كاملًا ==================== */

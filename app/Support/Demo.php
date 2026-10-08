@@ -655,7 +655,7 @@ class Demo
      *
      * @return array<string, mixed>
      */
-    private static function businessRow(Business $b): array
+    public static function businessRow(Business $b): array
     {
         return [
             'id' => $b->id,

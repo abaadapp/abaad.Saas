@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\Activity;
 use App\Support\Demo;
-use App\Support\FlowerOrder;
+use App\Support\Lists\OrdersList;
 use App\Support\OrderCorrection;
 use App\Support\SalesChannel;
 use Illuminate\Http\Request;
@@ -14,31 +14,15 @@ use RuntimeException;
 
 class OrderController extends Controller
 {
-    /**
-     * ما يُرتَّب في قائمة المبيعات.
-     *
-     * و«رقم الطلب» يُرتَّب بالرقم المتسلسل لا بنصّه: النصّ يرتّب #١٠ قبل #٩.
-     */
-    private const SORTS = [
-        'id' => 'number',
-        'customer' => 'customer_name',
-        'employee' => 'employee_name',
-        'items_count' => 'items_count',
-        'total' => 'total',
-        'payment' => 'payment_method',
-        'date' => 'ordered_at',
-        'scheduled' => 'scheduled_for',
-    ];
+    /** ما يُرتَّب في قائمة المبيعات — مصدرُه `OrdersList` الذي يقرؤه التصدير */
+    private const SORTS = OrdersList::SORTS;
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request)
     {
-        $q = Order::where('business_id', $this->bid())->where('is_held', false)->withCount('items')
-            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()));
-
-        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
-        \App\Support\ListFilters::orders($q, $request);
+        // الاستعلامُ نفسُه الذي يقرؤه الملفّ — الشاشةُ ترقّمه والتصديرُ يقرؤه كلَّه
+        $q = OrdersList::filtered($request);
 
         /*
          * مجموع ما رُشّح لا مجموع الصفحة.
@@ -63,38 +47,8 @@ class OrderController extends Controller
         $websiteAmount = (float) $filtered->clone()->sold()
             ->where('channel', SalesChannel::WEBSITE)->sum('total');
 
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('ordered_at'));
-
-        $orders = $q->paginate(10)->withQueryString()->through(fn ($o) => [
-            'id' => $o->number,
-            // والاسمُ بلغته كما يقرؤه كلُّ قارئٍ آخر: صفحةُ الطلب والورقة
-            // والتصدير تمرّ كلُّها بالاسمين، وهذه وحدها كانت تمرّ بالعربيّ
-            'customer' => \App\Support\Demo::customerLabel($o->customer_name, $o->customer_name_en),
-            'employee' => $o->employee_name ?? '—', 'branch' => $o->branch,
-            'items_count' => $o->items_count, 'total' => (float) $o->total,
-            'payment' => $o->payment_method, 'status' => $o->status,
-            /*
-             * والقناةُ باسمها ورمزِها معًا.
-             *
-             * الرمزُ ليُرسَم الوسمُ به (لونًا وأيقونة) والاسمُ ليُقرأ —
-             * ولو أُرسل الرمزُ وحده لَترجمته الشاشةُ بقائمةٍ ثانية تفترق
-             * عن `SalesChannel::label` يومَ تُضاف قناة.
-             */
-            'channel' => $o->channel ?: SalesChannel::UNKNOWN,
-            'channel_label' => SalesChannel::label($o->channel),
-            'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
-            // الموعد يُقرأ في العمود، و'—' لبيعة المنضدة التي لا موعد لها
-            'scheduled' => optional($o->scheduled_for)->format('Y-m-d H:i') ?? '—',
-            /*
-             * والتأخّر يُقاس في الخادم لا في الشاشة.
-             *
-             * `Order::isLate` هي قاعدةُ مُرشِّح «متأخّر» نفسُها — فلا يقع
-             * صفٌّ في ترشيحٍ ولا يُوسَم بوسمه، ولا يُوسَم صفٌّ لا يقع فيه.
-             */
-            'late' => $o->isLate(),
-            // ونوعُ التنفيذ باسمه لا برمزه: 'delivery' ليست كلمةً تُقرأ
-            'fulfillment' => $o->fulfillment_type ? FlowerOrder::fulfillmentLabel($o->fulfillment_type) : null,
-        ]);
+        $orders = OrdersList::query($request)->paginate(10)->withQueryString()
+            ->through(fn ($o) => OrdersList::row($o));
 
         return \Inertia\Inertia::render('Admin/Orders/Index', [
             'orders' => $orders->items(),

@@ -815,6 +815,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // العملاء
     Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
     // تصدير/استيراد العملاء (Excel/PDF + معاينة قبل التأكيد)
+    // تقريرُ العملاء كما في الشاشة — وملفُّ الاستيراد بابُه التالي
+    Route::get('/customers/xlsx', [ReportExportController::class, 'customersXlsx'])->name('customers.xlsx');
     Route::get('/customers/export/xlsx', [CustomerImportExportController::class, 'exportXlsx'])->name('customers.export.xlsx');
     Route::get('/customers/export/pdf', [CustomerImportExportController::class, 'exportPdf'])->name('customers.export.pdf');
     Route::post('/customers/import', [CustomerImportExportController::class, 'upload'])->name('customers.import.upload');
@@ -948,6 +950,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // المورّدون
     Route::get('/suppliers', [PageController::class, 'suppliersIndex'])->name('suppliers.index');
     // التصدير قبل {id}: لو جاء بعده لابتلع «export» مسارَ المورّد الواحد
+    // تقريرُ المورّدين كما في الشاشة — وملفُّ الاستيراد بابُه التالي
+    Route::get('/suppliers/xlsx', [ReportExportController::class, 'suppliersXlsx'])->name('suppliers.xlsx');
     Route::get('/suppliers/export/xlsx', [SupplierExportController::class, 'xlsx'])->name('suppliers.export.xlsx');
     Route::get('/suppliers/export/pdf', [SupplierExportController::class, 'pdf'])->name('suppliers.export.pdf');
     Route::post('/suppliers/import', [SupplierExportController::class, 'upload'])->name('suppliers.import.upload');

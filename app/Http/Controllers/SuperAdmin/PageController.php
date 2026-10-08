@@ -24,7 +24,10 @@ use App\Support\CrmWhatsApp;
 use App\Support\Demo;
 use App\Support\GoogleBusiness;
 use App\Support\GoogleReviews;
+use App\Support\Lists\InMemory;
+use App\Support\Lists\PlatformInvoicesList;
 use App\Support\MerchantAccount;
+use App\Support\Pagination;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
@@ -34,6 +37,7 @@ use App\Support\Purge\Offsite;
 use App\Support\Purge\Stages;
 use App\Support\Purge\Vault;
 use App\Support\Roles;
+use App\Support\Search;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppMode;
@@ -352,7 +356,23 @@ class PageController extends Controller
                 ['label' => __('إجمالي غير المدفوع'), 'value' => Demo::money($s['unpaid']), 'icon' => 'circle-alert', 'color' => 'danger'],
                 ['label' => __('عدد الفواتير'), 'value' => (string) $s['count'], 'icon' => 'file-text', 'color' => 'primary'],
             ],
-            'invoices' => Demo::invoices(),
+            // البحثُ والحالةُ والترتيبُ على الخادم — والتصديرُ يقرأ ما رُشّح كلَّه
+            ...(function () {
+                $request = request();
+                $page = InMemory::page(PlatformInvoicesList::rows($request), $request, 25);
+
+                return [
+                    'invoices' => $page->items(),
+                    'pagination' => Pagination::meta($page),
+                    'filters' => [
+                        'q' => Search::term($request),
+                        'status' => PlatformInvoicesList::status($request),
+                        'sort' => in_array($request->query('sort'), PlatformInvoicesList::SORTS, true) ? $request->query('sort') : null,
+                        'dir' => $request->query('dir') === 'asc' ? 'asc' : 'desc',
+                    ],
+                    'sorts' => PlatformInvoicesList::SORTS,
+                ];
+            })(),
         ]);
     }
 

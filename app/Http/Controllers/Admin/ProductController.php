@@ -9,10 +9,9 @@ use App\Models\Business;
 use App\Models\ImportBatch;
 use App\Models\Product;
 use App\Support\Activity;
-use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Lexicon;
-use App\Support\ListFilters;
+use App\Support\Lists\ProductsList;
 use App\Support\Pagination;
 use App\Support\PlanLimits;
 use App\Support\ProductImages;
@@ -32,13 +31,7 @@ class ProductController extends Controller
      * يُقرأ في كل فتحة. والهامش كذلك — يُحسب في الواجهة من السعر والتكلفة،
      * وحسابُه في القاعدة يُكرّر معادلته في مكانين تفترقان.
      */
-    private const SORTS = [
-        'name' => 'name',
-        'price' => 'price',
-        'cost' => 'cost',
-        'qty' => 'quantity',
-        'active' => 'active',
-    ];
+    private const SORTS = ProductsList::SORTS;
 
     private function bid(): int
     {
@@ -210,45 +203,12 @@ class ProductController extends Controller
 
     public function index(Request $request)
     {
-        $business = Business::find($this->bid());
         // وبوتيكاتُه للعمود والمُرشِّح — فارغةٌ لمن لا بوتيكَ عنده فلا يُرسمان
-        $boutiques = Boutiques::options($business);
+        $boutiques = ProductsList::boutiques();
 
-        $q = Product::where('business_id', $this->bid())->with('category')
-            // واسمُ البوتيك بضمٍّ واحد للصفحة لا باستعلامٍ لكلّ صفّ
-            ->when($boutiques !== [], fn ($w) => $w->with('boutique:id,name,name_en'));
-
-        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
-        ListFilters::products($q, $request);
-
-        /*
-         * الأحدث أوّلًا — كما في كلّ قائمةٍ أخرى في اللوحة.
-         *
-         * كانت تصعد بالمعرّف وحدها من بين قوائم اللوحة كلّها، والصفحة اثنا
-         * عشر صنفًا: فمتجرٌ فيه مئةٌ وعشرون صنفًا يضع الصنف المضاف حديثًا في
-         * الصفحة العاشرة، والتاجر يُعاد بعد الحفظ إلى الأولى. فيرى الاثني عشر
-         * نفسها ويحسب أن شيئًا لم يُحفظ — فيضيفه ثانيةً وثالثة.
-         *
-         * ولا يظهر هذا في متجرٍ جديد: صنفٌ واحد في صفحةٍ واحدة يُرى صاعدًا
-         * ونازلًا. يظهر بعد الصنف الثالث عشر، أي بعد أن يصير المتجر متجرًا.
-         */
-        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
-
-        $products = $q->paginate(12)->withQueryString()->through(fn ($p) => [
-            'id' => $p->id, 'name' => $p->name, 'cat' => $p->category?->name ?? '—',
-            'price' => (float) $p->price, 'cost' => (float) $p->cost, 'qty' => $p->quantity,
-            'sku' => $p->sku, 'barcode' => $p->barcode, 'image' => $p->image,
-            'stock_status' => $p->stock_status, 'active' => (bool) $p->active,
-            'alert' => $p->alert_qty, 'tax' => (float) $p->tax, 'discount' => (float) $p->discount,
-            'tracks_stock' => $p->tracksStock(),
-            /*
-             * لمن الصنفُ اليوم — `null` لصنف المحلّ.
-             *
-             * ولا يُرسل لمن لا بوتيكَ عنده: الحمولةُ تبقى كما كانت، والعمودُ
-             * لا يُرسم.
-             */
-            ...($boutiques !== [] ? ['boutique' => $p->boutique?->label()] : []),
-        ]);
+        // الاستعلامُ نفسُه الذي يقرؤه الملفّ — الشاشةُ ترقّمه والتصديرُ يقرؤه كلَّه
+        $products = ProductsList::query($request, $boutiques)->paginate(12)->withQueryString()
+            ->through(fn ($p) => ProductsList::row($p, $boutiques));
 
         return Inertia::render('Admin/Products/Index', [
             'products' => $products->items(),

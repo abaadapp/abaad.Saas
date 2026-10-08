@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Support\Lists\CustomersList;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Support\Demo;
@@ -16,66 +17,15 @@ class CustomerController extends Controller
      * والمجاميع تُرتَّب بأسماء `withCount`/`withSum` نفسها: هي أعمدةٌ في
      * الاستعلام المُنتَج، فترتيبها لا يحتاج ضمًّا زائدًا.
      */
-    private const SORTS = [
-        'name' => 'name',
-        'orders' => 'orders_count',
-        'total_spent' => 'orders_sum_total',
-        'last_order' => 'orders_max_ordered_at',
-        'points' => 'points',
-    ];
+    private const SORTS = CustomersList::SORTS;
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
     public function index(Request $request)
     {
-        /*
-         * ما اشتراه العميل فعلًا — لا الملغى ولا سلّةً معلّقة.
-         *
-         * `withCount('orders')` تعدّ العلاقة كما هي فتتجاوز النطاق: فكانت
-         * البطاقة فوق الجدول تستثني الملغى وصفوفُه تحتها تجمعه — شاشةٌ
-         * واحدة تقول رقمين عن العميل نفسه. ومن ألغى فاتورةً بألف يبقى في
-         * القائمة «أنفق ١٠٠٠» بينما صفحته وكشف حسابه يقولان صفرًا.
-         */
-        $sold = fn ($q) => $q->sold();
-
-        $q = Customer::where('business_id', $this->bid())
-            ->withCount(['orders as orders_count' => $sold])
-            ->withSum(['orders as orders_sum_total' => $sold], 'total')
-            ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at');
-
-        // القاعدة نفسها التي يقرأ بها الملفّ — انظر App\Support\ListFilters
-        \App\Support\ListFilters::customers($q, $request);
-
-        /*
-         * الافتراضي: الأحدث تسجيلًا، حتى يظهر العميل المُضاف حديثًا في الأعلى.
-         *
-         * وكان الترتيب هنا `match` باتّجاهٍ مثبَّت لكل مفتاح — تنازليٌّ للمال
-         * وتصاعديٌّ للاسم — فلا سبيل إلى عكسه. صار كغيره: العمود من الرابط
-         * واتّجاهه معه.
-         */
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
-
-        $customers = $q->paginate(10)->withQueryString()->through(fn ($c) => [
-            'id' => $c->id, 'name' => $c->name, 'name_en' => $c->name_en,
-            'label' => Demo::ln($c->name, $c->name_en),
-            'phone' => $c->phone, 'email' => $c->email,
-            'orders' => $c->orders_count,
-            'total_spent' => (float) ($c->orders_sum_total ?? 0),
-            'last_order' => $c->orders_max_ordered_at
-                ? \Illuminate\Support\Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d') : '—',
-            /*
-             * ولا صورة: لا عمود لها في `customers` أصلًا.
-             *
-             * كان يُحسب هنا رابطُ `picsum.photos` من معرّف العميل — فيُعرض
-             * لكلّ عميلٍ وجهُ إنسانٍ لا يعرفه أحد، في القائمة وفي ملفّه.
-             * والحقلُ لم يكن يُقرأ من عمود، فلا صورةَ رُفعت قطّ ولا يمكن أن
-             * تُرفع: الشرط `{c.avatar ? …}` في الشاشتين لم يقع أبدًا.
-             *
-             * فرُفع الحقل من الحمولة، ووقع البديل: الحرف الأول من الاسم.
-             */
-            'points' => $c->points,
-            'language' => $c->language,
-        ]);
+        // الاستعلامُ نفسُه الذي يقرؤه الملفّ — الشاشةُ ترقّمه والتصديرُ يقرؤه كلَّه
+        $customers = CustomersList::query($request)->paginate(10)->withQueryString()
+            ->through(fn ($c) => CustomersList::row($c));
 
         $stats = Demo::customerStats();
 

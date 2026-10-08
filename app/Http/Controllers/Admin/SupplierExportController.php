@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Exports\PdfRows;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Support\ImportSession;
@@ -40,10 +41,18 @@ class SupplierExportController extends Controller
         return [__('الاسم'), __('الهاتف'), __('البريد'), __('مسؤول التواصل'), __('أوامر الشراء'), __('ملاحظات')];
     }
 
+    /**
+     * مورّدو الشاشة — بحثُها وترتيبُها (`SuppliersList`)، لا القائمةُ كلُّها.
+     *
+     * والاستيرادُ لا يحذف أحدًا، فملفٌّ مرشَّحٌ يُعاد رفعُه لا يُنقص شيئًا.
+     */
     private function suppliers()
     {
-        return Supplier::where('business_id', $this->bid())
-            ->withCount('purchaseOrders')->orderBy('name')->get();
+        $order = array_flip(array_column(\App\Support\Lists\SuppliersList::rows(request()), 'id'));
+
+        return Supplier::where('business_id', $this->bid())->whereIn('id', array_keys($order))
+            ->withCount('purchaseOrders')->get()
+            ->sortBy(fn ($s) => $order[$s->id])->values();
     }
 
     public function xlsx()
@@ -78,7 +87,8 @@ class SupplierExportController extends Controller
         Activity::log('report', 'صدّر قائمة الموردين (Excel)');
 
         $writer = new Xlsx($spreadsheet);
-        $filename = 'suppliers-'.now()->format('Y-m-d').'.xlsx';
+        // ملفُّ الاستيراد باسمه — لا يُخلط بتقرير المورّدين (`suppliers-…`)
+        $filename = 'suppliers-import-'.now()->format('Y-m-d').'.xlsx';
 
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
@@ -89,9 +99,14 @@ class SupplierExportController extends Controller
 
     public function pdf()
     {
+        $suppliers = $this->suppliers();
+        if ($refused = PdfRows::refuse(count($suppliers))) {
+            return $refused;
+        }
+
         $html = view('pdf.suppliers-list', [
             'business' => Demo::business($this->bid()),
-            'suppliers' => $this->suppliers(),
+            'suppliers' => $suppliers,
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 

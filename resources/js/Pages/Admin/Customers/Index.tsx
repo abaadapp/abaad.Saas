@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Eye, FileDown, FileSpreadsheet, FileText, MessageSquareWarning, MoreVertical, Upload, UserPlus } from 'lucide-react';
+import { Eye, MessageSquareWarning, MoreVertical, Upload, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
 import StatCard, { type Stat } from '@/Components/StatCard';
+import ExportMenu from '@/Components/ExportMenu';
 import DataTable, { type Column, type ServerPagination } from '@/Components/DataTable';
 import Field, { Select } from '@/Components/Field';
 
@@ -19,11 +20,9 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuLabel,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
-import { withFilters } from '@/lib/exportLink';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -196,6 +195,16 @@ export default function CustomersIndex() {
                 subtitle={t('إدارة قاعدة عملاء المحل وسجل مشترياتهم ونقاط ولائهم')}
                 actions={
                     <>
+                        {/*
+                            التصديرُ في قائمته الموحّدة — تقريرُ العملاء كما في الشاشة
+                            بحثًا وترتيبًا، وملفُّ الاستيراد بندٌ باسمه.
+                        */}
+                        <ExportMenu
+                            xlsx={route('admin.customers.xlsx')}
+                            pdf={route('admin.customers.export.pdf')}
+                            csv={route('admin.export.customers')}
+                            importXlsx={route('admin.customers.export.xlsx')}
+                        />
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="icon" aria-label={t('المزيد')}>
@@ -203,26 +212,6 @@ export default function CustomersIndex() {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-60">
-                                <DropdownMenuLabel>{t('تصدير')}</DropdownMenuLabel>
-                                <DropdownMenuItem asChild>
-                                    <a href={withFilters(route('admin.customers.export.xlsx'))}>
-                                        <FileSpreadsheet className="text-[#059669]" />
-                                        {t('تصدير Excel (xlsx)')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                    <a href={withFilters(route('admin.customers.export.pdf'))} target="_blank" rel="noreferrer">
-                                        <FileText className="text-[#dc2626]" />
-                                        {t('تصدير PDF')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                    <a href={withFilters(route('admin.export.customers'))}>
-                                        <FileDown className="text-[#6b7280]" />
-                                        {t('تصدير CSV')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
                                 <DropdownMenuLabel>{t('استيراد')}</DropdownMenuLabel>
                                 <DropdownMenuItem onSelect={() => setImporting(true)}>
                                     <Upload className="text-[#6d28d9]" />

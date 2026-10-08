@@ -25,6 +25,13 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        /*
+         * كعكةُ «بدأ التنزيل» تُقرأ في المتصفّح — فلا تُشفَّر.
+         *
+         * زرُّ التصدير ينتظرها ليعود من «جاري التصدير…» (`Workbook::signal`).
+         * وهي رمزٌ عشوائيٌّ أرسله الزرّ نفسُه، لا يحمل سرًّا ولا هويّة.
+         */
+        $middleware->encryptCookies(except: ['download_token']);
         $middleware->alias([
             'role' => CheckRole::class,
             'ability' => CheckAbility::class,

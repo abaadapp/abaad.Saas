@@ -122,7 +122,8 @@ class SweptDefectsTest extends TestCase
          */
         $screens = [
             'ActivityController.php',
-            'Admin/ExpenseController.php',
+            // والمصروفات صارت تقرأ بحثَها من `ListFilters::expenses` (عبر `ExpensesList`)
+            // مع ملفّاتها — فالشاشةُ لا بحثَ فيها تكتبه، والقاعدةُ الواحدة تُحرَس هناك
             'Admin/Purchasing/SupplierInvoiceController.php',
             'Admin/Inventory/StockAdjustmentController.php',
             'Admin/Inventory/GoodsReceiptNoteController.php',

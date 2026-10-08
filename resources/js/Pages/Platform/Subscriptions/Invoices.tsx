@@ -5,7 +5,7 @@ import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
 import SmartLink from '@/Components/SmartLink';
 import StatCard, { type Stat } from '@/Components/StatCard';
-import DataTable, { type Column, type Filter } from '@/Components/DataTable';
+import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { money } from '@/lib/format';
@@ -24,12 +24,16 @@ interface Invoice {
 
 interface Props {
     stats: Stat[];
+    /** صفحةٌ من الفواتير — بحثُها وحالتُها وترتيبُها على الخادم، فيبلغها التصدير */
     invoices: Invoice[];
+    pagination: ServerPagination;
+    filters: Record<string, string | null>;
+    sorts: string[];
     currency: Currency;
 }
 
 export default function Invoices() {
-    const { stats, invoices, currency } = usePage<PageProps<Props>>().props;
+    const { stats, invoices, pagination, filters: params, sorts, currency } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const columns: Column<Invoice>[] = [
@@ -99,7 +103,7 @@ export default function Invoices() {
                 { label: 'مدفوعة', value: 'مدفوعة' },
                 { label: 'غير مدفوعة', value: 'غير مدفوعة' },
             ],
-            match: (i, v) => i.status === v,
+            param: 'status',
         },
     ];
 
@@ -141,7 +145,8 @@ export default function Invoices() {
                 rowKey={(i) => i.number}
                 filters={filters}
                 searchPlaceholder="ابحث برقم الفاتورة أو اسم الشركة…"
-                searchable={(i) => `${i.number} ${i.business}`}
+                searchable={() => ''}
+                server={{ pagination, params, sorts }}
                 empty={t('لا توجد فواتير بعد')}
             />
         </PlatformLayout>

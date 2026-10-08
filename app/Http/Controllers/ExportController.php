@@ -3,6 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Support\Demo;
+use App\Support\Exports\Exports;
+use App\Support\Lists\BusinessesList;
+use App\Support\Lists\CustomersList;
+use App\Support\Lists\ExpensesList;
+use App\Support\Lists\InventoryList;
+use App\Support\Lists\OrdersList;
+use App\Support\Lists\PlatformInvoicesList;
+use App\Support\Lists\ProductsList;
+use App\Support\Lists\SuppliersList;
+use App\Support\Lists\TransactionsList;
 use App\Support\Reports;
 use App\Support\SalesChannel;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -79,37 +89,18 @@ class ExportController extends Controller
 
     public function products()
     {
-        $rows = array_map(fn ($p) => [
-            $p['id'], $p['name'], $p['cat'], $p['sku'], $p['barcode'],
-            number_format($p['price'], 3, '.', ''), number_format($p['cost'], 3, '.', ''),
-            $p['qty'], $p['alert'], $p['stock_status'], $p['active'] ? __('مفعّل') : __('معطّل'),
-        ], Demo::products(null, request()));
-
-        return $this->stream('products', [__('المعرّف'), __('الاسم'), __('القسم'), 'SKU', __('الباركود'), __('السعر'), __('التكلفة'), __('الكمية'), __('حد التنبيه'), __('حالة المخزون'), __('الحالة')], $rows);
+        return Exports::csv(ProductsList::export(request()));
     }
 
     public function orders()
     {
-        $rows = array_map(fn ($o) => [
-            $o['id'], $o['customer'], $o['employee'], $o['branch'], $o['items_count'],
-            number_format($o['total'], 3, '.', ''),
-            $o['payment'] === 'بطاقة' ? __('فيزا') : __($o['payment']),
-            __($o['status']), $o['date'],
-            // والموعدُ ونوعُ التنفيذ: عليهما تقوم مُرشِّحاتُ الشاشة، والملفّ يتبعها
-            $o['scheduled'], $o['fulfillment'],
-        ], Demo::orders(request()));
-
-        return $this->stream('orders', [__('رقم الطلب'), __('العميل'), __('الموظف'), __('الفرع'), __('عدد الأصناف'), __('الإجمالي'), __('الدفع'), __('الحالة'), __('التاريخ'), __('موعد التسليم'), __('نوع التنفيذ')], $rows);
+        // الصفوفُ صفوفُ ملفّ Excel نفسُها — انظر `OrdersList::export`
+        return Exports::csv(OrdersList::export(request()));
     }
 
     public function customers()
     {
-        $rows = array_map(fn ($c) => [
-            $c['id'], $c['name'], $c['phone'], $c['email'], $c['orders'],
-            number_format($c['total_spent'], 3, '.', ''), $c['points'], $c['last_order'],
-        ], Demo::customers(request()));
-
-        return $this->stream('customers', [__('المعرّف'), __('الاسم'), __('الهاتف'), __('البريد'), __('عدد الطلبات'), __('إجمالي الإنفاق'), __('النقاط'), __('آخر طلب')], $rows);
+        return Exports::csv(CustomersList::export(request()));
     }
 
     /**
@@ -120,69 +111,35 @@ class ExportController extends Controller
      */
     public function suppliers()
     {
-        $rows = array_map(fn ($s) => [
-            $s['id'], $s['name'], $s['phone'] ?? '', $s['email'] ?? '',
-            $s['contact'] ?? '', $s['orders_count'],
-        ], Demo::suppliers());
-
-        return $this->stream('suppliers', [__('المعرّف'), __('الاسم'), __('الهاتف'), __('البريد'), __('مسؤول التواصل'), __('أوامر الشراء')], $rows);
+        return Exports::csv(SuppliersList::export(request()));
     }
 
     public function transactions()
     {
-        // الفترة تتبع الشاشة كما في أخواتها — انظر ReportExportController::financeXlsx
-        $range = Demo::range(request()->query('range'));
-
-        $rows = array_map(fn ($t) => [
-            $t['id'], $t['date'], $t['description'], $t['method'], $t['type'],
-            number_format($t['amount'], 3, '.', ''), $t['employee'],
-            // والملغاة تُوسم في الملفّ كما تُوسم في الشاشة — انظر Demo::transactions
-            $t['cancelled'] ? __('ملغاة') : '—',
-        ], Demo::transactions($range, null));   // بلا سقف: الملفّ هو الدفتر كاملًا
-
-        return $this->stream('transactions', [__('المرجع'), __('التاريخ'), __('الوصف'), __('الطريقة'), __('النوع'), __('المبلغ'), __('الموظف'), __('الحالة')], $rows);
+        // مرشِّحاتُ شاشة الحركة نفسُها — انظر `TransactionsList`
+        return Exports::csv(TransactionsList::export(request()));
     }
 
     public function expenses()
     {
-        $rows = array_map(fn ($e) => [
-            $e['date'], $e['type'], $e['description'],
-            number_format($e['amount'], 3, '.', ''), $e['method'], $e['employee'],
-        ], Demo::expenses(request()));
-
-        return $this->stream('expenses', [__('التاريخ'), __('النوع'), __('الوصف'), __('المبلغ'), __('الطريقة'), __('الموظف')], $rows);
+        return Exports::csv(ExpensesList::export(request()));
     }
 
     public function inventory()
     {
-        $rows = array_map(fn ($p) => [
-            $p['id'], $p['name'], $p['sku'], $p['qty'], $p['min'],
-            number_format($p['value'], 3, '.', ''), $p['status'], $p['updated'],
-        ], Demo::inventory());
-
-        return $this->stream('inventory', [__('المعرّف'), __('المنتج'), 'SKU', __('الكمية الحالية'), __('الحد الأدنى'), __('القيمة'), __('حالة المخزون'), __('آخر تحديث')], $rows);
+        return Exports::csv(InventoryList::export(request()));
     }
 
     /* ------------------------------ لوحة المنصة ------------------------------ */
 
     public function businesses()
     {
-        $rows = array_map(fn ($b) => [
-            $b['id'], $b['name'], $b['type'], $b['owner'], $b['phone'], $b['email'],
-            $b['city'], $b['plan'], $b['status'], $b['branches'], $b['registered'],
-        ], Demo::businesses());
-
-        return $this->stream('businesses', [__('المعرّف'), __('الشركة'), __('النوع'), __('المالك'), __('الهاتف'), __('البريد'), __('المدينة'), __('الباقة'), __('الحالة'), __('الفروع'), __('التسجيل')], $rows);
+        return Exports::csv(BusinessesList::export(request()));
     }
 
     public function invoices()
     {
-        $rows = array_map(fn ($i) => [
-            $i['number'], $i['business'], $i['plan'],
-            number_format($i['amount'], 3, '.', ''), $i['date'], $i['status'],
-        ], Demo::invoices());
-
-        return $this->stream('invoices', [__('رقم الفاتورة'), __('الشركة'), __('الباقة'), __('المبلغ'), __('التاريخ'), __('الحالة')], $rows);
+        return Exports::csv(PlatformInvoicesList::export(request()));
     }
 
     /* ------------------------------ المولّد ------------------------------ */

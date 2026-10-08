@@ -5,8 +5,6 @@ import {
     Copy,
     Eye,
     EyeOff,
-    FileDown,
-    FileSpreadsheet,
     FileText,
     LayoutGrid,
     List,
@@ -20,6 +18,7 @@ import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { PRODUCT_TABS } from '@/Components/SectionTabs';
 import RowActions from '@/Components/RowActions';
 import SmartLink from '@/Components/SmartLink';
+import ExportMenu from '@/Components/ExportMenu';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
@@ -36,7 +35,6 @@ import {
 } from '@/Components/ui/dropdown-menu';
 import { Input } from '@/Components/ui/input';
 import QuickCell from './partials/QuickCell';
-import { withFilters } from '@/lib/exportLink';
 import { money, number } from '@/lib/format';
 import useLiveStock from '@/hooks/useLiveStock';
 import { useConfirm } from '@/Components/ConfirmDialog';
@@ -322,6 +320,18 @@ export default function ProductsIndex() {
                 subtitle={t('إدارة منتجات محل الورود')}
                 actions={
                     <>
+                        {/*
+                            التصديرُ في قائمته الموحّدة: التقريرُ يتبع ما في الشاشة
+                            (مرشِّحاتٍ وترتيبًا)، وملفُّ الاستيراد بندٌ باسمه — أعمدتُه
+                            أعمدةُ الاستيراد، ولا يتبع المُرشِّحات عمدًا: من صدّر نصف
+                            الجرد ثمّ استورده ظنّ أنّه ردّ الجرد كلّه.
+                        */}
+                        <ExportMenu
+                            xlsx={route('admin.products.xlsx')}
+                            pdf={route('admin.products.exportPdf')}
+                            csv={route('admin.export.products')}
+                            importXlsx={route('admin.products.export.xlsx')}
+                        />
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="icon" aria-label={t('المزيد')}>
@@ -329,45 +339,10 @@ export default function ProductsIndex() {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-72">
-                                <DropdownMenuLabel>{t('تصدير')}</DropdownMenuLabel>
-                                {/* الأول بيانات تدور: أعمدته هي أعمدة الاستيراد نفسها.
-                                    والثاني تقريرٌ للطباعة فيه عنوان ومعرّف وحالة محسوبة —
-                                    لا يعود من حيث خرج، فلا يُسمَّى باسمه.
-
-                                    والزوج الدوّار لا يتبع المُرشِّحات عمدًا: من صدّر
-                                    نصف الجرد ثمّ استورده ظنّ أنّه ردّ الجرد كلّه.
-                                    وما تحت «تقارير للطباعة» يتبعها — تقريرٌ يُقرأ
-                                    ويُطبع، فيجب أن يقول ما تقوله الشاشة. */}
-                                <DropdownMenuItem asChild>
-                                    <a href={route('admin.products.export.xlsx')}>
-                                        <FileSpreadsheet className="text-[#059669]" />
-                                        {t('تصدير Excel (xlsx)')}
-                                    </a>
-                                </DropdownMenuItem>
                                 <DropdownMenuItem asChild>
                                     <a href={route('admin.products.export.pdf')} target="_blank" rel="noreferrer">
                                         <FileText className="text-[#dc2626]" />
-                                        {t('تصدير PDF')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                    <a href={withFilters(route('admin.export.products'))}>
-                                        <FileDown className="text-[#6b7280]" />
-                                        {t('تصدير CSV')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuLabel>{t('تقارير للطباعة')}</DropdownMenuLabel>
-                                <DropdownMenuItem asChild>
-                                    <a href={withFilters(route('admin.products.xlsx'))}>
-                                        <FileSpreadsheet className="text-[#9ca3af]" />
-                                        {t('تقرير المنتجات (Excel)')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                    <a href={withFilters(route('admin.products.exportPdf'))} target="_blank" rel="noreferrer">
-                                        <FileText className="text-[#9ca3af]" />
-                                        {t('تقرير المنتجات (PDF)')}
+                                        {t('الكتالوج كاملًا (PDF)')}
                                     </a>
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />

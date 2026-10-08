@@ -77,7 +77,8 @@ export default function Reports() {
                             </a>
                         </Button>
                         <Button variant="outline" asChild>
-                            <a href={route('super-admin.export.businesses')}>
+                            {/* زرٌّ اسمُه «Excel» يُنزّل Excel — كان يُنزّل CSV */}
+                            <a href={route('super-admin.businesses.xlsx')}>
                                 <Sheet />
                                 {t('تصدير Excel')}
                             </a>

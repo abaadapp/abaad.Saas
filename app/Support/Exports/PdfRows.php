@@ -32,7 +32,7 @@ final class PdfRows
             return null;
         }
 
-        return response()->view('pdf.too-large', [
+        return response()->view('exports.pdf-too-large', [
             'message' => __('النتائج كبيرة جدًا لتصدير PDF، استخدم Excel أو CSV.'),
             'detail' => __('عدد النتائج :rows وحدُّ ورقة PDF :max — ضيّق المرشّحات أو صدّر Excel أو CSV ففيهما النتائج كلُّها.', [
                 'rows' => number_format($rows),

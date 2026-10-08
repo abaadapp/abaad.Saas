@@ -387,6 +387,8 @@ export default function PosOrderDetails() {
                     <CorrectItemDialog
                         url={route('pos.orders.items.update', [order.id, editing.id])}
                         item={editing}
+                        // ونشاطٌ فُتح له تعديلُ الأصناف يُسأل فيه عن فرق الفاتورة المدفوعة كما في الإضافة
+                        settle={lineEdit && order.payment_status !== 'غير مدفوع' ? { methods: order.payment_methods } : undefined}
                         onClose={() => setEditing(null)}
                     />
                 )}

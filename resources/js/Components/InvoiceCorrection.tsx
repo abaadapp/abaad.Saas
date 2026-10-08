@@ -100,21 +100,112 @@ function Denial({ text }: { text?: string }) {
     );
 }
 
+/** التحصيلُ الآن والردُّ الآن يسألان: بأيّ وسيلة؟ — والبقاءُ على العميل لا يسأل */
+const settleAsksMethod = (settle: string) => settle === 'collected' || settle === 'refunded';
+
+const SETTLE_OPTIONS = {
+    due: 'زاد — يبقى على العميل حتى يُحصَّل',
+    collected: 'زاد — حُصِّل الفرق الآن',
+    refunded: 'نقص — رُدّ الفرق للعميل الآن',
+} as const;
+
+type SettleKey = keyof typeof SETTLE_OPTIONS;
+
+/** ما يُعرض من الخيارات: اتّجاهُ الفرق يحصرها، وبلا اتّجاهٍ تُعرض الثلاثة */
+const settleKeys = (direction?: 'up' | 'down'): SettleKey[] =>
+    direction === 'up' ? ['due', 'collected'] : direction === 'down' ? ['refunded'] : ['due', 'collected', 'refunded'];
+
+/**
+ * فرقُ الفاتورة المدفوعة ووسيلتُه — حقلان تقرؤهما الإضافةُ والاستبدالُ وتصحيحُ الكمّيّة.
+ *
+ * لا يُكتب الفرقُ مدفوعًا من تلقاء نفسه ولا يُشحن له شيء — يُسأل الموظّف
+ * (`OrderCorrection::settleDifference`). والتحصيلُ أو الردُّ الآن بوسيلةٍ:
+ * صفٌّ وقيدٌ مستقلّان، لا زيادةٌ في صفّ البيعة ولا نقصٌ منه.
+ *
+ * `direction` يحصر الخيارات حين يُعرف اتّجاهُ الفرق (تصحيحُ كمّيّة)، وبلا
+ * اتّجاهٍ (صنفٌ يُختار ثمنُه بعدُ) تُعرض الثلاثة.
+ */
+function SettleFields({
+    settle,
+    method,
+    methods,
+    errors,
+    direction,
+    onChange,
+}: {
+    settle: string;
+    method: string;
+    methods: string[];
+    errors: Record<string, string | undefined>;
+    direction?: 'up' | 'down';
+    onChange: (settle: string, method: string) => void;
+}) {
+    const t = useTranslate();
+    const keys = settleKeys(direction);
+    const methodLabel = settle === 'refunded' ? 'وسيلة الردّ' : 'وسيلة التحصيل';
+
+    return (
+        <>
+            <Field label="فرق الفاتورة المدفوعة" hint="إن تغيّر الإجمالي — النظام لا يشحن البطاقة ولا يستردّ آليًّا" error={errors.settle}>
+                <Select
+                    name="settle"
+                    value={keys.includes(settle as SettleKey) ? settle : ''}
+                    onChange={(e) => onChange(e.target.value, method || methods[0] || '')}
+                    placeholder="اختر"
+                    options={keys.map((k) => ({ label: t(SETTLE_OPTIONS[k]), value: k }))}
+                />
+            </Field>
+
+            {keys.includes(settle as SettleKey) && settleAsksMethod(settle) && (
+                <Field label={methodLabel} required hint="تُكتب حركةً مستقلّة بيومها — لا يُشحن شيء ولا يُستردّ آليًّا" error={errors.payment_method}>
+                    <Select
+                        required
+                        value={method}
+                        onChange={(e) => onChange(settle, e.target.value)}
+                        name="payment_method"
+                        aria-label={t(methodLabel)}
+                        options={methods.map((x) => ({ label: t(x === 'بطاقة' ? 'فيزا' : x), value: x }))}
+                    />
+                </Field>
+            )}
+        </>
+    );
+}
+
+/**
+ * تصحيحُ كمّيّة بند.
+ *
+ * و`settle` يُمرَّر لنشاطٍ فُتح له «تعديل أصناف الفاتورة» وفاتورتُه مدفوعة:
+ * فرقُها يُسأل عنه كما في الإضافة — يبقى أو حُصِّل الآن (زيادة)، أو رُدّ
+ * الآن (نقص)، بوسيلة. وسواه كما كان.
+ */
 export function CorrectItemDialog({
     url,
     item,
+    settle,
     onClose,
 }: {
     url: string;
     item: CorrectableItem;
+    settle?: { methods: string[] };
     onClose: () => void;
 }) {
     const t = useTranslate();
     const denied = useDenial();
-    const form = useForm({ quantity: String(item.qty), reason: '' });
+    const form = useForm({ quantity: String(item.qty), reason: '', settle: '', payment_method: '' });
+    const errors = form.errors as Record<string, string | undefined>;
+    const qty = Number(form.data.quantity);
+    const direction = qty > item.qty ? 'up' : qty < item.qty ? 'down' : undefined;
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
+        // وخيارٌ بقي من اتّجاهٍ سابق (زاد ثمّ نقص) لا يُرسل — يُسأل عنه الخادم من جديد
+        const chosen = settle && direction && settleKeys(direction).includes(form.data.settle as SettleKey) ? form.data.settle : '';
+        form.transform((d) => ({
+            ...d,
+            settle: chosen || null,
+            payment_method: chosen && settleAsksMethod(chosen) ? d.payment_method : null,
+        }));
         form.put(url, { preserveScroll: true, onSuccess: () => onClose() });
     };
 
@@ -145,6 +236,17 @@ export function CorrectItemDialog({
                             onChange={(e) => form.setData('quantity', e.target.value)}
                         />
                     </Field>
+
+                    {settle && direction && (
+                        <SettleFields
+                            settle={form.data.settle}
+                            method={form.data.payment_method}
+                            methods={settle.methods}
+                            errors={errors}
+                            direction={direction}
+                            onChange={(next, payment_method) => form.setData({ ...form.data, settle: next, payment_method })}
+                        />
+                    )}
 
                     {/* السبب مطلوب: تصحيحٌ بلا سببٍ سطرٌ لا يُدقَّق */}
                     <Field
@@ -328,8 +430,7 @@ export function LineDialog({
         payment_method: string;
     }>({ product_id: '', variant_id: '', qty: '1', addons: [], note: '', reason: '', settle: '', payment_method: '' });
 
-    // التحصيلُ الآن والردُّ الآن يسألان: بأيّ وسيلة؟ — والبقاءُ على العميل لا يسأل
-    const asksMethod = form.data.settle === 'collected' || form.data.settle === 'refunded';
+    const asksMethod = settleAsksMethod(form.data.settle);
 
     const product = catalog.find((p) => String(p.id) === form.data.product_id);
     const errors = form.errors as Record<string, string | undefined>;
@@ -444,43 +545,13 @@ export function LineDialog({
                         والتحصيلُ أو الردُّ الآن بوسيلةٍ: صفٌّ وقيدٌ مستقلّان، لا زيادةٌ في صفّ البيعة.
                     */}
                     {paid && (
-                        <Field label="فرق الفاتورة المدفوعة" hint="إن تغيّر الإجمالي — النظام لا يشحن البطاقة ولا يستردّ آليًّا" error={errors.settle}>
-                            <Select
-                                name="settle"
-                                value={form.data.settle}
-                                onChange={(e) =>
-                                    form.setData({
-                                        ...form.data,
-                                        settle: e.target.value,
-                                        payment_method: form.data.payment_method || methods[0] || '',
-                                    })
-                                }
-                                placeholder="اختر"
-                                options={[
-                                    { label: t('زاد — يبقى على العميل حتى يُحصَّل'), value: 'due' },
-                                    { label: t('زاد — حُصِّل الفرق الآن'), value: 'collected' },
-                                    { label: t('نقص — رُدّ الفرق للعميل الآن'), value: 'refunded' },
-                                ]}
-                            />
-                        </Field>
-                    )}
-
-                    {paid && asksMethod && (
-                        <Field
-                            label={form.data.settle === 'refunded' ? 'وسيلة الردّ' : 'وسيلة التحصيل'}
-                            required
-                            hint="تُكتب حركةً مستقلّة بيومها — لا يُشحن شيء ولا يُستردّ آليًّا"
-                            error={errors.payment_method}
-                        >
-                            <Select
-                                required
-                                value={form.data.payment_method}
-                                onChange={(e) => form.setData('payment_method', e.target.value)}
-                                name="payment_method"
-                                aria-label={t(form.data.settle === 'refunded' ? 'وسيلة الردّ' : 'وسيلة التحصيل')}
-                                options={methods.map((x) => ({ label: t(x === 'بطاقة' ? 'فيزا' : x), value: x }))}
-                            />
-                        </Field>
+                        <SettleFields
+                            settle={form.data.settle}
+                            method={form.data.payment_method}
+                            methods={methods}
+                            errors={errors}
+                            onChange={(settle, payment_method) => form.setData({ ...form.data, settle, payment_method })}
+                        />
                     )}
 
                     <Field label="سبب التعديل" required hint="يُقرأ في سجلّ الفاتورة — اكتب ما يفهمه غيرك" error={form.errors.reason}>

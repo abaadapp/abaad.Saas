@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { correctionLabel, type OrderEditRecord } from '@/Components/InvoiceCorrection';
+import { CorrectItemDialog, correctionLabel, type OrderEditRecord } from '@/Components/InvoiceCorrection';
 import { pageProps } from './setup';
 
 /* الصفحةُ تُختبر لا القشرةُ حولها */
@@ -233,6 +233,49 @@ describe('شاشةُ الطلب — كلُّ ملاحظةٍ باسمها', () =>
         await adminScreen(detail({ balance_due: 31.5 }), { lines: false, notes: true, catalog: [] });
 
         expect(screen.getByTestId('balance-due').textContent).toContain('المتبقّي على العميل');
+    });
+});
+
+describe('تصحيحُ الكمّيّة في فاتورةٍ مدفوعة — يسأل عن الفرق كما تسأل الإضافة', () => {
+    const draw = (settle?: { methods: string[] }) => {
+        Object.assign(pageProps, { translations: {}, auth: { abilities: ['orders'], mayActions: ['order.edit'] } });
+        render(<CorrectItemDialog url="/fix" item={{ id: 1, name: 'باقة ورد', qty: 2 }} settle={settle} onClose={() => {}} />);
+        const settleBox = () => document.querySelector('select[name="settle"]') as HTMLSelectElement | null;
+        const methodBox = () => document.querySelector('select[name="payment_method"]') as HTMLSelectElement | null;
+        const qty = (v: string) => fireEvent.change(screen.getByRole('spinbutton'), { target: { value: v } });
+
+        return { settleBox, methodBox, qty };
+    };
+    const choices = (box: HTMLSelectElement | null) => Array.from(box?.options ?? []).map((o) => o.value).filter((v) => v !== '' && v !== '__empty__');
+
+    it('زيادةٌ: يبقى أو حُصِّل الآن — ووسيلةٌ للتحصيل', () => {
+        const { settleBox, methodBox, qty } = draw({ methods: ['نقدي', 'بطاقة'] });
+        expect(settleBox()).toBeNull();
+
+        qty('3');
+        expect(choices(settleBox())).toEqual(['due', 'collected']);
+        expect(methodBox()).toBeNull();
+
+        fireEvent.change(settleBox()!, { target: { value: 'collected' } });
+        expect(screen.getByText('وسيلة التحصيل')).toBeTruthy();
+        expect(methodBox()?.value).toBe('نقدي');
+    });
+
+    it('نقصٌ: رُدّ الآن وحده — ووسيلةٌ للردّ', () => {
+        const { settleBox, qty } = draw({ methods: ['نقدي'] });
+
+        qty('1');
+        expect(choices(settleBox())).toEqual(['refunded']);
+        fireEvent.change(settleBox()!, { target: { value: 'refunded' } });
+        expect(screen.getByText('وسيلة الردّ')).toBeTruthy();
+    });
+
+    it('ونشاطٌ لم تُفتح له الميزة لا يُسأل فيه شيء', () => {
+        const { settleBox, qty } = draw(undefined);
+
+        qty('3');
+        expect(settleBox()).toBeNull();
+        expect(screen.queryByText('فرق الفاتورة المدفوعة')).toBeNull();
     });
 });
 

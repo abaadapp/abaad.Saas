@@ -1337,6 +1337,8 @@ export default function OrderShow() {
                 <CorrectItemDialog
                     url={route('admin.orders.items.update', [order.id, correctingItem.id])}
                     item={correctingItem}
+                    // ونشاطٌ فُتح له تعديلُ الأصناف يُسأل فيه عن فرق الفاتورة المدفوعة كما في الإضافة
+                    settle={lineEdit && paidInvoice ? { methods: order.payment_methods } : undefined}
                     onClose={() => setCorrectingItem(null)}
                 />
             )}

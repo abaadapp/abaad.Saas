@@ -41,9 +41,14 @@ class OrderCorrection
     /**
      * يُغيّر كميّة بندٍ في فاتورة — والصفر يحذفه.
      *
+     * ونشاطٌ فُتح له «تعديل أصناف الفاتورة» (`NotesAndEdits::on`) يمرّ فرقُ
+     * فاتورته المدفوعة بما تمرّ به الإضافةُ والاستبدال (`settleDifference`):
+     * زيادةٌ تبقى على العميل أو تُحصَّل الآن بوسيلة، ونقصٌ يُنقص المتبقّي
+     * ثمّ يُردّ الآن بوسيلة — ولا يكبر صفُّ البيعة ولا يصغر. وسواه كما كان.
+     *
      * @throws RuntimeException برسالةٍ تُعرض للكاشير كما هي
      */
-    public static function setQuantity(Order $order, OrderItem $item, int $newQty, string $reason): OrderEdit
+    public static function setQuantity(Order $order, OrderItem $item, int $newQty, string $reason, ?string $settle = null, ?string $method = null): OrderEdit
     {
         if ($item->order_id !== $order->id) {
             throw new RuntimeException(__('هذا البند ليس من هذه الفاتورة.'));
@@ -72,7 +77,10 @@ class OrderCorrection
             throw new RuntimeException(__('لا يمكن حذف آخر بند — الفاتورة لا تبقى بلا أصناف.'));
         }
 
-        return DB::transaction(function () use ($order, $item, $oldQty, $newQty, $reason) {
+        $settles = NotesAndEdits::on((int) $order->business_id);
+        $method = $settles ? self::settleMethod($order, $settle, $method) : null;
+
+        return DB::transaction(function () use ($order, $item, $oldQty, $newQty, $reason, $settles, $settle, $method) {
             $bid = (int) $order->business_id;
 
             /*
@@ -122,9 +130,7 @@ class OrderCorrection
 
             self::recompute($order->fresh('items'));
             $order->refresh();
-            // وما نقص يُنقص المتبقّي على العميل أوّلًا — لا أثرَ حيث لا متبقّي
-            self::absorb($order, $totalBefore);
-            self::assertPaidAtSaleStands($order);
+            $settlement = self::settleChange($order, $totalBefore, $settles, $settle, $method);
 
             self::syncTransaction($order);
             self::syncBooks($order, $reason);
@@ -149,6 +155,9 @@ class OrderCorrection
                 ? 'حذف بند «'.$itemName.'» من الفاتورة '.$order->number.' — '.$reason
                 : 'عدّل كمية «'.$itemName.'» في الفاتورة '.$order->number.' من '.$oldQty.' إلى '.$newQty.' — '.$reason,
                 ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            // والتحصيلُ أو الردُّ الآن حركةٌ وقيدٌ مستقلّان — بعد قيد البيعة
+            self::recordSettlement($order, $settlement, $reason);
 
             return $edit;
         });
@@ -580,7 +589,7 @@ class OrderCorrection
      *
      * @throws RuntimeException برسالةٍ تُعرض للكاشير كما هي
      */
-    public static function setAddonQuantity(Order $order, OrderItemAddon $row, int $newQty, string $reason): OrderEdit
+    public static function setAddonQuantity(Order $order, OrderItemAddon $row, int $newQty, string $reason, ?string $settle = null, ?string $method = null): OrderEdit
     {
         $item = $row->orderItem;
 
@@ -600,7 +609,11 @@ class OrderCorrection
             throw new RuntimeException(__('لم تتغيّر الكمية.'));
         }
 
-        return DB::transaction(function () use ($order, $item, $row, $oldQty, $newQty, $reason) {
+        // والفرقُ في فاتورةٍ مدفوعة كما في تصحيح البند — انظر `setQuantity`
+        $settles = NotesAndEdits::on((int) $order->business_id);
+        $method = $settles ? self::settleMethod($order, $settle, $method) : null;
+
+        return DB::transaction(function () use ($order, $item, $row, $oldQty, $newQty, $reason, $settles, $settle, $method) {
             $bid = (int) $order->business_id;
 
             // وصفُّ الإضافة يُقرأ مقفلًا كما يُقرأ البند — العلّةُ واحدة
@@ -659,8 +672,7 @@ class OrderCorrection
 
             self::recompute($order->fresh('items'));
             $order->refresh();
-            self::absorb($order, $totalBefore);
-            self::assertPaidAtSaleStands($order);
+            $settlement = self::settleChange($order, $totalBefore, $settles, $settle, $method);
 
             self::syncTransaction($order);
             self::syncBooks($order, $reason);
@@ -685,6 +697,8 @@ class OrderCorrection
                 ? 'حذف إضافة «'.$name.'» من الفاتورة '.$order->number.' — '.$reason
                 : 'عدّل كمية إضافة «'.$name.'» في الفاتورة '.$order->number.' من '.$oldQty.' إلى '.$newQty.' — '.$reason,
                 ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+            self::recordSettlement($order, $settlement, $reason);
 
             return $edit;
         });
@@ -1341,6 +1355,26 @@ class OrderCorrection
         $settlement['kind'] === self::SETTLE_COLLECTED
             ? self::collect($order, $settlement['amount'], $settlement['method'], $reason)
             : self::refund($order, $settlement['amount'], $settlement['method'], $reason);
+    }
+
+    /**
+     * فرقُ تصحيح الكمّيّة — بابُ الإضافة نفسُه لنشاطٍ فُتحت له الميزة، وما كان لسواه.
+     *
+     * لسواه: ما نقص يُنقص المتبقّي أوّلًا (ولا متبقّيَ عنده أصلًا)، وصفُّ
+     * البيعة يتبع الإجماليّ كما كان.
+     *
+     * @return array{kind: string, amount: float, method: string}|null
+     */
+    private static function settleChange(Order $order, float $before, bool $settles, ?string $settle, ?string $method): ?array
+    {
+        if ($settles) {
+            return self::settleDifference($order, $before, $settle, $method);
+        }
+
+        self::absorb($order, $before);
+        self::assertPaidAtSaleStands($order);
+
+        return null;
     }
 
     /**

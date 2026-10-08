@@ -93,7 +93,7 @@ class OrderEditController extends Controller
              * شيئًا آخر — والفرق بين الثلاثة هو كلّ ما يهمّه.
              */
             'reason' => ['required', 'string', 'min:3', 'max:255'],
-        ], [
+        ] + $this->settleRules(), [
             'reason.required' => __('اكتب سبب التعديل — بدونه لا يُعرف لماذا تغيّرت الفاتورة.'),
             'reason.min' => __('السبب قصير جدًّا — اكتب ما يفهمه من يقرأ الفاتورة لاحقًا.'),
         ]);
@@ -107,7 +107,8 @@ class OrderEditController extends Controller
         }
 
         try {
-            OrderCorrection::setQuantity($order, $item, (int) $data['quantity'], trim($data['reason']));
+            OrderCorrection::setQuantity($order, $item, (int) $data['quantity'], trim($data['reason']),
+                $data['settle'] ?? null, $data['payment_method'] ?? null);
         } catch (RuntimeException $e) {
             return back()->withErrors(['quantity' => $e->getMessage()]);
         }
@@ -129,7 +130,7 @@ class OrderEditController extends Controller
         $data = $request->validate([
             'quantity' => ['required', 'integer', 'min:0', 'max:9999'],
             'reason' => ['required', 'string', 'min:3', 'max:255'],
-        ], [
+        ] + $this->settleRules(), [
             'reason.required' => __('اكتب سبب التعديل — بدونه لا يُعرف لماذا تغيّرت الفاتورة.'),
             'reason.min' => __('السبب قصير جدًّا — اكتب ما يفهمه من يقرأ الفاتورة لاحقًا.'),
         ]);
@@ -146,7 +147,8 @@ class OrderEditController extends Controller
         }
 
         try {
-            OrderCorrection::setAddonQuantity($order, $row, (int) $data['quantity'], trim($data['reason']));
+            OrderCorrection::setAddonQuantity($order, $row, (int) $data['quantity'], trim($data['reason']),
+                $data['settle'] ?? null, $data['payment_method'] ?? null);
         } catch (RuntimeException $e) {
             return back()->withErrors(['quantity' => $e->getMessage()]);
         }
@@ -210,10 +212,23 @@ class OrderEditController extends Controller
             'addons.*.addon_id' => ['required', 'integer'],
             'addons.*.qty' => ['required', 'integer', 'min:0', 'max:99'],
             'note' => ['nullable', 'string', 'max:'.NotesAndEdits::PRODUCT_NOTE_MAX],
-            'settle' => ['nullable', Rule::in(OrderCorrection::SETTLES)],
-            // «حُصِّل الآن» و«رُدّ الآن» بوسيلةٍ — والخادمُ يسأل إن كانت مأذونة
-            'payment_method' => ['nullable', 'string', 'max:50', 'required_if:settle,'.OrderCorrection::SETTLE_COLLECTED.','.OrderCorrection::SETTLE_REFUNDED],
             'reason' => ['required', 'string', 'min:3', 'max:255'],
+        ] + $this->settleRules();
+    }
+
+    /**
+     * فرقُ فاتورةٍ مدفوعة: يبقى، أو حُصِّل الآن، أو رُدّ الآن — والأخيران بوسيلة.
+     *
+     * تقرؤه الإضافةُ والاستبدالُ وتصحيحُ الكمّيّة؛ والخدمةُ لا تسأل عنه إلّا
+     * لنشاطٍ فُتحت له الميزة (`NotesAndEdits::on`)، وتسأل إن كانت الوسيلة مأذونة.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function settleRules(): array
+    {
+        return [
+            'settle' => ['nullable', Rule::in(OrderCorrection::SETTLES)],
+            'payment_method' => ['nullable', 'string', 'max:50', 'required_if:settle,'.OrderCorrection::SETTLE_COLLECTED.','.OrderCorrection::SETTLE_REFUNDED],
         ];
     }
 

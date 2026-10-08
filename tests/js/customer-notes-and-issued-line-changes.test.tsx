@@ -209,6 +209,26 @@ describe('شاشةُ الطلب — كلُّ ملاحظةٍ باسمها', () =>
         expect(dialog.getByText('سبب التعديل')).toBeTruthy();
     });
 
+    it('حُصِّل الآن أو رُدّ الآن يسألان عن الوسيلة — والبقاءُ على العميل لا يسأل', async () => {
+        await adminScreen(detail({ payment_methods: ['نقدي', 'بطاقة'] }), { lines: true, notes: true, catalog });
+        fireEvent.click(screen.getByTestId('add-line'));
+
+        const dialog = screen.getByTestId('line-dialog');
+        const settle = dialog.querySelector('select[name="settle"]') as HTMLSelectElement;
+        const method = () => dialog.querySelector('select[name="payment_method"]') as HTMLSelectElement | null;
+        expect(method()).toBeNull();
+
+        fireEvent.change(settle, { target: { value: 'collected' } });
+        expect(within(dialog).getByText('وسيلة التحصيل')).toBeTruthy();
+        expect(method()?.value).toBe('نقدي');
+
+        fireEvent.change(settle, { target: { value: 'refunded' } });
+        expect(within(dialog).getByText('وسيلة الردّ')).toBeTruthy();
+
+        fireEvent.change(settle, { target: { value: 'due' } });
+        expect(method()).toBeNull();
+    });
+
     it('المتبقّي على العميل يُرى ويُحصَّل', async () => {
         await adminScreen(detail({ balance_due: 31.5 }), { lines: false, notes: true, catalog: [] });
 
@@ -243,12 +263,13 @@ describe('سجلُّ التعديل — اسمُ العملية بلغة الش�
         kind: 'بند', subject: 'باقة', qty_before: 1, qty_after: 2, value_before: null, value_after: null,
         total_before: 10, total_after: 20, reason: 'سبب', by: 'سعود', at: '2027-03-10 10:00', ...over,
     });
-    const t = (s: string) => ({ 'أُضيف': 'Added', 'استُبدل': 'Replaced', 'ملاحظة المنتج': 'Product note', 'تحصيل المتبقّي': 'Balance collected' })[s] ?? s;
+    const t = (s: string) => ({ 'أُضيف': 'Added', 'استُبدل': 'Replaced', 'ملاحظة المنتج': 'Product note', 'تحصيل المتبقّي': 'Balance collected', 'ردّ الفرق للعميل': 'Difference refunded' })[s] ?? s;
 
     it('إضافةٌ واستبدالٌ وملاحظةٌ وتحصيل', () => {
         expect(correctionLabel(edit({ kind: 'صنف مضاف', value_after: 'زنبق ×1' }), t)).toBe('Added «زنبق ×1»');
         expect(correctionLabel(edit({ kind: 'صنف مستبدل', value_before: 'باقة ×2', value_after: 'زنبق ×1' }), t)).toBe('Replaced «باقة ×2» ← «زنبق ×1»');
         expect(correctionLabel(edit({ kind: 'ملاحظة منتج', value_before: null, value_after: 'No wrapping' }), t)).toBe('Product note «باقة»: — ← No wrapping');
         expect(correctionLabel(edit({ kind: 'تحصيل متبقّي', value_before: '31.5', value_after: 'نقدي' }), t)).toBe('Balance collected: 31.5 — نقدي');
+        expect(correctionLabel(edit({ kind: 'ردّ فرق', value_before: '10.5', value_after: 'نقدي' }), t)).toBe('Difference refunded: 10.5 — نقدي');
     });
 });

@@ -1357,6 +1357,7 @@ export default function OrderShow() {
                     title={t('إضافة صنف إلى الفاتورة')}
                     catalog={lineEdit.catalog}
                     paid={paidInvoice}
+                    methods={order.payment_methods}
                     format={m}
                     onClose={() => setAdding(false)}
                 />
@@ -1367,6 +1368,7 @@ export default function OrderShow() {
                     title={t('استبدال الصنف')}
                     catalog={lineEdit.catalog}
                     paid={paidInvoice}
+                    methods={order.payment_methods}
                     replacing={replacingItem.name}
                     format={m}
                     onClose={() => setReplacingItem(null)}

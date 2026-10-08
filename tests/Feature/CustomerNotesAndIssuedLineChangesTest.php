@@ -10,6 +10,7 @@ use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\JournalEntry;
+use App\Models\JournalLine;
 use App\Models\Order;
 use App\Models\OrderEdit;
 use App\Models\Product;
@@ -167,6 +168,24 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
     private function liveSaleEntries(Order $order): int
     {
         return Books::liveEntriesFor($order)->where('source', Books::SALE)->count();
+    }
+
+    /** صفُّ البيعة نفسِها — ما دُفع فيها، لا ما سُوّي بعدها */
+    private function saleRow(Order $order): Transaction
+    {
+        return Transaction::where('order_id', $order->id)->whereNotIn('kind', Transaction::SETTLEMENT_KINDS)->firstOrFail();
+    }
+
+    /** الميزانُ متوازن: كلُّ مدينٍ في دفتر المتجر يقابله دائن */
+    private function assertLedgerBalanced(): void
+    {
+        $lines = JournalLine::whereHas('entry', fn ($q) => $q->where('business_id', $this->shop->id));
+        $this->assertSame(
+            round((float) (clone $lines)->sum('debit'), 3),
+            round((float) (clone $lines)->sum('credit'), 3),
+            'الدفتر غير متوازن',
+        );
+        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced'], 'الذمم لا تطابق الدفتر');
     }
 
     /* ═══════════════ النطاق: المفتاحُ لا الاسم ═══════════════ */
@@ -423,7 +442,7 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
 
         $this->actingAs($this->owner)->post(route('admin.orders.items.store', $order->number), [
             'product_id' => $this->lily->id, 'qty' => 1, 'price' => 0.001, 'note' => 'Tall vase',
-            'reason' => 'الزبون أضاف زنبقة', 'settle' => 'collected',
+            'reason' => 'الزبون أضاف زنبقة', 'settle' => 'collected', 'payment_method' => 'نقدي',
         ])->assertSessionHasNoErrors();
 
         $order->refresh();
@@ -438,6 +457,8 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
         $this->assertEquals(70, (float) $order->subtotal);
         $this->assertEquals(3.5, (float) $order->tax);
         $this->assertEquals(73.5, (float) $order->total);
+        // صفُّ البيعة بما دُفع فيها، والفرقُ صفٌّ مستقلّ — والدرجُ دخله الاثنان
+        $this->assertEquals(42, (float) $this->saleRow($order)->amount);
         $this->assertEquals(73.5, (float) Transaction::where('order_id', $order->id)->sum('amount'));
 
         // قيدٌ حيٌّ واحد للبيعة، والإيرادُ بلا ضريبة
@@ -445,8 +466,7 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
         $this->assertSame(70.0, Ledger::netRevenue($this->shop->id, now()->startOfDay()));
         $this->assertSame(73.5, round(Ledger::balance($this->shop->id, 'cash'), 3));
 
-        $edit = OrderEdit::where('order_id', $order->id)->latest('id')->firstOrFail();
-        $this->assertSame(OrderEdit::ADD_LINE, $edit->kind);
+        $edit = OrderEdit::where('order_id', $order->id)->where('kind', OrderEdit::ADD_LINE)->latest('id')->firstOrFail();
         $this->assertEquals(42, (float) $edit->order_total_before);
         $this->assertEquals(73.5, (float) $edit->order_total_after);
         $this->assertSame('الزبون أضاف زنبقة', $edit->reason);
@@ -499,6 +519,9 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
         ])->assertSessionHasNoErrors();
 
         $this->assertEquals(0, (float) $order->fresh()->balance_due);
+        $this->assertEquals(31.5, (float) $order->fresh()->paid_after_sale);
+        // صفُّ البيعة لم يزد بالتحصيل اللاحق
+        $this->assertEquals(42, (float) $this->saleRow($order)->amount);
         $this->assertSame(73.5, round(Ledger::balance($this->shop->id, 'cash'), 3));
         $this->assertSame(0.0, round(Ledger::balance($this->shop->id, 'receivable'), 3));
         $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
@@ -528,6 +551,244 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
         $this->assertEquals(31.5, (float) $order->fresh()->balance_due);
     }
 
+    /* ═══════════════ الفرقُ في فاتورةٍ مدفوعة: حركتُه وقيدُه ═══════════════ */
+
+    public function test_paid_cash_add_and_collect_now_needs_a_method_and_writes_its_own_row_and_entry(): void
+    {
+        Http::fake();
+        $order = $this->posSale(2, 'مدفوع');
+
+        // «حُصِّل الآن» وحده لا يكفي — بأيّ وسيلة؟
+        $this->actingAs($this->owner)->post(route('admin.orders.items.store', $order->number), [
+            'product_id' => $this->lily->id, 'qty' => 1, 'reason' => 'إضافة', 'settle' => 'collected',
+        ])->assertSessionHasErrors('payment_method');
+        $this->assertSame(1, $order->items()->count());
+
+        $this->actingAs($this->owner)->post(route('admin.orders.items.store', $order->number), [
+            'product_id' => $this->lily->id, 'qty' => 1, 'reason' => 'إضافة', 'settle' => 'collected', 'payment_method' => 'بطاقة',
+        ])->assertSessionHasNoErrors();
+
+        $order->refresh();
+        $this->assertEquals(73.5, (float) $order->total);
+        $this->assertEquals(0, (float) $order->balance_due);
+        $this->assertEquals(31.5, (float) $order->paid_after_sale);
+
+        // البيعةُ كما دُفعت: نقدًا بمبلغها — لا تتغيّر وسيلتُها ولا يزيد مبلغُها
+        $sale = $this->saleRow($order);
+        $this->assertEquals(42, (float) $sale->amount);
+        $this->assertSame('نقدي', $sale->method);
+
+        // والفرقُ صفٌّ مستقلٌّ بوسيلته، وقيدُه مصدرُه صفُّه لا الطلب
+        $row = Transaction::where('order_id', $order->id)->where('kind', Transaction::ORDER_BALANCE)->sole();
+        $this->assertEquals(31.5, (float) $row->amount);
+        $this->assertSame('بطاقة', $row->method);
+        $this->assertNotNull($row->journal_entry_id);
+        $this->assertSame(1, Books::liveEntriesFor($row)->count());
+
+        $this->assertSame(42.0, round(Ledger::balance($this->shop->id, 'cash'), 3));
+        $this->assertSame(31.5, round(Ledger::balance($this->shop->id, 'bank'), 3));
+        $this->assertSame(0.0, round(Ledger::balance($this->shop->id, 'receivable'), 3));
+        $this->assertSame(1, $this->liveSaleEntries($order));
+        $this->assertSame(70.0, Ledger::netRevenue($this->shop->id, now()->startOfDay()));
+        $this->assertSame(1, OrderEdit::where('order_id', $order->id)->where('kind', OrderEdit::COLLECT)->count());
+        $this->assertLedgerBalanced();
+        Http::assertNothingSent();
+    }
+
+    public function test_the_service_itself_refuses_collect_or_refund_without_a_method(): void
+    {
+        $order = $this->posSale(2, 'مدفوع');
+        $old = $order->items()->firstOrFail();
+        $this->actingAs($this->owner);
+
+        foreach ([
+            fn () => OrderCorrection::addLine($order->fresh(), ['product_id' => $this->lily->id, 'qty' => 1], 'إضافة', 'collected'),
+            fn () => OrderCorrection::replaceLine($order->fresh(), $old, ['product_id' => $this->lily->id, 'qty' => 1], 'غيّر رأيه', 'refunded'),
+        ] as $call) {
+            try {
+                $call();
+                $this->fail('مرّ تحصيلٌ أو ردٌّ بلا وسيلة');
+            } catch (RuntimeException $e) {
+                // يُسأل الموظّف عن الوسيلة — لا «وسيلةٌ غير مأذونة» وهو لم يختر شيئًا
+                $this->assertStringStartsWith('اختر', $e->getMessage());
+            }
+        }
+
+        $this->assertNotNull($old->fresh());
+        $this->assertSame(1, $order->items()->count());
+        $this->assertSame(0, Transaction::where('order_id', $order->id)->whereIn('kind', Transaction::SETTLEMENT_KINDS)->count());
+    }
+
+    public function test_a_method_the_shop_switched_off_is_refused_before_anything_moves(): void
+    {
+        Setting::create(['business_id' => $this->shop->id, 'key' => 'pay_card', 'value' => '0']);
+        $order = $this->posSale(2, 'مدفوع');
+        $entries = JournalEntry::count();
+
+        $this->actingAs($this->owner)->post(route('admin.orders.items.store', $order->number), [
+            'product_id' => $this->lily->id, 'qty' => 1, 'reason' => 'إضافة', 'settle' => 'collected', 'payment_method' => 'بطاقة',
+        ])->assertSessionHasErrors('line');
+
+        $this->assertSame(1, $order->items()->count());
+        $this->assertSame(5, (int) $this->lily->fresh()->quantity);
+        $this->assertSame($entries, JournalEntry::count());
+    }
+
+    public function test_paid_card_website_order_owed_then_collected_later_never_touches_paymob(): void
+    {
+        Http::fake();
+        $this->checkout([['id' => $this->rose->id, 'qty' => 1]])->assertOk();
+        $order = $this->lastOrder();
+        $order->update(['payment_status' => 'مدفوع', 'payment_method' => 'بطاقة']);
+        Books::unpostSale($order->fresh());
+        Books::recordSale($order->fresh('items'));
+        // صفُّ الموقع كتبه الإتمام — والدفعُ بالبطاقة كما تكتبه عودةُ Paymob
+        Transaction::where('order_id', $order->id)->update(['method' => 'بطاقة']);
+        $intent = StorePaymentIntent::forceCreate(['business_id' => $this->shop->id, 'order_id' => $order->id,
+            'reference' => 'RB-2', 'amount' => 21, 'status' => 'paid', 'payload' => []]);
+
+        $this->actingAs($this->owner)->post(route('admin.orders.items.store', $order->number), [
+            'product_id' => $this->lily->id, 'qty' => 1, 'reason' => 'إضافة', 'settle' => 'due',
+        ])->assertSessionHasNoErrors();
+
+        $order->refresh();
+        $this->assertEquals(31.5, (float) $order->balance_due);
+        $this->assertEquals(21, (float) $this->saleRow($order)->amount);
+        $this->assertSame(21.0, round(Ledger::balance($this->shop->id, 'bank'), 3));
+        $this->assertSame(31.5, round(Ledger::balance($this->shop->id, 'receivable'), 3));
+        $this->assertLedgerBalanced();
+
+        Carbon::setTestNow('2027-03-12 11:00:00');
+        $this->actingAs($this->owner)->post(route('admin.orders.balance.collect', $order->number), [
+            'payment_method' => 'نقدي', 'reason' => 'دفع عند الاستلام',
+        ])->assertSessionHasNoErrors();
+
+        $order->refresh();
+        $this->assertEquals(0, (float) $order->balance_due);
+        // البيعةُ بالبطاقة بمبلغها — والتحصيلُ نقدًا صفٌّ بيومه
+        $this->assertEquals(21, (float) $this->saleRow($order)->amount);
+        $this->assertSame('بطاقة', $this->saleRow($order)->method);
+        $row = Transaction::where('order_id', $order->id)->where('kind', Transaction::ORDER_BALANCE)->sole();
+        $this->assertSame('نقدي', $row->method);
+        $this->assertSame('2027-03-12', $row->occurred_at->toDateString());
+        $this->assertSame(31.5, round(Ledger::balance($this->shop->id, 'cash'), 3));
+        $this->assertSame(21.0, round(Ledger::balance($this->shop->id, 'bank'), 3));
+        $this->assertSame(0.0, round(Ledger::balance($this->shop->id, 'receivable'), 3));
+        $this->assertLedgerBalanced();
+
+        // ولا شيءَ ذهب إلى Paymob: لا شحنَ ولا ردّ، والدفعةُ كما هي
+        Http::assertNothingSent();
+        $this->assertEquals(21, (float) $intent->fresh()->amount);
+        $this->assertSame('paid', $intent->fresh()->status);
+        $this->assertNull($intent->fresh()->refund_status);
+    }
+
+    public function test_a_reduced_paid_invoice_is_refunded_by_a_named_method_with_its_own_row_and_entry(): void
+    {
+        Http::fake();
+        $order = $this->posSale(2, 'مدفوع');
+        $old = $order->items()->firstOrFail();
+
+        // «رُدّ الآن» بلا وسيلة لا يمرّ — ولا يتغيّر شيء
+        $this->actingAs($this->owner)->post(route('admin.orders.items.replace', [$order->number, $old->id]), [
+            'product_id' => $this->lily->id, 'qty' => 1, 'reason' => 'غيّر رأيه', 'settle' => 'refunded',
+        ])->assertSessionHasErrors('payment_method');
+        $this->assertNotNull($old->fresh());
+
+        $this->actingAs($this->owner)->post(route('admin.orders.items.replace', [$order->number, $old->id]), [
+            'product_id' => $this->lily->id, 'qty' => 1, 'reason' => 'غيّر رأيه', 'settle' => 'refunded', 'payment_method' => 'تحويل بنكي',
+        ])->assertSessionHasNoErrors();
+
+        $order->refresh();
+        $this->assertEquals(31.5, (float) $order->total);
+        $this->assertEquals(-10.5, (float) $order->paid_after_sale);
+
+        // ما دُفع في البيعة لا ينقص — والردُّ صفٌّ خارجٌ بوسيلته
+        $this->assertEquals(42, (float) $this->saleRow($order)->amount);
+        $refund = Transaction::where('order_id', $order->id)->where('kind', Transaction::ORDER_REFUND)->sole();
+        $this->assertEquals(10.5, (float) $refund->amount);
+        $this->assertSame('تحويل بنكي', $refund->method);
+        $this->assertSame('مصروف', $refund->type);
+        $this->assertSame(1, Books::liveEntriesFor($refund)->count());
+
+        $this->assertSame(42.0, round(Ledger::balance($this->shop->id, 'cash'), 3));
+        $this->assertSame(-10.5, round(Ledger::balance($this->shop->id, 'bank'), 3));
+        $this->assertSame(0.0, round(Ledger::balance($this->shop->id, 'receivable'), 3));
+        $this->assertSame(30.0, Ledger::netRevenue($this->shop->id, now()->startOfDay()));
+        $this->assertSame(1, OrderEdit::where('order_id', $order->id)->where('kind', OrderEdit::REFUND)->count());
+        $this->assertLedgerBalanced();
+        Http::assertNothingSent();
+    }
+
+    public function test_a_correction_after_a_collection_keeps_the_collection_and_counts_nothing_twice(): void
+    {
+        $order = $this->posSale(2, 'مدفوع');
+
+        $this->actingAs($this->owner);
+        OrderCorrection::addLine($order->fresh(), ['product_id' => $this->lily->id, 'qty' => 1], 'إضافة', 'collected', 'نقدي');
+        // ثمّ تصحيحٌ آخر يُعيد ترحيل البيعة: لا يعكس التحصيل، ولا يُدخل الدرجَ مالًا مرّتين
+        OrderCorrection::addLine($order->fresh(), ['product_id' => $this->lily->id, 'qty' => 1], 'إضافة ثانية', 'due');
+        OrderCorrection::setPaymentMethod($order->fresh(), 'بطاقة', 'دفع بالبطاقة');
+
+        $order->refresh();
+        $this->assertEquals(105, (float) $order->total);
+        $this->assertEquals(31.5, (float) $order->balance_due);
+        $this->assertEquals(42, (float) $this->saleRow($order)->amount);
+        $this->assertSame('بطاقة', $this->saleRow($order)->method);
+        // وصفُّ التحصيل يبقى بوسيلته — تصحيحُ وسيلة البيعة لا يكتب فوقه
+        $row = Transaction::where('order_id', $order->id)->where('kind', Transaction::ORDER_BALANCE)->sole();
+        $this->assertSame('نقدي', $row->method);
+        $this->assertSame(1, Books::liveEntriesFor($row)->count(), 'عُكس قيدُ التحصيل مع قيد البيعة');
+
+        $this->assertSame(1, $this->liveSaleEntries($order));
+        $this->assertSame(31.5, round(Ledger::balance($this->shop->id, 'cash'), 3));
+        $this->assertSame(42.0, round(Ledger::balance($this->shop->id, 'bank'), 3));
+        $this->assertSame(31.5, round(Ledger::balance($this->shop->id, 'receivable'), 3));
+        $this->assertSame(100.0, Ledger::netRevenue($this->shop->id, now()->startOfDay()));
+        $this->assertEquals(42, (float) Transaction::where('business_id', $this->shop->id)->sales()->sum('amount'));
+        $this->assertLedgerBalanced();
+    }
+
+    public function test_cancelling_after_a_collection_and_a_refund_leaves_no_money_behind(): void
+    {
+        $order = $this->posSale(2, 'مدفوع');
+
+        $this->actingAs($this->owner);
+        OrderCorrection::addLine($order->fresh(), ['product_id' => $this->lily->id, 'qty' => 1], 'إضافة', 'collected', 'نقدي');
+        $added = $order->items()->where('product_id', $this->lily->id)->firstOrFail();
+        OrderCorrection::replaceLine($order->fresh(), $added, ['product_id' => $this->rose->id, 'qty' => 1], 'أرخص', 'refunded', 'نقدي');
+        $this->assertLedgerBalanced();
+
+        OrderCorrection::cancel($order->fresh(), 'إلغاء');
+
+        foreach (['cash', 'bank', 'receivable'] as $key) {
+            $this->assertSame(0.0, round(Ledger::balance($this->shop->id, $key), 3), $key);
+        }
+        $this->assertSame(0.0, Ledger::netRevenue($this->shop->id, now()->startOfDay()));
+        $this->assertLedgerBalanced();
+    }
+
+    public function test_a_quantity_cut_below_what_the_sale_paid_after_a_collection_is_refused(): void
+    {
+        $order = $this->posSale(1, 'مدفوع');
+
+        $this->actingAs($this->owner);
+        // زنبقتان (٦٣) حُصِّلتا الآن — والبيعةُ دفعت ٢١
+        OrderCorrection::addLine($order->fresh(), ['product_id' => $this->lily->id, 'qty' => 2], 'إضافة', 'collected', 'نقدي');
+        $lily = $order->items()->where('product_id', $this->lily->id)->firstOrFail();
+
+        // إنقاصُ واحدةٍ بالكمّيّة يجعل البيعةَ دفعت سالبًا — يُصحَّح بالاستبدال مع ردّ
+        try {
+            OrderCorrection::setQuantity($order->fresh(), $lily, 1, 'إنقاص');
+            $this->fail('مرّ تخفيضٌ يجعل ما دُفع في البيعة سالبًا');
+        } catch (RuntimeException) {
+        }
+
+        $this->assertSame(2, (int) $lily->fresh()->quantity);
+        $this->assertEquals(21, (float) $this->saleRow($order)->amount);
+        $this->assertLedgerBalanced();
+    }
+
     /* ═══════════════ الاستبدال ═══════════════ */
 
     public function test_replacing_returns_the_old_stock_takes_the_new_and_never_rewrites_the_old_line(): void
@@ -537,7 +798,7 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
         $roseBefore = (int) $this->rose->fresh()->quantity;
 
         $this->actingAs($this->owner)->post(route('admin.orders.items.replace', [$order->number, $old->id]), [
-            'product_id' => $this->lily->id, 'qty' => 1, 'reason' => 'غيّر رأيه', 'settle' => 'refunded',
+            'product_id' => $this->lily->id, 'qty' => 1, 'reason' => 'غيّر رأيه', 'settle' => 'refunded', 'payment_method' => 'نقدي',
         ])->assertSessionHasNoErrors();
 
         $this->assertNull($old->fresh(), 'غُيّر صنفُ البند القديم في مكانه بدل حذفه');
@@ -549,8 +810,7 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
         $this->assertSame(1, $this->liveSaleEntries($order));
         $this->assertSame(30.0, Ledger::netRevenue($this->shop->id, now()->startOfDay()));
 
-        $edit = OrderEdit::where('order_id', $order->id)->latest('id')->firstOrFail();
-        $this->assertSame(OrderEdit::REPLACE_LINE, $edit->kind);
+        $edit = OrderEdit::where('order_id', $order->id)->where('kind', OrderEdit::REPLACE_LINE)->latest('id')->firstOrFail();
         $this->assertSame(2, (int) $edit->qty_before);
         $this->assertSame(1, (int) $edit->qty_after);
         $this->assertStringContainsString('باقة ورد', (string) $edit->value_before);
@@ -578,7 +838,7 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
 
         // الزنبقُ خمسٌ على الرفّ — والمطلوبُ تسع
         $this->actingAs($this->owner)->post(route('admin.orders.items.replace', [$order->number, $old->id]), [
-            'product_id' => $this->lily->id, 'qty' => 9, 'reason' => 'غيّر رأيه', 'settle' => 'collected',
+            'product_id' => $this->lily->id, 'qty' => 9, 'reason' => 'غيّر رأيه', 'settle' => 'collected', 'payment_method' => 'نقدي',
         ])->assertSessionHasErrors('line');
 
         $this->assertNotNull($old->fresh());

@@ -105,23 +105,33 @@ class Books
         };
 
         /*
-         * ═══ وما بقي على فاتورةٍ مدفوعة ذمّةٌ لا نقد ═══
+         * ═══ وطرفُ الدرج أو البنك: ما دُفع في البيعة نفسِها ═══
          *
-         * صنفٌ أُضيف بعد الدفع رفع الإجماليّ، والفرقُ لم يدخل الدرج ولا البنك
-         * (`orders.balance_due`، انظر `OrderCorrection::addLine`). فيُدين به
-         * الذممَ والباقي حيث دخل المال. وفاتورةٌ بلا متبقٍّ قيدُها كما كان.
+         * فاتورةٌ دُفعت ثمّ تغيّرت بنودُها (`OrderCorrection::addLine`) لا يدخل
+         * فرقُها الدرجَ من تلقاء نفسه:
+         *
+         * - ما بقي على العميل (`orders.balance_due`) ذمّةٌ يُدين بها الذمم.
+         * - وما حُصِّل منه بعدُ أو رُدّ (`orders.paid_after_sale`) له قيدُه
+         *   بيومه على الذمم — فهنا يبقى ذمّةً (مدينةً إن حُصِّل، دائنةً إن
+         *   رُدّ) يُقفلها ذاك القيد.
+         *
+         * فالدرجُ أو البنك يُدان بما دُفع في البيعة وحده — الإجماليّ ناقصًا
+         * الاثنين — وإعادةُ ترحيلها بعد تصحيحٍ لا تُدخل فيه مالًا لم يدخل.
+         * وفاتورةٌ بلا شيءٍ منهما قيدُها كما كان.
          */
-        $due = $debit === 'receivable' ? 0.0 : round(min(max(0.0, (float) ($order->balance_due ?? 0)), $total), 3);
+        $paid = $debit === 'receivable'
+            ? $total
+            : round(max(0.0, $total - (float) ($order->balance_due ?? 0) - (float) ($order->paid_after_sale ?? 0)), 3);
+        $owed = $debit === 'receivable' ? 0.0 : round($total - $paid, 3);
 
-        DB::transaction(function () use ($order, $debit, $total, $subtotal, $tax, $cost, $at, $due) {
+        DB::transaction(function () use ($order, $debit, $total, $subtotal, $tax, $cost, $at, $paid, $owed) {
             // ‏ولا قيدَ إيرادٍ بصفر: طرفاه صفران، وهو سطرٌ يقول لا شيء
-            if ($total > 0) {
-                $lines = $due > 0
-                    ? array_values(array_filter([
-                        $total - $due > 0 ? ['account' => $debit, 'debit' => round($total - $due, 3)] : null,
-                        ['account' => 'receivable', 'debit' => $due],
-                    ]))
-                    : [['account' => $debit, 'debit' => $total]];
+            if ($total > 0 || $paid > 0) {
+                $lines = array_values(array_filter([
+                    $paid > 0 ? ['account' => $debit, 'debit' => $paid] : null,
+                    $owed > 0 ? ['account' => 'receivable', 'debit' => $owed] : null,
+                    $owed < 0 ? ['account' => 'receivable', 'credit' => -$owed] : null,
+                ]));
 
                 if ($subtotal > 0) {
                     $lines[] = ['account' => self::salesAccount($order), 'credit' => $subtotal];
@@ -492,6 +502,8 @@ class Books
         Transaction::WEB_SALE => 'مبيعات الموقع الإلكتروني',
         // ما بقي على فاتورةٍ مدفوعة ثمّ حُصِّل — من تفاصيل الطلب (`OrderCorrection::collectBalance`)
         Transaction::ORDER_BALANCE => 'تحصيل متبقّي فاتورة',
+        // وما نقص منها فرُدّ للعميل بيد الموظّف — لا استردادَ آليًّا
+        Transaction::ORDER_REFUND => 'ردّ فرق فاتورة',
     ];
 
     /**

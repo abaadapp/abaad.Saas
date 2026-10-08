@@ -27,6 +27,13 @@ use Illuminate\Support\Facades\Schema;
  * صنفٌ يُضاف إلى فاتورةٍ دُفعت يرفع إجماليَّها، والفرقُ لم يُدفع. فلا يُكتب
  * مدفوعًا ولا يُعاد شحنُ بطاقة: يبقى في `orders.balance_due` ذمّةً على
  * العميل حتّى يُحصَّل (`Books::recordSale` تُدين به الذمم).
+ *
+ * ═══ و«ما سُوّي بعد البيع» ═══
+ *
+ * ما حُصِّل من ذلك لاحقًا (+) أو رُدّ للعميل بعد تخفيضٍ (−) يُجمع في
+ * `orders.paid_after_sale` — ولكلٍّ منه حركتُه وقيدُه بيومه. فما دُفع في
+ * البيعة نفسِها يبقى مشتقًّا ثابتًا: الإجماليّ − المتبقّي − ما سُوّي بعدها،
+ * وهو وحده مبلغُ حركة البيعة وطرفُ الدرج أو البنك في قيدها.
  */
 return new class extends Migration
 {
@@ -44,6 +51,12 @@ return new class extends Migration
             });
         }
 
+        if (! Schema::hasColumn('orders', 'paid_after_sale')) {
+            Schema::table('orders', function (Blueprint $table) {
+                $table->decimal('paid_after_sale', 12, 3)->default(0);
+            });
+        }
+
         $ids = array_values(array_filter(array_map('intval', (array) config('storefront.ribbon_english_checkout_businesses', []))));
 
         if ($ids !== []) {
@@ -53,6 +66,12 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (Schema::hasColumn('orders', 'paid_after_sale')) {
+            Schema::table('orders', function (Blueprint $table) {
+                $table->dropColumn('paid_after_sale');
+            });
+        }
+
         if (Schema::hasColumn('orders', 'balance_due')) {
             Schema::table('orders', function (Blueprint $table) {
                 $table->dropColumn('balance_due');

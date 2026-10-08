@@ -43,6 +43,15 @@ class Transaction extends Model
      */
     public const ORDER_BALANCE = 'order_balance';
 
+    /**
+     * ردُّ ما نقص من فاتورةٍ مدفوعة بعد تخفيضها — صفٌّ خارجٌ بيومه ووسيلته
+     * (`OrderCorrection::refundDifference`). ولا يُنقص صفَّ البيعة: ذاك ما دُفع فيها.
+     */
+    public const ORDER_REFUND = 'order_refund';
+
+    /** ما سُوّي على فاتورةٍ بعد بيعتها — لا يُكتب فوقه صفُّ البيعة */
+    public const SETTLEMENT_KINDS = [self::ORDER_BALANCE, self::ORDER_REFUND];
+
     /** قيدُها في دفتر الأستاذ — إن رُحّلت */
     public function journalEntry(): BelongsTo { return $this->belongsTo(JournalEntry::class); }
 

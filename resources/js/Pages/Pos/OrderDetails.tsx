@@ -398,6 +398,7 @@ export default function PosOrderDetails() {
                         title={t('إضافة صنف إلى الفاتورة')}
                         catalog={lineEdit.catalog}
                         paid={order.payment_status !== 'غير مدفوع'}
+                        methods={order.payment_methods}
                         format={m}
                         onClose={() => setAdding(false)}
                     />
@@ -408,6 +409,7 @@ export default function PosOrderDetails() {
                         title={t('استبدال الصنف')}
                         catalog={lineEdit.catalog}
                         paid={order.payment_status !== 'غير مدفوع'}
+                        methods={order.payment_methods}
                         replacing={replacing.name}
                         format={m}
                         onClose={() => setReplacing(null)}

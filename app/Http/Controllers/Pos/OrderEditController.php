@@ -211,6 +211,8 @@ class OrderEditController extends Controller
             'addons.*.qty' => ['required', 'integer', 'min:0', 'max:99'],
             'note' => ['nullable', 'string', 'max:'.NotesAndEdits::PRODUCT_NOTE_MAX],
             'settle' => ['nullable', Rule::in(OrderCorrection::SETTLES)],
+            // «حُصِّل الآن» و«رُدّ الآن» بوسيلةٍ — والخادمُ يسأل إن كانت مأذونة
+            'payment_method' => ['nullable', 'string', 'max:50', 'required_if:settle,'.OrderCorrection::SETTLE_COLLECTED.','.OrderCorrection::SETTLE_REFUNDED],
             'reason' => ['required', 'string', 'min:3', 'max:255'],
         ];
     }
@@ -252,7 +254,7 @@ class OrderEditController extends Controller
         }
 
         try {
-            OrderCorrection::addLine($order, $data, trim($data['reason']), $data['settle'] ?? null);
+            OrderCorrection::addLine($order, $data, trim($data['reason']), $data['settle'] ?? null, $data['payment_method'] ?? null);
         } catch (RuntimeException|ValidationException $e) {
             return $this->failed($e);
         }
@@ -274,7 +276,7 @@ class OrderEditController extends Controller
         }
 
         try {
-            OrderCorrection::replaceLine($order, $item, $data, trim($data['reason']), $data['settle'] ?? null);
+            OrderCorrection::replaceLine($order, $item, $data, trim($data['reason']), $data['settle'] ?? null, $data['payment_method'] ?? null);
         } catch (RuntimeException|ValidationException $e) {
             return $this->failed($e);
         }

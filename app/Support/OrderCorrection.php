@@ -124,6 +124,7 @@ class OrderCorrection
             $order->refresh();
             // وما نقص يُنقص المتبقّي على العميل أوّلًا — لا أثرَ حيث لا متبقّي
             self::absorb($order, $totalBefore);
+            self::assertPaidAtSaleStands($order);
 
             self::syncTransaction($order);
             self::syncBooks($order, $reason);
@@ -659,6 +660,7 @@ class OrderCorrection
             self::recompute($order->fresh('items'));
             $order->refresh();
             self::absorb($order, $totalBefore);
+            self::assertPaidAtSaleStands($order);
 
             self::syncTransaction($order);
             self::syncBooks($order, $reason);
@@ -720,7 +722,8 @@ class OrderCorrection
 
         return DB::transaction(function () use ($order, $before, $method, $reason) {
             $order->update(['payment_method' => $method]);
-            Transaction::where('order_id', $order->id)->update(['method' => $method]);
+            // وصفُّ تحصيلٍ أو ردٍّ لاحق له وسيلتُه — لا تُكتب فوقها وسيلةُ البيعة
+            self::saleRows($order)->update(['method' => $method]);
             // والدفترُ يتبع: الجانبُ المدين (صندوق/بنك/ذمّة) يُقرأ من الوسيلة
             self::syncBooks($order->fresh(), $reason);
 
@@ -750,7 +753,10 @@ class OrderCorrection
     /** المعاملة المالية تتبع الفاتورة — رقمٌ في المالية لا يقابله بيعٌ يضلّل التقرير */
     /* ═══════════════ إضافةُ صنفٍ واستبدالُه وملاحظتُه — بعد صدور الفاتورة ═══════════════ */
 
-    /** الفرقُ في فاتورةٍ مدفوعة: حُصِّل الآن، أو يبقى على العميل، أو رُدّ إليه يدويًّا */
+    /**
+     * الفرقُ في فاتورةٍ مدفوعة: يبقى على العميل، أو حُصِّل الآن بوسيلةٍ، أو
+     * رُدّ إليه الآن بوسيلةٍ — ولكلٍّ من الأخيرين حركتُه وقيدُه (`settleDifference`).
+     */
     public const SETTLE_COLLECTED = 'collected';
 
     public const SETTLE_DUE = 'due';
@@ -772,11 +778,12 @@ class OrderCorrection
      *
      * @throws RuntimeException|ValidationException
      */
-    public static function addLine(Order $order, array $wanted, string $reason, ?string $settle = null): OrderEdit
+    public static function addLine(Order $order, array $wanted, string $reason, ?string $settle = null, ?string $method = null): OrderEdit
     {
         self::assertLinesMayChange($order);
+        $method = self::settleMethod($order, $settle, $method);
 
-        return DB::transaction(function () use ($order, $wanted, $reason, $settle) {
+        return DB::transaction(function () use ($order, $wanted, $reason, $settle, $method) {
             $order = self::lockOrder($order);
             $totalBefore = (float) $order->total;
 
@@ -785,11 +792,13 @@ class OrderCorrection
 
             self::recompute($order->fresh('items'));
             $order->refresh();
-            self::settleDifference($order, $totalBefore, $settle);
+            $settlement = self::settleDifference($order, $totalBefore, $settle, $method);
 
             self::syncTransaction($order);
             self::syncBooks($order, $reason);
             self::syncLoyalty($order);
+            // والتحصيلُ أو الردُّ الآن حركةٌ وقيدٌ مستقلّان — بعد قيد البيعة لا فيه
+            self::recordSettlement($order, $settlement, $reason);
 
             $edit = self::trace($order, OrderEdit::ADD_LINE, $item->displayName(), $totalBefore, $reason, [
                 'order_item_id' => $item->id,
@@ -818,7 +827,7 @@ class OrderCorrection
      *
      * @throws RuntimeException|ValidationException
      */
-    public static function replaceLine(Order $order, OrderItem $old, array $wanted, string $reason, ?string $settle = null): OrderEdit
+    public static function replaceLine(Order $order, OrderItem $old, array $wanted, string $reason, ?string $settle = null, ?string $method = null): OrderEdit
     {
         if ($old->order_id !== $order->id) {
             throw new RuntimeException(__('هذا البند ليس من هذه الفاتورة.'));
@@ -826,8 +835,9 @@ class OrderCorrection
 
         self::assertLinesMayChange($order);
         self::assertNotCardLine($order, $old);
+        $method = self::settleMethod($order, $settle, $method);
 
-        return DB::transaction(function () use ($order, $old, $wanted, $reason, $settle) {
+        return DB::transaction(function () use ($order, $old, $wanted, $reason, $settle, $method) {
             $order = self::lockOrder($order);
             $locked = OrderItem::whereKey($old->id)->lockForUpdate()->first();
 
@@ -851,11 +861,13 @@ class OrderCorrection
 
             self::recompute($order->fresh('items'));
             $order->refresh();
-            self::settleDifference($order, $totalBefore, $settle);
+            $settlement = self::settleDifference($order, $totalBefore, $settle, $method);
 
             self::syncTransaction($order);
             self::syncBooks($order, $reason);
             self::syncLoyalty($order);
+            // والتحصيلُ أو الردُّ الآن حركةٌ وقيدٌ مستقلّان — بعد قيد البيعة لا فيه
+            self::recordSettlement($order, $settlement, $reason);
 
             $edit = self::trace($order, OrderEdit::REPLACE_LINE, $oldName.' ← '.$item->displayName(), $totalBefore, $reason, [
                 'order_item_id' => $item->id,
@@ -937,8 +949,9 @@ class OrderCorrection
      * يُحصِّل ما بقي على فاتورةٍ دُفعت ثمّ زادت — قيدُ تحصيلٍ يومَ يقع، لا إعادةُ كتابةٍ للبيعة.
      *
      * المالُ دخل اليومَ لا يومَ البيع: فلا يُعاد ترحيلُ البيعة بتاريخها (كان
-     * سيُدخل في صندوقِ يومٍ أُقفل مالًا لم يكن فيه). يُكتب قيدٌ بتاريخه: مدينٌ
-     * الصندوقُ أو البنك، دائنٌ ذممُ العملاء — وصفٌّ في الحركة الماليّة بوقته.
+     * سيُدخل في صندوقِ يومٍ أُقفل مالًا لم يكن فيه). يُكتب صفٌّ مستقلٌّ في
+     * الحركة الماليّة بوسيلته، وقيدٌ بتاريخه: مدينٌ الصندوقُ أو البنك، دائنٌ
+     * ذممُ العملاء. وصفُّ البيعة لا يزيد — هو ما دُفع في البيعة نفسِها.
      *
      * @throws RuntimeException
      */
@@ -950,13 +963,7 @@ class OrderCorrection
             throw new RuntimeException(__('الفاتورة ملغاة — لا تُعدَّل.'));
         }
 
-        $allowed = PaymentMethods::enabled(
-            Setting::where('business_id', $order->business_id)->pluck('value', 'key')->all()
-        );
-
-        if (! in_array($method, $allowed, true)) {
-            throw new RuntimeException(__('وسيلة دفع غير مأذون بها في هذا المتجر.'));
-        }
+        self::assertMethodAllowed($order, $method);
 
         return DB::transaction(function () use ($order, $method, $reason) {
             $order = self::lockOrder($order);
@@ -966,47 +973,150 @@ class OrderCorrection
                 throw new RuntimeException(__('لا متبقّي على هذه الفاتورة.'));
             }
 
-            $order->update(['balance_due' => 0]);
-
-            Transaction::create([
-                'business_id' => $order->business_id,
-                'order_id' => $order->id,
-                'reference' => $order->number,
-                'description' => __('تحصيل متبقّي الفاتورة ').$order->number,
-                'kind' => Transaction::ORDER_BALANCE,
-                'method' => $method,
-                'type' => 'دخل',
-                'amount' => $amount,
-                'tax_amount' => 0,
-                'employee_name' => auth()->user()?->name,
-                'occurred_at' => now(),
-            ]);
-
-            Ledger::post(
-                (int) $order->business_id,
-                __('تحصيل متبقّي الفاتورة ').$order->number,
-                [
-                    ['account' => in_array($method, ['نقدي', 'كاش'], true) ? 'cash' : (Bank::leaf((int) $order->business_id) ?? 'bank'), 'debit' => $amount],
-                    ['account' => 'receivable', 'credit' => $amount],
-                ],
-                now(),
-                self::BALANCE_SOURCE,
-                $order->branch_id,
-                auth()->id(),
-                $order,
-            );
-
-            $edit = self::trace($order, OrderEdit::COLLECT, $order->number, (float) $order->total, $reason, [
-                'value_before' => (string) $amount,
-                'value_after' => $method,
-            ]);
-
-            Activity::log('updated', 'حصّل متبقّي الفاتورة '.$order->number.' ('.$amount.') — '.$method,
-                ['subject_id' => $order->id, 'subject_type' => 'order']);
-
-            return $edit;
+            return self::collect($order, $amount, $method, $reason);
         });
     }
+
+    /**
+     * التحصيلُ نفسُه — يقرؤه زرُّ «تحصيل المتبقّي» وخيارُ «حُصِّل الآن» في حوار الصنف.
+     *
+     * بابٌ واحد: يُنقص المتبقّي، ويُجمع في «ما سُوّي بعد البيع»، ويكتب صفَّه
+     * وقيدَه. فالتحصيلُ لحظةَ الإضافة وتحصيلُه غدًا قيدان من شكلٍ واحد.
+     */
+    private static function collect(Order $order, float $amount, string $method, string $reason): OrderEdit
+    {
+        $order->update([
+            'balance_due' => round(max(0.0, (float) $order->balance_due - $amount), 3),
+            'paid_after_sale' => round((float) $order->paid_after_sale + $amount, 3),
+        ]);
+
+        self::settlementRow($order, Transaction::ORDER_BALANCE, $amount, $method, __('تحصيل متبقّي الفاتورة ').$order->number, [
+            ['account' => self::sideFor($order, $method), 'debit' => $amount],
+            ['account' => 'receivable', 'credit' => $amount],
+        ]);
+
+        $edit = self::trace($order, OrderEdit::COLLECT, $order->number, (float) $order->total, $reason, [
+            'value_before' => (string) $amount,
+            'value_after' => $method,
+        ]);
+
+        Activity::log('updated', 'حصّل متبقّي الفاتورة '.$order->number.' ('.$amount.') — '.$method,
+            ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+        return $edit;
+    }
+
+    /**
+     * ردُّ ما نقص من فاتورةٍ مدفوعة — صفٌّ خارجٌ وقيدٌ بيومه، بإقرار الموظّف.
+     *
+     * لا يُطلب من Paymob شيء: الموظّفُ يقول إنّه ردّ المبلغَ الآن وبأيّ وسيلة
+     * (من الدرج، أو تحويلًا، أو من لوحة البوّابة بيده)، والنظامُ يكتب ما قيل.
+     * والقيد: مدينٌ ذممُ العملاء (أقفلها قيدُ البيعة دائنةً بالمبلغ)، دائنٌ
+     * الصندوقُ أو البنك. وصفُّ البيعة لا ينقص — هو ما دُفع فيها.
+     *
+     * و«ما سُوّي بعد البيع» نقص قبل ترحيل البيعة (`settleDifference`).
+     */
+    private static function refund(Order $order, float $amount, string $method, string $reason): OrderEdit
+    {
+        self::settlementRow($order, Transaction::ORDER_REFUND, $amount, $method, __('ردّ فرق الفاتورة ').$order->number, [
+            ['account' => 'receivable', 'debit' => $amount],
+            ['account' => self::sideFor($order, $method), 'credit' => $amount],
+        ]);
+
+        $edit = self::trace($order, OrderEdit::REFUND, $order->number, (float) $order->total, $reason, [
+            'value_before' => (string) $amount,
+            'value_after' => $method,
+        ]);
+
+        Activity::log('updated', 'ردّ فرق الفاتورة '.$order->number.' ('.$amount.') — '.$method,
+            ['subject_id' => $order->id, 'subject_type' => 'order']);
+
+        return $edit;
+    }
+
+    /**
+     * صفُّ التسوية في الحركة الماليّة وقيدُه — والقيدُ مصدرُه الصفّ لا الطلب.
+     *
+     * لو كان مصدرُه الطلب لَعكسه أوّلُ تصحيحٍ بعده مع قيد البيعة
+     * (`Books::unpostSale` تعكس كلَّ قيدٍ حيٍّ للطلب) — فيضيع تحصيلٌ وقع.
+     *
+     * @param  list<array{account: string, debit?: float, credit?: float}>  $lines
+     */
+    private static function settlementRow(Order $order, string $kind, float $amount, string $method, string $description, array $lines): void
+    {
+        $row = Transaction::create([
+            'business_id' => $order->business_id,
+            'branch_id' => $order->branch_id,
+            'order_id' => $order->id,
+            'reference' => $order->number,
+            'description' => $description,
+            'kind' => $kind,
+            'method' => $method,
+            'type' => $kind === Transaction::ORDER_REFUND ? 'مصروف' : 'دخل',
+            'amount' => $amount,
+            'tax_amount' => 0,
+            'employee_name' => auth()->user()?->name,
+            'occurred_at' => now(),
+        ]);
+
+        $entry = Ledger::post(
+            (int) $order->business_id,
+            $description,
+            $lines,
+            now(),
+            $kind === Transaction::ORDER_REFUND ? self::REFUND_SOURCE : self::BALANCE_SOURCE,
+            $order->branch_id,
+            auth()->id(),
+            $row,
+        );
+
+        $row->update(['journal_entry_id' => $entry->id]);
+    }
+
+    /** الوسيلةُ تقول أين دخل المالُ أو خرج: النقدُ الصندوق، وما سواه البنك */
+    private static function sideFor(Order $order, string $method): string
+    {
+        return in_array($method, ['نقدي', 'كاش'], true)
+            ? 'cash'
+            : (Bank::leaf((int) $order->business_id) ?? 'bank');
+    }
+
+    /** وسيلةٌ أطفأها التاجر لا يُحصَّل بها ولا يُردّ */
+    private static function assertMethodAllowed(Order $order, ?string $method): void
+    {
+        $allowed = PaymentMethods::enabled(
+            Setting::where('business_id', $order->business_id)->pluck('value', 'key')->all()
+        );
+
+        if ($method === null || ! in_array($method, $allowed, true)) {
+            throw new RuntimeException(__('وسيلة دفع غير مأذون بها في هذا المتجر.'));
+        }
+    }
+
+    /**
+     * «حُصِّل الآن» و«رُدّ الآن» لا يكفيان وحدهما — بأيّ وسيلة؟
+     *
+     * والسؤالُ قبل المعاملة: وسيلةٌ ناقصة تُردّ قبل أن يُمسّ مخزونٌ أو قيد.
+     */
+    private static function settleMethod(Order $order, ?string $settle, ?string $method): ?string
+    {
+        if (! in_array($settle, [self::SETTLE_COLLECTED, self::SETTLE_REFUNDED], true)) {
+            return null;
+        }
+
+        if (blank($method)) {
+            throw new RuntimeException($settle === self::SETTLE_COLLECTED
+                ? __('اختر وسيلة الدفع التي حُصِّل بها الفرق.')
+                : __('اختر الوسيلة التي رُدّ بها الفرق للعميل.'));
+        }
+
+        self::assertMethodAllowed($order, $method);
+
+        return $method;
+    }
+
+    /** مصدرُ قيد ردّ الفرق في الدفتر */
+    public const REFUND_SOURCE = 'ردّ فرق فاتورة';
 
     /** مصدرُ قيد تحصيل المتبقّي في الدفتر */
     public const BALANCE_SOURCE = 'تحصيل متبقّي';
@@ -1164,42 +1274,93 @@ class OrderCorrection
     /**
      * الفرقُ في فاتورةٍ مدفوعة لا يُكتب مدفوعًا من تلقاء نفسه.
      *
-     * - **زاد الإجماليّ:** يُسأل الموظّف: حُصِّل الفرقُ الآن (`collected`)، أم
-     *   يبقى على العميل (`due` ⇦ `orders.balance_due`، والدفترُ يُدين به
-     *   الذمم). ولا تُشحن بطاقةٌ ولا يُطلب من Paymob شيء.
-     * - **نقص:** يُنقص المتبقّي أوّلًا، وما زاد عنه لا يُردّ إلّا بإقرار
-     *   الموظّف أنّه ردّه بيده (`refunded`) — ولا استردادَ آليّ.
+     * - **زاد الإجماليّ:** يُكتب الفرقُ أوّلًا متبقّيًا على العميل
+     *   (`orders.balance_due` — والدفترُ يُدين به الذمم). فإن قال الموظّف
+     *   «حُصِّل الآن» حُصِّل بوسيلةٍ يختارها، من بابِ `collectBalance` نفسِه
+     *   (`collect`): صفٌّ مستقلٌّ وقيدٌ بيومه — لا زيادةَ في صفّ البيعة.
+     * - **نقص:** يُنقص المتبقّي أوّلًا، وما زاد عنه دُفع ولم يعد مستحقًّا:
+     *   لا يمرّ إلّا بردٍّ يُقِرّه الموظّف الآن بوسيلةٍ يختارها (`refund`) —
+     *   صفٌّ خارجٌ وقيدٌ بيومه. ولا استردادَ آليّ.
      *
-     * وفاتورةٌ غيرُ مدفوعة كلُّها ذمّة أصلًا (`Books::recordSale`): لا سؤال.
+     * ولا تُشحن بطاقةٌ ولا يُطلب من Paymob شيء في الحالين. وفاتورةٌ غيرُ
+     * مدفوعة كلُّها ذمّةٌ أصلًا (`Books::recordSale`): لا سؤال.
+     *
+     * يُعيد التسويةَ التي تُكتب بعد قيد البيعة — أو لا شيء.
+     *
+     * @return array{kind: string, amount: float, method: string}|null
      *
      * @throws RuntimeException
      */
-    private static function settleDifference(Order $order, float $before, ?string $settle): void
+    private static function settleDifference(Order $order, float $before, ?string $settle, ?string $method): ?array
     {
         $dueBefore = (float) $order->balance_due;
         self::absorb($order, $before);
 
         if ((string) $order->payment_status === 'غير مدفوع') {
-            return;
+            return null;
         }
 
         $delta = round((float) $order->total - $before, 3);
 
         if ($delta > 0) {
-            if ($settle === self::SETTLE_DUE) {
-                $order->update(['balance_due' => round((float) $order->balance_due + $delta, 3)]);
-            } elseif ($settle !== self::SETTLE_COLLECTED) {
-                throw new RuntimeException(__('الفاتورة مدفوعة وزاد إجماليها :amount — حدّد: حُصِّل الفرق الآن، أم يبقى على العميل.', ['amount' => number_format($delta, 3)]));
+            if (! in_array($settle, [self::SETTLE_DUE, self::SETTLE_COLLECTED], true)) {
+                throw new RuntimeException(__('الفاتورة مدفوعة وزاد إجماليها :amount — حدّد: يبقى على العميل، أم حُصِّل الآن ومن أيّ وسيلة.', ['amount' => number_format($delta, 3)]));
             }
 
+            $order->update(['balance_due' => round((float) $order->balance_due + $delta, 3)]);
+
+            return $settle === self::SETTLE_COLLECTED
+                ? ['kind' => self::SETTLE_COLLECTED, 'amount' => $delta, 'method' => (string) $method]
+                : null;
+        }
+
+        // ما نقص فوق المتبقّي دُفع ولم يعد مستحقًّا — يُردّ بإقرارٍ لا آليًّا
+        $refund = round(-$delta - ($dueBefore - (float) $order->balance_due), 3);
+
+        if ($refund <= 0.0005) {
+            return null;
+        }
+
+        if ($settle !== self::SETTLE_REFUNDED) {
+            throw new RuntimeException(__('الفاتورة مدفوعة ونقص إجماليها :amount — اختر «رُدّ الفرق الآن» ووسيلةَ الردّ؛ النظام لا يستردّ آليًّا.', ['amount' => number_format($refund, 3)]));
+        }
+
+        // قبل ترحيل البيعة: قيدُها يبقى مدينًا بما دُفع فيها، والفرقُ ذمّةٌ يُقفلها قيدُ الردّ
+        $order->update(['paid_after_sale' => round((float) $order->paid_after_sale - $refund, 3)]);
+
+        return ['kind' => self::SETTLE_REFUNDED, 'amount' => $refund, 'method' => (string) $method];
+    }
+
+    /** التسويةُ بعد قيد البيعة — تحصيلٌ أو ردٌّ بحركته وقيده */
+    private static function recordSettlement(Order $order, ?array $settlement, string $reason): void
+    {
+        if ($settlement === null) {
             return;
         }
 
-        // ما نقص فوق المتبقّي يُردّ للعميل — بإقرارٍ لا آليًّا
-        $refund = round(-$delta - ($dueBefore - (float) $order->balance_due), 3);
-        if ($delta < 0 && $refund > 0.0005 && $settle !== self::SETTLE_REFUNDED) {
-            throw new RuntimeException(__('الفاتورة مدفوعة ونقص إجماليها :amount — أكّد أنّك ستردّ الفرق للعميل بنفسك؛ النظام لا يستردّ آليًّا.', ['amount' => number_format($refund, 3)]));
+        $settlement['kind'] === self::SETTLE_COLLECTED
+            ? self::collect($order, $settlement['amount'], $settlement['method'], $reason)
+            : self::refund($order, $settlement['amount'], $settlement['method'], $reason);
+    }
+
+    /**
+     * ما دُفع في البيعة نفسِها لا ينزل تحت الصفر بتصحيح كمّيّة.
+     *
+     * فاتورةٌ حُصِّل عليها بعد البيع ثمّ نقصت كمّيّتُها نقصًا يتجاوز ما
+     * حُصِّل كانت ستقول إنّ البيعة دفعت سالبًا. تُصحَّح بالاستبدال، وفيه ردٌّ
+     * بوسيلته.
+     */
+    private static function assertPaidAtSaleStands(Order $order): void
+    {
+        if (self::paidAtSale($order) < -0.0005) {
+            throw new RuntimeException(__('حُصِّل على هذه الفاتورة بعد البيع، وهذا التخفيض يتجاوز ما دُفع فيها — صحّحها بالاستبدال مع ردّ الفرق.'));
         }
+    }
+
+    /** ما دُفع في البيعة نفسِها: الإجماليّ − المتبقّي − ما سُوّي بعدها */
+    private static function paidAtSale(Order $order): float
+    {
+        return round((float) $order->total - (float) $order->balance_due - (float) $order->paid_after_sale, 3);
     }
 
     /**
@@ -1324,6 +1485,11 @@ class OrderCorrection
              * يقول ما ليس فيه. أمّا دفترُ الأستاذ فيُعكس ولا يُمحى — انظر
              * `Books::unpostSale`.
              */
+            // وما سُوّي بعد البيع قيدُه مصدرُه صفُّه — يُعكس معه قبل أن يُخفى الصفّ
+            Transaction::where('order_id', $order->id)->whereIn('kind', Transaction::SETTLEMENT_KINDS)->get()
+                ->each(fn (Transaction $t) => Books::liveEntriesFor($t)->each(
+                    fn ($e) => Ledger::reverse($e, null, PosCashier::id() ?? auth()->id(), $reason ?: __('إلغاء الطلب'))
+                ));
             Transaction::where('order_id', $order->id)->delete();
             Books::unpostSale(
                 $fresh,
@@ -1429,23 +1595,25 @@ class OrderCorrection
     }
 
     /**
-     * صفُّ البيعة في الحركة يتبع الفاتورة — بما دخل الدرجَ منها.
+     * صفُّ البيعة في الحركة يتبع الفاتورة — بما دُفع في البيعة نفسِها.
      *
-     * ما بقي على العميل (`balance_due`) لم يدخل، وما حُصِّل بعدُ صفٌّ مستقلٌّ
-     * بيومه (`collectBalance`) لا يُكتب فوقه. وفاتورةٌ بلا متبقٍّ ولا تحصيلٍ
-     * لاحق يُكتب صفُّها بإجماليّها كما كان.
+     * ما بقي على العميل (`balance_due`) لم يدخل، وما حُصِّل أو رُدّ بعدُ
+     * (`paid_after_sale`) صفٌّ مستقلٌّ بيومه ووسيلته لا يُكتب فوقه. وفاتورةٌ
+     * بلا شيءٍ منهما يُكتب صفُّها بإجماليّها كما كان.
      */
     private static function syncTransaction(Order $order): void
     {
-        $collected = (float) Transaction::where('order_id', $order->id)
-            ->where('kind', Transaction::ORDER_BALANCE)->sum('amount');
+        self::saleRows($order)->update([
+            'amount' => max(0.0, self::paidAtSale($order)),
+            'tax_amount' => (float) $order->tax,
+        ]);
+    }
 
-        Transaction::where('order_id', $order->id)
-            ->where(fn ($q) => $q->whereNull('kind')->orWhere('kind', '!=', Transaction::ORDER_BALANCE))
-            ->update([
-                'amount' => round((float) $order->total - (float) $order->balance_due - $collected, 3),
-                'tax_amount' => (float) $order->tax,
-            ]);
+    /** صفوفُ البيعة في الحركة — لا صفوفُ ما سُوّي بعدها */
+    private static function saleRows(Order $order)
+    {
+        return Transaction::where('order_id', $order->id)
+            ->where(fn ($q) => $q->whereNull('kind')->orWhereNotIn('kind', Transaction::SETTLEMENT_KINDS));
     }
 
     /**

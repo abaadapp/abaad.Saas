@@ -39,6 +39,9 @@ class OrderEdit extends Model
     /** متبقٍّ على فاتورةٍ مدفوعة حُصِّل (`collectBalance`) */
     public const COLLECT = 'تحصيل متبقّي';
 
+    /** ما نقص من فاتورةٍ مدفوعة فرُدّ للعميل الآن — بوسيلةٍ يختارها الموظّف */
+    public const REFUND = 'ردّ فرق';
+
     /** حُذف البند أم نقصت كميّته؟ — تُقرأ من الأرقام لا من عمودٍ ثالث يفترق عنها */
     public function removed(): bool { return $this->kind === self::LINE && (int) $this->qty_after === 0; }
 }

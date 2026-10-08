@@ -66,6 +66,9 @@ export function correctionLabel(e: OrderEditRecord, t: (s: string) => string): s
     if (e.kind === 'تحصيل متبقّي') {
         return `${t('تحصيل المتبقّي')}: ${e.value_before ?? ''} — ${t(e.value_after ?? '')}`;
     }
+    if (e.kind === 'ردّ فرق') {
+        return `${t('ردّ الفرق للعميل')}: ${e.value_before ?? ''} — ${t(e.value_after ?? '')}`;
+    }
 
     return e.qty_after === 0
         ? `${t('حُذف')} «${e.subject}»`
@@ -289,14 +292,16 @@ function LineError({ text }: { text?: string }) {
  * إضافةُ صنفٍ أو استبدالُه — صنفٌ ومقاسٌ وكمّيّةٌ وإضافاتٌ وملاحظةٌ وسبب.
  *
  * ولا سعرَ يُكتب هنا: يُعرض ثمنُ القاعدة للعلم، ويُسعَّر في الخادم
- * (`OrderCorrection::addLine`). وفاتورةٌ مدفوعة يُسأل فيها عن الفرق: حُصِّل
- * الآن، أم يبقى على العميل، أم يُردّ له بيد الموظّف — ولا شيءَ آليّ.
+ * (`OrderCorrection::addLine`). وفاتورةٌ مدفوعة يُسأل فيها عن الفرق: يبقى
+ * على العميل، أم حُصِّل الآن، أم رُدّ له الآن — والأخيران بوسيلةٍ يختارها
+ * الموظّف، ولكلٍّ حركتُه وقيدُه. ولا شيءَ آليّ.
  */
 export function LineDialog({
     url,
     title,
     catalog,
     paid,
+    methods,
     replacing,
     format,
     onClose,
@@ -305,6 +310,7 @@ export function LineDialog({
     title: string;
     catalog: CatalogProduct[];
     paid: boolean;
+    methods: string[];
     replacing?: string;
     format: (v: number) => string;
     onClose: () => void;
@@ -319,7 +325,11 @@ export function LineDialog({
         note: string;
         reason: string;
         settle: string;
-    }>({ product_id: '', variant_id: '', qty: '1', addons: [], note: '', reason: '', settle: '' });
+        payment_method: string;
+    }>({ product_id: '', variant_id: '', qty: '1', addons: [], note: '', reason: '', settle: '', payment_method: '' });
+
+    // التحصيلُ الآن والردُّ الآن يسألان: بأيّ وسيلة؟ — والبقاءُ على العميل لا يسأل
+    const asksMethod = form.data.settle === 'collected' || form.data.settle === 'refunded';
 
     const product = catalog.find((p) => String(p.id) === form.data.product_id);
     const errors = form.errors as Record<string, string | undefined>;
@@ -336,7 +346,12 @@ export function LineDialog({
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
-        form.transform((d) => ({ ...d, addons: d.addons.filter((a) => a.qty > 0), settle: d.settle || null }));
+        form.transform((d) => ({
+            ...d,
+            addons: d.addons.filter((a) => a.qty > 0),
+            settle: d.settle || null,
+            payment_method: asksMethod ? d.payment_method : null,
+        }));
         form.post(url, { preserveScroll: true, onSuccess: () => onClose() });
     };
 
@@ -426,18 +441,44 @@ export function LineDialog({
                     {/*
                         والفرقُ في فاتورةٍ مدفوعة لا يُكتب مدفوعًا من تلقاء نفسه، ولا
                         يُشحن له شيء — يُسأل الموظّف (`OrderCorrection::settleDifference`).
+                        والتحصيلُ أو الردُّ الآن بوسيلةٍ: صفٌّ وقيدٌ مستقلّان، لا زيادةٌ في صفّ البيعة.
                     */}
                     {paid && (
                         <Field label="فرق الفاتورة المدفوعة" hint="إن تغيّر الإجمالي — النظام لا يشحن البطاقة ولا يستردّ آليًّا" error={errors.settle}>
                             <Select
+                                name="settle"
                                 value={form.data.settle}
-                                onChange={(e) => form.setData('settle', e.target.value)}
+                                onChange={(e) =>
+                                    form.setData({
+                                        ...form.data,
+                                        settle: e.target.value,
+                                        payment_method: form.data.payment_method || methods[0] || '',
+                                    })
+                                }
                                 placeholder="اختر"
                                 options={[
                                     { label: t('زاد — يبقى على العميل حتى يُحصَّل'), value: 'due' },
                                     { label: t('زاد — حُصِّل الفرق الآن'), value: 'collected' },
-                                    { label: t('نقص — سأردّ الفرق للعميل بنفسي'), value: 'refunded' },
+                                    { label: t('نقص — رُدّ الفرق للعميل الآن'), value: 'refunded' },
                                 ]}
+                            />
+                        </Field>
+                    )}
+
+                    {paid && asksMethod && (
+                        <Field
+                            label={form.data.settle === 'refunded' ? 'وسيلة الردّ' : 'وسيلة التحصيل'}
+                            required
+                            hint="تُكتب حركةً مستقلّة بيومها — لا يُشحن شيء ولا يُستردّ آليًّا"
+                            error={errors.payment_method}
+                        >
+                            <Select
+                                required
+                                value={form.data.payment_method}
+                                onChange={(e) => form.setData('payment_method', e.target.value)}
+                                name="payment_method"
+                                aria-label={t(form.data.settle === 'refunded' ? 'وسيلة الردّ' : 'وسيلة التحصيل')}
+                                options={methods.map((x) => ({ label: t(x === 'بطاقة' ? 'فيزا' : x), value: x }))}
                             />
                         </Field>
                     )}

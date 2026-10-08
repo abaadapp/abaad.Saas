@@ -75,7 +75,6 @@ final class InventoryList
                     ];
                 }
             },
-            total: count($rows),
             totals: [
                 [__('عدد الأصناف'), count($rows), Workbook::INT],
                 [Workbook::money('القيمة الإجمالية'), round(array_sum(array_column($rows, 'value')), 3)],

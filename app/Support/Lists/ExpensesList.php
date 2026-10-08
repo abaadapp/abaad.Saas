@@ -125,7 +125,6 @@ final class ExpensesList
                     ];
                 }
             },
-            total: $count,
             totals: $totals,
             totalsColumn: 5,
         );

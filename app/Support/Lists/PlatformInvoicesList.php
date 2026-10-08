@@ -70,7 +70,6 @@ final class PlatformInvoicesList
                     yield [$i['number'], $i['business'], $i['plan'], $i['amount'], $i['date'], __((string) $i['status'])];
                 }
             },
-            total: count($rows),
             totals: [
                 [__('إجمالي المدفوع').' (OMR)', round($paid, 3)],
                 [__('إجمالي غير المدفوع').' (OMR)', round(array_sum(array_column($rows, 'amount')) - $paid, 3)],

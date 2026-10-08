@@ -55,7 +55,6 @@ final class SuppliersList
                     yield [$s['label'] ?? $s['name'], $s['phone'], $s['email'], $s['contact'], $s['orders_count']];
                 }
             },
-            total: count($rows),
             totals: [[__('عدد الموردين'), count($rows), Workbook::INT]],
         );
     }

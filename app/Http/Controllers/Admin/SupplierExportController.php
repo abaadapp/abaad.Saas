@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Exports\PdfRows;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Support\ImportSession;
@@ -98,9 +99,14 @@ class SupplierExportController extends Controller
 
     public function pdf()
     {
+        $suppliers = $this->suppliers();
+        if ($refused = PdfRows::refuse(count($suppliers))) {
+            return $refused;
+        }
+
         $html = view('pdf.suppliers-list', [
             'business' => Demo::business($this->bid()),
-            'suppliers' => $this->suppliers(),
+            'suppliers' => $suppliers,
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 

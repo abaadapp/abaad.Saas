@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Customer;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Exports\PdfRows;
 use Illuminate\Http\Request;
 use App\Support\ImportSession;
 use App\Support\Pdf;
@@ -125,6 +126,9 @@ class CustomerImportExportController extends Controller
     public function exportPdf()
     {
         $bid = $this->bid();
+        if ($refused = PdfRows::refuse($this->customerQuery()->reorder()->count())) {
+            return $refused;
+        }
         $customers = $this->customerQuery()->get();
 
         $html = view('pdf.customers-list', [

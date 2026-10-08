@@ -173,7 +173,6 @@ final class TransactionsList
                     ];
                 }
             },
-            total: $count,
             totals: [
                 [Workbook::money('الدخل'), $summary['in']],
                 [Workbook::money('المصروف'), $summary['out']],

@@ -21,7 +21,6 @@ final class Dataset
      * @param  bool|null  $perBranch  انظر `Workbook::__construct`
      * @param  array<string, string>  $columns  عنوانٌ ← نوع (`Workbook::MONEY`…) بترتيب الشاشة
      * @param  Closure(): iterable<list<mixed>|array{cells: list<mixed>, fill: ?string}>  $rows  الصفوفُ كلُّها — بلا ترقيم
-     * @param  int|null  $total  كم صفًّا طابق المرشِّحات
      * @param  list<array{0: string, 1: int|float, 2?: string}>  $totals  مجاميعُ الشاشة على النتائج كلِّها
      * @param  int  $totalsColumn  عمودُ عناوين المجاميع
      */
@@ -33,7 +32,6 @@ final class Dataset
         public readonly ?bool $perBranch,
         public readonly array $columns,
         public readonly Closure $rows,
-        public readonly ?int $total = null,
         public readonly array $totals = [],
         public readonly int $totalsColumn = 1,
     ) {}

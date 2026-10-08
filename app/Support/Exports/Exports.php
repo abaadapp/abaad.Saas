@@ -20,7 +20,7 @@ final class Exports
             isset($row['cells']) ? $book->row($row['cells'], $row['fill'] ?? null) : $book->row($row);
         }
 
-        $book->endTable($data->total);
+        $book->endTable();
 
         if ($data->totals !== []) {
             $book->totals($data->totals, $data->totalsColumn);
@@ -45,14 +45,10 @@ final class Exports
             // `escape` فارغٌ صراحةً: CSV القياسيّ يضاعف الاقتباس ولا شرطةَ هروب فيه
             fputcsv($out, array_keys($data->columns), escape: '');
 
-            $written = 0;
+            // بلا سقف: كلُّ صفٍّ يُكتب ساعةَ يصل ولا يُمسَك
             foreach (($data->rows)() as $row) {
-                if ($written >= Workbook::MAX_ROWS) {
-                    break;
-                }
                 $cells = isset($row['cells']) ? $row['cells'] : $row;
                 fputcsv($out, array_map(fn ($v, $i) => self::csvCell($v, $types[$i] ?? Workbook::TEXT), array_values($cells), array_keys(array_values($cells))), escape: '');
-                $written++;
             }
 
             fclose($out);

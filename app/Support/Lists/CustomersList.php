@@ -117,7 +117,6 @@ final class CustomersList
                     ];
                 }
             },
-            total: $count,
             totals: [[__('عدد العملاء'), $count, Workbook::INT]],
         );
     }

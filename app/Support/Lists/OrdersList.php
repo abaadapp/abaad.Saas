@@ -155,7 +155,6 @@ final class OrdersList
                     ];
                 }
             },
-            total: $count,
             totals: [
                 [__('عدد الطلبات'), $count, Workbook::INT],
                 [Workbook::money('إجمالي القيمة'), $amount],

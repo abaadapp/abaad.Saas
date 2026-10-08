@@ -7,13 +7,8 @@ use App\Support\Money;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
-use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -35,19 +30,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * - **التواريخ:** تاريخٌ يفهمه Excel بصيغة `yyyy-mm-dd` (و`hh:mm` للوقت)،
  *   بتوقيت التطبيق الذي تعرض به الشاشة.
  * - **لا نتائج:** صفٌّ يقول ذلك تحت الرأس، لا ملفٌّ فارغٌ يُظنّ معطوبًا.
- * - **السقف:** `MAX_ROWS` صفًّا، وما زاد يُقال في الورقة لا يُقصّ بصمت.
+ * - **لا سقف:** كلُّ ما طابق يُكتب. والورقةُ تُكتب إلى القرص صفًّا صفًّا
+ *   (`XlsxWriter`) فلا تُمسَك في الذاكرة — انظر هناك لمَ.
  */
 final class Workbook
 {
-    /**
-     * أكثرُ ما تحمله ورقةٌ واحدة.
-     *
-     * PhpSpreadsheet يبني الورقة كلَّها في الذاكرة: خمسون ألفَ صفٍّ بعشرة
-     * أعمدة قرابةُ ٢٠٠ ميغا. وما فوقه يُكتب في الورقة سطرًا يقول كم بقي —
-     * فلا يسقط الطلبُ بنفاد الذاكرة ولا يُقصّ الملفُّ بلا علم.
-     */
-    public const MAX_ROWS = 50000;
-
     /** أنواعُ الأعمدة */
     public const TEXT = 'text';
 
@@ -63,9 +50,10 @@ final class Workbook
 
     public const DATETIME = 'datetime';
 
-    private Spreadsheet $book;
+    /** رقمٌ إن كانت القيمةُ رقمًا وإلّا نصّ — لخلايا تقارير المركز وبطاقاتها */
+    public const AUTO = 'auto';
 
-    private Worksheet $sheet;
+    private XlsxWriter $writer;
 
     private int $row = 1;
 
@@ -78,24 +66,22 @@ final class Workbook
 
     private string $moneyFormat;
 
-    private bool $capped = false;
-
     /**
      * @param  array<string, string|null>  $filters  المرشِّحاتُ الفعّالة: عنوانٌ ← قيمة (الفارغةُ لا تُطبع)
      * @param  bool|null  $perBranch  null: التقرير لا يتبع الفرع فلا سطرَ له — انظر `Demo::scopeName`
      */
-    public function __construct(string $title, array $filters = [], ?bool $perBranch = null)
+    public function __construct(string $title, array $filters = [], ?bool $perBranch = null, bool $header = true)
     {
-        $this->book = new Spreadsheet;
-        $this->sheet = $this->book->getActiveSheet();
-        $this->sheet->setRightToLeft(self::rtl());
-        // اسمُ الورقة: ٣١ حرفًا بلا الرموز التي يرفضها Excel
-        $this->sheet->setTitle(Str::limit(str_replace(['*', ':', '/', '\\', '?', '[', ']'], ' ', $title), 28, '') ?: 'Sheet');
+        $this->writer = new XlsxWriter;
         $this->moneyFormat = self::moneyFormat();
+        $this->writer->sheet($title, self::rtl());
 
-        $business = Demo::business(auth()->user()->business_id ?? Demo::bid());
+        if (! $header) {
+            return;
+        }
+
         // السطورُ الثلاثة الأولى بمواضعها منذ كانت: الاسم، فالعنوان ووقتُ التصدير، فالفرع
-        $this->line($business['name'] ?? 'Abad POS', bold: true, size: 14);
+        $this->line(self::businessName(), bold: true, size: 14);
         $this->line($title.' — '.__('تاريخ التصدير').': '.now()->format('Y-m-d H:i'), bold: true);
 
         if ($perBranch !== null) {
@@ -109,6 +95,18 @@ final class Workbook
         }
 
         $this->row++;
+    }
+
+    /** ورقةٌ بلا ترويسةٍ موحّدة — لمن يكتب سطورَه بنفسه (مركز التقارير) */
+    public static function blank(string $title): self
+    {
+        return new self($title, header: false);
+    }
+
+    /** اسمُ النشاط كما يُكتب في أوّل سطر */
+    public static function businessName(): string
+    {
+        return Demo::business(auth()->user()->business_id ?? Demo::bid())['name'] ?? 'Abad POS';
     }
 
     /** لغةُ القارئ من اليمين؟ — العربيّة نعم، والإنجليزيّة لا */
@@ -147,14 +145,58 @@ final class Workbook
         return ($name !== '' ? $name : 'export').'.'.$ext;
     }
 
+    /**
+     * لسانٌ جديد في الملفّ نفسه — والكتابةُ بعده فيه.
+     *
+     * لتقريرٍ ذي أقسام: لكلّ قراءةٍ لسانُها يُجمع عمودُه وحده.
+     */
+    public function newSheet(string $title): self
+    {
+        $this->writer->sheet($title, self::rtl());
+        $this->row = 1;
+        $this->types = [];
+        $this->firstDataRow = null;
+        $this->dataRows = 0;
+
+        return $this;
+    }
+
+    /** سطرٌ في العمود الأوّل — عنوانٌ أو ملاحظة — ولا يُقاس به عرضُ العمود */
+    public function line(string $text, bool $bold = false, ?int $size = null): self
+    {
+        $this->writer->row($this->row, [1 => [$text, $this->writer->style(array_filter(['bold' => $bold, 'size' => $size]))]], measure: false);
+        $this->row++;
+
+        return $this;
+    }
+
+    /** سطرٌ فارغ */
+    public function gap(): self
+    {
+        $this->row++;
+
+        return $this;
+    }
+
+    /** عنوانٌ وقيمتُه في عمودين — بطاقاتُ الملخّص فوق الجدول */
+    public function pair(string $label, mixed $value): self
+    {
+        $this->writer->row($this->row, [1 => [$label], 2 => $this->typed($value, self::AUTO)]);
+        $this->row++;
+
+        return $this;
+    }
+
     /** شريطُ قسمٍ أسود فوق جدول (للتقارير ذات الأقسام) */
     public function section(string $title): self
     {
         $r = $this->row;
-        $this->sheet->setCellValue("A{$r}", $title);
-        $this->sheet->mergeCells("A{$r}:C{$r}");
-        $this->sheet->getStyle("A{$r}")->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('FFFFFF');
-        $this->sheet->getStyle("A{$r}:C{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
+        $bar = $this->writer->style(['fill' => '111111']);
+        $this->writer->row($r, [
+            1 => [$title, $this->writer->style(['bold' => true, 'size' => 12, 'color' => 'FFFFFF', 'fill' => '111111'])],
+            2 => ['', $bar], 3 => ['', $bar],
+        ], measure: false);
+        $this->writer->merge("A{$r}:C{$r}");
         $this->row++;
 
         return $this;
@@ -163,22 +205,26 @@ final class Workbook
     /**
      * رأسُ جدول — الأعمدةُ بترتيب الشاشة، ولكلٍّ نوعُه.
      *
-     * @param  array<string, string>  $columns  عنوانٌ ← نوع (`TEXT`, `CODE`, `INT`, `MONEY`, `NUMBER`, `DATE`, `DATETIME`)
+     * @param  array<string, string>  $columns  عنوانٌ ← نوع (`TEXT`, `CODE`, `INT`, `MONEY`, `NUMBER`, `DATE`, `DATETIME`, `AUTO`)
      */
     public function table(array $columns): self
     {
         $this->types = array_values($columns);
-        $r = $this->row;
-        $last = Coordinate::stringFromColumnIndex(count($columns));
+        $style = $this->writer->style([
+            'bold' => true, 'color' => 'FFFFFF', 'fill' => '111111', 'align' => self::rtl() ? 'right' : 'left',
+        ]);
 
-        $this->sheet->fromArray(array_keys($columns), null, "A{$r}");
-        $style = $this->sheet->getStyle("A{$r}:{$last}{$r}");
-        $style->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
-        $style->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
-        $style->getAlignment()->setHorizontal(self::rtl() ? Alignment::HORIZONTAL_RIGHT : Alignment::HORIZONTAL_LEFT);
+        $cells = [];
+        foreach (array_keys($columns) as $i => $label) {
+            $cells[$i + 1] = [(string) $label, $style];
+        }
+        $this->writer->row($this->row, $cells);
 
         $this->row++;
-        $this->firstDataRow ??= $this->row;
+        if ($this->firstDataRow === null) {
+            $this->firstDataRow = $this->row;
+            $this->writer->freeze($this->row);
+        }
 
         return $this;
     }
@@ -191,21 +237,11 @@ final class Workbook
      */
     public function row(array $values, ?string $fill = null): self
     {
-        if ($this->dataRows >= self::MAX_ROWS) {
-            $this->capped = true;
-
-            return $this;
-        }
-
-        $r = $this->row;
+        $cells = [];
         foreach (array_values($values) as $i => $value) {
-            $this->cell(Coordinate::stringFromColumnIndex($i + 1).$r, $value, $this->types[$i] ?? self::TEXT);
+            $cells[$i + 1] = $this->typed($value, $this->types[$i] ?? self::TEXT, $fill);
         }
-
-        if ($fill !== null && $values !== []) {
-            $last = Coordinate::stringFromColumnIndex(count($values));
-            $this->sheet->getStyle("A{$r}:{$last}{$r}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB($fill);
-        }
+        $this->writer->row($this->row, $cells);
 
         $this->row++;
         $this->dataRows++;
@@ -219,25 +255,11 @@ final class Workbook
         return $this->dataRows;
     }
 
-    /**
-     * يُغلق الجدول: «لا توجد نتائج» إن لم يُكتب صفّ، وسطرُ السقف إن بلغه.
-     *
-     * @param  int|null  $total  كم صفًّا طابق المرشِّحات — ليُقال «أوّل ٥٠٠٠٠ من …»
-     */
-    public function endTable(?int $total = null): self
+    /** يُغلق الجدول: «لا توجد نتائج» إن لم يُكتب صفّ */
+    public function endTable(): self
     {
         if ($this->dataRows === 0) {
-            $this->sheet->setCellValue("A{$this->row}", __('لا توجد نتائج'));
-            $this->sheet->getStyle("A{$this->row}")->getFont()->setItalic(true);
-            $this->row++;
-        }
-
-        if ($this->capped) {
-            $this->sheet->setCellValue("A{$this->row}", __('الملف يحمل أول :shown صفًّا من :total — ضيّق المرشّحات لتصدير الباقي.', [
-                'shown' => self::MAX_ROWS,
-                'total' => $total ?? __('أكثر'),
-            ]));
-            $this->sheet->getStyle("A{$this->row}")->getFont()->setBold(true)->getColor()->setRGB('B91C1C');
+            $this->writer->row($this->row, [1 => [__('لا توجد نتائج'), $this->writer->style(['italic' => true])]], measure: false);
             $this->row++;
         }
 
@@ -254,15 +276,12 @@ final class Workbook
      */
     public function totals(array $rows, int $column = 1): self
     {
-        $labelCol = Coordinate::stringFromColumnIndex($column);
-        $valueCol = Coordinate::stringFromColumnIndex($column + 1);
+        $bold = $this->writer->style(['bold' => true]);
 
         foreach ($rows as $row) {
             [$label, $value] = $row;
-            $r = $this->row;
-            $this->sheet->setCellValue("{$labelCol}{$r}", $label);
-            $this->cell("{$valueCol}{$r}", $value, $row[2] ?? self::MONEY);
-            $this->sheet->getStyle("{$labelCol}{$r}:{$valueCol}{$r}")->getFont()->setBold(true);
+            $cell = $this->typed($value, $row[2] ?? self::MONEY, bold: true);
+            $this->writer->row($this->row, [$column => [$label, $bold], $column + 1 => $cell]);
             $this->row++;
         }
 
@@ -271,32 +290,31 @@ final class Workbook
         return $this;
     }
 
-    /** الورقةُ نفسُها — لما لا تقوله هذه الطبقة (ألوانٌ خاصّة، دمج) */
-    public function sheet(): Worksheet
-    {
-        return $this->sheet;
-    }
-
-    /** يُنزَّل الملفّ — عرضٌ تلقائيٌّ لكلّ عمود، وتجميدُ الرأس */
+    /** يُنزَّل الملفّ — كُتب صفًّا صفًّا ويُرسَل من القرص ثمّ يُحذف */
     public function download(string $filename): StreamedResponse
     {
-        if ($this->firstDataRow !== null) {
-            $this->sheet->freezePane("A{$this->firstDataRow}");
-        }
+        $path = $this->writer->close();
 
-        $highest = Coordinate::columnIndexFromString($this->sheet->getHighestColumn());
-        for ($i = 1; $i <= $highest; $i++) {
-            $this->sheet->getColumnDimension(Coordinate::stringFromColumnIndex($i))->setAutoSize(true);
-        }
+        $response = response()->streamDownload(function () use ($path) {
+            $in = fopen($path, 'r');
+            $out = fopen('php://output', 'w');
+            stream_copy_to_stream($in, $out);
+            fclose($in);
+            fclose($out);
+            @unlink($path);
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Length' => (string) filesize($path),
+        ]);
 
-        return self::stream($this->book, $filename);
+        return self::signal($response);
     }
 
     /**
-     * التنزيلُ نفسُه — ويُعلِم زرَّ التصدير أنّ الملفّ بدأ (`download_token`).
+     * ورقةُ PhpSpreadsheet تُنزَّل — لتقرير المبيعات وملفّ استيراد العملاء.
      *
-     * الزرُّ ينتظر كعكةً بالرمز الذي أرسله ثمّ يعود إلى حاله — فلا يُضغط
-     * مرّتين فيُنزَّل الملفّ مرّتين، ولا يبقى «جارٍ التصدير» بعد أن وصل.
+     * وكلاهما صغيرٌ بطبعه: ملخّصٌ بمؤشّراتٍ ومحاور، وقالبٌ يُملأ ويُعاد.
+     * والقوائمُ لا تمرّ من هنا — تمرّ من `download` بلا ذاكرةٍ تُمسك.
      */
     public static function stream(Spreadsheet $book, string $filename): StreamedResponse
     {
@@ -311,7 +329,12 @@ final class Workbook
         return self::signal($response);
     }
 
-    /** كعكةُ «بدأ التنزيل» لرمز الزرّ — أحرفٌ وأرقامٌ لا غير */
+    /**
+     * كعكةُ «بدأ التنزيل» لرمز الزرّ — أحرفٌ وأرقامٌ لا غير.
+     *
+     * الزرُّ ينتظر كعكةً بالرمز الذي أرسله ثمّ يعود إلى حاله — فلا يُضغط
+     * مرّتين فيُنزَّل الملفّ مرّتين، ولا يبقى «جارٍ التصدير» بعد أن وصل.
+     */
     public static function signal($response)
     {
         $token = (string) request()->query('download_token', '');
@@ -323,51 +346,51 @@ final class Workbook
         return $response;
     }
 
-    private function line(string $text, bool $bold = false, ?int $size = null): void
+    /**
+     * خليّةٌ بنوعها: [القيمة، النمط، أهي رقم].
+     *
+     * @return array{0: mixed, 1: int, 2: bool}
+     */
+    private function typed(mixed $value, string $type, ?string $fill = null, bool $bold = false): array
     {
-        $this->sheet->setCellValue("A{$this->row}", $text);
-        $font = $this->sheet->getStyle("A{$this->row}")->getFont()->setBold($bold);
-        if ($size !== null) {
-            $font->setSize($size);
-        }
-        $this->row++;
-    }
+        $style = fn (array $spec = []) => $this->writer->style(array_filter($spec + ['fill' => $fill, 'bold' => $bold]));
 
-    private function cell(string $coordinate, mixed $value, string $type): void
-    {
         if ($value === null || $value === '' || $value === '—') {
-            $this->sheet->setCellValueExplicit($coordinate, $value === '—' ? '—' : '', DataType::TYPE_STRING);
-
-            return;
+            return [$value === '—' ? '—' : '', $style(), false];
         }
 
         switch ($type) {
             case self::MONEY:
-                $this->sheet->setCellValue($coordinate, round((float) $value, 3));
-                $this->sheet->getStyle($coordinate)->getNumberFormat()->setFormatCode($this->moneyFormat);
-                break;
+                return is_numeric($value)
+                    ? [round((float) $value, 3), $style(['format' => $this->moneyFormat]), true]
+                    : [(string) $value, $style(), false];
             case self::NUMBER:
-                $this->sheet->setCellValue($coordinate, (float) $value);
-                break;
+                return is_numeric($value) ? [(float) $value, $style(), true] : [(string) $value, $style(), false];
             case self::INT:
-                $this->sheet->setCellValue($coordinate, (int) $value);
-                break;
+                return is_numeric($value) ? [(int) $value, $style(), true] : [(string) $value, $style(), false];
             case self::DATE:
             case self::DATETIME:
                 $at = $value instanceof CarbonInterface ? $value : rescue(fn () => Carbon::parse((string) $value), null, false);
                 if ($at === null) {
-                    $this->sheet->setCellValueExplicit($coordinate, (string) $value, DataType::TYPE_STRING);
-                    break;
+                    return [(string) $value, $style(), false];
                 }
-                $this->sheet->setCellValue($coordinate, ExcelDate::PHPToExcel($type === self::DATE ? $at->copy()->startOfDay() : $at));
-                $this->sheet->getStyle($coordinate)->getNumberFormat()->setFormatCode($type === self::DATE ? 'yyyy-mm-dd' : 'yyyy-mm-dd hh:mm');
-                break;
-            case self::CODE:
-                // رقمُ فاتورةٍ أو SKU أو هاتف: نصٌّ لا رقم — وإلا سقطت أصفارُه الأولى
-                $this->sheet->setCellValueExplicit($coordinate, (string) $value, DataType::TYPE_STRING);
-                break;
+
+                return [
+                    ExcelDate::PHPToExcel($type === self::DATE ? $at->copy()->startOfDay() : $at),
+                    $style(['format' => $type === self::DATE ? 'yyyy-mm-dd' : 'yyyy-mm-dd hh:mm']),
+                    true,
+                ];
+            case self::AUTO:
+                // كما كان PhpSpreadsheet يقرّر: رقمٌ إن بدا رقمًا، إلّا ما بدأ بصفرٍ (هاتفٌ أو رمز)
+                if (is_int($value) || is_float($value)
+                    || (is_string($value) && is_numeric($value) && ! preg_match('/^[+\s]|^-?0\d/', $value) && strlen($value) <= 15)) {
+                    return [$value + 0, $style(), true];
+                }
+
+                return [is_bool($value) ? ($value ? 'TRUE' : 'FALSE') : (string) $value, $style(), false];
             default:
-                $this->sheet->setCellValueExplicit($coordinate, (string) $value, DataType::TYPE_STRING);
+                // رقمُ فاتورةٍ أو SKU أو هاتف: نصٌّ لا رقم — وإلا سقطت أصفارُه الأولى
+                return [(string) $value, $style(), false];
         }
     }
 }

@@ -18,6 +18,7 @@ use App\Support\Document\PaperSize;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
 use App\Support\EInvoice;
+use App\Support\Exports\PdfRows;
 use App\Support\GoogleReviews;
 use App\Support\InvoiceBranding;
 use App\Support\Lists\BusinessesList;
@@ -269,6 +270,9 @@ class PdfController extends Controller
          * `range` حين تُرسل (شاشة الحسابات)، وتُترك حين تُرشَّح الحركةُ بتاريخين.
          */
         $request = request();
+        if ($refused = PdfRows::refuse(TransactionsList::filtered($request)->count())) {
+            return $refused;
+        }
         $summary = TransactionsList::summary(TransactionsList::filtered($request));
         $range = $request->filled('range') ? Demo::range($request->query('range')) : null;
         $from = (string) $request->query('from', '');
@@ -346,6 +350,9 @@ class PdfController extends Controller
     /** تقرير قائمة الطلبات (PDF) */
     public function ordersReport()
     {
+        if ($refused = PdfRows::refuse(OrdersList::filtered(request())->count())) {
+            return $refused;
+        }
         // صفوفُ الشاشة كلُّها بترتيبها — `OrdersList` الذي ترقّمه الشاشة
         $orders = OrdersList::rows(request());
         $html = view('pdf.orders-report', [
@@ -368,6 +375,9 @@ class PdfController extends Controller
     /** تقرير المنتجات (PDF) */
     public function productsReport()
     {
+        if ($refused = PdfRows::refuse(ProductsList::query(request())->reorder()->count())) {
+            return $refused;
+        }
         // صفوفُ الشاشة كلُّها بترتيبها — `ProductsList`
         $products = ProductsList::rows(request());
         $html = view('pdf.products-report', [
@@ -387,6 +397,9 @@ class PdfController extends Controller
     {
         // صفوفُ الشاشة كلُّها — بحثُها وحالتُها وترتيبُها (`InventoryList`)
         $inventory = InventoryList::rows(request());
+        if ($refused = PdfRows::refuse(count($inventory))) {
+            return $refused;
+        }
         $html = view('pdf.inventory-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::scopeName(true),
@@ -402,6 +415,9 @@ class PdfController extends Controller
     /** تقرير المصروفات (PDF) */
     public function expensesReport()
     {
+        if ($refused = PdfRows::refuse(ExpensesList::filtered(request())->count())) {
+            return $refused;
+        }
         // صفوفُ الشاشة كلُّها بترتيبها، والمدفوعُ والمستحقُّ منفصلان — `ExpensesList`
         $expenses = ExpensesList::rows(request());
         $paid = array_sum(array_map(fn ($e) => $e['status'] === Expense::PAID ? (float) $e['amount'] : 0.0, $expenses));
@@ -422,6 +438,9 @@ class PdfController extends Controller
     /** تقرير الشركات (PDF) — لوحة المنصة */
     public function businessesReport()
     {
+        if ($refused = PdfRows::refuse(BusinessesList::query(request())->reorder()->count())) {
+            return $refused;
+        }
         // شركاتُ الشاشة بمرشِّحاتها وترتيبها — `BusinessesList`
         $businesses = BusinessesList::rows(request());
         $html = view('pdf.businesses-report', [
@@ -439,6 +458,9 @@ class PdfController extends Controller
     {
         // فواتيرُ الشاشة ببحثها وحالتها وترتيبها — `PlatformInvoicesList`
         $invoices = PlatformInvoicesList::rows(request());
+        if ($refused = PdfRows::refuse(count($invoices))) {
+            return $refused;
+        }
         $html = view('pdf.invoices-report', [
             'invoices' => $invoices,
             'total' => array_sum(array_map(fn ($i) => (float) $i['amount'], $invoices)),

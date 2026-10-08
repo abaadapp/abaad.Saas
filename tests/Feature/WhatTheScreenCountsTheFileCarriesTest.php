@@ -8,13 +8,19 @@ use App\Models\Category;
 use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\Expense;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Document\Pdf\Driver as PdfDriver;
+use App\Support\Exports\PdfRows;
 use App\Support\Exports\Workbook;
+use App\Support\Pdf;
+use App\Support\ReportData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -22,6 +28,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Tests\TestCase;
+use XMLReader;
 
 /**
  * ما تقول الشاشةُ «٣٤٧ نتيجة» يخرج ملفًّا من ٣٤٧ صفًّا — لا صفحتَها.
@@ -47,6 +54,9 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
     private Branch $seeb;
 
     private User $owner;
+
+    /** آخرُ ردٍّ من `pdfHtml` — ليُقرأ نصُّ الرفض */
+    private ?TestResponse $last = null;
 
     protected function setUp(): void
     {
@@ -405,7 +415,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         $super = User::create(['name' => 'المنصّة', 'email' => 'super@x.local', 'password' => bcrypt('x'), 'role' => 'super_admin', 'status' => 'نشط']);
         for ($i = 1; $i <= 13; $i++) {
             $b = Business::create(['name' => 'شركة '.$i, 'email' => "b{$i}@x.local", 'status' => $i <= 11 ? 'نشط' : 'موقوف']);
-            \App\Models\Invoice::create(['business_id' => $b->id, 'number' => 'SUB-'.$i, 'amount' => 10,
+            Invoice::create(['business_id' => $b->id, 'number' => 'SUB-'.$i, 'amount' => 10,
                 'status' => $i <= 27 && $i % 2 === 0 ? 'مدفوعة' : 'غير مدفوعة', 'issued_at' => now()]);
         }
 
@@ -421,21 +431,156 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         $this->assertCount(7, $this->dataRows($this->book($this->actingAs($super)->get(route('super-admin.invoices.xlsx', ['status' => 'غير مدفوعة']))), 'رقم الفاتورة'));
     }
 
-    /* ======================= مركزُ التقارير بلا سقف الشاشة ======================= */
+    /* ============================ لا سقفَ للملفّ ============================ */
 
-    public function test_the_report_centre_file_carries_more_than_the_screens_five_hundred(): void
+    /** طلباتٌ بالجملة — `R-1`… — لاختبارات الحجم */
+    private function manyOrders(int $n): void
     {
         $rows = [];
-        for ($i = 1; $i <= 520; $i++) {
+        for ($i = 1; $i <= $n; $i++) {
             $rows[] = ['business_id' => $this->business->id, 'branch_id' => $this->khuwair->id, 'branch' => 'الخوير',
                 'number' => 'R-'.$i, 'customer_name' => 'زبون', 'employee_name' => 'كاشير', 'status' => 'مكتمل',
                 'payment_method' => 'نقدي', 'is_held' => false, 'subtotal' => 1, 'tax' => 0, 'total' => 1,
-                'ordered_at' => now()->subMinutes($i), 'created_at' => now(), 'updated_at' => now()];
+                'ordered_at' => now()->subSeconds($i), 'created_at' => now(), 'updated_at' => now()];
+            if (count($rows) === 1000) {
+                Order::insert($rows);
+                $rows = [];
+            }
         }
-        Order::insert($rows);
+        if ($rows !== []) {
+            Order::insert($rows);
+        }
+    }
 
-        $csv = $this->body($this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'orders', 'range' => 'month']))->assertOk());
+    /**
+     * صفوفُ البيانات في ملفّ xlsx كبير — تُعدّ من XML الورقة ولا تُحمَّل.
+     *
+     * PhpSpreadsheet يبني الورقة كلَّها كائناتٍ ليقرأها، وخمسون ألفَ صفٍّ
+     * تتجاوز ذاكرة الاختبار. فتُعدّ الصفوفُ المتتابعة تحت صفّ الرأس.
+     */
+    private function xlsxDataRows(TestResponse $res, string $label): int
+    {
+        $res->assertOk();
+        $path = tempnam(sys_get_temp_dir(), 'xl');
+        file_put_contents($path, $this->body($res));
 
-        $this->assertSame(520, substr_count($csv, 'R-'), 'ملفّ التقرير قُصّ عند سقف الشاشة');
+        $reader = new XMLReader;
+        $reader->open('zip://'.$path.'#xl/worksheets/sheet1.xml');
+        $head = null;
+        $rows = [];
+        while ($reader->read()) {
+            if ($reader->nodeType === XMLReader::ELEMENT && $reader->name === 'row') {
+                $r = (int) $reader->getAttribute('r');
+                $xml = $reader->readOuterXml();
+                $rows[$r] = true;
+                if ($head === null && str_contains($xml, '>'.$label.'<')) {
+                    $head = $r;
+                }
+            }
+        }
+        $reader->close();
+        @unlink($path);
+
+        $this->assertNotNull($head, "لا رأسَ فيه «{$label}»");
+        $n = 0;
+        while (isset($rows[$head + $n + 1])) {
+            $n++;
+        }
+
+        return $n;
+    }
+
+    public function test_more_than_fifty_thousand_matching_orders_all_reach_the_file(): void
+    {
+        // كان للورقة سقفٌ (٥٠٬٠٠٠) يقصّ ما فوقه ويقول ذلك في سطر — والوعدُ «كلُّ ما طابق»
+        $this->manyOrders(50_001);
+
+        $this->assertSame(50_001, $this->screenTotal('admin.orders.index'));
+        $this->assertSame(50_001, $this->xlsxDataRows($this->actingAs($this->owner)->get(route('admin.orders.xlsx')), 'رقم الطلب'));
+
+        $csv = $this->body($this->actingAs($this->owner)->get(route('admin.export.orders'))->assertOk());
+        $this->assertSame(50_001, substr_count($csv, "\nR-"), 'ملفّ CSV قُصّ');
+        // ولا سطرَ يقول «أوّل كذا» — لا قصَّ معلنًا ولا صامتًا
+        $this->assertStringNotContainsString('أول', $csv);
+    }
+
+    /* ======================= مركزُ التقارير بلا سقف الشاشة ======================= */
+
+    /** رسمُ ورقة PDF قبل المحرّك — أو null إن لم يُطلب المحرّكُ أصلًا */
+    private function pdfHtml(string $route, array $params, int $status = 200): ?string
+    {
+        $fake = new class implements PdfDriver
+        {
+            public ?string $html = null;
+
+            public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null, ?string $context = null): Response
+            {
+                $this->html = $html;
+
+                return response('PDF');
+            }
+
+            public function strip(string $html, string $name, int $widthMm): Response
+            {
+                return response('PDF');
+            }
+
+            public function stripHeight(string $html, int $widthMm): float
+            {
+                return 1.0;
+            }
+        };
+
+        $was = Pdf::swap($fake);
+        try {
+            $this->last = $this->actingAs($this->owner)->get(route($route, $params))->assertStatus($status);
+        } finally {
+            Pdf::swap($was);
+        }
+
+        return $fake->html;
+    }
+
+    public function test_the_report_centre_carries_more_than_the_screens_five_hundred_in_every_format(): void
+    {
+        $this->manyOrders(520);
+        $params = ['report' => 'orders', 'range' => 'month'];
+
+        // الشاشةُ تعرض خمسمئةً وتقول إنّها مبتورة
+        $this->assertSame(500, ReportData::orders($this->business->id, ['range' => 'month'])['truncated']['shown']);
+
+        $csv = $this->body($this->actingAs($this->owner)->get(route('admin.reports.export.csv', $params))->assertOk());
+        $this->assertSame(520, substr_count($csv, 'R-'), 'ملفّ CSV قُصّ عند سقف الشاشة');
+
+        $sheet = $this->book($this->actingAs($this->owner)->get(route('admin.reports.export.xlsx', $params)));
+        $this->assertSame(520, substr_count(json_encode($sheet->toArray(null, false, false), JSON_UNESCAPED_UNICODE), '"R-'), 'ملفّ Excel قُصّ عند سقف الشاشة');
+
+        // وPDF كاملٌ كذلك — لا خمسمئةٌ وسطرٌ في أسفلها
+        $html = $this->pdfHtml('admin.reports.export.pdf', $params);
+        $this->assertSame(520, substr_count($html, 'R-'), 'ورقة PDF قُصّت عند سقف الشاشة');
+        $this->assertStringNotContainsString('تُعرض 500', $html);
+    }
+
+    public function test_a_pdf_too_large_to_print_is_refused_in_words_not_cut(): void
+    {
+        $this->manyOrders(PdfRows::MAX + 1);
+        $params = ['report' => 'orders', 'range' => 'month'];
+
+        // المحرّكُ لا يُنادى أصلًا: لا ورقةَ ناقصةٌ تُقرأ على أنّها الكلّ
+        $this->assertNull($this->pdfHtml('admin.reports.export.pdf', $params, 422));
+        $this->last->assertSee('النتائج كبيرة جدًا لتصدير PDF، استخدم Excel أو CSV.');
+
+        // وقائمةُ الطلبات بالقاعدة نفسها
+        $this->assertNull($this->pdfHtml('admin.orders.exportPdf', [], 422));
+        $this->last->assertSee('النتائج كبيرة جدًا لتصدير PDF، استخدم Excel أو CSV.');
+
+        // وExcel وCSV للتقرير نفسه يحملانه كلَّه
+        $csv = $this->body($this->actingAs($this->owner)->get(route('admin.reports.export.csv', $params))->assertOk());
+        $this->assertSame(PdfRows::MAX + 1, substr_count($csv, 'R-'));
+
+        // وما دون الحدّ يُطبع كاملًا
+        Order::where('number', 'R-1')->delete();
+        $html = $this->pdfHtml('admin.orders.exportPdf', []);
+        $this->assertSame(PdfRows::MAX, substr_count($html, 'R-'));
     }
 }

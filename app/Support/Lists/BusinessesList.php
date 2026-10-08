@@ -114,7 +114,6 @@ final class BusinessesList
                         $r['plan'], __((string) $r['status']), $r['branches'], $r['registered']];
                 }
             },
-            total: $count,
             totals: [[__('عدد الشركات'), $count, Workbook::INT]],
         );
     }

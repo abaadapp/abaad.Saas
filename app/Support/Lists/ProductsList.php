@@ -142,7 +142,6 @@ final class ProductsList
                     ], fn ($v) => $v !== false));
                 }
             },
-            total: $count,
             totals: [[__('عدد المنتجات'), $count, Workbook::INT]],
         );
     }

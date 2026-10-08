@@ -76,7 +76,12 @@
                 <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($item['name']) }}">
                     {{ $item['name'] }}
                     @if (filled($item['note'] ?? null))
-                        <div dir="{{ \App\Support\Paper::dirOf($item['note']) }}" class="bidi lbl2">{{ $item['note'] }}</div>
+                        {{-- وملاحظةُ المنتج تُسمّى باسمها حيث فُتحت الميزة (`NotesAndEdits`) --}}
+                        @if (filled($item['note_cap'] ?? null))
+                            <div class="lbl2">{{ __($item['note_cap']) }}: <span class="bidi" dir="{{ \App\Support\Paper::dirOf($item['note']) }}">{{ $item['note'] }}</span></div>
+                        @else
+                            <div dir="{{ \App\Support\Paper::dirOf($item['note']) }}" class="bidi lbl2">{{ $item['note'] }}</div>
+                        @endif
                     @endif
                     {{--
                         خياراتُ الطلب المخصَّص — «اللون: أحمر» تحت اسم البند.

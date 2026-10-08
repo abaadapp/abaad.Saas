@@ -104,10 +104,34 @@ class Books
             default => Bank::leaf((int) $order->business_id, $order->bank_account_id) ?? 'bank',
         };
 
-        DB::transaction(function () use ($order, $debit, $total, $subtotal, $tax, $cost, $at) {
+        /*
+         * ═══ وطرفُ الدرج أو البنك: ما دُفع في البيعة نفسِها ═══
+         *
+         * فاتورةٌ دُفعت ثمّ تغيّرت بنودُها (`OrderCorrection::addLine`) لا يدخل
+         * فرقُها الدرجَ من تلقاء نفسه:
+         *
+         * - ما بقي على العميل (`orders.balance_due`) ذمّةٌ يُدين بها الذمم.
+         * - وما حُصِّل منه بعدُ أو رُدّ (`orders.paid_after_sale`) له قيدُه
+         *   بيومه على الذمم — فهنا يبقى ذمّةً (مدينةً إن حُصِّل، دائنةً إن
+         *   رُدّ) يُقفلها ذاك القيد.
+         *
+         * فالدرجُ أو البنك يُدان بما دُفع في البيعة وحده — الإجماليّ ناقصًا
+         * الاثنين — وإعادةُ ترحيلها بعد تصحيحٍ لا تُدخل فيه مالًا لم يدخل.
+         * وفاتورةٌ بلا شيءٍ منهما قيدُها كما كان.
+         */
+        $paid = $debit === 'receivable'
+            ? $total
+            : round(max(0.0, $total - (float) ($order->balance_due ?? 0) - (float) ($order->paid_after_sale ?? 0)), 3);
+        $owed = $debit === 'receivable' ? 0.0 : round($total - $paid, 3);
+
+        DB::transaction(function () use ($order, $debit, $total, $subtotal, $tax, $cost, $at, $paid, $owed) {
             // ‏ولا قيدَ إيرادٍ بصفر: طرفاه صفران، وهو سطرٌ يقول لا شيء
-            if ($total > 0) {
-                $lines = [['account' => $debit, 'debit' => $total]];
+            if ($total > 0 || $paid > 0) {
+                $lines = array_values(array_filter([
+                    $paid > 0 ? ['account' => $debit, 'debit' => $paid] : null,
+                    $owed > 0 ? ['account' => 'receivable', 'debit' => $owed] : null,
+                    $owed < 0 ? ['account' => 'receivable', 'credit' => -$owed] : null,
+                ]));
 
                 if ($subtotal > 0) {
                     $lines[] = ['account' => self::salesAccount($order), 'credit' => $subtotal];
@@ -476,6 +500,10 @@ class Books
         Transaction::SALE => 'مبيعات نقطة البيع',
         // والموقعُ يُسمّى باسمه: «مبيعات» واحدةٌ تجمع البابين لا تقول أيّهما يبيع
         Transaction::WEB_SALE => 'مبيعات الموقع الإلكتروني',
+        // ما بقي على فاتورةٍ مدفوعة ثمّ حُصِّل — من تفاصيل الطلب (`OrderCorrection::collectBalance`)
+        Transaction::ORDER_BALANCE => 'تحصيل متبقّي فاتورة',
+        // وما نقص منها فرُدّ للعميل بيد الموظّف — لا استردادَ آليًّا
+        Transaction::ORDER_REFUND => 'ردّ فرق فاتورة',
     ];
 
     /**

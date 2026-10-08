@@ -56,7 +56,8 @@ window.RBUpsells = (function () {
         return {
             ok: true,
             missing: [],
-            lines: [{ id: main.id, variant_id: main.variant_id || null, qty: main.qty }].concat(picks.map(function (p) {
+            // وملاحظةُ المنتج للصنف نفسِه إن كُتبت — لا تُلصق بإضافةٍ معه
+            lines: [main.note ? { id: main.id, variant_id: main.variant_id || null, qty: main.qty, note: main.note } : { id: main.id, variant_id: main.variant_id || null, qty: main.qty }].concat(picks.map(function (p) {
                 var line = { id: p.id, variant_id: p.variant || null, qty: 1 };
                 // والنصُّ لبند الكرت وحده إن كُتب — لا يُلصق بالصنف ولا بإضافةٍ أخرى
                 if (p.gift && p.note) line.note = p.note;
@@ -115,8 +116,11 @@ window.RBUpsells = (function () {
         var busy = false;
         opts.button.addEventListener('click', function () {
             if (busy) return;
+            // وصنفٌ ملاحظتُه مردودةٌ لا يدخل السلّة — والخطأُ تحت خانتها (`ribbon-notes.js`)
+            var main = opts.main();
+            if (!main) return;
             var picks = picked(box);
-            var r = compose(opts.main(), picks);
+            var r = compose(main, picks);
             picks.forEach(function (p) { flag(p, false); });
             if (!r.ok) {
                 r.missing.forEach(function (p) { flag(p, true); });

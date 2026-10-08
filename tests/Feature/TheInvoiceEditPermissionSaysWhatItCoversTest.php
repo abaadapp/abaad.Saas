@@ -21,7 +21,7 @@ class TheInvoiceEditPermissionSaysWhatItCoversTest extends TestCase
 
     private const LABEL = 'تعديل فواتير المبيعات وطلبات الموقع';
 
-    private const HINT = 'يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني.';
+    private const HINT = 'يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني. وحيث فُتحت الميزة للنشاط: إضافة صنف أو استبداله في يوم البيع، وتعديل ملاحظة المنتج، وتحصيل المتبقّي.';
 
     public function test_the_key_is_named_for_both_doors_and_explained_without_changing_who_holds_it(): void
     {

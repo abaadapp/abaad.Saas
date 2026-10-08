@@ -263,6 +263,19 @@
                 --}}
             </div>
             @endif
+            @if ($orderNotes['on'] ?? false)
+                {{--
+                    ═══ ملاحظاتُ الطلب — خانةٌ حرّة، اختياريّة، بالإنجليزيّة ═══
+
+                    تُحفظ في `orders.notes` وحدها: لا هي تعليماتُ التوصيل ولا
+                    ملاحظةٌ داخليّة ولا رسالةُ الكرت (`NotesAndEdits`).
+                --}}
+                <div data-testid="rb-order-notes-box">
+                    <label for="rb-order-notes" style="display:block;font-size:13px;margin-bottom:8px">{{ $t['orderNotes'] }}</label>
+                    <textarea id="rb-order-notes" class="rb-input" name="notes" rows="3" dir="ltr" lang="en" maxlength="{{ (int) $orderNotes['max'] }}" placeholder="{{ $t['orderNotesPh'] }}" data-testid="rb-order-notes"></textarea>
+                    <div class="rb-error" data-err="notes" data-testid="rb-order-notes-error"></div>
+                </div>
+            @endif
             <div>
                 {!! $step($payStep, $t['s4']) !!}
                 <div style="display:flex;flex-direction:column;gap:8px" data-rb-pay>
@@ -345,6 +358,9 @@
 @endif
 @if ($giftOrder['on'] ?? false)
 <script>{!! file_get_contents(resource_path('js/store/ribbon-gift-order.js')) !!}</script>
+@endif
+@if ($orderNotes['on'] ?? false)
+<script>{!! file_get_contents(resource_path('js/store/ribbon-notes.js')) !!}</script>
 @endif
 <script>
 (function () {
@@ -553,6 +569,15 @@
         form.querySelectorAll('[data-err]').forEach(function (d) { d.textContent = ''; });
         form.querySelectorAll('.rb-input').forEach(function (i) { i.classList.remove('err'); });
         $('[data-rb-form-error]').textContent = '';
+        /*
+            وملاحظاتُ الطلب بالإنجليزيّة — تُردّ هنا قبل الإرسال، والخادمُ
+            يحرسها ولو تُجووزت (`NotesAndEdits::checkoutRules`).
+        */
+        var notesField = $('[name=notes]'), notes = '';
+        if (notesField) {
+            notes = RBNotes.mount(notesField, form.querySelector('[data-err="notes"]'), T.noteEnglishOnly, {{ (int) ($orderNotes['max'] ?? 0) }}).take();
+            if (notes === null) { notesField.classList.add('err'); return; }
+        }
         var btn = $('[data-testid=rb-place]'); btn.disabled = true;
         var payload = {
             items: RB.read(), fulfil: fulfil, pay: pay, promo: promo,
@@ -570,6 +595,7 @@
             card_file: cardWay === 'file' ? cardFile : null,
             card_file_name: cardWay === 'file' ? cardFileName : null,
         };
+        if (notesField) payload.notes = notes;
         // وحقولُ الهديّة إن كانت هديّة — وإلّا `is_gift: false` وحدها
         if (giftOrder) Object.assign(payload, giftOrder.payload());
         RB.post('/checkout', payload).then(function (r) {

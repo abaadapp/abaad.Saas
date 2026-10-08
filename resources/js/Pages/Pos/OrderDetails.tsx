@@ -1,15 +1,19 @@
 import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { ArrowRight, Pencil, Printer } from 'lucide-react';
+import { ArrowRight, Pencil, Plus, Printer, Repeat } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import ReceiptPreviewButton from './partials/ReceiptPreview';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
 import {
+    CollectDialog,
     CorrectItemDialog,
     CorrectPaymentDialog,
+    LineDialog,
+    NoteDialog,
     correctionLabel,
+    type LineEdit,
     type OrderEditRecord,
 } from '@/Components/InvoiceCorrection';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
@@ -26,6 +30,8 @@ interface OrderItem {
     /** ثمن البند كاملًا — سعره في كميّته وإضافاته */
     total: number;
     note?: string | null;
+    /** بندُ كرت هدية: نصُّه رسالةٌ لا ملاحظةُ منتج (`GiftCardProduct::cardLine`) */
+    card_line?: boolean;
     addons?: { name: string; qty: number; total: number }[];
     /** وصفُ الطلب المخصَّص كما بيع — `null` لبند الكتالوج */
     custom?: {
@@ -52,18 +58,27 @@ interface OrderDetail {
     delivery: number;
     total: number;
     notes: string | null;
+    /* والملاحظاتُ الأخرى كلٌّ باسمها — لا «ملاحظات» عامّة */
+    delivery_notes?: string | null;
+    internal_notes?: string | null;
+    card_message?: string | null;
+    balance_due?: number;
     items: OrderItem[];
     edits: OrderEditRecord[];
     payment_methods: string[];
 }
 
 export default function PosOrderDetails() {
-    const { order, context, canEdit } = usePage<
-        PageProps<{ order: OrderDetail; canEdit: boolean }>
+    const { order, context, canEdit, lineEdit } = usePage<
+        PageProps<{ order: OrderDetail; canEdit: boolean; lineEdit?: LineEdit | null }>
     >().props;
     const t = useTranslate();
     const [editing, setEditing] = useState<OrderItem | null>(null);
     const [fixingPayment, setFixingPayment] = useState(false);
+    const [adding, setAdding] = useState(false);
+    const [replacing, setReplacing] = useState<OrderItem | null>(null);
+    const [noting, setNoting] = useState<OrderItem | null>(null);
+    const [collecting, setCollecting] = useState(false);
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -109,6 +124,13 @@ export default function PosOrderDetails() {
                         </Button>
                         {/* والورقةُ تُرى في مكانها — انظر `partials/ReceiptPreview` */}
                         <ReceiptPreviewButton number={order.id} />
+                        {/* وإضافةُ صنفٍ بعد الإصدار — لنشاطٍ فُتحت له ولمن يملك «order.edit» */}
+                        {lineEdit?.lines && (
+                            <Button variant="outline" onClick={() => setAdding(true)} data-testid="add-line">
+                                <Plus />
+                                {t('إضافة صنف')}
+                            </Button>
+                        )}
                         <Button asChild>
                             <a href={route('pos.receipt.pdf', order.id)} target="_blank" rel="noreferrer">
                                 <Printer />
@@ -145,8 +167,22 @@ export default function PosOrderDetails() {
                                                         {a.qty > 1 && ` ×${a.qty}`}
                                                     </span>
                                                 ))}
+                                                {/* وملاحظةُ البند باسمها — ورسالةُ الكرت باسمها هي. والنصُّ كما كُتب */}
                                                 {it.note && (
-                                                    <span className="block text-[11px] text-gray-400">{it.note}</span>
+                                                    <span className="block text-[11px] text-gray-500" data-testid="item-note">
+                                                        {t(it.card_line ? 'رسالة الكرت' : 'ملاحظة المنتج')}:{' '}
+                                                        <span dir="auto" className="whitespace-pre-wrap text-gray-600">{it.note}</span>
+                                                    </span>
+                                                )}
+                                                {lineEdit?.notes && !it.card_line && (
+                                                    <button
+                                                        type="button"
+                                                        className="block text-[11px] text-[#6d28d9] underline"
+                                                        onClick={() => setNoting(it)}
+                                                        data-testid="edit-item-note"
+                                                    >
+                                                        {t(it.note ? 'تعديل ملاحظة المنتج' : 'إضافة ملاحظة المنتج')}
+                                                    </button>
                                                 )}
                                                 {/*
                                                     وما اختاره الزبونُ تحت اسم بنده — كما في شاشة الطلبات.
@@ -172,6 +208,17 @@ export default function PosOrderDetails() {
                                                     >
                                                         <Pencil />
                                                     </Button>
+                                                    {lineEdit?.lines && !it.card_line && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            aria-label={t('استبدال الصنف')}
+                                                            onClick={() => setReplacing(it)}
+                                                            data-testid="replace-line"
+                                                        >
+                                                            <Repeat />
+                                                        </Button>
+                                                    )}
                                                 </TableCell>
                                             )}
                                         </TableRow>
@@ -248,17 +295,45 @@ export default function PosOrderDetails() {
                                     <span>{t('الإجمالي')}</span>
                                     <span className="tabular-nums">{m(order.total)}</span>
                                 </div>
+                                {/* وما بقي على العميل من فاتورةٍ مدفوعة ثمّ زادت — يُحصَّل بقيدٍ بيومه */}
+                                {(order.balance_due ?? 0) > 0 && (
+                                    <div className="flex items-center justify-between gap-2 text-[#b45309]" data-testid="balance-due">
+                                        <span>{t('المتبقّي على العميل')}</span>
+                                        <span className="flex items-center gap-2">
+                                            <span className="tabular-nums font-semibold">{m(order.balance_due ?? 0)}</span>
+                                            {lineEdit?.notes && (
+                                                <Button variant="outline" size="sm" onClick={() => setCollecting(true)}>
+                                                    {t('تحصيل المتبقّي')}
+                                                </Button>
+                                            )}
+                                        </span>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
 
-                        {order.notes && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>{t('ملاحظات')}</CardTitle>
-                                </CardHeader>
-                                <CardContent className="text-[13px] text-gray-600">{order.notes}</CardContent>
-                            </Card>
-                        )}
+                        {/*
+                            والملاحظاتُ كلٌّ باسمها — لا يُخمَّن مصدرُها: ما كتبه العميل
+                            على الطلب، وتعليماتُ التوصيل، والداخليّةُ للمحلّ، ورسالةُ الكرت.
+                            والعنوانُ بلغة الشاشة، والنصُّ كما كُتب.
+                        */}
+                        {[
+                            ['ملاحظات الطلب', order.notes, 'order-notes'],
+                            ['تعليمات التوصيل', order.delivery_notes, 'delivery-notes'],
+                            ['ملاحظات داخلية', order.internal_notes, 'internal-notes'],
+                            ['رسالة الكرت', order.card_message, 'card-message'],
+                        ]
+                            .filter(([, text]) => Boolean(text))
+                            .map(([label, text, id]) => (
+                                <Card key={id as string} data-testid={id as string}>
+                                    <CardHeader>
+                                        <CardTitle>{t(label as string)}</CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="whitespace-pre-wrap text-[13px] text-gray-600" dir="auto">
+                                        {text}
+                                    </CardContent>
+                                </Card>
+                            ))}
                     </div>
                 </div>
             </div>
@@ -312,7 +387,49 @@ export default function PosOrderDetails() {
                     <CorrectItemDialog
                         url={route('pos.orders.items.update', [order.id, editing.id])}
                         item={editing}
+                        // ونشاطٌ فُتح له تعديلُ الأصناف يُسأل فيه عن فرق الفاتورة المدفوعة كما في الإضافة
+                        settle={lineEdit && order.payment_status !== 'غير مدفوع' ? { methods: order.payment_methods } : undefined}
                         onClose={() => setEditing(null)}
+                    />
+                )}
+
+                {/* وإضافةُ صنفٍ واستبدالُه وملاحظتُه وتحصيلُ المتبقّي — من نوافذ شاشة الطلبات نفسِها */}
+                {adding && lineEdit && (
+                    <LineDialog
+                        url={route('pos.orders.items.store', order.id)}
+                        title={t('إضافة صنف إلى الفاتورة')}
+                        catalog={lineEdit.catalog}
+                        paid={order.payment_status !== 'غير مدفوع'}
+                        methods={order.payment_methods}
+                        format={m}
+                        onClose={() => setAdding(false)}
+                    />
+                )}
+                {replacing && lineEdit && (
+                    <LineDialog
+                        url={route('pos.orders.items.replace', [order.id, replacing.id])}
+                        title={t('استبدال الصنف')}
+                        catalog={lineEdit.catalog}
+                        paid={order.payment_status !== 'غير مدفوع'}
+                        methods={order.payment_methods}
+                        replacing={replacing.name}
+                        format={m}
+                        onClose={() => setReplacing(null)}
+                    />
+                )}
+                {noting && (
+                    <NoteDialog
+                        url={route('pos.orders.items.note', [order.id, noting.id])}
+                        item={{ name: noting.name, note: noting.note ?? null }}
+                        onClose={() => setNoting(null)}
+                    />
+                )}
+                {collecting && (
+                    <CollectDialog
+                        url={route('pos.orders.balance.collect', order.id)}
+                        amount={m(order.balance_due ?? 0)}
+                        methods={order.payment_methods}
+                        onClose={() => setCollecting(false)}
                     />
                 )}
         </PosLayout>

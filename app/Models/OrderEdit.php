@@ -27,6 +27,21 @@ class OrderEdit extends Model
     /** تصحيح كميّة إضافةٍ على بند — «شوكولاتة ×٢» صارت واحدة */
     public const ADDON = 'إضافة';
 
+    /** صنفٌ أُضيف إلى الفاتورة بعد صدورها — `OrderCorrection::addLine` */
+    public const ADD_LINE = 'صنف مضاف';
+
+    /** صنفٌ استُبدل بآخر — القديمُ حُذف والجديدُ كُتب (`replaceLine`) */
+    public const REPLACE_LINE = 'صنف مستبدل';
+
+    /** ملاحظةُ منتجٍ عُدّلت — نصٌّ وحده (`setNote`) */
+    public const NOTE = 'ملاحظة منتج';
+
+    /** متبقٍّ على فاتورةٍ مدفوعة حُصِّل (`collectBalance`) */
+    public const COLLECT = 'تحصيل متبقّي';
+
+    /** ما نقص من فاتورةٍ مدفوعة فرُدّ للعميل الآن — بوسيلةٍ يختارها الموظّف */
+    public const REFUND = 'ردّ فرق';
+
     /** حُذف البند أم نقصت كميّته؟ — تُقرأ من الأرقام لا من عمودٍ ثالث يفترق عنها */
     public function removed(): bool { return $this->kind === self::LINE && (int) $this->qty_after === 0; }
 }

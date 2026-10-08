@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { usePage } from '@inertiajs/react';
 import { Clock, Gift, History, MapPin, Phone, Printer, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
 import { Badge } from '@/Components/ui/badge';
@@ -107,7 +107,7 @@ export default function PrepDetails({
     const keys = checklistKeys(o);
     const done = keys.filter((k) => o.checks?.[k]).length;
 
-    const box = (key: string, label: string, hint?: string) => {
+    const box = (key: string, label: string, hint?: ReactNode) => {
         const mark = o.checks?.[key];
 
         return (
@@ -237,7 +237,17 @@ export default function PrepDetails({
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-start gap-2">
                                                 <div className="min-w-0 flex-1">
-                                                    {box(`item:${i.id}`, `${i.name} ×${i.qty}`, i.note ?? undefined)}
+                                                    {/* وملاحظةُ البند باسمها تحته — لا يُخمَّن أهي للمنتج أم رسالةُ كرت */}
+                                                    {box(
+                                                        `item:${i.id}`,
+                                                        `${i.name} ×${i.qty}`,
+                                                        i.note ? (
+                                                            <>
+                                                                <span data-testid="prep-item-note-kind">{t(i.card_line ? 'رسالة الكرت' : 'ملاحظة المنتج')}:</span>{' '}
+                                                                <span dir="auto">{i.note}</span>
+                                                            </>
+                                                        ) : undefined,
+                                                    )}
                                                 </div>
                                                 {/* إجماليُّ السطر كما بيع — لا تكلفتُه */}
                                                 {i.total !== undefined && (

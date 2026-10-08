@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\FlowerOrder;
+use App\Support\NotesAndEdits;
 use App\Support\SalesChannel;
 use Illuminate\Validation\ValidationException;
 
@@ -157,19 +158,39 @@ final class GiftCardProduct
     {
         $note = trim((string) $item->note);
 
-        if ($note === '') {
-            return null;
-        }
-
-        $product = $item->product_id
-            ? Product::withTrashed()->whereKey($item->product_id)->where('business_id', $order->business_id)->first()
-            : null;
-
-        if ($product?->is_gift_card || self::legacyCardLine($note, $product, $order)) {
+        if ($note === '' || self::cardLine($item, $order)) {
             return null;
         }
 
         return $item->note;
+    }
+
+    /**
+     * أهذا بندُ كرت هدية؟ — بعلامة صنفه، أو بلقطة يوم البيع لبندٍ سبق العلامة.
+     *
+     * والقارئُ نفسُه للورقة (`paperNote`) ولشاشات الطلب ولتعديل الفاتورة:
+     * نصُّ هذا البند رسالةٌ للمستلِم لا ملاحظةُ منتج (`NotesAndEdits`).
+     */
+    public static function cardLine(OrderItem $item, Order $order): bool
+    {
+        /*
+         * والصنفُ المحمَّل مع البند يُقرأ بلا استعلام — لوحةُ التجهيز ترسم
+         * عشرات الطلبات، وسؤالٌ لكلّ بندٍ يُنمّي استعلاماتها بعدد البنود.
+         */
+        $loaded = $item->relationLoaded('product') ? $item->getRelation('product') : null;
+        $product = $loaded && (int) $loaded->business_id === (int) $order->business_id
+            ? $loaded
+            : ($item->product_id
+                ? Product::withTrashed()->whereKey($item->product_id)->where('business_id', $order->business_id)->first()
+                : null);
+
+        if ($product?->is_gift_card) {
+            return true;
+        }
+
+        $note = trim((string) $item->note);
+
+        return $note !== '' && self::legacyCardLine($note, $product, $order);
     }
 
     /**
@@ -236,7 +257,8 @@ final class GiftCardProduct
                     throw ValidationException::withMessages(['items' => __('كرت الهدية غير متاح الآن.')]);
                 }
 
-                $lines[$i]['note'] = null;
+                // وملاحظةُ المنتج لبندٍ عاديّ حين تُفتح الميزة — وإلّا فلا نصّ (`NotesAndEdits`)
+                $lines[$i]['note'] = NotesAndEdits::productNote($businessId, $l['note'] ?? null);
 
                 continue;
             }

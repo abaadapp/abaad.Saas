@@ -15,6 +15,8 @@ export interface PrepItem {
     price?: number;
     total?: number;
     note: string | null;
+    /** بندُ كرت هدية: نصُّه رسالةٌ لا ملاحظةُ منتج */
+    card_line?: boolean;
     image: string | null;
     addons?: { id: number; name: string; qty: number }[];
     /** موادُّ الطلب المخصَّص — لقطتُها لحظة البيع، لا وصفةٌ تُقرأ اليوم */

@@ -39,12 +39,17 @@
                 والبندُ يُعرَف بنصّ كرته كذلك (`ribbon-cart-lines.js`): الكمّيّةُ
                 والحذفُ على البند نفسِه لا على كلّ كرتٍ في السلّة. والنصُّ
                 يُعرض تحت اسم الكرت وحده ليُراجعه الزبون.
+
+                وملاحظةُ المنتج مثلُه (`NotesAndEdits`): جزءٌ من هويّة البند،
+                تُعرض تحته بعنوانٍ بلغة الموقع ونصِّها كما كُتب. ولا يعيدها
+                الخادمُ إلّا لمتجرٍ فُتحت له الميزة.
             */
             box.innerHTML = q.lines.map(function (l) {
-                return '<div style="display:grid;grid-template-columns:88px 1fr auto;gap:18px;align-items:center;padding:18px 0;border-bottom:1px solid var(--rb-line)" data-rb-line data-id="' + l.id + '" data-variant="' + (l.variant_id || '') + '" data-note="' + esc(l.gift_card ? l.note : '') + '">'
+                return '<div style="display:grid;grid-template-columns:88px 1fr auto;gap:18px;align-items:center;padding:18px 0;border-bottom:1px solid var(--rb-line)" data-rb-line data-id="' + l.id + '" data-variant="' + (l.variant_id || '') + '" data-note="' + esc(l.note || '') + '">'
                     + '<div style="width:88px;height:88px;border-radius:var(--rb-r);overflow:hidden;background:var(--rb-soft)">' + (l.image ? '<img src="' + esc(l.image) + '" alt="" style="width:100%;height:100%;object-fit:cover">' : '') + '</div>'
                     + '<div><div style="font-size:15px">' + esc(l.name) + '</div>' + (l.variant ? '<div style="font-size:13px;margin-top:2px">' + esc(l.variant) + '</div>' : '')
                     + (l.gift_card && l.note ? '<div style="font-size:13px;margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere" data-testid="rb-cart-card-note">' + esc(T.cartCardMessage) + ' ' + esc(l.note) + '</div>' : '')
+                    + (!l.gift_card && l.note ? '<div style="font-size:13px;margin-top:4px;overflow-wrap:anywhere" data-testid="rb-cart-product-note"><span>' + esc(T.cartProductNote) + '</span> <span dir="ltr" style="white-space:pre-wrap">' + esc(l.note) + '</span></div>' : '')
                     + '<div style="display:flex;align-items:center;gap:14px;margin-top:10px"><div class="rb-qty" style="height:34px"><button type="button" data-dec style="width:36px;height:34px">−</button><span style="min-width:24px;font-size:14px">' + l.qty + '</span><button type="button" data-inc style="width:36px;height:34px">+</button></div>'
                     + '<button type="button" data-remove style="border:0;background:transparent;color:#8a6d3b;font-size:13px;cursor:pointer;padding:0;text-decoration:underline">' + esc(T.remove) + '</button></div></div>'
                     + '<div style="font-size:17px;font-weight:600">' + esc(l.line_text) + '</div></div>';

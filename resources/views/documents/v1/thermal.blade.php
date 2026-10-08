@@ -15,6 +15,8 @@
 @php
     // والصيغةُ من `Support\Money` لا من هنا: قرارُ «كيف يُكتب المبلغ» واحدٌ في النظام
     $money = fn ($v) => \App\Support\Money::format((float) $v, $currency);
+    // ملاحظةُ المنتج وملاحظاتُ الطلب بأسمائهما — لمتجرٍ فُتحت له الميزة
+    $notesOn = \App\Support\NotesAndEdits::on((int) $order->business_id);
     /*
      * وهويّةُ البائع من لقطة الورقة إن كانت مختومة — لا من المتجر اليوم.
      *
@@ -120,7 +122,12 @@
                     {{-- ورسالةُ كرت الهدية لا تُطبع على الإيصال — كما على الفاتورة (`paperNote`) --}}
                     @php($itemNote = \App\Support\Store\GiftCardProduct::paperNote($it, $order))
                     @if ($itemNote)
-                        <div class="muted tiny">— {{ $itemNote }}</div>
+                        {{-- وملاحظةُ المنتج باسمها حيث فُتحت الميزة (`NotesAndEdits`) --}}
+                        @if ($notesOn)
+                            <div class="muted tiny">{{ __('ملاحظة المنتج') }}: <span dir="{{ \App\Support\Paper::dirOf($itemNote) }}">{{ $itemNote }}</span></div>
+                        @else
+                            <div class="muted tiny">— {{ $itemNote }}</div>
+                        @endif
                     @endif
                     {{--
                         وخياراتُ الطلب المخصَّص على الشريط كما هي على الورقة.
@@ -157,6 +164,14 @@
         @endforeach
     </tbody>
 </table>
+
+{{-- وملاحظاتُ الطلب كما كتبها العميل — قسمٌ باسمه؛ والداخليّةُ لا تبلغ الإيصال --}}
+@if ($notesOn && filled($order->notes))
+    <div class="tiny" style="margin-top:3pt" data-order-notes>
+        <span class="muted">{{ __('ملاحظات الطلب') }}:</span>
+        <div dir="{{ \App\Support\Paper::dirOf($order->notes) }}" style="white-space:pre-wrap">{{ $order->notes }}</div>
+    </div>
+@endif
 
 @if ($show('tpl_show_items_count'))
     {{--

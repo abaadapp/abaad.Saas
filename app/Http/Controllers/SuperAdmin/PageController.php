@@ -283,6 +283,8 @@ class PageController extends Controller
                 'boutiques_enabled' => (bool) ($model?->boutiques_enabled ?? false),
                 // والإهداءُ في المتجر الإلكترونيّ — مثلُه، والغائبُ مغلق (`Store\GiftOrders`)
                 'gift_orders_enabled' => (bool) ($model?->gift_orders_enabled ?? false),
+                // وملاحظاتُ العميل وتعديلُ أصناف الفاتورة — مثلُه (`NotesAndEdits`)
+                'order_notes_and_edits_enabled' => (bool) ($model?->order_notes_and_edits_enabled ?? false),
                 'logo_url' => self::logoUrl($model?->logo),
                 // حساب الدخول يُعرض ولا يُعاد إنشاؤه من هنا
                 'owner_email' => $model ? MerchantAccount::owner($model)?->email : null,

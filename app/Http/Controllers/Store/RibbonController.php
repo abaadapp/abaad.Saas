@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\StorePaymentIntent;
 use App\Models\Review;
 use App\Support\CategoryName;
+use App\Support\NotesAndEdits;
 use App\Support\ProductName;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
@@ -445,6 +446,12 @@ class RibbonController extends Controller
                  */
                 'gift_card' => $giftCard,
                 'card_max' => GiftCardProduct::MAX,
+                /*
+                 * وملاحظةُ المنتج — لصنفٍ عاديّ حين تُفتح الميزة (`NotesAndEdits`).
+                 * وصفحةُ الكرت خانتُها رسالتُه، فلا ملاحظةَ ثانية تحتها.
+                 */
+                'note_on' => ! $giftCard && NotesAndEdits::on($bid),
+                'note_max' => NotesAndEdits::PRODUCT_NOTE_MAX,
             ],
             /*
              * وآراءُ الصنف — ما كتبه من اشتراه ونشره صاحبُ المحلّ (`ProductReviews`).
@@ -525,6 +532,8 @@ class RibbonController extends Controller
             'fulfilments' => CheckoutFields::fulfilments($bid),
             // الاسمان والعنوانُ بالإنجليزيّة — والخادمُ يحرسها (`EnglishCheckout`)
             'englishOnly' => EnglishCheckout::on($bid),
+            // وملاحظاتُ الطلب — خانةٌ حرّةٌ بالإنجليزيّة لمن فُتحت له الميزة (`NotesAndEdits`)
+            'orderNotes' => ['on' => NotesAndEdits::on($bid), 'max' => NotesAndEdits::ORDER_NOTES_MAX],
             /*
              * وميزةُ الإهداء — لمن فتحها له مديرُ المنصّة (`GiftOrders::on`).
              * والمناسباتُ الثابتةُ بلغة الصفحة؛ والخادمُ يحرس ما يُرسَل.

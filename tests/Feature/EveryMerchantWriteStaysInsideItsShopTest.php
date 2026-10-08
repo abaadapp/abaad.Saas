@@ -114,6 +114,11 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['تصحيح الطلب', 'put', 'admin.orders.items.update', ['number' => 'order_number', 'item' => 'item'], ['number']],
                 ['تصحيح الطلب', 'put', 'admin.orders.items.addons.update', ['number' => 'order_number', 'item' => 'item', 'addon' => 'item_addon'], ['number']],
                 ['تصحيح الطلب', 'put', 'admin.orders.payment.update', ['number' => 'order_number']],
+                // وإضافةُ صنفٍ واستبدالُه وملاحظتُه وتحصيلُ المتبقّي — `NotesAndEdits`
+                ['تصحيح الطلب', 'post', 'admin.orders.items.store', ['number' => 'order_number'], ['number']],
+                ['تصحيح الطلب', 'post', 'admin.orders.items.replace', ['number' => 'order_number', 'item' => 'item'], ['number']],
+                ['تصحيح الطلب', 'put', 'admin.orders.items.note', ['number' => 'order_number', 'item' => 'item'], ['number']],
+                ['تصحيح الطلب', 'post', 'admin.orders.balance.collect', ['number' => 'order_number']],
                 ['التجهيز', 'post', 'admin.preparation.check', ['number' => 'order_number']],
                 ['التجهيز', 'post', 'admin.preparation.move', ['number' => 'order_number']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.issue', ['id' => 'invoice']],
@@ -207,6 +212,10 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['نقطة البيع', 'put', 'pos.orders.items.update', ['number' => 'order_number', 'item' => 'item'], ['number']],
                 ['نقطة البيع', 'put', 'pos.orders.items.addons.update', ['number' => 'order_number', 'item' => 'item', 'addon' => 'item_addon'], ['number']],
                 ['نقطة البيع', 'put', 'pos.orders.payment.update', ['number' => 'order_number']],
+                ['نقطة البيع', 'post', 'pos.orders.items.store', ['number' => 'order_number'], ['number']],
+                ['نقطة البيع', 'post', 'pos.orders.items.replace', ['number' => 'order_number', 'item' => 'item'], ['number']],
+                ['نقطة البيع', 'put', 'pos.orders.items.note', ['number' => 'order_number', 'item' => 'item'], ['number']],
+                ['نقطة البيع', 'post', 'pos.orders.balance.collect', ['number' => 'order_number']],
                 ['نقطة البيع', 'delete', 'pos.orders.discard', ['id' => 'held']],
             ],
         ];

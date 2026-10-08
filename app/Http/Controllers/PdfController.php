@@ -7,6 +7,7 @@ use App\Models\BankAccount;
 use App\Models\Business as BusinessModel;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
+use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\PosPeripheral;
@@ -19,6 +20,13 @@ use App\Support\DocumentTemplates;
 use App\Support\EInvoice;
 use App\Support\GoogleReviews;
 use App\Support\InvoiceBranding;
+use App\Support\Lists\BusinessesList;
+use App\Support\Lists\ExpensesList;
+use App\Support\Lists\InventoryList;
+use App\Support\Lists\OrdersList;
+use App\Support\Lists\PlatformInvoicesList;
+use App\Support\Lists\ProductsList;
+use App\Support\Lists\TransactionsList;
 use App\Support\OrderStatus;
 use App\Support\Paper;
 use App\Support\Pdf;
@@ -255,16 +263,30 @@ class PdfController extends Controller
     /** تقرير أداء المنصة (سوبر أدمن) */
     public function financeReport()
     {
-        // فترةٌ واحدة لكل ما في الورقة، وتُكتب فيها — انظر financeXlsx
-        $range = Demo::range(request()->query('range'));
+        /*
+         * الحركةُ كما في الشاشة — `TransactionsList` بمرشِّحاتها وترتيبها — والمؤشّراتُ
+         * عليها كلِّها (الدخلُ والمصروفُ والتحويلات). ووسائلُ الدفع تُقرأ بفترة
+         * `range` حين تُرسل (شاشة الحسابات)، وتُترك حين تُرشَّح الحركةُ بتاريخين.
+         */
+        $request = request();
+        $summary = TransactionsList::summary(TransactionsList::filtered($request));
+        $range = $request->filled('range') ? Demo::range($request->query('range')) : null;
+        $from = (string) $request->query('from', '');
+        $to = (string) $request->query('to', '');
 
         $html = view('pdf.finance-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::scopeName(false),
-            'stats' => Demo::financeStats($range),
-            'payments' => Demo::paymentMethods($range),
-            'transactions' => Demo::transactions($range, null),
-            'rangeLabel' => Demo::rangeLabel($range),
+            'stats' => [
+                ['label' => 'الدخل', 'value' => Demo::moneyBase($summary['in'])],
+                ['label' => 'المصروف', 'value' => Demo::moneyBase($summary['out'])],
+                ['label' => 'التحويلات', 'value' => Demo::moneyBase($summary['transfers'])],
+            ],
+            'payments' => $range && ! $from && ! $to ? Demo::paymentMethods($range) : [],
+            'transactions' => array_map(fn ($t) => ['id' => $t['reference']] + $t, TransactionsList::rows($request)),
+            'rangeLabel' => $from || $to
+                ? trim(($from ?: '…').' → '.($to ?: now()->format('Y-m-d')))
+                : ($range ? Demo::rangeLabel($range) : __('كل الفترات')),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
@@ -324,7 +346,8 @@ class PdfController extends Controller
     /** تقرير قائمة الطلبات (PDF) */
     public function ordersReport()
     {
-        $orders = Demo::orders(request());
+        // صفوفُ الشاشة كلُّها بترتيبها — `OrdersList` الذي ترقّمه الشاشة
+        $orders = OrdersList::rows(request());
         $html = view('pdf.orders-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::scopeName(true),
@@ -345,7 +368,8 @@ class PdfController extends Controller
     /** تقرير المنتجات (PDF) */
     public function productsReport()
     {
-        $products = Demo::products(null, request());
+        // صفوفُ الشاشة كلُّها بترتيبها — `ProductsList`
+        $products = ProductsList::rows(request());
         $html = view('pdf.products-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::scopeName(false),
@@ -361,7 +385,8 @@ class PdfController extends Controller
     /** تقرير جرد المخزون (PDF) */
     public function inventoryReport()
     {
-        $inventory = Demo::inventory();
+        // صفوفُ الشاشة كلُّها — بحثُها وحالتُها وترتيبُها (`InventoryList`)
+        $inventory = InventoryList::rows(request());
         $html = view('pdf.inventory-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::scopeName(true),
@@ -377,12 +402,15 @@ class PdfController extends Controller
     /** تقرير المصروفات (PDF) */
     public function expensesReport()
     {
-        $expenses = Demo::expenses(request());
+        // صفوفُ الشاشة كلُّها بترتيبها، والمدفوعُ والمستحقُّ منفصلان — `ExpensesList`
+        $expenses = ExpensesList::rows(request());
+        $paid = array_sum(array_map(fn ($e) => $e['status'] === Expense::PAID ? (float) $e['amount'] : 0.0, $expenses));
         $html = view('pdf.expenses-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
             'branch' => Demo::scopeName(false),
             'expenses' => $expenses,
-            'total' => array_sum(array_map(fn ($e) => (float) $e['amount'], $expenses)),
+            'total' => $paid,
+            'unpaid' => array_sum(array_column($expenses, 'amount')) - $paid,
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
@@ -394,7 +422,8 @@ class PdfController extends Controller
     /** تقرير الشركات (PDF) — لوحة المنصة */
     public function businessesReport()
     {
-        $businesses = Demo::businesses();
+        // شركاتُ الشاشة بمرشِّحاتها وترتيبها — `BusinessesList`
+        $businesses = BusinessesList::rows(request());
         $html = view('pdf.businesses-report', [
             'businesses' => $businesses,
             'generatedAt' => now()->format('Y-m-d H:i'),
@@ -408,7 +437,8 @@ class PdfController extends Controller
     /** تقرير فواتير الاشتراكات (PDF) — لوحة المنصة */
     public function invoicesReport()
     {
-        $invoices = Demo::invoices();
+        // فواتيرُ الشاشة ببحثها وحالتها وترتيبها — `PlatformInvoicesList`
+        $invoices = PlatformInvoicesList::rows(request());
         $html = view('pdf.invoices-report', [
             'invoices' => $invoices,
             'total' => array_sum(array_map(fn ($i) => (float) $i['amount'], $invoices)),

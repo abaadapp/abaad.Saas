@@ -79,7 +79,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
         Customer::create(['business_id' => $this->business->id, 'name' => $name, 'phone' => '91000001']);
 
         $rows = $this->rowsOf(route('admin.export.customers'));
-        $names = array_map(fn ($r) => $r[1] ?? '', $rows);
+        $names = array_map(fn ($r) => $r[0] ?? '', $rows);
 
         $this->assertContains($name, $names,
             'الاسمُ عاد محرَّفًا — الشرطةُ المائلة أكلت حرفًا: '.json_encode($names, JSON_UNESCAPED_UNICODE));
@@ -92,7 +92,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
 
         Customer::create(['business_id' => $this->business->id, 'name' => $name, 'phone' => '91000002']);
 
-        $names = array_map(fn ($r) => $r[1] ?? '', $this->rowsOf(route('admin.export.customers')));
+        $names = array_map(fn ($r) => $r[0] ?? '', $this->rowsOf(route('admin.export.customers')));
 
         $this->assertContains($name, $names);
     }
@@ -111,7 +111,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
         foreach ($rows as $i => $row) {
             $this->assertCount($header, $row, "الصفّ $i انقسم — الفاصلة كسرت الأعمدة");
         }
-        $this->assertContains('الورد, الهدايا', array_map(fn ($r) => $r[1] ?? '', $rows));
+        $this->assertContains('الورد, الهدايا', array_map(fn ($r) => $r[0] ?? '', $rows));
     }
 
     /** والاقتباسُ وحدَه يُضاعَف كما يقول المعيار، فيعود واحدًا */
@@ -121,7 +121,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
 
         Customer::create(['business_id' => $this->business->id, 'name' => $name, 'phone' => '91000004']);
 
-        $this->assertContains($name, array_map(fn ($r) => $r[1] ?? '', $this->rowsOf(route('admin.export.customers'))));
+        $this->assertContains($name, array_map(fn ($r) => $r[0] ?? '', $this->rowsOf(route('admin.export.customers'))));
     }
 
     /**

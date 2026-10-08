@@ -27,3 +27,53 @@ export function withFilters(url: string): string {
 
     return `${base}?${merged.toString()}`;
 }
+
+/**
+ * يُنزّل ملفًّا دون أن يغادر الصفحة — ويقول متى بدأ أو فشل.
+ *
+ * رابطُ `<a href>` كان يُنزّل ولا يقول شيئًا: الزرُّ يبقى كما هو، فيُضغط
+ * ثانيةً وثالثةً والملفُّ الكبير ما زال يُبنى — فتصل ثلاثُ نسخ. والخطأ
+ * (صلاحيةٌ أو مهلة) كان يستبدل الصفحةَ كلَّها بصفحة الخطأ.
+ *
+ * فيُطلب الملفُّ في إطارٍ خفيّ برمزٍ (`download_token`) يعيده الخادم كعكةً
+ * حين يبدأ التنزيل (`Workbook::signal`). والإطارُ لا يُحمَّل صفحةً إلا إن
+ * ردّ الخادمُ بصفحة — أي بخطأ.
+ */
+export function downloadFile(url: string, timeoutMs = 120_000): Promise<'started' | 'failed' | 'timeout'> {
+    const token = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+    const [base, own = ''] = url.split('?');
+    const params = new URLSearchParams(own);
+    params.set('download_token', token);
+    const src = `${base}?${params.toString()}`;
+
+    return new Promise((resolve) => {
+        const frame = document.createElement('iframe');
+        frame.style.display = 'none';
+        let settled = false;
+
+        const finish = (result: 'started' | 'failed' | 'timeout') => {
+            if (settled) return;
+            settled = true;
+            clearInterval(poll);
+            clearTimeout(timer);
+            document.cookie = 'download_token=; Max-Age=0; path=/';
+            // الإطارُ يبقى قليلًا: إزالتُه فورًا قد تقطع تنزيلًا بدأ للتوّ
+            setTimeout(() => frame.remove(), 60_000);
+            resolve(result);
+        };
+
+        const poll = setInterval(() => {
+            if (document.cookie.split('; ').includes(`download_token=${token}`)) finish('started');
+        }, 300);
+        const timer = setTimeout(() => finish('timeout'), timeoutMs);
+
+        // ملفٌّ لا يُحمَّل في الإطار — فإن حُمِّل شيءٌ فهو صفحةُ خطأ
+        frame.addEventListener('load', () => {
+            if (!document.cookie.split('; ').includes(`download_token=${token}`)) finish('failed');
+            else finish('started');
+        });
+
+        frame.src = src;
+        document.body.appendChild(frame);
+    });
+}

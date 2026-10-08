@@ -120,11 +120,16 @@ export default function Banks() {
                          * — وفيها الأرصدة لا المقبوضات والمدفوعات. فيُوصَل هنا،
                          * وهي وجهةُ البطاقة أصلًا.
                          */}
+                        {/*
+                            وهذه شاشةُ أرصدةٍ لا مرشِّحَ حركةٍ فيها: فتُصدِّر حركةَ هذا الشهر
+                            صراحةً (`range=month`) كما كانت — وشاشةُ الحركة نفسُها تُصدِّر
+                            ما رُشّح فيها.
+                        */}
                         <ExportMenu
                             label="الحركة المالية"
-                            xlsx={route('admin.finance.xlsx')}
-                            pdf={route('admin.finance.pdf')}
-                            csv={route('admin.export.transactions')}
+                            xlsx={route('admin.finance.xlsx', { range: 'month' })}
+                            pdf={route('admin.finance.pdf', { range: 'month' })}
+                            csv={route('admin.export.transactions', { range: 'month' })}
                         />
                         <Button onClick={() => open()}>
                             <Plus />

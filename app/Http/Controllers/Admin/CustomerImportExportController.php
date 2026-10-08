@@ -65,10 +65,8 @@ class CustomerImportExportController extends Controller
      */
     private function customerQuery(): \Illuminate\Database\Eloquent\Builder
     {
-        $q = Customer::where('business_id', $this->bid())->with('branch')->orderBy('id');
-        \App\Support\ListFilters::customers($q, request());
-
-        return $q;
+        // مرشِّحاتُ الشاشة وترتيبُها — `CustomersList` الذي ترقّمه الشاشة
+        return \App\Support\Lists\CustomersList::query(request())->with('branch');
     }
 
     private function customerRows(): array
@@ -97,7 +95,9 @@ class CustomerImportExportController extends Controller
 
         $sheet->fromArray($this->columns(), null, 'A1');
 
-        $lastCol = 'F';
+        // آخرُ عمودٍ من الأعمدة نفسِها — كان «F» والأعمدةُ ثمانية، فيبقى
+        // رأسا «اللغة» و«تاريخ الميلاد» بلا تنسيقٍ ولا عرضٍ تلقائيّ
+        $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex(count($this->columns()));
         $sheet->getStyle("A1:{$lastCol}1")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
         $sheet->getStyle("A1:{$lastCol}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
         $sheet->getStyle("A1:{$lastCol}1")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -111,13 +111,14 @@ class CustomerImportExportController extends Controller
         Activity::log('report', 'صدّر قائمة العملاء (Excel)');
 
         $writer = new Xlsx($spreadsheet);
-        $filename = 'customers-' . now()->format('Y-m-d') . '.xlsx';
+        // ملفُّ الاستيراد باسمه — لا يُخلط بتقرير العملاء (`customers-…`)
+        $filename = 'customers-import-' . now()->format('Y-m-d') . '.xlsx';
 
-        return response()->streamDownload(function () use ($writer) {
+        return \App\Support\Exports\Workbook::signal(response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
         }, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ]);
+        ]));
     }
 
     /* ============================ تصدير PDF ============================ */

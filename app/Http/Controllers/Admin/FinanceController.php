@@ -8,8 +8,8 @@ use App\Models\Order;
 use App\Models\Transaction;
 use App\Support\Books;
 use App\Support\Demo;
+use App\Support\Lists\TransactionsList;
 use App\Support\Pagination;
-use App\Support\Search;
 use App\Support\Sort;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -36,12 +36,7 @@ use RuntimeException;
 class FinanceController extends Controller
 {
     /** ما يُرتَّب في جدول الحركة */
-    private const SORTS = [
-        'reference' => 'reference',
-        'date' => 'occurred_at',
-        'description' => 'description',
-        'amount' => 'amount',
-    ];
+    private const SORTS = TransactionsList::SORTS;
 
     private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
 
@@ -91,71 +86,17 @@ class FinanceController extends Controller
     {
         $bid = $this->bid();
 
-        $q = Transaction::where('business_id', $bid)->with('order:id,status,number');
-
-        // والمعامل من المحرّك لا مكتوبًا بيدٍ: `like` تفرّق في PostgreSQL وحدها
-        if ($s = Search::term($request)) {
-            $like = Search::like();
-
-            $q->where(fn ($w) => $w->where('reference', $like, "%{$s}%")
-                ->orWhere('description', $like, "%{$s}%"));
-        }
-        if ($kind = $request->query('kind')) {
-            $q->where('kind', $kind);
-        }
-        if ($from = $request->query('from')) {
-            $q->whereDate('occurred_at', '>=', $from);
-        }
-        if ($to = $request->query('to')) {
-            $q->whereDate('occurred_at', '<=', $to);
-        }
-
         /*
-         * المجاميع تُحسب على المدة كلّها لا على صفحتها.
+         * الاستعلامُ نفسُه الذي تقرؤه ملفّاتُ التصدير — انظر `TransactionsList`.
          *
-         * والنسخة تُؤخذ قبل الترقيم: `paginate` تكتب حدَّ الصفحة في الاستعلام
-         * نفسه، فجمعٌ بعدها يجمع عشرين صفًّا ويقول إنها المدة كلّها.
-         *
-         * والتحويل صنفٌ ثالث لا يُجمع مع الدخل: هو انتقالٌ بين جيبين لا مالٌ
-         * دخل المتجر أو خرج منه، وجمعُه معه يُضخّم المقبوض بمالٍ قُبض مرّة.
-         *
-         * والفاتورة الملغاة تخرج من المجموع وتبقى في الجدول: مالٌ لم يُقبض
-         * لا يُجمع، وسجلٌّ وقع لا يُمحى — انظر Transaction::scopeNotCancelled.
+         * والمجاميع على المدة كلّها لا على صفحتها، والتحويل صنفٌ ثالث لا يُجمع
+         * مع الدخل، والملغاة خارج المجموع وداخل الجدول.
          */
-        $totals = (clone $q)->reorder()->notCancelled()
-            ->selectRaw('type, COALESCE(SUM(amount),0) total')->groupBy('type')
-            ->pluck('total', 'type');
-
-        Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('occurred_at')->orderByDesc('id'));
-
-        $rows = $q->paginate(Pagination::perPage($request, 20))->withQueryString();
+        $summary = TransactionsList::summary(TransactionsList::filtered($request));
+        $rows = TransactionsList::query($request)->paginate(Pagination::perPage($request, 20))->withQueryString();
 
         return Inertia::render('Admin/Finance/Transactions', [
-            'rows' => collect($rows->items())->map(fn ($t) => [
-                'id' => $t->id,
-                'reference' => $t->reference,
-                'date' => optional($t->occurred_at)->format('Y-m-d H:i'),
-                'description' => $t->description,
-                'method' => $t->method,
-                'type' => $t->type,
-                'kind' => $t->kind,
-                'kind_label' => Books::label($t->kind),
-                'amount' => (float) $t->amount,
-                'employee' => $t->employee_name,
-                // ما رُحّل إلى الأستاذ وما لم يُرحَّل — يُقرأ ولا يُخفى
-                'posted' => $t->journal_entry_id !== null,
-                // والملغاة تُوسم ولا تُحذف: خرجت من المجموع وبقيت في السجلّ
-                'cancelled' => $t->isCancelled(),
-                /*
-                 * رقمُ الفاتورة إن كان للحركة فاتورة — وبه يصير المرجع بابًا.
-                 *
-                 * كان المرجعُ نصًّا لا يُنقر: يقرأ صاحبُ النشاط «POS-1042»
-                 * ولا سبيل له إلى ورقتها إلّا أن يخرج إلى الطلبات ويبحث
-                 * برقمها. ومصروفٌ أو تحويلٌ لا فاتورةَ له، فيبقى نصًّا —
-                 * ولا يُعرض بابٌ لا يُفتح.
-                 */
-                'invoice' => $t->order?->number,
-            ])->all(),
+            'rows' => collect($rows->items())->map(fn ($t) => TransactionsList::row($t))->all(),
             'pagination' => Pagination::meta($rows),
             'filters' => $request->only('q', 'kind', 'from', 'to') + Sort::params($request, self::SORTS),
             'sorts' => Sort::keys(self::SORTS),
@@ -169,11 +110,7 @@ class FinanceController extends Controller
              * اختياريًّا: من يريد التسجيل بسرعة يتركه.
              */
             'expenseTypes' => collect(Demo::expenseTypes())->pluck('name')->all(),
-            'summary' => [
-                'in' => round((float) ($totals['دخل'] ?? 0), 3),
-                'out' => round((float) ($totals['مصروف'] ?? 0), 3),
-                'transfers' => round((float) ($totals['تحويل'] ?? 0), 3),
-            ],
+            'summary' => $summary,
             'today' => now()->format('Y-m-d'),
         ]);
     }

@@ -4,7 +4,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
-import DataTable, { type Column, type Filter } from '@/Components/DataTable';
+import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import { Badge } from '@/Components/ui/badge';
 import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
@@ -15,15 +15,20 @@ import type { Branch } from '@/types';
 import type { InventoryItem } from '@/types/models';
 
 interface Props {
+    /** صفحةٌ من الأصناف — رشّحها الخادم ورتّبها، والتصديرُ يقرأ ما رُشّح كلَّه */
     inventory: InventoryItem[];
+    pagination: ServerPagination;
+    /** البحثُ والحالةُ (?stock= — يرسلها تنبيه النظرة العامة) والترتيب */
+    filters: Record<string, string | null>;
+    sorts: string[];
+    /** عددُ الأصناف وقيمتُها للمخزن كلِّه لا للصفحة */
+    summary: { count: number; value: number };
     branches: Branch[];
     currentBranchId: number | null;
-    /** حالة المخزون القادمة في الرابط (?stock=) — يرسلها تنبيه النظرة العامة */
-    stockFilter: string | null;
 }
 
 export default function InventoryIndex() {
-    const { inventory: serverInventory, stockFilter, context } = usePage<PageProps<Props>>().props;
+    const { inventory: serverInventory, pagination, filters: params, sorts, summary, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
 
@@ -47,7 +52,6 @@ export default function InventoryIndex() {
         value: Math.round(i.cost * i.qty * 1000) / 1000,
     }));
 
-    const totalValue = inventory.reduce((sum, item) => sum + item.value, 0);
 
     const columns: Column<InventoryItem>[] = [
         {
@@ -106,8 +110,8 @@ export default function InventoryIndex() {
                 // فلا تطابق «نفد المخزون» أبدًا، فيُرجع الخيار قائمة فارغة دائمًا
                 { label: 'نفد', value: 'نفد المخزون' },
             ],
-            match: (i, value) => i.status === value,
-            initial: stockFilter ?? undefined,
+            // على الخادم (`InventoryList`) — فيبلغ زرَّ التصدير مع البحث
+            param: 'stock',
         },
     ];
 
@@ -116,8 +120,8 @@ export default function InventoryIndex() {
             <PageHeader
                 title="المخزون"
                 subtitle={t(':n صنف · القيمة الإجمالية :total', {
-                    n: number(inventory.length),
-                    total: money(totalValue, currency),
+                    n: number(summary.count),
+                    total: money(summary.value, currency),
                 })}
                 actions={
                     <>
@@ -144,8 +148,9 @@ export default function InventoryIndex() {
                     columns={columns}
                     rowKey={(i) => i.id}
                     searchPlaceholder="ابحث بالاسم أو SKU…"
-                    searchable={(i) => `${i.name} ${i.sku}`}
+                    searchable={() => ''}
                     filters={filters}
+                    server={{ pagination, params, sorts }}
                     empty="لا توجد أصناف في المخزون بعد"
                 />
             </Card>

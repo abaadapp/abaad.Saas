@@ -393,20 +393,38 @@ class OperatingExpensesAreReadFromTheLedgerTest extends TestCase
         return collect($sheet->toArray(null, false, false))->flatten()->filter()->implode(' | ');
     }
 
-    /** @return list<string> */
+    /**
+     * تواريخُ الصرف — بعمودها لا بموضعه، وتاريخًا يفهمه Excel لا نصًّا.
+     *
+     * عمودُ المرجع صار أوّلًا كما في جدول الشاشة، والتاريخُ خليّةٌ تُرتَّب وتُرشَّح.
+     *
+     * @return list<string>
+     */
     private function dates($sheet): array
     {
-        return collect($sheet->toArray(null, false, false))
-            ->map(fn ($row) => (string) ($row[0] ?? ''))
-            ->filter(fn ($v) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $v))
-            ->values()->all();
+        $rows = $sheet->toArray(null, false, false);
+        foreach ($rows as $i => $row) {
+            $col = array_search('تاريخ الصرف', $row, true);
+            if ($col !== false) {
+                return collect(array_slice($rows, $i + 1))
+                    ->map(fn ($r) => $r[$col] ?? null)
+                    ->filter(fn ($v) => is_numeric($v))
+                    ->map(fn ($v) => \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($v)->format('Y-m-d'))
+                    ->values()->all();
+            }
+        }
+
+        return [];
     }
 
+    /** مجموعٌ أسفل الجدول — القيمةُ في الخليّة التي تلي عنوانه، أينما كان */
     private function total($sheet, string $label): ?float
     {
         foreach ($sheet->toArray(null, false, false) as $row) {
-            if (($row[2] ?? null) === $label) {
-                return (float) $row[3];
+            foreach ($row as $i => $cell) {
+                if (is_string($cell) && str_starts_with($cell, $label)) {
+                    return (float) $row[$i + 1];
+                }
             }
         }
 

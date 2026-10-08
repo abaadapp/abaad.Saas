@@ -3,9 +3,6 @@ import { useForm, usePage } from '@inertiajs/react';
 import {
     ClipboardList,
     Eye,
-    FileDown,
-    FileSpreadsheet,
-    FileText,
     MoreVertical,
     Phone,
     Plus,
@@ -14,7 +11,8 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { CUSTOMER_TABS } from '@/Components/SectionTabs';
-import DataTable, { type Column } from '@/Components/DataTable';
+import DataTable, { type Column, type ServerPagination } from '@/Components/DataTable';
+import ExportMenu from '@/Components/ExportMenu';
 import RowActions from '@/Components/RowActions';
 import SmartLink from '@/Components/SmartLink';
 import StatCard from '@/Components/StatCard';
@@ -28,7 +26,6 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuLabel,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
 import { Input, Textarea } from '@/Components/ui/input';
@@ -40,7 +37,19 @@ import type { Supplier } from '@/types/models';
 const BLANK = { name: '', name_en: '', phone: '', contact_person: '', email: '', notes: '' };
 
 export default function SuppliersIndex() {
-    const { suppliers } = usePage<PageProps<{ suppliers: Supplier[] }>>().props;
+    /*
+     * صفحةٌ من المورّدين — بحثُها وترتيبُها على الخادم (`SuppliersList`)، فيبلغان
+     * زرَّ التصدير. والبطاقاتُ للمورّدين كلِّهم (`summary`) لا لهذه الصفحة.
+     */
+    const { suppliers, pagination, filters, sorts, summary } = usePage<
+        PageProps<{
+            suppliers: Supplier[];
+            pagination: ServerPagination;
+            filters: Record<string, string | null>;
+            sorts: string[];
+            summary: { count: number; withOrders: number; orders: number };
+        }>
+    >().props;
     const t = useTranslate();
     const [adding, setAdding] = useState(false);
     const [editing, setEditing] = useState<Supplier | null>(null);
@@ -86,16 +95,16 @@ export default function SuppliersIndex() {
     };
 
     const stats = [
-        { label: t('إجمالي المورّدين'), value: number(suppliers.length), icon: 'truck', color: 'primary' },
+        { label: t('إجمالي المورّدين'), value: number(summary.count), icon: 'truck', color: 'primary' },
         {
             label: t('مورّدون لديهم أوامر'),
-            value: number(suppliers.filter((s) => s.orders_count > 0).length),
+            value: number(summary.withOrders),
             icon: 'clipboard-check',
             color: 'success',
         },
         {
             label: t('إجمالي أوامر الشراء'),
-            value: number(suppliers.reduce((n, s) => n + s.orders_count, 0)),
+            value: number(summary.orders),
             icon: 'package',
             color: 'info',
         },
@@ -246,10 +255,15 @@ export default function SuppliersIndex() {
                 actions={
                     <>
                         {/*
-                            التصدير والاستيراد في قائمةٍ واحدة كما في العملاء.
-                            زرّان ظاهران لعملٍ يُطلب مرّةً في الشهر يزاحمان
-                            «مورّد جديد» وهو ما يُضغط كل يوم.
+                            التصديرُ في قائمته الموحّدة — ما في الشاشة بحثًا وترتيبًا،
+                            وملفُّ الاستيراد بندٌ باسمه. والاستيرادُ في «المزيد».
                         */}
+                        <ExportMenu
+                            xlsx={route('admin.suppliers.xlsx')}
+                            pdf={route('admin.suppliers.export.pdf')}
+                            csv={route('admin.export.suppliers')}
+                            importXlsx={route('admin.suppliers.export.xlsx')}
+                        />
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="icon" aria-label={t('المزيد')}>
@@ -257,26 +271,6 @@ export default function SuppliersIndex() {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-60">
-                                <DropdownMenuLabel>{t('تصدير')}</DropdownMenuLabel>
-                                <DropdownMenuItem asChild>
-                                    <a href={route('admin.suppliers.export.xlsx')}>
-                                        <FileSpreadsheet className="text-[#059669]" />
-                                        {t('تصدير Excel (xlsx)')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                    <a href={route('admin.suppliers.export.pdf')} target="_blank" rel="noreferrer">
-                                        <FileText className="text-[#dc2626]" />
-                                        {t('تصدير PDF')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem asChild>
-                                    <a href={route('admin.export.suppliers')}>
-                                        <FileDown className="text-[#6b7280]" />
-                                        {t('تصدير CSV')}
-                                    </a>
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
                                 <DropdownMenuLabel>{t('استيراد')}</DropdownMenuLabel>
                                 <DropdownMenuItem onSelect={() => setImporting(true)}>
                                     <Upload className="text-[#6d28d9]" />
@@ -312,9 +306,9 @@ export default function SuppliersIndex() {
                     columns={columns}
                     rowKey={(s) => s.id}
                     searchPlaceholder="ابحث باسم المورّد أو الهاتف…"
-                    // القادم من البحث الموحّد يصل بالقائمة مُرشَّحةً بما بحث عنه
-                    initialQuery={new URLSearchParams(window.location.search).get('q') ?? ''}
-                    searchable={(s) => `${s.name} ${s.name_en ?? ''} ${s.phone} ${s.email} ${s.contact}`}
+                    // والقادمُ من البحث الموحّد (`?q=`) يصل بالقائمة مُرشَّحةً — الخادمُ يقرؤه
+                    searchable={() => ''}
+                    server={{ pagination, params: filters, sorts }}
                     empty="أضِف أول مورّد لبدء إنشاء أوامر الشراء."
                 />
             </Card>

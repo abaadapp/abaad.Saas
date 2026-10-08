@@ -40,10 +40,18 @@ class SupplierExportController extends Controller
         return [__('الاسم'), __('الهاتف'), __('البريد'), __('مسؤول التواصل'), __('أوامر الشراء'), __('ملاحظات')];
     }
 
+    /**
+     * مورّدو الشاشة — بحثُها وترتيبُها (`SuppliersList`)، لا القائمةُ كلُّها.
+     *
+     * والاستيرادُ لا يحذف أحدًا، فملفٌّ مرشَّحٌ يُعاد رفعُه لا يُنقص شيئًا.
+     */
     private function suppliers()
     {
-        return Supplier::where('business_id', $this->bid())
-            ->withCount('purchaseOrders')->orderBy('name')->get();
+        $order = array_flip(array_column(\App\Support\Lists\SuppliersList::rows(request()), 'id'));
+
+        return Supplier::where('business_id', $this->bid())->whereIn('id', array_keys($order))
+            ->withCount('purchaseOrders')->get()
+            ->sortBy(fn ($s) => $order[$s->id])->values();
     }
 
     public function xlsx()
@@ -78,7 +86,8 @@ class SupplierExportController extends Controller
         Activity::log('report', 'صدّر قائمة الموردين (Excel)');
 
         $writer = new Xlsx($spreadsheet);
-        $filename = 'suppliers-'.now()->format('Y-m-d').'.xlsx';
+        // ملفُّ الاستيراد باسمه — لا يُخلط بتقرير المورّدين (`suppliers-…`)
+        $filename = 'suppliers-import-'.now()->format('Y-m-d').'.xlsx';
 
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');

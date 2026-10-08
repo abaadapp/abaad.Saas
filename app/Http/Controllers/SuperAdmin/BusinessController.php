@@ -16,15 +16,7 @@ class BusinessController extends Controller
      * والمالك والباقة عمودان هنا لا في جدولٍ آخر (`owner_name` و`plan_id`)،
      * فيُرتَّبان بلا ضمّ. و«آخر بيع» محسوبٌ من الطلبات فلا يُرتَّب به.
      */
-    private const SORTS = [
-        'name' => 'name',
-        'type' => 'type',
-        'owner' => 'owner_name',
-        'status' => 'status',
-        'registered' => 'starts_at',
-        'expires' => 'ends_at',
-        'branches' => 'branches_count',
-    ];
+    private const SORTS = \App\Support\Lists\BusinessesList::SORTS;
 
     public function index(Request $request)
     {
@@ -37,50 +29,8 @@ class BusinessController extends Controller
          *
          * وبفرعٍ استعلاميّ لا بعلاقة: صفٌّ واحد لكل شركة، لا استعلامٌ لكلٍّ منها.
          */
-        /*
-         * متاجر التجّار وحدها — والتجريبيّة في قسم «الديمو».
-         *
-         * خلطُهما يجعل من يقرأ «١٤ شركة» يعدّ فيها متجرًا وهميًّا، ومن يبحث
-         * عن عميلٍ يمرّ على متجرٍ لا يدفع. ولها بابها الذي يُبنى ويُمحى منه.
-         */
-        $q = Business::real()->with('plan')->addSelect([
-            'last_sale' => \App\Models\Order::selectRaw('MAX(ordered_at)')
-                ->whereColumn('orders.business_id', 'businesses.id')
-                ->sold(),
-
-            /*
-             * بريد الدخول لا بريد التواصل.
-             *
-             * كان العمود يعرض businesses.email — عنوانَ تواصلٍ يُكتب عند
-             * التسجيل ولا علاقة له بالدخول. فيبدّل المشغّل حساب الدخول من
-             * بطاقة الحساب، ثم يعود إلى الجدول فيرى العنوان القديم ويظنّ أن
-             * التعديل لم يقع. وهو العمود الذي يبحث فيه الدعم عن تاجرٍ يتّصل.
-             *
-             * وبفرعٍ استعلاميّ لا بعلاقة: صفٌّ واحد لكل شركة، ونفس شرط
-             * MerchantAccount::owner — أوّل حسابٍ بدور admin فيها.
-             */
-            'owner_email' => \App\Models\User::select('email')
-                ->whereColumn('users.business_id', 'businesses.id')
-                ->where('role', 'admin')
-                ->orderBy('id')
-                ->limit(1),
-        ]);
-
-        if ($s = \App\Support\Search::term($request)) {
-            // ويُبحث في بريد الدخول أيضًا: هو ما يعرفه الدعم عن التاجر
-            // والمعامل يُسأل ولا يُكتب: `like` تفرّق بين الكبير والصغير في
-            // PostgreSQL — انظر `Search`
-            $op = \App\Support\Search::like();
-            $q->where(fn ($w) => $w->where('name', $op, "%{$s}%")
-                ->orWhere('owner_name', $op, "%{$s}%")
-                ->orWhere('email', $op, "%{$s}%")
-                ->orWhereHas('users', fn ($u) => $u->where('role', 'admin')->where('email', $op, "%{$s}%")));
-        }
-        if ($t = $request->query('type')) { $q->where('type', $t); }
-        if ($p = $request->query('plan')) { $q->whereHas('plan', fn ($w) => $w->where('name', $p)); }
-        if ($st = $request->query('status')) { $q->where('status', $st); }
-
-        \App\Support\Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));
+        // الاستعلامُ نفسُه الذي تقرؤه ملفّاتُ التصدير — انظر `BusinessesList`
+        $q = \App\Support\Lists\BusinessesList::query($request);
 
         $businesses = $q->paginate(10)->withQueryString()->through(fn ($b) => [
             'id' => $b->id, 'name' => $b->name, 'type' => $b->type, 'owner' => $b->owner_name,

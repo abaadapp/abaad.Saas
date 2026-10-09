@@ -7489,5 +7489,19 @@
     "ما بيع من كل منتج وإيراده وربحه التقديري في الفترة المختارة": "What each product sold, its revenue and estimated profit in the selected period",
     "المقبوضات والمدفوعات وصافي الحركة المالية خلال الفترة المختارة.": "Receipts, payments and net cash movement in the selected period.",
     "مبيعات كل موظف في الفترة المختارة وفرعه وحالته.": "Each employee's sales in the selected period, with their branch and status.",
-    "استخدام الكوبونات وقيمة الخصومات والإيراد المرتبط بها.": "Coupon usage, discount value and the revenue linked to them."
+    "استخدام الكوبونات وقيمة الخصومات والإيراد المرتبط بها.": "Coupon usage, discount value and the revenue linked to them.",
+    "ما أرسله النظام من رقمك إلى زبائنك": "What the system sent from your number to your customers",
+    "ما أرسله النظام من رقمك :number — للقراءة فقط": "What the system sent from your number :number — read only",
+    "لم تُرسل رسائل عبر رقمك بعد": "No messages have been sent from your number yet",
+    "اختر محادثةً لعرض رسائلها": "Choose a conversation to see its messages",
+    "ابحث باسم العميل أو رقمه…": "Search by customer name or number…",
+    "لا محادثات تطابق البحث": "No conversations match the search",
+    "رجوع إلى المحادثات": "Back to conversations",
+    "جاري التحميل…": "Loading…",
+    "عرض الرسائل الأقدم": "Show older messages",
+    "نصّ الرسالة غير محفوظ — هذا وصفها": "The message text was not saved — this is a description of it",
+    "عرض :label": "View :label",
+    "عرض الطلب :label": "View order :label",
+    "محادثات واتساب": "WhatsApp conversations",
+    "اربط رقم واتساب لبدء سجل المحادثات": "Connect a WhatsApp number to start the conversation history"
 }

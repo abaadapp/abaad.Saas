@@ -108,6 +108,15 @@ class SendWhatsAppMessage implements ShouldQueue
         }
 
         /*
+         * والرقمُ الذي تخرج منه يُكتب في صفّها — للقراءة لا للقرار.
+         *
+         * وصلةُ المحلّ صفٌّ واحدٌ يُحدَّث عند كلّ ربط ولو برقمٍ آخر، فمعرّفُ
+         * الوصلة لا يقول أيَّ رقمٍ أرسل. و«محادثات واتساب» تعرض ما خرج من
+         * الرقم الحاليّ وحدَه (`WhatsAppConversations`).
+         */
+        $message->sender_phone_number_id = $connection->phone_number_id;
+
+        /*
          * الحجز قبل النداء — وهو الترتيب الوحيد الآمن.
          *
          * لو خُصمت الحصّة بعد قبول ميتا لَخرجت رسالتان متزامنتان من حدٍّ فيه
@@ -185,6 +194,22 @@ class SendWhatsAppMessage implements ShouldQueue
 
             return;
         }
+
+        /*
+         * ونصُّ ما سيقرؤه الزبون يُكتب في الصفّ قبل النداء — لا في الطابور.
+         *
+         * صيغةُ BODY المعتمَدة بالمتغيّرات نفسِها التي تُرسَل الآن، فما يُعرض
+         * في «محادثات واتساب» هو ما حاول النظامُ إرسالَه لا قالبُ اليوم. ولا
+         * يمسّ ما يُرسَل: المتغيّراتُ تُقرأ ولا تُغيَّر. و`null` إن لم تُعرف
+         * الصيغة — لا نصَّ مخترَعًا. ويُحفظ مع ما يليه من حفظٍ في كلّ مخرج.
+         */
+        $message->body_snapshot = WhatsAppTemplates::snapshot(
+            $message->source_mode === WhatsAppMode::BUSINESS_OWN ? WhatsAppMode::OWNER_BUSINESS : WhatsAppMode::OWNER_PLATFORM,
+            $message->source_mode === WhatsAppMode::BUSINESS_OWN ? (int) $business->id : null,
+            $message->template_name,
+            (string) ($message->language_code ?: config('whatsapp.language', 'ar')),
+            $variables,
+        );
 
         $result = MetaWhatsAppClient::sendTemplate(
             $connection,

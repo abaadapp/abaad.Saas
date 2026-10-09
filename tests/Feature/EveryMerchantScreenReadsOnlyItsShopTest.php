@@ -286,6 +286,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.customerInvoices.creditNotes.pdf' => 'مثلُه (DocumentPrintController:86)',
         'admin.help.show' => 'محادثاتُ الدعم — `Support::visibleTo`',
         'admin.help.attachment' => 'مثلُه',
+        'admin.marketing.whatsapp.conversations.older' => '{message} رسالةٌ — يُبدأ من المتجر والرقم الحاليّ، وحارسُه `WhatsAppConversationsTest::test_the_same_phone_in_two_shops_stays_two_and_a_foreign_message_id_is_404`',
     ];
 
     public function test_no_id_screen_is_left_out(): void

@@ -82,6 +82,8 @@ class WhatsAppAutomation
             'order_id' => $order->id,
             'customer_id' => $order->customer_id,
             'whatsapp_connection_id' => $connection?->id,
+            // الرقمُ الذي ستخرج منه — للقراءة في «محادثات واتساب» لا للقرار
+            'sender_phone_number_id' => $connection?->phone_number_id,
             'source_mode' => $mode,
             'event_type' => $event,
             'direction' => 'outbound',
@@ -179,6 +181,8 @@ class WhatsAppAutomation
             'customer_invoice_id' => $invoice->id,
             'customer_id' => $invoice->customer_id,
             'whatsapp_connection_id' => $connection?->id,
+            // الرقمُ الذي ستخرج منه — للقراءة في «محادثات واتساب» لا للقرار
+            'sender_phone_number_id' => $connection?->phone_number_id,
             'source_mode' => $mode,
             'event_type' => $event,
             'direction' => 'outbound',

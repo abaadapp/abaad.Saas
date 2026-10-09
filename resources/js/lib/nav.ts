@@ -76,6 +76,14 @@ export interface NavItem {
      */
     badge?: 'support' | 'crm';
     /**
+     * يظهر لمن يُؤوي محلُّه هذا الشيء وحده — من `context.hosted`.
+     *
+     * ميزةٌ يفتحها مديرُ المنصّة لنشاطٍ بعينه (كـ`SectionTabs.hosts`).
+     */
+    hosts?: string;
+    /** ويُخفى عمّن يُؤويه — لبندٍ يحلّ محلَّه بند `hosts` */
+    unlessHosts?: string;
+    /**
      * قائمةٌ منسدلة تحت العنصر — لا وجهةَ له هو.
      *
      * «أدوات التسويق» ستّ أدوات لا تجمعها صفحة: من يريد إعدادات الموقع لا
@@ -224,7 +232,12 @@ export const NAV: NavGroup[] = [
                         من يسأل «لماذا لم تصل رسالةُ زبوني؟» لا يبدأ من شاشة
                         المقابض ليجد زرًّا فيها — يفتح القائمة ويبحث عن سجلّ.
                     */
-                    { label: 'سجلّ رسائل واتساب', icon: ScrollText, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp' },
+                    { label: 'سجلّ رسائل واتساب', icon: ScrollText, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp', unlessHosts: 'whatsapp_conversations' },
+                    /*
+                        والمسارُ نفسُه محادثاتٍ لمن فُتحت له — `WhatsAppConversations`.
+                        والخادمُ يقرّر ما يُرسم خلفه، والشريطُ يسمّيه.
+                    */
+                    { label: 'محادثات واتساب', icon: MessagesSquare, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp', hosts: 'whatsapp_conversations' },
                 ],
             },
         ],

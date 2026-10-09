@@ -91,13 +91,20 @@ class MetaWhatsAppClient
      * وبلا `waba_id` لا سؤال: الوصلةُ تعرف رقمَها ولا تعرف حسابَ الأعمال
      * الذي تحته القوالب — وقائمةُ القوالب تُقرأ من الحساب لا من الرقم.
      *
-     * @return array{ok:bool, templates:array<string, string>, message:?string}
-     *                                                                          الاسم ← الحال، بحروف ميتا (APPROVED · PENDING · …)
+     * ═══ ونصُّ BODY معه ═══
+     *
+     * `components` تُطلب مع الحال لتُحفظ صيغةُ BODY المعتمَدة لكلّ لغة —
+     * منها يُكتب نصُّ الرسالة كما قرأه الزبون (`WhatsAppTemplates::snapshot`).
+     * وهي مفتاحٌ مستقلّ في الجواب (`bodies`): من يقرأ `templates` لا يتغيّر
+     * عليه شيء، وقالبٌ بلا BODY نصّيٍّ لا يُكتب له نصّ.
+     *
+     * @return array{ok:bool, templates:array<string, string>, bodies:array<string, array<string, string>>, message:?string}
+     *                                                                                                                       الاسم ← الحال، بحروف ميتا (APPROVED · PENDING · …)
      */
     public static function templates(WhatsAppConnection $connection): array
     {
         if (blank($connection->waba_id)) {
-            return ['ok' => false, 'templates' => [], 'message' => __('لا معرّف حساب أعمال على هذه الوصلة.')];
+            return ['ok' => false, 'templates' => [], 'bodies' => [], 'message' => __('لا معرّف حساب أعمال على هذه الوصلة.')];
         }
 
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
@@ -108,15 +115,16 @@ class MetaWhatsAppClient
             $response = Http::withToken($connection->access_token)
                 ->timeout((int) config('whatsapp.timeout', 15))
                 ->acceptJson()
-                ->get($url, ['fields' => 'name,status,language', 'limit' => 200]);
+                ->get($url, ['fields' => 'name,status,language,components', 'limit' => 200]);
         } catch (\Throwable $e) {
-            return ['ok' => false, 'templates' => [], 'message' => $e->getMessage()];
+            return ['ok' => false, 'templates' => [], 'bodies' => [], 'message' => $e->getMessage()];
         }
 
         if (! $response->successful()) {
             return [
                 'ok' => false,
                 'templates' => [],
+                'bodies' => [],
                 'message' => (string) ($response->json('error.message') ?? $response->body()),
             ];
         }
@@ -130,14 +138,22 @@ class MetaWhatsAppClient
          * الوهميّات) يُحفظ تحت `*` فيصلح لكلّ لغة.
          */
         $out = [];
+        $bodies = [];
 
         foreach ((array) $response->json('data', []) as $row) {
             if (filled($row['name'] ?? null)) {
-                $out[(string) $row['name']][(string) ($row['language'] ?? '*')] = (string) ($row['status'] ?? '');
+                $language = (string) ($row['language'] ?? '*');
+                $out[(string) $row['name']][$language] = (string) ($row['status'] ?? '');
+
+                foreach ((array) ($row['components'] ?? []) as $component) {
+                    if (strtoupper((string) ($component['type'] ?? '')) === 'BODY' && filled($component['text'] ?? null)) {
+                        $bodies[(string) $row['name']][$language] = (string) $component['text'];
+                    }
+                }
             }
         }
 
-        return ['ok' => true, 'templates' => $out, 'message' => null];
+        return ['ok' => true, 'templates' => $out, 'bodies' => $bodies, 'message' => null];
     }
 
     public static function sendText(WhatsAppConnection $connection, string $to, string $body): array

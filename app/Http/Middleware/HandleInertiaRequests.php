@@ -14,6 +14,7 @@ use App\Support\ShopIdentity;
 use App\Support\Support;
 use App\Support\Tenancy;
 use App\Support\WebsiteConfirmPrint;
+use App\Support\WhatsAppConversations;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -116,6 +117,8 @@ class HandleInertiaRequests extends Middleware
                  */
                 'hosted' => array_values(array_filter([
                     Boutiques::holds($user->business) ? 'boutiques' : null,
+                    // «محادثات واتساب» بدل «سجلّ رسائل واتساب» في الشريط — والخادمُ هو الحارس
+                    $user->business && WhatsAppConversations::enabled($user->business) ? 'whatsapp_conversations' : null,
                 ])),
                 // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،
                 // فصار مشتركًا لا خاصًّا باللوحة. null حين لم يُضبط بعد.

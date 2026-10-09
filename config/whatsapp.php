@@ -64,4 +64,14 @@ return [
 
     /** مفتاح الدولة الافتراضي لأرقامٍ كُتبت محليًّا — عُمان */
     'default_country_code' => env('META_WHATSAPP_COUNTRY_CODE', '968'),
+
+    /*
+     * من تُفتح لهم «محادثات واتساب» عند الترحيل — مرّةً واحدة.
+     *
+     * قرارُ المالك: لمتجر سعود (RIBBON، `businesses.id = 5`) وحده في المرحلة
+     * الأولى. والقائمةُ تُقرأ في ترحيل `a_shop_may_read_its_whatsapp_as_conversations`
+     * وحده لتكتب `businesses.whatsapp_conversations_enabled` — والكودُ يسأل
+     * العمودَ (`WhatsAppConversations::enabled`) لا هذه القائمة ولا معرّفًا.
+     */
+    'conversations_businesses' => [5],
 ];

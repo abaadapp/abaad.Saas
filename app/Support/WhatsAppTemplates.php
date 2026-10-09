@@ -123,9 +123,20 @@ class WhatsAppTemplates
                 ->map(fn ($lang) => $lang === '*' ? (string) $row->language_code : (string) $lang)
                 ->unique()->values()->all();
 
+            /*
+             * ونصُّ BODY لكلّ لغةٍ كما اعتمدته ميتا — لِيُكتب نصُّ الرسالة
+             * وقتَ إرسالها (`snapshot`). و`*` يُنسب إلى لغة القالب كما فوقه.
+             * ولا يمسّ الحالَ ولا اللغاتِ المعتمَدة: سطرٌ مستقلٌّ بجوارهما.
+             */
+            $bodies = [];
+            foreach ((array) ($result['bodies'][$row->template_name] ?? []) as $lang => $text) {
+                $bodies[$lang === '*' ? (string) $row->language_code : (string) $lang] = (string) $text;
+            }
+
             $row->forceFill([
                 'meta_status' => $status,
                 'approved_languages' => $approvedLanguages,
+                'body_by_language' => $bodies === [] ? null : $bodies,
                 'meta_synced_at' => now(),
             ])->save();
 
@@ -156,6 +167,59 @@ class WhatsAppTemplates
         }
 
         return $rows->every(fn ($r) => $r->meta_status === self::APPROVED);
+    }
+
+    /**
+     * النصُّ الذي يقرؤه الزبون — صيغةُ BODY المعتمَدة بمتغيّرات هذه الرسالة.
+     *
+     * يُكتب في `whatsapp_messages.body_snapshot` وقتَ الإرسال ولا يُعاد بناؤه
+     * بعدها: قالبٌ يُعدَّل غدًا لا يُغيّر ما قرأه زبونُ الأمس.
+     *
+     * ولا يُخترع نصّ. `null` حين:
+     * - لا صيغةَ محفوظةً لهذا القالب بهذه اللغة (لم تُزامَن بعد، أو لا BODY نصّيّ)،
+     * - أو في الصيغة مكانٌ ليس رقمًا (`{{name}}`) أو رقمٌ لا متغيّرَ له.
+     *
+     * ولا يمسّ ما يُرسَل إلى ميتا: يقرأ المتغيّراتِ نفسَها بترتيبها ولا يغيّرها.
+     *
+     * @param  array<int, string>  $variables  {{1}} أوّلُها
+     */
+    public static function snapshot(string $scope, ?int $businessId, ?string $template, ?string $language, array $variables): ?string
+    {
+        if (blank($template)) {
+            return null;
+        }
+
+        $mapping = WhatsAppTemplateMapping::where('scope_type', $scope)
+            ->when($businessId === null, fn ($q) => $q->whereNull('business_id'))
+            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
+            ->where('template_name', $template)
+            ->orderBy('id')
+            ->get(['body_by_language'])
+            ->map(fn ($m) => (array) ($m->body_by_language ?? []))
+            ->first(fn ($bodies) => isset($bodies[(string) $language]));
+
+        $body = $mapping[(string) $language] ?? null;
+
+        if (! is_string($body) || $body === '') {
+            return null;
+        }
+
+        $values = array_values($variables);
+        $known = true;
+
+        $text = preg_replace_callback('/\{\{\s*([^}]*?)\s*\}\}/u', function ($m) use ($values, &$known) {
+            $n = ctype_digit($m[1]) ? (int) $m[1] : 0;
+
+            if ($n < 1 || ! array_key_exists($n - 1, $values)) {
+                $known = false;
+
+                return $m[0];
+            }
+
+            return (string) $values[$n - 1];
+        }, $body);
+
+        return $known && is_string($text) ? $text : null;
     }
 
     /**

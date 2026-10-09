@@ -23,6 +23,8 @@ class WhatsAppTemplateMapping extends Model
         'enabled' => 'boolean',
         'variable_mapping' => 'array',
         'approved_languages' => 'array',
+        // نصُّ BODY المعتمَد لكلّ لغة — من مزامنة ميتا (`WhatsAppTemplates::sync`)
+        'body_by_language' => 'array',
         'meta_synced_at' => 'datetime',
     ];
 

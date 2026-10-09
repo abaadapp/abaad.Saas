@@ -1331,6 +1331,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
      * ومعرّفُه يُقرأ من الجلسة في المتحكّم لا من العنوان.
      */
     Route::get('/marketing/whatsapp/log', [App\Http\Controllers\Admin\WhatsAppController::class, 'log'])->name('marketing.whatsapp.log');
+    // رسائلُ أقدم في «محادثات واتساب» — 404 لمن لم تُفتح له (`WhatsAppConversations::enabled`)
+    Route::get('/marketing/whatsapp/conversations/{message}/older', [App\Http\Controllers\Admin\WhatsAppController::class, 'olderMessages'])
+        ->whereNumber('message')->name('marketing.whatsapp.conversations.older');
 
     Route::post('/coupons', [CouponController::class, 'store'])->name('coupons.store');
     // حدّاه وحدَهما يُعدَّلان — لا كودُه ولا قيمتُه (انظر `CouponController::limits`)

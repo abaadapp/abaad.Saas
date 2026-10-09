@@ -19,7 +19,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarProps) {
-    const { auth, supportBadge, crmBadge } = usePage<PageProps>().props;
+    const { auth, context, supportBadge, crmBadge } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
 
@@ -36,7 +36,12 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
     const licensed = (feature?: string) =>
         !feature || (auth?.planFeatures?.[feature] ?? true);
 
-    const shown = (item: NavItem) => can(item.section) && licensed(item.feature);
+    // وما يُؤويه المحلّ — ميزةٌ لنشاطٍ بعينه (`context.hosted`)
+    const hosted = (name?: string) => !!name && (context?.hosted?.includes(name) ?? false);
+
+    const shown = (item: NavItem) =>
+        can(item.section) && licensed(item.feature)
+        && (!item.hosts || hosted(item.hosts)) && !hosted(item.unlessHosts);
 
     /*
      * والأب يقود إلى أوّل ما بقي من بنيه.

@@ -12,6 +12,7 @@ use App\Support\Pagination;
 use App\Support\Search;
 use App\Support\WhatsAppAutoReply;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppConversations;
 use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
@@ -141,6 +142,16 @@ class WhatsAppController extends Controller
         $business = $this->business();
 
         /*
+         * ومن فُتحت له «محادثات واتساب» يقرأ الدفترَ نفسَه محادثاتٍ.
+         *
+         * المسارُ واسمُه كما هما: الروابطُ القديمة تصل. ومن لم تُفتح له لا
+         * يتغيّر عليه حرفٌ ممّا تحت هذا السطر.
+         */
+        if (WhatsAppConversations::enabled($business)) {
+            return $this->conversations($request, $business);
+        }
+
+        /*
          * والمرشِّحُ يُقاس بقائمة الحِزَم لا يُصدَّق كما وصل.
          *
          * `?filter=<script>` لا يصل إلى استعلام، و`?filter=nonsense` لا
@@ -167,6 +178,79 @@ class WhatsAppController extends Controller
             'buckets' => WhatsAppLog::filters(),
             'params' => ['filter' => $filter, 'q' => $q],
         ]);
+    }
+
+    /**
+     * «محادثات واتساب» — ما أرسله النظامُ من رقم المحلّ، محادثاتٍ برقم الزبون.
+     *
+     * قراءةٌ محضة: لا حقلَ كتابةٍ ولا زرَّ إرسال. والمحادثةُ المختارة تُسمّى
+     * بمعرّف رسالةٍ فيها (`c`) لا برقم الزبون — فلا يحمل العنوانُ رقمًا، ولا
+     * يُفتح بمعرّفٍ من متجرٍ آخر شيء (`anchor` تردّ 404).
+     */
+    private function conversations(Request $request, Business $business): Response
+    {
+        $own = WhatsAppConversations::ownNumber($business);
+        $q = Search::term($request);
+
+        if (! $own) {
+            return Inertia::render('Admin/Marketing/WhatsappConversations', [
+                'connected' => false,
+                'number' => null,
+                'conversations' => [],
+                'pagination' => null,
+                'params' => ['q' => $q, 'c' => null],
+                'thread' => null,
+            ]);
+        }
+
+        $page = WhatsAppConversations::page($business, $own, $q);
+
+        $thread = null;
+        $c = $request->query('c');
+
+        if (is_string($c) && $c !== '') {
+            $anchor = ctype_digit($c) ? WhatsAppConversations::anchor($business, $own, (int) $c) : null;
+            abort_if($anchor === null, 404);
+
+            $thread = WhatsAppConversations::contact($business, $own, (string) $anchor->recipient_phone)
+                + ['key' => (int) $anchor->id]
+                + WhatsAppConversations::thread($business, $own, (string) $anchor->recipient_phone);
+        }
+
+        return Inertia::render('Admin/Marketing/WhatsappConversations', [
+            'connected' => true,
+            // الرقمُ المعروض وحده — لا وصلةٌ ولا معرّفٌ ولا رمز
+            'number' => $own->display_phone_number,
+            'conversations' => $page->items(),
+            'pagination' => Pagination::meta($page),
+            'params' => ['q' => $q, 'c' => $thread ? (string) $thread['key'] : null],
+            'thread' => $thread,
+        ]);
+    }
+
+    /**
+     * رسائلُ أقدم في محادثة — خمسون قبل `before`.
+     *
+     * ومحروسٌ في الخادم لا في الشاشة: نشاطٌ لم تُفتح له الميزة، أو لم يربط
+     * رقمه، أو رسالةٌ ليست في نطاقه — 404 كأنّ الباب لا وجود له.
+     */
+    public function olderMessages(Request $request, int $message)
+    {
+        $business = $this->business();
+        abort_unless(WhatsAppConversations::enabled($business), 404);
+
+        $own = WhatsAppConversations::ownNumber($business);
+        abort_if($own === null, 404);
+
+        $anchor = WhatsAppConversations::anchor($business, $own, $message);
+        abort_if($anchor === null, 404);
+
+        $before = $request->query('before');
+
+        return response()->json(WhatsAppConversations::thread(
+            $business, $own, (string) $anchor->recipient_phone,
+            is_string($before) && ctype_digit($before) ? (int) $before : null,
+        ));
     }
 
     /**

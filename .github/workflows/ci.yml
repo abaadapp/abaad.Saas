@@ -146,6 +146,23 @@ jobs:
                   file_put_contents($f, $s);'
           grep -q 'DB_CONNECTION' phpunit.xml && { echo "لم تُنزع القيمة"; exit 1; } || true
 
+      # ‏JIT يُطفأ في قاعدة الاختبار — كان يُضاعف زمن القسم أضعافًا.
+      #
+      # صورةُ postgres:16 مبنيّةٌ بـLLVM فـJIT فيها يعمل، ويُترجم كلَّ استعلامٍ
+      # تتجاوز كلفتُه المقدَّرة `jit_above_cost`. واختبارُ عزل المتاجر يفتح كلَّ
+      # شاشةٍ على متجرين كاملين وجداولُه منتفخةٌ بصفوفِ ما تراجعت عنه
+      # الاختباراتُ قبله، فتُقدَّر استعلاماتُه غاليةً وتُترجم واحدًا واحدًا:
+      # بلغ اختباران فيه ٧٢ دقيقة من ٨٠ في القسم 2/3، وهما عشرُ ثوانٍ على
+      # PostgreSQL بلا JIT. والإطفاءُ للاختبار وحده: لا يمسّ الإنتاج ولا الهجرات.
+      - name: إطفاء JIT في قاعدة الاختبار
+        env:
+          PGPASSWORD: secret
+        run: |
+          psql -h 127.0.0.1 -U abaad -d testing -v ON_ERROR_STOP=1 -c "ALTER DATABASE testing SET jit = off"
+          # جلسةٌ جديدة تقرأ الإعداد كما ستقرؤه الاختبارات
+          [ "$(psql -h 127.0.0.1 -U abaad -d testing -Atc 'show jit')" = "off" ] \
+            || { echo "::error::لم يُطفأ JIT"; exit 1; }
+
       - name: الهجرات تعمل على PostgreSQL
         run: php artisan migrate --force
 

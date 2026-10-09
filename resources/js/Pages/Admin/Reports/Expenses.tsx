@@ -28,12 +28,13 @@ interface Row {
 
 interface Props {
     rows: Row[];
-    summary: { total: number; count: number; average: number; topType: string | null; topTotal: number };
+    summary: { total: number; paid: number; unpaid: number; count: number };
     filters: Record<string, string | null>;
     options: Record<string, Option[]>;
     truncated: { shown: number; total: number } | null;
     range: ReportRange;
     rangeLabel: string;
+    note: string;
 }
 
 /**
@@ -43,20 +44,22 @@ interface Props {
  * وحذف، ولا مجموعَ فوق الجدول ولا توزيعًا على الأنواع.
  */
 export default function ReportsExpenses() {
-    const { rows, summary, filters, options, truncated, range, rangeLabel, context } =
+    const { rows, summary, filters, options, truncated, range, rangeLabel, note, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
     const controls: Filter[] = [
         { kind: 'select', key: 'type', label: 'النوع', options: options.types ?? [] },
+        // الحالاتُ المكتوبة فعلًا في سجلّات النشاط — من الخادم لا من قائمةٍ هنا
+        { kind: 'select', key: 'status', label: 'الحالة', options: options.statuses ?? [] },
     ];
 
     const stats = [
-        { label: t('إجمالي المصروفات'), value: m(summary.total), icon: 'arrow-down-circle', color: 'danger' },
+        { label: t('إجمالي المصروفات المسجلة'), value: m(summary.total), icon: 'arrow-down-circle', color: 'primary' },
+        { label: t('المدفوع'), value: m(summary.paid), icon: 'wallet', color: 'danger' },
+        { label: t('غير المدفوع'), value: m(summary.unpaid), icon: 'clock', color: summary.unpaid > 0 ? 'warning' : 'success' },
         { label: t('عدد المصروفات'), value: number(summary.count), icon: 'receipt', color: 'info' },
-        { label: t('متوسّط المصروف'), value: m(summary.average), icon: 'calculator', color: 'primary' },
-        { label: t('أعلى نوع'), value: summary.topType ? `${summary.topType} · ${m(summary.topTotal)}` : '—', icon: 'layers', color: 'warning' },
     ];
 
     return (
@@ -69,6 +72,7 @@ export default function ReportsExpenses() {
             filters={filters}
             controls={controls}
             stats={stats}
+            note={note}
             truncated={truncated}
         >
             <Card className="overflow-hidden">

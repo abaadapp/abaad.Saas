@@ -313,14 +313,28 @@ class ReportData
         $rows = collect(Demo::topCustomers($limit, $range, $bid))
             ->map(fn ($c, $i) => ['id' => $i + 1] + $c);
 
-        $total = (float) $rows->sum('total');
-        $orders = (int) $rows->sum('orders');
+        /*
+         * والبطاقاتُ على كلّ من اشترى في الفترة — لا على الخمسين.
+         *
+         * كانت تُجمع من صفوف الجدول: «إجمالي الإنفاق» يُقرأ إنفاقَ العملاء
+         * كلِّهم وهو إنفاقُ أعلاهم وحدهم، و«عملاء اشتروا» لا يتجاوز خمسين
+         * أبدًا. والاستعلامُ هنا هو استعلامُ الجدول بعينه (`Demo::topCustomers`):
+         * النشاطُ والفترةُ والمباعُ وحده (`sold`) والعميلُ المسمّى — بلا حدّ.
+         */
+        $start = self::start($range);
+        $all = Order::where('business_id', $bid)->sold()->whereNotNull('customer_name')
+            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            ->selectRaw('COALESCE(SUM(total), 0) as t, COUNT(*) as c, COUNT(DISTINCT customer_name) as n')
+            ->first();
+
+        $total = (float) ($all->t ?? 0);
+        $orders = (int) ($all->c ?? 0);
 
         return array_merge(self::capped($rows, $rows->count()), [
             'limit' => $limit,
             'summary' => [
                 'total' => round($total, 3),
-                'customers' => $rows->count(),
+                'customers' => (int) ($all->n ?? 0),
                 'orders' => $orders,
                 'average' => $orders > 0 ? round($total / $orders, 3) : 0.0,
             ],
@@ -453,13 +467,26 @@ class ReportData
     {
         $start = self::start($filters['range'] ?? 'month');
         $type = self::pick($filters, 'type');
+        $status = self::pick($filters, 'status');
 
         $base = Expense::where('business_id', $bid)
             ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))
-            ->when($type, fn ($q) => $q->where('type', $type));
+            ->when($type, fn ($q) => $q->where('type', $type))
+            ->when($status, fn ($q) => $q->where('status', $status));
 
         $total = (float) (clone $base)->sum('amount');
         $count = (clone $base)->count();
+
+        /*
+         * والمسجَّلُ غيرُ المدفوع — وكلاهما غيرُ المصروف التشغيليّ.
+         *
+         * كانت بطاقةٌ واحدة «إجمالي المصروفات» تجمع كلَّ سجلٍّ بأيّ حالة،
+         * فتُقرأ على أنّها ما خرج من المال، وعلى أنّها ما يُطرح من صافي
+         * الربح — وليست هذه ولا تلك. فيُفصل المدفوعُ عمّا لم يُدفع بقاعدة
+         * النظام نفسها: المدفوعُ `Expense::PAID`، وما سواه التزامٌ لم يخرج
+         * (انظر `CostsAndLosses` — `status != PAID`). والصافي في دفتر الأستاذ.
+         */
+        $paid = (float) (clone $base)->where('status', Expense::PAID)->sum('amount');
 
         $byType = (clone $base)->selectRaw('type, SUM(amount) as s, COUNT(*) as c')
             ->groupBy('type')->orderByDesc('s')->get();
@@ -478,19 +505,24 @@ class ReportData
         return array_merge(self::capped($rows, $count), [
             'summary' => [
                 'total' => round($total, 3),
+                'paid' => round($paid, 3),
+                'unpaid' => round($total - $paid, 3),
                 'count' => $count,
-                'average' => $count > 0 ? round($total / $count, 3) : 0.0,
-                'topType' => $byType->first()->type ?? null,
-                'topTotal' => round((float) ($byType->first()->s ?? 0), 3),
             ],
             'byType' => $byType->map(fn ($r) => [
                 'label' => $r->type,
                 'value' => round((float) $r->s, 3),
                 'count' => (int) $r->c,
             ])->all(),
+            // ما اختير يُكتب في رأس الملفّ — ورقةٌ مرشَّحةٌ بلا ما يقول ذلك تُقرأ على أنّها الكلّ
+            'activeFilters' => array_filter([__('النوع') => $type, __('الحالة') => $status]),
+            'note' => __('هذا التقرير يعرض سجلات المصروفات، أما المصروف التشغيلي المستخدم في صافي الربح فيُقرأ من دفتر الأستاذ.'),
             'options' => [
                 'types' => collect(Expense::where('business_id', $bid)->distinct()->pluck('type'))
                     ->filter()->values()->map(fn ($t) => ['value' => $t, 'label' => $t])->all(),
+                // الحالاتُ المكتوبةُ فعلًا في سجلّات النشاط — لا قائمةٌ مخترَعة
+                'statuses' => collect(Expense::where('business_id', $bid)->distinct()->pluck('status'))
+                    ->filter()->sort()->values()->map(fn ($v) => ['value' => $v, 'label' => __($v)])->all(),
             ],
         ]);
     }
@@ -865,6 +897,8 @@ class ReportData
                 'profit' => round((float) $rows->sum('profit'), 3),
                 'sold' => $rows->where('units', '>', 0)->count(),
             ],
+            // «الربح التقديري» لا «الربح»: تكلفةُ اليوم لا تكلفةُ يوم البيع — انظر `profit` أعلاه
+            'note' => __('يُحسب باستخدام تكلفة المنتج الحالية، لذلك هو تقدير وليس ربحًا محاسبيًا.'),
             'options' => ['categories' => self::categoryOptions($bid)],
         ]);
     }
@@ -902,12 +936,23 @@ class ReportData
             'quantity' => (int) $rows->sum('quantity'),
             'value' => round((float) $rows->sum('value'), 3),
             'below' => $below,
+            /*
+             * والنطاقُ يُقال: النشاطُ كلُّه، مهما كان الفرعُ المختار في الشريط.
+             *
+             * الكميةُ والتكلفةُ من `products` — رصيدُ النشاط لا رصيدُ فرع —
+             * والاستعلامُ لا يرشّح بفرعٍ أصلًا. فمن اختار فرعًا في الشريط ثمّ
+             * فتح التقرير كان يقرأ أرقامَ المتجر كلِّه تحت اسم فرعه.
+             */
+            'scope_name' => __('النشاط بالكامل — كل الفروع'),
         ];
 
         $shown = $only === '1' ? $rows->where('below', true) : $rows;
 
         return array_merge(self::capped($shown->take(self::cap()), $shown->count()), [
             'summary' => $summary,
+            // رصيدُ اللحظة لا مدّةٌ: «هذا الشهر» في رأس ورقة جردٍ تقول ما ليس فيها
+            'periodLabel' => __('الرصيد الحالي'),
+            'note' => __('الكميات والقيمة على مستوى النشاط كلّه، ولا تتغيّر باختيار الفرع.'),
             'options' => ['categories' => self::categoryOptions($bid)],
         ]);
     }

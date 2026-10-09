@@ -34,6 +34,7 @@ interface Props {
     truncated: { shown: number; total: number } | null;
     range: ReportRange;
     rangeLabel: string;
+    note: string;
 }
 
 /**
@@ -46,7 +47,7 @@ interface Props {
  * تتغيّر بالشراء، والقيدُ في الدفتر (انظر Books).
  */
 export default function ReportsProducts() {
-    const { rows, summary, filters, options, truncated, range, rangeLabel, context } =
+    const { rows, summary, filters, options, truncated, range, rangeLabel, note, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -66,12 +67,13 @@ export default function ReportsProducts() {
         <ReportScreen
             reportKey="products"
             title="المنتجات"
-            subtitle="ما بيع من كل منتج وإيراده وربحه في الفترة المختارة"
+            subtitle="ما بيع من كل منتج وإيراده وربحه التقديري في الفترة المختارة"
             range={range}
             rangeLabel={rangeLabel}
             filters={filters}
             controls={controls}
             stats={stats}
+            note={note}
             truncated={truncated}
         >
             <Card className="overflow-hidden">
@@ -84,7 +86,7 @@ export default function ReportsProducts() {
                             <TableHead className="text-end">{t('الرصيد')}</TableHead>
                             <TableHead className="text-end">{t('المُباع')}</TableHead>
                             <TableHead className="text-end">{t('الإيراد')}</TableHead>
-                            <TableHead className="text-end">{t('الربح')}</TableHead>
+                            <TableHead className="text-end">{t('الربح التقديري')}</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>

@@ -13,10 +13,18 @@
     <div>{{ $branch }}</div>
     {{-- الفترة تُطبع دائمًا: ورقةٌ لا تقول مدّتها تُقرأ على أنها عمر المتجر --}}
     <div><span class="k">{{ __('الفترة') }}:</span> {{ $rangeLabel }}</div>
+    {{-- وما اختير من مرشّحاتٍ يُطبع: ورقةٌ مرشَّحةٌ بلا ما يقول ذلك تُقرأ على أنّها الكلّ --}}
+    @foreach ($activeFilters ?? [] as $label => $value)
+        <div><span class="k">{{ $label }}:</span> {{ __((string) $value) }}</div>
+    @endforeach
     <div><span class="k">{{ __('تاريخ الإصدار') }}:</span> <span dir="ltr">{{ $generatedAt }}</span></div>
 @endsection
 
 @section('body')
+    @if (! empty($note))
+        <p class="small">{{ $note }}</p>
+    @endif
+
     @if (count($cards))
         <table class="cards"><tr>
             @foreach ($cards as $card)

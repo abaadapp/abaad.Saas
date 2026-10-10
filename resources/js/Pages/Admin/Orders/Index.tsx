@@ -4,6 +4,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
+import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import SmartLink from '@/Components/SmartLink';
 import { Badge } from '@/Components/ui/badge';
@@ -15,6 +16,8 @@ import type { PageProps } from '@/types';
 import type { Order } from '@/types/models';
 
 interface Props {
+    /** الفترةُ على تاريخ الطلب (`ListFilters::orderPeriod`) — من/إلى القديمة أو شهرٌ أو سنة */
+    period?: PeriodState;
     orders: Order[];
     pagination: ServerPagination;
     filters: Record<string, string | null>;
@@ -36,7 +39,7 @@ interface Props {
 
 export default function OrdersIndex() {
     const {
-        orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount,
+        orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount, period,
         websiteCount, websiteAmount, statusOptions, channelOptions, mayDelete, context,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
@@ -224,11 +227,17 @@ export default function OrdersIndex() {
                 { label: 'قادم', value: 'upcoming' },
             ],
         },
-        // مدًى لا يومًا واحدًا: مبيعات أسبوعٍ كانت تُفتح سبع مرّات.
-        // ولا حقل ثالث لليوم الواحد — يُطلب بجعل الطرفين يومًا واحدًا،
-        // وحقلان يفعلان الشيء نفسه يجعلان القارئ يسأل عن الفرق بينهما.
-        { label: 'من', type: 'date', param: 'from' },
-        { label: 'إلى', type: 'date', param: 'to' },
+        /*
+         * ومن/إلى صارتا في منتقي الفترة فوق الجدول (`PeriodControls`): «فترة
+         * مخصّصة» هي هما، ومعهما شهرٌ بعينه أو سنةٌ أو نطاقُ أشهر. وحقلا
+         * تاريخٍ هنا بجوار المنتقي يكتبان مفتاحين يتنازعان الرابط.
+         */
+        ...(period
+            ? []
+            : ([
+                  { label: 'من', type: 'date', param: 'from' },
+                  { label: 'إلى', type: 'date', param: 'to' },
+              ] as Filter<Order>[])),
     ];
 
     return (
@@ -252,6 +261,9 @@ export default function OrdersIndex() {
                     </>
                 }
             />
+
+            {/* الفترةُ على تاريخ الطلب — و«موعد التسليم» مُرشِّحٌ آخر على عموده (`when`) */}
+            {period && <PeriodControls period={period} params={filters} />}
 
             <Card className="overflow-hidden">
                 <DataTable

@@ -26,7 +26,7 @@ class ReportFeedController extends Controller
     {
         // والبوتيكُ كالقناة: تغذيةٌ بلا مُرشِّحها تقلب أرقامَ بوتيكٍ إلى أرقام المتجر كلِّه
         return $this->feed(\App\Support\Reports::salesReport(
-            $request->query('range'), $request->query('channel'), $request->query('boutique'),
+            \App\Support\Reports::period('sales', $request->query()), $request->query('channel'), $request->query('boutique'),
         ));
     }
 

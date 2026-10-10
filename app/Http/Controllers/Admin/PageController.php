@@ -795,7 +795,7 @@ class PageController extends Controller
         // الحمولة من Support\Reports لا تُجمع هنا: الملفّات الثلاثة تقرأ
         // المصدر نفسه، فلا يخرج ملفٌّ بغير ما على الشاشة
         return Inertia::render('Admin/Reports/Sales', Reports::salesReport(
-            $request->query('range'), $request->query('channel'), $request->query('boutique'),
+            Reports::period('sales', $request->query()), $request->query('channel'), $request->query('boutique'),
         ));
     }
 

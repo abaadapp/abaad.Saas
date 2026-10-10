@@ -3,7 +3,8 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
-import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
+import { type ReportRange } from '@/Components/RangeTabs';
+import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
 import StatCard from '@/Components/StatCard';
 import { Badge } from '@/Components/ui/badge';
 import { Card } from '@/Components/ui/card';
@@ -33,7 +34,9 @@ interface Row {
 interface Props {
     rows: Row[];
     summary: { total: number; staff: number; sellers: number; average: number; topName: string | null; topSales: number };
-    range: ReportRange;
+    range: ReportRange | null;
+    /** الفترةُ من الخادم — الأزرارُ السريعة و«اختيار فترة» (`ReportingPeriod`) */
+    period: PeriodState;
     rangeLabel: string;
 }
 
@@ -45,7 +48,7 @@ interface Props {
  * بلا ما يقول ذلك.
  */
 export default function ReportsStaff() {
-    const { rows, summary, range, rangeLabel, context } = usePage<PageProps<Props>>().props;
+    const { rows, summary, period, rangeLabel, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -94,7 +97,7 @@ export default function ReportsStaff() {
 
                 {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}
                 <div className="no-print">
-                    <RangeTabs current={range} />
+                    {period && <PeriodControls period={period} />}
                 </div>
 
                 <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

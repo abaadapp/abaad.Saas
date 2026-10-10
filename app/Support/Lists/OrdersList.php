@@ -175,22 +175,25 @@ final class OrdersList
             __('الحالة') => $request->filled('status') ? __((string) $request->query('status')) : null,
             __('الدفع') => $request->filled('payment') ? __((string) $request->query('payment')) : null,
             __('المصدر') => $request->filled('channel') ? __(SalesChannel::label((string) $request->query('channel'))) : null,
-            __('من') => $request->query('from'),
-            __('إلى') => $request->query('to'),
+            // الفترةُ باسمها — «سبتمبر 2025» — ولا تُكتب حين لا فترة
+            __('الفترة') => ($p = ListFilters::orderPeriod($request))->kind === 'all' ? null : $p->label(),
             __('موعد التسليم') => $when[(string) $request->query('when')] ?? null,
         ];
     }
 
-    /** `orders-2026-10-01-to-2026-10-31` حين تُختار فترة، وإلا تاريخُ اليوم */
+    /**
+     * `orders-2026-10-01-to-2026-10-31` · `orders-2025-09` · `orders-2024` حين تُختار
+     * فترة، وإلا تاريخُ اليوم.
+     */
     private static function fileParts(Request $request): array
     {
-        $from = (string) $request->query('from', '');
-        $to = (string) $request->query('to', '');
+        $period = ListFilters::orderPeriod($request);
 
-        if ($from !== '' || $to !== '') {
-            return [$from ?: 'start', 'to', $to ?: 'today'];
-        }
-
-        return [now()->format('Y-m-d')];
+        return match (true) {
+            $period->kind === 'all' => [now()->format('Y-m-d')],
+            // «من» وحدها كما كانت: إلى اليوم
+            $period->kind === 'custom' && $period->end === null => [$period->fromDate(), 'to', 'today'],
+            default => $period->fileParts(),
+        };
     }
 }

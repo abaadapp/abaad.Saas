@@ -2,6 +2,7 @@ import { router, usePage } from '@inertiajs/react';
 import { AlertTriangle, Info, Lightbulb, TrendingDown, TrendingUp } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import PeriodControls, { withPeriod, type PeriodState } from '@/Components/PeriodControls';
 import BackToReports from '@/Components/BackToReports';
 import ExportMenu from '@/Components/ExportMenu';
 import StatCard from '@/Components/StatCard';
@@ -61,6 +62,8 @@ interface Props {
     insights: Insight[];
     suspicious: Suspicious[];
     filters: Record<string, string | null>;
+    /** الفترةُ كما قرأها الخادم (`Reports::period`) — شهرٌ أو سنةٌ أو من/إلى */
+    period?: PeriodState;
     options: {
         branches: Option[];
         categories: Option[];
@@ -84,7 +87,7 @@ const TONE: Record<string, string> = {
 export default function WasteAnalytics() {
     const {
         totals, previous, change, byProduct, byCategory, byBranch, byReason,
-        overTime, versusConsumption, insights, suspicious, filters, options, context,
+        overTime, versusConsumption, insights, suspicious, filters, options, period, context,
     } = usePage<PageProps<Props>>().props;
 
     const t = useTranslate();
@@ -92,7 +95,7 @@ export default function WasteAnalytics() {
 
     /** كل تغييرٍ في مرشّح يعيد تحميل الصفحة بالفترة نفسها — لا حساب في المتصفّح */
     const go = (patch: Record<string, string>) =>
-        router.get(route('admin.reports.waste'), { ...filters, ...patch }, {
+        router.get(route('admin.reports.waste'), { ...(period ? withPeriod(filters, period.params) : filters), ...patch }, {
             preserveState: true, preserveScroll: true, replace: true,
         });
 
@@ -121,25 +124,32 @@ export default function WasteAnalytics() {
             {/* الرجوع فوق الترويسة: الباب واحد وإليه يُرجع بضغطة */}
 
             {/* المرشّحات — بنفس عناصر بقية الشاشات، لا منتقي تواريخ جديد */}
+            {/* الفترةُ فوق المرشّحات — شهرٌ أو سنةٌ أو من/إلى، والمقارنةُ بما قبلها بشكلها */}
+            {period && <PeriodControls period={period} params={filters} />}
+
             <Card className="mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
-                <label className="flex flex-col gap-1">
-                    <span className="text-[12px] text-[#6b7280]">{t('من')}</span>
-                    <Input
-                        type="date"
-                        dir="ltr"
-                        value={filters.from ?? ''}
-                        onChange={(e) => go({ from: e.target.value })}
-                    />
-                </label>
-                <label className="flex flex-col gap-1">
-                    <span className="text-[12px] text-[#6b7280]">{t('إلى')}</span>
-                    <Input
-                        type="date"
-                        dir="ltr"
-                        value={filters.to ?? ''}
-                        onChange={(e) => go({ to: e.target.value })}
-                    />
-                </label>
+                {!period && (
+                    <>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-[12px] text-[#6b7280]">{t('من')}</span>
+                            <Input
+                                type="date"
+                                dir="ltr"
+                                value={filters.from ?? ''}
+                                onChange={(e) => go({ from: e.target.value })}
+                            />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-[12px] text-[#6b7280]">{t('إلى')}</span>
+                            <Input
+                                type="date"
+                                dir="ltr"
+                                value={filters.to ?? ''}
+                                onChange={(e) => go({ to: e.target.value })}
+                            />
+                        </label>
+                    </>
+                )}
                 <label className="flex flex-col gap-1">
                     <span className="text-[12px] text-[#6b7280]">{t('الفرع')}</span>
                     <Select

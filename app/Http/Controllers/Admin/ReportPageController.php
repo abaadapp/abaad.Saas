@@ -7,6 +7,7 @@ use App\Models\Account;
 use App\Support\CostsAndLosses;
 use App\Support\Demo;
 use App\Support\ReportData;
+use App\Support\ReportingPeriod;
 use App\Support\Reports;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,18 +46,25 @@ class ReportPageController extends Controller
         );
     }
 
-    /** الفترة تُردّ إلى المفهوم: مجهولةٌ تسقط إلى الشهر لا إلى «كل الفترات» */
-    private function range(Request $request): string
+    /**
+     * ما تشترك فيه صفحات التقارير: الفترةُ واسمُها وما يُختار منه.
+     *
+     * و`period` فارغةٌ لتقريرٍ لا فترةَ له (`Reports::PERIODS`) — فلا يُرسم
+     * فوقه منتقٍ. و`range` الزرُّ السريع المختار، أو `null` لشهرٍ بعينه أو
+     * سنةٍ أو فترة: لا يُضاء «الشهر» وهو سبتمبر الماضي.
+     */
+    private function shell(string $key, ?ReportingPeriod $period, Request $request): array
     {
-        return Demo::range($request->query('range'));
-    }
+        if ($period === null) {
+            $range = Demo::range($request->query('range'));
 
-    /** ما تشترك فيه صفحات التقارير: الفترة واسمها وشريط التنقّل */
-    private function shell(string $range): array
-    {
+            return ['range' => $range, 'rangeLabel' => Demo::rangeLabel($range), 'period' => null];
+        }
+
         return [
-            'range' => $range,
-            'rangeLabel' => Demo::rangeLabel($range),
+            'range' => $period->range(),
+            'rangeLabel' => $period->label(),
+            'period' => Reports::periodProp($key, $period),
         ];
     }
 
@@ -71,16 +79,21 @@ class ReportPageController extends Controller
         $route = 'admin.reports.'.$key;
         $this->guard($route);
 
-        $range = $this->range($request);
-        $filters = ['range' => $range];
+        /*
+         * والفترةُ تُقرأ مرّةً هنا وتُمرَّر — لا تعيد كلُّ دالّةٍ تفسيرَ الرابط.
+         * و`filters` تحمل مفاتيحَها كما هي، فيبقى سبتمبر سبتمبرَ حين يُغيَّر
+         * الفرعُ أو الحالة.
+         */
+        $period = Reports::period($key, $request->query());
+        $filters = $period?->params() ?? ['range' => Demo::range($request->query('range'))];
         foreach ($filterKeys as $name) {
             $value = $request->query($name);
             $filters[$name] = is_string($value) && $value !== '' ? $value : null;
         }
 
-        $data = ReportData::$key(Demo::bid(), $filters);
+        $data = ReportData::$key(Demo::bid(), $filters + ['_period' => $period]);
 
-        return Inertia::render('Admin/Reports/'.$screen, array_merge($this->shell($range), $data, [
+        return Inertia::render('Admin/Reports/'.$screen, array_merge($this->shell($key, $period, $request), $data, [
             'filters' => $filters,
             'limit' => ReportData::LIMIT,
         ]));
@@ -92,16 +105,22 @@ class ReportPageController extends Controller
         return $this->report($request, 'profit', 'Profit', ['branch_id']);
     }
 
-    /** مرشّحاتُ التكاليف والخسائر كما وصلت — والتنقيةُ في `CostsAndLosses::scope` */
+    /**
+     * مرشّحاتُ التكاليف والخسائر — والمدّةُ من `ReportingPeriod`.
+     *
+     * شهرٌ أو سنةٌ أو نطاقُ أشهرٍ يصير حدَّين (`from`/`to`) يقرؤهما
+     * `CostsAndLosses::scope` كما كان يقرؤهما — والتنقيةُ هناك.
+     */
     private function costFilters(Request $request): array
     {
-        $filters = [];
-        foreach (['from', 'to', 'branch_id', 'category'] as $name) {
+        $period = Reports::period('costs', $request->query());
+        $filters = ['from' => $period->fromDate(), 'to' => $period->toDate()];
+        foreach (['branch_id', 'category'] as $name) {
             $value = $request->query($name);
             $filters[$name] = is_string($value) && $value !== '' ? $value : null;
         }
 
-        return $filters;
+        return $filters + ['_period' => $period];
     }
 
     /**
@@ -115,9 +134,11 @@ class ReportPageController extends Controller
     {
         $this->guard('admin.reports.costs');
 
-        $data = ReportData::costs(Demo::bid(), $this->costFilters($request));
+        $filters = $this->costFilters($request);
+        $data = ReportData::costs(Demo::bid(), $filters);
 
         return Inertia::render('Admin/Reports/Costs', $data + [
+            'period' => Reports::periodProp('costs', $filters['_period']),
             'filters' => [
                 'from' => $data['scope']['from'],
                 'to' => $data['scope']['to'],

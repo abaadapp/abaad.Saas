@@ -341,6 +341,90 @@ class Reports
     }
 
     /**
+     * ═══ فترةُ كلّ تقرير — المصدرُ الذي تقرؤه الشاشةُ وملفّاتُها ═══
+     *
+     * التقريرُ هنا يقرأ حركةً وقعت في زمن، فيُسأل عن فترة: `month` و`all`
+     * افتراضيُّه حين لا يُقال شيء — ما كان يفتح عليه قبل هذا الملفّ.
+     *
+     * و`dates` لتقريرٍ يقارن مدّتَه بسابقتها فيحتاج حدّين دائمًا (التكاليف
+     * والهالك): يقرأ من/إلى القديمة، وافتراضيُّه من أوّل الشهر حتى اليوم كما
+     * كان، ولا «كل الفترات» له — مقارنةٌ بلا حدّين لا تُقال.
+     *
+     * وما ليس هنا لا فترةَ له، ولا يُرسم فوقه منتقٍ:
+     *   - `inventory` — رصيدُ اللحظة. لا جردَ تاريخيًّا في النظام، ومنتقي
+     *     «سبتمبر ٢٠٢٥» فوقه يعرض رصيد اليوم تحت اسم سبتمبر.
+     *   - `seasons` — لكلّ موسمٍ مدّتُه، والتقريرُ يقرأ ما نُسب إليه.
+     */
+    public const PERIODS = [
+        'sales' => 'month', 'profit' => 'month', 'finance' => 'month', 'vat' => 'month',
+        'expenses' => 'month', 'payments' => 'month', 'bank' => 'month', 'orders' => 'month',
+        'products' => 'month', 'stocktake' => 'month', 'purchases' => 'month', 'staff' => 'month',
+        'activity' => 'month', 'customers' => 'month', 'addons' => 'month', 'marketing' => 'month',
+        'suppliers' => 'all',
+        'costs' => 'dates', 'waste' => 'dates',
+    ];
+
+    /**
+     * فترةُ التقرير من الرابط — أو `null` لتقريرٍ لا فترةَ له.
+     *
+     * @param  array<string, mixed>  $query
+     */
+    public static function period(string $key, array $query): ?ReportingPeriod
+    {
+        $default = self::PERIODS[$key] ?? null;
+
+        if ($default === null) {
+            return null;
+        }
+
+        if ($default !== 'dates') {
+            return ReportingPeriod::fromQuery($query, $default);
+        }
+
+        $default = ReportingPeriod::custom(now()->startOfMonth()->toDateString(), now()->toDateString());
+        $period = ReportingPeriod::fromQuery($query, $default, ['dates']);
+
+        /*
+         * و`range=all` القديمة تسقط إلى الافتراضيّ كما كانت: هذان التقريران لم
+         * يقرآ `range` قطّ، وروابطُ الفهرس تحملها. و«كل الفترات» المختارةُ
+         * صراحةً (`period=all`) تُردّ — مقارنةٌ بلا حدّين لا تُقال.
+         */
+        if ($period->preset && $period->start === null) {
+            return $default;
+        }
+
+        abort_if($period->start === null, 422, __('هذا التقرير يحتاج فترةً لها بداية ونهاية.'));
+
+        return $period;
+    }
+
+    /**
+     * ما تختاره الواجهةُ من الفترات لتقرير.
+     *
+     * @return array{presets: list<string>, previous_month: bool, month: bool, month_range: bool, year: bool, custom: bool, all: bool}
+     */
+    public static function periodCapabilities(string $key): array
+    {
+        $dates = (self::PERIODS[$key] ?? null) === 'dates';
+
+        return [
+            'presets' => $dates ? ['today', 'week', 'month', 'year'] : Demo::RANGES,
+            'previous_month' => true,
+            'month' => true,
+            'month_range' => true,
+            'year' => true,
+            'custom' => true,
+            'all' => ! $dates,
+        ];
+    }
+
+    /** الفترةُ كما تقرؤها الواجهة — ومعها ما يُختار منه */
+    public static function periodProp(string $key, ReportingPeriod $period): array
+    {
+        return $period->screen((int) Demo::bid(), self::periodCapabilities($key));
+    }
+
+    /**
      * ما تعرضه شاشة «ملخّص المبيعات» — مصدرٌ واحد تقرؤه الشاشة والتغذية
      * والملفّات الثلاثة (Excel وPDF وCSV).
      *
@@ -364,9 +448,13 @@ class Reports
      * وما لا يصحّ يُقرأ «المتجر كلُّه» لا يُردّ خطأً: هذا تقريرٌ يُقرأ، وسطرُ
      * عنوانٍ معطوب لا يُبرّر شاشةً حمراء.
      */
-    public static function salesReport(?string $range, ?string $channel = null, mixed $boutique = null): array
+    public static function salesReport(string|ReportingPeriod|null $range, ?string $channel = null, mixed $boutique = null): array
     {
-        $range = Demo::range($range);
+        /*
+         * والفترةُ زرٌّ سريع (`range`) أو `ReportingPeriod` قرأها المتحكّم من
+         * الرابط — شهرٌ بعينه أو سنةٌ أو نطاق. وكلُّ ما تحت يقرأ حدّيها.
+         */
+        $period = $range instanceof ReportingPeriod ? $range : ReportingPeriod::preset($range);
         $channel = collect(SalesChannel::options())->pluck('value')->contains($channel) ? $channel : null;
 
         /*
@@ -409,12 +497,12 @@ class Reports
         $scoped = $scope !== null;
 
         return [
-            'summary' => $scoped ? null : Demo::reportSummary($range, $channel, $branch),
-            'salesSeries' => Demo::salesTrend($range, $channel, $branch, $scope),
-            'paymentDistribution' => $scoped ? null : Demo::paymentDistribution($range, $channel, $branch),
-            'topSellingProducts' => Demo::topSellingProducts(5, $range, $branch, $channel, $scope),
+            'summary' => $scoped ? null : Demo::reportSummary($period, $channel, $branch),
+            'salesSeries' => Demo::salesTrend($period, $channel, $branch, $scope),
+            'paymentDistribution' => $scoped ? null : Demo::paymentDistribution($period, $channel, $branch),
+            'topSellingProducts' => Demo::topSellingProducts(5, $period, $branch, $channel, $scope),
             'boutiqueTotals' => $scoped
-                ? Boutiques::soldTotals((int) Demo::bid(), $scope, Demo::rangeStart($range), $branch, $channel)
+                ? Boutiques::soldTotals((int) Demo::bid(), $scope, $period->start, $branch, $channel, $period->end?->copy()->subSecond())
                 : null,
             'boutique' => match (true) {
                 $scope === null => null,
@@ -425,7 +513,9 @@ class Reports
             'boutiqueLabel' => Boutiques::scopeLabel($scope),
             // والخياراتُ فارغةٌ لمن لا بوتيكَ عنده — فلا يُرسم المُرشِّح ولا يُطبع سطرُه
             'boutiques' => Boutiques::options($business),
-            'range' => $range,
+            // الزرُّ السريع — أو `null` لفترةٍ غيره، فلا يُضاء «الشهر» وهو سبتمبر الماضي
+            'range' => $period->range(),
+            'period' => self::periodProp('sales', $period),
             'channel' => $channel,
             'channels' => SalesChannel::options(),
             /*

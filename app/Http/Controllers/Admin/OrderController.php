@@ -53,8 +53,11 @@ class OrderController extends Controller
         return \Inertia\Inertia::render('Admin/Orders/Index', [
             'orders' => $orders->items(),
             'pagination' => \App\Support\Pagination::meta($orders),
-            'filters' => $request->only('q', 'payment', 'status', 'from', 'to', 'when', 'channel')
+            // ومفاتيحُ الفترة من مصدرها — من/إلى القديمة أو شهرٌ أو سنة (`ListFilters::orderPeriod`)
+            'filters' => $request->only('q', 'payment', 'status', 'when', 'channel')
+                + \App\Support\ListFilters::orderPeriod($request)->params()
                 + \App\Support\Sort::params($request, self::SORTS),
+            'period' => \App\Support\ListFilters::orderPeriod($request)->screen($this->bid()),
             'sorts' => \App\Support\Sort::keys(self::SORTS),
             // المبلغ من المُباع وحده، والعدد من الكلّ — والملغى يُذكر صراحةً
             // كي لا يُقرأ الفرقُ بينهما خطأً في الجمع

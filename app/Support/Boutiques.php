@@ -204,8 +204,10 @@ final class Boutiques
         ?Carbon $start = null,
         ?int $branchId = null,
         ?string $channel = null,
+        // آخرُ لحظةٍ داخل الفترة — `soldLines` تقرؤها شاملة
+        ?Carbon $end = null,
     ): array {
-        $row = self::soldLines($businessId, $scope, $start, null, $branchId, $channel)
+        $row = self::soldLines($businessId, $scope, $start, $end, $branchId, $channel)
             ->selectRaw('COALESCE(SUM(order_items.total), 0) as gross')
             ->selectRaw('COALESCE(SUM(order_items.total * COALESCE(order_items.boutique_rate, 0) / 100), 0) as commission')
             ->selectRaw('COALESCE(SUM(order_items.quantity), 0) as quantity')

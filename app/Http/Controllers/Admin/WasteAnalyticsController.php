@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
 use App\Support\Demo;
+use App\Support\Reports;
 use App\Support\Waste;
 use App\Support\WasteInsights;
 use Illuminate\Http\Request;
@@ -40,8 +41,10 @@ class WasteAnalyticsController extends Controller
          * كلّه، فيقرأ التاجر رقمًا هائلًا يظنّه شهره — والمقارنة بالمدّة
          * السابقة تفقد معناها بلا حدّين.
          */
-        $from = (string) $request->query('from', now()->startOfMonth()->toDateString());
-        $to = (string) $request->query('to', now()->toDateString());
+        // والمدّةُ من `ReportingPeriod`: شهرٌ أو سنةٌ أو من/إلى — حدّان دائمًا (`Reports::period`)
+        $period = Reports::period('waste', $request->query());
+        $from = (string) $period->fromDate();
+        $to = (string) $period->toDate();
 
         $filters = [
             'from' => $from,
@@ -71,6 +74,7 @@ class WasteAnalyticsController extends Controller
             // صفوفٌ قديمة تخالف القاعدة — تُعرض ولا تُصلَح
             'suspicious' => Waste::suspiciousRows($bid),
             'filters' => $filters,
+            'period' => Reports::periodProp('waste', $period),
             'options' => [
                 'branches' => Branch::where('business_id', $bid)->orderBy('id')
                     ->get(['id', 'name'])->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->all(),

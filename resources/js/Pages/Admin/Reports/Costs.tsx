@@ -5,6 +5,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import BackToReports from '@/Components/BackToReports';
 import ExportMenu from '@/Components/ExportMenu';
+import PeriodControls, { withPeriod, type PeriodState } from '@/Components/PeriodControls';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import { Select } from '@/Components/Field';
 import { Card } from '@/Components/ui/card';
@@ -102,6 +103,8 @@ interface Props {
     reconciliation: { unposted_count: number; unposted_amount: number; unpaid_count: number; unpaid_amount: number };
     filters: Record<string, string | null>;
     options: { branches: Option[]; categories: Option[] };
+    /** الفترةُ كما قرأها الخادم (`Reports::period`) — شهرٌ أو سنةٌ أو من/إلى */
+    period?: PeriodState;
 }
 
 const COMPARE_LABELS: Record<keyof Summary, string> = {
@@ -237,7 +240,7 @@ export function biggestDriver(categories: CostCategory[], current: number, previ
  * فمجموعُها مجموعُ الصفّ.
  */
 export default function ReportsCosts() {
-    const { summary, previousSummary, comparison, categories, scope, reconciliation, filters, options, context } =
+    const { summary, previousSummary, comparison, categories, scope, reconciliation, filters, options, period, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -246,7 +249,8 @@ export default function ReportsCosts() {
 
     /** كل تغييرٍ في مرشّح يعيد تحميل الصفحة — لا حساب في المتصفّح */
     const go = (patch: Record<string, string>) =>
-        router.get(route('admin.reports.costs'), { ...filters, ...patch }, {
+        // والفترةُ بمفاتيحها (`period.params`) لا بحدّيها: سبتمبرُ يبقى «سبتمبر» حين يُغيَّر الفرع
+        router.get(route('admin.reports.costs'), { ...(period ? withPeriod(filters, period.params) : filters), ...patch }, {
             preserveState: true,
             preserveScroll: true,
             replace: true,
@@ -282,15 +286,22 @@ export default function ReportsCosts() {
                 }
             />
 
+            {/* الفترةُ فوق المرشّحات: شهرٌ أو سنةٌ أو نطاقٌ أو من/إلى — والمقارنةُ بما قبلها بشكلها */}
+            {period && <PeriodControls period={period} params={filters} />}
+
             <Card className="mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="costs-filters">
-                <label className="flex flex-col gap-1">
-                    <span className="text-[12px] text-[#6b7280]">{t('من')}</span>
-                    <Input type="date" dir="ltr" value={filters.from ?? ''} onChange={(e) => go({ from: e.target.value })} />
-                </label>
-                <label className="flex flex-col gap-1">
-                    <span className="text-[12px] text-[#6b7280]">{t('إلى')}</span>
-                    <Input type="date" dir="ltr" value={filters.to ?? ''} onChange={(e) => go({ to: e.target.value })} />
-                </label>
+                {!period && (
+                    <>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-[12px] text-[#6b7280]">{t('من')}</span>
+                            <Input type="date" dir="ltr" value={filters.from ?? ''} onChange={(e) => go({ from: e.target.value })} />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                            <span className="text-[12px] text-[#6b7280]">{t('إلى')}</span>
+                            <Input type="date" dir="ltr" value={filters.to ?? ''} onChange={(e) => go({ to: e.target.value })} />
+                        </label>
+                    </>
+                )}
                 <label className="flex flex-col gap-1">
                     <span className="text-[12px] text-[#6b7280]">{t('الفرع')}</span>
                     <Select

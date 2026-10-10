@@ -48,8 +48,8 @@ class PdfController extends Controller
         // الفترة تُورَث من الشاشة وتُطبع في الترويسة: ورقةٌ مطبوعة لا مبدّل
         // فوقها، فإن لم تقل فترتها قُرئت على أنها فترة قارئها
         // الورقة من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
-        $report = Reports::salesReport(request()->query('range'), request()->query('channel'), request()->query('boutique'));
-        $range = $report['range'];
+        $range = Reports::period('sales', request()->query());
+        $report = Reports::salesReport($range, request()->query('channel'), request()->query('boutique'));
 
         $html = view('pdf.sales-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
@@ -82,13 +82,13 @@ class PdfController extends Controller
                 ? Demo::paymentBreakdown($range, $report['channel'], $report['branchId'])
                 : null,
             'topProducts' => $report['topSellingProducts'],
-            'rangeLabel' => Demo::rangeLabel($range),
+            'rangeLabel' => $range->label(),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
         Activity::log('report', 'صدّر تقرير المبيعات (PDF)');
 
-        return $this->pdf($html, 'sales-report-'.$range.'-'.now()->format('Y-m-d'));
+        return $this->pdf($html, implode('-', ['sales-report', ...$range->fileParts(), ...($range->preset ? [now()->format('Y-m-d')] : [])]));
     }
 
     /**
@@ -274,9 +274,8 @@ class PdfController extends Controller
             return $refused;
         }
         $summary = TransactionsList::summary(TransactionsList::filtered($request));
-        $range = $request->filled('range') ? Demo::range($request->query('range')) : null;
-        $from = (string) $request->query('from', '');
-        $to = (string) $request->query('to', '');
+        // الفترةُ كما قرأتها الشاشة — `TransactionsList::period`
+        $period = TransactionsList::period($request);
 
         $html = view('pdf.finance-report', [
             'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
@@ -286,17 +285,16 @@ class PdfController extends Controller
                 ['label' => 'المصروف', 'value' => Demo::moneyBase($summary['out'])],
                 ['label' => 'التحويلات', 'value' => Demo::moneyBase($summary['transfers'])],
             ],
-            'payments' => $range && ! $from && ! $to ? Demo::paymentMethods($range) : [],
+            // ووسائلُ الدفع لفترةٍ مسمّاة — زرٌّ سريع أو شهرٌ أو سنة — كما كانت لـ`range` وحدها
+            'payments' => ! in_array($period->kind, ['all', 'custom'], true) ? Demo::paymentMethods($period) : [],
             'transactions' => array_map(fn ($t) => ['id' => $t['reference']] + $t, TransactionsList::rows($request)),
-            'rangeLabel' => $from || $to
-                ? trim(($from ?: '…').' → '.($to ?: now()->format('Y-m-d')))
-                : ($range ? Demo::rangeLabel($range) : __('كل الفترات')),
+            'rangeLabel' => $period->label(),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 
         Activity::log('report', 'صدّر التقرير المالي (PDF)');
 
-        return $this->pdf($html, 'finance-report-'.now()->format('Y-m-d'));
+        return $this->pdf($html, implode('-', ['finance-report', ...$period->fileParts(), now()->format('Y-m-d')]));
     }
 
     public function platformReport()

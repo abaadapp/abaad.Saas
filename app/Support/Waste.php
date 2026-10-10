@@ -216,15 +216,21 @@ class Waste
      */
     public static function previousWindow(string $from, string $to): array
     {
-        $start = Carbon::parse($from)->startOfDay();
-        $end = Carbon::parse($to)->endOfDay();
-        // صحيحٌ لا كسر: `diffInDays` على نهاية اليوم يعود بـ9.999 لا 10،
-        // فيصير الطرح يومًا زائدًا وتزحف المدّة السابقة عن موضعها
-        $days = max(1, (int) $start->diffInDays($end) + 1);
+        /*
+         * وبشكلها حين يكون لها شكل — `ReportingPeriod::before`.
+         *
+         * سبتمبرُ كاملًا يُقارَن بأغسطس كاملًا لا بثلاثين يومًا تبدأ في
+         * الثاني منه، والسنةُ بالسنة قبلها. وما ليس أشهرًا كاملة — من أوّل
+         * الشهر حتى اليوم، أو عشرةُ أيّام — يُقارَن بأيّامٍ بعددها كما كان.
+         */
+        [$start, $end] = ReportingPeriod::before(
+            Carbon::parse($from)->startOfDay(),
+            Carbon::parse($to)->startOfDay()->addDay(),
+        );
 
         return [
-            'from' => $start->copy()->subDays($days)->toDateString(),
-            'to' => $start->copy()->subDay()->toDateString(),
+            'from' => $start->toDateString(),
+            'to' => $end->copy()->subDay()->toDateString(),
         ];
     }
 

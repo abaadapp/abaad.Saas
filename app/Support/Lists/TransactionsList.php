@@ -7,6 +7,7 @@ use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Exports\Dataset;
 use App\Support\Exports\Workbook;
+use App\Support\ReportingPeriod;
 use App\Support\Search;
 use App\Support\Sort;
 use Illuminate\Database\Eloquent\Builder;
@@ -43,25 +44,20 @@ final class TransactionsList
         if ($kind = $request->query('kind')) {
             $q->where('kind', $kind);
         }
-        if ($from = $request->query('from')) {
-            $q->whereDate('occurred_at', '>=', $from);
-        }
-        if ($to = $request->query('to')) {
-            $q->whereDate('occurred_at', '<=', $to);
-        }
-
         /*
-         * و`range` — بابُ الروابط القديمة وشاشة الحسابات — حين لا من/إلى.
-         *
-         * شاشةُ الحركة ترشّح بالتاريخين، وشاشةُ الحسابات تصدّر «هذا الشهر»
-         * بـ`range`، ورابطٌ محفوظٌ قبل اليوم يحمله. فيبقى مفهومًا بمعناه.
+         * والمدّةُ من `ReportingPeriod` — وبالأسبقيّة التي كانت هنا:
+         * منتقي الفترة، ثمّ من/إلى، ثمّ `range` (بابُ الروابط القديمة وشاشة
+         * الحسابات) — فرابطٌ فيه `range` ومن/إلى معًا يُقرأ بمن/إلى.
          */
-        if (! $request->filled('from') && ! $request->filled('to') && $request->filled('range')
-            && ($start = Demo::rangeStart(Demo::range($request->query('range'))))) {
-            $q->where('occurred_at', '>=', $start);
-        }
+        self::period($request)->bound($q, 'occurred_at');
 
         return $q;
+    }
+
+    /** فترةُ الشاشة — وبلا شيءٍ يُقال: الحركةُ كلُّها */
+    public static function period(Request $request): ReportingPeriod
+    {
+        return ReportingPeriod::fromQuery($request->query(), ReportingPeriod::all(), ['dates']);
     }
 
     public static function query(Request $request): Builder
@@ -131,20 +127,15 @@ final class TransactionsList
         $filtered = self::filtered($request);
         $summary = self::summary($filtered);
         $count = (clone $filtered)->count();
-        $from = (string) $request->query('from', '');
-        $to = (string) $request->query('to', '');
+        $period = self::period($request);
 
         return new Dataset(
             title: __('المعاملات المالية'),
             file: 'transactions',
-            fileParts: $from !== '' || $to !== ''
-                ? [$from ?: 'start', 'to', $to ?: now()->format('Y-m-d')]
-                : [$request->filled('range') ? Demo::range($request->query('range')) : 'all'],
+            // `2025-09` · `2024` · `2025-03-01-to-2025-03-31` · `all`
+            fileParts: $period->fileParts(),
             filters: [
-                __('الفترة') => $from === '' && $to === '' && $request->filled('range')
-                    ? Demo::rangeLabel(Demo::range($request->query('range'))) : null,
-                __('من') => $from ?: null,
-                __('إلى') => $to ?: null,
+                __('الفترة') => $period->label(),
                 __('النوع') => $request->filled('kind') ? Books::label((string) $request->query('kind')) : null,
                 __('البحث') => Search::term($request),
             ],

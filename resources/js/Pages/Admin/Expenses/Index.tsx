@@ -6,6 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import Tabs from '@/Components/Tabs';
 import ExportMenu from '@/Components/ExportMenu';
+import PeriodControls, { withPeriod, type PeriodState } from '@/Components/PeriodControls';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
 import Field, { Select } from '@/Components/Field';
@@ -64,6 +65,8 @@ interface Props {
     overdueCount: number;
     /** الشهر المعروض (Y-m) — فارغًا يعني كل الشهور */
     month: string;
+    /** الفترةُ (`ListFilters::expensePeriod`) — شهرٌ أو نطاقُ أشهرٍ أو سنةٌ أو فترةٌ أو الكلّ */
+    period?: PeriodState;
     /** مجموع الشهر المعروض — يُحسب على الشهر كلّه لا على صفحته */
     monthTotal: number | null;
     monthUnpaid: number | null;
@@ -77,7 +80,7 @@ interface Props {
 
 export default function ExpensesIndex() {
     const { expenses, pagination, types, accountOptions, filters, sorts, totalAmount, totalCount, unpaidAmount, unpaidCount,
-        dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, branches, context } =
+        dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, branches, period, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -334,11 +337,13 @@ export default function ExpensesIndex() {
                             value={month}
                             aria-label={t('الشهر')}
                             className="w-40"
-                            placeholder="كل الشهور"
+                            // ولنطاقٍ أو سنةٍ اسمُهما — لا «كل الشهور» وهما أضيق منه
+                            placeholder={period && period.kind !== 'all' && !month ? period.label : 'كل الشهور'}
                             onChange={(e) =>
                                 router.get(
                                     route('admin.expenses.index'),
-                                    { ...filters, month: e.target.value || 'all', page: null },
+                                    // والشهرُ يمحو فترةً قبله — نطاقًا أو سنة — لا يتنازعان الرابط
+                                    withPeriod(filters, { month: e.target.value || 'all' }),
                                     { preserveState: true, preserveScroll: true, replace: true },
                                 )
                             }
@@ -353,6 +358,9 @@ export default function ExpensesIndex() {
             />
 
             <SectionTabs tabs={FINANCE_TABS} current="admin.expenses.index" />
+
+            {/* وما وراء الشهر: نطاقُ أشهرٍ أو سنةٌ أو فترةٌ مخصّصة — والملفُّ يتبعها */}
+            {period && <PeriodControls period={period} params={filters} />}
 
             {/*
                 ما يستحقّ يُرى قبل أن يفوت لا بعده — والفائت أوّلًا.
@@ -396,7 +404,7 @@ export default function ExpensesIndex() {
             />
 
             {tab === 'expenses' ? (
-                expenses.length === 0 && !filters.q && !filters.type && !filters.status && !month ? (
+                expenses.length === 0 && !filters.q && !filters.type && !filters.status && !month && (!period || period.kind === 'all') ? (
                     <Card className="px-5 py-16 text-center">
                         <FolderOpen className="mx-auto size-8 text-[#d1d5db]" />
                         <p className="mt-3 font-medium text-[#111]">{t('لا توجد مصروفات')}</p>

@@ -468,9 +468,20 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $this->assertSame(110.0, $this->report()['summary']['total']);
     }
 
+    /**
+     * المدّةُ السابقة بشكلها، وتنتهي يومًا قبل بداية هذه.
+     *
+     * عُدِّل عمدًا مع منتقي الفترة (`ReportingPeriod::before`): سبتمبرُ كاملًا
+     * كان يُقارَن بثلاثين يومًا تبدأ في الثاني من أغسطس — فيسقط أوّلُ أغسطس
+     * من المقارنة ويُقرأ «مقارنةً بأغسطس». فصار شهرٌ كاملٌ يُقارَن بالشهر
+     * قبله كاملًا، وسنةٌ بسنة. وما ليس أشهرًا كاملة — عشرةُ أيّام — بطوله كما كان.
+     */
     public function test_the_previous_period_is_as_long_and_ends_the_day_before(): void
     {
-        $this->assertSame(['from' => '2026-08-02', 'to' => '2026-08-31'], array_intersect_key(CostsAndLosses::previous($this->scope()), ['from' => 1, 'to' => 1]));
+        $this->assertSame(['from' => '2026-08-01', 'to' => '2026-08-31'], array_intersect_key(CostsAndLosses::previous($this->scope()), ['from' => 1, 'to' => 1]));
+
+        $year = CostsAndLosses::previous($this->scope(['from' => '2025-01-01', 'to' => '2025-12-31']));
+        $this->assertSame(['2024-01-01', '2024-12-31'], [$year['from'], $year['to']]);
 
         $ten = CostsAndLosses::previous($this->scope(['from' => '2026-09-11', 'to' => '2026-09-20']));
         $this->assertSame(['2026-09-01', '2026-09-10'], [$ten['from'], $ten['to']]);

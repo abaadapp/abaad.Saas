@@ -18,6 +18,7 @@ import {
 } from '@/Components/ui/table';
 import useLiveFeed from '@/hooks/useLiveFeed';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
+import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
 import { money, number } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
@@ -64,8 +65,11 @@ type BoutiqueScope = { kind: 'own'; id: null; name: null } | { kind: 'boutique';
 interface Props {
     /** `null` بنطاق بوتيك: أرقامُ الطلب كاملًا لا تُنسب إلى بند */
     summary: Summary | null;
-    salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[]; range: ReportRange };
-    range: ReportRange;
+    salesSeries: { labels: string[]; full: string[]; data: (number | null)[]; counts: (number | null)[]; range: ReportRange | null };
+    /** الزرُّ السريع — أو `null` لشهرٍ بعينه أو سنةٍ أو فترة */
+    range: ReportRange | null;
+    /** الفترةُ كما قرأها الخادم (`ReportingPeriod`) — مفاتيحُها تُحمل في كلّ رابط */
+    period?: PeriodState;
     /** `null` بنطاق بوتيك: الدفعُ على الطلب كاملًا */
     paymentDistribution: { labels: string[]; series: number[] } | null;
     topSellingProducts: TopProduct[];
@@ -115,9 +119,18 @@ export default function ReportsSales() {
             ? 'own'
             : String(server.boutique.id)
         : undefined;
-    const params = { range: server.range, channel: server.channel ?? undefined, boutique: boutiqueParam };
+    /*
+     * ومفاتيحُ الفترة كما هي — `range` لزرٍّ سريع، و`period=month&month=…`
+     * لشهرٍ بعينه. فيبقى سبتمبرُ سبتمبرَ حين تُبدَّل القناة أو البوتيك.
+     */
+    const periodParams: Record<string, string> = server.period?.params ?? (server.range ? { range: server.range } : {});
+    const params = { ...periodParams, channel: server.channel ?? undefined, boutique: boutiqueParam };
 
-    const { data: live, updatedAt } = useLiveFeed<Props>(route('admin.reports.feed', params));
+    /*
+     * والتحديثُ الحيّ للأزرار السريعة وحدها: فترةٌ مضت لا يتغيّر فيها شيء،
+     * وتحديثٌ يصلها لا يُضيف إلّا خطر أن يقلبها إلى الشهر الجاري.
+     */
+    const { data: live, updatedAt } = useLiveFeed<Props>(route('admin.reports.feed', params), 20000, server.range !== null);
     const { summary, salesSeries, paymentDistribution, topSellingProducts, boutiqueTotals } = live ?? server;
 
     const t = useTranslate();
@@ -125,6 +138,8 @@ export default function ReportsSales() {
     const m = (v: number) => money(v, currency);
 
     const whole = summary?.profit_kind === 'net';
+    // «كل الفترات» زرًّا أو من المنتقي — لا مخطّطَ لها بطلب المالك
+    const allTime = server.range === 'all' || server.period?.kind === 'all';
     /** أنطاقُ بوتيكٍ هذا؟ — أرقامُه من البنود، وما على الطلب كاملًا يسقط */
     const scoped = boutiqueTotals != null;
 
@@ -134,7 +149,7 @@ export default function ReportsSales() {
 
         router.get(
             window.location.pathname,
-            { range: server.range, ...(next ? { channel: next } : {}), ...(boutiqueParam ? { boutique: boutiqueParam } : {}) },
+            { ...periodParams, ...(next ? { channel: next } : {}), ...(boutiqueParam ? { boutique: boutiqueParam } : {}) },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
@@ -145,7 +160,7 @@ export default function ReportsSales() {
 
         router.get(
             window.location.pathname,
-            { range: server.range, ...(server.channel ? { channel: server.channel } : {}), ...(next ? { boutique: next } : {}) },
+            { ...periodParams, ...(server.channel ? { channel: server.channel } : {}), ...(next ? { boutique: next } : {}) },
             { preserveState: true, preserveScroll: true, replace: true },
         );
     };
@@ -241,7 +256,11 @@ export default function ReportsSales() {
             )}
 
             {/* والفترةُ تحمل القناةَ معها — وإلّا فُقد المُرشِّحُ عند كلّ تبديل */}
-            <RangeTabs current={server.range} params={{ channel: server.channel ?? undefined, boutique: boutiqueParam }} />
+            {server.period ? (
+                <PeriodControls period={server.period} params={{ channel: server.channel ?? undefined, boutique: boutiqueParam }} />
+            ) : (
+                server.range && <RangeTabs current={server.range} params={{ channel: server.channel ?? undefined, boutique: boutiqueParam }} />
+            )}
 
             {/*
                 ═══ ومن أين جاءت البيعة ═══
@@ -357,11 +376,11 @@ export default function ReportsSales() {
                     الأرقام والجداول تبقى — المحذوف هو المخطّط وحده، وفي هذه
                     الفترة وحدها. وبقيّة الفترات كما هي.
                 */}
-                {server.range !== 'all' && (
+                {!allTime && (
                     <Card className={cn(paymentDistribution ? 'lg:col-span-2' : 'lg:col-span-3')}>
                         <CardHeader>
                             {/* عنوان المخطّط يتبع دقّته: ساعات اليوم، أو أيّام الشهر، أو أشهر السنة */}
-                            <CardTitle>{t(CHART_TITLE[server.range])}</CardTitle>
+                            <CardTitle>{t(server.range ? CHART_TITLE[server.range] : 'المبيعات خلال الفترة')}</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <AreaChart
@@ -378,7 +397,7 @@ export default function ReportsSales() {
                 {/* بلا المخطّط تأخذ البطاقة العرض كلّه بدل ثلثٍ وفراغين */}
                 {/* وبنطاق بوتيكٍ لا بطاقةَ دفع: الدفعُ على الطلب كاملًا لا على بنده */}
                 {paymentDistribution && (
-                    <Card className={cn(server.range === 'all' && 'lg:col-span-3')}>
+                    <Card className={cn(allTime && 'lg:col-span-3')}>
                         <CardHeader>
                             <CardTitle>{t('توزيع وسائل الدفع')}</CardTitle>
                         </CardHeader>

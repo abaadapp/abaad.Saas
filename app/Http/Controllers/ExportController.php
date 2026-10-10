@@ -30,8 +30,8 @@ class ExportController extends Controller
         // الفترة التي كان التاجر ينظر إليها — الملفّ يغادر الشاشة ولا يصحّحه
         // مبدّلٌ فوقه، فيحملها في أوّل سطرٍ منه وفي اسمه. والحمولة من مصدر
         // الشاشة نفسه — انظر Support\Reports::salesReport
-        $report = Reports::salesReport(request()->query('range'), request()->query('channel'), request()->query('boutique'));
-        $range = $report['range'];
+        $range = Reports::period('sales', request()->query());
+        $report = Reports::salesReport($range, request()->query('channel'), request()->query('boutique'));
 
         $rows = [];
         // والفرعُ يُكتب كما تُكتب الفترة: الملفّ يغادر الشاشة ولا مبدّلَ
@@ -46,7 +46,7 @@ class ExportController extends Controller
         if ($report['boutiques'] !== []) {
             $rows[] = [__('نطاق التقرير'), $report['boutiqueLabel'], ''];
         }
-        $rows[] = [__('الفترة'), Demo::rangeLabel($range), ''];
+        $rows[] = [__('الفترة'), $range->label(), ''];
         $rows[] = ['', '', ''];
         $rows[] = [__('— المؤشرات الرئيسية —'), '', ''];
         $rows[] = [__('المؤشر'), __('القيمة'), ''];
@@ -84,7 +84,7 @@ class ExportController extends Controller
             $rows[] = [$p['name'], $p['sold'], number_format((float) $p['revenue'], 3, '.', '')];
         }
 
-        return $this->stream('sales-report-'.$range, [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);
+        return $this->stream('sales-report-'.implode('-', $range->fileParts()), [__('العنصر'), __('القيمة 1'), __('القيمة 2')], $rows);
     }
 
     public function products()

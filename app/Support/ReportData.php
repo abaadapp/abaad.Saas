@@ -79,10 +79,43 @@ class ReportData
         return self::$cap ?? PHP_INT_MAX;
     }
 
-    /** بداية الفترة — أو null فالعمر كلّه */
-    private static function start(string $range): ?Carbon
+    /**
+     * الفترةُ التي تقرؤها الدالّة — من `_period` إن مُرّرت، وإلّا من `range`.
+     *
+     * `ReportPageController` و`ReportDownloadController` يقرآن الرابطَ مرّةً
+     * (`ReportingPeriod::fromQuery`) ويمرّرانها هنا في `_period`. ومن يقرأ
+     * هذه الدوالّ بـ`['range' => 'month']` — اللوحةُ والنُّسخُ والاختبارات —
+     * يجد الزرَّ السريع نفسَه: البدايةُ نفسُها بلا نهاية، كما كانت.
+     */
+    private static function period(array $filters, string $default = 'month'): ReportingPeriod
     {
-        return Demo::rangeStart(Demo::range($range));
+        $period = $filters['_period'] ?? null;
+
+        return $period instanceof ReportingPeriod
+            ? $period
+            : ReportingPeriod::preset(is_string($filters['range'] ?? null) ? $filters['range'] : $default);
+    }
+
+    /**
+     * مدّةٌ بحدّين في رأس الملفّ — وباسمها إن كان لها اسم.
+     *
+     * «سبتمبر 2025 (2025-09-01 → 2025-09-30)»: الاسمُ يُقرأ والحدّان يُتحقَّق
+     * منهما. والمدّةُ المخصّصة والزرُّ السريع بحدّيهما كما كانا. و«كل
+     * الفترات» بلا حدّين تُكتب باسمها وحده.
+     */
+    private static function datesLabel(array $filters, ?string $from, ?string $to): string
+    {
+        $period = $filters['_period'] ?? null;
+
+        if ($from === null || $to === null) {
+            return $period instanceof ReportingPeriod ? $period->label() : __('كل الفترات');
+        }
+
+        $dates = $from.' → '.$to;
+
+        return $period instanceof ReportingPeriod && ! $period->preset && $period->kind !== 'custom'
+            ? $period->label().' ('.$dates.')'
+            : $dates;
     }
 
     /** قيمةُ منتقًى إن كانت غير فارغة — و«الكل» ليست قيمة */
@@ -135,16 +168,11 @@ class ReportData
      */
     public static function vat(int $bid, array $filters): array
     {
-        $range = Demo::range($filters['range'] ?? 'month');
-        $start = self::start($range);
+        $period = self::period($filters);
 
-        $orders = Order::where('business_id', $bid)->sold();
-        $invoices = SupplierInvoice::where('business_id', $bid);
-
-        if ($start !== null) {
-            $orders->where('ordered_at', '>=', $start);
-            $invoices->where('issued_at', '>=', $start->copy()->startOfDay());
-        }
+        // والسنداتُ بيومها: `issued_at` تاريخٌ بلا ساعة — والحدّان نفسُهما
+        $orders = $period->bound(Order::where('business_id', $bid)->sold(), 'ordered_at');
+        $invoices = $period->bound(SupplierInvoice::where('business_id', $bid), 'issued_at', date: true);
 
         $sold = (clone $orders)->get(['ordered_at', 'subtotal', 'discount', 'tax', 'delivery_fee']);
 
@@ -249,8 +277,7 @@ class ReportData
 
     public static function payments(int $bid, array $filters): array
     {
-        $range = Demo::range($filters['range'] ?? 'month');
-        $methods = Demo::paymentMethods($range, $bid);
+        $methods = Demo::paymentMethods(self::period($filters), $bid);
 
         $rows = collect($methods)->map(fn ($m) => [
             'id' => $m['key'],
@@ -279,8 +306,7 @@ class ReportData
 
     public static function staff(int $bid, array $filters): array
     {
-        $range = Demo::range($filters['range'] ?? 'month');
-        $rows = collect(Demo::staffPerformance($range, $bid));
+        $rows = collect(Demo::staffPerformance(self::period($filters), $bid));
         $total = (float) $rows->sum('sales');
 
         /*
@@ -306,11 +332,11 @@ class ReportData
 
     public static function customers(int $bid, array $filters): array
     {
-        $range = Demo::range($filters['range'] ?? 'month');
+        $period = self::period($filters);
 
         // سقفٌ يُقال على الشاشة لا يُخفى: قائمةُ «الأكثر إنفاقًا» مبتورةٌ عمدًا
         $limit = 50;
-        $rows = collect(Demo::topCustomers($limit, $range, $bid))
+        $rows = collect(Demo::topCustomers($limit, $period, $bid))
             ->map(fn ($c, $i) => ['id' => $i + 1] + $c);
 
         /*
@@ -321,9 +347,7 @@ class ReportData
          * أبدًا. والاستعلامُ هنا هو استعلامُ الجدول بعينه (`Demo::topCustomers`):
          * النشاطُ والفترةُ والمباعُ وحده (`sold`) والعميلُ المسمّى — بلا حدّ.
          */
-        $start = self::start($range);
-        $all = Order::where('business_id', $bid)->sold()->whereNotNull('customer_name')
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+        $all = $period->bound(Order::where('business_id', $bid)->sold()->whereNotNull('customer_name'), 'ordered_at')
             ->selectRaw('COALESCE(SUM(total), 0) as t, COUNT(*) as c, COUNT(DISTINCT customer_name) as n')
             ->first();
 
@@ -354,9 +378,12 @@ class ReportData
      */
     public static function waste(int $bid, array $filters): array
     {
+        // و«كل الفترات» (`_period` بلا بداية) بلا حدّين — لا شهرٌ إلى اليوم
+        $all = ($filters['_period'] ?? null) instanceof ReportingPeriod && $filters['_period']->start === null;
+
         $scope = [
-            'from' => $filters['from'] ?? now()->startOfMonth()->toDateString(),
-            'to' => $filters['to'] ?? now()->toDateString(),
+            'from' => $all ? null : ($filters['from'] ?? now()->startOfMonth()->toDateString()),
+            'to' => $all ? null : ($filters['to'] ?? now()->toDateString()),
             'branch_id' => $filters['branch_id'] ?? null,
             'category_id' => $filters['category_id'] ?? null,
             'product_id' => $filters['product_id'] ?? null,
@@ -380,7 +407,7 @@ class ReportData
                 'value' => $totals['value'],
             ],
             // مدّةٌ بحدّين تُكتب في الترويسة: ورقةٌ لا تقول مدّتها تُقرأ على أنها العمر كلّه
-            'periodLabel' => $scope['from'].' → '.$scope['to'],
+            'periodLabel' => self::datesLabel($filters, $scope['from'], $scope['to']),
             'rows' => [],
             'truncated' => null,
             'options' => [],
@@ -391,7 +418,7 @@ class ReportData
 
     public static function finance(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $method = self::pick($filters, 'method');
         $type = self::pick($filters, 'type');
 
@@ -407,8 +434,7 @@ class ReportData
          */
         $search = self::pick($filters, 'q');
 
-        $base = Transaction::where('business_id', $bid)
-            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start))
+        $base = $period->bound(Transaction::where('business_id', $bid), 'occurred_at')
             ->when($method, fn ($q) => $q->where('method', $method))
             ->when($type, fn ($q) => $q->where('type', $type))
             ->when($search, fn ($q) => $q->where(fn ($w) => $w
@@ -465,12 +491,12 @@ class ReportData
 
     public static function expenses(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $type = self::pick($filters, 'type');
         $status = self::pick($filters, 'status');
 
-        $base = Expense::where('business_id', $bid)
-            ->when($start, fn ($q) => $q->where('spent_at', '>=', $start))
+        // `spent_at` تاريخٌ بلا ساعة
+        $base = $period->bound(Expense::where('business_id', $bid), 'spent_at', date: true)
             ->when($type, fn ($q) => $q->where('type', $type))
             ->when($status, fn ($q) => $q->where('status', $status));
 
@@ -583,7 +609,7 @@ class ReportData
             ],
             'reconciliation' => CostsAndLosses::reconciliation($bid, $scope),
             // المدّةُ والنطاقُ في ترويسة كلّ ملفّ — ورقةُ فرعٍ لا تُقرأ ورقةَ متجر
-            'periodLabel' => $scope['from'].' → '.$scope['to'].' — '.$scopeName,
+            'periodLabel' => self::datesLabel($filters, $scope['from'], $scope['to']).' — '.$scopeName,
             'options' => [
                 'branches' => Branch::where('business_id', $bid)
                     ->when($allowed !== null, fn ($q) => $q->whereIn('id', $allowed))
@@ -616,7 +642,7 @@ class ReportData
      */
     public static function profit(int $bid, array $filters): array
     {
-        $range = Demo::range($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $raw = self::pick($filters, 'branch_id');
         $branch = null;
 
@@ -628,12 +654,13 @@ class ReportData
         }
 
         $branchId = $branch?->id;
-        $start = Demo::rangeStart($range);
 
-        $summary = Profitability::summary($bid, $start, null, $branchId);
-        $rows = Profitability::rows($bid, $range, $branchId);
+        // الحسابُ نفسُه بحدَّي الفترة — والزرُّ السريع بلا نهايةٍ كما كان
+        $summary = Profitability::summary($bid, $period->start, $period->end, $branchId);
+        $rows = Profitability::rows($bid, $period, $branchId);
 
-        $prev = Demo::rangePrev($range);
+        // والمقارنةُ بما قبلها بالشكل نفسه: سبتمبر بأغسطس، و٢٠٢٤ بـ٢٠٢٣
+        $prev = $period->previous();
         $before = $prev ? Profitability::summary($bid, $prev[0], $prev[1], $branchId) : null;
 
         $scopeName = $branch ? __('فرع :name', ['name' => $branch->name]) : __('النشاط بالكامل');
@@ -678,7 +705,7 @@ class ReportData
             'rows' => $rows,
             'truncated' => null,
             // والفترةُ والنطاقُ معًا في ترويسة كلّ ملفّ — ورقةُ فرعٍ لا تُقرأ ورقةَ متجر
-            'periodLabel' => Demo::rangeLabel($range).' — '.$scopeName,
+            'periodLabel' => $period->label().' — '.$scopeName,
             'options' => [
                 'branches' => self::branchOptions($bid),
             ],
@@ -689,11 +716,11 @@ class ReportData
 
     public static function bank(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $status = self::pick($filters, 'match_status');
 
-        $base = BankStatementLine::where('business_id', $bid)
-            ->when($start, fn ($q) => $q->where('date', '>=', $start))
+        // `date` تاريخُ السطر في الكشف — بلا ساعة
+        $base = $period->bound(BankStatementLine::where('business_id', $bid), 'date', date: true)
             ->when($status, fn ($q) => $q->where('match_status', $status));
 
         $count = (clone $base)->count();
@@ -703,8 +730,7 @@ class ReportData
          * يتبع المرشّح يصير «غير المطابَق: ٠» كلّما رُشّح على المطابَق —
          * رقمٌ صحيحٌ يقول كذبًا.
          */
-        $scope = BankStatementLine::where('business_id', $bid)
-            ->when($start, fn ($q) => $q->where('date', '>=', $start));
+        $scope = $period->bound(BankStatementLine::where('business_id', $bid), 'date', date: true);
 
         $matched = (clone $scope)->where('match_status', BankStatementLine::MATCHED)->count();
 
@@ -736,14 +762,13 @@ class ReportData
 
     public static function orders(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $status = self::pick($filters, 'status');
         $branch = self::pick($filters, 'branch_id');
         $method = self::pick($filters, 'payment_method');
         $fulfillment = self::fulfillment($filters);
 
-        $base = Order::where('business_id', $bid)->where('is_held', false)
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+        $base = $period->bound(Order::where('business_id', $bid)->where('is_held', false), 'ordered_at')
             ->when($status, fn ($q) => $q->where('status', $status))
             ->when($branch, fn ($q) => $q->where('branch_id', $branch))
             ->when($method, fn ($q) => $q->where('payment_method', $method))
@@ -830,16 +855,14 @@ class ReportData
      */
     public static function addons(int $bid, array $filters): array
     {
-        $range = Demo::range($filters['range'] ?? 'month');
-        $start = Demo::rangeStart($range);
+        $period = self::period($filters);
         $branch = self::pick($filters, 'branch_id');
         // قناةٌ لا تُعرف تُقرأ «الكل» لا خطأً — كما في ملخّص المبيعات
         $channel = collect(SalesChannel::options())->pluck('value')->contains($filters['channel'] ?? null)
             ? $filters['channel'] : null;
 
         $orders = SalesChannel::scope(
-            Order::where('business_id', $bid)->sold()
-                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            $period->bound(Order::where('business_id', $bid)->sold(), 'ordered_at')
                 ->when($branch, fn ($q) => $q->where('branch_id', $branch)),
             $channel,
         );
@@ -863,7 +886,7 @@ class ReportData
 
     public static function products(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $category = self::pick($filters, 'category_id');
 
         $products = Product::where('business_id', $bid)
@@ -878,7 +901,7 @@ class ReportData
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('orders.business_id', $bid)->where('orders.is_held', false)
             ->where('orders.status', '!=', Order::CANCELLED)
-            ->when($start, fn ($q) => $q->where('orders.ordered_at', '>=', $start))
+            ->tap(fn ($q) => $period->bound($q, 'orders.ordered_at'))
             ->whereNotNull('order_items.product_id')
             ->selectRaw('order_items.product_id as pid, SUM(order_items.quantity) as q, SUM(order_items.total) as s')
             ->groupBy('order_items.product_id')->get()->keyBy('pid');
@@ -974,12 +997,11 @@ class ReportData
 
     public static function purchases(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $status = self::pick($filters, 'status');
         $supplier = self::pick($filters, 'supplier_id');
 
-        $base = PurchaseOrder::where('business_id', $bid)
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+        $base = $period->bound(PurchaseOrder::where('business_id', $bid), 'ordered_at')
             ->when($status, fn ($q) => $q->where('status', $status))
             ->when($supplier, fn ($q) => $q->where('supplier_id', $supplier));
 
@@ -1017,10 +1039,7 @@ class ReportData
 
     public static function suppliers(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'all');
-
-        $orders = PurchaseOrder::where('business_id', $bid)
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+        $orders = self::period($filters, 'all')->bound(PurchaseOrder::where('business_id', $bid), 'ordered_at')
             ->selectRaw('supplier_id, COUNT(*) as c, SUM(total) as s')
             ->groupBy('supplier_id')->get()->keyBy('supplier_id');
 
@@ -1053,12 +1072,11 @@ class ReportData
 
     public static function activity(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $user = self::pick($filters, 'user_id');
         $action = self::pick($filters, 'action');
 
-        $base = ActivityLog::where('business_id', $bid)
-            ->when($start, fn ($q) => $q->where('created_at', '>=', $start))
+        $base = $period->bound(ActivityLog::where('business_id', $bid), 'created_at')
             ->when($user, fn ($q) => $q->where('user_id', $user))
             ->when($action, fn ($q) => $q->where('action', $action));
 
@@ -1110,7 +1128,7 @@ class ReportData
      */
     public static function stocktake(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
         $branch = self::pick($filters, 'branch_id');
         $reason = self::pick($filters, 'reason');
 
@@ -1121,7 +1139,7 @@ class ReportData
 
         $base = StockAdjustment::where('business_id', $bid)
             ->whereIn('reason', $reasons)
-            ->when($start, fn ($q) => $q->where('adjusted_at', '>=', $start))
+            ->tap(fn ($q) => $period->bound($q, 'adjusted_at'))
             ->when($branch, fn ($q) => $q->where('branch_id', $branch))
             ->when($reason, fn ($q) => $q->where('reason', $reason));
 
@@ -1227,15 +1245,14 @@ class ReportData
 
     public static function marketing(int $bid, array $filters): array
     {
-        $start = self::start($filters['range'] ?? 'month');
+        $period = self::period($filters);
 
         /*
          * الخصمُ يُقرأ من الطلبات لا من الكوبون: `used_count` عدّادٌ يزيد ولا
          * ينقص، ولا يعرف كم خُصم فعلًا ولا في أيّ فترة. والطلبُ يحمل الرمز
          * والقيمة معًا.
          */
-        $used = Order::where('business_id', $bid)->sold()->whereNotNull('coupon_code')
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+        $used = $period->bound(Order::where('business_id', $bid)->sold()->whereNotNull('coupon_code'), 'ordered_at')
             ->selectRaw('coupon_code, COUNT(*) as c, SUM(coupon_discount) as d, SUM(total) as t')
             ->groupBy('coupon_code')->get()->keyBy('coupon_code');
 

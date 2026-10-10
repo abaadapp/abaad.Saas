@@ -11,6 +11,7 @@ use App\Support\Exports\Workbook;
 use App\Support\Pdf;
 use App\Support\ReportColumns;
 use App\Support\ReportData;
+use App\Support\ReportingPeriod;
 use App\Support\Reports;
 use Illuminate\Http\Request;
 
@@ -59,6 +60,20 @@ class ReportDownloadController extends Controller
         }
 
         /*
+         * والفترةُ تُقرأ كما قرأتها الشاشة (`Reports::period`) — بالرابط
+         * نفسه الذي حمله `withFilters`. فسبتمبرُ الشاشة سبتمبرُ الملفّ، لا
+         * الشهرُ الجاري. وما يقارن مدّتَه بسابقتها يأخذ حدَّيه من/إلى.
+         */
+        if ($period = Reports::period($report, $request->query())) {
+            $filters['_period'] = $period;
+
+            if ((Reports::PERIODS[$report] ?? null) === 'dates') {
+                $filters['from'] = $period->fromDate();
+                $filters['to'] = $period->toDate();
+            }
+        }
+
+        /*
          * والملفُّ بلا سقف الشاشة — بصيغه الثلاث.
          *
          * الشاشةُ تعرض خمسمئةً وتقول إنّها مبتورة، والملفُّ وعدُه «كلُّ ما
@@ -97,7 +112,9 @@ class ReportDownloadController extends Controller
     /** ما يُكتب في ترويسة الملفّ عن مدّته — مسمّاةً كانت أو بحدّين */
     private function periodLabel(string $report, array $filters, array $data): string
     {
-        return $data['periodLabel'] ?? Demo::rangeLabel($filters['range'] ?? 'month');
+        $period = $filters['_period'] ?? null;
+
+        return $data['periodLabel'] ?? ($period?->label() ?? Demo::rangeLabel($filters['range'] ?? 'month'));
     }
 
     /**
@@ -146,11 +163,21 @@ class ReportDownloadController extends Controller
      */
     private function filename(string $report, array $filters, string $ext): string
     {
-        $from = (string) ($filters['from'] ?? '');
-        $to = (string) ($filters['to'] ?? '');
-        $period = $from !== '' || $to !== '' ? [$from ?: 'start', 'to', $to ?: now()->format('Y-m-d')] : [$filters['range'] ?? 'all'];
+        /*
+         * والفترةُ من `ReportingPeriod::fileParts`: `2025-09`، `2024`،
+         * `2025-03-to-2025-08`. وتاريخُ التنزيل يُلحق بالزرّ السريع وحده —
+         * «month» تتغيّر كلَّ شهر، و«2025-09» لا تتغيّر.
+         */
+        $period = $filters['_period'] ?? null;
 
-        return Workbook::filename('report-'.$report, [...$period, now()->format('Y-m-d')], $ext);
+        if ($period instanceof ReportingPeriod) {
+            return Workbook::filename('report-'.$report, [
+                ...$period->fileParts(),
+                ...($period->preset ? [now()->format('Y-m-d')] : []),
+            ], $ext);
+        }
+
+        return Workbook::filename('report-'.$report, [$filters['range'] ?? 'all', now()->format('Y-m-d')], $ext);
     }
 
     /**

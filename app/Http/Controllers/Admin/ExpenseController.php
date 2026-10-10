@@ -14,6 +14,7 @@ use App\Support\ListFilters;
 use App\Support\Lists\ExpensesList;
 use App\Support\Pagination;
 use App\Support\Permissions;
+use App\Support\ReportingPeriod;
 use App\Support\Sort;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,13 +49,14 @@ class ExpenseController extends Controller
          * دفعةً واحدة لا تجيبه. و«كل الشهور» تبقى خيارًا لمن يبحث عن فاتورةٍ
          * قديمة بعينها.
          */
-        $span = ListFilters::expenseSpan($request);
-        $month = $span ? $span[0]->format('Y-m') : '';
+        $period = ListFilters::expensePeriod($request);
+        $bounded = $period->start !== null || $period->end !== null;
+        // `Y-m` لشهرٍ واحد — يقرؤه منتقي الشهر القديم؛ وفارغٌ لغيره
+        $month = (string) ExpensesList::month($request);
 
-        // مجموع الشهر يُحسب على الشهر كلّه لا على صفحته: الترقيم يقصّ الصفوف
+        // مجموع الفترة يُحسب على الفترة كلّها لا على صفحتها: الترقيم يقصّ الصفوف
         // ولا يقصّ السؤال — «كم أنفقتُ هذا الشهر؟» جوابُه واحدٌ مهما تصفّحت
-        $base = Expense::where('business_id', $bid)
-            ->when($span, fn ($w) => $w->whereBetween('spent_at', $span));
+        $base = $period->bound(Expense::where('business_id', $bid), 'spent_at', date: true);
 
         // الاستعلامُ نفسُه الذي تقرؤه ملفّاتُ التصدير الثلاثة — انظر `ExpensesList`
         $q = ExpensesList::query($request);
@@ -100,14 +102,17 @@ class ExpenseController extends Controller
             'types' => Demo::expenseTypes(),
             // خيارات الحساب — مصدرها واحد مع ما يقبله التحقّق
             'accountOptions' => Books::expenseAccountOptions(),
-            'filters' => $request->only('q', 'type', 'status', 'tab') + ['month' => $month]
+            'filters' => $request->only('q', 'type', 'status', 'tab') + $period->params()
                 + Sort::params($request, self::SORTS),
             'sorts' => Sort::keys(self::SORTS),
             // الشهر المعروض ومجموعه — ما بعد الترقيم لا يُجمع في المتصفح
             'month' => $month,
-            'monthTotal' => $month ? (float) (clone $base)->paid()->sum('amount') : null,
-            'monthUnpaid' => $month ? (float) (clone $base)->unpaid()->sum('amount') : null,
-            'monthCount' => $month ? (clone $base)->count() : null,
+            // والفترةُ كما تقرؤها الواجهة — شهرٌ أو نطاقٌ أو سنةٌ أو الكلّ
+            // بلا أزرارٍ سريعة: الشاشةُ شهريّة، و«هذا الشهر» افتراضيُّها
+            'period' => $period->screen($bid, ['presets' => []] + ReportingPeriod::EVERYTHING),
+            'monthTotal' => $bounded ? (float) (clone $base)->paid()->sum('amount') : null,
+            'monthUnpaid' => $bounded ? (float) (clone $base)->unpaid()->sum('amount') : null,
+            'monthCount' => $bounded ? (clone $base)->count() : null,
             // الشهور التي فيها مصروفٌ فعلًا — قائمةٌ لا تعرض شهورًا فارغة
             'months' => $this->months($bid),
             // المدفوع وحده هو المصروف — والمستحقّ يُعرض إلى جانبه لا يختفي:

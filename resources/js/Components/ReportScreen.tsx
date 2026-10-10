@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
+import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
 import StatCard from '@/Components/StatCard';
 import { Select } from '@/Components/Field';
 import { Input } from '@/Components/ui/input';
@@ -76,6 +77,8 @@ export default function ReportScreen({
     exportFeature = 'reports_advanced',
 }: Props) {
     const t = useTranslate();
+    // الفترةُ من الخادم (`ReportPageController::shell`) — فارغةٌ لتقريرٍ لا فترةَ له
+    const { period } = usePage<{ period?: PeriodState | null }>().props;
 
     /*
      * كل تبديلٍ يُعيد التحميل من الخادم لا يُرشّح في المتصفّح: الجدول مبتورٌ
@@ -130,7 +133,15 @@ export default function ReportScreen({
 
                 {/* الأدوات لا تُطبع: التقرير ورقةٌ لا لوحةُ تحكّم */}
                 <div className="no-print">
-                    {range && <RangeTabs current={range} params={filters} />}
+                    {/*
+                        منتقي الفترة: الأزرارُ السريعة و«اختيار فترة» — لكلّ تقريرٍ له
+                        فترة. والرصيدُ الحالي والمواسمُ بلا منتقٍ (`Reports::PERIODS`).
+                    */}
+                    {period ? (
+                        <PeriodControls period={period} params={filters} />
+                    ) : (
+                        range && <RangeTabs current={range} params={filters} />
+                    )}
 
                     {controls && controls.length > 0 && (
                         <Card className="mb-6 flex flex-wrap items-end gap-3 p-4">

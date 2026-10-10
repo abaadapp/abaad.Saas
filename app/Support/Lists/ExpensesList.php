@@ -51,12 +51,12 @@ final class ExpensesList
         return $q;
     }
 
-    /** الشهرُ المعروض — `Y-m`، أو `null` لـ«كل الشهور» */
+    /** الشهرُ المعروض — `Y-m` لشهرٍ واحد، أو `null` لغيره (`ListFilters::expensePeriod`) */
     public static function month(Request $request): ?string
     {
-        $span = ListFilters::expenseSpan($request);
+        $period = ListFilters::expensePeriod($request);
 
-        return $span ? $span[0]->format('Y-m') : null;
+        return in_array($period->kind, ['month', 'previous_month'], true) ? $period->start->format('Y-m') : null;
     }
 
     /** صفوفُ الشاشة كلُّها بترتيبها — لورقة PDF */
@@ -82,7 +82,7 @@ final class ExpensesList
      */
     public static function export(Request $request): Dataset
     {
-        $month = self::month($request);
+        $period = ListFilters::expensePeriod($request);
         $filtered = self::filtered($request);
         $paid = round((float) (clone $filtered)->paid()->sum('amount'), 3);
         $unpaid = round((float) (clone $filtered)->unpaid()->sum('amount'), 3);
@@ -97,9 +97,10 @@ final class ExpensesList
         return new Dataset(
             title: __('المصروفات المسجلة'),
             file: 'expenses',
-            fileParts: [$month ?? 'all'],
+            // `expenses-2026-09` كما كان، و`expenses-2024`، و`expenses-all`
+            fileParts: $period->fileParts(),
             filters: [
-                __('الشهر') => $month ?? __('كل الشهور'),
+                __('الفترة') => $period->label(),
                 __('البحث') => Search::term($request),
                 __('النوع') => $request->query('type'),
                 __('الحالة') => $request->filled('status') ? __((string) $request->query('status')) : null,

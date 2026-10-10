@@ -165,29 +165,32 @@ final class Profitability
      *
      * @return list<array<string, mixed>>
      */
-    public static function rows(int $bid, string $range, ?int $branchId = null): array
+    public static function rows(int $bid, string|ReportingPeriod $range, ?int $branchId = null): array
     {
-        [$unit, $axisStart, $axisEnd] = self::axis($bid, $range, $branchId);
-        $start = Demo::rangeStart($range);
+        // والفترةُ بحدّيها: الزرُّ السريع بلا نهايةٍ كما كان، وسبتمبرُ بنهايته
+        $period = Demo::period($range);
+        [$unit, $axisStart, $axisEnd] = self::axis($bid, $period, $branchId);
+        $start = $period->start;
+        $end = $period->end;
 
         // الإيرادُ وضريبتُه من الدفتر — كجملتهما في `summary`، فيساوي مجموعُ الصفوف جملتَها
-        $revenue = Ledger::creditByBucket(Ledger::revenueLines($bid, $start, null, $branchId), $unit);
-        $taxes = Ledger::creditByBucket(Ledger::outputTaxLines($bid, $start, null, $branchId), $unit);
+        $revenue = Ledger::creditByBucket(Ledger::revenueLines($bid, $start, $end, $branchId), $unit);
+        $taxes = Ledger::creditByBucket(Ledger::outputTaxLines($bid, $start, $end, $branchId), $unit);
 
-        $cogs = Demo::cogsByBucket($bid, $start, null, $branchId, null, $unit);
+        $cogs = Demo::cogsByBucket($bid, $start, $end, $branchId, null, $unit);
 
         // ويومُ المصروف لا ساعةَ فيه: يقع في أوّل ساعات اليوم
         $expenseBucket = $unit === 'hour' ? "'00'" : Demo::bucketSql('spent_at', $unit);
         // والنشاطُ كلُّه من الدفتر بتاريخ القيد — كجملته في `summary`، فيساوي مجموعُ الصفوف جملتَها
         $expenses = $branchId === null
-            ? Ledger::operatingExpensesByBucket($bid, $unit === 'hour' ? "'00'" : Demo::bucketSql('journal_entries.entry_date', $unit), $start)
+            ? Ledger::operatingExpensesByBucket($bid, $unit === 'hour' ? "'00'" : Demo::bucketSql('journal_entries.entry_date', $unit), $start, $end)
             : self::bucketSums(
-                self::expenses($bid, $start)->where('expenses.branch_id', $branchId)
+                self::expenses($bid, $start, $end)->where('expenses.branch_id', $branchId)
                     ->selectRaw("{$expenseBucket} as bucket, SUM(amount) as v"),
             );
 
         if ($branchId !== null) {
-            foreach (self::bucketSums(self::shares($bid, $start, null, $branchId)->selectRaw("{$expenseBucket} as bucket, SUM(a.amount) as v")) as $key => $v) {
+            foreach (self::bucketSums(self::shares($bid, $start, $end, $branchId)->selectRaw("{$expenseBucket} as bucket, SUM(a.amount) as v")) as $key => $v) {
                 $expenses[$key] = ($expenses[$key] ?? 0.0) + $v;
             }
         }
@@ -211,7 +214,7 @@ final class Profitability
              * ولا يومَ له. وبلا ذلك يُعدّ في الجملة ويغيب عن الصفوف، فلا يساوي
              * مجموعُها جملتَها.
              */
-            if ($first && $range === 'all') {
+            if ($first && $period->kind === 'all') {
                 $spent += (float) ($expenses[''] ?? 0);
             }
 
@@ -238,9 +241,29 @@ final class Profitability
      *
      * @return array{0: string, 1: Carbon, 2: Carbon}
      */
-    public static function axis(int $bid, string $range, ?int $branchId = null): array
+    public static function axis(int $bid, string|ReportingPeriod $range, ?int $branchId = null): array
     {
-        return match ($range) {
+        $period = Demo::period($range);
+
+        /*
+         * وفترةٌ بحدّين — شهرٌ بعينه أو سنةٌ أو نطاق — محورُها حدّاها.
+         *
+         * والدقّةُ تتبع الطول كما تتبعه الأزرار: يومٌ بالساعات، وما دون
+         * شهرين بالأيّام، وما فوقه بالأشهر — اثنا عشر عمودًا لسنةٍ لا
+         * ثلاثمئةٍ وخمسةٌ وستّون.
+         */
+        if (! $period->preset && $period->kind !== 'all' && $period->start !== null && $period->end !== null) {
+            $last = $period->end->copy()->subDay();
+            $days = (int) round($period->start->diffInDays($period->end));
+
+            return match (true) {
+                $days <= 1 => ['hour', $period->start->copy(), $period->start->copy()->setTime(23, 0)],
+                $days <= 62 => ['day', $period->start->copy(), $last->startOfDay()],
+                default => ['month', $period->start->copy()->startOfMonth(), $last->startOfMonth()],
+            };
+        }
+
+        return match ($period->kind) {
             'today' => ['hour', now()->startOfDay(), now()->startOfDay()->setTime(23, 0)],
             'week' => ['day', now()->startOfWeek(Demo::WEEK_START)->startOfDay(), now()->endOfWeek(Demo::WEEK_END)->startOfDay()],
             'year' => ['month', now()->startOfYear(), now()->endOfYear()->startOfMonth()],

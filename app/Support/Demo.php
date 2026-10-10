@@ -1623,13 +1623,11 @@ class Demo
      * أقدمُ موظفٍ لا أعلاهم بيعًا لا يُقرأ بنظرة.
      */
     /** أداءُ الموظّفين — في متجرٍ يُسمّى لا يُستنتَج، انظر `topCustomers` */
-    public static function staffPerformance(string $range = 'month', ?int $businessId = null): array
+    public static function staffPerformance(string|ReportingPeriod $range = 'month', ?int $businessId = null): array
     {
         $bid = $businessId ?? self::bid();
-        $start = self::rangeStart(self::range($range));
 
-        $sold = Order::where('business_id', $bid)->sold()
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+        $sold = self::period($range)->bound(Order::where('business_id', $bid)->sold(), 'ordered_at')
             ->whereNotNull('user_id')
             ->selectRaw('user_id, SUM(total) as s, COUNT(*) as c')
             ->groupBy('user_id')->get()->keyBy('user_id');
@@ -2427,15 +2425,16 @@ class Demo
      * من مهمّةٍ في الخلفية أو من شاشة مشرف المنصّة يقرأ متجرًا غير الذي طلب،
      * بلا خطأ يقول شيئًا.
      */
-    public static function paymentMethods(string $range = 'month', ?int $businessId = null): array
+    public static function paymentMethods(string|ReportingPeriod $range = 'month', ?int $businessId = null): array
     {
         $bid = $businessId ?? self::bid();
         // الفترة تُردّ إلى المفهوم كما في أخواتها: فترةٌ مجهولة كانت تسقط إلى
-        // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك
-        $start = self::rangeStart(self::range($range));
+        // null فتُقرأ «كل الفترات» بلا أن يقول شيءٌ ذلك — انظر `period`
         // والملغاة لا تُجمع — كما في `paymentBreakdown` التي تقرأ الطلبات
-        $income = Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل')
-            ->when($start, fn ($q) => $q->where('occurred_at', '>=', $start));
+        $income = self::period($range)->bound(
+            Transaction::where('business_id', $bid)->notCancelled()->where('type', 'دخل'),
+            'occurred_at',
+        );
         $grand = max(0.001, (float) (clone $income)->sum('amount'));
         $defs = [
             ['name' => __('نقدي'), 'key' => 'نقدي', 'icon' => 'banknote', 'color' => 'success'],
@@ -2594,6 +2593,17 @@ class Demo
     }
 
     /**
+     * الفترةُ من زرٍّ سريع أو من `ReportingPeriod` جاهزة.
+     *
+     * الزرُّ السريع يعطي البدايةَ نفسَها (`rangeStart`) بلا نهاية — ما كانت
+     * تقرؤه هذه الدوالّ قبله حرفًا بحرف. والفترةُ الجاهزة تحمل حدّيها.
+     */
+    public static function period(string|ReportingPeriod $range): ReportingPeriod
+    {
+        return $range instanceof ReportingPeriod ? $range : ReportingPeriod::preset($range);
+    }
+
+    /**
      * وصف الفترة بالكلمات وبتاريخيها — يُطبع في ترويسة كل ملفٍّ يغادر الشاشة.
      *
      * الشاشة يصحّحها المبدّل الذي فوقها، والملفّ لا يصحّحه شيء: يُرسَل إلى
@@ -2642,13 +2652,30 @@ class Demo
      * ولكل عمود عدد طلباته إلى جانب مبلغه: مئة ريالٍ من طلبٍ واحد غير مئةٍ من
      * أربعين طلبًا، والمبلغ وحده لا يفرّق بينهما.
      */
-    public static function salesTrend(string $range = 'month', ?string $channel = null, ?int $branchId = null, string|Boutique|null $boutique = null): array
+    public static function salesTrend(string|ReportingPeriod $range = 'month', ?string $channel = null, ?int $branchId = null, string|Boutique|null $boutique = null): array
     {
         $bid = self::bid();
-        $range = self::range($range);
+        $period = self::period($range);
+        // الزرُّ السريع باسمه — و«كل الفترات» من المنتقي كزرّها
+        $range = $period->range() ?? ($period->kind === 'all' ? 'all' : null);
         $driver = DB::connection()->getDriverName();
 
-        [$unit, $start, $end] = match ($range) {
+        /*
+         * ═══ وفترةٌ بحدّين محورُها حدّاها ═══
+         *
+         * سبتمبرُ ٢٠٢٥ أيّامُه الثلاثون، و٢٠٢٤ أشهرُها الاثنا عشر، ونطاقُ
+         * نوفمبر–فبراير أشهرُه الأربعة. والدقّةُ تتبع الطول: يومٌ بالساعات،
+         * وما دون شهرين بالأيّام، وما فوقه بالأشهر.
+         */
+        $bounded = $range === null;
+        $span = $bounded ? (int) round($period->start->diffInDays($period->end)) : 0;
+        $last = $bounded ? $period->end->copy()->subDay() : null;
+
+        [$unit, $start, $end] = $bounded ? match (true) {
+            $span <= 1 => ['hour', $period->start->copy(), $period->start->copy()->endOfDay()],
+            $span <= 62 => ['day', $period->start->copy(), $last->copy()->endOfDay()],
+            default => ['month', $period->start->copy()->startOfMonth(), $last->copy()->endOfMonth()],
+        } : match ($range) {
             'today' => ['hour', now()->startOfDay(), now()->endOfDay()],
             'week' => ['day', now()->startOfWeek(self::WEEK_START), now()->endOfWeek(self::WEEK_END)],
             'year' => ['month', now()->startOfYear(), now()->endOfYear()],
@@ -2733,8 +2760,13 @@ class Demo
                 ],
                 default => [
                     $cursor->format('Y-m-d'),
-                    $range === 'week' ? $cursor->translatedFormat('D') : $cursor->format('j'),
-                    $cursor->translatedFormat('l j F'),
+                    match (true) {
+                        $range === 'week' => $cursor->translatedFormat('D'),
+                        // فترةٌ تعبر شهرًا: «٣٠/٩ · ١/١٠» لا «٣٠ · ١» فيُظنّ اليومُ الأوّلُ عودًا
+                        $bounded && $start->format('Y-m') !== $end->format('Y-m') => $cursor->format('j/n'),
+                        default => $cursor->format('j'),
+                    },
+                    $cursor->translatedFormat($bounded ? 'l j F Y' : 'l j F'),
                 ],
             };
 
@@ -2842,12 +2874,10 @@ class Demo
      *
      * والنسبة تُحسب من مجموع ما هنا لا من دفترٍ آخر، فتجمع مئةً دائمًا.
      */
-    public static function paymentBreakdown(string $range = 'month', ?string $channel = null, ?int $branchId = null): array
+    public static function paymentBreakdown(string|ReportingPeriod $range = 'month', ?string $channel = null, ?int $branchId = null): array
     {
-        $start = self::rangeStart(self::range($range));
         $rows = SalesChannel::scope(
-            Order::where('business_id', self::bid())->sold()
-                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            self::period($range)->bound(Order::where('business_id', self::bid())->sold(), 'ordered_at')
                 ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
             $channel,
         )
@@ -2866,7 +2896,7 @@ class Demo
     }
 
     /** المخطّط على الشاشة: أسماءٌ ومبالغ من التوزيع نفسه لا من استعلامٍ ثانٍ */
-    public static function paymentDistribution(string $range = 'month', ?string $channel = null, ?int $branchId = null): array
+    public static function paymentDistribution(string|ReportingPeriod $range = 'month', ?string $channel = null, ?int $branchId = null): array
     {
         $rows = self::paymentBreakdown($range, $channel, $branchId);
 
@@ -3081,7 +3111,7 @@ class Demo
     }
 
     /** ملخّص أرقام بطاقات التقارير — كلها محسوبة فعليًا من قاعدة البيانات (صفر عند فراغها) */
-    public static function reportSummary(string $range = 'month', ?string $channel = null, ?int $branchId = null): array
+    public static function reportSummary(string|ReportingPeriod $range = 'month', ?string $channel = null, ?int $branchId = null): array
     {
         $bid = self::bid();
         /*
@@ -3093,10 +3123,15 @@ class Demo
          * وما لا زمن له يبقى كما هو: عدد المنتجات والموظفين والعملاء حالةٌ
          * الآن لا حصيلةُ فترة، و«منتجات تحت حدّ التنبيه» كذلك.
          */
-        $start = self::rangeStart(self::range($range));
+        /*
+         * والحدّان من الفترة: الزرُّ السريع ببدايته وبلا نهايةٍ كما كان،
+         * وسبتمبرُ ٢٠٢٥ بحدّيه — والحسابُ تحته هو هو.
+         */
+        $period = self::period($range);
+        $start = $period->start;
+        $end = $period->end;
         $ordersQ = SalesChannel::scope(
-            Order::where('business_id', $bid)->sold()
-                ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+            $period->bound(Order::where('business_id', $bid)->sold(), 'ordered_at')
                 // والفرعُ يُمرَّر ولا يُقرأ من الجلسة هنا: لهذه الدالّة قارئٌ
                 // آخر (نظرةُ المالية) يريد المتجر كلَّه — انظر `Reports::salesReport`
                 ->when($branchId, fn ($q) => $q->where('branch_id', $branchId)),
@@ -3121,8 +3156,8 @@ class Demo
             $tax = (float) (clone $ordersQ)->sum('tax');
             $netRevenue = $sales - $tax;
         } else {
-            $netRevenue = Ledger::netRevenue($bid, $start, null, $branchId);
-            $tax = Ledger::outputTax($bid, $start, null, $branchId);
+            $netRevenue = Ledger::netRevenue($bid, $start, $end, $branchId);
+            $tax = Ledger::outputTax($bid, $start, $end, $branchId);
             $sales = round($netRevenue + $tax, 3);
         }
 
@@ -3153,7 +3188,7 @@ class Demo
         $whole = ! $byChannel && $branchId === null;
 
         // المصروفاتُ التشغيليّة من الدفتر — الرقمُ نفسُه في اللوحة والمالية
-        $expenses = $whole ? Ledger::operatingExpenses($bid, $start) : 0.0;
+        $expenses = $whole ? Ledger::operatingExpenses($bid, $start, $end) : 0.0;
 
         /*
          * «صافي الربح» ربحٌ لا فرقُ طرحٍ بين رقمين.
@@ -3168,7 +3203,7 @@ class Demo
          *
          * والضريبة تُطرح لأنها التزامٌ يُورَّد لا إيرادٌ يُملك.
          */
-        $cogs = self::cogsFor($bid, $start, null, $branchId, $channel);
+        $cogs = self::cogsFor($bid, $start, $end, $branchId, $channel);
 
         return [
             'sales' => $sales,
@@ -3209,19 +3244,19 @@ class Demo
      * والتساوي يُفصَل بالاسم: صنفان بالإيراد نفسه كانا يتبادلان الموضع بين
      * فتحةٍ وأخرى بلا سبب، فتُقرأ الصدارةُ تبدّلًا وهي لم تتبدّل.
      */
-    public static function topSellingProducts(int $limit = 5, string $range = 'month', ?int $branchId = null, ?string $channel = null, string|Boutique|null $boutique = null): array
+    public static function topSellingProducts(int $limit = 5, string|ReportingPeriod $range = 'month', ?int $branchId = null, ?string $channel = null, string|Boutique|null $boutique = null): array
     {
         $bid = self::bid();
-        $start = self::rangeStart(self::range($range));
+        $period = self::period($range);
         // ونطاقُ البوتيك من بنوده وحدها — انظر `Boutiques::soldLines`
         $rows = ($boutique === null
             ? OrderItem::whereHas('order', fn ($q) => SalesChannel::scope(
-                $q->where('business_id', $bid)->sold()
-                    ->when($start, fn ($x) => $x->where('ordered_at', '>=', $start))
+                $period->bound($q->where('business_id', $bid)->sold(), 'ordered_at')
                     ->when($branchId, fn ($x) => $x->where('branch_id', $branchId)),
                 $channel,
             ))
-            : Boutiques::soldLines($bid, $boutique, $start, null, $branchId, $channel))
+            // و`soldLines` تقرأ النهايةَ شاملة: آخرُ ثانيةٍ داخلها لا أوّلُ ما بعدها
+            : Boutiques::soldLines($bid, $boutique, $period->start, $period->end?->copy()->subSecond(), $branchId, $channel))
             ->selectRaw('name, SUM(quantity) as sold, SUM(total) as revenue')
             ->groupBy('name')->orderByDesc('revenue')->orderBy('name')->limit($limit)->get();
         $totalRev = (float) $rows->sum('revenue');
@@ -3430,12 +3465,9 @@ class Demo
      * مهما طُلب. ومعطًى يُؤخذ ولا يُستعمل يكذب على من يقرأ التوقيع — ويومَ
      * يُنادى من طابورٍ أو تقريرٍ للمنصّة يردّ صفوفَ متجرٍ آخر أو لا شيء.
      */
-    public static function topCustomers(int $limit = 7, string $range = 'month', ?int $bid = null): array
+    public static function topCustomers(int $limit = 7, string|ReportingPeriod $range = 'month', ?int $bid = null): array
     {
-        $start = self::rangeStart(self::range($range));
-
-        return Order::where('business_id', $bid ?? self::bid())->sold()->whereNotNull('customer_name')
-            ->when($start, fn ($q) => $q->where('ordered_at', '>=', $start))
+        return self::period($range)->bound(Order::where('business_id', $bid ?? self::bid())->sold()->whereNotNull('customer_name'), 'ordered_at')
             ->selectRaw('customer_name, SUM(total) as t, COUNT(*) as c')
             ->groupBy('customer_name')->orderByDesc('t')->limit($limit)->get()
             ->map(fn ($r) => [

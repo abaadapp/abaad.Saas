@@ -16,6 +16,7 @@ use App\Support\Lists\PlatformInvoicesList;
 use App\Support\Lists\ProductsList;
 use App\Support\Lists\SuppliersList;
 use App\Support\Lists\TransactionsList;
+use App\Support\ReportingPeriod;
 use App\Support\Reports;
 use App\Support\SalesChannel;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
@@ -58,7 +59,7 @@ class ReportExportController extends Controller
      * الورقة التي تُجمع على المتجر كلّه لا تنسب نفسها إلى فرعٍ مختارٍ في
      * الشريط، وإلا خرج ملفّان لفرعين يحملان الأرقام نفسها بترويستين.
      */
-    private function sheet(Spreadsheet $spreadsheet, string $reportTitle, ?string $range = null, bool $perBranch = false): array
+    private function sheet(Spreadsheet $spreadsheet, string $reportTitle, string|ReportingPeriod|null $range = null, bool $perBranch = false): array
     {
         $business = Demo::business(auth()->user()->business_id ?? Demo::bid());
 
@@ -74,7 +75,7 @@ class ReportExportController extends Controller
         // الفترة تُطبع دائمًا حتى في الأوراق التي لا فترة لها (جرد، منتجات):
         // سطرٌ ناقص أسهل أن يُقرأ على أنه «كل شيء» من سطرٍ مكتوب
         if ($range !== null) {
-            $sheet->setCellValue('A4', __('الفترة').': '.Demo::rangeLabel($range));
+            $sheet->setCellValue('A4', __('الفترة').': '.($range instanceof ReportingPeriod ? $range->label() : Demo::rangeLabel($range)));
             $sheet->getStyle('A4')->getFont()->setBold(true);
         }
 
@@ -118,7 +119,8 @@ class ReportExportController extends Controller
     /** تصدير المنتجات كملف Excel حقيقي (xlsx) */
     public function xlsx()
     {
-        $range = $this->range();
+        // والفترةُ كما قرأتها الشاشة — شهرٌ بعينه أو سنةٌ أو زرٌّ سريع (`Reports::period`)
+        $range = Reports::period('sales', request()->query());
         // الورقة تُبنى من حمولة الشاشة نفسها — انظر Support\Reports::salesReport
         $report = Reports::salesReport($range, request()->query('channel'), request()->query('boutique'));
         $spreadsheet = new Spreadsheet;
@@ -173,7 +175,7 @@ class ReportExportController extends Controller
 
         // المبيعات على محور الفترة — ساعاتٍ أو أيّامًا أو أشهرًا، وبعدد الطلبات
         $series = $report['salesSeries'];
-        $title(__('المبيعات').' — '.Demo::rangeLabel($range));
+        $title(__('المبيعات').' — '.$range->label());
         $head([__('الفترة'), $this->moneyHead('المبيعات'), __('عدد الطلبات')]);
         foreach ($series['full'] as $i => $label) {
             // ما لم يأتِ بعدُ لا يُكتب: صفٌّ بصفرٍ عن يوم غدٍ رقمٌ لا واقعة
@@ -223,7 +225,9 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر تقرير المبيعات (Excel)');
 
-        return $this->download($spreadsheet, $sheet, $money, 'sales-report-'.$range.'-'.now()->format('Y-m-d').'.xlsx');
+        return $this->download($spreadsheet, $sheet, $money, Workbook::filename('sales-report', [
+            ...$range->fileParts(), ...($range->preset ? [now()->format('Y-m-d')] : []),
+        ]));
     }
 
     /** المنتجات — ما في الشاشة بمرشِّحاتها وترتيبها (`ProductsList`) */

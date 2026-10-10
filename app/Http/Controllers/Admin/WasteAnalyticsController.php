@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
 use App\Support\Demo;
+use App\Support\Reports;
 use App\Support\Waste;
 use App\Support\WasteInsights;
 use Illuminate\Http\Request;
@@ -40,8 +41,10 @@ class WasteAnalyticsController extends Controller
          * كلّه، فيقرأ التاجر رقمًا هائلًا يظنّه شهره — والمقارنة بالمدّة
          * السابقة تفقد معناها بلا حدّين.
          */
-        $from = (string) $request->query('from', now()->startOfMonth()->toDateString());
-        $to = (string) $request->query('to', now()->toDateString());
+        // والمدّةُ من `ReportingPeriod`: شهرٌ أو سنةٌ أو من/إلى بحدّين — أو «كل الفترات» بلا حدّ
+        $period = Reports::period('waste', $request->query());
+        $from = $period->fromDate();
+        $to = $period->toDate();
 
         $filters = [
             'from' => $from,
@@ -53,12 +56,15 @@ class WasteAnalyticsController extends Controller
         ];
 
         $totals = Waste::totals($bid, $filters);
-        $previous = Waste::totals($bid, array_merge($filters, Waste::previousWindow($from, $to)));
+        // و«كل الفترات» لا سابقَ لها: لا مدّةٌ مختلَقةٌ ولا نسبةٌ منها
+        $previous = $from !== null && $to !== null
+            ? Waste::totals($bid, array_merge($filters, Waste::previousWindow($from, $to)))
+            : null;
 
         return Inertia::render('Admin/Reports/Waste', [
             'totals' => $totals,
             'previous' => $previous,
-            'change' => $previous['value'] > 0
+            'change' => $previous !== null && $previous['value'] > 0
                 ? round(($totals['value'] - $previous['value']) / $previous['value'] * 100, 1)
                 : null,
             'byProduct' => Waste::groupedBy($bid, 'product', $filters),
@@ -71,6 +77,7 @@ class WasteAnalyticsController extends Controller
             // صفوفٌ قديمة تخالف القاعدة — تُعرض ولا تُصلَح
             'suspicious' => Waste::suspiciousRows($bid),
             'filters' => $filters,
+            'period' => Reports::periodProp('waste', $period),
             'options' => [
                 'branches' => Branch::where('business_id', $bid)->orderBy('id')
                     ->get(['id', 'name'])->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->all(),

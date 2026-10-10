@@ -23,7 +23,7 @@ import { useEffect, useState } from 'react';
  *
  * ويعيد وقت آخر استطلاع — رقمٌ يتحرّك بلا أن يُعرف عمرُه يُقرأ على أنه لحظيّ.
  */
-export default function useLiveFeed<T>(url: string, intervalMs = 20000) {
+export default function useLiveFeed<T>(url: string, intervalMs = 20000, enabled = true) {
     const [data, setData] = useState<T | null>(null);
     const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
@@ -37,6 +37,8 @@ export default function useLiveFeed<T>(url: string, intervalMs = 20000) {
     );
 
     useEffect(() => {
+        // وشاشةٌ لا تتغيّر أرقامُها — فترةٌ مضت — لا تُستطلع (`enabled`)
+        if (!enabled) return;
         let alive = true;
 
         const tick = async () => {
@@ -58,7 +60,7 @@ export default function useLiveFeed<T>(url: string, intervalMs = 20000) {
             alive = false;
             clearInterval(id);
         };
-    }, [url, intervalMs]);
+    }, [url, intervalMs, enabled]);
 
     return { data, updatedAt };
 }

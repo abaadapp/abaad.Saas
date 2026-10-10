@@ -473,17 +473,28 @@ class ReportColumns
      */
     public static function cells(string $report, array $row): array
     {
-        return self::write(self::for($report), $row);
+        return self::write(self::for($report), $row, self::DASH_WHEN_NULL[$report] ?? []);
     }
 
+    /**
+     * أعمدةُ مبالغَ فارغُها شرطةٌ لا صفر.
+     *
+     * المدّةُ السابقة وفرقُها في «كل الفترات» لا وجودَ لهما
+     * (`CostsAndLosses::previous`)، وصفرٌ مكانهما يُقرأ «لم يُصرف شيءٌ قبلها»
+     * — مقارنةٌ مختلَقة. وما سواهما فارغُه صفرٌ كما كان.
+     */
+    private const DASH_WHEN_NULL = [
+        'costs' => ['previous', 'delta'],
+    ];
+
     /** كتابةُ صفٍّ بأعمدةٍ معطاة — موضعٌ واحد للجدول الواحد وللأقسام */
-    private static function write(array $columns, array $row): array
+    private static function write(array $columns, array $row, array $dash = []): array
     {
-        return array_map(function ($c) use ($row) {
+        return array_map(function ($c) use ($row, $dash) {
             $value = $row[$c['key']] ?? null;
 
             if ($c['kind'] === 'money' || $c['kind'] === 'number') {
-                return $value === null ? 0 : $value;
+                return $value === null ? (in_array($c['key'], $dash, true) ? '—' : 0) : $value;
             }
 
             return $value === null || $value === '' ? '—' : (string) $value;

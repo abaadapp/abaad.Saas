@@ -98,7 +98,9 @@ class FinanceController extends Controller
         return Inertia::render('Admin/Finance/Transactions', [
             'rows' => collect($rows->items())->map(fn ($t) => TransactionsList::row($t))->all(),
             'pagination' => Pagination::meta($rows),
-            'filters' => $request->only('q', 'kind', 'from', 'to') + Sort::params($request, self::SORTS),
+            'filters' => $request->only('q', 'kind') + TransactionsList::period($request)->params()
+                + Sort::params($request, self::SORTS),
+            'period' => TransactionsList::period($request)->screen($bid),
             'sorts' => Sort::keys(self::SORTS),
             'movements' => Books::movementOptions(),
             'kinds' => $this->kindFilters($bid),

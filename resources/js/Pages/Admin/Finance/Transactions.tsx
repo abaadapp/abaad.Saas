@@ -5,6 +5,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
+import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
 import MovementForm, { type Movement } from '@/Components/MovementForm';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
@@ -47,6 +48,8 @@ interface Paper {
 }
 
 interface Props {
+    /** الفترةُ (`TransactionsList::period`) — من/إلى القديمة أو `range` أو شهرٌ أو سنة */
+    period?: PeriodState;
     rows: Row[];
     pagination: ServerPagination;
     filters: Record<string, string | null>;
@@ -76,7 +79,7 @@ const SIGN: Record<string, string> = { دخل: '+', مصروف: '−' };
  * ولا تُرسَل إلى هنا: شاشةٌ تعرف الحسابات تُغري بأن تجعل التاجر يختار منها.
  */
 export default function Transactions() {
-    const { rows, pagination, filters, sorts, movements, kinds, expenseTypes, summary, today, context } =
+    const { rows, pagination, filters, sorts, movements, kinds, expenseTypes, summary, today, period, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
@@ -239,8 +242,13 @@ export default function Transactions() {
             asTabs: kinds.length > 1 && kinds.length <= 6,
             options: kinds.map((k) => ({ label: k.label, value: k.value })),
         },
-        { label: 'من تاريخ', type: 'date', param: 'from' },
-        { label: 'إلى تاريخ', type: 'date', param: 'to' },
+        // ومن/إلى في منتقي الفترة فوق الجدول — «فترة مخصّصة» هي هما، ومعهما شهرٌ وسنة
+        ...(period
+            ? []
+            : ([
+                  { label: 'من تاريخ', type: 'date', param: 'from' },
+                  { label: 'إلى تاريخ', type: 'date', param: 'to' },
+              ] as Filter<Row>[])),
     ];
 
     return (
@@ -265,6 +273,9 @@ export default function Transactions() {
             />
 
             <SectionTabs tabs={FINANCE_TABS} current="admin.finance.transactions" />
+
+            {/* والفترةُ يحملها التصديرُ كما هي — سنةُ ٢٠٢٥ هنا سنةُ ٢٠٢٥ في الملفّ */}
+            {period && <PeriodControls period={period} params={filters} />}
 
             <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatCard

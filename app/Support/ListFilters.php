@@ -5,7 +5,6 @@ namespace App\Support;
 use App\Models\Business;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 
 /**
  * مُرشِّحات الشاشة — تُطبَّق على الجدول وعلى الملفّ بالقاعدة نفسها.
@@ -57,13 +56,12 @@ class ListFilters
          */
         SalesChannel::scope($q, $request->query('channel'));
 
-        if ($from = $request->query('from')) {
-            $q->whereDate('ordered_at', '>=', $from);
-        }
-
-        if ($to = $request->query('to')) {
-            $q->whereDate('ordered_at', '<=', $to);
-        }
+        /*
+         * والمدّةُ من `ReportingPeriod`: من/إلى كما كانت، وشهرٌ أو سنةٌ أو
+         * نطاقُ أشهرٍ من منتقي الفترة — على تاريخ الطلب (`ordered_at`) وحده.
+         * وبلا شيءٍ يُقال: الطلباتُ كلُّها، كما كانت.
+         */
+        self::orderPeriod($request)->bound($q, 'ordered_at');
 
         /*
          * مُرشِّح الموعد — على `scheduled_for` لا على `ordered_at`.
@@ -161,32 +159,33 @@ class ListFilters
         return $q;
     }
 
-    /**
-     * الشهر الذي تنظر إليه شاشة المصروفات — وهو الشهر الجاري ما لم يُقل غيره.
-     *
-     * والفراغ صريحًا يعني «كل الشهور»: من اختارها في الشاشة يجب أن يصدّرها.
-     *
-     * @return array{0: Carbon, 1: Carbon}|null
-     */
-    public static function expenseSpan(Request $request): ?array
+    /** فترةُ شاشة الطلبات — من/إلى القديمة أو منتقي الفترة، وبلا شيءٍ الكلّ */
+    public static function orderPeriod(Request $request): ReportingPeriod
     {
-        $month = (string) $request->query('month', now()->format('Y-m'));
-
-        if (! preg_match('/^\d{4}-\d{2}$/', $month)) {
-            return null;
-        }
-
-        $first = Carbon::createFromFormat('Y-m-d', $month.'-01');
-
-        return [$first->copy()->startOfMonth(), $first->copy()->endOfMonth()];
+        return ReportingPeriod::fromQuery($request->query(), ReportingPeriod::all(), ['dates']);
     }
 
-    /** المصروفات — كما ترشّحها شاشة «المصروفات»، بشهرها */
+    /**
+     * فترةُ شاشة المصروفات — وهي الشهر الجاري ما لم يُقل غيره.
+     *
+     * و`month=YYYY-MM` و`month=all` القديمتان تُفهمان كما كانتا، ومعهما منتقي
+     * الفترة: شهرٌ أو نطاقُ أشهرٍ أو سنةٌ أو فترةٌ مخصّصة أو الكلّ. وشهرٌ
+     * لا يُفهم يُردّ بخطأ — كان يُقرأ «كل الشهور» صامتًا فيُصدَّر العمرُ كلُّه.
+     */
+    public static function expensePeriod(Request $request): ReportingPeriod
+    {
+        return ReportingPeriod::fromQuery(
+            $request->query(),
+            ReportingPeriod::month(now()->format('Y-m')),
+            ['dates', 'month'],
+        );
+    }
+
+    /** المصروفات — كما ترشّحها شاشة «المصروفات»، بفترتها */
     public static function expenses(Builder $q, Request $request): Builder
     {
-        if ($span = self::expenseSpan($request)) {
-            $q->whereBetween('spent_at', $span);
-        }
+        // `spent_at` تاريخٌ بلا ساعة
+        self::expensePeriod($request)->bound($q, 'spent_at', date: true);
 
         if ($s = Search::term($request)) {
             $like = Search::like();

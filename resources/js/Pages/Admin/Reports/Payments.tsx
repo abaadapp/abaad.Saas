@@ -3,7 +3,8 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
-import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
+import { type ReportRange } from '@/Components/RangeTabs';
+import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
 import StatCard from '@/Components/StatCard';
 import BarChart from '@/Components/charts/BarChart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
@@ -31,7 +32,9 @@ interface Row {
 interface Props {
     rows: Row[];
     summary: { total: number; count: number; active: number; topName: string | null; topTotal: number };
-    range: ReportRange;
+    range: ReportRange | null;
+    /** الفترةُ من الخادم — الأزرارُ السريعة و«اختيار فترة» (`ReportingPeriod`) */
+    period: PeriodState;
     rangeLabel: string;
 }
 
@@ -43,7 +46,7 @@ interface Props {
  * بنظرة. فصار له فترتُه ومؤشّراتُه ومخطّطُه.
  */
 export default function ReportsPayments() {
-    const { rows, summary, range, rangeLabel, context } = usePage<PageProps<Props>>().props;
+    const { rows, summary, period, rangeLabel, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -87,7 +90,7 @@ export default function ReportsPayments() {
 
                 {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}
                 <div className="no-print">
-                    <RangeTabs current={range} />
+                    {period && <PeriodControls period={period} />}
                 </div>
 
                 <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -544,9 +544,22 @@ class ReportData
         $branch = $scope['branch_id'] !== null
             ? Branch::withTrashed()->whereKey($scope['branch_id'])->value('name')
             : null;
-        $scopeName = $branch !== null ? __('فرع :name', ['name' => $branch]) : __('النشاط بالكامل');
 
         $allowed = CostsAndLosses::allowedBranches($bid, auth()->user());
+
+        /*
+         * واسمُ النطاق ما قُرئ فعلًا — لا «النشاط بالكامل» لمن حُصر في فروعه.
+         *
+         * المقيَّدُ بلا فرعٍ مختار يقرأ فروعَه وحدها (`CostsAndLosses::scope`)،
+         * بلا قيود النشاط العامّة. فكانت أرقامُه أرقامَ فروعه والترويسةُ —
+         * على الشاشة وفي الملفّ — تقول «النشاط بالكامل». الاسمُ وحده يتغيّر
+         * هنا؛ ما يُقرأ هو هو.
+         */
+        $scopeName = match (true) {
+            $branch !== null => __('فرع :name', ['name' => $branch]),
+            $allowed !== null => __('فروعي'),
+            default => __('النشاط بالكامل'),
+        };
 
         // صفوفُ الملفّ: حسابٌ في فئته، بترتيب الجدول على الشاشة
         $rows = [];

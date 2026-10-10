@@ -604,6 +604,91 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $this->assertStringNotContainsString('الرواتب والأجور', $csv);
     }
 
+    /**
+     * الشاشةُ والتفصيلُ والملفُّ بنطاقٍ واحد — ورقمُه واسمُه معًا.
+     *
+     * @return array{screen: array, drill: array, csv: string}
+     */
+    private function everywhere(array $filters, User $user, array $session = []): array
+    {
+        $screen = $this->actingAs($user)->withSession($session)
+            ->get(route('admin.reports.costs', $filters + self::SEPT))->assertOk()->viewData('page')['props'];
+        $drill = $this->actingAs($user)->withSession($session)
+            ->getJson(route('admin.reports.costs.lines', $filters + self::SEPT))->assertOk()->json();
+        $csv = $this->actingAs($user)->withSession($session)
+            ->get(route('admin.reports.export.csv', ['report' => 'costs'] + $filters + self::SEPT))->streamedContent();
+
+        return compact('screen', 'drill', 'csv');
+    }
+
+    /** المالكُ — ومن لم يُقيَّد بفروع — يفتح على «كل الفروع»، فيقرأ النشاطَ بالكامل */
+    public function test_an_unbound_user_opens_on_every_branch_and_the_whole_business(): void
+    {
+        $this->busyMonth();
+
+        ['screen' => $screen, 'drill' => $drill, 'csv' => $csv] = $this->everywhere([], $this->owner);
+
+        $this->assertNull($screen['filters']['branch_id']);
+        $this->assertFalse($screen['scope']['restricted'], 'الخانة تقول «فروعي» لمن لم يُقيَّد');
+        $this->assertSame('النشاط بالكامل', $screen['scope']['name']);
+        // وتكاليفُ النشاط العامّة فيه: الرواتب ٤٠٠ والإهلاك ٥٠
+        $this->assertEquals(522.0, $screen['summary']['total']);
+        $this->assertEquals(522.0, $drill['total']);
+        $this->assertStringContainsString('النشاط بالكامل', $csv);
+        $this->assertStringContainsString('الرواتب والأجور', $csv);
+        $this->assertStringContainsString(number_format(522, 3), $csv);
+    }
+
+    /** والمقيَّدُ يفتح على «فروعي» — واسمُ النطاق «فروعي» لا «النشاط بالكامل» */
+    public function test_a_bound_user_opens_on_their_branches_and_is_told_so_on_screen_and_in_the_file(): void
+    {
+        $this->busyMonth();
+        $bound = User::create(['business_id' => $this->shop->id, 'name' => 'محاسب مسقط', 'email' => 'mb@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'accountant', 'status' => 'نشط']);
+        $bound->branches()->attach($this->muscat->id);
+
+        ['screen' => $screen, 'drill' => $drill, 'csv' => $csv] = $this->everywhere([], $bound);
+
+        $this->assertNull($screen['filters']['branch_id']);
+        $this->assertTrue($screen['scope']['restricted']);
+        $this->assertSame('فروعي', $screen['scope']['name']);
+        $this->assertEquals(48.0, $screen['summary']['total']);
+        $this->assertEquals(48.0, $drill['total']);
+        $this->assertStringContainsString('فروعي', $csv);
+        $this->assertStringNotContainsString('النشاط بالكامل', $csv);
+    }
+
+    /** فرعٌ يُختار بيدٍ: اسمُه، وهو وحده في الشاشة والتفصيل والملفّ */
+    public function test_a_chosen_branch_rules_the_screen_the_drill_down_and_the_file(): void
+    {
+        $this->busyMonth();
+
+        ['screen' => $screen, 'drill' => $drill, 'csv' => $csv] = $this->everywhere(['branch_id' => $this->muscat->id], $this->owner);
+
+        $this->assertSame((string) $this->muscat->id, $screen['filters']['branch_id']);
+        $this->assertSame('فرع مسقط', $screen['scope']['name']);
+        $this->assertEquals(48.0, $screen['summary']['total']);
+        $this->assertEquals(48.0, $drill['total']);
+        $this->assertSame(['مسقط'], array_values(array_unique(array_column($drill['lines'], 'branch'))));
+        $this->assertStringContainsString('فرع مسقط', $csv);
+        $this->assertStringNotContainsString('الرواتب والأجور', $csv);
+    }
+
+    /** وفرعُ الجلسة — المختارُ أعلى النظام — لا يحصر التقرير */
+    public function test_the_session_branch_never_narrows_the_report(): void
+    {
+        $this->busyMonth();
+
+        ['screen' => $screen, 'drill' => $drill, 'csv' => $csv] = $this->everywhere([], $this->owner, ['current_branch' => $this->muscat->id]);
+
+        $this->assertNull($screen['filters']['branch_id']);
+        $this->assertSame('النشاط بالكامل', $screen['scope']['name']);
+        $this->assertEquals(522.0, $screen['summary']['total']);
+        $this->assertEquals(522.0, $drill['total']);
+        $this->assertStringNotContainsString('فرع مسقط', $csv);
+        $this->assertStringContainsString(number_format(522, 3), $csv);
+    }
+
     /* ═══════════ الملفّات ═══════════ */
 
     public function test_the_spreadsheet_and_csv_carry_the_screen_totals(): void

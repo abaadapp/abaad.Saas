@@ -201,7 +201,7 @@ describe('«اختيار فترة» — كلُّ نوعٍ رابطُه', () => {
         expect(within(box).getByRole('combobox', { name: 'الشهر — السنة' })).toHaveValue('2025');
     });
 
-    it('وما لا يقبله التقرير لا يُعرض: التكاليفُ بلا «كل الفترات» ولا زرِّها', () => {
+    it('وما لا يقبله التقرير لا يُعرض: بلا «كل الفترات» ولا زرِّها', () => {
         draw(period({ capabilities: { ...EVERYTHING, presets: ['today', 'week', 'month', 'year'], all: false } }));
 
         expect(screen.queryByRole('tab', { name: 'الكل' })).toBeNull();

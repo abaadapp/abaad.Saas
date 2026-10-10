@@ -125,15 +125,24 @@ final class CostsAndLosses
      * بفروعٍ (`User::branches`) لا يُعطى غيرَها ⇒ ٤٠٣، ولا يرى بلا فرعٍ إلّا
      * فروعَه — فلا قيودُ النشاط العامّة (بلا فرع) ولا قيودُ غيرها.
      *
-     * @return array{from: string, to: string, branch_id: ?int, category: ?string, branch_ids: ?list<int>}
+     * و«كل الفترات» (`_period` بلا بداية — `Reports::period`) حدّاها
+     * `null`: العمرُ كلُّه، لا شهرٌ إلى اليوم.
+     *
+     * @return array{from: ?string, to: ?string, branch_id: ?int, category: ?string, branch_ids: ?list<int>}
      */
     public static function scope(int $bid, array $filters, ?User $user): array
     {
-        $from = self::date($filters['from'] ?? null) ?? now()->startOfMonth()->toDateString();
-        $to = self::date($filters['to'] ?? null) ?? now()->toDateString();
+        $period = $filters['_period'] ?? null;
 
-        if ($from > $to) {
-            [$from, $to] = [$to, $from];
+        if ($period instanceof ReportingPeriod && $period->start === null) {
+            $from = $to = null;
+        } else {
+            $from = self::date($filters['from'] ?? null) ?? now()->startOfMonth()->toDateString();
+            $to = self::date($filters['to'] ?? null) ?? now()->toDateString();
+
+            if ($from > $to) {
+                [$from, $to] = [$to, $from];
+            }
         }
 
         $allowed = self::allowedBranches($bid, $user);
@@ -198,9 +207,17 @@ final class CostsAndLosses
         return $date !== false && $date->format('Y-m-d') === $raw ? $raw : null;
     }
 
-    /** المدّةُ السابقة المكافئة — بطولها، وتنتهي يومًا قبل بداية هذه */
-    public static function previous(array $scope): array
+    /**
+     * المدّةُ السابقة المكافئة — بطولها، وتنتهي يومًا قبل بداية هذه.
+     *
+     * و«كل الفترات» لا سابقَ لها: `null`، لا مدّةٌ مختلَقةٌ تُقارَن بها.
+     */
+    public static function previous(array $scope): ?array
     {
+        if ($scope['from'] === null || $scope['to'] === null) {
+            return null;
+        }
+
         return array_merge($scope, Waste::previousWindow($scope['from'], $scope['to']));
     }
 
@@ -232,8 +249,8 @@ final class CostsAndLosses
             ->where('a.business_id', $bid)
             ->where('je.posted', true)
             ->where('a.type', self::EXPENSE_TYPE)
-            ->where('je.entry_date', '>=', $scope['from'])
-            ->where('je.entry_date', '<', Carbon::parse($scope['to'])->addDay()->toDateString())
+            ->when($scope['from'] !== null, fn ($q) => $q->where('je.entry_date', '>=', $scope['from']))
+            ->when($scope['to'] !== null, fn ($q) => $q->where('je.entry_date', '<', Carbon::parse($scope['to'])->addDay()->toDateString()))
             ->when($scope['branch_id'] !== null, fn ($q) => $q->where('je.branch_id', $scope['branch_id']))
             ->when($scope['branch_ids'] !== null, fn ($q) => $q->whereIn('je.branch_id', $scope['branch_ids']))
             ->select([
@@ -299,7 +316,10 @@ final class CostsAndLosses
     public static function report(int $bid, array $scope): array
     {
         $current = self::amounts($bid, $scope);
-        $previous = self::amounts($bid, self::previous($scope));
+        // و«كل الفترات» بلا سابق: المقارنةُ كلُّها `null` لا أصفارٌ تُقرأ أرقامًا
+        $window = self::previous($scope);
+        $compared = $window !== null;
+        $previous = $compared ? self::amounts($bid, $window) : [];
 
         $categories = [];
         $sums = ['current' => [], 'previous' => []];
@@ -320,7 +340,7 @@ final class CostsAndLosses
                     'code' => $row['code'],
                     'account' => self::accountName($row['name'], $row['name_en']),
                     'current' => $current[$id]['amount'] ?? 0.0,
-                    'previous' => $previous[$id]['amount'] ?? 0.0,
+                    'previous' => $compared ? ($previous[$id]['amount'] ?? 0.0) : null,
                 ];
             }
 
@@ -333,13 +353,13 @@ final class CostsAndLosses
                 'key' => $key,
                 'label' => __($label),
                 'current' => $sums['current'][$key],
-                'previous' => $sums['previous'][$key],
+                'previous' => $compared ? $sums['previous'][$key] : null,
                 'rows' => $rows,
             ];
         }
 
         $summary = self::summary($sums['current']);
-        $before = self::summary($sums['previous']);
+        $before = $compared ? self::summary($sums['previous']) : null;
         $total = $summary['total'];
 
         foreach ($categories as &$category) {
@@ -358,8 +378,8 @@ final class CostsAndLosses
             'comparison' => array_map(fn (string $key) => [
                 'key' => $key,
                 'current' => $summary[$key],
-                'previous' => $before[$key],
-            ] + self::change($summary[$key], $before[$key], null), array_keys($summary)),
+                'previous' => $before[$key] ?? null,
+            ] + self::change($summary[$key], $before[$key] ?? null, null), array_keys($summary)),
             'categories' => $categories,
         ];
     }
@@ -391,12 +411,13 @@ final class CostsAndLosses
      *
      * والنسبةُ من سابقٍ موجبٍ وحده: من صفرٍ لا نهاية لها، ومن سالبٍ تنقلب
      * إشارتُها — فـ`null` تُكتب «—». والحصّةُ من إجماليٍّ موجبٍ كذلك.
+     * وبلا سابقٍ أصلًا («كل الفترات») لا فرقَ ولا نسبة.
      */
-    private static function change(float $current, float $previous, ?float $total): array
+    private static function change(float $current, ?float $previous, ?float $total): array
     {
         $out = [
-            'delta' => round($current - $previous, 3),
-            'change_pct' => $previous > 0 ? round(($current - $previous) / $previous * 100, 1) : null,
+            'delta' => $previous === null ? null : round($current - $previous, 3),
+            'change_pct' => $previous !== null && $previous > 0 ? round(($current - $previous) / $previous * 100, 1) : null,
         ];
 
         if ($total !== null) {
@@ -475,8 +496,8 @@ final class CostsAndLosses
     public static function reconciliation(int $bid, array $scope): array
     {
         $base = Expense::where('expenses.business_id', $bid)
-            ->where('spent_at', '>=', $scope['from'])
-            ->where('spent_at', '<', Carbon::parse($scope['to'])->addDay()->toDateString())
+            ->when($scope['from'] !== null, fn ($q) => $q->where('spent_at', '>=', $scope['from']))
+            ->when($scope['to'] !== null, fn ($q) => $q->where('spent_at', '<', Carbon::parse($scope['to'])->addDay()->toDateString()))
             ->when($scope['branch_id'] !== null, fn ($q) => $q->where('expenses.branch_id', $scope['branch_id']))
             ->when($scope['branch_ids'] !== null, fn ($q) => $q->whereIn('expenses.branch_id', $scope['branch_ids']));
 

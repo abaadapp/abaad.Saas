@@ -41,10 +41,10 @@ class WasteAnalyticsController extends Controller
          * كلّه، فيقرأ التاجر رقمًا هائلًا يظنّه شهره — والمقارنة بالمدّة
          * السابقة تفقد معناها بلا حدّين.
          */
-        // والمدّةُ من `ReportingPeriod`: شهرٌ أو سنةٌ أو من/إلى — حدّان دائمًا (`Reports::period`)
+        // والمدّةُ من `ReportingPeriod`: شهرٌ أو سنةٌ أو من/إلى بحدّين — أو «كل الفترات» بلا حدّ
         $period = Reports::period('waste', $request->query());
-        $from = (string) $period->fromDate();
-        $to = (string) $period->toDate();
+        $from = $period->fromDate();
+        $to = $period->toDate();
 
         $filters = [
             'from' => $from,
@@ -56,12 +56,15 @@ class WasteAnalyticsController extends Controller
         ];
 
         $totals = Waste::totals($bid, $filters);
-        $previous = Waste::totals($bid, array_merge($filters, Waste::previousWindow($from, $to)));
+        // و«كل الفترات» لا سابقَ لها: لا مدّةٌ مختلَقةٌ ولا نسبةٌ منها
+        $previous = $from !== null && $to !== null
+            ? Waste::totals($bid, array_merge($filters, Waste::previousWindow($from, $to)))
+            : null;
 
         return Inertia::render('Admin/Reports/Waste', [
             'totals' => $totals,
             'previous' => $previous,
-            'change' => $previous['value'] > 0
+            'change' => $previous !== null && $previous['value'] > 0
                 ? round(($totals['value'] - $previous['value']) / $previous['value'] * 100, 1)
                 : null,
             'byProduct' => Waste::groupedBy($bid, 'product', $filters),

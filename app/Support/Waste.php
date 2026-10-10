@@ -183,11 +183,22 @@ class Waste
     /**
      * الهالك شهرًا بشهر — منحنى يقرأ منه صاحب المحلّ اتّجاهه لا رقمه.
      *
+     * و«كل الفترات» (`from` و`to` كلاهما `null` صراحةً) تبدأ من أوّل شهرٍ
+     * فيه هالكٌ مطابق — لا الأشهرُ الستّةُ الأخيرة وحدها.
+     *
      * @return array<int, array{label: string, value: float, quantity: float}>
      */
     public static function overTime(int $businessId, array $filters = [], int $months = 6): array
     {
         $end = ! empty($filters['to']) ? Carbon::parse($filters['to']) : now();
+
+        if (array_key_exists('from', $filters) && $filters['from'] === null && empty($filters['to'])) {
+            $first = self::query($businessId, $filters)->min('stock_adjustments.adjusted_at');
+
+            if ($first !== null) {
+                $months = max($months, (int) Carbon::parse($first)->startOfMonth()->diffInMonths($end->copy()->startOfMonth()) + 1);
+            }
+        }
         $out = [];
 
         for ($i = $months - 1; $i >= 0; $i--) {
@@ -271,14 +282,15 @@ class Waste
      */
     public static function versusConsumption(int $businessId, array $filters = [], int $minConsumed = 10): array
     {
-        $from = $filters['from'] ?? now()->startOfMonth()->toDateString();
-        $to = $filters['to'] ?? now()->toDateString();
+        // والمفتاحُ الموجودُ بقيمة `null` «كل الفترات» — لا الشهرُ الجاري
+        $from = array_key_exists('from', $filters) ? $filters['from'] : now()->startOfMonth()->toDateString();
+        $to = array_key_exists('to', $filters) ? $filters['to'] : now()->toDateString();
 
         $consumed = StockLedger::consumedBetween(
             $businessId,
             ! empty($filters['branch_id']) ? (int) $filters['branch_id'] : null,
-            Carbon::parse($from)->startOfDay()->toDateTimeString(),
-            Carbon::parse($to)->endOfDay()->toDateTimeString(),
+            $from ? Carbon::parse($from)->startOfDay()->toDateTimeString() : null,
+            $to ? Carbon::parse($to)->endOfDay()->toDateTimeString() : null,
         );
 
         if (! $consumed) {

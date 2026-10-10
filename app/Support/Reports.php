@@ -386,14 +386,13 @@ class Reports
 
         /*
          * و`range=all` القديمة تسقط إلى الافتراضيّ كما كانت: هذان التقريران لم
-         * يقرآ `range` قطّ، وروابطُ الفهرس تحملها. و«كل الفترات» المختارةُ
-         * صراحةً (`period=all`) تُردّ — مقارنةٌ بلا حدّين لا تُقال.
+         * يقرآ `range` قطّ، وروابطُ الفهرس تحملها. أمّا «كل الفترات» المختارةُ
+         * صراحةً (`period=all`) فتُقرأ كما هي: العمرُ كلُّه بلا حدّ، وبلا
+         * مقارنةٍ بمدّةٍ سابقة — لا سابقَ لكلّ شيء (`CostsAndLosses::previous`).
          */
         if ($period->preset && $period->start === null) {
             return $default;
         }
-
-        abort_if($period->start === null, 422, __('هذا التقرير يحتاج فترةً لها بداية ونهاية.'));
 
         return $period;
     }
@@ -414,7 +413,7 @@ class Reports
             'month_range' => true,
             'year' => true,
             'custom' => true,
-            'all' => ! $dates,
+            'all' => true,
         ];
     }
 

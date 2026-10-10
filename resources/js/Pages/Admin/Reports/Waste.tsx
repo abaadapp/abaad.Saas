@@ -51,7 +51,8 @@ interface Option {
 
 interface Props {
     totals: { count: number; quantity: number; value: number };
-    previous: { count: number; quantity: number; value: number };
+    /** `null` في «كل الفترات»: لا مدّةَ سابقة تُختلق */
+    previous: { count: number; quantity: number; value: number } | null;
     change: number | null;
     byProduct: Slice[];
     byCategory: Slice[];
@@ -213,7 +214,8 @@ export default function WasteAnalytics() {
                 <StatCard
                     stat={{
                         label: t('المدّة السابقة'),
-                        value: m(previous.value),
+                        value: previous ? m(previous.value) : '—',
+                        hint: previous ? undefined : t('لا توجد مقارنة للفترة السابقة'),
                         icon: 'clock',
                         color: 'primary',
                     }}

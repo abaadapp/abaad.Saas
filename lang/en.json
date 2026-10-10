@@ -7530,5 +7530,5 @@
     "التاريخ غير صالح: :date": "Invalid date: :date",
     "من :date": "From :date",
     "حتى :date": "Until :date",
-    "هذا التقرير يحتاج فترةً لها بداية ونهاية.": "This report needs a period with a start and an end."
+    "لا توجد مقارنة للفترة السابقة": "No comparison with a previous period"
 }

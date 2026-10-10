@@ -94,12 +94,14 @@ class StockLedger
      *
      * @return array<int, float> [معرّف المنتج => الكمية المستهلَكة]
      */
-    public static function consumedBetween(int $businessId, ?int $branchId, string $from, string $to): array
+    public static function consumedBetween(int $businessId, ?int $branchId, ?string $from, ?string $to): array
     {
+        // وحدٌّ `null` بلا قيد — «كل الفترات» في تحليلات الهالك
         return InventoryMovement::where('business_id', $businessId)
             ->where('type', self::RECIPE)
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
-            ->whereBetween('created_at', [$from, $to])
+            ->when($from !== null, fn ($q) => $q->where('created_at', '>=', $from))
+            ->when($to !== null, fn ($q) => $q->where('created_at', '<=', $to))
             ->get(['product_id', 'quantity'])
             ->groupBy('product_id')
             ->map(fn ($rows) => round($rows->sum(fn ($r) => abs((float) $r->quantity)), 3))

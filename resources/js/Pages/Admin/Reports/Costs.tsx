@@ -26,7 +26,8 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface Change {
-    delta: number;
+    /** `null` في «كل الفترات» — لا سابقَ يُطرح منه */
+    delta: number | null;
     /** `null` حين لا سابقَ موجب — نسبةٌ من صفر لا تُكتب */
     change_pct: number | null;
     share?: number | null;
@@ -38,14 +39,14 @@ export interface CostRow extends Change {
     code: string;
     account: string;
     current: number;
-    previous: number;
+    previous: number | null;
 }
 
 export interface CostCategory extends Change {
     key: string;
     label: string;
     current: number;
-    previous: number;
+    previous: number | null;
     rows: CostRow[];
 }
 
@@ -88,17 +89,18 @@ interface Drill {
 
 interface Props {
     summary: Summary;
-    previousSummary: Summary;
-    comparison: ({ key: keyof Summary; current: number; previous: number } & Change)[];
+    /** `null` في «كل الفترات»: لا مدّةَ سابقة تُختلق (`CostsAndLosses::previous`) */
+    previousSummary: Summary | null;
+    comparison: ({ key: keyof Summary; current: number; previous: number | null } & Change)[];
     categories: CostCategory[];
     scope: {
-        from: string;
-        to: string;
+        from: string | null;
+        to: string | null;
         branch_id: number | null;
         category: string | null;
         name: string;
         restricted: boolean;
-        previous: { from: string; to: string };
+        previous: { from: string; to: string } | null;
     };
     reconciliation: { unposted_count: number; unposted_amount: number; unpaid_count: number; unpaid_amount: number };
     filters: Record<string, string | null>;
@@ -205,7 +207,7 @@ export function biggestDriver(categories: CostCategory[], current: number, previ
     if (current === previous) return null;
 
     const up = current > previous;
-    const fits = (delta: number) => (up ? delta > 0 : delta < 0);
+    const fits = (delta: number | null): delta is number => delta !== null && (up ? delta > 0 : delta < 0);
     const bigger = (a: number, b: number) => Math.abs(a) > Math.abs(b);
 
     let best: Driver | null = null;
@@ -260,10 +262,12 @@ export default function ReportsCosts() {
     const trendOf = (key: keyof Summary) => {
         const c = comparison.find((x) => x.key === key);
 
-        return c ? costTrend(c.current, c.previous, c.change_pct, t) : {};
+        return c && c.previous !== null ? costTrend(c.current, c.previous, c.change_pct, t) : {};
     };
 
-    const driver = biggestDriver(categories, summary.total, previousSummary.total);
+    // «كل الفترات» بلا سابق: لا اتجاهَ ولا سببَ ولا جدولَ مقارنة
+    const compared = previousSummary !== null;
+    const driver = compared ? biggestDriver(categories, summary.total, previousSummary.total) : null;
     const hasRows = categories.some((c) => c.rows.length > 0);
 
     return (
@@ -377,13 +381,18 @@ export default function ReportsCosts() {
                             </span>
                         </>
                     ) : (
-                        <span className="text-[#6b7280]">{t('لا يوجد تغير ملحوظ عن الفترة السابقة')}</span>
+                        <span className="text-[#6b7280]">
+                            {t(compared ? 'لا يوجد تغير ملحوظ عن الفترة السابقة' : 'لا توجد مقارنة للفترة السابقة')}
+                        </span>
                     )}
                 </Card>
             )}
 
             <p className="mb-6 text-[12px] leading-relaxed text-[#71717a]" data-testid="costs-period">
-                {scope.name} · {scope.from} → {scope.to} · {t('مقارنة بالفترة السابقة')}: {scope.previous.from} → {scope.previous.to}
+                {scope.name} · {scope.from !== null && scope.to !== null ? `${scope.from} → ${scope.to}` : t('كل الفترات')} ·{' '}
+                {scope.previous
+                    ? `${t('مقارنة بالفترة السابقة')}: ${scope.previous.from} → ${scope.previous.to}`
+                    : t('لا توجد مقارنة للفترة السابقة')}
             </p>
 
             <Card className="mb-6 overflow-x-auto">
@@ -417,8 +426,8 @@ export default function ReportsCosts() {
                             <TableCell className="font-bold">{t('إجمالي التكاليف والخسائر')}</TableCell>
                             <Money value={summary.total} money={m} strong />
                             <TableCell className="text-end tabular-nums font-bold">{summary.total > 0 ? '100.0%' : '—'}</TableCell>
-                            <Money value={previousSummary.total} money={m} strong />
-                            <Money value={comparison[0]?.delta ?? 0} money={m} strong signed />
+                            <Money value={previousSummary?.total ?? null} money={m} strong />
+                            <Money value={compared ? (comparison[0]?.delta ?? 0) : null} money={m} strong signed />
                             <TableCell className="text-end tabular-nums font-bold">{pctText(comparison[0]?.change_pct)}</TableCell>
                         </TableRow>
                     </TableBody>
@@ -427,6 +436,11 @@ export default function ReportsCosts() {
 
             <Card className="mb-6 overflow-hidden" data-testid="costs-comparison">
                 <h2 className="px-4 pt-4 text-[14px] font-bold text-[#111]">{t('مقارنة بالفترة السابقة')}</h2>
+                {!compared ? (
+                    <p className="px-4 pb-4 pt-2 text-[13px] text-[#6b7280]" data-testid="costs-no-comparison">
+                        {t('لا توجد مقارنة للفترة السابقة')}
+                    </p>
+                ) : (
                 <Table>
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">
@@ -449,6 +463,7 @@ export default function ReportsCosts() {
                         ))}
                     </TableBody>
                 </Table>
+                )}
             </Card>
 
             <Card className="mb-6 p-4 text-[12.5px] leading-relaxed text-[#374151]" data-testid="costs-notes">
@@ -484,16 +499,21 @@ export default function ReportsCosts() {
                 </ul>
             </Card>
 
-            <DrillDialog drill={drill} filters={filters} money={m} onClose={() => setDrill(null)} />
+            <DrillDialog drill={drill} filters={filters} period={period} money={m} onClose={() => setDrill(null)} />
         </AdminLayout>
     );
 }
 
-function Money({ value, money: m, strong = false, signed = false }: { value: number; money: (v: number) => string; strong?: boolean; signed?: boolean }) {
+/** مبلغٌ في خليّة — و`null` (لا سابقَ في «كل الفترات») شرطةٌ لا صفر */
+function Money({ value, money: m, strong = false, signed = false }: { value: number | null; money: (v: number) => string; strong?: boolean; signed?: boolean }) {
     return (
-        <TableCell className={cn('text-end tabular-nums', strong && 'font-bold', value < 0 && 'text-[#b91c1c]')}>
-            {signed && value > 0 ? '+' : ''}
-            {m(value)}
+        <TableCell className={cn('text-end tabular-nums', strong && 'font-bold', value !== null && value < 0 && 'text-[#b91c1c]')}>
+            {value === null ? '—' : (
+                <>
+                    {signed && value > 0 ? '+' : ''}
+                    {m(value)}
+                </>
+            )}
         </TableCell>
     );
 }
@@ -548,11 +568,14 @@ function CategoryBlock({
 function DrillDialog({
     drill,
     filters,
+    period,
     money: m,
     onClose,
 }: {
     drill: { title: string; category: string; accountId: number | null } | null;
     filters: Record<string, string | null>;
+    /** فترةُ الشاشة بمفاتيحها — «كل الفترات» بلا حدّين تُفتح سطورُها كما هي */
+    period?: PeriodState;
     money: (v: number) => string;
     onClose: () => void;
 }) {
@@ -567,8 +590,12 @@ function DrillDialog({
         setFailed(false);
         try {
             const params: Record<string, string> = { category: drill.category, page: String(page) };
-            for (const key of ['from', 'to', 'branch_id'] as const) {
-                if (filters[key]) params[key] = filters[key] as string;
+            // السطورُ بفترة الشاشة نفسِها (`period.params`) — وبلا فترةٍ بحدّيها كما كانت
+            const scoped: Record<string, string | null | undefined> = period
+                ? { ...period.params, branch_id: filters.branch_id }
+                : { from: filters.from, to: filters.to, branch_id: filters.branch_id };
+            for (const [key, value] of Object.entries(scoped)) {
+                if (value) params[key] = value;
             }
             if (drill.accountId !== null) params.account_id = String(drill.accountId);
             const res = await fetch(route('admin.reports.costs.lines', params), {

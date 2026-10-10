@@ -100,11 +100,17 @@ class ReportData
      * مدّةٌ بحدّين في رأس الملفّ — وباسمها إن كان لها اسم.
      *
      * «سبتمبر 2025 (2025-09-01 → 2025-09-30)»: الاسمُ يُقرأ والحدّان يُتحقَّق
-     * منهما. والمدّةُ المخصّصة والزرُّ السريع بحدّيهما كما كانا.
+     * منهما. والمدّةُ المخصّصة والزرُّ السريع بحدّيهما كما كانا. و«كل
+     * الفترات» بلا حدّين تُكتب باسمها وحده.
      */
-    private static function datesLabel(array $filters, string $from, string $to): string
+    private static function datesLabel(array $filters, ?string $from, ?string $to): string
     {
         $period = $filters['_period'] ?? null;
+
+        if ($from === null || $to === null) {
+            return $period instanceof ReportingPeriod ? $period->label() : __('كل الفترات');
+        }
+
         $dates = $from.' → '.$to;
 
         return $period instanceof ReportingPeriod && ! $period->preset && $period->kind !== 'custom'
@@ -372,9 +378,12 @@ class ReportData
      */
     public static function waste(int $bid, array $filters): array
     {
+        // و«كل الفترات» (`_period` بلا بداية) بلا حدّين — لا شهرٌ إلى اليوم
+        $all = ($filters['_period'] ?? null) instanceof ReportingPeriod && $filters['_period']->start === null;
+
         $scope = [
-            'from' => $filters['from'] ?? now()->startOfMonth()->toDateString(),
-            'to' => $filters['to'] ?? now()->toDateString(),
+            'from' => $all ? null : ($filters['from'] ?? now()->startOfMonth()->toDateString()),
+            'to' => $all ? null : ($filters['to'] ?? now()->toDateString()),
             'branch_id' => $filters['branch_id'] ?? null,
             'category_id' => $filters['category_id'] ?? null,
             'product_id' => $filters['product_id'] ?? null,

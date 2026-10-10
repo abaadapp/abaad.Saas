@@ -2,9 +2,15 @@
 
 namespace App\Support;
 
+use App\Models\ActivityLog;
+use App\Models\BankStatementLine;
 use App\Models\Expense;
+use App\Models\InventoryMovement;
 use App\Models\JournalEntry;
 use App\Models\Order;
+use App\Models\PurchaseOrder;
+use App\Models\StockAdjustment;
+use App\Models\SupplierInvoice;
 use App\Models\Transaction;
 use Illuminate\Contracts\Database\Query\Builder as QueryContract;
 use Illuminate\Support\Carbon;
@@ -470,34 +476,77 @@ final class ReportingPeriod
     {
         return $this->toArray() + [
             'capabilities' => $capabilities ?? self::EVERYTHING,
-            'years' => self::years($bid),
+            'years' => self::years($bid, $this),
         ];
     }
+
+    /**
+     * كلُّ عمودِ تاريخٍ تُرشِّحه فترةُ تقريرٍ أو قائمة — ومن يقرؤه.
+     *
+     * فالمنتقي يصل إلى أقدم سنةٍ في أيٍّ منها: نشاطٌ بدأ بجردٍ أو أمرِ شراءٍ
+     * أو كشفِ بنكٍ قبل أوّل طلب لا تختفي سنتُه من تقريرها. وتقريرٌ جديدٌ
+     * يُرشِّح عمودًا غيرَها يُضاف هنا (`AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest`).
+     *
+     * @var array<class-string, string>
+     */
+    public const SOURCES = [
+        // المبيعات والطلبات والعملاء والموظفون والإضافات والمنتجات والتسويق والضريبة
+        Order::class => 'ordered_at',
+        // الربح والمبيعات (الدفتر) والتكاليف والخسائر
+        JournalEntry::class => 'entry_date',
+        // المصروفات — والتكاليف (المطابقة)
+        Expense::class => 'spent_at',
+        // الحركة المالية ووسائل الدفع
+        Transaction::class => 'occurred_at',
+        // الضريبة (المدخلات)
+        SupplierInvoice::class => 'issued_at',
+        // البنك
+        BankStatementLine::class => 'date',
+        // المشتريات والموردون
+        PurchaseOrder::class => 'ordered_at',
+        // الجرد والهالك
+        StockAdjustment::class => 'adjusted_at',
+        // سجلّ النشاط
+        ActivityLog::class => 'created_at',
+        // الهالك مقابل الاستهلاك
+        InventoryMovement::class => 'created_at',
+    ];
 
     /**
      * السنواتُ التي يُختار منها — من أوّل حركةٍ في النشاط حتى هذه السنة.
      *
      * لا قائمةٌ قصيرةٌ مكتوبة: متجرٌ عنده بيعٌ في ٢٠٢٢ يجب أن يختار ٢٠٢٢. وتُقرأ
-     * من أقدم طلبٍ وقيدٍ ومصروفٍ وحركة — أربعةُ استعلامات `MIN` على أعمدةٍ
-     * مفهرسةٍ مع النشاط.
+     * من أقدم تاريخٍ في كلّ مصدرٍ تقرؤه التقارير (`SOURCES`) — استعلامُ `MIN`
+     * لكلٍّ مقيّدًا بالنشاط.
+     *
+     * والفترةُ المفتوحةُ نفسُها داخلةٌ فيها: سنةٌ تُفتح بالرابط تُرى في
+     * المنتقي ولا تختفي منه — ولو لم يكن فيها شيء.
      *
      * @return list<int>
      */
-    public static function years(int $bid): array
+    public static function years(int $bid, ?self $period = null): array
     {
-        $earliest = array_filter([
-            Order::where('business_id', $bid)->min('ordered_at'),
-            JournalEntry::where('business_id', $bid)->min('entry_date'),
-            Expense::where('business_id', $bid)->min('spent_at'),
-            Transaction::where('business_id', $bid)->min('occurred_at'),
-        ]);
+        $earliest = [];
+
+        foreach (self::SOURCES as $model => $column) {
+            $earliest[] = $model::where('business_id', $bid)->min($column);
+        }
+
+        $earliest = array_filter($earliest);
 
         $first = $earliest === []
             ? now()->year
             : min(array_map(fn ($d) => (int) substr((string) $d, 0, 4), $earliest));
 
         $first = max(1970, min($first, now()->year));
+        $last = now()->year;
 
-        return range(now()->year, $first);
+        if ($period?->start !== null) {
+            $first = min($first, $period->start->year);
+            // والنهايةُ مستثناة: سنةُ ٢٠٢٤ تنتهي في أوّل ٢٠٢٥ ولا تُدخلها
+            $last = max($last, $period->end?->copy()->subSecond()->year ?? $last);
+        }
+
+        return range($last, $first);
     }
 }

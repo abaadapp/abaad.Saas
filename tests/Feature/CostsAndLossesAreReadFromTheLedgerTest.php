@@ -604,6 +604,91 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $this->assertStringNotContainsString('الرواتب والأجور', $csv);
     }
 
+    /**
+     * الشاشةُ والتفصيلُ والملفُّ بنطاقٍ واحد — ورقمُه واسمُه معًا.
+     *
+     * @return array{screen: array, drill: array, csv: string}
+     */
+    private function everywhere(array $filters, User $user, array $session = []): array
+    {
+        $screen = $this->actingAs($user)->withSession($session)
+            ->get(route('admin.reports.costs', $filters + self::SEPT))->assertOk()->viewData('page')['props'];
+        $drill = $this->actingAs($user)->withSession($session)
+            ->getJson(route('admin.reports.costs.lines', $filters + self::SEPT))->assertOk()->json();
+        $csv = $this->actingAs($user)->withSession($session)
+            ->get(route('admin.reports.export.csv', ['report' => 'costs'] + $filters + self::SEPT))->streamedContent();
+
+        return compact('screen', 'drill', 'csv');
+    }
+
+    /** المالكُ — ومن لم يُقيَّد بفروع — يفتح على «كل الفروع»، فيقرأ النشاطَ بالكامل */
+    public function test_an_unbound_user_opens_on_every_branch_and_the_whole_business(): void
+    {
+        $this->busyMonth();
+
+        ['screen' => $screen, 'drill' => $drill, 'csv' => $csv] = $this->everywhere([], $this->owner);
+
+        $this->assertNull($screen['filters']['branch_id']);
+        $this->assertFalse($screen['scope']['restricted'], 'الخانة تقول «فروعي» لمن لم يُقيَّد');
+        $this->assertSame('النشاط بالكامل', $screen['scope']['name']);
+        // وتكاليفُ النشاط العامّة فيه: الرواتب ٤٠٠ والإهلاك ٥٠
+        $this->assertEquals(522.0, $screen['summary']['total']);
+        $this->assertEquals(522.0, $drill['total']);
+        $this->assertStringContainsString('النشاط بالكامل', $csv);
+        $this->assertStringContainsString('الرواتب والأجور', $csv);
+        $this->assertStringContainsString(number_format(522, 3), $csv);
+    }
+
+    /** والمقيَّدُ يفتح على «فروعي» — واسمُ النطاق «فروعي» لا «النشاط بالكامل» */
+    public function test_a_bound_user_opens_on_their_branches_and_is_told_so_on_screen_and_in_the_file(): void
+    {
+        $this->busyMonth();
+        $bound = User::create(['business_id' => $this->shop->id, 'name' => 'محاسب مسقط', 'email' => 'mb@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'accountant', 'status' => 'نشط']);
+        $bound->branches()->attach($this->muscat->id);
+
+        ['screen' => $screen, 'drill' => $drill, 'csv' => $csv] = $this->everywhere([], $bound);
+
+        $this->assertNull($screen['filters']['branch_id']);
+        $this->assertTrue($screen['scope']['restricted']);
+        $this->assertSame('فروعي', $screen['scope']['name']);
+        $this->assertEquals(48.0, $screen['summary']['total']);
+        $this->assertEquals(48.0, $drill['total']);
+        $this->assertStringContainsString('فروعي', $csv);
+        $this->assertStringNotContainsString('النشاط بالكامل', $csv);
+    }
+
+    /** فرعٌ يُختار بيدٍ: اسمُه، وهو وحده في الشاشة والتفصيل والملفّ */
+    public function test_a_chosen_branch_rules_the_screen_the_drill_down_and_the_file(): void
+    {
+        $this->busyMonth();
+
+        ['screen' => $screen, 'drill' => $drill, 'csv' => $csv] = $this->everywhere(['branch_id' => $this->muscat->id], $this->owner);
+
+        $this->assertSame((string) $this->muscat->id, $screen['filters']['branch_id']);
+        $this->assertSame('فرع مسقط', $screen['scope']['name']);
+        $this->assertEquals(48.0, $screen['summary']['total']);
+        $this->assertEquals(48.0, $drill['total']);
+        $this->assertSame(['مسقط'], array_values(array_unique(array_column($drill['lines'], 'branch'))));
+        $this->assertStringContainsString('فرع مسقط', $csv);
+        $this->assertStringNotContainsString('الرواتب والأجور', $csv);
+    }
+
+    /** وفرعُ الجلسة — المختارُ أعلى النظام — لا يحصر التقرير */
+    public function test_the_session_branch_never_narrows_the_report(): void
+    {
+        $this->busyMonth();
+
+        ['screen' => $screen, 'drill' => $drill, 'csv' => $csv] = $this->everywhere([], $this->owner, ['current_branch' => $this->muscat->id]);
+
+        $this->assertNull($screen['filters']['branch_id']);
+        $this->assertSame('النشاط بالكامل', $screen['scope']['name']);
+        $this->assertEquals(522.0, $screen['summary']['total']);
+        $this->assertEquals(522.0, $drill['total']);
+        $this->assertStringNotContainsString('فرع مسقط', $csv);
+        $this->assertStringContainsString(number_format(522, 3), $csv);
+    }
+
     /* ═══════════ الملفّات ═══════════ */
 
     public function test_the_spreadsheet_and_csv_carry_the_screen_totals(): void
@@ -668,6 +753,95 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $this->assertStringContainsString('الرواتب والأجور', $fake->html);
         $this->assertStringContainsString('400.000', $fake->html);
         $this->assertStringNotContainsString('الإيجار', $fake->html, 'مرشّحُ الفئة لم يصل الملفّ');
+    }
+
+    /** الورقةُ كما تخرج إلى PDF — بلا متصفّح */
+    private function pdfHtml(array $query): string
+    {
+        $fake = new class implements PdfDriver
+        {
+            public string $html = '';
+
+            public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null, ?string $context = null): Response
+            {
+                $this->html = $html;
+
+                return response('PDF');
+            }
+
+            public function strip(string $html, string $name, int $widthMm): Response
+            {
+                return response('PDF');
+            }
+
+            public function stripHeight(string $html, int $widthMm): float
+            {
+                return 1.0;
+            }
+        };
+
+        $was = Pdf::swap($fake);
+        try {
+            $this->actingAs($this->owner)->get(route('admin.reports.export.pdf', ['report' => 'costs'] + $query))->assertOk();
+        } finally {
+            Pdf::swap($was);
+        }
+
+        return $fake->html;
+    }
+
+    /**
+     * بطاقةُ `operating` في الملفّات الثلاثة «تكاليف التشغيل» — كالشاشة.
+     *
+     * تجمع الموظفين والتشغيلَ والإهلاك (٤٠٠ + ٤٥ + ٥٠)، فلا تُسمّى باسم
+     * فئةٍ واحدةٍ منها.
+     */
+    public function test_the_operating_card_is_named_operating_costs_in_every_file(): void
+    {
+        $this->busyMonth();
+        $operating = $this->page()->assertOk()->viewData('page')['props']['summary']['operating'];
+        $this->assertEquals(495.0, $operating);
+
+        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
+        $this->assertMatchesRegularExpression('/^"?تكاليف التشغيل"?,"495\.000 /mu', $csv);
+        // ولا بطاقةَ باسم الفئة: «مصروفات التشغيل» لا تبدأ سطرًا يحمل مبلغًا منسَّقًا
+        $this->assertDoesNotMatchRegularExpression('/^"?مصروفات التشغيل"?,"[\d.]+ /mu', $csv);
+
+        $file = tempnam(sys_get_temp_dir(), 'costs').'.xlsx';
+        file_put_contents($file, $this->actingAs($this->owner)
+            ->get(route('admin.reports.export.xlsx', ['report' => 'costs'] + self::SEPT))->streamedContent());
+        $sheet = IOFactory::load($file)->getActiveSheet()->toArray();
+        @unlink($file);
+
+        $card = collect($sheet)->first(fn ($r) => ($r[0] ?? null) === 'تكاليف التشغيل');
+        $this->assertNotNull($card, 'لا بطاقةَ «تكاليف التشغيل» في الورقة');
+        $this->assertEquals(495.0, (float) $card[1]);
+        // و«مصروفات التشغيل» في الورقة صفوفُ جدولٍ لها حسابٌ — لا بطاقةٌ بلا حساب
+        $named = collect($sheet)->filter(fn ($r) => ($r[0] ?? null) === 'مصروفات التشغيل');
+        $this->assertNotEmpty($named);
+        $this->assertTrue($named->every(fn ($r) => filled($r[2] ?? null)), 'بطاقةٌ باسم الفئة في الورقة');
+
+        $html = $this->pdfHtml(self::SEPT);
+        $this->assertStringContainsString('تكاليف التشغيل', $html);
+    }
+
+    /** وفئةُ الجدول نفسُها باقيةٌ «مصروفات التشغيل» — جزءٌ من البطاقة لا هي */
+    public function test_the_operating_category_keeps_its_own_name(): void
+    {
+        $this->busyMonth();
+
+        $this->assertSame('مصروفات التشغيل', CostsAndLosses::CATEGORIES[CostsAndLosses::OPERATING]);
+
+        $props = $this->page()->assertOk()->viewData('page')['props'];
+        $category = $this->category($props, CostsAndLosses::OPERATING);
+        $this->assertSame('مصروفات التشغيل', $category['label']);
+        // الإيجارُ والكهرباءُ وحدهما — أصغرُ من البطاقة
+        $this->assertEquals(45.0, $category['current']);
+
+        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
+        $this->assertStringContainsString('"مصروفات التشغيل",5300,الإيجار,30', $csv);
+
+        $this->assertStringContainsString('مصروفات التشغيل', $this->pdfHtml(self::SEPT));
     }
 
     /* ═══════════ ما لم يتغيّر ═══════════ */

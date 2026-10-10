@@ -755,6 +755,95 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $this->assertStringNotContainsString('الإيجار', $fake->html, 'مرشّحُ الفئة لم يصل الملفّ');
     }
 
+    /** الورقةُ كما تخرج إلى PDF — بلا متصفّح */
+    private function pdfHtml(array $query): string
+    {
+        $fake = new class implements PdfDriver
+        {
+            public string $html = '';
+
+            public function sheet(string $html, string $name, array $preset, bool $landscape = false, ?string $runningHeader = null, ?string $context = null): Response
+            {
+                $this->html = $html;
+
+                return response('PDF');
+            }
+
+            public function strip(string $html, string $name, int $widthMm): Response
+            {
+                return response('PDF');
+            }
+
+            public function stripHeight(string $html, int $widthMm): float
+            {
+                return 1.0;
+            }
+        };
+
+        $was = Pdf::swap($fake);
+        try {
+            $this->actingAs($this->owner)->get(route('admin.reports.export.pdf', ['report' => 'costs'] + $query))->assertOk();
+        } finally {
+            Pdf::swap($was);
+        }
+
+        return $fake->html;
+    }
+
+    /**
+     * بطاقةُ `operating` في الملفّات الثلاثة «تكاليف التشغيل» — كالشاشة.
+     *
+     * تجمع الموظفين والتشغيلَ والإهلاك (٤٠٠ + ٤٥ + ٥٠)، فلا تُسمّى باسم
+     * فئةٍ واحدةٍ منها.
+     */
+    public function test_the_operating_card_is_named_operating_costs_in_every_file(): void
+    {
+        $this->busyMonth();
+        $operating = $this->page()->assertOk()->viewData('page')['props']['summary']['operating'];
+        $this->assertEquals(495.0, $operating);
+
+        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
+        $this->assertMatchesRegularExpression('/^"?تكاليف التشغيل"?,"495\.000 /mu', $csv);
+        // ولا بطاقةَ باسم الفئة: «مصروفات التشغيل» لا تبدأ سطرًا يحمل مبلغًا منسَّقًا
+        $this->assertDoesNotMatchRegularExpression('/^"?مصروفات التشغيل"?,"[\d.]+ /mu', $csv);
+
+        $file = tempnam(sys_get_temp_dir(), 'costs').'.xlsx';
+        file_put_contents($file, $this->actingAs($this->owner)
+            ->get(route('admin.reports.export.xlsx', ['report' => 'costs'] + self::SEPT))->streamedContent());
+        $sheet = IOFactory::load($file)->getActiveSheet()->toArray();
+        @unlink($file);
+
+        $card = collect($sheet)->first(fn ($r) => ($r[0] ?? null) === 'تكاليف التشغيل');
+        $this->assertNotNull($card, 'لا بطاقةَ «تكاليف التشغيل» في الورقة');
+        $this->assertEquals(495.0, (float) $card[1]);
+        // و«مصروفات التشغيل» في الورقة صفوفُ جدولٍ لها حسابٌ — لا بطاقةٌ بلا حساب
+        $named = collect($sheet)->filter(fn ($r) => ($r[0] ?? null) === 'مصروفات التشغيل');
+        $this->assertNotEmpty($named);
+        $this->assertTrue($named->every(fn ($r) => filled($r[2] ?? null)), 'بطاقةٌ باسم الفئة في الورقة');
+
+        $html = $this->pdfHtml(self::SEPT);
+        $this->assertStringContainsString('تكاليف التشغيل', $html);
+    }
+
+    /** وفئةُ الجدول نفسُها باقيةٌ «مصروفات التشغيل» — جزءٌ من البطاقة لا هي */
+    public function test_the_operating_category_keeps_its_own_name(): void
+    {
+        $this->busyMonth();
+
+        $this->assertSame('مصروفات التشغيل', CostsAndLosses::CATEGORIES[CostsAndLosses::OPERATING]);
+
+        $props = $this->page()->assertOk()->viewData('page')['props'];
+        $category = $this->category($props, CostsAndLosses::OPERATING);
+        $this->assertSame('مصروفات التشغيل', $category['label']);
+        // الإيجارُ والكهرباءُ وحدهما — أصغرُ من البطاقة
+        $this->assertEquals(45.0, $category['current']);
+
+        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
+        $this->assertStringContainsString('"مصروفات التشغيل",5300,الإيجار,30', $csv);
+
+        $this->assertStringContainsString('مصروفات التشغيل', $this->pdfHtml(self::SEPT));
+    }
+
     /* ═══════════ ما لم يتغيّر ═══════════ */
 
     public function test_the_expenses_report_and_net_profit_keep_reading_their_own_sources(): void

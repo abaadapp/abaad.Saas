@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { AlertTriangle, Info, Lightbulb, TrendingDown, TrendingUp } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
-import PeriodControls, { withPeriod, type PeriodState } from '@/Components/PeriodControls';
+import PeriodControls, { PeriodButton, withPeriod, type PeriodState } from '@/Components/PeriodControls';
 import BackToReports from '@/Components/BackToReports';
 import ExportMenu from '@/Components/ExportMenu';
 import StatCard from '@/Components/StatCard';
@@ -92,6 +93,8 @@ export default function WasteAnalytics() {
     } = usePage<PageProps<Props>>().props;
 
     const t = useTranslate();
+    // نافذةُ الفترة واحدة: يفتحها زرُّ الرأس بجوار «تصدير»، وتُرسم في `PeriodControls`
+    const [picking, setPicking] = useState(false);
     const m = (v: number) => money(v, context!.currency);
 
     /** كل تغييرٍ في مرشّح يعيد تحميل الصفحة بالفترة نفسها — لا حساب في المتصفّح */
@@ -112,13 +115,17 @@ export default function WasteAnalytics() {
                 title="تحليلات الهالك"
                 subtitle="ما تلف وما فُقد: قيمته واتجاهه، وأيّ صنفٍ وفرعٍ يبتلعه."
                 actions={
-                    /* الملفّ يحمل المرشّحات المعروضة — `withFilters` تُلحق سلسلة الاستعلام */
-                    <ExportMenu
-                            feature="reports_advanced"
-                        xlsx={route('admin.reports.export.xlsx', 'waste')}
-                        pdf={route('admin.reports.export.pdf', 'waste')}
-                        csv={route('admin.reports.export.csv', 'waste')}
-                    />
+                    <>
+                        {/* الفترةُ بجوار «تصدير»: ما يُعرض هو ما يُنزَّل */}
+                        {period && <PeriodButton period={period} onClick={() => setPicking(true)} />}
+                        {/* الملفّ يحمل المرشّحات المعروضة — `withFilters` تُلحق سلسلة الاستعلام */}
+                            <ExportMenu
+                                feature="reports_advanced"
+                            xlsx={route('admin.reports.export.xlsx', 'waste')}
+                            pdf={route('admin.reports.export.pdf', 'waste')}
+                            csv={route('admin.reports.export.csv', 'waste')}
+                        />
+                    </>
                 }
             />
 
@@ -126,7 +133,7 @@ export default function WasteAnalytics() {
 
             {/* المرشّحات — بنفس عناصر بقية الشاشات، لا منتقي تواريخ جديد */}
             {/* الفترةُ فوق المرشّحات — شهرٌ أو سنةٌ أو من/إلى، والمقارنةُ بما قبلها بشكلها */}
-            {period && <PeriodControls period={period} params={filters} />}
+            {period && <PeriodControls period={period} params={filters} open={picking} onOpenChange={setPicking} />}
 
             <Card className="mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
                 {!period && (

@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
 import { type ReportRange } from '@/Components/RangeTabs';
-import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
+import PeriodControls, { PeriodButton, type PeriodState } from '@/Components/PeriodControls';
 import StatCard from '@/Components/StatCard';
 import BarChart from '@/Components/charts/BarChart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
@@ -48,6 +49,8 @@ interface Props {
 export default function ReportsPayments() {
     const { rows, summary, period, rangeLabel, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ الفترة واحدة: يفتحها زرُّ الرأس بجوار «تصدير»، وتُرسم في `PeriodControls`
+    const [picking, setPicking] = useState(false);
     const m = (v: number) => money(v, context!.currency);
 
     const stats = [
@@ -79,18 +82,22 @@ export default function ReportsPayments() {
                     title="وسائل الدفع"
                     subtitle={t('توزيع التحصيل على النقد والبطاقة وبقية الوسائل')}
                     actions={
-                        <ExportMenu
-                            feature="reports_advanced"
-                            xlsx={route('admin.reports.export.xlsx', 'payments')}
-                            pdf={route('admin.reports.export.pdf', 'payments')}
-                            csv={route('admin.reports.export.csv', 'payments')}
-                        />
+                        <>
+                            {/* الفترةُ بجوار «تصدير»: ما يُعرض هو ما يُنزَّل */}
+                            {period && <PeriodButton period={period} onClick={() => setPicking(true)} />}
+                            <ExportMenu
+                                feature="reports_advanced"
+                                xlsx={route('admin.reports.export.xlsx', 'payments')}
+                                pdf={route('admin.reports.export.pdf', 'payments')}
+                                csv={route('admin.reports.export.csv', 'payments')}
+                            />
+                        </>
                     }
                 />
 
                 {/* الرجوع فوق العنوان: أوّلُ ما تقع عليه العين عند الخروج */}
                 <div className="no-print">
-                    {period && <PeriodControls period={period} />}
+                    {period && <PeriodControls period={period} open={picking} onOpenChange={setPicking} />}
                 </div>
 
                 <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

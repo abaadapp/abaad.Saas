@@ -5,7 +5,7 @@ import PageHeader from '@/Components/PageHeader';
 import ExportMenu from '@/Components/ExportMenu';
 import BackToReports from '@/Components/BackToReports';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
-import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
+import PeriodControls, { PeriodButton, type PeriodState } from '@/Components/PeriodControls';
 import StatCard from '@/Components/StatCard';
 import { Select } from '@/Components/Field';
 import { Input } from '@/Components/ui/input';
@@ -79,6 +79,8 @@ export default function ReportScreen({
     const t = useTranslate();
     // الفترةُ من الخادم (`ReportPageController::shell`) — فارغةٌ لتقريرٍ لا فترةَ له
     const { period } = usePage<{ period?: PeriodState | null }>().props;
+    // نافذةُ الفترة واحدة: يفتحها زرُّ الرأس، وتُرسم في `PeriodControls`
+    const [picking, setPicking] = useState(false);
 
     /*
      * كل تبديلٍ يُعيد التحميل من الخادم لا يُرشّح في المتصفّح: الجدول مبتورٌ
@@ -116,29 +118,34 @@ export default function ReportScreen({
                     title={title}
                     subtitle={t(subtitle)}
                     actions={
-                        /*
-                            والقدرة تُقال هنا كما تُقال في «ملخّص المبيعات».
-                            الخادمُ يردّ ٤٠٣ لمن لا تفتحه باقتُه، فقائمةٌ
-                            تُفتح وتُختار منها صيغةٌ ثمّ تصطدم بصفحة منعٍ
-                            تجعل صاحبها يظنّ العطب في النظام.
-                        */
-                        <ExportMenu
-                            feature={exportFeature ?? undefined}
-                            xlsx={route('admin.reports.export.xlsx', reportKey)}
-                            pdf={route('admin.reports.export.pdf', reportKey)}
-                            csv={route('admin.reports.export.csv', reportKey)}
-                        />
+                        <>
+                            {/* الفترةُ بجوار «تصدير»: ما يُعرض هو ما يُنزَّل — وتقريرٌ بلا فترةٍ بلا زرّ */}
+                            {period && <PeriodButton period={period} onClick={() => setPicking(true)} />}
+                            {/*
+                                والقدرة تُقال هنا كما تُقال في «ملخّص المبيعات».
+                                الخادمُ يردّ ٤٠٣ لمن لا تفتحه باقتُه، فقائمةٌ
+                                تُفتح وتُختار منها صيغةٌ ثمّ تصطدم بصفحة منعٍ
+                                تجعل صاحبها يظنّ العطب في النظام.
+                            */}
+                            <ExportMenu
+                                feature={exportFeature ?? undefined}
+                                xlsx={route('admin.reports.export.xlsx', reportKey)}
+                                pdf={route('admin.reports.export.pdf', reportKey)}
+                                csv={route('admin.reports.export.csv', reportKey)}
+                            />
+                        </>
                     }
                 />
 
                 {/* الأدوات لا تُطبع: التقرير ورقةٌ لا لوحةُ تحكّم */}
                 <div className="no-print">
                     {/*
-                        منتقي الفترة: الأزرارُ السريعة و«اختيار فترة» — لكلّ تقريرٍ له
-                        فترة. والرصيدُ الحالي والمواسمُ بلا منتقٍ (`Reports::PERIODS`).
+                        الأزرارُ السريعة واسمُ الفترة المختارة — لكلّ تقريرٍ له فترة،
+                        ونافذتُها يفتحها زرُّ الرأس. والرصيدُ الحالي والمواسمُ بلا
+                        منتقٍ (`Reports::PERIODS`).
                     */}
                     {period ? (
-                        <PeriodControls period={period} params={filters} />
+                        <PeriodControls period={period} params={filters} open={picking} onOpenChange={setPicking} />
                     ) : (
                         range && <RangeTabs current={range} params={filters} />
                     )}

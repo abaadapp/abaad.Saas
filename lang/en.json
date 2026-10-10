@@ -7530,5 +7530,6 @@
     "التاريخ غير صالح: :date": "Invalid date: :date",
     "من :date": "From :date",
     "حتى :date": "Until :date",
-    "لا توجد مقارنة للفترة السابقة": "No comparison with a previous period"
+    "لا توجد مقارنة للفترة السابقة": "No comparison with a previous period",
+    "تغيير فترة التقرير": "Change report period"
 }

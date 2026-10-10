@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -18,7 +19,7 @@ import {
 } from '@/Components/ui/table';
 import useLiveFeed from '@/hooks/useLiveFeed';
 import RangeTabs, { type ReportRange } from '@/Components/RangeTabs';
-import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
+import PeriodControls, { PeriodButton, type PeriodState } from '@/Components/PeriodControls';
 import { money, number } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
@@ -134,6 +135,8 @@ export default function ReportsSales() {
     const { summary, salesSeries, paymentDistribution, topSellingProducts, boutiqueTotals } = live ?? server;
 
     const t = useTranslate();
+    // نافذةُ الفترة واحدة: يفتحها زرُّ الرأس بجوار «تصدير»، وتُرسم في `PeriodControls`
+    const [picking, setPicking] = useState(false);
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -235,13 +238,17 @@ export default function ReportsSales() {
                 title="ملخّص المبيعات"
                 subtitle={t('ملخّص أداء المتجر: المبيعات والأرباح والمصروفات')}
                 actions={
-                    /* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */
-                    <ExportMenu
-                        feature="reports_advanced"
-                        xlsx={route('admin.reports.xlsx', params)}
-                        pdf={route('admin.reports.pdf', params)}
-                        csv={route('admin.export.reports', params)}
-                    />
+                    <>
+                        {/* الفترةُ بجوار «تصدير»: ما يُعرض هو ما يُنزَّل */}
+                        {server.period && <PeriodButton period={server.period} onClick={() => setPicking(true)} />}
+                        {/* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */}
+                        <ExportMenu
+                            feature="reports_advanced"
+                            xlsx={route('admin.reports.xlsx', params)}
+                            pdf={route('admin.reports.pdf', params)}
+                            csv={route('admin.export.reports', params)}
+                        />
+                    </>
                 }
             />
 
@@ -257,7 +264,12 @@ export default function ReportsSales() {
 
             {/* والفترةُ تحمل القناةَ معها — وإلّا فُقد المُرشِّحُ عند كلّ تبديل */}
             {server.period ? (
-                <PeriodControls period={server.period} params={{ channel: server.channel ?? undefined, boutique: boutiqueParam }} />
+                <PeriodControls
+                    period={server.period}
+                    params={{ channel: server.channel ?? undefined, boutique: boutiqueParam }}
+                    open={picking}
+                    onOpenChange={setPicking}
+                />
             ) : (
                 server.range && <RangeTabs current={server.range} params={{ channel: server.channel ?? undefined, boutique: boutiqueParam }} />
             )}

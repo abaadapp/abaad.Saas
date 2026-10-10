@@ -1,5 +1,5 @@
 import { usePage } from '@inertiajs/react';
-import { Banknote, Landmark } from 'lucide-react';
+import { ArrowRight, Banknote, Landmark } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
@@ -110,10 +110,20 @@ function Line({ label, value, tone }: { label: string; value: string; tone?: str
 }
 
 export default function Summary() {
-    const { range, cash, bank, accounts, period, settlements, dues, pending_invoices, receivables, context } =
+    const { range, cash, bank, accounts, period, settlements, dues, pending_invoices, receivables, context, auth } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
+
+    /*
+     * وتفصيلُ المدة في تقرير «صافي الربح» — بالفترة نفسِها.
+     *
+     * والتقريرُ تحت قسم «التقارير» لا «المالية» (`Reports::ALL`): من يملك
+     * الملخّصَ وحده كان سيرى زرًّا يقوده إلى 403. فلا يُعرض له.
+     * ولا `branch_id`: الملخّصُ للنشاط كلِّه (`Demo::reportSummary` بلا فرع)،
+     * والتقريرُ بلا فرعٍ للنشاط كلِّه كذلك.
+     */
+    const canOpenDetails = (auth?.abilities ?? []).includes('reports');
 
     return (
         <AdminLayout title="الملخّص المالي">
@@ -276,7 +286,21 @@ export default function Summary() {
             </div>
 
             {/* ما جرى في المدة — والمبدّل فوقه وحده كي لا يُقرأ رقمُ فترةٍ على أنه رقمُ أخرى */}
-            <h2 className="mb-3 text-[15px] font-bold text-[#111]">{t('ما جرى في المدة')}</h2>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-[15px] font-bold text-[#111]">{t('ما جرى في المدة')}</h2>
+                {canOpenDetails && (
+                    <Button variant="outline" size="sm" asChild>
+                        <SmartLink
+                            routeName="admin.reports.profit"
+                            href={route('admin.reports.profit', { range })}
+                            data-testid="period-details"
+                        >
+                            {t('عرض التفاصيل')}
+                            <ArrowRight className="size-4 rtl:rotate-180" aria-hidden="true" />
+                        </SmartLink>
+                    </Button>
+                )}
+            </div>
             <RangeTabs current={range} />
 
             {/*

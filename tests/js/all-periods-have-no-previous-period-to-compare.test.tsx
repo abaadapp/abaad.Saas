@@ -35,7 +35,7 @@ const reset = (props: Record<string, unknown>) => {
     Object.assign(pageProps, {
         translations: {},
         context: { currency },
-        auth: { abilities: ['reports', 'finance'], mayActions: [], features: ['reports_advanced'] },
+        auth: { abilities: ['reports', 'finance'], mayActions: [], features: ['reports_advanced'], planFeatures: { reports_advanced: true } },
         ...props,
     });
 };
@@ -73,6 +73,15 @@ afterEach(() => {
 describe('التكاليف في «كل الفترات»', () => {
     it('لا مقارنةَ بفترةٍ سابقة — جملةٌ وشرطاتٌ لا أصفار', () => {
         drawCosts();
+
+        // والفترةُ في الرأس بجوار «تصدير» — تفتح النافذةَ الوحيدة، ولا «اختيار فترة» ثانٍ
+        const button = screen.getByTestId('period-button');
+        expect(button).toHaveTextContent('الفترة: كل الفترات');
+        expect(button.parentElement).toBe(screen.getByTestId('export-menu').parentElement);
+        expect(screen.queryByTestId('period-open')).toBeNull();
+        fireEvent.click(button);
+        expect(within(screen.getByRole('dialog')).getByRole('radio', { name: 'كل الفترات' })).toBeChecked();
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
 
         expect(screen.getByTestId('costs-period')).toHaveTextContent('كل الفترات');
         expect(screen.getByTestId('costs-period')).toHaveTextContent('لا توجد مقارنة للفترة السابقة');
@@ -122,6 +131,13 @@ describe('الهالك في «كل الفترات»', () => {
             options: { branches: [], categories: [], products: [], reasons: [] },
         });
         render(<WasteAnalytics />);
+
+        expect(screen.getByTestId('period-button')).toHaveTextContent('الفترة: كل الفترات');
+        expect(screen.getByTestId('period-button').parentElement).toBe(screen.getByTestId('export-menu').parentElement);
+        expect(screen.queryByTestId('period-open')).toBeNull();
+        fireEvent.click(screen.getByTestId('period-button'));
+        expect(within(screen.getByRole('dialog')).getByRole('radio', { name: 'كل الفترات' })).toBeChecked();
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
 
         const card = screen.getByText('المدّة السابقة').closest('div')!.parentElement!;
         expect(card).toHaveTextContent('—');

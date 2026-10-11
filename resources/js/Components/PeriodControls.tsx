@@ -10,7 +10,10 @@ import { useTranslate } from '@/lib/i18n';
 import type { ReportRange } from '@/Components/RangeTabs';
 
 /**
- * منتقي الفترة — الأزرارُ السريعة كما كانت، وبجوارها «اختيار فترة».
+ * منتقي الفترة — الأزرارُ السريعة كما كانت، ونافذةُ «اختيار فترة».
+ *
+ * وبابُ النافذة في التقارير زرُّ الرأس (`PeriodButton`) بجوار «تصدير»؛ وفي
+ * القوائم بلا رأس تقرير يبقى زرُّها هنا بجوار الأزرار.
  *
  * ═══ ولمَ في الشاشة لا في قائمة التصدير ═══
  *
@@ -161,18 +164,64 @@ export function draftParams(d: Draft): { params: Record<string, string> } | { er
     }
 }
 
+/**
+ * زرُّ الفترة في رأس التقرير — بجوار «تصدير»، وعليه الفترةُ المعروضة.
+ *
+ * ═══ ولمَ في الرأس ═══
+ *
+ * الملفُّ يحمل فترةَ الشاشة (`withFilters`)، و«تصدير» في الرأس. فإن بقيت
+ * الفترةُ أسفلَ العنوان لم يربط صاحبُ النشاط بين ما يراه وما سيُنزّله.
+ * والزرُّ يقولها بكلماتها — `label` من الخادم، لا تُحسب هنا — «الفترة:
+ * سبتمبر 2025» لا «اختيار فترة».
+ *
+ * ═══ ولا نافذةَ ثانية ═══
+ *
+ * الزرُّ يفتح نافذةَ `PeriodControls` نفسَها: الصفحةُ تمسك `open` وتعطيه
+ * للاثنين (`open`/`onOpenChange`). فلا منتقيان ولا منطقا رابطٍ يفترقان.
+ */
+export function PeriodButton({ period, onClick }: { period: PeriodState; onClick: () => void }) {
+    const t = useTranslate();
+    const text = `${t('الفترة')}: ${period.label}`;
+
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            onClick={onClick}
+            className="no-print max-w-full sm:max-w-[22rem]"
+            aria-label={`${t('تغيير فترة التقرير')} — ${text}`}
+            title={t('تغيير فترة التقرير')}
+            data-testid="period-button"
+        >
+            <CalendarRange className="size-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 truncate">{text}</span>
+        </Button>
+    );
+}
+
 interface Props {
     period: PeriodState;
     /** المرشِّحاتُ الأخرى في الرابط — تبقى كما هي */
     params?: Params;
     /** ما يُعاد تحميله من الصفحة — كما في `RangeTabs` */
     only?: string[];
+    /**
+     * النافذةُ تُفتح من خارجها — من `PeriodButton` في رأس الصفحة.
+     *
+     * ومن مرّرهما لا يُرسم هنا زرُّ «اختيار فترة»: بابٌ واحدٌ إلى نافذةٍ
+     * واحدة. وبلاهما يبقى الزرُّ هنا كما كان (القوائمُ بلا رأس تقرير).
+     */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
-export default function PeriodControls({ period, params = {}, only }: Props) {
+export default function PeriodControls({ period, params = {}, only, open: outer, onOpenChange }: Props) {
     const t = useTranslate();
     const caps = period.capabilities;
-    const [open, setOpen] = useState(false);
+    const [inner, setInner] = useState(false);
+    const controlled = onOpenChange !== undefined;
+    const open = controlled ? (outer ?? false) : inner;
+    const setOpen = controlled ? onOpenChange : setInner;
     const [draft, setDraft] = useState<Draft>(() => draftOf(period));
     const [error, setError] = useState<string | null>(null);
 
@@ -239,10 +288,12 @@ export default function PeriodControls({ period, params = {}, only }: Props) {
                     // والزرُّ يُضاء لزرٍّ سريعٍ وحده — سبتمبرُ الماضي ليس «الشهر»
                     <Tabs className="min-w-0" current={period.range ?? ''} onChange={(key) => key !== period.range && go({ range: key })} tabs={presets} />
                 )}
-                <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)} data-testid="period-open">
-                    <CalendarRange className="size-4" aria-hidden="true" />
-                    {t('اختيار فترة')}
-                </Button>
+                {!controlled && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)} data-testid="period-open">
+                        <CalendarRange className="size-4" aria-hidden="true" />
+                        {t('اختيار فترة')}
+                    </Button>
+                )}
             </div>
 
             {/* الفترةُ المختارة تُقال بكلماتها — ولا يُوهَم أنّ «الشهر» هو المختار */}

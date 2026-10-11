@@ -5,7 +5,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import BackToReports from '@/Components/BackToReports';
 import ExportMenu from '@/Components/ExportMenu';
-import PeriodControls, { withPeriod, type PeriodState } from '@/Components/PeriodControls';
+import PeriodControls, { PeriodButton, withPeriod, type PeriodState } from '@/Components/PeriodControls';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import { Select } from '@/Components/Field';
 import { Card } from '@/Components/ui/card';
@@ -245,6 +245,8 @@ export default function ReportsCosts() {
     const { summary, previousSummary, comparison, categories, scope, reconciliation, filters, options, period, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // نافذةُ الفترة واحدة: يفتحها زرُّ الرأس بجوار «تصدير»، وتُرسم في `PeriodControls`
+    const [picking, setPicking] = useState(false);
     const m = (v: number) => money(v, context!.currency);
 
     const [drill, setDrill] = useState<{ title: string; category: string; accountId: number | null } | null>(null);
@@ -280,18 +282,22 @@ export default function ReportsCosts() {
                 title="التكاليف والخسائر"
                 subtitle="ما أنقص الربح في المدّة كما قيّده دفتر الأستاذ: تكلفة المبيعات والموظفون والتشغيل والإهلاك وخسائر المخزون، مقارنةً بالمدّة السابقة."
                 actions={
-                    /* الملفّ يحمل المرشّحات المعروضة — `withFilters` تُلحق سلسلة الاستعلام */
-                    <ExportMenu
-                        feature="reports_advanced"
-                        xlsx={route('admin.reports.export.xlsx', 'costs')}
-                        pdf={route('admin.reports.export.pdf', 'costs')}
-                        csv={route('admin.reports.export.csv', 'costs')}
-                    />
+                    <>
+                        {/* الفترةُ بجوار «تصدير»: ما يُعرض هو ما يُنزَّل */}
+                        {period && <PeriodButton period={period} onClick={() => setPicking(true)} />}
+                        {/* الملفّ يحمل المرشّحات المعروضة — `withFilters` تُلحق سلسلة الاستعلام */}
+                        <ExportMenu
+                            feature="reports_advanced"
+                            xlsx={route('admin.reports.export.xlsx', 'costs')}
+                            pdf={route('admin.reports.export.pdf', 'costs')}
+                            csv={route('admin.reports.export.csv', 'costs')}
+                        />
+                    </>
                 }
             />
 
             {/* الفترةُ فوق المرشّحات: شهرٌ أو سنةٌ أو نطاقٌ أو من/إلى — والمقارنةُ بما قبلها بشكلها */}
-            {period && <PeriodControls period={period} params={filters} />}
+            {period && <PeriodControls period={period} params={filters} open={picking} onOpenChange={setPicking} />}
 
             <Card className="mb-6 grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="costs-filters">
                 {!period && (

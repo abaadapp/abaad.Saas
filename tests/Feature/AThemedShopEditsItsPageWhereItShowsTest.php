@@ -553,7 +553,7 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
 
         $this->assertIsArray($tools);
         $this->assertSame(['categories', 'new_arrivals'], array_keys($tools));
-        $this->assertSame(['id', 'name', 'name_en', 'shown_count', 'card_hidden', 'card_image'], array_keys($tools['categories'][0]));
+        $this->assertSame(['id', 'name', 'name_en', 'shown_count', 'card_hidden', 'card_image', 'sort_order'], array_keys($tools['categories'][0]));
         $this->assertSame(['id', 'name', 'image', 'category'], array_keys($tools['new_arrivals'][0]));
     }
 

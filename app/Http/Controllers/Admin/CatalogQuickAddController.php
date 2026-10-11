@@ -11,6 +11,7 @@ use App\Support\Permissions;
 use App\Support\PosAddonsLayout;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -174,6 +175,40 @@ class CatalogQuickAddController extends Controller
         \App\Support\Activity::log('updated', 'أزال صورة بطاقة قسم «'.$model->name.'»', ['subject_id' => $model->id]);
 
         return response()->json(['ok' => true, 'category' => self::card($model)]);
+    }
+
+    /**
+     * ترتيبُ الفئات في الموقع — كما رتّبها صاحبُها في المحرّر.
+     *
+     * تصل القائمةُ بترتيبها، وكلُّ معرّفٍ فيها من متجره وإلّا رُدّت كلُّها:
+     * ترتيبٌ فيه فئةُ غيره لا يُكتب نصفُه. وما لم يصل منها — فئةٌ أُضيفت من
+     * لسانٍ آخر بعد أن فُتح المحرّر — يُلحق بالذيل بترتيبه القائم، فلا
+     * يتداخل رقمٌ قديمٌ برقمٍ جديد.
+     */
+    public function orderCategories(Request $request): JsonResponse
+    {
+        $bid = $this->bid();
+
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:500'],
+            'ids.*' => ['integer', 'distinct', Rule::exists('categories', 'id')->where('business_id', $bid)],
+        ], [
+            'ids.*.exists' => __('في الترتيب فئةٌ ليست في متجرك — حدّث الصفحة.'),
+        ]);
+
+        $given = array_map('intval', $data['ids']);
+        $rest = Category::where('business_id', $bid)->whereNotIn('id', $given)->inStoreOrder()->pluck('id')->all();
+        $order = [...$given, ...$rest];
+
+        DB::transaction(function () use ($bid, $order) {
+            foreach ($order as $i => $id) {
+                Category::where('business_id', $bid)->whereKey($id)->update(['sort_order' => $i + 1]);
+            }
+        });
+
+        \App\Support\Activity::log('updated', 'رتّب فئات الموقع');
+
+        return response()->json(['ok' => true, 'ids' => $order]);
     }
 
     /** البطاقةُ كما تقرؤها لوحةُ الفئات في المحرّر */

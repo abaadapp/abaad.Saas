@@ -820,13 +820,16 @@ class RibbonController extends Controller
      *
      * وصورةُ البطاقة وإخفاؤها يُحملان ولا يُطبَّقان هنا: الرئيسيّةُ وحدها
      * تُسقط المخفيّ (`home`)، والرفُّ والتذييلُ يُبقيانه.
+     *
+     * والترتيبُ ترتيبُ صاحب المحلّ (`Category::scopeInStoreOrder`) — وقبل أن
+     * يرتّب، الأبجديّةُ كما كانت. فالبطاقاتُ وروابطُ التذييل بترتيبٍ واحد.
      */
     private function categories(int $bid, string $lang, $shown)
     {
         $shown ??= $this->shown($bid)->get(['id', 'category_id']);
         $counts = $shown->groupBy('category_id')->map->count();
 
-        return Category::where('business_id', $bid)->orderBy('name')->get()
+        return Category::where('business_id', $bid)->inStoreOrder()->get()
             ->filter(fn ($c) => (int) ($counts[$c->id] ?? 0) > 0)
             ->map(fn ($c) => [
                 'id' => $c->id,

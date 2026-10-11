@@ -726,6 +726,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
         ->whereNumber('category')->name('products.categories.cardImage');
     Route::delete('/products/categories/{category}/card-image', [CatalogQuickAddController::class, 'clearCategoryCardImage'])
         ->whereNumber('category')->name('products.categories.cardImage.clear');
+    // وترتيبُها في الموقع — بطاقاتُ الرئيسيّة وروابطُ التذييل، بيد صاحبها لا بالأبجديّة
+    Route::put('/products/categories/order', [CatalogQuickAddController::class, 'orderCategories'])
+        ->name('products.categories.order');
     Route::post('/products/addons', [CatalogQuickAddController::class, 'storeAddon'])->name('products.addons.store');
     // طريقةُ عرض الإضافات في نقطة البيع — لصاحب النشاط، ويُحرس في المتحكّم.
     // ويسبق «products/addons/{addon}» فلا تُقرأ «display» معرّفَ إضافة

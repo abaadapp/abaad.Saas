@@ -7613,5 +7613,7 @@
     "أزل الصورة": "Remove picture",
     "تعذّر حفظ البطاقة": "Could not save the card",
     "مخفيّة من «تسوّق حسب الفئة» — منتجاتها تبقى في المتجر": "Hidden from “Shop by category” — its products stay in the shop",
-    "ولكل فئة بطاقتها: تخفيها من هذا القسم أو تضع لها صورة — يُطبَّق على الموقع فورًا، ومنتجاتها تبقى في المتجر.": "Each category has its own card: hide it from this section or give it a picture — it applies to the site right away, and its products stay in the shop."
+    "ولكل فئة بطاقتها: ترتّبها بالسهمين، أو تخفيها من هذا القسم، أو تضع لها صورة — يُطبَّق على الموقع فورًا، ومنتجاتها تبقى في المتجر.": "Each category has its own card: order it with the arrows, hide it from this section, or give it a picture — it applies to the site right away, and its products stay in the shop.",
+    "تعذّر حفظ الترتيب": "Could not save the order",
+    "في الترتيب فئةٌ ليست في متجرك — حدّث الصفحة.": "The order includes a category that is not in your shop — refresh the page."
 }

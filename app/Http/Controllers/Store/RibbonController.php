@@ -272,7 +272,13 @@ class RibbonController extends Controller
         $currency = Storefront::currency($business);
 
         return [
-            'categories' => $this->categories($bid, $lang, $shown),
+            /*
+             * وبطاقاتُ «تسوّق حسب الفئة» بلا ما أخفاه صاحبُه — هنا وحدها.
+             *
+             * فالرفُّ ومرشِّحُه وروابطُ التذييل تقرأ `categories` كما هي:
+             * القسمُ المخفيُّ بطاقتُه يبقى يُختار وتُباع أصنافُه.
+             */
+            'categories' => $this->categories($bid, $lang, $shown)->reject(fn ($c) => $c['hidden'])->values(),
             'best' => $best->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
             'new' => $new->map(fn ($p) => $this->card($p, $lang, $business, $currency))->all(),
             /*
@@ -811,6 +817,9 @@ class RibbonController extends Controller
      * كانت هنا نسخةٌ تقع على العربيّ متى فرغ `name_en`، فتعرض الصفحةُ
      * الإنجليزيّة «منتجات» و«الإضافات» وسطَ واجهةٍ إنجليزيّة، والمعجمُ
      * يعرفهما يقينًا. والمعرّفُ كما هو: به يُرشَّح الرفّ.
+     *
+     * وصورةُ البطاقة وإخفاؤها يُحملان ولا يُطبَّقان هنا: الرئيسيّةُ وحدها
+     * تُسقط المخفيّ (`home`)، والرفُّ والتذييلُ يُبقيانه.
      */
     private function categories(int $bid, string $lang, $shown)
     {
@@ -819,7 +828,13 @@ class RibbonController extends Controller
 
         return Category::where('business_id', $bid)->orderBy('name')->get()
             ->filter(fn ($c) => (int) ($counts[$c->id] ?? 0) > 0)
-            ->map(fn ($c) => ['id' => $c->id, 'name' => CategoryName::display($c->name, $c->name_en, $lang), 'count' => (int) $counts[$c->id]])
+            ->map(fn ($c) => [
+                'id' => $c->id,
+                'name' => CategoryName::display($c->name, $c->name_en, $lang),
+                'count' => (int) $counts[$c->id],
+                'image' => filled($c->card_image) ? (string) $c->card_image : null,
+                'hidden' => (bool) $c->card_hidden,
+            ])
             ->values();
     }
 

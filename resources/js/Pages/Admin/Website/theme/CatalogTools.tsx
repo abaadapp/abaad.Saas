@@ -1,6 +1,6 @@
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { ArrowDown, ArrowUp, ChevronLeft, CircleAlert, Eye, EyeOff, ImageOff, Plus, Save, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronLeft, CircleAlert, Eye, EyeOff, ImageOff, Loader2, Plus, Save, Upload, X } from 'lucide-react';
 
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -20,6 +20,10 @@ export interface CatalogCategory {
     name_en: string | null;
     /** أصنافُها المفعَّلة المنشورة — وصفرٌ يعني أنّها لا تُرسم */
     shown_count: number;
+    /** أخفى بطاقتَها من «تسوّق حسب الفئة» — وأصنافُها باقيةٌ في المتجر */
+    card_hidden: boolean;
+    /** صورةُ بطاقتها — وبلاها الخطوطُ الملوّنة */
+    card_image: string | null;
 }
 
 export interface CatalogArrival {
@@ -82,6 +86,125 @@ function Door({ href, children }: { href: string; children: ReactNode }) {
 }
 
 /**
+ * بطاقةُ القسم في «تسوّق حسب الفئة» — تُخفى وتُكشف، وتلبس صورةً وتُنزع عنها.
+ *
+ * ═══ وتُحفظ فورًا — لا مع «احفظ» المحرّر ═══
+ *
+ * البطاقةُ من صفّ القسم نفسِه لا من حقول الصفحة، فلا تمرّ بمسوّدتها: ما
+ * يُضغط هنا يقع على الموقع الآن، ويُقال ذلك فوق القائمة. وبـfetch لا
+ * بتنقّل — كإضافة القسم: ما كُتب في المحرّر ولم يُحفظ لا يُمحى لأجل صورة.
+ *
+ * والإخفاءُ للبطاقة وحدها: أصنافُ القسم تبقى في المتجر ويبقى يُختار في رفّه.
+ */
+function CardControls({ category, onSaved }: { category: CatalogCategory; onSaved: (c: CatalogCategory) => void }) {
+    const t = useTranslate();
+    const input = useRef<HTMLInputElement>(null);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const send = async (url: string, method: string, body?: BodyInit, json = false) => {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { ...(json ? { 'Content-Type': 'application/json' } : {}), Accept: 'application/json', ...csrfHeaders() },
+                body,
+            });
+            const out = await res.json().catch(() => null);
+
+            if (! res.ok || ! out?.category) {
+                setError(out?.errors?.image?.[0] ?? out?.errors?.card_hidden?.[0] ?? out?.message ?? t('تعذّر حفظ البطاقة'));
+
+                return;
+            }
+
+            onSaved({ ...category, card_hidden: Boolean(out.category.card_hidden), card_image: out.category.card_image || null });
+        } catch {
+            setError(t('تعذّر الاتصال بالخادم'));
+        } finally {
+            setBusy(false);
+            if (input.current) input.current.value = '';
+        }
+    };
+
+    const toggle = () =>
+        send(
+            route('admin.products.categories.card', category.id),
+            'PATCH',
+            JSON.stringify({ card_hidden: ! category.card_hidden }),
+            true,
+        );
+
+    const upload = (file: File | undefined) => {
+        if (! file) return;
+
+        const form = new FormData();
+        form.append('image', file);
+        send(route('admin.products.categories.cardImage', category.id), 'POST', form);
+    };
+
+    const clear = () => send(route('admin.products.categories.cardImage.clear', category.id), 'DELETE');
+
+    return (
+        <div className="flex w-full flex-wrap items-center gap-2" data-testid={`catalog-card-${category.id}`}>
+            <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                aria-pressed={category.card_hidden}
+                onClick={toggle}
+                data-testid={`catalog-card-toggle-${category.id}`}
+            >
+                {category.card_hidden ? <Eye /> : <EyeOff />}
+                {t(category.card_hidden ? 'إظهار البطاقة' : 'إخفاء البطاقة')}
+            </Button>
+
+            {/* والحقلُ يُخفى ويُنادى من زرٍّ بالعربيّة — كما في `StoreImageField` */}
+            <input
+                ref={input}
+                type="file"
+                accept="image/*"
+                aria-label={`${t('صورة البطاقة')} — ${category.name}`}
+                disabled={busy}
+                onChange={(e) => upload(e.target.files?.[0])}
+                className="sr-only"
+                data-testid={`catalog-card-file-${category.id}`}
+            />
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => input.current?.click()}>
+                <Upload />
+                {t(category.card_image ? 'استبدل الصورة' : 'أضف صورة للبطاقة')}
+            </Button>
+
+            {category.card_image && (
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={clear}
+                    aria-label={`${t('أزل صورة البطاقة')} — ${category.name}`}
+                    data-testid={`catalog-card-clear-${category.id}`}
+                >
+                    <X />
+                    {t('أزل الصورة')}
+                </Button>
+            )}
+
+            {busy && <Loader2 className="size-4 shrink-0 animate-spin text-[#6b7280]" />}
+
+            {error && (
+                <p role="alert" className="flex w-full items-start gap-1.5 text-[12px] text-[#b91c1c]">
+                    <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                    {error}
+                </p>
+            )}
+        </div>
+    );
+}
+
+/**
  * «الفئات في الموقع» — كلُّ فئةٍ بعدد ما يُعرض فيها، وهل تظهر.
  *
  * ═══ والفئةُ تُضاف من هنا — بالباب القائم نفسِه ═══
@@ -92,8 +215,12 @@ function Door({ href, children }: { href: string; children: ReactNode }) {
  * يُمحى لأجل فئة.
  *
  * والفئةُ الجديدة فارغة — فتُقال «لن تظهر» من أوّل لحظة، ولا يُنشأ لها صنف.
+ *
+ * وبطاقةُ كلِّ فئةٍ تُخفى وتلبس صورةً من صفّها (`CardControls`). وما
+ * يتبدّل فيها يقع على الموقع لا على المسوّدة — فيُنادى `onCardChange`
+ * لتُعاد المعاينة: الإطارُ يقرأ الفئاتِ من الخادم لا من النموذج.
  */
-export function CategoriesPanel({ categories }: { categories: CatalogCategory[] }) {
+export function CategoriesPanel({ categories, onCardChange }: { categories: CatalogCategory[]; onCardChange?: () => void }) {
     const t = useTranslate();
 
     const [list, setList] = useState(categories);
@@ -133,6 +260,8 @@ export function CategoriesPanel({ categories }: { categories: CatalogCategory[] 
                 name: String(body.category.name),
                 name_en: body.category.name_en || null,
                 shown_count: 0,
+                card_hidden: false,
+                card_image: null,
             };
 
             setList((prev) => [...prev, made].sort((a, b) => a.name.localeCompare(b.name, 'ar')));
@@ -153,6 +282,9 @@ export function CategoriesPanel({ categories }: { categories: CatalogCategory[] 
                 <p className="mt-0.5 text-[12px] leading-relaxed text-[#6b7280]">
                     {t('تظهر الفئة في الموقع عندما يكون فيها منتج مفعّل ومنشور.')}
                 </p>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-[#6b7280]">
+                    {t('ولكل فئة بطاقتها: تخفيها من هذا القسم أو تضع لها صورة — يُطبَّق على الموقع فورًا، ومنتجاتها تبقى في المتجر.')}
+                </p>
             </div>
 
             {list.length === 0 ? (
@@ -162,7 +294,8 @@ export function CategoriesPanel({ categories }: { categories: CatalogCategory[] 
             ) : (
                 <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[10px] bg-white ring-1 ring-[var(--ui-border,#e8e8e8)]">
                     {list.map((c) => {
-                        const shows = c.shown_count > 0;
+                        const stocked = c.shown_count > 0;
+                        const shows = stocked && ! c.card_hidden;
 
                         return (
                             <li
@@ -170,6 +303,18 @@ export function CategoriesPanel({ categories }: { categories: CatalogCategory[] 
                                 data-testid={`catalog-category-${c.id}`}
                                 className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5"
                             >
+                                {c.card_image ? (
+                                    <img
+                                        src={c.card_image}
+                                        alt=""
+                                        className="size-10 shrink-0 rounded-[8px] object-cover ring-1 ring-[var(--ui-border,#e8e8e8)]"
+                                        data-testid={`catalog-card-image-${c.id}`}
+                                    />
+                                ) : (
+                                    <span className="flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-[#f3efe9] text-[#9ca3af]">
+                                        <ImageOff className="size-4" />
+                                    </span>
+                                )}
                                 <div className="min-w-0 flex-1">
                                     <p className="truncate text-[13px] font-medium text-[#111]">
                                         {c.name}
@@ -186,8 +331,12 @@ export function CategoriesPanel({ categories }: { categories: CatalogCategory[] 
                                         )}
                                     >
                                         {shows ? <Eye className="size-3.5 shrink-0" /> : <EyeOff className="size-3.5 shrink-0" />}
-                                        {shows ? t('تظهر في الموقع') : t('لن تظهر — لا يوجد منتج مفعّل ومنشور')}
-                                        {shows && (
+                                        {shows
+                                            ? t('تظهر في الموقع')
+                                            : c.card_hidden
+                                              ? t('مخفيّة من «تسوّق حسب الفئة» — منتجاتها تبقى في المتجر')
+                                              : t('لن تظهر — لا يوجد منتج مفعّل ومنشور')}
+                                        {stocked && (
                                             <span className="text-[#6b7280]">
                                                 · {t(':count منتج مفعّل ومنشور', { count: c.shown_count })}
                                             </span>
@@ -201,6 +350,13 @@ export function CategoriesPanel({ categories }: { categories: CatalogCategory[] 
                                     {t('عرض المنتجات')}
                                     <ChevronLeft className="size-3.5" />
                                 </Link>
+                                <CardControls
+                                    category={c}
+                                    onSaved={(saved) => {
+                                        setList((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
+                                        onCardChange?.();
+                                    }}
+                                />
                             </li>
                         );
                     })}

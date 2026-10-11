@@ -109,6 +109,84 @@ class CatalogQuickAddController extends Controller
     }
 
     /**
+     * بطاقةُ القسم في «تسوّق حسب الفئة» — تُخفى أو تُكشف.
+     *
+     * والإخفاءُ للبطاقة وحدها: أصنافُ القسم تبقى معروضةً في المتجر، والقسمُ
+     * يبقى يُختار في رفّه. ومن أراد إخفاءَ «الإضافات» من الرئيسيّة لم يكن
+     * أمامه إلّا إخفاءُ أصنافها كلِّها — فتغيب عن الطلب أيضًا.
+     *
+     * والصفُّ من متجر من سجّل الدخول وإلّا فـ٤٠٤ — قبل التحقّق من المدخلات.
+     */
+    public function categoryCard(Request $request, int $category): JsonResponse
+    {
+        $model = Category::where('business_id', $this->bid())->findOrFail($category);
+
+        $data = $request->validate(['card_hidden' => ['required', 'boolean']]);
+
+        $model->update(['card_hidden' => (bool) $data['card_hidden']]);
+
+        \App\Support\Activity::log(
+            'updated',
+            ($model->card_hidden ? 'أخفى' : 'أظهر').' بطاقة قسم «'.$model->name.'» في «تسوّق حسب الفئة»',
+            ['subject_id' => $model->id],
+        );
+
+        return response()->json(['ok' => true, 'category' => self::card($model)]);
+    }
+
+    /**
+     * صورةُ بطاقة القسم — تُرفع في مجلّد النشاط كسائر صور المتجر.
+     *
+     * والقاعدةُ قاعدةُ `MarketingController::uploadStoreImage`: صورةٌ حتّى
+     * ٤ ميغابايت، و`image` لا تقبل SVG فلا يُرفع نصٌّ يُنفَّذ في صفحة الزبون.
+     */
+    public function categoryCardImage(Request $request, int $category): JsonResponse
+    {
+        $bid = $this->bid();
+        $model = Category::where('business_id', $bid)->findOrFail($category);
+
+        $request->validate([
+            'image' => ['required', 'image', 'max:4096'],
+        ], [
+            'image.image' => __('الملفّ صورة — PNG أو JPG أو WEBP'),
+            'image.max' => __('أقصى حجمٍ للصورة ٤ ميغابايت'),
+        ]);
+
+        $path = $request->file('image')->store('website/'.$bid, 'public');
+        $model->update(['card_image' => \Illuminate\Support\Facades\Storage::url($path)]);
+
+        \App\Support\Activity::log('updated', 'وضع صورةً لبطاقة قسم «'.$model->name.'»', ['subject_id' => $model->id]);
+
+        return response()->json(['ok' => true, 'category' => self::card($model)]);
+    }
+
+    /**
+     * وإزالةُ الصورة تُعيد الخطوطَ الملوّنة — ولا تمسّ الملفّ.
+     *
+     * نسخةٌ على القرص أرخصُ من صورةٍ ضاعت، كما في `StoreImageField`.
+     */
+    public function clearCategoryCardImage(int $category): JsonResponse
+    {
+        $model = Category::where('business_id', $this->bid())->findOrFail($category);
+
+        $model->update(['card_image' => null]);
+
+        \App\Support\Activity::log('updated', 'أزال صورة بطاقة قسم «'.$model->name.'»', ['subject_id' => $model->id]);
+
+        return response()->json(['ok' => true, 'category' => self::card($model)]);
+    }
+
+    /** البطاقةُ كما تقرؤها لوحةُ الفئات في المحرّر */
+    private static function card(Category $model): array
+    {
+        return [
+            'id' => $model->id,
+            'card_hidden' => (bool) $model->card_hidden,
+            'card_image' => filled($model->card_image) ? (string) $model->card_image : null,
+        ];
+    }
+
+    /**
      * إضافةٌ جديدة — بسعرها، وبمداها، وبربطٍ اختياريّ ببضاعةٍ في الرفّ.
      *
      * تُنشأ فعّالةً: من يضيفها وهو يجهّز منتجًا يريدها الآن، ومطالبتُه

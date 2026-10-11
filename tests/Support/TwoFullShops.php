@@ -112,7 +112,7 @@ trait TwoFullShops
             'payroll' => $first('payroll_runs'),
             'payroll_line' => $first('payroll_lines'),
             'review' => $first('reviews'),
-            'category' => $this->row('categories', ['business_id' => $bid, 'name' => "فئة {$tag}"]),
+            'category' => $this->row('categories', ['business_id' => $bid, 'name' => "فئة {$tag}", 'card_image' => "/storage/website/{$bid}/card.jpg"]),
             'boutique' => $this->row('boutiques', ['business_id' => $bid, 'name' => "بوتيك {$tag}"]),
             'season' => $season,
             'reminder' => $this->row('season_reminders', ['business_id' => $bid, 'season_id' => $season, 'type' => 'custom', 'message' => "تذكير {$tag}"]),

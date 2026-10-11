@@ -716,6 +716,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // وتسميةُ قسمٍ قائم — في صفّه لا بقسمٍ جديد، فلا تنفصل عنه أصنافُه
     Route::patch('/products/categories/{category}', [CatalogQuickAddController::class, 'updateCategory'])
         ->whereNumber('category')->name('products.categories.update');
+    /*
+     * وبطاقتُه في «تسوّق حسب الفئة» — تُخفى، وتلبس صورة، وتُنزع عنها.
+     * تحت `/products/` كأخواتها: صلاحيةُ «المنتجات» نفسُها بلا صلاحيةٍ تُخترع.
+     */
+    Route::patch('/products/categories/{category}/card', [CatalogQuickAddController::class, 'categoryCard'])
+        ->whereNumber('category')->name('products.categories.card');
+    Route::post('/products/categories/{category}/card-image', [CatalogQuickAddController::class, 'categoryCardImage'])
+        ->whereNumber('category')->name('products.categories.cardImage');
+    Route::delete('/products/categories/{category}/card-image', [CatalogQuickAddController::class, 'clearCategoryCardImage'])
+        ->whereNumber('category')->name('products.categories.cardImage.clear');
     Route::post('/products/addons', [CatalogQuickAddController::class, 'storeAddon'])->name('products.addons.store');
     // طريقةُ عرض الإضافات في نقطة البيع — لصاحب النشاط، ويُحرس في المتحكّم.
     // ويسبق «products/addons/{addon}» فلا تُقرأ «display» معرّفَ إضافة

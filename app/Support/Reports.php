@@ -217,7 +217,7 @@ class Reports
             'category' => 'analytical',
             'section' => 'customers',
             'title' => 'العملاء الأكثر إنفاقًا',
-            'desc' => 'من يشتري أكثر، وكم طلبًا وكم أنفق.',
+            'desc' => 'من يشتري أكثر، وكم مرّةً اشترى وكم أنفق.',
             'icon' => 'star',
             'route' => 'admin.reports.customers',
         ],

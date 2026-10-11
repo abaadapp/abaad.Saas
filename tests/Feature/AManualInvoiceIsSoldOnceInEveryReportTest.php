@@ -317,6 +317,70 @@ class AManualInvoiceIsSoldOnceInEveryReportTest extends TestCase
         $this->assertSame(2, $ministry['orders']);
     }
 
+    /* ═══════════ ٤ب · العميلُ بهويّته، والشراءُ باسمه ═══════════ */
+
+    public function test_two_customers_with_one_name_are_two_rows_and_a_guest_keeps_his_own(): void
+    {
+        $first = Customer::create(['business_id' => $this->shop->id, 'name' => 'أحمد', 'phone' => '91000001', 'allow_credit_sales' => true]);
+        $second = Customer::create(['business_id' => $this->shop->id, 'name' => 'أحمد', 'phone' => '91000002', 'allow_credit_sales' => true]);
+
+        $this->sale('2025-09-05 10:00', 50, $first);                 // الأوّل: طلبٌ آجل 52.5
+        $this->manual('2025-09-06', 2, 50, $second);                 // الثاني: فاتورةٌ يدويّة 105
+        $guest = $this->sale('2025-09-07 10:00', 10);                // ضيفٌ بلا سجلّ باسمه نفسه: 10.5
+        $guest->update(['customer_name' => 'أحمد']);
+
+        // و«أحمد» في متجر الجار لا يُضاف إلى أحدٍ هنا
+        $theirs = Customer::create(['business_id' => $this->other->id, 'name' => 'أحمد', 'phone' => '91000003']);
+        CustomerInvoices::issue(CustomerInvoices::create($this->other->id, $theirs, ['issued_at' => '2025-09-06'], [
+            ['description' => 'توريد', 'quantity' => 1, 'unit_price' => 900],
+        ]));
+
+        $report = ReportData::customers($this->shop->id, ['_period' => $this->september()]);
+        $ahmads = collect($report['rows'])->where('name', 'أحمد')->values();
+
+        $this->assertCount(3, $ahmads, 'عميلان مسجَّلان وضيفٌ باسمٍ واحد دُمجوا');
+        $this->assertEquals([105.0, 52.5, 10.5], $ahmads->pluck('total')->all());
+        $this->assertSame([1, 1, 1], $ahmads->pluck('orders')->all());
+        $this->assertSame(3, $report['summary']['customers']);
+        $this->assertEquals(168.0, $report['summary']['total']);
+
+        // والاسمُ للعرض: يُقرأ من سجلّ العميل اليوم لا من لقطةٍ قديمة
+        $second->update(['name' => 'أحمد الثاني']);
+        $renamed = collect(ReportData::customers($this->shop->id, ['_period' => $this->september()])['rows'])->firstWhere('total', 105.0);
+        $this->assertSame('أحمد الثاني', $renamed['name']);
+    }
+
+    public function test_three_orders_and_a_manual_invoice_are_four_purchases_on_screen_and_in_the_files(): void
+    {
+        $this->sale('2025-09-05 10:00', 10, $this->ministry);
+        $this->sale('2025-09-06 10:00', 20, $this->ministry);
+        $this->sale('2025-09-07 10:00', 30, $this->ministry);
+        $this->manual('2025-09-08', 1, 40);
+        $sep = ['period' => 'month', 'month' => '2025-09'];
+
+        $screen = $this->get(route('admin.reports.customers', $sep))->assertOk()->viewData('page')['props'];
+        $this->assertSame(4, $screen['rows'][0]['orders']);
+        $this->assertSame(4, $screen['summary']['orders']);
+        $this->assertEquals(26.25, $screen['summary']['average'], '105 ÷ 4 مشتريات');
+
+        $csv = $this->get(route('admin.reports.export.csv', ['report' => 'customers'] + $sep));
+        $csv->assertOk();
+        ob_start();
+        $csv->baseResponse->sendContent();
+        $body = (string) ob_get_clean();
+
+        foreach (['عدد المشتريات', 'متوسّط قيمة الشراء'] as $label) {
+            $this->assertStringContainsString($label, $body);
+        }
+        foreach (['عدد الطلبات', 'متوسّط قيمة الطلب'] as $label) {
+            $this->assertStringNotContainsString($label, $body, 'الملفُّ يسمّي الفاتورةَ اليدويّة طلبًا');
+        }
+        $this->assertMatchesRegularExpression('/"?وزارة الثقافة"?,4,105/u', $body);
+
+        $this->get(route('admin.reports.export.xlsx', ['report' => 'customers'] + $sep))->assertOk();
+        $this->get(route('admin.reports.export.pdf', ['report' => 'customers'] + $sep))->assertOk();
+    }
+
     /* ═══════════ ٥ · الذممُ كما كانت ═══════════ */
 
     public function test_receivables_stay_right_before_and_after_a_payment_and_the_reports_do_not_move(): void

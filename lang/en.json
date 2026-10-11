@@ -4699,8 +4699,6 @@
     "من فعل ماذا ومتى على النظام.": "Who did what, and when, across the system.",
     "من منتصف الليل حتى الآن": "From midnight until now",
     "من نحن": "About us",
-    "من يشتري أكثر، وكم طلبًا وكم أنفق": "Who buys most, how many orders and how much they spent",
-    "من يشتري أكثر، وكم طلبًا وكم أنفق.": "Who buys the most, how many orders and how much they spent.",
     "من ← إلى": "From → To",
     "مناسبات": "Occasions",
     "مناطق التوصيل ورسومها": "Delivery zones and fees",
@@ -7531,5 +7529,9 @@
     "من :date": "From :date",
     "حتى :date": "Until :date",
     "لا توجد مقارنة للفترة السابقة": "No comparison with a previous period",
-    "تغيير فترة التقرير": "Change report period"
+    "تغيير فترة التقرير": "Change report period",
+    "عدد المشتريات": "Purchases",
+    "متوسّط قيمة الشراء": "Average purchase value",
+    "من يشتري أكثر، وكم مرّةً اشترى وكم أنفق": "Who buys the most, how often and how much they spent",
+    "من يشتري أكثر، وكم مرّةً اشترى وكم أنفق.": "Who buys the most, how often and how much they spent."
 }

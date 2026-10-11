@@ -54,8 +54,8 @@ export default function ReportsCustomers() {
     const stats = [
         { label: t('إجمالي الإنفاق'), value: m(summary.total), icon: 'wallet', color: 'primary' },
         { label: t('عملاء اشتروا'), value: number(summary.customers), icon: 'users', color: 'info' },
-        { label: t('عدد الطلبات'), value: number(summary.orders), icon: 'shopping-cart', color: 'success' },
-        { label: t('متوسّط قيمة الطلب'), value: m(summary.average), icon: 'calculator', color: 'warning' },
+        { label: t('عدد المشتريات'), value: number(summary.orders), icon: 'shopping-cart', color: 'success' },
+        { label: t('متوسّط قيمة الشراء'), value: m(summary.average), icon: 'calculator', color: 'warning' },
     ];
 
     return (
@@ -72,7 +72,7 @@ export default function ReportsCustomers() {
 
                 <PageHeader
                     title="العملاء الأكثر إنفاقًا"
-                    subtitle={t('من يشتري أكثر، وكم طلبًا وكم أنفق')}
+                    subtitle={t('من يشتري أكثر، وكم مرّةً اشترى وكم أنفق')}
                     actions={
                         <>
                             {/* الفترةُ بجوار «تصدير»: ما يُعرض هو ما يُنزَّل */}
@@ -108,7 +108,7 @@ export default function ReportsCustomers() {
                             <TableRow className="hover:bg-transparent">
                                 <TableHead className="w-14 text-center">#</TableHead>
                                 <TableHead>{t('العميل')}</TableHead>
-                                <TableHead className="text-end">{t('عدد الطلبات')}</TableHead>
+                                <TableHead className="text-end">{t('عدد المشتريات')}</TableHead>
                                 <TableHead className="text-end">{t('إجمالي الإنفاق')}</TableHead>
                             </TableRow>
                         </TableHeader>

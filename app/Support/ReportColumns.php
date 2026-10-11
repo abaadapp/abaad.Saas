@@ -109,8 +109,12 @@ class ReportColumns
             ['name', 'الموظف', 'text'], ['role', 'الوظيفة', 'text'], ['branch', 'الفرع', 'text'],
             ['orders', 'الطلبات', 'number'], ['sales', 'المبيعات', 'money'], ['status', 'الحالة', 'text'],
         ],
+        /*
+         * «المشتريات» لا «الطلبات»: الفاتورةُ اليدويّة شراءٌ بلا طلب
+         * (`Demo::customerSpend`). والمفتاحُ `orders` باقٍ — الاسمُ وحده تغيّر.
+         */
         'customers' => [
-            ['name', 'العميل', 'text'], ['orders', 'عدد الطلبات', 'number'], ['total', 'إجمالي الإنفاق', 'money'],
+            ['name', 'العميل', 'text'], ['orders', 'عدد المشتريات', 'number'], ['total', 'إجمالي الإنفاق', 'money'],
         ],
     ];
 
@@ -191,8 +195,8 @@ class ReportColumns
         'customers' => [
             ['total', 'إجمالي الإنفاق', 'money'],
             ['customers', 'عملاء اشتروا', 'number'],
-            ['orders', 'عدد الطلبات', 'number'],
-            ['average', 'متوسّط قيمة الطلب', 'money'],
+            ['orders', 'عدد المشتريات', 'number'],
+            ['average', 'متوسّط قيمة الشراء', 'money'],
         ],
         'finance' => [
             ['income', 'المقبوضات', 'money'],

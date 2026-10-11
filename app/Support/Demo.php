@@ -3515,8 +3515,15 @@ class Demo
      *     ما يُرحَّل مردوداتٍ (`CustomerInvoices::creditNote`). وإشعارُ إلغاء
      *     الطلب لا يُطرح: طلبُه سقط من `sold` أصلًا.
      *
-     * والعميلُ يُعرف باسمه كما كان: اسمُ الطلب، ولقطةُ اسمه على الفاتورة.
-     * و«الطلبات» عددُ المشتريات — الفاتورةُ اليدويّة شراءٌ واحد.
+     * ═══ والعميلُ بهويّته لا باسمه ═══
+     *
+     * عميلان مسجَّلان باسمٍ واحد — «أحمد» و«أحمد» — شخصان: يُجمع كلٌّ
+     * بمعرّفه (`customer_id`)، والاسمُ للعرض وحده — اسمُه اليوم في سجلّ
+     * العملاء، أو لقطتُه إن حُذف. والطلبُ القديم أو طلبُ الضيف بلا معرّف
+     * يُجمع باسمه كما كان، فلا يضيع — ولا يُدمج بعميلٍ مسجَّلٍ يحمل اسمه.
+     *
+     * و`orders` عددُ المشتريات — الفاتورةُ اليدويّة شراءٌ واحد. والاسمُ
+     * البرمجيّ باقٍ لمن يقرؤه، والشاشةُ والملفُّ يسمّيانه «عدد المشتريات».
      *
      * @return list<array{name: string, total: float, orders: int}>
      */
@@ -3524,17 +3531,21 @@ class Demo
     {
         $period = self::period($range);
         $spend = [];
-        $add = function (?string $name, float $total, int $count) use (&$spend) {
-            $key = (string) $name;
-            $spend[$key] ??= ['name' => $key, 'total' => 0.0, 'orders' => 0];
+        $add = function (?int $customerId, ?string $name, float $total, int $count) use (&$spend) {
+            $key = $customerId !== null ? 'c'.$customerId : 'n'.$name;
+            $spend[$key] ??= ['id' => $customerId, 'name' => (string) $name, 'total' => 0.0, 'orders' => 0];
             $spend[$key]['total'] += $total;
             $spend[$key]['orders'] += $count;
         };
 
-        $period->bound(Order::where('business_id', $bid)->sold()->whereNotNull('customer_name'), 'ordered_at')
-            ->selectRaw('customer_name, SUM(total) as t, COUNT(*) as c')
-            ->groupBy('customer_name')->get()
-            ->each(fn ($r) => $add($r->customer_name, (float) $r->t, (int) $r->c));
+        $period->bound(
+            Order::where('business_id', $bid)->sold()
+                ->where(fn ($q) => $q->whereNotNull('customer_id')->orWhereNotNull('customer_name')),
+            'ordered_at',
+        )
+            ->selectRaw('customer_id, customer_name, SUM(total) as t, COUNT(*) as c')
+            ->groupBy('customer_id', 'customer_name')->get()
+            ->each(fn ($r) => $add($r->customer_id !== null ? (int) $r->customer_id : null, $r->customer_name, (float) $r->t, (int) $r->c));
 
         $period->bound(
             CustomerInvoice::where('business_id', $bid)->where('status', CustomerInvoice::ISSUED)
@@ -3545,27 +3556,33 @@ class Demo
                     ->where('journal_entries.source', CustomerInvoices::SOURCE)),
             'issued_at',
             date: true,
-        )->with('customer:id,name')->get(['id', 'customer_id', 'customer_name', 'total'])
-            ->each(fn ($i) => $add($i->customer_name ?: $i->customer?->name, (float) $i->total, 1));
+        )->get(['id', 'customer_id', 'customer_name', 'total'])
+            ->each(fn ($i) => $add((int) $i->customer_id, $i->customer_name, (float) $i->total, 1));
 
         $period->bound(
             CustomerCreditNote::where('business_id', $bid)->where('source', CustomerInvoices::NOTE_MANUAL)
                 ->whereHas('invoice', fn ($q) => $q->where('status', '!=', CustomerInvoice::CANCELLED)),
             'issued_at',
             date: true,
-        )->with('invoice:id,customer_id,customer_name', 'invoice.customer:id,name')->get(['id', 'customer_invoice_id', 'amount'])
-            ->each(fn ($n) => $add($n->invoice->customer_name ?: $n->invoice->customer?->name, -(float) $n->amount, 0));
+        )->with('invoice:id,customer_id,customer_name')->get(['id', 'customer_invoice_id', 'amount'])
+            ->each(fn ($n) => $add((int) $n->invoice->customer_id, $n->invoice->customer_name, -(float) $n->amount, 0));
+
+        // الاسمُ المعروض للمسجَّل اسمُه في سجلّ العملاء — من متجره وحده، ومحذوفُه يبقى مقروءًا
+        $ids = array_values(array_filter(array_column($spend, 'id')));
+        $names = $ids === [] ? [] : Customer::withTrashed()->where('business_id', $bid)
+            ->whereIn('id', $ids)->pluck('name', 'id')->all();
 
         $rows = array_map(fn ($r) => [
-            'name' => self::customerLabel($r['name']),
+            'name' => self::customerLabel(($r['id'] !== null ? ($names[$r['id']] ?? null) : null) ?: $r['name']),
             'total' => round($r['total'], 3),
             'orders' => $r['orders'],
+            'key' => $r['id'] !== null ? 'c'.$r['id'] : 'n'.$r['name'],
         ], array_values($spend));
 
-        // والتساوي يُفصل بالاسم: صفّان بالمبلغ نفسه لا يتبادلان الموضع بين فتحةٍ وأخرى
-        usort($rows, fn ($a, $b) => [$b['total'], $a['name']] <=> [$a['total'], $b['name']]);
+        // والتساوي يُفصل بالاسم ثمّ بالهويّة: صفّان بالمبلغ نفسه لا يتبادلان الموضع بين فتحةٍ وأخرى
+        usort($rows, fn ($a, $b) => [$b['total'], $a['name'], $a['key']] <=> [$a['total'], $b['name'], $b['key']]);
 
-        return $rows;
+        return array_map(fn ($r) => array_diff_key($r, ['key' => 1]), $rows);
     }
 
     /** المبيعات حسب القسم */

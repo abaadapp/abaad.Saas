@@ -44,8 +44,21 @@ interface Fact {
     detail: string;
 }
 
+/** بندٌ في «ما يحتاج انتباهك» — كما تبنيه `Store\SiteAttention` */
+export interface AttentionItem {
+    key: string;
+    title: string;
+    why: string;
+    /** أسماءُ ما ينقص — وما له صفحةٌ يُصلح فيها رابطُها */
+    items: { name: string; href: string | null }[];
+    /** وما زاد على الأسماء المذكورة */
+    more: number;
+    action: { label: string; href: string } | null;
+}
+
 interface Props extends SiteShell {
     readiness: Fact[];
+    attention?: AttentionItem[];
     channel: string;
     sells: boolean;
     counts: { shown: number; hidden: number; out: number };
@@ -85,7 +98,7 @@ const THEME_LABEL: Record<string, string> = { ribbon: 'RIBBON' };
  * يُنسخ، ولا عمودَ يُكتب من بابين.
  */
 export default function Hub() {
-    const { site, readiness, sells, counts, products, may, channel, context, theme, orders } =
+    const { site, readiness, attention, sells, counts, products, may, channel, context, theme, orders } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // وعملةُ المتجر من المشترَك لا من هذه الشاشة — انظر HandleInertiaRequests
@@ -213,6 +226,59 @@ export default function Hub() {
                 سطرًا مفتوحةً في وجه من فتح لوحته كلَّ صباح تُقرأ مرّةً ثمّ
                 تُتجاهَل.
             */}
+            {/*
+                ═══ ما يحتاج انتباهك — كلَّ صباح لا يومَ الإطلاق ═══
+
+                قراءةٌ لا كتابة: كلُّ بندٍ يقول ما ينقص وأين يُصلح، ثمّ يغيب
+                وحده متى أُصلح. ولا يتكرّر هنا حقلٌ له بابُه — انظر `SiteAttention`.
+            */}
+            {attention && (attention.length === 0 ? (
+                <p className="mb-5 flex items-center gap-1.5 text-[13px] text-[#047857]" data-testid="attention-clear">
+                    <Check className="size-4 shrink-0" />
+                    {t('موقعك مكتمل — لا شيء ينقصه الآن.')}
+                </p>
+            ) : (
+                <Card className="mb-5 p-4" data-testid="attention">
+                    <p className="flex items-center gap-2 text-[13px] font-semibold text-[#111]">
+                        <AlertTriangle className="size-4 shrink-0 text-[#b45309]" />
+                        {t('ما يحتاج انتباهك في موقعك')}
+                        <Badge variant="warning">{number(attention.length)}</Badge>
+                    </p>
+                    <ul className="mt-3 divide-y divide-[var(--ui-border,#e8e8e8)] border-t border-[var(--ui-border,#e8e8e8)]">
+                        {attention.map((a) => (
+                            <li key={a.key} data-testid={`attention-${a.key}`} className="flex flex-wrap items-start justify-between gap-2 py-2.5">
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[13px] font-medium text-[#111]">{a.title}</p>
+                                    <p className="text-[12px] leading-relaxed text-[#6b7280]">{a.why}</p>
+                                    {a.items.length > 0 && (
+                                        <p className="mt-1 text-[12px] leading-relaxed text-[#374151]">
+                                            {a.items.map((it, i) => (
+                                                <span key={`${it.name}-${i}`}>
+                                                    {i > 0 && ' · '}
+                                                    {it.href ? (
+                                                        <Link href={it.href} className="underline hover:text-[#111]">
+                                                            {it.name}
+                                                        </Link>
+                                                    ) : (
+                                                        it.name
+                                                    )}
+                                                </span>
+                                            ))}
+                                            {a.more > 0 && <span className="text-[#9ca3af]"> {t('و:n غيرها', { n: number(a.more) })}</span>}
+                                        </p>
+                                    )}
+                                </div>
+                                {a.action && (
+                                    <Button asChild size="sm" variant="outline">
+                                        <Link href={a.action.href}>{a.action.label}</Link>
+                                    </Button>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </Card>
+            ))}
+
             {theme && readiness.length > 0 && (
                 <Card className="mb-5 p-4" data-testid="readiness">
                     <button

@@ -93,6 +93,7 @@ use App\Http\Controllers\PublishedSiteController;
 use App\Http\Controllers\ReviewInviteController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\PaymobController;
+use App\Http\Controllers\Admin\Finance\PaymentLinkController;
 use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\BillingController;
@@ -1440,6 +1441,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     Route::get('/finance/cheques', [ChequeController::class, 'index'])->name('finance.cheques');
     Route::post('/finance/cheques/{id}/clear', [ChequeController::class, 'clear'])->name('finance.cheques.clear');
     Route::post('/finance/cheques/{id}/bounce', [ChequeController::class, 'bounce'])->name('finance.cheques.bounce');
+
+    /*
+     * روابطُ الدفع وتسوياتُ Paymob — تحصيلٌ من عملاء المتجر بحساب Paymob الخاص
+     * به. تحت «المالية» لا في لوحة المنصّة: الحسابُ حسابُ التاجر والمالُ مالُه.
+     */
+    Route::get('/finance/payment-links', [PaymentLinkController::class, 'index'])->name('finance.paymentLinks');
+    Route::post('/finance/payment-links', [PaymentLinkController::class, 'store'])->name('finance.paymentLinks.store');
+    Route::get('/finance/payment-links/invoices', [PaymentLinkController::class, 'invoices'])->name('finance.paymentLinks.invoices');
+    Route::post('/finance/payment-links/{id}/cancel', [PaymentLinkController::class, 'cancel'])
+        ->whereNumber('id')->name('finance.paymentLinks.cancel');
+    Route::post('/finance/paymob-settlements', [PaymentLinkController::class, 'settle'])->name('finance.paymobSettlements.store');
 
     Route::get('/finance/receivables', [ReceivablesController::class, 'index'])->name('finance.receivables');
     /*

@@ -469,6 +469,8 @@ class PageController extends Controller
                 ])->all(),
             // للتعديل: الفرع يُختار من فروع هذا النشاط لا من قائمةٍ مفتوحة
             'branches' => Demo::branches(),
+            // «طلب دفعة» — رابطُ دفعٍ بمبلغٍ حرٍّ لهذا العميل، وروابطُه السابقة
+            'paymentLinks' => \App\Support\PaymentLinks::panel((int) Demo::bid(), fn ($q) => $q->where('customer_id', (int) $id)),
         ]);
     }
 

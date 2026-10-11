@@ -30,6 +30,16 @@ final class CustomerPayments
     /** ما يُقبل وسيلةً — والصندوقُ أو البنك يتبعها */
     public const METHODS = ['نقدي', 'بطاقة', 'تحويل', 'شيك'];
 
+    /**
+     * دفعٌ عبر رابط Paymob — وسيلةٌ لا يختارها أحدٌ بيده.
+     *
+     * لا تُعرض في شاشة التحصيل ولا تقبلها مصادقتُها (`METHODS`): لا يكتبها
+     * إلّا إشعارُ Paymob الموقَّع (`PaymentLinks::settle`). ومالُها لا يصل
+     * البنكَ بالدفع — يجلس في «Paymob تحت التسوية» حتّى تُحوّله Paymob
+     * (`PaymobSettlements::record`).
+     */
+    public const PAYMOB = 'Paymob';
+
     public static function nextNumber(int $businessId): string
     {
         return DB::transaction(function () use ($businessId) {
@@ -45,10 +55,14 @@ final class CustomerPayments
         });
     }
 
-    /** أيُّ حسابٍ يستقبل المال — النقدُ إلى الصندوق وما عداه إلى البنك */
+    /** أيُّ حسابٍ يستقبل المال — النقدُ إلى الصندوق، وPaymob إلى تسويتها، وما عداهما إلى البنك */
     public static function sideFor(string $method): string
     {
-        return $method === 'نقدي' ? 'cash' : 'bank';
+        return match ($method) {
+            'نقدي' => 'cash',
+            self::PAYMOB => 'paymob_clearing',
+            default => 'bank',
+        };
     }
 
     /**
@@ -126,7 +140,7 @@ final class CustomerPayments
             throw new RuntimeException(__('مبلغ التحصيل يجب أن يكون أكبر من صفر.'));
         }
 
-        $method = in_array($data['method'] ?? '', self::METHODS, true) ? $data['method'] : 'نقدي';
+        $method = in_array($data['method'] ?? '', [...self::METHODS, self::PAYMOB], true) ? $data['method'] : 'نقدي';
         $bankAccountId = self::accountFor($businessId, $method, $data['bank_account_id'] ?? null);
 
         return DB::transaction(function () use ($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId) {
@@ -156,11 +170,13 @@ final class CustomerPayments
                     : null,
             ]);
 
-            self::allocate($payment, $allocations);
+            self::allocate($payment, $allocations, (bool) ($data['auto_allocate'] ?? true));
             self::post($payment, $userId);
 
             Activity::log('created', 'سجّل تحصيلًا '.$payment->number.' من '.$customer->name.' بمبلغ '.$amount, [
                 'subject_id' => $payment->id, 'subject_type' => 'customer_payment',
+                // والمتجرُ من الدفعة لا من الجلسة: إشعارُ Paymob لا جلسةَ له
+                'business_id' => $businessId,
             ]);
 
             return $payment->fresh('allocations');
@@ -173,11 +189,18 @@ final class CustomerPayments
      * والفواتيرُ تُقفل بقفل الكتابة قبل قراءة باقيها: نافذتان تسجّلان دفعتين
      * في اللحظة نفسها تقرآن الباقي نفسه فتخصّصان أكثر ممّا عليه.
      *
+     * و`$auto = false` لا يوزّع ما لم يُسمَّ: رابطُ دفعٍ بلا فاتورةٍ تحصيلٌ
+     * للعميل لا سدادٌ لأقدم فواتيره — يبقى رصيدًا غيرَ مخصَّص.
+     *
      * @param  array<int, float>  $explicit
      */
-    private static function allocate(CustomerPayment $payment, array $explicit): void
+    private static function allocate(CustomerPayment $payment, array $explicit, bool $auto = true): void
     {
         $left = round((float) $payment->amount, 3);
+
+        if ($explicit === [] && ! $auto) {
+            return;
+        }
 
         $ids = $explicit !== []
             ? array_keys($explicit)

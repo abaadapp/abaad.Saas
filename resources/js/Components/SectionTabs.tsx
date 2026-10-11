@@ -177,6 +177,8 @@ export const FINANCE_TABS: SectionTab[] = [
     { label: 'الذمم المدينة', routeName: 'admin.finance.receivables', section: 'finance' },
     /* والشيكاتُ تبويبٌ مستقلّ: ورقةٌ في اليد ليست ذمّةً على عميلٍ ولا مالًا في بنك */
     { label: 'الشيكات', routeName: 'admin.finance.cheques', section: 'finance' },
+    /* روابطُ الدفع وتسوياتُ Paymob — تحصيلٌ إلكترونيٌّ ينتظر التسوية، لا مالٌ في البنك */
+    { label: 'روابط الدفع', routeName: 'admin.finance.paymentLinks', section: 'finance' },
     { label: 'المبالغ المستحقة', routeName: 'admin.finance.dues', section: 'finance' },
     { label: 'مصاريف شهرية', routeName: 'admin.expenses.index', section: 'expenses' },
     { label: 'الحسابات البنكية', routeName: 'admin.finance.index', section: 'finance' },

@@ -61,6 +61,8 @@ class NormalizeNumbers
          * أمامه. وكشفه `ArabicNumeralsTest` قبل أن يصل الخادم.
          */
         'paid_amount',
+        // وتسويةُ Paymob: الإجماليُّ والصافي يُكتبان من كشفها بلوحةٍ عربيّة كغيرهما
+        'gross', 'net',
         // رسومُ توصيل الموقع وحدُّ مجّانه — يكتبهما صاحبُ المحلّ في إعداداته
         'store_delivery_fee', 'store_free_delivery_over', 'store_gift_card_price',
 

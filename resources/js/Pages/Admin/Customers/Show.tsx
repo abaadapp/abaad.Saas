@@ -33,6 +33,7 @@ import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Customer, Order } from '@/types/models';
+import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
 
 interface Address {
     id: number;
@@ -50,6 +51,8 @@ interface Props {
     addresses: Address[];
     /** ما أذنت به «الإعدادات ← العملاء» — المُطفأ يُخفى ولا يُمحى */
     customerFlags: { alerts: boolean; blocking: boolean; birthdays: boolean };
+    /** «طلب دفعة» — روابطُ دفع هذا العميل وحالُ Paymob (`PaymentLinks::panel`) */
+    paymentLinks?: PaymentLinksPanel;
 }
 
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
@@ -65,7 +68,7 @@ export function birthdayLabel(c: { birth_day?: number | null; birth_month?: numb
 const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 
 export default function CustomerShow() {
-    const { customer, orders, addresses, context, branches = [], customerFlags } = usePage<PageProps<Props>>().props;
+    const { customer, orders, addresses, context, branches = [], customerFlags, paymentLinks } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
@@ -336,6 +339,11 @@ export default function CustomerShow() {
                                 </Button>
                             </form>
                         </Card>
+                    )}
+
+                    {/* «طلب دفعة» — رابطُ دفعٍ بمبلغٍ حرٍّ يُرسَل للعميل؛ يُدفع فيصير رصيدًا له */}
+                    {paymentLinks && (paymentLinks.can || paymentLinks.links.length > 0) && (
+                        <PaymentLinksCard panel={paymentLinks} customerId={customer.id} title="روابط الدفع" action="طلب دفعة" />
                     )}
 
                     <Card className="p-6">

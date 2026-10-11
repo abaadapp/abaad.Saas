@@ -395,3 +395,102 @@ describe('ترتيبُ الفئات في الموقع', () => {
         expect(repaint).not.toHaveBeenCalled();
     });
 });
+
+/* ═══════════ الاسمُ والحذفُ وتلميحُ الصورة — من صفّ الفئة ═══════════ */
+
+describe('اسمُ الفئة وحذفُها من المحرّر', () => {
+    beforeEach(() => vi.mocked(router.visit).mockClear());
+    afterEach(() => vi.unstubAllGlobals());
+
+    const c = (id: number, name: string, shown_count = 2, name_en: string | null = null): CatalogCategory => ({
+        id, name, name_en, shown_count, card_hidden: false, card_image: null, sort_order: null,
+    });
+
+    const panel = (categories: CatalogCategory[]) => {
+        for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
+        Object.assign(pageProps, { translations: {} });
+        const repaint = vi.fn();
+        render(<CategoriesPanel categories={categories} onCardChange={repaint} />);
+
+        return repaint;
+    };
+
+    const reply = (ok: boolean, body: unknown, status = ok ? 200 : 422) => vi.fn(async () => ({ ok, status, json: async () => body }));
+
+    it('يُعدَّل الاسمُ بالعربيّة والإنجليزيّة من صفّه — بالباب القائم، وتُعاد المعاينة', async () => {
+        const fetch = reply(true, { ok: true, category: { id: 1, name: 'منتجاتنا', name_en: 'Our products' } });
+        vi.stubGlobal('fetch', fetch);
+        const repaint = panel([c(1, 'منتجات', 6, 'Products')]);
+
+        fireEvent.click(screen.getByRole('button', { name: 'تعديل الاسم — منتجات' }));
+        const form = screen.getByTestId('catalog-rename-form-1');
+        expect(within(form).getByLabelText('اسم القسم — منتجات')).toHaveValue('منتجات');
+        expect(within(form).getByLabelText('الاسم بالإنجليزية (اختياري) — منتجات')).toHaveValue('Products');
+
+        fireEvent.change(within(form).getByLabelText('اسم القسم — منتجات'), { target: { value: 'منتجاتنا' } });
+        fireEvent.change(within(form).getByLabelText('الاسم بالإنجليزية (اختياري) — منتجات'), { target: { value: 'Our products' } });
+        fireEvent.click(within(form).getByRole('button', { name: 'حفظ' }));
+
+        const row = screen.getByTestId('catalog-category-1');
+        expect(await within(row).findByText('منتجاتنا')).toBeInTheDocument();
+        expect(within(row).getByText('Our products')).toBeInTheDocument();
+        expect(screen.queryByTestId('catalog-rename-form-1')).toBeNull();
+
+        const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe('/admin.products.categories.update/1');
+        expect(init.method).toBe('PATCH');
+        expect(JSON.parse(String(init.body))).toEqual({ name: 'منتجاتنا', name_en: 'Our products' });
+        expect(repaint).toHaveBeenCalledTimes(1);
+        expect(router.visit).not.toHaveBeenCalled();
+    });
+
+    it('واسمٌ مكرَّر يُقال سببُه في صفّه — ويبقى الاسمُ كما كان', async () => {
+        vi.stubGlobal('fetch', reply(false, { message: 'x', errors: { name: ['يوجد قسمٌ بهذا الاسم.'] } }));
+        const repaint = panel([c(1, 'منتجات'), c(2, 'باقات')]);
+
+        fireEvent.click(screen.getByRole('button', { name: 'تعديل الاسم — منتجات' }));
+        fireEvent.change(screen.getByLabelText('اسم القسم — منتجات'), { target: { value: 'باقات' } });
+        fireEvent.click(screen.getByRole('button', { name: 'حفظ' }));
+
+        expect(await screen.findByTestId('catalog-naming-error-1')).toHaveTextContent('يوجد قسمٌ بهذا الاسم.');
+        expect(within(screen.getByTestId('catalog-category-1')).getByText('منتجات')).toBeInTheDocument();
+        expect(repaint).not.toHaveBeenCalled();
+    });
+
+    it('والفارغةُ وحدها لها زرُّ حذف — بتأكيدٍ من نافذة النظام، ثمّ تغيب', async () => {
+        const fetch = reply(true, { ok: true, id: 2 });
+        vi.stubGlobal('fetch', fetch);
+        const repaint = panel([c(1, 'منتجات', 6), c(2, 'خدمات', 0)]);
+
+        expect(screen.queryByRole('button', { name: 'حذف الفئة — منتجات' })).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'حذف الفئة — خدمات' }));
+        expect(fetch).not.toHaveBeenCalled();
+        fireEvent.click(await screen.findByRole('button', { name: 'حذف الفئة' }));
+
+        await waitFor(() => expect(screen.queryByTestId('catalog-category-2')).toBeNull());
+        const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe('/admin.products.categories.destroy/2');
+        expect(init.method).toBe('DELETE');
+        expect(repaint).toHaveBeenCalledTimes(1);
+    });
+
+    it('وفئةٌ فيها منتجٌ مخفيّ يردّها الخادمُ — فيُقال السببُ وتبقى', async () => {
+        const why = 'لا تُحذف فئةٌ فيها منتجات — حتّى المطفأة أو غير المنشورة أو المحذوفة. انقلها إلى فئةٍ أخرى أوّلًا.';
+        vi.stubGlobal('fetch', reply(false, { message: 'x', errors: { category: [why] } }));
+        panel([c(2, 'عروض', 0)]);
+
+        fireEvent.click(screen.getByRole('button', { name: 'حذف الفئة — عروض' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'حذف الفئة' }));
+
+        expect(await screen.findByTestId('catalog-naming-error-2')).toHaveTextContent(why);
+        expect(screen.getByTestId('catalog-category-2')).toBeInTheDocument();
+    });
+
+    it('وتحت أزرار الصورة مقاسُها — والمصغّرةُ بشكل البطاقة', () => {
+        panel([{ ...c(1, 'منتجات'), card_image: '/storage/website/5/a.jpg' }]);
+
+        expect(screen.getByTestId('catalog-card-hint-1')).toHaveTextContent('الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.');
+        expect(screen.getByTestId('catalog-card-image-1').className).toContain('w-[53px]');
+    });
+});

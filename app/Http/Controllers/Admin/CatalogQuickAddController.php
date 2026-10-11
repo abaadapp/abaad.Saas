@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Addon;
 use App\Models\Category;
+use App\Models\Product;
 use App\Models\Setting;
 use App\Support\Demo;
 use App\Support\Permissions;
@@ -13,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * قسمٌ أو إضافةٌ تُنشأ من حيث تُحتاج.
@@ -107,6 +109,36 @@ class CatalogQuickAddController extends Controller
                 'name_en' => $model->name_en,
             ],
         ]);
+    }
+
+    /**
+     * حذفُ قسمٍ لا صنفَ فيه — من المحرّر حيث يراه فارغًا.
+     *
+     * كانت الأقسامُ تُنشأ ولا تُحذف: «خدمات» و«عروض» من تهيئة النشاط تبقى
+     * في قائمته أبدًا وإن لم يضع فيها شيئًا.
+     *
+     * ═══ ولا يُحذف قسمٌ يشير إليه صنفٌ — أيُّ صنف ═══
+     *
+     * المطفأُ وغيرُ المنشور والمحذوفُ في السلّة كلُّها أصنافٌ قائمة: حذفُ
+     * قسمها يُفرغ عمودَها (`nullOnDelete`) فيعود الصنفُ يومًا بلا قسم. ولا
+     * يُقيَّد السؤالُ بالمتجر: صنفُ متجرٍ آخر مربوطٌ بهذا القسم خطأً لا يُمسّ
+     * صفُّه من هنا. والصفُّ نفسُه من متجر من سجّل الدخول وإلّا فـ٤٠٤.
+     */
+    public function destroyCategory(int $category): JsonResponse
+    {
+        $model = Category::where('business_id', $this->bid())->findOrFail($category);
+
+        if (Product::withTrashed()->where('category_id', $model->id)->exists()) {
+            throw ValidationException::withMessages([
+                'category' => __('لا تُحذف فئةٌ فيها منتجات — حتّى المطفأة أو غير المنشورة أو المحذوفة. انقلها إلى فئةٍ أخرى أوّلًا.'),
+            ]);
+        }
+
+        $model->delete();
+
+        \App\Support\Activity::log('deleted', 'حذف قسم «'.$model->name.'»', ['subject_id' => $model->id]);
+
+        return response()->json(['ok' => true, 'id' => $model->id]);
     }
 
     /**

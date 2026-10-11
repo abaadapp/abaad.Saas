@@ -215,11 +215,6 @@ function CardControls({ category, onSaved, children }: { category: CatalogCatego
 
             {busy && <Loader2 className="size-4 shrink-0 animate-spin text-[#6b7280]" />}
 
-            {/* البطاقةُ تملأ إطارًا أفقيًّا وتقصّ ما يزيد — فالطوليّةُ تفقد رأسَها وقدمَها */}
-            <p className="w-full text-[11.5px] text-[#9ca3af]" data-testid={`catalog-card-hint-${category.id}`}>
-                {t('الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.')}
-            </p>
-
             {error && (
                 <p role="alert" className="flex w-full items-start gap-1.5 text-[12px] text-[#b91c1c]">
                     <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
@@ -513,6 +508,14 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                 <p className="mt-0.5 text-[12px] leading-relaxed text-[#6b7280]">
                     {t('ولكل فئة بطاقتها: ترتّبها بالسهمين، أو تخفيها من هذا القسم، أو تضع لها صورة — يُطبَّق على الموقع فورًا، ومنتجاتها تبقى في المتجر.')}
                 </p>
+                {/*
+                    والبطاقةُ تملأ إطارًا أفقيًّا وتقصّ ما يزيد — فالطوليّةُ تفقد رأسَها
+                    وقدمَها. ويُقال مرّةً فوق القائمة لا تحت كلِّ فئة: أربعُ نسخٍ منه
+                    في عمودٍ ضيّق كانت تزحم الصفوف.
+                */}
+                <p className="mt-0.5 text-[12px] leading-relaxed text-[#9ca3af]" data-testid="catalog-card-hint">
+                    {t('الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.')}
+                </p>
             </div>
 
             {orderError && (
@@ -533,78 +536,79 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                         const shows = stocked && ! c.card_hidden;
 
                         return (
-                            <li
-                                key={c.id}
-                                data-testid={`catalog-category-${c.id}`}
-                                className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5"
-                            >
-                                <div className="flex shrink-0 items-center" data-testid={`catalog-order-${c.id}`}>
-                                    <button
-                                        type="button"
-                                        aria-label={`${t('تحريك لأعلى')} ${c.name}`}
-                                        disabled={moving || i === 0}
-                                        onClick={() => move(i, -1)}
-                                        className={arrowButton}
-                                    >
-                                        <ArrowUp className="size-4" />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        aria-label={`${t('تحريك لأسفل')} ${c.name}`}
-                                        disabled={moving || i === list.length - 1}
-                                        onClick={() => move(i, 1)}
-                                        className={arrowButton}
-                                    >
-                                        <ArrowDown className="size-4" />
-                                    </button>
-                                </div>
-                                {c.card_image ? (
-                                    <img
-                                        src={c.card_image}
-                                        alt=""
-                                        className="h-10 w-[53px] shrink-0 rounded-[8px] object-cover ring-1 ring-[var(--ui-border,#e8e8e8)]"
-                                        data-testid={`catalog-card-image-${c.id}`}
-                                    />
-                                ) : (
-                                    <span className="flex h-10 w-[53px] shrink-0 items-center justify-center rounded-[8px] bg-[#f3efe9] text-[#9ca3af]">
-                                        <ImageOff className="size-4" />
-                                    </span>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-[13px] font-medium text-[#111]">
-                                        {c.name}
+                            <li key={c.id} data-testid={`catalog-category-${c.id}`} className="space-y-2 px-3 py-2.5">
+                                {/*
+                                    ═══ سطران لا سطرٌ واحد ═══
+
+                                    اللوحةُ بعرض عمود المحرّر (نحو ٣٤٠ بكسل). وكان الصفُّ
+                                    يجمع السهمين والصورةَ والاسمَ والحالَ ورابطَ المنتجات
+                                    في سطرٍ واحد، فلا يبقى للنصّ إلّا ستّون بكسلًا: الاسمُ
+                                    يُقصّ («خد…»)، والحالُ كلمةٌ في كلّ سطر، والعددُ يركب
+                                    الرابط. فالأوّلُ للفئة وحدها — والسهمان فوق بعضهما
+                                    ليتّسع الاسم — والثاني للأزرار ومعها رابطُ المنتجات.
+                                */}
+                                <div className="flex items-start gap-2.5">
+                                    <div className="flex shrink-0 flex-col" data-testid={`catalog-order-${c.id}`}>
+                                        <button
+                                            type="button"
+                                            aria-label={`${t('تحريك لأعلى')} ${c.name}`}
+                                            disabled={moving || i === 0}
+                                            onClick={() => move(i, -1)}
+                                            className={arrowButton}
+                                        >
+                                            <ArrowUp className="size-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-label={`${t('تحريك لأسفل')} ${c.name}`}
+                                            disabled={moving || i === list.length - 1}
+                                            onClick={() => move(i, 1)}
+                                            className={arrowButton}
+                                        >
+                                            <ArrowDown className="size-4" />
+                                        </button>
+                                    </div>
+                                    {c.card_image ? (
+                                        <img
+                                            src={c.card_image}
+                                            alt=""
+                                            className="mt-1 h-10 w-[53px] shrink-0 rounded-[8px] object-cover ring-1 ring-[var(--ui-border,#e8e8e8)]"
+                                            data-testid={`catalog-card-image-${c.id}`}
+                                        />
+                                    ) : (
+                                        <span className="mt-1 flex h-10 w-[53px] shrink-0 items-center justify-center rounded-[8px] bg-[#f3efe9] text-[#9ca3af]">
+                                            <ImageOff className="size-4" />
+                                        </span>
+                                    )}
+                                    <div className="min-w-0 flex-1 pt-1" data-testid={`catalog-text-${c.id}`}>
+                                        <p className="break-words text-[13px] font-medium leading-snug text-[#111]">{c.name}</p>
                                         {c.name_en && (
-                                            <span dir="ltr" className="ms-1.5 text-[12px] font-normal text-[#9ca3af]">
-                                                {c.name_en}
+                                            <p className="break-words text-[12px] leading-snug text-[#9ca3af]">
+                                                <span dir="ltr">{c.name_en}</span>
+                                            </p>
+                                        )}
+                                        <p
+                                            className={cn(
+                                                'mt-1 flex items-start gap-1 text-[12px] leading-snug',
+                                                shows ? 'text-[#047857]' : 'text-[#b45309]',
+                                            )}
+                                        >
+                                            {shows ? <Eye className="mt-px size-3.5 shrink-0" /> : <EyeOff className="mt-px size-3.5 shrink-0" />}
+                                            <span>
+                                                {shows
+                                                    ? t('تظهر في الموقع')
+                                                    : c.card_hidden
+                                                      ? t('مخفيّة من «تسوّق حسب الفئة» — منتجاتها تبقى في المتجر')
+                                                      : t('لن تظهر — لا يوجد منتج مفعّل ومنشور')}
                                             </span>
-                                        )}
-                                    </p>
-                                    <p
-                                        className={cn(
-                                            'mt-0.5 flex items-center gap-1 text-[12px]',
-                                            shows ? 'text-[#047857]' : 'text-[#b45309]',
-                                        )}
-                                    >
-                                        {shows ? <Eye className="size-3.5 shrink-0" /> : <EyeOff className="size-3.5 shrink-0" />}
-                                        {shows
-                                            ? t('تظهر في الموقع')
-                                            : c.card_hidden
-                                              ? t('مخفيّة من «تسوّق حسب الفئة» — منتجاتها تبقى في المتجر')
-                                              : t('لن تظهر — لا يوجد منتج مفعّل ومنشور')}
+                                        </p>
                                         {stocked && (
-                                            <span className="text-[#6b7280]">
-                                                · {t(':count منتج مفعّل ومنشور', { count: c.shown_count })}
-                                            </span>
+                                            <p className="text-[12px] leading-snug text-[#6b7280]">
+                                                {t(':count منتج مفعّل ومنشور', { count: c.shown_count })}
+                                            </p>
                                         )}
-                                    </p>
+                                    </div>
                                 </div>
-                                <Link
-                                    href={route('admin.products.index', { category: c.name })}
-                                    className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-[#111] underline"
-                                >
-                                    {t('عرض المنتجات')}
-                                    <ChevronLeft className="size-3.5" />
-                                </Link>
                                 <CardControls
                                     category={c}
                                     onSaved={(saved) => {
@@ -624,6 +628,13 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                                             onCardChange?.();
                                         }}
                                     />
+                                    <Link
+                                        href={route('admin.products.index', { category: c.name })}
+                                        className="inline-flex h-8 shrink-0 items-center gap-1 px-2 text-[12px] font-medium text-[#111] underline"
+                                    >
+                                        {t('عرض المنتجات')}
+                                        <ChevronLeft className="size-3.5" />
+                                    </Link>
                                 </CardControls>
                             </li>
                         );

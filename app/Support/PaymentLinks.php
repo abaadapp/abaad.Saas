@@ -343,6 +343,18 @@ final class PaymentLinks
         if ($gateway === null || ! Paymob::verify($obj, $hmac, (string) $gateway->hmac_secret)) {
             Log::warning('paymob link: توقيعٌ لا يطابق', ['link' => $link->id]);
 
+            /*
+             * ويُقال على الرابط — فهو أرجحُ أسباب «دفع العميلُ ولم يُسجَّل»:
+             * HMAC المحفوظُ هنا غيرُ ما في لوحة Paymob. وكان يُكتب في سجلّ
+             * الخادم وحده، فلا يرى صاحبُ المحلّ إلّا «بانتظار الدفع».
+             *
+             * وعلى المعلَّق وحده، ولا يمسّ مالًا ولا حالًا: من يطرق بلا سرٍّ
+             * لا يكتب إلّا هذه الجملة، ودفعٌ صحيحٌ بعدها يمحوها (`settle`).
+             */
+            if ($link->status === CustomerPaymentLink::PENDING) {
+                self::note($link, 'وصل إشعارُ دفعٍ بتوقيعٍ لا يطابق HMAC المحفوظ — راجع HMAC في إعدادات Paymob.');
+            }
+
             return true;
         }
 

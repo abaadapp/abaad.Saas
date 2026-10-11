@@ -7615,5 +7615,11 @@
     "مخفيّة من «تسوّق حسب الفئة» — منتجاتها تبقى في المتجر": "Hidden from “Shop by category” — its products stay in the shop",
     "ولكل فئة بطاقتها: ترتّبها بالسهمين، أو تخفيها من هذا القسم، أو تضع لها صورة — يُطبَّق على الموقع فورًا، ومنتجاتها تبقى في المتجر.": "Each category has its own card: order it with the arrows, hide it from this section, or give it a picture — it applies to the site right away, and its products stay in the shop.",
     "تعذّر حفظ الترتيب": "Could not save the order",
-    "في الترتيب فئةٌ ليست في متجرك — حدّث الصفحة.": "The order includes a category that is not in your shop — refresh the page."
+    "في الترتيب فئةٌ ليست في متجرك — حدّث الصفحة.": "The order includes a category that is not in your shop — refresh the page.",
+    "تعديل الاسم": "Rename",
+    "حذف الفئة": "Delete category",
+    "حذف فئة «:name»؟ ليس فيها منتجات.": "Delete the “:name” category? It has no products.",
+    "تعذّر الحفظ": "Could not save",
+    "الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.": "Best: a landscape 4:3 picture, like 1200×900. Portrait pictures are cropped at the top and bottom.",
+    "لا تُحذف فئةٌ فيها منتجات — حتّى المطفأة أو غير المنشورة أو المحذوفة. انقلها إلى فئةٍ أخرى أوّلًا.": "A category with products cannot be deleted, even inactive, unpublished or deleted ones. Move them to another category first."
 }

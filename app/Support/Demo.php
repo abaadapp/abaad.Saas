@@ -16,6 +16,8 @@ use App\Models\Coupon;
 use App\Models\Currency;
 use App\Models\CustomAlert;
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
+use App\Models\CustomerInvoice;
 use App\Models\DismissedNotification;
 use App\Models\Expense;
 use App\Models\ExpenseType;
@@ -2728,6 +2730,29 @@ class Demo
         $sums = $rows->pluck('s', 'bucket');
         $counts = $rows->pluck('c', 'bucket');
 
+        /*
+         * ═══ والمتجرُ كلُّه من الدفتر — كبطاقته ═══
+         *
+         * بطاقةُ «إجمالي المبيعات» فوق المخطّط تُقرأ من الدفتر للمتجر كلِّه
+         * (`reportSummary`): صافي الإيرادات وضريبتُها. والمخطّطُ كان يجمع
+         * الطلبات وحدها، فلا تقع فيه فاتورةُ العميل اليدويّة ولا إشعارُ الدائن
+         * — وأعمدتُه لا تجمع البطاقةَ التي فوقها.
+         *
+         * فالمبلغُ هنا ما تقرؤه البطاقة بعينه، مقسومًا على الزمن
+         * (`Ledger::creditByBucket`): الفاتورةُ المولودة من طلبٍ لا قيدَ لها
+         * فلا تُعدّ مرّتين، والإلغاءُ وإشعارُ الدائن يُنقصان في يومهما. وعددُ
+         * العمود طلباتُه كما كان — الفاتورةُ اليدويّة مبلغٌ لا طلب.
+         *
+         * والقناةُ والبوتيكُ من الطلبات كما كانا: الدفترُ لا يفصلهما.
+         */
+        if ($boutique === null && ($channel === null || $channel === '')) {
+            $through = $cutoff->copy()->startOfDay()->addDay();
+            $revenue = Ledger::creditByBucket(Ledger::revenueLines($bid, $start, $through, $branchId), $unit);
+            $taxes = Ledger::creditByBucket(Ledger::outputTaxLines($bid, $start, $through, $branchId), $unit);
+            $sums = collect(array_keys($revenue + $taxes))
+                ->mapWithKeys(fn ($k) => [$k => ($revenue[$k] ?? 0.0) + ($taxes[$k] ?? 0.0)]);
+        }
+
         $labels = [];
         $full = [];
         $data = [];
@@ -3467,14 +3492,80 @@ class Demo
      */
     public static function topCustomers(int $limit = 7, string|ReportingPeriod $range = 'month', ?int $bid = null): array
     {
-        return self::period($range)->bound(Order::where('business_id', $bid ?? self::bid())->sold()->whereNotNull('customer_name'), 'ordered_at')
+        return array_slice(self::customerSpend($range, $bid ?? self::bid()), 0, $limit);
+    }
+
+    /**
+     * ما أنفقه كلُّ عميلٍ في الفترة — الطلباتُ وفواتيرُه اليدويّة، ناقصًا ما رُدّ.
+     *
+     * ═══ ما كان ═══
+     *
+     * الطلباتُ وحدها. فشركةٌ تُفوتَر بيدٍ — توريدٌ بلا طلبٍ في نقطة البيع —
+     * لا تظهر في «الأكثر إنفاقًا» ولو كانت أكبرَ عملاء المتجر، وهي في ذممه
+     * وكشف حسابه وفي الدفتر.
+     *
+     * ═══ وما يُجمع — بلا بيعةٍ مرّتين ═══
+     *
+     *   - الطلباتُ المباعة (`sold`) كما كانت، بيوم الطلب وباسم عميله.
+     *   - والفاتورةُ اليدويّة الصادرة، بيوم إصدارها — وتُعرف بقيدها: هي
+     *     التي رحّلت بيعتَها (`CustomerInvoices::post`). المولودةُ من طلبٍ
+     *     أو ورقةُ الشهر لا قيدَ لها، وطلباتُها معدودةٌ أعلاه.
+     *     والملغاةُ لا تُعدّ — كما لا يُعدّ الطلبُ الملغى.
+     *   - ناقصًا إشعارَ الدائن اليدويّ بيومه، على فاتورةٍ غير ملغاة — وهو
+     *     ما يُرحَّل مردوداتٍ (`CustomerInvoices::creditNote`). وإشعارُ إلغاء
+     *     الطلب لا يُطرح: طلبُه سقط من `sold` أصلًا.
+     *
+     * والعميلُ يُعرف باسمه كما كان: اسمُ الطلب، ولقطةُ اسمه على الفاتورة.
+     * و«الطلبات» عددُ المشتريات — الفاتورةُ اليدويّة شراءٌ واحد.
+     *
+     * @return list<array{name: string, total: float, orders: int}>
+     */
+    public static function customerSpend(string|ReportingPeriod $range, int $bid): array
+    {
+        $period = self::period($range);
+        $spend = [];
+        $add = function (?string $name, float $total, int $count) use (&$spend) {
+            $key = (string) $name;
+            $spend[$key] ??= ['name' => $key, 'total' => 0.0, 'orders' => 0];
+            $spend[$key]['total'] += $total;
+            $spend[$key]['orders'] += $count;
+        };
+
+        $period->bound(Order::where('business_id', $bid)->sold()->whereNotNull('customer_name'), 'ordered_at')
             ->selectRaw('customer_name, SUM(total) as t, COUNT(*) as c')
-            ->groupBy('customer_name')->orderByDesc('t')->limit($limit)->get()
-            ->map(fn ($r) => [
-                'name' => self::customerLabel($r->customer_name),
-                'total' => round((float) $r->t, 3),
-                'orders' => (int) $r->c,
-            ])->all();
+            ->groupBy('customer_name')->get()
+            ->each(fn ($r) => $add($r->customer_name, (float) $r->t, (int) $r->c));
+
+        $period->bound(
+            CustomerInvoice::where('business_id', $bid)->where('status', CustomerInvoice::ISSUED)
+                // «يدويّة» = رحّلت قيدَها بنفسها (`CustomerInvoices::post`) — لا ما بقي بلا طلبٍ مربوط
+                ->whereExists(fn ($q) => $q->selectRaw('1')->from('journal_entries')
+                    ->whereColumn('journal_entries.sourceable_id', 'customer_invoices.id')
+                    ->where('journal_entries.sourceable_type', CustomerInvoice::class)
+                    ->where('journal_entries.source', CustomerInvoices::SOURCE)),
+            'issued_at',
+            date: true,
+        )->with('customer:id,name')->get(['id', 'customer_id', 'customer_name', 'total'])
+            ->each(fn ($i) => $add($i->customer_name ?: $i->customer?->name, (float) $i->total, 1));
+
+        $period->bound(
+            CustomerCreditNote::where('business_id', $bid)->where('source', CustomerInvoices::NOTE_MANUAL)
+                ->whereHas('invoice', fn ($q) => $q->where('status', '!=', CustomerInvoice::CANCELLED)),
+            'issued_at',
+            date: true,
+        )->with('invoice:id,customer_id,customer_name', 'invoice.customer:id,name')->get(['id', 'customer_invoice_id', 'amount'])
+            ->each(fn ($n) => $add($n->invoice->customer_name ?: $n->invoice->customer?->name, -(float) $n->amount, 0));
+
+        $rows = array_map(fn ($r) => [
+            'name' => self::customerLabel($r['name']),
+            'total' => round($r['total'], 3),
+            'orders' => $r['orders'],
+        ], array_values($spend));
+
+        // والتساوي يُفصل بالاسم: صفّان بالمبلغ نفسه لا يتبادلان الموضع بين فتحةٍ وأخرى
+        usort($rows, fn ($a, $b) => [$b['total'], $a['name']] <=> [$a['total'], $b['name']]);
+
+        return $rows;
     }
 
     /** المبيعات حسب القسم */

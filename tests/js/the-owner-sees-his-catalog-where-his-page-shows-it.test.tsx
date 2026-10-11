@@ -487,10 +487,36 @@ describe('اسمُ الفئة وحذفُها من المحرّر', () => {
         expect(screen.getByTestId('catalog-category-2')).toBeInTheDocument();
     });
 
-    it('وتحت أزرار الصورة مقاسُها — والمصغّرةُ بشكل البطاقة', () => {
-        panel([{ ...c(1, 'منتجات'), card_image: '/storage/website/5/a.jpg' }]);
+    it('ومقاسُ الصورة يُقال مرّةً فوق القائمة — والمصغّرةُ بشكل البطاقة', () => {
+        panel([{ ...c(1, 'منتجات'), card_image: '/storage/website/5/a.jpg' }, c(2, 'خدمات', 0)]);
 
-        expect(screen.getByTestId('catalog-card-hint-1')).toHaveTextContent('الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.');
+        expect(screen.getAllByTestId('catalog-card-hint')).toHaveLength(1);
+        expect(screen.getByTestId('catalog-card-hint')).toHaveTextContent('الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.');
         expect(screen.getByTestId('catalog-card-image-1').className).toContain('w-[53px]');
+    });
+});
+
+/* ═══════════ عمودُ المحرّر ضيّق: الفئةُ في سطرها والأزرارُ تحتها ═══════════ */
+
+describe('صفُّ الفئة في عمودٍ ضيّق', () => {
+    it('السطرُ الأوّل للفئة وحدها — ورابطُ المنتجات مع الأزرار لا بجانب الاسم', () => {
+        for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
+        Object.assign(pageProps, { translations: {} });
+        render(
+            <CategoriesPanel
+                categories={[{ id: 1, name: 'خدمات', name_en: 'Services', shown_count: 6, card_hidden: false, card_image: null, sort_order: null }]}
+            />,
+        );
+
+        const text = screen.getByTestId('catalog-text-1');
+        // الاسمُ يلتفّ ولا يُقصّ، والحالُ والعددُ في سطرين لا يتراكبان
+        expect(within(text).getByText('خدمات').className).not.toContain('truncate');
+        expect(within(text).getByText('تظهر في الموقع')).toBeInTheDocument();
+        expect(within(text).getByText('6 منتج مفعّل ومنشور').tagName).toBe('P');
+        // والرابطُ في سطر الأزرار — لا في سطر الفئة
+        expect(within(text).queryByRole('link', { name: /عرض المنتجات/ })).toBeNull();
+        expect(within(screen.getByTestId('catalog-card-1')).getByRole('link', { name: /عرض المنتجات/ })).toBeInTheDocument();
+        // والسهمان فوق بعضهما ليتّسع الاسم
+        expect(screen.getByTestId('catalog-order-1').className).toContain('flex-col');
     });
 });

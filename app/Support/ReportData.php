@@ -211,6 +211,38 @@ class ReportData
             $months[$key]['delivery'] += (float) $order->delivery_fee;
         }
 
+        /*
+         * ═══ وفواتيرُ العملاء اليدويّة وإشعاراتُ الدائن — من قيودها ═══
+         *
+         * الطلباتُ وحدها كانت تُسقطها: فاتورةٌ يدويّةٌ بلا طلب تُرحِّل ضريبتَها
+         * في «ضريبة مستحقّة» (`CustomerInvoices::post`) ولا يراها الإقرار،
+         * وإشعارُ الدائن يُنقصها ولا يُنقص الإقرار. فيفترق الإقرارُ عن الدفتر
+         * بضريبةٍ مستحقّةٍ لم تُعلَن.
+         *
+         * وتُقرأ من الدفتر لا من الأوراق (`CustomerInvoices::ledgerLines`):
+         * الفاتورةُ يومَ إصدارها، والإشعارُ يومَه، وإلغاءُ الفاتورة عكسٌ في
+         * يومه — كما يقرؤها `Ledger::outputTax`. والفاتورةُ المولودة من طلبٍ
+         * لا قيدَ لها، فلا تُعدّ ثانيةً بعد طلبها.
+         *
+         * والوعاءُ سطرُ الإيراد في القيد نفسه: «المبيعات» دائنٌ بالصافي بعد
+         * الخصم، و«مردودات المبيعات» مدينٌ بصافي الإشعار.
+         */
+        $documents = $period->bound(CustomerInvoices::ledgerLines($bid), 'je.entry_date', date: true)
+            ->where(fn ($q) => $q->where('a.system_key', 'tax_payable')->orWhere('a.type', Ledger::REVENUE_TYPE))
+            ->get(['je.entry_date', 'a.system_key', 'journal_lines.credit', 'journal_lines.debit']);
+
+        foreach ($documents as $line) {
+            $key = substr((string) $line->entry_date, 0, 7);
+            $months[$key] ??= self::vatRow($key);
+            $net = (float) $line->credit - (float) $line->debit;
+
+            if ($line->system_key === 'tax_payable') {
+                $months[$key]['output'] += $net;
+            } else {
+                $months[$key]['taxable'] += $net;
+            }
+        }
+
         foreach ($bought as $invoice) {
             $key = optional($invoice->issued_at)->format('Y-m') ?? '—';
             $months[$key] ??= self::vatRow($key);
@@ -336,23 +368,21 @@ class ReportData
 
         // سقفٌ يُقال على الشاشة لا يُخفى: قائمةُ «الأكثر إنفاقًا» مبتورةٌ عمدًا
         $limit = 50;
-        $rows = collect(Demo::topCustomers($limit, $period, $bid))
-            ->map(fn ($c, $i) => ['id' => $i + 1] + $c);
+        $spend = collect(Demo::customerSpend($period, $bid));
+        $rows = $spend->take($limit)->values()->map(fn ($c, $i) => ['id' => $i + 1] + $c);
 
         /*
          * والبطاقاتُ على كلّ من اشترى في الفترة — لا على الخمسين.
          *
          * كانت تُجمع من صفوف الجدول: «إجمالي الإنفاق» يُقرأ إنفاقَ العملاء
          * كلِّهم وهو إنفاقُ أعلاهم وحدهم، و«عملاء اشتروا» لا يتجاوز خمسين
-         * أبدًا. والاستعلامُ هنا هو استعلامُ الجدول بعينه (`Demo::topCustomers`):
-         * النشاطُ والفترةُ والمباعُ وحده (`sold`) والعميلُ المسمّى — بلا حدّ.
+         * أبدًا. وهي الآن من القائمة نفسِها بلا حدّ (`Demo::customerSpend`):
+         * الطلباتُ وفواتيرُ العملاء اليدويّة ناقصًا إشعاراتِ الدائن — ومن
+         * لم يُحسب له في الفترة إلا إشعارٌ لم «يشترِ» فيها.
          */
-        $all = $period->bound(Order::where('business_id', $bid)->sold()->whereNotNull('customer_name'), 'ordered_at')
-            ->selectRaw('COALESCE(SUM(total), 0) as t, COUNT(*) as c, COUNT(DISTINCT customer_name) as n')
-            ->first();
-
-        $total = (float) ($all->t ?? 0);
-        $orders = (int) ($all->c ?? 0);
+        $total = (float) $spend->sum('total');
+        $orders = (int) $spend->sum('orders');
+        $all = (object) ['n' => $spend->where('orders', '>', 0)->count()];
 
         return array_merge(self::capped($rows, $rows->count()), [
             'limit' => $limit,

@@ -198,11 +198,11 @@ class AReportSaysWhatItCountsTest extends TestCase
         $this->assertSame(50, substr_count($this->text($sheet), '"عميل '));
         $cards = [];
         foreach ($sheet->toArray(null, false, false) as $row) {
-            if (in_array($row[0], ['عملاء اشتروا', 'عدد الطلبات'], true)) {
+            if (in_array($row[0], ['عملاء اشتروا', 'عدد المشتريات'], true)) {
                 $cards[$row[0]] = $row[1];
             }
         }
-        $this->assertEquals(['عملاء اشتروا' => '55', 'عدد الطلبات' => '56'], $cards);
+        $this->assertEquals(['عملاء اشتروا' => '55', 'عدد المشتريات' => '56'], $cards);
 
         // والشاشةُ تقول إنّ البطاقات للكلّ حين يفترقان
         $this->assertStringContainsString('customers-cards-note', file_get_contents(resource_path('js/Pages/Admin/Reports/Customers.tsx')));

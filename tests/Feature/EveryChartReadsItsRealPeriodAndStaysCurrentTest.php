@@ -8,6 +8,7 @@ use App\Models\Business;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
+use App\Support\Books;
 use App\Support\DashboardMetrics;
 use App\Support\Demo;
 use App\Support\SalesChannel;
@@ -72,7 +73,24 @@ class EveryChartReadsItsRealPeriodAndStaysCurrentTest extends TestCase
         parent::tearDown();
     }
 
+    /**
+     * بيعةٌ كما تقع: طلبٌ وقيدُه (`Books::recordSale`) — كما ترحّلها نقطةُ البيع.
+     *
+     * وملخّصُ المبيعات للمتجر كلِّه يقرأ الدفتر (`Demo::salesTrend`)، فطلبٌ بلا
+     * قيدٍ ليس بيعةً هناك. والمعلَّقُ والملغى لا قيدَ لهما.
+     */
     private function sale(string $at, float $total, array $over = []): Order
+    {
+        $order = $this->order($at, $total, $over);
+
+        if (! $order->is_held && $order->status !== Order::CANCELLED) {
+            Books::recordSale($order);
+        }
+
+        return $order;
+    }
+
+    private function order(string $at, float $total, array $over = []): Order
     {
         return Order::create($over + [
             'business_id' => $this->shop->id,

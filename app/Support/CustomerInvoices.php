@@ -12,6 +12,7 @@ use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Product;
 use App\Support\Document\Snapshot;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -519,6 +520,39 @@ final class CustomerInvoices
             $userId,
             $invoice,
         );
+    }
+
+    /**
+     * سطورُ الدفتر لما يرحّله هذا الصنفُ بنفسه — وعكوسُها.
+     *
+     * الفاتورةُ اليدويّة (`post`)، وإشعارُ الدائن اليدويّ (`creditNote`)،
+     * والقيدُ العكسيّ لإلغاء الفاتورة (`cancel` → `Ledger::reverse`) في يومه.
+     *
+     * ═══ وبهذا لا تُعدّ بيعةٌ مرّتين ═══
+     *
+     * الفاتورةُ المولودة من طلبٍ — واحدًا كان أو ورقةَ شهرٍ — لا قيدَ لها
+     * (`post`)، وإشعارُ إلغاء الطلب لا قيدَ له (`NOTE_ORDER_CANCELLED`): قيدُ
+     * الطلب وعكسُه في `Books`. فمن قرأ الطلبات ثمّ هذه السطور لا يقرأ بيعةً
+     * مرّتين — وهو ما يفعله إقرارُ الضريبة وملخّصُ المبيعات.
+     *
+     * والعكسُ يُعرف بقيده الأصليّ لا باسمه: اسمُ العكس يُكتب بلغة من ألغى
+     * (`__('عكس ')`).
+     *
+     * @return Builder
+     */
+    public static function ledgerLines(int $businessId)
+    {
+        $sources = [self::SOURCE, self::SOURCE_CREDIT];
+
+        return DB::table('journal_lines')
+            ->join('journal_entries as je', 'je.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts as a', 'a.id', '=', 'journal_lines.account_id')
+            ->leftJoin('journal_entries as orig', 'orig.id', '=', 'je.reverses_id')
+            ->where('je.business_id', $businessId)
+            ->where('a.business_id', $businessId)
+            ->where('je.posted', true)
+            ->where(fn ($q) => $q->where(fn ($own) => $own->whereNull('je.reverses_id')->whereIn('je.source', $sources))
+                ->orWhereIn('orig.source', $sources));
     }
 
     /**

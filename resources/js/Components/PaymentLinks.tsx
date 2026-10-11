@@ -71,6 +71,31 @@ export function LinkStatus({ status }: { status: PaymentLinkRow['status'] }) {
     );
 }
 
+/**
+ * لماذا لم يُدفع؟ — سببُ فشل الإنشاء، أو آخرُ ما وصل من Paymob عن رابطٍ معلَّق.
+ *
+ * والسببُ محفوظٌ على الرابط من قبل (`error`) ولم يكن يُرسم: فدفعٌ رُدّ أو
+ * إشعارٌ بتوقيعٍ خاطئ يترك صاحبَ المحلّ أمام «بانتظار الدفع» وحدها، فلا
+ * يعرف أيُصلح إعدادًا أم ينتظر. والمدفوعُ لا سببَ له.
+ */
+export function LinkWhy({ link }: { link: PaymentLinkRow }) {
+    const t = useTranslate();
+
+    if (! link.error || link.status === 'paid') return null;
+
+    const failed = link.status === 'failed';
+
+    return (
+        <span
+            className={`block text-[12px] ${failed ? 'text-[#b91c1c]' : 'text-[#b45309]'}`}
+            dir="auto"
+            data-testid="payment-link-why"
+        >
+            {t(failed ? 'سبب الفشل' : 'آخر ما وصل من Paymob')}: {link.error}
+        </span>
+    );
+}
+
 /** نصُّ المشاركة — الرابطُ والمبلغ، ولا شيءَ غيرُهما */
 export const shareText = (link: PaymentLinkRow, amount: string) => `${amount}\n${link.url ?? ''}`;
 
@@ -281,6 +306,7 @@ export default function PaymentLinksCard({
                                     </SmartLink>
                                 )}
                                 {l.review && <span className="text-[12px] text-[#b45309]">{t('تحتاج مراجعة — انظر سجل النشاط')}</span>}
+                                <LinkWhy link={l} />
                             </div>
                             <LinkActions link={l} can={panel.can} />
                         </li>

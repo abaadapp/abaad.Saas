@@ -8,7 +8,7 @@ import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
 import StatCard from '@/Components/StatCard';
 import Field, { Select } from '@/Components/Field';
 import SmartLink from '@/Components/SmartLink';
-import { JustCreated, LinkActions, LinkStatus, NotConfigured, type PaymentLinkRow, type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import { JustCreated, LinkActions, LinkStatus, LinkWhy, NotConfigured, type PaymentLinkRow, type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -154,6 +154,7 @@ export default function PaymentLinksPage() {
                                 <TableCell>
                                     <LinkStatus status={l.status} />
                                     {l.review && <span className="ms-2 text-[12px] text-[#b45309]">{t('تحتاج مراجعة')}</span>}
+                                    <LinkWhy link={l} />
                                 </TableCell>
                                 <TableCell dir="ltr" className="text-start text-[12px]">{l.created_at}</TableCell>
                                 <TableCell dir="ltr" className="text-start text-[12px]">{l.expires_at ?? '—'}</TableCell>

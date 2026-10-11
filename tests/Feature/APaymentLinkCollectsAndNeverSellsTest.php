@@ -454,6 +454,32 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
         $this->assertSame(1, CustomerPayment::count());
     }
 
+    /**
+     * وما رُدّ يُقال على الرابط نفسِه — وأوّلُه توقيعٌ لا يطابق: أرجحُ أسباب
+     * «دفع العميلُ ولم يُسجَّل»، وكان في سجلّ الخادم وحده.
+     */
+    public function test_why_a_notification_was_refused_is_said_on_the_link(): void
+    {
+        $link = $this->link($this->invoice());
+        $why = fn () => PaymentLinks::row($link->fresh())['error'];
+
+        $this->hook($this->obj($link), 'hmac-other');
+        $this->assertSame('وصل إشعارُ دفعٍ بتوقيعٍ لا يطابق HMAC المحفوظ — راجع HMAC في إعدادات Paymob.', $why());
+
+        $this->hook($this->obj($link, ['amount_cents' => 104999]));
+        $this->assertSame('المبلغُ أو العملةُ لا يطابقان الرابط', $why());
+
+        $this->hook($this->obj($link, ['success' => false, 'data' => ['message' => 'Declined']]));
+        $this->assertSame('Declined', $why());
+
+        // والدفعُ الصحيح يمحو السبب — والمدفوعُ لا يُكتب عليه توقيعٌ خاطئٌ بعده
+        $this->hook($this->obj($link));
+        $this->assertNull($link->fresh()->error);
+        $this->hook($this->obj($link), 'hmac-other');
+        $this->assertNull($link->fresh()->error);
+        $this->assertSame(CustomerPaymentLink::PAID, $link->fresh()->status);
+    }
+
     public function test_a_transaction_id_pays_one_link_only(): void
     {
         $first = $this->link($this->invoice());

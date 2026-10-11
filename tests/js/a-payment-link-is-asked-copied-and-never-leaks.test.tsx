@@ -144,6 +144,45 @@ describe('بطاقةُ روابط الفاتورة', () => {
     });
 });
 
+describe('لماذا لم يُدفع — يُقال في صفّ الرابط', () => {
+    const HMAC = 'وصل إشعارُ دفعٍ بتوقيعٍ لا يطابق HMAC المحفوظ — راجع HMAC في إعدادات Paymob.';
+
+    it('المعلَّقُ يقول آخرَ ما وصل من Paymob، والفاشلُ سببَ فشله، والمدفوعُ لا شيء', () => {
+        render(
+            <PaymentLinksCard
+                panel={panel({
+                    links: [
+                        row({ id: 1, status: 'pending', error: HMAC }),
+                        row({ id: 2, status: 'failed', url: null, error: 'رفضت Paymob مفتاح API.' }),
+                        row({ id: 3, status: 'paid', error: 'قديم' }),
+                        row({ id: 4, status: 'pending', error: null }),
+                    ],
+                })}
+                customerId={7}
+                title="روابط الدفع"
+                action="طلب دفعة"
+            />,
+        );
+
+        const why = screen.getAllByTestId('payment-link-why');
+        expect(why.map((w) => w.textContent)).toEqual([`آخر ما وصل من Paymob: ${HMAC}`, 'سبب الفشل: رفضت Paymob مفتاح API.']);
+        expect(why[1].className).toContain('text-[#b91c1c]');
+    });
+
+    it('وفي جدول المالية السببُ نفسُه تحت الحال', () => {
+        for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
+        Object.assign(pageProps, {
+            translations: {}, context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 } },
+            auth: { abilities: ['finance'], mayActions: [] }, flash: { toast: null, status: null },
+            ...panel({ links: [row({ status: 'pending', error: 'Declined' })] }),
+            status: null, counts: { pending: 1 }, customers: [], clearing: 0, settlements: [], bankAccounts: [],
+        });
+        render(<PaymentLinksPage />);
+
+        expect(within(screen.getByTestId('payment-link-row')).getByTestId('payment-link-why')).toHaveTextContent('آخر ما وصل من Paymob: Declined');
+    });
+});
+
 describe('المالية ← روابط الدفع', () => {
     const page = (over: Record<string, unknown> = {}) => {
         reset({

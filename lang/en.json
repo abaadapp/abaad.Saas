@@ -7621,5 +7621,7 @@
     "حذف فئة «:name»؟ ليس فيها منتجات.": "Delete the “:name” category? It has no products.",
     "تعذّر الحفظ": "Could not save",
     "الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.": "Best: a landscape 4:3 picture, like 1200×900. Portrait pictures are cropped at the top and bottom.",
-    "لا تُحذف فئةٌ فيها منتجات — حتّى المطفأة أو غير المنشورة أو المحذوفة. انقلها إلى فئةٍ أخرى أوّلًا.": "A category with products cannot be deleted, even inactive, unpublished or deleted ones. Move them to another category first."
+    "لا تُحذف فئةٌ فيها منتجات — حتّى المطفأة أو غير المنشورة أو المحذوفة. انقلها إلى فئةٍ أخرى أوّلًا.": "A category with products cannot be deleted, even inactive, unpublished or deleted ones. Move them to another category first.",
+    "سبب الفشل": "Why it failed",
+    "آخر ما وصل من Paymob": "Last word from Paymob"
 }

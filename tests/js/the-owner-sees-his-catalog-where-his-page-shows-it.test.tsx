@@ -56,8 +56,8 @@ const FOOT = row({ key: 'foot', label: 'التذييل', fixed: true });
 
 const TOOLS: CatalogTools = {
     categories: [
-        { id: 1, name: 'ورد', name_en: 'Roses', shown_count: 3, card_hidden: false, card_image: null },
-        { id: 2, name: 'هدايا', name_en: null, shown_count: 0, card_hidden: false, card_image: null },
+        { id: 1, name: 'ورد', name_en: 'Roses', shown_count: 3, card_hidden: false, card_image: null, sort_order: null },
+        { id: 2, name: 'هدايا', name_en: null, shown_count: 0, card_hidden: false, card_image: null, sort_order: null },
     ],
     new_arrivals: [
         { id: 40, name: 'باقة الربيع', image: '/storage/p/40.jpg', category: 'ورد' },
@@ -227,7 +227,7 @@ describe('بطاقةُ القسم في «تسوّق حسب الفئة»', () => 
     afterEach(() => vi.unstubAllGlobals());
 
     const cat = (over: Partial<CatalogCategory> = {}): CatalogCategory => ({
-        id: 1, name: 'الإضافات', name_en: null, shown_count: 10, card_hidden: false, card_image: null, ...over,
+        id: 1, name: 'الإضافات', name_en: null, shown_count: 10, card_hidden: false, card_image: null, sort_order: null, ...over,
     });
 
     const answer = (category: Partial<CatalogCategory>, ok = true, status = 200, errors?: Record<string, string[]>) =>
@@ -319,5 +319,79 @@ describe('بطاقةُ القسم في «تسوّق حسب الفئة»', () => 
         const editor = readFileSync(resolve(process.cwd(), 'resources/js/Pages/Admin/Website/ThemeEditor.tsx'), 'utf8');
 
         expect(editor).toContain('<CategoriesPanel categories={catalogTools.categories} onCardChange={paint} />');
+    });
+});
+
+/* ═══════════ ترتيبُ الفئات بالسهمين ═══════════ */
+
+describe('ترتيبُ الفئات في الموقع', () => {
+    beforeEach(() => vi.mocked(router.visit).mockClear());
+    afterEach(() => vi.unstubAllGlobals());
+
+    const c = (id: number, name: string, sort_order: number | null = null): CatalogCategory => ({
+        id, name, name_en: null, shown_count: 2, card_hidden: false, card_image: null, sort_order,
+    });
+
+    const panel = (categories: CatalogCategory[]) => {
+        for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
+        Object.assign(pageProps, { translations: {} });
+        const repaint = vi.fn();
+        render(<CategoriesPanel categories={categories} onCardChange={repaint} />);
+
+        return repaint;
+    };
+
+    const order = () => screen.getAllByTestId(/^catalog-category-\d+$/).map((r) => Number(r.dataset.testid!.split('-').pop()));
+
+    it('يعرضها بترتيب الموقع — المرتَّبُ برقمه، ثمّ الباقي بالاسم', () => {
+        panel([c(1, 'الإضافات'), c(2, 'منتجات', 2), c(3, 'باقات', 1), c(4, 'أزهار')]);
+
+        expect(order()).toEqual([3, 2, 4, 1]);
+    });
+
+    it('يُنزل فئةً بسهم — فيُكتب الترتيبُ كلُّه، ويُرى فورًا، وتُعاد المعاينة', async () => {
+        const fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true, ids: [2, 1, 3] }) }));
+        vi.stubGlobal('fetch', fetch);
+        const repaint = panel([c(1, 'الإضافات'), c(2, 'باقات'), c(3, 'منتجات')]);
+
+        fireEvent.click(screen.getByRole('button', { name: 'تحريك لأسفل الإضافات' }));
+
+        expect(order()).toEqual([2, 1, 3]);
+        const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe('/admin.products.categories.order');
+        expect(init.method).toBe('PUT');
+        expect(JSON.parse(String(init.body))).toEqual({ ids: [2, 1, 3] });
+        await waitFor(() => expect(repaint).toHaveBeenCalledTimes(1));
+        expect(router.visit).not.toHaveBeenCalled();
+    });
+
+    it('ويرفع بالسهم الآخر — والسهمُ عند الطرف معطَّل', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) })));
+        panel([c(1, 'الإضافات'), c(2, 'باقات'), c(3, 'منتجات')]);
+
+        expect(screen.getByRole('button', { name: 'تحريك لأعلى الإضافات' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'تحريك لأسفل منتجات' })).toBeDisabled();
+
+        fireEvent.click(screen.getByRole('button', { name: 'تحريك لأعلى منتجات' }));
+        expect(order()).toEqual([1, 3, 2]);
+        await waitFor(() => expect(screen.getByRole('button', { name: 'تحريك لأسفل باقات' })).toBeDisabled());
+    });
+
+    it('وإن رُدّ الترتيبُ عاد كما كان — وقيل لماذا', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => ({
+                ok: false,
+                status: 422,
+                json: async () => ({ message: 'x', errors: { 'ids.2': ['في الترتيب فئةٌ ليست في متجرك — حدّث الصفحة.'] } }),
+            })),
+        );
+        const repaint = panel([c(1, 'الإضافات'), c(2, 'باقات'), c(3, 'منتجات')]);
+
+        fireEvent.click(screen.getByRole('button', { name: 'تحريك لأسفل الإضافات' }));
+
+        expect(await screen.findByTestId('catalog-order-error')).toHaveTextContent('في الترتيب فئةٌ ليست في متجرك — حدّث الصفحة.');
+        expect(order()).toEqual([1, 2, 3]);
+        expect(repaint).not.toHaveBeenCalled();
     });
 });

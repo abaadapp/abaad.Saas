@@ -24,7 +24,25 @@ export interface CatalogCategory {
     card_hidden: boolean;
     /** صورةُ بطاقتها — وبلاها الخطوطُ الملوّنة */
     card_image: string | null;
+    /** رقمُها في ترتيب صاحبها — وفارغٌ لما لم يُرتَّب بعد فيقع بالاسم آخرًا */
+    sort_order: number | null;
 }
+
+/**
+ * ترتيبُ الموقع كما يكتبه الخادم (`Category::scopeInStoreOrder`): المرتَّبُ
+ * برقمه، ثمّ ما لم يُرتَّب بالاسم. فالفئةُ المضافة الآن تقع حيث تقع في الموقع.
+ */
+export function inStoreOrder(list: CatalogCategory[]): CatalogCategory[] {
+    return [...list].sort(
+        (a, b) =>
+            Number(a.sort_order === null) - Number(b.sort_order === null) ||
+            (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
+            a.name.localeCompare(b.name, 'ar'),
+    );
+}
+
+/** زرّا التحريك — لمسةُ إصبعٍ كاملة، ويبهتان عند الطرف */
+const arrowButton = 'flex size-9 shrink-0 items-center justify-center rounded-[8px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30';
 
 export interface CatalogArrival {
     id: number;
@@ -219,11 +237,19 @@ function CardControls({ category, onSaved }: { category: CatalogCategory; onSave
  * وبطاقةُ كلِّ فئةٍ تُخفى وتلبس صورةً من صفّها (`CardControls`). وما
  * يتبدّل فيها يقع على الموقع لا على المسوّدة — فيُنادى `onCardChange`
  * لتُعاد المعاينة: الإطارُ يقرأ الفئاتِ من الخادم لا من النموذج.
+ *
+ * ═══ والترتيبُ بسهمين لا بسحب ═══
+ *
+ * كما في «وصل حديثًا»: يعملان بالإصبع وبلوحة المفاتيح وبالقارئ الصوتيّ.
+ * ويُكتب الترتيبُ كلُّه بعد كلّ نقلة (`admin.products.categories.order`)،
+ * ويُعرض قبل أن يعود الجواب — فإن رُدّ عاد كما كان وقيل لماذا.
  */
 export function CategoriesPanel({ categories, onCardChange }: { categories: CatalogCategory[]; onCardChange?: () => void }) {
     const t = useTranslate();
 
-    const [list, setList] = useState(categories);
+    const [list, setList] = useState(() => inStoreOrder(categories));
+    const [moving, setMoving] = useState(false);
+    const [orderError, setOrderError] = useState<string | null>(null);
     const [name, setName] = useState('');
     const [nameEn, setNameEn] = useState('');
     const [adding, setAdding] = useState(false);
@@ -231,7 +257,43 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
     const [error, setError] = useState<string | null>(null);
 
     // وحفظٌ في المحرّر يُعيد الخصائص — فما يقوله الخادم هو الأحدث
-    useEffect(() => setList(categories), [categories]);
+    useEffect(() => setList(inStoreOrder(categories)), [categories]);
+
+    const move = async (index: number, step: -1 | 1) => {
+        const to = index + step;
+        if (to < 0 || to >= list.length) return;
+
+        const before = list;
+        const after = [...list];
+        [after[index], after[to]] = [after[to], after[index]];
+        const numbered = after.map((c, i) => ({ ...c, sort_order: i + 1 }));
+
+        setList(numbered);
+        setMoving(true);
+        setOrderError(null);
+        try {
+            const res = await fetch(route('admin.products.categories.order'), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                body: JSON.stringify({ ids: numbered.map((c) => c.id) }),
+            });
+            const out = await res.json().catch(() => null);
+
+            if (! res.ok) {
+                setList(before);
+                setOrderError(Object.values((out?.errors ?? {}) as Record<string, string[]>)[0]?.[0] ?? out?.message ?? t('تعذّر حفظ الترتيب'));
+
+                return;
+            }
+
+            onCardChange?.();
+        } catch {
+            setList(before);
+            setOrderError(t('تعذّر الاتصال بالخادم'));
+        } finally {
+            setMoving(false);
+        }
+    };
 
     const add = async () => {
         const clean = name.trim();
@@ -262,9 +324,10 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                 shown_count: 0,
                 card_hidden: false,
                 card_image: null,
+                sort_order: null,
             };
 
-            setList((prev) => [...prev, made].sort((a, b) => a.name.localeCompare(b.name, 'ar')));
+            setList((prev) => inStoreOrder([...prev, made]));
             setName('');
             setNameEn('');
             setAdding(false);
@@ -283,9 +346,16 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                     {t('تظهر الفئة في الموقع عندما يكون فيها منتج مفعّل ومنشور.')}
                 </p>
                 <p className="mt-0.5 text-[12px] leading-relaxed text-[#6b7280]">
-                    {t('ولكل فئة بطاقتها: تخفيها من هذا القسم أو تضع لها صورة — يُطبَّق على الموقع فورًا، ومنتجاتها تبقى في المتجر.')}
+                    {t('ولكل فئة بطاقتها: ترتّبها بالسهمين، أو تخفيها من هذا القسم، أو تضع لها صورة — يُطبَّق على الموقع فورًا، ومنتجاتها تبقى في المتجر.')}
                 </p>
             </div>
+
+            {orderError && (
+                <p role="alert" data-testid="catalog-order-error" className="flex items-start gap-1.5 text-[12px] text-[#b91c1c]">
+                    <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                    {orderError}
+                </p>
+            )}
 
             {list.length === 0 ? (
                 <p className="rounded-[10px] bg-white px-3 py-3 text-[12px] text-[#6b7280] ring-1 ring-[var(--ui-border,#e8e8e8)]">
@@ -293,7 +363,7 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                 </p>
             ) : (
                 <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[10px] bg-white ring-1 ring-[var(--ui-border,#e8e8e8)]">
-                    {list.map((c) => {
+                    {list.map((c, i) => {
                         const stocked = c.shown_count > 0;
                         const shows = stocked && ! c.card_hidden;
 
@@ -303,6 +373,26 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                                 data-testid={`catalog-category-${c.id}`}
                                 className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5"
                             >
+                                <div className="flex shrink-0 items-center" data-testid={`catalog-order-${c.id}`}>
+                                    <button
+                                        type="button"
+                                        aria-label={`${t('تحريك لأعلى')} ${c.name}`}
+                                        disabled={moving || i === 0}
+                                        onClick={() => move(i, -1)}
+                                        className={arrowButton}
+                                    >
+                                        <ArrowUp className="size-4" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        aria-label={`${t('تحريك لأسفل')} ${c.name}`}
+                                        disabled={moving || i === list.length - 1}
+                                        onClick={() => move(i, 1)}
+                                        className={arrowButton}
+                                    >
+                                        <ArrowDown className="size-4" />
+                                    </button>
+                                </div>
                                 {c.card_image ? (
                                     <img
                                         src={c.card_image}

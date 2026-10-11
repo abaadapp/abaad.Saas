@@ -586,7 +586,7 @@ export default function ThemeEditor({
         */
         const panel =
             catalogTools && r.key === 'cats' ? (
-                <CategoriesPanel categories={catalogTools.categories} />
+                <CategoriesPanel categories={catalogTools.categories} onCardChange={paint} />
             ) : catalogTools && r.key === 'new' ? (
                 <NewArrivalsPanel items={catalogTools.new_arrivals} curation={curation} />
             ) : null;

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,9 +13,10 @@ vi.mock('@/Layouts/AdminLayout', () => ({
 }));
 
 import type { EditorRow } from '@/Pages/Admin/Website/ThemeEditor';
-import type { CatalogTools } from '@/Pages/Admin/Website/theme/CatalogTools';
+import type { CatalogCategory, CatalogTools } from '@/Pages/Admin/Website/theme/CatalogTools';
 
 const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor');
+const { CategoriesPanel } = await import('@/Pages/Admin/Website/theme/CatalogTools');
 
 /**
  * لوحتا «تسوّق حسب الفئة» و«وصل حديثًا» في محرّر الواجهة.
@@ -52,8 +56,8 @@ const FOOT = row({ key: 'foot', label: 'التذييل', fixed: true });
 
 const TOOLS: CatalogTools = {
     categories: [
-        { id: 1, name: 'ورد', name_en: 'Roses', shown_count: 3 },
-        { id: 2, name: 'هدايا', name_en: null, shown_count: 0 },
+        { id: 1, name: 'ورد', name_en: 'Roses', shown_count: 3, card_hidden: false, card_image: null },
+        { id: 2, name: 'هدايا', name_en: null, shown_count: 0, card_hidden: false, card_image: null },
     ],
     new_arrivals: [
         { id: 40, name: 'باقة الربيع', image: '/storage/p/40.jpg', category: 'ورد' },
@@ -213,5 +217,107 @@ describe('لوحتا الفئات و«وصل حديثًا»', () => {
 
         expect(screen.getByTestId('catalog-new-arrivals-empty')).toBeInTheDocument();
         expect(screen.getByRole('link', { name: /إضافة منتج جديد/ })).toHaveAttribute('href', '/admin.products.create');
+    });
+});
+
+/* ═══════════ بطاقةُ القسم: تُخفى وتلبس صورة ═══════════ */
+
+describe('بطاقةُ القسم في «تسوّق حسب الفئة»', () => {
+    beforeEach(() => vi.mocked(router.visit).mockClear());
+    afterEach(() => vi.unstubAllGlobals());
+
+    const cat = (over: Partial<CatalogCategory> = {}): CatalogCategory => ({
+        id: 1, name: 'الإضافات', name_en: null, shown_count: 10, card_hidden: false, card_image: null, ...over,
+    });
+
+    const answer = (category: Partial<CatalogCategory>, ok = true, status = 200, errors?: Record<string, string[]>) =>
+        vi.fn(async () => ({
+            ok,
+            status,
+            json: async () => (ok ? { ok: true, category: { id: 1, card_hidden: false, card_image: null, ...category } } : { message: 'x', errors }),
+        }));
+
+    const panel = (categories: CatalogCategory[], onCardChange = vi.fn()) => {
+        for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
+        Object.assign(pageProps, { translations: {} });
+        render(<CategoriesPanel categories={categories} onCardChange={onCardChange} />);
+
+        return onCardChange;
+    };
+
+    it('تُخفى البطاقةُ بضغطة — فيُقال إنّ أصنافها باقية، وتُعاد المعاينة', async () => {
+        const fetch = answer({ card_hidden: true });
+        vi.stubGlobal('fetch', fetch);
+        const repaint = panel([cat()]);
+
+        fireEvent.click(screen.getByRole('button', { name: /إخفاء البطاقة/ }));
+
+        const row = screen.getByTestId('catalog-category-1');
+        expect(await within(row).findByText('مخفيّة من «تسوّق حسب الفئة» — منتجاتها تبقى في المتجر')).toBeInTheDocument();
+        expect(within(row).getByText(/10 منتج مفعّل ومنشور/)).toBeInTheDocument();
+        expect(within(row).getByRole('button', { name: /إظهار البطاقة/ })).toHaveAttribute('aria-pressed', 'true');
+
+        const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe('/admin.products.categories.card/1');
+        expect(init.method).toBe('PATCH');
+        expect(JSON.parse(String(init.body))).toEqual({ card_hidden: true });
+        expect(repaint).toHaveBeenCalledTimes(1);
+        expect(router.visit).not.toHaveBeenCalled();
+    });
+
+    it('والمخفيّةُ تُظهَر بالزرّ نفسه', async () => {
+        const fetch = answer({ card_hidden: false });
+        vi.stubGlobal('fetch', fetch);
+        panel([cat({ card_hidden: true })]);
+
+        fireEvent.click(screen.getByRole('button', { name: /إظهار البطاقة/ }));
+
+        expect(await screen.findByText('تظهر في الموقع')).toBeInTheDocument();
+        expect(JSON.parse(String((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toEqual({ card_hidden: false });
+    });
+
+    it('وتُرفع لها صورة فتظهر — وتُزال فتعود الخطوط', async () => {
+        const upload = answer({ card_image: '/storage/website/5/a.jpg' });
+        vi.stubGlobal('fetch', upload);
+        const repaint = panel([cat()]);
+
+        const file = new File(['x'], 'roses.jpg', { type: 'image/jpeg' });
+        fireEvent.change(screen.getByTestId('catalog-card-file-1'), { target: { files: [file] } });
+
+        expect(await screen.findByTestId('catalog-card-image-1')).toHaveAttribute('src', '/storage/website/5/a.jpg');
+        const [url, init] = upload.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe('/admin.products.categories.cardImage/1');
+        expect(init.method).toBe('POST');
+        expect((init.body as FormData).get('image')).toBe(file);
+        // والملفُّ يُرسَل multipart — لا يُكتب له نوعٌ يكسر حدوده
+        expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+        expect(screen.getByRole('button', { name: /استبدل الصورة/ })).toBeInTheDocument();
+
+        const clear = answer({ card_image: null });
+        vi.stubGlobal('fetch', clear);
+        fireEvent.click(screen.getByRole('button', { name: /أزل صورة البطاقة/ }));
+
+        await waitFor(() => expect(screen.queryByTestId('catalog-card-image-1')).toBeNull());
+        const [clearUrl, clearInit] = clear.mock.calls[0] as unknown as [string, RequestInit];
+        expect(clearUrl).toBe('/admin.products.categories.cardImage.clear/1');
+        expect(clearInit.method).toBe('DELETE');
+        expect(repaint).toHaveBeenCalledTimes(2);
+    });
+
+    it('ويقول خطأَ الخادم نفسَه — ولا يتبدّل شيء', async () => {
+        vi.stubGlobal('fetch', answer({}, false, 422, { image: ['الملفّ صورة — PNG أو JPG أو WEBP'] }));
+        const repaint = panel([cat()]);
+
+        fireEvent.change(screen.getByTestId('catalog-card-file-1'), { target: { files: [new File(['x'], 'menu.pdf')] } });
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('الملفّ صورة — PNG أو JPG أو WEBP');
+        expect(screen.queryByTestId('catalog-card-image-1')).toBeNull();
+        expect(repaint).not.toHaveBeenCalled();
+    });
+
+    it('والمحرّرُ يُعيد معاينتَه بعد كلّ تبديلٍ في البطاقة', () => {
+        const editor = readFileSync(resolve(process.cwd(), 'resources/js/Pages/Admin/Website/ThemeEditor.tsx'), 'utf8');
+
+        expect(editor).toContain('<CategoriesPanel categories={catalogTools.categories} onCardChange={paint} />');
     });
 });

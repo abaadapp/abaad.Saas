@@ -6535,7 +6535,7 @@
     "التذييل": "Footer",
     "أسفل كلّ صفحة — لا الرئيسية وحدها": "At the foot of every page — not the home page alone",
     "هاتفك وبريدك وعنوانك": "Your phone, email and address",
-    "لا فئةَ فيها صنفٌ معروض — والفئةُ الفارغة لا تُرسم.": "No category holds a shown product — an empty category is not drawn.",
+    "لا فئةَ ظاهرةً فيها صنفٌ معروض — والفئةُ الفارغة أو المخفيّةُ بطاقتُها لا تُرسم.": "No visible category holds a shown product — an empty category, or one whose card is hidden, is not drawn.",
     "لا صنفَ معروضًا في متجرك بعد.": "No product is shown in your store yet.",
     "الشريطُ يَعِد ببضاعةٍ — ولا صنفَ معروضًا بعد، فلا يُرسم.": "The banner promises goods — nothing is shown yet, so it is not drawn.",
     "لا يظهر حتى تُشغّله وتكتب عنوانه ونصّه معًا.": "It does not appear until you switch it on and write both its title and its text.",
@@ -7605,5 +7605,13 @@
     "مضبوط — اكتبه من جديد لتبديله": "Set — type it again to replace it",
     "API Key — يُحفظ مشفّرًا ولا يُعرض بعد الحفظ": "API Key — stored encrypted and never shown after saving",
     "إنشاء رابط دفع": "Create payment link",
-    "طلب دفعة": "Request payment"
+    "طلب دفعة": "Request payment",
+    "إظهار البطاقة": "Show card",
+    "صورة البطاقة": "Card picture",
+    "أضف صورة للبطاقة": "Add a card picture",
+    "أزل صورة البطاقة": "Remove card picture",
+    "أزل الصورة": "Remove picture",
+    "تعذّر حفظ البطاقة": "Could not save the card",
+    "مخفيّة من «تسوّق حسب الفئة» — منتجاتها تبقى في المتجر": "Hidden from “Shop by category” — its products stay in the shop",
+    "ولكل فئة بطاقتها: تخفيها من هذا القسم أو تضع لها صورة — يُطبَّق على الموقع فورًا، ومنتجاتها تبقى في المتجر.": "Each category has its own card: hide it from this section or give it a picture — it applies to the site right away, and its products stay in the shop."
 }

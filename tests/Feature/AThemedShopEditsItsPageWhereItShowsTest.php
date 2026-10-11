@@ -553,7 +553,7 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
 
         $this->assertIsArray($tools);
         $this->assertSame(['categories', 'new_arrivals'], array_keys($tools));
-        $this->assertSame(['id', 'name', 'name_en', 'shown_count'], array_keys($tools['categories'][0]));
+        $this->assertSame(['id', 'name', 'name_en', 'shown_count', 'card_hidden', 'card_image'], array_keys($tools['categories'][0]));
         $this->assertSame(['id', 'name', 'image', 'category'], array_keys($tools['new_arrivals'][0]));
     }
 
@@ -669,6 +669,9 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
         $roses = Category::create(['business_id' => $this->shop->id, 'name' => 'ورد']);
         $gifts = Category::create(['business_id' => $this->shop->id, 'name' => 'هدايا']);
         Category::create(['business_id' => $this->shop->id, 'name' => 'فارغة']);
+        // وفئةٌ فيها بضاعة وبطاقتُها مخفيّة — تغيب عن القسم كما تغيب الفارغة
+        $hidden = Category::create(['business_id' => $this->shop->id, 'name' => 'الإضافات', 'card_hidden' => true]);
+        $this->product('بطاقة إهداء', ['category_id' => $hidden->id]);
 
         foreach (range(1, 6) as $n) {
             $this->product('صنف '.$n, ['category_id' => $n % 2 ? $roses->id : $gifts->id]);
@@ -685,7 +688,7 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
             '«وصل حديثًا» في المحرّر غيرُ ما تعرضه الواجهة',
         );
 
-        $shown = array_values(array_filter($tools['categories'], fn ($c) => $c['shown_count'] > 0));
+        $shown = array_values(array_filter($tools['categories'], fn ($c) => $c['shown_count'] > 0 && ! $c['card_hidden']));
         $this->assertSame(
             collect($home->viewData('categories'))->map(fn ($c) => [$c['id'], $c['count']])->all(),
             array_map(fn ($c) => [$c['id'], $c['shown_count']], $shown),

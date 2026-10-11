@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Category extends Model
 {
     protected $guarded = [];
+    protected $casts = ['card_hidden' => 'boolean'];
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
     public function products(): HasMany { return $this->hasMany(Product::class); }
 }

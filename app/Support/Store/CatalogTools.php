@@ -58,7 +58,7 @@ final class CatalogTools
      * يقرأ المحرّرُ سائرَ حقوله (`PageEditor::values`). ومن ليس فيها لا
      * يصله منهما شيء.
      *
-     * @return array{categories: list<array{id: int, name: string, name_en: ?string, shown_count: int}>, new_arrivals: list<array{id: int, name: string, image: ?string, category: ?string}>, new_arrivals_mode?: string, new_arrival_ids?: list<int>}|null
+     * @return array{categories: list<array{id: int, name: string, name_en: ?string, shown_count: int, card_hidden: bool, card_image: ?string}>, new_arrivals: list<array{id: int, name: string, image: ?string, category: ?string}>, new_arrivals_mode?: string, new_arrival_ids?: list<int>}|null
      */
     public static function for(int $businessId): ?array
     {
@@ -74,12 +74,15 @@ final class CatalogTools
 
         $categories = Category::where('business_id', $businessId)
             ->orderBy('name')
-            ->get(['id', 'name', 'name_en'])
+            ->get(['id', 'name', 'name_en', 'card_hidden', 'card_image'])
             ->map(fn (Category $c) => [
                 'id' => (int) $c->id,
                 'name' => (string) $c->name,
                 'name_en' => filled($c->name_en) ? (string) $c->name_en : null,
                 'shown_count' => (int) ($counts[$c->id] ?? 0),
+                // وبطاقتُه في الرئيسيّة — مخفيّةٌ بيده، وصورتُها إن رفعها
+                'card_hidden' => (bool) $c->card_hidden,
+                'card_image' => filled($c->card_image) ? (string) $c->card_image : null,
             ])->all();
 
         /*

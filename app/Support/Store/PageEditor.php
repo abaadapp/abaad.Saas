@@ -177,7 +177,7 @@ final class PageEditor
      * @var array<string, string>
      */
     public const SILENT = [
-        'cats' => 'لا فئةَ فيها صنفٌ معروض — والفئةُ الفارغة لا تُرسم.',
+        'cats' => 'لا فئةَ ظاهرةً فيها صنفٌ معروض — والفئةُ الفارغة أو المخفيّةُ بطاقتُها لا تُرسم.',
         'best' => 'لا صنفَ معروضًا في متجرك بعد.',
         'new' => 'لا صنفَ معروضًا في متجرك بعد.',
         'banner' => 'الشريطُ يَعِد ببضاعةٍ — ولا صنفَ معروضًا بعد، فلا يُرسم.',
@@ -262,7 +262,8 @@ final class PageEditor
             ->pluck('category_id');
 
         $hasProducts = $shown->isNotEmpty();
-        $hasCats = Category::where('business_id', $businessId)
+        // والفئةُ التي أخفى بطاقتَها لا تُرسم في القسم — فلا تُسكت تنبيهَه
+        $hasCats = Category::where('business_id', $businessId)->where('card_hidden', false)
             ->whereIn('id', $shown->filter()->unique()->all())->exists();
         $hasReviews = Review::where('business_id', $businessId)->testimonial()->exists();
 

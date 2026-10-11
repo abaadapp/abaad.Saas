@@ -69,7 +69,7 @@ export function AddonsBar({ addons, money, onAdd }: Props) {
     if (addons.length === 0) return null;
 
     return (
-        <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1" data-testid="pos-addons-bar">
+        <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto no-scrollbar pb-1" data-testid="pos-addons-bar">
             <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-bold text-[#7c3aed]">
                 <PlusCircle className="size-4" /> {t('الإضافات')}:
             </span>

@@ -254,7 +254,7 @@ export default function MarketingSeo() {
                         >
                             <pre
                                 dir="ltr"
-                                className="overflow-x-auto rounded-[12px] bg-[#0f172a] p-4 text-start text-[12px] leading-relaxed text-[#e2e8f0]"
+                                className="overflow-x-auto no-scrollbar rounded-[12px] bg-[#0f172a] p-4 text-start text-[12px] leading-relaxed text-[#e2e8f0]"
                             >
                                 {link.snippet}
                             </pre>

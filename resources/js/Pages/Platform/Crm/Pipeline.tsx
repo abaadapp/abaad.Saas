@@ -87,7 +87,7 @@ export default function CrmPipeline() {
                     سبعةُ أعمدةٍ لا تسع شاشةَ جوّال، وتمريرُ الصفحة كلِّها
                     أفقيًّا يُزيح الشريطَ الجانبيَّ والترويسةَ معها.
                 */
-                <div className="-mx-1 overflow-x-auto pb-2">
+                <div className="-mx-1 overflow-x-auto no-scrollbar pb-2">
                     <div className="flex min-w-max gap-3 px-1">
                         {columns.map((col) => (
                             <section

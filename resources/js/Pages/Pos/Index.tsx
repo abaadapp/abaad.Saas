@@ -422,7 +422,7 @@ export default function PosIndex() {
                     )}
 
                     {/* تبويبات الأقسام */}
-                    <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1">
+                    <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto no-scrollbar pb-1">
                         {categories.map((c) => (
                             <button
                                 key={c.value}
@@ -469,7 +469,7 @@ export default function PosIndex() {
                         يُعرض في الصندوق؛ فبلا مواسم يبقى الصندوقُ كما كان.
                     */}
                     {seasons.length > 0 && (
-                        <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto pb-1" data-testid="pos-seasons">
+                        <div className="mb-4 flex shrink-0 items-center gap-2 overflow-x-auto no-scrollbar pb-1" data-testid="pos-seasons">
                             <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-bold text-[#0f766e]">
                                 <CalendarDays className="size-4" /> {t('المواسم النشطة')}:
                             </span>

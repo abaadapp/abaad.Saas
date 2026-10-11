@@ -64,7 +64,9 @@
         .meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: #666; }
 
         /* الأقسام */
-        nav.cats { display: flex; gap: 8px; overflow-x: auto; padding: 14px 0; }
+        /* يُمرَّر بالإصبع ولا يُرسم شريطُه — كـ`.no-scrollbar` في app.css، وهي لا تُحمَّل هنا */
+        nav.cats { display: flex; gap: 8px; overflow-x: auto; padding: 14px 0; scrollbar-width: none; -ms-overflow-style: none; }
+        nav.cats::-webkit-scrollbar { display: none; }
         nav.cats button {
             font: inherit; font-size: 14px; white-space: nowrap; cursor: pointer;
             border: 1px solid var(--line); background: #fff; color: #444;

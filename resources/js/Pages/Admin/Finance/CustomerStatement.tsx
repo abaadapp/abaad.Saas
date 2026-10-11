@@ -155,7 +155,7 @@ export default function CustomerStatement({ customer, statement, summary, range,
                 </label>
             </Card>
 
-            <Card className="overflow-x-auto p-0">
+            <Card className="overflow-x-auto no-scrollbar p-0">
                 <table className="w-full text-[13px]">
                     <thead className="bg-[#fafafa] text-[12px] text-[#71717a]">
                         <tr>

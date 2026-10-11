@@ -294,7 +294,7 @@ export default function ProductImportPreview() {
             )}
 
             <Card className="overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto no-scrollbar">
                     <Table>
                         <TableHeader>
                             <TableRow className="hover:bg-transparent">

@@ -157,7 +157,7 @@ export default function Cheques() {
                 ))}
             </div>
 
-            <Card className="overflow-x-auto p-0">
+            <Card className="overflow-x-auto no-scrollbar p-0">
                 <Table>
                     <TableHeader>
                         <TableRow>

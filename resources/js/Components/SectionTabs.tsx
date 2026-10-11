@@ -93,7 +93,7 @@ export default function SectionTabs({ tabs: all, current, className }: Props) {
     return (
         <div
             className={cn(
-                'mb-6 flex items-center gap-1 overflow-x-auto border-b border-[var(--ui-border,#e8e8e8)]',
+                'mb-6 flex items-center gap-1 overflow-x-auto no-scrollbar border-b border-[var(--ui-border,#e8e8e8)]',
                 className,
             )}
         >

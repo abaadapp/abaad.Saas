@@ -243,7 +243,7 @@ export default function BoutiqueShow() {
                         {t('لا أصناف في هذا البوتيك بعد')}
                     </p>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto no-scrollbar">
                         <table className="w-full text-sm">
                             <thead className="bg-[#fafafa] text-[12px] text-[#6b7280]">
                                 <tr>
@@ -307,7 +307,7 @@ export default function BoutiqueShow() {
                         {t('لا مبيعات في هذا الشهر')}
                     </p>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto no-scrollbar">
                         <table className="w-full text-sm">
                             <thead className="bg-[#fafafa] text-[12px] text-[#6b7280]">
                                 <tr>
@@ -370,7 +370,7 @@ export default function BoutiqueShow() {
                     <div className="border-b border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm font-semibold text-[#111]">
                         {t('التسويات السابقة')}
                     </div>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto no-scrollbar">
                         <table className="w-full text-sm">
                             <thead className="bg-[#fafafa] text-[12px] text-[#6b7280]">
                                 <tr>

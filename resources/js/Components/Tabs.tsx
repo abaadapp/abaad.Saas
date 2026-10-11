@@ -71,7 +71,7 @@ export default function Tabs({ tabs, current, onChange, className, trailing }: P
                 // مُلاصقٌ للحافة كـSectionTabs. كان الحشو `px-4` افتراضًا فتجاوزته
                 // ثلاثٌ من خمس صفحات بـ`px-0` — والافتراض الذي يُتجاوَز أكثر ممّا
                 // يُقبل ليس افتراضًا. ومن يضعه داخل بطاقة يطلب `px-4` صراحةً.
-                'flex items-center gap-1 overflow-x-auto border-b border-[var(--ui-border,#e8e8e8)]',
+                'flex items-center gap-1 overflow-x-auto no-scrollbar border-b border-[var(--ui-border,#e8e8e8)]',
                 className,
             )}
         >

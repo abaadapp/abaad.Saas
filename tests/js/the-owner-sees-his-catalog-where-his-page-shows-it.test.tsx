@@ -107,6 +107,16 @@ describe('لوحتا الفئات و«وصل حديثًا»', () => {
 
     /* ═══════════ «تسوّق حسب الفئة» ═══════════ */
 
+    it('ويُفتح على صفّ الفئات حين يأتي الرابطُ به (`?row=cats`) — من «ما يحتاج انتباهك»', () => {
+        window.history.pushState({}, '', '/admin/website/editor?row=cats');
+        try {
+            draw(TOOLS);
+            expect(screen.getByTestId('catalog-categories')).toBeInTheDocument();
+        } finally {
+            window.history.pushState({}, '', '/');
+        }
+    });
+
     it('ويعرض كلَّ فئةٍ بحالها — وبابَ منتجاتها بمرشِّح الاسم', () => {
         const route = vi.spyOn(globalThis as unknown as { route: (...a: unknown[]) => string }, 'route');
         draw(TOOLS);

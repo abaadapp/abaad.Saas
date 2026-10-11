@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Support\Permissions;
 use App\Support\SalesChannel;
+use App\Support\Store\SiteAttention;
 use App\Support\Store\StoreReadiness;
 use App\Support\Storefront;
 use App\Support\Website\Blueprints;
@@ -59,6 +60,8 @@ class HubController extends Controller
 
         return Inertia::render('Admin/Website/Hub', $this->shell($site) + [
             'readiness' => Readiness::check($site),
+            // وما ينقص الآن — لا الإطلاقُ بل كلُّ صباح. انظر `SiteAttention`
+            'attention' => SiteAttention::for(Business::findOrFail($bid), $user),
             'channel' => Commerce::channel($bid),
             'sells' => Blueprints::hasCatalogue($site->goal()),
             'counts' => $this->counts($bid),
@@ -130,6 +133,8 @@ class HubController extends Controller
              * صفحةً واحدة لم يبقَ لتلك الشاشة عمل، وانتقلت قائمتُها إلى
              * حيث تُقرأ: لوحةُ التشغيل هي «أين متجري الآن».
              */
+            // وما ينقص الآن بعد الإطلاق — منتجٌ بلا صورة، وبطاقةٌ مخطّطة، واسمٌ بلا إنجليزيّ
+            'attention' => SiteAttention::for($business, $user),
             'readiness' => collect(StoreReadiness::steps($business))->map(fn ($step) => [
                 'key' => $step['key'],
                 'label' => $step['label'],

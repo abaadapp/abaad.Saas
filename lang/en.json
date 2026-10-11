@@ -7623,5 +7623,18 @@
     "الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.": "Best: a landscape 4:3 picture, like 1200×900. Portrait pictures are cropped at the top and bottom.",
     "لا تُحذف فئةٌ فيها منتجات — حتّى المطفأة أو غير المنشورة أو المحذوفة. انقلها إلى فئةٍ أخرى أوّلًا.": "A category with products cannot be deleted, even inactive, unpublished or deleted ones. Move them to another category first.",
     "سبب الفشل": "Why it failed",
-    "آخر ما وصل من Paymob": "Last word from Paymob"
+    "آخر ما وصل من Paymob": "Last word from Paymob",
+    "منتجات منشورة بلا صورة: :n": "Published products without a photo: :n",
+    "الزبون يرى صورة بديلة بدل منتجك.": "Customers see a stand-in picture instead of your product.",
+    "فئات تظهر بلا صورة بطاقة: :n": "Categories showing without a card picture: :n",
+    "بطاقتها في «تسوّق حسب الفئة» خطوطٌ ملوّنة بدل صورة.": "Their card in “Shop by category” is coloured stripes instead of a picture.",
+    "أسماء بلا ترجمة إنجليزية: :n": "Names without an English translation: :n",
+    "تظهر بالعربي في صفحتك الإنجليزية.": "They show in Arabic on your English page.",
+    "روابط الدفع غير مفعّلة — ينقص مفتاح API أو البيئة": "Payment links are off — the API key or the environment is missing",
+    "لا تستطيع أن ترسل لعميلك رابطًا يدفع به.": "You cannot send a customer a link to pay with.",
+    "روابط دفع تحتاج نظرة: :n": "Payment links that need a look: :n",
+    "دفعةٌ رُدّت أو استُرجعت أو وصلت مرّتين — والسببُ مكتوبٌ تحت كلّ رابط.": "A payment was declined, refunded or arrived twice — the reason is written under each link.",
+    "ما يحتاج انتباهك في موقعك": "What needs your attention on your site",
+    "موقعك مكتمل — لا شيء ينقصه الآن.": "Your site is complete — nothing is missing right now.",
+    "و:n غيرها": "and :n more"
 }

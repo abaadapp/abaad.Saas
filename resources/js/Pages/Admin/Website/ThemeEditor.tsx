@@ -206,7 +206,20 @@ export default function ThemeEditor({
 
     /* الترتيبُ محلّيٌّ لأنّه يُكتب بالضغط — والباقي يأتي من الخادم بعد كلّ حفظ */
     const [chosen, setChosen] = useState<string[]>(order);
-    const [open, setOpen] = useState<string | null>(null);
+    /*
+        والصفُّ المفتوح أوّلَ ما تُفتح الشاشة — من الرابط إن جاء به (`?row=cats`).
+
+        «ما يحتاج انتباهك» في لوحة الموقع يقول «فئاتٌ بلا صورة بطاقة» ويقود
+        إلى هنا. ولو فُتح المحرّرُ مطويًّا كلُّه لَبحث عن الصفّ في قائمةٍ
+        طويلة — والبندُ قال له أين.
+    */
+    const [open, setOpen] = useState<string | null>(() => {
+        try {
+            return new URLSearchParams(window.location.search).get('row');
+        } catch {
+            return null;
+        }
+    });
     const [status, setStatus] = useState<Status>('clean');
     const [frame, setFrame] = useState(0);
 

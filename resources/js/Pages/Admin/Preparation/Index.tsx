@@ -487,7 +487,7 @@ export default function PreparationIndex() {
                  * بطاقتُه. والتمريرُ الأفقيّ يُبقي كلَّ عمودٍ بعرضه ويُظهر
                  * حافّةَ التالي — إشارةٌ إلى أنّ ثمّة مزيدًا.
                  */
-                <div data-testid="prep-columns" className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+                <div data-testid="prep-columns" className="-mx-1 flex gap-3 overflow-x-auto no-scrollbar px-1 pb-2">
                     {groups.map((g) => (
                         <section key={g.key} className="flex w-[280px] shrink-0 flex-col gap-3 sm:w-[320px]">
                             <header className="flex items-baseline justify-between rounded-[12px] bg-[#f7f7f5] px-3 py-2">

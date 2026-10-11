@@ -72,7 +72,7 @@ export default function Receivables({ totals, aging, invoices, reconciliation }:
             </Card>
 
             <div className="grid gap-4 lg:grid-cols-2">
-                <Card className="overflow-x-auto p-0">
+                <Card className="overflow-x-auto no-scrollbar p-0">
                     <h3 className="p-3 text-[13px] font-bold">{t('حسب العميل')}</h3>
                     <table className="w-full text-[13px]">
                         <tbody>
@@ -98,7 +98,7 @@ export default function Receivables({ totals, aging, invoices, reconciliation }:
                     </table>
                 </Card>
 
-                <Card className="overflow-x-auto p-0">
+                <Card className="overflow-x-auto no-scrollbar p-0">
                     <h3 className="p-3 text-[13px] font-bold">{t('الفواتير القائمة')}</h3>
                     <table className="w-full text-[13px]">
                         <tbody>

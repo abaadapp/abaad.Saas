@@ -171,7 +171,7 @@ export default function Domain() {
                         description="افتح لوحة المكان الذي اشتريت منه نطاقك، وأضف سجلًّا واحدًا بهذه القيم، ثمّ اضغط «تحقّق من الربط»."
                     >
                         {/* الجدولُ يُمرَّر داخل حاويته — والصفحة لا تتمدّد أفقيًّا */}
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto no-scrollbar">
                             <table className="w-full text-start text-[13px]">
                                 <thead className="text-[12px] text-[#9ca3af]">
                                     <tr>

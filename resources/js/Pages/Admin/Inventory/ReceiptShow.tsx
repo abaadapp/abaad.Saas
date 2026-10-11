@@ -212,7 +212,7 @@ export default function ReceiptShow() {
                             استُلم قبله، وكم في هذه الورقة، وكم يبقى. ومن يعتمد
                             بلا هذه الأربعة يعتمد رقمًا لا يعرف نسبته إلى شيء.
                         */}
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto no-scrollbar">
                             <table className="w-full min-w-[640px] text-[13px]">
                                 <thead className="text-[12px] text-[#71717a]">
                                     <tr>

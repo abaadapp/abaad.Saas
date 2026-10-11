@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
     ({ className, ...props }, ref) => (
         // التمرير الأفقي داخل الحاوية — الجدول لا يدفع الصفحة للتمدد
-        <div className="w-full overflow-x-auto">
+        <div className="w-full overflow-x-auto no-scrollbar">
             <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
         </div>
     ),

@@ -134,7 +134,7 @@ export default function AreaChart({
         : '';
 
     return (
-        <div className={cn('w-full overflow-x-auto', className)}>
+        <div className={cn('w-full overflow-x-auto no-scrollbar', className)}>
             <svg
                 viewBox={`0 0 ${width} ${height}`}
                 className="w-full min-w-[520px]"

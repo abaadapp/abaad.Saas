@@ -118,7 +118,7 @@ export default function Dues() {
                                     </SmartLink>
                                 </Button>
                             </div>
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto no-scrollbar">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
@@ -175,7 +175,7 @@ export default function Dues() {
                                     </SmartLink>
                                 </Button>
                             </div>
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto no-scrollbar">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
@@ -217,7 +217,7 @@ export default function Dues() {
                                     </SmartLink>
                                 </Button>
                             </div>
-                            <div className="overflow-x-auto">
+                            <div className="overflow-x-auto no-scrollbar">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>

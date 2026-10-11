@@ -216,7 +216,7 @@ export default function ReportsProfit() {
                 </Card>
             )}
 
-            <Card className="overflow-x-auto">
+            <Card className="overflow-x-auto no-scrollbar">
                 <Table data-testid="profit-rows">
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">

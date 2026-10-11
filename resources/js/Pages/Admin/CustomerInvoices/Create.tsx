@@ -881,7 +881,7 @@ export default function CustomerInvoiceCreate({
                             </Button>
                         </div>
 
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto no-scrollbar">
                             <table className="w-full min-w-[820px] text-[13px]">
                                 <thead className="text-[12px] text-[#71717a]">
                                     <tr>

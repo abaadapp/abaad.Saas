@@ -296,7 +296,7 @@ export default function PurchaseOrderShow() {
                     <Card className="p-4">
                         <h2 className="mb-3 font-bold text-[#111]">{t('البنود')}</h2>
 
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto no-scrollbar">
                             <table className="w-full min-w-[720px] text-[13px]">
                                 <thead className="text-[12px] text-[#71717a]">
                                     <tr>

@@ -401,7 +401,7 @@ export default function ReportsCosts() {
                     : t('لا توجد مقارنة للفترة السابقة')}
             </p>
 
-            <Card className="mb-6 overflow-x-auto">
+            <Card className="mb-6 overflow-x-auto no-scrollbar">
                 <Table data-testid="costs-table">
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">

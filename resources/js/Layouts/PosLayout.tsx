@@ -130,7 +130,7 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                     <Store className="size-[18px]" />
                 </span>
 
-                <nav className="flex items-center gap-1 overflow-x-auto">
+                <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar">
                     {navItems.map((item) => {
                         const Icon = item.icon;
                         const active = current === item.route;

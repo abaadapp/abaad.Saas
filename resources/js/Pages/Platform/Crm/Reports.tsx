@@ -111,7 +111,7 @@ export default function CrmReports() {
                 {staff.length === 0 ? (
                     <p className="text-[13px] text-[#9ca3af]">{t('لا موظفي منصّة.')}</p>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto no-scrollbar">
                         <table className="w-full text-[13px]">
                             <thead>
                                 <tr className="border-b border-[#f3f4f6] text-[12px] text-[#6b7280]">

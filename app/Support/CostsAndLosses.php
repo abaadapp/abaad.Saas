@@ -100,6 +100,7 @@ final class CostsAndLosses
         'maintenance' => self::OPERATING,
         'transport' => self::OPERATING,
         'direct_purchases' => self::OPERATING,
+        'payment_gateway_fees' => self::OPERATING,
     ];
 
     /** بطاقةُ «مصروفات التشغيل»: الموظفون والتشغيلُ والإهلاكُ المرحَّل */

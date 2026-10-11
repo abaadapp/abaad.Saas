@@ -1,5 +1,5 @@
 import { useForm, usePage } from '@inertiajs/react';
-import { Apple, CreditCard, Info, Landmark, Save, Webhook } from 'lucide-react';
+import { Apple, CreditCard, Info, Landmark, Link2, Save, Webhook } from 'lucide-react';
 
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -30,6 +30,12 @@ export interface PaymobGateway {
     omannet: boolean;
     has_secret: boolean;
     has_hmac: boolean;
+    /** مفتاحُ API لروابط الدفع محفوظ؟ — حالُه لا نصُّه */
+    has_api_key: boolean;
+    /** بيئةُ الحساب كما كتبها التاجر — لا تُستنتج من شكل مفتاح */
+    mode: 'test' | 'live' | null;
+    /** أتُفتح روابطُ الدفع الآن؟ */
+    links_ready: boolean;
     state: 'off' | 'partial' | 'ready';
     card_ready: boolean;
     apple_pay: boolean;
@@ -67,6 +73,8 @@ export default function Paymob() {
         apple_pay_integration_id: gateway.apple_pay_integration_id,
         secret_key: '',
         hmac_secret: '',
+        api_key: '',
+        mode: gateway.mode ?? '',
     });
 
     const save = (e: React.FormEvent) => {
@@ -74,7 +82,7 @@ export default function Paymob() {
         form.post(route('admin.integrations.paymob.save'), {
             preserveScroll: true,
             // والسرّان لا يبقيان في الشاشة بعد أن حُفظا
-            onSuccess: () => form.setData((d) => ({ ...d, secret_key: '', hmac_secret: '' })),
+            onSuccess: () => form.setData((d) => ({ ...d, secret_key: '', hmac_secret: '', api_key: '' })),
         });
     };
 
@@ -218,6 +226,62 @@ export default function Paymob() {
                         <p className="mt-3 text-[12px] leading-relaxed text-[#b45309]" data-testid="paymob-test-warning">
                             {t('إن كانت مفاتيحك تجريبية (Test) فاترك هذا الحقل فارغًا — رقم Apple Pay حيّ فقط، وإرساله مع مفاتيح تجريبية يمنع فتح صفحة الدفع.')}
                         </p>
+                    </SettingsSection>
+
+                    {/*
+                        روابطُ الدفع — طلبُ دفعةٍ من عميلٍ برابطٍ من حسابك.
+
+                        تُفتح بـ«API Key» — مفتاحٌ غيرُ المفتاح السرّيّ. ويُكتب مرّةً
+                        ولا يُعرض بعد الحفظ. والبيئةُ تُختار صراحةً: أرقامُ التكامل
+                        يجب أن تكون من البيئة نفسِها، وإلّا ردّت Paymob الرابط.
+                    */}
+                    <SettingsSection
+                        icon={Link2}
+                        title="روابط الدفع"
+                        description="لإرسال «رابط دفع» لعميلك من الفواتير والعملاء والمالية. API Key من لوحة Paymob ← Settings ← Account Info."
+                        status={
+                            <StatusPill
+                                state={gateway.links_ready ? 'ready' : 'idle'}
+                                label={gateway.links_ready ? 'جاهزة' : 'غير جاهزة'}
+                            />
+                        }
+                    >
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="paymob-links-settings">
+                            <Field
+                                label="مفتاح API"
+                                hint={gateway.has_api_key ? 'مضبوط — اكتبه من جديد لتبديله' : 'API Key — يُحفظ مشفّرًا ولا يُعرض بعد الحفظ'}
+                                error={form.errors.api_key}
+                            >
+                                <PasswordInput
+                                    dir="ltr"
+                                    autoComplete="new-password"
+                                    value={form.data.api_key}
+                                    onChange={(e) => form.setData('api_key', e.target.value)}
+                                    aria-label={t('مفتاح API')}
+                                    data-testid="paymob-api-key"
+                                />
+                            </Field>
+                            <Field label="بيئة الحساب" hint="Test أو Live — كما في لوحة Paymob. أرقام التكامل يجب أن تكون من البيئة نفسها." error={form.errors.mode}>
+                                <div className="flex gap-2" role="radiogroup" aria-label={t('بيئة الحساب')}>
+                                    {(['test', 'live'] as const).map((mode) => (
+                                        <label
+                                            key={mode}
+                                            className="flex cursor-pointer items-center gap-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-[13px] has-[:checked]:border-[#6366f1] has-[:checked]:bg-[#eef2ff]"
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="paymob-mode"
+                                                value={mode}
+                                                checked={form.data.mode === mode}
+                                                onChange={() => form.setData('mode', mode)}
+                                                className="size-4"
+                                            />
+                                            {mode === 'live' ? t('حقيقي (Live)') : t('تجريبي (Test)')}
+                                        </label>
+                                    ))}
+                                </div>
+                            </Field>
+                        </div>
                     </SettingsSection>
 
                     <SettingsSection

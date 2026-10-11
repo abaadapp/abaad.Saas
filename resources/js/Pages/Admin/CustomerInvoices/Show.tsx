@@ -6,6 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import DocumentMeta from '@/Components/DocumentMeta';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import SmartLink from '@/Components/SmartLink';
+import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -71,7 +72,7 @@ interface May {
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, context } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, context } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -83,6 +84,8 @@ export default function CustomerInvoiceShow() {
                 bank_methods: string[];
                 /** الورقةُ كما تُطبع — من بانيها الذي يُطبع منه */
                 paper: { html: string; size: string };
+                /** روابطُ دفع الفاتورة وحالُ Paymob — `PaymentLinks::panel` */
+                paymentLinks: PaymentLinksPanel;
             }>
         >().props;
     const t = useTranslate();
@@ -297,6 +300,22 @@ export default function CustomerInvoiceShow() {
                                 </SmartLink>
                             ))}
                         </Card>
+                    )}
+
+                    {/*
+                        رابطُ دفع — يطلب باقيَ الفاتورة من العميل عبر Paymob.
+                        يُدفع فيُكتب تحصيلٌ مخصَّصٌ لها، ولا يمسّ إيرادَها.
+                    */}
+                    {(invoice.status === 'صادرة' || paymentLinks.links.length > 0) && (
+                        <PaymentLinksCard
+                            panel={paymentLinks}
+                            customerId={invoice.customer_id}
+                            invoiceId={invoice.id}
+                            outstanding={invoice.outstanding}
+                            title="روابط الدفع"
+                            action="إنشاء رابط دفع"
+                            allowCreate={invoice.status === 'صادرة' && invoice.outstanding > 0}
+                        />
                     )}
 
                     {invoice.credit_notes.length > 0 && (

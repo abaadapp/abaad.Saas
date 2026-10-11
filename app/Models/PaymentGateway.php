@@ -18,11 +18,20 @@ class PaymentGateway extends Model
 {
     public const PAYMOB = 'paymob';
 
+    /** بيئةُ المفاتيح — يكتبها التاجر صراحةً، ولا تُستنتج من شكل مفتاح */
+    public const TEST = 'test';
+
+    public const LIVE = 'live';
+
+    public const MODES = [self::TEST, self::LIVE];
+
     protected $guarded = [];
 
     protected $casts = [
         'secret_key' => 'encrypted',
         'hmac_secret' => 'encrypted',
+        // مفتاحُ روابط الدفع (API Key) — به يُطلب رمزُ Paymob، فهو سرٌّ كأخويه
+        'api_key' => 'encrypted',
         'active' => 'boolean',
     ];
 
@@ -32,7 +41,7 @@ class PaymentGateway extends Model
      * والمفتاحُ العامّ ليس منها: هو يُكتب في رابط صفحة الدفع ويراه الزائر،
      * وذاك موضعُه. أمّا هذان فبهما يُقبض المالُ ويُصدَّق الإشعار.
      */
-    protected $hidden = ['secret_key', 'hmac_secret'];
+    protected $hidden = ['secret_key', 'hmac_secret', 'api_key'];
 
     public function business(): BelongsTo
     {
@@ -81,5 +90,42 @@ class PaymentGateway extends Model
         }
 
         return array_values(array_unique($ids));
+    }
+
+    /**
+     * أتُفتح من هذه البوّابة روابطُ دفع؟ — بوّابةٌ مكتملة، ومفتاحُ روابط، وبيئةٌ مكتوبة.
+     *
+     * والبيئةُ شرطٌ لا افتراض: `is_live` تُرسَل مع كلّ رابط، ورقمُ تكاملٍ من
+     * غير بيئته يُردّ. فبوّابةٌ لم يقل صاحبُها أهي تجربةٌ أم حقيقة لا يُخمَّن
+     * عنه — يُطلب منه أن يقولها.
+     */
+    public function linksReady(): bool
+    {
+        return $this->ready()
+            && filled($this->api_key)
+            && in_array($this->mode, self::MODES, true);
+    }
+
+    public function isLive(): bool
+    {
+        return $this->mode === self::LIVE;
+    }
+
+    /**
+     * أرقامُ تكامل روابط الدفع — كـ`paymentMethodIds`، و Apple Pay للحيّ وحده.
+     *
+     * رقمُ Apple Pay عند Paymob حيٌّ فقط: إرسالُه مع رابطٍ تجريبيّ يردّ الرابطَ
+     * كلَّه («رقمُ تكاملٍ لا يطابق `is_live`»). فيُسقط في التجربة.
+     *
+     * @return list<int>
+     */
+    public function linkMethodIds(): array
+    {
+        $apple = trim((string) $this->apple_pay_integration_id);
+
+        return array_values(array_filter(
+            $this->paymentMethodIds(),
+            fn (int $id) => $this->isLive() || $apple === '' || $id !== (int) $apple,
+        ));
     }
 }

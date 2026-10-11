@@ -60,6 +60,7 @@ final class PaymobSettings
             || filled($row->public_key)
             || filled($row->secret_key)
             || filled($row->hmac_secret)
+            || filled($row->api_key)
             || filled($row->card_integration_id)
             || filled($row->omannet_integration_id)
             || filled($row->apple_pay_integration_id);
@@ -114,6 +115,10 @@ final class PaymobSettings
             'omannet' => filled(trim((string) ($row?->omannet_integration_id ?? ''))),
             'has_secret' => filled($row?->secret_key),
             'has_hmac' => filled($row?->hmac_secret),
+            // مفتاحُ روابط الدفع حالُه لا نصُّه — كأخويه
+            'has_api_key' => filled($row?->api_key),
+            'mode' => in_array($row?->mode, PaymentGateway::MODES, true) ? $row->mode : null,
+            'links_ready' => (bool) $row?->linksReady(),
         ] + self::summary($businessId) + [
             // عنوانُ الإشعار كما يبنيه `Paymob::open` — من الخادم لا من المتصفّح
             'webhook' => self::webhook(),
@@ -156,6 +161,10 @@ final class PaymobSettings
             'apple_pay_integration_id' => ['nullable', 'regex:/^[0-9]{1,32}$/', 'different:card_integration_id', 'different:omannet_integration_id'],
             'secret_key' => ['nullable', 'string', 'max:255'],
             'hmac_secret' => ['nullable', 'string', 'max:255'],
+            // مفتاحُ روابط الدفع طويلٌ (رمزٌ مرمَّز) — ويُكتب ولا يُعاد عرضُه
+            'api_key' => ['nullable', 'string', 'max:2000'],
+            // والبيئةُ تُقال صراحةً: تجربةٌ أو حقيقة — ولا تُستنتج من المفتاح
+            'mode' => ['nullable', 'in:'.implode(',', PaymentGateway::MODES)],
         ], [
             'card_integration_id.regex' => __('رقم تكامل البطاقة أرقامٌ فقط — كما يظهر في لوحة Paymob.'),
             'omannet_integration_id.regex' => __('رقم تكامل OmanNet أرقامٌ فقط — كما يظهر في لوحة Paymob.'),
@@ -170,6 +179,8 @@ final class PaymobSettings
             'apple_pay_integration_id' => __('رقم تكامل Apple Pay'),
             'secret_key' => __('المفتاح السرّي'),
             'hmac_secret' => __('سرّ التوقيع'),
+            'api_key' => __('مفتاح API'),
+            'mode' => __('بيئة الحساب'),
         ]);
 
         $gateway = PaymentGateway::firstOrNew([
@@ -186,7 +197,9 @@ final class PaymobSettings
             ? (string) $data['apple_pay_integration_id']
             : null;
 
-        foreach (['secret_key', 'hmac_secret'] as $secret) {
+        $gateway->mode = ($data['mode'] ?? '') !== '' ? $data['mode'] : $gateway->mode;
+
+        foreach (['secret_key', 'hmac_secret', 'api_key'] as $secret) {
             if (filled($data[$secret] ?? null)) {
                 $gateway->{$secret} = trim((string) $data[$secret]);
             }

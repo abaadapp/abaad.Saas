@@ -133,6 +133,12 @@ class TenantTables
         'customer_invoice_attachments',
         'customer_payments', 'customer_payment_allocations',
         'customer_credit_notes',
+        /*
+         * وروابطُ الدفع بعد التحصيلات: الرابطُ المدفوع يشير إلى تحصيله
+         * وفاتورته. وتسوياتُ Paymob بعد القيود والحسابات البنكيّة التي
+         * تشير إليها.
+         */
+        'customer_payment_links', 'paymob_settlements',
         'delivery_notes', 'delivery_note_items',
         'reviews',
         'shifts', 'shift_movements',
@@ -346,7 +352,7 @@ class TenantTables
          * التوقيع يصنع إشعارًا مقبولًا فيُنشئ طلبًا مدفوعًا بلا مال. وملفُّ
          * نسخةٍ يُرسَل في بريدٍ أو يُنسى في مجلّد تنزيلات.
          */
-        'payment_gateways' => ['secret_key', 'hmac_secret'],
+        'payment_gateways' => ['secret_key', 'hmac_secret', 'api_key'],
         /*
          * ورمزا Google لا يخرجان في ملفٍّ يُنزَّل.
          *

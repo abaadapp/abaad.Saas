@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\StorePaymentIntent;
 use App\Support\CouponLimits;
+use App\Support\PaymentLinks;
 use App\Support\Store\Paymob;
 use App\Support\Store\PriceMovedAfterPayment;
 use App\Support\Store\WebCheckout;
@@ -46,6 +47,17 @@ class PaymobController extends Controller
             : null;
 
         if ($intent === null) {
+            /*
+             * ولعلّه لرابط دفعٍ لا لطلب موقع — بابٌ مستقلٌّ لا يمسّ هذا.
+             *
+             * روابطُ الدفع تحصيلٌ من عميل (`PaymentLinks`): لا نيّةَ لها ولا
+             * طلب. فتُعرف بطلب Paymob الذي فُتحت عليه أو بمرجعها (`pay-`)،
+             * وتُصدَّق بسرّ متجر الرابط نفسِه هناك.
+             */
+            if (PaymentLinks::callback($obj, $request->query('hmac'))) {
+                return response('ok', 200);
+            }
+
             Log::warning('paymob: إشعارٌ بمرجعٍ لا نعرفه', ['reference' => $reference]);
 
             return response('ok', 200);

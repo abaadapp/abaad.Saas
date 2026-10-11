@@ -131,6 +131,7 @@ trait TwoFullShops
             'invoice_attachment' => $this->row('customer_invoice_attachments', ['business_id' => $bid, 'customer_invoice_id' => $invoice, 'path' => $attachPath, 'name' => 'doc.pdf']),
             'attach_path' => $attachPath,
             'payment' => $this->row('customer_payments', ['business_id' => $bid, 'customer_id' => $customer, 'number' => "RC-{$tag}-1", 'amount' => 5, 'method' => 'cheque', 'occurred_at' => now()->toDateString()]),
+            'payment_link' => $this->row('customer_payment_links', ['business_id' => $bid, 'customer_id' => $customer, 'reference' => 'pay-'.strtolower($tag).'-1', 'amount' => 5, 'currency' => 'OMR', 'status' => 'pending', 'provider_link_id' => '1']),
             'grn' => $this->row('goods_receipt_notes', ['business_id' => $bid, 'number' => "GRN-{$tag}-1", 'received_at' => now()->toDateString(), 'status' => 'pending']),
             'website' => $website,
             'page' => $this->row('website_pages', ['website_id' => $website, 'business_id' => $bid, 'key' => 'about', 'title' => "صفحة {$tag}", 'slug' => 'about-'.strtolower($tag)]),

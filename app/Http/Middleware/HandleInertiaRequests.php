@@ -282,6 +282,11 @@ class HandleInertiaRequests extends Middleware
                  * الصندوق إن ضُبطت. ويمرّ في الردّ الذي يلي النقلَ وحده.
                  */
                 'websiteConfirmed' => $request->session()->get(WebsiteConfirmPrint::FLASH),
+                /*
+                 * رابطُ الدفع الذي أُنشئ الآن — يُعرض بنسخه ومشاركته فور إنشائه.
+                 * صفٌّ للعرض (`PaymentLinks::row`) لا سرَّ فيه.
+                 */
+                'paymentLink' => $request->session()->get('paymentLink'),
             ],
 
             // الرمز الخام مع كل استجابة: وسم <meta> يُطبع مرّة عند أول تحميل

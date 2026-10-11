@@ -15,6 +15,7 @@ use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
+use App\Support\PaymentLinks;
 use App\Support\Customers;
 use App\Support\Demo;
 use App\Support\Document\Branding;
@@ -213,6 +214,13 @@ class CustomerInvoiceController extends Controller
 
         return Inertia::render('Admin/CustomerInvoices/Show', [
             'may' => $this->may(),
+            /*
+             * روابطُ دفع هذه الفاتورة — وحالُ Paymob ومن يملك الطلب.
+             *
+             * الرابطُ تحصيلٌ لا بيع (`PaymentLinks`): يُدفع فيُكتب تحصيلٌ
+             * مخصَّصٌ لهذه الفاتورة، ولا يمسّ إيرادَها ولا ضريبتَها.
+             */
+            'paymentLinks' => PaymentLinks::panel($this->bid(), fn ($q) => $q->where('customer_invoice_id', $invoice->id)),
             // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
             'bank_accounts' => $this->bankAccounts(),
             /*

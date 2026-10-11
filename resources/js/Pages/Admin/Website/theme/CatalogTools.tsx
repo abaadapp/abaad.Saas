@@ -1,7 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Link } from '@inertiajs/react';
-import { ArrowDown, ArrowUp, ChevronLeft, CircleAlert, Eye, EyeOff, ImageOff, Loader2, Plus, Save, Upload, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronLeft, CircleAlert, Eye, EyeOff, ImageOff, Loader2, Pencil, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 
+import { useConfirm } from '@/Components/ConfirmDialog';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { csrfHeaders } from '@/lib/csrf';
@@ -114,7 +115,7 @@ function Door({ href, children }: { href: string; children: ReactNode }) {
  *
  * والإخفاءُ للبطاقة وحدها: أصنافُ القسم تبقى في المتجر ويبقى يُختار في رفّه.
  */
-function CardControls({ category, onSaved }: { category: CatalogCategory; onSaved: (c: CatalogCategory) => void }) {
+function CardControls({ category, onSaved, children }: { category: CatalogCategory; onSaved: (c: CatalogCategory) => void; children?: ReactNode }) {
     const t = useTranslate();
     const input = useRef<HTMLInputElement>(null);
     const [busy, setBusy] = useState(false);
@@ -210,7 +211,14 @@ function CardControls({ category, onSaved }: { category: CatalogCategory; onSave
                 </Button>
             )}
 
+            {children}
+
             {busy && <Loader2 className="size-4 shrink-0 animate-spin text-[#6b7280]" />}
+
+            {/* البطاقةُ تملأ إطارًا أفقيًّا وتقصّ ما يزيد — فالطوليّةُ تفقد رأسَها وقدمَها */}
+            <p className="w-full text-[11.5px] text-[#9ca3af]" data-testid={`catalog-card-hint-${category.id}`}>
+                {t('الأفضل صورة أفقية 4:3 — مثل 1200×900. الطولية تُقصّ من أعلاها وأسفلها.')}
+            </p>
 
             {error && (
                 <p role="alert" className="flex w-full items-start gap-1.5 text-[12px] text-[#b91c1c]">
@@ -219,6 +227,160 @@ function CardControls({ category, onSaved }: { category: CatalogCategory; onSave
                 </p>
             )}
         </div>
+    );
+}
+
+/**
+ * اسمُ القسم وحذفُه — من صفّه في المحرّر، حيث يراه على بطاقته.
+ *
+ * التسميةُ بالباب القائم (`admin.products.categories.update`): قواعدُ نموذج
+ * المنتج نفسُها وتفرّدُ الاسم في المتجر. والحذفُ للفارغ وحده — والخادمُ
+ * يردّ قسمًا فيه صنفٌ مطفأ أو محذوف بسببه، فلا يُخمَّن هنا.
+ */
+function CategoryNaming({
+    category,
+    onRenamed,
+    onRemoved,
+}: {
+    category: CatalogCategory;
+    onRenamed: (c: CatalogCategory) => void;
+    onRemoved: (id: number) => void;
+}) {
+    const t = useTranslate();
+    const [ask, dialog] = useConfirm();
+    const [editing, setEditing] = useState(false);
+    const [name, setName] = useState(category.name);
+    const [nameEn, setNameEn] = useState(category.name_en ?? '');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const call = async (url: string, method: string, body?: unknown) => {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...csrfHeaders() },
+                body: body === undefined ? undefined : JSON.stringify(body),
+            });
+            const out = await res.json().catch(() => null);
+
+            if (! res.ok) {
+                setError(Object.values((out?.errors ?? {}) as Record<string, string[]>)[0]?.[0] ?? out?.message ?? t('تعذّر الحفظ'));
+
+                return null;
+            }
+
+            return out;
+        } catch {
+            setError(t('تعذّر الاتصال بالخادم'));
+
+            return null;
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const rename = async () => {
+        const clean = name.trim();
+        if (! clean) return;
+
+        const out = await call(route('admin.products.categories.update', category.id), 'PATCH', { name: clean, name_en: nameEn.trim() || null });
+        if (! out?.category) return;
+
+        onRenamed({ ...category, name: String(out.category.name), name_en: out.category.name_en || null });
+        setEditing(false);
+    };
+
+    const remove = async () => {
+        if (! (await ask({ message: t('حذف فئة «:name»؟ ليس فيها منتجات.', { name: category.name }), action: 'حذف الفئة', danger: true }))) return;
+
+        const out = await call(route('admin.products.categories.destroy', category.id), 'DELETE');
+        if (out?.ok) onRemoved(category.id);
+    };
+
+    return (
+        <>
+            {! editing && (
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => {
+                        setName(category.name);
+                        setNameEn(category.name_en ?? '');
+                        setEditing(true);
+                    }}
+                    aria-label={`${t('تعديل الاسم')} — ${category.name}`}
+                    data-testid={`catalog-rename-${category.id}`}
+                >
+                    <Pencil />
+                    {t('تعديل الاسم')}
+                </Button>
+            )}
+
+            {/* والزرُّ للفئة التي لا يُعرض فيها شيء — وما فيها صنفٌ مخفيّ يردّه الخادمُ بسببه */}
+            {category.shown_count === 0 && (
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={remove}
+                    aria-label={`${t('حذف الفئة')} — ${category.name}`}
+                    data-testid={`catalog-delete-${category.id}`}
+                    className="text-[#b91c1c]"
+                >
+                    <Trash2 />
+                    {t('حذف')}
+                </Button>
+            )}
+
+            {editing && (
+                <div className="grid w-full gap-2 sm:grid-cols-[1fr_1fr_auto]" data-testid={`catalog-rename-form-${category.id}`}>
+                    <Input
+                        autoFocus
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                rename();
+                            }
+                        }}
+                        aria-label={`${t('اسم القسم')} — ${category.name}`}
+                    />
+                    <Input
+                        dir="ltr"
+                        value={nameEn}
+                        onChange={(e) => setNameEn(e.target.value)}
+                        placeholder={t('الاسم بالإنجليزية (اختياري)')}
+                        aria-label={`${t('الاسم بالإنجليزية (اختياري)')} — ${category.name}`}
+                    />
+                    <div className="flex gap-2">
+                        <Button type="button" size="sm" loading={busy} disabled={! name.trim()} onClick={rename}>
+                            {t('حفظ')}
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => {
+                            setEditing(false);
+                            setError(null);
+                        }}>
+                            {t('إلغاء')}
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {error && (
+                <p role="alert" className="flex w-full items-start gap-1.5 text-[12px] text-[#b91c1c]" data-testid={`catalog-naming-error-${category.id}`}>
+                    <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                    {error}
+                </p>
+            )}
+
+            {dialog}
+        </>
     );
 }
 
@@ -237,6 +399,9 @@ function CardControls({ category, onSaved }: { category: CatalogCategory; onSave
  * وبطاقةُ كلِّ فئةٍ تُخفى وتلبس صورةً من صفّها (`CardControls`). وما
  * يتبدّل فيها يقع على الموقع لا على المسوّدة — فيُنادى `onCardChange`
  * لتُعاد المعاينة: الإطارُ يقرأ الفئاتِ من الخادم لا من النموذج.
+ *
+ * واسمُها يُعدَّل من صفّها، والفارغةُ تُحذف منه (`CategoryNaming`) — ومعاينةٌ
+ * تُعاد بعدهما أيضًا: الاسمُ مكتوبٌ على البطاقة.
  *
  * ═══ والترتيبُ بسهمين لا بسحب ═══
  *
@@ -397,11 +562,11 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                                     <img
                                         src={c.card_image}
                                         alt=""
-                                        className="size-10 shrink-0 rounded-[8px] object-cover ring-1 ring-[var(--ui-border,#e8e8e8)]"
+                                        className="h-10 w-[53px] shrink-0 rounded-[8px] object-cover ring-1 ring-[var(--ui-border,#e8e8e8)]"
                                         data-testid={`catalog-card-image-${c.id}`}
                                     />
                                 ) : (
-                                    <span className="flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-[#f3efe9] text-[#9ca3af]">
+                                    <span className="flex h-10 w-[53px] shrink-0 items-center justify-center rounded-[8px] bg-[#f3efe9] text-[#9ca3af]">
                                         <ImageOff className="size-4" />
                                     </span>
                                 )}
@@ -446,7 +611,20 @@ export function CategoriesPanel({ categories, onCardChange }: { categories: Cata
                                         setList((prev) => prev.map((x) => (x.id === saved.id ? saved : x)));
                                         onCardChange?.();
                                     }}
-                                />
+                                >
+                                    <CategoryNaming
+                                        category={c}
+                                        onRenamed={(renamed) => {
+                                            // وما لم يُرتَّب يقع بالاسم — فالاسمُ الجديد قد ينقله
+                                            setList((prev) => inStoreOrder(prev.map((x) => (x.id === renamed.id ? renamed : x))));
+                                            onCardChange?.();
+                                        }}
+                                        onRemoved={(id) => {
+                                            setList((prev) => prev.filter((x) => x.id !== id));
+                                            onCardChange?.();
+                                        }}
+                                    />
+                                </CardControls>
                             </li>
                         );
                     })}

@@ -716,6 +716,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
     // وتسميةُ قسمٍ قائم — في صفّه لا بقسمٍ جديد، فلا تنفصل عنه أصنافُه
     Route::patch('/products/categories/{category}', [CatalogQuickAddController::class, 'updateCategory'])
         ->whereNumber('category')->name('products.categories.update');
+    // وحذفُ قسمٍ فارغ — والقسمُ الذي يشير إليه صنفٌ يُردّ (`destroyCategory`)
+    Route::delete('/products/categories/{category}', [CatalogQuickAddController::class, 'destroyCategory'])
+        ->whereNumber('category')->name('products.categories.destroy');
     /*
      * وبطاقتُه في «تسوّق حسب الفئة» — تُخفى، وتلبس صورة، وتُنزع عنها.
      * تحت `/products/` كأخواتها: صلاحيةُ «المنتجات» نفسُها بلا صلاحيةٍ تُخترع.

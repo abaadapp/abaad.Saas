@@ -91,6 +91,11 @@ class Notifications
          * يُسلّمه ويُحصّل بطريقةٍ أخرى.
          */
         'refunded-order-' => [self::TASK, self::MANUAL],
+        /*
+         * ودفعةٌ وصلت عبر رابط دفع: خبرٌ كـ«ملخّص اليوم» — التحصيلُ سُجّل
+         * وحده، ولا شيءَ يُنجَز. فيُقرأ ويُخفى، ويغيب بعد مدّته.
+         */
+        'link-paid-' => [self::INFO, self::MANUAL],
         'order-' => [self::TASK, self::AUTO],
     ];
 

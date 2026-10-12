@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Order;
 use App\Models\Setting;
 
 /**
@@ -90,6 +91,41 @@ final class PaymentMethods
     public static function creditAllowed(array $settings): bool
     {
         return ($settings[self::CREDIT_KEY] ?? '1') !== '0';
+    }
+
+    /**
+     * وسيلةُ الدفع كما تُطبع على الإيصال الحراريّ.
+     *
+     * ═══ العطب الذي وُضعت له ═══
+     *
+     * طلبُ الموقع «عند الاستلام» يُكتب `نقدي` و«غير مدفوع» (`WebCheckout::payments`):
+     * الوسيلةُ ما سيدخل به المالُ الدرجَ، والحالُ أنّه لم يدخل بعد. والإيصالُ
+     * يطبع الوسيلةَ وحدها — وحالُ الدفع سطرٌ مطفأٌ افتراضًا — فكان موظّفُ
+     * التجهيز يقرأ «نقدي» على طلبٍ لم يُقبض منه فلسٌ، فيسلّمه بلا تحصيل.
+     *
+     * فيُطبع ما اختاره الزبونُ بلفظه في الموقع: «الدفع عند الاستلام».
+     *
+     * ═══ وما لا يمسّه ═══
+     *
+     * البيعُ الآجل في الصندوق نقديٌّ «غير مدفوع» هو الآخر، ولا استلامَ فيه —
+     * فالقناةُ شرط. والوسيلةُ المخزّنة لا تتغيّر: الدفترُ والتقاريرُ ودرجُ
+     * الصندوق تقرأ `نقدي` كما كانت. والتحويلُ والبطاقةُ كما كانا.
+     */
+    public static function onReceipt(Order $order): string
+    {
+        $method = (string) $order->payment_method;
+
+        if ($method === self::CARD) {
+            return __('فيزا');
+        }
+
+        if ($method === self::CASH
+            && $order->channel === SalesChannel::WEBSITE
+            && (string) $order->payment_status === 'غير مدفوع') {
+            return __('الدفع عند الاستلام');
+        }
+
+        return __($method);
     }
 
     public static function creditAllowedFor(int $businessId): bool

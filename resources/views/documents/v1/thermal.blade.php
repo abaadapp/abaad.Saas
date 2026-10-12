@@ -204,7 +204,8 @@
         <tr><td class="k">{{ __('رسوم التوصيل') }}</td><td class="l"><span dir="ltr">{{ $money($order->delivery_fee) }}</span></td></tr>
     @endif
     <tr class="grand"><td>{{ __('الإجمالي') }}</td><td class="l"><span dir="ltr">{{ $money($order->total) }}</span></td></tr>
-    <tr><td class="k">{{ __('وسيلة الدفع') }}</td><td class="l">{{ $order->payment_method === 'بطاقة' ? __('فيزا') : __($order->payment_method) }}</td></tr>
+    {{-- وطلبُ الموقع «عند الاستلام» لا يُطبع «نقدي» قبل أن يُقبض — `PaymentMethods::onReceipt` --}}
+    <tr><td class="k">{{ __('وسيلة الدفع') }}</td><td class="l">{{ \App\Support\PaymentMethods::onReceipt($order) }}</td></tr>
     {{--
         وحالُ الدفع بجانب وسيلته — لمن أشعله (`show_payment_status`).
 

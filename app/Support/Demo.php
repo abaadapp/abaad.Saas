@@ -18,6 +18,7 @@ use App\Models\CustomAlert;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerPaymentLink;
 use App\Models\DismissedNotification;
 use App\Models\Expense;
 use App\Models\ExpenseType;
@@ -3858,6 +3859,9 @@ class Demo
      */
     public const DISMISSAL_DAYS = 30;
 
+    /** كم يومًا يبقى «وصلت دفعةٌ عبر رابط الدفع» في الجرس — دون مدّة الإخفاء */
+    public const PAID_LINK_DAYS = 7;
+
     /** مفاتيح التنبيهات التي أخفاها المستخدم الحالي — ما لم تنقضِ مدّتُها */
     public static function dismissedNotificationKeys(): array
     {
@@ -4437,6 +4441,47 @@ class Demo
                 'icon' => 'credit-card',
                 'color' => 'warning',
                 'url' => route('admin.orders.index'),
+            ]);
+        }
+
+        /*
+         * ═══ ورابطُ دفعٍ دُفع ═══
+         *
+         * العميلُ يدفع من هاتفه، وإشعارُ Paymob يسجّل التحصيلَ ويُقفل الفاتورة
+         * بلا يدٍ (`PaymentLinks::settle`). وكان ذلك كلُّه يقع في صمت: صاحبُ
+         * المحلّ لا يعرف أنّ المال وصل حتّى يفتح الفاتورة — فيُذكّر عميلًا
+         * دفع، أو يؤخّر طلبًا ينتظر دفعتَه.
+         *
+         * وخبرٌ لا إجراء: يُقرأ ويُخفى. ومدّتُه أيّامٌ تحت مدّة الإخفاء
+         * (`DISMISSAL_DAYS`) — فما أُخفي لا يعود بعد أن ينقضي إخفاؤه.
+         *
+         * ولمن يفتح «المالية»: بابُ الروابط هناك. ويقود إلى الفاتورة نفسِها
+         * لمن يفتح قسمَها، وإلى صفحة الروابط لمن لا يفتحه.
+         */
+        $paidLinks = CustomerPaymentLink::where('business_id', $bid)
+            ->where('status', CustomerPaymentLink::PAID)
+            ->where('paid_at', '>=', now()->subDays(self::PAID_LINK_DAYS))
+            ->with(['customer:id,name,name_en', 'invoice:id,number'])
+            ->orderByDesc('paid_at')->limit($limit)->get();
+
+        foreach ($paidLinks as $link) {
+            $name = self::ln($link->customer?->name, $link->customer?->name_en) ?: '—';
+            $amount = self::money((float) $link->amount);
+            $toInvoice = $link->invoice !== null && ($unfiltered || ($u && $u->allows('orders')));
+
+            $add('link-paid-'.$link->id, [
+                'text' => $link->invoice !== null
+                    ? __('وصلت دفعة :amount من :name عبر رابط الدفع — فاتورة :invoice', [
+                        'amount' => $amount, 'name' => $name, 'invoice' => $link->invoice->number,
+                    ])
+                    : __('وصلت دفعة :amount من :name عبر رابط الدفع', ['amount' => $amount, 'name' => $name]),
+                'time' => optional($link->paid_at)->format('Y-m-d H:i'),
+                'section' => 'finance',
+                'icon' => 'credit-card',
+                'color' => 'success',
+                'url' => $toInvoice
+                    ? route('admin.customerInvoices.show', $link->customer_invoice_id)
+                    : route('admin.finance.paymentLinks'),
             ]);
         }
 

@@ -7636,5 +7636,7 @@
     "دفعةٌ رُدّت أو استُرجعت أو وصلت مرّتين — والسببُ مكتوبٌ تحت كلّ رابط.": "A payment was declined, refunded or arrived twice — the reason is written under each link.",
     "ما يحتاج انتباهك في موقعك": "What needs your attention on your site",
     "موقعك مكتمل — لا شيء ينقصه الآن.": "Your site is complete — nothing is missing right now.",
-    "و:n غيرها": "and :n more"
+    "و:n غيرها": "and :n more",
+    "وصلت دفعة :amount من :name عبر رابط الدفع — فاتورة :invoice": "Payment of :amount received from :name via payment link — invoice :invoice",
+    "وصلت دفعة :amount من :name عبر رابط الدفع": "Payment of :amount received from :name via payment link"
 }

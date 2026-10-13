@@ -416,10 +416,13 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                                     <span className="sr-only">{t('الموقع الإلكتروني')}</span>
                                 </a>
                             </Button>
-                        ) : (
+                        ) : auth?.planFeatures?.website === false ? null : (
                             /*
                              * إلى شاشة الموقع في أدوات التسويق لا إلى بيانات
                              * النشاط.
+                             *
+                             * ولا يُعرض «أضف الموقع» لباقةٍ لا تبيعه: يقود إلى
+                             * قسمٍ تُردّ أبوابُه كلُّها (`CheckPlanFeature`).
                              *
                              * الموقع صار قسمًا قائمًا: نطاقٌ ونشرٌ وجملةٌ
                              * تعريفية وما يراه الزائر. فمن يضغط الزرّ ليضيف

@@ -2,19 +2,15 @@
 
 namespace Tests\Feature;
 
-use App\Http\Middleware\CheckPlanFeature;
 use App\Models\Branch;
 use App\Models\Business;
-use App\Models\Coupon;
 use App\Models\Plan;
 use App\Models\Product;
 use App\Models\User;
 use App\Support\MarketingSettings;
 use App\Support\PlanFeatures;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Route as Router;
 use Tests\TestCase;
 
 /**
@@ -33,9 +29,7 @@ use Tests\TestCase;
  *   - الفارغةُ تكسبهما، و`null` تبقى `null` (مفتوحةً كما كانت).
  *   - لا يُعرف شيءٌ بالاسم: باقةٌ سمّاها مدير المنصّة بيده تُعامَل كغيرها.
  *   - الإعادةُ بلا أثر، والتراجعُ يُسقطهما وحدهما.
- *   - ولا تُغلق القدرتان شيئًا بعد — لا مسارَ في الخريطة يقرؤهما، ومتجرٌ يبيع
- *     من موقعه على باقةٍ قديمة يبقى كما هو قبل الترحيل وبعده. فهذه مرحلةٌ
- *     أولى تُعرّف القاعدةَ بالمفتاحين، وحارساهما في الطلب التالي.
+ *   - متجرٌ يبيع من موقعه على باقةٍ قديمة: يُغلَق بلا الترحيل، ويعمل بعده.
  */
 class AnExistingPlanKeepsItsWebsiteTest extends TestCase
 {
@@ -120,25 +114,12 @@ class AnExistingPlanKeepsItsWebsiteTest extends TestCase
     }
 
     /**
-     * والقدرتان لا تُغلقان بابًا بعد — لا في اللوحة ولا خارجها.
+     * والمتجرُ نفسُه: يبيع من موقعه على باقةٍ قديمة — وبلا الترحيل يُغلَق.
      *
-     * فالكودُ ينزل قبل الترحيل بدقائق، وفيها تقرأ كلُّ قائمةٍ قديمة القدرتين
-     * غائبتين. ولا يضرّ ذلك ما دام لا حارسَ يسأل عنهما — وهذا ما يُحرس هنا.
-     * ويوم يصل الحارسان يُستبدل هذا الاختبار بأنّ الترحيلَ هو ما يُبقي الباب
-     * مفتوحًا.
+     * النصفُ الأوّل يُثبت أنّ الخطر حقيقيّ (القدرةُ الجديدة تُغلق ما لم يُرحَّل)،
+     * والثاني أنّ الترحيل يُبقيه مفتوحًا — لوحتُه وموقعُه العامّ.
      */
-    public function test_neither_new_capability_closes_a_door_yet(): void
-    {
-        $guarded = collect(Router::getRoutes()->getRoutes())
-            ->map(fn (Route $r) => (string) $r->getName())
-            ->filter(fn ($n) => in_array(CheckPlanFeature::featureFor($n), ['website', 'marketing_tools'], true))
-            ->values()->all();
-
-        $this->assertSame([], $guarded, 'مسارٌ صار يُغلق بقدرةٍ لم يصل ترحيلُها بعد');
-    }
-
-    /** والمتجرُ نفسُه: يبيع من موقعه على باقةٍ قديمة — قبل الترحيل وبعده */
-    public function test_a_shop_selling_from_its_site_on_an_old_plan_notices_nothing(): void
+    public function test_a_shop_selling_from_its_site_on_an_old_plan_keeps_selling(): void
     {
         $plan = $this->oldPlan('الباقة الأساسية', ['loyalty', 'whatsapp']);
         $shop = Business::create(['name' => 'ورد الخوير', 'type' => 'محل ورود', 'status' => 'نشط', 'phone' => '91234567', 'plan_id' => $plan]);
@@ -148,40 +129,13 @@ class AnExistingPlanKeepsItsWebsiteTest extends TestCase
         $shop->forceFill(['site_slug' => 'ward-alkhuwair'])->save();
         MarketingSettings::save($shop->id, 'website', ['store_on' => '1']);
 
-        // الكودُ نزل والترحيلُ لم يُشغَّل — والقائمةُ القديمة لا تعرف القدرتين
-        $this->assertFalse(PlanFeatures::allows($shop->fresh(), 'website'));
-        $this->assertSame(['loyalty', 'whatsapp'], $this->raw($plan));
+        $this->get(route('store.show', 'ward-alkhuwair'))->assertNotFound();
+        $this->actingAs($owner)->get(route('admin.website.index'))->assertForbidden();
 
-        $before = $this->doors($owner, 'BEFORE');
         $this->migration()->up();
-        $after = $this->doors($owner, 'AFTER');
 
-        $this->assertSame(['site' => 200, 'panel' => 200, 'reviews' => 200, 'coupons' => 200, 'coupon_saved' => true], $before, 'أُغلق بابٌ قبل الترحيل');
-        $this->assertSame($before, $after, 'تغيّر بابٌ بالترحيل');
-    }
-
-    /**
-     * ما يراه التاجرُ وزبونُه — الموقعُ العامّ ولوحتُه والتقييماتُ والكوبونات.
-     *
-     * والمستخدمُ يُقرأ من جديد في كلّ نداء — كما في كلّ طلبٍ حقيقيّ؛ نسخةُ
-     * الطلب السابق تحمل الباقةَ قبل الترحيل.
-     *
-     * @return array<string, int|bool>
-     */
-    private function doors(User $owner, string $code): array
-    {
-        $site = $this->get(route('store.show', 'ward-alkhuwair'));
-        $site->assertSee('بوكيه ورد');
-
-        $as = fn () => $this->actingAs($owner->fresh());
-        $as()->post(route('admin.coupons.store'), ['code' => $code, 'type' => 'نسبة', 'value' => 10]);
-
-        return [
-            'site' => $site->status(),
-            'panel' => $as()->get(route('admin.website.index'))->status(),
-            'reviews' => $as()->get(route('admin.marketing.reviews'))->status(),
-            'coupons' => $as()->get(route('admin.marketing.coupons'))->status(),
-            'coupon_saved' => Coupon::where('business_id', $owner->business_id)->where('code', $code)->exists(),
-        ];
+        $this->get(route('store.show', 'ward-alkhuwair'))->assertOk()->assertSee('بوكيه ورد');
+        // ومستخدمٌ يُقرأ من جديد — كما في كلّ طلبٍ حقيقيّ؛ نسخةُ الطلب السابق تحمل الباقةَ قبل الترحيل
+        $this->actingAs($owner->fresh())->get(route('admin.website.index'))->assertOk();
     }
 }

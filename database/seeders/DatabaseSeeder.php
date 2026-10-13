@@ -41,14 +41,10 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         /* ---------------- الباقات (يحتاجها إنشاء المتاجر والاشتراكات) ---------------- */
-        $limits = [
-            'الباقة الأساسية' => [1, 3, 100],
-            'الباقة الاحترافية' => [3, 15, 100000],
-            'باقة المؤسسات' => [999, 999, 1000000],
-        ];
         $planId = null;
         foreach (SeedData::plans() as $p) {
-            [$branches, $employees, $products] = $limits[$p['name']] ?? [1, 3, 100];
+            // والأسقفُ من مصدرها مع الباقة — لا خريطةٌ ثانية هنا تفترق عنها
+            [$branches, $employees, $products] = $p['limits'];
             $plan = Plan::create([
                 'name' => $p['name'],
                 'monthly_price' => $p['monthly'],

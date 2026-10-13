@@ -92,6 +92,7 @@ type SettingsItem = {
     desc: string;
     icon: LucideIcon;
     section?: string;
+    feature?: string;
 };
 
 /**
@@ -176,6 +177,7 @@ export function adminPages(reports: ReportLink[] = []): PageEntry[] {
                 href: route('admin.settings.index', { section: item.key }),
                 group: 'الإعدادات',
                 section: item.section ?? 'settings',
+                feature: item.feature,
             });
         }
     }

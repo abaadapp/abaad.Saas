@@ -430,8 +430,11 @@ class Demo
          * من نشر متجره عندنا فذاك موقعُه: زرٌّ يفتح صفحةً قديمة بينما متجره
          * الحيّ في مكانٍ آخر يُرسل زبونَه إلى الخطأ. والخارجيّ يبقى لمن لم
          * ينشر — أو لمن له موقعٌ آخر ولم يفتح متجرًا هنا.
+         *
+         * وباقةٌ لا تبيع الموقع لا يُخدم عليها متجرُ أبعاد (`Storefront::serving`)
+         * — فلا يقود الزرُّ إلى ٤٠٤.
          */
-        if ($business && Storefront::published($business)) {
+        if ($business && Storefront::published($business) && PlanFeatures::allows($business, 'website')) {
             /*
              * والعنوانُ ما يُخدَم لا ما يُبنى — `canonical` مصدرُه الواحد.
              *

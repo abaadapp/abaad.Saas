@@ -338,8 +338,10 @@ export default function SettingsIndex() {
     const [ask, confirmDialog] = useConfirm();
     const abilities = auth?.abilities ?? [];
     // القسمُ مكتوبٌ مع البند لا هنا: مفتاحٌ يُسمّى في شرطٍ كان ينسى أخاه
-    const visible = (item: { key: string; section?: string }) =>
-        !item.section || abilities.includes(item.section);
+    // والباقةُ فوقه — بطاقةٌ تُفتح على أبوابٍ تُردّ كلُّها أسوأُ من غيابها
+    const licensed = (feature?: string) => !feature || (auth?.planFeatures?.[feature] ?? true);
+    const visible = (item: { key: string; section?: string; feature?: string }) =>
+        (!item.section || abilities.includes(item.section)) && licensed(item.feature);
 
     const [tab, setTab] = useState<TabKey | null>(tabFromUrl);
 
@@ -359,6 +361,10 @@ export default function SettingsIndex() {
      */
     useEffect(() => {
         if (tab === 'chart' && !abilities.includes('finance')) {
+            goHub();
+        }
+        // وقسمُ الموقع بالعنوان لباقةٍ لا تبيعه — يعود إلى البطاقات لا يُرسم فارغًا يُردّ حفظُه
+        if (tab === 'website' && !licensed('website')) {
             goHub();
         }
     }, [tab, abilities]);

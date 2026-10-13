@@ -720,7 +720,7 @@ class PageController extends Controller
          * محروسٌ باختبارٍ يقارنهما.
          */
         'whatsapp_pack_size' => '500',
-        'whatsapp_pack_price' => '5.000',
+        'whatsapp_pack_price' => '7.500',
         /*
          * والمساعدُ الذكيّ «اقتراحُ الردّ فقط» افتراضًا لا «متوقّف».
          *

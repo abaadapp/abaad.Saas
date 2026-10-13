@@ -7639,5 +7639,7 @@
     "و:n غيرها": "and :n more",
     "وصلت دفعة :amount من :name عبر رابط الدفع — فاتورة :invoice": "Payment of :amount received from :name via payment link — invoice :invoice",
     "وصلت دفعة :amount من :name عبر رابط الدفع": "Payment of :amount received from :name via payment link",
-    "إرسال الفاتورة بعد دفعها برابط الدفع": "Send the invoice once it is paid by payment link"
+    "إرسال الفاتورة بعد دفعها برابط الدفع": "Send the invoice once it is paid by payment link",
+    "بناء الموقع ونشره ونطاقه — والموقع العام وطلباته لا تُخدم بدونها": "Building, publishing and the domain of the website — the public site and its orders are not served without it",
+    "تقييمات العملاء والكوبونات والعروض — والولاء وواتساب لهما قدرتاهما": "Customer reviews, coupons and offers — loyalty and WhatsApp have their own capabilities"
 }

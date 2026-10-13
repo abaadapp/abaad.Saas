@@ -332,7 +332,7 @@ function PlanDialog({
                             rows={5}
                             value={form.data.features}
                             onChange={(e) => form.setData('features', e.target.value)}
-                            placeholder={`${t('عدد فروع غير محدود')}\n${t('تقارير متقدمة')}\n${t('دعم فني على مدار الساعة')}`}
+                            placeholder={`${t('3 فروع')}\n${t('الموقع الإلكتروني')}\n${t('التقارير المتقدّمة')}`}
                         />
                     </Field>
 

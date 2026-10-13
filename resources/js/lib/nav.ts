@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import type { PlanFeatureKey } from '@/types';
 import {
     CUSTOMER_TABS,
     EMPLOYEE_TABS,
@@ -58,7 +59,7 @@ export interface NavItem {
      * غير `section`: ذاك صلاحيةُ الموظّف، وهذا ما اشتراه صاحب المتجر. وبابٌ
      * يُعرض ويردّ بـ403 يجعل صاحبه يظنّ العطب في النظام ويعيد المحاولة.
      */
-    feature?: string;
+    feature?: PlanFeatureKey;
     /**
      * صفحات تتبع هذا العنصر ولا مدخل لها في القائمة — تُبقيه مضيئًا.
      *
@@ -221,10 +222,10 @@ export const NAV: NavGroup[] = [
                 section: 'marketing',
                 children: [
                     { label: 'برنامج ولاء', icon: Star, route: 'admin.marketing.loyalty', section: 'marketing', feature: 'loyalty' },
-                    { label: 'تقييمات العملاء', icon: MessageSquare, route: 'admin.marketing.reviews', section: 'marketing' },
+                    { label: 'تقييمات العملاء', icon: MessageSquare, route: 'admin.marketing.reviews', section: 'marketing', feature: 'marketing_tools' },
                     /* واسمُها ما تفعله: تربط Analytics وتفحص الصفحة — والكتابةُ في «الموقع الإلكتروني ‹ الظهور في البحث» */
-                    { label: 'التحليلات وفحص الظهور', icon: Search, route: 'admin.marketing.seo', section: 'marketing' },
-                    { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing' },
+                    { label: 'التحليلات وفحص الظهور', icon: Search, route: 'admin.marketing.seo', section: 'marketing', feature: 'website' },
+                    { label: 'الكوبونات والعروض', icon: TicketPercent, route: 'admin.marketing.coupons', section: 'marketing', feature: 'marketing_tools' },
                     { label: 'إشعارات واتساب', icon: MessageCircle, route: 'admin.marketing.whatsapp', section: 'marketing', feature: 'whatsapp' },
                     /*
                         وسجلُّ ما خرج فعلًا بابٌ في القائمة لا زرٌّ في شاشةٍ أخرى.
@@ -260,6 +261,8 @@ export const NAV: NavGroup[] = [
                 icon: AppWindow,
                 route: 'admin.website.index',
                 section: 'website',
+                // والباقةُ فوق الصلاحية — والخادمُ يحرسها في `CheckPlanFeature` و`Storefront::serving`
+                feature: 'website',
                 covers: ['admin.website.editor'],
             },
         ],

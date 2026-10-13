@@ -52,7 +52,13 @@ class WhatsAppPacks
 
     public const FALLBACK_SIZE = 500;
 
-    public const FALLBACK_PRICE = 5.0;
+    /**
+     * ثمنُ الحزمة حين لا يضبطه مدير المنصّة — ٧٫٥٠٠ ر.ع لخمسمئة رسالة (2026-10-13).
+     *
+     * والثمنُ المضبوطُ في إعدادات المنصّة (`whatsapp_pack_price`) يعلو عليه
+     * دائمًا: ما كتبه مدير المنصّة بيده لا يُستبدل بنشر.
+     */
+    public const FALLBACK_PRICE = 7.5;
 
     private static function setting(string $key): ?string
     {

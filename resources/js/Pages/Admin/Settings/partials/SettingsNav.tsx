@@ -66,6 +66,8 @@ export const SETTINGS_NAV = [
                 label: 'الموقع الإلكتروني',
                 desc: 'حالة موقعك وتصميمه وصفحاته ومتجره ونطاقه',
                 icon: Globe,
+                // وتُخفى لباقةٍ لا تبيع الموقع — أبوابُها كلُّها تُردّ بها (`CheckPlanFeature`)
+                feature: 'website' as const,
             },
         ],
     },

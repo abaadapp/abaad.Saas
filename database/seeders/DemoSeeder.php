@@ -67,13 +67,9 @@ class DemoSeeder extends Seeder
     {
         /* ---------------- الباقات ---------------- */
         $planByName = [];
-        $limits = [
-            'الباقة الأساسية' => [1, 3, 100],
-            'الباقة الاحترافية' => [3, 15, 100000],
-            'باقة المؤسسات' => [999, 999, 1000000],
-        ];
         foreach (SeedData::plans() as $p) {
-            $lim = $limits[$p['name']] ?? [1, 3, 100];
+            // والأسقفُ من مصدرها مع الباقة — كما في `DatabaseSeeder`
+            $lim = $p['limits'];
             $plan = Plan::create([
                 'name' => $p['name'],
                 'monthly_price' => $p['monthly'],

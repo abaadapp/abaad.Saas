@@ -1,5 +1,19 @@
 import type { PageProps as InertiaPageProps } from '@inertiajs/core';
 
+/**
+ * قدراتُ الباقة — القائمةُ المغلقة نفسُها في `App\Support\PlanFeatures::CAPABILITIES`.
+ *
+ * تُكتب هنا ليُفحص كلُّ `feature` في القوائم بالمترجم: قدرةٌ يُخطأ في اسمها
+ * تُقرأ «مفتوحة» (الغائبُ مفتوح) فيبقى البابُ ظاهرًا لمن لم يشترِه.
+ */
+export type PlanFeatureKey =
+    | 'reports_advanced'
+    | 'custom_permissions'
+    | 'loyalty'
+    | 'whatsapp'
+    | 'website'
+    | 'marketing_tools';
+
 export interface User {
     id: number;
     name: string;

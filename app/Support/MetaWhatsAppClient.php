@@ -21,6 +21,7 @@ class MetaWhatsAppClient
      * إرسال رسالة قالب.
      *
      * @param  array<int, string>  $variables  قيم {{1}}, {{2}} … بترتيبها
+     * @param  array{id: string, filename: string}|null  $document  ملفٌّ رُفع إلى ميتا لرأس قالبٍ من نوع «مستند»
      * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}
      */
     public static function sendTemplate(
@@ -29,6 +30,7 @@ class MetaWhatsAppClient
         string $template,
         string $language,
         array $variables = [],
+        ?array $document = null,
     ): array {
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
@@ -45,14 +47,30 @@ class MetaWhatsAppClient
             ],
         ];
 
+        $components = [];
+
+        // والرأسُ قبل النصّ — بترتيب أجزاء القالب عند ميتا
+        if ($document !== null) {
+            $components[] = [
+                'type' => 'header',
+                'parameters' => [['type' => 'document', 'document' => [
+                    'id' => $document['id'], 'filename' => $document['filename'],
+                ]]],
+            ];
+        }
+
         if ($variables !== []) {
-            $payload['template']['components'] = [[
+            $components[] = [
                 'type' => 'body',
                 'parameters' => array_map(
                     fn ($v) => ['type' => 'text', 'text' => (string) $v],
                     array_values($variables),
                 ),
-            ]];
+            ];
+        }
+
+        if ($components !== []) {
+            $payload['template']['components'] = $components;
         }
 
         try {

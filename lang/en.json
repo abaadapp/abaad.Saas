@@ -7638,5 +7638,6 @@
     "موقعك مكتمل — لا شيء ينقصه الآن.": "Your site is complete — nothing is missing right now.",
     "و:n غيرها": "and :n more",
     "وصلت دفعة :amount من :name عبر رابط الدفع — فاتورة :invoice": "Payment of :amount received from :name via payment link — invoice :invoice",
-    "وصلت دفعة :amount من :name عبر رابط الدفع": "Payment of :amount received from :name via payment link"
+    "وصلت دفعة :amount من :name عبر رابط الدفع": "Payment of :amount received from :name via payment link",
+    "إرسال الفاتورة بعد دفعها برابط الدفع": "Send the invoice once it is paid by payment link"
 }

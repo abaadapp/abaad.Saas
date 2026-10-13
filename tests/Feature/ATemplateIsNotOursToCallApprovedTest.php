@@ -322,7 +322,8 @@ class ATemplateIsNotOursToCallApprovedTest extends TestCase
 
         $view = WhatsAppTemplates::platformStatus();
 
-        $this->assertSame(count(WhatsAppEvent::ALL), $view['total']);
+        /* وما يُربط عند اعتماده لا صفَّ له قبلها — `WhatsAppEvent::ON_APPROVAL` */
+        $this->assertSame(count(array_diff(WhatsAppEvent::ALL, WhatsAppEvent::ON_APPROVAL)), $view['total']);
         $this->assertSame(1, $view['approved']);
         $this->assertNotNull($view['synced_at'], 'قائمةٌ بلا وقتٍ لا يُعرف أهي حالُ الساعة أم حالُ الأسبوع');
 

@@ -7,7 +7,9 @@ use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessage;
 use App\Support\MetaWhatsAppClient;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
+use App\Support\WhatsAppInvoicePdf;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppQuota;
 use App\Support\WhatsAppStatus;
@@ -177,8 +179,14 @@ class SendWhatsAppMessage implements ShouldQueue
         $order = $message->order;
         $invoice = $message->customerInvoice;
 
+        $paid = $message->event_type === WhatsAppEvent::INVOICE_PAID;
+
         $variables = match (true) {
             $order !== null => WhatsAppTemplates::variables($business, $order),
+            // وما دُفع يُقرأ من الصفّ — كتبه الرابطُ يومَ دُفع (`handlePaidLink`)
+            $invoice !== null && $paid => isset(($message->metadata ?? [])['amount'])
+                ? WhatsAppTemplates::paidVariables($business, $invoice, (float) $message->metadata['amount'])
+                : null,
             $invoice !== null => WhatsAppTemplates::invoiceVariables($business, $invoice),
             /*
              * ولا مصدرَ لها: لا تُرسَل نصفَ مملوءة.
@@ -211,12 +219,32 @@ class SendWhatsAppMessage implements ShouldQueue
             $variables,
         );
 
-        $result = MetaWhatsAppClient::sendTemplate(
+        /*
+         * والفاتورةُ المدفوعةُ تخرج ملفًّا في رأس القالب — يُرفع قبل النداء.
+         *
+         * ورفعٌ تعذّر يُقرأ كنداءٍ رُدّ: تُردّ الحصّة، ويُعاد ما يُعاد،
+         * ويُكتب سببُ ما لا يُعاد. فلا تخرج «وصلت دفعتُك» بلا فاتورتها.
+         */
+        $document = null;
+        $result = null;
+
+        if ($paid) {
+            $upload = WhatsAppInvoicePdf::upload($connection, $invoice);
+
+            if ($upload['ok']) {
+                $document = $upload['document'];
+            } else {
+                $result = ['ok' => false, 'id' => null, 'code' => $upload['code'], 'message' => $upload['message'], 'retryable' => $upload['retryable']];
+            }
+        }
+
+        $result ??= MetaWhatsAppClient::sendTemplate(
             $connection,
             (string) $message->recipient_phone,
             (string) $message->template_name,
             (string) ($message->language_code ?: config('whatsapp.language', 'ar')),
             $variables,
+            $document,
         );
 
         if ($result['ok']) {

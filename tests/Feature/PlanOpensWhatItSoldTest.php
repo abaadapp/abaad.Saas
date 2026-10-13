@@ -38,6 +38,14 @@ class PlanOpensWhatItSoldTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * قدرتان في القائمة بلا حارسٍ بعد — مرحلةٌ أولى مقصودة.
+     *
+     * تُعرّفان الكودَ وقاعدةَ الإنتاج بالمفتاحين قبل أن يسأل عنهما حارس،
+     * فلا يُغلق النشرُ الموقعَ في الدقائق بين سحب الكود والترحيل.
+     */
+    private const KNOWN_BEFORE_GUARDED = ['website', 'marketing_tools'];
+
     private Business $business;
 
     private User $owner;
@@ -568,7 +576,26 @@ class PlanOpensWhatItSoldTest extends TestCase
             ->implode("\n");
 
         foreach (array_keys(PlanFeatures::CAPABILITIES) as $key) {
+            if (in_array($key, self::KNOWN_BEFORE_GUARDED, true)) {
+                continue;
+            }
+
             $this->assertStringContainsString("'{$key}'", $sources, "القدرة «{$key}» تُعرض ولا يفحصها أحد");
+        }
+    }
+
+    /**
+     * والمستثنى قدرتان بعينهما — لا بابٌ تدخل منه ثالثة.
+     *
+     * `website` و`marketing_tools` تنزلان قبل حارسيهما بقصد (انظر
+     * `PlanFeatures::CAPABILITIES`)، وطلبُ الحارسين يحذف هذا الاستثناء.
+     */
+    public function test_only_the_two_staged_capabilities_wait_for_their_guard(): void
+    {
+        $this->assertSame(['website', 'marketing_tools'], self::KNOWN_BEFORE_GUARDED);
+
+        foreach (self::KNOWN_BEFORE_GUARDED as $key) {
+            $this->assertArrayHasKey($key, PlanFeatures::CAPABILITIES);
         }
     }
 }

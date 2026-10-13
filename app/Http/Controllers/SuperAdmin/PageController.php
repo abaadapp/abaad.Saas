@@ -806,7 +806,8 @@ class PageController extends Controller
             'types' => BusinessTypes::TYPES,
             'cities' => self::CITIES,
             'statuses' => self::STATUSES,
-            'plans' => Plan::orderBy('id')->get()->map(fn ($p) => ['label' => $p->name, 'value' => $p->id])->all(),
+            // وتفاصيلُ كلّ باقةٍ معها — تُعرض تحت الاختيار، من مصدرٍ واحدٍ مع نموذج الاشتراك
+            'plans' => SubscriptionController::planOptions(),
         ];
     }
 

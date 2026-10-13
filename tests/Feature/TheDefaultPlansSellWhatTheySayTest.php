@@ -13,6 +13,7 @@ use App\Support\PlanLimits;
 use App\Support\SeedData;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -29,7 +30,8 @@ use Tests\TestCase;
  * ═══ وما يُحرَس ═══
  *
  *   - الأسعارُ والأسقفُ والشعبيّةُ كما اتُّفق — من البذرة نفسِها.
- *   - الأساسيّةُ تفتح واتساب وحده: رقمُ أبعاد وحصّتُه يقفان عليه.
+ *   - الأساسيّةُ لا تفتح قدرةً: `[]` لا `null` (قرارُ 2026-10-13 الثاني — لا
+ *     واتساب ولا موقع ولا تطبيقات تكامليّة)، ونصوصُها الخمسةُ وحدها.
  *   - الاحترافيّةُ والمؤسساتُ تُقرآن من `PlanFeatures` — قدرةٌ تُضاف غدًا تُفتح فيهما.
  *   - لا نصَّ «غير محدود» فوق سقفٍ يُفرض، ولا وعدَ بما لا يُقدَّم.
  *   - السقفُ يُفرض على الباقة المزروعة، والتنزيلُ إلى ما يضيق يُردّ ولا يمحو شيئًا.
@@ -67,12 +69,23 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
         }
     }
 
-    public function test_the_basic_plan_opens_whatsapp_alone_and_the_others_open_everything(): void
+    public function test_the_basic_plan_opens_nothing_and_the_others_open_everything(): void
     {
         $plans = $this->seeded();
 
-        // واتساب في الأساسيّة: رقمُ أبعاد وحصّتُه الشهريّة يقفان عليه (`WhatsAppFeature::blockReason`)
-        $this->assertSame(['whatsapp'], $plans['الباقة الأساسية']['capabilities']);
+        /*
+         * والأساسيّةُ تشغيلٌ يوميٌّ وحده — قائمةٌ فارغة لا `null`.
+         *
+         * كانت `['whatsapp']` لرقم أبعاد وحصّته. وقرارُ 2026-10-13 الثاني:
+         * لا واتساب فيها ولا موقع ولا تطبيقات تكامليّة. والفراغُ عند الحارس
+         * «كلُّ شيءٍ مغلق»، و`null` «كلُّ شيءٍ مفتوح» — فالفرقُ بينهما هو
+         * الباقةُ كلُّها.
+         */
+        $this->assertSame([], $plans['الباقة الأساسية']['capabilities']);
+        $this->assertSame(
+            ['إدارة متجرك اليومية', 'فرع واحد', '3 موظفين', '100 منتج', 'الأدوات التشغيلية الأساسية'],
+            $plans['الباقة الأساسية']['features'],
+        );
 
         foreach (['الباقة الاحترافية', 'باقة المؤسسات'] as $name) {
             $this->assertEqualsCanonicalizing(PlanFeatures::keys(), $plans[$name]['capabilities'], $name);
@@ -82,12 +95,8 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
     /** والحارسُ يوافق البذرة — قدرةً قدرة، باقةً باقة */
     public function test_the_guard_agrees_with_every_seeded_plan(): void
     {
-        /*
-         * و`integrations` منها: قائمةُ الأساسيّة المزروعة صريحةٌ لم تمنحها قطّ.
-         * ولا يقرؤها حارسٌ بعد (مرحلتُها الأولى — انظر `PlanFeatures`)، فلا
-         * يتغيّر بها شيء؛ والحارسُ يقول عن البذرة ما تقوله هي.
-         */
-        $closedOnBasic = ['reports_advanced', 'custom_permissions', 'loyalty', 'website', 'marketing_tools', 'integrations'];
+        // والأساسيّةُ تُغلق كلَّ قدرة — قدرةٌ تُضاف غدًا تُغلق فيها كذلك حتى يُقرَّر غيرُه
+        $closedOnBasic = PlanFeatures::keys();
 
         foreach (SeedData::plans() as $spec) {
             $plan = Plan::create([
@@ -102,13 +111,26 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
         }
     }
 
-    /** ولا تُترك فارغةً: الحارس يقرأ الفراغ «مفتوحًا» وشاشةُ الباقات تقرؤه «مغلقًا» */
+    /**
+     * ولا تُترك `null`: الحارسُ يقرؤها «مفتوحةً كلَّها».
+     *
+     * والأساسيّةُ قائمةٌ **فارغة** مقصودة — وهي غيرُ `null` تمامًا.
+     */
     public function test_the_capabilities_are_listed_not_left_null(): void
     {
         foreach (SeedData::plans() as $plan) {
             $this->assertIsArray($plan['capabilities'], $plan['name']);
-            $this->assertNotEmpty($plan['capabilities'], $plan['name']);
+
+            if ($plan['name'] !== 'الباقة الأساسية') {
+                $this->assertNotEmpty($plan['capabilities'], $plan['name']);
+            }
         }
+
+        // والمزروعةُ في القاعدة كذلك: `[]` تُقرأ `[]` لا `null`
+        $this->seed(DatabaseSeeder::class);
+        $basic = Plan::where('name', 'الباقة الأساسية')->firstOrFail();
+        $this->assertSame([], $basic->capabilities);
+        $this->assertSame('[]', DB::table('plans')->where('id', $basic->id)->value('capabilities'));
     }
 
     /** والنصُّ لا يعد بما لا يُفرض ولا بما لا يُقدَّم */

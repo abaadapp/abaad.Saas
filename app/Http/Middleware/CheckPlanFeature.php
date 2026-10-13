@@ -92,7 +92,41 @@ class CheckPlanFeature
         'admin.marketing.reviews*' => 'marketing_tools',
         'admin.marketing.coupons' => 'marketing_tools',
         'admin.coupons.*' => 'marketing_tools',
+        /*
+         * ═══ والتطبيقاتُ التكامليّة — بابُها وGoogle وما بعده ═══
+         *
+         * صفحتُها، وخرائطُ Google (المفتاحُ والتفعيلُ والبحثُ وربطُ الفروع
+         * والتحديث)، وGoogle Business (الربطُ وعودةُ OAuth والمواقعُ والمزامنةُ
+         * والردُّ والتنبيهات والفصل). `google*` بادئةٌ تشمل `googleBusiness*`.
+         *
+         * ولا تُكتب بادئةُ `admin.integrations.*` كلُّها: تحتها بابان ليسا منها
+         * بقرار المالك (2026-10-13) —
+         *
+         *  · Paymob مفتوحٌ لكلّ باقة: بنيةُ دفعٍ لفواتير العملاء وروابط الدفع، لا
+         *    أداةُ نموّ. انظر `OPEN_INTEGRATIONS`.
+         *  · وربطُ واتساب بقدرة واتساب أدناه — لا بهذه.
+         *
+         * و`admin.integrations.connect/{tool}` يُحرس في متحكّمه: قدرتُه تتبع
+         * الأداةَ في المعامل لا اسمَ المسار (`IntegrationsController::connect`).
+         *
+         * ولا يُحرس هنا ما ليس بابَ تاجر: ردودُ Meta وPaymob العامّة خارج
+         * `admin.*` ولا تمرّ بهذا الوسيط — ووقفُها يُفسد اتّساقَ ما سبق ربطُه.
+         */
+        'admin.integrations.index' => 'integrations',
+        'admin.integrations.google*' => 'integrations',
+        // وربطُ واتساب وإعدادُه — بقدرة واتساب، كإشعاراته وسجلّه
+        'admin.integrations.whatsapp*' => 'whatsapp',
     ];
+
+    /**
+     * أبوابُ التكاملات المفتوحة لكلّ باقة — مكتوبةٌ لا منسيّة.
+     *
+     * Paymob بنيةُ الدفع التي تقف عليها روابطُ الدفع على فواتير العملاء: متجرٌ
+     * على الأساسيّة يُصدر فاتورةً ويرسل رابطَ سدادها. فلا تُغلق بإغلاق
+     * التكاملات. ويقرؤها `EveryIntegrationDoorIsDecidedTest`: بابٌ جديدٌ تحت
+     * `admin.integrations.` لا يُحرس ولا يُذكر هنا يُسقط الاختبار.
+     */
+    public const OPEN_INTEGRATIONS = ['admin.integrations.paymob', 'admin.integrations.paymob.save'];
 
     /**
      * تقاريرُ يخرج ملفُّها لكلّ باقة.

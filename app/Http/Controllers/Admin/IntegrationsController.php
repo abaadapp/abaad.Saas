@@ -13,6 +13,7 @@ use App\Support\GooglePlaces;
 use App\Support\GoogleReviews;
 use App\Support\Integrations;
 use App\Support\MarketingSettings;
+use App\Support\PlanFeatures;
 use App\Support\Store\PaymobSettings;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -64,11 +65,19 @@ class IntegrationsController extends Controller
     {
         $tool = $request->route('tool');
 
-        [$key, $back] = match ($tool) {
-            'whatsapp' => ['wa_setup_started', 'admin.integrations.whatsapp'],
-            'google' => ['google_setup_started', 'admin.integrations.google'],
+        [$key, $back, $feature] = match ($tool) {
+            'whatsapp' => ['wa_setup_started', 'admin.integrations.whatsapp', 'whatsapp'],
+            'google' => ['google_setup_started', 'admin.integrations.google', 'integrations'],
             default => abort(404),
         };
+
+        /*
+         * وقدرتُه قدرةُ الأداة — لا اسمُ المسار.
+         *
+         * مسارٌ واحدٌ لأداتين، فلا تحرسه خريطةُ `CheckPlanFeature`: واتساب
+         * بقدرته وGoogle بالتطبيقات التكامليّة، كبابيهما بعد الضغط.
+         */
+        PlanFeatures::enforce($request->user()?->business, $feature);
 
         MarketingSettings::save($this->bid(), 'connect', [$key => '1']);
         Activity::log('updated', 'بدأ ربط '.$tool);

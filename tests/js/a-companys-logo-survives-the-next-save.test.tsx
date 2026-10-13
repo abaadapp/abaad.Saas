@@ -70,7 +70,7 @@ const options = {
     types: ['عام', 'محل ورود'],
     cities: ['مسقط'],
     statuses: ['نشط', 'معطل'],
-    plans: [{ label: 'الأساسية', value: 1 }],
+    plans: [{ label: 'الأساسية', value: 1, monthly: 9.9, yearly: 99, features: [], max_branches: 1, max_employees: 3, max_products: 100 }],
 };
 
 const initial = {

@@ -1,6 +1,7 @@
 import { type FormEvent, useRef, useState } from 'react';
 import { useForm } from '@inertiajs/react';
 import { Building2, Check, Crown, Image as ImageIcon, KeyRound, Layers, RefreshCw, Upload, User, X } from 'lucide-react';
+import PlanSelectionSummary, { type PlanOption } from '@/Components/PlanSelectionSummary';
 import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
@@ -16,7 +17,8 @@ export interface BusinessOptions {
     types: string[];
     cities: string[];
     statuses: string[];
-    plans: { label: string; value: number }[];
+    /** الباقات بتفاصيلها — تُعرض المختارةُ منها تحت الاختيار */
+    plans: PlanOption[];
 }
 
 export interface BusinessValues {
@@ -382,8 +384,12 @@ export default function BusinessForm({
                         <Select
                             value={form.data.plan_id}
                             onChange={(e) => form.setData('plan_id', e.target.value)}
-                            options={options.plans}
+                            options={options.plans.map((p) => ({ label: p.label, value: p.value }))}
                             placeholder="اختر الباقة…"
+                        />
+                        {/* ما تبيعه الباقةُ المختارة — من صفّها، لا قائمةُ قدرات النظام */}
+                        <PlanSelectionSummary
+                            plan={options.plans.find((p) => String(p.value) === String(form.data.plan_id))}
                         />
                     </Field>
                     <Field label="حالة الحساب" required error={form.errors.status}>

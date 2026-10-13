@@ -2,28 +2,25 @@
 
 namespace Tests\Feature;
 
-use App\Http\Middleware\CheckPlanFeature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Plan;
 use App\Models\User;
 use App\Support\PlanFeatures;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Route as Router;
 use Tests\TestCase;
 
 /**
- * النشرُ لا يُغلق على متجرٍ قائمٍ تطبيقاتِه التكامليّة — مرحلةٌ أولى.
+ * النشرُ لا يُغلق على متجرٍ قائمٍ تطبيقاتِه التكامليّة.
  *
  * ═══ العطب الذي يُحرَس ═══
  *
  * قوائمُ القدرات على الإنتاج صريحة ولا تعرف `integrations`. والحارسُ يقرأ
  * الغائبَ من قائمةٍ صريحة مغلقًا — فلو نزل حارسُها والقوائمُ لا تعرفها
  * لَأُغلقت التكاملاتُ على كلّ متجرٍ قائم. فتنزل القدرةُ أوّلًا مع ترحيلٍ يضيفها
- * إلى كلّ قائمةٍ صريحة، ولا يسأل عنها حارسٌ بعد — كما نزل الموقع (#107).
+ * إلى كلّ قائمةٍ صريحة (#109)، ثمّ يصل حارسُها — كما نزل الموقع (#107 ثمّ #106).
  *
  * ═══ وما يُحرَس ═══
  *
@@ -31,8 +28,7 @@ use Tests\TestCase;
  *   - الفارغةُ تكسبها، و`null` تبقى `null` (مفتوحةً كما كانت).
  *   - لا سعرَ ولا سقفَ ولا اسمَ ولا نصَّ يُمسّ، ولا يُعرف شيءٌ بالاسم.
  *   - الإعادةُ بلا أثر، والتراجعُ يُسقطها وحدها.
- *   - ولا تُغلق شيئًا بعد — لا مسارَ في الخريطة يقرؤها، ومتجرٌ على باقةٍ قديمة
- *     يفتح كلَّ شاشات التكاملات قبل الترحيل وبعده.
+ *   - ومتجرٌ على باقةٍ قديمة: تُغلَق تكاملاتُه بلا الترحيل، وتُفتح بعده.
  */
 class AnExistingPlanKeepsItsIntegrationsTest extends TestCase
 {
@@ -137,24 +133,12 @@ class AnExistingPlanKeepsItsIntegrationsTest extends TestCase
     }
 
     /**
-     * ولا تُغلق القدرةُ بابًا بعد.
+     * والمتجرُ نفسُه: على باقةٍ قديمة — وبلا الترحيل تُغلَق تكاملاتُه.
      *
-     * فالكودُ ينزل قبل الترحيل بدقائق، وفيها تقرأ كلُّ قائمةٍ قديمة القدرةَ
-     * غائبة. ولا يضرّ ذلك ما دام لا حارسَ يسأل عنها — وهذا ما يُحرس هنا.
-     * ويوم يصل الحارسُ يُستبدل هذا بأنّ الترحيلَ هو ما يُبقي الباب مفتوحًا.
+     * النصفُ الأوّل يُثبت أنّ الخطر حقيقيّ (الحارسُ يُغلق ما لم يُرحَّل)،
+     * والثاني أنّ الترحيل يُبقيه مفتوحًا — صفحتَه وGoogle.
      */
-    public function test_integrations_close_no_door_yet(): void
-    {
-        $guarded = collect(Router::getRoutes()->getRoutes())
-            ->map(fn (Route $r) => (string) $r->getName())
-            ->filter(fn ($n) => CheckPlanFeature::featureFor($n) === 'integrations')
-            ->values()->all();
-
-        $this->assertSame([], $guarded, 'مسارٌ صار يُغلق بقدرةٍ لم يصل ترحيلُها بعد');
-    }
-
-    /** والمتجرُ نفسُه: على باقةٍ قديمة — يفتح شاشاتِ تكاملاته قبل الترحيل وبعده */
-    public function test_a_shop_on_an_old_plan_opens_every_integrations_screen_before_and_after(): void
+    public function test_a_shop_on_an_old_plan_keeps_its_integrations(): void
     {
         Http::fake();
 
@@ -163,21 +147,13 @@ class AnExistingPlanKeepsItsIntegrationsTest extends TestCase
         Branch::create(['business_id' => $shop->id, 'name' => 'الرئيسي']);
         $owner = User::create(['business_id' => $shop->id, 'name' => 'المالك', 'email' => 'o@integrations.om', 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط']);
 
-        // الكودُ نزل والترحيلُ لم يُشغَّل — والقائمةُ القديمة لا تعرفها
-        $this->assertFalse(PlanFeatures::allows($shop->fresh(), 'integrations'));
+        $this->actingAs($owner)->get(route('admin.integrations.index'))->assertForbidden();
+        $this->actingAs($owner)->get(route('admin.integrations.google'))->assertForbidden();
 
-        $screens = ['admin.integrations.index', 'admin.integrations.google', 'admin.integrations.googleBusiness', 'admin.integrations.paymob', 'admin.integrations.whatsapp'];
-
-        // والمستخدمُ يُقرأ من جديد في كلّ نداء — كما في كلّ طلبٍ حقيقيّ
-        $doors = fn () => collect($screens)->mapWithKeys(fn ($name) => [
-            $name => $this->actingAs($owner->fresh())->get(route($name))->status(),
-        ])->all();
-
-        $before = $doors();
         $this->migration()->up();
-        $after = $doors();
 
-        $this->assertSame(array_fill_keys($screens, 200), $before, 'بابٌ أُغلق قبل الترحيل');
-        $this->assertSame($before, $after, 'تغيّر بابٌ بالترحيل');
+        // والمستخدمُ يُقرأ من جديد — كما في كلّ طلبٍ حقيقيّ؛ نسخةُ الطلب السابق تحمل الباقةَ قبل الترحيل
+        $this->actingAs($owner->fresh())->get(route('admin.integrations.index'))->assertOk();
+        $this->actingAs($owner->fresh())->get(route('admin.integrations.google'))->assertOk();
     }
 }

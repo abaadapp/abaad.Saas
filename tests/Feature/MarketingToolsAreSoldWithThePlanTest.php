@@ -87,7 +87,8 @@ class MarketingToolsAreSoldWithThePlanTest extends TestCase
         $this->assertSame('loyalty', CheckPlanFeature::featureFor('admin.marketing.loyalty'));
         $this->assertSame('whatsapp', CheckPlanFeature::featureFor('admin.marketing.whatsapp'));
         $this->assertSame('whatsapp', CheckPlanFeature::featureFor('admin.marketing.whatsapp.log'));
-        $this->assertNull(CheckPlanFeature::featureFor('admin.integrations.googleBusiness.reply'));
+        // والردُّ على تقييمات Google من التطبيقات التكامليّة لا من أدوات التسويق
+        $this->assertSame('integrations', CheckPlanFeature::featureFor('admin.integrations.googleBusiness.reply'));
         $this->assertNull(CheckPlanFeature::featureFor('admin.marketing.index'));
     }
 

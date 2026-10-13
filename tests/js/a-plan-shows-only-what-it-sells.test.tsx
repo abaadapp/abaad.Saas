@@ -11,24 +11,25 @@ const { adminPages, visibleTo } = await import('@/lib/pages');
  *
  * الموقعُ وأدواتُ التسويق (التقييمات والكوبونات) قدرتان: باقةٌ لا تبيعهما لا
  * يُرسم لها بابُهما في الشريط ولا في البحث السريع — بابٌ يُعرض ويُردّ بـ403
- * يجعل صاحبه يظنّ العطب في النظام. والولاءُ وواتساب لكلٍّ قدرتُه.
+ * يجعل صاحبه يظنّ العطب في النظام. والولاءُ وواتساب والتطبيقاتُ التكامليّة
+ * لكلٍّ قدرتُه. والأساسيّةُ (2026-10-13، الثاني) لا تفتح شيئًا منها.
  */
 
 type Props = Record<string, unknown>;
 
-const ALL = { reports_advanced: true, custom_permissions: true, loyalty: true, whatsapp: true, website: true, marketing_tools: true };
-const BASIC = { reports_advanced: false, custom_permissions: false, loyalty: false, whatsapp: true, website: false, marketing_tools: false };
+const ALL = { reports_advanced: true, custom_permissions: true, loyalty: true, whatsapp: true, website: true, marketing_tools: true, integrations: true };
+const BASIC = { reports_advanced: false, custom_permissions: false, loyalty: false, whatsapp: false, website: false, marketing_tools: false, integrations: false };
 
 const reset = (planFeatures: Record<string, boolean>) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Props)[k];
     Object.assign(pageProps, {
         translations: {},
-        auth: { abilities: ['marketing', 'website', 'settings'], mayActions: [], planFeatures },
+        auth: { abilities: ['marketing', 'website', 'settings', 'integrations'], mayActions: [], planFeatures },
         context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 }, hosted: [] },
     });
 };
 
-const GROWTH = ['الموقع الإلكتروني', 'تقييمات العملاء', 'الكوبونات والعروض', 'التحليلات وفحص الظهور', 'برنامج ولاء'];
+const GROWTH = ['الموقع الإلكتروني', 'تقييمات العملاء', 'الكوبونات والعروض', 'التحليلات وفحص الظهور', 'برنامج ولاء', 'إشعارات واتساب', 'التطبيقات التكاملية'];
 
 describe('الشريط الجانبيّ', () => {
     // والشريطُ يسأل `route().current()` ليُضيء بابَه — وصفحةُ واتساب تفتح مجموعةَ التسويق فتُرسم أبناؤها
@@ -43,27 +44,36 @@ describe('الشريط الجانبيّ', () => {
         globalThis.route = realRoute;
     });
 
-    it('الأساسيّة: لا موقعَ ولا أدواتِ تسويق ولا ولاء — وواتساب باقٍ', () => {
+    it('الأساسيّة: لا موقعَ ولا أدواتِ تسويق ولا ولاء ولا واتساب ولا تطبيقاتٍ تكامليّة', () => {
         reset(BASIC);
         render(<Sidebar open onClose={() => {}} />);
 
         for (const label of GROWTH) {
             expect(screen.queryByText(label), label).toBeNull();
         }
-        expect(screen.getByText('إشعارات واتساب')).toBeInTheDocument();
     });
 
     it('الاحترافيّة: كلُّها ظاهرة', () => {
         reset(ALL);
         render(<Sidebar open onClose={() => {}} />);
 
-        for (const label of [...GROWTH, 'إشعارات واتساب']) {
+        for (const label of GROWTH) {
             expect(screen.getAllByText(label).length, label).toBeGreaterThan(0);
         }
     });
 
+    it('والتطبيقاتُ التكامليّة بقدرتها وحدها — لا تأخذ معها الموقعَ ولا واتساب', () => {
+        reset({ ...ALL, integrations: false });
+        render(<Sidebar open onClose={() => {}} />);
+
+        expect(screen.queryByText('التطبيقات التكاملية')).toBeNull();
+        expect(screen.getAllByText('الموقع الإلكتروني').length).toBeGreaterThan(0);
+        expect(screen.getByText('إشعارات واتساب')).toBeInTheDocument();
+    });
+
     it('والولاءُ بقدرته وحدها — لا يسقط بسقوط أدوات التسويق', () => {
-        reset({ ...BASIC, loyalty: true });
+        // وواتساب مفتوحٌ هنا: الشريطُ يفتح مجموعةَ التسويق من صفحته (`route().current()` أعلاه)
+        reset({ ...BASIC, loyalty: true, whatsapp: true });
         render(<Sidebar open onClose={() => {}} />);
 
         expect(screen.getByText('برنامج ولاء')).toBeInTheDocument();

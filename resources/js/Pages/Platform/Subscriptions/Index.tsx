@@ -3,6 +3,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { FileText, Layers, Pencil, Plus } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
+import PlanSelectionSummary, { type PlanOption } from '@/Components/PlanSelectionSummary';
 import SmartLink from '@/Components/SmartLink';
 import StatCard, { type Stat } from '@/Components/StatCard';
 import DataTable, { type Column, type Filter } from '@/Components/DataTable';
@@ -27,13 +28,6 @@ interface Subscription {
     amount: number;
     payment: string;
     status: string;
-}
-
-interface PlanOption {
-    label: string;
-    value: number;
-    monthly: number;
-    yearly: number;
 }
 
 interface Props {
@@ -231,6 +225,11 @@ export default function SubscriptionsIndex() {
                                 options={planOptions.map((p) => ({ label: p.label, value: String(p.value) }))}
                                 placeholder="اختر الباقة…"
                             />
+                            {/*
+                                والمعاينةُ نفسُها التي في نموذج الشركة. والمبلغُ لا
+                                يتبعها: يُقترح بزرّيه أدناه ويبقى قابلًا للخصم اليدويّ.
+                            */}
+                            <PlanSelectionSummary plan={planOptions.find((p) => String(p.value) === form.data.plan_id)} />
                         </Field>
 
                         <Field label="تاريخ البداية" required error={form.errors.starts_at}>

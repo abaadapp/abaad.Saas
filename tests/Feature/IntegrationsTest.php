@@ -178,7 +178,8 @@ class IntegrationsTest extends TestCase
      */
     public function test_a_tool_outside_the_plan_is_shown_and_marked_so(): void
     {
-        $plan = Plan::create(['name' => 'الأساسية', 'monthly_price' => 10, 'yearly_price' => 100, 'capabilities' => []]);
+        // باقةٌ تبيع التطبيقاتِ التكامليّة ولا تبيع واتساب — فتُفتح الصفحةُ وتُعلَّم بطاقتُه
+        $plan = Plan::create(['name' => 'تكاملات بلا واتساب', 'monthly_price' => 10, 'yearly_price' => 100, 'capabilities' => ['integrations']]);
         $this->business->update(['plan_id' => $plan->id]);
 
         $card = $this->cards()[Integrations::WHATSAPP];

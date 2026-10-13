@@ -288,6 +288,8 @@ export const NAV: NavGroup[] = [
                 icon: Blocks,
                 route: 'admin.integrations.index',
                 section: 'integrations',
+                // قدرةُ باقة فوق القسم: الأساسيّةُ لا تبيعها — وPaymob يُبلغ من روابط الدفع
+                feature: 'integrations',
                 covers: [
                     'admin.integrations.google',
                     'admin.integrations.googleBusiness',

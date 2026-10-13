@@ -12,7 +12,8 @@ export type PlanFeatureKey =
     | 'loyalty'
     | 'whatsapp'
     | 'website'
-    | 'marketing_tools';
+    | 'marketing_tools'
+    | 'integrations';
 
 export interface User {
     id: number;

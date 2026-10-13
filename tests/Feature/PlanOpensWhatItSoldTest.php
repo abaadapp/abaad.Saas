@@ -38,6 +38,16 @@ class PlanOpensWhatItSoldTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * قدرةٌ في القائمة بلا حارسٍ بعد — مرحلةٌ أولى مقصودة.
+     *
+     * تُعرّف الكودَ وقاعدةَ الإنتاج بالمفتاح قبل أن يسأل عنه حارس، فلا يُغلق
+     * النشرُ التكاملاتِ في الدقائق بين سحب الكود والترحيل. ونصُّ
+     * `'integrations'` موجودٌ في الكود أصلًا اسمًا لقسم صلاحيات — فبحثُ
+     * المصدر أدناه كان سيجده «محروسًا» وهو ليس كذلك. فيُستثنى صراحةً.
+     */
+    private const KNOWN_BEFORE_GUARDED = ['integrations'];
+
     private Business $business;
 
     private User $owner;
@@ -568,7 +578,26 @@ class PlanOpensWhatItSoldTest extends TestCase
             ->implode("\n");
 
         foreach (array_keys(PlanFeatures::CAPABILITIES) as $key) {
+            if (in_array($key, self::KNOWN_BEFORE_GUARDED, true)) {
+                continue;
+            }
+
             $this->assertStringContainsString("'{$key}'", $sources, "القدرة «{$key}» تُعرض ولا يفحصها أحد");
+        }
+    }
+
+    /**
+     * والمستثنى قدرةٌ بعينها — لا بابٌ تدخل منه ثانية.
+     *
+     * `integrations` تنزل قبل حارسها بقصد (انظر `PlanFeatures::CAPABILITIES`)،
+     * وطلبُ الحارس يحذف هذا الاستثناء.
+     */
+    public function test_only_the_staged_capability_waits_for_its_guard(): void
+    {
+        $this->assertSame(['integrations'], self::KNOWN_BEFORE_GUARDED);
+
+        foreach (self::KNOWN_BEFORE_GUARDED as $key) {
+            $this->assertArrayHasKey($key, PlanFeatures::CAPABILITIES);
         }
     }
 }

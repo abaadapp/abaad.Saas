@@ -82,7 +82,12 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
     /** والحارسُ يوافق البذرة — قدرةً قدرة، باقةً باقة */
     public function test_the_guard_agrees_with_every_seeded_plan(): void
     {
-        $closedOnBasic = ['reports_advanced', 'custom_permissions', 'loyalty', 'website', 'marketing_tools'];
+        /*
+         * و`integrations` منها: قائمةُ الأساسيّة المزروعة صريحةٌ لم تمنحها قطّ.
+         * ولا يقرؤها حارسٌ بعد (مرحلتُها الأولى — انظر `PlanFeatures`)، فلا
+         * يتغيّر بها شيء؛ والحارسُ يقول عن البذرة ما تقوله هي.
+         */
+        $closedOnBasic = ['reports_advanced', 'custom_permissions', 'loyalty', 'website', 'marketing_tools', 'integrations'];
 
         foreach (SeedData::plans() as $spec) {
             $plan = Plan::create([

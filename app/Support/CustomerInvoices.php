@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Addon;
 use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Customer;
@@ -10,11 +11,13 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceItem;
 use App\Models\JournalEntry;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\Document\Snapshot;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -235,6 +238,8 @@ final class CustomerInvoices
 
             $items[] = [
                 'product_id' => $line['product_id'] ?? null,
+                // منتجٌ أو إضافةٌ أو لا شيء — والفراغُ من الشاشة فراغٌ لا صفر
+                'addon_id' => ! empty($line['addon_id']) ? (int) $line['addon_id'] : null,
                 'order_item_id' => $line['order_item_id'] ?? null,
                 'description' => (string) ($line['description'] ?? ''),
                 'quantity' => $qty,
@@ -382,6 +387,76 @@ final class CustomerInvoices
     }
 
     /**
+     * بنودُ الإضافات كما يكتبها الخادم — لا كما أرسلتها الشاشة.
+     *
+     * فاتورةُ العميل اليدويّة تقبل **أيَّ** إضافةٍ نشطةٍ للمتجر بندًا مستقلًّا:
+     * لا تُسأل `product_addons` ولا مدى الإضافة (`scope`)، فتلك قيودُ ما يُعرض
+     * مع منتجٍ في الصندوق والموقع. والورقةُ مستندٌ ماليٌّ يكتبه صاحبُ المحلّ،
+     * وقد يفوتر شوكولاتةً وحدَها بلا بوكيه.
+     *
+     * ═══ والسعرُ والاسمُ من القاعدة ═══
+     *
+     * بندٌ يحمل `addon_id` يقول «هذه الإضافة من الكتالوج» — فثمنُه ثمنُها
+     * واسمُه اسمُها، يُقرآن هنا من متجر الفاتورة ويُكتبان لقطةً. وما أرسلته
+     * أدواتُ المتصفّح في `unit_price` لا يُقرأ. ومن أراد سعرًا بيده يكتب
+     * بندًا يدويًّا («إضافة بند»)، لا إضافةً من الكتالوج بثمنٍ غير ثمنها.
+     *
+     * والكميّةُ والخصمُ والضريبةُ كسائر البنود: الخصمُ تخفيضٌ ظاهرٌ في
+     * الورقة لا ثمنٌ مزوَّر، والضريبةُ لقطةٌ تُقرأ من المتجر إن لم تُرسَل.
+     *
+     * ═══ وإضافةُ متجرٍ آخر أو موقوفةٌ ═══
+     *
+     * الحفظُ يردّها (`$strict`) — والمعاينةُ تُسقط بندَها: ورقةٌ تُرسم وهي
+     * تُكتب لا تُردّ بخطأ، ولا تُرسم بإضافةِ غيرِ متجرها اسمًا ولا ثمنًا.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     * @return array<int, array<string, mixed>>
+     */
+    public static function addonsFromCatalog(int $businessId, array $lines, bool $strict = true): array
+    {
+        $ids = collect($lines)->pluck('addon_id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
+
+        if ($ids->isEmpty()) {
+            return $lines;
+        }
+
+        $addons = Addon::where('business_id', $businessId)
+            ->where('active', true)
+            ->whereIn('id', $ids)
+            ->get(['id', 'name', 'price'])
+            ->keyBy('id');
+
+        $out = [];
+
+        foreach ($lines as $line) {
+            if (empty($line['addon_id'])) {
+                $out[] = $line;
+
+                continue;
+            }
+
+            $addon = $addons->get((int) $line['addon_id']);
+
+            if (! $addon) {
+                if ($strict) {
+                    throw new RuntimeException(__('هذه الإضافة ليست من إضافات متجرك النشطة.'));
+                }
+
+                continue;
+            }
+
+            $out[] = array_merge($line, [
+                'addon_id' => (int) $addon->id,
+                'product_id' => null,
+                'description' => (string) $addon->name,
+                'unit_price' => round((float) $addon->price, 3),
+            ]);
+        }
+
+        return $out;
+    }
+
+    /**
      * إنشاءُ فاتورةٍ — مسودّةً أو صادرة.
      *
      * والمنتجُ يُقرأ من متجر الفاتورة لا من الطلب: معرّفٌ من متجرٍ آخر يُرفض
@@ -397,10 +472,29 @@ final class CustomerInvoices
         }
 
         foreach ($lines as $line) {
+            // والبندُ منتجٌ أو إضافة — لا إضافةٌ تلبس منتجًا ولا العكس
+            if (! empty($line['product_id']) && ! empty($line['addon_id'])) {
+                throw new RuntimeException(__('البند منتجٌ أو إضافة — لا الاثنان معًا.'));
+            }
+
             if (! empty($line['product_id'])) {
                 $ok = Product::where('business_id', $businessId)->whereKey($line['product_id'])->exists();
                 if (! $ok) {
                     throw new RuntimeException(__('هذا الصنف ليس من أصناف متجرك.'));
+                }
+            }
+
+            /*
+             * والإضافةُ كالمنتج: من متجر الفاتورة أو لا تُكتب.
+             *
+             * ولا يُسأل هنا عن نشاطها: الفاتورةُ المولودة من طلبٍ تنقل إضافةً
+             * بيعت يومَها ثمّ أُوقفت — ولقطتُها هي الحقيقة. والنشاطُ يُسأل حيث
+             * تُختار الإضافةُ من الكتالوج (`addonsFromCatalog`).
+             */
+            if (! empty($line['addon_id'])) {
+                $ok = Addon::where('business_id', $businessId)->whereKey($line['addon_id'])->exists();
+                if (! $ok) {
+                    throw new RuntimeException(__('هذه الإضافة ليست من إضافات متجرك.'));
                 }
             }
         }
@@ -719,7 +813,7 @@ final class CustomerInvoices
                 ->where('customer_id', $customer->id)
                 ->whereIn('id', $orderIds)
                 ->orderBy('ordered_at')->orderBy('id')
-                ->lockForUpdate()->with('items')->get();
+                ->lockForUpdate()->with('items.addons')->get();
 
             if ($orders->isEmpty()) {
                 throw new RuntimeException(__('لا طلبات لفوترتها.'));
@@ -741,15 +835,10 @@ final class CustomerInvoices
             $lines = [];
             foreach ($orders as $order) {
                 foreach ($order->items as $item) {
-                    $lines[] = [
-                        'product_id' => $item->product_id,
-                        'order_item_id' => $item->id,
-                        // ورقمُ الطلب في البيان: الشركةُ تُطابق ورقتَها بطلباتها
-                        'description' => ($item->name ?: __('بند')).' — '.$order->number,
-                        'quantity' => (float) $item->quantity,
-                        'unit_price' => (float) $item->price,
-                        'discount' => 0.0,
-                    ];
+                    // ورقمُ الطلب في البيان: الشركةُ تُطابق ورقتَها بطلباتها
+                    foreach (self::orderItemLines($item, ' — '.$order->number) as $line) {
+                        $lines[] = $line + ['discount' => 0.0];
+                    }
                 }
             }
 
@@ -861,27 +950,40 @@ final class CustomerInvoices
          * `PosController::taxFor`: فبلا توزيعٍ تُحسب ضريبةُ السطر على مبلغٍ
          * لم يدفعه أحد، ويقول السطرُ غيرَ ما يقول الذيل ثانيةً.
          */
+        $order->loadMissing('items.addons');
+
         $products = Product::where('business_id', $order->business_id)
             ->whereIn('id', $order->items->pluck('product_id')->filter())
             ->get()->keyBy('id');
 
-        $gross = round($order->items->sum(fn ($i) => (float) $i->price * (float) $i->quantity), 3);
+        /*
+         * والإضافةُ بضريبة بندها: `PosController::taxFor` تحتسب نسبةَ الصنف على
+         * `price × qty + addons_total` معًا. فسطرُ الإضافة يحمل نسبةَ منتجه.
+         */
+        $lines = [];
+        foreach ($order->items as $item) {
+            $rate = Vat::rateFor($products->get($item->product_id), (int) $order->business_id);
+
+            foreach (self::orderItemLines($item) as $line) {
+                $lines[] = $line + ['tax_rate' => $rate];
+            }
+        }
+
+        /*
+         * وحصّةُ الخصم تُقاس على كلّ ما دُفع ثمنُه — الإضافاتُ معه.
+         *
+         * كما في `PosController::taxFor`: الوعاءُ `price × qty + addons_total`.
+         * وكانت تُقاس على ثمن الأصناف وحده يومَ لم تكن الإضافةُ سطرًا هنا.
+         */
+        $gross = round(collect($lines)->sum(fn ($l) => $l['unit_price'] * $l['quantity']), 3);
         $orderDiscount = round((float) $order->discount, 3);
 
-        $lines = $order->items->map(function ($item) use ($order, $products, $gross, $orderDiscount) {
-            $net = round((float) $item->price * (float) $item->quantity, 3);
+        $lines = array_map(function (array $line) use ($gross, $orderDiscount) {
+            $net = round($line['unit_price'] * $line['quantity'], 3);
             $share = $gross > 0 ? $net / $gross : 0.0;
 
-            return [
-                'product_id' => $item->product_id,
-                'order_item_id' => $item->id,
-                'description' => $item->name ?: __('بند'),
-                'quantity' => (float) $item->quantity,
-                'unit_price' => (float) $item->price,
-                'discount' => round($orderDiscount * $share, 3),
-                'tax_rate' => Vat::rateFor($products->get($item->product_id), (int) $order->business_id),
-            ];
-        })->all();
+            return $line + ['discount' => round($orderDiscount * $share, 3)];
+        }, $lines);
 
         /*
          * والإجماليُّ يتبع الطلبَ لا حسابَ البنود.
@@ -905,5 +1007,89 @@ final class CustomerInvoices
         ]);
 
         return $invoice->fresh('items');
+    }
+
+    /**
+     * بندُ طلبٍ كما يُكتب في الورقة — وإضافاتُه من لقطتها لا من الكتالوج.
+     *
+     * كانت الورقةُ تكتب الصنفَ بثمنه (`price × qty`) وتُسقط إضافاته، والطلبُ
+     * يجبيها (`addons_total`). فورقةُ بوكيهٍ بعشرين وشوكولاتةٍ بثلاثة تقول
+     * سطورُها عشرين ويقول ذيلُها ثلاثةً وعشرين — والذيلُ من الطلب
+     * (`fromOrder` و`consolidate`). فلا تُرى الإضافةُ ولا يُعرف من أين الفرق.
+     *
+     * ═══ والمالُ يُكتب مرّةً — من `addons_total` ═══
+     *
+     * `price` ثمنُ الصنف بمقاسه **بلا** إضافاته (انظر `OrderItem::lineTotal`).
+     * فالإضافاتُ تُضاف سطورًا مستقلّةً ولا تُضاف إلى سعر الصنف: مرّةً واحدة.
+     *
+     * والذي يُقرأ ليُعرف هل جُبيت فوق الثمن هو `addons_total` لا مجموعُ
+     * اللقطات: الطلبُ المخصَّص بـ«ميزانيةٍ نهائيّة» يكتب إضافاتِه بأثمانها
+     * ويجعل `addons_total` صفرًا — هي **داخل** ثمنه (`SaleLines`). فهناك
+     * تُسمّى في بيان الصنف ولا تُكتب مالًا، وإلّا دفع الزبونُ ثمنَها مرّتين.
+     *
+     * ═══ ولا يُقرأ كتالوجُ اليوم ═══
+     *
+     * الاسمُ والثمنُ والكميّةُ من `order_item_addons` كما كانت ساعةَ البيع.
+     * إضافةٌ غُيّر ثمنُها أو حُذفت بعدها لا تُعيد كتابة بيعٍ مضى.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function orderItemLines(OrderItem $item, string $suffix = ''): array
+    {
+        $name = $item->name ?: __('بند');
+
+        $main = [
+            'product_id' => $item->product_id,
+            // والإضافةُ المبيعةُ وحدَها من شريط الصندوق تحمل هويّتَها هنا كذلك
+            'addon_id' => $item->product_id === null ? $item->standalone_addon_id : null,
+            'order_item_id' => $item->id,
+            'description' => $name.$suffix,
+            'quantity' => (float) $item->quantity,
+            'unit_price' => (float) $item->price,
+        ];
+
+        $addons = $item->addons;
+
+        if ($addons->isEmpty()) {
+            return [$main];
+        }
+
+        $charged = round((float) $item->addons_total, 3);
+        $snapshots = round($addons->sum(fn ($a) => (float) $a->total), 3);
+        $names = $addons->map(fn ($a) => (int) $a->quantity > 1 ? $a->name.' ×'.(int) $a->quantity : $a->name)->implode('، ');
+
+        // جُبيت فوق الثمن واللقطاتُ تقول كم بالضبط: سطرٌ لكلّ إضافة
+        if ($charged > 0 && abs($charged - $snapshots) < 0.0005) {
+            return [$main, ...$addons->map(fn ($a) => [
+                'product_id' => null,
+                'addon_id' => $a->addon_id,
+                'order_item_id' => $item->id,
+                'description' => $a->name.$suffix,
+                'quantity' => (float) $a->quantity,
+                'unit_price' => (float) $a->unit_price,
+            ])->all()];
+        }
+
+        /*
+         * وجُبيت ولا تطابق لقطاتُها ما جُبي — صفٌّ قديمٌ أو مصحَّح.
+         *
+         * سطرٌ واحدٌ بما جُبي فعلًا، يُسمّي ما فيه. لا يُوزَّع المبلغُ على
+         * الأسماء بالظنّ، ولا يُكتب غيرُ ما دُفع.
+         */
+        if ($charged > 0) {
+            return [$main, [
+                'product_id' => null,
+                'addon_id' => null,
+                'order_item_id' => $item->id,
+                'description' => Str::limit(__('إضافات: :list', ['list' => $names]).$suffix, 255, ''),
+                'quantity' => 1.0,
+                'unit_price' => $charged,
+            ]];
+        }
+
+        // وداخل الثمن: تُسمّى في بيان الصنف ولا تُكتب مالًا
+        $main['description'] = Str::limit($name.' ('.__('تشمل: :list', ['list' => $names]).')'.$suffix, 255, '');
+
+        return [$main];
     }
 }

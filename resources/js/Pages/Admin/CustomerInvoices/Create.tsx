@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import PaperFrame from '@/Components/PaperFrame';
-import { ChevronDown, Info, Paperclip, Plus, RefreshCw, Save, Search, Send, Settings2, Star, Trash2, UserPlus } from 'lucide-react';
+import { ChevronDown, Info, Paperclip, Plus, PlusCircle, RefreshCw, Save, Search, Send, Settings2, Star, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -56,6 +56,20 @@ interface ProductRow {
 }
 
 /**
+ * إضافةٌ من كتالوج المتجر — ما يُعرض للاختيار لا غير.
+ *
+ * لا تكلفةَ ولا صنفَ مخزونٍ ولا كميّتَه: الفاتورةُ لا تُنقص رفًّا، والخادمُ
+ * لا يرسلها أصلًا. والثمنُ هنا للعرض — الخادمُ يعيد قراءته عند الحفظ
+ * (`CustomerInvoices::addonsFromCatalog`).
+ */
+interface AddonRow {
+    id: number;
+    name: string;
+    name_en: string | null;
+    price: number;
+}
+
+/**
  * حسابٌ بنكيٌّ من «المالية» — والاسمُ محسوبٌ في الخادم لا مركَّبٌ هنا.
  *
  * `BankAccount::displayName` تعرف أيَّ حقلٍ تقرأ: ما سمّاه به التاجر، وإلّا
@@ -83,6 +97,9 @@ interface Props {
     products: ProductRow[];
     /** هل في الكتالوج ما لم يُرسَل؟ — انظر CATALOG_LIMIT في المتحكّم */
     catalog_truncated: boolean;
+    /** كلُّ إضافات المتجر النشطة — لا ما يأذن به منتج */
+    addons: AddonRow[];
+    addons_truncated: boolean;
     tax_rate: number;
     /** أسعارُ المتجر شاملةٌ للضريبة؟ — من `Vat::inclusive`، لا تُخمَّن هنا */
     tax_inclusive: boolean;
@@ -127,6 +144,13 @@ interface Branding {
 
 interface Line {
     product_id: string;
+    /*
+     * إضافةٌ من الكتالوج — بندٌ مستقلٌّ لا تابعٌ لمنتج.
+     *
+     * والبندُ منتجٌ أو إضافةٌ أو يدويّ، لا اثنان معًا. وبندُ الإضافة ثمنُه
+     * واسمُه من الخادم: يُعرضان ولا يُكتبان هنا.
+     */
+    addon_id: string;
     description: string;
     quantity: string;
     unit_price: string;
@@ -227,6 +251,8 @@ export default function CustomerInvoiceCreate({
     customers,
     products,
     catalog_truncated,
+    addons,
+    addons_truncated,
     tax_rate,
     tax_inclusive,
     today,
@@ -254,6 +280,8 @@ export default function CustomerInvoiceCreate({
     const [dueManual, setDueManual] = useState(false);
     const dueRef = useRef<HTMLInputElement>(null);
     const [picking, setPicking] = useState(false);
+    /* ونافذةُ الإضافات أختُها لا جزءٌ منها: الإضافةُ تُختار وحدَها */
+    const [pickingAddon, setPickingAddon] = useState(false);
     const [adding, setAdding] = useState(false);
     /* والملاحظاتُ الداخليّة مطفأةٌ حتى تُطلَب — وإطفاؤها يمحوها، انظر المُبدِّل */
     const [internal, setInternal] = useState(false);
@@ -861,13 +889,22 @@ export default function CustomerInvoiceCreate({
                                 <Search />
                                 {t('منتج من الكتالوج')}
                             </Button>
+                            {/*
+                                والإضافاتُ بزرّها: «شوكولاتة» تُفوتَر وحدَها بلا
+                                منتجٍ يسبقها — وزرٌّ داخل نافذة المنتجات يجعلها
+                                تبدو تابعةً لصنف.
+                            */}
+                            <Button type="button" variant="outline" size="sm" onClick={() => setPickingAddon(true)}>
+                                <PlusCircle />
+                                {t('إضافة من الإضافات')}
+                            </Button>
                             <Button
                                 type="button"
                                 size="sm"
                                 onClick={() => setLines((p) => [...p, blank(tax_rate)])}
                             >
                                 <Plus />
-                                {t('إضافة صنف')}
+                                {t('إضافة بند')}
                             </Button>
                             <Button
                                 type="button"
@@ -918,23 +955,51 @@ export default function CustomerInvoiceCreate({
                                             <tr key={i} className="border-t border-[var(--ui-border,#e8e8e8)]">
                                                 <td className="p-2 text-[#9ca3af]">{i + 1}</td>
                                                 <td className="p-2">
-                                                    <Input
-                                                        value={line.description}
-                                                        onChange={(e) => setLine(i, 'description', e.target.value)}
-                                                        placeholder={t('الوصف')}
-                                                    />
+                                                    {/*
+                                                        وبندُ الإضافة اسمُه اسمُها — يُقرأ ولا
+                                                        يُكتب: الخادمُ يكتبه من الكتالوج.
+                                                    */}
+                                                    {line.addon_id ? (
+                                                        <div className="flex items-center gap-2 px-1">
+                                                            <span className="shrink-0 rounded-full bg-[#f5f3ff] px-2 py-0.5 text-[11px] text-[#6d28d9]">
+                                                                {t('إضافة')}
+                                                            </span>
+                                                            <span className="truncate text-[#111]">{line.description}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <Input
+                                                            value={line.description}
+                                                            onChange={(e) => setLine(i, 'description', e.target.value)}
+                                                            placeholder={t('الوصف')}
+                                                        />
+                                                    )}
                                                 </td>
                                                 <td className="p-2">
                                                     <Input
                                                         value={line.quantity}
                                                         onChange={(e) => setLine(i, 'quantity', e.target.value)}
+                                                        aria-label={t('الكمية')}
                                                     />
                                                 </td>
                                                 <td className="p-2">
-                                                    <Input
-                                                        value={line.unit_price}
-                                                        onChange={(e) => setLine(i, 'unit_price', e.target.value)}
-                                                    />
+                                                    {/*
+                                                        وثمنُها من الكتالوج: من أراد سعرًا
+                                                        بيده يكتب بندًا يدويًّا لا إضافةً
+                                                        بثمنٍ غير ثمنها.
+                                                    */}
+                                                    {line.addon_id ? (
+                                                        <span
+                                                            className="block px-1 tabular-nums text-[#111]"
+                                                            title={t('سعر الإضافة من الكتالوج — لسعرٍ آخر أضف بندًا يدويًّا')}
+                                                        >
+                                                            {NUMBER(line.unit_price).toFixed(3)}
+                                                        </span>
+                                                    ) : (
+                                                        <Input
+                                                            value={line.unit_price}
+                                                            onChange={(e) => setLine(i, 'unit_price', e.target.value)}
+                                                        />
+                                                    )}
                                                 </td>
                                                 <td className="p-2">
                                                     <Input
@@ -1440,19 +1505,38 @@ export default function CustomerInvoiceCreate({
                 truncated={catalog_truncated}
                 picked={lines.map((l) => Number(l.product_id)).filter((n) => n > 0)}
                 onPick={(p) =>
-                    setLines((prev) => {
-                        const line: Line = {
+                    setLines((prev) =>
+                        append(prev, {
                             product_id: String(p.id),
+                            addon_id: '',
                             description: p.name,
                             quantity: '1',
                             unit_price: String(p.price),
                             discount: '0',
                             tax_rate: String(tax_rate),
-                        };
-                        const empty = prev.length === 1 && prev[0].description === '' && prev[0].product_id === '';
+                        }),
+                    )
+                }
+            />
 
-                        return empty ? [line] : [...prev, line];
-                    })
+            <AddonDialog
+                open={pickingAddon}
+                onOpenChange={setPickingAddon}
+                addons={addons}
+                truncated={addons_truncated}
+                picked={lines.map((l) => Number(l.addon_id)).filter((n) => n > 0)}
+                onPick={(a) =>
+                    setLines((prev) =>
+                        append(prev, {
+                            product_id: '',
+                            addon_id: String(a.id),
+                            description: a.name,
+                            quantity: '1',
+                            unit_price: String(a.price),
+                            discount: '0',
+                            tax_rate: String(tax_rate),
+                        }),
+                    )
                 }
             />
 
@@ -1692,7 +1776,28 @@ function BrandingDialog({
 /* ───────────────────────── قطعٌ صغيرة ───────────────────────── */
 
 function blank(rate: number): Line {
-    return { product_id: '', description: '', quantity: '1', unit_price: '0', discount: '0', tax_rate: String(rate) };
+    return {
+        product_id: '',
+        addon_id: '',
+        description: '',
+        quantity: '1',
+        unit_price: '0',
+        discount: '0',
+        tax_rate: String(rate),
+    };
+}
+
+/**
+ * بندٌ من الكتالوج يُلحق بالبنود — ويحلّ محلّ السطر الفارغ الأوّل.
+ *
+ * الشاشةُ تُفتح على سطرٍ فارغ، ومن بدأ بالكتالوج لا يريد أن يجده فوق ما
+ * اختار فيحذفه بيده.
+ */
+function append(prev: Line[], line: Line): Line[] {
+    const empty =
+        prev.length === 1 && prev[0].description === '' && prev[0].product_id === '' && prev[0].addon_id === '';
+
+    return empty ? [line] : [...prev, line];
 }
 
 /** خياراتُ الضريبة: الإعفاء ونسبةُ المتجر — ولا ثالثَ يُخترع في الشاشة */
@@ -2047,6 +2152,191 @@ export function ProductDialog({
                     {truncated && q.trim() === '' && (
                         <p className="mt-1 text-[11px] text-[#b45309]">
                             {t('الكتالوج أكبر ممّا يُحمَّل هنا — ابحث بالاسم أو الرمز للوصول إلى الباقي.')}
+                        </p>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        {t('تمّ')}
+                    </Button>
+                    {added > 0 && (
+                        <span className="me-auto text-[12px] text-[#047857]">
+                            {t('أُضيف :n بندًا', { n: added })}
+                        </span>
+                    )}
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/**
+ * إضافةٌ من الكتالوج — تُختار وحدَها فتصير بندًا مستقلًّا.
+ *
+ * ═══ كلُّ إضافات المتجر، لا ما يأذن به منتج ═══
+ *
+ * لا منتجَ يُختار قبلها، ولا تُرشَّح بـ«مع أيّ منتجٍ تُعرض». الفاتورةُ ورقةٌ
+ * ماليّة يكتبها صاحبُ المحلّ، وقد يفوتر تغليفًا أو شوكولاتةً وحدَها.
+ *
+ * وأختُ `ProductDialog` في سلوكها: تبقى مفتوحةً لأكثر من بند، ويُفرَّغ
+ * البحثُ بعد كلّ اختيار، والسهمان وEnter.
+ */
+export function AddonDialog({
+    open,
+    onOpenChange,
+    addons,
+    truncated,
+    picked,
+    onPick,
+}: {
+    open: boolean;
+    onOpenChange: (v: boolean) => void;
+    addons: AddonRow[];
+    /** هل بقي في الكتالوج ما لم يُرسَل؟ — يُقال ولا يُكتم */
+    truncated: boolean;
+    /** ما أُضيف إلى الفاتورة فعلًا — يُعلَّم ولا يُمنع: الكميّةُ قد تكون بندين */
+    picked: number[];
+    onPick: (a: AddonRow) => void;
+}) {
+    const { context } = usePage<PageProps>().props;
+    const t = useTranslate();
+    const [q, setQ] = useState('');
+    const [active, setActive] = useState(0);
+    const [added, setAdded] = useState(0);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (open) {
+            setQ('');
+            setActive(0);
+            setAdded(0);
+            const id = setTimeout(() => inputRef.current?.focus(), 30);
+
+            return () => clearTimeout(id);
+        }
+    }, [open]);
+
+    // ‏والاسمان: «Chocolate» يجدها كما تجدها «شوكولاتة»
+    const matched = useMemo(() => {
+        const needle = fold(q);
+
+        if (needle === '') {
+            return addons;
+        }
+
+        return addons.filter((a) => fold(a.name).includes(needle) || fold(a.name_en ?? '').includes(needle));
+    }, [addons, q]);
+
+    const shown = useMemo(() => matched.slice(0, SHOWN), [matched]);
+    const total = matched.length;
+
+    useEffect(() => setActive(0), [q]);
+
+    const take = (a: AddonRow) => {
+        onPick(a);
+        setAdded((n) => n + 1);
+        setQ('');
+        inputRef.current?.focus();
+    };
+
+    const onKey = (e: React.KeyboardEvent) => {
+        if (shown.length === 0) {
+            return;
+        }
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActive((i) => (i + 1) % shown.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive((i) => (i - 1 + shown.length) % shown.length);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            take(shown[active] ?? shown[0]);
+        }
+    };
+
+    useEffect(() => {
+        listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
+    }, [active, shown]);
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>{t('إضافة من الإضافات')}</DialogTitle>
+                    <DialogDescription>
+                        {t('كل إضافات المتجر النشطة — تُضاف بندًا مستقلًّا بلا منتج، والنافذة تبقى مفتوحة لتضيف أكثر من واحدة.')}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="px-5">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute top-1/2 size-4 -translate-y-1/2 text-[#9ca3af] start-3" />
+                        <Input
+                            ref={inputRef}
+                            value={q}
+                            onChange={(e) => setQ(e.target.value)}
+                            onKeyDown={onKey}
+                            placeholder={t('اسم الإضافة')}
+                            className="ps-9"
+                        />
+                    </div>
+
+                    <div ref={listRef} className="mt-2 max-h-80 overflow-y-auto">
+                        {shown.map((a, i) => (
+                            <button
+                                key={a.id}
+                                type="button"
+                                data-active={i === active}
+                                onMouseEnter={() => setActive(i)}
+                                onClick={() => take(a)}
+                                className={cn(
+                                    'flex w-full items-center gap-3 rounded-[8px] px-3 py-2 text-start text-[13px]',
+                                    i === active ? 'bg-[#f1f1ef]' : 'hover:bg-[#f7f7f5]',
+                                )}
+                            >
+                                <span className="min-w-0 flex-1">
+                                    <span className="block truncate text-[#111]">{a.name}</span>
+                                    {a.name_en && (
+                                        <span dir="ltr" className="block truncate text-[11px] text-[#9ca3af]">
+                                            {a.name_en}
+                                        </span>
+                                    )}
+                                </span>
+
+                                {picked.includes(a.id) && (
+                                    <span className="shrink-0 rounded-full bg-[#eff6ff] px-2 py-0.5 text-[11px] text-[#1d4ed8]">
+                                        {t('في الفاتورة')}
+                                    </span>
+                                )}
+
+                                <span className="shrink-0 tabular-nums text-[#6b7280]">
+                                    {money(Number(a.price), context!.currency)}
+                                </span>
+                            </button>
+                        ))}
+
+                        {shown.length === 0 && (
+                            <p className="p-4 text-center text-[12px] text-[#9ca3af]">
+                                {addons.length === 0
+                                    ? t('لا إضافات نشطة بعد — تُضاف من صفحة الإضافات.')
+                                    : t('لا إضافة بهذا الاسم')}
+                            </p>
+                        )}
+
+                        {total > shown.length && (
+                            <p className="p-3 text-center text-[11px] text-[#9ca3af]">
+                                {t('عُرض :n من :m — ضيّق البحث', { n: shown.length, m: total })}
+                            </p>
+                        )}
+                    </div>
+
+                    {truncated && (
+                        <p className="mt-1 text-[11px] text-[#b45309]">
+                            {t('الإضافات أكثر ممّا يُحمَّل هنا — عُرض أوّل 500 منها بالاسم.')}
                         </p>
                     )}
                 </div>

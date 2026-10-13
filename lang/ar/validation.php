@@ -399,6 +399,7 @@ return [
         'items.*.discount' => 'خصم البند',
         'items.*.unit_price' => 'سعر الوحدة',
         'items.*.tax_rate' => 'نسبة ضريبة البند',
+        'items.*.addon_id' => 'الإضافة',
 
         // المشتريات والموردون
         'purchase_order_id' => 'أمر الشراء',

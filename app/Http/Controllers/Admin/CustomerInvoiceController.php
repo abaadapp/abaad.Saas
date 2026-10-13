@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Addon;
 use App\Models\BankAccount;
 use App\Models\Business;
 use App\Models\Customer;
@@ -450,6 +451,30 @@ class CustomerInvoiceController extends Controller
              */
             'catalog_truncated' => Product::where('business_id', $bid)->count() > self::CATALOG_LIMIT,
             /*
+             * ═══ وكتالوجُ الإضافات — كلُّها، لا ما يأذن به منتج ═══
+             *
+             * الورقةُ مستندٌ ماليٌّ يدويّ: صاحبُ المحلّ قد يفوتر شوكولاتةً أو
+             * تغليفًا وحدَه بلا بوكيه. فلا `product_addons` ولا مدى الإضافة
+             * (`scope`) هنا — تلك قيودُ ما يُعرض مع منتجٍ في الصندوق والموقع
+             * والطلبات، وتبقى هناك كما هي. والنشطةُ وحدها، ومن هذا المتجر.
+             *
+             * وما يُعرض للاختيار لا غير: الاسمان والثمن. لا تكلفةَ ولا صنفَ
+             * مخزونٍ ولا كميّتَه — الفاتورةُ لا تُنقص رفًّا، وما لا يُقرأ هنا
+             * لا يُرسَل.
+             *
+             * والثمنُ هنا للعرض: الخادمُ يعيد قراءته عند الحفظ
+             * (`CustomerInvoices::addonsFromCatalog`).
+             */
+            'addons' => Addon::where('business_id', $bid)->where('active', true)->orderBy('name')
+                ->limit(self::CATALOG_LIMIT)->get(['id', 'name', 'name_en', 'price'])
+                ->map(fn (Addon $a) => [
+                    'id' => $a->id,
+                    'name' => $a->name,
+                    'name_en' => $a->name_en,
+                    'price' => (float) $a->price,
+                ])->all(),
+            'addons_truncated' => Addon::where('business_id', $bid)->where('active', true)->count() > self::CATALOG_LIMIT,
+            /*
              * ونسبةُ الضريبة من `Vat::rate` لا بقراءةٍ تُكتب هنا.
              *
              * كانت مكتوبةً بيدها فتسقط إلى خمسة، و`Vat::rate` تهبط إلى
@@ -561,6 +586,7 @@ class CustomerInvoiceController extends Controller
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['nullable', 'array'],
             'items.*.product_id' => ['nullable', 'integer'],
+            'items.*.addon_id' => ['nullable', 'integer'],
             'items.*.description' => ['nullable', 'string', 'max:255'],
             'items.*.quantity' => ['nullable', 'numeric'],
             'items.*.unit_price' => ['nullable', 'numeric'],
@@ -610,6 +636,14 @@ class CustomerInvoiceController extends Controller
 
             return $line;
         }, $data['items'] ?? []);
+
+        /*
+         * وبندُ الإضافة يُرسم بثمنها واسمها من القاعدة — كما يُحفظ.
+         *
+         * فالمعاينةُ والمحفوظةُ يمرّان على القارئ نفسه. وإضافةٌ من متجرٍ آخر
+         * أو موقوفةٌ يسقط بندُها هنا ولا يُردّ الطلب — انظر `addonsFromCatalog`.
+         */
+        $items = CustomerInvoices::addonsFromCatalog($bid, $items, strict: false);
 
         $invoice = CustomerInvoices::draft($bid, $customer, $data, $items);
 
@@ -951,6 +985,8 @@ class CustomerInvoiceController extends Controller
             'issue' => ['nullable', 'boolean'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer'],
+            // منتجٌ أو إضافة — لا الاثنان: إضافةٌ لا تلبس منتجًا وهميًّا
+            'items.*.addon_id' => ['nullable', 'integer', 'prohibits:items.*.product_id'],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.quantity' => ['required', 'numeric', 'gt:0'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
@@ -1096,7 +1132,13 @@ class CustomerInvoiceController extends Controller
 
         try {
             $invoice = DB::transaction(function () use ($request, $customer, $data, $method, &$uploaded) {
-                $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $data['items'], auth()->id());
+                /*
+                 * وبندُ الإضافة يُكتب بثمنها واسمها من القاعدة لا ممّا أُرسل —
+                 * وإضافةُ متجرٍ آخر أو موقوفةٌ تُردّ هنا على «البنود».
+                 */
+                $items = CustomerInvoices::addonsFromCatalog($this->bid(), $data['items']);
+
+                $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $items, auth()->id());
 
                 /*
                  * والمرفقاتُ بعد الورقة لا قبلها: مرفقٌ بلا فاتورةٍ يشير إليه

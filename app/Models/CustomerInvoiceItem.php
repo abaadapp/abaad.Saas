@@ -19,4 +19,15 @@ class CustomerInvoiceItem extends Model
     {
         return $this->belongsTo(Product::class);
     }
+
+    /**
+     * الإضافةُ التي كانها هذا البند — إشارةٌ لا مصدر.
+     *
+     * الورقةُ تُقرأ من اللقطة (`description` و`unit_price`)، وهذه تبقى لمن
+     * أراد أن يجمع: إضافةٌ حُذفت بعدها يُفرَّغ معرّفُها ويبقى البند.
+     */
+    public function addon(): BelongsTo
+    {
+        return $this->belongsTo(Addon::class);
+    }
 }

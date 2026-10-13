@@ -7641,5 +7641,16 @@
     "وصلت دفعة :amount من :name عبر رابط الدفع": "Payment of :amount received from :name via payment link",
     "إرسال الفاتورة بعد دفعها برابط الدفع": "Send the invoice once it is paid by payment link",
     "بناء الموقع ونشره ونطاقه — والموقع العام وطلباته لا تُخدم بدونها": "Building, publishing and the domain of the website — the public site and its orders are not served without it",
-    "تقييمات العملاء والكوبونات والعروض — والولاء وواتساب لهما قدرتاهما": "Customer reviews, coupons and offers — loyalty and WhatsApp have their own capabilities"
+    "تقييمات العملاء والكوبونات والعروض — والولاء وواتساب لهما قدرتاهما": "Customer reviews, coupons and offers — loyalty and WhatsApp have their own capabilities",
+    "إضافة من الإضافات": "Add from add-ons",
+    "سعر الإضافة من الكتالوج — لسعرٍ آخر أضف بندًا يدويًّا": "Add-on price from the catalogue — for another price, add a manual line",
+    "كل إضافات المتجر النشطة — تُضاف بندًا مستقلًّا بلا منتج، والنافذة تبقى مفتوحة لتضيف أكثر من واحدة.": "All active add-ons of the shop — each is added as its own line, no product needed. The window stays open so you can add more than one.",
+    "لا إضافات نشطة بعد — تُضاف من صفحة الإضافات.": "No active add-ons yet — add them from the add-ons page.",
+    "لا إضافة بهذا الاسم": "No add-on with this name",
+    "الإضافات أكثر ممّا يُحمَّل هنا — عُرض أوّل 500 منها بالاسم.": "There are more add-ons than can be loaded here — the first 500 by name are shown.",
+    "البند منتجٌ أو إضافة — لا الاثنان معًا.": "A line is a product or an add-on — not both.",
+    "هذه الإضافة ليست من إضافات متجرك.": "This add-on does not belong to your shop.",
+    "هذه الإضافة ليست من إضافات متجرك النشطة.": "This add-on is not one of your shop’s active add-ons.",
+    "إضافات: :list": "Add-ons: :list",
+    "تشمل: :list": "includes: :list"
 }

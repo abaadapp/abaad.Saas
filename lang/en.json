@@ -7653,5 +7653,8 @@
     "هذه الإضافة ليست من إضافات متجرك النشطة.": "This add-on is not one of your shop’s active add-ons.",
     "إضافات: :list": "Add-ons: :list",
     "تشمل: :list": "includes: :list",
-    "ربط المتجر بالخدمات الخارجية وضبطها من «التطبيقات التكاملية»": "Connecting the shop to external services and setting them up from Integrations"
+    "ربط المتجر بالخدمات الخارجية وضبطها من «التطبيقات التكاملية»": "Connecting the shop to external services and setting them up from Integrations",
+    "تفاصيل الباقة المختارة": "Selected plan details",
+    "الحدود المطبّقة": "Enforced limits",
+    "الموظفون النشطون": "Active employees"
 }

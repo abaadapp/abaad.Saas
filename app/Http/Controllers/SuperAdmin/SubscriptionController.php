@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Support\Activity;
+use App\Support\PlanLimits;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * تعديل اشتراكٍ قائم.
@@ -95,6 +97,29 @@ class SubscriptionController extends Controller
             return;
         }
 
+        /*
+         * ═══ ولا يُنزَّل متجرٌ إلى باقةٍ أضيقَ من استهلاكه ═══
+         *
+         * كأخيه في `BusinessController::update`: متجرٌ بفرعين وعشرين موظّفًا
+         * لا يُنقل إلى باقةٍ بفرعٍ وثلاثة من قائمةٍ منسدلة في نافذة الاشتراك —
+         * يُقال للمشغّل ما الزائد، ويُرتَّب قبل التنزيل. ولا يُمحى فرعٌ ولا موظّفٌ
+         * ولا صنف.
+         *
+         * ويُسأل هنا لا قبلُ: هنا وحدَه تنتقل باقةُ المتجر — الاشتراكُ الأحدثُ
+         * بعد الحفظ. وتعديلُ اشتراكٍ قديمٍ لا يمسّ باقتَه فلا يُردّ. والرمي داخل
+         * المعاملة يُرجع الاشتراكَ كما كان.
+         */
+        $target = $subscription->plan_id ? Plan::find($subscription->plan_id) : null;
+
+        if ($target && (int) $target->id !== (int) $business->plan_id && $over = PlanLimits::exceededBy($business, $target)) {
+            throw ValidationException::withMessages([
+                'plan_id' => __('المتجر يتجاوز باقة «:plan»: :over. أنقص الزائد قبل التنزيل.', [
+                    'plan' => $target->name,
+                    'over' => implode('، ', $over),
+                ]),
+            ]);
+        }
+
         $business->update([
             'plan_id' => $subscription->plan_id ?: $business->plan_id,
             'starts_at' => $subscription->starts_at,
@@ -102,11 +127,29 @@ class SubscriptionController extends Controller
         ]);
     }
 
-    /** الباقات كما يقرؤها النموذج */
+    /**
+     * الباقات كما يقرؤها النموذج — ومعها ما تعرضه هي.
+     *
+     * يقرؤها نموذجُ الاشتراك ونموذجُ الشركة كلاهما (`PageController::businessOptions`)
+     * فتُعرض تحت الاختيار «تفاصيل الباقة المختارة» من صفّ الباقة نفسِه:
+     * سعراها ونصوصُها وسقوفُها. مديرُ المنصّة يعدّل الباقة غدًا فتتبعه المعاينة.
+     *
+     * ولا تُرسَل قائمةُ القدرات كلُّها مع كلّ باقة: المعاينةُ تقول ما في هذه
+     * الباقة لا ما في النظام.
+     */
     public static function planOptions(): array
     {
         return Plan::orderBy('id')->get()
-            ->map(fn ($p) => ['label' => $p->name, 'value' => $p->id, 'monthly' => (float) $p->monthly_price, 'yearly' => (float) $p->yearly_price])
+            ->map(fn ($p) => [
+                'label' => $p->name,
+                'value' => $p->id,
+                'monthly' => (float) $p->monthly_price,
+                'yearly' => (float) $p->yearly_price,
+                'features' => array_values($p->features ?? []),
+                'max_branches' => $p->max_branches,
+                'max_employees' => $p->max_employees,
+                'max_products' => $p->max_products,
+            ])
             ->all();
     }
 }

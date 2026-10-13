@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Jobs\SendWhatsAppMessage;
 use App\Models\Business;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerPaymentLink;
 use App\Models\Order;
 use App\Models\WhatsAppMessage;
 
@@ -147,9 +148,47 @@ class WhatsAppAutomation
         }
     }
 
-    private static function decideInvoice(CustomerInvoice $invoice, string $event): ?WhatsAppMessage
+    /**
+     * فاتورةٌ دُفعت برابط دفع — تُرسَل إلى من دفعها، ملفًّا مرفقًا.
+     *
+     * Paymob لا تُعيد العميلَ إلى صفحتنا بعد الدفع من رابط (QuickLink بلا
+     * عنوان عودة)، فيبقى على صفحة نجاحها ولا ورقةَ في يده. فتصله فاتورتُه
+     * على واتساب لحظةَ يثبت الدفع — بالطريق نفسه الذي تخرج به تذكيراتُ السداد.
+     *
+     * ومفتاحُ التكرار الرابطُ لا الفاتورة: فاتورةٌ دُفعت على رابطين يُقال
+     * لصاحبها عن كلّ دفعة، وإشعارُ Paymob المكرَّر للرابط نفسِه رسالةٌ واحدة.
+     * والرابطُ بلا فاتورة رصيدٌ للعميل لا ورقةَ له — فلا يُرسَل شيء.
+     */
+    public static function handlePaidLink(CustomerPaymentLink $link): ?WhatsAppMessage
     {
-        if (! in_array($event, [WhatsAppEvent::INVOICE_DUE_SOON, WhatsAppEvent::INVOICE_OVERDUE], true)) {
+        try {
+            $invoice = $link->customer_invoice_id === null ? null
+                : CustomerInvoice::where('business_id', $link->business_id)->find($link->customer_invoice_id);
+
+            if ($invoice === null) {
+                return null;
+            }
+
+            return self::decideInvoice(
+                $invoice,
+                WhatsAppEvent::INVOICE_PAID,
+                'link:'.$link->business_id.':'.$link->id.':'.WhatsAppEvent::INVOICE_PAID,
+                ['payment_link_id' => (int) $link->id, 'amount' => (float) $link->amount],
+            );
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * @param  string|null  $dedupe  مفتاحُ التكرار إن لم يكن الفاتورةَ والحدث
+     * @param  array<string, mixed>  $metadata  ما يحتاجه المُرسِل ولا عمودَ له
+     */
+    private static function decideInvoice(CustomerInvoice $invoice, string $event, ?string $dedupe = null, array $metadata = []): ?WhatsAppMessage
+    {
+        if (! in_array($event, [WhatsAppEvent::INVOICE_DUE_SOON, WhatsAppEvent::INVOICE_OVERDUE, WhatsAppEvent::INVOICE_PAID], true)) {
             return null;
         }
 
@@ -190,8 +229,8 @@ class WhatsAppAutomation
             'template_name' => $template?->template_name,
             // وبلغة الزبون إن اعتُمد القالبُ بها — انظر `languageFor`
             'language_code' => $template?->languageFor($customer?->language),
-            'dedupe_key' => 'inv:'.$business->id.':'.$invoice->id.':'.$event,
-        ];
+            'dedupe_key' => $dedupe ?? 'inv:'.$business->id.':'.$invoice->id.':'.$event,
+        ] + ($metadata === [] ? [] : ['metadata' => $metadata]);
 
         $skip = match (true) {
             $phone === null => WhatsAppStatus::SKIP_NO_RECIPIENT,

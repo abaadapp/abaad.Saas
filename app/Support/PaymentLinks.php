@@ -473,6 +473,13 @@ final class PaymentLinks
                         'subject_id' => $locked->id, 'subject_type' => 'customer_payment_link', 'business_id' => (int) $locked->business_id,
                     ]);
 
+                /*
+                 * وتصل الفاتورةُ مَن دفعها على واتساب — Paymob تُبقيه على صفحتها
+                 * بلا ورقة. وفي المعاملة نفسِها: صفُّ الرسالة يُكتب معها أو لا
+                 * يُكتب، والإرسالُ بعد تثبيتها (`SendWhatsAppMessage::afterCommit`).
+                 */
+                WhatsAppAutomation::handlePaidLink($locked);
+
                 return $payment;
             });
         } catch (QueryException $e) {

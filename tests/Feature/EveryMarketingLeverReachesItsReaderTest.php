@@ -112,7 +112,8 @@ class EveryMarketingLeverReachesItsReaderTest extends TestCase
         $props = $this->actingAs($this->owner)->get(route('admin.marketing.whatsapp'))
             ->viewData('page')['props'];
 
-        $this->assertCount(6, $props['automation']['events']);
+        // السبعة: الستّةُ وإرسالُ الفاتورة بعد دفعها برابط الدفع
+        $this->assertCount(7, $props['automation']['events']);
 
         foreach ($props['automation']['events'] as $event) {
             $this->assertArrayHasKey(

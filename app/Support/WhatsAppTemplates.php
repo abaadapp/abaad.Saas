@@ -95,6 +95,8 @@ class WhatsAppTemplates
             return ['ok' => false, 'checked' => 0, 'approved' => 0, 'message' => $result['message']];
         }
 
+        self::adopt($result['templates'], $scope, $businessId);
+
         $rows = WhatsAppTemplateMapping::where('scope_type', $scope)
             ->when($businessId === null, fn ($q) => $q->whereNull('business_id'))
             ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
@@ -256,6 +258,22 @@ class WhatsAppTemplates
     }
 
     /**
+     * قيمُ «وصلت دفعتُك» — المحلّ، ورقمُ الفاتورة، وما دُفع بعملته.
+     *
+     * والمبلغُ ما دُفع بالرابط لا إجماليُّ الفاتورة: فاتورةٌ بمئةٍ دُفع منها
+     * ثلاثون يُقال لصاحبها «استلمنا ٣٠» — والباقي على الفاتورة المرفقة.
+     *
+     * @return array<int, string>
+     */
+    public static function paidVariables(Business $business, CustomerInvoice $invoice, float $amount): array
+    {
+        return [
+            ...self::invoiceVariables($business, $invoice),
+            Money::format($amount, Money::of((int) $business->id)),
+        ];
+    }
+
+    /**
      * حالُ قوالب أبعاد كما تُقرأ في لوحة المنصّة.
      *
      * والحدثُ يُسمّى بالعربية والقالبُ باسمه عند ميتا: مالكُ المنصّة يقارن
@@ -308,7 +326,8 @@ class WhatsAppTemplates
     {
         $language ??= (string) config('whatsapp.language', 'ar');
 
-        foreach (WhatsAppEvent::ALL as $event) {
+        // وما يُربط عند اعتماده لا يُهيَّأ هنا — انظر `WhatsAppEvent::ON_APPROVAL` و`adopt`
+        foreach (array_diff(WhatsAppEvent::ALL, WhatsAppEvent::ON_APPROVAL) as $event) {
             WhatsAppTemplateMapping::firstOrCreate(
                 ['scope_type' => $scope, 'business_id' => $businessId, 'event_type' => $event],
                 [
@@ -317,6 +336,47 @@ class WhatsAppTemplates
                     'enabled' => true,
                     // {{1}} اسم المحلّ، {{2}} رقم الطلب — يُقرأ ولا يُخمَّن
                     'variable_mapping' => ['1' => 'business_name', '2' => 'order_number'],
+                ],
+            );
+        }
+    }
+
+    /**
+     * يربط قالبَ حدثٍ من `ON_APPROVAL` يومَ تعتمده ميتا — في المزامنة الساعيّة.
+     *
+     * بالاسم الافتراضيّ وحده (`DEFAULT_TEMPLATES`)، وفي الحساب الذي سُئل
+     * وحده: قالبٌ أنشأه صاحبُ المنصّة في حساب أبعاد يُربط لرقم أبعاد، وقالبٌ
+     * أنشأه تاجرٌ في حسابه يُربط لرقمه. ولا يُكتب صفٌّ لما لم يُعتمد بعد —
+     * فلا يصير `MISSING` يُحمِّر خطوةَ القوالب عند أحد.
+     *
+     * واللغةُ لغةُ المنصّة إن اعتُمد بها، وإلّا أوّلُ لغةٍ اعتُمد بها. والصفُّ
+     * القائم لا يُمسّ: اسمٌ صحّحه أحدٌ بيده يبقى كما كتبه.
+     *
+     * @param  array<string, array<string, string>>  $templates  ما قالته ميتا: الاسم ← اللغة ← الحال
+     */
+    private static function adopt(array $templates, string $scope, ?int $businessId): void
+    {
+        $preferred = (string) config('whatsapp.language', 'ar');
+
+        foreach (WhatsAppEvent::ON_APPROVAL as $event) {
+            $name = WhatsAppEvent::DEFAULT_TEMPLATES[$event];
+            $approved = array_keys(array_filter((array) ($templates[$name] ?? []), fn ($status) => $status === self::APPROVED));
+
+            if ($approved === []) {
+                continue;
+            }
+
+            $language = in_array($preferred, $approved, true) || in_array('*', $approved, true)
+                ? $preferred
+                : (string) $approved[0];
+
+            WhatsAppTemplateMapping::firstOrCreate(
+                ['scope_type' => $scope, 'business_id' => $businessId, 'event_type' => $event],
+                [
+                    'template_name' => $name,
+                    'language_code' => $language,
+                    'enabled' => true,
+                    'variable_mapping' => ['1' => 'business_name', '2' => 'invoice_number', '3' => 'amount'],
                 ],
             );
         }

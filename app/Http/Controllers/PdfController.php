@@ -549,6 +549,23 @@ class PdfController extends Controller
         $invoice = CustomerInvoice::where('business_id', $bid)->whereKey($id)
             ->with('items')->firstOrFail();
 
+        $html = self::customerInvoiceHtml($bid, $invoice);
+
+        Activity::log('report', 'صدّر فاتورة عميل: '.$invoice->number, ['subject_id' => $invoice->id]);
+
+        return $this->pdf($html, 'customer-invoice-'.$invoice->number);
+    }
+
+    /**
+     * فاتورةُ العميل مرسومةً — بلا جلسة: يقرؤها زرُّ التصدير ورسالةُ «وصلت دفعتُك».
+     *
+     * والرسالةُ تُبنى في الطابور ولا مستخدمَ فيه، فالمتجرُ يُعطى لا يُقرأ من
+     * الجلسة. والورقةُ واحدة: ما يُصدِّره التاجر هو ما يستلمه عميلُه على واتساب.
+     */
+    public static function customerInvoiceHtml(int $bid, CustomerInvoice $invoice): string
+    {
+        $invoice->loadMissing('items');
+
         /*
          * والورقةُ تُبنى حيث تُبنى المعاينة — لا نسخةٌ ثانية هنا.
          *
@@ -556,7 +573,7 @@ class PdfController extends Controller
          * يبلغ الآخر: يُضبط الشعارُ فيُرى في الشاشة ويغيب عن الطابعة.
          * وباللغةِ التي اختارها صاحبُ المحلّ لورقته، لا بلغة من ضغط الزرّ.
          */
-        $html = InvoiceBranding::render($bid, null, fn () => CustomerInvoiceController::paper(
+        return InvoiceBranding::render($bid, null, fn () => CustomerInvoiceController::paper(
             $bid,
             $invoice,
             $invoice->paidTotal(),
@@ -572,10 +589,6 @@ class PdfController extends Controller
             null,
             ['paperUrl' => PublicDocument::url($invoice) ?? ''],
         )->render());
-
-        Activity::log('report', 'صدّر فاتورة عميل: '.$invoice->number, ['subject_id' => $invoice->id]);
-
-        return $this->pdf($html, 'customer-invoice-'.$invoice->number);
     }
 
     /** كشفُ حساب عميل (PDF) — رصيدٌ افتتاحيٌّ ثمّ حركةٌ برصيدٍ جارٍ */

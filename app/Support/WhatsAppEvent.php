@@ -29,6 +29,9 @@ class WhatsAppEvent
     /** فاتورةٌ تجاوزت استحقاقَها */
     public const INVOICE_OVERDUE = 'invoice_overdue';
 
+    /** فاتورةٌ دُفعت برابط دفع — وتُرسَل إلى العميل ملفًّا */
+    public const INVOICE_PAID = 'invoice_paid';
+
     public const ALL = [
         self::ORDER_CONFIRMED,
         self::ORDER_READY,
@@ -36,7 +39,21 @@ class WhatsAppEvent
         self::ORDER_DELIVERED,
         self::INVOICE_DUE_SOON,
         self::INVOICE_OVERDUE,
+        self::INVOICE_PAID,
     ];
+
+    /**
+     * ما يُربط قالبُه حين تعتمده ميتا — لا قبل.
+     *
+     * الأحداثُ الستّة الأولى تُهيَّأ قوالبُها مع الوصلة (`WhatsAppTemplates::seed`)،
+     * وتُعدّ في «قوالب رسائلك معتمَدة» عند كلّ تاجر. وحدثٌ جديدٌ لو هُيّئ كذلك
+     * لَكان صفُّه `MISSING` حتّى يُنشأ قالبُه عند ميتا — فتحمرّ تلك الخطوةُ عند
+     * **كلّ** متجرٍ على رقم أبعاد لأجل رسالةٍ لم تُطلب بعد.
+     *
+     * فيُربط في المزامنة الساعيّة يومَ تقول ميتا إنّه معتمَد، وقبلها لا صفّ:
+     * `resolve` يردّ فراغًا، والرسالةُ تُتخطّى بسببها، ولا يتغيّر شيءٌ على أحد.
+     */
+    public const ON_APPROVAL = [self::INVOICE_PAID];
 
     /** الحالة التي تُطلق كلّ حدث — من `OrderStatus` لا من نصٍّ مكتوبٍ هنا */
     public static function statusMap(): array
@@ -70,6 +87,7 @@ class WhatsAppEvent
         // ومفتاحان جديدان: من لم يفعّلهما لا تُرسَل تذكيراتُه
         self::INVOICE_DUE_SOON => 'wa_on_invoice_due_soon',
         self::INVOICE_OVERDUE => 'wa_on_invoice_overdue',
+        self::INVOICE_PAID => 'wa_on_invoice_paid',
     ];
 
     public const LABELS = [
@@ -79,6 +97,7 @@ class WhatsAppEvent
         self::ORDER_DELIVERED => 'تسليم الطلب',
         self::INVOICE_DUE_SOON => 'اقتراب استحقاق فاتورة',
         self::INVOICE_OVERDUE => 'تأخّر سداد فاتورة',
+        self::INVOICE_PAID => 'إرسال الفاتورة بعد دفعها برابط الدفع',
     ];
 
     /**
@@ -96,6 +115,7 @@ class WhatsAppEvent
         self::ORDER_DELIVERED => 'abaad_order_delivered',
         self::INVOICE_DUE_SOON => 'abaad_invoice_due_soon',
         self::INVOICE_OVERDUE => 'abaad_invoice_overdue',
+        self::INVOICE_PAID => 'abaad_invoice_paid',
     ];
 
     public static function label(string $event): string

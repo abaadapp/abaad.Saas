@@ -123,7 +123,7 @@ class CheckPlanFeature
      *
      * Paymob بنيةُ الدفع التي تقف عليها روابطُ الدفع على فواتير العملاء: متجرٌ
      * على الأساسيّة يُصدر فاتورةً ويرسل رابطَ سدادها. فلا تُغلق بإغلاق
-     * التكاملات. ويقرؤها `EveryIntegrationDoorIsDecidedTest`: بابٌ جديدٌ تحت
+     * التكاملات. ويقرؤها `IntegrationsAreSoldWithThePlanTest`: بابٌ جديدٌ تحت
      * `admin.integrations.` لا يُحرس ولا يُذكر هنا يُسقط الاختبار.
      */
     public const OPEN_INTEGRATIONS = ['admin.integrations.paymob', 'admin.integrations.paymob.save'];

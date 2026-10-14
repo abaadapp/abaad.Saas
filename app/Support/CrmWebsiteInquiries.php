@@ -5,6 +5,9 @@ namespace App\Support;
 use App\Mail\WebsiteLeadMail;
 use App\Models\CrmLead;
 use App\Models\CrmNote;
+use App\Models\CrmWebsiteInquiryRead;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -294,5 +297,165 @@ final class CrmWebsiteInquiries
             'locale' => $found['locale'],
             'message' => $message === '' ? null : $message,
         ];
+    }
+
+    /* ═══════════════════ غيرُ المقروء — لكلّ قارئٍ وحدَه ═══════════════════ */
+
+    /**
+     * إعدادُ المنصّة الذي كتبه ترحيلُ الميزة: أعلى رقم ملاحظةٍ ساعتَها.
+     *
+     * وما كان عنده أو قبله مقروءٌ للجميع — الشارةُ تبدأ بما يصل بعد النشر.
+     */
+    public const UNREAD_AFTER_KEY = 'crm_website_inquiries_unread_after_note_id';
+
+    public static function unreadAfter(): int
+    {
+        return (int) DB::table('settings')->whereNull('business_id')
+            ->where('key', self::UNREAD_AFTER_KEY)->value('value');
+    }
+
+    /**
+     * ملاحظاتُ طلبات الموقع التي تُعدّ — بكاتبها وشكلِ نصّها كاملًا، في قاعدة البيانات.
+     *
+     * الكاتبُ نفسُه الذي يكتب به `receive` ويقرأ به `forLead`. والنصُّ بالشكل
+     * الذي يكتبه `body` حرفًا: سطرُ العنوان، ثمّ كلُّ تسميةٍ بترتيبها وبقيمةٍ غيرِ
+     * فارغة، ثمّ «الرسالة:» ونصٌّ بعدها (`inquiryShape`). فملاحظةُ موظّفٍ أو
+     * ملاحظةٌ آليّةٌ أخرى لا تُعدّ، ولا ملاحظةٌ تبدأ بالعنوان وهي ناقصة.
+     * ولا يُقرأ ما قبل الميزة.
+     *
+     * والفحصُ نمطُ `LIKE` واحدٌ لا قراءةُ النصّ في PHP: الشارةُ تُحسب في كلّ
+     * صفحة، فلا تُجلب نصوصُ الطلبات لتُفكّك هناك.
+     *
+     * @return Builder<CrmNote>
+     */
+    public static function inquiryNotes(): Builder
+    {
+        return CrmNote::query()
+            ->whereNull('crm_notes.user_id')
+            ->where('crm_notes.user_name', self::AUTHOR)
+            ->where('crm_notes.body', 'like', self::inquiryShape())
+            ->where('crm_notes.id', '>', self::unreadAfter());
+    }
+
+    /**
+     * شكلُ نصِّ الطلب كما يكتبه `body` — نمطُ `LIKE` من الثوابت نفسِها.
+     *
+     * `_%` قيمةٌ من حرفٍ فأكثر، و`\n` فاصلُ `body` نفسُه. وتغييرُ تسميةٍ في
+     * `LABELS` يغيّر الكتابةَ والقراءةَ وهذا النمطَ معًا فلا يفترقون. ولا في
+     * الثوابت `%` ولا `_` ولا `\` (يحرسه اختبار)، فلا تهريبَ يلزم.
+     */
+    public static function inquiryShape(): string
+    {
+        $shape = self::HEADER;
+
+        foreach (self::LABELS as $label) {
+            $shape .= "\n".$label.': _%';
+        }
+
+        return $shape."\n".self::MESSAGE_LABEL."\n_%";
+    }
+
+    /**
+     * شارةُ «العملاء المحتملون» — كم عميلًا له طلبُ موقعٍ لم يقرأه هذا الموظّف.
+     *
+     * عددُ العملاء لا عددُ الطلبات: من كتب ثلاثًا ولم يُفتح ملفُّه واحدٌ ينتظر،
+     * كما تعدّ `CrmWhatsApp::badge` المحادثاتِ لا الرسائل. وأخوها لا هي: تلك
+     * لواتساب في `crm_reads`، وهذه لطلبات الموقع في `crm_website_inquiry_reads`.
+     */
+    public static function badge(User $user): int
+    {
+        if (! $user->isSuperAdmin()) {
+            return 0;
+        }
+
+        return self::inquiryNotes()
+            ->whereRaw(
+                'crm_notes.id > coalesce((select r.last_read_note_id from crm_website_inquiry_reads r
+                    where r.lead_id = crm_notes.lead_id and r.user_id = ?), 0)',
+                [$user->id],
+            )
+            ->distinct()
+            ->count('crm_notes.lead_id');
+    }
+
+    /**
+     * أيُّ عملاء هذه الصفحة لهم طلبُ موقعٍ لم يقرأه هذا الموظّف — باستعلامين لا بعدد الصفوف.
+     *
+     * @param  list<int>  $leadIds
+     * @return array<int, bool>
+     */
+    public static function unreadMap(array $leadIds, User $user): array
+    {
+        if ($leadIds === []) {
+            return [];
+        }
+
+        $latest = self::inquiryNotes()
+            ->whereIn('crm_notes.lead_id', $leadIds)
+            ->groupBy('crm_notes.lead_id')
+            ->selectRaw('crm_notes.lead_id as lead_id, max(crm_notes.id) as latest')
+            ->pluck('latest', 'lead_id');
+
+        $read = CrmWebsiteInquiryRead::where('user_id', $user->id)
+            ->whereIn('lead_id', $leadIds)
+            ->pluck('last_read_note_id', 'lead_id');
+
+        $out = array_fill_keys($leadIds, false);
+
+        foreach ($latest as $leadId => $noteId) {
+            $out[(int) $leadId] = (int) $noteId > (int) ($read[$leadId] ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * فُتح ملفُّ العميل: طلباتُه حتّى أحدثِها **الآن** مقروءةٌ لهذا الموظّف وحدَه.
+     *
+     * المؤشّرُ أحدثُ طلبٍ موجودٍ لحظةَ الفتح — فما يصل بعدها غيرُ مقروء. ولا
+     * يتراجع المؤشّر، ولا يُكتب صفٌّ لعميلٍ بلا طلب موقع. ولا يمسّ العميلَ ولا
+     * الملاحظةَ ولا قراءةَ واتساب.
+     */
+    public static function markRead(CrmLead $lead, User $user): void
+    {
+        $latest = (int) self::inquiryNotes()->where('crm_notes.lead_id', $lead->id)->max('crm_notes.id');
+
+        if ($latest === 0) {
+            return;
+        }
+
+        self::advanceReadCursor($user->id, $lead->id, $latest);
+    }
+
+    /**
+     * يُقدِّم مؤشّرَ القارئ إلى `$noteId` — ولا يُرجعه أبدًا، ولو تزامنت فتحتان.
+     *
+     * ═══ ولمَ لا «اقرأ ثمّ اكتب» ═══
+     *
+     * فتحتان للعميل نفسِه: الأولى ترى الطلبَ 100، والثانية ترى 101 فتكتبه،
+     * ثمّ تكتب الأولى 100 — فيعود 101 غيرَ مقروء. وفحصُ «الحاليّ أصغر؟» قبل
+     * الكتابة لا يمنع ذلك: كلتاهما تفحص قبل أن تكتب الأخرى.
+     *
+     * فالشرطُ داخل الكتابة نفسِها، جملتين ذرّيّتين على SQLite وPostgreSQL معًا:
+     * `insertOrIgnore` يُنشئ الصفّ إن لم يكن (والفهرسُ الفريد يُسقط الثاني)،
+     * ثمّ `UPDATE … WHERE last_read_note_id < ?` لا يلمس صفًّا مؤشّرُه أحدث.
+     * فالمؤشّرُ بعد أيّ ترتيبٍ للفتحات هو أكبرُ ما كُتب.
+     */
+    public static function advanceReadCursor(int $userId, int $leadId, int $noteId): void
+    {
+        $now = now();
+
+        CrmWebsiteInquiryRead::insertOrIgnore([
+            'user_id' => $userId,
+            'lead_id' => $leadId,
+            'last_read_note_id' => $noteId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        CrmWebsiteInquiryRead::where('user_id', $userId)
+            ->where('lead_id', $leadId)
+            ->where('last_read_note_id', '<', $noteId)
+            ->update(['last_read_note_id' => $noteId, 'updated_at' => $now]);
     }
 }

@@ -19,7 +19,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarProps) {
-    const { auth, context, supportBadge, crmBadge } = usePage<PageProps>().props;
+    const { auth, context, supportBadge, crmBadge, crmLeadsBadge } = usePage<PageProps>().props;
     const t = useTranslate();
     const current = route().current();
 
@@ -122,7 +122,9 @@ export default function Sidebar({ open, onClose, nav = NAV, subtitle }: SidebarP
                         ? (supportBadge ?? 0)
                         : item.badge === 'crm'
                           ? (crmBadge ?? 0)
-                          : 0;
+                          : item.badge === 'crmLeads'
+                            ? (crmLeadsBadge ?? 0)
+                            : 0;
 
                     return count > 0 ? (
                         <span className="ms-auto flex min-w-[18px] items-center justify-center rounded-full bg-[#dc2626] px-1 text-[10px] font-bold tabular-nums text-white">

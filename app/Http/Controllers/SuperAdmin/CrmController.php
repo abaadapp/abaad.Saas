@@ -108,8 +108,14 @@ class CrmController extends Controller
             ->orderByDesc('id')
             ->paginate(self::PER_PAGE)->withQueryString();
 
+        // طلبُ موقعٍ لم يقرأه هذا الموظّف — لصفوف الصفحة وحدها، باستعلامين
+        $unread = CrmWebsiteInquiries::unreadMap(collect($leads->items())->pluck('id')->all(), $request->user());
+
         return Inertia::render('Platform/Crm/Leads/Index', [
-            'leads' => collect($leads->items())->map(fn (CrmLead $l) => $this->row($l))->all(),
+            'leads' => collect($leads->items())->map(fn (CrmLead $l) => [
+                ...$this->row($l),
+                'hasUnreadWebsiteInquiry' => $unread[$l->id] ?? false,
+            ])->all(),
             'pagination' => Pagination::meta($leads),
             'filters' => $filters,
             'counts' => $this->counts($request->user()),
@@ -165,6 +171,12 @@ class CrmController extends Controller
             ->findOrFail($id);
 
         $merchant = CrmLeads::existingMerchant($lead);
+
+        /*
+         * وطلباتُ الموقع حتّى أحدثِها الآن مقروءةٌ لهذا الموظّف وحدَه — قبل
+         * الرسم، فتنطفئ شارتُه في الصفحة نفسِها. وقراءةُ واتساب لا تُمسّ.
+         */
+        CrmWebsiteInquiries::markRead($lead, $request->user());
 
         return Inertia::render('Platform/Crm/Leads/Show', [
             'lead' => $this->detail($lead),

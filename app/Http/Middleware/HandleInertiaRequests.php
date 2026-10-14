@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\CrmWebsiteInquiries;
 use App\Support\CrmWhatsApp;
 use App\Support\Boutiques;
 use App\Support\Demo;
@@ -254,6 +255,16 @@ class HandleInertiaRequests extends Middleware
              */
             'crmBadge' => fn () => $user && $user->isSuperAdmin()
                 ? CrmWhatsApp::badge($user)
+                : 0,
+
+            /*
+             * وشارةُ «العملاء المحتملون» — طلباتُ «تواصل معنا» من الموقع.
+             *
+             * أختُ `crmBadge` لا هي: تلك محادثاتُ واتساب، وهذه عملاءُ لهم طلبُ
+             * موقعٍ لم يقرأه هذا الموظّف. ولا تُجمعان في رقمٍ واحد.
+             */
+            'crmLeadsBadge' => fn () => $user && $user->isSuperAdmin()
+                ? CrmWebsiteInquiries::badge($user)
                 : 0,
 
             // رسائل الجلسة — الواجهة تعرضها كـtoast

@@ -5,6 +5,7 @@ import {
     Building2,
     CheckCircle2,
     ClipboardList,
+    Globe,
     History,
     Link2,
     MessageSquare,
@@ -72,6 +73,19 @@ interface Note {
     at: string | null;
 }
 
+/** طلبُ «تواصل معنا» من الموقع — حقولٌ يستخرجها الخادم من ملاحظته، والغائبُ `null` */
+interface WebsiteInquiry {
+    id: number;
+    name: string | null;
+    businessName: string | null;
+    phone: string | null;
+    email: string | null;
+    activity: string | null;
+    locale: string | null;
+    message: string | null;
+    receivedAt: string | null;
+}
+
 interface Task {
     id: number;
     title: string;
@@ -102,6 +116,7 @@ interface Props {
         businessName: string | null;
         url: string | null;
     } | null;
+    websiteInquiries: WebsiteInquiry[];
     notes: Note[];
     tasks: Task[];
     timeline: Event[];
@@ -174,10 +189,42 @@ function Row({
     );
 }
 
+/**
+ * حقلٌ في طلب الموقع — يُكتب كاملًا ولا يُقصّ (بريدٌ أو اسمٌ طويل يلتفّ)،
+ * والفارغُ لا يُرسم أصلًا: الطلبُ يقول ما قاله الزائر، لا «غير معروف».
+ */
+function InquiryRow({
+    label,
+    value,
+    ltr = false,
+}: {
+    label: string;
+    value: string | null;
+    ltr?: boolean;
+}) {
+    const t = useTranslate();
+
+    if (!value) return null;
+
+    return (
+        <div className="flex items-start justify-between gap-3 py-1.5">
+            <dt className="shrink-0 text-[12px] text-[#6b7280]">{t(label)}</dt>
+            <dd
+                dir={ltr ? "ltr" : undefined}
+                className="min-w-0 break-words text-end text-[13px] text-[#111] [overflow-wrap:anywhere]"
+            >
+                {/* اسمٌ إنجليزيّ في صفحةٍ عربيّة يبقى بترقيمه في موضعه */}
+                <bdi>{value}</bdi>
+            </dd>
+        </div>
+    );
+}
+
 export default function CrmLeadShow() {
     const {
         lead,
         existingMerchant,
+        websiteInquiries,
         notes,
         tasks,
         timeline,
@@ -440,6 +487,89 @@ export default function CrmLeadShow() {
                             />
                         </dl>
                     </section>
+
+                    {/*
+                        طلباتُ «تواصل معنا» من الموقع — كلُّها، الأحدثُ أوّلًا.
+                        رقمٌ واحدٌ كتب مرّتين عميلٌ واحد بطلبين، لا آخرُهما وحده.
+                        والملاحظةُ الأصليّة باقيةٌ في «ملاحظات» سجلًّا كما كُتبت.
+                    */}
+                    {websiteInquiries.length > 0 && (
+                        <section
+                            className="rounded-xl border border-[#e8e8e8] bg-white p-5"
+                            data-website-inquiries
+                        >
+                            <div className="mb-2 flex items-center justify-between">
+                                <h2 className="font-bold text-[#111]">
+                                    <Globe className="me-1.5 inline size-4 text-[#9ca3af]" />
+                                    {t("طلب الموقع الإلكتروني")}
+                                </h2>
+                                {websiteInquiries.length > 1 && (
+                                    <span className="rounded-full bg-[#f4f4f5] px-2 py-0.5 text-[12px] font-medium text-[#52525b]">
+                                        {t(":count طلبات", {
+                                            count: websiteInquiries.length,
+                                        })}
+                                    </span>
+                                )}
+                            </div>
+
+                            <ul className="divide-y divide-[#f3f4f6]">
+                                {websiteInquiries.map((q) => (
+                                    <li
+                                        key={q.id}
+                                        className="py-2 first:pt-0 last:pb-0"
+                                        data-website-inquiry
+                                    >
+                                        <dl className="divide-y divide-[#f3f4f6]">
+                                            <InquiryRow
+                                                label="تاريخ الاستلام"
+                                                value={q.receivedAt}
+                                                ltr
+                                            />
+                                            <InquiryRow
+                                                label="الاسم"
+                                                value={q.name}
+                                            />
+                                            <InquiryRow
+                                                label="اسم النشاط"
+                                                value={q.businessName}
+                                            />
+                                            <InquiryRow
+                                                label="رقم الهاتف"
+                                                value={q.phone}
+                                                ltr
+                                            />
+                                            <InquiryRow
+                                                label="البريد الإلكتروني"
+                                                value={q.email}
+                                                ltr
+                                            />
+                                            <InquiryRow
+                                                label="نوع النشاط"
+                                                value={q.activity}
+                                            />
+                                            <InquiryRow
+                                                label="لغة الصفحة"
+                                                value={q.locale}
+                                            />
+                                        </dl>
+                                        {q.message && (
+                                            <div className="mt-2">
+                                                <p className="mb-1 text-[12px] text-[#6b7280]">
+                                                    {t("الرسالة")}
+                                                </p>
+                                                <p
+                                                    dir="auto"
+                                                    className="whitespace-pre-wrap break-words rounded-lg bg-[#fafafa] p-3 text-start text-[13px] text-[#111] [overflow-wrap:anywhere]"
+                                                >
+                                                    {q.message}
+                                                </p>
+                                            </div>
+                                        )}
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    )}
                 </div>
 
                 {/* ═══ الوسط: تحرير البيانات، الملاحظات ═══ */}

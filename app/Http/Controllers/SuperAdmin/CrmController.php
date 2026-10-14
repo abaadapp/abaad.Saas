@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\Activity;
 use App\Support\Crm;
 use App\Support\CrmLeads;
+use App\Support\CrmWebsiteInquiries;
 use App\Support\Pagination;
 use App\Support\Search;
 use App\Support\WhatsAppPhone;
@@ -180,6 +181,14 @@ class CrmController extends Controller
                 'url' => $merchant->business_id
                     ? route('super-admin.businesses.show', $merchant->business_id) : null,
             ] : null,
+            /*
+             * وطلباتُ «تواصل معنا» من الموقع — مقروءةً حقولًا لا نصًّا.
+             *
+             * تُحفظ ملاحظاتٍ (لا أعمدةَ للبريد والنوع والرسالة)، فتُستخرج هنا مرّةً
+             * في `CrmWebsiteInquiries::forLead`، والشاشةُ ترسم ما يصلها ولا تقرأ نصًّا.
+             * والملاحظاتُ نفسُها باقيةٌ في `notes` سجلًّا كما كُتبت.
+             */
+            'websiteInquiries' => CrmWebsiteInquiries::forLead($lead),
             'notes' => $lead->notes()->orderByDesc('id')->limit(100)->get()
                 ->map(fn ($n) => [
                     'id' => $n->id,

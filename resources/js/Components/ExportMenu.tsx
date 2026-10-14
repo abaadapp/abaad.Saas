@@ -7,7 +7,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/Components/ui/dropdown-menu';
-import { downloadFile, withFilters } from '@/lib/exportLink';
+import { downloadFile, useTenantLink, withFilters } from '@/lib/exportLink';
 import { useTranslate } from '@/lib/i18n';
 import { usePlanFeature } from '@/lib/plan';
 
@@ -46,16 +46,24 @@ export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصد
      * والخطأُ يُقال تحت الزرّ ولا يستبدل الصفحة (`downloadFile`).
      */
     const [busy, setBusy] = useState(false);
-    const [failed, setFailed] = useState(false);
+    const [failed, setFailed] = useState<'failed' | 'stale' | null>(null);
+    /*
+     * وكلُّ رابطٍ يحمل نشاطَ هذه الصفحة — هنا مرّةً لكلّ شاشةٍ تستعمل القائمة.
+     *
+     * تبويبٌ بقي على النشاط A بعد أن تبدّلت الجلسةُ إلى B في تبويبٍ آخر لا يُخرج
+     * ملفَّ B تحت شاشةٍ تقول A: الخادمُ يقارن ويقف (`TenantExportGuard`).
+     */
+    const tenant = useTenantLink();
+    const link = (url: string) => withFilters(tenant(url));
 
     const start = (url: string) => (e: { preventDefault: () => void }) => {
         e.preventDefault();
         if (busy) return;
         setBusy(true);
-        setFailed(false);
-        void downloadFile(withFilters(url)).then((result) => {
+        setFailed(null);
+        void downloadFile(link(url)).then((result) => {
             setBusy(false);
-            setFailed(result === 'failed');
+            setFailed(result === 'failed' || result === 'stale' ? result : null);
         });
     };
     /*
@@ -77,7 +85,7 @@ export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصد
             <DropdownMenuContent align="end" className="w-56">
                 {xlsx && (
                     <DropdownMenuItem asChild>
-                        <a href={withFilters(xlsx)} onClick={start(xlsx)}>
+                        <a href={link(xlsx)} onClick={start(xlsx)}>
                             <FileSpreadsheet className="text-[#9ca3af]" />
                             {t('تصدير كملف إكسل')}
                         </a>
@@ -85,7 +93,7 @@ export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصد
                 )}
                 {pdf && (
                     <DropdownMenuItem asChild>
-                        <a href={withFilters(pdf)} target="_blank" rel="noreferrer">
+                        <a href={link(pdf)} target="_blank" rel="noreferrer">
                             <FileText className="text-[#9ca3af]" />
                             {t('تصدير كملف PDF')}
                         </a>
@@ -93,7 +101,7 @@ export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصد
                 )}
                 {csv && (
                     <DropdownMenuItem asChild>
-                        <a href={withFilters(csv)} onClick={start(csv)}>
+                        <a href={link(csv)} onClick={start(csv)}>
                             <FileDown className="text-[#9ca3af]" />
                             {t('تصدير كملف CSV')}
                         </a>
@@ -101,7 +109,7 @@ export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصد
                 )}
                 {importXlsx && (
                     <DropdownMenuItem asChild>
-                        <a href={withFilters(importXlsx)} onClick={start(importXlsx)}>
+                        <a href={link(importXlsx)} onClick={start(importXlsx)}>
                             <Upload className="text-[#9ca3af]" />
                             {t('تصدير للاستيراد (Excel)')}
                         </a>
@@ -109,8 +117,12 @@ export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصد
                 )}
             </DropdownMenuContent>
             {failed && (
-                <span role="alert" className="text-[12px] text-[#b91c1c]">
-                    {t('تعذّر التصدير — حاول مرّة أخرى')}
+                <span role="alert" className="text-[12px] text-[#b91c1c]" data-export-failure={failed}>
+                    {t(
+                        failed === 'stale'
+                            ? 'تغيّرت جلسة النشاط منذ فتح هذه الصفحة. حدّث الصفحة ثم أعد التصدير.'
+                            : 'تعذّر التصدير — حاول مرّة أخرى',
+                    )}
                 </span>
             )}
         </DropdownMenu>

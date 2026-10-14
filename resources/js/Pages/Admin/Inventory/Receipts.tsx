@@ -18,6 +18,7 @@ import {
 } from '@/Components/ui/dialog';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 
 interface NoteItem {
@@ -82,6 +83,8 @@ export default function InventoryReceipts() {
     const { notes, pagination, filters, sorts, pendingCount, canApprove, canReject, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -172,7 +175,7 @@ export default function InventoryReceipts() {
                 <div className="flex items-center justify-end gap-1.5">
                     {/* ورقةٌ تُوقَّع عند باب المخزن — والسند الذي لا يخرج لا يُوقَّع */}
                     <Button variant="ghost" size="icon-sm" aria-label={t('طباعة السند')} asChild>
-                        <a href={route('admin.inventory.receipts.pdf', n.id)} target="_blank" rel="noreferrer">
+                        <a href={tenant(route('admin.inventory.receipts.pdf', n.id))} target="_blank" rel="noreferrer">
                             <Printer />
                         </a>
                     </Button>

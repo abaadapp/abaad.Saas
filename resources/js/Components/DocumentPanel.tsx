@@ -5,6 +5,7 @@ import DocumentPreview from '@/Components/DocumentPreview';
 import PaperFrame from '@/Components/PaperFrame';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { useTenantLink } from '@/lib/exportLink';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -74,6 +75,8 @@ export default function DocumentPanel({
 }) {
     const t = useTranslate();
     const [inner, setInner] = useState(false);
+    // والتحميلُ والطباعةُ يحملان نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const fileUrl = useTenantLink()(url);
 
     const previewing = open ?? inner;
     const setPreviewing = onOpenChange ?? setInner;
@@ -90,13 +93,13 @@ export default function DocumentPanel({
                             <span className="max-sm:sr-only">{t('تكبير')}</span>
                         </Button>
                         <Button variant="outline" size="sm" asChild>
-                            <a href={url} download={filename}>
+                            <a href={fileUrl} download={filename}>
                                 <Download />
                                 <span className="max-sm:sr-only">{t('تحميل')}</span>
                             </a>
                         </Button>
                         <Button variant="outline" size="sm" asChild>
-                            <a href={url} target="_blank" rel="noreferrer">
+                            <a href={fileUrl} target="_blank" rel="noreferrer">
                                 <Printer />
                                 <span className="max-sm:sr-only">{t('طباعة')}</span>
                             </a>

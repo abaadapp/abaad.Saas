@@ -556,7 +556,7 @@ class NetProfitIsReadForTheShopAndEachBranchTest extends TestCase
 
         // ولا يُقرأ تقريرُ فرعه — لا فارغًا ولا باسمه
         $this->actingAs($this->owner)->get(route('admin.reports.profit', ['branch_id' => $theirMuscat->id]))->assertNotFound();
-        $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'profit', 'branch_id' => $theirMuscat->id]))->assertNotFound();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'profit', 'branch_id' => $theirMuscat->id]))->assertNotFound();
 
         // ولا يُعاد نطاقُ مصروفه، ولا يُرى توزيعُه
         $this->actingAs($this->owner)->put(route('admin.expenses.scope', $theirs->id), ['scope' => 'business'])->assertNotFound();
@@ -591,14 +591,14 @@ class NetProfitIsReadForTheShopAndEachBranchTest extends TestCase
 
         $query = ['report' => 'profit', 'range' => 'month', 'branch_id' => $this->muscat->id];
 
-        $res = $this->actingAs($this->owner)->get(route('admin.reports.export.xlsx', $query))->assertOk();
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.xlsx', $query))->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'xlsx').'.xlsx';
         file_put_contents($path, $res->streamedContent());
         $xlsx = collect(IOFactory::load($path)->getActiveSheet()->toArray())
             ->map(fn ($r) => implode('|', array_map(fn ($c) => (string) $c, $r)))->implode("\n");
         @unlink($path);
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', $query))->assertOk()->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', $query))->assertOk()->streamedContent();
 
         foreach (['xlsx' => $xlsx, 'csv' => $csv] as $kind => $text) {
             $this->assertStringContainsString('فرع مسقط', $text, "{$kind}: لا يقول أيَّ فرعٍ يقيس");
@@ -609,7 +609,7 @@ class NetProfitIsReadForTheShopAndEachBranchTest extends TestCase
         }
 
         // والنشاطُ كلُّه لا يذكر «غير الموزّعة»: هي من مصروفاته
-        $whole = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'profit', 'range' => 'month']))->streamedContent();
+        $whole = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'profit', 'range' => 'month']))->streamedContent();
         $this->assertStringContainsString('النشاط بالكامل', $whole);
         $this->assertStringNotContainsString('المصروفات العامة غير الموزعة', $whole);
     }
@@ -645,7 +645,7 @@ class NetProfitIsReadForTheShopAndEachBranchTest extends TestCase
 
         try {
             $this->actingAs($this->owner)
-                ->get(route('admin.reports.export.pdf', ['report' => 'profit', 'range' => 'month', 'branch_id' => $this->muscat->id]))
+                ->get($this->exportRoute('admin.reports.export.pdf', ['report' => 'profit', 'range' => 'month', 'branch_id' => $this->muscat->id]))
                 ->assertOk();
         } finally {
             Pdf::swap($was);

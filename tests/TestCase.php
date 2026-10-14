@@ -31,6 +31,22 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
+     * رابطُ تصديرٍ كما تبنيه الشاشة — يحمل نشاطَ من يجلس الآن.
+     *
+     * كلُّ زرِّ تصديرٍ في اللوحة يحمل `expected_business_id` من خصائص صفحته،
+     * والملفّاتُ التي تجمع بيانَ النشاط لا تخرج بدونه (`TenantExportGuard`).
+     * والاختباراتُ التي تفحص محتوى الملفّ تطلبه كما تطلبه الشاشة: بنشاط
+     * المستخدم المسجَّل — أو بنشاطٍ مذكورٍ لمن يفحص التبويبَ القديم.
+     */
+    protected function exportRoute(string $name, mixed $parameters = [], ?int $businessId = null): string
+    {
+        $url = route($name, $parameters);
+        $businessId ??= auth()->user()?->business_id;
+
+        return $businessId ? \App\Support\TenantExportGuard::url($url, (int) $businessId) : $url;
+    }
+
+    /**
      * وردية مفتوحة لهذا النشاط.
      *
      * البيع صار يتطلّبها، وهي شرطٌ للسيناريو لا موضوعُه: اختبارات المخزون

@@ -519,7 +519,7 @@ class TheSettingsSectionAnswersForOneShopOnlyTest extends TestCase
         Customer::create(['business_id' => $this->a->id, 'name' => 'زبونُ مسقط', 'phone' => '9911']);
         Customer::create(['business_id' => $this->b->id, 'name' => 'زبونُ صلالة', 'phone' => '9922']);
 
-        $r = $this->actingAs($this->ownerA)->get('/admin/backup/download');
+        $r = $this->actingAs($this->ownerA)->get(\App\Support\TenantExportGuard::url('/admin/backup/download', (int) $this->ownerA->business_id));
 
         $this->assertContains($r->status(), [200, 302], 'تنزيلُ النسخة ردّ '.$r->status());
 

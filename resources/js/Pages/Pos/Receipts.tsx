@@ -10,6 +10,7 @@ import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Receipt } from '@/types/models';
 
@@ -23,6 +24,8 @@ interface Props {
 export default function PosReceipts() {
     const { receipts, branchName, showsAmounts, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [open, setOpen] = useState<Receipt | null>(null);
@@ -134,7 +137,7 @@ export default function PosReceipts() {
             align: 'end',
             cell: (r) => (
                 <Button variant="ghost" size="icon-sm" asChild>
-                    <a href={route('pos.receipt.pdf', r.number)} target="_blank" rel="noreferrer" title={t('طباعة الفاتورة')}>
+                    <a href={tenant(route('pos.receipt.pdf', r.number))} target="_blank" rel="noreferrer" title={t('طباعة الفاتورة')}>
                         <Printer />
                     </a>
                 </Button>
@@ -260,7 +263,7 @@ export default function PosReceipts() {
                             <ReceiptPreviewButton number={open.number} className="mt-4 w-full rounded-full" />
 
                             <Button className="mt-2 w-full rounded-full" asChild>
-                                <a href={route('pos.receipt.pdf', open.number)} target="_blank" rel="noreferrer">
+                                <a href={tenant(route('pos.receipt.pdf', open.number))} target="_blank" rel="noreferrer">
                                     <Printer />
                                     {t('طباعة الفاتورة')}
                                 </a>

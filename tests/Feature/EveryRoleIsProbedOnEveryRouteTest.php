@@ -73,7 +73,7 @@ class EveryRoleIsProbedOnEveryRouteTest extends TestCase
 
                 $checked++;
                 $status = $this->actingAs($user)
-                    ->call($verb, '/'.ltrim($route->uri(), '/'))
+                    ->call($verb, \App\Support\TenantExportGuard::url('/'.ltrim($route->uri(), '/'), (int) $user->business_id))
                     ->getStatusCode();
 
                 // 403 هو المطلوب؛ و302 إعادةُ توجيهٍ مقبولةٌ (حارسٌ آخر سبقه)

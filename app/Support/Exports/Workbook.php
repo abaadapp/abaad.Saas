@@ -4,6 +4,7 @@ namespace App\Support\Exports;
 
 use App\Support\Demo;
 use App\Support\Money;
+use App\Support\TenantExportGuard;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -106,7 +107,7 @@ final class Workbook
     /** اسمُ النشاط كما يُكتب في أوّل سطر */
     public static function businessName(): string
     {
-        return Demo::business(auth()->user()->business_id ?? Demo::bid())['name'] ?? 'Abad POS';
+        return TenantExportGuard::business()['name'] ?? 'Abad POS';
     }
 
     /** لغةُ القارئ من اليمين؟ — العربيّة نعم، والإنجليزيّة لا */

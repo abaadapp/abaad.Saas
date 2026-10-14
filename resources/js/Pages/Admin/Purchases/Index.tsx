@@ -27,6 +27,7 @@ import {
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import { Input } from '@/Components/ui/input';
 import type { PurchaseOrder } from '@/types/models';
@@ -51,6 +52,8 @@ interface Props {
 export default function PurchasesIndex() {
     const { orders, stats, reorder, q, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -161,7 +164,7 @@ export default function PurchasesIndex() {
                     )}
                     {/* الأمر يخرج على ورق: مورّدٌ يقرأ ما طُلب منه لا مكالمةً تُنسى */}
                     <Button variant="ghost" size="icon-sm" aria-label={t('طباعة أمر الشراء')} asChild>
-                        <a href={route('admin.purchases.pdf', o.id)} target="_blank" rel="noreferrer">
+                        <a href={tenant(route('admin.purchases.pdf', o.id))} target="_blank" rel="noreferrer">
                             <Printer />
                         </a>
                     </Button>

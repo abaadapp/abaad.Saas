@@ -172,7 +172,7 @@ class OnlyTheOwnerMayWipeTheShopBackTest extends TestCase
             ->assertRedirect()->assertSessionHas('toast.type', 'success');
         $this->assertCount(1, $this->files('backup'));
 
-        $this->actingAs($staff)->get(route('admin.backup.latest.download'))->assertOk();
+        $this->actingAs($staff)->get($this->exportRoute('admin.backup.latest.download'))->assertOk();
     }
 
     /** والشاشةُ تُخفي البابين عمّن يردّه الخادم — من الحارس نفسِه */

@@ -706,7 +706,7 @@ class AddonsAndDeliveriesAreReadFromWhatWasSoldTest extends TestCase
         ]);
 
         $this->actingAs($clerk)->get(route('admin.reports.addons'))->assertForbidden();
-        $this->actingAs($clerk)->get(route('admin.reports.export.csv', 'addons'))->assertForbidden();
+        $this->actingAs($clerk)->get($this->exportRoute('admin.reports.export.csv', 'addons'))->assertForbidden();
         $this->assertNotContains('addons', collect(Reports::forUser($clerk))->pluck('key')->all());
     }
 
@@ -723,13 +723,13 @@ class AddonsAndDeliveriesAreReadFromWhatWasSoldTest extends TestCase
         $this->assertSame(['دبّ', 'لفّ فاخر'], collect($screen['rows'])->pluck('name')->all());
 
         // CSV
-        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'addons'] + $query))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'addons'] + $query))->streamedContent();
         $this->assertStringContainsString(Demo::money(7.0), $csv);
         $this->assertStringNotContainsString('Chocolate', $csv, 'الملفّ تجاهل الفرع الذي رشّحت به الشاشة');
 
         // XLSX — الصفوفُ نفسُها بالترتيب نفسه وبالأرقام نفسها
         $path = tempnam(sys_get_temp_dir(), 'addons').'.xlsx';
-        file_put_contents($path, $this->actingAs($this->owner)->get(route('admin.reports.export.xlsx', ['report' => 'addons'] + $query))->streamedContent());
+        file_put_contents($path, $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'addons'] + $query))->streamedContent());
         $sheet = IOFactory::load($path)->getActiveSheet()->toArray();
         @unlink($path);
 
@@ -745,7 +745,7 @@ class AddonsAndDeliveriesAreReadFromWhatWasSoldTest extends TestCase
         }
 
         // PDF — البطاقاتُ نفسُها والصفوفُ نفسُها
-        $html = $this->pdfHtml(route('admin.reports.export.pdf', ['report' => 'addons'] + $query));
+        $html = $this->pdfHtml($this->exportRoute('admin.reports.export.pdf', ['report' => 'addons'] + $query));
         foreach (ReportColumns::cards('addons', $screen['summary']) as $card) {
             $this->assertStringContainsString($card['label'], $html);
             $this->assertStringContainsString($card['value'], $html);
@@ -768,12 +768,12 @@ class AddonsAndDeliveriesAreReadFromWhatWasSoldTest extends TestCase
         $this->assertSame('1', $cards[__('طلبات الاستلام (غير الملغاة)')]);
         $this->assertSame(Demo::money(29.0), $cards[__('إجمالي المبيعات')]);
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'orders', 'range' => 'month']))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'orders', 'range' => 'month']))->streamedContent();
         $this->assertStringContainsString(__('رسوم التوصيل — ضمن الإجمالي'), $csv);
         $this->assertStringContainsString(__('نوع التنفيذ'), $csv);
         $this->assertStringContainsString(__('استلام من المحل'), $csv);
 
-        $html = $this->pdfHtml(route('admin.reports.export.pdf', ['report' => 'orders', 'range' => 'month', 'fulfillment' => 'pickup']));
+        $html = $this->pdfHtml($this->exportRoute('admin.reports.export.pdf', ['report' => 'orders', 'range' => 'month', 'fulfillment' => 'pickup']));
         $this->assertStringContainsString(__('استلام من المحل'), $html);
         $this->assertStringNotContainsString(__('توصيل').'<', $html, 'ملفُّ «استلام» حمل صفَّ توصيل');
     }
@@ -784,7 +784,7 @@ class AddonsAndDeliveriesAreReadFromWhatWasSoldTest extends TestCase
         $this->sell([$this->bouquetLine()], $this->pickup());
 
         $csv = $this->actingAs($this->owner)
-            ->get(route('admin.reports.export.csv', ['report' => 'orders', 'range' => 'month', 'fulfillment' => 'pickup']))
+            ->get($this->exportRoute('admin.reports.export.csv', ['report' => 'orders', 'range' => 'month', 'fulfillment' => 'pickup']))
             ->streamedContent();
 
         $this->assertStringNotContainsString(Demo::money(5.0), $csv);

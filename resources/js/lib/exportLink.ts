@@ -1,3 +1,51 @@
+import { usePage } from '@inertiajs/react';
+import { useCallback } from 'react';
+
+/**
+ * توقُّعُ النشاط في رابط التصدير — اسمُ المعامل كما يقرؤه الخادم.
+ *
+ * الملفُّ يُبنى لنشاط الجلسة لا لهذا الرقم: الخادمُ لا يختار به شيئًا، وإنّما
+ * يقارنه بنشاط الجلسة الآن. فإن تبدّلت الجلسةُ في تبويبٍ آخر منذ رُسمت هذه
+ * الصفحة، وقف التصدير ولم يُخرج ملفَّ النشاط الآخر تحت شاشةٍ تقول غيرَه.
+ * انظر `App\Support\TenantExportGuard` — والاسمان واحدٌ يحرسه اختبار.
+ */
+export const EXPECTED_BUSINESS_PARAM = 'expected_business_id';
+
+/**
+ * الرابطُ نفسُه يحمل نشاطَ هذه الصفحة.
+ *
+ * ويُستبدل ما كان فيه، ولا يُضاف بلا نشاط: لوحةُ المنصّة لا نشاطَ لها، وتصديرُها
+ * ليس لنشاط.
+ */
+export function expectBusiness(url: string, businessId: number | null | undefined): string {
+    if (!businessId) return url;
+
+    const [base, own = ''] = url.split('?');
+    const params = new URLSearchParams(own);
+    params.set(EXPECTED_BUSINESS_PARAM, String(businessId));
+
+    return `${base}?${params.toString()}`;
+}
+
+/** نشاطُ الصفحة من خصائصها — `auth.user.businessId` الذي أرسله الخادمُ معها */
+export function businessIdOf(props: unknown): number | null {
+    const id = (props as { auth?: { user?: { businessId?: number | null } | null } | null } | null)?.auth?.user?.businessId;
+
+    return typeof id === 'number' && id > 0 ? id : null;
+}
+
+/**
+ * رابطُ ملفٍّ لهذه الصفحة — يحمل نشاطَها.
+ *
+ * مصدرٌ واحد: `auth.user.businessId` في خصائص الصفحة المرسومة الآن — لا
+ * تخزينٌ في المتصفّح ولا رقمٌ يُمرَّر بيد. فالتبويبُ القديم يحمل نشاطَه هو.
+ */
+export function useTenantLink(): (url: string) => string {
+    const businessId = businessIdOf(usePage().props);
+
+    return useCallback((url: string) => expectBusiness(url, businessId), [businessId]);
+}
+
 /**
  * يُلحق برابط التصدير ما تنظر إليه الشاشة الآن.
  *
@@ -17,6 +65,8 @@ export function withFilters(url: string): string {
     const here = new URLSearchParams(window.location.search);
     here.delete('page');
     here.delete('per_page');
+    // وتوقُّعُ النشاط لا يُورَث من عنوان الصفحة — يحمله الرابطُ من خصائصها وحدها
+    here.delete(EXPECTED_BUSINESS_PARAM);
     if (![...here].length) return url;
 
     const [base, own = ''] = url.split('?');
@@ -39,7 +89,7 @@ export function withFilters(url: string): string {
  * حين يبدأ التنزيل (`Workbook::signal`). والإطارُ لا يُحمَّل صفحةً إلا إن
  * ردّ الخادمُ بصفحة — أي بخطأ.
  */
-export function downloadFile(url: string, timeoutMs = 120_000): Promise<'started' | 'failed' | 'timeout'> {
+export function downloadFile(url: string, timeoutMs = 120_000): Promise<'started' | 'failed' | 'timeout' | 'stale'> {
     const token = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
     const [base, own = ''] = url.split('?');
     const params = new URLSearchParams(own);
@@ -51,7 +101,7 @@ export function downloadFile(url: string, timeoutMs = 120_000): Promise<'started
         frame.style.display = 'none';
         let settled = false;
 
-        const finish = (result: 'started' | 'failed' | 'timeout') => {
+        const finish = (result: 'started' | 'failed' | 'timeout' | 'stale') => {
             if (settled) return;
             settled = true;
             clearInterval(poll);
@@ -69,8 +119,24 @@ export function downloadFile(url: string, timeoutMs = 120_000): Promise<'started
 
         // ملفٌّ لا يُحمَّل في الإطار — فإن حُمِّل شيءٌ فهو صفحةُ خطأ
         frame.addEventListener('load', () => {
-            if (!document.cookie.split('; ').includes(`download_token=${token}`)) finish('failed');
-            else finish('started');
+            if (document.cookie.split('; ').includes(`download_token=${token}`)) {
+                finish('started');
+
+                return;
+            }
+            /*
+             * وصفحةُ «تغيّرت جلسة النشاط» تُقرأ باسمها — لا «تعذّر التصدير».
+             *
+             * الإطارُ من الأصل نفسِه فيُقرأ ما فيه. ومن ضغط «تصدير» في تبويبٍ
+             * قديم يحتاج أن يعرف أنّ التحديث هو الحلّ، لا أن يعيد المحاولة.
+             */
+            let stale = false;
+            try {
+                stale = !!frame.contentDocument?.querySelector('[data-stale-export]');
+            } catch {
+                stale = false;
+            }
+            finish(stale ? 'stale' : 'failed');
         });
 
         frame.src = src;

@@ -13,6 +13,7 @@ use App\Support\Permissions;
 use App\Support\RestoreCrossesTenant;
 use App\Support\RestoreIsolation;
 use App\Support\TenantTables;
+use App\Support\TenantExportGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -35,7 +36,7 @@ use Illuminate\Validation\ValidationException;
  */
 class BackupController extends Controller
 {
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int { return TenantExportGuard::businessId(); }
 
     public function download()
     {

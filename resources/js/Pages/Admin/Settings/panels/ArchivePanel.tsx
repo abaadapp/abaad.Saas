@@ -6,6 +6,7 @@ import { Select } from '@/Components/Field';
 import StatusPill, { type SetupState } from '@/Components/StatusPill';
 import { PageActions, SettingsSection } from '@/Components/Settings';
 import { useTranslate } from '@/lib/i18n';
+import { useTenantLink } from '@/lib/exportLink';
 
 /** ما يصل من `BusinessArchiveController::panel` — ولا يُخمَّن شيءٌ منه هنا */
 export interface ArchiveRow {
@@ -97,6 +98,8 @@ function ArchiveGroup({
     emptyText: string;
 }) {
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const [period, setPeriod] = useState(offers[0]?.value ?? '');
     const [sending, setSending] = useState(false);
 
@@ -166,7 +169,7 @@ function ArchiveGroup({
 
                             {row.downloadable && mayDownload && (
                                 <Button asChild variant="outline">
-                                    <a href={route('admin.archives.download', row.id)}>
+                                    <a href={tenant(route('admin.archives.download', row.id))}>
                                         <Download />
                                         {t('تحميل')}
                                     </a>

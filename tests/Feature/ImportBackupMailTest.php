@@ -119,7 +119,7 @@ class ImportBackupMailTest extends TestCase
             'price' => 10, 'quantity' => 5, 'active' => true,
         ]);
 
-        $response = $this->actingAs($this->owner)->get(route('admin.backup.download'));
+        $response = $this->actingAs($this->owner)->get($this->exportRoute('admin.backup.download'));
         $response->assertOk();
 
         $body = $response->getContent();
@@ -137,7 +137,7 @@ class ImportBackupMailTest extends TestCase
         ]);
 
         $body = $this->actingAs($this->owner)
-            ->get(route('admin.backup.download'))->getContent();
+            ->get($this->exportRoute('admin.backup.download'))->getContent();
 
         $this->assertStringNotContainsString('سرّ الجار', $body, 'النسخة تحمل بيانات متجر آخر');
     }
@@ -153,7 +153,7 @@ class ImportBackupMailTest extends TestCase
         ]);
 
         $body = $this->actingAs($this->owner)
-            ->get(route('admin.backup.download'))->getContent();
+            ->get($this->exportRoute('admin.backup.download'))->getContent();
 
         // يحذف التاجر منتجه بالخطأ ثم يستعيد
         Product::where('business_id', $this->business->id)->delete();
@@ -178,7 +178,7 @@ class ImportBackupMailTest extends TestCase
         Storage::fake('local');
 
         $body = $this->actingAs($this->owner)
-            ->get(route('admin.backup.download'))->getContent();
+            ->get($this->exportRoute('admin.backup.download'))->getContent();
 
         $path = tempnam(sys_get_temp_dir(), 'bak') . '.json';
         file_put_contents($path, $body);

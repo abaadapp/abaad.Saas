@@ -371,7 +371,7 @@ class ASettingThatRefusesSaysWhereTest extends TestCase
             'business_id' => $this->business->id, 'name' => 'صنفٌ قائم', 'price' => 3, 'active' => true,
         ]);
 
-        $dump = $this->get(route('admin.backup.download'))->getContent();
+        $dump = $this->get($this->exportRoute('admin.backup.download'))->getContent();
         $file = UploadedFile::fake()->createWithContent('backup.json', $dump);
 
         $this->post(route('admin.backup.restore'), ['backup' => $file])
@@ -390,7 +390,7 @@ class ASettingThatRefusesSaysWhereTest extends TestCase
             'business_id' => $this->business->id, 'name' => 'صنفٌ قبل النسخة', 'price' => 3, 'active' => true,
         ]);
 
-        $dump = $this->get(route('admin.backup.download'))->getContent();
+        $dump = $this->get($this->exportRoute('admin.backup.download'))->getContent();
 
         Product::create([
             'business_id' => $this->business->id, 'name' => 'صنفٌ بعد النسخة', 'price' => 4, 'active' => true,

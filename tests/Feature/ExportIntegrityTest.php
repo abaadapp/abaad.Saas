@@ -195,7 +195,10 @@ class ExportIntegrityTest extends TestCase
             $as = str_starts_with($uri, 'super-admin') ? $this->platform : $this->owner;
 
             try {
-                $this->assertRealFile($this->actingAs($as)->get('/'.$uri), $uri);
+                // والملفُّ يُطلب كما تطلبه الشاشة: بنشاط من يجلس — انظر `TenantExportGuard`
+                $this->assertRealFile($this->actingAs($as)->get(
+                    \App\Support\TenantExportGuard::url('/'.$uri, (int) $as->business_id),
+                ), $uri);
             } catch (\Throwable $e) {
                 $broken[] = $e->getMessage();
             }
@@ -253,7 +256,7 @@ class ExportIntegrityTest extends TestCase
     public function test_the_filename_reaches_the_browser(): void
     {
         // بلا Content-Disposition يُعرض الملفّ في التبويب باسمٍ عشوائي بدل أن يُحفظ
-        $res = $this->actingAs($this->owner)->get(route('admin.products.export.xlsx'));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.products.export.xlsx'));
 
         $this->assertStringContainsString('attachment', (string) $res->headers->get('content-disposition'));
     }
@@ -271,7 +274,7 @@ class ExportIntegrityTest extends TestCase
             'price' => 999, 'cost' => 1, 'quantity' => 3, 'active' => true,
         ]);
 
-        $body = $this->body($this->actingAs($this->owner)->get(route('admin.export.products')));
+        $body = $this->body($this->actingAs($this->owner)->get($this->exportRoute('admin.export.products')));
 
         $this->assertStringNotContainsString('SECRET-1', $body);
         $this->assertStringContainsString('ROSE-01', $body);

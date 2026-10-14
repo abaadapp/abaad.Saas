@@ -13,6 +13,7 @@ import useNewArrivals from '@/hooks/useNewArrivals';
 import { type PrintAttempt, prepareWebsiteConfirmPrint, websiteConfirmPrintCallbacks } from '@/lib/website-confirm-print';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import PrepCard from './partials/PrepCard';
 import PrepDetails from './partials/PrepDetails';
@@ -74,6 +75,8 @@ function remember(key: string, value: string): void {
 export default function PreparationIndex() {
     const page = usePage<PageProps<PrepProps>>().props;
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const [ask, confirmDialog] = useConfirm();
 
     /*
@@ -307,7 +310,7 @@ export default function PreparationIndex() {
      * نصف دقيقةٍ للنبضة ومع كلّ استطلاع — فيُعاد الجلبُ بلا سبب، عشراتِ
      * المرّات ما دامت النافذة مفتوحة.
      */
-    const deliveryNoteUrl = useCallback((n: string) => route('admin.preparation.deliveryNote', n), []);
+    const deliveryNoteUrl = useCallback((n: string) => tenant(route('admin.preparation.deliveryNote', n)), [tenant]);
     const timelineUrl = useCallback((n: string) => route('admin.preparation.timeline', n), []);
 
     const card = (o: PrepOrder) => (

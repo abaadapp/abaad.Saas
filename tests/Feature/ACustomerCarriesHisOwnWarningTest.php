@@ -419,7 +419,7 @@ class ACustomerCarriesHisOwnWarningTest extends TestCase
         $c = $this->customer(['birth_day' => 12, 'birth_month' => 3, 'alert_type' => 'block', 'alert_reason' => 'سرّ', 'notes' => 'ملاحظةٌ سرّيّة']);
         Customer::create(['business_id' => $this->shop->id, 'name' => 'بسنة', 'phone' => '99770002', 'language' => 'ar', 'birth_day' => 1, 'birth_month' => 1, 'birth_year' => 1990]);
 
-        $body = $this->actingAs($this->owner)->get(route('admin.customers.export.xlsx'))->assertOk()->streamedContent();
+        $body = $this->actingAs($this->owner)->get($this->exportRoute('admin.customers.export.xlsx'))->assertOk()->streamedContent();
         $path = tempnam(sys_get_temp_dir(), 'exp').'.xlsx';
         file_put_contents($path, $body);
         $rows = Sheet::rows($path);

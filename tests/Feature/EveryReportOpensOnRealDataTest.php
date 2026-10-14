@@ -84,7 +84,7 @@ class EveryReportOpensOnRealDataTest extends TestCase
                 $checked++;
 
                 $status = $this->actingAs($this->owner)
-                    ->get('/'.ltrim($uri, '/').'?range='.$range)
+                    ->get(\App\Support\TenantExportGuard::url('/'.ltrim($uri, '/').'?range='.$range, (int) $this->owner->business_id))
                     ->getStatusCode();
 
                 if ($status !== 200) {
@@ -122,7 +122,7 @@ class EveryReportOpensOnRealDataTest extends TestCase
                 $checked++;
 
                 $response = $this->actingAs($this->owner)
-                    ->get(route('admin.reports.export.'.$format, [
+                    ->get($this->exportRoute('admin.reports.export.'.$format, [
                         'report' => $report['key'], 'range' => 'all',
                     ]));
 
@@ -147,7 +147,7 @@ class EveryReportOpensOnRealDataTest extends TestCase
     {
         foreach (['admin.reports.xlsx', 'admin.reports.pdf', 'admin.export.reports'] as $name) {
             $this->actingAs($this->owner)
-                ->get(route($name, ['range' => 'month']))
+                ->get($this->exportRoute($name, ['range' => 'month']))
                 ->assertOk();
         }
     }
@@ -183,9 +183,10 @@ class EveryReportOpensOnRealDataTest extends TestCase
 
                 $checked++;
 
+                // والرابطُ يُبنى قبل `actingAs` — فيُذكر نشاطُ صاحبه صراحةً
                 $url = $key !== null
-                    ? route($name, [$key, 'range' => 'month'])
-                    : route($name, ['range' => 'month']);
+                    ? $this->exportRoute($name, [$key, 'range' => 'month'], $this->owner->business_id)
+                    : $this->exportRoute($name, ['range' => 'month'], $this->owner->business_id);
 
                 $status = $this->actingAs($this->owner)->get($url)->getStatusCode();
 

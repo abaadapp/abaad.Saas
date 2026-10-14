@@ -107,7 +107,7 @@ class ReportsTellTheirScopeTest extends TestCase
     {
         $res = $this->actingAs($this->owner)
             ->withSession(['current_branch' => $this->muscat->id])
-            ->get(route('admin.reports.xlsx'));
+            ->get($this->exportRoute('admin.reports.xlsx'));
 
         $this->assertStringContainsString(
             'مسقط',
@@ -119,7 +119,7 @@ class ReportsTellTheirScopeTest extends TestCase
     /** وبلا اختيارٍ تبقى للمتجر كلِّه — وتقول ذلك */
     public function test_the_sales_sheet_says_every_branch_when_none_is_chosen(): void
     {
-        $res = $this->actingAs($this->owner)->get(route('admin.reports.xlsx'));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.xlsx'));
 
         $this->assertStringContainsString('كل الفروع', $this->branchLine($res));
     }
@@ -128,7 +128,7 @@ class ReportsTellTheirScopeTest extends TestCase
     {
         $res = $this->actingAs($this->owner)
             ->withSession(['current_branch' => $this->muscat->id])
-            ->get(route('admin.finance.xlsx'));
+            ->get($this->exportRoute('admin.finance.xlsx'));
 
         $this->assertStringContainsString('كل الفروع', $this->branchLine($res));
     }
@@ -137,7 +137,7 @@ class ReportsTellTheirScopeTest extends TestCase
     {
         $res = $this->actingAs($this->owner)
             ->withSession(['current_branch' => $this->muscat->id])
-            ->get(route('admin.orders.xlsx'));
+            ->get($this->exportRoute('admin.orders.xlsx'));
 
         $this->assertStringContainsString('مسقط', $this->branchLine($res));
     }
@@ -176,7 +176,7 @@ class ReportsTellTheirScopeTest extends TestCase
 
         $sheet = $this->sheetOf($this->actingAs($this->owner)
             ->withSession(['current_branch' => $this->muscat->id])
-            ->get(route('admin.inventory.xlsx')));
+            ->get($this->exportRoute('admin.inventory.xlsx')));
 
         // الكمية والقيمة بعنوانيهما لا بموضعيهما: عمودُ المعرّف خرج من الملفّ
         // (عمودٌ تقنيّ لا يقرؤه التاجر)، فتغيّرت المواضع ولم تتغيّر القيمتان
@@ -210,7 +210,7 @@ class ReportsTellTheirScopeTest extends TestCase
         $this->assertCount(500, Demo::transactions('month'), 'والشاشة تبقى بسقفها');
 
         // وحتى الورقة نفسها: المراجع في العمود A، والصفوف تبدأ بعد الترويسة
-        $sheet = $this->sheetOf($this->get(route('admin.finance.xlsx', ['range' => 'month'])));
+        $sheet = $this->sheetOf($this->get($this->exportRoute('admin.finance.xlsx', ['range' => 'month'])));
         $refs = [];
         foreach ($sheet->getRowIterator() as $row) {
             $ref = (string) $sheet->getCell('A'.$row->getRowIndex())->getValue();
@@ -246,7 +246,7 @@ class ReportsTellTheirScopeTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'inventory', 'status' => 'نشط',
         ]);
 
-        $this->actingAs($keeper)->get(route('admin.export.suppliers'))->assertOk();
+        $this->actingAs($keeper)->get($this->exportRoute('admin.export.suppliers'))->assertOk();
     }
 
     public function test_the_suppliers_file_still_refuses_whoever_does_not_own_them(): void
@@ -256,7 +256,7 @@ class ReportsTellTheirScopeTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'cashier', 'status' => 'نشط',
         ]);
 
-        $this->actingAs($cashier)->get(route('admin.export.suppliers'))->assertForbidden();
+        $this->actingAs($cashier)->get($this->exportRoute('admin.export.suppliers'))->assertForbidden();
     }
 
     public function test_every_csv_door_knows_which_section_owns_it(): void
@@ -331,7 +331,7 @@ class ReportsTellTheirScopeTest extends TestCase
         $this->actingAs($this->owner);
         $this->soldAtAProfit();
 
-        $sheet = $this->sheetOf($this->get(route('admin.reports.xlsx', ['range' => 'month'])));
+        $sheet = $this->sheetOf($this->get($this->exportRoute('admin.reports.xlsx', ['range' => 'month'])));
 
         $labels = [];
         $values = [];

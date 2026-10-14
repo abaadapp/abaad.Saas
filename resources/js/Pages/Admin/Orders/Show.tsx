@@ -50,6 +50,7 @@ import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useTranslate } from "@/lib/i18n";
 import { prepareWebsiteConfirmPrint, websiteConfirmPrintCallbacks } from '@/lib/website-confirm-print';
+import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 
 interface OrderDetail {
@@ -186,6 +187,8 @@ export default function OrderShow() {
         }>
     >().props;
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -533,7 +536,7 @@ export default function OrderShow() {
                             (taxInvoice.ready ? (
                                 <Button variant="outline" asChild>
                                     <a
-                                        href={route('admin.orders.taxInvoice', order.id)}
+                                        href={tenant(route('admin.orders.taxInvoice', order.id))}
                                         target="_blank"
                                         rel="noreferrer"
                                     >
@@ -561,7 +564,7 @@ export default function OrderShow() {
                             وشريطٌ يُسلَّم — فزرّان لا زرٌّ يُبدَّل.
                         */}
                         <Button variant="outline" asChild>
-                            <a href={route('admin.orders.receipt', order.id)} target="_blank" rel="noreferrer">
+                            <a href={tenant(route('admin.orders.receipt', order.id))} target="_blank" rel="noreferrer">
                                 <Printer />
                                 {t('إيصال حراري')}
                             </a>
@@ -573,7 +576,7 @@ export default function OrderShow() {
                             الأسعار — فلا يرى من استلم الهديّة ثمنَها.
                         */}
                         <Button variant="outline" asChild>
-                            <a href={route('admin.orders.deliveryNote', order.id)} target="_blank" rel="noreferrer">
+                            <a href={tenant(route('admin.orders.deliveryNote', order.id))} target="_blank" rel="noreferrer">
                                 <Truck />
                                 {t('سند تسليم')}
                             </a>

@@ -19,6 +19,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 
 interface OrderItem {
@@ -73,6 +74,8 @@ export default function PosOrderDetails() {
         PageProps<{ order: OrderDetail; canEdit: boolean; lineEdit?: LineEdit | null }>
     >().props;
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const [editing, setEditing] = useState<OrderItem | null>(null);
     const [fixingPayment, setFixingPayment] = useState(false);
     const [adding, setAdding] = useState(false);
@@ -132,7 +135,7 @@ export default function PosOrderDetails() {
                             </Button>
                         )}
                         <Button asChild>
-                            <a href={route('pos.receipt.pdf', order.id)} target="_blank" rel="noreferrer">
+                            <a href={tenant(route('pos.receipt.pdf', order.id))} target="_blank" rel="noreferrer">
                                 <Printer />
                                 {t('طباعة الفاتورة')}
                             </a>

@@ -7669,5 +7669,8 @@
     "التجزئة": "Retail",
     "التجارة الإلكترونية": "E-commerce",
     "الخدمات والحجوزات": "Services & bookings",
-    "طلب موقع جديد": "New website request"
+    "طلب موقع جديد": "New website request",
+    "تغيّرت جلسة النشاط منذ فتح هذه الصفحة. حدّث الصفحة ثم أعد التصدير.": "Your business session changed since this page was opened. Refresh the page, then export again.",
+    "حدّث الصفحة": "Refresh the page",
+    "العودة إلى اللوحة": "Back to the dashboard"
 }

@@ -79,7 +79,7 @@ class EveryPageAnswersTest extends TestCase
             $as = str_starts_with($uri, 'super-admin') ? $this->platform : $this->owner;
 
             try {
-                $res = $this->actingAs($as)->get('/'.$uri);
+                $res = $this->actingAs($as)->get(\App\Support\TenantExportGuard::url('/'.$uri, (int) $as->business_id));
                 $status = $res->getStatusCode();
                 /*
                  * الردّ يُطلق بعد قراءة حالته: المسح يمرّ على أكثر من مئة صفحة،
@@ -119,7 +119,7 @@ class EveryPageAnswersTest extends TestCase
             $as = str_starts_with($uri, 'super-admin') ? $this->platform : $this->owner;
 
             try {
-                $res = $this->actingAs($as)->get('/'.$uri);
+                $res = $this->actingAs($as)->get(\App\Support\TenantExportGuard::url('/'.$uri, (int) $as->business_id));
                 $status = $res->getStatusCode();
                 /*
                  * الردّ يُطلق بعد قراءة حالته: المسح يمرّ على أكثر من مئة صفحة،

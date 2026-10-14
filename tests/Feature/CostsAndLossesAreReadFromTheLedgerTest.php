@@ -549,7 +549,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $theirBranch = Branch::where('business_id', $this->other->id)->first();
         $this->page(['branch_id' => $theirBranch->id])->assertNotFound();
         $this->actingAs($this->owner)->get(route('admin.reports.costs.lines', self::SEPT + ['branch_id' => $theirBranch->id]))->assertNotFound();
-        $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs', 'branch_id' => $theirBranch->id] + self::SEPT))->assertNotFound();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs', 'branch_id' => $theirBranch->id] + self::SEPT))->assertNotFound();
     }
 
     public function test_the_drill_down_never_opens_another_businesss_account(): void
@@ -573,7 +573,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
             'name' => 'حسابٌ سرّيٌّ للجار', 'type' => 'مصروف', 'normal_side' => 'debit']);
         $this->entry([['account' => $secret, 'debit' => 777], ['account' => 'cash', 'credit' => 777]], '2026-09-05', shop: $this->other);
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
         $this->assertStringNotContainsString('حسابٌ سرّيٌّ للجار', $csv);
         $this->assertStringNotContainsString('777', $csv);
     }
@@ -584,7 +584,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'sales', 'status' => 'نشط', 'permissions' => ['dashboard', 'reports']]);
         $this->page([], $clerk)->assertForbidden();
         $this->actingAs($clerk)->get(route('admin.reports.costs.lines', self::SEPT))->assertForbidden();
-        $this->actingAs($clerk)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->assertForbidden();
+        $this->actingAs($clerk)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->assertForbidden();
 
         $accountant = User::create(['business_id' => $this->shop->id, 'name' => 'محاسب', 'email' => 'a@abaad.om',
             'password' => bcrypt('password'), 'role' => 'accountant', 'status' => 'نشط']);
@@ -605,13 +605,13 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
 
         $this->page(['branch_id' => $this->sohar->id], $bound)->assertForbidden();
         $this->actingAs($bound)->get(route('admin.reports.costs.lines', self::SEPT + ['branch_id' => $this->sohar->id]))->assertForbidden();
-        $this->actingAs($bound)->get(route('admin.reports.export.csv', ['report' => 'costs', 'branch_id' => $this->sohar->id] + self::SEPT))->assertForbidden();
+        $this->actingAs($bound)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs', 'branch_id' => $this->sohar->id] + self::SEPT))->assertForbidden();
 
         $drill = $this->actingAs($bound)->getJson(route('admin.reports.costs.lines', self::SEPT))->assertOk()->json();
         $this->assertEquals(48.0, $drill['total']);
         $this->assertSame(['مسقط'], array_values(array_unique(array_column($drill['lines'], 'branch'))));
 
-        $csv = $this->actingAs($bound)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
+        $csv = $this->actingAs($bound)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
         $this->assertStringNotContainsString('الرواتب والأجور', $csv);
     }
 
@@ -627,7 +627,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $drill = $this->actingAs($user)->withSession($session)
             ->getJson(route('admin.reports.costs.lines', $filters + self::SEPT))->assertOk()->json();
         $csv = $this->actingAs($user)->withSession($session)
-            ->get(route('admin.reports.export.csv', ['report' => 'costs'] + $filters + self::SEPT))->streamedContent();
+            ->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + $filters + self::SEPT))->streamedContent();
 
         return compact('screen', 'drill', 'csv');
     }
@@ -708,7 +708,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $filters = ['branch_id' => $this->muscat->id];
         $screen = $this->page($filters)->assertOk()->viewData('page')['props'];
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + $filters + self::SEPT))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + $filters + self::SEPT))->streamedContent();
         $this->assertStringContainsString('فرع مسقط', $csv);
         foreach ($screen['rows'] as $row) {
             $this->assertStringContainsString($row['account'], $csv);
@@ -717,7 +717,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
 
         $file = tempnam(sys_get_temp_dir(), 'costs').'.xlsx';
         file_put_contents($file, $this->actingAs($this->owner)
-            ->get(route('admin.reports.export.xlsx', ['report' => 'costs'] + $filters + self::SEPT))->streamedContent());
+            ->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'costs'] + $filters + self::SEPT))->streamedContent());
         $sheet = IOFactory::load($file)->getActiveSheet()->toArray();
         @unlink($file);
 
@@ -754,7 +754,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $was = Pdf::swap($fake);
         try {
             $this->actingAs($this->owner)
-                ->get(route('admin.reports.export.pdf', ['report' => 'costs', 'category' => 'employee'] + self::SEPT))
+                ->get($this->exportRoute('admin.reports.export.pdf', ['report' => 'costs', 'category' => 'employee'] + self::SEPT))
                 ->assertOk();
         } finally {
             Pdf::swap($was);
@@ -793,7 +793,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
 
         $was = Pdf::swap($fake);
         try {
-            $this->actingAs($this->owner)->get(route('admin.reports.export.pdf', ['report' => 'costs'] + $query))->assertOk();
+            $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.pdf', ['report' => 'costs'] + $query))->assertOk();
         } finally {
             Pdf::swap($was);
         }
@@ -813,14 +813,14 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         $operating = $this->page()->assertOk()->viewData('page')['props']['summary']['operating'];
         $this->assertEquals(495.0, $operating);
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
         $this->assertMatchesRegularExpression('/^"?تكاليف التشغيل"?,"495\.000 /mu', $csv);
         // ولا بطاقةَ باسم الفئة: «مصروفات التشغيل» لا تبدأ سطرًا يحمل مبلغًا منسَّقًا
         $this->assertDoesNotMatchRegularExpression('/^"?مصروفات التشغيل"?,"[\d.]+ /mu', $csv);
 
         $file = tempnam(sys_get_temp_dir(), 'costs').'.xlsx';
         file_put_contents($file, $this->actingAs($this->owner)
-            ->get(route('admin.reports.export.xlsx', ['report' => 'costs'] + self::SEPT))->streamedContent());
+            ->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'costs'] + self::SEPT))->streamedContent());
         $sheet = IOFactory::load($file)->getActiveSheet()->toArray();
         @unlink($file);
 
@@ -849,7 +849,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
         // الإيجارُ والكهرباءُ وحدهما — أصغرُ من البطاقة
         $this->assertEquals(45.0, $category['current']);
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->streamedContent();
         $this->assertStringContainsString('"مصروفات التشغيل",5300,الإيجار,30', $csv);
 
         $this->assertStringContainsString('مصروفات التشغيل', $this->pdfHtml(self::SEPT));
@@ -922,7 +922,7 @@ class CostsAndLossesAreReadFromTheLedgerTest extends TestCase
 
         $this->page()->assertOk();
         $this->actingAs($this->owner)->getJson(route('admin.reports.costs.lines', self::SEPT))->assertOk();
-        $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->assertOk()->streamedContent();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + self::SEPT))->assertOk()->streamedContent();
 
         $this->assertSame($before, $count());
         $this->assertNull($asset->fresh()->depreciated_through);

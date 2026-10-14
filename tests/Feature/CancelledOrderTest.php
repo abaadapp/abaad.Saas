@@ -281,7 +281,7 @@ class CancelledOrderTest extends TestCase
         $this->sale('مكتمل', 100);
         $this->sale('ملغي', 900);
 
-        $csv = $this->get(route('admin.export.transactions', ['range' => 'all']))
+        $csv = $this->get($this->exportRoute('admin.export.transactions', ['range' => 'all']))
             ->assertOk()->streamedContent();
 
         $this->assertStringContainsString('ملغاة', $csv, 'خرج الملفُّ بصفٍّ ملغًى لا يقول إنه ملغى');

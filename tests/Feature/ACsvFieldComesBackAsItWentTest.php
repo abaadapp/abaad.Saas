@@ -50,7 +50,9 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
     /** @return list<list<string>> صفوفُ الملفّ كما يقرؤها من يفتحه */
     private function rowsOf(string $url): array
     {
-        $csv = $this->actingAs($this->owner)->get($url)->streamedContent();
+        // والرابطُ يحمل نشاطَ صاحبه كما تبنيه الشاشة — انظر `TenantExportGuard`
+        $csv = $this->actingAs($this->owner)
+            ->get(\App\Support\TenantExportGuard::url($url, $this->business->id))->streamedContent();
 
         $path = tempnam(sys_get_temp_dir(), 'csv');
         file_put_contents($path, $csv);
@@ -78,7 +80,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
 
         Customer::create(['business_id' => $this->business->id, 'name' => $name, 'phone' => '91000001']);
 
-        $rows = $this->rowsOf(route('admin.export.customers'));
+        $rows = $this->rowsOf($this->exportRoute('admin.export.customers'));
         $names = array_map(fn ($r) => $r[0] ?? '', $rows);
 
         $this->assertContains($name, $names,
@@ -92,7 +94,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
 
         Customer::create(['business_id' => $this->business->id, 'name' => $name, 'phone' => '91000002']);
 
-        $names = array_map(fn ($r) => $r[0] ?? '', $this->rowsOf(route('admin.export.customers')));
+        $names = array_map(fn ($r) => $r[0] ?? '', $this->rowsOf($this->exportRoute('admin.export.customers')));
 
         $this->assertContains($name, $names);
     }
@@ -105,7 +107,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
             'name' => 'الورد, الهدايا', 'phone' => '91000003',
         ]);
 
-        $rows = $this->rowsOf(route('admin.export.customers'));
+        $rows = $this->rowsOf($this->exportRoute('admin.export.customers'));
         $header = count($rows[0]);
 
         foreach ($rows as $i => $row) {
@@ -121,7 +123,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
 
         Customer::create(['business_id' => $this->business->id, 'name' => $name, 'phone' => '91000004']);
 
-        $this->assertContains($name, array_map(fn ($r) => $r[0] ?? '', $this->rowsOf(route('admin.export.customers'))));
+        $this->assertContains($name, array_map(fn ($r) => $r[0] ?? '', $this->rowsOf($this->exportRoute('admin.export.customers'))));
     }
 
     /**
@@ -133,7 +135,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
     {
         Customer::create(['business_id' => $this->business->id, 'name' => 'سالم', 'phone' => '91000005']);
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.export.customers'))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.export.customers'))->streamedContent();
 
         $this->assertStringStartsWith("\xEF\xBB\xBF", $csv, 'اختفت BOM — تفتح إكسل العربيةَ رموزًا');
     }
@@ -143,7 +145,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
     {
         Customer::create(['business_id' => $this->business->id, 'name' => 'سالم الحارثي', 'phone' => '91000006']);
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.export.customers'))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.export.customers'))->streamedContent();
 
         $this->assertTrue(mb_check_encoding($csv, 'UTF-8'));
         $this->assertStringContainsString('سالم الحارثي', $csv);
@@ -179,7 +181,7 @@ class ACsvFieldComesBackAsItWentTest extends TestCase
         );
 
         try {
-            $this->actingAs($this->owner)->get(route('admin.export.customers'))->streamedContent();
+            $this->actingAs($this->owner)->get($this->exportRoute('admin.export.customers'))->streamedContent();
         } finally {
             restore_error_handler();
         }

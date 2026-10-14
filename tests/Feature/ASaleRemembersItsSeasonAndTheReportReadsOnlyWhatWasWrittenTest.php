@@ -684,12 +684,12 @@ class ASaleRemembersItsSeasonAndTheReportReadsOnlyWhatWasWrittenTest extends Tes
         $this->assertSame(10.0, $props['rows'][0]['sales']);
 
         foreach (['xlsx', 'csv', 'pdf'] as $format) {
-            $this->actingAs($this->owner)->get(route('admin.reports.export.'.$format, 'seasons'))->assertOk();
+            $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.'.$format, 'seasons'))->assertOk();
         }
 
         $sales = User::create(['business_id' => $this->business->id, 'name' => 'بائع', 'email' => 's2@abaad.om', 'password' => bcrypt('x'), 'role' => 'sales', 'status' => 'نشط']);
         $this->actingAs($sales)->get(route('admin.reports.seasons'))->assertForbidden();
-        $this->actingAs($sales)->get(route('admin.reports.export.csv', 'seasons'))->assertForbidden();
+        $this->actingAs($sales)->get($this->exportRoute('admin.reports.export.csv', 'seasons'))->assertForbidden();
     }
 
     /* ═══════════ الحذفُ والتعليق ═══════════ */

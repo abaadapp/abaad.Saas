@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import DocumentPreview from '@/Components/DocumentPreview';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
+import { useTenantLink } from '@/lib/exportLink';
 
 /**
  * «معاينة الفاتورة» — الورقةُ فوق شاشة البيع، لا بدلًا منها.
@@ -54,6 +55,8 @@ export default function ReceiptPreviewButton({
     variant?: 'primary' | 'outline' | 'subtle' | 'ghost';
 }) {
     const t = useTranslate();
+    // والمعاينةُ تُطلب بنشاط هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const [paper, setPaper] = useState<Paper | null>(null);
     const [loading, setLoading] = useState(false);
     const [open, setOpen] = useState(false);
@@ -93,7 +96,7 @@ export default function ReceiptPreviewButton({
         setLoading(true);
 
         try {
-            const res = await fetch(route('pos.receipt.paper', number), {
+            const res = await fetch(tenant(route('pos.receipt.paper', number)), {
                 headers: { Accept: 'application/json' },
                 signal: controller.signal,
             });

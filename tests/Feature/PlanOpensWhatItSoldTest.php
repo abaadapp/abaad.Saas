@@ -98,7 +98,7 @@ class PlanOpensWhatItSoldTest extends TestCase
     {
         $this->onPlan(['reports_advanced']);
 
-        $this->actingAs($this->owner)->get(route('admin.reports.xlsx'))->assertOk();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.xlsx'))->assertOk();
     }
 
     /* ========================= التقارير المتقدّمة ========================= */
@@ -133,7 +133,7 @@ class PlanOpensWhatItSoldTest extends TestCase
         $this->onPlan(['loyalty']);
 
         $this->actingAs(User::find($this->owner->id))
-            ->get(route('admin.reports.export.csv', 'waste'))->assertForbidden();
+            ->get($this->exportRoute('admin.reports.export.csv', 'waste'))->assertForbidden();
     }
 
     public function test_the_refusal_names_the_plan_and_the_feature(): void
@@ -156,9 +156,9 @@ class PlanOpensWhatItSoldTest extends TestCase
         // قفلُ الشاشة وحدها وترك ملفّها مفتوحًا يعني عنوانًا يُكتب فيصل الملفّ
         $this->onPlan([]);
 
-        $this->actingAs($this->owner)->get(route('admin.reports.xlsx'))->assertForbidden();
-        $this->actingAs($this->owner)->get(route('admin.reports.pdf'))->assertForbidden();
-        $this->actingAs($this->owner)->get(route('admin.export.reports'))->assertForbidden();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.xlsx'))->assertForbidden();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.pdf'))->assertForbidden();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.export.reports'))->assertForbidden();
     }
 
     public function test_every_report_page_export_is_closed_with_the_screen(): void
@@ -176,7 +176,7 @@ class PlanOpensWhatItSoldTest extends TestCase
         foreach (['orders', 'products', 'staff', 'customers', 'stocktake'] as $report) {
             foreach (['xlsx', 'pdf', 'csv'] as $format) {
                 $this->actingAs(User::find($this->owner->id))
-                    ->get(route('admin.reports.export.'.$format, $report))
+                    ->get($this->exportRoute('admin.reports.export.'.$format, $report))
                     ->assertForbidden();
             }
         }
@@ -187,7 +187,7 @@ class PlanOpensWhatItSoldTest extends TestCase
         $this->onPlan(['reports_advanced']);
 
         $this->actingAs(User::find($this->owner->id))
-            ->get(route('admin.reports.export.csv', 'orders'))
+            ->get($this->exportRoute('admin.reports.export.csv', 'orders'))
             ->assertOk();
     }
 
@@ -208,7 +208,7 @@ class PlanOpensWhatItSoldTest extends TestCase
         // تصديرُ قائمةٍ ليس تقريرًا، وقفلُه على «التقارير المتقدّمة» يسحب ما لم يُوعَد بسحبه
         $this->onPlan([]);
 
-        $this->actingAs($this->owner)->get(route('admin.export.customers'))->assertOk();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.export.customers'))->assertOk();
     }
 
     public function test_no_card_points_at_a_door_the_plan_closes(): void

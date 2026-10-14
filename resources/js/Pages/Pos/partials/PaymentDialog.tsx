@@ -15,6 +15,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { useTenantLink } from '@/lib/exportLink';
 import ReceiptPreviewButton from './ReceiptPreview';
 import type { CheckoutResult } from '@/hooks/usePosCart';
 import type { PageProps } from '@/types';
@@ -76,6 +77,8 @@ export default function PaymentDialog({
     creditSale = true,
 }: Props) {
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const { context } = usePage<PageProps>().props;
     // طابعة هذا الصندوق وحدها — لا طابعة صندوقٍ آخر في الفرع نفسه
     const printer = context?.peripherals?.find((x) => x.type === 'طابعة');
@@ -318,7 +321,7 @@ export default function PaymentDialog({
              * فرجوعُ الكاشير من الورقة لا يقف على بياض.
              */
             if (sheet && res.synced && res.invoice) {
-                sheet.location.replace(route('pos.receipt.pdf', res.invoice));
+                sheet.location.replace(tenant(route('pos.receipt.pdf', res.invoice)));
                 printed = true;
             } else if (!sheet && printer?.autoPrint && res.synced && res.invoice) {
                 /*
@@ -760,7 +763,7 @@ export default function PaymentDialog({
                                      * التلقائية فوق.
                                      */
                                     onClick={() =>
-                                        window.open(route('pos.receipt.pdf', result.invoice!), '_blank', 'noopener')
+                                        window.open(tenant(route('pos.receipt.pdf', result.invoice!)), '_blank', 'noopener')
                                     }
                                 >
                                     <Printer />

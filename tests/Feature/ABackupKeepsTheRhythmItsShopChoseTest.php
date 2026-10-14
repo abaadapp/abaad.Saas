@@ -424,7 +424,7 @@ class ABackupKeepsTheRhythmItsShopChoseTest extends TestCase
     {
         [$shop, $owner] = $this->shop();
 
-        $this->actingAs($owner)->get(route('admin.backup.latest.download'))
+        $this->actingAs($owner)->get($this->exportRoute('admin.backup.latest.download'))
             ->assertRedirect()->assertSessionHas('toast.type', 'danger');
 
         $this->actingAs($owner)->post(route('admin.backup.latest.restore'), ['confirm' => true])
@@ -438,7 +438,7 @@ class ABackupKeepsTheRhythmItsShopChoseTest extends TestCase
         [$shop, $owner] = $this->shop();
         $this->actingAs($owner)->post(route('admin.backup.create'));
 
-        $response = $this->actingAs($owner)->get(route('admin.backup.latest.download'))->assertOk();
+        $response = $this->actingAs($owner)->get($this->exportRoute('admin.backup.latest.download'))->assertOk();
 
         $this->assertStringContainsString('.json.gz', $response->headers->get('Content-Disposition'));
         $this->assertSame($shop->id, BackupService::decode($response->streamedContent())['meta']['business_id']);
@@ -454,7 +454,7 @@ class ABackupKeepsTheRhythmItsShopChoseTest extends TestCase
         // للجار نسخة، ولمتجرنا لا نسخة
         $this->actingAs($neighbourOwner)->post(route('admin.backup.create'));
 
-        $this->actingAs($owner)->get(route('admin.backup.latest.download'))
+        $this->actingAs($owner)->get($this->exportRoute('admin.backup.latest.download'))
             ->assertRedirect()->assertSessionHas('toast.type', 'danger');
 
         $this->actingAs($owner)->post(route('admin.backup.latest.restore'), ['confirm' => true])
@@ -466,7 +466,7 @@ class ABackupKeepsTheRhythmItsShopChoseTest extends TestCase
         // ولمّا صارت لمتجرنا نسخة: الذي يُنزَّل نسختُه هو لا نسخةُ الجار
         $this->travel(1)->minutes();
         $this->actingAs($owner)->post(route('admin.backup.create'));
-        $body = $this->actingAs($owner)->get(route('admin.backup.latest.download'))->streamedContent();
+        $body = $this->actingAs($owner)->get($this->exportRoute('admin.backup.latest.download'))->streamedContent();
         $this->assertSame($shop->id, BackupService::decode($body)['meta']['business_id']);
     }
 

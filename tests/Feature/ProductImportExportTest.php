@@ -91,7 +91,7 @@ class ProductImportExportTest extends TestCase
             'price' => 10, 'cost' => 4, 'quantity' => 12, 'alert_qty' => 3, 'active' => true,
         ]);
 
-        $res = $this->actingAs($this->owner)->get(route('admin.products.export.xlsx'))->assertOk();
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.products.export.xlsx'))->assertOk();
 
         $path = tempnam(sys_get_temp_dir(), 'exp') . '.xlsx';
         file_put_contents($path, $res->streamedContent());
@@ -115,7 +115,7 @@ class ProductImportExportTest extends TestCase
             'price' => 5, 'cost' => 2, 'quantity' => 1, 'alert_qty' => 1, 'active' => true,
         ]);
 
-        $res = $this->actingAs($this->owner)->get(route('admin.products.export.xlsx'))->assertOk();
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.products.export.xlsx'))->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'exp') . '.xlsx';
         file_put_contents($path, $res->streamedContent());
         $sheet = IOFactory::load($path)->getActiveSheet()->toArray();
@@ -135,7 +135,7 @@ class ProductImportExportTest extends TestCase
             'product_id' => Product::first()->id, 'quantity' => 12,
         ]);
 
-        $res = $this->actingAs($this->owner)->get(route('admin.products.export.xlsx'))->assertOk();
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.products.export.xlsx'))->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'exp') . '.xlsx';
         file_put_contents($path, $res->streamedContent());
 
@@ -163,7 +163,7 @@ class ProductImportExportTest extends TestCase
             'price' => 10, 'cost' => 4, 'quantity' => 1, 'alert_qty' => 1, 'active' => true,
         ]);
 
-        $this->actingAs($this->owner)->get(route('admin.products.export.pdf'))
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.products.export.pdf'))
             ->assertOk()->assertHeader('Content-Type', 'application/pdf');
     }
 
@@ -370,14 +370,14 @@ class ProductImportExportTest extends TestCase
             'price' => 99, 'cost' => 1, 'quantity' => 5, 'alert_qty' => 1, 'active' => true,
         ]);
 
-        $res = $this->actingAs($this->owner)->get(route('admin.products.export.xlsx'))->assertOk();
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.products.export.xlsx'))->assertOk();
 
         $this->assertStringNotContainsString('سرّ الجار', $res->streamedContent());
     }
 
     public function test_the_endpoints_are_closed_to_guests(): void
     {
-        $this->get(route('admin.products.export.xlsx'))->assertRedirect();
+        $this->get($this->exportRoute('admin.products.export.xlsx'))->assertRedirect();
         $this->get(route('admin.products.import.preview'))->assertRedirect();
         $this->post(route('admin.products.import.confirm'))->assertRedirect();
     }

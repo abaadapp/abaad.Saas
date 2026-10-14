@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use App\Support\ImportSession;
 use App\Support\Pdf;
 use App\Support\Sheet;
+use App\Support\TenantExportGuard;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -22,7 +23,7 @@ class CustomerImportExportController extends Controller
     private const SESSION_KEY = 'customer_import';
     private const ALLOWED_EXT = ['csv', 'xls', 'xlsx', 'xlsm'];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int { return TenantExportGuard::businessId(); }
 
     /** أعمدة الملف بترتيب النشاط (تُستخدم للتصدير والنموذج) */
     private function columns(): array

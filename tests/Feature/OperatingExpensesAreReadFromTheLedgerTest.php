@@ -332,7 +332,7 @@ class OperatingExpensesAreReadFromTheLedgerTest extends TestCase
         $this->expense(500, 'إيجار', '2026-10-02');
         $this->expense(300, 'إيجار', '2026-08-28');
 
-        $res = $this->actingAs($this->owner)->get(route('admin.expenses.xlsx', ['month' => '2026-09']))->assertOk();
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.expenses.xlsx', ['month' => '2026-09']))->assertOk();
         $this->assertStringContainsString('expenses-2026-09.xlsx', (string) $res->headers->get('content-disposition'));
 
         $sheet = $this->sheet($res->streamedContent());
@@ -356,7 +356,7 @@ class OperatingExpensesAreReadFromTheLedgerTest extends TestCase
         $this->expense(10, 'إيجار', '2026-08-28');
         $this->expense(20, 'إيجار', '2026-09-03');
 
-        $res = $this->actingAs($this->owner)->get(route('admin.expenses.xlsx', ['month' => 'all']))->assertOk();
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.expenses.xlsx', ['month' => 'all']))->assertOk();
         $this->assertStringContainsString('expenses-all.xlsx', (string) $res->headers->get('content-disposition'));
 
         $sheet = $this->sheet($res->streamedContent());
@@ -370,7 +370,7 @@ class OperatingExpensesAreReadFromTheLedgerTest extends TestCase
             'method' => 'نقدي', 'status' => Expense::PAID, 'spent_at' => '2026-09-04']);
         $this->expense(10, 'إيجار', '2026-09-04');
 
-        $sheet = $this->sheet($this->actingAs($this->owner)->get(route('admin.expenses.xlsx', ['month' => '2026-09']))->streamedContent());
+        $sheet = $this->sheet($this->actingAs($this->owner)->get($this->exportRoute('admin.expenses.xlsx', ['month' => '2026-09']))->streamedContent());
 
         $this->assertCount(1, $this->dates($sheet));
         $this->assertStringNotContainsString('444', $this->text($sheet));

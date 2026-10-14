@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use App\Support\ImportSession;
 use App\Support\Pdf;
 use App\Support\Sheet;
+use App\Support\TenantExportGuard;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -33,7 +34,7 @@ class SupplierExportController extends Controller
 
     private const ALLOWED_EXT = ['csv', 'xls', 'xlsx', 'xlsm'];
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int { return TenantExportGuard::businessId(); }
 
     /** أعمدة الملف — واحدةٌ للصيغتين فلا تفترقان عند أوّل تعديل */
     private function columns(): array

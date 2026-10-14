@@ -40,6 +40,7 @@ import useLiveStock from '@/hooks/useLiveStock';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Category, Product } from '@/types/models';
 import type { BoutiqueOption } from './partials/boutique';
@@ -72,6 +73,8 @@ export default function ProductsIndex() {
         context,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
     const currency = context!.currency;
@@ -340,7 +343,7 @@ export default function ProductsIndex() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-72">
                                 <DropdownMenuItem asChild>
-                                    <a href={route('admin.products.export.pdf')} target="_blank" rel="noreferrer">
+                                    <a href={tenant(route('admin.products.export.pdf'))} target="_blank" rel="noreferrer">
                                         <FileText className="text-[#dc2626]" />
                                         {t('الكتالوج كاملًا (PDF)')}
                                     </a>

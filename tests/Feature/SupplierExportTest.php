@@ -46,7 +46,7 @@ class SupplierExportTest extends TestCase
 
     public function test_the_list_exports_as_excel(): void
     {
-        $res = $this->get(route('admin.suppliers.export.xlsx'))->assertOk();
+        $res = $this->get($this->exportRoute('admin.suppliers.export.xlsx'))->assertOk();
 
         $this->assertStringContainsString(
             'spreadsheetml.sheet',
@@ -57,14 +57,14 @@ class SupplierExportTest extends TestCase
 
     public function test_the_list_exports_as_pdf(): void
     {
-        $res = $this->get(route('admin.suppliers.export.pdf'))->assertOk();
+        $res = $this->get($this->exportRoute('admin.suppliers.export.pdf'))->assertOk();
 
         $this->assertSame('application/pdf', $res->headers->get('content-type'));
     }
 
     public function test_the_list_exports_as_csv_with_every_supplier(): void
     {
-        $csv = $this->get(route('admin.export.suppliers'))->assertOk()->streamedContent();
+        $csv = $this->get($this->exportRoute('admin.export.suppliers'))->assertOk()->streamedContent();
 
         $this->assertStringContainsString('مؤسسة النور', $csv);
         $this->assertStringContainsString('شركة الخليج', $csv);
@@ -77,7 +77,7 @@ class SupplierExportTest extends TestCase
         $other = Business::create(['name' => 'متجر آخر', 'status' => 'نشط']);
         Supplier::create(['business_id' => $other->id, 'name' => 'مورّد الجيران']);
 
-        $csv = $this->get(route('admin.export.suppliers'))->assertOk()->streamedContent();
+        $csv = $this->get($this->exportRoute('admin.export.suppliers'))->assertOk()->streamedContent();
 
         $this->assertStringNotContainsString('مورّد الجيران', $csv);
     }

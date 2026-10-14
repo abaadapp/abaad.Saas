@@ -331,7 +331,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
     /** والنسخةُ الاحتياطيّةُ الكاملةُ لمتجر A — لا صفَّ فيها من B */
     public function test_the_backup_of_shop_a_carries_nothing_of_shop_b(): void
     {
-        $res = $this->actingAs($this->ownerA)->get(route('admin.backup.download'));
+        $res = $this->actingAs($this->ownerA)->get($this->exportRoute('admin.backup.download'));
 
         $this->assertNull($this->leak($res), 'نسخةُ A الاحتياطيّة تحمل صفوفًا من B');
         $this->assertTrue(Schema::hasTable('products'));

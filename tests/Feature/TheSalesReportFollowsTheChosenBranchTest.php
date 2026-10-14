@@ -313,7 +313,7 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
 
         $res = $this->actingAs($this->owner)
             ->withSession(['current_branch' => $this->muscat->id])
-            ->get(route('admin.reports.xlsx'));
+            ->get($this->exportRoute('admin.reports.xlsx'));
 
         $res->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'xlsx').'.xlsx';
@@ -340,7 +340,7 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
 
         $res = $this->actingAs($this->owner)
             ->withSession(['current_branch' => $this->muscat->id])
-            ->get(route('admin.export.reports'));
+            ->get($this->exportRoute('admin.export.reports'));
 
         $res->assertOk();
         $body = $res->streamedContent();
@@ -415,7 +415,7 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
     {
         $res = $this->actingAs($this->owner)
             ->withSession($branchId ? ['current_branch' => $branchId] : [])
-            ->get(route('admin.reports.xlsx', ['channel' => $channel]));
+            ->get($this->exportRoute('admin.reports.xlsx', ['channel' => $channel]));
 
         $res->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'xlsx').'.xlsx';
@@ -431,7 +431,7 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
     {
         $res = $this->actingAs($this->owner)
             ->withSession($branchId ? ['current_branch' => $branchId] : [])
-            ->get(route('admin.export.reports', ['channel' => $channel]));
+            ->get($this->exportRoute('admin.export.reports', ['channel' => $channel]));
 
         $res->assertOk();
         $body = str_replace("\xEF\xBB\xBF", '', $res->streamedContent());
@@ -475,7 +475,7 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
         try {
             $this->actingAs($this->owner)
                 ->withSession($branchId ? ['current_branch' => $branchId] : [])
-                ->get(route('admin.reports.pdf', ['channel' => $channel]))
+                ->get($this->exportRoute('admin.reports.pdf', ['channel' => $channel]))
                 ->assertOk();
         } finally {
             Pdf::swap($was);
@@ -576,7 +576,7 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
     {
         $res = $this->actingAs($this->owner)
             ->withSession($branchId ? ['current_branch' => $branchId] : [])
-            ->get(route('admin.export.reports', ['channel' => $channel]));
+            ->get($this->exportRoute('admin.export.reports', ['channel' => $channel]));
 
         $res->assertOk();
         $body = str_replace("\xEF\xBB\xBF", '', $res->streamedContent());
@@ -598,7 +598,7 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
     {
         $res = $this->actingAs($this->owner)
             ->withSession($branchId ? ['current_branch' => $branchId] : [])
-            ->get(route('admin.reports.xlsx', ['channel' => $channel]));
+            ->get($this->exportRoute('admin.reports.xlsx', ['channel' => $channel]));
 
         $res->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'xlsx').'.xlsx';
@@ -647,7 +647,7 @@ class TheSalesReportFollowsTheChosenBranchTest extends TestCase
         try {
             $this->actingAs($this->owner)
                 ->withSession($branchId ? ['current_branch' => $branchId] : [])
-                ->get(route('admin.reports.pdf', ['channel' => $channel]))
+                ->get($this->exportRoute('admin.reports.pdf', ['channel' => $channel]))
                 ->assertOk();
         } finally {
             Pdf::swap($was);

@@ -102,7 +102,7 @@ class SectionRoutingTest extends TestCase
     public function test_exporting_a_section_needs_that_section(): void
     {
         $this->actingAs($this->userWith(['products']))
-            ->get(route('admin.export.customers'))
+            ->get($this->exportRoute('admin.export.customers'))
             ->assertForbidden();
     }
 

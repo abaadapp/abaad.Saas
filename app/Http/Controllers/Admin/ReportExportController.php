@@ -19,6 +19,7 @@ use App\Support\Lists\TransactionsList;
 use App\Support\ReportingPeriod;
 use App\Support\Reports;
 use App\Support\SalesChannel;
+use App\Support\TenantExportGuard;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -61,7 +62,7 @@ class ReportExportController extends Controller
      */
     private function sheet(Spreadsheet $spreadsheet, string $reportTitle, string|ReportingPeriod|null $range = null, bool $perBranch = false): array
     {
-        $business = Demo::business(auth()->user()->business_id ?? Demo::bid());
+        $business = TenantExportGuard::business();
 
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setRightToLeft(true);

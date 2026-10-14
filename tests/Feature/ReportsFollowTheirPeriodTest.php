@@ -124,7 +124,7 @@ class ReportsFollowTheirPeriodTest extends TestCase
         $this->trx(900, now()->subYears(2)->toDateTimeString());
 
         $path = tempnam(sys_get_temp_dir(), 'fin').'.xlsx';
-        file_put_contents($path, $this->get(route('admin.finance.xlsx', ['range' => 'month']))->streamedContent());
+        file_put_contents($path, $this->get($this->exportRoute('admin.finance.xlsx', ['range' => 'month']))->streamedContent());
 
         $cells = IOFactory::load($path)->getActiveSheet()->toArray();
         @unlink($path);
@@ -143,8 +143,8 @@ class ReportsFollowTheirPeriodTest extends TestCase
         $this->trx(100, now()->toDateTimeString());
         $this->trx(900, now()->subYears(2)->toDateTimeString());
 
-        $month = $this->get(route('admin.export.transactions', ['range' => 'month']))->streamedContent();
-        $all = $this->get(route('admin.export.transactions', ['range' => 'all']))->streamedContent();
+        $month = $this->get($this->exportRoute('admin.export.transactions', ['range' => 'month']))->streamedContent();
+        $all = $this->get($this->exportRoute('admin.export.transactions', ['range' => 'all']))->streamedContent();
 
         $this->assertStringNotContainsString('900', $month, 'ملفّ الشهر حمل قيدًا عمره سنتان');
         $this->assertStringContainsString('900', $all, 'ملفّ كلّ الفترات أسقط قيدًا');
@@ -169,7 +169,7 @@ class ReportsFollowTheirPeriodTest extends TestCase
         $this->trx(100, now()->toDateTimeString());
 
         foreach (['admin.finance.xlsx', 'admin.finance.pdf', 'admin.export.transactions'] as $route) {
-            $this->get(route($route))->assertSuccessful();
+            $this->get($this->exportRoute($route))->assertSuccessful();
         }
     }
 }

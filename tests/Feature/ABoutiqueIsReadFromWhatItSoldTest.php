@@ -197,7 +197,7 @@ class ABoutiqueIsReadFromWhatItSoldTest extends TestCase
         $this->assertSame([], $forged['boutiques']);
 
         // وملفُّه بلا سطر نطاق — يبقى كما كان
-        $csv = $this->actingAs($user)->get(route('admin.export.reports', ['boutique' => 'own']))->streamedContent();
+        $csv = $this->actingAs($user)->get($this->exportRoute('admin.export.reports', ['boutique' => 'own']))->streamedContent();
         $this->assertStringNotContainsString('نطاق التقرير', $csv);
     }
 
@@ -466,7 +466,7 @@ class ABoutiqueIsReadFromWhatItSoldTest extends TestCase
         $this->assertSame($this->report()['summary'], $r['summary']);
         $this->assertStringNotContainsString('الجار', json_encode($r, JSON_UNESCAPED_UNICODE));
 
-        $csv = $this->actingAs($this->owner)->get(route('admin.export.reports', ['boutique' => $this->foreign->id]))->streamedContent();
+        $csv = $this->actingAs($this->owner)->get($this->exportRoute('admin.export.reports', ['boutique' => $this->foreign->id]))->streamedContent();
         $this->assertStringNotContainsString('الجار', $csv);
         $this->assertStringContainsString('كل المبيعات', $csv);
     }
@@ -499,7 +499,7 @@ class ABoutiqueIsReadFromWhatItSoldTest extends TestCase
         $this->sellAtTill([[$this->ours, 1], [$this->lamaPerfume, 1], [$this->noorScarf, 1]]);
 
         $csv = str_replace("\xEF\xBB\xBF", '', $this->actingAs($this->owner)
-            ->get(route('admin.export.reports', ['boutique' => $this->lama->id]))->streamedContent());
+            ->get($this->exportRoute('admin.export.reports', ['boutique' => $this->lama->id]))->streamedContent());
 
         $this->assertStringContainsString('نطاق التقرير', $csv);
         $this->assertStringContainsString('بوتيك: بوتيك لمى', $csv);
@@ -514,7 +514,7 @@ class ABoutiqueIsReadFromWhatItSoldTest extends TestCase
     {
         $this->sellAtTill([[$this->ours, 1], [$this->lamaPerfume, 1], [$this->noorScarf, 1]]);
 
-        $res = $this->actingAs($this->owner)->get(route('admin.reports.xlsx', ['boutique' => $this->lama->id]));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.xlsx', ['boutique' => $this->lama->id]));
         $res->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'xlsx').'.xlsx';
         file_put_contents($path, $res->streamedContent());
@@ -559,7 +559,7 @@ class ABoutiqueIsReadFromWhatItSoldTest extends TestCase
 
         $was = Pdf::swap($fake);
         try {
-            $this->actingAs($this->owner)->get(route('admin.reports.pdf', ['boutique' => $this->lama->id]))->assertOk();
+            $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.pdf', ['boutique' => $this->lama->id]))->assertOk();
         } finally {
             Pdf::swap($was);
         }

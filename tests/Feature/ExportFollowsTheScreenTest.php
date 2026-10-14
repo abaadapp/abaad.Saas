@@ -66,7 +66,7 @@ class ExportFollowsTheScreenTest extends TestCase
 
     private function csv(string $route, array $params = []): string
     {
-        $res = $this->actingAs($this->owner)->get(route($route, $params));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute($route, $params));
         $res->assertOk();
 
         return $this->body($res);
@@ -178,7 +178,7 @@ class ExportFollowsTheScreenTest extends TestCase
 
     public function test_the_printable_product_report_follows_the_filter_too(): void
     {
-        $res = $this->actingAs($this->owner)->get(route('admin.products.xlsx', ['category' => 'ورود']));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.products.xlsx', ['category' => 'ورود']));
         $res->assertOk();
 
         $this->assertGreaterThan(1000, strlen($this->body($res)));
@@ -253,7 +253,7 @@ class ExportFollowsTheScreenTest extends TestCase
          * زوجُ «استيراد/تصدير» لا يتبع المُرشِّحات عمدًا: من صدّر نصف الجرد
          * ثمّ استورده ظنّ أنّه ردّ الجرد كلّه.
          */
-        $res = $this->actingAs($this->owner)->get(route('admin.products.export.xlsx', ['category' => 'ورود']));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.products.export.xlsx', ['category' => 'ورود']));
         $res->assertOk();
 
         $this->assertGreaterThan(1000, strlen($this->body($res)));
@@ -285,7 +285,7 @@ class ExportFollowsTheScreenTest extends TestCase
         $this->order('INV-20', OrderStatus::COMPLETED, 'زبون مكتمل');
         $this->order('INV-21', OrderStatus::CANCELLED, 'زبون ملغى');
 
-        $res = $this->actingAs($this->owner)->get(route('admin.orders.xlsx'));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx'));
         $res->assertOk();
 
         $this->assertGreaterThan(1000, strlen($this->body($res)));
@@ -310,7 +310,13 @@ class ExportFollowsTheScreenTest extends TestCase
          */
         $menu = file_get_contents(resource_path('js/Components/ExportMenu.tsx'));
 
-        foreach (['withFilters(xlsx)', 'withFilters(pdf)', 'withFilters(csv)'] as $call) {
+        /*
+         * وكلُّ رابطٍ يمرّ بـ`link` — المُرشِّحاتُ ونشاطُ الصفحة معًا (`TenantExportGuard`).
+         * والحارسُ على المعنى نفسِه: لا رابطَ يخرج عاريًا من المُرشِّحات.
+         */
+        $this->assertStringContainsString('const link = (url: string) => withFilters(tenant(url));', $menu);
+
+        foreach (['link(xlsx)', 'link(pdf)', 'link(csv)'] as $call) {
             $this->assertStringContainsString($call, $menu, 'رابط تصديرٍ لا يحمل المُرشِّحات');
         }
 

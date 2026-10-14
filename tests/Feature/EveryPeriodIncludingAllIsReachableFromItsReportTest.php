@@ -196,13 +196,13 @@ class EveryPeriodIncludingAllIsReachableFromItsReportTest extends TestCase
         $this->assertSame('2021-03-01', $lines['lines'][0]['date']);
 
         // والملفّاتُ الثلاثة
-        $csv = $this->get(route('admin.reports.export.csv', ['report' => 'costs'] + $query));
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs'] + $query));
         $this->assertSame('report-costs-all.csv', $this->filename($csv));
         $body = $this->body($csv);
         $this->assertStringContainsString('كل الفترات', $body);
         $this->assertStringNotContainsString('2026-10-01', $body, 'رأسُ الملفّ يقول الشهرَ الجاري');
 
-        $xlsx = $this->get(route('admin.reports.export.xlsx', ['report' => 'costs'] + $query));
+        $xlsx = $this->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'costs'] + $query));
         $this->assertSame('report-costs-all.xlsx', $this->filename($xlsx));
         $accounts = array_values(array_filter($this->sheet($xlsx), fn ($r) => ($r[0] ?? null) === 'مصروفات التشغيل' && ($r[2] ?? null) !== null));
         $this->assertCount(1, $accounts);
@@ -210,7 +210,7 @@ class EveryPeriodIncludingAllIsReachableFromItsReportTest extends TestCase
         $this->assertEquals(35, $accounts[0][3]);
         $this->assertSame(['—', '—', '—'], [$accounts[0][5], $accounts[0][6], $accounts[0][7]], 'كُتبت مقارنةٌ لا وجود لها');
 
-        $pdf = $this->get(route('admin.reports.export.pdf', ['report' => 'costs'] + $query));
+        $pdf = $this->get($this->exportRoute('admin.reports.export.pdf', ['report' => 'costs'] + $query));
         $pdf->assertOk();
         $this->assertSame('report-costs-all.pdf', $this->filename($pdf));
     }
@@ -270,20 +270,20 @@ class EveryPeriodIncludingAllIsReachableFromItsReportTest extends TestCase
         $this->assertEquals(7.0, array_sum(array_column($screen['overTime'], 'quantity')));
         $this->assertSame([['label' => 'ورد أبيض', 'waste' => 7.0, 'consumed' => 20.0, 'rate' => 35.0, 'value' => 7.0]], $screen['versusConsumption']);
 
-        $csv = $this->get(route('admin.reports.export.csv', ['report' => 'waste'] + $query));
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'waste'] + $query));
         $this->assertSame('report-waste-all.csv', $this->filename($csv));
         $body = $this->body($csv);
         $this->assertStringContainsString('كل الفترات', $body);
         // وصفُّ «مقابل الاستهلاك» كالشاشة: [الصنف، المستهلَك، الهالك، النسبة، القيمة]
         $this->assertStringContainsString('"ورد أبيض",20,7,35,7', $body, 'الاستهلاكُ في الملفّ من غير العمر كلِّه');
 
-        $xlsx = $this->get(route('admin.reports.export.xlsx', ['report' => 'waste'] + $query));
+        $xlsx = $this->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'waste'] + $query));
         $this->assertSame('report-waste-all.xlsx', $this->filename($xlsx));
         $roseRows = array_values(array_filter($this->sheet($xlsx), fn ($r) => ($r[0] ?? null) === 'ورد أبيض'));
         $this->assertNotEmpty($roseRows);
         $this->assertEquals(7, $roseRows[0][1], 'الملفُّ بغير كميّة الشاشة');
 
-        $pdf = $this->get(route('admin.reports.export.pdf', ['report' => 'waste'] + $query));
+        $pdf = $this->get($this->exportRoute('admin.reports.export.pdf', ['report' => 'waste'] + $query));
         $pdf->assertOk();
         $this->assertSame('report-waste-all.pdf', $this->filename($pdf));
     }
@@ -343,7 +343,7 @@ class EveryPeriodIncludingAllIsReachableFromItsReportTest extends TestCase
             $this->assertSame($year, $screen['period']['label']);
             $this->assertCount(1, $screen['rows'], $report.': سنتُه لا تقرأ ما فيها');
 
-            $csv = $this->get(route('admin.reports.export.csv', ['report' => $report] + $query));
+            $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['report' => $report] + $query));
             $this->assertSame('report-'.$report.'-'.$year.'.csv', $this->filename($csv));
             $this->assertStringContainsString($text, $this->body($csv), $report.': الملفُّ بغير سنة الشاشة');
 

@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { businessIdOf, expectBusiness } from '@/lib/exportLink';
 
 /**
  * «طباعة تلقائية عند تأكيد طلب الموقع» — تقرؤها شاشةُ الطلب ولوحةُ التجهيز معًا.
@@ -110,7 +111,8 @@ export function websiteConfirmPrintCallbacks(
                 return;
             }
 
-            const url = route(attempt.route, number);
+            // والورقةُ تحمل نشاطَ الصفحة التي ردّ بها الخادمُ للتوّ — انظر `TenantExportGuard`
+            const url = expectBusiness(route(attempt.route, number), businessIdOf(page.props));
 
             if (attempt.sheet) {
                 // و`replace`: الصفحةُ الفارغة لا تدخل تاريخَ اللسان

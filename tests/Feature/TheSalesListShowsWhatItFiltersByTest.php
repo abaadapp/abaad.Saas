@@ -181,15 +181,15 @@ class TheSalesListShowsWhatItFiltersByTest extends TestCase
             'fulfillment_type' => 'delivery',
         ]);
 
-        $csv = $this->get(route('admin.export.orders', ['when' => 'overdue']))->streamedContent();
+        $csv = $this->get($this->exportRoute('admin.export.orders', ['when' => 'overdue']))->streamedContent();
 
         $this->assertStringContainsString('موعد التسليم', $csv);
         $this->assertStringContainsString(now()->subDay()->format('Y-m-d').' 09:00', $csv);
         $this->assertStringContainsString('توصيل', $csv);
 
         // والورقتان الأخريان تُبنيان ولا تسقطان بعمودٍ جديد
-        $this->get(route('admin.orders.xlsx'))->assertOk();
-        $this->get(route('admin.orders.exportPdf'))->assertOk();
+        $this->get($this->exportRoute('admin.orders.xlsx'))->assertOk();
+        $this->get($this->exportRoute('admin.orders.exportPdf'))->assertOk();
     }
 
     /* ══════════════ ٢ · العميلُ الواحد باسمٍ واحد ══════════════ */

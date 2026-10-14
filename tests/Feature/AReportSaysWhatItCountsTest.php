@@ -132,7 +132,7 @@ class AReportSaysWhatItCountsTest extends TestCase
 
         $was = Pdf::swap($fake);
         try {
-            $this->actingAs($this->owner)->get(route('admin.reports.export.pdf', ['report' => $report] + $params))->assertOk();
+            $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.pdf', ['report' => $report] + $params))->assertOk();
         } finally {
             Pdf::swap($was);
         }
@@ -194,7 +194,7 @@ class AReportSaysWhatItCountsTest extends TestCase
         $this->assertLessThan($data['summary']['total'], array_sum(array_column($data['rows'], 'total')));
 
         // والملفُّ يحمل الجدولَ نفسَه والبطاقاتِ نفسَها
-        $sheet = $this->book($this->actingAs($this->owner)->get(route('admin.reports.export.xlsx', ['report' => 'customers', 'range' => 'month'])));
+        $sheet = $this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'customers', 'range' => 'month'])));
         $this->assertSame(50, substr_count($this->text($sheet), '"عميل '));
         $cards = [];
         foreach ($sheet->toArray(null, false, false) as $row) {
@@ -244,7 +244,7 @@ class AReportSaysWhatItCountsTest extends TestCase
         $params = ['report' => 'expenses', 'range' => 'month', 'status' => Expense::UNPAID];
 
         // Excel: صفٌّ واحد، والحالةُ في الرأس، والبطاقاتُ بأرقام المرشَّح
-        $sheet = $this->book($this->actingAs($this->owner)->get(route('admin.reports.export.xlsx', $params)));
+        $sheet = $this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.xlsx', $params)));
         $text = $this->text($sheet);
         $this->assertStringContainsString('الحالة: غير مدفوع', $text);
         $this->assertStringContainsString('دفتر الأستاذ', $text);
@@ -252,7 +252,7 @@ class AReportSaysWhatItCountsTest extends TestCase
         $this->assertStringContainsString('إجمالي المصروفات المسجلة', $text);
 
         // CSV: كذلك
-        $csv = $this->csv($this->actingAs($this->owner)->get(route('admin.reports.export.csv', $params)));
+        $csv = $this->csv($this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', $params)));
         $this->assertStringContainsString('الحالة: غير مدفوع', $csv);
         $this->assertSame(1, substr_count($csv, 'سجل-'));
 
@@ -284,12 +284,12 @@ class AReportSaysWhatItCountsTest extends TestCase
         $this->assertNotContains('الربح', $columns);
 
         $params = ['report' => 'products', 'range' => 'month'];
-        $sheet = $this->book($this->actingAs($this->owner)->get(route('admin.reports.export.xlsx', $params)));
+        $sheet = $this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.xlsx', $params)));
         $this->assertStringContainsString('"الربح التقديري"', $this->text($sheet));
         $this->assertStringNotContainsString('"الربح"', $this->text($sheet));
         $this->assertStringContainsString('تكلفة المنتج الحالية', $this->text($sheet));
 
-        $csv = $this->csv($this->actingAs($this->owner)->get(route('admin.reports.export.csv', $params)));
+        $csv = $this->csv($this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', $params)));
         $this->assertStringContainsString('الربح التقديري', $csv);
         $this->assertDoesNotMatchRegularExpression('/(^|,)الربح(,|$)/mu', $csv);
 
@@ -335,14 +335,14 @@ class AReportSaysWhatItCountsTest extends TestCase
 
         // الملفّات: نطاقُ التقرير مكتوب، واسمُ الفرع المختار لا يظهر
         $sheet = $this->book($this->actingAs($this->owner)->withSession(['current_branch' => $this->seeb->id])
-            ->get(route('admin.reports.export.xlsx', ['report' => 'inventory'])));
+            ->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'inventory'])));
         $text = $this->text($sheet);
         $this->assertStringContainsString('النشاط بالكامل — كل الفروع', $text);
         $this->assertStringContainsString('الفترة: الرصيد الحالي', $text);
         $this->assertStringNotContainsString('السيب', $text);
 
         $csv = $this->csv($this->actingAs($this->owner)->withSession(['current_branch' => $this->seeb->id])
-            ->get(route('admin.reports.export.csv', ['report' => 'inventory'])));
+            ->get($this->exportRoute('admin.reports.export.csv', ['report' => 'inventory'])));
         $this->assertStringContainsString('النشاط بالكامل — كل الفروع', $csv);
         $this->assertStringNotContainsString('السيب', $csv);
 

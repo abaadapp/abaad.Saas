@@ -3,6 +3,7 @@ import { Download, ExternalLink, Printer } from 'lucide-react';
 import PaperFrame from '@/Components/PaperFrame';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/Components/ui/dialog';
+import { useTenantLink } from '@/lib/exportLink';
 import { useTranslate } from '@/lib/i18n';
 
 /**
@@ -62,6 +63,8 @@ export default function DocumentPreview({
     onOpenChange: (open: boolean) => void;
 }) {
     const t = useTranslate();
+    // والملفُّ يحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const fileUrl = useTenantLink()(url);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,19 +78,19 @@ export default function DocumentPreview({
                     {/* والأفعالُ داخل النافذة لا في شريط المتصفّح — فالواجهةُ واجهةُ أبعاد */}
                     <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" asChild>
-                            <a href={url} target="_blank" rel="noreferrer">
+                            <a href={fileUrl} target="_blank" rel="noreferrer">
                                 <Printer />
                                 <span className="max-sm:sr-only">{t('طباعة')}</span>
                             </a>
                         </Button>
                         <Button variant="outline" size="sm" asChild>
-                            <a href={url} download={filename}>
+                            <a href={fileUrl} download={filename}>
                                 <Download />
                                 <span className="max-sm:sr-only">{t('تحميل')}</span>
                             </a>
                         </Button>
                         <Button variant="outline" size="sm" asChild>
-                            <a href={url} target="_blank" rel="noreferrer">
+                            <a href={fileUrl} target="_blank" rel="noreferrer">
                                 <ExternalLink />
                                 <span className="max-sm:sr-only">{t('فتح الملف')}</span>
                             </a>

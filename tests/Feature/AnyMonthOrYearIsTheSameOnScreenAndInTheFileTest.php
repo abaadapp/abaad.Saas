@@ -162,13 +162,13 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->assertSame($sep, $screen['period']['params']);
         $this->assertSame($sep + ['status' => null, 'branch_id' => null, 'payment_method' => null, 'fulfillment' => null], $screen['filters']);
 
-        $csv = $this->get(route('admin.reports.export.csv', ['report' => 'orders'] + $sep));
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'orders'] + $sep));
         $text = $this->body($csv);
         $this->assertStringContainsString('سبتمبر 2025', $text);
         $this->assertStringNotContainsString('5000', $text, 'دخل طلبُ الجار ملفَّ سبتمبر');
         $this->assertSame('report-orders-2025-09.csv', $this->filename($csv));
 
-        $xlsx = $this->get(route('admin.reports.export.xlsx', ['report' => 'orders'] + $sep));
+        $xlsx = $this->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'orders'] + $sep));
         $this->assertSame('report-orders-2025-09.xlsx', $this->filename($xlsx));
         $flat = json_encode($this->sheet($xlsx), JSON_UNESCAPED_UNICODE);
         $this->assertStringContainsString('سبتمبر 2025', $flat);
@@ -212,16 +212,16 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->assertSame('نوفمبر 2024 – فبراير 2025', $screen['period']['label']);
 
         // والملفُّ يتجاهل الصفحة ويحمل كلَّ ما طابق — من الصفحة الثانية
-        $csv = $this->get(route('admin.export.transactions', $range + ['page' => 2, 'per_page' => 2]));
+        $csv = $this->get($this->exportRoute('admin.export.transactions', $range + ['page' => 2, 'per_page' => 2]));
         $lines = array_values(array_filter(explode("\n", trim($this->body($csv))), fn ($l) => str_contains($l, 'TRX-')));
         $this->assertCount(3, $lines);
         $this->assertSame('transactions-2024-11-to-2025-02.csv', $this->filename($csv));
 
-        $xlsx = $this->get(route('admin.finance.xlsx', $range + ['page' => 2]));
+        $xlsx = $this->get($this->exportRoute('admin.finance.xlsx', $range + ['page' => 2]));
         $this->assertSame('transactions-2024-11-to-2025-02.xlsx', $this->filename($xlsx));
         $rows = array_filter($this->sheet($xlsx), fn ($r) => is_string($r[0] ?? null) && str_starts_with($r[0], 'TRX-'));
         $this->assertCount(3, $rows, 'عددُ صفوف Excel غيرُ عددِ CSV والشاشة');
-        $this->assertStringContainsString('نوفمبر 2024 – فبراير 2025', json_encode($this->sheet($this->get(route('admin.finance.xlsx', $range))), JSON_UNESCAPED_UNICODE));
+        $this->assertStringContainsString('نوفمبر 2024 – فبراير 2025', json_encode($this->sheet($this->get($this->exportRoute('admin.finance.xlsx', $range))), JSON_UNESCAPED_UNICODE));
     }
 
     /* ═══════════ ٤ · سنةٌ تاريخيّة: صافي الربح ٢٠٢٤ ═══════════ */
@@ -260,7 +260,7 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->assertCount(12, $screen['rows']);
         $this->assertEquals(1500.0, round(array_sum(array_column($screen['rows'], 'net_revenue')), 3));
 
-        $csv = $this->get(route('admin.reports.export.csv', ['report' => 'profit'] + $year));
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'profit'] + $year));
         $this->assertSame('report-profit-2024.csv', $this->filename($csv));
         $text = $this->body($csv);
         $this->assertStringContainsString('2024 — النشاط بالكامل', $text);
@@ -287,7 +287,7 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->assertEquals(6.0, $screen['monthTotal']);
         $this->assertSame('28 ديسمبر 2025 – 3 يناير 2026', $screen['period']['label']);
 
-        $xlsx = $this->get(route('admin.expenses.xlsx', $custom));
+        $xlsx = $this->get($this->exportRoute('admin.expenses.xlsx', $custom));
         $this->assertSame('expenses-2025-12-28-to-2026-01-03.xlsx', $this->filename($xlsx));
         $flat = json_encode($this->sheet($xlsx), JSON_UNESCAPED_UNICODE);
         $this->assertStringContainsString('مصروف 2', $flat);
@@ -310,7 +310,7 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->assertSame(2, $screen['summary']['count']);
         $this->assertEquals(24.0, $screen['summary']['total']);
 
-        $csv = $this->get(route('admin.reports.export.csv', ['report' => 'orders'] + $query));
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'orders'] + $query));
         $rows = array_values(array_filter(explode("\n", $this->body($csv)), fn ($l) => str_contains($l, ',P-')));
         // ٢٠١٩ وأكتوبر ٢٠٢٦ من مسقط مكتملين — لا صحار، ولا الملغى
         $this->assertCount(2, $rows, '«كل الفترات» أسقطت الفرعَ أو الحالة');
@@ -327,8 +327,8 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $empty = ['period' => 'year', 'year' => '2019'];
 
         $this->assertSame(0, $this->props('admin.reports.orders', $empty)['summary']['count']);
-        $this->assertStringNotContainsString('P-', $this->body($this->get(route('admin.reports.export.csv', ['report' => 'orders'] + $empty))));
-        $this->get(route('admin.reports.export.pdf', ['report' => 'orders'] + $empty))->assertOk();
+        $this->assertStringNotContainsString('P-', $this->body($this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'orders'] + $empty))));
+        $this->get($this->exportRoute('admin.reports.export.pdf', ['report' => 'orders'] + $empty))->assertOk();
     }
 
     /* ═══════════ ٨ · فرعٌ وفترة — قائمةُ الطلبات ═══════════ */
@@ -344,7 +344,7 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->assertSame(1, $screen['totalCount']);
         $this->assertSame('سبتمبر 2025', $screen['period']['label']);
 
-        $xlsx = $this->withSession(['current_branch' => $this->muscat->id])->get(route('admin.orders.xlsx', $sep));
+        $xlsx = $this->withSession(['current_branch' => $this->muscat->id])->get($this->exportRoute('admin.orders.xlsx', $sep));
         $this->assertSame('orders-2025-09.xlsx', $this->filename($xlsx));
         $rows = array_filter($this->sheet($xlsx), fn ($r) => is_string($r[0] ?? null) && str_starts_with($r[0], 'P-'));
         $this->assertCount(1, $rows);
@@ -370,7 +370,7 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->assertEquals(12.0, $screen['previousSummary']['total']);
         $this->assertSame('سبتمبر 2025', $screen['period']['label']);
 
-        $csv = $this->get(route('admin.reports.export.csv', ['report' => 'costs', 'period' => 'month', 'month' => '2025-09']));
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'costs', 'period' => 'month', 'month' => '2025-09']));
         $this->assertStringContainsString('سبتمبر 2025 (2025-09-01 → 2025-09-30)', $this->body($csv));
     }
 
@@ -401,7 +401,7 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->assertSame(1, $screen['summary']['pending'], 'سندٌ معلَّقٌ خارج الربع دخل ملاحظتَه');
         $this->assertEquals(3.0, $screen['summary']['pendingTax']);
         $this->assertCount(3, $screen['rows'], 'دخل الإقرارَ شهرٌ خارج الربع');
-        $this->assertSame('report-vat-2025-01-to-2025-03.csv', $this->filename($this->get(route('admin.reports.export.csv', ['report' => 'vat'] + $q1))));
+        $this->assertSame('report-vat-2025-01-to-2025-03.csv', $this->filename($this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'vat'] + $q1))));
     }
 
     /* ═══════════ ١١ · ملخّصُ المبيعات: الفترة والقناة معًا ═══════════ */
@@ -422,12 +422,12 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $feed = $this->getJson(route('admin.reports.feed', $query))->assertOk()->json();
         $this->assertEquals(40.0, $feed['summary']['sales'], 'التغذيةُ قلبت سبتمبر إلى الشهر الجاري');
 
-        $csv = $this->get(route('admin.export.reports', $query));
+        $csv = $this->get($this->exportRoute('admin.export.reports', $query));
         $text = $this->body($csv);
         $this->assertStringContainsString('سبتمبر 2025', $text);
         $this->assertStringContainsString('2025-09', $this->filename($csv));
 
-        $xlsx = $this->get(route('admin.reports.xlsx', $query));
+        $xlsx = $this->get($this->exportRoute('admin.reports.xlsx', $query));
         $this->assertSame('sales-report-2025-09.xlsx', $this->filename($xlsx));
         $this->assertStringContainsString('سبتمبر 2025', json_encode($this->sheet($xlsx), JSON_UNESCAPED_UNICODE));
     }
@@ -465,12 +465,12 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->actingAs($clerk)->get(route('admin.reports.profit', $sep))->assertOk();
         // «الحركة المالية» تحت «المالية» — والفترةُ لا تفتحها
         $this->actingAs($clerk)->get(route('admin.reports.finance', $sep))->assertForbidden();
-        $this->actingAs($clerk)->get(route('admin.reports.export.csv', ['report' => 'finance'] + $sep))->assertForbidden();
+        $this->actingAs($clerk)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'finance'] + $sep))->assertForbidden();
 
         // والتصديرُ فوق الباقة الأساسيّة كما كان
         $plan = Plan::create(['name' => 'أساسية', 'monthly_price' => 1, 'yearly_price' => 10, 'capabilities' => []]);
         $this->shop->update(['plan_id' => $plan->id]);
-        $this->actingAs($this->owner)->get(route('admin.reports.export.csv', ['report' => 'orders'] + $sep))->assertForbidden();
+        $this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', ['report' => 'orders'] + $sep))->assertForbidden();
         $this->actingAs($this->owner)->get(route('admin.reports.orders', $sep))->assertOk();
     }
 
@@ -482,7 +482,7 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $sep = ['period' => 'month', 'month' => '2025-09', 'business_id' => $this->other->id];
 
         $this->assertSame(2, $this->props('admin.reports.orders', $sep)['summary']['count']);
-        $this->assertStringNotContainsString('5000', $this->body($this->get(route('admin.reports.export.csv', ['report' => 'orders'] + $sep))));
+        $this->assertStringNotContainsString('5000', $this->body($this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'orders'] + $sep))));
     }
 
     /* ═══════════ ١٤ · والخطأُ يُقال — لا يُصدَّر الشهرُ الجاري بدله ═══════════ */
@@ -493,9 +493,9 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $bad = ['period' => 'custom', 'from' => '2025-10-17', 'to' => '2025-09-10'];
 
         $this->get(route('admin.reports.orders', $bad))->assertStatus(422);
-        $this->get(route('admin.reports.export.csv', ['report' => 'orders'] + $bad))->assertStatus(422);
-        $this->get(route('admin.orders.xlsx', ['period' => 'month', 'month' => '2025-13']))->assertStatus(422);
-        $this->get(route('admin.expenses.xlsx', ['month' => 'سبتمبر']))->assertStatus(422);
+        $this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'orders'] + $bad))->assertStatus(422);
+        $this->get($this->exportRoute('admin.orders.xlsx', ['period' => 'month', 'month' => '2025-13']))->assertStatus(422);
+        $this->get($this->exportRoute('admin.expenses.xlsx', ['month' => 'سبتمبر']))->assertStatus(422);
     }
 
     /* ═══════════ ١٥ · الروابطُ القديمة تفتح كما كانت ═══════════ */
@@ -516,8 +516,8 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $this->trx(5, '2026-10-02 10:00:00');
         $this->trx(6, '2025-10-02 10:00:00');
         $this->assertSame(1, $this->props('admin.finance.transactions', ['range' => 'month'])['pagination']['total']);
-        $this->assertSame('expenses-2026-09.xlsx', $this->filename($this->get(route('admin.expenses.xlsx', ['month' => '2026-09']))));
-        $this->assertSame('expenses-all.xlsx', $this->filename($this->get(route('admin.expenses.xlsx', ['month' => 'all']))));
+        $this->assertSame('expenses-2026-09.xlsx', $this->filename($this->get($this->exportRoute('admin.expenses.xlsx', ['month' => '2026-09']))));
+        $this->assertSame('expenses-all.xlsx', $this->filename($this->get($this->exportRoute('admin.expenses.xlsx', ['month' => 'all']))));
     }
 
     /* ═══════════ ١٦ · الرصيدُ الحالي بلا فترة ═══════════ */
@@ -527,6 +527,6 @@ class AnyMonthOrYearIsTheSameOnScreenAndInTheFileTest extends TestCase
         $inventory = $this->props('admin.reports.inventory', ['period' => 'month', 'month' => '2025-09']);
 
         $this->assertNull($inventory['period'], 'رُسم منتقي فترةٍ فوق رصيد اليوم');
-        $this->assertStringContainsString('الرصيد الحالي', $this->body($this->get(route('admin.reports.export.csv', ['report' => 'inventory', 'period' => 'month', 'month' => '2025-09']))));
+        $this->assertStringContainsString('الرصيد الحالي', $this->body($this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'inventory', 'period' => 'month', 'month' => '2025-09']))));
     }
 }

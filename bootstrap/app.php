@@ -6,6 +6,7 @@ use App\Http\Middleware\CheckPlanFeature;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\CheckTenantStatus;
 use App\Http\Middleware\EntersPanel;
+use App\Http\Middleware\GuardsTenantExport;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\NormalizeNumbers;
 use App\Http\Middleware\RequireAction;
@@ -43,6 +44,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'business' => RequiresBusiness::class,
             'tenant' => CheckTenantStatus::class,
             'pos.branch' => BindPosBranch::class,
+            // ملفُّ النشاط لا يخرج لنشاطٍ غيرِ الذي كانت الشاشةُ تعرضه — انظر TenantExportGuard
+            'export.tenant' => GuardsTenantExport::class,
         ]);
         $middleware->web(append: [
             SecurityHeaders::class,

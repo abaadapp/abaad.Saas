@@ -250,7 +250,7 @@ class AProductMayLiveOutsideTheStockBookTest extends TestCase
         $this->product(['tracks_stock' => false, 'name' => 'خدمة', 'sku' => 'SRV-1']);
         $this->product(['tracks_stock' => true, 'name' => 'بضاعة', 'sku' => 'GD-1', 'quantity' => 3]);
 
-        $res = $this->actingAs($this->owner)->get(route('admin.products.export.xlsx'))->assertOk();
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.products.export.xlsx'))->assertOk();
         $path = tempnam(sys_get_temp_dir(), 'exp').'.xlsx';
         file_put_contents($path, $res->streamedContent());
         $sheet = IOFactory::load($path)->getActiveSheet()->toArray();

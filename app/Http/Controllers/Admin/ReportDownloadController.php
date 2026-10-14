@@ -13,6 +13,7 @@ use App\Support\ReportColumns;
 use App\Support\ReportData;
 use App\Support\ReportingPeriod;
 use App\Support\Reports;
+use App\Support\TenantExportGuard;
 use Illuminate\Http\Request;
 
 /**
@@ -359,7 +360,7 @@ class ReportDownloadController extends Controller
         }
 
         $html = view('pdf.report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'business' => TenantExportGuard::business(),
             // والفرعُ الذي رشّح به التقرير إن رشّح — لا «كل الفروع» وهو فرعٌ واحد
             'branch' => ($b = $filters['branch_id'] ?? null)
                 ? (string) (Branch::where('business_id', Demo::bid())->whereKey((int) $b)->value('name') ?? Demo::scopeName(false))

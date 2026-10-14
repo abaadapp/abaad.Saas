@@ -524,7 +524,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
 });
 
 /* ------------------------------- Admin ----------------------------- */
-Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business', 'panel', 'ability', 'plan'])->group(function () {
+Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'tenant', 'business', 'panel', 'ability', 'plan'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'admin'])->name('dashboard');
 
     /*
@@ -1786,7 +1786,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'tenant', 'business'
  * صارت صلاحيةً تُمنح، بقي المربّع بلا حارس: يرفع صاحب النشاط علامة «نقطة
  * البيع» عن موظف فلا يتغيّر شيء — يكتب العنوان فتُفتح له.
  */
-Route::prefix('pos')->name('pos.')->middleware(['auth', 'tenant', 'business', 'ability', 'pos.branch'])->group(function () {
+Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant', 'business', 'ability', 'pos.branch'])->group(function () {
     Route::get('/', [App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
 
     /*

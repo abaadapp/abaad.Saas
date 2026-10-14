@@ -180,7 +180,7 @@ class ReportsCatalogTest extends TestCase
             ->get(route('admin.reports.sales', ['range' => 'today']))->viewData('page')['props'];
 
         $csv = $this->actingAs($this->owner)
-            ->get(route('admin.export.reports', ['range' => 'today']));
+            ->get($this->exportRoute('admin.export.reports', ['range' => 'today']));
         $csv->assertOk();
 
         $body = $csv->streamedContent();
@@ -202,9 +202,9 @@ class ReportsCatalogTest extends TestCase
         $user = $this->staff(['reports']);
 
         $this->actingAs($user)->get(route('admin.reports.sales'))->assertOk();
-        $this->actingAs($user)->get(route('admin.export.reports'))->assertOk();
-        $this->actingAs($user)->get(route('admin.reports.xlsx'))->assertOk();
-        $this->actingAs($user)->get(route('admin.reports.pdf'))->assertOk();
+        $this->actingAs($user)->get($this->exportRoute('admin.export.reports'))->assertOk();
+        $this->actingAs($user)->get($this->exportRoute('admin.reports.xlsx'))->assertOk();
+        $this->actingAs($user)->get($this->exportRoute('admin.reports.pdf'))->assertOk();
     }
 
     /**

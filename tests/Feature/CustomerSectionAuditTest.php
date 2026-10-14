@@ -144,7 +144,7 @@ class CustomerSectionAuditTest extends TestCase
         $this->customer(['name' => 'سالم', 'phone' => '90000001']);
         $this->customer(['name' => 'مريم', 'phone' => '90000002']);
 
-        $body = $this->get(route('admin.customers.export.xlsx', ['q' => 'مريم']))
+        $body = $this->get($this->exportRoute('admin.customers.export.xlsx', ['q' => 'مريم']))
             ->streamedContent();
 
         $this->assertStringContainsString('PK', substr($body, 0, 4));
@@ -164,7 +164,7 @@ class CustomerSectionAuditTest extends TestCase
         $this->customer(['name' => 'سالم']);
         $this->customer(['name' => 'مريم', 'phone' => '90000002']);
 
-        $body = $this->get(route('admin.export.customers', ['q' => 'مريم']))->streamedContent();
+        $body = $this->get($this->exportRoute('admin.export.customers', ['q' => 'مريم']))->streamedContent();
 
         $this->assertStringContainsString('مريم', $body);
         $this->assertStringNotContainsString('سالم', $body);
@@ -175,7 +175,7 @@ class CustomerSectionAuditTest extends TestCase
         $this->customer(['name' => 'سالم']);
         $this->customer(['name' => 'مريم', 'phone' => '90000002']);
 
-        $body = $this->get(route('admin.customers.export.pdf', ['q' => 'مريم']))
+        $body = $this->get($this->exportRoute('admin.customers.export.pdf', ['q' => 'مريم']))
             ->assertOk()->getContent();
 
         $this->assertSame('%PDF', substr($body, 0, 4));

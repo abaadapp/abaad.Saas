@@ -139,7 +139,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
     /** عددُ الشاشة كما تقوله لقارئها — مجموعُ ما رُشّح لا صفحتُه */
     private function screenTotal(string $route, array $params = []): int
     {
-        $props = $this->actingAs($this->owner)->get(route($route, $params))->assertOk()->viewData('page')['props'];
+        $props = $this->actingAs($this->owner)->get($this->exportRoute($route, $params))->assertOk()->viewData('page')['props'];
 
         return (int) $props['pagination']['total'];
     }
@@ -166,9 +166,9 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         $screen = $this->screenTotal('admin.orders.index', $params);
         $this->assertSame(18, $screen);
 
-        $sheet = $this->book($this->actingAs($this->owner)->get(route('admin.orders.xlsx', $params)));
+        $sheet = $this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx', $params)));
         $this->assertCount($screen, $this->dataRows($sheet, 'رقم الطلب'), 'ملفّ الطلبات صفحةٌ لا النتائج كلُّها');
-        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get(route('admin.export.orders', $params))));
+        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get($this->exportRoute('admin.export.orders', $params))));
     }
 
     public function test_products_file_carries_every_filtered_product(): void
@@ -182,8 +182,8 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
 
         $screen = $this->screenTotal('admin.products.index', $params);
         $this->assertSame(14, $screen);
-        $this->assertCount($screen, $this->dataRows($this->book($this->actingAs($this->owner)->get(route('admin.products.xlsx', $params))), 'الاسم'));
-        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get(route('admin.export.products', $params))));
+        $this->assertCount($screen, $this->dataRows($this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.products.xlsx', $params))), 'الاسم'));
+        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get($this->exportRoute('admin.export.products', $params))));
     }
 
     public function test_customers_file_carries_every_searched_customer(): void
@@ -195,8 +195,8 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
 
         $screen = $this->screenTotal('admin.customers.index', $params);
         $this->assertSame(12, $screen);
-        $this->assertCount($screen, $this->dataRows($this->book($this->actingAs($this->owner)->get(route('admin.customers.xlsx', $params))), 'الاسم'));
-        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get(route('admin.export.customers', $params))));
+        $this->assertCount($screen, $this->dataRows($this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.customers.xlsx', $params))), 'الاسم'));
+        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get($this->exportRoute('admin.export.customers', $params))));
     }
 
     public function test_expenses_file_carries_its_month_and_status_whole(): void
@@ -211,10 +211,10 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         $screen = $this->screenTotal('admin.expenses.index', $params);
         $this->assertSame(12, $screen);
 
-        $res = $this->actingAs($this->owner)->get(route('admin.expenses.xlsx', $params));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.expenses.xlsx', $params));
         $this->assertStringContainsString('expenses-2026-09.xlsx', (string) $res->headers->get('content-disposition'));
         $this->assertCount($screen, $this->dataRows($this->book($res), 'المرجع'));
-        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get(route('admin.export.expenses', $params))));
+        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get($this->exportRoute('admin.export.expenses', $params))));
     }
 
     public function test_transactions_file_follows_the_screens_dates_and_kind_not_this_month(): void
@@ -234,13 +234,13 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         $screen = $this->screenTotal('admin.finance.transactions', $params);
         $this->assertSame(22, $screen);
 
-        $res = $this->actingAs($this->owner)->get(route('admin.finance.xlsx', $params));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.finance.xlsx', $params));
         $this->assertStringContainsString('transactions-2026-03-01-to-2026-03-31.xlsx', (string) $res->headers->get('content-disposition'));
         $rows = $this->dataRows($this->book($res), 'المرجع');
         $this->assertCount($screen, $rows);
         $this->assertNotContains('NOW', array_column($rows, 0), 'ملفّ الحركة عاد إلى «هذا الشهر»');
         $this->assertNotContains('FEB', array_column($rows, 0), 'ملفّ الحركة تجاهل «من»');
-        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get(route('admin.export.transactions', $params))));
+        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get($this->exportRoute('admin.export.transactions', $params))));
     }
 
     public function test_inventory_file_follows_the_search_and_status_that_now_live_in_the_url(): void
@@ -254,8 +254,8 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
 
         $screen = $this->screenTotal('admin.inventory.index', $params);
         $this->assertSame(26, $screen);
-        $this->assertCount($screen, $this->dataRows($this->book($this->actingAs($this->owner)->get(route('admin.inventory.xlsx', $params))), 'المنتج'));
-        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get(route('admin.export.inventory', $params))));
+        $this->assertCount($screen, $this->dataRows($this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.inventory.xlsx', $params))), 'المنتج'));
+        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get($this->exportRoute('admin.export.inventory', $params))));
     }
 
     public function test_suppliers_file_follows_the_search(): void
@@ -267,8 +267,8 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
 
         $screen = $this->screenTotal('admin.suppliers.index', $params);
         $this->assertSame(26, $screen);
-        $this->assertCount($screen, $this->dataRows($this->book($this->actingAs($this->owner)->get(route('admin.suppliers.xlsx', $params))), 'الاسم'));
-        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get(route('admin.export.suppliers', $params))));
+        $this->assertCount($screen, $this->dataRows($this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.suppliers.xlsx', $params))), 'الاسم'));
+        $this->assertCount($screen, $this->csvRows($this->actingAs($this->owner)->get($this->exportRoute('admin.export.suppliers', $params))));
     }
 
     /* ======================= الترتيبُ ترتيبُ الشاشة ======================= */
@@ -280,11 +280,11 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         }
 
         // الأغلى أوّلًا — وهو غيرُ ترتيب الشاشة الافتراضيّ (الأحدث)، فيُقاس الفرق
-        $desc = $this->dataRows($this->book($this->actingAs($this->owner)->get(route('admin.orders.xlsx', ['sort' => 'total', 'dir' => 'desc']))), 'رقم الطلب');
+        $desc = $this->dataRows($this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx', ['sort' => 'total', 'dir' => 'desc']))), 'رقم الطلب');
         $this->assertSame(['INV-30', 'INV-18', 'INV-5'], array_column($desc, 0));
 
         // وبلا ترتيبٍ مختار: ترتيبُ الشاشة الافتراضيّ — الأحدثُ أوّلًا
-        $default = $this->dataRows($this->book($this->actingAs($this->owner)->get(route('admin.orders.xlsx'))), 'رقم الطلب');
+        $default = $this->dataRows($this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx'))), 'رقم الطلب');
         $this->assertSame(['INV-5', 'INV-18', 'INV-30'], array_column($default, 0));
     }
 
@@ -296,7 +296,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
             'symbol' => 'د.إ', 'rate' => 1, 'is_base' => true, 'active' => true]);
         $this->order(7, ['total' => 1234.5]);
 
-        $sheet = $this->book($this->actingAs($this->owner)->get(route('admin.orders.xlsx')));
+        $sheet = $this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx')));
         [$headRow, $cols] = $this->header($sheet, 'رقم الطلب');
         $this->assertArrayHasKey('الإجمالي (AED)', $cols, 'رأسُ المبلغ لا يحمل عملة المتجر');
         $this->assertArrayNotHasKey('الإجمالي (OMR)', $cols);
@@ -318,7 +318,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         Customer::create(['business_id' => $this->business->id, 'name' => 'عميل', 'phone' => '1']);
 
         foreach (['admin.products.xlsx' => 'الاسم', 'admin.inventory.xlsx' => 'المنتج', 'admin.customers.xlsx' => 'الاسم'] as $route => $first) {
-            [, $cols] = $this->header($this->book($this->actingAs($this->owner)->get(route($route))), $first);
+            [, $cols] = $this->header($this->book($this->actingAs($this->owner)->get($this->exportRoute($route))), $first);
             $this->assertArrayNotHasKey('المعرّف', $cols, "{$route} يحمل عمود المعرّف");
             $this->assertSame(0, $cols[$first], "{$route}: الأعمدةُ لا تبدأ بعمود الشاشة الأوّل");
         }
@@ -328,7 +328,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
     {
         $this->order(3);
 
-        $text = collect($this->book($this->actingAs($this->owner)->get(route('admin.orders.xlsx', ['q' => 'زبون', 'channel' => ''])))
+        $text = collect($this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx', ['q' => 'زبون', 'channel' => ''])))
             ->toArray(null, false, false))->flatten()->filter()->implode(' | ');
 
         $this->assertStringContainsString('متجر التصدير', $text);
@@ -340,20 +340,20 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
 
     public function test_an_empty_result_is_a_file_that_says_so_not_an_error(): void
     {
-        $sheet = $this->book($this->actingAs($this->owner)->get(route('admin.orders.xlsx', ['q' => 'لا أحد'])));
+        $sheet = $this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx', ['q' => 'لا أحد'])));
 
         $this->assertStringContainsString('لا توجد نتائج', collect($sheet->toArray(null, false, false))->flatten()->filter()->implode(' '));
-        $this->assertCount(0, $this->csvRows($this->actingAs($this->owner)->get(route('admin.export.orders', ['q' => 'لا أحد']))));
+        $this->assertCount(0, $this->csvRows($this->actingAs($this->owner)->get($this->exportRoute('admin.export.orders', ['q' => 'لا أحد']))));
     }
 
     public function test_the_button_learns_when_the_download_started(): void
     {
-        $res = $this->actingAs($this->owner)->get(route('admin.orders.xlsx', ['download_token' => 'abc123XYZ']));
+        $res = $this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx', ['download_token' => 'abc123XYZ']));
 
         $this->assertSame('abc123XYZ', collect($res->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === 'download_token')?->getValue());
 
         // ورمزٌ غريبُ الشكل لا يُكتب كعكةً
-        $odd = $this->actingAs($this->owner)->get(route('admin.orders.xlsx', ['download_token' => '<script>']));
+        $odd = $this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx', ['download_token' => '<script>']));
         $this->assertNull(collect($odd->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === 'download_token'));
     }
 
@@ -375,7 +375,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         Expense::create(['business_id' => $this->other->id, 'type' => 'سرّ الجار', 'amount' => 1, 'status' => Expense::PAID, 'spent_at' => now()]);
 
         foreach (['admin.orders.xlsx', 'admin.export.orders', 'admin.expenses.xlsx', 'admin.finance.xlsx', 'admin.customers.xlsx'] as $route) {
-            $body = $this->body($this->actingAs($this->owner)->get(route($route, ['business_id' => $this->other->id]))->assertOk());
+            $body = $this->body($this->actingAs($this->owner)->get($this->exportRoute($route, ['business_id' => $this->other->id]))->assertOk());
             if (str_starts_with($body, 'PK')) {
                 $path = tempnam(sys_get_temp_dir(), 'xl');
                 file_put_contents($path, $body);
@@ -393,7 +393,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
 
         $rows = $this->dataRows($this->book($this->actingAs($this->owner)
             ->withSession(['current_branch' => $this->khuwair->id])
-            ->get(route('admin.orders.xlsx', ['branch_id' => $this->seeb->id, 'branch' => $this->seeb->id]))), 'رقم الطلب');
+            ->get($this->exportRoute('admin.orders.xlsx', ['branch_id' => $this->seeb->id, 'branch' => $this->seeb->id]))), 'رقم الطلب');
 
         $this->assertSame(['INV-1'], array_column($rows, 0), 'الرابطُ وسّع الملفّ إلى فرعٍ آخر');
     }
@@ -404,7 +404,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
             'password' => bcrypt('x'), 'role' => 'cashier', 'status' => 'نشط', 'permissions' => ['pos']]);
 
         foreach (['admin.expenses.xlsx', 'admin.export.expenses', 'admin.finance.xlsx', 'admin.customers.xlsx', 'admin.suppliers.xlsx'] as $route) {
-            $this->actingAs($cashier)->get(route($route))->assertForbidden();
+            $this->actingAs($cashier)->get($this->exportRoute($route))->assertForbidden();
         }
     }
 
@@ -496,9 +496,9 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         $this->manyOrders(50_001);
 
         $this->assertSame(50_001, $this->screenTotal('admin.orders.index'));
-        $this->assertSame(50_001, $this->xlsxDataRows($this->actingAs($this->owner)->get(route('admin.orders.xlsx')), 'رقم الطلب'));
+        $this->assertSame(50_001, $this->xlsxDataRows($this->actingAs($this->owner)->get($this->exportRoute('admin.orders.xlsx')), 'رقم الطلب'));
 
-        $csv = $this->body($this->actingAs($this->owner)->get(route('admin.export.orders'))->assertOk());
+        $csv = $this->body($this->actingAs($this->owner)->get($this->exportRoute('admin.export.orders'))->assertOk());
         $this->assertSame(50_001, substr_count($csv, "\nR-"), 'ملفّ CSV قُصّ');
         // ولا سطرَ يقول «أوّل كذا» — لا قصَّ معلنًا ولا صامتًا
         $this->assertStringNotContainsString('أول', $csv);
@@ -533,7 +533,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
 
         $was = Pdf::swap($fake);
         try {
-            $this->last = $this->actingAs($this->owner)->get(route($route, $params))->assertStatus($status);
+            $this->last = $this->actingAs($this->owner)->get($this->exportRoute($route, $params))->assertStatus($status);
         } finally {
             Pdf::swap($was);
         }
@@ -549,10 +549,10 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         // الشاشةُ تعرض خمسمئةً وتقول إنّها مبتورة
         $this->assertSame(500, ReportData::orders($this->business->id, ['range' => 'month'])['truncated']['shown']);
 
-        $csv = $this->body($this->actingAs($this->owner)->get(route('admin.reports.export.csv', $params))->assertOk());
+        $csv = $this->body($this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', $params))->assertOk());
         $this->assertSame(520, substr_count($csv, 'R-'), 'ملفّ CSV قُصّ عند سقف الشاشة');
 
-        $sheet = $this->book($this->actingAs($this->owner)->get(route('admin.reports.export.xlsx', $params)));
+        $sheet = $this->book($this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.xlsx', $params)));
         $this->assertSame(520, substr_count(json_encode($sheet->toArray(null, false, false), JSON_UNESCAPED_UNICODE), '"R-'), 'ملفّ Excel قُصّ عند سقف الشاشة');
 
         // وPDF كاملٌ كذلك — لا خمسمئةٌ وسطرٌ في أسفلها
@@ -575,7 +575,7 @@ class WhatTheScreenCountsTheFileCarriesTest extends TestCase
         $this->last->assertSee('النتائج كبيرة جدًا لتصدير PDF، استخدم Excel أو CSV.');
 
         // وExcel وCSV للتقرير نفسه يحملانه كلَّه
-        $csv = $this->body($this->actingAs($this->owner)->get(route('admin.reports.export.csv', $params))->assertOk());
+        $csv = $this->body($this->actingAs($this->owner)->get($this->exportRoute('admin.reports.export.csv', $params))->assertOk());
         $this->assertSame(PdfRows::MAX + 1, substr_count($csv, 'R-'));
 
         // وما دون الحدّ يُطبع كاملًا

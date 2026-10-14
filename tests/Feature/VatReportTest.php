@@ -334,7 +334,7 @@ class VatReportTest extends TestCase
 
         foreach (['xlsx', 'csv', 'pdf'] as $format) {
             $this->actingAs(User::find($this->owner->id))
-                ->get(route('admin.reports.export.'.$format, 'vat'))
+                ->get($this->exportRoute('admin.reports.export.'.$format, 'vat'))
                 ->assertOk();
         }
     }
@@ -355,11 +355,11 @@ class VatReportTest extends TestCase
         $this->sale(subtotal: 100, discount: 0, tax: 5);
 
         $this->actingAs(User::find($this->owner->id))
-            ->get(route('admin.reports.export.csv', 'vat'))->assertOk();
+            ->get($this->exportRoute('admin.reports.export.csv', 'vat'))->assertOk();
 
         // وبقيّةُ التقارير تبقى على ما هي — الاستثناء واحدٌ لا بابٌ عامّ
         $this->actingAs(User::find($this->owner->id))
-            ->get(route('admin.reports.export.csv', 'orders'))->assertForbidden();
+            ->get($this->exportRoute('admin.reports.export.csv', 'orders'))->assertForbidden();
     }
 
     public function test_the_exported_file_carries_the_tax_column(): void
@@ -368,7 +368,7 @@ class VatReportTest extends TestCase
         $this->sale(subtotal: 100, discount: 0, tax: 5);
 
         $csv = $this->actingAs($this->owner)
-            ->get(route('admin.reports.export.csv', 'vat'))->streamedContent();
+            ->get($this->exportRoute('admin.reports.export.csv', 'vat'))->streamedContent();
 
         $this->assertStringContainsString('ضريبة المخرجات', $csv);
         $this->assertStringContainsString('ضريبة المدخلات', $csv);

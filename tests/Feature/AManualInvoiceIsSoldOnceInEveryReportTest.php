@@ -262,7 +262,7 @@ class AManualInvoiceIsSoldOnceInEveryReportTest extends TestCase
         $this->assertSame(1, $screen['salesSeries']['counts'][4]);
 
         // والملفُّ بأرقام الشاشة
-        $csv = $this->get(route('admin.export.reports', $sep));
+        $csv = $this->get($this->exportRoute('admin.export.reports', $sep));
         $csv->assertOk();
     }
 
@@ -363,7 +363,7 @@ class AManualInvoiceIsSoldOnceInEveryReportTest extends TestCase
         $this->assertSame(4, $screen['summary']['orders']);
         $this->assertEquals(26.25, $screen['summary']['average'], '105 ÷ 4 مشتريات');
 
-        $csv = $this->get(route('admin.reports.export.csv', ['report' => 'customers'] + $sep));
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['report' => 'customers'] + $sep));
         $csv->assertOk();
         ob_start();
         $csv->baseResponse->sendContent();
@@ -377,8 +377,8 @@ class AManualInvoiceIsSoldOnceInEveryReportTest extends TestCase
         }
         $this->assertMatchesRegularExpression('/"?وزارة الثقافة"?,4,105/u', $body);
 
-        $this->get(route('admin.reports.export.xlsx', ['report' => 'customers'] + $sep))->assertOk();
-        $this->get(route('admin.reports.export.pdf', ['report' => 'customers'] + $sep))->assertOk();
+        $this->get($this->exportRoute('admin.reports.export.xlsx', ['report' => 'customers'] + $sep))->assertOk();
+        $this->get($this->exportRoute('admin.reports.export.pdf', ['report' => 'customers'] + $sep))->assertOk();
     }
 
     /* ═══════════ ٥ · الذممُ كما كانت ═══════════ */

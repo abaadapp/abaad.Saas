@@ -31,6 +31,7 @@ import {
 import { money, number } from '@/lib/format';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
+import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Customer, Order } from '@/types/models';
 import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
@@ -70,6 +71,8 @@ const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 export default function CustomerShow() {
     const { customer, orders, addresses, context, branches = [], customerFlags, paymentLinks } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
     const currency = context!.currency;
@@ -172,7 +175,7 @@ export default function CustomerShow() {
                 actions={
                     <>
                         <Button variant="outline" asChild>
-                            <a href={route('admin.customers.statement', customer.id)} target="_blank" rel="noreferrer">
+                            <a href={tenant(route('admin.customers.statement', customer.id))} target="_blank" rel="noreferrer">
                                 <Receipt />{t('كشف حساب')}
                             </a>
                         </Button>

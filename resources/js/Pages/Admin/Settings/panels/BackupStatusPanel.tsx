@@ -6,6 +6,7 @@ import Field, { Select } from '@/Components/Field';
 import { PageActions, SettingsSection } from '@/Components/Settings';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
+import { useTenantLink } from '@/lib/exportLink';
 
 export type BackupFrequency = 'daily' | 'weekly' | 'monthly' | 'manual';
 
@@ -86,6 +87,8 @@ export function offsiteLabel(status: Pick<BackupStatus, 'offsite_enabled'>, offs
  */
 export default function BackupStatusPanel({ data }: { data: BackupStatus }) {
     const t = useTranslate();
+    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
+    const tenant = useTenantLink();
     const [ask, confirmDialog] = useConfirm();
     const [busy, setBusy] = useState<'create' | 'restore' | 'frequency' | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -189,7 +192,7 @@ export default function BackupStatusPanel({ data }: { data: BackupStatus }) {
                 {latest && (
                     <PageActions className="mt-4 flex-wrap">
                         <Button asChild variant="outline">
-                            <a href={route('admin.backup.latest.download')}>
+                            <a href={tenant(route('admin.backup.latest.download'))}>
                                 <Download />
                                 {t('تحميل آخر نسخة')}
                             </a>

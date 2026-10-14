@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use App\Support\Pdf;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use App\Support\Sheet;
+use App\Support\TenantExportGuard;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -50,7 +51,7 @@ class ProductImportExportController extends Controller
      */
     private const MAX_ROWS = 2000;
 
-    private function bid(): int { return auth()->user()->business_id ?? Demo::bid(); }
+    private function bid(): int { return TenantExportGuard::businessId(); }
 
     /** أعمدة الملف بترتيبها (تُستخدم للتصدير وللاستيراد معًا) */
     private function columns(): array

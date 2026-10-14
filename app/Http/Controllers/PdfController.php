@@ -37,6 +37,7 @@ use App\Support\Receivables;
 use App\Support\Reports;
 use App\Support\SalesChannel;
 use App\Support\ShopIdentity;
+use App\Support\TenantExportGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 
@@ -52,7 +53,7 @@ class PdfController extends Controller
         $report = Reports::salesReport($range, request()->query('channel'), request()->query('boutique'));
 
         $html = view('pdf.sales-report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'business' => TenantExportGuard::business(),
             // وصار تقريرُ المبيعات يرشّح بالفرع فعلًا، فجاز أن يُسمّيه —
             // وقبلها كانت أرقامُه للمتجر كلِّه فكانت الترويسة «كل الفروع»
             'branch' => $report['branchName'],
@@ -107,7 +108,7 @@ class PdfController extends Controller
      */
     public function orderReceipt($number)
     {
-        $bid = auth()->user()->business_id ?? Demo::bid();
+        $bid = TenantExportGuard::businessId();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
         ['html' => $html, 'paper' => $paper] = self::saleHtml($bid, $order);
@@ -135,7 +136,7 @@ class PdfController extends Controller
      */
     public function orderThermal($number)
     {
-        $bid = auth()->user()->business_id ?? Demo::bid();
+        $bid = TenantExportGuard::businessId();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
         return self::thermal($bid, $order);
@@ -278,7 +279,7 @@ class PdfController extends Controller
         $period = TransactionsList::period($request);
 
         $html = view('pdf.finance-report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'business' => TenantExportGuard::business(),
             'branch' => Demo::scopeName(false),
             'stats' => [
                 ['label' => 'الدخل', 'value' => Demo::moneyBase($summary['in'])],
@@ -319,7 +320,7 @@ class PdfController extends Controller
     /** كشف حساب عميل (PDF) */
     public function customerStatement($id)
     {
-        $bid = auth()->user()->business_id ?? Demo::bid();
+        $bid = TenantExportGuard::businessId();
         $customer = Customer::where('business_id', $bid)->findOrFail($id);
 
         $orders = Order::where('business_id', $bid)->where('customer_id', $customer->id)->sold()
@@ -354,7 +355,7 @@ class PdfController extends Controller
         // صفوفُ الشاشة كلُّها بترتيبها — `OrdersList` الذي ترقّمه الشاشة
         $orders = OrdersList::rows(request());
         $html = view('pdf.orders-report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'business' => TenantExportGuard::business(),
             'branch' => Demo::scopeName(true),
             'orders' => $orders,
             // الملغى خارج المجموع كما في الشاشة — انظر ReportExportController::ordersXlsx
@@ -379,7 +380,7 @@ class PdfController extends Controller
         // صفوفُ الشاشة كلُّها بترتيبها — `ProductsList`
         $products = ProductsList::rows(request());
         $html = view('pdf.products-report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'business' => TenantExportGuard::business(),
             'branch' => Demo::scopeName(false),
             'products' => $products,
             'generatedAt' => now()->format('Y-m-d H:i'),
@@ -399,7 +400,7 @@ class PdfController extends Controller
             return $refused;
         }
         $html = view('pdf.inventory-report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'business' => TenantExportGuard::business(),
             'branch' => Demo::scopeName(true),
             'inventory' => $inventory,
             'generatedAt' => now()->format('Y-m-d H:i'),
@@ -420,7 +421,7 @@ class PdfController extends Controller
         $expenses = ExpensesList::rows(request());
         $paid = array_sum(array_map(fn ($e) => $e['status'] === Expense::PAID ? (float) $e['amount'] : 0.0, $expenses));
         $html = view('pdf.expenses-report', [
-            'business' => Demo::business(auth()->user()->business_id ?? Demo::bid()),
+            'business' => TenantExportGuard::business(),
             'branch' => Demo::scopeName(false),
             'expenses' => $expenses,
             'total' => $paid,
@@ -483,7 +484,7 @@ class PdfController extends Controller
      */
     public function taxInvoice($number)
     {
-        $bid = auth()->user()->business_id ?? Demo::bid();
+        $bid = TenantExportGuard::businessId();
         $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
 
         if (! ShopIdentity::confirmed(BusinessModel::find($bid))) {
@@ -545,7 +546,7 @@ class PdfController extends Controller
      */
     public function customerInvoice($id)
     {
-        $bid = auth()->user()->business_id ?? Demo::bid();
+        $bid = TenantExportGuard::businessId();
         $invoice = CustomerInvoice::where('business_id', $bid)->whereKey($id)
             ->with('items')->firstOrFail();
 
@@ -594,7 +595,7 @@ class PdfController extends Controller
     /** كشفُ حساب عميل (PDF) — رصيدٌ افتتاحيٌّ ثمّ حركةٌ برصيدٍ جارٍ */
     public function customerAccountStatement(Request $request, $customer)
     {
-        $bid = auth()->user()->business_id ?? Demo::bid();
+        $bid = TenantExportGuard::businessId();
         $customer = Customer::where('business_id', $bid)->whereKey($customer)->firstOrFail();
 
         $from = $request->date('from') ?? now()->startOfYear();

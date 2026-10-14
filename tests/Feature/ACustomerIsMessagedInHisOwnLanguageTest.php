@@ -418,7 +418,7 @@ class ACustomerIsMessagedInHisOwnLanguageTest extends TestCase
         Customer::create(['business_id' => $this->shop->id, 'name' => 'John', 'phone' => '99460001', 'language' => 'en']);
         Customer::create(['business_id' => $this->shop->id, 'name' => 'قديم', 'phone' => '99460002']);
 
-        $body = $this->actingAs($this->owner())->get(route('admin.customers.export.xlsx'))->assertOk()->streamedContent();
+        $body = $this->actingAs($this->owner())->get($this->exportRoute('admin.customers.export.xlsx'))->assertOk()->streamedContent();
         $path = tempnam(sys_get_temp_dir(), 'exp').'.xlsx';
         file_put_contents($path, $body);
         $rows = \App\Support\Sheet::rows($path);

@@ -322,7 +322,7 @@ class ReportPagesTest extends TestCase
     {
         foreach (array_keys(ReportColumns::MAP) as $report) {
             foreach (['xlsx', 'csv', 'pdf'] as $format) {
-                $this->get(route("admin.reports.export.{$format}", $report))
+                $this->get($this->exportRoute("admin.reports.export.{$format}", $report))
                     ->assertOk("«{$report}» لا يُصدَّر بصيغة {$format}");
             }
         }
@@ -337,8 +337,8 @@ class ReportPagesTest extends TestCase
         $this->sale(100, now()->toDateTimeString());
         $this->sale(500, now()->subMonths(6)->toDateTimeString());
 
-        $month = $this->get(route('admin.reports.export.csv', 'orders').'?range=month')->streamedContent();
-        $all = $this->get(route('admin.reports.export.csv', 'orders').'?range=all')->streamedContent();
+        $month = $this->get($this->exportRoute('admin.reports.export.csv', ['orders', 'range' => 'month']))->streamedContent();
+        $all = $this->get($this->exportRoute('admin.reports.export.csv', ['orders', 'range' => 'all']))->streamedContent();
 
         $this->assertStringContainsString('100', $month);
         $this->assertStringNotContainsString('500', $month, 'ملفُّ الشهر حمل بيعةً خارجه');
@@ -351,8 +351,8 @@ class ReportPagesTest extends TestCase
         $cancelled = $this->sale(400, now()->toDateTimeString());
         $cancelled->update(['status' => Order::CANCELLED]);
 
-        $csv = $this->get(route('admin.reports.export.csv', 'orders')
-            .'?range=month&status='.urlencode(Order::CANCELLED))->streamedContent();
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', ['orders', 'range' => 'month', 'status' => Order::CANCELLED]))
+            ->streamedContent();
 
         $this->assertStringContainsString('400', $csv);
         $this->assertStringNotContainsString('100', $csv, 'الملفّ تجاهل المرشّح الذي رشّحت به الشاشة');
@@ -392,15 +392,15 @@ class ReportPagesTest extends TestCase
         $user = $this->staff(['reports']);
 
         foreach (['staff', 'customers', 'finance'] as $report) {
-            $this->actingAs($user)->get(route('admin.reports.export.csv', $report))
+            $this->actingAs($user)->get($this->exportRoute('admin.reports.export.csv', $report))
                 ->assertForbidden("«{$report}» نُزّل لمن لا يملك قسمه");
         }
     }
 
     public function test_an_unknown_report_is_not_a_download(): void
     {
-        $this->get(route('admin.reports.export.csv', 'sales'))->assertNotFound();
-        $this->get(route('admin.reports.export.xlsx', 'لا-شيء'))->assertNotFound();
+        $this->get($this->exportRoute('admin.reports.export.csv', 'sales'))->assertNotFound();
+        $this->get($this->exportRoute('admin.reports.export.xlsx', 'لا-شيء'))->assertNotFound();
     }
 
     /* ============ الهالك: ستُّ قراءاتٍ لا جدولٌ واحد ============ */
@@ -414,7 +414,7 @@ class ReportPagesTest extends TestCase
         $sections = ReportColumns::sectionsOf('waste');
         $this->assertCount(6, $sections, 'قراءةٌ من الستّ غائبةٌ عن التصدير');
 
-        $csv = $this->get(route('admin.reports.export.csv', 'waste'))->streamedContent();
+        $csv = $this->get($this->exportRoute('admin.reports.export.csv', 'waste'))->streamedContent();
 
         foreach ($sections as $section) {
             $this->assertStringContainsString($section, $csv, "«{$section}» ليست في الملفّ");
@@ -425,7 +425,7 @@ class ReportPagesTest extends TestCase
     {
         // إكسل يحتمل الألسنة، فستُّ قراءاتٍ ستُّ أوراقٍ لا ستّةُ جداولَ ملصوقة
         $path = tempnam(sys_get_temp_dir(), 'waste').'.xlsx';
-        file_put_contents($path, $this->get(route('admin.reports.export.xlsx', 'waste'))->streamedContent());
+        file_put_contents($path, $this->get($this->exportRoute('admin.reports.export.xlsx', 'waste'))->streamedContent());
 
         $book = IOFactory::load($path);
         @unlink($path);
@@ -444,7 +444,7 @@ class ReportPagesTest extends TestCase
         $from = now()->subMonth()->toDateString();
         $to = now()->toDateString();
 
-        $response = $this->get(route('admin.reports.export.csv', 'waste')."?from={$from}&to={$to}");
+        $response = $this->get($this->exportRoute('admin.reports.export.csv', ['waste', 'from' => $from, 'to' => $to]));
         $csv = $response->streamedContent();
 
         $this->assertStringContainsString($from, $csv, 'الملفّ لا يقول مدّته');
@@ -464,10 +464,10 @@ class ReportPagesTest extends TestCase
     public function test_the_waste_export_is_measured_by_the_reports_section(): void
     {
         $this->actingAs($this->staff(['orders']))
-            ->get(route('admin.reports.export.csv', 'waste'))->assertForbidden();
+            ->get($this->exportRoute('admin.reports.export.csv', 'waste'))->assertForbidden();
 
         $this->actingAs($this->staff(['reports']))
-            ->get(route('admin.reports.export.csv', 'waste'))->assertOk();
+            ->get($this->exportRoute('admin.reports.export.csv', 'waste'))->assertOk();
     }
 
     public function test_the_waste_screen_offers_the_same_three_formats(): void

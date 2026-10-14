@@ -112,10 +112,15 @@ use App\Http\Controllers\SuperAdmin\SubscriptionController;
 use App\Http\Controllers\SuperAdmin\UserController;
 use App\Http\Controllers\SuperAdmin\WhatsAppController;
 use App\Http\Controllers\SupportAttachmentController;
+use App\Http\Controllers\WebsiteContactController;
 use App\Http\Controllers\WhatsApp\WebhookController;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Support\Permissions;
 use App\Support\Storefront;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /*
 |--------------------------------------------------------------------------
@@ -2075,3 +2080,15 @@ Route::post('/webhooks/paymob', [PaymobController::class, 'callback'])
     ->name('webhooks.paymob');
 Route::get('/webhooks/whatsapp', [WebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
 Route::post('/webhooks/whatsapp', [WebhookController::class, 'handle'])->name('webhooks.whatsapp');
+
+/*
+ * «تواصل معنا» في الموقع التعريفيّ abaadapp.om — بابٌ عامّ إلى CRM المنصّة.
+ *
+ * عابرٌ للأصل وبلا جلسة: تُنزع عنه طبقاتُ الجلسة وCSRF وInertia بأسمائها،
+ * لا من المجموعة كلِّها. فلا يُنشأ صفُّ جلسةٍ لكلّ طلب، ولا رمزَ يُطلب من صفحةٍ
+ * ثابتة لا تملكه. وحرّاسُه في المتحكّم: الأصل، والحجم، والخنق، والفخّ، والتحقّق.
+ * وCORS له وحده في `config/cors.php`.
+ */
+Route::post('/website/contact', [WebsiteContactController::class, 'store'])
+    ->withoutMiddleware([StartSession::class, ShareErrorsFromSession::class, PreventRequestForgery::class, HandleInertiaRequests::class])
+    ->name('website.contact');

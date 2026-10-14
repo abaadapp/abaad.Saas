@@ -139,10 +139,13 @@ final class Crm
 
     public const SOURCE_MANUAL = 'manual';
 
+    /** نموذجُ «تواصل معنا» في abaadapp.om — يفرضه الخادم، ولا يُقبل من المتصفّح */
+    public const SOURCE_WEBSITE = 'website';
+
     /** @var list<string> */
     public const SOURCES = [
         self::SOURCE_WHATSAPP, 'phone', self::SOURCE_MANUAL,
-        'website', 'referral', 'instagram',
+        self::SOURCE_WEBSITE, 'referral', 'instagram',
     ];
 
     public static function sourceLabel(string $source): string

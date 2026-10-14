@@ -98,6 +98,13 @@ class CrmStaysOutOfTenantDataTest extends TestCase
             base_path('app/Support/CrmKnowledge.php'),
             base_path('app/Support/CrmSignals.php'),
             base_path('app/Models/CrmAiFeedback.php'),
+            /*
+             * وبابُ «تواصل معنا» في الموقع التعريفيّ — عامٌّ بلا دخول، فهو أولى
+             * بالحارس: يكتب عميلًا محتملًا وملاحظة، ولا يقرب جدولَ تاجر.
+             */
+            base_path('app/Support/CrmWebsiteInquiries.php'),
+            base_path('app/Http/Controllers/WebsiteContactController.php'),
+            base_path('app/Mail/WebsiteLeadMail.php'),
         ];
     }
 

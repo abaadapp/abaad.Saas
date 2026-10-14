@@ -403,7 +403,7 @@ class AWebsiteVisitorReachesTheSalesBookTest extends TestCase
     {
         Mail::fake();
 
-        $this->send($this->valid(['website' => 'https://spam.example']))->assertOk()->assertExactJson(['ok' => true]);
+        $this->send($this->valid(['contact_hp' => 'https://spam.example']))->assertOk()->assertExactJson(['ok' => true]);
 
         $this->assertSame(0, CrmLead::count());
         $this->assertSame(0, CrmNote::count());

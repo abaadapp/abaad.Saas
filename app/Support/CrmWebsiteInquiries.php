@@ -169,19 +169,130 @@ final class CrmWebsiteInquiries
         return $data;
     }
 
+    /*
+     * ═══ شكلُ الملاحظة — يكتبه `body` ويقرؤه `parse`، من هذه الثوابت وحدها ═══
+     *
+     * سطرُ العنوان، ثمّ «تسمية: قيمة» لكلّ حقلٍ قصير، ثمّ «الرسالة:» وما بعدها
+     * كلُّه الرسالة. وتغييرُ تسميةٍ هنا يغيّر الكتابةَ والقراءةَ معًا فلا يفترقان.
+     */
+    public const HEADER = 'طلب تواصل من الموقع الإلكتروني';
+
+    /** @var array<string, string> الحقلُ ← تسميتُه في الملاحظة، بترتيبها */
+    private const LABELS = [
+        'name' => 'الاسم',
+        'business_name' => 'اسم النشاط',
+        'phone' => 'الهاتف',
+        'email' => 'البريد',
+        'activity' => 'نوع النشاط',
+        'locale' => 'لغة الصفحة',
+    ];
+
+    private const MESSAGE_LABEL = 'الرسالة:';
+
     /** نصُّ الملاحظة — كلُّ ما كتبه الزائر، بأسماءٍ يقرؤها موظّف المبيعات */
     private static function body(array $data): string
     {
-        return implode("\n", [
-            'طلب تواصل من الموقع الإلكتروني',
-            'الاسم: '.$data['name'],
-            'اسم النشاط: '.$data['business_name'],
-            'الهاتف: '.$data['phone'],
-            'البريد: '.$data['email'],
-            'نوع النشاط: '.self::ACTIVITY_TYPES[$data['activity_type']],
-            'لغة الصفحة: '.self::LOCALES[$data['locale']],
-            'الرسالة:',
-            $data['message'],
-        ]);
+        $values = [
+            'name' => $data['name'],
+            'business_name' => $data['business_name'],
+            'phone' => $data['phone'],
+            'email' => $data['email'],
+            'activity' => self::ACTIVITY_TYPES[$data['activity_type']],
+            'locale' => self::LOCALES[$data['locale']],
+        ];
+
+        $lines = [self::HEADER];
+        foreach (self::LABELS as $field => $label) {
+            $lines[] = $label.': '.$values[$field];
+        }
+
+        return implode("\n", [...$lines, self::MESSAGE_LABEL, $data['message']]);
+    }
+
+    /* ═══════════════════ القراءة: طلباتُ الموقع في ملفّ العميل ═══════════════════ */
+
+    /**
+     * طلباتُ الموقع على هذا العميل — الأحدثُ أوّلًا، وكلُّها لا آخرُها.
+     *
+     * تُعرف الملاحظةُ بكاتبها لا بنصّها: `user_id` فارغ و`user_name` هو
+     * «الموقع الإلكتروني». ملاحظةُ الموظّف لها مستخدمٌ دائمًا، فلا تُقرأ طلبًا
+     * ولو بدأت بالسطر نفسِه. وملاحظةٌ آليّةٌ لا تُقرأ تُترك — لا تُسقط الصفحة.
+     *
+     * @return list<array{id:int,name:?string,businessName:?string,phone:?string,email:?string,activity:?string,locale:?string,message:?string,receivedAt:?string}>
+     */
+    public static function forLead(CrmLead $lead): array
+    {
+        return $lead->notes()
+            ->whereNull('user_id')
+            ->where('user_name', self::AUTHOR)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(function (CrmNote $note) {
+                $fields = self::parse((string) $note->body);
+
+                return $fields === null ? null : [
+                    'id' => $note->id,
+                    ...$fields,
+                    'receivedAt' => optional($note->created_at)->format('Y-m-d H:i'),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * ملاحظةُ طلبٍ ← حقولُه — للشكل الذي يكتبه `body` وحده.
+     *
+     * بلا سطر العنوان: ليست طلبَ موقع (`null`). وما سواه يُقرأ بما وُجد:
+     * تسميةٌ غائبة حقلُها `null` لا تخمين، والرسالةُ كلُّ ما بعد «الرسالة:»
+     * بأسطرها — فسطرٌ فيها يشبه «الاسم: …» يبقى من الرسالة. ونوعُ النشاط ولغةُ
+     * الصفحة محفوظان بتسميتهما العربيّة، فيُترجمان للشاشة كما هما.
+     *
+     * @return array{name:?string,businessName:?string,phone:?string,email:?string,activity:?string,locale:?string,message:?string}|null
+     */
+    public static function parse(string $body): ?array
+    {
+        $lines = explode("\n", str_replace(["\r\n", "\r"], "\n", $body));
+
+        if (trim($lines[0] ?? '') !== self::HEADER) {
+            return null;
+        }
+
+        $found = array_fill_keys(array_keys(self::LABELS), null);
+        $message = null;
+        $byLabel = array_flip(self::LABELS);
+
+        for ($i = 1; $i < count($lines); $i++) {
+            if (trim($lines[$i]) === self::MESSAGE_LABEL) {
+                $message = trim(implode("\n", array_slice($lines, $i + 1)));
+                break;
+            }
+
+            [$label, $value] = array_pad(explode(': ', $lines[$i], 2), 2, null);
+            $field = $byLabel[trim((string) $label)] ?? null;
+
+            if ($field !== null && $found[$field] === null && $value !== null && trim($value) !== '') {
+                $found[$field] = trim($value);
+            }
+        }
+
+        foreach (['activity', 'locale'] as $field) {
+            if ($found[$field] !== null) {
+                $found[$field] = __($found[$field]);
+            }
+        }
+
+        return [
+            'name' => $found['name'],
+            'businessName' => $found['business_name'],
+            'phone' => $found['phone'],
+            'email' => $found['email'],
+            'activity' => $found['activity'],
+            'locale' => $found['locale'],
+            'message' => $message === '' ? null : $message,
+        ];
     }
 }

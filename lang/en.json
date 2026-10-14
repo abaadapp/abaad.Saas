@@ -7662,5 +7662,11 @@
     "لغة الصفحة": "Page language",
     "فتح ملف العميل في CRM": "Open the lead in the CRM",
     "اضغط «رد» ليصل ردّك إلى بريد صاحب الطلب مباشرة.": "Press Reply to answer the requester directly by email.",
-    "رسالة آلية من نظام أبعاد — الطلب محفوظ في CRM المنصة": "Automated message from Abaad — the request is saved in the platform CRM"
+    "رسالة آلية من نظام أبعاد — الطلب محفوظ في CRM المنصة": "Automated message from Abaad — the request is saved in the platform CRM",
+    "طلب الموقع الإلكتروني": "Website request",
+    ":count طلبات": ":count requests",
+    "الإنجليزية": "English",
+    "التجزئة": "Retail",
+    "التجارة الإلكترونية": "E-commerce",
+    "الخدمات والحجوزات": "Services & bookings"
 }

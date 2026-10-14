@@ -19,19 +19,28 @@ export default function PageHeader({ title, subtitle, actions }: PageHeaderProps
     const t = useTranslate();
 
     return (
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div
+            data-page-header
+            className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
+        >
             <div className="min-w-0">
                 <h1 className="truncate text-[22px] font-bold tracking-tight text-[#111]">{t(title)}</h1>
                 {subtitle && <p className="mt-0.5 text-[13px] text-[#6b7280]">{subtitle}</p>}
             </div>
 
             {/*
-                flex-wrap: shrink-0 وحده يمنع الانضغاط على الشاشات الواسعة —
-                وهو مطلوب — لكنه على الجوّال يدفع الأزرار خارج الشاشة فيظهر
-                تمريرٌ أفقي للصفحة كلّها ويُقصّ آخر زرّ. الالتفاف ينقلها إلى
-                سطر ثانٍ بدل ذلك. ظهر هذا في «المالية» حيث الأزرار أربعة.
+                الأزرارُ تلتفّ ولا تدفع الصفحة.
+
+                كانت `shrink-0`: في صفٍّ واحدٍ مع العنوان (من `sm` فما فوق) يأخذ
+                صفُّ الأزرار عرضَه كاملًا ولا يلتفّ أبدًا — فصفحةُ الطلب بأزرارها
+                السبعة (~1260px) كانت تمدّ الصفحةَ كلَّها على الجهاز اللوحيّ،
+                فيُقصّ عمودُ «المنتج» وتسمياتُ المجاميع.
+
+                فالترويسةُ تلتفّ (`sm:flex-wrap`): ما يتّسع للأزرار بجوار العنوان
+                يبقى كما كان بلا انضغاط، وما لا يتّسع ينزل سطرًا تحته. و`min-w-0`
+                يجعل الصفَّ في سطره يضيق إلى عرض الصفحة فتلتفّ أزرارُه داخله.
             */}
-            {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+            {actions && <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div>}
         </div>
     );
 }

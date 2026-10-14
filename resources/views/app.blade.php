@@ -10,6 +10,13 @@
 
     <title inertia>{{ config('app.name', 'Abad POS') }}</title>
 
+    {{-- علامةُ أبعاد في التبويب — من مسارها في Components/Logo.tsx. وتحت /brand/abaad/ لا في الجذر: نطاقاتُ المتاجر تخدم public/ نفسَه، والمتصفّحُ يطلب /favicon.ico و/apple-touch-icon.png من الجذر لكلّ صفحةٍ لا تُعلن أيقونتها، فيلبس متجرُ التاجر شعارَ أبعاد --}}
+    <link rel="icon" href="/brand/abaad/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/abaad/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/brand/abaad/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/brand/abaad/favicon-192x192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/abaad/apple-touch-icon.png">
+
     @routes
     @viteReactRefresh
     @vite(['resources/css/app.css', 'resources/js/app.tsx'])

@@ -88,6 +88,9 @@ Schedule::command('invoices:remind')->dailyAt('09:00')->withoutOverlapping();
  */
 Schedule::command('whatsapp:sync-templates')->hourly()->withoutOverlapping();
 
+// وقالبُ تنبيه طلبات الموقع على خطّ المبيعات — حسابٌ غيرُ حساب الإشعارات
+Schedule::command('crm:sync-website-lead-alert')->hourly()->withoutOverlapping();
+
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 

@@ -82,6 +82,10 @@ class CrmStaysOutOfTenantDataTest extends TestCase
              * وإلّا حرست ما كان ولا تحرس ما يُكتب.
              */
             base_path('app/Support/CrmWhatsApp.php'),
+            // وتنبيهُ طلبات الموقع لفريق أبعاد — لا يقرأ زبونًا ولا رسالةَ محلّ
+            base_path('app/Support/WebsiteLeadWhatsAppAlert.php'),
+            base_path('app/Jobs/SendWebsiteLeadWhatsAppAlert.php'),
+            base_path('app/Console/Commands/SyncWebsiteLeadAlertTemplate.php'),
             base_path('app/Http/Controllers/SuperAdmin/CrmConversationController.php'),
             base_path('app/Models/CrmMessage.php'),
             base_path('app/Models/CrmRead.php'),

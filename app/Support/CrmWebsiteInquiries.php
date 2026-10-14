@@ -315,11 +315,16 @@ final class CrmWebsiteInquiries
     }
 
     /**
-     * ملاحظاتُ طلبات الموقع التي تُعدّ — بكاتبها وسطر عنوانها، بلا قراءة نصّها كلِّه.
+     * ملاحظاتُ طلبات الموقع التي تُعدّ — بكاتبها وشكلِ نصّها كاملًا، في قاعدة البيانات.
      *
-     * الكاتبُ نفسُه الذي يكتب به `receive` ويقرأ به `forLead`، وسطرُ العنوان
-     * نفسُه الذي يشترطه `parse`. فملاحظةُ موظّفٍ أو ملاحظةٌ آليّةٌ أخرى لا
-     * تُعدّ طلبًا، ولا ملاحظةٌ قديمةٌ بلا عنوان. ولا يُقرأ ما قبل الميزة.
+     * الكاتبُ نفسُه الذي يكتب به `receive` ويقرأ به `forLead`. والنصُّ بالشكل
+     * الذي يكتبه `body` حرفًا: سطرُ العنوان، ثمّ كلُّ تسميةٍ بترتيبها وبقيمةٍ غيرِ
+     * فارغة، ثمّ «الرسالة:» ونصٌّ بعدها (`inquiryShape`). فملاحظةُ موظّفٍ أو
+     * ملاحظةٌ آليّةٌ أخرى لا تُعدّ، ولا ملاحظةٌ تبدأ بالعنوان وهي ناقصة.
+     * ولا يُقرأ ما قبل الميزة.
+     *
+     * والفحصُ نمطُ `LIKE` واحدٌ لا قراءةُ النصّ في PHP: الشارةُ تُحسب في كلّ
+     * صفحة، فلا تُجلب نصوصُ الطلبات لتُفكّك هناك.
      *
      * @return Builder<CrmNote>
      */
@@ -328,8 +333,26 @@ final class CrmWebsiteInquiries
         return CrmNote::query()
             ->whereNull('crm_notes.user_id')
             ->where('crm_notes.user_name', self::AUTHOR)
-            ->where('crm_notes.body', 'like', self::HEADER.'%')
+            ->where('crm_notes.body', 'like', self::inquiryShape())
             ->where('crm_notes.id', '>', self::unreadAfter());
+    }
+
+    /**
+     * شكلُ نصِّ الطلب كما يكتبه `body` — نمطُ `LIKE` من الثوابت نفسِها.
+     *
+     * `_%` قيمةٌ من حرفٍ فأكثر، و`\n` فاصلُ `body` نفسُه. وتغييرُ تسميةٍ في
+     * `LABELS` يغيّر الكتابةَ والقراءةَ وهذا النمطَ معًا فلا يفترقون. ولا في
+     * الثوابت `%` ولا `_` ولا `\` (يحرسه اختبار)، فلا تهريبَ يلزم.
+     */
+    public static function inquiryShape(): string
+    {
+        $shape = self::HEADER;
+
+        foreach (self::LABELS as $label) {
+            $shape .= "\n".$label.': _%';
+        }
+
+        return $shape."\n".self::MESSAGE_LABEL."\n_%";
     }
 
     /**
@@ -401,24 +424,38 @@ final class CrmWebsiteInquiries
             return;
         }
 
-        $current = (int) CrmWebsiteInquiryRead::where('user_id', $user->id)
-            ->where('lead_id', $lead->id)->value('last_read_note_id');
+        self::advanceReadCursor($user->id, $lead->id, $latest);
+    }
 
-        if ($latest <= $current) {
-            return;
-        }
+    /**
+     * يُقدِّم مؤشّرَ القارئ إلى `$noteId` — ولا يُرجعه أبدًا، ولو تزامنت فتحتان.
+     *
+     * ═══ ولمَ لا «اقرأ ثمّ اكتب» ═══
+     *
+     * فتحتان للعميل نفسِه: الأولى ترى الطلبَ 100، والثانية ترى 101 فتكتبه،
+     * ثمّ تكتب الأولى 100 — فيعود 101 غيرَ مقروء. وفحصُ «الحاليّ أصغر؟» قبل
+     * الكتابة لا يمنع ذلك: كلتاهما تفحص قبل أن تكتب الأخرى.
+     *
+     * فالشرطُ داخل الكتابة نفسِها، جملتين ذرّيّتين على SQLite وPostgreSQL معًا:
+     * `insertOrIgnore` يُنشئ الصفّ إن لم يكن (والفهرسُ الفريد يُسقط الثاني)،
+     * ثمّ `UPDATE … WHERE last_read_note_id < ?` لا يلمس صفًّا مؤشّرُه أحدث.
+     * فالمؤشّرُ بعد أيّ ترتيبٍ للفتحات هو أكبرُ ما كُتب.
+     */
+    public static function advanceReadCursor(int $userId, int $leadId, int $noteId): void
+    {
+        $now = now();
 
-        // و`upsert` لا `updateOrCreate`: فتحتان متزامنتان لا تتصادمان على الفهرس الفريد
-        CrmWebsiteInquiryRead::upsert(
-            [[
-                'user_id' => $user->id,
-                'lead_id' => $lead->id,
-                'last_read_note_id' => $latest,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]],
-            ['user_id', 'lead_id'],
-            ['last_read_note_id', 'updated_at'],
-        );
+        CrmWebsiteInquiryRead::insertOrIgnore([
+            'user_id' => $userId,
+            'lead_id' => $leadId,
+            'last_read_note_id' => $noteId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        CrmWebsiteInquiryRead::where('user_id', $userId)
+            ->where('lead_id', $leadId)
+            ->where('last_read_note_id', '<', $noteId)
+            ->update(['last_read_note_id' => $noteId, 'updated_at' => $now]);
     }
 }

@@ -158,6 +158,44 @@ class AWebsiteInquiryWaitsUnreadInTheCrmTest extends TestCase
         $this->assertSame((int) $cursor, (int) CrmWebsiteInquiryRead::where('user_id', $this->a->id)->value('last_read_note_id'));
     }
 
+    public function test_the_read_cursor_never_moves_back_even_when_an_older_write_lands_last(): void
+    {
+        $this->inquire();
+        $lead = $this->leadOf();
+        $cursor = fn () => (int) CrmWebsiteInquiryRead::where('user_id', $this->a->id)
+            ->where('lead_id', $lead->id)->value('last_read_note_id');
+
+        // فتحتان متزامنتان: الأحدثُ (101) تكتب أوّلًا، ثمّ تصل الأقدمُ (100) متأخّرة
+        CrmWebsiteInquiries::advanceReadCursor($this->a->id, $lead->id, 101);
+        CrmWebsiteInquiries::advanceReadCursor($this->a->id, $lead->id, 100);
+        $this->assertSame(101, $cursor());
+
+        // والترتيبُ المعاكس يتقدّم
+        CrmWebsiteInquiries::advanceReadCursor($this->a->id, $lead->id, 150);
+        $this->assertSame(150, $cursor());
+
+        // وفتحُ الملفّ — وأحدثُ طلبٍ فيه أقدمُ من المؤشّر — لا يُرجعه
+        $this->assertLessThan(150, (int) CrmNote::max('id'));
+        $this->open($this->a, $lead);
+        $this->assertSame(150, $cursor());
+
+        // صفٌّ واحدٌ لكلّ (قارئ، عميل) — ولا يمسّ قارئًا آخر
+        $this->assertSame(1, CrmWebsiteInquiryRead::count());
+        $this->assertSame(1, CrmWebsiteInquiries::badge($this->b));
+    }
+
+    public function test_the_first_cursor_is_written_once_and_then_only_advances(): void
+    {
+        $this->inquire();
+        $lead = $this->leadOf();
+
+        CrmWebsiteInquiries::advanceReadCursor($this->a->id, $lead->id, 5);
+        CrmWebsiteInquiries::advanceReadCursor($this->a->id, $lead->id, 5);
+        CrmWebsiteInquiries::advanceReadCursor($this->a->id, $lead->id, 3);
+
+        $this->assertSame([5], CrmWebsiteInquiryRead::pluck('last_read_note_id')->map(fn ($v) => (int) $v)->all());
+    }
+
     /* ═══════════════ ٥ و٦ — العملاءُ لا الطلبات ═══════════════ */
 
     public function test_three_inquiries_from_one_lead_count_once_and_two_leads_count_two(): void
@@ -205,6 +243,51 @@ class AWebsiteInquiryWaitsUnreadInTheCrmTest extends TestCase
         // والصفحةُ تُفتح، ولا يُكتب صفُّ قراءة
         $this->open($this->a, $lead)->assertInertia(fn (Assert $p) => $p->where('websiteInquiries', []));
         $this->assertSame(0, CrmWebsiteInquiryRead::count());
+    }
+
+    public function test_a_note_with_the_right_header_but_a_broken_shape_is_not_an_inquiry(): void
+    {
+        $h = CrmWebsiteInquiries::HEADER;
+        $full = "الاسم: محمد\nاسم النشاط: ورد\nالهاتف: 91234567\nالبريد: m@example.com\nنوع النشاط: التجزئة\nلغة الصفحة: العربية";
+        $broken = [
+            'header alone' => $h,
+            'no message' => $h."\n".$full,
+            'message label, no text' => $h."\n".$full."\nالرسالة:\n",
+            'a label missing' => $h."\nالاسم: محمد\nالهاتف: 91234567\nالبريد: m@example.com\nنوع النشاط: التجزئة\nلغة الصفحة: العربية\nالرسالة:\nمرحبا",
+            'an empty value' => $h."\n".str_replace('الاسم: محمد', 'الاسم: ', $full)."\nالرسالة:\nمرحبا",
+            'labels out of order' => $h."\nاسم النشاط: ورد\nالاسم: محمد\nالهاتف: 91234567\nالبريد: m@example.com\nنوع النشاط: التجزئة\nلغة الصفحة: العربية\nالرسالة:\nمرحبا",
+            'junk on the header line' => $h." زائد\n".$full."\nالرسالة:\nمرحبا",
+        ];
+
+        $leads = [];
+        foreach (array_values($broken) as $i => $body) {
+            $lead = $this->manualLead('9689000'.(2000 + $i), Crm::SOURCE_WEBSITE);
+            CrmNote::create(['lead_id' => $lead->id, 'user_id' => null,
+                'user_name' => CrmWebsiteInquiries::AUTHOR, 'body' => $body]);
+            $leads[$lead->id] = false;
+        }
+
+        $this->assertSame(0, $this->badgeOnScreen($this->a));
+        $this->assertSame($leads, $this->rows($this->a));
+
+        foreach (array_keys($leads) as $id) {
+            $this->open($this->a, CrmLead::findOrFail($id));
+        }
+        $this->assertSame(0, CrmWebsiteInquiryRead::count());
+
+        // والشكلُ الصحيحُ نفسُه — كما يكتبه `body` — يُعدّ
+        $this->inquire();
+        $this->assertSame(1, $this->badgeOnScreen($this->a));
+    }
+
+    public function test_the_shape_is_built_from_the_constants_and_carries_no_stray_wildcard(): void
+    {
+        $shape = CrmWebsiteInquiries::inquiryShape();
+
+        $this->assertStringStartsWith(CrmWebsiteInquiries::HEADER."\n", $shape);
+        $this->assertSame(7, substr_count($shape, ': _%') + substr_count($shape, "\n_%"));
+        // وما عدا `_%` المقصودة لا محرفَ خاصًّا في `LIKE`
+        $this->assertDoesNotMatchRegularExpression('/[%_\\\\]/u', str_replace(['_%'], '', $shape));
     }
 
     /* ═══════════════ ١٠ و١١ — العميلُ اليدويّ وعميلُ واتساب ═══════════════ */

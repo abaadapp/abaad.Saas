@@ -31,6 +31,8 @@ interface Lead {
     followUpOverdue: boolean;
     preview: string | null;
     url: string;
+    /** طلبُ «تواصل معنا» لم يقرأه هذا الموظّف — يحسبه الخادم */
+    hasUnreadWebsiteInquiry: boolean;
 }
 
 interface Props {
@@ -97,7 +99,18 @@ export default function CrmLeadsIndex() {
             header: 'العميل المحتمل',
             cell: (l) => (
                 <SmartLink routeName="super-admin.crm.leads.show" href={l.url} className="block min-w-0">
-                    <div className="truncate font-medium text-[#111]">{l.name}</div>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate font-medium text-[#111]">{l.name}</span>
+                        {l.hasUnreadWebsiteInquiry && (
+                            <span
+                                data-unread-website-inquiry
+                                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#fef2f2] px-1.5 py-0.5 text-[11px] font-medium text-[#b91c1c]"
+                            >
+                                <span className="size-1.5 rounded-full bg-[#dc2626]" aria-hidden />
+                                {t('طلب موقع جديد')}
+                            </span>
+                        )}
+                    </div>
                     <div className="truncate text-[12px] text-[#6b7280]">
                         {l.businessName ? `${l.businessName} · ${l.phone}` : l.phone}
                     </div>

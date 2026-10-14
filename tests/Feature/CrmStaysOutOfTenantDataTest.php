@@ -105,6 +105,8 @@ class CrmStaysOutOfTenantDataTest extends TestCase
             base_path('app/Support/CrmWebsiteInquiries.php'),
             base_path('app/Http/Controllers/WebsiteContactController.php'),
             base_path('app/Mail/WebsiteLeadMail.php'),
+            // وما قرأه كلُّ موظّفٍ من طلبات الموقع
+            base_path('app/Models/CrmWebsiteInquiryRead.php'),
         ];
     }
 

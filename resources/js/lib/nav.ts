@@ -75,7 +75,7 @@ export interface NavItem {
      * في القائمة يقول الشيءَ نفسه أبدًا. فالحقلُ يقول «لهذا العنصر شارة»
      * والقيمةُ تأتي من الخادم في كلّ طلب.
      */
-    badge?: 'support' | 'crm';
+    badge?: 'support' | 'crm' | 'crmLeads';
     /**
      * يظهر لمن يُؤوي محلُّه هذا الشيء وحده — من `context.hosted`.
      *
@@ -373,6 +373,8 @@ export const PLATFORM_NAV: NavGroup[] = [
                 icon: Contact,
                 route: 'super-admin.crm.leads.index',
                 covers: ['super-admin.crm.leads.show'],
+                /* عملاءُ لهم طلبُ «تواصل معنا» لم يُقرأ — غيرُ شارة المحادثات */
+                badge: 'crmLeads',
             },
             /*
              * والمحادثاتُ هنا واتسابُ **المبيعات** لا مركزَ الدعم.

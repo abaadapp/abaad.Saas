@@ -196,6 +196,8 @@ export interface SharedProps {
     supportBadge: number;
     /** وعددُ محادثات المبيعات التي تنتظر ردًّا — لمدير المنصّة وحدَه */
     crmBadge: number;
+    /** وعددُ العملاء المحتملين الذين لهم طلبُ موقعٍ لم يقرأه — لمدير المنصّة وحدَه */
+    crmLeadsBadge: number;
     flash: {
         toast: Toast | null;
         status: string | null;

@@ -5,6 +5,9 @@ namespace App\Support;
 use App\Mail\WebsiteLeadMail;
 use App\Models\CrmLead;
 use App\Models\CrmNote;
+use App\Models\CrmWebsiteInquiryRead;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -294,5 +297,128 @@ final class CrmWebsiteInquiries
             'locale' => $found['locale'],
             'message' => $message === '' ? null : $message,
         ];
+    }
+
+    /* ═══════════════════ غيرُ المقروء — لكلّ قارئٍ وحدَه ═══════════════════ */
+
+    /**
+     * إعدادُ المنصّة الذي كتبه ترحيلُ الميزة: أعلى رقم ملاحظةٍ ساعتَها.
+     *
+     * وما كان عنده أو قبله مقروءٌ للجميع — الشارةُ تبدأ بما يصل بعد النشر.
+     */
+    public const UNREAD_AFTER_KEY = 'crm_website_inquiries_unread_after_note_id';
+
+    public static function unreadAfter(): int
+    {
+        return (int) DB::table('settings')->whereNull('business_id')
+            ->where('key', self::UNREAD_AFTER_KEY)->value('value');
+    }
+
+    /**
+     * ملاحظاتُ طلبات الموقع التي تُعدّ — بكاتبها وسطر عنوانها، بلا قراءة نصّها كلِّه.
+     *
+     * الكاتبُ نفسُه الذي يكتب به `receive` ويقرأ به `forLead`، وسطرُ العنوان
+     * نفسُه الذي يشترطه `parse`. فملاحظةُ موظّفٍ أو ملاحظةٌ آليّةٌ أخرى لا
+     * تُعدّ طلبًا، ولا ملاحظةٌ قديمةٌ بلا عنوان. ولا يُقرأ ما قبل الميزة.
+     *
+     * @return Builder<CrmNote>
+     */
+    public static function inquiryNotes(): Builder
+    {
+        return CrmNote::query()
+            ->whereNull('crm_notes.user_id')
+            ->where('crm_notes.user_name', self::AUTHOR)
+            ->where('crm_notes.body', 'like', self::HEADER.'%')
+            ->where('crm_notes.id', '>', self::unreadAfter());
+    }
+
+    /**
+     * شارةُ «العملاء المحتملون» — كم عميلًا له طلبُ موقعٍ لم يقرأه هذا الموظّف.
+     *
+     * عددُ العملاء لا عددُ الطلبات: من كتب ثلاثًا ولم يُفتح ملفُّه واحدٌ ينتظر،
+     * كما تعدّ `CrmWhatsApp::badge` المحادثاتِ لا الرسائل. وأخوها لا هي: تلك
+     * لواتساب في `crm_reads`، وهذه لطلبات الموقع في `crm_website_inquiry_reads`.
+     */
+    public static function badge(User $user): int
+    {
+        if (! $user->isSuperAdmin()) {
+            return 0;
+        }
+
+        return self::inquiryNotes()
+            ->whereRaw(
+                'crm_notes.id > coalesce((select r.last_read_note_id from crm_website_inquiry_reads r
+                    where r.lead_id = crm_notes.lead_id and r.user_id = ?), 0)',
+                [$user->id],
+            )
+            ->distinct()
+            ->count('crm_notes.lead_id');
+    }
+
+    /**
+     * أيُّ عملاء هذه الصفحة لهم طلبُ موقعٍ لم يقرأه هذا الموظّف — باستعلامين لا بعدد الصفوف.
+     *
+     * @param  list<int>  $leadIds
+     * @return array<int, bool>
+     */
+    public static function unreadMap(array $leadIds, User $user): array
+    {
+        if ($leadIds === []) {
+            return [];
+        }
+
+        $latest = self::inquiryNotes()
+            ->whereIn('crm_notes.lead_id', $leadIds)
+            ->groupBy('crm_notes.lead_id')
+            ->selectRaw('crm_notes.lead_id as lead_id, max(crm_notes.id) as latest')
+            ->pluck('latest', 'lead_id');
+
+        $read = CrmWebsiteInquiryRead::where('user_id', $user->id)
+            ->whereIn('lead_id', $leadIds)
+            ->pluck('last_read_note_id', 'lead_id');
+
+        $out = array_fill_keys($leadIds, false);
+
+        foreach ($latest as $leadId => $noteId) {
+            $out[(int) $leadId] = (int) $noteId > (int) ($read[$leadId] ?? 0);
+        }
+
+        return $out;
+    }
+
+    /**
+     * فُتح ملفُّ العميل: طلباتُه حتّى أحدثِها **الآن** مقروءةٌ لهذا الموظّف وحدَه.
+     *
+     * المؤشّرُ أحدثُ طلبٍ موجودٍ لحظةَ الفتح — فما يصل بعدها غيرُ مقروء. ولا
+     * يتراجع المؤشّر، ولا يُكتب صفٌّ لعميلٍ بلا طلب موقع. ولا يمسّ العميلَ ولا
+     * الملاحظةَ ولا قراءةَ واتساب.
+     */
+    public static function markRead(CrmLead $lead, User $user): void
+    {
+        $latest = (int) self::inquiryNotes()->where('crm_notes.lead_id', $lead->id)->max('crm_notes.id');
+
+        if ($latest === 0) {
+            return;
+        }
+
+        $current = (int) CrmWebsiteInquiryRead::where('user_id', $user->id)
+            ->where('lead_id', $lead->id)->value('last_read_note_id');
+
+        if ($latest <= $current) {
+            return;
+        }
+
+        // و`upsert` لا `updateOrCreate`: فتحتان متزامنتان لا تتصادمان على الفهرس الفريد
+        CrmWebsiteInquiryRead::upsert(
+            [[
+                'user_id' => $user->id,
+                'lead_id' => $lead->id,
+                'last_read_note_id' => $latest,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]],
+            ['user_id', 'lead_id'],
+            ['last_read_note_id', 'updated_at'],
+        );
     }
 }

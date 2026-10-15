@@ -47,6 +47,7 @@ class DatabaseSeeder extends Seeder
             [$branches, $employees, $products] = $p['limits'];
             $plan = Plan::create([
                 'name' => $p['name'],
+                'code' => $p['code'] ?? null,
                 'monthly_price' => $p['monthly'],
                 'yearly_price' => $p['yearly'],
                 'max_branches' => $branches,

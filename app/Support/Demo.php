@@ -44,6 +44,7 @@ use App\Models\SupportMessage;
 use App\Models\SupportRead;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Lists\SelfSignupsList;
 use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
 use Carbon\Carbon;
@@ -4010,6 +4011,38 @@ class Demo
                     'icon' => 'message-square', 'color' => 'info',
                     /* والرابطُ يفتح المحادثةَ بعينها لا القائمة */
                     'url' => route('super-admin.conversations.index', ['conversation' => $c->id]),
+                ]);
+            }
+
+            /*
+             * ومن فتح متجرَه بنفسه من الموقع — خبرٌ لكلّ مديرٍ في المنصّة.
+             *
+             * من الختم (`registration_source`) لا من السجلّ: الشركةُ التي
+             * يُضيفها مديرٌ من لوحته لا تُقرأ «تسجيلًا من الموقع». والمفتاحُ
+             * رقمُ الشركة لا اسمُها: يبقى مخفيًّا لمن أخفاه وإن تبدّل الاسم.
+             *
+             * وأيّامُه أقلُّ من عمر الإخفاء (`DISMISSAL_DAYS`): صفٌّ أُخفي لا
+             * يعود وسببُه ما زال في نافذته.
+             */
+            $signups = Business::selfSignup()
+                ->with('plan:id,name')
+                ->where('created_at', '>=', now()->subDays(SelfSignupsList::BELL_DAYS))
+                ->orderByDesc('id')->limit($limit)->get();
+
+            foreach ($signups as $b) {
+                $add('self-signup-business-'.$b->id, [
+                    'text' => __('تسجيل جديد من الموقع: :shop — :owner', [
+                        'shop' => $b->name,
+                        'owner' => $b->owner_name ?: '—',
+                    ]),
+                    'time' => implode(' · ', array_filter([
+                        $b->created_at?->diffForHumans(),
+                        // اسمُ الباقة بلغة القارئ — كما تترجمه الواجهةُ في جدول الشركات
+                        $b->plan ? __($b->plan->name) : null,
+                        $b->ends_at ? __('تجربة حتى :date', ['date' => $b->ends_at->format('d-m-Y')]) : null,
+                    ])),
+                    'icon' => 'user-plus', 'color' => 'success',
+                    'url' => route('super-admin.businesses.show', $b->id),
                 ]);
             }
 

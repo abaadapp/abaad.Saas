@@ -7,6 +7,14 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Plan extends Model
 {
+    /**
+     * رمزُ الباقة الأساسيّة — ثابتٌ لا يغيّره اسمُها.
+     *
+     * والتسجيلُ الذاتيّ يقرؤه وحده (`Signup::plan`): الاسمُ يُعدَّل من شاشة
+     * الباقات، والرمزُ لا يكتبه إلّا الترحيلُ والبذور.
+     */
+    public const CODE_BASIC = 'basic';
+
     protected $guarded = [];
 
     protected $casts = ['features' => 'array', 'capabilities' => 'array', 'is_popular' => 'boolean', 'monthly_price' => 'decimal:3', 'yearly_price' => 'decimal:3'];

@@ -65,6 +65,16 @@ class BusinessController extends Controller
             'options' => PageController::filterOptions($request),
             /* بابُ أرشيفات الحذف — يُرسم إن كان المفتاح مفتوحًا على هذا الخادم */
             'purge' => \App\Support\BusinessPurge::enabled(),
+            /*
+             * قسمُ «التسجيلات من الموقع» فوق الجدول — صفوفُ الشركات نفسُها.
+             *
+             * لا يتبع بحثَ الجدول ولا ترشيحَه: قسمٌ ثابتٌ يقول ما وصل من الموقع،
+             * و«عرض الكل» يفتح صفحتَه بترشيحها هي.
+             */
+            'selfSignups' => [
+                'stats' => \App\Support\Lists\SelfSignupsList::stats(),
+                'recent' => \App\Support\Lists\SelfSignupsList::recent(),
+            ],
         ]);
     }
 
@@ -104,6 +114,9 @@ class BusinessController extends Controller
                 $data['ends_at'] = $starts->copy()->addDays($days)->toDateString();
             }
         }
+
+        // بابُ الإنشاء يختمه الخادم — `validateData` لا يقبله من الطلب
+        $data['registration_source'] = Business::SOURCE_PLATFORM_MANUAL;
 
         $business = Business::create($data);
         $owner = \App\Support\MerchantAccount::create($business, $account['login_username'], $account['login_password']);

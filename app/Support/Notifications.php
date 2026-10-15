@@ -70,6 +70,8 @@ class Notifications
         'support-reply-' => [self::INFO, self::AUTO],
         'support-' => [self::INFO, self::AUTO],
         'sub-' => [self::INFO, self::MANUAL],
+        // تسجيلٌ ذاتيٌّ من الموقع — خبرٌ لمدير المنصّة يُقرأ ويُخفى، لا شيءَ يُنجَز
+        'self-signup-business-' => [self::INFO, self::MANUAL],
         'gbp-review-' => [self::TASK, self::MANUAL],
         'wa-delivery' => [self::TASK, self::AUTO],
         'daily-' => [self::INFO, self::MANUAL],

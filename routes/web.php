@@ -322,6 +322,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/businesses/purges', [SuperAdminPageController::class, 'businessesPurges'])->name('businesses.purges');
     Route::get('/businesses/purges/{runId}/download', [BusinessController::class, 'purgeDownload'])->name('businesses.purgeDownload');
     Route::get('/businesses/create', [SuperAdminPageController::class, 'businessesCreate'])->name('businesses.create');
+    // التسجيلاتُ الذاتيّة — بلا بابٍ في الشريط، تُبلغ من قسمها في صفحة الشركات (و`{id}` رقميٌّ فلا يلتقطها)
+    Route::get('/businesses/self-signups', [\App\Http\Controllers\SuperAdmin\SelfSignupController::class, 'index'])->name('businesses.self-signups.index');
     Route::post('/businesses', [BusinessController::class, 'store'])->name('businesses.store');
     Route::get('/businesses/{id}', [SuperAdminPageController::class, 'businessesShow'])->name('businesses.show');
     Route::get('/businesses/{id}/edit', [SuperAdminPageController::class, 'businessesEdit'])->name('businesses.edit');

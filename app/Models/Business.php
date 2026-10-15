@@ -49,6 +49,23 @@ class Business extends Model
         'identity_confirmed_at',
     ];
 
+    /* ═══ بابُ الإنشاء — انظر هجرة `a_business_remembers_how_it_was_opened` ═══ */
+
+    /** فتحها صاحبُها بنفسه من صفحة التسجيل (`Support\Signup`) */
+    public const SOURCE_SELF_SIGNUP = 'self_signup';
+
+    /** أضافها مديرُ المنصّة من لوحته (`SuperAdmin\BusinessController::store`) */
+    public const SOURCE_PLATFORM_MANUAL = 'platform_manual';
+
+    /** وما سواهما فارغ: شركاتُ ما قبل الختم، والتجريبيّة، والبذور — لا تُخمَّن */
+    public const SOURCES = [self::SOURCE_SELF_SIGNUP, self::SOURCE_PLATFORM_MANUAL];
+
+    /** ما فتحه أصحابُه بأنفسهم — من متاجر التجّار وحدها */
+    public function scopeSelfSignup($query)
+    {
+        return $query->real()->where('registration_source', self::SOURCE_SELF_SIGNUP);
+    }
+
     /** متاجر التجّار وحدها — ما تُبنى عليه إحصاءات المنصّة وتقاريرها */
     public function scopeReal($query)
     {

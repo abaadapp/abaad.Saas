@@ -21,17 +21,29 @@ use Illuminate\Support\Facades\DB;
  * فيقع الثلاثةُ في معاملةٍ واحدة، وتُقرأ من موضعٍ واحدٍ يختبره اختبار — لا
  * موزَّعةً في متحكّمٍ يصعب تشغيلُه بلا طلبِ HTTP.
  *
- * ═══ وهو الطريقُ نفسُه الذي تسلكه المنصّة ═══
+ * ═══ وهو الطريقُ نفسُه الذي تسلكه المنصّة — إلّا في الباقة ═══
  *
- * `SuperAdmin\BusinessController::store` يفعل هذا بعينه: باقةٌ افتراضيّةٌ من
- * إعدادات المنصّة، ومدّةُ تجربةٍ منها، ثمّ `MerchantAccount` ثمّ
- * `BusinessTypes::provision`. فلا مسارَ ثانٍ لإنشاء المستأجرين يفترق عن
+ * `SuperAdmin\BusinessController::store` يُنشئ بالأفعال نفسِها: `MerchantAccount`
+ * ثمّ `BusinessTypes::provision`. فلا مسارَ ثانٍ لإنشاء المستأجرين يفترق عن
  * الأوّل عند أوّل حقلٍ يُضاف.
+ *
+ * ويفترقان في الباقة وحدها، عمدًا: المشغّلُ يختار لمن يُضيفه باقتَه ومدّتَه
+ * (وافتراضيُّهما من إعدادات المنصّة)، والمسجِّلُ بنفسه عقدُه ثابت — الأساسيّةُ
+ * وأربعة عشر يومًا — لا يتبدّل بتغيير `default_plan` أو `trial_days`. انظر
+ * `subscription()`.
  */
 class Signup
 {
     /** مفتاحُ فتح الباب في إعدادات المنصّة */
     public const SWITCH = 'self_signup';
+
+    /**
+     * أيّامُ تجربة المسجِّل بنفسه — عقدٌ لا إعداد.
+     *
+     * وهي تُقرأ كما يقرأ `Tenancy` كلَّ تجربة: `ends_at` بعد أربعة عشر يومًا
+     * من يوم التسجيل، ويبقى يومُ الانتهاء نفسُه مفتوحًا (`Tenancy::expired`).
+     */
+    public const TRIAL_DAYS = 14;
 
     /** مفتاحُ حجم الفريق في إعدادات المتجر */
     public const TEAM_SIZE = 'team_size';
@@ -83,7 +95,10 @@ class Signup
      */
     public static function register(array $data): User
     {
-        return DB::transaction(function () use ($data) {
+        // الباقةُ تُطلب قبل المعاملة: لا باقةَ أساسيّةً مؤكَّدة ← لا شيءَ يُكتب أصلًا
+        $plan = self::plan();
+
+        return DB::transaction(function () use ($data, $plan) {
             $business = Business::create([
                 'name' => trim($data['shop']),
                 'type' => $data['type'],
@@ -92,7 +107,9 @@ class Signup
                 'email' => mb_strtolower(trim($data['email'])),
                 'address' => filled($data['address'] ?? null) ? trim((string) $data['address']) : null,
                 'status' => 'نشط',
-            ] + self::subscription());
+                // الخادمُ يختم البابَ — لا حقلَ في الطلب يكتبه
+                'registration_source' => Business::SOURCE_SELF_SIGNUP,
+            ] + self::subscription($plan));
 
             $owner = MerchantAccount::provision(
                 $business,
@@ -134,33 +151,42 @@ class Signup
     }
 
     /**
-     * الباقةُ ومدّةُ التجربة — من إعدادات المنصّة كما يفعل بابُ المشغّل.
+     * باقةُ المسجِّل بنفسه — الأساسيّةُ برمزها، أو لا تسجيل.
+     *
+     * ═══ ولمَ لا `default_plan` ═══
+     *
+     * كان يُقرأ إعدادُ المنصّة بالاسم — وهو فارغٌ افتراضًا، فيُفتح المتجرُ بلا
+     * باقة؛ وإن ضُبط على «الاحترافيّة» لمن يُضيفه المشغّل صار كلُّ مسجِّلٍ
+     * بنفسه احترافيًّا. والتسجيلُ الذاتيّ لا يبيع إلّا الأساسيّة.
+     *
+     * ═══ ولا بديل ═══
+     *
+     * لا باقةَ برمز `basic` (انظر هجرة `a_plan_has_a_code…`) ← يُرفض التسجيلُ
+     * برسالةٍ صريحة، ولا يُختار أرخصُ سعرٍ ولا أوّلُ رقمٍ ولا اسمٌ يشبهها:
+     * متجرٌ على باقةٍ خاطئة يفتح لصاحبه ما لم يُبَع له، ولا يلاحظه أحد.
+     */
+    public static function plan(): Plan
+    {
+        return Plan::where('code', Plan::CODE_BASIC)->first()
+            ?? throw new SelfSignupPlanMissing;
+    }
+
+    /**
+     * الباقةُ ومدّةُ التجربة — عقدُ التسجيل الذاتيّ لا إعداداتُ المنصّة.
      *
      * ومتجرٌ بلا تاريخ انتهاءٍ يعمل إلى الأبد: لا تجربةَ تنتهي ولا مطالبةَ
      * تحلّ. ومتجرٌ بلا باقةٍ يبقى بلا سعرٍ ولا فاتورة.
      *
      * @return array<string, mixed>
      */
-    private static function subscription(): array
+    private static function subscription(Plan $plan): array
     {
-        $out = [];
-
-        $plan = trim((string) Tenancy::platform('default_plan', ''));
-
-        if ($plan !== '') {
-            // ولا تُخترع باقة: اسمٌ لا يطابق شيئًا يُترك فارغًا كما في باب المشغّل
-            $out['plan_id'] = Plan::where('name', $plan)->value('id') ?: null;
-        }
-
-        $days = (int) Tenancy::platform('trial_days', 14);
         $starts = Carbon::now();
 
-        $out['starts_at'] = $starts->toDateString();
-
-        if ($days > 0) {
-            $out['ends_at'] = $starts->copy()->addDays($days)->toDateString();
-        }
-
-        return $out;
+        return [
+            'plan_id' => $plan->id,
+            'starts_at' => $starts->toDateString(),
+            'ends_at' => $starts->copy()->addDays(self::TRIAL_DAYS)->toDateString(),
+        ];
     }
 }

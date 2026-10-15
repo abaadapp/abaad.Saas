@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Business;
 use App\Models\Category;
+use App\Models\Plan;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\Signup;
@@ -37,6 +38,9 @@ class AShopIsOpenedByItsOwnerTest extends TestCase
         parent::setUp();
         app()->setLocale('ar');
         RateLimiter::clear('signup:127.0.0.1');
+
+        // الباقةُ الأساسيّة برمزها — بدونها يُرفض التسجيلُ الذاتيّ صراحةً (`Signup::plan`)
+        Plan::create(['name' => 'الباقة الأساسية', 'code' => Plan::CODE_BASIC, 'monthly_price' => 9.9, 'yearly_price' => 99]);
     }
 
     /** بيانٌ كاملٌ صالح — وما يفترق بين اختبارٍ وآخر يُمرَّر */

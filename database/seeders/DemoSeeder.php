@@ -72,6 +72,7 @@ class DemoSeeder extends Seeder
             $lim = $p['limits'];
             $plan = Plan::create([
                 'name' => $p['name'],
+                'code' => $p['code'] ?? null,
                 'monthly_price' => $p['monthly'],
                 'yearly_price' => $p['yearly'],
                 'max_branches' => $lim[0],

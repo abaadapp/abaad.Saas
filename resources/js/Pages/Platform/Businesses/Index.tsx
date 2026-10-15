@@ -13,6 +13,7 @@ import { number } from '@/lib/format';
 import { isDisabled } from '@/lib/tenancy';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
+import SelfSignupsSection, { type SelfSignupRow, type SelfSignupStats } from './partials/SelfSignupsSection';
 
 interface BusinessRow {
     id: number;
@@ -46,10 +47,12 @@ interface Props {
     options: { types: string[]; statuses: string[]; plans: string[] };
     /** أمفتوحٌ بابُ الحذف النهائيّ؟ — فيُعرض بابُ أرشيفاته */
     purge: boolean;
+    /** قسمُ «التسجيلات من الموقع» — `SelfSignupsList` */
+    selfSignups: { stats: SelfSignupStats; recent: SelfSignupRow[] };
 }
 
 export default function BusinessesIndex() {
-    const { businesses, pagination, filters, sorts, options, purge } = usePage<PageProps<Props>>().props;
+    const { businesses, pagination, filters, sorts, options, purge, selfSignups } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const columns: Column<BusinessRow>[] = [
@@ -287,6 +290,9 @@ export default function BusinessesIndex() {
                     </>
                 }
             />
+
+            {/* قسمٌ ثانٍ فوق الجدول — والجدولُ تحته كما هو */}
+            <SelfSignupsSection stats={selfSignups.stats} recent={selfSignups.recent} />
 
             <DataTable
                 rows={businesses}

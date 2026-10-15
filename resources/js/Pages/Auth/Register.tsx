@@ -24,6 +24,8 @@ interface Props {
     activities: Activity[];
     teamSizes: { value: string; label: string }[];
     year: number;
+    /** عقدُ التجربة من الخادم (`Signup::TRIAL_DAYS` واسمُ الباقة برمزها) — لا نصٌّ هنا */
+    trial?: { days: number; plan: string | null };
 }
 
 /** ما يُحفظ بين تحديثٍ وآخر — ولا كلمةَ مرورٍ فيه، انظر `KEEP` أدناه */
@@ -62,7 +64,7 @@ const STORE_KEY = 'abaad.signup.draft';
  * إطلاقًا — `KEEP` تعدّ ما يُحفظ اسمًا اسمًا، فحقلٌ يُضاف لا يتسلّل إليها.
  */
 export default function Register() {
-    const { activities, teamSizes, year, errors } = usePage<PageProps<Props>>().props;
+    const { activities, teamSizes, year, trial, errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const form = useForm({
@@ -215,7 +217,9 @@ export default function Register() {
     };
 
     /* أخطاءُ الخادم تقع كلُّها على الخطوة الأخيرة — وهي وحدها التي تُرسِل */
-    const failure = errors.email ?? errors.password ?? errors.shop ?? errors.type ?? errors.phone ?? errors.name;
+    // و`signup`: البابُ نفسُه متوقّف (لا باقةَ أساسيّة) — لا خطأَ في حقلٍ كتبه
+    const failure =
+        errors.signup ?? errors.email ?? errors.password ?? errors.shop ?? errors.type ?? errors.phone ?? errors.name;
 
     useEffect(() => {
         if (failure) {
@@ -488,6 +492,16 @@ export default function Register() {
                                 </li>
                             ))}
                         </ul>
+
+                        {/*
+                            ما يبدأ به الحساب — سطرٌ يُقرأ لا خيارٌ يُختار: التسجيلُ
+                            الذاتيّ على الأساسيّة وحدها. وبلا باقةٍ مؤكَّدة لا يُقال شيء.
+                        */}
+                        {trial?.plan && (
+                            <p data-trial-note className="rounded-[10px] bg-[#f5f5f4] px-3 py-2.5 text-[12.5px] text-[#4b4b4b]">
+                                {t('تجربة مجانية لمدة :days يومًا على :plan', { days: trial.days, plan: t(trial.plan) })}
+                            </p>
+                        )}
                     </div>
                 )}
 

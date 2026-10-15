@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Plan;
 use App\Support\Activity;
 use App\Support\BusinessTypes;
 use App\Support\PosTerminal;
+use App\Support\SelfSignupPlanMissing;
 use App\Support\Signup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -44,6 +47,15 @@ class RegisterController extends Controller
             'activities' => BusinessTypes::options(),
             'teamSizes' => array_map(fn (string $s) => ['value' => $s, 'label' => __($s)], Signup::TEAM_SIZES),
             'year' => (int) now()->format('Y'),
+            /*
+             * ما يُقال عن التجربة قبل الإرسال — من العقد نفسِه لا من نصٍّ في
+             * الواجهة. والاسمُ قراءةٌ لا تثبيت: بلا باقةٍ برمزها لا يُقال
+             * شيء، ويُردّ الإرسالُ صراحةً في `store`.
+             */
+            'trial' => [
+                'days' => Signup::TRIAL_DAYS,
+                'plan' => Plan::where('code', Plan::CODE_BASIC)->value('name'),
+            ],
         ]);
     }
 
@@ -108,7 +120,19 @@ class RegisterController extends Controller
             'password.min' => __('كلمة المرور ثمانية أحرف على الأقل.'),
         ]);
 
-        $owner = Signup::register($data);
+        try {
+            $owner = Signup::register($data);
+        } catch (SelfSignupPlanMissing $e) {
+            /*
+             * لا باقةَ أساسيّةً برمزها — فلا متجر، ورسالةٌ لا تدّعي خطأً في
+             * حقلٍ كتبه. والسجلُّ لمن يدير المنصّة: البابُ واقفٌ حتى تُثبَّت.
+             */
+            Log::error('self-signup refused: '.$e->getMessage());
+
+            throw ValidationException::withMessages([
+                'signup' => __('التسجيل غير متاح الآن. تواصل مع فريق أبعاد وسنفتح حسابك.'),
+            ]);
+        }
 
         RateLimiter::clear($key);
 
@@ -122,6 +146,14 @@ class RegisterController extends Controller
         Auth::login($owner);
         $request->session()->regenerate();
         PosTerminal::rememberBusiness($owner->business_id);
+
+        /*
+         * وهو دخولٌ كدخول كلمة المرور — يُختم كما يختمه `LoginController`.
+         *
+         * بلا ختمٍ يبقى «آخر دخول» للمالك فارغًا وهو يعمل في لوحته منذ ساعة،
+         * فتقرأ قائمةُ التسجيلات الذاتيّة «لم يدخل قطّ» عمّن لم يخرج بعد.
+         */
+        $owner->forceFill(['last_login_at' => now()])->save();
 
         Activity::log('login', 'دخل بعد التسجيل: '.$owner->email, ['business_id' => $owner->business_id]);
 

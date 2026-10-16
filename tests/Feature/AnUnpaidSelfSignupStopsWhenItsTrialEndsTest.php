@@ -40,8 +40,9 @@ use Tests\TestCase;
  *     ولا يُطرد، ولا يُعطَّل متجرُه ولا يُمحى منه شيء.
  *  ٣. من سجّل بنفسه ثمّ سُدِّد له اشتراكٌ صار عميلًا يدفع: مهلتُه مهلةُ
  *     العملاء. وحزمةُ رسائلَ مدفوعة ليست اشتراكًا مدفوعًا.
- *  ٤. اليدويّ والقديم والتجريبيّ، و`auto_suspend`، والدخولُ باسم التاجر —
- *     كما كانت بحرفها.
+ *  ٤. اليدويّ والقديم والتجريبيّ، والدخولُ باسم التاجر — كما كانت بحرفها.
+ *  ٥. إطفاءُ `auto_suspend` لا يمدّ تجربةً لم تُدفع: تُقفل في يومها التالي.
+ *     ويبقى المقبضُ لغيرها كما كان — اليدويّ والقديم ومن دفع.
  */
 class AnUnpaidSelfSignupStopsWhenItsTrialEndsTest extends TestCase
 {
@@ -267,20 +268,59 @@ class AnUnpaidSelfSignupStopsWhenItsTrialEndsTest extends TestCase
         $this->assertFalse(Tenancy::locked($owner->business->fresh()));
     }
 
-    public function test_auto_suspend_off_keeps_its_policy_for_everyone(): void
+    /* ═══════════════ ٥ · وإطفاءُ الإقفال التلقائيّ ═══════════════ */
+
+    public function test_an_unpaid_self_signup_is_locked_after_its_trial_even_with_auto_suspend_off(): void
     {
         $owner = $this->signup();
         $this->platform('auto_suspend', '0');
 
-        $this->onDay(15);
-
-        /* المقبضُ مطفأ: لا إقفالَ تلقائيّ لأحد — والشريطُ لا يعدّ مهلةً لا وجود لها */
+        /* يومُ الانتهاء نفسُه ما زال يعمل — `expired` لم تتغيّر */
+        $this->onDay(14);
         $this->assertFalse(Tenancy::locked($owner->business->fresh()));
-        $props = $this->actingAs($owner)->get(route('admin.dashboard'))->assertOk()->viewData('page')['props'];
-        $this->assertSame(0, $props['context']['subscription']['graceLeft']);
+        $this->actingAs($owner)->get(route('admin.dashboard'))->assertOk();
 
-        $manual = $this->shop(Business::SOURCE_PLATFORM_MANUAL, 30);
-        $this->actingAs($manual)->get(route('admin.dashboard'))->assertOk();
+        /* والذي يليه مقفل: المقبضُ المطفأ لا يمدّ تجربةً لم تُدفع */
+        $this->onDay(15);
+        $this->assertTrue(Tenancy::locked($owner->business->fresh()));
+        $this->assertSame(Tenancy::SUBSCRIPTION_EXPIRED, Tenancy::blockReason($owner->fresh()));
+        $this->actingAs($owner)->get(route('admin.dashboard'))->assertRedirect(route('subscription.expired'));
+        $this->actingAs($owner)->get(route('pos.index'))->assertRedirect(route('subscription.expired'));
+        $this->assertAuthenticatedAs($owner);
+        $this->assertSame('نشط', $owner->business->fresh()->status);
+    }
+
+    public function test_a_manual_or_legacy_business_with_auto_suspend_off_is_never_locked_as_before(): void
+    {
+        $this->platform('auto_suspend', '0');
+
+        foreach ([Business::SOURCE_PLATFORM_MANUAL, null] as $source) {
+            /* بعد المهلة بزمن: المقبضُ مطفأ، فلا إقفالَ تلقائيّ — كما كان */
+            $owner = $this->shop($source, 30);
+            $this->assertFalse(Tenancy::locked($owner->business), (string) $source);
+            $this->actingAs($owner)->get(route('admin.dashboard'))->assertOk();
+        }
+    }
+
+    public function test_a_paid_self_signup_with_auto_suspend_off_follows_the_platform_policy(): void
+    {
+        $owner = $this->signup();
+
+        $this->onDay(15);
+        ['invoice' => $invoice] = Billing::renew($owner->business->fresh(), 'monthly');
+        Billing::markPaid($invoice);
+        $paid = $owner->business->fresh();
+        $this->assertFalse(Tenancy::isUnpaidSelfSignup($paid));
+
+        /* انتهى اشتراكُه المدفوع ومضت مهلتُه — والمقبضُ المطفأ يُبقيه يعمل كأيّ عميلٍ يدفع */
+        $this->travelTo($paid->ends_at->copy()->addDays(30)->setTime(10, 0));
+        $this->platform('auto_suspend', '0');
+        $this->assertFalse(Tenancy::locked($paid->fresh()));
+        $this->actingAs($owner->fresh())->get(route('admin.dashboard'))->assertOk();
+
+        /* والمقبضُ مشغَّل: يُقفل بعد المهلة كأيّ عميلٍ يدفع */
+        $this->platform('auto_suspend', '1');
+        $this->assertTrue(Tenancy::locked($paid->fresh()));
     }
 
     public function test_the_platform_still_enters_a_locked_self_signup_as_its_merchant(): void

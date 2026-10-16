@@ -108,27 +108,36 @@ class Tenancy
     }
 
     /**
+     * تجربةٌ ذاتيّةٌ مجّانيّة لم تُدفع؟ — أربعةَ عشر يومًا، لا يومَ بعدها.
+     *
+     * من فتح متجره بنفسه من `/register` (متجرٌ حقيقيّ لا تجريبيّ) ولم
+     * يُسدَّد له اشتراكٌ قطّ (`Billing::hasPaidSubscription`). مدّتُه
+     * `Signup::TRIAL_DAYS` بحرفها: لا مهلةَ بعدها (`graceDaysFor`)، ولا يُبقيه
+     * إطفاءُ الإقفال التلقائيّ يعمل (`locked`).
+     *
+     * وما سواه كما كان: اليدويّ والقديم (`registration_source` فارغ)
+     * والتجريبيّ، ومن سجّل بنفسه ثمّ دفع اشتراكًا — هذا عميلٌ يدفع، ومهلتُه
+     * وإقفالُه مهلةُ العملاء وإقفالُهم.
+     */
+    public static function isUnpaidSelfSignup(?Business $business): bool
+    {
+        return $business !== null
+            && $business->registration_source === Business::SOURCE_SELF_SIGNUP
+            && ! $business->is_demo
+            && ! Billing::hasPaidSubscription($business);
+    }
+
+    /**
      * مهلةُ هذا المتجر بعينه — العامّةُ، إلّا لتجربةٍ ذاتيّةٍ لم تُدفع.
      *
-     * المهلةُ وُضعت لعميلٍ يدفع كي لا يقف صندوقُه لتأخّر حوالة. ومن فتح
-     * متجره بنفسه من `/register` ولم يُسدَّد له اشتراكٌ قطّ لم يدفع شيئًا
-     * تتأخّر حوالتُه: تجربتُه أربعةَ عشر يومًا (`Signup::TRIAL_DAYS`)، وبالمهلة
-     * العامّة صارت واحدًا وعشرين. فلا مهلةَ له — ويُقفل حيث تقول `expired`.
-     *
-     * وما سواه كما كان بحرفه: اليدويّ والقديم (`registration_source` فارغ)
-     * والتجريبيّ، ومن سجّل بنفسه ثمّ دفع اشتراكًا (`Billing::hasPaidSubscription`)
-     * — هذا عميلٌ يدفع، ومهلتُه مهلةُ العملاء.
+     * المهلةُ وُضعت لعميلٍ يدفع كي لا يقف صندوقُه لتأخّر حوالة. والتجربةُ
+     * الذاتيّة غيرُ المدفوعة لم يدفع صاحبُها شيئًا تتأخّر حوالتُه: بالمهلة
+     * العامّة صارت أربعةُ عشر يومًا واحدًا وعشرين. فلا مهلةَ لها — وتُقفل
+     * حيث تقول `expired`.
      */
     public static function graceDaysFor(?Business $business): int
     {
-        if ($business !== null
-            && $business->registration_source === Business::SOURCE_SELF_SIGNUP
-            && ! $business->is_demo
-            && ! Billing::hasPaidSubscription($business)) {
-            return 0;
-        }
-
-        return self::graceDays();
+        return self::isUnpaidSelfSignup($business) ? 0 : self::graceDays();
     }
 
     /** إعدادٌ من إعدادات المنصة (business_id = null) */
@@ -167,6 +176,28 @@ class Tenancy
     public static function locked(?Business $business): bool
     {
         /*
+         * ما لم ينتهِ لا يُقفل — ولا يُسأل عن شيءٍ بعده.
+         *
+         * المهلةُ لا تقلّ عن صفر، فـ`locksAt` لا يسبق نهايةَ يوم الانتهاء: هذا
+         * لا يغيّر جوابًا. وإنّما يُغني متجرًا في اشتراكه عن سؤال الفواتير
+         * (`isUnpaidSelfSignup`) مع كلّ طلب.
+         */
+        if (! self::expired($business)) {
+            return false;
+        }
+
+        /*
+         * والتجربةُ الذاتيّة غيرُ المدفوعة تقف حين تنتهي — ولو أُطفئ الإقفال.
+         *
+         * إطفاءُ `auto_suspend` قرارُ المشغّل أن يتابع عملاءه بيده قبل أن
+         * يقف صندوقُ أحدهم. ومن لم يدفع شيئًا ليس عميلًا يُتابَع: تجربتُه أربعةَ
+         * عشر يومًا بحرفها. ومن دفع بعدها خرج من هذا وتبع المقبضَ كغيره.
+         */
+        if (self::isUnpaidSelfSignup($business)) {
+            return true;
+        }
+
+        /*
          * الإقفال التلقائي مقبضٌ للمشغّل.
          *
          * كان «تعطيل الحساب تلقائيًا عند انتهاء المهلة» مربّعًا في إعدادات
@@ -174,17 +205,6 @@ class Tenancy
          * يدوية: تنبيهاتٌ تُرسل ومتاجر تعمل حتى يُقفلها المشغّل بنفسه.
          */
         if ((string) self::platform('auto_suspend', '1') === '0') {
-            return false;
-        }
-
-        /*
-         * وما لم ينتهِ لا يُقفل — والمهلةُ لا تُسأل عنه.
-         *
-         * المهلةُ لا تقلّ عن صفر، فـ`locksAt` لا يسبق نهايةَ يوم الانتهاء: هذا
-         * لا يغيّر جوابًا. وإنّما يُغني متجرًا في اشتراكه عن سؤال الفواتير
-         * (`graceDaysFor`) مع كلّ طلب.
-         */
-        if (! self::expired($business)) {
             return false;
         }
 

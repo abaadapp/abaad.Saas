@@ -107,6 +107,30 @@ class Tenancy
         return max(0, (int) self::platform('grace_days', 7));
     }
 
+    /**
+     * مهلةُ هذا المتجر بعينه — العامّةُ، إلّا لتجربةٍ ذاتيّةٍ لم تُدفع.
+     *
+     * المهلةُ وُضعت لعميلٍ يدفع كي لا يقف صندوقُه لتأخّر حوالة. ومن فتح
+     * متجره بنفسه من `/register` ولم يُسدَّد له اشتراكٌ قطّ لم يدفع شيئًا
+     * تتأخّر حوالتُه: تجربتُه أربعةَ عشر يومًا (`Signup::TRIAL_DAYS`)، وبالمهلة
+     * العامّة صارت واحدًا وعشرين. فلا مهلةَ له — ويُقفل حيث تقول `expired`.
+     *
+     * وما سواه كما كان بحرفه: اليدويّ والقديم (`registration_source` فارغ)
+     * والتجريبيّ، ومن سجّل بنفسه ثمّ دفع اشتراكًا (`Billing::hasPaidSubscription`)
+     * — هذا عميلٌ يدفع، ومهلتُه مهلةُ العملاء.
+     */
+    public static function graceDaysFor(?Business $business): int
+    {
+        if ($business !== null
+            && $business->registration_source === Business::SOURCE_SELF_SIGNUP
+            && ! $business->is_demo
+            && ! Billing::hasPaidSubscription($business)) {
+            return 0;
+        }
+
+        return self::graceDays();
+    }
+
     /** إعدادٌ من إعدادات المنصة (business_id = null) */
     public static function platform(string $key, $default = null)
     {
@@ -127,10 +151,10 @@ class Tenancy
         return (string) self::platform('maintenance_mode', '0') === '1';
     }
 
-    /** آخر لحظةٍ يعمل فيها المتجر — نهاية الاشتراك زائدَ المهلة */
+    /** آخر لحظةٍ يعمل فيها المتجر — نهاية الاشتراك زائدَ مهلتِه (`graceDaysFor`) */
     public static function locksAt(?Business $business): ?Carbon
     {
-        return $business?->ends_at?->endOfDay()->addDays(self::graceDays());
+        return $business?->ends_at?->endOfDay()->addDays(self::graceDaysFor($business));
     }
 
     /**
@@ -150,6 +174,17 @@ class Tenancy
          * يدوية: تنبيهاتٌ تُرسل ومتاجر تعمل حتى يُقفلها المشغّل بنفسه.
          */
         if ((string) self::platform('auto_suspend', '1') === '0') {
+            return false;
+        }
+
+        /*
+         * وما لم ينتهِ لا يُقفل — والمهلةُ لا تُسأل عنه.
+         *
+         * المهلةُ لا تقلّ عن صفر، فـ`locksAt` لا يسبق نهايةَ يوم الانتهاء: هذا
+         * لا يغيّر جوابًا. وإنّما يُغني متجرًا في اشتراكه عن سؤال الفواتير
+         * (`graceDaysFor`) مع كلّ طلب.
+         */
+        if (! self::expired($business)) {
             return false;
         }
 

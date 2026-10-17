@@ -1,0 +1,12 @@
+# مخرجاتُ البناء — تُولَّد ولا تُودَع
+.build/
+DerivedData/
+xcuserdata/
+.swiftpm/
+
+# المشروعُ يولّده XcodeGen من project.yml
+*.xcodeproj/
+*.xcworkspace/
+
+# عنوانُ الخادم وفريقُ التوقيع لكلّ مطوّر — انظر Config/Abaad.local.xcconfig.example
+Config/Abaad.local.xcconfig

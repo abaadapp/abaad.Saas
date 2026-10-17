@@ -87,8 +87,18 @@ class DocumentTemplates
              * انظر `DocumentRenderer::speak`.
              */
             'localized' => true,
+            /*
+             * والشعارُ ظاهرٌ افتراضًا — لمن حفظ شعارًا.
+             *
+             * كان مطفأً هنا وحده بين الأوراق كلِّها، فتاجرٌ رفع شعارَه لا
+             * يراه على إيصاله ولا على فاتورته حتى يجد المقبضَ في «قوالب
+             * الأوراق» ويُشعله — ولا شيءَ يقول له إنّه هناك. وإخفاءُ شعارٍ
+             * لم يطلب أحدٌ إخفاءه أسوأ من إظهاره (`partials/identity`).
+             * ومن حفظ «مطفأ» يبقى مطفأً: الافتراضُ لمن لم يحفظ شيئًا.
+             * ومتجرٌ بلا شعار لا يُرسم له شيء — الشرطُ في القالب.
+             */
             'fields' => [
-                'show_logo' => false, 'show_branch' => true, 'show_employee' => true,
+                'show_logo' => true, 'show_branch' => true, 'show_employee' => true,
                 'show_customer' => true, 'show_datetime' => true, 'show_items_count' => true,
                 'show_vat_no' => false, 'show_qr' => true,
                 // والهاتفُ كان يُطبع دائمًا — فيبقى ظاهرًا لمن لم يُطفئه

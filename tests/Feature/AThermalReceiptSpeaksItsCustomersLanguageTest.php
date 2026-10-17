@@ -10,6 +10,7 @@ use App\Models\OrderItem;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\DocumentTemplates;
+use App\Support\InvoiceBranding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -158,14 +159,19 @@ class AThermalReceiptSpeaksItsCustomersLanguageTest extends TestCase
 
     public function test_the_logo_follows_its_knob(): void
     {
-        // والشعارُ مسارُ ملفٍّ في العمود — والنموذجُ يقرؤه رابطًا (`Business::getLogoAttribute`)
+        /*
+         * والشعارُ مسارُ ملفٍّ في العمود، ويبلغ الإيصالَ مُضمَّنًا (`InvoiceBranding::logo`) —
+         * لا رابطًا نسبيًّا لا يقرؤه mpdf. انظر `AThermalReceiptPrintsTheShopsLogoTest`.
+         */
         Storage::fake('public');
         Storage::disk('public')->put('logos/ribbon.png', 'PNG');
         DB::table('businesses')->where('id', $this->shop->id)->update(['logo' => 'logos/ribbon.png']);
         $this->order->unsetRelation('business');
 
-        $this->assertStringContainsString('logos/ribbon.png', $this->raw(['show_logo' => true]));
-        $this->assertStringNotContainsString('logos/ribbon.png', $this->raw(['show_logo' => false]));
+        $printable = (string) InvoiceBranding::logo($this->shop->id);
+        $this->assertStringStartsWith('data:', $printable);
+        $this->assertStringContainsString('<img src="'.$printable.'"', $this->raw(['show_logo' => true]));
+        $this->assertStringNotContainsString('<img', $this->raw(['show_logo' => false]));
     }
 
     /** والهاتفُ والموقعُ بمقبضيهما — من ملفّ المتجر لا من نصٍّ يُكتب */

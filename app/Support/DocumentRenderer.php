@@ -359,6 +359,16 @@ class DocumentRenderer
             /* وعملةُ الورقة من لقطتها إن كانت مختومة — انظر `Document\Snapshot` */
             'currency' => Snapshot::currency($snapshot) ?: Money::of($businessId),
             'seller' => Snapshot::seller($snapshot),
+            /*
+             * والشعارُ مُضمَّنًا كما في `saleSheet` — من `InvoiceBranding::logo` وحدها.
+             *
+             * كان القالبُ يقرؤه من `$business->logo`، وهو رابطٌ نسبيّ
+             * (`/storage/logos/…`) يردّه قارئُ النموذج للشاشة. ومحرّكُ mpdf
+             * لا جلسةَ له ولا مضيف، فيسقط الرابطُ بلا صوت: يرى التاجرُ
+             * شعارَه في المعاينة ويخرج الإيصالُ بلا شعار — على ٥٨ و٨٠ معًا،
+             * وعلى الطابعة المباشرة التي ترسم هذا الـPDF نفسَه.
+             */
+            'logo' => InvoiceBranding::logo($businessId),
             'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
             'tpl' => self::legacy($businessId, $values),
             'tokens' => Branding::tokens($businessId, self::scale((string) $values['font'])),

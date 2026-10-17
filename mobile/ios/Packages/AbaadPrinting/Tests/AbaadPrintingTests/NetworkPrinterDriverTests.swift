@@ -56,20 +56,21 @@ struct NetworkPrinterDriverTests {
      * (20KB/ث على الأقلّ). فما في مخازن النظام لا يتجاوز ثلاث ثوانٍ من القراءة — فيبقى
      * الإرسالُ نفسُه فوق 30 ثانية بهامشٍ واسع، ولا يفتح المستقبِلُ نافذتَه بخطوةٍ تبدو توقّفًا.
      */
-    @Test("a slow printer that needs more than 30 seconds still receives every byte", .timeLimit(.minutes(2)))
+    // الحدُّ حارسٌ من التعليق لا شرطُ نجاح: نحو 50 ثانية إرسالًا، وعلى CI بثلاث أنوية مزدحمة بلغ الاختبارُ 99 ثانية
+    @Test("a slow printer that needs more than 30 seconds still receives every byte", .timeLimit(.minutes(3)))
     func slowPrinterGetsEverything() async throws {
-        let buffered = loopbackBuffering()
+        let buffered = await offThePool { loopbackBuffering() }
         let rate = min(max(20 * 1024, buffered / 3), 600 * 1024)
         let printer = PacedPrinter(pace: .slow(bytes: rate / 10, every: 0.1))
         let port = try printer.start()
-        let payload = (0..<(rate * 50)).map { UInt8(truncatingIfNeeded: $0 &* 131 &+ 17) }
+        let payload = await offThePool { (0..<(rate * 50)).map { UInt8(truncatingIfNeeded: $0 &* 131 &+ 17) } }
         let progress = Recorder<(Int, Date)>()
 
-        let started = Date()
         let result = await NetworkPrinterDriver(stallTimeout: 15).send(
             .bytes(payload), host: "127.0.0.1", port: port, onStage: { _ in }
         ) { sent, _ in progress.append((sent, Date())) }
-        let elapsed = Date().timeIntervalSince(started)
+        // مدّةُ الإرسال بساعة المُرسِل على خيطه — لا بعد أن يُستأنف الاختبار
+        let elapsed = Double(result.sendMilliseconds ?? 0) / 1000
 
         #expect(result.error == nil)
         #expect(result.bytesSent == payload.count)
@@ -126,13 +127,18 @@ struct NetworkPrinterDriverTests {
         let port = try printer.start()
 
         let progress = Recorder<Date>()
+        let sending = Recorder<Date>()
         let sent = await within(30) {
             await NetworkPrinterDriver(stallTimeout: 2).send(
-                .bytes([UInt8](repeating: 0x55, count: 32 * 1024 * 1024)), host: "127.0.0.1", port: port, onStage: { _ in }
+                .bytes([UInt8](repeating: 0x55, count: 32 * 1024 * 1024)), host: "127.0.0.1", port: port,
+                onStage: { if $0 == .sending { sending.append(Date()) } }
             ) { _, _ in progress.append(Date()) }
         }
         let result = try #require(sent, "still sending 30 s after the printer stopped reading")
-        let failedAt = Date()
+        // كلُّ الأوقات على خيط المُرسِل: بدءُ الإرسال، وكلُّ كتابةٍ تمّت، ولحظةُ الفشل (`sendMilliseconds`
+        // منذ بدء الإرسال). فلا يدخل فيها ما ينتظره الاختبارُ حتى يُستأنف على جهازٍ مزدحم
+        let sendingAt = try #require(sending.all.first)
+        let failedAt = sendingAt.addingTimeInterval(Double(try #require(result.sendMilliseconds)) / 1000)
 
         #expect(result.error == .sendFailed)
         #expect(result.connected)
@@ -154,16 +160,16 @@ struct NetworkPrinterDriverTests {
         let printer = PacedPrinter(pace: .reset(after: 100_000))
         let port = try printer.start()
 
-        let started = Date()
         let sent = await within(25) {
             await NetworkPrinterDriver(stallTimeout: 30).send(
                 .bytes([UInt8](repeating: 0x33, count: 32 * 1024 * 1024)), host: "127.0.0.1", port: port, onStage: { _ in }
             ) { _, _ in }
         }
         let result = try #require(sent, "a reset connection was not noticed")
-        let elapsed = Date().timeIntervalSince(started)
+        // بساعة المُرسِل: من بدء الإرسال إلى الفشل — والطابعةُ تقطع بعد 100KB
+        let noticed = Double(try #require(result.sendMilliseconds)) / 1000
 
-        #expect(elapsed < 10, "noticed after \(elapsed)s")
+        #expect(noticed < 5, "noticed after \(noticed)s")
         #expect(result.error == .sendFailed)
         #expect(result.connected)
         #expect(result.mayHavePrinted)

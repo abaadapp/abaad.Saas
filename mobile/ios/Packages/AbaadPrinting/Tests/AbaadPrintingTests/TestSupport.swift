@@ -167,6 +167,17 @@ func within<T: Sendable>(_ seconds: TimeInterval, _ body: @escaping @Sendable ()
     return await withCheckedContinuation { first.set($0) }
 }
 
+/*
+ * عملٌ حاجب (نومٌ، أو ملءُ ميغابايتات) على خيطٍ خاصّ لا على مجمّع Swift المشترك.
+ * فعلى جهاز CI بثلاث أنوية يحجز عملٌ كهذا خيوطَ المجمّع، فيتأخّر استئنافُ الاختبارات
+ * الأخرى ثوانيَ — ويبدو ما تقيسه بعد `await` أبطأَ ممّا كان.
+ */
+func offThePool<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+    await withCheckedContinuation { done in
+        Thread { done.resume(returning: work()) }.start()
+    }
+}
+
 /// ينتظر شرطًا قصيرًا دون نومٍ أعمى طويل
 func eventually(timeout: TimeInterval = 3, _ condition: @Sendable () async -> Bool) async -> Bool {
     let deadline = Date().addingTimeInterval(timeout)

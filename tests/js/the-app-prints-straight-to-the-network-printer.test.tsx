@@ -184,6 +184,26 @@ describe('أيُّ طريقٍ يُسلك', () => {
     });
 });
 
+describe('المنفذُ الذي ضبطه التاجر', () => {
+    it('يصل كما هو — لا يُستبدل به 9100', async () => {
+        const bridge = app();
+
+        await printReceipt({ invoice: 'INV-9', url: '/x', printer: { ...NETWORK, port: 9101 } });
+        await testPrinter({ ...NETWORK, port: 6001 }, 'الصندوق 1');
+
+        expect(bridge.printReceipt.mock.calls[0][0].printer.port).toBe(9101);
+        expect(bridge.testPrinter.mock.calls[0][0].printer.port).toBe(6001);
+    });
+
+    it('وفارغًا يصل فارغًا — والتطبيقُ يقول أيَّ منفذٍ طلب (`effectivePort`)', async () => {
+        const bridge = app();
+
+        await printReceipt({ invoice: 'INV-9', url: '/x', printer: { ...NETWORK, port: null } });
+
+        expect(bridge.printReceipt.mock.calls[0][0].printer.port).toBeNull();
+    });
+});
+
 describe('بيعةٌ بلا رقم فاتورة', () => {
     it('لا إيصالَ رسميًّا يُطبع ولا رقمَ يُخترع', async () => {
         const bridge = app();

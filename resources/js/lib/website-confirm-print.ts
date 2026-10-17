@@ -1,5 +1,15 @@
 import { toast } from 'sonner';
 import { businessIdOf, expectBusiness } from '@/lib/exportLink';
+import {
+    abandonAutoPrint,
+    type AutoPrintAttempt,
+    commitAutoPrint,
+    failureMessage,
+    PRINTER,
+    prepareAutoPrint,
+    printReceipt,
+} from '@/lib/printing/printer-service';
+import type { PrinterLike } from '@/lib/printing/types';
 
 /**
  * «طباعة تلقائية عند تأكيد طلب الموقع» — تقرؤها شاشةُ الطلب ولوحةُ التجهيز معًا.
@@ -18,10 +28,16 @@ import { businessIdOf, expectBusiness } from '@/lib/exportLink';
  * ولا شيءَ هنا يعمل على تحديثٍ دوريّ أو إعادة رسم: الطباعةُ معلّقةٌ بالضغطة
  * وحدها، فلا يُطبع طلبٌ مرّتين.
  *
+ * ═══ وفي تطبيق أبعاد ═══
+ *
+ * لا نافذة: إن كانت طابعةُ الصندوق على الشبكة طبع التطبيقُ مباشرةً بعد أن
+ * يقول الخادم «أُكّد الآن» — بالشرط نفسِه. وإن لم تكن على الشبكة فحوارُ
+ * الطباعة في النظام. انظر `lib/printing/printer-service`.
+ *
  * ═══ وما لا تفعله ═══
  *
- * لا تطبع على طابعةٍ غير طابعة الصندوق المربوط بهذا المتصفّح. هاتفٌ لا صندوقَ
- * عليه لا يُفتح فيه شيء — ولا جسرَ في النظام يوصل أمرًا إلى طابعة المحلّ.
+ * لا تطبع على طابعةٍ غير طابعة الصندوق المربوط بهذا الجهاز. هاتفٌ لا صندوقَ
+ * عليه لا يُطبع منه شيء.
  */
 
 export const WEBSITE = 'website';
@@ -29,16 +45,9 @@ export const WEBSITE = 'website';
 export const PENDING = 'جديد';
 export const CONFIRMED = 'مؤكّد';
 
-const PRINTER = 'طابعة';
-
-interface Peripheral {
-    type: string;
-    autoPrintWebsite?: boolean;
-}
-
 export interface WebsiteConfirmInput {
     /** ملحقاتُ الصندوق المربوط بهذا المتصفّح النشطة — `context.peripherals` */
-    peripherals?: Peripheral[] | null;
+    peripherals?: PrinterLike[] | null;
     /**
      * بابُ الإيصال الحراريّ — تختاره الشاشةُ من قسمها هي، لا من صلاحيّاتٍ أخرى.
      * `admin.orders.receipt` في شاشة الطلب، و`admin.preparation.receipt` في
@@ -52,10 +61,12 @@ export interface WebsiteConfirmInput {
 }
 
 export interface PrintAttempt {
-    /** `null` حين منعها المتصفّح */
+    /** `null` حين منعها المتصفّح — أو حين لا نافذة أصلًا (تطبيق أبعاد) */
     sheet: Window | null;
     route: string;
     settled: boolean;
+    /** المحاولةُ نفسُها في طبقة الطباعة — طريقُها وطابعتُها */
+    auto: AutoPrintAttempt;
 }
 
 /*
@@ -78,12 +89,12 @@ export function wantsWebsiteConfirmPrint(input: WebsiteConfirmInput): boolean {
 export function prepareWebsiteConfirmPrint(input: WebsiteConfirmInput): PrintAttempt | null {
     if (!wantsWebsiteConfirmPrint(input)) return null;
 
-    return {
-        // وبلا `noopener`: معه تردّ `open` قيمةً فارغة فلا يبقى مقبضٌ يُوجَّه — انظر PaymentDialog
-        sheet: window.open('', '_blank'),
-        route: input.receipt,
-        settled: false,
-    };
+    // الطابعةُ التي ضُبط عليها الخيار — لا أوّلُ طابعةٍ في الصندوق
+    const printer = input.peripherals?.find((p) => p.type === PRINTER && p.autoPrintWebsite) ?? null;
+    // وفي المتصفّح تُفتح النافذةُ الفارغة هنا — وبلا `noopener`، انظر `prepareAutoPrint`
+    const auto = prepareAutoPrint(printer, true);
+
+    return { sheet: auto.sheet, route: input.receipt, settled: false, auto };
 }
 
 /**
@@ -106,13 +117,40 @@ export function websiteConfirmPrintCallbacks(
                 ?.websiteConfirmed;
 
             if (confirmed !== number) {
-                attempt.sheet?.close();
+                // والفارغةُ تُغلق — `abandonAutoPrint` تُغلقها مرّةً واحدة
+                abandonAutoPrint(attempt.auto);
 
                 return;
             }
 
             // والورقةُ تحمل نشاطَ الصفحة التي ردّ بها الخادمُ للتوّ — انظر `TenantExportGuard`
             const url = expectBusiness(route(attempt.route, number), businessIdOf(page.props));
+
+            /*
+             * وفي تطبيق أبعاد: طباعةٌ مباشرة (أو حوارُ النظام) بعد «أُكّد الآن».
+             *
+             * والطلبُ أُكّد أيًّا كانت الطباعة — فالفشلُ يُقال ومعه «إعادة
+             * الطباعة»، ولا يُعاد تلقائيًّا.
+             */
+            if (attempt.auto.mode === 'native' || attempt.auto.mode === 'system') {
+                const printer = attempt.auto.printer;
+                const retry = () =>
+                    void printReceipt({ invoice: number, url, printer }).then((again) => {
+                        if (!again.ok) toast.error(failureMessage(again.code, t));
+                    });
+
+                void commitAutoPrint(attempt.auto, number, () => url).then((outcome) => {
+                    if (!outcome || outcome.ok) return;
+                    toast.error(`${t('أُكّد الطلب، لكن تعذرت طباعة إيصاله.')} ${failureMessage(outcome.code, t)}`, {
+                        duration: 15000,
+                        action: { label: t('إعادة الطباعة'), onClick: retry },
+                    });
+                });
+
+                return;
+            }
+
+            attempt.auto.settled = true;
 
             if (attempt.sheet) {
                 // و`replace`: الصفحةُ الفارغة لا تدخل تاريخَ اللسان
@@ -132,7 +170,7 @@ export function websiteConfirmPrintCallbacks(
         onFinish: () => {
             if (!attempt || attempt.settled) return;
             attempt.settled = true;
-            attempt.sheet?.close();
+            abandonAutoPrint(attempt.auto);
         },
     };
 }

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { usePage } from '@inertiajs/react';
 import { toast } from 'sonner';
 import { Banknote, Check, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer, X } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
@@ -16,9 +15,11 @@ import { Label } from '@/Components/ui/label';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { useTenantLink } from '@/lib/exportLink';
+import { abandonAutoPrint, commitAutoPrint, prepareAutoPrint } from '@/lib/printing/printer-service';
+import PrintStatus from '@/Components/PrintStatus';
+import useReceiptPrint from '@/hooks/useReceiptPrint';
 import ReceiptPreviewButton from './ReceiptPreview';
 import type { CheckoutResult } from '@/hooks/usePosCart';
-import type { PageProps } from '@/types';
 
 const ALL_METHODS = [
     { value: 'نقدي', label: 'نقدي', icon: Banknote },
@@ -79,9 +80,13 @@ export default function PaymentDialog({
     const t = useTranslate();
     // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
     const tenant = useTenantLink();
-    const { context } = usePage<PageProps>().props;
-    // طابعة هذا الصندوق وحدها — لا طابعة صندوقٍ آخر في الفرع نفسه
-    const printer = context?.peripherals?.find((x) => x.type === 'طابعة');
+    /*
+     * طابعة هذا الصندوق وحدها — لا طابعة صندوقٍ آخر في الفرع نفسه.
+     *
+     * والطباعةُ كلُّها من `lib/printing`: في تطبيق أبعاد مع طابعة شبكة تُرسل
+     * مباشرةً، وفي المتصفّح تُفتح الورقةُ في لسانٍ كما كانت.
+     */
+    const printing = useReceiptPrint('pos.receipt.pdf');
     const METHODS = methods?.length
         ? ALL_METHODS.filter((m) => methods.includes(m.value))
         : ALL_METHODS;
@@ -158,6 +163,7 @@ export default function PaymentDialog({
     };
 
     // كل فتح جديد يبدأ من خطوة الدفع
+    const resetPrinting = printing.reset;
     useEffect(() => {
         if (open) {
             setStep('pay');
@@ -165,8 +171,9 @@ export default function PaymentDialog({
             setFlowerError(null);
             setMethod('');
             setMethodError(false);
+            resetPrinting();
         }
-    }, [open]);
+    }, [open, resetPrinting]);
 
     // خيارات الخادم تسبق المحليّة: إعادة تحميل الصفحة تعيد القائمة الصحيحة
     useEffect(() => {
@@ -275,12 +282,12 @@ export default function PaymentDialog({
          * ويرى شاشةَ النجاح، ولا يخرج من الطابعة شيء — ولا رسالةَ تقول لمَ.
          * فتُفتح فارغةً هنا، ويُكتب فيها العنوانُ حين يُعرف رقمُ الفاتورة.
          *
-         * وبلا `noopener` عن ضرورة: المواصفةُ تجعل `open` تردّ `null` معه،
-         * فلا يبقى مقبضٌ تُوجَّه به النافذة بعد الانتظار. والوجهةُ مسارُنا
-         * نفسُه على أصلنا نفسِه — فلا صفحةَ غريبةٍ تُمنح `opener`.
+         * وبلا `noopener` عن ضرورة — انظر `prepareAutoPrint`.
+         *
+         * وفي تطبيق أبعاد لا نافذة: الطباعةُ المباشرة لا تحتاج إيماءة، فتُرسل
+         * بعد أن يردّ الخادم برقم الفاتورة.
          */
-        const sheet = printer?.autoPrint ? window.open('', '_blank') : null;
-        let printed = false;
+        const attempt = prepareAutoPrint(printing.printer);
 
         setBusy(true);
         try {
@@ -309,40 +316,45 @@ export default function PaymentDialog({
             /*
              * الطباعة التلقائية — إن كانت مضبوطة على طابعة هذا الصندوق.
              *
-             * ومشروطةٌ بـres.invoice: البيع بلا اتصال يُحفظ في الطابور بلا رقم
-             * فاتورة بعد، وفتحُ نافذةٍ على رابطٍ لا وجود له يعطي الكاشير صفحة
-             * خطأ عند رأس الزبون. يطبع حين يوجد ما يُطبع — وتُغلق الفارغةُ
-             * حين لا يوجد، فلا يُترك للكاشير لسانٌ أبيضُ يسأل عنه.
+             * ومشروطةٌ برقم فاتورةٍ حقيقيّ: البيع بلا اتصال يُحفظ في الطابور
+             * بلا رقم فاتورة بعد، فلا إيصالَ رسميًّا يُطبع ولا رقمَ يُخترع.
+             * وتُغلق النافذةُ الفارغة حينها، فلا يُترك للكاشير لسانٌ أبيض.
              *
-             * ونافذةٌ منفصلة لا طباعةٌ في مكانها: الشاشة نفسها لا تزال تعرض
-             * تأكيد البيع، وحوارُ الطباعة يجمّد ما تحته.
-             *
-             * و`replace` لا `href`: الصفحةُ الفارغة لا تدخل تاريخَ اللسان،
-             * فرجوعُ الكاشير من الورقة لا يقف على بياض.
+             * والبيعُ والطباعةُ نتيجتان منفصلتان: الطباعةُ المباشرة لا تُنتظر
+             * هنا، وفشلُها لا يمسّ بيعًا حُفظ — يُقال في شاشة النجاح ومعه
+             * «إعادة الطباعة».
              */
-            if (sheet && res.synced && res.invoice) {
-                sheet.location.replace(tenant(route('pos.receipt.pdf', res.invoice)));
-                printed = true;
-            } else if (!sheet && printer?.autoPrint && res.synced && res.invoice) {
-                /*
-                 * ومُنعت رغم الإيماءة — فيُقال، ولا يُسكت عنه.
-                 *
-                 * «طباعة تلقائية» مقبضٌ وعد، وصمتُه يجعل الكاشير يسلّم الزبونَ
-                 * بلا إيصالٍ وهو يظنّ أنّه خرج. وزرُّ الطباعة أمامه في الشاشة
-                 * نفسِها، فالرسالةُ تدلّه عليه.
-                 */
-                toast.warning(t('منع المتصفح فتح نافذة الطباعة — اطبع الفاتورة من الزر أدناه.'));
+            const invoice = res.synced ? res.invoice : null;
+            if (attempt.mode !== 'none' && invoice) {
+                void printing
+                    .run(invoice, (onProgress) =>
+                        commitAutoPrint(attempt, invoice, () => tenant(route('pos.receipt.pdf', invoice)), onProgress),
+                    )
+                    .then((outcome) => {
+                        /*
+                         * ومُنعت رغم الإيماءة — فيُقال، ولا يُسكت عنه.
+                         *
+                         * «طباعة تلقائية» مقبضٌ وعد، وصمتُه يجعل الكاشير يسلّم
+                         * الزبونَ بلا إيصالٍ وهو يظنّ أنّه خرج. وزرُّ الطباعة
+                         * أمامه في الشاشة نفسِها، فالرسالةُ تدلّه عليه.
+                         */
+                        if (outcome && !outcome.ok && outcome.code === 'POPUP_BLOCKED') {
+                            toast.warning(t('منع المتصفح فتح نافذة الطباعة — اطبع الفاتورة من الزر أدناه.'));
+                        }
+                    });
+            } else {
+                void commitAutoPrint(attempt, null, () => '');
             }
         } finally {
             setBusy(false);
             /*
              * وما فُتح ولم يُوجَّه يُغلق — أيًّا كان الطريق.
              *
-             * بيعةٌ حُفظت بلا اتصال، أو سقطت بخطأ: يبقى لسانٌ أبيضُ مفتوحٌ
-             * أمام الكاشير لا يعرف ما هو ولا لمَ فُتح. و`finally` لا `catch`
-             * كي لا يتبدّل ما يقع عند الخطأ عمّا كان — يُغلق اللسان لا غير.
+             * بيعةٌ سقطت بخطأ: يبقى لسانٌ أبيضُ مفتوحٌ أمام الكاشير لا يعرف ما
+             * هو ولا لمَ فُتح. و`finally` لا `catch` كي لا يتبدّل ما يقع عند
+             * الخطأ عمّا كان — يُغلق اللسان لا غير.
              */
-            if (sheet && !printed) sheet.close();
+            abandonAutoPrint(attempt);
         }
     };
 
@@ -740,6 +752,18 @@ export default function PaymentDialog({
                             </div>
                         )}
 
+                        {/*
+                            حالُ الطباعة المباشرة — والبيعُ محفوظٌ أيًّا كانت.
+                        */}
+                        {result?.synced && result.invoice && (
+                            <PrintStatus
+                                state={printing.state}
+                                headline={t('تم حفظ البيع، لكن تعذرت طباعة الإيصال.')}
+                                onRetry={() => void printing.retry()}
+                                onOpen={() => void printing.openPdf()}
+                            />
+                        )}
+
                         <div className="grid grid-cols-2 gap-3">
                             {/*
                                 والمعاينةُ قبل الطباعة — ترتيبًا ومعنًى.
@@ -755,16 +779,14 @@ export default function PaymentDialog({
                                 <Button
                                     variant="outline"
                                     className="rounded-full"
+                                    disabled={printing.busy}
                                     /*
-                                     * والطباعةُ كما كانت: لسانٌ جديد لا ملاحةٌ
-                                     * في مكانها. و`route()` لا رابطٌ مكتوبٌ
-                                     * باليد — نسخةٌ ثانية للمسار تفترق يومًا
-                                     * يُبدَّل. و`noopener` كمسار الطباعة
-                                     * التلقائية فوق.
+                                     * والطباعةُ من `lib/printing`: مباشرةً في
+                                     * التطبيق، ولسانٌ جديد في المتصفّح كما كان.
+                                     * و`route()` لا رابطٌ مكتوبٌ باليد — نسخةٌ
+                                     * ثانية للمسار تفترق يومًا يُبدَّل.
                                      */
-                                    onClick={() =>
-                                        window.open(tenant(route('pos.receipt.pdf', result.invoice!)), '_blank', 'noopener')
-                                    }
+                                    onClick={() => void printing.print(result.invoice!)}
                                 >
                                     <Printer />
                                     {t('طباعة الفاتورة')}

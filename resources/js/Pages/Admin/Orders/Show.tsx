@@ -12,7 +12,6 @@ import {
     PencilLine,
     Phone,
     Plus,
-    Printer,
     ReceiptText,
     Repeat,
     Send,
@@ -37,6 +36,7 @@ import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
+import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Card } from '@/Components/ui/card';
 import {
     Table,
@@ -563,12 +563,16 @@ export default function OrderShow() {
                             أصلًا. والطلبُ الواحد له الاثنان — ورقةٌ تُرسَل
                             وشريطٌ يُسلَّم — فزرّان لا زرٌّ يُبدَّل.
                         */}
-                        <Button variant="outline" asChild>
-                            <a href={tenant(route('admin.orders.receipt', order.id))} target="_blank" rel="noreferrer">
-                                <Printer />
-                                {t('إيصال حراري')}
-                            </a>
-                        </Button>
+                        {/*
+                            والإيصالُ الحراريّ من `lib/printing`: مباشرةً على طابعة
+                            الصندوق في تطبيق أبعاد، ولسانٌ في المتصفّح كما كان.
+                        */}
+                        <PrintReceiptButton
+                            number={order.id}
+                            routeName="admin.orders.receipt"
+                            label={t('إيصال حراري')}
+                            variant="outline"
+                        />
 
                         {/*
                             وسندُ التسليم ورقةٌ أخرى لا نسخةٌ من الفاتورة:

@@ -29,22 +29,24 @@ use Tests\TestCase;
  *
  * ═══ وما يُحرَس ═══
  *
- *   - الأسعارُ والأسقفُ والشعبيّةُ كما اتُّفق — من البذرة نفسِها.
+ *   - الأسعارُ والأسقفُ والشعبيّةُ كما اتُّفق — من البذرة نفسِها. والأسقفُ سلّمٌ
+ *     واحد بقرار 2026-10-17 (فروع 1·3·10، مستخدمون 3·15·100، منتجات
+ *     500·10,000·بلا حدّ).
  *   - الأساسيّةُ لا تفتح قدرةً: `[]` لا `null` (قرارُ 2026-10-13 الثاني — لا
  *     واتساب ولا موقع ولا تطبيقات تكامليّة)، ونصوصُها الخمسةُ وحدها.
  *   - الاحترافيّةُ والمؤسساتُ تُقرآن من `PlanFeatures` — قدرةٌ تُضاف غدًا تُفتح فيهما.
- *   - لا نصَّ «غير محدود» فوق سقفٍ يُفرض، ولا وعدَ بما لا يُقدَّم.
+ *   - لا نصَّ «غير محدود» إلّا على موردٍ سقفُه `null` فعلًا، ولا وعدَ بما لا يُقدَّم.
  *   - السقفُ يُفرض على الباقة المزروعة، والتنزيلُ إلى ما يضيق يُردّ ولا يمحو شيئًا.
  */
 class TheDefaultPlansSellWhatTheySayTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** الاسم ← [شهريّ، سنويّ، فروع، موظفون، منتجات، الأكثر طلبًا] */
+    /** الاسم ← [شهريّ، سنويّ، فروع، مستخدمون نشطون، منتجات، الأكثر طلبًا] — `null` لا سقف */
     private const AGREED = [
-        'الباقة الأساسية' => ['9.900', '99.000', 1, 3, 100, false],
-        'الباقة الاحترافية' => ['29.900', '299.000', 3, 15, 5000, true],
-        'باقة المؤسسات' => ['69.900', '699.000', 25, 100, 100000, false],
+        'الباقة الأساسية' => ['9.900', '99.000', 1, 3, 500, false],
+        'الباقة الاحترافية' => ['29.900', '299.000', 3, 15, 10000, true],
+        'باقة المؤسسات' => ['69.900', '699.000', 10, 100, null, false],
     ];
 
     /** @return array<string, array<string, mixed>> */
@@ -64,7 +66,8 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
             $plan = $plans[$name];
             $this->assertSame($monthly, (string) $plan->monthly_price, $name);
             $this->assertSame($yearly, (string) $plan->yearly_price, $name);
-            $this->assertSame([$branches, $employees, $products], [(int) $plan->max_branches, (int) $plan->max_employees, (int) $plan->max_products], $name);
+            $caps = array_map(fn ($v) => $v === null ? null : (int) $v, [$plan->max_branches, $plan->max_employees, $plan->max_products]);
+            $this->assertSame([$branches, $employees, $products], $caps, $name);
             $this->assertSame($popular, (bool) $plan->is_popular, $name);
         }
     }
@@ -83,7 +86,7 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
          */
         $this->assertSame([], $plans['الباقة الأساسية']['capabilities']);
         $this->assertSame(
-            ['إدارة متجرك اليومية', 'فرع واحد', '3 موظفين', '100 منتج', 'الأدوات التشغيلية الأساسية'],
+            ['إدارة متجرك اليومية', 'فرع واحد', '3 مستخدمين مع المالك', '500 منتج', 'الأدوات التشغيلية الأساسية'],
             $plans['الباقة الأساسية']['features'],
         );
 
@@ -139,18 +142,59 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
         foreach (SeedData::plans() as $plan) {
             $text = implode(' | ', $plan['features']);
 
-            foreach (['غير محدود', 'كل القدرات', 'مدير حساب', 'على مدار الساعة'] as $never) {
+            foreach (['كل القدرات', 'مدير حساب', 'على مدار الساعة'] as $never) {
                 $this->assertStringNotContainsString($never, $text, "«{$plan['name']}» تعد بـ«{$never}»");
+            }
+
+            /*
+             * و«غير محدود» صادقةٌ حيث لا سقف — وكذبٌ فوق سقفٍ يُفرض.
+             *
+             * كانت ممنوعةً كلَّها: كلُّ موردٍ في البذرة كان له سقف. ثمّ صارت
+             * منتجاتُ المؤسسات بلا حدّ (`null` — قرارُ 2026-10-17). فالسطرُ الذي
+             * يقولها يسمّي موردًا، وسقفُ ذلك المورد `null` وإلّا سقط.
+             */
+            [$branches, $employees, $products] = $plan['limits'];
+            $unbounded = ['فروع' => $branches, 'موظف' => $employees, 'مستخدم' => $employees, 'منتج' => $products];
+            foreach ($plan['features'] as $line) {
+                if (! str_contains($line, 'غير محدود')) {
+                    continue;
+                }
+                $named = array_filter($unbounded, fn ($word) => str_contains($line, $word), ARRAY_FILTER_USE_KEY);
+                $this->assertNotEmpty($named, "«{$plan['name']}»: «{$line}» لا تسمّي موردًا");
+                foreach ($named as $word => $cap) {
+                    $this->assertNull($cap, "«{$plan['name']}»: «{$line}» وسقفُ {$word} {$cap}");
+                }
             }
         }
 
         $basic = implode(' | ', $this->seeded()['الباقة الأساسية']['features']);
-        foreach (['فرع واحد', '3 موظفين', '100 منتج'] as $line) {
+        foreach (['فرع واحد', '3 مستخدمين مع المالك', '500 منتج'] as $line) {
             $this->assertStringContainsString($line, $basic);
         }
     }
 
-    /** والسقفُ المزروع يُفرض — المنتجُ المئة يُقبل والذي بعده يُردّ */
+    /**
+     * ونصُّ العرض يقول السقفَ نفسَه — رقمًا رقمًا.
+     *
+     * كان «100,000 منتج» في نصّ باقةٍ سقفُها في القاعدة شيءٌ آخر، و«15 موظف»
+     * فوق سقفٍ يعدّ المالكَ معهم. فكلُّ سقفٍ يُكتب في نصوص باقته كما هو.
+     */
+    public function test_each_plan_states_its_own_caps_in_its_lines(): void
+    {
+        foreach (SeedData::plans() as $plan) {
+            $text = implode(' | ', $plan['features']);
+            [$branches, $employees, $products] = $plan['limits'];
+
+            if ($branches > 1) {
+                $this->assertStringContainsString(number_format($branches).' فر', $text, $plan['name']);
+            }
+            $this->assertStringContainsString(number_format($employees).' مستخدم', $text, $plan['name']);
+            $this->assertStringContainsString('مع المالك', $text, "«{$plan['name']}»: المالك يُعدّ مستخدمًا نشطًا");
+            $this->assertStringContainsString($products === null ? 'منتجات غير محدودة' : number_format($products).' منتج', $text, $plan['name']);
+        }
+    }
+
+    /** والسقفُ المزروع يُفرض — المنتجُ الخمسمئة يُقبل والذي بعده يُردّ */
     public function test_the_seeded_basic_caps_are_enforced(): void
     {
         $this->seed(DatabaseSeeder::class);
@@ -158,12 +202,12 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
         $shop = Business::create(['name' => 'متجر صغير', 'type' => 'عام', 'status' => 'نشط', 'plan_id' => $basic->id]);
         Branch::create(['business_id' => $shop->id, 'name' => 'الرئيسي']);
 
-        foreach (range(1, 99) as $n) {
+        foreach (range(1, 499) as $n) {
             Product::create(['business_id' => $shop->id, 'name' => 'صنف '.$n, 'price' => 1]);
         }
         $this->assertFalse(PlanLimits::reached($shop->fresh(), 'products'));
 
-        Product::create(['business_id' => $shop->id, 'name' => 'صنف 100', 'price' => 1]);
+        Product::create(['business_id' => $shop->id, 'name' => 'صنف 500', 'price' => 1]);
         $this->assertTrue(PlanLimits::reached($shop->fresh(), 'products'));
         $this->assertTrue(PlanLimits::reached($shop->fresh(), 'branches'), 'الأساسيّة فرعٌ واحد');
     }

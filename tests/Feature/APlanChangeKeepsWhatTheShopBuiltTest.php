@@ -178,7 +178,7 @@ class APlanChangeKeepsWhatTheShopBuiltTest extends TestCase
             $this->assertSame([
                 'label' => 'الباقة الأساسية', 'value' => $this->basic->id, 'monthly' => 9.9, 'yearly' => 99.0,
                 'features' => ['إدارة متجرك اليومية', 'سطرٌ أضافه المدير اليوم'],
-                'max_branches' => 1, 'max_employees' => 3, 'max_products' => 100,
+                'max_branches' => 1, 'max_employees' => 3, 'max_products' => 500,
             ], $basic, $where);
             $this->assertArrayNotHasKey('capabilities', $basic, "{$where}: قائمةُ القدرات أُرسلت مع الباقة");
         }
@@ -232,7 +232,7 @@ class APlanChangeKeepsWhatTheShopBuiltTest extends TestCase
                 'business_id' => $this->shop->id, 'name' => 'موظف '.$n, 'email' => "e{$n}@plans.om",
                 'password' => bcrypt('x'), 'role' => 'cashier', 'status' => 'نشط',
             ])),
-            'مئةٌ وصنف' => fn () => collect(range(1, 101))->each(fn ($n) => Product::create([
+            'خمسُمئةٍ وصنف' => fn () => collect(range(1, 501))->each(fn ($n) => Product::create([
                 'business_id' => $this->shop->id, 'name' => 'صنف '.$n, 'price' => 1,
             ])),
         ] as $label => $grow) {

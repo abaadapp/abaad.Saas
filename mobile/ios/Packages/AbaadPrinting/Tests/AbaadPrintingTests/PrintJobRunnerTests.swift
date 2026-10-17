@@ -157,6 +157,79 @@ struct PrintJobRunnerTests {
         #expect(Array(sent.bytes[0..<8]) == [0x1B, 0x40, 0x1D, 0x76, 0x30, 0x00, 48, 0])
     }
 
+    /// ساعةٌ تقفز: أوّلُ قراءةٍ لحظةُ القبول، وما بعدها بعد `later` ثانية — كأنّ المهمّة انتظرت في الطابور
+    final class JumpingClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var reads = 0
+        let later: TimeInterval
+
+        init(later: TimeInterval) {
+            self.later = later
+        }
+
+        func now() -> Date {
+            lock.lock()
+            defer { lock.unlock() }
+            reads += 1
+            return Date(timeIntervalSince1970: reads == 1 ? 0 : later)
+        }
+    }
+
+    @Test("a receipt that waited past the connect deadline is never sent — the page has stopped waiting")
+    func staleReceiptIsNotSent() async {
+        let driver = FakeDriver()
+        let clock = JumpingClock(later: ConnectDeadline.printReceipt + 1)
+        let runner = PrintJobRunner(fetcher: FakeFetcher(.success(pdf)), driver: driver, resolver: FakeResolver(answer: nil), clock: { clock.now() })
+
+        let result = await runner.run(receiptJob(target(port: 9101)), cookies: cookies, presenter: nil) { _ in }
+
+        #expect(result == .failure(.queueFull, jobId: "j1", effectivePort: 9101))
+        #expect(driver.sent.all.isEmpty)
+    }
+
+    @Test("inside the connect deadline the receipt is sent")
+    func receiptInsideDeadlineIsSent() async {
+        let driver = FakeDriver()
+        let clock = JumpingClock(later: ConnectDeadline.printReceipt - 1)
+        let runner = PrintJobRunner(fetcher: FakeFetcher(.success(pdf)), driver: driver, resolver: FakeResolver(answer: nil), clock: { clock.now() })
+
+        let result = await runner.run(receiptJob(target(port: 9101)), cookies: cookies, presenter: nil) { _ in }
+
+        #expect(result == .success(jobId: "j1", printed: true, connected: true, effectivePort: 9101))
+        #expect(driver.sent.all.count == 1)
+    }
+
+    @Test("a test page that waited past its deadline is never sent")
+    func staleTestPageIsNotSent() async {
+        let driver = FakeDriver()
+        let clock = JumpingClock(later: ConnectDeadline.testPrinter + 1)
+        let runner = PrintJobRunner(fetcher: FakeFetcher(.success(pdf)), driver: driver, resolver: FakeResolver(answer: nil), clock: { clock.now() })
+        let job = BridgeJob(id: "t2", kind: .testPrinter(printer: target(), deviceName: nil, printerName: nil), pageOrigin: "https://pos.example.test:443")
+
+        let result = await runner.run(job, cookies: cookies, presenter: nil) { _ in }
+
+        #expect(result == .failure(.queueFull, jobId: "t2", effectivePort: 9100))
+        #expect(driver.sent.all.isEmpty)
+    }
+
+    /// المهلةُ والاتّصالُ والإرسالُ تنتهي قبل أن تكفّ الصفحةُ عن الانتظار — مقروءةً من الـshim نفسِه
+    @Test("connect deadline + connect + write fit inside the shim's wait")
+    func deadlineFitsInsideTheShimWait() throws {
+        let url = Vectors.mobileDirectory().appendingPathComponent("shared/js/abaad-printer-shim.js")
+        let shim = try String(contentsOf: url, encoding: .utf8)
+        func wait(_ method: String) throws -> TimeInterval {
+            let regex = try NSRegularExpression(pattern: "\\b\(method): (\\d+)")
+            let range = NSRange(shim.startIndex..., in: shim)
+            let match = try #require(regex.firstMatch(in: shim, range: range))
+            let digits = try #require(Range(match.range(at: 1), in: shim))
+            return try #require(TimeInterval(shim[digits])) / 1000
+        }
+        let driver = NetworkPrinterDriver()
+
+        #expect(ConnectDeadline.printReceipt + driver.connectTimeout + driver.writeTimeout < (try wait("printReceipt")))
+        #expect(ConnectDeadline.testPrinter + driver.connectTimeout + driver.writeTimeout < (try wait("testPrinter")))
+    }
+
     @Test("openReceipt downloads with the session and hands the PDF to the system dialog")
     func openReceipt() async {
         let presenter = await FakePresenter()

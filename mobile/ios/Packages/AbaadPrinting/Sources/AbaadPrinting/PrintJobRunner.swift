@@ -51,6 +51,7 @@ public final class PrintJobRunner: Sendable {
         progress: @escaping @Sendable (BridgeStage) -> Void
     ) async -> BridgeResult {
         let started = DispatchTime.now()
+        let acceptedAt = clock()
         PrintLog.started(job.id, method: job.method)
         let reporting: @Sendable (BridgeStage) -> Void = { stage in
             PrintLog.stage(job.id, stage, elapsedMilliseconds: Self.milliseconds(since: started))
@@ -61,12 +62,15 @@ public final class PrintJobRunner: Sendable {
         switch job.kind {
         case let .printReceipt(_, url, printer):
             result = await queue.submit {
-                await self.printReceipt(job, url: url, printer: printer, cookies: cookies, progress: reporting)
+                await self.printReceipt(job, url: url, printer: printer, cookies: cookies, acceptedAt: acceptedAt, progress: reporting)
             } ?? .failure(.queueFull, jobId: job.id, effectivePort: printer.port)
 
         case let .testPrinter(printer, deviceName, printerName):
             result = await queue.submit {
-                await self.testPrinter(job, printer: printer, deviceName: deviceName, printerName: printerName, progress: reporting)
+                await self.testPrinter(
+                    job, printer: printer, deviceName: deviceName, printerName: printerName,
+                    acceptedAt: acceptedAt, progress: reporting
+                )
             } ?? .failure(.queueFull, jobId: job.id, effectivePort: printer.port)
 
         case let .openReceipt(invoice, url):
@@ -84,6 +88,7 @@ public final class PrintJobRunner: Sendable {
         url: URL,
         printer: PrinterTarget,
         cookies: @escaping CookieHeaderProvider,
+        acceptedAt: Date,
         progress: @escaping @Sendable (BridgeStage) -> Void
     ) async -> BridgeResult {
         progress(.downloadingReceipt)
@@ -102,7 +107,7 @@ public final class PrintJobRunner: Sendable {
             return .failure(.receiptRenderFailed, jobId: job.id, effectivePort: printer.port)
         }
 
-        return await deliver(job, bytes: bytes, to: printer, progress: progress)
+        return await deliver(job, bytes: bytes, to: printer, acceptedAt: acceptedAt, progress: progress)
     }
 
     private func testPrinter(
@@ -110,6 +115,7 @@ public final class PrintJobRunner: Sendable {
         printer: PrinterTarget,
         deviceName: String?,
         printerName: String?,
+        acceptedAt: Date,
         progress: @escaping @Sendable (BridgeStage) -> Void
     ) async -> BridgeResult {
         let content = TestPageContent(
@@ -126,7 +132,7 @@ public final class PrintJobRunner: Sendable {
         } catch {
             return .failure(.receiptRenderFailed, jobId: job.id, effectivePort: printer.port)
         }
-        return await deliver(job, bytes: bytes, to: printer, progress: progress)
+        return await deliver(job, bytes: bytes, to: printer, acceptedAt: acceptedAt, progress: progress)
     }
 
     private func openReceipt(
@@ -164,6 +170,7 @@ public final class PrintJobRunner: Sendable {
         _ job: BridgeJob,
         bytes: [UInt8],
         to printer: PrinterTarget,
+        acceptedAt: Date,
         progress: @escaping @Sendable (BridgeStage) -> Void
     ) async -> BridgeResult {
         let host: String
@@ -175,6 +182,11 @@ public final class PrintJobRunner: Sendable {
             case let .success(literal): host = literal
             case let .failure(error): return .failure(error.code, jobId: job.id, effectivePort: printer.port)
             }
+        }
+
+        // تأخّرت في الطابور حتى لا يبقى وقتٌ قبل أن تكفّ الصفحةُ عن الانتظار ← لا اتّصال
+        guard !ConnectDeadline.expired(job.method, acceptedAt: acceptedAt, now: clock()) else {
+            return .failure(.queueFull, jobId: job.id, effectivePort: printer.port)
         }
 
         let outcome = await driver.send(bytes, host: host, port: printer.port, onStage: progress)

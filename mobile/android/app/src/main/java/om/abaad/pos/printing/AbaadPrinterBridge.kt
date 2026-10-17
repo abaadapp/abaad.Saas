@@ -132,8 +132,8 @@ class AbaadPrinterBridge(
 
     private fun dispatch(id: String, job: ValidatedJob, proxy: JavaScriptReplyProxy, startedAt: Long) {
         val accepted = when (job) {
-            is ValidatedJob.PrintReceipt -> printQueue.submit { runSafely(id, job, proxy, startedAt) { printReceipt(id, job, proxy) } }
-            is ValidatedJob.TestPrinter -> printQueue.submit { runSafely(id, job, proxy, startedAt) { testPrinter(id, job, proxy) } }
+            is ValidatedJob.PrintReceipt -> printQueue.submit { runSafely(id, job, proxy, startedAt) { printReceipt(id, job, proxy, startedAt) } }
+            is ValidatedJob.TestPrinter -> printQueue.submit { runSafely(id, job, proxy, startedAt) { testPrinter(id, job, proxy, startedAt) } }
             is ValidatedJob.OpenReceipt -> openQueue.submit { openReceipt(id, job, proxy, startedAt) }
         }
         if (!accepted) {
@@ -168,7 +168,7 @@ class AbaadPrinterBridge(
         val status: Int? = null,
     )
 
-    private fun printReceipt(id: String, job: ValidatedJob.PrintReceipt, proxy: JavaScriptReplyProxy): Done {
+    private fun printReceipt(id: String, job: ValidatedJob.PrintReceipt, proxy: JavaScriptReplyProxy, acceptedAt: Long): Done {
         val printer = job.printer
         val endpoint = printer.endpoint
 
@@ -198,10 +198,10 @@ class AbaadPrinterBridge(
             return Done(BridgeResult.failure(id, ErrorCode.RECEIPT_RENDER_FAILED, effectivePort = printer.port), endpoint)
         }
 
-        return send(id, job.method, proxy, address, printer, EscPosEncoder.encode(image))
+        return send(id, job.method, proxy, address, printer, EscPosEncoder.encode(image), acceptedAt)
     }
 
-    private fun testPrinter(id: String, job: ValidatedJob.TestPrinter, proxy: JavaScriptReplyProxy): Done {
+    private fun testPrinter(id: String, job: ValidatedJob.TestPrinter, proxy: JavaScriptReplyProxy, acceptedAt: Long): Done {
         val printer = job.printer
         val endpoint = printer.endpoint
 
@@ -219,7 +219,7 @@ class AbaadPrinterBridge(
             return Done(BridgeResult.failure(id, ErrorCode.RECEIPT_RENDER_FAILED, effectivePort = printer.port), endpoint)
         }
 
-        return send(id, job.method, proxy, address, printer, EscPosEncoder.encode(image))
+        return send(id, job.method, proxy, address, printer, EscPosEncoder.encode(image), acceptedAt)
     }
 
     private fun send(
@@ -229,7 +229,14 @@ class AbaadPrinterBridge(
         address: java.net.InetAddress,
         printer: ValidatedPrinter,
         bytes: ByteArray,
+        acceptedAt: Long,
     ): Done {
+        // تأخّرت في الطابور حتى لا يبقى وقتٌ قبل أن تكفّ الصفحةُ عن الانتظار ← لا اتّصال
+        if (ConnectDeadline.expired(method, acceptedAt, SystemClock.elapsedRealtime())) {
+            PrintLog.info("job=$id waited past the connect deadline: not sent")
+            return Done(BridgeResult.failure(id, ErrorCode.QUEUE_FULL, effectivePort = printer.port), printer.endpoint)
+        }
+
         val result = driver.send(address, printer.port, bytes, onStage = { stage -> progress(proxy, id, method, stage) })
         val bridgeResult = when (result) {
             is NetworkPrinterDriver.Result.Sent ->

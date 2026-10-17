@@ -45,6 +45,31 @@ enum class Method(val wire: String) {
 }
 
 /**
+ * آخرُ لحظةٍ يبدأ فيها الاتّصالُ بالطابعة — محسوبةً من قبول الطلب (§5).
+ *
+ * الصفحةُ تكفّ عن الانتظار بعد 120 ثانية للإيصال و60 للاختبار (الـshim)،
+ * فتقول للكاشير «لم يصل ردّ» وتعرض «إعادة الطباعة». ومهمّةٌ تأخّرت في الطابور
+ * خلف طابعةٍ عالقة ثمّ اتّصلت بعدها تطبع إيصالًا لا يعلم به أحد — والإعادةُ
+ * فوقه إيصالٌ ثانٍ. فلا اتّصالَ بعد هذه المهلة: الاتّصالُ (5 ث) والإرسالُ
+ * (30 ث) بعدها ينتهيان قبل أن تكفّ الصفحةُ عن الانتظار، والردُّ `QUEUE_FULL`.
+ */
+object ConnectDeadline {
+    const val PRINT_RECEIPT_MS = 75_000L
+    const val TEST_PRINTER_MS = 15_000L
+
+    fun limitFor(method: Method): Long? = when (method) {
+        Method.PRINT_RECEIPT -> PRINT_RECEIPT_MS
+        Method.TEST_PRINTER -> TEST_PRINTER_MS
+        Method.OPEN_RECEIPT -> null
+    }
+
+    fun expired(method: Method, acceptedAtMs: Long, nowMs: Long): Boolean {
+        val limit = limitFor(method) ?: return false
+        return nowMs - acceptedAtMs > limit
+    }
+}
+
+/**
  * `BridgeResult` — نجاحٌ أو فشل. لا يُبنى إلّا من `success` أو `failure`،
  * فلا يخرج فشلٌ بلا رمز ولا رسالة.
  */

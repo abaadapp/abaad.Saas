@@ -72,6 +72,33 @@ public enum BridgeMethod: String, Codable, Sendable {
     case openReceipt
 }
 
+/*
+ * آخرُ لحظةٍ يبدأ فيها الاتّصالُ بالطابعة — محسوبةً من قبول الطلب (§5).
+ *
+ * الصفحةُ تكفّ عن الانتظار بعد 120 ثانية للإيصال و60 للاختبار (الـshim)،
+ * فتقول للكاشير «لم يصل ردّ» وتعرض «إعادة الطباعة». ومهمّةٌ تأخّرت في الطابور
+ * خلف طابعةٍ عالقة ثمّ اتّصلت بعدها تطبع إيصالًا لا يعلم به أحد — والإعادةُ
+ * فوقه إيصالٌ ثانٍ. فلا اتّصالَ بعد هذه المهلة: الاتّصالُ (5 ث) والإرسالُ
+ * (30 ث) بعدها ينتهيان قبل أن تكفّ الصفحةُ عن الانتظار، والردُّ QUEUE_FULL.
+ */
+public enum ConnectDeadline {
+    public static let printReceipt: TimeInterval = 75
+    public static let testPrinter: TimeInterval = 15
+
+    public static func limit(for method: BridgeMethod) -> TimeInterval? {
+        switch method {
+        case .printReceipt: return printReceipt
+        case .testPrinter: return testPrinter
+        case .openReceipt: return nil
+        }
+    }
+
+    public static func expired(_ method: BridgeMethod, acceptedAt: Date, now: Date) -> Bool {
+        guard let limit = limit(for: method) else { return false }
+        return now.timeIntervalSince(acceptedAt) > limit
+    }
+}
+
 /// خطأٌ يحمل رمزَه من العقد — يُرمى داخل المسار ويُترجم إلى `BridgeResult`
 public struct PrintingError: Error, Equatable, Sendable {
     public let code: ErrorCode

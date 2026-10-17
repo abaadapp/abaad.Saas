@@ -45,13 +45,15 @@ enum class Method(val wire: String) {
 }
 
 /**
- * آخرُ لحظةٍ يبدأ فيها الاتّصالُ بالطابعة — محسوبةً من قبول الطلب (§5).
+ * أطولُ صمتٍ تبدأ بعده مهمّةٌ أو تتّصل بالطابعة (§5).
  *
- * الصفحةُ تكفّ عن الانتظار بعد 120 ثانية للإيصال و60 للاختبار (الـshim)،
- * فتقول للكاشير «لم يصل ردّ» وتعرض «إعادة الطباعة». ومهمّةٌ تأخّرت في الطابور
- * خلف طابعةٍ عالقة ثمّ اتّصلت بعدها تطبع إيصالًا لا يعلم به أحد — والإعادةُ
- * فوقه إيصالٌ ثانٍ. فلا اتّصالَ بعد هذه المهلة: الاتّصالُ (5 ث) والإرسالُ
- * (30 ث) بعدها ينتهيان قبل أن تكفّ الصفحةُ عن الانتظار، والردُّ `QUEUE_FULL`.
+ * الصفحةُ تكفّ عن الانتظار إن لم تسمع عن الطلب شيئًا 120 ثانية للإيصال و60 للاختبار
+ * (الـshim)، فتقول للكاشير «لم يصل ردّ» وتعرض «إعادة الطباعة». ومهمّةٌ تأخّرت في الطابور
+ * خلف إيصالٍ طويل ثمّ بدأت بعدها تطبع إيصالًا لا يعلم به أحد — والإعادةُ فوقه إيصالٌ ثانٍ.
+ *
+ * فالصمتُ يُحسب من آخر ما قيل للصفحة (لحظةُ القبول إن لم يُقل شيء): مهمّةٌ صمتت أكثر من
+ * هذه المهلة لا تبدأ ولا تتّصل، والردُّ `QUEUE_FULL`. وما بعد البدء لا يصمت طويلًا: كلُّ
+ * مرحلةٍ تُقال، والجاريةُ تُعاد نبضةً كلَّ ثانية (`PageContact`).
  */
 object ConnectDeadline {
     const val PRINT_RECEIPT_MS = 75_000L
@@ -63,9 +65,51 @@ object ConnectDeadline {
         Method.OPEN_RECEIPT -> null
     }
 
-    fun expired(method: Method, acceptedAtMs: Long, nowMs: Long): Boolean {
+    fun expired(method: Method, silentSinceMs: Long, nowMs: Long): Boolean {
         val limit = limitFor(method) ?: return false
-        return nowMs - acceptedAtMs > limit
+        return nowMs - silentSinceMs > limit
+    }
+}
+
+/**
+ * ما سمعته الصفحةُ منّا ومتى (§3 و§5).
+ *
+ * الـshim يكفّ عن انتظار طلبٍ لم يسمع عنه شيئًا في مهلته. فكلُّ مرحلةٍ تُقال له
+ * (`tell`)، والجاريةُ تُعاد نبضةً (`beat`) إن مضت `BEAT_INTERVAL_MS` على آخر ما قيل —
+ * ما دام الرسمُ أو الإرسالُ يتقدّم. و`lastHeardMs` آخرُ ما قيل (أو لحظةُ القبول):
+ * منه تُحسب `ConnectDeadline`.
+ *
+ * `send(stage, changed)`: `changed` إن تبدّلت المرحلة — فلا يمتلئ السجلُّ بالنبضات.
+ */
+class PageContact(
+    acceptedAtMs: Long,
+    private val clock: () -> Long,
+    private val send: (Stage, Boolean) -> Unit,
+) {
+    @Volatile
+    private var heardAt: Long = acceptedAtMs
+
+    @Volatile
+    private var stage: Stage? = null
+
+    val lastHeardMs: Long get() = heardAt
+
+    fun silentTooLong(method: Method): Boolean = ConnectDeadline.expired(method, heardAt, clock())
+
+    @Synchronized
+    fun tell(stage: Stage) {
+        val changed = this.stage != stage
+        this.stage = stage
+        heardAt = clock()
+        send(stage, changed)
+    }
+
+    fun beat(stage: Stage) {
+        if (clock() - heardAt >= BEAT_INTERVAL_MS) tell(stage)
+    }
+
+    companion object {
+        const val BEAT_INTERVAL_MS = 1_000L
     }
 }
 

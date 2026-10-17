@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 import java.net.ConnectException
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NoRouteToHostException
 import java.net.ServerSocket
 import java.net.Socket
@@ -125,33 +126,128 @@ class NetworkPrinterDriverTest {
         assertEquals(0, failed.bytesWritten)
     }
 
-    @Test(timeout = 30_000)
-    fun theWriteWatchdogEndsAStalledSend() {
-        ServerSocket(0, 1, loopback).use { server ->
-            val accepted = ArrayList<Socket>()
-            // يقبل ولا يقرأ أبدًا: الكتابةُ تعلق حين تمتلئ المخازن
-            val acceptor = Thread {
-                val client = server.accept()
-                synchronized(accepted) { accepted.add(client) }
-            }
-            acceptor.start()
-
+    /*
+     * طابعةٌ بطيئة تأخذ أكثر من 30 ثانية — ويصلها الإيصالُ كلُّه.
+     *
+     * كانت للإرسال كلِّه 30 ثانية ثمّ يُغلق المقبس: إيصالٌ طويل على طابعةٍ تطبع الصورةَ
+     * ببطء كان يخرج إلى منتصفه. والطابعةُ هنا تقرأ 1600 بايت كلَّ عُشر ثانية (16KB/ث)
+     * ومخزنُ استقبالها صغير، ومخزنُ إرسالنا 16KB: فـ800KB تقرؤه في نحو 50 ثانية، ويبقى
+     * الإرسالُ نفسُه أكثر من 30 ثانية ولو بقي في مخازن النظام ما لم تقرأه بعد — ولا يقف
+     * التقدّمُ فيها طويلًا.
+     */
+    @Test(timeout = 120_000)
+    fun aSlowPrinterThatNeedsMoreThanThirtySecondsReceivesEveryByte() {
+        val payload = ByteArray(800_000) { (it * 131 + 17).toByte() }
+        PacedPrinter(loopback, bytesPerRead = 1600, everyMs = 100).use { printer ->
+            val progress = ArrayList<Long>()
             val started = System.nanoTime()
             val result = NetworkPrinterDriver().send(
                 loopback,
-                server.localPort,
-                ByteArray(64 * 1024 * 1024),
-                writeTimeoutMs = 500,
+                printer.port,
+                payload,
+                onProgress = { _, _ -> synchronized(progress) { progress.add(System.nanoTime()) } },
             )
             val elapsedMs = (System.nanoTime() - started) / 1_000_000
-            acceptor.join(5_000)
-            synchronized(accepted) { accepted.forEach { it.close() } }
+            printer.join(30_000)
+
+            assertTrue("expected Sent", result is NetworkPrinterDriver.Result.Sent)
+            assertEquals(payload.size, result.bytesWritten)
+            assertTrue("the send itself lasted $elapsedMs ms", elapsedMs > 30_000)
+            assertArrayEquals(payload, printer.received())
+
+            // وتقدّمٌ لا يقف: لا فجوةَ بين كتابتين تقترب من حدّ التوقّف (15 ث)
+            val times = synchronized(progress) { progress.toList() }
+            val widestMs = times.zipWithNext { a, b -> (b - a) / 1_000_000 }.maxOrNull() ?: 0L
+            assertTrue("widest gap between writes: $widestMs ms", widestMs < 7_500)
+        }
+    }
+
+    /*
+     * وطابعةٌ توقّفت (ورقٌ نفد، غطاءٌ مفتوح) تُقطع بعد مهلة التوقّف بلا تقدّم —
+     * SEND_FAILED وربما طُبع جزء، ولا إعادة.
+     */
+    @Test(timeout = 60_000)
+    fun aPrinterThatStopsReadingFailsAfterTheStallTimeout() {
+        PacedPrinter(loopback, bytesPerRead = 4096, everyMs = 0, stopAfter = 50_000).use { printer ->
+            val started = System.nanoTime()
+            val result = NetworkPrinterDriver().send(
+                loopback,
+                printer.port,
+                ByteArray(64 * 1024 * 1024),
+                stallTimeoutMs = 1_000,
+            )
+            val elapsedMs = (System.nanoTime() - started) / 1_000_000
 
             val failed = result as NetworkPrinterDriver.Result.Failed
             assertEquals(ErrorCode.SEND_FAILED, failed.code)
             assertTrue(failed.connected)
             assertTrue(failed.mayHavePrinted)
-            assertTrue("took $elapsedMs ms", elapsedMs < 15_000)
+            assertTrue("wrote ${failed.bytesWritten}", failed.bytesWritten >= 50_000)
+            assertTrue("took $elapsedMs ms", elapsedMs < 10_000)
+            // ولا يتكدّس الإيصالُ في الجهاز: ما قُبل ولم تأخذه الطابعة قليل (مخزنٌ صغير)
+            val inDevice = failed.bytesWritten - printer.received().size
+            assertTrue("$inDevice bytes accepted but never read by the printer", inDevice < 512 * 1024)
+        }
+    }
+
+    /** طابعةٌ تردّ بايتاتِ حالةٍ أثناء الطباعة: تُقرأ وتُهمل، والإيصالُ يصل كلُّه */
+    @Test(timeout = 60_000)
+    fun statusBytesThePrinterSendsBackDoNotCostTheEndOfTheReceipt() {
+        val payload = ByteArray(1_000_000) { (it * 7 + 3).toByte() }
+        PacedPrinter(loopback, bytesPerRead = 64 * 1024, everyMs = 0, replyEvery = 8 * 1024).use { printer ->
+            val result = NetworkPrinterDriver().send(loopback, printer.port, payload)
+            printer.join(10_000)
+
+            assertTrue("expected Sent", result is NetworkPrinterDriver.Result.Sent)
+            assertArrayEquals(payload, printer.received())
+        }
+    }
+
+    /** الإيصالُ من ملفّ التخزين قطعةً قطعة — كما يرسله التطبيق */
+    @Test(timeout = 30_000)
+    fun aSpooledReceiptIsSentFromItsFileByteForByte() {
+        val payload = ByteArray(300_000) { (it * 29 + 5).toByte() }
+        val file = java.io.File.createTempFile("spool-", ".escpos")
+        try {
+            file.writeBytes(payload)
+            PacedPrinter(loopback, bytesPerRead = 64 * 1024, everyMs = 0).use { printer ->
+                val sent = ArrayList<Long>()
+                val result = NetworkPrinterDriver().send(
+                    loopback,
+                    printer.port,
+                    ReceiptSpool(file, file.length()),
+                    onProgress = { done, total ->
+                        assertEquals(payload.size.toLong(), total)
+                        sent.add(done)
+                    },
+                )
+                printer.join(10_000)
+
+                assertTrue("expected Sent", result is NetworkPrinterDriver.Result.Sent)
+                assertArrayEquals(payload, printer.received())
+                assertEquals(payload.size.toLong(), sent.last())
+                assertEquals(sent.sorted(), sent)
+            }
+        } finally {
+            file.delete()
+        }
+    }
+
+    /** ملفٌّ أقصرُ ممّا قيل إنّه فيه: لم يخرج الإيصالُ كلُّه — لا «طُبع» */
+    @Test(timeout = 30_000)
+    fun aSpoolShorterThanItsLengthIsNotReportedPrinted() {
+        val file = java.io.File.createTempFile("spool-", ".escpos")
+        try {
+            file.writeBytes(ByteArray(10_000))
+            PacedPrinter(loopback, bytesPerRead = 64 * 1024, everyMs = 0).use { printer ->
+                val result = NetworkPrinterDriver().send(loopback, printer.port, ReceiptSpool(file, 20_000))
+
+                val failed = result as NetworkPrinterDriver.Result.Failed
+                assertEquals(ErrorCode.SEND_FAILED, failed.code)
+                assertTrue(failed.mayHavePrinted)
+            }
+        } finally {
+            file.delete()
         }
     }
 
@@ -199,5 +295,69 @@ private class SocketCutAfter(private val limit: Int) : Socket() {
 private class SocketResetOnConnect : Socket() {
     override fun connect(endpoint: SocketAddress?, timeout: Int) {
         throw SocketException("Connection reset")
+    }
+}
+
+/*
+ * طابعةٌ على 127.0.0.1: مخزنُ استقبالٍ صغير كطابعةٍ حقيقيّة، وقراءةٌ بالإيقاع المطلوب —
+ * `bytesPerRead` كلَّ `everyMs`، وقد تتوقّف بعد `stopAfter` (ورقٌ نفد) أو تردّ بايتَ
+ * حالةٍ كلَّ `replyEvery`.
+ */
+private class PacedPrinter(
+    address: InetAddress,
+    private val bytesPerRead: Int,
+    private val everyMs: Long,
+    private val stopAfter: Int = Int.MAX_VALUE,
+    private val replyEvery: Int = Int.MAX_VALUE,
+) : AutoCloseable {
+    private val server = ServerSocket().apply {
+        receiveBufferSize = 4096
+        bind(InetSocketAddress(address, 0), 1)
+    }
+    private val received = ByteArrayOutputStream()
+    private val accepted = ArrayList<Socket>()
+
+    val port: Int get() = server.localPort
+
+    private val thread = Thread {
+        try {
+            val client = server.accept()
+            synchronized(accepted) { accepted.add(client) }
+            val input = client.getInputStream()
+            val output = client.getOutputStream()
+            val buffer = ByteArray(bytesPerRead)
+            var total = 0
+            var nextReply = replyEvery
+            while (total < stopAfter) {
+                if (everyMs > 0) Thread.sleep(everyMs)
+                val length = input.read(buffer, 0, minOf(buffer.size, stopAfter - total))
+                if (length < 0) break
+                synchronized(received) { received.write(buffer, 0, length) }
+                total += length
+                if (total >= nextReply) {
+                    output.write(0x12)
+                    output.flush()
+                    nextReply += replyEvery
+                }
+            }
+            // ورقٌ نفد: لا يقرأ بعدها ولا يُغلق — حتى يُغلقه الاختبار
+            if (total < stopAfter) client.close()
+        } catch (e: Exception) {
+            // أُغلق الخادم
+        }
+    }.apply {
+        isDaemon = true
+        start()
+    }
+
+    fun received(): ByteArray = synchronized(received) { received.toByteArray() }
+
+    fun join(ms: Long) {
+        thread.join(ms)
+    }
+
+    override fun close() {
+        synchronized(accepted) { accepted.forEach { it.close() } }
+        server.close()
     }
 }

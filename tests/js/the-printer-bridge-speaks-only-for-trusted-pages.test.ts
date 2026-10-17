@@ -150,6 +150,53 @@ describe('الردودُ لا تُصدَّق إلّا صريحة', () => {
         await expect(pending).resolves.toMatchObject({ ok: false, code: 'BRIDGE_TIMEOUT', mayHavePrinted: true });
     });
 
+    /*
+     * والمهلةُ صمتٌ لا مدّة: إيصالٌ طويلٌ على طابعةٍ بطيئة يُطبع دقائق، والطرفُ الأصليّ
+     * يعيد المرحلةَ نبضةً ما دام يتقدّم. فخمسُ دقائقَ بنبضةٍ كلَّ دقيقةٍ لا تُقطع.
+     */
+    it('وكلُّ رسالة تقدّمٍ تبدأ المهلةَ من جديد — فالإيصالُ الطويل لا يُقطع انتظارُه', async () => {
+        vi.useFakeTimers();
+        const { api, sent, reply } = inject();
+        const stages: string[] = [];
+        const pending = api.printReceipt(JOB, (s) => stages.push(s));
+        const id = JSON.parse(sent[0]).id;
+        let settled = false;
+        void pending.then(() => {
+            settled = true;
+        });
+
+        for (let minute = 0; minute < 5; minute++) {
+            vi.advanceTimersByTime(60_000);
+            reply(JSON.stringify({ id, type: 'progress', stage: 'sending' }));
+        }
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        reply(JSON.stringify({ id, type: 'result', result: { ok: true, jobId: 'n-1', printed: true } }));
+        await expect(pending).resolves.toMatchObject({ ok: true, printed: true });
+        expect(stages).toEqual(['sending', 'sending', 'sending', 'sending', 'sending']);
+    });
+
+    it('وصمتٌ بطول المهلة بعد آخر نبضة ← «قد يكون طُبع»', async () => {
+        vi.useFakeTimers();
+        const { api, sent, reply } = inject();
+        const pending = api.printReceipt(JOB);
+        const id = JSON.parse(sent[0]).id;
+
+        vi.advanceTimersByTime(100_000);
+        reply(JSON.stringify({ id, type: 'progress', stage: 'sending' }));
+        vi.advanceTimersByTime(119_999);
+        let settled = false;
+        void pending.then(() => {
+            settled = true;
+        });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        vi.advanceTimersByTime(1);
+        await expect(pending).resolves.toMatchObject({ ok: false, code: 'BRIDGE_TIMEOUT', mayHavePrinted: true });
+    });
+
     it('وفتحُ الملفّ لا يطبع شيئًا — فمهلتُه لا تقول «قد يكون طُبع»', async () => {
         vi.useFakeTimers();
         const { api } = inject();

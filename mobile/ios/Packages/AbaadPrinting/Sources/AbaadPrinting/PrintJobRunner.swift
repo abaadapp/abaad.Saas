@@ -3,9 +3,12 @@ import Foundation
 /*
  * تنفيذُ مهمّةٍ فُحصت — §5 و§6.
  *
- *   printReceipt: الطابور ← downloading_receipt ← rendering ← (أحاديّ) ← connecting ← sending
+ *   printReceipt: الطابور ← downloading_receipt ← rendering (إلى ملفّ التخزين) ← connecting ← sending
  *   testPrinter:  الطابور ← (يُرسم هنا) ← connecting ← sending
  *   openReceipt:  تنزيل ← حوارُ الطباعة في النظام (خارج الطابور: لا يلمس الطابعة)
+ *
+ * والصفحةُ تنتظر ما دامت تسمع (§3): المرحلةُ تُعاد نبضةً كلَّ ثانيةٍ أثناء الرسم
+ * والإرسال، فلا يكفّ الـshim عن انتظار إيصالٍ طويلٍ ما زال يُطبع.
  *
  * لا يعرف WebKit ولا UIKit: الكوكيز والعرضُ يُمرَّران إليه دوالّ، فيُختبر
  * المسارُ كلُّه بطابعةٍ وتنزيلٍ مزيَّفين.
@@ -51,26 +54,24 @@ public final class PrintJobRunner: Sendable {
         progress: @escaping @Sendable (BridgeStage) -> Void
     ) async -> BridgeResult {
         let started = DispatchTime.now()
-        let acceptedAt = clock()
-        PrintLog.started(job.id, method: job.method)
-        let reporting: @Sendable (BridgeStage) -> Void = { stage in
-            PrintLog.stage(job.id, stage, elapsedMilliseconds: Self.milliseconds(since: started))
+        let contact = PageContact(acceptedAt: clock(), clock: clock) { stage, changed in
+            if changed {
+                PrintLog.stage(job.id, stage, elapsedMilliseconds: Self.milliseconds(since: started))
+            }
             progress(stage)
         }
+        PrintLog.started(job.id, method: job.method)
 
         let result: BridgeResult
         switch job.kind {
         case let .printReceipt(_, url, printer):
             result = await queue.submit {
-                await self.printReceipt(job, url: url, printer: printer, cookies: cookies, acceptedAt: acceptedAt, progress: reporting)
+                await self.printReceipt(job, url: url, printer: printer, cookies: cookies, contact: contact)
             } ?? .failure(.queueFull, jobId: job.id, effectivePort: printer.port)
 
         case let .testPrinter(printer, deviceName, printerName):
             result = await queue.submit {
-                await self.testPrinter(
-                    job, printer: printer, deviceName: deviceName, printerName: printerName,
-                    acceptedAt: acceptedAt, progress: reporting
-                )
+                await self.testPrinter(job, printer: printer, deviceName: deviceName, printerName: printerName, contact: contact)
             } ?? .failure(.queueFull, jobId: job.id, effectivePort: printer.port)
 
         case let .openReceipt(invoice, url):
@@ -88,26 +89,31 @@ public final class PrintJobRunner: Sendable {
         url: URL,
         printer: PrinterTarget,
         cookies: @escaping CookieHeaderProvider,
-        acceptedAt: Date,
-        progress: @escaping @Sendable (BridgeStage) -> Void
+        contact: PageContact
     ) async -> BridgeResult {
-        progress(.downloadingReceipt)
+        // انتظرت في الطابور حتى ربّما كفّت الصفحةُ عن الانتظار ← لا شيءَ يبدأ
+        if contact.silentTooLong(job.method) {
+            return .failure(.queueFull, jobId: job.id, effectivePort: printer.port)
+        }
+
+        contact.tell(.downloadingReceipt)
         let pdf: Data
         switch await download(job, url: url, cookies: cookies) {
         case let .success(data): pdf = data
         case let .failure(error): return .failure(error.code, jobId: job.id, effectivePort: printer.port)
         }
 
-        progress(.rendering)
-        let bytes: [UInt8]
+        // يُرسم كلُّه إلى ملفٍّ قبل أن يُرسل منه بايت: رسمٌ يفشل لا يترك نصفَ إيصال
+        contact.tell(.rendering)
+        let spool: ReceiptSpool
         do {
-            let raster = try PDFRasterizer.rasterize(pdf, widthDots: printer.paper.dots)
-            bytes = EscPosEncoder.encode(raster, options: .receipt)
+            spool = try ReceiptSpool.make(pdf: pdf, widthDots: printer.paper.dots) { contact.beat(.rendering) }
         } catch {
             return .failure(.receiptRenderFailed, jobId: job.id, effectivePort: printer.port)
         }
+        defer { spool.remove() }
 
-        return await deliver(job, bytes: bytes, to: printer, acceptedAt: acceptedAt, progress: progress)
+        return await deliver(job, payload: spool.payload, to: printer, contact: contact)
     }
 
     private func testPrinter(
@@ -115,9 +121,12 @@ public final class PrintJobRunner: Sendable {
         printer: PrinterTarget,
         deviceName: String?,
         printerName: String?,
-        acceptedAt: Date,
-        progress: @escaping @Sendable (BridgeStage) -> Void
+        contact: PageContact
     ) async -> BridgeResult {
+        if contact.silentTooLong(job.method) {
+            return .failure(.queueFull, jobId: job.id, effectivePort: printer.port)
+        }
+
         let content = TestPageContent(
             deviceName: deviceName,
             printerName: printerName,
@@ -132,7 +141,7 @@ public final class PrintJobRunner: Sendable {
         } catch {
             return .failure(.receiptRenderFailed, jobId: job.id, effectivePort: printer.port)
         }
-        return await deliver(job, bytes: bytes, to: printer, acceptedAt: acceptedAt, progress: progress)
+        return await deliver(job, payload: .bytes(bytes), to: printer, contact: contact)
     }
 
     private func openReceipt(
@@ -168,10 +177,9 @@ public final class PrintJobRunner: Sendable {
     /// العنوانُ الذي يُتّصل به ثمّ الإرسال — والمنفذُ الفعليّ في النتيجة دائمًا
     private func deliver(
         _ job: BridgeJob,
-        bytes: [UInt8],
+        payload: PrintPayload,
         to printer: PrinterTarget,
-        acceptedAt: Date,
-        progress: @escaping @Sendable (BridgeStage) -> Void
+        contact: PageContact
     ) async -> BridgeResult {
         let host: String
         switch printer.address {
@@ -184,12 +192,18 @@ public final class PrintJobRunner: Sendable {
             }
         }
 
-        // تأخّرت في الطابور حتى لا يبقى وقتٌ قبل أن تكفّ الصفحةُ عن الانتظار ← لا اتّصال
-        guard !ConnectDeadline.expired(job.method, acceptedAt: acceptedAt, now: clock()) else {
+        // لم تسمع الصفحةُ منّا مدّةً ربّما كفّت فيها عن الانتظار ← لا اتّصال
+        if contact.silentTooLong(job.method) {
             return .failure(.queueFull, jobId: job.id, effectivePort: printer.port)
         }
 
-        let outcome = await driver.send(bytes, host: host, port: printer.port, onStage: progress)
+        let outcome = await driver.send(
+            payload,
+            host: host,
+            port: printer.port,
+            onStage: { contact.tell($0) },
+            onProgress: { _, _ in contact.beat(.sending) }
+        )
         PrintLog.printer(job.id, host: host, port: printer.port, result: outcome)
         if let error = outcome.error {
             return .failure(
@@ -212,5 +226,60 @@ extension Result where Failure == PrintingError {
     var failureCode: ErrorCode? {
         if case let .failure(error) = self { return error.code }
         return nil
+    }
+}
+
+/*
+ * ما سمعته الصفحةُ منّا ومتى — §3 و§5.
+ *
+ * الـshim يكفّ عن انتظار طلبٍ لم يسمع عنه شيئًا في مهلته. فكلُّ مرحلةٍ تُقال له،
+ * والمرحلةُ الجارية تُعاد نبضةً كلَّ `beatInterval` ما دام العملُ يتقدّم. و`lastHeard`
+ * آخرُ ما قيل له (أو لحظةُ القبول): منه تُحسب `ConnectDeadline`.
+ */
+final class PageContact: @unchecked Sendable {
+    static let beatInterval: TimeInterval = 1
+
+    private let lock = NSLock()
+    private let clock: @Sendable () -> Date
+    private let send: @Sendable (BridgeStage, Bool) -> Void
+    private var heardAt: Date
+    private var toldAt = DispatchTime.now()
+    private var stage: BridgeStage?
+
+    init(acceptedAt: Date, clock: @escaping @Sendable () -> Date, send: @escaping @Sendable (BridgeStage, Bool) -> Void) {
+        self.heardAt = acceptedAt
+        self.clock = clock
+        self.send = send
+    }
+
+    var lastHeard: Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return heardAt
+    }
+
+    func silentTooLong(_ method: BridgeMethod) -> Bool {
+        ConnectDeadline.expired(method, silentSince: lastHeard, now: clock())
+    }
+
+    /// مرحلةٌ تُقال الآن
+    func tell(_ stage: BridgeStage) {
+        lock.lock()
+        let changed = self.stage != stage
+        self.stage = stage
+        heardAt = clock()
+        toldAt = .now()
+        lock.unlock()
+        send(stage, changed)
+    }
+
+    /// نبضةٌ إن مضت ثانيةٌ على آخر ما قيل
+    func beat(_ stage: BridgeStage) {
+        lock.lock()
+        let due = Double(DispatchTime.now().uptimeNanoseconds - toldAt.uptimeNanoseconds) / 1_000_000_000 >= Self.beatInterval
+        lock.unlock()
+        if due {
+            tell(stage)
+        }
     }
 }

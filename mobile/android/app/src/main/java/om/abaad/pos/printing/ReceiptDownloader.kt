@@ -16,7 +16,7 @@ import java.net.URL
  * والكوكيز تُقرأ عند التنزيل من `cookies` ولا تُسجَّل.
  */
 class ReceiptDownloader(
-    private val timeoutMs: Int = 20_000,
+    private val timeoutMs: Int = TIMEOUT_MS,
     private val maxBytes: Int = 10 * 1024 * 1024,
 ) {
 
@@ -78,6 +78,9 @@ class ReceiptDownloader(
     }
 
     companion object {
+        /** للاتّصال ولكلّ قراءة — والصفحةُ لا تسمع شيئًا أثناءه، فهو أقصرُ من انتظارها */
+        const val TIMEOUT_MS = 20_000
+
         fun isPdf(bytes: ByteArray): Boolean =
             bytes.size >= 4 &&
                 bytes[0] == '%'.code.toByte() &&

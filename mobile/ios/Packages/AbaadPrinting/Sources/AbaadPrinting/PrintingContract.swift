@@ -73,13 +73,16 @@ public enum BridgeMethod: String, Codable, Sendable {
 }
 
 /*
- * آخرُ لحظةٍ يبدأ فيها الاتّصالُ بالطابعة — محسوبةً من قبول الطلب (§5).
+ * أطولُ صمتٍ تبدأ بعده مهمّةٌ أو تتّصل بالطابعة — §5.
  *
- * الصفحةُ تكفّ عن الانتظار بعد 120 ثانية للإيصال و60 للاختبار (الـshim)،
- * فتقول للكاشير «لم يصل ردّ» وتعرض «إعادة الطباعة». ومهمّةٌ تأخّرت في الطابور
- * خلف طابعةٍ عالقة ثمّ اتّصلت بعدها تطبع إيصالًا لا يعلم به أحد — والإعادةُ
- * فوقه إيصالٌ ثانٍ. فلا اتّصالَ بعد هذه المهلة: الاتّصالُ (5 ث) والإرسالُ
- * (30 ث) بعدها ينتهيان قبل أن تكفّ الصفحةُ عن الانتظار، والردُّ QUEUE_FULL.
+ * الصفحةُ تكفّ عن الانتظار إن لم تسمع عن الطلب شيئًا 120 ثانية للإيصال و60
+ * للاختبار (الـshim)، فتقول للكاشير «لم يصل ردّ» وتعرض «إعادة الطباعة». ومهمّةٌ
+ * تأخّرت في الطابور خلف إيصالٍ طويل ثمّ بدأت بعدها تطبع إيصالًا لا يعلم به أحد —
+ * والإعادةُ فوقه إيصالٌ ثانٍ.
+ *
+ * فالصمتُ يُحسب من آخر ما قيل للصفحة (لحظةُ القبول إن لم يُقل شيء): مهمّةٌ صمتت
+ * أكثر من هذه المهلة لا تبدأ ولا تتّصل، والردُّ QUEUE_FULL. وما بعد البدء لا يصمت
+ * طويلًا: كلُّ مرحلةٍ تُقال، والجاريةُ تُعاد نبضةً كلَّ ثانية (`PageContact`).
  */
 public enum ConnectDeadline {
     public static let printReceipt: TimeInterval = 75
@@ -93,9 +96,9 @@ public enum ConnectDeadline {
         }
     }
 
-    public static func expired(_ method: BridgeMethod, acceptedAt: Date, now: Date) -> Bool {
+    public static func expired(_ method: BridgeMethod, silentSince: Date, now: Date) -> Bool {
         guard let limit = limit(for: method) else { return false }
-        return now.timeIntervalSince(acceptedAt) > limit
+        return now.timeIntervalSince(silentSince) > limit
     }
 }
 

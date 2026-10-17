@@ -21,48 +21,14 @@ object EscPosEncoder {
         val trimTrailingBlank: Boolean = true,
     )
 
+    /** صورةٌ صغيرة في الذاكرة (صفحةُ الاختبار والمتّجهات) — بالتيّار نفسِه الذي يمرّ به الإيصال */
     fun encode(image: BitImage, options: Options = Options()): ByteArray {
-        require(options.bandHeight in 1..0xFFFF) { "bandHeight out of range" }
-        require(options.feedLines in 0..255) { "feedLines out of range" }
-        require(image.bytesPerRow <= 0xFFFF) { "image too wide" }
-
-        val raster = if (options.trimTrailingBlank) image.trimTrailingBlank() else image
-        val out = ByteArrayOutputStream(16 + raster.data.size + (raster.height / options.bandHeight + 1) * 8)
-
-        out.write(0x1B)
-        out.write(0x40)
-
-        // ولا أمرَ صورةٍ أصلًا إن لم يبقَ صفّ
-        if (raster.height > 0 && raster.bytesPerRow > 0) {
-            var top = 0
-            while (top < raster.height) {
-                val rows = minOf(options.bandHeight, raster.height - top)
-                out.write(0x1D)
-                out.write(0x76)
-                out.write(0x30)
-                out.write(0x00)
-                out.write(raster.bytesPerRow and 0xFF)
-                out.write((raster.bytesPerRow shr 8) and 0xFF)
-                out.write(rows and 0xFF)
-                out.write((rows shr 8) and 0xFF)
-                out.write(raster.data, top * raster.bytesPerRow, rows * raster.bytesPerRow)
-                top += rows
-            }
-        }
-
-        if (options.feedLines > 0) {
-            out.write(0x1B)
-            out.write(0x64)
-            out.write(options.feedLines)
-        }
-
-        if (options.cut) {
-            out.write(0x1D)
-            out.write(0x56)
-            out.write(0x42)
-            out.write(0x00)
-        }
-
+        val out = ByteArrayOutputStream(16 + image.data.size + (image.height / maxOf(1, options.bandHeight) + 1) * 8)
+        val stream = EscPosStream(out, image.bytesPerRow, options)
+        val joiner = SeamJoiner(stream, keepTrailingBlank = !options.trimTrailingBlank)
+        joiner.beginPage()
+        joiner.append(image)
+        joiner.finish()
         return out.toByteArray()
     }
 }

@@ -30,6 +30,62 @@ struct ContractVectorTests {
         }
     }
 
+    /// الصفحاتُ شريطٌ واحد: فراغُ الوصلة يُطوى، وفراغُ داخل الصفحة يبقى
+    @Test("seams: every case row for row")
+    func seamVectors() throws {
+        let section = try Vectors.section("seams")
+        #expect(try #require(section["defaultMaxSeamBlank"] as? Int) == SeamJoiner.maxSeamBlankRows)
+        let cases = try #require(section["cases"] as? [[String: Any]])
+        #expect(cases.count >= 9)
+        for vector in cases {
+            let name = try #require(vector["name"] as? String)
+            let width = try #require(vector["width"] as? Int)
+            let cap = try #require(vector["maxSeamBlank"] as? Int)
+            let pages = try #require(vector["pages"] as? [[String]])
+            let expected = try #require(vector["rows"] as? [String])
+
+            var bytes: [UInt8] = []
+            let stream = try EscPosStream(bytesPerRow: (width + 7) / 8, options: EscPosOptions(bandHeight: 128, feedLines: 0, cut: false)) { bytes += $0 }
+            let joiner = SeamJoiner(sink: stream, maxSeamBlank: cap)
+            for page in pages {
+                joiner.beginPage()
+                try joiner.append(BitImage.fromRows(page, width: width))
+            }
+            try joiner.finish()
+
+            let job = try parseEscPos(bytes)
+            let wanted = BitImage.fromRows(expected, width: width)
+            let rows = (0..<wanted.height).map { Array(wanted.data[($0 * wanted.bytesPerRow)..<(($0 + 1) * wanted.bytesPerRow)]) }
+            #expect(job.rows == rows, "seams case \(name)")
+            #expect(job.commands.first == "init", "seams case \(name)")
+        }
+    }
+
+    @Test("seams: two pages encode as one job with one cut at the very end")
+    func seamStream() throws {
+        let vector = try #require(try Vectors.section("seams")["stream"] as? [String: Any])
+        let width = try #require(vector["width"] as? Int)
+        let options = try #require(vector["options"] as? [String: Any])
+        var bytes: [UInt8] = []
+        let stream = try EscPosStream(bytesPerRow: (width + 7) / 8, options: EscPosOptions(
+            bandHeight: try #require(options["bandHeight"] as? Int),
+            feedLines: try #require(options["feedLines"] as? Int),
+            cut: try #require(options["cut"] as? Bool),
+            trimTrailingBlank: try #require(options["trimTrailingBlank"] as? Bool)
+        )) { bytes += $0 }
+        let joiner = SeamJoiner(sink: stream, maxSeamBlank: try #require(vector["maxSeamBlank"] as? Int))
+        for page in try #require(vector["pages"] as? [[String]]) {
+            joiner.beginPage()
+            try joiner.append(BitImage.fromRows(page, width: width))
+        }
+        try joiner.finish()
+
+        #expect(hex(bytes) == (try #require(vector["hex"] as? String)))
+        let job = try parseEscPos(bytes)
+        #expect(job.cuts == 1)
+        #expect(job.commands.last == "cut")
+    }
+
     @Test("escpos: receipt defaults are 128 / 4 / cut / trim")
     func receiptDefaults() {
         #expect(EscPosOptions.receipt == EscPosOptions(bandHeight: 128, feedLines: 4, cut: true, trimTrailingBlank: true))

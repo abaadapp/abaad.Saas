@@ -53,13 +53,48 @@ struct RasterTests {
         #expect(!image.isBlack(x: 192, y: 500))
     }
 
-    @Test("a receipt taller than 40000 rows is refused before drawing")
-    func tooTall() {
-        // 14000 × 2.88 = 40320 صفًّا
-        let pdf = makePDF(pages: [(CGSize(width: 200, height: 14000), CGRect(x: 0, y: 0, width: 10, height: 10))])
+    /*
+     * وطولُ الإيصال لم يعد سببًا للرفض.
+     *
+     * كان يُرفض ما زاد على 40000 صفّ: نحو خمسة أمتار ونصف على 80. والآن تُوصل
+     * الصفحاتُ بلا عدد. وما يُرفض صفحةٌ واحدةٌ أطولُ ممّا تسمح به مواصفةُ PDF
+     * (200 بوصة) — قبل أن يُرسم منها شيء.
+     */
+    @Test("a single page beyond the PDF page limit is refused before drawing")
+    func pageBeyondTheLimit() throws {
+        let pdf = makePDF(pages: [(CGSize(width: 200, height: 14_401), CGRect(x: 0, y: 0, width: 10, height: 10))])
         #expect(throws: PrintingError(.receiptRenderFailed)) {
-            try PDFRasterizer.rasterize(pdf, widthDots: 576)
+            try PDFRasterizer.pages(pdf, widthDots: 576)
         }
+        let tallest = makePDF(pages: [(CGSize(width: 200, height: 14_400), CGRect(x: 0, y: 0, width: 10, height: 10))])
+        #expect(try PDFRasterizer.pages(tallest, widthDots: 576).map(\.height) == [41_472])
+    }
+
+    /*
+     * إيصالٌ أطولُ من الحدّ القديم (40000 صفّ) يُطبع كلُّه.
+     *
+     * صفحتان بعرض ورق 80 وارتفاع 10000 وحدة: 25400 صفٍّ لكلٍّ، 50800 معًا. في كلّ
+     * صفحةٍ شريطٌ أسود عند أعلاها وآخرُ عند أسفلها، والصفحةُ الثانية أعرضُ شريطًا —
+     * فيُعرف من الورق أنّ الصفحتين خرجتا كاملتين وبترتيبهما.
+     */
+    @Test("a receipt longer than the old 40000-row limit prints whole", .timeLimit(.minutes(2)))
+    func longerThanTheOldLimit() throws {
+        let width = 80.0 / 25.4 * 72
+        let pdf = makePDF(pages: [
+            (CGSize(width: width, height: 10_000), CGRect(x: 0, y: 9_990, width: width / 4, height: 10)),
+            (CGSize(width: width, height: 10_000), CGRect(x: 0, y: 0, width: width / 2, height: 10_000)),
+        ])
+        let spool = try ReceiptSpool.make(pdf: pdf, widthDots: 576)
+        defer { spool.remove() }
+        let printed = try parseEscPos(try spool.payload.allBytes())
+
+        #expect(printed.cuts == 1)
+        #expect(printed.commands.last == "cut")
+        // الصفحةُ الأولى: شريطٌ أعلاها ثمّ فراغٌ يلمس الوصلة فيُطوى؛ والثانيةُ سوداءُ نصفُها كلُّها
+        #expect(printed.rows.count > 25_400 && printed.rows.count < 25_400 + 30 + SeamJoiner.maxSeamBlankRows)
+        let firstPage = printed.rows.prefix(20).filter { $0.contains { $0 != 0 } }
+        #expect(!firstPage.isEmpty && firstPage.allSatisfy { $0[0] == 0xFF && $0[17] == 0xFF && $0[18] == 0 })
+        #expect(printed.rows.suffix(25_400).allSatisfy { $0[35] == 0xFF && $0[36] == 0 })
     }
 
     @Test("not a PDF → RECEIPT_RENDER_FAILED")

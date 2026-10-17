@@ -29,28 +29,17 @@ public struct EscPosOptions: Equatable, Sendable {
 }
 
 public enum EscPosEncoder {
+    /// صورةٌ صغيرة في الذاكرة (صفحةُ الاختبار والمتّجهات) — بالتيّار نفسِه الذي يمرّ به الإيصال
     public static func encode(_ image: BitImage, options: EscPosOptions = .receipt) -> [UInt8] {
-        var out: [UInt8] = [0x1B, 0x40]
-
-        let raster = options.trimTrailingBlank ? image.trimmingTrailingBlank() : image
-        // لم يبقَ صفّ ← لا أمرَ صورةٍ أصلًا
-        if raster.height > 0, raster.bytesPerRow > 0 {
-            let band = max(1, options.bandHeight)
-            let x = raster.bytesPerRow
-            var top = 0
-            while top < raster.height {
-                let rows = min(band, raster.height - top)
-                out += [0x1D, 0x76, 0x30, 0x00, UInt8(x & 0xFF), UInt8((x >> 8) & 0xFF), UInt8(rows & 0xFF), UInt8((rows >> 8) & 0xFF)]
-                out += raster.data[(top * x)..<((top + rows) * x)]
-                top += rows
-            }
-        }
-
-        if options.feedLines > 0 {
-            out += [0x1B, 0x64, UInt8(min(options.feedLines, 255))]
-        }
-        if options.cut {
-            out += [0x1D, 0x56, 0x42, 0x00]
+        var out: [UInt8] = []
+        do {
+            let stream = try EscPosStream(bytesPerRow: image.bytesPerRow, options: options) { out += $0 }
+            let joiner = SeamJoiner(sink: stream, keepTrailingBlank: !options.trimTrailingBlank)
+            joiner.beginPage()
+            try joiner.append(image)
+            try joiner.finish()
+        } catch {
+            preconditionFailure("writing to memory cannot fail")
         }
         return out
     }

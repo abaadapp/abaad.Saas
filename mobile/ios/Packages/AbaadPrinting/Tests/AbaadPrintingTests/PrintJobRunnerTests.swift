@@ -18,7 +18,7 @@ final class FakeFetcher: ReceiptFetching, @unchecked Sendable {
     }
 }
 
-/// طابعةٌ مزيَّفة: تُعلن المرحلتين كالحقيقيّة، وتحفظ ما وصلها
+/// طابعةٌ مزيَّفة: تُعلن المرحلتين كالحقيقيّة، وتقرأ الحمولةَ كلَّها وتحفظ ما وصلها
 final class FakeDriver: PrinterSending, @unchecked Sendable {
     let outcome: DriverResult
     let sent = Recorder<(host: String, port: Int, bytes: [UInt8])>()
@@ -27,9 +27,16 @@ final class FakeDriver: PrinterSending, @unchecked Sendable {
         self.outcome = outcome
     }
 
-    func send(_ bytes: [UInt8], host: String, port: Int, onStage: @escaping @Sendable (BridgeStage) -> Void) async -> DriverResult {
+    func send(
+        _ payload: PrintPayload,
+        host: String,
+        port: Int,
+        onStage: @escaping @Sendable (BridgeStage) -> Void,
+        onProgress: @escaping @Sendable (Int, Int) -> Void
+    ) async -> DriverResult {
         onStage(.connecting)
         if outcome.connected { onStage(.sending) }
+        let bytes = (try? payload.allBytes()) ?? []
         sent.append((host, port, bytes))
         var result = outcome
         result.bytesSent = outcome.error == nil ? bytes.count : 0
@@ -212,8 +219,13 @@ struct PrintJobRunnerTests {
         #expect(driver.sent.all.isEmpty)
     }
 
-    /// المهلةُ والاتّصالُ والإرسالُ تنتهي قبل أن تكفّ الصفحةُ عن الانتظار — مقروءةً من الـshim نفسِه
-    @Test("connect deadline + connect + write fit inside the shim's wait")
+    /*
+     * لا صمتَ أطولَ من انتظار الـshim — مقروءًا من ملفّه نفسِه.
+     *
+     * الصفحةُ تنتظر ما دامت تسمع. فكلُّ مدّةٍ لا يُقال فيها لها شيء أقصرُ من مهلتها:
+     * الطابورُ ثمّ الاتّصال، والتنزيل، وتوقّفُ الطابعة ثمّ ذيلُ الإغلاق، وما بين نبضتين.
+     */
+    @Test("no silence the native side allows is as long as the shim's wait")
     func deadlineFitsInsideTheShimWait() throws {
         let url = Vectors.mobileDirectory().appendingPathComponent("shared/js/abaad-printer-shim.js")
         let shim = try String(contentsOf: url, encoding: .utf8)
@@ -225,9 +237,60 @@ struct PrintJobRunnerTests {
             return try #require(TimeInterval(shim[digits])) / 1000
         }
         let driver = NetworkPrinterDriver()
+        let download = ReceiptDownloader().timeout
 
-        #expect(ConnectDeadline.printReceipt + driver.connectTimeout + driver.writeTimeout < (try wait("printReceipt")))
-        #expect(ConnectDeadline.testPrinter + driver.connectTimeout + driver.writeTimeout < (try wait("testPrinter")))
+        for (method, deadline) in [("printReceipt", ConnectDeadline.printReceipt), ("testPrinter", ConnectDeadline.testPrinter)] {
+            let shim = try wait(method)
+            #expect(deadline + driver.connectTimeout < shim, "\(method): queue + connect")
+            #expect(driver.stallTimeout + driver.tailTimeout < shim, "\(method): stall + tail")
+            #expect(PageContact.beatInterval < shim, "\(method): between beats")
+        }
+        #expect(download < (try wait("printReceipt")), "download")
+        #expect(try wait("printReceipt") == 120)
+    }
+
+    /*
+     * والمهلةُ تُحسب من آخر ما سمعته الصفحة لا من قبول الطلب.
+     *
+     * ساعةٌ تتقدّم 30 ثانيةً مع كلّ قراءة: من القبول إلى الاتّصال أكثرُ من 75 ثانية.
+     * لكنّ الصفحةَ سمعت «downloading» ثمّ «rendering» في الطريق، فلم تكفّ عن الانتظار
+     * — وإيصالٌ طويلٌ يُرسم طويلًا لا يُرفض لطوله.
+     */
+    @Test("a job the page keeps hearing from is sent however long it has run")
+    func heardJobIsSent() async {
+        let driver = FakeDriver()
+        let clock = SteppingClock(step: 30)
+        let runner = PrintJobRunner(fetcher: FakeFetcher(.success(pdf)), driver: driver, resolver: FakeResolver(answer: nil), clock: { clock.now() })
+
+        let result = await runner.run(receiptJob(target()), cookies: cookies, presenter: nil) { _ in }
+
+        #expect(result == .success(jobId: "j1", printed: true, connected: true, effectivePort: 9100))
+        #expect(driver.sent.all.count == 1)
+        #expect(clock.reads > 3)
+    }
+
+    /// ساعةٌ تتقدّم `step` ثانيةً مع كلّ قراءة
+    final class SteppingClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        let step: TimeInterval
+
+        init(step: TimeInterval) {
+            self.step = step
+        }
+
+        var reads: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func now() -> Date {
+            lock.lock()
+            defer { lock.unlock() }
+            count += 1
+            return Date(timeIntervalSince1970: TimeInterval(count - 1) * step)
+        }
     }
 
     @Test("openReceipt downloads with the session and hands the PDF to the system dialog")

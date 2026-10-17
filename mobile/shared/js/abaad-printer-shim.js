@@ -32,6 +32,13 @@
     }
 
     var VERSION = 1;
+    /*
+     * أطولُ صمتٍ من الطرف الأصليّ قبل BRIDGE_TIMEOUT — لا أطولُ مدّةٍ للطلب.
+     *
+     * إيصالٌ بألف صنفٍ على طابعةٍ بطيئة يُطبع دقائق. والطرفُ الأصليّ يقول كلَّ
+     * مرحلة، ويعيد الجاريةَ نبضةً كلَّ ثانيةٍ ما دام يتقدّم (PROTOCOL §3)، فكلُّ
+     * رسالةٍ تبدأ المهلةَ من جديد: لا يكفّ الانتظارُ عن إيصالٍ ما زال يخرج.
+     */
     var TIMEOUTS = { printReceipt: 120000, testPrinter: 60000, openReceipt: 120000 };
     // ما قد يكون بلغ الطابعةَ قبل انقطاع الجواب — فلا يُعاد تلقائيًّا
     var PRINTS = { printReceipt: true, testPrinter: true };
@@ -84,6 +91,8 @@
 
         var job = pending[msg.id];
         if (msg.type === 'progress') {
+            clearTimeout(job.timer);
+            job.timer = arm(msg.id, job.method, job.resolve);
             if (job.onProgress) {
                 try {
                     job.onProgress(String(msg.stage));
@@ -101,6 +110,13 @@
         }
     }
 
+    function arm(id, method, resolve) {
+        return setTimeout(function () {
+            delete pending[id];
+            resolve(failure('BRIDGE_TIMEOUT', { mayHavePrinted: !!PRINTS[method] }));
+        }, TIMEOUTS[method]);
+    }
+
     function call(method, payload, onProgress) {
         return new Promise(function (resolve) {
             if (!trusted()) {
@@ -111,21 +127,18 @@
 
             seq += 1;
             var id = 'j' + Date.now().toString(36) + '-' + seq;
-            var timer = setTimeout(function () {
-                delete pending[id];
-                resolve(failure('BRIDGE_TIMEOUT', { mayHavePrinted: !!PRINTS[method] }));
-            }, TIMEOUTS[method]);
 
             pending[id] = {
+                method: method,
                 resolve: resolve,
-                timer: timer,
+                timer: arm(id, method, resolve),
                 onProgress: typeof onProgress === 'function' ? onProgress : null,
             };
 
             try {
                 post(JSON.stringify({ v: VERSION, id: id, method: method, payload: payload }));
             } catch (e) {
-                clearTimeout(timer);
+                clearTimeout(pending[id].timer);
                 delete pending[id];
                 resolve(failure('BRIDGE_UNAVAILABLE'));
             }

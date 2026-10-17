@@ -418,6 +418,236 @@
       }
     ]
   },
+  "seams": {
+    "_comment": "Pages of one receipt are joined into ONE strip (PROTOCOL §7). Blank rows that touch a page boundary (the end of a page plus the start of the next, including wholly blank pages) collapse to at most maxSeamBlank rows. Blank rows inside a page are kept. The first page keeps its leading blank rows; the last page loses its trailing blank rows. rows = the joined strip.",
+    "defaultMaxSeamBlank": 16,
+    "cases": [
+      {
+        "name": "one-page-trailing-trimmed",
+        "width": 8,
+        "maxSeamBlank": 2,
+        "pages": [
+          [
+            "00000000",
+            "10000000",
+            "00000000",
+            "00000000"
+          ]
+        ],
+        "rows": [
+          "00000000",
+          "10000000"
+        ],
+        "note": "the end of the last page is trimmed; the top margin of the first page is kept"
+      },
+      {
+        "name": "interior-blank-kept",
+        "width": 8,
+        "maxSeamBlank": 1,
+        "pages": [
+          [
+            "10000000",
+            "00000000",
+            "00000000",
+            "00000000",
+            "01000000"
+          ]
+        ],
+        "rows": [
+          "10000000",
+          "00000000",
+          "00000000",
+          "00000000",
+          "01000000"
+        ],
+        "note": "blank rows inside a page are line spacing: kept whatever maxSeamBlank is"
+      },
+      {
+        "name": "seam-gap-collapsed",
+        "width": 8,
+        "maxSeamBlank": 2,
+        "pages": [
+          [
+            "10000000",
+            "00000000",
+            "00000000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "00000000",
+            "01000000"
+          ]
+        ],
+        "rows": [
+          "10000000",
+          "00000000",
+          "00000000",
+          "01000000"
+        ],
+        "note": "3 blank rows ending page 1 + 2 starting page 2 touch the seam: 5 -> 2"
+      },
+      {
+        "name": "short-seam-gap-kept",
+        "width": 8,
+        "maxSeamBlank": 4,
+        "pages": [
+          [
+            "10000000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "01000000"
+          ]
+        ],
+        "rows": [
+          "10000000",
+          "00000000",
+          "00000000",
+          "01000000"
+        ],
+        "note": "a seam gap already within maxSeamBlank is kept as it is"
+      },
+      {
+        "name": "touching-pages-no-gap",
+        "width": 8,
+        "maxSeamBlank": 2,
+        "pages": [
+          [
+            "10000000"
+          ],
+          [
+            "01000000"
+          ]
+        ],
+        "rows": [
+          "10000000",
+          "01000000"
+        ],
+        "note": "nothing is inserted where two pages meet without blank rows"
+      },
+      {
+        "name": "blank-page-between-collapses",
+        "width": 8,
+        "maxSeamBlank": 2,
+        "pages": [
+          [
+            "10000000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "00000000",
+            "00000000"
+          ],
+          [
+            "00000000",
+            "00100000"
+          ]
+        ],
+        "rows": [
+          "10000000",
+          "00000000",
+          "00000000",
+          "00100000"
+        ],
+        "note": "a wholly blank page in the middle is part of one seam gap: 5 -> 2"
+      },
+      {
+        "name": "first-page-leading-blank-kept",
+        "width": 8,
+        "maxSeamBlank": 1,
+        "pages": [
+          [
+            "00000000",
+            "00000000",
+            "00000000",
+            "10000000"
+          ],
+          [
+            "00000000",
+            "00000000",
+            "01000000"
+          ]
+        ],
+        "rows": [
+          "00000000",
+          "00000000",
+          "00000000",
+          "10000000",
+          "00000000",
+          "01000000"
+        ],
+        "note": "the first page keeps its top margin; the later seam is capped"
+      },
+      {
+        "name": "all-blank",
+        "width": 8,
+        "maxSeamBlank": 2,
+        "pages": [
+          [
+            "00000000"
+          ],
+          [
+            "00000000",
+            "00000000"
+          ]
+        ],
+        "rows": [],
+        "note": "nothing printable: no rows at all"
+      },
+      {
+        "name": "pages-in-order",
+        "width": 8,
+        "maxSeamBlank": 0,
+        "pages": [
+          [
+            "10000000"
+          ],
+          [
+            "00000000",
+            "01000000"
+          ],
+          [
+            "00100000",
+            "00000000"
+          ]
+        ],
+        "rows": [
+          "10000000",
+          "01000000",
+          "00100000"
+        ],
+        "note": "maxSeamBlank 0 joins pages edge to edge, in page order"
+      }
+    ],
+    "stream": {
+      "_comment": "The joined strip of two pages encoded as one job: GS v 0 bands run across the page boundary, ESC @ once at the start, ESC d + GS V once at the very end.",
+      "width": 8,
+      "maxSeamBlank": 2,
+      "pages": [
+        [
+          "10000000",
+          "00000000",
+          "00000000",
+          "00000000"
+        ],
+        [
+          "00000000",
+          "00000000",
+          "01000000"
+        ]
+      ],
+      "options": {
+        "bandHeight": 2,
+        "feedLines": 4,
+        "cut": true,
+        "trimTrailingBlank": true
+      },
+      "hex": "1b401d7630000100020080001d7630000100020000401b64041d564200"
+    }
+  },
   "threshold": {
     "_comment": "black when luminance < threshold. luminance = floor((299*R + 587*G + 114*B) / 1000).",
     "threshold": 160,

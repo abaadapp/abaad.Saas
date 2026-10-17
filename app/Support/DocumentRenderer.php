@@ -411,8 +411,12 @@ class DocumentRenderer
         $tpl = DocumentTemplates::settings($businessId, 'delivery');
         $business = $order->business;
 
+        /*
+         * والقالبُ لا يُعطى الطلب: يُعطى ما يُطبع وحدَه (`DeliveryPaper::forRecipient`)
+         * — حمولةٌ تُبنى في الخادم بلا مالٍ ولا هويّةِ من أخفى اسمه.
+         */
         return self::html(view(Version::views(null).'.delivery-thermal', [
-            'order' => $order,
+            'note' => DeliveryPaper::forRecipient($order),
             'tpl' => $tpl,
             'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
             'width' => $width,
@@ -422,9 +426,6 @@ class DocumentRenderer
                 'phone' => $business->phone ?? null,
             ],
             'logo' => ($tpl['show_logo'] ?? true) ? InvoiceBranding::logo($businessId) : null,
-            'recipient' => DeliveryPaper::recipient($order),
-            'items' => DeliveryPaper::stripItems($order),
-            'gift' => DeliveryPaper::gift($order),
         ]));
     }
 

@@ -43,7 +43,12 @@ class DocumentPrintController extends Controller
         return DeliveryPaper::pdf($bid, $order);
     }
 
-    /** وسندُ التسليم على شريط طابعة الصندوق — الورقةُ نفسُها بلغة الإيصال */
+    /**
+     * وسندُ التسليم على شريط طابعة الصندوق — لطلب موقعٍ في متجرٍ فُتح له.
+     *
+     * والسؤالُ في `DeliveryPaper::stripPdf` لا هنا وحدَه: البابان يمرّان منه،
+     * فطلبٌ من غير الموقع أو متجرٌ لم يُفتح له يُردّ بـ404 من أيّهما جاء.
+     */
     public function deliveryThermal(string $number)
     {
         $bid = $this->bid();

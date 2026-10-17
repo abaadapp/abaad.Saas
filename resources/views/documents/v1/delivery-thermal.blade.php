@@ -10,25 +10,24 @@
     لا يُكتب العنوانُ ولا رأسُ القسم في `<thead>`.
 
     ولا مالَ هنا بحال، ولا سطرَ بتسميةٍ وبياض: ما لم يُكتب يغيب بتسميته.
-    انظر `DocumentRenderer::deliveryStrip` و`DeliveryPaper`.
+
+    ولا طلبَ في يد القالب: `$note` حمولةٌ بناها الخادم (`DeliveryPaper::forRecipient`)
+    بما يُطبع وحده — بلا مالٍ، وبلا هويّةِ مشترٍ أخفى اسمَه. فشرطٌ يُنسى
+    هنا لا يبلغ عمودًا لم يُعطَه. انظر `DocumentRenderer::deliveryStrip`.
 --}}
 @php
-    use App\Support\FlowerOrder;
     use App\Support\Paper;
 
     $show = fn (string $k, bool $default = true) => (bool) ($tpl[$k] ?? $default);
     $line = fn (string $k) => trim((string) ($tpl[$k] ?? ''));
     $width = $width ?? 80;
 
-    $branch = $show('show_branch') ? trim((string) $order->branch) : '';
+    $branch = $show('show_branch') ? (string) $note['branch'] : '';
     $phone = trim((string) ($shop['phone'] ?? ''));
-    $fulfil = match ((string) $order->fulfillment_type) {
-        FlowerOrder::DELIVERY => __('توصيل'),
-        FlowerOrder::PICKUP => __('استلام من المحل'),
-        default => '',
-    };
+    $recipient = $note['recipient'];
     $reached = array_filter($recipient);
-    $pieces = $order->items->sum('quantity');
+    $items = $note['items'];
+    $gift = $note['gift'];
     // نصٌّ يحفظ أسطرَ كاتبه ويلتفّ عند الفراغ وحده — انظر `Paper::keepWords`
     $lines = fn (?string $s) => Paper::keepWords($s);
 @endphp
@@ -59,15 +58,15 @@
 
 {{-- ٢ · أيُّ طلبٍ، ومتى يُسلَّم، وكيف --}}
 <table class="kv">
-    <tr><td class="k">{{ __('رقم الطلب') }}</td><td class="l">{{ $order->number }}</td></tr>
-    @if ($show('show_datetime') && $order->ordered_at)
-        <tr><td class="k">{{ __('تاريخ الطلب') }}</td><td class="l">{{ $order->ordered_at->format('Y-m-d H:i') }}</td></tr>
+    <tr><td class="k">{{ __('رقم الطلب') }}</td><td class="l">{{ $note['number'] }}</td></tr>
+    @if ($show('show_datetime') && $note['ordered_at'])
+        <tr><td class="k">{{ __('تاريخ الطلب') }}</td><td class="l">{{ $note['ordered_at'] }}</td></tr>
     @endif
-    @if ($order->scheduled_for)
-        <tr><td class="k">{{ __('موعد التسليم') }}</td><td class="l b">{{ $order->scheduled_for->format('Y-m-d H:i') }}</td></tr>
+    @if ($note['scheduled_for'])
+        <tr><td class="k">{{ __('موعد التسليم') }}</td><td class="l b">{{ $note['scheduled_for'] }}</td></tr>
     @endif
-    @if ($fulfil !== '')
-        <tr><td class="k">{{ __('نوع التسليم') }}</td><td class="v">{{ $fulfil }}</td></tr>
+    @if ($note['fulfilment'])
+        <tr><td class="k">{{ __('نوع التسليم') }}</td><td class="v">{{ $note['fulfilment'] }}</td></tr>
     @endif
 </table>
 
@@ -123,7 +122,7 @@
     </tbody>
 </table>
 @if ($show('show_items_count'))
-    <div class="muted tiny" style="margin-top:2pt">{{ __('عدد القطع') }}: <span dir="ltr">{{ \App\Support\DocumentPaper::qty($pieces) }}</span></div>
+    <div class="muted tiny" style="margin-top:2pt">{{ __('عدد القطع') }}: <span dir="ltr">{{ $note['pieces'] }}</span></div>
 @endif
 
 {{-- ٥ · الهديّة — ولا رأسَ لها إن لم يبقَ ما يُطبع، ولا «من:» إن أُخفي المُهدي --}}

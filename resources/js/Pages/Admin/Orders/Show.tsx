@@ -156,7 +156,7 @@ interface OrderDetail {
  * صلاحيةُ `order.edit` ويومُ البيع، يقيسهما الخادم قبل الرسم وعند الكتابة.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch, lineEdit } =
+    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch, lineEdit, deliveryNote } =
         usePage<
         PageProps<{
             order: OrderDetail;
@@ -169,6 +169,11 @@ export default function OrderShow() {
             /** ورقةُ الطلب مرسومةً — من وصفة الطباعة نفسِها. و`null` لطلبٍ لا صفَّ له */
             paper: { html: string; size: string } | null;
             taxInvoice: { registered: boolean; ready: boolean };
+            /**
+             * أيُّ سندِ تسليمٍ يُعرض: `thermal` لطلب موقعٍ في متجرٍ فُتح له، و`a4`
+             * لكلّ ما سواه — يقيسه الخادم (`DeliveryPaper::paperFor`)
+             */
+            deliveryNote?: 'thermal' | 'a4';
             /** حالُ طلب تقييم Google — تُقاس في الخادم، والشاشةُ ترسم ما قِيس */
             googleReview: { show: boolean; reason: string | null; requestedAt: string | null };
             /**
@@ -578,24 +583,28 @@ export default function OrderShow() {
                             وسندُ التسليم ورقةٌ أخرى لا نسخةٌ من الفاتورة:
                             يحملها السائق، ويوقّعها المستلم، وقالبُها يُخفي
                             الأسعار — فلا يرى من استلم الهديّة ثمنَها.
-                        */}
-                        <Button variant="outline" asChild>
-                            <a href={tenant(route('admin.orders.deliveryNote', order.id))} target="_blank" rel="noreferrer">
-                                <Truck />
-                                {t('سند تسليم')}
-                            </a>
-                        </Button>
 
-                        {/*
-                            ونسختُه على شريط طابعة الصندوق — بالمسار نفسِه الذي
-                            يطبع الإيصال: مباشرةً في التطبيق، وملفًّا في المتصفّح.
+                            وزرٌّ واحدٌ لا اثنان: طلبُ موقعٍ في متجرٍ فُتح له
+                            يُطبع سندُه على شريط طابعة الصندوق — بالمسار نفسِه
+                            الذي يطبع الإيصال: مباشرةً في التطبيق، وملفًّا في
+                            المتصفّح — وكلُّ ما سواه على ورقة A4 كما كان.
+                            و`order.id` هنا رقمُ الطلب، وبه يُنادى البابان.
                         */}
-                        <PrintReceiptButton
-                            number={order.id}
-                            routeName="admin.orders.deliveryNoteThermal"
-                            label={t('سند تسليم حراري')}
-                            variant="outline"
-                        />
+                        {deliveryNote === 'thermal' ? (
+                            <PrintReceiptButton
+                                number={order.id}
+                                routeName="admin.orders.deliveryNoteThermal"
+                                label={t('طباعة سند التسليم')}
+                                variant="outline"
+                            />
+                        ) : (
+                            <Button variant="outline" asChild>
+                                <a href={tenant(route('admin.orders.deliveryNote', order.id))} target="_blank" rel="noreferrer">
+                                    <Truck />
+                                    {t('سند تسليم')}
+                                </a>
+                            </Button>
+                        )}
 
                         {/*
                             و«تعديل الفاتورة» يفتح أقلامَ الجدول ويمضي إليه:

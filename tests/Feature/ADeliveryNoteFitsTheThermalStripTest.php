@@ -14,9 +14,11 @@ use App\Support\InvoiceBranding;
 use App\Support\OrderStatus;
 use App\Support\Paper;
 use App\Support\Permissions;
+use App\Support\SalesChannel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\View;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\PdfText;
 use Tests\TestCase;
@@ -33,7 +35,9 @@ use Tests\TestCase;
  *    وتلتفّ عند الفراغ (`Paper::keepWords`)، والرابطُ الطويلُ ينكسر.
  *  · خمسون صنفًا وأكثر: كلٌّ مرّةً واحدة، والشريطُ بعرضه، وصفحاتُه ≤ ٢ م.
  *  · خياراتُ الطلب المخصَّص الظاهرةُ وحدها، ورسالةُ البطاقة بأسطرها.
- *  · «لا تذكر اسمي»: لا اسمَ مُهدٍ ولا مشترٍ ولا هاتفَه ولا سطرَ «من:».
+ *  · «لا تذكر اسمي» — ولو لم يُعلَّم الطلبُ هديّة: لا اسمَ مُهدٍ ولا مشترٍ
+ *    ولا هاتفَه في أيّ نصٍّ حرّ، ولا سطرَ «من:»، ولا مشتريَ يُستعار مستلِمًا.
+ *  · والقالبُ يُعطى حمولةً بناها الخادم (`DeliveryPaper::forRecipient`) لا الطلب.
  *  · ولا مالَ بحال: لا عمودَ سعرٍ ولا إجماليَّ ولا وسيلةَ دفعٍ ولا عملة.
  *  · والبابان يطبعانه لمن يملكهما، ومتجرٌ آخر لا يبلغه.
  */
@@ -60,7 +64,11 @@ class ADeliveryNoteFitsTheThermalStripTest extends TestCase
         parent::setUp();
         app()->setLocale('ar');
 
-        $this->shop = Business::create(['name' => 'ROSE', 'type' => 'Flowers', 'status' => 'نشط', 'city' => 'Muscat', 'phone' => '+968 9525 9066']);
+        // متجرٌ فُتح له سندُ الشريط، وطلباتُه هنا من الموقع — لمن ولأيّ طلب: `OnlyAnOpenedShopsWebsiteOrdersPrintTheDeliveryNoteOnTheStripTest`
+        $this->shop = Business::create([
+            'name' => 'ROSE', 'type' => 'Flowers', 'status' => 'نشط', 'city' => 'Muscat', 'phone' => '+968 9525 9066',
+            'thermal_delivery_note_enabled' => true,
+        ]);
         $this->branch = Branch::create(['business_id' => $this->shop->id, 'name' => 'Khuwair']);
     }
 
@@ -79,7 +87,7 @@ class ADeliveryNoteFitsTheThermalStripTest extends TestCase
     {
         $order = Order::create($over + [
             'business_id' => $this->shop->id, 'branch_id' => $this->branch->id, 'branch' => 'Khuwair',
-            'number' => 'INV-000777', 'status' => OrderStatus::READY, 'is_held' => false,
+            'number' => 'INV-000777', 'channel' => SalesChannel::WEBSITE, 'status' => OrderStatus::READY, 'is_held' => false,
             'customer_name' => 'Buyer Person', 'employee_name' => 'Cashier',
             'payment_method' => 'تحويل بنكي', 'payment_status' => 'مدفوع',
             'subtotal' => 98.765, 'discount' => 1.111, 'tax' => 2.222, 'delivery_fee' => 3.333, 'total' => 99.999,
@@ -280,44 +288,231 @@ class ADeliveryNoteFitsTheThermalStripTest extends TestCase
 
     /* ═════════════ «لا تذكر اسمي» ═════════════ */
 
+    /**
+     * مشترٍ أخفى اسمَه — وهويّتُه مزروعةٌ في كلّ نصٍّ حرٍّ قد يبلغ الورقة.
+     *
+     * اسمُ المُهدي، واسمُ العميل بلغتيه، واسمُه في بطاقته، وهاتفُه بأشكاله
+     * (بمفتاح الدولة وبلا مفتاح، بشَرطاتٍ وفراغات، وبالأرقام العربيّة) — في
+     * العنوان وتعليمات التوصيل وملاحظة البند وخيار الطلب المخصَّص والمناسبة
+     * «أخرى». ثمّ ملاحظةُ الطلب والملاحظةُ الداخليّة، وهما لا تُطبعان أصلًا.
+     */
+    private function anonymousOrder(array $over = []): Order
+    {
+        $buyer = Customer::create([
+            'business_id' => $this->shop->id, 'name' => 'Ahmed Sender', 'name_en' => 'Ahmed Buyer', 'phone' => '+968 9999 0001',
+        ]);
+
+        $order = $this->order($over + [
+            'customer_id' => $buyer->id, 'customer_name' => 'Ahmed Sender', 'customer_name_en' => 'Ahmed Buyer',
+            'sender_name' => 'Secret Admirer', 'hide_sender' => true,
+            'occasion_type' => 'other', 'occasion_text' => 'Apology from Secret Admirer',
+            'delivery_address' => 'Al Khuwair, Way 3021, villa 12 — ask for Ahmed Sender (99990001)',
+            'delivery_notes' => "Call ٩٩٩٩٠٠٠١ if late.\nSay it is from ahmed sender only if asked: 00968-9999-0001",
+            'notes' => 'ORDER NOTE FOR THE SHOP', 'internal_notes' => 'INTERNAL STAFF NOTE',
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id, 'name' => 'Satin ribbon', 'price' => 1, 'quantity' => 1, 'total' => 1,
+            'note' => 'Print "SECRET ADMIRER" on the ribbon, questions to +96899990001',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id, 'product_id' => null, 'name' => 'Custom box', 'price' => 5, 'quantity' => 1, 'total' => 5,
+            'custom_details' => ['v' => 2, 'fields' => [
+                ['label' => 'Tag', 'values' => [['label' => 'With love — Ahmed Buyer']], 'internal' => false],
+            ]],
+        ]);
+
+        return $order->load('items');
+    }
+
+    /** ما يدلّ على المشتري لا يبلغ ما يُقرأ — نصَّ الورقة أو حمولتَها */
+    private function assertNoBuyer(string $haystack, string $case): void
+    {
+        foreach (['Ahmed Sender', 'Ahmed Buyer', 'Secret Admirer', '9999 0001', '99990001', '9999-0001', '٩٩٩٩٠٠٠١'] as $who) {
+            $this->assertStringNotContainsStringIgnoringCase($who, $haystack, "{$case}: «{$who}» reached the recipient");
+        }
+    }
+
+    private static function payload(Order $order): string
+    {
+        return (string) json_encode(DeliveryPaper::forRecipient($order), JSON_UNESCAPED_UNICODE);
+    }
+
     #[DataProvider('widths')]
     public function test_a_hidden_sender_leaves_no_trace_of_the_buyer(int $mm): void
     {
         $this->width($mm);
-        $buyer = Customer::create(['business_id' => $this->shop->id, 'name' => 'Ahmed Sender', 'phone' => '+968 9999 0001']);
-        $order = $this->order([
-            'customer_id' => $buyer->id, 'customer_name' => 'Ahmed Sender',
-            'sender_name' => 'Ahmed Sender', 'hide_sender' => true,
-        ]);
+        $order = $this->anonymousOrder();
         $html = $this->html($order);
         $text = self::text($html);
 
-        $this->assertStringNotContainsString('Ahmed Sender', $text);
-        $this->assertStringNotContainsString('9999 0001', $text);
+        $this->assertNoBuyer($text, "{$mm}mm");
+        $this->assertNoBuyer(self::payload($order), 'payload');
+
+        // لا سطرَ «من:» ولا تسميةَ مُرسِلٍ فارغة، ولا ما كُتب للمتجر
         $this->assertStringNotContainsString('<td class="k">'.__('من').'</td>', $html);
-        $this->assertStringNotContainsString('المرسل', $text);
-        $this->assertStringNotContainsString('المُهدي', $text);
-        // والقسمُ باقٍ بما يُقال: المناسبةُ والبطاقة
-        $this->assertInOrder($text, ['هدية', 'عيد ميلاد', 'رسالة البطاقة']);
+        foreach (['المرسل', 'المُهدي', 'ORDER NOTE FOR THE SHOP', 'INTERNAL STAFF NOTE', 'Cashier'] as $never) {
+            $this->assertStringNotContainsString($never, $text);
+        }
+
+        // وما يُقال باقٍ: المستلِمُ وعنوانُه وتعليماتُه بلا المشتري، والمناسبةُ والبطاقة
+        $this->assertInOrder($text, [
+            'بيانات المستلم', 'سارة بنت محمد البلوشي', '+968 9123 4567',
+            'Al Khuwair, Way 3021, villa 12 — ask for *** (***)', 'Call *** if late.', 'Say it is from *** only if asked: ***',
+            'Print "***" on the ribbon, questions to ***', 'Tag: With love — ***',
+            'هدية', 'Apology from ***', 'رسالة البطاقة', 'كل عام وأنتِ بخير',
+        ], "{$mm}mm");
 
         $pdf = PdfText::pages($this->pdf($order, 'en'))[0]['text'];
         $this->assertStringNotContainsString('From', $pdf);
-        $this->assertStringNotContainsString('Ahmed Sender', $pdf);
+        $this->assertNoBuyer($pdf, "{$mm}mm PDF");
     }
 
-    /** وهديّةٌ بلا اسم مستلِم لا تستعير اسمَ المشتري ولا هاتفَه */
+    /**
+     * و«لا تذكر اسمي» يُطاع ولو لم يُعلَّم الطلبُ هديّةً — ولا مناسبةَ ولا بطاقة.
+     *
+     * طلبٌ متناقض: أخفى صاحبُه اسمَه، ولا علمَ هديّةٍ عليه، ولا مستلِمَ مكتوب.
+     * فلا يُستعار المشتري مستلِمًا، ولا يُطبع قسمُ هديّةٍ فارغ.
+     */
+    public function test_a_hidden_sender_is_kept_on_an_order_not_marked_a_gift(): void
+    {
+        $order = $this->anonymousOrder([
+            'is_gift' => false, 'occasion_type' => null, 'occasion_text' => null, 'card_message' => null,
+            'recipient_name' => null, 'recipient_phone' => null,
+        ]);
+        $note = DeliveryPaper::forRecipient($order);
+        $text = self::text($this->html($order));
+
+        $this->assertNoBuyer($text, 'not a gift');
+        $this->assertNoBuyer(self::payload($order), 'not a gift · payload');
+        $this->assertNull($note['recipient']['name']);
+        $this->assertNull($note['recipient']['phone']);
+        $this->assertNull($note['gift']);
+        $this->assertStringNotContainsString('هدية', $text);
+        $this->assertStringContainsString('Al Khuwair, Way 3021', $text);
+    }
+
+    /** وبطاقةٌ بلا علم الهديّة — قسمُها يُطبع بلا مُهدٍ */
+    public function test_a_hidden_sender_with_inconsistent_gift_fields_stays_hidden(): void
+    {
+        $order = $this->anonymousOrder(['is_gift' => false, 'occasion_type' => null, 'occasion_text' => null]);
+        $note = DeliveryPaper::forRecipient($order);
+
+        $this->assertSame(['occasion' => null, 'message' => self::CARD, 'sender' => null], $note['gift']);
+        $this->assertNoBuyer(self::payload($order), 'inconsistent');
+        $this->assertNoBuyer(self::text($this->html($order)), 'inconsistent');
+    }
+
+    /** ومشترٍ كتب اسمَه أو رقمَه في خانة المستلِم — يغيب منها، ولا تسميةَ فوق فراغ */
+    public function test_a_buyer_written_as_the_recipient_is_left_out(): void
+    {
+        $order = $this->anonymousOrder(['recipient_name' => 'ahmed sender', 'recipient_phone' => '9999 0001']);
+        $note = DeliveryPaper::forRecipient($order);
+        $html = $this->html($order);
+
+        $this->assertNull($note['recipient']['name']);
+        $this->assertNull($note['recipient']['phone']);
+        $this->assertNoBuyer(self::text($html), 'buyer as recipient');
+        $this->assertStringNotContainsString('<td class="k">'.__('الاسم').'</td>', $html);
+        $this->assertStringNotContainsString('<td class="k">'.__('الهاتف').'</td>', $html);
+
+        // واسمان للمشتري معًا لا يُطبعان «*** & ***» — لم يبقَ من المستلِم شيء
+        $order->forceFill(['recipient_name' => 'Ahmed Sender & Secret Admirer'])->save();
+        $this->assertNull(DeliveryPaper::forRecipient($order)['recipient']['name']);
+
+        // ومستلِمٌ حقيقيٌّ بجانب اسم المشتري يبقى، ويُحجب المشتري وحده
+        $order->forceFill(['recipient_name' => 'Sara c/o Ahmed Sender'])->save();
+        $this->assertSame('Sara c/o ***', DeliveryPaper::forRecipient($order)['recipient']['name']);
+    }
+
+    /**
+     * ومشترٍ يصعب تعرّفُه في النصّ — اسمٌ من حرفين، وهاتفٌ ناقصُ الخانات —
+     * لا يُستعار مستلِمًا لطلبٍ أخفى صاحبُه اسمَه.
+     *
+     * فالحمايةُ طبقتان: لا يُستعار المشتري أصلًا، وما وقع في خانة المستلِم من
+     * هويّته يُطرح. وهذه الحالُ تشهد للأولى وحدها: الثانيةُ لا تعرف هاتفًا
+     * بأقلَّ من سبع خانات.
+     */
+    public function test_an_anonymous_order_never_borrows_a_buyer_hard_to_recognise(): void
+    {
+        $buyer = Customer::create(['business_id' => $this->shop->id, 'name' => 'Li', 'phone' => '5566']);
+        $order = $this->order([
+            'customer_id' => $buyer->id, 'customer_name' => 'Li', 'sender_name' => null, 'hide_sender' => true,
+            'is_gift' => false, 'occasion_type' => null, 'card_message' => null,
+            'recipient_name' => null, 'recipient_phone' => null,
+        ]);
+        $note = DeliveryPaper::forRecipient($order);
+
+        $this->assertNull($note['recipient']['name']);
+        $this->assertNull($note['recipient']['phone']);
+        $this->assertStringNotContainsString('5566', self::text($this->html($order)));
+
+        // واسمُه القصيرُ مكتوبًا في خانة المستلِم يغيب كذلك — مطابقةً تامّة
+        $order->forceFill(['recipient_name' => 'LI'])->save();
+        $this->assertNull(DeliveryPaper::forRecipient($order)['recipient']['name']);
+    }
+
+    /** وهديّةٌ بلا اسم مستلِم لا تستعير اسمَ المشتري ولا هاتفَه — أخفى اسمَه أو لم يُخفه */
     public function test_a_gift_never_borrows_the_buyer_as_recipient(): void
     {
-        $buyer = Customer::create(['business_id' => $this->shop->id, 'name' => 'Ahmed Sender', 'phone' => '+968 9999 0001']);
+        $buyer = Customer::create(['business_id' => $this->shop->id, 'name' => 'Khalid Buyer', 'phone' => '+968 9888 0002']);
         $order = $this->order([
-            'customer_id' => $buyer->id, 'customer_name' => 'Ahmed Sender',
-            'recipient_name' => null, 'recipient_phone' => null, 'hide_sender' => true,
+            'customer_id' => $buyer->id, 'customer_name' => 'Khalid Buyer',
+            'recipient_name' => null, 'recipient_phone' => null, 'hide_sender' => false,
         ]);
         $text = self::text($this->html($order));
 
-        $this->assertStringNotContainsString('Ahmed Sender', $text);
-        $this->assertStringNotContainsString('9999 0001', $text);
+        $this->assertStringNotContainsString('Khalid Buyer', $text);
+        $this->assertStringNotContainsString('9888 0002', $text);
         $this->assertStringContainsString(self::ADDRESS, $text);
+    }
+
+    /** ومُهدٍ لم يُكتب اسمُه لا يحلّ محلَّه اسمُ العميل — ولا سطرَ «من:» */
+    public function test_a_missing_sender_is_never_filled_with_the_customer(): void
+    {
+        $order = $this->order(['sender_name' => null, 'hide_sender' => false, 'customer_name' => 'Khalid Buyer']);
+        $html = $this->html($order);
+
+        $this->assertNull(DeliveryPaper::forRecipient($order)['gift']['sender']);
+        $this->assertStringNotContainsString('Khalid Buyer', self::text($html));
+        $this->assertStringNotContainsString('<td class="k">'.__('من').'</td>', $html);
+    }
+
+    /**
+     * والقالبُ لا يُعطى الطلب — يُعطى الحمولة وحدها.
+     *
+     * فما ليس في الحمولة لا يبلغ الورقةَ بشرطٍ يُنسى في Blade: لا مالَ ولا
+     * وسيلةَ دفعٍ ولا مشتريَ ولا ملاحظةً داخليّة. ومفاتيحُها مكتوبةٌ هنا:
+     * مفتاحٌ جديدٌ يُضاف إليها يُسأل عنه قبل أن يُطبع.
+     */
+    public function test_the_template_is_handed_the_recipient_payload_not_the_order(): void
+    {
+        $handed = null;
+        View::creator('documents.v1.delivery-thermal', function ($view) use (&$handed) {
+            $handed = $view->getData();
+        });
+
+        $order = $this->order();
+        $this->html($order);
+
+        $this->assertNotNull($handed);
+        $this->assertArrayNotHasKey('order', $handed);
+        foreach ($handed as $key => $value) {
+            $this->assertNotInstanceOf(Order::class, $value, "«{$key}» hands the template the order");
+        }
+
+        $note = $handed['note'];
+        $this->assertSame(['number', 'ordered_at', 'scheduled_for', 'fulfilment', 'branch', 'pieces', 'recipient', 'items', 'gift'], array_keys($note));
+        $this->assertSame(['name', 'phone', 'address', 'notes'], array_keys($note['recipient']));
+        $this->assertSame(['occasion', 'message', 'sender'], array_keys($note['gift']));
+        foreach ($note['items'] as $item) {
+            $this->assertSame(['name', 'qty', 'note', 'options'], array_keys($item));
+        }
+
+        $json = (string) json_encode($note, JSON_UNESCAPED_UNICODE);
+        foreach (['98.765', '99.999', '12.345', '1.111', '2.222', '3.333', 'تحويل بنكي', 'مدفوع', 'Buyer Person', 'Cashier'] as $never) {
+            $this->assertStringNotContainsString($never, $json, "«{$never}» in the payload");
+        }
     }
 
     /**
@@ -363,7 +558,9 @@ class ADeliveryNoteFitsTheThermalStripTest extends TestCase
         $text = self::text($this->html($order));
 
         foreach (['السعر', 'الإجمالي', 'المبلغ', 'المجموع', 'الخصم', 'الضريبة', 'رسوم التوصيل', 'وسيلة الدفع',
-            'طريقة الدفع', 'حالة الدفع', 'مدفوع', 'تحويل بنكي', 'نقدي', 'OMR', 'ر.ع', '12.345', '98.765', '99.999', '3.333'] as $money) {
+            'طريقة الدفع', 'حالة الدفع', 'مدفوع', 'تحويل بنكي', 'نقدي', 'OMR', 'ر.ع', '12.345', '98.765', '99.999', '3.333',
+            // ولا ما يخصّ المتجرَ وحده: البائعُ وحالُ الطلب
+            'Cashier', OrderStatus::READY] as $money) {
             $this->assertStringNotContainsString($money, $text, "«{$money}» on a delivery note");
         }
 

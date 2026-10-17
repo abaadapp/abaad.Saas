@@ -7737,5 +7737,7 @@
     "التوقيع": "Signature",
     "تاريخ/وقت الاستلام": "Received at",
     "نوع التسليم": "Delivery type",
-    "سند تسليم حراري": "Thermal delivery note"
+    "طباعة سند التسليم": "Print delivery note",
+    "سند التسليم الحراري لطلبات الموقع": "Thermal delivery note for website orders",
+    "يُطبع سند تسليم طلبات المتجر الإلكتروني على طابعة الصندوق (58 أو 80 مم) بدل ورقة A4. طلبات نقطة البيع تبقى كما هي.": "Website orders print their delivery note on the till printer (58 or 80 mm) instead of A4 paper. Point-of-sale orders stay as they are."
 }

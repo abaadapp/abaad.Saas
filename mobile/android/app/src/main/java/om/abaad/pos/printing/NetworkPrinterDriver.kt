@@ -27,6 +27,9 @@ import java.util.concurrent.TimeUnit
 class NetworkPrinterDriver(
     private val chunkSize: Int = 4096,
     private val drainMs: Int = 300,
+    // مقبسٌ غيرُ متّصل. التطبيقُ يأخذ الافتراضيَّ دائمًا؛ والاختبارُ يمرّر مقبسًا حقيقيًّا
+    // ينقطع خرجُه عند بايتٍ يختاره — بدل RST قد يسبق عودةَ connect() أو يتأخّر عنها
+    private val openSocket: () -> Socket = { Socket() },
 ) {
 
     sealed class Result {
@@ -53,7 +56,7 @@ class NetworkPrinterDriver(
         writeTimeoutMs: Long = WRITE_TIMEOUT_MS,
         onStage: (Stage) -> Unit = {},
     ): Result {
-        val socket = Socket()
+        val socket = openSocket()
         var watchdog: ScheduledFuture<*>? = null
         var written = 0
         try {

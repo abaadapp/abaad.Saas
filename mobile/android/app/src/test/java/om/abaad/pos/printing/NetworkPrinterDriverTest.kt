@@ -6,11 +6,14 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
+import java.io.OutputStream
 import java.net.ConnectException
 import java.net.InetAddress
 import java.net.NoRouteToHostException
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketAddress
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
@@ -72,29 +75,54 @@ class NetworkPrinterDriverTest {
         assertFalse(failed.mayHavePrinted)
     }
 
-    @Test(timeout = 30_000)
+    /**
+     * انقطاعٌ بعد أن بلغت الطابعةَ بايتاتٌ فعلًا — عند البايت نفسِه في كلّ تشغيل.
+     *
+     * كان الطرفُ الآخر يُغلق بـRST فور القبول، فيسبق أحيانًا عودةَ connect():
+     * فيصير فشلَ اتّصال لا فشلَ إرسال. الآن المقبسُ حقيقيّ والطابعةُ تقرأ كلَّ ما يصلها،
+     * والانقطاعُ من خرج المقبس بعد ثلاث قطع — لا سباقَ ولا حجمَ مخزن.
+     */
+    @Test(timeout = 20_000)
     fun aFailureAfterWritingStartsIsSendFailedAndMayHavePrinted() {
+        val chunk = 4096
+        val cutAt = 3 * chunk
         ServerSocket(0, 1, loopback).use { server ->
-            val resetter = Thread {
-                val client = server.accept()
-                client.setSoLinger(true, 0) // إغلاقٌ بـRST
-                client.close()
+            val received = ByteArrayOutputStream()
+            val reader = Thread {
+                server.accept().use { client -> client.getInputStream().copyTo(received) }
             }
-            resetter.start()
+            reader.start()
 
-            val result = NetworkPrinterDriver().send(
-                loopback,
-                server.localPort,
-                ByteArray(32 * 1024 * 1024),
-                writeTimeoutMs = 5_000,
-            )
-            resetter.join(5_000)
+            val driver = NetworkPrinterDriver(chunkSize = chunk, openSocket = { SocketCutAfter(cutAt) })
+            val result = driver.send(loopback, server.localPort, ByteArray(10 * chunk) { it.toByte() })
+            reader.join(10_000)
 
             val failed = result as NetworkPrinterDriver.Result.Failed
             assertEquals(ErrorCode.SEND_FAILED, failed.code)
             assertTrue(failed.connected)
             assertTrue(failed.mayHavePrinted)
+            assertEquals(cutAt, failed.bytesWritten)
+            // و«ربما طُبع» ليست تحوّطًا نظريًّا: هذه البايتاتُ بلغت الطابعة
+            assertFalse(reader.isAlive)
+            assertEquals(cutAt, received.size())
         }
+    }
+
+    /**
+     * ما حدث مرّةً على CI: الطرفُ أغلق بـRST قبل أن تعود connect(). لم يُعطَ المقبسُ
+     * بايتًا واحدًا، فلا شيءَ طُبع — فشلُ اتّصال، وإعادةُ الطباعة بعده آمنة.
+     */
+    @Test(timeout = 20_000)
+    fun aResetBeforeConnectReturnsPrintedNothing() {
+        val driver = NetworkPrinterDriver(openSocket = { SocketResetOnConnect() })
+
+        val result = driver.send(loopback, 9100, byteArrayOf(1, 2, 3))
+
+        val failed = result as NetworkPrinterDriver.Result.Failed
+        assertEquals(ErrorCode.PRINTER_UNREACHABLE, failed.code)
+        assertFalse(failed.connected)
+        assertFalse(failed.mayHavePrinted)
+        assertEquals(0, failed.bytesWritten)
     }
 
     @Test(timeout = 30_000)
@@ -142,5 +170,34 @@ class NetworkPrinterDriverTest {
         assertEquals(ErrorCode.PRINTER_UNREACHABLE, code(ConnectException("failed to connect: ENETUNREACH (Network is unreachable)")))
         assertEquals(ErrorCode.PRINTER_UNREACHABLE, code(UnknownHostException("printer.local")))
         assertEquals(ErrorCode.CONNECT_TIMEOUT, code(ConnectException("failed to connect: ETIMEDOUT (Connection timed out)")))
+        // ما ترميه JDK حين يصل RST قبل أن تعود connect()
+        assertEquals(ErrorCode.PRINTER_UNREACHABLE, code(SocketException("Connection reset")))
+    }
+}
+
+/** مقبسٌ حقيقيّ ينقطع خرجُه عند بايتٍ ثابت: ما قبله يبلغ الطرفَ الآخر، وما بعده يُرمى */
+private class SocketCutAfter(private val limit: Int) : Socket() {
+    private var sent = 0
+
+    override fun getOutputStream(): OutputStream {
+        val real = super.getOutputStream()
+        return object : OutputStream() {
+            override fun write(b: Int) = write(byteArrayOf(b.toByte()), 0, 1)
+
+            override fun write(b: ByteArray, off: Int, len: Int) {
+                if (sent + len > limit) throw SocketException("Connection reset")
+                real.write(b, off, len)
+                sent += len
+            }
+
+            override fun flush() = real.flush()
+        }
+    }
+}
+
+/** الطرفُ أغلق بـRST قبل أن تعود connect() */
+private class SocketResetOnConnect : Socket() {
+    override fun connect(endpoint: SocketAddress?, timeout: Int) {
+        throw SocketException("Connection reset")
     }
 }

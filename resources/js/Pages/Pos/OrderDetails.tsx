@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { ArrowRight, Pencil, Plus, Printer, Repeat } from 'lucide-react';
+import { ArrowRight, Pencil, Plus, Repeat } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import ReceiptPreviewButton from './partials/ReceiptPreview';
+import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
@@ -19,7 +20,6 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 
 interface OrderItem {
@@ -74,8 +74,6 @@ export default function PosOrderDetails() {
         PageProps<{ order: OrderDetail; canEdit: boolean; lineEdit?: LineEdit | null }>
     >().props;
     const t = useTranslate();
-    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
-    const tenant = useTenantLink();
     const [editing, setEditing] = useState<OrderItem | null>(null);
     const [fixingPayment, setFixingPayment] = useState(false);
     const [adding, setAdding] = useState(false);
@@ -134,12 +132,8 @@ export default function PosOrderDetails() {
                                 {t('إضافة صنف')}
                             </Button>
                         )}
-                        <Button asChild>
-                            <a href={tenant(route('pos.receipt.pdf', order.id))} target="_blank" rel="noreferrer">
-                                <Printer />
-                                {t('طباعة الفاتورة')}
-                            </a>
-                        </Button>
+                        {/* والطباعةُ من `lib/printing` — مباشرةً في تطبيق أبعاد، ولسانٌ في المتصفّح */}
+                        <PrintReceiptButton number={order.id} />
                     </div>
                 </div>
 

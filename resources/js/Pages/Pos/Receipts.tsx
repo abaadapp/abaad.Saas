@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
 import { usePage } from '@inertiajs/react';
-import { Printer, Receipt as ReceiptIcon, Search } from 'lucide-react';
+import { Receipt as ReceiptIcon, Search } from 'lucide-react';
 import PosLayout from '@/Layouts/PosLayout';
 import ReceiptPreviewButton from './partials/ReceiptPreview';
 import DataTable, { type Column } from '@/Components/DataTable';
-import { Button } from '@/Components/ui/button';
+import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Input } from '@/Components/ui/input';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
-import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Receipt } from '@/types/models';
 
@@ -24,8 +23,6 @@ interface Props {
 export default function PosReceipts() {
     const { receipts, branchName, showsAmounts, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
-    const tenant = useTenantLink();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
     const [open, setOpen] = useState<Receipt | null>(null);
@@ -135,13 +132,8 @@ export default function PosReceipts() {
             key: 'print',
             header: '',
             align: 'end',
-            cell: (r) => (
-                <Button variant="ghost" size="icon-sm" asChild>
-                    <a href={tenant(route('pos.receipt.pdf', r.number))} target="_blank" rel="noreferrer" title={t('طباعة الفاتورة')}>
-                        <Printer />
-                    </a>
-                </Button>
-            ),
+            // والطباعةُ من `lib/printing` — مباشرةً في تطبيق أبعاد، ولسانٌ في المتصفّح
+            cell: (r) => <PrintReceiptButton number={r.number} iconOnly variant="ghost" size="icon-sm" />,
         },
     ];
 
@@ -262,12 +254,7 @@ export default function PosReceipts() {
                             {/* والورقةُ تُرى هنا ولا يُغادَر إليها — انظر `partials/ReceiptPreview` */}
                             <ReceiptPreviewButton number={open.number} className="mt-4 w-full rounded-full" />
 
-                            <Button className="mt-2 w-full rounded-full" asChild>
-                                <a href={tenant(route('pos.receipt.pdf', open.number))} target="_blank" rel="noreferrer">
-                                    <Printer />
-                                    {t('طباعة الفاتورة')}
-                                </a>
-                            </Button>
+                            <PrintReceiptButton number={open.number} inline className="mt-2 w-full rounded-full" />
                         </div>
                     )}
                 </DialogContent>

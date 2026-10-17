@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { Barcode, Monitor, Pencil, Plus, Printer, Scale, Trash2, Wallet } from 'lucide-react';
+import { Barcode, CheckCircle2, Loader2, Monitor, Pencil, Plug, Plus, Printer, Scale, Trash2, Wallet, XCircle } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import { effectivePort, failureMessage, stageMessage, testPrinter } from '@/lib/printing/printer-service';
+import type { PrintOutcome, PrintStage } from '@/lib/printing/types';
 import { cn } from '@/lib/utils';
 
 export interface Peripheral {
@@ -67,7 +69,8 @@ const EMPTY = {
 /**
  * الأجهزة الملحقة بصندوق بيع بعينه.
  *
- * والملحقات ليست سواءً في ما يُقاد من المتصفّح: الطابعة تُقاد بحوار الطباعة،
+ * والملحقات ليست سواءً في ما يُقاد من المتصفّح: الطابعة تُقاد بحوار الطباعة
+ * (ومباشرةً على الشبكة من تطبيق أبعاد — انظر `lib/printing`)،
  * والماسح يكتب كلوحة مفاتيح فيُلتقط في حقل الباركود. أمّا الدرج والشاشة
  * والميزان فلا يبلغها متصفّحٌ بلا وسيطٍ على الجهاز — فتُسجَّل هنا للجرد
  * والدعم، وتُعلَّم صراحةً بأنها «للسجلّ». وشاشةٌ توهم بأنها تقود ما لا تقوده
@@ -86,8 +89,10 @@ export default function PeripheralsDialog({
     const [editing, setEditing] = useState<Peripheral | null>(null);
     const [adding, setAdding] = useState(false);
     const form = useForm({ ...EMPTY });
+    const [test, setTest] = useState<{ stage: PrintStage; outcome: PrintOutcome | null }>({ stage: 'idle', outcome: null });
 
     const open = (p: Peripheral | null) => {
+        setTest({ stage: 'idle', outcome: null });
         if (p) {
             form.setData({
                 name: p.name,
@@ -113,7 +118,42 @@ export default function PeripheralsDialog({
         setEditing(null);
         setAdding(false);
         form.clearErrors();
+        setTest({ stage: 'idle', outcome: null });
     };
+
+    /**
+     * «اختبار الطابعة» — بما في النموذج الآن، قبل الحفظ أو بعده.
+     *
+     * في تطبيق أبعاد: اتّصالٌ حقيقيّ وصفحةُ اختبارٍ تُطبع. وفي المتصفّح لا
+     * يُوهم باختبار: المتصفّحُ لا يبلغ طابعةً على الشبكة المحليّة، فيُقال ذلك
+     * صراحةً — `NATIVE_REQUIRED`.
+     */
+    const runTest = async () => {
+        const raw = form.data.port.trim();
+        const port = raw === '' ? null : Number(raw);
+        const printer = {
+            id: editing?.id,
+            type: form.data.type,
+            name: form.data.name,
+            model: form.data.model || null,
+            connection: 'network' as const,
+            address: form.data.address,
+            port,
+            paperWidth: Number(form.data.paper_width) || null,
+        };
+
+        // منفذٌ مكتوبٌ خطأً لا يُستبدل بالافتراضيّ صامتًا — يُقال
+        if (port !== null && !(Number.isInteger(port) && port >= 1 && port <= 65535)) {
+            setTest({ stage: 'failed', outcome: { ok: false, code: 'INVALID_PORT', message: '', via: 'native' } });
+
+            return;
+        }
+
+        setTest({ stage: 'connecting', outcome: null });
+        const outcome = await testPrinter(printer, deviceName, (stage) => setTest((s) => ({ ...s, stage })));
+        setTest({ stage: outcome.ok ? 'success' : 'failed', outcome });
+    };
+    const testing = test.stage !== 'idle' && test.stage !== 'success' && test.stage !== 'failed';
 
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -276,7 +316,11 @@ export default function PeripheralsDialog({
                                             placeholder="192.168.1.50"
                                         />
                                     </Field>
-                                    <Field label="المنفذ (اختياري)" error={form.errors.port}>
+                                    <Field
+                                        label="المنفذ (اختياري)"
+                                        hint="فارغًا يُستعمل 9100 — المنفذ الشائع للطباعة الخام على الشبكة"
+                                        error={form.errors.port}
+                                    >
                                         <Input
                                             dir="ltr"
                                             inputMode="numeric"
@@ -306,6 +350,20 @@ export default function PeripheralsDialog({
                             )}
                         </div>
 
+                        {isPrinter && isNetwork && (
+                            <div className="space-y-2 rounded-[10px] border border-[var(--ui-border,#e8e8e8)] p-3">
+                                <Button type="button" variant="outline" size="sm" disabled={testing || !form.data.address.trim()} onClick={runTest}>
+                                    {testing ? <Loader2 className="animate-spin" /> : <Plug />}
+                                    {t('اختبار الطابعة')}
+                                </Button>
+                                <TestResult
+                                    stage={test.stage}
+                                    outcome={test.outcome}
+                                    port={test.outcome?.effectivePort ?? effectivePort({ port: Number(form.data.port) || null })}
+                                />
+                            </div>
+                        )}
+
                         {!drivableTypes.includes(form.data.type) && (
                             <p className="rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#b45309]">
                                 {t(
@@ -317,9 +375,10 @@ export default function PeripheralsDialog({
                         {/*
                             خياران مستقلّان للطابعة وحدها — لا يُشتقّ أحدُهما من الآخر.
 
-                            والثاني يقع في المتصفّح الذي ضُغط فيه «مؤكّد»، على طابعة
-                            الصندوق المربوط به. فلا يُوعَد بطباعةٍ من هاتفٍ بعيد: لا
-                            جسرَ في النظام يوصل أمرًا إلى طابعة المحلّ.
+                            والثاني يقع على الجهاز الذي ضُغط فيه «مؤكّد»، على طابعة
+                            الصندوق المربوط به. فلا يُوعَد بطباعةٍ من هاتفٍ بعيد لا
+                            صندوقَ عليه. وفي تطبيق أبعاد يطبع الاثنان على طابعة الشبكة
+                            مباشرةً — وفي المتصفّح يُفتح الإيصالُ كما كان.
                         */}
                         {isPrinter && (
                             <>
@@ -368,6 +427,62 @@ export default function PeripheralsDialog({
                 </DialogContent>
             </Dialog>
         </>
+    );
+}
+
+/**
+ * نتيجةُ «اختبار الطابعة» — بجملٍ لا رموز، ومعها المنفذُ الذي طُلب فعلًا.
+ *
+ * والاتّصالُ والطباعةُ يُقالان منفصلين: طابعةٌ ردّت ولم تطبع غيرُ طابعةٍ لم
+ * تردّ، وإصلاحُ كلٍّ منهما في مكانٍ آخر.
+ */
+function TestResult({ stage, outcome, port }: { stage: PrintStage; outcome: PrintOutcome | null; port: number }) {
+    const t = useTranslate();
+
+    if (stage === 'idle') return null;
+
+    if (outcome && !outcome.ok && outcome.code === 'NATIVE_REQUIRED') {
+        return (
+            <div role="status" className="rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#b45309]">
+                <p className="font-medium">{t('الطباعة المباشرة تحتاج تطبيق أبعاد')}</p>
+                <p className="mt-1">
+                    {t('هذا المتصفح لا يصل إلى طابعة على الشبكة المحلية، فلم يُجرَ أي اختبار. افتح هذه الشاشة من تطبيق أبعاد على الجهاز اللوحي لاختبار الطابعة.')}
+                </p>
+            </div>
+        );
+    }
+
+    if (!outcome) {
+        return (
+            <p role="status" className="flex items-center gap-1.5 text-[12px] text-[#6b7280]">
+                <Loader2 className="size-3.5 animate-spin" />
+                {stageMessage(stage, t)}
+            </p>
+        );
+    }
+
+    const ok = (text: string) => (
+        <p className="flex items-center gap-1.5 text-[#047857]">
+            <CheckCircle2 className="size-3.5" />
+            {text}
+        </p>
+    );
+
+    return (
+        <div role="status" data-testid="printer-test-result" className="space-y-1 text-[12px]">
+            {(outcome.ok || outcome.connected) && ok(t('تم الاتصال بالطابعة'))}
+            {outcome.ok ? (
+                ok(t('تمت طباعة صفحة الاختبار'))
+            ) : (
+                <p className="flex items-center gap-1.5 text-[#b91c1c]">
+                    <XCircle className="size-3.5" />
+                    {failureMessage(outcome.code, t)}
+                </p>
+            )}
+            <p className="text-[#9ca3af]">
+                {t('المنفذ المستخدم')}: <span dir="ltr">{port}</span>
+            </p>
+        </div>
     );
 }
 

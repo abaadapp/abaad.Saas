@@ -1,0 +1,65 @@
+# تطبيقُ أبعاد على iPhone وiPad — مواصفةُ XcodeGen.
+#
+# المشروعُ (.xcodeproj) يُولَّد ولا يُودَع:
+#   cp Config/Abaad.local.xcconfig.example Config/Abaad.local.xcconfig   # ثمّ اضبط العنوان
+#   xcodegen generate
+#   open AbaadPOS.xcodeproj
+#
+# واختباراتُ جسر الطباعة تعمل بلا Xcode:
+#   cd Packages/AbaadPrinting && swift test
+
+name: AbaadPOS
+
+options:
+  bundleIdPrefix: om.abaad
+  deploymentTarget:
+    iOS: "15.0"
+  developmentLanguage: ar
+
+packages:
+  AbaadPrinting:
+    path: Packages/AbaadPrinting
+
+targets:
+  AbaadPOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: App
+      # الـshim المشترك مع Android كما هو — يُحقن عند بدء كلّ مستند
+      - path: ../shared/js/abaad-printer-shim.js
+        buildPhase: resources
+    configFiles:
+      Debug: Config/Abaad.xcconfig
+      Release: Config/Abaad.xcconfig
+    # Info.plist مكتوبٌ باليد ومودَع — لا `info:` هنا، فتلك تولّده وتكتب فوقه
+    settings:
+      base:
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        PRODUCT_BUNDLE_IDENTIFIER: om.abaad.pos
+        PRODUCT_NAME: AbaadPOS
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: "NO"
+        SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - package: AbaadPrinting
+        product: AbaadPrinting
+
+schemes:
+  AbaadPOS:
+    build:
+      targets:
+        AbaadPOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

@@ -1,0 +1,6 @@
+# انسخه إلى local.properties (لا يُودَع). أو مرّر القيمتين لـGradle:
+#   gradle -p mobile/android assembleDebug -Pabaad.baseUrl=https://<your-abaad-host>
+abaad.baseUrl=https://<your-abaad-host>
+# أصولٌ موثوقة مفصولة بفواصل. إن تُركت فارغة فأصلُ abaad.baseUrl وحده.
+abaad.trustedOrigins=https://<your-abaad-host>
+# sdk.dir=/path/to/Android/sdk

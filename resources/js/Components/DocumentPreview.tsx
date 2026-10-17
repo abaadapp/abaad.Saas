@@ -50,6 +50,7 @@ export default function DocumentPreview({
     filename,
     open,
     onOpenChange,
+    onPrint,
 }: {
     /** الورقةُ مرسومةً — النصُّ نفسُه الذي في اللوحة */
     html: string;
@@ -61,6 +62,13 @@ export default function DocumentPreview({
     filename: string;
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    /**
+     * «طباعة» بغير فتح الـPDF — للإيصال الحراريّ وحده.
+     *
+     * الإيصالُ يمرّ من `lib/printing`: مباشرةً على طابعة الصندوق في تطبيق
+     * أبعاد، ولسانٌ في المتصفّح كما كان. وسائرُ الأوراق تبقى على الرابط.
+     */
+    onPrint?: () => void;
 }) {
     const t = useTranslate();
     // والملفُّ يحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
@@ -77,12 +85,19 @@ export default function DocumentPreview({
 
                     {/* والأفعالُ داخل النافذة لا في شريط المتصفّح — فالواجهةُ واجهةُ أبعاد */}
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" asChild>
-                            <a href={fileUrl} target="_blank" rel="noreferrer">
+                        {onPrint ? (
+                            <Button variant="outline" size="sm" onClick={onPrint}>
                                 <Printer />
                                 <span className="max-sm:sr-only">{t('طباعة')}</span>
-                            </a>
-                        </Button>
+                            </Button>
+                        ) : (
+                            <Button variant="outline" size="sm" asChild>
+                                <a href={fileUrl} target="_blank" rel="noreferrer">
+                                    <Printer />
+                                    <span className="max-sm:sr-only">{t('طباعة')}</span>
+                                </a>
+                            </Button>
+                        )}
                         <Button variant="outline" size="sm" asChild>
                             <a href={fileUrl} download={filename}>
                                 <Download />

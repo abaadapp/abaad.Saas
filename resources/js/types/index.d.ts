@@ -33,6 +33,29 @@ export interface Branch {
     address: string | null;
 }
 
+/** طرقُ التوصيل — القائمةُ المغلقة نفسُها في `PosPeripheral::CONNECTIONS` */
+export type PrinterConnection = 'usb' | 'network' | 'bluetooth';
+
+/**
+ * ملحقٌ نشطٌ على صندوق هذا الجهاز — كما يرسله `HandleInertiaRequests`.
+ *
+ * والعنوانُ والمنفذ لطابعة الشبكة وحدها، وإلّا فـ`null`. وهما ما يحتاجه
+ * تطبيقُ أبعاد ليطبع مباشرةً — انظر `lib/printing`.
+ */
+export interface PosPeripheral {
+    id: number;
+    type: string;
+    name: string;
+    model: string | null;
+    connection: PrinterConnection;
+    address: string | null;
+    port: number | null;
+    paperWidth: number | null;
+    autoPrint: boolean;
+    /** يطبع طلبَ الموقع عند تأكيده على هذا الصندوق — انظر `lib/website-confirm-print` */
+    autoPrintWebsite?: boolean;
+}
+
 export interface Currency {
     code: string;
     name: string;
@@ -151,14 +174,7 @@ export interface SharedProps {
         /** اسم صندوق نقطة البيع المفعَّل على هذا الجهاز */
         deviceName?: string | null;
         /** ملحقات هذا الصندوق النشطة وحدها — طابعة، ماسح، درج… */
-        peripherals?: {
-            type: string;
-            name: string;
-            paperWidth: number | null;
-            autoPrint: boolean;
-            /** يطبع طلبَ الموقع عند تأكيده في هذا المتصفّح — انظر `lib/websiteConfirmPrint` */
-            autoPrintWebsite?: boolean;
-        }[];
+        peripherals?: PosPeripheral[];
         branches: Branch[];
         currency: Currency;
         currencies: Currency[];

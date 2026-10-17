@@ -1,0 +1,14 @@
+// انسخه إلى Abaad.local.xcconfig (لا يُودَع) واضبط قيمك.
+//
+// تنبيه: `//` يبدأ تعليقًا في xcconfig، فلا يُكتب `https://` كما هو.
+// يُقطع بمتغيّرٍ فارغ `$()`: فتصير `https:/$()/host` بعد التوسيع `https://host`.
+
+// العنوانُ الذي يفتحه التطبيق — https وحده
+ABAAD_BASE_URL = https:/$()/pos.example.test
+
+// الأصولُ الموثوقة، مفصولةً بفواصل. فارغةً ← أصلُ ABAAD_BASE_URL وحده.
+// والمنفذُ غيرُ الافتراضيّ يُكتب صريحًا: https:/$()/app.example.test:8443
+ABAAD_TRUSTED_ORIGINS = https:/$()/pos.example.test
+
+// فريقُ التوقيع في Xcode
+// DEVELOPMENT_TEAM = ABCDE12345

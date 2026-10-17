@@ -241,15 +241,43 @@ class MpdfDriver implements Driver
      * فيُقاس المحتوى أوّلًا على ورقةٍ لا تنتهي، ثمّ يُرسم على ورقةٍ بطوله
      * تمامًا. والرسمُ مرّتان — والإيصال أصغرُ ما يُرسم في النظام، وثمنُ
      * المرّة الثانية أهونُ من إيصالٍ مقصوص.
+     *
+     * ═══ والإيصالُ الأطولُ من ورقة القياس صفحاتٌ لا صفحةٌ عملاقة ═══
+     *
+     * طلبٌ بألف صنفٍ طولُه نحو ثلاثة أمتار، وصفحةٌ بطوله تتجاوز ما تَعِد به
+     * مواصفةُ PDF (٢٠٠ بوصة) ويرسمه كلُّ قارئ. فيُقسَم صفحاتٍ بطول ورقة
+     * القياس نفسِها، والتطبيقُ يصلها على الورق شريطًا واحدًا بلا فراغٍ بينها
+     * ولا قصّ (`mobile/PROTOCOL.md` §5). وإيصالٌ يتّسع لورقةٍ واحدة يبقى كما
+     * كان حرفًا: صفحةٌ واحدة بطوله.
      */
     public function strip(string $html, string $name, int $widthMm): Response
     {
         $height = $this->stripHeight($html, $widthMm);
 
+        if ($height > self::PROBE) {
+            $mpdf = self::stripEngine($widthMm, self::PROBE);
+            $mpdf->WriteHTML(self::withoutRepeatedHeads($html));
+
+            return self::respond($mpdf, $name);
+        }
+
         $mpdf = self::stripEngine($widthMm, $height);
         $mpdf->WriteHTML($html);
 
         return self::respond($mpdf, $name);
+    }
+
+    /**
+     * رأسُ الجدول مرّةً واحدة في الشريط المقسوم.
+     *
+     * mpdf يكرّر صفوفَ `<thead>` أعلى كلِّ صفحةٍ ينكسر عندها الجدول — وهو
+     * صوابٌ على A4. أمّا الشريطُ فصفحاتُه تُوصل على الورق، فيخرج «الصنف ·
+     * السعر · كمية» وسطَ الأصناف عند كلّ وصلة. فيصير الرأسُ صفًّا عاديًّا:
+     * يُرسم أوّلًا كما كان، وبأنماطه نفسِها (`.items th`)، ولا يتكرّر.
+     */
+    private static function withoutRepeatedHeads(string $html): string
+    {
+        return (string) preg_replace('#<(/?)thead\b#i', '<$1tbody', $html);
     }
 
     public function stripHeight(string $html, int $widthMm): float

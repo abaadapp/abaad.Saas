@@ -1,0 +1,81 @@
+name: Mobile
+
+# تطبيقا أبعاد لنقطة البيع — يُبنيان ويُختبران حين يتغيّر ما تحت mobile/.
+#
+# ═══ ولمَ ملفٌّ منفصل عن CI ═══
+#
+# الطباعةُ المباشرة (`mobile/PROTOCOL.md`) كودٌ أصليٌّ لا يبنيه جهازُ التطوير
+# المعتاد: لا JDK ولا Android SDK ولا Xcode عليه. فهنا يُبنى ويُختبر فعلًا.
+# ولا يدخل إثباتَ الشجرة ولا «Main Gate»: النشرُ للخادم وحده، والتطبيقان لا
+# يُنشران من main. ولا يُشغَّل لتغييرٍ لا يمسّهما.
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android (اختبارات + بناء)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # لا `gradlew` في المستودع — الإصدارُ يُثبَّت هنا
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      # العنوانُ مثالٌ لا نطاق: البناءُ يحتاج قيمةً، والاختبارُ لا يتّصل به
+      - name: اختبارات الوحدة والبناء
+        run: >
+          gradle -p mobile/android --no-daemon --stacktrace
+          testDebugUnitTest assembleDebug
+          -Pabaad.baseUrl=https://pos.example.test
+          -Pabaad.trustedOrigins=https://pos.example.test
+
+      - name: تقارير الاختبار
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: mobile/android/app/build/reports/tests/
+          if-no-files-found: ignore
+
+  ios:
+    name: iOS (حزمة الطباعة + بناء المحاكي)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: اختبارات حزمة الطباعة
+        working-directory: mobile/ios/Packages/AbaadPrinting
+        run: swift test
+
+      - name: توليد المشروع
+        working-directory: mobile/ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: بناء التطبيق للمحاكي
+        working-directory: mobile/ios
+        run: >
+          xcodebuild build
+          -project AbaadPOS.xcodeproj
+          -scheme AbaadPOS
+          -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">أبعاد</string>
+    <string name="config_missing">لم يُضبط عنوان أبعاد في إعداد البناء</string>
+    <string name="config_untrusted">عنوان أبعاد في إعداد البناء ليس ضمن الأصول الموثوقة</string>
+    <string name="download_started">بدأ التنزيل</string>
+    <string name="download_failed">تعذر التنزيل</string>
+    <string name="link_unsupported">لا يوجد تطبيق يفتح هذا الرابط</string>
+</resources>

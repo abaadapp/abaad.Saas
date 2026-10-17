@@ -219,7 +219,7 @@ class TheLivePlansChargeTheOfficialPricesTest extends TestCase
     public function test_no_plans_beside_a_platform_invoice_stops_it(): void
     {
         $this->orphan('invoices', [
-            'number' => 'INV-P-0001', 'business_id' => 987654, 'amount' => '24.900', 'status' => Billing::PAID,
+            'number' => 'INV-P-0001', 'business_id' => 987654, 'amount' => '24.900', 'status' => Billing::PAID, // رقمٌ مقصود: لا متجرَ وراءه — الفاتورةُ وحدها في القاعدة
             'kind' => Billing::KIND_SUBSCRIPTION, 'created_at' => now(), 'updated_at' => now(),
         ]);
         $this->nothingButThe('invoices');
@@ -231,7 +231,7 @@ class TheLivePlansChargeTheOfficialPricesTest extends TestCase
     public function test_no_plans_beside_a_subscription_stops_it(): void
     {
         $this->orphan('subscriptions', [
-            'business_id' => 987654, 'amount' => '249.000', 'payment_status' => 'مدفوع', 'status' => Billing::SUB_ACTIVE,
+            'business_id' => 987654, 'amount' => '249.000', 'payment_status' => 'مدفوع', 'status' => Billing::SUB_ACTIVE, // رقمٌ مقصود: لا متجرَ وراءه — الاشتراكُ وحده في القاعدة
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $this->nothingButThe('subscriptions');

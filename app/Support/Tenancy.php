@@ -107,6 +107,39 @@ class Tenancy
         return max(0, (int) self::platform('grace_days', 7));
     }
 
+    /**
+     * تجربةٌ ذاتيّةٌ مجّانيّة لم تُدفع؟ — أربعةَ عشر يومًا، لا يومَ بعدها.
+     *
+     * من فتح متجره بنفسه من `/register` (متجرٌ حقيقيّ لا تجريبيّ) ولم
+     * يُسدَّد له اشتراكٌ قطّ (`Billing::hasPaidSubscription`). مدّتُه
+     * `Signup::TRIAL_DAYS` بحرفها: لا مهلةَ بعدها (`graceDaysFor`)، ولا يُبقيه
+     * إطفاءُ الإقفال التلقائيّ يعمل (`locked`).
+     *
+     * وما سواه كما كان: اليدويّ والقديم (`registration_source` فارغ)
+     * والتجريبيّ، ومن سجّل بنفسه ثمّ دفع اشتراكًا — هذا عميلٌ يدفع، ومهلتُه
+     * وإقفالُه مهلةُ العملاء وإقفالُهم.
+     */
+    public static function isUnpaidSelfSignup(?Business $business): bool
+    {
+        return $business !== null
+            && $business->registration_source === Business::SOURCE_SELF_SIGNUP
+            && ! $business->is_demo
+            && ! Billing::hasPaidSubscription($business);
+    }
+
+    /**
+     * مهلةُ هذا المتجر بعينه — العامّةُ، إلّا لتجربةٍ ذاتيّةٍ لم تُدفع.
+     *
+     * المهلةُ وُضعت لعميلٍ يدفع كي لا يقف صندوقُه لتأخّر حوالة. والتجربةُ
+     * الذاتيّة غيرُ المدفوعة لم يدفع صاحبُها شيئًا تتأخّر حوالتُه: بالمهلة
+     * العامّة صارت أربعةُ عشر يومًا واحدًا وعشرين. فلا مهلةَ لها — وتُقفل
+     * حيث تقول `expired`.
+     */
+    public static function graceDaysFor(?Business $business): int
+    {
+        return self::isUnpaidSelfSignup($business) ? 0 : self::graceDays();
+    }
+
     /** إعدادٌ من إعدادات المنصة (business_id = null) */
     public static function platform(string $key, $default = null)
     {
@@ -127,10 +160,10 @@ class Tenancy
         return (string) self::platform('maintenance_mode', '0') === '1';
     }
 
-    /** آخر لحظةٍ يعمل فيها المتجر — نهاية الاشتراك زائدَ المهلة */
+    /** آخر لحظةٍ يعمل فيها المتجر — نهاية الاشتراك زائدَ مهلتِه (`graceDaysFor`) */
     public static function locksAt(?Business $business): ?Carbon
     {
-        return $business?->ends_at?->endOfDay()->addDays(self::graceDays());
+        return $business?->ends_at?->endOfDay()->addDays(self::graceDaysFor($business));
     }
 
     /**
@@ -142,6 +175,28 @@ class Tenancy
      */
     public static function locked(?Business $business): bool
     {
+        /*
+         * ما لم ينتهِ لا يُقفل — ولا يُسأل عن شيءٍ بعده.
+         *
+         * المهلةُ لا تقلّ عن صفر، فـ`locksAt` لا يسبق نهايةَ يوم الانتهاء: هذا
+         * لا يغيّر جوابًا. وإنّما يُغني متجرًا في اشتراكه عن سؤال الفواتير
+         * (`isUnpaidSelfSignup`) مع كلّ طلب.
+         */
+        if (! self::expired($business)) {
+            return false;
+        }
+
+        /*
+         * والتجربةُ الذاتيّة غيرُ المدفوعة تقف حين تنتهي — ولو أُطفئ الإقفال.
+         *
+         * إطفاءُ `auto_suspend` قرارُ المشغّل أن يتابع عملاءه بيده قبل أن
+         * يقف صندوقُ أحدهم. ومن لم يدفع شيئًا ليس عميلًا يُتابَع: تجربتُه أربعةَ
+         * عشر يومًا بحرفها. ومن دفع بعدها خرج من هذا وتبع المقبضَ كغيره.
+         */
+        if (self::isUnpaidSelfSignup($business)) {
+            return true;
+        }
+
         /*
          * الإقفال التلقائي مقبضٌ للمشغّل.
          *

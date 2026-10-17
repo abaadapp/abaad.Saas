@@ -43,6 +43,22 @@ class Billing
     /** حزمةُ رسائل واتساب */
     public const KIND_MESSAGES = 'رسائل';
 
+    /**
+     * أسُدِّد لهذا المتجر اشتراكٌ قطّ؟ — فاتورةُ اشتراكٍ مدفوعة، ساريةً أو منقضية.
+     *
+     * الحقيقةُ نفسُها التي يقرؤها `Business::scopeSubscribed`: جدولُ `invoices`
+     * بحالة «مدفوعة». لكنّ النوعَ يُسأل هنا كما تسأله `markPaid` — حزمةُ رسائلَ
+     * سُدِّدت ليست اشتراكًا دُفع. ولا يُقرأ `ends_at`: من دفع مرّةً ثمّ انقضى
+     * اشتراكُه عميلٌ دفع، لا تجربةٌ لم تُدفع.
+     */
+    public static function hasPaidSubscription(Business $business): bool
+    {
+        return Invoice::where('business_id', $business->id)
+            ->where('status', self::PAID)
+            ->where('kind', self::KIND_SUBSCRIPTION)
+            ->exists();
+    }
+
     /** ما تُكلّفه دورةٌ من الباقة */
     public static function price(Business $business, string $cycle): float
     {

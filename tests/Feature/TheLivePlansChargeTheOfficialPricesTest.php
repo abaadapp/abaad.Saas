@@ -66,16 +66,47 @@ class TheLivePlansChargeTheOfficialPricesTest extends TestCase
         return [$row['monthly_price'], $row['yearly_price']];
     }
 
-    /** يشغّل `up` ويعيد رسالةَ توقّفه — أو يُسقط الاختبار إن لم يتوقّف */
-    private function refusal(): string
+    /** يشغّل `up` (أو `down`) ويعيد رسالةَ توقّفه — أو يُسقط الاختبار إن لم يتوقّف */
+    private function refusal(string $direction = 'up'): string
     {
         try {
-            $this->migration()->up();
+            $this->migration()->{$direction}();
         } catch (RuntimeException $e) {
             return $e->getMessage();
         }
 
-        $this->fail('الترحيل لم يتوقّف');
+        $this->fail("الترحيل ({$direction}) لم يتوقّف");
+    }
+
+    private function aShop(): Business
+    {
+        return Business::create(['name' => 'متجر قائم', 'type' => 'عام', 'status' => 'نشط', 'ends_at' => '2026-11-15']);
+    }
+
+    /**
+     * صفٌّ يتيم — فاتورةُ منصّةٍ أو اشتراكٌ بلا متجر.
+     *
+     * لا يكون إلّا في قاعدةٍ معطوبة: قيدُ `business_id` يمنعه. فيُرجأ القيدُ
+     * داخل معاملة الاختبار وحدها — ليُرى أنّ كلَّ جدولٍ يكفي وحده لتُعدّ
+     * القاعدةُ قائمة، لا المتاجرُ وحدها.
+     */
+    private function orphan(string $table, array $row): void
+    {
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement("SET LOCAL session_replication_role = 'replica'");
+            DB::table($table)->insert($row);
+            DB::statement("SET LOCAL session_replication_role = 'origin'");
+        } else {
+            DB::statement('PRAGMA defer_foreign_keys = ON');
+            DB::table($table)->insert($row);
+        }
+    }
+
+    private function nothingButThe(string $table): void
+    {
+        foreach ($this->migration()::UNTOUCHED_WHEN_EMPTY as $other) {
+            $this->assertSame($other === $table ? 1 : 0, DB::table($other)->count(), "{$other}");
+        }
     }
 
     /* ─────────── ١ · الأسعارُ الرسميّة، ولا شيءَ سواها ─────────── */
@@ -150,11 +181,17 @@ class TheLivePlansChargeTheOfficialPricesTest extends TestCase
         $this->assertSame([29900, 299000], $this->prices($plans['pro']));
     }
 
-    public function test_an_empty_install_is_left_for_the_seed(): void
+    public function test_an_untouched_install_is_left_for_the_seed(): void
     {
-        // كلُّ `migrate:fresh` وكلُّ اختبار: لا باقة بعد، والبذرةُ تزرعها بالسعر الرسميّ
-        $this->migration()->up();
+        // كلُّ `migrate:fresh` وكلُّ اختبار: لا باقة ولا متجر ولا فاتورة ولا اشتراك بعد
+        foreach ($this->migration()::UNTOUCHED_WHEN_EMPTY as $table) {
+            $this->assertSame(0, DB::table($table)->count(), $table);
+        }
 
+        $this->migration()->up();
+        $this->migration()->down();
+
+        // ولا شيء كُتب — والبذرةُ تزرعها بعدها بالسعر الرسميّ
         $this->assertSame(0, Plan::count());
         foreach (SeedData::plans() as $spec) {
             $key = ($spec['code'] ?? null) === 'basic' ? 'basic' : $spec['name'];
@@ -166,7 +203,54 @@ class TheLivePlansChargeTheOfficialPricesTest extends TestCase
         }
     }
 
-    /* ─────────── ٢ · تتوقّف قبل أيّ كتابة ─────────── */
+    /* ─────────── ٢ · قاعدةٌ قائمة بلا باقاتها: عطبٌ لا بداية ─────────── */
+
+    public function test_no_plans_beside_a_shop_stops_it(): void
+    {
+        $shop = $this->aShop();
+        $this->nothingButThe('businesses');
+
+        $this->assertStringContainsString('businesses', $this->refusal());
+
+        $this->assertSame(0, Plan::count(), 'كُتبت باقة');
+        $this->assertSame('2026-11-15', $shop->fresh()->ends_at->toDateString());
+    }
+
+    public function test_no_plans_beside_a_platform_invoice_stops_it(): void
+    {
+        $this->orphan('invoices', [
+            'number' => 'INV-P-0001', 'business_id' => 987654, 'amount' => '24.900', 'status' => Billing::PAID,
+            'kind' => Billing::KIND_SUBSCRIPTION, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->nothingButThe('invoices');
+
+        $this->assertStringContainsString('invoices', $this->refusal());
+        $this->assertSame(0, Plan::count());
+    }
+
+    public function test_no_plans_beside_a_subscription_stops_it(): void
+    {
+        $this->orphan('subscriptions', [
+            'business_id' => 987654, 'amount' => '249.000', 'payment_status' => 'مدفوع', 'status' => Billing::SUB_ACTIVE,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->nothingButThe('subscriptions');
+
+        $this->assertStringContainsString('subscriptions', $this->refusal());
+        $this->assertSame(0, Plan::count());
+    }
+
+    public function test_only_a_custom_plan_is_not_an_untouched_install(): void
+    {
+        // «لا باقة من الثلاث» ليست «لا باقة»: باقةٌ خاصّةٌ وحدها قاعدةٌ قائمة
+        $custom = Plan::create(['name' => 'باقة خاصّة', 'monthly_price' => '24.900', 'yearly_price' => '249.000']);
+        $this->nothingButThe('plans');
+
+        $this->assertStringContainsString('plans', $this->refusal());
+        $this->assertSame([24900, 249000], $this->prices($custom));
+    }
+
+    /* ─────────── ٣ · تتوقّف قبل أيّ كتابة ─────────── */
 
     public function test_a_second_professional_plan_stops_it_before_any_write(): void
     {
@@ -213,7 +297,31 @@ class TheLivePlansChargeTheOfficialPricesTest extends TestCase
         $this->assertSame([65000, 599000], $this->prices($plans['enterprise']));
     }
 
-    /* ─────────── ٣ · الرجوع ─────────── */
+    /* ─────────── ٤ · الرجوع ─────────── */
+
+    public function test_down_stops_before_a_partial_rollback_when_a_plan_is_missing(): void
+    {
+        $plans = $this->livePlans();
+        $this->aShop();
+        $this->migration()->up();
+        $plans['enterprise']->delete();
+
+        $this->assertStringContainsString('باقة المؤسسات', $this->refusal('down'));
+
+        // لا رجوعَ يُعيد الاحترافيّة ويسكت عن المؤسسات
+        $this->assertSame([29900, 299000], $this->prices($plans['pro']), 'أُرجعت الاحترافيّةُ والمؤسساتُ غائبة');
+        $this->assertSame([9900, 99000], $this->prices($plans['basic']));
+    }
+
+    public function test_down_stops_when_all_three_plans_are_gone_from_a_live_database(): void
+    {
+        $plans = $this->livePlans();
+        $this->aShop();
+        $this->migration()->up();
+        Plan::whereIn('id', array_map(fn (Plan $p) => $p->id, $plans))->delete();
+
+        $this->assertStringContainsString('businesses', $this->refusal('down'));
+    }
 
     public function test_down_restores_the_old_prices_while_they_are_still_the_official_ones(): void
     {
@@ -248,7 +356,7 @@ class TheLivePlansChargeTheOfficialPricesTest extends TestCase
         $this->assertSame([24900, 249000], $this->prices($plans['pro']));
     }
 
-    /* ─────────── ٤ · ما صدر لا يُمسّ ─────────── */
+    /* ─────────── ٥ · ما صدر لا يُمسّ ─────────── */
 
     public function test_issued_invoices_subscriptions_and_shop_dates_are_not_touched(): void
     {

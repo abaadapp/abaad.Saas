@@ -3,6 +3,7 @@
 use App\Models\Plan;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * أسعارُ الباقات على الإنتاج هي الأسعار الرسميّة — التي يعرضها الموقع وتزرعها البذرة.
@@ -38,16 +39,27 @@ use Illuminate\Support\Facades\DB;
  * والمقارنةُ بالبيسة (أجزاء الألف) عددًا صحيحًا من نصّ القيمة — لا بعشريّةٍ
  * تُقارَن: PostgreSQL تردّ «24.900» وSQLite ‎24.9.
  *
- * ═══ والتثبيتُ الجديد ═══
+ * ═══ والتثبيتُ الجديد — وحده ═══
  *
  * لا باقةَ في القاعدة حين تجري الهجرات على قاعدةٍ فارغة (`migrate:fresh`،
- * وكلُّ اختبار) — والبذرةُ تزرعها بعدها بالسعر الرسميّ. فإن لم توجد واحدةٌ من
- * الثلاث أصلًا فلا شيء يُفعل. أمّا غيابُ بعضها فتوقّف.
+ * وكلُّ اختبار، وكلُّ CI) — والبذرةُ تزرعها بعدها بالسعر الرسميّ. فلا شيء
+ * يُفعل هناك.
+ *
+ * لكنّ «لا باقة» وحدها لا تعني تثبيتًا جديدًا: قاعدةٌ فيها متاجرُ أو فواتيرُ
+ * منصّةٍ أو اشتراكاتٌ وغابت باقاتُها عطبٌ لا بداية. فالتخطّي مشروطٌ بأن تكون
+ * الجداولُ الأربعة كلُّها فارغة (`UNTOUCHED_WHEN_EMPTY` — `isAnUntouchedInstall`)،
+ * من حالة البيانات نفسِها لا من البيئة ولا اسم الخادم. وما سوى ذلك:
+ *
+ *   - غابت الثلاثُ كلُّها والقاعدةُ قائمة ← توقّف.
+ *   - غاب بعضُها أو تكرّر ← توقّف.
  *
  * ═══ والرجوع ═══
  *
  * `down` يعيد `OLD` لباقةٍ ما زال سعرُها `TARGET` وحده — بالشرط نفسه في
  * `WHERE`. وما عدّله المشغّل بعدها من شاشة الباقات يبقى.
+ *
+ * ويُعرف الثلاثُ فيه كما في `up`: غيابُ واحدةٍ منها في قاعدةٍ قائمة يوقفه قبل
+ * أيّ كتابة — لا رجوعَ يُعيد باقتين ويسكت عن الثالثة.
  */
 return new class extends Migration
 {
@@ -64,6 +76,13 @@ return new class extends Migration
         'الباقة الاحترافية' => ['29.900', '299.000'],
         'باقة المؤسسات' => ['69.900', '699.000'],
     ];
+
+    /**
+     * ما يجعل القاعدةَ قائمةً لا جديدة — صفٌّ واحدٌ في أيٍّ منها يكفي.
+     *
+     * `invoices` فواتيرُ المنصّة (فواتيرُ التجّار في `customer_invoices`).
+     */
+    public const UNTOUCHED_WHEN_EMPTY = ['plans', 'businesses', 'invoices', 'subscriptions'];
 
     public function up(): void
     {
@@ -101,7 +120,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        $plans = $this->resolve(strict: false);
+        $plans = $this->resolve();
         if ($plans === null) {
             return;
         }
@@ -117,15 +136,19 @@ return new class extends Migration
     }
 
     /**
-     * الباقاتُ الثلاث، كلٌّ بصفّه — أو null إن لم توجد واحدةٌ منها (قاعدةٌ فارغة).
+     * الباقاتُ الثلاث، كلٌّ بصفّه — أو null لتثبيتٍ لم يبدأ بعد.
      *
-     * وفي `up` (`strict`): غيابُ بعضها أو تكرارُ واحدةٍ توقّف. وفي `down`:
-     * ما لم يُعرف بعينه يُترك.
+     * وفي كلّ قاعدةٍ سواه: غيابُ الثلاث، أو بعضِها، أو تكرارُ واحدةٍ — توقّف
+     * قبل أيّ كتابة، في `up` و`down` كليهما.
      *
      * @return array<string, object>|null
      */
-    private function resolve(bool $strict = true): ?array
+    private function resolve(): ?array
     {
+        if ($this->isAnUntouchedInstall()) {
+            return null;
+        }
+
         $found = [];
         foreach (array_keys(self::TARGET) as $which) {
             $found[$which] = $which === Plan::CODE_BASIC
@@ -136,14 +159,18 @@ return new class extends Migration
         }
 
         if (collect($found)->every(fn ($rows) => $rows->isEmpty())) {
-            return null;
+            $held = collect(self::UNTOUCHED_WHEN_EMPTY)
+                ->filter(fn ($table) => Schema::hasTable($table) && DB::table($table)->exists())
+                ->implode('، ');
+
+            throw new RuntimeException("أسعار الباقات: لا توجد أيٌّ من الباقات الثلاث، والقاعدةُ قائمةٌ لا جديدة (فيها صفوف: {$held}). لم يُكتب شيء.");
         }
 
         $plans = [];
         foreach ($found as $which => $rows) {
             if ($rows->count() === 1) {
                 $plans[$which] = $rows->first();
-            } elseif ($strict) {
+            } else {
                 throw new RuntimeException(sprintf(
                     'أسعار الباقات: «%s» %s. لم يُكتب شيء.',
                     $which, $rows->isEmpty() ? 'غير موجودة' : 'موجودة '.$rows->count().' مرّات',
@@ -152,6 +179,23 @@ return new class extends Migration
         }
 
         return $plans;
+    }
+
+    /**
+     * تثبيتٌ لم يبدأ بعد؟ — الجداولُ الأربعة كلُّها فارغة (أو لم تُنشأ).
+     *
+     * محافظ: صفٌّ واحدٌ في أيٍّ منها يجعلها قاعدةً قائمة. ومن البيانات وحدها —
+     * لا `APP_ENV` ولا اسمُ الخادم ولا كشفُ بيئة الاختبار.
+     */
+    private function isAnUntouchedInstall(): bool
+    {
+        foreach (self::UNTOUCHED_WHEN_EMPTY as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** يكتب `$to` على صفٍّ ما زال سعرُه `$from` — والشرطُ في `WHERE` نفسِه */

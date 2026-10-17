@@ -136,12 +136,25 @@ class HandleInertiaRequests extends Middleware
                  * والماسح ليُوجَّه التركيز إلى حقل الباركود من أول الشاشة.
                  * وتُرسل النشطة فقط: ملحقٌ عُطِّل من الإعدادات لأنه معطوب يجب
                  * ألّا يُطبع عليه.
+                 *
+                 * ═══ وطريقُ الطابعة كاملًا ═══
+                 *
+                 * تطبيقُ أبعاد على الجهاز اللوحيّ يطبع مباشرةً على طابعة الشبكة
+                 * — انظر `lib/printing` و`mobile/PROTOCOL.md`. فيحتاج عنوانَها
+                 * ومنفذَها وطريقةَ توصيلها لا عرضَ ورقها وحده. والعنوانُ والمنفذ
+                 * لطابعة الشبكة وحدها: ما بقي منهما على غيرها لا يُرسل.
+                 * و`notes` لا تُرسل — ملاحظاتُ التركيب ليست ممّا يحتاجه الصندوق.
                  */
                 'peripherals' => PosTerminal::current()
                     ?->peripherals()->where('active', true)->get()
                     ->map(fn ($p) => [
+                        'id' => $p->id,
                         'type' => $p->type,
                         'name' => $p->name,
+                        'model' => $p->model,
+                        'connection' => $p->connection,
+                        'address' => $p->connection === 'network' ? $p->address : null,
+                        'port' => $p->connection === 'network' ? $p->port : null,
                         'paperWidth' => $p->paper_width,
                         'autoPrint' => $p->auto_print,
                         /*

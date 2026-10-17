@@ -198,6 +198,51 @@ class PosPeripheralTest extends TestCase
                 ->where('context.peripherals', fn ($list) => collect($list)->pluck('name')->all() === ['طابعة الكاشير']));
     }
 
+    /**
+     * تطبيقُ أبعاد يطبع على طابعة الشبكة مباشرةً — فيحتاج طريقَها كاملًا.
+     *
+     * كان الصندوقُ يُعطى عرضَ الورق والطباعةَ التلقائية وحدهما، فلا يعرف
+     * التطبيقُ أين الطابعة. والملاحظاتُ لا تُرسل: ليست ممّا يحتاجه الصندوق.
+     */
+    public function test_the_pos_receives_the_printers_full_network_route(): void
+    {
+        $printer = $this->device->peripherals()->create($this->payload([
+            'connection' => 'network', 'model' => 'TM-80', 'address' => '192.168.1.50', 'port' => 9101,
+            'paper_width' => 58, 'auto_print' => true, 'auto_print_website_confirm' => true,
+            'notes' => 'خلف المنضدة — كلمة سرّ الراوتر 1234',
+        ]) + ['business_id' => $this->business->id]);
+
+        $this->actingAs($this->owner)
+            ->get(route('admin.devices.index'))
+            ->assertInertia(fn ($page) => $page->where('context.peripherals', fn ($list) => collect($list)->all() === [[
+                'id' => $printer->id,
+                'type' => PosPeripheral::PRINTER,
+                'name' => 'طابعة الكاشير',
+                'model' => 'TM-80',
+                'connection' => 'network',
+                'address' => '192.168.1.50',
+                'port' => 9101,
+                'paperWidth' => 58,
+                'autoPrint' => true,
+                'autoPrintWebsite' => true,
+            ]]));
+    }
+
+    public function test_a_usb_printer_carries_no_network_route_even_if_one_lingers_in_the_row(): void
+    {
+        // صفٌّ قديمٌ كُتب قبل أن يُصفِّر المتحكّمُ العنوان — لا يصل منه شيء
+        $this->device->peripherals()->create($this->payload([
+            'connection' => 'usb', 'address' => '192.168.1.50', 'port' => 9100,
+        ]) + ['business_id' => $this->business->id]);
+
+        $this->actingAs($this->owner)
+            ->get(route('admin.devices.index'))
+            ->assertInertia(fn ($page) => $page
+                ->where('context.peripherals.0.connection', 'usb')
+                ->where('context.peripherals.0.address', null)
+                ->where('context.peripherals.0.port', null));
+    }
+
     public function test_deleting_a_register_takes_its_peripherals_with_it(): void
     {
         // قيدٌ أجنبي cascade: ملحقٌ بلا صندوق صفٌّ يتيم لا يظهر في شاشة ولا يُحذف

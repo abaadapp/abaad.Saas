@@ -1,6 +1,11 @@
 .gradle/
 build/
 local.properties
+# مفاتيحُ التوقيع وكلماتُ سرّها — لا تُودَع أبدًا
+*.jks
+*.keystore
+keystore.properties
+signing.properties
 *.iml
 .idea/
 captures/

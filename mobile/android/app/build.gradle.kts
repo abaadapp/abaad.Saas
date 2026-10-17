@@ -27,6 +27,16 @@ val abaadTrustedOrigins: String = (
         ?: ""
     ).trim()
 
+// توقيعُ الإصدار — من خارج المستودع وحده: `~/.gradle/gradle.properties` أو `-P…`
+// أو local.properties (غيرُ مودَع). ولا مفتاحَ ولا كلمةَ سرٍّ في git. وبلا
+// `abaad.signing.storeFile` يُبنى الإصدارُ بلا توقيع، والتجربةُ بـassembleDebug.
+fun abaadProperty(name: String): String? =
+    (providers.gradleProperty(name).orNull ?: localAbaadProperties.getProperty(name))
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+val releaseStoreFile: String? = abaadProperty("abaad.signing.storeFile")
+
 fun javaStringLiteral(value: String): String =
     "\"" + value
         .replace("\\", "\\\\")
@@ -47,6 +57,24 @@ android {
 
         buildConfigField("String", "ABAAD_BASE_URL", javaStringLiteral(abaadBaseUrl))
         buildConfigField("String", "ABAAD_TRUSTED_ORIGINS", javaStringLiteral(abaadTrustedOrigins))
+    }
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = abaadProperty("abaad.signing.storePassword")
+                keyAlias = abaadProperty("abaad.signing.keyAlias")
+                keyPassword = abaadProperty("abaad.signing.keyPassword")
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
 
     compileOptions {

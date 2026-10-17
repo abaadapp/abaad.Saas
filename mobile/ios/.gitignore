@@ -10,3 +10,9 @@ xcuserdata/
 
 # عنوانُ الخادم وفريقُ التوقيع لكلّ مطوّر — انظر Config/Abaad.local.xcconfig.example
 Config/Abaad.local.xcconfig
+
+# شهاداتُ التوقيع وملفّاتُ التزويد — من حساب Apple، لا تُودَع
+*.p12
+*.cer
+*.mobileprovision
+*.p8

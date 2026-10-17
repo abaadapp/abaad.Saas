@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { usePage } from '@inertiajs/react';
 import { Clock, Gift, History, MapPin, Phone, Printer, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
+import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -400,6 +401,14 @@ export default function PrepDetails({
                             {t('سند تسليم')}
                         </a>
                     </Button>
+                    {/* وعلى شريط طابعة الصندوق — يضعه المجهِّزُ في الصندوق بلا طابعة مكتب */}
+                    <PrintReceiptButton
+                        number={o.number}
+                        routeName="admin.preparation.deliveryNoteThermal"
+                        label={t('سند تسليم حراري')}
+                        variant="outline"
+                        size="sm"
+                    />
                     {o.next.map((s) => (
                         <Button key={s} variant="outline" size="sm" disabled={busy || gone} onClick={() => onMove(s)}>
                             {t(s)}

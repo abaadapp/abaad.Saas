@@ -587,6 +587,17 @@ export default function OrderShow() {
                         </Button>
 
                         {/*
+                            ونسختُه على شريط طابعة الصندوق — بالمسار نفسِه الذي
+                            يطبع الإيصال: مباشرةً في التطبيق، وملفًّا في المتصفّح.
+                        */}
+                        <PrintReceiptButton
+                            number={order.id}
+                            routeName="admin.orders.deliveryNoteThermal"
+                            label={t('سند تسليم حراري')}
+                            variant="outline"
+                        />
+
+                        {/*
                             و«تعديل الفاتورة» يفتح أقلامَ الجدول ويمضي إليه:
                             الكميّة وما بيع ووسيلة الدفع — لا اسمُ المستلم.
 

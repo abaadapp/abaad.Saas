@@ -542,6 +542,14 @@ class PreparationController extends Controller
         return DeliveryPaper::pdf($this->bid(), $order);
     }
 
+    /** وسندُ التسليم على شريط طابعة الصندوق — بحصر اللوحة نفسِه (`base()`) */
+    public function deliveryNoteThermal(string $number)
+    {
+        $order = $this->base()->where('number', $number)->with('items')->firstOrFail();
+
+        return DeliveryPaper::stripPdf($this->bid(), $order);
+    }
+
     /**
      * إيصالُ الصندوق الحراريّ لطلبٍ على اللوحة — تفتحه «طباعة تلقائية عند
      * تأكيد طلب الموقع» حين يُؤكَّد من هنا.

@@ -43,6 +43,16 @@ class DocumentPrintController extends Controller
         return DeliveryPaper::pdf($bid, $order);
     }
 
+    /** وسندُ التسليم على شريط طابعة الصندوق — الورقةُ نفسُها بلغة الإيصال */
+    public function deliveryThermal(string $number)
+    {
+        $bid = $this->bid();
+        $order = Order::where('business_id', $bid)->where('number', $number)
+            ->with('items')->firstOrFail();
+
+        return DeliveryPaper::stripPdf($bid, $order);
+    }
+
     public function purchase(int $id)
     {
         $bid = $this->bid();

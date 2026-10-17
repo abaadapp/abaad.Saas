@@ -107,4 +107,31 @@
 
     .qr-block { margin: 4pt 0 2pt; }
     .qr-cap { font-size: {{ $pt(6.4) }}; color: #444; margin-top: 1pt; line-height: 1.3; }
+    /*
+        وما يحتاجه سندُ التسليم فوق ذلك (`delivery-thermal`) — هنا لا في قالبه،
+        فللشريطين مقاسٌ واحدٌ ولغةٌ واحدة.
+
+        عنوانُ الورقة أكبرُ من `doctype`: السندُ لا يُعرف من جدوله كما يُعرف
+        الإيصالُ من إجماليّه، فاسمُه أوّلُ ما يُقرأ تحت اسم المتجر. ورأسُ القسم
+        بعرض الشريط وخطٍّ تحته — لا خلفيّةَ: الطابعةُ لا تطبع رماديًّا.
+    */
+    .title { font-size: {{ $pt(10.5) }}; font-weight: bold; margin: 1pt 0 3pt; }
+    .sec {
+        font-size: {{ $pt(7.8) }}; font-weight: bold;
+        border-bottom: 0.6pt solid #000; padding-bottom: 1pt; margin: 0 0 2pt;
+    }
+    /*
+        ونصٌّ بلغةٍ غير لغة الشريط يبدأ من حيث يبدأ الشريط — `dir` يضبط ترقيمَه
+        لا جانبَه، كما في ورقة A4 (`partials/tokens`). فلا تتناوب الأسماءُ يمينًا ويسارًا.
+    */
+    .bidi { text-align: {{ $start }}; }
+    /* قيمةٌ نصّيّة إلى طرف القيم — بلا عزلٍ لاتينيّ: «استلام من المحل» تُقرأ كما كُتبت */
+    .v { text-align: {{ $end }}; }
+    /* تسميةٌ فوق نصٍّ طويل: العنوانُ والرسالةُ يأخذان عرضَ الشريط كلَّه ويلتفّان ولا يُقصّان */
+    .cap { font-size: {{ $pt(6.8) }}; color: #444; margin-top: 2pt; }
+    .block { font-size: {{ $pt(7.6) }}; }
+    /* والتوقيعُ سطرٌ بعد تسميته — والعرضُ في القالب: mpdf لا يقرأ `nowrap` مع عرضٍ ضئيل */
+    .sign td { font-size: {{ $pt(7.2) }}; padding-top: 9pt; vertical-align: bottom; }
+    .sign .k { padding-{{ $end }}: 4pt; color: #333; }
+    .sign .line { border-bottom: 0.5pt solid #000; }
 </style>

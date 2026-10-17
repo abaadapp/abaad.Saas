@@ -7729,5 +7729,13 @@
     "تمت طباعة صفحة الاختبار": "Test page printed",
     "المنفذ المستخدم": "Port used",
     "تم حفظ البيع، لكن تعذرت طباعة الإيصال.": "The sale was saved, but the receipt couldn't be printed.",
-    "فارغًا يُستعمل 9100 — المنفذ الشائع للطباعة الخام على الشبكة": "Leave empty to use 9100 — the common port for raw network printing"
+    "فارغًا يُستعمل 9100 — المنفذ الشائع للطباعة الخام على الشبكة": "Leave empty to use 9100 — the common port for raw network printing",
+    "بيانات المستلم": "Recipient details",
+    "ملاحظات التوصيل": "Delivery notes",
+    "رسالة البطاقة": "Card message",
+    "اسم المستلم": "Recipient name",
+    "التوقيع": "Signature",
+    "تاريخ/وقت الاستلام": "Received at",
+    "نوع التسليم": "Delivery type",
+    "سند تسليم حراري": "Thermal delivery note"
 }

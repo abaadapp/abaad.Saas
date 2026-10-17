@@ -23,14 +23,17 @@
      * والشعارُ وحده يبقى حيًّا: صورةٌ لا واقعةٌ ماليّة، ونسخُها في كلّ
      * صفٍّ يضخّم القاعدةَ بلا أن يحفظ شيئًا يُراجَع.
      * انظر `Document\Snapshot`.
+     *
+     * ويصل مُضمَّنًا (`$logo` من `InvoiceBranding::logo`) لا من صفّ المتجر:
+     * `$business->logo` رابطٌ نسبيّ للشاشة لا يقرؤه mpdf — انظر `saleStrip`.
      */
     $business = $order->business;
     $stamped = (object) (array_filter($seller ?? []) + [
-        'logo' => $business->logo ?? null,
         'name' => $business->name ?? null,
         'city' => $business->city ?? null,
         'phone' => $business->phone ?? null,
     ]);
+    $stamped->logo = $logo ?? null;
     $itemsCount = $order->items->sum('quantity');
 
     $tpl = $tpl ?? [];
@@ -51,7 +54,8 @@
 <div class="paper">
 
 <div class="c">
-    @if ($show('tpl_show_logo', false) && ($stamped->logo ?? null))
+    {{-- والافتراضُ «يُعرض» كما في `partials/identity`: إخفاءُ ما لم يطلب أحدٌ إخفاءه أسوأ --}}
+    @if ($show('tpl_show_logo') && ($stamped->logo ?? null))
         <img src="{{ $stamped->logo }}" style="max-height:30pt; margin-bottom:2pt;" alt="">
     @endif
     <div class="shop">{{ $stamped->name ?? __('نظام Abad POS') }}</div>

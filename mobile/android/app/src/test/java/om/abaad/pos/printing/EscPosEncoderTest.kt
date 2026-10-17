@@ -1,8 +1,11 @@
 package om.abaad.pos.printing
 
+import org.json.JSONArray
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 
 class EscPosEncoderTest {
 
@@ -30,6 +33,65 @@ class EscPosEncoderTest {
             assertEquals(name, vector.getString("hex"), Fixtures.hex(bytes))
         }
     }
+
+    /** الصفحاتُ شريطٌ واحد: فراغُ الوصلة يُطوى، وفراغُ داخل الصفحة يبقى — كما في iOS حرفًا */
+    @Test
+    fun everySeamVectorJoinsRowForRow() {
+        val section = Fixtures.vectors.getJSONObject("seams")
+        assertEquals(section.getInt("defaultMaxSeamBlank"), SeamJoiner.MAX_SEAM_BLANK_ROWS)
+        val cases = section.getJSONArray("cases")
+        assertTrue("seam vectors", cases.length() >= 9)
+        for (i in 0 until cases.length()) {
+            val vector = cases.getJSONObject(i)
+            val name = vector.getString("name")
+            val width = vector.getInt("width")
+            val out = ByteArrayOutputStream()
+            val stream = EscPosStream(out, MonochromeRaster.bytesPerRow(width), EscPosEncoder.Options(feedLines = 0, cut = false))
+            val joiner = SeamJoiner(stream, maxSeamBlank = vector.getInt("maxSeamBlank"))
+            val pages = vector.getJSONArray("pages")
+            for (p in 0 until pages.length()) {
+                joiner.beginPage()
+                joiner.append(MonochromeRaster.fromRows(strings(pages.getJSONArray(p)), width))
+            }
+            joiner.finish()
+
+            val expected = MonochromeRaster.fromRows(strings(vector.getJSONArray("rows")), width)
+            val printed = EscPosJob.parse(out.toByteArray())
+            assertEquals("$name: init", "init", printed.commands.first())
+            assertEquals("$name: rows", expected.height, printed.rows.size)
+            for (r in 0 until expected.height) {
+                val row = expected.data.copyOfRange(r * expected.bytesPerRow, (r + 1) * expected.bytesPerRow)
+                assertArrayEquals("$name: row $r", row, printed.rows[r])
+            }
+        }
+    }
+
+    @Test
+    fun twoPagesEncodeAsOneJobWithOneCutAtTheVeryEnd() {
+        val vector = Fixtures.vectors.getJSONObject("seams").getJSONObject("stream")
+        val width = vector.getInt("width")
+        val o = vector.getJSONObject("options")
+        val out = ByteArrayOutputStream()
+        val stream = EscPosStream(
+            out,
+            MonochromeRaster.bytesPerRow(width),
+            EscPosEncoder.Options(o.getInt("bandHeight"), o.getInt("feedLines"), o.getBoolean("cut"), o.getBoolean("trimTrailingBlank")),
+        )
+        val joiner = SeamJoiner(stream, maxSeamBlank = vector.getInt("maxSeamBlank"))
+        val pages = vector.getJSONArray("pages")
+        for (p in 0 until pages.length()) {
+            joiner.beginPage()
+            joiner.append(MonochromeRaster.fromRows(strings(pages.getJSONArray(p)), width))
+        }
+        joiner.finish()
+
+        assertEquals(vector.getString("hex"), Fixtures.hex(out.toByteArray()))
+        val printed = EscPosJob.parse(out.toByteArray())
+        assertEquals(1, printed.cuts)
+        assertEquals("cut", printed.commands.last())
+    }
+
+    private fun strings(array: JSONArray): List<String> = (0 until array.length()).map { array.getString(it) }
 
     @Test
     fun receiptDefaultsAreTheProtocolDefaults() {

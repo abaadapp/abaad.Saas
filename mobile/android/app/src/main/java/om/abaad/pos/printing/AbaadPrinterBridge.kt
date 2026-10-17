@@ -171,6 +171,13 @@ class AbaadPrinterBridge(
     private fun printReceipt(id: String, job: ValidatedJob.PrintReceipt, proxy: JavaScriptReplyProxy, acceptedAt: Long): Done {
         val printer = job.printer
         val endpoint = printer.endpoint
+        val contact = contact(proxy, id, job.method, acceptedAt)
+
+        // انتظرت في الطابور حتى ربّما كفّت الصفحةُ عن الانتظار ← لا شيءَ يبدأ
+        if (contact.silentTooLong(job.method)) {
+            PrintLog.info("job=$id waited past the deadline in the queue: not started")
+            return Done(BridgeResult.failure(id, ErrorCode.QUEUE_FULL, effectivePort = printer.port), endpoint)
+        }
 
         // اسمُ `.local` يُحلّ ويُفحص قبل أيّ تنزيل (§4.3)
         val address = when (val resolved = PrinterAddress.resolve(printer)) {
@@ -179,7 +186,7 @@ class AbaadPrinterBridge(
                 return Done(BridgeResult.failure(id, resolved.code, effectivePort = printer.port), endpoint)
         }
 
-        progress(proxy, id, job.method, Stage.DOWNLOADING_RECEIPT)
+        contact.tell(Stage.DOWNLOADING_RECEIPT)
         PrintLog.download(id, job.receiptUrl)
         val pdf = when (val download = downloader.download(job.receiptUrl) { cookieFor(job.receiptUrl) }) {
             is ReceiptDownloader.Result.Ok -> download.bytes
@@ -190,20 +197,31 @@ class AbaadPrinterBridge(
             )
         }
 
-        progress(proxy, id, job.method, Stage.RENDERING)
-        val image = try {
-            renderer.render(pdf, printer.dots)
+        // يُرسم كلُّه إلى ملفٍّ قبل أن يُرسل منه بايت: رسمٌ يفشل لا يترك نصفَ إيصال
+        contact.tell(Stage.RENDERING)
+        val spool = try {
+            renderer.spool(pdf, printer.dots) { contact.beat(Stage.RENDERING) }
         } catch (e: Exception) {
             PrintLog.warn("job=$id render failed", e)
             return Done(BridgeResult.failure(id, ErrorCode.RECEIPT_RENDER_FAILED, effectivePort = printer.port), endpoint)
         }
 
-        return send(id, job.method, proxy, address, printer, EscPosEncoder.encode(image), acceptedAt)
+        try {
+            return send(id, job.method, contact, address, printer, spool)
+        } finally {
+            spool.delete()
+        }
     }
 
     private fun testPrinter(id: String, job: ValidatedJob.TestPrinter, proxy: JavaScriptReplyProxy, acceptedAt: Long): Done {
         val printer = job.printer
         val endpoint = printer.endpoint
+        val contact = contact(proxy, id, job.method, acceptedAt)
+
+        if (contact.silentTooLong(job.method)) {
+            PrintLog.info("job=$id waited past the deadline in the queue: not started")
+            return Done(BridgeResult.failure(id, ErrorCode.QUEUE_FULL, effectivePort = printer.port), endpoint)
+        }
 
         val address = when (val resolved = PrinterAddress.resolve(printer)) {
             is PrinterAddress.Resolution.Ok -> resolved.address
@@ -219,25 +237,30 @@ class AbaadPrinterBridge(
             return Done(BridgeResult.failure(id, ErrorCode.RECEIPT_RENDER_FAILED, effectivePort = printer.port), endpoint)
         }
 
-        return send(id, job.method, proxy, address, printer, EscPosEncoder.encode(image), acceptedAt)
+        return send(id, job.method, contact, address, printer, BytesPayload(EscPosEncoder.encode(image)))
     }
 
     private fun send(
         id: String,
         method: Method,
-        proxy: JavaScriptReplyProxy,
+        contact: PageContact,
         address: java.net.InetAddress,
         printer: ValidatedPrinter,
-        bytes: ByteArray,
-        acceptedAt: Long,
+        payload: PrintPayload,
     ): Done {
-        // تأخّرت في الطابور حتى لا يبقى وقتٌ قبل أن تكفّ الصفحةُ عن الانتظار ← لا اتّصال
-        if (ConnectDeadline.expired(method, acceptedAt, SystemClock.elapsedRealtime())) {
-            PrintLog.info("job=$id waited past the connect deadline: not sent")
+        // لم تسمع الصفحةُ منّا مدّةً ربّما كفّت فيها عن الانتظار ← لا اتّصال
+        if (contact.silentTooLong(method)) {
+            PrintLog.info("job=$id silent past the connect deadline: not sent")
             return Done(BridgeResult.failure(id, ErrorCode.QUEUE_FULL, effectivePort = printer.port), printer.endpoint)
         }
 
-        val result = driver.send(address, printer.port, bytes, onStage = { stage -> progress(proxy, id, method, stage) })
+        val result = driver.send(
+            address,
+            printer.port,
+            payload,
+            onStage = { stage -> contact.tell(stage) },
+            onProgress = { _, _ -> contact.beat(Stage.SENDING) },
+        )
         val bridgeResult = when (result) {
             is NetworkPrinterDriver.Result.Sent ->
                 BridgeResult.success(id, printed = true, connected = true, effectivePort = printer.port)
@@ -252,6 +275,13 @@ class AbaadPrinterBridge(
         }
         return Done(bridgeResult, printer.endpoint, result.bytesWritten)
     }
+
+    /** ما يُقال للصفحة عن مهمّةٍ واحدة — يُسجَّل تبدّلُ المرحلة، وتُرسل كلُّ رسالة */
+    private fun contact(proxy: JavaScriptReplyProxy, id: String, method: Method, acceptedAt: Long): PageContact =
+        PageContact(acceptedAt, { SystemClock.elapsedRealtime() }) { stage, changed ->
+            if (changed) PrintLog.stage(id, method, stage)
+            deliver(proxy, BridgeMessages.progress(id, stage))
+        }
 
     private fun openReceipt(id: String, job: ValidatedJob.OpenReceipt, proxy: JavaScriptReplyProxy, startedAt: Long) {
         try {
@@ -279,11 +309,6 @@ class AbaadPrinterBridge(
     }
 
     // ─── الردود: على خيط الواجهة ───
-
-    private fun progress(proxy: JavaScriptReplyProxy, id: String, method: Method, stage: Stage) {
-        PrintLog.stage(id, method, stage)
-        deliver(proxy, BridgeMessages.progress(id, stage))
-    }
 
     private fun finish(
         proxy: JavaScriptReplyProxy,

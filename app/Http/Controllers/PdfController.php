@@ -243,6 +243,18 @@ class PdfController extends Controller
     }
 
     /**
+     * عرضُ الشريط لمتجرٍ من هذا الصندوق — طابعتُه أوّلًا، ثمّ قالبُ البيع.
+     *
+     * والإيصالُ وسندُ التسليم الحراريّ يخرجان من الطابعة نفسِها، فعرضُهما
+     * واحدٌ من هنا: سندٌ بعرضٍ غيرِ عرض الإيصال يخرج مقصوصًا من الحافّة
+     * على ورقٍ لم يُضبط له. انظر `DeliveryPaper::strip`.
+     */
+    public static function receiptWidth(int $bid): int
+    {
+        return self::stripWidth((string) (DocumentTemplates::settings($bid, 'sale')['strip'] ?? PaperSize::T80));
+    }
+
+    /**
      * عرضُ ورق هذه الطابعة بالمليمتر.
      *
      * وطابعةُ هذا الصندوق تغلب قالب المتجر: القالب إعدادٌ واحد للمتجر كلّه،

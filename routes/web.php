@@ -555,6 +555,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      */
     Route::get('/preparation/{number}/delivery-note', [PreparationController::class, 'deliveryNote'])
         ->name('preparation.deliveryNote');
+    // ونسختُه على شريط طابعة الصندوق — الحصرُ نفسُه والقالبُ نفسُه (`DeliveryPaper::stripPdf`)
+    Route::get('/preparation/{number}/delivery-note/thermal', [PreparationController::class, 'deliveryNoteThermal'])
+        ->name('preparation.deliveryNoteThermal');
     /*
      * وإيصالُ الصندوق الحراريّ — تفتحه طباعةُ تأكيد طلب الموقع من اللوحة.
      * باسم اللوحة فيتبع قسمَها: من يؤكّد هنا يطبع هنا، بلا «الطلبات» ولا
@@ -832,6 +835,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/orders/{number}/pdf', [PdfController::class, 'orderReceipt'])->name('orders.pdf');
     Route::get('/orders/{number}/receipt', [PdfController::class, 'orderThermal'])->name('orders.receipt');
     Route::get('/orders/{number}/delivery-note', [DocumentPrintController::class, 'delivery'])->name('orders.deliveryNote');
+    Route::get('/orders/{number}/delivery-note/thermal', [DocumentPrintController::class, 'deliveryThermal'])->name('orders.deliveryNoteThermal');
 
     // العملات وأسعار الصرف
     Route::get('/currency/{code}/switch', [CurrencyController::class, 'switch'])->name('currency.switch');

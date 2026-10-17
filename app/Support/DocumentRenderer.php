@@ -385,6 +385,50 @@ class DocumentRenderer
         ]));
     }
 
+    /**
+     * سندُ التسليم شريطًا حراريًّا — بلغة الإيصال البصريّة، ولا مالَ فيه.
+     *
+     * ═══ ولمَ قالبٌ له لا الإيصالُ بلا أسعار ═══
+     *
+     * الإيصالُ يُقرأ من الإجمالي، والسندُ يُقرأ من المستلِم: السائقُ يبحث
+     * إلى من يُسلّم وأين ومتى، ثمّ ما يحمل. وجدولُ الإيصال بأربعة أعمدة
+     * يترك بإطفاء السعر عمودين خاويين على ٥٤ مم مطبوعة. فالترتيبُ غيرُ
+     * الترتيب، وجدولُ الأصناف عمودان: الصنفُ وكميّتُه.
+     *
+     * ═══ ولا مالَ فيه بحال ═══
+     *
+     * لا سعرَ ولا إجماليَّ ولا وسيلةَ دفعٍ ولا حالَه، ولا رمزَ ضريبيًّا ولا
+     * رابطَ الفاتورة أونلاين. ومقبضُ `show_prices` في القالب للورقة A4؛
+     * والشريطُ يمشي مع الباقة إلى يد المستلِم، ومن استلم هديّةً لا يُقرأ
+     * عليه ثمنُها. ولا ملاحظاتٍ داخليّةً ولا ملاحظاتِ الطلب: يكتبها المشتري
+     * للمتجر، وقد يكتب فيها اسمَه — وما للسائق منها في «ملاحظات التوصيل».
+     *
+     * والبائعُ من لقطة الورقة إن كانت مختومة، كالإيصال (`thermal.blade.php`)،
+     * والشعارُ حيًّا مُضمَّنًا من `InvoiceBranding::logo` وحدها.
+     */
+    public static function deliveryStrip(int $businessId, Order $order, int $width): string
+    {
+        $tpl = DocumentTemplates::settings($businessId, 'delivery');
+        $business = $order->business;
+
+        /*
+         * والقالبُ لا يُعطى الطلب: يُعطى ما يُطبع وحدَه (`DeliveryPaper::forRecipient`)
+         * — حمولةٌ تُبنى في الخادم بلا مالٍ ولا هويّةِ من أخفى اسمه.
+         */
+        return self::html(view(Version::views(null).'.delivery-thermal', [
+            'note' => DeliveryPaper::forRecipient($order),
+            'tpl' => $tpl,
+            'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
+            'width' => $width,
+            'tokens' => Branding::tokens($businessId, self::scale((string) $tpl['font'])),
+            'shop' => array_filter(Snapshot::seller(Snapshot::of($order, $businessId))) + [
+                'name' => $business->name ?? null,
+                'phone' => $business->phone ?? null,
+            ],
+            'logo' => ($tpl['show_logo'] ?? true) ? InvoiceBranding::logo($businessId) : null,
+        ]));
+    }
+
     /** عنوانُ المتجر المنشور — `example.om` لا `https://example.om/` — أو فراغ */
     private static function website(int $businessId): string
     {

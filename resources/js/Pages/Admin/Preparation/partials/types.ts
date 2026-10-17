@@ -52,6 +52,11 @@ export interface PrepOrder {
     status: string;
     /** قناةُ الطلب — `website` لطلب الموقع؛ تقرؤها طباعةُ التأكيد */
     channel?: string | null;
+    /**
+     * أيُّ سندِ تسليمٍ يُطبع: `thermal` لطلب موقعٍ في متجرٍ فُتح له، و`a4`
+     * لكلّ ما سواه. يقيسه الخادم (`DeliveryPaper::paperFor`) — والغائبُ A4.
+     */
+    delivery_paper?: 'thermal' | 'a4';
     /** صاحب الطلب — لا مستلِمه */
     customer: string | null;
     /** هاتفُ صاحب الطلب — من سجلّ العميل */

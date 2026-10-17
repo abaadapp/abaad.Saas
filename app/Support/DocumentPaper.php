@@ -73,7 +73,7 @@ class DocumentPaper
     }
 
     /** كميّةٌ بلا كسورٍ زائدة: «3» لا «3.000» */
-    private static function qty(mixed $value): string
+    public static function qty(mixed $value): string
     {
         $n = (float) $value;
 

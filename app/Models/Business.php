@@ -20,6 +20,8 @@ class Business extends Model
         // أيستقبل طلباتِ هدايا في متجره الإلكترونيّ؟ — يفتحه مديرُ المنصّة (`Store\GiftOrders`)
         'gift_orders_enabled' => 'boolean',
         'order_notes_and_edits_enabled' => 'boolean',
+        // أيُطبع سندُ تسليم طلبات الموقع على شريط الصندوق؟ — يفتحه مديرُ المنصّة (`DeliveryPaper::thermalOn`)
+        'thermal_delivery_note_enabled' => 'boolean',
         // أتُقرأ رسائلُ واتساب محادثاتٍ؟ — مغلقٌ افتراضًا (`WhatsAppConversations::enabled`)
         'whatsapp_conversations_enabled' => 'boolean',
         // أيُرسل من رقم أبعاد المشترك؟ — يُغلقه مديرُ المنصّة (`WhatsAppFeature::canUseShared`)

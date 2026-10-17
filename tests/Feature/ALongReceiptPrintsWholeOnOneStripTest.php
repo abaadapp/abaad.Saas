@@ -10,6 +10,7 @@ use App\Support\DocumentTemplates;
 use App\Support\Pdf;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Support\PdfText;
 use Tests\TestCase;
 
 /**
@@ -54,7 +55,7 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
     {
         foreach ([58, 80] as $mm) {
             [$order, $pdf] = $this->receipt($mm, 1);
-            $pages = self::pages($pdf);
+            $pages = PdfText::pages($pdf);
 
             $this->assertCount(1, $pages, "{$mm}mm");
             $html = PdfController::saleHtml($order->business_id, $order, thermal: true)['html'];
@@ -68,7 +69,7 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
     public function test_every_item_and_the_whole_footer_reach_one_page(int $mm, int $items): void
     {
         [, $pdf] = $this->receipt($mm, $items);
-        $pages = self::pages($pdf);
+        $pages = PdfText::pages($pdf);
 
         $this->assertCount(1, $pages, "{$items} صنفًا على {$mm}mm تتّسع لورقة القياس: صفحةٌ واحدة كما كان");
         $this->assertLessThan(self::SHEET_MM, $pages[0]['height']);
@@ -83,7 +84,7 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
     {
         foreach ([58, 80] as $mm) {
             [, $pdf] = $this->receipt($mm, 1000);
-            $pages = self::pages($pdf);
+            $pages = PdfText::pages($pdf);
 
             $this->assertGreaterThanOrEqual(2, count($pages), "{$mm}mm");
             foreach ($pages as $i => $page) {
@@ -111,7 +112,7 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
         foreach ([58, 80] as $mm) {
             foreach ([1, 50, 100, 200, 1000] as $items) {
                 [, $pdf] = $this->receipt($mm, $items);
-                $this->assertWhole(self::pages($pdf), $items, "{$mm}mm · {$items}");
+                $this->assertWhole(PdfText::pages($pdf), $items, "{$mm}mm · {$items}");
                 file_put_contents("{$dir}/receipt-{$mm}mm-{$items}.pdf", $pdf);
             }
         }
@@ -215,98 +216,5 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
         $this->assertLessThan(strpos($text, 'Subtotal'), strpos($text, "Item {$items} Premium"), $case);
         $this->assertLessThan(strpos($text, 'Scan to view the invoice'), strpos($text, 'Subtotal'), $case);
         $this->assertLessThan(strpos($text, self::FOOTER), strpos($text, 'Scan to view the invoice'), $case);
-    }
-
-    // ─── قراءةُ الـPDF ───
-
-    /**
-     * صفحاتُ الـPDF بالترتيب: عرضُها وارتفاعُها بالمليمتر، ونصُّها كما رُسم.
-     *
-     * mpdf يكتب النصَّ سلاسلَ حرفيّة `( … )` بترميز UTF-16BE، وخريطةُ ToUnicode
-     * عنده هويّة (`<0000> <FFFF> <0000>`). والمسافةُ في خطّه رمزٌ خاصّ (U+E28D).
-     *
-     * @return list<array{width: float, height: float, text: string}>
-     */
-    private static function pages(string $pdf): array
-    {
-        preg_match_all('#(\d+) 0 obj\s*(.*?)\s*endobj#s', $pdf, $objects, PREG_SET_ORDER);
-        $byId = [];
-        foreach ($objects as $object) {
-            $byId[(int) $object[1]] = $object[2];
-        }
-
-        $pages = [];
-        foreach ($byId as $body) {
-            if (! preg_match('#/Type\s*/Page\b(?!s)#', $body)) {
-                continue;
-            }
-            preg_match('#/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]#', $body, $box);
-            preg_match('#/Contents\s+(\d+)\s+0\s+R#', $body, $contents);
-            $pages[] = [
-                'width' => round(((float) $box[3] - (float) $box[1]) / 72 * 25.4, 1),
-                'height' => round(((float) $box[4] - (float) $box[2]) / 72 * 25.4, 1),
-                'text' => self::text(self::stream($byId[(int) $contents[1]] ?? '')),
-            ];
-        }
-
-        return $pages;
-    }
-
-    private static function stream(string $object): string
-    {
-        if (! preg_match('#^(.*?)stream\r?\n(.*)\r?\nendstream#s', $object, $m)) {
-            return '';
-        }
-
-        return str_contains($m[1], '/FlateDecode') ? (string) @gzuncompress($m[2]) : $m[2];
-    }
-
-    /**
-     * السلاسلُ الحرفيّة كلُّها بالترتيب، بينها مسافةٌ واحدة: خلايا الصفّ الواحد
-     * نصوصٌ منفصلة (`BT … ET`)، فرأسُ الجدول يُقرأ «Item Price Qty Total».
-     */
-    private static function text(string $content): string
-    {
-        $out = '';
-        $length = strlen($content);
-        for ($i = 0; $i < $length; $i++) {
-            $c = $content[$i];
-            if ($c === 'E' && substr($content, $i, 2) === 'ET') {
-                $out .= "\n";
-
-                continue;
-            }
-            if ($c !== '(') {
-                continue;
-            }
-            $bytes = '';
-            $depth = 1;
-            for ($i++; $i < $length && $depth > 0; $i++) {
-                $c = $content[$i];
-                if ($c === '\\') {
-                    $next = $content[++$i] ?? '';
-                    if (ctype_digit($next)) {
-                        $octal = $next;
-                        while (strlen($octal) < 3 && ctype_digit($content[$i + 1] ?? '')) {
-                            $octal .= $content[++$i];
-                        }
-                        $bytes .= chr(octdec($octal) & 0xFF);
-                    } else {
-                        $bytes .= ['n' => "\n", 'r' => "\r", 't' => "\t", 'b' => "\x08", 'f' => "\x0C"][$next] ?? $next;
-                    }
-
-                    continue;
-                }
-                if ($c === '(') {
-                    $depth++;
-                } elseif ($c === ')' && --$depth === 0) {
-                    break;
-                }
-                $bytes .= $c;
-            }
-            $out .= mb_convert_encoding($bytes, 'UTF-8', 'UTF-16BE');
-        }
-
-        return trim((string) preg_replace('/\s+/u', ' ', str_replace("\u{E28D}", ' ', $out)));
     }
 }

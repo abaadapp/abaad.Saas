@@ -18,6 +18,7 @@ use App\Models\Product;
 use App\Models\User;
 use App\Support\Boutiques;
 use App\Support\BranchGoogle;
+use App\Support\DeliveryPaper;
 use App\Support\Demo;
 use App\Support\DocumentTemplates;
 use App\Support\Emojis;
@@ -258,6 +259,14 @@ class PageController extends Controller
              * أو بقالبٍ لم يُعتمَد أو بحصّةٍ نفدت، وفي كلٍّ منها يبقى الزبون
              * بلا خبر. واليدُ آخرُ ما يبقى حين تسقط الأتمتة.
              */
+            /*
+             * أيُّ سندِ تسليمٍ يُعرض: الشريطُ لطلب موقعٍ في متجرٍ فُتح له، وA4
+             * لكلّ ما سواه — والجوابُ نفسُه الذي يسأله بابُ الشريط
+             * (`DeliveryPaper::paperFor`)، فلا يُعرض زرٌّ يُردّ صاحبُه.
+             */
+            'deliveryNote' => DeliveryPaper::paperFor(
+                Order::where('business_id', Demo::bid())->where('number', $number)->first()
+            ),
             'statusNotice' => OrderNotice::state(
                 Order::where('business_id', Demo::bid())
                     ->where('is_held', false)->where('number', $number)->first()

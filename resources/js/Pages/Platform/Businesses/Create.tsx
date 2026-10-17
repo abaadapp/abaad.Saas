@@ -37,6 +37,7 @@ export default function BusinessCreate() {
                     boutiques_enabled: false,
                     gift_orders_enabled: false,
                     order_notes_and_edits_enabled: false,
+                    thermal_delivery_note_enabled: false,
                 }}
                 action={route('super-admin.businesses.store')}
                 method="post"

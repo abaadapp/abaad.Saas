@@ -278,6 +278,65 @@ final class LoopbackServer: @unchecked Sendable {
 }
 
 /*
+ * ما يخزّنه النظامُ على 127.0.0.1 بين مُرسِلٍ بمخزن إرسالٍ كمخزن المُرسِل (16KB)
+ * ومستقبِلٍ بمخزن 4KB لا يقرأ شيئًا — حتى يقف القبولُ ثانيةً كاملة.
+ *
+ * macOS لا يلتزم المخازنَ الصغيرة على الحلقة المحلّيّة: يرفع الإرسالَ إلى 64KB والاستقبالَ
+ * إلى 128KB فأكثر، وعلى أجهزة CI بلغ المجموعُ نحو 600KB. والطابعةُ الحقيقيّة نافذتُها بضعةُ
+ * كيلوبايتات. فأرقامُ اختبار البطء تُبنى على ما يُقاس هنا لا على ما يُفترض: وإلّا انتهى
+ * الإرسالُ قبل 30 ثانية لأنّ نصفَ الإيصال في مخازن النظام، أو فتح المستقبِلُ نافذتَه
+ * بخطواتٍ كبيرةٍ تبدو توقّفًا.
+ */
+func loopbackBuffering(sendBuffer: Int32 = 16 * 1024) -> Int {
+    let listener = socket(AF_INET, SOCK_STREAM, 0)
+    defer { close(listener) }
+    var receive: Int32 = 4096
+    setsockopt(listener, SOL_SOCKET, SO_RCVBUF, &receive, socklen_t(MemoryLayout<Int32>.size))
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = 0
+    address.sin_addr.s_addr = inet_addr("127.0.0.1")
+    var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let ready = withUnsafeMutablePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            bind(listener, $0, length) == 0 && listen(listener, 1) == 0 && getsockname(listener, $0, &length) == 0
+        }
+    }
+    precondition(ready, "cannot listen on 127.0.0.1")
+
+    let sender = socket(AF_INET, SOCK_STREAM, 0)
+    defer { close(sender) }
+    var send = sendBuffer
+    setsockopt(sender, SOL_SOCKET, SO_SNDBUF, &send, socklen_t(MemoryLayout<Int32>.size))
+    var noSignal: Int32 = 1
+    setsockopt(sender, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
+    let connected = withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(sender, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+    }
+    precondition(connected == 0, "cannot connect to 127.0.0.1")
+    let receiver = accept(listener, nil, nil)
+    defer { close(receiver) }
+    setsockopt(receiver, SOL_SOCKET, SO_RCVBUF, &receive, socklen_t(MemoryLayout<Int32>.size))
+    _ = fcntl(sender, F_SETFL, fcntl(sender, F_GETFL) | O_NONBLOCK)
+
+    let chunk = [UInt8](repeating: 0x55, count: 4096)
+    var total = 0
+    let started = Date()
+    var lastProgress = Date()
+    while Date().timeIntervalSince(lastProgress) < 1, Date().timeIntervalSince(started) < 20 {
+        let n = chunk.withUnsafeBytes { Darwin.send(sender, $0.baseAddress, $0.count, 0) }
+        if n > 0 {
+            total += n
+            lastProgress = Date()
+        } else {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+    }
+    return total
+}
+
+/*
  * طابعةٌ على 127.0.0.1 بمقابس POSIX: مخزنُ استقبالٍ صغير كطابعةٍ حقيقيّة، وقراءةٌ
  * بالسرعة التي يُطلب منها — كلُّها، أو بطيئةً بإيقاع، أو تتوقّف، أو تقطع بـRST.
  * وقد تردّ بايتاتِ حالةٍ أثناء القراءة كما تفعل بعضُ الطابعات.
@@ -298,6 +357,7 @@ final class PacedPrinter: @unchecked Sendable {
     private let pace: Pace
     private let receiveBuffer: Int32
     private let replyEvery: Int?
+    private let closeWriteSide: Bool
     private var listener: Int32 = -1
     private var received: [UInt8] = []
     private var closedByPeer = false
@@ -305,10 +365,11 @@ final class PacedPrinter: @unchecked Sendable {
     private var firstByteAt: Date?
     private var lastByteAt: Date?
 
-    init(pace: Pace, receiveBuffer: Int32 = 4096, replyEvery: Int? = nil) {
+    init(pace: Pace, receiveBuffer: Int32 = 4096, replyEvery: Int? = nil, closeWriteSide: Bool = false) {
         self.pace = pace
         self.receiveBuffer = receiveBuffer
         self.replyEvery = replyEvery
+        self.closeWriteSide = closeWriteSide
     }
 
     func start() throws -> Int {
@@ -339,6 +400,9 @@ final class PacedPrinter: @unchecked Sendable {
         guard client >= 0 else { return }
         var buffer = receiveBuffer
         setsockopt(client, SOL_SOCKET, SO_RCVBUF, &buffer, socklen_t(MemoryLayout<Int32>.size))
+        if closeWriteSide {
+            shutdown(client, SHUT_WR)
+        }
         var chunk = [UInt8](repeating: 0, count: 64 * 1024)
         var total = 0
         var nextReply = replyEvery ?? Int.max
@@ -348,7 +412,7 @@ final class PacedPrinter: @unchecked Sendable {
             case .fast:
                 break
             case let .slow(bytes, every):
-                limit = bytes
+                limit = min(bytes, chunk.count)
                 Thread.sleep(forTimeInterval: every)
             case let .stall(after), let .reset(after):
                 if total >= after { break loop }

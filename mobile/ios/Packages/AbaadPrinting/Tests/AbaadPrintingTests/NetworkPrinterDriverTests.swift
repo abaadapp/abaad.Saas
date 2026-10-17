@@ -50,16 +50,19 @@ struct NetworkPrinterDriverTests {
      * طابعةٌ بطيئة تأخذ أكثر من 30 ثانية — ويصلها الإيصالُ كلُّه.
      *
      * كانت للإرسال كلِّه 30 ثانية ثمّ يُقطع: إيصالٌ طويل على طابعةٍ تطبع الصورةَ ببطء
-     * كان يخرج إلى منتصفه. والطابعةُ هنا تقرأ 2KB كلَّ عُشر ثانية (20KB/ث)، ومخزنُها
-     * 4KB، ومخزنُ إرسالنا 16KB. فـ1MB تقرؤه في نحو 49 ثانية — ويبقى الإرسالُ نفسُه
-     * أكثر من 30 ثانية ولو بقي في مخازن النظام ما يبلغ 200KB لم تقرأه بعد (macOS يكبّر
-     * مخزنَ الاستقبال على 127.0.0.1 وحده: رأينا فيه حتى 160KB). ولا يقف التقدّمُ طويلًا.
+     * كان يخرج إلى منتصفه. والطابعةُ هنا تقرأ بسرعةٍ ثابتة نحو 50 ثانية، ومخزنُ إرسالنا 16KB.
+     *
+     * وسرعتُها وطولُ الإيصال من `loopbackBuffering()`: ثلثُ ما يخزّنه النظامُ في الثانية
+     * (20KB/ث على الأقلّ). فما في مخازن النظام لا يتجاوز ثلاث ثوانٍ من القراءة — فيبقى
+     * الإرسالُ نفسُه فوق 30 ثانية بهامشٍ واسع، ولا يفتح المستقبِلُ نافذتَه بخطوةٍ تبدو توقّفًا.
      */
     @Test("a slow printer that needs more than 30 seconds still receives every byte", .timeLimit(.minutes(2)))
     func slowPrinterGetsEverything() async throws {
-        let printer = PacedPrinter(pace: .slow(bytes: 2048, every: 0.1))
+        let buffered = loopbackBuffering()
+        let rate = min(max(20 * 1024, buffered / 3), 600 * 1024)
+        let printer = PacedPrinter(pace: .slow(bytes: rate / 10, every: 0.1))
         let port = try printer.start()
-        let payload = (0..<1_000_000).map { UInt8(truncatingIfNeeded: $0 &* 131 &+ 17) }
+        let payload = (0..<(rate * 50)).map { UInt8(truncatingIfNeeded: $0 &* 131 &+ 17) }
         let progress = Recorder<(Int, Date)>()
 
         let started = Date()
@@ -70,9 +73,9 @@ struct NetworkPrinterDriverTests {
 
         #expect(result.error == nil)
         #expect(result.bytesSent == payload.count)
-        #expect(elapsed > 30, "the send itself lasted \(elapsed)s")
+        #expect(elapsed > 30, "the send itself lasted \(elapsed)s (\(rate) B/s, \(buffered) B held by the system)")
 
-        let seen = await printer.waitUntilFinished(timeout: 30)
+        let seen = await printer.waitUntilFinished(timeout: 15)
         #expect(seen.received.count == payload.count)
         #expect(seen.received == payload)
         #expect(seen.closedByPeer)
@@ -84,6 +87,36 @@ struct NetworkPrinterDriverTests {
     }
 
     /*
+     * مخزنُ الإرسال الصغير هو ما يجعل كلَّ كتابةٍ تنجح تقدّمًا عند الطابعة: بمخزن النظام
+     * (128KB فأكثر، ويكبر وحده) يُقبل الإيصالُ في الجهاز دفعةً ثمّ يسكت التقدّمُ والطابعةُ
+     * تأخذ — فتبدو طابعةٌ بطيئة متوقّفة. ولا يُرى هذا على 127.0.0.1 بثبات (macOS يرفع
+     * المخازنَ هناك)، فيُفحص المقبسُ نفسُه.
+     */
+    @Test("the socket refuses to hold more than a small send buffer, never raises SIGPIPE, and never blocks")
+    func socketIsConfigured() throws {
+        func option(_ fd: Int32, _ level: Int32, _ name: Int32) -> Int32 {
+            var value: Int32 = 0
+            var length = socklen_t(MemoryLayout<Int32>.size)
+            getsockopt(fd, level, name, &value, &length)
+            return value
+        }
+        let plain = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+        let configured = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+        defer {
+            close(plain)
+            close(configured)
+        }
+        NetworkPrinterDriver.configure(configured, sendBuffer: NetworkPrinterDriver().sendBufferSize)
+
+        #expect(NetworkPrinterDriver().sendBufferSize == 16 * 1024)
+        #expect(option(configured, SOL_SOCKET, SO_SNDBUF) <= 64 * 1024)
+        #expect(option(configured, SOL_SOCKET, SO_SNDBUF) < option(plain, SOL_SOCKET, SO_SNDBUF))
+        #expect(option(configured, SOL_SOCKET, SO_NOSIGPIPE) != 0)
+        #expect(option(configured, IPPROTO_TCP, TCP_NODELAY) != 0)
+        #expect(fcntl(configured, F_GETFL) & O_NONBLOCK != 0)
+    }
+
+    /*
      * وطابعةٌ توقّفت (ورقٌ نفد، غطاءٌ مفتوح) تُقطع بعد `stallTimeout` بلا تقدّم —
      * SEND_FAILED وربما طُبع جزء، ولا إعادة.
      */
@@ -92,40 +125,68 @@ struct NetworkPrinterDriverTests {
         let printer = PacedPrinter(pace: .stall(after: 50_000))
         let port = try printer.start()
 
-        let started = Date()
-        let sent = await within(20) {
-            await NetworkPrinterDriver(stallTimeout: 1).send(
+        let progress = Recorder<Date>()
+        let sent = await within(30) {
+            await NetworkPrinterDriver(stallTimeout: 2).send(
                 .bytes([UInt8](repeating: 0x55, count: 32 * 1024 * 1024)), host: "127.0.0.1", port: port, onStage: { _ in }
-            ) { _, _ in }
+            ) { _, _ in progress.append(Date()) }
         }
-        let result = try #require(sent, "still sending 20 s after the printer stopped reading")
-        let elapsed = Date().timeIntervalSince(started)
+        let result = try #require(sent, "still sending 30 s after the printer stopped reading")
+        let failedAt = Date()
 
         #expect(result.error == .sendFailed)
         #expect(result.connected)
         #expect(result.mayHavePrinted)
         #expect(result.bytesSent >= 50_000)
-        #expect(elapsed < 10, "took \(elapsed)s")
-        // ولا يتكدّس الإيصالُ في الجهاز: ما قُبل ولم تأخذه الطابعة قليل (مخزنٌ صغير)
-        let inDevice = result.bytesSent - printer.snapshot.received.count
-        #expect(inDevice < 512 * 1024, "\(inDevice) bytes accepted but never read by the printer")
+
+        // يُحكم بالصمت لا بالمدّة: بعد أن تقف الطابعة يبقى النظامُ يقبل حتى تمتلئ مخازنُه — على
+        // 127.0.0.1 مئاتُ الكيلوبايتات في ثوانٍ تختلف من جهازٍ إلى جهاز، وكلُّها تقدّمٌ صادق. ثمّ
+        // من آخر كتابةٍ تمّت إلى الفشل `stallTimeout` بالضبط: لا أقلّ (فلا تُقطع طابعةٌ بطيئة
+        // قبله) ولا أكثر إلّا دورةَ poll (250ms) ومهلةَ الجدولة
+        let lastAccepted = try #require(progress.all.last)
+        let silence = failedAt.timeIntervalSince(lastAccepted)
+        #expect(silence > 1.9 && silence < 3.5, "failed \(silence)s after the last accepted write; the stall timeout is 2s")
     }
 
+    /// والقطعُ يُرى عند وقوعه — لا بعد مهلة التوقّف (هنا 30 ثانية لا تُبلغ)
     @Test("a connection cut after part of the receipt is SEND_FAILED that may have printed", .timeLimit(.minutes(1)))
     func cutAfterPartIsSendFailed() async throws {
         let printer = PacedPrinter(pace: .reset(after: 100_000))
         let port = try printer.start()
 
-        let result = await NetworkPrinterDriver(stallTimeout: 5).send(
-            .bytes([UInt8](repeating: 0x33, count: 32 * 1024 * 1024)), host: "127.0.0.1", port: port, onStage: { _ in }
-        ) { _, _ in }
+        let started = Date()
+        let sent = await within(25) {
+            await NetworkPrinterDriver(stallTimeout: 30).send(
+                .bytes([UInt8](repeating: 0x33, count: 32 * 1024 * 1024)), host: "127.0.0.1", port: port, onStage: { _ in }
+            ) { _, _ in }
+        }
+        let result = try #require(sent, "a reset connection was not noticed")
+        let elapsed = Date().timeIntervalSince(started)
 
+        #expect(elapsed < 10, "noticed after \(elapsed)s")
         #expect(result.error == .sendFailed)
         #expect(result.connected)
         #expect(result.mayHavePrinted)
         #expect(result.bytesSent > 0)
         let seen = await printer.waitUntilFinished(timeout: 5)
         #expect(seen.received.count == 100_000)
+    }
+
+    /// طابعةٌ تُغلق طرفَ كتابتها أوّلَ الاتّصال وتبقى تقرأ: الإيصالُ يصلها كلُّه، ولا يُعدّ الإغلاقُ فشلًا
+    @Test("a printer that closes its own side first and keeps reading still receives everything", .timeLimit(.minutes(1)))
+    func halfClosedPrinterGetsEverything() async throws {
+        let printer = PacedPrinter(pace: .fast, closeWriteSide: true)
+        let port = try printer.start()
+        let payload = (0..<1_000_000).map { UInt8(truncatingIfNeeded: $0 &* 13 &+ 5) }
+
+        let sent = await within(25) {
+            await NetworkPrinterDriver().send(.bytes(payload), host: "127.0.0.1", port: port, onStage: { _ in }) { _, _ in }
+        }
+        let result = try #require(sent)
+
+        #expect(result.error == nil)
+        let seen = await printer.waitUntilFinished(timeout: 10)
+        #expect(seen.received == payload)
     }
 
     /// طابعةٌ تردّ بايتاتِ حالةٍ أثناء الطباعة: تُقرأ وتُهمل، والإيصالُ يصل كلُّه

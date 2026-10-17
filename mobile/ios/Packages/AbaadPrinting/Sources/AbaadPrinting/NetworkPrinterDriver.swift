@@ -162,6 +162,16 @@ public final class NetworkPrinterDriver: PrinterSending {
         return (first.pointee.ai_family, storage, length)
     }
 
+    /// مقبسٌ لا يُسقط التطبيقَ بـSIGPIPE، ولا يؤخّر القطعَ الصغيرة، ومخزنُ إرساله صغير، ولا يحجب
+    static func configure(_ fd: Int32, sendBuffer: Int) {
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, socklen_t(MemoryLayout<Int32>.size))
+        var buffer = Int32(sendBuffer)
+        setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buffer, socklen_t(MemoryLayout<Int32>.size))
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+    }
+
     // MARK: - المهمّة على خيطها
 
     private func run(
@@ -182,12 +192,7 @@ public final class NetworkPrinterDriver: PrinterSending {
             return DriverResult(error: .printerUnreachable, connected: false, mayHavePrinted: false)
         }
         defer { close(fd) }
-        var on: Int32 = 1
-        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
-        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, socklen_t(MemoryLayout<Int32>.size))
-        var buffer = Int32(sendBufferSize)
-        setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buffer, socklen_t(MemoryLayout<Int32>.size))
-        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        Self.configure(fd, sendBuffer: sendBufferSize)
 
         if let failure = connect(fd, to: target) {
             return DriverResult(error: failure, connected: false, mayHavePrinted: false)
@@ -213,6 +218,9 @@ public final class NetworkPrinterDriver: PrinterSending {
         var sent = 0
         var pending = Data()
         var lastProgress = DispatchTime.now()
+        // أغلقت الطابعةُ طرفَها (FIN): لا يُنتظر منها ردٌّ بعدُ — وإلّا بقي المقبسُ «جاهزًا للقراءة»
+        // فدار الـpoll بلا نوم. والكتابةُ التالية تقول هل ما زالت تقرأ
+        var peerClosed = false
         while sent < payload.count {
             if pending.isEmpty {
                 do {
@@ -222,16 +230,22 @@ public final class NetworkPrinterDriver: PrinterSending {
                     return failed(sent)
                 }
             }
-            var fds = pollfd(fd: fd, events: Int16(POLLOUT | POLLIN), revents: 0)
+            var fds = pollfd(fd: fd, events: Int16(peerClosed ? POLLOUT : POLLOUT | POLLIN), revents: 0)
             let ready = poll(&fds, 1, Self.tickMilliseconds)
             if ready < 0, errno != EINTR {
                 return failed(sent)
             }
             if ready > 0 {
                 if fds.revents & Int16(POLLIN) != 0 {
-                    // ردودُ الطابعة تُقرأ وتُهمل. وإن أغلقت طرفَها فالكتابةُ التالية تفشل وحدها
-                    _ = drain(fd)
+                    // ردودُ الطابعة تُقرأ وتُهمل. واتّصالٌ قطعته (RST) يفشل هنا فورًا — لا بعد مهلة التوقّف
+                    switch drain(fd) {
+                    case .open: break
+                    case .closed: peerClosed = true
+                    case .failed: return failed(sent)
+                    }
                 }
+                // لا POLLHUP: يرفعه macOS لطرفٍ أُغلق وحده (FIN)، والطابعةُ قد تبقى تقرأ.
+                // والانقطاعُ الحقيقيّ يظهر خطأً في القراءة أو الكتابة
                 if fds.revents & Int16(POLLERR | POLLNVAL) != 0 {
                     return failed(sent)
                 }
@@ -259,7 +273,7 @@ public final class NetworkPrinterDriver: PrinterSending {
         while Self.seconds(since: tailStarted) < tailTimeout {
             var fds = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
             let ready = poll(&fds, 1, Self.tickMilliseconds)
-            if ready > 0, !drain(fd) {
+            if ready > 0, drain(fd) != .open {
                 break
             }
             if ready < 0, errno != EINTR {
@@ -304,14 +318,23 @@ public final class NetworkPrinterDriver: PrinterSending {
         return error == 0 ? nil : Self.connectFailure(errno: error)
     }
 
-    /// يقرأ ما ردّته الطابعة ويهمله. false = أغلقت الطابعةُ طرفَها أو انقطع الاتّصال
-    private func drain(_ fd: Int32) -> Bool {
+    private enum Inbound {
+        /// قُرئ ما ردّته الطابعة ولا شيء بعده الآن
+        case open
+        /// أغلقت الطابعةُ طرفَها (FIN)
+        case closed
+        /// انقطع الاتّصال (RST أو خطأ)
+        case failed
+    }
+
+    /// يقرأ ما ردّته الطابعة ويهمله
+    private func drain(_ fd: Int32) -> Inbound {
         var scratch = [UInt8](repeating: 0, count: 4096)
         while true {
             let n = scratch.withUnsafeMutableBytes { recv(fd, $0.baseAddress, $0.count, 0) }
             if n > 0 { continue }
-            if n == 0 { return false }
-            return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR
+            if n == 0 { return .closed }
+            return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR ? .open : .failed
         }
     }
 

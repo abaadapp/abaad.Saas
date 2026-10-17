@@ -5,16 +5,23 @@ import Foundation
  * رسمُ الـPDF على عرض الطباعة — §5 الخطوتان 2 و3.
  *
  * كلُّ صفحةٍ تُرسم بعرض الطباعة بالنقاط، وارتفاعُها بالنسبة نفسها
- * (round(h × dots / w))، ثمّ تُكدَّس الصفحاتُ رأسيًّا. والخلفيّةُ تُملأ بالأبيض
- * قبل الرسم: الـPDF قد يكون شفّافًا، والشفّافُ في بتماب RGBX أسود.
+ * (round(h × dots / w))، ثمّ تُوصل الصفحاتُ رأسيًّا (`SeamJoiner`). والخلفيّةُ تُملأ
+ * بالأبيض قبل الرسم: الـPDF قد يكون شفّافًا، والشفّافُ في بتماب RGBX أسود.
  *
  * ويجري على خيطٍ غير الرئيسيّ: المستدعي (`PrintJobRunner`) يضمن ذلك.
  */
 public enum PDFRasterizer {
-    /// أقصى ارتفاعٍ كلّيّ بالصفوف — وما زاد ← RECEIPT_RENDER_FAILED
-    public static let maxRows = 40_000
+    /*
+     * أطولُ صفحةٍ تُقبل: حدُّ مواصفة PDF (14400 وحدة = 200 بوصة).
+     *
+     * وليس حدًّا لطول الإيصال: الإيصالُ الأطولُ من مترين صفحاتٌ (`MpdfDriver::strip`)،
+     * والصفحاتُ تُوصل بلا عدد. هو حدُّ صفحةٍ واحدةٍ تدّعي ما لا يكون — فتُرفض قبل
+     * أن يُرسم منها شيء، لا بعد أن يخرج نصفُها.
+     */
+    public static let maxPageUnits: CGFloat = 14_400
 
-    public static func rasterize(_ pdf: Data, widthDots: Int) throws -> BitImage {
+    /// الصفحاتُ مفحوصةً كلُّها قبل أن يُرسم منها شيء
+    static func pages(_ pdf: Data, widthDots: Int) throws -> [RasterPage] {
         guard widthDots > 0,
               let provider = CGDataProvider(data: pdf as CFData),
               let document = CGPDFDocument(provider)
@@ -27,97 +34,127 @@ public enum PDFRasterizer {
             throw PrintingError(.receiptRenderFailed)
         }
 
-        // الارتفاعاتُ كلُّها أوّلًا: يُرفض الإيصالُ الطويل قبل أن يُرسم منه شيء
-        var plans: [PagePlan] = []
-        var total = 0
+        var pages: [RasterPage] = []
         for index in 1...document.numberOfPages {
             guard let page = document.page(at: index) else { throw PrintingError(.receiptRenderFailed) }
-            let plan = try PagePlan(page: page, widthDots: widthDots)
-            total += plan.height
-            guard total <= maxRows else { throw PrintingError(.receiptRenderFailed) }
-            plans.append(plan)
+            pages.append(try RasterPage(page: page, widthDots: widthDots))
         }
-
-        var pages: [BitImage] = []
-        for plan in plans {
-            pages.append(try RasterCanvas.render(width: widthDots, height: plan.height) { context in
-                plan.draw(in: context, width: widthDots)
-            })
-        }
-        return BitImage.stacked(pages, width: widthDots)
+        return pages
     }
 
-    private struct PagePlan {
-        let page: CGPDFPage
-        let box: CGRect
-        let rotation: Int
-        /// أبعادُ الصفحة كما تُعرض — بعد الدوران
-        let displayedSize: CGSize
-        let height: Int
-
-        init(page: CGPDFPage, widthDots: Int) throws {
-            let box = page.getBoxRect(.mediaBox).standardized
-            let rotation = ((Int(page.rotationAngle) % 360) + 360) % 360
-            let size = rotation == 90 || rotation == 270
-                ? CGSize(width: box.height, height: box.width)
-                : box.size
-            guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite else {
-                throw PrintingError(.receiptRenderFailed)
+    /*
+     * الإيصالُ كلُّه إلى `stream`: صفحةً صفحة، وكلُّ صفحةٍ شرائط (`RasterCanvas`)،
+     * والصفحاتُ موصولةٌ بلا فراغٍ بينها (`SeamJoiner`). لا يبقى في الذاكرة إلّا شريط.
+     * و`onBand` بعد كلّ شريط — منه تخرج نبضاتُ «rendering» إلى الصفحة.
+     */
+    public static func encode(_ pdf: Data, widthDots: Int, into stream: EscPosStream, onBand: () -> Void = {}) throws {
+        let pages = try pages(pdf, widthDots: widthDots)
+        let joiner = SeamJoiner(sink: stream, keepTrailingBlank: !stream.options.trimTrailingBlank)
+        for page in pages {
+            joiner.beginPage()
+            try RasterCanvas.renderStrips(width: widthDots, height: page.height) { context in
+                page.draw(in: context, width: widthDots)
+            } each: { strip in
+                try joiner.append(strip)
+                onBand()
             }
-            let height = (size.height * CGFloat(widthDots) / size.width).rounded()
-            guard height >= 1, height <= CGFloat(PDFRasterizer.maxRows) else {
-                throw PrintingError(.receiptRenderFailed)
-            }
-            self.page = page
-            self.box = box
-            self.rotation = rotation
-            self.displayedSize = size
-            self.height = Int(height)
         }
+        try joiner.finish()
+    }
 
-        func draw(in context: CGContext, width: Int) {
-            context.saveGState()
-            context.scaleBy(x: CGFloat(width) / displayedSize.width, y: CGFloat(height) / displayedSize.height)
-            // دورانُ الصفحة (/Rotate) باتّجاه عقارب الساعة كما يعرضها القارئ
-            switch rotation {
-            case 90:
-                context.translateBy(x: 0, y: box.width)
-                context.rotate(by: -.pi / 2)
-            case 180:
-                context.translateBy(x: box.width, y: box.height)
-                context.rotate(by: .pi)
-            case 270:
-                context.translateBy(x: box.height, y: 0)
-                context.rotate(by: .pi / 2)
-            default:
-                break
+    /// الصفحاتُ مكدّسةً صورةً واحدة — للاختبارات وحدها؛ الطباعةُ تمرّ بـ`encode`
+    static func rasterize(_ pdf: Data, widthDots: Int) throws -> BitImage {
+        let images = try pages(pdf, widthDots: widthDots).map { page in
+            try RasterCanvas.render(width: widthDots, height: page.height) { context in
+                page.draw(in: context, width: widthDots)
             }
-            context.translateBy(x: -box.minX, y: -box.minY)
-            context.clip(to: box)
-            context.drawPDFPage(page)
-            context.restoreGState()
         }
+        return BitImage.stacked(images, width: widthDots)
+    }
+}
+
+/// صفحةُ PDF بعرض الطباعة: ارتفاعُها بالصفوف، ورسمُها في لوح
+struct RasterPage {
+    let page: CGPDFPage
+    let box: CGRect
+    let rotation: Int
+    /// أبعادُ الصفحة كما تُعرض — بعد الدوران
+    let displayedSize: CGSize
+    let height: Int
+
+    init(page: CGPDFPage, widthDots: Int) throws {
+        let box = page.getBoxRect(.mediaBox).standardized
+        let rotation = ((Int(page.rotationAngle) % 360) + 360) % 360
+        let size = rotation == 90 || rotation == 270
+            ? CGSize(width: box.height, height: box.width)
+            : box.size
+        guard size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite,
+              size.height <= PDFRasterizer.maxPageUnits
+        else {
+            throw PrintingError(.receiptRenderFailed)
+        }
+        let height = (size.height * CGFloat(widthDots) / size.width).rounded()
+        guard height >= 1, height < CGFloat(Int32.max) else {
+            throw PrintingError(.receiptRenderFailed)
+        }
+        self.page = page
+        self.box = box
+        self.rotation = rotation
+        self.displayedSize = size
+        self.height = Int(height)
+    }
+
+    func draw(in context: CGContext, width: Int) {
+        context.saveGState()
+        context.scaleBy(x: CGFloat(width) / displayedSize.width, y: CGFloat(height) / displayedSize.height)
+        // دورانُ الصفحة (/Rotate) باتّجاه عقارب الساعة كما يعرضها القارئ
+        switch rotation {
+        case 90:
+            context.translateBy(x: 0, y: box.width)
+            context.rotate(by: -.pi / 2)
+        case 180:
+            context.translateBy(x: box.width, y: box.height)
+            context.rotate(by: .pi)
+        case 270:
+            context.translateBy(x: box.height, y: 0)
+            context.rotate(by: .pi / 2)
+        default:
+            break
+        }
+        context.translateBy(x: -box.minX, y: -box.minY)
+        context.clip(to: box)
+        context.drawPDFPage(page)
+        context.restoreGState()
     }
 }
 
 /*
  * لوحٌ أبيض يُرسم عليه ثمّ يُحوَّل أحاديًّا — يتقاسمه الـPDF وصفحةُ الاختبار.
  *
- * يُرسم شرائطَ من 2048 صفًّا لا دفعةً واحدة: إيصالٌ بـ40000 صفّ على 576 نقطة
- * بأربعة بايتات للبكسل نحو 90MB، والشريطُ أقلُّ من 5MB. وكلُّ شريطٍ نافذةٌ على
+ * يُرسم شرائطَ من 2048 صفًّا لا دفعةً واحدة: صفحةٌ بطول مترين على 576 نقطة
+ * بأربعة بايتات للبكسل نحو 33MB، والشريطُ أقلُّ من 5MB. وكلُّ شريطٍ نافذةٌ على
  * الصفحة كلِّها، فيرسم `draw` بإحداثيّات الصفحة كاملةً (الأصلُ أسفلَ اليسار)
  * ولا يدري بالشرائط.
  */
 enum RasterCanvas {
     static let stripRows = 2048
 
+    /// اللوحُ كلُّه صورةً واحدة — لصفحة الاختبار والصفحات القصيرة
     static func render(width: Int, height: Int, draw: (CGContext) -> Void) throws -> BitImage {
+        var data: [UInt8] = []
+        data.reserveCapacity(((width + 7) / 8) * max(0, height))
+        try renderStrips(width: width, height: height, draw: draw) { strip in
+            data.append(contentsOf: strip.data)
+        }
+        return BitImage(width: width, height: height, data: data)
+    }
+
+    /// شريطًا بعد شريط من الأعلى، ولا يبقى في الذاكرة إلّا الشريطُ الحاليّ
+    static func renderStrips(width: Int, height: Int, draw: (CGContext) -> Void, each: (BitImage) throws -> Void) throws {
         guard width > 0, height > 0 else { throw PrintingError(.receiptRenderFailed) }
         let stride = width * 4
         let space = CGColorSpaceCreateDeviceRGB()
         let white = CGColor(red: 1, green: 1, blue: 1, alpha: 1)
-        var data: [UInt8] = []
-        data.reserveCapacity(((width + 7) / 8) * height)
 
         var top = 0
         while top < height {
@@ -142,9 +179,8 @@ enum RasterCanvas {
                 return BitImage.fromRGBA(width: width, height: rows, bytesPerRow: stride, pixels: UnsafeRawBufferPointer(buffer))
             }
             guard let strip else { throw PrintingError(.receiptRenderFailed) }
-            data.append(contentsOf: strip.data)
+            try each(strip)
             top += rows
         }
-        return BitImage(width: width, height: height, data: data)
     }
 }

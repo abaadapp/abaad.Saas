@@ -1,10 +1,10 @@
+import Darwin
 import Foundation
-import Network
 
 /*
  * TCP خام إلى الطابعة — §5 الخطوتان 4 و5.
  *
- * ═══ وما قبل «جاهز» غيرُ ما بعده ═══
+ * ═══ وما قبل الاتّصال غيرُ ما بعده ═══
  *
  * قبل أن يتمّ الاتّصال لم يصل الطابعةَ شيء، فالفشلُ يُسمّى بسببه:
  *   - ECONNREFUSED ← PORT_REFUSED: الجهازُ موجود والمنفذُ مغلق.
@@ -12,9 +12,30 @@ import Network
  *   - ما سوى ذلك ← PRINTER_UNREACHABLE. ومنه منعُ «الشبكة المحليّة» في iOS:
  *     يظهر هنا خطأَ وصولٍ لا رمزًا خاصًّا به.
  *
- * وبعد «جاهز» قد يكون جزءٌ من الإيصال خرج من الطابعة. فكلُّ فشلٍ بعده
+ * وبعد الاتّصال قد يكون جزءٌ من الإيصال خرج من الطابعة. فكلُّ فشلٍ بعده
  * SEND_FAILED مع `connected` و`mayHavePrinted`، ولا يُعاد الإرسالُ أبدًا:
  * الكاشيرُ يرى الورقة ويقرّر.
+ *
+ * ═══ والإرسالُ يُحرس بالتقدّم لا بالمدّة ═══
+ *
+ * كانت للإرسال كلِّه 30 ثانية ثمّ يُقطع الاتّصال. وإيصالٌ طويل على طابعةٍ تطبع
+ * الصورةَ ببطء يحتاج أكثر — فكان يخرج إلى منتصفه، والكاشيرُ يرى «انقطع الاتصال».
+ *
+ * والآن مخزنُ الإرسال صغير (`sendBufferSize`، 16KB)، فلا يقبل النظامُ بايتًا
+ * جديدًا إلّا بعد أن تأخذ الطابعةُ ما قبله: كلُّ كتابةٍ تنجح تقدّمٌ حقيقيّ عند الطابعة،
+ * ولا يتكدّس الإيصالُ في الجهاز أسرعَ ممّا تطبع (ضغطُ TCP الراجع). وما دامت كتابةٌ
+ * تنجح فالإيصالُ يتمّ مهما طال؛ وإن لم تنجح كتابةٌ في `stallTimeout` (15 ثانية)
+ * فالطابعةُ متوقّفة — ورقٌ نفد أو غطاءٌ مفتوح — فيُقطع: SEND_FAILED.
+ *
+ * وكان المشغّلُ على NWConnection، ومخزنُه لا يُضبط: يقبل مئاتِ الكيلوبايتات دفعةً
+ * ثمّ يسكت ثوانيَ طويلة والطابعةُ تأخذ — فلا يُعرف التقدّمُ إلّا قفزاتٍ متباعدة، وطابعةٌ
+ * بطيئة تبدو متوقّفة. فصار مقبسًا (BSD) كما في Android: يُضبط مخزنُه ويُرى تقدّمُه.
+ *
+ * ═══ وما تردّه الطابعة يُقرأ ═══
+ *
+ * بعضُ الطابعات تردّ بايتاتِ حالة. وردٌّ لا يُقرأ ثمّ يُغلق المقبس عليه يجعل النظامَ
+ * يقطع الاتّصال بـRST — فيضيع آخرُ الإيصال الذي لم يصل بعد. فيُقرأ ويُهمل طوال
+ * الإرسال، وبعد آخر بايتٍ يُغلق طرفُ الكتابة وتُنتظر الطابعةُ لتُغلق، أو `tailTimeout`.
  */
 public struct DriverResult: Equatable, Sendable {
     /// nil = طُبع
@@ -45,217 +66,263 @@ public struct DriverResult: Equatable, Sendable {
 }
 
 public protocol PrinterSending: Sendable {
-    /// `host` عنوانٌ حرفيّ فُحص — لا اسمَ يُحلّ هنا
+    /// `host` عنوانٌ حرفيّ فُحص — لا اسمَ يُحلّ هنا. و`onProgress(sent, total)` بعد كلّ قطعةٍ قُبلت
     func send(
-        _ bytes: [UInt8],
+        _ payload: PrintPayload,
         host: String,
         port: Int,
-        onStage: @escaping @Sendable (BridgeStage) -> Void
+        onStage: @escaping @Sendable (BridgeStage) -> Void,
+        onProgress: @escaping @Sendable (Int, Int) -> Void
     ) async -> DriverResult
 }
 
-public final class NetworkPrinterDriver: PrinterSending {
-    public let connectTimeout: TimeInterval
-    public let writeTimeout: TimeInterval
-
-    public init(connectTimeout: TimeInterval = 5, writeTimeout: TimeInterval = 30) {
-        self.connectTimeout = connectTimeout
-        self.writeTimeout = writeTimeout
-    }
-
+extension PrinterSending {
+    /// بايتاتٌ في الذاكرة — صفحةُ الاختبار والاختبارات
     public func send(
         _ bytes: [UInt8],
         host: String,
         port: Int,
         onStage: @escaping @Sendable (BridgeStage) -> Void
     ) async -> DriverResult {
-        let operation = SendOperation(
-            bytes: bytes, host: host, port: port,
-            connectTimeout: connectTimeout, writeTimeout: writeTimeout, onStage: onStage
-        )
-        return await withCheckedContinuation { continuation in
-            operation.start(continuation)
+        await send(.bytes(bytes), host: host, port: port, onStage: onStage, onProgress: { _, _ in })
+    }
+}
+
+public final class NetworkPrinterDriver: PrinterSending {
+    public let connectTimeout: TimeInterval
+    /// أطولُ مدّةٍ بلا كتابةٍ تنجح — لا مدّةُ الإرسال كلِّه
+    public let stallTimeout: TimeInterval
+    /// بعد آخر بايت: أطولُ انتظارٍ لإغلاق الطابعة قبل أن نُغلق نحن
+    public let tailTimeout: TimeInterval
+    public let chunkSize: Int
+    /// مخزنُ الإرسال في النظام — صغيرٌ ليكون نجاحُ الكتابة تقدّمًا عند الطابعة
+    public let sendBufferSize: Int
+
+    public init(
+        connectTimeout: TimeInterval = 5,
+        stallTimeout: TimeInterval = 15,
+        tailTimeout: TimeInterval = 1.5,
+        chunkSize: Int = 16 * 1024,
+        sendBufferSize: Int = 16 * 1024
+    ) {
+        self.connectTimeout = connectTimeout
+        self.stallTimeout = stallTimeout
+        self.tailTimeout = tailTimeout
+        self.chunkSize = max(1, chunkSize)
+        self.sendBufferSize = max(1024, sendBufferSize)
+    }
+
+    public func send(
+        _ payload: PrintPayload,
+        host: String,
+        port: Int,
+        onStage: @escaping @Sendable (BridgeStage) -> Void,
+        onProgress: @escaping @Sendable (Int, Int) -> Void
+    ) async -> DriverResult {
+        // مقبسٌ حاجزٌ بالانتظار (poll) — على خيطٍ له، لا على مجمّع المهامّ
+        await withCheckedContinuation { continuation in
+            let thread = Thread { [self] in
+                continuation.resume(returning: run(payload, host: host, port: port, onStage: onStage, onProgress: onProgress))
+            }
+            thread.name = "om.abaad.pos.printer.connection"
+            thread.start()
         }
     }
 
-    /// يُترجم خطأ ما قبل «جاهز»
-    public static func connectFailure(_ error: NWError) -> ErrorCode {
-        switch error {
-        case let .posix(code):
-            switch code {
-            case .ECONNREFUSED: return .portRefused
-            case .ETIMEDOUT: return .connectTimeout
-            default: return .printerUnreachable
-            }
-        default:
-            // DNS (ومنه رفضُ إذن الشبكة المحليّة) وTLS وما يستجدّ
-            return .printerUnreachable
+    /// يُترجم خطأ ما قبل الاتّصال
+    public static func connectFailure(errno code: Int32) -> ErrorCode {
+        switch code {
+        case ECONNREFUSED: return .portRefused
+        case ETIMEDOUT: return .connectTimeout
+        // EHOSTUNREACH وENETUNREACH ومنعُ الشبكة المحليّة وما يستجدّ
+        default: return .printerUnreachable
         }
     }
 
-    static func endpointHost(_ host: String) -> NWEndpoint.Host? {
-        if let v4 = IPv4Address(host), PrinterAddress.ipv4Octets(host) != nil {
-            return .ipv4(v4)
+    /// عنوانٌ حرفيٌّ فقط (ومنه link-local بنطاقه من `HostResolver`) — فلا يُسأل DNS أبدًا
+    static func socketAddress(_ host: String, port: Int) -> (family: Int32, address: sockaddr_storage, length: socklen_t)? {
+        guard (1...65535).contains(port) else { return nil }
+        let bare = host.split(separator: "%", maxSplits: 1).first.map(String.init) ?? host
+        let literal = host.contains(":")
+            ? PrinterAddress.ipv6Bytes(bare) != nil && (!host.contains("%") || host.split(separator: "%").count == 2)
+            : PrinterAddress.ipv4Octets(host) != nil && !host.contains("%")
+        guard literal else { return nil }
+
+        var hints = addrinfo()
+        hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV
+        hints.ai_socktype = SOCK_STREAM
+        var info: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host, String(port), &hints, &info) == 0, let first = info else { return nil }
+        defer { freeaddrinfo(info) }
+        var storage = sockaddr_storage()
+        let length = first.pointee.ai_addrlen
+        withUnsafeMutableBytes(of: &storage) { buffer in
+            buffer.copyMemory(from: UnsafeRawBufferPointer(start: first.pointee.ai_addr, count: Int(length)))
         }
-        if host.contains(":") {
-            if !host.contains("%"), let v6 = IPv6Address(host) {
-                return .ipv6(v6)
-            }
-            // link-local بنطاقه من `HostResolver` — حرفيٌّ رقميّ، فلا يسأل DNS
-            let bare = host.split(separator: "%", maxSplits: 1).first.map(String.init) ?? host
-            if PrinterAddress.ipv6Bytes(bare) != nil {
-                return NWEndpoint.Host(host)
-            }
-        }
-        return nil
+        return (first.pointee.ai_family, storage, length)
     }
 
-    /// إرسالٌ واحد: حالُه كلُّها على طابورِه التسلسليّ، فلا قفل
-    private final class SendOperation: @unchecked Sendable {
-        private let bytes: [UInt8]
-        private let host: String
-        private let port: Int
-        private let connectTimeout: TimeInterval
-        private let writeTimeout: TimeInterval
-        private let onStage: @Sendable (BridgeStage) -> Void
-        private let queue = DispatchQueue(label: "om.abaad.pos.printer.connection")
+    // MARK: - المهمّة على خيطها
 
-        private var connection: NWConnection?
-        private var continuation: CheckedContinuation<DriverResult, Never>?
-        private var ready = false
-        private var finished = false
-        private var startedAt = DispatchTime.now()
-        private var readyAt: DispatchTime?
+    private func run(
+        _ payload: PrintPayload,
+        host: String,
+        port: Int,
+        onStage: @Sendable (BridgeStage) -> Void,
+        onProgress: @Sendable (Int, Int) -> Void
+    ) -> DriverResult {
+        guard let target = Self.socketAddress(host, port: port) else {
+            return DriverResult(error: .internalError, connected: false, mayHavePrinted: false)
+        }
+        let started = DispatchTime.now()
+        onStage(.connecting)
 
-        init(
-            bytes: [UInt8], host: String, port: Int,
-            connectTimeout: TimeInterval, writeTimeout: TimeInterval,
-            onStage: @escaping @Sendable (BridgeStage) -> Void
-        ) {
-            self.bytes = bytes
-            self.host = host
-            self.port = port
-            self.connectTimeout = connectTimeout
-            self.writeTimeout = writeTimeout
-            self.onStage = onStage
+        let fd = socket(target.family, SOCK_STREAM, IPPROTO_TCP)
+        guard fd >= 0 else {
+            return DriverResult(error: .printerUnreachable, connected: false, mayHavePrinted: false)
+        }
+        defer { close(fd) }
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &on, socklen_t(MemoryLayout<Int32>.size))
+        var buffer = Int32(sendBufferSize)
+        setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buffer, socklen_t(MemoryLayout<Int32>.size))
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+
+        if let failure = connect(fd, to: target) {
+            return DriverResult(error: failure, connected: false, mayHavePrinted: false)
+        }
+        let connectedAt = DispatchTime.now()
+        func failed(_ sent: Int) -> DriverResult {
+            DriverResult(
+                error: .sendFailed, connected: true, mayHavePrinted: true, bytesSent: sent,
+                connectMilliseconds: Self.milliseconds(from: started, to: connectedAt),
+                sendMilliseconds: Self.milliseconds(from: connectedAt, to: .now())
+            )
         }
 
-        func start(_ continuation: CheckedContinuation<DriverResult, Never>) {
-            queue.async { [self] in
-                self.continuation = continuation
-                guard let endpointHost = NetworkPrinterDriver.endpointHost(host),
-                      (1...65535).contains(port),
-                      let endpointPort = NWEndpoint.Port(rawValue: UInt16(port))
-                else {
-                    finish(DriverResult(error: .internalError, connected: false, mayHavePrinted: false))
-                    return
+        onStage(.sending)
+        let reader: PayloadReader
+        do {
+            reader = try payload.reader()
+        } catch {
+            return failed(0)
+        }
+        defer { reader.close() }
+
+        var sent = 0
+        var pending = Data()
+        var lastProgress = DispatchTime.now()
+        while sent < payload.count {
+            if pending.isEmpty {
+                do {
+                    guard let next = try reader.next(max: chunkSize) else { return failed(sent) }
+                    pending = next
+                } catch {
+                    return failed(sent)
                 }
-
-                let tcp = NWProtocolTCP.Options()
-                tcp.connectionTimeout = max(1, Int(connectTimeout.rounded(.up)))
-                tcp.noDelay = true
-                let connection = NWConnection(host: endpointHost, port: endpointPort, using: NWParameters(tls: nil, tcp: tcp))
-                self.connection = connection
-                connection.stateUpdateHandler = { [self] state in
-                    handle(state)
+            }
+            var fds = pollfd(fd: fd, events: Int16(POLLOUT | POLLIN), revents: 0)
+            let ready = poll(&fds, 1, Self.tickMilliseconds)
+            if ready < 0, errno != EINTR {
+                return failed(sent)
+            }
+            if ready > 0 {
+                if fds.revents & Int16(POLLIN) != 0 {
+                    // ردودُ الطابعة تُقرأ وتُهمل. وإن أغلقت طرفَها فالكتابةُ التالية تفشل وحدها
+                    _ = drain(fd)
                 }
-
-                startedAt = .now()
-                onStage(.connecting)
-                connection.start(queue: queue)
-
-                queue.asyncAfter(deadline: .now() + connectTimeout) { [self] in
-                    if !ready {
-                        finish(DriverResult(error: .connectTimeout, connected: false, mayHavePrinted: false))
+                if fds.revents & Int16(POLLERR | POLLNVAL) != 0 {
+                    return failed(sent)
+                }
+                if fds.revents & Int16(POLLOUT) != 0 {
+                    let written = pending.withUnsafeBytes { Darwin.send(fd, $0.baseAddress, $0.count, 0) }
+                    if written > 0 {
+                        sent += written
+                        pending.removeFirst(written)
+                        lastProgress = .now()
+                        onProgress(sent, payload.count)
+                    } else if written < 0, errno != EAGAIN, errno != EWOULDBLOCK, errno != EINTR {
+                        return failed(sent)
                     }
                 }
             }
+            if Self.seconds(since: lastProgress) > stallTimeout {
+                return failed(sent)
+            }
         }
 
-        private func handle(_ state: NWConnection.State) {
-            guard !finished else { return }
-            switch state {
-            case .ready:
-                guard !ready else { return }
-                ready = true
-                readyAt = .now()
-                write()
-            case let .waiting(error), let .failed(error):
-                if ready {
-                    finish(sendFailure())
-                } else {
-                    // لا انتظارَ لتغيّر الشبكة ولا إعادة: يُقال السببُ الآن
-                    finish(DriverResult(error: NetworkPrinterDriver.connectFailure(error), connected: false, mayHavePrinted: false))
-                }
-            case .cancelled:
-                finish(ready ? sendFailure() : DriverResult(error: .internalError, connected: false, mayHavePrinted: false))
-            default:
+        // الإيصالُ كلُّه في مخزنٍ لا يتّسع إلّا لأقلّه: يُغلق طرفُ الكتابة (FIN بعد آخر بايت)،
+        // وتُقرأ ردودُ الطابعة حتى تُغلق هي أو ينقضي `tailTimeout`
+        shutdown(fd, SHUT_WR)
+        let tailStarted = DispatchTime.now()
+        while Self.seconds(since: tailStarted) < tailTimeout {
+            var fds = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&fds, 1, Self.tickMilliseconds)
+            if ready > 0, !drain(fd) {
+                break
+            }
+            if ready < 0, errno != EINTR {
                 break
             }
         }
 
-        private func write() {
-            onStage(.sending)
-            queue.asyncAfter(deadline: .now() + writeTimeout) { [self] in
-                finish(sendFailure())
+        return DriverResult(
+            error: nil, connected: true, mayHavePrinted: true, bytesSent: sent,
+            connectMilliseconds: Self.milliseconds(from: started, to: connectedAt),
+            sendMilliseconds: Self.milliseconds(from: connectedAt, to: .now())
+        )
+    }
+
+    /// nil = تمّ الاتّصال
+    private func connect(_ fd: Int32, to target: (family: Int32, address: sockaddr_storage, length: socklen_t)) -> ErrorCode? {
+        var address = target.address
+        let result = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, target.length) }
+        }
+        if result == 0 { return nil }
+        guard errno == EINPROGRESS else { return Self.connectFailure(errno: errno) }
+
+        var fds = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(connectTimeout * 1_000_000_000)
+        while true {
+            let left = deadline > DispatchTime.now().uptimeNanoseconds
+                ? Int32((deadline - DispatchTime.now().uptimeNanoseconds) / 1_000_000)
+                : 0
+            if left <= 0 { return .connectTimeout }
+            let ready = poll(&fds, 1, left)
+            if ready == 0 { return .connectTimeout }
+            if ready < 0 {
+                if errno == EINTR { continue }
+                return .printerUnreachable
             }
-            // رسالةٌ أخيرة: تُرسَل البايتاتُ ثمّ يُغلق طرفُ الكتابة
-            connection?.send(
-                content: Data(bytes),
-                contentContext: .finalMessage,
-                isComplete: true,
-                completion: .contentProcessed { [self] error in
-                    queue.async { [self] in
-                        if error != nil {
-                            finish(sendFailure())
-                        } else {
-                            finish(DriverResult(
-                                error: nil, connected: true, mayHavePrinted: true, bytesSent: bytes.count,
-                                connectMilliseconds: milliseconds(from: startedAt, to: readyAt),
-                                sendMilliseconds: milliseconds(from: readyAt, to: .now())
-                            ), graceful: true)
-                        }
-                    }
-                }
-            )
+            break
         }
+        var error: Int32 = 0
+        var length = socklen_t(MemoryLayout<Int32>.size)
+        guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &length) == 0 else { return .printerUnreachable }
+        return error == 0 ? nil : Self.connectFailure(errno: error)
+    }
 
-        private func sendFailure() -> DriverResult {
-            DriverResult(
-                error: .sendFailed, connected: true, mayHavePrinted: true,
-                connectMilliseconds: milliseconds(from: startedAt, to: readyAt),
-                sendMilliseconds: milliseconds(from: readyAt, to: .now())
-            )
+    /// يقرأ ما ردّته الطابعة ويهمله. false = أغلقت الطابعةُ طرفَها أو انقطع الاتّصال
+    private func drain(_ fd: Int32) -> Bool {
+        var scratch = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let n = scratch.withUnsafeMutableBytes { recv(fd, $0.baseAddress, $0.count, 0) }
+            if n > 0 { continue }
+            if n == 0 { return false }
+            return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR
         }
+    }
 
-        /// يُستأنف المنتظِرُ مرّةً واحدة بالضبط، ثمّ يُغلق الاتّصال
-        private func finish(_ result: DriverResult, graceful: Bool = false) {
-            guard !finished else { return }
-            finished = true
-            if let connection {
-                if graceful {
-                    // الإغلاقُ اللطيف يُسلّم ما بقي في المخزن قبل FIN. ويبقى الاتّصالُ
-                    // حيًّا بمعالجه حتى يُغلق فعلًا، ثمّ يُفكّ.
-                    connection.stateUpdateHandler = { state in
-                        if case .cancelled = state {
-                            connection.stateUpdateHandler = nil
-                        }
-                    }
-                    connection.cancel()
-                } else {
-                    connection.stateUpdateHandler = nil
-                    connection.forceCancel()
-                }
-            }
-            self.connection = nil
-            let continuation = self.continuation
-            self.continuation = nil
-            continuation?.resume(returning: result)
-        }
+    private static let tickMilliseconds: Int32 = 250
 
-        private func milliseconds(from start: DispatchTime?, to end: DispatchTime?) -> Int? {
-            guard let start, let end, end.uptimeNanoseconds >= start.uptimeNanoseconds else { return nil }
-            return Int((end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
-        }
+    private static func seconds(since start: DispatchTime) -> TimeInterval {
+        Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000_000
+    }
+
+    private static func milliseconds(from start: DispatchTime?, to end: DispatchTime?) -> Int? {
+        guard let start, let end, end.uptimeNanoseconds >= start.uptimeNanoseconds else { return nil }
+        return Int((end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000)
     }
 }

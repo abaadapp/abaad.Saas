@@ -19,7 +19,7 @@ import { useTranslate } from '@/lib/i18n';
  */
 export default function InvoicePrintQueue() {
     const t = useTranslate();
-    const { mode, waiting, awaiting, busy, printNext, confirm } = useInvoicePrintJobs((outcome) => {
+    const { mode, waiting, awaiting, busy, printNext, answer } = useInvoicePrintJobs((outcome) => {
         if (!outcome.ok) toast.warning(`${t('فاتورة عميل — نسخة داخلية')}: ${failureMessage(outcome.code, t)}`);
     });
 
@@ -37,11 +37,11 @@ export default function InvoicePrintQueue() {
                         {t('هل خرجت الفاتورة الداخلية؟')} <b dir="ltr">{job.number ?? job.id}</b>
                     </span>
                     <span className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => void confirm(job.id, true)} data-testid="invoice-print-confirmed">
+                        <Button size="sm" variant="outline" onClick={() => void answer(job.id, true)} data-testid="invoice-print-confirmed">
                             <Check />
                             {t('خرجت')}
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => void confirm(job.id, false)} data-testid="invoice-print-not-printed">
+                        <Button size="sm" variant="ghost" onClick={() => void answer(job.id, false)} data-testid="invoice-print-not-printed">
                             <RotateCcw />
                             {t('لم تخرج')}
                         </Button>

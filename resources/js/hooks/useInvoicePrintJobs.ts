@@ -19,7 +19,7 @@ export type InvoicePrintMode = 'off' | 'unattended' | 'manual';
  *   مرّة، ولا نبضةَ والصفحةُ مخفيّة.
  * - **`manual`** — المتصفّحُ (أو التطبيقُ بطابعةٍ ليست على الشبكة): لا طباعةَ
  *   صامتة. يُعدّ ما ينتظر ويُرى، وزرٌّ يطبعه بضغطة (`printNext`). وفتحُ الحوار
- *   ليس ورقًا: ما فُتح حوارُه يُسأل عنه «خرجت؟» (`awaiting` و`confirm`) —
+ *   ليس ورقًا: ما فُتح حوارُه يُسأل عنه «خرجت؟» (`awaiting` و`answer`) —
  *   ولو أُعيد تحميلُ الصفحة، فالسؤالُ من الخادم لا من ذاكرة الصفحة.
  * - **`off`** — لا طابعةَ معيَّنة هنا: لا سؤالَ أصلًا.
  *
@@ -130,7 +130,7 @@ export default function useInvoicePrintJobs(onFailure?: (outcome: PrintOutcome) 
      * و«لم تخرج» لا تطبع شيئًا: تُعيدها إلى طابور هذا الصندوق، فتُعدّ فيما
      * ينتظر وتُطبع بضغطة «طباعة» أخرى.
      */
-    const confirm = useCallback(
+    const answer = useCallback(
         async (id: number, printed: boolean) => {
             await confirmJob(route('pos.printJobs.confirm', id), printed);
             await refresh();
@@ -138,5 +138,5 @@ export default function useInvoicePrintJobs(onFailure?: (outcome: PrintOutcome) 
         [refresh],
     );
 
-    return { mode, waiting, awaiting, busy, printNext, confirm };
+    return { mode, waiting, awaiting, busy, printNext, answer };
 }

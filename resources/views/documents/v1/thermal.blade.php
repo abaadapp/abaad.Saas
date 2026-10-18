@@ -120,9 +120,29 @@
     </thead>
     <tbody>
         @foreach ($order->items as $it)
+            {{--
+                وإضافاتُ الصنف تحته — من لقطة البيع، ومالُها مرّةً واحدة.
+
+                المجبيّةُ فوق ثمنه سطورٌ بثمنها وكميّتها ومجموعها، فتجمع أسطرُ
+                الصنف إلى ما دُفع فيه (`lineTotal`) لا إلى ثمنه وحده. والتي داخل
+                ثمنه تُسمّى بلا مال. والقاعدةُ قاعدةُ فاتورة العميل نفسُها —
+                انظر `ItemAddons`.
+            --}}
+            {{--
+                ولا `Paper::keepWords` على هذا الشريط: يُضاعف حجمَ الورقة، فإيصالُ
+                المئتي صنفٍ يتجاوز ورقةَ القياس، وإيصالُ الألف يتجاوز حدَّ PCRE في
+                mpdf فلا يُرسم أصلًا. وُزن فرُدّ — والكسرُ قبل التاء المربوطة على
+                ٥٨ مم قائمٌ كما كان (#127 عالجه في سند التسليم وحده).
+            --}}
+            @php($extras = \App\Support\ItemAddons::of($it))
+            @php($joined = in_array($extras['mode'], ['priced', 'bundled'], true) ? 'joined' : '')
             <tr>
-                <td>
+                <td class="{{ $joined }}">
                     {{ $it->name }}
+                    {{-- والمقاسُ من لقطة البيع لا من الكتالوج: مقاسٌ أُعيدت تسميتُه لا يغيّر إيصالًا مضى --}}
+                    @if (filled($it->variant_name))
+                        <div class="muted tiny">{{ __('المقاس') }}: <span dir="{{ \App\Support\Paper::dirOf($it->variant_name) }}">{{ $it->variant_name }}</span></div>
+                    @endif
                     {{-- ورسالةُ كرت الهدية لا تُطبع على الإيصال — كما على الفاتورة (`paperNote`) --}}
                     @php($itemNote = \App\Support\Store\GiftCardProduct::paperNote($it, $order))
                     @if ($itemNote)
@@ -160,11 +180,36 @@
                         --}}
                         <div class="muted tiny" dir="{{ \App\Support\Paper::dirOf($opt['label'].' '.$opt['value']) }}">— {{ $opt['label'] }}: {{ $opt['value'] }}</div>
                     @endforeach
+                    {{-- وما داخل الثمن يُسمّى ولا يُكتب مالًا --}}
+                    @if ($extras['mode'] === 'included')
+                        @foreach ($extras['rows'] as $addon)
+                            <div class="tiny" data-addon="included">+ <span dir="{{ \App\Support\Paper::dirOf($addon['name']) }}">{{ $addon['name'] }}</span> × <span dir="ltr">{{ $addon['qty'] }}</span> <span class="muted">— {{ __('ضمن السعر') }}</span></div>
+                        @endforeach
+                    @endif
                 </td>
-                <td class="c"><span dir="ltr">{{ $money($it->price) }}</span></td>
-                <td class="c" dir="ltr">{{ $it->quantity }}</td>
-                <td class="l"><span dir="ltr">{{ $money($it->total) }}</span></td>
+                <td class="c {{ $joined }}"><span dir="ltr">{{ $money($it->price) }}</span></td>
+                <td class="c {{ $joined }}" dir="ltr">{{ $it->quantity }}</td>
+                <td class="l {{ $joined }}"><span dir="ltr">{{ $money($it->total) }}</span></td>
             </tr>
+            @if ($extras['mode'] === 'priced')
+                @foreach ($extras['rows'] as $addon)
+                    @php($edge = $loop->last ? 'addon addon-last' : 'addon')
+                    <tr data-addon="priced">
+                        <td class="{{ $edge }}">+ <span dir="{{ \App\Support\Paper::dirOf($addon['name']) }}">{{ $addon['name'] }}</span></td>
+                        <td class="c {{ $edge }}"><span dir="ltr">{{ $money($addon['unit']) }}</span></td>
+                        <td class="c {{ $edge }}" dir="ltr">{{ $addon['qty'] }}</td>
+                        <td class="l {{ $edge }}"><span dir="ltr">{{ $money($addon['total']) }}</span></td>
+                    </tr>
+                @endforeach
+            @elseif ($extras['mode'] === 'bundled')
+                {{-- ولقطاتٌ لا تطابق ما جُبي: سطرٌ واحدٌ بما جُبي فعلًا، يسمّي ما فيه --}}
+                <tr data-addon="bundled">
+                    <td class="addon addon-last">+ {{ __('إضافات') }}: <span dir="{{ \App\Support\Paper::dirOf($extras['names']) }}">{{ $extras['names'] }}</span></td>
+                    <td class="addon addon-last"></td>
+                    <td class="addon addon-last"></td>
+                    <td class="l addon addon-last"><span dir="ltr">{{ $money($extras['total']) }}</span></td>
+                </tr>
+            @endif
         @endforeach
     </tbody>
 </table>

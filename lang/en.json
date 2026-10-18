@@ -7766,6 +7766,8 @@
     "لم تخرج": "Did not print",
     "طبعتها يدويًا — لا تطبعها على الصندوق": "Printed manually — do not print at the till",
     "خرجت الورقة": "Paper printed",
+    "ضمن السعر": "included in the price",
+    "إضافات": "Add-ons",
     "إنشاء روابط الدفع": "Create payment links",
     "تسجيل مالٍ قُبض فعلًا من العميل (نقدًا أو ببطاقة أو تحويل أو شيك). غيرُ «إنشاء روابط الدفع».": "Record money actually received from the customer (cash, card, transfer or cheque). Not the same as “Create payment links”.",
     "إنشاء رابط دفع Paymob لفاتورة عميل أو لعميل، ونسخه وإرساله. لا يسجّل تحصيلًا ولا يفتح شاشات المالية ولا إعدادات Paymob ولا يلغي رابطًا — والمال يُسجَّل حين تؤكّد Paymob الدفع وحدها.": "Create a Paymob payment link for a customer invoice or a customer, then copy and send it. It records no collection, opens no finance screens or Paymob settings, and cancels no link — money is recorded only when Paymob confirms the payment.",

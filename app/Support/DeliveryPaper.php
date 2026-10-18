@@ -305,15 +305,36 @@ final class DeliveryPaper
     {
         $buyer ??= self::buyer($order);
 
-        return $order->items->map(fn (OrderItem $it) => [
-            'name' => (string) $it->name,
-            'qty' => DocumentPaper::qty($it->quantity),
-            'note' => self::scrub(GiftCardProduct::paperNote($it, $order), $buyer),
-            'options' => array_map(
+        return $order->items->map(function (OrderItem $it) use ($order, $buyer) {
+            $options = array_map(
                 fn (array $o) => ['label' => $o['label'], 'value' => (string) self::scrub($o['value'], $buyer)],
                 $it->isCustom() ? CustomArrangement::paperLines($it->custom_details) : [],
-            ),
-        ])->values()->all();
+            );
+
+            /*
+             * والمقاسُ والإضافاتُ من لقطة البيع — أسماءً وكميّاتٍ بلا مال.
+             *
+             * من يسلّم الباقة يحتاج أن يعرف أنّها «كبيرة» وأنّ معها شوكولاتة
+             * وبطاقة. والثمنُ لا يبلغه بأيّ وجه: لا ثمنُ الإضافة ولا أنّها جُبيت
+             * أو كانت ضمن السعر (`ItemAddons::names`). وأسماؤها أسماءُ رفٍّ.
+             */
+            if (filled($it->variant_name)) {
+                array_unshift($options, ['label' => __('المقاس'), 'value' => (string) $it->variant_name]);
+            }
+
+            $addons = ItemAddons::of($it);
+            if ($addons['rows'] !== []) {
+                $options[] = ['label' => __('الإضافات'), 'value' => ItemAddons::names($addons['rows'])];
+            }
+
+            return [
+                // والإضافةُ المبيعةُ وحدَها سطرٌ يُعلَّم بها — لا صنفٌ آخر في الكيس
+                'name' => ($it->product_id === null && $it->standalone_addon_id ? '+ ' : '').$it->name,
+                'qty' => DocumentPaper::qty($it->quantity),
+                'note' => self::scrub(GiftCardProduct::paperNote($it, $order), $buyer),
+                'options' => $options,
+            ];
+        })->values()->all();
     }
 
     /**

@@ -108,7 +108,11 @@
             <tr>
                 {{-- والاسمُ كلماتٌ لا تنكسر: وإلّا صغّر mpdf الجدولَ كلَّه بدل أن يلفّ السطر (`Paper::keepWords`) --}}
                 <td class="bidi" dir="{{ Paper::dirOf($it['name']) }}">
-                    {!! $lines($it['name']) !!}
+                    {{-- وبندُ الإضافة يُعلَّم بها — سطرٌ بثمنه كما فُوتر، لا يُدمج في غيره --}}
+                    @if ($it['addon'] ?? false)<span data-addon>+ </span>@endif{!! $lines($it['name']) !!}
+                    @if ($it['addon'] ?? false)
+                        <div class="muted tiny">{{ __('إضافة') }}</div>
+                    @endif
                     @if ($it['discount'])
                         <div class="muted tiny">{{ __('خصم') }}: <span dir="ltr">{{ $it['discount'] }}</span></div>
                     @endif
@@ -156,7 +160,8 @@
         @endif
     </table>
     @if ($gift['hidden'])
-        <div class="b tiny">{{ __('الاسم مخفيّ عن المستلم — لا يُكتب على البطاقة ولا على سند التسليم') }}</div>
+        {{-- كلماتٍ لا تنكسر: على ٥٨ مم كان mpdf يكسر «التسليم» داخلها ويُخرجها عن عرض الشريط --}}
+        <div class="b tiny bidi">{!! $lines(__('الاسم مخفيّ عن المستلم — لا يُكتب على البطاقة ولا على سند التسليم')) !!}</div>
     @endif
     @if ($gift['message'])
         <div class="cap">{{ __('رسالة البطاقة') }}</div>

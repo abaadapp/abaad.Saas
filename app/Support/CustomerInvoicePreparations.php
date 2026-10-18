@@ -613,6 +613,8 @@ final class CustomerInvoicePreparations
                 'note' => null,
                 'custom_details' => null,
                 'product_id' => null,
+                // وبندُ الإضافة يُعلَّم بها على السند — بلا ثمنه (`DeliveryPaper::stripItems`)
+                'standalone_addon_id' => $line->addon_id,
             ]);
             $item->setRelation('product', null);
             $item->setRelation('addons', collect());
@@ -683,8 +685,16 @@ final class CustomerInvoicePreparations
                 'address' => $text($prep->delivery_address),
                 'notes' => $text($prep->delivery_notes),
             ],
+            /*
+             * والبنودُ كما في الفاتورة الأصليّة — سطرًا سطرًا ومالُ كلٍّ مرّة.
+             *
+             * وبندُ الإضافة (`addon_id`) سطرٌ مستقلٌّ بثمنه كما فُوتر — يُعلَّم
+             * «+» ولا يُدمج في صنفٍ آخر: الفاتورةُ لا تقول لأيّ صنفٍ هو، فلا
+             * يُخترع له صاحب. ولا يُعاد حسابُ شيءٍ من كتالوج اليوم.
+             */
             'items' => $invoice->items->map(fn ($line) => [
                 'name' => (string) $line->description,
+                'addon' => $line->addon_id !== null,
                 'qty' => DocumentPaper::qty($line->quantity),
                 'price' => $money($line->unit_price),
                 'discount' => (float) $line->discount > 0 ? $money($line->discount) : null,

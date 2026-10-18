@@ -681,7 +681,7 @@ class RibbonController extends Controller
     {
         abort_unless(ctype_digit($id), 404);
 
-        $order = Order::where('business_id', $business->id)->with('items')->find((int) $id);
+        $order = Order::where('business_id', $business->id)->with('items.addons')->find((int) $id);
         abort_if($order === null, 404);
         abort_unless(hash_equals(WebCheckout::token($order), (string) request()->query('t', '')), 404);
         abort_unless(PaidReceipt::offered($order), 404);

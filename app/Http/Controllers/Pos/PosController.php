@@ -1335,7 +1335,7 @@ class PosController extends Controller
             return null;
         }
 
-        // الكاشير الإنجليزي يرى name_en ويرسله، فنطابق العمودين معًا:
+        // طلبٌ معلَّقٌ قبل حفظ الاسم كما كُتب قد يحمل name_en، فنطابق العمودين معًا:
         // المطابقة بالعربي وحده كانت تُسقط ربط العميل ونقاط ولائه.
         $matches = $scope()
             ->where(fn ($q) => $q->where('name', $name)->orWhere('name_en', $name))

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, renderHook, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import CustomersIndex from '@/Pages/Admin/Customers/Index';
 import CustomerShow from '@/Pages/Admin/Customers/Show';
+import { usePosCart } from '@/hooks/usePosCart';
 import { pageProps } from './setup';
 
 vi.mock('@/Layouts/AdminLayout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
@@ -130,5 +131,53 @@ describe('قائمةُ العملاء', () => {
         expect(within(dialog).getByText('يُحفظ ويظهر كما تكتبه — بالعربية أو بالإنجليزية')).toBeInTheDocument();
         expect(within(dialog).queryByText(/الاسم بالإنجليزية/)).toBeNull();
         expect(within(dialog).queryByPlaceholderText('e.g. Mohammed Salem')).toBeNull();
+    });
+});
+
+/*
+ * وبحثُ العميل في الصندوق — بالاسم كما كُتب، وبالاسم اللاتينيّ المحفوظ قبلُ.
+ *
+ * كان `label` في الواجهة الإنجليزية هو `name_en`، فكان البحثُ به يجد العميلَ
+ * القديم. وصار `label` الاسمَ كما كُتب، فالاسمُ اللاتينيّ القديم يُسأل عنه
+ * بنفسه — وإلّا ضاع عميلٌ لا يعرفه الكاشيرُ إلّا به.
+ */
+describe('بحثُ العميل في الصندوق', () => {
+    const customers = [
+        { id: 1, name: 'سالم الحارثي', name_en: 'Salim Al Harthi', label: 'سالم الحارثي', phone: '91110001', points: 0, language: 'ar' },
+        { id: 2, name: 'Ahmed Al Balushi', name_en: null, label: 'Ahmed Al Balushi', phone: '91110002', points: 0, language: 'en' },
+        { id: 3, name: 'Mohammed محمد', name_en: null, label: 'Mohammed محمد', phone: '91110003', points: 0, language: 'ar' },
+    ];
+    const cart = () =>
+        renderHook(() =>
+            usePosCart({
+                products: [], customers, coupons: [],
+                loyalty: { redeemMaxPct: 50, earnRate: 1, redeemMin: 100 },
+                resume: null,
+                currency: { code: 'OMR', name: 'ريال', symbol: 'ر.ع', rate: 1, is_base: true, active: true },
+                onToast: vi.fn(),
+            }),
+        );
+    const found = (result: ReturnType<typeof cart>['result'], q: string) => {
+        act(() => result.current.setCustomerSearch(q));
+
+        return result.current.filteredCustomers.map((c) => c.id);
+    };
+
+    beforeEach(() => localStorage.clear());
+
+    it('يجد كلَّ اسمٍ بما كُتب به — عربيًّا ولاتينيًّا ومختلطًا', () => {
+        const { result } = cart();
+
+        expect(found(result, 'سالم')).toEqual([1]);
+        expect(found(result, 'ahmed')).toEqual([2]);
+        expect(found(result, 'محمد')).toEqual([3]);
+        expect(found(result, 'mohammed')).toEqual([3]);
+    });
+
+    it('ويجد العميلَ القديم باسمه اللاتينيّ المحفوظ — وإن لم يعد يُعرض', () => {
+        const { result } = cart();
+
+        expect(found(result, 'salim')).toEqual([1]);
+        expect(result.current.filteredCustomers[0].label).toBe('سالم الحارثي');
     });
 });

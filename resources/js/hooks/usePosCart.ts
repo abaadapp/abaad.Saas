@@ -459,8 +459,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
      *
      * `customer` قيمةٌ تُطابَق بها السجلات، وقيمتها الافتراضية النص العربي
      * «عميل نقدي». عرضها خامًا كان يُبقيها عربية في واجهة إنجليزية بينما
-     * بقية الشاشة مترجمة. أسماء العملاء الحقيقيين لا تُترجَم بالطبع — تُؤخذ
-     * من label الذي يختار العربي أو الإنجليزي حسب لغة الكاشير.
+     * بقية الشاشة مترجمة. أسماء العملاء الحقيقيين لا تُترجَم — `label` هو
+     * الاسمُ كما كُتب، بأيّ لغةٍ كانت الواجهة (انظر `Customers::asEntered`).
      */
     const isWalkIn = customer === CASH_CUSTOMER;
     const customerLabel = selectedCustomer?.label || (isWalkIn ? '' : customer);
@@ -524,6 +524,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                   (c) =>
                       (c.label || '').toLowerCase().includes(q) ||
                       (c.name || '').toLowerCase().includes(q) ||
+                      // والاسمُ اللاتينيّ المحفوظ قبلُ — لم يعد يُعرض، لكنّه ما زال يُبحث به
+                      (c.name_en || '').toLowerCase().includes(q) ||
                       (c.phone || '').toLowerCase().includes(q),
               )
             : customers;

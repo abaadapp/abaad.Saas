@@ -41,6 +41,7 @@ use App\Http\Controllers\Admin\Marketing\ReviewController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\OrderDetailController;
 use App\Http\Controllers\Admin\PageController;
+use App\Http\Controllers\Admin\PaymentRequestController;
 use App\Http\Controllers\Admin\Payroll\PayrollPaymentController;
 use App\Http\Controllers\Admin\Payroll\PayrollRunController;
 use App\Http\Controllers\Admin\PreparationController;
@@ -884,6 +885,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::delete('/customers/{id}/purge', [TrashController::class, 'purge'])
         ->defaults('type', 'customer')->name('customers.purge');
     Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
+    // وطلبُ دفعةٍ من العميل برابط — من صفحته، بفعل الطلب وحده (`PaymentRequestController`)
+    Route::post('/customers/{id}/payment-link', [PaymentRequestController::class, 'forCustomer'])
+        ->whereNumber('id')->name('customers.paymentLink');
     Route::post('/customers/{id}/addresses', [CustomerController::class, 'saveAddress'])->name('customers.addresses.save');
     Route::post('/customers/{id}/addresses/{addressId}/default', [CustomerController::class, 'defaultAddress'])->name('customers.addresses.default');
     Route::delete('/customers/{id}/addresses/{addressId}', [CustomerController::class, 'deleteAddress'])->name('customers.addresses.delete');
@@ -1469,6 +1473,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::delete('/customer-invoices/{id}/attachments/{attachment}', [CustomerInvoiceController::class, 'detach'])
         ->name('customerInvoices.detach');
     Route::post('/customer-invoices/{id}/remind', [CustomerInvoiceController::class, 'remind'])->name('customerInvoices.remind');
+    /*
+     * ورابطُ دفعٍ لباقي الفاتورة — من صفحتها، بفعل الطلب وحده لا بقسم «المالية»
+     * (`PaymentRequestController`). والقائمُ بالمبلغ نفسِه يُعاد لا يُكرَّر.
+     */
+    Route::post('/customer-invoices/{id}/payment-link', [PaymentRequestController::class, 'forInvoice'])
+        ->whereNumber('id')->name('customerInvoices.paymentLink');
     // والتجهيزُ بعد السداد — لمن فُتح له (`CustomerInvoicePreparations::on`)
     Route::post('/customer-invoices/{id}/preparation', [CustomerInvoiceController::class, 'savePreparation'])->name('customerInvoices.preparation.save');
     Route::delete('/customer-invoices/{id}/preparation', [CustomerInvoiceController::class, 'removePreparation'])->name('customerInvoices.preparation.remove');

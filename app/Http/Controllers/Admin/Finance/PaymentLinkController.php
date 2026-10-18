@@ -26,9 +26,11 @@ use RuntimeException;
  * تُطلب بـ`business_id` المتجر، ومعرّفٌ من متجرٍ آخر ⇒ ٤٠٤. ولا شيءَ هنا في
  * لوحة المنصّة: حسابُ Paymob حسابُ التاجر.
  *
- * والقسمُ «المالية» من اسم المسار (`admin.finance.*`)، والإنشاءُ والإلغاءُ
- * فعلُ التحصيل نفسُه (`CUSTOMER_PAYMENT_CREATE`) — من يطلب مالًا من عميلٍ
- * يملك تسجيلَه.
+ * والقسمُ «المالية» من اسم المسار (`admin.finance.*`). والإنشاءُ فعلُ طلب
+ * الدفع (`PAYMENT_LINK_CREATE`) — والإلغاءُ يبقى فعلَ التحصيل
+ * (`CUSTOMER_PAYMENT_CREATE`) كما كان: من يُمنح أن يطلب لا يُمنح بها أن
+ * يُلغي روابطَ غيره. وفاتورةٌ أو عميلٌ يُطلب لهما الرابطُ من صفحتيهما بلا
+ * هذا القسم (`PaymentRequestController`).
  */
 class PaymentLinkController extends Controller
 {
@@ -40,6 +42,11 @@ class PaymentLinkController extends Controller
     private function mayCollect(): void
     {
         abort_if(! auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE), 403);
+    }
+
+    private function mayRequest(): void
+    {
+        abort_if(! auth()->user()?->may(Permissions::PAYMENT_LINK_CREATE), 403);
     }
 
     public function index(Request $request): Response
@@ -102,7 +109,7 @@ class PaymentLinkController extends Controller
 
     public function store(Request $request)
     {
-        $this->mayCollect();
+        $this->mayRequest();
         $bid = $this->bid();
 
         $data = $request->validate([
@@ -130,21 +137,38 @@ class PaymentLinkController extends Controller
             throw ValidationException::withMessages(['amount' => __('اكتب مبلغ الرابط.')]);
         }
 
+        if ($invoice !== null && (int) $invoice->customer_id !== (int) $customer->id) {
+            // والرسالةُ على حقلها كما كانت حين كانت `create` تقولها
+            throw ValidationException::withMessages(['amount' => __('الفاتورة :n ليست على هذا العميل.', ['n' => $invoice->number])]);
+        }
+
+        $reused = false;
+
         try {
-            $link = PaymentLinks::create(
-                $bid, $customer, $invoice,
-                isset($data['amount']) ? (float) $data['amount'] : null,
-                $data['description'] ?? null,
-                auth()->id(),
-                isset($data['days']) ? (int) $data['days'] : null,
-            );
+            // ورابطُ فاتورةٍ يمرّ بالباب الذي يمنع طلبين للمال نفسِه — من أيّ شاشةٍ جاء
+            [$link, $reused] = $invoice !== null
+                ? PaymentLinks::forInvoice(
+                    $invoice, auth()->id(),
+                    isset($data['amount']) ? (float) $data['amount'] : null,
+                    $data['description'] ?? null,
+                    days: isset($data['days']) ? (int) $data['days'] : null,
+                )
+                : [PaymentLinks::create(
+                    $bid, $customer, null,
+                    (float) $data['amount'],
+                    $data['description'] ?? null,
+                    auth()->id(),
+                    isset($data['days']) ? (int) $data['days'] : null,
+                ), false];
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['amount' => $e->getMessage()]);
         }
 
         return back()->with('toast', [
-            'msg' => __('تم إنشاء رابط الدفع — انسخه وأرسله للعميل'),
-            'type' => 'success',
+            'msg' => $reused
+                ? __('على الفاتورة رابطٌ قائم بالمبلغ نفسه — لم يُنشأ رابطٌ ثانٍ')
+                : __('تم إنشاء رابط الدفع — انسخه وأرسله للعميل'),
+            'type' => $reused ? 'info' : 'success',
         ])->with('paymentLink', PaymentLinks::row($link->load(['customer', 'invoice'])));
     }
 

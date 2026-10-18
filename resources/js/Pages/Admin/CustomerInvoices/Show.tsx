@@ -6,7 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import DocumentMeta from '@/Components/DocumentMeta';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import SmartLink from '@/Components/SmartLink';
-import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import PaymentLinksCard, { InvoicePaymentLink, PaymentLinkRetry, type PaymentLinkFailure, type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -69,11 +69,13 @@ interface May {
     cancel: boolean;
     credit_note: boolean;
     pay: boolean;
+    /** طلبُ الدفع برابط — `paymentLink.create`، لا «المالية» */
+    payment_link?: boolean;
 }
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, preparation, context } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, context, flash } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -87,6 +89,8 @@ export default function CustomerInvoiceShow() {
                 paper: { html: string; size: string };
                 /** روابطُ دفع الفاتورة وحالُ Paymob — `PaymentLinks::panel` */
                 paymentLinks: PaymentLinksPanel;
+                /** آخرُ محاولةٍ لم تُعطِ رابطًا — `PaymentLinks::failureRow` */
+                paymentLinkFailure?: PaymentLinkFailure | null;
                 /** التجهيزُ بعد السداد — و`null` لمن لم يُفتح له (`CustomerInvoicePreparations`) */
                 preparation: PreparationPanelData | null;
             }>
@@ -95,6 +99,11 @@ export default function CustomerInvoiceShow() {
     const m = (v: number) => money(v, context!.currency);
     /* ومسودّةٌ بلا رقم تُعرف بمعرّفها — والعنوانُ لا يكون فراغًا */
     const label = invoice.number ?? `${t('مسودة')} #${invoice.id}`;
+
+    /* الرابطُ الذي يُرسَل الآن: ما أُنشئ للتوّ لهذه الفاتورة، وإلّا القائمُ بانتظار الدفع */
+    const justMade = flash?.paymentLink && flash.paymentLink.invoice?.id === invoice.id ? flash.paymentLink : null;
+    const currentLink = justMade ?? paymentLinks.links.find((l) => l.status === 'pending' && l.url) ?? null;
+    const issuedWithLink = !!justMade && !!flash?.paymentLinkIssued;
 
     const [paying, setPaying] = useState(false);
     const [crediting, setCrediting] = useState(false);
@@ -309,6 +318,16 @@ export default function CustomerInvoiceShow() {
                         رابطُ دفع — يطلب باقيَ الفاتورة من العميل عبر Paymob.
                         يُدفع فيُكتب تحصيلٌ مخصَّصٌ لها، ولا يمسّ إيرادَها.
                     */}
+                    {/*
+                        والرابطُ القائمُ بارزًا — ما يُرسَل للعميل الآن. من الخادم لا
+                        من رسالةٍ عابرة، فيبقى بعد التحديث. والذي أُنشئ للتوّ أوّلًا.
+                    */}
+                    {currentLink && <InvoicePaymentLink link={currentLink} issued={issuedWithLink} />}
+
+                    {!currentLink && paymentLinkFailure && invoice.status === 'صادرة' && invoice.outstanding > 0 && (
+                        <PaymentLinkRetry invoiceId={invoice.id} failure={paymentLinkFailure} can={!!paymentLinks.can && paymentLinks.ready} />
+                    )}
+
                     {(invoice.status === 'صادرة' || paymentLinks.links.length > 0) && (
                         <PaymentLinksCard
                             panel={paymentLinks}
@@ -318,6 +337,7 @@ export default function CustomerInvoiceShow() {
                             title="روابط الدفع"
                             action="إنشاء رابط دفع"
                             allowCreate={invoice.status === 'صادرة' && invoice.outstanding > 0}
+                            showJustCreated={false}
                         />
                     )}
 

@@ -321,6 +321,8 @@ class HandleInertiaRequests extends Middleware
                  * صفٌّ للعرض (`PaymentLinks::row`) لا سرَّ فيه.
                  */
                 'paymentLink' => $request->session()->get('paymentLink'),
+                // وأكان مع إصدار الفاتورة نفسِه — «تم إصدار الفاتورة وإنشاء رابط الدفع»
+                'paymentLinkIssued' => (bool) $request->session()->get('paymentLinkIssued'),
             ],
 
             // الرمز الخام مع كل استجابة: وسم <meta> يُطبع مرّة عند أول تحميل

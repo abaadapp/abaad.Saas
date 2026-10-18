@@ -42,8 +42,10 @@ use App\Support\Vat;
 use App\Support\WhatsAppPhone;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -210,6 +212,8 @@ class CustomerInvoiceController extends Controller
              */
             'brand' => (bool) $user?->allows('settings'),
             'pay' => (bool) $user?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
+            // وطلبُ الدفع برابطٍ فعلٌ غيرُ التحصيل — لا يحتاج «المالية» (`PaymentRequestController`)
+            'payment_link' => (bool) $user?->may(Permissions::PAYMENT_LINK_CREATE),
         ];
     }
 
@@ -226,6 +230,12 @@ class CustomerInvoiceController extends Controller
              * مخصَّصٌ لهذه الفاتورة، ولا يمسّ إيرادَها ولا ضريبتَها.
              */
             'paymentLinks' => PaymentLinks::panel($this->bid(), fn ($q) => $q->where('customer_invoice_id', $invoice->id)),
+            /*
+             * وآخرُ محاولةٍ لم تُعطِ رابطًا — تبقى بعد التحديث: «أُصدرت ولم يُنشأ
+             * الرابط، ولماذا»، ومعها إعادةُ المحاولة على الفاتورة نفسِها. ومحاولةٌ
+             * لا تُعرف نتيجتُها تُقال كذلك، ولا يُعاد الطلبُ بعدها إلّا بقرار.
+             */
+            'paymentLinkFailure' => PaymentLinks::failureRow(PaymentLinks::lastFailure($invoice)),
             /*
              * والتجهيزُ بعد السداد — ما طُلب، وأين وصل، ولمَ لم يظهر بعد.
              * و`null` لمن لم يُفتح له: الصفحةُ كما كانت.
@@ -504,6 +514,12 @@ class CustomerInvoiceController extends Controller
             'tax_inclusive' => Vat::inclusive($bid),
             'today' => now()->toDateString(),
             'may' => $this->may(),
+            /*
+             * «إصدار الفاتورة وإنشاء رابط دفع» لمن تُفتح له الروابط — ورمزُ
+             * النموذج: ضغطتان أو إعادةُ إرسالٍ تُصدر ورقةً واحدة (`form_token`).
+             */
+            'payment_links_ready' => PaymentLinks::ready($bid),
+            'form_token' => (string) Str::uuid(),
             /*
              * ووسائلُ السداد من مالكها لا مكتوبةً هنا.
              *
@@ -1080,6 +1096,12 @@ class CustomerInvoiceController extends Controller
             // وما لا يُطبع: يُحفظ في عمودٍ آخر ولا يبلغ ورقةَ العميل
             'internal_notes' => ['nullable', 'string', 'max:2000'],
             'issue' => ['nullable', 'boolean'],
+            /*
+             * «إصدار الفاتورة وإنشاء رابط دفع» — يُصدرها آجلةً ثمّ يطلب باقيها
+             * من Paymob بعد أن تُكتب. ورمزُ النموذج يجعل الإرسالَ مرّةً واحدة.
+             */
+            'payment_link' => ['nullable', 'boolean'],
+            'form_token' => ['nullable', 'string', 'max:64'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer'],
             // منتجٌ أو إضافة — لا الاثنان: إضافةٌ لا تلبس منتجًا وهميًّا
@@ -1136,7 +1158,22 @@ class CustomerInvoiceController extends Controller
             'payment_method' => __('طريقة الدفع'),
             'paid_amount' => __('المبلغ المدفوع'),
             'payment_date' => __('تاريخ الدفع'),
+            'payment_link' => __('رابط الدفع'),
+            'form_token' => __('رمز النموذج'),
         ]);
+
+        /*
+         * ═══ ونموذجٌ أُرسل من قبل لا يكتب ورقةً ثانية ═══
+         *
+         * ضغطتان، أو انقطاعٌ يعيد المتصفّحُ بعده الطلب، أو رجوعٌ وإعادةُ إرسال:
+         * الرمزُ نفسُه في المتجر نفسِه ⇒ الورقةُ التي كُتبت به. والقاعدةُ تحرسه
+         * أيضًا (`customer_invoices_form_token_unique`) لطلبين في اللحظة نفسِها.
+         */
+        $token = filled($data['form_token'] ?? null) ? (string) $data['form_token'] : null;
+
+        if ($token !== null && ($twin = $this->formTwin($token))) {
+            return $this->alreadyWritten($twin);
+        }
 
         $customer = Customer::where('business_id', $this->bid())
             ->whereKey($data['customer_id'])->first();
@@ -1230,6 +1267,41 @@ class CustomerInvoiceController extends Controller
         }
 
         /*
+         * ═══ «إصدار الفاتورة وإنشاء رابط دفع» ═══
+         *
+         * فعلان يُملكان معًا: الإصدارُ (حارسُه أعلاه) وطلبُ الدفع برابط. ومن لا
+         * يملك الثاني يُصدر بالزرّ الآخر كما كان.
+         *
+         * والفاتورةُ تُصدَر **آجلة**: الرابطُ يطلب ما بقي عليها، ولا يُكتب
+         * تحصيلٌ حتّى تؤكّد Paymob الدفع. و«نقدي» أو غيرُه يُسجَّل تحصيلًا
+         * الآن فلا يبقى ما يُطلب — فيُقال لصاحبه لماذا، ويبقى له الإصدارُ
+         * العاديّ. ولا يُكتب شيءٌ قبل أن تصحّ الشروط.
+         */
+        $wantsLink = $request->boolean('payment_link');
+
+        if ($wantsLink) {
+            abort_if(! auth()->user()?->may(Permissions::PAYMENT_LINK_CREATE), 403);
+
+            if (! $request->boolean('issue')) {
+                throw ValidationException::withMessages([
+                    'payment_link' => __('رابطُ الدفع لفاتورةٍ صادرة — اضغط «إصدار الفاتورة وإنشاء رابط دفع».'),
+                ]);
+            }
+
+            if ($method !== CustomerInvoices::CREDIT) {
+                throw ValidationException::withMessages([
+                    'payment_method' => __('رابطُ الدفع يطلب ما بقي على الفاتورة، و«:m» تُسجَّل تحصيلًا الآن فلا يبقى ما يُطلب. اختر «آجل» لإنشاء الرابط، أو أصدر الفاتورة بلا رابط.', ['m' => $method]),
+                ]);
+            }
+
+            if (! PaymentLinks::ready($this->bid())) {
+                throw ValidationException::withMessages([
+                    'payment_link' => __('أكمل إعداد Paymob أولًا — أو أصدر الفاتورة بلا رابط.'),
+                ]);
+            }
+        }
+
+        /*
          * ═══ الورقةُ وإيصالُها يقعان معًا أو لا يقع أحدُهما ═══
          *
          * كانت ثلاثَ معاملاتٍ متتابعة: تُكتب الفاتورة، ثمّ تُصدَر، ثمّ
@@ -1244,7 +1316,7 @@ class CustomerInvoiceController extends Controller
         $uploaded = [];
 
         try {
-            $invoice = DB::transaction(function () use ($request, $customer, $data, $method, $preparation, &$uploaded) {
+            $invoice = DB::transaction(function () use ($request, $customer, $data, $method, $preparation, $token, &$uploaded) {
                 /*
                  * وبندُ الإضافة يُكتب بثمنها واسمها من القاعدة لا ممّا أُرسل —
                  * وإضافةُ متجرٍ آخر أو موقوفةٌ تُردّ هنا على «البنود».
@@ -1252,6 +1324,11 @@ class CustomerInvoiceController extends Controller
                 $items = CustomerInvoices::addonsFromCatalog($this->bid(), $data['items']);
 
                 $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $items, auth()->id());
+
+                // ورمزُ النموذج على الورقة — والثانيةُ به تُردّ في القاعدة
+                if ($token !== null) {
+                    $invoice->forceFill(['form_token' => $token])->save();
+                }
 
                 // والتجهيزُ مع الورقة في المعاملة نفسِها — لا يمسّ بندًا ولا مبلغًا
                 if ($preparation !== null) {
@@ -1286,6 +1363,15 @@ class CustomerInvoiceController extends Controller
 
                 return $invoice;
             });
+        } catch (QueryException $e) {
+            InvoiceAttachments::discard($uploaded);
+
+            // طلبٌ توأمٌ كتب الورقةَ في اللحظة نفسِها — فهي هي، لا خطأ
+            if ($token !== null && ($twin = $this->formTwin($token))) {
+                return $this->alreadyWritten($twin);
+            }
+
+            throw $e;
         } catch (RuntimeException $e) {
             InvoiceAttachments::discard($uploaded);
 
@@ -1296,12 +1382,59 @@ class CustomerInvoiceController extends Controller
             throw $e;
         }
 
+        /*
+         * ═══ ثمّ الرابط — بعد أن كُتبت الورقةُ وثبتت ═══
+         *
+         * طلبُ Paymob لا يقع داخل معاملة الفاتورة: يدوم ثوانيَ وقد ينقطع، وقفلُ
+         * الترقيم في تلك المعاملة يحبس كلَّ فاتورةٍ بعده. فالورقةُ تُكتب
+         * وتُصدَر أوّلًا، ثمّ يُطلب الرابط. وسقوطُه لا يمسّ الورقة: تبقى صادرةً
+         * آجلةً كما يجب، بلا تحصيلٍ مزعوم، وتُعاد المحاولةُ من صفحتها على
+         * الفاتورة نفسِها — لا فاتورةٌ ثانية.
+         */
+        if ($wantsLink) {
+            try {
+                [$link] = PaymentLinks::forInvoice($invoice, auth()->id());
+            } catch (RuntimeException $e) {
+                return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                    'msg' => __('أُصدرت الفاتورة :n — وتعذّر إنشاء رابط الدفع: :why', ['n' => $invoice->number, 'why' => $e->getMessage()]),
+                    'type' => 'warning',
+                ]);
+            }
+
+            return redirect()->route('admin.customerInvoices.show', $invoice->id)
+                ->with('toast', ['msg' => __('تم إصدار الفاتورة وإنشاء رابط الدفع'), 'type' => 'success'])
+                ->with('paymentLink', PaymentLinks::row($link->load(['customer', 'invoice'])))
+                ->with('paymentLinkIssued', true);
+        }
+
         return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
             // ومسودّةٌ لا رقمَ لها: لا يُقال «أُنشئت الفاتورة » وينتهي عند فراغ
             'msg' => $invoice->number
                 ? __('أُنشئت الفاتورة :n', ['n' => $invoice->number])
                 : __('حُفظت مسودّة الفاتورة'),
             'type' => 'success',
+        ]);
+    }
+
+    /** الورقةُ التي كُتبت بهذا الرمز في هذا المتجر — إن كانت */
+    private function formTwin(string $token): ?CustomerInvoice
+    {
+        return CustomerInvoice::where('business_id', $this->bid())->where('form_token', $token)->first();
+    }
+
+    /**
+     * نموذجٌ أُرسل من قبل: إلى ورقته — ولا يُكتب شيءٌ ولا يُطلب رابطٌ ثانٍ.
+     *
+     * والرابطُ إن طُلب معه فطلبُه الأوّلُ يقوم به، أو تُعاد محاولتُه من صفحة
+     * الفاتورة نفسِها.
+     */
+    private function alreadyWritten(CustomerInvoice $invoice)
+    {
+        return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+            'msg' => $invoice->number
+                ? __('هذا النموذج أُرسل من قبل — الفاتورة :n كُتبت مرّةً واحدة', ['n' => $invoice->number])
+                : __('هذا النموذج أُرسل من قبل — المسودّة كُتبت مرّةً واحدة'),
+            'type' => 'info',
         ]);
     }
 

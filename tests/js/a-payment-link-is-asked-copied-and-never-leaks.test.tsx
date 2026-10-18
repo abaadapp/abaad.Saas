@@ -35,7 +35,7 @@ const row = (over: Partial<Row> = {}): Row => ({
     ...over,
 });
 
-const panel = (over: Record<string, unknown> = {}) => ({ ready: true, can: true, settings_url: '/admin/integrations/paymob', links: [] as Row[], ...over });
+const panel = (over: Record<string, unknown> = {}) => ({ ready: true, can: true, can_cancel: true, settings_url: '/admin/integrations/paymob', links: [] as Row[], ...over });
 
 const reset = (props: Record<string, unknown> = {}) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];

@@ -102,6 +102,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['العملاء', 'post', 'admin.customers.language', ['id' => 'customer']],
                 ['العملاء', 'post', 'admin.customers.note', ['id' => 'customer']],
                 ['العملاء', 'post', 'admin.customers.redeem', ['id' => 'customer']],
+                // وطلبُ دفعةٍ برابط — لعميلٍ من المتجر نفسِه وحده (`PaymentRequestController`)
+                ['العملاء', 'post', 'admin.customers.paymentLink', ['id' => 'customer']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.save', ['id' => 'customer']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.default', ['id' => 'customer', 'addressId' => 'address'], ['id']],
                 ['عناوين العميل', 'delete', 'admin.customers.addresses.delete', ['id' => 'customer', 'addressId' => 'address'], ['id']],
@@ -129,6 +131,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.cancel', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.creditNote', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.remind', ['id' => 'invoice']],
+                // ورابطُ دفع الفاتورة — على فاتورةٍ من المتجر نفسِه وحده
+                ['فواتير العملاء', 'post', 'admin.customerInvoices.paymentLink', ['id' => 'invoice']],
                 // والتجهيزُ بعد السداد — على فاتورةٍ من المتجر نفسِه وحده
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.preparation.save', ['id' => 'invoice']],
                 ['فواتير العملاء', 'delete', 'admin.customerInvoices.preparation.remove', ['id' => 'invoice']],

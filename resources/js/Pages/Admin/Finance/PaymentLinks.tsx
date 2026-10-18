@@ -60,7 +60,7 @@ const FILTERS: Array<{ key: PaymentLinkRow['status'] | null; label: string }> = 
  */
 export default function PaymentLinksPage() {
     const props = usePage<PageProps<Props>>().props;
-    const { links, ready, can, settings_url, status, counts, customers, clearing, settlements, bankAccounts, context } = props;
+    const { links, ready, can, can_cancel, settings_url, status, counts, customers, clearing, settlements, bankAccounts, context } = props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -173,7 +173,7 @@ export default function PaymentLinksPage() {
                                     )}
                                 </TableCell>
                                 <TableCell>
-                                    <LinkActions link={l} can={can} />
+                                    <LinkActions link={l} canCancel={!!can_cancel} />
                                 </TableCell>
                             </TableRow>
                         ))}

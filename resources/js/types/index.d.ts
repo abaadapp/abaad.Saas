@@ -227,6 +227,8 @@ export interface SharedProps {
         websiteConfirmed?: string | null;
         /** رابطُ الدفع الذي أُنشئ الآن — `PaymentLinks::row`، لا سرَّ فيه */
         paymentLink?: import('@/Components/PaymentLinks').PaymentLinkRow | null;
+        /** وأُنشئ مع إصدار الفاتورة في ضغطةٍ واحدة */
+        paymentLinkIssued?: boolean;
     };
     /** رمز CSRF الخام — يتجدّد مع كل استجابة، بخلاف وسم <meta> */
     csrf: string;

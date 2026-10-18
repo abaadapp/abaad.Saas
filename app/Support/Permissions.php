@@ -140,6 +140,25 @@ class Permissions
     /** تسجيلُ تحصيل — مالٌ يدخل، وهو فعلٌ غيرُ الإصدار */
     public const CUSTOMER_PAYMENT_CREATE = 'customerPayment.create';
 
+    /**
+     * طلبُ الدفع من عميلٍ برابط Paymob — فعلٌ غيرُ التحصيل وغيرُ «المالية».
+     *
+     * ═══ ما كان ═══
+     *
+     * الرابطُ يُطلب من «المالية ← روابط الدفع» وحدها، وبفعل التحصيل نفسِه
+     * (`CUSTOMER_PAYMENT_CREATE`). فالبائعُ الذي يُصدر فاتورةَ عميلٍ ويرسل له
+     * رابطَ دفعها كان يحتاج أن يُمنح الماليّةَ كلَّها — أرصدةَ البنوك وتسوياتِ
+     * Paymob وقيودَ اليوم — وتسجيلَ تحصيلٍ نقديٍّ بلا مالٍ في يده.
+     *
+     * ═══ وما هو ═══
+     *
+     * طلبٌ لا مال: الرابطُ يُنشأ ويُرسَل، ولا يُكتب تحصيلٌ إلّا حين تؤكّد
+     * Paymob الدفعَ بإشعارٍ موقَّع (`PaymentLinks::callback`). فيُمنح بالاسم
+     * من «صلاحيات الموظفين» لمن يُراد — ولا يفتح شاشةً ماليّة، ولا يلغي
+     * رابطًا، ولا يسجّل تحصيلًا، ولا يبلغ إعدادات Paymob.
+     */
+    public const PAYMENT_LINK_CREATE = 'paymentLink.create';
+
     /** فتحُ مرفقات المستندات المالية — وفيها أثمنُ ما في المتجر: أسعارُ شرائه */
     public const ATTACHMENT_VIEW = 'attachment.view';
 
@@ -275,6 +294,7 @@ class Permissions
         self::CUSTOMER_INVOICE_CANCEL => 'إلغاء فاتورة عميل صادرة',
         self::CUSTOMER_CREDIT_NOTE => 'إصدار إشعار دائن',
         self::CUSTOMER_PAYMENT_CREATE => 'تسجيل تحصيل من عميل',
+        self::PAYMENT_LINK_CREATE => 'إنشاء روابط الدفع',
         self::ATTACHMENT_VIEW => 'فتح مرفقات المستندات المالية',
     ];
 
@@ -361,6 +381,12 @@ class Permissions
          */
         self::CUSTOMER_INVOICE_ISSUE => ['admin', 'manager', 'accountant'],
         self::CUSTOMER_PAYMENT_CREATE => ['admin', 'manager', 'accountant'],
+        /*
+         * وطلبُ الدفع برابط: لمن كان يطلبه أمس بدوره — لا يُقطع عنه ولا
+         * يُوسَّع به أحد. كان يحتاج «المالية» وفعلَ التحصيل معًا، وهما
+         * لهؤلاء الثلاثة. والبائعُ يُمنحه باسمه إن أُريد.
+         */
+        self::PAYMENT_LINK_CREATE => ['admin', 'manager', 'accountant'],
         self::CUSTOMER_CREDIT_NOTE => ['admin', 'manager', 'accountant'],
         self::CUSTOMER_INVOICE_CANCEL => ['admin', 'manager'],
         self::PAYROLL_VIEW => ['admin', 'manager', 'accountant'],
@@ -599,6 +625,8 @@ class Permissions
      * عرضٌ لا قاعدة: لا يمنح ولا يمنع شيئًا.
      */
     public const ACTION_HINTS = [
+        self::CUSTOMER_PAYMENT_CREATE => 'تسجيل مالٍ قُبض فعلًا من العميل (نقدًا أو ببطاقة أو تحويل أو شيك). غيرُ «إنشاء روابط الدفع».',
+        self::PAYMENT_LINK_CREATE => 'إنشاء رابط دفع Paymob لفاتورة عميل أو لعميل، ونسخه وإرساله. لا يسجّل تحصيلًا ولا يفتح شاشات المالية ولا إعدادات Paymob ولا يلغي رابطًا — والمال يُسجَّل حين تؤكّد Paymob الدفع وحدها.',
         'order.edit' => 'يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني. وحيث فُتحت الميزة للنشاط: إضافة صنف أو استبداله في يوم البيع، وتعديل ملاحظة المنتج، وتحصيل المتبقّي.',
     ];
 

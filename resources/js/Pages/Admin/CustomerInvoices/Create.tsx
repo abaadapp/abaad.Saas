@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import PaperFrame from '@/Components/PaperFrame';
-import { ChevronDown, Info, Paperclip, Plus, PlusCircle, RefreshCw, Save, Search, Send, Settings2, Star, Trash2, UserPlus } from 'lucide-react';
+import { ChevronDown, Info, Link2, Paperclip, Plus, PlusCircle, RefreshCw, Save, Search, Send, Settings2, Star, Trash2, UserPlus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -95,6 +95,8 @@ interface May {
     pay: boolean;
     /** تبديلُ هويّة الورقة — قسمُ «الإعدادات» لا كتابةُ الفواتير */
     brand: boolean;
+    /** طلبُ الدفع برابط — `paymentLink.create`، لا «المالية» ولا التحصيل */
+    payment_link?: boolean;
 }
 
 interface Props {
@@ -122,6 +124,10 @@ interface Props {
     branding: Branding;
     /** «التجهيز والتسليم» — لمن فُتح له التجهيزُ بعد السداد، و`null` لغيره */
     preparation?: PreparationOptions | null;
+    /** أتُفتح روابطُ Paymob لهذا المتجر الآن؟ — `PaymentLinks::ready` */
+    payment_links_ready?: boolean;
+    /** رمزُ هذا النموذج — يُكتب مع الورقة، فإرسالٌ ثانٍ لا يكتب ثانية */
+    form_token?: string;
 }
 
 /**
@@ -271,6 +277,8 @@ export default function CustomerInvoiceCreate({
     default_customer_id,
     branding,
     preparation = null,
+    payment_links_ready = false,
+    form_token = '',
 }: Props) {
     const { context } = usePage<PageProps>().props;
     const t = useTranslate();
@@ -341,6 +349,8 @@ export default function CustomerInvoiceCreate({
         // والرئيسيُّ أوّلُ القائمة — فما تراه الشاشةُ هو ما يُخزَّن
         bank_account_id: bank_accounts.length > 0 ? String(bank_accounts[0].id) : '',
         issue: false,
+        payment_link: false,
+        form_token,
         items: [] as Line[],
         preparation: { ...EMPTY_PREPARATION },
     });
@@ -547,11 +557,19 @@ export default function CustomerInvoiceCreate({
 
     const credit = form.data.payment_method === CREDIT;
 
-    const submit = (issue: boolean) => {
+    /*
+     * «إصدار الفاتورة وإنشاء رابط دفع» — لمن يملك الإصدارَ وطلبَ الدفع معًا،
+     * ومتجرُه تُفتح له روابط Paymob. والفاتورةُ آجلة: الرابطُ يطلب ما بقي، و«نقدي»
+     * أو غيرُه يُسجَّل تحصيلًا الآن فلا يبقى ما يُطلب — فيُقال ذلك ويبقى الإصدارُ.
+     */
+    const offersLink = may.issue && !!may.payment_link && payment_links_ready;
+
+    const submit = (issue: boolean, paymentLink = false) => {
         // و«مخصص» لا يُرسَل مدّةً: الخادمُ يخزّن عددَ أيّامٍ أو لا شيء
         form.transform((data) => ({
             ...data,
             issue,
+            payment_link: paymentLink,
             items: lines,
             payment_terms_days: data.payment_terms_days === CUSTOM ? '' : data.payment_terms_days,
             /*
@@ -633,9 +651,36 @@ export default function CustomerInvoiceCreate({
                                 {t('إصدار الفاتورة')}
                             </Button>
                         )}
+                        {offersLink && (
+                            <Button
+                                variant="outline"
+                                disabled={form.processing || !credit}
+                                onClick={() => submit(true, true)}
+                                data-testid="issue-with-payment-link"
+                                title={!credit ? t('رابط الدفع لفاتورةٍ آجلة — اختر «آجل»') : undefined}
+                            >
+                                <Link2 />
+                                {t('إصدار الفاتورة وإنشاء رابط دفع')}
+                            </Button>
+                        )}
                     </>
                 }
             />
+
+            {/*
+                ولماذا لا يُطلب رابطٌ مع «نقدي» — يُقال بجانب الزرّ لا بعد الضغط.
+                والإصدارُ العاديّ يبقى: من قبض المال لا يحتاج رابطًا.
+            */}
+            {offersLink && !credit && (
+                <p className="mb-4 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#92400e]" data-testid="payment-link-needs-credit">
+                    {t('رابط الدفع يطلب ما بقي على الفاتورة. مع «نقدي» وما شابهه يُسجَّل التحصيل الآن فلا يبقى ما يُطلب — اختر «آجل» لإنشاء الرابط، أو أصدر الفاتورة كما هي.')}
+                </p>
+            )}
+            {(form.errors as Record<string, string | undefined>).payment_link && (
+                <p className="mb-4 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] p-3 text-[12px] text-[#b91c1c]" data-testid="payment-link-error">
+                    {(form.errors as Record<string, string | undefined>).payment_link}
+                </p>
+            )}
 
             {/*
                 ومن لا يملك الإصدار يُقال له — ولا يُرسم له زرٌّ يُردّ عنه.

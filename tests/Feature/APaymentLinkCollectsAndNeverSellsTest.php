@@ -365,24 +365,33 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
 
     public function test_a_paymob_failure_gives_no_link_and_says_why_without_secrets(): void
     {
-        $invoice = $this->invoice();
-
+        /*
+         * وكلُّ فشلٍ على فاتورته: فشلٌ «لا نعرف» (خطأُ خادمٍ عند Paymob، أو
+         * جوابٌ لا يُقرأ، أو انقطاع) يمنع إعادةَ الطلب وحده على فاتورته — انظر
+         * `AnInvoiceIsIssuedAndAskedForPaymentInOneStepTest`. والرفضُ الصريح لا يمنع.
+         */
         foreach ([
-            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['detail' => 'Incorrect api key'], 401)]), 'رفضت Paymob مفتاح API'],
-            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => Http::response(['detail' => 'boom'], 500)]), 'Paymob غير متاحة'],
-            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => Http::response(['detail' => 'x'], 404)]), 'لا يطابق بيئة الحساب'],
-            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => Http::response(['id' => 1, 'shorten_url' => ''])]), 'بلا رابطٍ صالح'],
-            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => Http::response('not json')]), 'بما لا يُقرأ'],
-            [fn () => Http::fake(['*' => fn () => throw new ConnectionException('timeout')]), 'تعذّر الاتصال'],
-        ] as [$fake, $why]) {
+            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['detail' => 'Incorrect api key'], 401)]), 'رفضت Paymob مفتاح API', false],
+            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => Http::response(['detail' => 'boom'], 500)]), 'Paymob غير متاحة', true],
+            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => Http::response(['detail' => 'x'], 404)]), 'لا يطابق بيئة الحساب', false],
+            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => Http::response(['id' => 1, 'shorten_url' => ''])]), 'بلا رابطٍ صالح', true],
+            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => Http::response('not json')]), 'بما لا يُقرأ', true],
+            [fn () => Http::fake(['*' => fn () => throw new ConnectionException('timeout')]), 'تعذّر الاتصال', false],
+            [fn () => Http::fake(['*/api/auth/tokens' => Http::response(['token' => 't']), '*/payment-links' => fn () => throw new ConnectionException('timeout')]), 'تعذّر الاتصال', true],
+        ] as [$fake, $why, $uncertain]) {
             app()->forgetInstance(Factory::class);
             Http::swap(new Factory);
             $fake();
+            $invoice = $this->invoice();
 
             $res = $this->post(route('admin.finance.paymentLinks.store'), ['customer_id' => $this->ministry->id, 'customer_invoice_id' => $invoice->id]);
             $res->assertSessionHasErrors('amount');
             $this->assertStringContainsString($why, session('errors')->first('amount'));
             $this->assertStringNotContainsString('api-shop', session('errors')->first('amount'));
+
+            // وما لا تُعرف نتيجتُه يُوسَم كذلك — وطلبُ الرمز وحده لا يُنشئ شيئًا هناك
+            $failed = CustomerPaymentLink::where('customer_invoice_id', $invoice->id)->sole();
+            $this->assertSame($uncertain, (bool) (($failed->meta ?? [])['uncertain'] ?? false), $why);
         }
 
         // صفوفُ «تعذّر» للتدقيق — بلا رابطٍ يُرسَل، ولا تُعرض في القوائم

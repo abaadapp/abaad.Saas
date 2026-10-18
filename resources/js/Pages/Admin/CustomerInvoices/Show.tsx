@@ -6,7 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import DocumentMeta from '@/Components/DocumentMeta';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import SmartLink from '@/Components/SmartLink';
-import PaymentLinksCard, { InvoicePaymentLink, PaymentLinkRetry, type PaymentLinkFailure, type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import PaymentLinksCard, { invoiceLinkView, InvoicePaymentLink, PaymentLinkRetry, type PaymentLinkFailure, type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -100,10 +100,8 @@ export default function CustomerInvoiceShow() {
     /* ومسودّةٌ بلا رقم تُعرف بمعرّفها — والعنوانُ لا يكون فراغًا */
     const label = invoice.number ?? `${t('مسودة')} #${invoice.id}`;
 
-    /* الرابطُ الذي يُرسَل الآن: ما أُنشئ للتوّ لهذه الفاتورة، وإلّا القائمُ بانتظار الدفع */
-    const justMade = flash?.paymentLink && flash.paymentLink.invoice?.id === invoice.id ? flash.paymentLink : null;
-    const currentLink = justMade ?? paymentLinks.links.find((l) => l.status === 'pending' && l.url) ?? null;
-    const issuedWithLink = !!justMade && !!flash?.paymentLinkIssued;
+    /* الرابطُ الذي يُرسَل الآن، أو سببُ تعذّره — `invoiceLinkView` */
+    const linkView = invoiceLinkView(invoice, paymentLinks.links, flash, paymentLinkFailure);
 
     const [paying, setPaying] = useState(false);
     const [crediting, setCrediting] = useState(false);
@@ -322,10 +320,10 @@ export default function CustomerInvoiceShow() {
                         والرابطُ القائمُ بارزًا — ما يُرسَل للعميل الآن. من الخادم لا
                         من رسالةٍ عابرة، فيبقى بعد التحديث. والذي أُنشئ للتوّ أوّلًا.
                     */}
-                    {currentLink && <InvoicePaymentLink link={currentLink} issued={issuedWithLink} />}
+                    {linkView.current && <InvoicePaymentLink link={linkView.current} issued={linkView.issued} />}
 
-                    {!currentLink && paymentLinkFailure && invoice.status === 'صادرة' && invoice.outstanding > 0 && (
-                        <PaymentLinkRetry invoiceId={invoice.id} failure={paymentLinkFailure} can={!!paymentLinks.can && paymentLinks.ready} />
+                    {linkView.retry && (
+                        <PaymentLinkRetry invoiceId={invoice.id} failure={linkView.retry} can={!!paymentLinks.can && paymentLinks.ready} />
                     )}
 
                     {(invoice.status === 'صادرة' || paymentLinks.links.length > 0) && (

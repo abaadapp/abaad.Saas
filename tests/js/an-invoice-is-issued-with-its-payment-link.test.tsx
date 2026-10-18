@@ -73,7 +73,8 @@ vi.mock('@/Layouts/AdminLayout', () => ({
 vi.mock('@/Components/PaperFrame', () => ({ default: () => null }));
 
 const Create = (await import('@/Pages/Admin/CustomerInvoices/Create')).default;
-const { default: PaymentLinksCard, InvoicePaymentLink, PaymentLinkRetry } = await import('@/Components/PaymentLinks');
+const Show = (await import('@/Pages/Admin/CustomerInvoices/Show')).default;
+const { default: PaymentLinksCard, InvoicePaymentLink, PaymentLinkRetry, invoiceLinkView } = await import('@/Components/PaymentLinks');
 
 type Row = import('@/Components/PaymentLinks').PaymentLinkRow;
 
@@ -150,6 +151,8 @@ describe('«إصدار الفاتورة وإنشاء رابط دفع» في شا
     it('يُصدرها آجلةً ويطلب الرابط معها — برمز نموذجها', async () => {
         const user = createPage();
 
+        // و«آجل» لا يحتاج شرحًا: الزرُّ مفتوح ولا تنبيهَ بجانبه
+        expect(screen.queryByTestId('payment-link-needs-credit')).toBeNull();
         await user.click(screen.getByTestId('issue-with-payment-link'));
 
         expect(sent).toHaveLength(1);
@@ -173,6 +176,86 @@ describe('«إصدار الفاتورة وإنشاء رابط دفع» في شا
         expect(screen.getByTestId('issue-with-payment-link')).toBeDisabled();
         expect(screen.getByTestId('payment-link-needs-credit')).toHaveTextContent('اختر «آجل» لإنشاء الرابط');
         expect(screen.getByRole('button', { name: /^إصدار الفاتورة$/ })).toBeEnabled();
+    });
+});
+
+describe('ما تعرضه صفحةُ الفاتورة من رابطها', () => {
+    const issued = { id: 3, status: 'صادرة', outstanding: 105 };
+    const failure = { error: 'رفضت Paymob الطلب', at: null, uncertain: false, until: null };
+
+    it('ما أُنشئ للتوّ لهذه الفاتورة أوّلًا — و«تم الإصدار» بعد الإصدار مع الرابط وحده', () => {
+        const fresh = row({ id: 9, url: 'https://paymob.link/fresh' });
+        const older = row({ id: 5 });
+
+        expect(invoiceLinkView(issued, [older], { paymentLink: fresh, paymentLinkIssued: true }, null)).toEqual({ current: fresh, issued: true, retry: null });
+        expect(invoiceLinkView(issued, [older], { paymentLink: fresh }, null)).toMatchObject({ current: fresh, issued: false });
+
+        // ورابطُ فاتورةٍ أخرى في رسالة الجلسة لا يُعرض هنا — القائمُ لهذه
+        const elsewhere = row({ id: 11, invoice: { id: 4, number: 'CINV-000004' } });
+        expect(invoiceLinkView(issued, [older], { paymentLink: elsewhere, paymentLinkIssued: true }, null)).toEqual({ current: older, issued: false, retry: null });
+    });
+
+    it('بعد التحديث: القائمُ بانتظار الدفع وحده — لا المدفوعُ ولا الملغى ولا ما لا رابطَ له', () => {
+        const paid = row({ id: 1, status: 'paid' });
+        const cancelled = row({ id: 2, status: 'cancelled' });
+        const noUrl = row({ id: 3, url: null });
+        const pending = row({ id: 4 });
+
+        expect(invoiceLinkView(issued, [paid, cancelled, noUrl, pending], undefined, null).current).toBe(pending);
+        expect(invoiceLinkView(issued, [paid, cancelled, noUrl], undefined, null).current).toBeNull();
+    });
+
+    it('وإعادةُ المحاولة: لا رابطَ قائم، والفاتورةُ صادرةٌ وعليها ما يُطلب', () => {
+        expect(invoiceLinkView(issued, [], undefined, failure).retry).toBe(failure);
+        expect(invoiceLinkView(issued, [row()], undefined, failure).retry, 'رابطٌ قائم: لا يُطلب ثانٍ').toBeNull();
+        expect(invoiceLinkView({ ...issued, outstanding: 0 }, [], undefined, failure).retry, 'سُدّدت').toBeNull();
+        expect(invoiceLinkView({ ...issued, status: 'ملغاة' }, [], undefined, failure).retry).toBeNull();
+        expect(invoiceLinkView(issued, [], undefined, null).retry).toBeNull();
+    });
+});
+
+describe('صفحةُ الفاتورة نفسُها', () => {
+    const invoice = {
+        id: 3, number: 'CINV-000003', customer: 'وزارة الثقافة', customer_id: 7, status: 'صادرة', state: 'صادرة',
+        issued_at: '2026-10-19', due_at: null, total: 105, paid: 0, outstanding: 105, days_overdue: 0,
+        po_number: null, contract_number: null, external_reference: null, department: null, cost_center: null, attention_to: null,
+        subtotal: 100, discount_total: 0, tax_total: 5, notes: null, internal_notes: null, may_read_attachments: false,
+        attachments: [], orders: [], cancellation_reason: null,
+        items: [{ description: 'باقة', quantity: 2, unit_price: 50, discount: 0, tax_rate: 5, line_total: 105 }],
+        payments: [], credit_notes: [],
+    };
+
+    const showPage = (over: Record<string, unknown> = {}) => {
+        Object.assign(pageProps, {
+            invoice, may: { issue: true, cancel: true, credit_note: true, pay: false, payment_link: true },
+            bank_accounts: [], methods: ['نقدي'], bank_methods: [], paper: { html: '', size: 'A4' },
+            paymentLinks: { ready: true, can: true, can_cancel: false, settings_url: null, links: [] as Row[] },
+            paymentLinkFailure: null, preparation: null,
+            ...over,
+        });
+        render(<Show />);
+    };
+
+    it('بعد «إصدار الفاتورة وإنشاء رابط دفع»: الرابطُ بارزًا بعنوانه', () => {
+        showPage({ flash: { toast: null, status: null, paymentLink: row(), paymentLinkIssued: true } });
+
+        expect(screen.getByTestId('invoice-payment-link')).toHaveTextContent('تم إصدار الفاتورة وإنشاء رابط الدفع');
+        expect(screen.getByTestId('invoice-payment-link-url')).toHaveValue('https://paymob.link/abc123');
+        expect(screen.queryByTestId('payment-link-failure')).toBeNull();
+    });
+
+    it('وبعد التحديث: القائمُ من الخادم، بلا عنوان الإصدار', () => {
+        showPage({ paymentLinks: { ready: true, can: true, can_cancel: false, settings_url: null, links: [row()] } });
+        expect(screen.getByTestId('invoice-payment-link')).not.toHaveTextContent('تم إصدار الفاتورة');
+        expect(screen.getByTestId('invoice-payment-link-url')).toHaveValue('https://paymob.link/abc123');
+    });
+
+    it('وتعذّر الرابط: السببُ وإعادةُ المحاولة على الفاتورة نفسِها', () => {
+        showPage({ paymentLinkFailure: { error: 'رفضت Paymob الطلب', at: null, uncertain: false, until: null } });
+
+        expect(screen.queryByTestId('invoice-payment-link')).toBeNull();
+        expect(screen.getByTestId('payment-link-failure')).toHaveTextContent('رفضت Paymob الطلب');
+        expect(screen.getByTestId('payment-link-retry')).toBeInTheDocument();
     });
 });
 

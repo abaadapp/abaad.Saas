@@ -122,6 +122,32 @@ export const invoiceShareText = (link: PaymentLinkRow, amount: string, t: (s: st
         .filter(Boolean)
         .join('\n');
 
+/**
+ * ما تعرضه صفحةُ الفاتورة من رابطها: الذي يُرسَل الآن، أو سببُ تعذّره.
+ *
+ * - **الرابطُ الآن:** ما أُنشئ للتوّ **لهذه الفاتورة** (رسالةُ الجلسة)، وإلّا
+ *   القائمُ بانتظار الدفع من الخادم — فيبقى بعد التحديث. والمدفوعُ والملغى
+ *   والمنتهي ليست «ما يُرسَل».
+ * - **«تم إصدار الفاتورة وإنشاء رابط الدفع»:** بعد الإصدار مع الرابط وحده —
+ *   لا بعد «إنشاء رابط دفع» لفاتورةٍ صادرة من قبل.
+ * - **إعادةُ المحاولة:** لا رابطَ قائم، والفاتورةُ صادرةٌ وعليها ما يُطلب.
+ */
+export function invoiceLinkView(
+    invoice: { id: number; status: string; outstanding: number },
+    links: PaymentLinkRow[],
+    flash: { paymentLink?: PaymentLinkRow | null; paymentLinkIssued?: boolean } | undefined,
+    failure: PaymentLinkFailure | null | undefined,
+): { current: PaymentLinkRow | null; issued: boolean; retry: PaymentLinkFailure | null } {
+    const justMade = flash?.paymentLink && flash.paymentLink.invoice?.id === invoice.id ? flash.paymentLink : null;
+    const current = justMade ?? links.find((l) => l.status === 'pending' && l.url) ?? null;
+
+    return {
+        current,
+        issued: !!justMade && !!flash?.paymentLinkIssued,
+        retry: !current && failure && invoice.status === 'صادرة' && invoice.outstanding > 0 ? failure : null,
+    };
+}
+
 /** «إرسال عبر واتساب» — بلا رقمٍ مسبق: يختار الموظّفُ من يُرسل إليه */
 export const whatsappShareUrl = (text: string) => `https://wa.me/?text=${encodeURIComponent(text)}`;
 

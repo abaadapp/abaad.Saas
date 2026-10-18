@@ -260,10 +260,13 @@ class AnInvoiceIsIssuedAndAskedForPaymentInOneStepTest extends TestCase
             $this->issueAndLink()->assertSessionHasErrors('payment_link');
             $this->assertStringContainsString('أكمل إعداد Paymob أولًا', session('errors')->first('payment_link'));
             $this->assertSame(0, CustomerInvoice::count());
+            // والشاشةُ لا تعرض زرًّا يُردّ عنه
+            $this->assertFalse($this->get(route('admin.customerInvoices.create'))->viewData('page')['props']['payment_links_ready']);
 
             $gateway->forceFill(['api_key' => 'api-shop', 'mode' => PaymentGateway::TEST, 'active' => true])->save();
         }
 
+        $this->assertTrue($this->get(route('admin.customerInvoices.create'))->viewData('page')['props']['payment_links_ready']);
         Http::assertNothingSent();
     }
 
@@ -305,6 +308,29 @@ class AnInvoiceIsIssuedAndAskedForPaymentInOneStepTest extends TestCase
         $this->assertSame(1, CustomerInvoice::count(), 'لا فاتورةٌ ثانية');
         $this->assertSame(1, CustomerPaymentLink::where('status', CustomerPaymentLink::PENDING)->count());
         $this->assertNull($this->get(route('admin.customerInvoices.show', $invoice->id))->viewData('page')['props']['paymentLinkFailure']);
+    }
+
+    /**
+     * وPaymob معطّلةٌ عند طلب الرمز — قبل أن يُطلب رابطٌ أصلًا.
+     *
+     * خطأُ خادمها على الرمز لا يُنشئ شيئًا هناك، فلا شكَّ يحبس الإعادة.
+     */
+    public function test_paymob_down_before_any_link_was_asked_is_a_plain_failure_that_retries(): void
+    {
+        app()->forgetInstance(Factory::class);
+        Http::swap(new Factory);
+        Http::fake(['oman.paymob.com/api/auth/tokens' => Http::response(['detail' => 'down'], 503)]);
+
+        $this->issueAndLink()->assertSessionHas('toast.type', 'warning');
+
+        $invoice = CustomerInvoice::sole();
+        $this->assertSame(0, $this->linkRequests(), 'لم يُطلب رابط');
+        $this->assertNull(CustomerPaymentLink::sole()->meta);
+        $this->assertFalse($this->get(route('admin.customerInvoices.show', $invoice->id))->viewData('page')['props']['paymentLinkFailure']['uncertain']);
+
+        $this->fakePaymob();
+        $this->post(route('admin.customerInvoices.paymentLink', $invoice->id))->assertSessionHasNoErrors()->assertSessionHas('toast.type', 'success');
+        $this->assertSame(1, CustomerPaymentLink::where('status', CustomerPaymentLink::PENDING)->count());
     }
 
     /**

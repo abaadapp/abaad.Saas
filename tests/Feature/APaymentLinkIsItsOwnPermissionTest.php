@@ -236,6 +236,26 @@ class APaymentLinkIsItsOwnPermissionTest extends TestCase
         $this->assertSame(0, CustomerPaymentLink::count());
     }
 
+    /** وصفحةُ الفاتورة تعرض الطلبَ والإلغاءَ كلًّا بفعله — لا زرَّ يُردّ عنه */
+    public function test_the_invoice_page_offers_asking_and_cancelling_each_by_its_own_grant(): void
+    {
+        $invoice = $this->invoice();
+        $panel = fn (User $u) => $this->actingAs($u)->get(route('admin.customerInvoices.show', $invoice->id))->assertOk()->viewData('page')['props']['paymentLinks'];
+
+        // يرى الفاتورةَ ولا يطلب ولا يُلغي
+        $viewer = $panel($this->seller([]));
+        $this->assertFalse($viewer['can']);
+        $this->assertFalse($viewer['can_cancel']);
+
+        // يسجّل التحصيلَ بلا «المالية»: بابُ الإلغاء في «المالية» فلا يُعرض له
+        $this->assertFalse($panel($this->seller([Permissions::CUSTOMER_PAYMENT_CREATE]))['can_cancel']);
+
+        // و«المالية» مع التحصيل تُلغي — ولا تطلب بلا منح
+        $clerk = $panel($this->user('sales', ['dashboard', 'orders', 'customers', 'finance', Permissions::CUSTOMER_PAYMENT_CREATE]));
+        $this->assertTrue($clerk['can_cancel']);
+        $this->assertFalse($clerk['can']);
+    }
+
     /** و«المالية» مع التحصيل لا تكفي وحدها اليوم — الطلبُ فعلٌ يُمنح */
     public function test_finance_and_collection_without_the_link_grant_no_longer_ask(): void
     {

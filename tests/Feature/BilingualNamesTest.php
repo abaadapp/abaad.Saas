@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Business;
-use App\Models\Customer;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Support\Demo;
@@ -11,11 +10,14 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * اسمٌ يُكتب مرّةً ويُقرأ بلغتين — للعميل وللمورّد.
+ * اسمٌ يُكتب مرّةً ويُقرأ بلغتين — للمورّد.
  *
  * الشاشة تُقرأ بلغةٍ يختارها من يقف أمامها، والاسم يُكتب بلغةٍ يختارها من
  * سجّله. وكان الطرفان يفترقان: كاشيرٌ لا يقرأ العربية يرى قائمةً كلّها
  * حروفٌ لا يفكّها.
+ *
+ * وكانت القاعدةُ للعميل أيضًا، ثمّ صار اسمُه يُحفظ ويُعرض كما كُتب — انظر
+ * `ACustomersNameIsKeptAsWrittenTest`.
  */
 class BilingualNamesTest extends TestCase
 {
@@ -35,65 +37,6 @@ class BilingualNamesTest extends TestCase
         ]);
     }
 
-    /* ------------------------------- العملاء ------------------------------- */
-
-    public function test_a_latin_customer_name_is_transliterated_and_the_original_kept(): void
-    {
-        $this->actingAs($this->owner)->post(route('admin.customers.store'), [
-            'language' => 'ar',
-            'name' => 'Mohammed Salem', 'phone' => '91110001',
-        ])->assertSessionHasNoErrors();
-
-        $customer = Customer::firstOrFail();
-
-        $this->assertSame('Mohammed Salem', $customer->name_en);
-        $this->assertNotSame('Mohammed Salem', $customer->name, 'لم يُنقل الاسم إلى العربية');
-    }
-
-    /**
-     * والمكتوب بيدٍ يعلو على النقل الآليّ.
-     *
-     * كان يُكتب فوقه بلا استئذان — فلا سبيل إلى تصحيح «Muhammed» إلى
-     * «Mohammed» أبدًا. والنقل تخمينٌ يصيب ويخطئ، ومن كتب اسمه بنفسه
-     * أعلمُ بكتابته.
-     */
-    public function test_a_hand_written_english_name_is_not_overwritten(): void
-    {
-        $this->actingAs($this->owner)->post(route('admin.customers.store'), [
-            'language' => 'ar',
-            'name' => 'Mohammed Salem', 'name_en' => 'Mo Salem', 'phone' => '91110002',
-        ])->assertSessionHasNoErrors();
-
-        $this->assertSame('Mo Salem', Customer::firstOrFail()->name_en);
-    }
-
-    /**
-     * واسمٌ عربيّ لا صورة لاتينية له تُخمَّن — فيُكتب بيدٍ أو يبقى فارغًا.
-     */
-    public function test_an_arabic_customer_can_be_given_an_english_name_by_hand(): void
-    {
-        $this->actingAs($this->owner)->post(route('admin.customers.store'), [
-            'language' => 'ar',
-            'name' => 'محمد سالم', 'name_en' => 'Mohammed Salem', 'phone' => '91110003',
-        ])->assertSessionHasNoErrors();
-
-        $customer = Customer::firstOrFail();
-
-        $this->assertSame('محمد سالم', $customer->name);
-        $this->assertSame('Mohammed Salem', $customer->name_en);
-    }
-
-    /** وبلا اسمٍ ثانٍ يبقى العربيّ وحده — لا فراغ */
-    public function test_an_arabic_customer_without_a_second_name_keeps_only_one(): void
-    {
-        $this->actingAs($this->owner)->post(route('admin.customers.store'), [
-            'language' => 'ar',
-            'name' => 'محمد سالم', 'phone' => '91110004',
-        ])->assertSessionHasNoErrors();
-
-        $this->assertNull(Customer::firstOrFail()->name_en);
-    }
-
     /* ------------------------------ الموردون ------------------------------ */
 
     public function test_a_supplier_now_has_a_second_name_at_all(): void
@@ -108,7 +51,7 @@ class BilingualNamesTest extends TestCase
         $this->assertSame('Mohammed Flowers', $supplier->name_en);
     }
 
-    public function test_a_latin_supplier_name_is_transliterated_like_a_customer(): void
+    public function test_a_latin_supplier_name_is_still_transliterated(): void
     {
         $this->actingAs($this->owner)->post(route('admin.suppliers.store'), [
             'name' => 'Salem Trading',

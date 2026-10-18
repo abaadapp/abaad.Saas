@@ -58,10 +58,8 @@ class CustomerController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            // اسمٌ واحد كما كُتب، بأيّ لغة — انظر Customers::asEntered
             'name' => ['required', 'string', 'max:255'],
-            // مكتوبًا بيدٍ يعلو على النقل الآليّ: النقل تخمينٌ يصيب ويخطئ،
-            // ومن كتب اسمه بنفسه أعلمُ بكتابته — انظر LocalName::apply
-            'name_en' => ['nullable', 'string', 'max:255'],
             'phone' => \App\Support\Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email', 'max:255'],
             // لغةُ رسائل واتساب: إجباريّةٌ — لا يُحفظ عميلٌ لا يُعرف بأيّ لغةٍ يُراسَل
@@ -78,7 +76,7 @@ class CustomerController extends Controller
             ? $branchId
             : null;
 
-        $data = \App\Support\Customers::localizeName($data);
+        $data = \App\Support\Customers::asEntered($data);
         Customer::create($data);
         \App\Support\Activity::log('created', 'أضاف عميلًا: ' . $data['name']);
 
@@ -99,7 +97,6 @@ class CustomerController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'name_en' => ['nullable', 'string', 'max:255'],
             // يتجاوز نفسه: وإلّا لرفض حفظَ عميلٍ لم يُغيَّر رقمه
             'phone' => \App\Support\Customers::phoneRule($this->bid(), $customer->id),
             'email' => ['nullable', 'email', 'max:255'],
@@ -114,8 +111,8 @@ class CustomerController extends Controller
             ? $branchId
             : null;
 
-        // الاسم الإنجليزي يُشتقّ من العربي — ولا يُترك على اسمٍ قديم بُدِّل
-        $data = \App\Support\Customers::localizeName($data);
+        // الاسمُ كما كُتب — و`name_en` المحفوظُ قبلُ لا يُمسّ
+        $data = \App\Support\Customers::asEntered($data);
         $customer->update($data);
 
         \App\Support\Activity::log('updated', 'عدّل بيانات العميل: '.$customer->name, ['subject_id' => $customer->id]);

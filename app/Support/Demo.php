@@ -1207,7 +1207,7 @@ class Demo
          */
         return $query->when($limit, fn ($q) => $q->limit($limit))->get()->map(fn ($o) => [
             'id' => $o->number,
-            'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
+            'customer' => self::customerLabel($o->customer_name),
             'employee' => $o->employee_name ?? '—',
             'branch' => $o->branch,
             'items_count' => $o->items_count,
@@ -1285,7 +1285,7 @@ class Demo
         return [
             'id' => $o->number,
             'db_id' => $o->id,
-            'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
+            'customer' => self::customerLabel($o->customer_name),
             /*
              * ولغةُ رسائل واتساب التي ستخرج بها إشعاراتُ هذا الطلب.
              *
@@ -1437,7 +1437,8 @@ class Demo
             'id' => $c->id,
             'name' => $c->name,
             'name_en' => $c->name_en,
-            'label' => self::ln($c->name, $c->name_en),
+            // الاسمُ كما كُتب، بأيّ لغةٍ كانت الواجهة — انظر Customers::asEntered
+            'label' => $c->name,
             'phone' => $c->phone,
             'email' => $c->email,
             'tax_number' => $c->tax_number,
@@ -3057,7 +3058,7 @@ class Demo
             ->withCount('items')->orderByDesc('ordered_at')->limit($limit)->get()
             ->map(fn ($o) => [
                 'id' => $o->number,
-                'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
+                'customer' => self::customerLabel($o->customer_name),
                 'items_count' => (int) $o->items_count,
                 'total' => (float) $o->total,
                 'payment' => $o->payment_method,
@@ -3718,13 +3719,16 @@ class Demo
     /**
      * اسم العميل كما يُعرض — و«عميل نقدي» ليس اسمًا.
      *
+     * والاسمُ كما كُتب، لا يختار بين عمودين بلغة الواجهة: العميلُ الواحد
+     * يُقرأ باسمٍ واحد في القائمة والطلب والورقة (`Customers::asEntered`).
+     *
      * الطلب النقدي يُخزَّن باسمٍ نصّي لا بمرجعٍ إلى عميل، فيصل إلى الشاشة
      * عربيًّا مهما كانت اللغة: كاشيرٌ لا يقرأ العربية يرى أغلبَ صفوف الطلبات
      * بلفظٍ واحد لا يفهمه. وهو وسمٌ من النظام لا اسمُ شخص، فيُترجَم.
      */
-    public static function customerLabel(?string $ar, ?string $en = null): string
+    public static function customerLabel(?string $name): string
     {
-        $label = self::ln($ar, $en);
+        $label = (string) $name;
 
         return ($label === '' || $label === 'عميل نقدي') ? __('عميل نقدي') : $label;
     }
@@ -3765,7 +3769,7 @@ class Demo
             ->withCount('items')->orderByDesc('id')->get()->map(fn ($o) => [
                 'order_id' => $o->id,
                 'id' => $o->number,
-                'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
+                'customer' => self::customerLabel($o->customer_name),
                 'items' => $o->items_count,
                 'total' => (float) $o->total,
                 'time' => optional($o->ordered_at)->format('H:i') ?? '—',
@@ -3810,7 +3814,7 @@ class Demo
 
         return $query->orderByDesc('ordered_at')->limit($limit)->get()->map(fn ($o) => [
             'number' => $o->number,
-            'customer' => self::customerLabel($o->customer_name, $o->customer_name_en),
+            'customer' => self::customerLabel($o->customer_name),
             'phone' => $phones[$o->customer_name] ?? '',
             'total' => (float) $o->total,
             'subtotal' => (float) $o->subtotal,
@@ -4343,7 +4347,7 @@ class Demo
                 $since = \Illuminate\Support\Carbon::parse($c->last_at);
                 $add('dormant-'.$c->id, [
                     'text' => __('عميل راكد: :name — آخر شراء قبل :days يومًا', [
-                        'name' => self::ln($c->name, $c->name_en),
+                        'name' => $c->name,
                         // وعددُ الأيّام صحيحٌ لا كسر: `diffInDays` تردّ عائمًا
                         // في Carbon 3، فيُقرأ «منذ 200.000002702 يومًا».
                         'days' => (int) $since->diffInDays(now()),
@@ -4501,7 +4505,7 @@ class Demo
             ->orderByDesc('paid_at')->limit($limit)->get();
 
         foreach ($paidLinks as $link) {
-            $name = self::ln($link->customer?->name, $link->customer?->name_en) ?: '—';
+            $name = $link->customer?->name ?: '—';
             $amount = self::money((float) $link->amount);
             $toInvoice = $link->invoice !== null && ($unfiltered || ($u && $u->allows('orders')));
 

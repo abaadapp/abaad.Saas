@@ -1268,7 +1268,7 @@ class PosController extends Controller
     public function storeCustomer(Request $request)
     {
         $data = $request->validate([
-            // لا name_en: localizeName أدناه يشتقّه من الاسم المُدخَل
+            // اسمٌ واحد كما كُتب، بأيّ لغة — انظر Customers::asEntered
             'name' => ['required', 'string', 'max:255'],
             'phone' => Customers::phoneRule($this->bid()),
             'email' => ['nullable', 'email', 'max:255'],
@@ -1276,7 +1276,7 @@ class PosController extends Controller
             'language' => Customers::languageRule(),
         ]);
         $data['business_id'] = $this->bid();
-        $data = Customers::localizeName($data);
+        $data = Customers::asEntered($data);
         $customer = Customer::create($data);
         Activity::log('created', 'أضاف عميلًا من نقطة البيع: '.$data['name']);
 
@@ -1287,7 +1287,8 @@ class PosController extends Controller
                 'customer' => [
                     'id' => $customer->id,
                     'name' => $customer->name,
-                    'label' => (app()->getLocale() === 'en' && filled($customer->name_en)) ? $customer->name_en : $customer->name,
+                    // الاسمُ نفسُه بأيّ لغةٍ كانت الواجهة
+                    'label' => $customer->name,
                     'phone' => $customer->phone ?? '',
                     'language' => $customer->language,
                 ],

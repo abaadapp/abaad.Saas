@@ -187,7 +187,8 @@ class DocumentPaper
                 [
                     'cap' => 'العميل',
                     'lines' => array_values(array_filter([
-                        Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي'),
+                        // اسمُ العميل كما كُتب، بأيّ لغةٍ كانت الورقة — انظر Customers::asEntered
+                        $order->customer_name ?: __('عميل نقدي'),
                         /*
                          * ═══ ورقمُه هو — لا رقمُ من يستلم ═══
                          *

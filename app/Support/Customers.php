@@ -5,13 +5,32 @@ namespace App\Support;
 class Customers
 {
     /**
-     * توطين اسم العميل — والقاعدة مشتركةٌ مع المورّدين.
+     * اسمُ العميل كما كُتب — لا يُنقل ولا يُترجم.
      *
-     * @see LocalName::apply
+     * كان يمرّ بـ`LocalName::apply`: «Ahmed Al Balushi» يُكتب في `name`
+     * «أحمد البلوشي» بنقلٍ آليّ، والأصلُ يُنحّى إلى `name_en`، ثمّ تختار
+     * الشاشةُ بينهما بلغة الواجهة. فالعميلُ الواحد يُقرأ باسمين، ويُطبع على
+     * فاتورته اسمٌ لم يكتبه أحد — والنقلُ تخمينٌ يصيب ويخطئ في اسم إنسان.
+     *
+     * فالاسمُ يُحفظ في `name` كما كتبه العميلُ أو الموظّف، بأيّ حرفٍ وبأيّ
+     * خليط («Mohammed محمد»)، ويُقرأ هو نفسُه في كلّ شاشةٍ وبكلّ لغة.
+     *
+     * و`name_en` لا يُكتب هنا ولا يُمحى: عمودٌ باقٍ لما حُفظ فيه قبلُ (وفيه
+     * أصلُ من نُقل اسمُه آليًّا)، والبحثُ ما زال يقرؤه. وتعديلُ العميل لا
+     * يمسّه. أمّا المورّدون فقاعدتُهم كما هي (`LocalName`).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
      */
-    public static function localizeName(array $data): array
+    public static function asEntered(array $data): array
     {
-        return LocalName::apply($data);
+        if (array_key_exists('name', $data)) {
+            $data['name'] = trim((string) $data['name']);
+        }
+
+        unset($data['name_en']);
+
+        return $data;
     }
 
     /**

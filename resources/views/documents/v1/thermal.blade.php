@@ -96,7 +96,7 @@
         <tr><td class="k">{{ __('الموظف') }}</td><td class="l">{{ $order->employee_name ?? '—' }}</td></tr>
     @endif
     @if ($show('tpl_show_customer'))
-        <tr><td class="k">{{ __('العميل') }}</td><td class="l">{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</td></tr>
+        <tr><td class="k">{{ __('العميل') }}</td><td class="l">{{ $order->customer_name ?: __('عميل نقدي') }}</td></tr>
     @endif
 </table>
 

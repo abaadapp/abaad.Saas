@@ -233,7 +233,7 @@ final class DeliveryPaper
 
         if (! self::isGift($order) && ! self::anonymous($order)) {
             if ($name === '') {
-                $customer = trim((string) Demo::ln($order->customer_name, $order->customer_name_en));
+                $customer = trim((string) $order->customer_name);
                 $name = $customer === FlowerOrder::WALK_IN || $customer === __(FlowerOrder::WALK_IN) ? '' : $customer;
             }
 

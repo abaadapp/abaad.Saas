@@ -69,9 +69,9 @@ final class OrdersList
     {
         return [
             'id' => $o->number,
-            // والاسمُ بلغته كما يقرؤه كلُّ قارئٍ آخر: صفحةُ الطلب والورقة
-            // والتصدير تمرّ كلُّها بالاسمين
-            'customer' => Demo::customerLabel($o->customer_name, $o->customer_name_en),
+            // والاسمُ كما كُتب، كما يقرؤه كلُّ قارئٍ آخر: صفحةُ الطلب والورقة
+            // والتصدير — بأيّ لغةٍ كانت الواجهة (Customers::asEntered)
+            'customer' => Demo::customerLabel($o->customer_name),
             'employee' => $o->employee_name ?? '—',
             'branch' => $o->branch,
             'items_count' => $o->items_count,

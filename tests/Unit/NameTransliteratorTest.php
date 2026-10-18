@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Support\Customers;
+use App\Support\LocalName;
 use App\Support\NameTransliterator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -59,27 +60,42 @@ class NameTransliteratorTest extends TestCase
         $this->assertTrue(NameTransliterator::isLatin('Fatima Al Harthi'));
     }
 
-    public function test_localize_name_keeps_the_original_in_name_en(): void
+    /*
+     * قاعدةُ الاسمين للمورّدين (`LocalName`) — والعميلُ يُحفظ اسمُه كما كُتب
+     * (`Customers::asEntered`): لا نقلَ ولا اسمَ ثانيًا.
+     */
+    public function test_a_supplier_name_keeps_the_original_in_name_en(): void
     {
-        $data = Customers::localizeName(['name' => 'Ahmed Al Shamsi']);
+        $data = LocalName::apply(['name' => 'Ahmed Al Shamsi']);
 
         $this->assertSame('أحمد الشامسي', $data['name']);
         $this->assertSame('Ahmed Al Shamsi', $data['name_en']);
     }
 
-    public function test_localize_name_keeps_an_untranslatable_name_as_entered(): void
+    public function test_a_supplier_name_keeps_an_untranslatable_name_as_entered(): void
     {
-        $data = Customers::localizeName(['name' => 'Zhang Wei']);
+        $data = LocalName::apply(['name' => 'Zhang Wei']);
 
         $this->assertSame('Zhang Wei', $data['name']);
         $this->assertSame('Zhang Wei', $data['name_en']);
     }
 
-    public function test_localize_name_leaves_arabic_input_alone(): void
+    public function test_a_supplier_name_leaves_arabic_input_alone(): void
     {
-        $data = Customers::localizeName(['name' => 'محمد سالم']);
+        $data = LocalName::apply(['name' => 'محمد سالم']);
 
         $this->assertSame('محمد سالم', $data['name']);
         $this->assertNull($data['name_en']);
+    }
+
+    /** والعميلُ لا يمرّ بها: اسمُه كما كُتب بأيّ حرف، ولا يُكتب له `name_en` */
+    public function test_a_customer_name_is_kept_as_written(): void
+    {
+        foreach (['Ahmed Al Shamsi', 'أحمد الشامسي', 'Mohammed محمد', 'Zhang Wei'] as $name) {
+            $data = Customers::asEntered(['name' => "  {$name} ", 'name_en' => 'ignored']);
+
+            $this->assertSame($name, $data['name']);
+            $this->assertArrayNotHasKey('name_en', $data);
+        }
     }
 }

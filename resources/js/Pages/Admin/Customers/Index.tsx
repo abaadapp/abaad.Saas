@@ -50,17 +50,13 @@ export default function CustomersIndex() {
     const [importing, setImporting] = useState(false);
 
     /**
-     * حقلا اسم: المُدخَل، ومقابلُه اللاتينيّ.
-     *
-     * `LocalName::apply` يكتشف لغة المُدخَل — اللاتينيّ يُنقل إلى العربية
-     * في `name` ويُحفظ الأصل في `name_en`. أمّا العربيّ فلا صورة لاتينية
-     * له تُخمَّن، فبقي بلا اسمٍ ثانٍ: من يقرأ الشاشة بالإنجليزية يجد
-     * قائمةً كلّها حروفٌ لا يفكّها. فالحقل الثاني يُملأ بيدٍ عند الحاجة،
-     * ويعلو على النقل الآليّ إن كُتب.
+     * حقلُ اسمٍ واحد: يُحفظ كما كُتب، بأيّ لغةٍ وبأيّ خليط، ويُقرأ هو نفسُه
+     * بلغتَي الواجهة — انظر `Customers::asEntered`. وكان هنا حقلٌ ثانٍ
+     * «بالإنجليزية» يختار بينهما العرضُ بلغة الواجهة، فيُقرأ العميلُ الواحد
+     * باسمين.
      */
     const add = useForm({
         name: '',
-        name_en: '',
         phone: '',
         email: '',
         language: '',
@@ -106,9 +102,6 @@ export default function CustomersIndex() {
                     </span>
                     <span className="min-w-0">
                         <span className="block truncate font-medium text-[#111]">{c.label || c.name}</span>
-                        {c.name_en && c.label !== c.name && (
-                            <span className="block truncate text-[11px] text-[#9ca3af]">{c.name}</span>
-                        )}
                         <span className="block font-mono text-[11px] text-[#9ca3af]">#{c.id}</span>
                     </span>
                 </div>
@@ -257,24 +250,18 @@ export default function CustomersIndex() {
                         <DialogTitle>{t('إضافة عميل جديد')}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={submitAdd} className="space-y-4 px-5 pb-5">
-                        <Field label="اسم العميل" required error={add.errors.name}>
+                        <Field
+                            label="اسم العميل"
+                            required
+                            hint="يُحفظ ويظهر كما تكتبه — بالعربية أو بالإنجليزية"
+                            error={add.errors.name}
+                        >
                             <Input
+                                dir="auto"
                                 value={add.data.name}
                                 onChange={(e) => add.setData('name', e.target.value)}
                                 placeholder={t('مثال: محمد سالم')}
                                 required
-                            />
-                        </Field>
-                        <Field
-                            label="الاسم بالإنجليزية (اختياري)"
-                            hint="يظهر عند تشغيل الواجهة بالإنجليزية — يُملأ تلقائيًا لمن كُتب اسمه باللاتينية"
-                            error={add.errors.name_en}
-                        >
-                            <Input
-                                dir="ltr"
-                                value={add.data.name_en}
-                                onChange={(e) => add.setData('name_en', e.target.value)}
-                                placeholder="e.g. Mohammed Salem"
                             />
                         </Field>
                         <Field label="رقم الهاتف" required error={add.errors.phone}>

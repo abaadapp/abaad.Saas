@@ -958,7 +958,7 @@ class CustomerInvoiceController extends Controller
         $data['business_id'] = $this->bid();
         $data['customer_type'] = $data['customer_type'] ?? 'شركة';
 
-        $customer = Customer::create(Customers::localizeName($data));
+        $customer = Customer::create(Customers::asEntered($data));
         Activity::log('created', 'أضاف عميلًا: '.$customer->name);
 
         return back()

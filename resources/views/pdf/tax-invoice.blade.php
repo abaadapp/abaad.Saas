@@ -48,7 +48,7 @@
         <tr>
             <td style="width:50%; border-bottom:none; vertical-align:top">
                 <div class="faint small">{{ __('العميل') }}</div>
-                <div>{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</div>
+                <div>{{ $order->customer_name ?: __('عميل نقدي') }}</div>
                 @if (! empty($customerTax))
                     <div class="muted small" style="margin-top:3pt">{{ __('الرقم الضريبي (TRN):') }} <span dir="ltr">{{ $customerTax }}</span></div>
                 @endif

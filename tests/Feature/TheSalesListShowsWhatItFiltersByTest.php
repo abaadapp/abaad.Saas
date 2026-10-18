@@ -26,7 +26,9 @@ use Tests\TestCase;
  *
  * ٢ — **اسمُ العميل**: القائمة وحدها كانت تقرأ الاسم العربيّ، وصفحةُ الطلب
  *     والورقةُ والتصدير تقرأ الاسمين. فبالإنجليزية يقرأ التاجر «عدي» في
- *     الصفّ و«Oday» حين يفتحه — عميلٌ واحد باسمين على شاشتين.
+ *     الصفّ و«Oday» حين يفتحه — عميلٌ واحد باسمين على شاشتين. ثمّ صار
+ *     اسمُ العميل يُقرأ كما كُتب بأيّ لغةٍ كانت الواجهة
+ *     (`ACustomersNameIsKeptAsWrittenTest`): «عدي» في الموضعين واللغتين.
  *
  * ٣ — **طلبُ فرعٍ آخر**: صفحتُه تُفتح كاملةً بأزرارها وهو ليس في قائمة
  *     فرعك، فيضغط التاجر «جاهز» فتُردّ صفحةُ ٤٠٤ بلا كلمة. **وتصحيحُ
@@ -199,7 +201,7 @@ class TheSalesListShowsWhatItFiltersByTest extends TestCase
     {
         $order = $this->order($this->muscat);
 
-        foreach (['ar' => 'عدي', 'en' => 'Oday'] as $locale => $expected) {
+        foreach (['ar' => 'عدي', 'en' => 'عدي'] as $locale => $expected) {
             session(['locale' => $locale]);
 
             $inList = $this->rows()[0]['customer'];

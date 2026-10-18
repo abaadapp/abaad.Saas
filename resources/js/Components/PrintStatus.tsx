@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, Loader2, RotateCcw } from 'lucide-react';
+import { CheckCircle2, FileText, Loader2, RotateCcw, Share } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import type { ReceiptPrintState } from '@/hooks/useReceiptPrint';
 import { failureMessage, retryable, stageMessage } from '@/lib/printing/printer-service';
@@ -47,6 +47,26 @@ export default function PrintStatus({
                 <CheckCircle2 className="size-4" />
                 {stageMessage('success', t)}
             </p>
+        );
+    }
+
+    /*
+     * وإيصالٌ جُهّز لقائمة المشاركة بعد ضغطةٍ سبقته — والضغطةُ هنا هي التي
+     * تفتحها: القائمةُ لا تُفتح بعد انتظار.
+     */
+    if (stage === 'ready') {
+        return (
+            <div
+                role="status"
+                data-testid="print-status"
+                className={cn('space-y-2 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] p-3 text-start text-[13px]', className)}
+            >
+                <p className="text-[#374151]">{stageMessage('ready', t)}</p>
+                <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={onRetry}>
+                    <Share />
+                    {t('طباعة أو مشاركة PDF')}
+                </Button>
+            </div>
         );
     }
 

@@ -1,4 +1,4 @@
-import { Download, ExternalLink, Printer } from 'lucide-react';
+import { Download, ExternalLink, Loader2, Printer, Share } from 'lucide-react';
 
 import PaperFrame from '@/Components/PaperFrame';
 import { Button } from '@/Components/ui/button';
@@ -51,6 +51,8 @@ export default function DocumentPreview({
     open,
     onOpenChange,
     onPrint,
+    printLabel,
+    printPending = false,
 }: {
     /** الورقةُ مرسومةً — النصُّ نفسُه الذي في اللوحة */
     html: string;
@@ -69,6 +71,12 @@ export default function DocumentPreview({
      * أبعاد، ولسانٌ في المتصفّح كما كان. وسائرُ الأوراق تبقى على الرابط.
      */
     onPrint?: () => void;
+    /**
+     * اسمُ «طباعة» حيث هي قائمةُ مشاركة — «طباعة أو مشاركة PDF» في الآيفون
+     * والآيباد — وانتظارُها حتى يُجهَّز الملفّ. انظر `lib/printing/share-print`.
+     */
+    printLabel?: string;
+    printPending?: boolean;
 }) {
     const t = useTranslate();
     // والملفُّ يحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
@@ -86,9 +94,9 @@ export default function DocumentPreview({
                     {/* والأفعالُ داخل النافذة لا في شريط المتصفّح — فالواجهةُ واجهةُ أبعاد */}
                     <div className="flex items-center gap-2">
                         {onPrint ? (
-                            <Button variant="outline" size="sm" onClick={onPrint}>
-                                <Printer />
-                                <span className="max-sm:sr-only">{t('طباعة')}</span>
+                            <Button variant="outline" size="sm" onClick={onPrint} disabled={printPending}>
+                                {printPending ? <Loader2 className="animate-spin" /> : printLabel ? <Share /> : <Printer />}
+                                <span className="max-sm:sr-only">{printLabel ?? t('طباعة')}</span>
                             </Button>
                         ) : (
                             <Button variant="outline" size="sm" asChild>

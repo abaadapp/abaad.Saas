@@ -7,17 +7,19 @@ import userEvent from '@testing-library/user-event';
 import PaymentDialog from '@/Pages/Pos/partials/PaymentDialog';
 import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import ReceiptPreviewButton from '@/Pages/Pos/partials/ReceiptPreview';
-import { inPagePrintSupported, printPdfInPage, resetPrintFrame } from '@/lib/printing/page-print';
+import { inPagePrintSupported, printPdfInPage, resetPrintFrame, setPagePrintTiming } from '@/lib/printing/page-print';
+import { forgetPreparedReceipts } from '@/lib/printing/share-print';
 import { printReceipt } from '@/lib/printing/printer-service';
 import type { PrinterLike } from '@/lib/printing/types';
 import { pageProps } from './setup';
 
-const toasts = { warning: vi.fn(), error: vi.fn(), success: vi.fn() };
+const toasts = { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn() };
 vi.mock('sonner', () => ({
     toast: {
         warning: (...a: unknown[]) => toasts.warning(...a),
         error: (...a: unknown[]) => toasts.error(...a),
         success: (...a: unknown[]) => toasts.success(...a),
+        info: (...a: unknown[]) => toasts.info(...a),
     },
 }));
 
@@ -72,12 +74,18 @@ let revoked: string[];
 /** الإطارُ المخفيّ — يُحمَّل ويُطلب حوارُه كما يفعل المتصفّح */
 const frame = () => document.querySelector<HTMLIFrameElement>('iframe[data-print-frame]');
 
-const loadFrame = async (print: () => void = () => {}) => {
+/** يُحمَّل الإطار — وما فيه PDF كما يقول قارئُ Chrome (`contentType`) */
+const fire = (f: HTMLIFrameElement, type = 'application/pdf') => {
+    Object.defineProperty(f, 'contentDocument', { value: { contentType: type }, configurable: true });
+    f.dispatchEvent(new Event('load'));
+};
+
+const loadFrame = async (print: () => void = () => {}, type = 'application/pdf') => {
     await waitFor(() => expect(frame()?.getAttribute('src')).toMatch(/^blob:/));
     const f = frame()!;
     const spy = vi.fn(print);
     Object.defineProperty(f.contentWindow!, 'print', { value: spy, configurable: true });
-    f.dispatchEvent(new Event('load'));
+    fire(f, type);
 
     return spy;
 };
@@ -96,6 +104,13 @@ const NETWORK: PrinterLike = {
 beforeEach(() => {
     Object.values(toasts).forEach((f) => f.mockClear());
     resetPrintFrame();
+    forgetPreparedReceipts();
+    // مهلةُ القارئ تُقاس في اختبارها وحده — انظر «لا يُطلب الحوار لحظةَ load»
+    setPagePrintTiming({ settleMs: 0, timeoutMs: 20000 });
+    // ولا قائمةَ مشاركةٍ إلّا حيث تُعطى — انظر `the-ipad-prints-through-the-share-sheet`
+    Object.defineProperty(window.navigator, 'share', { value: undefined, configurable: true });
+    Object.defineProperty(window.navigator, 'canShare', { value: undefined, configurable: true });
+    Object.defineProperty(window.navigator, 'maxTouchPoints', { value: 0, configurable: true });
     created = [];
     revoked = [];
     let n = 0;
@@ -239,7 +254,7 @@ describe('حوارُ الطباعة على الـPDF نفسِه — والصفح
 
         const second = printPdfInPage('/pos.receipt.pdf/INV-2');
         await waitFor(() => expect(frame()?.getAttribute('src')).toBe('blob:receipt-2'));
-        frame()!.dispatchEvent(new Event('load'));
+        fire(frame()!);
         await second;
 
         expect(document.querySelectorAll('iframe[data-print-frame]')).toHaveLength(1);
@@ -248,6 +263,71 @@ describe('حوارُ الطباعة على الـPDF نفسِه — والصفح
 });
 
 /* ═══════════════════════════ زرُّ الصندوق ═══════════════════════════ */
+
+describe('Chrome وEdge — ما لا يُفترض', () => {
+    /*
+     * `load` يقول إنّ مستندَ الإطار حُمِّل، لا إنّ قارئَ الـPDF رسم صفحاته.
+     * فلا يُطلب الحوارُ لحظتَها — يُمهَل القارئ.
+     */
+    it('لا يُطلب الحوارُ لحظةَ `load` — يُمهَل القارئ ثمّ يُطلب مرّةً واحدة', async () => {
+        setPagePrintTiming({ settleMs: 60 });
+        const pending = printPdfInPage('/pos.receipt.pdf/INV-7');
+        const print = await loadFrame();
+
+        // وبعد `load` بقليل ما زال القارئُ يُمهَل
+        await new Promise((r) => setTimeout(r, 15));
+        expect(print).not.toHaveBeenCalled();
+        await expect(pending).resolves.toEqual({ ok: true, via: 'page' });
+        expect(print).toHaveBeenCalledTimes(1);
+    });
+
+    it('وإطارٌ لم يحمل PDF (قارئٌ مطفأ نزّل الملفّ) ← لا ورقةٌ بيضاء تُطبع', async () => {
+        const pending = printPdfInPage('/pos.receipt.pdf/INV-7');
+        const print = await loadFrame(() => {}, 'text/html');
+
+        await expect(pending).resolves.toMatchObject({ ok: false, code: 'PRINT_DIALOG_FAILED' });
+        expect(print).not.toHaveBeenCalled();
+    });
+
+    it('وطباعتان متسابقتان في الصفحة ← الثانية تُردّ، ولا إيصالٌ لم يُقصد', async () => {
+        const first = printPdfInPage('/pos.receipt.pdf/INV-1');
+        await expect(printPdfInPage('/pos.receipt.pdf/INV-2')).resolves.toMatchObject({ ok: false, code: 'QUEUE_FULL' });
+
+        await loadFrame();
+        await first;
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(String(fetchMock.mock.calls[0][0])).toMatch(/INV-1/);
+
+        // وبعدها تعود الطباعةُ ممكنة
+        const again = printPdfInPage('/pos.receipt.pdf/INV-2');
+        await waitFor(() => expect(frame()?.getAttribute('src')).toBe('blob:receipt-2'));
+        fire(frame()!);
+        await expect(again).resolves.toEqual({ ok: true, via: 'page' });
+    });
+
+    it('ومغادرةُ الصفحة تحرّر الملفَّ وتُزيل الإطار', async () => {
+        const pending = printPdfInPage('/pos.receipt.pdf/INV-7');
+        await loadFrame();
+        await pending;
+
+        window.dispatchEvent(new Event('pagehide'));
+
+        expect(frame()).toBeNull();
+        expect(revoked).toEqual(['blob:receipt-1']);
+    });
+
+    it('وEdge كـChrome — زرُّ الصندوق يطبع في مكانه', async () => {
+        browser(EDGE);
+        render(<PrintReceiptButton number="INV-8" inPage />);
+
+        await userEvent.click(screen.getByRole('button', { name: /طباعة الفاتورة/ }));
+        const print = await loadFrame();
+
+        await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+        expect(openMock).not.toHaveBeenCalled();
+        expect(toasts.success).not.toHaveBeenCalled();
+    });
+});
 
 describe('«طباعة الفاتورة» في نقطة البيع', () => {
     it('زرٌّ لا رابطٌ إلى لسان — يطبع الفاتورةَ المضغوطةَ وحدها، ولا يقول «طُبعت»', async () => {

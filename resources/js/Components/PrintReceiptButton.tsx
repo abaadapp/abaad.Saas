@@ -1,6 +1,6 @@
-import type { ComponentProps } from 'react';
+import { useEffect, type ComponentProps } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Printer } from 'lucide-react';
+import { Loader2, Printer, Share } from 'lucide-react';
 import PrintStatus from '@/Components/PrintStatus';
 import { Button } from '@/Components/ui/button';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
@@ -17,7 +17,7 @@ type Translate = (key: string) => string;
  * ولا لحوار الطباعة في الصفحة: ظهورُه ليس طباعة.
  *
  * ومتصفّحٌ لا يطبع من الصفحة لا يُعرض له «إعادة الطباعة» — لن تُجدي —
- * بل «فتح PDF» وحده.
+ * بل «فتح PDF» وحده. وقائمةُ مشاركةٍ أغلقها الكاشيرُ بنفسه لا يُقال عنها شيء.
  */
 export function announcePrint(
     outcome: PrintOutcome | null,
@@ -32,6 +32,8 @@ export function announcePrint(
 
         return;
     }
+
+    if (outcome.code === 'SHARE_CANCELLED') return;
 
     if (!retryable(outcome)) {
         toast.error(failureMessage(outcome.code, t), {
@@ -62,6 +64,22 @@ export function announcePrint(
  * إلّا في نقطة البيع (`inPage`): زرٌّ يطلب حوارَ الطباعة على الـPDF نفسِه في
  * إطارٍ مخفيّ، والكاشيرُ في شاشته — انظر `lib/printing/page-print`.
  */
+/** «طباعة أو مشاركة PDF» — اسمُ الفعل حيث هو قائمةُ مشاركة، لا «طباعة» يُوعد بها */
+export const SHARE_LABEL = 'طباعة أو مشاركة PDF';
+
+/**
+ * «الإيصال جاهز» — والضغطةُ في الإشعار هي التي تفتح القائمة.
+ *
+ * الكاشيرُ ضغط قبل أن يُجهَّز الإيصال، والقائمةُ لا تُفتح بعد انتظار. فيُقال
+ * له إنّه جاهز، وزرُّ الإشعار ضغطةٌ جديدة حيّة.
+ */
+export function announceReady(t: Translate, share: () => void): void {
+    toast.info(stageMessage('ready', t), {
+        duration: 15000,
+        action: { label: t(SHARE_LABEL), onClick: share },
+    });
+}
+
 export default function PrintReceiptButton({
     number,
     routeName = 'pos.receipt.pdf',
@@ -72,6 +90,7 @@ export default function PrintReceiptButton({
     size,
     className,
     inPage = false,
+    prefetch = false,
 }: {
     number: string;
     /** بابُ الإيصال في قسم الشاشة — `admin.orders.receipt` في شاشة الطلب */
@@ -85,16 +104,34 @@ export default function PrintReceiptButton({
     className?: string;
     /** نقطةُ البيع: الطباعةُ في مكانها لا في لسانٍ جديد */
     inPage?: boolean;
+    /**
+     * يُجهَّز الإيصالُ لقائمة المشاركة حين يُعرض الزرّ — لإيصالٍ فُتح عمدًا
+     * (شاشةُ النجاح، والدرج، وتفاصيلُ الطلب)، لا لكلّ صفٍّ في جدول.
+     */
+    prefetch?: boolean;
 }) {
     const t = useTranslate();
     const printing = useReceiptPrint(routeName, { inPage });
-    const text = label ?? t('طباعة الفاتورة');
+    const sharing = printing.mode === 'share';
+    const text = label ?? t(sharing ? SHARE_LABEL : 'طباعة الفاتورة');
 
     const print = () => {
         void printing.print(number).then((outcome) => {
             if (!inline) announcePrint(outcome, t, print, () => void printing.openPdf(number));
         });
     };
+
+    // ويُجهَّز بصمتٍ — لا قائمةَ تُفتح ولا سطرَ حال
+    useEffect(() => {
+        if (sharing && prefetch) void printing.prepare(number, true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sharing, prefetch, number]);
+
+    // وجاهزٌ بعد ضغطةٍ سبقته — إشعارٌ بزرّ، حيث لا سطرَ تحت الزرّ
+    useEffect(() => {
+        if (!inline && printing.state.stage === 'ready' && printing.state.invoice === number) announceReady(t, print);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [printing.state.stage, printing.state.invoice]);
 
     if (!insideAbaadApp() && !inPage) {
         return (
@@ -124,7 +161,7 @@ export default function PrintReceiptButton({
             title={iconOnly ? text : undefined}
             aria-label={iconOnly ? text : undefined}
         >
-            {printing.busy ? <Loader2 className="animate-spin" /> : <Printer />}
+            {printing.busy ? <Loader2 className="animate-spin" /> : sharing ? <Share /> : <Printer />}
             {!iconOnly && text}
         </Button>
     );

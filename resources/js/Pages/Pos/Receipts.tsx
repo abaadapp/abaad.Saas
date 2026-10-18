@@ -254,7 +254,8 @@ export default function PosReceipts() {
                             {/* والورقةُ تُرى هنا ولا يُغادَر إليها — انظر `partials/ReceiptPreview` */}
                             <ReceiptPreviewButton number={open.number} className="mt-4 w-full rounded-full" />
 
-                            <PrintReceiptButton number={open.number} inline inPage className="mt-2 w-full rounded-full" />
+                            {/* و`prefetch`: الدرجُ فُتح لهذه الفاتورة، فيُجهَّز ملفُّها لقائمة المشاركة في الآيفون والآيباد */}
+                            <PrintReceiptButton number={open.number} inline inPage prefetch className="mt-2 w-full rounded-full" />
                         </div>
                     )}
                 </DialogContent>

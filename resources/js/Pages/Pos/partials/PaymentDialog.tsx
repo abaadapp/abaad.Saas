@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Banknote, Check, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer, X } from 'lucide-react';
+import { Banknote, Check, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer, Share, X } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import {
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useTenantLink } from '@/lib/exportLink';
 import { abandonAutoPrint, commitAutoPrint, prepareAutoPrint } from '@/lib/printing/printer-service';
 import PrintStatus from '@/Components/PrintStatus';
+import { SHARE_LABEL } from '@/Components/PrintReceiptButton';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
 import ReceiptPreviewButton from './ReceiptPreview';
 import type { CheckoutResult } from '@/hooks/usePosCart';
@@ -176,6 +177,17 @@ export default function PaymentDialog({
             resetPrinting();
         }
     }, [open, resetPrinting]);
+
+    /*
+     * وفي الآيفون والآيباد يُجهَّز إيصالُ البيعة لقائمة المشاركة حين تظهر
+     * شاشةُ النجاح — فتفتحها ضغطةُ «طباعة أو مشاركة PDF» بلا انتظار. تنزيلٌ
+     * لا غير: لا قائمةَ تُفتح وحدها، ولا شأنَ له بالطباعة التلقائيّة.
+     */
+    const prepareReceipt = printing.prepare;
+    const saleInvoice = result?.synced ? result.invoice : null;
+    useEffect(() => {
+        if (saleInvoice && printing.mode === 'share') void prepareReceipt(saleInvoice, true);
+    }, [saleInvoice, printing.mode, prepareReceipt]);
 
     // خيارات الخادم تسبق المحليّة: إعادة تحميل الصفحة تعيد القائمة الصحيحة
     useEffect(() => {
@@ -791,8 +803,8 @@ export default function PaymentDialog({
                                      */
                                     onClick={() => void printing.print(result.invoice!)}
                                 >
-                                    <Printer />
-                                    {t('طباعة الفاتورة')}
+                                    {printing.mode === 'share' ? <Share /> : <Printer />}
+                                    {printing.mode === 'share' ? t(SHARE_LABEL) : t('طباعة الفاتورة')}
                                 </Button>
                             )}
                             <Button

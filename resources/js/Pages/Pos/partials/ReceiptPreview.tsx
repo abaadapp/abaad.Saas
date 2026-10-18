@@ -3,7 +3,7 @@ import { Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DocumentPreview from '@/Components/DocumentPreview';
-import { announcePrint } from '@/Components/PrintReceiptButton';
+import { announcePrint, announceReady, SHARE_LABEL } from '@/Components/PrintReceiptButton';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
@@ -84,6 +84,29 @@ export default function ReceiptPreviewButton({
 
     useEffect(() => () => flight.current?.abort(), []);
 
+    /*
+     * وفي الآيفون والآيباد يُجهَّز الملفُّ حين تُفتح المعاينة — فتفتح «طباعة أو
+     * مشاركة PDF» قائمةَ المشاركة في ضغطتها. وزرُّها ينتظر حتى يُجهَّز.
+     */
+    const sharing = printing.mode === 'share';
+    const prepareReceipt = printing.prepare;
+    const [preparing, setPreparing] = useState(false);
+    useEffect(() => {
+        if (!open || !sharing || printing.isReady(number)) return;
+        setPreparing(true);
+        void prepareReceipt(number, true).then((failed) => {
+            setPreparing(false);
+            if (failed) announcePrint(failed, t, () => void printing.print(number), () => void printing.openPdf(number));
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, sharing, number]);
+
+    // وضغطةٌ سبقت التجهيز — إشعارٌ بزرٍّ يفتح القائمة
+    useEffect(() => {
+        if (printing.state.stage === 'ready' && printing.state.invoice === number) announceReady(t, () => void printing.print(number));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [printing.state.stage, printing.state.invoice]);
+
     const show = async () => {
         if (loading) return;
 
@@ -150,6 +173,8 @@ export default function ReceiptPreviewButton({
                     filename={`${number}.pdf`}
                     open={open}
                     onOpenChange={setOpen}
+                    printLabel={sharing ? t(SHARE_LABEL) : undefined}
+                    printPending={sharing && preparing}
                     /*
                      * وفي تطبيق أبعاد تُطبع على طابعة الصندوق مباشرةً، وفي
                      * المتصفّح يُطلب حوارُ الطباعة على الـPDF نفسِه والمعاينةُ

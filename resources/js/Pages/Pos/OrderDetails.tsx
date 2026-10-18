@@ -133,7 +133,7 @@ export default function PosOrderDetails() {
                             </Button>
                         )}
                         {/* والطباعةُ من `lib/printing` — مباشرةً في تطبيق أبعاد، وفي مكانها في المتصفّح */}
-                        <PrintReceiptButton number={order.id} inPage />
+                        <PrintReceiptButton number={order.id} inPage prefetch />
                     </div>
                 </div>
 

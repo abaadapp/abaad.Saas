@@ -1,5 +1,6 @@
 import { callBridge, failure, nativeBridge } from './bridge';
-import { printPdfInPage } from './page-print';
+import { inPagePrintSupported, printPdfInPage } from './page-print';
+import { preparedReceipt, sharePrintSupported, shareReceipt } from './share-print';
 import type { PrintErrorCode, PrinterLike, PrinterTarget, PrintOutcome, PrintStage } from './types';
 
 /**
@@ -13,8 +14,12 @@ import type { PrintErrorCode, PrinterLike, PrinterTarget, PrintOutcome, PrintSta
  *   - **تطبيقُ أبعاد + طابعةٌ ليست على الشبكة:** حوارُ الطباعة في نظام
  *     الجهاز. فالنوافذُ المنبثقة لا تُفتح داخل التطبيق.
  *   - **المتصفّح:** لسانُ الـPDF كما كان تمامًا — إلّا حيث تطلب الشاشةُ
- *     الطباعةَ داخل الصفحة (`inPage`، نقطةُ البيع): حوارُ الطباعة على الـPDF
- *     نفسِه في إطارٍ مخفيّ، والكاشيرُ في شاشته (`page-print`).
+ *     الطباعةَ داخل الصفحة (`inPage`، نقطةُ البيع)، والكاشيرُ في شاشته:
+ *       - Chrome وEdge على الحاسوب: حوارُ الطباعة على الـPDF نفسِه في إطارٍ
+ *         مخفيّ (`page-print`).
+ *       - الآيفون والآيباد: قائمةُ المشاركة بالـPDF نفسِه، وفيها «طباعة»
+ *         (`share-print`).
+ *       - وما سواهما: يُقال إنّه لا يُطبع من الصفحة، ومعه «فتح PDF».
  *
  * والإيصالُ واحدٌ في الثلاثة: `PdfController::orderThermal`. لا يُعاد حسابُ
  * فاتورةٍ ولا تنسيقُها في أيّ تطبيق.
@@ -117,12 +122,49 @@ export async function printReceipt(request: ReceiptRequest): Promise<PrintOutcom
     if (bridge) return openReceiptFile(request);
 
     // ونقطةُ البيع تطبع في مكانها — وحيث لا يُضمن ذلك يُقال، ولا لسانَ يُفتح وحده
-    if (request.inPage) return printPdfInPage(request.url);
+    if (request.inPage) return printInPage(request);
 
     // والمتصفّحُ كما كان: لسانٌ جديد، و`noopener` كما كان
     window.open(request.url, '_blank', 'noopener');
 
     return { ok: true, via: 'browser' };
+}
+
+/**
+ * طريقُ الطباعة في الصفحة على هذا الجهاز — يُسأل خارج التطبيق وحده.
+ *
+ *   - `frame` حوارُ الطباعة على إطارٍ مخفيّ (Chrome · Edge على الحاسوب).
+ *   - `share` قائمةُ المشاركة (الآيفون والآيباد بملفّات).
+ *   - `none` لا هذا ولا ذاك — «فتح PDF».
+ */
+export type PageMode = 'frame' | 'share' | 'none';
+
+export function pagePrintMode(): PageMode {
+    if (inPagePrintSupported()) return 'frame';
+    if (sharePrintSupported()) return 'share';
+
+    return 'none';
+}
+
+/**
+ * الطباعةُ في الصفحة — والمشاركةُ تُفتح في الضغطة نفسِها.
+ *
+ * لا `async` هنا ولا `await` قبل `shareReceipt`: الضغطةُ تصل إلى
+ * `navigator.share` متزامنةً. والملفُّ لم يُجهَّز بعد ← `SHARE_FAILED` لا تنزيلٌ
+ * هنا: التجهيزُ قبل الضغطة (`useReceiptPrint`).
+ */
+function printInPage(request: ReceiptRequest): Promise<PrintOutcome> {
+    switch (pagePrintMode()) {
+        case 'frame':
+            return printPdfInPage(request.url);
+        case 'share': {
+            const file = preparedReceipt(request.url);
+
+            return file ? shareReceipt(file, request.invoice) : Promise.resolve({ ...failure('SHARE_FAILED'), via: 'share' });
+        }
+        default:
+            return Promise.resolve({ ...failure('IN_PAGE_UNSUPPORTED'), via: 'page' });
+    }
 }
 
 /** «فتح PDF» — الملفُّ نفسُه، بحوار النظام في التطبيق وبلسانٍ في المتصفّح */
@@ -284,6 +326,12 @@ export function failureMessage(code: PrintErrorCode, t: Translate): string {
             return t('هذا المتصفح لا يطبع الفاتورة من داخل الصفحة — افتح PDF واطبعها منه.');
         case 'PRINT_DIALOG_FAILED':
             return t('لم يُفتح حوار الطباعة — أعد المحاولة أو افتح PDF.');
+        case 'SHARE_BLOCKED':
+            return t('لم تُفتح قائمة المشاركة — اضغط «طباعة أو مشاركة PDF» مرّة أخرى.');
+        case 'SHARE_FAILED':
+            return t('تعذّرت مشاركة الإيصال — افتح PDF واطبعه منه.');
+        case 'SHARE_CANCELLED':
+            return t('أُغلقت قائمة المشاركة.');
         case 'UNTRUSTED_ORIGIN':
         case 'INVALID_JOB':
         case 'RECEIPT_URL_REJECTED':
@@ -305,6 +353,8 @@ export function stageMessage(stage: PrintStage, t: Translate): string {
             return t('جارٍ الطباعة…');
         case 'success':
             return t('تمت طباعة الإيصال');
+        case 'ready':
+            return t('الإيصال جاهز — اختر «طباعة» من قائمة المشاركة.');
         default:
             return '';
     }
@@ -316,6 +366,17 @@ export function stageMessage(stage: PrintStage, t: Translate): string {
  */
 export function retryable(outcome: PrintOutcome | null | undefined): boolean {
     return !(outcome && !outcome.ok && outcome.code === 'IN_PAGE_UNSUPPORTED');
+}
+
+/**
+ * أيُسكت عنه؟ — لا «طُبع» عن حوارٍ فُتح أو قائمةٍ اكتملت، ولا خطأَ عن قائمةٍ
+ * أغلقها الكاشيرُ بنفسه.
+ */
+export function quietOutcome(outcome: PrintOutcome | null | undefined): boolean {
+    if (!outcome || outcome.via === 'browser') return true;
+    if (outcome.ok) return outcome.via === 'page' || outcome.via === 'share';
+
+    return outcome.code === 'SHARE_CANCELLED';
 }
 
 /** الأولى أن يُعاد؟ — ما بلغ الطابعةَ بعضُه لا يُعاد بلا قرار، ولا يُعاد تلقائيًّا أصلًا */

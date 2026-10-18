@@ -7742,5 +7742,10 @@
     "يُطبع سند تسليم طلبات المتجر الإلكتروني على طابعة الصندوق (58 أو 80 مم) بدل ورقة A4. طلبات نقطة البيع تبقى كما هي.": "Website orders print their delivery note on the till printer (58 or 80 mm) instead of A4 paper. Point-of-sale orders stay as they are.",
     "رسالة البطاقة قد تحتوي على اسمك أو رقمك مع أنك اخترت إخفاء اسم المرسل — عدّلها أو أكّد إرسالها كما هي.": "Your card message may include your name or phone number, even though you chose to hide your name — edit it or confirm sending it as it is.",
     "هذا المتصفح لا يطبع الفاتورة من داخل الصفحة — افتح PDF واطبعها منه.": "This browser can't print the receipt from inside the page — open the PDF and print it from there.",
-    "لم يُفتح حوار الطباعة — أعد المحاولة أو افتح PDF.": "The print dialog didn't open — try again or open the PDF."
+    "لم يُفتح حوار الطباعة — أعد المحاولة أو افتح PDF.": "The print dialog didn't open — try again or open the PDF.",
+    "طباعة أو مشاركة PDF": "Print or share PDF",
+    "الإيصال جاهز — اختر «طباعة» من قائمة المشاركة.": "The receipt is ready — choose “Print” from the share sheet.",
+    "لم تُفتح قائمة المشاركة — اضغط «طباعة أو مشاركة PDF» مرّة أخرى.": "The share sheet didn't open — tap “Print or share PDF” again.",
+    "تعذّرت مشاركة الإيصال — افتح PDF واطبعه منه.": "The receipt couldn't be shared — open the PDF and print it from there.",
+    "أُغلقت قائمة المشاركة.": "The share sheet was closed."
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Banknote, Check, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer, X } from 'lucide-react';
+import { Banknote, Check, CheckCircle, ChevronDown, CreditCard, Landmark, Plus, Printer, Share, X } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import {
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useTenantLink } from '@/lib/exportLink';
 import { abandonAutoPrint, commitAutoPrint, prepareAutoPrint } from '@/lib/printing/printer-service';
 import PrintStatus from '@/Components/PrintStatus';
+import { SHARE_LABEL } from '@/Components/PrintReceiptButton';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
 import ReceiptPreviewButton from './ReceiptPreview';
 import type { CheckoutResult } from '@/hooks/usePosCart';
@@ -84,9 +85,11 @@ export default function PaymentDialog({
      * طابعة هذا الصندوق وحدها — لا طابعة صندوقٍ آخر في الفرع نفسه.
      *
      * والطباعةُ كلُّها من `lib/printing`: في تطبيق أبعاد مع طابعة شبكة تُرسل
-     * مباشرةً، وفي المتصفّح تُفتح الورقةُ في لسانٍ كما كانت.
+     * مباشرةً. وفي المتصفّح: «طباعة الفاتورة» تطلب حوارَ الطباعة في مكانها
+     * (`inPage`)، والطباعةُ التلقائيّة على نافذتها المحضَّرة كما كانت —
+     * `run` تُنادى منها بلا `inPage`.
      */
-    const printing = useReceiptPrint('pos.receipt.pdf');
+    const printing = useReceiptPrint('pos.receipt.pdf', { inPage: true });
     const METHODS = methods?.length
         ? ALL_METHODS.filter((m) => methods.includes(m.value))
         : ALL_METHODS;
@@ -174,6 +177,17 @@ export default function PaymentDialog({
             resetPrinting();
         }
     }, [open, resetPrinting]);
+
+    /*
+     * وفي الآيفون والآيباد يُجهَّز إيصالُ البيعة لقائمة المشاركة حين تظهر
+     * شاشةُ النجاح — فتفتحها ضغطةُ «طباعة أو مشاركة PDF» بلا انتظار. تنزيلٌ
+     * لا غير: لا قائمةَ تُفتح وحدها، ولا شأنَ له بالطباعة التلقائيّة.
+     */
+    const prepareReceipt = printing.prepare;
+    const saleInvoice = result?.synced ? result.invoice : null;
+    useEffect(() => {
+        if (saleInvoice && printing.mode === 'share') void prepareReceipt(saleInvoice, true);
+    }, [saleInvoice, printing.mode, prepareReceipt]);
 
     // خيارات الخادم تسبق المحليّة: إعادة تحميل الصفحة تعيد القائمة الصحيحة
     useEffect(() => {
@@ -782,14 +796,15 @@ export default function PaymentDialog({
                                     disabled={printing.busy}
                                     /*
                                      * والطباعةُ من `lib/printing`: مباشرةً في
-                                     * التطبيق، ولسانٌ جديد في المتصفّح كما كان.
+                                     * التطبيق، وحوارُ الطباعة في مكانه في المتصفّح
+                                     * — والكاشيرُ في شاشة النجاح لا يغادرها.
                                      * و`route()` لا رابطٌ مكتوبٌ باليد — نسخةٌ
                                      * ثانية للمسار تفترق يومًا يُبدَّل.
                                      */
                                     onClick={() => void printing.print(result.invoice!)}
                                 >
-                                    <Printer />
-                                    {t('طباعة الفاتورة')}
+                                    {printing.mode === 'share' ? <Share /> : <Printer />}
+                                    {printing.mode === 'share' ? t(SHARE_LABEL) : t('طباعة الفاتورة')}
                                 </Button>
                             )}
                             <Button

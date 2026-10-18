@@ -15,7 +15,9 @@ export type PrintStage =
     | 'rendering'
     | 'sending'
     | 'success'
-    | 'failed';
+    | 'failed'
+    // من جهة الويب: إيصالٌ جُهّز لقائمة المشاركة وينتظر ضغطةً تفتحها (`share-print`)
+    | 'ready';
 
 /** رموزُ الفشل — جدولُ PROTOCOL §8، وما يضيفه الويب في آخره */
 export type PrintErrorCode =
@@ -38,7 +40,14 @@ export type PrintErrorCode =
     | 'BRIDGE_UNAVAILABLE'
     // من جهة الويب: لا تطبيقَ على هذا الجهاز، أو منع المتصفّحُ النافذة
     | 'NATIVE_REQUIRED'
-    | 'POPUP_BLOCKED';
+    | 'POPUP_BLOCKED'
+    // والطباعةُ داخل الصفحة (`page-print`): متصفّحٌ لا يطبع PDF من إطار، أو حوارٌ لم يُفتح
+    | 'IN_PAGE_UNSUPPORTED'
+    | 'PRINT_DIALOG_FAILED'
+    // وقائمةُ المشاركة في الآيفون والآيباد: أغلقها الكاشير، أو فاتت الضغطة، أو رُفض الملفّ
+    | 'SHARE_CANCELLED'
+    | 'SHARE_BLOCKED'
+    | 'SHARE_FAILED';
 
 /** طابعةُ الشبكة كما تُرسل إلى التطبيق — والتطبيقُ يتحقّق منها كلِّها من جديد */
 export interface PrinterTarget {
@@ -94,8 +103,12 @@ export type BridgeResult =
  *  - `native` مباشرةً من التطبيق إلى طابعة الشبكة.
  *  - `system` حوارُ الطباعة في نظام الجهاز (التطبيقُ وطابعةٌ ليست على الشبكة).
  *  - `browser` لسانُ الـPDF في المتصفّح — كما كان.
+ *  - `page` حوارُ طباعة المتصفّح على الـPDF نفسِه في إطارٍ مخفيّ، والكاشيرُ
+ *    في شاشته (`page-print`). وفتحُ الحوار ليس طباعة: لا يُقال «طُبع» عنه.
+ *  - `share` قائمةُ المشاركة بالـPDF نفسِه في الآيفون والآيباد (`share-print`)
+ *    — وفيها «طباعة» عادةً. واكتمالُها ليس طباعة كذلك.
  */
-export type PrintVia = 'native' | 'system' | 'browser';
+export type PrintVia = 'native' | 'system' | 'browser' | 'page' | 'share';
 
 export type PrintOutcome = BridgeResult & { via: PrintVia };
 

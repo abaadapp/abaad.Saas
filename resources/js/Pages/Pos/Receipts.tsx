@@ -132,8 +132,8 @@ export default function PosReceipts() {
             key: 'print',
             header: '',
             align: 'end',
-            // والطباعةُ من `lib/printing` — مباشرةً في تطبيق أبعاد، ولسانٌ في المتصفّح
-            cell: (r) => <PrintReceiptButton number={r.number} iconOnly variant="ghost" size="icon-sm" />,
+            // والطباعةُ من `lib/printing` — مباشرةً في تطبيق أبعاد، وفي مكانها في المتصفّح
+            cell: (r) => <PrintReceiptButton number={r.number} iconOnly variant="ghost" size="icon-sm" inPage />,
         },
     ];
 
@@ -254,7 +254,8 @@ export default function PosReceipts() {
                             {/* والورقةُ تُرى هنا ولا يُغادَر إليها — انظر `partials/ReceiptPreview` */}
                             <ReceiptPreviewButton number={open.number} className="mt-4 w-full rounded-full" />
 
-                            <PrintReceiptButton number={open.number} inline className="mt-2 w-full rounded-full" />
+                            {/* و`prefetch`: الدرجُ فُتح لهذه الفاتورة، فيُجهَّز ملفُّها لقائمة المشاركة في الآيفون والآيباد */}
+                            <PrintReceiptButton number={open.number} inline inPage prefetch className="mt-2 w-full rounded-full" />
                         </div>
                     )}
                 </DialogContent>

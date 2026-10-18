@@ -111,9 +111,12 @@ describe('معاينة فاتورة نقطة البيع', () => {
     /*
      * والأفعالُ الثلاثة تبقى مفروزة.
      *
-     * معاينةٌ تُري ولا تُنزل، وطباعةٌ تفتح الملفّ، وتحميلٌ يحفظه. وزرُّ
+     * معاينةٌ تُري ولا تُنزل، وطباعةٌ تطلب حوارَ الطباعة، وتحميلٌ يحفظه. وزرُّ
      * المعاينة الذي يُنزل ملفًّا يجعل الكاشير يجمع في «التنزيلات» ورقةً عن
      * كلّ زبونٍ سأل «أصحيحةٌ فاتورتي؟».
+     *
+     * و«طباعة» زرٌّ لا رابطٌ إلى لسان: تُطبع الفاتورةُ في مكانها والمعاينةُ
+     * مفتوحة — انظر `the-till-prints-without-leaving-the-page`.
      */
     it('وتفرّق معاينةً وطباعةً وتحميلًا — ولا تُنزل شيئًا بنفسها', async () => {
         render(screenUnder);
@@ -124,10 +127,10 @@ describe('معاينة فاتورة نقطة البيع', () => {
 
         const { dialog } = await openPreview();
 
-        const print = within(dialog).getByRole('link', { name: /طباعة/ });
-        expect(print.getAttribute('href')).toContain('pos.receipt.pdf');
-        expect(print).toHaveAttribute('target', '_blank');
+        const print = within(dialog).getByRole('button', { name: /طباعة/ });
+        expect(print).not.toHaveAttribute('href');
         expect(print).not.toHaveAttribute('download');
+        expect(within(dialog).queryByRole('link', { name: /^طباعة$/ })).toBeNull();
 
         const download = within(dialog).getByRole('link', { name: /تحميل/ });
         expect(download.getAttribute('href')).toContain('pos.receipt.pdf');

@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Support\CrmWebsiteInquiries;
 use App\Support\CrmWhatsApp;
 use App\Support\Boutiques;
+use App\Support\CustomerInvoicePreparations;
 use App\Support\Demo;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
@@ -166,6 +167,15 @@ class HandleInertiaRequests extends Middleware
                          */
                         'autoPrintWebsite' => (bool) $p->auto_print_website_confirm
                             && (int) $p->business_id === (int) $user->business_id,
+                        /*
+                         * وفواتيرُ العملاء المسدَّدة — الصندوقُ يسأل طابورَه (`PrintJobs`).
+                         * وبالشرط نفسِه: صندوقُ متجرٍ آخر لا يسأل طابورَ هذا. ومتجرٌ
+                         * أُغلق له التجهيزُ بعد السداد لا يسأل أصلًا — والخادمُ يردّ
+                         * «لا شيء» لو سأل (`PrintJobs::serves`).
+                         */
+                        'autoPrintCustomerInvoices' => (bool) $p->auto_print_customer_invoices
+                            && (int) $p->business_id === (int) $user->business_id
+                            && CustomerInvoicePreparations::on((int) $user->business_id),
                     ])->values()->all() ?? [],
                 'currency' => Demo::displayCurrency(),
                 'currencies' => collect(Demo::currencies())->where('active', true)->values()->all(),
@@ -311,6 +321,8 @@ class HandleInertiaRequests extends Middleware
                  * صفٌّ للعرض (`PaymentLinks::row`) لا سرَّ فيه.
                  */
                 'paymentLink' => $request->session()->get('paymentLink'),
+                // وأكان مع إصدار الفاتورة نفسِه — «تم إصدار الفاتورة وإنشاء رابط الدفع»
+                'paymentLinkIssued' => (bool) $request->session()->get('paymentLinkIssued'),
             ],
 
             // الرمز الخام مع كل استجابة: وسم <meta> يُطبع مرّة عند أول تحميل

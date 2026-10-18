@@ -50,6 +50,8 @@ export interface BusinessValues {
     order_notes_and_edits_enabled?: boolean;
     /** سندُ التسليم على شريط الصندوق لطلبات الموقع — الغائبُ مغلق (`DeliveryPaper::thermalOn`) */
     thermal_delivery_note_enabled?: boolean;
+    /** تجهيزُ فواتير العملاء بعد الدفع — الغائبُ مغلق (`CustomerInvoicePreparations::on`) */
+    customer_invoice_preparation_enabled?: boolean;
 }
 
 /* النطاق ومكوّنه في مكانٍ واحد — انظر Components/ui/username-input */
@@ -524,6 +526,25 @@ export default function BusinessForm({
                             <span className="block text-sm text-[#374151]">{t('سند التسليم الحراري لطلبات الموقع')}</span>
                             <span className="block text-[12px] text-[#9ca3af]">
                                 {t('يُطبع سند تسليم طلبات المتجر الإلكتروني على طابعة الصندوق (58 أو 80 مم) بدل ورقة A4. طلبات نقطة البيع تبقى كما هي.')}
+                            </span>
+                        </span>
+                    </label>
+
+                    {/*
+                        وتجهيزُ فواتير العملاء بعد الدفع — مفتاحٌ يُفتح لنشاطٍ بعينه
+                        (`CustomerInvoicePreparations::on`). والتاجرُ لا يفتحه لنفسه.
+                    */}
+                    <label className="flex cursor-pointer items-start gap-2.5 sm:col-span-2" data-testid="customer-invoice-preparation-enabled">
+                        <input
+                            type="checkbox"
+                            checked={form.data.customer_invoice_preparation_enabled ?? false}
+                            onChange={(e) => form.setData('customer_invoice_preparation_enabled', e.target.checked)}
+                            className="mt-0.5 size-4 rounded border-[#d1d5db] accent-[#111]"
+                        />
+                        <span>
+                            <span className="block text-sm text-[#374151]">{t('تجهيز فواتير العملاء بعد الدفع')}</span>
+                            <span className="block text-[12px] text-[#9ca3af]">
+                                {t('فاتورة العميل التي يُطلب تجهيزها تظهر في لوحة التجهيز بعد سدادها كاملًا عبر رابط الدفع، وتُطبع لها نسخة داخلية على صندوق الفرع وسند تسليم يدويًا.')}
                             </span>
                         </span>
                     </label>

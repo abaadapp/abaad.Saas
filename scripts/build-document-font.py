@@ -28,11 +28,16 @@
     python3 scripts/build-document-font.py
 
 يقرأ `public/fonts/ibmpsa-*.woff2` ويكتب `resources/fonts/*.ttf`.
+
+    python3 scripts/build-document-font.py --patch
+
+يُصلح المسافةَ على الملفّين الملتزَمين وحدها، بلا إعادة بناء (`keep_spaces`).
 وتُلتزَم المخرجاتُ في المستودع: الخادمُ لا يبني خطوطًا عند النشر.
 """
 
 import os
 import sys
+import unicodedata
 
 from fontTools.merge import Merger
 from fontTools.ttLib import TTFont
@@ -79,6 +84,53 @@ def rename(font: TTFont, subfamily: str) -> None:
             record.string = ps
 
 
+def keep_spaces(font: TTFont) -> int:
+    """
+    والمسافةُ تبقى مسافة — لا يستبدلها الدمجُ بنسخةٍ لا رقمَ لها.
+
+    ═══ العطب ═══
+
+    كلُّ مقطعٍ من مقاطع غوغل يحمل مسافتَه، والدامجُ يُبقي واحدةً في جدول
+    الحروف (`cmap`) ويكتب قاعدة `locl` تُبدّل المسافةَ بنسخة المقطع الآخر
+    (`space` ← `space.3`): الشكلُ نفسُه (لا خطوط) والعرضُ نفسُه. ولا رقمَ
+    يونيكود للنسخة، فيعطيها mpdf رقمًا في المنطقة الخاصّة (U+E28D، والغليظ
+    U+E288) — فلا تبقى في السطر المُشكَّل مسافةٌ واحدة.
+
+    ومُقطِّعُ الأسطر في mpdf لا يكسر إلّا عند `' '`: فلا يجد موضعَ كسرٍ في
+    العبارة العربيّة كلِّها، ويقطع الكلمةَ حيث امتلأ السطر («تغلي» ثمّ «ف
+    ذهبي»)، ويرى العبارةَ في الجدول كلمةً واحدة فيُصغّر الجدولَ كلَّه بدل أن
+    يلفّها.
+
+    فتُحذف من قواعد الاستبدال المفردة مسافاتُ الدمج وحدها: مصدرٌ رقمُه في
+    `cmap` مسافةٌ أو حرفُ تحكّم، ونسختُه بلا خطوط وبعرضه نفسِه. وعلاماتُ
+    التشكيل في القاعدة نفسِها تبقى — نسخُها قد تحمل مراسيَ تموضعٍ أخرى.
+    """
+    cmap = font.getBestCmap()
+    glyf = font['glyf']
+    hmtx = font['hmtx']
+    blank = {
+        name for code, name in cmap.items()
+        if unicodedata.category(chr(code)) in ('Zs', 'Cc')
+    } | {'.null'}
+
+    def same_blank(a: str, b: str) -> bool:
+        return (b in glyf.keys() and glyf[a].numberOfContours == 0 and glyf[b].numberOfContours == 0
+                and hmtx[a] == hmtx[b])
+
+    dropped = 0
+    for lookup in font['GSUB'].table.LookupList.Lookup:
+        for sub in lookup.SubTable:
+            table = sub.ExtSubTable if lookup.LookupType == 7 else sub
+            mapping = getattr(table, 'mapping', None)
+            if lookup.LookupType not in (1, 7) or not mapping:
+                continue
+            for src in [s for s in mapping if s in blank and same_blank(s, mapping[s])]:
+                del mapping[src]
+                dropped += 1
+
+    return dropped
+
+
 def build(out_name: str, parts: list[int]) -> None:
     paths = [os.path.join(SRC, f'ibmpsa-{n}.woff2') for n in parts]
 
@@ -103,6 +155,7 @@ def build(out_name: str, parts: list[int]) -> None:
         merged = Merger().merge(tmp)
         subfamily = 'Bold' if 'Bold' in out_name else 'Regular'
         rename(merged, subfamily)
+        keep_spaces(merged)
 
         os.makedirs(OUT, exist_ok=True)
         target = os.path.join(OUT, out_name)
@@ -116,6 +169,20 @@ def build(out_name: str, parts: list[int]) -> None:
             os.path.exists(path) and os.remove(path)
 
 
+def patch(out_name: str) -> None:
+    """
+    `--patch`: إصلاحُ المسافة على الملفّ الملتزَم نفسِه، بلا إعادة بنائه.
+
+    إعادةُ البناء من المقاطع قد تُخرج جداولَ أخرى بإصدارٍ آخر من fontTools —
+    والمطلوبُ قاعدةٌ واحدة تُحذف، لا خطٌّ يتبدّل كلُّه.
+    """
+    target = os.path.join(OUT, out_name)
+    font = TTFont(target)
+    dropped = keep_spaces(font)
+    font.save(target)
+    print('%-34s dropped=%d %dK' % (out_name, dropped, os.path.getsize(target) // 1024))
+
+
 if __name__ == '__main__':
     for name, parts in WEIGHTS.items():
-        build(name, parts)
+        patch(name) if '--patch' in sys.argv else build(name, parts)

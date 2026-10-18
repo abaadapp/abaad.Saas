@@ -102,6 +102,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['العملاء', 'post', 'admin.customers.language', ['id' => 'customer']],
                 ['العملاء', 'post', 'admin.customers.note', ['id' => 'customer']],
                 ['العملاء', 'post', 'admin.customers.redeem', ['id' => 'customer']],
+                // وطلبُ دفعةٍ برابط — لعميلٍ من المتجر نفسِه وحده (`PaymentRequestController`)
+                ['العملاء', 'post', 'admin.customers.paymentLink', ['id' => 'customer']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.save', ['id' => 'customer']],
                 ['عناوين العميل', 'post', 'admin.customers.addresses.default', ['id' => 'customer', 'addressId' => 'address'], ['id']],
                 ['عناوين العميل', 'delete', 'admin.customers.addresses.delete', ['id' => 'customer', 'addressId' => 'address'], ['id']],
@@ -129,6 +131,12 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.cancel', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.creditNote', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.remind', ['id' => 'invoice']],
+                // ورابطُ دفع الفاتورة — على فاتورةٍ من المتجر نفسِه وحده
+                ['فواتير العملاء', 'post', 'admin.customerInvoices.paymentLink', ['id' => 'invoice']],
+                // والتجهيزُ بعد السداد — على فاتورةٍ من المتجر نفسِه وحده
+                ['فواتير العملاء', 'post', 'admin.customerInvoices.preparation.save', ['id' => 'invoice']],
+                ['فواتير العملاء', 'delete', 'admin.customerInvoices.preparation.remove', ['id' => 'invoice']],
+                ['فواتير العملاء', 'post', 'admin.customerInvoices.preparation.activate', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.attach', ['id' => 'invoice']],
                 ['فواتير العملاء', 'delete', 'admin.customerInvoices.detach', ['id' => 'invoice', 'attachment' => 'invoice_attachment'], ['id']],
                 ['سندات القبض', 'post', 'admin.customerPayments.cancel', ['id' => 'payment']],
@@ -364,6 +372,11 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
         'admin.settings.templates.preview' => 'مثلُه',
         'admin.help.reply' => 'محادثاتُ الدعم تُقرأ بـ`Support::visibleTo` — حارسُها في اختبارات الدعم',
         'admin.integrations.googleBusiness.reply' => '{review} مراجعةُ Google لا تُنشأ بلا حسابٍ مربوط — مقيّدةٌ بفروع المتجر (GoogleBusinessController:164)',
+        'admin.preparation.invoiceMove' => '{id} مهمّةُ تجهيزِ فاتورةٍ تظهر بسدادٍ موثَّق — مقيّدةٌ بمتجر الجلسة وفرعه (CustomerInvoicePreparations::board)، وحارسُها `TheBoardPreparesAPaidCustomerInvoiceTest::test_another_shop_neither_sees_nor_touches_the_task`',
+        'admin.preparation.invoiceRequeue' => 'مثلُه — والورقةُ من مهمّة المتجر نفسِه (`APaidCustomerInvoicePrintsOnceAtItsTillTest`)',
+        'admin.preparation.invoicePrintConfirm' => 'مثلُه — وحارسُها `APaperNeverWaitsOnAGoneTillTest::test_a_neighbours_till_is_never_a_target_and_its_cookie_opens_nothing_here`',
+        'pos.printJobs.ack' => '{id} ورقةُ طابورٍ يحجزها صندوقٌ — لا يكتب عليها إلّا صندوقُها ومتجرُها (`PrintJobs::acknowledge`)، وحارسُها `APaidCustomerInvoicePrintsOnceAtItsTillTest::test_two_tills_never_share_one_paper`',
+        'pos.printJobs.confirm' => '{id} ورقةٌ فتح صندوقٌ حوارَها — لا يجيب عنها إلّا صندوقُها ومتجرُها (`PrintJobs::confirmPrinted`·`notPrinted`)، وحارسُها `AnOpenedPrintDialogIsNotAPrintedPaperTest::test_only_the_till_that_opened_the_dialog_answers_for_it`',
     ];
 
     public function test_no_id_door_is_left_out(): void

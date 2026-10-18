@@ -82,6 +82,8 @@ class PosTerminal
 
         if ($device) {
             $device->update($columns);
+            // وصفٌّ قائمٌ أُحيي على فرعٍ آخر لا يحمل ورقَ فرعه القديم (`PrintJobs::release`)
+            PrintJobs::release($device);
         } else {
             $device = PosDevice::create($columns);
         }
@@ -132,6 +134,13 @@ class PosTerminal
             'status' => PosDevice::REVOKED,
             'token_hash' => hash('sha256', Str::random(64)),
         ]);
+
+        /*
+         * وورقُه المنتظِر في طابور الطباعة لا يعلق عليه: يُوجَّه إلى صندوقٍ
+         * معيَّنٍ في فرعها، أو يبقى لفرعها كلِّه. والإلغاءُ هنا يقع بيدٍ
+         * (`DeviceController::revoke`) وبنقل الجهاز إلى فرعٍ آخر — كلاهما.
+         */
+        PrintJobs::release($device);
     }
 
     /** يفك ارتباط هذا المتصفّح بالجهاز (لا يمسّ السجلّ) */

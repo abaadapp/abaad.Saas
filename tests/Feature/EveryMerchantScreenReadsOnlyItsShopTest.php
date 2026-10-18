@@ -288,6 +288,10 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.customerInvoices.creditNotes.pdf' => 'مثلُه (DocumentPrintController:86)',
         'admin.help.show' => 'محادثاتُ الدعم — `Support::visibleTo`',
         'admin.help.attachment' => 'مثلُه',
+        'admin.preparation.invoiceDeliveryNote' => '{id} مهمّةُ تجهيزِ فاتورةٍ تظهر بسدادٍ موثَّق — مقيّدةٌ بمتجر الجلسة وفرعه (CustomerInvoicePreparations::board)، وحارسُها `TheBoardPreparesAPaidCustomerInvoiceTest::test_another_shop_neither_sees_nor_touches_the_task`',
+        'admin.preparation.invoiceInternalPdf' => 'مثلُه',
+        'admin.preparation.invoiceTimeline' => 'مثلُه',
+        'pos.printJobs.pdf' => '{id} ورقةُ طابورٍ تُنزَّل لصندوقها الذي حجزها وحده — `APaidCustomerInvoicePrintsOnceAtItsTillTest::test_a_till_of_another_shop_cannot_download_a_paper`',
         'admin.marketing.whatsapp.conversations.older' => '{message} رسالةٌ — يُبدأ من المتجر والرقم الحاليّ، وحارسُه `WhatsAppConversationsTest::test_the_same_phone_in_two_shops_stays_two_and_a_foreign_message_id_is_404`',
     ];
 

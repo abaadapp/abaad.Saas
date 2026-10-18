@@ -88,9 +88,32 @@
         text-align: {{ $start }}; font-size: {{ $pt(7) }};
         border-bottom: 0.6pt solid #000; padding: 2pt 0;
     }
-    .items td { font-size: {{ $pt(7.4) }}; padding: 2pt 0; border-bottom: 0.4pt dotted #999; }
+    /*
+        والمبلغُ بجانب أوّل سطرٍ من اسمه.
+
+        منذ صار الاسمُ الطويل يلتفّ بين كلماته (`keep_spaces` في
+        `scripts/build-document-font.py`) صار الصفُّ أسطرًا، وmpdf يوسّط
+        الخلايا افتراضًا — ويوسّط بعضَها دون بعض: على الإيصال الإنجليزيّ كانت
+        الكميّةُ تنزل إلى وسط الصفّ والسعرُ والإجماليّ في أوّله.
+    */
+    .items td { font-size: {{ $pt(7.4) }}; padding: 2pt 0; border-bottom: 0.4pt dotted #999; vertical-align: top; }
     /* الصنفُ لا يُقصّ: طابعةٌ بلا صفحات، فالسطر يطول ولا ينكسر بينها */
     .items tr { page-break-inside: avoid; }
+    /*
+        وإضافةُ الصنف سطرٌ تحته لا صنفٌ آخر: أصغرُ، ولا خطَّ بينها وبينه —
+        والخطُّ بعد آخرها يفصل الصنفَ وإضافاتِه عمّا بعده.
+    */
+    .items td.joined { border-bottom: none; padding-bottom: 0.4pt; }
+    .items td.addon { font-size: {{ $pt(6.8) }}; padding: 0.3pt 0; border-bottom: none; }
+    .items td.addon-last { border-bottom: 0.4pt dotted #999; padding-bottom: 2pt; }
+    /*
+        وبين الاسم والسعر فسحة — بعد قواعد الإضافة لأنّ حشوتَها تُصفّر الجانبين.
+
+        الخلايا بلا حشوةٍ جانبيّة، فاسمٌ يلتفّ حتى آخر عموده يلامس السعرَ
+        الذي يليه («الأبيض12.500»). ونقطةٌ واحدة (ثلاثُ نقاطِ حبرٍ على طابعة
+        ٢٠٣ dpi) تفصلهما — وُزنت بأطول إيصالٍ مُختبَر فلم تُطِل ٨٠ مم.
+    */
+    .items td.name { padding-{{ $end }}: 1pt; }
 
     .tot td { padding: 1pt 0; font-size: {{ $pt(7.6) }}; }
     .tot .k { color: #333; }

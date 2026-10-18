@@ -15,6 +15,7 @@ use App\Support\Store\PaymobSettings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -168,12 +169,26 @@ final class PaymentLinks
                 'description' => $description ?? ($invoice ? __('فاتورة :n', ['n' => $invoice->number]) : null),
             ]);
         } catch (QuickLinkFailed $e) {
+            /*
+             * والفاشلُ يحفظ مهلتَه وما يُعرف عنه.
+             *
+             * فشلٌ «لا نعرف» (`uncertain`: انقطع الاتصال بعد الإرسال، أو خطأُ
+             * خادمٍ عند Paymob) قد يكون رابطًا أُنشئ هناك ولم يصلنا — فلا يُعاد
+             * الطلبُ وحده بعده ما دامت مهلتُه لم تنقضِ (`forInvoice`).
+             */
             CustomerPaymentLink::create($base + [
                 'status' => CustomerPaymentLink::FAILED,
                 'error' => Str::limit($e->getMessage(), 500),
+                'expires_at' => $expires,
+                'meta' => $e->uncertain ? ['uncertain' => true] : null,
             ]);
 
-            throw new RuntimeException(__('تعذّر إنشاء الرابط').' — '.$e->getMessage(), 0, $e);
+            throw new RuntimeException(
+                __('تعذّر إنشاء الرابط').' — '.$e->getMessage()
+                    .($e->uncertain ? ' '.__('وقد يكون أُنشئ عند Paymob دون أن يصلنا جوابُها.') : ''),
+                0,
+                $e,
+            );
         }
 
         $link = CustomerPaymentLink::create($base + [
@@ -191,6 +206,139 @@ final class PaymentLinks
             ]);
 
         return $link;
+    }
+
+    /**
+     * رابطُ دفعٍ لباقي فاتورة — يُعاد القائمُ ولا يُفتح ثانٍ فوقه.
+     *
+     * البابُ الذي يطلبه «إصدار الفاتورة وإنشاء رابط دفع» وزرُّ «إنشاء رابط
+     * دفع» في صفحتها و«المالية» حين تُختار فاتورة. ويُنادى **بعد** أن تُكتب
+     * الفاتورةُ وتُصدَر في معاملتها: طلبُ Paymob لا يقع داخل معاملة.
+     *
+     * ═══ ولا طلبان للمال نفسِه ═══
+     *
+     * - **رابطٌ قائمٌ بالمبلغ نفسِه** يُعاد كما هو (`[$link, true]`) — لا
+     *   رابطٌ ثانٍ عند Paymob. فضغطتان، أو إعادةُ الصفحة، أو تبويبان: رابطٌ واحد.
+     * - **رابطٌ قائمٌ بمبلغٍ آخر** (دُفع بعضُ الفاتورة نقدًا بعده مثلًا) يُردّ
+     *   بسببه: دفعُه ودفعُ الجديد يأخذان من العميل أكثرَ ممّا عليه. يُلغى
+     *   القائمُ أوّلًا ثمّ يُطلب.
+     * - **محاولةٌ سابقةٌ لا تُعرف نتيجتُها** (`uncertain`) لم تنقضِ مهلتُها:
+     *   قد يكون رابطُها عند Paymob. فلا يُعاد الطلبُ وحده — ويُعاد بقرارٍ
+     *   صريح (`$replaceUncertain`) ممّن يعرف أنّه سيرسل الجديدَ وحده.
+     * - **طلبان في اللحظة نفسِها** على الفاتورة نفسِها: قفلٌ يأخذه أحدُهما،
+     *   والآخرُ يُقال له «يُنشأ الآن». والقفلُ خارج كلّ معاملة.
+     *
+     * والملغى والمنتهي والفاشلُ المؤكَّد لا يمنعون: الباقي يُطلب برابطٍ جديد.
+     *
+     * @return array{0: CustomerPaymentLink, 1: bool} الرابطُ، وأكان قائمًا من قبل
+     */
+    public static function forInvoice(
+        CustomerInvoice $invoice,
+        ?int $userId = null,
+        ?float $amount = null,
+        ?string $description = null,
+        bool $replaceUncertain = false,
+        ?int $days = null,
+    ): array {
+        $lock = Cache::lock('payment-link:invoice:'.$invoice->id, 90);
+
+        if (! $lock->get()) {
+            throw new RuntimeException(__('يُنشأ رابطُ دفعٍ لهذه الفاتورة الآن — انتظر لحظة ثمّ حدّث الصفحة.'));
+        }
+
+        try {
+            $bid = (int) $invoice->business_id;
+            self::expireDue($bid);
+
+            $invoice = CustomerInvoice::where('business_id', $bid)->findOrFail($invoice->id);
+            $customer = Customer::withTrashed()->where('business_id', $bid)->findOrFail($invoice->customer_id);
+
+            $wanted = round((float) ($amount ?? $invoice->outstanding()), 3);
+
+            $open = CustomerPaymentLink::where('business_id', $bid)
+                ->where('customer_invoice_id', $invoice->id)
+                ->where('status', CustomerPaymentLink::PENDING)
+                ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+                ->latest('id')->get();
+
+            $same = $open->first(fn (CustomerPaymentLink $l) => abs((float) $l->amount - $wanted) < 0.0005);
+
+            if ($same) {
+                return [$same, true];
+            }
+
+            if ($open->isNotEmpty()) {
+                throw new RuntimeException(__('على الفاتورة رابطُ دفعٍ قائم بمبلغ :n لم يُدفع بعد — ألغه أوّلًا من «المالية ← روابط الدفع» قبل طلب مبلغٍ آخر، فلا يُطلب المالُ مرّتين.', [
+                    'n' => number_format((float) $open->first()->amount, 3),
+                ]));
+            }
+
+            $doubt = self::doubt($invoice);
+
+            if ($doubt && ! $replaceUncertain) {
+                throw new UncertainPaymentLink(__('لم تُعرف نتيجةُ المحاولة السابقة: انقطع الاتصال بـ Paymob، فقد يكون الرابطُ أُنشئ هناك دون أن يصلنا. لا يُعاد الطلبُ وحده — إن طلبت رابطًا جديدًا فأرسل الجديدَ وحده للعميل.'));
+            }
+
+            $link = self::create($bid, $customer, $invoice, $amount, $description, $userId, $days);
+
+            if ($doubt) {
+                $doubt->forceFill(['meta' => array_merge((array) $doubt->meta, ['replaced_by' => $link->id])])->save();
+                Activity::log('updated', 'طُلب رابطُ دفعٍ جديد للفاتورة '.$invoice->number.' بعد محاولةٍ لم تُعرف نتيجتُها — بقرار من طلبه', [
+                    'subject_id' => $link->id, 'subject_type' => 'customer_payment_link', 'business_id' => $bid,
+                ]);
+            }
+
+            return [$link, false];
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * آخرُ محاولةٍ فاشلةٍ لا تُعرف نتيجتُها — ما دامت مهلتُها لم تنقضِ ولم
+     * يُطلب بعدها رابطٌ قام.
+     */
+    public static function doubt(CustomerInvoice $invoice): ?CustomerPaymentLink
+    {
+        $failed = self::lastFailure($invoice);
+
+        if (! $failed || ! (($failed->meta ?? [])['uncertain'] ?? false) || isset(($failed->meta ?? [])['replaced_by'])) {
+            return null;
+        }
+
+        return $failed->expires_at === null || $failed->expires_at->isFuture() ? $failed : null;
+    }
+
+    /**
+     * آخرُ محاولةٍ لم تُعطِ رابطًا — إن لم يأتِ بعدها رابطٌ قام.
+     *
+     * تُرى في صفحة الفاتورة بعد التحديث: «أُصدرت ولم يُنشأ الرابط — لماذا،
+     * وأعِد المحاولة»، لا رسالةٌ عابرة تختفي بإعادة الصفحة.
+     */
+    public static function lastFailure(CustomerInvoice $invoice): ?CustomerPaymentLink
+    {
+        $last = CustomerPaymentLink::where('business_id', $invoice->business_id)
+            ->where('customer_invoice_id', $invoice->id)
+            ->latest('id')->first();
+
+        return $last && $last->status === CustomerPaymentLink::FAILED ? $last : null;
+    }
+
+    /** المحاولةُ الفاشلة كما تقرؤها صفحةُ الفاتورة — بلا سرّ */
+    public static function failureRow(?CustomerPaymentLink $failed): ?array
+    {
+        if (! $failed) {
+            return null;
+        }
+
+        $uncertain = (bool) (($failed->meta ?? [])['uncertain'] ?? false) && ! isset(($failed->meta ?? [])['replaced_by']);
+
+        return [
+            'error' => $failed->error,
+            'at' => optional($failed->created_at)->format('Y-m-d H:i'),
+            'uncertain' => $uncertain && ($failed->expires_at === null || $failed->expires_at->isFuture()),
+            'until' => optional($failed->expires_at)->format('Y-m-d H:i'),
+        ];
     }
 
     /**
@@ -303,8 +451,13 @@ final class PaymentLinks
 
         return [
             'ready' => self::ready($businessId),
-            // من يُرسل طلبَ دفعٍ يملك التحصيل — وبابُ الروابط «المالية»
-            'can' => (bool) ($user?->may(Permissions::CUSTOMER_PAYMENT_CREATE) && $user?->allows('finance')),
+            /*
+             * طلبُ الدفع برابطٍ فعلٌ باسمه (`PAYMENT_LINK_CREATE`) — لا «المالية»
+             * ولا التحصيل. وإلغاءُ رابطٍ قائم فعلٌ آخر: يبقى لمن يملك التحصيل
+             * وبابُه «المالية» كما كان — فمن يُمنح الطلبَ لا يُلغي روابطَ غيره.
+             */
+            'can' => (bool) $user?->may(Permissions::PAYMENT_LINK_CREATE),
+            'can_cancel' => (bool) ($user?->may(Permissions::CUSTOMER_PAYMENT_CREATE) && $user?->allows('finance')),
             'settings_url' => ($user?->allows('integrations') ?? false) ? route('admin.integrations.paymob') : null,
             'links' => $query->get()->map(fn (CustomerPaymentLink $l) => self::row($l))->all(),
         ];
@@ -399,6 +552,17 @@ final class PaymentLinks
         }
 
         self::settle($link, $transaction);
+
+        /*
+         * ═══ وبعد أن ثبت المال — لا في معاملته ═══
+         *
+         * فاتورةٌ طُلب تجهيزُها تظهر في لوحة التجهيز إن سُدّدت كلُّها
+         * (`CustomerInvoicePreparations`). وخارجَ معاملة `settle` عن قصد:
+         * سقوطٌ هناك يُسقط التحصيلَ معه، ويُقال لـPaymob «تمّ» عن مالٍ لم
+         * يُسجَّل. ولا يرمي، ويُنادى في الإشعار المكرّر أيضًا — فكلُّ إعادةٍ
+         * من Paymob محاولةٌ ثانيةٌ للتفعيل، ولا تفعيلَ مرّتين.
+         */
+        CustomerInvoicePreparations::afterLinkPaid($link);
 
         return true;
     }

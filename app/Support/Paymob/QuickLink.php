@@ -58,16 +58,20 @@ final class QuickLink
         }
         $parts[] = ['name' => 'is_live', 'contents' => $gateway->isLive() ? 'true' : 'false'];
 
+        /*
+         * وهذا الطلبُ وحده يُنشئ شيئًا هناك: ما سقط منه بعد أن أُرسل لا يُعرف
+         * أنُشئ أم لا (`uncertain`). وطلبُ الرمز قبله لا يُنشئ شيئًا.
+         */
         $response = self::send(fn () => Http::withToken($token)->acceptJson()->asMultipart()
             ->timeout(self::TIMEOUT)
-            ->post(Paymob::BASE.'/api/ecommerce/payment-links', $parts));
+            ->post(Paymob::BASE.'/api/ecommerce/payment-links', $parts), creates: true);
 
         $id = trim((string) $response->json('id', ''));
         $url = trim((string) $response->json('shorten_url', ''));
 
         // ورابطٌ بلا عنوانٍ قصير لا يُعطى للتاجر — لا يُرسَل للعميل رابطٌ لا يُفتح
         if ($id === '' || ! filter_var($url, FILTER_VALIDATE_URL)) {
-            throw new QuickLinkFailed(__('ردّت Paymob بلا رابطٍ صالح — لم يُنشأ الرابط.'));
+            throw new QuickLinkFailed(__('ردّت Paymob بلا رابطٍ صالح — لم يُنشأ الرابط.'), 0, uncertain: $id !== '');
         }
 
         return [
@@ -112,19 +116,24 @@ final class QuickLink
         return $token;
     }
 
-    /** يرسل ويترجم الفشل إلى سببٍ يُقرأ — بلا جسم الردّ ولا ترويسته */
-    private static function send(callable $call, bool $auth = false): Response
+    /**
+     * يرسل ويترجم الفشل إلى سببٍ يُقرأ — بلا جسم الردّ ولا ترويسته.
+     *
+     * و`creates`: طلبٌ يُنشئ شيئًا عند Paymob. فانقطاعُه، أو خطأُ خادمها، أو
+     * ردٌّ لا يُقرأ، لا يقول «لم يُنشأ» — يقول «لا نعرف» (`uncertain`).
+     */
+    private static function send(callable $call, bool $auth = false, bool $creates = false): Response
     {
         try {
             /** @var Response $response */
             $response = $call();
         } catch (ConnectionException) {
-            throw new QuickLinkFailed(__('تعذّر الاتصال بـ Paymob — حاول مرّة أخرى بعد قليل.'));
+            throw new QuickLinkFailed(__('تعذّر الاتصال بـ Paymob — حاول مرّة أخرى بعد قليل.'), 0, uncertain: $creates);
         }
 
         if ($response->successful()) {
             if (! is_array($response->json())) {
-                throw new QuickLinkFailed(__('ردّت Paymob بما لا يُقرأ — لم يُنشأ الرابط.'));
+                throw new QuickLinkFailed(__('ردّت Paymob بما لا يُقرأ — لم يُنشأ الرابط.'), $response->status(), uncertain: $creates);
             }
 
             return $response;
@@ -137,7 +146,7 @@ final class QuickLink
             $status === 404 => __('رقمُ تكاملٍ لا يطابق بيئة الحساب (Test أو Live) — راجع إعدادات Paymob.'),
             $status >= 500 => __('Paymob غير متاحة الآن — حاول مرّة أخرى بعد قليل.'),
             default => __('رفضت Paymob الطلب: :why', ['why' => self::reason($response)]),
-        }, $status);
+        }, $status, uncertain: $creates && $status >= 500 && ! $auth);
     }
 
     /** رسالةُ الرفض المقروءة وحدها — حقلٌ نصّيٌّ قصير، لا الجسمُ كلُّه */

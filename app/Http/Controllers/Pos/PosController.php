@@ -255,7 +255,7 @@ class PosController extends Controller
         // بـ`business_id` لا `findOrFail`: إيصالُ متجرٍ آخر لا يوجد، لا «ممنوع»
         $order = Order::where('business_id', $bid)
             ->where('number', $number)
-            ->with('items')
+            ->with('items.addons')
             ->first();
 
         abort_if($order === null, 404);

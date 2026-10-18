@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Addon;
 use App\Models\BankAccount;
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
@@ -14,6 +15,7 @@ use App\Models\CustomerPayment;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Support\Activity;
+use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\PaymentLinks;
@@ -26,20 +28,24 @@ use App\Support\Document\Version;
 use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
+use App\Support\FlowerOrder;
 use App\Support\InvoiceAttachments;
 use App\Support\InvoiceBranding;
 use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
 use App\Support\Permissions;
+use App\Support\PrintJobs;
 use App\Support\Receivables;
 use App\Support\Search;
 use App\Support\Vat;
 use App\Support\WhatsAppPhone;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -206,6 +212,8 @@ class CustomerInvoiceController extends Controller
              */
             'brand' => (bool) $user?->allows('settings'),
             'pay' => (bool) $user?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
+            // وطلبُ الدفع برابطٍ فعلٌ غيرُ التحصيل — لا يحتاج «المالية» (`PaymentRequestController`)
+            'payment_link' => (bool) $user?->may(Permissions::PAYMENT_LINK_CREATE),
         ];
     }
 
@@ -222,6 +230,17 @@ class CustomerInvoiceController extends Controller
              * مخصَّصٌ لهذه الفاتورة، ولا يمسّ إيرادَها ولا ضريبتَها.
              */
             'paymentLinks' => PaymentLinks::panel($this->bid(), fn ($q) => $q->where('customer_invoice_id', $invoice->id)),
+            /*
+             * وآخرُ محاولةٍ لم تُعطِ رابطًا — تبقى بعد التحديث: «أُصدرت ولم يُنشأ
+             * الرابط، ولماذا»، ومعها إعادةُ المحاولة على الفاتورة نفسِها. ومحاولةٌ
+             * لا تُعرف نتيجتُها تُقال كذلك، ولا يُعاد الطلبُ بعدها إلّا بقرار.
+             */
+            'paymentLinkFailure' => PaymentLinks::failureRow(PaymentLinks::lastFailure($invoice)),
+            /*
+             * والتجهيزُ بعد السداد — ما طُلب، وأين وصل، ولمَ لم يظهر بعد.
+             * و`null` لمن لم يُفتح له: الصفحةُ كما كانت.
+             */
+            'preparation' => $this->preparationProps($invoice),
             // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
             'bank_accounts' => $this->bankAccounts(),
             /*
@@ -496,6 +515,12 @@ class CustomerInvoiceController extends Controller
             'today' => now()->toDateString(),
             'may' => $this->may(),
             /*
+             * «إصدار الفاتورة وإنشاء رابط دفع» لمن تُفتح له الروابط — ورمزُ
+             * النموذج: ضغطتان أو إعادةُ إرسالٍ تُصدر ورقةً واحدة (`form_token`).
+             */
+            'payment_links_ready' => PaymentLinks::ready($bid),
+            'form_token' => (string) Str::uuid(),
+            /*
              * ووسائلُ السداد من مالكها لا مكتوبةً هنا.
              *
              * كانت هذه القائمةُ إحدى ثلاث: هذه، وقاعدةُ المصادقة في `store`
@@ -541,7 +566,95 @@ class CustomerInvoiceController extends Controller
              */
             'branding' => InvoiceBranding::settings($bid)
                 + DocumentTemplates::settings($bid, self::PAPER_TYPE),
+            /*
+             * وقسمُ «التجهيز والتسليم» — لمن فُتح له وحده (`CustomerInvoicePreparations::on`).
+             * و`null` لغيره: لا قسمَ يُرسم، ولا حقلٌ يُرسل.
+             */
+            'preparation' => $this->preparationOptions($bid),
         ]);
+    }
+
+    /**
+     * فروعُ التجهيز ومناسباتُ البطاقة — لنشاطٍ فُتح له التجهيز بعد السداد.
+     *
+     * @return array{branches: array<int, array{id: int, name: string}>, occasions: array<int, array{value: string, label: string}>}|null
+     */
+    private function preparationOptions(int $bid): ?array
+    {
+        if (! CustomerInvoicePreparations::on($bid)) {
+            return null;
+        }
+
+        return [
+            'branches' => Branch::where('business_id', $bid)->orderBy('id')->get(['id', 'name'])
+                ->map(fn (Branch $b) => ['id' => $b->id, 'name' => $b->name])->all(),
+            'occasions' => FlowerOrder::occasionOptions($bid),
+        ];
+    }
+
+    /**
+     * تجهيزُ الفاتورة كما يُقرأ في صفحتها — وما يجوز فعلُه به.
+     *
+     * `null` لنشاطٍ لم يُفتح له ولا تجهيزَ على فاتورته: الصفحةُ كما كانت.
+     */
+    private function preparationProps(CustomerInvoice $invoice): ?array
+    {
+        $bid = (int) $invoice->business_id;
+        $on = CustomerInvoicePreparations::on($bid);
+        $prep = $invoice->preparation;
+
+        if (! $on && ! $prep) {
+            return null;
+        }
+
+        $paid = CustomerInvoicePreparations::paid($invoice);
+        $job = $prep ? PrintJobs::forPreparation($prep) : null;
+        // ويديره من يُصدر — والأزرارُ لا تُعرض لمن يُردّ عنها
+        $manages = (bool) auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE);
+        $closed = $prep && in_array($prep->status, CustomerInvoicePreparations::CLOSED, true);
+
+        return [
+            'enabled' => $on,
+            /*
+             * يُطلب لفاتورةٍ صادرةٍ لم تُسدَّد بعد (أو مسودّة)، لا تغطّي طلبات —
+             * والقائمُ يُعدَّل ما لم يُسلَّم.
+             */
+            'attachable' => $on && $manages && ! $prep
+                && in_array($invoice->status, [CustomerInvoice::DRAFT, CustomerInvoice::ISSUED], true)
+                && ! $paid && ! $invoice->coversOrders(),
+            'editable' => $on && $manages && $prep && ! $closed && $invoice->status !== CustomerInvoice::CANCELLED,
+            'removable' => $on && $manages && $prep && ! $prep->isActive(),
+            'activatable' => $on && $prep && ! $prep->isActive() && $paid
+                && (bool) auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
+            'paid' => $paid,
+            'data' => $prep ? [
+                'branch_id' => $prep->branch_id,
+                'branch' => $prep->branch_id ? Branch::whereKey($prep->branch_id)->value('name') : null,
+                'fulfillment_type' => $prep->fulfillment_type,
+                'scheduled_for' => optional($prep->scheduled_for)->format('Y-m-d\\TH:i'),
+                'recipient_name' => $prep->recipient_name,
+                'recipient_phone' => $prep->recipient_phone,
+                'delivery_address' => $prep->delivery_address,
+                'delivery_notes' => $prep->delivery_notes,
+                'internal_notes' => $prep->internal_notes,
+                'is_gift' => (bool) $prep->is_gift,
+                'occasion_type' => $prep->occasion_type,
+                'occasion_text' => $prep->occasion_text,
+                'card_message' => $prep->card_message,
+                'sender_name' => $prep->sender_name,
+                'hide_sender' => (bool) $prep->hide_sender,
+                'card_identity_confirmed' => $prep->card_identity_confirmed_at !== null,
+            ] : null,
+            'active' => (bool) $prep?->isActive(),
+            'status' => $prep?->status,
+            'activated_at' => optional($prep?->activated_at)->format('Y-m-d H:i'),
+            'activation_source' => $prep?->activation_source,
+            'activation_error' => $prep?->activation_error,
+            // لمَ لم تظهر بعد — جملةٌ لا رمز
+            'waiting_for' => $prep && ! $prep->isActive() ? CustomerInvoicePreparations::blocker($prep, $invoice) : null,
+            'print' => PrintJobs::card($job),
+            'options' => $on ? $this->preparationOptions($bid) : null,
+        ];
     }
 
     /**
@@ -983,6 +1096,12 @@ class CustomerInvoiceController extends Controller
             // وما لا يُطبع: يُحفظ في عمودٍ آخر ولا يبلغ ورقةَ العميل
             'internal_notes' => ['nullable', 'string', 'max:2000'],
             'issue' => ['nullable', 'boolean'],
+            /*
+             * «إصدار الفاتورة وإنشاء رابط دفع» — يُصدرها آجلةً ثمّ يطلب باقيها
+             * من Paymob بعد أن تُكتب. ورمزُ النموذج يجعل الإرسالَ مرّةً واحدة.
+             */
+            'payment_link' => ['nullable', 'boolean'],
+            'form_token' => ['nullable', 'string', 'max:64'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['nullable', 'integer'],
             // منتجٌ أو إضافة — لا الاثنان: إضافةٌ لا تلبس منتجًا وهميًّا
@@ -1039,7 +1158,22 @@ class CustomerInvoiceController extends Controller
             'payment_method' => __('طريقة الدفع'),
             'paid_amount' => __('المبلغ المدفوع'),
             'payment_date' => __('تاريخ الدفع'),
+            'payment_link' => __('رابط الدفع'),
+            'form_token' => __('رمز النموذج'),
         ]);
+
+        /*
+         * ═══ ونموذجٌ أُرسل من قبل لا يكتب ورقةً ثانية ═══
+         *
+         * ضغطتان، أو انقطاعٌ يعيد المتصفّحُ بعده الطلب، أو رجوعٌ وإعادةُ إرسال:
+         * الرمزُ نفسُه في المتجر نفسِه ⇒ الورقةُ التي كُتبت به. والقاعدةُ تحرسه
+         * أيضًا (`customer_invoices_form_token_unique`) لطلبين في اللحظة نفسِها.
+         */
+        $token = filled($data['form_token'] ?? null) ? (string) $data['form_token'] : null;
+
+        if ($token !== null && ($twin = $this->formTwin($token))) {
+            return $this->alreadyWritten($twin);
+        }
 
         $customer = Customer::where('business_id', $this->bid())
             ->whereKey($data['customer_id'])->first();
@@ -1084,6 +1218,22 @@ class CustomerInvoiceController extends Controller
         $method = $data['payment_method'];
 
         /*
+         * ═══ والتجهيزُ بعد السداد — لمن فُتح له وحده ═══
+         *
+         * يُتحقَّق منه قبل أن يُكتب شيء: فاتورةٌ تُصدَر ثمّ يُردّ تجهيزُها
+         * تبقى ورقةً بلا ما طُلب لها. ولمن لم يُفتح له يُهمل الحقلُ كلُّه —
+         * لا يُكتب ولا يُسأل عنه (`CustomerInvoicePreparations::on`).
+         */
+        $preparation = null;
+        if (CustomerInvoicePreparations::on($this->bid()) && $request->boolean('preparation.enabled')) {
+            $preparation = $request->validate(
+                CustomerInvoicePreparations::rules($this->bid()),
+                [],
+                CustomerInvoicePreparations::attributes(),
+            )['preparation'];
+        }
+
+        /*
          * والمقبوضُ لا يُسجَّل على مسودّة.
          *
          * التحصيلُ يُخصَّص على فاتورةٍ **صادرة** — والمسودّةُ ورقةٌ لم تُسلَّم
@@ -1117,6 +1267,41 @@ class CustomerInvoiceController extends Controller
         }
 
         /*
+         * ═══ «إصدار الفاتورة وإنشاء رابط دفع» ═══
+         *
+         * فعلان يُملكان معًا: الإصدارُ (حارسُه أعلاه) وطلبُ الدفع برابط. ومن لا
+         * يملك الثاني يُصدر بالزرّ الآخر كما كان.
+         *
+         * والفاتورةُ تُصدَر **آجلة**: الرابطُ يطلب ما بقي عليها، ولا يُكتب
+         * تحصيلٌ حتّى تؤكّد Paymob الدفع. و«نقدي» أو غيرُه يُسجَّل تحصيلًا
+         * الآن فلا يبقى ما يُطلب — فيُقال لصاحبه لماذا، ويبقى له الإصدارُ
+         * العاديّ. ولا يُكتب شيءٌ قبل أن تصحّ الشروط.
+         */
+        $wantsLink = $request->boolean('payment_link');
+
+        if ($wantsLink) {
+            abort_if(! auth()->user()?->may(Permissions::PAYMENT_LINK_CREATE), 403);
+
+            if (! $request->boolean('issue')) {
+                throw ValidationException::withMessages([
+                    'payment_link' => __('رابطُ الدفع لفاتورةٍ صادرة — اضغط «إصدار الفاتورة وإنشاء رابط دفع».'),
+                ]);
+            }
+
+            if ($method !== CustomerInvoices::CREDIT) {
+                throw ValidationException::withMessages([
+                    'payment_method' => __('رابطُ الدفع يطلب ما بقي على الفاتورة، و«:m» تُسجَّل تحصيلًا الآن فلا يبقى ما يُطلب. اختر «آجل» لإنشاء الرابط، أو أصدر الفاتورة بلا رابط.', ['m' => $method]),
+                ]);
+            }
+
+            if (! PaymentLinks::ready($this->bid())) {
+                throw ValidationException::withMessages([
+                    'payment_link' => __('أكمل إعداد Paymob أولًا — أو أصدر الفاتورة بلا رابط.'),
+                ]);
+            }
+        }
+
+        /*
          * ═══ الورقةُ وإيصالُها يقعان معًا أو لا يقع أحدُهما ═══
          *
          * كانت ثلاثَ معاملاتٍ متتابعة: تُكتب الفاتورة، ثمّ تُصدَر، ثمّ
@@ -1131,7 +1316,7 @@ class CustomerInvoiceController extends Controller
         $uploaded = [];
 
         try {
-            $invoice = DB::transaction(function () use ($request, $customer, $data, $method, &$uploaded) {
+            $invoice = DB::transaction(function () use ($request, $customer, $data, $method, $preparation, $token, &$uploaded) {
                 /*
                  * وبندُ الإضافة يُكتب بثمنها واسمها من القاعدة لا ممّا أُرسل —
                  * وإضافةُ متجرٍ آخر أو موقوفةٌ تُردّ هنا على «البنود».
@@ -1139,6 +1324,16 @@ class CustomerInvoiceController extends Controller
                 $items = CustomerInvoices::addonsFromCatalog($this->bid(), $data['items']);
 
                 $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $items, auth()->id());
+
+                // ورمزُ النموذج على الورقة — والثانيةُ به تُردّ في القاعدة
+                if ($token !== null) {
+                    $invoice->forceFill(['form_token' => $token])->save();
+                }
+
+                // والتجهيزُ مع الورقة في المعاملة نفسِها — لا يمسّ بندًا ولا مبلغًا
+                if ($preparation !== null) {
+                    CustomerInvoicePreparations::save($invoice, $preparation, auth()->id());
+                }
 
                 /*
                  * والمرفقاتُ بعد الورقة لا قبلها: مرفقٌ بلا فاتورةٍ يشير إليه
@@ -1168,6 +1363,15 @@ class CustomerInvoiceController extends Controller
 
                 return $invoice;
             });
+        } catch (QueryException $e) {
+            InvoiceAttachments::discard($uploaded);
+
+            // طلبٌ توأمٌ كتب الورقةَ في اللحظة نفسِها — فهي هي، لا خطأ
+            if ($token !== null && ($twin = $this->formTwin($token))) {
+                return $this->alreadyWritten($twin);
+            }
+
+            throw $e;
         } catch (RuntimeException $e) {
             InvoiceAttachments::discard($uploaded);
 
@@ -1178,12 +1382,59 @@ class CustomerInvoiceController extends Controller
             throw $e;
         }
 
+        /*
+         * ═══ ثمّ الرابط — بعد أن كُتبت الورقةُ وثبتت ═══
+         *
+         * طلبُ Paymob لا يقع داخل معاملة الفاتورة: يدوم ثوانيَ وقد ينقطع، وقفلُ
+         * الترقيم في تلك المعاملة يحبس كلَّ فاتورةٍ بعده. فالورقةُ تُكتب
+         * وتُصدَر أوّلًا، ثمّ يُطلب الرابط. وسقوطُه لا يمسّ الورقة: تبقى صادرةً
+         * آجلةً كما يجب، بلا تحصيلٍ مزعوم، وتُعاد المحاولةُ من صفحتها على
+         * الفاتورة نفسِها — لا فاتورةٌ ثانية.
+         */
+        if ($wantsLink) {
+            try {
+                [$link] = PaymentLinks::forInvoice($invoice, auth()->id());
+            } catch (RuntimeException $e) {
+                return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+                    'msg' => __('أُصدرت الفاتورة :n — وتعذّر إنشاء رابط الدفع: :why', ['n' => $invoice->number, 'why' => $e->getMessage()]),
+                    'type' => 'warning',
+                ]);
+            }
+
+            return redirect()->route('admin.customerInvoices.show', $invoice->id)
+                ->with('toast', ['msg' => __('تم إصدار الفاتورة وإنشاء رابط الدفع'), 'type' => 'success'])
+                ->with('paymentLink', PaymentLinks::row($link->load(['customer', 'invoice'])))
+                ->with('paymentLinkIssued', true);
+        }
+
         return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
             // ومسودّةٌ لا رقمَ لها: لا يُقال «أُنشئت الفاتورة » وينتهي عند فراغ
             'msg' => $invoice->number
                 ? __('أُنشئت الفاتورة :n', ['n' => $invoice->number])
                 : __('حُفظت مسودّة الفاتورة'),
             'type' => 'success',
+        ]);
+    }
+
+    /** الورقةُ التي كُتبت بهذا الرمز في هذا المتجر — إن كانت */
+    private function formTwin(string $token): ?CustomerInvoice
+    {
+        return CustomerInvoice::where('business_id', $this->bid())->where('form_token', $token)->first();
+    }
+
+    /**
+     * نموذجٌ أُرسل من قبل: إلى ورقته — ولا يُكتب شيءٌ ولا يُطلب رابطٌ ثانٍ.
+     *
+     * والرابطُ إن طُلب معه فطلبُه الأوّلُ يقوم به، أو تُعاد محاولتُه من صفحة
+     * الفاتورة نفسِها.
+     */
+    private function alreadyWritten(CustomerInvoice $invoice)
+    {
+        return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+            'msg' => $invoice->number
+                ? __('هذا النموذج أُرسل من قبل — الفاتورة :n كُتبت مرّةً واحدة', ['n' => $invoice->number])
+                : __('هذا النموذج أُرسل من قبل — المسودّة كُتبت مرّةً واحدة'),
+            'type' => 'info',
         ]);
     }
 
@@ -1475,5 +1726,74 @@ class CustomerInvoiceController extends Controller
         CustomerPayments::cancel($payment, $data['reason'], auth()->id());
 
         return back()->with('toast', ['msg' => __('أُلغي التحصيل'), 'type' => 'success']);
+    }
+
+    /* ═══════════════════════ التجهيز بعد السداد ═══════════════════════ */
+
+    /**
+     * يطلب تجهيزَ فاتورةٍ قائمة — أو يعدّل ما طُلب — ولا يمسّ بندًا ولا مبلغًا.
+     *
+     * والطلبُ الجديد لفاتورةٍ لم تُسدَّد بعد: المسدَّدةُ ورقةٌ انتهى أمرُها،
+     * ومن أراد تجهيزَها طلبه حين كتبها أو أرسلها بيده بعد سدادها.
+     */
+    public function savePreparation(Request $request, int|string $id)
+    {
+        /*
+         * ومن يُصدر الفاتورةَ يدير تجهيزَها — كسائر ما يمسّ ورقةً صادرة
+         * (`SellingOpensTheScreenIssuingMakesTheDebtTest`). والإذنُ قبل الصفّ.
+         */
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE), 403);
+        $invoice = $this->find($id);
+        abort_unless(CustomerInvoicePreparations::on($this->bid()), 404);
+
+        // والبابُ بابُ طلب التجهيز نفسِه: الحقولُ مطلوبةٌ أيًّا أُرسل `enabled` أو لم يُرسل
+        $request->merge(['preparation' => array_merge((array) $request->input('preparation'), ['enabled' => true])]);
+
+        $data = $request->validate(
+            CustomerInvoicePreparations::rules($this->bid()),
+            [],
+            CustomerInvoicePreparations::attributes(),
+        )['preparation'] ?? [];
+
+        if (! $invoice->preparation && CustomerInvoicePreparations::paid($invoice)) {
+            throw ValidationException::withMessages([
+                'preparation' => __('الفاتورة مسدّدة — يُطلب التجهيز لفاتورة لم تُسدَّد بعد.'),
+            ]);
+        }
+
+        CustomerInvoicePreparations::save($invoice, $data, auth()->id());
+
+        return back()->with('toast', ['msg' => __('حُفظ طلب التجهيز'), 'type' => 'success']);
+    }
+
+    /** يُلغى طلبُ التجهيز ما لم يظهر في اللوحة */
+    public function removePreparation(int|string $id)
+    {
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE), 403);
+        $invoice = $this->find($id);
+        abort_unless(CustomerInvoicePreparations::on($this->bid()), 404);
+
+        CustomerInvoicePreparations::remove($invoice);
+
+        return back()->with('toast', ['msg' => __('أُلغي طلب التجهيز'), 'type' => 'success']);
+    }
+
+    /**
+     * يُرسل إلى لوحة التجهيز فاتورةً سُدّدت بغير رابط — بيدِ من يملك التحصيل.
+     *
+     * والسدادُ يُقرأ في الخادم الآن (`CustomerInvoicePreparations::blocker`):
+     * لا يُرسل الزرُّ فاتورةً لم تُسدَّد، ولا يُرسلها مرّتين.
+     */
+    public function activatePreparation(int|string $id)
+    {
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE), 403);
+        $invoice = $this->find($id);
+        abort_unless(CustomerInvoicePreparations::on($this->bid()), 404);
+
+        if ($why = CustomerInvoicePreparations::activateByHand($invoice, (int) auth()->id())) {
+            return back()->with('toast', ['msg' => $why, 'type' => 'danger'])->withErrors(['preparation' => $why]);
+        }
+
+        return back()->with('toast', ['msg' => __('أُرسلت الفاتورة إلى لوحة التجهيز'), 'type' => 'success']);
     }
 }

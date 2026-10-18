@@ -137,7 +137,8 @@ class PdfController extends Controller
     public function orderThermal($number)
     {
         $bid = TenantExportGuard::businessId();
-        $order = Order::where('business_id', $bid)->where('number', $number)->with('items')->firstOrFail();
+        // وإضافاتُ الأصناف معها — تُطبع تحتها (`ItemAddons`)، بلا استعلامٍ لكلّ صنف
+        $order = Order::where('business_id', $bid)->where('number', $number)->with('items.addons')->firstOrFail();
 
         return self::thermal($bid, $order);
     }

@@ -67,6 +67,29 @@ class PosPeripheralTest extends TestCase
         ]);
     }
 
+    /**
+     * و«طباعة فواتير العملاء المسددة» لا يُشعلها التاجرُ لنفسه — تتبع مفتاحَ المنصّة.
+     */
+    public function test_a_printer_takes_paid_customer_invoices_only_where_the_platform_opened_it(): void
+    {
+        $this->actingAs($this->owner)
+            ->post(route('admin.devices.peripherals.store', $this->device->id), $this->payload(['auto_print_customer_invoices' => true]))
+            ->assertRedirect();
+        $this->assertFalse((bool) PosPeripheral::latest('id')->value('auto_print_customer_invoices'), 'مغلقًا يُكتب «لا» أيًّا أُرسل');
+
+        $this->business->forceFill(['customer_invoice_preparation_enabled' => true])->save();
+        $this->actingAs($this->owner)
+            ->post(route('admin.devices.peripherals.store', $this->device->id), $this->payload(['name' => 'طابعة التجهيز', 'auto_print_customer_invoices' => true]))
+            ->assertRedirect();
+        $this->assertTrue((bool) PosPeripheral::latest('id')->value('auto_print_customer_invoices'));
+
+        // والماسحُ لا يطبع — فلا يحمل الخيار
+        $this->actingAs($this->owner)
+            ->post(route('admin.devices.peripherals.store', $this->device->id), $this->payload(['name' => 'ماسح', 'type' => PosPeripheral::TYPES[1], 'auto_print_customer_invoices' => true]))
+            ->assertRedirect();
+        $this->assertFalse((bool) PosPeripheral::latest('id')->value('auto_print_customer_invoices'));
+    }
+
     public function test_a_cashier_cannot_touch_the_registers_hardware(): void
     {
         /*
@@ -225,6 +248,8 @@ class PosPeripheralTest extends TestCase
                 'paperWidth' => 58,
                 'autoPrint' => true,
                 'autoPrintWebsite' => true,
+                // وفواتيرُ العملاء المسدَّدة — مطفأةٌ ما لم تُشعَل (`PrintJobs`)
+                'autoPrintCustomerInvoices' => false,
             ]]));
     }
 

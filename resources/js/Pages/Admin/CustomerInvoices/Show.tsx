@@ -6,7 +6,8 @@ import PageHeader from '@/Components/PageHeader';
 import DocumentMeta from '@/Components/DocumentMeta';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import SmartLink from '@/Components/SmartLink';
-import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import PaymentLinksCard, { invoiceLinkView, InvoicePaymentLink, PaymentLinkRetry, type PaymentLinkFailure, type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -68,11 +69,13 @@ interface May {
     cancel: boolean;
     credit_note: boolean;
     pay: boolean;
+    /** طلبُ الدفع برابط — `paymentLink.create`، لا «المالية» */
+    payment_link?: boolean;
 }
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, context } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, context, flash } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -86,12 +89,19 @@ export default function CustomerInvoiceShow() {
                 paper: { html: string; size: string };
                 /** روابطُ دفع الفاتورة وحالُ Paymob — `PaymentLinks::panel` */
                 paymentLinks: PaymentLinksPanel;
+                /** آخرُ محاولةٍ لم تُعطِ رابطًا — `PaymentLinks::failureRow` */
+                paymentLinkFailure?: PaymentLinkFailure | null;
+                /** التجهيزُ بعد السداد — و`null` لمن لم يُفتح له (`CustomerInvoicePreparations`) */
+                preparation: PreparationPanelData | null;
             }>
         >().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
     /* ومسودّةٌ بلا رقم تُعرف بمعرّفها — والعنوانُ لا يكون فراغًا */
     const label = invoice.number ?? `${t('مسودة')} #${invoice.id}`;
+
+    /* الرابطُ الذي يُرسَل الآن، أو سببُ تعذّره — `invoiceLinkView` */
+    const linkView = invoiceLinkView(invoice, paymentLinks.links, flash, paymentLinkFailure);
 
     const [paying, setPaying] = useState(false);
     const [crediting, setCrediting] = useState(false);
@@ -306,6 +316,16 @@ export default function CustomerInvoiceShow() {
                         رابطُ دفع — يطلب باقيَ الفاتورة من العميل عبر Paymob.
                         يُدفع فيُكتب تحصيلٌ مخصَّصٌ لها، ولا يمسّ إيرادَها.
                     */}
+                    {/*
+                        والرابطُ القائمُ بارزًا — ما يُرسَل للعميل الآن. من الخادم لا
+                        من رسالةٍ عابرة، فيبقى بعد التحديث. والذي أُنشئ للتوّ أوّلًا.
+                    */}
+                    {linkView.current && <InvoicePaymentLink link={linkView.current} issued={linkView.issued} />}
+
+                    {linkView.retry && (
+                        <PaymentLinkRetry invoiceId={invoice.id} failure={linkView.retry} can={!!paymentLinks.can && paymentLinks.ready} />
+                    )}
+
                     {(invoice.status === 'صادرة' || paymentLinks.links.length > 0) && (
                         <PaymentLinksCard
                             panel={paymentLinks}
@@ -315,8 +335,12 @@ export default function CustomerInvoiceShow() {
                             title="روابط الدفع"
                             action="إنشاء رابط دفع"
                             allowCreate={invoice.status === 'صادرة' && invoice.outstanding > 0}
+                            showJustCreated={false}
                         />
                     )}
+
+                    {/* والتجهيزُ بعد السداد — لمن فُتح له وحده */}
+                    {preparation && <PreparationPanel invoiceId={invoice.id} preparation={preparation} />}
 
                     {invoice.credit_notes.length > 0 && (
                         <Card className="p-4">

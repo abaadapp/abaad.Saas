@@ -49,6 +49,8 @@ class PosPeripheral extends Model
             'active' => 'boolean',
             'auto_print' => 'boolean',
             'auto_print_website_confirm' => 'boolean',
+            // ويستلم «فاتورة عميل — نسخة داخلية» حين تُسدَّد — انظر `PrintJobs`
+            'auto_print_customer_invoices' => 'boolean',
             'paper_width' => 'integer',
             'port' => 'integer',
         ];

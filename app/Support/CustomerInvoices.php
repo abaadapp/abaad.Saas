@@ -1036,7 +1036,14 @@ final class CustomerInvoices
      */
     private static function orderItemLines(OrderItem $item, string $suffix = ''): array
     {
-        $name = $item->name ?: __('بند');
+        /*
+         * والمقاسُ مع اسمه — من لقطة البيع (`variant_name`).
+         *
+         * كان يُكتب الاسمُ وحده، فباقةٌ «كبيرة» وأختُها «صغيرة» تخرجان في
+         * الفاتورة سطرين بالاسم نفسِه وبثمنين — ولا يُعرف لماذا. نصٌّ لا مال:
+         * الثمنُ والكميّةُ كما بيعا، والفواتيرُ الصادرةُ قبله لا تُمسّ.
+         */
+        $name = ($item->name ?: __('بند')).(filled($item->variant_name) ? ' — '.$item->variant_name : '');
 
         $main = [
             'product_id' => $item->product_id,

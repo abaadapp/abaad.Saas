@@ -54,6 +54,8 @@ export interface PosPeripheral {
     autoPrint: boolean;
     /** يطبع طلبَ الموقع عند تأكيده على هذا الصندوق — انظر `lib/website-confirm-print` */
     autoPrintWebsite?: boolean;
+    /** يستلم «فاتورة عميل — نسخة داخلية» حين تُسدَّد — انظر `lib/printing/print-jobs` */
+    autoPrintCustomerInvoices?: boolean;
 }
 
 export interface Currency {
@@ -225,6 +227,8 @@ export interface SharedProps {
         websiteConfirmed?: string | null;
         /** رابطُ الدفع الذي أُنشئ الآن — `PaymentLinks::row`، لا سرَّ فيه */
         paymentLink?: import('@/Components/PaymentLinks').PaymentLinkRow | null;
+        /** وأُنشئ مع إصدار الفاتورة في ضغطةٍ واحدة */
+        paymentLinkIssued?: boolean;
     };
     /** رمز CSRF الخام — يتجدّد مع كل استجابة، بخلاف وسم <meta> */
     csrf: string;

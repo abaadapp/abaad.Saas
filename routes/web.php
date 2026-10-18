@@ -41,6 +41,7 @@ use App\Http\Controllers\Admin\Marketing\ReviewController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\OrderDetailController;
 use App\Http\Controllers\Admin\PageController;
+use App\Http\Controllers\Admin\PaymentRequestController;
 use App\Http\Controllers\Admin\Payroll\PayrollPaymentController;
 use App\Http\Controllers\Admin\Payroll\PayrollRunController;
 use App\Http\Controllers\Admin\PreparationController;
@@ -595,6 +596,26 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/preparation/{number}/timeline', [PreparationController::class, 'timeline'])
         ->name('preparation.timeline');
 
+    /*
+     * ═══ ومهامُّ فواتير العملاء على اللوحة نفسِها ═══
+     *
+     * فاتورةُ عميلٍ سُدّدت وطُلب تجهيزُها (`CustomerInvoicePreparations`) —
+     * بمعرّف التجهيز لا برقم طلب: لا تتصادم مهمّةٌ بطلبٍ يحمل رقمَها. وكلُّها
+     * `preparation.*` فتتبع صلاحيّةَ من يجهّز، لا الماليّة ولا الفواتير.
+     */
+    Route::post('/preparation/customer-invoices/{id}/move', [PreparationController::class, 'invoiceMove'])
+        ->whereNumber('id')->name('preparation.invoiceMove');
+    Route::get('/preparation/customer-invoices/{id}/delivery-note/thermal', [PreparationController::class, 'invoiceDeliveryNote'])
+        ->whereNumber('id')->name('preparation.invoiceDeliveryNote');
+    Route::get('/preparation/customer-invoices/{id}/internal/pdf', [PreparationController::class, 'invoiceInternal'])
+        ->whereNumber('id')->name('preparation.invoiceInternalPdf');
+    Route::get('/preparation/customer-invoices/{id}/timeline', [PreparationController::class, 'invoiceTimeline'])
+        ->whereNumber('id')->name('preparation.invoiceTimeline');
+    Route::post('/preparation/customer-invoices/{id}/requeue', [PreparationController::class, 'invoiceRequeue'])
+        ->whereNumber('id')->name('preparation.invoiceRequeue');
+    Route::post('/preparation/customer-invoices/{id}/print-confirm', [PreparationController::class, 'invoicePrintConfirm'])
+        ->whereNumber('id')->name('preparation.invoicePrintConfirm');
+
     // الفروع
     Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');
     Route::get('/branch/{branch}/switch', [BranchController::class, 'switch'])->name('branch.switch');
@@ -864,6 +885,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::delete('/customers/{id}/purge', [TrashController::class, 'purge'])
         ->defaults('type', 'customer')->name('customers.purge');
     Route::post('/customers/{id}/redeem', [CustomerController::class, 'redeem'])->name('customers.redeem');
+    // وطلبُ دفعةٍ من العميل برابط — من صفحته، بفعل الطلب وحده (`PaymentRequestController`)
+    Route::post('/customers/{id}/payment-link', [PaymentRequestController::class, 'forCustomer'])
+        ->whereNumber('id')->name('customers.paymentLink');
     Route::post('/customers/{id}/addresses', [CustomerController::class, 'saveAddress'])->name('customers.addresses.save');
     Route::post('/customers/{id}/addresses/{addressId}/default', [CustomerController::class, 'defaultAddress'])->name('customers.addresses.default');
     Route::delete('/customers/{id}/addresses/{addressId}', [CustomerController::class, 'deleteAddress'])->name('customers.addresses.delete');
@@ -1449,6 +1473,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::delete('/customer-invoices/{id}/attachments/{attachment}', [CustomerInvoiceController::class, 'detach'])
         ->name('customerInvoices.detach');
     Route::post('/customer-invoices/{id}/remind', [CustomerInvoiceController::class, 'remind'])->name('customerInvoices.remind');
+    /*
+     * ورابطُ دفعٍ لباقي الفاتورة — من صفحتها، بفعل الطلب وحده لا بقسم «المالية»
+     * (`PaymentRequestController`). والقائمُ بالمبلغ نفسِه يُعاد لا يُكرَّر.
+     */
+    Route::post('/customer-invoices/{id}/payment-link', [PaymentRequestController::class, 'forInvoice'])
+        ->whereNumber('id')->name('customerInvoices.paymentLink');
+    // والتجهيزُ بعد السداد — لمن فُتح له (`CustomerInvoicePreparations::on`)
+    Route::post('/customer-invoices/{id}/preparation', [CustomerInvoiceController::class, 'savePreparation'])->name('customerInvoices.preparation.save');
+    Route::delete('/customer-invoices/{id}/preparation', [CustomerInvoiceController::class, 'removePreparation'])->name('customerInvoices.preparation.remove');
+    Route::post('/customer-invoices/{id}/preparation/activate', [CustomerInvoiceController::class, 'activatePreparation'])->name('customerInvoices.preparation.activate');
     Route::post('/customer-payments', [CustomerInvoiceController::class, 'pay'])->name('customerPayments.store');
     Route::post('/customer-payments/{id}/cancel', [CustomerInvoiceController::class, 'cancelPayment'])->name('customerPayments.cancel');
     /*
@@ -1859,6 +1893,23 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
      * تُرسَل إلى شركةٍ لا يطلبها من درج النقد.
      */
     Route::get('/receipt/{number}/pdf', [PdfController::class, 'orderThermal'])->name('receipt.pdf');
+
+    /*
+     * ═══ طابورُ الطباعة — الصندوقُ يسأل ورقتَه ═══
+     *
+     * الخادمُ لا يبلغ طابعةَ المحلّ: الصندوقُ المعيَّن يسأل ما ينتظره، ويحجز
+     * ورقةً، وينزّلها بجلسته، ويقول ما جرى (`PrintJobs`). والحجزُ والردُّ
+     * POST: لا يُكتب شيءٌ بطلب قراءة.
+     */
+    Route::get('/print-jobs', [App\Http\Controllers\Pos\PrintJobController::class, 'index'])->name('printJobs.index');
+    Route::post('/print-jobs/claim', [App\Http\Controllers\Pos\PrintJobController::class, 'claim'])->name('printJobs.claim');
+    Route::get('/print-jobs/{id}/pdf', [App\Http\Controllers\Pos\PrintJobController::class, 'pdf'])
+        ->whereNumber('id')->name('printJobs.pdf');
+    Route::post('/print-jobs/{id}/ack', [App\Http\Controllers\Pos\PrintJobController::class, 'ack'])
+        ->whereNumber('id')->name('printJobs.ack');
+    // «خرجت» أو «لم تخرج» — لورقةٍ فتح الصندوقُ حوارَها: فتحُه ليس ورقًا
+    Route::post('/print-jobs/{id}/confirm', [App\Http\Controllers\Pos\PrintJobController::class, 'confirm'])
+        ->whereNumber('id')->name('printJobs.confirm');
     /*
      * ونصُّ الورقة لمن يريد أن يراها ولا يغادر صندوقَه — انظر `receiptPaper`.
      *

@@ -7,8 +7,10 @@ use App\Models\BankAccount;
 use App\Models\Branch;
 use App\Models\PosDevice;
 use App\Support\Activity;
+use App\Support\CustomerInvoicePreparations;
 use App\Support\Demo;
 use App\Support\PosTerminal;
+use App\Support\PrintJobs;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -105,6 +107,8 @@ class DeviceController extends Controller
         $current = PosTerminal::current();
 
         return [
+            // أيُعرض خيارُ «فواتير العملاء المسدَّدة» على الطابعات؟ — لمن فُتح له التجهيزُ بعد السداد
+            'customerInvoicePrinting' => CustomerInvoicePreparations::on((int) Demo::bid()),
             'devices' => PosDevice::where('business_id', Demo::bid())
                 ->with('branch:id,name', 'activatedBy:id,name', 'peripherals', 'bankAccount')
                 ->withCount('orders', 'shifts')
@@ -149,6 +153,7 @@ class DeviceController extends Controller
                         'paperWidth' => $p->paper_width,
                         'autoPrint' => $p->auto_print,
                         'autoPrintWebsite' => (bool) $p->auto_print_website_confirm,
+                        'autoPrintCustomerInvoices' => (bool) $p->auto_print_customer_invoices,
                         'notes' => $p->notes,
                         'active' => $p->active,
                         // تقودها نقطة البيع فعلًا، أم تُسجَّل للجرد وحده
@@ -297,6 +302,8 @@ class DeviceController extends Controller
         }
 
         Activity::log('deleted', 'حذف سجلّ جهاز: '.$device->name, ['subject_id' => $device->id]);
+        // وورقُ الطابور الموجَّهُ إليه يُوجَّه قبل أن يُمحى الصفّ — ويُكتب ذلك (`PrintJobs::release`)
+        PrintJobs::release($device);
         $device->delete();
 
         return back()->with('toast', ['msg' => __('حُذف سجلّ الجهاز'), 'type' => 'warning']);

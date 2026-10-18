@@ -27,7 +27,9 @@ use Tests\TestCase;
  * طلبات **موقعه** (`orders.channel = website`) على شريط الصندوق — زرًّا
  * واحدًا «طباعة سند التسليم» بلا زرّ A4. وكلُّ ما سواه — متجرٌ مغلق، أو طلبُ
  * صندوقٍ، أو طلبٌ بلا قناة — سندُه A4 كما كان، وبابُ الشريط يردّه بـ404
- * ولو كُتب الرابطُ باليد.
+ * ولو كُتب الرابطُ باليد. والعكسُ كذلك: طلبُ موقعٍ في متجرٍ فُتح له سندُه
+ * الشريطُ وحده، وبابا ورقة A4 يردّانه بـ404 — ولا يُمسّ غيرُ سند التسليم
+ * (الفاتورةُ والإيصال).
  *
  * والسؤالُ واحدٌ للزرّ وللباب (`DeliveryPaper::paperFor`): الشاشةُ ترسم ما
  * قاله الخادم، والبابُ يسأل السؤالَ نفسَه.
@@ -129,6 +131,23 @@ class OnlyAnOpenedShopsWebsiteOrdersPrintTheDeliveryNoteOnTheStripTest extends T
         ];
     }
 
+    /** وبابا ورقة A4 — من الموضعين نفسيهما */
+    private function a4Doors(User $user, Order $order): array
+    {
+        return [
+            'orders A4' => $this->actingAs($user)->get(route('admin.orders.deliveryNote', $order->number)),
+            'preparation A4' => $this->actingAs($user)->get(route('admin.preparation.deliveryNote', $order->number)),
+        ];
+    }
+
+    private function assertA4Prints(User $user, Order $order): void
+    {
+        foreach ($this->a4Doors($user, $order) as $door => $res) {
+            $res->assertOk();
+            $this->assertSame('application/pdf', $res->headers->get('content-type'), $door);
+        }
+    }
+
     /* ═══════════ المفتاح ═══════════ */
 
     public function test_the_flag_is_off_for_every_shop_until_the_platform_opens_it(): void
@@ -208,11 +227,8 @@ class OnlyAnOpenedShopsWebsiteOrdersPrintTheDeliveryNoteOnTheStripTest extends T
             $res->assertNotFound();
         }
 
-        // وورقتُه A4 تخرج كما كانت
-        $a4 = $this->actingAs($owner)->get(route('admin.orders.deliveryNote', $web->number));
-        $a4->assertOk();
-        $this->assertSame('application/pdf', $a4->headers->get('content-type'));
-        $this->actingAs($owner)->get(route('admin.preparation.deliveryNote', $web->number))->assertOk();
+        // وورقتُه A4 تخرج كما كانت — من البابين
+        $this->assertA4Prints($owner, $web);
     }
 
     /* ═══════════ مفتوح: طلبُ الموقع على الشريط ═══════════ */
@@ -242,6 +258,18 @@ class OnlyAnOpenedShopsWebsiteOrdersPrintTheDeliveryNoteOnTheStripTest extends T
             $this->assertCount(1, $pages, $door);
             $this->assertSame((float) $mm, $pages[0]['width'], "{$door}: the strip is the till's width");
         }
+
+        // وورقةُ A4 لسنده تُردّ من البابين — سندُه الشريطُ وحده
+        foreach ($this->a4Doors($owner, $web) as $door => $res) {
+            $res->assertNotFound();
+        }
+
+        // ولا يُمسّ غيرُ سند التسليم: الفاتورةُ A4 وإيصالُ الصندوق يخرجان كما كانا
+        foreach (['admin.orders.pdf', 'admin.orders.receipt'] as $paper) {
+            $res = $this->actingAs($owner)->get(route($paper, $web->number));
+            $res->assertOk();
+            $this->assertSame('application/pdf', $res->headers->get('content-type'), $paper);
+        }
     }
 
     /** وطلبُ الصندوق في المتجر نفسِه يبقى على ورقته — والبابُ يردّ الرابطَ المكتوب باليد */
@@ -258,7 +286,7 @@ class OnlyAnOpenedShopsWebsiteOrdersPrintTheDeliveryNoteOnTheStripTest extends T
             $res->assertNotFound();
         }
 
-        $this->actingAs($owner)->get(route('admin.orders.deliveryNote', $pos->number))->assertOk();
+        $this->assertA4Prints($owner, $pos);
     }
 
     /** وكلُّ قناةٍ غيرُ الموقع — طلبٌ قديمٌ بلا قناة، أو قناةٌ لا يعرفها النظام */
@@ -274,6 +302,8 @@ class OnlyAnOpenedShopsWebsiteOrdersPrintTheDeliveryNoteOnTheStripTest extends T
             foreach ($this->doors($owner, $order) as $door => $res) {
                 $res->assertNotFound();
             }
+            // وورقتُه A4 كما كانت
+            $this->assertA4Prints($owner, $order);
         }
     }
 
@@ -287,6 +317,7 @@ class OnlyAnOpenedShopsWebsiteOrdersPrintTheDeliveryNoteOnTheStripTest extends T
         // من مُنح لوحةَ التجهيز وحدَها يطبع من بابها — ولا يبلغ بابَ المبيعات
         $preparer = $this->user('prep@abaadapp.om', 'employee', ['dashboard', 'preparation']);
         $this->actingAs($preparer)->get(route('admin.preparation.deliveryNoteThermal', $web->number))->assertOk();
+        $this->actingAs($preparer)->get(route('admin.preparation.deliveryNote', $web->number))->assertNotFound();
         $this->actingAs($preparer)->get(route('admin.orders.deliveryNoteThermal', $web->number))->assertForbidden();
 
         // ومن مُنح المبيعاتِ يطبع من صفحة الطلب
@@ -315,7 +346,7 @@ class OnlyAnOpenedShopsWebsiteOrdersPrintTheDeliveryNoteOnTheStripTest extends T
         $this->open(true, $other);
         $stranger = $this->user('other@abaadapp.om', 'admin', null, $other);
 
-        foreach ($this->doors($stranger, $web) as $door => $res) {
+        foreach ($this->doors($stranger, $web) + $this->a4Doors($stranger, $web) as $door => $res) {
             $res->assertNotFound();
         }
     }

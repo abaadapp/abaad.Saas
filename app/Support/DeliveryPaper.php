@@ -55,9 +55,19 @@ final class DeliveryPaper
         );
     }
 
-    /** @return Response */
+    /**
+     * الورقةُ A4 ملفًّا — لكلّ طلبٍ سندُه A4، إلّا ما سندُه الشريط.
+     *
+     * وطلبُ موقعٍ في متجرٍ فُتح له الشريطُ (`paperFor`) سندُه واحدٌ لا اثنان:
+     * يُردّ هنا بـ404 من أيّ بابٍ جاء — صفحةِ الطلب أو لوحةِ التجهيز، أو
+     * رابطٍ كُتب باليد. فلا تخرج له ورقةٌ تحمل ما يُحجب على الشريط.
+     *
+     * @return Response
+     */
     public static function pdf(int $businessId, Order $order)
     {
+        abort_if(self::paperFor($order, self::thermalOn($businessId)) === self::THERMAL, 404);
+
         Activity::log('report', 'طبع سند تسليم للطلب: '.$order->number, ['subject_id' => $order->id]);
 
         return DocumentRenderer::pdf(

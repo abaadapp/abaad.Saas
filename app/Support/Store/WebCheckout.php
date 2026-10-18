@@ -316,6 +316,14 @@ final class WebCheckout
         $quote = self::quote($business, $payload + ['fulfil' => $form['fulfil']]);
 
         /*
+         * ورسالةُ بطاقةٍ تقول اسمَ من أخفى اسمَه — يُسأل قبل أن تُفتح دفعة.
+         *
+         * والإقرارُ في الحمولة نفسِها، فيمضي معها إلى نيّة الدفع ويعود منها
+         * إلى `place` كما هو. انظر `CardIdentity`.
+         */
+        CardIdentity::check($bid, $form, $quote['_lines']);
+
+        /*
          * ═══ وحدُّ الكوبون يُفحص هنا قبل صفحة الدفع، ثمّ تُحجز فرصتُه ═══
          *
          * الطلبُ في هذا المسار يُكتب من إشعار البوّابة بعد أن يُقبض المال.
@@ -360,6 +368,20 @@ final class WebCheckout
             // بقفل: الفحصُ والخصم على كميّةٍ لا تتغيّر تحتهما — كما في الصندوق
             $q = self::quote($business, $payload + ['fulfil' => $form['fulfil']], lock: true);
             $lines = $q['_lines'];
+
+            /*
+             * ═══ ورسالةُ البطاقة ومن أخفى اسمَه — يُسأل قبل أن يُكتب شيء ═══
+             *
+             * لا يُكتب طلبٌ ولا يُخصم رفٌّ ولا يُحجز كوبون حتّى يُعدّلها أو
+             * يُقرّ بها (`CardIdentity`).
+             *
+             * ولا يُسأل في دفعةٍ قُبضت: سُئل قبل أن تُفتح (`toCard`)، وإقرارُه
+             * في الحمولة. وسؤالٌ هنا — مفتاحٌ فُتح للمتجر بين الدفع والإشعار
+             * مثلًا — يردّ طلبًا دُفع ثمنُه: مالٌ بلا طلب.
+             */
+            if (! $paid) {
+                CardIdentity::check($bid, $form, $lines);
+            }
             $branchId = $business->branches()->orderBy('id')->value('id');
             $branchName = $business->branches()->orderBy('id')->value('name') ?? 'الفرع الرئيسي';
 
@@ -868,7 +890,7 @@ final class WebCheckout
             'card_align' => ['nullable', 'in:'.implode(',', GiftCard::ALIGNS)],
             'card_file' => ['nullable', 'string', 'max:64'],
             'card_file_name' => ['nullable', 'string', 'max:160'],
-        ] + GiftOrders::rules($bid) + NotesAndEdits::checkoutRules($bid));
+        ] + GiftOrders::rules($bid) + CardIdentity::rules($bid) + NotesAndEdits::checkoutRules($bid));
 
         /*
          * ═══ وقائمةُ القواعد هي الحارسُ وحدَها ═══

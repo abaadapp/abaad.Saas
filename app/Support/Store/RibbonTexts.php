@@ -77,6 +77,15 @@ final class RibbonTexts
         // ميزةُ الإهداء — انظر `GiftOrders`
         'giftOrder' => 'هذا الطلب هدية', 'occasionOptional' => 'المناسبة — اختياري', 'enterOccasion' => 'اكتب المناسبة',
         'hideSender' => 'لا تذكر اسمي للمستلم',
+        /*
+         * ورسالةُ بطاقةٍ تبدو حاملةً اسمَ من اختار الإخفاء — يُسأل ولا تُعدَّل
+         * الرسالة (`CardIdentity`). وملفُّ الكرت لا يُقرأ: تذكيرٌ عامّ وحده.
+         */
+        'cardIdentityTitle' => 'تنبيه: رسالة البطاقة قد تحتوي على اسمك أو رقمك، مع أنك اخترت إخفاء اسم المرسل.',
+        'cardIdentityBody' => 'المستلم سيقرأ رسالة البطاقة كما كتبتها.',
+        'cardIdentityAsk' => 'هل تريد تعديل الرسالة أم إرسالها كما هي؟',
+        'cardIdentityEdit' => 'تعديل الرسالة', 'cardIdentitySend' => 'إرسال الرسالة كما هي', 'cardIdentitySave' => 'حفظ الرسالة',
+        'cardFilePrivacy' => 'تذكير: اخترت إخفاء اسمك عن المستلم. تأكّد أن ملف البطاقة لا يحمل اسمك أو رقمك — سيصل الملف إلى المستلم كما رفعته.',
         // وعنوانُ المستلِم يُكتب في «التوصيل» — سطرٌ يقوله لمن فتح الهديّة
         'giftAddressHint' => 'اكتب عنوان المستلم في قسم التوصيل أعلاه.',
         // زرُّ واتساب العائم — انظر `storefront.ribbon_floating_whatsapp_businesses`
@@ -135,6 +144,11 @@ final class RibbonTexts
         'cartCardMessage' => 'Card message:',
         'giftOrder' => 'This order is a gift', 'occasionOptional' => 'Occasion — optional', 'enterOccasion' => 'Enter the occasion',
         'hideSender' => 'Do not reveal my name to the recipient',
+        'cardIdentityTitle' => 'Heads up: your card message may include your name or phone number, even though you chose to hide your name from the recipient.',
+        'cardIdentityBody' => 'The recipient will read the card message exactly as you wrote it.',
+        'cardIdentityAsk' => 'Would you like to edit the message or send it as it is?',
+        'cardIdentityEdit' => 'Edit the message', 'cardIdentitySend' => 'Send the message as it is', 'cardIdentitySave' => 'Save the message',
+        'cardFilePrivacy' => "Reminder: you chose to hide your name from the recipient. Make sure the card file doesn't show your name or number — it will reach the recipient exactly as you uploaded it.",
         'giftAddressHint' => "Enter the recipient's address in the Delivery section above.",
         'waFloat' => 'Chat with us on WhatsApp', 'waFloatText' => 'Hello, I need help with my order from RIBBON.',
         'productNote' => 'Product note (optional)', 'productNotePh' => 'Write your note in English — e.g. No plastic wrapping',

@@ -593,6 +593,8 @@ class CustomerInvoiceController extends Controller
 
         $paid = CustomerInvoicePreparations::paid($invoice);
         $job = $prep ? PrintJobs::forPreparation($prep) : null;
+        // ويديره من يُصدر — والأزرارُ لا تُعرض لمن يُردّ عنها
+        $manages = (bool) auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE);
         $closed = $prep && in_array($prep->status, CustomerInvoicePreparations::CLOSED, true);
 
         return [
@@ -601,11 +603,11 @@ class CustomerInvoiceController extends Controller
              * يُطلب لفاتورةٍ صادرةٍ لم تُسدَّد بعد (أو مسودّة)، لا تغطّي طلبات —
              * والقائمُ يُعدَّل ما لم يُسلَّم.
              */
-            'attachable' => $on && ! $prep
+            'attachable' => $on && $manages && ! $prep
                 && in_array($invoice->status, [CustomerInvoice::DRAFT, CustomerInvoice::ISSUED], true)
                 && ! $paid && ! $invoice->coversOrders(),
-            'editable' => $on && $prep && ! $closed && $invoice->status !== CustomerInvoice::CANCELLED,
-            'removable' => $on && $prep && ! $prep->isActive(),
+            'editable' => $on && $manages && $prep && ! $closed && $invoice->status !== CustomerInvoice::CANCELLED,
+            'removable' => $on && $manages && $prep && ! $prep->isActive(),
             'activatable' => $on && $prep && ! $prep->isActive() && $paid
                 && (bool) auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
             'paid' => $paid,
@@ -1603,6 +1605,11 @@ class CustomerInvoiceController extends Controller
      */
     public function savePreparation(Request $request, int|string $id)
     {
+        /*
+         * ومن يُصدر الفاتورةَ يدير تجهيزَها — كسائر ما يمسّ ورقةً صادرة
+         * (`SellingOpensTheScreenIssuingMakesTheDebtTest`). والإذنُ قبل الصفّ.
+         */
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE), 403);
         $invoice = $this->find($id);
         abort_unless(CustomerInvoicePreparations::on($this->bid()), 404);
 
@@ -1629,6 +1636,7 @@ class CustomerInvoiceController extends Controller
     /** يُلغى طلبُ التجهيز ما لم يظهر في اللوحة */
     public function removePreparation(int|string $id)
     {
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_INVOICE_ISSUE), 403);
         $invoice = $this->find($id);
         abort_unless(CustomerInvoicePreparations::on($this->bid()), 404);
 

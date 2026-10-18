@@ -135,16 +135,19 @@ export default function PreparationPanel({ invoiceId, preparation }: { invoiceId
                 {t('التجهيز والتسليم')}
             </h3>
 
-            {/* أين وصل — والسببُ بجملةٍ لا رمز */}
+            {/*
+                أين وصل — والسببُ بجملةٍ لا رمز. و«مؤكّد» تُقرأ «بانتظار التجهيز»
+                كعمودها في اللوحة. ومسدَّدةٌ لم تُرسل بعد لا تُقال «بانتظار السداد».
+            */}
             {preparation.active ? (
                 <p className="rounded-[10px] bg-[#ecfdf5] p-2.5 text-[12px] text-[#065f46]" data-testid="preparation-state">
-                    {t('في لوحة التجهيز')} — {t(preparation.status ?? '')}
+                    {t('في لوحة التجهيز')} — {t(preparation.status === 'مؤكّد' ? 'بانتظار التجهيز' : (preparation.status ?? ''))}
                     {preparation.activation_source ? ` · ${t(SOURCE[preparation.activation_source] ?? '')}` : ''}
                     {preparation.activated_at ? ` · ${preparation.activated_at}` : ''}
                 </p>
             ) : (
                 <p className="rounded-[10px] bg-[#fffbeb] p-2.5 text-[12px] text-[#92400e]" data-testid="preparation-state">
-                    {preparation.waiting_for ?? t('بانتظار السداد الكامل')}
+                    {preparation.waiting_for ?? (preparation.paid ? t('الفاتورة مسدّدة — لم تُرسل إلى لوحة التجهيز بعد') : t('بانتظار السداد الكامل'))}
                 </p>
             )}
             {preparation.activation_error && (

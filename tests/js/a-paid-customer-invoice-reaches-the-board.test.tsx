@@ -9,6 +9,7 @@ import CustomerInvoicePreparationFields, {
     preparationPayload,
     type PreparationForm,
 } from '@/Components/CustomerInvoicePreparationFields';
+import PreparationPanel, { type PreparationPanelData } from '@/Pages/Admin/CustomerInvoices/partials/PreparationPanel';
 import PrepCard from '@/Pages/Admin/Preparation/partials/PrepCard';
 import PrepDetails from '@/Pages/Admin/Preparation/partials/PrepDetails';
 import { checkProgress, idOf, type PrepOrder } from '@/Pages/Admin/Preparation/partials/types';
@@ -222,5 +223,53 @@ describe('مهمّةُ الفاتورة على اللوحة', () => {
         const urls = vi.mocked(router.post).mock.calls.map((c) => c[0]);
         expect(urls).toContain('/admin.preparation.invoiceMove/12');
         expect(urls).toContain('/admin.preparation.move/CINV-000012');
+    });
+});
+
+/* ═══════════════════════ صفحةُ الفاتورة ═══════════════════════ */
+
+describe('تجهيزُ الفاتورة في صفحتها', () => {
+    const panel = (over: Partial<PreparationPanelData> = {}): PreparationPanelData => ({
+        enabled: true,
+        attachable: false,
+        editable: true,
+        removable: true,
+        activatable: false,
+        paid: false,
+        data: {
+            ...EMPTY_PREPARATION,
+            branch_id: 4,
+            branch: 'فرع الخوير',
+            fulfillment_type: 'delivery',
+            scheduled_for: '2026-10-19T16:00',
+            recipient_name: 'مريم',
+        },
+        active: false,
+        status: null,
+        activated_at: null,
+        activation_source: null,
+        activation_error: null,
+        waiting_for: null,
+        print: null,
+        options: OPTIONS,
+        ...over,
+    });
+
+    it('لم تُسدَّد بعد ← «بانتظار السداد الكامل» — ومسدَّدةٌ لم تُرسل لا تُقال كذلك', () => {
+        const { rerender } = render(<PreparationPanel invoiceId={9} preparation={panel()} />);
+        expect(screen.getByTestId('preparation-state')).toHaveTextContent('بانتظار السداد الكامل');
+
+        rerender(<PreparationPanel invoiceId={9} preparation={panel({ paid: true, activatable: true })} />);
+        expect(screen.getByTestId('preparation-state')).toHaveTextContent('الفاتورة مسدّدة — لم تُرسل إلى لوحة التجهيز بعد');
+        expect(screen.getByTestId('preparation-activate')).toBeInTheDocument();
+    });
+
+    it('وفي اللوحة: «مؤكّد» تُقرأ «بانتظار التجهيز» كعمودها — بلا زرّ إرسالٍ ولا إلغاء', () => {
+        render(<PreparationPanel invoiceId={9} preparation={panel({ active: true, status: 'مؤكّد', activation_source: 'paymob', paid: true, removable: false, print: { status: 'pending', label: 'بانتظار الطباعة على الصندوق', error: null } })} />);
+
+        expect(screen.getByTestId('preparation-state')).toHaveTextContent('في لوحة التجهيز — بانتظار التجهيز · عبر رابط الدفع');
+        expect(screen.queryByTestId('preparation-activate')).toBeNull();
+        expect(screen.queryByText('إلغاء طلب التجهيز')).toBeNull();
+        expect(screen.getByText(/بانتظار الطباعة على الصندوق/)).toBeInTheDocument();
     });
 });

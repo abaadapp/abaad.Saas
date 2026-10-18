@@ -35,6 +35,8 @@ use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
 use App\Support\Store\StorePage;
+use App\Support\Store\CardIdentity;
+use App\Support\Store\CardIdentityUnconfirmed;
 use App\Support\Store\WebCheckout;
 use App\Support\Storefront;
 use App\Support\Website\MerchantData;
@@ -166,6 +168,17 @@ class RibbonController extends Controller
             }
 
             $order = WebCheckout::place($business, $request->all(), $this->lang());
+        } catch (CardIdentityUnconfirmed $e) {
+            /*
+             * ورسالةُ بطاقةٍ تقول اسمَ من أخفى اسمَه — تسأله الصفحة: «عدّلها
+             * أو أرسلها كما هي». والرمزُ يُرسَل إن اختار الثانية، و`source`
+             * يقول أيَّ محرّرٍ يُفتح إن اختار الأولى. انظر `CardIdentity`.
+             */
+            return response()->json([
+                'ok' => false,
+                'errors' => $e->errors(),
+                'card_identity' => ['token' => $e->token, 'source' => $e->source],
+            ], 422);
         } catch (ValidationException $e) {
             return response()->json(['ok' => false, 'errors' => $e->errors()], 422);
         } catch (\RuntimeException $e) {
@@ -548,6 +561,15 @@ class RibbonController extends Controller
                 'on' => GiftOrders::on($bid),
                 'occasions' => GiftOrders::occasionOptions(),
                 'occasion_max' => FlowerOrder::CUSTOM_LABEL_MAX,
+            ],
+            /*
+             * و«لا تذكر اسمي» ورسالةُ البطاقة — تسأل الصفحةُ إن قال الخادمُ إنّ
+             * الرسالةَ تحمل اسمَه أو رقمَه، وتذكّره إن أرفق ملفًّا. لمتجرٍ فُتح
+             * له الطرحُ وحده (`CardIdentity::on`).
+             */
+            'cardConsent' => [
+                'on' => CardIdentity::on($bid),
+                'max' => GiftCardProduct::MAX,
             ],
             /*
              * وكرتُ الهدية: أيُعرض، وبكم، وما يُقبل رفعه معه.

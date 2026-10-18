@@ -228,6 +228,10 @@
                         <div style="font-size:13px">{{ $t['cardFile'] }}</div>
                         <input type="file" data-rb-cardfile accept="{{ $giftCard['accept'] }}" aria-label="{{ $t['cardFile'] }}" style="margin-top:8px;font-size:13px;max-width:100%">
                         <div style="font-size:12px;margin-top:6px">{{ $t['cardFileHint'] }}</div>
+                        @if ($cardConsent['on'] ?? false)
+                            {{-- والملفُّ لا يُقرأ: تذكيرٌ عامّ لمن أخفى اسمَه — انظر `js/store/ribbon-card-consent.js` --}}
+                            <p class="rb-note" data-rb-card-file-privacy hidden data-testid="rb-card-file-privacy" style="margin:8px 0 0">{{ $t['cardFilePrivacy'] }}</p>
+                        @endif
                         <div data-rb-cardfilemsg style="font-size:12px;margin-top:6px"></div>
                         <div class="rb-error" data-err="card_file"></div>
                         </div>
@@ -345,6 +349,28 @@
                 </div>
             </div>
 
+            {{--
+                ═══ و«لا تذكر اسمي» ورسالةٌ تقول الاسم — يُسأل، ولا تُعدَّل الرسالة ═══
+
+                يفتحه ردُّ الخادم وحدَه (`CardIdentity`): لا طلبَ قبل الجواب، ولا
+                دفعة. «تعديل الرسالة» يُعيده إلى خانتها — أو يفتح رسائلَ الكروت في
+                السلّة هنا — و«إرسال الرسالة كما هي» يُقرّ ويُعيد الإرسال.
+            --}}
+            @if ($cardConsent['on'] ?? false)
+                <style>[data-rb-consent-box][hidden], [data-rb-cardlines][hidden], [data-rb-consent-save][hidden], [data-rb-card-file-privacy][hidden] { display: none !important; }</style>
+                <div data-rb-consent-box hidden role="alert" data-testid="rb-card-identity" style="margin-top:14px;border:1px solid var(--rb-line);border-radius:var(--rb-r);padding:14px;background:var(--rb-sand,#faf8f5)">
+                    <p style="margin:0 0 6px;font-weight:500">{{ $t['cardIdentityTitle'] }}</p>
+                    <p style="margin:0 0 4px;font-size:14px;color:var(--rb-ink-soft,#6b6b6b)">{{ $t['cardIdentityBody'] }}</p>
+                    <p style="margin:0 0 12px;font-size:14px;color:var(--rb-ink-soft,#6b6b6b)">{{ $t['cardIdentityAsk'] }}</p>
+                    <div data-rb-cardlines hidden style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button type="button" class="rb-btn" data-rb-consent-save hidden style="flex:1;min-width:160px">{{ $t['cardIdentitySave'] }}</button>
+                        <button type="button" class="rb-btn-ghost" data-rb-consent-edit data-testid="rb-card-identity-edit" style="flex:1;min-width:140px">{{ $t['cardIdentityEdit'] }}</button>
+                        <button type="button" class="rb-btn" data-rb-consent-send data-testid="rb-card-identity-send" style="flex:1;min-width:160px">{{ $t['cardIdentitySend'] }}</button>
+                    </div>
+                </div>
+            @endif
+
             <button type="submit" class="rb-btn" style="width:100%;margin-top:16px" data-testid="rb-place"><span data-rb-place-label>{{ $t['place'] }}</span></button>
         </aside>
     </form>
@@ -361,6 +387,9 @@
 @endif
 @if ($orderNotes['on'] ?? false)
 <script>{!! file_get_contents(resource_path('js/store/ribbon-notes.js')) !!}</script>
+@endif
+@if ($cardConsent['on'] ?? false)
+<script>{!! file_get_contents(resource_path('js/store/ribbon-card-consent.js')) !!}</script>
 @endif
 <script>
 (function () {
@@ -401,6 +430,7 @@
             $('[data-rb-ship]').textContent = q.delivery > 0 ? q.delivery_text : T.free;
             $('[data-rb-total]').textContent = q.total_text;
             shownTotal = q.total;
+            if (consent) consent.lines(q.lines);
             $('[data-rb-place-label]').textContent = T.place + ' · ' + q.total_text;
             if (q.promo_error) { msg.textContent = q.promo_error; } else if (q.coupon) { msg.style.color = 'var(--rb-olive)'; msg.textContent = '✓ ' + q.coupon; }
         });
@@ -532,6 +562,26 @@
     */
     var giftOrderToggle = form.querySelector('[data-rb-gift]');
     var giftOrder = giftOrderToggle ? RBGiftOrder.mount(form, giftOrderToggle) : null;
+    /*
+        و«لا تذكر اسمي» ورسالةُ البطاقة — انظر `js/store/ribbon-card-consent.js`.
+        وحيث لم يُفتح الطرحُ لا صندوقَ ولا رمز.
+    */
+    var consentBox = form.querySelector('[data-rb-consent-box]');
+    var consent = consentBox ? RBCardConsent.mount(form, consentBox, RB, {
+        max: {{ (int) ($cardConsent['max'] ?? 0) }},
+        onSend: function () { form.dispatchEvent(new Event('submit', { cancelable: true })); },
+        onSaved: function () { refresh(); },
+    }) : null;
+    var filePrivacy = form.querySelector('[data-rb-card-file-privacy]');
+    function paintFilePrivacy() {
+        if (!filePrivacy) return;
+        var hideBox = form.querySelector('[data-rb-hide-sender]');
+        filePrivacy.hidden = !RBCardConsent.fileReminder({
+            gift: !!(giftOrderToggle && giftOrderToggle.checked), hidden: !!(hideBox && hideBox.checked), card: gift, way: cardWay,
+        });
+    }
+    form.addEventListener('change', paintFilePrivacy);
+    form.addEventListener('click', paintFilePrivacy);
     function paintFulfil() {
         var d = form.querySelector('[data-rb-delivery]');
         var p = form.querySelector('[data-rb-pickup]');
@@ -596,10 +646,14 @@
             card_file_name: cardWay === 'file' ? cardFileName : null,
         };
         if (notesField) payload.notes = notes;
+        // والإقرارُ برسالة البطاقة — رمزٌ من الخادم، يُنسى متى تبدّل ما أُقرّ عليه
+        if (consent) payload.card_identity_ack = consent.ack();
         // وحقولُ الهديّة إن كانت هديّة — وإلّا `is_gift: false` وحدها
         if (giftOrder) Object.assign(payload, giftOrder.payload());
         RB.post('/checkout', payload).then(function (r) {
             btn.disabled = false;
+            // ورسالةٌ تقول اسمَ من أخفاه — يُسأل، ولا طلبَ ولا دفعة قبل جوابه
+            if (r && r.card_identity && consent) { consent.warn(r.card_identity); return; }
             /*
              * وخطأُ الكود يُقرأ تحت حقله، ويُفتح صندوقُ الموافقة بالسبب
              * والإجماليّ الجديد. ولا يُرسَل الطلبُ من نفسه: الإقرارُ ضغطةٌ.

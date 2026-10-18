@@ -160,9 +160,11 @@ class PreparationController extends Controller
          */
         $checks = PrepChecklist::forOrders($orders->pluck('id')->all());
         $mayCancel = (bool) auth()->user()?->may(Permissions::PREPARATION_CANCEL);
+        // ومفتاحُ سند الشريط يُقرأ مرّةً للوحة كلّها — لا مرّةً لكلّ بطاقة
+        $thermal = DeliveryPaper::thermalOn($this->bid());
 
         return Inertia::render('Admin/Preparation/Index', [
-            'orders' => $orders->map(fn ($o) => $this->card($o, $checks[$o->id] ?? [], $mayCancel))->values()->all(),
+            'orders' => $orders->map(fn ($o) => $this->card($o, $checks[$o->id] ?? [], $mayCancel, $thermal))->values()->all(),
             'filters' => ['when' => $filter, 'type' => $type],
             'counts' => $this->counts($type),
             'typeCounts' => $this->typeCounts($filter),
@@ -334,13 +336,15 @@ class PreparationController extends Controller
      * وسعرُ كلّ بند (قرارُ المالك 2026-10-02). والتكلفةُ والربحُ لا يُرسلان:
      * ما يدفعه الزبون يُقال له، وما اشتراه المتجر به لا يُقال لأحد هنا.
      */
-    private function card(Order $o, array $checks = [], bool $mayCancel = false): array
+    private function card(Order $o, array $checks = [], bool $mayCancel = false, bool $thermal = false): array
     {
         return [
             'number' => $o->number,
             'status' => $o->status,
             // قناةُ الطلب — انظر `WebsiteConfirmPrint`: تُفتح نافذةُ الطباعة في ضغطة «مؤكّد»
             'channel' => $o->channel,
+            // وأيُّ سندِ تسليمٍ يُطبع منها — الجوابُ نفسُه الذي يسأله بابُ الشريط (`DeliveryPaper::paperFor`)
+            'delivery_paper' => DeliveryPaper::paperFor($o, $thermal),
             // اسم العميل — صاحبُ الطلب لا مستلِمُه. وكانا يُخلطان: بطاقةٌ
             // تعرض المستلِم وحدها لا تقول لمن تُسلَّم عند الاستلام من المحل
             'customer' => $o->customer_name,
@@ -540,6 +544,14 @@ class PreparationController extends Controller
         $order = $this->base()->where('number', $number)->with('items')->firstOrFail();
 
         return DeliveryPaper::pdf($this->bid(), $order);
+    }
+
+    /** وسندُ التسليم على شريط طابعة الصندوق — بحصر اللوحة نفسِه (`base()`)، ولطلب الموقع وحده (`DeliveryPaper::stripPdf`) */
+    public function deliveryNoteThermal(string $number)
+    {
+        $order = $this->base()->where('number', $number)->with('items')->firstOrFail();
+
+        return DeliveryPaper::stripPdf($this->bid(), $order);
     }
 
     /**

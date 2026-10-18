@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { usePage } from '@inertiajs/react';
 import { Clock, Gift, History, MapPin, Phone, Printer, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
+import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -394,12 +395,29 @@ export default function PrepDetails({
                 </div>
 
                 <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] p-5">
-                    <Button variant="outline" size="sm" asChild>
-                        <a href={deliveryNoteUrl(o.number)} target="_blank" rel="noreferrer">
-                            <Printer className="size-3.5" />
-                            {t('سند تسليم')}
-                        </a>
-                    </Button>
+                    {/*
+                        سندُ تسليمٍ واحد لا اثنان: على شريط طابعة الصندوق لطلب
+                        موقعٍ في متجرٍ فُتح له — يضعه المجهِّزُ في الصندوق بلا
+                        طابعة مكتب — وورقةُ A4 لكلّ ما سواه كما كانت. والخادمُ
+                        يقول أيَّهما (`delivery_paper`)، وبابُ الشريط يسأل السؤالَ
+                        نفسَه. ولا طباعةَ بلا ضغطة.
+                    */}
+                    {o.delivery_paper === 'thermal' ? (
+                        <PrintReceiptButton
+                            number={o.number}
+                            routeName="admin.preparation.deliveryNoteThermal"
+                            label={t('طباعة سند التسليم')}
+                            variant="outline"
+                            size="sm"
+                        />
+                    ) : (
+                        <Button variant="outline" size="sm" asChild>
+                            <a href={deliveryNoteUrl(o.number)} target="_blank" rel="noreferrer">
+                                <Printer className="size-3.5" />
+                                {t('سند تسليم')}
+                            </a>
+                        </Button>
+                    )}
                     {o.next.map((s) => (
                         <Button key={s} variant="outline" size="sm" disabled={busy || gone} onClick={() => onMove(s)}>
                             {t(s)}

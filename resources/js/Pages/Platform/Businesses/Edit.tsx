@@ -26,6 +26,7 @@ interface EditableBusiness {
     /** الإهداءُ في المتجر الإلكترونيّ — يفتحه مديرُ المنصّة وحده */
     gift_orders_enabled: boolean;
     order_notes_and_edits_enabled: boolean;
+    thermal_delivery_note_enabled: boolean;
     logo_url: string | null;
     owner_email: string | null;
 }
@@ -72,6 +73,7 @@ export default function BusinessEdit() {
                     boutiques_enabled: business.boutiques_enabled ?? false,
                     gift_orders_enabled: business.gift_orders_enabled ?? false,
                     order_notes_and_edits_enabled: business.order_notes_and_edits_enabled ?? false,
+                    thermal_delivery_note_enabled: business.thermal_delivery_note_enabled ?? false,
                 }}
                 logoUrl={business.logo_url}
                 ownerEmail={business.owner_email}

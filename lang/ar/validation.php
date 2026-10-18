@@ -533,6 +533,8 @@ return [
         'is_gift' => 'الطلب هدية',
         'occasion' => 'المناسبة',
         'occasion_text' => 'نص المناسبة',
+        // والإقرارُ برسالة بطاقةٍ تقول اسمَ من أخفاه — انظر Store\CardIdentity
+        'card_identity_ack' => 'تأكيد رسالة البطاقة',
         'recipient_location' => 'طريقة تحديد موقع المستلم',
         'store_gift_card_price' => 'سعر بطاقة الإهداء',
         'store_max_days' => 'أقصى مدّة للحجز',

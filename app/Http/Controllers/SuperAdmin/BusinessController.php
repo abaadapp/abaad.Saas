@@ -162,12 +162,18 @@ class BusinessController extends Controller
 
         $giftingBefore = (bool) $business->gift_orders_enabled;
         $notesBefore = (bool) $business->order_notes_and_edits_enabled;
+        $thermalBefore = (bool) $business->thermal_delivery_note_enabled;
 
         $business->update($data);
 
         // وملاحظاتُ العميل وتعديلُ أصناف الفاتورة كذلك (`NotesAndEdits`)
         if ((bool) $business->order_notes_and_edits_enabled !== $notesBefore) {
             \App\Support\Activity::log('updated', ($business->order_notes_and_edits_enabled ? 'فتح' : 'أغلق').' ملاحظات العميل وتعديل أصناف الفاتورة: '.$business->name, ['business_id' => null, 'subject_id' => $business->id]);
+        }
+
+        // وسندُ التسليم الحراريّ لطلبات الموقع كذلك (`DeliveryPaper::thermalOn`)
+        if ((bool) $business->thermal_delivery_note_enabled !== $thermalBefore) {
+            \App\Support\Activity::log('updated', ($business->thermal_delivery_note_enabled ? 'فتح' : 'أغلق').' سند التسليم الحراري لطلبات الموقع: '.$business->name, ['business_id' => null, 'subject_id' => $business->id]);
         }
 
         // وفتحُ الإهداء أو إغلاقُه يُقيَّد باسمه — إذنٌ يُسأل عنه لاحقًا
@@ -590,6 +596,11 @@ class BusinessController extends Controller
             'gift_orders_enabled' => ['nullable', 'boolean'],
             // وملاحظاتُ العميل وتعديلُ أصناف الفاتورة بعد صدورها (`NotesAndEdits::on`)
             'order_notes_and_edits_enabled' => ['nullable', 'boolean'],
+            /*
+             * وسندُ التسليم على شريط الصندوق لطلبات الموقع (`DeliveryPaper::thermalOn`)
+             * — يفتحه مديرُ المنصّة لمن طلبه، ولا يفتحه التاجرُ من إعداداته.
+             */
+            'thermal_delivery_note_enabled' => ['nullable', 'boolean'],
         ]);
 
         /*
@@ -621,7 +632,7 @@ class BusinessController extends Controller
          *
          * فصار كسائر الحقول: الغائبُ لا يُمسّ، والمرسَلُ يُكتب كما أُرسل.
          */
-        foreach (['boutiques_enabled', 'gift_orders_enabled', 'order_notes_and_edits_enabled'] as $flag) {
+        foreach (['boutiques_enabled', 'gift_orders_enabled', 'order_notes_and_edits_enabled', 'thermal_delivery_note_enabled'] as $flag) {
             if ($request->has($flag)) {
                 $data[$flag] = $request->boolean($flag);
             } else {

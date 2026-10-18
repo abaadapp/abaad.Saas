@@ -228,6 +228,34 @@ class ALongArabicNameWrapsBetweenItsWordsTest extends TestCase
         }
     }
 
+    /**
+     * وصفٌّ التفّ اسمُه أسطرًا: سعرُه وكميّتُه وإجماليّه بجانب أوّل سطرٍ منه.
+     *
+     * mpdf يوسّط الخلايا افتراضًا، ويوسّط بعضَها دون بعض: على الإيصال
+     * الإنجليزيّ نزلت الكميّةُ إلى وسط الصفّ وبقي السعرُ والإجماليّ في أوّله.
+     * ويُقرأ بالإنجليزيّة لأنّ أرقامَ السطر العربيّ تُكتب رموزًا خاصّة.
+     */
+    #[DataProvider('widths')]
+    public function test_a_wrapped_row_keeps_its_amounts_beside_its_first_line(int $mm): void
+    {
+        $this->strip($mm);
+        $order = $this->sale([['name' => 'Premium long-stem white roses with eucalyptus and silk ribbon', 'price' => 30, 'qty' => 2]]);
+
+        app()->setLocale('en');
+        $lines = PdfText::lines(PdfController::thermal($this->shop->id, $order)->getContent());
+        app()->setLocale('ar');
+
+        $y = fn (callable $match) => collect($lines)->first(fn (array $l) => $match(trim($l['text'])))['y'] ?? null;
+        $first = $y(fn (string $t) => str_starts_with($t, 'Premium'));
+        $this->assertNotNull($first);
+        $this->assertNotNull($y(fn (string $t) => str_starts_with($t, 'ribbon') || str_ends_with($t, 'ribbon')), 'الاسمُ التفّ');
+        $this->assertGreaterThan($y(fn (string $t) => str_ends_with($t, 'ribbon')), $first, 'أوّلُ سطرٍ أعلى من آخره');
+
+        foreach (['السعر' => fn (string $t) => str_contains($t, '30.000'), 'الكميّة' => fn (string $t) => $t === '2', 'الإجماليّ' => fn (string $t) => str_contains($t, '60.000')] as $cell => $match) {
+            $this->assertEqualsWithDelta($first, $y($match), 0.5, "{$mm}mm: {$cell} بجانب أوّل سطرٍ من الاسم");
+        }
+    }
+
     /* ============================== ورقتا فاتورة العميل ============================== */
 
     /** @param  list<array{0: string, 1: int, 2: float, 3?: bool}>  $lines  الوصفُ والكميّةُ والثمنُ وأهو إضافة */

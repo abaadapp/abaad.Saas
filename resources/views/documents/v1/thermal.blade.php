@@ -141,7 +141,7 @@
             @php($extras = \App\Support\ItemAddons::of($it))
             @php($joined = in_array($extras['mode'], ['priced', 'bundled'], true) ? 'joined' : '')
             <tr>
-                <td class="{{ $joined }}">
+                <td class="name {{ $joined }}">
                     {{ $it->name }}
                     {{-- والمقاسُ من لقطة البيع لا من الكتالوج: مقاسٌ أُعيدت تسميتُه لا يغيّر إيصالًا مضى --}}
                     @if (filled($it->variant_name))
@@ -199,7 +199,7 @@
                 @foreach ($extras['rows'] as $addon)
                     @php($edge = $loop->last ? 'addon addon-last' : 'addon')
                     <tr data-addon="priced">
-                        <td class="{{ $edge }}">+ <span dir="{{ \App\Support\Paper::dirOf($addon['name']) }}">{{ $addon['name'] }}</span></td>
+                        <td class="name {{ $edge }}">+ <span dir="{{ \App\Support\Paper::dirOf($addon['name']) }}">{{ $addon['name'] }}</span></td>
                         <td class="c {{ $edge }}"><span dir="ltr">{{ $money($addon['unit']) }}</span></td>
                         <td class="c {{ $edge }}" dir="ltr">{{ $addon['qty'] }}</td>
                         <td class="l {{ $edge }}"><span dir="ltr">{{ $money($addon['total']) }}</span></td>
@@ -208,7 +208,7 @@
             @elseif ($extras['mode'] === 'bundled')
                 {{-- ولقطاتٌ لا تطابق ما جُبي: سطرٌ واحدٌ بما جُبي فعلًا، يسمّي ما فيه --}}
                 <tr data-addon="bundled">
-                    <td class="addon addon-last">+ {{ __('إضافات') }}: <span dir="{{ \App\Support\Paper::dirOf($extras['names']) }}">{{ $extras['names'] }}</span></td>
+                    <td class="name addon addon-last">+ {{ __('إضافات') }}: <span dir="{{ \App\Support\Paper::dirOf($extras['names']) }}">{{ $extras['names'] }}</span></td>
                     <td class="addon addon-last"></td>
                     <td class="addon addon-last"></td>
                     <td class="l addon addon-last"><span dir="ltr">{{ $money($extras['total']) }}</span></td>

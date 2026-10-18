@@ -7,6 +7,7 @@ import DocumentMeta from '@/Components/DocumentMeta';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import SmartLink from '@/Components/SmartLink';
 import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -72,7 +73,7 @@ interface May {
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, context } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, preparation, context } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -86,6 +87,8 @@ export default function CustomerInvoiceShow() {
                 paper: { html: string; size: string };
                 /** روابطُ دفع الفاتورة وحالُ Paymob — `PaymentLinks::panel` */
                 paymentLinks: PaymentLinksPanel;
+                /** التجهيزُ بعد السداد — و`null` لمن لم يُفتح له (`CustomerInvoicePreparations`) */
+                preparation: PreparationPanelData | null;
             }>
         >().props;
     const t = useTranslate();
@@ -317,6 +320,9 @@ export default function CustomerInvoiceShow() {
                             allowCreate={invoice.status === 'صادرة' && invoice.outstanding > 0}
                         />
                     )}
+
+                    {/* والتجهيزُ بعد السداد — لمن فُتح له وحده */}
+                    {preparation && <PreparationPanel invoiceId={invoice.id} preparation={preparation} />}
 
                     {invoice.credit_notes.length > 0 && (
                         <Card className="p-4">

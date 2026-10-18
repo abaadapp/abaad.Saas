@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { usePage } from '@inertiajs/react';
-import { Clock, Gift, History, MapPin, Phone, Printer, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
+import { router, usePage } from '@inertiajs/react';
+import { Clock, Gift, History, MapPin, Phone, Printer, RotateCcw, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
 import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -63,7 +63,8 @@ export default function PrepDetails({
     const m = (v: number) => (currency ? money(v, currency) : String(v));
     const [events, setEvents] = useState<Timeline[] | null>(null);
     const [failed, setFailed] = useState(false);
-    const number = o?.number ?? null;
+    // والسجلُّ بمفتاح المهمّة لفاتورة العميل، وبرقم الطلب للطلب — كما كان
+    const number = o ? (o.kind === 'invoice' ? (o.key ?? null) : o.number) : null;
 
     /*
      * الملاحظاتُ الثلاث على الطلب — كلٌّ باسمه، وما فرغ منها لا يُرسم.
@@ -218,88 +219,107 @@ export default function PrepDetails({
                         </p>
                     )}
 
-                    {/* ═══ قائمةُ التحقّق — وهي البنودُ نفسُها لا قائمةٌ ثانية ═══ */}
-                    <section>
-                        <h4 className="mb-2 flex items-center justify-between text-sm font-bold text-[#111]">
-                            <span>{t('قائمة التجهيز')}</span>
-                            <span className="text-[12px] font-normal tabular-nums text-[#6b7280]">
-                                {done}/{keys.length}
-                            </span>
-                        </h4>
-                        <div className="flex flex-col divide-y divide-[var(--ui-border,#e8e8e8)]">
-                            {o.items.map((i) => (
-                                <div key={i.id} className="py-1">
-                                    <div className="flex items-start gap-2.5">
-                                        {i.image ? (
-                                            <img src={i.image} alt="" className="mt-2 size-9 shrink-0 rounded-[8px] object-cover" />
-                                        ) : (
-                                            <span className="mt-2 size-9 shrink-0 rounded-[8px] bg-gray-100" />
-                                        )}
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-start gap-2">
-                                                <div className="min-w-0 flex-1">
-                                                    {/* وملاحظةُ البند باسمها تحته — لا يُخمَّن أهي للمنتج أم رسالةُ كرت */}
-                                                    {box(
-                                                        `item:${i.id}`,
-                                                        `${i.name} ×${i.qty}`,
-                                                        i.note ? (
-                                                            <>
-                                                                <span data-testid="prep-item-note-kind">{t(i.card_line ? 'رسالة الكرت' : 'ملاحظة المنتج')}:</span>{' '}
-                                                                <span dir="auto">{i.note}</span>
-                                                            </>
-                                                        ) : undefined,
+                    {/*
+                        ═══ قائمةُ التحقّق — وهي البنودُ نفسُها لا قائمةٌ ثانية ═══
+
+                        ومهمّةُ الفاتورة: بنودُها من الفاتورة بكميّاتها — بلا
+                        مربّعات: لا علاماتٍ مخزَّنةً لها (`PrepChecklist` للطلبات).
+                    */}
+                    {o.kind === 'invoice' ? (
+                        <section data-testid="prep-invoice-items">
+                            <h4 className="mb-2 text-sm font-bold text-[#111]">{t('الأصناف')}</h4>
+                            <ul className="flex flex-col divide-y divide-[var(--ui-border,#e8e8e8)] text-sm">
+                                {o.items.map((i) => (
+                                    <li key={i.id} className="flex items-start justify-between gap-3 py-1.5">
+                                        <span dir="auto">{i.name}</span>
+                                        <span className="shrink-0 font-bold tabular-nums" dir="ltr">×{fmt(i.qty)}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    ) : (
+                        <section>
+                            <h4 className="mb-2 flex items-center justify-between text-sm font-bold text-[#111]">
+                                <span>{t('قائمة التجهيز')}</span>
+                                <span className="text-[12px] font-normal tabular-nums text-[#6b7280]">
+                                    {done}/{keys.length}
+                                </span>
+                            </h4>
+                            <div className="flex flex-col divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                {o.items.map((i) => (
+                                    <div key={i.id} className="py-1">
+                                        <div className="flex items-start gap-2.5">
+                                            {i.image ? (
+                                                <img src={i.image} alt="" className="mt-2 size-9 shrink-0 rounded-[8px] object-cover" />
+                                            ) : (
+                                                <span className="mt-2 size-9 shrink-0 rounded-[8px] bg-gray-100" />
+                                            )}
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-start gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        {/* وملاحظةُ البند باسمها تحته — لا يُخمَّن أهي للمنتج أم رسالةُ كرت */}
+                                                        {box(
+                                                            `item:${i.id}`,
+                                                            `${i.name} ×${i.qty}`,
+                                                            i.note ? (
+                                                                <>
+                                                                    <span data-testid="prep-item-note-kind">{t(i.card_line ? 'رسالة الكرت' : 'ملاحظة المنتج')}:</span>{' '}
+                                                                    <span dir="auto">{i.note}</span>
+                                                                </>
+                                                            ) : undefined,
+                                                        )}
+                                                    </div>
+                                                    {/* إجماليُّ السطر كما بيع — لا تكلفتُه */}
+                                                    {i.total !== undefined && (
+                                                        <span className="mt-2 shrink-0 text-[12px] tabular-nums text-[#6b7280]">
+                                                            {m(i.total)}
+                                                        </span>
                                                     )}
                                                 </div>
-                                                {/* إجماليُّ السطر كما بيع — لا تكلفتُه */}
-                                                {i.total !== undefined && (
-                                                    <span className="mt-2 shrink-0 text-[12px] tabular-nums text-[#6b7280]">
-                                                        {m(i.total)}
-                                                    </span>
+                                                <div className="ms-6">
+                                                    {(i.addons ?? []).map((a) => (
+                                                        <div key={a.id} className="text-[#7c3aed]">
+                                                            {box(`addon:${a.id}`, `+ ${a.name}${a.qty > 1 ? ` ×${a.qty}` : ''}`)}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {/*
+                                                  * والمكوّناتُ تُعرض ولا تُؤشَّر.
+                                                  *
+                                                  * هي موادُّ البند الواحد — ستُّ لفّاتِ ورقٍ وثلاثُ ورداتٍ
+                                                  * لباقةٍ واحدة. ومربّعٌ لكلٍّ منها يجعل قائمةَ التحقّق
+                                                  * أربعين سطرًا لطلبٍ فيه بندان، فلا تُقرأ أصلًا.
+                                                  */}
+                                                {(i.components ?? []).length > 0 && (
+                                                    <ul className="ms-8 mt-1 text-[12px] text-[#047857]">
+                                                        {(i.components ?? []).map((c, k) => (
+                                                            <li key={k}>
+                                                                {c.name} ×{fmt(c.qty, Number.isInteger(c.qty) ? 0 : 3)}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
                                                 )}
-                                            </div>
-                                            <div className="ms-6">
-                                                {(i.addons ?? []).map((a) => (
-                                                    <div key={a.id} className="text-[#7c3aed]">
-                                                        {box(`addon:${a.id}`, `+ ${a.name}${a.qty > 1 ? ` ×${a.qty}` : ''}`)}
-                                                    </div>
+                                                {(i.custom?.fields ?? []).map((f, k) => (
+                                                    <p
+                                                        key={k}
+                                                        className={cn(
+                                                            'ms-8 text-[12px]',
+                                                            f.internal ? 'font-medium text-[#b45309]' : 'text-[#6b7280]',
+                                                        )}
+                                                    >
+                                                        {f.label}: {f.values.join(' + ')}
+                                                    </p>
                                                 ))}
                                             </div>
-                                            {/*
-                                              * والمكوّناتُ تُعرض ولا تُؤشَّر.
-                                              *
-                                              * هي موادُّ البند الواحد — ستُّ لفّاتِ ورقٍ وثلاثُ ورداتٍ
-                                              * لباقةٍ واحدة. ومربّعٌ لكلٍّ منها يجعل قائمةَ التحقّق
-                                              * أربعين سطرًا لطلبٍ فيه بندان، فلا تُقرأ أصلًا.
-                                              */}
-                                            {(i.components ?? []).length > 0 && (
-                                                <ul className="ms-8 mt-1 text-[12px] text-[#047857]">
-                                                    {(i.components ?? []).map((c, k) => (
-                                                        <li key={k}>
-                                                            {c.name} ×{fmt(c.qty, Number.isInteger(c.qty) ? 0 : 3)}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            )}
-                                            {(i.custom?.fields ?? []).map((f, k) => (
-                                                <p
-                                                    key={k}
-                                                    className={cn(
-                                                        'ms-8 text-[12px]',
-                                                        f.internal ? 'font-medium text-[#b45309]' : 'text-[#6b7280]',
-                                                    )}
-                                                >
-                                                    {f.label}: {f.values.join(' + ')}
-                                                </p>
-                                            ))}
                                         </div>
                                     </div>
-                                </div>
-                            ))}
-                            {Object.keys(TASK_LABELS).map((k) => (
-                                <div key={k} className="py-1">{box(k, t(TASK_LABELS[k]))}</div>
-                            ))}
-                        </div>
-                    </section>
+                                ))}
+                                {Object.keys(TASK_LABELS).map((k) => (
+                                    <div key={k} className="py-1">{box(k, t(TASK_LABELS[k]))}</div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
 
                     {(o.card_message || o.card_file) && (
                         <div className="rounded-[10px] bg-[#fdf2f8] p-3 text-[12px] text-[#831843]">
@@ -402,7 +422,46 @@ export default function PrepDetails({
                         يقول أيَّهما (`delivery_paper`)، وبابُ الشريط يسأل السؤالَ
                         نفسَه. ولا طباعةَ بلا ضغطة.
                     */}
-                    {o.delivery_paper === 'thermal' ? (
+                    {/*
+                        ومهمّةُ فاتورة العميل: سندُ التسليم شريطًا — بيدٍ وحدها، وحمولتُه
+                        آمنةٌ للمستلِم في الخادم — والنسخةُ الداخليّة بأثمانها تُعاد
+                        طباعتُها من هنا. وورقةُ الصندوق إن لم تخرج تُعاد إلى طابوره.
+                    */}
+                    {o.kind === 'invoice' && o.prep_id ? (
+                        <>
+                            <PrintReceiptButton
+                                number={String(o.prep_id)}
+                                routeName="admin.preparation.invoiceDeliveryNote"
+                                label={t('طباعة سند التسليم')}
+                                variant="outline"
+                                size="sm"
+                            />
+                            <PrintReceiptButton
+                                number={String(o.prep_id)}
+                                routeName="admin.preparation.invoiceInternalPdf"
+                                label={t('طباعة الفاتورة الداخلية')}
+                                variant="outline"
+                                size="sm"
+                            />
+                            {o.print?.status === 'failed' && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    data-testid="prep-requeue"
+                                    onClick={() => router.post(route('admin.preparation.invoiceRequeue', o.prep_id), {}, { preserveScroll: true })}
+                                >
+                                    <RotateCcw className="size-3.5" />
+                                    {t('إعادة الإرسال إلى الصندوق')}
+                                </Button>
+                            )}
+                            {o.print?.label && (
+                                <p data-testid="prep-print-status" className="w-full text-[12px] text-[#6b7280]">
+                                    {t('فاتورة عميل — نسخة داخلية')}: {o.print.label}
+                                    {o.print.error ? ` — ${o.print.error}` : ''}
+                                </p>
+                            )}
+                        </>
+                    ) : o.delivery_paper === 'thermal' ? (
                         <PrintReceiptButton
                             number={o.number}
                             routeName="admin.preparation.deliveryNoteThermal"

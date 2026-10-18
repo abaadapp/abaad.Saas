@@ -54,6 +54,8 @@ export interface PosPeripheral {
     autoPrint: boolean;
     /** يطبع طلبَ الموقع عند تأكيده على هذا الصندوق — انظر `lib/website-confirm-print` */
     autoPrintWebsite?: boolean;
+    /** يستلم «فاتورة عميل — نسخة داخلية» حين تُسدَّد — انظر `lib/printing/print-jobs` */
+    autoPrintCustomerInvoices?: boolean;
 }
 
 export interface Currency {

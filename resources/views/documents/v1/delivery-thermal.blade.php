@@ -58,9 +58,10 @@
 
 {{-- ٢ · أيُّ طلبٍ، ومتى يُسلَّم، وكيف --}}
 <table class="kv">
-    <tr><td class="k">{{ __('رقم الطلب') }}</td><td class="l">{{ $note['number'] }}</td></tr>
+    {{-- والتسميتان من الحمولة إن حملتهما — سندُ فاتورة العميل يقول «رقم الفاتورة»؛ وسندُ الموقع كما كان --}}
+    <tr><td class="k">{{ $note['number_label'] ?? __('رقم الطلب') }}</td><td class="l">{{ $note['number'] }}</td></tr>
     @if ($show('show_datetime') && $note['ordered_at'])
-        <tr><td class="k">{{ __('تاريخ الطلب') }}</td><td class="l">{{ $note['ordered_at'] }}</td></tr>
+        <tr><td class="k">{{ $note['date_label'] ?? __('تاريخ الطلب') }}</td><td class="l">{{ $note['ordered_at'] }}</td></tr>
     @endif
     @if ($note['scheduled_for'])
         <tr><td class="k">{{ __('موعد التسليم') }}</td><td class="l b">{{ $note['scheduled_for'] }}</td></tr>

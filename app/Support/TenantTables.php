@@ -139,6 +139,11 @@ class TenantTables
          * تشير إليها.
          */
         'customer_payment_links', 'paymob_settlements',
+        /*
+         * وتجهيزُ فاتورة العميل بعد فاتورته وتحصيلها: يشير إلى الفاتورة وإلى
+         * الدفعة التي أظهرته وإلى فرعه. عملٌ لا مال — ويُستعاد كما كُتب.
+         */
+        'customer_invoice_preparations',
         'delivery_notes', 'delivery_note_items',
         'reviews',
         'shifts', 'shift_movements',
@@ -247,6 +252,7 @@ class TenantTables
         'whatsapp_message_packs' => 'حزمُ رسائلَ يشتريها المتجر من أبعاد — سجلُّ شراءٍ عند المنصّة لا بياناتُ متجر',
         'plans' => 'باقاتُ المنصّة — ليست ملكَ متجرٍ بعينه',
         'businesses' => 'صفُّ المتجر نفسه — يُحدَّث بحقولٍ آمنة لا يُحذف ويُدرَج',
+        'print_jobs' => 'طابورُ طباعةٍ عابر — استعادةُ ورقةٍ «بانتظار الطباعة» من ملفٍّ قديم تطبعها على الصندوق من جديد',
         'password_recovery_challenges' => 'محاولاتُ استرجاعِ كلمة مرور — سرّيّةٌ ومؤقّتة، لا تُكتب في ملفٍّ يُنزَّل',
         'password_recovery_otps' => 'رموزُها — مثلُها',
         'dismissed_notifications' => 'ما أخفاه مستخدمٌ من تنبيهاته — تفضيلُ عرضٍ لا بيانات',

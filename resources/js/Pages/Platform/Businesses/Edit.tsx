@@ -27,6 +27,7 @@ interface EditableBusiness {
     gift_orders_enabled: boolean;
     order_notes_and_edits_enabled: boolean;
     thermal_delivery_note_enabled: boolean;
+    customer_invoice_preparation_enabled: boolean;
     logo_url: string | null;
     owner_email: string | null;
 }
@@ -74,6 +75,7 @@ export default function BusinessEdit() {
                     gift_orders_enabled: business.gift_orders_enabled ?? false,
                     order_notes_and_edits_enabled: business.order_notes_and_edits_enabled ?? false,
                     thermal_delivery_note_enabled: business.thermal_delivery_note_enabled ?? false,
+                    customer_invoice_preparation_enabled: business.customer_invoice_preparation_enabled ?? false,
                 }}
                 logoUrl={business.logo_url}
                 ownerEmail={business.owner_email}

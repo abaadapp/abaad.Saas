@@ -48,6 +48,24 @@ export interface PrepCheck {
 }
 
 export interface PrepOrder {
+    /**
+     * هويّةُ البطاقة مصنَّفةً — `order:{number}` أو `customer-invoice:{id}`.
+     *
+     * والطلبُ ومهمّةُ الفاتورة على اللوحة نفسِها: رقمان لا يتصادمان بها.
+     * واختياريّةٌ في النوع لأنّ الاختبارات تبني طلباتٍ ناقصةً عمدًا (`idOf`).
+     */
+    key?: string;
+    /** طلبٌ أم فاتورةُ عميلٍ سُدّدت — والغائبُ طلب */
+    kind?: 'order' | 'invoice';
+    /** معرّفُ مهمّة الفاتورة — أبوابُها به لا برقم الفاتورة */
+    prep_id?: number;
+    /** «فاتورة عميل» — مصدرُ البطاقة كما يُقرأ */
+    source_label?: string;
+    /** أمسدَّدةٌ الآن؟ ومن أين ثبت سدادُها — لمهمّة الفاتورة */
+    payment_verified?: boolean;
+    payment_source?: string | null;
+    /** ورقةُ الصندوق الداخليّة وحالُها — لمهمّة الفاتورة */
+    print?: { status: string; label: string | null; error: string | null } | null;
     number: string;
     status: string;
     /** قناةُ الطلب — `website` لطلب الموقع؛ تقرؤها طباعةُ التأكيد */
@@ -132,6 +150,9 @@ export const TASK_LABELS: Record<string, string> = {
  * `PrepChecklist::keys` — ومَن يزيد هنا وينسى هناك يجد ضغطةً تُردّ.
  */
 export function checklistKeys(order: PrepOrder): string[] {
+    // ومهمّةُ الفاتورة بلا علاماتٍ مخزَّنة — جدولُها لبنود الطلبات وحدها (`PrepChecklist`)
+    if (order.kind === 'invoice') return [];
+
     const keys: string[] = [...TASK_KEYS];
 
     for (const item of order.items) {
@@ -150,4 +171,9 @@ export function checkProgress(order: PrepOrder): { done: number; total: number }
         done: keys.filter((k) => order.checks?.[k]).length,
         total: keys.length,
     };
+}
+
+/** هويّةُ البطاقة على اللوحة — المفتاحُ المصنَّف، أو الرقمُ لطلبٍ بلا مفتاح */
+export function idOf(order: PrepOrder): string {
+    return order.key ?? order.number;
 }

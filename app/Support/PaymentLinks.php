@@ -400,6 +400,17 @@ final class PaymentLinks
 
         self::settle($link, $transaction);
 
+        /*
+         * ═══ وبعد أن ثبت المال — لا في معاملته ═══
+         *
+         * فاتورةٌ طُلب تجهيزُها تظهر في لوحة التجهيز إن سُدّدت كلُّها
+         * (`CustomerInvoicePreparations`). وخارجَ معاملة `settle` عن قصد:
+         * سقوطٌ هناك يُسقط التحصيلَ معه، ويُقال لـPaymob «تمّ» عن مالٍ لم
+         * يُسجَّل. ولا يرمي، ويُنادى في الإشعار المكرّر أيضًا — فكلُّ إعادةٍ
+         * من Paymob محاولةٌ ثانيةٌ للتفعيل، ولا تفعيلَ مرّتين.
+         */
+        CustomerInvoicePreparations::afterLinkPaid($link);
+
         return true;
     }
 

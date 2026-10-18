@@ -113,6 +113,9 @@ final class TenantExportGuard
         'admin.preparation.receipt',
         'admin.preparation.deliveryNote',
         'admin.preparation.deliveryNoteThermal',
+        // ومهامُّ فواتير العملاء على اللوحة: سندُ التسليم والنسخةُ الداخليّة — بمعرّفٍ يتكرّر بين الأنشطة
+        'admin.preparation.invoiceDeliveryNote',
+        'admin.preparation.invoiceInternalPdf',
         'admin.customerInvoices.pdf',
         'admin.customerInvoices.creditNotes.pdf',
         'admin.customerInvoices.attachment',
@@ -129,6 +132,8 @@ final class TenantExportGuard
         'admin.expenses.attachment',
         'admin.archives.download',
         'pos.receipt.pdf',
+        // وورقةُ طابور الطباعة يحجزها الصندوقُ وينزّلها بجلسته — بمعرّفٍ يتكرّر بين الأنشطة
+        'pos.printJobs.pdf',
         // ونصُّ الإيصال للمعاينة في نقطة البيع — بالرقم نفسِه الذي يتكرّر بين الأنشطة
         'pos.receipt.paper',
     ];

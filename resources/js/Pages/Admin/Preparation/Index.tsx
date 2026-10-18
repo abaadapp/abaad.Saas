@@ -17,7 +17,7 @@ import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import PrepCard from './partials/PrepCard';
 import PrepDetails from './partials/PrepDetails';
-import { checkProgress, type PrepOrder, type PrepProps } from './partials/types';
+import { checkProgress, type PrepOrder, type PrepProps, idOf } from './partials/types';
 
 /**
  * لوحة التجهيز — شاشة من يصنع الباقة.
@@ -139,7 +139,8 @@ export default function PreparationIndex() {
         paused: writing > 0,
     });
 
-    const numbers = useMemo(() => orders.map((o) => o.number), [orders]);
+    // والجديدُ يُعرف بهويّة البطاقة المصنَّفة — طلبٌ ومهمّةُ فاتورةٍ لا يتصادمان (`idOf`)
+    const numbers = useMemo(() => orders.map(idOf), [orders]);
     const { fresh, acknowledge, armSound } = useNewArrivals(numbers, sound);
 
     const tabs: TabItem[] = [
@@ -188,12 +189,19 @@ export default function PreparationIndex() {
      * أن يقرأ من يجهّز رفضًا سبّبه هو.
      */
     const move = useCallback(
-        (number: string, status: string, print: PrintAttempt | null = null) => {
-            setBusy((b) => (b.includes(number) ? b : [...b, number]));
+        (o: PrepOrder, status: string, print: PrintAttempt | null = null) => {
+            const id = idOf(o);
+            setBusy((b) => (b.includes(id) ? b : [...b, id]));
             setWriting((n) => n + 1);
-            const printing = websiteConfirmPrintCallbacks(print, number, t);
+            const printing = websiteConfirmPrintCallbacks(print, o.number, t);
             router.post(
-                route('admin.preparation.move', number),
+                /*
+                 * ومهمّةُ فاتورة العميل ببابها وبمعرّفها — لا برقمٍ قد يحمله طلب.
+                 * وانتقالاتُها أضيق: لا إلغاءَ ولا «مكتمل» (`CustomerInvoicePreparations::next`).
+                 */
+                o.kind === 'invoice' && o.prep_id
+                    ? route('admin.preparation.invoiceMove', o.prep_id)
+                    : route('admin.preparation.move', o.number),
                 { status },
                 {
                     preserveScroll: true,
@@ -205,7 +213,7 @@ export default function PreparationIndex() {
                      * على البطاقة مع رسالة الرفض، لا حالًا قديمةً يضغطها ثانيةً.
                      */
                     onFinish: () => {
-                        setBusy((b) => b.filter((n) => n !== number));
+                        setBusy((b) => b.filter((n) => n !== id));
                         setWriting((n) => n - 1);
                         printing.onFinish();
                     },
@@ -257,7 +265,7 @@ export default function PreparationIndex() {
                 to: status,
             });
 
-            move(o.number, status, print);
+            move(o, status, print);
         },
         [ask, move, page.context],
     );
@@ -278,7 +286,7 @@ export default function PreparationIndex() {
         );
     }, []);
 
-    const current = open ? (orders.find((o) => o.number === open) ?? null) : null;
+    const current = open ? (orders.find((o) => idOf(o) === open) ?? null) : null;
     /*
      * ونافذةٌ فُتحت لطلبٍ غادر اللوحة تبقى مفتوحةً وتقول ذلك.
      *
@@ -311,16 +319,23 @@ export default function PreparationIndex() {
      * المرّات ما دامت النافذة مفتوحة.
      */
     const deliveryNoteUrl = useCallback((n: string) => tenant(route('admin.preparation.deliveryNote', n)), [tenant]);
-    const timelineUrl = useCallback((n: string) => route('admin.preparation.timeline', n), []);
+    // والسجلُّ لمهمّة الفاتورة ببابها — `PrepDetails` تمرّر مفتاحها `customer-invoice:{id}`
+    const timelineUrl = useCallback(
+        (n: string) =>
+            n.startsWith('customer-invoice:')
+                ? route('admin.preparation.invoiceTimeline', n.slice('customer-invoice:'.length))
+                : route('admin.preparation.timeline', n),
+        [],
+    );
 
     const card = (o: PrepOrder) => (
         <PrepCard
-            key={o.number}
+            key={idOf(o)}
             order={o}
             ageMs={ageMs}
-            fresh={fresh.includes(o.number)}
-            busy={busy.includes(o.number)}
-            onOpen={() => setOpen(o.number)}
+            fresh={fresh.includes(idOf(o))}
+            busy={busy.includes(idOf(o))}
+            onOpen={() => setOpen(idOf(o))}
             onMove={(s) => moveChecked(o, s)}
         />
     );
@@ -524,7 +539,7 @@ export default function PreparationIndex() {
             <PrepDetails
                 order={shown}
                 gone={open !== null && current === null}
-                busy={shown ? busy.includes(shown.number) : false}
+                busy={shown ? busy.includes(idOf(shown)) : false}
                 onClose={() => setOpen(null)}
                 onMove={(s) => shown && moveChecked(shown, s)}
                 onToggle={(key, checked) => shown && toggle(shown.number, key, checked)}

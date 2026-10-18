@@ -25,6 +25,11 @@ import { fold } from '@/lib/pages';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import CustomerInvoicePreparationFields, {
+    EMPTY_PREPARATION,
+    preparationPayload,
+    type PreparationOptions,
+} from '@/Components/CustomerInvoicePreparationFields';
 
 interface CustomerRow {
     id: number;
@@ -115,6 +120,8 @@ interface Props {
     /** العميلُ الذي تُفتح عليه الشاشة — من `InvoiceBranding::defaultCustomerId` */
     default_customer_id: number | null;
     branding: Branding;
+    /** «التجهيز والتسليم» — لمن فُتح له التجهيزُ بعد السداد، و`null` لغيره */
+    preparation?: PreparationOptions | null;
 }
 
 /**
@@ -263,6 +270,7 @@ export default function CustomerInvoiceCreate({
     new_customer_id,
     default_customer_id,
     branding,
+    preparation = null,
 }: Props) {
     const { context } = usePage<PageProps>().props;
     const t = useTranslate();
@@ -334,6 +342,7 @@ export default function CustomerInvoiceCreate({
         bank_account_id: bank_accounts.length > 0 ? String(bank_accounts[0].id) : '',
         issue: false,
         items: [] as Line[],
+        preparation: { ...EMPTY_PREPARATION },
     });
 
     /*
@@ -564,6 +573,8 @@ export default function CustomerInvoiceCreate({
             paid_amount: credit ? '' : data.paid_amount,
             payment_date: credit ? '' : data.payment_date,
             payment_reference: credit ? '' : data.payment_reference,
+            // والتجهيزُ لمن فُتح له وحده — ومطفأً لا يحمل إلّا مفتاحه
+            preparation: preparation ? preparationPayload(data.preparation) : undefined,
         }));
         form.post('/admin/customer-invoices', { preserveScroll: true, forceFormData: files.length > 0 });
     };
@@ -1325,6 +1336,21 @@ export default function CustomerInvoiceCreate({
                             )}
                         </Card>
                     </div>
+
+                    {/*
+                        ───────── التجهيز والتسليم ─────────
+
+                        لمن فتح له مديرُ المنصّة التجهيزَ بعد السداد وحده. ولا
+                        يمسّ بندًا ولا مبلغًا: يُقرأ في لوحة التجهيز بعد السداد.
+                    */}
+                    {preparation && (
+                        <CustomerInvoicePreparationFields
+                            value={form.data.preparation}
+                            onChange={(patch) => form.setData('preparation', { ...form.data.preparation, ...patch })}
+                            options={preparation}
+                            errors={form.errors as Record<string, string | undefined>}
+                        />
+                    )}
 
                     {/*
                         ───────── المرفقات ─────────

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Pos;
 use App\Http\Controllers\Controller;
 use App\Models\PosDevice;
 use App\Models\PosPeripheral;
+use App\Support\CustomerInvoicePreparations;
 use App\Support\Activity;
 use App\Support\Demo;
 use Illuminate\Http\Request;
@@ -70,6 +71,7 @@ class PeripheralController extends Controller
             'paper_width' => ['nullable', Rule::in(PosPeripheral::PAPER_WIDTHS)],
             'auto_print' => ['boolean'],
             'auto_print_website_confirm' => ['boolean'],
+            'auto_print_customer_invoices' => ['boolean'],
             'notes' => ['nullable', 'string', 'max:500'],
             'active' => ['boolean'],
         ], [], [
@@ -94,11 +96,19 @@ class PeripheralController extends Controller
              * لا يُشتقّ منه ولا يُغيّره. انظر `WebsiteConfirmPrint`.
              */
             $data['auto_print_website_confirm'] = $request->boolean('auto_print_website_confirm');
+            /*
+             * وفواتيرُ العملاء المسدَّدة — لنشاطٍ فُتح له التجهيزُ بعد السداد وحده
+             * (`CustomerInvoicePreparations::on`). ومن لم يُفتح له يُكتب «لا»
+             * أيًّا أرسل: خيارٌ لا يفتحه التاجرُ لنفسه.
+             */
+            $data['auto_print_customer_invoices'] = $request->boolean('auto_print_customer_invoices')
+                && CustomerInvoicePreparations::on((int) Demo::bid());
         } else {
             $data['paper_width'] = null;
             $data['auto_print'] = false;
             // والماسحُ والدرجُ والشاشةُ والميزانُ لا يطبعون — فلا يحملون الخيار
             $data['auto_print_website_confirm'] = false;
+            $data['auto_print_customer_invoices'] = false;
         }
 
         return $data;

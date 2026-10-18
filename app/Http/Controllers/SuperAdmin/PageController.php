@@ -291,6 +291,8 @@ class PageController extends Controller
                 'order_notes_and_edits_enabled' => (bool) ($model?->order_notes_and_edits_enabled ?? false),
                 // وسندُ التسليم الحراريّ لطلبات الموقع — مثلُه (`DeliveryPaper::thermalOn`)
                 'thermal_delivery_note_enabled' => (bool) ($model?->thermal_delivery_note_enabled ?? false),
+                // وتجهيزُ فواتير العملاء بعد الدفع — مثلُه (`CustomerInvoicePreparations::on`)
+                'customer_invoice_preparation_enabled' => (bool) ($model?->customer_invoice_preparation_enabled ?? false),
                 'logo_url' => self::logoUrl($model?->logo),
                 // حساب الدخول يُعرض ولا يُعاد إنشاؤه من هنا
                 'owner_email' => $model ? MerchantAccount::owner($model)?->email : null,

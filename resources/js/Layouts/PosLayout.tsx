@@ -34,6 +34,7 @@ import { useOnScreenKeyboard } from '@/lib/keyboard';
 import { useTranslate } from '@/lib/i18n';
 import { logout } from '@/lib/logout';
 import ImpersonationBar from '@/Components/ImpersonationBar';
+import InvoicePrintQueue from '@/Components/InvoicePrintQueue';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
@@ -301,6 +302,12 @@ export default function PosLayout({ title, children, fill = false }: PosLayoutPr
                     </DropdownMenu>
                 </div>
             </header>
+
+            {/*
+                وفواتيرُ العملاء المسدَّدة على صندوقها — تطبعها نقطةُ البيع المفتوحة
+                (`useInvoicePrintJobs`). ولا يُرسم شيءٌ لصندوقٍ لم تُعيَّن طابعتُه.
+            */}
+            <InvoicePrintQueue />
 
             <main className={cn(fill ? 'min-h-0 flex-1' : 'flex-1')}>{children}</main>
 

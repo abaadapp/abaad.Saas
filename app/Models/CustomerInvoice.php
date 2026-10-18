@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -57,6 +58,16 @@ class CustomerInvoice extends Model
     public function coversOrders(): bool
     {
         return $this->orders()->exists();
+    }
+
+    /**
+     * تجهيزُها بعد السداد — صفٌّ واحدٌ إن طُلب. انظر `CustomerInvoicePreparations`.
+     *
+     * عملُ تجهيزٍ لا بيع: لا يمسّ إيرادَ الفاتورة ولا ضريبتَها ولا مخزونًا.
+     */
+    public function preparation(): HasOne
+    {
+        return $this->hasOne(CustomerInvoicePreparation::class);
     }
 
     /**

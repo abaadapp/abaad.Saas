@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Addon;
 use App\Models\BankAccount;
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
@@ -14,6 +15,7 @@ use App\Models\CustomerPayment;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Support\Activity;
+use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\PaymentLinks;
@@ -26,12 +28,14 @@ use App\Support\Document\Version;
 use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
+use App\Support\FlowerOrder;
 use App\Support\InvoiceAttachments;
 use App\Support\InvoiceBranding;
 use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
 use App\Support\Permissions;
+use App\Support\PrintJobs;
 use App\Support\Receivables;
 use App\Support\Search;
 use App\Support\Vat;
@@ -222,6 +226,11 @@ class CustomerInvoiceController extends Controller
              * مخصَّصٌ لهذه الفاتورة، ولا يمسّ إيرادَها ولا ضريبتَها.
              */
             'paymentLinks' => PaymentLinks::panel($this->bid(), fn ($q) => $q->where('customer_invoice_id', $invoice->id)),
+            /*
+             * والتجهيزُ بعد السداد — ما طُلب، وأين وصل، ولمَ لم يظهر بعد.
+             * و`null` لمن لم يُفتح له: الصفحةُ كما كانت.
+             */
+            'preparation' => $this->preparationProps($invoice),
             // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
             'bank_accounts' => $this->bankAccounts(),
             /*
@@ -541,7 +550,93 @@ class CustomerInvoiceController extends Controller
              */
             'branding' => InvoiceBranding::settings($bid)
                 + DocumentTemplates::settings($bid, self::PAPER_TYPE),
+            /*
+             * وقسمُ «التجهيز والتسليم» — لمن فُتح له وحده (`CustomerInvoicePreparations::on`).
+             * و`null` لغيره: لا قسمَ يُرسم، ولا حقلٌ يُرسل.
+             */
+            'preparation' => $this->preparationOptions($bid),
         ]);
+    }
+
+    /**
+     * فروعُ التجهيز ومناسباتُ البطاقة — لنشاطٍ فُتح له التجهيز بعد السداد.
+     *
+     * @return array{branches: array<int, array{id: int, name: string}>, occasions: array<int, array{value: string, label: string}>}|null
+     */
+    private function preparationOptions(int $bid): ?array
+    {
+        if (! CustomerInvoicePreparations::on($bid)) {
+            return null;
+        }
+
+        return [
+            'branches' => Branch::where('business_id', $bid)->orderBy('id')->get(['id', 'name'])
+                ->map(fn (Branch $b) => ['id' => $b->id, 'name' => $b->name])->all(),
+            'occasions' => FlowerOrder::occasionOptions($bid),
+        ];
+    }
+
+    /**
+     * تجهيزُ الفاتورة كما يُقرأ في صفحتها — وما يجوز فعلُه به.
+     *
+     * `null` لنشاطٍ لم يُفتح له ولا تجهيزَ على فاتورته: الصفحةُ كما كانت.
+     */
+    private function preparationProps(CustomerInvoice $invoice): ?array
+    {
+        $bid = (int) $invoice->business_id;
+        $on = CustomerInvoicePreparations::on($bid);
+        $prep = $invoice->preparation;
+
+        if (! $on && ! $prep) {
+            return null;
+        }
+
+        $paid = CustomerInvoicePreparations::paid($invoice);
+        $job = $prep ? PrintJobs::forPreparation($prep) : null;
+        $closed = $prep && in_array($prep->status, CustomerInvoicePreparations::CLOSED, true);
+
+        return [
+            'enabled' => $on,
+            /*
+             * يُطلب لفاتورةٍ صادرةٍ لم تُسدَّد بعد (أو مسودّة)، لا تغطّي طلبات —
+             * والقائمُ يُعدَّل ما لم يُسلَّم.
+             */
+            'attachable' => $on && ! $prep
+                && in_array($invoice->status, [CustomerInvoice::DRAFT, CustomerInvoice::ISSUED], true)
+                && ! $paid && ! $invoice->coversOrders(),
+            'editable' => $on && $prep && ! $closed && $invoice->status !== CustomerInvoice::CANCELLED,
+            'removable' => $on && $prep && ! $prep->isActive(),
+            'activatable' => $on && $prep && ! $prep->isActive() && $paid
+                && (bool) auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
+            'paid' => $paid,
+            'data' => $prep ? [
+                'branch_id' => $prep->branch_id,
+                'branch' => $prep->branch_id ? Branch::whereKey($prep->branch_id)->value('name') : null,
+                'fulfillment_type' => $prep->fulfillment_type,
+                'scheduled_for' => optional($prep->scheduled_for)->format('Y-m-d\\TH:i'),
+                'recipient_name' => $prep->recipient_name,
+                'recipient_phone' => $prep->recipient_phone,
+                'delivery_address' => $prep->delivery_address,
+                'delivery_notes' => $prep->delivery_notes,
+                'internal_notes' => $prep->internal_notes,
+                'is_gift' => (bool) $prep->is_gift,
+                'occasion_type' => $prep->occasion_type,
+                'occasion_text' => $prep->occasion_text,
+                'card_message' => $prep->card_message,
+                'sender_name' => $prep->sender_name,
+                'hide_sender' => (bool) $prep->hide_sender,
+                'card_identity_confirmed' => $prep->card_identity_confirmed_at !== null,
+            ] : null,
+            'active' => (bool) $prep?->isActive(),
+            'status' => $prep?->status,
+            'activated_at' => optional($prep?->activated_at)->format('Y-m-d H:i'),
+            'activation_source' => $prep?->activation_source,
+            'activation_error' => $prep?->activation_error,
+            // لمَ لم تظهر بعد — جملةٌ لا رمز
+            'waiting_for' => $prep && ! $prep->isActive() ? CustomerInvoicePreparations::blocker($prep, $invoice) : null,
+            'print' => $job ? ['status' => $job->status, 'label' => PrintJobs::label($job), 'error' => $job->last_error] : null,
+            'options' => $on ? $this->preparationOptions($bid) : null,
+        ];
     }
 
     /**
@@ -1084,6 +1179,22 @@ class CustomerInvoiceController extends Controller
         $method = $data['payment_method'];
 
         /*
+         * ═══ والتجهيزُ بعد السداد — لمن فُتح له وحده ═══
+         *
+         * يُتحقَّق منه قبل أن يُكتب شيء: فاتورةٌ تُصدَر ثمّ يُردّ تجهيزُها
+         * تبقى ورقةً بلا ما طُلب لها. ولمن لم يُفتح له يُهمل الحقلُ كلُّه —
+         * لا يُكتب ولا يُسأل عنه (`CustomerInvoicePreparations::on`).
+         */
+        $preparation = null;
+        if (CustomerInvoicePreparations::on($this->bid()) && $request->boolean('preparation.enabled')) {
+            $preparation = $request->validate(
+                CustomerInvoicePreparations::rules($this->bid()),
+                [],
+                CustomerInvoicePreparations::attributes(),
+            )['preparation'];
+        }
+
+        /*
          * والمقبوضُ لا يُسجَّل على مسودّة.
          *
          * التحصيلُ يُخصَّص على فاتورةٍ **صادرة** — والمسودّةُ ورقةٌ لم تُسلَّم
@@ -1131,7 +1242,7 @@ class CustomerInvoiceController extends Controller
         $uploaded = [];
 
         try {
-            $invoice = DB::transaction(function () use ($request, $customer, $data, $method, &$uploaded) {
+            $invoice = DB::transaction(function () use ($request, $customer, $data, $method, $preparation, &$uploaded) {
                 /*
                  * وبندُ الإضافة يُكتب بثمنها واسمها من القاعدة لا ممّا أُرسل —
                  * وإضافةُ متجرٍ آخر أو موقوفةٌ تُردّ هنا على «البنود».
@@ -1139,6 +1250,11 @@ class CustomerInvoiceController extends Controller
                 $items = CustomerInvoices::addonsFromCatalog($this->bid(), $data['items']);
 
                 $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $items, auth()->id());
+
+                // والتجهيزُ مع الورقة في المعاملة نفسِها — لا يمسّ بندًا ولا مبلغًا
+                if ($preparation !== null) {
+                    CustomerInvoicePreparations::save($invoice, $preparation, auth()->id());
+                }
 
                 /*
                  * والمرفقاتُ بعد الورقة لا قبلها: مرفقٌ بلا فاتورةٍ يشير إليه
@@ -1475,5 +1591,68 @@ class CustomerInvoiceController extends Controller
         CustomerPayments::cancel($payment, $data['reason'], auth()->id());
 
         return back()->with('toast', ['msg' => __('أُلغي التحصيل'), 'type' => 'success']);
+    }
+
+    /* ═══════════════════════ التجهيز بعد السداد ═══════════════════════ */
+
+    /**
+     * يطلب تجهيزَ فاتورةٍ قائمة — أو يعدّل ما طُلب — ولا يمسّ بندًا ولا مبلغًا.
+     *
+     * والطلبُ الجديد لفاتورةٍ لم تُسدَّد بعد: المسدَّدةُ ورقةٌ انتهى أمرُها،
+     * ومن أراد تجهيزَها طلبه حين كتبها أو أرسلها بيده بعد سدادها.
+     */
+    public function savePreparation(Request $request, int|string $id)
+    {
+        $invoice = $this->find($id);
+        abort_unless(CustomerInvoicePreparations::on($this->bid()), 404);
+
+        // والبابُ بابُ طلب التجهيز نفسِه: الحقولُ مطلوبةٌ أيًّا أُرسل `enabled` أو لم يُرسل
+        $request->merge(['preparation' => array_merge((array) $request->input('preparation'), ['enabled' => true])]);
+
+        $data = $request->validate(
+            CustomerInvoicePreparations::rules($this->bid()),
+            [],
+            CustomerInvoicePreparations::attributes(),
+        )['preparation'] ?? [];
+
+        if (! $invoice->preparation && CustomerInvoicePreparations::paid($invoice)) {
+            throw ValidationException::withMessages([
+                'preparation' => __('الفاتورة مسدّدة — يُطلب التجهيز لفاتورة لم تُسدَّد بعد.'),
+            ]);
+        }
+
+        CustomerInvoicePreparations::save($invoice, $data, auth()->id());
+
+        return back()->with('toast', ['msg' => __('حُفظ طلب التجهيز'), 'type' => 'success']);
+    }
+
+    /** يُلغى طلبُ التجهيز ما لم يظهر في اللوحة */
+    public function removePreparation(int|string $id)
+    {
+        $invoice = $this->find($id);
+        abort_unless(CustomerInvoicePreparations::on($this->bid()), 404);
+
+        CustomerInvoicePreparations::remove($invoice);
+
+        return back()->with('toast', ['msg' => __('أُلغي طلب التجهيز'), 'type' => 'success']);
+    }
+
+    /**
+     * يُرسل إلى لوحة التجهيز فاتورةً سُدّدت بغير رابط — بيدِ من يملك التحصيل.
+     *
+     * والسدادُ يُقرأ في الخادم الآن (`CustomerInvoicePreparations::blocker`):
+     * لا يُرسل الزرُّ فاتورةً لم تُسدَّد، ولا يُرسلها مرّتين.
+     */
+    public function activatePreparation(int|string $id)
+    {
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE), 403);
+        $invoice = $this->find($id);
+        abort_unless(CustomerInvoicePreparations::on($this->bid()), 404);
+
+        if ($why = CustomerInvoicePreparations::activateByHand($invoice, (int) auth()->id())) {
+            return back()->with('toast', ['msg' => $why, 'type' => 'danger'])->withErrors(['preparation' => $why]);
+        }
+
+        return back()->with('toast', ['msg' => __('أُرسلت الفاتورة إلى لوحة التجهيز'), 'type' => 'success']);
     }
 }

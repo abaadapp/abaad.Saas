@@ -406,7 +406,7 @@ class DocumentRenderer
      * والبائعُ من لقطة الورقة إن كانت مختومة، كالإيصال (`thermal.blade.php`)،
      * والشعارُ حيًّا مُضمَّنًا من `InvoiceBranding::logo` وحدها.
      */
-    public static function deliveryStrip(int $businessId, Order $order, int $width): string
+    public static function deliveryStrip(int $businessId, Order $order, int $width, array $labels = []): string
     {
         $tpl = DocumentTemplates::settings($businessId, 'delivery');
         $business = $order->business;
@@ -414,9 +414,13 @@ class DocumentRenderer
         /*
          * والقالبُ لا يُعطى الطلب: يُعطى ما يُطبع وحدَه (`DeliveryPaper::forRecipient`)
          * — حمولةٌ تُبنى في الخادم بلا مالٍ ولا هويّةِ من أخفى اسمه.
+         *
+         * و`$labels` تسمياتٌ لا بيانات: «رقم الفاتورة» بدل «رقم الطلب» لسند
+         * فاتورة العميل (`CustomerInvoicePreparations::deliveryLabels`). وغيابُها
+         * يُبقي سندَ الموقع كما كان حرفًا بحرف.
          */
         return self::html(view(Version::views(null).'.delivery-thermal', [
-            'note' => DeliveryPaper::forRecipient($order),
+            'note' => array_intersect_key($labels, array_flip(['number_label', 'date_label'])) + DeliveryPaper::forRecipient($order),
             'tpl' => $tpl,
             'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
             'width' => $width,
@@ -435,6 +439,35 @@ class DocumentRenderer
         $url = Domains::canonical($businessId, Business::whereKey($businessId)->value('site_slug'));
 
         return $url ? rtrim((string) preg_replace('#^https?://#', '', $url), '/') : '';
+    }
+
+    /**
+     * «فاتورة عميل — نسخة داخلية» شريطًا حراريًّا — ٥٨ أو ٨٠ مم، بطول محتواه.
+     *
+     * ورقةُ الطاولة لا ورقةُ العميل: تُطبع على صندوق الفرع حين تُسدَّد الفاتورة
+     * (`PrintJobs`)، وفيها المالُ وملاحظاتُ التجهيز. والقالبُ لا يُعطى الفاتورة:
+     * يُعطى حمولةً بُنيت في الخادم (`CustomerInvoicePreparations::internalPaper`).
+     * والبائعُ والشعارُ كسند التسليم — من لقطة الفاتورة، والشعارُ مُضمَّنًا.
+     *
+     * @param  array<string, mixed>  $paper
+     */
+    public static function customerInvoiceStrip(int $businessId, array $paper, int $width): string
+    {
+        $tpl = DocumentTemplates::settings($businessId, 'sale');
+        $business = Business::find($businessId);
+
+        return self::html(view(Version::views(null).'.customer-invoice-thermal', [
+            // `$paper` اسمُ المقاس في رموز الشريط (`partials/thermal-tokens`) — والحمولةُ `$doc`
+            'doc' => $paper,
+            'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
+            'width' => $width,
+            'tokens' => Branding::tokens($businessId, self::scale((string) ($tpl['font'] ?? ''))),
+            'shop' => [
+                'name' => $business->name ?? null,
+                'phone' => $business->phone ?? null,
+            ],
+            'logo' => ($tpl['show_logo'] ?? true) ? InvoiceBranding::logo($businessId) : null,
+        ]));
     }
 
     /** طلبٌ للمعاينة وحدها — لا يُحفظ ولا يُعدّ في بيع */

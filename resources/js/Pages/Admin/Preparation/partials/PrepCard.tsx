@@ -78,6 +78,7 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
         <Card
             data-testid="prep-card"
             data-number={o.number}
+            data-kind={o.kind ?? 'order'}
             data-urgency={urgency}
             className={cn(
                 'flex flex-col gap-3 p-4',
@@ -90,7 +91,15 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
             <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                     <p className="truncate font-bold text-[#111]">{o.customer ?? t('بلا اسم')}</p>
-                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">{o.number}</p>
+                    <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                        {/* ومصدرُ البطاقة إن لم تكن طلبًا — «فاتورة عميل» ورقمُها */}
+                        {o.kind === 'invoice' && (
+                            <span data-testid="prep-source" className="me-1.5 rounded-full bg-[#f5f3ff] px-1.5 py-0.5 text-[11px] font-medium text-[#5b21b6]">
+                                {o.source_label ?? t('فاتورة عميل')}
+                            </span>
+                        )}
+                        {o.number}
+                    </p>
                     {/* هاتفُ صاحب الطلب — يُتّصل به من البطاقة بلا فتح شيء */}
                     {o.customer_phone && (
                         <a
@@ -212,6 +221,7 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
                     </span>
                     {o.payment_status && <Badge status={o.payment_status}>{t(o.payment_status)}</Badge>}
                     {o.payment_method && <span className="text-[#6b7280]">{t(o.payment_method)}</span>}
+                    {o.payment_source && <span className="text-[#6b7280]">{o.payment_source}</span>}
                 </div>
             )}
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { router, useForm } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import { Barcode, CheckCircle2, Loader2, Monitor, Pencil, Plug, Plus, Printer, Scale, Trash2, Wallet, XCircle } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
@@ -22,6 +22,8 @@ export interface Peripheral {
     autoPrint: boolean;
     /** طباعة طلب الموقع عند تأكيده على هذا الجهاز — مستقلّةٌ عن «بعد البيع» */
     autoPrintWebsite: boolean;
+    /** يستلم «فاتورة عميل — نسخة داخلية» حين تُسدَّد — لمن فُتح له التجهيزُ بعد السداد */
+    autoPrintCustomerInvoices?: boolean;
     notes: string | null;
     active: boolean;
     /** تقودها نقطة البيع فعلًا، أم تُسجَّل للجرد وحده */
@@ -62,6 +64,7 @@ const EMPTY = {
     paper_width: '80',
     auto_print: false as boolean,
     auto_print_website_confirm: false as boolean,
+    auto_print_customer_invoices: false as boolean,
     notes: '',
     active: true as boolean,
 };
@@ -86,6 +89,8 @@ export default function PeripheralsDialog({
     onClose,
 }: Props) {
     const t = useTranslate();
+    // أفُتح التجهيزُ بعد السداد لهذا النشاط؟ — من صفحة الأجهزة (`DeviceController::panelData`)
+    const customerInvoicePrinting = Boolean(usePage<{ customerInvoicePrinting?: boolean }>().props.customerInvoicePrinting);
     const [editing, setEditing] = useState<Peripheral | null>(null);
     const [adding, setAdding] = useState(false);
     const form = useForm({ ...EMPTY });
@@ -104,6 +109,7 @@ export default function PeripheralsDialog({
                 paper_width: String(p.paperWidth ?? 80),
                 auto_print: p.autoPrint,
                 auto_print_website_confirm: p.autoPrintWebsite,
+                auto_print_customer_invoices: p.autoPrintCustomerInvoices ?? false,
                 notes: p.notes ?? '',
                 active: p.active,
             });
@@ -226,6 +232,7 @@ export default function PeripheralsDialog({
                                             {p.paperWidth ? ` · ${p.paperWidth}mm` : ''}
                                             {p.autoPrint ? ` · ${t('طباعة تلقائية')}` : ''}
                                             {p.autoPrintWebsite ? ` · ${t('طباعة طلب الموقع عند تأكيده')}` : ''}
+                                            {p.autoPrintCustomerInvoices ? ` · ${t('فواتير العملاء المسددة')}` : ''}
                                         </p>
                                     </div>
 
@@ -396,6 +403,20 @@ export default function PeripheralsDialog({
                                         form.setData('auto_print_website_confirm', !form.data.auto_print_website_confirm)
                                     }
                                 />
+                                {/*
+                                    وفواتيرُ العملاء المسدَّدة — لمن فتح له مديرُ المنصّة التجهيزَ
+                                    بعد السداد. والخادمُ يكتب «لا» لغيره أيًّا أُرسل.
+                                */}
+                                {customerInvoicePrinting && (
+                                    <Toggle
+                                        label={t('طباعة فواتير العملاء المسددة')}
+                                        hint={t('تُطبع على هذا الجهاز «فاتورة عميل — نسخة داخلية» حين تُسدَّد الفاتورة، ما دامت نقطة البيع مفتوحة في تطبيق أبعاد.')}
+                                        on={form.data.auto_print_customer_invoices}
+                                        onToggle={() =>
+                                            form.setData('auto_print_customer_invoices', !form.data.auto_print_customer_invoices)
+                                        }
+                                    />
+                                )}
                             </>
                         )}
 

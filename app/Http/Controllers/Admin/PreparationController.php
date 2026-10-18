@@ -5,9 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\PdfController;
 use App\Models\ActivityLog;
+use App\Models\CustomerInvoice;
+use App\Models\CustomerInvoicePreparation;
+use App\Models\PrintJob;
 use App\Models\Order;
 use App\Support\Activity;
 use App\Support\CustomArrangement;
+use App\Support\CustomerInvoicePreparations;
 use App\Support\DeliveryPaper;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
@@ -15,6 +19,7 @@ use App\Support\OrderStatus;
 use App\Support\OrderTransition;
 use App\Support\Permissions;
 use App\Support\PrepChecklist;
+use App\Support\PrintJobs;
 use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
 use App\Support\WebsiteConfirmPrint;
@@ -163,8 +168,28 @@ class PreparationController extends Controller
         // ومفتاحُ سند الشريط يُقرأ مرّةً للوحة كلّها — لا مرّةً لكلّ بطاقة
         $thermal = DeliveryPaper::thermalOn($this->bid());
 
+        /*
+         * ═══ وفواتيرُ العملاء المسدَّدة بين الطلبات — بموعدها ═══
+         *
+         * بطاقةٌ لكلّ مهمّة، بمفتاحٍ مصنَّف (`customer-invoice:{id}`) لا برقم:
+         * فلا تتصادم بطلبٍ. وتُرتَّب مع الطلبات بموعدها كأنّها منها، والسقفُ
+         * سقفُ اللوحة كلّها. ولمتجرٍ لم يُفتح له: الطلباتُ وحدها كما كانت.
+         */
+        $cards = $orders->map(fn ($o) => [$o->scheduled_for ?? $o->ordered_at, $this->card($o, $checks[$o->id] ?? [], $mayCancel, $thermal)])->all();
+
+        if ($this->invoicesOn()) {
+            [$more, $count] = $this->invoiceCards($type, $filter);
+            $total += $count;
+            $cards = array_merge($cards, $more);
+            $at = fn ($when) => $when ? $when->getTimestamp() : PHP_INT_MAX;
+            usort($cards, fn ($a, $b) => $at($a[0]) <=> $at($b[0]));
+            $cards = array_slice($cards, 0, self::BOARD_LIMIT);
+        }
+
+        $cards = array_column($cards, 1);
+
         return Inertia::render('Admin/Preparation/Index', [
-            'orders' => $orders->map(fn ($o) => $this->card($o, $checks[$o->id] ?? [], $mayCancel, $thermal))->values()->all(),
+            'orders' => $cards,
             'filters' => ['when' => $filter, 'type' => $type],
             'counts' => $this->counts($type),
             'typeCounts' => $this->typeCounts($filter),
@@ -177,8 +202,8 @@ class PreparationController extends Controller
              * فيُرسم عمودٌ عدّادُه صفرٌ أبدًا.
              */
             'columns' => self::COLUMNS,
-            'truncated' => $total > self::BOARD_LIMIT
-                ? ['shown' => $orders->count(), 'total' => $total]
+            'truncated' => $total > count($cards)
+                ? ['shown' => count($cards), 'total' => $total]
                 : null,
             /*
              * وختمُ القراءة — به تقيس الشاشةُ عمرَ ما تعرض.
@@ -205,7 +230,12 @@ class PreparationController extends Controller
      */
     private function columnCounts(?string $when, ?string $type): array
     {
-        $q = $this->base()->when($type, fn ($w) => $w->where('fulfillment_type', $type));
+        return $this->summed(fn ($base) => $this->columnCountsOf($base, $when, $type));
+    }
+
+    private function columnCountsOf($base, ?string $when, ?string $type): array
+    {
+        $q = $base->when($type, fn ($w) => $w->where('fulfillment_type', $type));
         $this->applyWindow($q, $when);
 
         $select = ['count(*) as all_count'];
@@ -240,6 +270,47 @@ class PreparationController extends Controller
             ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()));
     }
 
+    /**
+     * مهامُّ فواتير العملاء — في متجره، وفي الفرع الحاليّ إن كان.
+     *
+     * ظهرت بسدادٍ كاملٍ ولم تُغلق (`CustomerInvoicePreparations::board`). وأعمدتُها
+     * بأسماء أعمدة الطلب (`status` و`scheduled_for` و`fulfillment_type`): فالعدُّ
+     * والنوافذُ والتبويبات تُقرأ بالدوالّ نفسِها لا بنسخةٍ ثانية.
+     */
+    private function invoiceBase()
+    {
+        return CustomerInvoicePreparations::board($this->bid(), Demo::currentBranchId());
+    }
+
+    private ?bool $invoicesOn = null;
+
+    /** أفُتح التجهيزُ بعد السداد لهذا المتجر؟ — يُقرأ مرّةً للطلب */
+    private function invoicesOn(): bool
+    {
+        return $this->invoicesOn ??= CustomerInvoicePreparations::on($this->bid());
+    }
+
+    /**
+     * العدُّ للطلبات، ثمّ لمهامّ الفواتير إن فُتح لها — مجموعين.
+     *
+     * ولمتجرٍ لم يُفتح له: استعلامُ الطلبات وحده كما كان، لا استعلامَ زائد.
+     *
+     * @param  callable(mixed): array<string, int>  $count
+     * @return array<string, int>
+     */
+    private function summed(callable $count): array
+    {
+        $out = $count($this->base());
+
+        if ($this->invoicesOn()) {
+            foreach ($count($this->invoiceBase()) as $k => $v) {
+                $out[$k] = ($out[$k] ?? 0) + $v;
+            }
+        }
+
+        return $out;
+    }
+
     /** نافذة الوقت المطلوبة — والمجهول يعني «الكلّ» لا يعني خطأً */
     private function applyWindow($q, ?string $when): void
     {
@@ -270,9 +341,14 @@ class PreparationController extends Controller
      */
     private function counts(?string $type): array
     {
+        return $this->summed(fn ($base) => $this->countsOf($base, $type));
+    }
+
+    private function countsOf($base, ?string $type): array
+    {
         $when = fn (string $expr) => "sum(case when {$expr} then 1 else 0 end)";
 
-        $row = $this->base()
+        $row = $base
             ->when($type, fn ($w) => $w->where('fulfillment_type', $type))
             ->selectRaw(
                 'count(*) as all_count, '
@@ -305,7 +381,12 @@ class PreparationController extends Controller
      */
     private function typeCounts(?string $when): array
     {
-        $q = $this->base();
+        return $this->summed(fn ($base) => $this->typeCountsOf($base, $when));
+    }
+
+    private function typeCountsOf($base, ?string $when): array
+    {
+        $q = $base;
         $this->applyWindow($q, $when);
 
         // قيمتان ثابتتان، ومع ذلك تُربَط لا تُدمَج: راويةُ SQL لا تُفتح لعادة
@@ -339,6 +420,9 @@ class PreparationController extends Controller
     private function card(Order $o, array $checks = [], bool $mayCancel = false, bool $thermal = false): array
     {
         return [
+            // المفتاحُ مصنَّفًا — طلبٌ أم فاتورةُ عميل — فلا يتصادم رقمان على اللوحة
+            'key' => 'order:'.$o->number,
+            'kind' => 'order',
             'number' => $o->number,
             'status' => $o->status,
             // قناةُ الطلب — انظر `WebsiteConfirmPrint`: تُفتح نافذةُ الطباعة في ضغطة «مؤكّد»
@@ -767,5 +851,235 @@ class PreparationController extends Controller
                 'type' => 'success',
             ],
         ] + WebsiteConfirmPrint::flash($order, $from, $data['status']));
+    }
+
+    /* ═══════════════════════ مهامُّ فواتير العملاء ═══════════════════════ */
+
+    /**
+     * بطاقاتُ مهامّ الفواتير — بالمرشّحات نفسِها، ومعها مفتاحُ ترتيبها.
+     *
+     * والاستعلاماتُ ثابتةٌ مهما كثرت: الفاتورةُ وبنودُها وعميلُها وفرعُها
+     * محمَّلةٌ معًا، وباقيها محسوبٌ في الاستعلام نفسِه، وآخرُ ورقةٍ لكلّ مهمّة
+     * في استعلامٍ واحد.
+     *
+     * @return array{0: list<array{0: mixed, 1: array<string, mixed>}>, 1: int}
+     */
+    private function invoiceCards(?string $type, ?string $when): array
+    {
+        $q = $this->invoiceBase()->when($type, fn ($w) => $w->where('fulfillment_type', $type));
+        $this->applyWindow($q, $when);
+
+        $count = (clone $q)->count();
+
+        $tasks = $q->with([
+            'invoice' => fn ($i) => $i->select('customer_invoices.*')
+                ->selectRaw(CustomerInvoice::outstandingSql().' as board_outstanding')
+                ->with(['items', 'customer:id,phone']),
+            'branch:id,name',
+        ])->orderBy('scheduled_for')->limit(self::BOARD_LIMIT)->get();
+
+        $jobs = PrintJob::where('business_id', $this->bid())
+            ->where('subject_type', 'customer_invoice_preparation')
+            ->whereIn('subject_id', $tasks->pluck('id')->all())
+            ->orderBy('id')->get()->keyBy('subject_id');
+
+        $cards = $tasks->filter(fn (CustomerInvoicePreparation $p) => $p->invoice !== null)
+            ->map(fn (CustomerInvoicePreparation $p) => [$p->scheduled_for, $this->invoiceCard($p, $jobs->get($p->id))])
+            ->values()->all();
+
+        return [$cards, $count];
+    }
+
+    /**
+     * بطاقةُ مهمّة فاتورة — بشكل بطاقة الطلب، ومعها ما يخصّها.
+     *
+     * «فاتورة عميل» مصدرًا، ورقمُ الفاتورة، والمستلِمُ والموعد، والبنودُ من
+     * الفاتورة بكميّاتها، وحالُ السداد كما يُقرأ الآن ومن أين ثبت. ولا تكلفةَ
+     * ولا ربحَ ولا «مجموع فرعي»: من يجهّز يرى ما يُحصَّل، لا ما كلّف.
+     */
+    private function invoiceCard(CustomerInvoicePreparation $p, ?PrintJob $job): array
+    {
+        $invoice = $p->invoice;
+        $paid = $invoice->status === CustomerInvoice::ISSUED && (float) $invoice->board_outstanding <= 0.0005;
+        $at = $p->scheduled_for;
+
+        return [
+            'key' => 'customer-invoice:'.$p->id,
+            'kind' => 'invoice',
+            'prep_id' => $p->id,
+            'source_label' => __('فاتورة عميل'),
+            'number' => (string) $invoice->number,
+            'status' => $p->status,
+            'channel' => 'customer_invoice',
+            // سندُ تسليمها شريطٌ حراريٌّ دائمًا — ويُطبع بيدٍ وحدها
+            'delivery_paper' => 'thermal',
+            'customer' => $invoice->customer_name,
+            'customer_phone' => $invoice->customer?->phone,
+            'total' => round((float) $invoice->total, 3),
+            'payment_status' => $paid ? __('مدفوعة') : __($invoice->paymentState()),
+            'payment_method' => null,
+            // ثبت السدادُ بماذا — لا يُقال «مدفوعة» عن فاتورةٍ أُلغيت دفعتُها بعد الظهور
+            'payment_verified' => $paid,
+            'payment_source' => match ($p->activation_source) {
+                CustomerInvoicePreparations::FROM_PAYMOB, CustomerInvoicePreparations::FROM_RECONCILE => __('عبر رابط الدفع'),
+                CustomerInvoicePreparations::FROM_HAND => __('أرسلها موظف بعد السداد'),
+                default => null,
+            },
+            'fulfillment' => $p->fulfillment_type,
+            'scheduled_for' => optional($at)->format('Y-m-d H:i'),
+            'scheduled' => $at ? [
+                'date' => $at->format('Y-m-d'),
+                'time' => $at->format('H:i'),
+                'day' => match (true) {
+                    $at->isToday() => 'today',
+                    $at->isTomorrow() => 'tomorrow',
+                    $at->isYesterday() => 'yesterday',
+                    default => null,
+                },
+                'minutes_left' => (int) round(now()->diffInMinutes($at)),
+            ] : null,
+            'overdue' => $at && $at->isPast(),
+            'recipient' => $p->recipient_name,
+            'recipient_phone' => $p->recipient_phone,
+            'address' => $p->delivery_address,
+            'is_gift' => (bool) $p->is_gift,
+            'location_label' => null,
+            'occasion' => $p->occasion_type === 'other' && filled($p->occasion_text)
+                ? __('أخرى').': '.$p->occasion_text
+                : FlowerOrder::occasionLabel($p->occasion_type),
+            'card_message' => $p->card_message,
+            'card_align' => null,
+            'card_file' => null,
+            'card_file_name' => null,
+            'sender' => $p->sender_name,
+            'hide_sender' => (bool) $p->hide_sender,
+            'delivery_notes' => $p->delivery_notes,
+            'internal_notes' => $p->internal_notes,
+            'order_notes' => $invoice->notes,
+            'branch' => $p->branch?->name,
+            'items' => $invoice->items->map(fn ($line) => [
+                'id' => $line->id,
+                'name' => (string) $line->description,
+                'qty' => (float) $line->quantity,
+                'price' => round((float) $line->unit_price, 3),
+                'total' => round((float) $line->line_total, 3),
+                'note' => null,
+                'card_line' => false,
+                'image' => null,
+                'addons' => [],
+                'components' => [],
+                'custom' => null,
+            ])->values()->all(),
+            'next' => CustomerInvoicePreparations::next($p),
+            // قائمةُ التحقّق لبنود الطلبات وحدها — مهمّةُ الفاتورة بلا علاماتٍ مخزَّنة
+            'checks' => [],
+            'print' => $job ? [
+                'status' => $job->status,
+                'label' => PrintJobs::label($job),
+                'error' => $job->status === PrintJob::FAILED ? $job->last_error : null,
+            ] : null,
+        ];
+    }
+
+    /** مهمّةُ فاتورةٍ في اللوحة — في متجرها وفرعها، ظهرت ولم تُغلق */
+    private function invoiceTask(int $id): CustomerInvoicePreparation
+    {
+        abort_unless($this->invoicesOn(), 404);
+
+        return $this->invoiceBase()->whereKey($id)->with('invoice.items')->firstOrFail();
+    }
+
+    /**
+     * ينقل مهمّةَ الفاتورة — بانتقالاتها المسموحة وحدها، وتحت قفل.
+     *
+     * ولا يمسّ الفاتورةَ ولا تحصيلَها ولا دفترًا ولا مخزونًا: التسليمُ حدثٌ
+     * على الطاولة. انظر `CustomerInvoicePreparations::move`.
+     */
+    public function invoiceMove(Request $request, int $id)
+    {
+        abort_unless($this->invoicesOn(), 404);
+
+        $data = $request->validate([
+            'status' => ['required', 'string', Rule::in(OrderStatus::ALL)],
+        ]);
+
+        $from = null;
+        if ($error = CustomerInvoicePreparations::move($this->bid(), $id, Demo::currentBranchId(), $data['status'], $from)) {
+            return back()
+                ->with('toast', ['msg' => $error, 'type' => 'danger'])
+                ->withErrors(['status' => $error]);
+        }
+
+        $number = CustomerInvoicePreparation::whereKey($id)->with('invoice:id,number')->first()?->invoice?->number;
+
+        Activity::log('status', 'التجهيز: نقل مهمّة الفاتورة '.$number.' من «'.$from.'» إلى «'.$data['status'].'»', [
+            'subject_id' => $id,
+            'subject_type' => 'customer_invoice_preparation',
+        ]);
+
+        return back()->with('toast', [
+            'msg' => __('حالة المهمّة: :status', ['status' => $data['status']]),
+            'type' => 'success',
+        ]);
+    }
+
+    /** سندُ التسليم شريطًا حراريًّا — بيدٍ وحدها، وبحمولةٍ آمنةٍ للمستلِم */
+    public function invoiceDeliveryNote(int $id)
+    {
+        $prep = $this->invoiceTask($id);
+
+        return CustomerInvoicePreparations::deliveryPdf($prep, $prep->invoice);
+    }
+
+    /** «فاتورة عميل — نسخة داخلية» — إعادةُ طباعتها بيدٍ من اللوحة */
+    public function invoiceInternal(int $id)
+    {
+        $prep = $this->invoiceTask($id);
+
+        return CustomerInvoicePreparations::internalPdf($prep, $prep->invoice);
+    }
+
+    /** سجلُّ المهمّة — ظهورُها وانتقالاتُها، كسجلّ الطلب */
+    public function invoiceTimeline(int $id)
+    {
+        $prep = $this->invoiceTask($id);
+
+        $rows = ActivityLog::where('business_id', $this->bid())
+            ->where('subject_type', 'customer_invoice_preparation')
+            ->where('subject_id', $prep->id)
+            ->whereIn('action', ['status', 'created'])
+            ->orderBy('created_at')
+            ->limit(50)
+            ->get(['description', 'user_name', 'created_at']);
+
+        return response()->json([
+            'events' => $rows->map(fn ($r) => [
+                'text' => $r->description,
+                'by' => $r->user_name,
+                'at' => optional($r->created_at)->format('Y-m-d H:i'),
+            ])->values()->all(),
+        ]);
+    }
+
+    /**
+     * يُعيد ورقةَ الصندوق إلى الطابور — بعد أن نظر من يجهّز في الطابعة.
+     *
+     * ولا تُعاد ورقةٌ يطبعها صندوقٌ الآن (`PrintJobs::requeue`).
+     */
+    public function invoiceRequeue(int $id)
+    {
+        $prep = $this->invoiceTask($id);
+        $job = PrintJobs::forPreparation($prep);
+
+        if (! $job || ! PrintJobs::requeue($job, (int) auth()->id())) {
+            return back()->with('toast', ['msg' => __('الورقة تُطبع الآن أو لم تُكتب بعد — لا تُعاد.'), 'type' => 'danger']);
+        }
+
+        Activity::log('updated', 'أعاد ورقة الفاتورة '.$prep->invoice->number.' إلى طابور الصندوق', [
+            'subject_id' => $prep->id,
+            'subject_type' => 'customer_invoice_preparation',
+        ]);
+
+        return back()->with('toast', ['msg' => __('أُعيدت الورقة إلى طابور الصندوق'), 'type' => 'success']);
     }
 }

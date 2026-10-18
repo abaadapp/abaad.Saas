@@ -24,9 +24,16 @@ const IDLE: ReceiptPrintState = { stage: 'idle', outcome: null, invoice: null };
  * ضغطتان سريعتان على «طباعة» كانتا تفتحان لسانين. وفي التطبيق تعنيان إيصالين
  * على الورق — فالضغطةُ الثانية تُهمل ما دامت الأولى تعمل.
  *
+ * ═══ وفي نقطة البيع تُطبع في مكانها ═══
+ *
+ * `inPage`: في المتصفّح يُطلب حوارُ الطباعة على الـPDF نفسِه في إطارٍ مخفيّ،
+ * ولا لسانَ يُفتح (`lib/printing/page-print`). وحالُها تُعرض كحال التطبيق:
+ * «جارٍ تجهيز الإيصال…» ثمّ لا شيء — ففتحُ الحوار ليس طباعة — أو سببُ
+ * الفشل ومعه «فتح PDF». وسائرُ الشاشات (اللوحة) على اللسان كما كانت.
+ *
  * @param routeName بابُ الإيصال الحراريّ في قسم الشاشة — `pos.receipt.pdf` في الصندوق
  */
-export default function useReceiptPrint(routeName = 'pos.receipt.pdf') {
+export default function useReceiptPrint(routeName = 'pos.receipt.pdf', { inPage = false }: { inPage?: boolean } = {}) {
     const { context } = usePage<PageProps>().props;
     const tenant = useTenantLink();
     const printer = receiptPrinter(context?.peripherals);
@@ -49,13 +56,19 @@ export default function useReceiptPrint(routeName = 'pos.receipt.pdf') {
      *
      * والمهمّةُ تُنادى قبل أيّ انتظار — في المتصفّح تفتح لسانًا، ولا يُفتح لسانٌ
      * إلّا في إيماءةٍ حيّة. وحالُ المتصفّح لا تُعرض: اللسانُ نفسُه هو الجواب.
+     *
+     * و`shows` تُعرض بها الحالُ قبل الجواب — في التطبيق، وفي الطباعة داخل
+     * الصفحة (تنزيلٌ يُنتظر). والطباعةُ التلقائيّة تنادي بلا ثالث: كما كانت.
      */
     const run = useCallback(
-        async (invoice: string, job: (onProgress: (stage: PrintStage) => void) => Promise<PrintOutcome | null>) => {
+        async (
+            invoice: string,
+            job: (onProgress: (stage: PrintStage) => void) => Promise<PrintOutcome | null>,
+            shows: boolean = insideAbaadApp(),
+        ) => {
             if (working.current) return null;
             working.current = true;
 
-            const shows = insideAbaadApp();
             const onProgress = (stage: PrintStage) => {
                 if (alive.current) setState((s) => ({ ...s, stage }));
             };
@@ -66,11 +79,12 @@ export default function useReceiptPrint(routeName = 'pos.receipt.pdf') {
 
                 const outcome = await pending;
                 if (alive.current) {
-                    setState(
-                        outcome && outcome.via !== 'browser'
-                            ? { stage: outcome.ok ? 'success' : 'failed', outcome, invoice }
-                            : IDLE,
-                    );
+                    /*
+                     * ولا «تمت الطباعة» عن حوارٍ فُتح في الصفحة: المتصفّح لا يقول
+                     * أطَبع الكاشيرُ أم ألغى. فيعود السطرُ إلى سكونه.
+                     */
+                    const quiet = !outcome || outcome.via === 'browser' || (outcome.via === 'page' && outcome.ok);
+                    setState(quiet ? IDLE : { stage: outcome.ok ? 'success' : 'failed', outcome, invoice });
                 }
 
                 return outcome;
@@ -83,8 +97,12 @@ export default function useReceiptPrint(routeName = 'pos.receipt.pdf') {
 
     const print = useCallback(
         (invoice: string) =>
-            run(invoice, (onProgress) => printReceipt({ invoice, url: urlOf(invoice), printer, onProgress })),
-        [run, urlOf, printer],
+            run(
+                invoice,
+                (onProgress) => printReceipt({ invoice, url: urlOf(invoice), printer, onProgress, inPage }),
+                insideAbaadApp() || inPage,
+            ),
+        [run, urlOf, printer, inPage],
     );
 
     /** «إعادة الطباعة» — طلبٌ جديدٌ صريح من الكاشير، لا إعادةٌ تلقائيّة */

@@ -7740,5 +7740,7 @@
     "طباعة سند التسليم": "Print delivery note",
     "سند التسليم الحراري لطلبات الموقع": "Thermal delivery note for website orders",
     "يُطبع سند تسليم طلبات المتجر الإلكتروني على طابعة الصندوق (58 أو 80 مم) بدل ورقة A4. طلبات نقطة البيع تبقى كما هي.": "Website orders print their delivery note on the till printer (58 or 80 mm) instead of A4 paper. Point-of-sale orders stay as they are.",
-    "رسالة البطاقة قد تحتوي على اسمك أو رقمك مع أنك اخترت إخفاء اسم المرسل — عدّلها أو أكّد إرسالها كما هي.": "Your card message may include your name or phone number, even though you chose to hide your name — edit it or confirm sending it as it is."
+    "رسالة البطاقة قد تحتوي على اسمك أو رقمك مع أنك اخترت إخفاء اسم المرسل — عدّلها أو أكّد إرسالها كما هي.": "Your card message may include your name or phone number, even though you chose to hide your name — edit it or confirm sending it as it is.",
+    "هذا المتصفح لا يطبع الفاتورة من داخل الصفحة — افتح PDF واطبعها منه.": "This browser can't print the receipt from inside the page — open the PDF and print it from there.",
+    "لم يُفتح حوار الطباعة — أعد المحاولة أو افتح PDF.": "The print dialog didn't open — try again or open the PDF."
 }

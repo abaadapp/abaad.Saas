@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import DocumentPreview from '@/Components/DocumentPreview';
 import { announcePrint } from '@/Components/PrintReceiptButton';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
-import { insideAbaadApp } from '@/lib/printing/printer-service';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
 import { useTenantLink } from '@/lib/exportLink';
@@ -60,7 +59,8 @@ export default function ReceiptPreviewButton({
     const t = useTranslate();
     // والمعاينةُ تُطلب بنشاط هذه الصفحة — انظر `TenantExportGuard`
     const tenant = useTenantLink();
-    const printing = useReceiptPrint('pos.receipt.pdf');
+    // والطباعةُ في مكانها — انظر `lib/printing/page-print`
+    const printing = useReceiptPrint('pos.receipt.pdf', { inPage: true });
     const [paper, setPaper] = useState<Paper | null>(null);
     const [loading, setLoading] = useState(false);
     const [open, setOpen] = useState(false);
@@ -151,23 +151,22 @@ export default function ReceiptPreviewButton({
                     open={open}
                     onOpenChange={setOpen}
                     /*
-                     * وفي تطبيق أبعاد تُطبع على طابعة الصندوق مباشرةً — انظر
-                     * `lib/printing`. وفي المتصفّح يبقى الرابطُ كما كان.
+                     * وفي تطبيق أبعاد تُطبع على طابعة الصندوق مباشرةً، وفي
+                     * المتصفّح يُطلب حوارُ الطباعة على الـPDF نفسِه والمعاينةُ
+                     * مفتوحةٌ كما هي — انظر `lib/printing`. و«فتح الملف»
+                     * و«تحميل» رابطان كما كانا.
                      */
-                    onPrint={
-                        insideAbaadApp()
-                            ? () =>
-                                  void printing
-                                      .print(number)
-                                      .then((outcome) =>
-                                          announcePrint(
-                                              outcome,
-                                              t,
-                                              () => void printing.print(number),
-                                              () => void printing.openPdf(number),
-                                          ),
-                                      )
-                            : undefined
+                    onPrint={() =>
+                        void printing
+                            .print(number)
+                            .then((outcome) =>
+                                announcePrint(
+                                    outcome,
+                                    t,
+                                    () => void printing.print(number),
+                                    () => void printing.openPdf(number),
+                                ),
+                            )
                     }
                 />
             )}

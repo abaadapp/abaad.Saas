@@ -1,4 +1,5 @@
 import { callBridge, failure, nativeBridge } from './bridge';
+import { printPdfInPage } from './page-print';
 import type { PrintErrorCode, PrinterLike, PrinterTarget, PrintOutcome, PrintStage } from './types';
 
 /**
@@ -11,7 +12,9 @@ import type { PrintErrorCode, PrinterLike, PrinterTarget, PrintOutcome, PrintSta
  *     ESC/POS. فلا يعتمد على صفحة رموزٍ عربيّة في الطابعة.
  *   - **تطبيقُ أبعاد + طابعةٌ ليست على الشبكة:** حوارُ الطباعة في نظام
  *     الجهاز. فالنوافذُ المنبثقة لا تُفتح داخل التطبيق.
- *   - **المتصفّح:** لسانُ الـPDF كما كان تمامًا.
+ *   - **المتصفّح:** لسانُ الـPDF كما كان تمامًا — إلّا حيث تطلب الشاشةُ
+ *     الطباعةَ داخل الصفحة (`inPage`، نقطةُ البيع): حوارُ الطباعة على الـPDF
+ *     نفسِه في إطارٍ مخفيّ، والكاشيرُ في شاشته (`page-print`).
  *
  * والإيصالُ واحدٌ في الثلاثة: `PdfController::orderThermal`. لا يُعاد حسابُ
  * فاتورةٍ ولا تنسيقُها في أيّ تطبيق.
@@ -83,6 +86,11 @@ export interface ReceiptRequest {
     url: string;
     printer: PrinterLike | null;
     onProgress?: (stage: PrintStage) => void;
+    /**
+     * في المتصفّح: حوارُ الطباعة داخل الصفحة بدل لسانٍ جديد — لنقطة البيع.
+     * ولا أثرَ له في تطبيق أبعاد: الجسرُ يُسأل أوّلًا كما كان.
+     */
+    inPage?: boolean;
 }
 
 /**
@@ -107,6 +115,9 @@ export async function printReceipt(request: ReceiptRequest): Promise<PrintOutcom
     }
 
     if (bridge) return openReceiptFile(request);
+
+    // ونقطةُ البيع تطبع في مكانها — وحيث لا يُضمن ذلك يُقال، ولا لسانَ يُفتح وحده
+    if (request.inPage) return printPdfInPage(request.url);
 
     // والمتصفّحُ كما كان: لسانٌ جديد، و`noopener` كما كان
     window.open(request.url, '_blank', 'noopener');
@@ -269,6 +280,10 @@ export function failureMessage(code: PrintErrorCode, t: Translate): string {
             return t('الطباعة المباشرة تحتاج تطبيق أبعاد');
         case 'POPUP_BLOCKED':
             return t('منع المتصفح فتح نافذة الطباعة — اطبع الفاتورة من الزر أدناه.');
+        case 'IN_PAGE_UNSUPPORTED':
+            return t('هذا المتصفح لا يطبع الفاتورة من داخل الصفحة — افتح PDF واطبعها منه.');
+        case 'PRINT_DIALOG_FAILED':
+            return t('لم يُفتح حوار الطباعة — أعد المحاولة أو افتح PDF.');
         case 'UNTRUSTED_ORIGIN':
         case 'INVALID_JOB':
         case 'RECEIPT_URL_REJECTED':
@@ -293,6 +308,14 @@ export function stageMessage(stage: PrintStage, t: Translate): string {
         default:
             return '';
     }
+}
+
+/**
+ * أتُجدي «إعادة الطباعة»؟ — متصفّحٌ لا يطبع من الصفحة لن يطبع في الثانية،
+ * فيُعرض له «فتح PDF» وحده.
+ */
+export function retryable(outcome: PrintOutcome | null | undefined): boolean {
+    return !(outcome && !outcome.ok && outcome.code === 'IN_PAGE_UNSUPPORTED');
 }
 
 /** الأولى أن يُعاد؟ — ما بلغ الطابعةَ بعضُه لا يُعاد بلا قرار، ولا يُعاد تلقائيًّا أصلًا */

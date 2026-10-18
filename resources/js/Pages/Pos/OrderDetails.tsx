@@ -132,8 +132,8 @@ export default function PosOrderDetails() {
                                 {t('إضافة صنف')}
                             </Button>
                         )}
-                        {/* والطباعةُ من `lib/printing` — مباشرةً في تطبيق أبعاد، ولسانٌ في المتصفّح */}
-                        <PrintReceiptButton number={order.id} />
+                        {/* والطباعةُ من `lib/printing` — مباشرةً في تطبيق أبعاد، وفي مكانها في المتصفّح */}
+                        <PrintReceiptButton number={order.id} inPage />
                     </div>
                 </div>
 

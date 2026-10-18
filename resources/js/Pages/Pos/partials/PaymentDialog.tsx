@@ -84,9 +84,11 @@ export default function PaymentDialog({
      * طابعة هذا الصندوق وحدها — لا طابعة صندوقٍ آخر في الفرع نفسه.
      *
      * والطباعةُ كلُّها من `lib/printing`: في تطبيق أبعاد مع طابعة شبكة تُرسل
-     * مباشرةً، وفي المتصفّح تُفتح الورقةُ في لسانٍ كما كانت.
+     * مباشرةً. وفي المتصفّح: «طباعة الفاتورة» تطلب حوارَ الطباعة في مكانها
+     * (`inPage`)، والطباعةُ التلقائيّة على نافذتها المحضَّرة كما كانت —
+     * `run` تُنادى منها بلا `inPage`.
      */
-    const printing = useReceiptPrint('pos.receipt.pdf');
+    const printing = useReceiptPrint('pos.receipt.pdf', { inPage: true });
     const METHODS = methods?.length
         ? ALL_METHODS.filter((m) => methods.includes(m.value))
         : ALL_METHODS;
@@ -782,7 +784,8 @@ export default function PaymentDialog({
                                     disabled={printing.busy}
                                     /*
                                      * والطباعةُ من `lib/printing`: مباشرةً في
-                                     * التطبيق، ولسانٌ جديد في المتصفّح كما كان.
+                                     * التطبيق، وحوارُ الطباعة في مكانه في المتصفّح
+                                     * — والكاشيرُ في شاشة النجاح لا يغادرها.
                                      * و`route()` لا رابطٌ مكتوبٌ باليد — نسخةٌ
                                      * ثانية للمسار تفترق يومًا يُبدَّل.
                                      */

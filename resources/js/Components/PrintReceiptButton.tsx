@@ -4,7 +4,7 @@ import { Loader2, Printer } from 'lucide-react';
 import PrintStatus from '@/Components/PrintStatus';
 import { Button } from '@/Components/ui/button';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
-import { failureMessage, insideAbaadApp, stageMessage } from '@/lib/printing/printer-service';
+import { failureMessage, insideAbaadApp, retryable, stageMessage } from '@/lib/printing/printer-service';
 import type { PrintOutcome } from '@/lib/printing/types';
 import { useTranslate } from '@/lib/i18n';
 
@@ -13,8 +13,11 @@ type Translate = (key: string) => string;
 /**
  * نتيجةُ طباعةٍ مباشرة في إشعار — لأزرارٍ لا مكانَ تحتها لسطر حالة.
  *
- * ولا شيءَ للمتصفّح: اللسانُ الذي فُتح هو الجواب. ولا «طُبع» لحوار النظام:
- * ظهورُه ليس طباعة.
+ * ولا شيءَ للمتصفّح: اللسانُ الذي فُتح هو الجواب. ولا «طُبع» لحوار النظام
+ * ولا لحوار الطباعة في الصفحة: ظهورُه ليس طباعة.
+ *
+ * ومتصفّحٌ لا يطبع من الصفحة لا يُعرض له «إعادة الطباعة» — لن تُجدي —
+ * بل «فتح PDF» وحده.
  */
 export function announcePrint(
     outcome: PrintOutcome | null,
@@ -26,6 +29,15 @@ export function announcePrint(
 
     if (outcome.ok) {
         if (outcome.via === 'native') toast.success(stageMessage('success', t));
+
+        return;
+    }
+
+    if (!retryable(outcome)) {
+        toast.error(failureMessage(outcome.code, t), {
+            duration: 15000,
+            ...(openPdf ? { action: { label: t('فتح PDF'), onClick: openPdf } } : {}),
+        });
 
         return;
     }
@@ -46,6 +58,9 @@ export function announcePrint(
  * وفي المتصفّح هو الرابطُ نفسُه الذي كان — `<a target="_blank">` إلى الـPDF —
  * لا زرٌّ يحاكيه: الضغطُ بالوسط و«فتح في لسان» و«نسخ الرابط» تبقى كما كانت.
  * فالتاجرُ الذي يطبع من المتصفّح لا يرى فرقًا.
+ *
+ * إلّا في نقطة البيع (`inPage`): زرٌّ يطلب حوارَ الطباعة على الـPDF نفسِه في
+ * إطارٍ مخفيّ، والكاشيرُ في شاشته — انظر `lib/printing/page-print`.
  */
 export default function PrintReceiptButton({
     number,
@@ -56,6 +71,7 @@ export default function PrintReceiptButton({
     variant,
     size,
     className,
+    inPage = false,
 }: {
     number: string;
     /** بابُ الإيصال في قسم الشاشة — `admin.orders.receipt` في شاشة الطلب */
@@ -67,9 +83,11 @@ export default function PrintReceiptButton({
     variant?: ComponentProps<typeof Button>['variant'];
     size?: ComponentProps<typeof Button>['size'];
     className?: string;
+    /** نقطةُ البيع: الطباعةُ في مكانها لا في لسانٍ جديد */
+    inPage?: boolean;
 }) {
     const t = useTranslate();
-    const printing = useReceiptPrint(routeName);
+    const printing = useReceiptPrint(routeName, { inPage });
     const text = label ?? t('طباعة الفاتورة');
 
     const print = () => {
@@ -78,7 +96,7 @@ export default function PrintReceiptButton({
         });
     };
 
-    if (!insideAbaadApp()) {
+    if (!insideAbaadApp() && !inPage) {
         return (
             <Button variant={variant} size={size} className={className} asChild>
                 <a

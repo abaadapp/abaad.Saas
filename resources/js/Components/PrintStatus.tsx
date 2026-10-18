@@ -1,7 +1,7 @@
 import { CheckCircle2, FileText, Loader2, RotateCcw } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import type { ReceiptPrintState } from '@/hooks/useReceiptPrint';
-import { failureMessage, stageMessage } from '@/lib/printing/printer-service';
+import { failureMessage, retryable, stageMessage } from '@/lib/printing/printer-service';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -60,10 +60,13 @@ export default function PrintStatus({
                 {headline && <p className="font-bold text-[#991b1b]">{headline}</p>}
                 <p className="text-[#b91c1c]">{failureMessage(outcome.code, t)}</p>
                 <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={onRetry}>
-                        <RotateCcw />
-                        {t('إعادة الطباعة')}
-                    </Button>
+                    {/* ومتصفّحٌ لا يطبع من الصفحة لا يُعاد عليه: «فتح PDF» وحده */}
+                    {retryable(outcome) && (
+                        <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={onRetry}>
+                            <RotateCcw />
+                            {t('إعادة الطباعة')}
+                        </Button>
+                    )}
                     {onOpen && (
                         <Button type="button" size="sm" variant="ghost" className="rounded-full" onClick={onOpen}>
                             <FileText />

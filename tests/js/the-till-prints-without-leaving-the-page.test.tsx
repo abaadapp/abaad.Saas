@@ -106,7 +106,7 @@ beforeEach(() => {
     resetPrintFrame();
     forgetPreparedReceipts();
     // مهلةُ القارئ تُقاس في اختبارها وحده — انظر «لا يُطلب الحوار لحظةَ load»
-    setPagePrintTiming({ settleMs: 0, timeoutMs: 20000 });
+    setPagePrintTiming({ settleMs: 0, timeoutMs: 20000, downloadMs: 30000 });
     // ولا قائمةَ مشاركةٍ إلّا حيث تُعطى — انظر `the-ipad-prints-through-the-share-sheet`
     Object.defineProperty(window.navigator, 'share', { value: undefined, configurable: true });
     Object.defineProperty(window.navigator, 'canShare', { value: undefined, configurable: true });
@@ -314,6 +314,48 @@ describe('Chrome وEdge — ما لا يُفترض', () => {
 
         expect(frame()).toBeNull();
         expect(revoked).toEqual(['blob:receipt-1']);
+    });
+
+    it('وتنزيلٌ علق في الشبكة ← يُقطع في مهلته ويُقال، والطباعةُ التالية لا تُردّ بسببه', async () => {
+        setPagePrintTiming({ downloadMs: 30 });
+        fetchMock.mockImplementationOnce(
+            (_url: string, init: RequestInit) =>
+                new Promise((_resolve, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('stalled', 'AbortError')))),
+        );
+
+        await expect(printPdfInPage('/pos.receipt.pdf/INV-7')).resolves.toMatchObject({ ok: false, code: 'RECEIPT_DOWNLOAD_FAILED' });
+
+        const next = printPdfInPage('/pos.receipt.pdf/INV-8');
+        const print = await loadFrame();
+        await expect(next).resolves.toEqual({ ok: true, via: 'page' });
+        expect(print).toHaveBeenCalledTimes(1);
+    });
+
+    /*
+     * وChrome يُبقي التركيزَ في الإطار بعد الحوار: لوحةُ المفاتيح وماسحُ الباركود
+     * يكتبان فيما لا يُرى. فالطباعةُ هنا تنقل التركيزَ إليه كما يفعل هو.
+     */
+    it('والتركيزُ يعود إلى الصفحة بعد الحوار — لا يبقى في الإطار المخفيّ', async () => {
+        render(<PrintReceiptButton number="INV-7" inPage />);
+        const button = screen.getByRole('button', { name: /طباعة الفاتورة/ });
+
+        await userEvent.click(button);
+        const print = await loadFrame(() => frame()!.focus());
+
+        await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+        expect(document.activeElement).not.toBe(frame());
+    });
+
+    it('وما كان مركَّزًا قبل الحوار يعود إليه', async () => {
+        render(<input aria-label="الباركود" />);
+        const scanner = screen.getByRole('textbox', { name: 'الباركود' });
+        scanner.focus();
+
+        const pending = printPdfInPage('/pos.receipt.pdf/INV-7');
+        await loadFrame(() => frame()!.focus());
+        await pending;
+
+        expect(document.activeElement).toBe(scanner);
     });
 
     it('وEdge كـChrome — زرُّ الصندوق يطبع في مكانه', async () => {
@@ -576,6 +618,68 @@ describe('«معاينة الفاتورة» ثمّ «طباعة»', () => {
         await user.keyboard('{Escape}');
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
         expect(screen.getByText('سلة البيع')).toBeInTheDocument();
+    });
+
+    const preview = async () => {
+        render(
+            <>
+                <p>سلة البيع</p>
+                <ReceiptPreviewButton number="INV-1042" />
+            </>,
+        );
+        const user = userEvent.setup();
+        await user.click(screen.getByRole('button', { name: /معاينة الفاتورة/ }));
+
+        return { user, dialog: await screen.findByRole('dialog') };
+    };
+    const paperThen = (pdf: Response) =>
+        fetchMock.mockImplementation(async (url: string) =>
+            String(url).includes('pos.receipt.paper')
+                ? ({ ok: true, json: async () => ({ html: '<p>INV-1042</p>', size: '80mm' }) } as unknown as Response)
+                : pdf,
+        );
+
+    it('وEscape يُغلقها بعد الطباعة — والتركيزُ لم يبقَ في الإطار', async () => {
+        paperThen(answer(200, 'application/pdf'));
+        const { user, dialog } = await preview();
+
+        await user.click(within(dialog).getByRole('button', { name: /طباعة/ }));
+        const print = await loadFrame(() => frame()!.focus());
+        await waitFor(() => expect(print).toHaveBeenCalledTimes(1));
+
+        await user.keyboard('{Escape}');
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    /*
+     * والفشلُ يُقال داخلها لا في إشعار: النافذةُ المفتوحة تمنع الضغطَ خارجها،
+     * فـ«فتح PDF» في إشعارٍ تحتها يُرى ولا يُضغط.
+     */
+    it('وفشلُ التنزيل يُقال داخلها — و«فتح PDF» فيها يُضغط والمعاينةُ مفتوحة', async () => {
+        paperThen(answer(500, 'text/html', 'oops'));
+        const { user, dialog } = await preview();
+
+        await user.click(within(dialog).getByRole('button', { name: /طباعة/ }));
+        const status = await within(dialog).findByRole('alert');
+        expect(status).toHaveTextContent('تعذر تنزيل الإيصال');
+        expect(toasts.error).not.toHaveBeenCalled();
+
+        await user.click(within(status).getByRole('button', { name: /فتح PDF/ }));
+        expect(openMock).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('ومتصفّحٌ لا يطبع من الصفحة ← السببُ و«فتح PDF» داخلها، بلا إعادة', async () => {
+        browser(FIREFOX);
+        paperThen(answer(200, 'application/pdf'));
+        const { user, dialog } = await preview();
+
+        await user.click(within(dialog).getByRole('button', { name: /طباعة/ }));
+        const status = await within(dialog).findByRole('alert');
+        expect(status).toHaveTextContent('هذا المتصفح لا يطبع الفاتورة من داخل الصفحة');
+        expect(within(status).getByRole('button', { name: /فتح PDF/ })).toBeInTheDocument();
+        expect(within(status).queryByRole('button', { name: /إعادة الطباعة/ })).toBeNull();
+        expect(toasts.error).not.toHaveBeenCalled();
     });
 });
 

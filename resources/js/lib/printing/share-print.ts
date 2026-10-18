@@ -25,6 +25,12 @@ import type { PrintOutcome } from './types';
  * (`prepareReceipt`) ويُشارَك فيها بلا انتظار (`shareReceipt`). وما لم
  * يُجهَّز بعد تُجهّزه الضغطةُ الأولى، ويُشارَك في الثانية.
  *
+ * ═══ والمجهَّزُ آخرُ ما نزل ═══
+ *
+ * الطلبُ يُعدَّل بعد أن يُجهَّز إيصالُه — صنفٌ يُضاف، دفعةٌ تُصحَّح — ورابطُه
+ * لا يتبدّل. فلا يُعاد ملفٌّ قديمٌ برابطه: كلُّ تجهيزٍ تنزيلٌ جديد، والقديمُ
+ * يُترك حين يبدأ، فلا يُشارَك وهو يُستبدل. وكلُّ شاشةٍ تُجهّز حين تُفتح.
+ *
  * ولا تُفتح القائمةُ وحدها أبدًا: لا بعد البيع ولا بعد التجهيز.
  */
 
@@ -70,15 +76,15 @@ export function preparedReceipt(url: string): File | null {
 /**
  * يُنزّل الإيصالَ ويحفظه ملفًّا — ولا يفتح شيئًا.
  *
- * وتنزيلان للإيصال نفسِه تنزيلٌ واحد: الشاشةُ تُجهّزه حين تُفتح، والكاشيرُ
- * يضغط قبل أن ينتهي — فيلحق بالأوّل.
+ * ودائمًا من الخادم: ما جُهّز قبلُ قد يكون لطلبٍ عُدِّل بعده، فيُترك الآن.
+ * وتنزيلان للإيصال نفسِه في وقتٍ واحد تنزيلٌ واحد: الشاشةُ تُجهّزه حين
+ * تُفتح، والكاشيرُ يضغط قبل أن ينتهي — فيلحق بالأوّل.
  */
 export function prepareReceipt(url: string, invoice: string): Promise<File | PrintOutcome> {
-    const ready = prepared.get(url);
-    if (ready) return Promise.resolve(ready);
-
     const pending = preparing.get(url);
     if (pending) return pending;
+
+    prepared.delete(url);
 
     const job = downloadReceipt(url, 'share')
         .then((pdf): File | PrintOutcome => {

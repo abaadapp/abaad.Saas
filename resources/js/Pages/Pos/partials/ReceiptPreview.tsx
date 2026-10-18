@@ -3,8 +3,11 @@ import { Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DocumentPreview from '@/Components/DocumentPreview';
-import { announcePrint, announceReady, SHARE_LABEL } from '@/Components/PrintReceiptButton';
+import { announcePrint, SHARE_LABEL } from '@/Components/PrintReceiptButton';
+import PrintStatus from '@/Components/PrintStatus';
 import useReceiptPrint from '@/hooks/useReceiptPrint';
+import { insideAbaadApp } from '@/lib/printing/printer-service';
+import type { PrintOutcome } from '@/lib/printing/types';
 import { Button } from '@/Components/ui/button';
 import { useTranslate } from '@/lib/i18n';
 import { useTenantLink } from '@/lib/exportLink';
@@ -87,25 +90,35 @@ export default function ReceiptPreviewButton({
     /*
      * وفي الآيفون والآيباد يُجهَّز الملفُّ حين تُفتح المعاينة — فتفتح «طباعة أو
      * مشاركة PDF» قائمةَ المشاركة في ضغطتها. وزرُّها ينتظر حتى يُجهَّز.
+     * ومن الخادم في كلّ فتح: الطلبُ قد عُدِّل منذ آخر مرّة.
      */
     const sharing = printing.mode === 'share';
     const prepareReceipt = printing.prepare;
     const [preparing, setPreparing] = useState(false);
+    const [unprepared, setUnprepared] = useState<PrintOutcome | null>(null);
     useEffect(() => {
-        if (!open || !sharing || printing.isReady(number)) return;
+        if (!open || !sharing) return;
+        setUnprepared(null);
         setPreparing(true);
         void prepareReceipt(number, true).then((failed) => {
             setPreparing(false);
-            if (failed) announcePrint(failed, t, () => void printing.print(number), () => void printing.openPdf(number));
+            setUnprepared(failed);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, sharing, number]);
 
-    // وضغطةٌ سبقت التجهيز — إشعارٌ بزرٍّ يفتح القائمة
-    useEffect(() => {
-        if (printing.state.stage === 'ready' && printing.state.invoice === number) announceReady(t, () => void printing.print(number));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [printing.state.stage, printing.state.invoice]);
+    /*
+     * وحالُ الطباعة في المتصفّح تُقال داخل المعاينة لا في إشعار.
+     *
+     * النافذةُ المفتوحة تمنع الضغطَ خارجها: «فتح PDF» و«إعادة الطباعة» في
+     * إشعارٍ تحتها يُريان ولا يُضغطان. وفي تطبيق أبعاد الإشعارُ كما كان.
+     */
+    const inApp = insideAbaadApp();
+    const status = unprepared ? { stage: 'failed' as const, outcome: unprepared, invoice: number } : printing.state;
+    const again = () => {
+        setUnprepared(null);
+        void printing.print(number);
+    };
 
     const show = async () => {
         if (loading) return;
@@ -175,24 +188,23 @@ export default function ReceiptPreviewButton({
                     onOpenChange={setOpen}
                     printLabel={sharing ? t(SHARE_LABEL) : undefined}
                     printPending={sharing && preparing}
+                    status={
+                        !inApp && status.stage !== 'idle' ? (
+                            <PrintStatus state={status} onRetry={again} onOpen={() => void printing.openPdf(number)} />
+                        ) : undefined
+                    }
                     /*
                      * وفي تطبيق أبعاد تُطبع على طابعة الصندوق مباشرةً، وفي
                      * المتصفّح يُطلب حوارُ الطباعة على الـPDF نفسِه والمعاينةُ
                      * مفتوحةٌ كما هي — انظر `lib/printing`. و«فتح الملف»
                      * و«تحميل» رابطان كما كانا.
                      */
-                    onPrint={() =>
-                        void printing
-                            .print(number)
-                            .then((outcome) =>
-                                announcePrint(
-                                    outcome,
-                                    t,
-                                    () => void printing.print(number),
-                                    () => void printing.openPdf(number),
-                                ),
-                            )
-                    }
+                    onPrint={() => {
+                        setUnprepared(null);
+                        void printing.print(number).then((outcome) => {
+                            if (inApp) announcePrint(outcome, t, () => void printing.print(number), () => void printing.openPdf(number));
+                        });
+                    }}
                 />
             )}
         </>

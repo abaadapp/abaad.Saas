@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Download, ExternalLink, Loader2, Printer, Share } from 'lucide-react';
 
 import PaperFrame from '@/Components/PaperFrame';
@@ -53,6 +54,7 @@ export default function DocumentPreview({
     onPrint,
     printLabel,
     printPending = false,
+    status,
 }: {
     /** الورقةُ مرسومةً — النصُّ نفسُه الذي في اللوحة */
     html: string;
@@ -77,6 +79,13 @@ export default function DocumentPreview({
      */
     printLabel?: string;
     printPending?: boolean;
+    /**
+     * حالُ الطباعة داخل النافذة — سببُ الفشل و«فتح PDF».
+     *
+     * لا إشعارًا: النافذةُ المفتوحة تمنع الضغطَ خارجها، فزرُّ الإشعار يُرى ولا
+     * يُضغط.
+     */
+    status?: ReactNode;
 }) {
     const t = useTranslate();
     // والملفُّ يحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
@@ -120,6 +129,8 @@ export default function DocumentPreview({
                         </Button>
                     </div>
                 </div>
+
+                {status && <div className="border-b border-[var(--ui-border,#e8e8e8)] p-3">{status}</div>}
 
                 {/*
                     ولا تُرسم الورقةُ إلّا والنافذةُ مفتوحة.

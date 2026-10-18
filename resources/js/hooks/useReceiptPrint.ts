@@ -110,18 +110,15 @@ export default function useReceiptPrint(routeName = 'pos.receipt.pdf', { inPage 
      *
      * `quietly`: حين تُفتح الشاشة، بلا سطرِ حال. وبغيرها: الكاشيرُ ضغط قبل أن
      * يُجهَّز، فيرى «جارٍ تجهيز الإيصال…» ثمّ «جاهز» ومعه زرُّ المشاركة.
+     *
+     * ومن الخادم في كلّ مرّة — ما جُهّز قبلُ قد يكون لطلبٍ عُدِّل بعده
+     * (`share-print`). والملفُّ المجهَّزُ تشاركه الضغطةُ وحدها.
      */
     const prepare = useCallback(
         (invoice: string, quietly = false): Promise<PrintOutcome | null> => {
             if (mode !== 'share') return Promise.resolve(null);
 
             const url = urlOf(invoice);
-            if (preparedReceipt(url)) {
-                if (!quietly) setState({ stage: 'ready', outcome: null, invoice });
-
-                return Promise.resolve(null);
-            }
-
             if (!quietly) setState({ stage: 'downloading_receipt', outcome: null, invoice });
 
             return prepareReceipt(url, invoice).then((result) => {

@@ -41,7 +41,15 @@ export const FRAME_TIMEOUT_MS = 20000;
  */
 export const VIEWER_SETTLE_MS = 600;
 
-const timing = { timeoutMs: FRAME_TIMEOUT_MS, settleMs: VIEWER_SETTLE_MS };
+/**
+ * مهلةُ تنزيل الإيصال.
+ *
+ * شبكةٌ تعلق لا تردّ بخطأ: كان الزرُّ يبقى على «جارٍ تجهيز الإيصال…» والطباعاتُ
+ * كلُّها في الصفحة تُردّ بعده (طباعةٌ واحدةٌ في كلّ مرّة). فيُقطع ويُقال.
+ */
+export const DOWNLOAD_TIMEOUT_MS = 30000;
+
+const timing = { timeoutMs: FRAME_TIMEOUT_MS, settleMs: VIEWER_SETTLE_MS, downloadMs: DOWNLOAD_TIMEOUT_MS };
 
 /** للاختبار وحده — مُهلٌ تُقاس بالمللي لا بالثواني */
 export function setPagePrintTiming(next: Partial<typeof timing>): void {
@@ -96,9 +104,20 @@ export function inPagePrintSupported(env: Environment = environment()): boolean 
  * تقول شيئًا. فـPDF أو لا — ولا شيءَ بينهما.
  */
 export async function downloadReceipt(url: string, via: PrintOutcome['via']): Promise<Blob | PrintOutcome> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timing.downloadMs);
+
+    try {
+        return await download(url, via, controller.signal);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+async function download(url: string, via: PrintOutcome['via'], signal: AbortSignal): Promise<Blob | PrintOutcome> {
     let response: Response;
     try {
-        response = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/pdf' } });
+        response = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/pdf' }, signal });
     } catch {
         return { ...failure('RECEIPT_DOWNLOAD_FAILED'), via };
     }
@@ -219,12 +238,14 @@ function showDialog(pdf: Blob, timeoutMs: number): Promise<PrintOutcome> {
                 try {
                     const win = target.contentWindow;
                     if (!win) throw new Error('no window');
+                    const before = document.activeElement;
                     try {
                         win.focus();
                     } catch {
                         // التركيزُ تحسينٌ لا شرط — نافذةُ النظام تُفتح بدونه
                     }
                     win.print();
+                    giveFocusBack(target, before);
                     finish({ ok: true, via: 'page' });
                 } catch {
                     finish({ ...failure('PRINT_DIALOG_FAILED'), via: 'page' });
@@ -235,6 +256,25 @@ function showDialog(pdf: Blob, timeoutMs: number): Promise<PrintOutcome> {
         swap(src);
         target.src = src;
     });
+}
+
+/**
+ * ويعود التركيزُ إلى الصفحة بعد الحوار.
+ *
+ * تركيزُ الإطار المخفيّ يبقى فيه بعد أن يُغلق الحوار: لوحةُ المفاتيح وماسحُ
+ * الباركود يكتبان في إطارٍ لا يُرى، وEscape لا يُغلق المعاينة. فيعود إلى ما
+ * كان مركَّزًا قبله — وإن لم يقبله (زرٌّ معطَّلٌ وهو ينتظر) يُترك الإطارُ إلى
+ * الصفحة.
+ */
+function giveFocusBack(target: HTMLIFrameElement, before: Element | null): void {
+    try {
+        if (before instanceof HTMLElement && before !== document.body && before.isConnected) {
+            before.focus({ preventScroll: true });
+        }
+        if (document.activeElement === target) target.blur();
+    } catch {
+        // لا يمنع شيءٌ هنا حوارًا فُتح
+    }
 }
 
 /** للاختبار ولمغادرة الصفحة — إطارٌ جديدٌ وملفٌّ محرَّر */

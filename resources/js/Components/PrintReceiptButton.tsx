@@ -91,6 +91,7 @@ export default function PrintReceiptButton({
     className,
     inPage = false,
     prefetch = false,
+    version,
 }: {
     number: string;
     /** بابُ الإيصال في قسم الشاشة — `admin.orders.receipt` في شاشة الطلب */
@@ -109,6 +110,11 @@ export default function PrintReceiptButton({
      * (شاشةُ النجاح، والدرج، وتفاصيلُ الطلب)، لا لكلّ صفٍّ في جدول.
      */
     prefetch?: boolean;
+    /**
+     * ما يتبدّل حين يُعدَّل الطلبُ في الشاشة نفسِها — فيُجهَّز إيصالُه من جديد،
+     * ولا تُشارَك نسخةٌ قبل التعديل. انظر `lib/printing/share-print`.
+     */
+    version?: string;
 }) {
     const t = useTranslate();
     const printing = useReceiptPrint(routeName, { inPage });
@@ -125,7 +131,7 @@ export default function PrintReceiptButton({
     useEffect(() => {
         if (sharing && prefetch) void printing.prepare(number, true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sharing, prefetch, number]);
+    }, [sharing, prefetch, number, version]);
 
     // وجاهزٌ بعد ضغطةٍ سبقته — إشعارٌ بزرّ، حيث لا سطرَ تحت الزرّ
     useEffect(() => {

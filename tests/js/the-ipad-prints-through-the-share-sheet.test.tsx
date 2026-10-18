@@ -97,7 +97,7 @@ beforeEach(() => {
     Object.values(toasts).forEach((f) => f.mockClear());
     resetPrintFrame();
     forgetPreparedReceipts();
-    setPagePrintTiming({ settleMs: 0, timeoutMs: 20000 });
+    setPagePrintTiming({ settleMs: 0, timeoutMs: 20000, downloadMs: 30000 });
     fetchMock = vi.fn(async () => answer(200, 'application/pdf'));
     vi.stubGlobal('fetch', fetchMock);
     openMock = vi.fn().mockReturnValue({ location: { replace: vi.fn() }, close: vi.fn() });
@@ -278,6 +278,73 @@ describe('«طباعة أو مشاركة PDF» في الآيباد', () => {
 });
 
 /* ═══════════════════════════ ما تردّه القائمة ═══════════════════════════ */
+
+/*
+ * والمجهَّزُ آخرُ ما نزل — لا نسخةٌ قبل تعديل الطلب.
+ *
+ * رابطُ الإيصال لا يتبدّل حين يُعدَّل الطلب: صنفٌ يُضاف في تفاصيله، دفعةٌ
+ * تُصحَّح. فلو أُعيد الملفُّ المجهَّزُ برابطه لشاركه الكاشيرُ بأصنافه القديمة
+ * ومبلغه القديم، والشاشةُ أمامه تقول غيرَ ذلك.
+ */
+describe('لا يُشارَك إيصالٌ قبل تعديل طلبه', () => {
+    const BEFORE = new Blob(['%PDF-1.7 before the edit'], { type: 'application/pdf' });
+    const AFTER = new Blob(['%PDF-1.7 after the edit — one more line, a new total'], { type: 'application/pdf' });
+    const pdfs = (...blobs: Blob[]) => blobs.forEach((b) => fetchMock.mockResolvedValueOnce(answer(200, 'application/pdf', b)));
+
+    it('الطلبُ عُدِّل في شاشته (`version`) ← يُجهَّز من جديد، والضغطةُ تشارك ما بعد التعديل', async () => {
+        pdfs(BEFORE, AFTER);
+        const { rerender } = render(<PrintReceiptButton number="INV-7" inPage prefetch version="v1" />);
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        await act(async () => {});
+
+        rerender(<PrintReceiptButton number="INV-7" inPage prefetch version="v2" />);
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await act(async () => {});
+
+        fireEvent.click(screen.getByRole('button', { name: /طباعة أو مشاركة PDF/ }));
+        expect(share).toHaveBeenCalledTimes(1);
+        expect(shared().files[0].size).toBe(AFTER.size);
+    });
+
+    it('وشاشةٌ تُفتح من جديد ← تنزيلٌ جديد، لا ما جُهّز في فتحٍ سبقها', async () => {
+        pdfs(BEFORE, AFTER);
+        const first = render(<PrintReceiptButton number="INV-7" inPage prefetch />);
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        await act(async () => {});
+        first.unmount();
+
+        render(<PrintReceiptButton number="INV-7" inPage prefetch />);
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+        await act(async () => {});
+
+        fireEvent.click(screen.getByRole('button', { name: /طباعة أو مشاركة PDF/ }));
+        expect(shared().files[0].size).toBe(AFTER.size);
+    });
+
+    it('وضغطةٌ والنسخةُ الجديدة تنزل ← لا تُشارَك القديمة، وتُشارَك الجديدةُ بعدها', async () => {
+        let land: (r: Response) => void = () => {};
+        fetchMock
+            .mockResolvedValueOnce(answer(200, 'application/pdf', BEFORE))
+            .mockImplementationOnce(() => new Promise<Response>((r) => (land = r)));
+        const { rerender } = render(<PrintReceiptButton number="INV-7" inPage prefetch inline version="v1" />);
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+        await act(async () => {});
+
+        rerender(<PrintReceiptButton number="INV-7" inPage prefetch inline version="v2" />);
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+        fireEvent.click(screen.getByRole('button', { name: /طباعة أو مشاركة PDF/ }));
+        expect(share).not.toHaveBeenCalled();
+
+        await act(async () => land(answer(200, 'application/pdf', AFTER)));
+        const status = await screen.findByTestId('print-status');
+        await waitFor(() => expect(status).toHaveTextContent('الإيصال جاهز'));
+
+        fireEvent.click(within(status).getByRole('button', { name: /طباعة أو مشاركة PDF/ }));
+        expect(share).toHaveBeenCalledTimes(1);
+        expect(shared().files[0].size).toBe(AFTER.size);
+    });
+});
 
 describe('ما تردّه قائمةُ المشاركة', () => {
     const ready = async (number = 'INV-7') => {
@@ -488,5 +555,69 @@ describe('«معاينة الفاتورة» في الآيباد', () => {
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
         expect(screen.getByText('سلة البيع')).toBeInTheDocument();
         expect(openMock).not.toHaveBeenCalled();
+    });
+
+    it('وتُفتح ثانيةً بعد تعديل الطلب ← تُجهّز من جديد، ولا تشارك ما جُهّز في فتحها الأوّل', async () => {
+        const BEFORE = new Blob(['%PDF-1.7 before the edit'], { type: 'application/pdf' });
+        const AFTER = new Blob(['%PDF-1.7 after the edit — one more line'], { type: 'application/pdf' });
+        const pdfs = [BEFORE, AFTER];
+        fetchMock.mockImplementation(async (url: string) =>
+            String(url).includes('pos.receipt.paper')
+                ? ({ ok: true, json: async () => ({ html: '<p>INV-1042</p>', size: '80mm' }) } as unknown as Response)
+                : answer(200, 'application/pdf', pdfs.shift()!),
+        );
+        render(<ReceiptPreviewButton number="INV-1042" />);
+        const user = userEvent.setup();
+        const open = async () => {
+            await user.click(screen.getByRole('button', { name: /معاينة الفاتورة/ }));
+            const dialog = await screen.findByRole('dialog');
+            const print = within(dialog).getByRole('button', { name: /طباعة أو مشاركة PDF/ });
+            await waitFor(() => expect(print).toBeEnabled());
+
+            return print;
+        };
+
+        (await open()).focus();
+        await user.keyboard('{Escape}');
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+        const print = await open();
+        await waitFor(() => expect(pdfs).toHaveLength(0));
+        await act(async () => {});
+        fireEvent.click(print);
+        expect(shared().files[0].size).toBe(AFTER.size);
+    });
+
+    /*
+     * والفشلُ داخلها لا في إشعار: النافذةُ المفتوحة تمنع الضغطَ خارجها، فزرُّ
+     * الإشعار يُرى ولا يُضغط.
+     */
+    it('وتجهيزٌ فشل حين فُتحت ← يُقال داخلها، و«إعادة الطباعة» فيها تُجهّزه ثمّ تفتح القائمة', async () => {
+        let pdf = 0;
+        fetchMock.mockImplementation(async (url: string) => {
+            if (String(url).includes('pos.receipt.paper')) {
+                return { ok: true, json: async () => ({ html: '<p>INV-1042</p>', size: '80mm' }) } as unknown as Response;
+            }
+
+            return ++pdf === 1 ? answer(500, 'text/html', 'oops') : answer(200, 'application/pdf');
+        });
+        render(<ReceiptPreviewButton number="INV-1042" />);
+        const user = userEvent.setup();
+
+        await user.click(screen.getByRole('button', { name: /معاينة الفاتورة/ }));
+        const dialog = await screen.findByRole('dialog');
+        const failed = await within(dialog).findByRole('alert');
+        expect(failed).toHaveTextContent('تعذر تنزيل الإيصال');
+        expect(toasts.error).not.toHaveBeenCalled();
+        expect(toasts.info).not.toHaveBeenCalled();
+
+        await user.click(within(failed).getByRole('button', { name: /إعادة الطباعة/ }));
+        const ready = await within(dialog).findByTestId('print-status');
+        await waitFor(() => expect(ready).toHaveTextContent('الإيصال جاهز'));
+        expect(share).not.toHaveBeenCalled();
+
+        fireEvent.click(within(ready).getByRole('button', { name: /طباعة أو مشاركة PDF/ }));
+        expect(share).toHaveBeenCalledTimes(1);
+        expect(shared().files[0].name).toBe('INV-1042.pdf');
     });
 });

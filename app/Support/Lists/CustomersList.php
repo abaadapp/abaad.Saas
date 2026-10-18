@@ -70,7 +70,8 @@ final class CustomersList
     {
         return [
             'id' => $c->id, 'name' => $c->name, 'name_en' => $c->name_en,
-            'label' => Demo::ln($c->name, $c->name_en),
+            // الاسمُ كما كُتب، بأيّ لغةٍ كانت الواجهة — انظر Customers::asEntered
+            'label' => $c->name,
             'phone' => $c->phone, 'email' => $c->email,
             'orders' => $c->orders_count,
             'total_spent' => (float) ($c->orders_sum_total ?? 0),

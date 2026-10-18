@@ -49,7 +49,7 @@
             @if ($show('tpl_show_customer'))
                 <td style="width:50%; border-bottom:none; vertical-align:top">
                     <div class="faint small">{{ __('العميل') }}</div>
-                    <div>{{ \App\Support\Demo::ln($order->customer_name, $order->customer_name_en) ?: __('عميل نقدي') }}</div>
+                    <div>{{ $order->customer_name ?: __('عميل نقدي') }}</div>
                     {{--
                         الرقم الضريبي للمشتري: بدونه لا تخصم منشأةٌ مسجَّلة
                         ضريبةَ ما اشترته، فتعود تطلب ورقةً ثانية لطلبٍ واحد.

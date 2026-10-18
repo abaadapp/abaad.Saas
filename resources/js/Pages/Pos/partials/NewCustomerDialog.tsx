@@ -42,12 +42,11 @@ export default function NewCustomerDialog({ open, onOpenChange, onSubmit }: Prop
                     onSubmit={submit}
                     className="space-y-3.5 px-5"
                 >
-                    {/* حقل اسم واحد: Customers::localizeName يكتشف اللغة — إن كُتب
-                        الاسم لاتينيًا نقله إلى العربية في name وحفظ الأصل في
-                        name_en. فحقل إنجليزي يدوي هنا يُكتب فوقه ولا يصل. */}
+                    {/* حقل اسم واحد: يُحفظ ويظهر كما كُتب، بالعربية أو بالإنجليزية
+                        أو بخليطٍ منهما، وبأيّ لغةٍ كانت الواجهة — انظر Customers::asEntered */}
                     <div>
                         <Label htmlFor="c-name" required className="mb-1.5">{t('الاسم الكامل')}</Label>
-                        <Input id="c-name" name="name" placeholder={t('اسم العميل')} required />
+                        <Input id="c-name" name="name" dir="auto" placeholder={t('اسم العميل')} required />
                     </div>
 
                     <div>

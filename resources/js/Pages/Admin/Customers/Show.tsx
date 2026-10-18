@@ -89,7 +89,6 @@ export default function CustomerShow() {
      */
     const edit = useForm({
         name: customer.name ?? '',
-        name_en: customer.name_en ?? '',
         phone: customer.phone ?? '',
         email: customer.email ?? '',
         language: customer.language ?? '',
@@ -234,9 +233,6 @@ export default function CustomerShow() {
                             {(customer.label || customer.name).slice(0, 1)}
                         </span>
                         <h2 className="mt-4 text-[17px] font-bold text-[#111]">{customer.label || customer.name}</h2>
-                        {customer.name_en && customer.label !== customer.name && (
-                            <p className="text-[12px] text-[#9ca3af]">{customer.name}</p>
-                        )}
                         <p className="mt-1 font-mono text-[12px] text-[#9ca3af]">#{customer.id}</p>
                         {customer.points > 0 && (
                             <Badge variant="warning" className="mt-3">
@@ -553,22 +549,36 @@ export default function CustomerShow() {
                         }}
                         className="space-y-4 px-5 pb-5"
                     >
-                        <Field label="اسم العميل" required error={edit.errors.name}>
-                            <Input value={edit.data.name} onChange={(e) => edit.setData('name', e.target.value)} required />
-                        </Field>
-                        {/* يُكتب بيدٍ حين لا يُشتقّ: الاسم اللاتينيّ يُنقل إلى
-                            العربية تلقائيًّا، أمّا العربيّ فلا صورة له تُخمَّن */}
                         <Field
-                            label="الاسم بالإنجليزية (اختياري)"
-                            hint="يظهر عند تشغيل الواجهة بالإنجليزية"
-                            error={edit.errors.name_en}
+                            label="اسم العميل"
+                            required
+                            hint="يُحفظ ويظهر كما تكتبه — بالعربية أو بالإنجليزية"
+                            error={edit.errors.name}
                         >
-                            <Input
-                                dir="ltr"
-                                value={edit.data.name_en}
-                                onChange={(e) => edit.setData('name_en', e.target.value)}
-                            />
+                            <Input dir="auto" value={edit.data.name} onChange={(e) => edit.setData('name', e.target.value)} required />
                         </Field>
+                        {/*
+                            ═══ واسمٌ لاتينيّ حُفظ قبلُ — يُعرض ولا يُفرض ═══
+
+                            كان الاسمُ اللاتينيّ يُنقل آليًّا إلى العربية في `name`،
+                            والأصلُ يُنحّى إلى `name_en`. ولا يُعاد شيءٌ من ذلك وحده:
+                            الصفُّ لا يقول أكُتب الأصلُ بيدٍ أم نُقل. فيُعرض هنا
+                            لمن يعرف صاحبَه، وضغطةٌ تجعله الاسم — ثمّ «حفظ».
+                        */}
+                        {customer.name_en && customer.name_en.trim() !== edit.data.name.trim() && (
+                            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[#f9fafb] px-3 py-2 text-[12px] text-[#6b7280]" data-testid="customer-earlier-name">
+                                <span>{t('محفوظ سابقًا بالإنجليزية:')}</span>
+                                <bdi dir="ltr" className="font-medium text-[#111]">{customer.name_en}</bdi>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => edit.setData('name', customer.name_en ?? '')}
+                                >
+                                    {t('استعمله اسمًا')}
+                                </Button>
+                            </div>
+                        )}
                         <Field
                             label="رقم الهاتف"
                             hint="نقاط الولاء تتبع الرقم — تغييره ينقلها معه"

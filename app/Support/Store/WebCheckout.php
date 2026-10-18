@@ -1052,7 +1052,8 @@ final class WebCheckout
             return $existing->refresh();
         }
 
-        $data = Customers::localizeName([
+        // الاسمُ كما كتبه الزبون — انظر Customers::asEntered
+        $data = Customers::asEntered([
             'business_id' => $bid,
             'name' => trim($form['name']),
             'phone' => trim($form['phone']),

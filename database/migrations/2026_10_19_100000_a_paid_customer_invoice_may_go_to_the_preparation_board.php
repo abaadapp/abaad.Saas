@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\Schema;
  *   ويفتحه مديرُ المنصّة من شاشة النشاط (`CustomerInvoicePreparations::on`).
  *   ولا يُفتح هنا لأحد: لا اسمَ ولا رقمَ في الكود، ولا تُكتب بياناتُ متجرٍ بالهجرة.
  *
+ *   و`customer_invoice_preparation_enabled_at` متى فُتح آخرَ مرّة: دفعٌ وصل
+ *   والمفتاحُ مغلق لا يُفعِّل وحده حين يُفتح من جديد (`linkCounts`) — يُرسَل
+ *   بيدٍ إن لم يُجهَّز بعد، لا يظهر في اللوحة ويُطبع بعد أسابيع.
+ *
  * - `customer_invoice_preparations`: ما يُجهَّز وإلى من ومتى — لا بيعٌ ثانٍ.
  *   الفاتورةُ ورقةٌ ماليّة، وبنودُها مصدرُ الأصناف والكميّات. وهذا الصفُّ يقول
  *   ما لا تقوله: الفرعُ والموعدُ والمستلِمُ والبطاقة، وحالُ التجهيز.
@@ -32,6 +36,12 @@ return new class extends Migration
         if (! Schema::hasColumn('businesses', 'customer_invoice_preparation_enabled')) {
             Schema::table('businesses', function (Blueprint $table) {
                 $table->boolean('customer_invoice_preparation_enabled')->default(false);
+            });
+        }
+
+        if (! Schema::hasColumn('businesses', 'customer_invoice_preparation_enabled_at')) {
+            Schema::table('businesses', function (Blueprint $table) {
+                $table->timestamp('customer_invoice_preparation_enabled_at')->nullable();
             });
         }
 
@@ -103,6 +113,10 @@ return new class extends Migration
 
         if (Schema::hasColumn('pos_peripherals', 'auto_print_customer_invoices')) {
             Schema::table('pos_peripherals', fn (Blueprint $t) => $t->dropColumn('auto_print_customer_invoices'));
+        }
+
+        if (Schema::hasColumn('businesses', 'customer_invoice_preparation_enabled_at')) {
+            Schema::table('businesses', fn (Blueprint $t) => $t->dropColumn('customer_invoice_preparation_enabled_at'));
         }
 
         if (Schema::hasColumn('businesses', 'customer_invoice_preparation_enabled')) {

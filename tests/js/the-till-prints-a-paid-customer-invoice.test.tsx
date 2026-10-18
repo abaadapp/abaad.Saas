@@ -27,6 +27,8 @@ vi.mock('sonner', () => ({
  *     ويقول ما جرى — وما قالت الطابعةُ إنّه ربّما خرج يُقال كما هو.
  *   - المتصفّح: لا طباعةَ صامتة — تنبيهٌ بعدد ما ينتظر وزرٌّ يطبع، والنافذةُ
  *     تُفتح في الضغطة نفسِها قبل انتظار الحجز.
+ *   - وفتحُ الحوار ليس ورقًا: ما فُتح حوارُه يُسأل عنه «خرجت؟» من الخادم،
+ *     و«لم تخرج» لا تطبع شيئًا وحدها.
  *
  * والطابعةُ الحقيقيّة لا تُقاس هنا: ما يخرج منها يُرى على جهاز.
  */
@@ -41,6 +43,7 @@ type Call = { url: string; method: string; body: Record<string, unknown> | null 
 let calls: Call[];
 let job: Record<string, unknown> | null;
 let waiting: number;
+let awaiting: { id: number; number: string | null }[];
 
 const stubFetch = () =>
     vi.stubGlobal(
@@ -50,7 +53,7 @@ const stubFetch = () =>
             const answer = String(url).includes('pos.printJobs.claim')
                 ? { job }
                 : String(url).includes('pos.printJobs.index')
-                  ? { designated: true, waiting }
+                  ? { designated: true, waiting, awaiting }
                   : { recorded: true };
 
             return { ok: true, json: async () => answer } as Response;
@@ -86,6 +89,7 @@ beforeEach(() => {
     calls = [];
     job = { id: 41, kind: 'customer_invoice_internal', number: 'CINV-000041', url: '/pos.printJobs.pdf/41' };
     waiting = 0;
+    awaiting = [];
     stubFetch();
 });
 
@@ -195,5 +199,62 @@ describe('والمتصفّح — لا طباعةَ صامتة', () => {
         await waitFor(() => expect(sheet.close).toHaveBeenCalled());
         expect(sheet.location.replace).not.toHaveBeenCalled();
         expect(acks()).toHaveLength(0);
+    });
+});
+
+describe('وبعد الحوار — سؤالٌ لا وعد', () => {
+    const confirms = () => calls.filter((c) => c.url.includes('pos.printJobs.confirm'));
+
+    it('ما فُتح حوارُه يُسأل عنه — و«خرجت» تقولها، ولا حجزَ ولا طباعة', async () => {
+        awaiting = [{ id: 41, number: 'CINV-000041' }];
+        const open = vi.fn();
+        vi.stubGlobal('open', open);
+        till(PRINTER);
+        render(<InvoicePrintQueue />);
+
+        const row = await screen.findByTestId('invoice-print-awaiting');
+        expect(row).toHaveTextContent('هل خرجت الفاتورة الداخلية؟');
+        expect(row).toHaveTextContent('CINV-000041');
+        expect(screen.queryByTestId('invoice-print-next')).toBeNull();
+
+        await userEvent.click(screen.getByTestId('invoice-print-confirmed'));
+
+        await waitFor(() => expect(confirms()).toHaveLength(1));
+        expect(confirms()[0]).toEqual({ url: '/pos.printJobs.confirm/41', method: 'POST', body: { printed: true } });
+        expect(claims()).toHaveLength(0);
+        expect(acks()).toHaveLength(0);
+        expect(open).not.toHaveBeenCalled();
+    });
+
+    it('و«لم تخرج» تُعيدها إلى ما ينتظر — ولا تطبعها وحدها', async () => {
+        awaiting = [{ id: 41, number: 'CINV-000041' }];
+        const open = vi.fn();
+        vi.stubGlobal('open', open);
+        till(PRINTER);
+        render(<InvoicePrintQueue />);
+
+        await userEvent.click(await screen.findByTestId('invoice-print-not-printed'));
+
+        await waitFor(() => expect(confirms()).toHaveLength(1));
+        expect(confirms()[0].body).toEqual({ printed: false });
+        // يُعاد سؤالُ الطابور بعدها — لا حجزٌ ولا نافذة
+        await waitFor(() => expect(calls.filter((c) => c.url.includes('pos.printJobs.index')).length).toBeGreaterThan(1));
+        expect(claims()).toHaveLength(0);
+        expect(open).not.toHaveBeenCalled();
+    });
+
+    it('وبعد الضغطة يُسأل الطابورُ من جديد — فيظهر السؤالُ عن الورقة التي فُتحت', async () => {
+        waiting = 1;
+        const sheet = { location: { replace: vi.fn() }, close: vi.fn() };
+        vi.stubGlobal('open', vi.fn(() => sheet));
+        till(PRINTER);
+        render(<InvoicePrintQueue />);
+
+        await userEvent.click(await screen.findByTestId('invoice-print-next'));
+        await waitFor(() => expect(acks()).toHaveLength(1));
+
+        // الردُّ ثمّ سؤالُ الطابور — والسؤالُ «خرجت؟» من جوابه، لا من ذاكرة الصفحة
+        const order = calls.map((c) => (c.url.includes('claim') ? 'claim' : c.url.includes('ack') ? 'ack' : c.url.includes('index') ? 'index' : c.url));
+        expect(order.slice(order.indexOf('claim'))).toEqual(['claim', 'ack', 'index']);
     });
 });

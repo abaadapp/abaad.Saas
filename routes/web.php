@@ -612,6 +612,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('preparation.invoiceTimeline');
     Route::post('/preparation/customer-invoices/{id}/requeue', [PreparationController::class, 'invoiceRequeue'])
         ->whereNumber('id')->name('preparation.invoiceRequeue');
+    Route::post('/preparation/customer-invoices/{id}/print-confirm', [PreparationController::class, 'invoicePrintConfirm'])
+        ->whereNumber('id')->name('preparation.invoicePrintConfirm');
 
     // الفروع
     Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');
@@ -1895,6 +1897,9 @@ Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant
         ->whereNumber('id')->name('printJobs.pdf');
     Route::post('/print-jobs/{id}/ack', [App\Http\Controllers\Pos\PrintJobController::class, 'ack'])
         ->whereNumber('id')->name('printJobs.ack');
+    // «خرجت» أو «لم تخرج» — لورقةٍ فتح الصندوقُ حوارَها: فتحُه ليس ورقًا
+    Route::post('/print-jobs/{id}/confirm', [App\Http\Controllers\Pos\PrintJobController::class, 'confirm'])
+        ->whereNumber('id')->name('printJobs.confirm');
     /*
      * ونصُّ الورقة لمن يريد أن يراها ولا يغادر صندوقَه — انظر `receiptPaper`.
      *

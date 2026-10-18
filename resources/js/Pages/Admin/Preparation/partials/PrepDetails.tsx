@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { Clock, Gift, History, MapPin, Phone, Printer, RotateCcw, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
+import { Check, Clock, Gift, History, MapPin, Phone, Printer, RotateCcw, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
 import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -426,6 +426,10 @@ export default function PrepDetails({
                         ومهمّةُ فاتورة العميل: سندُ التسليم شريطًا — بيدٍ وحدها، وحمولتُه
                         آمنةٌ للمستلِم في الخادم — والنسخةُ الداخليّة بأثمانها تُعاد
                         طباعتُها من هنا. وورقةُ الصندوق إن لم تخرج تُعاد إلى طابوره.
+
+                        و«خرجت الورقة» تقولها اللوحةُ عن ورقةٍ طُبعت بيدٍ من هنا، أو
+                        فُتح حوارُها على الصندوق ولم يُؤكَّد — فلا يطبعها الصندوقُ بعدُ.
+                        والزرّان بما يقبله الخادم (`print.confirmable` و`requeueable`).
                     */}
                     {o.kind === 'invoice' && o.prep_id ? (
                         <>
@@ -443,7 +447,18 @@ export default function PrepDetails({
                                 variant="outline"
                                 size="sm"
                             />
-                            {o.print?.status === 'failed' && (
+                            {o.print?.confirmable && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    data-testid="prep-print-confirm"
+                                    onClick={() => router.post(route('admin.preparation.invoicePrintConfirm', o.prep_id), {}, { preserveScroll: true })}
+                                >
+                                    <Check className="size-3.5" />
+                                    {o.print.status === 'pending' ? t('طبعتها يدويًا — لا تطبعها على الصندوق') : t('خرجت الورقة')}
+                                </Button>
+                            )}
+                            {o.print?.requeueable && (
                                 <Button
                                     variant="outline"
                                     size="sm"

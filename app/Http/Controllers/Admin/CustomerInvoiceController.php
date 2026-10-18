@@ -636,7 +636,7 @@ class CustomerInvoiceController extends Controller
             'activation_error' => $prep?->activation_error,
             // لمَ لم تظهر بعد — جملةٌ لا رمز
             'waiting_for' => $prep && ! $prep->isActive() ? CustomerInvoicePreparations::blocker($prep, $invoice) : null,
-            'print' => $job ? ['status' => $job->status, 'label' => PrintJobs::label($job), 'error' => $job->last_error] : null,
+            'print' => PrintJobs::card($job),
             'options' => $on ? $this->preparationOptions($bid) : null,
         ];
     }

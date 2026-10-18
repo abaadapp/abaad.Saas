@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePage } from '@inertiajs/react';
 import { useTenantLink } from '@/lib/exportLink';
-import { acknowledgeJob, claimJob, invoicePrinter, waitingJobs, type ClaimedJob } from '@/lib/printing/print-jobs';
+import { acknowledgeJob, claimJob, confirmJob, invoicePrinter, queueState, type AwaitingJob, type ClaimedJob } from '@/lib/printing/print-jobs';
 import { insideAbaadApp, nativePrintingAvailable, pagePrintMode, printReceipt } from '@/lib/printing/printer-service';
 import type { PrintOutcome } from '@/lib/printing/types';
 import type { PageProps } from '@/types';
@@ -18,7 +18,9 @@ export type InvoicePrintMode = 'off' | 'unattended' | 'manual';
  *   كلَّ نبضةٍ يحجز ورقةً ويطبعها مباشرةً ويقول ما جرى. ورقةٌ واحدةٌ في كلّ
  *   مرّة، ولا نبضةَ والصفحةُ مخفيّة.
  * - **`manual`** — المتصفّحُ (أو التطبيقُ بطابعةٍ ليست على الشبكة): لا طباعةَ
- *   صامتة. يُعدّ ما ينتظر ويُرى، وزرٌّ يطبعه بضغطة (`printNext`).
+ *   صامتة. يُعدّ ما ينتظر ويُرى، وزرٌّ يطبعه بضغطة (`printNext`). وفتحُ الحوار
+ *   ليس ورقًا: ما فُتح حوارُه يُسأل عنه «خرجت؟» (`awaiting` و`confirm`) —
+ *   ولو أُعيد تحميلُ الصفحة، فالسؤالُ من الخادم لا من ذاكرة الصفحة.
  * - **`off`** — لا طابعةَ معيَّنة هنا: لا سؤالَ أصلًا.
  *
  * والفشلُ يُقال ولا يُعاد وحده إلّا ما قالت الطابعةُ إنّه لم يبلغها منه
@@ -31,10 +33,18 @@ export default function useInvoicePrintJobs(onFailure?: (outcome: PrintOutcome) 
     const mode: InvoicePrintMode = !printer ? 'off' : nativePrintingAvailable(printer) ? 'unattended' : 'manual';
 
     const [waiting, setWaiting] = useState(0);
+    const [awaiting, setAwaiting] = useState<AwaitingJob[]>([]);
     const [busy, setBusy] = useState(false);
     const working = useRef(false);
     const failure = useRef(onFailure);
     failure.current = onFailure;
+
+    /** ما ينتظر هذا الصندوق، وما ينتظر تأكيدَ خروجه — من الخادم */
+    const refresh = useCallback(async () => {
+        const state = await queueState(route('pos.printJobs.index'));
+        setWaiting(state.waiting);
+        setAwaiting(state.awaiting);
+    }, []);
 
     /** يطبع ورقةً حُجزت — بالطريق الذي يناسب هذا الجهاز — ويقول ما جرى */
     const print = useCallback(
@@ -67,7 +77,7 @@ export default function useInvoicePrintJobs(onFailure?: (outcome: PrintOutcome) 
             if (document.hidden || working.current) return;
 
             if (mode === 'manual') {
-                setWaiting(await waitingJobs(route('pos.printJobs.index')));
+                await refresh();
                 return;
             }
 
@@ -84,7 +94,7 @@ export default function useInvoicePrintJobs(onFailure?: (outcome: PrintOutcome) 
         const id = window.setInterval(() => void tick(), PRINT_JOBS_INTERVAL_MS);
 
         return () => window.clearInterval(id);
-    }, [mode, print]);
+    }, [mode, print, refresh]);
 
     /**
      * يطبع التاليةَ بضغطة — للمتصفّح وما لا يطبع وحده.
@@ -110,9 +120,23 @@ export default function useInvoicePrintJobs(onFailure?: (outcome: PrintOutcome) 
         } finally {
             working.current = false;
             setBusy(false);
-            setWaiting(await waitingJobs(route('pos.printJobs.index')));
+            await refresh();
         }
-    }, [print]);
+    }, [print, refresh]);
 
-    return { mode, waiting, busy, printNext };
+    /**
+     * «خرجت» أو «لم تخرج» — عن ورقةٍ فُتح حوارُها هنا.
+     *
+     * و«لم تخرج» لا تطبع شيئًا: تُعيدها إلى طابور هذا الصندوق، فتُعدّ فيما
+     * ينتظر وتُطبع بضغطة «طباعة» أخرى.
+     */
+    const confirm = useCallback(
+        async (id: number, printed: boolean) => {
+            await confirmJob(route('pos.printJobs.confirm', id), printed);
+            await refresh();
+        },
+        [refresh],
+    );
+
+    return { mode, waiting, awaiting, busy, printNext, confirm };
 }

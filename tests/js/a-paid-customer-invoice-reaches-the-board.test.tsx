@@ -191,10 +191,46 @@ describe('مهمّةُ الفاتورة على اللوحة', () => {
 
     it('وورقةٌ لم تُطبع تُعاد إلى طابور الصندوق ببابها — بضغطة', async () => {
         vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [] }) })));
-        details(task({ print: { status: 'failed', label: 'لم تُطبع', error: 'PRINTER_UNREACHABLE' } }));
+        details(task({ print: { status: 'failed', label: 'لم تُطبع', error: 'PRINTER_UNREACHABLE', confirmable: true, requeueable: true } }));
 
         await userEvent.click(screen.getByTestId('prep-requeue'));
         expect(vi.mocked(router.post).mock.calls[0][0]).toBe('/admin.preparation.invoiceRequeue/12');
+        vi.unstubAllGlobals();
+    });
+
+    /*
+     * فتحُ حوار الطباعة ليس ورقًا — واللوحةُ تقول «خرجت» عمّا لم يُؤكَّد، أو
+     * عمّا طُبع بيدٍ منها فلا يطبعه الصندوق. والزرّان بما يقبله الخادم وحده.
+     */
+    it('حوارٌ لم يُؤكَّد: «خرجت الورقة» و«إعادة الإرسال» — كلٌّ ببابه', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [] }) })));
+        details(task({ print: { status: 'requested', label: 'فُتح حوار الطباعة على الصندوق — لم يُؤكَّد خروج الورقة', error: null, confirmable: true, requeueable: true } }));
+
+        expect(screen.getByTestId('prep-print-status')).toHaveTextContent('لم يُؤكَّد خروج الورقة');
+        await userEvent.click(screen.getByTestId('prep-print-confirm'));
+        expect(screen.getByTestId('prep-print-confirm')).toHaveTextContent('خرجت الورقة');
+        expect(vi.mocked(router.post).mock.calls[0][0]).toBe('/admin.preparation.invoicePrintConfirm/12');
+        expect(screen.getByTestId('prep-requeue')).toBeInTheDocument();
+        vi.unstubAllGlobals();
+    });
+
+    it('وورقةٌ تنتظر الصندوق تُقال «طبعتها يدويًا» — فلا يطبعها هو بعدُ', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [] }) })));
+        details(task({ print: { status: 'pending', label: 'بانتظار الطباعة على الصندوق', error: null, confirmable: true, requeueable: false } }));
+
+        expect(screen.getByTestId('prep-print-confirm')).toHaveTextContent('طبعتها يدويًا — لا تطبعها على الصندوق');
+        expect(screen.queryByTestId('prep-requeue')).toBeNull();
+        vi.unstubAllGlobals();
+    });
+
+    it('وما يُطبع الآن أو خرج: لا زرَّ تأكيدٍ ولا إعادة', () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ events: [] }) })));
+        for (const status of ['claimed', 'printed']) {
+            const { unmount } = details(task({ print: { status, label: 'حال', error: null, confirmable: false, requeueable: false } }));
+            expect(screen.queryByTestId('prep-print-confirm')).toBeNull();
+            expect(screen.queryByTestId('prep-requeue')).toBeNull();
+            unmount();
+        }
         vi.unstubAllGlobals();
     });
 

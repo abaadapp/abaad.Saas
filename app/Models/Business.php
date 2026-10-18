@@ -24,6 +24,7 @@ class Business extends Model
         'thermal_delivery_note_enabled' => 'boolean',
         // أتُجهَّز فواتيرُ العملاء بعد سدادها؟ — يفتحه مديرُ المنصّة (`CustomerInvoicePreparations::on`)
         'customer_invoice_preparation_enabled' => 'boolean',
+        'customer_invoice_preparation_enabled_at' => 'datetime',
         // أتُقرأ رسائلُ واتساب محادثاتٍ؟ — مغلقٌ افتراضًا (`WhatsAppConversations::enabled`)
         'whatsapp_conversations_enabled' => 'boolean',
         // أيُرسل من رقم أبعاد المشترك؟ — يُغلقه مديرُ المنصّة (`WhatsAppFeature::canUseShared`)

@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoicePreparation;
 use App\Models\PosDevice;
 use App\Models\PosPeripheral;
@@ -28,8 +29,14 @@ use Illuminate\Support\Facades\DB;
  *   فلا يُعاد وحده — يصير «فشل» ويُعاد بيدٍ بعد أن يُنظر في الورق.
  *   وفشلٌ يقول الصندوقُ إنّه لم يُطبع منه شيء (`may_have_printed = false`)
  *   يعود إلى الطابور، حتى `MAX_ATTEMPTS`.
+ * - **وفتحُ حوار الطباعة ليس ورقًا**: «طُبعت» لطابعة الشبكة وحدها، أو لإنسانٍ
+ *   يقولها. وما فُتح حوارُه في متصفّحٍ ينتظر «خرجت» أو «لم تخرج» (`requested`).
+ * - **ولا تعلق على صندوقٍ ذهب**: صندوقٌ أُلغي أو نُقل أو رُفعت عنه طابعتُه —
+ *   ورقُه المنتظِر يُوجَّه إلى صندوقٍ معيَّنٍ في **فرعها نفسِه** (`release`)،
+ *   ويحجزه أيُّ صندوقٍ معيَّنٍ في فرعها إن بقي موجَّهًا إلى من لا يصلح.
  * - **ولا تضيع**: صندوقٌ مغلق، أو لا صندوقَ معيَّنًا بعد — تبقى «بانتظار
  *   الطباعة» وتُرى في لوحة التجهيز ومعها زرُّ الطباعة اليدويّة.
+ * - **وكلُّ انتقالٍ يُكتب** في سجلّ النشاط على مهمّتها — يُقرأ في سجلّها في اللوحة.
  */
 final class PrintJobs
 {
@@ -38,6 +45,21 @@ final class PrintJobs
 
     /** محاولاتٌ لم يُطبع منها شيء — بعدها يُنتظر إنسان */
     public const MAX_ATTEMPTS = 3;
+
+    /** طرقُ الطباعة التي يُقبل ذكرُها في الردّ (`PrintVia` في الواجهة) */
+    public const VIAS = ['native', 'system', 'page', 'share', 'browser'];
+
+    /**
+     * الطريقُ الوحيد الذي يُقال عنه «طُبعت» وحده: تطبيقُ أبعاد أرسل الورقةَ
+     * كلَّها إلى طابعة الشبكة. وما سواه حوارٌ أو ملفّ — لا يُعرف ما جرى بعده.
+     */
+    public const CONFIRMED_VIA = 'native';
+
+    /** ما يُعاد إلى الطابور بيد — لا ما يُطبع الآن، ولا ما ثبت خروجُه */
+    public const REQUEUEABLE = [PrintJob::FAILED, PrintJob::REQUESTED, PrintJob::CANCELLED];
+
+    /** ما يقول عنه إنسانٌ «خرجت» من اللوحة — لا ما يحجزه صندوقٌ الآن */
+    public const CONFIRMABLE = [PrintJob::PENDING, PrintJob::REQUESTED, PrintJob::FAILED, PrintJob::CANCELLED];
 
     /**
      * ورقةُ «فاتورة عميل — نسخة داخلية» لمهمّةٍ ظهرت — مرّةً واحدة.
@@ -55,7 +77,7 @@ final class PrintJobs
             return $existing;
         }
 
-        $device = self::designatedDevices((int) $prep->business_id, $prep->branch_id ? (int) $prep->branch_id : null)->first();
+        $device = $prep->branch_id ? self::designatedDevices((int) $prep->business_id, (int) $prep->branch_id)->first() : null;
 
         $job = PrintJob::create([
             'business_id' => (int) $prep->business_id,
@@ -90,16 +112,18 @@ final class PrintJobs
             ->first();
     }
 
+    /* ═══════════════════════════ من يستلم ═══════════════════════════ */
+
     /**
      * صناديقُ الفرع التي تستلم فواتيرَ العملاء — فعّالةً، بطابعةٍ فعّالة.
      *
      * @return Collection<int, PosDevice>
      */
-    public static function designatedDevices(int $businessId, ?int $branchId)
+    public static function designatedDevices(int $businessId, int $branchId)
     {
         return PosDevice::where('pos_devices.business_id', $businessId)
             ->where('pos_devices.status', PosDevice::ACTIVE)
-            ->when($branchId, fn ($w) => $w->where('pos_devices.branch_id', $branchId))
+            ->where('pos_devices.branch_id', $branchId)
             ->whereHas('peripherals', fn ($p) => self::designatedPrinter($p))
             ->orderBy('pos_devices.id')
             ->get();
@@ -118,61 +142,169 @@ final class PrintJobs
             ->where('auto_print_customer_invoices', true);
     }
 
-    /** أيستلم هذا الصندوق هذه الورقة؟ — متجرُها، وصندوقُها أو فرعُها */
-    public static function belongsTo(PrintJob $job, PosDevice $device): bool
+    /**
+     * أيستلم هذا الصندوقُ الورقَ الآن؟
+     *
+     * فعّالٌ، وبطابعةٍ معيَّنة، والتجهيزُ بعد السداد مفتوحٌ لمتجره. والمفتاحُ
+     * يُسأل هنا لا في الواجهة وحدها: صفحةٌ قديمةٌ مفتوحةٌ منذ الصباح على
+     * الصندوق ما زالت تسأل — والخادمُ يجيب «لا شيء».
+     */
+    public static function serves(PosDevice $device): bool
     {
-        if ((int) $job->business_id !== (int) $device->business_id) {
-            return false;
-        }
-        if ($job->pos_device_id !== null) {
-            return (int) $job->pos_device_id === (int) $device->id;
+        return $device->isActive()
+            && CustomerInvoicePreparations::on((int) $device->business_id)
+            && self::printerOf($device) !== null;
+    }
+
+    /**
+     * الصناديقُ التي تصلح لهذه الورقة الآن — متجرُها وفرعُها.
+     *
+     * وورقةٌ بلا فرع (حُذف فرعُها) لا يصلح لها صندوق: لا تُطبع في فرعٍ لم
+     * تُطلب فيه — تُطبع بيدٍ من اللوحة.
+     *
+     * @return Collection<int, PosDevice>
+     */
+    public static function eligibleFor(PrintJob $job)
+    {
+        return $job->branch_id ? self::designatedDevices((int) $job->business_id, (int) $job->branch_id) : collect();
+    }
+
+    /**
+     * إلى أيّ صندوقٍ تُوجَّه الآن: صندوقُها إن بقي يصلح، وإلّا أوّلُ صندوقٍ
+     * معيَّنٍ في فرعها، وإلّا لا أحد — فيستلمها أوّلُ صندوقٍ يُعيَّن فيه.
+     */
+    public static function target(PrintJob $job): ?int
+    {
+        $eligible = self::eligibleFor($job);
+
+        if ($job->pos_device_id !== null && $eligible->contains('id', (int) $job->pos_device_id)) {
+            return (int) $job->pos_device_id;
         }
 
-        return $job->branch_id === null || (int) $job->branch_id === (int) $device->branch_id;
+        return $eligible->first()?->id;
     }
+
+    /**
+     * صندوقٌ لم يعد يستلم — أُلغي، أو نُقل إلى فرعٍ آخر، أو رُفعت عنه طابعتُه،
+     * أو عُطّلت: ورقُه المنتظِر يُوجَّه إلى صندوقٍ معيَّنٍ في فرعها نفسِه، أو
+     * يبقى لفرعها كلِّه حتى يُعيَّن فيه صندوق.
+     *
+     * المنتظِرُ وحده (`pending`): ما يحجزه الصندوقُ الآن قد يكون يخرج —
+     * فينقضي حجزُه «فشلًا» ويُعاد بيد. وما فشل أو فُتح حوارُه لا يُمسّ هنا:
+     * لا يُعاد شيءٌ منه وحده.
+     *
+     * والكتابةُ مشروطةٌ بالحال كما قُرئت: ورقةٌ حجزها صندوقٌ بين القراءة
+     * والكتابة لا تُوجَّه من تحته.
+     *
+     * @return int كم ورقةً وُجّهت
+     */
+    public static function release(PosDevice $device): int
+    {
+        $moved = 0;
+
+        $jobs = PrintJob::where('business_id', $device->business_id)
+            ->where('status', PrintJob::PENDING)
+            ->where('pos_device_id', $device->id)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($jobs as $job) {
+            $to = self::target($job);
+            if ($to === (int) $device->id) {
+                continue;
+            }
+
+            $done = PrintJob::whereKey($job->id)
+                ->where('status', PrintJob::PENDING)
+                ->where('pos_device_id', $device->id)
+                ->update(['pos_device_id' => $to, 'updated_at' => now()]);
+
+            if ($done !== 1) {
+                continue;
+            }
+
+            $moved++;
+            $name = $to ? PosDevice::whereKey($to)->value('name') : null;
+            self::audit($job, $name
+                ? 'لم يعد صندوق «'.$device->name.'» يستلمها — وُجّهت إلى «'.$name.'» في فرعها'
+                : 'لم يعد صندوق «'.$device->name.'» يستلمها — تنتظر صندوقًا يُعيَّن في فرعها');
+        }
+
+        return $moved;
+    }
+
+    /* ═══════════════════════════ الصندوق ═══════════════════════════ */
 
     /** ما ينتظر هذا الصندوق — لا يحجز شيئًا */
     public static function waitingFor(PosDevice $device): int
     {
-        if (! self::printerOf($device)) {
-            return 0;
-        }
-
-        return self::candidates($device)->count();
+        return self::serves($device) ? self::candidates($device)->count() : 0;
     }
 
+    /**
+     * ما فتح هذا الصندوقُ حوارَه ولم يُقل أخرج — يُسأل عنه الكاشير.
+     *
+     * @return Collection<int, PrintJob>
+     */
+    public static function awaitingConfirmation(PosDevice $device)
+    {
+        if (! self::serves($device)) {
+            return collect();
+        }
+
+        return PrintJob::where('business_id', $device->business_id)
+            ->where('status', PrintJob::REQUESTED)
+            ->where('claimed_by_device_id', $device->id)
+            ->orderBy('id')
+            ->limit(10)
+            ->get();
+    }
+
+    /**
+     * ما يحجزه هذا الصندوق: ورقُ فرعه المنتظِر — الموجَّهُ إليه، أو إلى لا
+     * أحد، أو إلى صندوقٍ لم يعد يصلح لها (أُلغي، نُقل، رُفعت طابعتُه).
+     *
+     * والفرعُ شرطٌ دائمًا، ولو كانت موجَّهةً إليه: صندوقٌ نُقل إلى فرعٍ آخر
+     * وأُعيد تفعيلُه هناك لا يحمل معه ورقَ فرعه القديم.
+     */
     private static function candidates(PosDevice $device)
     {
+        $here = self::designatedDevices((int) $device->business_id, (int) $device->branch_id)->pluck('id')->all();
+
         return PrintJob::where('business_id', $device->business_id)
             ->where('status', PrintJob::PENDING)
-            ->where(function ($w) use ($device) {
-                $w->where('pos_device_id', $device->id)
-                    ->orWhere(fn ($u) => $u->whereNull('pos_device_id')->where(
-                        fn ($b) => $b->whereNull('branch_id')->orWhere('branch_id', $device->branch_id),
-                    ));
-            });
+            ->where('branch_id', $device->branch_id)
+            ->where(fn ($t) => $t->whereNull('pos_device_id')
+                ->orWhere('pos_device_id', $device->id)
+                ->orWhereNotIn('pos_device_id', $here));
     }
 
     /**
      * يحجز الصندوقُ ورقتَه التالية — أو لا شيء.
      *
-     * والحجزُ شرطٌ في UPDATE واحد: `status = pending` وقت الكتابة. فصندوقان
-     * يسألان معًا عن الورقة نفسِها: يكتب أحدُهما، ويجد الآخرُ الحالَ تغيّرت
-     * فيمضي إلى غيرها. ولا قفلَ يُنتظر.
+     * والحجزُ شرطٌ في UPDATE واحد: `status = pending` وصندوقُها كما قُرئ.
+     * فصندوقان يسألان معًا عن الورقة نفسِها: يكتب أحدُهما، ويجد الآخرُ الحالَ
+     * تغيّرت فيمضي إلى غيرها. ولا قفلَ يُنتظر.
+     *
+     * وورقةٌ كانت لصندوقٍ لم يعد يصلح تُوجَّه إلى من حجزها — ويُكتب ذلك.
      */
     public static function claim(PosDevice $device): ?PrintJob
     {
         self::expireClaims((int) $device->business_id);
 
-        if (! self::printerOf($device)) {
+        if (! self::serves($device)) {
             return null;
         }
 
-        foreach (self::candidates($device)->orderBy('id')->limit(10)->pluck('id') as $id) {
-            $won = PrintJob::whereKey($id)
+        foreach (self::candidates($device)->orderBy('id')->limit(10)->get(['id', 'pos_device_id']) as $row) {
+            $from = $row->pos_device_id !== null ? (int) $row->pos_device_id : null;
+
+            $won = PrintJob::whereKey($row->id)
                 ->where('status', PrintJob::PENDING)
+                ->where(fn ($w) => $from === null ? $w->whereNull('pos_device_id') : $w->where('pos_device_id', $from))
                 ->update([
                     'status' => PrintJob::CLAIMED,
+                    'pos_device_id' => $device->id,
                     'claimed_by_device_id' => $device->id,
                     'claimed_at' => now(),
                     'claim_expires_at' => now()->addSeconds(self::CLAIM_SECONDS),
@@ -181,7 +313,12 @@ final class PrintJobs
                 ]);
 
             if ($won === 1) {
-                return PrintJob::find($id);
+                $job = PrintJob::find($row->id);
+                self::audit($job, $from !== null && $from !== (int) $device->id
+                    ? 'صندوقُها لم يعد يستلمها — حجزها صندوق «'.$device->name.'» في فرعها ليطبعها'
+                    : 'حجزها صندوق «'.$device->name.'» ليطبعها');
+
+                return $job;
             }
         }
 
@@ -191,12 +328,15 @@ final class PrintJobs
     /**
      * يقول الصندوقُ ما جرى للورقة التي حجزها.
      *
-     * - خرجت ← `printed` (و`via` يقول كيف: طابعةُ الشبكة أم حوارُ المتصفّح).
+     * - أرسلها تطبيقُ أبعاد كلَّها إلى طابعة الشبكة ← `printed`.
+     * - فُتح لها حوارُ طباعةٍ أو ملفّ (متصفّح، أو حوارُ النظام) ← `requested`:
+     *   فتحُه ليس ورقًا. ينتظر «خرجت» أو «لم تخرج»، ولا يُعاد وحده.
      * - لم تخرج، ويقول إنّه لم يُرسل منها شيء ← تعود إلى الطابور، حتى
-     *   `MAX_ATTEMPTS`؛ ثمّ `failed`.
+     *   `MAX_ATTEMPTS`؛ ثمّ `failed`. وإن أُغلق التجهيزُ في أثنائها ← `cancelled`.
      * - لم تخرج، وقد يكون خرج بعضُها ← `failed`: لا تُعاد وحدها.
      *
-     * ولا يقول إلّا صندوقُها: حجزُ غيره لا يُكتب عليه.
+     * ولا يقول إلّا صندوقُها: حجزُ غيره لا يُكتب عليه. ويُقبل الردُّ والمفتاحُ
+     * مغلق: ورقةٌ حُجزت قبل الإغلاق يُكتب ما جرى لها.
      */
     public static function acknowledge(PrintJob $job, PosDevice $device, bool $ok, ?string $via, ?string $error, bool $mayHavePrinted): bool
     {
@@ -207,9 +347,9 @@ final class PrintJobs
                 return false;
             }
 
-            $via = in_array($via, ['native', 'system', 'page', 'share', 'browser'], true) ? $via : null;
+            $via = in_array($via, self::VIAS, true) ? $via : null;
 
-            if ($ok) {
+            if ($ok && $via === self::CONFIRMED_VIA) {
                 $locked->forceFill([
                     'status' => PrintJob::PRINTED,
                     'printed_at' => now(),
@@ -217,20 +357,48 @@ final class PrintJobs
                     'last_error' => null,
                     'claim_expires_at' => null,
                 ])->save();
+                self::audit($locked, 'طبعها صندوق «'.$device->name.'» على طابعته');
+
+                return true;
+            }
+
+            if ($ok) {
+                $locked->forceFill([
+                    'status' => PrintJob::REQUESTED,
+                    'requested_at' => now(),
+                    'via' => $via,
+                    'last_error' => null,
+                    'claim_expires_at' => null,
+                ])->save();
+                self::audit($locked, 'فُتح حوار طباعتها على صندوق «'.$device->name.'» — بانتظار تأكيد خروج الورقة');
 
                 return true;
             }
 
             $retry = ! $mayHavePrinted && $locked->attempts < self::MAX_ATTEMPTS;
+            $status = match (true) {
+                ! $retry => PrintJob::FAILED,
+                ! CustomerInvoicePreparations::on((int) $locked->business_id) => PrintJob::CANCELLED,
+                default => PrintJob::PENDING,
+            };
 
             $locked->forceFill([
-                'status' => $retry ? PrintJob::PENDING : PrintJob::FAILED,
-                'failed_at' => $retry ? null : now(),
+                'status' => $status,
+                'failed_at' => $status === PrintJob::FAILED ? now() : null,
+                'cancelled_at' => $status === PrintJob::CANCELLED ? now() : null,
                 'via' => $via,
                 'last_error' => mb_substr((string) ($error ?: __('لم تُطبع الورقة')), 0, 255),
-                'claimed_by_device_id' => $retry ? null : $locked->claimed_by_device_id,
+                'claimed_by_device_id' => $status === PrintJob::PENDING ? null : $locked->claimed_by_device_id,
                 'claim_expires_at' => null,
             ])->save();
+
+            self::audit($locked, match ($status) {
+                PrintJob::PENDING => 'لم تخرج على صندوق «'.$device->name.'» ولم يُرسل منها شيء — عادت إلى طابوره',
+                PrintJob::CANCELLED => 'لم تخرج على صندوق «'.$device->name.'» — وأُغلق التجهيز بعد السداد فلم تعد إلى الطابور',
+                default => $mayHavePrinted
+                    ? 'لم يكتمل إرسالها على صندوق «'.$device->name.'» وقد يكون خرج بعضها — لا تُعاد وحدها'
+                    : 'لم تخرج على صندوق «'.$device->name.'» بعد '.$locked->attempts.' محاولات — لا تُعاد وحدها',
+            });
 
             return true;
         });
@@ -244,40 +412,176 @@ final class PrintJobs
      */
     public static function expireClaims(int $businessId): int
     {
-        return PrintJob::where('business_id', $businessId)
+        $expired = PrintJob::where('business_id', $businessId)
             ->where('status', PrintJob::CLAIMED)
             ->where('claim_expires_at', '<', now())
+            ->orderBy('id')
+            ->get();
+
+        $n = 0;
+
+        foreach ($expired as $job) {
+            $done = PrintJob::whereKey($job->id)
+                ->where('status', PrintJob::CLAIMED)
+                ->where('claim_expires_at', '<', now())
+                ->update([
+                    'status' => PrintJob::FAILED,
+                    'failed_at' => now(),
+                    'last_error' => __('لم يؤكّد الصندوق خروج الورقة في مهلتها — تحقّق من الطابعة ثم أعد الإرسال.'),
+                    'claim_expires_at' => null,
+                    'updated_at' => now(),
+                ]);
+
+            if ($done === 1) {
+                $n++;
+                self::audit($job, 'لم يؤكّد الصندوق خروجها في مهلتها — لا تُعاد وحدها');
+            }
+        }
+
+        return $n;
+    }
+
+    /**
+     * «لم تخرج» — يقولها الصندوقُ الذي فتح حوارَها: ألغى الكاشيرُ الحوار، أو
+     * لم تطبع الطابعة. فتعود إلى طابوره لتُطبع **بضغطةٍ أخرى** — لا وحدها.
+     */
+    public static function notPrinted(PrintJob $job, PosDevice $device): bool
+    {
+        $to = self::target($job);
+
+        $done = PrintJob::whereKey($job->id)
+            ->where('status', PrintJob::REQUESTED)
+            ->where('claimed_by_device_id', $device->id)
             ->update([
-                'status' => PrintJob::FAILED,
-                'failed_at' => now(),
-                'last_error' => __('لم يؤكّد الصندوق خروج الورقة في مهلتها — تحقّق من الطابعة ثم أعد الإرسال.'),
-                'claim_expires_at' => null,
+                'status' => PrintJob::PENDING,
+                'pos_device_id' => $to,
+                'claimed_by_device_id' => null,
+                'claimed_at' => null,
+                'requested_at' => null,
+                'last_error' => __('قال الصندوق إن الورقة لم تخرج.'),
                 'updated_at' => now(),
             ]);
+
+        if ($done === 1) {
+            self::audit($job, 'قال الكاشير على صندوق «'.$device->name.'» إنّها لم تخرج — عادت إلى الطابور');
+        }
+
+        return $done === 1;
+    }
+
+    /**
+     * «خرجت الورقة» — بقول إنسانٍ نظر في الطابعة.
+     *
+     * - من الصندوق (`$device`): لما فتح هو حوارَه وحده.
+     * - من اللوحة: لما ينتظر (طُبعت بيدٍ من زرّ اللوحة، فلا يطبعها الصندوقُ
+     *   بعدُ)، أو فُتح حوارُه، أو فشل، أو أُلغي. ولا لما يحجزه صندوقٌ الآن:
+     *   الشرطُ في الكتابة نفسِها، فاللوحةُ والصندوقُ في اللحظة نفسِها يكسب
+     *   أحدُهما ولا يُكتب الآخر.
+     */
+    public static function confirmPrinted(PrintJob $job, int $userId, ?PosDevice $device = null): bool
+    {
+        $q = PrintJob::whereKey($job->id);
+
+        if ($device) {
+            $q->where('status', PrintJob::REQUESTED)->where('claimed_by_device_id', $device->id);
+        } else {
+            $q->whereIn('status', self::CONFIRMABLE);
+        }
+
+        $done = $q->update([
+            'status' => PrintJob::PRINTED,
+            'printed_at' => now(),
+            'confirmed_at' => now(),
+            'confirmed_by' => $userId,
+            'claim_expires_at' => null,
+            'last_error' => null,
+            'updated_at' => now(),
+        ]);
+
+        if ($done === 1) {
+            self::audit($job, $device
+                ? 'أكّد الكاشير على صندوق «'.$device->name.'» خروج الورقة'
+                : 'أُكّد من لوحة التجهيز خروج الورقة — لا تُطبع على الصندوق');
+        }
+
+        return $done === 1;
     }
 
     /**
      * يُعيدها إلى الطابور بيدٍ مأذونة — بعد أن نظر في الورق.
      *
-     * ولا تُعاد ورقةٌ يحجزها صندوقٌ الآن: قد تكون تخرج في هذه اللحظة.
+     * ما فشل، أو فُتح حوارُه ولم يُؤكَّد، أو أُلغي حين أُغلق التجهيز. ولا
+     * تُعاد ورقةٌ يحجزها صندوقٌ الآن (قد تكون تخرج في هذه اللحظة)، ولا ورقةٌ
+     * ثبت خروجُها — إعادةُ طباعتها بزرّ اللوحة، لا بطابورٍ يطبع وحده.
+     *
+     * وتُوجَّه من جديد: صندوقُها إن بقي يصلح، وإلّا صندوقٌ معيَّنٌ في فرعها.
      */
     public static function requeue(PrintJob $job, int $userId): bool
     {
+        $to = self::target($job);
+
         $done = PrintJob::whereKey($job->id)
-            ->whereIn('status', [PrintJob::FAILED, PrintJob::PRINTED])
+            ->whereIn('status', self::REQUEUEABLE)
             ->update([
                 'status' => PrintJob::PENDING,
+                'pos_device_id' => $to,
                 'attempts' => 0,
                 'claimed_by_device_id' => null,
                 'claimed_at' => null,
                 'claim_expires_at' => null,
+                'requested_at' => null,
                 'failed_at' => null,
+                'cancelled_at' => null,
+                'last_error' => null,
                 'requeued_by' => $userId,
                 'updated_at' => now(),
             ]);
 
+        if ($done === 1) {
+            $name = $to ? PosDevice::whereKey($to)->value('name') : null;
+            self::audit($job, $name
+                ? 'أُعيدت إلى طابور صندوق «'.$name.'»'
+                : 'أُعيدت إلى الطابور — تنتظر صندوقًا يُعيَّن في فرعها');
+        }
+
         return $done === 1;
     }
+
+    /**
+     * أُغلق التجهيزُ بعد السداد لمتجر: ما ينتظر يُلغى — ولا يعود وحده إن فُتح.
+     *
+     * - المنتظِرُ ← `cancelled`: فتحُ المفتاح بعد أسبوعٍ لا يطبع ورقَ أسبوعٍ مضى
+     *   على صندوقٍ لا يتوقّعه. ويُعاد بيدٍ من اللوحة إن لزم.
+     * - وما يحجزه صندوقٌ الآن لا يُمسّ: قد يكون يخرج. وردُّه يُقبل ويُكتب
+     *   (`acknowledge`) — فإن لم يُطبع منه شيء أُلغي ولم يعد إلى الطابور.
+     * - وما فُتح حوارُه أو فشل يبقى كما هو: لا شيءَ فيه يُطبع وحده.
+     *
+     * ولا يمسّ دفعًا ولا فاتورةً ولا دفترًا ولا مخزونًا.
+     */
+    public static function cancelPending(int $businessId): int
+    {
+        $n = 0;
+
+        foreach (PrintJob::where('business_id', $businessId)->where('status', PrintJob::PENDING)->orderBy('id')->get() as $job) {
+            $done = PrintJob::whereKey($job->id)
+                ->where('status', PrintJob::PENDING)
+                ->update([
+                    'status' => PrintJob::CANCELLED,
+                    'cancelled_at' => now(),
+                    'last_error' => __('أُغلق التجهيز بعد السداد لهذا النشاط قبل أن تُطبع.'),
+                    'updated_at' => now(),
+                ]);
+
+            if ($done === 1) {
+                $n++;
+                self::audit($job, 'أُلغيت قبل أن تُطبع — أُغلق التجهيز بعد السداد لهذا النشاط');
+            }
+        }
+
+        return $n;
+    }
+
+    /* ═══════════════════════════ القراءة ═══════════════════════════ */
 
     /** حالُ الورقة كما تُقرأ في اللوحة — بلا وعدٍ بما لا يُعرف */
     public static function label(?PrintJob $job): ?string
@@ -289,11 +593,62 @@ final class PrintJobs
         return match ($job->status) {
             PrintJob::PENDING => __('بانتظار الطباعة على الصندوق'),
             PrintJob::CLAIMED => __('يطبعها الصندوق الآن'),
-            PrintJob::PRINTED => $job->via === 'native'
-                ? __('طُبعت على طابعة الصندوق')
-                : __('طُلب حوار الطباعة على الصندوق'),
+            PrintJob::REQUESTED => __('فُتح حوار الطباعة على الصندوق — لم يُؤكَّد خروج الورقة'),
+            PrintJob::PRINTED => $job->confirmed_at !== null
+                ? __('أُكّد خروج الورقة')
+                : __('طُبعت على طابعة الصندوق'),
             PrintJob::FAILED => __('لم تُطبع — أعد الإرسال إلى الصندوق أو اطبعها يدويًا'),
+            PrintJob::CANCELLED => __('أُلغيت حين أُغلق التجهيز بعد السداد — أعد الإرسال أو اطبعها يدويًا'),
             default => null,
         };
+    }
+
+    /**
+     * الورقةُ كما تُرسل إلى اللوحة وصفحة الفاتورة — حالُها، وما يجوز فيها.
+     *
+     * والجوازُ من هنا وحده: الزرُّ يُعرض لما يقبله الخادم، ولا يُخفى عمّا يقبله.
+     *
+     * @return array{status: string, label: ?string, error: ?string, confirmable: bool, requeueable: bool}|null
+     */
+    public static function card(?PrintJob $job): ?array
+    {
+        if (! $job) {
+            return null;
+        }
+
+        return [
+            'status' => $job->status,
+            'label' => self::label($job),
+            'error' => in_array($job->status, [PrintJob::PENDING, PrintJob::FAILED, PrintJob::CANCELLED], true) ? $job->last_error : null,
+            'confirmable' => in_array($job->status, self::CONFIRMABLE, true),
+            'requeueable' => in_array($job->status, self::REQUEUEABLE, true),
+        ];
+    }
+
+    /** رقمُ فاتورة الورقة — في متجرها وحده */
+    public static function numberOf(PrintJob $job): ?string
+    {
+        $prep = CustomerInvoicePreparation::where('business_id', $job->business_id)->find($job->subject_id);
+
+        return $prep
+            ? CustomerInvoice::where('business_id', $job->business_id)->whereKey($prep->customer_invoice_id)->value('number')
+            : null;
+    }
+
+    /**
+     * كلُّ انتقالٍ يُكتب على مهمّة الورقة — ومن فعله يكتبه السجلّ نفسُه.
+     *
+     * والفعلُ `status` كانتقالات المهمّة: فيُقرأ في سجلّها في اللوحة
+     * (`PreparationController::invoiceTimeline`) لا في شاشة النشاط وحدها.
+     */
+    private static function audit(PrintJob $job, string $what): void
+    {
+        $number = self::numberOf($job);
+
+        Activity::log('status', 'ورقة الصندوق'.($number ? ' للفاتورة '.$number : '').': '.$what, [
+            'subject_id' => (int) $job->subject_id,
+            'subject_type' => (string) $job->subject_type,
+            'business_id' => (int) $job->business_id,
+        ]);
     }
 }

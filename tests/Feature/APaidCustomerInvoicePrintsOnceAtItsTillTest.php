@@ -2,24 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Models\Branch;
-use App\Models\Business;
-use App\Models\Customer;
-use App\Models\CustomerInvoicePreparation;
-use App\Models\PosDevice;
-use App\Models\PosPeripheral;
 use App\Models\PrintJob;
-use App\Models\User;
-use App\Support\CustomerInvoicePreparations;
-use App\Support\CustomerInvoices;
-use App\Support\CustomerPayments;
-use App\Support\Ledger;
-use App\Support\PosTerminal;
 use App\Support\PrintJobs;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Tests\Support\TillsAndPaidInvoices;
 use Tests\TestCase;
 
 /**
@@ -42,112 +30,18 @@ use Tests\TestCase;
 class APaidCustomerInvoicePrintsOnceAtItsTillTest extends TestCase
 {
     use RefreshDatabase;
-
-    private Business $shop;
-
-    private Business $other;
-
-    private User $owner;
-
-    private Customer $customer;
-
-    private Branch $branch;
-
-    private Branch $elsewhere;
-
-    /** @var array<int, string> */
-    private array $tokens = [];
+    use TillsAndPaidInvoices;
 
     protected function setUp(): void
     {
         parent::setUp();
-
-        Carbon::setTestNow('2026-10-19 09:00:00');
-        app()->setLocale('ar');
-
-        $this->shop = Business::create(['name' => 'ورود سعود', 'type' => 'عام', 'status' => 'نشط']);
-        $this->other = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
-        Ledger::seedChart($this->shop->id);
-        $this->shop->forceFill(['customer_invoice_preparation_enabled' => true])->save();
-        $this->other->forceFill(['customer_invoice_preparation_enabled' => true])->save();
-
-        $this->branch = Branch::create(['business_id' => $this->shop->id, 'name' => 'فرع الخوير']);
-        $this->elsewhere = Branch::create(['business_id' => $this->shop->id, 'name' => 'فرع صحار']);
-        $this->owner = User::create([
-            'business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'owner@till.om',
-            'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
-        ]);
-        $this->customer = Customer::create(['business_id' => $this->shop->id, 'name' => 'سالم', 'phone' => '91234567', 'allow_credit_sales' => true]);
-
-        $this->actingAs($this->owner);
+        $this->setUpTills();
     }
 
     protected function tearDown(): void
     {
         Carbon::setTestNow();
         parent::tearDown();
-    }
-
-    /* ============================== أدوات ============================== */
-
-    /** صندوقٌ في فرعٍ — وطابعتُه تستلم فواتيرَ العملاء إن طُلب */
-    private function till(?Branch $branch = null, bool $designated = true, ?Business $shop = null): PosDevice
-    {
-        $shop ??= $this->shop;
-        $raw = Str::random(64);
-        $device = PosDevice::create([
-            'business_id' => $shop->id,
-            'branch_id' => ($branch ?? $this->branch)->id,
-            'name' => 'صندوق '.Str::random(4),
-            'token_hash' => hash('sha256', $raw),
-            'status' => PosDevice::ACTIVE,
-            'activated_at' => now(),
-        ]);
-        $this->tokens[$device->id] = $raw;
-
-        $device->peripherals()->create([
-            'business_id' => $shop->id, 'name' => 'طابعة الكاشير', 'type' => PosPeripheral::PRINTER,
-            'connection' => 'network', 'address' => '192.168.1.50', 'port' => 9100, 'paper_width' => 80,
-            'active' => true, 'auto_print_customer_invoices' => $designated,
-        ]);
-
-        return $device;
-    }
-
-    /** الطلبُ صادرٌ من هذا الصندوق — بصمتُه في كوكيه */
-    private function at(PosDevice $device, ?User $user = null)
-    {
-        // و`withCredentials`: طلبُ JSON في الاختبار لا يحمل الكوكي بدونها — كما لا يحمله `fetch` بلا `credentials`
-        return $this->actingAs($user ?? $this->owner)
-            ->withCredentials()
-            ->withCookie(PosTerminal::COOKIE, $device->id.'|'.$this->tokens[$device->id]);
-    }
-
-    /** فاتورةٌ تُسدَّد فتظهر مهمّتُها — وتُكتب ورقةُ صندوقها */
-    private function paidTask(?Branch $branch = null): CustomerInvoicePreparation
-    {
-        $invoice = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $this->customer, ['issued_at' => '2026-10-19'], [
-            ['description' => 'باقة ورد', 'quantity' => 1, 'unit_price' => 40],
-        ]));
-        CustomerInvoicePreparations::save($invoice, [
-            'fulfillment_type' => 'pickup', 'branch_id' => ($branch ?? $this->branch)->id,
-            'scheduled_for' => '2026-10-19 15:00', 'recipient_name' => 'سالم', 'recipient_phone' => '91234567',
-        ], $this->owner->id);
-        CustomerPayments::record($this->shop->id, $this->customer, (float) $invoice->total, ['method' => 'Paymob', 'occurred_at' => '2026-10-19'], [$invoice->id => (float) $invoice->total]);
-
-        [$task] = CustomerInvoicePreparations::activate($invoice->id, CustomerInvoicePreparations::FROM_PAYMOB);
-
-        return $task;
-    }
-
-    private function claim(PosDevice $device): ?array
-    {
-        return $this->at($device)->postJson(route('pos.printJobs.claim'))->assertOk()->json('job');
-    }
-
-    private function ack(PosDevice $device, int $id, array $body): array
-    {
-        return $this->at($device)->postJson(route('pos.printJobs.ack', $id), $body)->assertOk()->json();
     }
 
     /* ============================== الحجز ============================== */
@@ -162,7 +56,7 @@ class APaidCustomerInvoicePrintsOnceAtItsTillTest extends TestCase
         $this->assertSame($till->id, (int) $job->pos_device_id, 'لصندوق الفرع المعيَّن');
         $this->assertSame($task->id, (int) $job->subject_id);
 
-        $this->assertSame(['designated' => true, 'waiting' => 1], $this->at($till)->getJson(route('pos.printJobs.index'))->assertOk()->json());
+        $this->assertSame(['designated' => true, 'waiting' => 1, 'awaiting' => []], $this->at($till)->getJson(route('pos.printJobs.index'))->assertOk()->json());
 
         $claimed = $this->claim($till);
         $this->assertSame($job->id, $claimed['id']);
@@ -223,7 +117,7 @@ class APaidCustomerInvoicePrintsOnceAtItsTillTest extends TestCase
 
         $raced = false;
         DB::listen(function ($q) use (&$raced, $job, $theirs) {
-            if (! $raced && str_contains($q->sql, 'select "id" from "print_jobs"')) {
+            if (! $raced && str_contains($q->sql, 'select "id", "pos_device_id" from "print_jobs"')) {
                 $raced = true;
                 DB::table('print_jobs')->where('id', $job->id)
                     ->update(['status' => PrintJob::CLAIMED, 'claimed_by_device_id' => $theirs->id, 'claim_expires_at' => now()->addMinutes(3)]);
@@ -368,7 +262,7 @@ class APaidCustomerInvoicePrintsOnceAtItsTillTest extends TestCase
         $job = PrintJob::sole();
 
         $this->actingAs($this->owner)->postJson(route('pos.printJobs.claim'))->assertOk()->assertExactJson(['job' => null]);
-        $this->actingAs($this->owner)->getJson(route('pos.printJobs.index'))->assertOk()->assertExactJson(['designated' => false, 'waiting' => 0]);
+        $this->actingAs($this->owner)->getJson(route('pos.printJobs.index'))->assertOk()->assertExactJson(['designated' => false, 'waiting' => 0, 'awaiting' => []]);
         $this->assertContains($this->actingAs($this->owner)->get(route('pos.printJobs.pdf', $job->id))->status(), [302, 404]);
         $this->assertSame(PrintJob::PENDING, $job->fresh()->status);
     }

@@ -10,6 +10,7 @@ use App\Support\Activity;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\Demo;
 use App\Support\PosTerminal;
+use App\Support\PrintJobs;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -301,6 +302,8 @@ class DeviceController extends Controller
         }
 
         Activity::log('deleted', 'حذف سجلّ جهاز: '.$device->name, ['subject_id' => $device->id]);
+        // وورقُ الطابور الموجَّهُ إليه يُوجَّه قبل أن يُمحى الصفّ — ويُكتب ذلك (`PrintJobs::release`)
+        PrintJobs::release($device);
         $device->delete();
 
         return back()->with('toast', ['msg' => __('حُذف سجلّ الجهاز'), 'type' => 'warning']);

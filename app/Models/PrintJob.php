@@ -16,11 +16,22 @@ class PrintJob extends Model
     /** حجزها صندوقٌ ويطبعها الآن */
     public const CLAIMED = 'claimed';
 
-    /** قال الصندوق إنّها خرجت — أو طُلب حوارُ المتصفّح لها */
+    /** خرجت: طابعةُ الشبكة استلمتها كلَّها، أو أكّد إنسانٌ خروجَها */
     public const PRINTED = 'printed';
+
+    /**
+     * فُتح لها حوارُ طباعةٍ أو ملفّ — وفتحُه ليس ورقًا.
+     *
+     * المتصفّحُ لا يقول أطَبع الكاشيرُ أم ألغى الحوار. فلا يُقال «طُبعت»، ولا
+     * تُعاد وحدها: تنتظر من يقول «خرجت» أو «لم تخرج».
+     */
+    public const REQUESTED = 'requested';
 
     /** لم تخرج، أو لا يُعرف أخرجت — تُعاد بيدٍ لا وحدها */
     public const FAILED = 'failed';
+
+    /** أُغلق التجهيزُ بعد السداد وهي تنتظر — لا تعود وحدها إن فُتح من جديد */
+    public const CANCELLED = 'cancelled';
 
     /** فاتورةُ عميل — نسخةٌ داخليّة، تُطبع حين تُسدَّد */
     public const KIND_INVOICE_INTERNAL = 'customer_invoice_internal';
@@ -31,7 +42,10 @@ class PrintJob extends Model
         'claimed_at' => 'datetime',
         'claim_expires_at' => 'datetime',
         'printed_at' => 'datetime',
+        'requested_at' => 'datetime',
+        'confirmed_at' => 'datetime',
         'failed_at' => 'datetime',
+        'cancelled_at' => 'datetime',
         'attempts' => 'integer',
     ];
 

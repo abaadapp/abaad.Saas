@@ -8,6 +8,7 @@ use App\Models\PosPeripheral;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\PrintJobs;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -37,6 +38,8 @@ class PeripheralController extends Controller
         $peripheral = $this->peripheral($deviceId, $id);
         $peripheral->update($this->validated($request));
         Activity::log('updated', 'عدّل ملحقًا: '.$peripheral->name, ['subject_id' => $deviceId]);
+        // طابعةٌ رُفع عنها «فواتير العملاء» أو عُطّلت: ورقُ صندوقها المنتظِر لا يعلق عليه
+        PrintJobs::release($this->device($deviceId));
 
         return back()->with('toast', ['msg' => __('تم حفظ الجهاز الملحق'), 'type' => 'success']);
     }
@@ -47,6 +50,7 @@ class PeripheralController extends Controller
         $name = $peripheral->name;
         $peripheral->delete();
         Activity::log('deleted', 'حذف ملحقًا: '.$name, ['subject_id' => $deviceId]);
+        PrintJobs::release($this->device($deviceId));
 
         return back()->with('toast', ['msg' => __('حُذف الجهاز الملحق'), 'type' => 'warning']);
     }

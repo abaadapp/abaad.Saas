@@ -973,11 +973,8 @@ class PreparationController extends Controller
             'next' => CustomerInvoicePreparations::next($p),
             // قائمةُ التحقّق لبنود الطلبات وحدها — مهمّةُ الفاتورة بلا علاماتٍ مخزَّنة
             'checks' => [],
-            'print' => $job ? [
-                'status' => $job->status,
-                'label' => PrintJobs::label($job),
-                'error' => $job->status === PrintJob::FAILED ? $job->last_error : null,
-            ] : null,
+            // حالُ ورقة الصندوق وما يجوز فيها — من الخادم وحده (`PrintJobs::card`)
+            'print' => PrintJobs::card($job),
         ];
     }
 
@@ -1048,7 +1045,9 @@ class PreparationController extends Controller
             ->where('subject_type', 'customer_invoice_preparation')
             ->where('subject_id', $prep->id)
             ->whereIn('action', ['status', 'created'])
+            // والمعرّفُ بعد الوقت: خطوتان في الثانية نفسِها تُقرآن بترتيب وقوعهما
             ->orderBy('created_at')
+            ->orderBy('id')
             ->limit(50)
             ->get(['description', 'user_name', 'created_at']);
 
@@ -1064,7 +1063,9 @@ class PreparationController extends Controller
     /**
      * يُعيد ورقةَ الصندوق إلى الطابور — بعد أن نظر من يجهّز في الطابعة.
      *
-     * ولا تُعاد ورقةٌ يطبعها صندوقٌ الآن (`PrintJobs::requeue`).
+     * ما فشل، أو فُتح حوارُه ولم يُؤكَّد، أو أُلغي. ولا تُعاد ورقةٌ يطبعها
+     * صندوقٌ الآن، ولا ورقةٌ ثبت خروجُها (`PrintJobs::requeue`). والسجلُّ
+     * يُكتب هناك، باسم من أعادها.
      */
     public function invoiceRequeue(int $id)
     {
@@ -1072,14 +1073,28 @@ class PreparationController extends Controller
         $job = PrintJobs::forPreparation($prep);
 
         if (! $job || ! PrintJobs::requeue($job, (int) auth()->id())) {
-            return back()->with('toast', ['msg' => __('الورقة تُطبع الآن أو لم تُكتب بعد — لا تُعاد.'), 'type' => 'danger']);
+            return back()->with('toast', ['msg' => __('الورقة تُطبع الآن أو خرجت أو لم تُكتب بعد — لا تُعاد.'), 'type' => 'danger']);
         }
 
-        Activity::log('updated', 'أعاد ورقة الفاتورة '.$prep->invoice->number.' إلى طابور الصندوق', [
-            'subject_id' => $prep->id,
-            'subject_type' => 'customer_invoice_preparation',
-        ]);
-
         return back()->with('toast', ['msg' => __('أُعيدت الورقة إلى طابور الصندوق'), 'type' => 'success']);
+    }
+
+    /**
+     * «خرجت الورقة» من اللوحة — فلا يطبعها الصندوقُ بعدُ.
+     *
+     * لمن طبعها بيده من زرّ «طباعة الفاتورة الداخلية»، أو رآها خرجت بعد
+     * حوارٍ لم يُؤكَّد أو فشلٍ لا يُعرف. ولا لورقةٍ يحجزها صندوقٌ الآن: الشرطُ
+     * في الكتابة نفسِها (`PrintJobs::confirmPrinted`).
+     */
+    public function invoicePrintConfirm(int $id)
+    {
+        $prep = $this->invoiceTask($id);
+        $job = PrintJobs::forPreparation($prep);
+
+        if (! $job || ! PrintJobs::confirmPrinted($job, (int) auth()->id())) {
+            return back()->with('toast', ['msg' => __('الورقة تُطبع الآن أو خرجت أو لم تُكتب بعد.'), 'type' => 'danger']);
+        }
+
+        return back()->with('toast', ['msg' => __('سُجّل خروج الورقة — لن تُطبع على الصندوق'), 'type' => 'success']);
     }
 }

@@ -177,8 +177,21 @@ class BusinessController extends Controller
             \App\Support\Activity::log('updated', ($business->thermal_delivery_note_enabled ? 'فتح' : 'أغلق').' سند التسليم الحراري لطلبات الموقع: '.$business->name, ['business_id' => null, 'subject_id' => $business->id]);
         }
 
-        // وتجهيزُ فواتير العملاء بعد الدفع كذلك (`CustomerInvoicePreparations::on`)
+        /*
+         * وتجهيزُ فواتير العملاء بعد الدفع كذلك (`CustomerInvoicePreparations::on`).
+         *
+         * - فتحُه يُكتب وقتُه: دفعٌ وصل والمفتاحُ مغلق لا يُفعِّل وحده حين يُفتح
+         *   (`CustomerInvoicePreparations::linkCounts`) — يُرسَل بيدٍ إن لزم.
+         * - وإغلاقُه يُلغي ورقَ الصناديق المنتظِر (`PrintJobs::cancelPending`): لا
+         *   يُطبع ورقُ أسبوعٍ مضى حين يُفتح من جديد. ولا يمسّ دفعًا ولا فاتورة.
+         */
         if ((bool) $business->customer_invoice_preparation_enabled !== $preparationBefore) {
+            if ($business->customer_invoice_preparation_enabled) {
+                $business->forceFill(['customer_invoice_preparation_enabled_at' => now()])->save();
+            } else {
+                \App\Support\PrintJobs::cancelPending((int) $business->id);
+            }
+
             \App\Support\Activity::log('updated', ($business->customer_invoice_preparation_enabled ? 'فتح' : 'أغلق').' تجهيز فواتير العملاء بعد الدفع: '.$business->name, ['business_id' => null, 'subject_id' => $business->id]);
         }
 

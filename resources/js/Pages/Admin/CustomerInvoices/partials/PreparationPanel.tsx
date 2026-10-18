@@ -40,7 +40,7 @@ export interface PreparationPanelData {
     activation_source: string | null;
     activation_error: string | null;
     waiting_for: string | null;
-    print: { status: string; label: string | null; error: string | null } | null;
+    print: { status: string; label: string | null; error: string | null; confirmable?: boolean; requeueable?: boolean } | null;
     options: PreparationOptions | null;
 }
 

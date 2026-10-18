@@ -12,12 +12,19 @@ use Illuminate\Support\Facades\Schema;
  * المعيَّن يسألها حين يكون مفتوحًا، ويحجزها، ويطبعها، ويقول ما جرى.
  *
  * - `dedupe_key` فريد: مهمّةٌ منطقيّةٌ واحدةٌ لكلّ ورقة — ولو تكرّر الإشعار.
- * - `status`: `pending` ← `claimed` (حجزها صندوق) ← `printed` أو `failed`.
+ * - `status`: `pending` ← `claimed` (حجزها صندوق) ← واحدٌ من:
+ *     `printed`   خرجت: طابعةُ الشبكة قالت إنّها استلمتها كلَّها، أو أكّد إنسان.
+ *     `requested` فُتح لها حوارُ طباعةٍ أو ملفّ — ولا يُعرف أخرجت. تنتظر تأكيدًا.
+ *     `failed`    لم تخرج، أو لا يُعرف — تُعاد بيدٍ لا وحدها.
+ *     `cancelled` أُغلق التجهيزُ بعد السداد وهي تنتظر — لا تعود وحدها.
  *   والحجزُ شرطٌ في UPDATE واحد: صندوقان يسألان معًا فيأخذها أحدُهما.
+ * - `pos_device_id`: الصندوقُ الموجَّهة إليه — ويُعاد توجيهُها إلى صندوقٍ
+ *   معيَّنٍ في فرعها نفسِه حين يُلغى أو يُنقل أو تُرفع عنه الطابعة (`PrintJobs::release`).
  * - `claim_expires_at`: حجزٌ لم يُردّ عليه في مهلته لا يُعاد وحده (قد تكون
  *   خرجت)، بل يصير `failed` ويُعاد بيدٍ بعد أن يُنظر في الورق.
- * - `via`: كيف خرجت — `native` (طابعةُ الشبكة في تطبيق أبعاد) أو `page`/
- *   `share`/`browser` (حوارُ المتصفّح: طُلب، ولا يُعرف أطُبع).
+ * - `via`: كيف طُلبت — `native` (طابعةُ الشبكة في تطبيق أبعاد) أو `page`/
+ *   `share`/`browser`/`system` (حوارٌ أو ملفّ: طُلب، ولا يُعرف أطُبع).
+ * - `confirmed_by`: من قال إنّها خرجت بعينه — في الصندوق أو اللوحة.
  */
 return new class extends Migration
 {
@@ -45,7 +52,12 @@ return new class extends Migration
             $table->timestamp('claimed_at')->nullable();
             $table->timestamp('claim_expires_at')->nullable();
             $table->timestamp('printed_at')->nullable();
+            // فُتح حوارُ الطباعة أو الملفّ — لا يُقال «طُبعت» عنه
+            $table->timestamp('requested_at')->nullable();
+            $table->timestamp('confirmed_at')->nullable();
+            $table->foreignId('confirmed_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('failed_at')->nullable();
+            $table->timestamp('cancelled_at')->nullable();
             $table->string('via', 20)->nullable();
             $table->string('last_error', 255)->nullable();
             // من أعادها إلى الطابور بيده — إن أُعيدت
@@ -58,6 +70,7 @@ return new class extends Migration
             $table->index('pos_device_id', 'print_jobs_device_idx');
             $table->index('claimed_by_device_id', 'print_jobs_claimed_by_idx');
             $table->index('requeued_by', 'print_jobs_requeued_by_idx');
+            $table->index('confirmed_by', 'print_jobs_confirmed_by_idx');
         });
     }
 

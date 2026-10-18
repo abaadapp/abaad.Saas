@@ -429,6 +429,58 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
         $this->assertSame(1, PrintJob::count());
     }
 
+    /**
+     * دفعٌ وصل والمفتاحُ مغلق — المالُ يُسجَّل، والتجهيزُ لا يظهر.
+     *
+     * ثمّ يُفتح المفتاحُ بعد يوم: لا المطابقةُ ولا إشعارٌ مكرَّرٌ من Paymob
+     * يُظهره ويطبع ورقتَه وحده — جُهّز بيدٍ يومَها أو لم يُجهَّز، وصاحبُ
+     * التحصيل يُرسله بيده إن لزم. ورابطٌ يُدفع بعد الفتح يُفعِّل كما كان.
+     */
+    public function test_a_link_paid_while_the_flag_is_off_keeps_its_money_and_is_not_replayed_when_it_reopens(): void
+    {
+        $boss = User::create(['business_id' => null, 'name' => 'مدير المنصة', 'email' => 'boss@abaadapp.om', 'password' => bcrypt('x'), 'role' => 'super_admin', 'status' => 'نشط']);
+        $toggle = function (string $on) use ($boss) {
+            $this->actingAs($boss)->put(route('super-admin.businesses.update', $this->shop->id), [
+                'name' => $this->shop->name, 'type' => $this->shop->type, 'status' => 'نشط',
+                'customer_invoice_preparation_enabled' => $on,
+            ])->assertSessionHasNoErrors();
+            $this->actingAs($this->owner);
+        };
+
+        $invoice = $this->invoice();
+        $link = $this->link($invoice);
+        $obj = $this->obj($link);
+
+        $toggle('0');
+        $this->hook($obj);
+
+        $this->assertSame(1, CustomerPayment::count(), 'المالُ يُسجَّل كما يُسجَّل');
+        $this->assertTrue(CustomerInvoicePreparations::paid($invoice->fresh()));
+        $this->assertNull($this->prep($invoice)->activated_at, 'والمفتاحُ مغلق لا يُفعِّل');
+        $this->assertSame(0, PrintJob::count());
+
+        Carbon::setTestNow(now()->addDay());
+        $toggle('1');
+        $this->assertNotNull($this->shop->fresh()->customer_invoice_preparation_enabled_at);
+
+        CustomerInvoicePreparations::reconcile();
+        $this->hook($obj);
+        $this->assertNull($this->prep($invoice)->activated_at, 'ولا يظهر وحده حين يُفتح');
+        $this->assertSame(0, PrintJob::count(), 'ولا تُطبع ورقتُه');
+        $this->assertSame(1, CustomerPayment::count(), 'ولا تحصيلٌ ثانٍ');
+
+        // ويُرسله بيده من يملك التحصيل
+        $this->post(route('admin.customerInvoices.preparation.activate', $invoice->id))->assertSessionHasNoErrors();
+        $this->assertSame(CustomerInvoicePreparations::FROM_HAND, $this->prep($invoice)->activation_source);
+        $this->assertSame(1, PrintJob::count());
+
+        // ورابطٌ يُدفع بعد الفتح يُفعِّل كما كان
+        $next = $this->invoice();
+        $this->hook($this->obj($this->link($next)));
+        $this->assertSame(CustomerInvoicePreparations::FROM_PAYMOB, $this->prep($next)->activation_source);
+        $this->assertSame(2, PrintJob::count());
+    }
+
     public function test_a_partial_payment_waits_and_the_link_that_completes_it_activates_once(): void
     {
         $invoice = $this->invoice();

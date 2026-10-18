@@ -413,6 +413,19 @@ final class CustomerInvoicePreparations
             return false;
         }
 
+        /*
+         * ودُفع والتجهيزُ مفتوح — لا قبل آخر فتحٍ له.
+         *
+         * رابطٌ سُدّد والمفتاحُ مغلق لم يظهر يومَها، وجُهّز بيدٍ أو لم يُجهَّز.
+         * وفتحُ المفتاح بعد أسبوع لا يُعيده إلى اللوحة ويطبع ورقتَه وحده —
+         * المطابقةُ والإشعارُ المكرَّر كلاهما يمرّان من هنا. ويُرسَل بيدٍ من
+         * صفحة الفاتورة إن لم يُجهَّز بعد.
+         */
+        $since = Business::whereKey($link->business_id)->value('customer_invoice_preparation_enabled_at');
+        if ($since !== null && $link->paid_at->lessThan(Carbon::parse($since))) {
+            return false;
+        }
+
         $payment = CustomerPayment::find($link->customer_payment_id);
         if (! $payment || $payment->cancelled_at !== null || (int) $payment->business_id !== (int) $link->business_id) {
             return false;

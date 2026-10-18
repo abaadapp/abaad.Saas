@@ -64,8 +64,18 @@ export interface PrepOrder {
     /** أمسدَّدةٌ الآن؟ ومن أين ثبت سدادُها — لمهمّة الفاتورة */
     payment_verified?: boolean;
     payment_source?: string | null;
-    /** ورقةُ الصندوق الداخليّة وحالُها — لمهمّة الفاتورة */
-    print?: { status: string; label: string | null; error: string | null } | null;
+    /**
+     * ورقةُ الصندوق الداخليّة وحالُها — لمهمّة الفاتورة. وما يجوز فيها من
+     * الخادم (`PrintJobs::card`): «خرجت» لما لا يحجزه صندوقٌ الآن، والإعادةُ
+     * لما فشل أو فُتح حوارُه أو أُلغي.
+     */
+    print?: {
+        status: string;
+        label: string | null;
+        error: string | null;
+        confirmable?: boolean;
+        requeueable?: boolean;
+    } | null;
     number: string;
     status: string;
     /** قناةُ الطلب — `website` لطلب الموقع؛ تقرؤها طباعةُ التأكيد */

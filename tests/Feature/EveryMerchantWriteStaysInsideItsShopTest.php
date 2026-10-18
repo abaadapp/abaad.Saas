@@ -370,7 +370,9 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
         'admin.integrations.googleBusiness.reply' => '{review} مراجعةُ Google لا تُنشأ بلا حسابٍ مربوط — مقيّدةٌ بفروع المتجر (GoogleBusinessController:164)',
         'admin.preparation.invoiceMove' => '{id} مهمّةُ تجهيزِ فاتورةٍ تظهر بسدادٍ موثَّق — مقيّدةٌ بمتجر الجلسة وفرعه (CustomerInvoicePreparations::board)، وحارسُها `TheBoardPreparesAPaidCustomerInvoiceTest::test_another_shop_neither_sees_nor_touches_the_task`',
         'admin.preparation.invoiceRequeue' => 'مثلُه — والورقةُ من مهمّة المتجر نفسِه (`APaidCustomerInvoicePrintsOnceAtItsTillTest`)',
+        'admin.preparation.invoicePrintConfirm' => 'مثلُه — وحارسُها `APaperNeverWaitsOnAGoneTillTest::test_a_neighbours_till_is_never_a_target_and_its_cookie_opens_nothing_here`',
         'pos.printJobs.ack' => '{id} ورقةُ طابورٍ يحجزها صندوقٌ — لا يكتب عليها إلّا صندوقُها ومتجرُها (`PrintJobs::acknowledge`)، وحارسُها `APaidCustomerInvoicePrintsOnceAtItsTillTest::test_two_tills_never_share_one_paper`',
+        'pos.printJobs.confirm' => '{id} ورقةٌ فتح صندوقٌ حوارَها — لا يجيب عنها إلّا صندوقُها ومتجرُها (`PrintJobs::confirmPrinted`·`notPrinted`)، وحارسُها `AnOpenedPrintDialogIsNotAPrintedPaperTest::test_only_the_till_that_opened_the_dialog_answers_for_it`',
     ];
 
     public function test_no_id_door_is_left_out(): void

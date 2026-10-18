@@ -26,6 +26,11 @@ use Tests\TestCase;
  *     فلا صفحةَ تتجاوز ما تَعِد به مواصفةُ PDF (٢٠٠ بوصة).
  *   - ورأسُ جدول الأصناف مرّةً واحدة: mpdf يكرّر `<thead>` في كلّ صفحة، فيخرج
  *     «Item Price Qty Total» وسطَ الأصناف عند كلّ وصلة.
+ *   - والأسماءُ الطويلة تلتفّ بين كلماتها بحجم خطّ القالب: لا كلمةَ مقطوعة،
+ *     ولا جدولٌ مصغَّر. كان mpdf يُصغّر جدولَ هذه الأصناف إلى ٢٫٩ نقطة على
+ *     ٥٨ مم (خطّ الورقة كان يمحو المسافات — `keep_spaces`)، فبدا الإيصالُ
+ *     قصيرًا لأنّه لا يُقرأ: ألفُ صنفٍ مترين ونصفًا. وبخطٍّ يُقرأ هي خمسةَ عشر
+ *     مترًا، والمئتان ثلاثة أمتار — صفحاتٌ يصلها التطبيق كما وُصف أعلاه.
  *
  * والنصُّ يُقرأ من الـPDF نفسِه (`pages()`): mpdf يكتب كلَّ حرفٍ برمزه في
  * UTF-16 وخريطتُه إلى Unicode هويّة — فما يُقرأ هنا هو ما يُرسم.
@@ -65,19 +70,39 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
         }
     }
 
+    /**
+     * كلُّ صنفٍ والتذييلُ كلُّه — على صفحةٍ واحدة بطوله ما اتّسعت له ورقةُ القياس،
+     * وعلى صفحاتٍ لا تتجاوزها إن لم تتّسع. وبخطّ القالب لا بخطٍّ مصغَّر.
+     *
+     * والخمسون والمئة صفحةٌ واحدة على العرضين؛ والمئتان بأسماءٍ تلتفّ أربعةَ
+     * أسطرٍ تتجاوز المترين فتصير صفحتين.
+     */
     #[DataProvider('sizes')]
-    public function test_every_item_and_the_whole_footer_reach_one_page(int $mm, int $items): void
+    public function test_every_item_and_the_whole_footer_reach_the_strip(int $mm, int $items): void
     {
-        [, $pdf] = $this->receipt($mm, $items);
+        [$order, $pdf] = $this->receipt($mm, $items);
         $pages = PdfText::pages($pdf);
+        $height = Pdf::stripHeight(PdfController::saleHtml($order->business_id, $order, thermal: true)['html'], $mm);
 
-        $this->assertCount(1, $pages, "{$items} صنفًا على {$mm}mm تتّسع لورقة القياس: صفحةٌ واحدة كما كان");
-        $this->assertLessThan(self::SHEET_MM, $pages[0]['height']);
+        if ($height <= self::SHEET_MM) {
+            $this->assertCount(1, $pages, "{$items} صنفًا على {$mm}mm تتّسع لورقة القياس: صفحةٌ واحدة");
+            $this->assertEqualsWithDelta($height, $pages[0]['height'], 0.2, "{$mm}mm: بطول محتواه");
+        } else {
+            $this->assertGreaterThanOrEqual(2, count($pages), "{$mm}mm · {$items}");
+        }
+        if ($items <= 100) {
+            $this->assertCount(1, $pages, "{$items} صنفًا على {$mm}mm: صفحةٌ واحدة");
+        }
+        foreach ($pages as $i => $page) {
+            $this->assertLessThanOrEqual(self::SHEET_MM + 0.2, $page['height'], "{$mm}mm صفحة ".($i + 1));
+            $this->assertEqualsWithDelta($mm, $page['width'], 0.2);
+        }
         $this->assertWhole($pages, $items, "{$mm}mm · {$items}");
+        $this->assertReadable($pdf, $mm, "{$mm}mm · {$items}");
     }
 
     /**
-     * ألفُ صنفٍ نحو ثلاثة أمتار على 80 ومترين ونصف على 58 — أطولُ من ورقة القياس.
+     * ألفُ صنفٍ بأسماءٍ طويلة نحو خمسةَ عشر مترًا على العرضين — أطولُ من ورقة القياس.
      * فتُقسم صفحاتٍ لا تتجاوز مترين، ولا يسقط صنفٌ ولا يتكرّر عند الوصلة.
      */
     public function test_a_receipt_longer_than_the_measuring_sheet_is_split_into_bounded_pages(): void
@@ -92,7 +117,24 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
                 $this->assertEqualsWithDelta($mm, $page['width'], 0.2);
             }
             $this->assertWhole($pages, 1000, "{$mm}mm · 1000");
+            $this->assertReadable($pdf, $mm, "{$mm}mm · 1000");
         }
+    }
+
+    /**
+     * لا كلمةَ مقطوعة، ولا حجمَ خطٍّ لا يكتبه الإيصالُ نفسُه بأسماءٍ قصيرة.
+     *
+     * والمرجعُ الإيصالُ نفسُه بخمسة أصنافٍ اسمُ كلٍّ منها «Rose»: الرأسُ
+     * والملاحظةُ والمجاميعُ والرمزُ والتذييل — ولا اسمَ يضيق عنه عمودُه، فحجومُه
+     * حجومُ القالب. والجدولُ المصغَّر يكتب حجومًا مضروبةً في نسبة تصغيره.
+     */
+    private function assertReadable(string $pdf, int $mm, string $case): void
+    {
+        $this->assertSame([], PdfText::wordCuts($pdf), "{$case}: سطرٌ قُطعت فيه كلمة");
+
+        [, $reference] = $this->receipt($mm, 5, 'Rose');
+        $sizes = fn (string $p) => array_values(array_unique(array_map(fn (array $l) => round($l['size'], 2), PdfText::lines($p))));
+        $this->assertSame([], array_values(array_diff($sizes($pdf), $sizes($reference))), "{$case}: حجمُ خطٍّ لا يكتبه القالب — جدولٌ مصغَّر");
     }
 
     /**
@@ -127,9 +169,11 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
      * والأصنافُ التي تُعدّ إنجليزيّة: الأوّلُ والأوسطُ والأخيرُ وكلُّ زوجيّ — فيُقرأ
      * رقمُها من الـPDF كما هو («Item 500 Premium»).
      *
+     * و`$name` يسمّي الأصنافَ كلَّها باسمٍ واحد — مرجعُ حجوم الخطّ (`assertReadable`).
+     *
      * @return array{0: Order, 1: string}
      */
-    private function receipt(int $mm, int $items): array
+    private function receipt(int $mm, int $items, ?string $name = null): array
     {
         $business = Business::create([
             'name' => 'متجر الإيصال الطويل', 'type' => 'عام', 'status' => 'نشط',
@@ -151,9 +195,9 @@ class ALongReceiptPrintsWholeOnOneStripTest extends TestCase
             $quantity = $i % 3 + 1;
             $rows[] = [
                 'order_id' => $order->id,
-                'name' => self::english($i, $items)
+                'name' => $name ?? (self::english($i, $items)
                     ? "Item {$i} Premium long-stem white roses bouquet with silk ribbon and gift card"
-                    : "صنف رقم {$i} باقة ورد جوري أحمر فاخرة مع تغليف ذهبي وشريط حريري طويل",
+                    : "صنف رقم {$i} باقة ورد جوري أحمر فاخرة مع تغليف ذهبي وشريط حريري طويل"),
                 'quantity' => $quantity,
                 'price' => 12.345,
                 'total' => 12.345 * $quantity,

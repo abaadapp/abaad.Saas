@@ -78,10 +78,13 @@ export default function Cheques() {
         auth,
     } = usePage<PageProps<Props>>().props;
     /*
-     * و«صُرِف» و«ارتدّ» لمن يسجّل التحصيل — كما يقبلهما الخادم (`ChequeController`).
-     * والارتدادُ يُعيد الذمّةَ على العميل، فلا يُرسم لمن يقرأ «المالية» وحدها.
+     * كلُّ زرٍّ بفعله — كما يقبلهما الخادم (`ChequeController`).
+     *
+     * «صُرِف» تمامُ التحصيل، فلمن يسجّله. و«ارتدّ» يعكس قيدَ القبض ويُعيد
+     * الذمّةَ على العميل كإلغاء السند، فلمن يملك الإلغاء — لا لمن يسجّل وحده.
      */
-    const mayRecord = (auth?.mayActions ?? []).includes("customerPayment.create");
+    const mayClear = (auth?.mayActions ?? []).includes("customerPayment.create");
+    const mayBounce = (auth?.mayActions ?? []).includes("customerPayment.cancel");
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -237,14 +240,17 @@ export default function Cheques() {
 
                                 {c.status === "تحت التحصيل" ? (
                                     <TableCell>
-                                        {mayRecord && (
+                                        {(mayClear || mayBounce) && (
                                         <div className="flex gap-2">
+                                            {mayClear && (
                                             <Button
                                                 size="sm"
                                                 onClick={() => setClearing(c)}
                                             >
                                                 {t("صُرِف")}
                                             </Button>
+                                            )}
+                                            {mayBounce && (
                                             <Button
                                                 size="sm"
                                                 variant="danger"
@@ -253,6 +259,7 @@ export default function Cheques() {
                                                 <Undo2 />
                                                 {t("ارتدّ")}
                                             </Button>
+                                            )}
                                         </div>
                                         )}
                                     </TableCell>

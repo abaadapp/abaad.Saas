@@ -22,6 +22,7 @@ use App\Support\Permissions;
 use App\Support\Storefront;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -40,7 +41,8 @@ use Tests\TestCase;
  *   - G7 فروعُ الموظّف نفسِه: لا يوسّعها لنفسه.
  *   - G8 «المالك» من دورُه سلطتُه — لا صفٌّ دورُه admin ضُيّق.
  *   - G9 القبضُ عند إصدار الفاتورة: `customerPayment.create`.
- *   - G10 صرفُ الشيك وارتدادُه: `customerPayment.create`.
+ *   - G10 صرفُ الشيك: `customerPayment.create`. وارتدادُه يعكس قيدَ القبض
+ *     كإلغاء السند، فبـ`customerPayment.cancel` (مراجعة #131).
  */
 class EverySensitiveDoorAsksForItsOwnPermissionTest extends TestCase
 {
@@ -245,7 +247,8 @@ class EverySensitiveDoorAsksForItsOwnPermissionTest extends TestCase
 
     /* ============================== G10 ============================== */
 
-    public function test_a_cheque_is_cleared_or_bounced_by_whoever_records_collections(): void
+    /** فاتورةٌ بخمسين، منها عشرون بشيكٍ تحت التحصيل */
+    private function pendingCheque(): array
     {
         $invoice = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $this->customer, ['issued_at' => '2026-10-20'], [
             ['description' => 'باقة', 'quantity' => 1, 'unit_price' => 50],
@@ -253,13 +256,68 @@ class EverySensitiveDoorAsksForItsOwnPermissionTest extends TestCase
         $cheque = CustomerPayments::record($this->shop->id, $this->customer, 20, ['method' => 'شيك', 'occurred_at' => '2026-10-20', 'cheque_due_at' => '2026-10-25'], [$invoice->id => 20]);
         $this->assertSame(Cheques::PENDING, $cheque->cheque_status);
 
+        return [$invoice, $cheque];
+    }
+
+    public function test_a_cheque_is_cleared_by_whoever_records_collections(): void
+    {
+        [, $cheque] = $this->pendingCheque();
+
         $reader = $this->user('accountant', ['dashboard', 'finance']);
-        $this->actingAs($reader)->post(route('admin.finance.cheques.bounce', $cheque->id), ['reason' => 'رصيدٌ لا يكفي'])->assertForbidden();
         $this->actingAs($reader)->post(route('admin.finance.cheques.clear', $cheque->id), ['cleared_on' => '2026-10-25'])->assertForbidden();
         $this->assertSame(Cheques::PENDING, $cheque->fresh()->cheque_status);
 
-        // والمحاسبُ بدوره يسجّل التحصيل — فيكتب ما وقع للشيك
-        $this->actingAs($this->user('accountant'))->post(route('admin.finance.cheques.bounce', $cheque->id), ['reason' => 'رصيدٌ لا يكفي'])->assertSessionHasNoErrors();
-        $this->assertSame(Cheques::BOUNCED, $cheque->fresh()->cheque_status);
+        // والمحاسبُ بدوره يسجّل التحصيل — فيكتب تمامَه
+        $this->actingAs($this->user('accountant'))->post(route('admin.finance.cheques.clear', $cheque->id), ['cleared_on' => '2026-10-25'])->assertSessionHasNoErrors();
+        $this->assertSame(Cheques::CLEARED, $cheque->fresh()->cheque_status);
+    }
+
+    /**
+     * والارتدادُ إلغاءٌ باسمٍ آخر — فلمن يملك إلغاءَ التحصيل وحده.
+     *
+     * يعكس قيدَ القبض ويُعيد العشرين على العميل كما يفعل `customerPayments.cancel`.
+     * فمن يسجّل التحصيل ولا يُلغيه — بدوره أو باسمه — يُردّ ولا يتغيّر شيء.
+     */
+    public function test_a_cheque_is_bounced_only_by_whoever_may_cancel_a_collection(): void
+    {
+        [$invoice, $cheque] = $this->pendingCheque();
+        $books = fn () => [
+            $cheque->fresh()->cheque_status,
+            round($invoice->fresh()->paidTotal(), 3),
+            DB::table('journal_entries')->where('business_id', $this->shop->id)->count(),
+        ];
+        $before = $books();
+        $this->assertSame(20.0, $before[1]);
+
+        foreach ([
+            'يقرأ «المالية»' => $this->user('accountant', ['dashboard', 'finance']),
+            'المحاسبُ بدوره' => $this->user('accountant'),
+            'يسجّل التحصيل باسمه' => $this->user('sales', ['dashboard', 'finance', Permissions::CUSTOMER_PAYMENT_CREATE]),
+        ] as $who => $user) {
+            $this->assertTrue($who === 'يقرأ «المالية»' || $user->may(Permissions::CUSTOMER_PAYMENT_CREATE), $who);
+            $this->actingAs($user)->post(route('admin.finance.cheques.bounce', $cheque->id), ['reason' => 'رصيدٌ لا يكفي'])->assertForbidden();
+            $this->assertSame($before, $books(), $who.': لا حالَ ولا ذمّةَ ولا قيد');
+        }
+
+        // ومن مُنح الإلغاءَ باسمه يسجّل الارتداد — فيعكس القيدَ وتعود العشرون
+        $this->actingAs($this->user('accountant', ['dashboard', 'finance', Permissions::CUSTOMER_PAYMENT_CANCEL]))
+            ->post(route('admin.finance.cheques.bounce', $cheque->id), ['reason' => 'رصيدٌ لا يكفي'])->assertSessionHasNoErrors();
+        $this->assertSame([Cheques::BOUNCED, 0.0, $before[2] + 1], $books());
+
+        // ومديرُ الفرع بدوره كذلك
+        [, $second] = $this->pendingCheque();
+        $this->actingAs($this->user('manager'))->post(route('admin.finance.cheques.bounce', $second->id), ['reason' => 'توقيعٌ لا يطابق'])->assertSessionHasNoErrors();
+        $this->assertSame(Cheques::BOUNCED, $second->fresh()->cheque_status);
+    }
+
+    /** والشاشةُ ترسم كلَّ زرٍّ لمن يقبله الخادم — من الفعل نفسه */
+    public function test_the_cheque_screen_is_told_each_action_by_its_own_name(): void
+    {
+        $this->pendingCheque();
+
+        $this->actingAs($this->user('accountant'))->get(route('admin.finance.cheques'))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('auth.mayActions', fn ($a) => collect($a)->contains(Permissions::CUSTOMER_PAYMENT_CREATE)
+                    && ! collect($a)->contains(Permissions::CUSTOMER_PAYMENT_CANCEL)));
     }
 }

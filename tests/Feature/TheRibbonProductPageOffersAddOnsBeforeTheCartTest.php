@@ -392,8 +392,9 @@ class TheRibbonProductPageOffersAddOnsBeforeTheCartTest extends TestCase
     {
         $html = $this->page($this->p['main'])->getContent();
 
-        $this->assertMatchesRegularExpression('/<div class="rb-up" data-rb-up="'.$this->p['balloon'].'"\s+data-testid/', $html, 'البسيطُ بلا شرط مقاس');
-        $this->assertMatchesRegularExpression('/<div class="rb-up" data-rb-up="'.$this->p['choc'].'"\s+data-needs-variant/', $html);
+        // البسيطُ بلا شرط مقاس، وسعرُ وحدته عليه للعرض — وذو المقاس سعرُه في مقاساته
+        $this->assertMatchesRegularExpression('/<div class="rb-up" data-rb-up="'.$this->p['balloon'].'" data-qty="0"\s+data-amount="[\d.]+"\s+data-testid/', $html, 'البسيطُ بلا شرط مقاس');
+        $this->assertMatchesRegularExpression('/<div class="rb-up" data-rb-up="'.$this->p['choc'].'" data-qty="0"\s+data-needs-variant\s+data-testid/', $html);
 
         preg_match('/data-rb-up="'.$this->p['choc'].'".*?<\/div>\s*<p/s', $html, $m);
         $this->assertNotEmpty($m);

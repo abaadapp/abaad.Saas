@@ -25,10 +25,12 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { type ArrivalsCuration, CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
+import CollectionsField, { keepShownCollections, parseCollections } from './theme/CollectionsField';
 import { AlignField, type ShortcutCategory, ShortcutsField } from './theme/HeaderFields';
 import ProductListField, { keepShown } from './theme/ProductListField';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
+import VisualBarField from './theme/VisualBarField';
 
 /** صفحةٌ من صفحات القالب الأربع — كما تقرؤها `StoreNav::rows` */
 export interface EditorPage {
@@ -128,13 +130,15 @@ export function previewFit(want: number, avail: number): number {
 
 export interface EditorField {
     key: string;
-    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts' | 'products';
+    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts' | 'products' | 'collections' | 'visualbar';
     label: string;
     hint?: string;
     dir?: string;
     gate?: string;
     /** أكثرُ ما تختاره `products` — من الخادم، لا رقمٌ ثانٍ هنا */
     max?: number;
+    /** وأكثرُ ما في المجموعة الواحدة — لـ`collections` */
+    max_products?: number;
 }
 
 export interface EditorRow {
@@ -288,8 +292,8 @@ export default function ThemeEditor({
     */
     const lists = Object.fromEntries(
         rows.flatMap((r) => r.fields)
-            .filter((f) => f.kind === 'products')
-            .map((f) => [f.key, keepShown(values[f.key] ?? '', products)]),
+            .filter((f) => f.kind === 'products' || f.kind === 'collections')
+            .map((f) => [f.key, f.kind === 'collections' ? keepShownCollections(values[f.key] ?? '', products) : keepShown(values[f.key] ?? '', products)]),
     );
 
     const form = useForm<Record<string, string>>({
@@ -322,6 +326,14 @@ export default function ThemeEditor({
     const previewForm = useRef<HTMLFormElement>(null);
 
     /*
+        وما يُعاين: الرئيسيّةُ، أو رفُّ مجموعةٍ بعينها — قبل الحفظ كسائر الحقول.
+
+        والمجموعةُ لا تُرى في الرئيسيّة: تُفتح من صفّ خيارات المتجر. فزرُّ
+        «عاين صفحة المجموعة» يُرسل المسوّدةَ نفسَها إلى رفّها (`?page=shop`).
+    */
+    const [target, setTarget] = useState<{ page: 'shop'; collection: string } | null>(null);
+
+    /*
         والرمزُ من خصائص Inertia لا من وسم `meta`.
 
         الوسمُ يُطبع مرّةً عند أوّل تحميل ولا يتغيّر، والدخولُ يجدّد رمزَ
@@ -345,7 +357,7 @@ export default function ThemeEditor({
         const id = window.setTimeout(paint, 600);
 
         return () => window.clearTimeout(id);
-    }, [draft, frame]);
+    }, [draft, frame, target]);
 
     const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
@@ -507,6 +519,44 @@ export default function ThemeEditor({
                     value={form.data[f.key] ?? ''}
                     categories={shortcutCategories}
                     max={maxShortcuts}
+                    onChange={(v) => form.setData(f.key, v)}
+                    error={error}
+                />
+            );
+        }
+
+        if (f.kind === 'collections') {
+            return (
+                <CollectionsField
+                    key={f.key}
+                    name={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={form.data[f.key] ?? ''}
+                    products={products}
+                    max={f.max ?? 20}
+                    maxProducts={f.max_products ?? 60}
+                    onChange={(v) => form.setData(f.key, v)}
+                    onPreview={(slug) => setTarget({ page: 'shop', collection: slug })}
+                    error={error}
+                />
+            );
+        }
+
+        if (f.kind === 'visualbar') {
+            return (
+                <VisualBarField
+                    key={f.key}
+                    name={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={form.data[f.key] ?? ''}
+                    /* والمجموعاتُ كما في الشاشة الآن — بطاقةٌ لمجموعةٍ أُنشئت للتوّ تُختار قبل أن تُحفظ */
+                    collections={parseCollections(form.data.store_collections)}
+                    categories={shortcutCategories}
+                    products={products}
+                    pages={pages}
+                    max={f.max ?? 12}
                     onChange={(v) => form.setData(f.key, v)}
                     error={error}
                 />
@@ -735,6 +785,8 @@ export default function ThemeEditor({
     };
 
     const head = byKey.get('head');
+    const collections = byKey.get('collections');
+    const visualBar = byKey.get('vbar');
     const hero = byKey.get('hero');
     const foot = byKey.get('foot');
     /* و«أضف مع طلبك» في صفحة المنتج — بعد التذييل، لا بين أقسام الرئيسية */
@@ -874,7 +926,8 @@ export default function ThemeEditor({
                         {t('أقسام «الرئيسية»')}
                     </p>
                     <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)]">
-                        {/* ورأسُ المتجر فوق الواجهة — أوّلُ ما يُرى في كلّ صفحة */}
+                        {/* والشريطُ المصوّر فوق الترويسة — أوّلُ ما يُرى — ثمّ رأسُ المتجر فوق الواجهة */}
+                        {visualBar && row(visualBar)}
                         {head && row(head)}
                         {hero && row(hero)}
                         {movable.map((k) => {
@@ -882,6 +935,8 @@ export default function ThemeEditor({
 
                             return r ? row(r) : null;
                         })}
+                        {/* والمجموعاتُ قبل التذييل — رفوفٌ تُفتح من صفّ المتجر، لا قسمٌ في الرئيسية */}
+                        {collections && row(collections)}
                         {foot && row(foot)}
                         {upsells && row(upsells)}
                     </ul>
@@ -911,6 +966,15 @@ export default function ThemeEditor({
 
                 {/* والمعاينةُ صفحتُه نفسُها في إطار — لا رسمٌ يشبهها */}
                 <div className="xl:order-1 xl:sticky xl:top-4 xl:self-start">
+                    {/* ومعاينةُ رفّ مجموعةٍ تُقال، ويُعاد منها إلى الرئيسيّة بضغطة */}
+                    {target && (
+                        <p data-testid="preview-target" className="mb-2 flex items-center justify-between gap-2 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] text-[#1d4ed8]">
+                            <span dir="ltr">/shop?collection={target.collection}</span>
+                            <button type="button" className="font-medium underline" onClick={() => setTarget(null)}>
+                                {t('عُد إلى الرئيسية')}
+                            </button>
+                        </p>
+                    )}
                     <div className="overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-2">
                         {/*
                             النموذجُ مخفيٌّ ويُصيب الإطارَ باسمه: هو الذي
@@ -919,7 +983,7 @@ export default function ThemeEditor({
                         <form
                             ref={previewForm}
                             method="POST"
-                            action={route('admin.store.preview')}
+                            action={route('admin.store.preview', target ?? undefined)}
                             target="rb-preview"
                             className="hidden"
                             data-testid="preview-form"

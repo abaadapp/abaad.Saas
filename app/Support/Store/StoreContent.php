@@ -45,7 +45,7 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — ثمانيةٌ وثلاثون مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — أربعون مفتاحًا.
      *
      * @var list<string>
      */
@@ -69,6 +69,10 @@ final class StoreContent
         // ورأسُ المتجر: شريطُ الإعلان واختصاراتُ الفئات — انظر `StoreHeader`
         'store_announcement_ar', 'store_announcement_en', 'store_announcement_align',
         'store_shop_nav_categories',
+        // ومجموعاتُ المتجر — رفوفٌ يختارها بيده، غيرُ الفئات (`StoreCollections`)
+        'store_collections',
+        // وشريطُها المصوّر فوق قائمة الصفحات — مطفأٌ حتّى يُشغَّل (`StoreVisualBar`)
+        'store_visual_bar',
     ];
 
     /**

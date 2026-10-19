@@ -260,6 +260,37 @@
         .rb-foot-bottom { border-top: 1px solid #77754f; margin-top: 40px; padding-top: 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #c4bfa6; }
         .rb-toast { position: fixed; bottom: 24px; inset-inline-start: 50%; transform: translateX(-50%); background: #111; color: #fff; padding: 12px 20px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; }
         .rb-toast.show { opacity: 1; }
+        @if (! empty($visualBar ?? []))
+        /*
+         * ═══ شريطُ المجموعات المصوّر — فوق الترويسة، لا داخلها ═══
+         *
+         * يمرّ مع الصفحة والترويسةُ لاصقةٌ تحته كما كانت: لا عنصرَ لاصقٌ
+         * ثانٍ ولا إزاحةٌ محسوبة. والصفُّ سطرٌ يُمرَّر بالإصبع ويقف عند كلّ
+         * بطاقة، ويتوسّط حين يتّسع (الهامشُ التلقائيّ كصفّ خيارات المتجر)،
+         * ويحترم حوافَّ الشاشة على الآيفون. والصورةُ مقاسُها محجوزٌ قبل أن
+         * تصل (`aspect-ratio`) فلا تقفز الصفحةُ حين تُحمَّل، وتُقصّ ولا تُمطّ.
+         * وكلُّه هنا داخل الشرط: متجرٌ بلا شريطٍ صفحتُه كما كانت حرفًا بحرف.
+         */
+        .rb-vbar { background: var(--rb-cream); border-bottom: 1px solid var(--rb-line); }
+        .rb-vbar-in { max-width: 1280px; margin: 0 auto; display: flex; gap: 14px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none; padding: 14px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px)); }
+        .rb-vbar-in::-webkit-scrollbar { display: none; }
+        .rb-vbar-in > :first-child { margin-inline-start: auto; } .rb-vbar-in > :last-child { margin-inline-end: auto; }
+        /*
+         * وعرضُ البطاقة يُبقي طرفَ التالية ظاهرًا على الهاتف (‎27vw‎): ثلاثُ
+         * بطاقاتٍ تملأ الشاشةَ تمامًا لا تقول إنّ وراءها غيرَها.
+         */
+        .rb-vcard { flex: none; width: clamp(96px, 27vw, 164px); scroll-snap-align: start; display: flex; flex-direction: column; gap: 6px; color: #000; text-align: center; border-radius: var(--rb-r-lg); }
+        .rb-vcard:focus-visible { outline: 2px solid var(--rb-olive); outline-offset: 3px; }
+        .rb-vcard-img { display: block; aspect-ratio: 4 / 5; border-radius: var(--rb-r-lg); overflow: hidden; background: var(--rb-soft); }
+        .rb-vcard-img img, .rb-vcard-img .rb-stripes { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }
+        .rb-vcard:hover .rb-vcard-img img { transform: scale(1.03); }
+        .rb-vcard-title { font-size: 14px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
+        .rb-vcard-sub { font-size: 12px; line-height: 1.5; color: #6b655c; overflow-wrap: anywhere; }
+        .rb-vcard-cta { font-size: 12px; color: var(--rb-olive); text-decoration: underline; text-underline-offset: 3px; }
+        @media (max-width: 1023px) { .rb-vbar-in { gap: 10px; padding-top: 10px; padding-bottom: 10px; } .rb-vcard-title { font-size: 13px; } }
+        @media (prefers-reduced-motion: reduce) { .rb-vcard-img img { transition: none; } }
+        @media print { .rb-vbar { display: none; } }
+        @endif
         @if ($showFloatingWhatsapp ?? false)
         /* زرُّ واتساب العائم — يمينَ الشاشة في الاتّجاهين، فوق المحتوى وتحت التنبيه */
         .rb-wa-float { position: fixed; right: 20px; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); z-index: 40; width: 58px; height: 58px; border-radius: 50%; background: #25d366; color: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(0, 0, 0, .22); transition: transform .15s; }
@@ -275,6 +306,34 @@
     {!! $analytics ?? '' !!}
 </head>
 <body>
+{{--
+    ═══ شريطُ المجموعات المصوّر — فوق قائمة الصفحات، ويمرّ مع الصفحة ═══
+
+    بطاقاتٌ بصورها كتبها صاحبُ المتجر، كلٌّ تفتح مجموعةً أو فئةً أو صنفًا أو
+    صفحةً من متجره (`Store\StoreVisualBar`). خارجَ الترويسة اللاصقة عمدًا: لا
+    تُثقلها على الهاتف ولا تتراكب معها. ولا يُرسم شيءٌ لمن لم يشغّله.
+--}}
+@if (! empty($visualBar ?? []))
+    <nav class="rb-vbar" aria-label="{{ $t['visualBar'] }}" data-testid="rb-visual-bar">
+        <div class="rb-vbar-in">
+            @foreach ($visualBar as $rbI => $rbCard)
+                <a class="rb-vcard" href="{{ $rbCard['href'] }}" data-testid="rb-vcard">
+                    <span class="rb-vcard-img">
+                        @if ($rbCard['image'])
+                            {{-- والاسمُ مكتوبٌ تحت الصورة، فلا يُقرأ مرّتين: الصورةُ زينةٌ للقارئ الصوتيّ --}}
+                            <img src="{{ $rbCard['image'] }}" alt="" width="164" height="205" loading="{{ $rbI < 4 ? 'eager' : 'lazy' }}" decoding="async">
+                        @else
+                            <span class="rb-stripes" aria-hidden="true"></span>
+                        @endif
+                    </span>
+                    <span class="rb-vcard-title">{{ $rbCard['title'] }}</span>
+                    @if ($rbCard['sub'] !== '')<span class="rb-vcard-sub">{{ $rbCard['sub'] }}</span>@endif
+                    @if ($rbCard['cta'] !== '')<span class="rb-vcard-cta">{{ $rbCard['cta'] }}</span>@endif
+                </a>
+            @endforeach
+        </div>
+    </nav>
+@endif
 <header class="rb-head">
     {{--
         ═══ والترويسةُ عنصرٌ لاصقٌ واحد، وصفوفُها في جريانه ═══
@@ -468,9 +527,29 @@ window.RB = (function () {
     function count() { return read().reduce(function (a, b) { return a + (b.qty || 0); }, 0); }
     function paint() { document.querySelectorAll('[data-rb-count]').forEach(function (el) { el.textContent = count(); }); }
     function toast(msg) { var el = document.querySelector('[data-rb-toast]'); el.textContent = msg; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(function () { el.classList.remove('show'); }, 1600); }
+    /*
+        وحدّا السلّة حدّا الخادم (`WebCheckout`) — والقولُ فيهما بلغة الزائر.
+
+        فلا تُكتب سلّةٌ يقصّها الإتمامُ بعد ذلك: إضافةٌ تتجاوز أحدَهما تُردّ
+        كلُّها، والسلّةُ كما كانت. انظر `RBLines.merge`.
+    */
+    var LIMITS = { qty: {{ \App\Support\Store\WebCheckout::MAX_QTY }}, lines: {{ \App\Support\Store\WebCheckout::MAX_LINES }} };
+    var LIMIT_SAYS = @json(\App\Support\Store\RibbonTexts::limitSays($lang));
     // والبندُ صنفٌ ومقاسٌ ونصُّ كرتٍ إن كان — انظر `ribbon-cart-lines.js`
-    function add(id, variantId, qty, note) { write(RBLines.add(read(), id, variantId, qty, note)); }
-    function set(id, variantId, qty, note) { write(RBLines.set(read(), id, variantId, qty, note)); }
+    function addMany(lines) {
+        var r = RBLines.merge(read(), lines, LIMITS);
+        if (!r.ok) return { ok: false, reason: r.reason, message: LIMIT_SAYS[r.reason] || '' };
+        write(r.items);
+
+        return { ok: true };
+    }
+    function add(id, variantId, qty, note) {
+        var line = { id: id, variant_id: variantId || null, qty: qty };
+        if (note) line.note = note;
+
+        return addMany([line]);
+    }
+    function set(id, variantId, qty, note) { write(RBLines.set(read(), id, variantId, Math.min(LIMITS.qty, qty), note)); }
     function clear() { write([]); }
     /*
         وكلُّ جوابٍ يُقال للزبون — ولو لم يكن خطأَ حقلٍ في نموذجه.
@@ -509,7 +588,7 @@ window.RB = (function () {
     function said(status) { return SAYS[String(status)] || SAYS._; }
     function quote(extra) { return post('/quote', Object.assign({ items: read() }, extra || {})); }
     document.addEventListener('DOMContentLoaded', paint);
-    return { read: read, write: write, add: add, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE };
+    return { read: read, write: write, add: add, addMany: addMany, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE, limits: LIMITS };
 })();
 </script>
 <script>

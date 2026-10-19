@@ -9,6 +9,17 @@
     {{-- الاسمان والعنوانُ بالإنجليزيّة لمن في قائمتها — والخادمُ يحرسها (`EnglishCheckout`) --}}
     @php
         $en = ($englishOnly ?? false) ? 'dir="ltr" lang="en"' : '';
+        /*
+            والطريقةُ الأولى «توصيل» متى فُتح — قاعدةُ الخادم نفسُها
+            (`WebCheckout::quote`) والزرُّ المضيءُ نفسُه.
+
+            وكانت الصفحةُ تبدأ بأوّل ما في القائمة، والقائمةُ تبدأ بالاستلام
+            (`FlowerOrder::FULFILLMENT`): فيضيء «توصيل» وتُسعَّر الصفحةُ
+            استلامًا، ومن لم يلمس الزرّين يُرسَل طلبُه استلامًا من المحلّ.
+        */
+        $rbFulfil = in_array(\App\Support\FlowerOrder::DELIVERY, $fulfilments, true)
+            ? \App\Support\FlowerOrder::DELIVERY
+            : ($fulfilments[0] ?? \App\Support\FlowerOrder::DELIVERY);
     @endphp
     <form data-rb-form novalidate style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:48px;align-items:start">
         <div style="display:flex;flex-direction:column;gap:36px;min-width:0">
@@ -53,8 +64,8 @@
                 {{-- ولا تُعرض طريقةٌ أغلقها صاحبُ المحلّ — ومن بقيت وحدَها لا تُسأل --}}
                 @if (count($fulfilments) > 1)
                     <div style="display:flex;gap:8px;margin-bottom:14px" data-rb-fulfil>
-                        <button type="button" class="rb-pill on" data-v="delivery" style="flex:1;height:46px">{{ $t['delivery'] }}</button>
-                        <button type="button" class="rb-pill" data-v="pickup" style="flex:1;height:46px">{{ $t['pickup'] }}</button>
+                        <button type="button" class="rb-pill{{ $rbFulfil === 'delivery' ? ' on' : '' }}" data-v="delivery" aria-pressed="{{ $rbFulfil === 'delivery' ? 'true' : 'false' }}" style="flex:1;height:46px" data-testid="rb-fulfil-delivery">{{ $t['delivery'] }}</button>
+                        <button type="button" class="rb-pill{{ $rbFulfil === 'pickup' ? ' on' : '' }}" data-v="pickup" aria-pressed="{{ $rbFulfil === 'pickup' ? 'true' : 'false' }}" style="flex:1;height:46px" data-testid="rb-fulfil-pickup">{{ $t['pickup'] }}</button>
                     </div>
                 @endif
                 <div data-rb-delivery style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
@@ -304,7 +315,7 @@
         </div>
         <aside class="rb-box">
             <h2 style="margin:0 0 16px;font-size:17px;font-weight:500">{{ $t['summary'] }}</h2>
-            <div data-rb-summary style="display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--rb-line);padding-bottom:16px;font-size:14px"></div>
+            <div data-rb-summary aria-live="polite" style="display:flex;flex-direction:column;gap:12px;border-bottom:1px solid var(--rb-line);padding-bottom:16px;font-size:14px"></div>
             @if ($shows('promo'))
                 <div style="display:flex;gap:8px;margin:16px 0">
                     <input class="rb-input" name="promo" placeholder="{{ $t['promo'] }}" aria-label="{{ $t['promo'] }}" style="flex:1">
@@ -316,7 +327,14 @@
                 <div style="display:flex;justify-content:space-between"><span>{{ $t['subtotal'] }}</span><span data-rb-subtotal></span></div>
                 <div style="display:none;justify-content:space-between" data-rb-discount-row><span>{{ $t['discount'] }}</span><span data-rb-discount></span></div>
                 <div style="display:none;justify-content:space-between" data-rb-tax-row><span>{{ $t['tax'] }}</span><span data-rb-tax></span></div>
-                <div style="display:flex;justify-content:space-between"><span>{{ $t['shipping'] }}</span><span data-rb-ship></span></div>
+                {{--
+                    وصفُّ التوصيل لا يُرسم للاستلام — لا «مجاني» ولا فراغ.
+
+                    يُطوى حتّى تعود التسعيرة، ثمّ يقرّره `RBQuote.shipping` من
+                    طريقة الاستلام التي سعّرها الخادم: الرسمُ، أو «مجاني» لتوصيلٍ
+                    رسمُه صفرٌ حقًّا. والرسمُ نفسُه صفرٌ للاستلام في الخادم كما كان.
+                --}}
+                <div style="display:none;justify-content:space-between" data-rb-ship-row data-testid="rb-ship-row"><span>{{ $t['shipping'] }}</span><span data-rb-ship></span></div>
                 <div style="display:flex;justify-content:space-between;border-top:1px solid var(--rb-line);padding-top:12px;font-size:16px"><span>{{ $t['total'] }}</span><strong data-rb-total></strong></div>
             </div>
             {{--
@@ -379,6 +397,7 @@
 @endsection
 @section('scripts')
 @if ($accepts)
+<script>{!! file_get_contents(resource_path('js/store/ribbon-quote.js')) !!}</script>
 @if ($giftCard['message_only'])
 <script>{!! file_get_contents(resource_path('js/store/ribbon-card-message.js')) !!}</script>
 @endif
@@ -394,7 +413,7 @@
 <script>
 (function () {
     // والطريقةُ الابتدائيّة من المفتوح لا من ظنٍّ في الشاشة
-    var T = @json($t), fulfil = @json($fulfilments[0] ?? 'delivery'), pay = @json($payments[0] ?? null), promo = '';
+    var T = @json($t), fulfil = @json($rbFulfil), pay = @json($payments[0] ?? null), promo = '';
     /*
      * الإجماليُّ الذي عُرض للزبون آخرَ مرّة — يُرسَل مع الطلب.
      *
@@ -416,18 +435,37 @@
         });
         $('[data-rb-banknote]').style.display = pay === 'transfer' ? 'block' : 'none';
     }
+    /*
+     * والتسعيرةُ الأخيرة وحدها تُرسم — وما سبقها يُطرح (`RBQuote.latest`).
+     *
+     * والزرُّ مقفلٌ ما دامت في الطريق، و`shownTotal` فارغٌ حتّى تُرسم: لا
+     * يُرسَل طلبٌ بإجماليٍّ لطريقةِ استلامٍ تُركت، ولا يُقال «وافق على كذا»
+     * عن رقمٍ لم يُرسم بعد. والخادمُ يحرس الشيءَ نفسَه (`WebCheckout::assertAgreed`).
+     */
+    var quoting = RBQuote.latest(function (extra) { return RB.quote(extra); });
+    function busy(on) {
+        $('[data-rb-summary]').setAttribute('aria-busy', on ? 'true' : 'false');
+        $('[data-testid=rb-place]').disabled = on;
+        if (on) $('[data-rb-place-label]').textContent = T.quoting;
+    }
     function refresh() {
         if (!RB.read().length) { location.href = RB.base + '/cart'; return; }
-        RB.quote({ fulfil: fulfil, promo: promo, gift_card: gift }).then(function (q) {
+        shownTotal = null;
+        busy(true);
+        quoting.run({ fulfil: fulfil, promo: promo, gift_card: gift }).then(function (q) {
+            if (q === null) return;
+            busy(false);
             var msg = $('[data-rb-promo-msg]'); msg.textContent = '';
-            if (!q.ok) { $('[data-rb-form-error]').textContent = Object.values(q.errors || {}).flat().join(' · '); return; }
+            if (!q.ok) { $('[data-rb-place-label]').textContent = T.place; $('[data-rb-form-error]').textContent = Object.values(q.errors || {}).flat().join(' · '); return; }
             $('[data-rb-summary]').innerHTML = q.lines.map(function (l) {
                 return '<div style="display:flex;justify-content:space-between;gap:12px"><span>' + esc(l.name) + (l.variant ? ' · ' + esc(l.variant) : '') + ' × ' + l.qty + '</span><span>' + esc(l.line_text) + '</span></div>';
             }).join('');
             $('[data-rb-subtotal]').textContent = q.subtotal_text;
             $('[data-rb-discount-row]').style.display = q.discount > 0 ? 'flex' : 'none'; $('[data-rb-discount]').textContent = '− ' + q.discount_text;
             $('[data-rb-tax-row]').style.display = q.tax > 0 ? 'flex' : 'none'; $('[data-rb-tax]').textContent = q.tax_text;
-            $('[data-rb-ship]').textContent = q.delivery > 0 ? q.delivery_text : T.free;
+            var ship = RBQuote.shipping(q, T);
+            $('[data-rb-ship-row]').style.display = ship.show ? 'flex' : 'none';
+            $('[data-rb-ship]').textContent = ship.text;
             $('[data-rb-total]').textContent = q.total_text;
             shownTotal = q.total;
             if (consent) consent.lines(q.lines);
@@ -595,7 +633,7 @@
         fulfilPills.addEventListener('click', function (e) {
             var b = e.target.closest('button'); if (!b) return;
             fulfil = b.dataset.v;
-            form.querySelectorAll('[data-rb-fulfil] button').forEach(function (x) { x.classList.toggle('on', x === b); });
+            form.querySelectorAll('[data-rb-fulfil] button').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
             paintFulfil();
             refresh();
         });
@@ -610,12 +648,16 @@
      */
     var agreeBtn = $('[data-rb-agree]'), agreeNo = $('[data-rb-agree-no]');
     if (agreeBtn) agreeBtn.addEventListener('click', function () {
+        // والإقرارُ على الإجماليّ الجديد بعد أن يُرسم — لا قبله
+        if (quoting.pending()) return;
         $('[data-rb-agree-box]').style.display = 'none';
         form.dispatchEvent(new Event('submit', { cancelable: true }));
     });
     if (agreeNo) agreeNo.addEventListener('click', function () { $('[data-rb-agree-box]').style.display = 'none'; });
     form.addEventListener('submit', function (e) {
         e.preventDefault();
+        // وتسعيرةٌ في الطريق تُنتظر — `Enter` في حقلٍ يُرسل النموذجَ ولو أُقفل الزرّ
+        if (quoting.pending()) return;
         form.querySelectorAll('[data-err]').forEach(function (d) { d.textContent = ''; });
         form.querySelectorAll('.rb-input').forEach(function (i) { i.classList.remove('err'); });
         $('[data-rb-form-error]').textContent = '';
@@ -658,10 +700,15 @@
              * وخطأُ الكود يُقرأ تحت حقله، ويُفتح صندوقُ الموافقة بالسبب
              * والإجماليّ الجديد. ولا يُرسَل الطلبُ من نفسه: الإقرارُ ضغطةٌ.
              */
-            if (r && r.errors && r.errors.promo) {
-                var why = [].concat(r.errors.promo).join(' · ');
+            /*
+                وإجماليٌّ تبدّل لغير الخصم — رسمُ توصيلٍ أو سعرُ صنف — يُقال
+                بالصندوق نفسِه (`WebCheckout::assertAgreed`): السببُ والإجماليُّ
+                الجديد، والإقرارُ ضغطة.
+            */
+            if (r && r.errors && (r.errors.promo || r.errors.total)) {
+                var why = [].concat(r.errors.promo || r.errors.total).join(' · ');
                 var pm = $('[data-rb-promo-msg]');
-                if (pm) { pm.style.color = 'var(--rb-clay, #b91c1c)'; pm.textContent = why; }
+                if (pm && r.errors.promo) { pm.style.color = 'var(--rb-clay, #b91c1c)'; pm.textContent = why; }
                 var box = $('[data-rb-agree-box]');
                 if (box) { $('[data-rb-agree-why]').textContent = why; box.style.display = 'block'; }
                 // وتُعاد التسعيرةُ ليقرأ في الملخّص ما سيدفعه فعلًا

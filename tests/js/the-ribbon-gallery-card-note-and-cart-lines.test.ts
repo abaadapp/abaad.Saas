@@ -118,7 +118,8 @@ describe('نصُّ كرت الهدية على صفحته — اختياريّ', 
         expect(start).toBeGreaterThan(-1);
         expect(product).not.toContain('if (text === null) return;');
         expect(product).not.toContain('RBNotes');
-        expect(product).toContain('if (text) RB.add(id, variant, qty, text); else RB.add(id, variant, qty);');
+        // والإضافةُ تُسأل نتيجتَها: سلّةٌ بلغت حدَّها تُردّ ويُقال لمَ (`RB.addMany`)
+        expect(product).toContain('var r = text ? RB.add(id, variant, qty, text) : RB.add(id, variant, qty);');
         expect(file).not.toContain('data-rb-card-note-err');
     });
 
@@ -170,7 +171,9 @@ describe('بنودُ السلّة', () => {
     it('السلّةُ تقرأ منه، وتعرض نصَّ الكرت وتعدّل البندَ بنصّه', () => {
         const layout = readFileSync(VIEW('layout.blade.php'), 'utf8');
         expect(layout).toContain("resource_path('js/store/ribbon-cart-lines.js')");
-        expect(layout).toContain('write(RBLines.add(read(), id, variantId, qty, note));');
+        // والبندُ الواحدُ والبنودُ معًا من بابٍ واحد — كلُّها أو لا شيء (`RBLines.merge`)
+        expect(layout).toContain('var r = RBLines.merge(read(), lines, LIMITS);');
+        expect(layout).toContain('return addMany([line]);');
 
         const cart = readFileSync(VIEW('cart.blade.php'), 'utf8');
         expect(cart).toContain('T.cartCardMessage');

@@ -31,9 +31,11 @@ use App\Support\Store\NewArrivals;
 use App\Support\Store\ProductReviews;
 use App\Support\Store\PaidReceipt;
 use App\Support\Store\ThankYouPage;
+use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
+use App\Support\Store\StoreVisualBar;
 use App\Support\Store\StorePage;
 use App\Support\Store\CardIdentity;
 use App\Support\Store\CardIdentityUnconfirmed;
@@ -332,8 +334,12 @@ class RibbonController extends Controller
      *  • `view=best`  ← ما بيع فعلًا، من الأكثر (`BestSellers`)، وله الغلبة:
      *                   مع `cat` يُهمَل `cat` — الخياراتُ في الصفّ واحدٌ منها.
      *  • `cat={id}`   ← فئةٌ بمعرّفها، لا باسمها.
+     *  • `collection={slug}` ← مجموعةٌ كتبها صاحبُ المتجر (`StoreCollections`)،
+     *                   بأصنافها وبترتيبه. بعد «الأكثر مبيعًا» وقبل `cat`: مع
+     *                   الثاني يُهمَل الثاني. ومجموعةٌ لا تُعرف أو أُخفيت
+     *                   تُردّ «غير موجود» — من إعداد هذا المتجر وحده.
      *  • `q`          ← يبحث **داخل** ما سبق: في الكلّ، أو الفئة، أو الأكثر
-     *                   مبيعًا بترتيبه.
+     *                   مبيعًا بترتيبه، أو المجموعة بترتيبها.
      *
      * وقيمةٌ أخرى لـ`view` تُقرأ «الكلّ» — لا خطأ، ولا رفَّين متناقضين.
      */
@@ -341,14 +347,19 @@ class RibbonController extends Controller
     {
         $bid = (int) $business->id;
         $best = $request->query('view') === StoreHeader::VIEW_BEST;
-        $cat = $best ? 0 : (int) $request->query('cat', 0);
+        $asked = $best ? null : $request->query(StoreCollections::QUERY);
+        // ومُدخَلٌ ليس نصًّا (`collection[]=x`) لا يُقرأ مجموعةً ولا يُسقط الصفحة
+        abort_if($asked !== null && ! is_string($asked), 404);
+        $collection = is_string($asked) && $asked !== '' ? StoreCollections::find($bid, $asked) : null;
+        abort_if(is_string($asked) && $asked !== '' && $collection === null, 404);
+        $cat = $best || $collection !== null ? 0 : (int) $request->query('cat', 0);
         $q = trim((string) $request->query('q', ''));
         $shown = $this->shown($bid)->with(['category:id,name,name_en', 'variants'])->orderBy('name')->get();
 
         $currency = Storefront::currency($business);
         $categories = $this->categories($bid, $lang, $shown);
 
-        $list = ($best ? BestSellers::ranked($bid, $shown) : $shown)
+        $list = ($best ? BestSellers::ranked($bid, $shown) : ($collection !== null ? StoreCollections::members($collection, $shown) : $shown))
             ->when($cat > 0, fn ($c) => $c->where('category_id', $cat))
             /*
              * والبحثُ بالاسمين معًا أيًّا كانت لغةُ الصفحة: زبونٌ على الصفحة
@@ -367,10 +378,19 @@ class RibbonController extends Controller
              */
             'catName' => $cat > 0 ? ($categories->firstWhere('id', $cat)['name'] ?? null) : null,
             /*
+             * والمجموعةُ عنوانًا للرفّ ووصفًا تحته — اسمُها بلغة الصفحة،
+             * ووصفُها بلغتها وحدها (`StoreCollections`).
+             */
+            'collection' => $collection === null ? null : [
+                'slug' => $collection['slug'],
+                'title' => StoreCollections::title($collection, $lang),
+                'description' => StoreCollections::description($collection, $lang),
+            ],
+            /*
              * صفُّ خيارات المتجر — يُرسم داخل الترويسة اللاصقة (`layout`)
              * لا في جسم الصفحة: موضعٌ واحدٌ للترشيح لا اثنان.
              */
-            'shopOptions' => StoreHeader::shopOptions($bid, $categories, RibbonTexts::for($lang), $base, $cat, $best),
+            'shopOptions' => StoreHeader::shopOptions($bid, $categories, RibbonTexts::for($lang), $base, $cat, $best, StoreCollections::visible($bid), $collection['slug'] ?? null, $lang),
             'q' => $q,
             /*
              * أفي الرفّ شيءٌ أصلًا؟ — ليُفرَّق «لا شيء يطابق بحثك» عن «لا
@@ -477,6 +497,16 @@ class RibbonController extends Controller
              * وتُسأل هنا وحدَها: الرفُّ والرئيسيّةُ لا يحملانها.
              */
             'reviews' => ProductReviews::for($bid, (int) $p->id),
+            /*
+             * وكتابةُ المبلغ كما يكتبه `Money::format` — لمجموع «أضف مع طلبك»
+             * وسطور عدّاداته في الصفحة (`RBUpsells.money`). عرضٌ وحده:
+             * الإتمامُ يسعّر من القاعدة.
+             */
+            'money' => [
+                'd' => Money::decimals($currency),
+                'symbol' => __((string) ($currency['symbol'] ?? '')),
+                'before' => (bool) ($currency['before'] ?? false),
+            ],
             /*
              * وملاحظةُ التوصيل تحت زرّ السلّة — إلّا لمن طلب تنبيهَ الصورة
              * وحده هناك (`storefront.ribbon_product_page_without_delivery_note_businesses`).
@@ -744,6 +774,12 @@ class RibbonController extends Controller
              * انظر `StoreHeader::announcement`.
              */
             'announcement' => StoreHeader::announcement($bid, $lang),
+            /*
+             * وشريطُ المجموعات المصوّر فوق الترويسة — لصفحات التصفّح، بلغة
+             * الزائر، لمن شغّله ونشره. وفارغٌ لمن سواه فلا يُرسم شيء.
+             * انظر `StoreVisualBar::cards`.
+             */
+            'visualBar' => StoreVisualBar::cards($bid, $lang, $base, $current),
             // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
             'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo(), $lang),
         ] + $this->floatingWhatsapp($bid, $identity, $t);

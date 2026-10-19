@@ -378,6 +378,17 @@
     }
     /* واسمُ الصنف أقوى من سطر وصفه — وهو ما يُبحث عنه في السطر */
     table.items td.item { font-weight: bold; }
+    /*
+        وما يميّز البندَ تحته — ملاحظتُه وخياراتُه والمشمولُ في ثمنه — أخفُّ
+        منه ولا يُزاحمه (`InvoiceLineDetails::rows`). والإضافةُ المدفوعةُ صفٌّ
+        بمالها تحت صنفها، مزاحةً عنه بقدر ما تُقرأ تابعةً له لا صنفًا آخر.
+    */
+    table.items td.item .detail {
+        font-weight: normal;
+        color: var(--document-second); color: {{ $t['second'] }};
+        padding-top: {{ $fx(1) }};
+    }
+    table.items tr.sub td.item { font-weight: normal; padding-{{ $start }}: {{ $fx(16) }}; }
 
     /*
         الصفُّ لا ينكسر بين صفحتين، والرأسُ يتكرّر على كلّ صفحة.

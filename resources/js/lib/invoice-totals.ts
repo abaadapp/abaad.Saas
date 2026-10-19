@@ -66,3 +66,33 @@ export function invoiceTotals(lines: InvoiceLine[], inclusive: boolean): Invoice
 
     return { subtotal, discount, tax, total: subtotal - discount + tax };
 }
+
+/**
+ * البنودُ كما يحسبها الخادم — والإضافةُ المدفوعةُ سطرٌ بثمنها تحت صنفها.
+ *
+ * والثمنُ من الكتالوج المعروض، والضريبةُ ضريبةُ صنفها، والمشمولةُ في الثمن لا
+ * تُحسب، والبندُ اليدويُّ بلا إضافات (`InvoiceLineDetails::expand`). معاينةٌ لا
+ * مصدر: الخادمُ يعيد الحساب.
+ */
+export interface LineWithAddons extends InvoiceLine {
+    product_id?: string;
+    addons?: { addon_id: string; quantity: string; included: boolean }[];
+}
+
+export function withAddons<T extends LineWithAddons>(lines: T[], catalog: { id: number; price: number }[]): InvoiceLine[] {
+    const out: InvoiceLine[] = [];
+
+    for (const line of lines) {
+        out.push(line);
+
+        for (const a of line.product_id ? (line.addons ?? []) : []) {
+            const row = catalog.find((c) => String(c.id) === a.addon_id);
+
+            if (!row || a.included) continue;
+
+            out.push({ quantity: a.quantity || '1', unit_price: row.price, discount: 0, tax_rate: line.tax_rate });
+        }
+    }
+
+    return out;
+}

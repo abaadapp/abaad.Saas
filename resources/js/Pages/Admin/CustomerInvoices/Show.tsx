@@ -14,6 +14,7 @@ import { Input } from '@/Components/ui/input';
 import { CHEQUE } from '@/lib/cheques';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 
 interface Invoice {
@@ -46,7 +47,20 @@ interface Invoice {
     attachments: { id: number; name: string; size: number; url: string | null }[];
     orders: string[];
     cancellation_reason: string | null;
-    items: { description: string; quantity: number; unit_price: number; discount: number; tax_rate: number; line_total: number }[];
+    items: {
+        description: string;
+        /** إضافةٌ مدفوعةٌ تحت صنفها — `InvoiceLineDetails::rows` */
+        child?: boolean;
+        /** ما يميّز البند: ملاحظتُه وخياراتُه — والداخليُّ معلَّم */
+        details?: { label: string; text: string; internal: boolean }[];
+        /** الإضافاتُ المشمولةُ في ثمنه — أسماءٌ بلا مال */
+        included?: { name: string; qty: string }[];
+        quantity: number;
+        unit_price: number;
+        discount: number;
+        tax_rate: number;
+        line_total: number;
+    }[];
     payments: { id: number; number: string; amount: number; method: string; at: string | null }[];
     credit_notes: { id: number; number: string; amount: number; reason: string | null; at: string | null }[];
 }
@@ -259,8 +273,25 @@ export default function CustomerInvoiceShow() {
                                 </thead>
                                 <tbody>
                                     {invoice.items.map((it, i) => (
-                                        <tr key={i} className="border-t border-[var(--ui-border,#e8e8e8)]">
-                                            <td className="p-2">{it.description}</td>
+                                        <tr
+                                            key={i}
+                                            data-testid={it.child ? 'invoice-line-addon' : 'invoice-line'}
+                                            className={cn('border-t border-[var(--ui-border,#e8e8e8)]', it.child && 'border-t-0 text-[12px] text-[#4b4b4b]')}
+                                        >
+                                            <td className={cn('p-2', it.child && 'ps-6')}>
+                                                {it.child && '+ '}
+                                                <bdi>{it.description}</bdi>
+                                                {(it.details ?? []).map((d, k) => (
+                                                    <span key={k} className={cn('block text-[12px]', d.internal ? 'font-medium text-[#b45309]' : 'text-[#6b7280]')}>
+                                                        <bdi>{d.label}</bdi>: <bdi>{d.text}</bdi>
+                                                    </span>
+                                                ))}
+                                                {(it.included ?? []).map((a, k) => (
+                                                    <span key={`i${k}`} className="block text-[12px] text-[#6b7280]">
+                                                        + <bdi>{a.name}</bdi> <span dir="ltr">×{a.qty}</span> — {t('ضمن السعر')}
+                                                    </span>
+                                                ))}
+                                            </td>
                                             <td className="p-2 text-end tabular-nums">{it.quantity}</td>
                                             <td className="p-2 text-end tabular-nums">{m(it.unit_price)}</td>
                                             <td className="p-2 text-end font-semibold tabular-nums">

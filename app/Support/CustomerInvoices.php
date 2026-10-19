@@ -257,7 +257,15 @@ final class CustomerInvoices
                  */
                 'line_total' => $inclusive ? $net : round($net + $lineTax, 3),
                 'sort_order' => $sort++,
-            ];
+                /*
+                 * وما لا مالَ فيه يمرّ كما جاء — لقطةُ ما اختير مع البند، ومن
+                 * يتبع منها مَن (`InvoiceLineDetails::expand`). لا يُحسب منه رقم.
+                 */
+                'details' => ! empty($line['details']) ? $line['details'] : null,
+            ] + array_filter([
+                'group' => $line['group'] ?? null,
+                'parent' => $line['parent'] ?? null,
+            ], fn ($v) => $v !== null);
         }
 
         /*
@@ -506,8 +514,25 @@ final class CustomerInvoices
                 self::attributes($businessId, $customer, $data, $totals) + ['created_by' => $userId]
             );
 
+            /*
+             * والإضافةُ المدفوعةُ تعرف صنفَها — بمجموعته في النموذج، تُقرأ هنا
+             * مفتاحًا بعد أن يُكتب الصنفُ قبلها. والمالُ في سطرها كما حُسب.
+             */
+            $written = [];
+
             foreach ($totals['items'] as $item) {
-                CustomerInvoiceItem::create($item + ['customer_invoice_id' => $invoice->id]);
+                $group = $item['group'] ?? null;
+                $parent = $item['parent'] ?? null;
+                unset($item['group'], $item['parent']);
+
+                $row = CustomerInvoiceItem::create($item + [
+                    'customer_invoice_id' => $invoice->id,
+                    'parent_item_id' => $parent !== null ? ($written[$parent] ?? null) : null,
+                ]);
+
+                if ($group !== null) {
+                    $written[$group] = $row->id;
+                }
             }
 
             Activity::log('created', 'أنشأ مسودّة فاتورة عميل — '.$customer->name, [
@@ -1061,6 +1086,10 @@ final class CustomerInvoices
             'description' => $name.$suffix,
             'quantity' => (float) $item->quantity,
             'unit_price' => (float) $item->price,
+            // وملاحظتُه وخياراتُه من لقطة البيع — بلا مال (`InvoiceLineDetails::fromOrderItem`)
+            'details' => InvoiceLineDetails::fromOrderItem($item),
+            // وإضافاتُه المدفوعةُ تحته في الورقة — والمالُ في سطورها كما كان
+            'group' => 'oi'.$item->id,
         ];
 
         $addons = $item->addons;
@@ -1082,6 +1111,8 @@ final class CustomerInvoices
                 'description' => $a->name.$suffix,
                 'quantity' => (float) $a->quantity,
                 'unit_price' => (float) $a->unit_price,
+                'details' => InvoiceLineDetails::fromOrderAddon($a),
+                'parent' => 'oi'.$item->id,
             ])->all()];
         }
 
@@ -1102,6 +1133,7 @@ final class CustomerInvoices
                 )->implode(', ').$suffix, 255, '')] : null,
                 'quantity' => 1.0,
                 'unit_price' => $charged,
+                'parent' => 'oi'.$item->id,
             ]];
         }
 

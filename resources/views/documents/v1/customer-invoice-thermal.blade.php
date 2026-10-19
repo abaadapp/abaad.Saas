@@ -105,21 +105,32 @@
             <td class="l b" style="width:{{ $narrow ? 26 : 24 }}%">{{ __('الإجمالي') }}</td>
         </tr>
         @foreach ($doc['items'] as $it)
-            <tr>
+            {{-- والإضافةُ تحت صنفها صفٌّ أصغر بلا خطٍّ بينهما — كأسطر الإضافة في الإيصال (`thermal-tokens`) --}}
+            @php($sub = ($it['child'] ?? false) ? 'addon' : '')
+            <tr @if ($sub) data-line="addon" @endif>
                 {{-- والاسمُ كلماتٌ لا تنكسر: وإلّا صغّر mpdf الجدولَ كلَّه بدل أن يلفّ السطر (`Paper::keepWords`) --}}
-                <td class="bidi" dir="{{ Paper::dirOf($it['name']) }}">
+                {{-- والخليّةُ باتّجاه الورقة، والاسمُ وحده باتّجاهه: mpdf يُلبس ما تحت الخليّة اتّجاهَها --}}
+                <td class="bidi name {{ $sub }}">
                     {{-- وبندُ الإضافة يُعلَّم بها — سطرٌ بثمنه كما فُوتر، لا يُدمج في غيره --}}
-                    @if ($it['addon'] ?? false)<span data-addon>+ </span>@endif{!! $lines($it['name']) !!}
-                    @if ($it['addon'] ?? false)
-                        <div class="muted tiny">{{ __('إضافة') }}</div>
+                    <div class="bidi" dir="{{ Paper::dirOf($it['name']) }}">@if ($it['addon'] ?? false)<span data-addon>+ </span>@endif{!! $lines($it['name']) !!}</div>
+                    @if (($it['addon'] ?? false) && ! ($it['child'] ?? false))
+                        {{-- واسمٌ لا فعل: «إضافة» وحدَها تُترجَم «Add» --}}
+                        <div class="muted tiny">{{ __('بند إضافة') }}</div>
                     @endif
+                    {{-- التسميةُ باتّجاه الورقة، والقيمةُ معزولةٌ باتّجاهها — والداخليُّ معلَّم --}}
+                    @foreach ($it['details'] ?? [] as $d)
+                        <div class="muted tiny" data-detail dir="{{ Paper::rtl() ? 'rtl' : 'ltr' }}">— @if ($d['internal'])({{ __('داخلي') }}) @endif{{ $d['label'] }}: <span dir="{{ Paper::dirOf($d['text']) }}">{{ $d['text'] }}</span></div>
+                    @endforeach
+                    @foreach ($it['included'] ?? [] as $inc)
+                        <div class="muted tiny" data-detail="included">+ <span dir="{{ Paper::dirOf($inc['name']) }}">{{ $inc['name'] }}</span> × <span dir="ltr">{{ $inc['qty'] }}</span> — {{ __('ضمن السعر') }}</div>
+                    @endforeach
                     @if ($it['discount'])
                         <div class="muted tiny">{{ __('خصم') }}: <span dir="ltr">{{ $it['discount'] }}</span></div>
                     @endif
                 </td>
-                <td class="c" style="vertical-align:top"><span dir="ltr">{{ $it['price'] }}</span></td>
-                <td class="c b" style="vertical-align:top" dir="ltr">{{ $it['qty'] }}</td>
-                <td class="l" style="vertical-align:top"><span dir="ltr">{{ $it['total'] }}</span></td>
+                <td class="c {{ $sub }}" style="vertical-align:top"><span dir="ltr">{{ $it['price'] }}</span></td>
+                <td class="c b {{ $sub }}" style="vertical-align:top" dir="ltr">{{ $it['qty'] }}</td>
+                <td class="l {{ $sub }}" style="vertical-align:top"><span dir="ltr">{{ $it['total'] }}</span></td>
             </tr>
         @endforeach
     </tbody>

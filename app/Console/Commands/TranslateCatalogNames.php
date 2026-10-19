@@ -7,7 +7,11 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * يملأ الأسماء الإنجليزية لما كُتب قبل وجود المعجم.
+ * يملأ الأسماء الإنجليزية للأقسام والمقاسات لما كُتب قبل وجود المعجم.
+ *
+ * ولا يمسّ الأصنافَ ولا الإضافات: اسمُ الصنف يكتبه التاجر لبضاعته،
+ * وترجمتُه اختراعٌ عليه — فالإنجليزيُّ منه ما كتبه بيده أو لا يكون (انظر
+ * `Lexicon::fill`). وما مُلئ لهما قبل ذلك يبقى كما هو.
  *
  * الكتالوج القائم كُتب كلّه بالعربية و`name_en` فيه فارغ، فالشاشة
  * الإنجليزية تعرضه عربيًّا. والحفظُ من الآن يملؤه — لكنّ ذلك لا يمسّ
@@ -24,13 +28,11 @@ class TranslateCatalogNames extends Command
                             {--business= : نشاطٌ بعينه بدل الجميع}
                             {--dry-run : اعرض ولا تكتب}';
 
-    protected $description = 'يملأ name_en من معجم الكتالوج لما تُرك فارغًا';
+    protected $description = 'يملأ name_en للأقسام والمقاسات من معجم الكتالوج لما تُرك فارغًا';
 
     /** @var array<string, class-string<Model>> */
     private const TABLES = [
-        'المنتجات' => \App\Models\Product::class,
         'الأقسام' => \App\Models\Category::class,
-        'الإضافات' => \App\Models\Addon::class,
         'المقاسات' => \App\Models\ProductVariant::class,
     ];
 

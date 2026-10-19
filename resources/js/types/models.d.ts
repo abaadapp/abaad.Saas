@@ -13,7 +13,10 @@ export interface Product {
     name: string;
     name_en: string | null;
     label: string;
+    /** القسمُ كما حُفظ — به يُطابَق القسمُ في النموذج، فلا يُترجَم */
     cat: string;
+    /** والقسمُ للعرض بلغة الشاشة (`CategoryName::display`) — وغائبُه يُقرأ `cat` */
+    cat_label?: string;
     price: number;
     cost: number;
     qty: number;
@@ -46,6 +49,8 @@ export interface Category {
     id: number;
     name: string;
     name_en: string | null;
+    /** الاسمُ للعرض بلغة الشاشة — والقيمةُ تبقى `name` */
+    label?: string;
     products: number;
     icon: string;
     color: string;
@@ -131,6 +136,10 @@ export interface Supplier {
 export interface InventoryItem {
     id: number;
     name: string;
+    /** اسمُه الإنجليزيّ — للبحث */
+    name_en?: string | null;
+    /** اسمُه بلغة الشاشة — للعرض */
+    label?: string;
     sku: string;
     qty: number;
     min: number;

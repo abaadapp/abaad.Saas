@@ -61,7 +61,7 @@ export default function InventoryIndex() {
             value: (i) => i.name,
             cell: (i) => (
                 <span>
-                    <span className="block font-medium">{i.name}</span>
+                    <span className="block font-medium">{i.label ?? i.name}</span>
                     <span className="block text-[11px] text-[#9ca3af]">{i.sku}</span>
                 </span>
             ),

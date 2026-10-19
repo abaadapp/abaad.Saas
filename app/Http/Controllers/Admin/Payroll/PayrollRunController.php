@@ -148,6 +148,15 @@ class PayrollRunController extends Controller
         $bid = $this->bid();
         $line = PayrollLine::whereHas('run', fn ($q) => $q->where('business_id', $bid))->findOrFail($id);
 
+        /*
+         * ولا يكتب أحدٌ راتبَه بيده — إلّا صاحبُ النشاط.
+         *
+         * سطرُ المسيرة يُعدَّل بقراءتها (`payroll.view`)، ومن يملك الاعتمادَ والصرفَ
+         * معها يرفع راتبَه ثمّ يعتمده ثمّ يصرفه. وهو عينُ ما يمنعه حارسُ الموظّفين
+         * (`EmployeeController::refuseRaisingMyself`) — فيُمنع هنا كذلك.
+         */
+        abort_if((int) $line->user_id === (int) auth()->id() && ! Permissions::isOwner(auth()->user()), 403);
+
         if (! $line->run->isEditable()) {
             return back()->with('toast', ['msg' => __('المسيرة اعتُمدت — لا تُعدَّل سطورها'), 'type' => 'warning']);
         }

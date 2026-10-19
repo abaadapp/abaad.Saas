@@ -30,7 +30,8 @@ use Tests\TestCase;
  *
  * أنّ الخادمَ يردّ كلَّ من ليس صاحبَ النشاط — موظّفًا مُنح الإعدادات،
  * ومديرَ فرع، وشريكًا ضُيّقت صلاحياتُه بيده — ولا يُقرأ ملفٌّ ولا تُكتب
- * نسخةُ أمانٍ لمن سيُردّ. وأنّ الإنشاءَ والتحميلَ يبقيان لمن كانا له.
+ * نسخةُ أمانٍ لمن سيُردّ. وأنّ الإنشاءَ والتكرارَ يبقيان لمن كانا له — والتحميلُ
+ * صار خلف `business.export` (`OnlyTheOwnerOrWhomHeNamesDownloadsTheBackupTest`).
  * وأنّ الرمزَ لا يخرج، وأنّ الطلبَ يعود بعد الاستعادة فيُبنى له رابطٌ جديد.
  */
 class OnlyTheOwnerMayWipeTheShopBackTest extends TestCase
@@ -163,8 +164,13 @@ class OnlyTheOwnerMayWipeTheShopBackTest extends TestCase
         $this->assertSame(1, $this->expenses());
     }
 
-    /** والإنشاءُ والتحميلُ يبقيان لمن مُنح «الإعدادات» — لا يمحوان شيئًا */
-    public function test_an_employee_given_settings_still_creates_and_downloads(): void
+    /**
+     * والإنشاءُ والتكرارُ يبقيان لمن مُنح «الإعدادات» — لا يمحوان شيئًا ولا يُخرجانه.
+     *
+     * والتحميلُ وحده تغيّر: كان على القسم، فكان يُخرج الرواتبَ وأسعارَ الشراء
+     * وكلَّ العملاء لمن مُنح الإعدادات ليضبط الطابعة. صار خلف `business.export`.
+     */
+    public function test_an_employee_given_settings_still_creates_but_no_longer_downloads(): void
     {
         $staff = $this->notTheOwner('staff');
 
@@ -172,7 +178,12 @@ class OnlyTheOwnerMayWipeTheShopBackTest extends TestCase
             ->assertRedirect()->assertSessionHas('toast.type', 'success');
         $this->assertCount(1, $this->files('backup'));
 
-        $this->actingAs($staff)->get($this->exportRoute('admin.backup.latest.download'))->assertOk();
+        $this->actingAs($staff)->post(route('admin.backup.frequency'), ['frequency' => 'weekly'])
+            ->assertRedirect()->assertSessionHas('toast.type', 'success');
+        $this->assertSame('weekly', BackupService::frequency($this->shop->id));
+
+        $this->actingAs($staff)->get($this->exportRoute('admin.backup.latest.download'))->assertForbidden();
+        $this->actingAs($staff)->get($this->exportRoute('admin.backup.download'))->assertForbidden();
     }
 
     /** والشاشةُ تُخفي البابين عمّن يردّه الخادم — من الحارس نفسِه */

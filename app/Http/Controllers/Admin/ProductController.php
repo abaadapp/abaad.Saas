@@ -10,7 +10,6 @@ use App\Models\ImportBatch;
 use App\Models\Product;
 use App\Support\Activity;
 use App\Support\Demo;
-use App\Support\Lexicon;
 use App\Support\Lists\ProductsList;
 use App\Support\Pagination;
 use App\Support\PlanLimits;
@@ -303,8 +302,15 @@ class ProductController extends Controller
          * فيها، وصنفٌ جديد يختفي عنها بلا سبب يراه صاحبه أسوأ من ظهوره.
          */
         $data['published'] = $request->boolean('published', true);
-        // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
-        $data = Lexicon::fill($data);
+        /*
+         * والاسمُ الإنجليزيّ ما كتبه التاجرُ بيده — أو لا اسم.
+         *
+         * كان يُملأ من المعجم إن تُرك فارغًا (`Lexicon::fill`)، فيقرأ الكاشيرُ
+         * الأجنبيّ والإيصالُ الإنجليزيّ ولقطةُ البيع اسمًا لم يكتبه أحد:
+         * «باقة ورد أحمر» ← «Red rose bouquet». واسمُ الصنف يكتبه التاجرُ
+         * لبضاعته، وترجمتُه اختراعٌ عليه — فما لم يُكتب يُعرض بالعربيّة كما
+         * كُتب (`ProductName::display`). والمعجمُ للأقسام والمقاسات وحدها.
+         */
         /*
          * وما لم تُرفع له صورةٌ يبقى بلا صورة.
          *
@@ -422,8 +428,7 @@ class ProductController extends Controller
         if ($request->has('published')) {
             $data['published'] = $request->boolean('published');
         }
-        // اسمٌ إنجليزيّ من المعجم إن لم يُكتب بيد — انظر Lexicon
-        $data = Lexicon::fill($data);
+        // والاسمُ الإنجليزيّ كما أرسله النموذج — لا يُملأ من المعجم (انظر `store`)
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)
         $data['cost'] = $data['cost'] ?? 0;
         // ولا يُبدَّل الربطُ بحفظةٍ لم تُرسله — كالعرض سواء

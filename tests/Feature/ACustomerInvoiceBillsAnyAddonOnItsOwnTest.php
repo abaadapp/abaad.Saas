@@ -316,7 +316,8 @@ class ACustomerInvoiceBillsAnyAddonOnItsOwnTest extends TestCase
         $this->assertSame($preview, $printed, 'المعاينةُ قالت سطورًا والطباعةُ غيرَها');
         $this->assertStringContainsString('شوكولاتة', $printed);
         // سطرٌ واحدٌ للإضافة: اسمُها ثمّ كميّتُها ثمّ ثمنُها من الكتالوج
-        $this->assertMatchesRegularExpression('/شوكولاتة<\/td> <td class="num">2<\/td> <td class="amt"><span dir="ltr">[^<]*3\.000/u', $printed);
+        // وخليّةُ البيان قد تحمل تفاصيلَ البند تحت اسمه (`InvoiceLineDetails::rows`) — فالفراغُ قبل إغلاقها لا يُعدّ
+        $this->assertMatchesRegularExpression('/شوكولاتة(<\/div>)?\s*<\/td> <td class="num">2<\/td> <td class="amt"><span dir="ltr">[^<]*3\.000/u', $printed);
     }
 
     /* ═══════════ ٦ · اللقطة ═══════════ */

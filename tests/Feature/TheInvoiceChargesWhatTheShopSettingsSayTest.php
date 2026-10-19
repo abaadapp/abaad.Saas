@@ -216,7 +216,8 @@ class TheInvoiceChargesWhatTheShopSettingsSayTest extends TestCase
 
         // وشاشةُ الإنشاء تنادي الوحدةَ ولا تكتب صيغةً من عندها
         $screen = file_get_contents(resource_path('js/Pages/Admin/CustomerInvoices/Create.tsx'));
-        $this->assertStringContainsString('invoiceTotals(lines, tax_inclusive)', $screen);
+        // والإضافةُ المدفوعةُ مع صنفها سطرٌ يُحسب بالصيغة نفسِها (`withAddons`) — لا صيغةٌ ثانية
+        $this->assertStringContainsString('invoiceTotals(withAddons(lines, addons), tax_inclusive)', $screen);
 
         // والخادمُ يقول الشيء نفسه بالأرقام — وهي أرقامُ اختبار الشاشة
         $this->set($this->business->id, 'vat_rate', '5');

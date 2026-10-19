@@ -12,6 +12,7 @@ use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemAddon;
 use App\Support\Store\CardIdentity;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -604,26 +605,62 @@ final class CustomerInvoicePreparations
         ]);
 
         $subject->setRelation('customer', $customer);
-        $subject->setRelation('items', $invoice->items->map(function ($line) {
+        /*
+         * والبندُ كما يحمله السائق: الصنفُ وكميّتُه، وتحته إضافاتُه أسماءً بلا
+         * ثمن — المدفوعةُ والمشمولةُ سواء — وملاحظتُه وخياراتُه **غيرُ الداخليّة**
+         * (`InvoiceLineDetails::rows` لجمهور العميل). وتمرّ على قارئَي سند الطلب
+         * نفسَيهما (`DeliveryPaper::stripItems`): لا قواعدُ خصوصيّةٍ ثانية.
+         */
+        $items = [];
+        foreach (InvoiceLineDetails::rows($invoice->items, InvoiceLineDetails::CUSTOMER) as $row) {
+            $line = $row['item'];
+            $details = (array) ($line->details ?? []);
+
+            if ($row['child'] && $items !== []) {
+                $parent = $items[array_key_last($items)];
+                $parent->setRelation('addons', $parent->addons->push(self::paperAddon($row['label'], (float) $line->quantity)));
+
+                continue;
+            }
+
             $item = new OrderItem;
             $item->forceFill([
-                'name' => (string) $line->description,
+                'name' => $row['label'],
                 // والكميّةُ كما في الفاتورة: «١.٥ متر» لا «٢»
                 'quantity' => (float) $line->quantity,
-                'note' => null,
-                'custom_details' => null,
+                'note' => $details['note'] ?? null,
+                // والخياراتُ بشكل لقطة الطلب المخصَّص — والداخليُّ يُطرح عند الطبع (`CustomArrangement::paperLines`)
+                'custom_details' => ($details['options'] ?? []) === [] ? null : [
+                    'v' => CustomArrangement::SNAPSHOT_VERSION,
+                    'fields' => array_map(fn (array $o) => [
+                        'label' => (string) $o['label'],
+                        'internal' => (bool) ($o['internal'] ?? false),
+                        'values' => [['label' => (string) $o['value']]],
+                    ], $details['options']),
+                ],
                 'product_id' => null,
                 // وبندُ الإضافة يُعلَّم بها على السند — بلا ثمنه (`DeliveryPaper::stripItems`)
-                'standalone_addon_id' => $line->addon_id,
+                'standalone_addon_id' => $line->product_id === null ? $line->addon_id : null,
             ]);
             $item->setRelation('product', null);
-            $item->setRelation('addons', collect());
+            $item->setRelation('addons', collect(array_map(
+                fn (array $inc) => self::paperAddon($inc['name'], (float) $inc['qty']),
+                $row['included'],
+            )));
             $item->setRelation('components', collect());
 
-            return $item;
-        })->values());
+            $items[] = $item;
+        }
+
+        $subject->setRelation('items', collect($items));
 
         return $subject;
+    }
+
+    /** إضافةٌ على السند — اسمٌ وكميّةٌ بلا ثمن، في الذاكرة لا تُحفظ */
+    private static function paperAddon(string $name, float $qty): OrderItemAddon
+    {
+        return (new OrderItemAddon)->forceFill(['name' => $name, 'name_en' => null, 'quantity' => (int) max(1, round($qty)), 'unit_price' => 0, 'total' => 0]);
     }
 
     /** الفاتورةُ مسدَّدةٌ الآن؟ — تُقرأ للبطاقة والورقة الداخليّة، ولا تُفعّل شيئًا */
@@ -692,14 +729,22 @@ final class CustomerInvoicePreparations
              * «+» ولا يُدمج في صنفٍ آخر: الفاتورةُ لا تقول لأيّ صنفٍ هو، فلا
              * يُخترع له صاحب. ولا يُعاد حسابُ شيءٍ من كتالوج اليوم.
              */
-            'items' => $invoice->items->map(fn ($line) => [
-                'name' => (string) $line->description,
-                'addon' => $line->addon_id !== null,
-                'qty' => DocumentPaper::qty($line->quantity),
-                'price' => $money($line->unit_price),
-                'discount' => (float) $line->discount > 0 ? $money($line->discount) : null,
-                'total' => $money($line->line_total),
-            ])->values()->all(),
+            /*
+             * والإضافةُ المدفوعةُ تحت صنفها حين تعرفه الفاتورة (`InvoiceLineDetails::rows`)،
+             * وما يميّز البند تحته — ملاحظتُه وخياراتُه كلُّها، والداخليُّ معلَّمًا،
+             * والمشمولُ في ثمنه بلا مال. والاسمُ بلغة الورقة من لقطته.
+             */
+            'items' => array_map(fn (array $row) => [
+                'name' => $row['label'],
+                'addon' => $row['item']->addon_id !== null || $row['child'],
+                'child' => $row['child'],
+                'details' => $row['subs'],
+                'included' => $row['included'],
+                'qty' => DocumentPaper::qty($row['item']->quantity),
+                'price' => $money($row['item']->unit_price),
+                'discount' => (float) $row['item']->discount > 0 ? $money($row['item']->discount) : null,
+                'total' => $money($row['item']->line_total),
+            ], InvoiceLineDetails::rows($invoice->items, InvoiceLineDetails::STAFF)),
             'pieces' => DocumentPaper::qty($invoice->items->sum('quantity')),
             'totals' => [
                 'subtotal' => $money($invoice->subtotal),

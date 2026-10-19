@@ -75,7 +75,16 @@ export default function Cheques() {
         cheques,
         bankAccounts,
         context,
+        auth,
     } = usePage<PageProps<Props>>().props;
+    /*
+     * كلُّ زرٍّ بفعله — كما يقبلهما الخادم (`ChequeController`).
+     *
+     * «صُرِف» تمامُ التحصيل، فلمن يسجّله. و«ارتدّ» يعكس قيدَ القبض ويُعيد
+     * الذمّةَ على العميل كإلغاء السند، فلمن يملك الإلغاء — لا لمن يسجّل وحده.
+     */
+    const mayClear = (auth?.mayActions ?? []).includes("customerPayment.create");
+    const mayBounce = (auth?.mayActions ?? []).includes("customerPayment.cancel");
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -231,13 +240,17 @@ export default function Cheques() {
 
                                 {c.status === "تحت التحصيل" ? (
                                     <TableCell>
+                                        {(mayClear || mayBounce) && (
                                         <div className="flex gap-2">
+                                            {mayClear && (
                                             <Button
                                                 size="sm"
                                                 onClick={() => setClearing(c)}
                                             >
                                                 {t("صُرِف")}
                                             </Button>
+                                            )}
+                                            {mayBounce && (
                                             <Button
                                                 size="sm"
                                                 variant="danger"
@@ -246,7 +259,9 @@ export default function Cheques() {
                                                 <Undo2 />
                                                 {t("ارتدّ")}
                                             </Button>
+                                            )}
                                         </div>
+                                        )}
                                     </TableCell>
                                 ) : (
                                     <TableCell className="text-[12px]">

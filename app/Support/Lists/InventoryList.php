@@ -32,7 +32,7 @@ final class InventoryList
     /** صفوفُ الشاشة كلُّها بعد البحث والحالة والترتيب — بلا ترقيم */
     public static function rows(Request $request, ?array $all = null): array
     {
-        $rows = InMemory::search($all ?? Demo::inventory(), Search::term($request), fn ($i) => $i['name'].' '.$i['sku']);
+        $rows = InMemory::search($all ?? Demo::inventory(), Search::term($request), fn ($i) => $i['name'].' '.($i['name_en'] ?? '').' '.$i['sku']);
 
         if ($status = self::status($request)) {
             $rows = array_values(array_filter($rows, fn ($i) => $i['status'] === $status));

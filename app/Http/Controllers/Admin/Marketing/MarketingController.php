@@ -543,6 +543,21 @@ class MarketingController extends Controller
             ]);
         }
 
+        /*
+         * ═══ وضبطُ الموقع فعلٌ باسمه — حين يتغيّر، لا حين يُرسَل ═══
+         *
+         * عنوانُ المتجر ونشرُه ولونُ صفحته ضبطٌ لا تشغيل (`Permissions::WEBSITE_CONFIGURE`):
+         * من مُنح «التسويق» ليكتب ساعاتِ التوصيل ونصَّ الشكر لا يغيّر عنوانَ
+         * متجره ولا يُطفئه. والشاشاتُ ترسل الحقولَ كلَّها في كلّ حفظ، فيُسأل
+         * عمّا **تغيّر** منها لا عمّا وصل — فلا يُردّ موظّفٌ حفظ نصوصَه.
+         */
+        $site = MarketingSettings::group($this->bid(), 'website');
+        $configures = $slug !== $business->site_slug
+            || $published !== (($site['store_on'] ?? '') === '1')
+            || ($request->exists('store_theme') && (string) $request->input('store_theme') !== (string) ($site['store_theme'] ?? ''));
+
+        abort_if($configures && ! $request->user()?->may(Permissions::WEBSITE_CONFIGURE), 403);
+
         $business->forceFill(['site_slug' => $slug])->save();
 
         /*

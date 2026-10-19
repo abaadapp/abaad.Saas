@@ -109,7 +109,7 @@ export default function PrepDetails({
     const keys = checklistKeys(o);
     const done = keys.filter((k) => o.checks?.[k]).length;
 
-    const box = (key: string, label: string, hint?: ReactNode) => {
+    const box = (key: string, label: ReactNode, hint?: ReactNode) => {
         const mark = o.checks?.[key];
 
         return (
@@ -260,7 +260,10 @@ export default function PrepDetails({
                                                         {/* وملاحظةُ البند باسمها تحته — لا يُخمَّن أهي للمنتج أم رسالةُ كرت */}
                                                         {box(
                                                             `item:${i.id}`,
-                                                            `${i.name} ×${i.qty}`,
+                                                            /* الاسمُ معزولٌ باتّجاهه والكميّةُ من اليسار — انظر `PrepCard` */
+                                                            <>
+                                                                <bdi>{i.name}</bdi> <span dir="ltr">×{i.qty}</span>
+                                                            </>,
                                                             i.note ? (
                                                                 <>
                                                                     <span data-testid="prep-item-note-kind">{t(i.card_line ? 'رسالة الكرت' : 'ملاحظة المنتج')}:</span>{' '}
@@ -279,7 +282,18 @@ export default function PrepDetails({
                                                 <div className="ms-6">
                                                     {(i.addons ?? []).map((a) => (
                                                         <div key={a.id} className="text-[#7c3aed]">
-                                                            {box(`addon:${a.id}`, `+ ${a.name}${a.qty > 1 ? ` ×${a.qty}` : ''}`)}
+                                                            {box(
+                                                                `addon:${a.id}`,
+                                                                <>
+                                                                    + <bdi>{a.name}</bdi>
+                                                                    {a.qty > 1 && (
+                                                                        <>
+                                                                            {' '}
+                                                                            <span dir="ltr">×{a.qty}</span>
+                                                                        </>
+                                                                    )}
+                                                                </>,
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
@@ -294,7 +308,7 @@ export default function PrepDetails({
                                                     <ul className="ms-8 mt-1 text-[12px] text-[#047857]">
                                                         {(i.components ?? []).map((c, k) => (
                                                             <li key={k}>
-                                                                {c.name} ×{fmt(c.qty, Number.isInteger(c.qty) ? 0 : 3)}
+                                                                <bdi>{c.name}</bdi> <span dir="ltr">×{fmt(c.qty, Number.isInteger(c.qty) ? 0 : 3)}</span>
                                                             </li>
                                                         ))}
                                                     </ul>
@@ -307,7 +321,7 @@ export default function PrepDetails({
                                                             f.internal ? 'font-medium text-[#b45309]' : 'text-[#6b7280]',
                                                         )}
                                                     >
-                                                        {f.label}: {f.values.join(' + ')}
+                                                        <bdi>{f.label}</bdi>: <bdi>{f.values.join(' + ')}</bdi>
                                                     </p>
                                                 ))}
                                             </div>
@@ -415,6 +429,19 @@ export default function PrepDetails({
                 </div>
 
                 <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] p-5">
+                    {/*
+                        «طباعة تفاصيل التجهيز» — لكلّ بطاقةٍ على اللوحة، طلبًا كانت أو
+                        مهمّةَ فاتورة. ورقةٌ داخليّةٌ بلا مال (`PrepSheet`) على شريط
+                        طابعة الصندوق، بالجسر القائم في التطبيق والمتصفّح، وبضغطةٍ
+                        وحدها: لا تُطبع عند فتح النافذة، ولا تنقل حالًا ولا علامة.
+                    */}
+                    <PrintReceiptButton
+                        number={o.kind === 'invoice' && o.prep_id ? String(o.prep_id) : o.number}
+                        routeName={o.kind === 'invoice' ? 'admin.preparation.invoiceSheet' : 'admin.preparation.sheet'}
+                        label={t('طباعة تفاصيل التجهيز')}
+                        variant="outline"
+                        size="sm"
+                    />
                     {/*
                         سندُ تسليمٍ واحد لا اثنان: على شريط طابعة الصندوق لطلب
                         موقعٍ في متجرٍ فُتح له — يضعه المجهِّزُ في الصندوق بلا

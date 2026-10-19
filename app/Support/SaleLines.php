@@ -244,8 +244,15 @@ final class SaleLines
                 $lines[] = [
                     'product' => null,
                     'variant' => null,
-                    // لقطةُ اسم القالب — لا يُقرأ الحيُّ يوم الطباعة
-                    'name' => CustomArrangement::label($template),
+                    /*
+                     * لقطةُ اسم القالب — لا يُقرأ الحيُّ يوم الطباعة.
+                     *
+                     * وبنصّه الأصليّ لا بلغة شاشة الكاشير: كانت `label` تكتب في
+                     * اللقطة الدائمة اسمَه الإنجليزيّ («Custom Order») لكاشيرٍ
+                     * واجهتُه إنجليزيّة — فيقرأ الدفترُ العربيُّ اسمًا لم يكتبه
+                     * التاجر. والشاشاتُ تعرض لغتَه من `custom_details` (`CustomArrangement::view`).
+                     */
+                    'name' => filled($template?->name) ? (string) $template->name : 'طلب مخصص',
                     'price' => round((float) $custom['price'], 3),
                     'list_price' => round((float) $custom['price'], 3),
                     'cost' => $materialCost,

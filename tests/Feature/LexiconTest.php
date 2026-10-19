@@ -13,11 +13,15 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * ما يكتبه التاجر بالعربية يُقرأ بالإنجليزية — أو يبقى كما كُتب.
+ * المعجمُ يترجم الألفاظَ العامّة — الأقسامَ والمقاسات — ولا يترجم بضاعةَ التاجر.
  *
  * ولا نقلَ صوتيًّا ولا آلةَ ترجمة: معجمٌ مقفَل، وقاعدةٌ واحدة صارمة —
  * لفظٌ مجهول يُسقط الترجمة كلَّها. لأنّ نصفَ ترجمةٍ («Bouquet سالم») أسوأ
  * من لا ترجمة، والاسمُ يجب أن يبقى اسمًا.
+ *
+ * والصنفُ والإضافةُ لا يُترجمان عند الحفظ (قرار المالك، مراجعة #131): اسمُهما
+ * الإنجليزيُّ ما كتبه التاجر أو لا يكون — انظر
+ * `AShopsProductNamesAreNeverTranslatedForItTest`.
  */
 class LexiconTest extends TestCase
 {
@@ -135,13 +139,25 @@ class LexiconTest extends TestCase
 
     /* ------------------------------ التطبيق ------------------------------ */
 
-    public function test_a_product_saved_in_arabic_gets_an_english_name(): void
+    /**
+     * وصنفٌ يعرف المعجمُ كلَّ لفظٍ فيه لا يُترجم له — اسمُه كما كتبه.
+     *
+     * كان يُحفظ «Red rose bouquet» بلا أن يكتبه أحد، فيقرأه الكاشيرُ والإيصالُ
+     * الإنجليزيّ اسمًا تجاريًّا من اختراع النظام.
+     */
+    public function test_a_product_saved_in_arabic_keeps_no_invented_english_name(): void
     {
+        $this->assertSame('Red rose bouquet', Lexicon::translate('باقة ورد أحمر'), 'المعجمُ يعرفه — فالامتناعُ قرارٌ لا عجز');
+
         $this->actingAs($this->owner)->post(route('admin.products.store'), [
             'name' => 'باقة ورد أحمر', 'price' => 15,
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame('Red rose bouquet', Product::firstOrFail()->name_en);
+        $product = Product::firstOrFail();
+        $this->assertNull($product->name_en);
+
+        app()->setLocale('en');
+        $this->assertSame('باقة ورد أحمر', Demo::ln($product->name, $product->name_en));
     }
 
     /**
@@ -194,29 +210,33 @@ class LexiconTest extends TestCase
 
     /* ------------------------------ الملء الرجعيّ ------------------------------ */
 
-    public function test_the_backfill_command_fills_only_what_it_knows(): void
+    /** والملءُ الرجعيُّ للأقسام والمقاسات وحدها — ولا يمسّ صنفًا ولا إضافة ولا مكتوبًا بيد */
+    public function test_the_backfill_command_fills_only_categories_and_sizes_it_knows(): void
     {
-        Product::create(['business_id' => $this->business->id, 'name' => 'ورد أبيض', 'price' => 2, 'cost' => 1, 'quantity' => 5]);
-        Product::create(['business_id' => $this->business->id, 'name' => 'باقة سالم', 'price' => 9, 'cost' => 3, 'quantity' => 5]);
-        Product::create([
-            'business_id' => $this->business->id, 'name' => 'تغليف', 'name_en' => 'Gift Wrap',
-            'price' => 1, 'cost' => 0.5, 'quantity' => 5,
-        ]);
+        $roses = Product::create(['business_id' => $this->business->id, 'name' => 'ورد أبيض', 'price' => 2, 'cost' => 1, 'quantity' => 5]);
+        $addon = \App\Models\Addon::create(['business_id' => $this->business->id, 'name' => 'تغليف', 'price' => 1, 'active' => true]);
+        Category::create(['business_id' => $this->business->id, 'name' => 'باقات']);
+        Category::create(['business_id' => $this->business->id, 'name' => 'هدايا', 'name_en' => 'Our Gifts']);
+        Category::create(['business_id' => $this->business->id, 'name' => 'ركن سالم']);
+        ProductVariant::create(['business_id' => $this->business->id, 'product_id' => $roses->id, 'name' => 'كبير', 'price' => 3, 'active' => true]);
 
         $this->artisan('catalog:translate-names')->assertSuccessful();
 
-        $this->assertSame('White roses', Product::where('name', 'ورد أبيض')->value('name_en'));
-        $this->assertNull(Product::where('name', 'باقة سالم')->value('name_en'));
-        // والمكتوب بيدٍ لا يُمَسّ
-        $this->assertSame('Gift Wrap', Product::where('name', 'تغليف')->value('name_en'));
+        $this->assertSame('Bouquets', Category::where('name', 'باقات')->value('name_en'));
+        $this->assertSame('Large', ProductVariant::where('name', 'كبير')->value('name_en'));
+        $this->assertNull(Category::where('name', 'ركن سالم')->value('name_en'), 'ما لا يعرفه المعجم يبقى');
+        // والمكتوب بيدٍ لا يُمَسّ، والصنفُ والإضافةُ لا يُترجمان
+        $this->assertSame('Our Gifts', Category::where('name', 'هدايا')->value('name_en'));
+        $this->assertNull($roses->fresh()->name_en);
+        $this->assertNull($addon->fresh()->name_en);
     }
 
     public function test_the_dry_run_writes_nothing(): void
     {
-        Product::create(['business_id' => $this->business->id, 'name' => 'ورد أبيض', 'price' => 2, 'cost' => 1, 'quantity' => 5]);
+        Category::create(['business_id' => $this->business->id, 'name' => 'باقات']);
 
         $this->artisan('catalog:translate-names --dry-run')->assertSuccessful();
 
-        $this->assertNull(Product::firstOrFail()->name_en);
+        $this->assertNull(Category::firstOrFail()->name_en);
     }
 }

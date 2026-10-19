@@ -163,8 +163,8 @@ export default function PosOrderDetails() {
                                                 <span className="font-medium">{it.name}</span>
                                                 {(it.addons ?? []).map((a, i) => (
                                                     <span key={i} className="block text-[11px] text-[#7c3aed]">
-                                                        + {a.name}
-                                                        {a.qty > 1 && ` ×${a.qty}`}
+                                                        + <bdi>{a.name}</bdi>
+                                                        {a.qty > 1 && <> <span dir="ltr">×{a.qty}</span></>}
                                                     </span>
                                                 ))}
                                                 {/* وملاحظةُ البند باسمها — ورسالةُ الكرت باسمها هي. والنصُّ كما كُتب */}

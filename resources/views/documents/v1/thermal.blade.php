@@ -141,7 +141,8 @@
             @php($extras = \App\Support\ItemAddons::of($it))
             @php($joined = in_array($extras['mode'], ['priced', 'bundled'], true) ? 'joined' : '')
             <tr>
-                <td class="name {{ $joined }}">
+                {{-- والاسمُ باتّجاهه هو: صنفٌ إنجليزيٌّ في إيصالٍ عربيّ لا تنقلب نقطتُه ولا تقفز كميّتُه --}}
+                <td class="name bidi {{ $joined }}" dir="{{ \App\Support\Paper::dirOf($it->name) }}">
                     {{ $it->name }}
                     {{-- والمقاسُ من لقطة البيع لا من الكتالوج: مقاسٌ أُعيدت تسميتُه لا يغيّر إيصالًا مضى --}}
                     @if (filled($it->variant_name))

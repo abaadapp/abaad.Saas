@@ -563,12 +563,13 @@ class ProductCompositionController extends Controller
 
                 // إضافةُ متجرٍ بالاسم نفسه تُعاد لا تُكرَّر: اسمان متطابقان في
                 // قائمة الكاشير يجعلانه يختار عشوائيًا
+                // والاسمُ الإنجليزيّ ما كُتب — لا يُملأ من المعجم (انظر `ProductController::store`)
                 $addon = Addon::firstOrCreate(
                     ['business_id' => $bid, 'product_id' => null, 'name' => $a['name']],
-                    \App\Support\Lexicon::fill([
+                    [
                         'name' => $a['name'],
-                        'name_en' => $a['name_en'] ?? null,
-                    ]) + ['price' => $a['price'], 'active' => true,
+                        'name_en' => filled($a['name_en'] ?? null) ? trim((string) $a['name_en']) : null,
+                    ] + ['price' => $a['price'], 'active' => true,
                         'inventory_product_id' => $stock, 'inventory_quantity' => $each],
                 );
 

@@ -307,7 +307,8 @@ class AThankYouPageSpeaksTheShopsWordsTest extends TestCase
         $html = $this->done($order);
 
         $this->assertSame($order->number, $this->text($html, 'rb-order-number'));
-        $this->assertStringContainsString('Rose Bouquet × 2', $html);
+        // والاسمُ معزولٌ باتّجاهه والكميّةُ من اليسار — لا تقفز «× ٢» إلى أوّل اسمٍ عربيّ
+        $this->assertStringContainsString('<bdi>Rose Bouquet</bdi> <span dir="ltr">× 2</span>', $html);
         $this->assertStringContainsString('40.000', $html, 'الإجماليّ من الطلب');
         $this->assertStringContainsString('عند الاستلام', $html, 'وطريقةُ الدفع');
     }

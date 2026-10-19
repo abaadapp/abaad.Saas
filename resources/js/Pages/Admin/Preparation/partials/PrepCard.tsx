@@ -201,7 +201,8 @@ export default function PrepCard({ order: o, ageMs, fresh, busy, onOpen, onMove 
                 <ul data-testid="prep-items" className="flex flex-col gap-0.5 text-[13px] text-[#111]">
                     {o.items.slice(0, ITEMS_ON_CARD).map((i) => (
                         <li key={i.id} className="truncate">
-                            {i.name} <span className="text-[#6b7280]">×{i.qty}</span>
+                            {/* الاسمُ معزولٌ باتّجاهه والكميّةُ من اليسار — فلا تقفز «×٢» إلى أوّل اسمٍ عربيّ في واجهةٍ إنجليزيّة */}
+                            <bdi>{i.name}</bdi> <span className="text-[#6b7280]" dir="ltr">×{i.qty}</span>
                         </li>
                     ))}
                     {o.items.length > ITEMS_ON_CARD && (

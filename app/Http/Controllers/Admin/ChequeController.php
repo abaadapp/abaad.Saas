@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
 use App\Models\CustomerPayment;
 use App\Support\Cheques;
+use App\Support\Permissions;
 use App\Support\Demo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -98,6 +99,15 @@ class ChequeController extends Controller
 
     public function clear(Request $request, int|string $id)
     {
+        /*
+         * والصرفُ يكتبه من يسجّل التحصيل — لا من يقرأ «المالية» وحدها.
+         *
+         * هو تمامُ التحصيل: ينقل المالَ من «شيكات تحت التحصيل» إلى البنك، ولا
+         * يمسّ ذمّةَ العميل (`Permissions::CUSTOMER_PAYMENT_CREATE`). وأخوه
+         * `bounce` غيرُه — انظره.
+         */
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE), 403);
+
         $data = $request->validate([
             'cleared_on' => ['nullable', 'date'],
             'bank_account_id' => ['nullable', 'integer'],
@@ -132,6 +142,18 @@ class ChequeController extends Controller
 
     public function bounce(Request $request, int|string $id)
     {
+        /*
+         * والارتدادُ إلغاءُ تحصيلٍ باسمٍ آخر — فبفعل الإلغاء لا بفعل التسجيل.
+         *
+         * يعكس قيدَ القبض نفسَه (`Ledger::reverse`) ويُسقط السندَ من مدفوع
+         * الفاتورة (`CustomerInvoice::paidTotal`): فتعود الذمّةُ على العميل كما يعيدها
+         * `CustomerPayments::cancel` حرفًا بحرف. فلو كفاه `customerPayment.create`
+         * لألغى تحصيلَ الشيك من حُجب عنه الإلغاء — بسببٍ يكتبه هو: «رصيدٌ لا
+         * يكفي». والتسجيلُ يرثه كلُّ من كانت له «المالية» (`LEGACY_SECTION_ACTIONS`)،
+         * فكان الحارسُ القسمَ نفسَه تقريبًا.
+         */
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CANCEL), 403);
+
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:200'],
         ]);

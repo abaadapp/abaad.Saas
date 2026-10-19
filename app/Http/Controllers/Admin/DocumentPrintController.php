@@ -14,6 +14,7 @@ use App\Support\DeliveryPaper;
 use App\Support\Demo;
 use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
+use App\Support\Permissions;
 
 /**
  * أوراقُ النظام تخرج على ورق.
@@ -76,6 +77,8 @@ class DocumentPrintController extends Controller
     /** فاتورة مورّد — سندُ ما على المتجر لمورّده */
     public function supplierInvoice(int $id)
     {
+        // وورقتُها ما تقرؤه شاشتُها — بفعلها لا بقسم «المشتريات» وحده (`SupplierInvoiceController`)
+        abort_unless(auth()->user()?->may(Permissions::INVOICE_VIEW), 403);
         $bid = $this->bid();
         $invoice = SupplierInvoice::where('business_id', $bid)->whereKey($id)
             ->with('supplier', 'purchaseOrder')->firstOrFail();
@@ -128,6 +131,8 @@ class DocumentPrintController extends Controller
 
     public function grn(int $id)
     {
+        // وسندُ الاستلام بتكاليفه — بفعل قراءته كشاشته (`Permissions::RECEIPT_VIEW`)
+        abort_unless(auth()->user()?->may(Permissions::RECEIPT_VIEW), 403);
         $bid = $this->bid();
         $note = GoodsReceiptNote::where('business_id', $bid)->whereKey($id)
             ->with('items', 'supplier', 'branch', 'purchaseOrder')->firstOrFail();

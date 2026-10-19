@@ -50,7 +50,8 @@ final class ItemAddons
         }
 
         $rows = $addons->map(fn (OrderItemAddon $a) => [
-            'name' => (string) $a->name,
+            // باسمها في لغة الورقة من لقطة البيع — `name_en` حُفظ معها ساعةَ بيعت
+            'name' => Demo::ln($a->name, $a->name_en),
             'qty' => (int) $a->quantity,
             'unit' => round((float) $a->unit_price, 3),
             'total' => round((float) $a->total, 3),

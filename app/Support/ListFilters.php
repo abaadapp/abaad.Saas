@@ -92,7 +92,9 @@ class ListFilters
         if ($s = Search::term($request)) {
             $like = Search::like();
             // والباركود من البحث: من اعتاد الماسح يمرّره هنا
+            // وبالاسمين: الصنفُ يُوجَد باسمه الإنجليزيّ كما يُوجَد بالعربيّ
             $q->where(fn ($w) => $w->where('name', $like, "%{$s}%")
+                ->orWhere('name_en', $like, "%{$s}%")
                 ->orWhere('sku', $like, "%{$s}%")
                 ->orWhere('barcode', $like, "%{$s}%"));
         }

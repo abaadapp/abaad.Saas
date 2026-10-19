@@ -82,9 +82,9 @@ class WasteAnalyticsController extends Controller
                 'branches' => Branch::where('business_id', $bid)->orderBy('id')
                     ->get(['id', 'name'])->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->all(),
                 'categories' => Category::where('business_id', $bid)->orderBy('name')
-                    ->get(['id', 'name'])->map(fn ($c) => ['value' => $c->id, 'label' => $c->name])->all(),
+                    ->get(['id', 'name', 'name_en'])->map(fn ($c) => ['value' => $c->id, 'label' => \App\Support\CategoryName::display($c->name, $c->name_en, app()->getLocale())])->all(),
                 'products' => Product::where('business_id', $bid)->orderBy('name')
-                    ->get(['id', 'name'])->map(fn ($p) => ['value' => $p->id, 'label' => $p->name])->all(),
+                    ->get(['id', 'name', 'name_en'])->map(fn ($p) => ['value' => $p->id, 'label' => \App\Support\Demo::ln($p->name, $p->name_en)])->all(),
                 // القديمة معها: صفوفٌ في القاعدة بأسبابٍ لم تعد تُكتب، وحذفُها
                 // من المنتقي يجعلها تُعدّ في المجموع ولا يمكن عزلها
                 'reasons' => Waste::all(),

@@ -69,6 +69,15 @@ final class ProductsList
     {
         return [
             'id' => $p->id, 'name' => $p->name, 'cat' => $p->category?->name ?? '—',
+            /*
+             * والاسمان للعرض بلغة الشاشة — والقيمتان أعلاه كما حُفظتا.
+             *
+             * الشاشةُ تقرأ `label ?? name` منذ نسخ ولم يكن يُرسَل، فكان صنفٌ له
+             * اسمٌ إنجليزيّ يُعرض عربيًّا في الواجهة الإنجليزيّة. و`cat` يبقى
+             * عربيًّا: به يُطابَق القسمُ في نموذج الصنف.
+             */
+            'label' => \App\Support\Demo::ln($p->name, $p->name_en),
+            'cat_label' => $p->category ? \App\Support\CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : '—',
             'price' => (float) $p->price, 'cost' => (float) $p->cost, 'qty' => $p->quantity,
             'sku' => $p->sku, 'barcode' => $p->barcode, 'image' => $p->image,
             'stock_status' => $p->stock_status, 'active' => (bool) $p->active,

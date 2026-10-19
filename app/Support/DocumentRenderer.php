@@ -470,6 +470,30 @@ class DocumentRenderer
         ]));
     }
 
+    /**
+     * «ورقة تجهيز داخلية» شريطًا حراريًّا — ٥٨ أو ٨٠ مم، بطول محتواه.
+     *
+     * والقالبُ يُعطى حمولةً بلا مال (`PrepSheet`) لا الطلبَ ولا الفاتورة —
+     * فلا يبلغ سعرًا لم يُعطَه. والمتجرُ وشعارُه ومقاسُ خطّه من قالب البيع،
+     * كالنسخة الداخليّة.
+     *
+     * @param  array<string, mixed>  $sheet
+     */
+    public static function prepSheetStrip(int $businessId, array $sheet, int $width): string
+    {
+        $tpl = DocumentTemplates::settings($businessId, 'sale');
+        $business = Business::find($businessId);
+
+        return self::html(view(Version::views(null).'.prep-sheet-thermal', [
+            'sheet' => $sheet,
+            'paper' => $width <= 60 ? PaperSize::T58 : PaperSize::T80,
+            'width' => $width,
+            'tokens' => Branding::tokens($businessId, self::scale((string) ($tpl['font'] ?? ''))),
+            'shop' => ['name' => $business->name ?? null],
+            'logo' => ($tpl['show_logo'] ?? true) ? InvoiceBranding::logo($businessId) : null,
+        ]));
+    }
+
     /** طلبٌ للمعاينة وحدها — لا يُحفظ ولا يُعدّ في بيع */
     private static function sampleOrder(int $businessId): Order
     {

@@ -19,6 +19,7 @@ use App\Support\OrderStatus;
 use App\Support\OrderTransition;
 use App\Support\Permissions;
 use App\Support\PrepChecklist;
+use App\Support\PrepSheet;
 use App\Support\PrintJobs;
 use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
@@ -535,7 +536,8 @@ class PreparationController extends Controller
                 'image' => $i->product?->image,
                 'addons' => $i->addons->map(fn ($a) => [
                     'id' => $a->id,
-                    'name' => $a->name,
+                    // باسمها في لغة الشاشة من لقطة البيع — لا اسمُ الكتالوج اليوم ولا ترجمةٌ لم تُحفظ
+                    'name' => Demo::ln($a->name, $a->name_en),
                     'qty' => (int) $a->quantity,
                 ])->all(),
                 /*
@@ -663,6 +665,26 @@ class PreparationController extends Controller
         $this->base()->where('number', $number)->firstOrFail();
 
         return app(PdfController::class)->orderThermal($number);
+    }
+
+    /**
+     * «ورقة تجهيز داخلية» لطلبٍ على اللوحة — بحصر اللوحة نفسِه (`base()`).
+     *
+     * تقرأ العلاماتِ ولا تكتبها، ولا تنقل حالًا، ولا تُكتب في طابور الصندوق.
+     * والحمولةُ بلا مال (`PrepSheet::forOrder`).
+     */
+    public function sheet(string $number)
+    {
+        $order = $this->base()->where('number', $number)
+            ->with(['items.addons', 'items.components', 'items.product', 'customer'])->firstOrFail();
+
+        return PrepSheet::pdf(
+            $this->bid(),
+            PrepSheet::forOrder($order, PrepChecklist::of($order)),
+            'prep-'.$order->number,
+            (int) $order->id,
+            'order',
+        );
     }
 
     /**
@@ -1034,6 +1056,20 @@ class PreparationController extends Controller
         $prep = $this->invoiceTask($id);
 
         return CustomerInvoicePreparations::internalPdf($prep, $prep->invoice);
+    }
+
+    /** «ورقة تجهيز داخلية» لمهمّة فاتورة — بحصر مهامّ اللوحة (`invoiceTask`)، بلا مال */
+    public function invoiceSheet(int $id)
+    {
+        $prep = $this->invoiceTask($id);
+
+        return PrepSheet::pdf(
+            $this->bid(),
+            PrepSheet::forInvoiceTask($prep->loadMissing('branch'), $prep->invoice),
+            'prep-'.$prep->invoice->number,
+            (int) $prep->id,
+            'customer_invoice_preparation',
+        );
     }
 
     /** سجلُّ المهمّة — ظهورُها وانتقالاتُها، كسجلّ الطلب */

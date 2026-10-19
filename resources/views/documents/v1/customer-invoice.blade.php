@@ -144,11 +144,26 @@
             </tr>
         </thead>
         <tbody>
-            @forelse ($invoice->items as $i => $item)
+            {{--
+                والبنودُ مرتّبةً: الصنفُ، ثمّ ما يميّزه، ثمّ إضافاتُه المدفوعةُ تحته
+                بمالها — والاسمُ بلغة الورقة من لقطته (`InvoiceLineDetails::rows`).
+                والفاتورةُ القديمةُ بلا تفاصيل تُرسم كما كانت سطرًا سطرًا.
+            --}}
+            @forelse (\App\Support\InvoiceLineDetails::rows($invoice->items) as $row)
+                @php($item = $row['item'])
                 {{-- ولا زِبرةَ: شعرةٌ فاصلةٌ تكفي — انظر `partials/items` --}}
-                <tr>
+                <tr @if ($row['child']) class="sub" data-line="addon" @endif>
                     {{-- والبيانُ يحمل اتّجاهَه: بندٌ إنجليزيٌّ في فاتورةٍ عربيّة لا تنقلب نقطتُه --}}
-                    <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($item->description) }}">{{ $item->description }}</td>
+                    {{-- والخليّةُ باتّجاه الورقة والبيانُ وحده باتّجاهه: mpdf يُلبس ما تحت الخليّة اتّجاهَها، فتنقلب تفاصيلُ البند --}}
+                    <td class="bidi item"><div class="bidi" dir="{{ \App\Support\Paper::dirOf($row['label']) }}">@if ($row['child'])+ @endif{{ $row['label'] }}</div>
+                        @foreach ($row['subs'] as $sub)
+                            {{-- التسميةُ باتّجاه الورقة، والقيمةُ معزولةٌ باتّجاهها هي — فلا تنقلب «Product note: قبل العاشرة» --}}
+                            <div class="detail" data-detail dir="{{ \App\Support\Paper::rtl() ? 'rtl' : 'ltr' }}">{{ $sub['label'] }}: <span dir="{{ \App\Support\Paper::dirOf($sub['text']) }}">{{ $sub['text'] }}</span></div>
+                        @endforeach
+                        @foreach ($row['included'] as $inc)
+                            <div class="detail" data-detail="included">+ <span dir="{{ \App\Support\Paper::dirOf($inc['name']) }}">{{ $inc['name'] }}</span> × <span dir="ltr">{{ $inc['qty'] }}</span> — {{ __('ضمن السعر') }}</div>
+                        @endforeach
+                    </td>
                     <td class="num">{{ rtrim(rtrim(number_format((float) $item->quantity, 3, '.', ''), '0'), '.') }}</td>
                     {{-- والمبالغُ معزولةٌ عن اتّجاه السطر: انظر `partials/items` --}}
                     <td class="amt"><span dir="ltr">{{ $amount($item->unit_price) }}</span></td>

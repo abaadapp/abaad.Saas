@@ -13,6 +13,7 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceAttachment;
 use App\Models\CustomerPayment;
 use App\Models\Product;
+use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\CustomerInvoicePreparations;
@@ -31,6 +32,7 @@ use App\Support\DocumentTemplates;
 use App\Support\FlowerOrder;
 use App\Support\InvoiceAttachments;
 use App\Support\InvoiceBranding;
+use App\Support\InvoiceLineDetails;
 use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
@@ -266,14 +268,22 @@ class CustomerInvoiceController extends Controller
                 'attention_to' => $invoice->attention_to,
                 'orders' => $invoice->orders->pluck('number')->all(),
                 'cancellation_reason' => $invoice->cancellation_reason,
-                'items' => $invoice->items->map(fn ($it) => [
-                    'description' => $it->description,
-                    'quantity' => (float) $it->quantity,
-                    'unit_price' => (float) $it->unit_price,
-                    'discount' => (float) $it->discount,
-                    'tax_rate' => (float) $it->tax_rate,
-                    'line_total' => (float) $it->line_total,
-                ])->all(),
+                /*
+                 * والبنودُ مرتّبةً كما تُطبع — الصنفُ ثمّ ما يميّزه ثمّ إضافاتُه
+                 * المدفوعةُ تحته (`InvoiceLineDetails::rows`): مصدرٌ واحدٌ للشاشة
+                 * والورقة، فلا تقول إحداهما غيرَ ما تقول الأخرى. والاسمُ بلغة الشاشة.
+                 */
+                'items' => array_map(fn (array $row) => [
+                    'description' => $row['label'],
+                    'child' => $row['child'],
+                    'details' => array_map(fn (array $d) => ['label' => $d['label'], 'text' => $d['text'], 'internal' => $d['internal']], $row['subs']),
+                    'included' => $row['included'],
+                    'quantity' => (float) $row['item']->quantity,
+                    'unit_price' => (float) $row['item']->unit_price,
+                    'discount' => (float) $row['item']->discount,
+                    'tax_rate' => (float) $row['item']->tax_rate,
+                    'line_total' => (float) $row['item']->line_total,
+                ], InvoiceLineDetails::rows($invoice->items, InvoiceLineDetails::STAFF)),
                 'payments' => $invoice->allocations()->with('payment')->get()
                     ->filter(fn ($a) => $a->payment && $a->payment->cancelled_at === null)
                     ->map(fn ($a) => [
@@ -427,12 +437,46 @@ class CustomerInvoiceController extends Controller
                 ])->all(),
             ],
             'currency' => Money::of($bid),
+            // وزرُّ الإلغاء لمن يقبله الخادم وحده — بابٌ معروضٌ يردّ بـ٤٠٣ يُقرأ عطبًا
+            'can' => ['cancel' => (bool) auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CANCEL)],
             'paper' => [
                 'html' => DocumentRenderer::generic($bid, 'customer_receipt', DocumentPaper::forCustomerReceipt($payment)),
                 'size' => PaperSize::A4,
                 'url' => route('admin.customerPayments.pdf', $payment->id),
             ],
         ]);
+    }
+
+    /**
+     * أصنافُ نافذة الاختيار — بأسمائها ومقاساتها وإضافاتها المسموحة.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function catalogProducts(int $bid): array
+    {
+        $products = Product::where('business_id', $bid)->orderBy('name')
+            ->limit(self::CATALOG_LIMIT)->get(['id', 'business_id', 'name', 'name_en', 'sku', 'barcode', 'price']);
+
+        $variants = ProductVariant::where('business_id', $bid)->where('active', true)
+            ->whereIn('product_id', $products->pluck('id'))
+            ->orderBy('sort_order')->orderBy('id')->get(['id', 'product_id', 'name', 'name_en', 'price'])
+            ->groupBy('product_id');
+
+        $all = Addon::where('business_id', $bid)->orderBy('id')->get();
+        $map = \App\Support\ProductAddons::map($bid);
+
+        return $products->map(fn (Product $p) => [
+            'id' => $p->id,
+            'name' => $p->name,
+            'name_en' => $p->name_en,
+            'sku' => $p->sku,
+            'barcode' => $p->barcode,
+            'price' => (float) $p->price,
+            'variants' => ($variants[$p->id] ?? collect())->map(fn ($v) => [
+                'id' => $v->id, 'name' => $v->name, 'name_en' => $v->name_en, 'price' => (float) $v->price,
+            ])->values()->all(),
+            'addon_ids' => \App\Support\ProductAddons::for($p, $all, $map)->pluck('id')->map(fn ($i) => (int) $i)->values()->all(),
+        ])->all();
     }
 
     public function create(Request $request): Response
@@ -459,8 +503,15 @@ class CustomerInvoiceController extends Controller
              * يكتب أرقامًا ثمّ Enter. فبحثٌ لا يقرأ الاثنين يردّ «لا صنف»
              * على صنفٍ في يده.
              */
-            'products' => Product::where('business_id', $bid)->orderBy('name')
-                ->limit(self::CATALOG_LIMIT)->get(['id', 'name', 'sku', 'barcode', 'price'])->all(),
+            /*
+             * ومع كلّ صنفٍ ما يُختار معه — كما في الصندوق والموقع.
+             *
+             * اسمُه الإنجليزيّ (يُبحث به ويُعرض في الواجهة الإنجليزيّة)،
+             * ومقاساتُه الفعّالة بأثمانها، ومعرّفاتُ الإضافات التي تُباع معه
+             * (`ProductAddons::for`). والخادمُ يسأل السؤالَ نفسَه عند الحفظ
+             * (`InvoiceLineDetails::expand`): لا تُقبل إضافةٌ لا تُباع معه.
+             */
+            'products' => $this->catalogProducts($bid),
             /*
              * وهل قُصّ الكتالوج؟ — تقولها الشاشة ولا تكتمها.
              *
@@ -714,6 +765,7 @@ class CustomerInvoiceController extends Controller
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'bank_account_id' => ['nullable', 'integer'],
+        ] + InvoiceLineDetails::rules() + [
             /*
              * ولغةُ الورقة تُرسَل لتُعاين — ولا تُحفظ من هنا.
              *
@@ -756,7 +808,7 @@ class CustomerInvoiceController extends Controller
          * فالمعاينةُ والمحفوظةُ يمرّان على القارئ نفسه. وإضافةٌ من متجرٍ آخر
          * أو موقوفةٌ يسقط بندُها هنا ولا يُردّ الطلب — انظر `addonsFromCatalog`.
          */
-        $items = CustomerInvoices::addonsFromCatalog($bid, $items, strict: false);
+        $items = InvoiceLineDetails::expand($bid, $items, strict: false);
 
         $invoice = CustomerInvoices::draft($bid, $customer, $data, $items);
 
@@ -1112,6 +1164,8 @@ class CustomerInvoiceController extends Controller
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             // نسبةُ البند لقطةٌ تُحفظ في السطر — والإعفاءُ يُكتب صفرًا
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            // وما اختير مع البند — مقاسُه وإضافاتُه وخياراتُه وملاحظتُه (`InvoiceLineDetails`)
+            ...InvoiceLineDetails::rules(),
             /*
              * ووسيلةُ السداد **مطلوبة** — لا تسقط إلى «آجل» في صمت.
              *
@@ -1260,6 +1314,17 @@ class CustomerInvoiceController extends Controller
             403,
         );
 
+        /*
+         * و«مدفوع نقدًا» أو غيرُه عند الإصدار يسجّل تحصيلًا (`collect`) — مالًا
+         * يدخل الصندوق. فيُسأل عن فعل التحصيل كما يسأله بابُه (`pay`): من يُصدر
+         * ولا يسجّل التحصيلَ يُصدرها «آجل»، ويسجّلها من يملكه.
+         */
+        abort_if(
+            $request->boolean('issue') && $method !== CustomerInvoices::CREDIT
+                && ! auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
+            403,
+        );
+
         if ($method !== CustomerInvoices::CREDIT && ! $request->boolean('issue')) {
             throw ValidationException::withMessages([
                 'payment_method' => __('التحصيل يُسجَّل على فاتورةٍ صادرة — أصدر الفاتورة، أو احفظها مسودّةً آجلة.'),
@@ -1321,7 +1386,7 @@ class CustomerInvoiceController extends Controller
                  * وبندُ الإضافة يُكتب بثمنها واسمها من القاعدة لا ممّا أُرسل —
                  * وإضافةُ متجرٍ آخر أو موقوفةٌ تُردّ هنا على «البنود».
                  */
-                $items = CustomerInvoices::addonsFromCatalog($this->bid(), $data['items']);
+                $items = InvoiceLineDetails::expand($this->bid(), $data['items']);
 
                 $invoice = CustomerInvoices::create($this->bid(), $customer, $data, $items, auth()->id());
 
@@ -1720,6 +1785,13 @@ class CustomerInvoiceController extends Controller
 
     public function cancelPayment(Request $request, int|string $id)
     {
+        /*
+         * والإلغاءُ فعلٌ باسمه لا القسمُ الذي يفتح الشاشة — انظر
+         * `Permissions::CUSTOMER_PAYMENT_CANCEL`. والإذنُ قبل السبب وقبل الصفّ:
+         * من لا يملكه يُردّ بـ٤٠٣ ولا يُقال له «اكتب السبب».
+         */
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CANCEL), 403);
+
         $data = $request->validate(['reason' => ['required', 'string', 'max:200']]);
 
         $payment = CustomerPayment::where('business_id', $this->bid())->whereKey($id)->firstOrFail();

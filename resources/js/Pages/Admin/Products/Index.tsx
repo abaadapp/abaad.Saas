@@ -187,7 +187,7 @@ export default function ProductsIndex() {
                 </div>
             ),
         },
-        { key: 'cat', header: 'القسم', cell: (p) => p.cat || '—' },
+        { key: 'cat', header: 'القسم', cell: (p) => p.cat_label ?? (p.cat || '—') },
         /*
          * لمن الصنف — والعمودُ لمن عنده بوتيكات وحده.
          *
@@ -276,7 +276,7 @@ export default function ProductsIndex() {
         {
             label: 'كل الأقسام',
             param: 'category',
-            options: categories.map((c) => ({ label: c.name, value: c.name })),
+            options: categories.map((c) => ({ label: c.label ?? c.name, value: c.name })),
         },
         /*
          * ولمن الصنف — يُرشَّح في الخادم لا في الصفحة: الترقيمُ خادميّ، ومُرشِّحٌ
@@ -487,7 +487,7 @@ export default function ProductsIndex() {
                                                       >
                                                           {p.label ?? p.name}
                                                       </SmartLink>
-                                                      <span className="text-[12px] text-[#9ca3af]">{p.cat || '—'}</span>
+                                                      <span className="text-[12px] text-[#9ca3af]">{p.cat_label ?? (p.cat || '—')}</span>
                                                       <div className="mt-auto flex items-center justify-between pt-2">
                                                           <span className="font-semibold tabular-nums">
                                                               {money(p.price, currency)}
@@ -645,7 +645,7 @@ export default function ProductsIndex() {
                                 onChange={(e) => bulkForm.setData('category_id', e.target.value)}
                                 options={[
                                     { label: 'بلا قسم', value: '' },
-                                    ...categories.map((c) => ({ label: c.name, value: String(c.id) })),
+                                    ...categories.map((c) => ({ label: c.label ?? c.name, value: String(c.id) })),
                                 ]}
                             />
                         </Field>

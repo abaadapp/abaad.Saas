@@ -257,7 +257,15 @@ final class CustomerInvoices
                  */
                 'line_total' => $inclusive ? $net : round($net + $lineTax, 3),
                 'sort_order' => $sort++,
-            ];
+                /*
+                 * وما لا مالَ فيه يمرّ كما جاء — لقطةُ ما اختير مع البند، ومن
+                 * يتبع منها مَن (`InvoiceLineDetails::expand`). لا يُحسب منه رقم.
+                 */
+                'details' => ! empty($line['details']) ? $line['details'] : null,
+            ] + array_filter([
+                'group' => $line['group'] ?? null,
+                'parent' => $line['parent'] ?? null,
+            ], fn ($v) => $v !== null);
         }
 
         /*
@@ -506,8 +514,25 @@ final class CustomerInvoices
                 self::attributes($businessId, $customer, $data, $totals) + ['created_by' => $userId]
             );
 
+            /*
+             * والإضافةُ المدفوعةُ تعرف صنفَها — بمجموعته في النموذج، تُقرأ هنا
+             * مفتاحًا بعد أن يُكتب الصنفُ قبلها. والمالُ في سطرها كما حُسب.
+             */
+            $written = [];
+
             foreach ($totals['items'] as $item) {
-                CustomerInvoiceItem::create($item + ['customer_invoice_id' => $invoice->id]);
+                $group = $item['group'] ?? null;
+                $parent = $item['parent'] ?? null;
+                unset($item['group'], $item['parent']);
+
+                $row = CustomerInvoiceItem::create($item + [
+                    'customer_invoice_id' => $invoice->id,
+                    'parent_item_id' => $parent !== null ? ($written[$parent] ?? null) : null,
+                ]);
+
+                if ($group !== null) {
+                    $written[$group] = $row->id;
+                }
             }
 
             Activity::log('created', 'أنشأ مسودّة فاتورة عميل — '.$customer->name, [
@@ -1043,7 +1068,15 @@ final class CustomerInvoices
          * الفاتورة سطرين بالاسم نفسِه وبثمنين — ولا يُعرف لماذا. نصٌّ لا مال:
          * الثمنُ والكميّةُ كما بيعا، والفواتيرُ الصادرةُ قبله لا تُمسّ.
          */
-        $name = ($item->name ?: __('بند')).(filled($item->variant_name) ? ' — '.$item->variant_name : '');
+        /*
+         * ونصُّ الوصف لقطةٌ دائمة — بلغة الدفتر الأصليّة لا بلغة شاشة من ضغط.
+         *
+         * كان `__('بند')` و«إضافات:» و«تشمل:» تُترجَم بلغة الكاشير ساعةَ البيع
+         * الآجل، فيكتب كاشيرٌ إنجليزيُّ الواجهة «Add-ons: شوكولاتة» في ورقةٍ
+         * عربيّة إلى الأبد. فتُكتب بالعربيّة دائمًا (`'ar'`)، والإضافةُ تحمل
+         * اسمَها الإنجليزيّ في لقطتها (`InvoiceLineDetails::fromOrderAddon`).
+         */
+        $name = ($item->name ?: __('بند', [], 'ar')).(filled($item->variant_name) ? ' — '.$item->variant_name : '');
 
         $main = [
             'product_id' => $item->product_id,
@@ -1053,6 +1086,10 @@ final class CustomerInvoices
             'description' => $name.$suffix,
             'quantity' => (float) $item->quantity,
             'unit_price' => (float) $item->price,
+            // وملاحظتُه وخياراتُه من لقطة البيع — بلا مال (`InvoiceLineDetails::fromOrderItem`)
+            'details' => InvoiceLineDetails::fromOrderItem($item),
+            // وإضافاتُه المدفوعةُ تحته في الورقة — والمالُ في سطورها كما كان
+            'group' => 'oi'.$item->id,
         ];
 
         $addons = $item->addons;
@@ -1074,6 +1111,8 @@ final class CustomerInvoices
                 'description' => $a->name.$suffix,
                 'quantity' => (float) $a->quantity,
                 'unit_price' => (float) $a->unit_price,
+                'details' => InvoiceLineDetails::fromOrderAddon($a),
+                'parent' => 'oi'.$item->id,
             ])->all()];
         }
 
@@ -1088,14 +1127,18 @@ final class CustomerInvoices
                 'product_id' => null,
                 'addon_id' => null,
                 'order_item_id' => $item->id,
-                'description' => Str::limit(__('إضافات: :list', ['list' => $names]).$suffix, 255, ''),
+                'description' => Str::limit(__('إضافات: :list', ['list' => $names], 'ar').$suffix, 255, ''),
+                'details' => $addons->contains(fn ($a) => filled($a->name_en)) ? ['label_en' => Str::limit('Add-ons: '.$addons->map(
+                    fn ($a) => ($a->name_en ?: $a->name).((int) $a->quantity > 1 ? ' ×'.(int) $a->quantity : '')
+                )->implode(', ').$suffix, 255, '')] : null,
                 'quantity' => 1.0,
                 'unit_price' => $charged,
+                'parent' => 'oi'.$item->id,
             ]];
         }
 
         // وداخل الثمن: تُسمّى في بيان الصنف ولا تُكتب مالًا
-        $main['description'] = Str::limit($name.' ('.__('تشمل: :list', ['list' => $names]).')'.$suffix, 255, '');
+        $main['description'] = Str::limit($name.' ('.__('تشمل: :list', ['list' => $names], 'ar').')'.$suffix, 255, '');
 
         return [$main];
     }

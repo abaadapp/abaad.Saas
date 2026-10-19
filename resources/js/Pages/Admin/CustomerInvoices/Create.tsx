@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import PaperFrame from '@/Components/PaperFrame';
 import { ChevronDown, Info, Link2, Paperclip, Plus, PlusCircle, RefreshCw, Save, Search, Send, Settings2, Star, Trash2, UserPlus } from 'lucide-react';
@@ -20,11 +20,12 @@ import {
 import { Input, Textarea } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { money } from '@/lib/format';
-import { invoiceTotals } from '@/lib/invoice-totals';
+import { invoiceTotals, withAddons } from '@/lib/invoice-totals';
 import { fold } from '@/lib/pages';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import LineDetails, { detailsCount, type LineDetailsValue, type VariantRow } from './partials/LineDetails';
 import CustomerInvoicePreparationFields, {
     EMPTY_PREPARATION,
     preparationPayload,
@@ -54,10 +55,16 @@ interface CustomerRow {
 interface ProductRow {
     id: number;
     name: string;
+    /** اسمُه الإنجليزيّ — يُبحث به ويُعرض في الواجهة الإنجليزيّة */
+    name_en?: string | null;
     /** رمزُ الصنف وباركودُه — يُبحث بهما كما يُبحث بالاسم */
     sku: string | null;
     barcode: string | null;
     price: number;
+    /** مقاساتُه الفعّالة بأثمانها — والفارغةُ صنفٌ بلا مقاس */
+    variants?: VariantRow[];
+    /** الإضافاتُ التي تُباع معه (`ProductAddons::for`) — والخادمُ يسأل السؤالَ نفسَه */
+    addon_ids?: number[];
 }
 
 /**
@@ -155,7 +162,11 @@ interface Branding {
     legal_name: string;
 }
 
-interface Line {
+/**
+ * والبندُ يحمل ما اختير معه — مقاسُه وإضافاتُه وخياراتُه وملاحظتُه
+ * (`LineDetails`). والمالُ يُحسب في الخادم (`InvoiceLineDetails::expand`).
+ */
+interface Line extends LineDetailsValue {
     product_id: string;
     /*
      * إضافةٌ من الكتالوج — بندٌ مستقلٌّ لا تابعٌ لمنتج.
@@ -376,6 +387,21 @@ export default function CustomerInvoiceCreate({
 
     const setLine = (i: number, key: keyof Line, value: string) =>
         setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, [key]: value } : l)));
+    const patchLine = (i: number, next: Partial<Line>) =>
+        setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...next } : l)));
+
+    /* ونافذةُ التفاصيل مفتوحةٌ لكلّ بندٍ على حدة — وتُفتح وحدها لبندٍ اختير له شيء */
+    const [opened, setOpened] = useState<Set<number>>(new Set());
+    const toggleDetails = (i: number) =>
+        setOpened((prev) => {
+            const next = new Set(prev);
+            next.has(i) ? next.delete(i) : next.add(i);
+
+            return next;
+        });
+    // والأسماءُ في الشاشة بلغة الواجهة — لا بلغة الورقة المختارة للمعاينة
+    const uiLocale = usePage<{ locale?: string }>().props.locale;
+    const ln = (name: string, nameEn: string | null | undefined) => (uiLocale === 'en' && nameEn ? nameEn : name);
 
     /*
      * ملخّصٌ يُحسب في المتصفّح — وبقاعدة الخادم لا بقاعدةٍ تشبهها.
@@ -384,7 +410,7 @@ export default function CustomerInvoiceCreate({
      * `CustomerInvoices::compute`، ويقابلهما اختبارٌ حسابًا برقم فلا
      * تفترقان. وكانت مكتوبةً هنا فافترقت في ثلاثة — انظر الملفّ.
      */
-    const totals = useMemo(() => invoiceTotals(lines, tax_inclusive), [lines, tax_inclusive]);
+    const totals = useMemo(() => invoiceTotals(withAddons(lines, addons), tax_inclusive), [lines, addons, tax_inclusive]);
 
     /* ومدّةُ السداد تُحرّك تاريخ الاستحقاق — والتاريخُ يبقى قابلًا للكتابة */
     const setTerms = (value: string) => {
@@ -1006,9 +1032,14 @@ export default function CustomerInvoiceCreate({
                                             0,
                                             NUMBER(line.quantity) * NUMBER(line.unit_price) - NUMBER(line.discount),
                                         );
+                                        const product = line.product_id
+                                            ? (products.find((p) => String(p.id) === line.product_id) ?? null)
+                                            : null;
+                                        const count = detailsCount(line);
 
                                         return (
-                                            <tr key={i} className="border-t border-[var(--ui-border,#e8e8e8)]">
+                                            <Fragment key={i}>
+                                            <tr className="border-t border-[var(--ui-border,#e8e8e8)]">
                                                 <td className="p-2 text-[#9ca3af]">{i + 1}</td>
                                                 <td className="p-2">
                                                     {/*
@@ -1023,11 +1054,28 @@ export default function CustomerInvoiceCreate({
                                                             <span className="truncate text-[#111]">{line.description}</span>
                                                         </div>
                                                     ) : (
-                                                        <Input
-                                                            value={line.description}
-                                                            onChange={(e) => setLine(i, 'description', e.target.value)}
-                                                            placeholder={t('الوصف')}
-                                                        />
+                                                        <>
+                                                            <Input
+                                                                value={line.description}
+                                                                onChange={(e) => setLine(i, 'description', e.target.value)}
+                                                                placeholder={t('الوصف')}
+                                                            />
+                                                            {/*
+                                                                وما يُختار مع البند — مقاسُه وإضافاتُه وخياراتُه
+                                                                وملاحظتُه — تحت سطره بضغطة، لا أعمدةٌ تُزحم الجدول
+                                                                على الجوّال.
+                                                            */}
+                                                            <button
+                                                                type="button"
+                                                                data-testid="line-details-toggle"
+                                                                aria-expanded={opened.has(i)}
+                                                                onClick={() => toggleDetails(i)}
+                                                                className="mt-1 px-1 text-[12px] font-medium text-[#6d28d9] hover:underline"
+                                                            >
+                                                                {t(product ? 'المقاس والإضافات والتفاصيل' : 'الخيارات والملاحظة')}
+                                                                {count > 0 && ` (${count})`}
+                                                            </button>
+                                                        </>
                                                     )}
                                                 </td>
                                                 <td className="p-2">
@@ -1090,6 +1138,32 @@ export default function CustomerInvoiceCreate({
                                                     </Button>
                                                 </td>
                                             </tr>
+                                            {!line.addon_id && opened.has(i) && (
+                                                <tr>
+                                                    <td />
+                                                    <td colSpan={7} className="px-2 pb-3">
+                                                        <LineDetails
+                                                            value={line}
+                                                            onChange={(next) => patchLine(i, next)}
+                                                            variants={product ? (product.variants ?? []) : null}
+                                                            addons={product ? addons.filter((a) => (product.addon_ids ?? []).includes(a.id)) : null}
+                                                            onVariant={(v) => {
+                                                                if (!product) return;
+                                                                const auto = (name: string) => line.description.trim() === '' || line.description === product.name || line.description.startsWith(`${product.name} — `) ? name : line.description;
+                                                                patchLine(i, {
+                                                                    variant_id: v ? String(v.id) : '',
+                                                                    // والاسمُ يتبع المقاس ما لم يُكتب بيد — والثمنُ ثمنُ المقاس
+                                                                    description: auto(v ? `${product.name} — ${v.name}` : product.name),
+                                                                    unit_price: String(v ? v.price : product.price),
+                                                                });
+                                                            }}
+                                                            money={m}
+                                                            label={ln}
+                                                        />
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            </Fragment>
                                         );
                                     })}
                                 </tbody>
@@ -1148,7 +1222,8 @@ export default function CustomerInvoiceCreate({
                                     ويسجّل من شاشةٍ ثانية.
                                 */}
                                 <div className="space-y-2.5 pt-1">
-                                    {methods.map((value) => (
+                                    {/* والقبضُ الآن تحصيلٌ — لمن يسجّله وحده؛ وغيرُه يُصدر «آجل» كما يقبله الخادم */}
+                                    {methods.filter((value) => may.pay || value === CREDIT).map((value) => (
                                         <label key={value} className="flex items-center gap-2 text-[13px]">
                                             <input
                                                 type="radio"
@@ -1578,13 +1653,10 @@ export default function CustomerInvoiceCreate({
                 onPick={(p) =>
                     setLines((prev) =>
                         append(prev, {
+                            ...blank(tax_rate),
                             product_id: String(p.id),
-                            addon_id: '',
                             description: p.name,
-                            quantity: '1',
                             unit_price: String(p.price),
-                            discount: '0',
-                            tax_rate: String(tax_rate),
                         }),
                     )
                 }
@@ -1599,13 +1671,10 @@ export default function CustomerInvoiceCreate({
                 onPick={(a) =>
                     setLines((prev) =>
                         append(prev, {
-                            product_id: '',
+                            ...blank(tax_rate),
                             addon_id: String(a.id),
                             description: a.name,
-                            quantity: '1',
                             unit_price: String(a.price),
-                            discount: '0',
-                            tax_rate: String(tax_rate),
                         }),
                     )
                 }
@@ -1855,8 +1924,13 @@ function blank(rate: number): Line {
         unit_price: '0',
         discount: '0',
         tax_rate: String(rate),
+        variant_id: '',
+        note: '',
+        options: [],
+        addons: [],
     };
 }
+
 
 /**
  * بندٌ من الكتالوج يُلحق بالبنود — ويحلّ محلّ السطر الفارغ الأوّل.
@@ -2088,6 +2162,8 @@ export function ProductDialog({
         return products.filter(
             (p) =>
                 fold(p.name).includes(needle) ||
+                // وبالاسم الإنجليزيّ: من يكتب «Rose» يجد «وردة» إن كُتب لها اسمُها
+                fold(p.name_en ?? '').includes(needle) ||
                 fold(p.sku ?? '').includes(needle) ||
                 fold(p.barcode ?? '').includes(needle),
         );

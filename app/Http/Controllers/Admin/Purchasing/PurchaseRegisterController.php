@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Purchasing;
 
 use App\Http\Controllers\Controller;
+use App\Support\Permissions;
 use App\Models\PurchaseOrder;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
@@ -73,8 +74,15 @@ class PurchaseRegisterController extends Controller
                 'items' => (int) $o->items_count,
             ]);
 
+        /*
+         * وسنداتُ الموردين ودَينُهم لمن يقرأ السندات وحده — كشاشتها
+         * (`Permissions::INVOICE_VIEW`). ومن يطلب البضاعةَ ويستلمها بقسم
+         * «المشتريات» يرى أوامرَه، لا ما على المتجر لكلّ مورّد.
+         */
+        $readsInvoices = (bool) auth()->user()?->may(Permissions::INVOICE_VIEW);
+
         // السند المربوط بأمرٍ هو الشراء نفسه بورقةٍ ثانية — فلا يُعدّ معه
-        $invoices = SupplierInvoice::where('business_id', $bid)->with('supplier')
+        $invoices = ! $readsInvoices ? collect() : SupplierInvoice::where('business_id', $bid)->with('supplier')
             ->whereNull('purchase_order_id')
             ->when($span, fn ($q) => $q->whereBetween('issued_at', $span))
             ->when($supplierId, fn ($q) => $q->where('supplier_id', $supplierId))
@@ -114,7 +122,7 @@ class PurchaseRegisterController extends Controller
                  * يبقى دَينًا على الشاشة — وحسابُ الموردين في الدفتر لا يعرفه.
                  * والتعريفُ في `SupplierInvoice::scopeOwed`.
                  */
-                'outstanding' => round(
+                'outstanding' => ! $readsInvoices ? null : round(
                     (float) SupplierInvoice::where('business_id', $bid)->owed()->sum('total')
                     - (float) SupplierInvoice::where('business_id', $bid)->owed()->sum('paid'),
                     3

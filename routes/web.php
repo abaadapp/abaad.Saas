@@ -595,6 +595,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->name('preparation.check');
     Route::get('/preparation/{number}/timeline', [PreparationController::class, 'timeline'])
         ->name('preparation.timeline');
+    /*
+     * و«ورقة تجهيز داخلية» — تفاصيلُ البطاقة على شريط طابعة الصندوق، بلا مال.
+     *
+     * لكلّ متجرٍ فيه لوحةُ تجهيز، بلا مفتاحٍ من لوحة المنصّة: `preparation.*`
+     * فتتبع صلاحيّةَ من يجهّز، والطلبُ من `base()` — متجرُه وفرعُه وما لم يُغلق.
+     * تُطبع بضغطةٍ وحدها: لا طابورَ ولا نقلَ حالٍ ولا علامة (`PrepSheet`).
+     */
+    Route::get('/preparation/{number}/sheet', [PreparationController::class, 'sheet'])
+        ->name('preparation.sheet');
 
     /*
      * ═══ ومهامُّ فواتير العملاء على اللوحة نفسِها ═══
@@ -611,6 +620,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('preparation.invoiceInternalPdf');
     Route::get('/preparation/customer-invoices/{id}/timeline', [PreparationController::class, 'invoiceTimeline'])
         ->whereNumber('id')->name('preparation.invoiceTimeline');
+    Route::get('/preparation/customer-invoices/{id}/sheet', [PreparationController::class, 'invoiceSheet'])
+        ->whereNumber('id')->name('preparation.invoiceSheet');
     Route::post('/preparation/customer-invoices/{id}/requeue', [PreparationController::class, 'invoiceRequeue'])
         ->whereNumber('id')->name('preparation.invoiceRequeue');
     Route::post('/preparation/customer-invoices/{id}/print-confirm', [PreparationController::class, 'invoicePrintConfirm'])
@@ -1102,7 +1113,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      * `website` في `MarketingSettings` — الاسم يصف البيانات لا الشاشة.
      */
     Route::get('/marketing/website', fn () => redirect()->route('admin.settings.index', ['section' => 'website']))->name('marketing.website');
-    Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
+    // والنطاقُ ونشرُ الموقع وطريقُ عنوانه ضبطٌ لا تشغيل — `Permissions::WEBSITE_CONFIGURE` كأخواتها تحت «الموقع»
+    Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->middleware('may:'.Permissions::WEBSITE_CONFIGURE)->name('marketing.website.save');
     // إنشاء متجر التاجر على الإنترنت — من صفحة الإعدادات نفسها
     Route::post('/marketing/store', [MarketingController::class, 'saveStore'])->name('marketing.store.save');
     /*
@@ -1131,7 +1143,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      */
     Route::match(['get', 'post'], '/store/preview', [StorefrontController::class, 'preview'])
         ->name('store.preview');
-    Route::post('/marketing/domain-path', [MarketingController::class, 'saveDomainPath'])->name('marketing.domain.path');
+    Route::post('/marketing/domain-path', [MarketingController::class, 'saveDomainPath'])->middleware('may:'.Permissions::WEBSITE_CONFIGURE)->name('marketing.domain.path');
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
     Route::post('/marketing/seo', [MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
     Route::post('/marketing/seo/refresh', [MarketingController::class, 'refreshSeo'])->name('marketing.seo.refresh');
@@ -1631,8 +1643,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/notifications/reopen', [NotificationController::class, 'reopen'])->name('notifications.reopen');
     Route::get('/notifications/history', [NotificationController::class, 'history'])->name('notifications.history');
 
-    // النسخ الاحتياطي والاستعادة
-    Route::get('/backup/download', [BackupController::class, 'download'])->name('backup.download');
+    /*
+     * النسخ الاحتياطي والاستعادة.
+     *
+     * والتنزيلُ يُخرج المتجرَ كلَّه — فخلف `business.export` لا خلف قسم
+     * «الإعدادات»: لصاحب النشاط ولمن منحه إيّاه بالاسم. ويُسأل في المسار
+     * قبل أن تُبنى النسخةُ أو يُقرأ ملفُّها. والإنشاءُ على الخادم وتكرارُه
+     * على القسم (لا يُخرجان شيئًا)، والاستعادةُ لصاحب النشاط وحده.
+     */
+    Route::get('/backup/download', [BackupController::class, 'download'])
+        ->middleware('may:'.Permissions::BUSINESS_EXPORT)->name('backup.download');
     Route::post('/backup/restore', [BackupController::class, 'restore'])->name('backup.restore');
 
     /*
@@ -1647,7 +1667,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/backup/frequency', [BackupController::class, 'frequency'])->name('backup.frequency');
     Route::post('/backup/create', [BackupController::class, 'create'])
         ->middleware('throttle:6,1')->name('backup.create');
-    Route::get('/backup/latest/download', [BackupController::class, 'downloadLatest'])->name('backup.latest.download');
+    Route::get('/backup/latest/download', [BackupController::class, 'downloadLatest'])
+        ->middleware('may:'.Permissions::BUSINESS_EXPORT)->name('backup.latest.download');
     Route::post('/backup/latest/restore', [BackupController::class, 'restoreLatest'])->name('backup.latest.restore');
 
     /*

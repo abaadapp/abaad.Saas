@@ -10,6 +10,14 @@ class CustomerInvoiceItem extends Model
 {
     protected $guarded = [];
 
+    /**
+     * `details` لقطةُ ما اختير مع البند بلا مال — مقاسُه وخياراتُه وملاحظتُه
+     * وإضافاتُه المشمولةُ في ثمنه واسمُه بلغتيه. انظر `InvoiceLineDetails`.
+     */
+    protected $casts = [
+        'details' => 'array',
+    ];
+
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(CustomerInvoice::class, 'customer_invoice_id');
@@ -29,5 +37,11 @@ class CustomerInvoiceItem extends Model
     public function addon(): BelongsTo
     {
         return $this->belongsTo(Addon::class);
+    }
+
+    /** الصنفُ الذي بيعت معه هذه الإضافة — للعرض تحته، والمالُ في سطرها هي */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_item_id');
     }
 }

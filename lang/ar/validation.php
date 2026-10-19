@@ -400,6 +400,16 @@ return [
         'items.*.unit_price' => 'سعر الوحدة',
         'items.*.tax_rate' => 'نسبة ضريبة البند',
         'items.*.addon_id' => 'الإضافة',
+        // وما يُختار مع بند فاتورة العميل — `InvoiceLineDetails::rules`
+        'items.*.variant_id' => 'مقاس البند',
+        'items.*.note' => 'ملاحظة المنتج',
+        'items.*.options' => 'خيارات البند',
+        'items.*.options.*.label' => 'اسم الخيار',
+        'items.*.options.*.value' => 'قيمة الخيار',
+        'items.*.addons' => 'إضافات البند',
+        'items.*.addons.*.addon_id' => 'إضافة البند',
+        'items.*.addons.*.quantity' => 'كمية الإضافة',
+        'items.*.addons.*.included' => 'الإضافة ضمن السعر',
 
         // المشتريات والموردون
         'purchase_order_id' => 'أمر الشراء',

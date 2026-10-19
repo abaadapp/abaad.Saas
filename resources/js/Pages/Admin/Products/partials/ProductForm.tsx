@@ -440,7 +440,7 @@ export default function ProductForm({
                                                 value={form.data.category_id}
                                                 onChange={(e) => form.setData('category_id', e.target.value)}
                                                 options={cats.map((c) => ({
-                                                    label: c.name,
+                                                    label: c.label ?? c.name,
                                                     value: c.id,
                                                 }))}
                                                 placeholder="اختر القسم"

@@ -75,7 +75,13 @@ export default function Cheques() {
         cheques,
         bankAccounts,
         context,
+        auth,
     } = usePage<PageProps<Props>>().props;
+    /*
+     * و«صُرِف» و«ارتدّ» لمن يسجّل التحصيل — كما يقبلهما الخادم (`ChequeController`).
+     * والارتدادُ يُعيد الذمّةَ على العميل، فلا يُرسم لمن يقرأ «المالية» وحدها.
+     */
+    const mayRecord = (auth?.mayActions ?? []).includes("customerPayment.create");
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
@@ -231,6 +237,7 @@ export default function Cheques() {
 
                                 {c.status === "تحت التحصيل" ? (
                                     <TableCell>
+                                        {mayRecord && (
                                         <div className="flex gap-2">
                                             <Button
                                                 size="sm"
@@ -247,6 +254,7 @@ export default function Cheques() {
                                                 {t("ارتدّ")}
                                             </Button>
                                         </div>
+                                        )}
                                     </TableCell>
                                 ) : (
                                     <TableCell className="text-[12px]">

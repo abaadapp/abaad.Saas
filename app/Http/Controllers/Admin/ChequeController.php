@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
 use App\Models\CustomerPayment;
 use App\Support\Cheques;
+use App\Support\Permissions;
 use App\Support\Demo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -98,6 +99,13 @@ class ChequeController extends Controller
 
     public function clear(Request $request, int|string $id)
     {
+        /*
+         * وما يقع للشيك يكتبه من يسجّل التحصيل — لا من يقرأ «المالية» وحدها.
+         * الارتدادُ يُعيد الذمّةَ على العميل ويعكس قيدَ القبض، والصرفُ ينقله إلى
+         * البنك: كلاهما كتابةٌ في الدفتر (`Permissions::CUSTOMER_PAYMENT_CREATE`).
+         */
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE), 403);
+
         $data = $request->validate([
             'cleared_on' => ['nullable', 'date'],
             'bank_account_id' => ['nullable', 'integer'],
@@ -132,6 +140,9 @@ class ChequeController extends Controller
 
     public function bounce(Request $request, int|string $id)
     {
+        // وكالصرف — انظر `clear`
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE), 403);
+
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:200'],
         ]);

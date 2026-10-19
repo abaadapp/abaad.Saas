@@ -29,7 +29,8 @@ interface Row {
 
 interface Props {
     rows: Row[];
-    summary: { count: number; total: number; outstanding: number };
+    /** ما على المتجر للموردين — `null` لمن لا يقرأ سنداتهم (`PurchaseRegisterController`) */
+    summary: { count: number; total: number; outstanding: number | null };
     month: string;
     months: string[];
     suppliers: { value: number; label: string }[];
@@ -175,16 +176,18 @@ export default function PurchaseRegister() {
                     }}
                     index={1}
                 />
-                {/* ما على المتجر لا يخصّ شهرًا: الدَّين يبقى حتى يُسدَّد */}
-                <StatCard
-                    stat={{
-                        label: t('مستحقّ للموردين'),
-                        value: m(summary.outstanding),
-                        icon: 'truck',
-                        color: summary.outstanding > 0 ? 'warning' : 'success',
-                    }}
-                    index={2}
-                />
+                {/* ما على المتجر لا يخصّ شهرًا: الدَّين يبقى حتى يُسدَّد — ولمن يقرأ السندات وحده */}
+                {summary.outstanding !== null && (
+                    <StatCard
+                        stat={{
+                            label: t('مستحقّ للموردين'),
+                            value: m(summary.outstanding),
+                            icon: 'truck',
+                            color: summary.outstanding > 0 ? 'warning' : 'success',
+                        }}
+                        index={2}
+                    />
+                )}
             </div>
 
             {rows.length === 0 ? (

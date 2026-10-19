@@ -788,6 +788,26 @@ class EmployeeController extends Controller
          * ويفتح له المتجر كلّه بلا أن يطلب أحدٌ ذلك.
          */
         if ($request->has('branches')) {
+            /*
+             * ولا يوسّع أحدٌ فروعَه بنفسه — إلّا صاحبُ النشاط.
+             *
+             * فروعُ الموظّف بابُ صناديقها: من يبيع على فرعٍ واحد ويضيف لنفسه
+             * الآخرَ يفتح صندوقه. وحارسُ «من فوقي» (`Permissions::beyond`) لا
+             * يسأل عن النفس، و`refuseRaisingMyself` يسأل عن الدور والصلاحيّات
+             * والراتب والحال — فيُسأل هنا عن الفروع.
+             */
+            if ($employee->id === auth()->id() && ! Permissions::isOwner(auth()->user())) {
+                $now = $employee->branches()->pluck('branches.id')->map(fn ($i) => (int) $i)->sort()->values()->all();
+                $asked = Branch::where('business_id', $this->bid())->whereIn('id', $data['branches'] ?? [])
+                    ->pluck('id')->map(fn ($i) => (int) $i)->sort()->values()->all();
+
+                if ($now !== $asked) {
+                    throw ValidationException::withMessages([
+                        'branches' => __('لا تغيّر فروعك بنفسك — يغيّرها صاحب النشاط أو من يدير الموظفين.'),
+                    ]);
+                }
+            }
+
             $this->syncBranches($employee, $data['branches'] ?? []);
         }
         unset($data['branches']);

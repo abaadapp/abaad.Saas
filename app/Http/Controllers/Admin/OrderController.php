@@ -120,6 +120,7 @@ class OrderController extends Controller
 
     private static function isOwner(): bool
     {
-        return auth()->user()?->role === 'admin';
+        // وصاحبُ النشاط من دورُه سلطتُه — لا صفٌّ دورُه `admin` ضُيّقت صلاحياتُه (`Permissions::isOwner`)
+        return \App\Support\Permissions::isOwner(auth()->user());
     }
 }

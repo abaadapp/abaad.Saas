@@ -1353,7 +1353,11 @@ class Demo
             // ما بقي على فاتورةٍ مدفوعة ثمّ زادت ولم يُحصَّل بعد (`OrderCorrection::addLine`)
             'balance_due' => (float) $o->balance_due,
             // ما يجوز الانتقال إليه من الحالة الحالية — لا كلّ الحالات
-            'next_statuses' => OrderStatus::nextFrom($o->status),
+            // و«ملغي» لمن يملك إلغاءَ الطلب وحده — كما يقبله الخادم (`OrderDetailController::status`)
+            'next_statuses' => array_values(array_filter(
+                OrderStatus::nextFrom($o->status),
+                fn ($s) => $s !== OrderStatus::CANCELLED || (bool) auth()->user()?->may(Permissions::PREPARATION_CANCEL),
+            )),
             // قناةُ الطلب — تقرؤها «طباعة تلقائية عند تأكيد طلب الموقع» لتفتح نافذتها في الضغطة
             'channel' => $o->channel,
             'occasions' => FlowerOrder::occasionOptions(),

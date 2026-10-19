@@ -11,6 +11,7 @@ use App\Support\Demo;
 use App\Support\FlowerOrder;
 use App\Support\OrderNotice;
 use App\Support\OrderStatus;
+use App\Support\Permissions;
 use App\Support\OrderTransition;
 use App\Support\ReviewInvite;
 use App\Support\Store\GiftOrders;
@@ -396,6 +397,18 @@ class OrderDetailController extends Controller
         $data = $request->validate([
             'status' => ['required', 'string', Rule::in(OrderStatus::ALL)],
         ]);
+
+        /*
+         * و«ملغي» إلغاءٌ ماليٌّ كامل — يعيد المخزون والنقاط والكوبون ويعكس قيد
+         * الإيراد (`OrderCorrection::cancel`). فيُسأل عنه الفعلُ الذي تسأله لوحةُ
+         * التجهيز (`Permissions::PREPARATION_CANCEL`) لا قسمُ «المبيعات» وحده:
+         * بابان لإلغاءٍ واحد بقاعدتين كانا يجعلان البائعَ يُلغي من هنا ما لا
+         * يُلغيه من اللوحة.
+         */
+        abort_if(
+            $data['status'] === OrderStatus::CANCELLED && ! auth()->user()?->may(Permissions::PREPARATION_CANCEL),
+            403,
+        );
 
         // و«من» تُقرأ مقفلةً داخل النقل لا هنا — انظر `OrderTransition::apply`
         $from = null;

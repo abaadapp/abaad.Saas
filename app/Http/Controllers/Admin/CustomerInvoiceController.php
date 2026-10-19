@@ -1262,6 +1262,17 @@ class CustomerInvoiceController extends Controller
             403,
         );
 
+        /*
+         * و«مدفوع نقدًا» أو غيرُه عند الإصدار يسجّل تحصيلًا (`collect`) — مالًا
+         * يدخل الصندوق. فيُسأل عن فعل التحصيل كما يسأله بابُه (`pay`): من يُصدر
+         * ولا يسجّل التحصيلَ يُصدرها «آجل»، ويسجّلها من يملكه.
+         */
+        abort_if(
+            $request->boolean('issue') && $method !== CustomerInvoices::CREDIT
+                && ! auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
+            403,
+        );
+
         if ($method !== CustomerInvoices::CREDIT && ! $request->boolean('issue')) {
             throw ValidationException::withMessages([
                 'payment_method' => __('التحصيل يُسجَّل على فاتورةٍ صادرة — أصدر الفاتورة، أو احفظها مسودّةً آجلة.'),

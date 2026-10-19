@@ -69,7 +69,12 @@ export function birthdayLabel(c: { birth_day?: number | null; birth_month?: numb
 const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 
 export default function CustomerShow() {
-    const { customer, orders, addresses, context, branches = [], customerFlags, paymentLinks } = usePage<PageProps<Props>>().props;
+    const { customer, orders, addresses, context, branches = [], customerFlags, paymentLinks, auth } = usePage<PageProps<Props>>().props;
+    /*
+     * ورفعُ حظر البيع لمن يملك تجاوزَه — كما يقبله الخادم (`CustomerController::internal`).
+     * فلا يُرسم مفتاحٌ يُطفئ الحظرَ لمن يُردّ عنه: يُقال له من يرفعه.
+     */
+    const blockLocked = customer.alert_type === 'block' && !(auth?.mayActions ?? []).includes('customer.block_override');
     const t = useTranslate();
     // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
     const tenant = useTenantLink();
@@ -285,7 +290,12 @@ export default function CustomerShow() {
                                     </Field>
                                 )}
 
-                                {customerFlags.alerts && (
+                                {customerFlags.alerts && blockLocked && (
+                                    <p data-testid="customer-block-locked" className="rounded-xl border border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
+                                        {t('البيع محظور على هذا العميل — يرفعه من يملك «تجاوز حظر البيع على عميل».')}
+                                    </p>
+                                )}
+                                {customerFlags.alerts && !blockLocked && (
                                     <div className="space-y-3 rounded-xl border border-[var(--ui-border,#e8e8e8)] p-3">
                                         <Toggle
                                             on={internal.data.alert_enabled}

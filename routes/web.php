@@ -1102,7 +1102,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      * `website` في `MarketingSettings` — الاسم يصف البيانات لا الشاشة.
      */
     Route::get('/marketing/website', fn () => redirect()->route('admin.settings.index', ['section' => 'website']))->name('marketing.website');
-    Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->name('marketing.website.save');
+    // والنطاقُ ونشرُ الموقع وطريقُ عنوانه ضبطٌ لا تشغيل — `Permissions::WEBSITE_CONFIGURE` كأخواتها تحت «الموقع»
+    Route::post('/marketing/website', [MarketingController::class, 'saveWebsite'])->middleware('may:'.Permissions::WEBSITE_CONFIGURE)->name('marketing.website.save');
     // إنشاء متجر التاجر على الإنترنت — من صفحة الإعدادات نفسها
     Route::post('/marketing/store', [MarketingController::class, 'saveStore'])->name('marketing.store.save');
     /*
@@ -1131,7 +1132,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      */
     Route::match(['get', 'post'], '/store/preview', [StorefrontController::class, 'preview'])
         ->name('store.preview');
-    Route::post('/marketing/domain-path', [MarketingController::class, 'saveDomainPath'])->name('marketing.domain.path');
+    Route::post('/marketing/domain-path', [MarketingController::class, 'saveDomainPath'])->middleware('may:'.Permissions::WEBSITE_CONFIGURE)->name('marketing.domain.path');
     Route::get('/marketing/seo', [MarketingController::class, 'seo'])->name('marketing.seo');
     Route::post('/marketing/seo', [MarketingController::class, 'saveSeo'])->name('marketing.seo.save');
     Route::post('/marketing/seo/refresh', [MarketingController::class, 'refreshSeo'])->name('marketing.seo.refresh');

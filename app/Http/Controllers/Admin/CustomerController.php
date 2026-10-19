@@ -192,6 +192,20 @@ class CustomerController extends Controller
         $before = $customer->alert_type;
         $type = ($data['alert_enabled'] ?? false) ? ($data['alert_type'] ?? null) : null;
 
+        /*
+         * ورفعُ حظر البيع تجاوزٌ دائمٌ له — فيُسأل عنه ما يُسأل عن تجاوزه مرّةً.
+         *
+         * التجاوزُ في البيع فعلٌ باسمه (`CustomerFlags::OVERRIDE`) لصاحب المتجر
+         * افتراضًا. وكان هذا البابُ يرفع الحظرَ كلَّه بقسم «العملاء» وحده: من
+         * رُدّ عن تجاوزه مرّةً عند الصندوق يمحوه من صفحة العميل ثمّ يبيع.
+         * ووضعُ الحظر يبقى لمن يفتح القسم — تنبيهٌ لا مال.
+         */
+        abort_if(
+            $before === \App\Support\CustomerFlags::BLOCK && $type !== \App\Support\CustomerFlags::BLOCK
+                && ! auth()->user()?->may(\App\Support\CustomerFlags::OVERRIDE),
+            403,
+        );
+
         $customer->update([
             'birth_day' => $data['birth_day'] ?? null,
             'birth_month' => $data['birth_month'] ?? null,

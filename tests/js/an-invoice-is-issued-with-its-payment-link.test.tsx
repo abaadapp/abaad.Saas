@@ -169,7 +169,8 @@ describe('«إصدار الفاتورة وإنشاء رابط دفع» في شا
     });
 
     it('ومع «نقدي» لا يُطلب رابط: الزرُّ معطَّلٌ والسببُ بجانبه — والإصدارُ باقٍ', async () => {
-        const user = createPage();
+        // و«مدفوع نقدًا» لمن يسجّل التحصيل وحده (`CustomerInvoiceController::store`)
+        const user = createPage({ may: { issue: true, cancel: true, credit_note: true, pay: true, brand: false, payment_link: true } });
 
         await user.click(screen.getByRole('radio', { name: 'مدفوع نقدًا' }));
 
@@ -354,5 +355,20 @@ describe('البطاقةُ تطلب من باب صفحتها — لا من «ا�
 
         expect(screen.getByTestId('payment-link-actions')).toBeInTheDocument();
         expect(screen.queryByTestId('payment-link-cancel')).toBeNull();
+    });
+});
+
+describe('القبضُ عند الإصدار لمن يسجّل التحصيل', () => {
+    it('من لا يسجّل التحصيل لا يُعرض له إلّا «آجل»', () => {
+        createPage();
+
+        expect(screen.queryByRole('radio', { name: 'مدفوع نقدًا' })).toBeNull();
+        expect(screen.getByRole('radio', { name: /^آجل/ })).toBeInTheDocument();
+    });
+
+    it('ومن يسجّله تُعرض له وسائلُ القبض', () => {
+        createPage({ may: { issue: true, cancel: false, credit_note: false, pay: true, brand: false, payment_link: false } });
+
+        expect(screen.getByRole('radio', { name: 'مدفوع نقدًا' })).toBeInTheDocument();
     });
 });

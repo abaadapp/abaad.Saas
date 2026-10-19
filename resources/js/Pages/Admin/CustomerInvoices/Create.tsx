@@ -1148,7 +1148,8 @@ export default function CustomerInvoiceCreate({
                                     ويسجّل من شاشةٍ ثانية.
                                 */}
                                 <div className="space-y-2.5 pt-1">
-                                    {methods.map((value) => (
+                                    {/* والقبضُ الآن تحصيلٌ — لمن يسجّله وحده؛ وغيرُه يُصدر «آجل» كما يقبله الخادم */}
+                                    {methods.filter((value) => may.pay || value === CREDIT).map((value) => (
                                         <label key={value} className="flex items-center gap-2 text-[13px]">
                                             <input
                                                 type="radio"

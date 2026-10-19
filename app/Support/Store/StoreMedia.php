@@ -59,23 +59,15 @@ final class StoreMedia
      */
     public static function size(int $businessId, string $url): ?array
     {
-        static $seen = [];
-
         if ($url === '' || ! self::owned($businessId, $url)) {
             return null;
-        }
-
-        $key = $businessId.'|'.$url;
-
-        if (array_key_exists($key, $seen)) {
-            return $seen[$key];
         }
 
         $file = self::fileName($businessId, $url);
         $path = $file === null ? null : Storage::disk('public')->path('website/'.$businessId.'/'.$file);
         $info = $path !== null && is_file($path) ? @getimagesize($path) : false;
 
-        return $seen[$key] = is_array($info) && $info[0] > 0 && $info[1] > 0
+        return is_array($info) && $info[0] > 0 && $info[1] > 0
             ? ['w' => (int) $info[0], 'h' => (int) $info[1]]
             : null;
     }

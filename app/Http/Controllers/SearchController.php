@@ -45,9 +45,10 @@ class SearchController extends Controller
          * البيانات وصلته قبل الباب المغلق.
          */
         $products = $user->allows('products') ? Product::where('business_id', $bid)
-            ->where(fn ($w) => $w->where('name', $op, $like)->orWhere('sku', $op, $like))
+            // وبالاسمين: من يكتب «Rose» يجد «وردة» إن كُتب لها اسمُها الإنجليزيّ
+            ->where(fn ($w) => $w->where('name', $op, $like)->orWhere('name_en', $op, $like)->orWhere('sku', $op, $like))
             ->limit(5)->get()->map(fn ($p) => [
-                'label' => $p->name, 'meta' => $p->sku ?: '—',
+                'label' => \App\Support\Demo::ln($p->name, $p->name_en), 'meta' => $p->sku ?: '—',
                 'url' => route('admin.products.show', $p->id),
             ]) : collect();
 

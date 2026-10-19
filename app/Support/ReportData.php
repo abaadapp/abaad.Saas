@@ -144,7 +144,7 @@ class ReportData
     private static function categoryOptions(int $bid): array
     {
         return Category::where('business_id', $bid)->orderBy('name')
-            ->get(['id', 'name'])->map(fn ($c) => ['value' => (string) $c->id, 'label' => $c->name])->all();
+            ->get(['id', 'name', 'name_en'])->map(fn ($c) => ['value' => (string) $c->id, 'label' => CategoryName::display($c->name, $c->name_en, app()->getLocale())])->all();
     }
 
     /* ==================== ضريبة القيمة المضافة ==================== */
@@ -943,8 +943,9 @@ class ReportData
 
             return [
                 'id' => $p->id,
-                'name' => $p->name,
-                'category' => $p->category?->name,
+                // الصنفُ وقسمُه من الكتالوج الحيّ — بلغة الشاشة، ولا تُخترع ترجمةٌ لما لم يُكتب
+                'name' => Demo::ln($p->name, $p->name_en),
+                'category' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : null,
                 'price' => round((float) $p->price, 3),
                 'quantity' => (int) $p->quantity,
                 'units' => $units,
@@ -982,9 +983,9 @@ class ReportData
 
         $rows = $products->map(fn ($p) => [
             'id' => $p->id,
-            'name' => $p->name,
+            'name' => Demo::ln($p->name, $p->name_en),
             'sku' => $p->sku,
-            'category' => $p->category?->name,
+            'category' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : null,
             'quantity' => (int) $p->quantity,
             'alert' => (int) $p->alert_qty,
             'cost' => round((float) $p->cost, 3),
@@ -1195,12 +1196,12 @@ class ReportData
             ->map(fn ($a) => $a->branch_id.'|'.$a->adjusted_at)
             ->unique()->count();
 
-        $rows = (clone $base)->with(['product:id,name', 'branch:id,name'])
+        $rows = (clone $base)->with(['product:id,name,name_en', 'branch:id,name'])
             ->orderByDesc('adjusted_at')->orderByDesc('id')->limit(self::cap())->get()
             ->map(fn ($a) => [
                 'id' => $a->id,
                 'number' => $a->number,
-                'product' => $a->product?->name,
+                'product' => $a->product ? Demo::ln($a->product->name, $a->product->name_en) : null,
                 'branch' => $a->branch?->name,
                 'reason' => $a->reason,
                 'delta' => (int) $a->quantity_delta,

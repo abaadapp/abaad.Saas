@@ -214,8 +214,8 @@ export default function PosReceipts() {
                                         {(l.addons ?? []).map((a, j) => (
                                             <div key={j} className="flex justify-between gap-2 ps-4 text-[12px] text-gray-500">
                                                 <span className="min-w-0 truncate">
-                                                    + {a.name}
-                                                    {a.qty > 1 && ` ×${a.qty}`}
+                                                    + <bdi>{a.name}</bdi>
+                                                    {a.qty > 1 && <> <span dir="ltr">×{a.qty}</span></>}
                                                 </span>
                                                 <span className="shrink-0 tabular-nums">{m(a.total)}</span>
                                             </div>

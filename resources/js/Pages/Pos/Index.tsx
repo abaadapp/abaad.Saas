@@ -279,13 +279,14 @@ export default function PosIndex() {
     };
 
     const visibleProducts = useMemo(() => {
-        const needle = q.trim();
+        // وبالاسمين وبلا حالة أحرف: «rose» تجد «Rose Bouquet»، والعربيُّ يجد الإنجليزيّ
+        const needle = q.trim().toLowerCase();
         return products.filter((p) => {
             // الموقوف لا يُعرض — والخادم يردّه كذلك (PosController::checkout)
             if (p.active === false) return false;
             const inCat = cat === 'الكل' || cat === p.cat;
             const inSeason = season === null || seasonIds.has(p.id);
-            const inSearch = !needle || `${p.name} ${p.label}`.includes(needle);
+            const inSearch = !needle || `${p.name} ${p.name_en ?? ''} ${p.label}`.toLowerCase().includes(needle);
             return inCat && inSeason && inSearch;
         });
     }, [products, cat, q, season, seasonIds]);

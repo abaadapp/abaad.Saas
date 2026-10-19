@@ -1191,7 +1191,8 @@ class PosController extends Controller
                 'note' => $i->note ?? '',
                 'addons' => $i->addons->map(fn ($a) => [
                     'addon_id' => $a->addon_id,
-                    'name' => $a->name,
+                    // اسمٌ للعرض بلغة الشاشة كالسلّة الجديدة (`PosAddons`) — والدفعُ يقرأ الإضافةَ بمعرّفها
+                    'name' => Demo::ln($a->name, $a->name_en),
                     'price' => (float) $a->unit_price,
                     'qty' => (int) $a->quantity,
                 ])->all(),

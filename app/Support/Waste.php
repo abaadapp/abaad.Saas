@@ -144,7 +144,9 @@ class Waste
         $q = self::query($businessId, $filters);
 
         [$column, $labels] = match ($dimension) {
-            'product' => ['product_id', fn ($ids) => \App\Models\Product::withTrashed()->whereIn('id', $ids)->pluck('name', 'id')->all()],
+            // والصنفُ بلغة الشاشة — اسمُه الإنجليزيّ إن كُتب، وإلّا كما كُتب
+            'product' => ['product_id', fn ($ids) => \App\Models\Product::withTrashed()->whereIn('id', $ids)->get(['id', 'name', 'name_en'])
+                ->mapWithKeys(fn ($p) => [$p->id => Demo::ln($p->name, $p->name_en)])->all()],
             'branch' => ['branch_id', fn ($ids) => \App\Models\Branch::whereIn('id', $ids)->pluck('name', 'id')->all()],
             'reason' => ['reason', fn ($ids) => array_combine($ids, $ids)],
             'category' => ['product_id', fn ($ids) => []],
@@ -159,7 +161,8 @@ class Waste
                 ->selectRaw('products.category_id as k, sum(abs(stock_adjustments.quantity_delta)) as q, sum(abs(stock_adjustments.quantity_delta) * stock_adjustments.cost_at_time) as v')
                 ->groupBy('products.category_id')->get();
 
-            $names = \App\Models\Category::whereIn('id', $rows->pluck('k')->filter())->pluck('name', 'id')->all();
+            $names = \App\Models\Category::whereIn('id', $rows->pluck('k')->filter())->get(['id', 'name', 'name_en'])
+                ->mapWithKeys(fn ($c) => [$c->id => CategoryName::display($c->name, $c->name_en, app()->getLocale())])->all();
 
             return $rows->map(fn ($r) => [
                 'label' => $names[$r->k] ?? __('بلا قسم'),
@@ -264,7 +267,7 @@ class Waste
             ->map(fn ($a) => [
                 'id' => $a->id,
                 'number' => $a->number,
-                'product' => $a->product?->name ?? '—',
+                'product' => $a->product ? Demo::ln($a->product->name, $a->product->name_en) : '—',
                 'reason' => $a->reason,
                 'delta' => (float) $a->quantity_delta,
                 'at' => optional($a->adjusted_at)->format('Y-m-d'),
@@ -302,7 +305,8 @@ class Waste
             ->selectRaw('product_id, sum(abs(quantity_delta)) as q, sum(abs(quantity_delta) * cost_at_time) as v')
             ->groupBy('product_id')->get()->keyBy('product_id');
 
-        $names = \App\Models\Product::withTrashed()->whereIn('id', array_keys($consumed))->pluck('name', 'id')->all();
+        $names = \App\Models\Product::withTrashed()->whereIn('id', array_keys($consumed))->get(['id', 'name', 'name_en'])
+            ->mapWithKeys(fn ($p) => [$p->id => Demo::ln($p->name, $p->name_en)])->all();
 
         $out = [];
         foreach ($consumed as $pid => $used) {

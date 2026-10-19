@@ -1049,6 +1049,8 @@ class Demo
             'id' => $c->id,
             'name' => $c->name,
             'name_en' => $c->name_en,
+            // للعرض بلغة الشاشة — والقيمةُ في المرشّحات `name` كما حُفظ
+            'label' => CategoryName::display($c->name, $c->name_en, app()->getLocale()),
             'products' => $c->products_count,
             'icon' => $c->icon,
             'color' => self::categoryColor($c->color),
@@ -1114,6 +1116,8 @@ class Demo
                 'name_en' => $p->name_en,
                 'label' => self::ln($p->name, $p->name_en),
                 'cat' => $p->category?->name ?? '—',
+                // والقسمُ للعرض بلغة الشاشة — `cat` يبقى كما حُفظ لمطابقة النموذج
+                'cat_label' => $p->category ? CategoryName::display($p->category->name, $p->category->name_en, app()->getLocale()) : '—',
                 'price' => (float) $p->price,
                 'cost' => (float) $p->cost,
                 'qty' => $qty,
@@ -1259,7 +1263,8 @@ class Demo
             'card_line' => GiftCardProduct::cardLine($it, $o),
             'variant_id' => $it->variant_id,
             'addons' => $it->addons->map(fn ($a) => [
-                'name' => $a->name,
+                // باسمها في لغة الشاشة من لقطتها — `name_en` حُفظ معها ساعةَ بيعت
+                'name' => self::ln($a->name, $a->name_en),
                 'qty' => (int) $a->quantity,
                 'total' => (float) $a->total,
             ])->all(),
@@ -2218,6 +2223,9 @@ class Demo
         return Product::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($p) => [
             'id' => $p->id,
             'name' => $p->name,
+            // واسمُه الإنجليزيّ للبحث، واسمُه بلغة الشاشة للعرض
+            'name_en' => $p->name_en,
+            'label' => self::ln($p->name, $p->name_en),
             'sku' => $p->sku,
             'qty' => $here ? (int) ($books[$p->id][$here] ?? 0) : $p->quantity,
             // الإجمالي يبقى معروضًا: من يرى فرعه صفرًا يحتاج أن يعرف أن في غيره بضاعة
@@ -3298,7 +3306,9 @@ class Demo
 
         return $rows->map(function ($r) use ($bid, $totalRev) {
             $catId = Product::where('business_id', $bid)->where('name', $r->name)->value('category_id');
-            $catName = $catId ? (Category::where('id', $catId)->value('name') ?? '—') : '—';
+            // والقسمُ بلغة الشاشة (`CategoryName::display`) — واسمُ البند لقطةُ بيعه كما هو
+            $cat = $catId ? Category::where('id', $catId)->first(['name', 'name_en']) : null;
+            $catName = $cat ? CategoryName::display($cat->name, $cat->name_en, app()->getLocale()) : '—';
 
             return [
                 'name' => $r->name,
@@ -3837,7 +3847,7 @@ class Demo
                 'total' => $it->lineTotal(),
                 'note' => $it->note,
                 'addons' => $it->addons->map(fn ($a) => [
-                    'name' => $a->name,
+                    'name' => self::ln($a->name, $a->name_en),
                     'qty' => (int) $a->quantity,
                     'total' => (float) $a->total,
                 ])->all(),

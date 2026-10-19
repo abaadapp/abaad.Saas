@@ -80,7 +80,8 @@ class StockAdjustmentController extends Controller
             'adjustments' => collect($adjustments->items())->map(fn ($a) => [
                 'id' => $a->id,
                 'number' => $a->number,
-                'product' => $a->product?->name ?? '—',
+                // والصنفُ بلغة الشاشة — والقيدُ نفسُه لا يتغيّر
+                'product' => $a->product ? \App\Support\Demo::ln($a->product->name, $a->product->name_en) : '—',
                 'sku' => $a->product?->sku,
                 'branch' => $a->branch?->name,
                 'delta' => (float) $a->quantity_delta,

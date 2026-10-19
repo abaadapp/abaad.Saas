@@ -1043,7 +1043,15 @@ final class CustomerInvoices
          * الفاتورة سطرين بالاسم نفسِه وبثمنين — ولا يُعرف لماذا. نصٌّ لا مال:
          * الثمنُ والكميّةُ كما بيعا، والفواتيرُ الصادرةُ قبله لا تُمسّ.
          */
-        $name = ($item->name ?: __('بند')).(filled($item->variant_name) ? ' — '.$item->variant_name : '');
+        /*
+         * ونصُّ الوصف لقطةٌ دائمة — بلغة الدفتر الأصليّة لا بلغة شاشة من ضغط.
+         *
+         * كان `__('بند')` و«إضافات:» و«تشمل:» تُترجَم بلغة الكاشير ساعةَ البيع
+         * الآجل، فيكتب كاشيرٌ إنجليزيُّ الواجهة «Add-ons: شوكولاتة» في ورقةٍ
+         * عربيّة إلى الأبد. فتُكتب بالعربيّة دائمًا (`'ar'`)، والإضافةُ تحمل
+         * اسمَها الإنجليزيّ في لقطتها (`InvoiceLineDetails::fromOrderAddon`).
+         */
+        $name = ($item->name ?: __('بند', [], 'ar')).(filled($item->variant_name) ? ' — '.$item->variant_name : '');
 
         $main = [
             'product_id' => $item->product_id,
@@ -1088,14 +1096,17 @@ final class CustomerInvoices
                 'product_id' => null,
                 'addon_id' => null,
                 'order_item_id' => $item->id,
-                'description' => Str::limit(__('إضافات: :list', ['list' => $names]).$suffix, 255, ''),
+                'description' => Str::limit(__('إضافات: :list', ['list' => $names], 'ar').$suffix, 255, ''),
+                'details' => $addons->contains(fn ($a) => filled($a->name_en)) ? ['label_en' => Str::limit('Add-ons: '.$addons->map(
+                    fn ($a) => ($a->name_en ?: $a->name).((int) $a->quantity > 1 ? ' ×'.(int) $a->quantity : '')
+                )->implode(', ').$suffix, 255, '')] : null,
                 'quantity' => 1.0,
                 'unit_price' => $charged,
             ]];
         }
 
         // وداخل الثمن: تُسمّى في بيان الصنف ولا تُكتب مالًا
-        $main['description'] = Str::limit($name.' ('.__('تشمل: :list', ['list' => $names]).')'.$suffix, 255, '');
+        $main['description'] = Str::limit($name.' ('.__('تشمل: :list', ['list' => $names], 'ar').')'.$suffix, 255, '');
 
         return [$main];
     }

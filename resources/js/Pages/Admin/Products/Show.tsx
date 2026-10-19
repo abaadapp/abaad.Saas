@@ -52,7 +52,7 @@ export default function ProductShow() {
         <AdminLayout title="تفاصيل المنتج">
             <PageHeader
                 title={product.label ?? product.name}
-                subtitle={`${product.cat} · ${product.sku}`}
+                subtitle={`${product.cat_label ?? product.cat} · ${product.sku}`}
                 actions={
                     <>
                         <Button variant="outline" asChild>
@@ -109,7 +109,7 @@ export default function ProductShow() {
                         )}
                     </div>
 
-                    <p className="text-sm font-medium text-[#6d28d9]">{product.cat}</p>
+                    <p className="text-sm font-medium text-[#6d28d9]">{product.cat_label ?? product.cat}</p>
                     <h2 className="mt-1 text-[24px] font-bold text-[#111]">{product.label ?? product.name}</h2>
 
                     <div className="mt-3 flex items-baseline gap-2">

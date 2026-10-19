@@ -535,7 +535,8 @@ class PreparationController extends Controller
                 'image' => $i->product?->image,
                 'addons' => $i->addons->map(fn ($a) => [
                     'id' => $a->id,
-                    'name' => $a->name,
+                    // باسمها في لغة الشاشة من لقطة البيع — لا اسمُ الكتالوج اليوم ولا ترجمةٌ لم تُحفظ
+                    'name' => Demo::ln($a->name, $a->name_en),
                     'qty' => (int) $a->quantity,
                 ])->all(),
                 /*

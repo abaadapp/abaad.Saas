@@ -11,7 +11,7 @@
     <p style="margin:8px 0 0;font-size:15px">{{ $t['orderNo'] }}: <strong dir="ltr" data-testid="rb-order-number">{{ $order['number'] }}</strong></p>
     <div class="rb-box" style="margin:28px 0;text-align:start;font-size:14px;line-height:1.9;padding:20px">
         @foreach ($order['lines'] as $l)
-            <div style="display:flex;justify-content:space-between;gap:12px"><span>{{ $l['name'] }} × {{ $l['qty'] }}</span><span>{{ $l['line'] }}</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px"><span><bdi>{{ $l['name'] }}</bdi> <span dir="ltr">× {{ $l['qty'] }}</span></span><span>{{ $l['line'] }}</span></div>
         @endforeach
         <div style="border-top:1px solid var(--rb-line);margin-top:10px;padding-top:10px">
             <div><span>{{ $t['s2'] }}:</span> {{ $order['fulfil'] }}</div>

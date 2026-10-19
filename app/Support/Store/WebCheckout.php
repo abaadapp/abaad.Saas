@@ -315,6 +315,9 @@ final class WebCheckout
         $form = self::validated($bid, $payload);
         $quote = self::quote($business, $payload + ['fulfil' => $form['fulfil']]);
 
+        // ولا تُفتح صفحةُ البنك بمبلغٍ غيرِ الذي رآه — انظر `assertAgreed`
+        self::assertAgreed($bid, $form, $quote);
+
         /*
          * ورسالةُ بطاقةٍ تقول اسمَ من أخفى اسمَه — يُسأل قبل أن تُفتح دفعة.
          *
@@ -437,6 +440,11 @@ final class WebCheckout
                         ]),
                     ]);
                 }
+            }
+
+            // وما سوى الخصم ممّا يُبدّل الإجماليّ — انظر `assertAgreed`
+            if (! $paid) {
+                self::assertAgreed($bid, $form, $q);
             }
 
             /*
@@ -635,6 +643,45 @@ final class WebCheckout
 
             return $order;
         });
+    }
+
+    /**
+     * الإجماليُّ الذي رآه الزبونُ هو ما يُطلب — أو يُقال له قبل أن يُكتب شيء.
+     *
+     * ═══ والعطبُ الذي وُضع لأجله ═══
+     *
+     * الصفحةُ تُعيد التسعيرَ مع كلّ تبديل: توصيلٌ أو استلام، كرتٌ أو لا. فمن
+     * بدّل إلى التوصيل وضغط «تأكيد» قبل أن تعود التسعيرة رأى إجماليَّ
+     * الاستلام على الزرّ، ويُكتب طلبُه بإجماليّ التوصيل — رسمٌ لم يره. وكذلك
+     * سعرُ صنفٍ رفعه صاحبُ المحلّ بين التسعيرة والضغطة.
+     *
+     * فإن أرسلت الصفحةُ ما رآه (`agreed_total`) وخالف ما صار إليه يُردّ
+     * الطلبُ بالإجماليّ الجديد، ويُقرّ به الزبونُ بضغطة — كما يُقرّ بخصمٍ سقط.
+     * ومن لم يرسل شيئًا (صفحةٌ قديمةٌ في متصفّح، أو بابٌ لا يعرض إجماليًّا)
+     * يمضي كما كان: لا يُخترع له إقرارٌ لم يُطلب.
+     *
+     * ولا يقع في دفعةٍ قُبضت: هناك المبلغُ مقبوضٌ وحسابُه `PriceMovedAfterPayment`.
+     *
+     * @param  array<string, mixed>  $form
+     * @param  array<string, mixed>  $quote
+     */
+    private static function assertAgreed(int $bid, array $form, array $quote): void
+    {
+        $agreed = $form['agreed_total'] ?? null;
+
+        if ($agreed === null || $agreed === '') {
+            return;
+        }
+
+        if ((int) round(((float) $agreed) * 1000) === (int) round(((float) $quote['total']) * 1000)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'total' => __('تغيّر إجمالي طلبك إلى :total — راجعه ثمّ أكّد الطلب مرّة أخرى.', [
+                'total' => Money::format((float) $quote['total'], Money::of($bid)),
+            ]),
+        ]);
     }
 
     /** رمزُ صفحة التأكيد — لا يُفتح طلبٌ بمعرّفه وحده */

@@ -95,6 +95,8 @@ final class RibbonTexts
         'cartProductNote' => 'ملاحظة المنتج:',
         'orderNotes' => 'ملاحظات الطلب (اختياري)', 'orderNotesPh' => 'اكتب ملاحظتك بالإنجليزية — مثال: Please call before delivery',
         'noteEnglishOnly' => 'يرجى كتابة الملاحظة باللغة الإنجليزية فقط.', 'noteTooLong' => 'الملاحظة أطول من :max حرفًا.',
+        // التسعيرةُ في الطريق — الزرُّ مقفلٌ حتّى تعود (`RBQuote`)
+        'quoting' => 'يُحدَّث الإجمالي…',
     ];
 
     private const EN = [
@@ -155,6 +157,7 @@ final class RibbonTexts
         'cartProductNote' => 'Product note:',
         'orderNotes' => 'Order notes (optional)', 'orderNotesPh' => 'Write your note in English — e.g. Please call before delivery',
         'noteEnglishOnly' => 'Please enter your note in English only.', 'noteTooLong' => 'The note is longer than :max characters.',
+        'quoting' => 'Updating the total…',
     ];
 
     /** @return array<string, string> */

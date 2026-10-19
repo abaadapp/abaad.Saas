@@ -595,6 +595,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->name('preparation.check');
     Route::get('/preparation/{number}/timeline', [PreparationController::class, 'timeline'])
         ->name('preparation.timeline');
+    /*
+     * و«ورقة تجهيز داخلية» — تفاصيلُ البطاقة على شريط طابعة الصندوق، بلا مال.
+     *
+     * لكلّ متجرٍ فيه لوحةُ تجهيز، بلا مفتاحٍ من لوحة المنصّة: `preparation.*`
+     * فتتبع صلاحيّةَ من يجهّز، والطلبُ من `base()` — متجرُه وفرعُه وما لم يُغلق.
+     * تُطبع بضغطةٍ وحدها: لا طابورَ ولا نقلَ حالٍ ولا علامة (`PrepSheet`).
+     */
+    Route::get('/preparation/{number}/sheet', [PreparationController::class, 'sheet'])
+        ->name('preparation.sheet');
 
     /*
      * ═══ ومهامُّ فواتير العملاء على اللوحة نفسِها ═══
@@ -611,6 +620,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('preparation.invoiceInternalPdf');
     Route::get('/preparation/customer-invoices/{id}/timeline', [PreparationController::class, 'invoiceTimeline'])
         ->whereNumber('id')->name('preparation.invoiceTimeline');
+    Route::get('/preparation/customer-invoices/{id}/sheet', [PreparationController::class, 'invoiceSheet'])
+        ->whereNumber('id')->name('preparation.invoiceSheet');
     Route::post('/preparation/customer-invoices/{id}/requeue', [PreparationController::class, 'invoiceRequeue'])
         ->whereNumber('id')->name('preparation.invoiceRequeue');
     Route::post('/preparation/customer-invoices/{id}/print-confirm', [PreparationController::class, 'invoicePrintConfirm'])

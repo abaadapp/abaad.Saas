@@ -198,6 +198,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.preparation.deliveryNoteThermal' => ['number' => 'order_number'],
         'admin.preparation.receipt' => ['number' => 'order_number'],
         'admin.preparation.timeline' => ['number' => 'order_number'],
+        // «ورقة تجهيز داخلية» — بحصر اللوحة نفسِه (`PreparationController::sheet`)
+        'admin.preparation.sheet' => ['number' => 'order_number'],
         'admin.boutiques.show' => ['id' => 'boutique'],
         'admin.seasons.show' => ['id' => 'season'],
         'admin.seasons.products' => ['id' => 'season'],
@@ -291,6 +293,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.preparation.invoiceDeliveryNote' => '{id} مهمّةُ تجهيزِ فاتورةٍ تظهر بسدادٍ موثَّق — مقيّدةٌ بمتجر الجلسة وفرعه (CustomerInvoicePreparations::board)، وحارسُها `TheBoardPreparesAPaidCustomerInvoiceTest::test_another_shop_neither_sees_nor_touches_the_task`',
         'admin.preparation.invoiceInternalPdf' => 'مثلُه',
         'admin.preparation.invoiceTimeline' => 'مثلُه',
+        'admin.preparation.invoiceSheet' => 'مثلُه — وحارسُ ورقته `APreparationSheetPrintsWhatTheBenchNeedsTest::test_a_task_sheet_is_closed_while_the_feature_is_off_for_the_shop`',
         'pos.printJobs.pdf' => '{id} ورقةُ طابورٍ تُنزَّل لصندوقها الذي حجزها وحده — `APaidCustomerInvoicePrintsOnceAtItsTillTest::test_a_till_of_another_shop_cannot_download_a_paper`',
         'admin.marketing.whatsapp.conversations.older' => '{message} رسالةٌ — يُبدأ من المتجر والرقم الحاليّ، وحارسُه `WhatsAppConversationsTest::test_the_same_phone_in_two_shops_stays_two_and_a_foreign_message_id_is_404`',
     ];

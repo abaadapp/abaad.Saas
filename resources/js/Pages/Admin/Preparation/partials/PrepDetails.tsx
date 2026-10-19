@@ -430,6 +430,19 @@ export default function PrepDetails({
 
                 <div className="flex flex-wrap gap-2 border-t border-[var(--ui-border,#e8e8e8)] p-5">
                     {/*
+                        «طباعة تفاصيل التجهيز» — لكلّ بطاقةٍ على اللوحة، طلبًا كانت أو
+                        مهمّةَ فاتورة. ورقةٌ داخليّةٌ بلا مال (`PrepSheet`) على شريط
+                        طابعة الصندوق، بالجسر القائم في التطبيق والمتصفّح، وبضغطةٍ
+                        وحدها: لا تُطبع عند فتح النافذة، ولا تنقل حالًا ولا علامة.
+                    */}
+                    <PrintReceiptButton
+                        number={o.kind === 'invoice' && o.prep_id ? String(o.prep_id) : o.number}
+                        routeName={o.kind === 'invoice' ? 'admin.preparation.invoiceSheet' : 'admin.preparation.sheet'}
+                        label={t('طباعة تفاصيل التجهيز')}
+                        variant="outline"
+                        size="sm"
+                    />
+                    {/*
                         سندُ تسليمٍ واحد لا اثنان: على شريط طابعة الصندوق لطلب
                         موقعٍ في متجرٍ فُتح له — يضعه المجهِّزُ في الصندوق بلا
                         طابعة مكتب — وورقةُ A4 لكلّ ما سواه كما كانت. والخادمُ

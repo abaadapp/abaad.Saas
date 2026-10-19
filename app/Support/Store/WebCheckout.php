@@ -743,8 +743,27 @@ final class WebCheckout
      */
     private static function items(mixed $raw): array
     {
+        $raw = array_values(is_array($raw) ? $raw : []);
+
+        /*
+         * ═══ وسلّةٌ فوق الحدّ تُردّ — لا يُقصّ آخرُها بصمت ═══
+         *
+         * كانت البنودُ بعد الأربعين تُطرح بلا كلمة: يرى الزبونُ في ملخّص
+         * الإتمام أربعين، ويُكتب طلبُه بها، ثمّ تُفرَّغ سلّتُه — وما بعدها
+         * لم يُطلب ولا أحدَ قال له. والصفحةُ لا تكتب سلّةً فوق الحدّ
+         * (`RBLines.merge`)، فمن بلغ هذا السطرَ يُقال له.
+         *
+         * والعدُّ على ما يصل لا على ما يصحّ منه: الحدُّ حمايةٌ من الإغراق
+         * قبل أن يكون حدَّ سلّة.
+         */
+        if (count($raw) > self::MAX_LINES) {
+            throw ValidationException::withMessages([
+                'items' => __('السلة لا تتّسع لأكثر من :max صنفًا مختلفًا — احذف صنفًا ثم أعد المحاولة.', ['max' => self::MAX_LINES]),
+            ]);
+        }
+
         $items = [];
-        foreach (array_slice(array_values(is_array($raw) ? $raw : []), 0, self::MAX_LINES) as $i) {
+        foreach ($raw as $i) {
             $id = (int) ($i['id'] ?? 0);
             $qty = (int) ($i['qty'] ?? 0);
             if ($id <= 0 || $qty <= 0) {

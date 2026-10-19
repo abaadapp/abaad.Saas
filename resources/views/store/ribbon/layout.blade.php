@@ -468,9 +468,29 @@ window.RB = (function () {
     function count() { return read().reduce(function (a, b) { return a + (b.qty || 0); }, 0); }
     function paint() { document.querySelectorAll('[data-rb-count]').forEach(function (el) { el.textContent = count(); }); }
     function toast(msg) { var el = document.querySelector('[data-rb-toast]'); el.textContent = msg; el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(function () { el.classList.remove('show'); }, 1600); }
+    /*
+        وحدّا السلّة حدّا الخادم (`WebCheckout`) — والقولُ فيهما بلغة الزائر.
+
+        فلا تُكتب سلّةٌ يقصّها الإتمامُ بعد ذلك: إضافةٌ تتجاوز أحدَهما تُردّ
+        كلُّها، والسلّةُ كما كانت. انظر `RBLines.merge`.
+    */
+    var LIMITS = { qty: {{ \App\Support\Store\WebCheckout::MAX_QTY }}, lines: {{ \App\Support\Store\WebCheckout::MAX_LINES }} };
+    var LIMIT_SAYS = @json(\App\Support\Store\RibbonTexts::limitSays($lang));
     // والبندُ صنفٌ ومقاسٌ ونصُّ كرتٍ إن كان — انظر `ribbon-cart-lines.js`
-    function add(id, variantId, qty, note) { write(RBLines.add(read(), id, variantId, qty, note)); }
-    function set(id, variantId, qty, note) { write(RBLines.set(read(), id, variantId, qty, note)); }
+    function addMany(lines) {
+        var r = RBLines.merge(read(), lines, LIMITS);
+        if (!r.ok) return { ok: false, reason: r.reason, message: LIMIT_SAYS[r.reason] || '' };
+        write(r.items);
+
+        return { ok: true };
+    }
+    function add(id, variantId, qty, note) {
+        var line = { id: id, variant_id: variantId || null, qty: qty };
+        if (note) line.note = note;
+
+        return addMany([line]);
+    }
+    function set(id, variantId, qty, note) { write(RBLines.set(read(), id, variantId, Math.min(LIMITS.qty, qty), note)); }
     function clear() { write([]); }
     /*
         وكلُّ جوابٍ يُقال للزبون — ولو لم يكن خطأَ حقلٍ في نموذجه.
@@ -509,7 +529,7 @@ window.RB = (function () {
     function said(status) { return SAYS[String(status)] || SAYS._; }
     function quote(extra) { return post('/quote', Object.assign({ items: read() }, extra || {})); }
     document.addEventListener('DOMContentLoaded', paint);
-    return { read: read, write: write, add: add, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE };
+    return { read: read, write: write, add: add, addMany: addMany, set: set, clear: clear, count: count, quote: quote, post: post, toast: toast, base: BASE, limits: LIMITS };
 })();
 </script>
 <script>

@@ -7888,5 +7888,6 @@
     "يُحفظ ويظهر كما تكتبه — بالعربية أو بالإنجليزية": "Saved and shown exactly as you type it — in Arabic or English",
     "محفوظ سابقًا بالإنجليزية:": "Previously saved in English:",
     "استعمله اسمًا": "Use as the name",
-    "تغيّر إجمالي طلبك إلى :total — راجعه ثمّ أكّد الطلب مرّة أخرى.": "Your order total changed to :total — review it, then confirm your order again."
+    "تغيّر إجمالي طلبك إلى :total — راجعه ثمّ أكّد الطلب مرّة أخرى.": "Your order total changed to :total — review it, then confirm your order again.",
+    "السلة لا تتّسع لأكثر من :max صنفًا مختلفًا — احذف صنفًا ثم أعد المحاولة.": "Your cart can hold up to :max different items — remove an item and try again."
 }

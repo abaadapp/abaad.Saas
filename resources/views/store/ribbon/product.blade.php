@@ -54,7 +54,7 @@
                     <div style="font-size:13px;margin-bottom:8px">{{ $t['size'] }}</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap" data-rb-sizes>
                         @foreach ($product['sizes'] as $i => $s)
-                            <button type="button" class="rb-pill {{ $i === 0 ? 'on' : '' }}" data-variant="{{ $s['id'] }}" data-price="{{ $s['price_text'] }}" style="min-width:80px">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
+                            <button type="button" class="rb-pill {{ $i === 0 ? 'on' : '' }}" data-variant="{{ $s['id'] }}" data-price="{{ $s['price_text'] }}" data-amount="{{ $s['price'] }}" style="min-width:80px">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
                         @endforeach
                     </div>
                 </div>
@@ -65,6 +65,10 @@
 
                     الكمّيّةُ ثمّ الإضافاتُ ثمّ الزرّ: يختار الزبونُ كلَّ شيءٍ ثمّ
                     يضغط مرّةً واحدة. ومن ليس في القائمة يبقى على الصفّ القديم أدناه.
+
+                    ولكلّ إضافةٍ عدّادُها — كمّيّتُها مستقلّةٌ عن كمّيّة الصنف وعن
+                    أخواتها (`ribbon-upsells.js`). والأسعارُ على البطاقات
+                    (`data-amount`) للعرض: الإتمامُ يسعّر من القاعدة.
                 --}}
                 @if ($product['note_on'] ?? false)
                     {{--
@@ -88,7 +92,7 @@
                     <h2 style="margin:0 0 8px;font-size:15px;font-weight:500">{{ $t['upsellTitle'] }}</h2>
                     <div class="rb-ups">
                         @foreach ($upsells as $u)
-                            <div class="rb-up" data-rb-up="{{ $u['id'] }}" @if (count($u['sizes'])) data-needs-variant @endif @if ($u['gift_card'] ?? false) data-gift-card @endif data-testid="rb-upsell">
+                            <div class="rb-up" data-rb-up="{{ $u['id'] }}" data-qty="0" @if (count($u['sizes'])) data-needs-variant @else data-amount="{{ $u['price'] }}" @endif @if ($u['gift_card'] ?? false) data-gift-card @endif data-testid="rb-upsell">
                                 <button type="button" class="rb-up-pick" data-rb-up-pick aria-pressed="false">
                                     <span class="rb-up-img">
                                         @if ($u['image'])
@@ -103,10 +107,22 @@
                                     </span>
                                     <span class="rb-up-tick" aria-hidden="true"></span>
                                 </button>
+                                {{--
+                                    عدّادُ الإضافة — يظهر حين تُختار، ويبدأ بواحد. و«−» عند
+                                    الواحد يتركها. وتحته الكمّيّةُ في سعر الوحدة ومجموعُها.
+                                --}}
+                                <div class="rb-up-qty" data-rb-up-qtybox hidden data-testid="rb-upsell-qty">
+                                    <div class="rb-qty" role="group" aria-label="{{ strtr($t['upQty'], [':name' => $u['name']]) }}">
+                                        <button type="button" data-rb-up-dec aria-label="{{ strtr($t['upDec'], [':name' => $u['name']]) }}" data-testid="rb-upsell-dec">−</button>
+                                        <span data-rb-up-count aria-live="polite" data-testid="rb-upsell-count">0</span>
+                                        <button type="button" data-rb-up-inc aria-label="{{ strtr($t['upInc'], [':name' => $u['name']]) }}" data-testid="rb-upsell-inc">+</button>
+                                    </div>
+                                    <span class="rb-up-line" data-rb-up-line data-testid="rb-upsell-line"></span>
+                                </div>
                                 @if (count($u['sizes']))
                                     <div class="rb-up-sizes" data-rb-up-sizes hidden>
                                         @foreach ($u['sizes'] as $s)
-                                            <button type="button" class="rb-pill" data-rb-up-size="{{ $s['id'] }}" aria-pressed="false">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
+                                            <button type="button" class="rb-pill" data-rb-up-size="{{ $s['id'] }}" data-amount="{{ $s['price'] }}" aria-pressed="false">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
                                         @endforeach
                                     </div>
                                     <p class="rb-error" style="margin:0 12px 12px" data-rb-up-need hidden>{{ $t['upsellChoose'] }}</p>
@@ -128,6 +144,9 @@
                         @endforeach
                     </div>
                 </div>
+                {{-- ومجموعُ الصنف بكمّيّته وما اختير معه — يُطوى ما دام سعرُ إضافةٍ لم يُعرف بعد --}}
+                <p class="rb-up-total" data-rb-up-total hidden data-testid="rb-upsell-total"><span>{{ $t['upTotal'] }}</span> <strong data-rb-up-total-text></strong></p>
+                <p class="rb-error" data-rb-add-refused role="alert" hidden data-testid="rb-add-refused" style="margin:0"></p>
                 <button type="button" class="rb-btn" style="width:100%;height:48px" data-rb-add data-testid="rb-add">{{ $t['add'] }}</button>
             @elseif ($product['available'])
                 @if ($product['gift_card'])
@@ -277,26 +296,40 @@
     /* و`display` أعلاه يغلب `hidden` لولا هذا — فتظهر المقاساتُ قبل الاختيار */
     .rb-up-sizes[hidden], .rb-up [data-rb-up-need][hidden], .rb-up-note[hidden] { display: none; }
     .rb-up-note { padding: 0 12px 12px; }
+    /* عدّادُ الإضافة — أزرارٌ تُلمس بالإصبع (٤٤ بكسل)، وسطرُ مجموعها إلى جانبه */
+    .rb-up-qty { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 12px 12px; }
+    .rb-up-qty .rb-qty button { width: 44px; height: 44px; }
+    .rb-up-qty .rb-qty button[disabled] { opacity: .35; cursor: not-allowed; }
+    .rb-up-line { font-size: 13px; color: #4b4a3a; overflow-wrap: anywhere; }
+    .rb-up-qty[hidden], .rb-up-total[hidden], [data-rb-add-refused][hidden] { display: none; }
+    .rb-up-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0; font-size: 15px; border-top: 1px solid var(--rb-line); padding-top: 12px; }
+    .rb-up-total strong { font-size: 18px; font-weight: 600; }
 </style>
 <script>{!! file_get_contents(resource_path('js/store/ribbon-upsells.js')) !!}</script>
 @endif
 <script>
 (function () {
-    var id = {{ (int) $product['id'] }}, variant = null, qty = 1;
+    var id = {{ (int) $product['id'] }}, variant = null, qty = 1, amount = {{ (float) $product['price'] }};
+    // والمجموعُ يُعاد رسمُه مع كمّيّة الصنف ومقاسه — يملؤه عدّادُ «أضف مع طلبك» إن كان
+    var ups = null;
     var sizes = document.querySelector('[data-rb-sizes]');
     if (sizes) {
         var first = sizes.querySelector('button'); variant = first ? +first.dataset.variant : null;
+        if (first) amount = +first.dataset.amount;
         sizes.addEventListener('click', function (e) {
             var b = e.target.closest('button'); if (!b) return;
             sizes.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
-            b.classList.add('on'); variant = +b.dataset.variant;
+            b.classList.add('on'); variant = +b.dataset.variant; amount = +b.dataset.amount;
             document.querySelector('[data-rb-price]').textContent = b.dataset.price;
+            if (ups) ups.repaint();
         });
     }
     var q = document.querySelector('[data-rb-qty]');
     var dec = document.querySelector('[data-rb-dec]'), inc = document.querySelector('[data-rb-inc]'), add = document.querySelector('[data-rb-add]');
-    if (dec) dec.addEventListener('click', function () { qty = Math.max(1, qty - 1); q.textContent = qty; });
-    if (inc) inc.addEventListener('click', function () { qty = Math.min({{ \App\Support\Store\WebCheckout::MAX_QTY }}, qty + 1); q.textContent = qty; });
+    if (dec) dec.addEventListener('click', function () { qty = Math.max(1, qty - 1); q.textContent = qty; if (ups) ups.repaint(); });
+    if (inc) inc.addEventListener('click', function () { qty = Math.min(RB.limits.qty, qty + 1); q.textContent = qty; if (ups) ups.repaint(); });
+    // وإضافةٌ رُدّت كلُّها يُقال سببُها في الشريط — والسلّةُ كما كانت (`RB.addMany`)
+    function refused(r) { RB.toast(r.message || ''); }
 @if ($product['note_on'] ?? false)
     // ملاحظةُ المنتج: `''` بلا ملاحظة، و`null` نصٌّ مردودٌ لا يدخل السلّة (`ribbon-notes.js`)
     var pnote = RBNotes.mount(document.querySelector('[data-rb-product-note]'), document.querySelector('[data-rb-product-note-error]'), @json($t['noteEnglishOnly']), {{ (int) $product['note_max'] }});
@@ -304,8 +337,9 @@
     var pnote = null;
 @endif
 @if ($offers)
-    // الصنفُ بمقاسه وكمّيّته، ومعه ما اختير من الإضافات — في ضغطةٍ واحدة
-    if (add) RBUpsells.mount(document.querySelector('[data-rb-upsells]'), {
+    // الصنفُ بمقاسه وكمّيّته، ومعه ما اختير من الإضافات بكمّيّاتها — في ضغطةٍ واحدة
+    var refusedBox = document.querySelector('[data-rb-add-refused]');
+    if (add) ups = RBUpsells.mount(document.querySelector('[data-rb-upsells]'), {
         button: add,
         main: function () {
             var text = pnote ? pnote.take() : '';
@@ -313,7 +347,19 @@
 
             return text ? { id: id, variant_id: variant, qty: qty, note: text } : { id: id, variant_id: variant, qty: qty };
         },
-        add: RB.add,
+        mainQty: function () { return qty; },
+        mainAmount: function () { return amount; },
+        format: RBUpsells.money(@json($money)),
+        total: document.querySelector('[data-rb-up-total]'),
+        max: RB.limits.qty,
+        // كلُّها أو لا شيء — والسببُ تحت الزرّ إن رُدّت
+        addAll: function (lines) {
+            var r = RB.addMany(lines);
+            if (refusedBox) { refusedBox.hidden = r.ok; refusedBox.textContent = r.ok ? '' : r.message; }
+
+            return r;
+        },
+        refused: function () {},
         done: function () {
             if (pnote) pnote.clear();
             add.textContent = @json($t['added']); RB.toast(@json($t['added']));
@@ -331,7 +377,8 @@
     var note = RBCardNote.mount(document.querySelector('[data-rb-card-note]'));
     if (add) add.addEventListener('click', function () {
         var text = note.take();
-        if (text) RB.add(id, variant, qty, text); else RB.add(id, variant, qty);
+        var r = text ? RB.add(id, variant, qty, text) : RB.add(id, variant, qty);
+        if (!r.ok) { refused(r); return; }
         add.textContent = @json($t['added']); RB.toast(@json($t['added']));
         setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
     });
@@ -339,7 +386,8 @@
     if (add) add.addEventListener('click', function () {
         var text = pnote ? pnote.take() : '';
         if (text === null) return;
-        if (text) RB.add(id, variant, qty, text); else RB.add(id, variant, qty);
+        var r = text ? RB.add(id, variant, qty, text) : RB.add(id, variant, qty);
+        if (!r.ok) { refused(r); return; }
         if (pnote) pnote.clear();
         add.textContent = @json($t['added']); RB.toast(@json($t['added']));
         setTimeout(function () { add.textContent = @json($t['add']); }, 1500);

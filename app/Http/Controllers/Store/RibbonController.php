@@ -478,6 +478,16 @@ class RibbonController extends Controller
              */
             'reviews' => ProductReviews::for($bid, (int) $p->id),
             /*
+             * وكتابةُ المبلغ كما يكتبه `Money::format` — لمجموع «أضف مع طلبك»
+             * وسطور عدّاداته في الصفحة (`RBUpsells.money`). عرضٌ وحده:
+             * الإتمامُ يسعّر من القاعدة.
+             */
+            'money' => [
+                'd' => Money::decimals($currency),
+                'symbol' => __((string) ($currency['symbol'] ?? '')),
+                'before' => (bool) ($currency['before'] ?? false),
+            ],
+            /*
              * وملاحظةُ التوصيل تحت زرّ السلّة — إلّا لمن طلب تنبيهَ الصورة
              * وحده هناك (`storefront.ribbon_product_page_without_delivery_note_businesses`).
              */

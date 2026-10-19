@@ -95,6 +95,13 @@ final class RibbonTexts
         'cartProductNote' => 'ملاحظة المنتج:',
         'orderNotes' => 'ملاحظات الطلب (اختياري)', 'orderNotesPh' => 'اكتب ملاحظتك بالإنجليزية — مثال: Please call before delivery',
         'noteEnglishOnly' => 'يرجى كتابة الملاحظة باللغة الإنجليزية فقط.', 'noteTooLong' => 'الملاحظة أطول من :max حرفًا.',
+        /*
+         * وكمّيّةُ كلّ إضافةٍ في «أضف مع طلبك» — عدّادُها ومجموعُها، وحدّا السلّة
+         * (`WebCheckout::MAX_QTY` و`MAX_LINES`) حين تُردّ إضافةٌ كلُّها.
+         */
+        'upInc' => 'زيادة كمية :name', 'upDec' => 'إنقاص كمية :name', 'upQty' => 'كمية :name',
+        'upTotal' => 'المجموع مع الإضافات', 'cartLimitQty' => 'أقصى كمية للصنف الواحد في السلة :max — قلّل الكمية ثم أعد الإضافة.',
+        'cartLimitLines' => 'السلة لا تتّسع لأكثر من :max صنفًا مختلفًا — أتمّ طلبك أو احذف صنفًا ثم أعد الإضافة.',
         // التسعيرةُ في الطريق — الزرُّ مقفلٌ حتّى تعود (`RBQuote`)
         'quoting' => 'يُحدَّث الإجمالي…',
     ];
@@ -157,6 +164,9 @@ final class RibbonTexts
         'cartProductNote' => 'Product note:',
         'orderNotes' => 'Order notes (optional)', 'orderNotesPh' => 'Write your note in English — e.g. Please call before delivery',
         'noteEnglishOnly' => 'Please enter your note in English only.', 'noteTooLong' => 'The note is longer than :max characters.',
+        'upInc' => 'Increase quantity of :name', 'upDec' => 'Decrease quantity of :name', 'upQty' => 'Quantity of :name',
+        'upTotal' => 'Total with add-ons', 'cartLimitQty' => 'The most you can order of one item is :max — lower the quantity and add again.',
+        'cartLimitLines' => 'Your cart can hold up to :max different items — check out or remove an item, then add again.',
         'quoting' => 'Updating the total…',
     ];
 
@@ -164,6 +174,24 @@ final class RibbonTexts
     public static function for(string $lang): array
     {
         return $lang === 'en' ? self::EN : self::AR;
+    }
+
+    /**
+     * ما يُقال حين تُردّ إضافةٌ إلى السلّة كلُّها — بحدَّي الخادم نفسَيهما.
+     *
+     * والحدّان يُكتبان هنا من `WebCheckout` لا رقمًا في النصّ: رقمٌ يُبدَّل
+     * هناك ويبقى هنا يقول للزبون حدًّا لا يُطبَّق.
+     *
+     * @return array{qty: string, lines: string}
+     */
+    public static function limitSays(string $lang): array
+    {
+        $t = self::for($lang);
+
+        return [
+            'qty' => strtr($t['cartLimitQty'], [':max' => (string) WebCheckout::MAX_QTY]),
+            'lines' => strtr($t['cartLimitLines'], [':max' => (string) WebCheckout::MAX_LINES]),
+        ];
     }
 
     /**

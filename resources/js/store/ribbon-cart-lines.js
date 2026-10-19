@@ -33,5 +33,38 @@ window.RBLines = (function () {
             .filter(function (it) { return it.qty > 0; });
     }
 
-    return { same: same, add: add, set: set };
+    /*
+     * بنودٌ معًا — كلُّها أو لا شيء.
+     *
+     * تُضاف على نسخةٍ من السلّة لا على السلّة نفسِها، ثمّ تُسأل الحدود:
+     * كمّيّةُ كلّ بندٍ مسَّته الإضافة (`limits.qty`) وعددُ البنود (`limits.lines`)
+     * — حدّا الخادم نفسُهما (`WebCheckout::MAX_QTY` و`MAX_LINES`). فإن تجاوز
+     * أحدُهما رُدّت كلُّها وبقيت السلّةُ كما كانت، ويُقال أيُّ الحدّين.
+     *
+     * ولولا هذا لَدخل الصنفُ وبعضُ ما معه ثمّ قصّ الخادمُ الباقي بلا كلمة.
+     *
+     * @return {ok: true, items} | {ok: false, reason: 'qty'|'lines', max}
+     */
+    function merge(items, lines, limits) {
+        var copy = items.map(function (it) { return Object.assign({}, it); });
+        var touched = [];
+
+        lines.forEach(function (l) {
+            copy = add(copy, l.id, l.variant_id, l.qty, l.note);
+            touched.push(l);
+        });
+
+        var maxQty = limits && limits.qty ? limits.qty : Infinity;
+        var maxLines = limits && limits.lines ? limits.lines : Infinity;
+
+        var over = touched.some(function (l) {
+            return copy.some(function (it) { return same(it, l.id, l.variant_id, l.note) && it.qty > maxQty; });
+        });
+        if (over) return { ok: false, reason: 'qty', max: maxQty };
+        if (copy.length > maxLines) return { ok: false, reason: 'lines', max: maxLines };
+
+        return { ok: true, items: copy };
+    }
+
+    return { same: same, add: add, set: set, merge: merge };
 })();

@@ -20,7 +20,8 @@ import BackupStatusPanel, {
  * الاستعادةَ تُسأل قبل أن تُرسَل، ويُرسَل تأكيدُها. وأنّ «غير مفعّل» و«لا»
  * و«غير معروف» ثلاثةُ أجوبةٍ لا جوابٌ واحد.
  *
- * والعزلُ والصلاحيّةُ ليسا هنا: البابُ لا يأخذ اسمَ ملفّ، ولهما حرّاسٌ في PHP.
+ * والتحميلُ يُخفى عمّن لا يملك `business.export` (`can_download`) — والخادمُ
+ * هو ما يردّ. والعزلُ ليس هنا: البابُ لا يأخذ اسمَ ملفّ، وله حرّاسٌ في PHP.
  */
 const status = (over: Partial<BackupStatus> = {}): BackupStatus => ({
     frequency: 'daily',
@@ -71,6 +72,22 @@ describe('آخرُ نسخةٍ ناجحة', () => {
 
         expect(router.post).toHaveBeenCalledTimes(1);
         expect(vi.mocked(router.post).mock.calls[0][0]).toBe('/admin.backup.create');
+    });
+});
+
+describe('تنزيلُ النسخة لمن يقبله الخادم وحده', () => {
+    it('من لا يملك `business.export` لا يرى التحميل — ويبقى له «إنشاء نسخة الآن»', () => {
+        render(<BackupStatusPanel data={status({ can_download: false, can_restore: false })} />);
+
+        expect(screen.queryByRole('link', { name: /تحميل آخر نسخة/ })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /إنشاء نسخة الآن/ })).toBeInTheDocument();
+    });
+
+    it('ومن يملكه يراه، ولو لم يملك الاستعادة', () => {
+        render(<BackupStatusPanel data={status({ can_download: true, can_restore: false })} />);
+
+        expect(screen.getByRole('link', { name: /تحميل آخر نسخة/ })).toHaveAttribute('href', '/admin.backup.latest.download');
+        expect(screen.queryByRole('button', { name: /استعادة آخر نسخة/ })).not.toBeInTheDocument();
     });
 });
 

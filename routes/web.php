@@ -1643,8 +1643,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/notifications/reopen', [NotificationController::class, 'reopen'])->name('notifications.reopen');
     Route::get('/notifications/history', [NotificationController::class, 'history'])->name('notifications.history');
 
-    // النسخ الاحتياطي والاستعادة
-    Route::get('/backup/download', [BackupController::class, 'download'])->name('backup.download');
+    /*
+     * النسخ الاحتياطي والاستعادة.
+     *
+     * والتنزيلُ يُخرج المتجرَ كلَّه — فخلف `business.export` لا خلف قسم
+     * «الإعدادات»: لصاحب النشاط ولمن منحه إيّاه بالاسم. ويُسأل في المسار
+     * قبل أن تُبنى النسخةُ أو يُقرأ ملفُّها. والإنشاءُ على الخادم وتكرارُه
+     * على القسم (لا يُخرجان شيئًا)، والاستعادةُ لصاحب النشاط وحده.
+     */
+    Route::get('/backup/download', [BackupController::class, 'download'])
+        ->middleware('may:'.Permissions::BUSINESS_EXPORT)->name('backup.download');
     Route::post('/backup/restore', [BackupController::class, 'restore'])->name('backup.restore');
 
     /*
@@ -1659,7 +1667,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/backup/frequency', [BackupController::class, 'frequency'])->name('backup.frequency');
     Route::post('/backup/create', [BackupController::class, 'create'])
         ->middleware('throttle:6,1')->name('backup.create');
-    Route::get('/backup/latest/download', [BackupController::class, 'downloadLatest'])->name('backup.latest.download');
+    Route::get('/backup/latest/download', [BackupController::class, 'downloadLatest'])
+        ->middleware('may:'.Permissions::BUSINESS_EXPORT)->name('backup.latest.download');
     Route::post('/backup/latest/restore', [BackupController::class, 'restoreLatest'])->name('backup.latest.restore');
 
     /*

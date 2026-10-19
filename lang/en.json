@@ -5936,6 +5936,8 @@
     "تم تجهيز أرشيف بيانات :period — يمكنك تحميله من «البيانات والنسخ الاحتياطية».": "Your :period data archive is ready. You can download it from Data & Backups.",
     "تعذّر تجهيز أرشيف بيانات :period.": "The :period data archive could not be prepared.",
     "تصدير بيانات النشاط": "Export Business Data",
+    "تنزيل نسخة احتياطية من بيانات النشاط": "Download a backup of the business data",
+    "تنزيل النسخة الاحتياطية الكاملة وأرشيف الشهر والأسبوع: فيها كلّ الفروع والرواتب وأسعار الشراء والعملاء والدفتر. لصاحب النشاط وحده، ولا يُمنح بقسم «الإعدادات» ولا بالدور.": "Download the full backup and the monthly and weekly archives: they hold every branch, payroll, purchase prices, customers and the ledger. The owner's alone; never granted by the Settings section or by role.",
     "إعدادات أرشفة البيانات": "Data Archive Settings",
     "أرشفة البيانات": "Data Archive",
     "الأرشيف الشهري نسخة مقروءة يحتفظ بها التاجر. وهو غير النسخة الاحتياطية التقنية التي تُستعاد بها القاعدة.": "The monthly archive is a readable copy the business keeps. It is not the technical backup used to restore the database.",

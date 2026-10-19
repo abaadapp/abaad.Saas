@@ -23,6 +23,13 @@ export interface BackupStatus {
      * «لا»: الخادمُ يرسله دائمًا، وما يُخفى هو ما قال عنه صراحةً `false`.
      */
     can_restore?: boolean;
+    /**
+     * أيملك الناظرُ التنزيل؟ — لصاحب النشاط ولمن مُنح `business.export` بالاسم.
+     *
+     * والإعداداتُ وحدها لا تكفي: النسخةُ فيها الرواتبُ وأسعارُ الشراء وكلُّ
+     * العملاء. ويُخفي الزرَّ فقط، والخادمُ هو ما يردّ (`may:business.export`).
+     */
+    can_download?: boolean;
     latest: {
         name: string;
         created_at: string;
@@ -191,12 +198,14 @@ export default function BackupStatusPanel({ data }: { data: BackupStatus }) {
 
                 {latest && (
                     <PageActions className="mt-4 flex-wrap">
-                        <Button asChild variant="outline">
-                            <a href={tenant(route('admin.backup.latest.download'))}>
-                                <Download />
-                                {t('تحميل آخر نسخة')}
-                            </a>
-                        </Button>
+                        {data.can_download !== false && (
+                            <Button asChild variant="outline">
+                                <a href={tenant(route('admin.backup.latest.download'))}>
+                                    <Download />
+                                    {t('تحميل آخر نسخة')}
+                                </a>
+                            </Button>
+                        )}
                         {/* لصاحب النشاط وحده — والخادمُ يردّ غيرَه ولو ظهر الزرّ */}
                         {data.can_restore !== false && (
                             <Button

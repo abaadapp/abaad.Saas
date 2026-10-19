@@ -45,7 +45,7 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — أربعون مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — سبعةٌ وأربعون مفتاحًا.
      *
      * @var list<string>
      */
@@ -73,6 +73,10 @@ final class StoreContent
         'store_collections',
         // وشريطُها المصوّر فوق قائمة الصفحات — مطفأٌ حتّى يُشغَّل (`StoreVisualBar`)
         'store_visual_bar',
+        // وترتيبُ صفّ المتجر، والقائمةُ الرئيسيّة، والصفحاتُ المخصّصة (`StoreHeader`، `StoreNav`، `StoreCustomPages`)
+        'store_shop_row', 'store_menu', 'store_custom_pages',
+        // وطرقُ عرض الصور — «كاملة» أو «ملء الإطار» (`StoreMedia::fit`)
+        'store_catalog_fit', 'store_hero_image_fit', 'store_banner_image_fit', 'store_block_image_fit',
     ];
 
     /**

@@ -23,9 +23,10 @@
                 والشريطُ يَعِد بباقاتٍ وكرتِ هدية، وكان يُرسم إلى جانب وعده
                 مستطيلٌ مخطَّط. فيقرأ الزبون وعدًا ولا يرى منه شيئًا.
             --}}
-            <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);overflow:hidden;background:repeating-linear-gradient(135deg,#6b694c 0 14px,#5f5c43 14px 28px)">
+            {{-- و«كاملة» تُري الصورةَ كلَّها على لون الشريط نفسِه — لا خطوطَ حولها --}}
+            <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);overflow:hidden;background:{{ $bannerImage && $bannerFit === 'contain' ? '#5f5c43' : 'repeating-linear-gradient(135deg,#6b694c 0 14px,#5f5c43 14px 28px)' }}">
                 @if ($bannerImage)
-                    <img src="{{ $bannerImage }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" data-testid="rb-banner-image">
+                    <img src="{{ $bannerImage }}" alt="" style="width:100%;height:100%;object-fit:{{ $bannerFit }};display:block" data-testid="rb-banner-image" data-fit="{{ $bannerFit }}">
                 @endif
             </div>
         </div>

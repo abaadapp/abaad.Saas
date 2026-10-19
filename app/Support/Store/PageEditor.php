@@ -67,6 +67,24 @@ final class PageEditor
     public const VISUAL_BAR = 'vbar';
 
     /**
+     * والقائمةُ الرئيسيّة — الصفحاتُ الأربعُ بترتيب صاحبها وروابطُه بينها.
+     * في الترويسة تحت الشعار، فصفُّها بعد رأس المتجر. انظر `StoreNav::menu`.
+     */
+    public const MENU = 'menu';
+
+    /**
+     * والصفحاتُ المخصّصة — «خدماتنا» و«المناسبات»: عنوانٌ ونبذةٌ وصورٌ وأقسام.
+     * ليست في الرئيسية: تُفتح من القائمة. انظر `StoreCustomPages`.
+     */
+    public const PAGES = 'pages';
+
+    /**
+     * وعرضُ الصور — صورُ المنتجات والفئات كاملةً أو تملأ إطارها. وسائرُ الصور
+     * يُختار عرضُها إلى جانبها في صفّها. انظر `StoreMedia::fit`.
+     */
+    public const IMAGES = 'images';
+
+    /**
      * مقابضُ الصفحة البسيطة — لا تُحرّك واجهةً خاصّة فلا تُعرض لصاحبها.
      *
      * `store_theme` لونُ `store.show.blade`، و`store_show_prices` مفتاحُها
@@ -95,12 +113,16 @@ final class PageEditor
      * أصنافًا من المعروض وترتّبها إلى `max`. و`collections` قائمةُ مجموعاتٍ
      * نصًّا بصيغة JSON — حتّى `max` مجموعة، في كلٍّ حتّى `max_products` صنفًا.
      * و`visualbar` بطاقاتُ الشريط المصوّر نصًّا بصيغة JSON — حتّى `max` بطاقة.
+     * و`menu` القائمةُ الرئيسيّة نصَّ JSON — حتّى `max` رابطًا بين صفحاتها الأربع.
+     * و`pages` الصفحاتُ المخصّصة نصَّ JSON — حتّى `max` صفحة، في كلٍّ `max_sections` قسمًا.
+     * و`shoprow` ترتيبُ أزرار صفّ المتجر كلِّها رموزًا. و`catalogfit` طريقةُ عرض
+     * صور المنتجات والفئات. و`fit` على حقل `image` مفتاحُ طريقة عرض صورته.
      *
      * والنصُّ الذي يكتبه صاحبُ المحلّ لزبونه حقلان: عربيٌّ وإنجليزيّ (`_en`)،
      * لا يقع أحدُهما على الآخر. ونصوصُ القالب نفسِه (الأزرارُ وأسماءُ الأقسام)
      * ليست هنا — هي في `RibbonTexts`.
      *
-     * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string, max?: int}>>
+     * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string, max?: int, max_products?: int, max_sections?: int, fit?: string, ratio?: string}>>
      */
     public const FIELDS = [
         self::VISUAL_BAR => [
@@ -108,6 +130,16 @@ final class PageEditor
         ],
         self::COLLECTIONS => [
             ['key' => StoreCollections::KEY, 'kind' => 'collections', 'label' => 'المجموعات', 'hint' => 'رفوفٌ تختار منتجاتها من أيّ فئة — ويبقى كلُّ منتجٍ في فئته. انشر لتظهر لزبائنك', 'max' => StoreCollections::MAX, 'max_products' => StoreCollections::MAX_PRODUCTS],
+            ['key' => StoreHeader::ROW, 'kind' => 'shoprow', 'label' => 'ترتيب شريط المتجر', 'hint' => 'رتّب «كل المنتجات» و«الأكثر مبيعًا» ومجموعاتك وفئاتك كما تريدها في الشريط — و«كل المنتجات» يبقى دائمًا'],
+        ],
+        self::MENU => [
+            ['key' => StoreNav::MENU, 'kind' => 'menu', 'label' => 'روابط القائمة', 'hint' => 'رتّب الرئيسية والمتجر ومن نحن وتواصل معنا، وأضف بينها روابط إلى صفحاتك ومجموعاتك وفئاتك', 'max' => StoreNav::MAX_LINKS],
+        ],
+        self::PAGES => [
+            ['key' => StoreCustomPages::KEY, 'kind' => 'pages', 'label' => 'الصفحات', 'hint' => 'لكلّ صفحةٍ عنوانٌ ونبذةٌ وصورة، وأقسامٌ من صورةٍ ونصّ، وزرٌّ اختياريّ — وتُضاف إلى القائمة من صفّها', 'max' => StoreCustomPages::MAX, 'max_sections' => StoreCustomPages::MAX_SECTIONS],
+        ],
+        self::IMAGES => [
+            ['key' => 'store_catalog_fit', 'kind' => 'catalogfit', 'label' => 'صور المنتجات والفئات', 'hint' => 'في بطاقات المتجر وصفحة المنتج والسلّة — «كاملة» تُري الصورةَ كلَّها بلا قصّ، و«ملء الإطار» تقصّ أطرافها لتملأ البطاقة'],
         ],
         self::HEAD => [
             ['key' => 'store_announcement_ar', 'kind' => 'text', 'label' => 'نص الشريط بالعربية', 'hint' => 'أعلى كلّ صفحةٍ عربيّة — واتركه فارغًا فلا شريط'],
@@ -120,7 +152,7 @@ final class PageEditor
             ['key' => 'store_hero_title_en', 'kind' => 'text', 'label' => 'Hero title — English', 'hint' => 'للصفحة الإنجليزيّة — ولا يُترجَم العنوانُ العربيّ إليها', 'dir' => 'ltr'],
             ['key' => 'store_hero_sub', 'kind' => 'textarea', 'label' => 'وصف الواجهة — العربية', 'hint' => 'تحت العنوان — واتركه فارغًا فيبقى الوصفُ الأصليّ'],
             ['key' => 'store_hero_sub_en', 'kind' => 'textarea', 'label' => 'Hero description — English', 'hint' => 'للصفحة الإنجليزيّة — واتركه فارغًا فيبقى الوصفُ الإنجليزيّ الأصليّ', 'dir' => 'ltr'],
-            ['key' => 'store_hero_image', 'kind' => 'image', 'label' => 'صورة الواجهة', 'hint' => 'إلى جانب العنوان — وبلا اختيارك تُؤخذ من أوّل صنفٍ مبيعًا'],
+            ['key' => 'store_hero_image', 'kind' => 'image', 'label' => 'صورة الواجهة', 'hint' => 'إلى جانب العنوان — وبلا اختيارك تُؤخذ من أوّل صنفٍ مبيعًا', 'fit' => 'store_hero_image_fit', 'ratio' => '5/4'],
         ],
         'cats' => [],
         'best' => [
@@ -128,7 +160,7 @@ final class PageEditor
         ],
         'new' => [],
         'banner' => [
-            ['key' => 'store_banner_image', 'kind' => 'image', 'label' => 'صورة الشريط', 'hint' => 'الشريطُ يَعِد بباقةٍ وكرتِ هدية — وبلا صورةٍ يبقى إلى جانب وعده مستطيلٌ مخطَّط'],
+            ['key' => 'store_banner_image', 'kind' => 'image', 'label' => 'صورة الشريط', 'hint' => 'الشريطُ يَعِد بباقةٍ وكرتِ هدية — وبلا صورةٍ يبقى إلى جانب وعده مستطيلٌ مخطَّط', 'fit' => 'store_banner_image_fit', 'ratio' => '4/3'],
         ],
         'block' => [
             ['key' => 'store_block_on', 'kind' => 'toggle', 'label' => 'اكتب قسمك', 'hint' => 'لِما لا تقوله بضاعتك: اشتراكٌ شهريّ، تنسيقُ أعراس، توصيلٌ إلى ولايتك'],
@@ -136,7 +168,7 @@ final class PageEditor
             ['key' => 'store_block_title_en', 'kind' => 'text', 'label' => 'Title — English', 'hint' => 'للصفحة الإنجليزيّة — وبلا عنوانٍ ونصٍّ إنجليزيَّين لا يظهر القسمُ فيها', 'dir' => 'ltr', 'gate' => 'store_block_on'],
             ['key' => 'store_block_text', 'kind' => 'textarea', 'label' => 'النصّ — العربية', 'hint' => 'أسطرُك تبقى أسطرًا كما تكتبها', 'gate' => 'store_block_on'],
             ['key' => 'store_block_text_en', 'kind' => 'textarea', 'label' => 'Text — English', 'dir' => 'ltr', 'gate' => 'store_block_on'],
-            ['key' => 'store_block_image', 'kind' => 'image', 'label' => 'صورة القسم', 'hint' => 'اختيارية — واحدةٌ للّغتين', 'gate' => 'store_block_on'],
+            ['key' => 'store_block_image', 'kind' => 'image', 'label' => 'صورة القسم', 'hint' => 'اختيارية — واحدةٌ للّغتين', 'gate' => 'store_block_on', 'fit' => 'store_block_image_fit', 'ratio' => '4/3'],
             ['key' => 'store_block_cta', 'kind' => 'text', 'label' => 'نصّ الزرّ — العربية', 'hint' => 'اتركه فارغًا فلا زرّ', 'gate' => 'store_block_on'],
             ['key' => 'store_block_cta_en', 'kind' => 'text', 'label' => 'Button text — English', 'hint' => 'اتركه فارغًا فلا زرّ في الصفحة الإنجليزيّة', 'dir' => 'ltr', 'gate' => 'store_block_on'],
             ['key' => 'store_block_href', 'kind' => 'text', 'label' => 'وجهة الزرّ', 'hint' => 'رابطٌ كامل أو /shop — واحدةٌ للّغتين', 'dir' => 'ltr', 'gate' => 'store_block_on'],
@@ -176,7 +208,10 @@ final class PageEditor
     public const ROWS = [
         self::HEAD => ['label' => 'رأس المتجر', 'hint' => 'شريطُ إعلانٍ أعلى كلّ صفحة، واختصاراتُ الفئات في صفحة المتجر', 'fixed' => true, 'source' => null],
         self::VISUAL_BAR => ['label' => 'الشريط المصوّر', 'hint' => 'بطاقاتٌ بصورها فوق قائمة الصفحات — مطفأٌ حتى تشغّله', 'fixed' => true, 'source' => null],
-        self::COLLECTIONS => ['label' => 'مجموعات المتجر', 'hint' => 'هدايا التخرّج، عروضٌ خاصّة… رفوفٌ تختار منتجاتها بيدك', 'fixed' => true, 'source' => null],
+        self::COLLECTIONS => ['label' => 'مجموعات المتجر', 'hint' => 'هدايا التخرّج، عروضٌ خاصّة… رفوفٌ تختار منتجاتها بيدك وتظهر بجانب «كل المنتجات»', 'fixed' => true, 'source' => null],
+        self::MENU => ['label' => 'القائمة الرئيسية', 'hint' => 'الرئيسية | المتجر | من نحن | تواصل معنا — رتّبها وأضف بينها روابطك وصفحاتك', 'fixed' => true, 'source' => null],
+        self::PAGES => ['label' => 'الصفحات المخصّصة', 'hint' => 'خدماتنا، المناسبات… صفحاتٌ تكتبها بصورها ونصوصها وتضيفها إلى القائمة', 'fixed' => true, 'source' => null],
+        self::IMAGES => ['label' => 'عرض الصور', 'hint' => 'صور المنتجات والفئات كاملةً بلا قصّ، أو تملأ إطارها', 'fixed' => true, 'source' => null],
         self::HERO => ['label' => 'الواجهة', 'hint' => 'أعلى الصفحة — عنوانٌ وصورةٌ وزرُّ تسوّق', 'fixed' => true, 'source' => null],
         'cats' => ['label' => 'تسوّق حسب الفئة', 'hint' => 'فئاتُك التي فيها بضاعةٌ معروضة، كلٌّ ببطاقتها', 'fixed' => false, 'source' => ['الأصناف والفئات', 'admin.products.index']],
         'best' => ['label' => 'الأكثر مبيعًا', 'hint' => 'أربعةُ أصنافٍ تتصدّر — محسوبةً من بيعك أو مختارةً بيدك', 'fixed' => false, 'source' => null],
@@ -253,6 +288,11 @@ final class PageEditor
         foreach (self::FIELDS as $fields) {
             foreach ($fields as $field) {
                 $keys[] = $field['key'];
+
+                // وطريقةُ عرض الصورة تُكتب إلى جانبها في المحرّر — لا في بطاقة الإعدادات
+                if (isset($field['fit'])) {
+                    $keys[] = $field['fit'];
+                }
             }
         }
 
@@ -321,7 +361,7 @@ final class PageEditor
          * والشريطُ المصوّر أوّلًا — فوق الترويسة، أوّلُ ما يُرى — ثمّ الرأسُ فوق
          * الواجهة: هو أوّلُ ما يُرى في كلّ صفحةٍ بعده.
          */
-        $rows = [self::row(self::VISUAL_BAR, true, null), self::row(self::HEAD, true, null), self::row(self::HERO, true, null)];
+        $rows = [self::row(self::VISUAL_BAR, true, null), self::row(self::HEAD, true, null), self::row(self::MENU, true, null), self::row(self::HERO, true, null)];
 
         // المختارُ بترتيبه، ثمّ المطفأُ بترتيبه الأصليّ — كما في `StorePage::SECTIONS`
         foreach (array_merge($order, array_values(array_diff($sections, $order))) as $key) {
@@ -336,6 +376,9 @@ final class PageEditor
          * خيارات المتجر ومن الشريط المصوّر. ولكلّ من يلبس الواجهة.
          */
         $rows[] = self::row(self::COLLECTIONS, true, null);
+        // والصفحاتُ المخصّصة وعرضُ الصور كذلك: ليسا قسمَين في الرئيسية
+        $rows[] = self::row(self::PAGES, true, null);
+        $rows[] = self::row(self::IMAGES, true, null);
         $rows[] = self::row(self::FOOT, true, null);
 
         /*
@@ -377,6 +420,9 @@ final class PageEditor
             'store_seo_title_en' => 'عنوان البحث بالإنجليزية',
             'store_seo_desc_en' => 'وصف البحث بالإنجليزية',
             'store_headline' => 'العنوان الكبير',
+            'store_hero_image_fit' => 'عرض صورة الواجهة',
+            'store_banner_image_fit' => 'عرض صورة الشريط',
+            'store_block_image_fit' => 'عرض صورة القسم',
             default => '',
         };
     }
@@ -404,6 +450,10 @@ final class PageEditor
         foreach (self::FIELDS as $fields) {
             foreach ($fields as $field) {
                 $out[$field['key']] = (string) ($site[$field['key']] ?? '');
+
+                if (isset($field['fit'])) {
+                    $out[$field['fit']] = (string) ($site[$field['fit']] ?? '');
+                }
             }
         }
 

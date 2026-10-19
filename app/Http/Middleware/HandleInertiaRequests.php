@@ -311,6 +311,8 @@ class HandleInertiaRequests extends Middleware
                  * الصورةُ وتُحفظ على القرص، ولا يظهر في الشاشة شيء.
                  */
                 'uploaded' => $request->session()->get('uploaded'),
+                // وأبعادُها كما قُرئت من الملفّ — يُريها حقلُ الصورة بنسبتها (`StoreImageUpload`)
+                'uploaded_meta' => $request->session()->get('uploaded_meta'),
                 /*
                  * رقمُ طلب الموقع الذي أُكّد الآن من «جديد» — تطبع عليه طابعةُ
                  * الصندوق إن ضُبطت. ويمرّ في الردّ الذي يلي النقلَ وحده.

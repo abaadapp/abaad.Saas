@@ -25,7 +25,12 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { type ArrivalsCuration, CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
+import CatalogFitField from './theme/CatalogFitField';
 import CollectionsField, { keepShownCollections, parseCollections } from './theme/CollectionsField';
+import CustomPagesField, { blankPage, parsePages, serializePages } from './theme/CustomPagesField';
+import MenuField from './theme/MenuField';
+import ShopRowField from './theme/ShopRowField';
+import type { TargetSources } from './theme/StoreTargets';
 import { AlignField, type ShortcutCategory, ShortcutsField } from './theme/HeaderFields';
 import ProductListField, { keepShown } from './theme/ProductListField';
 import PublishBar, { type PublishState } from './theme/PublishBar';
@@ -130,7 +135,7 @@ export function previewFit(want: number, avail: number): number {
 
 export interface EditorField {
     key: string;
-    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts' | 'products' | 'collections' | 'visualbar';
+    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts' | 'products' | 'collections' | 'visualbar' | 'menu' | 'pages' | 'shoprow' | 'catalogfit';
     label: string;
     hint?: string;
     dir?: string;
@@ -139,6 +144,12 @@ export interface EditorField {
     max?: number;
     /** وأكثرُ ما في المجموعة الواحدة — لـ`collections` */
     max_products?: number;
+    /** وأكثرُ أقسام الصفحة المخصّصة — لـ`pages` */
+    max_sections?: number;
+    /** مفتاحُ طريقة عرض الصورة — لـ`image`، يُحفظ معها في صفّها */
+    fit?: string;
+    /** ونسبةُ إطارها في المتجر — لمعاينتها كما ستُرى */
+    ratio?: string;
 }
 
 export interface EditorRow {
@@ -331,7 +342,13 @@ export default function ThemeEditor({
         والمجموعةُ لا تُرى في الرئيسيّة: تُفتح من صفّ خيارات المتجر. فزرُّ
         «عاين صفحة المجموعة» يُرسل المسوّدةَ نفسَها إلى رفّها (`?page=shop`).
     */
-    const [target, setTarget] = useState<{ page: 'shop'; collection: string } | null>(null);
+    const [target, setTarget] = useState<{ page: 'shop'; collection: string } | { page: 'page'; slug: string } | null>(null);
+
+    /*
+        والصفحاتُ المخصّصة كما حُفظت آخرَ مرّة — فحفظُ القائمة يحمل معه صفحةً أُنشئت
+        من داخلها ولم تُحفظ بعد، ولا يحمل ما لم يتبدّل.
+    */
+    const savedPages = useRef(values.store_custom_pages ?? '');
 
     /*
         والرمزُ من خصائص Inertia لا من وسم `meta`.
@@ -383,6 +400,7 @@ export default function ThemeEditor({
             preserveState: true,
             onSuccess: () => {
                 setStatus('saved');
+                if (keys.includes('store_custom_pages')) savedPages.current = form.data.store_custom_pages ?? '';
                 refresh();
             },
             onError: () => setStatus('failed'),
@@ -469,6 +487,31 @@ export default function ThemeEditor({
           }
         : null;
 
+    /*
+        وما يُختار وجهةً لرابطٍ أو بطاقةٍ أو زرّ — كما في الشاشة الآن، ولو لم يُحفظ بعد:
+        صفحةٌ أُنشئت للتوّ أو مجموعةٌ سُمّيت قبل لحظة تُختار في الحال.
+    */
+    const sources: TargetSources = {
+        collections: parseCollections(form.data.store_collections),
+        pages: parsePages(form.data.store_custom_pages).map(({ slug, title_ar, title_en, visible }) => ({ slug, title_ar, title_en, visible })),
+        categories: shortcutCategories,
+        products,
+        storePages: pages,
+    };
+
+    /** صفحةٌ مخصّصةٌ فارغة من داخل القائمة — تُكتب في الصفحات وتُحفظ مع القائمة */
+    const createPage = (title: { ar: string; en: string }): string | null => {
+        const list = parsePages(form.data.store_custom_pages);
+        const max = rows.flatMap((r) => r.fields).find((f) => f.kind === 'pages')?.max ?? 12;
+
+        if (list.length >= max) return null;
+
+        const page = blankPage(list.map((p) => p.slug), title);
+        form.setData('store_custom_pages', serializePages([...list, page]));
+
+        return page.slug;
+    };
+
     const field = (f: EditorField) => {
         if (f.gate && (form.data[f.gate] ?? '0') !== '1') return null;
 
@@ -478,10 +521,78 @@ export default function ThemeEditor({
             return (
                 <StoreImageField
                     key={f.key}
+                    name={f.key}
                     label={f.label}
                     hint={f.hint}
                     value={form.data[f.key] ?? ''}
                     onChange={(v) => form.setData(f.key, v)}
+                    {...(f.fit
+                        ? { fit: form.data[f.fit] ?? '', onFitChange: (v: string) => form.setData(f.fit!, v), ratio: f.ratio }
+                        : {})}
+                />
+            );
+        }
+
+        if (f.kind === 'shoprow') {
+            return (
+                <ShopRowField
+                    key={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={form.data[f.key] ?? ''}
+                    collections={parseCollections(form.data.store_collections)}
+                    shortcutIds={(form.data.store_shop_nav_categories ?? '').split(',').map(Number).filter((n) => n > 0)}
+                    categories={shortcutCategories}
+                    onChange={(v) => form.setData(f.key, v)}
+                    error={error}
+                />
+            );
+        }
+
+        if (f.kind === 'menu') {
+            return (
+                <MenuField
+                    key={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={form.data[f.key] ?? ''}
+                    sources={sources}
+                    max={f.max ?? 10}
+                    onChange={(v) => form.setData(f.key, v)}
+                    onCreatePage={createPage}
+                    onOpenPages={() => setOpen('pages')}
+                    error={error ?? (form.errors as Record<string, string | undefined>).store_custom_pages}
+                />
+            );
+        }
+
+        if (f.kind === 'pages') {
+            return (
+                <CustomPagesField
+                    key={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={form.data[f.key] ?? ''}
+                    sources={sources}
+                    max={f.max ?? 12}
+                    maxSections={f.max_sections ?? 8}
+                    onChange={(v) => form.setData(f.key, v)}
+                    onPreview={(slug) => setTarget({ page: 'page', slug })}
+                    error={error}
+                />
+            );
+        }
+
+        if (f.kind === 'catalogfit') {
+            return (
+                <CatalogFitField
+                    key={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={form.data[f.key] ?? ''}
+                    products={products}
+                    onChange={(v) => form.setData(f.key, v)}
+                    error={error}
                 />
             );
         }
@@ -556,6 +667,7 @@ export default function ThemeEditor({
                     categories={shortcutCategories}
                     products={products}
                     pages={pages}
+                    customPages={sources.pages}
                     max={f.max ?? 12}
                     onChange={(v) => form.setData(f.key, v)}
                     error={error}
@@ -771,7 +883,11 @@ export default function ThemeEditor({
                                     type="button"
                                     size="sm"
                                     loading={form.processing}
-                                    onClick={() => save(r.fields.map((f) => f.key))}
+                                    onClick={() => save([
+                                        ...r.fields.flatMap((f) => (f.fit ? [f.key, f.fit] : [f.key])),
+                                        // وصفحةٌ أُنشئت من القائمة تُحفظ معها — وما لم يتبدّل لا يُرسَل
+                                        ...(r.key === 'menu' && (form.data.store_custom_pages ?? '') !== savedPages.current ? ['store_custom_pages'] : []),
+                                    ])}
                                 >
                                     <Save />
                                     {t('احفظ')}
@@ -785,6 +901,9 @@ export default function ThemeEditor({
     };
 
     const head = byKey.get('head');
+    const menu = byKey.get('menu');
+    const customPages = byKey.get('pages');
+    const images = byKey.get('images');
     const collections = byKey.get('collections');
     const visualBar = byKey.get('vbar');
     const hero = byKey.get('hero');
@@ -929,6 +1048,8 @@ export default function ThemeEditor({
                         {/* والشريطُ المصوّر فوق الترويسة — أوّلُ ما يُرى — ثمّ رأسُ المتجر فوق الواجهة */}
                         {visualBar && row(visualBar)}
                         {head && row(head)}
+                        {/* والقائمةُ الرئيسيّة تحت الشعار — بعد رأس المتجر وقبل الواجهة */}
+                        {menu && row(menu)}
                         {hero && row(hero)}
                         {movable.map((k) => {
                             const r = byKey.get(k);
@@ -937,6 +1058,9 @@ export default function ThemeEditor({
                         })}
                         {/* والمجموعاتُ قبل التذييل — رفوفٌ تُفتح من صفّ المتجر، لا قسمٌ في الرئيسية */}
                         {collections && row(collections)}
+                        {/* والصفحاتُ المخصّصة وعرضُ الصور — ليسا قسمَين في الرئيسية */}
+                        {customPages && row(customPages)}
+                        {images && row(images)}
                         {foot && row(foot)}
                         {upsells && row(upsells)}
                     </ul>
@@ -969,7 +1093,7 @@ export default function ThemeEditor({
                     {/* ومعاينةُ رفّ مجموعةٍ تُقال، ويُعاد منها إلى الرئيسيّة بضغطة */}
                     {target && (
                         <p data-testid="preview-target" className="mb-2 flex items-center justify-between gap-2 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] text-[#1d4ed8]">
-                            <span dir="ltr">/shop?collection={target.collection}</span>
+                            <span dir="ltr">{target.page === 'shop' ? `/shop?collection=${target.collection}` : `/page/${target.slug}`}</span>
                             <button type="button" className="font-medium underline" onClick={() => setTarget(null)}>
                                 {t('عُد إلى الرئيسية')}
                             </button>

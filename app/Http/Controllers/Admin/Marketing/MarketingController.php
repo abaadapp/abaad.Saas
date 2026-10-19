@@ -24,6 +24,10 @@ use App\Support\Store\RibbonPicks;
 use App\Support\Store\RibbonUpsells;
 use App\Support\Store\StoreContent;
 use App\Support\Store\StoreCollections;
+use App\Support\Store\StoreCustomPages;
+use App\Support\Store\StoreImageUpload;
+use App\Support\Store\StoreMedia;
+use App\Support\Store\StoreNav;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreVisualBar;
 use App\Support\Store\ThemePublisher;
@@ -344,6 +348,20 @@ class MarketingController extends Controller
             'store_collections' => ['nullable', 'string', 'max:'.StoreCollections::RAW_MAX],
             // وشريطُها المصوّر نصُّ JSON — يُقرأ بصرامةٍ أدناه (`StoreVisualBar::validated`)
             'store_visual_bar' => ['nullable', 'string', 'max:'.StoreVisualBar::RAW_MAX],
+            // وترتيبُ أزرار صفّ المتجر كلِّها — رموزٌ تُقرأ بصرامةٍ أدناه (`StoreHeader::validatedRow`)
+            'store_shop_row' => ['nullable', 'string', 'max:2000'],
+            // والقائمةُ الرئيسيّة بترتيب صاحبها وروابطه — `StoreNav::validatedMenu` أدناه
+            'store_menu' => ['nullable', 'string', 'max:'.StoreNav::MENU_RAW_MAX],
+            // والصفحاتُ المخصّصة — `StoreCustomPages::validated` أدناه
+            'store_custom_pages' => ['nullable', 'string', 'max:'.StoreCustomPages::RAW_MAX],
+            /*
+             * وطريقةُ عرض الصور — «كاملة» أو «ملء الإطار»، قيمتان مغلقتان تصيران
+             * قاعدةَ CSS، فلا نصَّ حرٌّ يبلغ `style`. والفراغُ «ملء الإطار» كما كان.
+             */
+            'store_catalog_fit' => ['nullable', Rule::in(StoreMedia::FITS)],
+            'store_hero_image_fit' => ['nullable', Rule::in(StoreMedia::FITS)],
+            'store_banner_image_fit' => ['nullable', Rule::in(StoreMedia::FITS)],
+            'store_block_image_fit' => ['nullable', Rule::in(StoreMedia::FITS)],
 
             /*
              * وصفحاتُ المتجر — ما أذِن به من «من نحن» و«تواصل معنا».
@@ -448,12 +466,52 @@ class MarketingController extends Controller
          * يُكتب. والمجموعاتُ تُقاس على ما يُحفظ معها في الحفظة نفسِها، وإلّا على
          * المسوّدة — فبطاقةٌ لمجموعةٍ أُنشئت للتوّ تُقبل. انظر `Store\StoreVisualBar`.
          */
+        /*
+         * ═══ والصفحاتُ المخصّصة — صورُها من مجلّده، وزرُّها إلى وجهةٍ في متجره ═══
+         *
+         * والمجموعاتُ والصفحاتُ التي يُقاس عليها ما يُحفظ معها في الحفظة نفسِها،
+         * وإلّا المسوّدة — فرابطٌ إلى صفحةٍ أُنشئت للتوّ يُقبل. انظر `Store\StoreCustomPages`.
+         */
+        $collectionsNow = fn () => StoreCollections::fromJson((string) (array_key_exists(StoreCollections::KEY, $data)
+            ? $data[StoreCollections::KEY]
+            : (StoreContent::draft($this->bid())[StoreCollections::KEY] ?? '')));
+
+        if ($request->exists(StoreCustomPages::KEY)) {
+            abort_if($business->storefrontTheme() === null, 403);
+            $data[StoreCustomPages::KEY] = StoreCustomPages::validated($this->bid(), $request->input(StoreCustomPages::KEY), $collectionsNow());
+        }
+
+        $pagesNow = fn () => StoreCustomPages::fromJson((string) (array_key_exists(StoreCustomPages::KEY, $data)
+            ? $data[StoreCustomPages::KEY]
+            : (StoreContent::draft($this->bid())[StoreCustomPages::KEY] ?? '')));
+
         if ($request->exists(StoreVisualBar::KEY)) {
             abort_if($business->storefrontTheme() === null, 403);
-            $collections = StoreCollections::fromJson((string) (array_key_exists(StoreCollections::KEY, $data)
-                ? $data[StoreCollections::KEY]
-                : (StoreContent::draft($this->bid())[StoreCollections::KEY] ?? '')));
-            $data[StoreVisualBar::KEY] = StoreVisualBar::validated($this->bid(), $request->input(StoreVisualBar::KEY), $collections);
+            $data[StoreVisualBar::KEY] = StoreVisualBar::validated($this->bid(), $request->input(StoreVisualBar::KEY), $collectionsNow(), $pagesNow());
+        }
+
+        /*
+         * ═══ والقائمةُ الرئيسيّة — الصفحاتُ الأربعُ فيها، وكلُّ رابطٍ إلى متجره ═══
+         *
+         * تُرتَّب الصفحاتُ ولا تُحذف، والروابطُ عشرةٌ إلى صفحةٍ أو مجموعةٍ أو
+         * فئةٍ أو صنفٍ منه. انظر `Store\StoreNav::validatedMenu`.
+         */
+        if ($request->exists(StoreNav::MENU)) {
+            abort_if($business->storefrontTheme() === null, 403);
+            $data[StoreNav::MENU] = StoreNav::validatedMenu($this->bid(), $request->input(StoreNav::MENU), $collectionsNow(), $pagesNow());
+        }
+
+        // وترتيبُ صفّ المتجر — أزرارُه المعروفةُ وحدها، و«كل المنتجات» فيه دائمًا
+        if ($request->exists(StoreHeader::ROW)) {
+            abort_if($business->storefrontTheme() === null, 403);
+            $data[StoreHeader::ROW] = StoreHeader::validatedRow($this->bid(), $request->input(StoreHeader::ROW), $collectionsNow());
+        }
+
+        // وطرقُ عرض الصور تقرؤها الواجهةُ الخاصّة وحدها
+        foreach (['store_catalog_fit', 'store_hero_image_fit', 'store_banner_image_fit', 'store_block_image_fit'] as $fitKey) {
+            if ($request->exists($fitKey)) {
+                abort_if($business->storefrontTheme() === null, 403);
+            }
         }
 
         /*
@@ -670,17 +728,30 @@ class MarketingController extends Controller
      */
     public function uploadStoreImage(Request $request)
     {
+        $max = (int) floor(StoreImageUpload::maxBytes() / 1024);
+        $mb = rtrim(rtrim(number_format($max / 1024, 1, '.', ''), '0'), '.');
+
+        /*
+         * والنوعُ لا يُسأل هنا: قاعدةُ `image` تقرأ الامتداد ونوعَ MIME وتردّ HEIC
+         * قبل أن يُقال لصاحبه كيف يُرسلها. فالملفُّ يُقبل ملفًّا، ويُقرأ نوعُه من
+         * محتواه في `StoreImageUpload::store` — وهو أشدُّ من القاعدة لا أرخى.
+         */
         $request->validate([
-            'image' => ['required', 'image', 'max:4096'],
+            'image' => ['required', 'file', 'max:'.$max],
         ], [
-            'image.image' => __('الملفّ صورة — PNG أو JPG أو WEBP'),
-            'image.max' => __('أقصى حجمٍ للصورة ٤ ميغابايت'),
+            'image.required' => __('اختر صورة لترفعها.'),
+            'image.uploaded' => __('تعذّر رفع الصورة — أقصى حجمٍ :mb ميغابايت.', ['mb' => $mb]),
+            'image.file' => __('تعذّر رفع الصورة — أقصى حجمٍ :mb ميغابايت.', ['mb' => $mb]),
+            'image.max' => __('أقصى حجمٍ للصورة :mb ميغابايت.', ['mb' => $mb]),
         ]);
 
         // في مجلّد النشاط لا في مجلّدٍ عامّ — فنسخُ متجرٍ أو حذفُه يعرف ما يخصّه
-        $path = $request->file('image')->store('website/'.$this->bid(), 'public');
+        $saved = StoreImageUpload::store($this->bid(), $request->file('image'));
 
-        return back()->with('uploaded', \Illuminate\Support\Facades\Storage::url($path));
+        return back()
+            ->with('uploaded', $saved['url'])
+            // وأبعادُها — يقرؤها المحرّرُ فيُري الصورةَ بنسبتها قبل أن تُحفظ
+            ->with('uploaded_meta', ['w' => $saved['w'], 'h' => $saved['h']]);
     }
 
     public function saveSeo(Request $request)

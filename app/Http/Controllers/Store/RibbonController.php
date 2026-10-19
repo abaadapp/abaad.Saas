@@ -32,6 +32,8 @@ use App\Support\Store\ProductReviews;
 use App\Support\Store\PaidReceipt;
 use App\Support\Store\ThankYouPage;
 use App\Support\Store\StoreCollections;
+use App\Support\Store\StoreCustomPages;
+use App\Support\Store\StoreMedia;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
@@ -69,7 +71,7 @@ class RibbonController extends Controller
      * وهي من مسارات المتجر لا بابًا على حدة: فتُبنى لها الترويسةُ والتذييل
      * وتُقرأ بلغتها كأيّ صفحة، ويصحّ رابطُها على الطرق الثلاث إلى العنوان.
      */
-    private const PATHS = ['shop', 'about', 'contact', 'cart', 'checkout', 'p', 'done', 'paying', 'receipt'];
+    private const PATHS = ['shop', 'about', 'contact', 'cart', 'checkout', 'p', 'done', 'paying', 'receipt', StoreCustomPages::PATH];
 
     /**
      * ما يتبعه مقطعٌ ثانٍ — وما سواه لا يقبله.
@@ -85,9 +87,9 @@ class RibbonController extends Controller
      * يكتشف أحدٌ أنّه خطأ حتّى يُوزَّع.
      *
      * والصفحاتُ التي تقبله تحتاجه: صنفٌ بمعرّفه، وتأكيدٌ برقم طلبه، وعودةٌ
-     * من البوّابة بمرجعها، وإيصالُ الدفع برقم طلبه.
+     * من البوّابة بمرجعها، وإيصالُ الدفع برقم طلبه، وصفحةٌ مخصّصةٌ باسمها.
      */
-    private const TAKES_ID = ['p', 'done', 'paying', 'receipt'];
+    private const TAKES_ID = ['p', 'done', 'paying', 'receipt', StoreCustomPages::PATH];
 
     /* ═══════════ الصفحات ═══════════ */
 
@@ -122,7 +124,13 @@ class RibbonController extends Controller
             return $this->receipt($business, (string) $second);
         }
 
-        $ctx = $this->context($business, $base, $lang, $first ?? StoreNav::HOME);
+        /*
+         * والصفحةُ المخصّصة تُقرأ قبل الترويسة — ليُضاء رابطُها في القائمة،
+         * ويُردّ «غير موجود» لما لا يُعرف أو أُخفي قبل أن يُبنى شيء.
+         */
+        $custom = $first === StoreCustomPages::PATH ? $this->customPage($business, (string) $second) : null;
+
+        $ctx = $this->context($business, $base, $lang, $first ?? StoreNav::HOME, $this->here($first, $second, $custom));
 
         return match ($first) {
             null => $this->render('store.ribbon.home', $ctx + $this->home($business, $lang)),
@@ -134,7 +142,79 @@ class RibbonController extends Controller
             'checkout' => $this->render('store.ribbon.checkout', $ctx + $this->checkoutData($business)),
             'done' => $this->render('store.ribbon.done', $ctx + $this->done($business, (int) $second, $lang)),
             'paying' => $this->paying($business, (string) $second, $ctx),
+            StoreCustomPages::PATH => $this->render('store.ribbon.page', $this->customPageData($business, $custom, $ctx, $lang, $base)),
         };
+    }
+
+    /**
+     * ما يقف عليه الزائر — وجهةً تُقاس عليها روابطُ القائمة (`StoreTarget::same`).
+     *
+     * @return array{type: string, value: string|int}|null
+     */
+    private function here(?string $first, ?string $second, ?array $custom): ?array
+    {
+        $q = request()->query();
+
+        return match ($first) {
+            null => ['type' => 'home', 'value' => ''],
+            'shop' => match (true) {
+                ($q['view'] ?? null) === StoreHeader::VIEW_BEST => ['type' => 'best', 'value' => ''],
+                is_string($q[StoreCollections::QUERY] ?? null) && $q[StoreCollections::QUERY] !== '' => ['type' => 'collection', 'value' => $q[StoreCollections::QUERY]],
+                (int) ($q['cat'] ?? 0) > 0 => ['type' => 'category', 'value' => (int) $q['cat']],
+                default => ['type' => 'shop', 'value' => ''],
+            },
+            'about', 'contact' => ['type' => $first, 'value' => ''],
+            'p' => ['type' => 'product', 'value' => (int) $second],
+            StoreCustomPages::PATH => $custom === null ? null : ['type' => 'page', 'value' => $custom['slug']],
+            default => null,
+        };
+    }
+
+    /**
+     * أهذه معاينةُ صاحب المتجر؟ — يضعها `StorefrontController::preview` على الطلب.
+     *
+     * فيها وحدها تُفتح المجموعةُ والصفحةُ المخفيّتان: يجهّزهما ويراهما قبل أن
+     * يُظهرهما. وزبونُه لا يبلغهما بأيّ رابط.
+     */
+    private function previewing(): bool
+    {
+        return request()->attributes->get(StorefrontController::PREVIEW) === true;
+    }
+
+    /** صفحةٌ مخصّصةٌ بالاسم المختصر — ظاهرةٌ، أو مخفيّةٌ في المعاينة — وإلّا «غير موجود» */
+    private function customPage(Business $business, string $slug): array
+    {
+        $bid = (int) $business->id;
+        $page = preg_match(StoreCollections::SLUG, $slug) === 1
+            ? ($this->previewing() ? StoreCustomPages::findAny($bid, $slug) : StoreCustomPages::find($bid, $slug))
+            : null;
+
+        abort_if($page === null, 404);
+
+        return $page;
+    }
+
+    /**
+     * الصفحةُ المخصّصة كما تُرسم — ووصفُها في البحث نبذتُها إن كتبها.
+     *
+     * @param  array<string, mixed>  $ctx
+     * @return array<string, mixed>
+     */
+    private function customPageData(Business $business, array $page, array $ctx, string $lang, string $base): array
+    {
+        $view = StoreCustomPages::view((int) $business->id, $page, $lang, $base);
+
+        if ($view['intro'] !== '') {
+            $ctx['seo']['description'] = \Illuminate\Support\Str::limit(preg_replace('/\s+/u', ' ', $view['intro']), 155);
+        }
+
+        // وصورتُها صورةُ مشاركتها — من أرسل رابطَ «خدماتنا» يرى صورتَها لا شعارَ المتجر
+        $og = $view['image']['url'] ?? null;
+
+        return $ctx + [
+            'customPage' => $view,
+            'ogImage' => $og === null ? null : (str_starts_with($og, 'http') ? $og : url($og)),
+        ];
     }
 
     /** السلّةُ مسعَّرةً من الخادم — تُقرأ في صفحتَي السلّة والإتمام */
@@ -309,6 +389,13 @@ class RibbonController extends Controller
             'bannerImage' => StorePage::bannerImage($bid),
             'block' => StorePage::block($bid, $lang),
             /*
+             * وطريقةُ عرض كلّ صورةٍ من الثلاث — ما اختاره لها في المحرّر، والفراغُ
+             * «ملء الإطار» كما كانت. انظر `StoreMedia::fit`.
+             */
+            'heroFit' => StoreMedia::fit(MarketingSettings::group($bid, 'website')['store_hero_image_fit'] ?? null),
+            'bannerFit' => StoreMedia::fit(MarketingSettings::group($bid, 'website')['store_banner_image_fit'] ?? null),
+            'blockFit' => StoreMedia::fit(MarketingSettings::group($bid, 'website')['store_block_image_fit'] ?? null),
+            /*
              * وعنوانُ الواجهة ووصفُها بلغة الصفحة — ما كتبه لها، وإلّا نصُّ
              * القالب للّغة نفسِها (`StorePage::heroTitle`).
              */
@@ -350,7 +437,10 @@ class RibbonController extends Controller
         $asked = $best ? null : $request->query(StoreCollections::QUERY);
         // ومُدخَلٌ ليس نصًّا (`collection[]=x`) لا يُقرأ مجموعةً ولا يُسقط الصفحة
         abort_if($asked !== null && ! is_string($asked), 404);
-        $collection = is_string($asked) && $asked !== '' ? StoreCollections::find($bid, $asked) : null;
+        // والمخفيّةُ تُفتح في معاينة صاحبها وحدها — `previewing`
+        $collection = is_string($asked) && $asked !== ''
+            ? ($this->previewing() ? StoreCollections::findAny($bid, $asked) : StoreCollections::find($bid, $asked))
+            : null;
         abort_if(is_string($asked) && $asked !== '' && $collection === null, 404);
         $cat = $best || $collection !== null ? 0 : (int) $request->query('cat', 0);
         $q = trim((string) $request->query('q', ''));
@@ -385,6 +475,14 @@ class RibbonController extends Controller
                 'slug' => $collection['slug'],
                 'title' => StoreCollections::title($collection, $lang),
                 'description' => StoreCollections::description($collection, $lang),
+                /*
+                 * وصورتُها رأسًا لرفّها — بطريقة عرضها: «كاملة» بنسبتها، أو تملأ
+                 * إطارًا عريضًا. ومجموعةٌ بلا صورةٍ رفُّها كما كان.
+                 */
+                'image' => $collection['image'] !== '' ? $collection['image'] : null,
+                'fit' => StoreMedia::fit($collection['fit'] ?? null),
+                'size' => $collection['image'] !== '' ? StoreMedia::size($bid, $collection['image']) : null,
+                'hidden' => ! $collection['visible'],
             ],
             /*
              * صفُّ خيارات المتجر — يُرسم داخل الترويسة اللاصقة (`layout`)
@@ -724,7 +822,7 @@ class RibbonController extends Controller
 
     /* ═══════════ أدوات ═══════════ */
 
-    private function context(Business $business, string $base, string $lang, string $current = StoreNav::HOME): array
+    private function context(Business $business, string $base, string $lang, string $current = StoreNav::HOME, ?array $here = null): array
     {
         $bid = (int) $business->id;
         $identity = MerchantData::identity($bid);
@@ -768,7 +866,14 @@ class RibbonController extends Controller
              *
              * ولو بُنيت في القالبين لَبقي في أحدهما رابطٌ إلى صفحةٍ أُطفئت.
              */
-            'nav' => StoreNav::links($bid, $base, $t, $current, $lang),
+            'nav' => StoreNav::links($bid, $base, $t, $current, $lang, $here),
+            // والقائمةُ التي كتبها صاحبُها سطرٌ يُمرَّر — والقديمةُ كما كانت (`layout`)
+            'navScroll' => StoreNav::customized($bid),
+            /*
+             * وصورُ المنتجات والفئات «كاملة» أو «ملء الإطار» — صنفٌ على جذر الصفحة
+             * تقرؤه البطاقاتُ وصفحةُ المنتج والسلّة معًا. والفراغُ «ملء الإطار».
+             */
+            'catalogFit' => StoreMedia::fit(MarketingSettings::group($bid, 'website')['store_catalog_fit'] ?? null),
             /*
              * وشريطُ الإعلان أعلى كلّ صفحة — بلغة الزائر وحدها، أو لا شريط.
              * انظر `StoreHeader::announcement`.

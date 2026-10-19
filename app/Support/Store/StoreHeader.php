@@ -51,6 +51,16 @@ final class StoreHeader
      */
     public const MAX_SHORTCUTS = 6;
 
+    /**
+     * ترتيبُ أزرار صفّ المتجر كلِّها — «كل المنتجات» و«الأكثر مبيعًا» والمجموعاتُ
+     * والفئات — كما يريده صاحبُه: `all,best,col:{slug},cat:{id}` بترتيبها.
+     *
+     * والفراغُ الترتيبُ القديمُ حرفًا بحرف. وزرٌّ ليس في القائمة (مجموعةٌ أُنشئت
+     * بعدها، فئةٌ اختيرت بعدها) يُلحق في آخرها بترتيبه الأصليّ. و«كل المنتجات»
+     * لا يغيب: هو بابُ البضاعة كلِّها، فإن غاب عن القائمة صار أوّلَها.
+     */
+    public const ROW = 'store_shop_row';
+
     /** خيارُ «الأكثر مبيعًا» في الرابط — `‎?view=best‎`، والاسمُ لا يُقرأ منطقًا */
     public const VIEW_BEST = 'best';
 
@@ -160,10 +170,126 @@ final class StoreHeader
             ];
         }
 
-        return $out;
+        return self::ordered($out, self::rowTokens($businessId));
+    }
+
+    /**
+     * الترتيبُ المحفوظ — رموزٌ كما كُتبت، بلا فحصِ وجود.
+     *
+     * @return list<string>
+     */
+    public static function rowTokens(int $businessId): array
+    {
+        $raw = trim((string) (MarketingSettings::group($businessId, 'website')[self::ROW] ?? ''));
+
+        return $raw === '' ? [] : array_values(array_unique(array_filter(array_map('trim', explode(',', $raw)), fn ($t) => $t !== '')));
+    }
+
+    /** رمزُ الزرّ في الترتيب — `col-eid` ← `col:eid` */
+    public static function token(string $key): string
+    {
+        return match (true) {
+            str_starts_with($key, 'col-') => 'col:'.substr($key, 4),
+            str_starts_with($key, 'cat-') => 'cat:'.substr($key, 4),
+            default => $key,
+        };
+    }
+
+    /**
+     * الأزرارُ بترتيب صاحبها — وما لم يذكره بعدها بترتيبه الأصليّ.
+     *
+     * @param  list<array{key: string, label: string, href: string, current: bool}>  $options
+     * @param  list<string>  $tokens
+     * @return list<array{key: string, label: string, href: string, current: bool}>
+     */
+    private static function ordered(array $options, array $tokens): array
+    {
+        if ($tokens === []) {
+            return $options;
+        }
+
+        // و«كل المنتجات» إن غاب عن الترتيب صار أوّلَه — لا يُخفى بابُ البضاعة كلِّها
+        if (! in_array('all', $tokens, true)) {
+            array_unshift($tokens, 'all');
+        }
+
+        $rank = array_flip($tokens);
+        $keyed = [];
+
+        foreach ($options as $i => $o) {
+            $keyed[] = [$rank[self::token($o['key'])] ?? count($tokens) + $i, $o];
+        }
+
+        usort($keyed, fn ($a, $b) => $a[0] <=> $b[0]);
+
+        return array_column($keyed, 1);
     }
 
     /* ═══════════ الحفظ ═══════════ */
+
+    /**
+     * ترتيبُ صفّ المتجر كما يُحفظ — أو ردٌّ برسالة.
+     *
+     * رموزٌ معروفةٌ وحدها، فريدةٌ بترتيبها: «كل المنتجات» و«الأكثر مبيعًا»،
+     * ومجموعاتُه بأسمائها (ما يُحفظ معها في الطلب نفسِه، وإلّا المسوّدة)،
+     * وفئاتُه بمعرّفاتها — من متجره وحده. و«كل المنتجات» فيه دائمًا.
+     *
+     * @param  list<array<string, mixed>>  $collections
+     */
+    public static function validatedRow(int $businessId, mixed $raw, array $collections): string
+    {
+        if ($raw === null || $raw === '') {
+            return '';
+        }
+
+        $bad = fn () => throw ValidationException::withMessages([
+            self::ROW => __('ترتيب شريط المتجر غير صالح — أعد ترتيبه من المحرّر.'),
+        ]);
+
+        if (! is_string($raw) || strlen($raw) > 2000) {
+            $bad();
+        }
+
+        $tokens = array_values(array_filter(array_map('trim', explode(',', $raw)), fn ($t) => $t !== ''));
+        $slugs = array_map(fn (array $c) => $c['slug'], $collections);
+        $cats = [];
+
+        if (count($tokens) !== count(array_unique($tokens)) || count($tokens) > 2 + StoreCollections::MAX + self::MAX_SHORTCUTS) {
+            $bad();
+        }
+
+        foreach ($tokens as $token) {
+            if (in_array($token, ['all', self::VIEW_BEST], true)) {
+                continue;
+            }
+
+            if (str_starts_with($token, 'col:') && in_array(substr($token, 4), $slugs, true)) {
+                continue;
+            }
+
+            if (preg_match('/^cat:([1-9]\d{0,18})$/', $token, $m) === 1) {
+                $cats[] = (int) $m[1];
+
+                continue;
+            }
+
+            $bad();
+        }
+
+        if ($cats !== [] && Category::where('business_id', $businessId)->whereIn('id', $cats)->count() !== count($cats)) {
+            throw ValidationException::withMessages([
+                self::ROW => __('فئةٌ في ترتيب شريط المتجر ليست من فئاتك — أعد ترتيبه.'),
+            ]);
+        }
+
+        if (! in_array('all', $tokens, true)) {
+            throw ValidationException::withMessages([
+                self::ROW => __('«كل المنتجات» يبقى في شريط المتجر — رتّبه ولا تحذفه.'),
+            ]);
+        }
+
+        return implode(',', $tokens);
+    }
 
     /**
      * قائمةُ الاختصارات كما تُحفظ — أو ردٌّ برسالة.

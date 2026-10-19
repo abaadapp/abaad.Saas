@@ -74,7 +74,7 @@ final class StoreCollections
      * والقراءةُ لا تثق بالمخزَّن: صفٌّ كُتب قبل قاعدةٍ أو بيدٍ في القاعدة
      * لا يُسقط الصفحة. يُقرأ منه ما يصحّ، ويُترك ما لا يصحّ.
      *
-     * @return list<array{slug: string, title_ar: string, title_en: string, desc_ar: string, desc_en: string, image: string, visible: bool, in_row: bool, products: list<int>}>
+     * @return list<array{slug: string, title_ar: string, title_en: string, desc_ar: string, desc_en: string, image: string, fit: string, visible: bool, in_row: bool, products: list<int>}>
      */
     public static function all(int $businessId): array
     {
@@ -95,6 +95,23 @@ final class StoreCollections
     public static function find(int $businessId, string $slug): ?array
     {
         foreach (self::visible($businessId) as $c) {
+            if ($c['slug'] === $slug) {
+                return $c;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * مجموعةٌ بالاسم المختصر ولو أخفاها صاحبُها — للمعاينة وحدها.
+     *
+     * فمن يجهّز مجموعةً مخفيّةً يراها في معاينته قبل أن يُظهرها، وزبونُه لا
+     * يبلغها بأيّ رابط (`find`). انظر `RibbonController::shop`.
+     */
+    public static function findAny(int $businessId, string $slug): ?array
+    {
+        foreach (self::all($businessId) as $c) {
             if ($c['slug'] === $slug) {
                 return $c;
             }
@@ -221,6 +238,21 @@ final class StoreCollections
                 self::refuse(__('صورة المجموعة :n ليست من صور متجرك — ارفعها من المحرّر.', ['n' => $n]));
             }
 
+            /*
+             * وطريقةُ عرض صورتها — «كاملة» أو «ملء الإطار» — تُحفظ إن اختيرت.
+             * وما لم يُختر يبقى «ملء الإطار» كما كان (`StoreMedia::fit`)، فلا
+             * يتبدّل الحفظُ القديمُ حرفًا.
+             */
+            $fit = self::text($c['fit'] ?? '');
+
+            if ($fit !== '' && ! in_array($fit, StoreMedia::FITS, true)) {
+                self::refuse(__('طريقة عرض صورة المجموعة :n غير صالحة.', ['n' => $n]));
+            }
+
+            if ($fit !== '') {
+                $row = array_slice($row, 0, 6, true) + ['fit' => $fit] + array_slice($row, 6, null, true);
+            }
+
             $products = $c['products'] ?? [];
 
             if (! is_array($products) || ! array_is_list($products)) {
@@ -320,6 +352,7 @@ final class StoreCollections
                 'desc_ar' => self::text($c['desc_ar'] ?? ''),
                 'desc_en' => self::text($c['desc_en'] ?? ''),
                 'image' => self::text($c['image'] ?? ''),
+                'fit' => in_array($c['fit'] ?? null, StoreMedia::FITS, true) ? $c['fit'] : '',
                 'visible' => (bool) ($c['visible'] ?? true),
                 'in_row' => (bool) ($c['in_row'] ?? true),
                 'products' => StorePage::ids(implode(',', array_map('strval', array_filter((array) ($c['products'] ?? []), 'is_scalar'))), self::MAX_PRODUCTS),

@@ -16,7 +16,7 @@
         <div data-testid="rb-gallery">
             <div style="aspect-ratio:1/1;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
                 @if (count($gallery))
-                    <img src="{{ $gallery[0] }}" alt="{{ $product['name'] }}" style="width:100%;height:100%;object-fit:cover;display:block" data-rb-main data-testid="rb-main-image">
+                    <img src="{{ $gallery[0] }}" alt="{{ $product['name'] }}" class="rb-pfit" style="width:100%;height:100%;display:block" data-rb-main data-testid="rb-main-image">
                 @else
                     <div class="rb-stripes" style="--tint: {{ $product['tint'] }}"></div>
                 @endif

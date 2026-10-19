@@ -43,17 +43,24 @@
                     @endif
                 </div>
             </div>
-            <div style="aspect-ratio:5/4;border-radius:var(--rb-r-lg);overflow:hidden;background:repeating-linear-gradient(135deg,#e6dcc8 0 14px,#f3efe9 14px 28px);min-height:240px">
-                {{--
-                    صورةُ الواجهة: ما اختاره صاحبُ المحلّ، وإلّا أوّلُ ما يُعرض.
+            {{--
+                صورةُ الواجهة: ما اختاره صاحبُ المحلّ، وإلّا أوّلُ ما يُعرض.
 
-                    كانت تُؤخذ من الصفّ المحسوب وحدَه — فأوّلُ ما تقع عليه
-                    عينُ الزبون صدفة. والقاعدةُ القديمة تبقى بديلًا لمن لم
-                    يختر، فلا تنقلب واجهةُ متجرٍ قائمٍ إلى فراغ.
-                --}}
-                @php $heroImage = $hero ?: ($best[0]['image'] ?? null); @endphp
+                كانت تُؤخذ من الصفّ المحسوب وحدَه — فأوّلُ ما تقع عليه
+                عينُ الزبون صدفة. والقاعدةُ القديمة تبقى بديلًا لمن لم
+                يختر، فلا تنقلب واجهةُ متجرٍ قائمٍ إلى فراغ.
+
+                وطريقةُ عرضها ما اختاره لها (`store_hero_image_fit`)، وصورةُ الصنف
+                البديلة بطريقة صور المنتجات. و«كاملة» تُري الصورةَ كلَّها في الإطار
+                نفسِه على لونٍ هادئ — لا خطوطَ تظهر حولها.
+            --}}
+            @php
+                $heroImage = $hero ?: ($best[0]['image'] ?? null);
+                $rbHeroFit = $hero ? $heroFit : $catalogFit;
+            @endphp
+            <div style="aspect-ratio:5/4;border-radius:var(--rb-r-lg);overflow:hidden;background:{{ $heroImage && $rbHeroFit === 'contain' ? 'var(--rb-cream)' : 'repeating-linear-gradient(135deg,#e6dcc8 0 14px,#f3efe9 14px 28px)' }};min-height:240px">
                 @if ($heroImage)
-                    <img src="{{ $heroImage }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" data-testid="rb-hero-image">
+                    <img src="{{ $heroImage }}" alt="" style="width:100%;height:100%;object-fit:{{ $rbHeroFit }};display:block" data-testid="rb-hero-image" data-fit="{{ $rbHeroFit }}">
                 @endif
             </div>
         </div>

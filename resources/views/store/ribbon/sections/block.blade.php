@@ -20,7 +20,7 @@
         </div>
         @if ($block['image'])
             <div style="aspect-ratio:4/3;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft)">
-                <img src="{{ $block['image'] }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block">
+                <img src="{{ $block['image'] }}" alt="" style="width:100%;height:100%;object-fit:{{ $blockFit }};display:block" data-testid="rb-block-image" data-fit="{{ $blockFit }}">
             </div>
         @endif
     </div>

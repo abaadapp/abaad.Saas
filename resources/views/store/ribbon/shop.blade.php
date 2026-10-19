@@ -10,6 +10,22 @@
         أو «الأكثر مبيعًا»، أو اسمُ الفئة — فمن وصل من بطاقةِ فئةٍ في الرئيسية
         يعرف أين هو ولو لم تكن فئتُه في صفّ الترويسة.
     --}}
+    @if (($collection['hidden'] ?? false))
+        {{-- والمخفيّةُ تُعايَن وحدها — ويُقال لصاحبها إنّ زبونه لا يراها --}}
+        <p style="margin:0 0 16px;font-size:13px;color:#6b655c" data-testid="rb-collection-hidden">{{ $t['collectionHidden'] }}</p>
+    @endif
+    @if (($collection['image'] ?? null) !== null)
+        {{--
+            وصورةُ المجموعة رأسُ رفّها — «كاملة» بنسبتها وطولُها محدود فلا تدفع
+            البضاعةَ تحت الشاشة، أو تملأ إطارًا عريضًا. والمقاسُ يُحجز قبل وصولها.
+        --}}
+        <figure data-testid="rb-collection-image" data-fit="{{ $collection['fit'] }}"
+                style="margin:0 0 24px;border-radius:var(--rb-r-lg);overflow:hidden;background:var(--rb-soft);display:flex;align-items:center;justify-content:center;{{ $collection['fit'] === 'cover' ? 'aspect-ratio:21/8' : '' }}">
+            <img src="{{ $collection['image'] }}" alt="" decoding="async"
+                 @if ($collection['size']) width="{{ $collection['size']['w'] }}" height="{{ $collection['size']['h'] }}" @endif
+                 style="display:block;{{ $collection['fit'] === 'cover' ? 'width:100%;height:100%;object-fit:cover' : 'width:auto;height:auto;max-width:100%;max-height:min(42vh,340px);object-fit:contain' }}">
+        </figure>
+    @endif
     <div style="margin-bottom:28px">
         {{-- والمجموعةُ باسمها ووصفها بلغة الصفحة — وبلا وصفٍ لها يبقى سطرُ المتجر --}}
         <h1 class="rb-h1" data-testid="rb-shop-title">{{ $q !== '' ? $q : ($best ? $t['bestSellers'] : ($collection['title'] ?? ($catName ?? $t['shopTitle']))) }}</h1>

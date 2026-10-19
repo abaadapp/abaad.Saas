@@ -141,6 +141,9 @@ class MarketingToolsTest extends TestCase
              * خياراته والقالبُ العامّ (`Store\StoreCollections` و`Store\StoreVisualBar`).
              */
             'store_collections', 'store_visual_bar',
+            // وترتيبُ صفّ المتجر والقائمةُ والصفحاتُ وطرقُ عرض الصور — تقرؤها الواجهةُ الخاصّة
+            'store_shop_row', 'store_menu', 'store_custom_pages',
+            'store_catalog_fit', 'store_hero_image_fit', 'store_banner_image_fit', 'store_block_image_fit',
             /*
              * وصفحاتُ المتجر وصورةُ «من نحن» — تقرؤهما القائمةُ والمتحكّم
              * (`Store\StoreNav` و`RibbonController::about`).

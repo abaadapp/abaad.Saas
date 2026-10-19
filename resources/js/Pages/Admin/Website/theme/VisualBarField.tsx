@@ -10,6 +10,9 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { StoreCollection } from './CollectionsField';
 import type { ListProduct } from './ProductListField';
+import { fromKey, parseTarget, reaches as reachable, type StoreTargetValue, type TargetPage, type TargetSources, TargetSelect, targetKey } from './StoreTargets';
+
+export { fromKey, targetKey };
 
 /**
  * الشريطُ المصوّر في محرّر الواجهة — بطاقاتٌ بصورها فوق قائمة الصفحات.
@@ -26,8 +29,6 @@ import type { ListProduct } from './ProductListField';
  * قائمة، لا تُكتب. فلا رابطَ خارجيٌّ ولا خطأُ حرفٍ يقود إلى «غير موجود».
  */
 
-export type BarTargetType = 'collection' | 'category' | 'product' | 'shop' | 'best' | 'about' | 'contact';
-
 export interface BarCard {
     image: string;
     title_ar: string;
@@ -36,8 +37,10 @@ export interface BarCard {
     sub_en: string;
     cta_ar: string;
     cta_en: string;
-    target: { type: BarTargetType; value: string | number };
+    target: StoreTargetValue;
     visible: boolean;
+    /** «كاملة» أو «ملء الإطار» — وغيابُها «ملء الإطار» كما كانت */
+    fit?: 'contain' | 'cover';
 }
 
 export interface VisualBar {
@@ -45,8 +48,6 @@ export interface VisualBar {
     pages: 'home' | 'browse';
     cards: BarCard[];
 }
-
-const TYPES: BarTargetType[] = ['collection', 'category', 'product', 'shop', 'best', 'about', 'contact'];
 
 const OFF: VisualBar = { on: false, pages: 'home', cards: [] };
 
@@ -71,9 +72,8 @@ export function parseBar(raw: string | undefined): VisualBar {
         pages: b.pages === 'browse' ? 'browse' : 'home',
         cards: cards
             .filter((c): c is Record<string, unknown> => !! c && typeof c === 'object')
-            .filter((c) => TYPES.includes(((c.target ?? {}) as { type?: BarTargetType }).type as BarTargetType))
+            .filter((c) => parseTarget(c.target) !== null)
             .map((c) => {
-                const target = c.target as { type: BarTargetType; value?: unknown };
                 const text = (k: string) => String(c[k] ?? '');
 
                 return {
@@ -81,8 +81,9 @@ export function parseBar(raw: string | undefined): VisualBar {
                     title_ar: text('title_ar'), title_en: text('title_en'),
                     sub_ar: text('sub_ar'), sub_en: text('sub_en'),
                     cta_ar: text('cta_ar'), cta_en: text('cta_en'),
-                    target: { type: target.type, value: (target.value ?? '') as string | number },
+                    target: parseTarget(c.target)!,
                     visible: c.visible !== false,
+                    ...(c.fit === 'contain' || c.fit === 'cover' ? { fit: c.fit } : {}),
                 };
             }),
     };
@@ -91,19 +92,6 @@ export function parseBar(raw: string | undefined): VisualBar {
 /** الشريط ← نصٌّ يُحفظ. ومطفأٌ بلا بطاقاتٍ فراغ */
 export function serializeBar(bar: VisualBar): string {
     return ! bar.on && bar.cards.length === 0 ? '' : JSON.stringify(bar);
-}
-
-/** الوجهةُ مفتاحًا واحدًا لقائمة الاختيار — `collection:graduation` */
-export function targetKey(t: BarCard['target']): string {
-    return ['collection', 'category', 'product'].includes(t.type) ? `${t.type}:${t.value}` : t.type;
-}
-
-export function fromKey(key: string): BarCard['target'] {
-    const [type, value = ''] = key.split(':') as [BarTargetType, string?];
-
-    if (type === 'category' || type === 'product') return { type, value: Number(value) };
-
-    return { type, value: type === 'collection' ? value : '' };
 }
 
 export default function VisualBarField({
@@ -115,6 +103,7 @@ export default function VisualBarField({
     categories,
     products,
     pages,
+    customPages = [],
     max,
     onChange,
     error,
@@ -129,6 +118,8 @@ export default function VisualBarField({
     products: ListProduct[];
     /** صفحاتُ القالب — «من نحن» و«تواصل معنا» وجهتان ما دامتا تُفتحان */
     pages: { key: string; on: boolean; blocked: string | null }[];
+    /** وصفحاتُه المخصّصة كما في الشاشة الآن — `StoreCustomPages` */
+    customPages?: TargetPage[];
     max: number;
     onChange: (value: string) => void;
     error?: string;
@@ -170,18 +161,10 @@ export default function VisualBarField({
         setOpen(null);
     };
 
-    const pageOn = (key: string) => pages.some((p) => p.key === key && p.on && p.blocked === null);
+    const sources: TargetSources = { collections, pages: customPages, categories, products, storePages: pages };
 
     /** أتُفتح الوجهةُ الآن؟ — ما لا يُفتح لا تُرسم بطاقتُه في المتجر، فيُقال هنا */
-    const reaches = (target: BarCard['target']): boolean => {
-        switch (target.type) {
-            case 'collection': return collections.some((c) => c.slug === target.value && c.visible);
-            case 'category': return categories.some((c) => c.id === Number(target.value) && (c.shown ?? 1) > 0);
-            case 'product': return products.some((p) => p.id === Number(target.value));
-            case 'about': case 'contact': return pageOn(target.type);
-            default: return true;
-        }
-    };
+    const reaches = (target: StoreTargetValue): boolean => reachable(target, sources);
 
     const imageOf = (c: BarCard) =>
         c.image || (c.target.type === 'collection' ? collections.find((x) => x.slug === c.target.value)?.image ?? '' : '');
@@ -238,7 +221,7 @@ export default function VisualBarField({
                                 <li key={i} data-testid={`vcard-${i}`} className="bg-white">
                                     <div className="flex items-center gap-1.5 px-2 py-1.5">
                                         {thumb ? (
-                                            <img src={thumb} alt="" className="h-12 w-10 shrink-0 rounded-lg object-cover" />
+                                            <img src={thumb} alt="" className="h-12 w-10 shrink-0 rounded-lg bg-[#efe8de]" style={{ objectFit: c.fit === 'contain' ? 'contain' : 'cover' }} />
                                         ) : (
                                             <span className="flex h-12 w-10 shrink-0 items-center justify-center rounded-lg bg-[#f3f4f6] text-[#c4c4c4]">
                                                 <ImageOff className="size-4" />
@@ -278,49 +261,23 @@ export default function VisualBarField({
                                     {expanded && (
                                         <div className="space-y-4 border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 py-4">
                                             <StoreImageField
+                                                name={`vcard-${i}-image`}
                                                 label="صورة البطاقة"
-                                                hint="تُقصّ طولًا (٤ إلى ٥) ولا تُمطّ — وبلا صورةٍ تُستعار صورةُ المجموعة"
+                                                hint="في إطارٍ طوليّ (٤ إلى ٥) — كاملةً بنسبتها أو تملؤه. وبلا صورةٍ تُستعار صورةُ المجموعة"
                                                 value={c.image}
                                                 onChange={(url) => patch(i, { image: url })}
+                                                fit={c.fit}
+                                                onFitChange={(fit) => patch(i, { fit })}
+                                                ratio="4 / 5"
                                             />
                                             <Field label="ما تفتحه البطاقة">
-                                                <select
-                                                    value={targetKey(c.target)}
-                                                    onChange={(e) => patch(i, { target: fromKey(e.target.value) })}
-                                                    aria-label={t('ما تفتحه البطاقة')}
-                                                    data-testid={`vcard-${i}-target`}
-                                                    className="h-10 w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-[13px] text-[#111]"
-                                                >
-                                                    <optgroup label={t('صفحات المتجر')}>
-                                                        <option value="shop">{t('كل المنتجات')}</option>
-                                                        <option value="best">{t('الأكثر مبيعًا')}</option>
-                                                        {pageOn('about') && <option value="about">{t('من نحن')}</option>}
-                                                        {pageOn('contact') && <option value="contact">{t('تواصل معنا')}</option>}
-                                                    </optgroup>
-                                                    {collections.length > 0 && (
-                                                        <optgroup label={t('المجموعات')}>
-                                                            {collections.map((x) => (
-                                                                <option key={x.slug} value={`collection:${x.slug}`}>
-                                                                    {(x.title_ar || x.title_en || x.slug) + (x.visible ? '' : ` — ${t('مخفيّة')}`)}
-                                                                </option>
-                                                            ))}
-                                                        </optgroup>
-                                                    )}
-                                                    {categories.length > 0 && (
-                                                        <optgroup label={t('الفئات')}>
-                                                            {categories.map((x) => (
-                                                                <option key={x.id} value={`category:${x.id}`}>{x.name}</option>
-                                                            ))}
-                                                        </optgroup>
-                                                    )}
-                                                    {products.length > 0 && (
-                                                        <optgroup label={t('المنتجات')}>
-                                                            {products.map((x) => (
-                                                                <option key={x.id} value={`product:${x.id}`}>{x.name}</option>
-                                                            ))}
-                                                        </optgroup>
-                                                    )}
-                                                </select>
+                                                <TargetSelect
+                                                    value={c.target}
+                                                    onChange={(target) => patch(i, { target })}
+                                                    from={sources}
+                                                    label="ما تفتحه البطاقة"
+                                                    testid={`vcard-${i}-target`}
+                                                />
                                             </Field>
                                             {([
                                                 ['title', 'العنوان', 40],

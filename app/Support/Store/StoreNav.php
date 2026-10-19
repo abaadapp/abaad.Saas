@@ -5,6 +5,7 @@ namespace App\Support\Store;
 use App\Models\Product;
 use App\Support\MarketingSettings;
 use App\Support\Website\MerchantData;
+use Illuminate\Validation\ValidationException;
 
 /**
  * صفحاتُ متجر الواجهة الخاصّة — ما منها قائمٌ، وما يُكتب في القائمة.
@@ -28,6 +29,14 @@ use App\Support\Website\MerchantData;
  *
  * قاعدةُ `StorePage::order` نفسُها: مفتاحٌ لم يُكتب يُقرأ بما كان. فترقيةٌ
  * تُنزل المفتاح فارغًا على متجرٍ قائم لا تُطفئ له صفحة.
+ *
+ * ═══ والقائمةُ يكتبها صاحبُها إن شاء (`store_menu`) ═══
+ *
+ * يرتّب الصفحاتِ الأربعَ كما يريد، ويضيف بينها روابطَ إلى صفحاتٍ كتبها
+ * (`StoreCustomPages`) أو مجموعاتٍ أو فئاتٍ أو صفحاتٍ من متجره (`StoreTarget`).
+ * والصفحاتُ الأربعُ لا تُحذف منها: تُرتَّب، وظهورُ «من نحن» و«تواصل معنا»
+ * يبقى لمفتاحَيهما ولِما فيهما (`has`) — فلا يفترق بابان يُطفئان صفحةً واحدة.
+ * والفراغُ القائمةُ القديمةُ بترتيبها حرفًا بحرف.
  */
 final class StoreNav
 {
@@ -60,6 +69,21 @@ final class StoreNav
      * غريب، فلا يحتاج استثناءً في القراءة.
      */
     public const NONE = 'none';
+
+    /** مفتاحُ القائمة المرتّبة في إعدادات الموقع — نصُّ JSON، والفراغُ القائمةُ القديمة */
+    public const MENU = 'store_menu';
+
+    /** أكثرُ ما يُضاف إليها من روابط — سطرٌ يُمرَّر بالإصبع، لا فهرسٌ ثانٍ */
+    public const MAX_LINKS = 10;
+
+    /** اسمُ الرابط في القائمة — كلمةٌ أو كلمتان */
+    public const LINK_TITLE_MAX = 30;
+
+    /** معرّفُ الرابط كما تكتبه الشاشة — يُبقيه ثابتًا بين حفظةٍ وأخرى */
+    private const LINK_ID = '/^[a-z0-9]{1,16}$/';
+
+    /** أطولُ ما يُقبل من النصّ المحفوظ — حمايةٌ قبل أن يُفكّ */
+    public const MENU_RAW_MAX = 8000;
 
     /** مسارُ كلّ صفحة تحت عنوان المتجر — والرئيسيةُ جذرُه */
     public const PATHS = [
@@ -186,11 +210,22 @@ final class StoreNav
     /**
      * القائمةُ كما تُرسم — الصفحاتُ القائمةُ وحدَها، بأسمائها وروابطها.
      *
+     * ومن كتب قائمتَه تُرسم بترتيبه وروابطِه (`menu`). ورابطٌ يقود إلى ما
+     * يقف عليه الزائر بعينه (`$here`) هو المُضاء وحده: من فتح «هدايا التخرّج»
+     * من القائمة يرى اسمَها مضاءً لا «المتجر» معها.
+     *
      * @param  array<string, string>  $t  نصوصُ الواجهة بلغة الزائر
+     * @param  array{type: string, value: string|int}|null  $here  ما يُعرض الآن — `StoreTarget`
      * @return list<array{key: string, label: string, href: string, current: bool}>
      */
-    public static function links(int $businessId, string $base, array $t, string $current = self::HOME, string $lang = 'ar'): array
+    public static function links(int $businessId, string $base, array $t, string $current = self::HOME, string $lang = 'ar', ?array $here = null): array
     {
+        $menu = self::menu($businessId);
+
+        if ($menu !== []) {
+            return self::menuLinks($businessId, $menu, $base, $t, $current, $lang, $here);
+        }
+
         $out = [];
 
         foreach (self::ALL as $page) {
@@ -213,6 +248,261 @@ final class StoreNav
          * وشريطُ تنقّلٍ فيه اسمُ الصفحة التي أنت فيها ليس تنقّلًا.
          */
         return count($out) > 1 ? $out : [];
+    }
+
+    /* ═══════════ القائمةُ المرتّبة ═══════════ */
+
+    /** أكتب صاحبُ المتجر قائمتَه؟ — فتُرسم سطرًا يُمرَّر لا أسطرًا تلتفّ */
+    public static function customized(int $businessId): bool
+    {
+        return self::menu($businessId) !== [];
+    }
+
+    /**
+     * القائمةُ كما حُفظت — أو قائمةٌ فارغة فهي القديمة.
+     *
+     * والقراءةُ متسامحة: ما لا يُقرأ يسقط، والصفحةُ الأساسيّة التي غابت عنها
+     * تُلحق في آخرها بترتيبها الأصليّ — فلا تضيع «الرئيسية» أو «المتجر» من
+     * قائمةٍ كُتبت بيدٍ في القاعدة.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function menu(int $businessId): array
+    {
+        return self::menuFromJson((string) (MarketingSettings::group($businessId, 'website')[self::MENU] ?? ''));
+    }
+
+    /** @return list<array<string, mixed>> */
+    public static function menuFromJson(string $raw): array
+    {
+        $list = $raw === '' ? null : json_decode($raw, true);
+
+        if (! is_array($list) || ! array_is_list($list) || $list === []) {
+            return [];
+        }
+
+        $out = [];
+        $pages = [];
+        $ids = [];
+
+        foreach ($list as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            if (($item['type'] ?? null) === 'page' && in_array($item['key'] ?? null, self::ALL, true) && ! in_array($item['key'], $pages, true)) {
+                $pages[] = $item['key'];
+                $out[] = ['type' => 'page', 'key' => $item['key']];
+
+                continue;
+            }
+
+            $id = is_string($item['id'] ?? null) ? $item['id'] : '';
+            $target = StoreTarget::parse($item['target'] ?? null);
+
+            if (($item['type'] ?? null) !== 'link' || preg_match(self::LINK_ID, $id) !== 1 || isset($ids[$id]) || $target === null || count($ids) >= self::MAX_LINKS) {
+                continue;
+            }
+
+            $title = [self::text($item['title_ar'] ?? ''), self::text($item['title_en'] ?? '')];
+
+            if ($title === ['', '']) {
+                continue;
+            }
+
+            $ids[$id] = true;
+            $out[] = [
+                'type' => 'link', 'id' => $id,
+                'title_ar' => $title[0], 'title_en' => $title[1],
+                'target' => $target,
+                'visible' => (bool) ($item['visible'] ?? true),
+            ];
+        }
+
+        foreach (array_diff(self::ALL, $pages) as $page) {
+            $out[] = ['type' => 'page', 'key' => $page];
+        }
+
+        return $out;
+    }
+
+    /**
+     * القائمةُ المكتوبة كما تُرسم.
+     *
+     * @param  list<array<string, mixed>>  $menu
+     * @return list<array{key: string, label: string, href: string, current: bool}>
+     */
+    private static function menuLinks(int $businessId, array $menu, string $base, array $t, string $current, string $lang, ?array $here): array
+    {
+        $links = array_values(array_filter($menu, fn (array $i) => $i['type'] === 'link' && $i['visible']));
+        $hrefs = StoreTarget::hrefs($businessId, $base, $lang, array_map(fn (array $i) => $i['target'], $links));
+        $hrefOf = [];
+        $lit = null;
+
+        foreach ($links as $k => $link) {
+            $hrefOf[$link['id']] = $hrefs[$k];
+
+            if ($lit === null && $hrefs[$k] !== null && StoreTarget::same($link['target'], $here)) {
+                $lit = $link['id'];
+            }
+        }
+
+        $out = [];
+
+        foreach ($menu as $item) {
+            if ($item['type'] === 'page') {
+                $page = $item['key'];
+
+                if (self::has($businessId, $page, $lang)) {
+                    $out[] = [
+                        'key' => $page,
+                        'label' => (string) ($t[self::LABELS[$page]] ?? $page),
+                        'href' => $base.(self::PATHS[$page] === '/' ? '/' : self::PATHS[$page]),
+                        'current' => $lit === null && $page === $current,
+                    ];
+                }
+
+                continue;
+            }
+
+            // والمخفيُّ لا رابطَ له أصلًا (`$links` أعلاه) — ولا ما لا تُفتح وجهتُه
+            $href = $hrefOf[$item['id']] ?? null;
+
+            if ($href === null) {
+                continue;
+            }
+
+            // والاسمُ بلغة الصفحة، وإلّا باللغة الأخرى — اسمٌ يُضغط لا جملة
+            $mine = $lang === 'en' ? $item['title_en'] : $item['title_ar'];
+
+            $out[] = [
+                'key' => 'link-'.$item['id'],
+                'label' => $mine !== '' ? $mine : ($lang === 'en' ? $item['title_ar'] : $item['title_en']),
+                'href' => $href,
+                'current' => $lit === $item['id'],
+            ];
+        }
+
+        return count($out) > 1 ? $out : [];
+    }
+
+    /**
+     * القائمةُ كما أرسلتها الشاشة ← نصُّ JSON يُحفظ — أو رفضٌ برسالة.
+     *
+     * والصفحاتُ الأربعُ فيها كلُّها مرّةً مرّة: تُرتَّب ولا تُحذف — والغائبةُ
+     * منها تُلحق في آخرها. والروابطُ عشرةٌ لا أكثر، لكلٍّ اسمٌ بلغةٍ على الأقلّ
+     * ووجهةٌ في متجره (`StoreTarget::checked`). والفراغُ القائمةُ القديمة.
+     *
+     * @param  list<array<string, mixed>>  $collections  ما يُقاس عليه — ما يُحفظ معها، وإلّا المسوّدة
+     * @param  list<array<string, mixed>>  $pages  والصفحاتُ المخصّصة كذلك
+     */
+    public static function validatedMenu(int $businessId, mixed $raw, array $collections, array $pages): string
+    {
+        if ($raw === null || $raw === '') {
+            return '';
+        }
+
+        if (! is_string($raw) || strlen($raw) > self::MENU_RAW_MAX) {
+            self::refuse(__('القائمة الرئيسية غير صالحة — أعد فتح المحرّر واحفظ من جديد.'));
+        }
+
+        $list = json_decode($raw, true);
+
+        if (! is_array($list) || ! array_is_list($list)) {
+            self::refuse(__('القائمة الرئيسية غير صالحة — أعد فتح المحرّر واحفظ من جديد.'));
+        }
+
+        $collectionSlugs = array_map(fn (array $c) => $c['slug'], $collections);
+        $pageSlugs = array_map(fn (array $p) => $p['slug'], $pages);
+        $out = [];
+        $seen = [];
+        $ids = [];
+        $n = 0;
+
+        foreach ($list as $item) {
+            if (! is_array($item)) {
+                self::refuse(__('القائمة الرئيسية غير صالحة — أعد فتح المحرّر واحفظ من جديد.'));
+            }
+
+            if (($item['type'] ?? null) === 'page') {
+                $key = $item['key'] ?? null;
+
+                if (! in_array($key, self::ALL, true) || in_array($key, $seen, true)) {
+                    self::refuse(__('القائمة الرئيسية غير صالحة — أعد فتح المحرّر واحفظ من جديد.'));
+                }
+
+                $seen[] = $key;
+                $out[] = ['type' => 'page', 'key' => $key];
+
+                continue;
+            }
+
+            if (($item['type'] ?? null) !== 'link') {
+                self::refuse(__('القائمة الرئيسية غير صالحة — أعد فتح المحرّر واحفظ من جديد.'));
+            }
+
+            $n++;
+
+            if ($n > self::MAX_LINKS) {
+                self::refuse(__('أضف حتى :max روابط في القائمة فقط.', ['max' => self::MAX_LINKS]));
+            }
+
+            $id = is_string($item['id'] ?? null) ? $item['id'] : '';
+
+            if (preg_match(self::LINK_ID, $id) !== 1 || isset($ids[$id])) {
+                self::refuse(__('القائمة الرئيسية غير صالحة — أعد فتح المحرّر واحفظ من جديد.'));
+            }
+
+            $ids[$id] = true;
+            $title = ['title_ar' => self::text($item['title_ar'] ?? ''), 'title_en' => self::text($item['title_en'] ?? '')];
+
+            if ($title['title_ar'] === '' && $title['title_en'] === '') {
+                self::refuse(__('اكتب اسمًا للرابط :n — بالعربية أو بالإنجليزية.', ['n' => $n]));
+            }
+
+            foreach ($title as $text) {
+                if (mb_strlen($text) > self::LINK_TITLE_MAX) {
+                    self::refuse(__('اسم الرابط :n أطول من :max حرفًا.', ['n' => $n, 'max' => self::LINK_TITLE_MAX]));
+                }
+            }
+
+            [$target, $why] = StoreTarget::checked($businessId, $item['target'] ?? null, $collectionSlugs, $pageSlugs);
+
+            if ($why === 'type') {
+                self::refuse(__('اختر ما يفتحه الرابط :n — صفحةً أو مجموعةً أو فئةً من متجرك.', ['n' => $n]));
+            }
+
+            if ($target === null) {
+                self::refuse(__('ما يفتحه الرابط :n ليس في متجرك — اختر وجهته من جديد.', ['n' => $n]));
+            }
+
+            $out[] = ['type' => 'link', 'id' => $id] + $title + [
+                'target' => $target,
+                'visible' => filter_var($item['visible'] ?? true, FILTER_VALIDATE_BOOL),
+            ];
+        }
+
+        // والصفحاتُ الأساسيّة لا تُحذف من القائمة — الغائبةُ منها تُلحق بترتيبها
+        foreach (array_diff(self::ALL, $seen) as $page) {
+            $out[] = ['type' => 'page', 'key' => $page];
+        }
+
+        // وقائمةٌ هي القديمةُ نفسُها بترتيبها وبلا رابطٍ تُحفظ فراغًا — فتبقى كما كانت
+        if ($out === array_map(fn (string $p) => ['type' => 'page', 'key' => $p], self::ALL)) {
+            return '';
+        }
+
+        return json_encode($out, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private static function text(mixed $value): string
+    {
+        return is_scalar($value) ? trim((string) $value) : '';
+    }
+
+    private static function refuse(string $message): never
+    {
+        throw ValidationException::withMessages([self::MENU => $message]);
     }
 
     /**

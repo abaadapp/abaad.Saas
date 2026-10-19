@@ -106,6 +106,8 @@ final class RibbonTexts
         'noInCollection' => 'لا توجد منتجات في هذه المجموعة بعد.',
         // وشريطُ المجموعات المصوّر — اسمُه للقارئ الصوتيّ (`StoreVisualBar`)
         'visualBar' => 'مجموعات المتجر',
+        'pageHidden' => 'هذه الصفحة مخفيّة — لا يراها زبائنك حتى تُظهرها وتنشر.',
+        'collectionHidden' => 'هذه المجموعة مخفيّة — لا يراها زبائنك حتى تُظهرها وتنشر.',
         // التسعيرةُ في الطريق — الزرُّ مقفلٌ حتّى تعود (`RBQuote`)
         'quoting' => 'يُحدَّث الإجمالي…',
     ];
@@ -173,6 +175,8 @@ final class RibbonTexts
         'cartLimitLines' => 'Your cart can hold up to :max different items — check out or remove an item, then add again.',
         'noInCollection' => 'No products in this collection yet.',
         'visualBar' => 'Shop collections',
+        'pageHidden' => 'This page is hidden — your customers will not see it until you show it and publish.',
+        'collectionHidden' => 'This collection is hidden — your customers will not see it until you show it and publish.',
         'quoting' => 'Updating the total…',
     ];
 

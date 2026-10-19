@@ -2,8 +2,6 @@
 
 namespace App\Support\Store;
 
-use App\Models\Category;
-use App\Models\Product;
 use App\Support\MarketingSettings;
 use Illuminate\Validation\ValidationException;
 
@@ -61,10 +59,10 @@ final class StoreVisualBar
      * صفحاتُ التصفّح — ولا شريطَ في السلّة والإتمام والتأكيد: هناك يدفع الزبون،
      * وبطاقاتٌ تدعوه إلى رفٍّ آخر تُخرجه من طلبه.
      */
-    public const BROWSING = [StoreNav::HOME, StoreNav::SHOP, 'p', StoreNav::ABOUT, StoreNav::CONTACT];
+    public const BROWSING = [StoreNav::HOME, StoreNav::SHOP, 'p', StoreNav::ABOUT, StoreNav::CONTACT, StoreCustomPages::PATH];
 
-    /** ما تفتحه البطاقة — أنواعٌ مغلقة، والقيمةُ اسمٌ أو معرّفٌ في هذا المتجر */
-    public const TARGETS = ['collection', 'category', 'product', 'shop', 'best', 'about', 'contact'];
+    /** ما تفتحه البطاقة — أنواعُ `StoreTarget` المغلقة، والقيمةُ اسمٌ أو معرّفٌ في هذا المتجر */
+    public const TARGETS = StoreTarget::TYPES;
 
     public const RAW_MAX = 30000;
 
@@ -84,7 +82,7 @@ final class StoreVisualBar
      * بطاقاتُ هذه الصفحة بلغتها — جاهزةً للرسم، أو قائمةٌ فارغة فلا شريط.
      *
      * @param  string  $page  مفتاحُ الصفحة كما يمرّره `RibbonController::context`
-     * @return list<array{href: string, image: ?string, title: string, sub: string, cta: string}>
+     * @return list<array{href: string, image: ?string, fit: string, title: string, sub: string, cta: string}>
      */
     public static function cards(int $businessId, string $lang, string $base, string $page): array
     {
@@ -110,39 +108,29 @@ final class StoreVisualBar
             return [];
         }
 
-        // والوجهاتُ تُسأل دفعةً واحدة — لا سؤالَ لكلّ بطاقة
-        $ids = fn (string $type) => array_values(array_unique(array_map(
-            fn (array $c) => (int) $c['target']['value'],
-            array_filter($cards, fn (array $c) => $c['target']['type'] === $type),
-        )));
-
-        $shownProducts = Product::where('business_id', $businessId)->where('active', true)->where('published', true);
-        $products = $ids('product') === [] ? [] : (clone $shownProducts)->whereIn('id', $ids('product'))->pluck('id')->map(fn ($i) => (int) $i)->all();
-        // والفئةُ تُفتح إن كان فيها صنفٌ معروض — لا بطاقةَ إلى رفٍّ خالٍ
-        $categories = $ids('category') === [] ? [] : Category::where('business_id', $businessId)
-            ->whereIn('id', $ids('category'))
-            ->whereIn('id', (clone $shownProducts)->select('category_id'))
-            ->pluck('id')->map(fn ($i) => (int) $i)->all();
-
+        // والوجهاتُ تُسأل دفعةً واحدة — لا سؤالَ لكلّ بطاقة (`StoreTarget::hrefs`)
+        $hrefs = StoreTarget::hrefs($businessId, $base, $lang, array_map(fn (array $c) => $c['target'], $cards));
         $out = [];
 
-        foreach ($cards as $c) {
-            $href = self::href($businessId, $c['target'], $base, $lang, $products, $categories);
-
-            if ($href === null) {
+        foreach ($cards as $i => $c) {
+            if ($hrefs[$i] === null) {
                 continue;
             }
 
             $image = $c['image'];
+            $fit = $c['fit'];
 
-            // وبلا صورةٍ لها تُستعار صورةُ المجموعة التي تفتحها — إن كان لها
+            // وبلا صورةٍ لها تُستعار صورةُ المجموعة التي تفتحها — بطريقة عرضها
             if ($image === '' && $c['target']['type'] === 'collection') {
-                $image = (string) (StoreCollections::find($businessId, (string) $c['target']['value'])['image'] ?? '');
+                $collection = StoreCollections::find($businessId, (string) $c['target']['value']);
+                $image = (string) ($collection['image'] ?? '');
+                $fit = (string) ($collection['fit'] ?? '');
             }
 
             $out[] = [
-                'href' => $href,
+                'href' => $hrefs[$i],
                 'image' => $image !== '' ? $image : null,
+                'fit' => StoreMedia::fit($fit),
                 'title' => $c['title'.$sfx],
                 'sub' => $c['sub'.$sfx],
                 'cta' => $c['cta'.$sfx],
@@ -152,28 +140,6 @@ final class StoreVisualBar
         return $out;
     }
 
-    /**
-     * رابطُ الوجهة — أو `null` فلا تُرسم البطاقة.
-     *
-     * @param  list<int>  $products  ما يُعرض من الأصناف المطلوبة
-     * @param  list<int>  $categories  ما فيه صنفٌ معروض من الفئات المطلوبة
-     */
-    private static function href(int $businessId, array $target, string $base, string $lang, array $products, array $categories): ?string
-    {
-        $value = $target['value'];
-
-        return match ($target['type']) {
-            'collection' => StoreCollections::find($businessId, (string) $value) !== null
-                ? $base.'/shop?'.StoreCollections::QUERY.'='.$value : null,
-            'category' => in_array((int) $value, $categories, true) ? $base.'/shop?cat='.(int) $value : null,
-            'product' => in_array((int) $value, $products, true) ? $base.'/p/'.(int) $value : null,
-            'shop' => $base.'/shop',
-            'best' => $base.'/shop?view='.StoreHeader::VIEW_BEST,
-            'about', 'contact' => StoreNav::has($businessId, $target['type'], $lang) ? $base.'/'.$target['type'] : null,
-            default => null,
-        };
-    }
-
     /* ═══════════ الحفظ ═══════════ */
 
     /**
@@ -181,8 +147,9 @@ final class StoreVisualBar
      *
      * @param  list<array<string, mixed>>  $collections  المجموعاتُ التي تُقاس عليها الوجهات —
      *                                                   ما يُحفظ معها في الطلب نفسِه، وإلّا المسوّدة
+     * @param  list<array<string, mixed>>  $customPages  والصفحاتُ المخصّصة كذلك (`StoreCustomPages`)
      */
-    public static function validated(int $businessId, mixed $raw, array $collections): string
+    public static function validated(int $businessId, mixed $raw, array $collections, array $customPages = []): string
     {
         if ($raw === null || $raw === '') {
             return '';
@@ -215,6 +182,7 @@ final class StoreVisualBar
         }
 
         $slugs = array_map(fn (array $c) => $c['slug'], $collections);
+        $pageSlugs = array_map(fn (array $p) => $p['slug'], $customPages);
         $out = [];
 
         foreach ($cards as $i => $c) {
@@ -244,8 +212,30 @@ final class StoreVisualBar
                 self::refuse(__('صورة البطاقة :n ليست من صور متجرك — ارفعها من المحرّر.', ['n' => $n]));
             }
 
-            $card['target'] = self::target($businessId, $c['target'] ?? null, $slugs, $n);
+            [$target, $why] = StoreTarget::checked($businessId, $c['target'] ?? null, $slugs, $pageSlugs);
+
+            if ($why === 'type') {
+                self::refuse(__('اختر ما تفتحه البطاقة :n — مجموعةً أو فئةً أو منتجًا أو صفحةً من متجرك.', ['n' => $n]));
+            }
+
+            if ($target === null) {
+                self::refuse(__('ما تفتحه البطاقة :n ليس في متجرك — اختر وجهتها من جديد.', ['n' => $n]));
+            }
+
+            $card['target'] = $target;
             $card['visible'] = filter_var($c['visible'] ?? true, FILTER_VALIDATE_BOOL);
+
+            // وطريقةُ عرض الصورة تُحفظ إن اختيرت — وما لم يُختر يبقى «ملء الإطار» كما كان
+            $fit = self::text($c['fit'] ?? '');
+
+            if ($fit !== '' && ! in_array($fit, StoreMedia::FITS, true)) {
+                self::refuse(__('طريقة عرض صورة البطاقة :n غير صالحة.', ['n' => $n]));
+            }
+
+            if ($fit !== '') {
+                $card['fit'] = $fit;
+            }
+
             $out[] = $card;
         }
 
@@ -254,42 +244,6 @@ final class StoreVisualBar
             'pages' => $pages,
             'cards' => $out,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
-
-    /**
-     * وجهةُ البطاقة كما تُحفظ — أو رفض.
-     *
-     * @param  list<string>  $slugs
-     * @return array{type: string, value: string|int}
-     */
-    private static function target(int $businessId, mixed $target, array $slugs, int $n): array
-    {
-        $type = is_array($target) ? self::text($target['type'] ?? '') : '';
-        $value = is_array($target) ? ($target['value'] ?? '') : '';
-
-        if (! in_array($type, self::TARGETS, true)) {
-            self::refuse(__('اختر ما تفتحه البطاقة :n — مجموعةً أو فئةً أو منتجًا أو صفحةً من متجرك.', ['n' => $n]));
-        }
-
-        $id = is_int($value) || (is_string($value) && preg_match('/^[1-9]\d{0,18}$/', $value)) ? (int) $value : 0;
-
-        $ok = match ($type) {
-            'collection' => is_string($value) && in_array($value, $slugs, true),
-            'category' => $id > 0 && Category::where('business_id', $businessId)->whereKey($id)->exists(),
-            'product' => $id > 0 && Product::where('business_id', $businessId)->whereKey($id)
-                ->where('active', true)->where('published', true)->exists(),
-            default => true,
-        };
-
-        if (! $ok) {
-            self::refuse(__('ما تفتحه البطاقة :n ليس في متجرك — اختر وجهتها من جديد.', ['n' => $n]));
-        }
-
-        return ['type' => $type, 'value' => match ($type) {
-            'collection' => (string) $value,
-            'category', 'product' => $id,
-            default => '',
-        }];
     }
 
     /* ═══════════ أدوات ═══════════ */
@@ -312,15 +266,16 @@ final class StoreVisualBar
         $cards = [];
 
         foreach (array_slice(is_array($bar['cards'] ?? null) ? array_values($bar['cards']) : [], 0, self::MAX_CARDS) as $c) {
-            $type = is_array($c) && is_array($c['target'] ?? null) ? self::text($c['target']['type'] ?? '') : '';
+            $target = is_array($c) ? StoreTarget::parse($c['target'] ?? null) : null;
 
-            if (! in_array($type, self::TARGETS, true)) {
+            if ($target === null) {
                 continue;
             }
 
             $card = [
                 'image' => self::text($c['image'] ?? ''),
-                'target' => ['type' => $type, 'value' => is_scalar($c['target']['value'] ?? null) ? $c['target']['value'] : ''],
+                'fit' => in_array($c['fit'] ?? null, StoreMedia::FITS, true) ? $c['fit'] : '',
+                'target' => $target,
                 'visible' => (bool) ($c['visible'] ?? true),
             ];
 

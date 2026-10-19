@@ -31,6 +31,8 @@ export interface StoreCollection {
     desc_ar: string;
     desc_en: string;
     image: string;
+    /** «كاملة» أو «ملء الإطار» — وغيابُها «ملء الإطار» كما كانت */
+    fit?: 'contain' | 'cover';
     visible: boolean;
     in_row: boolean;
     products: number[];
@@ -60,6 +62,7 @@ export function parseCollections(raw: string | undefined): StoreCollection[] {
             desc_ar: String(c.desc_ar ?? ''),
             desc_en: String(c.desc_en ?? ''),
             image: String(c.image ?? ''),
+            ...(c.fit === 'contain' || c.fit === 'cover' ? { fit: c.fit } : {}),
             visible: c.visible !== false,
             in_row: c.in_row !== false,
             products: Array.isArray(c.products)
@@ -273,10 +276,14 @@ export default function CollectionsField({
                                                 />
                                             </Field>
                                             <StoreImageField
+                                                name={`collection-${i}-image`}
                                                 label="صورة المجموعة"
-                                                hint="اختيارية — تُستعمل في بطاقات الشريط المصوّر"
+                                                hint="اختيارية — في رأس صفحة المجموعة، وفي بطاقات الشريط المصوّر"
                                                 value={c.image}
                                                 onChange={(url) => patch(i, { image: url })}
+                                                fit={c.fit}
+                                                onFitChange={(fit) => patch(i, { fit })}
+                                                ratio="21 / 8"
                                             />
                                             <Toggle
                                                 on={c.in_row}

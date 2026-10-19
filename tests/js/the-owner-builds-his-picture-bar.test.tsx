@@ -146,7 +146,8 @@ describe('«الشريط المصوّر» في المحرّر', () => {
 
         const select = screen.getByTestId('vcard-0-target') as HTMLSelectElement;
         const values = Array.from(select.options).map((o) => o.value);
-        expect(values).toEqual(['shop', 'best', 'about', 'collection:graduation', 'category:11', 'category:12', 'product:38']);
+        // والرئيسيّةُ وجهةٌ كذلك منذ صارت الوجهةُ واحدةً للشريط والقائمة وزرّ الصفحة (`StoreTargets`)
+        expect(values).toEqual(['home', 'shop', 'best', 'about', 'collection:graduation', 'category:11', 'category:12', 'product:38']);
         // و«تواصل معنا» مطفأةٌ فلا تُعرض وجهةً
         expect(values).not.toContain('contact');
         expect(screen.queryByRole('textbox', { name: /رابط|URL|link/i })).toBeNull();

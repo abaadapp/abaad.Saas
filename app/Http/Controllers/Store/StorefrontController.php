@@ -7,6 +7,8 @@ use App\Models\Business;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
 use App\Support\Store\StoreContent;
+use App\Support\Store\StoreCollections;
+use App\Support\Store\StoreCustomPages;
 use App\Support\Storefront;
 use App\Support\Website\Domains;
 use App\Support\Website\Published;
@@ -40,6 +42,9 @@ use Illuminate\Http\Response;
  */
 class StorefrontController extends Controller
 {
+    /** علامةُ المعاينة على الطلب — يقرؤها `RibbonController` */
+    public const PREVIEW = 'store_preview';
+
     public function show(string $slug, ?string $path = null): Response
     {
         $clean = Storefront::slug($slug);
@@ -316,11 +321,33 @@ class StorefrontController extends Controller
             array_merge(StoreContent::draft((int) $business->id), $this->draft($request)),
             /*
              * والرئيسيّةُ ما يُعاين، إلّا رفَّ المتجر لمن طلبه باسمه — لتُرى
-             * مجموعةٌ قبل نشرها (`?page=shop&collection=…`). ولا صفحةَ سواهما
-             * تُقرأ من الرابط: السلّةُ والإتمامُ لا يُعاينان.
+             * مجموعةٌ قبل نشرها (`?page=shop&collection=…`) — وصفحةً مخصّصةً
+             * باسمها المختصر (`?page=page&slug=…`). ولا صفحةَ سواها تُقرأ من
+             * الرابط: السلّةُ والإتمامُ لا يُعاينان.
+             *
+             * وعلى الطلب علامةُ المعاينة (`PREVIEW`): فيها وحدها تُفتح المجموعةُ
+             * والصفحةُ المخفيّتان — يراهما صاحبُهما قبل أن يُظهرهما.
              */
-            fn () => $this->render($business, $request->query('page') === 'shop' ? 'shop' : null),
+            function () use ($business, $request) {
+                $request->attributes->set(self::PREVIEW, true);
+
+                return $this->render($business, $this->previewPath($request));
+            },
         );
+    }
+
+    /** ما يُعاين من الرابط — الرئيسيّة، أو الرفّ، أو صفحةٌ مخصّصةٌ باسمها */
+    private function previewPath(Request $request): ?string
+    {
+        $slug = $request->query('slug');
+
+        return match ($request->query('page')) {
+            'shop' => 'shop',
+            StoreCustomPages::PATH => is_string($slug) && preg_match(StoreCollections::SLUG, $slug) === 1
+                ? StoreCustomPages::PATH.'/'.$slug
+                : null,
+            default => null,
+        };
     }
 
     /** الصفحةُ كما يراها الزبون — وهي نفسُها في المعاينة وفي الموقع */

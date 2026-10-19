@@ -342,6 +342,28 @@ class MarketingSettings
             'store_visual_bar' => '',
 
             /*
+             * ═══ وترتيبُ صفّ المتجر، والقائمةُ الرئيسيّة، والصفحاتُ المخصّصة ═══
+             *
+             * ثلاثتُها فارغةٌ لكلّ متجرٍ حتّى يكتبها: الفراغُ الترتيبُ القديم،
+             * والقائمةُ القديمة، ولا صفحات. انظر `Store\StoreHeader::ROW`
+             * و`Store\StoreNav::MENU` و`Store\StoreCustomPages`.
+             */
+            'store_shop_row' => '',
+            'store_menu' => '',
+            'store_custom_pages' => '',
+
+            /*
+             * ═══ وطرقُ عرض الصور — «كاملة» أو «ملء الإطار» ═══
+             *
+             * والفراغُ «ملء الإطار» كما كانت الصورُ كلُّها: لا يتبدّل متجرٌ قائم
+             * حتّى يختار صاحبُه. انظر `Store\StoreMedia::fit`.
+             */
+            'store_catalog_fit' => '',
+            'store_hero_image_fit' => '',
+            'store_banner_image_fit' => '',
+            'store_block_image_fit' => '',
+
+            /*
              * ═══ وصفحاتُ المتجر — لا صفحةٌ واحدة ═══
              *
              * متجرُ الواجهة الخاصّة كان صفحةً ورفًّا وصنفًا وسلّة، وليس فيه

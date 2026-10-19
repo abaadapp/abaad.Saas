@@ -14,6 +14,7 @@ use App\Support\Store\PageEditor;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StorePage;
+use App\Support\Store\StoreImageUpload;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Content;
 use App\Support\Website\Layout;
@@ -215,6 +216,11 @@ class EditorController extends Controller
              * `CatalogTools`.
              */
             'catalogTools' => CatalogTools::for($bid),
+            /*
+             * وأكبرُ صورةٍ تُرفع — حدُّنا أو حدُّ الخادم إن كان أصغر. يقرؤه حقلُ الصورة
+             * فيُصغّر صورةَ الهاتف الكبيرة قبل أن تُرسل، أو يقول الحدَّ (`StoreImageUpload`).
+             */
+            'uploadMax' => StoreImageUpload::maxBytes(),
         ]);
     }
 

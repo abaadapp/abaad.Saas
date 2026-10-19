@@ -11,7 +11,7 @@
                         و`alt` فارغ: اسمُ القسم مكتوبٌ تحتها، فلا يُقرأ مرّتين.
                     --}}
                     @if (! empty($c['image']))
-                        <img src="{{ $c['image'] }}" alt="" loading="lazy" style="display:block;width:100%;aspect-ratio:4/3;object-fit:cover" data-testid="rb-cat-image">
+                        <img src="{{ $c['image'] }}" alt="" loading="lazy" class="rb-pfit" style="display:block;width:100%;aspect-ratio:4/3" data-testid="rb-cat-image">
                     @else
                         <div style="aspect-ratio:4/3;background:repeating-linear-gradient(135deg,{{ ['#f2d6dc','#d9e3e0','#e6dcc8','#e3d5e4'][$i % 4] }} 0 12px,#f3efe9 12px 24px)"></div>
                     @endif

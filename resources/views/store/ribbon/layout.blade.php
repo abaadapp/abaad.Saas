@@ -6,7 +6,11 @@
     باسم المتجر، وتُسعَّر دائمًا من الخادم (`/quote`) — لا رقمَ يُحسب هنا.
 --}}
 <!DOCTYPE html>
-<html lang="{{ $lang }}" dir="{{ $dir }}">
+{{--
+    و«صور المنتجات كاملة» صنفٌ على الجذر (`store_catalog_fit`): بطاقاتُ الرفّ وصفحةُ
+    المنتج ومصغّراتُها والسلّةُ وبطاقاتُ الفئات تقرؤه معًا — قاعدةٌ واحدةٌ لا ستّ.
+--}}
+<html lang="{{ $lang }}" dir="{{ $dir }}"@if (($catalogFit ?? 'cover') === 'contain') class="rb-catalog-contain"@endif>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -159,6 +163,20 @@
         .rb-nav-a:hover { color: var(--rb-cream); }
         .rb-nav-a.is-on { color: var(--rb-cream); border-bottom-color: var(--rb-cream); }
         @media (max-width: 1023px) { .rb-nav-in { padding: 0 16px; gap: 2px 18px; } .rb-nav-a { font-size: 12px; min-height: 42px; } }
+        /*
+         * ═══ والقائمةُ التي كتبها صاحبُها سطرٌ واحدٌ يُمرَّر — لا أسطرٌ تلتفّ ═══
+         *
+         * عشرةُ روابط بين الصفحات الأربع تلتفّ على الهاتف ثلاثةَ أسطرٍ في ترويسةٍ
+         * لاصقة، فتأكل نصفَ الشاشة. فهي سطرٌ يُمرَّر بالإصبع كصفّ خيارات المتجر:
+         * يتوسّط حين يتّسع، ويُمرَّر إلى المختار حين يضيق (آخرَ الصفحة). ولكلّ
+         * رابطٍ ارتفاعُ لمسٍ كامل. والقائمةُ القديمةُ لم تُمسّ: لمن لم يكتب قائمتَه.
+         */
+        .rb-nav-scroll .rb-nav-in { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 0; }
+        .rb-nav-scroll .rb-nav-in::-webkit-scrollbar { display: none; }
+        .rb-nav-scroll .rb-nav-in::before, .rb-nav-scroll .rb-nav-in::after { content: ''; flex: none; width: 24px; }
+        .rb-nav-scroll .rb-nav-in > :first-child { margin-inline-start: auto; } .rb-nav-scroll .rb-nav-in > :last-child { margin-inline-end: auto; }
+        .rb-nav-scroll .rb-nav-a { flex: none; white-space: nowrap; min-height: 44px; }
+        @media (max-width: 1023px) { .rb-nav-scroll .rb-nav-in::before, .rb-nav-scroll .rb-nav-in::after { width: 16px; } }
 
         /*
          * ═══ شريطُ الإعلان — أوّلُ صفوف الترويسة ═══
@@ -235,6 +253,17 @@
         .rb-card .rb-img { aspect-ratio: 1/1; border-radius: var(--rb-r-lg); overflow: hidden; background: var(--rb-soft); display: flex; align-items: center; justify-content: center; }
         .rb-card .rb-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }
         .rb-card:hover .rb-img img { transform: scale(1.03); }
+        /*
+         * ═══ وصورُ المنتجات «كاملة» — لمن اختارها (`store_catalog_fit`) ═══
+         *
+         * الإطارُ إطارُه بمقاسه (مربّعُ البطاقة، مربّعُ صفحة المنتج، ٤ إلى ٣
+         * للفئة) فلا تتفاوت البطاقاتُ في الشبكة، والصورةُ فيه كلُّها بنسبتها على
+         * لون الإطار الهادئ — لا قصَّ ولا مطّ. والتكبيرُ عند المرور يُطفأ معها:
+         * يقصّ أطرافَ صورةٍ اختير لها ألّا تُقصّ.
+         */
+        .rb-pfit { object-fit: cover; }
+        html.rb-catalog-contain .rb-pfit, html.rb-catalog-contain .rb-card .rb-img img, html.rb-catalog-contain .rb-thumb img, html.rb-catalog-contain .rb-up-img img { object-fit: contain; background: var(--rb-soft); }
+        html.rb-catalog-contain .rb-card:hover .rb-img img { transform: none; }
         .rb-card .rb-name { margin-top: 12px; font-size: 15px; text-align: center; }
         .rb-card .rb-price { margin-top: 4px; font-size: 17px; font-weight: 600; text-align: center; }
         .rb-stripes { background: repeating-linear-gradient(135deg, var(--tint, #e6dcc8) 0 12px, #f3efe9 12px 24px); width: 100%; height: 100%; }
@@ -284,6 +313,9 @@
         .rb-vcard-img { display: block; aspect-ratio: 4 / 5; border-radius: var(--rb-r-lg); overflow: hidden; background: var(--rb-soft); }
         .rb-vcard-img img, .rb-vcard-img .rb-stripes { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }
         .rb-vcard:hover .rb-vcard-img img { transform: scale(1.03); }
+        /* و«كاملة» تُري الصورةَ كلَّها في إطارها بنسبتها — ولا تكبيرَ يقصّ أطرافها */
+        .rb-vcard-img img.is-contain { object-fit: contain; }
+        .rb-vcard:hover .rb-vcard-img img.is-contain { transform: none; }
         .rb-vcard-title { font-size: 14px; font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
         .rb-vcard-sub { font-size: 12px; line-height: 1.5; color: #6b655c; overflow-wrap: anywhere; }
         .rb-vcard-cta { font-size: 12px; color: var(--rb-olive); text-decoration: underline; text-underline-offset: 3px; }
@@ -321,7 +353,7 @@
                     <span class="rb-vcard-img">
                         @if ($rbCard['image'])
                             {{-- والاسمُ مكتوبٌ تحت الصورة، فلا يُقرأ مرّتين: الصورةُ زينةٌ للقارئ الصوتيّ --}}
-                            <img src="{{ $rbCard['image'] }}" alt="" width="164" height="205" loading="{{ $rbI < 4 ? 'eager' : 'lazy' }}" decoding="async">
+                            <img src="{{ $rbCard['image'] }}" alt="" width="164" height="205" loading="{{ $rbI < 4 ? 'eager' : 'lazy' }}" decoding="async" @if (($rbCard['fit'] ?? 'cover') === 'contain') class="is-contain" @endif data-fit="{{ $rbCard['fit'] ?? 'cover' }}">
                         @else
                             <span class="rb-stripes" aria-hidden="true"></span>
                         @endif
@@ -382,8 +414,8 @@
         ولا يُرسم الشريطُ على قائمةٍ فارغة — انظر `StoreNav::links`.
     --}}
     @if (count($nav))
-        <nav class="rb-nav" data-testid="rb-nav" aria-label="{{ $t['footPages'] }}">
-            <div class="rb-nav-in">
+        <nav class="rb-nav{{ ($navScroll ?? false) ? ' rb-nav-scroll' : '' }}" data-testid="rb-nav" aria-label="{{ $t['footPages'] }}">
+            <div class="rb-nav-in"{!! ($navScroll ?? false) ? ' data-rb-nav-scroll' : '' !!}>
                 @foreach ($nav as $rbLink)
                     <a href="{{ $rbLink['href'] }}"
                        class="rb-nav-a @if ($rbLink['current']) is-on @endif"
@@ -607,18 +639,20 @@ window.RB = (function () {
         put();
         if (window.ResizeObserver) { new ResizeObserver(put).observe(head); }
     }
-    var row = document.querySelector('[data-rb-opts]');
-    var on = row && row.querySelector('.is-on');
-    var center = function () {
-        if (row.scrollWidth > row.clientWidth) {
-            row.scrollLeft += (on.getBoundingClientRect().left + on.offsetWidth / 2) - (row.getBoundingClientRect().left + row.clientWidth / 2);
+    // وصفُّ خيارات المتجر والقائمةُ المكتوبة كلاهما سطرٌ يُمرَّر — والمختارُ يُرى في كليهما
+    Array.prototype.forEach.call(document.querySelectorAll('[data-rb-opts], [data-rb-nav-scroll]'), function (row) {
+        var on = row.querySelector('.is-on');
+        var center = function () {
+            if (row.scrollWidth > row.clientWidth) {
+                row.scrollLeft += (on.getBoundingClientRect().left + on.offsetWidth / 2) - (row.getBoundingClientRect().left + row.clientWidth / 2);
+            }
+        };
+        if (on) {
+            center();
+            // والخطُّ يصل بعد الرسم فتتّسع الأزرارُ ويزيح المختار — فيُعاد حين يجهز
+            if (document.fonts && document.fonts.ready) { document.fonts.ready.then(center); }
         }
-    };
-    if (on) {
-        center();
-        // والخطُّ يصل بعد الرسم فتتّسع الأزرارُ ويزيح المختار — فيُعاد حين يجهز
-        if (document.fonts && document.fonts.ready) { document.fonts.ready.then(center); }
-    }
+    });
 })();
 </script>
 @yield('scripts')

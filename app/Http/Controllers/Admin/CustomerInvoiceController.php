@@ -427,6 +427,8 @@ class CustomerInvoiceController extends Controller
                 ])->all(),
             ],
             'currency' => Money::of($bid),
+            // وزرُّ الإلغاء لمن يقبله الخادم وحده — بابٌ معروضٌ يردّ بـ٤٠٣ يُقرأ عطبًا
+            'can' => ['cancel' => (bool) auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CANCEL)],
             'paper' => [
                 'html' => DocumentRenderer::generic($bid, 'customer_receipt', DocumentPaper::forCustomerReceipt($payment)),
                 'size' => PaperSize::A4,
@@ -1720,6 +1722,13 @@ class CustomerInvoiceController extends Controller
 
     public function cancelPayment(Request $request, int|string $id)
     {
+        /*
+         * والإلغاءُ فعلٌ باسمه لا القسمُ الذي يفتح الشاشة — انظر
+         * `Permissions::CUSTOMER_PAYMENT_CANCEL`. والإذنُ قبل السبب وقبل الصفّ:
+         * من لا يملكه يُردّ بـ٤٠٣ ولا يُقال له «اكتب السبب».
+         */
+        abort_unless(auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CANCEL), 403);
+
         $data = $request->validate(['reason' => ['required', 'string', 'max:200']]);
 
         $payment = CustomerPayment::where('business_id', $this->bid())->whereKey($id)->firstOrFail();

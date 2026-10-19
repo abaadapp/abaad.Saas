@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { usePage } from '@inertiajs/react';
+import { useForm, usePage } from '@inertiajs/react';
 import { FileText } from 'lucide-react';
 
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -11,6 +11,7 @@ import SmartLink from '@/Components/SmartLink';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
+import { Input } from '@/Components/ui/input';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -42,6 +43,8 @@ interface Props {
         cancellation_reason: string | null;
         allocations: Allocation[];
     };
+    // ما يقبله الخادم من هذا الموظّف — الزرُّ يُرسم له وحده
+    can: { cancel: boolean };
     paper: { html: string; size: string; url: string };
 }
 
@@ -58,13 +61,14 @@ interface Props {
  * مبلغٌ ضاع بين السطور.
  */
 export default function ReceiptShow() {
-    const { receipt, paper, context } = usePage<PageProps<Props>>().props;
+    const { receipt, can, paper, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
 
     const [previewing, setPreviewing] = useState(false);
 
     const cancelled = receipt.cancelled_at !== null;
+    const cancel = useForm({ reason: '' });
 
     return (
         <AdminLayout title={receipt.number}>
@@ -153,6 +157,36 @@ export default function ReceiptShow() {
                             )}
                         </dl>
                     </Card>
+
+                    {/*
+                        والإلغاءُ آخرُ ما في العمود، ولمن يملك «إلغاء تحصيل عميل» وحده:
+                        يُعكس قيدُ التحصيل ويعود الدَّين على العميل. والسببُ مطلوب.
+                    */}
+                    {!cancelled && can.cancel && (
+                        <Card className="flex flex-wrap items-end gap-2 p-4" data-testid="cancel-payment">
+                            <label className="flex-1 text-[13px]">
+                                {t('سبب الإلغاء')}
+                                <Input
+                                    value={cancel.data.reason}
+                                    onChange={(e) => cancel.setData('reason', e.target.value)}
+                                />
+                                {cancel.errors.reason && (
+                                    <p className="text-[12px] text-[#b91c1c]">{cancel.errors.reason}</p>
+                                )}
+                            </label>
+                            <Button
+                                variant="danger"
+                                disabled={cancel.processing}
+                                onClick={() =>
+                                    cancel.post(route('admin.customerPayments.cancel', receipt.id), {
+                                        preserveScroll: true,
+                                    })
+                                }
+                            >
+                                {t('إلغاء التحصيل')}
+                            </Button>
+                        </Card>
+                    )}
                 </div>
 
                 <DocumentAside className="xl:col-span-2">

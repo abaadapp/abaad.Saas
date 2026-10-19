@@ -61,6 +61,12 @@ final class PageEditor
     public const COLLECTIONS = 'collections';
 
     /**
+     * وشريطُها المصوّر — بطاقاتٌ بصورها فوق قائمة الصفحات، أوّلُ ما يُرى في
+     * الصفحة. مطفأٌ حتّى يُشغَّل وينشر. انظر `StoreVisualBar`.
+     */
+    public const VISUAL_BAR = 'vbar';
+
+    /**
      * مقابضُ الصفحة البسيطة — لا تُحرّك واجهةً خاصّة فلا تُعرض لصاحبها.
      *
      * `store_theme` لونُ `store.show.blade`، و`store_show_prices` مفتاحُها
@@ -88,6 +94,7 @@ final class PageEditor
      * تختار فئاتٍ من متجره وترتّبها — معرّفاتٍ لا روابط. و`products` تختار
      * أصنافًا من المعروض وترتّبها إلى `max`. و`collections` قائمةُ مجموعاتٍ
      * نصًّا بصيغة JSON — حتّى `max` مجموعة، في كلٍّ حتّى `max_products` صنفًا.
+     * و`visualbar` بطاقاتُ الشريط المصوّر نصًّا بصيغة JSON — حتّى `max` بطاقة.
      *
      * والنصُّ الذي يكتبه صاحبُ المحلّ لزبونه حقلان: عربيٌّ وإنجليزيّ (`_en`)،
      * لا يقع أحدُهما على الآخر. ونصوصُ القالب نفسِه (الأزرارُ وأسماءُ الأقسام)
@@ -96,6 +103,9 @@ final class PageEditor
      * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string, max?: int}>>
      */
     public const FIELDS = [
+        self::VISUAL_BAR => [
+            ['key' => StoreVisualBar::KEY, 'kind' => 'visualbar', 'label' => 'بطاقات الشريط', 'hint' => 'كلُّ بطاقةٍ صورةٌ واسمٌ لكلّ لغة وتفتح مجموعةً أو فئةً أو منتجًا أو صفحة — شغّله وانشر ليظهر', 'max' => StoreVisualBar::MAX_CARDS],
+        ],
         self::COLLECTIONS => [
             ['key' => StoreCollections::KEY, 'kind' => 'collections', 'label' => 'المجموعات', 'hint' => 'رفوفٌ تختار منتجاتها من أيّ فئة — ويبقى كلُّ منتجٍ في فئته. انشر لتظهر لزبائنك', 'max' => StoreCollections::MAX, 'max_products' => StoreCollections::MAX_PRODUCTS],
         ],
@@ -165,6 +175,7 @@ final class PageEditor
      */
     public const ROWS = [
         self::HEAD => ['label' => 'رأس المتجر', 'hint' => 'شريطُ إعلانٍ أعلى كلّ صفحة، واختصاراتُ الفئات في صفحة المتجر', 'fixed' => true, 'source' => null],
+        self::VISUAL_BAR => ['label' => 'الشريط المصوّر', 'hint' => 'بطاقاتٌ بصورها فوق قائمة الصفحات — مطفأٌ حتى تشغّله', 'fixed' => true, 'source' => null],
         self::COLLECTIONS => ['label' => 'مجموعات المتجر', 'hint' => 'هدايا التخرّج، عروضٌ خاصّة… رفوفٌ تختار منتجاتها بيدك', 'fixed' => true, 'source' => null],
         self::HERO => ['label' => 'الواجهة', 'hint' => 'أعلى الصفحة — عنوانٌ وصورةٌ وزرُّ تسوّق', 'fixed' => true, 'source' => null],
         'cats' => ['label' => 'تسوّق حسب الفئة', 'hint' => 'فئاتُك التي فيها بضاعةٌ معروضة، كلٌّ ببطاقتها', 'fixed' => false, 'source' => ['الأصناف والفئات', 'admin.products.index']],
@@ -306,8 +317,11 @@ final class PageEditor
 
         $sections = $picksOn ? StorePage::SECTIONS : StorePage::DEFAULT_ORDER;
 
-        // والرأسُ فوق الواجهة: هو أوّلُ ما يُرى في كلّ صفحة
-        $rows = [self::row(self::HEAD, true, null), self::row(self::HERO, true, null)];
+        /*
+         * والشريطُ المصوّر أوّلًا — فوق الترويسة، أوّلُ ما يُرى — ثمّ الرأسُ فوق
+         * الواجهة: هو أوّلُ ما يُرى في كلّ صفحةٍ بعده.
+         */
+        $rows = [self::row(self::VISUAL_BAR, true, null), self::row(self::HEAD, true, null), self::row(self::HERO, true, null)];
 
         // المختارُ بترتيبه، ثمّ المطفأُ بترتيبه الأصليّ — كما في `StorePage::SECTIONS`
         foreach (array_merge($order, array_values(array_diff($sections, $order))) as $key) {

@@ -25,11 +25,12 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { type ArrivalsCuration, CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
-import CollectionsField, { keepShownCollections } from './theme/CollectionsField';
+import CollectionsField, { keepShownCollections, parseCollections } from './theme/CollectionsField';
 import { AlignField, type ShortcutCategory, ShortcutsField } from './theme/HeaderFields';
 import ProductListField, { keepShown } from './theme/ProductListField';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
+import VisualBarField from './theme/VisualBarField';
 
 /** صفحةٌ من صفحات القالب الأربع — كما تقرؤها `StoreNav::rows` */
 export interface EditorPage {
@@ -129,7 +130,7 @@ export function previewFit(want: number, avail: number): number {
 
 export interface EditorField {
     key: string;
-    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts' | 'products' | 'collections';
+    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts' | 'products' | 'collections' | 'visualbar';
     label: string;
     hint?: string;
     dir?: string;
@@ -542,6 +543,26 @@ export default function ThemeEditor({
             );
         }
 
+        if (f.kind === 'visualbar') {
+            return (
+                <VisualBarField
+                    key={f.key}
+                    name={f.key}
+                    label={f.label}
+                    hint={f.hint}
+                    value={form.data[f.key] ?? ''}
+                    /* والمجموعاتُ كما في الشاشة الآن — بطاقةٌ لمجموعةٍ أُنشئت للتوّ تُختار قبل أن تُحفظ */
+                    collections={parseCollections(form.data.store_collections)}
+                    categories={shortcutCategories}
+                    products={products}
+                    pages={pages}
+                    max={f.max ?? 12}
+                    onChange={(v) => form.setData(f.key, v)}
+                    error={error}
+                />
+            );
+        }
+
         if (f.kind === 'products') {
             return (
                 <ProductListField
@@ -765,6 +786,7 @@ export default function ThemeEditor({
 
     const head = byKey.get('head');
     const collections = byKey.get('collections');
+    const visualBar = byKey.get('vbar');
     const hero = byKey.get('hero');
     const foot = byKey.get('foot');
     /* و«أضف مع طلبك» في صفحة المنتج — بعد التذييل، لا بين أقسام الرئيسية */
@@ -904,7 +926,8 @@ export default function ThemeEditor({
                         {t('أقسام «الرئيسية»')}
                     </p>
                     <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)]">
-                        {/* ورأسُ المتجر فوق الواجهة — أوّلُ ما يُرى في كلّ صفحة */}
+                        {/* والشريطُ المصوّر فوق الترويسة — أوّلُ ما يُرى — ثمّ رأسُ المتجر فوق الواجهة */}
+                        {visualBar && row(visualBar)}
                         {head && row(head)}
                         {hero && row(hero)}
                         {movable.map((k) => {

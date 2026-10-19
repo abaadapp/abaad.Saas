@@ -78,7 +78,7 @@ final class StoreCollections
      */
     public static function all(int $businessId): array
     {
-        return self::parse((string) (MarketingSettings::group($businessId, 'website')[self::KEY] ?? ''));
+        return self::fromJson((string) (MarketingSettings::group($businessId, 'website')[self::KEY] ?? ''));
     }
 
     /**
@@ -275,8 +275,12 @@ final class StoreCollections
 
     /* ═══════════ أدوات ═══════════ */
 
-    /** @return list<array<string, mixed>> */
-    private static function parse(string $raw): array
+    /**
+     * نصٌّ محفوظ ← قائمة — للقراءة، ولمن يقيس عليها ما يُحفظ معها (`StoreVisualBar`).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function fromJson(string $raw): array
     {
         if ($raw === '') {
             return [];

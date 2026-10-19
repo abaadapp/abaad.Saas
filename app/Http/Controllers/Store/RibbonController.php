@@ -35,6 +35,7 @@ use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
+use App\Support\Store\StoreVisualBar;
 use App\Support\Store\StorePage;
 use App\Support\Store\CardIdentity;
 use App\Support\Store\CardIdentityUnconfirmed;
@@ -773,6 +774,12 @@ class RibbonController extends Controller
              * انظر `StoreHeader::announcement`.
              */
             'announcement' => StoreHeader::announcement($bid, $lang),
+            /*
+             * وشريطُ المجموعات المصوّر فوق الترويسة — لصفحات التصفّح، بلغة
+             * الزائر، لمن شغّله ونشره. وفارغٌ لمن سواه فلا يُرسم شيء.
+             * انظر `StoreVisualBar::cards`.
+             */
+            'visualBar' => StoreVisualBar::cards($bid, $lang, $base, $current),
             // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
             'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo(), $lang),
         ] + $this->floatingWhatsapp($bid, $identity, $t);

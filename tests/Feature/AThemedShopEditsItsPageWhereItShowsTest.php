@@ -126,11 +126,12 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
 
         $keys = array_column(PageEditor::rows($this->shop->id), 'key');
 
-        // ورأسُ المتجر فوق الواجهة: هو أوّلُ ما يُرى في كلّ صفحة
-        $this->assertSame(PageEditor::HEAD, $keys[0]);
-        $this->assertSame(PageEditor::HERO, $keys[1]);
+        // والشريطُ المصوّر فوق الترويسة — أوّلُ ما يُرى — ثمّ رأسُ المتجر فوق الواجهة
+        $this->assertSame(PageEditor::VISUAL_BAR, $keys[0]);
+        $this->assertSame(PageEditor::HEAD, $keys[1]);
+        $this->assertSame(PageEditor::HERO, $keys[2]);
         $this->assertSame(PageEditor::FOOT, end($keys));
-        $this->assertSame(['about', 'cats'], array_slice($keys, 2, 2), 'الترتيبُ ليس ترتيبَ صاحبه');
+        $this->assertSame(['about', 'cats'], array_slice($keys, 3, 2), 'الترتيبُ ليس ترتيبَ صاحبه');
 
         // والمطفأُ يبقى معروضًا ليُرفع ثانية — لا يخرج من الشاشة إلى العدم
         foreach (StorePage::DEFAULT_ORDER as $section) {

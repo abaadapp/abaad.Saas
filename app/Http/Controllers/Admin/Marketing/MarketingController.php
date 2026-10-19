@@ -25,6 +25,7 @@ use App\Support\Store\RibbonUpsells;
 use App\Support\Store\StoreContent;
 use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreHeader;
+use App\Support\Store\StoreVisualBar;
 use App\Support\Store\ThemePublisher;
 use App\Support\Store\StoreSeo;
 use App\Support\Storefront;
@@ -341,6 +342,8 @@ class MarketingController extends Controller
             'store_shop_nav_categories' => ['nullable', 'string', 'max:200'],
             // ومجموعاتُ المتجر نصُّ JSON — يُقرأ بصرامةٍ أدناه (`StoreCollections::validated`)
             'store_collections' => ['nullable', 'string', 'max:'.StoreCollections::RAW_MAX],
+            // وشريطُها المصوّر نصُّ JSON — يُقرأ بصرامةٍ أدناه (`StoreVisualBar::validated`)
+            'store_visual_bar' => ['nullable', 'string', 'max:'.StoreVisualBar::RAW_MAX],
 
             /*
              * وصفحاتُ المتجر — ما أذِن به من «من نحن» و«تواصل معنا».
@@ -436,6 +439,21 @@ class MarketingController extends Controller
         if ($request->exists(StoreCollections::KEY)) {
             abort_if($business->storefrontTheme() === null, 403);
             $data[StoreCollections::KEY] = StoreCollections::validated($this->bid(), $request->input(StoreCollections::KEY));
+        }
+
+        /*
+         * ═══ والشريطُ المصوّر — وجهاتُه من متجره وحده ═══
+         *
+         * كلُّ بطاقةٍ تفتح مجموعةً أو فئةً أو صنفًا أو صفحةً منه، ولا رابطَ حرٌّ
+         * يُكتب. والمجموعاتُ تُقاس على ما يُحفظ معها في الحفظة نفسِها، وإلّا على
+         * المسوّدة — فبطاقةٌ لمجموعةٍ أُنشئت للتوّ تُقبل. انظر `Store\StoreVisualBar`.
+         */
+        if ($request->exists(StoreVisualBar::KEY)) {
+            abort_if($business->storefrontTheme() === null, 403);
+            $collections = StoreCollections::fromJson((string) (array_key_exists(StoreCollections::KEY, $data)
+                ? $data[StoreCollections::KEY]
+                : (StoreContent::draft($this->bid())[StoreCollections::KEY] ?? '')));
+            $data[StoreVisualBar::KEY] = StoreVisualBar::validated($this->bid(), $request->input(StoreVisualBar::KEY), $collections);
         }
 
         /*

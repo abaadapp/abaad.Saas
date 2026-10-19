@@ -11,8 +11,13 @@
         يعرف أين هو ولو لم تكن فئتُه في صفّ الترويسة.
     --}}
     <div style="margin-bottom:28px">
-        <h1 class="rb-h1" data-testid="rb-shop-title">{{ $q !== '' ? $q : ($best ? $t['bestSellers'] : ($catName ?? $t['shopTitle'])) }}</h1>
-        <p style="margin:6px 0 0;font-size:15px">{{ $t['shopSub'] }}</p>
+        {{-- والمجموعةُ باسمها ووصفها بلغة الصفحة — وبلا وصفٍ لها يبقى سطرُ المتجر --}}
+        <h1 class="rb-h1" data-testid="rb-shop-title">{{ $q !== '' ? $q : ($best ? $t['bestSellers'] : ($collection['title'] ?? ($catName ?? $t['shopTitle']))) }}</h1>
+        @if (($collection['description'] ?? '') !== '')
+            <p style="margin:6px 0 0;font-size:15px;line-height:1.7;white-space:pre-line" data-testid="rb-collection-description">{{ $collection['description'] }}</p>
+        @else
+            <p style="margin:6px 0 0;font-size:15px">{{ $t['shopSub'] }}</p>
+        @endif
     </div>
     @if (count($products) === 0)
         {{--
@@ -22,7 +27,7 @@
             و«الأكثر مبيعًا» بلا بيعٍ يُقال كما هو — لا يُملأ بأحدث الأصناف
             ثمّ يُسمّى «الأكثر مبيعًا».
         --}}
-        <p style="padding:60px 0;text-align:center" data-testid="rb-empty">{{ ! $hasAny ? $t['noProducts'] : ($q !== '' ? $t['noMatch'] : ($best ? $t['noBest'] : $t['noInCategory'])) }}</p>
+        <p style="padding:60px 0;text-align:center" data-testid="rb-empty">{{ ! $hasAny ? $t['noProducts'] : ($q !== '' ? $t['noMatch'] : ($best ? $t['noBest'] : (($collection ?? null) !== null ? $t['noInCollection'] : $t['noInCategory']))) }}</p>
     @else
         <div class="rb-grid">
             @foreach ($products as $p) @include('store.ribbon._card', ['p' => $p]) @endforeach

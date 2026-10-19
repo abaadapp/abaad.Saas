@@ -54,6 +54,13 @@ final class PageEditor
     public const UPSELLS = 'upsells';
 
     /**
+     * ومجموعاتُ المتجر — رفوفٌ يختار أصنافَها بيده، غيرُ الفئات. لكلّ من يلبس
+     * الواجهة، وفارغةٌ حتّى يكتبها. ليست قسمًا في الرئيسية: تُفتح من صفّ
+     * خيارات المتجر ومن الشريط المصوّر. انظر `StoreCollections`.
+     */
+    public const COLLECTIONS = 'collections';
+
+    /**
      * مقابضُ الصفحة البسيطة — لا تُحرّك واجهةً خاصّة فلا تُعرض لصاحبها.
      *
      * `store_theme` لونُ `store.show.blade`، و`store_show_prices` مفتاحُها
@@ -79,7 +86,8 @@ final class PageEditor
      *
      * و`align` ثلاثةُ أزرارٍ مغلقة (`StoreHeader::ALIGNS`)، و`shortcuts`
      * تختار فئاتٍ من متجره وترتّبها — معرّفاتٍ لا روابط. و`products` تختار
-     * أصنافًا من المعروض وترتّبها إلى `max`.
+     * أصنافًا من المعروض وترتّبها إلى `max`. و`collections` قائمةُ مجموعاتٍ
+     * نصًّا بصيغة JSON — حتّى `max` مجموعة، في كلٍّ حتّى `max_products` صنفًا.
      *
      * والنصُّ الذي يكتبه صاحبُ المحلّ لزبونه حقلان: عربيٌّ وإنجليزيّ (`_en`)،
      * لا يقع أحدُهما على الآخر. ونصوصُ القالب نفسِه (الأزرارُ وأسماءُ الأقسام)
@@ -88,6 +96,9 @@ final class PageEditor
      * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string, max?: int}>>
      */
     public const FIELDS = [
+        self::COLLECTIONS => [
+            ['key' => StoreCollections::KEY, 'kind' => 'collections', 'label' => 'المجموعات', 'hint' => 'رفوفٌ تختار منتجاتها من أيّ فئة — ويبقى كلُّ منتجٍ في فئته. انشر لتظهر لزبائنك', 'max' => StoreCollections::MAX, 'max_products' => StoreCollections::MAX_PRODUCTS],
+        ],
         self::HEAD => [
             ['key' => 'store_announcement_ar', 'kind' => 'text', 'label' => 'نص الشريط بالعربية', 'hint' => 'أعلى كلّ صفحةٍ عربيّة — واتركه فارغًا فلا شريط'],
             ['key' => 'store_announcement_en', 'kind' => 'text', 'label' => 'Announcement text in English', 'hint' => 'أعلى كلّ صفحةٍ إنجليزيّة — ولا يُترجَم النصُّ العربيّ إليها', 'dir' => 'ltr'],
@@ -154,6 +165,7 @@ final class PageEditor
      */
     public const ROWS = [
         self::HEAD => ['label' => 'رأس المتجر', 'hint' => 'شريطُ إعلانٍ أعلى كلّ صفحة، واختصاراتُ الفئات في صفحة المتجر', 'fixed' => true, 'source' => null],
+        self::COLLECTIONS => ['label' => 'مجموعات المتجر', 'hint' => 'هدايا التخرّج، عروضٌ خاصّة… رفوفٌ تختار منتجاتها بيدك', 'fixed' => true, 'source' => null],
         self::HERO => ['label' => 'الواجهة', 'hint' => 'أعلى الصفحة — عنوانٌ وصورةٌ وزرُّ تسوّق', 'fixed' => true, 'source' => null],
         'cats' => ['label' => 'تسوّق حسب الفئة', 'hint' => 'فئاتُك التي فيها بضاعةٌ معروضة، كلٌّ ببطاقتها', 'fixed' => false, 'source' => ['الأصناف والفئات', 'admin.products.index']],
         'best' => ['label' => 'الأكثر مبيعًا', 'hint' => 'أربعةُ أصنافٍ تتصدّر — محسوبةً من بيعك أو مختارةً بيدك', 'fixed' => false, 'source' => null],
@@ -305,6 +317,11 @@ final class PageEditor
             $rows[] = self::row($key, $on, $on ? $silent[$key] : null);
         }
 
+        /*
+         * والمجموعاتُ بعد الأقسام وقبل التذييل — ليست في الرئيسية: تُفتح من صفّ
+         * خيارات المتجر ومن الشريط المصوّر. ولكلّ من يلبس الواجهة.
+         */
+        $rows[] = self::row(self::COLLECTIONS, true, null);
         $rows[] = self::row(self::FOOT, true, null);
 
         /*

@@ -490,6 +490,7 @@ return [
         'store_announcement_en' => 'نص الشريط بالإنجليزية',
         'store_announcement_align' => 'محاذاة النص',
         'store_shop_nav_categories' => 'اختصارات صفحة المتجر',
+        'store_collections' => 'مجموعات المتجر',
         'store_block_on' => 'تشغيل الشريط',
         'store_block_title' => 'عنوان الشريط',
         'store_block_text' => 'نصّ الشريط',

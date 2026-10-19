@@ -48,8 +48,8 @@ type Api = {
 
 /** بنودُ كلّ نداءٍ لـ`addAll` بصيغة `[id, variant, qty, note?]` — كما كانت تُقرأ */
 function flat(addAll: ReturnType<typeof vi.fn>): (number | string | null)[][] {
-    return addAll.mock.calls.flatMap(([lines]: [Line[]]) =>
-        lines.map((l) => (l.note ? [l.id, l.variant_id, l.qty, l.note] : [l.id, l.variant_id, l.qty])),
+    return addAll.mock.calls.flatMap((call) =>
+        (call[0] as Line[]).map((l) => (l.note ? [l.id, l.variant_id, l.qty, l.note] : [l.id, l.variant_id, l.qty])),
     );
 }
 

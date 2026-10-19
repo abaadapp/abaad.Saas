@@ -116,8 +116,9 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         // وإيصالُ الدفع للزبون (`PaidReceipt`) قرارُ دفعٍ كأخواته في الإتمام — يسري فورًا
         // ونصوصُ صفحة الشكر (ثمانية: أربعةٌ لكلّ لغة) تُضبط في «الدفع والاستلام» بجانب
         // مفتاح الإيصال، وتُقرأ في صفحة التأكيد كتنبيه الصورة — تسري فورًا كأخواتها هناك
-        $this->assertCount(83, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
-        $this->assertCount(38, $versioned, 'تبدّل عددُ ما يُنشر');
+        // ومجموعاتُ المتجر (`StoreCollections`، واحد) رفوفٌ يراها الزائر ولا تمسّ مالًا — تُنشر
+        $this->assertCount(84, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        $this->assertCount(39, $versioned, 'تبدّل عددُ ما يُنشر');
         $this->assertCount(45, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),

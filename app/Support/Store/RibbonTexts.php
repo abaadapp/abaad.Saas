@@ -102,6 +102,8 @@ final class RibbonTexts
         'upInc' => 'زيادة كمية :name', 'upDec' => 'إنقاص كمية :name', 'upQty' => 'كمية :name',
         'upTotal' => 'المجموع مع الإضافات', 'cartLimitQty' => 'أقصى كمية للصنف الواحد في السلة :max — قلّل الكمية ثم أعد الإضافة.',
         'cartLimitLines' => 'السلة لا تتّسع لأكثر من :max صنفًا مختلفًا — أتمّ طلبك أو احذف صنفًا ثم أعد الإضافة.',
+        // رفُّ مجموعةٍ لا صنفَ معروضًا فيه — انظر `StoreCollections`
+        'noInCollection' => 'لا توجد منتجات في هذه المجموعة بعد.',
         // التسعيرةُ في الطريق — الزرُّ مقفلٌ حتّى تعود (`RBQuote`)
         'quoting' => 'يُحدَّث الإجمالي…',
     ];
@@ -167,6 +169,7 @@ final class RibbonTexts
         'upInc' => 'Increase quantity of :name', 'upDec' => 'Decrease quantity of :name', 'upQty' => 'Quantity of :name',
         'upTotal' => 'Total with add-ons', 'cartLimitQty' => 'The most you can order of one item is :max — lower the quantity and add again.',
         'cartLimitLines' => 'Your cart can hold up to :max different items — check out or remove an item, then add again.',
+        'noInCollection' => 'No products in this collection yet.',
         'quoting' => 'Updating the total…',
     ];
 

@@ -314,12 +314,17 @@ class StorefrontController extends Controller
         return MarketingSettings::withOverlay(
             (int) $business->id, 'website',
             array_merge(StoreContent::draft((int) $business->id), $this->draft($request)),
-            fn () => $this->render($business),
+            /*
+             * والرئيسيّةُ ما يُعاين، إلّا رفَّ المتجر لمن طلبه باسمه — لتُرى
+             * مجموعةٌ قبل نشرها (`?page=shop&collection=…`). ولا صفحةَ سواهما
+             * تُقرأ من الرابط: السلّةُ والإتمامُ لا يُعاينان.
+             */
+            fn () => $this->render($business, $request->query('page') === 'shop' ? 'shop' : null),
         );
     }
 
     /** الصفحةُ كما يراها الزبون — وهي نفسُها في المعاينة وفي الموقع */
-    private function render(Business $business): Response
+    private function render(Business $business, ?string $path = null): Response
     {
         /*
          * ومن لبس واجهةً خاصّة يُعايِنها هي — لا الصفحةَ البسيطة التي لن
@@ -328,7 +333,7 @@ class StorefrontController extends Controller
          */
         if ($business->storefrontTheme() !== null) {
             return app(RibbonController::class)
-                ->page($business, null, $business->site_slug ? '/s/'.$business->site_slug : '')
+                ->page($business, $path, $business->site_slug ? '/s/'.$business->site_slug : '')
                 ->header('Cache-Control', 'no-store')
                 ->header('X-Robots-Tag', 'noindex, nofollow');
         }

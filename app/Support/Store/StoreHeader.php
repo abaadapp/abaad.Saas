@@ -114,17 +114,38 @@ final class StoreHeader
      * والاسمُ من تلك القائمة: `CategoryName::display` بلغة الصفحة — فلا
      * يُخزَّن للاختصار اسمٌ ثانٍ يفترق عن اسم الفئة.
      *
+     * ═══ ومجموعاتُه بعد «الأكثر مبيعًا» وقبل الفئات ═══
+     *
+     * ما أظهره منها وأذِن به في الصفّ (`in_row`)، بترتيبه — باسمها بلغة
+     * الصفحة (`StoreCollections::title`). ومتجرٌ لم يكتب مجموعةً صفُّه كما
+     * كان حرفًا بحرف.
+     *
      * @param  Collection<int, array{id: int, name: string, count: int}>  $categories
+     * @param  list<array<string, mixed>>  $collections  المجموعاتُ الظاهرة — `StoreCollections::visible`
      * @return list<array{key: string, label: string, href: string, current: bool}>
      */
-    public static function shopOptions(int $businessId, Collection $categories, array $t, string $base, int $cat, bool $best): array
+    public static function shopOptions(int $businessId, Collection $categories, array $t, string $base, int $cat, bool $best, array $collections = [], ?string $collection = null, string $lang = 'ar'): array
     {
         $byId = $categories->keyBy('id');
+        $inCollection = $collection !== null && $collection !== '';
 
         $out = [
-            ['key' => 'all', 'label' => $t['allProducts'], 'href' => $base.'/shop', 'current' => ! $best && $cat === 0],
+            ['key' => 'all', 'label' => $t['allProducts'], 'href' => $base.'/shop', 'current' => ! $best && $cat === 0 && ! $inCollection],
             ['key' => self::VIEW_BEST, 'label' => $t['bestSellers'], 'href' => $base.'/shop?view='.self::VIEW_BEST, 'current' => $best],
         ];
+
+        foreach ($collections as $c) {
+            if (! ($c['in_row'] ?? true)) {
+                continue;
+            }
+
+            $out[] = [
+                'key' => 'col-'.$c['slug'],
+                'label' => StoreCollections::title($c, $lang),
+                'href' => $base.'/shop?'.StoreCollections::QUERY.'='.$c['slug'],
+                'current' => ! $best && $collection === $c['slug'],
+            ];
+        }
 
         foreach (self::shortcutIds($businessId) as $id) {
             if (! $byId->has($id)) {
@@ -135,7 +156,7 @@ final class StoreHeader
                 'key' => 'cat-'.$id,
                 'label' => (string) $byId[$id]['name'],
                 'href' => $base.'/shop?cat='.$id,
-                'current' => ! $best && $cat === $id,
+                'current' => ! $best && ! $inCollection && $cat === $id,
             ];
         }
 

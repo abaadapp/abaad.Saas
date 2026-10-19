@@ -107,9 +107,18 @@
                                     </span>
                                     <span class="rb-up-tick" aria-hidden="true"></span>
                                 </button>
+                                @if (count($u['sizes']))
+                                    <div class="rb-up-sizes" data-rb-up-sizes hidden>
+                                        @foreach ($u['sizes'] as $s)
+                                            <button type="button" class="rb-pill" data-rb-up-size="{{ $s['id'] }}" data-amount="{{ $s['price'] }}" aria-pressed="false">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
+                                        @endforeach
+                                    </div>
+                                    <p class="rb-error" style="margin:0 12px 12px" data-rb-up-need hidden>{{ $t['upsellChoose'] }}</p>
+                                @endif
                                 {{--
                                     عدّادُ الإضافة — يظهر حين تُختار، ويبدأ بواحد. و«−» عند
-                                    الواحد يتركها. وتحته الكمّيّةُ في سعر الوحدة ومجموعُها.
+                                    الواحد يتركها. وإلى جانبه الكمّيّةُ في سعر الوحدة ومجموعُها.
+                                    وبعد المقاس لا قبله: سعرُ الوحدة يتبع المقاسَ المختار.
                                 --}}
                                 <div class="rb-up-qty" data-rb-up-qtybox hidden data-testid="rb-upsell-qty">
                                     <div class="rb-qty" role="group" aria-label="{{ strtr($t['upQty'], [':name' => $u['name']]) }}">
@@ -119,14 +128,6 @@
                                     </div>
                                     <span class="rb-up-line" data-rb-up-line data-testid="rb-upsell-line"></span>
                                 </div>
-                                @if (count($u['sizes']))
-                                    <div class="rb-up-sizes" data-rb-up-sizes hidden>
-                                        @foreach ($u['sizes'] as $s)
-                                            <button type="button" class="rb-pill" data-rb-up-size="{{ $s['id'] }}" data-amount="{{ $s['price'] }}" aria-pressed="false">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
-                                        @endforeach
-                                    </div>
-                                    <p class="rb-error" style="margin:0 12px 12px" data-rb-up-need hidden>{{ $t['upsellChoose'] }}</p>
-                                @endif
                                 @if ($u['gift_card'] ?? false)
                                     {{--
                                         ═══ كرتُ الهدية إضافةً — خانةُ نصّه حين يُختار ═══

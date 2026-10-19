@@ -275,7 +275,11 @@
         .rb-vbar-in { max-width: 1280px; margin: 0 auto; display: flex; gap: 14px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none; padding: 14px max(16px, env(safe-area-inset-right, 0px)) 14px max(16px, env(safe-area-inset-left, 0px)); }
         .rb-vbar-in::-webkit-scrollbar { display: none; }
         .rb-vbar-in > :first-child { margin-inline-start: auto; } .rb-vbar-in > :last-child { margin-inline-end: auto; }
-        .rb-vcard { flex: none; width: clamp(118px, 30vw, 164px); scroll-snap-align: start; display: flex; flex-direction: column; gap: 6px; color: #000; text-align: center; border-radius: var(--rb-r-lg); }
+        /*
+         * وعرضُ البطاقة يُبقي طرفَ التالية ظاهرًا على الهاتف (‎27vw‎): ثلاثُ
+         * بطاقاتٍ تملأ الشاشةَ تمامًا لا تقول إنّ وراءها غيرَها.
+         */
+        .rb-vcard { flex: none; width: clamp(96px, 27vw, 164px); scroll-snap-align: start; display: flex; flex-direction: column; gap: 6px; color: #000; text-align: center; border-radius: var(--rb-r-lg); }
         .rb-vcard:focus-visible { outline: 2px solid var(--rb-olive); outline-offset: 3px; }
         .rb-vcard-img { display: block; aspect-ratio: 4 / 5; border-radius: var(--rb-r-lg); overflow: hidden; background: var(--rb-soft); }
         .rb-vcard-img img, .rb-vcard-img .rb-stripes { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .3s ease; }

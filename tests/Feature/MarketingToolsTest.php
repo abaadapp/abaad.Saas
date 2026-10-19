@@ -137,6 +137,11 @@ class MarketingToolsTest extends TestCase
             'store_announcement_ar', 'store_announcement_en', 'store_announcement_align',
             'store_shop_nav_categories',
             /*
+             * ومجموعاتُ المتجر وشريطُها المصوّر — يقرؤهما رفُّ المتجر وصفُّ
+             * خياراته والقالبُ العامّ (`Store\StoreCollections` و`Store\StoreVisualBar`).
+             */
+            'store_collections', 'store_visual_bar',
+            /*
              * وصفحاتُ المتجر وصورةُ «من نحن» — تقرؤهما القائمةُ والمتحكّم
              * (`Store\StoreNav` و`RibbonController::about`).
              */

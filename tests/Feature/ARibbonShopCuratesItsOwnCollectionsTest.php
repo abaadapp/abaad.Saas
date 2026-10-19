@@ -15,6 +15,7 @@ use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreContent;
 use App\Support\Store\ThemePublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -341,6 +342,36 @@ class ARibbonShopCuratesItsOwnCollectionsTest extends TestCase
         $this->save([$this->collection('graduation', ['rose'], ['image' => $mine])])->assertSessionHasNoErrors();
 
         $this->assertSame($mine, StoreCollections::all($this->shop->id)[0]['image']);
+    }
+
+    /**
+     * والصورةُ التي يرفعها المحرّرُ نفسُه تُقبل — أيًّا كان القرصُ الافتراضيّ.
+     *
+     * بابُ الرفع يردّ `Storage::url` بالقرص الافتراضيّ: رابطًا نسبيًّا
+     * (`‎/storage/…‎`) على `local`، ومطلقًا بعنوان التطبيق على `public`.
+     * والحارسُ (`StoreMedia::owned`) يقبل الاثنين من مجلّد متجره وحده.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function disks(): iterable
+    {
+        yield 'القرصُ الافتراضيّ local' => ['local'];
+        yield 'القرصُ الافتراضيّ public' => ['public'];
+    }
+
+    #[DataProvider('disks')]
+    public function test_an_image_uploaded_from_the_editor_is_accepted(string $default): void
+    {
+        config(['filesystems.default' => $default]);
+
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.store.image'), ['image' => UploadedFile::fake()->image('graduation.jpg', 320, 400)])
+            ->assertSessionHas('uploaded');
+        $url = (string) session('uploaded');
+        $this->assertStringContainsString('/storage/website/'.$this->shop->id.'/', $url);
+
+        $this->save([$this->collection('graduation', ['rose'], ['image' => $url])])->assertSessionHasNoErrors();
+        $this->assertSame($url, StoreCollections::all($this->shop->id)[0]['image']);
     }
 
     public function test_the_neighbour_cannot_open_this_shops_collection(): void

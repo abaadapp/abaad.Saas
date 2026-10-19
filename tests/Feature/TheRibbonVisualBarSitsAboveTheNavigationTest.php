@@ -16,6 +16,7 @@ use App\Support\Store\StoreContent;
 use App\Support\Store\StoreVisualBar;
 use App\Support\Store\ThemePublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -365,6 +366,19 @@ class TheRibbonVisualBarSitsAboveTheNavigationTest extends TestCase
 
         $this->save(json_encode(['on' => true, 'pages' => 'checkout', 'cards' => []]))->assertSessionHasErrors(StoreVisualBar::KEY);
         $this->save('[1,2]')->assertSessionHasErrors(StoreVisualBar::KEY);
+    }
+
+    /** والصورةُ التي يرفعها المحرّرُ نفسُه تُقبل وتُرسم — بالرابط الذي ردّه */
+    public function test_an_image_uploaded_from_the_editor_is_accepted_and_drawn(): void
+    {
+        $this->actingAs($this->owner)
+            ->post(route('admin.marketing.store.image'), ['image' => UploadedFile::fake()->image('card.jpg', 320, 400)])
+            ->assertSessionHas('uploaded');
+        $url = (string) session('uploaded');
+
+        $this->wear([$this->card(['type' => 'shop', 'value' => ''], ['image' => $url])]);
+
+        $this->assertStringContainsString('<img src="'.e($url).'" alt=""', $this->page());
     }
 
     public function test_a_card_may_open_a_collection_saved_in_the_same_request(): void

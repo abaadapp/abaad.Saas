@@ -746,7 +746,9 @@ class TheRibbonHeaderCarriesItsAnnouncementAndShopOptionsTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($p) => $p
                 ->component('Admin/Website/ThemeEditor')
-                ->where('rows.0.key', PageEditor::HEAD)
+                // والشريطُ المصوّر فوقه — أوّلُ ما يُرى (`StoreVisualBar`) — ثمّ رأسُ المتجر
+                ->where('rows.0.key', PageEditor::VISUAL_BAR)
+                ->where('rows.1.key', PageEditor::HEAD)
                 ->where('maxShortcuts', StoreHeader::MAX_SHORTCUTS)
                 ->where('shortcutCategories', [
                     ['id' => $this->addons->id, 'name' => 'إضافات', 'shown' => 0],

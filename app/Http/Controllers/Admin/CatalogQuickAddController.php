@@ -265,7 +265,8 @@ class CatalogQuickAddController extends Controller
 
         $data = $request->validate(self::noOwnership() + self::addonRules($bid), self::addonMessages());
 
-        $addon = Addon::create(\App\Support\Lexicon::fill(collect($data)->only(['name', 'name_en', 'price'])->all()) + [
+        // والاسمُ الإنجليزيّ ما كتبه التاجر — لا يُملأ من المعجم: «شوكولاتة بلجيكية» اسمُ بضاعته
+        $addon = Addon::create(collect($data)->only(['name', 'name_en', 'price'])->all() + [
             'business_id' => $bid,
             'active' => true,
             // لا مالك: بابُ الإضافة الخاصّة بمنتجٍ مغلقٌ — انظر `noOwnership`
@@ -332,7 +333,8 @@ class CatalogQuickAddController extends Controller
             self::addonMessages(),
         );
 
-        $model->update(\App\Support\Lexicon::fill(collect($data)->only(['name', 'name_en', 'price'])->all()) + [
+        // والاسمُ الإنجليزيّ كما أُرسل: ما خُزّن يبقى إن لم يُرسَل، ولا يُملأ من المعجم إن فرغ
+        $model->update(collect($data)->only(['name', 'name_en', 'price'])->all() + [
             'active' => array_key_exists('active', $data) ? (bool) $data['active'] : (bool) $model->active,
         ] + self::stockAttributes($data) + self::scopeAttributes($data, $owner));
 

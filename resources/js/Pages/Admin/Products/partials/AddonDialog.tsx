@@ -111,8 +111,8 @@ export default function AddonDialog({
 
         const body = {
             name: clean,
-            // مكتوبًا لا يُترجَم تلقائيًّا: من كتب الاسم بيده أعلمُ باسم
-            // بضاعته من قاموس. انظر Lexicon::fill
+            // ما كتبه التاجر أو لا شيء: الخادمُ لا يترجم اسمَ الإضافة من قاموس،
+            // وما فرغ يُعرض بالعربيّة كما كُتب (`ProductName::display`)
             name_en: nameEn.trim() || null,
             price: price || 0,
             inventory_product_id: stock ? Number(stockId) : null,
@@ -201,8 +201,7 @@ export default function AddonDialog({
                                 onChange={(e) => setName(e.target.value)}
                             />
                         </Field>
-                        {/* مكتوبًا بيده لا مترجَمًا: القاموس يترجم «باقة ورد
-                            أحمر» ولا يترجم «شوكولاتة بلجيكية فاخرة» */}
+                        {/* مكتوبًا بيده لا مترجَمًا: ما فرغ يبقى فارغًا ويُعرض بالعربيّة */}
                         <Field label="الاسم بالإنجليزية">
                             <Input
                                 dir="ltr"

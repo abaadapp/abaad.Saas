@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { pageProps } from './setup';
 
 import type { PrepOrder } from '@/Pages/Admin/Preparation/partials/types';
-import { invoiceTotals, withAddons } from '@/lib/invoice-totals';
+import { includable, invoiceTotals, withAddons } from '@/lib/invoice-totals';
 
 /**
  * ورقةُ التجهيز، وتفاصيلُ بند الفاتورة، وأسماءٌ لا تنقلب — من جهة الشاشة.
@@ -15,9 +15,10 @@ import { invoiceTotals, withAddons } from '@/lib/invoice-totals';
  *     ولا تُطبع وحدها عند فتح النافذة.
  *   - الاسمُ معزولٌ باتّجاهه والكميّةُ من اليسار — على البطاقة وفي التفاصيل.
  *   - الإضافةُ المدفوعةُ مع صنفها تدخل ملخّصَ الفاتورة مرّةً، والمشمولةُ لا تدخله،
- *     والبندُ اليدويُّ بلا إضافات.
- *   - تفاصيلُ البند: الإضافةُ بكميّتها و«ضمن السعر»، والخيارُ يُكتب ويُحذف.
- *   - رفعُ حظر البيع وارتدادُ الشيك لا يُرسمان لمن يردّه الخادم.
+ *     والبندُ اليدويُّ بلا إضافات. ومدفوعةٌ وصلت «ضمن السعر» تُحسب بثمنها.
+ *   - تفاصيلُ البند: الإضافةُ بكميّتها، و«ضمن السعر» لما ثمنُه صفرٌ وحده،
+ *     والخيارُ يُكتب ويُحذف.
+ *   - رفعُ حظر البيع لا يُرسم لمن يردّه الخادم، و«صُرِف» و«ارتدّ» كلٌّ بفعله.
  */
 
 const printed: { routeName: string; number: string; label: string }[] = [];
@@ -113,7 +114,8 @@ describe('«طباعة تفاصيل التجهيز»', () => {
 });
 
 describe('الإضافةُ المدفوعةُ مع صنفها في ملخّص الفاتورة', () => {
-    const catalog = [{ id: 5, price: 3.5 }, { id: 6, price: 1.5 }];
+    // الشوكولاتةُ بثمن، والكرتُ مجّانيٌّ في الكتالوج
+    const catalog = [{ id: 5, price: 3.5 }, { id: 6, price: 0 }];
     const line = {
         product_id: '1', quantity: '1', unit_price: '25', discount: '0', tax_rate: '5',
         addons: [
@@ -130,6 +132,16 @@ describe('الإضافةُ المدفوعةُ مع صنفها في ملخّص ا
         expect(t.total).toBeCloseTo(33.6, 3);
     });
 
+    it('ومدفوعةٌ وصلت «ضمن السعر» تُحسب بثمنها — لا تنقص الملخّصَ ولا ضريبتَه', () => {
+        const forged = { ...line, addons: [{ addon_id: '5', quantity: '2', included: true }] };
+        const t = invoiceTotals(withAddons([forged], catalog), false);
+
+        expect(t.subtotal).toBeCloseTo(32, 3);
+        expect(t.tax).toBeCloseTo(1.6, 3);
+        expect(includable(3.5)).toBe(false);
+        expect(includable(0)).toBe(true);
+    });
+
     it('والبندُ اليدويُّ بلا إضافات — ولو حُملت معه', () => {
         expect(withAddons([{ ...line, product_id: '' }], catalog)).toHaveLength(1);
     });
@@ -142,18 +154,27 @@ describe('تفاصيلُ البند', () => {
         options: [{ label: 'اللون', value: 'أحمر' }],
         addons: [{ addon_id: '5', quantity: '2', included: false }],
     };
-    const addons = [{ id: 5, name: 'شوكولاتة', name_en: 'Chocolate', price: 3.5 }];
+    const addons = [
+        { id: 5, name: 'شوكولاتة', name_en: 'Chocolate', price: 3.5 },
+        { id: 6, name: 'كرت إهداء', name_en: 'Greeting card', price: 0 },
+    ];
 
-    it('الإضافةُ بكميّتها وثمنها للعلم، و«ضمن السعر» يُقلَب', async () => {
-        const changed = vi.fn();
-        render(<LineDetails value={value} onChange={changed} variants={[]} addons={addons} onVariant={() => {}} money={(v) => v.toFixed(3)} label={(n) => n} />);
+    it('الإضافةُ بكميّتها وثمنها للعلم — والمدفوعةُ لا «ضمن السعر» لها', () => {
+        render(<LineDetails value={value} onChange={vi.fn()} variants={[]} addons={addons} onVariant={() => {}} money={(v) => v.toFixed(3)} label={(n) => n} />);
 
         const row = screen.getByTestId('line-addon');
         expect(row).toHaveTextContent('شوكولاتة');
         expect(row).toHaveTextContent('7.000');
+        expect(within(row).queryByRole('checkbox')).toBeNull();
+    });
 
-        await userEvent.click(within(row).getByRole('checkbox'));
-        expect(changed).toHaveBeenCalledWith({ addons: [{ addon_id: '5', quantity: '2', included: true }] });
+    it('والمجّانيّةُ في الكتالوج يُقلَب لها «ضمن السعر»', async () => {
+        const changed = vi.fn();
+        const card = { ...value, addons: [{ addon_id: '6', quantity: '1', included: false }] };
+        render(<LineDetails value={card} onChange={changed} variants={[]} addons={addons} onVariant={() => {}} money={(v) => v.toFixed(3)} label={(n) => n} />);
+
+        await userEvent.click(within(screen.getByTestId('line-addon')).getByRole('checkbox'));
+        expect(changed).toHaveBeenCalledWith({ addons: [{ addon_id: '6', quantity: '1', included: true }] });
     });
 
     it('والخيارُ يُحذف، والبندُ اليدويُّ لا يُعرض له مقاسٌ ولا إضافة', async () => {
@@ -183,5 +204,29 @@ describe('ما يردّه الخادم لا يُرسم', () => {
 
         expect(screen.queryByTestId('customer-block-locked')).not.toBeNull();
         expect(screen.queryByRole('switch', { name: /تفعيل التنبيه/ })).toBeNull();
+    });
+
+    const cheques = async (mayActions: string[]) => {
+        const Cheques = (await import('@/Pages/Admin/Finance/Cheques')).default;
+        Object.assign(pageProps, {
+            auth: { abilities: ['finance'], mayActions },
+            status: 'تحت التحصيل', statuses: ['تحت التحصيل', 'محصّل', 'مرتجع'], soonDays: 7,
+            summary: { pending_count: 1, pending_total: 20, overdue_count: 0, overdue_total: 0, soon_count: 0, bounced_count: 0 },
+            cheques: [{ id: 3, number: 'RCV-000003', customer: 'شركة الخليج', amount: 20, reference: null, received_at: '2026-10-20', due_at: '2026-10-25', overdue: false, settled_at: null, note: null, status: 'تحت التحصيل' }],
+            bankAccounts: [],
+        });
+        render(<Cheques />);
+    };
+
+    it('«صُرِف» لمن يسجّل التحصيل، و«ارتدّ» لمن يملك إلغاءَه وحده', async () => {
+        await cheques(['customerPayment.create']);
+        expect(screen.queryByRole('button', { name: 'صُرِف' })).not.toBeNull();
+        expect(screen.queryByRole('button', { name: /ارتدّ/ })).toBeNull();
+    });
+
+    it('ومن يملك الإلغاءَ وحده يرى «ارتدّ» ولا يرى «صُرِف»', async () => {
+        await cheques(['customerPayment.cancel']);
+        expect(screen.queryByRole('button', { name: /ارتدّ/ })).not.toBeNull();
+        expect(screen.queryByRole('button', { name: 'صُرِف' })).toBeNull();
     });
 });

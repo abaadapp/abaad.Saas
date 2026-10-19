@@ -3,6 +3,7 @@ import { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import { includable } from '@/lib/invoice-totals';
 
 /**
  * ما يُختار مع بند فاتورة العميل — مقاسُه وإضافاتُه وخياراتُه وملاحظتُه.
@@ -13,6 +14,9 @@ import { useTranslate } from '@/lib/i18n';
  * «ضمن السعر». والخادمُ يقرأ ثمنَ الإضافة واسمَها من الكتالوج، ويردّ ما لا
  * يُباع مع الصنف (`InvoiceLineDetails::expand`). والإضافةُ المدفوعةُ سطرٌ
  * بثمنها تحت صنفها في الورقة؛ والمشمولةُ تُسمّى بلا مال.
+ *
+ * و«ضمن السعر» لا يُعرض إلّا لما ثمنُه في الكتالوج صفر (`includable`): مدفوعةٌ
+ * تُعطى مجّانًا تُعطى بخصمٍ ظاهرٍ على الصنف، لا بعلامةٍ تُخفي ثمنها.
  *
  * والبندُ اليدويُّ (بلا صنف) له خياراتٌ وملاحظةٌ فقط: لا مقاسَ ولا إضافةَ
  * بلا صنفٍ تُباع معه — ومن أراد إضافةً وحدَها أضافها بندًا مستقلًّا.
@@ -131,17 +135,19 @@ export default function LineDetails({ value, onChange, variants, addons, onVaria
                                         onChange={(e) => setAddon(i, { quantity: e.target.value })}
                                         aria-label={t('الكمية')}
                                     />
-                                    <label className="flex items-center gap-1.5 text-[12px] text-[#4b4b4b]">
-                                        <input
-                                            type="checkbox"
-                                            checked={a.included}
-                                            onChange={(e) => setAddon(i, { included: e.target.checked })}
-                                        />
-                                        {t('ضمن السعر')}
-                                    </label>
+                                    {row && includable(row.price) && (
+                                        <label className="flex items-center gap-1.5 text-[12px] text-[#4b4b4b]">
+                                            <input
+                                                type="checkbox"
+                                                checked={a.included}
+                                                onChange={(e) => setAddon(i, { included: e.target.checked })}
+                                            />
+                                            {t('ضمن السعر')}
+                                        </label>
+                                    )}
                                     {/* والثمنُ للعلم — الخادمُ يكتبه من الكتالوج */}
                                     <span className="w-24 text-end tabular-nums text-[#6b7280]">
-                                        {a.included || !row ? '—' : money(row.price * (Number(a.quantity) || 0))}
+                                        {!row || (a.included && includable(row.price)) ? '—' : money(row.price * (Number(a.quantity) || 0))}
                                     </span>
                                     <Button
                                         type="button"

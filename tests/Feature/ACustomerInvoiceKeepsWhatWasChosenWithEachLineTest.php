@@ -41,6 +41,8 @@ use Tests\TestCase;
  *   - **الحفظ:** المقاسُ من مقاسات الصنف، والإضافةُ ممّا يُباع معه، وثمنُها
  *     واسمُها من الكتالوج لا من المتصفّح؛ والمدفوعةُ سطرٌ تحت صنفها، والمشمولةُ
  *     في الثمن تُسمّى بلا مال؛ والخياراتُ والملاحظةُ لقطة.
+ *   - **«ضمن السعر»:** لما ثمنُه في الكتالوج صفرٌ وحده. مدفوعةٌ معلَّمةٌ به
+ *     تُردّ ولا يُكتب شيء — لموظّفٍ ولا لصاحب النشاط — فلا ينقص إيرادٌ ولا ضريبة.
  *   - **المال:** الإجماليُّ يجمع الصنفَ وإضافاتِه المدفوعةَ مرّةً واحدة، شاملًا
  *     للضريبة وغيرَ شامل، والمشمولةُ لا تُحسب، ولا قيدَ ولا مخزونَ للعرض.
  *   - **الردّ:** مقاسُ صنفٍ آخر، وإضافةٌ لا تُباع معه، وإضافةٌ مع بندٍ يدويّ،
@@ -98,7 +100,8 @@ class ACustomerInvoiceKeepsWhatWasChosenWithEachLineTest extends TestCase
         $this->large = ProductVariant::create(['business_id' => $this->shop->id, 'product_id' => $this->bouquet->id, 'name' => 'كبيرة', 'name_en' => 'Large', 'price' => 25, 'active' => true]);
 
         $this->chocolate = Addon::create(['business_id' => $this->shop->id, 'name' => 'شوكولاتة', 'name_en' => 'Chocolate', 'price' => 3.5, 'active' => true]);
-        $this->card = Addon::create(['business_id' => $this->shop->id, 'name' => 'كرت إهداء', 'name_en' => 'Greeting card', 'price' => 1.5, 'active' => true]);
+        // مجّانيٌّ في الكتالوج — وهو وحدَه ما يُشمل في ثمن الصنف
+        $this->card = Addon::create(['business_id' => $this->shop->id, 'name' => 'كرت إهداء', 'name_en' => 'Greeting card', 'price' => 0, 'active' => true]);
         // تُباع مع ما اختير لها وحده — ولم يُختر لها شيء
         $this->ribbon = Addon::create(['business_id' => $this->shop->id, 'name' => 'شريطة', 'price' => 2, 'active' => true, 'scope' => Addon::SCOPE_SELECTED]);
 
@@ -211,6 +214,7 @@ class ACustomerInvoiceKeepsWhatWasChosenWithEachLineTest extends TestCase
             'إضافةٌ لا تُباع مع الصنف' => ['scoped'],
             'إضافةٌ مع بندٍ يدويّ' => ['manual'],
             'إضافةُ متجرٍ آخر' => ['foreign'],
+            'مدفوعةٌ «ضمن السعر»' => ['paidIncluded'],
         ];
     }
 
@@ -225,6 +229,7 @@ class ACustomerInvoiceKeepsWhatWasChosenWithEachLineTest extends TestCase
             'scoped' => $this->lines(['addons' => [['addon_id' => $this->ribbon->id, 'quantity' => 1]]]),
             'manual' => [['description' => 'بندٌ يدويّ', 'quantity' => 1, 'unit_price' => 5, 'addons' => [['addon_id' => $this->chocolate->id, 'quantity' => 1]]]],
             'foreign' => $this->lines(['addons' => [['addon_id' => $foreign->id, 'quantity' => 1]]]),
+            'paidIncluded' => $this->lines(['addons' => [['addon_id' => $this->chocolate->id, 'quantity' => 2, 'included' => true]]]),
         };
 
         $before = [CustomerInvoice::count(), CustomerInvoiceItem::count(), DB::table('journal_entries')->count()];
@@ -234,14 +239,63 @@ class ACustomerInvoiceKeepsWhatWasChosenWithEachLineTest extends TestCase
         $this->assertSame($before, [CustomerInvoice::count(), CustomerInvoiceItem::count(), DB::table('journal_entries')->count()]);
     }
 
+    /**
+     * «ضمن السعر» لا يُعطي مدفوعةً مجّانًا — لا لموظّفٍ ولا لصاحب النشاط.
+     *
+     * لا قاعدةَ في الكتالوج تشمل إضافةً بثمنٍ في صنف، ولا فعلَ يأذن به: فالعلَمُ
+     * على شوكولاتةٍ بثلاثة ونصف يُردّ ولا يُكتب شيء. وبثمنها تُحسب مرّةً بضريبة
+     * صنفها؛ والكرتُ المجّانيُّ في الكتالوج وحده يُشمل — فلا ينقص إيرادٌ ولا ضريبة.
+     */
+    #[DataProvider('vat')]
+    public function test_a_paid_addon_is_never_included_free_so_the_revenue_and_its_tax_stay_whole(bool $inclusive): void
+    {
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '1']);
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_rate'], ['value' => '5']);
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'tax_mode'], ['value' => $inclusive ? 'inclusive' : 'exclusive']);
+
+        $clerk = User::create([
+            'business_id' => $this->shop->id, 'name' => 'البائع', 'email' => 'clerk@lines.om',
+            'password' => bcrypt('x'), 'role' => 'sales', 'status' => 'نشط',
+        ]);
+        $books = fn () => [CustomerInvoice::count(), CustomerInvoiceItem::count(), DB::table('journal_entries')->count()];
+        $before = $books();
+        $paidAsFree = $this->lines(['addons' => [['addon_id' => $this->chocolate->id, 'quantity' => 2, 'included' => true]]]);
+
+        // البائعُ مسودّةً، وصاحبُ النشاط مُصدِرًا — كلاهما يُردّ
+        $this->actingAs($clerk)->post(route('admin.customerInvoices.store'), $this->form($paidAsFree, ['issue' => false]))->assertSessionHasErrors('items');
+        $this->actingAs($this->owner)->post(route('admin.customerInvoices.store'), $this->form($paidAsFree))->assertSessionHasErrors('items');
+        $this->assertSame($before, $books(), 'لا فاتورةَ ولا بندَ ولا قيد');
+
+        // وبثمنها: الشوكولاتتان سطرٌ بسبعةٍ وضريبةِ صنفها
+        $paid = $this->issued($this->lines(['addons' => [['addon_id' => $this->chocolate->id, 'quantity' => 2]]]));
+        $expect = CustomerInvoices::compute($this->shop->id, [
+            ['quantity' => 1, 'unit_price' => 25], ['quantity' => 2, 'unit_price' => 3.5], ['quantity' => 1, 'unit_price' => 10],
+        ]);
+        foreach (['subtotal' => 'subtotal', 'tax' => 'tax_total', 'total' => 'total'] as $key => $column) {
+            $this->assertEqualsWithDelta($expect[$key], (float) $paid->{$column}, 0.0005, $column);
+        }
+
+        // والكرتُ المجّانيُّ ضمن السعر لا يغيّر شيئًا: لا إيرادَ له ولا ضريبة
+        $free = $this->issued($this->lines(['addons' => [['addon_id' => $this->card->id, 'quantity' => 1, 'included' => true]]]));
+        $bare = CustomerInvoices::compute($this->shop->id, [['quantity' => 1, 'unit_price' => 25], ['quantity' => 1, 'unit_price' => 10]]);
+        foreach (['subtotal' => 'subtotal', 'tax' => 'tax_total', 'total' => 'total'] as $key => $column) {
+            $this->assertEqualsWithDelta($bare[$key], (float) $free->{$column}, 0.0005, $column);
+        }
+        $this->assertCount(2, $free->items, 'الصنفُ والبندُ اليدويّ — والمشمولُ لا سطرَ له');
+        $this->assertSame('كرت إهداء', $free->items->firstWhere('parent_item_id', null)->details['included'][0]['name']);
+    }
+
     public function test_the_preview_draws_the_same_details_and_drops_what_is_not_allowed(): void
     {
+        $wrap = Addon::create(['business_id' => $this->shop->id, 'name' => 'تغليف فاخر', 'price' => 2, 'active' => true]);
+
         $html = $this->postJson(route('admin.customerInvoices.preview'), [
             'customer_id' => $this->customer->id,
             'items' => $this->lines(['addons' => [
                 ['addon_id' => $this->chocolate->id, 'quantity' => 2],
                 ['addon_id' => $this->card->id, 'quantity' => 1, 'included' => true],
                 ['addon_id' => $this->ribbon->id, 'quantity' => 1],
+                ['addon_id' => $wrap->id, 'quantity' => 1, 'included' => true],
             ]]),
         ])->assertOk()->json('html');
 
@@ -250,6 +304,7 @@ class ACustomerInvoiceKeepsWhatWasChosenWithEachLineTest extends TestCase
             $this->assertStringContainsString($mark, $text, $mark);
         }
         $this->assertStringNotContainsString('شريطة', $text, 'إضافةٌ لا تُباع مع الصنف تسقط من المعاينة');
+        $this->assertStringNotContainsString('تغليف فاخر', $text, 'ومدفوعةٌ «ضمن السعر» تسقط — لا تُرسم مجّانًا');
         $this->assertSame(0, CustomerInvoice::count(), 'المعاينةُ لا تكتب ورقة');
     }
 

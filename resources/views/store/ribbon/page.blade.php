@@ -18,7 +18,7 @@
     .rb-cp-figure.is-cover img { object-fit: cover; }
     .rb-cp-text { margin: 0; font-size: 16px; line-height: 1.9; white-space: pre-line; text-wrap: pretty; overflow-wrap: anywhere; }
     .rb-cp-sec { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: clamp(20px, 4vw, 48px); align-items: center; }
-    .rb-cp-sec.is-text-only { grid-template-columns: minmax(0, 760px); justify-content: center; }
+    .rb-cp-sec.is-text-only { grid-template-columns: minmax(0, 760px); justify-content: start; }
     @media (min-width: 900px) { .rb-cp-sec.is-flip > .rb-cp-figure { order: 2; } }
 </style>
 <article class="rb-screen" data-testid="rb-custom-page" data-slug="{{ $customPage['slug'] }}">
@@ -26,10 +26,11 @@
         {{-- والمخفيّةُ تُعايَن وحدها — ويُقال لصاحبها إنّ زبونه لا يراها --}}
         <p class="rb-wrap" style="margin:16px auto 0;padding:10px 24px;font-size:13px;color:#6b655c" data-testid="rb-page-hidden">{{ $t['pageHidden'] }}</p>
     @endif
-    <header class="rb-wrap" style="padding:clamp(32px,5vw,64px) 24px 0;display:flex;flex-direction:column;gap:16px;max-width:900px">
+    {{-- والعنوانُ على حافّة الصور نفسِها — والنبذةُ سطورُها بطولٍ يُقرأ --}}
+    <header class="rb-wrap" style="padding:clamp(32px,5vw,64px) 24px 0;display:flex;flex-direction:column;gap:16px">
         <h1 class="rb-h1" style="font-size:clamp(28px,3.6vw,44px);line-height:1.2" data-testid="rb-page-title">{{ $customPage['title'] }}</h1>
         @if ($customPage['intro'] !== '')
-            <p class="rb-cp-text" style="font-size:17px;color:#3f3d2c" data-testid="rb-page-intro">{{ $customPage['intro'] }}</p>
+            <p class="rb-cp-text" style="font-size:17px;color:#3f3d2c;max-width:760px" data-testid="rb-page-intro">{{ $customPage['intro'] }}</p>
         @endif
     </header>
     @if ($customPage['image'])

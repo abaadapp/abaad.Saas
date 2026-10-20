@@ -179,9 +179,6 @@ Route::post('/forget-device', [LoginController::class, 'forgetDevice'])->name('d
  */
 Route::get('/health', HealthController::class)->name('health');
 
-// سحب طلّة — مؤقّت
-require __DIR__.'/talla.php';
-
 /*
  * الموقع المنشور لعارضٍ خارجيّ — بلا مصادقة.
  *

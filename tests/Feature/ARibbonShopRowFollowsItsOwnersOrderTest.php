@@ -194,7 +194,7 @@ class ARibbonShopRowFollowsItsOwnersOrderTest extends TestCase
     {
         return [
             'رمزٌ لا يُعرف' => ['all,best,url:https://evil.example'],
-            'مجموعةٌ لا توجد' => ['all,col:nothing'],
+            'رمزُ مجموعةٍ لا يُكتب رابطًا' => ['all,col:Not A Slug'],
             'رمزٌ مكرّر' => ['all,best,all'],
             'بلا «كل المنتجات»' => ['best,col:offers'],
             'معرّفُ فئةٍ نصٌّ' => ['all,cat:abc'],
@@ -209,9 +209,28 @@ class ARibbonShopRowFollowsItsOwnersOrderTest extends TestCase
         $this->assertSame('', (string) (MarketingSettings::group($this->shop->id, 'website')[StoreHeader::ROW] ?? ''));
     }
 
-    public function test_a_category_of_another_shop_is_refused(): void
+    /*
+     * ═══ والإشارةُ التي لا تقود إلى شيءٍ في متجره تسقط ولا تردّ الحفظ ═══
+     *
+     * مجموعةٌ حُذفت أو تبدّل رابطُها بعد ترتيب الشريط تبقى في ترتيبه المحفوظ،
+     * والترتيبُ يُرسَل مع المجموعات في صفّها — فكان حفظُ أيّ مجموعةٍ يُردّ حتّى
+     * يُعاد ترتيبُ شريطٍ لم يلمسه. ومعرّفُ فئةِ متجرٍ آخر يسقط كذلك: لا يُحفظ.
+     */
+    public function test_a_collection_that_is_gone_drops_out_of_the_order_and_the_save_goes_through(): void
     {
-        $this->save('all,cat:'.$this->cat['foreign']->id)->assertSessionHasErrors(StoreHeader::ROW);
+        $this->save('col:offers,all,best')->assertSessionHasNoErrors();
+
+        $this->save('col:offers,all,col:gone,best', [StoreCollections::KEY => $this->collections([['slug' => 'eid', 'title_ar' => 'العيد']])])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('all,best', MarketingSettings::group($this->shop->id, 'website')[StoreHeader::ROW]);
+    }
+
+    public function test_a_category_of_another_shop_drops_out_and_is_not_saved(): void
+    {
+        $this->save('all,cat:'.$this->cat['foreign']->id.',best')->assertSessionHasNoErrors();
+
+        $this->assertSame('all,best', MarketingSettings::group($this->shop->id, 'website')[StoreHeader::ROW]);
     }
 
     public function test_a_collection_saved_in_the_same_request_may_be_ordered(): void

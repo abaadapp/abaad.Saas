@@ -120,8 +120,8 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         // رفوفٌ وبطاقاتٌ يراها الزائر ولا تمسّ مالًا ولا وصولًا — تُنشر
         // وترتيبُ صفّ المتجر والقائمةُ الرئيسيّة والصفحاتُ المخصّصة (ثلاثة)، وطرقُ عرض
         // الصور (أربعة: المنتجات والواجهة والشريط والقسم) — شكلٌ يراه الزائر، تُنشر
-        $this->assertCount(92, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
-        $this->assertCount(47, $versioned, 'تبدّل عددُ ما يُنشر');
+        $this->assertCount(93, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        $this->assertCount(48, $versioned, 'تبدّل عددُ ما يُنشر');
         $this->assertCount(45, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),

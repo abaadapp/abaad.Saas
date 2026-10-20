@@ -72,7 +72,8 @@ export function parseBar(raw: string | undefined): VisualBar {
         pages: b.pages === 'browse' ? 'browse' : 'home',
         cards: cards
             .filter((c): c is Record<string, unknown> => !! c && typeof c === 'object')
-            .filter((c) => parseTarget(c.target) !== null)
+            // والرابطُ المكتوبُ لرابط القائمة وزرّ الصفحة وحدهما — لا لبطاقة الشريط (`StoreVisualBar::TARGETS`)
+            .filter((c) => { const t = parseTarget(c.target); return t !== null && t.type !== 'url'; })
             .map((c) => {
                 const text = (k: string) => String(c[k] ?? '');
 

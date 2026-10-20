@@ -119,21 +119,25 @@ class AThemedShopEditsItsPageWhereItShowsTest extends TestCase
 
     /* ═══════════ وكلُّ حقلٍ في الصفّ الذي يظهر فيه ═══════════ */
 
-    /** الواجهةُ أوّلًا والتذييلُ آخرًا — وبينهما الأقسامُ بترتيب صاحبها */
-    public function test_the_rows_come_in_the_order_the_visitor_sees(): void
+    /*
+     * أربعةُ أبوابٍ أوّلًا — الواجهةُ ومجموعاتُ المتجر والقائمةُ وصفحاتُها والتذييل —
+     * ثمّ «إعدادات متقدّمة»: رأسُ المتجر، فأقسامُ الرئيسية بترتيب صاحبها، فعرضُ
+     * الصور، والشريطُ المصوّر المطفأُ آخرَها.
+     */
+    public function test_the_rows_come_four_doors_first_then_the_advanced_settings(): void
     {
         MarketingSettings::save($this->shop->id, 'website', ['store_sections' => 'about,cats']);
 
-        $keys = array_column(PageEditor::rows($this->shop->id), 'key');
+        $rows = PageEditor::rows($this->shop->id);
+        $keys = array_column($rows, 'key');
+        $group = fn (string $g) => array_column(array_filter($rows, fn (array $r) => $r['group'] === $g), 'key');
 
-        // والشريطُ المصوّر فوق الترويسة — أوّلُ ما يُرى — ثمّ رأسُ المتجر، ثمّ قائمتُه
-        // الرئيسيّة تحت الشعار، ثمّ الواجهة
-        $this->assertSame(PageEditor::VISUAL_BAR, $keys[0]);
-        $this->assertSame(PageEditor::HEAD, $keys[1]);
-        $this->assertSame(PageEditor::MENU, $keys[2]);
-        $this->assertSame(PageEditor::HERO, $keys[3]);
-        $this->assertSame(PageEditor::FOOT, end($keys));
-        $this->assertSame(['about', 'cats'], array_slice($keys, 4, 2), 'الترتيبُ ليس ترتيبَ صاحبه');
+        $this->assertSame([PageEditor::HERO, PageEditor::COLLECTIONS, PageEditor::MENU, PageEditor::FOOT], $group(PageEditor::MAIN));
+        $advanced = $group(PageEditor::ADVANCED);
+        $this->assertSame(PageEditor::HEAD, $advanced[0]);
+        $this->assertSame(['about', 'cats'], array_slice($advanced, 1, 2), 'الترتيبُ ليس ترتيبَ صاحبه');
+        $this->assertSame(PageEditor::VISUAL_BAR, end($advanced), 'والشريطُ المطفأُ آخرُها');
+        $this->assertSame(array_merge($group(PageEditor::MAIN), $advanced), $keys, 'الأبوابُ أوّلًا ثمّ المتقدّمة');
 
         // والمطفأُ يبقى معروضًا ليُرفع ثانية — لا يخرج من الشاشة إلى العدم
         foreach (StorePage::DEFAULT_ORDER as $section) {

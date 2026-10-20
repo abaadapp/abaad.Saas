@@ -29,6 +29,8 @@ const { CategoriesPanel } = await import('@/Pages/Admin/Website/theme/CatalogToo
  */
 
 const row = (over: Partial<EditorRow> & { key: string }): EditorRow => ({
+    // البابُ كما يقسمه الخادم (`PageEditor::rows`): الثابتُ بابٌ أوّل إلّا ما يُضبط مرّةً
+    group: over.fixed && ! ['head', 'images', 'upsells', 'vbar'].includes(over.key) ? 'main' : 'advanced',
     label: over.key,
     hint: 'وصفُ الصفّ',
     fixed: false,
@@ -65,11 +67,17 @@ const TOOLS: CatalogTools = {
     ],
 };
 
+/** و«إعدادات متقدّمة» تُفتح بعد الرسم — فالصفوفُ كلُّها في متناول الاختبار كما كانت */
+const openAdvanced = () => {
+    const toggle = screen.queryByTestId('advanced-toggle');
+    if (toggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+};
+
 const draw = (catalogTools?: CatalogTools | null) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     Object.assign(pageProps, { translations: {} });
 
-    return render(
+    const view = render(
         <ThemeEditor
             theme="ribbon"
             site={{ name: 'RIBBON', published: true, url: 'https://ribbon.abaadapp.om', slug: 'ribbon', host: 'abaadapp.om' }}
@@ -83,6 +91,9 @@ const draw = (catalogTools?: CatalogTools | null) => {
             {...(catalogTools === undefined ? {} : { catalogTools })}
         />,
     );
+    openAdvanced();
+
+    return view;
 };
 
 const openRow = (label: string) => fireEvent.click(screen.getByText(label));

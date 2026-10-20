@@ -248,7 +248,10 @@ class ARibbonCustomPageShowsWhatItsOwnerWroteTest extends TestCase
             'صورةٌ من موقعٍ آخر' => [fn (self $t) => $t->services(['image' => 'https://tracker.example/pixel.png'])],
             'صورةٌ من مجلّد الجار' => [fn (self $t) => $t->services(['image' => $t->image('n.png', 10, 10, $t->neighbour)])],
             'صورةُ قسمٍ javascript' => [fn (self $t) => $t->services(['sections' => [['image' => 'javascript:alert(1)', 'title_ar' => 'x']]])],
-            'زرٌّ إلى رابطٍ خارجيّ' => [fn (self $t) => $t->services(['cta' => ['label_ar' => 'اذهب', 'target' => ['type' => 'url', 'value' => 'https://evil.example']]])],
+            // والرابطُ المكتوبُ يُقبل آمنًا وحده (`StoreTarget::safeUrl`) — لا شيفرةٌ ولا نطاقٌ بلا بروتوكول
+            'زرٌّ إلى javascript' => [fn (self $t) => $t->services(['cta' => ['label_ar' => 'اذهب', 'target' => ['type' => 'url', 'value' => 'javascript:alert(1)']]])],
+            'زرٌّ إلى //نطاقٍ آخر' => [fn (self $t) => $t->services(['cta' => ['label_ar' => 'اذهب', 'target' => ['type' => 'url', 'value' => '//evil.example']]])],
+            'زرٌّ إلى data:' => [fn (self $t) => $t->services(['cta' => ['label_ar' => 'اذهب', 'target' => ['type' => 'url', 'value' => 'data:text/html,<script>alert(1)</script>']]])],
             'زرٌّ إلى مجموعةٍ لا توجد' => [fn (self $t) => $t->services(['cta' => ['label_ar' => 'اذهب', 'target' => ['type' => 'collection', 'value' => 'nothing']]])],
             'قسمٌ فارغ' => [fn (self $t) => $t->services(['sections' => [['image' => '', 'title_ar' => '', 'body_ar' => '']]])],
             'بلا عنوان' => [fn (self $t) => $t->services(['title_ar' => '', 'title_en' => ''])],
@@ -294,7 +297,9 @@ class ARibbonCustomPageShowsWhatItsOwnerWroteTest extends TestCase
     public function test_a_saved_page_waits_for_publishing(): void
     {
         $this->assertContains(StoreCustomPages::KEY, StoreContent::VERSIONED);
-        $this->assertContains(PageEditor::PAGES, array_column(PageEditor::rows($this->shop->id), 'key'));
+        // والصفحاتُ تُكتب في صفّ القائمة نفسِه — مع عناصرها، لا في صفٍّ ثانٍ
+        $menu = collect(PageEditor::rows($this->shop->id))->firstWhere('key', PageEditor::MENU);
+        $this->assertContains(StoreCustomPages::KEY, array_column($menu['fields'], 'key'));
 
         ThemePublisher::enable($this->shop, (int) $this->owner->id);
         $this->save([$this->services()])->assertSessionHasNoErrors();

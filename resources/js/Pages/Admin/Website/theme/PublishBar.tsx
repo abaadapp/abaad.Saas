@@ -74,6 +74,23 @@ export default function PublishBar({ state }: { state: PublishState }) {
         );
     };
 
+    /*
+     * «تراجع عن التعديلات غير المنشورة» — المسوّدةُ تعود إلى ما يراه زبونُه.
+     *
+     * والموقعُ الحيّ لا يُمسّ. ويُعاد بناءُ المحرّر من جديد (`preserveState: false`):
+     * حقولُه تُقرأ مرّةً حين يُفتح، فلو بقيت لَعرضت ما تُرُوجع عنه.
+     */
+    const discard = async () => {
+        if (! await ask({
+            message: 'نتراجع عن كلّ ما حفظته ولم تنشره؟ تعود صفحتك إلى ما يراه زبائنك الآن — ولا يتغيّر شيءٌ عندهم.',
+            action: 'تراجع',
+            danger: true,
+        })) return;
+
+        setBusy(true);
+        router.post(route('admin.website.store.discard'), {}, { preserveScroll: true, preserveState: false, onFinish: () => setBusy(false) });
+    };
+
     return (
         <>
             <div
@@ -108,7 +125,13 @@ export default function PublishBar({ state }: { state: PublishState }) {
                     )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    {dirty && (
+                        <Button type="button" variant="ghost" size="sm" onClick={discard} disabled={busy} data-testid="discard">
+                            <RotateCcw />
+                            {t('تراجع عن التعديلات غير المنشورة')}
+                        </Button>
+                    )}
                     {state.versions.length > 0 && (
                         <Button type="button" variant="ghost" size="sm" onClick={() => setHistory(true)} data-testid="open-history">
                             <History />

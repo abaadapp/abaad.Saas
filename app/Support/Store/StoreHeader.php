@@ -258,17 +258,35 @@ final class StoreHeader
             $bad();
         }
 
+        /*
+         * ═══ والإشارةُ القديمةُ تسقط ولا تردّ الحفظ ═══
+         *
+         * مجموعةٌ حُذفت أو تبدّل رابطُها بعد أن رُتّب الشريط، وفئةٌ حُذفت،
+         * تبقى أسماؤها في الترتيب المحفوظ. وكان الحفظُ يُردّ من أجلها — وهو
+         * يُرسَل مع المجموعات في صفّها — فلا يُحفظ تعديلُ مجموعةٍ حتّى يُعاد
+         * ترتيبُ شريطٍ لم يلمسه. فما لا يقود إلى شيءٍ في متجره يسقط وحده،
+         * ومعرّفُ فئةِ غيره كذلك: يسقط ولا يُحفظ. والرمزُ الغريبُ يُردّ.
+         */
+        $kept = [];
+
         foreach ($tokens as $token) {
             if (in_array($token, ['all', self::VIEW_BEST], true)) {
+                $kept[] = $token;
+
                 continue;
             }
 
-            if (str_starts_with($token, 'col:') && in_array(substr($token, 4), $slugs, true)) {
+            if (str_starts_with($token, 'col:') && preg_match(StoreCollections::SLUG, substr($token, 4)) === 1) {
+                if (in_array(substr($token, 4), $slugs, true)) {
+                    $kept[] = $token;
+                }
+
                 continue;
             }
 
             if (preg_match('/^cat:([1-9]\d{0,18})$/', $token, $m) === 1) {
                 $cats[] = (int) $m[1];
+                $kept[] = $token;
 
                 continue;
             }
@@ -276,19 +294,18 @@ final class StoreHeader
             $bad();
         }
 
-        if ($cats !== [] && Category::where('business_id', $businessId)->whereIn('id', $cats)->count() !== count($cats)) {
-            throw ValidationException::withMessages([
-                self::ROW => __('فئةٌ في ترتيب شريط المتجر ليست من فئاتك — أعد ترتيبه.'),
-            ]);
+        if ($cats !== []) {
+            $mine = Category::where('business_id', $businessId)->whereIn('id', $cats)->pluck('id')->map(fn ($id) => 'cat:'.$id)->all();
+            $kept = array_values(array_filter($kept, fn (string $t) => ! str_starts_with($t, 'cat:') || in_array($t, $mine, true)));
         }
 
-        if (! in_array('all', $tokens, true)) {
+        if (! in_array('all', $kept, true)) {
             throw ValidationException::withMessages([
                 self::ROW => __('«كل المنتجات» يبقى في شريط المتجر — رتّبه ولا تحذفه.'),
             ]);
         }
 
-        return implode(',', $tokens);
+        return implode(',', $kept);
     }
 
     /**

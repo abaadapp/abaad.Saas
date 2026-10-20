@@ -64,6 +64,31 @@ class StorePublishController extends Controller
     }
 
     /**
+     * «تراجع عن التعديلات غير المنشورة» — المسوّدةُ تعود إلى ما يراه زبونُه.
+     *
+     * والموقعُ الحيّ لا يُمسّ: ما نُشر يبقى، وما حُفظ ولم يُنشر يذهب. ويُسأل
+     * صاحبُه في الشاشة قبل أن يُرسَل — لا يُتراجَع بضغطةٍ عابرة.
+     */
+    public function discard(): RedirectResponse
+    {
+        $business = Business::findOrFail($this->bid());
+
+        if ($business->storefrontTheme() === null || ! StoreContent::usesDrafts((int) $business->id)) {
+            abort(404);
+        }
+
+        if (! ThemePublisher::discard($business, auth()->id())) {
+            return back()->with('toast', ['msg' => __('لا تعديلات غير منشورة'), 'type' => 'info']);
+        }
+
+        Activity::log('updated', 'تراجع عن تعديلات متجره غير المنشورة');
+
+        return back()->with('toast', [
+            'msg' => __('عادت صفحتك إلى ما يراه زبائنك الآن'), 'type' => 'success',
+        ]);
+    }
+
+    /**
      * «استرجاع نسخة» — إلى المسوّدة لا إلى الموقع.
      *
      * فيراها صاحبُها ويراجعها ثمّ ينشرها بيده. ولو كُتبت على الحيّ رأسًا

@@ -17,16 +17,31 @@ use App\Models\Product;
  *
  * ═══ والوجهةُ نوعٌ مغلق وقيمةٌ من هذا المتجر ═══
  *
- * لا رابطَ حرٌّ يُكتب: صفحةٌ من صفحات المتجر، أو مجموعةٌ أو صفحةٌ مخصّصةٌ
- * باسمها المختصر، أو فئةٌ أو صنفٌ بمعرّفه. فلا رابطَ خارجيٌّ يُوزَّع من صفحةِ
- * تاجر، ولا `javascript:`، ولا معرّفَ لمتجرٍ آخر — الحفظُ يسأل القاعدةَ
- * عن ملكيّته، والقراءةُ تسأل ثانيةً: وجهةٌ زالت بعد الحفظ (مجموعةٌ أُخفيت،
- * صنفٌ أُوقف، صفحةٌ حُذفت) تُسقط ما يقود إليها — لا رابطَ إلى «غير موجود».
+ * صفحةٌ من صفحات المتجر، أو مجموعةٌ أو صفحةٌ مخصّصةٌ باسمها المختصر، أو فئةٌ
+ * أو صنفٌ بمعرّفه. ولا معرّفَ لمتجرٍ آخر — الحفظُ يسأل القاعدةَ عن ملكيّته،
+ * والقراءةُ تسأل ثانيةً: وجهةٌ زالت بعد الحفظ (مجموعةٌ أُخفيت، صنفٌ أُوقف،
+ * صفحةٌ حُذفت) تُسقط ما يقود إليها — لا رابطَ إلى «غير موجود».
+ *
+ * ═══ والرابطُ المكتوب لموضعين وحدهما (`URL`) ═══
+ *
+ * رابطُ القائمة وزرُّ الصفحة يقبلان رابطًا يكتبه صاحبُه: مسارًا في متجره
+ * (`‎/shop?cat=3‎`) أو عنوانًا كاملًا بـ`https`. ولا شيءَ سواهما: لا
+ * `javascript:` ولا `data:` ولا مسافةٌ ولا رمزُ تحكّم — فما يُرسم في `href`
+ * رابطٌ يُفتح لا شيفرةٌ تُنفَّذ. والشريطُ المصوّر لا يقبله: أنواعُه `TYPES`.
  */
 final class StoreTarget
 {
     /** ما يُفتح — والقيمةُ فارغةٌ للصفحات، واسمٌ مختصرٌ أو معرّفٌ لما سواها */
     public const TYPES = ['home', 'shop', 'best', 'about', 'contact', 'collection', 'category', 'product', 'page'];
+
+    /** الرابطُ المكتوب — مسارٌ في المتجر أو عنوانٌ كاملٌ بـ`https` */
+    public const URL = 'url';
+
+    /** ما يقبله رابطُ القائمة وزرُّ الصفحة — الأنواعُ كلُّها والرابطُ المكتوب */
+    public const LINKS = [...self::TYPES, self::URL];
+
+    /** أطولُ رابطٍ يُكتب */
+    public const URL_MAX = 300;
 
     /** ما قيمتُه اسمٌ مختصر — `StoreCollections::SLUG` */
     private const BY_SLUG = ['collection', 'page'];
@@ -51,11 +66,18 @@ final class StoreTarget
 
         $type = is_string($target['type'] ?? null) ? $target['type'] : '';
 
-        if (! in_array($type, self::TYPES, true)) {
+        if (! in_array($type, self::LINKS, true)) {
             return null;
         }
 
         $value = $target['value'] ?? '';
+
+        // والرابطُ المكتوب يُقرأ بقاعدة حفظه نفسِها — ما لا يصحّ لا يُرسم
+        if ($type === self::URL) {
+            $url = is_string($value) ? self::safeUrl($value) : null;
+
+            return $url === null ? null : ['type' => self::URL, 'value' => $url];
+        }
 
         return ['type' => $type, 'value' => match (true) {
             in_array($type, self::BY_SLUG, true) => is_scalar($value) ? (string) $value : '',
@@ -115,9 +137,47 @@ final class StoreTarget
                 'page' => in_array($value, $pages, true) ? $base.'/'.StoreCustomPages::PATH.'/'.$value : null,
                 'category' => in_array((int) $value, $categories, true) ? $base.'/shop?cat='.(int) $value : null,
                 'product' => in_array((int) $value, $products, true) ? $base.'/p/'.(int) $value : null,
+                // والمسارُ تحت عنوان المتجر — `/s/ribbon/shop` على عنوان أبعاد، و`/shop` على نطاقه
+                self::URL => self::external((string) $value) ? (string) $value : $base.(string) $value,
                 default => null,
             };
         }, array_values($targets));
+    }
+
+    /** أهو عنوانٌ كاملٌ خارج المتجر؟ — فيُفتح في نافذةٍ جديدة */
+    public static function external(string $url): bool
+    {
+        return str_starts_with($url, 'https://') || str_starts_with($url, 'http://');
+    }
+
+    /**
+     * رابطٌ مكتوب ← رابطٌ يُحفظ ويُرسم — أو `null`.
+     *
+     * مسارٌ يبدأ بـ`/` وحدها (لا `//` فهي عنوانٌ في نطاقٍ آخر)، أو عنوانٌ كاملٌ
+     * بـ`http(s)` له نطاق. ولا مسافةَ ولا رمزَ تحكّم ولا `\` في أيٍّ منهما.
+     */
+    public static function safeUrl(string $raw): ?string
+    {
+        $url = trim($raw);
+
+        if ($url === '' || strlen($url) > self::URL_MAX || preg_match('/[\s\x00-\x1F\x7F\\\\<>"\']/u', $url) === 1) {
+            return null;
+        }
+
+        if (str_starts_with($url, '/')) {
+            return str_starts_with($url, '//') ? null : $url;
+        }
+
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || ! in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)) {
+            return null;
+        }
+
+        $host = (string) ($parts['host'] ?? '');
+
+        return $host !== '' && str_contains($host, '.') && filter_var($url, FILTER_VALIDATE_URL) !== false
+            && self::external($url) ? $url : null;
     }
 
     /* ═══════════ الحفظ ═══════════ */
@@ -132,15 +192,21 @@ final class StoreTarget
      * @param  list<string>  $collections  أسماءُ المجموعات المختصرة التي يُقاس عليها — ما يُحفظ معها، وإلّا المسوّدة
      * @param  list<string>  $pages  وأسماءُ الصفحات المخصّصة كذلك
      * @param  list<string>  $types  الأنواعُ المقبولة في هذا الموضع
-     * @return array{0: array{type: string, value: string|int}|null, 1: 'type'|'missing'|null}
+     * @return array{0: array{type: string, value: string|int}|null, 1: 'type'|'missing'|'url'|null}
      */
     public static function checked(int $businessId, mixed $target, array $collections, array $pages, array $types = self::TYPES): array
     {
         $type = is_array($target) && is_string($target['type'] ?? null) ? $target['type'] : '';
         $value = is_array($target) ? ($target['value'] ?? '') : '';
 
-        if (! in_array($type, $types, true) || ! in_array($type, self::TYPES, true)) {
+        if (! in_array($type, $types, true) || ! in_array($type, self::LINKS, true)) {
             return [null, 'type'];
+        }
+
+        if ($type === self::URL) {
+            $url = is_string($value) ? self::safeUrl($value) : null;
+
+            return $url === null ? [null, 'url'] : [['type' => self::URL, 'value' => $url], null];
         }
 
         $id = is_int($value) || (is_string($value) && preg_match('/^[1-9]\d{0,18}$/', $value)) ? (int) $value : 0;

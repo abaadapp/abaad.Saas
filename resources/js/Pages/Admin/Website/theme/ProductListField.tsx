@@ -8,6 +8,9 @@ export interface ListProduct {
     id: number;
     name: string;
     image: string | null;
+    /** واسمُه الإنجليزيّ وفئتُه — يُبحث بهما في منتقي المنتجات (`ProductPicker`) */
+    name_en?: string;
+    category?: string;
 }
 
 /** «12,7,30» ← [12, 7, 30] — معرّفاتٌ موجبةٌ بترتيبها */

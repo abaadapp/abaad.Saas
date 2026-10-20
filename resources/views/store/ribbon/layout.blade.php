@@ -162,6 +162,7 @@
         html[lang="en"] .rb-nav-a { letter-spacing: .14em; }
         .rb-nav-a:hover { color: var(--rb-cream); }
         .rb-nav-a.is-on { color: var(--rb-cream); border-bottom-color: var(--rb-cream); }
+        .rb-nav-label, .rb-nav-label:hover { color: rgba(239,234,219,.6); cursor: default; }
         @media (max-width: 1023px) { .rb-nav-in { padding: 0 16px; gap: 2px 18px; } .rb-nav-a { font-size: 12px; min-height: 42px; } }
         /*
          * ═══ والقائمةُ التي كتبها صاحبُها سطرٌ واحدٌ يُمرَّر — لا أسطرٌ تلتفّ ═══
@@ -417,10 +418,15 @@
         <nav class="rb-nav{{ ($navScroll ?? false) ? ' rb-nav-scroll' : '' }}" data-testid="rb-nav" aria-label="{{ $t['footPages'] }}">
             <div class="rb-nav-in"{!! ($navScroll ?? false) ? ' data-rb-nav-scroll' : '' !!}>
                 @foreach ($nav as $rbLink)
+                    @if ($rbLink['href'] === null)
+                        {{-- والعنوانُ كلمةٌ في القائمة لا رابط — بلا `href` ولا يُضغط ولا يُضاء --}}
+                        <span class="rb-nav-a rb-nav-label" data-testid="rb-nav-{{ $rbLink['key'] }}">{{ $rbLink['label'] }}</span>
+                    @else
                     <a href="{{ $rbLink['href'] }}"
                        class="rb-nav-a @if ($rbLink['current']) is-on @endif"
                        data-testid="rb-nav-{{ $rbLink['key'] }}"
-                       @if ($rbLink['current']) aria-current="page" @endif>{{ $rbLink['label'] }}</a>
+                       @if ($rbLink['current']) aria-current="page" @endif{!! ($rbLink['external'] ?? false) ? ' target="_blank" rel="noopener noreferrer"' : '' !!}>{{ $rbLink['label'] }}</a>
+                    @endif
                 @endforeach
             </div>
         </nav>
@@ -466,11 +472,13 @@
 <footer class="rb-foot">
     <div class="rb-foot-in">
         <div class="rb-foot-grid">
+            {{-- والشعارُ أوّلًا دائمًا — ويختار صاحبُه إظهارَ نبذته وزرَّي التواصل تحته --}}
             <div style="display:flex;flex-direction:column;gap:16px">
                 <img src="{{ \App\Support\Store\StoreAsset::url('/brand/ribbon/logo-cream.svg') }}" alt="{{ $business->name }}" style="width:180px;height:auto;display:block">
-                @if ($identity['about'] !== '')
+                @if ($footer['about'] && $identity['about'] !== '')
                     <p style="margin:0;line-height:1.8;max-width:300px">{{ $identity['about'] }}</p>
                 @endif
+                @if ($footer['social'])
                 <div class="rb-social" style="display:flex;gap:10px;flex-wrap:wrap">
                     @if ($rbIg !== '')
                         <a href="{{ $rbIg }}" target="_blank" rel="noopener" data-testid="rb-foot-instagram">Instagram</a>
@@ -479,40 +487,55 @@
                         <a href="https://wa.me/{{ $rbWa }}" target="_blank" rel="noopener" data-testid="rb-foot-whatsapp">WhatsApp</a>
                     @endif
                 </div>
+                @endif
             </div>
-            @if (count($nav))
-                {{-- وعمودُ الصفحات في التذييل من مصدر القائمة نفسِه --}}
-                <div>
-                    <h3>{{ $t['footPages'] }}</h3>
-                    <div style="display:flex;flex-direction:column">
-                        @foreach ($nav as $rbLink)
-                            <a href="{{ $rbLink['href'] }}" data-testid="rb-foot-{{ $rbLink['key'] }}">{{ $rbLink['label'] }}</a>
-                        @endforeach
+            {{-- ثمّ الأعمدةُ بترتيب صاحبها وعناوينه — `StoreFooter::view` --}}
+            @foreach ($footer['columns'] as $rbCol)
+                @if ($rbCol['key'] === 'pages')
+                    {{-- وعمودُ الصفحات في التذييل من مصدر القائمة نفسِه --}}
+                    <div data-testid="rb-foot-col-pages">
+                        <h3>{{ $rbCol['title'] }}</h3>
+                        <div style="display:flex;flex-direction:column">
+                            @foreach ($rbCol['links'] as $rbLink)
+                                <a href="{{ $rbLink['href'] }}" data-testid="rb-foot-{{ $rbLink['key'] }}"{!! ($rbLink['external'] ?? false) ? ' target="_blank" rel="noopener noreferrer"' : '' !!}>{{ $rbLink['label'] }}</a>
+                            @endforeach
+                        </div>
                     </div>
-                </div>
-            @endif
-            <div>
-                <h3>{{ $t['footShop'] }}</h3>
-                <div style="display:flex;flex-direction:column">
-                    <a href="{{ $base }}/shop">{{ $t['all'] }}</a>
-                    @foreach ($catsNav as $c)
-                        <a href="{{ $base }}/shop?cat={{ $c['id'] }}">{{ $c['name'] }}</a>
-                    @endforeach
-                </div>
-            </div>
-            <div>
-                <h3>{{ $t['footContact'] }}</h3>
-                <div style="display:flex;flex-direction:column;gap:10px;line-height:1.6">
-                    @if ($rbTel !== '')<a href="tel:{{ $rbTel }}" data-testid="rb-foot-phone"><bdi dir="ltr">{{ $identity['phone'] }}</bdi></a>@endif
-                    @if ($rbWa !== '')<a href="https://wa.me/{{ $rbWa }}" target="_blank" rel="noopener" data-testid="rb-foot-whatsapp-line">{{ $t['cWhatsapp'] }}&nbsp;·&nbsp;<bdi dir="ltr">{{ $identity['whatsapp'] }}</bdi></a>@endif
-                    @if ($identity['email'] !== '')<a href="mailto:{{ $identity['email'] }}" data-testid="rb-foot-email"><bdi dir="ltr">{{ $identity['email'] }}</bdi></a>@endif
-                    @if ($identity['address'] !== '')<span>{{ $identity['address'] }}</span>@endif
-                    @if ($hours !== '')<span>{{ $hours }}</span>@endif
-                </div>
-            </div>
+                @elseif ($rbCol['key'] === 'shop')
+                    <div data-testid="rb-foot-col-shop">
+                        <h3>{{ $rbCol['title'] }}</h3>
+                        <div style="display:flex;flex-direction:column">
+                            @foreach ($rbCol['links'] as $rbLink)
+                                <a href="{{ $rbLink['href'] }}"@if ($rbLink['testid']) data-testid="{{ $rbLink['testid'] }}"@endif>{{ $rbLink['label'] }}</a>
+                            @endforeach
+                        </div>
+                    </div>
+                @elseif ($rbCol['key'] === 'contact')
+                    <div data-testid="rb-foot-col-contact">
+                        <h3>{{ $rbCol['title'] }}</h3>
+                        <div style="display:flex;flex-direction:column;gap:10px;line-height:1.6">
+                            @if ($rbCol['phone'] && $rbTel !== '')<a href="tel:{{ $rbTel }}" data-testid="rb-foot-phone"><bdi dir="ltr">{{ $identity['phone'] }}</bdi></a>@endif
+                            @if ($rbCol['whatsapp'] && $rbWa !== '')<a href="https://wa.me/{{ $rbWa }}" target="_blank" rel="noopener" data-testid="rb-foot-whatsapp-line">{{ $t['cWhatsapp'] }}&nbsp;·&nbsp;<bdi dir="ltr">{{ $identity['whatsapp'] }}</bdi></a>@endif
+                            @if ($rbCol['email'] && $identity['email'] !== '')<a href="mailto:{{ $identity['email'] }}" data-testid="rb-foot-email"><bdi dir="ltr">{{ $identity['email'] }}</bdi></a>@endif
+                            @if ($rbCol['address'] && $identity['address'] !== '')<span data-testid="rb-foot-address">{{ $identity['address'] }}</span>@endif
+                            @if ($rbCol['hours'] && $hours !== '')<span data-testid="rb-foot-hours">{{ $hours }}</span>@endif
+                        </div>
+                    </div>
+                @else
+                    {{-- وعمودُ نصٍّ كتبه — بلغة الصفحة وحدها، وأسطرُه أسطر --}}
+                    <div data-testid="rb-foot-text-{{ $rbCol['id'] }}">
+                        @if ($rbCol['title'] !== '')<h3>{{ $rbCol['title'] }}</h3>@endif
+                        @if ($rbCol['body'] !== '')<p style="margin:0;line-height:1.8;max-width:300px;white-space:pre-line">{{ $rbCol['body'] }}</p>@endif
+                    </div>
+                @endif
+            @endforeach
         </div>
+        @if ($footer['copyright'] !== null || ($footer['line'] && filled($tagline)))
         <div class="rb-foot-bottom">
-            <span>© {{ now()->year }} {{ $business->name }}</span>
+            {{-- وسطرُ الحقوق كما كتبه صاحبُه، أو السنةُ واسمُ المتجر — أو لا سطر --}}
+            @if ($footer['copyright'] !== null)
+                <span data-testid="rb-copyright">{{ $footer['copyright'] }}</span>
+            @endif
             {{--
                 وسطرُ التذييل يكتبه صاحبُ المحلّ — أو لا سطر.
 
@@ -520,10 +543,11 @@
                 محلٍّ يلبس الواجهةَ ولم يكتب سطرَه يُذيَّل بوصفِ غيره. فما لم
                 يُكتب لا يُرسم، ولا يُخترع له بديل.
             --}}
-            @if (filled($tagline))
+            @if ($footer['line'] && filled($tagline))
                 <span class="rb-track" style="--rb-track:.18em" data-testid="rb-tagline">{{ $tagline }}</span>
             @endif
         </div>
+        @endif
     </div>
 </footer>
 

@@ -8,7 +8,8 @@ import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import ProductListField, { type ListProduct } from './ProductListField';
+import ChosenProducts from './ProductPicker';
+import type { ListProduct } from './ProductListField';
 
 /**
  * مجموعاتُ المتجر في محرّر الواجهة — رفوفٌ يختار أصنافَها بيده، غيرُ الفئات.
@@ -17,8 +18,18 @@ import ProductListField, { type ListProduct } from './ProductListField';
  *
  * القائمةُ كلُّها تُكتب في مفتاحٍ واحد (`store_collections`) نصَّ JSON بترتيبها،
  * وتُحفظ بزرّ الصفّ وتُعايَن قبل الحفظ كأخواتها. والخادمُ يقرأ ما يصل بصرامة
- * (`Store\StoreCollections::validated`): أصنافُ متجره المعروضةُ وحدها، وصورُ
- * مجلّده وحدها، ورابطٌ مختصرٌ فريد.
+ * (`Store\StoreCollections::validated`): أصنافُ متجره وحدها، وصورُ مجلّده وحدها،
+ * ورابطٌ مختصرٌ فريد.
+ *
+ * ═══ والأصنافُ تُختار بصورها وتُبحث بلغتيها (`ProductPicker`) ═══
+ *
+ * والمختارُ يبقى كما اختاره: صنفٌ أخفاه بعدُ يُرسم في مجموعته «مخفيّ الآن» ولا
+ * يُسقَط حين تُفتح الشاشة — كان يُسقَط، فيضيع من المجموعة مع أوّل حفظ.
+ *
+ * ═══ ورابطُ المجموعة لا يُطلب منه ═══
+ *
+ * يُكتب من اسمها الإنجليزيّ ما لم تُحفظ بعد (`savedSlugs`)، ثمّ يثبت: رابطٌ
+ * شاركه لا ينكسر بإعادة التسمية.
  *
  * والصنفُ يبقى في فئته: المجموعةُ عرضٌ لا تصنيف، والصنفُ في أكثر من مجموعةٍ
  * إن اختير لها.
@@ -76,21 +87,6 @@ export function serializeCollections(list: StoreCollection[]): string {
     return list.length ? JSON.stringify(list) : '';
 }
 
-/**
- * ما يُرسَل أوّلَ ما تُفتح الشاشة — أصنافُ كلّ مجموعةٍ ممّا يُعرض الآن وحده.
- *
- * صنفٌ أُخفي بعد اختياره يُردّ الحفظُ كلُّه من أجله، وصاحبُ المحلّ لا يراه
- * في القائمة ليُزيله — قاعدةُ `keepShown` نفسُها.
- */
-export function keepShownCollections(raw: string | undefined, products: ListProduct[]): string {
-    const shown = new Set(products.map((p) => p.id));
-    const list = parseCollections(raw);
-
-    if (! list.length) return raw ?? '';
-
-    return serializeCollections(list.map((c) => ({ ...c, products: c.products.filter((id) => shown.has(id)) })));
-}
-
 /** اسمٌ إنجليزيّ ← رابطٌ مختصر: حروفٌ صغيرةٌ وأرقامٌ وشرطة */
 export function slugify(text: string): string {
     return text
@@ -130,6 +126,8 @@ export default function CollectionsField({
     hint,
     value,
     products,
+    hidden = [],
+    savedSlugs = [],
     max,
     maxProducts,
     onChange,
@@ -141,6 +139,10 @@ export default function CollectionsField({
     hint?: string;
     value: string;
     products: ListProduct[];
+    /** ما اختاره ثمّ أخفاه — يُعرض في مجموعته ولا يُختار */
+    hidden?: ListProduct[];
+    /** روابطُ المجموعات كما حُفظت آخرَ مرّة — وما سواها جديدٌ يتبع اسمَه الإنجليزيّ */
+    savedSlugs?: string[];
     max: number;
     maxProducts: number;
     onChange: (value: string) => void;
@@ -194,7 +196,6 @@ export default function CollectionsField({
                         {list.map((c, i) => {
                             const expanded = open === i;
                             const title = c.title_ar || c.title_en;
-                            const slugOk = validSlug(c.slug) && list.filter((x) => x.slug === c.slug).length === 1;
 
                             return (
                                 <li key={i} data-testid={`collection-${i}`} className="bg-white">
@@ -211,8 +212,8 @@ export default function CollectionsField({
                                             <span className={cn('block truncate text-[13px] font-medium', c.visible ? 'text-[#111]' : 'text-[#9ca3af]')}>
                                                 {title || t('مجموعة بلا اسم')}
                                             </span>
-                                            <span className="block truncate text-[11px] text-[#9ca3af]" dir="ltr">
-                                                /shop?collection={c.slug} · {t(':n منتجات', { n: String(c.products.length) })}
+                                            <span className="block truncate text-[11px] text-[#9ca3af]">
+                                                {t(':n منتجات', { n: String(c.products.length) })}
                                             </span>
                                         </button>
                                         <button
@@ -251,7 +252,11 @@ export default function CollectionsField({
                                                     dir="ltr"
                                                     value={c.title_en}
                                                     maxLength={60}
-                                                    onChange={(e) => patch(i, { title_en: e.target.value })}
+                                                    onChange={(e) => patch(i, {
+                                                        title_en: e.target.value,
+                                                        // ورابطُ الجديدة من اسمها الإنجليزيّ — والمحفوظةُ رابطُها ثابت
+                                                        ...(savedSlugs.includes(c.slug) ? {} : { slug: freshSlug(list.filter((_, k) => k !== i).map((x) => x.slug), e.target.value) }),
+                                                    })}
                                                     aria-label="Collection name — English"
                                                     data-testid={`collection-${i}-title-en`}
                                                 />
@@ -291,31 +296,15 @@ export default function CollectionsField({
                                                 label="تظهر في صفّ خيارات المتجر"
                                                 hint="بعد «كل المنتجات» و«الأكثر مبيعًا» — أطفئه لتصلها من الشريط المصوّر وحده"
                                             />
-                                            <Field
-                                                label="رابط المجموعة"
-                                                hint="حروفٌ إنجليزية صغيرة وأرقام وشرطة — وتغييره يُبطل الروابط التي شاركتها"
-                                                error={slugOk ? undefined : t('رابطٌ غير صالح أو مكرّر')}
-                                            >
-                                                <div className="flex items-center gap-2" dir="ltr">
-                                                    <span className="shrink-0 text-[12px] text-[#6b7280]">/shop?collection=</span>
-                                                    <Input
-                                                        dir="ltr"
-                                                        value={c.slug}
-                                                        maxLength={40}
-                                                        onChange={(e) => patch(i, { slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
-                                                        aria-label={t('رابط المجموعة')}
-                                                        data-testid={`collection-${i}-slug`}
-                                                    />
-                                                </div>
-                                            </Field>
-                                            <ProductListField
+                                            <ChosenProducts
                                                 name={`collection-${i}`}
                                                 label="منتجات المجموعة"
                                                 hint="من أيّ فئة، وبترتيبك — والمنتجُ يبقى في فئته ويظهر في أكثر من مجموعة"
-                                                value={c.products.join(',')}
+                                                ids={c.products}
                                                 products={products}
+                                                hidden={hidden}
                                                 max={maxProducts}
-                                                onChange={(v) => patch(i, { products: v.split(',').map(Number).filter((n) => n > 0) })}
+                                                onChange={(ids) => patch(i, { products: ids })}
                                             />
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                                 {onPreview && (

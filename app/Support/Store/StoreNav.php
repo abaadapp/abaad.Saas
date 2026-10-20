@@ -33,7 +33,9 @@ use Illuminate\Validation\ValidationException;
  * ═══ والقائمةُ يكتبها صاحبُها إن شاء (`store_menu`) ═══
  *
  * يرتّب الصفحاتِ الأربعَ كما يريد، ويضيف بينها روابطَ إلى صفحاتٍ كتبها
- * (`StoreCustomPages`) أو مجموعاتٍ أو فئاتٍ أو صفحاتٍ من متجره (`StoreTarget`).
+ * (`StoreCustomPages`) أو مجموعاتٍ أو فئاتٍ أو صفحاتٍ من متجره (`StoreTarget`)،
+ * وعناوينَ لا تُضغط (`label`): اسمٌ يُقرأ في القائمة بلا رابطٍ ولا `href="#"`.
+ * والعنوانُ غيرُ صفحةِ الكتابة: هذه رابطٌ إلى صفحة، وذاك كلمةٌ لا تفتح شيئًا.
  * والصفحاتُ الأربعُ لا تُحذف منها: تُرتَّب، وظهورُ «من نحن» و«تواصل معنا»
  * يبقى لمفتاحَيهما ولِما فيهما (`has`) — فلا يفترق بابان يُطفئان صفحةً واحدة.
  * والفراغُ القائمةُ القديمةُ بترتيبها حرفًا بحرف.
@@ -73,7 +75,7 @@ final class StoreNav
     /** مفتاحُ القائمة المرتّبة في إعدادات الموقع — نصُّ JSON، والفراغُ القائمةُ القديمة */
     public const MENU = 'store_menu';
 
-    /** أكثرُ ما يُضاف إليها من روابط — سطرٌ يُمرَّر بالإصبع، لا فهرسٌ ثانٍ */
+    /** أكثرُ ما يُضاف إليها من روابط وعناوين — سطرٌ يُمرَّر بالإصبع، لا فهرسٌ ثانٍ */
     public const MAX_LINKS = 10;
 
     /** اسمُ الرابط في القائمة — كلمةٌ أو كلمتان */
@@ -216,7 +218,7 @@ final class StoreNav
      *
      * @param  array<string, string>  $t  نصوصُ الواجهة بلغة الزائر
      * @param  array{type: string, value: string|int}|null  $here  ما يُعرض الآن — `StoreTarget`
-     * @return list<array{key: string, label: string, href: string, current: bool}>
+     * @return list<array{key: string, label: string, href: string|null, current: bool, external: bool}>
      */
     public static function links(int $businessId, string $base, array $t, string $current = self::HOME, string $lang = 'ar', ?array $here = null): array
     {
@@ -238,6 +240,7 @@ final class StoreNav
                 'label' => (string) ($t[self::LABELS[$page]] ?? $page),
                 'href' => $base.(self::PATHS[$page] === '/' ? '/' : self::PATHS[$page]),
                 'current' => $page === $current,
+                'external' => false,
             ];
         }
 
@@ -298,9 +301,12 @@ final class StoreNav
             }
 
             $id = is_string($item['id'] ?? null) ? $item['id'] : '';
-            $target = StoreTarget::parse($item['target'] ?? null);
+            $type = $item['type'] ?? null;
+            // والعنوانُ بلا وجهة — والرابطُ بوجهةٍ تُقرأ
+            $target = $type === 'link' ? StoreTarget::parse($item['target'] ?? null) : null;
 
-            if (($item['type'] ?? null) !== 'link' || preg_match(self::LINK_ID, $id) !== 1 || isset($ids[$id]) || $target === null || count($ids) >= self::MAX_LINKS) {
+            if (! in_array($type, ['link', 'label'], true) || ($type === 'link' && $target === null)
+                || preg_match(self::LINK_ID, $id) !== 1 || isset($ids[$id]) || count($ids) >= self::MAX_LINKS) {
                 continue;
             }
 
@@ -311,12 +317,9 @@ final class StoreNav
             }
 
             $ids[$id] = true;
-            $out[] = [
-                'type' => 'link', 'id' => $id,
-                'title_ar' => $title[0], 'title_en' => $title[1],
-                'target' => $target,
-                'visible' => (bool) ($item['visible'] ?? true),
-            ];
+            $out[] = ['type' => $type, 'id' => $id, 'title_ar' => $title[0], 'title_en' => $title[1]]
+                + ($type === 'link' ? ['target' => $target] : [])
+                + ['visible' => (bool) ($item['visible'] ?? true)];
         }
 
         foreach (array_diff(self::ALL, $pages) as $page) {
@@ -330,7 +333,7 @@ final class StoreNav
      * القائمةُ المكتوبة كما تُرسم.
      *
      * @param  list<array<string, mixed>>  $menu
-     * @return list<array{key: string, label: string, href: string, current: bool}>
+     * @return list<array{key: string, label: string, href: string|null, current: bool, external: bool}>
      */
     private static function menuLinks(int $businessId, array $menu, string $base, array $t, string $current, string $lang, ?array $here): array
     {
@@ -359,7 +362,21 @@ final class StoreNav
                         'label' => (string) ($t[self::LABELS[$page]] ?? $page),
                         'href' => $base.(self::PATHS[$page] === '/' ? '/' : self::PATHS[$page]),
                         'current' => $lit === null && $page === $current,
+                        'external' => false,
                     ];
+                }
+
+                continue;
+            }
+
+            // والاسمُ بلغة الصفحة، وإلّا باللغة الأخرى — اسمٌ يُضغط لا جملة
+            $mine = $lang === 'en' ? $item['title_en'] : $item['title_ar'];
+            $label = $mine !== '' ? $mine : ($lang === 'en' ? $item['title_ar'] : $item['title_en']);
+
+            // والعنوانُ كلمةٌ في القائمة لا رابط — بلا `href` أصلًا، ولا يُضاء
+            if ($item['type'] === 'label') {
+                if ($item['visible']) {
+                    $out[] = ['key' => 'label-'.$item['id'], 'label' => $label, 'href' => null, 'current' => false, 'external' => false];
                 }
 
                 continue;
@@ -372,14 +389,13 @@ final class StoreNav
                 continue;
             }
 
-            // والاسمُ بلغة الصفحة، وإلّا باللغة الأخرى — اسمٌ يُضغط لا جملة
-            $mine = $lang === 'en' ? $item['title_en'] : $item['title_ar'];
-
             $out[] = [
                 'key' => 'link-'.$item['id'],
-                'label' => $mine !== '' ? $mine : ($lang === 'en' ? $item['title_ar'] : $item['title_en']),
+                'label' => $label,
                 'href' => $href,
                 'current' => $lit === $item['id'],
+                // والرابطُ المكتوبُ إلى خارج المتجر يُفتح في نافذةٍ جديدة
+                'external' => StoreTarget::external($href),
             ];
         }
 
@@ -437,14 +453,16 @@ final class StoreNav
                 continue;
             }
 
-            if (($item['type'] ?? null) !== 'link') {
+            $type = $item['type'] ?? null;
+
+            if (! in_array($type, ['link', 'label'], true)) {
                 self::refuse(__('القائمة الرئيسية غير صالحة — أعد فتح المحرّر واحفظ من جديد.'));
             }
 
             $n++;
 
             if ($n > self::MAX_LINKS) {
-                self::refuse(__('أضف حتى :max روابط في القائمة فقط.', ['max' => self::MAX_LINKS]));
+                self::refuse(__('أضف حتى :max عناصر في القائمة فقط.', ['max' => self::MAX_LINKS]));
             }
 
             $id = is_string($item['id'] ?? null) ? $item['id'] : '';
@@ -457,19 +475,32 @@ final class StoreNav
             $title = ['title_ar' => self::text($item['title_ar'] ?? ''), 'title_en' => self::text($item['title_en'] ?? '')];
 
             if ($title['title_ar'] === '' && $title['title_en'] === '') {
-                self::refuse(__('اكتب اسمًا للرابط :n — بالعربية أو بالإنجليزية.', ['n' => $n]));
+                self::refuse(__('اكتب اسمًا للعنصر :n في القائمة — بالعربية أو بالإنجليزية.', ['n' => $n]));
             }
 
             foreach ($title as $text) {
                 if (mb_strlen($text) > self::LINK_TITLE_MAX) {
-                    self::refuse(__('اسم الرابط :n أطول من :max حرفًا.', ['n' => $n, 'max' => self::LINK_TITLE_MAX]));
+                    self::refuse(__('اسم العنصر :n في القائمة أطول من :max حرفًا.', ['n' => $n, 'max' => self::LINK_TITLE_MAX]));
                 }
             }
 
-            [$target, $why] = StoreTarget::checked($businessId, $item['target'] ?? null, $collectionSlugs, $pageSlugs);
+            // والعنوانُ اسمٌ وحده — لا وجهةَ تُطلب منه ولا تُحفظ له
+            if ($type === 'label') {
+                $out[] = ['type' => 'label', 'id' => $id] + $title + [
+                    'visible' => filter_var($item['visible'] ?? true, FILTER_VALIDATE_BOOL),
+                ];
+
+                continue;
+            }
+
+            [$target, $why] = StoreTarget::checked($businessId, $item['target'] ?? null, $collectionSlugs, $pageSlugs, StoreTarget::LINKS);
 
             if ($why === 'type') {
                 self::refuse(__('اختر ما يفتحه الرابط :n — صفحةً أو مجموعةً أو فئةً من متجرك.', ['n' => $n]));
+            }
+
+            if ($why === 'url') {
+                self::refuse(__('الرابط :n غير صالح — اكتب رابطًا يبدأ بـ https:// أو بـ /.', ['n' => $n]));
             }
 
             if ($target === null) {

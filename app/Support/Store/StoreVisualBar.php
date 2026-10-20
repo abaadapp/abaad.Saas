@@ -248,6 +248,16 @@ final class StoreVisualBar
 
     /* ═══════════ أدوات ═══════════ */
 
+    /**
+     * أمشغَّلٌ هو في هذا النصّ؟ — يقرؤه المحرّرُ من المسوّدة ليضع صفَّه:
+     * المشغَّلُ بين أبواب المحرّر الأولى، والمطفأُ تحت «إعدادات متقدّمة»
+     * ببطاقاته وصوره كما حُفظت — لا يُحذف منها شيء (`PageEditor::rows`).
+     */
+    public static function switchedOn(string $raw): bool
+    {
+        return self::parse($raw)['on'];
+    }
+
     /** @return array{on: bool, pages: string, cards: list<array<string, mixed>>} */
     private static function parse(string $raw): array
     {
@@ -268,7 +278,8 @@ final class StoreVisualBar
         foreach (array_slice(is_array($bar['cards'] ?? null) ? array_values($bar['cards']) : [], 0, self::MAX_CARDS) as $c) {
             $target = is_array($c) ? StoreTarget::parse($c['target'] ?? null) : null;
 
-            if ($target === null) {
+            // والرابطُ المكتوب ليس من أنواع البطاقة — للقائمة وزرّ الصفحة وحدهما
+            if ($target === null || ! in_array($target['type'], self::TARGETS, true)) {
                 continue;
             }
 

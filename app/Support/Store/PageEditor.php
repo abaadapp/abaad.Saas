@@ -67,22 +67,24 @@ final class PageEditor
     public const VISUAL_BAR = 'vbar';
 
     /**
-     * والقائمةُ الرئيسيّة — الصفحاتُ الأربعُ بترتيب صاحبها وروابطُه بينها.
-     * في الترويسة تحت الشعار، فصفُّها بعد رأس المتجر. انظر `StoreNav::menu`.
+     * والقائمةُ الرئيسيّة وصفحاتُها — الصفحاتُ الأربعُ بترتيب صاحبها، وبينها
+     * أقسامُه: عنوانٌ لا يُضغط، أو صفحةٌ يكتبها هنا (كتابة، صور، منتجات…)،
+     * أو رابط. والصفحةُ تُنشأ مع اسمها في القائمة ويُكتب محتواها في مكانه —
+     * لا صفٌّ ثانٍ يُبحث فيه عنها. انظر `StoreNav::menu` و`StoreCustomPages`.
      */
     public const MENU = 'menu';
-
-    /**
-     * والصفحاتُ المخصّصة — «خدماتنا» و«المناسبات»: عنوانٌ ونبذةٌ وصورٌ وأقسام.
-     * ليست في الرئيسية: تُفتح من القائمة. انظر `StoreCustomPages`.
-     */
-    public const PAGES = 'pages';
 
     /**
      * وعرضُ الصور — صورُ المنتجات والفئات كاملةً أو تملأ إطارها. وسائرُ الصور
      * يُختار عرضُها إلى جانبها في صفّها. انظر `StoreMedia::fit`.
      */
     public const IMAGES = 'images';
+
+    /** بابٌ من أبواب المحرّر الأولى — يُرى أوّلَ ما يُفتح */
+    public const MAIN = 'main';
+
+    /** وما يُضبط مرّةً ثمّ يُترك — مطويٌّ تحت «إعدادات متقدّمة» */
+    public const ADVANCED = 'advanced';
 
     /**
      * مقابضُ الصفحة البسيطة — لا تُحرّك واجهةً خاصّة فلا تُعرض لصاحبها.
@@ -113,8 +115,11 @@ final class PageEditor
      * أصنافًا من المعروض وترتّبها إلى `max`. و`collections` قائمةُ مجموعاتٍ
      * نصًّا بصيغة JSON — حتّى `max` مجموعة، في كلٍّ حتّى `max_products` صنفًا.
      * و`visualbar` بطاقاتُ الشريط المصوّر نصًّا بصيغة JSON — حتّى `max` بطاقة.
-     * و`menu` القائمةُ الرئيسيّة نصَّ JSON — حتّى `max` رابطًا بين صفحاتها الأربع.
-     * و`pages` الصفحاتُ المخصّصة نصَّ JSON — حتّى `max` صفحة، في كلٍّ `max_sections` قسمًا.
+     * و`menu` القائمةُ الرئيسيّة نصَّ JSON — حتّى `max` عنصرًا بين صفحاتها الأربع،
+     * ويكتب معها الصفحاتِ المخصّصة (`owns`): حتّى `max_pages` صفحة، في كلٍّ
+     * `max_blocks` وحدة. و`pages` تلك الصفحاتُ نصَّ JSON — لا مقبضَ لها وحدها.
+     * و`footer` أعمدةُ التذييل وسطرُه نصَّ JSON، ويكتب معها ما في `owns`.
+     * و`owns` مفاتيحُ يرسمها الحقلُ نفسُه في مواضعها منه — فلا تُرسم ثانيةً.
      * و`shoprow` ترتيبُ أزرار صفّ المتجر كلِّها رموزًا. و`catalogfit` طريقةُ عرض
      * صور المنتجات والفئات. و`fit` على حقل `image` مفتاحُ طريقة عرض صورته.
      *
@@ -122,7 +127,7 @@ final class PageEditor
      * لا يقع أحدُهما على الآخر. ونصوصُ القالب نفسِه (الأزرارُ وأسماءُ الأقسام)
      * ليست هنا — هي في `RibbonTexts`.
      *
-     * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string, max?: int, max_products?: int, max_sections?: int, fit?: string, ratio?: string}>>
+     * @var array<string, list<array{key: string, kind: string, label: string, hint?: string, dir?: string, gate?: string, max?: int, max_products?: int, max_pages?: int, max_blocks?: int, owns?: list<string>, fit?: string, ratio?: string}>>
      */
     public const FIELDS = [
         self::VISUAL_BAR => [
@@ -133,10 +138,8 @@ final class PageEditor
             ['key' => StoreHeader::ROW, 'kind' => 'shoprow', 'label' => 'ترتيب شريط المتجر', 'hint' => 'رتّب «كل المنتجات» و«الأكثر مبيعًا» ومجموعاتك وفئاتك كما تريدها في الشريط — و«كل المنتجات» يبقى دائمًا'],
         ],
         self::MENU => [
-            ['key' => StoreNav::MENU, 'kind' => 'menu', 'label' => 'روابط القائمة', 'hint' => 'رتّب الرئيسية والمتجر ومن نحن وتواصل معنا، وأضف بينها روابط إلى صفحاتك ومجموعاتك وفئاتك', 'max' => StoreNav::MAX_LINKS],
-        ],
-        self::PAGES => [
-            ['key' => StoreCustomPages::KEY, 'kind' => 'pages', 'label' => 'الصفحات', 'hint' => 'لكلّ صفحةٍ عنوانٌ ونبذةٌ وصورة، وأقسامٌ من صورةٍ ونصّ، وزرٌّ اختياريّ — وتُضاف إلى القائمة من صفّها', 'max' => StoreCustomPages::MAX, 'max_sections' => StoreCustomPages::MAX_SECTIONS],
+            ['key' => StoreNav::MENU, 'kind' => 'menu', 'label' => 'عناصر القائمة', 'hint' => 'أضف قسمًا أو صفحة ورتّبها بين الرئيسية والمتجر ومن نحن وتواصل معنا — بلا رابطٍ تكتبه', 'max' => StoreNav::MAX_LINKS, 'max_pages' => StoreCustomPages::MAX, 'max_blocks' => StoreCustomPages::MAX_BLOCKS, 'owns' => [StoreCustomPages::KEY]],
+            ['key' => StoreCustomPages::KEY, 'kind' => 'pages', 'label' => 'الصفحات', 'hint' => 'تُكتب في القائمة نفسِها — كلُّ صفحةٍ مع اسمها'],
         ],
         self::IMAGES => [
             ['key' => 'store_catalog_fit', 'kind' => 'catalogfit', 'label' => 'صور المنتجات والفئات', 'hint' => 'في بطاقات المتجر وصفحة المنتج والسلّة — «كاملة» تُري الصورةَ كلَّها بلا قصّ، و«ملء الإطار» تقصّ أطرافها لتملأ البطاقة'],
@@ -187,6 +190,7 @@ final class PageEditor
             ['key' => RibbonUpsells::KEY, 'kind' => 'products', 'label' => 'أضف مع طلبك', 'hint' => 'أصنافٌ تُقترح في صفحة كلّ منتج قبل زرّ السلّة — وبلا اختيارٍ تبقى من قسم الإضافات كما كانت', 'max' => 6],
         ],
         self::FOOT => [
+            ['key' => StoreFooter::KEY, 'kind' => 'footer', 'label' => 'أعمدة التذييل', 'hint' => 'رتّب الأعمدة وسمّها واختر ما يظهر فيها — والشعارُ يبقى أوّلَها', 'max' => StoreFooter::MAX_TEXT, 'owns' => ['store_tagline', 'store_tagline_en', 'store_whatsapp', 'store_instagram', 'store_hours', 'store_hours_en']],
             ['key' => 'store_tagline', 'kind' => 'text', 'label' => 'سطر التذييل', 'hint' => 'أسفل كلّ صفحة — واتركه فارغًا فلا يُكتب سطر'],
             ['key' => 'store_tagline_en', 'kind' => 'text', 'label' => 'سطر التذييل (English)', 'hint' => 'للصفحة الإنجليزيّة — واتركه فارغًا فلا يُكتب فيها سطر', 'dir' => 'ltr'],
             ['key' => 'store_whatsapp', 'kind' => 'text', 'label' => 'واتساب', 'hint' => 'زرٌّ في التذييل يفتح محادثةً — ورقمُ متجرك إن تركته فارغًا', 'dir' => 'ltr'],
@@ -209,8 +213,7 @@ final class PageEditor
         self::HEAD => ['label' => 'رأس المتجر', 'hint' => 'شريطُ إعلانٍ أعلى كلّ صفحة، واختصاراتُ الفئات في صفحة المتجر', 'fixed' => true, 'source' => null],
         self::VISUAL_BAR => ['label' => 'الشريط المصوّر', 'hint' => 'بطاقاتٌ بصورها فوق قائمة الصفحات — مطفأٌ حتى تشغّله', 'fixed' => true, 'source' => null],
         self::COLLECTIONS => ['label' => 'مجموعات المتجر', 'hint' => 'هدايا التخرّج، عروضٌ خاصّة… رفوفٌ تختار منتجاتها بيدك وتظهر بجانب «كل المنتجات»', 'fixed' => true, 'source' => null],
-        self::MENU => ['label' => 'القائمة الرئيسية', 'hint' => 'الرئيسية | المتجر | من نحن | تواصل معنا — رتّبها وأضف بينها روابطك وصفحاتك', 'fixed' => true, 'source' => null],
-        self::PAGES => ['label' => 'الصفحات المخصّصة', 'hint' => 'خدماتنا، المناسبات… صفحاتٌ تكتبها بصورها ونصوصها وتضيفها إلى القائمة', 'fixed' => true, 'source' => null],
+        self::MENU => ['label' => 'القائمة الرئيسية والصفحات', 'hint' => 'الرئيسية | المتجر | المناسبات | من نحن — أضف أقسامك وصفحاتك ورتّبها', 'fixed' => true, 'source' => null],
         self::IMAGES => ['label' => 'عرض الصور', 'hint' => 'صور المنتجات والفئات كاملةً بلا قصّ، أو تملأ إطارها', 'fixed' => true, 'source' => null],
         self::HERO => ['label' => 'الواجهة', 'hint' => 'أعلى الصفحة — عنوانٌ وصورةٌ وزرُّ تسوّق', 'fixed' => true, 'source' => null],
         'cats' => ['label' => 'تسوّق حسب الفئة', 'hint' => 'فئاتُك التي فيها بضاعةٌ معروضة، كلٌّ ببطاقتها', 'fixed' => false, 'source' => ['الأصناف والفئات', 'admin.products.index']],
@@ -222,7 +225,7 @@ final class PageEditor
         'about' => ['label' => 'عنّا', 'hint' => 'نبذتُك إلى جانب شعارك', 'fixed' => false, 'source' => null],
         'reviews' => ['label' => 'آراء الزبائن', 'hint' => 'ما نشرتَه من آراءٍ وصلتك', 'fixed' => false, 'source' => ['آراء الزبائن', 'admin.marketing.reviews']],
         self::UPSELLS => ['label' => 'أضف مع طلبك', 'hint' => 'في صفحة المنتج — أصنافٌ تختارها بيدك بدل قسم الإضافات', 'fixed' => true, 'source' => null],
-        self::FOOT => ['label' => 'التذييل', 'hint' => 'أسفل كلّ صفحة — لا الرئيسية وحدها', 'fixed' => true, 'source' => ['هاتفك وبريدك وعنوانك', 'admin.settings.index']],
+        self::FOOT => ['label' => 'التذييل', 'hint' => 'أسفل كلّ صفحة — أعمدتُه وعناوينُها وسطرُه الأخير', 'fixed' => true, 'source' => ['هاتفك وبريدك وعنوانك', 'admin.settings.index']],
     ];
 
     /**
@@ -250,7 +253,7 @@ final class PageEditor
      *
      * @param  list<array<string, mixed>>|null  $fields  حقولُه إن خالفت `FIELDS` (حدٌّ يُقرأ من القائمة)
      */
-    private static function row(string $key, bool $on, ?string $silent, ?array $fields = null): array
+    private static function row(string $key, bool $on, ?string $silent, ?array $fields = null, string $group = self::ADVANCED): array
     {
         $spec = self::ROWS[$key];
 
@@ -259,6 +262,7 @@ final class PageEditor
             'label' => $spec['label'],
             'hint' => $spec['hint'],
             'fixed' => $spec['fixed'],
+            'group' => $group,
             'on' => $on,
             'silent' => $silent,
             'source' => $spec['source'] === null
@@ -358,10 +362,27 @@ final class PageEditor
         $sections = $picksOn ? StorePage::SECTIONS : StorePage::DEFAULT_ORDER;
 
         /*
-         * والشريطُ المصوّر أوّلًا — فوق الترويسة، أوّلُ ما يُرى — ثمّ الرأسُ فوق
-         * الواجهة: هو أوّلُ ما يُرى في كلّ صفحةٍ بعده.
+         * ═══ أربعةُ أبوابٍ أوّلًا، وما سواها تحت «إعدادات متقدّمة» ═══
+         *
+         * الواجهةُ، ومجموعاتُ المتجر، والقائمةُ وصفحاتُها، والتذييل — ما يبني
+         * به صاحبُ المتجر متجرَه. وما يُضبط مرّةً ثمّ يُترك (رأسُ المتجر،
+         * وأقسامُ الرئيسية بترتيبها، وعرضُ الصور، و«أضف مع طلبك») تحت
+         * «إعدادات متقدّمة» — لا يُحذف ولا يتبدّل، يُطوى.
+         *
+         * والشريطُ المصوّر بين الأبواب الأولى ما دام مشغَّلًا في مسوّدته — فوقها
+         * كما هو فوق الترويسة. فإن أطفأه وحفظ نزل تحت «إعدادات متقدّمة»
+         * ببطاقاته وصوره كما حُفظت: لا يُحذف منها شيء، ولا يُطفأ لتاجرٍ غيره.
          */
-        $rows = [self::row(self::VISUAL_BAR, true, null), self::row(self::HEAD, true, null), self::row(self::MENU, true, null), self::row(self::HERO, true, null)];
+        $barOn = StoreVisualBar::switchedOn((string) (StoreContent::draft($businessId)[StoreVisualBar::KEY] ?? ''));
+
+        $rows = [
+            ...($barOn ? [self::row(self::VISUAL_BAR, true, null, null, self::MAIN)] : []),
+            self::row(self::HERO, true, null, null, self::MAIN),
+            self::row(self::COLLECTIONS, true, null, null, self::MAIN),
+            self::row(self::MENU, true, null, null, self::MAIN),
+            self::row(self::FOOT, true, null, null, self::MAIN),
+            self::row(self::HEAD, true, null),
+        ];
 
         // المختارُ بترتيبه، ثمّ المطفأُ بترتيبه الأصليّ — كما في `StorePage::SECTIONS`
         foreach (array_merge($order, array_values(array_diff($sections, $order))) as $key) {
@@ -371,15 +392,8 @@ final class PageEditor
             $rows[] = self::row($key, $on, $on ? $silent[$key] : null);
         }
 
-        /*
-         * والمجموعاتُ بعد الأقسام وقبل التذييل — ليست في الرئيسية: تُفتح من صفّ
-         * خيارات المتجر ومن الشريط المصوّر. ولكلّ من يلبس الواجهة.
-         */
-        $rows[] = self::row(self::COLLECTIONS, true, null);
-        // والصفحاتُ المخصّصة وعرضُ الصور كذلك: ليسا قسمَين في الرئيسية
-        $rows[] = self::row(self::PAGES, true, null);
+        // وعرضُ الصور ليس قسمًا في الرئيسية
         $rows[] = self::row(self::IMAGES, true, null);
-        $rows[] = self::row(self::FOOT, true, null);
 
         /*
          * و«أضف مع طلبك» لمن له القسم وحده — وحدُّه حدُّ القائمة نفسُها
@@ -390,6 +404,10 @@ final class PageEditor
                 fn (array $f) => ['max' => $upsells['limit']] + $f,
                 self::FIELDS[self::UPSELLS],
             ));
+        }
+
+        if (! $barOn) {
+            $rows[] = self::row(self::VISUAL_BAR, true, null);
         }
 
         return $rows;

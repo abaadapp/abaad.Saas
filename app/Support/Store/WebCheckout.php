@@ -337,19 +337,44 @@ final class WebCheckout
          * فيها غيرُه آخرَ فرصةٍ في الكود — من هذا الباب أو من الدفع عند
          * الاستلام. فتُحجز الفرصةُ باسم هذه النيّة، وتُحسب في الحدّين حتّى
          * تصير استعمالًا أو تنقضي مدّتُها.
+         *
+         * ═══ والفحصُ والحجزُ معًا، تحت القفل، قبل البنك ═══
+         *
+         * كان الفحصُ هنا والحجزُ بعد أن يعود البنك. وبينهما ثانيةٌ أو أكثر يصل
+         * فيها زبونٌ آخر فيجد الفرصةَ حرّةً ويحجزها — ثمّ يعود هذا فيحجزها
+         * ثانيةً. فتُكتب النيّةُ ويُحجز لها في معاملةٍ واحدة تحت قفل صفّ الكوبون
+         * (`CouponLimits::hold`). وإن نفدت الفرصةُ رُدّ الطلبُ وسقطت النيّةُ معه:
+         * لا تبقى نيّةُ دفعٍ لطلبٍ رُدّ.
          */
         $customer = $quote['_coupon'] ? self::existingCustomer($bid, $form['phone']) : null;
         $couponKey = $quote['_coupon'] ? CouponLimits::identity($customer, $form['phone']) : null;
 
-        if ($quote['_coupon'] && $why = CouponLimits::refusal($quote['_coupon'], $couponKey, $customer?->id)) {
-            throw ValidationException::withMessages(['promo' => $why]);
+        $intent = DB::transaction(function () use ($business, $payload, $quote, $lang, $couponKey, $customer) {
+            $intent = Paymob::prepare($business, $payload, $quote, $lang);
+
+            if ($quote['_coupon'] && $why = CouponLimits::hold($quote['_coupon'], $intent, $couponKey, $customer?->id)) {
+                throw ValidationException::withMessages(['promo' => $why]);
+            }
+
+            return $intent;
+        });
+
+        /*
+         * ═══ ثمّ يُطرق البنكُ والمعاملةُ مغلقة ═══
+         *
+         * الطَّرقُ يأخذ حتّى عشرين ثانية، ولو بقي القفلُ في اليد طوالها لَانتظر
+         * كلُّ صندوقٍ يبيع بالكود نفسِه جوابَ البنك.
+         *
+         * وإن لم تُفتح الصفحةُ — ردّها البنك، أو لم يُجب — عادت الفرصةُ في
+         * حينها: لا صفحةَ دفعٍ يُمسكها عليها أحد.
+         */
+        try {
+            return Paymob::start($business, $intent, $payload, $quote)['url'];
+        } catch (\Throwable $e) {
+            CouponLimits::releaseReservation($intent);
+
+            throw $e;
         }
-
-        $opened = Paymob::open($business, $payload, $quote, $lang);
-
-        CouponLimits::reserve($quote['_coupon'], $opened['intent'], $couponKey, $customer?->id);
-
-        return $opened['url'];
     }
 
     /**
@@ -978,7 +1003,26 @@ final class WebCheckout
             'pay.in' => __('اختر وسيلة الدفع.'),
         ] + EnglishCheckout::messages() + NotesAndEdits::checkoutMessages());
 
-        $v->after(function ($v) use ($bid, $payload, $settings) {
+        $v->after(function ($v) use ($bid, $payload, $settings, $settling) {
+            /*
+             * ═══ والهاتفُ رقمٌ يُقرأ — لا رموزٌ بطوله ═══
+             *
+             * النمطُ أعلاه يعدّ الخاناتِ لا الأرقام: «((((((((» ثمانيةُ رموزٍ تمرّ
+             * منه ولا رقمَ فيها. فيُكتب طلبٌ لزبونٍ لا يُتّصل به ولا تصله رسالةُ
+             * طلبه، ولا يُعرف به صاحبُه: فلا يُحجز له كوبونٌ محدود عند صفحة الدفع
+             * (`CouponLimits::hold`).
+             *
+             * فيُسأل بالقاعدة التي يُقرأ بها الرقمُ في كلّ موضع (`WhatsAppPhone`):
+             * تقبل المحلّيَّ والدوليَّ بأيّ شكلٍ كُتب — بمسافاتٍ وشرطاتٍ وأقواس،
+             * بـ+ أو بصفرين — وتردّ ما لا رقمَ فيه، وما يطول عن أطول رقمٍ في الدنيا.
+             *
+             * ولا يُسأل في دفعةٍ قُبضت: فُتحت صفحتُها على قاعدة يومها، والمالُ عند
+             * صاحب المحلّ — وردُّها الآن مالٌ بلا طلب.
+             */
+            if ($settling === null && ! $v->errors()->has('phone') && ! WhatsAppPhone::isValid((string) $payload['phone'])) {
+                $v->errors()->add('phone', __('رقم الهاتف غير صحيح.'));
+            }
+
             /*
              * وكرتٌ يُطلب من متجرٍ أطفأه يُردّ — لا يُبتلع صامتًا.
              *

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { csrfHeaders } from '@/lib/csrf';
+import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency } from '@/types';
 
@@ -161,6 +162,13 @@ export interface AppliedCoupon {
     code: string;
     type: string;
     value: number;
+    /**
+     * الحدُّ الأدنى للطلب كما قاله الخادم (`PosController::applyCoupon`).
+     *
+     * به تحكم السلّةُ في الحال حين تنزل تحته: لا خصمَ على الشاشة ولا كودَ في
+     * الحمولة. وغيابُه — ردٌّ من خادمٍ أقدم — صفرٌ: لا حدّ.
+     */
+    min_order?: number;
 }
 
 export interface LoyaltySettings {
@@ -263,6 +271,45 @@ export const billableAddons = (item: Pick<CartItem, 'addons' | 'custom'>): numbe
  */
 export const cartLineTotal = (item: Pick<CartItem, 'price' | 'qty' | 'addons' | 'custom'>): number =>
     item.price * item.qty + billableAddons(item);
+
+/**
+ * المبلغُ إلى ثلاث منازل كما يقرّبه الخادم — `round($v, 3)` في PHP 8.4 حرفًا.
+ *
+ * ═══ ولمَ في الشاشة ═══
+ *
+ * الخادمُ يقرّب كلَّ خطوة: خصمَ الكوبون (`Coupon::discountFor`)، ثمّ الخصمَ كلَّه،
+ * ثمّ الضريبة (`SaleLines::taxFor`)، ثمّ الإجماليّ. والشاشةُ كانت تجمع بلا تقريب
+ * وتقرّب العرضَ وحدَه — فكوبونٌ بالنسبة على ٢٫٦٥٠ يُقرأ ٢٫٥١٨ ويُكتب في الفاتورة
+ * ٢٫٥١٧، في سلّةٍ من كلّ ثمانٍ تقريبًا من سلال الكوبون بالنسبة.
+ *
+ * ═══ ولمَ لا `toFixed` ولا `Math.round(v * 1000)` ═══
+ *
+ * يفترقان عن PHP عند حدّ النصف: ‎0.0045‎ يقرّبه PHP إلى ‎0.005‎ و`toFixed` إلى
+ * ‎0.004‎، و‎1.1744999999999999‎ يقرّبه PHP إلى ‎1.174‎ وحيلةُ `e3` إلى ‎1.175‎.
+ * فهذه خوارزميّةُ PHP نفسُها (`_php_math_round`): الجزءُ الصحيح، ثمّ حدُّ النصف
+ * عددًا عائمًا، والنصفُ بعيدًا عن الصفر — وطابقته في ثلاثمئة ألف قيمة.
+ */
+export function roundMoney(value: number): number {
+    if (!Number.isFinite(value) || value === 0) return value;
+
+    const abs = Math.abs(value);
+    const whole = Math.floor(abs * 1000);
+
+    // مقرَّبٌ أصلًا
+    if (whole / 1000 === abs) return value;
+
+    const edge = (whole + 0.5) / 1000;
+
+    return Math.sign(value) * ((abs >= edge ? whole + 1 : whole) / 1000);
+}
+
+/**
+ * كم تنتظر السلّةُ بعد آخر تغييرٍ قبل أن تسأل الخادمَ عن كوبونها.
+ *
+ * نقراتُ الكاشير المتتابعة على «+» سؤالٌ واحدٌ حين تهدأ، لا سؤالٌ لكلّ نقرة.
+ * والشاشةُ لا تنتظره لتحكم بالحدّ الأدنى — ذاك في الحال (`couponShort`).
+ */
+export const COUPON_SETTLE_MS = 400;
 
 function uuid(): string {
     try {
@@ -367,6 +414,19 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const [coupon, setCoupon] = useState<AppliedCoupon | null>(null);
     const [couponError, setCouponError] = useState('');
     const [couponLoading, setCouponLoading] = useState(false);
+    /*
+     * ═══ وجوابُ الخادم عن الكوبون يُقرأ لآخر سؤالٍ وحدَه ═══
+     *
+     * السؤالُ يُعاد كلّما تبدّل الزبونُ أو هدأت السلّةُ على مجموعٍ جديد، وجوابان
+     * في الطريق قد يصلان بغير ترتيبهما: «مقبولٌ» عن أحمدَ يصل بعد «بلغ حدَّه» عن
+     * محمّد، فيعود الخصمُ على فاتورة محمّد. فلكلّ سؤالٍ رقمٌ ولا يُقرأ إلّا جوابُ
+     * آخرِها، وإزالةُ الكوبون تُبطل كلَّ ما في الطريق.
+     */
+    const couponAsk = useRef(0);
+    /** ما يُسأل عنه الآن: الكودُ و«الكود|المجموع» — وفراغُه: لا سؤالَ في الطريق */
+    const couponAsking = useRef<{ code: string; state: string } | null>(null);
+    /** «الكود|المجموع» الذي أكّده الخادمُ آخرَ مرّة — وما يطابقه لا يُسأل عنه ثانيةً */
+    const couponConfirmed = useRef('');
 
     const [redeemActive, setRedeemActive] = useState(false);
 
@@ -385,13 +445,30 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     const count = useMemo(() => items.reduce((s, i) => s + i.qty, 0), [items]);
     /** ثمنُ البند — والسعرُ النهائيّ لا تُجمع إضافاتُه فوقه. انظر `cartLineTotal` */
     const subtotal = useMemo(() => items.reduce((s, i) => s + cartLineTotal(i), 0), [items]);
+    /** والمجموعُ كما يقرؤه الدفع: `round(…, 3)` — عليه يُحسب الخصمُ والضريبة */
+    const base = roundMoney(subtotal);
 
+    /*
+     * ═══ وكوبونٌ نزلت السلّةُ تحت حدّه الأدنى لا يخصم — في الحال ═══
+     *
+     * كان الخصمُ يُحسب من الكوبون المحفوظ كلّما تبدّل المجموع، ولا يعرف حدَّه.
+     * فيُطبَّق كودٌ حدُّه عشرون على سلّةٍ بثلاثين، ويحذف الكاشيرُ صنفًا فتصير
+     * عشرة — والخصمُ باقٍ على الشاشة، يُعلَن للزبون، ثمّ يردّه الدرج.
+     *
+     * والحكمُ هنا لا ينتظر الخادم: الحدُّ معروفٌ من جوابه، والمجموعُ في اليد.
+     * فلا خصمَ يُعرض ولا كودَ يُرسل (`activeCoupon`) — وإن هدأت السلّةُ تحته
+     * أُسقط الكوبونُ وبقي سببُه (`settle` أدناه).
+     */
+    const couponShort = coupon !== null && base < Number(coupon.min_order ?? 0);
+    const activeCoupon = couponShort ? null : coupon;
+
+    // `Coupon::discountFor` ثمّ `min(…, $subtotal)` في الدفع — بالتقريب نفسِه
     const couponDiscount = useMemo(() => {
-        if (!coupon) return 0;
+        if (!activeCoupon) return 0;
         const d =
-            coupon.type === 'نسبة' ? (subtotal * Number(coupon.value)) / 100 : Number(coupon.value);
-        return Math.min(d, subtotal);
-    }, [coupon, subtotal]);
+            activeCoupon.type === 'نسبة' ? (base * Number(activeCoupon.value)) / 100 : Number(activeCoupon.value);
+        return Math.min(roundMoney(Math.min(d, base)), base);
+    }, [activeCoupon, base]);
 
     const selectedCustomer = useMemo(() => {
         // بالمعرّف أولًا. ولا يُلجأ إلى الاسم إلا حين لا معرّف (طلب مستعاد أو
@@ -419,7 +496,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
     const redeemPointsUsed = Math.round(redeemDiscount * POINTS_PER_UNIT);
 
-    const discountAmount = Math.min(couponDiscount + redeemDiscount, subtotal);
+    // `round(min($couponDiscount + $redeem, $subtotal), 3)` كما في الدفع
+    const discountAmount = roundMoney(Math.min(couponDiscount + redeemDiscount, base));
 
     /*
      * الضريبة كما يحسبها الخادم لا كما تخمّنها الشاشة.
@@ -434,19 +512,28 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
      * الخصم يُوزَّع على البنود بنسبة قيمة كلٍّ منها من المجموع، ثم تُضرب حصّةُ
      * البند الصافية بنسبته هو. وأيّ اختلافٍ في هذه المعادلة يعني رقمين
      * لبيعةٍ واحدة: واحدًا على الشاشة وآخر في الفاتورة.
+     *
+     * والتقريبُ تقريبُه كذلك (`SaleLines::taxFor`): البنودُ بلا تقريب على المجموع
+     * المقرَّب، والناتجُ إلى ثلاث منازل.
      */
     const taxAmount = useMemo(() => {
-        if (vat?.enabled === false || subtotal <= 0) return 0;
+        if (vat?.enabled === false || base <= 0) return 0;
 
-        return items.reduce((sum, i) => {
-            const net = cartLineTotal(i);
-            const taxableLine = net - discountAmount * (net / subtotal);
-            const rate = Math.max(0, Number(i.tax ?? vatRate) || 0);
+        return roundMoney(
+            items.reduce((sum, i) => {
+                const net = cartLineTotal(i);
+                const taxableLine = net - discountAmount * (net / base);
+                const rate = Math.max(0, Number(i.tax ?? vatRate) || 0);
 
-            return sum + (vat?.inclusive ? (taxableLine * rate) / (100 + rate) : (taxableLine * rate) / 100);
-        }, 0);
-    }, [items, subtotal, discountAmount, vat?.enabled, vat?.inclusive, vatRate]);
-    const total = vat?.inclusive ? subtotal - discountAmount : subtotal - discountAmount + taxAmount;
+                return sum + (vat?.inclusive ? (taxableLine * rate) / (100 + rate) : (taxableLine * rate) / 100);
+            }, 0),
+        );
+    }, [items, base, discountAmount, vat?.enabled, vat?.inclusive, vatRate]);
+    /*
+     * والإجماليُّ كما يكتبه الدفع: «مشمولة» يُنقص المجموعُ ما استُخرج ضريبةً ثمّ
+     * تُعاد إليه — `round($subtotal - $tax, 3)` ثمّ `round($subtotal - $discount + $tax, 3)`.
+     */
+    const total = roundMoney((vat?.inclusive ? roundMoney(base - taxAmount) : base) - discountAmount + taxAmount);
     const displayTotal = total * (currency.rate ?? 1);
 
     const pointsToEarn = useMemo(() => {
@@ -606,9 +693,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
     }, []);
 
     const removeCoupon = useCallback(() => {
+        // وسؤالٌ في الطريق لا يُعيد ما أُزيل
+        couponAsk.current++;
+        couponAsking.current = null;
+        couponConfirmed.current = '';
         setCoupon(null);
         setCouponCode('');
         setCouponError('');
+        setCouponLoading(false);
     }, []);
 
     const clear = useCallback(() => {
@@ -659,46 +751,121 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
     /* ------------------------------ الكوبون ------------------------------ */
 
+    /** سببُ سقوط الكوبون تحت حدّه — بلفظ الخادم نفسِه (`PosController::applyCoupon`) */
+    const belowMinimum = (c: AppliedCoupon) =>
+        t('الحد الأدنى للطلب :amount', { amount: money(Number(c.min_order ?? 0), currency) });
+
+    /**
+     * يسأل الخادمَ عن الكود للسلّة والزبون كما هما الآن.
+     *
+     * `manual`: الكاشيرُ ضغط «تطبيق» — فيُمحى خطؤه السابق ويُقال له «طُبّق».
+     * وإعادةُ السؤال من تلقاء السلّة لا تقول شيئًا إن قُبل: ضجيجٌ مع كلّ نقرة.
+     */
+    const askCoupon = async (code: string, manual: boolean) => {
+        const ask = ++couponAsk.current;
+        couponAsking.current = { code, state: `${code}|${base}` };
+        setCouponLoading(true);
+        if (manual) setCouponError('');
+        try {
+            const res = await fetch('/pos/coupon', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...csrfHeaders(),
+                    Accept: 'application/json',
+                },
+                /*
+                 * والزبونُ يُرسل مع المعاينة.
+                 *
+                 * كودٌ حدُّه «مرّتان لكلّ زبون» يُقال عند السلّة لا بعد أن
+                 * يُعلَن السعرُ للزبون. والمعاينةُ لا تحتسب استعمالًا —
+                 * الاحتسابُ عند الدفع وحده (`CouponLimits::record`).
+                 */
+                body: JSON.stringify({ code, subtotal: base, customer_id: customerId, customer }),
+            });
+            const data = await res.json();
+            // سؤالٌ أحدثُ سبقه، أو أُزيل الكوبون — فلا يُقرأ هذا الجواب
+            if (ask !== couponAsk.current) return;
+            if (!res.ok || !data.ok) {
+                couponConfirmed.current = '';
+                setCoupon(null);
+                setCouponError(data.error || t('تعذّر تطبيق الكوبون'));
+                return;
+            }
+            couponConfirmed.current = `${data.code}|${base}`;
+            setCoupon({ code: data.code, type: data.type, value: data.value, min_order: Number(data.min_order ?? 0) });
+            setCouponCode(data.code);
+            setCouponError('');
+            if (manual) onToast(data.message || t('تم تطبيق الكوبون'), 'success');
+        } catch {
+            if (ask !== couponAsk.current) return;
+            // والكوبونُ المطبَّق يبقى: الدفعُ يفحصه على كلّ حال، والانقطاعُ ليس رفضًا
+            setCouponError(t('تعذّر الاتصال. حاول مرة أخرى.'));
+        } finally {
+            if (ask === couponAsk.current) {
+                couponAsking.current = null;
+                setCouponLoading(false);
+            }
+        }
+    };
+    /*
+     * أحدثُ نسخةٍ منه — بمجموعها وزبونها الآن.
+     *
+     * المؤقّتُ والمؤثّراتُ تناديه من هنا، فلا تتبدّل هي مع كلّ رسم: الصفحةُ
+     * ترسل `onToast` دالّةً جديدةً في كلّ رسم، ومؤقّتٌ يتبعها يبدأ عدَّه من جديد
+     * مع كلّ حرفٍ في خانة البحث.
+     */
+    const ask = useRef(askCoupon);
+    ask.current = askCoupon;
+
     const applyCoupon = useCallback(
         async (codeArg?: string) => {
             const code = (codeArg ?? couponCode ?? '').trim();
             if (!code) return;
-            setCouponLoading(true);
-            setCouponError('');
-            try {
-                const res = await fetch('/pos/coupon', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...csrfHeaders(),
-                        Accept: 'application/json',
-                    },
-                    /*
-                     * والزبونُ يُرسل مع المعاينة.
-                     *
-                     * كودٌ حدُّه «مرّتان لكلّ زبون» يُقال عند السلّة لا بعد أن
-                     * يُعلَن السعرُ للزبون. والمعاينةُ لا تحتسب استعمالًا —
-                     * الاحتسابُ عند الدفع وحده (`CouponLimits::record`).
-                     */
-                    body: JSON.stringify({ code, subtotal, customer_id: customerId, customer }),
-                });
-                const data = await res.json();
-                if (!res.ok || !data.ok) {
-                    setCoupon(null);
-                    setCouponError(data.error || t('تعذّر تطبيق الكوبون'));
-                    return;
-                }
-                setCoupon({ code: data.code, type: data.type, value: data.value });
-                setCouponCode(data.code);
-                onToast(data.message || t('تم تطبيق الكوبون'), 'success');
-            } catch {
-                setCouponError(t('تعذّر الاتصال. حاول مرة أخرى.'));
-            } finally {
-                setCouponLoading(false);
-            }
+            await ask.current(code, true);
         },
-        [couponCode, subtotal, customerId, customer, onToast],
+        [couponCode],
     );
+
+    /**
+     * ═══ والسلّةُ إذا تبدّل مجموعُها يُعاد سؤالُ الخادم حين تهدأ ═══
+     *
+     * الخصمُ يتبع المجموعَ في الحال، والحدُّ الأدنى يُحكم به في الحال
+     * (`couponShort`). وما سواه لا يعرفه إلّا الخادم: كودٌ نفدت مرّاتُه من صندوقٍ
+     * آخر، أو أوقفه صاحبُ المحلّ، أو انتهى عند منتصف الليل والوردية مفتوحة.
+     *
+     * فيُسأل مرّةً حين تهدأ السلّة (`COUPON_SETTLE_MS`) — لا مع كلّ نقرة — وعن
+     * مجموعٍ لم يؤكّده من قبل. وما زال تحت حدّه حين هدأت يُسقط بلا سؤال:
+     * الجوابُ معروف، وسببُه يبقى للكاشير.
+     *
+     * والملاحظةُ والزبونُ لا يبدّلان المجموع، فلا يمرّان من هنا — والزبونُ له
+     * سؤالُه في حينه أدناه.
+     */
+    useEffect(() => {
+        if (!coupon) return;
+
+        const state = `${coupon.code}|${base}`;
+        if (couponConfirmed.current === state) return;
+
+        const timer = setTimeout(() => {
+            // سؤالٌ في الطريق عن الحال نفسِه يكفي
+            if (couponAsking.current?.state === state) return;
+
+            if (base < Number(coupon.min_order ?? 0)) {
+                couponAsk.current++;
+                couponAsking.current = null;
+                couponConfirmed.current = '';
+                setCoupon(null);
+                setCouponLoading(false);
+                setCouponError(belowMinimum(coupon));
+                return;
+            }
+
+            void ask.current(coupon.code, false);
+        }, COUPON_SETTLE_MS);
+
+        return () => clearTimeout(timer);
+    }, [coupon, base]);
 
     /**
      * ═══ وتغييرُ الزبون يُعيد فحصَ الكوبون في حينه ═══
@@ -711,6 +878,10 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
      * والنداءُ هو نداءُ المعاينة نفسُه: الخادمُ يقول، والشاشةُ لا تفترض. وهو
      * لا يحتسب استعمالًا — الاحتسابُ عند الدفع وحدَه. والدفعُ يُعيد الفحصَ
      * مرّةً أخيرةً على كلّ حال، فنجاحُ المعاينة ليس إذنًا.
+     *
+     * ويُسأل في الحال لا حين تهدأ السلّة. والكودُ الذي ما زال سؤالُه في الطريق
+     * — ضغط «تطبيق» ثمّ بدّل الزبونَ قبل الجواب — يُسأل عنه للجديد كذلك،
+     * والسؤالُ الجديد يُبطل ما قبله: لا يصل جوابُ أحمد فيُطبَّق على محمّد.
      */
     const couponCustomer = useRef<string>(`${customerId ?? ''}|${customer}`);
 
@@ -723,12 +894,14 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
 
         couponCustomer.current = now;
 
-        if (!coupon) {
+        const code = couponAsking.current?.code ?? coupon?.code;
+
+        if (!code) {
             return;
         }
 
-        void applyCoupon(coupon.code);
-    }, [customerId, customer, coupon, applyCoupon]);
+        void ask.current(code, false);
+    }, [customerId, customer, coupon]);
 
     /**
      * إعادة تطبيق كوبون الطلب المستأنف — مرة واحدة عند فتح السلة.
@@ -968,7 +1141,8 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 // ما يلي معروض للمستخدم فقط ولا يُقيَّد كما هو
                 delivery_fee: 0,
                 resume_id: resumeId,
-                coupon_code: coupon?.code ?? null,
+                // الكودُ الذي يخصم على الشاشة وحدَه — وما نزلت السلّةُ تحت حدّه لا يُرسل
+                coupon_code: activeCoupon?.code ?? null,
                 redeem_points: redeemPointsUsed,
                 ...(details ?? {}),
             };
@@ -1023,7 +1197,7 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                 rejected: !!res.drop,
             };
         },
-        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, coupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
+        [items, customer, customerId, selectedCustomer, needsLanguage, blocked, blockOverrideReason, resumeId, activeCoupon, redeemPointsUsed, savePending, sendOne, onToast, onSynced],
     );
 
     /** تعليق الطلب أو حفظه — نفس نقطة النهاية باختلاف kind */
@@ -1054,20 +1228,22 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
                     // الكوبون يُعلَّق مع الطلب: بدونه كان الكاشير يطبّق خصمًا،
                     // يعلّق الطلب، ثم يستكمله فيدفع الزبون السعر كاملًا بلا
                     // أن ينتبه أحد. الخادم يُعيد التحقق منه عند الدفع دائمًا.
-                    coupon_code: coupon?.code ?? null,
+                    coupon_code: activeCoupon?.code ?? null,
                     kind,
                 }),
             });
             clear();
             onToast(kind === 'hold' ? t('تم تعليق الطلب') : t('تم حفظ الطلب'), kind === 'hold' ? 'warning' : 'success');
         },
-        [items, customer, coupon, clear, onToast, t],
+        [items, customer, activeCoupon, clear, onToast, t],
     );
 
     return {
         // الحالة
         items, customer, customers, customerSearch, barcode,
-        couponCode, coupon, couponError, couponLoading,
+        couponCode, coupon, couponLoading,
+        // سببُ الرفض — أو أنّ السلّة نزلت تحت الحدّ ولم تهدأ بعد
+        couponError: couponError || (coupon && couponShort ? belowMinimum(coupon) : ''),
         redeemActive, online, pendingCount: pending.length,
         customerLabel, isWalkIn,
         // المحسوبات

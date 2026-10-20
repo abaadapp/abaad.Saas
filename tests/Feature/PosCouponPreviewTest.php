@@ -90,6 +90,20 @@ class PosCouponPreviewTest extends TestCase
         $this->try('FIVE', 40)->assertOk()->assertJsonPath('discount', 5);
     }
 
+    /**
+     * والحدُّ الأدنى يعود مع القبول — فتحكم به السلّةُ في الحال.
+     *
+     * الكاشيرُ يحذف صنفًا بعد التطبيق فتنزل السلّةُ تحت الحدّ. وبلا الحدّ في
+     * يدها يبقى الخصمُ على الشاشة حتّى يُسأل الخادمُ ثانيةً — أو حتّى يردّه
+     * الدرج. انظر `tests/js/the-coupon-is-asked-again-when-the-basket-changes.test.tsx`.
+     */
+    public function test_an_accepted_code_says_its_minimum_so_the_basket_can_judge_itself(): void
+    {
+        $this->coupon(['min_order' => 20]);
+
+        $this->try('WARD10', 30)->assertOk()->assertJsonPath('min_order', 20);
+    }
+
     /* ------------------------------ ما يُرفض ------------------------------ */
 
     public function test_an_unknown_code_is_refused(): void

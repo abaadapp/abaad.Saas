@@ -1,0 +1,47 @@
+{
+    "_about": "الخصمُ والضريبةُ والإجماليّ في شاشة الصندوق وفي فاتورة الخادم — حالاتٌ واحدةٌ يقرؤها الطرفان. الواجهة: tests/js/the-till-shows-the-total-the-invoice-will-carry.test.tsx (usePosCart). الخادم: tests/Feature/TheTillShowsTheTotalTheInvoiceWillCarryTest.php (/pos/checkout). والحالاتُ الثلاث الأولى كانت الشاشةُ تقول فيها غيرَ الفاتورة ببيسةٍ واحدة: 2.518 و2.991 و1.775.",
+    "cases": [
+        {
+            "name": "نسبةٌ بلا ضريبة",
+            "vat": { "enabled": false, "rate": 5, "inclusive": false },
+            "lines": [{ "price": 1.325, "qty": 2 }],
+            "coupon": { "type": "نسبة", "value": 5, "min_order": 0 },
+            "expect": { "coupon_discount": 0.133, "discount": 0.133, "tax": 0, "total": 2.517 }
+        },
+        {
+            "name": "نسبةٌ وضريبةٌ مضافة",
+            "vat": { "enabled": true, "rate": 5, "inclusive": false },
+            "lines": [{ "price": 1.117, "qty": 3 }],
+            "coupon": { "type": "نسبة", "value": 15, "min_order": 0 },
+            "expect": { "coupon_discount": 0.503, "discount": 0.503, "tax": 0.142, "total": 2.99 }
+        },
+        {
+            "name": "نسبةٌ وضريبةٌ مشمولة",
+            "vat": { "enabled": true, "rate": 5, "inclusive": true },
+            "lines": [{ "price": 1.014, "qty": 2 }],
+            "coupon": { "type": "نسبة", "value": 12.5, "min_order": 0 },
+            "expect": { "coupon_discount": 0.254, "discount": 0.254, "tax": 0.084, "total": 1.774 }
+        },
+        {
+            "name": "مبلغٌ ثابت على بندين وضريبةٌ مضافة",
+            "vat": { "enabled": true, "rate": 5, "inclusive": false },
+            "lines": [{ "price": 3.5, "qty": 2 }, { "price": 1.25, "qty": 1 }],
+            "coupon": { "type": "مبلغ", "value": 2, "min_order": 5 },
+            "expect": { "coupon_discount": 2, "discount": 2, "tax": 0.313, "total": 6.563 }
+        },
+        {
+            "name": "نسبةٌ بلا كسور",
+            "vat": { "enabled": true, "rate": 5, "inclusive": false },
+            "lines": [{ "price": 10, "qty": 2 }],
+            "coupon": { "type": "نسبة", "value": 10, "min_order": 20 },
+            "expect": { "coupon_discount": 2, "discount": 2, "tax": 0.9, "total": 18.9 }
+        },
+        {
+            "name": "خصمٌ أكبر من السلّة",
+            "vat": { "enabled": false, "rate": 5, "inclusive": false },
+            "lines": [{ "price": 2.5, "qty": 2 }],
+            "coupon": { "type": "مبلغ", "value": 7, "min_order": 0 },
+            "expect": { "coupon_discount": 5, "discount": 5, "tax": 0, "total": 0 }
+        }
+    ]
+}

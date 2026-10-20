@@ -336,6 +336,11 @@ class PosController extends Controller
             'code' => $coupon->code,
             'type' => $coupon->type,
             'value' => (float) $coupon->value,
+            /*
+             * والحدُّ الأدنى معه — به تحكم السلّةُ في الحال حين تنزل تحته
+             * (`usePosCart`)، فلا يبقى على الشاشة خصمٌ يردّه الدرج.
+             */
+            'min_order' => (float) $coupon->min_order,
             'discount' => $coupon->discountFor($subtotal),
             'message' => __('تم تطبيق الكوبون: :code', ['code' => $coupon->code]),
         ]);

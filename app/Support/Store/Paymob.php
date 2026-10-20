@@ -7,6 +7,7 @@ use App\Models\PaymentGateway;
 use App\Models\StorePaymentIntent;
 use App\Support\Storefront;
 use App\Support\Website\Commerce;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -153,24 +154,40 @@ final class Paymob
      * ما يُحجز على الكوبون يُربط بنيّةٍ بعينها: نيّةٌ واحدةٌ حجزٌ واحد، ويُطرح
      * حجزُها إن فشل دفعُها. ولا يُعرف ذلك من رابطٍ نصًّا — فتُردّ معه.
      *
+     * وهي خطوتان (`prepare` ثمّ `start`) لمن يحتاج بينهما شيئًا: الموقعُ يحجز
+     * فرصةَ الكوبون للنيّة قبل أن يُطرق البنك (`WebCheckout::toCard`).
+     *
      * @param  array<string, mixed>  $payload  حمولةُ الطلب كما أرسلها الزائر
      * @param  array<string, mixed>  $quote  التسعيرُ المحسوب في الخادم
      * @return array{url: string, intent: StorePaymentIntent}
      */
     public static function open(Business $business, array $payload, array $quote, string $lang = 'ar'): array
     {
-        $bid = (int) $business->id;
-        // ولا تُفتح دفعةٌ لموقعٍ بلا سلّة — ولو وصل الطلبُ إلى هنا من بابٍ لم يسأل
-        $gateway = Commerce::checkout($bid) ? self::gateway($bid) : null;
+        return self::start($business, self::prepare($business, $payload, $quote, $lang), $payload, $quote);
+    }
 
-        if ($gateway === null) {
-            throw new \RuntimeException('بوّابةُ الدفع غير مكتملة');
-        }
+    /**
+     * نيّةُ الشراء وحدَها — صفٌّ في القاعدة، ولا طَرقَ للبنك.
+     *
+     * ═══ ولمَ وحدَها ═══
+     *
+     * لتُكتب في معاملةٍ واحدةٍ مع حجز فرصة الكوبون، تحت قفل صفّه، ثمّ تُغلق
+     * المعاملةُ ويُطرق البنكُ خارجها (`start`). فلو كُتبت النيّةُ والطَّرقُ معًا
+     * لَوجب أن يُحجز بعد الطَّرق — وفي ثوانيه يحجز غيرُه الفرصةَ نفسَها — أو أن
+     * يبقى القفلُ في اليد طوالَه، فينتظر كلُّ صندوقٍ جوابَ البنك.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $quote
+     */
+    public static function prepare(Business $business, array $payload, array $quote, string $lang = 'ar'): StorePaymentIntent
+    {
+        $bid = (int) $business->id;
+        self::checkoutGateway($bid);
 
         $currency = Storefront::currency($business);
         $total = round((float) ($quote['total'] ?? 0), 3);
 
-        $intent = StorePaymentIntent::create([
+        return StorePaymentIntent::create([
             'business_id' => $bid,
             /*
              * والمرجعُ حروفٌ صغيرةٌ كلُّه — لا زينةً.
@@ -194,6 +211,35 @@ final class Paymob
              */
             'expires_at' => now()->addSeconds(self::EXPIRES),
         ]);
+    }
+
+    /**
+     * يطرق بابَ البنك لنيّةٍ كُتبت — ويردّ رابطَ صفحة الدفع ونيّتَها.
+     *
+     * ═══ وبنكٌ لا يجيب كبنكٍ يردّ ═══
+     *
+     * انقطاعٌ أو مهلةٌ يرميان `ConnectionException` — وليست `RuntimeException`،
+     * فكانت تخرج للزبون صفحةَ خطأ، وتبقى النيّةُ «معلَّقة» كأنّ صفحتَها فُتحت.
+     * فتُكتب «فشلت» بسببها، ويُرمى ما يُرمى لبنكٍ ردّ الطلب: من ينادي يعرف
+     * أنّ الصفحةَ لم تُفتح، فيردّ فرصةَ الكوبون ويقول للزبون أن يجرّب غيرَها.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $quote
+     * @return array{url: string, intent: StorePaymentIntent}
+     */
+    public static function start(Business $business, StorePaymentIntent $intent, array $payload, array $quote): array
+    {
+        $bid = (int) $business->id;
+
+        try {
+            $gateway = self::checkoutGateway($bid);
+        } catch (\RuntimeException $e) {
+            $intent->update(['status' => StorePaymentIntent::FAILED, 'error' => $e->getMessage()]);
+
+            throw $e;
+        }
+
+        $total = round((float) ($quote['total'] ?? 0), 3);
 
         /*
          * وعنوانُ المتجر كما يفتحه زبونُه — لا `app.url`.
@@ -205,28 +251,34 @@ final class Paymob
         $store = rtrim((string) Storefront::canonical($business->site_slug, $bid), '/');
         $hook = rtrim(config('app.url'), '/').'/webhooks/paymob';
 
-        $response = Http::withHeaders(['Authorization' => 'Token '.$gateway->secret_key])
-            ->acceptJson()
-            ->timeout(20)
-            ->post(self::BASE.'/v1/intention/', [
-                // بالأصغر: الريالُ ألفُ بيسة، ولا كسرَ يُرسَل
-                'amount' => (int) round($total * 1000),
-                'currency' => $intent->currency,
-                /*
-                 * أرقامُ تكامل هذا المحلّ من صفّه — البطاقةُ ثمّ Apple Pay إن
-                 * كُتب (`PaymentGateway::paymentMethodIds`). وما تعرضه صفحةُ
-                 * Paymob منها تقرّره هي: Apple Pay يظهر لمن فعّلته له Paymob
-                 * وعلى جهازٍ يقبله، لا لأنّ رقمَه أُرسل.
-                 */
-                'payment_methods' => $gateway->paymentMethodIds(),
-                'items' => self::items($quote),
-                'billing_data' => self::billing($payload),
-                'special_reference' => $intent->reference,
-                'expiration' => self::EXPIRES,
-                // الإشعارُ إلى النظام، والعودةُ إلى المتجر — وجهتان لا واحدة
-                'notification_url' => $hook,
-                'redirection_url' => $store.'/paying/'.$intent->reference,
-            ]);
+        try {
+            $response = Http::withHeaders(['Authorization' => 'Token '.$gateway->secret_key])
+                ->acceptJson()
+                ->timeout(20)
+                ->post(self::BASE.'/v1/intention/', [
+                    // بالأصغر: الريالُ ألفُ بيسة، ولا كسرَ يُرسَل
+                    'amount' => (int) round($total * 1000),
+                    'currency' => $intent->currency,
+                    /*
+                     * أرقامُ تكامل هذا المحلّ من صفّه — البطاقةُ ثمّ Apple Pay إن
+                     * كُتب (`PaymentGateway::paymentMethodIds`). وما تعرضه صفحةُ
+                     * Paymob منها تقرّره هي: Apple Pay يظهر لمن فعّلته له Paymob
+                     * وعلى جهازٍ يقبله، لا لأنّ رقمَه أُرسل.
+                     */
+                    'payment_methods' => $gateway->paymentMethodIds(),
+                    'items' => self::items($quote),
+                    'billing_data' => self::billing($payload),
+                    'special_reference' => $intent->reference,
+                    'expiration' => self::EXPIRES,
+                    // الإشعارُ إلى النظام، والعودةُ إلى المتجر — وجهتان لا واحدة
+                    'notification_url' => $hook,
+                    'redirection_url' => $store.'/paying/'.$intent->reference,
+                ]);
+        } catch (ConnectionException $e) {
+            $intent->update(['status' => StorePaymentIntent::FAILED, 'error' => Str::limit($e->getMessage(), 500)]);
+
+            throw new \RuntimeException('تعذّر فتحُ صفحة الدفع', 0, $e);
+        }
 
         $secret = (string) $response->json('client_secret', '');
 
@@ -243,6 +295,19 @@ final class Paymob
                 .'&clientSecret='.urlencode($secret),
             'intent' => $intent->refresh(),
         ];
+    }
+
+    /** بوّابةُ المحلّ إن اكتملت ومتجرُه يبيع — وإلّا لا تُفتح دفعة */
+    private static function checkoutGateway(int $bid): PaymentGateway
+    {
+        // ولا تُفتح دفعةٌ لموقعٍ بلا سلّة — ولو وصل الطلبُ إلى هنا من بابٍ لم يسأل
+        $gateway = Commerce::checkout($bid) ? self::gateway($bid) : null;
+
+        if ($gateway === null) {
+            throw new \RuntimeException('بوّابةُ الدفع غير مكتملة');
+        }
+
+        return $gateway;
     }
 
     /* ═══════════ ردُّ المال ═══════════ */

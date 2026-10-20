@@ -237,6 +237,9 @@ final class CouponLimits
      * ونيّةٌ واحدةٌ حجزٌ واحد — القيدُ الفريد على `store_payment_intent_id`.
      * فتحديثُ الصفحة لا يحجز مرّتين.
      *
+     * ولا يسأل عن الحدّ: يكتب وحسب. والسؤالُ والكتابةُ معًا تحت القفل في
+     * `hold` — ومنه يُنادى، لا وحدَه.
+     *
      * @return bool هل حُجزت؟ (`false` إن لم يكن للكوبون حدٌّ لكلّ زبون)
      */
     public static function reserve(?Coupon $coupon, StorePaymentIntent $intent, ?string $key, ?int $customerId): bool
@@ -291,6 +294,53 @@ final class CouponLimits
             'created_at' => now(),
             'updated_at' => now(),
         ]) > 0;
+    }
+
+    /**
+     * يحجز الفرصةَ إن بقيت — والسؤالُ والحجزُ معًا تحت قفل صفّ الكوبون.
+     *
+     * ═══ العطبُ الذي يُغلقه ═══
+     *
+     * كان الدفعُ بالبطاقة يسأل `refusal` ثمّ يطرق بابَ البنك ثمّ يحجز
+     * (`reserve`). والطَّرقُ ثانيةٌ أو أكثر: من وصل في أثنائها وجد الفرصةَ
+     * حرّةً — فالأوّلُ لم يحجز بعد — فحجزها، ثمّ عاد الأوّلُ فحجزها ثانيةً.
+     * فرصةٌ واحدةٌ وصفحتا دفعٍ بسعرٍ مخفَّض، ثمّ إشعارا دفعٍ إلى كودٍ نفد.
+     *
+     * والقفلُ قفلُ الصندوق والدفعِ عند الاستلام نفسُه (`lockForUpdate` على صفّ
+     * الكوبون): من أمسكه أوّلًا سأل وكتب، والآخرُ ينتظر ثمّ يقرأ ما كُتب فيُردّ.
+     * والكوبونُ يُقرأ من جديدٍ تحت القفل — النسخةُ التي في اليد قُرئت بلا قفل،
+     * وعدّادُها قد تغيّر منذئذٍ في صندوقٍ آخر.
+     *
+     * ═══ ولا يُطرق البنكُ والقفلُ في اليد ═══
+     *
+     * المعاملةُ هنا قصيرة: قراءةٌ وعدٌّ وكتابة. ومن ينادي يُغلق معاملتَه قبل أن
+     * يطرق البنك (`WebCheckout::toCard`) — وإلّا انتظر كلُّ صندوقٍ يبيع بالكود
+     * نفسِه جوابَ البنك، وهو يأخذ حتّى عشرين ثانية.
+     *
+     * @return string|null سببُ الردّ — أو `null` إن حُجزت الفرصة، أو لم يكن للكود حدٌّ يُحجز
+     */
+    public static function hold(Coupon $coupon, StorePaymentIntent $intent, ?string $key, ?int $customerId): ?string
+    {
+        // وكودٌ بلا حدٍّ من أيّ نوع لا فرصةَ فيه تُزاحَم — فلا قفلَ ولا حجز
+        if (! $coupon->isPerCustomerLimited() && $coupon->max_uses === null) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($coupon, $intent, $key, $customerId) {
+            $locked = Coupon::whereKey($coupon->id)->lockForUpdate()->first();
+
+            if ($locked === null) {
+                return __('كود الخصم غير صحيح');
+            }
+
+            if ($why = self::refusal($locked, $key, $customerId)) {
+                return $why;
+            }
+
+            self::reserve($locked, $intent, $key, $customerId);
+
+            return null;
+        });
     }
 
     /**

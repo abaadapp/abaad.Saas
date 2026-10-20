@@ -21,8 +21,9 @@ const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor
  * ═══ وما يُحرَس ═══
  *
  *  • صفٌّ فيه تعديلٌ لم يُحفظ يُوسم «غير محفوظ»، ويزول الوسمُ بالحفظ.
- *  • ومن أغلق الصفحةَ أو انتقل منها وفيها ما لم يُحفظ يُسأل (`beforeunload`،
- *    و`router.on('before')` للانتقال داخل الشاشات) — ولا يُسأل وكلُّ شيءٍ محفوظ.
+ *  • ومن أغلق الصفحةَ وفيها ما لم يُحفظ يسأله المتصفّح (`beforeunload`)، ومن انتقل
+ *    داخل اللوحة يسأله المحرّرُ بنافذته (`router.on('before')` و`useConfirm`) — ولا
+ *    يُسأل وكلُّ شيءٍ محفوظ، ولا عن الحفظ نفسِه.
  *  • و«تراجع عن التعديلات غير المنشورة» في شريط النشر: يسأل، ثمّ يُرسل إلى بابه
  *    ويُعيد بناء المحرّر — ولا يظهر حين لا تغيير.
  */
@@ -79,6 +80,35 @@ describe('ما لم يُحفظ', () => {
         fireEvent.change(screen.getByLabelText('عنوان الواجهة — العربية'), { target: { value: 'آخر' } });
         fireEvent.change(screen.getByLabelText('عنوان الواجهة — العربية'), { target: { value: 'عنوانٌ جديد' } });
         expect(screen.queryByTestId('row-hero-unsaved')).toBeNull();
+    });
+});
+
+describe('الانتقالُ داخل اللوحة وفيها ما لم يُحفظ', () => {
+    it('يُوقَف ويُسأل بنافذة المحرّر لا بنافذة المتصفّح — فإن خرج أُعيد الانتقالُ نفسُه', async () => {
+        draw();
+        fireEvent.change(screen.getByLabelText('عنوان الواجهة — العربية'), { target: { value: 'جديد' } });
+
+        const before = vi.mocked(router.on).mock.calls.filter(([type]) => type === 'before').at(-1)![1] as (e: unknown) => void;
+        const preventDefault = vi.fn();
+        const url = new URL('http://localhost/admin/products');
+        before({ detail: { visit: { method: 'get', url, preserveScroll: false, replace: false } }, preventDefault });
+        expect(preventDefault).toHaveBeenCalled();
+
+        const dialog = await screen.findByRole('dialog');
+        expect(dialog.textContent).toContain('فيه تعديلات لم تُحفظ');
+        fireEvent.click(within(dialog).getByRole('button', { name: 'اخرج وتركها' }));
+
+        await vi.waitFor(() => expect(router.visit).toHaveBeenCalledWith(url, expect.anything()));
+    });
+
+    it('والحفظُ نفسُه لا يُسأل عنه', () => {
+        draw();
+        fireEvent.change(screen.getByLabelText('عنوان الواجهة — العربية'), { target: { value: 'جديد' } });
+
+        const before = vi.mocked(router.on).mock.calls.filter(([type]) => type === 'before').at(-1)![1] as (e: unknown) => void;
+        const preventDefault = vi.fn();
+        before({ detail: { visit: { method: 'post', url: new URL('http://localhost/admin/marketing/store') } }, preventDefault });
+        expect(preventDefault).not.toHaveBeenCalled();
     });
 });
 

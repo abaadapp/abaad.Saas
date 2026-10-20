@@ -8133,7 +8133,7 @@
     "نص الحقوق — اختياري": "Copyright text — optional",
     "اختيار المنتجات": "Choose products",
     "ابحث بالاسم العربي أو الإنجليزي": "Search by Arabic or English name",
-    "اختر حتى :n منتجات — اضغط المنتج لتختاره.": "Choose up to :n products — tap a product to select it.",
+    "اضغط المنتج لتختاره — والمتبقّي :n": "Tap a product to select it — :n left",
     "لا منتجات معروضة في متجرك بعد — اعرض منتجًا من شاشة الأصناف ثمّ عُد إلى هنا.": "No products on show in your store yet — show a product from the Products screen, then come back here.",
     "لا منتج يطابق «:q» — جرّب كلمةً أقصر أو الاسمَ بلغته الأخرى.": "No product matches “:q” — try a shorter word or the name in its other language.",
     "مضاف": "Added",
@@ -8231,5 +8231,13 @@
     "أضف قسمًا أو صفحة ورتّبها بين الرئيسية والمتجر ومن نحن وتواصل معنا — بلا رابطٍ تكتبه": "Add a section or page and place it among Home, Shop, About and Contact — no link to type",
     "تُكتب في القائمة نفسِها — كلُّ صفحةٍ مع اسمها": "Written in the menu itself — each page with its name",
     "أعمدة التذييل": "Footer columns",
-    "رتّب الأعمدة وسمّها واختر ما يظهر فيها — والشعارُ يبقى أوّلَها": "Order and name the columns and choose what shows in them — the logo stays first"
+    "رتّب الأعمدة وسمّها واختر ما يظهر فيها — والشعارُ يبقى أوّلَها": "Order and name the columns and choose what shows in them — the logo stays first",
+    "نوع القسم:": "Section type:",
+    "تغيير النوع": "Change type",
+    "تغيير نوع القسم": "Change section type",
+    "تحويل «:name»؟ صفحتُه تبقى محفوظة تحت «صفحات ليست في القائمة» — تُعيدها من هناك متى شئت.": "Convert “:name”? Its page stays saved under “Pages not in the menu” — put it back from there whenever you like.",
+    "تحويل «:name»؟ ما يفتحه الرابط الآن يُزال منه.": "Convert “:name”? What the link opens now will be removed from it.",
+    "حوّل": "Convert",
+    "تعديلات لم تُحفظ": "Unsaved changes",
+    "اخرج وتركها": "Leave without saving"
 }

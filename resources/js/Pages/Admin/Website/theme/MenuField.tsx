@@ -202,6 +202,7 @@ export default function MenuField({
     const [name, setName] = useState({ ar: '', en: '' });
     const [newTarget, setNewTarget] = useState<StoreTargetValue>({ type: 'shop', value: '' });
     const [orphanOpen, setOrphanOpen] = useState<string | null>(null);
+    const [retyping, setRetyping] = useState<string | null>(null);
 
     const write = (next: MenuItem[]) => onChange(serializeMenu(next));
     const writePages = (next: CustomPage[]) => onPagesChange(serializePages(next));
@@ -299,6 +300,49 @@ export default function MenuField({
 
         write(items.filter((i) => ! (i.type !== 'page' && i.id === item.id)));
         setOpen(null);
+    };
+
+    /**
+     * تغييرُ نوع القسم بعد إنشائه — ولا يضيع شيءٌ بلا سؤال.
+     *
+     * والعنوانُ والرابطُ يصيران صفحةً بنوعها واسمِهما؛ والصفحةُ تصير عنوانًا أو
+     * رابطًا وتبقى هي محفوظةً تحت «صفحات ليست في القائمة». ووجهةُ رابطٍ تذهب
+     * حين يصير غيرَ رابط — فيُسأل عنها. وبين أنواع الصفحة يتبدّل النوعُ في محرّرها
+     * (`PageContent`) بقاعدته.
+     */
+    const retype = async (item: MenuLink | MenuLabel, to: NewItem) => {
+        const page = pageOf(item);
+        const name = item.title_ar || item.title_en;
+        const title = { title_ar: item.title_ar, title_en: item.title_en };
+        const linkGoes = item.type === 'link' && ! page && to !== 'link';
+
+        if (page || linkGoes) {
+            const go = await ask({
+                title: 'تغيير نوع القسم',
+                message: page
+                    ? 'تحويل «:name»؟ صفحتُه تبقى محفوظة تحت «صفحات ليست في القائمة» — تُعيدها من هناك متى شئت.'
+                    : 'تحويل «:name»؟ ما يفتحه الرابط الآن يُزال منه.',
+                values: { name },
+                action: 'حوّل',
+            });
+
+            if (! go) return;
+        }
+
+        const swap = (next: MenuItem) => write(items.map((i) => (i.type !== 'page' && i.id === item.id ? next : i)));
+
+        if (to === 'label') {
+            swap({ type: 'label', id: item.id, ...title, visible: item.visible });
+        } else if (to === 'link') {
+            swap({ type: 'link', id: item.id, ...title, target: { type: 'shop', value: '' }, visible: item.visible });
+        } else {
+            const fresh = blankPage(pages.map((p) => p.slug), { ar: item.title_ar, en: item.title_en }, to);
+
+            onPagesChange(serializePages([...pages, fresh]));
+            swap({ type: 'link', id: item.id, ...title, target: { type: 'page', value: fresh.slug }, visible: item.visible });
+        }
+
+        setRetyping(null);
     };
 
     const deletePage = async (page: CustomPage) => {
@@ -428,6 +472,33 @@ export default function MenuField({
 
                                 {expanded && (
                                     <div className="space-y-4 border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 py-4">
+                                        {/* ونوعُ القسم يُبدَّل بعد إنشائه — والصفحةُ لا تضيع */}
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-[12px] text-[#6b7280]">{t('نوع القسم:')} <span className="font-medium text-[#111]">{kind}</span></span>
+                                            <Button type="button" variant="ghost" size="sm" onClick={() => setRetyping(retyping === item.id ? null : item.id)} data-testid={`menu-item-${at}-retype`}>
+                                                {t('تغيير النوع')}
+                                            </Button>
+                                        </div>
+                                        {retyping === item.id && (
+                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" data-testid={`menu-item-${at}-types`}>
+                                                {NEW_ITEMS
+                                                    // وأنواعُ الصفحة تُبدَّل في محرّرها — هنا: صفحةٌ أو عنوانٌ أو رابط
+                                                    .filter(({ type }) => (page ? type === 'label' || type === 'link' : (item.type === 'label' ? type !== 'label' : type !== 'link')))
+                                                    .map(({ type, label: l, icon: TypeIcon }) => (
+                                                        <button
+                                                            key={type}
+                                                            type="button"
+                                                            disabled={type !== 'label' && type !== 'link' && ! page && pagesFull}
+                                                            onClick={() => void retype(item, type)}
+                                                            data-testid={`menu-item-${at}-to-${type}`}
+                                                            className="flex min-h-11 items-center gap-2 rounded-[10px] bg-white px-3 text-start text-[13px] ring-1 ring-[var(--ui-border,#e8e8e8)] enabled:hover:ring-[#9ca3af] disabled:opacity-40"
+                                                        >
+                                                            <TypeIcon className="size-4 shrink-0 text-[#6b7280]" />
+                                                            {t(l)}
+                                                        </button>
+                                                    ))}
+                                            </div>
+                                        )}
                                         <div className="grid gap-3 sm:grid-cols-2">
                                             <Field label="الاسم في القائمة">
                                                 <Input value={item.title_ar} maxLength={30} onChange={(e) => rename(item, 'ar', e.target.value)} aria-label={t('الاسم في القائمة')} data-testid={`menu-item-${at}-name-ar`} />

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import AdminLayout from '@/Layouts/AdminLayout';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import Field from '@/Components/Field';
 import StoreImageField from '@/Components/StoreImageField';
 import Toggle from '@/Components/Toggle';
@@ -534,12 +535,15 @@ export default function ThemeEditor({
     /*
         ═══ وما لم يُحفظ لا يضيع بلا سؤال ═══
 
-        مفاتيحُ تفارق ما حُفظ آخرَ مرّة. ومن أغلق الصفحة أو انتقل منها وفيها
-        تعديلٌ لم يُحفظ يُسأل قبل أن يذهب — والحفظُ نفسُه `POST` فلا يُسأل عنه.
+        مفاتيحُ تفارق ما حُفظ آخرَ مرّة. ومن أغلق الصفحة وفيها تعديلٌ لم يُحفظ
+        يسأله المتصفّحُ (`beforeunload` — بابُه وحده يُسأل منه). ومن انتقل منها
+        داخل لوحته يسأله المحرّرُ بنافذته (`useConfirm`): يُوقَف الانتقالُ، فإن
+        قال «اخرج» أُعيد كما كان. والحفظُ نفسُه `POST` فلا يُسأل عنه.
     */
     const dirty = Object.keys(form.data).filter((k) => outgoing(k, form.data[k] ?? '') !== (saved.current![k] ?? ''));
     const rowDirty = (r: EditorRow) => r.fields.some((f) => dirty.includes(f.key) || (f.fit !== undefined && dirty.includes(f.fit)));
-    const leaving = t('فيه تعديلات لم تُحفظ — تخرج وتتركها؟');
+    const [ask, leaveDialog] = useConfirm();
+    const leave = useRef(false);
 
     useEffect(() => {
         if (dirty.length === 0) return;
@@ -552,14 +556,24 @@ export default function ThemeEditor({
         window.addEventListener('beforeunload', warn);
 
         const off = router.on('before', (event) => {
-            if (event.detail.visit.method === 'get' && ! window.confirm(leaving)) event.preventDefault();
+            const visit = event.detail.visit;
+
+            if (visit.method !== 'get' || leave.current) return;
+
+            event.preventDefault();
+            void ask({ title: 'تعديلات لم تُحفظ', message: 'فيه تعديلات لم تُحفظ — تخرج وتتركها؟', action: 'اخرج وتركها', danger: true }).then((go) => {
+                if (! go) return;
+
+                leave.current = true;
+                router.visit(visit.url, { preserveScroll: visit.preserveScroll, replace: visit.replace });
+            });
         });
 
         return () => {
             window.removeEventListener('beforeunload', warn);
             off();
         };
-    }, [dirty.length > 0, leaving]);
+    }, [dirty.length > 0]);
 
     const field = (f: EditorField) => {
         if (f.gate && (form.data[f.gate] ?? '0') !== '1') return null;
@@ -1008,6 +1022,7 @@ export default function ThemeEditor({
 
             {/* وشريطُ النشر لمن فُتح له وحدَه — ومقبضٌ لا يعمل أسوأ من غيابه */}
             {publishing && <PublishBar state={publishing} />}
+            {leaveDialog}
 
             <div className="mb-4 flex items-center justify-end gap-2">
                 <span className="flex items-center gap-1.5 text-[12px] text-[#6b7280]">

@@ -297,6 +297,57 @@ describe('الصفحةُ في مكانها من القائمة', () => {
         expect(sentMenu(sent).find((i) => i.type === 'link')).toMatchObject({ target: { type: 'page', value: 'events' } });
     });
 
+    /*
+     * ═══ ونوعُ القسم يُبدَّل بعد إنشائه — ولا يضيع شيءٌ بلا سؤال ═══
+     */
+    it('العنوانُ يصير صفحةَ كتابةٍ باسمه — بلا سؤال، فلا شيءَ يضيع', () => {
+        const sent = capture();
+        const label: MenuItem = { type: 'label', id: 't1', title_ar: 'المناسبات', title_en: '', visible: true };
+        draw(serializeMenu([...parseMenu(''), label]));
+        fireEvent.click(screen.getByTestId('menu-item-4-open'));
+
+        fireEvent.click(screen.getByTestId('menu-item-4-retype'));
+        expect(screen.queryByTestId('menu-item-4-to-label')).toBeNull();
+        fireEvent.click(screen.getByTestId('menu-item-4-to-text'));
+
+        save();
+        const [p] = sentPages(sent);
+        expect(p).toMatchObject({ kind: 'text', title_ar: 'المناسبات' });
+        expect(sentMenu(sent)[4]).toMatchObject({ type: 'link', id: 't1', target: { type: 'page', value: p.slug } });
+    });
+
+    it('والصفحةُ تصير عنوانًا بعد سؤال — وتبقى محفوظةً تحت «صفحات ليست في القائمة»', async () => {
+        const sent = capture();
+        draw(serializeMenu([...parseMenu(''), linkTo('events', 'المناسبات')]), serializePages([page()]));
+        fireEvent.click(screen.getByTestId('menu-item-4-open'));
+
+        fireEvent.click(screen.getByTestId('menu-item-4-retype'));
+        fireEvent.click(screen.getByTestId('menu-item-4-to-label'));
+        fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'حوّل' }));
+        await screen.findByTestId('menu-orphan-events');
+
+        save();
+        expect(sentMenu(sent)[4]).toMatchObject({ type: 'label', id: 'l1', title_ar: 'المناسبات' });
+        expect(sentPages(sent).map((p) => p.slug)).toEqual(['events']);
+    });
+
+    it('والرابطُ يصير صفحةَ منتجات — ويُسأل عمّا كان يفتحه', async () => {
+        const sent = capture();
+        const ig: MenuItem = { type: 'link', id: 'ig', title_ar: 'إنستغرام', title_en: '', target: { type: 'url', value: 'https://instagram.com/ribbon' }, visible: true };
+        draw(serializeMenu([...parseMenu(''), ig]));
+        fireEvent.click(screen.getByTestId('menu-item-4-open'));
+
+        fireEvent.click(screen.getByTestId('menu-item-4-retype'));
+        fireEvent.click(screen.getByTestId('menu-item-4-to-products'));
+        const dialog = await screen.findByRole('dialog');
+        expect(dialog.textContent).toContain('ما يفتحه الرابط');
+        fireEvent.click(within(dialog).getByRole('button', { name: 'حوّل' }));
+        await screen.findByTestId('menu-item-4-page');
+
+        save();
+        expect(sentPages(sent)[0]).toMatchObject({ kind: 'products' });
+    });
+
     it('وتُرتَّب العناصرُ كلُّها بسهمين — من الهاتف كما من الحاسوب', () => {
         const sent = capture();
         draw(serializeMenu([...parseMenu(''), linkTo('events', 'المناسبات')]), serializePages([page()]));

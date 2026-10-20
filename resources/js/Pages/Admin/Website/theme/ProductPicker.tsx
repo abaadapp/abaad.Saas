@@ -99,7 +99,7 @@ export function ProductPicker({
     return (
         <Dialog open={open} onOpenChange={close}>
             <DialogContent className="max-w-2xl p-0" data-testid="picker">
-                <DialogHeader className="space-y-3 border-b border-[var(--ui-border,#e8e8e8)] px-4 pb-3 pt-4">
+                <DialogHeader className="space-y-3 border-b border-[var(--ui-border,#e8e8e8)] px-5 pb-3 pt-5">
                     <DialogTitle>{t('اختيار المنتجات')}</DialogTitle>
                     <div className="relative">
                         <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-[#9ca3af]" />
@@ -116,11 +116,11 @@ export function ProductPicker({
                     <p className="text-[12px] text-[#6b7280]" data-testid="picker-room">
                         {room === 0
                             ? t('بلغت الحدّ — أزل منتجًا لتضيف غيره.')
-                            : t('اختر حتى :n منتجات — اضغط المنتج لتختاره.', { n: String(room) })}
+                            : t('اضغط المنتج لتختاره — والمتبقّي :n', { n: String(room) })}
                     </p>
                 </DialogHeader>
 
-                <div className="max-h-[min(60dvh,520px)] overflow-y-auto overscroll-contain px-4 py-3">
+                <div className="max-h-[min(60dvh,520px)] overflow-y-auto overscroll-contain px-5 py-3">
                     {products.length === 0 ? (
                         <p data-testid="picker-empty" className="flex flex-col items-center gap-2 py-10 text-center text-[13px] leading-relaxed text-[#6b7280]">
                             <PackageSearch className="size-8 text-[#c4c4c4]" />
@@ -170,7 +170,7 @@ export function ProductPicker({
                     )}
                 </div>
 
-                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3">
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--ui-border,#e8e8e8)] px-5 py-3">
                     <Button type="button" variant="ghost" onClick={() => close(false)}>
                         {t('إلغاء')}
                     </Button>

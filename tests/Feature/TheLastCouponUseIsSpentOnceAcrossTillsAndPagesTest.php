@@ -170,8 +170,12 @@ class TheLastCouponUseIsSpentOnceAcrossTillsAndPagesTest extends TestCase
         return $proc;
     }
 
-    /** زبونٌ آخر في صفحة البنك على آخر فرصة — حجزُه يُكتب الآن ولم يُودَع بعد */
-    private function anotherCardIsBeingHeld()
+    /**
+     * زبونٌ آخر في صفحة البنك على آخر فرصة — حجزُه يُكتب الآن ولم يُودَع بعد.
+     *
+     * @param  string  $key  هويّتُه — أو هويّةُ الزبون المقيس نفسِه من جهازٍ آخر
+     */
+    private function anotherCardIsBeingHeld(string $key = 'phone:96899330003')
     {
         $intent = StorePaymentIntent::create([
             'business_id' => $this->shop->id, 'reference' => 'web-race-held', 'payload' => [],
@@ -182,8 +186,8 @@ class TheLastCouponUseIsSpentOnceAcrossTillsAndPagesTest extends TestCase
         return $this->otherDoor(sprintf(
             '$p->exec("INSERT INTO coupon_redemptions'
             .' (business_id, coupon_id, order_id, store_payment_intent_id, customer_id, customer_key, reserved_until, redeemed_at, created_at, updated_at)'
-            .' VALUES (%d, %d, NULL, %d, NULL, \'phone:96899330003\', \'%s\', now(), now(), now())");',
-            $this->shop->id, $this->coupon->id, $intent->id,
+            .' VALUES (%d, %d, NULL, %d, NULL, \'%s\', \'%s\', now(), now(), now())");',
+            $this->shop->id, $this->coupon->id, $intent->id, $key,
             // بتوقيت التطبيق لا القاعدة — فلا ينقضي الحجزُ أو يطول بفرق المنطقة
             now()->addHour()->toDateTimeString(),
         ));
@@ -259,6 +263,55 @@ class TheLastCouponUseIsSpentOnceAcrossTillsAndPagesTest extends TestCase
         $res->assertStatus(422);
         $this->assertArrayHasKey('promo', (array) $res->json('errors'), 'حُجزت فرصةٌ بِيعت في الصندوق للتوّ');
         $this->assertSame(1, $this->slotsTaken(), 'أُخذت الفرصةُ الواحدة مرّتين');
+        Http::assertNothingSent();
+    }
+
+    /* ═════════════ والحدُّ لكلّ زبون: الزبونةُ نفسُها من جهازين ═════════════ */
+
+    public function test_the_same_customer_on_two_devices_cannot_hold_her_one_use_twice(): void
+    {
+        $this->coupon->update(['max_uses' => null, 'per_customer_limit' => 1]);
+        $this->bankOpens();
+        // هاتفُ مريم الآخر يحجز فرصتَها الآن — برقمها كما يُطبَّع
+        $proc = $this->anotherCardIsBeingHeld('phone:96899110001');
+
+        try {
+            $res = $this->postJson('/s/ribbon/checkout', $this->web());
+        } finally {
+            proc_close($proc);
+        }
+
+        $res->assertStatus(422);
+        $this->assertArrayHasKey('promo', (array) $res->json('errors'), 'فُتحت لها صفحتان على فرصتها الواحدة');
+        $this->assertSame(1, DB::table('coupon_redemptions')->where('customer_key', 'phone:96899110001')->count());
+        Http::assertNothingSent();
+    }
+
+    /* ═════════════ وحدٌّ يُضبط والزبونُ في صفحة الإتمام ═════════════ */
+
+    public function test_a_limit_set_while_the_buyer_is_at_checkout_is_read_under_the_lock(): void
+    {
+        /*
+         * الكودُ بلا حدٍّ حين سُعّرت السلّة. وفي اللحظة نفسِها يضبط صاحبُ المحلّ
+         * «مرّةً واحدة» وتُباع في الصندوق. فالتسعيرةُ قرأت «لا حدّ» — ولو صدّقها
+         * الحجزُ لَفُتحت صفحةُ دفعٍ على كودٍ نفد، ولا حجزَ لها.
+         */
+        $this->coupon->update(['max_uses' => null]);
+        $this->bankOpens();
+        $proc = $this->otherDoor(sprintf(
+            '$p->exec("UPDATE coupons SET max_uses = 1, used_count = 1 WHERE id = %d");',
+            $this->coupon->id,
+        ));
+
+        try {
+            $res = $this->postJson('/s/ribbon/checkout', $this->web());
+        } finally {
+            proc_close($proc);
+        }
+
+        $res->assertStatus(422);
+        $this->assertArrayHasKey('promo', (array) $res->json('errors'), 'فُتحت صفحةُ دفعٍ على كودٍ صار محدودًا ونفد — بلا حجز');
+        $this->assertSame(1, $this->slotsTaken());
         Http::assertNothingSent();
     }
 

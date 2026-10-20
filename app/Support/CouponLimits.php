@@ -240,7 +240,8 @@ final class CouponLimits
      * ولا يسأل عن الحدّ: يكتب وحسب. والسؤالُ والكتابةُ معًا تحت القفل في
      * `hold` — ومنه يُنادى، لا وحدَه.
      *
-     * @return bool هل حُجزت؟ (`false` إن لم يكن للكوبون حدٌّ لكلّ زبون)
+     * @return bool هل كُتب الحجز؟ — `false` لكودٍ بلا حدّ، أو لزبونٍ لا يُعرف، أو
+     *              لنيّةٍ حُجز لها من قبل. و`hold` يسأل عنها ولا يمضي بلا جوابها
      */
     public static function reserve(?Coupon $coupon, StorePaymentIntent $intent, ?string $key, ?int $customerId): bool
     {
@@ -255,7 +256,7 @@ final class CouponLimits
             return false;
         }
 
-        if (! $coupon->isPerCustomerLimited() && $coupon->max_uses === null) {
+        if (! self::limited($coupon)) {
             return false;
         }
 
@@ -317,15 +318,24 @@ final class CouponLimits
      * يطرق البنك (`WebCheckout::toCard`) — وإلّا انتظر كلُّ صندوقٍ يبيع بالكود
      * نفسِه جوابَ البنك، وهو يأخذ حتّى عشرين ثانية.
      *
-     * @return string|null سببُ الردّ — أو `null` إن حُجزت الفرصة، أو لم يكن للكود حدٌّ يُحجز
+     * ═══ و«حُجزت» لحجزٍ كُتب — لا لحجزٍ لم يُردّ ═══
+     *
+     * كان يقول «حُجزت» متى لم يجد سببًا للردّ، ولا يسأل `reserve` هل كتبت. وهي
+     * لا تكتب لزبونٍ لا يُعرف — رقمٌ لا يُقرأ ولا بطاقةَ له في المتجر — ولا
+     * لنيّةٍ حُجز لها من قبل. فتُفتح صفحةُ البنك بسعرٍ مخفَّضٍ ولا شيءَ يُمسك
+     * فرصتَها: يأخذها غيرُه في أثنائها، ويصل إشعارُ هذا إلى كودٍ نفد — دفع
+     * ورُدّ طلبُه.
+     *
+     * فـ`null` لاثنين لا ثالثَ لهما: كودٌ لا حدَّ فيه، أو حجزٌ كُتب. وما سواهما
+     * سببٌ يُقال للزبون، وتسقط معه نيّةُ الدفع في معاملة من ينادي.
+     *
+     * والحاجةُ إلى الحجز تُقرأ من الصفّ المقفل لا من النسخة التي في اليد: تلك
+     * قُرئت عند التسعير، وقد يضبط صاحبُ المحلّ حدًّا بعدها ويبيع آخرَ فرصة.
+     *
+     * @return string|null سببُ الردّ — أو `null` إن كُتب الحجز، أو لم يكن للكود حدٌّ يُحجز
      */
     public static function hold(Coupon $coupon, StorePaymentIntent $intent, ?string $key, ?int $customerId): ?string
     {
-        // وكودٌ بلا حدٍّ من أيّ نوع لا فرصةَ فيه تُزاحَم — فلا قفلَ ولا حجز
-        if (! $coupon->isPerCustomerLimited() && $coupon->max_uses === null) {
-            return null;
-        }
-
         return DB::transaction(function () use ($coupon, $intent, $key, $customerId) {
             $locked = Coupon::whereKey($coupon->id)->lockForUpdate()->first();
 
@@ -333,14 +343,32 @@ final class CouponLimits
                 return __('كود الخصم غير صحيح');
             }
 
+            // وكودٌ بلا حدٍّ من أيّ نوع لا فرصةَ فيه تُزاحَم — فلا حجزَ يُنتظر
+            if (! self::limited($locked)) {
+                return null;
+            }
+
             if ($why = self::refusal($locked, $key, $customerId)) {
                 return $why;
             }
 
-            self::reserve($locked, $intent, $key, $customerId);
+            // ولا حجزَ لمجهول: الصفُّ يُكتب باسم زبون، وبه يُعدّ عليه الحدّ
+            if ($key === null && $customerId === null) {
+                return __('هذا الكوبون محدود المرات — اكتب رقم هاتفٍ صحيحًا ليُحجز لك.');
+            }
+
+            if (! self::reserve($locked, $intent, $key, $customerId)) {
+                return __('تعذّر حجز الكوبون — أعد المحاولة.');
+            }
 
             return null;
         });
+    }
+
+    /** للكود حدٌّ — إجماليٌّ أو لكلّ زبون. وما لا حدَّ له لا فرصةَ فيه تُزاحَم */
+    private static function limited(Coupon $coupon): bool
+    {
+        return $coupon->isPerCustomerLimited() || $coupon->max_uses !== null;
     }
 
     /**

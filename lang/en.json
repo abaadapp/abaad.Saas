@@ -6875,6 +6875,8 @@
     "لكل زبون": "per customer",
     "هذا الكوبون محدودٌ لكلّ زبون — أضف رقم هاتف الزبون ليُحسب له.": "This coupon is limited per customer — add the customer’s phone number so it can be counted for them.",
     "حدُّ هذا الكوبون :n استخدام لكل زبون، وقد بلغه هذا الزبون.": "This coupon allows :n use(s) per customer, and this customer has reached that limit.",
+    "هذا الكوبون محدود المرات — اكتب رقم هاتفٍ صحيحًا ليُحجز لك.": "This coupon has limited uses — enter a valid phone number so one can be reserved for you.",
+    "تعذّر حجز الكوبون — أعد المحاولة.": "The coupon could not be reserved — please try again.",
     "أقصى عدد استخدامات (إجمالًا)": "Maximum uses (in total)",
     "لكل الزبائن معًا — يُغلق الكود حين يبلغه": "For all customers together — the code closes when it is reached",
     "الحد لكل زبون": "Limit per customer",

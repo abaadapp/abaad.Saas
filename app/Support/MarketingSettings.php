@@ -351,6 +351,8 @@ class MarketingSettings
             'store_shop_row' => '',
             'store_menu' => '',
             'store_custom_pages' => '',
+            // والتذييلُ كما كان — أعمدتُه الثلاثةُ بعناوينها وسطرُه. انظر `Store\StoreFooter`
+            'store_footer' => '',
 
             /*
              * ═══ وطرقُ عرض الصور — «كاملة» أو «ملء الإطار» ═══

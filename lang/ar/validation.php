@@ -495,6 +495,8 @@ return [
         'store_shop_row' => 'ترتيب شريط المتجر',
         'store_menu' => 'القائمة الرئيسية',
         'store_custom_pages' => 'الصفحات المخصّصة',
+        'store_footer' => 'التذييل',
+        'store_instagram' => 'حساب إنستغرام',
         'store_catalog_fit' => 'عرض صور المنتجات',
         'store_hero_image_fit' => 'عرض صورة الواجهة',
         'store_banner_image_fit' => 'عرض صورة الشريط',

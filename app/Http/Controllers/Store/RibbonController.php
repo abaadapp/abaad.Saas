@@ -34,6 +34,7 @@ use App\Support\Store\ThankYouPage;
 use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreCustomPages;
 use App\Support\Store\StoreMedia;
+use App\Support\Store\StoreFooter;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
@@ -202,7 +203,48 @@ class RibbonController extends Controller
      */
     private function customPageData(Business $business, array $page, array $ctx, string $lang, string $base): array
     {
-        $view = StoreCustomPages::view((int) $business->id, $page, $lang, $base);
+        $bid = (int) $business->id;
+        $view = StoreCustomPages::view($bid, $page, $lang, $base);
+
+        /*
+         * والمنتجاتُ بطاقاتُ الرفّ نفسُها — من المعروض وحده، في سؤالٍ واحدٍ
+         * للصفحة كلّها. ومنتجٌ أُخفي بعد اختياره لا يُرسم، ووحدةٌ لم يبقَ فيها
+         * منتجٌ معروضٌ لا تُرسم: لا عنوانَ فوق رفٍّ فارغ.
+         */
+        $wanted = [];
+
+        foreach ($view['blocks'] as $b) {
+            if (isset($b['ids'])) {
+                array_push($wanted, ...$b['ids']);
+            }
+        }
+
+        $shown = $wanted === [] ? collect() : $this->shown($bid)->whereIn('id', array_values(array_unique($wanted)))
+            ->with(['category:id,name,name_en', 'variants'])->get()->keyBy('id');
+        $currency = Storefront::currency($business);
+
+        $view['blocks'] = array_values(array_filter(array_map(function (array $b) use ($shown, $lang, $business, $currency) {
+            if (! isset($b['ids'])) {
+                return $b;
+            }
+
+            $cards = [];
+
+            foreach ($b['ids'] as $id) {
+                if ($shown->has($id)) {
+                    $cards[] = $this->card($shown[$id], $lang, $business, $currency);
+                }
+            }
+
+            // والمجموعةُ تُعرض أوّلُها ورابطٌ إلى رفّها — لا الرفُّ كلُّه في صفحةٍ أخرى
+            if ($b['type'] === 'collection') {
+                $cards = array_slice($cards, 0, StoreCustomPages::COLLECTION_SHOWN);
+            }
+
+            unset($b['ids']);
+
+            return $cards === [] ? null : $b + ['cards' => $cards];
+        }, $view['blocks'])));
 
         if ($view['intro'] !== '') {
             $ctx['seo']['description'] = \Illuminate\Support\Str::limit(preg_replace('/\s+/u', ' ', $view['intro']), 155);
@@ -833,6 +875,8 @@ class RibbonController extends Controller
         $identity['about'] = StorePage::about($bid, $lang);
         $s = WebCheckout::settings($bid);
         $t = RibbonTexts::for($lang);
+        $nav = StoreNav::links($bid, $base, $t, $current, $lang, $here);
+        $catsNav = $this->categories($bid, $lang, null)->take(6)->all();
 
         return [
             'business' => $business,
@@ -858,7 +902,7 @@ class RibbonController extends Controller
             'accepts' => WebCheckout::accepts($business),
 
             'analytics' => Seo::tagFor($bid),
-            'catsNav' => $this->categories($bid, $lang, null)->take(6)->all(),
+            'catsNav' => $catsNav,
             // وسطرُ التذييل في كلّ صفحة — فهو في القالب العامّ لا في الرئيسية
             'tagline' => StorePage::tagline($bid, $lang),
             /*
@@ -866,7 +910,16 @@ class RibbonController extends Controller
              *
              * ولو بُنيت في القالبين لَبقي في أحدهما رابطٌ إلى صفحةٍ أُطفئت.
              */
-            'nav' => StoreNav::links($bid, $base, $t, $current, $lang, $here),
+            'nav' => $nav,
+            /*
+             * والتذييلُ كما رتّبه صاحبُه — أعمدتُه وعناوينُها وما يظهر فيها،
+             * من القائمة والفئات والمجموعات نفسِها. والفراغُ التذييلُ القائم.
+             * انظر `StoreFooter`.
+             */
+            'footer' => StoreFooter::view(
+                StoreFooter::settings((string) (MarketingSettings::group($bid, 'website')[StoreFooter::KEY] ?? '')),
+                $lang, $t, $base, $nav, $catsNav, StoreCollections::visible($bid), (string) $business->name,
+            ),
             // والقائمةُ التي كتبها صاحبُها سطرٌ يُمرَّر — والقديمةُ كما كانت (`layout`)
             'navScroll' => StoreNav::customized($bid),
             /*

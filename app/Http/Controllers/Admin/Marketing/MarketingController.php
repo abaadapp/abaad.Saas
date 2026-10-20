@@ -25,6 +25,7 @@ use App\Support\Store\RibbonUpsells;
 use App\Support\Store\StoreContent;
 use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreCustomPages;
+use App\Support\Store\StoreFooter;
 use App\Support\Store\StoreImageUpload;
 use App\Support\Store\StoreMedia;
 use App\Support\Store\StoreNav;
@@ -188,6 +189,28 @@ class MarketingController extends Controller
         ]);
     }
 
+    /**
+     * اسمُ حساب إنستغرام — من الاسم كما كُتب، أو من رابط الحساب كاملًا.
+     *
+     * يلصق صاحبُ المتجر الرابطَ من هاتفه أكثرَ ممّا يكتب الاسم، فيُؤخذ منه
+     * الاسمُ وحده: حروفٌ إنجليزيّةٌ وأرقامٌ ونقطةٌ وشرطةٌ سفليّة كما يقبلها
+     * إنستغرام نفسُه. وما سواها يُردّ برسالة — لا يُحفظ رابطٌ إلى غير حسابه.
+     */
+    private function instagramHandle(string $raw): string
+    {
+        $handle = trim($raw);
+        $handle = (string) preg_replace('#^(?:https?://)?(?:www\.)?instagram\.com/#i', '', $handle);
+        $handle = ltrim(explode('/', explode('?', $handle)[0])[0], '@');
+
+        if (preg_match('/^[A-Za-z0-9._]{1,30}$/', $handle) !== 1) {
+            throw ValidationException::withMessages([
+                'store_instagram' => __('اكتب اسم حساب إنستغرام وحده — مثل ribbon.om — أو الصق رابط حسابك.'),
+            ]);
+        }
+
+        return $handle;
+    }
+
     public function saveStore(Request $request)
     {
         // ثلاثُ حالاتٍ لا أكثر — والفراغُ رابعٌ يعني «ما كان»
@@ -217,6 +240,12 @@ class MarketingController extends Controller
              */
             'store_allow_orders' => ['sometimes', 'boolean'],
             'store_whatsapp' => ['nullable', 'string', 'max:30'],
+            /*
+             * وحسابُ إنستغرام — كان حقلُه في المحرّر بلا قاعدةٍ هنا، فيُسقطه
+             * `validate` ولا يُحفظ أبدًا. ويُقبل الاسمُ أو رابطُ الحساب كاملًا،
+             * ويُحفظ الاسمُ وحده (`instagramHandle` أدناه).
+             */
+            'store_instagram' => ['nullable', 'string', 'max:100'],
             'store_pay_cod' => ['sometimes', 'boolean'],
             'store_pay_transfer' => ['sometimes', 'boolean'],
             // إيصالُ الدفع الإلكترونيّ للزبون — انظر `Store\PaidReceipt` وحارسَه تحت
@@ -354,6 +383,8 @@ class MarketingController extends Controller
             'store_menu' => ['nullable', 'string', 'max:'.StoreNav::MENU_RAW_MAX],
             // والصفحاتُ المخصّصة — `StoreCustomPages::validated` أدناه
             'store_custom_pages' => ['nullable', 'string', 'max:'.StoreCustomPages::RAW_MAX],
+            // وأعمدةُ التذييل وسطرُه — `StoreFooter::validated` أدناه
+            'store_footer' => ['nullable', 'string', 'max:'.StoreFooter::RAW_MAX],
             /*
              * وطريقةُ عرض الصور — «كاملة» أو «ملء الإطار»، قيمتان مغلقتان تصيران
              * قاعدةَ CSS، فلا نصَّ حرٌّ يبلغ `style`. والفراغُ «ملء الإطار» كما كان.
@@ -505,6 +536,21 @@ class MarketingController extends Controller
         if ($request->exists(StoreHeader::ROW)) {
             abort_if($business->storefrontTheme() === null, 403);
             $data[StoreHeader::ROW] = StoreHeader::validatedRow($this->bid(), $request->input(StoreHeader::ROW), $collectionsNow());
+        }
+
+        /*
+         * ═══ والتذييلُ — أعمدتُه وعناوينُها وما يظهر فيها ═══
+         *
+         * ومجموعاتُ عمود «تسوّق» من قائمته وحدها: ما يُحفظ معها، وإلّا المسوّدة.
+         * انظر `Store\StoreFooter::validated`.
+         */
+        if ($request->exists(StoreFooter::KEY)) {
+            abort_if($business->storefrontTheme() === null, 403);
+            $data[StoreFooter::KEY] = StoreFooter::validated($request->input(StoreFooter::KEY), $collectionsNow());
+        }
+
+        if (filled($data['store_instagram'] ?? null)) {
+            $data['store_instagram'] = $this->instagramHandle((string) $data['store_instagram']);
         }
 
         // وطرقُ عرض الصور تقرؤها الواجهةُ الخاصّة وحدها

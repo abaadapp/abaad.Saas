@@ -237,6 +237,41 @@ final class ThemePublisher
     }
 
     /**
+     * «تراجع عن التعديلات غير المنشورة» — المسوّدةُ تعود إلى المنشور.
+     *
+     * ولا يمسّ الموقعَ الحيّ ولا نشراتِه: يُفرغ المسوّدةَ وحدها، فيقرأ المحرّرُ
+     * المنشورَ نفسَه (`StoreContent::draft`). والمراجعةُ تزيد كأيّ حفظ — فمن فتح
+     * الشاشةَ قبل التراجع ثمّ نشر يُقال له إنّ المسوّدة تبدّلت.
+     *
+     * @return bool  لا شيءَ حين لا تغييرَ يُتراجَع عنه
+     */
+    public static function discard(Business $business, ?int $userId = null): bool
+    {
+        $bid = (int) $business->id;
+
+        if (StoreContent::changed($bid) === []) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($bid, $userId) {
+            $site = StoreSite::where('business_id', $bid)->lockForUpdate()->first();
+
+            if ($site === null) {
+                return false;
+            }
+
+            $site->update([
+                'draft' => [],
+                'draft_revision' => (int) $site->draft_revision + 1,
+                'draft_saved_at' => now(),
+                'draft_saved_by' => $userId,
+            ]);
+
+            return true;
+        });
+    }
+
+    /**
      * المستندُ الذي يُكتب في `payload`.
      *
      * ويُكتب فيه القالبُ والاسمُ ليُقرآ عند المراجعة — لا ليُكتبا عند

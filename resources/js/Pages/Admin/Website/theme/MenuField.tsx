@@ -1,30 +1,41 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, CircleAlert, Eye, EyeOff, FilePlus, Link2, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import {
+    ArrowDown, ArrowUp, ChevronDown, CircleAlert, Eye, EyeOff, FileText, Heading, House, Images, Link2, PanelsTopLeft,
+    Plus, RotateCcw, Shapes, ShoppingBag, Trash2, X,
+} from 'lucide-react';
 
+import { useConfirm } from '@/Components/ConfirmDialog';
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import type { StoreCollection } from './CollectionsField';
+import PageContent from './PageContent';
+import { blankPage, type CustomPage, type PageKind, parsePages, serializePages } from './pages';
+import type { ListProduct } from './ProductListField';
 import { parseTarget, reaches, type StoreTargetValue, type TargetSources, TargetSelect } from './StoreTargets';
 
 /**
- * القائمةُ الرئيسيّة في محرّر الواجهة — الرئيسية | المتجر | من نحن | تواصل معنا،
- * بترتيب صاحبها، وروابطُه بينها.
+ * القائمةُ الرئيسيّة وصفحاتُها — الرئيسية | المتجر | المناسبات | عروضنا | من نحن.
  *
- * ═══ والصفحاتُ الأربعُ تُرتَّب ولا تُحذف ═══
+ * ═══ «+ إضافة قسم أو صفحة» — ثمّ الاسمُ وحده ═══
  *
- * هي أبوابُ المتجر: «المتجر» بابُ الشراء، و«تواصل معنا» ما يسأل عنه زبونٌ قبل أن
- * يدفع لمن لا يعرفه. فتُحرَّك في القائمة ولا تخرج منها، وإطفاءُ «من نحن» و«تواصل
- * معنا» بابُه شاشةُ «الصفحات» — ولا يُطفئهما بابان.
+ * يختار صاحبُ المتجر ما يريد ببطاقة: عنوانٌ في القائمة لا يُضغط، أو صفحةُ كتابة،
+ * أو صفحةُ صور، أو كتابةٌ وصور، أو صفحةُ منتجات، أو محتوى متنوّع، أو رابط. ثمّ
+ * يكتب اسمَه — والإنجليزيُّ اختياريّ — ويضغط «أضف». فلا رابطَ يُطلب إلّا في
+ * «رابط»، والصفحةُ تُنشأ برابطها الداخليّ وحدها ويُكتب محتواها في مكانها هنا.
  *
- * ═══ والروابطُ تُختار وجهتُها ولا تُكتب ═══
+ * ═══ والعنوانُ غيرُ صفحة الكتابة ═══
  *
- * صفحةٌ مخصّصة، أو مجموعة، أو فئة، أو صفحةٌ من صفحاته (`StoreTargets`). وحذفُ
- * رابطٍ يحذف الرابطَ وحده — لا الصفحةَ ولا المجموعةَ ولا منتجًا فيها.
+ * «عنوان فقط» كلمةٌ تُقرأ في القائمة بلا رابط (`label`). و«صفحة كتابة» رابطٌ إلى
+ * صفحةٍ فيها عنوانٌ وفقرات. ولكلٍّ بطاقتُه — لا يُخلط أحدُهما بالآخر.
  *
- * والقيمةُ نصُّ JSON في مفتاحٍ واحد (`store_menu`)، والفراغُ القائمةُ القديمةُ
- * بترتيبها. والخادمُ يقرؤها بصرامة (`Store\StoreNav::validatedMenu`).
+ * ═══ والصفحاتُ الأربعُ تُرتَّب ولا تُحذف، والحذفُ لا يُضيّع صفحة ═══
+ *
+ * إزالةُ قسمٍ له صفحةٌ تُخرجه من القائمة وحدها، وصفحتُه تبقى تحت «صفحات ليست في
+ * القائمة» — تُعاد أو تُحذف من هناك بتأكيد. والقيمتان نصّا JSON: القائمةُ
+ * (`store_menu`) والصفحاتُ (`store_custom_pages`)، يقرؤهما الخادمُ بصرامة.
  */
 
 export type BuiltIn = 'home' | 'shop' | 'about' | 'contact';
@@ -40,11 +51,33 @@ export interface MenuLink {
     visible: boolean;
 }
 
-export type MenuItem = { type: 'page'; key: BuiltIn } | MenuLink;
+/** عنوانٌ في القائمة لا يُضغط — اسمٌ بلا وجهة */
+export interface MenuLabel {
+    type: 'label';
+    id: string;
+    title_ar: string;
+    title_en: string;
+    visible: boolean;
+}
+
+export type MenuItem = { type: 'page'; key: BuiltIn } | MenuLink | MenuLabel;
+
+/** ما يُختار من «+ إضافة قسم أو صفحة» */
+export type NewItem = 'label' | PageKind | 'link';
 
 const BUILT_IN_LABEL: Record<BuiltIn, string> = { home: 'الرئيسية', shop: 'المتجر', about: 'من نحن', contact: 'تواصل معنا' };
 
 const DEFAULT: MenuItem[] = BUILT_INS.map((key) => ({ type: 'page', key }));
+
+export const NEW_ITEMS: { type: NewItem; label: string; hint: string; icon: typeof FileText }[] = [
+    { type: 'label', label: 'عنوان فقط', hint: 'اسمٌ يظهر في القائمة ولا يُضغط', icon: Heading },
+    { type: 'text', label: 'صفحة كتابة', hint: 'عنوانٌ ووصفٌ وفقرات — بلا صورة', icon: FileText },
+    { type: 'images', label: 'صفحة صور', hint: 'صورةٌ أو أكثر تظهر كاملة', icon: Images },
+    { type: 'textimage', label: 'صفحة كتابة وصور', hint: 'أقسامٌ من نصٍّ وصورة', icon: PanelsTopLeft },
+    { type: 'products', label: 'صفحة منتجات', hint: 'تختار منتجاتها بصورها وترتّبها', icon: ShoppingBag },
+    { type: 'mixed', label: 'صفحة محتوى متنوّع', hint: 'عناوين ونصوص وصور ومنتجات وأزرار', icon: Shapes },
+    { type: 'link', label: 'رابط', hint: 'إلى صفحةٍ أو مجموعةٍ أو منتج، أو رابطٍ تكتبه', icon: Link2 },
+];
 
 /** النصُّ المحفوظ ← قائمة — والفراغُ القائمةُ القديمة، والغائبُ من الأربع يُلحق آخرَها */
 export function parseMenu(raw: string | undefined): MenuItem[] {
@@ -72,17 +105,24 @@ export function parseMenu(raw: string | undefined): MenuItem[] {
             continue;
         }
 
-        const target = parseTarget(i.target);
         const id = String(i.id ?? '');
 
-        if (i.type !== 'link' || ! /^[a-z0-9]{1,16}$/.test(id) || seen.has(`link:${id}`) || ! target) continue;
+        if ((i.type !== 'link' && i.type !== 'label') || ! /^[a-z0-9]{1,16}$/.test(id) || seen.has(`item:${id}`)) continue;
 
-        seen.add(`link:${id}`);
-        out.push({
-            type: 'link', id,
-            title_ar: String(i.title_ar ?? ''), title_en: String(i.title_en ?? ''),
-            target, visible: i.visible !== false,
-        });
+        const title = { title_ar: String(i.title_ar ?? ''), title_en: String(i.title_en ?? '') };
+
+        if (i.type === 'label') {
+            seen.add(`item:${id}`);
+            out.push({ type: 'label', id, ...title, visible: i.visible !== false });
+            continue;
+        }
+
+        const target = parseTarget(i.target);
+
+        if (! target) continue;
+
+        seen.add(`item:${id}`);
+        out.push({ type: 'link', id, ...title, target, visible: i.visible !== false });
     }
 
     for (const key of BUILT_INS) {
@@ -92,14 +132,14 @@ export function parseMenu(raw: string | undefined): MenuItem[] {
     return out;
 }
 
-/** القائمة ← نصٌّ يُحفظ. والقديمةُ نفسُها بترتيبها وبلا رابطٍ فراغ */
+/** القائمة ← نصٌّ يُحفظ. والقديمةُ نفسُها بترتيبها وبلا عنصرٍ فراغ */
 export function serializeMenu(items: MenuItem[]): string {
     const plain = items.length === BUILT_INS.length && items.every((i, k) => i.type === 'page' && i.key === BUILT_INS[k]);
 
     return plain ? '' : JSON.stringify(items);
 }
 
-/** معرّفُ رابطٍ لم يُؤخذ — حروفٌ صغيرةٌ وأرقام */
+/** معرّفُ عنصرٍ لم يُؤخذ — حروفٌ صغيرةٌ وأرقام */
 export function freshLinkId(taken: string[]): string {
     let id = '';
     do id = 'l' + Math.random().toString(36).slice(2, 9); while (taken.includes(id));
@@ -107,41 +147,71 @@ export function freshLinkId(taken: string[]): string {
     return id;
 }
 
+/** صفحاتٌ لا يقود إليها عنصرٌ في القائمة — تُعرض ليُعاد إليها أو تُحذف */
+export function orphanPages(items: MenuItem[], pages: CustomPage[]): CustomPage[] {
+    const linked = new Set(items.flatMap((i) => (i.type === 'link' && i.target.type === 'page' ? [String(i.target.value)] : [])));
+
+    return pages.filter((p) => ! linked.has(p.slug));
+}
+
 export default function MenuField({
     label,
     hint,
     value,
+    pagesValue,
     sources,
+    products,
+    hidden = [],
+    collections,
     max,
+    maxPages,
+    maxBlocks,
+    maxProducts = 40,
     onChange,
-    onCreatePage,
-    onOpenPages,
+    onPagesChange,
+    onPreviewPage,
     error,
 }: {
     label: string;
     hint?: string;
     value: string;
+    /** الصفحاتُ المخصّصة نصَّ JSON — تُكتب من هنا مع عناصرها */
+    pagesValue: string;
     /** ما يُختار وجهةً — كما في الشاشة الآن، ولو لم يُحفظ بعد */
     sources: TargetSources;
+    products: ListProduct[];
+    hidden?: ListProduct[];
+    collections: StoreCollection[];
     max: number;
+    maxPages: number;
+    maxBlocks: number;
+    maxProducts?: number;
     onChange: (value: string) => void;
-    /** يُنشئ صفحةً مخصّصةً فارغةً بهذا الاسم ويردّ اسمَها المختصر — أو `null` إن بلغت الحدّ */
-    onCreatePage?: (title: { ar: string; en: string }) => string | null;
-    /** يفتح صفَّ «الصفحات المخصّصة» ليُكتب محتواها */
-    onOpenPages?: () => void;
+    onPagesChange: (value: string) => void;
+    /** يعاين الصفحةَ في إطار المعاينة — قبل الحفظ */
+    onPreviewPage?: (slug: string) => void;
     error?: string;
 }) {
     const t = useTranslate();
+    const [ask, confirmDialog] = useConfirm();
     const items = parseMenu(value);
-    const links = items.filter((i): i is MenuLink => i.type === 'link');
+    const pages = parsePages(pagesValue);
+    const custom = items.filter((i): i is MenuLink | MenuLabel => i.type !== 'page');
     const [open, setOpen] = useState<string | null>(null);
-    const [doomed, setDoomed] = useState<string | null>(null);
-    const [created, setCreated] = useState<string | null>(null);
+    const [adding, setAdding] = useState<NewItem | 'choose' | null>(null);
+    const [name, setName] = useState({ ar: '', en: '' });
+    const [newTarget, setNewTarget] = useState<StoreTargetValue>({ type: 'shop', value: '' });
+    const [orphanOpen, setOrphanOpen] = useState<string | null>(null);
 
     const write = (next: MenuItem[]) => onChange(serializeMenu(next));
-    const keyOf = (i: MenuItem) => (i.type === 'page' ? `page:${i.key}` : `link:${i.id}`);
-    const patch = (id: string, changes: Partial<MenuLink>) =>
-        write(items.map((i) => (i.type === 'link' && i.id === id ? { ...i, ...changes } : i)));
+    const writePages = (next: CustomPage[]) => onPagesChange(serializePages(next));
+    const pageOf = (i: MenuItem): CustomPage | undefined =>
+        i.type === 'link' && i.target.type === 'page' ? pages.find((p) => p.slug === i.target.value) : undefined;
+
+    const patchItem = (id: string, changes: Partial<MenuLink> | Partial<MenuLabel>) =>
+        write(items.map((i) => (i.type !== 'page' && i.id === id ? ({ ...i, ...changes } as MenuItem) : i)));
+
+    const patchPage = (slug: string, next: CustomPage) => writePages(pages.map((p) => (p.slug === slug ? next : p)));
 
     const move = (at: number, by: number) => {
         const j = at + by;
@@ -150,40 +220,105 @@ export default function MenuField({
         const next = [...items];
         [next[at], next[j]] = [next[j], next[at]];
         write(next);
-        setDoomed(null);
     };
 
-    const addLink = (target: StoreTargetValue, title = { ar: '', en: '' }) => {
-        const id = freshLinkId(links.map((l) => l.id));
-        // والرابطُ الجديدُ قبل «من نحن» — بعد الرئيسية والمتجر حيث يُتوقَّع
+    /** وموضعُ الجديد قبل «من نحن» — بعد الرئيسية والمتجر حيث يُتوقَّع */
+    const insert = (item: MenuItem): MenuItem[] => {
         const at = items.findIndex((i) => i.type === 'page' && i.key === 'about');
-        const link: MenuLink = { type: 'link', id, title_ar: title.ar, title_en: title.en, target, visible: true };
         const next = [...items];
-        next.splice(at < 0 ? next.length : at, 0, link);
-        write(next);
+        next.splice(at < 0 ? next.length : at, 0, item);
+
+        return next;
+    };
+
+    const full = custom.length >= max;
+    const pagesFull = pages.length >= maxPages;
+    const named = name.ar.trim() !== '' || name.en.trim() !== '';
+
+    const startAdding = () => {
+        setName({ ar: '', en: '' });
+        setNewTarget({ type: 'shop', value: '' });
+        setAdding('choose');
+    };
+
+    const confirmAdd = () => {
+        if (! named || adding === null || adding === 'choose') return;
+
+        const id = freshLinkId(custom.map((i) => i.id));
+        const title = { title_ar: name.ar.trim(), title_en: name.en.trim() };
+
+        if (adding === 'label') {
+            write(insert({ type: 'label', id, ...title, visible: true }));
+        } else if (adding === 'link') {
+            write(insert({ type: 'link', id, ...title, target: newTarget, visible: true }));
+        } else {
+            // والصفحةُ تُنشأ بنوعها واسمها — ورابطُها الداخليّ وحده
+            const page = blankPage(pages.map((p) => p.slug), { ar: title.title_ar, en: title.title_en }, adding);
+
+            onPagesChange(serializePages([...pages, page]));
+            write(insert({ type: 'link', id, ...title, target: { type: 'page', value: page.slug }, visible: true }));
+        }
+
+        setAdding(null);
         setOpen(id);
-
-        return id;
     };
 
-    const addPage = () => {
-        const slug = onCreatePage?.({ ar: 'صفحة جديدة', en: 'New page' });
+    /** اسمُ القسم يتبعه عنوانُ صفحته — ما دام العنوانُ اسمَه القديم أو فارغًا */
+    const rename = (item: MenuLink | MenuLabel, lang: 'ar' | 'en', text: string) => {
+        const key = lang === 'ar' ? 'title_ar' : 'title_en';
+        const page = pageOf(item);
 
-        if (! slug) return;
+        patchItem(item.id, { [key]: text });
 
-        addLink({ type: 'page', value: slug }, { ar: 'صفحة جديدة', en: 'New page' });
-        setCreated(slug);
+        if (page && (page[key] === '' || page[key] === item[key])) {
+            // والكتابتان في دفعةٍ واحدة لا تُرسل إحداهما قبل الأخرى — كلٌّ في مفتاحه
+            patchPage(page.slug, { ...page, [key]: text });
+        }
     };
 
-    const firstTarget = (): StoreTargetValue =>
-        sources.pages[0] ? { type: 'page', value: sources.pages[0].slug }
-            : sources.collections[0] ? { type: 'collection', value: sources.collections[0].slug }
-                : { type: 'shop', value: '' };
+    const remove = async (item: MenuLink | MenuLabel) => {
+        const page = pageOf(item);
+        const title = item.title_ar || item.title_en;
+        // ونافذةُ التأكيد تترجم رسالتَها بنفسها — فتُرسَل كما كُتبت مع بدائلها
+        const go = await ask(page
+            ? {
+                title: 'إزالة من القائمة',
+                message: 'إزالة «:name» من القائمة؟ صفحتُه تبقى محفوظة تحت «صفحات ليست في القائمة» — تُعيدها أو تحذفها من هناك.',
+                values: { name: title },
+                action: 'أزل من القائمة',
+            }
+            : {
+                title: 'حذف من القائمة',
+                message: 'حذف «:name» من القائمة؟ لا يُحذف معه منتجٌ ولا مجموعة.',
+                values: { name: title },
+                action: 'احذف',
+                danger: true,
+            });
 
-    const remove = (id: string) => {
-        write(items.filter((i) => ! (i.type === 'link' && i.id === id)));
-        setDoomed(null);
+        if (! go) return;
+
+        write(items.filter((i) => ! (i.type !== 'page' && i.id === item.id)));
         setOpen(null);
+    };
+
+    const deletePage = async (page: CustomPage) => {
+        const go = await ask({
+            title: 'حذف الصفحة',
+            message: 'حذف صفحة «:name» نهائيًّا؟ لا يُحذف معها منتجٌ ولا مجموعة، والأزرارُ التي تقود إليها تختفي.',
+            values: { name: page.title_ar || page.title_en },
+            action: 'احذف الصفحة',
+            danger: true,
+        });
+
+        if (go) writePages(pages.filter((p) => p.slug !== page.slug));
+    };
+
+    const restore = (page: CustomPage) => {
+        if (full) return;
+
+        const id = freshLinkId(custom.map((i) => i.id));
+        write(insert({ type: 'link', id, title_ar: page.title_ar, title_en: page.title_en, target: { type: 'page', value: page.slug }, visible: page.visible }));
+        setOpen(id);
     };
 
     const pageState = (key: BuiltIn): string | null => {
@@ -195,27 +330,41 @@ export default function MenuField({
         return p.blocked ? t(p.blocked) : null;
     };
 
-    const full = links.length >= max;
+    const kindName = (kind: PageKind) => t(NEW_ITEMS.find((n) => n.type === kind)?.label ?? '');
+    const orphans = orphanPages(items, pages);
     const iconButton = 'flex size-10 shrink-0 items-center justify-center rounded-[8px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30';
+
+    const pageEditor = (page: CustomPage, testid: string) => (
+        <PageContent
+            page={page}
+            onChange={(next) => patchPage(page.slug, next)}
+            sources={sources}
+            products={products}
+            hidden={hidden}
+            collections={collections}
+            maxBlocks={maxBlocks}
+            maxProducts={maxProducts}
+            onPreview={onPreviewPage ? () => onPreviewPage(page.slug) : undefined}
+            testid={testid}
+        />
+    );
 
     return (
         <Field label={label} hint={hint} error={error}>
             <div className="space-y-3" data-testid="menu">
+                {confirmDialog}
                 <ol className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[12px] bg-white ring-1 ring-[var(--ui-border,#e8e8e8)]">
                     {items.map((item, at) => {
-                        const k = keyOf(item);
-
                         if (item.type === 'page') {
                             const state = pageState(item.key);
 
                             return (
-                                <li key={k} className="flex items-center gap-1.5 px-2 py-1.5" data-testid={`menu-page-${item.key}`}>
+                                <li key={`page:${item.key}`} className="flex items-center gap-1.5 px-2 py-1.5" data-testid={`menu-page-${item.key}`}>
                                     <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#111]">{at + 1}</span>
+                                    <House className="size-3.5 shrink-0 text-[#9ca3af]" />
                                     <span className="min-w-0 flex-1 px-1">
                                         <span className={cn('block truncate text-[13px] font-medium', state ? 'text-[#9ca3af]' : 'text-[#111]')}>{t(BUILT_IN_LABEL[item.key])}</span>
-                                        {state && (
-                                            <span className="block truncate text-[11px] text-[#b45309]" data-testid={`menu-page-${item.key}-state`}>{state}</span>
-                                        )}
+                                        {state && <span className="block truncate text-[11px] text-[#b45309]" data-testid={`menu-page-${item.key}-state`}>{state}</span>}
                                     </span>
                                     <button type="button" aria-label={`${t('تحريك لأعلى')} ${t(BUILT_IN_LABEL[item.key])}`} disabled={at === 0} onClick={() => move(at, -1)} className={iconButton}>
                                         <ArrowUp className="size-4" />
@@ -229,19 +378,25 @@ export default function MenuField({
 
                         const title = item.title_ar || item.title_en;
                         const expanded = open === item.id;
-                        const ok = reaches(item.target, sources);
+                        const page = pageOf(item);
+                        const ok = item.type === 'label' || reaches(item.target, sources);
+                        const Icon = item.type === 'label' ? Heading : page ? FileText : Link2;
+                        const kind = item.type === 'label'
+                            ? t('عنوان فقط — لا يُضغط')
+                            : page ? `${t('صفحة')} · ${kindName(page.kind)}` : t('رابط');
 
                         return (
-                            <li key={k} className="bg-white" data-testid={`menu-link-${at}`}>
+                            <li key={`item:${item.id}`} className="bg-white" data-testid={`menu-item-${at}`} data-kind={item.type === 'label' ? 'label' : page ? 'page' : 'link'}>
                                 <div className="flex items-center gap-1.5 px-2 py-1.5">
                                     <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#111] text-[11px] font-semibold text-white">{at + 1}</span>
-                                    <button type="button" onClick={() => setOpen(expanded ? null : item.id)} aria-expanded={expanded} className="min-w-0 flex-1 px-1 text-start">
+                                    <button type="button" onClick={() => setOpen(expanded ? null : item.id)} aria-expanded={expanded} className="min-w-0 flex-1 px-1 text-start" data-testid={`menu-item-${at}-open`}>
                                         <span className={cn('flex items-center gap-1 truncate text-[13px] font-medium', item.visible ? 'text-[#111]' : 'text-[#9ca3af]')}>
-                                            <Link2 className="size-3.5 shrink-0 text-[#9ca3af]" />
-                                            {title || t('رابط بلا اسم')}
+                                            <Icon className="size-3.5 shrink-0 text-[#9ca3af]" />
+                                            {title || t('بلا اسم')}
                                         </span>
+                                        <span className="block truncate text-[11px] text-[#9ca3af]">{kind}</span>
                                         {! ok && (
-                                            <span className="flex items-center gap-1 text-[11px] text-[#b45309]" data-testid={`menu-link-${at}-unreachable`}>
+                                            <span className="flex items-center gap-1 text-[11px] text-[#b45309]" data-testid={`menu-item-${at}-unreachable`}>
                                                 <CircleAlert className="size-3" />
                                                 {t('وجهتُه لا تُفتح الآن — فلا يظهر')}
                                             </span>
@@ -252,8 +407,12 @@ export default function MenuField({
                                         role="switch"
                                         aria-checked={item.visible}
                                         aria-label={`${t('ظاهر لزبائنك')} ${title}`}
-                                        data-testid={`menu-link-${at}-visible`}
-                                        onClick={() => patch(item.id, { visible: ! item.visible })}
+                                        data-testid={`menu-item-${at}-visible`}
+                                        onClick={() => {
+                                            patchItem(item.id, { visible: ! item.visible });
+                                            // وظهورُ القسم ظهورُ صفحته — مفتاحٌ واحدٌ لا اثنان
+                                            if (page) patchPage(page.slug, { ...page, visible: ! item.visible });
+                                        }}
                                         className={iconButton}
                                     >
                                         {item.visible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
@@ -270,65 +429,32 @@ export default function MenuField({
                                 {expanded && (
                                     <div className="space-y-4 border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 py-4">
                                         <div className="grid gap-3 sm:grid-cols-2">
-                                            <Field label="اسم الرابط — العربية">
-                                                <Input
-                                                    value={item.title_ar}
-                                                    maxLength={30}
-                                                    onChange={(e) => patch(item.id, { title_ar: e.target.value })}
-                                                    aria-label={t('اسم الرابط — العربية')}
-                                                    data-testid={`menu-link-${at}-title-ar`}
-                                                />
+                                            <Field label="الاسم في القائمة">
+                                                <Input value={item.title_ar} maxLength={30} onChange={(e) => rename(item, 'ar', e.target.value)} aria-label={t('الاسم في القائمة')} data-testid={`menu-item-${at}-name-ar`} />
                                             </Field>
-                                            <Field label="Link name — English" hint="وبلا اسمٍ إنجليزيّ يظهر الاسمُ العربيّ">
-                                                <Input
-                                                    dir="ltr"
-                                                    value={item.title_en}
-                                                    maxLength={30}
-                                                    onChange={(e) => patch(item.id, { title_en: e.target.value })}
-                                                    aria-label="Link name — English"
-                                                    data-testid={`menu-link-${at}-title-en`}
-                                                />
+                                            <Field label="Name — English" hint="اختياري — وبلا اسمٍ إنجليزيّ يظهر الاسمُ العربيّ">
+                                                <Input dir="ltr" value={item.title_en} maxLength={30} onChange={(e) => rename(item, 'en', e.target.value)} aria-label="Name — English" data-testid={`menu-item-${at}-name-en`} />
                                             </Field>
                                         </div>
-                                        <Field label="ما يفتحه الرابط">
-                                            <TargetSelect
-                                                value={item.target}
-                                                onChange={(target) => patch(item.id, { target })}
-                                                from={sources}
-                                                label="ما يفتحه الرابط"
-                                                testid={`menu-link-${at}-target`}
-                                            />
-                                        </Field>
-                                        {created !== null && item.target.type === 'page' && item.target.value === created && (
-                                            <p className="flex flex-wrap items-center gap-2 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[12px] text-[#1d4ed8]" data-testid="menu-page-created">
-                                                {t('أُنشئت صفحةٌ فارغة لهذا الرابط — اكتب محتواها وصورها.')}
-                                                {onOpenPages && (
-                                                    <button type="button" className="font-medium underline" onClick={onOpenPages}>
-                                                        {t('افتح «الصفحات المخصّصة»')}
-                                                    </button>
-                                                )}
-                                            </p>
+
+                                        {item.type === 'label' && (
+                                            <p className="text-[12px] leading-relaxed text-[#6b7280]">{t('يظهر في القائمة اسمًا لا يُضغط — بلا صفحةٍ ولا رابط.')}</p>
                                         )}
+
+                                        {item.type === 'link' && ! page && (
+                                            <Field label="ما يفتحه الرابط">
+                                                <TargetSelect value={item.target} onChange={(target) => patchItem(item.id, { target })} from={sources} label="ما يفتحه الرابط" testid={`menu-item-${at}-target`} withUrl />
+                                            </Field>
+                                        )}
+
+                                        {page && pageEditor(page, `menu-item-${at}-page`)}
+
                                         <div className="flex justify-end">
-                                            {doomed === item.id ? (
-                                                <span className="flex items-center gap-2">
-                                                    <Button type="button" variant="danger" size="sm" data-testid={`menu-link-${at}-delete-confirm`} onClick={() => remove(item.id)}>
-                                                        {t('تأكيد الحذف')}
-                                                    </Button>
-                                                    <Button type="button" variant="ghost" size="sm" onClick={() => setDoomed(null)}>
-                                                        {t('تراجع')}
-                                                    </Button>
-                                                </span>
-                                            ) : (
-                                                <Button type="button" variant="ghost" size="sm" data-testid={`menu-link-${at}-delete`} onClick={() => setDoomed(item.id)}>
-                                                    <Trash2 />
-                                                    {t('احذف الرابط')}
-                                                </Button>
-                                            )}
+                                            <Button type="button" variant="ghost" size="sm" data-testid={`menu-item-${at}-delete`} onClick={() => void remove(item)}>
+                                                <Trash2 />
+                                                {page ? t('أزل من القائمة') : t('احذف')}
+                                            </Button>
                                         </div>
-                                        <p className="text-[11px] leading-relaxed text-[#9ca3af]">
-                                            {t('حذفُ الرابط لا يحذف الصفحةَ ولا المجموعةَ ولا أيَّ منتجٍ فيها.')}
-                                        </p>
                                     </div>
                                 )}
                             </li>
@@ -336,28 +462,115 @@ export default function MenuField({
                     })}
                 </ol>
 
-                <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="outline" size="sm" disabled={full} onClick={() => addLink(firstTarget())} data-testid="menu-add-link">
-                        <Plus />
-                        {full ? t('بلغت الحدّ — :max روابط', { max: String(max) }) : t('رابط جديد')}
-                    </Button>
-                    {onCreatePage && (
-                        <Button type="button" variant="outline" size="sm" disabled={full} onClick={addPage} data-testid="menu-add-page">
-                            <FilePlus />
-                            {t('صفحة جديدة في القائمة')}
+                {/* ═══ «+ إضافة قسم أو صفحة» — اختر النوع، ثمّ الاسم ═══ */}
+                {adding === null ? (
+                    <div className="flex flex-wrap gap-2">
+                        <Button type="button" size="sm" disabled={full} onClick={startAdding} data-testid="menu-add">
+                            <Plus />
+                            {full ? t('بلغت الحدّ — :max عناصر', { max: String(max) }) : t('إضافة قسم أو صفحة')}
                         </Button>
-                    )}
-                    {value !== '' && (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(null); onChange(''); }} data-testid="menu-reset">
-                            <RotateCcw />
-                            {t('عُد إلى القائمة الأصليّة')}
-                        </Button>
-                    )}
-                </div>
-                {value !== '' && (
+                        {value !== '' && (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(null); onChange(''); }} data-testid="menu-reset">
+                                <RotateCcw />
+                                {t('عُد إلى القائمة الأصليّة')}
+                            </Button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-3 rounded-[12px] bg-[#fafafa] p-3 ring-1 ring-[var(--ui-border,#e8e8e8)]" data-testid="menu-new">
+                        <div className="flex items-center justify-between gap-2">
+                            <p className="text-[13px] font-semibold text-[#111]">{adding === 'choose' ? t('ماذا تريد أن تضيف؟') : t(NEW_ITEMS.find((n) => n.type === adding)?.label ?? '')}</p>
+                            <button type="button" aria-label={t('إلغاء')} onClick={() => setAdding(null)} className={iconButton} data-testid="menu-new-cancel">
+                                <X className="size-4" />
+                            </button>
+                        </div>
+
+                        {adding === 'choose' ? (
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                {NEW_ITEMS.map(({ type, label: l, hint: h, icon: Icon }) => {
+                                    const blocked = type !== 'label' && type !== 'link' && pagesFull;
+
+                                    return (
+                                        <button
+                                            key={type}
+                                            type="button"
+                                            disabled={blocked}
+                                            onClick={() => setAdding(type)}
+                                            data-testid={`menu-type-${type}`}
+                                            className="flex min-h-14 items-start gap-2.5 rounded-[12px] bg-white p-3 text-start ring-1 ring-[var(--ui-border,#e8e8e8)] enabled:hover:ring-[#9ca3af] disabled:opacity-40"
+                                        >
+                                            <Icon className="mt-0.5 size-4 shrink-0 text-[#6b7280]" />
+                                            <span>
+                                                <span className="block text-[13px] font-medium text-[#111]">{t(l)}</span>
+                                                <span className="block text-[11px] leading-relaxed text-[#6b7280]">{blocked ? t('بلغت الحدّ — :max صفحة', { max: String(maxPages) }) : t(h)}</span>
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <Field label="الاسم في القائمة" hint="مثل: المناسبات، عروضنا، خدماتنا">
+                                        <Input autoFocus value={name.ar} maxLength={30} onChange={(e) => setName({ ...name, ar: e.target.value })} aria-label={t('الاسم في القائمة')} data-testid="menu-new-name-ar" />
+                                    </Field>
+                                    <Field label="Name — English" hint="اختياري">
+                                        <Input dir="ltr" value={name.en} maxLength={30} onChange={(e) => setName({ ...name, en: e.target.value })} aria-label="Name — English" data-testid="menu-new-name-en" />
+                                    </Field>
+                                </div>
+                                {adding === 'link' && (
+                                    <Field label="ما يفتحه الرابط">
+                                        <TargetSelect value={newTarget} onChange={setNewTarget} from={sources} label="ما يفتحه الرابط" testid="menu-new-target" withUrl />
+                                    </Field>
+                                )}
+                                <div className="flex flex-wrap gap-2">
+                                    <Button type="button" size="sm" disabled={! named} onClick={confirmAdd} data-testid="menu-new-add">
+                                        <Plus />
+                                        {t('أضف')}
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="sm" onClick={() => setAdding('choose')}>
+                                        {t('نوعٌ آخر')}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {value !== '' && adding === null && (
                     <p className="text-[11px] leading-relaxed text-[#9ca3af]">
-                        {t('والعودةُ إلى القائمة الأصليّة تحذف روابطك منها وحدها — صفحاتُك ومجموعاتُك تبقى.')}
+                        {t('والعودةُ إلى القائمة الأصليّة تُخرج أقسامك منها وحدها — صفحاتُك ومجموعاتُك تبقى.')}
                     </p>
+                )}
+
+                {/* ═══ وصفحاتٌ لا يقود إليها عنصرٌ في القائمة — لا تضيع ═══ */}
+                {orphans.length > 0 && (
+                    <div className="space-y-2" data-testid="menu-orphans">
+                        <p className="text-[12px] font-semibold text-[#6b7280]">{t('صفحات ليست في القائمة')}</p>
+                        <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[12px] bg-white ring-1 ring-[var(--ui-border,#e8e8e8)]">
+                            {orphans.map((p) => (
+                                <li key={p.slug} data-testid={`menu-orphan-${p.slug}`}>
+                                    <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+                                        <FileText className="size-3.5 shrink-0 text-[#9ca3af]" />
+                                        <span className="min-w-0 flex-1 truncate text-[13px] text-[#111]">{p.title_ar || p.title_en || t('صفحة بلا عنوان')}</span>
+                                        <Button type="button" variant="outline" size="sm" disabled={full} onClick={() => restore(p)} data-testid={`menu-orphan-${p.slug}-add`}>
+                                            {t('أعدها إلى القائمة')}
+                                        </Button>
+                                        <Button type="button" variant="ghost" size="sm" onClick={() => setOrphanOpen(orphanOpen === p.slug ? null : p.slug)} data-testid={`menu-orphan-${p.slug}-edit`}>
+                                            {t('حرّر')}
+                                        </Button>
+                                        <Button type="button" variant="ghost" size="sm" onClick={() => void deletePage(p)} data-testid={`menu-orphan-${p.slug}-delete`}>
+                                            <Trash2 />
+                                            {t('احذف')}
+                                        </Button>
+                                    </div>
+                                    {orphanOpen === p.slug && (
+                                        <div className="border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-3 py-4">{pageEditor(p, `menu-orphan-${p.slug}-page`)}</div>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
                 )}
             </div>
         </Field>

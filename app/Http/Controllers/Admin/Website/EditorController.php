@@ -10,6 +10,9 @@ use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
 use App\Support\ProductImages;
 use App\Support\Store\CatalogTools;
+use App\Support\Store\StoreCollections;
+use App\Support\Store\StoreContent;
+use App\Support\Store\StoreCustomPages;
 use App\Support\Store\PageEditor;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
@@ -199,16 +202,25 @@ class EditorController extends Controller
              * صنفٌ مخفيٌّ يُختار «مختارًا» لا يظهر — فالواجهةُ لا تُقحم في
              * صفحتها ما أخفاه صاحبُه (انظر `RibbonController::home`). وعرضُه
              * هنا يعني اختيارًا يُحفظ ولا أثرَ له.
+             *
+             * وبالاسمين وفئته: يبحث صاحبُ المتجر بالعربيّة أو بالإنجليزيّة
+             * فيجد صنفَه، ويفرّق بين اسمين متشابهين بفئتيهما.
              */
-            'products' => Product::where('business_id', $bid)
-                ->where('active', true)->where('published', true)
-                ->orderBy('name')->get(['id', 'name', 'image'])
-                ->map(fn ($p) => [
-                    'id' => (int) $p->id,
-                    'name' => (string) $p->name,
-                    // الخام لا المقروء: الصورةُ البديلة من الإنترنت ليست بضاعتَه
-                    'image' => ProductImages::hasRealMain($p) ? $p->image : null,
-                ])->all(),
+            'products' => $this->pickable(Product::where('business_id', $bid)
+                ->where('active', true)->where('published', true)),
+            /*
+             * وما اختاره في مجموعاته وصفحاته ثمّ أخفاه أو أوقفه — باسمه وصورته.
+             *
+             * كانت الشاشةُ لا تعرف عنه إلّا رقمه فتُسقطه من المجموعة حين تُفتح،
+             * ويضيع مع أوّل حفظ. وهو الآن يُرسم في مجموعته موسومًا «مخفيّ الآن»:
+             * يبقى إن تركه، ويُزال إن أراد — ولا يُعرض في المنتقي ليُختار ثانيةً.
+             */
+            'hiddenProducts' => $this->hiddenChosen($bid),
+            /*
+             * وبياناتُ التواصل كما في «بيانات النشاط» — يقرؤها محرّرُ التذييل
+             * ليقول ما سيظهر، ولا يكتبها: لا تُكتب في موضعين.
+             */
+            'contact' => array_intersect_key(MerchantData::identity($bid), array_flip(['phone', 'email', 'address'])),
             /*
              * لوحتا الفئات و«وصل حديثًا» — لمن في قائمتها وحده، و`null` لغيره.
              *
@@ -222,6 +234,45 @@ class EditorController extends Controller
              */
             'uploadMax' => StoreImageUpload::maxBytes(),
         ]);
+    }
+
+    /**
+     * صفوفُ المنتقي — الاسمان والصورةُ والفئة.
+     *
+     * @return list<array{id: int, name: string, name_en: string, image: string|null, category: string}>
+     */
+    private function pickable($query): array
+    {
+        return $query->with('category:id,name')->orderBy('name')->get(['id', 'name', 'name_en', 'image', 'category_id'])
+            ->map(fn ($p) => [
+                'id' => (int) $p->id,
+                'name' => (string) $p->name,
+                'name_en' => (string) ($p->name_en ?? ''),
+                // الخام لا المقروء: الصورةُ البديلة من الإنترنت ليست بضاعتَه
+                'image' => ProductImages::hasRealMain($p) ? $p->image : null,
+                'category' => (string) ($p->category?->name ?? ''),
+            ])->all();
+    }
+
+    /**
+     * ما اختاره في مجموعاته وصفحاته (في المسوّدة) ولا يُعرض الآن — من متجره وحده.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function hiddenChosen(int $bid): array
+    {
+        $draft = StoreContent::draft($bid);
+        $ids = array_values(array_unique(array_merge(
+            ...array_map(fn (array $c) => $c['products'], StoreCollections::fromJson((string) ($draft[StoreCollections::KEY] ?? ''))),
+            ...[StoreCustomPages::productIds(StoreCustomPages::fromJson((string) ($draft[StoreCustomPages::KEY] ?? '')))],
+        )));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return $this->pickable(Product::where('business_id', $bid)->whereIn('id', $ids)
+            ->where(fn ($q) => $q->where('active', false)->orWhere('published', false)));
     }
 
     /**

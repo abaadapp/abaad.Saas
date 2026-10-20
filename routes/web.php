@@ -1236,6 +1236,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
              */
             Route::post('/store/publish', [StorePublishController::class, 'publish'])->name('store.publish');
             Route::post('/store/restore/{version}', [StorePublishController::class, 'restore'])->name('store.restore');
+            // والتراجعُ عن المسوّدة بابُ النشر نفسُه وحارسُه — انظر `StorePublishController::discard`
+            Route::post('/store/discard', [StorePublishController::class, 'discard'])->name('store.discard');
 
             Route::get('/domain', [DomainController::class, 'index'])->name('domain');
             Route::put('/domain', [DomainController::class, 'save'])->name('domain.save');

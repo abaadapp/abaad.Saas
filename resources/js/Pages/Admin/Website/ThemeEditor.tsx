@@ -26,13 +26,14 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { type ArrivalsCuration, CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
 import CatalogFitField from './theme/CatalogFitField';
-import CollectionsField, { keepShownCollections, parseCollections } from './theme/CollectionsField';
-import CustomPagesField, { blankPage, parsePages, serializePages } from './theme/CustomPagesField';
-import MenuField from './theme/MenuField';
+import CollectionsField, { parseCollections } from './theme/CollectionsField';
+import FooterField from './theme/FooterField';
+import MenuField, { parseMenu } from './theme/MenuField';
+import { parsePages, withoutEmptyBlocks } from './theme/pages';
 import ShopRowField from './theme/ShopRowField';
 import type { TargetSources } from './theme/StoreTargets';
 import { AlignField, type ShortcutCategory, ShortcutsField } from './theme/HeaderFields';
-import ProductListField, { keepShown } from './theme/ProductListField';
+import ProductListField, { keepShown, type ListProduct } from './theme/ProductListField';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 import VisualBarField from './theme/VisualBarField';
@@ -135,7 +136,7 @@ export function previewFit(want: number, avail: number): number {
 
 export interface EditorField {
     key: string;
-    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts' | 'products' | 'collections' | 'visualbar' | 'menu' | 'pages' | 'shoprow' | 'catalogfit';
+    kind: 'text' | 'textarea' | 'image' | 'toggle' | 'featured' | 'align' | 'shortcuts' | 'products' | 'collections' | 'visualbar' | 'menu' | 'pages' | 'shoprow' | 'catalogfit' | 'footer';
     label: string;
     hint?: string;
     dir?: string;
@@ -144,8 +145,11 @@ export interface EditorField {
     max?: number;
     /** وأكثرُ ما في المجموعة الواحدة — لـ`collections` */
     max_products?: number;
-    /** وأكثرُ أقسام الصفحة المخصّصة — لـ`pages` */
-    max_sections?: number;
+    /** وأكثرُ الصفحات المخصّصة ووحداتِ كلٍّ منها — لـ`menu` */
+    max_pages?: number;
+    max_blocks?: number;
+    /** مفاتيحُ يرسمها هذا الحقلُ في مواضعها منه — فلا تُرسم في الصفّ ثانيةً */
+    owns?: string[];
     /** مفتاحُ طريقة عرض الصورة — لـ`image`، يُحفظ معها في صفّها */
     fit?: string;
     /** ونسبةُ إطارها في المتجر — لمعاينتها كما ستُرى */
@@ -157,6 +161,8 @@ export interface EditorRow {
     label: string;
     hint: string;
     fixed: boolean;
+    /** بابٌ أوّل (`main`) أو تحت «إعدادات متقدّمة» (`advanced`) — `PageEditor::rows` */
+    group: 'main' | 'advanced';
     on: boolean;
     silent: string | null;
     source: { label: string; route: string } | null;
@@ -172,7 +178,11 @@ interface Props extends ThemeShell {
     values: Record<string, string>;
     order: string[];
     maxFeatured: number;
-    products: { id: number; name: string; image: string | null }[];
+    products: ListProduct[];
+    /** ما اختاره في مجموعاته وصفحاته ثمّ أخفاه — يُعرض باسمه ولا يُسقَط */
+    hiddenProducts?: ListProduct[];
+    /** هاتفُه وبريدُه وعنوانُه من «بيانات النشاط» — يقرؤها محرّرُ التذييل */
+    contact?: { phone?: string; email?: string; address?: string };
     /** فئاتُ متجره لاختصارات صفّ «المتجر» في رأسه — انظر `StoreHeader` */
     shortcutCategories?: ShortcutCategory[];
     maxShortcuts?: number;
@@ -213,6 +223,8 @@ export default function ThemeEditor({
     order,
     maxFeatured,
     products,
+    hiddenProducts = [],
+    contact = {},
     shortcutCategories = [],
     maxShortcuts = 6,
     catalogTools = null,
@@ -235,6 +247,11 @@ export default function ThemeEditor({
             return null;
         }
     });
+    /*
+        و«إعدادات متقدّمة» مطويّةٌ — إلّا إن جاء الرابطُ بصفٍّ منها (`?row=cats`)
+        فتُفتح عليه: البندُ الذي قاد إلى هنا لا يقود إلى صفٍّ مخفيّ.
+    */
+    const [showAdvanced, setShowAdvanced] = useState(() => open !== null && rows.some((r) => r.key === open && r.group === 'advanced'));
     const [status, setStatus] = useState<Status>('clean');
     const [frame, setFrame] = useState(0);
 
@@ -301,10 +318,15 @@ export default function ThemeEditor({
         وقوائمُ الأصناف تبدأ بما يُعرض الآن وحده — كما تبدأ «وصل حديثًا»:
         صنفٌ أُخفي بعد اختياره لا يُرسَل فيُردّ الحفظُ كلُّه من أجله.
     */
+    /*
+        والمجموعاتُ والصفحاتُ لا تُصفّى: صنفٌ أخفاه بعد اختياره يبقى فيها موسومًا
+        «مخفيّ الآن» (`ChosenProducts`) — كانت تُصفّى فيضيع مع أوّل حفظ. والخادمُ
+        يقبله ما دام من متجره، ولا يرسمه حتّى يعود.
+    */
     const lists = Object.fromEntries(
         rows.flatMap((r) => r.fields)
-            .filter((f) => f.kind === 'products' || f.kind === 'collections')
-            .map((f) => [f.key, f.kind === 'collections' ? keepShownCollections(values[f.key] ?? '', products) : keepShown(values[f.key] ?? '', products)]),
+            .filter((f) => f.kind === 'products')
+            .map((f) => [f.key, keepShown(values[f.key] ?? '', products)]),
     );
 
     const form = useForm<Record<string, string>>({
@@ -345,10 +367,20 @@ export default function ThemeEditor({
     const [target, setTarget] = useState<{ page: 'shop'; collection: string } | { page: 'page'; slug: string } | null>(null);
 
     /*
-        والصفحاتُ المخصّصة كما حُفظت آخرَ مرّة — فحفظُ القائمة يحمل معه صفحةً أُنشئت
-        من داخلها ولم تُحفظ بعد، ولا يحمل ما لم يتبدّل.
+        ═══ وما حُفظ آخرَ مرّة — ليُقال ما لم يُحفظ بعد ═══
+
+        كلُّ مفتاحٍ بقيمته يومَ فُتحت الشاشة، ثمّ بما أُرسل في كلّ حفظ. فالصفُّ الذي
+        فيه تعديلٌ لم يُحفظ يُوسم «غير محفوظ»، ومن أغلق الصفحةَ أو انتقل منها
+        يُسأل قبل أن يذهب ما كتبه — لا يضيع بصمت.
+
+        والصفحاتُ تُرسَل بلا وحدةٍ فارغة (`withoutEmptyBlocks`) فتُقاس كذلك.
     */
-    const savedPages = useRef(values.store_custom_pages ?? '');
+    const outgoing = (k: string, v: string) => (k === 'store_custom_pages' ? withoutEmptyBlocks(v) : v);
+    const saved = useRef<Record<string, string> | null>(null);
+
+    if (saved.current === null) {
+        saved.current = Object.fromEntries(Object.entries(form.data).map(([k, v]) => [k, outgoing(k, v ?? '')]));
+    }
 
     /*
         والرمزُ من خصائص Inertia لا من وسم `meta`.
@@ -394,13 +426,13 @@ export default function ThemeEditor({
     /** حفظُ مفاتيحَ بعينها — لا حمولةَ الشاشة كلَّها */
     const save = (keys: string[]) => {
         setStatus('saving');
-        form.transform((d) => Object.fromEntries(keys.map((k) => [k, d[k] ?? ''])));
+        form.transform((d) => Object.fromEntries(keys.map((k) => [k, outgoing(k, d[k] ?? '')])));
         form.post(route('admin.marketing.store.save'), {
             preserveScroll: true,
             preserveState: true,
             onSuccess: () => {
                 setStatus('saved');
-                if (keys.includes('store_custom_pages')) savedPages.current = form.data.store_custom_pages ?? '';
+                keys.forEach((k) => { saved.current![k] = outgoing(k, form.data[k] ?? ''); });
                 refresh();
             },
             onError: () => setStatus('failed'),
@@ -499,18 +531,35 @@ export default function ThemeEditor({
         storePages: pages,
     };
 
-    /** صفحةٌ مخصّصةٌ فارغة من داخل القائمة — تُكتب في الصفحات وتُحفظ مع القائمة */
-    const createPage = (title: { ar: string; en: string }): string | null => {
-        const list = parsePages(form.data.store_custom_pages);
-        const max = rows.flatMap((r) => r.fields).find((f) => f.kind === 'pages')?.max ?? 12;
+    /*
+        ═══ وما لم يُحفظ لا يضيع بلا سؤال ═══
 
-        if (list.length >= max) return null;
+        مفاتيحُ تفارق ما حُفظ آخرَ مرّة. ومن أغلق الصفحة أو انتقل منها وفيها
+        تعديلٌ لم يُحفظ يُسأل قبل أن يذهب — والحفظُ نفسُه `POST` فلا يُسأل عنه.
+    */
+    const dirty = Object.keys(form.data).filter((k) => outgoing(k, form.data[k] ?? '') !== (saved.current![k] ?? ''));
+    const rowDirty = (r: EditorRow) => r.fields.some((f) => dirty.includes(f.key) || (f.fit !== undefined && dirty.includes(f.fit)));
+    const leaving = t('فيه تعديلات لم تُحفظ — تخرج وتتركها؟');
 
-        const page = blankPage(list.map((p) => p.slug), title);
-        form.setData('store_custom_pages', serializePages([...list, page]));
+    useEffect(() => {
+        if (dirty.length === 0) return;
 
-        return page.slug;
-    };
+        const warn = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            e.returnValue = '';
+        };
+
+        window.addEventListener('beforeunload', warn);
+
+        const off = router.on('before', (event) => {
+            if (event.detail.visit.method === 'get' && ! window.confirm(leaving)) event.preventDefault();
+        });
+
+        return () => {
+            window.removeEventListener('beforeunload', warn);
+            off();
+        };
+    }, [dirty.length > 0, leaving]);
 
     const field = (f: EditorField) => {
         if (f.gate && (form.data[f.gate] ?? '0') !== '1') return null;
@@ -556,29 +605,42 @@ export default function ThemeEditor({
                     label={f.label}
                     hint={f.hint}
                     value={form.data[f.key] ?? ''}
+                    pagesValue={form.data.store_custom_pages ?? ''}
                     sources={sources}
+                    products={products}
+                    hidden={hiddenProducts}
+                    collections={parseCollections(form.data.store_collections)}
                     max={f.max ?? 10}
+                    maxPages={f.max_pages ?? 12}
+                    maxBlocks={f.max_blocks ?? 20}
                     onChange={(v) => form.setData(f.key, v)}
-                    onCreatePage={createPage}
-                    onOpenPages={() => setOpen('pages')}
+                    onPagesChange={(v) => form.setData('store_custom_pages', v)}
+                    onPreviewPage={(slug) => setTarget({ page: 'page', slug })}
                     error={error ?? (form.errors as Record<string, string | undefined>).store_custom_pages}
                 />
             );
         }
 
-        if (f.kind === 'pages') {
+        // والصفحاتُ تُكتب في القائمة نفسِها (`owns`) — لا مقبضَ لها وحدها
+        if (f.kind === 'pages') return null;
+
+        if (f.kind === 'footer') {
+            const errors = form.errors as Record<string, string | undefined>;
+
             return (
-                <CustomPagesField
+                <FooterField
                     key={f.key}
                     label={f.label}
                     hint={f.hint}
                     value={form.data[f.key] ?? ''}
-                    sources={sources}
-                    max={f.max ?? 12}
-                    maxSections={f.max_sections ?? 8}
                     onChange={(v) => form.setData(f.key, v)}
-                    onPreview={(slug) => setTarget({ page: 'page', slug })}
-                    error={error}
+                    owned={Object.fromEntries((f.owns ?? []).map((k) => [k, form.data[k] ?? '']))}
+                    onOwned={(k, v) => form.setData(k, v)}
+                    menu={parseMenu(form.data.store_menu)}
+                    collections={parseCollections(form.data.store_collections)}
+                    contact={contact}
+                    maxText={f.max ?? 2}
+                    error={error ?? (f.owns ?? []).map((k) => errors[k]).find(Boolean)}
                 />
             );
         }
@@ -645,6 +707,8 @@ export default function ThemeEditor({
                     hint={f.hint}
                     value={form.data[f.key] ?? ''}
                     products={products}
+                    hidden={hiddenProducts}
+                    savedSlugs={parseCollections(saved.current!.store_collections).map((c) => c.slug)}
                     max={f.max ?? 20}
                     maxProducts={f.max_products ?? 60}
                     onChange={(v) => form.setData(f.key, v)}
@@ -754,6 +818,9 @@ export default function ThemeEditor({
     const row = (r: EditorRow) => {
         const expanded = open === r.key;
         const i = chosen.indexOf(r.key);
+        // ومفاتيحُ يرسمها حقلٌ آخرُ في مواضعها منه — القائمةُ صفحاتِها، والتذييلُ سطرَه
+        const owned = new Set(r.fields.flatMap((f) => f.owns ?? []));
+        const unsaved = rowDirty(r);
 
         /*
             ولوحةُ الصفّ تُغني عن سطر «يُكتب في…» حين تصل: فيها أبوابُه كلُّها.
@@ -801,8 +868,13 @@ export default function ThemeEditor({
                         onClick={() => setOpen(expanded ? null : r.key)}
                         className="min-w-0 flex-1 text-start"
                     >
-                        <span className={cn('block truncate text-[13px] font-medium', r.on ? 'text-[#111]' : 'text-[#9ca3af]')}>
+                        <span className={cn('flex items-center gap-1.5 truncate text-[13px] font-medium', r.on ? 'text-[#111]' : 'text-[#9ca3af]')}>
                             {t(r.label)}
+                            {unsaved && (
+                                <span className="shrink-0 rounded-full bg-[#fef3c7] px-2 py-0.5 text-[10px] font-medium text-[#b45309]" data-testid={`row-${r.key}-unsaved`}>
+                                    {t('غير محفوظ')}
+                                </span>
+                            )}
                         </span>
                         <span className="block truncate text-[12px] text-[#9ca3af]">{t(r.hint)}</span>
                     </button>
@@ -853,7 +925,7 @@ export default function ThemeEditor({
 
                 {expanded && (
                     <div className="border-t border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] px-4 py-4">
-                        <div className="space-y-4">{r.fields.map(field)}</div>
+                        <div className="space-y-4">{r.fields.filter((f) => ! owned.has(f.key)).map(field)}</div>
 
                         {panel}
 
@@ -883,11 +955,8 @@ export default function ThemeEditor({
                                     type="button"
                                     size="sm"
                                     loading={form.processing}
-                                    onClick={() => save([
-                                        ...r.fields.flatMap((f) => (f.fit ? [f.key, f.fit] : [f.key])),
-                                        // وصفحةٌ أُنشئت من القائمة تُحفظ معها — وما لم يتبدّل لا يُرسَل
-                                        ...(r.key === 'menu' && (form.data.store_custom_pages ?? '') !== savedPages.current ? ['store_custom_pages'] : []),
-                                    ])}
+                                    onClick={() => save(r.fields.flatMap((f) => (f.fit ? [f.key, f.fit] : [f.key])))}
+                                    data-testid={`row-${r.key}-save`}
                                 >
                                     <Save />
                                     {t('احفظ')}
@@ -900,16 +969,18 @@ export default function ThemeEditor({
         );
     };
 
-    const head = byKey.get('head');
-    const menu = byKey.get('menu');
-    const customPages = byKey.get('pages');
-    const images = byKey.get('images');
-    const collections = byKey.get('collections');
-    const visualBar = byKey.get('vbar');
-    const hero = byKey.get('hero');
-    const foot = byKey.get('foot');
-    /* و«أضف مع طلبك» في صفحة المنتج — بعد التذييل، لا بين أقسام الرئيسية */
-    const upsells = byKey.get('upsells');
+    /*
+        ═══ أربعةُ أبوابٍ أوّلًا، وما سواها تحت «إعدادات متقدّمة» ═══
+
+        الواجهةُ ومجموعاتُ المتجر والقائمةُ وصفحاتُها والتذييل — ما يبني به متجرَه.
+        وما يُضبط مرّةً (رأسُ المتجر، وأقسامُ الرئيسية بترتيبها، وعرضُ الصور، و«أضف
+        مع طلبك»، والشريطُ المصوّر حين يُطفأ) مطويٌّ تحتها: لا يُحذف ولا يتبدّل.
+        والقسمةُ من الخادم (`PageEditor::rows`)، لا من هنا.
+    */
+    const main = rows.filter((r) => r.group === 'main');
+    const advanced = rows.filter((r) => r.group === 'advanced' && r.fixed);
+    const head = advanced.find((r) => r.key === 'head');
+    const tail = advanced.filter((r) => r.key !== 'head');
 
     return (
         <AdminLayout title="الموقع الإلكتروني">
@@ -1040,30 +1111,37 @@ export default function ThemeEditor({
             */}
             <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
                 <div className="xl:order-2">
-                    {/* وعنوانُ المجموعة كما في ODAY — يقول أقسامُ أيّ صفحةٍ هذه */}
-                    <p className="mb-2 text-[12px] font-semibold text-[#6b7280]">
-                        {t('أقسام «الرئيسية»')}
-                    </p>
-                    <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)]">
-                        {/* والشريطُ المصوّر فوق الترويسة — أوّلُ ما يُرى — ثمّ رأسُ المتجر فوق الواجهة */}
-                        {visualBar && row(visualBar)}
-                        {head && row(head)}
-                        {/* والقائمةُ الرئيسيّة تحت الشعار — بعد رأس المتجر وقبل الواجهة */}
-                        {menu && row(menu)}
-                        {hero && row(hero)}
-                        {movable.map((k) => {
-                            const r = byKey.get(k);
-
-                            return r ? row(r) : null;
-                        })}
-                        {/* والمجموعاتُ قبل التذييل — رفوفٌ تُفتح من صفّ المتجر، لا قسمٌ في الرئيسية */}
-                        {collections && row(collections)}
-                        {/* والصفحاتُ المخصّصة وعرضُ الصور — ليسا قسمَين في الرئيسية */}
-                        {customPages && row(customPages)}
-                        {images && row(images)}
-                        {foot && row(foot)}
-                        {upsells && row(upsells)}
+                    <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)]" data-testid="rows-main">
+                        {main.map(row)}
                     </ul>
+
+                    <div className="mt-4 overflow-hidden rounded-[16px] border border-[var(--ui-border,#e8e8e8)]">
+                        <button
+                            type="button"
+                            onClick={() => setShowAdvanced(! showAdvanced)}
+                            aria-expanded={showAdvanced}
+                            data-testid="advanced-toggle"
+                            className="flex w-full items-center gap-3 bg-white px-4 py-3 text-start"
+                        >
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-[13px] font-medium text-[#111]">{t('إعدادات متقدمة')}</span>
+                                <span className="block truncate text-[12px] text-[#9ca3af]">{t('رأس المتجر، أقسام الرئيسية وترتيبها، عرض الصور، وغيرها')}</span>
+                            </span>
+                            <ChevronDown className={cn('size-4 shrink-0 text-[#d1d5db] transition-transform', showAdvanced && 'rotate-180')} />
+                        </button>
+                        {showAdvanced && (
+                            <ul className="divide-y divide-[var(--ui-border,#e8e8e8)] border-t border-[var(--ui-border,#e8e8e8)]" data-testid="rows-advanced">
+                                {head && row(head)}
+                                <li className="bg-[#fafafa] px-4 py-2 text-[12px] font-semibold text-[#6b7280]">{t('أقسام «الرئيسية»')}</li>
+                                {movable.map((k) => {
+                                    const r = byKey.get(k);
+
+                                    return r ? row(r) : null;
+                                })}
+                                {tail.map(row)}
+                            </ul>
+                        )}
+                    </div>
 
                     {/* ولمَ لا يُطفأ الأخير — يُقال، لا يُترك يُجرَّب فيُربك */}
                     {last && (

@@ -8,7 +8,7 @@
 </head>
 <body>
 <div class="card">
-    <h1>سحب طلّة</h1>
+    <h1>طلّة</h1>
 
     @if ($step === 'name')
         <p class="sub">سجّل اسمك وادخل السحب</p>

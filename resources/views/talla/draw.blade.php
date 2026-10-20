@@ -11,26 +11,28 @@
         .wrap { width: 100%; max-width: 900px; display: grid; gap: 18px; }
         .card { max-width: none; }
         .stage { text-align: center; padding: 40px 20px; }
-        #display { font-size: clamp(36px, 8vw, 76px); font-weight: 800; min-height: 1.4em; margin: 10px 0 24px;
+        #display { color: var(--ink); font-size: clamp(36px, 8vw, 76px); font-weight: 800; min-height: 1.4em; margin: 10px 0 24px;
             transition: transform .15s; }
-        #display.win { color: #f5b83d; animation: pop .6s ease; }
+        #display.win { color: var(--brand); animation: pop .6s ease; }
         @keyframes pop { 0% { transform: scale(.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
         #go { max-width: 320px; font-size: 22px; padding: 18px; }
-        .count { color: #b8c4d9; }
+        .count { color: var(--muted); }
         table { width: 100%; border-collapse: collapse; }
-        td, th { text-align: right; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,.1); vertical-align: top; }
-        th { color: #b8c4d9; font-weight: 600; }
+        td, th { text-align: right; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+        th { color: var(--brand-dark); font-weight: 600; }
         .row { display: flex; gap: 10px; align-items: center; }
         .row input { flex: 1; }
         .row button { width: auto; margin: 0; white-space: nowrap; }
-        .ghost { background: transparent; border: 1px solid rgba(255,255,255,.3); color: inherit; font-size: 15px; width: auto; padding: 10px 16px; }
-        .link { direction: ltr; text-align: center; color: #b8c4d9; font-size: 15px; word-break: break-all; }
+        .ghost:hover { background: var(--brand-soft) !important; }
+        .ghost { background: transparent; border: 1px solid var(--brand); color: var(--brand); font-size: 15px; width: auto; padding: 10px 16px; }
+        .link { direction: ltr; text-align: center; color: var(--muted); font-size: 15px; word-break: break-all; }
     </style>
 </head>
 <body>
 <div class="wrap">
     <div class="card stage">
-        <h1>سحب طلّة</h1>
+        <h1>طلّة</h1>
+        <p class="sub" style="margin-bottom:8px">السحب</p>
         <p class="count">عدد المشاركين: <b id="count">{{ count($data['entries']) }}</b></p>
         <div id="display">{{ $data['winner']['name'] ?? '؟' }}</div>
         <button id="go" @disabled($data['entries'] === [])>اسحب</button>
@@ -52,7 +54,7 @@
             @forelse ($data['entries'] as $i => $entry)
                 <tr><td>{{ $i + 1 }}</td><td>{{ $entry['name'] }}</td><td>{{ $entry['answer'] }}</td></tr>
             @empty
-                <tr><td colspan="3" style="text-align:center;color:#b8c4d9">لا مشاركين بعد</td></tr>
+                <tr><td colspan="3" style="text-align:center;color:var(--muted)">لا مشاركين بعد</td></tr>
             @endforelse
             </tbody>
         </table>

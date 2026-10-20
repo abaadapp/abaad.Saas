@@ -30,6 +30,8 @@ const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor
  */
 
 const row = (over: Partial<EditorRow> & { key: string }): EditorRow => ({
+    // البابُ كما يقسمه الخادم (`PageEditor::rows`): الثابتُ بابٌ أوّل إلّا ما يُضبط مرّةً
+    group: (over.fixed ?? true) && ! ['head', 'images', 'upsells', 'vbar'].includes(over.key) ? 'main' : 'advanced',
     label: over.key, hint: '', fixed: true, on: true, silent: null, source: null, fields: [], ...over,
 });
 
@@ -48,6 +50,12 @@ const card = (over: Partial<BarCard> = {}): BarCard => ({
     image: '', title_ar: 'بطاقة', title_en: 'Card', sub_ar: '', sub_en: '', cta_ar: '', cta_en: '',
     target: { type: 'shop', value: '' }, visible: true, ...over,
 });
+
+/** و«إعدادات متقدّمة» تُفتح بعد الرسم — فالصفوفُ كلُّها في متناول الاختبار كما كانت */
+const openAdvanced = () => {
+    const toggle = screen.queryByTestId('advanced-toggle');
+    if (toggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+};
 
 const draw = (bar = '', collections = serializeCollections([GRAD])) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
@@ -71,6 +79,7 @@ const draw = (bar = '', collections = serializeCollections([GRAD])) => {
             shortcutCategories={CATS}
         />,
     );
+    openAdvanced();
 };
 
 const capture = () => {
@@ -106,11 +115,17 @@ describe('قراءةُ الشريط وكتابتُه', () => {
 });
 
 describe('«الشريط المصوّر» في المحرّر', () => {
-    it('أوّلُ الصفوف — فوق رأس المتجر', () => {
+    /*
+     * والمطفأُ تحت «إعدادات متقدّمة» — آخرَها، ببطاقاته. والقسمةُ من الخادم
+     * (`PageEditor::rows`): المشغَّلُ يصل بابًا أوّلَ فيُرسم أوّلَ الأبواب.
+     */
+    it('مطفأً تحت «إعدادات متقدمة» — ومشغَّلًا أوّلُ الأبواب', () => {
         draw();
 
-        const rows = screen.getAllByTestId(/^row-/).map((li) => li.dataset.testid);
-        expect(rows.slice(0, 3)).toEqual(['row-vbar', 'row-head', 'row-hero']);
+        const main = within(screen.getByTestId('rows-main')).getAllByTestId(/^row-/).map((li) => li.dataset.testid);
+        const advanced = within(screen.getByTestId('rows-advanced')).getAllByTestId(/^row-/).map((li) => li.dataset.testid);
+        expect(main).not.toContain('row-vbar');
+        expect(advanced.at(-1)).toBe('row-vbar');
     });
 
     it('يُشغَّل ويُختار أين يظهر، وتُضاف بطاقةٌ بلغتيها ووجهتِها — و«احفظ» يُرسل مفتاحَه وحده', () => {
@@ -194,7 +209,8 @@ describe('«الشريط المصوّر» في المحرّر', () => {
         fireEvent.click(screen.getByText('مجموعات المتجر'));
         fireEvent.click(screen.getByTestId('collections-add'));
         fireEvent.change(screen.getByTestId('collection-0-title-ar'), { target: { value: 'العيد' } });
-        fireEvent.change(screen.getByTestId('collection-0-slug'), { target: { value: 'eid' } });
+        // ورابطُ الجديدة من اسمها الإنجليزيّ — لا خانةَ رابطٍ تُكتب
+        fireEvent.change(screen.getByLabelText('Collection name — English'), { target: { value: 'Eid' } });
 
         openBar();
         fireEvent.click(screen.getByTestId('visualbar-add'));

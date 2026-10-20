@@ -435,15 +435,55 @@ class TheRibbonVisualBarSitsAboveTheNavigationTest extends TestCase
 
     /* ═══════════════════════ المحرّر ═══════════════════════ */
 
-    public function test_the_editor_offers_the_bar_first_to_every_ribbon_shop(): void
+    /*
+     * ═══ والشريطُ لكلّ متجر RIBBON — أوّلُ الأبواب ما دام مشغَّلًا ═══
+     *
+     * والمطفأُ تحت «إعدادات متقدّمة» ببطاقاته كما حُفظت: لا يُحذف منه شيء، ولا
+     * يُطفأ لمتجرٍ غيره. ولا شرطَ باسم متجرٍ ولا بمعرّفه — مفتاحُ كلّ متجرٍ بيده.
+     */
+    public function test_the_editor_offers_the_bar_to_every_ribbon_shop_and_puts_it_first_while_it_is_on(): void
     {
         foreach ([$this->shop, $this->neighbour] as $shop) {
-            $rows = PageEditor::rows((int) $shop->id);
-            $this->assertSame(PageEditor::VISUAL_BAR, $rows[0]['key'], 'الشريطُ أوّلُ ما يُرى — أوّلُ الصفوف');
-            $this->assertSame('visualbar', $rows[0]['fields'][0]['kind']);
-            $this->assertSame(StoreVisualBar::MAX_CARDS, $rows[0]['fields'][0]['max']);
+            $bar = collect(PageEditor::rows((int) $shop->id))->firstWhere('key', PageEditor::VISUAL_BAR);
+            $this->assertSame('visualbar', $bar['fields'][0]['kind']);
+            $this->assertSame(StoreVisualBar::MAX_CARDS, $bar['fields'][0]['max']);
+            $this->assertSame(PageEditor::ADVANCED, $bar['group'], 'المطفأُ تحت «إعدادات متقدّمة»');
         }
 
+        $this->wear([$this->card(['type' => 'shop', 'value' => ''])]);
+
+        $rows = PageEditor::rows((int) $this->shop->id);
+        $this->assertSame(PageEditor::VISUAL_BAR, $rows[0]['key'], 'والمشغَّلُ أوّلُ الأبواب — أوّلُ ما يُرى');
+        $this->assertSame(PageEditor::MAIN, $rows[0]['group']);
+        $this->assertSame(PageEditor::ADVANCED, collect(PageEditor::rows((int) $this->neighbour->id))->firstWhere('key', PageEditor::VISUAL_BAR)['group'], 'ولا يتبدّل عند جاره');
+
+        // ويُطفأ فينزل تحت «إعدادات متقدّمة» — وبطاقتُه محفوظةٌ كما هي
+        $this->wear([$this->card(['type' => 'shop', 'value' => ''])], false);
+        $this->assertSame(PageEditor::ADVANCED, collect(PageEditor::rows((int) $this->shop->id))->firstWhere('key', PageEditor::VISUAL_BAR)['group']);
+        $this->assertCount(1, StoreVisualBar::settings((int) $this->shop->id)['cards']);
+        $this->assertSame([], $this->titles($this->page()), 'والمطفأُ لا يُرسم لزبونه');
+
         $this->assertContains(StoreVisualBar::KEY, PageEditor::omitted());
+    }
+
+    /*
+     * ═══ والإيقافُ لمتجرٍ واحد — بمفتاحه هو، لا بشرطٍ باسمه ═══
+     *
+     * يُطفئه صاحبُه من محرّره فيختفي من متجره وحده، وتبقى بطاقاتُه محفوظةً ليعود
+     * إليها إن شاء. والجارُ الذي شغّل شريطه يبقى شريطُه كما هو.
+     */
+    public function test_switching_the_bar_off_hides_it_for_that_shop_alone(): void
+    {
+        MarketingSettings::save($this->neighbour->id, 'website', [StoreVisualBar::KEY => $this->bar([$this->card(['type' => 'shop', 'value' => ''], ['title_ar' => 'بطاقة الجار'])])]);
+        $this->wear([$this->card(['type' => 'shop', 'value' => ''], ['title_ar' => 'بطاقتي'])]);
+
+        $this->assertSame(['بطاقتي'], $this->titles($this->page()));
+        $this->assertSame(['بطاقة الجار'], $this->titles($this->page('/', 'ar', 'jaar')));
+
+        $this->wear([$this->card(['type' => 'shop', 'value' => ''], ['title_ar' => 'بطاقتي'])], false);
+
+        $this->assertStringNotContainsString('rb-visual-bar', $this->page());
+        $this->assertSame(['بطاقة الجار'], $this->titles($this->page('/', 'ar', 'jaar')), 'وشريطُ جاره كما هو');
+        $this->assertSame('بطاقتي', StoreVisualBar::settings((int) $this->shop->id)['cards'][0]['title_ar'], 'وبطاقاتُه محفوظةٌ ليعود إليها');
     }
 }

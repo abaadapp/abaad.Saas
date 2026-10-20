@@ -28,6 +28,8 @@ const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor
  */
 
 const row = (over: Partial<EditorRow> & { key: string }): EditorRow => ({
+    // البابُ كما يقسمه الخادم (`PageEditor::rows`): الثابتُ بابٌ أوّل إلّا ما يُضبط مرّةً
+    group: over.fixed && ! ['head', 'images', 'upsells', 'vbar'].includes(over.key) ? 'main' : 'advanced',
     label: over.key,
     hint: 'وصفُ الصفّ',
     fixed: false,
@@ -67,6 +69,12 @@ const tools = (over: Partial<CatalogTools> = {}): CatalogTools => ({
     ...over,
 });
 
+/** و«إعدادات متقدّمة» تُفتح بعد الرسم — فالصفوفُ كلُّها في متناول الاختبار كما كانت */
+const openAdvanced = () => {
+    const toggle = screen.queryByTestId('advanced-toggle');
+    if (toggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+};
+
 const draw = (catalogTools: CatalogTools) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     Object.assign(pageProps, { translations: {} });
@@ -85,6 +93,7 @@ const draw = (catalogTools: CatalogTools) => {
             catalogTools={catalogTools}
         />,
     );
+    openAdvanced();
 
     fireEvent.click(screen.getByText('وصل حديثًا'));
 

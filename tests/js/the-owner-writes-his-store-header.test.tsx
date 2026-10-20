@@ -33,6 +33,7 @@ const HEAD: EditorRow = {
     label: 'رأس المتجر',
     hint: 'شريطُ إعلانٍ أعلى كلّ صفحة، واختصاراتُ الفئات في صفحة المتجر',
     fixed: true,
+    group: 'advanced',
     on: true,
     silent: null,
     source: null,
@@ -45,12 +46,12 @@ const HEAD: EditorRow = {
 };
 
 const HERO: EditorRow = {
-    key: 'hero', label: 'الواجهة', hint: '', fixed: true, on: true, silent: null, source: null,
+    key: 'hero', label: 'الواجهة', hint: '', fixed: true, group: 'main', on: true, silent: null, source: null,
     fields: [{ key: 'store_headline', kind: 'text', label: 'العنوان الكبير' }],
 };
 
 const FOOT: EditorRow = {
-    key: 'foot', label: 'التذييل', hint: '', fixed: true, on: true, silent: null, source: null,
+    key: 'foot', label: 'التذييل', hint: '', fixed: true, group: 'main', on: true, silent: null, source: null,
     fields: [{ key: 'store_tagline', kind: 'text', label: 'سطر التذييل' }],
 };
 
@@ -59,6 +60,12 @@ const CATS = [
     { id: 12, name: 'هدايا', shown: 0 },
     { id: 13, name: 'إضافات', shown: 2 },
 ];
+
+/** و«إعدادات متقدّمة» تُفتح بعد الرسم — فالصفوفُ كلُّها في متناول الاختبار كما كانت */
+const openAdvanced = () => {
+    const toggle = screen.queryByTestId('advanced-toggle');
+    if (toggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+};
 
 const draw = (values: Record<string, string> = {}, max = 6) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
@@ -87,6 +94,7 @@ const draw = (values: Record<string, string> = {}, max = 6) => {
             maxShortcuts={max}
         />,
     );
+    openAdvanced();
 
     // يُفتح الصفّ كما يفتحه صاحبُه
     fireEvent.click(within(screen.getByTestId('row-head')).getByText('رأس المتجر'));
@@ -110,12 +118,13 @@ const chosen = (row: HTMLElement) =>
 afterEach(() => vi.restoreAllMocks());
 
 describe('رأسُ المتجر في المحرّر', () => {
-    it('أوّلُ الصفوف — فوق الواجهة، ولا يُطفأ', () => {
+    it('أوّلُ «إعدادات متقدمة» — يُضبط مرّةً، ولا يُطفأ', () => {
         draw();
 
-        const keys = screen.getAllByTestId(/^row-/).map((el) => el.dataset.testid);
+        const keys = within(screen.getByTestId('rows-advanced')).getAllByTestId(/^row-/).map((el) => el.dataset.testid);
 
-        expect(keys.slice(0, 2)).toEqual(['row-head', 'row-hero']);
+        expect(keys[0]).toBe('row-head');
+        expect(within(screen.getByTestId('rows-main')).queryByTestId('row-head')).toBeNull();
         expect(within(screen.getByTestId('row-head')).queryByRole('switch')).toBeNull();
     });
 

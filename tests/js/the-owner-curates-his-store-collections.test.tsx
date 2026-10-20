@@ -12,7 +12,6 @@ vi.mock('@/Layouts/AdminLayout', () => ({
 import type { EditorRow } from '@/Pages/Admin/Website/ThemeEditor';
 import {
     freshSlug,
-    keepShownCollections,
     parseCollections,
     serializeCollections,
     slugify,
@@ -27,16 +26,20 @@ const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor
  *
  * ═══ وما يُحرَس ═══
  *
- * أنّ الصفَّ قبل التذييل، وأنّ المجموعةَ تُنشأ وتُسمّى بلغتيها وتُوصف
- * وتُختار أصنافُها من أيّ فئةٍ وتُرتَّب وتُخفى وتُحذف بتأكيد — وأنّ «احفظ»
- * يُرسل مفتاحَها وحده نصَّ JSON بالترتيب الذي يراه، ولا يُرسل صنفًا أُخفي
- * بعد اختياره. وأنّ «عاين» يُرسل المسوّدةَ إلى رفّ المجموعة.
+ * أنّ الصفَّ بابٌ أوّلُ قبل التذييل، وأنّ المجموعةَ تُنشأ وتُسمّى بلغتيها وتُوصف
+ * وتُختار أصنافُها بصورها من منتقي المنتجات (`ProductPicker`) وتُرتَّب وتُخفى
+ * وتُحذف بتأكيد — وأنّ «احفظ» يُرسل مفتاحَها وحده نصَّ JSON بالترتيب الذي يراه،
+ * ومعه الصنفُ الذي أُخفي بعد اختياره: يبقى موسومًا «مخفيّ الآن» ولا يُسقَط.
+ * ولا خانةَ رابطٍ تُكتب: رابطُ الجديدة من اسمها الإنجليزيّ. وأنّ «عاين» يُرسل
+ * المسوّدةَ إلى رفّ المجموعة.
  *
  * وقواعدُ الحفظ نفسُها (المتجرُ والمعروضُ والصورةُ والرابط) تُحرس في
  * الخادم: `ARibbonShopCuratesItsOwnCollectionsTest`.
  */
 
 const row = (over: Partial<EditorRow> & { key: string }): EditorRow => ({
+    // البابُ كما يقسمه الخادم (`PageEditor::rows`): الثابتُ بابٌ أوّل إلّا ما يُضبط مرّةً
+    group: (over.fixed ?? true) && ! ['head', 'images', 'upsells', 'vbar'].includes(over.key) ? 'main' : 'advanced',
     label: over.key, hint: '', fixed: true, on: true, silent: null, source: null, fields: [], ...over,
 });
 
@@ -50,15 +53,24 @@ const HERO = row({ key: 'hero', label: 'الواجهة', fields: [{ key: 'store_
 const FOOT = row({ key: 'foot', label: 'التذييل' });
 
 const PRODUCTS = [
-    { id: 36, name: 'بالون', image: null },
-    { id: 37, name: 'شوكولاتة', image: null },
-    { id: 38, name: 'ورد أحمر', image: '/storage/p/38.jpg' },
+    { id: 36, name: 'بالون', name_en: 'Balloon', category: 'إضافات', image: null },
+    { id: 37, name: 'شوكولاتة', name_en: 'Chocolate', category: 'إضافات', image: null },
+    { id: 38, name: 'ورد أحمر', name_en: 'Red roses', category: 'باقات', image: '/storage/p/38.jpg' },
 ];
+
+/** ما اختاره ثمّ أخفاه — يصل المحرّرَ باسمه (`hiddenProducts`) */
+const HIDDEN = [{ id: 99, name: 'باقة الموسم', name_en: 'Season bouquet', category: 'باقات', image: null }];
 
 const one = (over: Partial<StoreCollection> = {}): StoreCollection => ({
     slug: 'graduation', title_ar: 'هدايا التخرّج', title_en: 'Graduation gifts', desc_ar: '', desc_en: '',
     image: '', visible: true, in_row: true, products: [38], ...over,
 });
+
+/** و«إعدادات متقدّمة» تُفتح بعد الرسم — فالصفوفُ كلُّها في متناول الاختبار كما كانت */
+const openAdvanced = () => {
+    const toggle = screen.queryByTestId('advanced-toggle');
+    if (toggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+};
 
 const draw = (collections = '') => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
@@ -75,8 +87,10 @@ const draw = (collections = '') => {
             order={['cats']}
             maxFeatured={4}
             products={PRODUCTS}
+            hiddenProducts={HIDDEN}
         />,
     );
+    openAdvanced();
 };
 
 const capture = () => {
@@ -108,10 +122,6 @@ describe('قراءةُ القائمة وكتابتُها', () => {
         expect(parseCollections(serializeCollections([one()]))).toEqual([one()]);
     });
 
-    it('ولا يُرسَل صنفٌ أُخفي بعد اختياره', () => {
-        const raw = serializeCollections([one({ products: [38, 99, 36] })]);
-        expect(parseCollections(keepShownCollections(raw, PRODUCTS))[0].products).toEqual([38, 36]);
-    });
 
     it('والرابطُ المختصرُ حروفٌ صغيرةٌ وأرقامٌ وشرطة — فريدٌ في قائمته', () => {
         expect(slugify('Graduation Gifts 2027!')).toBe('graduation-gifts-2027');
@@ -124,15 +134,22 @@ describe('قراءةُ القائمة وكتابتُها', () => {
 });
 
 describe('«مجموعات المتجر» في المحرّر', () => {
-    it('صفٌّ ثابتٌ قبل التذييل — لا قسمٌ يُرتَّب في الرئيسية', () => {
+    it('بابٌ أوّلُ قبل التذييل — لا قسمٌ يُرتَّب في الرئيسية', () => {
         draw();
 
-        const rows = screen.getAllByTestId(/^row-/).map((li) => li.dataset.testid);
-        expect(rows.slice(-2)).toEqual(['row-collections', 'row-foot']);
+        const rows = within(screen.getByTestId('rows-main')).getAllByTestId(/^row-[a-z]+$/).map((li) => li.dataset.testid);
+        expect(rows).toContain('row-collections');
+        expect(rows.indexOf('row-collections')).toBeLessThan(rows.indexOf('row-foot'));
+        expect(within(screen.getByTestId('rows-advanced')).queryByTestId('row-collections')).toBeNull();
         expect(within(screen.getByTestId('row-collections')).queryByRole('switch')).toBeNull();
     });
 
-    it('تُنشأ مجموعةٌ وتُسمّى بلغتيها وتُختار أصنافُها — و«احفظ» يُرسل مفتاحَها وحده', () => {
+    /*
+     * ═══ «مجموعة جديدة» ← الاسم ← «اختيار المنتجات» ← اختر عدّةً ← «إضافة المختارة» ═══
+     *
+     * والبحثُ بالعربيّة وبالإنجليزيّة، ولا خانةَ رابط: رابطُها من اسمها الإنجليزيّ.
+     */
+    it('تُنشأ مجموعةٌ وتُختار أصنافُها بصورها وبحثها — و«احفظ» يُرسل مفتاحَها وحده', () => {
         const sent = capture();
         draw();
         openRow();
@@ -142,17 +159,48 @@ describe('«مجموعات المتجر» في المحرّر', () => {
 
         fireEvent.change(screen.getByTestId('collection-0-title-ar'), { target: { value: 'هدايا التخرّج' } });
         fireEvent.change(screen.getByTestId('collection-0-title-en'), { target: { value: 'Graduation gifts' } });
-        fireEvent.change(screen.getByTestId('collection-0-slug'), { target: { value: 'Graduation!' } });
-        press('إضافة ورد أحمر');
-        press('إضافة بالون');
+        expect(screen.queryByTestId('collection-0-slug')).toBeNull();
 
-        // والإنجليزيُّ يُكتب من اليسار
+        fireEvent.click(screen.getByTestId('chosen-collection-0-pick'));
+        fireEvent.change(screen.getByTestId('picker-search'), { target: { value: 'roses' } });
+        expect(screen.queryByTestId('picker-item-36')).toBeNull();
+        fireEvent.click(screen.getByTestId('picker-item-38'));
+        fireEvent.change(screen.getByTestId('picker-search'), { target: { value: 'بالون' } });
+        fireEvent.click(screen.getByTestId('picker-item-36'));
+        fireEvent.click(screen.getByTestId('picker-add'));
+
+        // ويراها في المجموعة في الحال — بترتيب اختيارها
+        expect(screen.getAllByTestId(/^chosen-collection-0-\d+$/).map((li) => li.dataset.testid)).toEqual(['chosen-collection-0-38', 'chosen-collection-0-36']);
         expect((screen.getByTestId('collection-0-title-en') as HTMLInputElement).dir).toBe('ltr');
 
         press('احفظ');
         expect(sent).toHaveLength(1);
         expect(Object.keys(sent[0].data)).toEqual(['store_collections']);
-        expect(sentList(sent)).toEqual([one({ slug: 'graduation', products: [38, 36] })]);
+        expect(sentList(sent)).toEqual([one({ slug: 'graduation-gifts', products: [38, 36] })]);
+    });
+
+    it('والصنفُ الذي أُخفي بعد اختياره يبقى موسومًا — ويُرسَل كما هو فلا يضيع', () => {
+        const sent = capture();
+        draw(serializeCollections([one({ products: [38, 99, 36] })]));
+        openRow();
+        fireEvent.click(screen.getByText('هدايا التخرّج'));
+
+        expect(screen.getByTestId('chosen-collection-0-99-hidden').textContent).toContain('مخفيّ الآن');
+        expect(within(screen.getByTestId('chosen-collection-0-99')).getByText('باقة الموسم')).toBeTruthy();
+
+        press('احفظ');
+        expect(sentList(sent)[0].products).toEqual([38, 99, 36]);
+    });
+
+    it('ورابطُ المجموعة المحفوظة ثابتٌ وإن تبدّل اسمُها', () => {
+        const sent = capture();
+        draw(serializeCollections([one()]));
+        openRow();
+        fireEvent.click(screen.getByText('هدايا التخرّج'));
+        fireEvent.change(screen.getByTestId('collection-0-title-en'), { target: { value: 'Grad presents' } });
+
+        press('احفظ');
+        expect(sentList(sent)[0].slug).toBe('graduation');
     });
 
     it('تُرتَّب المجموعاتُ وتُخفى — ويُحفظ الترتيبُ كما يراه', () => {
@@ -174,7 +222,8 @@ describe('«مجموعات المتجر» في المحرّر', () => {
         openRow();
         fireEvent.click(screen.getByText('هدايا التخرّج'));
 
-        expect((screen.getByRole('button', { name: 'إضافة ورد أحمر' }) as HTMLButtonElement).disabled).toBe(true);
+        expect((screen.getByTestId('chosen-collection-0-pick') as HTMLButtonElement).disabled).toBe(true);
+        expect(screen.getByTestId('chosen-collection-0-pick').textContent).toContain('بلغت الحدّ');
     });
 
     it('والحذفُ بتأكيد — ضغطةٌ واحدة لا تحذف', () => {
@@ -196,15 +245,6 @@ describe('«مجموعات المتجر» في المحرّر', () => {
         openRow();
 
         expect((screen.getByTestId('collections-add') as HTMLButtonElement).disabled).toBe(true);
-    });
-
-    it('ورابطٌ مكرّرٌ يُقال في صفّه قبل أن يُحفظ', () => {
-        draw(serializeCollections([one({ slug: 'a' }), one({ slug: 'b', title_ar: 'ب' })]));
-        openRow();
-        fireEvent.click(screen.getByText('ب'));
-        fireEvent.change(screen.getByTestId('collection-1-slug'), { target: { value: 'a' } });
-
-        expect(screen.getByText('رابطٌ غير صالح أو مكرّر')).toBeTruthy();
     });
 
     it('و«عاين» يُرسل المسوّدةَ إلى رفّ المجموعة — ويعود إلى الرئيسية بضغطة', () => {

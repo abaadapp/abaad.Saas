@@ -291,10 +291,23 @@ class ARibbonShopCuratesItsOwnCollectionsTest extends TestCase
         yield 'موقوف' => ['off'];
     }
 
+    /*
+     * ═══ والصنفُ الذي أُخفي بعد اختياره يبقى في مجموعته ولا يُرسم ═══
+     *
+     * كان يُردّ حفظُ المجموعات كلِّها من أجله، والشاشةُ تُسقطه حين تُفتح فيضيع
+     * مع أوّل حفظ — فاختار صاحبُ المتجر أصنافه ثمّ لم يجدها. وهو الآن يُحفظ
+     * ما دام من متجره، ولا يظهر لزبونه حتّى يعود معروضًا.
+     */
     #[DataProvider('unshown')]
-    public function test_a_product_that_is_not_shown_cannot_be_chosen(string $key): void
+    public function test_a_product_hidden_after_it_was_chosen_stays_in_its_collection_but_is_not_shown(string $key): void
     {
-        $this->save([$this->collection('graduation', ['rose', $key])])->assertSessionHasErrors(StoreCollections::KEY);
+        $this->save([$this->collection('graduation', ['rose', $key])])->assertSessionHasNoErrors();
+
+        $this->assertSame([$this->p['rose']->id, $this->p[$key]->id], StoreCollections::all($this->shop->id)[0]['products']);
+
+        $html = $this->shopPage('collection=graduation')->assertOk()->getContent();
+        $this->assertStringContainsString('/p/'.$this->p['rose']->id.'"', $html);
+        $this->assertStringNotContainsString('/p/'.$this->p[$key]->id.'"', $html, 'والمخفيُّ لا يُرسم لزبونه');
     }
 
     /** @return iterable<string, array{array<string, mixed>}> */

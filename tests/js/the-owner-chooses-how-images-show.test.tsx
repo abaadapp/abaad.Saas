@@ -14,6 +14,13 @@ import StoreImageField, { fitOf, needsShrink, scaled, shapeOf } from '@/Componen
 import type { EditorRow } from '@/Pages/Admin/Website/ThemeEditor';
 import CatalogFitField from '@/Pages/Admin/Website/theme/CatalogFitField';
 
+/** و«إعدادات متقدّمة» تُفتح بعد الرسم — فالصفوفُ كلُّها في متناول الاختبار كما كانت */
+const openAdvanced = () => {
+    const toggle = screen.queryByTestId('advanced-toggle');
+    if (toggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+};
+
+
 const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor');
 
 /**
@@ -157,7 +164,7 @@ describe('وطريقةُ صورة الواجهة تُحفظ معها في صفّ
         }) as never);
 
         const rows: EditorRow[] = [{
-            key: 'hero', label: 'الواجهة', hint: '', fixed: true, on: true, silent: null, source: null,
+            key: 'hero', label: 'الواجهة', hint: '', fixed: true, group: 'main', on: true, silent: null, source: null,
             fields: [{ key: 'store_hero_image', kind: 'image', label: 'صورة الواجهة', fit: 'store_hero_image_fit', ratio: '5/4' }],
         }];
 
@@ -174,6 +181,7 @@ describe('وطريقةُ صورة الواجهة تُحفظ معها في صفّ
                 products={[]}
             />,
         );
+        openAdvanced();
 
         fireEvent.click(screen.getByText('الواجهة'));
         fireEvent.click(screen.getByTestId('store_hero_image-fit-contain'));

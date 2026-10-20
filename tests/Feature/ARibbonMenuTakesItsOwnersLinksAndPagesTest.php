@@ -280,7 +280,10 @@ class ARibbonMenuTakesItsOwnersLinksAndPagesTest extends TestCase
         $link = fn (array $target, array $over = []) => $over + ['type' => 'link', 'id' => 'x1', 'title_ar' => 'رابط', 'title_en' => '', 'target' => $target, 'visible' => true];
 
         return [
-            'رابطٌ خارجيّ' => [json_encode([$link(['type' => 'url', 'value' => 'https://evil.example'])])],
+            // والرابطُ المكتوبُ يُقبل آمنًا وحده — لا شيفرةٌ ولا نطاقٌ بلا بروتوكول ولا مسافة
+            'رابطٌ مكتوبٌ javascript' => [json_encode([$link(['type' => 'url', 'value' => 'javascript:alert(1)'])])],
+            'رابطٌ يبدأ بـ//' => [json_encode([$link(['type' => 'url', 'value' => '//evil.example'])])],
+            'رابطٌ فيه مسافة' => [json_encode([$link(['type' => 'url', 'value' => 'https://a.example/x y'])])],
             'javascript' => [json_encode([$link(['type' => 'javascript', 'value' => 'alert(1)'])])],
             'صفحةٌ لا توجد' => [json_encode([$link(['type' => 'page', 'value' => 'nothing'])])],
             'مجموعةٌ لا توجد' => [json_encode([$link(['type' => 'collection', 'value' => 'nothing'])])],
@@ -338,11 +341,12 @@ class ARibbonMenuTakesItsOwnersLinksAndPagesTest extends TestCase
         $this->save([$this->page('shop'), $this->page('home')])->assertForbidden();
     }
 
-    public function test_the_menu_waits_for_publishing_and_its_row_sits_under_the_header(): void
+    public function test_the_menu_waits_for_publishing_and_its_row_sits_among_the_first_doors(): void
     {
         $this->assertContains(StoreNav::MENU, StoreContent::VERSIONED);
-        $keys = array_column(PageEditor::rows($this->shop->id), 'key');
-        $this->assertSame(PageEditor::MENU, $keys[array_search(PageEditor::HEAD, $keys, true) + 1]);
+        // والقائمةُ وصفحاتُها بابٌ من أبواب المحرّر الأولى — بعد الواجهة والمجموعات
+        $main = array_column(array_filter(PageEditor::rows($this->shop->id), fn (array $r) => $r['group'] === PageEditor::MAIN), 'key');
+        $this->assertSame([PageEditor::HERO, PageEditor::COLLECTIONS, PageEditor::MENU, PageEditor::FOOT], $main);
 
         ThemePublisher::enable($this->shop, (int) $this->owner->id);
         $this->save([$this->page('shop'), $this->page('home')])->assertSessionHasNoErrors();

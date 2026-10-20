@@ -24,6 +24,8 @@ const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor
  */
 
 const row = (over: Partial<EditorRow> & { key: string }): EditorRow => ({
+    // البابُ كما يقسمه الخادم (`PageEditor::rows`): الثابتُ بابٌ أوّل إلّا ما يُضبط مرّةً
+    group: over.fixed && ! ['head', 'images', 'upsells', 'vbar'].includes(over.key) ? 'main' : 'advanced',
     label: over.key,
     hint: 'وصفُ الصفّ',
     fixed: false,
@@ -56,13 +58,19 @@ const FOOT = row({
     fields: [{ key: 'store_tagline', kind: 'text', label: 'سطر التذييل' }],
 });
 
+/** و«إعدادات متقدّمة» تُفتح بعد الرسم — فالصفوفُ كلُّها في متناول الاختبار كما كانت */
+const openAdvanced = () => {
+    const toggle = screen.queryByTestId('advanced-toggle');
+    if (toggle?.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle);
+};
+
 const draw = (rows: EditorRow[], over: Record<string, unknown> = {}) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     Object.assign(pageProps, { translations: {} });
 
     const order = rows.filter((r) => ! r.fixed && r.on).map((r) => r.key);
 
-    return render(
+    const view = render(
         <ThemeEditor
             theme="ribbon"
             site={{ name: 'RIBBON', published: true, url: 'https://ribbon.abaadapp.om', slug: 'ribbon', host: 'abaadapp.om' }}
@@ -77,6 +85,9 @@ const draw = (rows: EditorRow[], over: Record<string, unknown> = {}) => {
             {...over}
         />,
     );
+    openAdvanced();
+
+    return view;
 };
 
 describe('محرّرُ صفحة المتجر', () => {
@@ -255,14 +266,19 @@ describe('محرّرُ صفحة المتجر', () => {
     });
 
     /** الواجهةُ أوّلًا والتذييلُ آخرًا — وبينهما ترتيبُ صاحبه */
-    it('يعرض الصفوف بترتيب ما يراه الزبون', () => {
+    /*
+     * الأبوابُ الأولى بترتيب الخادم، ثمّ «إعدادات متقدمة» وفيها أقسامُ الرئيسية
+     * بترتيب صاحبها — وهي ما يُرتَّب بالسهمين.
+     */
+    it('يعرض الأبواب الأولى ثمّ أقسام الرئيسية بترتيب صاحبها', () => {
         draw([HERO, row({ key: 'about', label: 'عنّا' }), row({ key: 'cats', label: 'الفئات' }), FOOT]);
 
-        const keys = Array.from(document.querySelectorAll('[data-testid^="row-"]')).map((el) =>
-            el.getAttribute('data-testid'),
-        );
+        const keys = (id: string) => Array.from(screen.getByTestId(id).querySelectorAll('[data-testid^="row-"]'))
+            .map((el) => el.getAttribute('data-testid'))
+            .filter((k) => /^row-[a-z]+$/.test(k ?? ''));
 
-        expect(keys).toEqual(['row-hero', 'row-about', 'row-cats', 'row-foot']);
+        expect(keys('rows-main')).toEqual(['row-hero', 'row-foot']);
+        expect(keys('rows-advanced')).toEqual(['row-about', 'row-cats']);
     });
 
     /**

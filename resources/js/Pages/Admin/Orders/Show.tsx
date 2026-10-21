@@ -98,6 +98,8 @@ interface OrderDetail {
     next_statuses: string[];
     /** قناةُ الطلب — `website` لطلب الموقع */
     channel?: string | null;
+    /** موافقةُ زبون الموقع على الشروط — نسختُها ولغتُها ووقتُها ونصُّها (`Store\StoreTerms`) */
+    terms?: { version: number; lang: string; at: string; hash: string; text: string } | null;
     occasions: { value: string; label: string }[];
     fulfillments: { value: string; label: string }[];
     subtotal: number;
@@ -1027,6 +1029,33 @@ export default function OrderShow() {
                                 <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#4b4b4b]" dir="auto" data-testid="order-notes">
                                     {order.notes}
                                 </p>
+                            </Card>
+                        )}
+
+                        {/*
+                            وموافقةُ الزبون على شروط المتجر — النسخةُ التي رآها لا ما في
+                            الإعدادات اليوم. ونصُّها كما وافق عليه، بلغته، وبصمتُه.
+                        */}
+                        {order.terms && (
+                            <Card className="p-6" data-testid="order-terms">
+                                <h3 className="mb-2 font-bold text-[#111]">{t('الشروط والأحكام')}</h3>
+                                <p className="text-sm leading-relaxed text-[#4b4b4b]">
+                                    {t('وافق الزبون على الإصدار :v :lang في :at', {
+                                        v: order.terms.version,
+                                        lang: order.terms.lang === 'en' ? t('بالإنجليزية') : t('بالعربية'),
+                                        at: order.terms.at,
+                                    })}
+                                </p>
+                                <details className="mt-2 text-sm">
+                                    <summary className="cursor-pointer text-[#111]">{t('النص الذي وافق عليه')}</summary>
+                                    <p
+                                        className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-[8px] bg-[#fafafa] p-3 leading-relaxed text-[#4b4b4b]"
+                                        dir={order.terms.lang === 'en' ? 'ltr' : 'rtl'}
+                                    >
+                                        {order.terms.text}
+                                    </p>
+                                    <p className="mt-1 break-all font-mono text-[11px] text-[#9ca3af]" dir="ltr">sha256 {order.terms.hash}</p>
+                                </details>
                             </Card>
                         )}
 

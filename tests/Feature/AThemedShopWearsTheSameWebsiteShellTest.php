@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\Store\PageEditor;
+use App\Support\Store\StoreTerms;
 use App\Support\Store\ThemePublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -78,8 +79,10 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     private const SECTIONS = [
         'Address.tsx' => 'address',
         'Pages.tsx' => 'pages',
+        'Orders.tsx' => 'orders',
         'Checkout.tsx' => 'checkout',
         'Fields.tsx' => 'fields',
+        'Terms.tsx' => 'terms',
         'Gateway.tsx' => 'gateway',
         'Seo.tsx' => 'seo',
     ];
@@ -681,6 +684,19 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'store_seo_title_en' => 'Ribbon Lounge — flowers & gifts in Muscat',
             'store_seo_desc_en' => 'Bouquets delivered across Muscat the same day.',
             'store_seo_index' => '0',
+            // واستقبالُ الطلبات — والجدولُ بصيغته الواحدة كما يكتبها `OrderWindow::validated`
+            'store_order_schedule_on' => '1',
+            'store_order_schedule' => '{"week":[[],[{"from":"09:00","to":"21:00"}],[],[],[],[],[]],"starts":null,"ends":null,"closed":[{"from":"2027-03-01","to":"2027-03-02"}]}',
+            'store_closed_message_on' => '1',
+            'store_closed_message' => "نعتذر عن استقبال الطلبات الآن.\nنعود {next_open_date} الساعة {next_open_time}.",
+            'store_closed_message_en' => "We are not taking orders right now.\nWe reopen {next_open_date} at {next_open_time}.",
+            // والشروطُ — نصّاها يُكتبان نسخةً لا إعدادًا، فيُقرآن منها أدناه
+            'store_terms_on' => '1',
+            'store_terms' => 'شروطُ متجر الفحص بالعربية.',
+            'store_terms_en' => 'The test shop terms in English.',
+            // وجدولُ التسليم بصيغته الواحدة كما يكتبها `DeliverySchedule::validated`
+            'store_delivery_schedule_on' => '1',
+            'store_delivery_schedule' => '{"delivery":[[],[],[],[],[],[],[{"id":"am01","from":"09:00","to":"12:00","ar":"الصباح","en":"Morning"}]],"pickup":null,"closed":[],"lead":120}',
         ];
 
         /*
@@ -709,7 +725,27 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
          */
         MarketingSettings::save($this->shop->id, 'website', [
             'store_gift_card_price' => $sample['store_gift_card_price'],
+            /*
+             * وكذلك مفاتيحُ التفعيل الثلاثة: الجدولةُ لا تُرفع بلا فترة، ورسالةُ
+             * الإغلاق بلا نصّيها، وجدولُ التسليم بلا فترة (`MarketingController::orderDesk`).
+             */
+            'store_order_schedule' => $sample['store_order_schedule'],
+            'store_closed_message' => $sample['store_closed_message'],
+            'store_closed_message_en' => $sample['store_closed_message_en'],
+            'store_delivery_schedule' => $sample['store_delivery_schedule'],
         ]);
+        // والشروطُ لا تُشترط بلا نصّين مكتوبين
+        StoreTerms::revise($this->shop->id, 'شروطٌ محفوظة.', 'Saved terms.', null);
+
+        /*
+         * ونصّا الشروط مخزنُهما نسخُها (`StoreTerms::revise`) لا صفٌّ في الإعدادات —
+         * فيُقرآن من آخر نسخة.
+         */
+        $read = fn (string $key) => match ($key) {
+            'store_terms' => (string) StoreTerms::current($this->shop->id)?->body_ar,
+            'store_terms_en' => (string) StoreTerms::current($this->shop->id)?->body_en,
+            default => (string) (MarketingSettings::group($this->shop->id, 'website')[$key] ?? ''),
+        };
 
         foreach ($drawn as $key) {
             $this->assertArrayHasKey($key, $sample, $key.' مقبضٌ جديد بلا قيمةِ فحصٍ في هذا الحارس');
@@ -721,7 +757,7 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
 
             $this->assertSame(
                 $sample[$key],
-                (string) (MarketingSettings::group($this->shop->id, 'website')[$key] ?? ''),
+                $read($key),
                 $key.' يُرسَل من القسم ولا يكتبه الخادم — مقبضٌ لا يُدير شيئًا',
             );
         }

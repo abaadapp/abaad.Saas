@@ -17,6 +17,7 @@ use App\Support\ReviewInvite;
 use App\Support\Store\GiftOrders;
 use App\Support\WebsiteConfirmPrint;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 /**
@@ -376,6 +377,17 @@ class OrderDetailController extends Controller
         $attrs = FlowerOrder::attributes($data);
 
         $before = $order->only(array_keys($attrs));
+
+        /*
+         * وموعدٌ نقله المحلُّ لم يعد فترةَ الجدول التي اختارها الزبون: تُترك
+         * نهايتُها ومعرّفُها فلا تقول الصفحاتُ «الصباح» عن موعدٍ صار مساءً.
+         * انظر `Store\DeliverySchedule`.
+         */
+        if (array_key_exists('scheduled_for', $attrs)
+            && optional($order->scheduled_for)->toDateTimeString() !== (filled($attrs['scheduled_for']) ? Carbon::parse($attrs['scheduled_for'])->toDateTimeString() : null)) {
+            $order->forceFill(['delivery_slot' => null, 'scheduled_until' => null]);
+        }
+
         $order->update($attrs);
 
         $this->logChanges($order, $before, $attrs);

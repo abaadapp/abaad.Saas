@@ -95,6 +95,12 @@ class TenantTables
         'fixed_assets', 'inventory_movements', 'stock_adjustments', 'stock_transfers',
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',
+        /*
+         * ونسخُ شروط المتجر قبل الطلبات: الطلبُ يشير إلى النسخة التي وافق
+         * عليها زبونُه (`orders.terms_version_id`). وتُنسخ وتُستعاد كاملةً — هي
+         * إثباتُ ما وافق عليه كلُّ زبون، ولا تُكتب من جديد. انظر `Store\StoreTerms`.
+         */
+        'store_terms_versions',
         'orders', 'order_items', 'order_item_addons', 'order_item_components', 'order_edits',
         /*
          * ونيّاتُ الدفع بعد الطلبات: كلُّ نيّةٍ نجحت تشير إلى طلبها.

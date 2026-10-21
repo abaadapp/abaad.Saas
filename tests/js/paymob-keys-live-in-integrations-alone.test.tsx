@@ -63,6 +63,14 @@ const drawStore = (gw: Record<string, unknown>) => {
         storeOn: true,
         slug: 'ribbon',
         gateway: gw,
+        orderDesk: {
+            open: true,
+            why: null,
+            now: 'الأربعاء 10 فبراير · 10:00 ص',
+            next: null,
+            preview: { day_ar: 'الخميس 11 فبراير', hour_ar: '9:00 ص', day_en: 'Thursday 11 February', hour_en: '9:00 AM' },
+        },
+        terms: { version: null, updated: null, ar: '', en: '' },
     });
 
     return render(<ThemeStore />);

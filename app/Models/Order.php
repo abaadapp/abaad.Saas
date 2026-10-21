@@ -31,6 +31,10 @@ class Order extends Model
          */
         'review_request_sent_at' => 'datetime',
         'status_notice_at' => 'datetime',
+        // نهايةُ فترة التسليم التي اختارها زبونُ الموقع — انظر `Store\DeliverySchedule`
+        'scheduled_until' => 'datetime',
+        // ومتى وافق على شروط المتجر — انظر `Store\StoreTerms`
+        'terms_accepted_at' => 'datetime',
     ];
 
     /**

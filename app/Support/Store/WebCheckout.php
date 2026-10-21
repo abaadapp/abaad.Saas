@@ -78,6 +78,9 @@ final class WebCheckout
      */
     public const PAY_CARD = 'card';
 
+    /** لقطةُ الفترة المختارة في حمولة نيّة الدفع — يكتبها الخادم لا المتصفّح */
+    public const SLOT = '_slot';
+
     /** أقصى أيامٍ يُحجز الموعدُ بعدها */
     public const MAX_DAYS_AHEAD = 60;
 
@@ -164,12 +167,61 @@ final class WebCheckout
                 ->exists();
     }
 
-    /** أيقبل هذا المتجر طلبًا من موقعه الآن؟ */
+    /**
+     * أيقبل هذا المتجر طلبًا من موقعه الآن؟
+     *
+     * ═══ واستقبالُ الطلبات يُسأل عنه الطلبُ الجديد وحدَه ═══
+     *
+     * مفتاحُه اليدويّ وجدولُه في `OrderWindow`. ودفعةٌ قُبضت (`$settling`، وقد
+     * صدّقت `settles` القاعدةَ أنّها مدفوعةٌ لهذا المتجر بإشعارٍ موقَّع) تُتمّ
+     * طلبَها ولو أُغلق الاستقبالُ والزبونُ عند البنك: فُتحت صفحتُها والمتجرُ
+     * يستقبل (`toCard` سأل)، والمالُ خرج. وردُّها الآن مالٌ بلا طلب.
+     *
+     * ولا يفتح وجودُ النيّة وحدَه شيئًا: نيّةٌ لم يُقبض مالُها، أو لمتجرٍ آخر،
+     * لا تُعفى. والقالبُ يبقى شرطًا للجميع — متجرٌ رُفع عنه لا يكتب طلبًا.
+     */
     public static function accepts(Business $business, ?StorePaymentIntent $settling = null): bool
     {
+        $bid = (int) $business->id;
+
         return $business->storefrontTheme() !== null
-            && self::settings((int) $business->id)['allow_orders']
-            && self::payments((int) $business->id, $settling) !== [];
+            && (self::settles($bid, $settling) || OrderWindow::open($bid))
+            && self::payments($bid, $settling) !== [];
+    }
+
+    /**
+     * يُردّ الطلبُ إن لم يُستقبل — برسالة صاحب المتجر حين يكون السببُ إغلاقَه.
+     *
+     * فمتجرٌ أغلق استقبالَه يقول لزبونه ما كتبه هو، بلغة صفحته (`OrderWindow::message`).
+     * وما سوى ذلك — قالبٌ رُفع أو لا وسيلةَ دفع — يُقال بنصّه القائم.
+     */
+    private static function assertAccepting(Business $business, string $lang, ?StorePaymentIntent $settling = null): void
+    {
+        if (self::accepts($business, $settling)) {
+            return;
+        }
+
+        $bid = (int) $business->id;
+        $closed = ! self::settles($bid, $settling) && ! OrderWindow::open($bid);
+
+        throw ValidationException::withMessages([
+            'items' => $closed ? OrderWindow::message($bid, $lang) : __('المتجر لا يستقبل طلبات من الموقع الآن.'),
+        ]);
+    }
+
+    /**
+     * حمولةُ المتصفّح بلا ما يكتبه الخادمُ وحدَه.
+     *
+     * ما بدأ بشرطةٍ سفليّة (`_terms`، `_slot`) لقطةٌ يكتبها الخادمُ في نيّة الدفع
+     * بعد أن يفحص. فلو قُبلت من المتصفّح لَكتب زبونٌ في طلبه موافقةً لم يُسأل
+     * عنها، أو فترةً لم يُعطَها.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private static function untrusted(array $payload): array
+    {
+        return array_filter($payload, fn ($key) => ! str_starts_with((string) $key, '_'), ARRAY_FILTER_USE_KEY);
     }
 
     /* ═══════════ التسعير ═══════════ */
@@ -307,10 +359,10 @@ final class WebCheckout
     public static function toCard(Business $business, array $payload, string $lang = 'ar'): string
     {
         $bid = (int) $business->id;
+        $payload = self::untrusted($payload);
 
-        if (! self::accepts($business)) {
-            throw ValidationException::withMessages(['items' => __('المتجر لا يستقبل طلبات من الموقع الآن.')]);
-        }
+        // ومتجرٌ أُغلق استقبالُه لا تُفتح فيه دفعةٌ جديدة — ولا تُكتب نيّةٌ ولا يُطرق بنك
+        self::assertAccepting($business, $lang);
 
         $form = self::validated($bid, $payload);
         $quote = self::quote($business, $payload + ['fulfil' => $form['fulfil']]);
@@ -325,6 +377,20 @@ final class WebCheckout
          * إلى `place` كما هو. انظر `CardIdentity`.
          */
         CardIdentity::check($bid, $form, $quote['_lines']);
+
+        // والشروطُ قبل صفحة البنك لا بعدها — انظر `StoreTerms`
+        StoreTerms::check($bid, $payload, $lang);
+
+        /*
+         * ═══ وما فُحص الآن يمضي مع النيّة كما فُحص ═══
+         *
+         * الموافقةُ على الشروط والفترةُ المختارة تُكتبان في حمولة النيّة لقطتين
+         * يكتبهما الخادم. فإن عدّل صاحبُ المتجر شروطَه أو جدولَ مواعيده والزبونُ
+         * عند البنك، يُكتب الطلبُ المدفوعُ بما وافق عليه واختاره — لا يُردّ
+         * لأنّ نصًّا أو فترةً تبدّلت بعد أن دفع.
+         */
+        $payload[StoreTerms::STAMP] = StoreTerms::stamp($bid, $lang);
+        $payload[self::SLOT] = self::chosenSlot($bid, $form);
 
         /*
          * ═══ وحدُّ الكوبون يُفحص هنا قبل صفحة الدفع، ثمّ تُحجز فرصتُه ═══
@@ -386,13 +452,31 @@ final class WebCheckout
         // دفعةٌ قُبضت تُتمّ طلبَها ولو رُفع المتجرُ من قائمة Paymob بعد فتحها — انظر `payments`
         $settling = $paid ? $intent : null;
 
-        if (! self::accepts($business, $settling)) {
-            throw ValidationException::withMessages(['items' => __('المتجر لا يستقبل طلبات من الموقع الآن.')]);
+        /*
+         * وحمولةُ المتصفّح لا تحمل لقطاتِ الخادم — وحمولةُ النيّة المدفوعة
+         * تحملها: كتبها `toCard` بعد أن فحص، وقُرئت من القاعدة لا من المتصفّح.
+         */
+        if (! $paid) {
+            $payload = self::untrusted($payload);
         }
+
+        self::assertAccepting($business, $lang, $settling);
 
         $form = self::validated($bid, $payload, $settling);
 
-        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid, $intent, $settling) {
+        /*
+         * والشروطُ والفترةُ لطلبٍ جديد تُفحص الآن — ولدفعةٍ قُبضت تُقرآن من
+         * لقطتيهما في النيّة، لا تُعادان على نصٍّ أو جدولٍ تبدّل بعد الدفع.
+         */
+        if (! $paid) {
+            StoreTerms::check($bid, $payload, $lang);
+        }
+        $terms = StoreTerms::columns($bid, $paid ? ($payload[StoreTerms::STAMP] ?? null) : StoreTerms::stamp($bid, $lang));
+        $slot = $paid
+            ? (DeliverySchedule::fromSnapshot($payload[self::SLOT] ?? null) ?? self::chosenSlot($bid, $form, settling: true))
+            : self::chosenSlot($bid, $form);
+
+        return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid, $intent, $settling, $terms, $slot) {
             // بقفل: الفحصُ والخصم على كميّةٍ لا تتغيّر تحتهما — كما في الصندوق
             $q = self::quote($business, $payload + ['fulfil' => $form['fulfil']], lock: true);
             $lines = $q['_lines'];
@@ -504,7 +588,12 @@ final class WebCheckout
             }
 
             $method = self::payments($bid, $settling)[$form['pay']];
-            $scheduled = self::scheduledFor($form);
+            /*
+             * والموعدُ من فترة الجدول إن اختيرت منه: بدايتُها ونهايتُها بساعة
+             * المتجر، ومعرّفُها الثابت — لا ساعةٌ تُستخرج من نصٍّ بظنّ. ومتجرٌ
+             * بلا جدولٍ يُقرأ موعدُه كما كان (`scheduledFor`).
+             */
+            [$scheduled, $until] = $slot !== null ? DeliverySchedule::bounds($slot) : [self::scheduledFor($form), null];
             // وقد دخل الكرتُ الأسطرَ في `quote` — وهنا تُكتب أعمدتُه على الطلب
             $wantsCard = GiftCard::wanted($bid, $payload);
 
@@ -540,7 +629,12 @@ final class WebCheckout
                 'status' => OrderStatus::PENDING,
                 // ملاحظاتُ الطلب كما كتبها العميل — لا الداخليّة ولا تعليماتُ التوصيل
                 'notes' => filled($form['notes'] ?? null) ? trim(str_replace("\r\n", "\n", (string) $form['notes'])) : null,
+                // والفترةُ التي اختارها من جدول المتجر — معرّفُها ونهايتُها (`DeliverySchedule`)
+                'delivery_slot' => $slot['id'] ?? null,
+                'scheduled_until' => $until?->toDateTimeString(),
             ]
+            // والشروطُ التي وافق عليها — نسختُها ووقتُها ولغتُها وبصمتُها (`StoreTerms`)
+            + $terms
             // والهديّةُ لغير مشتريها — ولا شيءَ لطلبٍ ليس هديّة (`GiftOrders`)
             + GiftOrders::columns($bid, $form)
             + GiftCard::columns(
@@ -574,7 +668,11 @@ final class WebCheckout
                 'delivery_address' => $form['fulfil'] === FlowerOrder::DELIVERY
                     ? trim(($form['area'] ?? '').' — '.($form['address'] ?? ''), " —\t")
                     : null,
-                'delivery_notes' => $form['slot'] ?? null,
+                /*
+                 * وتعليماتُ التوصيل التي يقرؤها المحلّ: اسمُ الفترة بالعربيّة
+                 * وساعتاها — لا معرّفُها. ومتجرٌ بلا جدولٍ نصُّ فترته كما كان.
+                 */
+                'delivery_notes' => $slot !== null ? DeliverySchedule::label($slot, 'ar') : ($form['slot'] ?? null),
             ]), (new OrderNumbers($bid))->salePrefix(), max(1, (int) (Setting::where('business_id', $bid)->where('key', 'inv_start')->value('value') ?? 1)));
 
             // وصاحبُ الصنف ونسبتُه — القاعدةُ نفسُها التي يقرأ بها الصندوق
@@ -904,10 +1002,19 @@ final class WebCheckout
             default => array_merge(['nullable'], $rules),
         };
 
+        /*
+         * ═══ ودفعةٌ قُبضت لا تُسأل عمّا يضبطه صاحبُ المتجر بعدها ═══
+         *
+         * طريقةُ الاستلام والموعدُ وفترتُه فُحصت كلُّها قبل أن تُفتح صفحةُ البنك
+         * (`toCard`)، والحمولةُ هي هي. فلو سُئلت ثانيةً عند الإشعار لَردّ الطلبَ
+         * المدفوعَ يومٌ مضى (دفع قبل منتصف الليل ووصل الإشعارُ بعده)، أو فترةٌ
+         * حذفها صاحبُ المتجر، أو طريقةٌ أطفأها — والمالُ خرج. فتُقرأ لدفعةٍ
+         * قُبضت بشكلها وحدَه.
+         */
         $rules = array_filter([
             'name' => EnglishCheckout::rules($bid, ['required', 'string', 'max:120'], EnglishCheckout::NAME),
             'phone' => ['required', 'string', 'max:32', 'regex:/^[0-9+()\-\s]{8,}$/'],
-            'fulfil' => ['required', 'in:'.implode(',', CheckoutFields::fulfilments($bid))],
+            'fulfil' => ['required', 'in:'.implode(',', $settling !== null ? FlowerOrder::FULFILLMENT : CheckoutFields::fulfilments($bid))],
             /*
              * ═══ والعنوانُ والمنطقةُ لا يُشترطان هنا ═══
              *
@@ -920,11 +1027,11 @@ final class WebCheckout
              */
             'area' => CheckoutFields::shows($bid, 'area') ? ['nullable', 'string', 'max:120'] : null,
             'address' => EnglishCheckout::rules($bid, CheckoutFields::shows($bid, 'address') ? ['nullable', 'string', 'max:500'] : null, EnglishCheckout::ADDRESS),
-            'date' => $field('date', [
+            'date' => $settling !== null ? ['nullable', 'date'] : $field('date', [
                 'date', 'after_or_equal:today',
                 'before_or_equal:'.today()->addDays(CheckoutFields::maxDays($bid))->toDateString(),
             ]),
-            'slot' => $field('slot', ['string', 'max:60']),
+            'slot' => $settling !== null ? ['nullable', 'string', 'max:60'] : $field('slot', ['string', 'max:60']),
             'card' => ['nullable', 'string', 'max:'.FlowerOrder::CARD_MAX],
             'pay' => ['required', 'in:'.implode(',', array_keys($payments) ?: ['-'])],
 
@@ -1082,15 +1189,75 @@ final class WebCheckout
             // والهديّةُ تشترط مستلِمَها — انظر `GiftOrders::after`
             GiftOrders::after($v, $bid, $payload);
 
+            /*
+             * ولا تُسأل القائمةُ في دفعةٍ قُبضت — فُحصت قبل البنك، وقائمةٌ عُدّلت
+             * بعده لا تردّ مالًا خرج. والفترةُ في متجرٍ له جدولٌ معرّفٌ لا نصّ،
+             * فيُسأل عنها جدولُه أدناه لا قائمةُ السطور.
+             */
+            $scheduled = DeliverySchedule::on($bid);
+
             foreach (['area' => ['areas', __('اختر المنطقة.')], 'slot' => ['slots', __('اختر وقت التسليم.')]] as $f => [$list, $msg]) {
+                if ($settling !== null || ($f === 'slot' && $scheduled)) {
+                    continue;
+                }
                 if ($settings[$list] !== [] && CheckoutFields::shows($bid, $f)
                     && filled($payload[$f] ?? null) && ! in_array(trim((string) $payload[$f]), $settings[$list], true)) {
                     $v->errors()->add($f, $msg);
                 }
             }
+
+            /*
+             * ═══ والجدولُ يُسأل في الخادم لا في الصفحة ═══
+             *
+             * الصفحةُ لا تعرض إلّا المتاح، لكنّ حمولةً تُكتب بيدها تُرسل يومًا
+             * مُغلقًا أو فترةً مضت أو معرّفًا مصنوعًا. فيُردّ اليومُ الذي لا
+             * يُسلَّم فيه، ثمّ الفترةُ التي ليست فيه الآن (`DeliverySchedule::days`).
+             */
+            if ($settling === null && $scheduled && ! $v->errors()->hasAny(['fulfil', 'date', 'slot'])) {
+                $days = DeliverySchedule::days($bid, self::text($payload['fulfil'] ?? ''));
+                $day = collect($days)->firstWhere('date', self::text($payload['date'] ?? ''));
+
+                if ($day === null) {
+                    $v->errors()->add('date', __('اختر يومًا متاحًا للتسليم.'));
+                } elseif (! collect($day['slots'])->contains('id', self::text($payload['slot'] ?? ''))) {
+                    $v->errors()->add('slot', __('هذه الفترة لم تعد متاحة — اختر فترة أخرى.'));
+                }
+            }
         });
 
         return $v->validate();
+    }
+
+    /**
+     * الفترةُ المختارة من جدول المتجر — لقطتُها، أو لا شيء لمتجرٍ بلا جدول.
+     *
+     * لطلبٍ جديد تُطلب متاحةً الآن (`DeliverySchedule::pick`): يومٌ مُغلق أو
+     * فترةٌ مضت تُردّ ولو أُرسلت بيدها. والحارسُ الأوّل في `validated` يقولها
+     * بجانب أخواتها، وهذا يمسك فترةً انقضت بين الفحص والكتابة.
+     *
+     * ولدفعةٍ قُبضت بلا لقطة (نيّةٌ فُتحت قبل أن يُكتب هذا) تُقرأ الفترةُ
+     * بمعرّفها من الجدول القائم بلا حكم الوقت: المالُ قُبض، والردُّ الآن مالٌ
+     * بلا طلب.
+     *
+     * @param  array<string, mixed>  $form
+     * @return array{id: string, date: string, from: string, to: string, ar: string, en: string}|null
+     */
+    private static function chosenSlot(int $bid, array $form, bool $settling = false): ?array
+    {
+        if (! DeliverySchedule::on($bid)) {
+            return null;
+        }
+
+        $fulfil = (string) ($form['fulfil'] ?? '');
+        $date = $form['date'] ?? null;
+        $id = $form['slot'] ?? null;
+
+        if ($settling) {
+            return DeliverySchedule::lookup($bid, $fulfil, $date, $id);
+        }
+
+        return DeliverySchedule::pick($bid, $fulfil, $date, $id)
+            ?? throw ValidationException::withMessages(['slot' => __('هذه الفترة لم تعد متاحة — اختر فترة أخرى.')]);
     }
 
     /** موعدُ التسليم: اليومُ المختار، وأوّلُ ساعةٍ من فترته إن كُتبت بساعة */

@@ -4,7 +4,9 @@ import Toggle from '@/Components/Toggle';
 import { SettingsGroup, SettingsSection } from '@/Components/Settings';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import DeliveryPlanner from './DeliveryPlanner';
 import type { ThemeForm } from './form';
+import { readDeliveryPlan, writeDeliveryPlan } from './schedule';
 
 /**
  * نصوصُ صفحة الشكر — لكلّ نصٍّ خانتان: عربيّةٌ وإنجليزيّة.
@@ -58,15 +60,7 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                 description="ما يقبضه متجرك من زبونه، وكيف يصله طلبه."
                 divided
             >
-                <SettingsGroup title="قبول الطلبات">
-                    <Toggle
-                        on={form.data.store_allow_orders}
-                        onChange={(v) => form.setData('store_allow_orders', v)}
-                        label="اقبل الطلبات من المتجر"
-                        hint="أطفئه فيبقى متجرك معرضًا يُتصفَّح بلا سلّة — والأسعار تبقى ظاهرة"
-                    />
-                </SettingsGroup>
-
+                {/* وقبولُ الطلبات وجدولُه في «استقبال الطلبات» (`Orders`) — مقبضٌ واحدٌ في موضعٍ واحد */}
                 <SettingsGroup title="طرق الدفع">
                     <div className="space-y-3">
                         <Toggle
@@ -195,9 +189,37 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                         <Field label="مناطق التوصيل" hint="سطرٌ لكل منطقة — فارغًا يعني حقلًا حرًّا للزبون" error={form.errors.store_delivery_areas}>
                             <Textarea rows={3} value={form.data.store_delivery_areas} onChange={(e) => form.setData('store_delivery_areas', e.target.value)} aria-label={t('مناطق التوصيل')} />
                         </Field>
-                        <Field label="أوقات التسليم" hint="سطرٌ لكل فترة، مثل: 9 ص – 12 م" error={form.errors.store_delivery_slots}>
-                            <Textarea rows={3} value={form.data.store_delivery_slots} onChange={(e) => form.setData('store_delivery_slots', e.target.value)} aria-label={t('أوقات التسليم')} />
-                        </Field>
+                        {/* والسطورُ الحرّة حين لا جدول — تبقى محفوظةً كما هي، ويعود إليها من أطفأ الجدول */}
+                        {! form.data.store_delivery_schedule_on && (
+                            <Field label="أوقات التسليم" hint="سطرٌ لكل فترة، مثل: 9 ص – 12 م" error={form.errors.store_delivery_slots}>
+                                <Textarea rows={3} value={form.data.store_delivery_slots} onChange={(e) => form.setData('store_delivery_slots', e.target.value)} aria-label={t('أوقات التسليم')} />
+                            </Field>
+                        )}
+                    </div>
+
+                    {/*
+                        ═══ وجدولُ أيّام التسليم وفتراتِه — مطفأٌ حتّى يفتحه ═══
+
+                        من فتحه يختار زبونُه يومًا متاحًا وفترةً منه، ولا يُعرض له يومٌ
+                        مُغلق ولا فترةٌ مضت. ويُشترط فيه اليومُ والفترة ما دام مفتوحًا.
+                        انظر `Store\DeliverySchedule`.
+                    */}
+                    <div className="mt-4">
+                        <Toggle
+                            on={form.data.store_delivery_schedule_on}
+                            onChange={(v) => form.setData('store_delivery_schedule_on', v)}
+                            label="مواعيد تسليم منظّمة حسب الأيام"
+                            hint="أيام وفترات لكل يوم، وأيام إغلاق، ومدة تجهيز — يختار منها زبونك يومًا وفترة متاحين فقط"
+                        />
+                        {form.data.store_delivery_schedule_on && (
+                            <DeliveryPlanner
+                                plan={readDeliveryPlan(form.data.store_delivery_schedule)}
+                                onChange={(plan) => form.setData('store_delivery_schedule', writeDeliveryPlan(plan))}
+                                error={form.errors.store_delivery_schedule}
+                                offersDelivery={form.data.store_fulfil.split(',').includes('delivery')}
+                                offersPickup={form.data.store_fulfil.split(',').includes('pickup')}
+                            />
+                        )}
                     </div>
 
                     <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">

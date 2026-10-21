@@ -254,8 +254,12 @@ trait Concerns
              *
              * `CheckoutFields` تقرأ الفراغَ «ما كان» — فشاشةٌ تعرض فراغًا
              * تقول لصاحبها إنّ حقلًا مطفأٌ وهو يُسأل عنه في متجره.
+             *
+             * وبما حفظه هو لا بما يفرضه جدولُ المواعيد: الجدولُ يشترط اليومَ
+             * والفترة ما دام مفتوحًا (`CheckoutFields::state`)، فلو وصلت الشاشةَ
+             * «مطلوبة» لَحفظها الحفظُ التالي فوق اختياره — ولا يعود إليه إن أطفأه.
              */
-            'fieldStates' => CheckoutFields::all($bid),
+            'fieldStates' => CheckoutFields::all($bid, schedule: false),
             'fulfilments' => CheckoutFields::fulfilments($bid),
             /*
              * وما أذِن به من الصفحات يصل **محسوبًا** لا خامًا من الإعداد.

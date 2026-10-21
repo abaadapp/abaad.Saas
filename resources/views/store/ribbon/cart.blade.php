@@ -3,6 +3,14 @@
 @section('content')
 <section class="rb-screen" style="max-width:760px;margin:0 auto;padding:40px 24px" data-testid="rb-cart-page">
     <h1 class="rb-h1" style="margin-bottom:24px">{{ $t['cartTitle'] }}</h1>
+    {{--
+        والمتجرُ لا يستقبل الآن — تُقال رسالةُ صاحبه بلغة الصفحة، وتبقى السلّةُ
+        تُتصفَّح بأسعارها. ونصُّه يُطبع نصًّا لا وسمًا، وأسطرُه كما كتبها.
+        والخادمُ يردّ الطلبَ ولو تُجووز الزرّ (`WebCheckout::assertAccepting`).
+    --}}
+    @if (! $accepts)
+        <div class="rb-box" data-testid="rb-closed" role="status" style="white-space:pre-line;margin-bottom:24px">{{ $closedSays }}</div>
+    @endif
     <div data-rb-empty style="display:none;text-align:center;padding:60px 0">
         <p style="margin:0 0 20px">{{ $t['cartEmpty'] }}</p>
         <a class="rb-btn-ghost" href="{{ $base }}/shop">{{ $t['continueShopping'] }}</a>
@@ -15,7 +23,9 @@
             <span style="font-size:20px;font-weight:600" data-rb-subtotal></span>
         </div>
         <div style="display:flex;gap:12px;flex-wrap:wrap">
-            <a class="rb-btn" href="{{ $base }}/checkout" style="flex:1;min-width:200px" data-testid="rb-to-checkout">{{ $t['toCheckout'] }}</a>
+            @if ($accepts)
+                <a class="rb-btn" href="{{ $base }}/checkout" style="flex:1;min-width:200px" data-testid="rb-to-checkout">{{ $t['toCheckout'] }}</a>
+            @endif
             <a class="rb-btn-ghost" href="{{ $base }}/shop" style="border-color:var(--rb-border)">{{ $t['continueShopping'] }}</a>
         </div>
     </div>

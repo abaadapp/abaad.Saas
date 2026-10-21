@@ -110,6 +110,16 @@ final class RibbonTexts
         'collectionHidden' => 'هذه المجموعة مخفيّة — لا يراها زبائنك حتى تُظهرها وتنشر.',
         // التسعيرةُ في الطريق — الزرُّ مقفلٌ حتّى تعود (`RBQuote`)
         'quoting' => 'يُحدَّث الإجمالي…',
+        /*
+         * والشروطُ والأحكام قبل التأكيد — نصُّها يكتبه صاحبُ المتجر، وهذا ما
+         * حولها وحدَه (`StoreTerms`). وخانةُ الموافقة بهذا اللفظ حرفًا.
+         */
+        'termsTitle' => 'الشروط والأحكام', 'termsAgree' => 'قرأت الشروط والأحكام وأوافق عليها.',
+        'termsMore' => 'عرض الشروط كاملة', 'termsLess' => 'طيّ الشروط',
+        'termsNeeded' => 'يجب الموافقة على الشروط والأحكام قبل إتمام الطلب.',
+        // وأيّامُ التسليم وفتراتُه من جدول المتجر (`DeliverySchedule`)
+        'pickDay' => 'اختر اليوم', 'pickSlot' => 'اختر الفترة', 'when' => 'الموعد',
+        'noDays' => 'لا مواعيد متاحة الآن لهذه الطريقة — تواصل معنا.',
     ];
 
     private const EN = [
@@ -178,6 +188,11 @@ final class RibbonTexts
         'pageHidden' => 'This page is hidden — your customers will not see it until you show it and publish.',
         'collectionHidden' => 'This collection is hidden — your customers will not see it until you show it and publish.',
         'quoting' => 'Updating the total…',
+        'termsTitle' => 'Terms & Conditions', 'termsAgree' => 'I have read and agree to the Terms & Conditions.',
+        'termsMore' => 'Show the full terms', 'termsLess' => 'Collapse the terms',
+        'termsNeeded' => 'You must agree to the Terms & Conditions before placing your order.',
+        'pickDay' => 'Choose a day', 'pickSlot' => 'Choose a time', 'when' => 'When',
+        'noDays' => 'No times are available right now for this option — contact us.',
     ];
 
     /** @return array<string, string> */

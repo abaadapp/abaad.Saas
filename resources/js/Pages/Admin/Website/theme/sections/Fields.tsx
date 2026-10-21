@@ -47,21 +47,31 @@ export default function Fields({ form }: { form: ThemeForm }) {
                         </p>
 
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                            {CHECKOUT_FIELDS.map((f) => (
-                                <Field
-                                    key={f.key}
-                                    label={f.label}
-                                    hint={f.hint}
-                                    error={form.errors[`store_field_${f.key}` as keyof typeof form.errors]}
-                                >
-                                    <Select
-                                        value={form.data[`store_field_${f.key}` as 'store_field_area']}
-                                        onChange={(e) => form.setData(`store_field_${f.key}` as 'store_field_area', e.target.value)}
-                                        options={FIELD_STATES}
-                                        aria-label={t(f.label)}
-                                    />
-                                </Field>
-                            ))}
+                            {CHECKOUT_FIELDS.map((f) => {
+                                /*
+                                    والموعدُ ووقتُه يحكمهما جدولُ المواعيد ما دام مفتوحًا: يُسألان
+                                    دائمًا (`CheckoutFields::state`). فتُقفل قائمتاهما ويُقال ذلك —
+                                    وما حفظه لهما يبقى، ويعود إليه إن أطفأ الجدول.
+                                */
+                                const ruled = form.data.store_delivery_schedule_on && (f.key === 'date' || f.key === 'slot');
+
+                                return (
+                                    <Field
+                                        key={f.key}
+                                        label={f.label}
+                                        hint={ruled ? 'يحكمه جدول المواعيد — يُسأل عنه دائمًا ما دام الجدول مفتوحًا' : f.hint}
+                                        error={form.errors[`store_field_${f.key}` as keyof typeof form.errors]}
+                                    >
+                                        <Select
+                                            value={form.data[`store_field_${f.key}` as 'store_field_area']}
+                                            onChange={(e) => form.setData(`store_field_${f.key}` as 'store_field_area', e.target.value)}
+                                            options={FIELD_STATES}
+                                            disabled={ruled}
+                                            aria-label={t(f.label)}
+                                        />
+                                    </Field>
+                                );
+                            })}
                         </div>
                     </SettingsGroup>
 

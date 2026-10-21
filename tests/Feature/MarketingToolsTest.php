@@ -88,6 +88,11 @@ class MarketingToolsTest extends TestCase
             'store_whatsapp',
             // إنستغرام وقبولُ الطلبات — يقرؤهما بانِي الموقع (MerchantData, SettingsController)
             'store_instagram', 'store_allow_orders',
+            // وجدولُ الاستقبال ورسالةُ الإغلاق بلغتيها — يقرؤها `Store\OrderWindow` في السلّة والإتمام
+            'store_order_schedule_on', 'store_order_schedule',
+            'store_closed_message_on', 'store_closed_message', 'store_closed_message_en',
+            // واشتراطُ الموافقة على الشروط — يقرؤه `Store\StoreTerms` في الإتمام
+            'store_terms_on',
             'store_pay_cod', 'store_pay_transfer', 'store_bank',
             // وإيصالُ الدفع للزبون في صفحة الشكر — يقرؤه `Store\PaidReceipt`
             'store_paid_receipt',
@@ -97,7 +102,10 @@ class MarketingToolsTest extends TestCase
             // التوصيلُ والاستلام — يقرؤها إتمامُ الطلب في الواجهة الخاصّة (Store\WebCheckout)
             'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
             // وساعاتُ العمل بالإنجليزيّة بجانب العربيّة — للصفحة الإنجليزيّة (`StorePage::hours`)
-            'store_delivery_slots', 'store_hours', 'store_hours_en', 'store_delivery_note',
+            'store_delivery_slots',
+            // وجدولُ أيّام التسليم وفتراتِه — يقرؤه إتمامُ الطلب (`Store\DeliverySchedule`)
+            'store_delivery_schedule_on', 'store_delivery_schedule',
+            'store_hours', 'store_hours_en', 'store_delivery_note',
             // وملاحظةُ التوصيل بالإنجليزيّة — تقرؤها صفحةُ المنتج الإنجليزيّة (`RibbonController::context`)
             'store_delivery_note_en',
             /*

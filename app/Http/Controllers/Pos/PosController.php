@@ -78,9 +78,10 @@ class PosController extends Controller
         return $this->lines()->taxFor($lines, $subtotal, $discount);
     }
 
+    /** والصندوقُ بابُه: صنفٌ أُغلقت عنه نقطةُ البيع يُردّ هنا — بيعًا وتعليقًا (`SaleLines::POS`) */
     private function priceItems(array $items, bool $lock = false): array
     {
-        return $this->lines()->priceItems($items, $lock);
+        return $this->lines()->priceItems($items, $lock, SaleLines::POS);
     }
 
     private function assertStock(array $lines, ?int $branchId = null): void

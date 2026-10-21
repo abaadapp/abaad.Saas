@@ -20,10 +20,33 @@ class Product extends Model
      * و`published` معه لا بدونه: تركُه عددًا يجعل `$product->published` تردّ 1
      * حيث تردّ أختُها true — فيخرج في JSON عددًا إلى واجهةٍ تنتظر منطقيًّا.
      */
-    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean', 'tracks_stock' => 'boolean'];
+    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean', 'pos_enabled' => 'boolean', 'tracks_stock' => 'boolean'];
 
     /** حالةُ صنفٍ لا يُعدّ على رفّ — لا «متوفر» ولا «نفد» */
     public const UNTRACKED = 'غير مرتبط بالمخزون';
+
+    /*
+     * ═══ أين يُباع — ثلاثةُ مفاتيح، والأوّلُ فوق الاثنين ═══
+     *
+     *   - `active`: الحالةُ العامّة. الموقوفُ لا يُباع في أيّ قناة.
+     *   - `pos_enabled`: يُباع في نقطة البيع (الشاشة، والماسح، والسلّة المعلّقة).
+     *   - `published`: يُعرض ويُباع في المتجر على الإنترنت.
+     *
+     * والعمودان الجديدان يقرآن `true` لما سبقهما (انظر الهجرتين): ما كان
+     * يُباع يبقى يُباع.
+     */
+
+    /** أيُباع على الصندوق؟ */
+    public function sellsAtPos(): bool
+    {
+        return (bool) $this->active && ($this->pos_enabled ?? true);
+    }
+
+    /** أيُعرض ويُباع في المتجر على الإنترنت؟ */
+    public function sellsOnline(): bool
+    {
+        return (bool) $this->active && ($this->published ?? true);
+    }
 
     public function business(): BelongsTo
     {

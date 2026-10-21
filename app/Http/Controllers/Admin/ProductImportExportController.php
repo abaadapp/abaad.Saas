@@ -61,6 +61,8 @@ class ProductImportExportController extends Controller
             __('الكمية'), __('حد التنبيه'), __('الضريبة %'), __('الخصم %'), __('الحالة'),
             /* وآخرًا لا وسطًا: ملفٌّ بلا ترويسة يُقرأ بالترتيب القياسيّ، وما سبق المفتاحَ لا يتزحزح */
             __('مرتبط بالمخزون'),
+            // وقناتا البيع بعده، آخرًا كذلك — انظر `Product::sellsAtPos`
+            __('نقطة البيع'), __('المتجر الإلكتروني'),
         ];
     }
 
@@ -81,6 +83,8 @@ class ProductImportExportController extends Controller
                 round((float) $p->discount, 2),
                 $p->active ? __('مفعّل') : __('معطّل'),
                 $p->tracksStock() ? __('نعم') : __('لا'),
+                ($p->pos_enabled ?? true) ? __('نعم') : __('لا'),
+                ($p->published ?? true) ? __('نعم') : __('لا'),
             ])->all();
     }
 
@@ -94,7 +98,7 @@ class ProductImportExportController extends Controller
 
         $sheet->fromArray($this->columns(), null, 'A1');
 
-        $lastCol = 'L';
+        $lastCol = 'N';
         $sheet->getStyle("A1:{$lastCol}1")->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
         $sheet->getStyle("A1:{$lastCol}1")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111111');
         $sheet->getStyle("A1:{$lastCol}1")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -112,6 +116,8 @@ class ProductImportExportController extends Controller
             }
             $sheet->setCellValue("K{$row}", $r[10]);
             $sheet->setCellValue("L{$row}", $r[11]);
+            $sheet->setCellValue("M{$row}", $r[12]);
+            $sheet->setCellValue("N{$row}", $r[13]);
             $row++;
         }
 
@@ -160,6 +166,8 @@ class ProductImportExportController extends Controller
         'price' => 'السعر', 'cost' => 'التكلفة', 'quantity' => 'الكمية', 'alert_qty' => 'حد التنبيه',
         'tax' => 'الضريبة %', 'discount' => 'الخصم %', 'status' => 'الحالة',
         'tracks_stock' => 'مرتبط بالمخزون',
+        // آخرًا: ملفٌّ قديمٌ بلا ترويسة يُقرأ بترتيبه كما كان (`detectColumns`)
+        'pos_enabled' => 'نقطة البيع', 'published' => 'المتجر الإلكتروني',
     ];
 
     public function upload(Request $request)
@@ -408,6 +416,9 @@ class ProductImportExportController extends Controller
                     'discount' => $r['discount'],
                     'active' => $r['active'],
                     'tracks_stock' => $r['tracksStock'] ?? true,
+                    // وقناتا البيع: «نعم» ما لم يقل الملفُّ «لا» — والتحديثُ يكتبهما إن ذُكرتا وحدهما (`stated`)
+                    'pos_enabled' => $r['posEnabled'] ?? true,
+                    'published' => $r['published'] ?? true,
                 ];
 
                 if ($r['status'] === 'new') {
@@ -448,6 +459,7 @@ class ProductImportExportController extends Controller
                     'price' => 'price', 'cost' => 'cost', 'alert_qty' => 'alert_qty',
                     'tax' => 'tax', 'discount' => 'discount', 'active' => 'status',
                     'tracks_stock' => 'tracks_stock',
+                    'pos_enabled' => 'pos_enabled', 'published' => 'published',
                 ];
                 foreach ($map as $column => $field) {
                     if (! ($stated[$field] ?? true)) {
@@ -670,7 +682,8 @@ class ProductImportExportController extends Controller
         $rows = [];
 
         foreach ($raw as $r) {
-            $get = fn ($k) => $idx[$k] !== null ? trim((string) ($r[$idx[$k]] ?? '')) : '';
+            // و`?? null`: معاينةٌ رُفعت قبل أن يُضاف حقلٌ لا تحمل مفتاحَه — فلا يُذكر
+            $get = fn ($k) => ($idx[$k] ?? null) !== null ? trim((string) ($r[$idx[$k]] ?? '')) : '';
             $name = $get('name');
             $category = $get('category');
             $sku = $get('sku');
@@ -706,6 +719,13 @@ class ProductImportExportController extends Controller
              * الافتراض: قائمةُ أسعارٍ قديمة لا تفكّ ربطَ شيء.
              */
             $tracksStock = ! in_array($this->norm($get('tracks_stock')), ['لا', 'غير مرتبط', 'غير مرتبط بالمخزون', 'no', 'false', '0', 'off'], true);
+            /*
+             * وقناتا البيع كذلك: «نعم» ما لم يقل الملفُّ «لا». والعمودُ الغائبُ
+             * لا يُغلق قناةً — ملفٌّ صُدّر قبل العمودين يُستورد كما كان.
+             */
+            $no = ['لا', 'غير متاح', 'مخفي', 'معطل', 'معطّل', 'no', 'false', '0', 'off', 'hidden'];
+            $posEnabled = ! in_array($this->norm($get('pos_enabled')), $no, true);
+            $published = ! in_array($this->norm($get('published')), $no, true);
 
             $categoryId = $category !== '' ? ($categoryByName[$this->norm($category)] ?? null) : null;
             $categoryNew = $category !== '' && $categoryId === null;
@@ -771,8 +791,8 @@ class ProductImportExportController extends Controller
              * ثلاثتها لا تُرى وقت الاستيراد: الأرقام تبقى معقولة.
              */
             $stated = [];
-            foreach (['name', 'category', 'sku', 'barcode', 'price', 'cost', 'alert_qty', 'tax', 'discount', 'status', 'tracks_stock'] as $field) {
-                $stated[$field] = $idx[$field] !== null && $get($field) !== '';
+            foreach (['name', 'category', 'sku', 'barcode', 'price', 'cost', 'alert_qty', 'tax', 'discount', 'status', 'tracks_stock', 'pos_enabled', 'published'] as $field) {
+                $stated[$field] = ($idx[$field] ?? null) !== null && $get($field) !== '';
             }
             // الكمية: عمودٌ واحد، أو أعمدة فروع — وأيّهما وُجد فقد ذُكرت
             $stated['quantity'] = $branchColumns
@@ -782,7 +802,7 @@ class ProductImportExportController extends Controller
             $rows[] = compact(
                 'name', 'category', 'categoryDisplay', 'categoryNew', 'categoryId', 'sku', 'barcode',
                 'price', 'cost', 'quantity', 'branchQty', 'alertQty', 'tax', 'discount', 'active',
-                'tracksStock', 'status', 'note', 'targetId', 'stated',
+                'tracksStock', 'posEnabled', 'published', 'status', 'note', 'targetId', 'stated',
             ) + [
                 'grossPrice' => $grossPrice,
                 'currentQty' => $targetId ? ($qtyOf[$targetId] ?? 0) : null,
@@ -880,6 +900,13 @@ class ProductImportExportController extends Controller
             'category' => ['القسم', 'قسم', 'التصنيف', 'الفئة', 'category', 'dept'],
             'barcode' => ['الباركود', 'باركود', 'barcode', 'ean', 'upc'],
             'sku' => ['sku', 'رمز', 'الرمز', 'code', 'الكود'],
+            /*
+             * وقناتا البيع قبل «التكلفة» و«السعر»، وبأسمائهما كاملةً لا بكلمةٍ
+             * منها: «البيع» و«sale» من أسماء السعر، فلو سُئل السعرُ أوّلًا لَالتقط
+             * «نقطة البيع» و«point of sale». و«pos» وحدها تطابق ما لا صلةَ له.
+             */
+            'pos_enabled' => ['نقطة البيع', 'point of sale', 'sold in pos', 'pos channel'],
+            'published' => ['المتجر الإلكتروني', 'المتجر على الإنترنت', 'online store', 'online shop', 'website', 'published'],
             'cost' => ['التكلفة', 'تكلفة', 'سعر الشراء', 'cost', 'purchase'],
             'price' => ['السعر', 'سعر', 'البيع', 'price', 'sale'],
             'alert_qty' => ['حد التنبيه', 'الحد الأدنى', 'حد', 'alert', 'min', 'reorder'],

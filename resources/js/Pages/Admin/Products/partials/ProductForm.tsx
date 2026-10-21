@@ -15,6 +15,7 @@ import type { AddonOption, CompositionData } from './addons';
 import Gallery, { type GalleryImage } from './Gallery';
 import { boutiqueMove, type BoutiqueOption } from './boutique';
 import AddonsLayoutSwitch from './AddonsLayoutSwitch';
+import { CHANNEL_SUMMARY, salesChannels } from './channels';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import type { Category, Product } from '@/types/models';
 
@@ -70,6 +71,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
     barcode: 'basic',
     active: 'basic',
     published: 'basic',
+    pos_enabled: 'basic',
     price: 'pricing',
     cost: 'pricing',
     tax: 'pricing',
@@ -131,6 +133,8 @@ export default function ProductForm({
         tracks_stock: product ? product.tracks_stock !== false : true,
         active: product ? product.active : true,
         published: product?.published ?? true,
+        // ويُباع في نقطة البيع افتراضًا — كما كان كلُّ صنفٍ نشط
+        pos_enabled: product?.pos_enabled ?? true,
         image: null as File | null,
         // Inertia لا يرسل PUT مع ملف؛ التزييف هو الطريق الرسمي
         ...(editing ? { _method: 'put' } : {}),
@@ -662,38 +666,80 @@ export default function ProductForm({
                             </div>
                         </Card>
 
-                        <Card className="p-6">
-                            <h3 className="mb-4 font-bold text-[#111]">{t('حالة المنتج')}</h3>
+                        <Card className="p-6" data-testid="product-channels">
+                            <h3 className="mb-4 font-bold text-[#111]">{t('أين يُباع المنتج')}</h3>
                             {/*
-                                مفتاحان لا واحد: «يُباع» غير «يُعرض على الإنترنت».
+                                ثلاثةُ مفاتيح، والأوّلُ فوق الاثنين.
 
-                                وكان المفتاح الأوّل يقول «في نقطة البيع والمتجر»
-                                فيحكم الاثنين معًا — فمن أراد إخفاء ورق التغليف
-                                عن زبائن موقعه اضطرّ إلى إيقاف بيعه عند الطاولة.
+                                «المنتج نشط» حالتُه العامّة: إيقافُه يوقف بيعه في
+                                كلّ مكان. وتحته قناتان مستقلّتان — نقطةُ البيع
+                                والمتجرُ على الإنترنت — فيُباع صنفٌ في الموقع
+                                وحده، أو على الصندوق وحده، أو فيهما، أو في لا
+                                شيء. والخادمُ يحرس كلَّ قناة (`SaleLines::POS`
+                                و`WebCheckout::assertPublished`) لا الشاشةُ وحدها.
+
+                                ولا يُخفى مفتاحُ قناةٍ والمنتجُ موقوف: اختيارُها
+                                يُحفظ ويعمل حين يُعاد تنشيطه — والسطرُ تحتها
+                                يقول ذلك، فلا يظنّ أنّ القناة تكفي.
                             */}
                             <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
                                 <div className="flex items-center justify-between gap-3 pb-4">
                                     <div>
-                                        <p className="text-sm font-medium text-[#111]">{t('تفعيل المنتج')}</p>
+                                        <p className="text-sm font-medium text-[#111]">{t('المنتج نشط')}</p>
                                         <p className="mt-0.5 text-[12px] text-[#9ca3af]">
-                                            {t('إظهاره في نقطة البيع والفواتير')}
+                                            {form.data.active
+                                                ? t('يُباع في القنوات المختارة أدناه وفي الفواتير')
+                                                : t('موقوف بالكامل — لا يُباع في أي قناة حتى تعيد تنشيطه')}
                                         </p>
                                     </div>
-                                    <Switch on={form.data.active} onChange={() => form.setData('active', !form.data.active)} />
+                                    <Switch
+                                        on={form.data.active}
+                                        onChange={() => form.setData('active', !form.data.active)}
+                                        label={t('المنتج نشط')}
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between gap-3 py-4">
+                                    <div>
+                                        <p className="text-sm font-medium text-[#111]">{t('متاح للبيع في نقطة البيع (POS)')}</p>
+                                        <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                            {form.data.active
+                                                ? t('يظهر للكاشير ويُباع بالباركود')
+                                                : t('لن يُباع ما دام المنتج موقوفًا')}
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        on={form.data.pos_enabled}
+                                        onChange={() => form.setData('pos_enabled', !form.data.pos_enabled)}
+                                        label={t('متاح للبيع في نقطة البيع (POS)')}
+                                    />
                                 </div>
 
                                 <div className="flex items-center justify-between gap-3 pt-4">
                                     <div>
-                                        <p className="text-sm font-medium text-[#111]">{t('عرضه في متجرك على الإنترنت')}</p>
+                                        <p className="text-sm font-medium text-[#111]">{t('متاح للبيع في المتجر الإلكتروني')}</p>
                                         <p className="mt-0.5 text-[12px] text-[#9ca3af]">
                                             {form.data.active
                                                 ? t('يظهر لزوّار متجرك بصورته وسعره')
-                                                : t('لن يظهر ما دام غير مفعّل')}
+                                                : t('لن يُباع ما دام المنتج موقوفًا')}
                                         </p>
                                     </div>
-                                    <Switch on={form.data.published} onChange={() => form.setData('published', !form.data.published)} />
+                                    <Switch
+                                        on={form.data.published}
+                                        onChange={() => form.setData('published', !form.data.published)}
+                                        label={t('متاح للبيع في المتجر الإلكتروني')}
+                                    />
                                 </div>
                             </div>
+
+                            <p
+                                className={`mt-4 rounded-[10px] px-3 py-2 text-[12px] leading-relaxed ${
+                                    salesChannels(form.data) === 'none' ? 'bg-[#fef2f2] text-[#991b1b]' : 'bg-[#f8fafc] text-[#475569]'
+                                }`}
+                                data-testid="product-channels-summary"
+                            >
+                                {t(CHANNEL_SUMMARY[salesChannels(form.data)])}
+                            </p>
                         </Card>
                     </div>
                 )}

@@ -10,7 +10,7 @@ use App\Support\MarketingSettings;
  *
  * ═══ الخطُّ الذي يُرسَم هنا ═══
  *
- * إعداداتُ المتجر ثمانيةٌ وأربعون مفتاحًا في سلّةٍ واحدة، وفيها نوعان لا
+ * إعداداتُ المتجر تسعةٌ وأربعون مفتاحًا في سلّةٍ واحدة، وفيها نوعان لا
  * يُخلطان:
  *
  *  • **ما يراه الزائر فقط** — نصٌّ وصورةٌ وترتيبُ أقسام. هذا يُحرَّر في
@@ -45,7 +45,7 @@ use App\Support\MarketingSettings;
 final class StoreContent
 {
     /**
-     * ما يُحرَّر في مسوّدةٍ ويُنشر — ثمانيةٌ وأربعون مفتاحًا.
+     * ما يُحرَّر في مسوّدةٍ ويُنشر — تسعةٌ وأربعون مفتاحًا.
      *
      * @var list<string>
      */
@@ -58,6 +58,8 @@ final class StoreContent
         // ما يُعرض وبأيّ ترتيب
         'store_featured', 'store_sections', 'store_pages',
         'store_new_arrivals_mode', 'store_new_arrivals',
+        // وترتيبُ المنتجات في الرفّ بيده — «كل المنتجات» وكلُّ فئة (`ShelfOrder`)
+        'store_shelf_order',
         // القسمُ الحرّ
         'store_block_on', 'store_block_title', 'store_block_text',
         'store_block_image', 'store_block_cta', 'store_block_href',

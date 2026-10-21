@@ -35,6 +35,7 @@ import ShopRowField from './theme/ShopRowField';
 import type { TargetSources } from './theme/StoreTargets';
 import { AlignField, type ShortcutCategory, ShortcutsField } from './theme/HeaderFields';
 import ProductListField, { keepShown, type ListProduct } from './theme/ProductListField';
+import ShelfOrderPanel, { type ShelfOrderSeed } from './theme/ShelfOrderField';
 import PublishBar, { type PublishState } from './theme/PublishBar';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 import VisualBarField from './theme/VisualBarField';
@@ -192,6 +193,11 @@ interface Props extends ThemeShell {
      * وغيابُها يعني الشاشةَ كما كانت: سطرُ «يُكتب في…» في الصفّين.
      */
     catalogTools?: CatalogTools | null;
+    /**
+     * ترتيبُ المنتجات في الرفّ — لمتجرٍ في قائمته وحده (`ShelfOrder::forEditor`).
+     * وغيابُه يعني الرفَّ بالاسم كما كان، ولا لوحةَ تُرسم.
+     */
+    shelfOrder?: ShelfOrderSeed | null;
 }
 
 /** ما يقوله سطرُ الحال — وكلٌّ منها حالٌ وقعت لا حالٌ مفترضة */
@@ -229,6 +235,7 @@ export default function ThemeEditor({
     shortcutCategories = [],
     maxShortcuts = 6,
     catalogTools = null,
+    shelfOrder = null,
 }: Props) {
     const t = useTranslate();
 
@@ -341,6 +348,8 @@ export default function ThemeEditor({
                       .join(','),
               }
             : {}),
+        // وترتيبُ الرفّ في النموذج نفسِه — فتُريه المعاينةُ قبل أن يُحفظ
+        ...(shelfOrder ? { store_shelf_order: shelfOrder.value } : {}),
     });
 
     /*
@@ -441,10 +450,20 @@ export default function ThemeEditor({
         });
     };
 
-    /** والترتيبُ يُحفظ بالضغطة — لا ينتظر زرًّا، فالمعاينةُ تُجيب فورًا */
-    const writeOrder = (next: string[]) => {
-        setChosen(next);
-        setStatus('saving');
+    /*
+        والترتيبُ يُحفظ بالضغطة — لا ينتظر زرًّا، فالمعاينةُ تُجيب فورًا.
+
+        ═══ وحفظٌ واحدٌ في الطريق ═══
+
+        كانت كلُّ ضغطةٍ ترسل حفظَها في الحال. فضغطتان سريعتان على السهم تُرسلان
+        حفظين معًا، ولا شيءَ يضمن أنّ الخادم يكتبهما بترتيب الضغط: إن وصل الأوّلُ
+        آخرًا كتب الترتيبَ الأوسط فوق الأخير، والشاشةُ تقول الأخير. فصار ما يُضغط
+        والحفظُ في الطريق ينتظره، ثمّ يُرسَل آخرُه وحده — ترتيبٌ واحدٌ هو ما تراه.
+    */
+    const ordering = useRef<{ busy: boolean; waiting: string[] | null }>({ busy: false, waiting: null });
+
+    const sendOrder = (next: string[]) => {
+        ordering.current.busy = true;
         router.post(
             route('admin.marketing.store.save'),
             { store_sections: next.join(',') },
@@ -452,12 +471,35 @@ export default function ThemeEditor({
                 preserveScroll: true,
                 preserveState: true,
                 onSuccess: () => {
+                    if (ordering.current.waiting !== null) return;
                     setStatus('saved');
                     refresh();
                 },
-                onError: () => setStatus('failed'),
+                onError: () => {
+                    ordering.current.waiting = null;
+                    setStatus('failed');
+                },
+                onFinish: () => {
+                    ordering.current.busy = false;
+                    const waiting = ordering.current.waiting;
+                    ordering.current.waiting = null;
+                    if (waiting !== null) sendOrder(waiting);
+                },
             },
         );
+    };
+
+    const writeOrder = (next: string[]) => {
+        setChosen(next);
+        setStatus('saving');
+
+        if (ordering.current.busy) {
+            ordering.current.waiting = next;
+
+            return;
+        }
+
+        sendOrder(next);
     };
 
     /*
@@ -845,6 +887,18 @@ export default function ThemeEditor({
                 <CategoriesPanel categories={catalogTools.categories} onCardChange={paint} />
             ) : catalogTools && r.key === 'new' ? (
                 <NewArrivalsPanel items={catalogTools.new_arrivals} curation={curation} />
+            ) : shelfOrder && r.key === 'collections' ? (
+                /* تحت مجموعات المتجر وشريطه — هو رفُّ «المتجر» نفسُه */
+                <ShelfOrderPanel
+                    seed={shelfOrder}
+                    value={form.data.store_shelf_order ?? ''}
+                    onChange={(v) => form.setData('store_shelf_order', v)}
+                    onSave={() => save(['store_shelf_order'])}
+                    saving={form.processing}
+                    dirty={(form.data.store_shelf_order ?? '') !== (saved.current!.store_shelf_order ?? '')}
+                    error={(form.errors as Record<string, string | undefined>).store_shelf_order}
+                    categories={shortcutCategories}
+                />
             ) : null;
 
         return (

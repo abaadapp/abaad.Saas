@@ -67,11 +67,17 @@ class ARibbonShopOrdersItsShelfByHandTest extends TestCase
         $this->roses = Category::create(['business_id' => $this->shop->id, 'name' => 'ورد']);
         $this->gifts = Category::create(['business_id' => $this->shop->id, 'name' => 'هدايا']);
 
-        // بالاسم: الأبيض، الأحمر، الورديّ — والأحمرُ ما يريده أوّلًا
-        $this->p['white'] = $this->product('باقة الورد الأبيض', $this->roses)->id;
-        $this->p['red'] = $this->product('باقة الورد الأحمر', $this->roses)->id;
-        $this->p['pink'] = $this->product('باقة الورد الوردي', $this->roses)->id;
-        $this->p['card'] = $this->product('بطاقة إهداء', $this->gifts)->id;
+        /*
+         * بالاسم: الأبيض، الأحمر، الورديّ، البطاقة — والأحمرُ ما يريده أوّلًا.
+         *
+         * وبأسماءٍ لاتينيّةٍ تختلف حروفُها الأولى: الأبجديّةُ ترتيبُ القاعدة
+         * (`orderBy('name')`)، والعربيّةُ تُرتَّب في PostgreSQL بغير ما تُرتَّب
+         * في SQLite («بطاقة» قبل «باقة») — والحارسُ يسأل عن الترتيب اليدويّ لا عن جدول الحروف.
+         */
+        $this->p['white'] = $this->product('Aster white bouquet', $this->roses)->id;
+        $this->p['red'] = $this->product('Begonia red bouquet', $this->roses)->id;
+        $this->p['pink'] = $this->product('Camellia pink bouquet', $this->roses)->id;
+        $this->p['card'] = $this->product('Daisy gift card', $this->gifts)->id;
 
         // وكلُّ قوائم الإذن تبدأ فارغة — فلا يصير خامسُ متجرٍ يُنشأ «سعود» بالصدفة
         config([
@@ -193,7 +199,7 @@ class ARibbonShopOrdersItsShelfByHandTest extends TestCase
         $this->assertSame($this->ids('card', 'pink', 'red', 'white'), $this->shelf());
         $this->assertSame($this->ids('red', 'white', 'pink'), $this->shelf(['cat' => $this->roses->id]), 'ترتيبُ «كل المنتجات» بدّل الفئة');
         // والبحثُ داخلهما يحفظ الترتيب
-        $this->assertSame($this->ids('pink', 'red', 'white'), $this->shelf(['q' => 'باقة']));
+        $this->assertSame($this->ids('pink', 'red', 'white'), $this->shelf(['q' => 'bouquet']));
     }
 
     public function test_a_new_product_lands_last_in_the_order_it_was_added(): void
@@ -325,20 +331,20 @@ class ARibbonShopOrdersItsShelfByHandTest extends TestCase
 
     public function test_the_editor_lists_the_shelf_alphabetically_with_the_hidden_that_hold_a_place(): void
     {
-        $placedHidden = $this->product('باقة مخفية لها موضع', $this->roses, ['published' => false])->id;
+        $placedHidden = $this->product('Bluebell hidden bouquet', $this->roses, ['published' => false])->id;
         $this->product('صنف مطفأ بلا موضع', $this->roses, ['active' => false]);
         $this->product('صنفهم', null, [], $this->other);
         MarketingSettings::save($this->shop->id, 'website', [ShelfOrder::KEY => json_encode(['all' => [$placedHidden]])]);
 
         $seed = $this->actingAs($this->owner)->get(route('admin.website.editor'))->viewData('page')['props']['shelfOrder'];
 
-        // بترتيب الرفّ الأبجديّ نفسِه — «باقة الورد…» قبل «باقة مخفية…»
+        // بترتيب الرفّ الأبجديّ نفسِه — والمخفيُّ في موضعه منه
         $this->assertSame(
-            [...$this->ids('white', 'red', 'pink'), $placedHidden, $this->p['card']],
+            [...$this->ids('white', 'red'), $placedHidden, ...$this->ids('pink', 'card')],
             array_column($seed['products'], 'id'),
         );
-        $this->assertFalse($seed['products'][3]['shown']);
-        $this->assertSame($this->roses->id, $seed['products'][3]['category_id']);
+        $this->assertFalse($seed['products'][2]['shown']);
+        $this->assertSame($this->roses->id, $seed['products'][2]['category_id']);
         $this->assertTrue($seed['products'][0]['shown']);
     }
 }

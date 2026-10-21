@@ -289,6 +289,23 @@ describe('سهمُ الأقسام بالضغط السريع', () => {
         expect(screen.getByText('حُفظ')).toBeInTheDocument();
     });
 
+    it('إطفاءُ قسمٍ ثمّ تشغيلُه يُعيده إلى موضعه لا إلى آخر الأقسام', () => {
+        const post = vi.mocked(router.post);
+        post.mockClear();
+        const BANNER = row({ key: 'banner', label: 'شريط المناسبات' });
+        draw(null, [HERO, CATS, BEST, BANNER, NEW, FOOT], ['cats', 'best', 'banner', 'new']);
+
+        const sent = () => (post.mock.calls.at(-1)![1] as { store_sections: string }).store_sections;
+        const finish = () => act(() => (post.mock.calls.at(-1)![2] as { onFinish: () => void }).onFinish());
+
+        fireEvent.click(screen.getByRole('switch', { name: 'شريط المناسبات' }));
+        expect(sent()).toBe('cats,best,new');
+        finish();
+
+        fireEvent.click(screen.getByRole('switch', { name: 'شريط المناسبات' }));
+        expect(sent()).toBe('cats,best,banner,new');
+    });
+
     it('وضغطاتٌ كثيرةٌ في أثناء حفظٍ واحد تُرسَل آخرُها وحدها', () => {
         const post = vi.mocked(router.post);
         post.mockClear();

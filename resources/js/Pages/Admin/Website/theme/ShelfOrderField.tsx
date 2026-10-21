@@ -73,9 +73,8 @@ export function serializeShelfOrder(o: ShelfOrderState): string {
     const out: Record<string, unknown> = {};
     if (o.all.length > 0) out.all = o.all;
 
-    const cats = Object.keys(o.categories)
-        .filter((k) => o.categories[k].length > 0)
-        .sort((a, b) => Number(a) - Number(b));
+    // ومفاتيحُ الكائن العدديّة تُعدّ تصاعديًّا بنفسها — كترتيب `ksort` في الخادم
+    const cats = Object.keys(o.categories).filter((k) => o.categories[k].length > 0);
     if (cats.length > 0) out.categories = Object.fromEntries(cats.map((k) => [k, o.categories[k]]));
 
     return Object.keys(out).length === 0 ? '' : JSON.stringify(out);

@@ -512,12 +512,35 @@ export default function ThemeEditor({
      */
     const last = chosen.length === 1;
 
-    const toggleRow = (key: string) =>
-        writeOrder(
-            chosen.includes(key)
-                ? chosen.filter((k) => k !== key)
-                : [...movable.filter((k) => k === key || chosen.includes(k))],
-        );
+    /*
+        وإطفاءُ قسمٍ ثمّ تشغيلُه يُعيده إلى موضعه.
+
+        القائمةُ هي الترتيبُ والظهورُ معًا (`StorePage::order`): المطفأُ لا موضعَ له
+        فيها، فكان يعود بعد الأقسام المشغَّلة كلِّها — يُطفئ صاحبُ المتجر «الشريط»
+        ليرى صفحتَه بدونه ثمّ يعيده فيجده في آخرها. فيُحفظ موضعُه ما دامت الشاشةُ
+        مفتوحة، وبلا موضعٍ محفوظ يقع حيث كان يقع.
+    */
+    const lastAt = useRef<Record<string, number>>({});
+
+    const toggleRow = (key: string) => {
+        if (chosen.includes(key)) {
+            lastAt.current[key] = chosen.indexOf(key);
+            writeOrder(chosen.filter((k) => k !== key));
+
+            return;
+        }
+
+        const at = lastAt.current[key];
+        if (at !== undefined) {
+            const next = [...chosen];
+            next.splice(Math.min(at, next.length), 0, key);
+            writeOrder(next);
+
+            return;
+        }
+
+        writeOrder([...movable.filter((k) => k === key || chosen.includes(k))]);
+    };
 
     const move = (key: string, by: number) => {
         const i = chosen.indexOf(key);
@@ -954,7 +977,7 @@ export default function ThemeEditor({
                                 aria-label={`${t('ارفع')} ${t(r.label)}`}
                                 disabled={! r.on || i <= 0}
                                 onClick={() => move(r.key, -1)}
-                                className="rounded-md px-2 py-1 text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
+                                className="flex size-10 shrink-0 items-center justify-center rounded-md text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
                             >
                                 ↑
                             </button>
@@ -963,7 +986,7 @@ export default function ThemeEditor({
                                 aria-label={`${t('أنزل')} ${t(r.label)}`}
                                 disabled={! r.on || i < 0 || i >= chosen.length - 1}
                                 onClick={() => move(r.key, 1)}
-                                className="rounded-md px-2 py-1 text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
+                                className="flex size-10 shrink-0 items-center justify-center rounded-md text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
                             >
                                 ↓
                             </button>

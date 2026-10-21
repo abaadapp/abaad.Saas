@@ -2,7 +2,6 @@
 
 namespace App\Support\Store;
 
-use App\Models\Category;
 use App\Models\Product;
 use App\Support\MarketingSettings;
 use App\Support\ProductImages;
@@ -145,7 +144,7 @@ final class ShelfOrder
      *   - كلُّ معرّفٍ صنفٌ **من هذا المتجر**، أيًّا كان حالُه — فالمخفيُّ يحفظ
      *     موضعَه. وما سواه يُطوى بصمت: صنفٌ حُذف بين فتح اللوحة وحفظها لا
      *     يردّ الحفظَ كلَّه، وصنفُ متجرٍ آخر لا يُكتب أبدًا.
-     *   - وقائمةُ الفئة لأصنافها الآن، والفئةُ من فئات متجره.
+     *   - وقائمةُ الفئة لأصنافها الآن — ففئةُ متجرٍ آخر لا يبقى فيها شيء.
      *   - والقائمةُ الفارغة تُحذف: الرفُّ يعود أبجديًّا.
      */
     public static function validated(int $businessId, mixed $raw): string
@@ -180,12 +179,10 @@ final class ShelfOrder
             $lists[(int) $id] = self::strict($ids, $fail);
         }
 
+        // ومعرّفُ الفئة لا يُسأل عنه وحده: قائمتُها لأصنافها، وأصنافُها من متجره — ففئةُ غيره تخلو وتُحذف
         $mine = Product::where('business_id', $businessId)
             ->whereIn('id', array_values(array_unique(array_merge($all, ...array_values($lists)))))
             ->pluck('category_id', 'id');
-        $categories = Category::where('business_id', $businessId)
-            ->whereIn('id', array_keys($lists))
-            ->pluck('id')->map(fn ($id) => (int) $id)->all();
 
         $out = [];
         $all = array_values(array_filter($all, fn (int $id) => $mine->has($id)));
@@ -196,9 +193,6 @@ final class ShelfOrder
         $kept = [];
         ksort($lists);
         foreach ($lists as $category => $ids) {
-            if (! in_array($category, $categories, true)) {
-                continue;
-            }
             $ids = array_values(array_filter($ids, fn (int $id) => $mine->has($id) && (int) $mine[$id] === $category));
             if ($ids !== []) {
                 $kept[(string) $category] = $ids;

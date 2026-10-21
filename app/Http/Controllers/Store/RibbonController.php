@@ -42,6 +42,11 @@ use App\Support\Store\StoreVisualBar;
 use App\Support\Store\StorePage;
 use App\Support\Store\CardIdentity;
 use App\Support\Store\CardIdentityUnconfirmed;
+use App\Support\Store\DeliverySchedule;
+use App\Support\Store\OrderWindow;
+use App\Support\Store\ShopClock;
+use App\Support\Store\StoreTerms;
+use App\Support\Store\TermsChanged;
 use App\Support\Store\WebCheckout;
 use App\Support\Storefront;
 use App\Support\Website\MerchantData;
@@ -140,7 +145,7 @@ class RibbonController extends Controller
             'contact' => $this->render('store.ribbon.contact', $ctx + $this->contact($business, $lang)),
             'p' => $this->render('store.ribbon.product', $ctx + $this->product($business, (int) $second, $lang)),
             'cart' => $this->render('store.ribbon.cart', $ctx),
-            'checkout' => $this->render('store.ribbon.checkout', $ctx + $this->checkoutData($business)),
+            'checkout' => $this->render('store.ribbon.checkout', $ctx + $this->checkoutData($business, $lang)),
             'done' => $this->render('store.ribbon.done', $ctx + $this->done($business, (int) $second, $lang)),
             'paying' => $this->paying($business, (string) $second, $ctx),
             StoreCustomPages::PATH => $this->render('store.ribbon.page', $this->customPageData($business, $custom, $ctx, $lang, $base)),
@@ -303,6 +308,12 @@ class RibbonController extends Controller
                 'errors' => $e->errors(),
                 'card_identity' => ['token' => $e->token, 'source' => $e->source],
             ], 422);
+        } catch (TermsChanged $e) {
+            /*
+             * وشروطٌ حُدّثت والصفحةُ مفتوحة — تُعطى الصفحةُ نصَّها الجديد بلغتها
+             * فتعرضه وتُفرغ الموافقة، ولا يُكتب طلبٌ على نصٍّ لم يره. انظر `StoreTerms`.
+             */
+            return response()->json(['ok' => false, 'errors' => $e->errors(), 'terms' => $e->terms], 422);
         } catch (ValidationException $e) {
             return response()->json(['ok' => false, 'errors' => $e->errors()], 422);
         } catch (\RuntimeException $e) {
@@ -697,7 +708,32 @@ class RibbonController extends Controller
         ])->values()->all();
     }
 
-    private function checkoutData(Business $business): array
+    /**
+     * موعدُ الطلب في صفحة الشكر — بلغة الزبون.
+     *
+     * طلبٌ اختار فترتَه من جدول المتجر يُكتب يومُه وفترتُه بلغة صفحته: اسمُ
+     * الفترة بلغته إن بقيت في الجدول، وساعتاها من الطلب نفسِه — فتعديلُ الجدول
+     * بعد الطلب لا يُبدّل ما يقرؤه. وطلبٌ بلا جدولٍ يُكتب كما كان.
+     */
+    private function when(Business $business, Order $order, string $lang): string
+    {
+        if ($order->delivery_slot === null || $order->scheduled_for === null || $order->scheduled_until === null) {
+            return optional($order->scheduled_for)->format('Y-m-d').($order->delivery_notes ? ' · '.$order->delivery_notes : '');
+        }
+
+        $named = DeliverySchedule::lookup(
+            (int) $business->id, (string) $order->fulfillment_type, $order->scheduled_for->toDateString(), $order->delivery_slot,
+        );
+
+        return ShopClock::day($order->scheduled_for, $lang).' · '.DeliverySchedule::label([
+            'from' => $order->scheduled_for->format('H:i'),
+            'to' => $order->scheduled_until->format('H:i'),
+            'ar' => $named['ar'] ?? '',
+            'en' => $named['en'] ?? '',
+        ], $lang);
+    }
+
+    private function checkoutData(Business $business, string $lang): array
     {
         $bid = (int) $business->id;
         $s = WebCheckout::settings($bid);
@@ -713,6 +749,19 @@ class RibbonController extends Controller
             'accepts' => WebCheckout::accepts($business),
             'minDate' => today()->toDateString(),
             'maxDate' => today()->addDays(CheckoutFields::maxDays($bid))->toDateString(),
+            /*
+             * وأيّامُ التسليم وفتراتُها من جدول المتجر — المتاحُ وحدَه، بلغة الصفحة،
+             * لكلّ طريقة استلام. و`null` لمتجرٍ بلا جدول: يُرسم حقلُ التاريخ وسطورُ
+             * الفترات كما كانت. انظر `DeliverySchedule`.
+             */
+            'schedule' => DeliverySchedule::on($bid)
+                ? DeliverySchedule::forPage($bid, CheckoutFields::fulfilments($bid), $lang)
+                : null,
+            /*
+             * والشروطُ بلغة الصفحة وحدها، ورقمُ نسختها — أو `null` حيث لا تُشترط.
+             * انظر `StoreTerms`.
+             */
+            'terms' => StoreTerms::forPage($bid, $lang),
             /*
              * وما انتقاه صاحبُ المحلّ من حقول — تقرؤه الشاشةُ كما يقرؤه
              * الخادم، من موضعٍ واحد (`Store\CheckoutFields`).
@@ -790,7 +839,7 @@ class RibbonController extends Controller
             'order' => [
                 'number' => $order->number,
                 'fulfil' => $order->fulfillment_type === FlowerOrder::PICKUP ? $t['pickup'] : $t['delivery'],
-                'date' => optional($order->scheduled_for)->format('Y-m-d').($order->delivery_notes ? ' · '.$order->delivery_notes : ''),
+                'date' => $this->when($business, $order, $lang),
                 /*
                  * وطريقةُ الدفع كما كُتبت على الطلب — ثلاثٌ لا اثنتان.
                  *
@@ -899,7 +948,13 @@ class RibbonController extends Controller
             'imageNote' => $lang === 'en' ? $s['image_note_en'] : $s['image_note'],
             // وتنبيهُ نطاق التوصيل بلغة الصفحة — بلا وقوعٍ على الأخرى
             'deliveryAreaNote' => $lang === 'en' ? $s['area_note_en'] : $s['area_note'],
-            'accepts' => WebCheckout::accepts($business),
+            'accepts' => $accepts = WebCheckout::accepts($business),
+            /*
+             * وما يُقال حين لا يُستقبل طلب — رسالةُ صاحب المتجر بلغة الصفحة إن
+             * كان السببُ إغلاقَه (`OrderWindow::message`)، وإلّا نصُّ النظام.
+             * تقرؤه السلّةُ وصفحةُ الإتمام معًا.
+             */
+            'closedSays' => $accepts ? '' : (OrderWindow::open($bid) ? $t['closed'] : OrderWindow::message($bid, $lang)),
 
             'analytics' => Seo::tagFor($bid),
             'catsNav' => $catsNav,

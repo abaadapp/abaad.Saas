@@ -37,6 +37,7 @@ use App\Models\PurchaseOrder;
 use App\Models\RecipeItem;
 use App\Models\Setting;
 use App\Models\StorePaymentIntent;
+use App\Models\StoreTermsVersion;
 use App\Models\Subscription;
 use App\Models\Supplier;
 use App\Models\SupportConversation;
@@ -1371,6 +1372,36 @@ class Demo
             'edits' => self::orderEdits($o->id),
             // ما أذن به التاجر وحده يُعرض في التصحيح — لا يُصحَّح إلى وسيلةٍ مُطفأة
             'payment_methods' => PaymentMethods::enabled(self::businessSettings()),
+            /*
+             * وموافقةُ زبون الموقع على الشروط — النسخةُ التي وافق عليها ولغتُها ووقتُها،
+             * ونصُّها كما رآه. ولا شيء لطلبٍ لم يُسأل صاحبُه (`Store\StoreTerms`).
+             */
+            'terms' => self::orderTerms($o),
+        ];
+    }
+
+    /**
+     * @return array{version: int, lang: string, at: string, hash: string, text: string}|null
+     */
+    private static function orderTerms(Order $o): ?array
+    {
+        if ($o->terms_version_id === null) {
+            return null;
+        }
+
+        // والنسخةُ من متجر الطلب نفسِه — لا تُقرأ نسخةُ متجرٍ آخر بمعرّفٍ مدسوس
+        $v = StoreTermsVersion::where('business_id', $o->business_id)->find($o->terms_version_id);
+
+        if ($v === null) {
+            return null;
+        }
+
+        return [
+            'version' => (int) $v->version,
+            'lang' => (string) $o->terms_lang,
+            'at' => optional($o->terms_accepted_at)->format('Y-m-d H:i') ?? '',
+            'hash' => (string) $o->terms_hash,
+            'text' => $v->body((string) $o->terms_lang),
         ];
     }
 

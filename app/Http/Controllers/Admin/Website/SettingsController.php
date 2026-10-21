@@ -8,8 +8,11 @@ use App\Models\Product;
 use App\Models\WebsiteSection;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
+use App\Support\Store\OrderWindow;
 use App\Support\Store\Paymob;
 use App\Support\Store\PaymobSettings;
+use App\Support\Store\ShopClock;
+use App\Support\Store\StoreTerms;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
@@ -201,7 +204,59 @@ class SettingsController extends Controller
              * التكاملية»، وهذه الشاشةُ تقول أمربوطةٌ هي وتُحيل إليها.
              */
             'gateway' => PaymobSettings::summary($bid),
+            /*
+             * وحالُ استقبال الطلبات الآن — كما حُفظ، بساعة المتجر. ومعها موعدٌ
+             * تُعاين به رسالةُ الإغلاق بمتغيّريها. انظر `Store\OrderWindow`.
+             */
+            'orderDesk' => $this->orderDesk($bid),
+            // والشروطُ القائمة — آخرُ نسخها ورقمُها ومتى كُتبت (`Store\StoreTerms`)
+            'terms' => $this->termsSeed($bid),
         ]);
+    }
+
+    /**
+     * @return array{open: bool, why: ?string, now: string, next: ?string, preview: array{date_ar: string, time_ar: string, date_en: string, time_en: string}}
+     */
+    private function orderDesk(int $bid): array
+    {
+        $status = OrderWindow::status($bid);
+        $now = ShopClock::now();
+
+        /*
+         * ومعاينةُ المتغيّرين بموعدٍ حقيقيٍّ إن عُرف — موعدُ الفتح الآن، أو أوّلُ
+         * فتحٍ في الجدول المحفوظ لمن أغلق يدويًّا — وإلّا مثالٌ يُقال إنّه مثال.
+         */
+        $sample = $status['next']
+            ?? OrderWindow::evaluate(OrderWindow::fromJson((string) (MarketingSettings::group($bid, 'website')[OrderWindow::KEY] ?? '')), $now)['next']
+            ?? $now->addDay()->setTime(9, 0);
+
+        return [
+            'open' => $status['open'],
+            'why' => $status['why'],
+            'now' => ShopClock::day($now, 'ar').' · '.ShopClock::time($now, 'ar'),
+            'next' => $status['next'] ? ShopClock::day($status['next'], 'ar').' · '.ShopClock::time($status['next'], 'ar') : null,
+            'preview' => [
+                'date_ar' => ShopClock::day($sample, 'ar'),
+                'time_ar' => ShopClock::time($sample, 'ar'),
+                'date_en' => ShopClock::day($sample, 'en'),
+                'time_en' => ShopClock::time($sample, 'en'),
+            ],
+        ];
+    }
+
+    /**
+     * @return array{version: ?int, updated: ?string, ar: string, en: string}
+     */
+    private function termsSeed(int $bid): array
+    {
+        $v = StoreTerms::current($bid);
+
+        return [
+            'version' => $v?->version,
+            'updated' => $v ? ShopClock::day($v->created_at, 'ar').' · '.ShopClock::time($v->created_at, 'ar') : null,
+            'ar' => (string) ($v?->body_ar ?? ''),
+            'en' => (string) ($v?->body_en ?? ''),
+        ];
     }
 
     /** «الظهور في البحث» لصاحب الواجهة الخاصّة */

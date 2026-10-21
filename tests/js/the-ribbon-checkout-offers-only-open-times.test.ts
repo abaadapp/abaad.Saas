@@ -1,0 +1,144 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+/**
+ * يومُ التسليم وفترتُه في إتمام RIBBON — من جدول المتجر، المتاحُ وحدَه.
+ *
+ * ═══ ما يُحرس ═══
+ *
+ *   - القائمةُ أيّامُ الطريقة المختارة وحدَها، وتبديلُ الطريقة يبدّلها.
+ *   - اليومُ يفتح فتراتِه وحدَها، وفترةٌ واحدةٌ في يومٍ تُختار وحدَها.
+ *   - ما لم يعد في القائمة لا يبقى مختارًا، ولا يُرسَل.
+ *   - الموعدُ يُكتب في الملخّص، وطريقةٌ بلا أيّامٍ يُقال لها ذلك.
+ *   - فترةٌ ردّها الخادمُ تُطرح ويومُها إن خلا.
+ *
+ * والمكتبةُ تُضمَّن في `store/ribbon/checkout.blade.php` كما هي، وما يحرسه
+ * الخادمُ في `TheShopSetsItsDeliveryAndPickupTimesTest`.
+ */
+
+type Day = { date: string; label: string; slots: { id: string; label: string }[] };
+
+type Api = {
+    mount: (form: HTMLFormElement, days: Record<string, Day[]>, T: Record<string, string>) => {
+        fulfil: (f: string) => void;
+        payload: () => { date: string; slot: string };
+        drop: (slotId: string) => void;
+    };
+};
+
+const LIB = resolve(__dirname, '../../resources/js/store/ribbon-schedule.js');
+const T = { pickDay: 'اختر اليوم', pickSlot: 'اختر الفترة' };
+
+beforeAll(() => {
+    new Function(readFileSync(LIB, 'utf8'))();
+});
+
+function days(): Record<string, Day[]> {
+    return {
+        delivery: [
+            { date: '2027-02-10', label: 'الأربعاء 10 فبراير', slots: [{ id: 'pm01', label: '4:00 م – 9:00 م' }] },
+            {
+                date: '2027-02-13',
+                label: 'السبت 13 فبراير',
+                slots: [
+                    { id: 'am01', label: 'الصباح (9:00 ص – 12:00 م)' },
+                    { id: 'pm01', label: '4:00 م – 9:00 م' },
+                ],
+            },
+        ],
+        pickup: [{ date: '2027-02-12', label: 'الجمعة 12 فبراير', slots: [{ id: 'pk01', label: '10:00 ص – 1:00 م' }] }],
+    };
+}
+
+function page(data = days()) {
+    document.body.innerHTML = `
+        <form>
+            <select name="date" data-rb-day></select>
+            <select name="slot" data-rb-slot></select>
+            <p data-rb-no-days hidden></p>
+            <div data-rb-when-row style="display:none"><span data-rb-when></span></div>
+        </form>`;
+
+    const form = document.querySelector('form')!;
+    const api = (window as unknown as { RBSchedule: Api }).RBSchedule.mount(form, data, T);
+    const day = form.querySelector<HTMLSelectElement>('[data-rb-day]')!;
+    const slot = form.querySelector<HTMLSelectElement>('[data-rb-slot]')!;
+    const pick = (sel: HTMLSelectElement, value: string) => {
+        sel.value = value;
+        sel.dispatchEvent(new Event('change'));
+    };
+    const values = (sel: HTMLSelectElement) => Array.from(sel.options).map((o) => o.value).filter(Boolean);
+
+    return { form, api, day, slot, pick, values };
+}
+
+describe('يومُ التسليم وفترتُه في إتمام RIBBON', () => {
+    it('يعرض أيّامَ الطريقة المختارة وحدها، وتبديلُها يبدّلها', () => {
+        const { api, day, values } = page();
+
+        api.fulfil('delivery');
+        expect(values(day)).toEqual(['2027-02-10', '2027-02-13']);
+
+        api.fulfil('pickup');
+        expect(values(day)).toEqual(['2027-02-12']);
+    });
+
+    it('اليومُ يفتح فتراتِه وحدها، وفترةٌ وحيدةٌ تُختار وحدها', () => {
+        const { api, day, slot, pick, values } = page();
+        api.fulfil('delivery');
+
+        expect(slot.disabled).toBe(true);
+
+        pick(day, '2027-02-13');
+        expect(values(slot)).toEqual(['am01', 'pm01']);
+        expect(slot.value).toBe('');
+
+        pick(day, '2027-02-10');
+        expect(values(slot)).toEqual(['pm01']);
+        expect(slot.value).toBe('pm01');
+        expect(api.payload()).toEqual({ date: '2027-02-10', slot: 'pm01' });
+    });
+
+    it('ما لم يعد في القائمة لا يبقى مختارًا', () => {
+        const { api, day, slot, pick } = page();
+        api.fulfil('delivery');
+        pick(day, '2027-02-13');
+        pick(slot, 'am01');
+
+        // الاستلامُ لا يعرف السبتَ — فلا يُرسَل يومُ التوصيل مع طلب استلام
+        api.fulfil('pickup');
+        expect(api.payload()).toEqual({ date: '', slot: '' });
+    });
+
+    it('يكتب الموعدَ في الملخّص', () => {
+        const { form, api, day, slot, pick } = page();
+        api.fulfil('delivery');
+        pick(day, '2027-02-13');
+        pick(slot, 'am01');
+
+        expect(form.querySelector('[data-rb-when]')!.textContent).toBe('السبت 13 فبراير · الصباح (9:00 ص – 12:00 م)');
+        expect(form.querySelector<HTMLElement>('[data-rb-when-row]')!.style.display).toBe('flex');
+    });
+
+    it('يقول لطريقةٍ بلا أيّامٍ إنّها بلا مواعيد', () => {
+        const { form, api } = page({ delivery: [], pickup: days().pickup });
+
+        api.fulfil('delivery');
+        expect(form.querySelector<HTMLElement>('[data-rb-no-days]')!.hidden).toBe(false);
+
+        api.fulfil('pickup');
+        expect(form.querySelector<HTMLElement>('[data-rb-no-days]')!.hidden).toBe(true);
+    });
+
+    it('يطرح فترةً ردّها الخادمُ، ويومَها إن خلا', () => {
+        const { api, day, slot, pick, values } = page();
+        api.fulfil('delivery');
+        pick(day, '2027-02-10');
+
+        api.drop('pm01');
+
+        expect(values(day)).toEqual(['2027-02-13']);
+        pick(day, '2027-02-13');
+        expect(values(slot)).toEqual(['am01']);
+    });
+});

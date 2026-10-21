@@ -120,9 +120,11 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         // رفوفٌ وبطاقاتٌ يراها الزائر ولا تمسّ مالًا ولا وصولًا — تُنشر
         // وترتيبُ صفّ المتجر والقائمةُ الرئيسيّة والصفحاتُ المخصّصة (ثلاثة)، وطرقُ عرض
         // الصور (أربعة: المنتجات والواجهة والشريط والقسم) — شكلٌ يراه الزائر، تُنشر
-        $this->assertCount(93, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        // واستقبالُ الطلبات وجدولُه ورسالتا الإغلاق، واشتراطُ الشروط، وجدولُ التسليم (ثمانية) —
+        // تشغيلٌ يسري على زبونٍ يشتري الآن، فيسري فورًا ولا ينتظر نشرَ التصميم
+        $this->assertCount(101, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
         $this->assertCount(48, $versioned, 'تبدّل عددُ ما يُنشر');
-        $this->assertCount(45, $live, 'تبدّل عددُ ما يسري فورًا');
+        $this->assertCount(53, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),
             'مفتاحٌ في العقد وليس في المجموعة: '.implode(', ', array_diff($versioned, $all)));
@@ -148,6 +150,13 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
             'store_delivery_note', 'store_delivery_note_en', 'store_image_note', 'store_image_note_en', 'store_gift_card',
             // وتنبيها نطاق التوصيل — سطرٌ في قسم التوصيل يقرؤه زبونٌ يشتري الآن
             'store_delivery_area_note', 'store_delivery_area_note_en',
+            // استقبالُ الطلبات وجدولُه ورسالتا الإغلاق — مغلقٌ صباحًا يجب ألّا يبيع حتّى يُنشر
+            'store_order_schedule_on', 'store_order_schedule',
+            'store_closed_message_on', 'store_closed_message', 'store_closed_message_en',
+            // واشتراطُ الموافقة على الشروط — إلزامٌ قانونيّ لا تصميم
+            'store_terms_on',
+            // وجدولُ أيّام التسليم وفتراتِه
+            'store_delivery_schedule_on', 'store_delivery_schedule',
             // حقولُ الإتمام
             'store_field_area', 'store_field_address', 'store_field_date',
             'store_field_slot', 'store_field_recipient', 'store_field_promo',
@@ -168,7 +177,7 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
                 'المفتاح «'.$key.'» دخل النشر — وهو يسري على زبونٍ يشتري الآن.');
         }
 
-        $this->assertCount(36, $mustStayLive, 'قائمةُ الحيّ ناقصةٌ أو زائدة');
+        $this->assertCount(44, $mustStayLive, 'قائمةُ الحيّ ناقصةٌ أو زائدة');
         $this->assertSame([], array_diff($mustStayLive, array_keys(MarketingSettings::GROUPS['website'])));
     }
 

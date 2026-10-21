@@ -4,7 +4,11 @@
 <section class="rb-screen rb-wrap" style="padding:40px 24px" data-testid="rb-checkout-page">
     <h1 class="rb-h1" style="margin-bottom:28px">{{ $t['checkoutTitle'] }}</h1>
     @if (! $accepts)
-        <div class="rb-box" data-testid="rb-closed">{{ $t['closed'] }}</div>
+        {{--
+            رسالةُ صاحب المتجر بلغة الصفحة إن أغلق استقبالَه (`OrderWindow::message`)،
+            وإلّا نصُّ النظام. تُطبع نصًّا لا وسمًا، وأسطرُها كما كتبها.
+        --}}
+        <div class="rb-box" data-testid="rb-closed" role="status" style="white-space:pre-line">{{ $closedSays }}</div>
     @else
     {{-- الاسمان والعنوانُ بالإنجليزيّة لمن في قائمتها — والخادمُ يحرسها (`EnglishCheckout`) --}}
     @php
@@ -94,7 +98,29 @@
                     @endif
                 </div>
                 <div data-rb-pickup style="display:none;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px;line-height:1.7">{{ $t['pickupAddr'] }}@if ($identity['address'] !== '') — {{ $identity['address'] }}@endif @if ($hours !== '') · {{ $hours }}@endif</div>
-                @if ($shows('date') || ($shows('slot') && count($delivery['slots'])))
+                @if ($schedule !== null)
+                    {{--
+                        ═══ وموعدٌ من جدول المتجر — المتاحُ وحدَه ═══
+
+                        يومٌ من قائمةٍ لا تقويمٌ حرّ: لا يُعرض يومٌ مُغلق ولا فترةٌ
+                        مضت. والأيّامُ لطريقة الاستلام المختارة، والفتراتُ لليوم
+                        المختار — يملؤها `ribbon-schedule.js` ممّا أرسله الخادم.
+                        والخادمُ يحرس الشيءَ نفسَه (`DeliverySchedule::pick`).
+                    --}}
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px" data-testid="rb-schedule">
+                        <div>
+                            <label for="rb-day" style="font-size:13px">{{ $t['date'] }} *</label>
+                            <select id="rb-day" class="rb-input" name="date" data-rb-day aria-required="true" style="margin-top:6px"><option value="">{{ $t['pickDay'] }}</option></select>
+                            <div class="rb-error" data-err="date"></div>
+                        </div>
+                        <div>
+                            <label for="rb-slot" style="font-size:13px">{{ $t['slot'] }} *</label>
+                            <select id="rb-slot" class="rb-input" name="slot" data-rb-slot aria-required="true" disabled style="margin-top:6px"><option value="">{{ $t['pickSlot'] }}</option></select>
+                            <div class="rb-error" data-err="slot"></div>
+                        </div>
+                        <p class="rb-note" data-rb-no-days hidden data-testid="rb-no-days" style="grid-column:1/-1;margin:0">{{ $t['noDays'] }}</p>
+                    </div>
+                @elseif ($shows('date') || ($shows('slot') && count($delivery['slots'])))
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px">
                         @if ($shows('date'))
                             <div>
@@ -335,6 +361,8 @@
                     رسمُه صفرٌ حقًّا. والرسمُ نفسُه صفرٌ للاستلام في الخادم كما كان.
                 --}}
                 <div style="display:none;justify-content:space-between" data-rb-ship-row data-testid="rb-ship-row"><span>{{ $t['shipping'] }}</span><span data-rb-ship></span></div>
+                {{-- والموعدُ المختارُ من جدول المتجر — يومُه وفترتُه بلغة الصفحة --}}
+                <div style="display:none;justify-content:space-between;gap:12px" data-rb-when-row data-testid="rb-when-row"><span>{{ $t['when'] }}</span><span data-rb-when style="text-align:end"></span></div>
                 <div style="display:flex;justify-content:space-between;border-top:1px solid var(--rb-line);padding-top:12px;font-size:16px"><span>{{ $t['total'] }}</span><strong data-rb-total></strong></div>
             </div>
             {{--
@@ -346,6 +374,25 @@
             --}}
             @if ($imageNote !== '')
                 <p class="rb-note" data-testid="rb-image-note">{{ $imageNote }}</p>
+            @endif
+            {{--
+                ═══ والشروطُ والأحكام — فوق الزرّ، بلغة الصفحة وحدها ═══
+
+                نصُّ صاحب المتجر كاملًا في صندوقٍ يُمرَّر ويُبسط، لا رابطٌ يُتخطّى.
+                والخانةُ غيرُ محدّدة حتّى يضغطها الزبون، ومعها رقمُ النسخة التي رآها.
+                ويُطبع النصُّ نصًّا لا وسمًا. والخادمُ يحرس الموافقة (`StoreTerms::check`).
+            --}}
+            @if ($terms)
+                <div data-rb-terms data-version="{{ $terms['id'] }}" data-testid="rb-terms" style="margin-top:16px;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px">
+                    <p style="margin:0 0 8px;font-weight:500;font-size:15px">{{ $t['termsTitle'] }}</p>
+                    <div data-rb-terms-text data-testid="rb-terms-text" tabindex="0" role="region" aria-label="{{ $t['termsTitle'] }}" style="max-height:180px;overflow:auto;white-space:pre-line;font-size:13px;line-height:1.8;color:var(--rb-ink-soft,#4b4b4b);overscroll-behavior:contain">{{ $terms['text'] }}</div>
+                    <button type="button" data-rb-terms-toggle aria-expanded="false" style="margin-top:8px;background:none;border:0;padding:0;font-size:13px;text-decoration:underline;cursor:pointer;color:inherit">{{ $t['termsMore'] }}</button>
+                    <label style="display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:14px;line-height:1.6;cursor:pointer">
+                        <input type="checkbox" data-rb-terms-accept data-testid="rb-terms-accept" style="margin-top:4px;width:18px;height:18px;flex:none;accent-color:var(--rb-olive)">
+                        <span>{{ $t['termsAgree'] }}</span>
+                    </label>
+                    <div class="rb-error" data-err="terms"></div>
+                </div>
             @endif
             <div class="rb-error" data-rb-form-error style="margin-top:12px"></div>
 
@@ -409,6 +456,12 @@
 @endif
 @if ($cardConsent['on'] ?? false)
 <script>{!! file_get_contents(resource_path('js/store/ribbon-card-consent.js')) !!}</script>
+@endif
+@if ($schedule !== null)
+<script>{!! file_get_contents(resource_path('js/store/ribbon-schedule.js')) !!}</script>
+@endif
+@if ($terms)
+<script>{!! file_get_contents(resource_path('js/store/ribbon-terms.js')) !!}</script>
 @endif
 <script>
 (function () {
@@ -620,6 +673,15 @@
     }
     form.addEventListener('change', paintFilePrivacy);
     form.addEventListener('click', paintFilePrivacy);
+    /*
+        وأيّامُ التسليم وفتراتُه من جدول المتجر — انظر `js/store/ribbon-schedule.js`.
+        والشروطُ والأحكام — انظر `js/store/ribbon-terms.js`. وحيث لا جدولَ ولا
+        شروطَ يبقيان `null` ولا يُرسَل منهما شيء.
+    */
+    var scheduleBox = form.querySelector('[data-rb-day]');
+    var schedule = scheduleBox ? RBSchedule.mount(form, @json($schedule), T) : null;
+    var termsBox = form.querySelector('[data-rb-terms]');
+    var terms = termsBox ? RBTerms.mount(termsBox, T) : null;
     function paintFulfil() {
         var d = form.querySelector('[data-rb-delivery]');
         var p = form.querySelector('[data-rb-pickup]');
@@ -627,6 +689,8 @@
         if (d) d.style.display = fulfil === 'delivery' ? 'grid' : 'none';
         if (p) p.style.display = fulfil === 'pickup' ? 'block' : 'none';
         if (giftOrder) giftOrder.fulfil(fulfil);
+        // والاستلامُ قد يكون له جدولُه — فتُبدَّل الأيّامُ مع الطريقة
+        if (schedule) schedule.fulfil(fulfil);
     }
     if (giftOrder) giftOrder.onChange(paintFulfil);
     if (fulfilPills) {
@@ -670,6 +734,8 @@
             notes = RBNotes.mount(notesField, form.querySelector('[data-err="notes"]'), T.noteEnglishOnly, {{ (int) ($orderNotes['max'] ?? 0) }}).take();
             if (notes === null) { notesField.classList.add('err'); return; }
         }
+        // ولا يُرسَل طلبٌ بلا موافقةٍ على الشروط — والخادمُ يحرسها ولو تُجووز هذا
+        if (terms && !terms.ready()) { $('[data-rb-form-error]').textContent = T.errReq; return; }
         var btn = $('[data-testid=rb-place]'); btn.disabled = true;
         var payload = {
             items: RB.read(), fulfil: fulfil, pay: pay, promo: promo,
@@ -692,10 +758,17 @@
         if (consent) payload.card_identity_ack = consent.ack();
         // وحقولُ الهديّة إن كانت هديّة — وإلّا `is_gift: false` وحدها
         if (giftOrder) Object.assign(payload, giftOrder.payload());
+        // واليومُ والفترةُ من جدول المتجر بمعرّفها — والموافقةُ ورقمُ النسخة التي رآها
+        if (schedule) Object.assign(payload, schedule.payload());
+        if (terms) Object.assign(payload, terms.payload());
         RB.post('/checkout', payload).then(function (r) {
             btn.disabled = false;
             // ورسالةٌ تقول اسمَ من أخفاه — يُسأل، ولا طلبَ ولا دفعة قبل جوابه
             if (r && r.card_identity && consent) { consent.warn(r.card_identity); return; }
+            // وشروطٌ حُدّثت والصفحةُ مفتوحة — يُعرض نصُّها الجديد وتُفرغ الموافقة (`TermsChanged`)
+            if (r && r.terms && terms) { terms.replace(r.terms, [].concat((r.errors || {}).terms || []).join(' ')); return; }
+            // وفترةٌ مضى وقتُها والصفحةُ مفتوحة — تُطرح فلا تُختار ثانية، ويُقال لماذا تحتها
+            if (r && r.errors && r.errors.slot && schedule && payload.slot) schedule.drop(payload.slot);
             /*
              * وخطأُ الكود يُقرأ تحت حقله، ويُفتح صندوقُ الموافقة بالسبب
              * والإجماليّ الجديد. ولا يُرسَل الطلبُ من نفسه: الإقرارُ ضغطةٌ.

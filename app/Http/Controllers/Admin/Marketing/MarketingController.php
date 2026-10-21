@@ -18,7 +18,10 @@ use App\Support\Permissions;
 use App\Support\Seo;
 use App\Support\FlowerOrder;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\DeliverySchedule;
 use App\Support\Store\NewArrivals;
+use App\Support\Store\OrderWindow;
+use App\Support\Store\StoreTerms;
 use App\Support\Store\PaidReceipt;
 use App\Support\Store\RibbonPicks;
 use App\Support\Store\RibbonUpsells;
@@ -239,6 +242,22 @@ class MarketingController extends Controller
              * يتبدّل شيء: `validated()` تُسقط ما ليس في هذه القائمة بهدوء.
              */
             'store_allow_orders' => ['sometimes', 'boolean'],
+            /*
+             * وجدولُ الاستقبال ورسالةُ الإغلاق بلغتيها — والجدولُ نصُّ JSON
+             * يُفحص بعد هذه القائمة (`OrderWindow::validated`).
+             */
+            OrderWindow::ON => ['sometimes', 'boolean'],
+            OrderWindow::KEY => ['nullable', 'string', 'max:20000'],
+            OrderWindow::MESSAGE_ON => ['sometimes', 'boolean'],
+            OrderWindow::MESSAGE => ['nullable', 'string', 'max:'.OrderWindow::MESSAGE_MAX],
+            OrderWindow::MESSAGE_EN => ['nullable', 'string', 'max:'.OrderWindow::MESSAGE_MAX],
+            // والشروطُ بلغتيها — تُكتب نسخةً لا إعدادًا (`StoreTerms::revise`)
+            StoreTerms::ON => ['sometimes', 'boolean'],
+            StoreTerms::TEXT => ['nullable', 'string', 'max:'.StoreTerms::MAX],
+            StoreTerms::TEXT_EN => ['nullable', 'string', 'max:'.StoreTerms::MAX],
+            // وجدولُ أيّام التسليم وفتراتِه — يُفحص بعد القائمة (`DeliverySchedule::validated`)
+            DeliverySchedule::ON => ['sometimes', 'boolean'],
+            DeliverySchedule::KEY => ['nullable', 'string', 'max:20000'],
             'store_whatsapp' => ['nullable', 'string', 'max:30'],
             /*
              * وحسابُ إنستغرام — كان حقلُه في المحرّر بلا قاعدةٍ هنا، فيُسقطه
@@ -600,6 +619,8 @@ class MarketingController extends Controller
             }
         }
 
+        $this->orderDesk($request, $data);
+
         /*
          * ═══ ولا يُرفع مفتاحُ كرت الهدية بلا ثمن ═══
          *
@@ -708,11 +729,28 @@ class MarketingController extends Controller
          */
         Domains::sync($business->refresh());
 
-        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_paid_receipt', 'store_gift_card', 'store_block_on', 'store_seo_index'] as $flag) {
+        foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_paid_receipt', 'store_gift_card', 'store_block_on', 'store_seo_index',
+            OrderWindow::ON, OrderWindow::MESSAGE_ON, StoreTerms::ON, DeliverySchedule::ON] as $flag) {
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }
         }
+
+        /*
+         * والشروطُ نسخةٌ تُكتب لا إعدادٌ يُستبدل — وقبل المفتاح: من رفعه مع نصٍّ
+         * جديد يُشترط على زبونه النصُّ الجديد لا القديم. ونصٌّ لم يتغيّر لا
+         * يكتب نسخة (`StoreTerms::revise`).
+         */
+        if ($request->exists(StoreTerms::TEXT) || $request->exists(StoreTerms::TEXT_EN)) {
+            $current = StoreTerms::current($this->bid());
+            StoreTerms::revise(
+                $this->bid(),
+                $request->exists(StoreTerms::TEXT) ? (string) $request->input(StoreTerms::TEXT) : $current?->body_ar,
+                $request->exists(StoreTerms::TEXT_EN) ? (string) $request->input(StoreTerms::TEXT_EN) : $current?->body_en,
+                auth()->id(),
+            );
+        }
+        unset($data[StoreTerms::TEXT], $data[StoreTerms::TEXT_EN]);
 
         /*
          * ═══ ما يُنشر يذهب إلى المسوّدة، وما يسري فورًا يُكتب حيًّا ═══
@@ -740,6 +778,88 @@ class MarketingController extends Controller
         Activity::log('updated', 'حدّث متجره الإلكتروني');
 
         return back()->with('toast', ['msg' => __('حُفظ متجرك الإلكتروني'), 'type' => 'success']);
+    }
+
+    /**
+     * استقبالُ الطلبات والشروطُ ومواعيدُ التسليم — تُفحص قبل أن يُكتب شيء.
+     *
+     * ═══ والسؤالُ عمّا سيكون لا عمّا وصل ═══
+     *
+     * الشاشةُ ترسل أقسامَها كلَّها، لكنّ بابًا آخر قد يرسل مفتاحًا وحدَه. فما لم
+     * يصل يُقرأ ممّا هو محفوظ: من رفع الجدولةَ وحدَها يُسأل عن فتراتٍ محفوظة،
+     * ومن رفع الشروطَ وحدَها يُسأل عن نصٍّ مكتوب. فلا يُفتح شيءٌ ناقص من أيّ باب.
+     *
+     * @param  array<string, mixed>  $data  المنقّى — يُكتب فيه الجدولان بصيغتهما الواحدة
+     */
+    private function orderDesk(Request $request, array &$data): void
+    {
+        $bid = $this->bid();
+        $saved = MarketingSettings::group($bid, 'website');
+        $on = fn (string $key) => $request->exists($key) ? $request->boolean($key) : ($saved[$key] ?? '0') === '1';
+
+        /* ═══ جدولُ الاستقبال ═══ */
+        if ($request->exists(OrderWindow::KEY)) {
+            $data[OrderWindow::KEY] = OrderWindow::validated($request->input(OrderWindow::KEY));
+        }
+
+        // جدولٌ مفتوحٌ بلا فترةٍ متجرٌ مغلقٌ أبدًا — يُقال لصاحبه قبل أن يكتشفه زبون
+        if ($on(OrderWindow::ON) && ! OrderWindow::hasWindows((string) ($data[OrderWindow::KEY] ?? $saved[OrderWindow::KEY] ?? ''))) {
+            throw ValidationException::withMessages([
+                OrderWindow::KEY => __('أضف فترة استقبالٍ واحدةً على الأقل، أو أطفئ الجدولة.'),
+            ]);
+        }
+
+        /* ═══ رسالةُ الإغلاق بلغتيها ═══ */
+        foreach ([OrderWindow::MESSAGE, OrderWindow::MESSAGE_EN] as $key) {
+            if ($request->exists($key)) {
+                $data[$key] = StoreTerms::clean($request->input($key));
+                OrderWindow::assertMessage($key, $data[$key]);
+            }
+        }
+
+        if ($on(OrderWindow::MESSAGE_ON)) {
+            $text = fn (string $key) => trim((string) ($data[$key] ?? $saved[$key] ?? ''));
+
+            // ولغةٌ بلا رسالة تقع على الأخرى أو على نصّ النظام — فتُطلب الاثنتان
+            $missing = array_filter([
+                OrderWindow::MESSAGE => $text(OrderWindow::MESSAGE) === '' ? __('اكتب رسالة الإغلاق بالعربية.') : null,
+                OrderWindow::MESSAGE_EN => $text(OrderWindow::MESSAGE_EN) === '' ? __('اكتب رسالة الإغلاق بالإنجليزية.') : null,
+            ]);
+
+            if ($missing !== []) {
+                throw ValidationException::withMessages($missing);
+            }
+        }
+
+        /* ═══ الشروطُ والأحكام ═══ */
+        if ($on(StoreTerms::ON)) {
+            $current = StoreTerms::current($bid);
+            $text = fn (string $key, ?string $saved) => StoreTerms::clean($request->exists($key) ? (string) $request->input($key) : $saved);
+
+            // لا تُشترط موافقةٌ على شروطٍ لا يقرؤها زبونُ إحدى اللغتين
+            $missing = array_filter([
+                StoreTerms::TEXT => $text(StoreTerms::TEXT, $current?->body_ar) === '' ? __('اكتب الشروط والأحكام بالعربية قبل اشتراط الموافقة عليها.') : null,
+                StoreTerms::TEXT_EN => $text(StoreTerms::TEXT_EN, $current?->body_en) === '' ? __('اكتب الشروط والأحكام بالإنجليزية قبل اشتراط الموافقة عليها.') : null,
+            ]);
+
+            if ($missing !== []) {
+                throw ValidationException::withMessages($missing);
+            }
+        }
+
+        /* ═══ جدولُ أيّام التسليم وفتراتِه ═══ */
+        if ($request->exists(DeliverySchedule::KEY)) {
+            $data[DeliverySchedule::KEY] = DeliverySchedule::validated($request->input(DeliverySchedule::KEY));
+        }
+
+        if ($on(DeliverySchedule::ON)) {
+            DeliverySchedule::assertUsable(
+                (string) ($data[DeliverySchedule::KEY] ?? $saved[DeliverySchedule::KEY] ?? ''),
+                isset($data['store_fulfil'])
+                    ? array_values(array_intersect(FlowerOrder::FULFILLMENT, explode(',', (string) $data['store_fulfil'])))
+                    : CheckoutFields::fulfilments($bid),
+            );
+        }
     }
 
     /* -------------------- الظهور في البحث وGoogle Analytics -------------------- */

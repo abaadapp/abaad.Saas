@@ -16,8 +16,21 @@ export interface ThemeSettingsData {
     store_pages: string;
     store_about_image: string;
 
-    /* الدفع والاستلام */
+    /* استقبال الطلبات — انظر `Store\OrderWindow` */
     store_allow_orders: boolean;
+    store_order_schedule_on: boolean;
+    /* الجدولُ نصُّ JSON كما يُحفظ — يقرؤه ويكتبه `schedule.ts` */
+    store_order_schedule: string;
+    store_closed_message_on: boolean;
+    store_closed_message: string;
+    store_closed_message_en: string;
+
+    /* الشروط والأحكام — النصّان يُكتبان نسخةً لا إعدادًا (`Store\StoreTerms`) */
+    store_terms_on: boolean;
+    store_terms: string;
+    store_terms_en: string;
+
+    /* الدفع والاستلام */
     store_pay_cod: boolean;
     store_pay_transfer: boolean;
     /* إيصالُ الدفع الإلكترونيّ في صفحة الشكر — انظر `Store\PaidReceipt` */
@@ -36,6 +49,9 @@ export interface ThemeSettingsData {
     store_free_delivery_over: string;
     store_delivery_areas: string;
     store_delivery_slots: string;
+    /* جدولُ أيّام التسليم وفتراتِه — نصُّ JSON كما يُحفظ (`Store\DeliverySchedule`) */
+    store_delivery_schedule_on: boolean;
+    store_delivery_schedule: string;
     store_delivery_note: string;
     store_delivery_note_en: string;
     /* تنبيهُ نطاق التوصيل — لكلّ لغةٍ نصُّها، ولا يمسّ قواعد المنطقة */
@@ -89,6 +105,8 @@ export interface ThemeSeed {
     seo: { title: string; desc: string; title_en: string; desc_en: string; index: boolean };
     storeOn: boolean;
     slug: string | null;
+    /* الشروطُ القائمة — لشاشة «المتجر والطلبات» وحدها (`SettingsController::termsSeed`) */
+    terms?: { ar: string; en: string };
 }
 
 /** حالُ المتجر الآن، بالشكل الذي يقرؤه النموذج */
@@ -103,6 +121,14 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
         store_about_image: v.store_about_image ?? '',
 
         store_allow_orders: (v.store_allow_orders ?? '1') === '1',
+        store_order_schedule_on: (v.store_order_schedule_on ?? '0') === '1',
+        store_order_schedule: v.store_order_schedule ?? '',
+        store_closed_message_on: (v.store_closed_message_on ?? '0') === '1',
+        store_closed_message: v.store_closed_message ?? '',
+        store_closed_message_en: v.store_closed_message_en ?? '',
+        store_terms_on: (v.store_terms_on ?? '0') === '1',
+        store_terms: s.terms?.ar ?? '',
+        store_terms_en: s.terms?.en ?? '',
         store_pay_cod: (v.store_pay_cod ?? '1') === '1',
         store_pay_transfer: (v.store_pay_transfer ?? '0') === '1',
         store_paid_receipt: (v.store_paid_receipt ?? '0') === '1',
@@ -119,6 +145,8 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
         store_free_delivery_over: v.store_free_delivery_over ?? '',
         store_delivery_areas: v.store_delivery_areas ?? '',
         store_delivery_slots: v.store_delivery_slots ?? '',
+        store_delivery_schedule_on: (v.store_delivery_schedule_on ?? '0') === '1',
+        store_delivery_schedule: v.store_delivery_schedule ?? '',
         store_delivery_note: v.store_delivery_note ?? '',
         store_delivery_note_en: v.store_delivery_note_en ?? '',
         store_delivery_area_note: v.store_delivery_area_note ?? '',
@@ -168,11 +196,14 @@ export const SCREEN_KEYS = {
     domain: ['site_slug', 'store_on'],
     pages: ['store_pages', 'store_about_image'],
     store: [
-        'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_paid_receipt', 'store_bank',
+        'store_allow_orders', 'store_order_schedule_on', 'store_order_schedule',
+        'store_closed_message_on', 'store_closed_message', 'store_closed_message_en',
+        'store_terms_on', 'store_terms', 'store_terms_en',
+        'store_pay_cod', 'store_pay_transfer', 'store_paid_receipt', 'store_bank',
         'store_thanks_title', 'store_thanks_title_en', 'store_thanks_message', 'store_thanks_message_en',
         'store_thanks_receipt', 'store_thanks_receipt_en', 'store_thanks_continue', 'store_thanks_continue_en',
         'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
-        'store_delivery_slots', 'store_delivery_note', 'store_delivery_note_en', 'store_delivery_area_note', 'store_delivery_area_note_en',
+        'store_delivery_slots', 'store_delivery_schedule_on', 'store_delivery_schedule', 'store_delivery_note', 'store_delivery_note_en', 'store_delivery_area_note', 'store_delivery_area_note_en',
         'store_max_days', 'store_fulfil',
         'store_field_area', 'store_field_address', 'store_field_date', 'store_field_slot',
         'store_field_recipient', 'store_field_promo', 'store_image_note', 'store_image_note_en',

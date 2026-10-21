@@ -59,11 +59,24 @@ final class CheckoutFields
     /**
      * حالُ حقلٍ في هذا المتجر — والفراغُ يُقرأ بما كان.
      *
+     * ═══ وجدولُ المواعيد يشترط اليومَ والفترة ═══
+     *
+     * من فتح جدولَه (`DeliverySchedule`) يُسأل زبونُه عن يومٍ وفترةٍ منه دائمًا
+     * — جدولٌ لا يُختار منه لا يحكم شيئًا. فيُقرأ الحقلان «مطلوبين» ما دام
+     * مفتوحًا، والصفحةُ والخادمُ يقرآن ذلك من هنا معًا. وما حفظه صاحبُه لهما
+     * يبقى محفوظًا لا يُمسّ: يعود إليه إن أطفأ الجدول (`$schedule = false`
+     * تقرؤه شاشتُه كما حفظه).
+     *
      * @return self::OFF|self::OPTIONAL|self::REQUIRED
      */
-    public static function state(int $businessId, string $field): string
+    public static function state(int $businessId, string $field, bool $schedule = true): string
     {
         $site = MarketingSettings::group($businessId, 'website');
+
+        if ($schedule && in_array($field, ['date', 'slot'], true) && ($site[DeliverySchedule::ON] ?? '0') === '1') {
+            return self::REQUIRED;
+        }
+
         $raw = trim((string) ($site['store_field_'.$field] ?? ''));
 
         if (in_array($raw, self::STATES, true)) {
@@ -108,13 +121,14 @@ final class CheckoutFields
     /**
      * الحقولُ كلُّها بحالها — للشاشة ولمن يبني القواعد.
      *
+     * @param  bool  $schedule  `false` لشاشة صاحبه: ما حفظه هو لا ما يفرضه جدولُ المواعيد
      * @return array<string, string>
      */
-    public static function all(int $businessId): array
+    public static function all(int $businessId, bool $schedule = true): array
     {
         $out = [];
         foreach (self::FIELDS as $field) {
-            $out[$field] = self::state($businessId, $field);
+            $out[$field] = self::state($businessId, $field, $schedule);
         }
 
         return $out;

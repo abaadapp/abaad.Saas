@@ -131,6 +131,20 @@ class MarketingSettings
              * يُرى، لا افتراضيَّ ما كان يُكتب.
              */
             'store_allow_orders' => '1',
+            /*
+             * وجدولُ استقبال الطلبات ورسالةُ الإغلاق بلغتيها — مطفأان حتّى يضبطهما
+             * صاحبُ المتجر، فمتجرٌ قائمٌ يستقبل كما كان. انظر `Store\OrderWindow`.
+             */
+            'store_order_schedule_on' => '0',
+            'store_order_schedule' => '',
+            'store_closed_message_on' => '0',
+            'store_closed_message' => '',
+            'store_closed_message_en' => '',
+            /*
+             * واشتراطُ الموافقة على الشروط — مطفأٌ حتّى يكتب صاحبُ المتجر نصّيه.
+             * والنصُّ نفسُه في نسخه (`store_terms_versions`) لا هنا. انظر `Store\StoreTerms`.
+             */
+            'store_terms_on' => '0',
             'store_pay_cod' => '1',
             'store_pay_transfer' => '0',
             'store_bank' => '',
@@ -164,6 +178,12 @@ class MarketingSettings
             'store_free_delivery_over' => '',
             'store_delivery_areas' => '',
             'store_delivery_slots' => '',
+            /*
+             * وجدولُ أيّام التسليم وفتراتِه — مطفأٌ حتّى يفتحه صاحبُه، فتبقى سطورُ
+             * `store_delivery_slots` كما كانت. انظر `Store\DeliverySchedule`.
+             */
+            'store_delivery_schedule_on' => '0',
+            'store_delivery_schedule' => '',
             'store_hours' => '',
             // وساعاتُ العمل بالإنجليزيّة — للصفحة الإنجليزيّة وحدها، وفارغُها لا يُرسم
             'store_hours_en' => '',

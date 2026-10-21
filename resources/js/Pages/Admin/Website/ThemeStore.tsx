@@ -8,11 +8,15 @@ import SaveBar from './theme/SaveBar';
 import Checkout from './theme/sections/Checkout';
 import Fields from './theme/sections/Fields';
 import Gateway, { type GatewayState } from './theme/sections/Gateway';
+import Orders, { type OrderDesk } from './theme/sections/Orders';
+import Terms, { type TermsSeed } from './theme/sections/Terms';
 import { SCREEN_KEYS, only, seed, type ThemeSeed, type ThemeSettingsData } from './theme/sections/form';
 import ThemeHeader, { type ThemeShell } from './theme/Shell';
 
 interface Props extends ThemeShell, ThemeSeed {
     gateway: GatewayState;
+    orderDesk: OrderDesk;
+    terms: TermsSeed;
 }
 
 /**
@@ -35,7 +39,7 @@ interface Props extends ThemeShell, ThemeSeed {
  */
 export default function ThemeStore() {
     const props = usePage<PageProps<Props>>().props;
-    const { site, gateway } = props;
+    const { site, gateway, orderDesk, terms } = props;
     const t = useTranslate();
 
     const form = useForm<ThemeSettingsData>(seed(props));
@@ -61,9 +65,15 @@ export default function ThemeStore() {
 
             <SettingsPage>
                 <div className="space-y-6">
+                    {/* متى يُستقبل الطلبُ أوّلًا — هو ما يُسأل عنه قبل كيف يُدفع ويُسلَّم */}
+                    <Orders form={form} desk={orderDesk} />
+
                     <Checkout form={form} gatewayReady={gateway.online} />
 
                     <Fields form={form} />
+
+                    {/* والشروطُ آخرَ ما يُضبط وأقربَ إلى زرّ الحفظ — هي آخرُ ما يقرؤه الزبونُ قبل التأكيد */}
+                    <Terms form={form} terms={terms} />
 
                     {/*
                         والحفظُ قبل حال البوّابة لا بعدها: ما فوقه يحفظه،

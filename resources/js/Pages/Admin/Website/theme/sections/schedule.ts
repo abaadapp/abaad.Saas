@@ -20,7 +20,10 @@ export interface OrderSchedule {
     closed: Closure[];
 }
 
-export type Slot = { id: string; from: string; to: string; ar: string; en: string };
+/** آخرُ الحجز لفترة: ساعةٌ في يومها أو في اليوم السابق — `DeliverySchedule::cutoffAt` */
+export type Cutoff = { time: string; day: 'same' | 'before' };
+
+export type Slot = { id: string; from: string; to: string; ar: string; en: string; cutoff?: Cutoff | null };
 
 export interface DeliveryPlan {
     delivery: Slot[][];
@@ -40,6 +43,8 @@ export const MAX_SLOTS = 8;
 export const MAX_CLOSURES = 60;
 export const LABEL_MAX = 40;
 export const MESSAGE_MAX = 600;
+/** حدُّ «لا مواعيد للتوصيل» بكلّ لغة — `DeliverySchedule::UNAVAILABLE_MAX` */
+export const UNAVAILABLE_MAX = 300;
 export const TERMS_MAX = 20000;
 
 const emptyWeek = <T>(): T[][] => Array.from({ length: 7 }, () => [] as T[]);
@@ -99,6 +104,7 @@ export function readDeliveryPlan(json: string): DeliveryPlan {
         to: String(s.to ?? ''),
         ar: String(s.ar ?? ''),
         en: String(s.en ?? ''),
+        cutoff: readCutoff(s.cutoff),
     });
 
     return {
@@ -107,6 +113,22 @@ export function readDeliveryPlan(json: string): DeliveryPlan {
         closed: closures(d.closed),
         lead: Number.isFinite(Number(d.lead)) ? Math.max(0, Math.trunc(Number(d.lead))) : 0,
     };
+}
+
+function readCutoff(raw: unknown): Cutoff | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const c = raw as Record<string, unknown>;
+    const time = String(c.time ?? '');
+
+    return time === '' ? null : { time, day: c.day === 'before' ? 'before' : 'same' };
+}
+
+/**
+ * آخرُ حجزٍ في يوم الفترة بعد بدايتها — يردّه الخادمُ عند الحفظ، فيُقال هنا قبله.
+ * والفترةُ تختفي عند بدايتها على أيّ حال؛ واليومُ السابق لا حدَّ لساعته.
+ */
+export function cutoffAfterStart(s: { from: string; cutoff?: Cutoff | null }): boolean {
+    return !!s.cutoff && s.cutoff.day === 'same' && s.from !== '' && s.cutoff.time > s.from;
 }
 
 export function writeDeliveryPlan(p: DeliveryPlan): string {

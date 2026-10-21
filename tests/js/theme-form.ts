@@ -45,6 +45,8 @@ const BLANK: ThemeSettingsData = {
     store_delivery_slots: '',
     store_delivery_schedule_on: false,
     store_delivery_schedule: '',
+    store_delivery_unavailable: '',
+    store_delivery_unavailable_en: '',
     store_delivery_note: '',
     store_delivery_note_en: '',
     store_delivery_area_note: '',

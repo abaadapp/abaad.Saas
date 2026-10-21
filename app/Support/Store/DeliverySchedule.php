@@ -35,6 +35,23 @@ use Illuminate\Validation\ValidationException;
  *
  * ما دامت **بدايتُها** بعد الآن ومدّةِ التجهيز. ففترةٌ بدأت لا تُختار: لو
  * قُبلت لَكتب الطلبُ موعدًا مضى، ووقف في لوحة التجهيز متأخّرًا لحظةَ دخوله.
+ *
+ * ═══ وآخرُ وقتٍ لحجزها — لكلّ فترةٍ وحدها، واختياريّ ═══
+ *
+ * «الصباح 9 – 12، آخرُ حجزٍ الثامنة»، و«المساء 4 – 9، آخرُ حجزٍ الثانية ظهرًا»،
+ * أو «آخرُ حجزٍ التاسعةَ مساءَ اليوم السابق» لمن يجهّز ليلًا (`cutoff`:
+ * `{time, day: same|before}`). فإذا بلغته الساعةُ — بتوقيت مسقط — اختفت الفترةُ
+ * من خيارات الزبون وبقيت التاليةُ لها، ولا يُغلق بهذا استقبالُ الطلبات
+ * (`OrderWindow`). ويجتمع مع مدّة التجهيز: تُعرض الفترةُ ما لم يبلغ أيٌّ منهما.
+ *
+ * وفترةٌ بلا حدٍّ تعمل كما كانت حرفًا، والجدولُ المحفوظ قبل الحدّ يُقرأ كما هو.
+ *
+ * ═══ وحين لا موعدَ للتوصيل أصلًا ═══
+ *
+ * يكتب صاحبُ المتجر ما يقرؤه زبونُه بلغتيه (`store_delivery_unavailable`).
+ * ويظهر حين لا فترةَ توصيلٍ في نطاق الحجز كلِّه — لا حين تنتهي فتراتُ
+ * اليوم وفتراتُ الغد متاحة — ويبقى الاستلامُ يُختار إن كانت له مواعيد.
+ * والمتجرُ المغلق يقول رسالةَ إغلاقه هو (`OrderWindow::message`)، لا هذه.
  */
 final class DeliverySchedule
 {
@@ -50,6 +67,18 @@ final class DeliverySchedule
     public const LEAD_MAX = 10080;
 
     public const MAX_CLOSURES = 60;
+
+    /** ما يقرؤه الزبونُ حين لا موعدَ توصيلٍ في نطاق الحجز — بالعربيّة وبالإنجليزيّة */
+    public const UNAVAILABLE = 'store_delivery_unavailable';
+
+    public const UNAVAILABLE_EN = 'store_delivery_unavailable_en';
+
+    public const UNAVAILABLE_MAX = 300;
+
+    /** آخرُ الحجز في يوم الفترة نفسه، أو في اليوم الذي قبله */
+    public const SAME_DAY = 'same';
+
+    public const DAY_BEFORE = 'before';
 
     private const TIME = '/^([01]\d|2[0-3]):[0-5]\d$/';
 
@@ -108,6 +137,10 @@ final class DeliverySchedule
                 if ($starts->lessThan($ready)) {
                     continue;
                 }
+                // وآخرُ حجزها إن ضُبط: عنده تُغلق، لا بعده بدقيقة
+                if (isset($s['cutoff']) && ! $now->lessThan(self::cutoffAt($s['cutoff'], $day))) {
+                    continue;
+                }
                 $slots[] = $s + ['starts' => $starts, 'ends' => $day->setTimeFromTimeString($s['to'])];
             }
 
@@ -117,6 +150,23 @@ final class DeliverySchedule
         }
 
         return $out;
+    }
+
+    /** لحظةُ إغلاق الحجز لفترةٍ في يومها — بساعة المتجر */
+    public static function cutoffAt(array $cutoff, CarbonImmutable $day): CarbonImmutable
+    {
+        return ($cutoff['day'] === self::DAY_BEFORE ? $day->subDay() : $day)->setTimeFromTimeString($cutoff['time']);
+    }
+
+    /**
+     * ما يقرؤه الزبونُ حين لا موعدَ توصيل — نصُّ صاحب المتجر بلغة الصفحة، أو
+     * `null` فيُقال نصُّ النظام. ولا تقع لغةٌ على الأخرى.
+     */
+    public static function unavailableSays(int $bid, string $lang): ?string
+    {
+        $text = trim((string) (MarketingSettings::group($bid, 'website')[$lang === 'en' ? self::UNAVAILABLE_EN : self::UNAVAILABLE] ?? ''));
+
+        return $text === '' ? null : $text;
     }
 
     /**
@@ -369,7 +419,36 @@ final class DeliverySchedule
     {
         $fail = fn (string $msg) => throw ValidationException::withMessages([self::KEY => $msg]);
 
-        $week = function (mixed $raw) use ($fail, $assignIds): array {
+        /*
+         * آخرُ الحجز: ساعةٌ، وفي يوم الفترة أو اليوم السابق. وفي يومها لا يأتي
+         * بعد بدايتها — فالفترةُ تختفي عند بدايتها على أيّ حال، وحدٌّ بعدها
+         * وعدٌ لا يُوفى.
+         */
+        $readCutoff = function (mixed $raw, string $from, string $to) use ($fail): ?array {
+            if ($raw === null || $raw === '' || (is_array($raw) && ($raw['time'] ?? '') === '')) {
+                return null;
+            }
+
+            $time = is_array($raw) ? (string) ($raw['time'] ?? '') : '';
+            $day = is_array($raw) ? (string) ($raw['day'] ?? self::SAME_DAY) : '';
+            if (! preg_match(self::TIME, $time)) {
+                $fail(__('اكتب آخر وقت للحجز بالساعة والدقيقة.'));
+            }
+            if (! in_array($day, [self::SAME_DAY, self::DAY_BEFORE], true)) {
+                $fail(__('آخر وقت للحجز في يوم الفترة نفسه أو في اليوم السابق.'));
+            }
+            if ($day === self::SAME_DAY && $time > $from) {
+                $lang = app()->getLocale() === 'en' ? 'en' : 'ar';
+                $fail(__('آخر حجز لفترة :range بعد بدايتها — اجعله :from أو قبلها، أو في اليوم السابق.', [
+                    'range' => ShopClock::range($from, $to, $lang),
+                    'from' => ShopClock::hm($from, $lang),
+                ]));
+            }
+
+            return ['time' => $time, 'day' => $day];
+        };
+
+        $week = function (mixed $raw) use ($fail, $assignIds, $readCutoff): array {
             $out = [];
             for ($d = 0; $d < 7; $d++) {
                 /*
@@ -416,7 +495,13 @@ final class DeliverySchedule
                     }
                     $seen[$id] = true;
 
-                    $clean[] = ['id' => $id, 'from' => $from, 'to' => $to, 'ar' => $ar, 'en' => $en];
+                    $row = ['id' => $id, 'from' => $from, 'to' => $to, 'ar' => $ar, 'en' => $en];
+                    // وآخرُ الحجز لا يُكتب لفترةٍ بلا حدّ — فيبقى نصُّ الجدول القديم كما كان
+                    $cutoff = $readCutoff($s['cutoff'] ?? null, $from, $to);
+                    if ($cutoff !== null) {
+                        $row['cutoff'] = $cutoff;
+                    }
+                    $clean[] = $row;
                 }
                 usort($clean, fn ($a, $b) => strcmp($a['from'], $b['from']));
                 $out[] = $clean;

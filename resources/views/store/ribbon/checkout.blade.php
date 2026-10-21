@@ -118,7 +118,11 @@
                             <select id="rb-slot" class="rb-input" name="slot" data-rb-slot aria-required="true" disabled style="margin-top:6px"><option value="">{{ $t['pickSlot'] }}</option></select>
                             <div class="rb-error" data-err="slot"></div>
                         </div>
-                        <p class="rb-note" data-rb-no-days hidden data-testid="rb-no-days" style="grid-column:1/-1;margin:0">{{ $t['noDays'] }}</p>
+                        {{--
+                            ولا مواعيدَ للطريقة المختارة: نصُّ النظام، وللتوصيل ما كتبه صاحبُ
+                            المتجر إن كتب (`data-delivery`) — يضعه السكربتُ نصًّا لا وسمًا.
+                        --}}
+                        <p class="rb-note" data-rb-no-days hidden data-testid="rb-no-days" @if (filled($noDeliverySays ?? null)) data-delivery="{{ $noDeliverySays }}" @endif style="grid-column:1/-1;margin:0;white-space:pre-line">{{ $t['noDays'] }}</p>
                     </div>
                 @elseif ($shows('date') || ($shows('slot') && count($delivery['slots'])))
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px">

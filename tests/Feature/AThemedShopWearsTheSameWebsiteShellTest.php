@@ -696,7 +696,10 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             'store_terms_en' => 'The test shop terms in English.',
             // وجدولُ التسليم بصيغته الواحدة كما يكتبها `DeliverySchedule::validated`
             'store_delivery_schedule_on' => '1',
-            'store_delivery_schedule' => '{"delivery":[[],[],[],[],[],[],[{"id":"am01","from":"09:00","to":"12:00","ar":"الصباح","en":"Morning"}]],"pickup":null,"closed":[],"lead":120}',
+            'store_delivery_schedule' => '{"delivery":[[],[],[],[],[],[],[{"id":"am01","from":"09:00","to":"12:00","ar":"الصباح","en":"Morning","cutoff":{"time":"08:00","day":"same"}}]],"pickup":null,"closed":[],"lead":120}',
+            // وما يقرؤه الزبونُ حين لا موعدَ للتوصيل — بأسطره كما كُتبت
+            'store_delivery_unavailable' => "لا مواعيد توصيل متاحة هذا الأسبوع.\nيمكنك الاستلام من المحل.",
+            'store_delivery_unavailable_en' => "No delivery times are left this week.\nYou can pick up from the shop.",
         ];
 
         /*

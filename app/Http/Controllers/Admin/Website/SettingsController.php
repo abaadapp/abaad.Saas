@@ -215,7 +215,7 @@ class SettingsController extends Controller
     }
 
     /**
-     * @return array{open: bool, why: ?string, now: string, next: ?string, preview: array{date_ar: string, time_ar: string, date_en: string, time_en: string}}
+     * @return array{open: bool, why: ?string, now: string, next: ?string, preview: array{day_ar: string, hour_ar: string, day_en: string, hour_en: string}}
      */
     private function orderDesk(int $bid): array
     {
@@ -236,10 +236,10 @@ class SettingsController extends Controller
             'now' => ShopClock::day($now, 'ar').' · '.ShopClock::time($now, 'ar'),
             'next' => $status['next'] ? ShopClock::day($status['next'], 'ar').' · '.ShopClock::time($status['next'], 'ar') : null,
             'preview' => [
-                'date_ar' => ShopClock::day($sample, 'ar'),
-                'time_ar' => ShopClock::time($sample, 'ar'),
-                'date_en' => ShopClock::day($sample, 'en'),
-                'time_en' => ShopClock::time($sample, 'en'),
+                'day_ar' => ShopClock::day($sample, 'ar'),
+                'hour_ar' => ShopClock::time($sample, 'ar'),
+                'day_en' => ShopClock::day($sample, 'en'),
+                'hour_en' => ShopClock::time($sample, 'en'),
             ],
         ];
     }

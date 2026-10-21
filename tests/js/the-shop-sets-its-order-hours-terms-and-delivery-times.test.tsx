@@ -37,7 +37,7 @@ const DESK: OrderDesk = {
     why: 'schedule',
     now: 'الأربعاء 10 فبراير · 10:00 م',
     next: 'الخميس 11 فبراير · 9:00 ص',
-    preview: { date_ar: 'الخميس 11 فبراير', time_ar: '9:00 ص', date_en: 'Thursday 11 February', time_en: '9:00 AM' },
+    preview: { day_ar: 'الخميس 11 فبراير', hour_ar: '9:00 ص', day_en: 'Thursday 11 February', hour_en: '9:00 AM' },
 };
 
 beforeEach(reset);

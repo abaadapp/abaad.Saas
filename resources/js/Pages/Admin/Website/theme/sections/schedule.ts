@@ -122,7 +122,12 @@ export function hasAny<T>(w: T[][]): boolean {
  * «من … إلى» بعبارة الناس — والنهايةُ قبل البداية تعبر منتصف الليل.
  */
 export function crossesMidnight(w: Window): boolean {
-    return w.to !== '' && w.from !== '' && w.to <= w.from;
+    return w.to !== '' && w.from !== '' && w.to < w.from;
+}
+
+/** بدايةٌ تساوي نهايتَها — أربعٌ وعشرون ساعة، و`00:00 → 00:00` يومٌ كامل (`OrderWindow::windowsOn`) */
+export function wholeDay(w: Window): boolean {
+    return w.from !== '' && w.from === w.to;
 }
 
 /**

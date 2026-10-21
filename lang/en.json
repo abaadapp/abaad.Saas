@@ -8334,5 +8334,7 @@
     "وإلا ظهرت رسالة النظام: «المتجر لا يستقبل طلبات من الموقع الآن — تواصل معنا.»": "Otherwise the system message shows: “The store is not taking online orders right now — contact us.”",
     "أيام التوصيل والاستلام وفتراتها": "Delivery and pickup days and windows",
     "أيام التوصيل وفتراته": "Delivery days and windows",
-    "يحكمه جدول المواعيد — يُسأل عنه دائمًا ما دام الجدول مفتوحًا": "Set by the delivery schedule — always asked while the schedule is on"
+    "يحكمه جدول المواعيد — يُسأل عنه دائمًا ما دام الجدول مفتوحًا": "Set by the delivery schedule — always asked while the schedule is on",
+    "يوم كامل": "Whole day",
+    "أربع وعشرون ساعة من بدايتها": "24 hours from its start"
 }

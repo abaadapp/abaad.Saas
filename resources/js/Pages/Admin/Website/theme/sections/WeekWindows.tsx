@@ -1,7 +1,7 @@
 import { Copy, Plus, Trash2 } from 'lucide-react';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
-import { DAY_NAMES, LABEL_MAX, MAX_CLOSURES, WEEK_ORDER, crossesMidnight, type Closure } from './schedule';
+import { DAY_NAMES, LABEL_MAX, MAX_CLOSURES, WEEK_ORDER, crossesMidnight, wholeDay, type Closure } from './schedule';
 
 /**
  * محرّرُ الأسبوع — لكلّ يومٍ فتراتُه، ويومٌ بلا فترةٍ مُغلق.
@@ -58,7 +58,7 @@ export default function WeekWindows<T extends Row>({
                                 <Input
                                     type="time"
                                     dir="ltr"
-                                    className="w-[7.5rem]"
+                                    className="w-[6.75rem]"
                                     value={r.from}
                                     onChange={(e) => edit(d, i, { from: e.target.value } as Partial<T>)}
                                     aria-label={t('من')}
@@ -67,7 +67,7 @@ export default function WeekWindows<T extends Row>({
                                 <Input
                                     type="time"
                                     dir="ltr"
-                                    className="w-[7.5rem]"
+                                    className="w-[6.75rem]"
                                     value={r.to}
                                     onChange={(e) => edit(d, i, { to: e.target.value } as Partial<T>)}
                                     aria-label={t('إلى')}
@@ -75,7 +75,7 @@ export default function WeekWindows<T extends Row>({
                                 {labels && (
                                     <>
                                         <Input
-                                            className="w-36"
+                                            className="w-32"
                                             maxLength={LABEL_MAX}
                                             value={r.ar ?? ''}
                                             onChange={(e) => edit(d, i, { ar: e.target.value } as Partial<T>)}
@@ -84,7 +84,7 @@ export default function WeekWindows<T extends Row>({
                                         />
                                         <Input
                                             dir="ltr"
-                                            className="w-36"
+                                            className="w-32"
                                             maxLength={LABEL_MAX}
                                             value={r.en ?? ''}
                                             onChange={(e) => edit(d, i, { en: e.target.value } as Partial<T>)}
@@ -95,6 +95,9 @@ export default function WeekWindows<T extends Row>({
                                 )}
                                 {overnight && crossesMidnight(r) && (
                                     <span className="text-[11px] text-[#b45309]">{t('تمتد إلى صباح اليوم التالي')}</span>
+                                )}
+                                {overnight && wholeDay(r) && (
+                                    <span className="text-[11px] text-[#166534]">{r.from === '00:00' ? t('يوم كامل') : t('أربع وعشرون ساعة من بدايتها')}</span>
                                 )}
                                 <button
                                     type="button"

@@ -151,6 +151,19 @@ class AnOrderCarriesTheTermsItsBuyerAcceptedTest extends TestCase
         $this->assertNull(Order::firstOrFail()->terms_version_id, 'كُتبت على الطلب موافقةٌ أرسلها المتصفّح');
     }
 
+    public function test_the_payment_intent_keeps_no_key_the_browser_wrote_for_the_server(): void
+    {
+        // ما يبدأ بـ`_` يكتبه الخادم في الحمولة قبل البنك، ويقرؤه حين تُسوّى الدفعةُ بلا فحصٍ ثانٍ
+        $this->bankOpens();
+
+        $this->checkout(['pay' => 'card', '_terms' => ['id' => 1], '_slot' => ['id' => 'x'], '_paid' => true])->assertOk();
+
+        $payload = StorePaymentIntent::firstOrFail()->payload;
+        $this->assertArrayNotHasKey('_paid', $payload, 'حُفظ في نيّة الدفع مفتاحٌ كتبه المتصفّح');
+        $this->assertNull($payload[StoreTerms::STAMP] ?? null);
+        $this->assertNull($payload['_slot'] ?? null);
+    }
+
     /* ═════════════ والنسخ ═════════════ */
 
     public function test_rewriting_the_terms_writes_a_new_version_and_keeps_the_old_one_untouched(): void

@@ -14,7 +14,7 @@ export interface OrderDesk {
     why: 'manual' | 'schedule' | null;
     now: string;
     next: string | null;
-    preview: { date_ar: string; time_ar: string; date_en: string; time_en: string };
+    preview: { day_ar: string; hour_ar: string; day_en: string; hour_en: string };
 }
 
 /**
@@ -35,8 +35,8 @@ export default function Orders({ form, desk }: { form: ThemeForm; desk: OrderDes
     const schedule = readOrderSchedule(form.data.store_order_schedule);
     const setSchedule = (s: OrderSchedule) => form.setData('store_order_schedule', writeOrderSchedule(s));
 
-    const ar = { date: desk.preview.date_ar, time: desk.preview.time_ar };
-    const en = { date: desk.preview.date_en, time: desk.preview.time_en };
+    const ar = { date: desk.preview.day_ar, time: desk.preview.hour_ar };
+    const en = { date: desk.preview.day_en, time: desk.preview.hour_en };
 
     return (
         <section id="orders" className="scroll-mt-24">

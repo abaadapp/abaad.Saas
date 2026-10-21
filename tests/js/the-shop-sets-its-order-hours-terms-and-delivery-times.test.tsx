@@ -5,7 +5,7 @@ import Checkout from '@/Pages/Admin/Website/theme/sections/Checkout';
 import Fields from '@/Pages/Admin/Website/theme/sections/Fields';
 import Orders, { type OrderDesk } from '@/Pages/Admin/Website/theme/sections/Orders';
 import Terms from '@/Pages/Admin/Website/theme/sections/Terms';
-import { fillMessage, readDeliveryPlan, readOrderSchedule, writeOrderSchedule } from '@/Pages/Admin/Website/theme/sections/schedule';
+import { fillMessage, overlapping, readDeliveryPlan, readOrderSchedule, writeOrderSchedule } from '@/Pages/Admin/Website/theme/sections/schedule';
 import { pageProps } from './setup';
 import { themeForm } from './theme-form';
 
@@ -163,6 +163,22 @@ describe('مواعيدُ التسليم المنظّمة', () => {
         const [key, json] = (form.setData as unknown as { mock: { calls: [string, string][] } }).mock.calls.at(-1)!;
         expect(key).toBe('store_delivery_schedule');
         expect(readDeliveryPlan(json).delivery.map((d) => d.map((s) => s.id))).toEqual(Array.from({ length: 7 }, () => ['am01']));
+    });
+
+    it('تعلّم فترتين متداخلتين في يومٍ قبل الحفظ — والمتلاصقتان ليستا متداخلتين', () => {
+        const slot = (id: string, from: string, to: string) => ({ id, from, to, ar: '', en: '' });
+        expect([...overlapping([slot('a', '09:00', '12:00'), slot('b', '11:00', '14:00')])]).toEqual([0, 1]);
+        expect([...overlapping([slot('a', '08:00', '18:00'), slot('b', '12:00', '13:00')])]).toEqual([0, 1]);
+        expect(overlapping([slot('a', '09:00', '12:00'), slot('b', '12:00', '15:00')]).size).toBe(0);
+        expect(overlapping([slot('a', '09:00', '12:00'), slot('b', '', '')]).size).toBe(0);
+
+        const plan = { delivery: Array.from({ length: 7 }, () => []) as unknown[][], pickup: null, closed: [], lead: 0 };
+        plan.delivery[6] = [slot('am01', '09:00', '12:00'), slot('nn01', '11:00', '14:00')];
+        plan.delivery[0] = [slot('am01', '09:00', '12:00'), slot('nn01', '12:00', '15:00')];
+        render(<Checkout form={themeForm({ store_delivery_schedule_on: true, store_delivery_schedule: JSON.stringify(plan) })} gatewayReady />);
+
+        expect(screen.getByTestId('delivery-week-6-overlap').textContent).toContain('متداخلتان');
+        expect(screen.queryByTestId('delivery-week-0-overlap')).toBeNull();
     });
 
     it('يُقفل حقلَي الموعد ووقته ما دام الجدولُ يحكمهما', () => {

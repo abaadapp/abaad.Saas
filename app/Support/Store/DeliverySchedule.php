@@ -293,7 +293,50 @@ final class DeliverySchedule
             throw ValidationException::withMessages([self::KEY => __('تعذّرت قراءة جدول التسليم — أعد ضبطه.')]);
         }
 
-        return json_encode(self::normalize($data, assignIds: true), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $cfg = self::normalize($data, assignIds: true);
+        self::assertNoOverlap($cfg['delivery'], FlowerOrder::DELIVERY);
+        if ($cfg['pickup'] !== null) {
+            self::assertNoOverlap($cfg['pickup'], FlowerOrder::PICKUP);
+        }
+
+        return json_encode($cfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * فترتان في يومٍ واحدٍ لا تتداخلان — «9 – 12» و«11 – 2» موعدان لا يُعرف
+     * أيُّهما وعد به المحلّ، وطلباتُ الساعة المشتركة تُحسب على الاثنين.
+     *
+     * وتلاصقُهما ليس تداخلًا: «9 – 12» ثمّ «12 – 3» فترتان متتاليتان. ويُفحص
+     * عند الحفظ وحده — `fromJson` لا يردّ جدولًا محفوظًا، فلا يُطفأ جدولُ
+     * متجرٍ قائمٍ بقراءته — وكلُّ طريقةٍ في أسبوعها: التوصيلُ والاستلامُ
+     * يجتمعان في الساعة نفسِها بلا تعارض.
+     *
+     * @param  list<list<array{id: string, from: string, to: string, ar: string, en: string}>>  $week
+     */
+    private static function assertNoOverlap(array $week, string $fulfil): void
+    {
+        $lang = app()->getLocale() === 'en' ? 'en' : 'ar';
+
+        foreach ($week as $dow => $slots) {
+            /*
+             * مرتّبةٌ ببدايتها (`normalize`)، فيكفي أن تُقارن كلُّ فترةٍ بالتي قبلها:
+             * فترةٌ تمسّ ما قبل سابقتها تمسّ سابقتَها أوّلًا.
+             */
+            foreach (array_slice($slots, 1) as $i => $slot) {
+                $prev = $slots[$i];
+                if ($slot['from'] < $prev['to']) {
+                    $words = [
+                        'day' => ShopClock::weekday($dow, $lang),
+                        'a' => ShopClock::range($prev['from'], $prev['to'], $lang),
+                        'b' => ShopClock::range($slot['from'], $slot['to'], $lang),
+                    ];
+
+                    throw ValidationException::withMessages([self::KEY => $fulfil === FlowerOrder::PICKUP
+                        ? __('فترتا استلامٍ يوم :day متداخلتان: :a و:b — ابدأ كل فترة عند نهاية التي قبلها أو بعدها.', $words)
+                        : __('فترتا توصيلٍ يوم :day متداخلتان: :a و:b — ابدأ كل فترة عند نهاية التي قبلها أو بعدها.', $words)]);
+                }
+            }
+        }
     }
 
     /**

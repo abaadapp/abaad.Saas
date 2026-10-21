@@ -7,6 +7,7 @@ use App\Support\MarketingSettings;
 use App\Support\Store\DeliverySchedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 use Tests\Support\RibbonShopAtCheckout;
 use Tests\TestCase;
 
@@ -20,7 +21,7 @@ use Tests\TestCase;
  *   - والخادمُ يردّ ذلك كلَّه ولو أُرسل بيده، ومعرّفًا مصنوعًا.
  *   - الفترةُ المختارة تُكتب بدايةً ونهايةً ومعرّفًا — لا ساعةً تُستخرج من نصّ.
  *   - الاستلامُ بجدوله إن كان له جدول، وإلّا بجدول التوصيل.
- *   - معرّفُ الفترة يُعطى مرّةً ويبقى.
+ *   - معرّفُ الفترة يُعطى مرّةً ويبقى، وفترتان متداخلتان في يومٍ لا تُحفظان.
  *   - متجرٌ لم يفتح الجدولَ يعمل بسطوره كما كان، ومتجرٌ لا يمسّ غيرَه.
  *
  * والحكمُ بساعة مسقط. ودفعةٌ تبدّلت فترتُها والزبونُ عند البنك:
@@ -202,6 +203,59 @@ class TheShopSetsItsDeliveryAndPickupTimesTest extends TestCase
         $this->save([DeliverySchedule::KEY => json_encode($backwards)])->assertSessionHasErrors(DeliverySchedule::KEY);
 
         $this->assertFalse(DeliverySchedule::on($this->shop->id));
+    }
+
+    public function test_saving_refuses_two_windows_that_overlap_in_one_day_and_says_which(): void
+    {
+        $overlap = $this->plan();
+        $overlap['delivery'][6][] = ['id' => 'nn01', 'from' => '11:00', 'to' => '14:00', 'ar' => '', 'en' => ''];
+
+        $this->save([DeliverySchedule::ON => true, DeliverySchedule::KEY => json_encode($overlap)])
+            ->assertSessionHasErrors([DeliverySchedule::KEY => 'فترتا توصيلٍ يوم السبت متداخلتان: 9:00 ص – 12:00 م و11:00 ص – 2:00 م — ابدأ كل فترة عند نهاية التي قبلها أو بعدها.']);
+
+        // وفترةٌ في جوف أخرى تداخلٌ أيضًا — ولو جاءت بعد فترةٍ لا تمسّها
+        $inside = $this->plan();
+        $inside['pickup'][0] = [
+            ['id' => 'pk01', 'from' => '08:00', 'to' => '18:00', 'ar' => '', 'en' => ''],
+            ['id' => 'pk02', 'from' => '12:00', 'to' => '13:00', 'ar' => '', 'en' => ''],
+        ];
+        $this->save([DeliverySchedule::ON => true, DeliverySchedule::KEY => json_encode($inside)])
+            ->assertSessionHasErrors([DeliverySchedule::KEY => 'فترتا استلامٍ يوم الأحد متداخلتان: 8:00 ص – 6:00 م و12:00 م – 1:00 م — ابدأ كل فترة عند نهاية التي قبلها أو بعدها.']);
+
+        $this->assertFalse(DeliverySchedule::on($this->shop->id), 'حُفظ جدولٌ بفترتين متداخلتين');
+        $this->assertSame('', (string) (MarketingSettings::group($this->shop->id, 'website')[DeliverySchedule::KEY] ?? ''));
+
+        // وبلغة شاشة صاحبه
+        app()->setLocale('en');
+        try {
+            DeliverySchedule::validated($overlap);
+            $this->fail('قُبل جدولٌ بفترتين متداخلتين');
+        } catch (ValidationException $e) {
+            $this->assertSame(
+                'Two delivery windows on Saturday overlap: 9:00 AM – 12:00 PM and 11:00 AM – 2:00 PM — start each window when the one before it ends, or later.',
+                $e->errors()[DeliverySchedule::KEY][0],
+            );
+        }
+    }
+
+    public function test_windows_that_only_touch_and_the_old_ways_still_save(): void
+    {
+        // «9 – 12» ثمّ «12 – 3» متتاليتان، والتوصيلُ والاستلامُ يجتمعان في الساعة نفسِها
+        $touching = $this->plan();
+        $touching['delivery'][6][] = ['id' => 'nn01', 'from' => '12:00', 'to' => '15:00', 'ar' => '', 'en' => ''];
+        $this->save([DeliverySchedule::ON => true, DeliverySchedule::KEY => json_encode($touching)])->assertSessionHasNoErrors();
+        $this->assertCount(3, DeliverySchedule::config($this->shop->id)['delivery'][6]);
+
+        // والسطورُ الحرّةُ القديمة تُحفظ كما كانت ولو تداخلت ساعاتُها — لا يُفحص فيها شيء
+        $this->save([DeliverySchedule::ON => false, 'store_delivery_slots' => "9 ص – 12 م\n11 ص – 2 م"])->assertSessionHasNoErrors();
+        $this->assertSame("9 ص – 12 م\n11 ص – 2 م", MarketingSettings::group($this->shop->id, 'website')['store_delivery_slots']);
+
+        // وجدولٌ محفوظٌ يُقرأ كما هو — الفحصُ عند الحفظ لا عند العرض
+        $stored = $this->plan();
+        $stored['delivery'][6][] = ['id' => 'nn01', 'from' => '11:00', 'to' => '14:00', 'ar' => '', 'en' => ''];
+        $this->settings([DeliverySchedule::ON => '1', DeliverySchedule::KEY => json_encode($stored)]);
+        $saturday = collect(DeliverySchedule::days($this->shop->id, 'delivery'))->firstWhere('date', self::SAT);
+        $this->assertSame(['am01', 'nn01', 'pm01'], array_column($saturday['slots'], 'id'));
     }
 
     /* ═════════════ وما يقرؤه الزبون ═════════════ */

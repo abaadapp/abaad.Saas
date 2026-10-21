@@ -768,7 +768,7 @@
             // وشروطٌ حُدّثت والصفحةُ مفتوحة — يُعرض نصُّها الجديد وتُفرغ الموافقة (`TermsChanged`)
             if (r && r.terms && terms) { terms.replace(r.terms, [].concat((r.errors || {}).terms || []).join(' ')); return; }
             // وفترةٌ مضى وقتُها والصفحةُ مفتوحة — تُطرح فلا تُختار ثانية، ويُقال لماذا تحتها
-            if (r && r.errors && r.errors.slot && schedule && payload.slot) schedule.drop(payload.slot);
+            if (r && r.errors && r.errors.slot && schedule && payload.slot) schedule.drop(payload);
             /*
              * وخطأُ الكود يُقرأ تحت حقله، ويُفتح صندوقُ الموافقة بالسبب
              * والإجماليّ الجديد. ولا يُرسَل الطلبُ من نفسه: الإقرارُ ضغطةٌ.

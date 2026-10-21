@@ -14,7 +14,8 @@
  *   - تبديلُ الطريقة (توصيل / استلام) يبدّل القائمة — والاستلامُ قد يكون له جدولُه.
  *   - اليومُ يفتح فتراتِه وحدَها، وفترةٌ واحدةٌ في يومٍ تُختار وحدَها.
  *   - والموعدُ المختارُ يُكتب في ملخّص الطلب.
- *   - فترةٌ قال الخادمُ إنّها لم تعد متاحة تُطرح (`drop`) فلا تُختار ثانية.
+ *   - فترةٌ قال الخادمُ إنّها لم تعد متاحة تُطرح (`drop`) من يومها وطريقتها
+ *     وحدهما، فلا تُختار ثانية — وفترةُ الأيّام الأخرى بالمعرّف نفسِه باقية.
  */
 window.RBSchedule = (function () {
     function option(value, text) {
@@ -81,13 +82,16 @@ window.RBSchedule = (function () {
             fulfil: function (f) { fulfil = f; paintDays(); },
             payload: function () { return { date: daySel.value, slot: slotSel.value }; },
             /*
-             * فترةٌ ردّها الخادم (مضى وقتُها والصفحةُ مفتوحة) تُطرح من يومها،
-             * ويومٌ لم تبقَ فيه فترةٌ يُطرح معها.
+             * فترةٌ ردّها الخادم (مضى وقتُها والصفحةُ مفتوحة) تُطرح من يومها
+             * وطريقتها كما أُرسلت — `{fulfil, date, slot}` — ويومٌ لم تبقَ فيه
+             * فترةٌ يُطرح معها. والمعرّفُ فريدٌ في يومه لا في أسبوعه
+             * (`DeliverySchedule::normalize`): «المساء» نفسُه في السبت باقٍ.
              */
-            drop: function (slotId) {
-                var mine = list();
+            drop: function (sent) {
+                var mine = (days && days[sent.fulfil]) || [];
                 for (var i = mine.length - 1; i >= 0; i--) {
-                    mine[i].slots = mine[i].slots.filter(function (s) { return s.id !== slotId; });
+                    if (mine[i].date !== sent.date) continue;
+                    mine[i].slots = mine[i].slots.filter(function (s) { return s.id !== sent.slot; });
                     if (!mine[i].slots.length) mine.splice(i, 1);
                 }
                 paintDays();

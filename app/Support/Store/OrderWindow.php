@@ -22,10 +22,19 @@ use Illuminate\Validation\ValidationException;
  * ═══ وفترةٌ تعبر منتصفَ الليل ═══
  *
  * «8 مساءً – 2 فجرًا» تُكتب `20:00 → 02:00`، وما كانت نهايتُه قبل بدايتها
- * عبرت إلى اليوم التالي. وتُنسب الفترةُ إلى **يوم بدايتها**: إجازةُ الجمعة
- * تُغلق فترةَ الجمعة كلَّها (وما عبر منها إلى السبت)، ولا تقطع ذيلَ فترة
- * الخميس الذي دخل الجمعة بعد منتصف الليل — هو مناوبةُ الخميس.
- * و`00:00 → 00:00` يومٌ كامل.
+ * عبرت إلى اليوم التالي. و`00:00 → 00:00` يومٌ كامل.
+ *
+ * ═══ ويومُ الإغلاق مغلقٌ كلُّه ═══
+ *
+ * يومٌ أغلقه صاحبُه — إجازةً، أو قبل أوّل يومٍ للاستقبال، أو بعد آخره — لا
+ * يُستقبل فيه طلبٌ في أيّ ساعةٍ منه، من منتصف ليله إلى منتصف الليل الذي
+ * يليه بتوقيت المتجر. فلا يُفاجأ بطلبٍ في يومٍ قال إنّه لا يعمل فيه:
+ *
+ *   - فترةُ اليوم المغلق لا تُفتح، ولا ما عبر منها إلى غده.
+ *   - وفترةٌ من يومٍ مفتوحٍ تعبر إلى يومٍ مغلق تقف عند منتصف الليل: إجازةُ
+ *     الجمعة تقطع مناوبةَ الخميس `20:00 → 02:00` عند الثانية عشرة.
+ *
+ * فالحكمُ للتاريخ الذي تقع فيه اللحظة، لا لليوم الذي بدأت فيه الفترة.
  *
  * ═══ وهذا لا يمسّ التوصيل ═══
  *
@@ -142,25 +151,19 @@ final class OrderWindow
     }
 
     /**
-     * فتراتُ يومٍ بعينه بحدودها الفعليّة — لا شيء ليومٍ أُغلق أو خارج المدّة.
+     * فتراتُ يومٍ بعينه بحدودها الفعليّة — لا شيء ليومٍ أُغلق أو خارج المدّة،
+     * وما عبر منها إلى غدٍ مغلقٍ يقف عند منتصف الليل.
      *
      * @return list<array{0: CarbonImmutable, 1: CarbonImmutable}>
      */
     private static function windowsOn(array $schedule, CarbonImmutable $day): array
     {
-        $ymd = $day->toDateString();
+        if (! self::takesOrdersOn($schedule, $day->toDateString())) {
+            return [];
+        }
 
-        if (($schedule['starts'] ?? null) !== null && $ymd < $schedule['starts']) {
-            return [];
-        }
-        if (($schedule['ends'] ?? null) !== null && $ymd > $schedule['ends']) {
-            return [];
-        }
-        foreach ($schedule['closed'] ?? [] as $range) {
-            if ($ymd >= $range['from'] && $ymd <= $range['to']) {
-                return [];
-            }
-        }
+        $midnight = $day->addDay();
+        $tomorrowOpen = self::takesOrdersOn($schedule, $midnight->toDateString());
 
         $out = [];
         foreach ($schedule['week'][$day->dayOfWeek] ?? [] as $w) {
@@ -170,10 +173,31 @@ final class OrderWindow
             if ($end->lessThanOrEqualTo($start)) {
                 $end = $end->addDay();
             }
+            if (! $tomorrowOpen && $end->greaterThan($midnight)) {
+                $end = $midnight;
+            }
             $out[] = [$start, $end];
         }
 
         return $out;
+    }
+
+    /** أيُستقبل في هذا التاريخ طلبٌ أصلًا؟ — داخلَ المدّة، وليس إجازة */
+    private static function takesOrdersOn(array $schedule, string $ymd): bool
+    {
+        if (($schedule['starts'] ?? null) !== null && $ymd < $schedule['starts']) {
+            return false;
+        }
+        if (($schedule['ends'] ?? null) !== null && $ymd > $schedule['ends']) {
+            return false;
+        }
+        foreach ($schedule['closed'] ?? [] as $range) {
+            if ($ymd >= $range['from'] && $ymd <= $range['to']) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /* ═══════════ رسالةُ الإغلاق ═══════════ */

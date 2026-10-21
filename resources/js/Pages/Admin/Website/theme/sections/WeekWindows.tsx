@@ -1,14 +1,16 @@
 import { Copy, Plus, Trash2 } from 'lucide-react';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
-import { DAY_NAMES, LABEL_MAX, MAX_CLOSURES, WEEK_ORDER, crossesMidnight, wholeDay, type Closure } from './schedule';
+import { DAY_NAMES, LABEL_MAX, MAX_CLOSURES, WEEK_ORDER, crossesMidnight, overlapping, wholeDay, type Closure } from './schedule';
 
 /**
  * محرّرُ الأسبوع — لكلّ يومٍ فتراتُه، ويومٌ بلا فترةٍ مُغلق.
  *
  * يخدم جدولين: استقبالُ الطلبات (`OrderWindow`) وفتراتُ التسليم والاستلام
  * (`DeliverySchedule`). والفرقُ بينهما معطًى لا منسوخ: فترةُ الاستقبال قد
- * تعبر منتصف الليل (`overnight`)، وفترةُ التسليم لها اسمٌ بلغتين (`labels`).
+ * تعبر منتصف الليل (`overnight`)، وفترةُ التسليم لها اسمٌ بلغتين (`labels`)
+ * ولا تتداخل مع أختها في يومها (`exclusive`) — يُعلَّم التداخلُ هنا قبل أن
+ * يردّه الخادمُ عند الحفظ.
  *
  * ولا يكتب في النموذج بنفسه — يردّ الأسبوعَ كلَّه إلى من يملك المفتاح، فيبقى
  * المفتاحُ يُكتب في قسمٍ واحد.
@@ -22,6 +24,7 @@ export default function WeekWindows<T extends Row>({
     max,
     labels = false,
     overnight = false,
+    exclusive = false,
     testid,
 }: {
     week: T[][];
@@ -30,6 +33,7 @@ export default function WeekWindows<T extends Row>({
     max: number;
     labels?: boolean;
     overnight?: boolean;
+    exclusive?: boolean;
     testid: string;
 }) {
     const t = useTranslate();
@@ -53,6 +57,11 @@ export default function WeekWindows<T extends Row>({
                     </div>
 
                     <div className="min-w-0 flex-1 space-y-2">
+                        {(exclusive ? overlapping(week[d]) : new Set<number>()).size > 0 && (
+                            <p className="text-[11px] text-[#b91c1c]" data-testid={`${testid}-${d}-overlap`}>
+                                {t('فترتان في هذا اليوم متداخلتان — ابدأ كل فترة عند نهاية التي قبلها أو بعدها.')}
+                            </p>
+                        )}
                         {week[d].map((r, i) => (
                             <div key={i} className="flex flex-wrap items-center gap-2" data-testid={`${testid}-${d}-${i}`}>
                                 <Input

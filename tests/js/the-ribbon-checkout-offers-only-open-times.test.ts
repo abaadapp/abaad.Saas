@@ -10,7 +10,8 @@ import { resolve } from 'node:path';
  *   - اليومُ يفتح فتراتِه وحدَها، وفترةٌ واحدةٌ في يومٍ تُختار وحدَها.
  *   - ما لم يعد في القائمة لا يبقى مختارًا، ولا يُرسَل.
  *   - الموعدُ يُكتب في الملخّص، وطريقةٌ بلا أيّامٍ يُقال لها ذلك.
- *   - فترةٌ ردّها الخادمُ تُطرح ويومُها إن خلا.
+ *   - فترةٌ ردّها الخادمُ تُطرح من يومها وطريقتها وحدهما، ويومُها إن خلا —
+ *     والمعرّفُ نفسُه في يومٍ آخر أو طريقةٍ أخرى باقٍ.
  *
  * والمكتبةُ تُضمَّن في `store/ribbon/checkout.blade.php` كما هي، وما يحرسه
  * الخادمُ في `TheShopSetsItsDeliveryAndPickupTimesTest`.
@@ -22,7 +23,7 @@ type Api = {
     mount: (form: HTMLFormElement, days: Record<string, Day[]>, T: Record<string, string>) => {
         fulfil: (f: string) => void;
         payload: () => { date: string; slot: string };
-        drop: (slotId: string) => void;
+        drop: (sent: { fulfil: string; date: string; slot: string }) => void;
     };
 };
 
@@ -130,15 +131,43 @@ describe('يومُ التسليم وفترتُه في إتمام RIBBON', () => 
         expect(form.querySelector<HTMLElement>('[data-rb-no-days]')!.hidden).toBe(true);
     });
 
-    it('يطرح فترةً ردّها الخادمُ، ويومَها إن خلا', () => {
+    it('يطرح فترةً ردّها الخادمُ من يومها، ويومَها إن خلا', () => {
         const { api, day, slot, pick, values } = page();
         api.fulfil('delivery');
         pick(day, '2027-02-10');
 
-        api.drop('pm01');
+        api.drop({ fulfil: 'delivery', date: '2027-02-10', slot: 'pm01' });
 
         expect(values(day)).toEqual(['2027-02-13']);
+        expect(api.payload()).toEqual({ date: '', slot: '' });
+        // و«المساء» بالمعرّف نفسِه في السبت فترةٌ أخرى — لم يردّها الخادم
         pick(day, '2027-02-13');
+        expect(values(slot)).toEqual(['am01', 'pm01']);
+    });
+
+    it('لا يطرح المعرّفَ نفسَه من يومٍ آخر ولا من الطريقة الأخرى', () => {
+        const evening = { id: 'pm01', label: '4:00 م – 9:00 م' };
+        const morning = { id: 'am01', label: '9:00 ص – 12:00 م' };
+        const { api, day, slot, pick, values } = page({
+            delivery: [
+                { date: '2027-02-10', label: 'الأربعاء 10 فبراير', slots: [morning, evening] },
+                { date: '2027-02-11', label: 'الخميس 11 فبراير', slots: [evening] },
+            ],
+            pickup: [{ date: '2027-02-10', label: 'الأربعاء 10 فبراير', slots: [evening] }],
+        });
+        api.fulfil('delivery');
+        // والزبونُ بدّل إلى الاستلام والطلبُ في الطريق — والردُّ عن التوصيل الذي أُرسل
+        api.fulfil('pickup');
+
+        api.drop({ fulfil: 'delivery', date: '2027-02-10', slot: 'pm01' });
+
+        pick(day, '2027-02-10');
+        expect(values(slot)).toEqual(['pm01']);
+
+        api.fulfil('delivery');
+        pick(day, '2027-02-10');
         expect(values(slot)).toEqual(['am01']);
+        pick(day, '2027-02-11');
+        expect(values(slot)).toEqual(['pm01']);
     });
 });

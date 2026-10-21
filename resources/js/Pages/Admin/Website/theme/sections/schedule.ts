@@ -131,6 +131,24 @@ export function wholeDay(w: Window): boolean {
 }
 
 /**
+ * فتراتُ يومٍ تتداخل — كما يردّها الخادم عند الحفظ (`DeliverySchedule::assertNoOverlap`).
+ *
+ * تردّ مواضعَ ما يتداخل مع غيره في اليوم نفسه. وتلاصقُهما ليس تداخلًا:
+ * «9 – 12» ثمّ «12 – 3» متتاليتان. وما لم تُكتب ساعتاه بعدُ لا يُحكم عليه.
+ */
+export function overlapping(day: Window[]): Set<number> {
+    const out = new Set<number>();
+    day.forEach((a, i) => {
+        if (!a.from || !a.to || a.to <= a.from) return;
+        day.forEach((b, j) => {
+            if (i !== j && b.from && b.to && b.to > b.from && a.from < b.to && b.from < a.to) out.add(i);
+        });
+    });
+
+    return out;
+}
+
+/**
  * الرسالةُ بموعدٍ تُعاين به — كما يملؤها الخادم (`OrderWindow::fill`).
  *
  * والسطرُ الذي يذكر موعدًا لا يُعرف يُسقط، ولا يُعرض متغيّرٌ خام. ومن لم يبقَ

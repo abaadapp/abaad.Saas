@@ -115,7 +115,7 @@ export default function Orders({ form, desk }: { form: ThemeForm; desk: OrderDes
                                 />
                             </Field>
 
-                            <Field label="أيام الإغلاق والإجازات" hint="لا تُستقبل فيها طلبات ولو كانت أيام عمل في الجدول">
+                            <Field label="أيام الإغلاق والإجازات" hint="مغلقة طوال اليوم بتوقيت مسقط، ولو كانت أيام عمل في الجدول. والفترة التي تمتد إليها من اليوم السابق تتوقف عند منتصف الليل">
                                 <ClosureList
                                     closed={schedule.closed}
                                     onChange={(closed) => setSchedule({ ...schedule, closed })}

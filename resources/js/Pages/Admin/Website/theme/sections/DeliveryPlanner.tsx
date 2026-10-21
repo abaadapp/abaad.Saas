@@ -39,7 +39,7 @@ export default function DeliveryPlanner({
                 label={offersPickup && !ownPickup ? 'أيام التوصيل والاستلام وفتراتها' : 'أيام التوصيل وفتراته'}
                 hint="يوم بلا فترة لا يُعرض للزبون. واسم الفترة اختياري — وبلا اسم تُكتب بساعتيها"
             >
-                <WeekWindows week={plan.delivery} onChange={(delivery) => onChange({ ...plan, delivery })} make={fresh} max={MAX_SLOTS} labels testid="delivery-week" />
+                <WeekWindows week={plan.delivery} onChange={(delivery) => onChange({ ...plan, delivery })} make={fresh} max={MAX_SLOTS} labels exclusive testid="delivery-week" />
             </Field>
 
             {offersPickup && (
@@ -68,7 +68,7 @@ export default function DeliveryPlanner({
                     </div>
                     {ownPickup && plan.pickup && (
                         <div className="mt-3">
-                            <WeekWindows week={plan.pickup} onChange={(pickup) => onChange({ ...plan, pickup })} make={fresh} max={MAX_SLOTS} labels testid="pickup-week" />
+                            <WeekWindows week={plan.pickup} onChange={(pickup) => onChange({ ...plan, pickup })} make={fresh} max={MAX_SLOTS} labels exclusive testid="pickup-week" />
                         </div>
                     )}
                 </Field>

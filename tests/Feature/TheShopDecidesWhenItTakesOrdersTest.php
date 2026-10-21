@@ -37,6 +37,8 @@ class TheShopDecidesWhenItTakesOrdersTest extends TestCase
 
     private const FRI = 5;
 
+    private const SAT = 6;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -127,25 +129,49 @@ class TheShopDecidesWhenItTakesOrdersTest extends TestCase
         $this->assertTrue($this->at('2027-02-10 16:30:00')['open']);
     }
 
-    public function test_a_window_past_midnight_belongs_to_the_day_it_starts(): void
+    public function test_a_window_past_midnight_runs_into_the_next_morning(): void
     {
+        $this->useSchedule($this->schedule([self::THU => [['20:00', '02:00']]]));
+
+        $this->assertFalse($this->at('2027-02-11 19:59:00')['open']);
+        $this->assertTrue($this->at('2027-02-11 23:30:00')['open']);
+        $this->assertTrue($this->at('2027-02-12 01:30:00')['open'], 'ذيلُ فترة الخميس بعد منتصف الليل أُغلق');
+        $this->assertFalse($this->at('2027-02-12 02:00:00')['open']);
+    }
+
+    public function test_a_closed_day_takes_no_order_at_any_hour_not_even_from_last_nights_window(): void
+    {
+        // مناوبةُ الخميس 20:00 → 02:00، والجمعةُ ١٢ فبراير إجازة، والسبتُ يفتح العاشرة
         $this->useSchedule($this->schedule(
-            [self::WED => [['20:00', '02:00']]],
-            // والخميسُ إجازة — ولا يقطع ذيلَ مناوبة الأربعاء بعد منتصف الليل
+            [self::THU => [['20:00', '02:00']], self::SAT => [['10:00', '14:00']]],
+            ['closed' => [['from' => '2027-02-12', 'to' => '2027-02-12']]],
+        ));
+
+        $this->assertTrue($this->at('2027-02-11 23:59:00')['open']);
+        $midnight = $this->at('2027-02-12 00:00:00');
+        $this->assertFalse($midnight['open'], 'استُقبل طلبٌ في يوم الإغلاق بعد منتصف الليل');
+        $this->assertSame('schedule', $midnight['why']);
+        $this->assertSame('2027-02-13 10:00:00', $midnight['next']->toDateTimeString());
+
+        // والطلبُ نفسُه يُردّ — لا الحالةُ وحدها
+        $this->at('2027-02-12 01:30:00');
+        $this->checkout()->assertStatus(422)->assertJsonValidationErrors('items');
+        $this->assertSame(0, Order::count(), 'كُتب طلبٌ في يوم الإغلاق');
+
+        // وإجازةُ الخميس نفسِه: لا تُفتح فترتُه، ولا ذيلُها في الجمعة المفتوحة
+        $this->useSchedule($this->schedule(
+            [self::THU => [['20:00', '02:00']]],
             ['closed' => [['from' => '2027-02-11', 'to' => '2027-02-11']]],
         ));
+        $this->assertFalse($this->at('2027-02-11 21:00:00')['open']);
+        $this->assertFalse($this->at('2027-02-12 01:30:00')['open'], 'فُتحت مناوبةُ يومٍ مغلق بعد منتصف ليله');
 
-        $this->assertTrue($this->at('2027-02-10 23:30:00')['open']);
-        $this->assertTrue($this->at('2027-02-11 01:30:00')['open'], 'ذيلُ فترة الأربعاء بعد منتصف الليل أُغلق');
-        $this->assertFalse($this->at('2027-02-11 02:00:00')['open']);
-
-        // وإجازةُ الأربعاء نفسِه تُغلق فترتَه وذيلَها معًا
-        $this->useSchedule($this->schedule(
-            [self::WED => [['20:00', '02:00']]],
-            ['closed' => [['from' => '2027-02-10', 'to' => '2027-02-10']]],
-        ));
-        $this->assertFalse($this->at('2027-02-10 21:00:00')['open']);
-        $this->assertFalse($this->at('2027-02-11 01:30:00')['open']);
+        // وآخرُ يومٍ للاستقبال الخميس: الجمعةُ بعده مغلقةٌ من منتصف ليلها، ولا موعدَ فتح
+        $this->useSchedule($this->schedule([self::THU => [['20:00', '02:00']]], ['ends' => '2027-02-11']));
+        $this->assertTrue($this->at('2027-02-11 23:30:00')['open']);
+        $after = $this->at('2027-02-12 00:30:00');
+        $this->assertFalse($after['open'], 'استُقبل طلبٌ بعد آخر يومٍ للاستقبال');
+        $this->assertNull($after['next']);
     }
 
     public function test_holidays_and_the_first_and_last_day_close_the_shop(): void

@@ -11,6 +11,7 @@ use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Support\BoutiqueDues;
 use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Search;
@@ -166,7 +167,10 @@ class BoutiqueController extends Controller
                 'issued_at' => optional($settlement->issued_at)->format('Y-m-d H:i'),
                 'paid' => $settlement->paid(),
                 'expense_reference' => $settlement->expense?->reference,
+                ...self::componentsOf($settlement),
             ] : null,
+            // الرصيدُ بين المتجر والبوتيك وحركاتُه — لمن فُتح له سجلُّ المكوّنات وحده
+            'ledger' => BoutiqueDues::active((int) $business->id) ? BoutiqueDues::ledgerFor((int) $business->id, (int) $boutique->id) : null,
             /*
              * وتاريخُ ما صدر — فيُقرأ ما مضى بلا تنقّلٍ بين الشهور.
              */
@@ -177,6 +181,7 @@ class BoutiqueController extends Controller
                     'id' => $s->id, 'number' => $s->number, 'period' => $s->period,
                     'gross' => (float) $s->gross, 'commission' => (float) $s->commission,
                     'net' => (float) $s->net, 'paid' => $s->paid(),
+                    ...self::componentsOf($s),
                 ])->all(),
         ]);
     }
@@ -230,7 +235,63 @@ class BoutiqueController extends Controller
         return back()->with('toast', ['msg' => __('حُذف البوتيك — وبقيت أصنافه على الرفّ'), 'type' => 'success']);
     }
 
+    /** جزءُ المكوّنات في ورقة — ونوعُها: تسويةٌ أم سندُ استرداد */
+    private static function componentsOf(BoutiqueSettlement $s): array
+    {
+        return [
+            'kind' => $s->kind ?? BoutiqueSettlement::SETTLEMENT,
+            'components_due' => (float) $s->components_due,
+            'components_credit' => (float) $s->components_credit,
+            'components_net' => (float) $s->components_net,
+            'components_paid' => $s->components_paid_at !== null || (float) $s->components_due <= 0,
+            'standalone_paid' => (int) $s->lines_count === 0 || ($s->expense !== null && $s->expense->status === \App\Models\Expense::PAID),
+        ];
+    }
+
     /* ═══════════ التسوية ═══════════ */
+
+    /** طرقُ السداد والاسترداد — ما يعرفه `Books::payingAccount` */
+    private const METHODS = ['نقدي', 'تحويل', 'بطاقة', 'شيك'];
+
+    /**
+     * سدادُ جزء المكوّنات من ورقة — مدين 2160، ودائن 1370 بما قاصّته، والنقدُ بالباقي.
+     *
+     * وجزءُ المنفرد لا يُسدَّد من هنا: مصروفُه في «المبالغ المستحقة» كما كان.
+     */
+    public function payComponents(Request $request, int $id, int $settlement)
+    {
+        $business = $this->shop();
+        $boutique = $this->find($id);
+        abort_unless(BoutiqueDues::active((int) $business->id), 404);
+        $data = $request->validate(['method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)]]);
+
+        $doc = BoutiqueSettlement::where('business_id', $business->id)->where('boutique_id', $boutique->id)
+            ->where('kind', BoutiqueSettlement::SETTLEMENT)->findOrFail($settlement);
+        BoutiqueDues::pay($doc, $data['method']);
+
+        return back()->with('toast', ['msg' => __('سُجّل سدادُ مستحقّات المكوّنات في :number', ['number' => $doc->number]), 'type' => 'success']);
+    }
+
+    /** سندُ استرداد: البوتيكُ ردّ نقدًا ما للمتجر عليه — كلَّه أو بعضَه */
+    public function refund(Request $request, int $id)
+    {
+        $business = $this->shop();
+        $boutique = $this->find($id);
+        abort_unless(BoutiqueDues::active((int) $business->id), 404);
+        $data = $request->validate([
+            'method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)],
+            'amount' => ['nullable', 'numeric', 'gt:0', 'max:1000000'],
+        ]);
+
+        try {
+            $doc = BoutiqueDues::refund($business, $boutique, $data['method'], null, auth()->user()?->name,
+                isset($data['amount']) ? (float) $data['amount'] : null);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['refund' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('سُجّل الاسترداد :number', ['number' => $doc->number]), 'type' => 'success']);
+    }
 
     public function settle(Request $request, int $id)
     {

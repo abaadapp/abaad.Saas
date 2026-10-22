@@ -46,6 +46,7 @@ use App\Http\Controllers\Admin\Payroll\PayrollPaymentController;
 use App\Http\Controllers\Admin\Payroll\PayrollRunController;
 use App\Http\Controllers\Admin\PreparationController;
 use App\Http\Controllers\Admin\ProductCompositionController;
+use App\Http\Controllers\Admin\BoutiquePartsController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ProductImageController;
 use App\Http\Controllers\Admin\ProductImportExportController;
@@ -720,6 +721,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::delete('/products/boutiques/{id}', [BoutiqueController::class, 'destroy'])->name('boutiques.destroy');
     Route::post('/products/boutiques/{id}/products', [BoutiqueController::class, 'attach'])->name('boutiques.attach');
     Route::post('/products/boutiques/{id}/settle', [BoutiqueController::class, 'settle'])->name('boutiques.settle');
+    Route::post('/products/boutiques/{id}/settlements/{settlement}/pay', [BoutiqueController::class, 'payComponents'])
+        ->whereNumber('id')->whereNumber('settlement')->name('boutiques.components.pay');
+    Route::post('/products/boutiques/{id}/refund', [BoutiqueController::class, 'refund'])->whereNumber('id')->name('boutiques.refund');
     Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');
     Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
     // تعطيلُ صنفٍ وتفعيلُه — البديلُ الذي يقصده أكثرُ من يضغط «حذف»
@@ -790,6 +794,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::delete('/products/{id}/recipe/{item}', [ProductCompositionController::class, 'destroyRecipeItem'])->name('products.recipe.destroy');
     Route::put('/products/{id}/addons', [ProductCompositionController::class, 'syncAddons'])->name('products.addons.sync');
     Route::delete('/products/{id}/addons/{addon}', [ProductCompositionController::class, 'destroyAddon'])->name('products.addons.destroy');
+    // منتجاتُ البوتيك في الباقة — لمن فُتح له سجلُّ مستحقّات المكوّنات. انظر BoutiquePartsController
+    Route::post('/products/{id}/boutique-parts', [BoutiquePartsController::class, 'store'])->whereNumber('id')->name('products.boutique-parts.store');
+    Route::delete('/products/{id}/boutique-parts/{kind}/{part}', [BoutiquePartsController::class, 'destroy'])
+        ->whereNumber('id')->whereIn('kind', ['included', 'optional'])->whereNumber('part')->name('products.boutique-parts.destroy');
     Route::post('/products/{id}/restore', [TrashController::class, 'restore'])
         ->defaults('type', 'product')->name('products.restore');
     // المحو النهائي يتبع صلاحية الحذف نفسها: من أخفاه يمحوه، ولا أحد سواه
@@ -825,6 +833,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      */
     Route::put('/orders/{number}/details', [OrderDetailController::class, 'update'])->name('orders.details.update');
     Route::post('/orders/{number}/status', [OrderDetailController::class, 'status'])->name('orders.status');
+    Route::post('/orders/{number}/boutique-pieces', [OrderDetailController::class, 'boutiquePieces'])->name('orders.boutique-pieces');
     /*
      * تصحيح الفاتورة من شاشة المبيعات — الكتابةُ نفسُها التي يُصحّح بها الكاشير.
      *

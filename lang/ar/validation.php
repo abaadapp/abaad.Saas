@@ -293,6 +293,9 @@ return [
         'checked' => 'التحديد',
         'draft' => 'الحفظ مسودّة',
         'published' => 'النشر',
+        // أين تُباع الإضافة — `CatalogQuickAddController::channelAttributes`
+        'pos_enabled' => 'البيع في نقطة البيع',
+        'web_enabled' => 'البيع في الموقع الإلكتروني',
         'index' => 'الظهور في محرّكات البحث',
         'lang' => 'لغة الورقة',
         'location' => 'الموقع',
@@ -682,6 +685,12 @@ return [
         'items.*.cost' => 'تكلفة العنصر',
         'items.*.product_id' => 'المنتج',
         'items.*.id' => 'المعرّف',
+        'component_product_id' => 'صنف البوتيك',
+        'addon_price' => 'سعر الإضافة للعميل',
+        'pieces' => 'قطع البوتيك',
+        'pieces.*' => 'قطعة البوتيك',
+        'pieces.*.returned' => 'ما عاد من القطعة',
+        'pieces.*.lost' => 'ما لم يعد من القطعة',
     ],
 
 ];

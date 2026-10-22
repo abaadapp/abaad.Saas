@@ -35,6 +35,7 @@ export default function BusinessCreate() {
                     ends_at: '',
                     // مطفأٌ صراحةً — ومفتاحٌ غائبٌ عن الحمولة لا يُقرأ «أُطفئ»
                     boutiques_enabled: false,
+                    boutique_components_enabled: false,
                     gift_orders_enabled: false,
                     order_notes_and_edits_enabled: false,
                     thermal_delivery_note_enabled: false,

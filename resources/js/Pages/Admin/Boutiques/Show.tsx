@@ -13,6 +13,7 @@ import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import ProductsDialog, { type PickRow } from './ProductsDialog';
+import ComponentsPanel, { type BoutiqueLedger, type ComponentsPart, type SettlementComponents } from './ComponentsPanel';
 
 interface Line {
     product_id: number | null;
@@ -35,14 +36,20 @@ interface Props {
         partial: boolean;
         period: string; from: string; to: string; lines: Line[];
         quantity: number; gross: number; commission: number; net: number; lines_count: number;
+        /** مكوّناتُ الباقات وإضافاتُها — انظر `BoutiqueDues::statement` */
+        components?: ComponentsPart;
+        /** المطلوب سداده: صافي المنفرد وصافي المكوّنات معًا */
+        payable?: number;
     };
+    /** الرصيدُ بين المتجر والبوتيك — `null` لمن لم يُفتح له سجلُّ المكوّنات */
+    ledger?: BoutiqueLedger | null;
     period: string;
     periods: { value: string; label: string }[];
     /** آخرُ ورقةٍ صدرت في هذا الشهر — وقد تكون واحدةً من عدّة */
     settlement: {
         id: number; number: string; net: number; gross: number; commission: number;
         issued_at: string | null; paid: boolean; expense_reference: string | null;
-    } | null;
+    } & Partial<SettlementComponents> | null;
     history: { id: number; number: string; period: string; gross: number; commission: number; net: number; paid: boolean }[];
     /** أصنافُ هذا البوتيك اليوم — لا ما بِيع منها في شهر */
     products: {
@@ -63,7 +70,7 @@ interface Props {
  * الكشفُ لأجله)، ثمّ ما بُني منه صنفًا صنفًا، ثمّ ما صدر من قبل.
  */
 export default function BoutiqueShow() {
-    const { boutique, statement, period, periods, settlement, history, products, catalog, q, context } =
+    const { boutique, statement, period, periods, settlement, history, products, catalog, q, ledger, context } =
         usePage<PageProps<Props>>().props;
     const [picking, setPicking] = useState(false);
     const t = useTranslate();
@@ -189,7 +196,7 @@ export default function BoutiqueShow() {
                     </div>
                 )}
 
-                {(statement.lines_count > 0 || ! settlement) && (
+                {(statement.lines_count > 0 || (statement.components?.count ?? 0) > 0 || ! settlement) && (
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex min-w-0 items-center gap-2.5">
                             <Receipt className="size-5 shrink-0 text-[#6b7280]" />
@@ -202,14 +209,14 @@ export default function BoutiqueShow() {
                                 لم يُقَل له، فيُقال قبل الضغط لا بعده.
                             */}
                             <p className="text-[13px] leading-6 text-[#6b7280]">
-                                {statement.lines_count === 0
+                                {statement.lines_count === 0 && (statement.components?.count ?? 0) === 0
                                     ? t('لا بيعَ ينتظر ورقةً في هذا الشهر — لا تسوية بلا بيع.')
                                     : statement.partial
                                       ? t('الشهرُ ما زال يبيع — هذه ورقةٌ بما بِيع حتى الآن، وما بعده تحمله ورقةٌ تليها.')
                                       : t('إصدار التسوية يُجمّد أرقام الشهر ويكتب المستحق في «المبالغ المستحقة».')}
                             </p>
                         </div>
-                        <Button onClick={issue} disabled={statement.lines_count === 0 || form.processing}>
+                        <Button onClick={issue} disabled={(statement.lines_count === 0 && (statement.components?.count ?? 0) === 0) || form.processing}>
                             {t('أصدر التسوية')}
                         </Button>
                     </div>
@@ -218,6 +225,17 @@ export default function BoutiqueShow() {
                     <p className="w-full text-[12px] text-[#b91c1c]">{errors.settlement}</p>
                 )}
             </Card>
+
+            {ledger && statement.components && (
+                <ComponentsPanel
+                    boutiqueId={boutique.id}
+                    part={statement.components}
+                    payable={statement.payable ?? statement.net}
+                    ledger={ledger}
+                    settlement={settlement ? { ...settlement, id: settlement.id, number: settlement.number } : null}
+                    currency={currency}
+                />
+            )}
 
             {/*
                 أصنافُ البوتيك — ما يحمله اليوم، لا ما بِيع منه في شهر.

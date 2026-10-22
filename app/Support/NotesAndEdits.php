@@ -151,8 +151,8 @@ final class NotesAndEdits
                     'name' => Demo::ln($v->name, $v->name_en),
                     'price' => (float) $v->price,
                 ])->values()->all(),
-                'addons' => ProductAddons::for($p, $allAddons, $addonMap)
-                    ->filter(fn ($a) => (bool) $a->active)
+                // وإضافاتُ فاتورة الصندوق ما فُتح لنقطة البيع — يردّ غيرَها `OrderCorrection::priceOne`
+                'addons' => ProductAddons::for($p, $allAddons, $addonMap, $channel === SalesChannel::POS ? SaleLines::POS : null)
                     ->map(fn ($a) => ['id' => (int) $a->id, 'name' => Demo::ln($a->name, $a->name_en), 'price' => (float) $a->price])
                     ->values()->all(),
             ])->values()->all();

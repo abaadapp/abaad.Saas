@@ -456,8 +456,16 @@ final class WebCheckout
     public static function place(Business $business, array $payload, string $lang = 'ar', bool $paid = false, ?StorePaymentIntent $intent = null): Order
     {
         $bid = (int) $business->id;
-        // دفعةٌ قُبضت تُتمّ طلبَها ولو رُفع المتجرُ من قائمة Paymob بعد فتحها — انظر `payments`
-        $settling = $paid ? $intent : null;
+        /*
+         * دفعةٌ قُبضت تُتمّ طلبَها ولو رُفع المتجرُ من قائمة Paymob بعد فتحها — انظر `payments`.
+         *
+         * و«قُبضت» تُسأل عنها القاعدةُ لا العَلَم (`settles`): نيّةٌ لم يُثبَّت
+         * قبضُها تُعامَل طلبًا جديدًا — يُسأل عن الإغلاق والقناة **والفترة وآخر
+         * حجزها** كأيّ طلب. كان العَلَمُ وحده يُعفيها من فحص الجدول ويقرأ فترتَها
+         * من لقطتها، فتمرّ فترةٌ انقضى حجزُها بنيّةٍ لم يُدفع لها شيء. والمسارُ
+         * الحقيقيّ لا يتغيّر: `PaymobController::settle` يُثبّت القبضَ قبل أن ينادي.
+         */
+        $settling = $paid && self::settles($bid, $intent) ? $intent : null;
 
         /*
          * وحمولةُ المتصفّح لا تحمل لقطاتِ الخادم — وحمولةُ النيّة المدفوعة
@@ -479,7 +487,7 @@ final class WebCheckout
             StoreTerms::check($bid, $payload, $lang);
         }
         $terms = StoreTerms::columns($bid, $paid ? ($payload[StoreTerms::STAMP] ?? null) : StoreTerms::stamp($bid, $lang));
-        $slot = $paid
+        $slot = $settling !== null
             ? (DeliverySchedule::fromSnapshot($payload[self::SLOT] ?? null) ?? self::chosenSlot($bid, $form, settling: true))
             : self::chosenSlot($bid, $form);
 

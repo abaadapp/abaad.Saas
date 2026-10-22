@@ -81,6 +81,8 @@ final class ProductsList
             'price' => (float) $p->price, 'cost' => (float) $p->cost, 'qty' => $p->quantity,
             'sku' => $p->sku, 'barcode' => $p->barcode, 'image' => $p->image,
             'stock_status' => $p->stock_status, 'active' => (bool) $p->active,
+            // وقناتاه — وسمٌ تحت الحالة لمن يُباع في قناةٍ واحدة (`partials/channels.ts`)
+            'pos_enabled' => (bool) ($p->pos_enabled ?? true), 'published' => (bool) ($p->published ?? true),
             'alert' => $p->alert_qty, 'tax' => (float) $p->tax, 'discount' => (float) $p->discount,
             'tracks_stock' => $p->tracksStock(),
             /*

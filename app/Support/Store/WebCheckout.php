@@ -235,14 +235,21 @@ final class WebCheckout
      * @param  array<string, mixed>  $payload  حمولةُ المتصفّح كما وصلت — لا يُوثَق بشكلها
      * @return array{lines: list<array>, subtotal: float, discount: float, delivery: float, tax: float, total: float, coupon: ?string, promo_error: ?string, free_over: ?float}
      */
-    public static function quote(Business $business, array $payload, bool $lock = false): array
+    public static function quote(Business $business, array $payload, bool $lock = false, bool $settling = false): array
     {
         $bid = (int) $business->id;
         $items = self::items($payload['items'] ?? []);
         $sale = new SaleLines($bid);
 
-        $lines = $sale->priceItems($items, $lock);
-        self::assertPublished($bid, $lines);
+        /*
+         * ═══ ودفعةٌ قُبضت لا يُسأل صنفُها عن حاله بعد الدفع ═══
+         *
+         * أُخفي من الموقع أو أُوقف والزبونُ عند البنك؟ فُحص حين فُتحت صفحةُ
+         * الدفع (`toCard`)، والمالُ قُبض. وردُّ الطلب هنا يتركه بلا طلب —
+         * كما لا يردّه إغلاقُ الاستقبال (`accepts`). والرفُّ يُفحص كما كان.
+         */
+        $lines = $sale->priceItems($items, $lock, $settling ? SaleLines::SETTLING : null);
+        self::assertPublished($bid, $lines, $settling);
         // ونصُّ كرت الهدية مع بنده — يُردّ الكرتُ بلا نصّ، ويُمحى عمّا سواه
         $lines = GiftCardProduct::settle($bid, $lines);
 
@@ -478,7 +485,7 @@ final class WebCheckout
 
         return DB::transaction(function () use ($business, $bid, $payload, $form, $lang, $paid, $intent, $settling, $terms, $slot) {
             // بقفل: الفحصُ والخصم على كميّةٍ لا تتغيّر تحتهما — كما في الصندوق
-            $q = self::quote($business, $payload + ['fulfil' => $form['fulfil']], lock: true);
+            $q = self::quote($business, $payload + ['fulfil' => $form['fulfil']], lock: true, settling: self::settles($bid, $settling));
             $lines = $q['_lines'];
 
             /*
@@ -909,11 +916,17 @@ final class WebCheckout
         return $items;
     }
 
-    /** ما لا يُعرض للزبون لا يُباع له: `published` شرطُ الموقع فوق شرط الصندوق */
-    private static function assertPublished(int $bid, array $lines): void
+    /**
+     * ما لا يُعرض للزبون لا يُباع له: `published` شرطُ الموقع فوق شرط الصندوق.
+     *
+     * إلّا دفعةً قُبضت (`$settling`): عُرض حين فُتح دفعُها — انظر `quote`.
+     */
+    private static function assertPublished(int $bid, array $lines, bool $settling = false): void
     {
         $ids = collect($lines)->map(fn ($l) => $l['product']?->id)->filter()->unique()->values();
-        $shown = Product::where('business_id', $bid)->whereIn('id', $ids)->where('published', true)->pluck('id')->all();
+        $shown = $settling
+            ? $ids->all()
+            : Product::where('business_id', $bid)->whereIn('id', $ids)->where('published', true)->pluck('id')->all();
         $hidden = $ids->diff($shown);
 
         if ($hidden->isNotEmpty() || collect($lines)->contains(fn ($l) => ! $l['product'])) {

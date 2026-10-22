@@ -44,6 +44,7 @@ import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import type { Category, Product } from '@/types/models';
 import type { BoutiqueOption } from './partials/boutique';
+import { CHANNEL_TAG, salesChannels } from './partials/channels';
 
 interface Props {
     products: Product[];
@@ -265,9 +266,21 @@ export default function ProductsIndex() {
         {
             key: 'active',
             header: 'الحالة',
-            cell: (p) => (
-                <Badge variant={p.active ? 'success' : 'neutral'}>{p.active ? t('مفعّل') : t('غير مفعّل')}</Badge>
-            ),
+            cell: (p) => {
+                // والقناةُ تحت الحالة حين لا تكون «كلتاهما» — صنفٌ نشطٌ لا يراه الكاشير يُقال
+                const where = salesChannels(p);
+
+                return (
+                    <div className="flex flex-col items-start gap-1">
+                        <Badge variant={p.active ? 'success' : 'neutral'}>{p.active ? t('مفعّل') : t('غير مفعّل')}</Badge>
+                        {p.active && where !== 'both' && (
+                            <span className="text-[11px] text-[#6b7280]" data-testid={`product-channel-${p.id}`}>
+                                {t(CHANNEL_TAG[where])}
+                            </span>
+                        )}
+                    </div>
+                );
+            },
         },
         { key: 'actions', header: 'إجراءات', align: 'end', cell: actionsFor },
     ];

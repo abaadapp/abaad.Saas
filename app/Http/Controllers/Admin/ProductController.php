@@ -302,6 +302,8 @@ class ProductController extends Controller
          * فيها، وصنفٌ جديد يختفي عنها بلا سبب يراه صاحبه أسوأ من ظهوره.
          */
         $data['published'] = $request->boolean('published', true);
+        // ونقطةُ البيع كالموقع: مفتوحةٌ افتراضًا، ومن أغلقها باعه في متجره على الإنترنت وحده
+        $data['pos_enabled'] = $request->boolean('pos_enabled', true);
         /*
          * والاسمُ الإنجليزيّ ما كتبه التاجرُ بيده — أو لا اسم.
          *
@@ -427,6 +429,10 @@ class ProductController extends Controller
         // ولا يُطفأ العرض بحفظةٍ لم تُرسله: نموذجٌ جزئيّ لا يعني «أخفِه»
         if ($request->has('published')) {
             $data['published'] = $request->boolean('published');
+        }
+        // ولا تُغلق نقطةُ البيع ولا تُفتح بحفظةٍ لم تُرسلها — صورةٌ أو سعرٌ أو قسمٌ لا يمسّها
+        if ($request->has('pos_enabled')) {
+            $data['pos_enabled'] = $request->boolean('pos_enabled');
         }
         // والاسمُ الإنجليزيّ كما أرسله النموذج — لا يُملأ من المعجم (انظر `store`)
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)
@@ -779,8 +785,8 @@ class ProductController extends Controller
 
         return back()->with('toast', [
             'msg' => $product->active
-                ? __('فُعّل «:name» — عاد يظهر في نقطة البيع.', ['name' => $product->name])
-                : __('عُطّل «:name» — اختفى من نقطة البيع، ورصيدُه وتاريخه كما هما.', ['name' => $product->name]),
+                ? __('فُعّل «:name» — عاد يُباع في القنوات المختارة له.', ['name' => $product->name])
+                : __('عُطّل «:name» — لا يُباع في نقطة البيع ولا في المتجر الإلكتروني، ورصيدُه وتاريخه كما هما.', ['name' => $product->name]),
             'type' => 'success',
         ]);
     }

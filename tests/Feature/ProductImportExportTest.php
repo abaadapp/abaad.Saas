@@ -98,12 +98,14 @@ class ProductImportExportTest extends TestCase
         $sheet = IOFactory::load($path)->getActiveSheet()->toArray();
 
         $this->assertSame(
-            ['الاسم', 'القسم', 'SKU', 'الباركود', 'السعر', 'التكلفة', 'الكمية', 'حد التنبيه', 'الضريبة %', 'الخصم %', 'الحالة', 'مرتبط بالمخزون'],
+            ['الاسم', 'القسم', 'SKU', 'الباركود', 'السعر', 'التكلفة', 'الكمية', 'حد التنبيه', 'الضريبة %', 'الخصم %', 'الحالة', 'مرتبط بالمخزون', 'نقطة البيع', 'المتجر الإلكتروني'],
             array_map('strval', $sheet[0]),
         );
         $this->assertSame('باقة ورد', $sheet[1][0]);
         $this->assertSame('ورود', $sheet[1][1]);
         $this->assertSame(12, (int) $sheet[1][6]);
+        // وقناتا البيع كما هما على الصنف — والافتراضُ «نعم» لكلتيهما
+        $this->assertSame(['نعم', 'نعم'], [$sheet[1][12], $sheet[1][13]]);
     }
 
     public function test_the_barcode_survives_the_trip_through_excel(): void

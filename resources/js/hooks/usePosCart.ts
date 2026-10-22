@@ -156,6 +156,8 @@ export interface PosProduct {
     tax?: number | null;
     /** الموقوف لا يُعرض ولا يُمسح ولا يُباع — والخادم يردّه كذلك */
     active?: boolean;
+    /** وما أُغلقت عنه نقطةُ البيع مثلُه هنا — ويُباع في الموقع (`SaleLines::POS`) */
+    pos_enabled?: boolean;
 }
 
 export interface AppliedCoupon {
@@ -731,10 +733,11 @@ export function usePosCart({ products, customers: initialCustomers, loyalty, vat
         (code: string) => {
             const c = (code || '').trim();
             if (!c) return;
-            // والماسح لا يستثني نفسه من الإيقاف: صنفٌ موقوف لا يدخل السلة
+            // والماسح لا يستثني نفسه من الإيقاف ولا من القناة: صنفٌ لا يُباع هنا لا يدخل السلة
             const p = products.find(
                 (x) =>
                     x.active !== false &&
+                    x.pos_enabled !== false &&
                     ((x.barcode && String(x.barcode) === c) ||
                         (x.sku && String(x.sku).toLowerCase() === c.toLowerCase())),
             );

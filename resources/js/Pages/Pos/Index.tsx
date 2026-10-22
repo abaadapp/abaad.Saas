@@ -160,6 +160,14 @@ export default function PosIndex() {
                 id: p.id, label: p.label, price: p.price, image: p.image,
                 // ومن لا يُعدّ على رفٍّ لا لقطةَ مخزونٍ له — كذي الوصفة
                 sku: p.sku, barcode: p.barcode, stock: p.tracks_stock === false ? null : p.qty,
+                /*
+                 * وحالُه في الصندوق — يقرؤها الماسحُ (`scanBarcode`).
+                 *
+                 * كانت لا تُرسل، فكان حارسُ الماسح `x.active !== false` يقرأ
+                 * `undefined` فيمرّ: باركودُ صنفٍ موقوفٍ يُدخله السلّة، ولا
+                 * يُردّ إلّا عند الدفع.
+                 */
+                active: p.active, pos_enabled: p.pos_enabled,
             })),
         [products],
     );
@@ -282,8 +290,8 @@ export default function PosIndex() {
         // وبالاسمين وبلا حالة أحرف: «rose» تجد «Rose Bouquet»، والعربيُّ يجد الإنجليزيّ
         const needle = q.trim().toLowerCase();
         return products.filter((p) => {
-            // الموقوف لا يُعرض — والخادم يردّه كذلك (PosController::checkout)
-            if (p.active === false) return false;
+            // الموقوفُ وما أُغلقت عنه نقطةُ البيع لا يُعرضان — والخادمُ يردّهما كذلك (`SaleLines::POS`)
+            if (p.active === false || p.pos_enabled === false) return false;
             const inCat = cat === 'الكل' || cat === p.cat;
             const inSeason = season === null || seasonIds.has(p.id);
             const inSearch = !needle || `${p.name} ${p.name_en ?? ''} ${p.label}`.toLowerCase().includes(needle);

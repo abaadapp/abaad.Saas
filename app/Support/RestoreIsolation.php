@@ -64,6 +64,7 @@ final class RestoreIsolation
             'addon_id' => 'addons', 'reverses_id' => 'boutique_component_dues', 'user_id' => 'users',
             'boutique_settlement_id' => 'boutique_settlements',
         ],
+        'boutique_credit_offsets' => ['boutique_id' => 'boutiques'],
         'coupon_redemptions' => ['customer_id' => 'customers'],
         'order_prep_checks' => ['user_id' => 'users'],
         'shifts' => ['user_id' => 'users', 'branch_id' => 'branches'],

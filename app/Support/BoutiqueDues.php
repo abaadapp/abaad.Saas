@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Exceptions\SettlementRefused;
 use App\Models\Boutique;
 use App\Models\BoutiqueComponentDue;
+use App\Models\BoutiqueCreditOffset;
 use App\Models\BoutiqueSettlement;
 use App\Models\Business;
 use App\Models\Order;
@@ -271,57 +272,140 @@ class BoutiqueDues
 
     /* ═══════════ العكس ═══════════ */
 
+    /** حالاتُ قطعة البوتيك عند إلغاء طلبها */
+    public const RETURNED = 'returned';
+
+    public const LOST = 'lost';
+
+    public const UNVERIFIED = 'unverified';
+
     /**
-     * الطلبُ أُلغي — والسؤالُ: هل تعود قطعةُ البوتيك إلى الرفّ فعلًا؟
+     * الطلبُ أُلغي — والسؤالُ لكلّ قطعة: هل تعود إلى الرفّ فعلًا؟
      *
-     * `$returned = true`: تعود — يُعكس مستحقُّها، ويبقى ما ردّه الإلغاءُ إلى الرفّ.
+     * يُجاب لكلّ مكوّنٍ وبكمّيّته، لا للطلب جملةً: باقةٌ فيها فضّةٌ عادت
+     * وعطرٌ تلف ليستا حالًا واحدة. و`$pieces`:
      *
-     * وإلّا (سُلّمت، أو استُهلكت، أو تلفت، أو لم يُقل): **لا يُعكس تلقائيًّا**.
-     * يبقى المستحقُّ للبوتيك ويُقال لماذا (`kept_reason`)، وتُرفع القطعةُ عن
-     * الرفّ ثانيةً فلا يُعدّ ما ليس عليه، ويُقيَّد ثمنُها خسارةً على المتجر
-     * كخسارة أيّ مخزونٍ لم يعد (مدين «مصروفات أخرى» / دائن 2160 — كما
-     * `StockLosses`). فإن عادت بعدُ فـ`returned` يعكس ذلك كلَّه بقيدٍ موثَّق.
+     *   - `true`  كلُّ القطع عادت، و`false` كلُّها لم تعد، و`null` لم يُتحقَّق من شيء.
+     *   - أو `[رقمُ صفّ المستحقّ => ['returned' => n, 'lost' => m]]` — وما بقي
+     *     من كمّيّة الصفّ لم يُتحقَّق منه. وصفٌّ لم يُذكر لم يُتحقَّق منه.
+     *
+     * ما عاد يُعكس مستحقُّه (ويبقى على الرفّ الذي ردّه إليه الإلغاء). وما لم
+     * يعد أو لم يُتحقَّق منه **لا يُعكس تلقائيًّا**: يبقى للبوتيك بسببه
+     * (`kept_reason`)، ويُرفع عن الرفّ ثانيةً، ويُقيَّد ثمنُه خسارةً على المتجر
+     * (مدين «مصروفات أخرى» / دائن 2160 — كما `StockLosses`). فإن عاد بعدُ
+     * فـ`returned` يعكسه بقيدٍ موثَّق.
+     *
+     * @param  bool|array<int, array{returned?: int, lost?: int}>|null  $pieces
      */
-    public static function cancel(Order $order, ?string $reason = null, ?bool $returned = null): void
+    public static function cancel(Order $order, ?string $reason = null, bool|array|null $pieces = null): void
     {
-        $rows = self::live()->where('order_id', $order->id);
+        $rows = self::live()->where('order_id', $order->id)->lockForUpdate()->orderBy('id')->get();
 
-        if ($returned === true) {
-            self::reverse($rows, $reason);
+        foreach ($rows as $row) {
+            $qty = (int) round((float) $row->quantity);
+            [$back, $lost] = match (true) {
+                $pieces === true => [$qty, 0],
+                $pieces === false => [0, $qty],
+                is_array($pieces) => [(int) ($pieces[$row->id]['returned'] ?? 0), (int) ($pieces[$row->id]['lost'] ?? 0)],
+                default => [0, 0],
+            };
 
-            return;
-        }
+            if ($back < 0 || $lost < 0 || $back + $lost > $qty) {
+                throw ValidationException::withMessages([
+                    'pieces' => __('«:name»: ما عاد وما لم يعد أكثرُ من :qty قطعة في الطلب.', ['name' => $row->product_name, 'qty' => $qty]),
+                ]);
+            }
 
-        $why = $returned === false
-            ? __('أُلغي الطلب ولم تعد القطعة إلى الرفّ')
-            : __('أُلغي الطلب ولم يُؤكَّد رجوعُ القطعة إلى الرفّ');
+            $open = $qty - $back - $lost;
+            $states = array_filter([self::LOST => $lost, self::UNVERIFIED => $open]);
 
-        foreach ($rows->lockForUpdate()->orderBy('id')->get() as $row) {
-            self::keep($order, $row, $why);
+            // حالٌ واحدةٌ للصفّ كلِّه: يُعكس كلُّه أو يبقى كما هو — بلا صفوفٍ جديدة
+            if ($back === $qty) {
+                self::undo($row, $reason);
+
+                continue;
+            }
+            if ($back === 0 && count($states) === 1) {
+                self::keep($order, $row, array_key_first($states), offShelf: true);
+
+                continue;
+            }
+
+            // وإلّا يُعكس ويُكتب ما بقي للبوتيك صفًّا لكلّ حال
+            $key = (string) $row->live_key;
+            self::undo($row, $reason);
+            foreach ($states as $state => $n) {
+                self::keep($order, self::part($row, $key, $n, $state), $state, offShelf: true);
+            }
         }
     }
 
     /**
-     * القطعةُ التي بقي مستحقُّها عند الإلغاء عادت إلى الرفّ — يُعكس الآن.
+     * قطعٌ بقي مستحقُّها عند الإلغاء عادت إلى الرفّ — يُعكس الآن ما عاد منها.
      *
-     * يُردّ قيدُ الخسارة، وتعود القطعةُ إلى الرفّ، ويُعكس المستحقّ. فإن كانت
-     * ورقتُه قد صدرت صار العكسُ رصيدًا للمتجر على البوتيك (انظر `undo`).
+     * `$pieces`: `[رقمُ الصفّ => كم عاد]`، أو `null` لكلّ ما بقي. يُردّ قيدُ
+     * خسارتها، وتعود إلى الرفّ مرّةً واحدة، ويُعكس مستحقُّها — فإن كانت ورقتُه
+     * قد صدرت صار العكسُ رصيدًا للمتجر على البوتيك (انظر `undo`). وما لم يعد
+     * من الصفّ يبقى صفًّا بحاله وخسارتِه.
+     *
+     * @param  array<int, int>|null  $pieces
      */
-    public static function returned(Order $order, string $reason): void
+    public static function returned(Order $order, string $reason, ?array $pieces = null): void
     {
-        DB::transaction(function () use ($order, $reason) {
+        DB::transaction(function () use ($order, $reason, $pieces) {
             $rows = self::live()->where('order_id', $order->id)->whereNotNull('kept_reason')
                 ->lockForUpdate()->orderBy('id')->get();
 
-            $back = [];
+            $shelf = [];
             foreach ($rows as $row) {
-                $back[(int) $row->product_id] = ($back[(int) $row->product_id] ?? 0) + (int) round((float) $row->quantity);
+                $qty = (int) round((float) $row->quantity);
+                $back = $pieces === null ? $qty : (int) ($pieces[$row->id] ?? 0);
+                if ($back <= 0) {
+                    continue;
+                }
+                if ($back > $qty) {
+                    throw ValidationException::withMessages([
+                        'pieces' => __('«:name»: ما عاد أكثرُ من :qty قطعة بقيت للبوتيك.', ['name' => $row->product_name, 'qty' => $qty]),
+                    ]);
+                }
+
+                $shelf[(int) $row->product_id] = ($shelf[(int) $row->product_id] ?? 0) + $back;
+                $key = (string) $row->live_key;
+                $state = $row->kept_state ?? self::UNVERIFIED;
                 self::undo($row, $reason);
+
+                if ($qty > $back) {
+                    // والباقي غائبٌ عن الرفّ أصلًا — لا يُرفع عنه ثانيةً
+                    self::keep($order, self::part($row, $key, $qty - $back, $state), $state, offShelf: false);
+                }
             }
 
-            StockLedger::move((int) $order->business_id, $order->branch_id, $back, StockLedger::CORRECTION,
+            StockLedger::move((int) $order->business_id, $order->branch_id, $shelf, StockLedger::CORRECTION,
                 PosCashier::name() ?? auth()->user()?->name, $order->number);
         });
+    }
+
+    /** ما لم يُتحقَّق منه تأكّد أنّه لن يعود — تتغيّر حالُه وسببُه، ولا يتغيّر مالٌ ولا رفّ */
+    public static function confirmLost(Order $order, array $rowIds): void
+    {
+        self::live()->where('order_id', $order->id)->whereIn('id', $rowIds)
+            ->where('kept_state', self::UNVERIFIED)
+            ->update(['kept_state' => self::LOST, 'kept_reason' => self::why(self::LOST)]);
+    }
+
+    /**
+     * قطعُ البوتيك الحيّة في طلب — لشاشة الإلغاء والإرجاع.
+     *
+     * @return list<array{id: int, product: string, boutique: ?string, quantity: int, unit_price: float, source: string, state: ?string}>
+     */
+    public static function piecesOf(Order $order): array
+    {
+        return self::live()->where('order_id', $order->id)->orderBy('id')->get()
+            ->map(fn (BoutiqueComponentDue $r) => [
+                'id' => (int) $r->id, 'product' => $r->product_name, 'boutique' => $r->boutique_name,
+                'quantity' => (int) round((float) $r->quantity), 'unit_price' => (float) $r->unit_price,
+                'source' => $r->source, 'state' => $r->kept_state,
+            ])->values()->all();
     }
 
     /**
@@ -356,11 +440,12 @@ class BoutiqueDues
      * لا عمولة عليه، ولا يُعاد حسابُه — يُجمع من صفوف الدفتر كما كُتبت.
      *
      *   - `due`: ما لم تحمله ورقةٌ من مستحقّات الشهر وعكوسها (يتقاصّان).
-     *   - `credit`: ما يُقاصّ من رصيد المتجر على البوتيك — صفوفًا كاملة،
-     *     الأقدمُ أوّلًا، ما دام لا يجاوز `due`. وما زاد يبقى لورقةٍ بعدها
-     *     أو لسند استرداد (`refund`)؛ فالصافي لا يكون سالبًا أبدًا.
+     *   - `credit`: ما يُقاصّ من رصيد المتجر على البوتيك — الأقدمُ أوّلًا،
+     *     ولو جزءًا من رصيد، حتى يبلغ `due` ولا يجاوزه: رصيدٌ بسبعةٍ على
+     *     مستحقٍّ بثلاثة يُقاصّ ثلاثةً ويبقى منه أربعة لورقةٍ بعدها أو لسند
+     *     استرداد (`refund`). فالصافي لا يكون سالبًا أبدًا.
      *
-     * @return array{lines: list<array<string, mixed>>, due: float, credit: float, credit_available: float, net: float, count: int, from_at: ?string, to_at: ?string, ids: list<int>, credit_ids: list<int>}
+     * @return array{lines: list<array<string, mixed>>, due: float, credit: float, credit_available: float, net: float, count: int, from_at: ?string, to_at: ?string, ids: list<int>, credit_plan: array<int, float>}
      */
     public static function statement(int $businessId, int $boutiqueId, string $period): array
     {
@@ -373,22 +458,19 @@ class BoutiqueDues
             ->whereBetween('period_at', [$from, $to])
             ->orderBy('period_at')->orderBy('id')->get();
 
-        $credits = BoutiqueComponentDue::where('business_id', $businessId)->where('boutique_id', $boutiqueId)
-            ->whereNull('boutique_settlement_id')
-            ->where('kind', BoutiqueComponentDue::CREDIT)
-            ->where('period_at', '<=', $to)
-            ->orderBy('period_at')->orderBy('id')->get();
-
+        $credits = self::credits($businessId, $boutiqueId, $to);
         $due = round((float) $rows->sum('amount'), 3);
 
+        // يُقاصّ من الأقدم، ولو جزءًا من رصيد — ولا يجاوز الصافي صفرًا
         $credit = 0.0;
-        $creditIds = [];
-        foreach ($credits as $c) {
-            $take = -(float) $c->amount;
-            if ($credit + $take <= $due + 0.0005) {
-                $credit = round($credit + $take, 3);
-                $creditIds[] = (int) $c->id;
+        $plan = [];
+        foreach ($credits as $id => $left) {
+            $take = round(min($left, $due - $credit), 3);
+            if ($take <= 0) {
+                break;
             }
+            $credit = round($credit + $take, 3);
+            $plan[$id] = $take;
         }
 
         $lines = [];
@@ -407,13 +489,13 @@ class BoutiqueDues
             'lines' => array_values($lines),
             'due' => $due,
             'credit' => $credit,
-            'credit_available' => round(-(float) $credits->sum('amount'), 3),
+            'credit_available' => round(array_sum($credits), 3),
             'net' => round($due - $credit, 3),
             'count' => $rows->count(),
             'from_at' => $rows->first()?->period_at?->toDateTimeString(),
             'to_at' => $rows->last()?->period_at?->toDateTimeString(),
             'ids' => $rows->pluck('id')->map(fn ($id) => (int) $id)->all(),
-            'credit_ids' => $creditIds,
+            'credit_plan' => $plan,
         ];
     }
 
@@ -426,17 +508,86 @@ class BoutiqueDues
      */
     public static function claim(int $settlementId, array $part): void
     {
-        $ids = array_merge($part['ids'], $part['credit_ids']);
-        if (! $ids) {
+        $ids = $part['ids'];
+        if ($ids) {
+            $claimed = BoutiqueComponentDue::whereIn('id', $ids)->whereNull('boutique_settlement_id')
+                ->update(['boutique_settlement_id' => $settlementId]);
+
+            if ($claimed !== count($ids)) {
+                throw new SettlementRefused(__('صدرت ورقةٌ لهذه البيعات قبل لحظة — افتح الشاشة من جديد.'));
+            }
+        }
+
+        self::offset($settlementId, $part['credit_plan'] ?? []);
+    }
+
+    /**
+     * سطرُ مقاصّةٍ لكلّ رصيدٍ أُخذ منه — بعد قفل صفوفه وقراءة باقيها من جديد.
+     *
+     * ضغطتان متقاربتان تقرآن الباقي نفسَه: تقفل الأولى الصفوفَ فتكتب،
+     * وتقرأ الثانية بعدها باقيًا أقلّ ممّا خطّطت له فتُردّ. والفهرسُ الفريد
+     * (رصيدٌ وورقة) يمنع السطرَ نفسَه مرّتين.
+     *
+     * @param  array<int, float>  $plan  [رقمُ صفّ الرصيد => كم يُقاصّ منه]
+     *
+     * @throws SettlementRefused
+     */
+    private static function offset(int $settlementId, array $plan): void
+    {
+        if (! $plan) {
             return;
         }
 
-        $claimed = BoutiqueComponentDue::whereIn('id', $ids)->whereNull('boutique_settlement_id')
-            ->update(['boutique_settlement_id' => $settlementId]);
+        $credits = BoutiqueComponentDue::whereIn('id', array_keys($plan))
+            ->where('kind', BoutiqueComponentDue::CREDIT)->lockForUpdate()->orderBy('id')->get()->keyBy('id');
+        $used = self::used(array_keys($plan));
 
-        if ($claimed !== count($ids)) {
-            throw new SettlementRefused(__('صدرت ورقةٌ لهذه البيعات قبل لحظة — افتح الشاشة من جديد.'));
+        foreach ($plan as $id => $amount) {
+            $c = $credits->get($id);
+            $left = $c ? round(-(float) $c->amount - ($used[$id] ?? 0.0), 3) : 0.0;
+            if ($amount <= 0 || $amount > $left + 0.0005) {
+                throw new SettlementRefused(__('تغيّر رصيدُ المتجر على البوتيك قبل لحظة — افتح الشاشة من جديد.'));
+            }
+
+            BoutiqueCreditOffset::create([
+                'business_id' => $c->business_id, 'boutique_id' => $c->boutique_id,
+                'credit_id' => $c->id, 'boutique_settlement_id' => $settlementId, 'amount' => round($amount, 3),
+            ]);
         }
+    }
+
+    /**
+     * أرصدةُ المتجر على بوتيكٍ حتى يومٍ ما — بباقي كلٍّ منها، الأقدمُ أوّلًا.
+     *
+     * @return array<int, float> [رقمُ صفّ الرصيد => باقيه]
+     */
+    public static function credits(int $businessId, int $boutiqueId, ?Carbon $through = null): array
+    {
+        $rows = BoutiqueComponentDue::where('business_id', $businessId)->where('boutique_id', $boutiqueId)
+            ->where('kind', BoutiqueComponentDue::CREDIT)
+            ->when($through, fn ($q) => $q->where('period_at', '<=', $through))
+            ->orderBy('period_at')->orderBy('id')->get(['id', 'amount']);
+        $used = self::used($rows->pluck('id')->all());
+
+        $out = [];
+        foreach ($rows as $r) {
+            $left = round(-(float) $r->amount - ($used[(int) $r->id] ?? 0.0), 3);
+            if ($left > 0) {
+                $out[(int) $r->id] = $left;
+            }
+        }
+
+        return $out;
+    }
+
+    /** ما سُجّل على كلّ رصيدٍ من مقاصّةٍ أو استرداد */
+    private static function used(array $creditIds): array
+    {
+        return $creditIds
+            ? BoutiqueCreditOffset::whereIn('credit_id', $creditIds)->groupBy('credit_id')
+                ->selectRaw('credit_id, SUM(amount) as used')->pluck('used', 'credit_id')
+                ->map(fn ($v) => (float) $v)->all()
+            : [];
     }
 
     /**
@@ -480,32 +631,49 @@ class BoutiqueDues
      *
      * @throws SettlementRefused
      */
-    public static function refund(Business $business, Boutique $boutique, string $method, ?Carbon $at = null, ?string $employee = null): BoutiqueSettlement
+    public static function refund(Business $business, Boutique $boutique, string $method, ?Carbon $at = null, ?string $employee = null, ?float $amount = null): BoutiqueSettlement
     {
-        return DB::transaction(function () use ($business, $boutique, $method, $at, $employee) {
+        return DB::transaction(function () use ($business, $boutique, $method, $at, $employee, $amount) {
             $at ??= now();
-            $credits = BoutiqueComponentDue::where('business_id', $business->id)->where('boutique_id', $boutique->id)
-                ->whereNull('boutique_settlement_id')->where('kind', BoutiqueComponentDue::CREDIT)
-                ->lockForUpdate()->orderBy('id')->get();
+            // يُقفل ثمّ يُقرأ الباقي — كما تفعل الورقة
+            BoutiqueComponentDue::where('business_id', $business->id)->where('boutique_id', $boutique->id)
+                ->where('kind', BoutiqueComponentDue::CREDIT)->lockForUpdate()->get(['id']);
+            $credits = self::credits((int) $business->id, (int) $boutique->id);
+            $available = round(array_sum($credits), 3);
 
-            $amount = round(-(float) $credits->sum('amount'), 3);
-            if ($amount <= 0) {
+            $amount = $amount === null ? $available : round($amount, 3);
+            if ($available <= 0 || $amount <= 0) {
                 throw new SettlementRefused(__('لا رصيدَ للمتجر على هذا البوتيك يُستردّ.'));
+            }
+            if ($amount > $available + 0.0005) {
+                throw new SettlementRefused(__('المستردُّ أكثرُ من رصيد المتجر على البوتيك (:left).', ['left' => $available]));
+            }
+
+            $plan = [];
+            $left = $amount;
+            foreach ($credits as $id => $have) {
+                if ($left <= 0) {
+                    break;
+                }
+                $plan[$id] = round(min($have, $left), 3);
+                $left = round($left - $plan[$id], 3);
             }
 
             $period = $at->format('Y-m');
             $n = BoutiqueSettlement::where('business_id', $business->id)->where('period', $period)->count() + 1;
+            $first = BoutiqueComponentDue::whereIn('id', array_keys($plan))->min('period_at');
+            $last = BoutiqueComponentDue::whereIn('id', array_keys($plan))->max('period_at');
 
             $doc = BoutiqueSettlement::create([
                 'business_id' => $business->id, 'boutique_id' => $boutique->id,
                 'number' => 'BQR-'.$period.'-'.$n, 'kind' => BoutiqueSettlement::REFUND, 'period' => $period,
-                'covered_from' => $credits->first()->period_at, 'covered_to' => $credits->last()->period_at,
+                'covered_from' => $first, 'covered_to' => $last,
                 'gross' => 0, 'commission' => 0, 'net' => 0, 'lines_count' => 0,
                 'components_due' => 0, 'components_credit' => $amount, 'components_net' => -$amount,
                 'components_paid_at' => $at, 'components_method' => $method, 'issued_at' => now(),
             ]);
 
-            self::claim((int) $doc->id, ['ids' => [], 'credit_ids' => $credits->pluck('id')->map(fn ($id) => (int) $id)->all()]);
+            self::offset((int) $doc->id, $plan);
 
             Ledger::post(
                 (int) $business->id,
@@ -647,14 +815,21 @@ class BoutiqueDues
         }
     }
 
-    /** المستحقُّ باقٍ والقطعةُ لم تعد — تُرفع عن الرفّ، وثمنُها خسارةٌ على المتجر */
-    private static function keep(Order $order, BoutiqueComponentDue $row, string $why): void
+    /**
+     * المستحقُّ باقٍ والقطعةُ لم تعد (أو لم يُتحقَّق منها) — وثمنُها خسارةٌ على المتجر.
+     *
+     * `$offShelf`: الإلغاءُ ردّها إلى الرفّ فتُرفع عنه ثانيةً. وصفٌّ يُعاد
+     * كتابتُه بعد إرجاعٍ جزئيّ قطعُه غائبةٌ أصلًا فلا تُرفع مرّتين.
+     */
+    private static function keep(Order $order, BoutiqueComponentDue $row, string $state, bool $offShelf): void
     {
-        $row->update(['kept_reason' => $why]);
+        $row->update(['kept_state' => $state, 'kept_reason' => self::why($state)]);
 
-        StockLedger::move((int) $order->business_id, $order->branch_id,
-            [(int) $row->product_id => -(int) round((float) $row->quantity)], StockLedger::CORRECTION,
-            PosCashier::name() ?? auth()->user()?->name, $order->number);
+        if ($offShelf) {
+            StockLedger::move((int) $order->business_id, $order->branch_id,
+                [(int) $row->product_id => -(int) round((float) $row->quantity)], StockLedger::CORRECTION,
+                PosCashier::name() ?? auth()->user()?->name, $order->number);
+        }
 
         if ((float) $row->amount > 0) {
             Ledger::post(
@@ -667,6 +842,48 @@ class BoutiqueDues
                 now(), self::SOURCE, $order->branch_id, PosCashier::id() ?? auth()->id(), $row,
             );
         }
+    }
+
+    private static function why(string $state): string
+    {
+        return $state === self::LOST
+            ? __('أُلغي الطلب ولم تعد القطعة إلى الرفّ')
+            : __('أُلغي الطلب ولم يُؤكَّد رجوعُ القطعة إلى الرفّ');
+    }
+
+    /**
+     * جزءٌ من صفٍّ عُكس يبقى للبوتيك — صفٌّ جديد بلقطة أصله وكمّيّة الجزء.
+     *
+     * وشهرُه شهرُ أصله ما لم تحمل الأصلَ ورقة؛ فإن حملته فيومُ كتابته —
+     * يدخل ورقةً بعدها ويقابله رصيدُ المتجر الذي أنشأه العكس.
+     */
+    private static function part(BoutiqueComponentDue $from, string $liveKey, int $pieces, string $state): BoutiqueComponentDue
+    {
+        // مفتاحُ الأصل بلا لاحقة حالٍ سابقة، ثمّ الحالُ ورقمُ الصفّ الذي انقسم — فريدٌ دائمًا
+        $key = preg_replace('/:(lost|unverified)\d+$/', '', $liveKey).':'.$state.$from->id;
+
+        return BoutiqueComponentDue::create([
+            'business_id' => $from->business_id,
+            'order_id' => $from->order_id,
+            'order_item_id' => $from->order_item_id,
+            'order_item_addon_id' => $from->order_item_addon_id,
+            'boutique_id' => $from->boutique_id,
+            'boutique_name' => $from->boutique_name,
+            'source' => $from->source,
+            'recipe_item_id' => $from->recipe_item_id,
+            'addon_id' => $from->addon_id,
+            'product_id' => $from->product_id,
+            'product_name' => $from->product_name,
+            'unit_price' => $from->unit_price,
+            'unit_quantity' => $from->unit_quantity,
+            'quantity' => $pieces,
+            'amount' => round((float) $from->unit_price * $pieces, 3),
+            'kind' => BoutiqueComponentDue::DUE,
+            'live_key' => $key,
+            'user_id' => auth()->id(),
+            'occurred_at' => now(),
+            'period_at' => $from->boutique_settlement_id !== null ? now() : $from->period_at,
+        ]);
     }
 
     /** لماذا لا يُحسب لهذا الصنف مستحقٌّ بدقّة — أو `null` */

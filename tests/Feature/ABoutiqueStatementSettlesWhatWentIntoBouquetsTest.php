@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Exceptions\SettlementRefused;
 use App\Models\Boutique;
 use App\Models\BoutiqueComponentDue;
+use App\Models\BoutiqueCreditOffset;
 use App\Models\BoutiqueSettlement;
 use App\Models\Branch;
 use App\Models\Business;
@@ -325,13 +326,18 @@ class ABoutiqueStatementSettlesWhatWentIntoBouquetsTest extends TestCase
         $mar = $this->settle('2027-03');
         BoutiqueDues::pay($mar, 'نقدي');
         $this->assertSame(['cash' => 26.0, 'sales' => 40.0, 'cogs' => 14.0, 'other' => 0.0, 'profit' => 26.0, 'payable' => 0.0, 'receivable' => 0.0], $this->books(), 'بعد المقاصّة: ربحُ الباقتين وحدهما');
-        $this->assertSame((int) $mar->id, (int) $credit->fresh()->boutique_settlement_id);
+        $this->assertSame([7.0], BoutiqueCreditOffset::where('credit_id', $credit->id)->where('boutique_settlement_id', $mar->id)->pluck('amount')->map(fn ($a) => (float) $a)->all());
 
         // للمى سبعةٌ في فبراير وسبعةٌ في مارس — ثمنُ الباقتين اللتين بقيتا
         $this->assertSame(14.0, round((float) BoutiqueSettlement::where('boutique_id', $this->lama->id)->sum('components_net'), 3));
     }
 
-    public function test_a_credit_larger_than_what_follows_waits_or_is_refunded_once(): void
+    /**
+     * رصيدٌ لسعود بسبعةٍ ومستحقٌّ للبوتيك بثلاثة: تُقاصّ ثلاثةٌ وتبقى أربعة.
+     *
+     * والمقاصّةُ سطرٌ مسجَّل لا يُكرَّر، والأربعةُ تُقاصّ بما بعدها أو تُستردّ.
+     */
+    public function test_a_credit_of_seven_offsets_a_due_of_three_and_four_remain(): void
     {
         $order = $this->sell($this->bouquet);
         BoutiqueDues::pay($this->settle(), 'نقدي');
@@ -339,25 +345,73 @@ class ABoutiqueStatementSettlesWhatWentIntoBouquetsTest extends TestCase
         Carbon::setTestNow('2027-03-05 10:00:00');
         $this->actingAs($this->owner);
         OrderCorrection::cancel($order->fresh(), 'أُعيدت', boutiqueReturned: true);
+        $this->assertSame(7.0, $this->balance('boutique_receivable'));
 
-        // مارس: دبّوسٌ بثلاثة — والرصيدُ (٧) لا يسعه، فيبقى ولا يصير الصافي سالبًا
+        // مارس: دبّوسٌ بثلاثة — يُقاصّ ثلاثةً من السبعة، والصافي صفر
         $this->sell($this->mini);
         $st = Boutiques::statement($this->shop->id, $this->lama->id, '2027-03');
-        $this->assertSame([3.0, 0.0, 7.0, 3.0], [$st['components']['due'], $st['components']['credit'], $st['components']['credit_available'], $st['components']['net']]);
+        $this->assertSame([3.0, 3.0, 7.0, 0.0], [$st['components']['due'], $st['components']['credit'], $st['components']['credit_available'], $st['components']['net']]);
 
-        // والبوتيكُ ردّ السبعة نقدًا: سندُ استرداد — لا ربحَ ولا إيراد
+        $mar = $this->settle('2027-03');
+        $this->assertSame([3.0, 3.0, 0.0], [(float) $mar->components_due, (float) $mar->components_credit, (float) $mar->components_net]);
+        $this->assertSame([3.0], BoutiqueCreditOffset::where('boutique_settlement_id', $mar->id)->pluck('amount')->map(fn ($a) => (float) $a)->all(), 'سطرُ مقاصّةٍ واحد بثلاثة');
+        $this->assertSame([4.0], array_values(BoutiqueDues::credits($this->shop->id, $this->lama->id)), 'ويبقى لسعود أربعة');
+
+        // السدادُ مقاصّةٌ كلُّه: مدين 2160 / دائن 1370 — لا نقد
+        $cash = $this->balance('cash');
+        BoutiqueDues::pay($mar, 'نقدي');
+        $this->assertSame($cash, $this->balance('cash'));
+        $this->assertSame(0.0, $this->balance('boutique_payable'));
+        $this->assertSame(4.0, $this->balance('boutique_receivable'), 'الدفترُ يقول ما يقوله الكشف');
+
+        // ولا تُقاصّ مرّتين: ورقةٌ ثانية لا شيءَ لها
+        try {
+            $this->settle('2027-03');
+            $this->fail('صدرت ورقةٌ ثانية بلا بيع');
+        } catch (SettlementRefused) {
+        }
+        $this->assertSame(1, BoutiqueCreditOffset::count());
+
+        // والبوتيكُ ردّ الأربعة نقدًا: سندُ استرداد — لا ربحَ ولا إيراد
         $before = $this->books();
         $doc = BoutiqueDues::refund($this->shop, $this->lama, 'نقدي');
         $after = $this->books();
         $this->assertSame(BoutiqueSettlement::REFUND, $doc->kind);
-        $this->assertSame(7.0, (float) $doc->components_credit);
-        $this->assertSame(round($before['cash'] + 7, 3), $after['cash']);
+        $this->assertSame(4.0, (float) $doc->components_credit);
+        $this->assertSame(round($before['cash'] + 4, 3), $after['cash']);
         $this->assertSame(0.0, $after['receivable']);
         $this->assertSame($before['profit'], $after['profit'], 'الاستردادُ لا يُضاعف الربح');
 
-        $this->assertSame(0.0, Boutiques::statement($this->shop->id, $this->lama->id, '2027-03')['components']['credit_available']);
+        $this->assertSame([], BoutiqueDues::credits($this->shop->id, $this->lama->id));
         $this->expectException(SettlementRefused::class);
         BoutiqueDues::refund($this->shop, $this->lama, 'نقدي');
+    }
+
+    /** خطّةُ مقاصّةٍ قديمة (قُرئت قبل استرداد) لا تأخذ أكثرَ ممّا بقي */
+    public function test_an_offset_never_takes_more_than_is_left(): void
+    {
+        $order = $this->sell($this->bouquet);
+        BoutiqueDues::pay($this->settle(), 'نقدي');
+        Carbon::setTestNow('2027-03-05 10:00:00');
+        $this->actingAs($this->owner);
+        OrderCorrection::cancel($order->fresh(), 'أُعيدت', boutiqueReturned: true);
+
+        $this->sell($this->mini);
+        $stale = Boutiques::statement($this->shop->id, $this->lama->id, '2027-03')['components'];
+        BoutiqueDues::refund($this->shop, $this->lama, 'نقدي', amount: 5.0);
+
+        $doc = BoutiqueSettlement::create([
+            'business_id' => $this->shop->id, 'boutique_id' => $this->lama->id, 'number' => 'BQ-TEST', 'period' => '2027-03',
+            'gross' => 0, 'commission' => 0, 'net' => 0, 'lines_count' => 0,
+        ]);
+        try {
+            BoutiqueDues::claim($doc->id, ['ids' => [], 'credit_plan' => $stale['credit_plan']]);
+            $this->fail('قُوصّ بثلاثةٍ من رصيدٍ بقي منه اثنان');
+        } catch (SettlementRefused) {
+        }
+
+        $this->assertSame([2.0], array_values(BoutiqueDues::credits($this->shop->id, $this->lama->id)));
+        $this->assertSame(2.0, $this->balance('boutique_receivable'));
     }
 
     /* ═══════════ سعرٌ تغيّر والزبونُ عند البنك ═══════════ */

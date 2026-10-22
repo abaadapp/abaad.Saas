@@ -25,6 +25,7 @@ use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\OrderCorrection;
+use App\Support\Store\Paymob;
 use App\Support\Store\WebCheckout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -454,6 +455,34 @@ class ABoutiqueStatementSettlesWhatWentIntoBouquetsTest extends TestCase
         $this->assertSame(20.0, (float) $order->total);
         $this->assertSame(7.0, BoutiqueDues::owedFor($order), 'ما فُحص قبل البنك هو ما كُتب بعده');
         $this->assertSame(7.0, $this->balance('boutique_payable'));
+    }
+
+    public function test_a_signed_paymob_notice_sent_twice_writes_one_order_and_one_due(): void
+    {
+        $this->cardOn();
+        $this->postJson('/s/ribbon/checkout', $this->form('card'))->assertOk();
+        $intent = StorePaymentIntent::where('business_id', $this->shop->id)->firstOrFail();
+
+        // السعرُ تغيّر والزبونُ عند البنك، ثمّ يرنّ Paymob بالإشعار الموقَّع نفسِه مرّتين
+        $this->silver->update(['price' => 25]);
+        $obj = [
+            'amount_cents' => (int) round(((float) $intent->amount) * 1000), 'created_at' => '2027-02-10T10:00:10.100000',
+            'currency' => 'OMR', 'error_occured' => false, 'has_parent_transaction' => false, 'id' => 998877,
+            'integration_id' => 4569876, 'is_3d_secure' => true, 'is_auth' => false, 'is_capture' => false,
+            'is_refunded' => false, 'is_standalone_payment' => true, 'is_voided' => false,
+            'order' => ['id' => 777, 'merchant_order_id' => $intent->reference], 'owner' => 4705, 'pending' => false,
+            'source_data' => ['pan' => '2346', 'sub_type' => 'Visa', 'type' => 'card'], 'success' => true,
+        ];
+        $hmac = Paymob::signature($obj, 'hmac_secret_value');
+        $this->postJson('/webhooks/paymob?hmac='.$hmac, ['obj' => $obj])->assertOk();
+        $this->postJson('/webhooks/paymob?hmac='.$hmac, ['obj' => $obj])->assertOk();
+
+        $orders = Order::where('business_id', $this->shop->id)->where('channel', 'website')->get();
+        $this->assertCount(1, $orders, 'إشعارٌ مكرَّر لا يكتب طلبًا ثانيًا');
+        $this->assertSame([20.0, 7.0], [(float) $orders[0]->total, BoutiqueDues::owedFor($orders[0])]);
+        $this->assertSame(1, BoutiqueComponentDue::where('order_id', $orders[0]->id)->count());
+        $this->assertSame([7.0, 20.0], [$this->balance('boutique_payable'), round(Ledger::netRevenue($this->shop->id), 3)]);
+        $this->assertSame(9, (int) $this->silver->fresh()->quantity, 'القطعةُ تخرج من الرفّ مرّةً واحدة');
     }
 
     public function test_a_paid_intent_without_a_pinned_price_still_becomes_an_order(): void

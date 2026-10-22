@@ -236,6 +236,11 @@ class ProductController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            // والوصفُ الإنجليزيّ ما كتبه التاجرُ بيده — لا يُملأ ولا يُترجم (انظر `ProductDescription`)
+            'description_en' => ['nullable', 'string'],
+            // وأين يُعرض الوصف — غيرُ أين يُباع الصنف (`pos_enabled`/`published`)
+            'description_pos_enabled' => ['nullable', 'boolean'],
+            'description_web_enabled' => ['nullable', 'boolean'],
             'category_id' => $this->categoryRule(),
             /*
              * وصاحبُ الصنف إن كان لبوتيك — ومن لا يُؤوي بوتيكاتٍ لا يُقبل منه.
@@ -305,6 +310,12 @@ class ProductController extends Controller
         // ونقطةُ البيع كالموقع: مفتوحةٌ افتراضًا، ومن أغلقها باعه في متجره على الإنترنت وحده
         $data['pos_enabled'] = $request->boolean('pos_enabled', true);
         /*
+         * والوصفُ في الموقع كما كان كلُّ وصف، وللكاشير حين يُطلب: لم يظهر
+         * وصفٌ في الصندوق قطّ، فلا يظهر لصنفٍ لم يُسأل صاحبُه عنه.
+         */
+        $data['description_web_enabled'] = $request->boolean('description_web_enabled', true);
+        $data['description_pos_enabled'] = $request->boolean('description_pos_enabled', false);
+        /*
          * والاسمُ الإنجليزيّ ما كتبه التاجرُ بيده — أو لا اسم.
          *
          * كان يُملأ من المعجم إن تُرك فارغًا (`Lexicon::fill`)، فيقرأ الكاشيرُ
@@ -364,6 +375,11 @@ class ProductController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'name_en' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
+            // والوصفُ الإنجليزيّ ما كتبه التاجرُ بيده — لا يُملأ ولا يُترجم (انظر `ProductDescription`)
+            'description_en' => ['nullable', 'string'],
+            // وأين يُعرض الوصف — غيرُ أين يُباع الصنف (`pos_enabled`/`published`)
+            'description_pos_enabled' => ['nullable', 'boolean'],
+            'description_web_enabled' => ['nullable', 'boolean'],
             'category_id' => $this->categoryRule(),
             /*
              * وصاحبُ الصنف إن كان لبوتيك — ومن لا يُؤوي بوتيكاتٍ لا يُقبل منه.
@@ -433,6 +449,12 @@ class ProductController extends Controller
         // ولا تُغلق نقطةُ البيع ولا تُفتح بحفظةٍ لم تُرسلها — صورةٌ أو سعرٌ أو قسمٌ لا يمسّها
         if ($request->has('pos_enabled')) {
             $data['pos_enabled'] = $request->boolean('pos_enabled');
+        }
+        // ومفتاحا الوصف كذلك — وقناةُ البيع لا تمسّهما ولا يمسّانها
+        foreach (['description_pos_enabled', 'description_web_enabled'] as $flag) {
+            if ($request->has($flag)) {
+                $data[$flag] = $request->boolean($flag);
+            }
         }
         // والاسمُ الإنجليزيّ كما أرسله النموذج — لا يُملأ من المعجم (انظر `store`)
         // القيم الرقمية الفارغة → افتراضياتها (الأعمدة NOT NULL)

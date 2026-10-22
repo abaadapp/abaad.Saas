@@ -1140,6 +1140,14 @@ class Demo
                 'published' => (bool) $p->published,
                 // وما يُباع في نقطة البيع — والصندوقُ يعرض النشطَ المتاحَ له وحده (`Product::sellsAtPos`)
                 'pos_enabled' => (bool) ($p->pos_enabled ?? true),
+                /*
+                 * وأين يُعرض الوصف — مفتاحان مستقلّان عن القناتين فوقهما. ونصُّ
+                 * الكاشير بلغة شاشته، و`null` حين لا يُعرض له (`ProductDescription::atPos`)
+                 * — فلا يصل الصندوقَ وصفٌ لم يُفتح له.
+                 */
+                'description_pos_enabled' => (bool) ($p->description_pos_enabled ?? false),
+                'description_web_enabled' => (bool) ($p->description_web_enabled ?? true),
+                'pos_description' => ProductDescription::atPos($p, app()->getLocale()),
                 'alert' => $p->alert_qty,
                 /*
                  * النسبة الفعليّة من المصدر الذي يحتسب بها الخادم — لا العمود الخام.

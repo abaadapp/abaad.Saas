@@ -130,8 +130,14 @@ class PageController extends Controller
             'thumbs' => $model
                 ? array_column(ProductImages::gallery($model), 'url')
                 : array_values(array_filter([$product['image']])),
-            'description' => $product['description']
-                ?? __('باقة أنيقة من الورود الطبيعية الطازجة مناسبة لجميع المناسبات، منسّقة بعناية بأيدي خبراء التنسيق لدينا لتمنح لمسة جمالية مميزة.'),
+            /*
+             * الوصفُ المحفوظ من الصفّ — لا نصٌّ ثابت.
+             *
+             * كان يُقرأ من `Demo::products` ولا وصفَ فيها، فتعرض الشاشةُ لكلّ صنفٍ
+             * «باقة أنيقة من الورود الطبيعية…» — وصفًا لم يكتبه أحد.
+             */
+            'description' => (string) ($model?->description ?? ''),
+            'descriptionEn' => (string) ($model?->description_en ?? ''),
         ]);
     }
 
@@ -146,7 +152,14 @@ class PageController extends Controller
         return Inertia::render('Admin/Products/Edit', [
             'product' => $product,
             'categories' => Demo::categories(),
-            'description' => $product['description'] ?? '',
+            /*
+             * والوصفان من الصفّ نفسه — لا من `Demo::products` ولا وصفَ فيها.
+             *
+             * كانت الشاشةُ تُفتح بوصفٍ فارغٍ دائمًا، والنموذجُ يُرسل ما فيه: فكلُّ
+             * حفظةٍ لسعرٍ أو قسمٍ كانت تمحو وصفَ الصنف وهو لم يُلمس.
+             */
+            'description' => (string) ($model?->description ?? ''),
+            'descriptionEn' => (string) ($model?->description_en ?? ''),
             'composition' => $model
                 ? ProductCompositionController::payload($model)
                 : null,

@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Review;
 use App\Models\Website;
 use App\Support\CategoryName;
+use App\Support\ProductDescription;
 use App\Support\ProductName;
 use App\Support\Demo;
 
@@ -414,7 +415,7 @@ class Preview
         $rows = Product::where('business_id', $businessId)
             ->where('active', true)->where('published', true)
             ->orderByDesc('id')->limit(max($limit, self::MAX))
-            ->get(['id', 'name', 'name_en', 'description', 'price', 'discount', 'image', 'category_id']);
+            ->get(['id', 'name', 'name_en', 'description', 'description_en', 'description_web_enabled', 'price', 'discount', 'image', 'category_id']);
 
         return self::onShelf($businessId, $rows, $locale);
     }
@@ -457,7 +458,7 @@ class Preview
             $rows = Product::where('business_id', $businessId)
                 ->where('active', true)->where('published', true)
                 ->whereIn('id', $ids)->orderByDesc('id')->limit(self::CATALOG_MAX)
-                ->get(['id', 'name', 'name_en', 'description', 'price', 'discount', 'image', 'category_id']);
+                ->get(['id', 'name', 'name_en', 'description', 'description_en', 'description_web_enabled', 'price', 'discount', 'image', 'category_id']);
 
             $items = self::onShelf($businessId, $rows, $locale);
 
@@ -541,7 +542,7 @@ class Preview
         // والشروطُ الثلاثة هنا أيضًا: صنفٌ باع أمس ونفد اليوم لا يُعرض اليوم
         $products = collect(self::onShelf($businessId, Product::where('business_id', $businessId)
             ->where('active', true)->where('published', true)
-            ->whereIn('id', $ids)->get(['id', 'name', 'name_en', 'description', 'price', 'discount', 'image', 'category_id']), $locale))
+            ->whereIn('id', $ids)->get(['id', 'name', 'name_en', 'description', 'description_en', 'description_web_enabled', 'price', 'discount', 'image', 'category_id']), $locale))
             ->keyBy('id');
 
         // ترتيبُ المبيعات لا ترتيبُ المعرّفات: `whereIn` لا تحفظ ترتيب القائمة
@@ -569,7 +570,8 @@ class Preview
             'id' => $p->id,
             'name' => ProductName::display($p->name, $p->name_en, $locale),
             'other_name' => ProductName::other($p->name, $p->name_en, $locale),
-            'excerpt' => mb_substr(trim((string) $p->description), 0, 120),
+            // بلغة الموقع، وحيث اختار صاحبُه (`ProductDescription::online`)
+            'excerpt' => mb_substr(ProductDescription::online($p, $locale), 0, 120),
             'price' => $price,
             // السعر بعد الخصم يُحسب هنا لا في العارض: حسابُ مالٍ في موضعٍ واحد
             'was' => $discount > 0 ? $price : null,

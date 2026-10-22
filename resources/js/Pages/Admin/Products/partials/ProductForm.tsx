@@ -16,7 +16,7 @@ import Gallery, { type GalleryImage } from './Gallery';
 import { boutiqueMove, type BoutiqueOption } from './boutique';
 import AddonsLayoutSwitch from './AddonsLayoutSwitch';
 import BoutiqueParts, { type BoutiquePartsData } from './BoutiqueParts';
-import { CHANNEL_SUMMARY, salesChannels } from './channels';
+import { CHANNEL_SUMMARY, DESCRIPTION_SUMMARY, descriptionShows, salesChannels } from './channels';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import type { Category, Product } from '@/types/models';
 
@@ -25,6 +25,8 @@ interface Props {
     /** موجود = تعديل، غائب = إنشاء */
     product?: Product;
     description?: string;
+    /** الوصفُ الإنجليزيّ المحفوظ — في التعديل */
+    descriptionEn?: string;
     currencyLabel: string;
     /** المقاسات والوصفة والإضافات — قوائمُ الاختيار في الحالتين */
     composition?: CompositionData | null;
@@ -71,6 +73,9 @@ const FIELD_SECTION: Record<string, TabKey> = {
     name: 'basic',
     name_en: 'basic',
     description: 'basic',
+    description_en: 'basic',
+    description_pos_enabled: 'basic',
+    description_web_enabled: 'basic',
     category_id: 'basic',
     boutique_id: 'basic',
     sku: 'basic',
@@ -102,6 +107,7 @@ export default function ProductForm({
     categories,
     product,
     description,
+    descriptionEn,
     currencyLabel,
     composition,
     gallery,
@@ -124,6 +130,7 @@ export default function ProductForm({
         name: product?.name ?? '',
         name_en: product?.name_en ?? '',
         description: description ?? '',
+        description_en: descriptionEn ?? '',
         category_id: String(categories.find((c) => c.name === product?.cat)?.id ?? ''),
         // فراغٌ = «بدون بوتيك»: صنفُ المحلّ
         boutique_id: initialBoutique,
@@ -142,6 +149,12 @@ export default function ProductForm({
         published: product?.published ?? true,
         // ويُباع في نقطة البيع افتراضًا — كما كان كلُّ صنفٍ نشط
         pos_enabled: product?.pos_enabled ?? true,
+        /*
+         * وأين يُعرض الوصف — غيرُ أين يُباع. في الموقع كما كان كلُّ وصف، وللكاشير
+         * حين يُطلب: لم يظهر وصفٌ في الصندوق قطّ (انظر `ProductDescription`).
+         */
+        description_web_enabled: product?.description_web_enabled ?? true,
+        description_pos_enabled: product?.description_pos_enabled ?? false,
         image: null as File | null,
         // Inertia لا يرسل PUT مع ملف؛ التزييف هو الطريق الرسمي
         ...(editing ? { _method: 'put' } : {}),
@@ -410,8 +423,14 @@ export default function ProductForm({
                         <Card className="p-6">
                             <h3 className="mb-4 font-bold text-[#111]">{t('المعلومات الأساسية')}</h3>
                             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div className="space-y-4 md:col-span-2">
-                                    {/* صنفٌ واحد باسمين — لا منتجٌ لكلّ لغة: المعرّفُ والمخزونُ والسعرُ واحد */}
+                                {/*
+                                    صنفٌ واحد باسمين ووصفين — لا منتجٌ لكلّ لغة: المعرّفُ
+                                    والمخزونُ والسعرُ واحد. وكلُّ لغةٍ في مجموعتها، فلا
+                                    يُكتب الوصفُ الإنجليزيّ في خانة العربيّ. ولا يُترجم
+                                    شيءٌ تلقائيًّا: ما لم يُكتب لا يُخترع.
+                                */}
+                                <div className="space-y-4 md:col-span-2" role="group" aria-label={t('المعلومات العربية')} data-testid="product-info-ar">
+                                    <h4 className="text-[13px] font-semibold text-[#6b7280]">{t('المعلومات العربية')}</h4>
                                     <Field label="اسم المنتج بالعربية" required error={form.errors.name}>
                                         <Input
                                             value={form.data.name}
@@ -419,6 +438,28 @@ export default function ProductForm({
                                             placeholder={t('مثال: باقة ورد أحمر')}
                                         />
                                     </Field>
+                                    <Field
+                                        label="وصف المنتج بالعربية"
+                                        hint="يظهر في الموقع العربي — وفي الإنجليزي ما لم يُكتب وصف إنجليزي"
+                                        error={form.errors.description}
+                                    >
+                                        <Textarea
+                                            rows={4}
+                                            value={form.data.description}
+                                            onChange={(e) =>
+                                                form.setData('description', e.target.value)
+                                            }
+                                            placeholder={t('اكتب وصفًا مختصرًا للمنتج…')}
+                                        />
+                                    </Field>
+                                </div>
+                                <div
+                                    className="space-y-4 border-t border-[var(--ui-border,#e8e8e8)] pt-4 md:col-span-2"
+                                    role="group"
+                                    aria-label={t('المعلومات الإنجليزية')}
+                                    data-testid="product-info-en"
+                                >
+                                    <h4 className="text-[13px] font-semibold text-[#6b7280]">{t('المعلومات الإنجليزية')}</h4>
                                     <Field
                                         label="اسم المنتج بالإنجليزية"
                                         hint="اختياري — يظهر في الموقع حين تكون لغته الإنجليزية، ويُبحث به في أيّ لغة"
@@ -431,14 +472,17 @@ export default function ProductForm({
                                             placeholder="e.g. Red Rose Bouquet"
                                         />
                                     </Field>
-                                    <Field label="الوصف" error={form.errors.description}>
+                                    <Field
+                                        label="وصف المنتج بالإنجليزية"
+                                        hint="اختياري — يظهر في الموقع الإنجليزي. وبدونه يظهر الوصف العربي، ولا يُترجم شيء تلقائيًا"
+                                        error={form.errors.description_en}
+                                    >
                                         <Textarea
                                             rows={4}
-                                            value={form.data.description}
-                                            onChange={(e) =>
-                                                form.setData('description', e.target.value)
-                                            }
-                                            placeholder={t('اكتب وصفًا مختصرًا للمنتج…')}
+                                            dir="ltr"
+                                            value={form.data.description_en}
+                                            onChange={(e) => form.setData('description_en', e.target.value)}
+                                            placeholder="A short description of the product…"
                                         />
                                     </Field>
                                 </div>
@@ -746,6 +790,61 @@ export default function ProductForm({
                                 data-testid="product-channels-summary"
                             >
                                 {t(CHANNEL_SUMMARY[salesChannels(form.data)])}
+                            </p>
+                        </Card>
+
+                        <Card className="p-6" data-testid="product-description-channels">
+                            <h3 className="mb-1 font-bold text-[#111]">{t('أين يظهر وصف المنتج؟')}</h3>
+                            <p className="mb-4 text-[12px] text-[#9ca3af]">
+                                {t('مستقلّ عن أين يُباع: إخفاء الوصف لا يُخفي المنتج، وتغيير قناة البيع لا يغيّر هذا الاختيار.')}
+                            </p>
+                            {/*
+                                مفتاحان غيرُ قناتَي البيع فوقهما (`ProductDescription`).
+
+                                باقةٌ تُباع في القناتين قد يُعرض وصفُها للزبون في
+                                الموقع وحده. وما لا يُباع في قناةٍ لا يظهر وصفُه فيها،
+                                والمفتاحُ يُحفظ كما اختير — فمن أعاد فتح القناة وجده
+                                كما تركه. والسطرُ تحت كلٍّ يقول ذلك.
+                            */}
+                            <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                                <div className="flex items-center justify-between gap-3 pb-4">
+                                    <div>
+                                        <p className="text-sm font-medium text-[#111]">{t('إظهار وصف المنتج في نقطة البيع (POS)')}</p>
+                                        <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                            {form.data.active && form.data.pos_enabled
+                                                ? t('يقرؤه الكاشير من زر المعلومات على بطاقة المنتج — ولا يُطبع في فاتورة العميل')
+                                                : t('محفوظ — ولن يظهر ما دام المنتج لا يُباع في نقطة البيع')}
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        on={form.data.description_pos_enabled}
+                                        onChange={() => form.setData('description_pos_enabled', !form.data.description_pos_enabled)}
+                                        label={t('إظهار وصف المنتج في نقطة البيع (POS)')}
+                                    />
+                                </div>
+
+                                <div className="flex items-center justify-between gap-3 pt-4">
+                                    <div>
+                                        <p className="text-sm font-medium text-[#111]">{t('إظهار وصف المنتج في الموقع الإلكتروني')}</p>
+                                        <p className="mt-0.5 text-[12px] text-[#9ca3af]">
+                                            {form.data.active && form.data.published
+                                                ? t('يقرؤه العميل في صفحة المنتج بلغة الموقع')
+                                                : t('محفوظ — ولن يظهر ما دام المنتج لا يُباع في المتجر الإلكتروني')}
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        on={form.data.description_web_enabled}
+                                        onChange={() => form.setData('description_web_enabled', !form.data.description_web_enabled)}
+                                        label={t('إظهار وصف المنتج في الموقع الإلكتروني')}
+                                    />
+                                </div>
+                            </div>
+
+                            <p
+                                className="mt-4 rounded-[10px] bg-[#f8fafc] px-3 py-2 text-[12px] leading-relaxed text-[#475569]"
+                                data-testid="product-description-summary"
+                            >
+                                {t(DESCRIPTION_SUMMARY[descriptionShows(form.data)])}
                             </p>
                         </Card>
                     </div>

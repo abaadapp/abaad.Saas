@@ -29,6 +29,11 @@ export interface Product {
     published?: boolean;
     /** يُباع في نقطة البيع — نظيرُ `published` للصندوق، وغائبُه يُقرأ «نعم» */
     pos_enabled?: boolean;
+    /** أين يُعرض الوصف — مستقلّان عن قناتَي البيع. انظر `ProductDescription` */
+    description_pos_enabled?: boolean;
+    description_web_enabled?: boolean;
+    /** نصُّ الكاشير بلغة شاشته — `null` حين لا يُعرض له */
+    pos_description?: string | null;
     alert: number;
     tax: number;
     discount: number;

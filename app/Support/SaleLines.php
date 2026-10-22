@@ -450,7 +450,8 @@ final class SaleLines
             throw ValidationException::withMessages($errors);
         }
 
-        return $lines;
+        // وما فيها من أصناف البوتيكات يُحمَّل مستحقَّه — انظر BoutiqueDues
+        return BoutiqueDues::price($bid, $lines, $channel);
     }
 
     /**

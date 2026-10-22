@@ -59,6 +59,10 @@ final class RestoreIsolation
             'boutique_id' => 'boutiques', 'boutique_settlement_id' => 'boutique_settlements',
         ],
         'order_edits' => ['order_item_id' => 'order_items', 'user_id' => 'users'],
+        'boutique_component_dues' => [
+            'boutique_id' => 'boutiques', 'product_id' => 'products', 'recipe_item_id' => 'recipe_items',
+            'addon_id' => 'addons', 'reverses_id' => 'boutique_component_dues', 'user_id' => 'users',
+        ],
         'coupon_redemptions' => ['customer_id' => 'customers'],
         'order_prep_checks' => ['user_id' => 'users'],
         'shifts' => ['user_id' => 'users', 'branch_id' => 'branches'],

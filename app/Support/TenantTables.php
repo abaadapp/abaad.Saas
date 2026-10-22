@@ -102,6 +102,7 @@ class TenantTables
          */
         'store_terms_versions',
         'orders', 'order_items', 'order_item_addons', 'order_item_components', 'order_edits',
+        'boutique_component_dues',
         /*
          * ونيّاتُ الدفع بعد الطلبات: كلُّ نيّةٍ نجحت تشير إلى طلبها.
          *

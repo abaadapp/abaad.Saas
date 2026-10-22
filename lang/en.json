@@ -8373,5 +8373,14 @@
     "أيام التوصيل وفتراته": "Delivery days and windows",
     "يحكمه جدول المواعيد — يُسأل عنه دائمًا ما دام الجدول مفتوحًا": "Set by the delivery schedule — always asked while the schedule is on",
     "يوم كامل": "Whole day",
-    "أربع وعشرون ساعة من بدايتها": "24 hours from its start"
+    "أربع وعشرون ساعة من بدايتها": "24 hours from its start",
+    "مستحقّات البوتيكات": "Boutique dues",
+    "«:name» صنفُ بوتيك، ولا يدخل طلبًا مخصَّصًا بعد.": "“:name” belongs to a boutique and cannot go into a custom order yet.",
+    "ما يبقى من الطلب بعد الخصم (:left) أقلّ ممّا يُستحقّ للبوتيكات عن أصنافها فيه (:due). خفّف الخصم أو راجع الأسعار.": "What is left of the order after the discount (:left) is less than what the boutiques are owed for their items in it (:due). Lower the discount or review the prices.",
+    "«:name» صنفُ بوتيك، ومستحقُّ البوتيك لا يُحسب بعد في متجرٍ يحتسب الضريبة.": "“:name” belongs to a boutique, and boutique dues are not yet calculated in a shop that charges VAT.",
+    "«:parent» صنفُ بوتيك، فلا يحمل صنفَ بوتيكٍ آخر («:name»).": "“:parent” belongs to a boutique, so it cannot carry another boutique's item (“:name”).",
+    "«:name» صنفُ بوتيكٍ له مقاسات — لا يدخل باقةً ولا إضافةً حتى يُحفظ سعرُ مقاسه.": "“:name” is a boutique item with sizes — it cannot go into a bouquet or an add-on until the price of its size is kept.",
+    "«:name» صنفُ بوتيك بنسبة فاقد — اجعل فاقدَه صفرًا في الوصفة.": "“:name” is a boutique item with a wastage rate — set its wastage to zero in the recipe.",
+    "«:name» صنفُ بوتيك بكمّيّةٍ كسريّة — يُؤخذ قطعًا كاملة.": "“:name” is a boutique item with a fractional quantity — it is taken in whole pieces.",
+    "«:name» صنفُ بوتيك بلا سعر — لا يُعرف مستحقُّه.": "“:name” is a boutique item without a price — its due cannot be known."
 }

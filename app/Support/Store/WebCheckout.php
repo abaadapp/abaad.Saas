@@ -12,6 +12,7 @@ use App\Models\StorePaymentIntent;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
+use App\Support\BoutiqueDues;
 use App\Support\CouponLimits;
 use App\Support\Customers;
 use App\Support\FlowerOrder;
@@ -281,6 +282,11 @@ final class WebCheckout
         $promo = CheckoutFields::shows($bid, 'promo') ? self::text($payload['promo'] ?? null) : null;
 
         [$coupon, $discount, $promoError] = self::coupon($bid, $promo, $subtotal, $lock);
+
+        // والمتجرُ يتحمّل خصمَه — ويُقال ذلك قبل البنك لا بعده. وما قبضه البنكُ يُقبل
+        if (! $settling) {
+            BoutiqueDues::assertCovered($bid, $lines, $subtotal, $discount);
+        }
 
         $tax = $sale->taxFor($lines, $subtotal, $discount);
         if (Vat::inclusive($bid)) {
@@ -694,7 +700,7 @@ final class WebCheckout
             $boutiqueOf = Boutiques::attribute($bid, $lines);
 
             foreach (array_values($lines) as $idx => $l) {
-                $order->items()->create([
+                $item = $order->items()->create([
                     'product_id' => $l['product']?->id,
                     'variant_id' => $l['variant']?->id,
                     'variant_name' => $l['variant']?->name,
@@ -713,6 +719,8 @@ final class WebCheckout
                     'addons_total' => 0,
                     'custom_details' => null,
                 ]);
+
+                BoutiqueDues::forItem($order, $item, $l);
             }
 
             // الرفُّ يُخصم للسلّة كلِّها — وذو الوصفة بمكوّناته لا بنفسه (كما في الصندوق)

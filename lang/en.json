@@ -8373,5 +8373,13 @@
     "أيام التوصيل وفتراته": "Delivery days and windows",
     "يحكمه جدول المواعيد — يُسأل عنه دائمًا ما دام الجدول مفتوحًا": "Set by the delivery schedule — always asked while the schedule is on",
     "يوم كامل": "Whole day",
-    "أربع وعشرون ساعة من بدايتها": "24 hours from its start"
+    "أربع وعشرون ساعة من بدايتها": "24 hours from its start",
+    "أين تُباع الإضافة؟": "Where is this add-on sold?",
+    "نقطة البيع (POS)": "Point of sale (POS)",
+    "تظهر للعميل في القناة المختارة فقط، ويرفض الخادم غيرها.": "Shown only in the chosen channel; the server refuses the others.",
+    "غير متاحة للبيع حاليًا — تبقى محفوظة ولا تُحذف.": "Not for sale right now — it stays saved and is not deleted.",
+    "لا يتّسع الصنفُ الواحد لأكثر من :max إضافة.": "One item can hold at most :max add-ons.",
+    "هذا الصنف ملكُ بوتيك — ربطُه هنا لا يُنشئ للبوتيك مستحقًّا بعد. اختر صنفًا يملكه المتجر.": "This item belongs to a boutique — linking it here does not create anything owed to the boutique yet. Choose an item the shop owns.",
+    "بوتيك: لا يُربط بعد": "Boutique: cannot be linked yet",
+    "هذه الإضافة مرتبطة بصنف بوتيك — لا يُنشأ للبوتيك مستحقٌّ عنها بعد.": "This add-on is linked to a boutique item — nothing is owed to the boutique for it yet."
 }

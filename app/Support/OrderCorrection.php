@@ -1262,17 +1262,7 @@ class OrderCorrection
         ]);
 
         foreach ($l['addons'] ?? [] as $a) {
-            $item->addons()->create([
-                'addon_id' => $a['addon']->id,
-                'name' => $a['addon']->name,
-                'name_en' => $a['addon']->name_en,
-                'unit_price' => $a['price'],
-                'quantity' => $a['qty'],
-                'total' => $a['total'],
-                'cost' => $a['cost'],
-                'inventory_product_id' => $a['inventory_product_id'] ?? null,
-                'inventory_quantity' => ($a['inventory_product_id'] ?? null) ? $a['each'] : null,
-            ]);
+            $item->addons()->create(SaleLines::addonRow($a));
         }
 
         return $item->fresh(['addons.addon']);

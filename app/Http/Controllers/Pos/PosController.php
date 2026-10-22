@@ -831,24 +831,8 @@ class PosController extends Controller
                 }
 
                 foreach ($l['addons'] ?? [] as $a) {
-                    $item->addons()->create([
-                        'addon_id' => $a['addon']->id,
-                        'name' => $a['addon']->name,
-                        'name_en' => $a['addon']->name_en,
-                        'unit_price' => $a['price'],
-                        'quantity' => $a['qty'],
-                        'total' => $a['total'],
-                        'cost' => $a['cost'],
-                        /*
-                         * لقطةُ ما أُخذ من الرفّ — لا علاقةٌ تُقرأ يوم الإلغاء.
-                         *
-                         * إضافةٌ كانت ثلاث ورداتٍ فصارت خمسًا تردّ خمسًا عن
-                         * بيعةٍ أخذت ثلاثًا لو قُرئت اليوم — فيربح الرفّ
-                         * وردتين لا وجود لهما.
-                         */
-                        'inventory_product_id' => $a['inventory_product_id'] ?? null,
-                        'inventory_quantity' => ($a['inventory_product_id'] ?? null) ? $a['each'] : null,
-                    ]);
+                    // ولقطتُها — اسمُها وسعرُها وما أُخذ من الرفّ — من موضعٍ واحد (`SaleLines::addonRow`)
+                    $item->addons()->create(SaleLines::addonRow($a));
                 }
             }
 
@@ -1132,24 +1116,8 @@ class PosController extends Controller
                 }
 
                 foreach ($l['addons'] ?? [] as $a) {
-                    $item->addons()->create([
-                        'addon_id' => $a['addon']->id,
-                        'name' => $a['addon']->name,
-                        'name_en' => $a['addon']->name_en,
-                        'unit_price' => $a['price'],
-                        'quantity' => $a['qty'],
-                        'total' => $a['total'],
-                        'cost' => $a['cost'],
-                        /*
-                         * لقطةُ ما أُخذ من الرفّ — لا علاقةٌ تُقرأ يوم الإلغاء.
-                         *
-                         * إضافةٌ كانت ثلاث ورداتٍ فصارت خمسًا تردّ خمسًا عن
-                         * بيعةٍ أخذت ثلاثًا لو قُرئت اليوم — فيربح الرفّ
-                         * وردتين لا وجود لهما.
-                         */
-                        'inventory_product_id' => $a['inventory_product_id'] ?? null,
-                        'inventory_quantity' => ($a['inventory_product_id'] ?? null) ? $a['each'] : null,
-                    ]);
+                    // ولقطتُها — اسمُها وسعرُها وما أُخذ من الرفّ — من موضعٍ واحد (`SaleLines::addonRow`)
+                    $item->addons()->create(SaleLines::addonRow($a));
                 }
             }
 

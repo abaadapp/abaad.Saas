@@ -591,7 +591,7 @@ window.RB = (function () {
     */
     var LIMITS = { qty: {{ \App\Support\Store\WebCheckout::MAX_QTY }}, lines: {{ \App\Support\Store\WebCheckout::MAX_LINES }} };
     var LIMIT_SAYS = @json(\App\Support\Store\RibbonTexts::limitSays($lang));
-    // والبندُ صنفٌ ومقاسٌ ونصُّ كرتٍ إن كان — انظر `ribbon-cart-lines.js`
+    // والبندُ صنفٌ ومقاسٌ ونصُّ كرتٍ وإضافاتٌ إن كانت — انظر `ribbon-cart-lines.js`
     function addMany(lines) {
         var r = RBLines.merge(read(), lines, LIMITS);
         if (!r.ok) return { ok: false, reason: r.reason, message: LIMIT_SAYS[r.reason] || '' };
@@ -599,13 +599,14 @@ window.RB = (function () {
 
         return { ok: true };
     }
-    function add(id, variantId, qty, note) {
+    function add(id, variantId, qty, note, addons) {
         var line = { id: id, variant_id: variantId || null, qty: qty };
         if (note) line.note = note;
+        if (addons && addons.length) line.addons = addons;
 
         return addMany([line]);
     }
-    function set(id, variantId, qty, note) { write(RBLines.set(read(), id, variantId, Math.min(LIMITS.qty, qty), note)); }
+    function set(id, variantId, qty, note, addons) { write(RBLines.set(read(), id, variantId, Math.min(LIMITS.qty, qty), note, addons)); }
     function clear() { write([]); }
     /*
         وكلُّ جوابٍ يُقال للزبون — ولو لم يكن خطأَ حقلٍ في نموذجه.

@@ -293,6 +293,9 @@ return [
         'checked' => 'التحديد',
         'draft' => 'الحفظ مسودّة',
         'published' => 'النشر',
+        // أين تُباع الإضافة — `CatalogQuickAddController::channelAttributes`
+        'pos_enabled' => 'البيع في نقطة البيع',
+        'web_enabled' => 'البيع في الموقع الإلكتروني',
         'index' => 'الظهور في محرّكات البحث',
         'lang' => 'لغة الورقة',
         'location' => 'الموقع',

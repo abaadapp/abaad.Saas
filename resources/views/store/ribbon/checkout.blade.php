@@ -515,7 +515,9 @@
             var msg = $('[data-rb-promo-msg]'); msg.textContent = '';
             if (!q.ok) { $('[data-rb-place-label]').textContent = T.place; $('[data-rb-form-error]').textContent = Object.values(q.errors || {}).flat().join(' · '); return; }
             $('[data-rb-summary]').innerHTML = q.lines.map(function (l) {
-                return '<div style="display:flex;justify-content:space-between;gap:12px"><span>' + esc(l.name) + (l.variant ? ' · ' + esc(l.variant) : '') + ' × ' + l.qty + '</span><span>' + esc(l.line_text) + '</span></div>';
+                // وإضافاتُ البند تحته بأسمائها وكمّيّاتها — والمبلغُ إلى جانبه يحملها (`WebCheckout::quote`)
+                return '<div style="display:flex;justify-content:space-between;gap:12px"><span>' + esc(l.name) + (l.variant ? ' · ' + esc(l.variant) : '') + ' × ' + l.qty + '</span><span>' + esc(l.line_text) + '</span></div>'
+                    + ((l.addons || []).length ? '<div style="font-size:12px;margin-top:-4px;color:#555" data-testid="rb-summary-addons">+ ' + l.addons.map(function (a) { return esc(a.name) + (a.qty > 1 ? ' × ' + a.qty : ''); }).join('، ') + '</div>' : '');
             }).join('');
             $('[data-rb-subtotal]').textContent = q.subtotal_text;
             $('[data-rb-discount-row]').style.display = q.discount > 0 ? 'flex' : 'none'; $('[data-rb-discount]').textContent = '− ' + q.discount_text;

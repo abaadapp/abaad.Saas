@@ -21,7 +21,15 @@
     لخرجت ورقةٌ بعمودٍ في الرأس بلا خلايا تحته — وسندُ التسليم يمشي مع
     الشحنة في يد سائق، وورقةٌ تُظهر له تكلفةَ ما يحمل عطبٌ لا سهو.
 
-    المتغيّرات: `$items` قائمةُ `['name','qty','unit','total','note','custom']` ·
+    ═══ وإضافاتُ البند تحته — ومالُها مرّةً واحدة ═══
+
+    `addons` من `DocumentPaper::addons` بقاعدة الشريط (`ItemAddons`): المجبيّةُ
+    فوق الثمن صفوفٌ تابعةٌ بمالها (`tr.sub`)، ولقطاتٌ لا تطابق ما جُبي صفٌّ
+    واحدٌ بما جُبي، وما داخل الثمن يُسمّى تحت اسم البند بلا مال. ومبلغُ البند
+    ثمنُه وحده، فيجمع العمودُ إلى المجموع الفرعيّ كما هو. وورقةٌ لا أسعارَ
+    عليها تُسمّي الإضافةَ وكميّتها فقط.
+
+    المتغيّرات: `$items` قائمةُ `['name','qty','unit','total','note','custom','addons']` ·
     `$showPrices` · `$showOrdered` عمودا المطلوب والمستلَم لسند الاستلام ·
     `$itemsLabel` تسميةُ عمود الصنف · `$qtyLabel` تسميةُ عمود الكميّة —
     فـ«الكمية» على أمرٍ لم يُشحن بعدُ «الكمية المطلوبة».
@@ -106,6 +114,13 @@
                         --}}
                         <div dir="{{ \App\Support\Paper::dirOf($line['label'].' '.$line['value']) }}" class="bidi lbl2">{{ $line['label'] }}: {{ $line['value'] }}</div>
                     @endforeach
+                    @php($extras = $item['addons'] ?? null)
+                    {{-- وما داخل الثمن يُسمّى ولا يُكتب مالًا --}}
+                    @if (($extras['mode'] ?? null) === 'included')
+                        @foreach ($extras['rows'] as $addon)
+                            <div class="bidi detail" data-addon="included" dir="{{ \App\Support\Paper::dirOf($addon['name']) }}">+ {{ $addon['name'] }} × <span dir="ltr">{{ $addon['qty'] }}</span> — {{ __('ضمن السعر') }}</div>
+                        @endforeach
+                    @endif
                 </td>
                 @if ($ordered)
                     <td class="num lbl2">{{ $item['ordered'] ?? '—' }}</td>
@@ -124,6 +139,34 @@
                     <td class="amt"><span dir="ltr">{{ $item['total'] ?? '—' }}</span></td>
                 @endif
             </tr>
+            @if (($extras['mode'] ?? null) === 'priced')
+                @foreach ($extras['rows'] as $addon)
+                    <tr class="sub" data-addon="priced">
+                        <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($addon['name']) }}">+ {{ $addon['name'] }}</td>
+                        @if ($ordered)
+                            <td class="num lbl2"></td>
+                        @endif
+                        <td class="num">{{ $addon['qty'] }}</td>
+                        @if ($prices)
+                            <td class="amt"><span dir="ltr">{{ $addon['unit'] }}</span></td>
+                            <td class="amt"><span dir="ltr">{{ $addon['total'] }}</span></td>
+                        @endif
+                    </tr>
+                @endforeach
+            @elseif (($extras['mode'] ?? null) === 'bundled')
+                {{-- ولقطاتٌ لا تطابق ما جُبي: صفٌّ واحدٌ بما جُبي فعلًا، يسمّي ما فيه — لا يُوزَّع المالُ بالظنّ --}}
+                <tr class="sub" data-addon="bundled">
+                    <td class="bidi item" dir="{{ \App\Support\Paper::dirOf($extras['names']) }}">+ {{ __('إضافات') }}: {{ $extras['names'] }}</td>
+                    @if ($ordered)
+                        <td class="num lbl2"></td>
+                    @endif
+                    <td class="num"></td>
+                    @if ($prices)
+                        <td class="amt"></td>
+                        <td class="amt"><span dir="ltr">{{ $extras['total'] }}</span></td>
+                    @endif
+                </tr>
+            @endif
         @empty
             <tr><td class="empty" colspan="{{ $cols }}">{{ __('لا أصناف على هذا المستند') }}</td></tr>
         @endforelse

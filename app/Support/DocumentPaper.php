@@ -9,6 +9,7 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\GoodsReceiptNote;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\SupplierInvoice;
@@ -73,6 +74,38 @@ class DocumentPaper
     }
 
     /** كميّةٌ بلا كسورٍ زائدة: «3» لا «3.000» */
+    /**
+     * إضافاتُ البند على الورقة — بقاعدة `ItemAddons` التي يطبع بها الشريط.
+     *
+     * كانت فاتورةُ A4 تكتب «باقة ورد 20.000» والمجموعَ الفرعيّ «22.000»،
+     * ولا سطرَ يقول من أين الفرق: الإضافةُ مجبيّةٌ ولا اسمَ لها على الورقة.
+     * والشريطُ الحراريّ يسمّيها منذ `ItemAddons` — فتفترق ورقتان في بيعٍ واحد.
+     *
+     * فالقاعدةُ واحدة: المجبيّةُ فوق الثمن سطورٌ بمالها (`priced`)، ولقطاتٌ لا
+     * تطابق ما جُبي سطرٌ واحدٌ بما جُبي (`bundled`)، وما داخل الثمن يُسمّى بلا
+     * مال (`included`). ومبلغُ البند يبقى ثمنَه وحده، فتجمع أسطرُه إلى ما دُفع
+     * فيه — لا يُكتب المالُ مرّتين. ولا يبلغ الورقةَ من اللقطة إلّا الاسمُ
+     * والكميّةُ والثمن: لا تكلفة، ولا رفّ، ولا ما للبوتيك.
+     *
+     * @return array{mode: string, rows: list<array{name: string, qty: string, unit: string, total: string}>, names: string, total: string}
+     */
+    private static function addons(OrderItem $item, array $cur): array
+    {
+        $x = ItemAddons::of($item);
+
+        return [
+            'mode' => $x['mode'],
+            'rows' => array_map(fn (array $r) => [
+                'name' => $r['name'],
+                'qty' => self::qty($r['qty']),
+                'unit' => self::money($r['unit'], $cur),
+                'total' => self::money($r['total'], $cur),
+            ], $x['rows']),
+            'names' => $x['names'],
+            'total' => self::money($x['total'], $cur),
+        ];
+    }
+
     public static function qty(mixed $value): string
     {
         $n = (float) $value;
@@ -248,6 +281,7 @@ class DocumentPaper
                 'qty' => self::qty($i->quantity),
                 'unit' => self::money($i->price, $cur),
                 'total' => self::money($i->total ?: $i->price * $i->quantity, $cur),
+                'addons' => self::addons($i, $cur),
             ])->all(),
             'totals' => $totals,
             'notes' => (string) ($order->notes ?: ''),
@@ -361,6 +395,7 @@ class DocumentPaper
                 'qty' => self::qty($i->quantity),
                 'unit' => self::money($i->price, $cur),
                 'total' => self::money($i->total ?: $i->price * $i->quantity, $cur),
+                'addons' => self::addons($i, $cur),
             ])->all(),
             'totals' => [
                 ['label' => 'الإجمالي', 'value' => self::money($order->total, $cur), 'grand' => true],

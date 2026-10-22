@@ -1250,6 +1250,11 @@ class Demo
             return [];
         }
 
+        // أصنافُ الرفوف التي أُخذت منها الإضافات — سؤالٌ واحدٌ للطلب كلّه
+        $shelf = Product::where('business_id', self::bid())
+            ->whereIn('id', $o->items->flatMap->addons->pluck('inventory_product_id')->filter()->unique()->values())
+            ->with('boutique:id,name')->get(['id', 'name', 'name_en', 'boutique_id'])->keyBy('id');
+
         $items = $o->items->map(fn ($it) => [
             'id' => $it->id,
             'product_id' => $it->product_id,
@@ -1276,8 +1281,25 @@ class Demo
                 // باسمها في لغة الشاشة من لقطتها — `name_en` حُفظ معها ساعةَ بيعت
                 'name' => self::ln($a->name, $a->name_en),
                 'qty' => (int) $a->quantity,
+                'unit' => round((float) $a->unit_price, 3),
                 'total' => (float) $a->total,
+                /*
+                 * وللموظّف وحده: الصنفُ الذي تُخصم منه الإضافة، ورفُّ بوتيكه إن
+                 * كان له — ليعرف ما يُؤخذ من أين. بلا تكلفةٍ ولا ما للبوتيك:
+                 * هذا يُقرأ في كشفه لا في صفحة الطلب، ولا يبلغ ورقةَ الزبون.
+                 */
+                'from' => ($p = $shelf->get($a->inventory_product_id))
+                    ? ['product' => self::ln($p->name, $p->name_en), 'boutique' => $p->boutique?->name]
+                    : null,
             ])->all(),
+            /*
+             * وطريقتُها بقاعدة الورق (`ItemAddons`): المجبيّةُ فوق الثمن تُكتب
+             * صفوفًا تحت البند ومبلغُه ثمنُه وحده (`own_total`)، وما داخل الثمن
+             * يُسمّى بلا مال. و`total` يبقى ثمنَه وإضافاتِه كما كان لمن يقرؤه.
+             */
+            'addons_mode' => ItemAddons::of($it)['mode'],
+            'addons_total' => round((float) $it->addons_total, 3),
+            'own_total' => round((float) ($it->total ?: $it->price * $it->quantity), 3),
             /*
              * ═══ وما اختاره الزبونُ يصل شاشةَ طلبه ═══
              *

@@ -8474,5 +8474,7 @@
     "للبوتيك :due ثابتًا — لا يتغيّر بسعر العميل.": "The boutique gets :due regardless of the customer price.",
     "ويبقى للمتجر من الإضافة :kept.": "The shop keeps :kept from the add-on.",
     "سعرُ العميل أقلّ من مستحقّ البوتيك بـ:gap — يُدفع الفرقُ من سعر الباقة.": "The customer price is :gap below the boutique's due — the difference comes out of the bouquet price.",
-    "«:name» في الباقة بكمّيّة :from — يُحفظ بكمّيّة :to لا بالمجموع.": "“:name” is in the bouquet at :from — it will be saved at :to, not the sum."
+    "«:name» في الباقة بكمّيّة :from — يُحفظ بكمّيّة :to لا بالمجموع.": "“:name” is in the bouquet at :from — it will be saved at :to, not the sum.",
+    "من رفّ :boutique: :product": "From :boutique's shelf: :product",
+    "يُخصم من: :product": "Taken from: :product"
 }

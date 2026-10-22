@@ -16,6 +16,13 @@ class BoutiqueComponentDue extends Model
 
     public const ADDON = 'addon';
 
+    /** مستحقٌّ، وعكسُ مستحقٍّ لم يُسوَّ، ورصيدٌ للمتجر عن مستحقٍّ سُوِّي ثمّ عُكس */
+    public const DUE = 'due';
+
+    public const REVERSAL = 'reversal';
+
+    public const CREDIT = 'credit';
+
     protected $guarded = [];
 
     protected $casts = [
@@ -23,6 +30,7 @@ class BoutiqueComponentDue extends Model
         'quantity' => 'decimal:3',
         'amount' => 'decimal:3',
         'occurred_at' => 'datetime',
+        'period_at' => 'datetime',
     ];
 
     public function order(): BelongsTo

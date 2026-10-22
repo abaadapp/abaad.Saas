@@ -324,7 +324,8 @@ class ABoutiqueIsOwedForWhatWentIntoABouquetTest extends TestCase
         $this->assertSame(14.0, $this->balance('boutique_payable'));
 
         $this->actingAs($this->owner);
-        OrderCorrection::cancel($order->fresh(), 'الزبون ألغى');
+        // والقطعتان تعودان إلى الرفّ فعلًا — وما لم تعد يُختبر في `ABoutiqueStatementSettlesWhatWentIntoBouquetsTest`
+        OrderCorrection::cancel($order->fresh(), 'الزبون ألغى', boutiqueReturned: true);
 
         $rows = $this->dues($order);
         $this->assertCount(4, $rows, 'صفّان وعكسُهما — لا محو');

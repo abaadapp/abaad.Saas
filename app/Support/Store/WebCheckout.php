@@ -82,6 +82,15 @@ final class WebCheckout
     /** لقطةُ الفترة المختارة في حمولة نيّة الدفع — يكتبها الخادم لا المتصفّح */
     public const SLOT = '_slot';
 
+    /**
+     * أسعارُ قطع البوتيك وأصحابُها ساعةَ فُتحت صفحةُ البنك.
+     *
+     * يتغيّر سعرُ القطعة والزبونُ عند البنك — فيُكتب مستحقُّها بما فُحص
+     * قبل الدفع (`BoutiqueDues::assertCovered`) لا بسعرٍ لم يره أحد. ومفتاحٌ
+     * يبدأ بشرطةٍ سفليّة: لا يقبله الخادمُ من المتصفّح (`untrusted`).
+     */
+    public const BOUTIQUE_PRICES = '_boutique_prices';
+
     /** أقصى أيامٍ يُحجز الموعدُ بعدها */
     public const MAX_DAYS_AHEAD = 60;
 
@@ -241,6 +250,9 @@ final class WebCheckout
         $bid = (int) $business->id;
         $items = self::items($payload['items'] ?? []);
         $sale = new SaleLines($bid);
+        if ($settling) {
+            $sale->pinBoutiquePrices((array) ($payload[self::BOUTIQUE_PRICES] ?? []));
+        }
 
         /*
          * ═══ ودفعةٌ قُبضت لا يُسأل صنفُها عن حاله بعد الدفع ═══
@@ -404,6 +416,7 @@ final class WebCheckout
          */
         $payload[StoreTerms::STAMP] = StoreTerms::stamp($bid, $lang);
         $payload[self::SLOT] = self::chosenSlot($bid, $form);
+        $payload[self::BOUTIQUE_PRICES] = BoutiqueDues::pinned($quote['_lines']);
 
         /*
          * ═══ وحدُّ الكوبون يُفحص هنا قبل صفحة الدفع، ثمّ تُحجز فرصتُه ═══

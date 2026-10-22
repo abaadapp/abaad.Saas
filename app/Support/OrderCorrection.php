@@ -1492,8 +1492,11 @@ class OrderCorrection
      * سليمًا في الشاشة، والخلل تحتها في المخزون والنقاط والدفتر.
      *
      * ويُنفَّذ مرّةً واحدة: نقلٌ ثانٍ إلى «ملغي» لا يردّ المخزون مرّتين.
+     *
+     * و`$boutiqueReturned` جوابُ «هل تعود قطعُ البوتيك في هذا الطلب إلى الرفّ؟»
+     * — `true` يعكس مستحقَّها، وغيرُه يُبقيه موثَّقًا. انظر `BoutiqueDues::cancel`.
      */
-    public static function cancel(Order $order, ?string $reason = null): void
+    public static function cancel(Order $order, ?string $reason = null, ?bool $boutiqueReturned = null): void
     {
         self::assertNotFiled($order);
 
@@ -1501,7 +1504,7 @@ class OrderCorrection
             return;
         }
 
-        DB::transaction(function () use ($order, $reason) {
+        DB::transaction(function () use ($order, $reason, $boutiqueReturned) {
             /*
              * والحال تُقرأ ثانيةً تحت قفل — والقراءة الأولى لا تكفي.
              *
@@ -1546,7 +1549,7 @@ class OrderCorrection
                 ));
             Transaction::where('order_id', $order->id)->delete();
             // ما للبوتيكات عن هذا الطلب يُعكس صفًّا صفًّا — والقيدُ يُعكس معه تحته
-            BoutiqueDues::cancel($fresh, $reason ?: __('إلغاء الطلب'));
+            BoutiqueDues::cancel($fresh, $reason ?: __('إلغاء الطلب'), $boutiqueReturned);
             Books::unpostSale(
                 $fresh,
                 PosCashier::id() ?? auth()->id(),

@@ -23,6 +23,7 @@ use App\Support\Store\NewArrivals;
 use App\Support\Store\OrderWindow;
 use App\Support\Store\StoreTerms;
 use App\Support\Store\PaidReceipt;
+use App\Support\Store\ShelfOrder;
 use App\Support\Store\RibbonPicks;
 use App\Support\Store\RibbonUpsells;
 use App\Support\Store\StoreContent;
@@ -352,6 +353,8 @@ class MarketingController extends Controller
             // و«وصل حديثًا» اليدويّ — قواعدُه وإذنُه في `NewArrivals::validated` أدناه
             'store_new_arrivals_mode' => ['nullable', 'string', 'max:10'],
             'store_new_arrivals' => ['nullable', 'string', 'max:200'],
+            // وترتيبُ المنتجات في الرفّ نصُّ JSON — إذنُه وقواعدُه في `ShelfOrder::validated` أدناه
+            'store_shelf_order' => ['nullable', 'string', 'max:'.ShelfOrder::RAW_MAX],
             'store_sections' => ['nullable', 'string', 'max:200'],
             'store_block_on' => ['sometimes', 'boolean'],
             'store_block_title' => ['nullable', 'string', 'max:120'],
@@ -450,6 +453,17 @@ class MarketingController extends Controller
          */
         if ($request->exists('store_new_arrivals_mode') || $request->exists('store_new_arrivals')) {
             $data = array_merge($data, NewArrivals::validated($this->bid(), $request, StoreContent::draft($this->bid())));
+        }
+
+        /*
+         * ═══ وترتيبُ المنتجات في الرفّ — لمن في قائمته وحده ═══
+         *
+         * من ليس في `storefront.ribbon_shelf_order_businesses` يُردّ بـ403
+         * قبل أن يُكتب شيء. ومن فيها تُقرأ قوائمُه بصرامة: أصنافُ متجره وفئاتُه
+         * وحدها، وقائمةُ الفئة لأصنافها. انظر `Store\ShelfOrder`.
+         */
+        if ($request->exists(ShelfOrder::KEY)) {
+            $data[ShelfOrder::KEY] = ShelfOrder::validated($this->bid(), $request->input(ShelfOrder::KEY));
         }
 
         /*

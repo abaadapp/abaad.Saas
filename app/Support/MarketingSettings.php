@@ -286,6 +286,12 @@ class MarketingSettings
              */
             'store_new_arrivals_mode' => 'auto',
             'store_new_arrivals' => '',
+            /*
+             * وترتيبُ المنتجات في الرفّ بيده — «كل المنتجات» وكلُّ فئة — لمن في
+             * `storefront.ribbon_shelf_order_businesses` وحده. والفراغُ
+             * الأبجديّةُ كما كانت (`Store\ShelfOrder`).
+             */
+            'store_shelf_order' => '',
             'store_sections' => '',
             'store_block_on' => '0',
             'store_block_title' => '',

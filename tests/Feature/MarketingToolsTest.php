@@ -129,6 +129,8 @@ class MarketingToolsTest extends TestCase
             'store_featured',
             // و«وصل حديثًا» اليدويّ — يقرؤه `Store\NewArrivals::pick` لمن في قائمته
             'store_new_arrivals_mode', 'store_new_arrivals',
+            // وترتيبُ الرفّ بيده — يقرؤه `Store\ShelfOrder::apply` لمن في قائمته
+            'store_shelf_order',
             'store_sections',
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',

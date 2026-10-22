@@ -60,7 +60,32 @@ final class StorePage
      */
     public static function order(int $businessId): array
     {
-        $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_sections'] ?? ''));
+        return self::orderFrom($businessId, (string) (MarketingSettings::group($businessId, 'website')['store_sections'] ?? ''));
+    }
+
+    /**
+     * والترتيبُ كما يحرّره صاحبُه الآن — المسوّدةُ إن كانت.
+     *
+     * ═══ ولمَ دالّةٌ ثانية ═══
+     *
+     * المحرّرُ يفتح على المسوّدة (`PageEditor::values`)، وكان يقرأ الترتيبَ
+     * وحده من المنشور. فمن قدّم قسمًا وحفظ ولم ينشر ثمّ أعاد فتح المحرّر وجد
+     * الترتيبَ القديم — وأوّلُ سهمٍ يضغطه بعدها يكتب القديمَ في المسوّدة فوق
+     * الجديد. والواجهةُ تبقى على `order`: الزائرُ يرى المنشورَ وحده.
+     *
+     * ومن لا مسوّدةَ له تردّ `draft` المنشورَ نفسَه — فلا يتبدّل له شيء.
+     *
+     * @return list<string>
+     */
+    public static function draftOrder(int $businessId): array
+    {
+        return self::orderFrom($businessId, (string) (StoreContent::draft($businessId)['store_sections'] ?? ''));
+    }
+
+    /** @return list<string> */
+    private static function orderFrom(int $businessId, string $raw): array
+    {
+        $raw = trim($raw);
 
         // و«اختيارات RIBBON» لمن فُتحت له وحده — ومن ليس في قائمتها لا يُضمّ له ولو حُفظ
         $known = RibbonPicks::allowed($businessId) ? self::SECTIONS : self::DEFAULT_ORDER;

@@ -317,8 +317,9 @@ final class PageEditor
      */
     public static function rows(int $businessId): array
     {
-        $site = MarketingSettings::group($businessId, 'website');
-        $order = StorePage::order($businessId);
+        // والصفوفُ كما يحرّرها — المسوّدةُ إن كانت، كالقيم (`values`) والترتيب
+        $site = array_merge(MarketingSettings::group($businessId, 'website'), StoreContent::draft($businessId));
+        $order = StorePage::draftOrder($businessId);
 
         /*
          * و«ما يُعرض» هنا هو تعريفُ الواجهة نفسِه: فعّالٌ ومعروض (انظر
@@ -432,6 +433,7 @@ final class PageEditor
         return match ($key) {
             'store_pages' => 'الصفحات',
             'store_sections' => 'ترتيب الأقسام',
+            'store_shelf_order' => 'ترتيب المنتجات',
             'store_about_image' => 'صورة «من نحن»',
             'store_seo_title' => 'عنوان البحث',
             'store_seo_desc' => 'وصف البحث',

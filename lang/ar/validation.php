@@ -484,6 +484,7 @@ return [
         'store_featured' => 'الأصناف المميّزة',
         'store_new_arrivals_mode' => 'طريقة عرض «وصل حديثًا»',
         'store_new_arrivals' => 'منتجات «وصل حديثًا»',
+        'store_shelf_order' => 'ترتيب المنتجات',
         'store_sections' => 'أقسام الصفحة',
         'store_pages' => 'صفحات المتجر',
         'store_announcement_ar' => 'نص الشريط بالعربية',

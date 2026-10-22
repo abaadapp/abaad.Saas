@@ -52,6 +52,9 @@ export interface ThemeSettingsData {
     /* جدولُ أيّام التسليم وفتراتِه — نصُّ JSON كما يُحفظ (`Store\DeliverySchedule`) */
     store_delivery_schedule_on: boolean;
     store_delivery_schedule: string;
+    /* وما يقرؤه الزبونُ حين لا موعدَ للتوصيل — بلغتيه، وفارغُه نصُّ النظام */
+    store_delivery_unavailable: string;
+    store_delivery_unavailable_en: string;
     store_delivery_note: string;
     store_delivery_note_en: string;
     /* تنبيهُ نطاق التوصيل — لكلّ لغةٍ نصُّها، ولا يمسّ قواعد المنطقة */
@@ -147,6 +150,8 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
         store_delivery_slots: v.store_delivery_slots ?? '',
         store_delivery_schedule_on: (v.store_delivery_schedule_on ?? '0') === '1',
         store_delivery_schedule: v.store_delivery_schedule ?? '',
+        store_delivery_unavailable: v.store_delivery_unavailable ?? '',
+        store_delivery_unavailable_en: v.store_delivery_unavailable_en ?? '',
         store_delivery_note: v.store_delivery_note ?? '',
         store_delivery_note_en: v.store_delivery_note_en ?? '',
         store_delivery_area_note: v.store_delivery_area_note ?? '',
@@ -203,7 +208,7 @@ export const SCREEN_KEYS = {
         'store_thanks_title', 'store_thanks_title_en', 'store_thanks_message', 'store_thanks_message_en',
         'store_thanks_receipt', 'store_thanks_receipt_en', 'store_thanks_continue', 'store_thanks_continue_en',
         'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
-        'store_delivery_slots', 'store_delivery_schedule_on', 'store_delivery_schedule', 'store_delivery_note', 'store_delivery_note_en', 'store_delivery_area_note', 'store_delivery_area_note_en',
+        'store_delivery_slots', 'store_delivery_schedule_on', 'store_delivery_schedule', 'store_delivery_unavailable', 'store_delivery_unavailable_en', 'store_delivery_note', 'store_delivery_note_en', 'store_delivery_area_note', 'store_delivery_area_note_en',
         'store_max_days', 'store_fulfil',
         'store_field_area', 'store_field_address', 'store_field_date', 'store_field_slot',
         'store_field_recipient', 'store_field_promo', 'store_image_note', 'store_image_note_en',

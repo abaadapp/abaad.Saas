@@ -1,7 +1,7 @@
 import { Copy, Plus, Trash2 } from 'lucide-react';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
-import { DAY_NAMES, LABEL_MAX, MAX_CLOSURES, WEEK_ORDER, crossesMidnight, overlapping, wholeDay, type Closure } from './schedule';
+import { DAY_NAMES, LABEL_MAX, MAX_CLOSURES, WEEK_ORDER, crossesMidnight, cutoffAfterStart, overlapping, wholeDay, type Closure, type Cutoff } from './schedule';
 
 /**
  * محرّرُ الأسبوع — لكلّ يومٍ فتراتُه، ويومٌ بلا فترةٍ مُغلق.
@@ -10,12 +10,12 @@ import { DAY_NAMES, LABEL_MAX, MAX_CLOSURES, WEEK_ORDER, crossesMidnight, overla
  * (`DeliverySchedule`). والفرقُ بينهما معطًى لا منسوخ: فترةُ الاستقبال قد
  * تعبر منتصف الليل (`overnight`)، وفترةُ التسليم لها اسمٌ بلغتين (`labels`)
  * ولا تتداخل مع أختها في يومها (`exclusive`) — يُعلَّم التداخلُ هنا قبل أن
- * يردّه الخادمُ عند الحفظ.
+ * يردّه الخادمُ عند الحفظ — ولها آخرُ وقتٍ للحجز اختياريًّا (`cutoff`).
  *
  * ولا يكتب في النموذج بنفسه — يردّ الأسبوعَ كلَّه إلى من يملك المفتاح، فيبقى
  * المفتاحُ يُكتب في قسمٍ واحد.
  */
-type Row = { from: string; to: string; id?: string; ar?: string; en?: string };
+type Row = { from: string; to: string; id?: string; ar?: string; en?: string; cutoff?: Cutoff | null };
 
 export default function WeekWindows<T extends Row>({
     week,
@@ -25,6 +25,7 @@ export default function WeekWindows<T extends Row>({
     labels = false,
     overnight = false,
     exclusive = false,
+    cutoff = false,
     testid,
 }: {
     week: T[][];
@@ -34,6 +35,7 @@ export default function WeekWindows<T extends Row>({
     labels?: boolean;
     overnight?: boolean;
     exclusive?: boolean;
+    cutoff?: boolean;
     testid: string;
 }) {
     const t = useTranslate();
@@ -102,6 +104,14 @@ export default function WeekWindows<T extends Row>({
                                         />
                                     </>
                                 )}
+                                {cutoff && (
+                                    <CutoffInput
+                                        value={r.cutoff ?? null}
+                                        onChange={(c) => edit(d, i, { cutoff: c } as Partial<T>)}
+                                        late={cutoffAfterStart(r)}
+                                        testid={`${testid}-${d}-${i}-cutoff`}
+                                    />
+                                )}
                                 {overnight && crossesMidnight(r) && (
                                     <span className="text-[11px] text-[#b45309]">{t('تمتد إلى صباح اليوم التالي')}</span>
                                 )}
@@ -143,6 +153,53 @@ export default function WeekWindows<T extends Row>({
                     </div>
                 </div>
             ))}
+        </div>
+    );
+}
+
+/**
+ * آخرُ وقتٍ لحجز فترة — فارغٌ يعني بلا حدّ: تُعرض حتّى تبدأ، بعد مدّة التجهيز.
+ *
+ * والساعةُ في يوم الفترة أو في اليوم السابق — زرّان لا قائمة، يُضغطان باللمس.
+ */
+function CutoffInput({
+    value,
+    onChange,
+    late,
+    testid,
+}: {
+    value: Cutoff | null;
+    onChange: (c: Cutoff | null) => void;
+    late: boolean;
+    testid: string;
+}) {
+    const t = useTranslate();
+    const day = value?.day ?? 'same';
+    const pill = (on: boolean) =>
+        `px-2 py-1 text-[11px] ${on ? 'bg-[#111] text-white' : 'bg-white text-[#374151] hover:bg-[#f9fafb]'}`;
+
+    return (
+        <div className="flex flex-wrap items-center gap-1.5" data-testid={testid}>
+            <span className="text-[12px] text-[#6b7280]">{t('آخر حجز')}</span>
+            <Input
+                type="time"
+                dir="ltr"
+                className="w-[6.75rem]"
+                value={value?.time ?? ''}
+                onChange={(e) => onChange(e.target.value ? { time: e.target.value, day } : null)}
+                aria-label={t('آخر وقت للحجز')}
+            />
+            {value && (
+                <div role="group" aria-label={t('يوم آخر حجز')} className="inline-flex overflow-hidden rounded-[8px] border border-[#e5e7eb]">
+                    <button type="button" aria-pressed={day === 'same'} onClick={() => onChange({ ...value, day: 'same' })} className={pill(day === 'same')}>
+                        {t('يوم الفترة')}
+                    </button>
+                    <button type="button" aria-pressed={day === 'before'} onClick={() => onChange({ ...value, day: 'before' })} className={pill(day === 'before')}>
+                        {t('اليوم السابق')}
+                    </button>
+                </div>
+            )}
+            {late && <span className="text-[11px] text-[#b91c1c]">{t('بعد بداية الفترة — اجعله قبلها أو في اليوم السابق')}</span>}
         </div>
     );
 }

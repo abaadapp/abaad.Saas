@@ -1131,6 +1131,8 @@ class Demo
                 'active' => (bool) $p->active,
                 // ما يُعرض في المتجر على الإنترنت — انظر App\Support\Storefront
                 'published' => (bool) $p->published,
+                // وما يُباع في نقطة البيع — والصندوقُ يعرض النشطَ المتاحَ له وحده (`Product::sellsAtPos`)
+                'pos_enabled' => (bool) ($p->pos_enabled ?? true),
                 'alert' => $p->alert_qty,
                 /*
                  * النسبة الفعليّة من المصدر الذي يحتسب بها الخادم — لا العمود الخام.

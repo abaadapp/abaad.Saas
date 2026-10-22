@@ -1192,6 +1192,18 @@ class OrderCorrection
      * لا طلبًا مخصَّصًا (سعرُه من الطلب نفسِه، وموادُّه تُبنى في الصندوق)، ولا
      * كرتَ هدية (رسالتُه وثمنُه من صفحته)، ولا إضافةً مستقلّة.
      *
+     * ═══ وبندٌ جديدٌ في فاتورة صندوقٍ بيعٌ من الصندوق ═══
+     *
+     * يُضاف (`addLine`) أو يحلّ محلَّ غيره (`replaceLine`) فيخرج من رفّ الفرع
+     * ويدخل إيرادَ اليوم — كما لو بِيع على الطاولة. فيُسأل سؤالَ الصندوق
+     * (`SaleLines::POS`): صنفٌ أُغلقت عنه نقطةُ البيع لا يدخل فاتورتَها من باب
+     * التصحيح، و`order.edit` صلاحيةُ تصحيحٍ لا إذنٌ بتجاوز القناة.
+     *
+     * وما سواه كما كان: البندُ القديم لا يُسعَّر هنا — كمّيّتُه وحذفُه في
+     * `setQuantity` بلا سؤالٍ عن حال صنفه اليوم، فالتاريخُ لا يُعاد كتابتُه
+     * بقناةٍ تغيّرت بعده. وطلبُ الموقع يُصحَّح كما كان (نشطٌ وحسب): يضيفه
+     * موظّفٌ بطلب الزبون، لا زبونٌ يشتري ما لا يُعرض له.
+     *
      * @return array<string, mixed>
      */
     private static function priceOne(Order $order, array $wanted): array
@@ -1218,7 +1230,7 @@ class OrderCorrection
             'name' => '',
             'note' => $note === '' ? null : $note,
             'addons' => array_values(array_filter((array) ($wanted['addons'] ?? []), fn ($a) => (int) ($a['qty'] ?? 0) > 0)),
-        ]], lock: true);
+        ]], lock: true, channel: $order->channel === SalesChannel::POS ? SaleLines::POS : null);
 
         $line = $lines[0];
 

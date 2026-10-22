@@ -153,7 +153,7 @@ export function ShortcutsField({
                                         aria-label={`${t('ارفع')} ${c?.name ?? ''}`}
                                         disabled={i === 0}
                                         onClick={() => move(i, -1)}
-                                        className="rounded-md px-2 py-1 text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
+                                        className="flex size-10 shrink-0 items-center justify-center rounded-md text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
                                     >
                                         ↑
                                     </button>
@@ -162,7 +162,7 @@ export function ShortcutsField({
                                         aria-label={`${t('أنزل')} ${c?.name ?? ''}`}
                                         disabled={i === ids.length - 1}
                                         onClick={() => move(i, 1)}
-                                        className="rounded-md px-2 py-1 text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
+                                        className="flex size-10 shrink-0 items-center justify-center rounded-md text-[13px] text-[#6b7280] enabled:hover:bg-[#f3f4f6] disabled:opacity-30"
                                     >
                                         ↓
                                     </button>

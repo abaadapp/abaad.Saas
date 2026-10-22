@@ -20,6 +20,7 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import { CHANNEL_TAG, salesChannels } from './partials/channels';
 
 interface Row {
     name: string | null;
@@ -36,8 +37,20 @@ interface Row {
     active: boolean;
     /** مرتبطٌ بالمخزون — و`false` يُقال في خانة الكميّة بدل رقمٍ لا معنى له */
     tracksStock?: boolean;
+    /** قناتا البيع كما قرأهما الخادم — ويُوسَم الصفُّ إن ذكرهما الملفُّ وأغلق إحداهما */
+    posEnabled?: boolean;
+    published?: boolean;
+    stated?: Record<string, boolean>;
     status: 'new' | 'update' | 'invalid' | 'dup_file';
     note?: string | null;
+}
+
+/** وسمُ القناة لصفٍّ ذكر قناتَيه — وما لم يذكرهما يبقى كما هو فلا يُوسَم (`stated`) */
+function channelTag(r: Row): string | null {
+    if (!r.stated?.pos_enabled && !r.stated?.published) return null;
+    const where = salesChannels({ active: r.active, pos_enabled: r.posEnabled, published: r.published });
+
+    return where === 'both' ? null : CHANNEL_TAG[where];
 }
 
 interface Props {
@@ -318,6 +331,9 @@ export default function ProductImportPreview() {
                                                 <span className="mt-0.5 block text-[11px] text-[#9ca3af]">
                                                     {t('معطّل')}
                                                 </span>
+                                            )}
+                                            {r.active && channelTag(r) && (
+                                                <span className="mt-0.5 block text-[11px] text-[#6b7280]">{t(channelTag(r)!)}</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-[#4b4b4b]">

@@ -30,6 +30,7 @@ use App\Support\Store\GiftOrders;
 use App\Support\Store\NewArrivals;
 use App\Support\Store\ProductReviews;
 use App\Support\Store\PaidReceipt;
+use App\Support\Store\ShelfOrder;
 use App\Support\Store\ThankYouPage;
 use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreCustomPages;
@@ -511,6 +512,15 @@ class RibbonController extends Controller
              */
             ->when($q !== '', fn ($c) => $c->filter(fn ($p) => mb_stripos(ProductName::searchable($p->name, $p->name_en), $q) !== false));
 
+        /*
+         * و«كل المنتجات» والفئةُ بترتيب صاحبها إن رتّبهما — كلٌّ بقائمته
+         * (`ShelfOrder`)، والبحثُ يحفظ ترتيبَ ما يُبحث فيه. و«الأكثر مبيعًا»
+         * والمجموعةُ بترتيبهما هما لا يُمسّان.
+         */
+        if (! $best && $collection === null) {
+            $list = ShelfOrder::apply($bid, $list, $cat);
+        }
+
         return [
             'categories' => $categories,
             'cat' => $cat,
@@ -757,6 +767,8 @@ class RibbonController extends Controller
             'schedule' => DeliverySchedule::on($bid)
                 ? DeliverySchedule::forPage($bid, CheckoutFields::fulfilments($bid), $lang)
                 : null,
+            // وما يقوله صاحبُ المتجر حين لا موعدَ للتوصيل — بلغة الصفحة، أو `null` لنصّ النظام
+            'noDeliverySays' => DeliverySchedule::on($bid) ? DeliverySchedule::unavailableSays($bid, $lang) : null,
             /*
              * والشروطُ بلغة الصفحة وحدها، ورقمُ نسختها — أو `null` حيث لا تُشترط.
              * انظر `StoreTerms`.

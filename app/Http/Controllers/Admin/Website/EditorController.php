@@ -14,6 +14,7 @@ use App\Support\Store\StoreCollections;
 use App\Support\Store\StoreContent;
 use App\Support\Store\StoreCustomPages;
 use App\Support\Store\PageEditor;
+use App\Support\Store\ShelfOrder;
 use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StorePage;
@@ -186,7 +187,10 @@ class EditorController extends Controller
             'pages' => StoreNav::rows($bid),
             'rows' => PageEditor::rows($bid),
             'values' => PageEditor::values($bid),
-            'order' => StorePage::order($bid),
+            // بترتيب المسوّدة كسائر الحقول — لا المنشور (`StorePage::draftOrder`)
+            'order' => StorePage::draftOrder($bid),
+            // والترتيبُ كلُّه بالمطفأ في موضعه — ما تكتبه الشاشةُ بعد كلّ سهمٍ وعين
+            'layout' => StorePage::tokens(StorePage::draftLayout($bid)),
             'maxFeatured' => StorePage::MAX_FEATURED,
             /*
              * فئاتُ متجره لمنتقي اختصارات «المتجر» — كلُّها، وكم فيها ممّا يُعرض.
@@ -228,6 +232,11 @@ class EditorController extends Controller
              * `CatalogTools`.
              */
             'catalogTools' => CatalogTools::for($bid),
+            /*
+             * وترتيبُ المنتجات في الرفّ — لمن في قائمته وحده، و`null` لغيره:
+             * القوائمُ كما في المسوّدة، والأصنافُ بترتيب الرفّ الأبجديّ.
+             */
+            'shelfOrder' => ShelfOrder::forEditor($bid, StoreContent::draft($bid)),
             /*
              * وأكبرُ صورةٍ تُرفع — حدُّنا أو حدُّ الخادم إن كان أصغر. يقرؤه حقلُ الصورة
              * فيُصغّر صورةَ الهاتف الكبيرة قبل أن تُرسل، أو يقول الحدَّ (`StoreImageUpload`).

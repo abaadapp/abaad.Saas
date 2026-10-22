@@ -35,6 +35,9 @@ final class StorePage
      */
     public const SECTIONS = [...self::DEFAULT_ORDER, RibbonPicks::SECTION];
 
+    /** علامةُ القسم المطفأ في موضعه من القائمة — `cats,!best,new` (`draftLayout`) */
+    public const HIDDEN = '!';
+
     /** أكثرُ ما يُبرزه من الأصناف — أربعةٌ كما يتّسع الصفّ */
     public const MAX_FEATURED = 4;
 
@@ -60,7 +63,95 @@ final class StorePage
      */
     public static function order(int $businessId): array
     {
-        $raw = trim((string) (MarketingSettings::group($businessId, 'website')['store_sections'] ?? ''));
+        return self::orderFrom($businessId, (string) (MarketingSettings::group($businessId, 'website')['store_sections'] ?? ''));
+    }
+
+    /**
+     * والترتيبُ كما يحرّره صاحبُه الآن — المسوّدةُ إن كانت.
+     *
+     * ═══ ولمَ دالّةٌ ثانية ═══
+     *
+     * المحرّرُ يفتح على المسوّدة (`PageEditor::values`)، وكان يقرأ الترتيبَ
+     * وحده من المنشور. فمن قدّم قسمًا وحفظ ولم ينشر ثمّ أعاد فتح المحرّر وجد
+     * الترتيبَ القديم — وأوّلُ سهمٍ يضغطه بعدها يكتب القديمَ في المسوّدة فوق
+     * الجديد. والواجهةُ تبقى على `order`: الزائرُ يرى المنشورَ وحده.
+     *
+     * ومن لا مسوّدةَ له تردّ `draft` المنشورَ نفسَه — فلا يتبدّل له شيء.
+     *
+     * @return list<string>
+     */
+    public static function draftOrder(int $businessId): array
+    {
+        return self::orderFrom($businessId, (string) (StoreContent::draft($businessId)['store_sections'] ?? ''));
+    }
+
+    /**
+     * الترتيبُ كلُّه كما يحرّره — المشغَّلُ والمطفأُ كلٌّ في موضعه.
+     *
+     * ═══ ولمَ علامةٌ في القائمة نفسِها ═══
+     *
+     * القائمةُ المشغَّلُ وحده، فكان المطفأُ لا موضعَ له: يُطفئ صاحبُ المتجر قسمًا
+     * ويحفظ ويُغلق المحرّر، ثمّ يُشغّله فيقع في آخر الأقسام. فصار المطفأُ يُكتب
+     * فيها بموضعه مسبوقًا بـ`HIDDEN`: `cats,!best,new`.
+     *
+     * ومفتاحٌ ثانٍ للمطفأ يفترق عن الأوّل يومًا (انظر `order`). والعلامةُ لا
+     * يقرؤها القارئُ القديم: `orderFrom` يُسقط ما لا يعرفه، فـ`!best` لا يُعرض،
+     * والقائمةُ القديمة بلا علامةٍ تُقرأ كما كانت، ورجوعُ الكود لا يُظهر مطفأً.
+     *
+     * والمشغَّلُ هنا هو `draftOrder` نفسُه بترتيبه — لا يُقرأ مرّتين بقاعدتين.
+     * وما لم يُذكر أصلًا يُلحق مطفأً بترتيبه الأصليّ كما كان.
+     *
+     * @return list<array{key: string, on: bool}>
+     */
+    public static function draftLayout(int $businessId): array
+    {
+        $raw = (string) (StoreContent::draft($businessId)['store_sections'] ?? '');
+        $known = RibbonPicks::allowed($businessId) ? self::SECTIONS : self::DEFAULT_ORDER;
+        $shown = self::orderFrom($businessId, $raw);
+
+        $out = [];
+        $place = function (string $key, bool $on) use (&$out): void {
+            $out[$key] ??= ['key' => $key, 'on' => $on];
+        };
+
+        foreach (array_map('trim', explode(',', $raw)) as $token) {
+            $hidden = str_starts_with($token, self::HIDDEN);
+            $key = $hidden ? substr($token, strlen(self::HIDDEN)) : $token;
+
+            // المشغَّلُ في موضع ظهوره، والمطفأُ في موضع علامته — وما لا يُعرف لا يُضمّ
+            if (! $hidden && in_array($key, $shown, true)) {
+                $place($key, true);
+            } elseif ($hidden && in_array($key, $known, true) && ! in_array($key, $shown, true)) {
+                $place($key, false);
+            }
+        }
+
+        // والمشغَّلُ الذي لم يُكتب — قائمةٌ لا يصحّ منها مشغَّلٌ تُقرأ «ما كان» — ثمّ ما لم يُذكر
+        foreach ($shown as $key) {
+            $place($key, true);
+        }
+        foreach ($known as $key) {
+            $place($key, false);
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * والترتيبُ كلُّه كما تكتبه الشاشة — `cats,!best,new`.
+     *
+     * @param  list<array{key: string, on: bool}>  $layout
+     * @return list<string>
+     */
+    public static function tokens(array $layout): array
+    {
+        return array_map(fn (array $s) => ($s['on'] ? '' : self::HIDDEN).$s['key'], $layout);
+    }
+
+    /** @return list<string> */
+    private static function orderFrom(int $businessId, string $raw): array
+    {
+        $raw = trim($raw);
 
         // و«اختيارات RIBBON» لمن فُتحت له وحده — ومن ليس في قائمتها لا يُضمّ له ولو حُفظ
         $known = RibbonPicks::allowed($businessId) ? self::SECTIONS : self::DEFAULT_ORDER;

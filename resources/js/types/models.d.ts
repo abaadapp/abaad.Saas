@@ -25,8 +25,10 @@ export interface Product {
     image: string | null;
     stock_status: string;
     active: boolean;
-    /** يُعرض في المتجر على الإنترنت — غير `active` التي تعني «يُباع» */
+    /** يُعرض في المتجر على الإنترنت — و`active` فوقه: الموقوفُ لا يُباع في أيّ قناة */
     published?: boolean;
+    /** يُباع في نقطة البيع — نظيرُ `published` للصندوق، وغائبُه يُقرأ «نعم» */
+    pos_enabled?: boolean;
     alert: number;
     tax: number;
     discount: number;

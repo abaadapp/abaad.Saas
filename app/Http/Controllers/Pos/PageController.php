@@ -280,6 +280,7 @@ class PageController extends Controller
                 (bool) auth()->user()?->may('order.edit'),
                 $this->correctable($number),
                 ($order['status'] ?? null) === Order::CANCELLED,
+                $order['channel'] ?? null,
             ),
         ]);
     }

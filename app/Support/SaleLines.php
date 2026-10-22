@@ -25,6 +25,25 @@ use Illuminate\Validation\ValidationException;
  */
 final class SaleLines
 {
+    /*
+     * ═══ والبابُ الذي يبيع ═══
+     *
+     * `priceItems` تُسأل من أكثر من باب، والحارسُ يختلف بالباب:
+     *
+     *   - `POS` — الصندوقُ (البيعُ والتعليق): الصنفُ نشطٌ **ومتاحٌ في نقطة
+     *     البيع** (`Product::sellsAtPos`). والماسحُ والسلّةُ المعلّقة والطلبُ
+     *     المرسَل بيده يمرّون من هنا، فلا يكفي أن تُخفيه الشاشة. وبندٌ جديدٌ
+     *     يُضاف إلى فاتورة صندوقٍ بالتصحيح كذلك (`OrderCorrection::priceOne`).
+     *   - `SETTLING` — دفعةٌ قُبضت يُكتب طلبُها (`WebCheckout::place` بنيّةٍ
+     *     موقَّعة): لا يُسأل عن حال الصنف بعد أن فُتح الدفع. أُطفئ عرضُه أو
+     *     أُوقف والزبونُ عند البنك؟ المالُ قُبض، وردُّ الطلب يتركه بلا طلب.
+     *   - `null` — ما سواهما (الموقعُ قبل الدفع، وبندٌ يُضاف إلى طلب موقعٍ
+     *     بالتصحيح): نشطٌ وحسب، وللموقع حارسُه فوق هذا (`WebCheckout::assertPublished`).
+     */
+    public const POS = 'pos';
+
+    public const SETTLING = 'settling';
+
     public function __construct(private readonly int $businessId) {}
 
     private function bid(): int
@@ -139,7 +158,7 @@ final class SaleLines
      * العمليات — القفل من المحرّك لا من الكود. وعلى PostgreSQL (وجهة النقل)
      * القراءات لا تتعارض، فالنافذة مفتوحة على مصراعيها.
      */
-    public function priceItems(array $items, bool $lock = false): array
+    public function priceItems(array $items, bool $lock = false, ?string $channel = null): array
     {
         $bid = $this->bid();
         $query = Product::where('business_id', $bid)
@@ -313,8 +332,15 @@ final class SaleLines
                  * والحارس هنا لا في الشاشة وحدها: سلّةٌ عُلّقت قبل الإيقاف
                  * تُستأنف بعده، وماسحٌ يقرأ الباركود لا يسأل الشاشة.
                  */
-                if (! $product->active) {
+                if ($channel !== self::SETTLING && ! $product->active) {
                     $errors["items.$idx.id"] = __('«:name» موقوف عن البيع.', ['name' => $product->name]);
+
+                    continue;
+                }
+
+                // ونشطٌ أُغلقت عنه نقطةُ البيع يُباع في الموقع وحده — انظر `POS` أعلاه
+                if ($channel === self::POS && ! $product->sellsAtPos()) {
+                    $errors["items.$idx.id"] = __('«:name» غير متاح للبيع في نقطة البيع.', ['name' => $product->name]);
 
                     continue;
                 }
@@ -338,8 +364,8 @@ final class SaleLines
 
                         continue;
                     }
-                    // مقاسٌ أُطفئ لا يُباع من جديد — والفواتير القديمة تبقى تعرضه
-                    if (! $variant->active) {
+                    // مقاسٌ أُطفئ لا يُباع من جديد — والفواتير القديمة تبقى تعرضه، ودفعةٌ قُبضت يُكتب طلبُها
+                    if ($channel !== self::SETTLING && ! $variant->active) {
                         $errors["items.$idx.variant_id"] = __('هذا المقاس غير متاح للبيع.');
 
                         continue;

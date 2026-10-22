@@ -184,6 +184,9 @@ class MarketingSettings
              */
             'store_delivery_schedule_on' => '0',
             'store_delivery_schedule' => '',
+            // وما يقرؤه الزبونُ حين لا موعدَ توصيلٍ في نطاق الحجز — وفارغُه نصُّ النظام
+            'store_delivery_unavailable' => '',
+            'store_delivery_unavailable_en' => '',
             'store_hours' => '',
             // وساعاتُ العمل بالإنجليزيّة — للصفحة الإنجليزيّة وحدها، وفارغُها لا يُرسم
             'store_hours_en' => '',
@@ -286,6 +289,12 @@ class MarketingSettings
              */
             'store_new_arrivals_mode' => 'auto',
             'store_new_arrivals' => '',
+            /*
+             * وترتيبُ المنتجات في الرفّ بيده — «كل المنتجات» وكلُّ فئة — لمن في
+             * `storefront.ribbon_shelf_order_businesses` وحده. والفراغُ
+             * الأبجديّةُ كما كانت (`Store\ShelfOrder`).
+             */
+            'store_shelf_order' => '',
             'store_sections' => '',
             'store_block_on' => '0',
             'store_block_title' => '',

@@ -6,7 +6,7 @@ import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import DeliveryPlanner from './DeliveryPlanner';
 import type { ThemeForm } from './form';
-import { readDeliveryPlan, writeDeliveryPlan } from './schedule';
+import { UNAVAILABLE_MAX, readDeliveryPlan, writeDeliveryPlan } from './schedule';
 
 /**
  * نصوصُ صفحة الشكر — لكلّ نصٍّ خانتان: عربيّةٌ وإنجليزيّة.
@@ -219,6 +219,44 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                                 offersDelivery={form.data.store_fulfil.split(',').includes('delivery')}
                                 offersPickup={form.data.store_fulfil.split(',').includes('pickup')}
                             />
+                        )}
+                        {/*
+                            ═══ وحين لا موعدَ للتوصيل في نطاق الحجز كلِّه ═══
+
+                            يكتبه بلغتيه، وكلُّ صفحةٍ تقرأ لغتَها وحدها — وفارغُه نصُّ
+                            النظام. ولا يظهر لانتهاء فترات اليوم وفتراتُ الغد متاحة، ولا
+                            مكانَ رسالة الإغلاق حين يُغلق الاستقبال.
+                        */}
+                        {form.data.store_delivery_schedule_on && form.data.store_fulfil.split(',').includes('delivery') && (
+                            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="delivery-unavailable">
+                                <Field
+                                    label="رسالة عدم توفر المواعيد — العربية"
+                                    hint="تظهر حين لا يبقى موعد توصيل في كل أيام الحجز — وفارغة تعني نص النظام"
+                                    error={form.errors.store_delivery_unavailable}
+                                >
+                                    <Textarea
+                                        rows={3}
+                                        maxLength={UNAVAILABLE_MAX}
+                                        value={form.data.store_delivery_unavailable}
+                                        onChange={(e) => form.setData('store_delivery_unavailable', e.target.value)}
+                                        aria-label={t('رسالة عدم توفر المواعيد — العربية')}
+                                    />
+                                </Field>
+                                <Field
+                                    label="Delivery Unavailable Message — English"
+                                    hint="For the English page only — leave it empty for the system text"
+                                    error={form.errors.store_delivery_unavailable_en}
+                                >
+                                    <Textarea
+                                        rows={3}
+                                        dir="ltr"
+                                        maxLength={UNAVAILABLE_MAX}
+                                        value={form.data.store_delivery_unavailable_en}
+                                        onChange={(e) => form.setData('store_delivery_unavailable_en', e.target.value)}
+                                        aria-label="Delivery Unavailable Message — English"
+                                    />
+                                </Field>
+                            </div>
                         )}
                     </div>
 

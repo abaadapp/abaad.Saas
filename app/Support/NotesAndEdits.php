@@ -105,7 +105,7 @@ final class NotesAndEdits
      *
      * @return array{lines: bool, notes: bool, catalog: list<array<string, mixed>>}|null
      */
-    public static function screen(int $businessId, bool $mayEdit, bool $sameDay, bool $cancelled = false): ?array
+    public static function screen(int $businessId, bool $mayEdit, bool $sameDay, bool $cancelled = false, ?string $channel = null): ?array
     {
         if (! self::on($businessId)) {
             return null;
@@ -116,7 +116,7 @@ final class NotesAndEdits
         return [
             'lines' => $lines,
             'notes' => $mayEdit && ! $cancelled,
-            'catalog' => $lines ? self::catalog($businessId) : [],
+            'catalog' => $lines ? self::catalog($businessId, $channel) : [],
         ];
     }
 
@@ -125,11 +125,12 @@ final class NotesAndEdits
      *
      * والأسعارُ للعرض في الحوار وحده: الخادمُ يسعّر من القاعدة
      * (`OrderCorrection::addLine`). ولا كرتَ هدية (رسالتُه من صفحته)، ولا
-     * صنفًا موقوفًا.
+     * صنفًا موقوفًا. وفاتورةُ الصندوق لا تُعرض لها أصنافٌ أُغلقت عنها نقطةُ
+     * البيع — يردّها الخادمُ (`OrderCorrection::priceOne`)، فلا تُعرض لتُردّ.
      *
      * @return list<array<string, mixed>>
      */
-    public static function catalog(int $businessId): array
+    public static function catalog(int $businessId, ?string $channel = null): array
     {
         $variants = ProductVariant::where('business_id', $businessId)
             ->where('active', true)->orderBy('sort_order')->orderBy('id')->get()->groupBy('product_id');
@@ -138,6 +139,7 @@ final class NotesAndEdits
 
         return Product::where('business_id', $businessId)
             ->where('active', true)
+            ->when($channel === SalesChannel::POS, fn ($q) => $q->where('pos_enabled', true))
             ->where(fn ($q) => $q->whereNull('is_gift_card')->orWhere('is_gift_card', false))
             ->orderBy('name')->get()
             ->map(fn ($p) => [

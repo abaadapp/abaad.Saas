@@ -35,7 +35,7 @@ use Tests\TestCase;
  *   - ولا يمسّ المنتجَ نفسَه ولا نقطةَ البيع.
  *
  * والمتجران عامّان — يُكتب معرّفُ أحدهما في الإعداد، ولا يُفرض المعرّف ٥.
- * وسلوكُ اللوحة في `tests/js/the-owner-orders-his-shelf-by-hand.test.tsx`.
+ * وسلوكُ اللوحة في `tests/js/the-owner-orders-the-shelf-by-hand.test.tsx`.
  */
 class ARibbonShopOrdersItsShelfByHandTest extends TestCase
 {

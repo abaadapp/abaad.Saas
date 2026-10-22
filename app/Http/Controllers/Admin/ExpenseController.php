@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Expense;
+use App\Models\JournalEntry;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
+use App\Support\BooksPeriod;
 use App\Support\Demo;
 use App\Support\ExpenseScope;
 use App\Support\ListFilters;
@@ -16,9 +18,12 @@ use App\Support\Pagination;
 use App\Support\Permissions;
 use App\Support\ReportingPeriod;
 use App\Support\Sort;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Throwable;
@@ -66,6 +71,22 @@ class ExpenseController extends Controller
 
         $mayRead = (bool) auth()->user()?->may(Permissions::ATTACHMENT_VIEW);
 
+        /*
+         * وتاريخُ قيد كلّ مصروفٍ حيّ — سؤالٌ واحدٌ للصفحة كلّها.
+         *
+         * به تعرف الشاشةُ قبل الضغط أنّ حذفَ مصروفٍ أو تغييرَ نطاقه يعبر حدَّ
+         * شهر، فتسأل أين يُسجَّل التصحيح بدل أن يُردّ الطلب. وهو تاريخُ القيد
+         * لا `spent_at`: المصروفُ المستعاد قيدُه بيوم حذفه — انظر `BooksPeriod`.
+         */
+        $entryDates = DB::table('journal_entries')
+            ->where('business_id', $bid)
+            ->where('sourceable_type', Expense::class)
+            ->whereIn('sourceable_id', collect($expenses->items())->pluck('id'))
+            ->whereNull('reversed_at')->whereNull('reverses_id')
+            ->selectRaw('sourceable_id, MIN(entry_date) as d')->groupBy('sourceable_id')
+            ->pluck('d', 'sourceable_id');
+        $books = BooksPeriod::context($bid, auth()->user());
+
         return Inertia::render('Admin/Expenses/Index', [
             'expenses' => collect($expenses->items())->map(fn ($e) => [
                 'id' => $e->id,
@@ -94,6 +115,8 @@ class ExpenseController extends Controller
                     'branch' => $a->branch?->name,
                     'amount' => (float) $a->amount,
                 ])->values()->all(),
+                'correction' => BooksPeriod::describe($books,
+                    isset($entryDates[$e->id]) ? Carbon::parse($entryDates[$e->id]) : null),
             ])->all(),
             // فروعُ المتجر — خياراتُ «فرع محدّد» و«موزَّع على عدة فروع»
             'branches' => Branch::where('business_id', $bid)->orderBy('id')
@@ -269,7 +292,7 @@ class ExpenseController extends Controller
      * وسببُ الفشل يُقيَّد **خارج** المعاملة الساقطة: `Activity::log` داخلها
      * يسقط معها، فيضيع الخبرُ الذي من أجله كُتب.
      */
-    private function postingFailed(Throwable $e): string
+    private function postingFailed(Throwable $e, ?string $fallback = null): string
     {
         Activity::log('updated', 'تعذّر ترحيل قيد مصروف: '.$e->getMessage(), [
             'subject_type' => 'expense',
@@ -277,7 +300,7 @@ class ExpenseController extends Controller
 
         return $e instanceof \RuntimeException
             ? $e->getMessage()
-            : __('تعذّر ترحيل المصروف إلى الدفتر — لم يُسجَّل شيء.');
+            : ($fallback ?? __('تعذّر ترحيل المصروف إلى الدفتر — لم يُسجَّل شيء.'));
     }
 
     /**
@@ -308,26 +331,51 @@ class ExpenseController extends Controller
         $expense = Expense::where('business_id', $bid)->findOrFail($id);
 
         $scope = ExpenseScope::read($bid, $request->all(), (float) $expense->amount);
-        $before = ExpenseScope::journalBranch($expense);
+        $correction = $this->correction($request);
 
         try {
-            DB::transaction(function () use ($expense, $scope, $before) {
+            DB::transaction(function () use ($bid, $id, $scope, $correction) {
+                /*
+                 * ويُقرأ المصروفُ ثانيةً تحت قفل، وفرعُ قيده معه.
+                 *
+                 * كان «قبل» يُقرأ خارج المعاملة: طلبان على النطاق نفسه يقرآن
+                 * الفرعَ القديم كلاهما، فيعكس الثاني قيدًا عكسه الأوّل ويُرحّل
+                 * فوقه — قيدان حيّان لمصروفٍ واحد.
+                 */
+                $expense = Expense::where('business_id', $bid)->lockForUpdate()->findOrFail($id);
+                $before = ExpenseScope::journalBranch($expense);
+
                 ExpenseScope::apply($expense, $scope);
                 $expense->refresh();
 
                 $after = ExpenseScope::journalBranch($expense);
-                $own = Books::liveEntriesFor($expense)->isNotEmpty();
+                $entryDate = Books::expenseEntryDate($expense);
 
-                if ($own && $before !== $after) {
-                    Books::unpostExpense($expense, auth()->id(), __('تغيير نطاق المصروف'));
-                    Books::recordExpense($expense);
+                if ($entryDate && $before !== $after) {
+                    /*
+                     * والعكسُ وإعادةُ الترحيل بتاريخٍ واحد.
+                     *
+                     * كانت إعادةُ الترحيل بتاريخ المصروف والعكسُ بيوم التغيير:
+                     * مصروفُ سبتمبر يُعاد نطاقُه في أكتوبر فيُطرح من أكتوبر
+                     * ويُضاف إلى سبتمبر ثانيةً. فالشهرُ نفسُه إن لم يُعبَر حدّ،
+                     * وإلّا فما يختاره التاجرُ صراحةً — انظر `BooksPeriod`.
+                     */
+                    $at = BooksPeriod::resolve($bid, $entryDate, $correction['mode'], $correction['reason'], auth()->user());
+                    $why = BooksPeriod::reason(__('تغيير نطاق المصروف'), $entryDate, $at, $correction['reason']);
+
+                    Books::unpostExpense($expense, auth()->id(), $why, $at);
+                    Books::recordExpense($expense, $at ?? BooksPeriod::openOr($bid, $entryDate));
                 }
 
                 // والحركةُ التي أنشأها المصروفُ نفسُه تتبعه — لا حركةُ المالية
-                if ($own && $expense->transaction_id) {
+                if ($entryDate && $expense->transaction_id) {
                     Transaction::whereKey($expense->transaction_id)->update(['branch_id' => $after]);
                 }
             });
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (ModelNotFoundException $e) {
+            abort(404);
         } catch (Throwable $e) {
             return back()->withErrors(['scope' => $this->postingFailed($e)]);
         }
@@ -363,36 +411,117 @@ class ExpenseController extends Controller
         return back()->with('toast', ['msg' => __('سُجّل السداد'), 'type' => 'success']);
     }
 
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
-        $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
+        $bid = $this->bid();
+        $correction = $this->correction($request);
 
         /*
-         * القيد يتبع مصروفه.
+         * ═══ أربعُ خطواتٍ تقع معًا أو لا يقع منها شيء ═══
          *
-         * كان الحذف يُخفي المصروف ويترك سطره في دفتر المالية: تقرأ
-         * المصروفات فترى صفرًا، وتقرأ المالية فترى ٣٠٠. والقيد اليتيم يدخل
-         * المطابقة البنكية كأنّ مبلغًا خرج.
+         * حذفُ حركة المالية، وعكسُ القيد، وحذفُ المصروف — كانت متتاليةً خارج
+         * معاملة، وكلُّ عكسٍ في معاملته وحده. فإن سقط العكسُ بعد حذف الحركة
+         * اختفى المالُ من شاشة المالية وبقي في الدفتر، وإن سقط حذفُ المصروف
+         * بعد العكس بقي مصروفٌ ظاهرٌ لا يعدّه الدفتر. وكلاهما لا يظهر إلّا
+         * لمن يطابق الشاشتين.
+         *
+         * ويُقرأ المصروفُ تحت قفل: ضغطتان على «حذف» لا تمرّان كلتاهما — الثانية
+         * تنتظر الأولى ثمّ لا تجد مصروفًا حيًّا فتُردّ ٤٠٤. وسجلُّ النشاط بعد
+         * نجاح المعاملة، كي لا يقول «حُذف» عن شيءٍ لم يُحذف.
          */
-        $expense->transaction()->delete();
-        // وقيدُ الدفتر يُعكس لا يُمحى: أثرُه صفرٌ في الرصيد، وتاريخُه مقروء
-        Books::unpostExpense($expense, auth()->id(), __('حذف المصروف'));
-        Activity::log('deleted', 'حذف المصروف: '.$expense->reference, ['subject_id' => $expense->id, 'subject_type' => 'expense']);
+        try {
+            $why = DB::transaction(function () use ($bid, $id, $correction) {
+                $expense = Expense::where('business_id', $bid)->lockForUpdate()->findOrFail($id);
 
-        /*
-         * المرفق يبقى مع المصروف المحذوف.
-         *
-         * صار الحذف ناعمًا يُستدرَك من «المحذوفات»، ومصروفٌ يعود بلا فاتورته
-         * نصفُ استعادة: القيد يظهر في التقرير ولا شيء يُقدَّم للمحاسب.
-         * والملفات تُنظَّف مع المسح النهائي لا مع الإخفاء.
-         */
-        $expense->delete();
+                /*
+                 * ومصروفٌ وُلد من حركةٍ في شاشة المالية لا يُحذف من هنا.
+                 *
+                 * قيدُه على حركته لا عليه (`Books::recordMovement`)، فلا يجد
+                 * `unpostExpense` ما يعكسه: كان الحذفُ يُخفي المصروفَ والحركةَ
+                 * ويترك قيدَهما حيًّا — مالٌ يقرؤه الدفترُ خارجًا ولا تقرؤه
+                 * شاشة. والردُّ أسلمُ من محوٍ نصفيّ.
+                 */
+                if ($this->bornOfAMovement($expense)) {
+                    throw ValidationException::withMessages(['expense' => __(
+                        'هذا المصروف سُجّل من حركةٍ في شاشة المالية، وقيدُه على الحركة لا عليه — فلا يُحذف من هنا. صحّحه بقيدٍ عكسيّ من شاشة القيود.',
+                    )]);
+                }
+
+                $why = __('حذف المصروف');
+                $at = null;
+
+                if ($entryDate = Books::expenseEntryDate($expense)) {
+                    $at = BooksPeriod::resolve($bid, $entryDate, $correction['mode'], $correction['reason'], auth()->user());
+                    $why = BooksPeriod::reason($why, $entryDate, $at, $correction['reason']);
+                }
+
+                /*
+                 * القيد يتبع مصروفه.
+                 *
+                 * كان الحذف يُخفي المصروف ويترك سطره في دفتر المالية: تقرأ
+                 * المصروفات فترى صفرًا، وتقرأ المالية فترى ٣٠٠. والقيد اليتيم يدخل
+                 * المطابقة البنكية كأنّ مبلغًا خرج.
+                 */
+                $expense->transaction()->delete();
+                // وقيدُ الدفتر يُعكس لا يُمحى: أثرُه صفرٌ في الرصيد، وتاريخُه مقروء
+                Books::unpostExpense($expense, auth()->id(), $why, $at);
+
+                /*
+                 * المرفق يبقى مع المصروف المحذوف.
+                 *
+                 * صار الحذف ناعمًا يُستدرَك من «المحذوفات»، ومصروفٌ يعود بلا فاتورته
+                 * نصفُ استعادة: القيد يظهر في التقرير ولا شيء يُقدَّم للمحاسب.
+                 * والملفات تُنظَّف مع المسح النهائي لا مع الإخفاء.
+                 */
+                $expense->delete();
+
+                return $why;
+            });
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())
+                ->with('toast', ['msg' => collect($e->errors())->flatten()->first(), 'type' => 'danger']);
+        } catch (ModelNotFoundException $e) {
+            abort(404);
+        } catch (Throwable $e) {
+            return back()->with('toast', ['msg' => $this->postingFailed($e, __('تعذّر حذف المصروف — لم يتغيّر شيء.')), 'type' => 'danger']);
+        }
+
+        $expense = Expense::withTrashed()->where('business_id', $bid)->findOrFail($id);
+        Activity::log('deleted', 'حذف المصروف: '.$expense->reference.($why !== __('حذف المصروف') ? ' — '.$why : ''),
+            ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         return back()->with('toast', [
             'msg' => __('تم حذف المصروف'),
             'type' => 'warning',
             'undo' => ['url' => route('admin.expenses.restore', $expense->id), 'label' => $expense->reference ?: $expense->type],
         ]);
+    }
+
+    /**
+     * اختيارُ تصحيح الفترة السابقة وسببُه — يُرسَلان حين يعبر التصحيحُ حدَّ شهر.
+     *
+     * @return array{mode: ?string, reason: ?string}
+     */
+    private function correction(Request $request): array
+    {
+        $data = $request->validate([
+            'correction' => ['nullable', 'string', Rule::in(BooksPeriod::MODES)],
+            'correction_reason' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        return ['mode' => $data['correction'] ?? null, 'reason' => $data['correction_reason'] ?? null];
+    }
+
+    /** هل قيدُ هذا المصروف على حركته في شاشة المالية لا عليه؟ */
+    private function bornOfAMovement(Expense $expense): bool
+    {
+        if (! $expense->transaction_id || Books::liveEntriesFor($expense)->isNotEmpty()) {
+            return false;
+        }
+
+        $entryId = Transaction::withTrashed()->whereKey($expense->transaction_id)->value('journal_entry_id');
+
+        return $entryId !== null && JournalEntry::whereKey($entryId)->whereNull('reversed_at')->exists();
     }
 
     /**

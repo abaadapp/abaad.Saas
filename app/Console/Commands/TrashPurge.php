@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Http\Controllers\Admin\TrashController;
 use App\Models\DismissedNotification;
 use App\Models\NotificationState;
+use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Notifications;
 use Illuminate\Console\Command;
@@ -37,6 +38,7 @@ class TrashPurge extends Command
         $dry = (bool) $this->option('dry-run');
         $cutoff = now()->subDays($days);
         $total = 0;
+        $kept = 0;
 
         /*
          * الفرع ليس في PURGEABLE فلا يمرّ هنا: محوُه يمحو تسجيل صناديقه
@@ -46,7 +48,19 @@ class TrashPurge extends Command
             $model = TrashController::MODELS[$type];
             $rows = $model::onlyTrashed()->where('deleted_at', '<', $cutoff)->get();
 
+            $erased = 0;
+
             foreach ($rows as $row) {
+                /*
+                 * ومصروفٌ كُتب له قيدٌ يبقى دليلًا محاسبيًّا — `purgeRow` ترفضه،
+                 * فيُعدّ هنا محفوظًا لا ممحوًّا، ولا يُسأل عنه في التجربة.
+                 */
+                if ($type === 'expense' && Books::expenseHasHistory($row)) {
+                    $kept++;
+
+                    continue;
+                }
+
                 /*
                  * صفًّا صفًّا لا بجملةٍ واحدة: المحو يجرّ معه ملفًّا على القرص
                  * ورصيدَ المنتج في الفروع، وحذفٌ جماعيّ يترك ذلك كلّه يتيمًا.
@@ -55,15 +69,20 @@ class TrashPurge extends Command
                 if (! $dry) {
                     TrashController::purgeRow($type, $row);
                 }
+                $erased++;
                 $total++;
             }
 
-            $this->line(sprintf('  %-8s %d', $type, $rows->count()));
+            $this->line(sprintf('  %-8s %d', $type, $erased));
         }
 
         $this->info($dry
             ? "سيُمحى {$total} صفًّا مضى على حذفها أكثر من {$days} يومًا"
             : "مُحي {$total} صفًّا نهائيًّا (أقدم من {$days} يومًا)");
+
+        if ($kept > 0) {
+            $this->line("  أُبقي {$kept} مصروفًا له قيدٌ في الدفتر — دليلٌ محاسبيّ لا يُمحى");
+        }
 
         $this->purgeDismissals($dry);
 

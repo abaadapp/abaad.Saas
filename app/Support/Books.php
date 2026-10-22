@@ -309,8 +309,11 @@ class Books
      *
      * فاتورةٌ سُجّلت اليوم وتُدفع بعد أسبوع ليست نقدًا خرج من الدرج، ولذلك
      * يُنادى هذا عند السداد لا عند التسجيل.
+     *
+     * و`$at` لقيدٍ يُعاد بعد عكسه: الاستعادةُ وتغييرُ النطاق يكتبانه بتاريخ
+     * ما يقابله لا بتاريخ المصروف — انظر `BooksPeriod`.
      */
-    public static function recordExpense(Expense $expense): void
+    public static function recordExpense(Expense $expense, ?Carbon $at = null): void
     {
         if (self::hasEntry($expense)) {
             return;
@@ -328,7 +331,7 @@ class Books
                 ['account' => self::expenseAccount($expense->type, $expense->business_id), 'debit' => $amount, 'memo' => $expense->description],
                 ['account' => self::payingAccount($expense->method), 'credit' => $amount],
             ],
-            Carbon::parse($expense->spent_at ?? now()),
+            $at ?? Carbon::parse($expense->spent_at ?? now()),
             self::EXPENSE,
             // فرعُ المصروف المباشر — والموزَّعُ قيدٌ واحد للنشاط لا قيدٌ لكلّ فرع
             ExpenseScope::journalBranch($expense),
@@ -337,12 +340,50 @@ class Books
         );
     }
 
-    /** وحذفُ المصروف كإلغاء البيعة: عكسٌ لا محو — القاعدة واحدة في الدفتر */
-    public static function unpostExpense(Expense $expense, ?int $userId = null, ?string $reason = null): void
+    /**
+     * وحذفُ المصروف كإلغاء البيعة: عكسٌ لا محو — القاعدة واحدة في الدفتر.
+     *
+     * و`$at` تاريخُ العكس المحاسبيّ إن اختير صراحةً (`BooksPeriod::resolve`)،
+     * وإلّا فيومُه كما كان.
+     */
+    public static function unpostExpense(Expense $expense, ?int $userId = null, ?string $reason = null, ?Carbon $at = null): void
     {
         self::liveEntriesFor($expense)->each(
-            fn (JournalEntry $e) => Ledger::reverse($e, null, $userId, $reason)
+            fn (JournalEntry $e) => Ledger::reverse($e, $at, $userId, $reason)
         );
+    }
+
+    /** تاريخُ قيد المصروف الحيّ — ما يُصحَّح فعلًا، وقد يخالف `spent_at` بعد استعادة */
+    public static function expenseEntryDate(Expense $expense): ?Carbon
+    {
+        $date = self::liveEntriesFor($expense)->min('entry_date');
+
+        return $date ? Carbon::parse($date) : null;
+    }
+
+    /**
+     * تاريخُ آخر عكسٍ لقيد هذا المصروف — أي يومُ حذفه في الدفتر.
+     *
+     * والاستعادةُ تُعيد القيدَ بهذا التاريخ: العكسُ وإعادتُه يتقابلان في
+     * فترةٍ واحدة، ويبقى القيدُ الأصليّ في شهره كما كان.
+     */
+    public static function lastExpenseReversalDate(Expense $expense): ?Carbon
+    {
+        $date = JournalEntry::where('sourceable_type', $expense::class)
+            ->where('sourceable_id', $expense->id)
+            ->whereNotNull('reverses_id')
+            ->orderByDesc('id')
+            ->value('entry_date');
+
+        return $date ? Carbon::parse($date) : null;
+    }
+
+    /** هل كُتب لهذا المصروف قيدٌ قطّ — حيًّا أو معكوسًا؟ وهو دليلٌ لا يُمحى */
+    public static function expenseHasHistory(Expense $expense): bool
+    {
+        return JournalEntry::where('sourceable_type', $expense::class)
+            ->where('sourceable_id', $expense->id)
+            ->exists();
     }
 
     /**

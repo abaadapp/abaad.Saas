@@ -11,14 +11,21 @@ use App\Models\Expense;
 use App\Models\Product;
 use App\Support\Activity;
 use App\Support\Books;
+use App\Support\BooksPeriod;
 use App\Support\Demo;
 use App\Support\PlanLimits;
 use App\Support\ProductImages;
+use DomainException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 /**
  * المحذوفات — الزرّ الذي يردّ ما أذهبته ضغطة.
@@ -108,7 +115,13 @@ class TrashController extends Controller
             $q = self::MODELS[$type]::onlyTrashed()->where('business_id', $bid);
 
             // الفرع لا يُمحى فلا مهلة له، ولا يُخفى من الشاشة بمرور الوقت
-            if (in_array($type, self::PURGEABLE, true)) {
+            if ($type === 'expense') {
+                // والمصروفُ الذي كُتب له قيدٌ لا يُمحى (`purgeRow`) — فلا يُخفى بانقضاء المهلة
+                $q->where(fn ($w) => $w->where('deleted_at', '>=', $since)
+                    ->orWhereExists(fn ($x) => $x->selectRaw('1')->from('journal_entries')
+                        ->where('journal_entries.sourceable_type', Expense::class)
+                        ->whereColumn('journal_entries.sourceable_id', 'expenses.id')));
+            } elseif (in_array($type, self::PURGEABLE, true)) {
                 $q->where('deleted_at', '>=', $since);
             }
 
@@ -129,16 +142,26 @@ class TrashController extends Controller
             'daysLeft' => $left($p),
         ]);
 
-        $expenses = $trashed('expense')->get()->map(fn ($e) => [
-            'id' => $e->id,
-            'reference' => $e->reference,
-            'title' => $e->description ?: $e->type,
-            'amount' => (float) $e->amount,
-            'spentAt' => $e->spent_at?->format('Y-m-d'),
-            'deletedAt' => $e->deleted_at?->format('Y-m-d H:i'),
-            'deletedBy' => $e->deleted_by,
-            'daysLeft' => $left($e),
-        ]);
+        $period = BooksPeriod::context($bid, auth()->user());
+
+        $expenses = $trashed('expense')->get()->map(function ($e) use ($left, $period) {
+            $kept = Books::expenseHasHistory($e);
+
+            return [
+                'id' => $e->id,
+                'reference' => $e->reference,
+                'title' => $e->description ?: $e->type,
+                'amount' => (float) $e->amount,
+                'spentAt' => $e->spent_at?->format('Y-m-d'),
+                'deletedAt' => $e->deleted_at?->format('Y-m-d H:i'),
+                'deletedBy' => $e->deleted_by,
+                // له قيدٌ في الدفتر: دليلٌ محاسبيّ يبقى، فلا عدَّ تنازليًّا ولا زرَّ محو
+                'kept' => $kept,
+                'daysLeft' => $kept ? null : $left($e),
+                // والاستعادةُ تُعيد القيدَ بيوم حذفه — فإن عبر حدَّ شهرٍ سُئل قبلها
+                'correction' => BooksPeriod::describe($period, $e->isPaid() ? Books::lastExpenseReversalDate($e) : null),
+            ];
+        });
 
         /*
          * الفروع تُعرض — وجدولها يظهر عند وجود محذوفٍ فقط.
@@ -359,17 +382,12 @@ class TrashController extends Controller
             }
         }
 
-        $row->restore();
-
         // المصروف يعود ومعه قيده في الدفتر — بمرجعه نفسه لا بمرجعٍ جديد
         if ($type === 'expense') {
-            $row->transaction()->withTrashed()->restore();
-
-            // وقيدُه المزدوج يُعاد بناؤه: حُذف مع المصروف فلا يُستعاد بالإحياء
-            if ($row->isPaid()) {
-                Books::recordExpense($row);
-            }
+            return $this->restoreExpense($request, $row);
         }
+
+        $row->restore();
 
         $label = self::label($type, $row);
 
@@ -405,7 +423,11 @@ class TrashController extends Controller
         $row = self::findTrashed($type, $id);
         $label = self::label($type, $row);
 
-        self::purgeRow($type, $row);
+        try {
+            self::purgeRow($type, $row);
+        } catch (DomainException $e) {
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
+        }
 
         Activity::log('deleted', match ($type) {
             'product' => 'محا المنتج نهائيًّا: ',
@@ -427,6 +449,21 @@ class TrashController extends Controller
      */
     public static function purgeRow(string $type, $row): void
     {
+        /*
+         * ═══ ومصروفٌ كُتب له قيدٌ لا يُمحى نهائيًّا ═══
+         *
+         * كان المحوُ يمحو صفَّ المصروف وحركتَه ومرفقَه، ويترك في الدفتر قيدًا
+         * وعكسَه يشيران إلى مستندٍ لا وجود له: مبلغٌ خرج ثمّ رُدّ ولا ورقةَ
+         * تقول ما كان ولا لمن. والأمرُ المجدول يفعل ذلك وحده بعد ٩٠ يومًا،
+         * فتضيع أدلّةُ شهرٍ كاملٍ بلا أن يضغط أحدٌ شيئًا.
+         *
+         * فما له قيدٌ — حيٌّ أو معكوس — يبقى محذوفًا ظاهرًا في «المحذوفات»،
+         * بمرفقه وحركته. وما لم يُقيَّد قطّ (فاتورةٌ لم تُدفع) يُمحى كما كان.
+         */
+        if ($type === 'expense' && Books::expenseHasHistory($row)) {
+            throw new DomainException(__('لا يُمحى هذا المصروف نهائيًّا: كُتب له قيدٌ في الدفتر، فيبقى في المحذوفات دليلًا محاسبيًّا بمرفقه وحركته.'));
+        }
+
         /*
          * القيمة الخام لا المقروءة: `Product::getImageAttribute` يردّ رابطًا
          * جاهزًا للعرض (‎/storage/…‎، أو رابط صورةٍ بديلة إن لم تكن هناك صورة).
@@ -469,17 +506,88 @@ class TrashController extends Controller
         }
 
         /*
-         * ومحوُ المصروف نهائيًّا لا يمحو قيده — يعكسه إن لم يكن معكوسًا.
-         *
-         * وأكثرُ ما يمرّ من هنا معكوسٌ أصلًا: الحذف إلى المهملات عكسه قبلُ،
-         * فلا يجد هذا النداء قيدًا حيًّا وينصرف. وما بقي حيًّا (صفٌّ قديم
-         * حُذف قبل هذه النسخة) يُعكس هنا بدل أن يختفي من الميزان صامتًا.
+         * وما وصل هنا من المصروفات لم يُقيَّد قطّ — فلا قيدَ يُعكس، وحركتُه
+         * (إن وُجدت) تُمحى معه في معاملةٍ واحدة.
          */
         if ($type === 'expense') {
-            $row->transaction()->withTrashed()->forceDelete();
-            Books::unpostExpense($row, auth()->id(), __('محو المصروف نهائيًّا'));
+            DB::transaction(function () use ($row) {
+                $row->transaction()->withTrashed()->forceDelete();
+                $row->forceDelete();
+            });
+
+            return;
         }
 
         $row->forceDelete();
+    }
+
+    /**
+     * استعادةُ مصروف — الصفُّ وحركتُه وقيدُه معًا أو لا شيء.
+     *
+     * ═══ كانت ثلاث خطواتٍ بلا معاملة ═══
+     *
+     * إحياءُ المصروف، ثمّ حركتِه، ثمّ قيده. فإن سقط القيدُ عاد مصروفٌ ظاهرٌ
+     * لا يعدّه الدفتر. وضغطتان على «استعادة» كانتا تجدان المصروفَ بلا قيدٍ
+     * حيٍّ كلتاهما فتُرحّلان قيدين. فالصفُّ يُقرأ تحت قفل، ويُسأل ثانيةً
+     * أهو محذوف — والثانيةُ لا تجده فتُردّ ٤٠٤.
+     *
+     * ═══ وتاريخُ القيد العائد: يومُ حذفه لا يومُ المصروف ═══
+     *
+     * كان القيدُ يعود بتاريخ المصروف، والعكسُ بيوم الحذف: مصروفُ سبتمبر
+     * يُحذف في أكتوبر ثمّ يُستعاد فيتضاعف سبتمبر ويبقى أكتوبر سالبًا. فالقيدُ
+     * يعود بتاريخ عكسه فيتقابلان في فترةٍ واحدة — وإن عبر ذلك حدَّ شهرٍ
+     * سُئل التاجرُ صراحةً (`BooksPeriod::resolve`).
+     */
+    private function restoreExpense(Request $request, Expense $row)
+    {
+        $data = $request->validate([
+            'correction' => ['nullable', 'string', Rule::in(BooksPeriod::MODES)],
+            'correction_reason' => ['nullable', 'string', 'max:200'],
+        ]);
+        $bid = (int) $row->business_id;
+
+        try {
+            $why = DB::transaction(function () use ($bid, $row, $data) {
+                $expense = Expense::onlyTrashed()->where('business_id', $bid)->lockForUpdate()->findOrFail($row->id);
+
+                $why = __('استعادة المصروف');
+                $reversal = $expense->isPaid() ? Books::lastExpenseReversalDate($expense) : null;
+                $at = null;
+
+                if ($reversal) {
+                    $at = BooksPeriod::resolve($bid, $reversal, $data['correction'] ?? null, $data['correction_reason'] ?? null, auth()->user());
+                    $why = BooksPeriod::reason($why, $reversal, $at, $data['correction_reason'] ?? null);
+                }
+
+                $expense->restore();
+                $expense->transaction()->withTrashed()->restore();
+
+                // وقيدُه المزدوج يُعاد بناؤه: عُكس مع الحذف فلا يُستعاد بالإحياء
+                if ($expense->isPaid()) {
+                    Books::recordExpense($expense, $at ?? ($reversal ? BooksPeriod::openOr($bid, $reversal) : null));
+                }
+
+                return $why;
+            });
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())
+                ->with('toast', ['msg' => collect($e->errors())->flatten()->first(), 'type' => 'danger']);
+        } catch (ModelNotFoundException $e) {
+            abort(404);
+        } catch (Throwable $e) {
+            report($e);
+
+            return back()->with('toast', ['msg' => __('تعذّرت استعادة المصروف — لم يتغيّر شيء.'), 'type' => 'danger']);
+        }
+
+        $label = self::label('expense', $row);
+
+        Activity::log('restore', 'استعاد المصروف: '.$label.($why !== __('استعادة المصروف') ? ' — '.$why : ''),
+            ['subject_id' => $row->id, 'subject_type' => 'expense']);
+
+        return back()->with('toast', [
+            'msg' => __('تمت الاستعادة: :name', ['name' => $label]),
+            'type' => 'success',
+        ]);
     }
 }

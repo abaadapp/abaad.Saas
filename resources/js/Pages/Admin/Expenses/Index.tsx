@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { AlertTriangle, Check, CheckCircle2, FolderOpen, GitBranch, Paperclip, Pencil, Plus, Tags } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, FolderOpen, GitBranch, Paperclip, Pencil, Plus, Tags, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { FINANCE_TABS } from '@/Components/SectionTabs';
@@ -9,6 +9,7 @@ import ExportMenu from '@/Components/ExportMenu';
 import PeriodControls, { withPeriod, type PeriodState } from '@/Components/PeriodControls';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
+import PeriodCorrection, { EMPTY_CORRECTION, correctionReady, type Correction, type CorrectionValue } from '@/Components/PeriodCorrection';
 import Field, { Select } from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -36,6 +37,8 @@ interface ExpenseRow {
     branch_id: number | null;
     branch: string | null;
     allocations: { branch_id: number; branch: string | null; amount: number }[];
+    /** هل يعبر تصحيحُه حدَّ شهر؟ — انظر `BooksPeriod::describe` */
+    correction: Correction;
 }
 
 interface ExpenseType {
@@ -114,16 +117,39 @@ export default function ExpensesIndex() {
 
     /** المصروفُ الذي يُعاد نطاقُه — ونموذجُه وحده: لا مبلغَ فيه ولا تاريخ */
     const [scoping, setScoping] = useState<ExpenseRow | null>(null);
-    const scopeForm = useForm<ScopeValue>(EMPTY_SCOPE);
+    const scopeForm = useForm<ScopeValue & CorrectionValue>({ ...EMPTY_SCOPE, ...EMPTY_CORRECTION });
 
     const openScope = (row: ExpenseRow) => {
         scopeForm.setData({
             scope: row.scope,
             branch_id: row.branch_id ? String(row.branch_id) : '',
             allocations: row.allocations.map((a) => ({ branch_id: String(a.branch_id), amount: String(a.amount) })),
+            ...EMPTY_CORRECTION,
         });
         scopeForm.clearErrors();
         setScoping(row);
+    };
+
+    /*
+     * حذفُ مصروفٍ قيدُه من شهرٍ آخر — يُسأل قبله أين يُسجَّل عكسُه ولماذا.
+     * وما كان في الشهر الجاري يُحذف بتأكيد «حذف» العاديّ كما كان.
+     */
+    const [deleting, setDeleting] = useState<ExpenseRow | null>(null);
+    const deleteForm = useForm<CorrectionValue>(EMPTY_CORRECTION);
+
+    const openDelete = (row: ExpenseRow) => {
+        deleteForm.setData(EMPTY_CORRECTION);
+        deleteForm.clearErrors();
+        setDeleting(row);
+    };
+
+    const submitDelete = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!deleting) return;
+        deleteForm.delete(route('admin.expenses.destroy', deleting.id), {
+            preserveScroll: true,
+            onSuccess: () => setDeleting(null),
+        });
     };
 
     const submitScope = (e: React.FormEvent) => {
@@ -236,8 +262,11 @@ export default function ExpensesIndex() {
             align: 'end',
             cell: (e) => (
                 <RowActions
-                    destroy={{ url: route('admin.expenses.destroy', e.id), message: 'حذف هذا المصروف؟' }}
+                    destroy={e.correction.crosses ? undefined : { url: route('admin.expenses.destroy', e.id), message: 'حذف هذا المصروف؟' }}
                     extra={[
+                        ...(e.correction.crosses
+                            ? [{ label: 'حذف…', icon: <Trash2 className="size-4" />, danger: true, onSelect: () => openDelete(e) }]
+                            : []),
                         {
                             label: 'نطاق المصروف',
                             icon: <GitBranch className="size-4" />,
@@ -653,6 +682,14 @@ export default function ExpensesIndex() {
                             currency={currency}
                             errors={scopeForm.errors as Record<string, string | undefined>}
                         />
+                        {scoping && (
+                            <PeriodCorrection
+                                correction={scoping.correction}
+                                value={scopeForm.data}
+                                onChange={(v) => scopeForm.setData({ ...scopeForm.data, ...v })}
+                                errors={scopeForm.errors as Record<string, string | undefined>}
+                            />
+                        )}
                         <div className="flex justify-end gap-2 pt-1">
                             <Button type="button" variant="ghost" onClick={() => setScoping(null)}>
                                 {t('إلغاء')}
@@ -660,10 +697,48 @@ export default function ExpensesIndex() {
                             <Button
                                 type="submit"
                                 loading={scopeForm.processing}
-                                disabled={!scopeReady(scopeForm.data, scoping?.amount ?? 0)}
+                                disabled={
+                                    !scopeReady(scopeForm.data, scoping?.amount ?? 0) ||
+                                    !correctionReady(scoping?.correction, scopeForm.data)
+                                }
                             >
                                 <Check />
                                 {t('حفظ النطاق')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* حذفُ مصروفٍ قيدُه من شهرٍ آخر — أين يُسجَّل العكسُ ولماذا */}
+            <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {t('حذف مصروفٍ من شهرٍ آخر')} — {deleting?.reference ?? ''}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitDelete} className="space-y-4 px-5 pb-5" data-testid="delete-dialog">
+                        {deleting && (
+                            <PeriodCorrection
+                                correction={deleting.correction}
+                                value={deleteForm.data}
+                                onChange={(v) => deleteForm.setData(v)}
+                                errors={deleteForm.errors as Record<string, string | undefined>}
+                            />
+                        )}
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="ghost" onClick={() => setDeleting(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button
+                                type="submit"
+                                variant="danger"
+                                loading={deleteForm.processing}
+                                disabled={!correctionReady(deleting?.correction, deleteForm.data)}
+                            >
+                                <Trash2 />
+                                {t('حذف')}
                             </Button>
                         </div>
                     </form>

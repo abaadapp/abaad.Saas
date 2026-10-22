@@ -37,10 +37,18 @@ final class SaleLines
      *   - `SETTLING` — دفعةٌ قُبضت يُكتب طلبُها (`WebCheckout::place` بنيّةٍ
      *     موقَّعة): لا يُسأل عن حال الصنف بعد أن فُتح الدفع. أُطفئ عرضُه أو
      *     أُوقف والزبونُ عند البنك؟ المالُ قُبض، وردُّ الطلب يتركه بلا طلب.
-     *   - `null` — ما سواهما (الموقعُ قبل الدفع، وبندٌ يُضاف إلى طلب موقعٍ
-     *     بالتصحيح): نشطٌ وحسب، وللموقع حارسُه فوق هذا (`WebCheckout::assertPublished`).
+     *   - `WEBSITE` — الموقعُ قبل الدفع (`WebCheckout::quote`): الصنفُ نشطٌ وحسب،
+     *     وللموقع حارسُه فوق هذا (`WebCheckout::assertPublished`). وإضافاتُه
+     *     ما فُتح للموقع وحدَه (`Addon::sellsOnline`).
+     *   - `null` — ما سواها (بندٌ يُضاف إلى طلب موقعٍ بالتصحيح): نشطٌ وحسب.
+     *
+     * والإضافةُ تُسأل بالباب نفسِه (`ProductAddons::sells`): ما أُغلق عن
+     * الصندوق يُردّ من الصندوق، وما لم يُفتح للموقع يُردّ من الموقع — ولو
+     * حمل الطلبُ معرّفَها بيده.
      */
     public const POS = 'pos';
+
+    public const WEBSITE = 'website';
 
     public const SETTLING = 'settling';
 
@@ -288,7 +296,7 @@ final class SaleLines
                      * تُعرض به الإضافةُ العامّة على كلّ صنفٍ في الصندوق.
                      */
                     'addons' => $template->allow_addons
-                        ? $this->freeAddons($i['addons'] ?? [], $addons, $idx)
+                        ? $this->freeAddons($i['addons'] ?? [], $addons, $idx, $channel)
                         : [],
                     'addons_total' => 0.0,
                     'custom' => $custom,
@@ -389,7 +397,7 @@ final class SaleLines
                     ? Recipe::unitCost($product, $variant, $preloaded, $componentCosts)
                     : (float) $product->cost;
 
-                [$chosen, $addonError] = $this->pickAddons($product, $i['addons'] ?? [], $addons, $addonMap);
+                [$chosen, $addonError] = $this->pickAddons($product, $i['addons'] ?? [], $addons, $addonMap, $channel);
                 if ($addonError) {
                     $errors["items.$idx.addons"] = $addonError;
 
@@ -425,7 +433,7 @@ final class SaleLines
                 ? $addons->firstWhere('id', (int) $i['addon_id'])
                 : $addons->first(fn ($a) => $a->name === ($i['name'] ?? null) || $a->name_en === ($i['name'] ?? null));
 
-            if (! $addon || ! $addon->active) {
+            if (! $addon || ! ProductAddons::sells($addon, $channel)) {
                 $errors["items.$idx.name"] = __('صنف غير متاح للبيع.');
 
                 continue;
@@ -461,7 +469,7 @@ final class SaleLines
      *
      * @return array{0: array<int, array<string, mixed>>, 1: ?string}
      */
-    public function pickAddons(Product $product, array $requested, $addons, array $addonMap): array
+    public function pickAddons(Product $product, array $requested, $addons, array $addonMap, ?string $channel = null): array
     {
         $chosen = [];
 
@@ -469,7 +477,7 @@ final class SaleLines
             $id = (int) ($r['addon_id'] ?? $r['id'] ?? 0);
             $addon = $id ? $addons->firstWhere('id', $id) : null;
 
-            if (! $addon || ! ProductAddons::allows($product, $addon, $addonMap, $addons)) {
+            if (! $addon || ! ProductAddons::allows($product, $addon, $addonMap, $addons, $channel)) {
                 return [[], __('إضافة غير متاحة مع هذا الصنف.')];
             }
 
@@ -522,7 +530,7 @@ final class SaleLines
      *
      * @return array<int, array<string, mixed>>
      */
-    public function freeAddons(array $requested, $addons, int $idx): array
+    public function freeAddons(array $requested, $addons, int $idx, ?string $channel = null): array
     {
         $chosen = [];
 
@@ -530,7 +538,7 @@ final class SaleLines
             $id = (int) ($r['addon_id'] ?? $r['id'] ?? 0);
             $addon = $id ? $addons->firstWhere('id', $id) : null;
 
-            if (! $addon || ! $addon->active || $addon->scopeName() !== Addon::SCOPE_ALL) {
+            if (! $addon || ! ProductAddons::sells($addon, $channel) || $addon->scopeName() !== Addon::SCOPE_ALL) {
                 throw ValidationException::withMessages([
                     "items.$idx.addons" => __('إضافة غير متاحة مع هذا الصنف.'),
                 ]);
@@ -673,6 +681,33 @@ final class SaleLines
         }
 
         return $out;
+    }
+
+    /**
+     * صفُّ `order_item_addons` لإضافةٍ اختيرت على بند — من موضعٍ واحد.
+     *
+     * يكتبه الصندوقُ (البيعُ والتعليق) والتصحيحُ والموقع. وكان يُنسخ في كلّ
+     * بابٍ بيده، والبابُ الرابع ينسخه فينسى لقطةَ ما أكلته الإضافةُ من الرفّ.
+     *
+     * والاسمُ والسعرُ وما أُخذ من الرفّ لقطاتٌ لا علاقات: إضافةٌ كانت ثلاث
+     * ورداتٍ فصارت خمسًا تردّ خمسًا عن بيعةٍ أخذت ثلاثًا لو قُرئت يوم الإلغاء.
+     *
+     * @param  array<string, mixed>  $a  عنصرٌ ممّا تردّه `pickAddons` أو `freeAddons`
+     * @return array<string, mixed>
+     */
+    public static function addonRow(array $a): array
+    {
+        return [
+            'addon_id' => $a['addon']->id,
+            'name' => $a['addon']->name,
+            'name_en' => $a['addon']->name_en,
+            'unit_price' => $a['price'],
+            'quantity' => $a['qty'],
+            'total' => $a['total'],
+            'cost' => $a['cost'],
+            'inventory_product_id' => $a['inventory_product_id'] ?? null,
+            'inventory_quantity' => ($a['inventory_product_id'] ?? null) ? $a['each'] : null,
+        ];
     }
 
     /** يمنع البيع بما يتجاوز المتوفر — إلا إذا سمح النشاط بالمخزون السالب صراحةً */

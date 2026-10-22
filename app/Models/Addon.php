@@ -12,8 +12,26 @@ class Addon extends Model
     protected $casts = [
         'price' => 'decimal:3',
         'active' => 'boolean',
+        'pos_enabled' => 'boolean',
+        'web_enabled' => 'boolean',
         'inventory_quantity' => 'decimal:3',
     ];
+
+    /**
+     * أين تُباع — و`active` فوق القناتين: الموقوفةُ لا تُباع في أيّ واحدة.
+     *
+     * والفراغُ يُقرأ كما كانت الإضافةُ قبل العمودين: تُباع في الصندوق ولا
+     * تُعرض في الموقع. انظر `an_addon_chooses_where_it_is_sold`.
+     */
+    public function sellsAtPos(): bool
+    {
+        return (bool) $this->active && ($this->pos_enabled ?? true);
+    }
+
+    public function sellsOnline(): bool
+    {
+        return (bool) $this->active && (bool) ($this->web_enabled ?? false);
+    }
 
     /** تُعرض مع كلّ منتجات المتجر — وهو مدى كلّ إضافةٍ قبل وجود هذا العمود */
     public const SCOPE_ALL = 'all';

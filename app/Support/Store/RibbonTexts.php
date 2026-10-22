@@ -102,6 +102,13 @@ final class RibbonTexts
         'upInc' => 'زيادة كمية :name', 'upDec' => 'إنقاص كمية :name', 'upQty' => 'كمية :name',
         'upTotal' => 'المجموع مع الإضافات', 'cartLimitQty' => 'أقصى كمية للصنف الواحد في السلة :max — قلّل الكمية ثم أعد الإضافة.',
         'cartLimitLines' => 'السلة لا تتّسع لأكثر من :max صنفًا مختلفًا — أتمّ طلبك أو احذف صنفًا ثم أعد الإضافة.',
+        /*
+         * وإضافاتُ الصنف نفسِه — «إضافات اختيارية» تحت المنتج (`Addon::sellsOnline`)،
+         * غيرُ «أضف مع طلبك» التي تقترح أصنافًا مستقلّة. وكمّيّتُها للبند كلِّه
+         * لا لكلّ قطعة (`SaleLines::addonConsumption`) — فيُقال ذلك تحت عنوانها.
+         */
+        'addonsTitle' => 'إضافات اختيارية', 'addonsHint' => 'تُضاف مرّةً واحدة على هذا البند، أيًّا كانت كمّيّته.',
+        'addonSoldOut' => 'نفدت', 'lineTotal' => 'إجمالي البند', 'cartAddons' => 'الإضافات:',
         // رفُّ مجموعةٍ لا صنفَ معروضًا فيه — انظر `StoreCollections`
         'noInCollection' => 'لا توجد منتجات في هذه المجموعة بعد.',
         // وشريطُ المجموعات المصوّر — اسمُه للقارئ الصوتيّ (`StoreVisualBar`)
@@ -183,6 +190,8 @@ final class RibbonTexts
         'upInc' => 'Increase quantity of :name', 'upDec' => 'Decrease quantity of :name', 'upQty' => 'Quantity of :name',
         'upTotal' => 'Total with add-ons', 'cartLimitQty' => 'The most you can order of one item is :max — lower the quantity and add again.',
         'cartLimitLines' => 'Your cart can hold up to :max different items — check out or remove an item, then add again.',
+        'addonsTitle' => 'Optional add-ons', 'addonsHint' => 'Added once to this item, whatever its quantity.',
+        'addonSoldOut' => 'Sold out', 'lineTotal' => 'Item total', 'cartAddons' => 'Add-ons:',
         'noInCollection' => 'No products in this collection yet.',
         'visualBar' => 'Shop collections',
         'pageHidden' => 'This page is hidden — your customers will not see it until you show it and publish.',

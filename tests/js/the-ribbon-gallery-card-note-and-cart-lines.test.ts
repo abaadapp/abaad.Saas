@@ -177,6 +177,7 @@ describe('بنودُ السلّة', () => {
 
         const cart = readFileSync(VIEW('cart.blade.php'), 'utf8');
         expect(cart).toContain('T.cartCardMessage');
-        expect(cart).toContain('RB.set(id, v, 0, note)');
+        // والحذفُ على البند بنصّه وإضافاته معًا — إضافاتُه من هويّته (`RBLines.same`)
+        expect(cart).toContain('RB.set(id, v, 0, note, addons)');
     });
 });

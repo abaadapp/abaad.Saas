@@ -37,7 +37,7 @@ class ProductAddons
      * @param  array<int, int[]>|null  $map  [معرّف المنتج => معرّفات إضافاته] إن كانت محمّلة
      * @return Collection<int, Addon>
      */
-    public static function for(Product $product, ?Collection $all = null, ?array $map = null): Collection
+    public static function for(Product $product, ?Collection $all = null, ?array $map = null, ?string $channel = null): Collection
     {
         $all ??= Addon::where('business_id', $product->business_id)->orderBy('id')->get();
         $map ??= self::map((int) $product->business_id);
@@ -46,7 +46,7 @@ class ProductAddons
         $legacy = self::legacyList($rows, $all);
 
         return $all
-            ->filter(fn (Addon $a) => (bool) $a->active && self::owned($a, $product))
+            ->filter(fn (Addon $a) => self::sells($a, $channel) && self::owned($a, $product))
             ->filter(fn (Addon $a) => self::passes($a, $rows, $legacy))
             ->values();
     }
@@ -124,9 +124,24 @@ class ProductAddons
      * قديمة — أو مُلاعَبة. ومنتجٌ لا يسمح بالدبّ لا يُباع معه دبّ لأنّ
      * الطلب حمل معرّفه.
      */
-    public static function allows(Product $product, Addon $addon, ?array $map = null, ?Collection $all = null): bool
+    public static function allows(Product $product, Addon $addon, ?array $map = null, ?Collection $all = null, ?string $channel = null): bool
     {
-        if ((int) $addon->business_id !== (int) $product->business_id || ! $addon->active) {
+        if ((int) $addon->business_id !== (int) $product->business_id) {
+            return false;
+        }
+
+        /*
+         * ودفعةٌ قُبضت لا تُسأل إضافتُها عن حالها بعد الدفع — كالصنف تمامًا
+         * (`SaleLines::SETTLING`). سُئلت بكلّ هذا حين فُتحت صفحةُ البنك
+         * (`WebCheckout::toCard`)، والمعرّفُ من حمولة النيّة التي كتبها الخادم.
+         * فإطفاؤها أو تضييقُ مداها والزبونُ عند البنك لا يُسقطها من طلبٍ دُفع
+         * ثمنُها فيه. وتبدُّلُ سعرها يردّ المالَ كلَّه (`PriceMovedAfterPayment`).
+         */
+        if ($channel === SaleLines::SETTLING) {
+            return true;
+        }
+
+        if (! self::sells($addon, $channel)) {
             return false;
         }
 
@@ -143,6 +158,21 @@ class ProductAddons
         $all ??= Addon::where('business_id', $product->business_id)->get();
 
         return self::passes($addon, $rows, self::legacyList($rows, $all));
+    }
+
+    /**
+     * أتُباع في هذا الباب؟ — الصندوقُ يسأل `pos_enabled`، والموقعُ `web_enabled`.
+     *
+     * وما سواهما (فاتورةُ العميل، وبندٌ يُضاف إلى طلب موقعٍ بالتصحيح) يسأل
+     * `active` وحدَه كما كان قبل القناتين.
+     */
+    public static function sells(Addon $addon, ?string $channel): bool
+    {
+        return match ($channel) {
+            SaleLines::POS => $addon->sellsAtPos(),
+            SaleLines::WEBSITE => $addon->sellsOnline(),
+            default => (bool) $addon->active,
+        };
     }
 
     /**

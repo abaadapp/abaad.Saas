@@ -88,6 +88,7 @@
                     <span data-rb-qty>1</span>
                     <button type="button" data-rb-inc aria-label="+">+</button>
                 </div>
+                @include('store.ribbon._addons', ['withMoney' => false])
                 <div data-rb-upsells data-testid="rb-upsells">
                     <h2 style="margin:0 0 8px;font-size:15px;font-weight:500">{{ $t['upsellTitle'] }}</h2>
                     <div class="rb-ups">
@@ -176,6 +177,7 @@
                         <p class="rb-field-error" style="color:#b91c1c;font-size:12px;margin:6px 0 0" data-rb-product-note-error data-testid="rb-product-note-error" hidden></p>
                     </div>
                 @endif
+                @include('store.ribbon._addons', ['withMoney' => true])
                 <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
                     <div class="rb-qty">
                         <button type="button" data-rb-dec aria-label="−">−</button>
@@ -313,6 +315,25 @@
     var id = {{ (int) $product['id'] }}, variant = null, qty = 1, amount = {{ (float) $product['price'] }};
     // والمجموعُ يُعاد رسمُه مع كمّيّة الصنف ومقاسه — يملؤه عدّادُ «أضف مع طلبك» إن كان
     var ups = null;
+    /*
+        و«إضافات اختيارية» — إضافاتُ الصنف نفسِه تُحمل على بنده (`ribbon-addons.js`).
+        و«إجمالي البند» يُعاد رسمُه مع كمّيّة الصنف ومقاسه كذلك، ومجموعُ «أضف مع
+        طلبك» يحملها فوقه (`extra`).
+    */
+@if (count($addons ?? []))
+    var addons = RBAddons.mount(document.querySelector('[data-rb-addons]'), {
+        mainAmount: function () { return amount; },
+        mainQty: function () { return qty; },
+        format: RBUpsells.money(@json($money)),
+        total: document.querySelector('[data-rb-line-total]'),
+        max: {{ \App\Support\Store\WebCheckout::MAX_ADDON_QTY }},
+        changed: function () { if (ups) ups.repaint(); },
+    });
+@else
+    // صنفٌ بلا إضافاتٍ مفتوحةٍ للموقع — صفحتُه كما كانت، ولا سكربتَ يُحمَّل له
+    var addons = null;
+@endif
+    function chosenAddons() { return addons ? addons.chosen() : []; }
     var sizes = document.querySelector('[data-rb-sizes]');
     if (sizes) {
         var first = sizes.querySelector('button'); variant = first ? +first.dataset.variant : null;
@@ -322,13 +343,14 @@
             sizes.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); });
             b.classList.add('on'); variant = +b.dataset.variant; amount = +b.dataset.amount;
             document.querySelector('[data-rb-price]').textContent = b.dataset.price;
+            if (addons) addons.repaint();
             if (ups) ups.repaint();
         });
     }
     var q = document.querySelector('[data-rb-qty]');
     var dec = document.querySelector('[data-rb-dec]'), inc = document.querySelector('[data-rb-inc]'), add = document.querySelector('[data-rb-add]');
-    if (dec) dec.addEventListener('click', function () { qty = Math.max(1, qty - 1); q.textContent = qty; if (ups) ups.repaint(); });
-    if (inc) inc.addEventListener('click', function () { qty = Math.min(RB.limits.qty, qty + 1); q.textContent = qty; if (ups) ups.repaint(); });
+    if (dec) dec.addEventListener('click', function () { qty = Math.max(1, qty - 1); q.textContent = qty; if (addons) addons.repaint(); if (ups) ups.repaint(); });
+    if (inc) inc.addEventListener('click', function () { qty = Math.min(RB.limits.qty, qty + 1); q.textContent = qty; if (addons) addons.repaint(); if (ups) ups.repaint(); });
     // وإضافةٌ رُدّت كلُّها يُقال سببُها في الشريط — والسلّةُ كما كانت (`RB.addMany`)
     function refused(r) { RB.toast(r.message || ''); }
 @if ($product['note_on'] ?? false)
@@ -345,9 +367,16 @@
         main: function () {
             var text = pnote ? pnote.take() : '';
             if (text === null) return null;
+            var line = { id: id, variant_id: variant, qty: qty };
+            if (text) line.note = text;
+            // وإضافاتُه على بنده هو — لا بنودٌ مستقلّة
+            var picked = chosenAddons();
+            if (picked.length) line.addons = picked;
 
-            return text ? { id: id, variant_id: variant, qty: qty, note: text } : { id: id, variant_id: variant, qty: qty };
+            return line;
         },
+        // وما اختير من إضافات الصنف داخل المجموع — مرّةً للبند كلِّه
+        extra: function () { return addons ? addons.total() : 0; },
         mainQty: function () { return qty; },
         mainAmount: function () { return amount; },
         format: RBUpsells.money(@json($money)),
@@ -363,6 +392,7 @@
         refused: function () {},
         done: function () {
             if (pnote) pnote.clear();
+            if (addons) addons.clear();
             add.textContent = @json($t['added']); RB.toast(@json($t['added']));
             setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
         },
@@ -387,9 +417,10 @@
     if (add) add.addEventListener('click', function () {
         var text = pnote ? pnote.take() : '';
         if (text === null) return;
-        var r = text ? RB.add(id, variant, qty, text) : RB.add(id, variant, qty);
+        var r = RB.add(id, variant, qty, text || null, chosenAddons());
         if (!r.ok) { refused(r); return; }
         if (pnote) pnote.clear();
+        if (addons) addons.clear();
         add.textContent = @json($t['added']); RB.toast(@json($t['added']));
         setTimeout(function () { add.textContent = @json($t['add']); }, 1500);
     });

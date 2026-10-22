@@ -269,6 +269,7 @@ class CatalogQuickAddController extends Controller
         $addon = Addon::create(collect($data)->only(['name', 'name_en', 'price'])->all() + [
             'business_id' => $bid,
             'active' => true,
+        ] + self::channelAttributes($data, null) + [
             // لا مالك: بابُ الإضافة الخاصّة بمنتجٍ مغلقٌ — انظر `noOwnership`
             'product_id' => null,
         ] + self::stockAttributes($data) + self::scopeAttributes($data, null));
@@ -336,13 +337,35 @@ class CatalogQuickAddController extends Controller
         // والاسمُ الإنجليزيّ كما أُرسل: ما خُزّن يبقى إن لم يُرسَل، ولا يُملأ من المعجم إن فرغ
         $model->update(collect($data)->only(['name', 'name_en', 'price'])->all() + [
             'active' => array_key_exists('active', $data) ? (bool) $data['active'] : (bool) $model->active,
-        ] + self::stockAttributes($data) + self::scopeAttributes($data, $owner));
+        ] + self::channelAttributes($data, $model) + self::stockAttributes($data) + self::scopeAttributes($data, $owner));
 
         self::syncScopeProducts($model, $bid, $data);
 
         \App\Support\Activity::log('updated', 'عدّل إضافة «'.$model->name.'»', ['subject_id' => $model->id]);
 
         return response()->json(['ok' => true, 'addon' => self::addonPayload($model->fresh())]);
+    }
+
+    /**
+     * أين تُباع الإضافة — نقطةُ البيع، والموقع، أو كلاهما، أو لا شيء.
+     *
+     * والجديدةُ بلا جوابٍ تُباع في الصندوق وحدَه: هو ما تفعله كلُّ إضافةٍ قائمة
+     * (`an_addon_chooses_where_it_is_sold`)، والموقعُ يُفتح لها بقرارٍ لا بغياب.
+     * والقائمةُ بلا جوابٍ تبقى على ما كانت: حفظُ سعرها لا يفتحها للموقع ولا
+     * يغلقها عن الصندوق.
+     *
+     * @return array{pos_enabled: bool, web_enabled: bool}
+     */
+    private static function channelAttributes(array $data, ?Addon $current): array
+    {
+        return [
+            'pos_enabled' => array_key_exists('pos_enabled', $data) && $data['pos_enabled'] !== null
+                ? (bool) $data['pos_enabled']
+                : (bool) ($current?->pos_enabled ?? true),
+            'web_enabled' => array_key_exists('web_enabled', $data) && $data['web_enabled'] !== null
+                ? (bool) $data['web_enabled']
+                : (bool) ($current?->web_enabled ?? false),
+        ];
     }
 
     /**
@@ -370,6 +393,9 @@ class CatalogQuickAddController extends Controller
             'name_en' => ['nullable', 'string', 'max:100'],
             'price' => ['required', 'numeric', 'min:0'],
             'active' => ['nullable', 'boolean'],
+            // أين تُباع — انظر `channelAttributes`
+            'pos_enabled' => ['nullable', 'boolean'],
+            'web_enabled' => ['nullable', 'boolean'],
             // ولا قاعدةَ لـ`product_id` هنا: الوجهتان كلتاهما تمنعه، فقاعدةُ
             // «من هذا المتجر» لا تُقرأ أبدًا — انظر `noOwnership`
             'inventory_product_id' => ['nullable', $ofBusiness()],
@@ -533,6 +559,8 @@ class CatalogQuickAddController extends Controller
             'name_en' => $addon->name_en,
             'price' => (float) $addon->price,
             'active' => (bool) $addon->active,
+            'pos_enabled' => (bool) ($addon->pos_enabled ?? true),
+            'web_enabled' => (bool) ($addon->web_enabled ?? false),
             'private' => $addon->product_id !== null,
             'product_id' => $addon->product_id,
             'scope' => $addon->scopeName(),

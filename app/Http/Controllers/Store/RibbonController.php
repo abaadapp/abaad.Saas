@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Store;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\PdfController;
+use App\Models\Addon;
 use App\Models\Business;
 use App\Models\Category;
 use App\Models\Order;
@@ -12,7 +13,9 @@ use App\Models\StorePaymentIntent;
 use App\Models\Review;
 use App\Support\CategoryName;
 use App\Support\NotesAndEdits;
+use App\Support\ProductAddons;
 use App\Support\ProductName;
+use App\Support\SaleLines;
 use App\Support\FlowerOrder;
 use App\Support\MarketingSettings;
 use App\Support\Money;
@@ -679,6 +682,14 @@ class RibbonController extends Controller
              * وصنفٌ نفد لا زرَّ سلّةٍ له، فلا يُقترح معه شيء. والأسعارُ
              * للعرض: الإتمامُ يسعّر البنودَ من القاعدة كأيّ صنف.
              */
+            /*
+             * و«إضافات اختيارية» — إضافاتُ الصنف نفسِه التي فُتحت للموقع.
+             *
+             * غيرُ «أضف مع طلبك» أعلاه: تلك أصنافٌ مستقلّة تدخل السلّةَ بنودًا،
+             * وهذه تُحمل على بند الصنف نفسِه (`order_item_addons`). فلا يُباع
+             * شيءٌ مرّتين ولا يُحسب ثمنُه مرّتين. وما نفد صنفُه لا تُعرض معه.
+             */
+            'addons' => $available && ! $giftCard ? $this->addons($bid, $p, $lang, $currency) : [],
             // وصفحةُ الكرت نصُّه وحده — لا إضافاتٌ تُقترح معه
             'upsells' => $available && ! $giftCard
                 ? RibbonUpsells::for($bid, $p, $this->shown($bid))
@@ -690,6 +701,30 @@ class RibbonController extends Controller
                     ->all()
                 : [],
         ];
+    }
+
+    /**
+     * إضافاتُ الصنف المفتوحةُ للموقع — بالقاعدة التي يأذن بها الخادمُ عند التسعير.
+     *
+     * `ProductAddons::for` ببابِ الموقع: ما أُغلق عن الموقع أو أُوقف أو لا
+     * يخصّ هذا الصنف لا يُعرض. والسعرُ للعرض وحدَه — الإتمامُ يسعّر من القاعدة.
+     * وما نفد رفُّه يُعرض معطَّلًا لا يُخفى: الزبونُ يعرف أنّها تُباع هنا.
+     *
+     * @param  array<string, mixed>  $currency
+     * @return list<array{id: int, name: string, price: float, price_text: string, available: bool}>
+     */
+    private function addons(int $bid, Product $p, string $lang, array $currency): array
+    {
+        $addons = ProductAddons::for($p, null, null, SaleLines::WEBSITE);
+        $stock = Shelf::availability($bid, $addons->pluck('inventory_product_id')->filter()->all());
+
+        return $addons->map(fn (Addon $a) => [
+            'id' => (int) $a->id,
+            'name' => ProductName::display($a->name, $a->name_en, $lang),
+            'price' => (float) $a->price,
+            'price_text' => Money::format((float) $a->price, $currency),
+            'available' => $a->inventory_product_id === null || ($stock[(int) $a->inventory_product_id] ?? false),
+        ])->values()->all();
     }
 
     /**
@@ -1173,6 +1208,12 @@ class RibbonController extends Controller
                 'image' => $l['image'], 'qty' => $l['qty'], 'price' => $l['price'],
                 'price_text' => $m($l['price']), 'line_text' => $m($l['line']),
                 'gift_card' => $l['gift_card'], 'note' => $l['note'],
+                // وإضافاتُه بأسمائها في لغة الصفحة — تُرسم تحته وتُعرف بها هويّتُه في السلّة
+                'addons' => array_map(fn ($a) => [
+                    'id' => $a['id'], 'qty' => $a['qty'],
+                    'name' => ProductName::display($a['name'], $a['name_en'], $lang),
+                    'total_text' => $m($a['total']),
+                ], $l['addons'] ?? []),
             ], $q['lines']),
             'subtotal' => $q['subtotal'], 'subtotal_text' => $m($q['subtotal']),
             'discount' => $q['discount'], 'discount_text' => $m($q['discount']),

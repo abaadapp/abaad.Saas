@@ -76,6 +76,13 @@ export default function AddonDialog({
     const [scope, setScope] = useState<Scope>(addon?.scope === 'selected' ? 'selected' : 'all');
     /* والتعطيل بابُها الوحيد: لا شاشةَ أخرى في النظام تُطفئ إضافة */
     const [active, setActive] = useState<boolean>(addon?.active !== false);
+    /*
+     * وأين تُباع — قناتان مستقلّتان. والجديدةُ في الصندوق وحده كما كانت كلُّ
+     * إضافة، والموقعُ يُفتح لها بقرار. والقناتان مطفأتان معًا: «غير متاحة
+     * للبيع حاليًا» — تبقى في القائمة ولا تُحذف.
+     */
+    const [atPos, setAtPos] = useState<boolean>(addon?.pos_enabled !== false);
+    const [online, setOnline] = useState<boolean>(addon?.web_enabled === true);
     const [picked, setPicked] = useState<number[]>(addon?.product_ids ?? []);
     const searchRef = useAsciiDigits<HTMLInputElement>();
     const [search, setSearch] = useState('');
@@ -117,6 +124,8 @@ export default function AddonDialog({
             price: price || 0,
             inventory_product_id: stock ? Number(stockId) : null,
             inventory_quantity: stock ? (each || 1) : null,
+            pos_enabled: atPos,
+            web_enabled: online,
             /*
              * المملوكةُ لا يُرسل لها مدًى ولا مالك: الخادم يردّ ذلك ردًّا
              * صريحًا (`ownershipStays`)، والشاشةُ لا تطلب ما يُردّ.
@@ -146,7 +155,8 @@ export default function AddonDialog({
                 setError(
                     errors.name?.[0] ?? errors.price?.[0] ?? errors.inventory_quantity?.[0]
                     ?? errors.inventory_product_id?.[0] ?? errors.product_id?.[0]
-                    ?? errors.scope?.[0] ?? errors.product_ids?.[0] ?? t('تعذّر حفظ الإضافة'),
+                    ?? errors.scope?.[0] ?? errors.product_ids?.[0]
+                    ?? errors.pos_enabled?.[0] ?? errors.web_enabled?.[0] ?? t('تعذّر حفظ الإضافة'),
                 );
 
                 return;
@@ -221,6 +231,38 @@ export default function AddonDialog({
                             onChange={(e) => setPrice(e.target.value)}
                         />
                     </Field>
+
+                    {/* ------------------------- القنوات ------------------------- */}
+                    <div data-testid="addon-channels">
+                        <span className="mb-1.5 block text-[13px] font-medium text-[#111]">
+                            {t('أين تُباع الإضافة؟')}
+                        </span>
+                        <div className="flex flex-wrap gap-x-5 gap-y-2">
+                            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#111]">
+                                <input
+                                    type="checkbox"
+                                    checked={atPos}
+                                    onChange={() => setAtPos((v) => !v)}
+                                    data-testid="addon-channel-pos"
+                                />
+                                {t('نقطة البيع (POS)')}
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-[#111]">
+                                <input
+                                    type="checkbox"
+                                    checked={online}
+                                    onChange={() => setOnline((v) => !v)}
+                                    data-testid="addon-channel-web"
+                                />
+                                {t('الموقع الإلكتروني')}
+                            </label>
+                        </div>
+                        <p className="mt-1 text-[12px] text-[#9ca3af]" data-testid="addon-channels-hint">
+                            {atPos || online
+                                ? t('تظهر للعميل في القناة المختارة فقط، ويرفض الخادم غيرها.')
+                                : t('غير متاحة للبيع حاليًا — تبقى محفوظة ولا تُحذف.')}
+                        </p>
+                    </div>
 
                     {/* ------------------------- المخزون ------------------------- */}
                     <div>

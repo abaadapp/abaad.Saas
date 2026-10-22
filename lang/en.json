@@ -8445,7 +8445,6 @@
     "إن اختار العميل «:name»: يدفع :customer، وللبوتيك :due، ويبقى للمتجر منها :kept": "If the customer picks “:name”: they pay :customer, the boutique gets :due, and the shop keeps :kept of it",
     "أضف إلى الباقة": "Add to the bouquet",
     "مشمول": "Included",
-    "اختياريّ بـ:price": "Optional at :price",
     "إلغاء الطلب — قطع البوتيك": "Cancel the order — boutique pieces",
     "ما عاد إلى الرفّ يُعكس مستحقُّه. وما لم يعد أو لم يُتحقَّق منه يبقى للبوتيك وخسارتُه على المتجر.": "What returned to the shelf has its due reversed. What did not return, or was not checked, stays owed to the boutique and is the shop's loss.",
     "عادت": "Returned",
@@ -8468,5 +8467,12 @@
     "له مقاسات": "has sizes",
     "بلا سعر": "no price",
     "اختر صنفًا من بوتيكٍ قائم.": "Choose an item from an existing boutique.",
-    "لا يدخل الصنفُ في نفسه.": "An item cannot go into itself."
+    "لا يدخل الصنفُ في نفسه.": "An item cannot go into itself.",
+    "اختياريّ بـ:price — للبوتيك :due": "Optional at :price — boutique gets :due",
+    "المقترح :suggested = :unit × :qty": "Suggested :suggested = :unit × :qty",
+    "أعِد المقترح": "Back to suggested",
+    "للبوتيك :due ثابتًا — لا يتغيّر بسعر العميل.": "The boutique gets :due regardless of the customer price.",
+    "ويبقى للمتجر من الإضافة :kept.": "The shop keeps :kept from the add-on.",
+    "سعرُ العميل أقلّ من مستحقّ البوتيك بـ:gap — يُدفع الفرقُ من سعر الباقة.": "The customer price is :gap below the boutique's due — the difference comes out of the bouquet price.",
+    "«:name» في الباقة بكمّيّة :from — يُحفظ بكمّيّة :to لا بالمجموع.": "“:name” is in the bouquet at :from — it will be saved at :to, not the sum."
 }

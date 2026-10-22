@@ -61,6 +61,27 @@ export type Split = {
     optional: { id: number; name: string; customer: number; due: number; kept: number }[];
 };
 
+/**
+ * سعرُ الإضافة المقترح للعميل: ثمنُ القطعة في كمّيّتها — قطعتان بسبعة = ١٤.
+ * ولصاحب المتجر أن يكتب غيره، ومستحقُّ البوتيك لا يتبعه.
+ */
+export function suggestedCharge(unitPrice: number, quantity: number): number {
+    return fromMills(mills(unitPrice) * Math.max(0, Math.floor(quantity || 0)));
+}
+
+/**
+ * الأجزاءُ كما ستُحفظ لو ضُغط «أضف»: المشمولُ المكرَّر يحلّ محلّ صفّه في الوصفة
+ * (الخادمُ يحدّث كمّيّته ولا يكتب ثانيًا) — فلا يُعدّ مرّتين. والاختياريُّ
+ * إضافةٌ جديدةٌ تُكتب بجانب ما قبلها.
+ */
+export function withDraft(parts: BoutiquePart[], next: BoutiquePart | null): BoutiquePart[] {
+    if (!next) return parts;
+    if (next.kind === 'included' && parts.some((x) => x.kind === 'included' && x.product_id === next.product_id)) {
+        return parts.map((x) => (x.kind === 'included' && x.product_id === next.product_id ? { ...x, quantity: next.quantity } : x));
+    }
+    return [...parts, next];
+}
+
 /** ما للبوتيكات وما يبقى من سعر الباقة — والإضافةُ الاختياريّة وحدها */
 export function boutiqueSplit(price: number, parts: BoutiquePart[]): Split {
     const p = mills(price || 0);
@@ -104,7 +125,8 @@ export default function BoutiqueParts({ productId, price, currencyLabel, data }:
     const [pick, setPick] = useState('');
     const [mode, setMode] = useState<'included' | 'optional'>('included');
     const [qty, setQty] = useState('1');
-    const [charge, setCharge] = useState('');
+    // `null` = يتبع المقترح (ثمنُ القطعة × الكمّيّة) ما لم يكتب صاحبُ المتجر سعرًا
+    const [charge, setCharge] = useState<string | null>(null);
     const [pos, setPos] = useState(true);
     const [web, setWeb] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -113,15 +135,21 @@ export default function BoutiqueParts({ productId, price, currencyLabel, data }:
     const chosen = data.options.find((o) => String(o.value) === pick) ?? null;
     const amount = (n: number) => `${n.toFixed(3)} ${currencyLabel}`;
 
-    /* المعاينةُ قبل الحفظ: الأجزاءُ القائمة ومعها ما يُختار الآن */
-    const draft: BoutiquePart[] = chosen && Number(qty) >= 1
-        ? [...parts, {
-            id: 0, kind: mode, product_id: chosen.value, name: chosen.label,
-            boutique_id: chosen.boutique_id, boutique: chosen.boutique,
-            unit_price: chosen.price, quantity: Math.floor(Number(qty)),
-            addon_price: Number(charge || chosen.price),
-        }]
-        : parts;
+    const pieces = Math.floor(Number(qty));
+    const suggested = chosen ? suggestedCharge(chosen.price, pieces) : 0;
+    const customer = charge === null || charge === '' ? suggested : Number(charge);
+    // مستحقُّ البوتيك هو المقترحُ نفسُه — ويبقى هو ولو كتب صاحبُ المتجر سعرًا آخر
+    const due = suggested;
+    const replaces = chosen && mode === 'included'
+        ? parts.find((x) => x.kind === 'included' && x.product_id === chosen.value) ?? null
+        : null;
+
+    /* المعاينةُ قبل الحفظ: الأجزاءُ القائمة كما ستكون بعد ما يُختار الآن */
+    const draft = withDraft(parts, chosen && pieces >= 1 ? {
+        id: 0, kind: mode, product_id: chosen.value, name: chosen.label,
+        boutique_id: chosen.boutique_id, boutique: chosen.boutique,
+        unit_price: chosen.price, quantity: pieces, addon_price: customer,
+    } : null);
     const split = boutiqueSplit(Number(price) || 0, draft);
 
     if (data.taxed || data.own_boutique) {
@@ -154,7 +182,7 @@ export default function BoutiqueParts({ productId, price, currencyLabel, data }:
             setParts(payload.parts);
             setPick('');
             setQty('1');
-            setCharge('');
+            setCharge(null);
         } finally {
             setBusy(false);
         }
@@ -166,7 +194,7 @@ export default function BoutiqueParts({ productId, price, currencyLabel, data }:
             component_product_id: chosen.value,
             mode,
             quantity: Math.floor(Number(qty)),
-            ...(mode === 'optional' ? { addon_price: Number(charge || chosen.price), pos_enabled: pos, web_enabled: web } : {}),
+            ...(mode === 'optional' ? { addon_price: customer, pos_enabled: pos, web_enabled: web } : {}),
         });
     }
 
@@ -183,8 +211,7 @@ export default function BoutiqueParts({ productId, price, currencyLabel, data }:
                         value={pick}
                         onChange={(e) => {
                             setPick(e.target.value);
-                            const o = data.options.find((x) => String(x.value) === e.target.value);
-                            setCharge(o ? String(o.price) : '');
+                            setCharge(null);
                         }}
                         aria-label={t('صنف من بوتيك')}
                         options={[
@@ -214,11 +241,37 @@ export default function BoutiqueParts({ productId, price, currencyLabel, data }:
                 </Field>
                 {mode === 'optional' && (
                     <Field label={`${t('سعرها للعميل')} (${currencyLabel})`}>
-                        <Input type="number" min="0" step="0.001" dir="ltr" value={charge}
+                        <Input type="number" min="0" step="0.001" dir="ltr" value={charge ?? String(suggested)}
                             onChange={(e) => setCharge(e.target.value)} data-testid="boutique-part-charge" />
                     </Field>
                 )}
             </div>
+
+            {mode === 'optional' && chosen && pieces >= 1 && (
+                <div className="mt-2 text-[12px] text-[#6b7280]" data-testid="boutique-part-charge-effect">
+                    <p>
+                        {t('المقترح :suggested = :unit × :qty', { suggested: amount(suggested), unit: amount(chosen.price), qty: pieces })}
+                        {charge !== null && Number(charge) !== suggested && (
+                            <button type="button" className="ms-2 underline" onClick={() => setCharge(null)} data-testid="boutique-part-charge-reset">
+                                {t('أعِد المقترح')}
+                            </button>
+                        )}
+                    </p>
+                    <p>
+                        {t('للبوتيك :due ثابتًا — لا يتغيّر بسعر العميل.', { due: amount(due) })}{' '}
+                        {customer >= due
+                            ? t('ويبقى للمتجر من الإضافة :kept.', { kept: amount(fromMills(mills(customer) - mills(due))) })
+                            : <span className="text-red-600" data-testid="boutique-part-charge-below">
+                                {t('سعرُ العميل أقلّ من مستحقّ البوتيك بـ:gap — يُدفع الفرقُ من سعر الباقة.', { gap: amount(fromMills(mills(due) - mills(customer))) })}
+                            </span>}
+                    </p>
+                </div>
+            )}
+            {replaces && pieces >= 1 && replaces.quantity !== pieces && (
+                <p className="mt-2 text-[12px] text-[#6b7280]" data-testid="boutique-part-replaces">
+                    {t('«:name» في الباقة بكمّيّة :from — يُحفظ بكمّيّة :to لا بالمجموع.', { name: replaces.name, from: replaces.quantity, to: pieces })}
+                </p>
+            )}
 
             {mode === 'optional' && (
                 <div className="mt-3 flex flex-wrap gap-4 text-sm">
@@ -273,7 +326,9 @@ export default function BoutiqueParts({ productId, price, currencyLabel, data }:
                             <span>
                                 {p.name} × {p.quantity} — {p.boutique}
                                 <span className="text-[#6b7280]">
-                                    {' '}({p.kind === 'included' ? t('مشمول') : t('اختياريّ بـ:price', { price: amount(p.addon_price ?? 0) })})
+                                    {' '}({p.kind === 'included'
+                                    ? t('مشمول')
+                                    : t('اختياريّ بـ:price — للبوتيك :due', { price: amount(p.addon_price ?? 0), due: amount(suggestedCharge(p.unit_price, p.quantity)) })})
                                 </span>
                             </span>
                             <button type="button" aria-label={t('إزالة')} disabled={busy}

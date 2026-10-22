@@ -125,7 +125,8 @@ class BoutiquePartsController extends Controller
             'component_product_id' => ['required', 'integer'],
             'mode' => ['required', 'in:'.self::INCLUDED.','.self::OPTIONAL],
             'quantity' => ['required', 'integer', 'min:1', 'max:100'],
-            'addon_price' => ['nullable', 'required_if:mode,'.self::OPTIONAL, 'numeric', 'min:0', 'max:100000'],
+            // بلا سعرٍ = المقترح: ثمنُ القطعة في كمّيّتها. ومستحقُّ البوتيك لا يتبعه أيًّا كان
+            'addon_price' => ['nullable', 'numeric', 'min:0', 'max:100000'],
             'pos_enabled' => ['nullable', 'boolean'],
             'web_enabled' => ['nullable', 'boolean'],
         ]);
@@ -160,7 +161,7 @@ class BoutiquePartsController extends Controller
 
             $addon = Addon::create([
                 'business_id' => $bid, 'name' => $component->name, 'name_en' => $component->name_en,
-                'price' => round((float) $data['addon_price'], 3), 'active' => true,
+                'price' => round((float) ($data['addon_price'] ?? (float) $component->price * (int) $data['quantity']), 3), 'active' => true,
                 'scope' => Addon::SCOPE_SELECTED,
                 'inventory_product_id' => $component->id, 'inventory_quantity' => (int) $data['quantity'],
                 'pos_enabled' => (bool) ($data['pos_enabled'] ?? true),

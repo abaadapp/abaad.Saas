@@ -1,11 +1,30 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { router } from '@inertiajs/react';
 
-import BoutiqueParts, { boutiqueSplit, type BoutiquePart } from '@/Pages/Admin/Products/partials/BoutiqueParts';
+import BoutiqueParts, { boutiqueSplit, suggestedCharge, withDraft, type BoutiquePart } from '@/Pages/Admin/Products/partials/BoutiqueParts';
 import ComponentsPanel from '@/Pages/Admin/Boutiques/ComponentsPanel';
 import { CancelWithPieces, KeptPieces } from '@/Pages/Admin/Orders/BoutiquePieces';
 import { pageProps } from './setup';
+
+/* قائمةُ Radix لا تُختار في jsdom — فتُرسم قائمةً أصليّة بالعقد نفسِه */
+vi.mock('@/Components/Field', async () => {
+    const actual = await vi.importActual<Record<string, unknown>>('@/Components/Field');
+
+    return {
+        ...actual,
+        Select: ({ options, value, onChange, 'aria-label': label }: {
+            options: { label: string; value: string | number; disabled?: boolean }[];
+            value?: string | number | null;
+            onChange?: (e: { target: { value: string; name: string } }) => void;
+            'aria-label'?: string;
+        }) => (
+            <select aria-label={label} value={value ?? ''} onChange={(e) => onChange?.({ target: { value: e.target.value, name: '' } })}>
+                {options.map((o) => <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>)}
+            </select>
+        ),
+    };
+});
 
 /**
  * واجهةُ مستحقّات مكوّنات البوتيك — ما يراه صاحبُ المتجر قبل أن يحفظ ويبيع.
@@ -69,6 +88,65 @@ describe('ما للبوتيك وما يبقى من الباقة', () => {
         rerender(<BoutiqueParts productId={7} price="6" currencyLabel="ر.ع"
             data={{ taxed: false, own_boutique: false, options: [], parts: [silver()] }} />);
         expect(screen.getByTestId('boutique-split-short')).toBeTruthy();
+    });
+
+    it('قطعتان بسبعة: يُقترح ١٤ للعميل وللبوتيك ١٤ — وسعرٌ آخر لا يحرّك مستحقَّه', () => {
+        Object.assign(pageProps, { context: { currency } });
+        const option = { value: 3, label: 'قطعة فضّة', boutique_id: 10, boutique: 'بوتيك لمى', price: 7, quantity: 10, blocked: null };
+        render(<BoutiqueParts productId={7} price="20" currencyLabel="ر.ع"
+            data={{ taxed: false, own_boutique: false, options: [option], parts: [] }} />);
+
+        fireEvent.change(screen.getByLabelText('صنف من بوتيك'), { target: { value: '3' } });
+        fireEvent.change(screen.getByLabelText('كيف يدخل الباقة؟'), { target: { value: 'optional' } });
+        fireEvent.change(screen.getByTestId('boutique-part-qty'), { target: { value: '2' } });
+        expect((screen.getByTestId('boutique-part-charge') as HTMLInputElement).value).toBe('14');
+        expect(screen.getByTestId('boutique-split-optional').textContent).toContain('34.000');
+        expect(screen.getByTestId('boutique-split-optional').textContent).toContain('14.000');
+
+        // يكتب ١٨: يدفع العميل ٣٨، وللبوتيك ١٤ كما هي، ويبقى للمتجر ٤
+        fireEvent.change(screen.getByTestId('boutique-part-charge'), { target: { value: '18' } });
+        expect(screen.getByTestId('boutique-split-optional').textContent).toContain('38.000');
+        expect(screen.getByTestId('boutique-part-charge-effect').textContent).toContain('14.000');
+        expect(screen.getByTestId('boutique-part-charge-effect').textContent).toContain('4.000');
+
+        // والكمّيّةُ بعدها لا تمحو ما كتبه — و«أعِد المقترح» تعيده للكمّيّة
+        fireEvent.change(screen.getByTestId('boutique-part-qty'), { target: { value: '3' } });
+        expect((screen.getByTestId('boutique-part-charge') as HTMLInputElement).value).toBe('18');
+        expect(screen.getByTestId('boutique-part-charge-below').textContent).toContain('3.000');
+        fireEvent.click(screen.getByTestId('boutique-part-charge-reset'));
+        expect((screen.getByTestId('boutique-part-charge') as HTMLInputElement).value).toBe('21');
+
+        const fetcher = vi.fn((_url: string, _init: RequestInit) => Promise.resolve(new Response(JSON.stringify({ ok: true, parts: [] }))));
+        vi.stubGlobal('fetch', fetcher);
+        fireEvent.click(screen.getByTestId('boutique-part-save'));
+        expect(JSON.parse(String(fetcher.mock.calls[0][1].body))).toMatchObject({ mode: 'optional', quantity: 3, addon_price: 21 });
+        vi.unstubAllGlobals();
+    });
+
+    it('المقترحُ بالألف صحيحًا', () => {
+        expect(suggestedCharge(0.1, 3)).toBe(0.3);
+        expect(suggestedCharge(7, 2)).toBe(14);
+    });
+
+    it('تعديلُ كمّيّة مكوّنٍ مشمولٍ قائم يُعاين الكمّيّةَ التي تُحفظ — لا المجموع', () => {
+        const existing = [silver({ quantity: 1 })];
+        const next = silver({ id: 0, quantity: 3 });
+        expect(withDraft(existing, next)).toEqual([silver({ quantity: 3 })]);
+        expect(boutiqueSplit(30, withDraft(existing, next)).boutiques[0].due).toBe(21);
+
+        // واختياريٌّ من الصنف نفسِه إضافةٌ جديدة بجانبه
+        expect(withDraft(existing, silver({ id: 0, kind: 'optional', quantity: 2, addon_price: 14 }))).toHaveLength(2);
+
+        Object.assign(pageProps, { context: { currency } });
+        const option = { value: 3, label: 'قطعة فضّة', boutique_id: 10, boutique: 'بوتيك لمى', price: 7, quantity: 10, blocked: null };
+        render(<BoutiqueParts productId={7} price="30" currencyLabel="ر.ع"
+            data={{ taxed: false, own_boutique: false, options: [option], parts: existing }} />);
+        fireEvent.change(screen.getByLabelText('صنف من بوتيك'), { target: { value: '3' } });
+        fireEvent.change(screen.getByTestId('boutique-part-qty'), { target: { value: '3' } });
+        expect(screen.getAllByTestId('boutique-split-due')).toHaveLength(1);
+        expect(screen.getByTestId('boutique-split-due').textContent).toContain('21.000');
+        expect(screen.getByTestId('boutique-split-remainder').textContent).toContain('9.000');
+        expect(screen.getByTestId('boutique-part-replaces').textContent).toContain('3');
     });
 
     it('ومتجرٌ يحتسب الضريبة يُقال له، ولا اختيارَ يُعرض', () => {

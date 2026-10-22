@@ -191,6 +191,48 @@ class ASaudLinksABoutiquePieceFromHisOwnProductTest extends TestCase
         $this->assertSame(14.0, $this->balance('boutique_payable'));
     }
 
+    public function test_two_pieces_suggest_fourteen_and_a_customer_price_never_moves_the_boutique_due(): void
+    {
+        // بلا سعرٍ مكتوب: قطعتان بسبعة = ١٤ للعميل، و١٤ للمى
+        $plain = $this->product($this->shop, 'باقة بسيطة', 20);
+        $this->link(['component_product_id' => $this->silver->id, 'mode' => 'optional', 'quantity' => 2], $plain)
+            ->assertOk()->assertJsonPath('parts.0.addon_price', 14)->assertJsonPath('parts.0.quantity', 2);
+        $suggested = Addon::where('business_id', $this->shop->id)->firstOrFail();
+
+        $order = $this->sell($plain, [['addon_id' => $suggested->id, 'qty' => 1]]);
+        $this->assertSame([34.0, 14.0], [(float) $order->total, BoutiqueDues::owedFor($order)]);
+
+        // وسعرٌ يكتبه سعود (١٨) يغيّر ما يدفعه العميل وحده: للمى ١٤ كما هي، والفرقُ ٤ للمتجر
+        $other = $this->product($this->shop, 'باقة ثانية', 20);
+        $this->link(['component_product_id' => $this->silver->id, 'mode' => 'optional', 'quantity' => 2, 'addon_price' => 18], $other)
+            ->assertOk()->assertJsonPath('parts.0.addon_price', 18);
+        $custom = Addon::where('business_id', $this->shop->id)->whereKeyNot($suggested->id)->firstOrFail();
+        $this->assertSame([18.0, 2], [(float) $custom->price, (int) $custom->inventory_quantity]);
+
+        $order = $this->sell($other, [['addon_id' => $custom->id, 'qty' => 1]]);
+        $this->assertSame([38.0, 14.0], [(float) $order->total, BoutiqueDues::owedFor($order)]);
+
+        // الدفتر: إيرادُ ٣٤ + ٣٨، و2160 = ١٤ + ١٤، والقطعُ الأربع خرجت من الرفّ مرّةً واحدة
+        $this->assertSame(72.0, round(Ledger::netRevenue($this->shop->id), 3));
+        $this->assertSame(28.0, $this->balance('boutique_payable'));
+        $this->assertSame(28.0, $this->balance('cogs'));
+        $this->assertSame(6, (int) $this->silver->fresh()->quantity);
+    }
+
+    public function test_changing_the_quantity_of_an_included_piece_saves_that_quantity_not_the_sum(): void
+    {
+        $this->link(['component_product_id' => $this->silver->id, 'mode' => 'included', 'quantity' => 1])->assertOk();
+        $this->link(['component_product_id' => $this->silver->id, 'mode' => 'included', 'quantity' => 3])
+            ->assertOk()->assertJsonCount(1, 'parts')->assertJsonPath('parts.0.quantity', 3);
+
+        $this->assertSame([3.0], RecipeItem::where('product_id', $this->bouquet->id)->pluck('quantity')->map(fn ($q) => (float) $q)->all());
+
+        $this->bouquet->update(['price' => 30]);
+        $order = $this->sell($this->bouquet->fresh());
+        $this->assertSame([30.0, 21.0], [(float) $order->total, BoutiqueDues::owedFor($order)]);
+        $this->assertSame(7, (int) $this->silver->fresh()->quantity);
+    }
+
     public function test_what_cannot_be_counted_exactly_is_refused_and_another_shop_is_untouched(): void
     {
         // كمّيّةٌ كسريّة

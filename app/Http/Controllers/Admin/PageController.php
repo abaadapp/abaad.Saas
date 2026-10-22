@@ -222,6 +222,7 @@ class PageController extends Controller
                 (bool) auth()->user()?->may('order.edit'),
                 $invoiceEdit['can'],
                 ($order['status'] ?? null) === Order::CANCELLED,
+                $order['channel'] ?? null,
             ),
             /*
              * هل تُعرض «فاتورة ضريبية» على هذا الطلب — وإن لم تُعرض فلمَ.

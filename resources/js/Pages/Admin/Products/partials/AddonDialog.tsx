@@ -14,6 +14,8 @@ export interface PickerOption {
     value: number;
     label: string;
     quantity?: number;
+    /** ملكُ بوتيك — يُعرض ولا يُربط ربطًا جديدًا حتى تُبنى مستحقّاتُ المكوّنات */
+    boutique?: boolean;
 }
 
 interface Props {
@@ -278,12 +280,19 @@ export default function AddonDialog({
                     {stock && (
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="الصنف المخزني" required>
+                                {/*
+                                    وصنفُ البوتيك يُعرض معطّلًا: ربطُه لا يُنشئ للبوتيك مستحقًّا
+                                    بعد، والخادمُ يردّه (`Boutiques::refuseNewLink`). والربطُ
+                                    القائمُ يبقى قابلًا للحفظ كما هو.
+                                */}
                                 <Select
                                     value={stockId}
                                     onChange={(e) => setStockId(e.target.value)}
                                     options={stockItems.map((s) => ({
-                                        label: s.quantity == null ? s.label : `${s.label} (${s.quantity})`,
+                                        label: (s.quantity == null ? s.label : `${s.label} (${s.quantity})`)
+                                            + (s.boutique ? ` — ${t('بوتيك: لا يُربط بعد')}` : ''),
                                         value: s.value,
+                                        disabled: s.boutique === true && s.value !== addon?.inventory_product_id,
                                     }))}
                                     placeholder={t('اختر الصنف…')}
                                 />
@@ -299,6 +308,11 @@ export default function AddonDialog({
                             <p className="col-span-2 text-[12px] text-[#9ca3af]">
                                 {t('مثال: إذا كانت الإضافة «زيادة 3 وردات» اختر صنف الورد واكتب الكمية 3.')}
                             </p>
+                            {stockItems.some((s) => s.boutique && String(s.value) === stockId) && (
+                                <p className="col-span-2 text-[12px] text-[#b45309]" data-testid="addon-boutique-warning">
+                                    {t('هذه الإضافة مرتبطة بصنف بوتيك — لا يُنشأ للبوتيك مستحقٌّ عنها بعد.')}
+                                </p>
+                            )}
                         </div>
                     )}
 

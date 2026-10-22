@@ -9,6 +9,7 @@ use App\Models\Business;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Product;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -35,6 +36,32 @@ final class Boutiques
      * فلقطةُ التكلفة على بند البوتيك صفرٌ مهما كُتب في بطاقة الصنف.
      */
     public const CONSIGNED_COST = 0.0;
+
+    /**
+     * ═══ وبضاعةُ البوتيك لا تُربط بإضافةٍ ولا بوصفةٍ جديدة — بعد ═══
+     *
+     * الإضافةُ المرتبطةُ بصنفٍ تُحسب تكلفتُها من بطاقته على المحلّ
+     * (`SaleLines::pickAddons`)، ومكوّنُ الوصفة كذلك (`Recipe::unitCost`).
+     * وكلاهما لا يقرأ صاحبَ الصنف: فتُكتب قطعةُ البوتيك تكلفةً على المحلّ وهو
+     * لم يشترها، ولا يدخل كشفَ البوتيك عنها شيء، ولا يُستحقّ له قرش. ومن ربطها
+     * يظنّ أنّ البوتيك سيُحاسَب عنها.
+     *
+     * فيُردّ الربطُ **الجديد** حتّى يُبنى سجلُّ مستحقّات المكوّنات. وما رُبط قبل
+     * اليوم (`$kept`) يبقى كما هو: إضافةٌ تُحفظ بربطها القائم، ومكوّنٌ تُزاد
+     * كمّيّتُه، لا يُردّان — ولا تُمسّ فاتورةٌ مضت.
+     */
+    public static function refuseNewLink(int $businessId, ?int $kept = null): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($businessId, $kept): void {
+            if ($value === null || $value === '' || ($kept !== null && (int) $value === $kept)) {
+                return;
+            }
+
+            if (Product::where('business_id', $businessId)->whereKey((int) $value)->whereNotNull('boutique_id')->exists()) {
+                $fail(__('هذا الصنف ملكُ بوتيك — ربطُه هنا لا يُنشئ للبوتيك مستحقًّا بعد. اختر صنفًا يملكه المتجر.'));
+            }
+        };
+    }
 
     /* ═══════════ البابُ مفتوحٌ لمن فُتح له ═══════════ */
 

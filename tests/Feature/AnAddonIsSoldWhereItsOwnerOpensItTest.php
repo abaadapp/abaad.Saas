@@ -3,13 +3,16 @@
 namespace Tests\Feature;
 
 use App\Models\Addon;
+use App\Models\Boutique;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemAddon;
+use App\Models\PaymentGateway;
 use App\Models\Product;
+use App\Models\RecipeItem;
 use App\Models\Setting;
 use App\Models\StorePaymentIntent;
 use App\Models\User;
@@ -22,6 +25,7 @@ use App\Support\Store\WebCheckout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -46,6 +50,10 @@ use Tests\TestCase;
  *     وتكلفتُها في القيد مرّةً.
  *   - إضافةٌ نفد رفُّها تُردّ قبل صفحة البنك. ودفعةٌ قُبضت تُكتب بإضافاتها ولو
  *     أُطفئت في أثناء الدفع، وتبدُّلُ سعرها يردّ المالَ لا يكتب مبلغًا آخر.
+ *   - والرفُّ المشترك يُسأل بالمجموع قبل صفحة البنك: صنفٌ وإضافةٌ من رفٍّ واحد،
+ *     وإضافتان من رفٍّ واحد، ووصفةٌ وإضافةٌ من الورد نفسِه.
+ *   - وصنفُ البوتيك لا يُربط بإضافةٍ ولا بوصفةٍ جديدة — ولا مستحقَّ يُكتب له
+ *     بعد — والربطُ القائمُ يُحفظ كما هو.
  *
  * والأرقامُ قبل الضريبة إلّا حيث تُفتح: باقةٌ بعشرين، وشوكولاتةٌ باثنين
  * (من رفّ «شوكولاتة الإضافات» بتكلفة ٠٫٨٠٠)، وبطاقةُ تهنئةٍ بواحد.
@@ -438,5 +446,158 @@ class AnAddonIsSoldWhereItsOwnerOpensItTest extends TestCase
             $this->assertSame(0, Order::where('business_id', $this->shop->id)->count());
             $this->assertSame(5, (int) $this->chocStock->fresh()->quantity);
         }
+    }
+
+    /* ------------------------------ الرفُّ المشترك قبل البنك ------------------------------ */
+
+    /** بطاقةٌ مفعّلةٌ بمفاتيح تجريبيّة — ولا يُطرق بنكٌ حقيقيّ */
+    private function cardOn(): void
+    {
+        PaymentGateway::create([
+            'business_id' => $this->shop->id, 'provider' => PaymentGateway::PAYMOB,
+            'public_key' => 'pk_test_x', 'secret_key' => 'sk_test_x',
+            'hmac_secret' => 'hmac_secret_value', 'card_integration_id' => '4569876',
+            'active' => true,
+        ]);
+        Http::fake(['oman.paymob.com/v1/intention/' => Http::response(['client_secret' => 'csk_x', 'intention_order_id' => '777'], 201)]);
+    }
+
+    private function payByCard(array $items)
+    {
+        return $this->postJson('/s/ribbon/checkout', $this->form($items, 'card'));
+    }
+
+    private function assertNoBankWasCalled(): void
+    {
+        $this->assertSame(0, StorePaymentIntent::where('business_id', $this->shop->id)->count(), 'لا نيّةَ دفع');
+        Http::assertNothingSent();
+    }
+
+    /** علبةٌ تُباع وحدَها وشوكولاتةٌ إضافةً من رفّها نفسِه — كلٌّ يكفيه الرفّ، والمجموعُ لا */
+    public function test_a_product_and_an_addon_from_one_shelf_are_counted_together_before_the_bank(): void
+    {
+        $this->cardOn();
+        $this->chocStock->update(['published' => true, 'quantity' => 3]);
+        $box = ['id' => $this->chocStock->id, 'variant_id' => null, 'qty' => 2];
+        $bouquet = $this->line([[$this->choc, 2]]);
+
+        // كلٌّ وحدَه يمرّ: علبتان من ثلاث، وشوكولاتتان من ثلاث
+        $this->quote([$box])->assertOk();
+        $this->quote([$bouquet])->assertOk();
+
+        // ومعًا أربعٌ من ثلاث — تُقال قبل صفحة البنك
+        $this->payByCard([$box, $bouquet])->assertStatus(422)->assertJsonValidationErrors('items');
+        $this->assertNoBankWasCalled();
+        $this->assertSame(3, (int) $this->chocStock->fresh()->quantity);
+
+        // وبالدفع عند الاستلام يُردّ كذلك ولا يُخصم شيء
+        $this->place([$box, $bouquet])->assertStatus(422);
+        $this->assertSame(3, (int) $this->chocStock->fresh()->quantity);
+        $this->assertSame(10, (int) $this->bouquet->fresh()->quantity);
+    }
+
+    /** إضافتان من رفٍّ واحد بكمّيّتيهما — «شوكولاتة» ×٢ و«شوكولاتة مضاعفة» (قطعتان) ×١ = ٤ */
+    public function test_two_addons_from_one_shelf_are_counted_together_before_the_bank(): void
+    {
+        $this->cardOn();
+        $this->chocStock->update(['quantity' => 3]);
+        $double = $this->addon('شوكولاتة مضاعفة', 3.5, ['web_enabled' => true,
+            'inventory_product_id' => $this->chocStock->id, 'inventory_quantity' => 2]);
+
+        $this->payByCard([$this->line([[$this->choc, 2], [$double, 1]])])->assertStatus(422)->assertJsonValidationErrors('items');
+        $this->assertNoBankWasCalled();
+
+        // وبرفٍّ يكفي: ثلاثٌ = ١×١ + ١×٢ — تُفتح الصفحة، ولا يُخصم شيءٌ قبل أن يصل المال
+        $this->payByCard([$this->line([[$this->choc, 1], [$double, 1]])])->assertOk();
+        $this->assertSame(1, StorePaymentIntent::where('business_id', $this->shop->id)->count());
+        $this->assertSame(3, (int) $this->chocStock->fresh()->quantity);
+    }
+
+    /** وصفةُ باقةٍ تأكل خمس ورداتٍ وإضافةُ «زيادة ٣ وردات» من الورد نفسِه — ٨ لا ٥ ولا ٣ */
+    public function test_a_recipe_and_an_addon_from_one_shelf_are_counted_together_before_the_bank(): void
+    {
+        $this->cardOn();
+        $roses = Product::create([
+            'business_id' => $this->shop->id, 'name' => 'ورد أحمر', 'price' => 0.5, 'cost' => 0.3,
+            'quantity' => 7, 'tracks_stock' => true, 'active' => true, 'published' => false,
+        ]);
+        $made = Product::create([
+            'business_id' => $this->shop->id, 'name' => 'باقة خمس وردات', 'price' => 12, 'cost' => 0,
+            'quantity' => 0, 'tracks_stock' => false, 'active' => true, 'published' => true,
+        ]);
+        RecipeItem::create(['business_id' => $this->shop->id, 'product_id' => $made->id,
+            'component_product_id' => $roses->id, 'quantity' => 5, 'wastage_percent' => 0]);
+        $more = $this->addon('زيادة 3 وردات', 2.5, ['web_enabled' => true,
+            'inventory_product_id' => $roses->id, 'inventory_quantity' => 3]);
+        $line = ['id' => $made->id, 'variant_id' => null, 'qty' => 1, 'addons' => [['id' => $more->id, 'qty' => 1]]];
+
+        $this->payByCard([$line])->assertStatus(422)->assertJsonValidationErrors('items');
+        $this->assertNoBankWasCalled();
+
+        // وبثماني ورداتٍ يمرّ، ثمّ يُخصم الثماني مرّةً واحدة عند الطلب
+        $roses->update(['quantity' => 8]);
+        $this->place([$line])->assertOk();
+        $this->assertSame(0, (int) $roses->fresh()->quantity);
+    }
+
+    /* ------------------------------ صنفُ البوتيك ------------------------------ */
+
+    private function boutiqueGoods(): Product
+    {
+        $this->shop->update(['boutiques_enabled' => true]);
+        $boutique = Boutique::create(['business_id' => $this->shop->id, 'name' => 'بوتيك لمى', 'commission_rate' => 20, 'active' => true]);
+
+        return Product::create([
+            'business_id' => $this->shop->id, 'name' => 'فضّة لمى', 'price' => 7, 'cost' => 4,
+            'quantity' => 5, 'tracks_stock' => true, 'active' => true, 'boutique_id' => $boutique->id,
+        ]);
+    }
+
+    /** ربطُ إضافةٍ جديدة بصنف بوتيك يُردّ برسالةٍ تقول لمَ — ولا مستحقَّ يُوعَد به */
+    public function test_a_new_addon_cannot_be_tied_to_a_boutique_s_goods_yet(): void
+    {
+        $silver = $this->boutiqueGoods();
+        $this->actingAs($this->owner);
+
+        $this->postJson(route('admin.products.addons.store'), [
+            'name' => 'فضّة', 'price' => 7, 'inventory_product_id' => $silver->id, 'inventory_quantity' => 1,
+        ])->assertStatus(422)->assertJsonValidationErrors(['inventory_product_id' => 'ملكُ بوتيك']);
+
+        // ونقلُ إضافةٍ قائمةٍ إليه كذلك
+        $this->putJson(route('admin.products.addons.update', $this->choc->id), [
+            'name' => 'شوكولاتة', 'price' => 2, 'inventory_product_id' => $silver->id,
+        ])->assertStatus(422)->assertJsonValidationErrors('inventory_product_id');
+        $this->assertSame($this->chocStock->id, (int) $this->choc->fresh()->inventory_product_id);
+
+        // وصنفُ المتجر يُربط كما كان
+        $this->postJson(route('admin.products.addons.store'), [
+            'name' => 'شوكولاتة ثانية', 'price' => 2, 'inventory_product_id' => $this->chocStock->id,
+        ])->assertOk();
+    }
+
+    /** وما رُبط قبل اليوم يُحفظ بربطه — لا تنكسر إضافةٌ ولا وصفةٌ قائمة */
+    public function test_an_existing_boutique_link_is_kept_when_saved(): void
+    {
+        $silver = $this->boutiqueGoods();
+        $old = $this->addon('فضّة قديمة', 7, ['inventory_product_id' => $silver->id, 'inventory_quantity' => 1]);
+        $this->actingAs($this->owner);
+
+        $this->putJson(route('admin.products.addons.update', $old->id), [
+            'name' => 'فضّة قديمة', 'price' => 7.5, 'inventory_product_id' => $silver->id, 'inventory_quantity' => 1,
+        ])->assertOk();
+        $this->assertSame($silver->id, (int) $old->fresh()->inventory_product_id);
+
+        // والوصفة: مكوّنٌ جديدٌ من البوتيك يُردّ، والقائمُ تُزاد كمّيّتُه
+        $this->post(route('admin.products.recipe.store', $this->bouquet->id), [
+            'component_product_id' => $silver->id, 'quantity' => 1,
+        ])->assertSessionHasErrors('component_product_id');
+        $this->assertSame(0, RecipeItem::where('product_id', $this->bouquet->id)->count());
+
+        RecipeItem::create(['business_id' => $this->shop->id, 'product_id' => $this->bouquet->id,
+            'component_product_id' => $silver->id, 'quantity' => 1, 'wastage_percent' => 0]);
+        $this->post(route('admin.products.recipe.store', $this->bouquet->id), [
+            'component_product_id' => $silver->id, 'quantity' => 1,
+        ])->assertSessionHasNoErrors();
+        $this->assertEqualsWithDelta(2.0, (float) RecipeItem::where('product_id', $this->bouquet->id)->value('quantity'), 0.0001);
     }
 }

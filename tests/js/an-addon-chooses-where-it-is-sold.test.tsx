@@ -11,6 +11,8 @@ import AddonDialog from '@/Pages/Admin/Products/partials/AddonDialog';
  *   - الجديدةُ في الصندوق وحدَه ما لم يُختر غيرُه — كما كانت كلُّ إضافة.
  *   - القائمةُ تُفتح بقناتيها كما حُفظتا، والحفظُ يرسل القناتين كما اختيرتا.
  *   - والقناتان مطفأتان معًا تُقالان «غير متاحة للبيع حاليًا» — لا حذف.
+ *   - وإضافةٌ قائمةٌ مرتبطةٌ بصنف بوتيك يُقال تحتها إنّه لا يُستحقّ للبوتيك
+ *     عنها شيءٌ بعد — ولا يُقال لصنفٍ يملكه المتجر.
  *
  * وما يفعله الخادمُ بهما في `AnAddonIsSoldWhereItsOwnerOpensItTest`.
  */
@@ -20,13 +22,18 @@ const shopAddon = (over: Record<string, unknown> = {}) => ({
     scope: 'all' as const, inventory_product_id: null, product_ids: [], ...over,
 });
 
-function open(addon: ReturnType<typeof shopAddon> | null) {
+const stock = [
+    { value: 3, label: 'ورق', quantity: 50 },
+    { value: 4, label: 'فضّة لمى', quantity: 5, boutique: true },
+];
+
+function open(addon: ReturnType<typeof shopAddon> | null, stockItems: typeof stock = []) {
     const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({ addon: shopAddon() }),
     });
     vi.stubGlobal('fetch', fetchMock);
-    render(<AddonDialog addon={addon} stockItems={[]} products={[]} onClose={() => {}} onSaved={() => {}} />);
+    render(<AddonDialog addon={addon} stockItems={stockItems} products={[]} onClose={() => {}} onSaved={() => {}} />);
 
     return {
         fetchMock,
@@ -68,5 +75,15 @@ describe('أين تُباع الإضافة؟', () => {
         fireEvent.click(pos);
 
         expect(screen.getByTestId('addon-channels-hint').textContent).toContain('غير متاحة للبيع حاليًا');
+    });
+
+    it('إضافةٌ قائمةٌ على صنف بوتيك يُقال تحتها إنّه لا مستحقَّ للبوتيك بعد', () => {
+        open(shopAddon({ inventory_product_id: 4, inventory_quantity: 1 }), stock);
+        expect(screen.getByTestId('addon-boutique-warning').textContent).toContain('لا يُنشأ للبوتيك مستحقٌّ');
+    });
+
+    it('ولا يُقال لصنفٍ يملكه المتجر', () => {
+        open(shopAddon({ inventory_product_id: 3, inventory_quantity: 1 }), stock);
+        expect(screen.queryByTestId('addon-boutique-warning')).toBeNull();
     });
 });

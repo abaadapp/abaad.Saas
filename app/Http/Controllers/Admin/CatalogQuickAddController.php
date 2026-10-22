@@ -7,6 +7,7 @@ use App\Models\Addon;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Permissions;
 use App\Support\PosAddonsLayout;
@@ -380,6 +381,8 @@ class CatalogQuickAddController extends Controller
     private static function addonRules(int $bid, ?int $ignore = null, ?int $owner = null): array
     {
         $ofBusiness = fn () => Rule::exists('products', 'id')->where('business_id', $bid)->whereNull('deleted_at');
+        // ربطُ الإضافة القائمُ ببضاعتها — يُحفظ كما هو ولو كان صنفَ بوتيك
+        $kept = $ignore ? Addon::where('business_id', $bid)->whereKey($ignore)->value('inventory_product_id') : null;
 
         return [
             'name' => [
@@ -398,7 +401,11 @@ class CatalogQuickAddController extends Controller
             'web_enabled' => ['nullable', 'boolean'],
             // ولا قاعدةَ لـ`product_id` هنا: الوجهتان كلتاهما تمنعه، فقاعدةُ
             // «من هذا المتجر» لا تُقرأ أبدًا — انظر `noOwnership`
-            'inventory_product_id' => ['nullable', $ofBusiness()],
+            /*
+             * وصنفُ البوتيك لا يُربط بإضافةٍ جديدة بعد (`Boutiques::refuseNewLink`) —
+             * والربطُ القائمُ يُحفظ كما هو.
+             */
+            'inventory_product_id' => ['nullable', $ofBusiness(), Boutiques::refuseNewLink($bid, $kept === null ? null : (int) $kept)],
             /*
              * الكمية المستهلَكة لا تُقبل صفرًا — وغيابُها واحدة.
              *

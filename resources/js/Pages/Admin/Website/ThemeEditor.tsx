@@ -179,6 +179,11 @@ interface Props extends ThemeShell {
     rows: EditorRow[];
     values: Record<string, string>;
     order: string[];
+    /**
+     * الترتيبُ كلُّه بالمطفأ في موضعه — `['cats', '!best', 'new']` (`StorePage::draftLayout`).
+     * وغيابُه يعني ما كان: المشغَّلُ (`order`) ثمّ المطفأُ بترتيب الصفوف.
+     */
+    layout?: string[];
     maxFeatured: number;
     products: ListProduct[];
     /** ما اختاره في مجموعاته وصفحاته ثمّ أخفاه — يُعرض باسمه ولا يُسقَط */
@@ -202,6 +207,9 @@ interface Props extends ThemeShell {
 
 /** ما يقوله سطرُ الحال — وكلٌّ منها حالٌ وقعت لا حالٌ مفترضة */
 type Status = 'clean' | 'saving' | 'saved' | 'failed';
+
+/** علامةُ القسم المطفأ في موضعه — `StorePage::HIDDEN` */
+const HIDDEN = '!';
 
 /**
  * محرّرُ صفحة الواجهة الخاصّة — الصفوفُ إلى جانب الصفحة نفسِها.
@@ -228,6 +236,7 @@ export default function ThemeEditor({
     rows,
     values,
     order,
+    layout: savedLayout,
     maxFeatured,
     products,
     hiddenProducts = [],
@@ -239,8 +248,15 @@ export default function ThemeEditor({
 }: Props) {
     const t = useTranslate();
 
-    /* الترتيبُ محلّيٌّ لأنّه يُكتب بالضغط — والباقي يأتي من الخادم بعد كلّ حفظ */
-    const [chosen, setChosen] = useState<string[]>(order);
+    /*
+        الترتيبُ محلّيٌّ لأنّه يُكتب بالضغط — والباقي يأتي من الخادم بعد كلّ حفظ.
+
+        وهو القائمةُ كلُّها بالمطفأ في موضعه (`!best`) لا المشغَّلُ وحده: فقسمٌ
+        يُطفأ ثمّ يُغلق المحرّرُ ويُفتح يجد موضعَه محفوظًا. والمشغَّلُ (`chosen`)
+        يُقرأ منها، فلا تفترق قائمتان.
+    */
+    const [layout, setLayout] = useState<string[]>(savedLayout ?? order);
+    const chosen = useMemo(() => layout.filter((k) => ! k.startsWith(HIDDEN)), [layout]);
     /*
         والصفُّ المفتوح أوّلَ ما تُفتح الشاشة — من الرابط إن جاء به (`?row=cats`).
 
@@ -402,8 +418,8 @@ export default function ThemeEditor({
     const token = String((usePage().props as { csrf?: string }).csrf ?? '');
 
     const draft = useMemo(
-        () => JSON.stringify({ ...form.data, store_sections: chosen.join(',') }),
-        [form.data, chosen],
+        () => JSON.stringify({ ...form.data, store_sections: layout.join(',') }),
+        [form.data, layout],
     );
 
     const paint = () => previewForm.current?.submit();
@@ -421,15 +437,19 @@ export default function ThemeEditor({
     const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
     /*
-     * الصفوفُ بترتيب ما يُرى: الواجهةُ أوّلًا، ثمّ المختارُ بترتيبه، ثمّ
-     * المطفأُ بترتيبه الأصليّ، ثمّ التذييل. والمطفأُ يبقى معروضًا ليُرفع
-     * ثانية — لا يخرج من الشاشة إلى العدم.
+     * الصفوفُ بترتيب القائمة كلِّها: المشغَّلُ والمطفأُ كلٌّ في موضعه، ثمّ ما
+     * لم يُذكر فيها بترتيب الصفوف. والمطفأُ يبقى معروضًا ليُرفع ثانية — لا
+     * يخرج من الشاشة إلى العدم.
      */
     const movable = useMemo(() => {
-        const rest = rows.filter((r) => ! r.fixed && ! chosen.includes(r.key)).map((r) => r.key);
+        const placed = layout.map((k) => (k.startsWith(HIDDEN) ? k.slice(HIDDEN.length) : k)).filter((k) => byKey.has(k));
+        const rest = rows.filter((r) => ! r.fixed && ! placed.includes(r.key)).map((r) => r.key);
 
-        return [...chosen.filter((k) => byKey.has(k)), ...rest];
-    }, [rows, chosen, byKey]);
+        return [...placed, ...rest];
+    }, [rows, layout, byKey]);
+
+    /** القائمةُ كلُّها كما تُحفظ — المشغَّلُ باسمه والمطفأُ بعلامته، كلٌّ في موضعه */
+    const written = (keys: string[], on: (k: string) => boolean) => keys.map((k) => (on(k) ? k : HIDDEN + k));
 
     const refresh = () => setFrame((n) => n + 1);
 
@@ -490,7 +510,7 @@ export default function ThemeEditor({
     };
 
     const writeOrder = (next: string[]) => {
-        setChosen(next);
+        setLayout(next);
         setStatus('saving');
 
         if (ordering.current.busy) {
@@ -513,44 +533,31 @@ export default function ThemeEditor({
     const last = chosen.length === 1;
 
     /*
-        وإطفاءُ قسمٍ ثمّ تشغيلُه يُعيده إلى موضعه.
+        وإطفاءُ قسمٍ ثمّ تشغيلُه يُعيده إلى موضعه — ولو أُغلق المحرّرُ بينهما.
 
-        القائمةُ هي الترتيبُ والظهورُ معًا (`StorePage::order`): المطفأُ لا موضعَ له
-        فيها، فكان يعود بعد الأقسام المشغَّلة كلِّها — يُطفئ صاحبُ المتجر «الشريط»
-        ليرى صفحتَه بدونه ثمّ يعيده فيجده في آخرها. فيُحفظ موضعُه ما دامت الشاشةُ
-        مفتوحة، وبلا موضعٍ محفوظ يقع حيث كان يقع.
+        العينُ تقلب علامةَ القسم في موضعه ولا تنقله: المطفأُ يُكتب `!best` حيث
+        كان، فيُحفظ موضعُه في المسوّدة لا في ذاكرة الشاشة وحدها.
     */
-    const lastAt = useRef<Record<string, number>>({});
+    const toggleRow = (key: string) =>
+        writeOrder(written(movable, (k) => (k === key ? ! chosen.includes(k) : chosen.includes(k))));
 
-    const toggleRow = (key: string) => {
-        if (chosen.includes(key)) {
-            lastAt.current[key] = chosen.indexOf(key);
-            writeOrder(chosen.filter((k) => k !== key));
+    /*
+        والسهمُ يبادل القسمَ بأقرب قسمٍ مشغَّلٍ في جهته — كما يراه الزائر.
 
-            return;
-        }
-
-        const at = lastAt.current[key];
-        if (at !== undefined) {
-            const next = [...chosen];
-            next.splice(Math.min(at, next.length), 0, key);
-            writeOrder(next);
-
-            return;
-        }
-
-        writeOrder([...movable.filter((k) => k === key || chosen.includes(k))]);
-    };
-
+        والمطفأُ بينهما يبقى في موضعه: لا يُقفز عليه بضغطةٍ لا تغيّر في الصفحة
+        شيئًا، ولا يُزاح فيعود يومَ يُشغَّل إلى غير موضعه.
+    */
     const move = (key: string, by: number) => {
-        const i = chosen.indexOf(key);
-        const j = i + by;
+        const i = movable.indexOf(key);
+        let j = i + by;
 
-        if (i < 0 || j < 0 || j >= chosen.length) return;
+        while (j >= 0 && j < movable.length && ! chosen.includes(movable[j])) j += by;
 
-        const next = [...chosen];
+        if (i < 0 || ! chosen.includes(key) || j < 0 || j >= movable.length) return;
+
+        const next = [...movable];
         [next[i], next[j]] = [next[j], next[i]];
-        writeOrder(next);
+        writeOrder(written(next, (k) => chosen.includes(k)));
     };
 
     /* المختارات — بترتيب اختيارها، وأربعةٌ لا أكثر */

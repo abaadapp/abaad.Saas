@@ -189,6 +189,8 @@ class EditorController extends Controller
             'values' => PageEditor::values($bid),
             // بترتيب المسوّدة كسائر الحقول — لا المنشور (`StorePage::draftOrder`)
             'order' => StorePage::draftOrder($bid),
+            // والترتيبُ كلُّه بالمطفأ في موضعه — ما تكتبه الشاشةُ بعد كلّ سهمٍ وعين
+            'layout' => StorePage::tokens(StorePage::draftLayout($bid)),
             'maxFeatured' => StorePage::MAX_FEATURED,
             /*
              * فئاتُ متجره لمنتقي اختصارات «المتجر» — كلُّها، وكم فيها ممّا يُعرض.

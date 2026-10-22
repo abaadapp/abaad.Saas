@@ -319,7 +319,6 @@ final class PageEditor
     {
         // والصفوفُ كما يحرّرها — المسوّدةُ إن كانت، كالقيم (`values`) والترتيب
         $site = array_merge(MarketingSettings::group($businessId, 'website'), StoreContent::draft($businessId));
-        $order = StorePage::draftOrder($businessId);
 
         /*
          * و«ما يُعرض» هنا هو تعريفُ الواجهة نفسِه: فعّالٌ ومعروض (انظر
@@ -360,8 +359,6 @@ final class PageEditor
             RibbonPicks::SECTION => $picksShown ? null : self::SILENT[RibbonPicks::SECTION],
         ];
 
-        $sections = $picksOn ? StorePage::SECTIONS : StorePage::DEFAULT_ORDER;
-
         /*
          * ═══ أربعةُ أبوابٍ أوّلًا، وما سواها تحت «إعدادات متقدّمة» ═══
          *
@@ -385,10 +382,11 @@ final class PageEditor
             self::row(self::HEAD, true, null),
         ];
 
-        // المختارُ بترتيبه، ثمّ المطفأُ بترتيبه الأصليّ — كما في `StorePage::SECTIONS`
-        foreach (array_merge($order, array_values(array_diff($sections, $order))) as $key) {
-            $on = in_array($key, $order, true);
-
+        /*
+         * الأقسامُ بترتيب المسوّدة كلِّه: المطفأُ في موضعه إن حُفظ له موضع
+         * (`StorePage::draftLayout`)، وإلّا بعد المشغَّل بترتيبه الأصليّ كما كان.
+         */
+        foreach (StorePage::draftLayout($businessId) as ['key' => $key, 'on' => $on]) {
             // ولا يُقال «لا يظهر» لقسمٍ أطفأه صاحبُه: هو يعرف لمَ أطفأه
             $rows[] = self::row($key, $on, $on ? $silent[$key] : null);
         }

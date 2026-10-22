@@ -32,6 +32,8 @@ const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor
  *   - المخفيُّ الذي له موضعٌ يُرسم موسومًا ويبقى موضعُه.
  *   - الحفظُ يرسل المفتاحَ وحده بالباب القائم، وما يردّه الخادمُ يُقال.
  *   - وسهمُ الأقسام لا يُرسل حفظين معًا: ما يُضغط والحفظُ في الطريق ينتظره.
+ *   - والقسمُ المطفأ يُكتب في موضعه بعلامته (`!banner`)، فيعود إليه ولو
+ *     أُغلق المحرّرُ وفُتح — والسهمُ لا يُزيحه.
  *
  * وقواعدُ الحفظ نفسُها في الخادم: `ARibbonShopOrdersItsShelfByHandTest`.
  */
@@ -71,7 +73,7 @@ const PRODUCTS = [
 
 const seed = (value = ''): ShelfOrderSeed => ({ value, products: PRODUCTS });
 
-const draw = (shelfOrder: ShelfOrderSeed | null, rows: EditorRow[] = [HERO, COLLECTIONS, FOOT], order: string[] = []) => {
+const draw = (shelfOrder: ShelfOrderSeed | null, rows: EditorRow[] = [HERO, COLLECTIONS, FOOT], order: string[] = [], layout?: string[]) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
     Object.assign(pageProps, { translations: {} });
 
@@ -84,6 +86,7 @@ const draw = (shelfOrder: ShelfOrderSeed | null, rows: EditorRow[] = [HERO, COLL
             rows={rows}
             values={{ store_headline: '' }}
             order={order}
+            layout={layout}
             maxFeatured={4}
             products={[]}
             shortcutCategories={[
@@ -298,12 +301,51 @@ describe('سهمُ الأقسام بالضغط السريع', () => {
         const sent = () => (post.mock.calls.at(-1)![1] as { store_sections: string }).store_sections;
         const finish = () => act(() => (post.mock.calls.at(-1)![2] as { onFinish: () => void }).onFinish());
 
+        // المطفأُ يبقى في موضعه بعلامته — والزائرُ لا يقرؤها (`StorePage::order`)
         fireEvent.click(screen.getByRole('switch', { name: 'شريط المناسبات' }));
-        expect(sent()).toBe('cats,best,new');
+        expect(sent()).toBe('cats,best,!banner,new');
         finish();
 
         fireEvent.click(screen.getByRole('switch', { name: 'شريط المناسبات' }));
         expect(sent()).toBe('cats,best,banner,new');
+    });
+
+    it('بعد إغلاق المحرّر وفتحه يعود القسمُ المطفأ إلى موضعه لا إلى آخر الأقسام', () => {
+        const post = vi.mocked(router.post);
+        post.mockClear();
+        const ABOUT = row({ key: 'about', label: 'من نحن' });
+        // كما يفتح الخادمُ المحرّرَ بعد حفظ `about,!cats,best,new` (`StorePage::draftLayout`)
+        const HIDDEN_CATS = row({ key: 'cats', label: 'تسوّق حسب الفئة', on: false });
+        draw(null, [HERO, ABOUT, HIDDEN_CATS, BEST, NEW, FOOT], ['about', 'best', 'new'], ['about', '!cats', 'best', 'new']);
+
+        const listed = within(screen.getByTestId('rows-advanced'))
+            .getAllByTestId(/^row-(about|cats|best|new)$/)
+            .map((li) => li.dataset.testid);
+        expect(listed).toEqual(['row-about', 'row-cats', 'row-best', 'row-new']);
+
+        fireEvent.click(screen.getByRole('switch', { name: 'تسوّق حسب الفئة' }));
+        expect((post.mock.calls.at(-1)![1] as { store_sections: string }).store_sections).toBe('about,cats,best,new');
+    });
+
+    it('والسهمُ يبادل أقربَ قسمٍ مشغَّل — والمطفأُ بينهما لا يُزاح', () => {
+        const post = vi.mocked(router.post);
+        post.mockClear();
+        const ABOUT = row({ key: 'about', label: 'من نحن' });
+        const HIDDEN_CATS = row({ key: 'cats', label: 'تسوّق حسب الفئة', on: false });
+        draw(null, [HERO, ABOUT, HIDDEN_CATS, BEST, NEW, FOOT], ['about', 'best', 'new'], ['about', '!cats', 'best', 'new']);
+
+        press('أنزل من نحن');
+        expect(post.mock.calls[0][1]).toEqual({ store_sections: 'best,!cats,about,new' });
+    });
+
+    it('ومن لا قائمةَ كاملةً له يجد ما كان: المطفأُ بعد المشغَّل، ويُشغَّل في موضعه من الصفوف', () => {
+        const post = vi.mocked(router.post);
+        post.mockClear();
+        const HIDDEN_CATS = row({ key: 'cats', label: 'تسوّق حسب الفئة', on: false });
+        draw(null, [HERO, BEST, NEW, HIDDEN_CATS, FOOT], ['best', 'new']);
+
+        fireEvent.click(screen.getByRole('switch', { name: 'تسوّق حسب الفئة' }));
+        expect((post.mock.calls.at(-1)![1] as { store_sections: string }).store_sections).toBe('best,new,cats');
     });
 
     it('وضغطاتٌ كثيرةٌ في أثناء حفظٍ واحد تُرسَل آخرُها وحدها', () => {

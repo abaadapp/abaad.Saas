@@ -21,6 +21,7 @@ use App\Support\Activity;
 use App\Support\AddonStock;
 use App\Support\Bank;
 use App\Support\Books;
+use App\Support\BoutiqueDues;
 use App\Support\Boutiques;
 use App\Support\Contention;
 use App\Support\CreditSales;
@@ -622,6 +623,8 @@ class PosController extends Controller
             $redeem = $this->resolveRedemption($customer, $subtotal, $couponDiscount, (int) ($data['redeem_points'] ?? 0));
 
             $discount = round(min($couponDiscount + $redeem['discount'], $subtotal), 3);
+            // والمتجرُ يتحمّل خصمَه: لا يُباع بأقلّ ممّا للبوتيكات فيه
+            BoutiqueDues::assertCovered($bid, $lines, $subtotal, $discount);
             $delivery = (float) ($data['delivery_fee'] ?? 0);
             $tax = $this->taxFor($lines, $subtotal, $discount);
 
@@ -830,9 +833,13 @@ class PosController extends Controller
                     ]);
                 }
 
+                // ما للبوتيك عن وصفة البند أو إضافته المستقلّة — انظر BoutiqueDues
+                BoutiqueDues::forItem($order, $item, $l);
+
                 foreach ($l['addons'] ?? [] as $a) {
                     // ولقطتُها — اسمُها وسعرُها وما أُخذ من الرفّ — من موضعٍ واحد (`SaleLines::addonRow`)
-                    $item->addons()->create(SaleLines::addonRow($a));
+                    $addonRow = $item->addons()->create(SaleLines::addonRow($a));
+                    BoutiqueDues::forAddon($order, $item, $addonRow, $a);
                 }
             }
 

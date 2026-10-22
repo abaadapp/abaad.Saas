@@ -54,6 +54,21 @@ final class SaleLines
 
     public function __construct(private readonly int $businessId) {}
 
+    /** أسعارُ أصناف البوتيك كما ثُبِّتت قبل البنك — لا تُقرأ إلّا في `SETTLING` */
+    private ?array $pinnedBoutiquePrices = null;
+
+    /**
+     * دفعةٌ قُبضت تُسعَّر قطعُ بوتيكاتها بما ثُبِّت يومَ فُتحت صفحةُ البنك.
+     *
+     * والمصدرُ نيّةُ الدفع على الخادم لا المتصفّح — انظر `WebCheckout::toCard`.
+     */
+    public function pinBoutiquePrices(?array $prices): self
+    {
+        $this->pinnedBoutiquePrices = $prices;
+
+        return $this;
+    }
+
     private function bid(): int
     {
         return $this->businessId;
@@ -458,7 +473,8 @@ final class SaleLines
             throw ValidationException::withMessages($errors);
         }
 
-        return $lines;
+        // وما فيها من أصناف البوتيكات يُحمَّل مستحقَّه — انظر BoutiqueDues
+        return BoutiqueDues::price($bid, $lines, $channel, $this->pinnedBoutiquePrices);
     }
 
     /**

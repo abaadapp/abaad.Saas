@@ -46,9 +46,14 @@ final class Boutiques
      * لم يشترها، ولا يدخل كشفَ البوتيك عنها شيء، ولا يُستحقّ له قرش. ومن ربطها
      * يظنّ أنّ البوتيك سيُحاسَب عنها.
      *
-     * فيُردّ الربطُ **الجديد** حتّى يُبنى سجلُّ مستحقّات المكوّنات. وما رُبط قبل
+     * فيُردّ الربطُ **الجديد** ما لم يُفتح للمتجر سجلُّ مستحقّات المكوّنات. وما رُبط قبل
      * اليوم (`$kept`) يبقى كما هو: إضافةٌ تُحفظ بربطها القائم، ومكوّنٌ تُزاد
      * كمّيّتُه، لا يُردّان — ولا تُمسّ فاتورةٌ مضت.
+     *
+     * ═══ ومتجرٌ فُتح له السجلّ ═══
+     *
+     * يُربط فيه صنفُ البوتيك ويُستحقّ له ثمنُه عند البيع (`BoutiqueDues`). إلّا
+     * ما لا يُحسب مستحقُّه بدقّة: صنفٌ له مقاسات، أو بلا سعر — يُردّ بسببه.
      */
     public static function refuseNewLink(int $businessId, ?int $kept = null): \Closure
     {
@@ -57,8 +62,18 @@ final class Boutiques
                 return;
             }
 
-            if (Product::where('business_id', $businessId)->whereKey((int) $value)->whereNotNull('boutique_id')->exists()) {
+            $owned = Product::where('business_id', $businessId)->whereKey((int) $value)
+                ->whereNotNull('boutique_id')->withCount('variants')->first();
+            if (! $owned) {
+                return;
+            }
+
+            if (! BoutiqueDues::active($businessId) || Vat::enabled($businessId)) {
                 $fail(__('هذا الصنف ملكُ بوتيك — ربطُه هنا لا يُنشئ للبوتيك مستحقًّا بعد. اختر صنفًا يملكه المتجر.'));
+            } elseif ($owned->variants_count > 0) {
+                $fail(__('«:name» له مقاسات — لا يدخل باقةً ولا إضافةً حتى يُحفظ سعرُ مقاسه.', ['name' => $owned->name]));
+            } elseif ((float) $owned->price <= 0) {
+                $fail(__('«:name» بلا سعر — لا يُعرف مستحقُّه.', ['name' => $owned->name]));
             }
         };
     }

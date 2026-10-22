@@ -8,6 +8,7 @@ use App\Models\BoutiqueComponentDue;
 use App\Models\BoutiqueCreditOffset;
 use App\Models\BoutiqueSettlement;
 use App\Models\Business;
+use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemAddon;
@@ -691,6 +692,62 @@ class BoutiqueDues
 
             return $doc;
         });
+    }
+
+    /**
+     * الرصيدُ بين المتجر وبوتيكٍ — من الصفوف، بما يطابق 2160 و1370.
+     *
+     *   - `owed_unsettled`: مستحقّاتُ مكوّناتٍ لم تحملها ورقة (كلُّ الأشهر).
+     *   - `owed_issued`: جزءُ المكوّنات في ورقاتٍ صدرت ولم يُسدَّد.
+     *     والاثنان معًا حصّةُ هذا البوتيك من 2160.
+     *   - `standalone_unpaid`: صافي المنفرد في ورقاتٍ صدرت ومصروفُها لم يُسدَّد —
+     *     يُقرأ من «المبالغ المستحقة» على طريقته، لا من 2160.
+     *   - `credit`: ما للمتجر على البوتيك — حصّتُه من 1370.
+     *   - `movements`: العكوسُ والقطعُ التي لم تعد والمقاصّاتُ والاستردادات، الأحدثُ أوّلًا.
+     *
+     * @return array<string, mixed>
+     */
+    public static function ledgerFor(int $businessId, int $boutiqueId): array
+    {
+        $rows = BoutiqueComponentDue::where('business_id', $businessId)->where('boutique_id', $boutiqueId);
+
+        $unsettled = round((float) (clone $rows)->whereNull('boutique_settlement_id')
+            ->whereIn('kind', [BoutiqueComponentDue::DUE, BoutiqueComponentDue::REVERSAL])->sum('amount'), 3);
+
+        $issued = BoutiqueSettlement::where('business_id', $businessId)->where('boutique_id', $boutiqueId)
+            ->where('kind', BoutiqueSettlement::SETTLEMENT)->with('expense:id,status')->get();
+        $owedIssued = round((float) $issued->whereNull('components_paid_at')->sum(fn ($s) => (float) $s->components_due), 3);
+        $standalone = round((float) $issued->filter(fn ($s) => (int) $s->lines_count > 0
+            && ($s->expense === null || $s->expense->status !== Expense::PAID))->sum(fn ($s) => (float) $s->net), 3);
+
+        $moves = (clone $rows)->where(fn ($q) => $q->whereIn('kind', [BoutiqueComponentDue::REVERSAL, BoutiqueComponentDue::CREDIT])
+            ->orWhereNotNull('kept_state'))
+            ->with('order:id,number')->latest('id')->limit(30)->get()
+            ->map(fn (BoutiqueComponentDue $r) => [
+                'at' => $r->occurred_at?->format('Y-m-d H:i'),
+                'type' => $r->kept_state !== null && $r->kind === BoutiqueComponentDue::DUE ? 'kept' : $r->kind,
+                'state' => $r->kept_state,
+                'product' => $r->product_name, 'quantity' => (float) $r->quantity, 'amount' => (float) $r->amount,
+                'order' => $r->order?->number, 'reason' => $r->reason ?? $r->kept_reason,
+            ]);
+
+        $offsets = BoutiqueCreditOffset::where('business_id', $businessId)->where('boutique_id', $boutiqueId)
+            ->with('settlement:id,number,kind')->latest('id')->limit(30)->get()
+            ->map(fn (BoutiqueCreditOffset $o) => [
+                'at' => $o->created_at?->format('Y-m-d H:i'),
+                'type' => $o->settlement?->kind === BoutiqueSettlement::REFUND ? 'refund' : 'offset',
+                'state' => null, 'product' => null, 'quantity' => null,
+                'amount' => (float) $o->amount, 'order' => $o->settlement?->number, 'reason' => null,
+            ]);
+
+        return [
+            'owed_unsettled' => $unsettled,
+            'owed_issued' => $owedIssued,
+            'owed' => round($unsettled + $owedIssued, 3),
+            'standalone_unpaid' => $standalone,
+            'credit' => round(array_sum(self::credits($businessId, $boutiqueId)), 3),
+            'movements' => $moves->concat($offsets)->sortByDesc('at')->values()->all(),
+        ];
     }
 
     /* ═══════════ الداخل ═══════════ */

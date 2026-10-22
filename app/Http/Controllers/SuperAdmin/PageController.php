@@ -285,6 +285,8 @@ class PageController extends Controller
                 'storefront_theme' => $model?->storefront_theme,
                 // ومفتاحُ البوتيكات — منطقٌ لا نصّ، والغائبُ مغلق
                 'boutiques_enabled' => (bool) ($model?->boutiques_enabled ?? false),
+                // ومستحقّاتُ مكوّنات البوتيك — مفتاحٌ تحته، مطفأٌ افتراضًا (`BoutiqueDues::active`)
+                'boutique_components_enabled' => (bool) ($model?->boutique_components_enabled ?? false),
                 // والإهداءُ في المتجر الإلكترونيّ — مثلُه، والغائبُ مغلق (`Store\GiftOrders`)
                 'gift_orders_enabled' => (bool) ($model?->gift_orders_enabled ?? false),
                 // وملاحظاتُ العميل وتعديلُ أصناف الفاتورة — مثلُه (`NotesAndEdits`)

@@ -113,7 +113,10 @@ trait TwoFullShops
             'payroll_line' => $first('payroll_lines'),
             'review' => $first('reviews'),
             'category' => $this->row('categories', ['business_id' => $bid, 'name' => "فئة {$tag}", 'card_image' => "/storage/website/{$bid}/card.jpg"]),
-            'boutique' => $this->row('boutiques', ['business_id' => $bid, 'name' => "بوتيك {$tag}"]),
+            'boutique' => $boutique = $this->row('boutiques', ['business_id' => $bid, 'name' => "بوتيك {$tag}"]),
+            'boutique_settlement' => $this->row('boutique_settlements', ['business_id' => $bid, 'boutique_id' => $boutique, 'number' => "BQ-{$tag}-1", 'period' => now()->format('Y-m'), 'components_due' => 5]),
+            // نوعُ الجزء في مسار «منتجات البوتيك» — كلمةٌ في الرابط لا صفّ
+            'part_kind' => 'included',
             'season' => $season,
             'reminder' => $this->row('season_reminders', ['business_id' => $bid, 'season_id' => $season, 'type' => 'custom', 'message' => "تذكير {$tag}"]),
             'variant' => $this->row('product_variants', ['business_id' => $bid, 'product_id' => $product, 'name' => "مقاس {$tag}"]),

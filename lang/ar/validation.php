@@ -685,6 +685,12 @@ return [
         'items.*.cost' => 'تكلفة العنصر',
         'items.*.product_id' => 'المنتج',
         'items.*.id' => 'المعرّف',
+        'component_product_id' => 'صنف البوتيك',
+        'addon_price' => 'سعر الإضافة للعميل',
+        'pieces' => 'قطع البوتيك',
+        'pieces.*' => 'قطعة البوتيك',
+        'pieces.*.returned' => 'ما عاد من القطعة',
+        'pieces.*.lost' => 'ما لم يعد من القطعة',
     ],
 
 ];

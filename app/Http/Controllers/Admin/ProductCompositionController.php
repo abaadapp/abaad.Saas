@@ -378,6 +378,9 @@ class ProductCompositionController extends Controller
      */
     private static function stockItemOptions(int $businessId): array
     {
+        // ومتجرٌ فُتح له سجلُّ مستحقّات المكوّنات يربط صنفَ البوتيك كغيره — انظر `Boutiques::refuseNewLink`
+        $linkable = \App\Support\BoutiqueDues::active($businessId) && ! \App\Support\Vat::enabled($businessId);
+
         return Product::where('business_id', $businessId)
             ->whereNotIn('id', RecipeItem::where('business_id', $businessId)->distinct()->pluck('product_id'))
             ->orderBy('name')->get(['id', 'name', 'sku', 'quantity', 'boutique_id'])
@@ -385,8 +388,8 @@ class ProductCompositionController extends Controller
                 'value' => $p->id,
                 'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
                 'quantity' => (int) $p->quantity,
-                // ملكُ بوتيك — تعرضه الشاشةُ ولا تقبل ربطَه الجديد (`Boutiques::refuseNewLink`)
-                'boutique' => $p->boutique_id !== null,
+                // ملكُ بوتيكٍ لا يُربط بعد — تعرضه الشاشةُ ولا تقبل ربطَه الجديد (`Boutiques::refuseNewLink`)
+                'boutique' => $p->boutique_id !== null && ! $linkable,
             ])->all();
     }
 

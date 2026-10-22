@@ -35,6 +35,9 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
     {
         parent::setUp();
         $this->buildTwoShops();
+        // ومستحقّاتُ مكوّنات البوتيك مفتوحةٌ للمتجرين: بلاها تُردّ أبوابُها بـ404 قبل أن يُسأل عن الملكيّة
+        \Illuminate\Support\Facades\DB::table('businesses')->whereIn('id', [$this->a->id, $this->b->id])
+            ->update(['boutiques_enabled' => true, 'boutique_components_enabled' => true]);
     }
 
     /**
@@ -87,6 +90,10 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['البوتيكات', 'delete', 'admin.boutiques.destroy', ['id' => 'boutique']],
                 ['البوتيكات', 'post', 'admin.boutiques.attach', ['id' => 'boutique']],
                 ['البوتيكات', 'post', 'admin.boutiques.settle', ['id' => 'boutique']],
+                ['البوتيكات', 'post', 'admin.boutiques.components.pay', ['id' => 'boutique', 'settlement' => 'boutique_settlement'], ['id'], ['method' => 'نقدي']],
+                ['البوتيكات', 'post', 'admin.boutiques.refund', ['id' => 'boutique'], [], ['method' => 'نقدي']],
+                ['منتجات البوتيك', 'post', 'admin.products.boutique-parts.store', ['id' => 'product'], [], ['mode' => 'included', 'quantity' => 1]],
+                ['منتجات البوتيك', 'delete', 'admin.products.boutique-parts.destroy', ['id' => 'product', 'kind' => 'part_kind', 'part' => 'recipe'], ['id']],
                 ['الكوبونات', 'post', 'admin.coupons.toggle', ['id' => 'coupon']],
                 ['الكوبونات', 'patch', 'admin.coupons.limits', ['id' => 'coupon']],
                 ['الكوبونات', 'delete', 'admin.coupons.destroy', ['id' => 'coupon']],
@@ -109,6 +116,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['عناوين العميل', 'delete', 'admin.customers.addresses.delete', ['id' => 'customer', 'addressId' => 'address'], ['id']],
                 ['الطلبات', 'put', 'admin.orders.details.update', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.status', ['number' => 'order_number']],
+                ['الطلبات', 'post', 'admin.orders.boutique-pieces', ['number' => 'order_number'], [], ['action' => 'returned', 'pieces' => [1 => 1]]],
                 ['الطلبات', 'post', 'admin.orders.send', ['number' => 'order_number']],
                 // رسالةٌ لمستلِم الهديّة ليُعرف موقعُه — لا تبلغ طلبَ متجرٍ آخر (GiftOrders)
                 ['الطلبات', 'post', 'admin.orders.contactRecipient', ['number' => 'order_number']],

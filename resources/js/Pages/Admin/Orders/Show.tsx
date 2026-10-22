@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import {
     Building2,
@@ -53,6 +53,7 @@ import { prepareWebsiteConfirmPrint, websiteConfirmPrintCallbacks } from '@/lib/
 import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
 import { CancelWithPieces, KeptPieces, type BoutiquePiece } from './BoutiquePieces';
+import { AddonRows, IncludedAddons, lineAmount, type AddonsMode, type ItemAddon } from './ItemAddons';
 
 interface OrderDetail {
     id: string;
@@ -115,6 +116,11 @@ interface OrderDetail {
         qty: number;
         price: number;
         total: number;
+        /** إضافاتُ البند من لقطة البيع، وطريقتُها (`ItemAddons`) — انظر `./ItemAddons` */
+        addons?: ItemAddon[];
+        addons_mode?: AddonsMode;
+        addons_total?: number;
+        own_total?: number;
         /** ملاحظةُ المنتج — أو رسالةُ الكرت حين `card_line` (`GiftCardProduct::cardLine`) */
         note?: string | null;
         card_line?: boolean;
@@ -750,7 +756,8 @@ export default function OrderShow() {
                                     </TableHeader>
                                     <TableBody>
                                         {order.items.map((line, i) => (
-                                            <TableRow key={i}>
+                                            <Fragment key={i}>
+                                            <TableRow>
                                                 <TableCell className="font-medium text-[#111]">
                                                     {line.name}
                                                     {/*
@@ -804,6 +811,7 @@ export default function OrderShow() {
                                                             ))}
                                                         </ul>
                                                     )}
+                                                    <IncludedAddons line={line} />
                                                 </TableCell>
                                                 <TableCell className="text-end tabular-nums">
                                                     {number(line.qty)}
@@ -812,7 +820,7 @@ export default function OrderShow() {
                                                     {m(line.price)}
                                                 </TableCell>
                                                 <TableCell className="text-end tabular-nums font-medium">
-                                                    {m(line.total)}
+                                                    {m(lineAmount(line))}
                                                 </TableCell>
                                                 {correcting && (
                                                     <TableCell className="text-end">
@@ -838,6 +846,8 @@ export default function OrderShow() {
                                                     </TableCell>
                                                 )}
                                             </TableRow>
+                                            <AddonRows line={line} money={m} extraCell={correcting} />
+                                            </Fragment>
                                         ))}
                                     </TableBody>
                                 </Table>

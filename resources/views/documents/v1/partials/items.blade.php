@@ -118,7 +118,7 @@
                     {{-- وما داخل الثمن يُسمّى ولا يُكتب مالًا --}}
                     @if (($extras['mode'] ?? null) === 'included')
                         @foreach ($extras['rows'] as $addon)
-                            <div class="bidi lbl2" data-addon="included" dir="{{ \App\Support\Paper::dirOf($addon['name']) }}">+ {{ $addon['name'] }} × <span dir="ltr">{{ $addon['qty'] }}</span> — {{ __('ضمن السعر') }}</div>
+                            <div class="bidi detail" data-addon="included" dir="{{ \App\Support\Paper::dirOf($addon['name']) }}">+ {{ $addon['name'] }} × <span dir="ltr">{{ $addon['qty'] }}</span> — {{ __('ضمن السعر') }}</div>
                         @endforeach
                     @endif
                 </td>

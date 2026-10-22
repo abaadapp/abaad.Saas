@@ -8,6 +8,7 @@ import type { CompositionData } from './partials/addons';
 import type { GalleryImage } from './partials/Gallery';
 import type { Category, Product } from '@/types/models';
 import type { BoutiqueOption } from './partials/boutique';
+import type { BoutiquePartsData } from './partials/BoutiqueParts';
 
 interface Props {
     product: Product;
@@ -23,10 +24,12 @@ interface Props {
     boutiqueId?: number | null;
     /** طريقةُ عرض الإضافات في نقطة البيع — إعدادٌ للنشاط. انظر `AddonsLayoutSwitch` */
     addonsDisplay?: { layout: string; can_change: boolean };
+    /** منتجاتُ البوتيك في هذه الباقة — `null` لمن لم يُفتح له السجلّ */
+    boutiqueParts?: BoutiquePartsData | null;
 }
 
 export default function ProductEdit() {
-    const { product, categories, description, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, addonsDisplay, context } =
+    const { product, categories, description, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, addonsDisplay, boutiqueParts, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -49,6 +52,7 @@ export default function ProductEdit() {
                 boutiques={boutiques}
                 boutiqueId={boutiqueId}
                 addonsDisplay={addonsDisplay}
+                boutiqueParts={boutiqueParts}
             />
         </AdminLayout>
     );

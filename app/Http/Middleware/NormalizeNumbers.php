@@ -52,6 +52,8 @@ class NormalizeNumbers
         'price', 'cost', 'amount', 'discount', 'tax', 'total', 'subtotal',
         'delivery_fee', 'opening_balance', 'monthly', 'yearly', 'monthly_price',
         'yearly_price', 'free_threshold', 'fee', 'paid', 'unit_price', 'balance',
+        // سعرُ إضافةِ قطعة البوتيك للعميل — انظر BoutiquePartsController
+        'addon_price',
         'min_order', 'value', 'salvage_value',
         // البيعُ الآجل: المدفوعُ الآن وحدُّ الائتمان يُكتبان بأرقامٍ عربيّة كغيرها
         'paid_now', 'credit_limit', 'tax_amount',

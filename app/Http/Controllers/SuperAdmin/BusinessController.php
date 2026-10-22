@@ -81,6 +81,8 @@ class BusinessController extends Controller
     public function store(Request $request)
     {
         $data = $this->validateData($request);
+        // ومتجرٌ جديدٌ لا يُفتح له السجلّ: ضريبتُه لم تُضبط بعد
+        self::assertComponentsMayOpen(null, $data);
         $account = $this->validateAccount($request);
 
         $data['logo'] = $request->hasFile('logo') ? $request->file('logo')->store('logos', 'public') : null;
@@ -134,6 +136,7 @@ class BusinessController extends Controller
     {
         $business = Business::findOrFail($id);
         $data = $this->validateData($request);
+        self::assertComponentsMayOpen($business, $data);
 
         /*
          * لا تُنزَّل باقةٌ يتجاوزها المتجر أصلًا.
@@ -567,6 +570,30 @@ class BusinessController extends Controller
         return $account;
     }
 
+    /**
+     * مستحقّاتُ مكوّنات البوتيك لا تُفتح إلّا لمتجرٍ يُؤوي بوتيكات ولا يحتسب الضريبة.
+     *
+     * والإطفاءُ مسموحٌ دائمًا: ما كُتب من مستحقّاتٍ يبقى ويُسوّى ويُسدَّد،
+     * وما يُباع بعده يعود إلى ما كان قبل المفتاح.
+     */
+    private static function assertComponentsMayOpen(?Business $business, array $data): void
+    {
+        if (! ($data['boutique_components_enabled'] ?? false) || ($business?->boutique_components_enabled ?? false)) {
+            return;
+        }
+
+        $why = match (true) {
+            $business === null => __('افتح مستحقّات مكوّنات البوتيك بعد إنشاء المتجر وضبط ضريبته.'),
+            ! ($data['boutiques_enabled'] ?? $business->boutiques_enabled) => __('افتح «يُؤوي بوتيكات» أوّلًا.'),
+            \App\Support\Vat::enabled((int) $business->id) => __('هذا المتجر يحتسب الضريبة — مستحقّات مكوّنات البوتيك لا تُفتح له حتى تُعتمد معالجتُها الضريبيّة.'),
+            default => null,
+        };
+
+        if ($why !== null) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['boutique_components_enabled' => $why]);
+        }
+    }
+
     private function validateData(Request $request): array
     {
         $data = $request->validate([
@@ -607,6 +634,12 @@ class BusinessController extends Controller
              * له لا يرى تبويبًا ولا حقلًا، ولا يُكتب على بنوده شيء.
              */
             'boutiques_enabled' => ['nullable', 'boolean'],
+            /*
+             * ومستحقّاتُ البوتيك عن مكوّنات الباقات — مفتاحٌ ثانٍ تحت الأوّل،
+             * مطفأٌ لكلّ متجر. لا يُفتح لمتجرٍ يحتسب الضريبة حتى تُعتمد
+             * معالجتُها (`BoutiqueDues::refusal`)، ولا لمن لا يُؤوي بوتيكات.
+             */
+            'boutique_components_enabled' => ['nullable', 'boolean'],
             /*
              * والإهداءُ في المتجر الإلكترونيّ — مفتاحٌ يفتحه مديرُ المنصّة لمن
              * طلبه، كالبوتيكات (`Store\GiftOrders::on`). لا يفتحه التاجرُ من
@@ -656,7 +689,7 @@ class BusinessController extends Controller
          *
          * فصار كسائر الحقول: الغائبُ لا يُمسّ، والمرسَلُ يُكتب كما أُرسل.
          */
-        foreach (['boutiques_enabled', 'gift_orders_enabled', 'order_notes_and_edits_enabled', 'thermal_delivery_note_enabled', 'customer_invoice_preparation_enabled'] as $flag) {
+        foreach (['boutiques_enabled', 'boutique_components_enabled', 'gift_orders_enabled', 'order_notes_and_edits_enabled', 'thermal_delivery_note_enabled', 'customer_invoice_preparation_enabled'] as $flag) {
             if ($request->has($flag)) {
                 $data[$flag] = $request->boolean($flag);
             } else {

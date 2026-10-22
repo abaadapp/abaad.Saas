@@ -119,6 +119,8 @@ class OrderCorrection
             $itemId = $item->id;
 
             self::moveStock($order, $item, $oldQty - $newQty);
+            // ومستحقُّ البوتيك بالكمّيّة الجديدة وبسعر البيعة — عكسٌ ثمّ صفٌّ جديد
+            BoutiqueDues::resizeItem($item, $newQty, $reason);
 
             if ($newQty === 0) {
                 $item->loadMissing('addons.addon');
@@ -656,6 +658,8 @@ class OrderCorrection
                 );
             }
 
+            BoutiqueDues::resizeAddon($row, $newQty, $reason);
+
             if ($newQty === 0) {
                 $row->delete();
             } else {
@@ -866,6 +870,7 @@ class OrderCorrection
 
             // القديمُ يعود إلى الرفّ بطريقه — ثمّ يُحذف كما يحذفه تصحيحُ الكمّيّة إلى صفر
             self::moveStock($order, $locked, $oldQty);
+            BoutiqueDues::resizeItem($locked, 0, $reason);
             $locked->loadMissing('addons.addon');
             self::releaseAddons($order, $locked);
             $locked->delete();
@@ -1261,18 +1266,11 @@ class OrderCorrection
             'custom_details' => null,
         ]);
 
+        BoutiqueDues::forItem($order, $item, $l);
+
         foreach ($l['addons'] ?? [] as $a) {
-            $item->addons()->create([
-                'addon_id' => $a['addon']->id,
-                'name' => $a['addon']->name,
-                'name_en' => $a['addon']->name_en,
-                'unit_price' => $a['price'],
-                'quantity' => $a['qty'],
-                'total' => $a['total'],
-                'cost' => $a['cost'],
-                'inventory_product_id' => $a['inventory_product_id'] ?? null,
-                'inventory_quantity' => ($a['inventory_product_id'] ?? null) ? $a['each'] : null,
-            ]);
+            $row = $item->addons()->create(SaleLines::addonRow($a));
+            BoutiqueDues::forAddon($order, $item, $row, $a);
         }
 
         return $item->fresh(['addons.addon']);
@@ -1484,8 +1482,12 @@ class OrderCorrection
      * سليمًا في الشاشة، والخلل تحتها في المخزون والنقاط والدفتر.
      *
      * ويُنفَّذ مرّةً واحدة: نقلٌ ثانٍ إلى «ملغي» لا يردّ المخزون مرّتين.
+     *
+     * و`$boutiqueReturned` جوابُ «هل تعود قطعُ البوتيك في هذا الطلب إلى الرفّ؟»
+     * لكلّ قطعةٍ وكمّيّتها — ما عاد يُعكس مستحقُّه، وغيرُه يبقى موثَّقًا.
+     * انظر `BoutiqueDues::cancel`.
      */
-    public static function cancel(Order $order, ?string $reason = null): void
+    public static function cancel(Order $order, ?string $reason = null, bool|array|null $boutiqueReturned = null): void
     {
         self::assertNotFiled($order);
 
@@ -1493,7 +1495,7 @@ class OrderCorrection
             return;
         }
 
-        DB::transaction(function () use ($order, $reason) {
+        DB::transaction(function () use ($order, $reason, $boutiqueReturned) {
             /*
              * والحال تُقرأ ثانيةً تحت قفل — والقراءة الأولى لا تكفي.
              *
@@ -1537,6 +1539,8 @@ class OrderCorrection
                     fn ($e) => Ledger::reverse($e, null, PosCashier::id() ?? auth()->id(), $reason ?: __('إلغاء الطلب'))
                 ));
             Transaction::where('order_id', $order->id)->delete();
+            // ما للبوتيكات عن هذا الطلب يُعكس صفًّا صفًّا — والقيدُ يُعكس معه تحته
+            BoutiqueDues::cancel($fresh, $reason ?: __('إلغاء الطلب'), $boutiqueReturned);
             Books::unpostSale(
                 $fresh,
                 PosCashier::id() ?? auth()->id(),

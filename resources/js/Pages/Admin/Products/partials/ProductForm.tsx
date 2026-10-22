@@ -15,6 +15,7 @@ import type { AddonOption, CompositionData } from './addons';
 import Gallery, { type GalleryImage } from './Gallery';
 import { boutiqueMove, type BoutiqueOption } from './boutique';
 import AddonsLayoutSwitch from './AddonsLayoutSwitch';
+import BoutiqueParts, { type BoutiquePartsData } from './BoutiqueParts';
 import { CHANNEL_SUMMARY, salesChannels } from './channels';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import type { Category, Product } from '@/types/models';
@@ -43,6 +44,11 @@ interface Props {
      * بطلبه المستقلّ. انظر `AddonsLayoutSwitch`.
      */
     addonsDisplay?: { layout: string; can_change: boolean };
+    /**
+     * منتجاتُ البوتيك في هذه الباقة — `null` أو غائبةٌ لمن لم يُفتح له سجلُّ
+     * مستحقّات المكوّنات، فلا يُرسم القسم. انظر `BoutiquePartsController`.
+     */
+    boutiqueParts?: BoutiquePartsData | null;
 }
 
 const NAV = [
@@ -102,6 +108,7 @@ export default function ProductForm({
     galleryMax,
     galleryLimits,
     boutiques = [],
+    boutiqueParts = null,
     boutiqueId = null,
     addonsDisplay,
 }: Props) {
@@ -803,6 +810,16 @@ export default function ProductForm({
                             </Field>
                         </div>
                     </Card>
+                )}
+
+                {/* في التسعير لا في قسمٍ خامس: «كم للبوتيك وكم يبقى؟» سؤالٌ عن السعر */}
+                {tab === 'pricing' && product?.id && boutiqueParts && (
+                    <BoutiqueParts
+                        productId={Number(product.id)}
+                        price={String(form.data.price)}
+                        currencyLabel={currencyLabel}
+                        data={boutiqueParts}
+                    />
                 )}
 
                 {tab === 'stock' && (

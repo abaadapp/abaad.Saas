@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Support\Activity;
+use App\Support\BoutiqueDues;
 use App\Support\BranchGoogle;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
@@ -396,6 +397,33 @@ class OrderDetailController extends Controller
     }
 
     /**
+     * قطعُ بوتيكٍ بقي مستحقُّها بعد إلغاء الطلب: عادت الآن، أو تأكّد أنّها لن تعود.
+     *
+     * بإذن الإلغاء نفسِه: هو من قال «لم يُتحقَّق منها» فهو من يُتمّ القول.
+     */
+    public function boutiquePieces(Request $request, string $number)
+    {
+        abort_unless(auth()->user()?->may(Permissions::PREPARATION_CANCEL), 403);
+        $order = Order::where('business_id', $this->bid())->where('number', $number)->firstOrFail();
+        abort_unless(BoutiqueDues::active((int) $order->business_id), 404);
+
+        $data = $request->validate([
+            'action' => ['required', Rule::in(['returned', 'lost'])],
+            'pieces' => ['required', 'array', 'min:1'],
+            'pieces.*' => ['integer', 'min:0', 'max:1000'],
+        ]);
+        $pieces = array_map('intval', $data['pieces']);
+
+        if ($data['action'] === 'returned') {
+            BoutiqueDues::returned($order, __('عادت القطعة بعد الإلغاء'), $pieces);
+        } else {
+            BoutiqueDues::confirmLost($order, array_map('intval', array_keys(array_filter($pieces))));
+        }
+
+        return back()->with('toast', ['msg' => __('حُفظت حالُ قطع البوتيك'), 'type' => 'success']);
+    }
+
+    /**
      * نقل الحالة — بحارسٍ في الخادم لا في الشاشة.
      *
      * الشاشة تعرض ما يجوز، والطلب يصل من عنوانٍ يُكتب. و«تم التسليم ← قيد
@@ -408,6 +436,10 @@ class OrderDetailController extends Controller
 
         $data = $request->validate([
             'status' => ['required', 'string', Rule::in(OrderStatus::ALL)],
+            // حالُ كلّ قطعة بوتيك عند الإلغاء: [رقمُ الصفّ => عادت، لم تعد] — والباقي لم يُتحقَّق منه
+            'pieces' => ['nullable', 'array'],
+            'pieces.*.returned' => ['nullable', 'integer', 'min:0', 'max:1000'],
+            'pieces.*.lost' => ['nullable', 'integer', 'min:0', 'max:1000'],
         ]);
 
         /*
@@ -426,7 +458,8 @@ class OrderDetailController extends Controller
         $from = null;
 
         // بابٌ واحد للنقل تدخل منه هذه الشاشة ولوحة التجهيز — انظر OrderTransition
-        if ($error = OrderTransition::apply($order, $data['status'], $from)) {
+        $pieces = isset($data['pieces']) ? array_map(fn ($p) => array_map('intval', (array) $p), $data['pieces']) : null;
+        if ($error = OrderTransition::apply($order, $data['status'], $from, $pieces)) {
             return back()
                 ->with('toast', ['msg' => $error, 'type' => 'danger'])
                 ->withErrors(['status' => $error]);

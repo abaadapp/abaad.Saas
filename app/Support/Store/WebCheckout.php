@@ -11,7 +11,9 @@ use App\Models\Setting;
 use App\Models\StorePaymentIntent;
 use App\Models\Transaction;
 use App\Support\Activity;
+use App\Support\AddonStock;
 use App\Support\Books;
+use App\Support\BoutiqueDues;
 use App\Support\CouponLimits;
 use App\Support\Customers;
 use App\Support\FlowerOrder;
@@ -65,6 +67,16 @@ final class WebCheckout
 
     public const MAX_QTY = 50;
 
+    /**
+     * أقصى إضافاتٍ مختلفة على بندٍ واحد، وأقصى كمّيّةٍ لكلّ إضافة.
+     *
+     * حمايةٌ من حمولةٍ كتبها أحدٌ بيده — لا حدٌّ يلمسه زبون: صفحةُ الصنف لا
+     * تعرض أكثرَ ممّا فُتح للموقع، وعدّادُها يقف عند `MAX_ADDON_QTY`.
+     */
+    public const MAX_ADDONS = 20;
+
+    public const MAX_ADDON_QTY = 20;
+
     public const PAY_COD = 'cod';
 
     public const PAY_TRANSFER = 'transfer';
@@ -80,6 +92,15 @@ final class WebCheckout
 
     /** لقطةُ الفترة المختارة في حمولة نيّة الدفع — يكتبها الخادم لا المتصفّح */
     public const SLOT = '_slot';
+
+    /**
+     * أسعارُ قطع البوتيك وأصحابُها ساعةَ فُتحت صفحةُ البنك.
+     *
+     * يتغيّر سعرُ القطعة والزبونُ عند البنك — فيُكتب مستحقُّها بما فُحص
+     * قبل الدفع (`BoutiqueDues::assertCovered`) لا بسعرٍ لم يره أحد. ومفتاحٌ
+     * يبدأ بشرطةٍ سفليّة: لا يقبله الخادمُ من المتصفّح (`untrusted`).
+     */
+    public const BOUTIQUE_PRICES = '_boutique_prices';
 
     /** أقصى أيامٍ يُحجز الموعدُ بعدها */
     public const MAX_DAYS_AHEAD = 60;
@@ -240,6 +261,9 @@ final class WebCheckout
         $bid = (int) $business->id;
         $items = self::items($payload['items'] ?? []);
         $sale = new SaleLines($bid);
+        if ($settling) {
+            $sale->pinBoutiquePrices((array) ($payload[self::BOUTIQUE_PRICES] ?? []));
+        }
 
         /*
          * ═══ ودفعةٌ قُبضت لا يُسأل صنفُها عن حاله بعد الدفع ═══
@@ -248,8 +272,24 @@ final class WebCheckout
          * الدفع (`toCard`)، والمالُ قُبض. وردُّ الطلب هنا يتركه بلا طلب —
          * كما لا يردّه إغلاقُ الاستقبال (`accepts`). والرفُّ يُفحص كما كان.
          */
-        $lines = $sale->priceItems($items, $lock, $settling ? SaleLines::SETTLING : null);
+        $lines = $sale->priceItems($items, $lock, $settling ? SaleLines::SETTLING : SaleLines::WEBSITE);
         self::assertPublished($bid, $lines, $settling);
+
+        /*
+         * ═══ وإضافةٌ نفد رفُّها تُقال قبل صفحة البنك ═══
+         *
+         * الصنفُ يُسأل عن رفّه هنا (`assertPublished`)، والإضافةُ المرتبطةُ
+         * ببضاعةٍ تُسأل بالقاعدة التي يخصم بها الطلب (`assertStock`) — على
+         * إضافاتها وحدَها. فلا يدفع زبونٌ ثمنَ شوكولاتةٍ ثمّ يُردّ طلبُه بعد
+         * أن قُبض المال. والطلبُ نفسُه يُفحص كلُّه ثانيةً تحت القفل (`place`).
+         *
+         * ودفعةٌ قُبضت لا تُردّ هنا: يُفحص رفُّها في `place` كما كان.
+         */
+        if (! $settling) {
+            $sale->assertStock(array_map(fn ($l) => [
+                'product' => null, 'qty' => (int) $l['qty'], 'addons' => $l['addons'] ?? [],
+            ], $lines), $business->branches()->orderBy('id')->value('id'));
+        }
         // ونصُّ كرت الهدية مع بنده — يُردّ الكرتُ بلا نصّ، ويُمحى عمّا سواه
         $lines = GiftCardProduct::settle($bid, $lines);
 
@@ -269,7 +309,14 @@ final class WebCheckout
             $lines[] = GiftCard::line($bid);
         }
 
-        $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty']), 3);
+        /*
+         * والإضافاتُ داخل المجموع الفرعيّ — بقاعدة الصندوق نفسِها.
+         *
+         * `price × qty + addons_total`: ثمنُ الإضافة يُضاف مرّةً للبند لا
+         * لكلّ قطعة (`SaleLines::addonConsumption`)، ويدخل وعاءَ الضريبة
+         * (`taxFor`) وأساسَ الكوبون وحدَّ التوصيل المجّانيّ كما يدخلها هناك.
+         */
+        $subtotal = round(collect($lines)->sum(fn ($l) => $l['price'] * $l['qty'] + ($l['addons_total'] ?? 0)), 3);
 
         /*
          * وكودُ الخصم يُقرأ لمن أبقى حقلَه.
@@ -281,6 +328,11 @@ final class WebCheckout
         $promo = CheckoutFields::shows($bid, 'promo') ? self::text($payload['promo'] ?? null) : null;
 
         [$coupon, $discount, $promoError] = self::coupon($bid, $promo, $subtotal, $lock);
+
+        // والمتجرُ يتحمّل خصمَه — ويُقال ذلك قبل البنك لا بعده. وما قبضه البنكُ يُقبل
+        if (! $settling) {
+            BoutiqueDues::assertCovered($bid, $lines, $subtotal, $discount);
+        }
 
         $tax = $sale->taxFor($lines, $subtotal, $discount);
         if (Vat::inclusive($bid)) {
@@ -322,7 +374,20 @@ final class WebCheckout
                 'image' => $l['product']->image,
                 'price' => (float) $l['price'],
                 'qty' => (int) $l['qty'],
-                'line' => round($l['price'] * $l['qty'], 3),
+                // إجماليُّ البند بإضافاته — هو ما يدخل المجموعَ الفرعيّ فوقه
+                'line' => round($l['price'] * $l['qty'] + ($l['addons_total'] ?? 0), 3),
+                /*
+                 * وإضافاتُه بأسعار القاعدة — تعود إلى السلّة لتُرسم تحت بندها
+                 * وتُعرف بها هويّتُه (`RBLines.same`). ولا تكلفةَ فيها ولا رفّ.
+                 */
+                'addons' => array_map(fn ($a) => [
+                    'id' => (int) $a['addon']->id,
+                    'name' => $a['addon']->name,
+                    'name_en' => $a['addon']->name_en,
+                    'qty' => (int) $a['qty'],
+                    'price' => (float) $a['price'],
+                    'total' => (float) $a['total'],
+                ], array_values($l['addons'] ?? [])),
                 // نصُّ الكرت يعود إلى السلّة لتُراجعه — ولا نصَّ لبندٍ سواه
                 'gift_card' => (bool) ($l['gift_card'] ?? false),
                 // ونصُّ الكرت لبنده، وملاحظةُ المنتج لبندها حين تُفتح الميزة (`NotesAndEdits`)
@@ -378,6 +443,22 @@ final class WebCheckout
         self::assertAgreed($bid, $form, $quote);
 
         /*
+         * ═══ والرفُّ كلُّه يُسأل قبل صفحة البنك — بالمجموع لا بندًا بندًا ═══
+         *
+         * `place` يفحص السلّةَ كلَّها تحت القفل، لكنّه في هذا المسار يأتي بعد أن
+         * يُقبض المال. وصنفٌ وإضافةٌ يأكلان رفًّا واحدًا — «علبة شوكولاتة» تُباع
+         * وحدَها و«شوكولاتة» إضافةً على باقة — أو إضافتان من رفٍّ واحد، أو وصفةٌ
+         * وإضافةٌ من الورد نفسِه: كلٌّ منها يكفيه الرفُّ وحدَه، ومجموعُها لا.
+         * فيُسأل المجموعُ بالدالّة التي يخصم بها الطلب (`assertStock` ← `demand`)
+         * قبل أن تُكتب نيّةٌ أو يُطرق بنك — ويُقال للزبون ما ينقص قبل أن يدفع.
+         *
+         * وما بين هذا السؤال ووصول المال دقائقُ قد يبيع فيها الصندوقُ القطعةَ
+         * الأخيرة. ذاك يُردّ في `place` ويُحفظ مالًا بلا طلبٍ يُقال لصاحب المحلّ
+         * (`StorePaymentIntent::strayPayment`) — كما كان قبل هذا السطر.
+         */
+        (new SaleLines($bid))->assertStock($quote['_lines'], $business->branches()->orderBy('id')->value('id'));
+
+        /*
          * ورسالةُ بطاقةٍ تقول اسمَ من أخفى اسمَه — يُسأل قبل أن تُفتح دفعة.
          *
          * والإقرارُ في الحمولة نفسِها، فيمضي معها إلى نيّة الدفع ويعود منها
@@ -398,6 +479,7 @@ final class WebCheckout
          */
         $payload[StoreTerms::STAMP] = StoreTerms::stamp($bid, $lang);
         $payload[self::SLOT] = self::chosenSlot($bid, $form);
+        $payload[self::BOUTIQUE_PRICES] = BoutiqueDues::pinned($quote['_lines']);
 
         /*
          * ═══ وحدُّ الكوبون يُفحص هنا قبل صفحة الدفع، ثمّ تُحجز فرصتُه ═══
@@ -694,7 +776,7 @@ final class WebCheckout
             $boutiqueOf = Boutiques::attribute($bid, $lines);
 
             foreach (array_values($lines) as $idx => $l) {
-                $order->items()->create([
+                $item = $order->items()->create([
                     'product_id' => $l['product']?->id,
                     'variant_id' => $l['variant']?->id,
                     'variant_name' => $l['variant']?->name,
@@ -710,9 +792,19 @@ final class WebCheckout
                     // نصُّ كرت الهدية، أو ملاحظةُ المنتج حين تُفتح الميزة (`GiftCardProduct::settle`)
                     'note' => $l['note'] ?? null,
                     'total' => round($l['price'] * $l['qty'], 3),
-                    'addons_total' => 0,
+                    // وإضافاتُه فوق ثمنه — بالعمود الذي يكتبه الصندوق ويقرؤه كلُّ تقرير
+                    'addons_total' => (float) ($l['addons_total'] ?? 0),
                     'custom_details' => null,
                 ]);
+
+                BoutiqueDues::forItem($order, $item, $l);
+
+                // ولقطاتُها كما يكتبها الصندوق — اسمٌ وسعرٌ وكمّيّةٌ وتكلفةٌ وما أُخذ من الرفّ،
+                // ومستحقُّ البوتيك عن إضافةٍ من رفّه كما في الصندوق
+                foreach ($l['addons'] ?? [] as $a) {
+                    $row = $item->addons()->create(SaleLines::addonRow($a));
+                    BoutiqueDues::forAddon($order, $item, $row, $a);
+                }
             }
 
             // الرفُّ يُخصم للسلّة كلِّها — وذو الوصفة بمكوّناته لا بنفسه (كما في الصندوق)
@@ -739,6 +831,11 @@ final class WebCheckout
             $by = __('الموقع الإلكتروني');
             StockLedger::move($bid, $branchId, array_map(fn ($n) => -$n, $sale), 'بيع', $by);
             StockLedger::move($bid, $branchId, array_map(fn ($n) => -Recipe::units($n), $recipeUse), StockLedger::RECIPE, $by, $order->number);
+            /*
+             * وما تأكله الإضافاتُ من الرفّ — بالدالّة التي فحص بها `assertStock`
+             * قبل قليل، وبحركةٍ من نوعها كما في الصندوق. فلا يُفحص رقمٌ ويُخصم غيرُه.
+             */
+            StockLedger::move($bid, $branchId, array_map(fn ($n) => -$n, AddonStock::units(SaleLines::addonConsumption($lines))), StockLedger::ADDON, $by, $order->number);
 
             if ($q['_coupon']) {
                 $q['_coupon']->increment('used_count');
@@ -914,6 +1011,8 @@ final class WebCheckout
                 'name' => '',
                 // نصُّ كرت الهدية لبنده، وملاحظةُ المنتج لسواه حين تُفتح الميزة — ويُمحى ما عداهما (`GiftCardProduct::settle`)
                 'note' => GiftCardProduct::message($i['note'] ?? null),
+                // وإضافاتُه — يأذن بها ويسعّرها `SaleLines::pickAddons` من القاعدة
+                'addons' => self::addons($i['addons'] ?? null),
             ];
         }
 
@@ -922,6 +1021,38 @@ final class WebCheckout
         }
 
         return $items;
+    }
+
+    /**
+     * إضافاتُ بندٍ كما يقبلها `SaleLines::pickAddons` — معرّفٌ وكمّيّة، لا سعر.
+     *
+     * والمعرّفُ مرّتين يُجمع في سطرٍ واحد: حمولةٌ كُتبت بيدٍ ترسل «شوكولاتة ١»
+     * و«شوكولاتة ١» فتُحسب اثنتين كما أُرسلتا، ولا تُكتب لقطتان لإضافةٍ واحدة.
+     *
+     * والكمّيّةُ تقف عند حدّها كما تقف كمّيّةُ الصنف (`MAX_QTY`)، وما فوق
+     * عدد الإضافات المختلفة يُردّ ولا يُقصّ بصمت. وما ليس قائمةً فلا إضافاتَ فيه.
+     *
+     * @return list<array{addon_id: int, qty: int}>
+     */
+    private static function addons(mixed $raw): array
+    {
+        $qty = [];
+
+        foreach (is_array($raw) ? $raw : [] as $a) {
+            $id = is_array($a) ? (int) ($a['id'] ?? 0) : 0;
+            $n = is_array($a) ? (int) ($a['qty'] ?? 1) : 0;
+            if ($id > 0 && $n > 0) {
+                $qty[$id] = min(self::MAX_ADDON_QTY, ($qty[$id] ?? 0) + $n);
+            }
+        }
+
+        if (count($qty) > self::MAX_ADDONS) {
+            throw ValidationException::withMessages([
+                'items' => __('لا يتّسع الصنفُ الواحد لأكثر من :max إضافة.', ['max' => self::MAX_ADDONS]),
+            ]);
+        }
+
+        return array_map(fn ($id, $n) => ['addon_id' => $id, 'qty' => $n], array_keys($qty), $qty);
     }
 
     /**

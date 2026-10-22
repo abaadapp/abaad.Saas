@@ -183,7 +183,7 @@ window.RBUpsells = (function () {
      *   refused(message) إن رُدّت الإضافةُ كلُّها،
      *   format(amount) ← نصّ، mainAmount() ← سعرُ وحدة الصنف أو `null`،
      *   mainQty() ← كمّيّتُه، total — عنصرُ المجموع، max — حدُّ الكمّيّة،
-     *   wait — مدّةُ قفل الزرّ.
+     *   wait — مدّةُ قفل الزرّ، extra() ← ثمنُ إضافات الصنف نفسِه مرّةً (`ribbon-addons.js`).
      *
      * ويردّ `{ repaint }`: الصفحةُ تناديه حين تتبدّل كمّيّةُ الصنف أو مقاسُه.
      */
@@ -201,6 +201,8 @@ window.RBUpsells = (function () {
             var unit = opts.mainAmount ? opts.mainAmount() : null;
             var mainQty = opts.mainQty ? opts.mainQty() : 0;
             if (unit != null) sum += unit * mainQty; else known = false;
+            // وإضافاتُ الصنف نفسِه فوقه — مرّةً للبند كلِّه (`ribbon-addons.js`)
+            if (opts.extra) sum += +opts.extra() || 0;
 
             box.querySelectorAll('[data-rb-up]').forEach(function (card) {
                 var qty = qtyOf(card);

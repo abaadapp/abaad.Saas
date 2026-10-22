@@ -1070,7 +1070,14 @@ class Demo
             'label' => self::ln($a->name, $a->name_en),
             'price' => (float) $a->price,
             'icon' => $a->icon,
-            'active' => (bool) $a->active,
+            /*
+             * «تُعرض في الكاشير» — نشطةٌ ومفتوحةٌ لنقطة البيع (`Addon::sellsAtPos`).
+             *
+             * القائمةُ لشاشة الصندوق وحدَها، وكلُّ موضعٍ فيها يرشّح بهذا العَلَم
+             * (`shownAddons`، ونافذةُ الطلب المخصَّص). فإضافةٌ فُتحت للموقع وحده
+             * لا تُعرض على الكاشير ليضغطها ثمّ يردّها الخادم.
+             */
+            'active' => $a->sellsAtPos(),
         ])->all();
     }
 
@@ -1168,7 +1175,7 @@ class Demo
                  *
                  * والقاعدة واحدة للشاشة والخادم: ProductAddons::for.
                  */
-                'addon_ids' => ProductAddons::for($p, $allAddons, $addonMap)
+                'addon_ids' => ProductAddons::for($p, $allAddons, $addonMap, SaleLines::POS)
                     ->pluck('id')->map(fn ($i) => (int) $i)->all(),
                 // ذو الوصفة رصيدُه مكوّناتُه لا عمودُه — تقرؤه الشاشة كي لا
                 // تحذّر من نفادِ باقةٍ لا يُخصم رصيدها أصلًا

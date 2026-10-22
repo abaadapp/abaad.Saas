@@ -79,7 +79,7 @@ class Books
          *
          * فصار الصفرُ يمنع قيدَ الإيراد وحدَه — وتكلفةُ ما خرج تُكتب.
          */
-        if ($total <= 0 && $cost <= 0) {
+        if ($total <= 0 && $cost <= 0 && BoutiqueDues::owedFor($order) <= 0) {
             return;
         }
 
@@ -152,16 +152,29 @@ class Books
                 );
             }
 
-            // البضاعة تخرج من المخزون بتكلفتها لا بثمنها — وبلا هذا القيد
-            // ينتفخ المخزون في الميزانية بكلّ ما بيع منه
-            if ($cost > 0) {
+            /*
+             * البضاعة تخرج من المخزون بتكلفتها لا بثمنها — وبلا هذا القيد
+             * ينتفخ المخزون في الميزانية بكلّ ما بيع منه.
+             *
+             * ═══ وما للبوتيك منها لا يخرج من مخزون المتجر ═══
+             *
+             * صنفُ بوتيكٍ دخل الباقة أمانةٌ لم يشترها المتجر: تكلفتُه في
+             * اللقطة ثمنُه الذي يُستحقّ لصاحبه، ودائنُه «مستحقّات البوتيكات»
+             * لا «المخزون». والسدادُ يُدين ذاك الحساب — فلا مصروفَ ثانٍ.
+             */
+            $owed = BoutiqueDues::owedFor($order);
+            $shelf = round(max(0.0, $cost - $owed), 3);
+            $charged = round($shelf + $owed, 3);
+
+            if ($charged > 0) {
                 Ledger::post(
                     $order->business_id,
                     __('تكلفة بيع — فاتورة ').$order->number,
-                    [
-                        ['account' => 'cogs', 'debit' => $cost],
-                        ['account' => 'inventory', 'credit' => $cost],
-                    ],
+                    array_values(array_filter([
+                        ['account' => 'cogs', 'debit' => $charged],
+                        $shelf > 0 ? ['account' => 'inventory', 'credit' => $shelf] : null,
+                        $owed > 0 ? ['account' => 'boutique_payable', 'credit' => $owed] : null,
+                    ])),
                     $at,
                     self::SALE_COST,
                     $order->branch_id,

@@ -49,11 +49,15 @@ final class OrderTransition
      * @param  string|null  $from  تُملأ بالحال التي كان عليها الطلبُ حقًّا
      * @return string|null  null تعني أنّ النقل تمّ
      */
-    public static function apply(Order $order, string $to, ?string &$from = null): ?string
+    /**
+     * و`$boutiquePieces` حالُ كلّ قطعة بوتيك حين يُلغى الطلب — انظر `BoutiqueDues::cancel`.
+     * ومن لم يُرسلها (لوحةُ التجهيز، وحذفُ البيعة) فقطعُه «لم يُتحقَّق منها».
+     */
+    public static function apply(Order $order, string $to, ?string &$from = null, ?array $boutiquePieces = null): ?string
     {
         $from = null;
 
-        return DB::transaction(function () use ($order, $to, &$from) {
+        return DB::transaction(function () use ($order, $to, &$from, $boutiquePieces) {
             // الحال تُقرأ تحت قفل: ما قرأه المتصفّح قد تجاوزه غيرُه
             $fresh = Order::whereKey($order->id)->lockForUpdate()->first();
 
@@ -85,7 +89,7 @@ final class OrderTransition
                  * منها يصير خمسمئةً على موظّفٍ ضغط زرًّا مشروعًا.
                  */
                 try {
-                    OrderCorrection::cancel($fresh);
+                    OrderCorrection::cancel($fresh, null, $boutiquePieces);
                 } catch (\RuntimeException $e) {
                     return $e->getMessage();
                 }

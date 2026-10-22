@@ -45,6 +45,8 @@ export interface BusinessValues {
      * — ومنها حرّاسٌ قائمة — على ذكر مفتاحٍ لا شأنَ له به.
      */
     boutiques_enabled?: boolean;
+    /** مستحقّاتُ مكوّنات البوتيك — تحت «يُؤوي بوتيكات»، ومقفلةٌ لمن يحتسب الضريبة (يُحكم في الخادم) */
+    boutique_components_enabled?: boolean;
     /** الإهداءُ في المتجر الإلكترونيّ — مثلُ البوتيكات: الغائبُ مغلق */
     gift_orders_enabled?: boolean;
     order_notes_and_edits_enabled?: boolean;
@@ -471,6 +473,27 @@ export default function BusinessForm({
                             </span>
                         </span>
                     </label>
+                    {form.data.boutiques_enabled && (
+                        <label className="flex cursor-pointer items-start gap-2.5 sm:col-span-2" data-testid="boutique-components-switch">
+                            <input
+                                type="checkbox"
+                                checked={form.data.boutique_components_enabled ?? false}
+                                onChange={(e) => form.setData('boutique_components_enabled', e.target.checked)}
+                                className="mt-0.5 size-4 rounded border-[#d1d5db] accent-[#111]"
+                            />
+                            <span>
+                                <span className="block text-sm text-[#374151]">{t('مستحقّات البوتيك عن مكوّنات الباقات')}</span>
+                                <span className="block text-[12px] text-[#9ca3af]">
+                                    {t('صنفُ بوتيكٍ داخل باقةٍ أو إضافتِها يُستحقّ لصاحبه ثمنُه عند البيع. لا يُفتح لمتجرٍ يحتسب الضريبة.')}
+                                </span>
+                                {(form.errors as Record<string, string | undefined>).boutique_components_enabled && (
+                                    <span className="block text-[12px] text-[#b91c1c]">
+                                        {(form.errors as Record<string, string | undefined>).boutique_components_enabled}
+                                    </span>
+                                )}
+                            </span>
+                        </label>
+                    )}
 
                     {/*
                         والإهداءُ في المتجر الإلكترونيّ مفتاحٌ يُفتح لنشاطٍ بعينه —

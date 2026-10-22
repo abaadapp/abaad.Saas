@@ -52,6 +52,7 @@ import { useTranslate } from "@/lib/i18n";
 import { prepareWebsiteConfirmPrint, websiteConfirmPrintCallbacks } from '@/lib/website-confirm-print';
 import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
+import { CancelWithPieces, KeptPieces, type BoutiquePiece } from './BoutiquePieces';
 
 interface OrderDetail {
     id: string;
@@ -158,10 +159,12 @@ interface OrderDetail {
  * صلاحيةُ `order.edit` ويومُ البيع، يقيسهما الخادم قبل الرسم وعند الكتابة.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch, lineEdit, deliveryNote } =
+    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch, lineEdit, deliveryNote, boutiquePieces = [] } =
         usePage<
         PageProps<{
             order: OrderDetail;
+            /** قطعُ البوتيك في الطلب — يُسأل عن كلٍّ منها عند الإلغاء (`BoutiqueDues::piecesOf`) */
+            boutiquePieces?: BoutiquePiece[];
             /** إضافةُ صنفٍ واستبدالُه وملاحظتُه — `null` لنشاطٍ لم تُفتح له (`NotesAndEdits::screen`) */
             lineEdit?: LineEdit | null;
             /** أيُصحَّح متنُ الفاتورة الآن — وإن لم يُصحَّح فلمَ. يُقاس في الخادم */
@@ -231,6 +234,9 @@ export default function OrderShow() {
      * التسليم وسجلّ التصحيحات — لا حاجة لتبديل فرعٍ لقراءة ورقة.
      */
     const actionable = !otherBranch;
+    // إلغاءٌ فيه قطعُ بوتيكٍ حيّة يسأل عن كلّ قطعة قبل أن يُرسَل
+    const [cancelling, setCancelling] = useState(false);
+    const livePieces = boutiquePieces.filter((p) => p.state === null);
 
 
     /*
@@ -991,6 +997,10 @@ export default function OrderShow() {
                                             variant="outline"
                                             size="sm"
                                             onClick={() => {
+                                                if (s === 'ملغي' && livePieces.length > 0) {
+                                                    setCancelling(true);
+                                                    return;
+                                                }
                                                 /*
                                                     وطلبُ الموقع يُطبع عند تأكيده إن ضُبطت طابعةُ هذا
                                                     الصندوق — والنافذةُ تُفتح هنا في الضغطة، وتُوجَّه
@@ -1021,6 +1031,18 @@ export default function OrderShow() {
                                 </div>
                             )}
                         </Card>
+
+                        <CancelWithPieces
+                            open={cancelling}
+                            pieces={livePieces}
+                            onClose={() => setCancelling(false)}
+                            onConfirm={(pieces) => router.post(
+                                route('admin.orders.status', order.id),
+                                { status: 'ملغي', pieces },
+                                { preserveScroll: true, onFinish: () => setCancelling(false) },
+                            )}
+                        />
+                        {order.status === 'ملغي' && <KeptPieces orderNumber={String(order.id)} pieces={boutiquePieces} />}
 
                         {order.notes && (
                             <Card className="p-6">

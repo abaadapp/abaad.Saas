@@ -166,6 +166,8 @@ class PageController extends Controller
              */
             'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
             'boutiqueId' => $model?->boutique_id ? (int) $model->boutique_id : null,
+            // منتجاتُ البوتيك في هذه الباقة — `null` لمن لم يُفتح له السجلّ، فلا يُرسم القسم
+            'boutiqueParts' => $model ? BoutiquePartsController::payload($model) : null,
             'addonsDisplay' => $this->addonsDisplay(),
         ]);
     }
@@ -203,6 +205,18 @@ class PageController extends Controller
     }
 
     /* ------------------------------ الطلبات ------------------------------ */
+
+    /** قطعُ البوتيك الحيّة في طلب — فارغةٌ لمن لم يُفتح له سجلُّ المكوّنات */
+    private function boutiquePieces(string $number): array
+    {
+        $bid = (int) (auth()->user()->business_id ?? Demo::bid());
+        if (! \App\Support\BoutiqueDues::active($bid)) {
+            return [];
+        }
+        $order = \App\Models\Order::where('business_id', $bid)->where('number', $number)->first();
+
+        return $order ? \App\Support\BoutiqueDues::piecesOf($order) : [];
+    }
 
     public function ordersShow(string $number): Response
     {
@@ -244,6 +258,8 @@ class PageController extends Controller
              * وفرعُ الطلب مربوطٌ بملفّه. وزرٌّ يُعرض ثمّ يردّ «اربط فرعك
              * أوّلًا» بابٌ معروضٌ لا يُفتح.
              */
+            // قطعُ البوتيك في الطلب — ليُسأل عن كلٍّ منها عند الإلغاء وبعده. انظر `BoutiqueDues::piecesOf`
+            'boutiquePieces' => $this->boutiquePieces($number),
             'googleReview' => $this->googleReviewState($number),
             /*
              * ورأيُ الزبون لموقع المتجر — بابٌ آخر غير Google.

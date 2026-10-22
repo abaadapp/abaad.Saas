@@ -9,6 +9,7 @@ use App\Models\Business;
 use App\Models\Expense;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Product;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -35,6 +36,47 @@ final class Boutiques
      * فلقطةُ التكلفة على بند البوتيك صفرٌ مهما كُتب في بطاقة الصنف.
      */
     public const CONSIGNED_COST = 0.0;
+
+    /**
+     * ═══ وبضاعةُ البوتيك لا تُربط بإضافةٍ ولا بوصفةٍ جديدة — بعد ═══
+     *
+     * الإضافةُ المرتبطةُ بصنفٍ تُحسب تكلفتُها من بطاقته على المحلّ
+     * (`SaleLines::pickAddons`)، ومكوّنُ الوصفة كذلك (`Recipe::unitCost`).
+     * وكلاهما لا يقرأ صاحبَ الصنف: فتُكتب قطعةُ البوتيك تكلفةً على المحلّ وهو
+     * لم يشترها، ولا يدخل كشفَ البوتيك عنها شيء، ولا يُستحقّ له قرش. ومن ربطها
+     * يظنّ أنّ البوتيك سيُحاسَب عنها.
+     *
+     * فيُردّ الربطُ **الجديد** ما لم يُفتح للمتجر سجلُّ مستحقّات المكوّنات. وما رُبط قبل
+     * اليوم (`$kept`) يبقى كما هو: إضافةٌ تُحفظ بربطها القائم، ومكوّنٌ تُزاد
+     * كمّيّتُه، لا يُردّان — ولا تُمسّ فاتورةٌ مضت.
+     *
+     * ═══ ومتجرٌ فُتح له السجلّ ═══
+     *
+     * يُربط فيه صنفُ البوتيك ويُستحقّ له ثمنُه عند البيع (`BoutiqueDues`). إلّا
+     * ما لا يُحسب مستحقُّه بدقّة: صنفٌ له مقاسات، أو بلا سعر — يُردّ بسببه.
+     */
+    public static function refuseNewLink(int $businessId, ?int $kept = null): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($businessId, $kept): void {
+            if ($value === null || $value === '' || ($kept !== null && (int) $value === $kept)) {
+                return;
+            }
+
+            $owned = Product::where('business_id', $businessId)->whereKey((int) $value)
+                ->whereNotNull('boutique_id')->withCount('variants')->first();
+            if (! $owned) {
+                return;
+            }
+
+            if (! BoutiqueDues::active($businessId) || Vat::enabled($businessId)) {
+                $fail(__('هذا الصنف ملكُ بوتيك — ربطُه هنا لا يُنشئ للبوتيك مستحقًّا بعد. اختر صنفًا يملكه المتجر.'));
+            } elseif ($owned->variants_count > 0) {
+                $fail(__('«:name» له مقاسات — لا يدخل باقةً ولا إضافةً حتى يُحفظ سعرُ مقاسه.', ['name' => $owned->name]));
+            } elseif ((float) $owned->price <= 0) {
+                $fail(__('«:name» بلا سعر — لا يُعرف مستحقُّه.', ['name' => $owned->name]));
+            }
+        };
+    }
 
     /* ═══════════ البابُ مفتوحٌ لمن فُتح له ═══════════ */
 
@@ -437,6 +479,21 @@ final class Boutiques
         $lines = array_values($lines);
         usort($lines, fn ($a, $b) => $b['gross'] <=> $a['gross']);
 
+        /*
+         * ═══ ومستحقّاتُ المكوّنات في الكشف نفسِه — بطريقتها ═══
+         *
+         * المنفردُ أعلاه إجماليٌّ وعمولةٌ وصافٍ كما كان. والمكوّناتُ ثمنُ قطعٍ
+         * دخلت باقاتٍ، لا عمولةَ عليها، تُجمع من دفترها — انظر
+         * `BoutiqueDues::statement`. والمطلوبُ سدادُه مجموعُ الصافيين.
+         */
+        $components = BoutiqueDues::statement($businessId, $boutiqueId, $period);
+        if ($components['count'] > 0) {
+            $starts = array_filter([$rows->isEmpty() ? null : $from, Carbon::parse($components['from_at'])]);
+            $ends = array_filter([$rows->isEmpty() ? null : $to, Carbon::parse($components['to_at'])]);
+            $from = min($starts);
+            $to = max($ends);
+        }
+
         return [
             'period' => $period,
             'from' => $from->toDateString(),
@@ -451,6 +508,8 @@ final class Boutiques
             'commission' => round($commission, 3),
             'net' => round($gross - $commission, 3),
             'lines_count' => count($lines),
+            'components' => $components,
+            'payable' => round($gross - $commission + $components['net'], 3),
         ];
     }
 
@@ -479,7 +538,7 @@ final class Boutiques
          */
         $statement = self::statement((int) $business->id, (int) $boutique->id, $period);
 
-        if ($statement['lines_count'] === 0) {
+        if ($statement['lines_count'] === 0 && $statement['components']['count'] === 0) {
             throw new SettlementRefused(
                 BoutiqueSettlement::where('business_id', $business->id)
                     ->where('boutique_id', $boutique->id)->where('period', $period)->exists()
@@ -520,7 +579,11 @@ final class Boutiques
              * التي اختارها صاحبُ المحلّ)، فما يخرج الآن هو حصّةُ البوتيك
              * وحدها. وربحُ المحلّ ما بينهما — وهو العمولة.
              */
-            $expense = Expense::create([
+            // وجزءُ المكوّنات يُعاد حسابُه هنا ويُحجز بما حُسب — لا بما قُرئ قبل القفل
+            $components = BoutiqueDues::statement((int) $business->id, (int) $boutique->id, $period);
+
+            // ولا مصروفَ لورقةٍ بلا منفرد: المكوّناتُ تُسدَّد من 2160 لا من مصروف
+            $expense = $statement['lines_count'] === 0 ? null : Expense::create([
                 'business_id' => $business->id,
                 'type' => self::EXPENSE_TYPE,
                 /*
@@ -559,7 +622,11 @@ final class Boutiques
                 'commission' => $statement['commission'],
                 'net' => $statement['net'],
                 'lines_count' => $statement['lines_count'],
-                'expense_id' => $expense->id,
+                'kind' => BoutiqueSettlement::SETTLEMENT,
+                'components_due' => $components['due'],
+                'components_credit' => $components['credit'],
+                'components_net' => $components['net'],
+                'expense_id' => $expense?->id,
                 'issued_at' => now(),
             ]);
 
@@ -570,6 +637,8 @@ final class Boutiques
             if ($claimed !== count($ids)) {
                 throw new SettlementRefused(__('صدرت ورقةٌ لهذه البيعات قبل لحظة — افتح الشاشة من جديد.'));
             }
+
+            BoutiqueDues::claim((int) $settlement->id, $components);
 
             Activity::log('created', 'تسوية بوتيك '.$boutique->name.' عن '.$period.' بمبلغ '.$statement['net'], [
                 'business_id' => $business->id, 'subject_id' => $settlement->id, 'subject_type' => 'boutique_settlement',

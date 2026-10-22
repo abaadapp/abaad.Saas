@@ -23,6 +23,7 @@ interface EditableBusiness {
     storefront_theme: string | null;
     /** يُؤوي بوتيكات — منطقٌ يُرسله `PageController::businessesEdit` */
     boutiques_enabled: boolean;
+    boutique_components_enabled?: boolean;
     /** الإهداءُ في المتجر الإلكترونيّ — يفتحه مديرُ المنصّة وحده */
     gift_orders_enabled: boolean;
     order_notes_and_edits_enabled: boolean;
@@ -72,6 +73,7 @@ export default function BusinessEdit() {
                         الحفظُ سليمًا.
                     */
                     boutiques_enabled: business.boutiques_enabled ?? false,
+                    boutique_components_enabled: business.boutique_components_enabled ?? false,
                     gift_orders_enabled: business.gift_orders_enabled ?? false,
                     order_notes_and_edits_enabled: business.order_notes_and_edits_enabled ?? false,
                     thermal_delivery_note_enabled: business.thermal_delivery_note_enabled ?? false,

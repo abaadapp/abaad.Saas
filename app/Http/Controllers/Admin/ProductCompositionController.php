@@ -7,6 +7,7 @@ use App\Models\Addon;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\RecipeItem;
+use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Recipe;
 use Illuminate\Http\Request;
@@ -112,7 +113,11 @@ class ProductCompositionController extends Controller
         $data = $request->validate([
             // المكوّن من هذا النشاط أو لا يُقبل: القاعدة في القاعدة نفسها لا
             // في الشاشة، فطلبٌ مصنوع بيدٍ لا يمرّ
-            'component_product_id' => ['required', Rule::exists('products', 'id')->where('business_id', $bid)->whereNull('deleted_at')],
+            'component_product_id' => ['required', Rule::exists('products', 'id')->where('business_id', $bid)->whereNull('deleted_at'),
+                // وصنفُ البوتيك لا يُضاف مكوّنًا جديدًا بعد — ومكوّنٌ قائمٌ في الوصفة تُزاد كمّيّتُه (`Boutiques::refuseNewLink`)
+                Boutiques::refuseNewLink($bid, RecipeItem::where('business_id', $bid)->where('product_id', $product->id)
+                    ->where('component_product_id', (int) $request->input('component_product_id'))->exists()
+                    ? (int) $request->input('component_product_id') : null)],
             'variant_id' => ['nullable', Rule::exists('product_variants', 'id')->where('business_id', $bid)->where('product_id', $product->id)->whereNull('deleted_at')],
             'quantity' => ['required', 'numeric', 'gt:0'],
             'wastage_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -373,13 +378,18 @@ class ProductCompositionController extends Controller
      */
     private static function stockItemOptions(int $businessId): array
     {
+        // ومتجرٌ فُتح له سجلُّ مستحقّات المكوّنات يربط صنفَ البوتيك كغيره — انظر `Boutiques::refuseNewLink`
+        $linkable = \App\Support\BoutiqueDues::active($businessId) && ! \App\Support\Vat::enabled($businessId);
+
         return Product::where('business_id', $businessId)
             ->whereNotIn('id', RecipeItem::where('business_id', $businessId)->distinct()->pluck('product_id'))
-            ->orderBy('name')->get(['id', 'name', 'sku', 'quantity'])
+            ->orderBy('name')->get(['id', 'name', 'sku', 'quantity', 'boutique_id'])
             ->map(fn ($p) => [
                 'value' => $p->id,
                 'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
                 'quantity' => (int) $p->quantity,
+                // ملكُ بوتيكٍ لا يُربط بعد — تعرضه الشاشةُ ولا تقبل ربطَه الجديد (`Boutiques::refuseNewLink`)
+                'boutique' => $p->boutique_id !== null && ! $linkable,
             ])->all();
     }
 
@@ -413,8 +423,10 @@ class ProductCompositionController extends Controller
             'composition.variants.*.sku' => ['nullable', 'string', 'max:100'],
             'composition.variants.*.price' => ['required', 'numeric', 'min:0'],
             'composition.recipe' => ['nullable', 'array', 'max:200'],
+            // والمسوّدةُ منتجٌ جديد: كلُّ مكوّنٍ فيها ربطٌ جديد (`Boutiques::refuseNewLink`)
             'composition.recipe.*.component_product_id' => ['required',
-                Rule::exists('products', 'id')->where('business_id', $businessId)->whereNull('deleted_at')],
+                Rule::exists('products', 'id')->where('business_id', $businessId)->whereNull('deleted_at'),
+                Boutiques::refuseNewLink($businessId)],
             'composition.recipe.*.quantity' => ['required', 'numeric', 'gt:0'],
             'composition.recipe.*.wastage_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'composition.recipe.*.variant_index' => ['nullable', 'integer', 'min:0'],
@@ -443,7 +455,8 @@ class ProductCompositionController extends Controller
             // «زيادة ثلاث وردات» وهو ينشئ الباقة لا يُطالَب بحفظها ثم
             // العودة إليها ليقول ممّ تُخصم
             'composition.new_addons.*.inventory_product_id' => ['nullable',
-                Rule::exists('products', 'id')->where('business_id', $businessId)->whereNull('deleted_at')],
+                Rule::exists('products', 'id')->where('business_id', $businessId)->whereNull('deleted_at'),
+                Boutiques::refuseNewLink($businessId)],
             'composition.new_addons.*.inventory_quantity' => ['nullable', 'numeric', 'gt:0', 'max:100000'],
         ];
     }

@@ -531,6 +531,8 @@ return [
         'store_free_delivery_over' => 'التوصيل مجانًا فوق',
         'store_delivery_areas' => 'مناطق التوصيل',
         'store_delivery_slots' => 'مواعيد التوصيل',
+        'store_delivery_unavailable' => 'رسالة عدم توفر المواعيد',
+        'store_delivery_unavailable_en' => 'رسالة عدم توفر المواعيد بالإنجليزية',
         'store_delivery_note' => 'ملاحظة التوصيل',
         'store_delivery_note_en' => 'ملاحظة التوصيل بالإنجليزية',
         'store_about_en' => 'النبذة بالإنجليزية',

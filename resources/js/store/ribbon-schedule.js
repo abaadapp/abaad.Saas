@@ -14,6 +14,8 @@
  *   - تبديلُ الطريقة (توصيل / استلام) يبدّل القائمة — والاستلامُ قد يكون له جدولُه.
  *   - اليومُ يفتح فتراتِه وحدَها، وفترةٌ واحدةٌ في يومٍ تُختار وحدَها.
  *   - والموعدُ المختارُ يُكتب في ملخّص الطلب.
+ *   - طريقةٌ بلا موعدٍ واحد في نطاق الحجز يُقال لها ذلك: نصُّ النظام، وللتوصيل
+ *     ما كتبه صاحبُ المتجر إن كتب (`data-delivery`) — والاستلامُ يبقى يُختار.
  *   - فترةٌ قال الخادمُ إنّها لم تعد متاحة تُطرح (`drop`) من يومها وطريقتها
  *     وحدهما، فلا تُختار ثانية — وفترةُ الأيّام الأخرى بالمعرّف نفسِه باقية.
  */
@@ -33,6 +35,7 @@ window.RBSchedule = (function () {
         var when = form.querySelector('[data-rb-when]');
         var whenRow = form.querySelector('[data-rb-when-row]');
         var fulfil = null;
+        var base = none ? none.textContent : '';
 
         function list() {
             return (days && days[fulfil]) || [];
@@ -71,7 +74,11 @@ window.RBSchedule = (function () {
             daySel.appendChild(option('', T.pickDay));
             list().forEach(function (d) { daySel.appendChild(option(d.date, d.label)); });
             daySel.value = list().some(function (d) { return d.date === keep; }) ? keep : '';
-            if (none) none.hidden = list().length > 0;
+            if (none) {
+                var says = fulfil === 'delivery' ? none.getAttribute('data-delivery') : null;
+                none.textContent = says || base;
+                none.hidden = list().length > 0;
+            }
             paintSlots();
         }
 

@@ -767,6 +767,8 @@ class RibbonController extends Controller
             'schedule' => DeliverySchedule::on($bid)
                 ? DeliverySchedule::forPage($bid, CheckoutFields::fulfilments($bid), $lang)
                 : null,
+            // وما يقوله صاحبُ المتجر حين لا موعدَ للتوصيل — بلغة الصفحة، أو `null` لنصّ النظام
+            'noDeliverySays' => DeliverySchedule::on($bid) ? DeliverySchedule::unavailableSays($bid, $lang) : null,
             /*
              * والشروطُ بلغة الصفحة وحدها، ورقمُ نسختها — أو `null` حيث لا تُشترط.
              * انظر `StoreTerms`.

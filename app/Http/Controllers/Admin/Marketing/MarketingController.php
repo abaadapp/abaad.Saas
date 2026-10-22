@@ -259,6 +259,9 @@ class MarketingController extends Controller
             // وجدولُ أيّام التسليم وفتراتِه — يُفحص بعد القائمة (`DeliverySchedule::validated`)
             DeliverySchedule::ON => ['sometimes', 'boolean'],
             DeliverySchedule::KEY => ['nullable', 'string', 'max:20000'],
+            // وما يقرؤه الزبونُ حين لا موعدَ توصيل — يكتبه صاحبُ المتجر بلغتيه
+            DeliverySchedule::UNAVAILABLE => ['nullable', 'string', 'max:'.DeliverySchedule::UNAVAILABLE_MAX],
+            DeliverySchedule::UNAVAILABLE_EN => ['nullable', 'string', 'max:'.DeliverySchedule::UNAVAILABLE_MAX],
             'store_whatsapp' => ['nullable', 'string', 'max:30'],
             /*
              * وحسابُ إنستغرام — كان حقلُه في المحرّر بلا قاعدةٍ هنا، فيُسقطه
@@ -864,6 +867,13 @@ class MarketingController extends Controller
         /* ═══ جدولُ أيّام التسليم وفتراتِه ═══ */
         if ($request->exists(DeliverySchedule::KEY)) {
             $data[DeliverySchedule::KEY] = DeliverySchedule::validated($request->input(DeliverySchedule::KEY));
+        }
+
+        // ورسالةُ «لا مواعيد للتوصيل» بأسطرها كما كُتبت — وكلُّ لغةٍ وحدها، وفارغُها نصُّ النظام
+        foreach ([DeliverySchedule::UNAVAILABLE, DeliverySchedule::UNAVAILABLE_EN] as $key) {
+            if ($request->exists($key)) {
+                $data[$key] = StoreTerms::clean($request->input($key));
+            }
         }
 
         if ($on(DeliverySchedule::ON)) {

@@ -5,7 +5,7 @@ import Checkout from '@/Pages/Admin/Website/theme/sections/Checkout';
 import Fields from '@/Pages/Admin/Website/theme/sections/Fields';
 import Orders, { type OrderDesk } from '@/Pages/Admin/Website/theme/sections/Orders';
 import Terms from '@/Pages/Admin/Website/theme/sections/Terms';
-import { fillMessage, overlapping, readDeliveryPlan, readOrderSchedule, writeOrderSchedule } from '@/Pages/Admin/Website/theme/sections/schedule';
+import { cutoffAfterStart, fillMessage, overlapping, readDeliveryPlan, readOrderSchedule, writeOrderSchedule } from '@/Pages/Admin/Website/theme/sections/schedule';
 import { pageProps } from './setup';
 import { themeForm } from './theme-form';
 
@@ -20,6 +20,8 @@ import { themeForm } from './theme-form';
  *   - الحالةُ الآن وسببُها تُقال، ومحرّرُ الأيّام لا يظهر إلّا لمن فتح الجدولة.
  *   - لا نصَّ شروطٍ مقترح: الخانتان فارغتان حتّى يكتب.
  *   - جدولُ التسليم يُخفي السطورَ الحرّة، ويُقفل حقلَي الموعد ووقته.
+ *   - ولكلّ فترةٍ آخرُ حجزٍ في يومها أو اليوم السابق، يُكتب في مفتاح الجدول
+ *     ويُمحى بمحو ساعته؛ ورسالتا «لا مواعيد للتوصيل» بلغتيهما.
  */
 
 const reset = () => {
@@ -179,6 +181,69 @@ describe('مواعيدُ التسليم المنظّمة', () => {
 
         expect(screen.getByTestId('delivery-week-6-overlap').textContent).toContain('متداخلتان');
         expect(screen.queryByTestId('delivery-week-0-overlap')).toBeNull();
+    });
+
+    it('تكتب آخرَ حجزٍ لكلّ فترةٍ ويومَه، وتمحوه بمحو ساعته', () => {
+        const plan = { delivery: Array.from({ length: 7 }, () => []) as unknown[][], pickup: null, closed: [], lead: 0 };
+        plan.delivery[6] = [{ id: 'am01', from: '09:00', to: '12:00', ar: 'الصباح', en: 'Morning' }];
+        const form = themeForm({ store_delivery_schedule_on: true, store_delivery_schedule: JSON.stringify(plan) });
+        const calls = (form.setData as unknown as { mock: { calls: [string, string][] } }).mock.calls;
+        const last = () => readDeliveryPlan(calls.at(-1)![1]).delivery[6][0].cutoff;
+        const { rerender } = render(<Checkout form={form} gatewayReady />);
+
+        const box = screen.getByTestId('delivery-week-6-0-cutoff');
+        fireEvent.change(box.querySelector('input')!, { target: { value: '08:00' } });
+        expect(last()).toEqual({ time: '08:00', day: 'same' });
+
+        // واليومُ السابق — يُقرأ ممّا كُتب
+        plan.delivery[6] = [{ id: 'am01', from: '09:00', to: '12:00', ar: 'الصباح', en: 'Morning', cutoff: { time: '21:00', day: 'same' } } as never];
+        rerender(<Checkout form={{ ...form, data: { ...form.data, store_delivery_schedule: JSON.stringify(plan) } }} gatewayReady />);
+        fireEvent.click(screen.getByText('اليوم السابق'));
+        expect(last()).toEqual({ time: '21:00', day: 'before' });
+
+        fireEvent.change(screen.getByTestId('delivery-week-6-0-cutoff').querySelector('input')!, { target: { value: '' } });
+        expect(last()).toBeNull();
+        // ويُكتب `null` نفسُه لا حدًّا بساعةٍ فارغة
+        expect(JSON.parse(calls.at(-1)![1]).delivery[6][0].cutoff).toBeNull();
+        // ومعرّفُ الفترة كما هو
+        expect(readDeliveryPlan(calls.at(-1)![1]).delivery[6][0].id).toBe('am01');
+    });
+
+    it('تقول إنّ آخرَ حجزٍ بعد بداية فترته لا يصحّ — في يومها لا في اليوم السابق', () => {
+        expect(cutoffAfterStart({ from: '09:00', cutoff: { time: '09:30', day: 'same' } })).toBe(true);
+        expect(cutoffAfterStart({ from: '09:00', cutoff: { time: '09:00', day: 'same' } })).toBe(false);
+        expect(cutoffAfterStart({ from: '09:00', cutoff: { time: '22:00', day: 'before' } })).toBe(false);
+        expect(cutoffAfterStart({ from: '09:00', cutoff: null })).toBe(false);
+
+        const plan = { delivery: Array.from({ length: 7 }, () => []) as unknown[][], pickup: null, closed: [], lead: 0 };
+        plan.delivery[6] = [{ id: 'am01', from: '09:00', to: '12:00', ar: '', en: '', cutoff: { time: '10:00', day: 'same' } }];
+        render(<Checkout form={themeForm({ store_delivery_schedule_on: true, store_delivery_schedule: JSON.stringify(plan) })} gatewayReady />);
+        expect(screen.getByTestId('delivery-week-6-0-cutoff').textContent).toContain('بعد بداية الفترة');
+    });
+
+    it('يقرأ جدولًا حُفظ قبل آخر الحجز بلا حدٍّ لفتراته', () => {
+        const old = '{"delivery":[[],[],[],[],[],[],[{"id":"am01","from":"09:00","to":"12:00","ar":"","en":""}]],"pickup":null,"closed":[],"lead":0}';
+        expect(readDeliveryPlan(old).delivery[6][0].cutoff).toBeNull();
+        // وحدٌّ بلا ساعة لا حدّ — كما يقرؤه الخادم
+        const blank = old.replace('"en":""}', '"en":"","cutoff":{"time":"","day":"same"}}');
+        expect(readDeliveryPlan(blank).delivery[6][0].cutoff).toBeNull();
+    });
+
+    it('تكتب رسالتَي «لا مواعيد للتوصيل» بلغتيهما — لمن فتح الجدول ويوصّل', () => {
+        const { rerender } = render(<Checkout form={themeForm({ store_delivery_schedule_on: false })} gatewayReady />);
+        expect(screen.queryByTestId('delivery-unavailable')).toBeNull();
+
+        rerender(<Checkout form={themeForm({ store_delivery_schedule_on: true, store_fulfil: 'pickup' })} gatewayReady />);
+        expect(screen.queryByTestId('delivery-unavailable')).toBeNull();
+
+        const form = themeForm({ store_delivery_schedule_on: true, store_fulfil: 'delivery,pickup' });
+        rerender(<Checkout form={form} gatewayReady />);
+        fireEvent.change(screen.getByLabelText('رسالة عدم توفر المواعيد — العربية'), { target: { value: 'لا توصيل الآن.' } });
+        fireEvent.change(screen.getByLabelText('Delivery Unavailable Message — English'), { target: { value: 'No delivery now.' } });
+
+        const calls = (form.setData as unknown as { mock: { calls: [string, string][] } }).mock.calls;
+        expect(calls).toContainEqual(['store_delivery_unavailable', 'لا توصيل الآن.']);
+        expect(calls).toContainEqual(['store_delivery_unavailable_en', 'No delivery now.']);
     });
 
     it('يُقفل حقلَي الموعد ووقته ما دام الجدولُ يحكمهما', () => {

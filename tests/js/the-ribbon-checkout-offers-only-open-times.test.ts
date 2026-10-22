@@ -9,7 +9,8 @@ import { resolve } from 'node:path';
  *   - القائمةُ أيّامُ الطريقة المختارة وحدَها، وتبديلُ الطريقة يبدّلها.
  *   - اليومُ يفتح فتراتِه وحدَها، وفترةٌ واحدةٌ في يومٍ تُختار وحدَها.
  *   - ما لم يعد في القائمة لا يبقى مختارًا، ولا يُرسَل.
- *   - الموعدُ يُكتب في الملخّص، وطريقةٌ بلا أيّامٍ يُقال لها ذلك.
+ *   - الموعدُ يُكتب في الملخّص، وطريقةٌ بلا أيّامٍ يُقال لها ذلك — وللتوصيل
+ *     بكلمات صاحب المتجر إن كتبها، والاستلامُ يبقى يُختار.
  *   - فترةٌ ردّها الخادمُ تُطرح من يومها وطريقتها وحدهما، ويومُها إن خلا —
  *     والمعرّفُ نفسُه في يومٍ آخر أو طريقةٍ أخرى باقٍ.
  *
@@ -51,12 +52,12 @@ function days(): Record<string, Day[]> {
     };
 }
 
-function page(data = days()) {
+function page(data = days(), delivery = '') {
     document.body.innerHTML = `
         <form>
             <select name="date" data-rb-day></select>
             <select name="slot" data-rb-slot></select>
-            <p data-rb-no-days hidden></p>
+            <p data-rb-no-days hidden ${delivery ? `data-delivery="${delivery}"` : ''}>لا مواعيد متاحة الآن لهذه الطريقة — تواصل معنا.</p>
             <div data-rb-when-row style="display:none"><span data-rb-when></span></div>
         </form>`;
 
@@ -119,6 +120,31 @@ describe('يومُ التسليم وفترتُه في إتمام RIBBON', () => 
 
         expect(form.querySelector('[data-rb-when]')!.textContent).toBe('السبت 13 فبراير · الصباح (9:00 ص – 12:00 م)');
         expect(form.querySelector<HTMLElement>('[data-rb-when-row]')!.style.display).toBe('flex');
+    });
+
+    it('يقول للتوصيل بلا مواعيد كلماتِ صاحب المتجر — والاستلامُ يبقى يُختار', () => {
+        const { form, api, day, values } = page({ delivery: [], pickup: days().pickup }, 'لا توصيل هذا الأسبوع — الاستلام متاح.');
+        const none = form.querySelector<HTMLElement>('[data-rb-no-days]')!;
+
+        api.fulfil('delivery');
+        expect(none.hidden).toBe(false);
+        expect(none.textContent).toBe('لا توصيل هذا الأسبوع — الاستلام متاح.');
+
+        api.fulfil('pickup');
+        expect(none.hidden).toBe(true);
+        expect(values(day)).toEqual(['2027-02-12']);
+    });
+
+    it('ولا يقول كلماتِ التوصيل لاستلامٍ بلا مواعيد — بل نصَّ النظام', () => {
+        const { form, api } = page({ delivery: [], pickup: [] }, 'لا توصيل هذا الأسبوع.');
+        const none = form.querySelector<HTMLElement>('[data-rb-no-days]')!;
+
+        api.fulfil('pickup');
+        expect(none.hidden).toBe(false);
+        expect(none.textContent).toBe('لا مواعيد متاحة الآن لهذه الطريقة — تواصل معنا.');
+
+        api.fulfil('delivery');
+        expect(none.textContent).toBe('لا توصيل هذا الأسبوع.');
     });
 
     it('يقول لطريقةٍ بلا أيّامٍ إنّها بلا مواعيد', () => {

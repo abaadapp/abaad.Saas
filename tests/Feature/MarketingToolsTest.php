@@ -105,6 +105,8 @@ class MarketingToolsTest extends TestCase
             'store_delivery_slots',
             // وجدولُ أيّام التسليم وفتراتِه — يقرؤه إتمامُ الطلب (`Store\DeliverySchedule`)
             'store_delivery_schedule_on', 'store_delivery_schedule',
+            // وما يقرؤه الزبونُ حين لا موعدَ للتوصيل — يقرؤه إتمامُ الطلب (`DeliverySchedule::unavailableSays`)
+            'store_delivery_unavailable', 'store_delivery_unavailable_en',
             'store_hours', 'store_hours_en', 'store_delivery_note',
             // وملاحظةُ التوصيل بالإنجليزيّة — تقرؤها صفحةُ المنتج الإنجليزيّة (`RibbonController::context`)
             'store_delivery_note_en',

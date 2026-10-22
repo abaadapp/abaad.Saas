@@ -242,10 +242,14 @@ class AnInvoiceCorrectionSellsAtTheTillOnlyWhatTheTillSellsTest extends TestCase
         $this->assertContains($this->rose->id, $ids(SalesChannel::POS));
         $this->assertContains($this->online->id, $ids(SalesChannel::WEBSITE));
 
-        $this->actingAs($this->owner)->get(route('admin.orders.show', $order->number))
-            ->assertInertia(fn (AssertableInertia $page) => $page
-                ->where('lineEdit.lines', true)
-                ->where('lineEdit.catalog', fn ($catalog) => ! collect($catalog)->pluck('id')->contains($this->online->id)
-                    && collect($catalog)->pluck('id')->contains($this->rose->id)));
+        $tillOnly = fn (AssertableInertia $page) => $page
+            ->where('lineEdit.lines', true)
+            ->where('lineEdit.catalog', fn ($catalog) => ! collect($catalog)->pluck('id')->contains($this->online->id)
+                && collect($catalog)->pluck('id')->contains($this->rose->id));
+
+        // شاشةُ المبيعات وشاشةُ الصندوق — بابان للتصحيح نفسِه
+        $this->actingAs($this->owner)->get(route('admin.orders.show', $order->number))->assertInertia($tillOnly);
+        $this->actingAs($this->owner)->withSession(['current_branch' => $this->branch->id])
+            ->get(route('pos.order-details', $order->number))->assertInertia($tillOnly);
     }
 }

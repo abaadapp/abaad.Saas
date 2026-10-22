@@ -487,7 +487,7 @@ final class WebCheckout
             StoreTerms::check($bid, $payload, $lang);
         }
         $terms = StoreTerms::columns($bid, $paid ? ($payload[StoreTerms::STAMP] ?? null) : StoreTerms::stamp($bid, $lang));
-        $slot = $settling !== null
+        $slot = $paid
             ? (DeliverySchedule::fromSnapshot($payload[self::SLOT] ?? null) ?? self::chosenSlot($bid, $form, settling: true))
             : self::chosenSlot($bid, $form);
 

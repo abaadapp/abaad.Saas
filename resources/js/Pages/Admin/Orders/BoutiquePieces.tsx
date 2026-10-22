@@ -53,6 +53,7 @@ export function CancelWithPieces({ open, pieces, onClose, onConfirm }: {
                 <DialogHeader>
                     <DialogTitle>{t('إلغاء الطلب — قطع البوتيك')}</DialogTitle>
                 </DialogHeader>
+                <div className="px-5 pb-5">
                 <p className="text-[13px] text-[#6b7280]">
                     {t('ما عاد إلى الرفّ يُعكس مستحقُّه. وما لم يعد أو لم يُتحقَّق منه يبقى للبوتيك وخسارتُه على المتجر.')}
                 </p>
@@ -82,6 +83,7 @@ export function CancelWithPieces({ open, pieces, onClose, onConfirm }: {
                 <div className="mt-4 flex justify-end gap-2">
                     <Button variant="ghost" onClick={onClose}>{t('رجوع')}</Button>
                     <Button variant="danger" onClick={() => onConfirm(answer)} data-testid="cancel-confirm">{t('ألغِ الطلب')}</Button>
+                </div>
                 </div>
             </DialogContent>
         </Dialog>

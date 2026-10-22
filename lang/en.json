@@ -8390,5 +8390,9 @@
     "قطعة بوتيك لم تعد بعد الإلغاء — فاتورة ": "Boutique piece not returned after cancellation — invoice ",
     "سداد مستحقّات مكوّنات — ورقة ": "Component dues payment — settlement ",
     "لا رصيدَ للمتجر على هذا البوتيك يُستردّ.": "The shop has no credit with this boutique to recover.",
-    "استرداد من :name — سند ": "Refund from :name — voucher "
+    "استرداد من :name — سند ": "Refund from :name — voucher ",
+    "«:name»: ما عاد وما لم يعد أكثرُ من :qty قطعة في الطلب.": "“:name”: returned and not returned are more than the :qty pieces in the order.",
+    "«:name»: ما عاد أكثرُ من :qty قطعة بقيت للبوتيك.": "“:name”: returned is more than the :qty pieces still owed to the boutique.",
+    "تغيّر رصيدُ المتجر على البوتيك قبل لحظة — افتح الشاشة من جديد.": "The shop's credit with the boutique changed a moment ago — reopen the screen.",
+    "المستردُّ أكثرُ من رصيد المتجر على البوتيك (:left).": "The refund is more than the shop's credit with the boutique (:left)."
 }

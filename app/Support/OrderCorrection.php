@@ -1494,9 +1494,10 @@ class OrderCorrection
      * ويُنفَّذ مرّةً واحدة: نقلٌ ثانٍ إلى «ملغي» لا يردّ المخزون مرّتين.
      *
      * و`$boutiqueReturned` جوابُ «هل تعود قطعُ البوتيك في هذا الطلب إلى الرفّ؟»
-     * — `true` يعكس مستحقَّها، وغيرُه يُبقيه موثَّقًا. انظر `BoutiqueDues::cancel`.
+     * لكلّ قطعةٍ وكمّيّتها — ما عاد يُعكس مستحقُّه، وغيرُه يبقى موثَّقًا.
+     * انظر `BoutiqueDues::cancel`.
      */
-    public static function cancel(Order $order, ?string $reason = null, ?bool $boutiqueReturned = null): void
+    public static function cancel(Order $order, ?string $reason = null, bool|array|null $boutiqueReturned = null): void
     {
         self::assertNotFiled($order);
 

@@ -62,6 +62,9 @@ const STATUS_VARIANT: Record<string, VariantProps<typeof badgeVariants>['variant
     'مستلم جزئيًا': 'info',
     جزئي: 'warning',
     ملغى: 'danger',
+    // تجديدُ اشتراكٍ صدرت فاتورتُه ولم تُسدَّد — وفاتورتُه إن أُلغيت
+    'بانتظار السداد': 'warning',
+    ملغاة: 'neutral',
     'مُسلَّم': 'success',
     'مفعّل': 'success',
     'غير مفعّل': 'neutral',

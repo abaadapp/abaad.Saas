@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Plan;
 use App\Models\Subscription;
 use App\Support\Activity;
+use App\Support\Billing;
 use App\Support\PlanLimits;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,10 @@ class SubscriptionController extends Controller
     public function update(Request $request, $id)
     {
         $subscription = Subscription::findOrFail($id);
+
+        if ($refusal = self::notAGrantedCycle($subscription)) {
+            return back()->with('toast', ['msg' => $refusal, 'type' => 'warning']);
+        }
 
         $data = $request->validate([
             'plan_id' => ['nullable', 'integer', 'exists:plans,id'],
@@ -54,6 +59,13 @@ class SubscriptionController extends Controller
     public function destroy($id)
     {
         $subscription = Subscription::findOrFail($id);
+
+        if ($subscription->status === Billing::SUB_PENDING) {
+            return back()->with('toast', [
+                'msg' => __('هذا تجديدٌ بانتظار السداد: ألغِ فاتورته بدل حذفه.'),
+                'type' => 'warning',
+            ]);
+        }
         $name = $subscription->business?->name ?? '—';
 
         DB::transaction(function () use ($subscription) {
@@ -68,7 +80,7 @@ class SubscriptionController extends Controller
              * يدفعها أحد — والسجلّ لا يقول من أين جاء التاريخ.
              */
             if ($business) {
-                $last = Subscription::where('business_id', $business->id)->latest('ends_at')->first();
+                $last = Subscription::where('business_id', $business->id)->granted()->latest('ends_at')->first();
                 $business->update(['ends_at' => $last?->ends_at]);
             }
         });
@@ -76,6 +88,22 @@ class SubscriptionController extends Controller
         Activity::log('deleted', 'حذف اشتراك: '.$name, ['business_id' => null]);
 
         return back()->with('toast', ['msg' => __('حُذف الاشتراك'), 'type' => 'warning']);
+    }
+
+    /**
+     * تجديدٌ بانتظار السداد أو أُلغي لا يُعدَّل من هنا.
+     *
+     * نافذةُ التعديل تكتب تاريخَين وحالةَ دفع: لو قُبلت لتجديدٍ معلّق لمنحت
+     * مدّته بلا سداد — الطريقُ الذي أُغلق في `Billing::renew` يُفتح من بابٍ
+     * جانبيّ. فالمعلّقُ يُسدَّد أو تُلغى فاتورته، والملغى يبقى أثرًا.
+     */
+    private static function notAGrantedCycle(Subscription $subscription): ?string
+    {
+        return match ($subscription->status) {
+            Billing::SUB_PENDING => __('هذا تجديدٌ بانتظار السداد: سجّل سداد فاتورته أو ألغِها، ولا يُعدَّل يدويًّا.'),
+            Billing::SUB_CANCELLED => __('هذا تجديدٌ أُلغيت فاتورته، فلا يُعدَّل.'),
+            default => null,
+        };
     }
 
     /**
@@ -92,7 +120,7 @@ class SubscriptionController extends Controller
             return;
         }
 
-        $latest = Subscription::where('business_id', $business->id)->latest('ends_at')->first();
+        $latest = Subscription::where('business_id', $business->id)->granted()->latest('ends_at')->first();
         if (! $latest || $latest->id !== $subscription->id) {
             return;
         }

@@ -16,7 +16,7 @@ use Illuminate\Http\Request;
  */
 final class PlatformInvoicesList
 {
-    public const STATUSES = ['مدفوعة', 'غير مدفوعة'];
+    public const STATUSES = ['مدفوعة', 'غير مدفوعة', 'ملغاة'];
 
     public const SORTS = ['number', 'business', 'amount', 'date'];
 
@@ -47,6 +47,8 @@ final class PlatformInvoicesList
     {
         $rows = self::rows($request);
         $paid = array_sum(array_map(fn ($i) => $i['status'] === 'مدفوعة' ? (float) $i['amount'] : 0.0, $rows));
+        // والملغاةُ لا مدفوعةٌ ولا دَين — كبطاقة «إجمالي غير المدفوع» في الشاشة
+        $unpaid = array_sum(array_map(fn ($i) => $i['status'] === 'غير مدفوعة' ? (float) $i['amount'] : 0.0, $rows));
 
         return new Dataset(
             title: __('فواتير الاشتراكات'),
@@ -72,7 +74,7 @@ final class PlatformInvoicesList
             },
             totals: [
                 [__('إجمالي المدفوع').' (OMR)', round($paid, 3)],
-                [__('إجمالي غير المدفوع').' (OMR)', round(array_sum(array_column($rows, 'amount')) - $paid, 3)],
+                [__('إجمالي غير المدفوع').' (OMR)', round($unpaid, 3)],
                 [__('عدد الفواتير'), count($rows), Workbook::INT],
             ],
             totalsColumn: 3,

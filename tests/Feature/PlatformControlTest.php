@@ -325,7 +325,13 @@ class PlatformControlTest extends TestCase
 
     /* -------------------- ٦· التجديد والفوترة -------------------- */
 
-    public function test_renewing_extends_the_end_date_and_issues_an_invoice(): void
+    /**
+     * التجديد يُصدر فاتورة، والمدّةُ تُمنح يوم يُسجَّل سدادُها.
+     *
+     * كان الإصدارُ نفسُه يُطيل `ends_at`: فاتورةٌ تُكتب فيعمل المتجر دورتَه
+     * كلَّها ولو لم يدفع منها شيئًا.
+     */
+    public function test_renewing_issues_an_invoice_and_extends_only_once_it_is_paid(): void
     {
         [$biz] = $this->planned([]);
         $biz->update(['ends_at' => now()->addDays(5)]);
@@ -334,9 +340,24 @@ class PlatformControlTest extends TestCase
             ->post(route('super-admin.businesses.renew', $biz->id), ['cycle' => 'monthly'])
             ->assertSessionHasNoErrors();
 
-        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addDays(5)->addMonth()));
+        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addDays(5)), 'مُدّ الاشتراك قبل السداد');
         $this->assertSame(1, Invoice::where('business_id', $biz->id)->count());
         $this->assertSame(1, Subscription::where('business_id', $biz->id)->count());
+
+        $this->actingAs($this->super)
+            ->post(route('super-admin.invoices.pay', Invoice::where('business_id', $biz->id)->value('id')))
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addDays(5)->addMonth()));
+    }
+
+    /** تجديدٌ سُدّدت فاتورتُه — الدورةُ الممنوحة كما كانت تُمنح عند الإصدار قبل أن تنتظر السداد */
+    private function renewedAndPaid(Business $biz, string $cycle = 'monthly'): Subscription
+    {
+        ['invoice' => $invoice, 'subscription' => $sub] = Billing::renew($biz->fresh(), $cycle);
+        Billing::markPaid($invoice);
+
+        return $sub->fresh();
     }
 
     /**
@@ -350,7 +371,7 @@ class PlatformControlTest extends TestCase
         [$biz] = $this->planned([]);
         $biz->update(['ends_at' => now()->addDays(20)]);
 
-        Billing::renew($biz->fresh(), 'monthly');
+        $this->renewedAndPaid($biz);
 
         $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addDays(20)->addMonth()));
     }
@@ -362,6 +383,10 @@ class PlatformControlTest extends TestCase
         $biz->update(['ends_at' => now()->subMonths(3), 'status' => 'منتهي']);
 
         Billing::renew($biz->fresh(), 'monthly');
+        $this->assertSame('منتهي', $biz->fresh()->status, 'نشط المنتهي بفاتورةٍ لم تُسدَّد');
+        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->subMonths(3)));
+
+        Billing::markPaid(Invoice::where('business_id', $biz->id)->firstOrFail());
 
         $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addMonth()));
         $this->assertSame('نشط', $biz->fresh()->status);
@@ -371,10 +396,10 @@ class PlatformControlTest extends TestCase
     {
         [$biz] = $this->planned([]);
 
-        Billing::renew($biz->fresh(), 'monthly');
-        Billing::renew($biz->fresh(), 'monthly');
+        $this->renewedAndPaid($biz);
+        $this->renewedAndPaid($biz);
         Invoice::latest('id')->first()->delete();
-        Billing::renew($biz->fresh(), 'monthly');
+        $this->renewedAndPaid($biz);
 
         $this->assertSame(
             Invoice::count(),
@@ -416,7 +441,7 @@ class PlatformControlTest extends TestCase
     public function test_a_subscription_can_be_edited(): void
     {
         [$biz] = $this->planned([]);
-        $sub = Billing::renew($biz->fresh(), 'monthly')['subscription'];
+        $sub = $this->renewedAndPaid($biz);
 
         $this->actingAs($this->super)->put(route('super-admin.subscriptions.update', $sub->id), [
             'plan_id' => $biz->plan_id,
@@ -442,7 +467,7 @@ class PlatformControlTest extends TestCase
     public function test_editing_the_latest_cycle_moves_the_business_with_it(): void
     {
         [$biz] = $this->planned([]);
-        $sub = Billing::renew($biz->fresh(), 'monthly')['subscription'];
+        $sub = $this->renewedAndPaid($biz);
 
         $this->actingAs($this->super)->put(route('super-admin.subscriptions.update', $sub->id), [
             'plan_id' => $biz->plan_id,
@@ -460,8 +485,8 @@ class PlatformControlTest extends TestCase
     public function test_editing_an_older_cycle_leaves_the_business_alone(): void
     {
         [$biz] = $this->planned([]);
-        $old = Billing::renew($biz->fresh(), 'monthly')['subscription'];
-        Billing::renew($biz->fresh(), 'yearly');
+        $old = $this->renewedAndPaid($biz);
+        $this->renewedAndPaid($biz, 'yearly');
         $endsAt = $biz->fresh()->ends_at;
 
         $this->actingAs($this->super)->put(route('super-admin.subscriptions.update', $old->id), [
@@ -479,7 +504,7 @@ class PlatformControlTest extends TestCase
     public function test_an_end_before_the_start_is_refused(): void
     {
         [$biz] = $this->planned([]);
-        $sub = Billing::renew($biz->fresh(), 'monthly')['subscription'];
+        $sub = $this->renewedAndPaid($biz);
 
         $this->actingAs($this->super)->put(route('super-admin.subscriptions.update', $sub->id), [
             'starts_at' => '2026-12-01',
@@ -499,9 +524,9 @@ class PlatformControlTest extends TestCase
     public function test_deleting_a_cycle_rolls_the_business_back(): void
     {
         [$biz] = $this->planned([]);
-        Billing::renew($biz->fresh(), 'monthly');
+        $this->renewedAndPaid($biz);
         $first = $biz->fresh()->ends_at;
-        $second = Billing::renew($biz->fresh(), 'yearly')['subscription'];
+        $second = $this->renewedAndPaid($biz, 'yearly');
 
         $this->actingAs($this->super)
             ->delete(route('super-admin.subscriptions.destroy', $second->id))

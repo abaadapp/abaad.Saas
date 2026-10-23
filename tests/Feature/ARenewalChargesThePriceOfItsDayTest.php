@@ -60,9 +60,10 @@ class ARenewalChargesThePriceOfItsDayTest extends TestCase
     public function test_what_was_issued_keeps_its_amount_and_the_next_renewal_takes_the_new_price(): void
     {
         $shop = $this->shop('pro');
-        ['invoice' => $oldInvoice, 'subscription' => $oldSubscription] = Billing::renew($shop->fresh(), 'monthly');
+        // تجديدٌ معلّقٌ واحد للمتجر: المسدَّدُ أوّلًا، ثمّ الذي يبقى بلا سداد
         $paidBefore = Billing::renew($shop->fresh(), 'monthly')['invoice'];
         Billing::markPaid($paidBefore);
+        ['invoice' => $oldInvoice, 'subscription' => $oldSubscription] = Billing::renew($shop->fresh(), 'monthly');
         $this->assertSame('24.900', $oldInvoice->fresh()->amount);
 
         $this->officialPrices();
@@ -114,24 +115,27 @@ class ARenewalChargesThePriceOfItsDayTest extends TestCase
     {
         $this->officialPrices();
 
-        // اشتراكٌ لم ينتهِ: يمتدّ من نهايته — شهرًا وسنة
+        // اشتراكٌ لم ينتهِ: الإصدارُ لا يمسّه، والسدادُ يمدّه من نهايته — شهرًا وسنة
         $running = $this->shop('pro', '2026-10-25');
         $monthly = Billing::renew($running->fresh(), 'monthly');
+        $this->assertSame('2026-10-25', $running->fresh()->ends_at->toDateString(), 'مُدّ قبل السداد');
+        $this->assertNull($monthly['subscription']->fresh()->starts_at);
+
+        $paid = Billing::markPaid($monthly['invoice']);
         $this->assertSame('2026-11-25', $running->fresh()->ends_at->toDateString());
         $this->assertSame('2026-10-25', $monthly['subscription']->fresh()->starts_at->toDateString());
         $this->assertSame('2026-01-01', $running->fresh()->starts_at->toDateString(), 'تغيّر تاريخُ البداية');
 
         $yearly = $this->shop('enterprise', '2026-10-25');
-        Billing::renew($yearly->fresh(), 'yearly');
+        Billing::markPaid(Billing::renew($yearly->fresh(), 'yearly')['invoice']);
         $this->assertSame('2027-10-25', $yearly->fresh()->ends_at->toDateString());
 
-        // ومنتهٍ: من اليوم
+        // ومنتهٍ: من يوم السداد
         $lapsed = $this->shop('basic', '2026-09-01');
-        Billing::renew($lapsed->fresh(), 'monthly');
+        Billing::markPaid(Billing::renew($lapsed->fresh(), 'monthly')['invoice']);
         $this->assertSame('2026-11-20', $lapsed->fresh()->ends_at->toDateString());
 
-        // والسدادُ كما كان: الفاتورةُ مدفوعة، واشتراكُ دورتها مدفوع
-        $paid = Billing::markPaid($monthly['invoice']);
+        // والسدادُ: الفاتورةُ مدفوعة بمبلغها، واشتراكُ دورتها مدفوع
         $this->assertSame(Billing::PAID, $paid->status);
         $this->assertSame('29.900', $paid->amount);
         $this->assertSame('مدفوع', $monthly['subscription']->fresh()->payment_status);

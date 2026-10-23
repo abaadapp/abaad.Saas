@@ -115,10 +115,10 @@ class PlatformSubscriberCountTest extends TestCase
     public function test_three_renewals_are_one_merchant_not_four(): void
     {
         $b = $this->business();
+        // تجديدٌ معلّقٌ واحد للمتجر: كلُّ دورةٍ تُسدَّد قبل التي بعدها
         foreach (range(1, 3) as $i) {
-            Billing::renew($b->fresh(), 'monthly');
+            Billing::markPaid(Billing::renew($b->fresh(), 'monthly')['invoice']);
         }
-        Invoice::query()->update(['status' => 'مدفوعة']);
 
         $stats = Demo::subscriptionStats();
 
@@ -131,10 +131,10 @@ class PlatformSubscriberCountTest extends TestCase
     public function test_recurring_revenue_counts_the_latest_cycle_only(): void
     {
         $b = $this->business();
+        // تجديدٌ معلّقٌ واحد للمتجر: كلُّ دورةٍ تُسدَّد قبل التي بعدها
         foreach (range(1, 3) as $i) {
-            Billing::renew($b->fresh(), 'monthly');
+            Billing::markPaid(Billing::renew($b->fresh(), 'monthly')['invoice']);
         }
-        Invoice::query()->update(['status' => 'مدفوعة']);
 
         $this->assertSame(10.0, (float) Demo::subscriptionStats()['monthly_revenue']);
     }

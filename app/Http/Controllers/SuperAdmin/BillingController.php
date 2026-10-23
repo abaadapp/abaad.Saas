@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\Invoice;
 use App\Support\Billing;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class BillingController extends Controller
 {
@@ -14,7 +15,7 @@ class BillingController extends Controller
     public function renew(Request $request, $businessId)
     {
         $data = $request->validate([
-            'cycle' => ['required', 'in:monthly,yearly'],
+            'cycle' => ['required', Rule::in(Billing::CYCLES)],
         ]);
 
         $business = Business::findOrFail($businessId);

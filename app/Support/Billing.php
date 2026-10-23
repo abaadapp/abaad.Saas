@@ -59,6 +59,15 @@ class Billing
             ->exists();
     }
 
+    /**
+     * دوراتُ التجديد — وما يقبله طلبُ التجديد منها.
+     *
+     * نصفُ السنة ستّةُ أشهرٍ بسعر الشهر ستَّ مرّات: لا سعرَ له في الباقة ولا
+     * خصم، كما يُعرض في الموقع. ودورتُه واحدة وفاتورتُه واحدة — قبله كان يُجدَّد
+     * «شهرًا» ستَّ مرّات فيخرج للتاجر ستُّ فواتير عن اشتراكٍ واحد.
+     */
+    public const CYCLES = ['monthly', 'semiannual', 'yearly'];
+
     /** ما تُكلّفه دورةٌ من الباقة */
     public static function price(Business $business, string $cycle): float
     {
@@ -67,7 +76,11 @@ class Billing
             return 0.0;
         }
 
-        return (float) ($cycle === 'yearly' ? $plan->yearly_price : $plan->monthly_price);
+        return match ($cycle) {
+            'yearly' => (float) $plan->yearly_price,
+            'semiannual' => round((float) $plan->monthly_price * 6, 3),
+            default => (float) $plan->monthly_price,
+        };
     }
 
     /**
@@ -86,7 +99,11 @@ class Billing
                 ? $business->ends_at->copy()
                 : now()->startOfDay();
 
-            $ends = $cycle === 'yearly' ? $from->copy()->addYear() : $from->copy()->addMonth();
+            $ends = match ($cycle) {
+                'yearly' => $from->copy()->addYear(),
+                'semiannual' => $from->copy()->addMonths(6),
+                default => $from->copy()->addMonth(),
+            };
             $amount = self::price($business, $cycle);
 
             $business->update([

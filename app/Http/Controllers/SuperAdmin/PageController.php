@@ -196,6 +196,7 @@ class PageController extends Controller
             'usage' => PlanLimits::usage($model),
             'renewal' => [
                 'monthly' => Billing::price($model, 'monthly'),
+                'semiannual' => Billing::price($model, 'semiannual'),
                 'yearly' => Billing::price($model, 'yearly'),
                 'endsAt' => optional($model->ends_at)->format('Y-m-d'),
             ],

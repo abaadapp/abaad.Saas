@@ -88,7 +88,7 @@ interface Props {
     business: Business;
     subscription: Subscription | null;
     usage: UsageRow[];
-    renewal: { monthly: number; yearly: number; endsAt: string | null };
+    renewal: { monthly: number; semiannual: number; yearly: number; endsAt: string | null };
     stats: Stat[];
     overview: { sales: string; orders: number; average: string };
     branches: BranchRow[];
@@ -410,12 +410,13 @@ export default function BusinessShow() {
                             {(
                                 [
                                     ['monthly', 'جدّد شهرًا', renewal.monthly, 'شهرًا'],
+                                    ['semiannual', 'جدّد ستّة أشهر', renewal.semiannual, 'ستّة أشهر'],
                                     ['yearly', 'جدّد سنة', renewal.yearly, 'سنة'],
                                 ] as const
                             ).map(([cycle, label, price, span]) => (
                                 <Button
                                     key={cycle}
-                                    variant={cycle === 'monthly' ? 'outline' : undefined}
+                                    variant={cycle === 'yearly' ? undefined : 'outline'}
                                     onClick={() => {
                                         if (
                                             !confirm(

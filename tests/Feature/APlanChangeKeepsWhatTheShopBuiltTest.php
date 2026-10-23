@@ -224,7 +224,7 @@ class APlanChangeKeepsWhatTheShopBuiltTest extends TestCase
 
     public function test_a_subscription_is_not_moved_below_the_shops_usage(): void
     {
-        $sub = Billing::renew($this->shop->fresh(), 'monthly')['subscription'];
+        $sub = $this->renewedAndPaid();
 
         foreach ([
             'فرعان' => fn () => Branch::create(['business_id' => $this->shop->id, 'name' => 'السيب']),
@@ -257,7 +257,7 @@ class APlanChangeKeepsWhatTheShopBuiltTest extends TestCase
 
     public function test_a_subscription_within_the_smaller_plan_moves_and_keeps_its_agreed_amount(): void
     {
-        $sub = Billing::renew($this->shop->fresh(), 'monthly')['subscription'];
+        $sub = $this->renewedAndPaid();
 
         $this->editSubscription($sub, $this->basic)->assertSessionHasNoErrors();
 
@@ -268,12 +268,21 @@ class APlanChangeKeepsWhatTheShopBuiltTest extends TestCase
     /** واشتراكٌ قديمٌ لا ينقل باقةَ المتجر — فلا يُردّ تعديلُه */
     public function test_an_older_subscription_that_does_not_move_the_shop_is_not_refused(): void
     {
-        $old = Billing::renew($this->shop->fresh(), 'monthly')['subscription'];
-        Billing::renew($this->shop->fresh(), 'monthly');
+        $old = $this->renewedAndPaid();
+        $this->renewedAndPaid();
         Branch::create(['business_id' => $this->shop->id, 'name' => 'السيب']);
 
         $this->editSubscription($old, $this->basic)->assertSessionHasNoErrors();
 
         $this->assertSame($this->pro->id, (int) $this->shop->fresh()->plan_id);
+    }
+
+    /** دورةٌ سُدّدت فاتورتُها — التجديدُ لا يمنح مدّةً قبل السداد */
+    private function renewedAndPaid(): Subscription
+    {
+        ['invoice' => $invoice, 'subscription' => $sub] = Billing::renew($this->shop->fresh(), 'monthly');
+        Billing::markPaid($invoice);
+
+        return $sub->fresh();
     }
 }

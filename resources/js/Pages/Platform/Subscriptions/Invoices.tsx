@@ -79,7 +79,7 @@ export default function Invoices() {
                         </a>
                     </Button>
                     {/* السداد يُسجَّل يدويًّا: التحصيل الإلكتروني يحتاج بوّابة دفع */}
-                    {i.status !== 'مدفوعة' && (
+                    {i.status === 'غير مدفوعة' && (
                         <Button
                             variant="ghost"
                             size="icon-sm"
@@ -102,6 +102,7 @@ export default function Invoices() {
             options: [
                 { label: 'مدفوعة', value: 'مدفوعة' },
                 { label: 'غير مدفوعة', value: 'غير مدفوعة' },
+                { label: 'ملغاة', value: 'ملغاة' },
             ],
             param: 'status',
         },

@@ -3203,9 +3203,10 @@ class Demo
         // المنتهي: تاجرٌ حقيقيّ لم يعد ساريًا — لا دورةٌ قديمة لمن جدّد
         $expired = Business::real()->count() - Business::live()->count();
 
-        // الإيراد المتكرّر من آخر اشتراكٍ لكل متجرٍ مشترك، لا من كل دوراته
+        // الإيراد المتكرّر من آخر اشتراكٍ لكل متجرٍ مشترك، لا من كل دوراته —
+        // ومن دورةٍ مُنحت: تجديدٌ ينتظر سدادَه ليس إيرادًا بعد
         $monthly = (float) Subscription::whereIn('business_id', Business::subscribed()->select('id'))
-            ->whereIn('id', Subscription::selectRaw('MAX(id)')->groupBy('business_id'))
+            ->whereIn('id', Subscription::granted()->selectRaw('MAX(id)')->groupBy('business_id'))
             ->sum('amount');
 
         return [
@@ -3218,7 +3219,8 @@ class Demo
     public static function invoiceStats(): array
     {
         $paid = (float) Invoice::where('status', 'مدفوعة')->sum('amount');
-        $unpaid = (float) Invoice::where('status', '!=', 'مدفوعة')->sum('amount');
+        // «غير مدفوعة» بعينها: الفاتورةُ الملغاة لا تُطالَب ولا تُحسب دَينًا
+        $unpaid = (float) Invoice::where('status', 'غير مدفوعة')->sum('amount');
 
         return ['paid' => $paid, 'unpaid' => $unpaid, 'count' => Invoice::count()];
     }

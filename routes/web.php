@@ -376,6 +376,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // التجديد وتسجيل السداد — الجدولان كانا يُقرآن ولا يُكتب فيهما
     Route::post('/businesses/{id}/renew', [BillingController::class, 'renew'])->name('businesses.renew');
     Route::post('/invoices/{id}/pay', [BillingController::class, 'pay'])->name('invoices.pay');
+    Route::post('/invoices/{id}/cancel', [BillingController::class, 'cancel'])->name('invoices.cancel');
     Route::put('/subscriptions/{id}', [SubscriptionController::class, 'update'])->name('subscriptions.update');
     Route::delete('/subscriptions/{id}', [SubscriptionController::class, 'destroy'])->name('subscriptions.destroy');
 

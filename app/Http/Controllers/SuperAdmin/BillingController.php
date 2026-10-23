@@ -5,16 +5,19 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Invoice;
+use App\Models\Subscription;
 use App\Support\Billing;
+use DomainException;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class BillingController extends Controller
 {
-    /** تجديد اشتراك متجر دورةً كاملة وإصدار فاتورتها */
+    /** إصدارُ فاتورة تجديدٍ لمتجر — والتمديدُ ينتظر سدادَها (`Billing::markPaid`) */
     public function renew(Request $request, $businessId)
     {
         $data = $request->validate([
-            'cycle' => ['required', 'in:monthly,yearly'],
+            'cycle' => ['required', Rule::in(Billing::CYCLES)],
         ]);
 
         $business = Business::findOrFail($businessId);
@@ -26,11 +29,15 @@ class BillingController extends Controller
             ]);
         }
 
-        $result = Billing::renew($business, $data['cycle']);
+        try {
+            $result = Billing::renew($business, $data['cycle']);
+        } catch (DomainException $e) {
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'warning']);
+        }
 
+        // لا «جُدّد» قبل السداد: الفاتورة صدرت، والاشتراكُ كما كان
         return back()->with('toast', [
-            'msg' => __('جُدّد حتى :date · فاتورة :n', [
-                'date' => $result['subscription']->ends_at->format('Y-m-d'),
+            'msg' => __('تم إصدار فاتورة التجديد :n. لن يتم تمديد الاشتراك إلا بعد تسجيل السداد.', [
                 'n' => $result['invoice']->number,
             ]),
             'type' => 'success',
@@ -46,11 +53,37 @@ class BillingController extends Controller
     public function pay($invoiceId)
     {
         $invoice = Invoice::findOrFail($invoiceId);
-        Billing::markPaid($invoice);
+
+        try {
+            Billing::markPaid($invoice);
+        } catch (DomainException $e) {
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
+        }
+
+        $renewal = Subscription::where('invoice_id', $invoice->id)->where('status', Billing::SUB_ACTIVE)->first();
 
         return back()->with('toast', [
-            'msg' => __('سُجّل سداد :n', ['n' => $invoice->number]),
+            'msg' => $renewal?->ends_at
+                ? __('تم تسجيل السداد وتفعيل تجديد الاشتراك بنجاح حتى :date.', ['date' => $renewal->ends_at->format('Y-m-d')])
+                : __('سُجّل سداد :n', ['n' => $invoice->number]),
             'type' => 'success',
+        ]);
+    }
+
+    /** إلغاءُ فاتورة تجديدٍ لم تُسدَّد — قبل إصدار غيرها، أو حين تتغيّر الباقة */
+    public function cancel($invoiceId)
+    {
+        $invoice = Invoice::findOrFail($invoiceId);
+
+        try {
+            Billing::cancelRenewal($invoice);
+        } catch (DomainException $e) {
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'warning']);
+        }
+
+        return back()->with('toast', [
+            'msg' => __('أُلغيت فاتورة التجديد :n، والاشتراك كما كان.', ['n' => $invoice->number]),
+            'type' => 'warning',
         ]);
     }
 }

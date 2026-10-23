@@ -13,7 +13,9 @@ use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\BoutiqueDues;
 use App\Support\Ledger;
+use App\Support\OrderCorrection;
 use App\Support\ProductAddons;
 use App\Support\SaleLines;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -340,5 +342,23 @@ class AnAddonIsManagedFromOnePlaceForEveryShopTest extends TestCase
         $this->assertSame(14.0, (float) $row->cost, 'تكلفةُ الإضافة مستحقُّ البوتيك — مرّةً واحدة');
         $this->assertSame(14.0, (float) BoutiqueComponentDue::where('order_id', $order->id)->sum('amount'));
         $this->assertSame(29.0, (float) $order->fresh()->total);
+
+        // والدفترُ رقمٌ واحد: الإيرادُ ٢٩، والتكلفةُ ١٤ — مستحقُّ البوتيك لا مستحقٌّ وثمنُ رفٍّ معًا
+        $this->assertSame(29.0, Ledger::netRevenue($this->ribbon->id));
+        $this->assertSame(14.0, Ledger::balance($this->ribbon->id, 'cogs'));
+
+        // والإلغاءُ يعكس المستحقَّ وقيدَه ويُعيد القطعتين — ولا يُعكس ما عُكس
+        $this->actingAs($this->ribbonOwner);
+        OrderCorrection::cancel($order->fresh(), 'الزبون ألغى', boutiqueReturned: true);
+        $this->assertCount(2, BoutiqueComponentDue::where('order_id', $order->id)->get(), 'صفٌّ وعكسُه — لا محو');
+        $this->assertSame(0.0, BoutiqueDues::owedFor($order->fresh()));
+        $this->assertSame(0.0, Ledger::balance($this->ribbon->id, 'boutique_payable'));
+        $this->assertSame(0.0, Ledger::balance($this->ribbon->id, 'cogs'));
+        $this->assertSame(10, (int) $this->silver->fresh()->quantity);
+
+        BoutiqueDues::cancel($order->fresh(), 'مرّة ثانية');
+        OrderCorrection::cancel($order->fresh(), 'مرّة ثانية');
+        $this->assertCount(2, BoutiqueComponentDue::where('order_id', $order->id)->get());
+        $this->assertSame(10, (int) $this->silver->fresh()->quantity);
     }
 }

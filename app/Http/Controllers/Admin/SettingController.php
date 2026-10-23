@@ -11,6 +11,7 @@ use App\Support\Demo;
 use App\Support\InvoiceBranding;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class SettingController extends Controller
@@ -100,11 +101,15 @@ class SettingController extends Controller
          * ويُقبل تاريخًا لا فترة: «الربع الأوّل» يعني شهورًا مختلفة عند من
          * تبدأ سنتُه المالية في يوليو. والفراغُ يعني «لم أقدّم بعد».
          *
-         * ولا يُقبل تاريخُ الغد وما بعده: قفلُ فترةٍ لم تنتهِ يمنع إلغاءَ
-         * فاتورةِ اليوم — وهي أولى ما يُلغى.
+         * ولا يُقبل اليومُ وما بعده: قفلُ فترةٍ لم تنتهِ يمنع إلغاءَ فاتورةِ
+         * اليوم — وهي أولى ما يُلغى. وكان اليومُ يُقبل («قبله أو يساويه»)
+         * والرسالةُ نفسُها تقول «اختر تاريخًا مضى». ومنذ صار الدفترُ كلُّه
+         * يسأل الإقفال (`Ledger::post`) صار إقرارُ اليوم يردّ كلَّ قيدٍ بعده
+         * حتى منتصف الليل: بيعَ الصندوق، ودفعةَ رابطٍ وصلت من Paymob،
+         * وكلَّ إلغاء. فصار كالدفاتر: يومٌ مضى.
          */
         'vat_filed_through' => ['section' => 'finance', 'label' => 'آخر إقرار قُدِّم',
-            'rules' => ['sometimes', 'nullable', 'date', 'before_or_equal:today']],
+            'rules' => ['sometimes', 'nullable', 'date', 'before:today']],
         /*
          * آخرُ يومٍ أُقفلت دفاترُه — لا يُكتب خلفه تصحيح.
          *
@@ -318,7 +323,7 @@ class SettingController extends Controller
             'inv_prefix.not_regex' => __('لا تصلح الرموز % و _ و \\ في بادئة رقم الفاتورة'),
             'currency.size' => __('رمز العملة ثلاثة أحرف مثل OMR'),
             'vat_rate.max' => __('نسبة الضريبة مئة بالمئة على الأكثر'),
-            'vat_filed_through.before_or_equal' => __('لا يُقفل إقرارُ فترةٍ لم تنتهِ بعد — اختر تاريخًا مضى.'),
+            'vat_filed_through.before' => __('لا يُقفل إقرارُ فترةٍ لم تنتهِ بعد — اختر تاريخًا مضى.'),
             'books_closed_through.before' => __('لا تُقفل دفاترُ يومٍ لم ينتهِ — اختر يومًا مضى.'),
         ], self::labels());
 
@@ -339,28 +344,42 @@ class SettingController extends Controller
                 $profile[$column] = $data[$field];
             }
         }
-        if ($profile) {
-            Business::whereKey($bid)->update($profile);
-        }
 
-        foreach (Arr::except($data, array_keys(self::PROFILE)) as $key => $value) {
+        DB::transaction(function () use ($bid, $data, $profile) {
             /*
-             * المنطقيّ يُخزَّن '1'/'0' صراحةً لا true/false.
+             * وتاريخُ الإقفال يُكتب تحت قفل المتجر — القفلِ الذي يأخذه كلُّ قيد.
              *
-             * القراءة تقارن بالنصّ، وكتابةُ `false` تُترك لسائق القاعدة:
-             * يكتبها بعضُهم '0' وبعضُهم سلسلةً فارغة — فمقبضٌ مطفأٌ على
-             * قاعدةٍ يُقرأ مطفأً وعلى أخرى يُقرأ مفعّلًا. ولا يظهر ذلك إلا
-             * بعد النقل.
+             * `Ledger::post` يسأل الإقفالَ بعد أن يأخذ صفَّ المتجر. فلو حُفظ
+             * التاريخُ بلا القفل نفسه لقرأ قيدٌ متزامنٌ «مفتوحة» ثمّ التزم في
+             * فترةٍ أُقفلت قبله بلحظة. وبالقفل يقع أحدُهما بعد الآخر.
              */
-            if (is_bool($value)) {
-                $value = $value ? '1' : '0';
+            if (array_key_exists('books_closed_through', $data) || array_key_exists('vat_filed_through', $data)) {
+                Business::whereKey($bid)->lockForUpdate()->first();
             }
 
-            Setting::updateOrCreate(
-                ['business_id' => $bid, 'key' => $key],
-                ['value' => $value]
-            );
-        }
+            if ($profile) {
+                Business::whereKey($bid)->update($profile);
+            }
+
+            foreach (Arr::except($data, array_keys(self::PROFILE)) as $key => $value) {
+                /*
+                 * المنطقيّ يُخزَّن '1'/'0' صراحةً لا true/false.
+                 *
+                 * القراءة تقارن بالنصّ، وكتابةُ `false` تُترك لسائق القاعدة:
+                 * يكتبها بعضُهم '0' وبعضُهم سلسلةً فارغة — فمقبضٌ مطفأٌ على
+                 * قاعدةٍ يُقرأ مطفأً وعلى أخرى يُقرأ مفعّلًا. ولا يظهر ذلك إلا
+                 * بعد النقل.
+                 */
+                if (is_bool($value)) {
+                    $value = $value ? '1' : '0';
+                }
+
+                Setting::updateOrCreate(
+                    ['business_id' => $bid, 'key' => $key],
+                    ['value' => $value]
+                );
+            }
+        });
 
         if (array_key_exists('currency', $data)) {
             $this->alignBaseCurrency($bid, (string) $data['currency']);

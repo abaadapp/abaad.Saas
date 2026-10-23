@@ -55,6 +55,8 @@ class AStockLossIsWrittenInBothBooksTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'زهور مسقط', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'مسقط']);
         Currency::create([
             'business_id' => $this->business->id, 'code' => 'OMR', 'name' => 'ريال عماني',

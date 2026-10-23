@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin\Finance;
 
+use App\Exceptions\ClosedPeriod;
 use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\BankAccount;
@@ -47,11 +48,25 @@ class BankAccountController extends Controller
          */
         BankAccount::where('business_id', $bid)->whereNull('account_id')->orderBy('id')->get()
             ->each(function (BankAccount $a) use ($bid) {
-                $a->update(['account_id' => $this->leafFor($bid, $a)->id]);
+                /*
+                 * والورقةُ وافتتاحيُّها معًا — وفترةٌ مقفلة لا تُسقط الصفحة.
+                 *
+                 * افتتاحيٌّ تاريخُه في فترةٍ أُقفلت لا يُكتب (`Ledger::post`).
+                 * ولو بقيت الورقةُ مربوطةً بلا قيدها لما عاد هذا الاستدراكُ
+                 * إليه أبدًا — فيتراجعان معًا، ويُعاد السؤال في الزيارة التالية،
+                 * والشاشةُ تُفتح كما كانت.
+                 */
+                try {
+                    DB::transaction(function () use ($bid, $a) {
+                        $a->update(['account_id' => $this->leafFor($bid, $a)->id]);
 
-                // وحسابٌ نال ورقتَه الآن ينال قيدَ افتتاحيّه: الترحيل الذي
-                // استدرك الحسابات القديمة تخطّى من لا ورقةَ له يومَها
-                Bank::syncOpening($a->fresh(), auth()->id());
+                        // وحسابٌ نال ورقتَه الآن ينال قيدَ افتتاحيّه: الترحيل الذي
+                        // استدرك الحسابات القديمة تخطّى من لا ورقةَ له يومَها
+                        Bank::syncOpening($a->fresh(), auth()->id());
+                    });
+                } catch (ClosedPeriod) {
+                    $a->refresh();
+                }
             });
 
         $accounts = BankAccount::where('business_id', $bid)->with('account')
@@ -118,28 +133,37 @@ class BankAccountController extends Controller
         $account = BankAccount::where('business_id', $bid)->findOrFail($id);
         $data = $this->rules($request);
 
-        $account->update($data);
-
         /*
-         * اسمُ الورقة يتبع اسم الحساب — إلا الورقة النظامية.
+         * والحسابُ وقيدُه في معاملةٍ واحدة.
          *
-         * «البنك» (1200) اسمٌ يعرفه كلّ محاسب ويقصده الترحيل التلقائي؛
-         * تسميتُه باسم فرعٍ من فروع بنكٍ بعينه تُخفي ما هو.
+         * كان الصفُّ يُحفظ أوّلًا ثمّ يُصحَّح القيد: افتتاحيٌّ جديد بتاريخٍ في
+         * فترةٍ مقفلة يُردّ في الدفتر (`Ledger::post`) بعد أن حُفظ في الشاشة —
+         * رقمان لا يتّفقان. فيُردّ الحفظُ كلُّه برسالته (`ClosedPeriod`).
          */
-        if ($account->account && ! $account->account->system_key) {
-            $account->account->update(['name' => __('البنك: ').$account->fresh()->displayName()]);
-        } elseif (! $account->account) {
-            $account->update(['account_id' => $this->leafFor($bid, $account->fresh())->id]);
-        }
+        DB::transaction(function () use ($bid, $account, $data) {
+            $account->update($data);
 
-        /*
-         * والافتتاحيُّ المصحَّح يُصحَّح في الدفتر معه.
-         *
-         * يُنادى في كلّ حفظ — و`syncOpening` لا تكتب شيئًا إن لم يتغيّر
-         * المبلغ. فحفظُ الآيبان وحده لا يُنشئ قيدين، وتغييرُ الرقم يُعكس
-         * القديمُ ويُكتب الجديد.
-         */
-        Bank::syncOpening($account->fresh(), auth()->id());
+            /*
+             * اسمُ الورقة يتبع اسم الحساب — إلا الورقة النظامية.
+             *
+             * «البنك» (1200) اسمٌ يعرفه كلّ محاسب ويقصده الترحيل التلقائي؛
+             * تسميتُه باسم فرعٍ من فروع بنكٍ بعينه تُخفي ما هو.
+             */
+            if ($account->account && ! $account->account->system_key) {
+                $account->account->update(['name' => __('البنك: ').$account->fresh()->displayName()]);
+            } elseif (! $account->account) {
+                $account->update(['account_id' => $this->leafFor($bid, $account->fresh())->id]);
+            }
+
+            /*
+             * والافتتاحيُّ المصحَّح يُصحَّح في الدفتر معه.
+             *
+             * يُنادى في كلّ حفظ — و`syncOpening` لا تكتب شيئًا إن لم يتغيّر
+             * المبلغ. فحفظُ الآيبان وحده لا يُنشئ قيدين، وتغييرُ الرقم يُعكس
+             * القديمُ ويُكتب الجديد.
+             */
+            Bank::syncOpening($account->fresh(), auth()->id());
+        });
 
         return back()->with('toast', ['msg' => __('حُفظ الحساب البنكي'), 'type' => 'success']);
     }

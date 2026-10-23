@@ -450,7 +450,9 @@ export default function SettingsIndex() {
         email: business.email ?? '',
         address: business.address ?? '',
 
-        vat_enabled: on('vat_enabled'),
+        // مطفأةٌ ما لم تُفعَّل، كالخادم (`Vat::enabled`). وقسمُ المالية يُرسلها مع
+        // كلّ حفظ له، فافتراضُ «مفعّلة» هنا كان يكتبها مفعّلةً لمن حفظ عملته وحدها
+        vat_enabled: on('vat_enabled', '0'),
         vat_rate: get('vat_rate', '5'),
         vat_number: get('vat_number'),
         cr_number: get('cr_number'),

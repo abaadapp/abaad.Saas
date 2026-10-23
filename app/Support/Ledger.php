@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Account;
+use App\Models\Business;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\Order;
@@ -376,6 +377,21 @@ class Ledger
         return DB::transaction(function () use (
             $businessId, $description, $lines, $date, $source, $branchId, $userId, $sourceable, $unwinding
         ) {
+            /*
+             * ═══ والفترةُ المقفلة تُسأل هنا، تحت قفل المتجر ═══
+             *
+             * هنا لا في المتحكّمات: كلُّ قيدٍ يمرّ من هذا الباب — يدويٌّ أو
+             * عكسٌ أو إلغاءٌ أو ترحيلٌ تلقائيّ — فبابٌ يُنسى فيه الفحصُ لا
+             * يكتب. انظر `BooksPeriod::assertOpen`.
+             *
+             * وتحت القفل لا قبله: حفظُ تاريخ الإقفال يأخذ صفَّ المتجر نفسه
+             * (`SettingController::update`). فقيدٌ يُكتب والإقفالُ يُحفظ معًا
+             * لا يقرأ «مفتوحة» ثمّ يُكتب في فترةٍ أُقفلت قبل أن يلتزم: إمّا
+             * سبقه القيدُ فكُتب قبل الإقفال، وإمّا سبقه الإقفالُ فقرأه القيد.
+             */
+            Business::whereKey($businessId)->lockForUpdate()->first();
+            BooksPeriod::assertOpen($businessId, $date ?? now());
+
             /*
              * ورقمُ القيد يُقرأ تحت قفل — انظر `JournalEntry::nextNumber`.
              *

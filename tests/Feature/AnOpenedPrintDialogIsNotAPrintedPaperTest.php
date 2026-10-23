@@ -10,6 +10,7 @@ use App\Models\JournalLine;
 use App\Models\Order;
 use App\Models\PrintJob;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
@@ -379,6 +380,8 @@ class AnOpenedPrintDialogIsNotAPrintedPaperTest extends TestCase
 
     public function test_printing_answering_requeueing_and_reassigning_touch_no_money_tax_or_stock(): void
     {
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '1']);
         $till = $this->till();
         $spare = $this->till();
         $product = Product::create(['business_id' => $this->shop->id, 'name' => 'بوكيه', 'price' => 50, 'cost' => 10, 'quantity' => 7]);

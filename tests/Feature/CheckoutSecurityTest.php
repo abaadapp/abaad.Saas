@@ -31,6 +31,8 @@ class CheckoutSecurityTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'متجر الفحص', 'email' => 'shop@test.local', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الفرع الرئيسي']);
 
         $this->cashier = User::create([

@@ -70,4 +70,36 @@ class ABillPaidTwiceAtOnceIsPaidOnceTest extends TestCase
             'سُدِّدت الفاتورةُ مرّتين في الصندوق');
         $this->assertSame(90.0, Ledger::operatingExpenses($business->id));
     }
+
+    /** وفاتورةٌ حُذفت بين قراءتها والقفل لا تُسدَّد في المحذوفات — `update` لا يسأل عن الحذف */
+    public function test_a_bill_deleted_while_it_was_being_paid_is_not_paid(): void
+    {
+        $business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
+        Branch::create(['business_id' => $business->id, 'name' => 'الرئيسي']);
+        $this->actingAs(User::create([
+            'business_id' => $business->id, 'name' => 'المالك', 'email' => 'o@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط',
+        ]));
+
+        $this->post(route('admin.expenses.store'), [
+            'type' => 'كهرباء', 'amount' => 90, 'status' => 'غير مدفوع', 'due_date' => now()->addWeek()->toDateString(),
+        ])->assertSessionHasNoErrors();
+        $bill = Expense::sole();
+
+        $deleted = false;
+        DB::listen(function (QueryExecuted $q) use (&$deleted, $bill) {
+            if ($deleted || ! str_starts_with($q->sql, 'select * from "expenses"')) {
+                return;
+            }
+            $deleted = true;
+            DB::table('expenses')->where('id', $bill->id)->update(['deleted_at' => now()]);
+        });
+
+        $this->post(route('admin.expenses.paid', $bill->id))->assertNotFound();
+
+        $this->assertTrue($deleted, 'لم يقع الترتيبُ المقصود');
+        $this->assertSame(Expense::UNPAID, Expense::withTrashed()->find($bill->id)->status);
+        $this->assertSame(0, Transaction::where('business_id', $business->id)->count());
+        $this->assertSame(0.0, Ledger::operatingExpenses($business->id));
+    }
 }

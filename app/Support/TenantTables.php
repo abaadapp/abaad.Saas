@@ -40,7 +40,7 @@ class TenantTables
         // أصولٌ لا أبَ لها
         'accounts', 'branches', 'users', 'categories', 'currencies', 'suppliers',
         'expense_types', 'job_titles', 'coupons', 'settings',
-        'import_batches', 'point_transactions', 'activity_logs', 'branch_stocks',
+        'import_batches', 'activity_logs', 'branch_stocks',
         'whatsapp_connections', 'whatsapp_template_mappings', 'whatsapp_usage_periods',
 
         // ما يتفرّع عنها
@@ -141,6 +141,11 @@ class TenantTables
         'customer_invoice_attachments',
         'customer_payments', 'customer_payment_allocations',
         'customer_credit_notes',
+        /*
+         * وحركاتُ النقاط بعد التحصيلات: نقاطُ سداد الفاتورة برابطٍ تشير إلى
+         * فاتورتها وتحصيلها (`InvoiceLoyalty`).
+         */
+        'point_transactions',
         /*
          * وروابطُ الدفع بعد التحصيلات: الرابطُ المدفوع يشير إلى تحصيله
          * وفاتورته. وتسوياتُ Paymob بعد القيود والحسابات البنكيّة التي

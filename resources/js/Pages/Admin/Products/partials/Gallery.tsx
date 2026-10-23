@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { router } from '@inertiajs/react';
-import { ImageOff, ImagePlus, Star, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ImageOff, ImagePlus, Star, Trash2 } from 'lucide-react';
+import { needsShrink, shrink } from '@/Components/StoreImageField';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import {
@@ -41,6 +42,29 @@ export interface DraftImage {
 type Translate = ReturnType<typeof useTranslate>;
 
 const mb = (kb: number) => Math.round((kb / 1024) * 10) / 10;
+
+/** أطولُ ضلعٍ تُحفظ به صورةُ المنتج — كما في `ProductImages::MAX_SIDE` */
+export const PHOTO_SIDE = 1600;
+
+/**
+ * الصورُ مُعدّةً للإرسال: الثقيلةُ تُصغَّر هنا قبل أن تُرفع.
+ *
+ * حدُّ الملفّ على الخادم اليوم اثنا ميغابايت، وصورةُ الهاتف ثلاثةٌ أو أربعة —
+ * فلو أُرسلت كما هي لَرُدّت أكثرُ صور التجّار. فتُصغَّر بنسبتها إلى ضلعِ
+ * الحفظ نفسه (`PHOTO_SIDE`)، ولا يُرى منها على الخادم أكثرُ من ذلك أصلًا.
+ *
+ * والحدُّ لكلّ صورةٍ نصيبُها من الطلب لا حدُّ الملفّ وحده: خمسٌ كلٌّ منها
+ * دون اثنين قد تتجاوز حدَّ الطلب مجتمعةً. وما دون النصيب يُرسل كما هو —
+ * والخادمُ يضغطه — فلا يُضغط ما لا حاجة إلى ضغطه مرّتين.
+ *
+ * وما تعذّر تصغيرُه (صيغةٌ لا يفكّها المتصفّح) يبقى كما هو، فيقول
+ * `pickProblem` إنّه ثقيلٌ باسمه.
+ */
+export async function prepared(files: File[], limits: UploadLimits, max: number): Promise<File[]> {
+    const share = Math.min(limits.perFile, Math.floor(limits.batch / Math.max(1, max))) * 1024;
+
+    return Promise.all(files.map((f) => (needsShrink(f, share) ? shrink(f, PHOTO_SIDE) : f)));
+}
 
 /**
  * ما يمنع هذه الدفعة قبل أن تُرسل — أو `null`.
@@ -207,11 +231,15 @@ interface TileProps {
     busy: boolean;
     onPromote: () => void;
     onRemove: () => void;
+    /** تقديمُها خطوةً وتأخيرُها — يُترك لما لا يتحرّك في ذلك الاتّجاه */
+    onEarlier?: () => void;
+    onLater?: () => void;
 }
 
-/** مربّعُ صورةٍ واحدة — بعلامة الرئيسية وزرَّي الترقية والحذف */
-function Tile({ url, main, placeholder = false, busy, onPromote, onRemove }: TileProps) {
+/** مربّعُ صورةٍ واحدة — بعلامة الرئيسية وزرَّي الترقية والحذف، وسهمَي الترتيب */
+function Tile({ url, main, placeholder = false, busy, onPromote, onRemove, onEarlier, onLater }: TileProps) {
     const t = useTranslate();
+    const reveal = 'opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100';
 
     return (
         <div
@@ -253,6 +281,46 @@ function Tile({ url, main, placeholder = false, busy, onPromote, onRemove }: Til
             )}
 
             {/*
+                وسهما الترتيب في الزاوية المقابلة لعلامة الرئيسية — لا في
+                شريط الأزرار: مربّعٌ بعرض نصف هاتف لا يتّسع لأربعة أزرار.
+
+                والسهمُ يشير إلى حيث تذهب الصورة: «قبلها» يمينٌ في العربيّة
+                ويسارٌ في الإنجليزيّة (`ltr:rotate-180`).
+            */}
+            {(onEarlier || onLater) && (
+                <div className={cn('absolute end-2 top-2 flex gap-1', reveal)}>
+                    {onEarlier && (
+                        <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={onEarlier}
+                            title={t('قدّمها')}
+                            aria-label={t('قدّمها')}
+                            data-testid="gallery-earlier"
+                        >
+                            <ChevronRight className="ltr:rotate-180" />
+                        </Button>
+                    )}
+                    {onLater && (
+                        <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={onLater}
+                            title={t('أخّرها')}
+                            aria-label={t('أخّرها')}
+                            data-testid="gallery-later"
+                        >
+                            <ChevronLeft className="ltr:rotate-180" />
+                        </Button>
+                    )}
+                </div>
+            )}
+
+            {/*
                 الأزرار تظهر عند المرور — والشاشة اللمسية لا تمرّ،
                 فتبقى ظاهرةً عليها دائمًا (focus-within يُبقيها
                 لمن يتنقّل بلوحة المفاتيح كذلك).
@@ -261,7 +329,8 @@ function Tile({ url, main, placeholder = false, busy, onPromote, onRemove }: Til
                 تُرقّى صورةٌ هي رئيسيةٌ أصلًا */}
             <div
                 className={cn(
-                    'absolute inset-x-0 bottom-0 flex justify-center gap-1.5 bg-black/50 p-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100',
+                    'absolute inset-x-0 bottom-0 flex justify-center gap-1.5 bg-black/50 p-2',
+                    reveal,
                     placeholder && 'hidden',
                 )}
             >
@@ -326,11 +395,14 @@ export default function Gallery({ productId, images, max, limits }: Props) {
      */
     const stored = images.filter((i) => ! i.placeholder);
 
-    const upload = (chosen: File[]) => {
+    const upload = async (picked: File[]) => {
+        setBusy(true);
+        const chosen = await prepared(picked, limits, max);
         const problem = pickProblem(chosen, { have: stored.length, max, limits }, t);
 
         if (problem) {
             setError(problem);
+            setBusy(false);
 
             return;
         }
@@ -338,10 +410,28 @@ export default function Gallery({ productId, images, max, limits }: Props) {
         const data = new FormData();
         chosen.forEach((f) => data.append('images[]', f));
 
-        setBusy(true);
         setError(null);
         router.post(route('admin.products.images.store', productId), data, {
             forceFormData: true,
+            preserveScroll: true,
+            onError: (errors) => setError(errors.images ?? Object.values(errors)[0] ?? null),
+            onFinish: () => setBusy(false),
+        });
+    };
+
+    /*
+     * الترتيبُ لصور المعرض وحدها — ما بعد الرئيسية. والرئيسيةُ تُبدَّل
+     * بالنجمة: تقديمُ صورةٍ إلى موضعها يعني ترقيتَها، وذاك بابُه.
+     */
+    const gallery = images.filter((i) => i.id !== null);
+
+    const move = (at: number, by: -1 | 1) => {
+        const ids = gallery.map((i) => i.id as number);
+        [ids[at], ids[at + by]] = [ids[at + by], ids[at]];
+
+        setBusy(true);
+        setError(null);
+        router.put(route('admin.products.images.order', productId), { ids }, {
             preserveScroll: true,
             onError: (errors) => setError(errors.images ?? Object.values(errors)[0] ?? null),
             onFinish: () => setBusy(false),
@@ -379,17 +469,23 @@ export default function Gallery({ productId, images, max, limits }: Props) {
                 notice={capNotice(stored.length, max, t)}
                 error={error}
             >
-                {images.map((image) => (
-                    <Tile
-                        key={image.id ?? 'main'}
-                        url={image.url}
-                        main={image.main}
-                        placeholder={image.placeholder}
-                        busy={busy}
-                        onPromote={() => promote(image)}
-                        onRemove={() => setConfirming(image)}
-                    />
-                ))}
+                {images.map((image) => {
+                    const at = gallery.indexOf(image);
+
+                    return (
+                        <Tile
+                            key={image.id ?? 'main'}
+                            url={image.url}
+                            main={image.main}
+                            placeholder={image.placeholder}
+                            busy={busy}
+                            onPromote={() => promote(image)}
+                            onRemove={() => setConfirming(image)}
+                            onEarlier={at > 0 ? () => move(at, -1) : undefined}
+                            onLater={at >= 0 && at < gallery.length - 1 ? () => move(at, 1) : undefined}
+                        />
+                    );
+                })}
             </Frame>
 
             <Dialog open={!! confirming} onOpenChange={(open) => ! open && setConfirming(null)}>
@@ -470,8 +566,14 @@ interface DraftProps {
 export function DraftGallery({ drafts, max, limits, onChange, error }: DraftProps) {
     const t = useTranslate();
     const [problem, setProblem] = useState<string | null>(null);
+    /** الصورُ تُصغَّر — والزرّ ينتظر كي لا تُختار دفعةٌ فوق دفعةٍ لم تُعدّ */
+    const [working, setWorking] = useState(false);
 
-    const pick = (chosen: File[]) => {
+    const pick = async (picked: File[]) => {
+        setWorking(true);
+        const chosen = await prepared(picked, limits, max);
+        setWorking(false);
+
         const heldBytes = drafts.reduce((sum, d) => sum + d.file.size, 0);
         const reason = pickProblem(chosen, { have: drafts.length, max, limits, heldBytes, draft: true }, t);
 
@@ -487,6 +589,13 @@ export function DraftGallery({ drafts, max, limits, onChange, error }: DraftProp
         onChange(next);
     };
 
+    /* والترتيبُ يمرّ بالأولى أيضًا: ما قُدِّم إليها صار الرئيسية — الأولى هي الرئيسية */
+    const move = (index: number, by: -1 | 1) => {
+        const next = [...drafts];
+        [next[index], next[index + by]] = [next[index + by], next[index]];
+        onChange(next);
+    };
+
     const remove = (index: number) => {
         URL.revokeObjectURL(drafts[index].url);
         setProblem(null);
@@ -497,13 +606,13 @@ export function DraftGallery({ drafts, max, limits, onChange, error }: DraftProp
         <Frame
             count={drafts.length}
             max={max}
-            busy={false}
-            addLabel={drafts.length === 0 ? t('اختر صورة أو أكثر') : t('أضف صورة أخرى')}
+            busy={working}
+            addLabel={working ? t('تجهيز الصور…') : drafts.length === 0 ? t('اختر صورة أو أكثر') : t('أضف صورة أخرى')}
             onPick={pick}
             notice={
                 drafts.length >= max
                     ? capNotice(drafts.length, max, t)
-                    : t('حتى :max صور، تُحفظ مع المنتج. الأولى هي الرئيسية، وتبدّلها بالنجمة.', { max })
+                    : t('حتى :max صور، تُحفظ مع المنتج. الأولى هي الرئيسية — بدّلها بالنجمة، ورتّب الصور بالسهمين.', { max })
             }
             error={problem ?? error}
         >
@@ -512,9 +621,11 @@ export function DraftGallery({ drafts, max, limits, onChange, error }: DraftProp
                     key={draft.url}
                     url={draft.url}
                     main={i === 0}
-                    busy={false}
+                    busy={working}
                     onPromote={() => promote(i)}
                     onRemove={() => remove(i)}
+                    onEarlier={i > 0 ? () => move(i, -1) : undefined}
+                    onLater={i < drafts.length - 1 ? () => move(i, 1) : undefined}
                 />
             ))}
         </Frame>

@@ -109,6 +109,27 @@ class ProductImageController extends Controller
         ]);
     }
 
+    /**
+     * يرتّب صورَ المعرض كما يراها التاجر.
+     *
+     * والمنتجُ يُقرأ من متجره قبل أن تُفحص القائمة: منتجُ الجار يُردّ بـ404
+     * أيًّا كان ما أُرسل معه، لا بخطأ تحقّقٍ يخفي أنّ الباب لم يُسأل.
+     */
+    public function order(Request $request, string $id)
+    {
+        $product = $this->product($id);
+
+        $data = $request->validate([
+            'ids' => ['present', 'array', 'max:'.(ProductImages::MAX * 2)],
+            'ids.*' => ['integer', 'distinct'],
+        ], [], ['ids' => __('الصور')]);
+
+        ProductImages::reorder($product, $data['ids']);
+        Activity::log('updated', 'رتّب صور المنتج: '.$product->name, ['subject_id' => $product->id]);
+
+        return back()->with('toast', ['msg' => __('حُفظ ترتيب الصور'), 'type' => 'success']);
+    }
+
     /** يجعل صورةً من المعرض رئيسيةً — والقديمة تنزل مكانها لا تُفقد */
     public function promote(string $id, string $imageId)
     {

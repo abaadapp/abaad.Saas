@@ -84,18 +84,34 @@ class ProductImages
      */
     public static function uploadLimits(): array
     {
-        $allowed = self::iniKb('upload_max_filesize');
-        $perFile = $allowed > 0 ? min(self::MAX_KB, $allowed) : self::MAX_KB;
+        return self::limitsFrom(self::iniKb('upload_max_filesize'), self::iniKb('post_max_size'));
+    }
 
-        $post = self::iniKb('post_max_size');
+    /**
+     * الحسابُ نفسُه بأرقامٍ تُعطى — ليُختبر بحدود خادمٍ غير الذي يجري عليه.
+     *
+     * والطلبُ هو الحدُّ الأضيق دائمًا: ملفٌّ لا يتّسع له الطلبُ لا يصل وإن
+     * سمح به `upload_max_filesize`. وكان الحسابُ يأخذ الأوسعَ منهما
+     * (`max(perFile, post)`)، فخادمٌ حدُّ ملفّه أربعةٌ وحدُّ طلبه اثنان يَعِد
+     * بأربعة — ويُلقى الطلبُ كلُّه بلا رسالة.
+     *
+     * @return array{perFile: int, batch: int} بالكيلوبايت
+     */
+    public static function limitsFrom(int $uploadKb, int $postKb): array
+    {
+        $perFile = $uploadKb > 0 ? min(self::MAX_KB, $uploadKb) : self::MAX_KB;
+
+        if ($postKb <= 0) {
+            return ['perFile' => $perFile, 'batch' => $perFile * self::MAX];
+        }
 
         /*
          * وهامشٌ يُطرح من حدّ الطلب: الطلبُ يحمل معه رمزَ الحماية وحدودَ
          * multipart وأسماءَ الحقول. ودفعةٌ تساوي الحدَّ بالضبط تتجاوزه بها.
          */
-        $batch = $post > 0 ? max($perFile, $post - 512) : $perFile * self::MAX;
+        $batch = max(1, $postKb - 512);
 
-        return ['perFile' => $perFile, 'batch' => $batch];
+        return ['perFile' => min($perFile, $batch), 'batch' => $batch];
     }
 
     /** يقرأ قيمة `ini` المختصرة (2M، 512K، 1G) كيلوبايتاتٍ — و«بلا حدّ» صفرٌ */
@@ -371,6 +387,35 @@ class ProductImages
         $size = (int) @filesize($source);
 
         return $size > 0 && strlen($bytes) < $size ? $bytes : null;
+    }
+
+    /**
+     * يرتّب صورَ المعرض — ما بعد الرئيسية — بالترتيب الذي يُعطى.
+     *
+     * والقائمةُ يجب أن تكون صورَ المنتج نفسَها كلَّها، لا أقلّ ولا أكثر:
+     * شاشةٌ فُتحت قبل حذفٍ أو رفعٍ من تبويبٍ آخر ترسل قائمةً قديمة، وترتيبُها
+     * على ما بقي يُخفي صورةً عن ترتيبٍ لم يرَه التاجر. فتُردّ بسببٍ يُقال.
+     * ومعرّفُ صورةٍ لمنتجٍ آخر — في متجره أو غيره — لا يطابق أبدًا.
+     *
+     * @param  list<int>  $ids
+     */
+    public static function reorder(Product $product, array $ids): void
+    {
+        DB::transaction(function () use ($product, $ids) {
+            $locked = Product::where('business_id', $product->business_id)->lockForUpdate()->findOrFail($product->id);
+            $have = ProductImage::where('product_id', $locked->id)->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+            $sent = collect($ids)->map(fn ($id) => (int) $id)->sort()->values()->all();
+
+            if ($have !== $sent) {
+                throw ValidationException::withMessages([
+                    'images' => __('تغيّرت صور المنتج منذ فُتحت الصفحة — أعد فتحها ثمّ رتّبها.'),
+                ]);
+            }
+
+            foreach (array_values($ids) as $slot => $id) {
+                ProductImage::where('product_id', $locked->id)->whereKey($id)->update(['sort_order' => $slot + 1]);
+            }
+        });
     }
 
     /**

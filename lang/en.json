@@ -8556,5 +8556,10 @@
     "مجموع الصور :got ميغابايت، وأقصى ما يُحفظ مرّةً واحدة :n — احذف صورةً أو اختر أخفّ منها، أو أضف الباقي بعد الحفظ.": "The images total :got MB, and at most :n can be saved at once — remove an image or choose lighter ones, or add the rest after saving.",
     "لهذا المنتج :have صور، أكثر من الحدّ الحالي (:max). تبقى كلّها كما هي، ولا تُضاف صورةٌ جديدة حتى تحذف ما يُنزل عددها دون الحدّ.": "This product has :have images, more than the current limit (:max). They all stay as they are, and no new image can be added until you delete enough to bring the count below the limit.",
     "اختر صورة أو أكثر": "Choose one or more images",
-    "حتى :max صور، تُحفظ مع المنتج. الأولى هي الرئيسية، وتبدّلها بالنجمة.": "Up to :max images, saved with the product. The first is the main one; change it with the star."
+    "حتى :max صور، تُحفظ مع المنتج. الأولى هي الرئيسية — بدّلها بالنجمة، ورتّب الصور بالسهمين.": "Up to :max images, saved with the product. The first is the main one — change it with the star, and arrange the images with the arrows.",
+    "قدّمها": "Move earlier",
+    "أخّرها": "Move later",
+    "تجهيز الصور…": "Preparing images…",
+    "تغيّرت صور المنتج منذ فُتحت الصفحة — أعد فتحها ثمّ رتّبها.": "The product images changed since this page was opened — reopen it, then arrange them.",
+    "حُفظ ترتيب الصور": "Image order saved"
 }

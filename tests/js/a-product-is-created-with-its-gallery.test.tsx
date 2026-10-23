@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { router as core } from '@inertiajs/core';
 import { router } from '@inertiajs/react';
@@ -6,6 +6,16 @@ import { router } from '@inertiajs/react';
 import { pageProps } from './setup';
 import ProductForm from '@/Pages/Admin/Products/partials/ProductForm';
 import Gallery, { type GalleryImage } from '@/Pages/Admin/Products/partials/Gallery';
+
+/*
+ * والتصغيرُ في المتصفّح يحتاج canvas لا يملكه jsdom — فيُستبدل بما يُعرف
+ * ما طُلب منه. وافتراضُه أن يعيد الملفَّ كما هو، كما يفعل حين يتعذّر.
+ */
+const shrinkMock = vi.hoisted(() => vi.fn(async (f: File, _side?: number) => f));
+vi.mock('@/Components/StoreImageField', async (original) => ({
+    ...(await original<typeof import('@/Components/StoreImageField')>()),
+    shrink: shrinkMock,
+}));
 
 /**
  * صورُ المنتج تُختار مع إضافته — حتى خمس، وتُرى وتُرتَّب قبل الحفظ.
@@ -17,6 +27,8 @@ import Gallery, { type GalleryImage } from '@/Pages/Admin/Products/partials/Gall
  *   - السادسةُ تُردّ قبل الإرسال، وزرُّ الإضافة يختفي عند الخامسة.
  *   - النجمةُ تختار الرئيسية، والحذفُ يُخرج صورةً لم تُحفظ — وما يُرسل هو ما
  *     تراه: الرئيسيةُ في `image` والباقي في `images` بترتيبه.
+ *   - السهمان يرتّبان الصور قبل الحفظ وفي التعديل، وما قُدِّم إلى الأولى صار الرئيسية.
+ *   - صورةُ الهاتف الثقيلة تُصغَّر في المتصفّح قبل أن تُعرض وتُرسل — والخفيفةُ كما هي.
  *   - الثقيلةُ ومجموعُ الحفظة يُقالان قبل الإرسال — حدودُ الخادم نفسُها.
  *   - المعرضُ في التعديل: صنفٌ بخمسٍ لا يُضاف إليه، وقديمٌ بثمانٍ تُعرض صورُه
  *     كلُّها وتُحذف وتُرقّى ولا يُضاف إليه.
@@ -49,6 +61,9 @@ beforeEach(() => {
     URL.createObjectURL = vi.fn(() => `blob:draft-${++made}`);
     URL.revokeObjectURL = vi.fn();
     vi.mocked(router.post).mockClear();
+    vi.mocked(router.put).mockClear();
+    shrinkMock.mockReset();
+    shrinkMock.mockImplementation(async (f: File) => f);
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -58,7 +73,12 @@ const drawCreate = (limits = LIMITS) => {
     fireEvent.click(screen.getByRole('tab', { name: 'صور المنتج' }));
 };
 
-const pick = (...files: File[]) => fireEvent.change(screen.getByTestId('gallery-input'), { target: { files } });
+// والاختيارُ يُنتظر: الثقيلةُ تُصغَّر قبل أن تُعرض (`prepared`)
+const pick = async (...files: File[]) => {
+    await act(async () => {
+        fireEvent.change(screen.getByTestId('gallery-input'), { target: { files } });
+    });
+};
 const tiles = () => screen.queryAllByTestId('gallery-tile');
 const shown = () => tiles().map((t) => t.querySelector('img')?.getAttribute('src'));
 const count = () => screen.getByTestId('gallery-count').textContent;
@@ -74,14 +94,14 @@ const save = async () => {
 };
 
 describe('صورُ المنتج في شاشة الإضافة', () => {
-    it('تُختار عدّةُ صورٍ دفعةً واحدة وتُرى قبل الحفظ — والأولى رئيسية', () => {
+    it('تُختار عدّةُ صورٍ دفعةً واحدة وتُرى قبل الحفظ — والأولى رئيسية', async () => {
         drawCreate();
 
         expect(count()).toBe('0 / 5');
         expect(screen.getByText('اختر صورة أو أكثر')).toBeInTheDocument();
         expect(screen.queryByText('احفظ المنتج أوّلًا لتضيف صورًا أخرى وتختار الرئيسية بينها.')).toBeNull();
 
-        pick(photo('a.jpg'), photo('b.jpg'));
+        await pick(photo('a.jpg'), photo('b.jpg'));
 
         expect(shown()).toEqual(['blob:draft-1', 'blob:draft-2']);
         expect(tiles().map((t) => t.dataset.main)).toEqual(['true', 'false']);
@@ -89,19 +109,19 @@ describe('صورُ المنتج في شاشة الإضافة', () => {
         expect(count()).toBe('2 / 5');
     });
 
-    it('السادسةُ تُردّ قبل الإرسال — وزرُّ الإضافة يختفي عند الخامسة', () => {
+    it('السادسةُ تُردّ قبل الإرسال — وزرُّ الإضافة يختفي عند الخامسة', async () => {
         drawCreate();
 
-        pick(...['1', '2', '3', '4', '5', '6'].map((n) => photo(`${n}.jpg`)));
+        await pick(...['1', '2', '3', '4', '5', '6'].map((n) => photo(`${n}.jpg`)));
         expect(screen.getByRole('alert')).toHaveTextContent('اخترتَ 6 صور، والمتبقّي 5 من 5.');
         expect(tiles()).toHaveLength(0);
 
-        pick(photo('1.jpg'), photo('2.jpg'), photo('3.jpg'), photo('4.jpg'));
-        pick(photo('5.jpg'), photo('6.jpg'));
+        await pick(photo('1.jpg'), photo('2.jpg'), photo('3.jpg'), photo('4.jpg'));
+        await pick(photo('5.jpg'), photo('6.jpg'));
         expect(screen.getByRole('alert')).toHaveTextContent('اخترتَ 2 صور، والمتبقّي 1 من 5.');
         expect(tiles()).toHaveLength(4);
 
-        pick(photo('5.jpg'));
+        await pick(photo('5.jpg'));
         expect(tiles()).toHaveLength(5);
         expect(count()).toBe('5 / 5');
         expect(screen.queryByTestId('gallery-input')).toBeNull();
@@ -110,7 +130,7 @@ describe('صورُ المنتج في شاشة الإضافة', () => {
 
     it('النجمةُ تختار الرئيسية — وتُرسل في `image` والباقي في `images`', async () => {
         drawCreate();
-        pick(photo('a.jpg'), photo('b.jpg'), photo('c.jpg'));
+        await pick(photo('a.jpg'), photo('b.jpg'), photo('c.jpg'));
 
         fireEvent.click(within(tiles()[2]).getByRole('button', { name: 'اجعلها الرئيسية' }));
 
@@ -127,7 +147,7 @@ describe('صورُ المنتج في شاشة الإضافة', () => {
 
     it('صورةٌ تُحذف قبل الحفظ لا تُرسل — ويُطلق رابطُ معاينتها', async () => {
         drawCreate();
-        pick(photo('a.jpg'), photo('b.jpg'), photo('c.jpg'));
+        await pick(photo('a.jpg'), photo('b.jpg'), photo('c.jpg'));
 
         fireEvent.click(within(tiles()[1]).getByRole('button', { name: 'حذف الصورة' }));
 
@@ -145,7 +165,7 @@ describe('صورُ المنتج في شاشة الإضافة', () => {
 
     it('حذفُ الرئيسية يُصعد التالية', async () => {
         drawCreate();
-        pick(photo('a.jpg'), photo('b.jpg'));
+        await pick(photo('a.jpg'), photo('b.jpg'));
 
         fireEvent.click(within(tiles()[0]).getByRole('button', { name: 'حذف الصورة' }));
         await save();
@@ -155,9 +175,9 @@ describe('صورُ المنتج في شاشة الإضافة', () => {
         expect(sent[0].images).toEqual([]);
     });
 
-    it('التنقّلُ بين الأقسام لا يُفقد ما اختير', () => {
+    it('التنقّلُ بين الأقسام لا يُفقد ما اختير', async () => {
         drawCreate();
-        pick(photo('a.jpg'), photo('b.jpg'));
+        await pick(photo('a.jpg'), photo('b.jpg'));
 
         fireEvent.click(screen.getByRole('tab', { name: 'التسعير' }));
         fireEvent.click(screen.getByRole('tab', { name: 'صور المنتج' }));
@@ -166,22 +186,63 @@ describe('صورُ المنتج في شاشة الإضافة', () => {
         expect(URL.revokeObjectURL).not.toHaveBeenCalled();
     });
 
-    it('الثقيلةُ ومجموعُ الحفظة يُقالان قبل الإرسال', () => {
+    it('الثقيلةُ ومجموعُ الحفظة يُقالان قبل الإرسال', async () => {
         drawCreate({ perFile: 100, batch: 250 });
 
-        pick(photo('big.jpg', 150));
+        await pick(photo('big.jpg', 150));
         expect(screen.getByRole('alert')).toHaveTextContent('صورةٌ أثقل من 0.1 ميغابايت لا تُرفع: big.jpg');
 
-        pick(photo('a.jpg', 90), photo('b.jpg', 90));
+        await pick(photo('a.jpg', 90), photo('b.jpg', 90));
         expect(tiles()).toHaveLength(2);
         expect(screen.queryByRole('alert')).toBeNull();
 
         // الثالثةُ تُقاس مع ما اختير قبلها: الحفظةُ واحدة
-        pick(photo('c.jpg', 90));
+        await pick(photo('c.jpg', 90));
         expect(screen.getByRole('alert')).toHaveTextContent(
             'مجموع الصور 0.3 ميغابايت، وأقصى ما يُحفظ مرّةً واحدة 0.2 — احذف صورةً أو اختر أخفّ منها، أو أضف الباقي بعد الحفظ.',
         );
         expect(tiles()).toHaveLength(2);
+    });
+
+    it('السهمان يرتّبان قبل الحفظ — وما قُدِّم إلى الأولى صار الرئيسية', async () => {
+        drawCreate();
+        await pick(photo('a.jpg'), photo('b.jpg'), photo('c.jpg'));
+
+        // الأولى لا تتقدّم، والأخيرة لا تتأخّر
+        expect(within(tiles()[0]).queryByRole('button', { name: 'قدّمها' })).toBeNull();
+        expect(within(tiles()[2]).queryByRole('button', { name: 'أخّرها' })).toBeNull();
+
+        fireEvent.click(within(tiles()[0]).getByRole('button', { name: 'أخّرها' }));
+        expect(shown()).toEqual(['blob:draft-2', 'blob:draft-1', 'blob:draft-3']);
+        expect(tiles()[0].dataset.main).toBe('true');
+
+        fireEvent.click(within(tiles()[2]).getByRole('button', { name: 'قدّمها' }));
+        expect(shown()).toEqual(['blob:draft-2', 'blob:draft-3', 'blob:draft-1']);
+
+        await save();
+
+        expect(names(sent[0].image)).toEqual(['b.jpg']);
+        expect(names(sent[0].images)).toEqual(['c.jpg', 'a.jpg']);
+    });
+
+    it('صورةُ الهاتف الثقيلة تُصغَّر قبل أن تُعرض وتُرسل — والخفيفةُ كما هي', async () => {
+        // حدُّ الإنتاج: ملفٌّ ٢ ميغا وطلبٌ ٧٫٥ — فنصيبُ الصورة من خمسٍ ١٫٥
+        drawCreate({ perFile: 2048, batch: 7680 });
+        shrinkMock.mockImplementation(async (f: File) =>
+            new File([new Uint8Array(300 * 1024)], f.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+
+        await pick(photo('phone.jpg', 3500), photo('mid.jpg', 1700), photo('light.jpg', 500));
+
+        // الثقيلةُ على الحدّ، والتي دونه وفوق نصيبها — لا الخفيفة
+        expect(shrinkMock.mock.calls.map(([f, side]) => [f.name, side])).toEqual([['phone.jpg', 1600], ['mid.jpg', 1600]]);
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(tiles()).toHaveLength(3);
+
+        await save();
+
+        expect(names(sent[0].image)).toEqual(['phone.jpg']);
+        expect((sent[0].image as File).size).toBe(300 * 1024);
+        expect((sent[0].images as File[]).map((f) => f.size)).toEqual([300 * 1024, 500 * 1024]);
     });
 
     it('بلا صورٍ يُحفظ المنتجُ بلا صورة', async () => {
@@ -202,7 +263,7 @@ describe('المعرضُ في التعديل', () => {
     const draw = (images: GalleryImage[]) =>
         render(<Gallery productId={9} images={images} max={5} limits={LIMITS} />);
 
-    it('صنفٌ بخمسٍ لا يُضاف إليه — «٥ / ٥»', () => {
+    it('صنفٌ بخمسٍ لا يُضاف إليه — «٥ / ٥»', async () => {
         draw(stored(5));
 
         expect(count()).toBe('5 / 5');
@@ -210,7 +271,7 @@ describe('المعرضُ في التعديل', () => {
         expect(screen.getByText('بلغتَ الحدّ الأقصى — احذف صورةً لتضيف غيرها.')).toBeInTheDocument();
     });
 
-    it('صنفٌ قديمٌ بثمانٍ تُعرض صورُه كلُّها، وتُحذف وتُرقّى، ولا يُضاف إليه', () => {
+    it('صنفٌ قديمٌ بثمانٍ تُعرض صورُه كلُّها، وتُحذف وتُرقّى، ولا يُضاف إليه', async () => {
         draw(stored(8));
 
         expect(tiles()).toHaveLength(8);
@@ -226,14 +287,46 @@ describe('المعرضُ في التعديل', () => {
         expect(router.post).toHaveBeenCalledWith('/admin.products.images.promote/9/3', {}, expect.anything());
     });
 
-    it('الدفعةُ التي تتجاوز السقف تُردّ قبل الإرسال', () => {
+    it('السهمان يرتّبان المعرضَ بعد الرئيسية — والرئيسيةُ بالنجمة وحدها', async () => {
+        draw(stored(4));
+
+        // الرئيسيةُ بلا سهمين، وأوّلُ المعرض لا يتقدّم إليها
+        expect(within(tiles()[0]).queryByRole('button', { name: 'قدّمها' })).toBeNull();
+        expect(within(tiles()[0]).queryByRole('button', { name: 'أخّرها' })).toBeNull();
+        expect(within(tiles()[1]).queryByRole('button', { name: 'قدّمها' })).toBeNull();
+        expect(within(tiles()[3]).queryByRole('button', { name: 'أخّرها' })).toBeNull();
+
+        fireEvent.click(within(tiles()[1]).getByRole('button', { name: 'أخّرها' }));
+        expect(router.put).toHaveBeenCalledWith('/admin.products.images.order/9', { ids: [2, 1, 3] }, expect.anything());
+
+        // والأزرارُ تنتظر حتى يعود الطلب — فلا يُرسل ترتيبٌ فوق ترتيبٍ لم يُحفظ
+        expect(within(tiles()[3]).getByRole('button', { name: 'قدّمها' })).toBeDisabled();
+
+        cleanup();
+        draw(stored(4));
+        fireEvent.click(within(tiles()[3]).getByRole('button', { name: 'قدّمها' }));
+        expect(vi.mocked(router.put).mock.calls[1][1]).toEqual({ ids: [1, 3, 2] });
+    });
+
+    it('صورةُ الهاتف الثقيلة تُصغَّر قبل أن تُرفع إلى المعرض', async () => {
+        draw(stored(2));
+        shrinkMock.mockImplementation(async (f: File) => new File([new Uint8Array(200 * 1024)], f.name, { type: 'image/jpeg' }));
+
+        await pick(photo('phone.jpg', 4000));
+
+        expect(shrinkMock).toHaveBeenCalledTimes(1);
+        const data = vi.mocked(router.post).mock.calls[0][1] as FormData;
+        expect((data.getAll('images[]') as File[]).map((f) => f.size)).toEqual([200 * 1024]);
+    });
+
+    it('الدفعةُ التي تتجاوز السقف تُردّ قبل الإرسال', async () => {
         draw(stored(3));
 
-        pick(photo('x.jpg'), photo('y.jpg'), photo('z.jpg'));
+        await pick(photo('x.jpg'), photo('y.jpg'), photo('z.jpg'));
         expect(screen.getByRole('alert')).toHaveTextContent('اخترتَ 3 صور، والمتبقّي 2 من 5.');
         expect(router.post).not.toHaveBeenCalled();
 
-        pick(photo('x.jpg'), photo('y.jpg'));
+        await pick(photo('x.jpg'), photo('y.jpg'));
         expect(router.post).toHaveBeenCalledTimes(1);
         expect(vi.mocked(router.post).mock.calls[0][0]).toBe('/admin.products.images.store/9');
     });

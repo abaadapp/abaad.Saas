@@ -38,6 +38,8 @@ use Tests\TestCase;
  *   - صورُ متجرٍ لا تُبلَغ ولا تُعلَّق من متجرٍ آخر.
  *   - ما يسقط في منتصف الحفظ لا يترك صنفًا ولا ملفًّا.
  *   - الصورُ لا تمسّ السعر ولا الكمّيّة ولا الوصفين ولا قنوات البيع.
+ *   - الترتيبُ يُحفظ كما رتّبه صاحبُه، وقائمةٌ قديمةٌ أو غريبةٌ تُردّ ولا يتحرّك شيء.
+ *   - حدُّ الدفعة لا يَعِد بأكثر ممّا يحمله الطلب (`limitsFrom`).
  *
  * والضغطُ إلى WebP في `ANewProductPhotoIsSavedLightTest`، والشاشةُ في
  * `tests/js/a-product-is-created-with-its-gallery.test.tsx`.
@@ -275,12 +277,19 @@ class AProductIsCreatedWithItsWholeGalleryTest extends TestCase
         $this->actingAs($this->owner)->get(route('admin.products.edit', $p->id))
             ->assertInertia(fn ($page) => $page->has('gallery', 8)->where('galleryMax', 5)->etc());
 
-        // وفتحُ الشاشة لا يمحو شيئًا، ولا حفظُ بيانات الصنف
+        /*
+         * وفتحُ الشاشة لا يمحو شيئًا، ولا حفظُ بيانات الصنف — ومعرضُه فوق
+         * السقف لا يمنع تعديلَ اسمه وسعره ومخزونه: السقفُ للإضافة وحدها.
+         */
         $this->put(route('admin.products.update', $p->id), [
-            'name' => 'باقة قديمة', 'price' => 31, 'cost' => 10, 'quantity' => 4, 'alert_qty' => 1,
+            'name' => 'باقة قديمة مجدّدة', 'price' => 31, 'cost' => 10, 'quantity' => 9, 'alert_qty' => 1,
         ])->assertSessionHasNoErrors();
 
-        $this->assertSame(8, ProductImages::count($p->fresh()));
+        $p->refresh();
+        $this->assertSame('باقة قديمة مجدّدة', $p->name);
+        $this->assertEquals(31, (float) $p->price);
+        $this->assertSame(9, (int) $p->quantity);
+        $this->assertSame(8, ProductImages::count($p));
         $this->assertCount(8, $this->filesOnDisk());
     }
 
@@ -324,6 +333,90 @@ class AProductIsCreatedWithItsWholeGalleryTest extends TestCase
 
         $this->assertSame(5, ProductImages::count($p->fresh()));
         $this->assertSame([222, 111], $this->dimensions(collect($this->extras($p))->last()->path));
+    }
+
+    /* ═══════════ الترتيب ═══════════ */
+
+    public function test_the_gallery_is_reordered_as_the_merchant_arranged_it(): void
+    {
+        $this->create($this->photo('main.jpg', 400, 300), [
+            $this->photo('a.jpg', 301, 200), $this->photo('b.jpg', 302, 200), $this->photo('c.jpg', 303, 200),
+        ]);
+        $p = $this->product();
+        [$a, $b, $c] = $this->extras($p);
+        $main = $p->getRawOriginal('image');
+
+        $this->put(route('admin.products.images.order', $p->id), ['ids' => [$c->id, $a->id, $b->id]])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame([303, 301, 302], array_map(fn ($i) => $this->dimensions($i->path)[0], $this->extras($p)));
+        $this->assertSame($main, $p->fresh()->getRawOriginal('image'), 'غيّر الترتيبُ الرئيسية');
+
+        // والمعرضُ يُقرأ بالترتيب الجديد في الشاشة وفي صفحة الصنف
+        $this->get(route('admin.products.edit', $p->id))->assertInertia(fn ($page) => $page
+            ->where('gallery.1.id', $c->id)->where('gallery.2.id', $a->id)->where('gallery.3.id', $b->id)->etc());
+        $html = $this->get('/s/'.$this->shop->site_slug.'/p/'.$p->id)->assertOk()->getContent();
+        preg_match_all('/<button[^>]*class="rb-thumb[^"]*" data-src="([^"]+)"/', $html, $m);
+        $this->assertSame([Storage::url($main), $c->url, $a->url, $b->url], $m[1]);
+    }
+
+    public function test_a_stale_or_foreign_order_is_refused_and_nothing_moves(): void
+    {
+        $this->create($this->photo('main.jpg'), [$this->photo('a.jpg', 301, 200), $this->photo('b.jpg', 302, 200)]);
+        $p = $this->product();
+        [$a, $b] = $this->extras($p);
+
+        $this->create($this->photo('o.jpg'), [$this->photo('o2.jpg')], ['name' => 'باقة أخرى']);
+        $other = $this->extras($this->product('باقة أخرى'))[0];
+
+        $stale = 'تغيّرت صور المنتج منذ فُتحت الصفحة — أعد فتحها ثمّ رتّبها.';
+        // ناقصةٌ (حُذفت صورةٌ من تبويبٍ آخر)، وفيها صورةُ صنفٍ آخر، ومكرّرة
+        $this->put(route('admin.products.images.order', $p->id), ['ids' => [$b->id]])->assertSessionHasErrors(['images' => $stale]);
+        $this->put(route('admin.products.images.order', $p->id), ['ids' => [$b->id, $a->id, $other->id]])->assertSessionHasErrors(['images' => $stale]);
+        $this->put(route('admin.products.images.order', $p->id), ['ids' => [$b->id, $other->id]])->assertSessionHasErrors(['images' => $stale]);
+        $this->put(route('admin.products.images.order', $p->id), ['ids' => [$b->id, $b->id]])->assertSessionHasErrors('ids.0');
+
+        $this->assertSame([301, 302], array_map(fn ($i) => $this->dimensions($i->path)[0], $this->extras($p)));
+        $this->assertSame(1, (int) $other->fresh()->sort_order, 'تحرّكت صورةُ صنفٍ آخر');
+
+        // ومتجرٌ آخر لا يبلغ الباب أصلًا
+        $neighbour = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
+        $stranger = User::create([
+            'business_id' => $neighbour->id, 'name' => 'الجار', 'email' => 'order@neighbour.local',
+            'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+        $this->actingAs($stranger)->put(route('admin.products.images.order', $p->id), ['ids' => [$b->id, $a->id]])->assertNotFound();
+        $this->assertSame([301, 302], array_map(fn ($i) => $this->dimensions($i->path)[0], $this->extras($p)));
+    }
+
+    public function test_a_legacy_product_may_still_be_reordered(): void
+    {
+        $p = $this->legacy();
+        $ids = array_map(fn ($i) => $i->id, $this->extras($p));
+
+        $this->actingAs($this->owner)->put(route('admin.products.images.order', $p->id), ['ids' => array_reverse($ids)])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(array_reverse($ids), array_map(fn ($i) => $i->id, $this->extras($p)));
+        $this->assertSame(8, ProductImages::count($p->fresh()));
+    }
+
+    /* ═══════════ حدودُ الرفع ═══════════ */
+
+    public function test_the_batch_never_promises_more_than_the_request_carries(): void
+    {
+        // حدُّ الإنتاج اليوم: ملفٌّ ٢ ميغا وطلبٌ ٨
+        $this->assertSame(['perFile' => 2048, 'batch' => 7680], ProductImages::limitsFrom(2048, 8192));
+
+        // وطلبٌ أضيقُ من الملفّ: لا يُوعد بملفٍّ لا يتّسع له الطلب
+        $this->assertSame(['perFile' => 1536, 'batch' => 1536], ProductImages::limitsFrom(4096, 2048));
+
+        // وطلبٌ أضيقُ من الهامش نفسه لا يصير صفرًا ولا سالبًا
+        $this->assertSame(['perFile' => 1, 'batch' => 1], ProductImages::limitsFrom(4096, 256));
+
+        // وبلا حدٍّ معروف: وعدُنا نحن
+        $this->assertSame(['perFile' => ProductImages::MAX_KB, 'batch' => ProductImages::MAX_KB * 5], ProductImages::limitsFrom(0, 0));
+        $this->assertSame(['perFile' => ProductImages::MAX_KB, 'batch' => 20480 - 512], ProductImages::limitsFrom(0, 20480));
     }
 
     /* ═══════════ الصندوق وصفحةُ الصنف ═══════════ */

@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
+import { usePage } from '@inertiajs/react';
 import { Search } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { csrfHeaders } from '@/lib/csrf';
+import { money as formatMoney } from '@/lib/format';
 import { useAsciiDigits } from '@/lib/numerals';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import type { PageProps } from '@/types';
 import { CHANNEL_LABEL, addonChannels, type AddonOption, type BoutiqueLinks, type StockItem } from './addons';
 
 /** صنفٌ يُختار في النافذة — انظر `StockItem` */
@@ -26,7 +29,6 @@ interface Props {
     boutiqueLinks?: BoutiqueLinks;
     /** إنشاءٌ من شاشة منتج: مخصّصةٌ له مسبقًا — ويبقى تغييرُ مداها بيد التاجر */
     forProduct?: number | null;
-    currencyLabel?: string;
 }
 
 /**
@@ -63,7 +65,7 @@ type Source = 'shop' | 'boutique';
  * ولا تصميم جديد: نفس النافذة والحقول والأزرار التي في بقيّة الشاشات.
  */
 export default function AddonDialog({
-    addon, stockItems, products, onClose, onSaved, boutiques = [], boutiqueLinks, forProduct = null, currencyLabel = '',
+    addon, stockItems, products, onClose, onSaved, boutiques = [], boutiqueLinks, forProduct = null,
 }: Props) {
     const t = useTranslate();
 
@@ -134,7 +136,9 @@ export default function AddonDialog({
     const toggle = (id: number) =>
         setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-    const money = (v: number) => `${v.toFixed(3)}${currencyLabel ? ` ${currencyLabel}` : ''}`;
+    // بمنازل العملة ورمزِ لغة الواجهة — كبطاقات صفحة الإضافات
+    const currency = usePage<PageProps>().props.context!.currency;
+    const money = (v: number) => formatMoney(v, currency);
 
     const save = async () => {
         const clean = name.trim();

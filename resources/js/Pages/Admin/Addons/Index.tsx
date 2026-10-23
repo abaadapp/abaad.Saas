@@ -8,7 +8,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { csrfHeaders } from '@/lib/csrf';
-import { currencyLabel, money } from '@/lib/format';
+import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
@@ -162,7 +162,6 @@ export default function AddonsIndex() {
                     products={products}
                     boutiques={boutiques}
                     boutiqueLinks={boutiqueLinks}
-                    currencyLabel={currencyLabel(currency)}
                     onClose={() => setOpen(undefined)}
                     onSaved={upsert}
                 />

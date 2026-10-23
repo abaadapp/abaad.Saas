@@ -1,10 +1,13 @@
 import { useState, type ReactNode } from 'react';
+import { usePage } from '@inertiajs/react';
 import { Link2, Plus, X } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { csrfHeaders } from '@/lib/csrf';
+import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import type { PageProps } from '@/types';
 import { CHANNEL_LABEL, addonChannels, addonScope, appliesTo, type AddonOption } from './addons';
 
 interface Props {
@@ -13,7 +16,6 @@ interface Props {
     productId: number | null;
     /** قائمةُ المنتج القديمة — انظر `appliesTo` */
     legacy: number[] | null;
-    currencyLabel: string;
     /** فتحُ النافذة على إضافةٍ تُعدَّل، أو `null` لجديدةٍ مخصّصةٍ لهذا المنتج */
     onOpen: (addon: AddonOption | null) => void;
     onChanged: (addon: AddonOption) => void;
@@ -37,8 +39,11 @@ interface Props {
  * واحدةٍ سعرُها ومصدرُها وقناتُها وحالتُها — بلا تكلفةٍ ولا مستحقّ: ذاك في
  * صفحة الإضافات ونافذتها.
  */
-export default function ProductAddonsPanel({ addons, productId, legacy, currencyLabel, onOpen, onChanged, children }: Props) {
+export default function ProductAddonsPanel({ addons, productId, legacy, onOpen, onChanged, children }: Props) {
     const t = useTranslate();
+    // بمنازل العملة كما في صفحة الإضافات — «1.500 ر.ع» لا «1.5»
+    const currency = usePage<PageProps>().props.context!.currency;
+    const price = (v: number) => money(v, currency);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [pick, setPick] = useState('');
@@ -86,9 +91,7 @@ export default function ProductAddonsPanel({ addons, productId, legacy, currency
                     className="rounded-[8px] px-2 py-1 text-start enabled:hover:bg-[#e8e8e6]"
                 >
                     {a.label}
-                    <span className="ms-1 tabular-nums opacity-60">
-                        {a.price} {currencyLabel}
-                    </span>
+                    <span className="ms-1 tabular-nums opacity-60">{price(a.price)}</span>
                     {a.source === 'boutique' && (
                         <span className="ms-1 opacity-60">· {t('بوتيك: :name', { name: a.boutique_name ?? '' })}</span>
                     )}
@@ -147,7 +150,7 @@ export default function ProductAddonsPanel({ addons, productId, legacy, currency
                                 aria-label={t('ربط إضافة موجودة')}
                                 value={pick}
                                 onChange={(e) => setPick(e.target.value)}
-                                options={linkable.map((a) => ({ label: `${a.label} — ${a.price} ${currencyLabel}`, value: a.value }))}
+                                options={linkable.map((a) => ({ label: `${a.label} — ${price(a.price)}`, value: a.value }))}
                                 placeholder={t('ربط إضافة موجودة…')}
                             />
                         </span>

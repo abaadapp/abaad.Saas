@@ -640,7 +640,6 @@ export default function ProductForm({
                                 addons={addonList}
                                 productId={product?.id ?? null}
                                 legacy={composition?.legacy_addon_ids ?? null}
-                                currencyLabel={currencyLabel}
                                 onOpen={openAddon}
                                 onChanged={upsertAddon}
                             >
@@ -1003,7 +1002,6 @@ export default function ProductForm({
                         boutiques={boutiques}
                         boutiqueLinks={addonBoutiqueLinks}
                         forProduct={addonFor}
-                        currencyLabel={currencyLabel}
                     />
                 )}
 

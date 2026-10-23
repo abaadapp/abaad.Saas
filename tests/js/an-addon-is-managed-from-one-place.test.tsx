@@ -88,7 +88,7 @@ describe('إضافات هذا المنتج', () => {
         addon({ value: 4, label: 'فضّة اختياريّة', scope: 'selected', product_ids: [41], source: 'boutique', boutique_name: 'بوتيك لمى', active: false }),
     ];
     const draw = (onChanged = vi.fn()) => {
-        render(<ProductAddonsPanel addons={list} productId={41} legacy={null} currencyLabel="ر.ع" onOpen={vi.fn()} onChanged={onChanged} />);
+        render(<ProductAddonsPanel addons={list} productId={41} legacy={null} onOpen={vi.fn()} onChanged={onChanged} />);
 
         return onChanged;
     };
@@ -126,7 +126,7 @@ describe('إضافات هذا المنتج', () => {
     });
 
     it('ومنتجٌ لم يُحفظ لا يُربط به شيء', () => {
-        render(<ProductAddonsPanel addons={list} productId={null} legacy={null} currencyLabel="ر.ع" onOpen={vi.fn()} onChanged={vi.fn()} />);
+        render(<ProductAddonsPanel addons={list} productId={null} legacy={null} onOpen={vi.fn()} onChanged={vi.fn()} />);
         expect(screen.queryByTestId('product-addons-link')).toBeNull();
         expect(screen.getByText('احفظ المنتج أولًا لتربط به إضافات مخصصة.')).toBeInTheDocument();
     });
@@ -137,7 +137,7 @@ describe('نافذةُ الإضافة', () => {
         const fetchMock = stubFetch();
         render(
             <AddonDialog addon={null} stockItems={stock} products={[{ value: 41, label: 'باقة' }]} onClose={() => {}} onSaved={() => {}}
-                currencyLabel="ر.ع" {...props} />,
+                {...props} />,
         );
 
         return { fetchMock, sent: () => JSON.parse(fetchMock.mock.calls[0][1].body as string) };
@@ -254,5 +254,33 @@ describe('صفحة الإضافات', () => {
         draw();
         fireEvent.click(screen.getByRole('button', { name: 'من بوتيك' }));
         expect(screen.getAllByTestId('addon-card')).toHaveLength(1);
+    });
+});
+
+describe('السعرُ بمنازل العملة — «1.500 ر.ع» في الشاشات كلّها', () => {
+    afterEach(() => document.documentElement.setAttribute('lang', 'ar'));
+
+    it('في شرائح المنتج وقائمة الربط — كبطاقات صفحة الإضافات', () => {
+        render(
+            <ProductAddonsPanel
+                addons={[addon(), addon({ value: 3, label: 'شوكولاتة', price: 0.75, scope: 'selected', product_ids: [8] })]}
+                productId={41} legacy={null} onOpen={vi.fn()} onChanged={vi.fn()}
+            />,
+        );
+        expect(within(screen.getByTestId('product-addons-general')).getByTestId('product-addon').textContent).toContain('1.500 ر.ع');
+        expect(within(screen.getByLabelText('ربط إضافة موجودة')).getByRole('option', { name: 'شوكولاتة — 0.750 ر.ع' })).toBeInTheDocument();
+
+        cleanup();
+        Object.assign(pageProps, { addons: [addon()], stockItems: [], products: [], boutiques: [], boutiqueLinks: { hosts: false, allowed: false } });
+        render(<AddonsIndex />);
+        expect(screen.getByTestId('addon-card').textContent).toContain('1.500 ر.ع');
+    });
+
+    it('وفي خلاصة النافذة — وبالرمز الدوليّ في الواجهة الإنجليزيّة', () => {
+        document.documentElement.setAttribute('lang', 'en');
+        render(<AddonDialog addon={null} stockItems={stock} products={[]} onClose={() => {}} onSaved={() => {}} />);
+        fireEvent.change(screen.getByPlaceholderText('0.000'), { target: { value: '1.5' } });
+
+        expect(screen.getByTestId('addon-summary').textContent).toContain('1.500 OMR');
     });
 });

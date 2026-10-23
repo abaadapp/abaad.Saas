@@ -93,6 +93,13 @@ class PageController extends Controller
             'addonsDisplay' => $this->addonsDisplay(),
             // أيُربط صنفُ بوتيكٍ بإضافةٍ من نافذتها — انظر `AddonController::boutiqueLinks`
             'addonBoutiqueLinks' => AddonController::boutiqueLinks(Business::find(auth()->user()->business_id ?? Demo::bid())),
+            /*
+             * والصورُ تُختار مع المنتج — بالسقف والحدود نفسها التي يقرؤها المعرض
+             * في التعديل. فالشاشةُ تردّ السادسةَ والثقيلةَ قبل الإرسال، لا بعد
+             * أن يُرفع كلُّ شيءٍ على شبكة هاتف ثمّ يُردّ.
+             */
+            'galleryMax' => ProductImages::MAX,
+            'galleryLimits' => ProductImages::uploadLimits(),
         ]);
     }
 

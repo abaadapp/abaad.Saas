@@ -70,7 +70,17 @@ class Activity
             'action' => $action,
             'subject_type' => $opts['subject_type'] ?? null,
             'subject_id' => $opts['subject_id'] ?? null,
-            'description' => $description,
+            /*
+             * والسطرُ عمودٌ بـ255 حرفًا — يُقصَّر ولا يُسقط الطلب.
+             *
+             * كثيرٌ من السطور يُبنى ممّا كتبه التاجر: «سجّل مصروف <النوع>»،
+             * والنوعُ يُقبل حتى 255 حرفًا. فعلى PostgreSQL يسقط الإدراجُ
+             * (`22001`) بعد أن وقع الفعلُ نفسُه — فيرى التاجرُ خطأً عن مصروفٍ
+             * حُفظ، ولا يبقى في السجلّ أنّه حُفظ. وSQLite لا تحدّ الطول، فلا
+             * يظهر إلّا هناك. ومن يحتاج ذيلَ سطره كاملًا يُقصّر صدرَه بنفسه
+             * (`BooksPeriod::fit`).
+             */
+            'description' => mb_substr($description, 0, 255),
             'icon' => $opts['icon'] ?? (self::ICONS[$action] ?? 'activity'),
             'color' => $opts['color'] ?? (self::COLORS[$action] ?? 'primary'),
             'ip' => request()->ip(),

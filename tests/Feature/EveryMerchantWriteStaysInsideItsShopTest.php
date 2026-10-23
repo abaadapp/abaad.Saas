@@ -60,6 +60,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['المنتجات', 'post', 'admin.products.restore', ['id' => 'product']],
                 ['المنتجات', 'delete', 'admin.products.purge', ['id' => 'product']],
                 ['صور المنتج', 'post', 'admin.products.images.store', ['id' => 'product']],
+                ['صور المنتج', 'put', 'admin.products.images.order', ['id' => 'product']],
                 ['صور المنتج', 'post', 'admin.products.images.promote', ['id' => 'product', 'imageId' => 'image'], ['id']],
                 ['صور المنتج', 'delete', 'admin.products.images.destroy', ['id' => 'product', 'imageId' => 'image'], ['id']],
                 ['صور المنتج', 'delete', 'admin.products.images.destroyMain', ['id' => 'product']],

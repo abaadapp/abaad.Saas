@@ -4,10 +4,12 @@ namespace App\Support;
 
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Support\Store\StoreImageUpload;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * صورُ المنتج — البابُ الوحيد الذي تُبدَّل منه.
@@ -30,8 +32,30 @@ class ProductImages
      * سقفٌ لا لأنّ القاعدة تضيق، بل لأنّ الشاشة تُحمَّل كلَّها: عشرون صورةً
      * على بطاقةٍ في نقطة البيع تُبطئ الصندوق، ولا أحد يتصفّح عشرين صورةً
      * لباقة ورد.
+     *
+     * ═══ وخمسٌ لا ثمانٍ ═══
+     *
+     * صارت الصورُ تُرفع من شاشة الإضافة دفعةً واحدة، وكلُّ صورةٍ تُحفظ على
+     * القرص وفي كلّ نسخةٍ احتياطيّة. وخمسٌ تكفي الباقةَ من جهاتها.
+     *
+     * والسقفُ للإضافة وحدها: صنفٌ قديمٌ بستٍّ أو ثمانٍ تبقى صورُه كلُّها —
+     * تُعرض وتُحذف وتُبدَّل رئيسيتُها — ولا يُضاف إليه شيءٌ حتى ينزل عددُها
+     * دون السقف (`assertRoom`). ولا يُمحى شيءٌ آليًّا: صورةٌ رفعها تاجرٌ
+     * لا يحذفها غيرُه.
      */
-    public const MAX = 8;
+    public const MAX = 5;
+
+    /**
+     * أطولُ ضلعٍ تُحفظ به صورةُ منتجٍ جديدة.
+     *
+     * أعرضُ ما تُعرض به صفحةُ الصنف في واجهة المتجر نحو ثمانمئة بكسل، وضعفُه
+     * لشاشات الهواتف بكثافتها المضاعفة. وصورةُ هاتفٍ بأربعة آلاف بكسل لا
+     * يُرى منها أكثرُ من ذلك — يُدفع ثمنُها في القرص وفي شبكة الزبون.
+     */
+    public const MAX_SIDE = 1600;
+
+    /** جودةُ WebP — لا يُرى فرقُها في صورة بضاعة، والملفُّ نحو ربعِ أصله */
+    private const QUALITY = 80;
 
     /**
      * أقصى حجمٍ للصورة الواحدة بالكيلوبايت.
@@ -60,18 +84,34 @@ class ProductImages
      */
     public static function uploadLimits(): array
     {
-        $allowed = self::iniKb('upload_max_filesize');
-        $perFile = $allowed > 0 ? min(self::MAX_KB, $allowed) : self::MAX_KB;
+        return self::limitsFrom(self::iniKb('upload_max_filesize'), self::iniKb('post_max_size'));
+    }
 
-        $post = self::iniKb('post_max_size');
+    /**
+     * الحسابُ نفسُه بأرقامٍ تُعطى — ليُختبر بحدود خادمٍ غير الذي يجري عليه.
+     *
+     * والطلبُ هو الحدُّ الأضيق دائمًا: ملفٌّ لا يتّسع له الطلبُ لا يصل وإن
+     * سمح به `upload_max_filesize`. وكان الحسابُ يأخذ الأوسعَ منهما
+     * (`max(perFile, post)`)، فخادمٌ حدُّ ملفّه أربعةٌ وحدُّ طلبه اثنان يَعِد
+     * بأربعة — ويُلقى الطلبُ كلُّه بلا رسالة.
+     *
+     * @return array{perFile: int, batch: int} بالكيلوبايت
+     */
+    public static function limitsFrom(int $uploadKb, int $postKb): array
+    {
+        $perFile = $uploadKb > 0 ? min(self::MAX_KB, $uploadKb) : self::MAX_KB;
+
+        if ($postKb <= 0) {
+            return ['perFile' => $perFile, 'batch' => $perFile * self::MAX];
+        }
 
         /*
          * وهامشٌ يُطرح من حدّ الطلب: الطلبُ يحمل معه رمزَ الحماية وحدودَ
          * multipart وأسماءَ الحقول. ودفعةٌ تساوي الحدَّ بالضبط تتجاوزه بها.
          */
-        $batch = $post > 0 ? max($perFile, $post - 512) : $perFile * self::MAX;
+        $batch = max(1, $postKb - 512);
 
-        return ['perFile' => $perFile, 'batch' => $batch];
+        return ['perFile' => min($perFile, $batch), 'batch' => $batch];
     }
 
     /** يقرأ قيمة `ini` المختصرة (2M، 512K، 1G) كيلوبايتاتٍ — و«بلا حدّ» صفرٌ */
@@ -118,22 +158,264 @@ class ProductImages
     }
 
     /**
+     * أيتّسع المنتجُ لهذه الزيادة؟ — وإلّا رُدّ الطلبُ كلُّه قبل أن يُكتب شيء.
+     *
+     * والسقف يُقاس على ما سيصير لا على ما هو: من عنده ثلاثٌ ورفع ثلاثًا يُردّ
+     * — لا أن تُقبل اثنتان وتُطرح واحدة بلا أن يُقال أيّها.
+     *
+     * وصنفٌ قديمٌ فوق السقف يُردّ عن كلّ إضافة، وصورُه باقية: الرفضُ للجديد
+     * لا للقائم.
+     */
+    public static function assertRoom(Product $product, int $adding): void
+    {
+        $have = self::count($product);
+
+        if ($have + $adding > self::MAX) {
+            throw ValidationException::withMessages([
+                'images' => __('لا يحمل المنتج أكثر من :max صور — عنده :have الآن.', [
+                    'max' => self::MAX, 'have' => $have,
+                ]),
+            ]);
+        }
+    }
+
+    /**
      * يضيف صورةً إضافية ويردّ صفّها.
      *
      * والموضع يُحسب من آخر ما في المعرض لا من عدده: صورةٌ حُذفت من الوسط
      * تترك فجوةً في العدّ، فيُعاد استعمال موضعٍ مشغول وتتبادل الصورتان
      * أماكنهما في كلّ فتحة.
+     *
+     * والملفّ يُمحى إن لم يُكتب صفُّه — فلا يبقى على القرص ما لا يشير إليه شيء.
      */
     public static function add(Product $product, UploadedFile $file): ProductImage
     {
+        $path = self::putAll([$file])[0];
+
+        try {
+            $next = (int) ProductImage::where('product_id', $product->id)->max('sort_order');
+
+            return ProductImage::create([
+                'business_id' => $product->business_id,
+                'product_id' => $product->id,
+                'path' => $path,
+                'sort_order' => $next + 1,
+            ]);
+        } catch (\Throwable $e) {
+            self::forgetFile($path);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * يعلّق ملفّاتٍ حُفظت على القرص بالمنتج — بترتيبها.
+     *
+     * ومنتجٌ بلا صورةٍ رئيسية تصير أُولاها رئيسيتَه، والباقي في المعرض بعد
+     * آخر ما فيه. وإلّا رفع التاجر صورةً فبقيت بطاقتُه بلا صورة، وصورتُه في
+     * معرضٍ لا يفتحه أحد — فيظنّ أنّ الرفع لم ينجح ويعيده.
+     *
+     * صفوفٌ وحدها: الملفّاتُ حُفظت قبلُ (`putAll`)، ومن يناديه يلفّه في
+     * معاملةٍ ويمحو الملفّات إن سقطت — فلا صفَّ بلا ملفّ، ولا ملفَّ بلا صفّ.
+     *
+     * @param  list<string>  $paths
+     */
+    public static function attach(Product $product, array $paths): void
+    {
         $next = (int) ProductImage::where('product_id', $product->id)->max('sort_order');
 
-        return ProductImage::create([
-            'business_id' => $product->business_id,
-            'product_id' => $product->id,
-            'path' => $file->store(self::FOLDER, self::DISK),
-            'sort_order' => $next + 1,
-        ]);
+        foreach ($paths as $path) {
+            if (! self::hasRealMain($product)) {
+                $product->forceFill(['image' => $path])->save();
+
+                continue;
+            }
+
+            ProductImage::create([
+                'business_id' => $product->business_id,
+                'product_id' => $product->id,
+                'path' => $path,
+                'sort_order' => ++$next,
+            ]);
+        }
+    }
+
+    /**
+     * يحفظ دفعةً كاملةً على القرص أو لا شيء — ويردّ مساراتها بترتيبها.
+     *
+     * ملفٌّ ثالثٌ يتعذّر حفظُه (قرصٌ امتلأ، أو مجلّدٌ لا يُكتب فيه) يمحو
+     * الاثنين قبله ويُردّ الطلب برسالةٍ تقول أيُّ صورة. وإلّا بقيت على القرص
+     * صورتان لا يشير إليهما صفّ — أو أُنشئ المنتج بصورٍ ناقصة لا يعرف صاحبُه
+     * أيّها سقط.
+     *
+     * @param  list<UploadedFile>  $files
+     * @return list<string>
+     */
+    public static function putAll(array $files): array
+    {
+        $paths = [];
+
+        foreach ($files as $file) {
+            try {
+                $path = self::put($file);
+            } catch (\Throwable $e) {
+                report($e);
+                $path = null;
+            }
+
+            if ($path === null) {
+                self::forgetFiles($paths);
+
+                throw ValidationException::withMessages([
+                    'images' => __('تعذّر حفظ الصورة «:name» — لم يُحفظ شيء، فحاول مرّةً أخرى.', [
+                        'name' => $file->getClientOriginalName(),
+                    ]),
+                ]);
+            }
+
+            $paths[] = $path;
+        }
+
+        return $paths;
+    }
+
+    /**
+     * يحفظ صورةً مرفوعةً ويردّ مسارها — WebP مُصغَّرةً إن أمكن، وكما رُفعت إن لم يمكن.
+     *
+     * والرفعُ وحده يمرّ من هنا: لا يُعاد ضغطُ صورةٍ قائمة، ولا تُحوَّل صورُ
+     * المنتجات القديمة دفعةً — ملفٌّ يُكتب فوقه خطأً لا يُستعاد.
+     *
+     * و`null` حين لا يُكتب الملفّ أصلًا — والقرصُ يردّ `false` لا استثناءً.
+     */
+    public static function put(UploadedFile $file): ?string
+    {
+        $webp = self::webp($file);
+
+        if ($webp !== null) {
+            $path = self::FOLDER.'/'.Str::random(40).'.webp';
+
+            if (Storage::disk(self::DISK)->put($path, $webp)) {
+                return $path;
+            }
+        }
+
+        $path = $file->store(self::FOLDER, self::DISK);
+
+        return is_string($path) && $path !== '' ? $path : null;
+    }
+
+    /**
+     * الصورةُ WebP مُدارةً ومُصغَّرة — أو `null` فيُحفظ الأصلُ كما رُفع.
+     *
+     * ═══ ومتى يُحفظ الأصل ═══
+     *
+     *  • المفتاحُ مطفأ (`images.product_webp`)، أو الخادمُ بلا WebP.
+     *  • GIF: قد تتحرّك، وGD يفكّ إطارها الأوّل وحده — فتصير صورةً ساكنة.
+     *  • ما لا يُفكّ، أو لا تتّسع الذاكرةُ لفكّه (`StoreImageUpload::roomFor`).
+     *  • ما كُتب ولم يُقرأ صورةً بأبعادها — لا يحلّ ملفٌّ تالفٌ محلّ الأصل.
+     *  • ما لم يصغر: صورةٌ خفيفةٌ أصلًا لا تُستبدل بأثقل منها.
+     *
+     * والامتدادُ يتبع المحتوى: `.webp` لما حُوّل فعلًا، وامتدادُ الأصل لما لم
+     * يُحوَّل — لا ملفّ JPEG باسم WebP.
+     *
+     * ═══ والاتّجاه ═══
+     *
+     * الهاتفُ يحفظ الصورةَ مائلةً ويكتب في رأسها «أدِرها» (EXIF)، وإعادةُ
+     * الكتابة تمحو الرأس — فتُدار قبلها وإلّا ظهرت الباقةُ على جنبها. ويُقرأ
+     * الرأسُ بلا امتداد `exif` (`StoreImageUpload::orientation`): قد لا يكون
+     * في الخادم، فلا يسقط الرفعُ لغيابه.
+     */
+    private static function webp(UploadedFile $file): ?string
+    {
+        if (! config('images.product_webp', true) || ! function_exists('imagewebp')) {
+            return null;
+        }
+
+        $source = (string) $file->getRealPath();
+        $info = $source === '' ? false : @getimagesize($source);
+
+        if (! is_array($info) || $info[0] < 1 || $info[1] < 1) {
+            return null;
+        }
+
+        [$w, $h, $type] = $info;
+
+        $decode = match ($type) {
+            IMAGETYPE_JPEG => 'imagecreatefromjpeg',
+            IMAGETYPE_PNG => 'imagecreatefrompng',
+            IMAGETYPE_WEBP => 'imagecreatefromwebp',
+            default => null,
+        };
+
+        if ($decode === null || ! function_exists($decode)
+            || $w * $h > StoreImageUpload::MAX_PIXELS || ! StoreImageUpload::roomFor($w * $h)) {
+            return null;
+        }
+
+        try {
+            $image = @$decode($source);
+
+            if (! $image instanceof \GdImage) {
+                return null;
+            }
+
+            if ($type === IMAGETYPE_JPEG) {
+                $image = StoreImageUpload::oriented($image, StoreImageUpload::orientation($source));
+            }
+
+            $image = StoreImageUpload::fitted($image, self::MAX_SIDE);
+            $w = imagesx($image);
+            $h = imagesy($image);
+
+            ob_start();
+
+            try {
+                $written = imagewebp($image, null, self::QUALITY);
+            } finally {
+                $bytes = (string) ob_get_clean();
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $check = $written && $bytes !== '' ? @getimagesizefromstring($bytes) : false;
+
+        if (! is_array($check) || $check[2] !== IMAGETYPE_WEBP || $check[0] !== $w || $check[1] !== $h) {
+            return null;
+        }
+
+        $size = (int) @filesize($source);
+
+        return $size > 0 && strlen($bytes) < $size ? $bytes : null;
+    }
+
+    /**
+     * يرتّب صورَ المعرض — ما بعد الرئيسية — بالترتيب الذي يُعطى.
+     *
+     * والقائمةُ يجب أن تكون صورَ المنتج نفسَها كلَّها، لا أقلّ ولا أكثر:
+     * شاشةٌ فُتحت قبل حذفٍ أو رفعٍ من تبويبٍ آخر ترسل قائمةً قديمة، وترتيبُها
+     * على ما بقي يُخفي صورةً عن ترتيبٍ لم يرَه التاجر. فتُردّ بسببٍ يُقال.
+     * ومعرّفُ صورةٍ لمنتجٍ آخر — في متجره أو غيره — لا يطابق أبدًا.
+     *
+     * @param  list<int>  $ids
+     */
+    public static function reorder(Product $product, array $ids): void
+    {
+        DB::transaction(function () use ($product, $ids) {
+            $locked = Product::where('business_id', $product->business_id)->lockForUpdate()->findOrFail($product->id);
+            $have = ProductImage::where('product_id', $locked->id)->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+            $sent = collect($ids)->map(fn ($id) => (int) $id)->sort()->values()->all();
+
+            if ($have !== $sent) {
+                throw ValidationException::withMessages([
+                    'images' => __('تغيّرت صور المنتج منذ فُتحت الصفحة — أعد فتحها ثمّ رتّبها.'),
+                ]);
+            }
+
+            foreach (array_values($ids) as $slot => $id) {
+                ProductImage::where('product_id', $locked->id)->whereKey($id)->update(['sort_order' => $slot + 1]);
+            }
+        });
     }
 
     /**
@@ -294,6 +576,25 @@ class ProductImages
         }
 
         Storage::disk(self::DISK)->delete($path);
+    }
+
+    /**
+     * يمحو ملفّاتٍ حُفظت لطلبٍ لم يكتمل.
+     *
+     * والمحوُ لا يُسقط ما بعده: ملفٌّ لا يُمحى يُترك ويُكمَل غيرُه — ويبقى
+     * الخطأُ الأصليُّ هو ما يُرفع لا خطأُ التنظيف.
+     *
+     * @param  list<string>  $paths
+     */
+    public static function forgetFiles(array $paths): void
+    {
+        foreach ($paths as $path) {
+            try {
+                self::forgetFile($path);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
     }
 
     /**

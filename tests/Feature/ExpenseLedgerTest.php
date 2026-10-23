@@ -81,14 +81,30 @@ class ExpenseLedgerTest extends TestCase
         $this->assertSame(300.0, Demo::reportSummary('all')['expenses']);
     }
 
-    public function test_purging_it_leaves_nothing_behind(): void
+    /**
+     * ومحوُ مصروفٍ دُفع لا يمحو دليلَه.
+     *
+     * كان هذا الحارسُ يطلب أن «لا يبقى شيء» بعد المحو — فكان المحوُ يأخذ
+     * الحركةَ والمرفقَ ويترك في الدفتر قيدًا وعكسَه بلا مستند. والمصروفُ
+     * الذي كُتب له قيدٌ دليلٌ محاسبيّ: يبقى في المحذوفات بحركته — انظر
+     * `AnExpenseIsDeletedAndRestoredInOneStepTest`. وما لم يُقيَّد قطّ يُمحى.
+     */
+    public function test_purging_a_paid_expense_keeps_its_evidence_and_an_unpaid_one_leaves_nothing(): void
     {
         $e = $this->record();
 
         $this->delete(route('admin.expenses.destroy', $e->id));
         $this->delete(route('admin.expenses.purge', $e->id));
 
-        $this->assertSame(0, Transaction::withTrashed()->where('type', 'مصروف')->count());
+        $this->assertSame(1, Transaction::withTrashed()->where('type', 'مصروف')->count());
+        $this->assertNotNull(Expense::withTrashed()->find($e->id));
+
+        $bill = $this->record(['type' => 'كهرباء', 'amount' => 90, 'status' => 'غير مدفوع']);
+
+        $this->delete(route('admin.expenses.destroy', $bill->id));
+        $this->delete(route('admin.expenses.purge', $bill->id));
+
+        $this->assertNull(Expense::withTrashed()->find($bill->id));
     }
 
     /* -------------------- المدفوع وحده مصروف -------------------- */

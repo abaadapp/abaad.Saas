@@ -5,8 +5,10 @@ namespace App\Console\Commands;
 use App\Http\Controllers\Admin\TrashController;
 use App\Models\DismissedNotification;
 use App\Models\NotificationState;
+use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Notifications;
+use DomainException;
 use Illuminate\Console\Command;
 
 /**
@@ -47,7 +49,19 @@ class TrashPurge extends Command
             $model = TrashController::MODELS[$type];
             $rows = $model::onlyTrashed()->where('deleted_at', '<', $cutoff)->get();
 
+            $erased = 0;
+
             foreach ($rows as $row) {
+                /*
+                 * ومصروفٌ كُتب له قيدٌ يبقى دليلًا محاسبيًّا — `purgeRow` ترفضه،
+                 * فيُعدّ هنا محفوظًا لا ممحوًّا، ولا يُسأل عنه في التجربة.
+                 */
+                if ($type === 'expense' && Books::expenseHasHistory($row)) {
+                    $kept++;
+
+                    continue;
+                }
+
                 /*
                  * صفًّا صفًّا لا بجملةٍ واحدة: المحو يجرّ معه ملفًّا على القرص
                  * ورصيدَ المنتج في الفروع، وحذفٌ جماعيّ يترك ذلك كلّه يتيمًا.
@@ -61,12 +75,21 @@ class TrashPurge extends Command
                 }
 
                 if (! $dry) {
-                    TrashController::purgeRow($type, $row);
+                    /*
+                     * ورفضُ صفٍّ واحد لا يوقف الأمرَ كلَّه: استُعيد بين القراءة
+                     * والمحو، أو كُتب له قيدٌ — `purgeRow` يسأل ثانيةً تحت قفل.
+                     */
+                    try {
+                        TrashController::purgeRow($type, $row);
+                    } catch (DomainException) {
+                        continue;
+                    }
                 }
+                $erased++;
                 $total++;
             }
 
-            $this->line(sprintf('  %-8s %d', $type, $rows->count()));
+            $this->line(sprintf('  %-8s %d', $type, $erased));
         }
 
         $this->info($dry
@@ -74,7 +97,7 @@ class TrashPurge extends Command
             : "مُحي {$total} صفًّا نهائيًّا (أقدم من {$days} يومًا)");
 
         if ($kept > 0) {
-            $this->line("  بقي {$kept} مصروفَ ورقة تسوية بوتيك — دليلُ سدادها لا يُمحى");
+            $this->line("  أُبقي {$kept} مصروفًا دليلًا محاسبيًّا لا يُمحى — له قيدٌ في الدفتر، أو هو مصروفُ ورقة تسوية بوتيك");
         }
 
         $this->purgeDismissals($dry);

@@ -43,6 +43,15 @@ final class StockLosses
     public const SOURCE = 'تعديل مخزون';
 
     /**
+     * وسيلةُ صفّ الهالك في المصروفات — لا مالَ خرج، والقيدُ على المخزون.
+     *
+     * وبها تعرف شاشةُ المصروفات أنّ الصفَّ يعرض قيدًا لا يُبنى منه: قيدُ
+     * المصروف العاديّ يُكتب من نوعه ووسيلته، وهذه ليست وسيلةً تعرفها، فيقع
+     * على الصندوق (`Books::postedElsewhere`).
+     */
+    public const EXPENSE_METHOD = 'قيد داخلي';
+
+    /**
      * كتابةُ الحدث في الدفترين.
      *
      * تُنادى **داخل** معاملةٍ قائمة: الصفّان معًا أو لا شيء. وقيمةٌ بصفرٍ لا
@@ -105,7 +114,7 @@ final class StockLosses
             'type' => $expenseType,
             'description' => $description,
             'amount' => $value,
-            'method' => 'قيد داخلي',
+            'method' => self::EXPENSE_METHOD,
             'employee_name' => $employeeName,
             'spent_at' => $when->toDateString(),
         ]);

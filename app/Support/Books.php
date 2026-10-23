@@ -309,10 +309,21 @@ class Books
      *
      * فاتورةٌ سُجّلت اليوم وتُدفع بعد أسبوع ليست نقدًا خرج من الدرج، ولذلك
      * يُنادى هذا عند السداد لا عند التسجيل.
+     *
+     * و`$at` لقيدٍ يُعاد بعد عكسه: الاستعادةُ وتغييرُ النطاق يكتبانه بتاريخ
+     * ما يقابله لا بتاريخ المصروف — انظر `BooksPeriod`. ومعه كاتبُه وسببُه
+     * (`$userId` و`$note`): القيدُ المعاد تصحيحٌ، ومن يقرؤه يسأل مَن ولماذا.
      */
-    public static function recordExpense(Expense $expense): void
+    public static function recordExpense(Expense $expense, ?Carbon $at = null, ?int $userId = null, ?string $note = null): void
     {
-        if (self::hasEntry($expense)) {
+        /*
+         * ومصروفٌ قيدُه في مكانٍ آخر لا يُكتب له قيدٌ ثانٍ.
+         *
+         * الحذفُ القديم كان يُخفي مصروفَ شاشة المالية وصفَّ هالك المخزون ولا
+         * يعكس قيدَيهما، فإذا استُعيد أحدهما لم يجد هذا قيدًا على المصروف
+         * فكتب واحدًا — والمالُ نفسُه يخرج مرّتين في الدفتر.
+         */
+        if (self::hasEntry($expense) || self::postedElsewhere($expense)) {
             return;
         }
 
@@ -323,26 +334,134 @@ class Books
 
         Ledger::post(
             $expense->business_id,
-            __('مصروف: ').$expense->type,
+            BooksPeriod::fit(__('مصروف: ').$expense->type, $note),
             [
                 ['account' => self::expenseAccount($expense->type, $expense->business_id), 'debit' => $amount, 'memo' => $expense->description],
                 ['account' => self::payingAccount($expense->method), 'credit' => $amount],
             ],
-            Carbon::parse($expense->spent_at ?? now()),
+            $at ?? Carbon::parse($expense->spent_at ?? now()),
             self::EXPENSE,
             // فرعُ المصروف المباشر — والموزَّعُ قيدٌ واحد للنشاط لا قيدٌ لكلّ فرع
             ExpenseScope::journalBranch($expense),
-            null,
+            $userId,
             $expense,
         );
     }
 
-    /** وحذفُ المصروف كإلغاء البيعة: عكسٌ لا محو — القاعدة واحدة في الدفتر */
-    public static function unpostExpense(Expense $expense, ?int $userId = null, ?string $reason = null): void
+    /**
+     * وحذفُ المصروف كإلغاء البيعة: عكسٌ لا محو — القاعدة واحدة في الدفتر.
+     *
+     * و`$at` تاريخُ العكس المحاسبيّ إن اختير صراحةً (`BooksPeriod::resolve`)،
+     * وإلّا فيومُه كما كان.
+     */
+    public static function unpostExpense(Expense $expense, ?int $userId = null, ?string $reason = null, ?Carbon $at = null): void
     {
         self::liveEntriesFor($expense)->each(
-            fn (JournalEntry $e) => Ledger::reverse($e, null, $userId, $reason)
+            fn (JournalEntry $e) => Ledger::reverse($e, $at, $userId, $reason)
         );
+    }
+
+    /** تاريخُ قيد المصروف الحيّ — ما يُصحَّح فعلًا، وقد يخالف `spent_at` بعد استعادة */
+    public static function expenseEntryDate(Expense $expense): ?Carbon
+    {
+        $date = self::liveEntriesFor($expense)->min('entry_date');
+
+        return $date ? Carbon::parse($date) : null;
+    }
+
+    /**
+     * تاريخُ آخر عكسٍ لقيد هذا المصروف — أي يومُ حذفه في الدفتر.
+     *
+     * والاستعادةُ تُعيد القيدَ بهذا التاريخ: العكسُ وإعادتُه يتقابلان في
+     * فترةٍ واحدة، ويبقى القيدُ الأصليّ في شهره كما كان.
+     */
+    public static function lastExpenseReversalDate(Expense $expense): ?Carbon
+    {
+        $date = JournalEntry::where('sourceable_type', $expense::class)
+            ->where('sourceable_id', $expense->id)
+            ->whereNotNull('reverses_id')
+            ->orderByDesc('id')
+            ->value('entry_date');
+
+        return $date ? Carbon::parse($date) : null;
+    }
+
+    /**
+     * هل كُتب لهذا المصروف قيدٌ قطّ — حيًّا أو معكوسًا؟ وهو دليلٌ لا يُمحى.
+     *
+     * وقيدُ مصروف شاشة المالية على حركته (`recordMovement`): محوُ المصروف
+     * يمحو الحركةَ معه، ويبقى قيدُها يشير إلى لا شيء.
+     */
+    public static function expenseHasHistory(Expense $expense): bool
+    {
+        return JournalEntry::where('sourceable_type', $expense::class)
+            ->where('sourceable_id', $expense->id)
+            ->exists()
+            || ($expense->transaction_id && Transaction::withTrashed()->whereKey($expense->transaction_id)
+                ->whereNotNull('journal_entry_id')->exists())
+            // وصفُّ الهالك يعرض قيدًا على حركة المخزون — هو وجهُه في المصروفات
+            || $expense->method === StockLosses::EXPENSE_METHOD;
+    }
+
+    /**
+     * هل قيدُ هذا المصروف يُكتب في مكانٍ آخر — حركةُ مالية أو هالكُ مخزون؟
+     *
+     * فلا يُبنى قيدُه من نوعه ووسيلته هنا: «قيد داخلي» ليست وسيلةً يعرفها
+     * `payingAccount` فيقع على الصندوق، وقيدُ الحركة حيٌّ أصلًا.
+     */
+    public static function postedElsewhere(Expense $expense): bool
+    {
+        return $expense->method === StockLosses::EXPENSE_METHOD || self::movementEntryIsLive($expense);
+    }
+
+    /** هل قيدُ الحركة التي وُلد منها المصروفُ حيّ؟ فهو قيدُه، وإن خلا المصروفُ من قيد */
+    public static function movementEntryIsLive(Expense $expense): bool
+    {
+        if (! $expense->transaction_id) {
+            return false;
+        }
+
+        $entryId = Transaction::withTrashed()->whereKey($expense->transaction_id)->value('journal_entry_id');
+
+        return $entryId !== null && JournalEntry::whereKey($entryId)->whereNull('reversed_at')->exists();
+    }
+
+    /**
+     * ما تكتبه استعادةُ هذا المصروف في الدفتر، وبأيّ تاريخٍ يُقاس — أو لا شيء.
+     *
+     * يُكتب قيدٌ حين يكون مدفوعًا ولا قيدَ حيًّا له في أيّ مكان: لا عليه، ولا
+     * على حركته، ولا على المخزون. وتاريخُه يومُ عكسه إن عُكس (`deletion`)،
+     * وإلّا فتاريخُ صرفه: مصروفٌ لم يُقيَّد قطّ يدخل الدفترَ أوّلَ مرّة.
+     *
+     * وما لا يُكتب له شيءٌ لا يُسأل عن فترته: السؤالُ عن تاريخِ قيدٍ لن يُكتب
+     * يطلب سببًا لا يُحفظ في أيّ مكان.
+     *
+     * @return array{at: Carbon, deletion: bool}|null
+     */
+    public static function restorePosting(Expense $expense): ?array
+    {
+        if (! $expense->isPaid() || self::hasEntry($expense) || self::postedElsewhere($expense)) {
+            return null;
+        }
+
+        $reversal = self::lastExpenseReversalDate($expense);
+
+        return ['at' => $reversal ?? Carbon::parse($expense->spent_at ?? now()), 'deletion' => $reversal !== null];
+    }
+
+    /**
+     * مصروفٌ محذوفٌ ما زال محسوبًا في الدفتر — بقيّةُ حذفٍ قديم.
+     *
+     * الحذفُ قبل أن يصير يعكس القيد، والحذفُ القديم لمصروف شاشة المالية
+     * ولهالك المخزون: يُخفي الصفَّ ويُبقي قيدَه حيًّا. فتقرأ الشاشةُ صفرًا
+     * والدفترُ مبلغًا. ولا يُصحَّح من تلقاء نفسه — أيُّ عكسٍ تلقائيّ قيدٌ في
+     * شهرٍ لم يختره أحد. يُعرض، واستعادتُه تُعيد الصفَّ إلى ما في الدفتر بلا
+     * قيدٍ جديد (`restorePosting`).
+     */
+    public static function stillCounts(Expense $expense): bool
+    {
+        return self::hasEntry($expense) || self::movementEntryIsLive($expense)
+            || ($expense->method === StockLosses::EXPENSE_METHOD && self::lastExpenseReversalDate($expense) === null);
     }
 
     /**

@@ -455,6 +455,7 @@ export default function SettingsIndex() {
         vat_number: get('vat_number'),
         cr_number: get('cr_number'),
         vat_filed_through: get('vat_filed_through'),
+        books_closed_through: get('books_closed_through'),
         tax_mode: get('tax_mode', 'exclusive'),
 
         currency: get('currency', 'OMR'),
@@ -2018,6 +2019,18 @@ export default function SettingsIndex() {
                                             dir="ltr"
                                             value={form.data.vat_filed_through}
                                             onChange={(e) => form.setData('vat_filed_through', e.target.value)}
+                                        />
+                                    </Field>
+                                    <Field
+                                        label="الدفاتر مقفلة حتى"
+                                        hint="آخرُ يومٍ أقفلتَ دفاترَه. لا يُكتب قبله تصحيح، وما بعده من شهورٍ مضت يُصحَّح بتاريخه إن اخترتَ ذلك. اتركه فارغًا إن لم تُقفل بعد — فيُسجَّل تصحيحُ أيّ شهرٍ مضى في الفترة الحاليّة."
+                                        error={form.errors.books_closed_through}
+                                    >
+                                        <Input
+                                            type="date"
+                                            dir="ltr"
+                                            value={form.data.books_closed_through}
+                                            onChange={(e) => form.setData('books_closed_through', e.target.value)}
                                         />
                                     </Field>
                                     <Field label="طريقة الاحتساب" error={form.errors.tax_mode}>

@@ -27,6 +27,16 @@ export interface BranchOption {
 /** للنشاط كلِّه — المعنى القديم لكلّ مصروف، ولا يتبع فرعَ الجلسة */
 export const EMPTY_SCOPE: ScopeValue = { scope: 'business', branch_id: '', allocations: [] };
 
+/**
+ * هل يتبدّل فرعُ قيد الدفتر بهذا النطاق؟ — وحده يُعكس القيدُ ويُعاد.
+ *
+ * المباشرُ يحمل فرعَه، والموزَّعُ والنشاطُ قيدٌ بلا فرع (`ExpenseScope::journalBranch`).
+ * فإعادةُ توزيع مصروفٍ موزَّع لا تمسّ الدفتر، ولا يُسأل عنها سببُ تصحيحٍ
+ * لا يُحفظ في أيّ مكان.
+ */
+export const scopeMovesTheEntry = (currentBranchId: number | null, next: ScopeValue): boolean =>
+    String(currentBranchId ?? '') !== (next.scope === 'branch' ? String(next.branch_id) : '');
+
 /** المبلغُ أجزاءً من الألف — كما يقارنه الخادم (`ExpenseScope::read`) */
 export const mils = (value: string | number): number => {
     const n = typeof value === 'number' ? value : parseFloat(value);

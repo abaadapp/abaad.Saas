@@ -604,6 +604,9 @@ return [
         'access_token' => 'رمز الوصول',
 
         // المالية والقيود
+        'correction' => 'مكان تسجيل التصحيح',
+        'correction_reason' => 'سبب التصحيح',
+        'books_closed_through' => 'تاريخ إقفال الدفاتر',
         'entry_date' => 'تاريخ القيد',
         'lines' => 'سطور القيد',
         'lines.*.account_id' => 'الحساب',

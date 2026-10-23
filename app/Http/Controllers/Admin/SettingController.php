@@ -105,6 +105,18 @@ class SettingController extends Controller
          */
         'vat_filed_through' => ['section' => 'finance', 'label' => 'آخر إقرار قُدِّم',
             'rules' => ['sometimes', 'nullable', 'date', 'before_or_equal:today']],
+        /*
+         * آخرُ يومٍ أُقفلت دفاترُه — لا يُكتب خلفه تصحيح.
+         *
+         * وبه يُعرف أنّ شهرًا مضى مفتوح: حذفُ مصروفٍ من شهرٍ سابق يُسجَّل
+         * بتاريخه الأصليّ إن كان بعد هذا اليوم، وإلّا ففي الفترة الحاليّة
+         * (`BooksPeriod`). والفراغُ لا يعني «كلُّ شيءٍ مفتوح»: يعني أنّ أحدًا
+         * لم يقل، فلا يُكتب في شهرٍ مضى إلّا في الفترة الحاليّة.
+         *
+         * ولا يُقبل اليومُ وما بعده: قفلُ يومٍ لم ينتهِ يمنع تصحيحَ ما وقع فيه.
+         */
+        'books_closed_through' => ['section' => 'finance', 'label' => 'الدفاتر مقفلة حتى',
+            'rules' => ['sometimes', 'nullable', 'date', 'before:today']],
         'tax_mode' => ['section' => 'finance', 'label' => 'طريقة الاحتساب',
             'rules' => ['sometimes', 'nullable', 'in:inclusive,exclusive']],
 
@@ -307,6 +319,7 @@ class SettingController extends Controller
             'currency.size' => __('رمز العملة ثلاثة أحرف مثل OMR'),
             'vat_rate.max' => __('نسبة الضريبة مئة بالمئة على الأكثر'),
             'vat_filed_through.before_or_equal' => __('لا يُقفل إقرارُ فترةٍ لم تنتهِ بعد — اختر تاريخًا مضى.'),
+            'books_closed_through.before' => __('لا تُقفل دفاترُ يومٍ لم ينتهِ — اختر يومًا مضى.'),
         ], self::labels());
 
         if ($validator->fails()) {

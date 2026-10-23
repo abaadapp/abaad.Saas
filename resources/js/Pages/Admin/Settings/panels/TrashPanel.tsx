@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { router, usePage } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import { Building2, Package, Receipt, Trash2, Undo2, UserRound } from 'lucide-react';
 import DataTable, { type Column } from '@/Components/DataTable';
+import PeriodCorrection, { EMPTY_CORRECTION, correctionReady, type Correction, type CorrectionValue } from '@/Components/PeriodCorrection';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -30,7 +31,15 @@ interface TrashedExpense extends Trashed {
     title: string | null;
     amount: number;
     spentAt: string | null;
-    daysLeft: number;
+    /** له قيدٌ في الدفتر: دليلٌ محاسبيّ لا يُمحى، فلا عدَّ تنازليًّا */
+    kept: boolean;
+    daysLeft: number | null;
+    /** والاستعادةُ تُعيد قيدَه بيوم حذفه — فإن عبر حدَّ شهرٍ سُئل قبلها */
+    correction: Correction;
+    /** يومُ حذفه، أو تاريخُ صرفه لمصروفٍ لم يُقيَّد قطّ — ما يُقاس به السؤال */
+    correctionSubject: 'deletion' | 'unposted';
+    /** بقيّةُ حذفٍ قديم: محذوفٌ ما زال محسوبًا في الدفتر (`Books::stillCounts`) */
+    stillCounted: boolean;
 }
 
 interface TrashedCustomer extends Trashed {
@@ -69,6 +78,25 @@ export default function TrashPanel({ products, expenses, customers, trashedBranc
     const m = (v: number) => money(v, context!.currency);
     const [purging, setPurging] = useState<PurgeTarget | null>(null);
     const [busy, setBusy] = useState(false);
+    /** مصروفٌ تُعيد استعادتُه قيدًا في شهرٍ آخر — يُسأل قبلها أين ولماذا */
+    const [restoring, setRestoring] = useState<TrashedExpense | null>(null);
+    const restoreForm = useForm<CorrectionValue>(EMPTY_CORRECTION);
+
+    const restoreExpense = (e: TrashedExpense) => {
+        if (!e.correction.crosses) return restore('expense', e.id);
+        restoreForm.setData(EMPTY_CORRECTION);
+        restoreForm.clearErrors();
+        setRestoring(e);
+    };
+
+    const submitRestore = (ev: React.FormEvent) => {
+        ev.preventDefault();
+        if (!restoring) return;
+        restoreForm.post(route('admin.expenses.restore', restoring.id), {
+            preserveScroll: true,
+            onSuccess: () => setRestoring(null),
+        });
+    };
 
     /*
      * لكل نوعٍ مسارُه: الاستعادة والمحو يقعان تحت صلاحية القسم الذي حُذف منه،
@@ -177,14 +205,63 @@ export default function TrashPanel({ products, expenses, customers, trashedBranc
             header: 'المصروف',
             sortable: true,
             value: (e) => e.reference ?? '',
-            cell: (e) => icon(Receipt, e.reference ?? '—', e.title),
+            cell: (e) => (
+                <div className="space-y-1">
+                    {icon(Receipt, e.reference ?? '—', e.title)}
+                    {e.stillCounted && (
+                        <span
+                            data-testid="still-counted"
+                            className="inline-block rounded-full bg-[#fffbeb] px-2 py-0.5 text-[11.5px] text-[#92400e]"
+                            title={t('حُذف قبل أن يصير الحذف يعكس قيده، فما زال محسوبًا في الدفتر. استعادته تعيده كما في الدفتر بلا قيدٍ جديد.')}
+                        >
+                            {t('ما زال في الدفتر')}
+                        </span>
+                    )}
+                </div>
+            ),
         },
         { key: 'amount', header: 'المبلغ', align: 'end', cell: (e) => m(e.amount) },
         { key: 'spentAt', header: 'تاريخ الصرف', cell: (e) => e.spentAt ?? '—' },
         deletedByColumn<TrashedExpense>(),
         { key: 'deletedAt', header: 'تاريخ الحذف', cell: (e) => e.deletedAt ?? '—' },
-        daysLeftColumn<TrashedExpense>(),
-        actions<TrashedExpense>('expense', (e) => e.reference || e.title || '—'),
+        {
+            key: 'daysLeft',
+            header: 'يُمحى بعد',
+            align: 'center',
+            cell: (e) =>
+                e.kept || e.daysLeft === null ? (
+                    <span className="text-[#6b7280]" title={t('كُتب له قيدٌ في الدفتر، فيبقى دليلًا محاسبيًّا ولا يُمحى نهائيًّا.')}>
+                        {t('يبقى دليلًا')}
+                    </span>
+                ) : (
+                    <span className={e.daysLeft <= 7 ? 'font-medium text-[#b91c1c]' : 'text-[#6b7280]'}>{t(':n يوم', { n: e.daysLeft })}</span>
+                ),
+        },
+        {
+            key: 'actions',
+            header: '',
+            align: 'end',
+            cell: (e) => (
+                <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => restoreExpense(e)}>
+                        <Undo2 className="size-4" />
+                        {t('استعادة')}
+                    </Button>
+                    {!e.kept && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            title={t('محو نهائي')}
+                            className="text-[#9ca3af] hover:bg-[#fef2f2] hover:text-[#b91c1c]"
+                            onClick={() => setPurging({ type: 'expense', id: e.id, label: e.reference || e.title || '—' })}
+                        >
+                            <Trash2 className="size-4" />
+                            <span className="sr-only">{t('محو نهائي')}</span>
+                        </Button>
+                    )}
+                </div>
+            ),
+        },
     ];
 
     const customerColumns: Column<TrashedCustomer>[] = [
@@ -296,6 +373,40 @@ export default function TrashPanel({ products, expenses, customers, trashedBranc
                 «تراجع» بعده، والاسم مكتوبٌ في السؤال كي يرى الضاغط ما يمحوه
                 لا عدده.
             */}
+            <Dialog open={restoring !== null} onOpenChange={(o) => !o && setRestoring(null)}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {t('استعادة مصروفٍ حُذف في شهرٍ آخر')} — {restoring?.reference ?? ''}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitRestore} className="space-y-4 px-5 pb-5" data-testid="restore-dialog">
+                        {restoring && (
+                            <PeriodCorrection
+                                subject={restoring.correctionSubject}
+                                correction={restoring.correction}
+                                value={restoreForm.data}
+                                onChange={(v) => restoreForm.setData(v)}
+                                errors={restoreForm.errors as Record<string, string | undefined>}
+                            />
+                        )}
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="ghost" onClick={() => setRestoring(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button
+                                type="submit"
+                                loading={restoreForm.processing}
+                                disabled={!correctionReady(restoring?.correction, restoreForm.data)}
+                            >
+                                <Undo2 className="size-4" />
+                                {t('استعادة')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
             <Dialog open={purging !== null} onOpenChange={(o) => !o && setPurging(null)}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>

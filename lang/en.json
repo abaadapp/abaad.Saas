@@ -8622,5 +8622,11 @@
     "أخّرها": "Move later",
     "تجهيز الصور…": "Preparing images…",
     "تغيّرت صور المنتج منذ فُتحت الصفحة — أعد فتحها ثمّ رتّبها.": "The product images changed since this page was opened — reopen it, then arrange them.",
-    "حُفظ ترتيب الصور": "Image order saved"
+    "حُفظ ترتيب الصور": "Image order saved",
+    "لا حركات نقاط لهذا العميل بعد": "No points movements for this customer yet",
+    "دُفعت الفاتورة — تُحسب النقاط خلال دقائق.": "The invoice is paid — points are calculated within minutes.",
+    "يكسب العميل نقاطه حين يسدّد الفاتورة برابط الدفع.": "The customer earns points when paying this invoice through the payment link.",
+    "عكس تحصيلٍ ملغى": "reversal of a cancelled collection",
+    "الرصيد بعدها :n": "Balance after: :n",
+    "برنامج الولاء متوقّف الآن — لا تُكسب نقاط جديدة.": "The loyalty program is off now — no new points are earned."
 }

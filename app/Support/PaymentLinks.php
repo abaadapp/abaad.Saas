@@ -564,6 +564,13 @@ final class PaymentLinks
          */
         CustomerInvoicePreparations::afterLinkPaid($link);
 
+        /*
+         * ونقاطُ الولاء على ما خُصِّص للفاتورة — بعد التحصيل والتجهيز، وبمحاولةٍ
+         * مستقلّة: سقوطُها لا يمسّ مالًا ولا مهمّةَ تجهيز، يُكتب على الرابط
+         * ويُعاد (`InvoiceLoyalty::reconcile`). والإشعارُ المكرّر لا يمنح مرّتين.
+         */
+        InvoiceLoyalty::afterLinkPaid($link);
+
         return true;
     }
 
@@ -630,6 +637,14 @@ final class PaymentLinks
                     'provider_transaction_id' => $transactionId,
                     'customer_payment_id' => $payment->id,
                     'error' => null,
+                    /*
+                     * «بانتظار النقاط» — يكتبه التحصيلُ الجديد وحده، في معاملته.
+                     * فرابطٌ سُدّد قبل اكتساب النقاط على الروابط لا علَمَ له، ولا
+                     * يمنحه إشعارٌ مكرّرٌ نقاطًا عن مالٍ قديم (`InvoiceLoyalty`).
+                     */
+                    'meta' => $locked->customer_invoice_id
+                        ? ['loyalty' => InvoiceLoyalty::PENDING] + (array) ($locked->meta ?? [])
+                        : $locked->meta,
                 ])->save();
 
                 Activity::log('created', 'دُفع رابط الدفع عبر Paymob بمبلغ '.number_format((float) $locked->amount, 3).' '.$locked->currency

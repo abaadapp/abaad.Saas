@@ -520,6 +520,23 @@ class PageController extends Controller
             'branches' => Demo::branches(),
             // «طلب دفعة» — رابطُ دفعٍ بمبلغٍ حرٍّ لهذا العميل، وروابطُه السابقة
             'paymentLinks' => \App\Support\PaymentLinks::panel((int) Demo::bid(), fn ($q) => $q->where('customer_id', (int) $id)),
+            /*
+             * سجلُّ نقاط الولاء — آخرُ خمسين حركةً بمصدرها: فاتورةٌ سُدّدت برابط
+             * (`InvoiceLoyalty`)، أو طلبُ صندوق، أو يدٌ في ملفّ العميل. والرصيدُ بعد
+             * كلٍّ منها كما كُتب لحظتَها، لا محسوبًا هنا.
+             */
+            'pointHistory' => \App\Models\PointTransaction::where('business_id', Demo::bid())->where('customer_id', (int) $id)
+                ->with(['invoice:id,number', 'order:id,number'])->latest('id')->limit(50)->get()
+                ->map(fn ($p) => [
+                    'id' => $p->id,
+                    'type' => $p->type,
+                    'points' => (int) $p->points,
+                    'balance_after' => (int) $p->balance_after,
+                    'note' => $p->note,
+                    'at' => $p->created_at?->format('Y-m-d H:i'),
+                    'invoice' => $p->invoice ? ['id' => $p->invoice->id, 'number' => $p->invoice->number] : null,
+                    'order' => $p->order?->number,
+                ])->all(),
         ]);
     }
 

@@ -17,6 +17,9 @@ Schedule::command('payment-links:expire')->hourly()->withoutOverlapping();
 // وفاتورةٌ دُفعت عبر رابطٍ موثَّق ولم تظهر مهمّةُ تجهيزها (سقطت بعد ثبات المال) — تُعاد
 Schedule::command('customer-invoices:reconcile-preparations')->everyTenMinutes()->withoutOverlapping();
 
+// ونقاطُ ولاءٍ لرابطٍ دُفع وسقط حسمُها بعد ثبات المال — تُعاد، وما سُدّد قبل الميزة لا يُمسّ
+Schedule::command('customer-invoices:reconcile-loyalty')->everyTenMinutes()->withoutOverlapping();
+
 // نسخ احتياطي تلقائي يومي لكل المتاجر (الساعة 02:00)
 Schedule::command('backup:run')->dailyAt('02:00')->withoutOverlapping();
 

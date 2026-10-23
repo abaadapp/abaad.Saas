@@ -12,6 +12,7 @@ use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceAttachment;
 use App\Models\CustomerPayment;
+use App\Models\CustomerPaymentLink;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
@@ -31,6 +32,7 @@ use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
 use App\Support\FlowerOrder;
 use App\Support\InvoiceAttachments;
+use App\Support\InvoiceLoyalty;
 use App\Support\InvoiceBranding;
 use App\Support\InvoiceLineDetails;
 use App\Support\Money;
@@ -219,6 +221,28 @@ class CustomerInvoiceController extends Controller
         ];
     }
 
+    /** نقاطُ الولاء على سداد الفاتورة برابط — انظر `InvoiceLoyalty` */
+    private function loyaltyProps(CustomerInvoice $invoice): ?array
+    {
+        $rows = InvoiceLoyalty::rows($invoice);
+        $on = InvoiceLoyalty::on($this->bid());
+        $waiting = CustomerPaymentLink::where('business_id', $this->bid())
+            ->where('customer_invoice_id', $invoice->id)
+            ->where('meta->loyalty', InvoiceLoyalty::PENDING)->exists();
+
+        /*
+         * لا حركات ولا رابطَ ينتظر: يُقال القسمُ لفاتورةٍ صادرةٍ عليها باقٍ تُكسب
+         * عليه نقاطٌ فعلًا — وإلّا فلا شيء. فاتورةٌ سُدّدت والبرنامجُ خارجَ باقتها
+         * لا يُقال لها «يكسب حين يسدّد»: سدّد ولم يكسب.
+         */
+        if ($rows === [] && ! $waiting && (! $on || $invoice->status !== CustomerInvoice::ISSUED
+            || $invoice->outstanding() <= 0 || InvoiceLoyalty::eligibleShare($invoice) <= 0)) {
+            return null;
+        }
+
+        return ['on' => $on, 'rows' => $rows, 'waiting' => $waiting];
+    }
+
     public function show(int|string $id): Response
     {
         $invoice = $this->find($id);
@@ -243,6 +267,11 @@ class CustomerInvoiceController extends Controller
              * و`null` لمن لم يُفتح له: الصفحةُ كما كانت.
              */
             'preparation' => $this->preparationProps($invoice),
+            /*
+             * ونقاطُ الولاء على سدادها برابط — و`null` حين لا تُكسب عليها نقاط:
+             * لا يُقال «نقاط» لمتجرٍ أطفأ برنامجَه ولا لفاتورةٍ كسب الزبونُ نقاطَ طلباتها.
+             */
+            'loyalty' => $this->loyaltyProps($invoice),
             // ونافذةُ التحصيل هنا تسأل السؤال نفسه — انظر `create`
             'bank_accounts' => $this->bankAccounts(),
             /*

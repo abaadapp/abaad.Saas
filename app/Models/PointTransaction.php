@@ -12,6 +12,9 @@ class PointTransaction extends Model
 
     public function customer(): BelongsTo { return $this->belongsTo(Customer::class); }
     public function order(): BelongsTo { return $this->belongsTo(Order::class); }
+    // سدادُ فاتورة عميلٍ برابط دفع — انظر `InvoiceLoyalty`
+    public function invoice(): BelongsTo { return $this->belongsTo(CustomerInvoice::class, 'customer_invoice_id'); }
+    public function payment(): BelongsTo { return $this->belongsTo(CustomerPayment::class, 'customer_payment_id'); }
 
     /**
      * تسجيل حركة نقاط بعد تعديل رصيد العميل (يُمرَّر الرصيد النهائي).

@@ -95,6 +95,21 @@ class ACorrectionSaysWhoMadeItAndWhyTest extends TestCase
         $this->assertLessThanOrEqual(255, mb_strlen($log->description), 'سطرُ النشاط أطولُ من عموده — يسقط على PostgreSQL');
     }
 
+    /** ونوعُ مصروفٍ طويل لا يمحو السببَ من عكسه — يُقصَّر الصدرُ لا السبب */
+    public function test_a_long_expense_type_does_not_push_the_reason_out_of_its_reversal(): void
+    {
+        $e = $this->spend('2026-09-30', ['type' => str_repeat('ن', 240)]);
+        $this->assertLessThanOrEqual(255, mb_strlen(Books::liveEntriesFor($e)->sole()->description));
+
+        $this->delete(route('admin.expenses.destroy', $e->id), ['correction' => BooksPeriod::CURRENT, 'correction_reason' => 'فاتورةٌ مكرّرة'])
+            ->assertSessionHasNoErrors();
+
+        $reversal = JournalEntry::where('sourceable_type', Expense::class)->where('sourceable_id', $e->id)->whereNotNull('reverses_id')->sole();
+        $this->assertStringEndsWith('فاتورةٌ مكرّرة', $reversal->description, 'محا الوصفُ الطويل سببَ العكس');
+        $this->assertLessThanOrEqual(255, mb_strlen($reversal->description));
+        $this->assertStringEndsWith('فاتورةٌ مكرّرة', ActivityLog::where('subject_id', $e->id)->where('action', 'deleted')->sole()->description);
+    }
+
     public function test_a_reposted_entry_says_who_restored_it_and_why(): void
     {
         $e = $this->spend('2026-10-05');

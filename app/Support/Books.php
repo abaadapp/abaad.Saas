@@ -334,7 +334,7 @@ class Books
 
         Ledger::post(
             $expense->business_id,
-            mb_substr(__('مصروف: ').$expense->type.($note ? ' — '.$note : ''), 0, 255),
+            BooksPeriod::fit(__('مصروف: ').$expense->type, $note),
             [
                 ['account' => self::expenseAccount($expense->type, $expense->business_id), 'debit' => $amount, 'memo' => $expense->description],
                 ['account' => self::payingAccount($expense->method), 'credit' => $amount],
@@ -424,6 +424,44 @@ class Books
         $entryId = Transaction::withTrashed()->whereKey($expense->transaction_id)->value('journal_entry_id');
 
         return $entryId !== null && JournalEntry::whereKey($entryId)->whereNull('reversed_at')->exists();
+    }
+
+    /**
+     * ما تكتبه استعادةُ هذا المصروف في الدفتر، وبأيّ تاريخٍ يُقاس — أو لا شيء.
+     *
+     * يُكتب قيدٌ حين يكون مدفوعًا ولا قيدَ حيًّا له في أيّ مكان: لا عليه، ولا
+     * على حركته، ولا على المخزون. وتاريخُه يومُ عكسه إن عُكس (`deletion`)،
+     * وإلّا فتاريخُ صرفه: مصروفٌ لم يُقيَّد قطّ يدخل الدفترَ أوّلَ مرّة.
+     *
+     * وما لا يُكتب له شيءٌ لا يُسأل عن فترته: السؤالُ عن تاريخِ قيدٍ لن يُكتب
+     * يطلب سببًا لا يُحفظ في أيّ مكان.
+     *
+     * @return array{at: Carbon, deletion: bool}|null
+     */
+    public static function restorePosting(Expense $expense): ?array
+    {
+        if (! $expense->isPaid() || self::hasEntry($expense) || self::postedElsewhere($expense)) {
+            return null;
+        }
+
+        $reversal = self::lastExpenseReversalDate($expense);
+
+        return ['at' => $reversal ?? Carbon::parse($expense->spent_at ?? now()), 'deletion' => $reversal !== null];
+    }
+
+    /**
+     * مصروفٌ محذوفٌ ما زال محسوبًا في الدفتر — بقيّةُ حذفٍ قديم.
+     *
+     * الحذفُ قبل أن يصير يعكس القيد، والحذفُ القديم لمصروف شاشة المالية
+     * ولهالك المخزون: يُخفي الصفَّ ويُبقي قيدَه حيًّا. فتقرأ الشاشةُ صفرًا
+     * والدفترُ مبلغًا. ولا يُصحَّح من تلقاء نفسه — أيُّ عكسٍ تلقائيّ قيدٌ في
+     * شهرٍ لم يختره أحد. يُعرض، واستعادتُه تُعيد الصفَّ إلى ما في الدفتر بلا
+     * قيدٍ جديد (`restorePosting`).
+     */
+    public static function stillCounts(Expense $expense): bool
+    {
+        return self::hasEntry($expense) || self::movementEntryIsLive($expense)
+            || ($expense->method === StockLosses::EXPENSE_METHOD && self::lastExpenseReversalDate($expense) === null);
     }
 
     /**

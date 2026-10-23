@@ -48,15 +48,15 @@ export default function PeriodCorrection({
      *
      * فالاستعادةُ تُعيد القيدَ بتاريخ عكسه — يومِ الحذف — لا بتاريخ المصروف.
      * و«بتاريخ القيد الأصليّ» هناك كان يُقرأ تاريخَ المصروف وهو يومُ الحذف.
+     * ومصروفٌ لم يُقيَّد قطّ (`unposted`) يدخل الدفترَ أوّلَ مرّةٍ بتاريخ صرفه.
      */
-    subject?: 'entry' | 'deletion';
+    subject?: 'entry' | 'deletion' | 'unposted';
 }) {
     const t = useTranslate();
 
     if (!correction.crosses) return null;
 
     const date = correction.entry_date ?? '';
-    const deletion = subject === 'deletion';
 
     const why =
         correction.status === 'closed'
@@ -74,11 +74,17 @@ export default function PeriodCorrection({
         },
         {
             key: 'original',
-            label: deletion ? t('بتاريخ الحذف (:date)', { date }) : t('بتاريخ القيد الأصلي (:date)', { date }),
+            label: {
+                entry: t('بتاريخ القيد الأصلي (:date)', { date }),
+                deletion: t('بتاريخ الحذف (:date)', { date }),
+                unposted: t('بتاريخ المصروف (:date)', { date }),
+            }[subject],
             hint: correction.original_allowed
-                ? deletion
-                    ? t('يعود المصروف في الشهر الذي حُذف منه، ولا يتأثّر الشهر الحالي.')
-                    : t('يُصحَّح الشهر السابق نفسه، ولا يتأثّر الشهر الحالي.')
+                ? {
+                      entry: t('يُصحَّح الشهر السابق نفسه، ولا يتأثّر الشهر الحالي.'),
+                      deletion: t('يعود المصروف في الشهر الذي حُذف منه، ولا يتأثّر الشهر الحالي.'),
+                      unposted: t('يدخل الدفتر في شهر صرفه، ولا يتأثّر الشهر الحالي.'),
+                  }[subject]
                 : why,
             disabled: !correction.original_allowed,
         },
@@ -88,9 +94,13 @@ export default function PeriodCorrection({
         <div className="space-y-3 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3" data-testid="period-correction">
             <p className="flex items-start gap-2 text-[12.5px] text-[#92400e]">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                {deletion
-                    ? t('حُذف هذا المصروف من الدفتر بتاريخ :date، في شهرٍ غير الشهر الجاري. اختر أين تُسجَّل الاستعادة، واكتب سببها.', { date })
-                    : t('قيدُ هذا المصروف بتاريخ :date، في شهرٍ غير الشهر الجاري. اختر أين يُسجَّل التصحيح، واكتب سببه.', { date })}
+                {
+                    {
+                        entry: t('قيدُ هذا المصروف بتاريخ :date، في شهرٍ غير الشهر الجاري. اختر أين يُسجَّل التصحيح، واكتب سببه.', { date }),
+                        deletion: t('حُذف هذا المصروف من الدفتر بتاريخ :date، في شهرٍ غير الشهر الجاري. اختر أين تُسجَّل الاستعادة، واكتب سببها.', { date }),
+                        unposted: t('لم يُقيَّد هذا المصروف في الدفتر قطّ، وتاريخ صرفه :date في شهرٍ غير الشهر الجاري. اختر أين يُسجَّل، واكتب السبب.', { date }),
+                    }[subject]
+                }
             </p>
             <div className="grid gap-2">
                 {options.map((o) => (

@@ -507,9 +507,17 @@ class Ledger
                 return null;
             }
 
+            /*
+             * والسببُ يبقى كاملًا: يُقصَّر وصفُ الأصل لا سببُ العكس.
+             *
+             * كان القطعُ من الآخر — فأصلٌ طويلُ الوصف يمحو السببَ من عكسه،
+             * وهو وحده ما يقول لماذا عُكس.
+             */
+            $tail = $reason ? ' — '.$reason : '';
+
             $reversal = self::post(
                 $original->business_id,
-                mb_substr(__('عكس: ').$original->description.($reason ? ' — '.$reason : ''), 0, 255),
+                mb_substr(mb_substr(__('عكس: ').$original->description, 0, max(0, 255 - mb_strlen($tail))).$tail, 0, 255),
                 $lines,
                 $date ?? now(),
                 mb_substr(__('عكس ').$original->source, 0, 30),

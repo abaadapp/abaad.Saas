@@ -523,8 +523,8 @@ class ExpenseController extends Controller
         }
 
         $expense = Expense::withTrashed()->where('business_id', $bid)->findOrFail($id);
-        // والسطرُ عمودٌ بـ255 حرفًا — يُقطع هنا لا يُسقط على PostgreSQL بعد أن تمّ الحذف
-        Activity::log('deleted', mb_substr('حذف المصروف: '.$expense->reference.($why !== __('حذف المصروف') ? ' — '.$why : ''), 0, 255),
+        // والسطرُ عمودٌ بـ255 حرفًا — يُقصَّر صدرُه ويبقى السببُ، ولا يسقط على PostgreSQL بعد أن تمّ الحذف
+        Activity::log('deleted', BooksPeriod::fit('حذف المصروف: '.$expense->reference, $why !== __('حذف المصروف') ? $why : null),
             ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         return back()->with('toast', [

@@ -152,6 +152,7 @@ class TrashController extends Controller
 
         $expenses = $trashed('expense')->get()->map(function ($e) use ($left, $period) {
             $kept = Books::expenseHasHistory($e);
+            $posting = Books::restorePosting($e);
 
             return [
                 'id' => $e->id,
@@ -165,7 +166,11 @@ class TrashController extends Controller
                 'kept' => $kept,
                 'daysLeft' => $kept ? null : $left($e),
                 // والاستعادةُ تُعيد القيدَ بيوم حذفه — فإن عبر حدَّ شهرٍ سُئل قبلها
-                'correction' => BooksPeriod::describe($period, $e->isPaid() ? Books::lastExpenseReversalDate($e) : null),
+                'correction' => BooksPeriod::describe($period, $posting['at'] ?? null),
+                // وما لم يُقيَّد قطّ يدخل الدفترَ أوّلَ مرّة بتاريخ صرفه — فيُسمّى باسمه
+                'correctionSubject' => $posting && ! $posting['deletion'] ? 'unposted' : 'deletion',
+                // بقيّةُ حذفٍ قديم: محذوفٌ ما زال محسوبًا في الدفتر — يُعرض، ولا يُصحَّح وحده
+                'stillCounted' => Books::stillCounts($e),
             ];
         });
 
@@ -588,17 +593,20 @@ class TrashController extends Controller
                     )]);
                 }
 
-                if ($reversal) {
-                    $at = BooksPeriod::resolve($bid, $reversal, $data['correction'] ?? null, $data['correction_reason'] ?? null, auth()->user());
-                    $why = BooksPeriod::reason($why, $reversal, $at, $data['correction_reason'] ?? null);
+                // وما يُكتب له قيدٌ يُسأل عن فترته وحده — انظر `Books::restorePosting`
+                $posting = Books::restorePosting($expense);
+
+                if ($posting) {
+                    $at = BooksPeriod::resolve($bid, $posting['at'], $data['correction'] ?? null, $data['correction_reason'] ?? null, auth()->user());
+                    $why = BooksPeriod::reason($why, $posting['at'], $at, $data['correction_reason'] ?? null);
                 }
 
                 $expense->restore();
                 $expense->transaction()->withTrashed()->restore();
 
                 // وقيدُه المزدوج يُعاد بناؤه: عُكس مع الحذف فلا يُستعاد بالإحياء
-                if ($expense->isPaid()) {
-                    Books::recordExpense($expense, $at ?? ($reversal ? BooksPeriod::openOr($bid, $reversal) : null), auth()->id(), $why);
+                if ($posting) {
+                    Books::recordExpense($expense, $at ?? BooksPeriod::openOr($bid, $posting['at']), auth()->id(), $why);
                 }
 
                 return $why;
@@ -616,8 +624,8 @@ class TrashController extends Controller
 
         $label = self::label('expense', $row);
 
-        // والسطرُ عمودٌ بـ255 حرفًا — يُقطع هنا لا يُسقط على PostgreSQL بعد أن تمّت الاستعادة
-        Activity::log('restore', mb_substr('استعاد المصروف: '.$label.($why !== __('استعادة المصروف') ? ' — '.$why : ''), 0, 255),
+        // والسطرُ عمودٌ بـ255 حرفًا — يُقصَّر صدرُه ويبقى السببُ، ولا يسقط على PostgreSQL بعد أن تمّت الاستعادة
+        Activity::log('restore', BooksPeriod::fit('استعاد المصروف: '.$label, $why !== __('استعادة المصروف') ? $why : null),
             ['subject_id' => $row->id, 'subject_type' => 'expense']);
 
         return back()->with('toast', [

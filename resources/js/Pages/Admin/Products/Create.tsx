@@ -5,11 +5,12 @@ import ProductForm from './partials/ProductForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { BoutiqueLinks, CompositionData } from './partials/addons';
+import type { UploadLimits } from './partials/Gallery';
 import type { Category } from '@/types/models';
 import type { BoutiqueOption } from './partials/boutique';
 
 export default function ProductCreate() {
-    const { categories, composition, boutiques, addonsDisplay, addonBoutiqueLinks, context } =
+    const { categories, composition, boutiques, addonsDisplay, addonBoutiqueLinks, galleryMax, galleryLimits, context } =
         usePage<
             PageProps<{
                 categories: Category[];
@@ -17,6 +18,9 @@ export default function ProductCreate() {
                 boutiques?: BoutiqueOption[];
                 addonsDisplay?: { layout: string; can_change: boolean };
                 addonBoutiqueLinks?: BoutiqueLinks;
+                /** سقفُ الصور وحدودُ الرفع — تُختار الصورُ مع المنتج. انظر `ProductImages` */
+                galleryMax?: number;
+                galleryLimits?: UploadLimits;
             }>
         >().props;
     const t = useTranslate();
@@ -35,6 +39,8 @@ export default function ProductCreate() {
                 boutiques={boutiques}
                 addonsDisplay={addonsDisplay}
                 addonBoutiqueLinks={addonBoutiqueLinks}
+                galleryMax={galleryMax}
+                galleryLimits={galleryLimits}
             />
         </AdminLayout>
     );

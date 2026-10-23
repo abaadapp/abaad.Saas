@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Check, ImagePlus, Pencil, Plus, X } from 'lucide-react';
+import { Check, Pencil, Plus, X } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Tabs from '@/Components/Tabs';
 import Field, { Select } from '@/Components/Field';
@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import AddonDialog from './AddonDialog';
 import ProductAddonsPanel from './ProductAddonsPanel';
 import type { AddonOption, BoutiqueLinks, CompositionData } from './addons';
-import Gallery, { type GalleryImage } from './Gallery';
+import Gallery, { DraftGallery, useDraftUrlsReleased, type DraftImage, type GalleryImage, type UploadLimits } from './Gallery';
 import { boutiqueMove, type BoutiqueOption } from './boutique';
 import AddonsLayoutSwitch from './AddonsLayoutSwitch';
 import BoutiqueParts, { type BoutiquePartsData } from './BoutiqueParts';
@@ -31,10 +31,11 @@ interface Props {
     currencyLabel: string;
     /** المقاسات والوصفة والإضافات — قوائمُ الاختيار في الحالتين */
     composition?: CompositionData | null;
-    /** معرض الصور — في التعديل وحده: المعرّض يُعلَّق بمنتجٍ له معرّف */
+    /** معرض الصور المحفوظ — في التعديل وحده: صفوفُه تُعلَّق بمنتجٍ له معرّف */
     gallery?: GalleryImage[];
+    /** السقفُ وحدودُ الرفع — في الحالتين: الإضافةُ تختار صورَها قبل الحفظ */
     galleryMax?: number;
-    galleryLimits?: { perFile: number; batch: number };
+    galleryLimits?: UploadLimits;
     /**
      * بوتيكاتُ المتجر — فارغةٌ أو غائبةٌ لمن لا بوتيكَ عنده، فلا يُرسم الحقلُ
      * ولا يُرسَل. انظر `Boutiques::options`.
@@ -94,6 +95,7 @@ const FIELD_SECTION: Record<string, TabKey> = {
     alert_qty: 'stock',
     tracks_stock: 'stock',
     image: 'media',
+    images: 'media',
 };
 
 /**
@@ -159,12 +161,40 @@ export default function ProductForm({
          */
         description_web_enabled: product?.description_web_enabled ?? true,
         description_pos_enabled: product?.description_pos_enabled ?? false,
+        /*
+         * الصورُ في الإضافة: الرئيسيةُ في `image` وما معها في `images` — كما
+         * يحفظها الخادم. وتُكتبان من المسوّدة (`DraftGallery`) لا من حقلٍ هنا.
+         */
         image: null as File | null,
+        images: [] as File[],
         // Inertia لا يرسل PUT مع ملف؛ التزييف هو الطريق الرسمي
         ...(editing ? { _method: 'put' } : {}),
     });
 
-    const [preview, setPreview] = useState<string>(product?.image ?? '');
+    /** ما اختير من صورٍ في الإضافة — بترتيبه، والأولى رئيسية */
+    const [drafts, setDrafts] = useState<DraftImage[]>([]);
+    useDraftUrlsReleased(drafts);
+
+    /*
+     * وما ردّه الخادمُ عن الصور يُقال تحتها — أيًّا كان مفتاحُه.
+     *
+     * الرئيسيةُ تعود باسم `image`، والدفعةُ باسم `images`، وصورةٌ بعينها
+     * باسم موضعها (`images.2`). ورسالةٌ لا تُعرض حيث ينظر التاجر تُرى في
+     * أسفل الصفحة وحدها.
+     */
+    const imageError =
+        Object.entries(form.errors as Record<string, string | undefined>)
+            .find(([key, message]) => message && (key === 'image' || key.split('.')[0] === 'images'))?.[1] ?? null;
+
+    const pickDrafts = (next: DraftImage[]) => {
+        setDrafts(next);
+        form.setData((data) => ({
+            ...data,
+            image: next[0]?.file ?? null,
+            images: next.slice(1).map((d) => d.file),
+        }));
+        form.clearErrors('image', 'images');
+    };
 
     /*
      * قسمٌ يُنشأ من جانب حقله.
@@ -303,8 +333,12 @@ export default function ProductForm({
      *
      * وكان ثمّ فرعٌ ثالثٌ يردّ حقولَ `composition` المركّبة إلى قسم التركيب،
      * وزال معه: النموذجُ لم يعد يرسل `composition` أصلًا، فلا خطأ يعود منها.
+     *
+     * وخطأُ صورةٍ بعينها يعود باسم موضعها (`images.2`) — فيُقرأ أصلُه
+     * (`images`) ليُفتح قسمُ الصور لا الأساسيّة.
      */
-    const sectionOf = (field: string): TabKey => FIELD_SECTION[field] ?? 'basic';
+    const sectionOf = (field: string): TabKey =>
+        FIELD_SECTION[field] ?? FIELD_SECTION[field.split('.')[0]] ?? 'basic';
 
     const sectionsWithErrors = new Set(Object.keys(form.errors).map(sectionOf));
 
@@ -389,11 +423,6 @@ export default function ProductForm({
                 if (first) pick(sectionOf(first));
             },
         });
-    };
-
-    const pickImage = (file: File | null) => {
-        form.setData('image', file);
-        if (file) setPreview(URL.createObjectURL(file));
     };
 
     /* سقفٌ للعرض مع توسيط: سطرٌ يمتدّ عبر الشاشة كاملةً يصعب تتبّعه، وحقلان
@@ -918,63 +947,31 @@ export default function ProductForm({
                 {tab === 'media' && (
                     <div className="space-y-6">
                         {/*
-                            بابان لا يجتمعان.
+                            بابان لا يجتمعان — وشكلٌ واحد.
 
                             في التعديل يملك المعرضُ الصورَ كلَّها: الرئيسية
-                            والإضافية، والترقية والحذف. وإبقاءُ حقل الرفع
-                            الواحد بجانبه يعني بابين إلى الشيء نفسه — أحدهما
+                            والإضافية، والترقية والحذف، كلٌّ بطلبه. وإبقاءُ
+                            حقل رفعٍ بجانبه يعني بابين إلى الشيء نفسه — أحدهما
                             يمرّ بنموذج المنتج فيكتب السعر والكمية معه.
 
-                            وفي الإنشاء لا معرض: المعرّض يُعلَّق بمنتجٍ له
-                            معرّف، ولا معرّف قبل الحفظ. فيبقى الحقل الواحد،
-                            وتُقال الخطوة التالية صراحةً — كما في تبويب
-                            التركيب.
+                            وفي الإنشاء لا صفَّ تُعلَّق به الصور قبل الحفظ،
+                            فتُختار وتُرتَّب في المسوّدة وتُرسل مع المنتج في
+                            حفظته — ولا يُطلب من التاجر أن يحفظ ثمّ يعود.
                         */}
                         {editing ? (
                             <Gallery
                                 productId={product!.id}
                                 images={gallery ?? []}
-                                max={galleryMax ?? 8} limits={galleryLimits ?? { perFile: 2048, batch: 7680 }}
+                                max={galleryMax ?? 5} limits={galleryLimits ?? { perFile: 2048, batch: 7680 }}
                             />
                         ) : (
-                        <Card className="p-6">
-                            <h3 className="mb-4 font-bold text-[#111]">{t('صورة المنتج')}</h3>
-                            <label className="group relative block aspect-video cursor-pointer overflow-hidden rounded-[12px] border-2 border-dashed border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] transition-colors hover:border-[#8b5cf6]">
-                                {preview && (
-                                    <img
-                                        src={preview}
-                                        alt=""
-                                        className="absolute inset-0 size-full object-cover"
-                                    />
-                                )}
-                                <div
-                                    className={cn(
-                                        'absolute inset-0 flex flex-col items-center justify-center gap-2 text-[#9ca3af]',
-                                        preview &&
-                                            'bg-black/30 text-white opacity-0 transition-opacity group-hover:opacity-100',
-                                    )}
-                                >
-                                    <ImagePlus className="size-8" />
-                                    <span className="text-[12px]">
-                                        {preview
-                                            ? t('تغيير الصورة')
-                                            : t('اسحب صورة أو انقر للرفع (حتى 4MB)')}
-                                    </span>
-                                </div>
-                                <input
-                                    type="file"
-                                    hidden
-                                    accept="image/*"
-                                    onChange={(e) => pickImage(e.target.files?.[0] ?? null)}
-                                />
-                            </label>
-                            {form.errors.image && (
-                                <p className="mt-2 text-[12px] text-[#b91c1c]">{form.errors.image}</p>
-                            )}
-                            <p className="mt-3 text-[12px] text-[#9ca3af]">
-                                {t('احفظ المنتج أوّلًا لتضيف صورًا أخرى وتختار الرئيسية بينها.')}
-                            </p>
-                        </Card>
+                            <DraftGallery
+                                drafts={drafts}
+                                max={galleryMax ?? 5}
+                                limits={galleryLimits ?? { perFile: 2048, batch: 7680 }}
+                                onChange={pickDrafts}
+                                error={imageError}
+                            />
                         )}
                     </div>
                 )}

@@ -8586,5 +8586,17 @@
     "لا إضافات بهذا العرض": "No add-ons in this view",
     "لا تظهر مع أي منتج — اربطها بمنتج أو اجعلها عامة.": "Shows with no product — link it to a product or make it general.",
     "هذا مصروف ورقة تسوية البوتيك :number، فلا يُحذف: حذفُه لا يُلغي الورقة، ويُظهر مستحقَّها كأنّه لم يُدفع.": "This expense pays boutique settlement sheet :number, so it cannot be deleted: deleting it does not cancel the sheet, and it would show the sheet's due as unpaid.",
-    "مرجعُ هذا القيد لا يتبع هذا النشاط، فلم يُكتب القيد.": "This entry's source document does not belong to this business, so the entry was not written."
+    "مرجعُ هذا القيد لا يتبع هذا النشاط، فلم يُكتب القيد.": "This entry's source document does not belong to this business, so the entry was not written.",
+    "تعذّر حفظ الصورة «:name» — لم يُحفظ شيء، فحاول مرّةً أخرى.": "The image “:name” could not be saved — nothing was saved, please try again.",
+    "لا يحمل المنتج أكثر من :max صور — اخترتَ :got.": "A product holds at most :max images — you chose :got.",
+    "اخترتَ :got صور، والمتبقّي :room من :max.": "You chose :got images, and :room of :max remain.",
+    "مجموع الصور :got ميغابايت، وأقصى ما يُحفظ مرّةً واحدة :n — احذف صورةً أو اختر أخفّ منها، أو أضف الباقي بعد الحفظ.": "The images total :got MB, and at most :n can be saved at once — remove an image or choose lighter ones, or add the rest after saving.",
+    "لهذا المنتج :have صور، أكثر من الحدّ الحالي (:max). تبقى كلّها كما هي، ولا تُضاف صورةٌ جديدة حتى تحذف ما يُنزل عددها دون الحدّ.": "This product has :have images, more than the current limit (:max). They all stay as they are, and no new image can be added until you delete enough to bring the count below the limit.",
+    "اختر صورة أو أكثر": "Choose one or more images",
+    "حتى :max صور، تُحفظ مع المنتج. الأولى هي الرئيسية — بدّلها بالنجمة، ورتّب الصور بالسهمين.": "Up to :max images, saved with the product. The first is the main one — change it with the star, and arrange the images with the arrows.",
+    "قدّمها": "Move earlier",
+    "أخّرها": "Move later",
+    "تجهيز الصور…": "Preparing images…",
+    "تغيّرت صور المنتج منذ فُتحت الصفحة — أعد فتحها ثمّ رتّبها.": "The product images changed since this page was opened — reopen it, then arrange them.",
+    "حُفظ ترتيب الصور": "Image order saved"
 }

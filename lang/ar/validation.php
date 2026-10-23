@@ -334,6 +334,7 @@ return [
         'branch_mode' => 'نطاق الفروع',
         'product_ids' => 'الأصناف',
         'product_ids.*' => 'الصنف',
+        'images' => 'الصور',
         'images.*' => 'الصورة',
         'mapping' => 'مطابقة الأعمدة',
         'template' => 'القالب',

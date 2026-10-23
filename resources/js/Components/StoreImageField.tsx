@@ -74,13 +74,15 @@ export function shapeOf(w: number, h: number): 'square' | 'portrait' | 'landscap
  *
  * و`createImageBitmap` بـ`from-image` يُدير الصورةَ كما يقول رأسُها، فيُكتب
  * ما يُرسَل مُدارًا بلا رأس. وPNG يبقى PNG (فيه الشفافيّة)، وما سواه JPEG.
+ *
+ * و`side` لمن يحفظ بضلعٍ أقصر — صورُ المنتج تُحفظ بـ١٦٠٠ (`ProductImages::MAX_SIDE`).
  */
-async function shrink(file: File): Promise<File> {
+export async function shrink(file: File, side = MAX_SIDE): Promise<File> {
     if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return file;
 
     try {
         const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-        const size = scaled(bitmap.width, bitmap.height);
+        const size = scaled(bitmap.width, bitmap.height, side);
         const canvas = document.createElement('canvas');
         canvas.width = size.w;
         canvas.height = size.h;

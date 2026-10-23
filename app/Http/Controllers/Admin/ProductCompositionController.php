@@ -210,10 +210,12 @@ class ProductCompositionController extends Controller
         ]);
 
         DB::transaction(function () use ($product, $bid, $data) {
+            // كـ`syncScopeProducts` من جهة المنتج: حفظان يتعاقبان، وربطٌ متزامنٌ بالزوج نفسه لا يُسقطه
+            DB::table('products')->where('id', $product->id)->lock('for no key update')->first();
             DB::table('product_addons')->where('product_id', $product->id)->delete();
 
             foreach (array_values(array_unique($data['addon_ids'])) as $i => $addonId) {
-                DB::table('product_addons')->insert([
+                DB::table('product_addons')->insertOrIgnore([
                     'business_id' => $bid,
                     'product_id' => $product->id,
                     'addon_id' => (int) $addonId,

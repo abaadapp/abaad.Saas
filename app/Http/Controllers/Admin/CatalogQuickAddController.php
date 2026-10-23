@@ -568,10 +568,15 @@ class CatalogQuickAddController extends Controller
         $ids = array_values(array_unique(array_map('intval', $data['product_ids'] ?? [])));
 
         \Illuminate\Support\Facades\DB::transaction(function () use ($addon, $bid, $ids) {
+            // حفظان للإضافة نفسها يتعاقبان لا يتداخلان: الثاني ينتظر الأوّل ثمّ
+            // يمحو ما كتبه — وإلّا بقيت القائمتان معًا. والقفلُ «بلا مفتاح»:
+            // لا يحجز من يكتب صفًّا يشير إلى الإضافة (فحصُ المفتاح الأجنبيّ)
+            \Illuminate\Support\Facades\DB::table('addons')->where('id', $addon->id)->lock('for no key update')->first();
             \Illuminate\Support\Facades\DB::table('product_addons')->where('addon_id', $addon->id)->delete();
 
+            // وربطٌ وصل في اللحظة نفسها بالزوج نفسه لا يُسقط الحفظ — انظر `AddonController::link`
             foreach ($ids as $i => $productId) {
-                \Illuminate\Support\Facades\DB::table('product_addons')->insert([
+                \Illuminate\Support\Facades\DB::table('product_addons')->insertOrIgnore([
                     'business_id' => $bid,
                     'product_id' => $productId,
                     'addon_id' => $addon->id,

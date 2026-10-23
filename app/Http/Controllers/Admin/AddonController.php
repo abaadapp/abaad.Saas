@@ -120,7 +120,9 @@ class AddonController extends Controller
      *
      * للمخصّصة وحدها: العامّةُ تُعرض معه أصلًا، والمملوكةُ لمنتجٍ آخر لا
      * تخرج عنه (`ProductAddons::owned`). وصفٌّ واحدٌ لكلّ زوج مهما تكرّر
-     * الطلب — ضغطتان لا تكتبان صفّين.
+     * الطلب: الزوجُ فريدٌ في الجدول، و`insertOrIgnore` تجعل الثانيَ صمتًا لا
+     * خطأ — فحصُ «أموجود؟» قبل الكتابة يقرأ «لا» في طلبين معًا، فيسقط
+     * الثاني بالقيد ٥٠٠ لربطٍ وقع (`AnAddonLinkedTwiceAtOnceIsLinkedOnceTest`).
      */
     public function link(int $id, int $addon): JsonResponse
     {
@@ -132,21 +134,14 @@ class AddonController extends Controller
                 : __('«:name» خاصّةٌ بمنتجٍ آخر ولا تُربط بغيره.', ['name' => $model->name]));
         }
 
-        DB::transaction(function () use ($product, $model) {
-            $exists = DB::table('product_addons')->where('product_id', $product->id)
-                ->where('addon_id', $model->id)->lockForUpdate()->exists();
-
-            if (! $exists) {
-                DB::table('product_addons')->insert([
-                    'business_id' => $this->bid(),
-                    'product_id' => $product->id,
-                    'addon_id' => $model->id,
-                    'sort_order' => (int) DB::table('product_addons')->where('addon_id', $model->id)->max('sort_order') + 1,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-        });
+        DB::table('product_addons')->insertOrIgnore([
+            'business_id' => $this->bid(),
+            'product_id' => $product->id,
+            'addon_id' => $model->id,
+            'sort_order' => (int) DB::table('product_addons')->where('addon_id', $model->id)->max('sort_order') + 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         Activity::log('updated', 'ربط إضافة «'.$model->name.'» بـ'.$product->name, ['subject_id' => $product->id]);
 

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Expense;
-use App\Models\JournalEntry;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
@@ -18,6 +17,7 @@ use App\Support\Pagination;
 use App\Support\Permissions;
 use App\Support\ReportingPeriod;
 use App\Support\Sort;
+use App\Support\StockLosses;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -364,7 +364,7 @@ class ExpenseController extends Controller
                     $why = BooksPeriod::reason(__('تغيير نطاق المصروف'), $entryDate, $at, $correction['reason']);
 
                     Books::unpostExpense($expense, auth()->id(), $why, $at);
-                    Books::recordExpense($expense, $at ?? BooksPeriod::openOr($bid, $entryDate));
+                    Books::recordExpense($expense, $at ?? BooksPeriod::openOr($bid, $entryDate), auth()->id(), $why);
                 }
 
                 // والحركةُ التي أنشأها المصروفُ نفسُه تتبعه — لا حركةُ المالية
@@ -398,12 +398,33 @@ class ExpenseController extends Controller
          * الدفتر هو العطبُ نفسُه الذي في `store`.
          */
         try {
-            DB::transaction(function () use ($expense) {
-                $expense->update(['status' => Expense::PAID, 'spent_at' => now()]);
-                $this->postToLedger($expense->fresh());
+            $paid = DB::transaction(function () use ($expense) {
+                /*
+                 * ويُسأل ثانيةً تحت قفل — «أهي مسدَّدة؟» أعلاه تُسأل بلا قفل.
+                 *
+                 * ثلاثُ ضغطاتٍ متزامنة على PostgreSQL وجدتها غيرَ مسدَّدة كلُّها،
+                 * فكتبت كلٌّ حركتَها: قيدٌ واحد في الدفتر، وثلاثُ حركاتٍ في الصندوق.
+                 */
+                $locked = Expense::whereKey($expense->id)->lockForUpdate()->firstOrFail();
+
+                if ($locked->isPaid()) {
+                    return false;
+                }
+
+                $locked->update(['status' => Expense::PAID, 'spent_at' => now()]);
+                $this->postToLedger($locked->fresh());
+
+                return true;
             });
+        } catch (ModelNotFoundException $e) {
+            // حُذفت بين قراءتها والقفل — لا تُسدَّد فاتورةٌ في المحذوفات
+            abort(404);
         } catch (Throwable $e) {
             return back()->withErrors(['pay' => $this->postingFailed($e)]);
+        }
+
+        if (! $paid) {
+            return back()->with('toast', ['msg' => __('الفاتورة مسدَّدة أصلًا'), 'type' => 'info']);
         }
 
         Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
@@ -430,7 +451,7 @@ class ExpenseController extends Controller
          * نجاح المعاملة، كي لا يقول «حُذف» عن شيءٍ لم يُحذف.
          */
         try {
-            $why = DB::transaction(function () use ($bid, $id, $correction) {
+            [$why, $at] = DB::transaction(function () use ($bid, $id, $correction) {
                 $expense = Expense::where('business_id', $bid)->lockForUpdate()->findOrFail($id);
 
                 /*
@@ -440,10 +461,25 @@ class ExpenseController extends Controller
                  * `unpostExpense` ما يعكسه: كان الحذفُ يُخفي المصروفَ والحركةَ
                  * ويترك قيدَهما حيًّا — مالٌ يقرؤه الدفترُ خارجًا ولا تقرؤه
                  * شاشة. والردُّ أسلمُ من محوٍ نصفيّ.
+                 *
+                 * ولا يُدَلّ على بابٍ لا يُفتح: شاشةُ القيود لا تعكس إلّا اليدويّ،
+                 * ولا حذفَ لحركة المالية بعدُ — فالرسالةُ تقول ما هو، لا ما لا يُفعل.
                  */
                 if ($this->bornOfAMovement($expense)) {
                     throw ValidationException::withMessages(['expense' => __(
-                        'هذا المصروف سُجّل من حركةٍ في شاشة المالية، وقيدُه على الحركة لا عليه — فلا يُحذف من هنا. صحّحه بقيدٍ عكسيّ من شاشة القيود.',
+                        'هذا المصروف سُجّل من حركةٍ في شاشة المالية، وقيدُه على الحركة لا عليه — فلا يُحذف من هنا، كي لا يبقى قيدُه حيًّا بلا مصروف.',
+                    )]);
+                }
+
+                /*
+                 * وكذلك صفُّ هالك المخزون: قيدُه على حركة المخزون (مدين مصروفاتٌ
+                 * أخرى، دائن المخزون)، والصفُّ هنا وجهُه في الشاشة. حذفُه من هنا
+                 * يُخفي الهالكَ ويُبقيه في الدفتر، واستعادتُه كانت تُعيده نقدًا
+                 * من الصندوق (`Books::postedElsewhere`).
+                 */
+                if ($expense->method === StockLosses::EXPENSE_METHOD) {
+                    throw ValidationException::withMessages(['expense' => __(
+                        'هذا هالكُ مخزونٍ قُيّد من الجرد، وقيدُه على المخزون لا على الصندوق — فلا يُحذف من هنا. وإن كان خطأً فصحّحه بتعديل مخزونٍ معاكس.',
                     )]);
                 }
 
@@ -475,7 +511,7 @@ class ExpenseController extends Controller
                  */
                 $expense->delete();
 
-                return $why;
+                return [$why, $at];
             });
         } catch (ValidationException $e) {
             return back()->withErrors($e->errors())
@@ -487,13 +523,20 @@ class ExpenseController extends Controller
         }
 
         $expense = Expense::withTrashed()->where('business_id', $bid)->findOrFail($id);
-        Activity::log('deleted', 'حذف المصروف: '.$expense->reference.($why !== __('حذف المصروف') ? ' — '.$why : ''),
+        // والسطرُ عمودٌ بـ255 حرفًا — يُقطع هنا لا يُسقط على PostgreSQL بعد أن تمّ الحذف
+        Activity::log('deleted', mb_substr('حذف المصروف: '.$expense->reference.($why !== __('حذف المصروف') ? ' — '.$why : ''), 0, 255),
             ['subject_id' => $expense->id, 'subject_type' => 'expense']);
 
         return back()->with('toast', [
             'msg' => __('تم حذف المصروف'),
             'type' => 'warning',
-            'undo' => ['url' => route('admin.expenses.restore', $expense->id), 'label' => $expense->reference ?: $expense->type],
+            /*
+             * و«تراجع» لا يُعرض لعكسٍ وقع في شهرٍ مضى: الإشعارُ يُرسل الاستعادةَ
+             * بلا اختيارٍ ولا سبب، والخادمُ يردّها حينئذٍ دائمًا. فالاستعادةُ من
+             * «المحذوفات» حيث يُسأل عنهما.
+             */
+            'undo' => $at && BooksPeriod::crosses($at) ? null
+                : ['url' => route('admin.expenses.restore', $expense->id), 'label' => $expense->reference ?: $expense->type],
         ]);
     }
 
@@ -506,7 +549,7 @@ class ExpenseController extends Controller
     {
         $data = $request->validate([
             'correction' => ['nullable', 'string', Rule::in(BooksPeriod::MODES)],
-            'correction_reason' => ['nullable', 'string', 'max:200'],
+            'correction_reason' => ['nullable', 'string', 'max:'.BooksPeriod::REASON_MAX],
         ]);
 
         return ['mode' => $data['correction'] ?? null, 'reason' => $data['correction_reason'] ?? null];
@@ -515,13 +558,7 @@ class ExpenseController extends Controller
     /** هل قيدُ هذا المصروف على حركته في شاشة المالية لا عليه؟ */
     private function bornOfAMovement(Expense $expense): bool
     {
-        if (! $expense->transaction_id || Books::liveEntriesFor($expense)->isNotEmpty()) {
-            return false;
-        }
-
-        $entryId = Transaction::withTrashed()->whereKey($expense->transaction_id)->value('journal_entry_id');
-
-        return $entryId !== null && JournalEntry::whereKey($entryId)->whereNull('reversed_at')->exists();
+        return Books::liveEntriesFor($expense)->isEmpty() && Books::movementEntryIsLive($expense);
     }
 
     /**

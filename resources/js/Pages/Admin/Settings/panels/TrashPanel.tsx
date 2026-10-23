@@ -366,6 +366,7 @@ export default function TrashPanel({ products, expenses, customers, trashedBranc
                     <form onSubmit={submitRestore} className="space-y-4 px-5 pb-5" data-testid="restore-dialog">
                         {restoring && (
                             <PeriodCorrection
+                                subject="deletion"
                                 correction={restoring.correction}
                                 value={restoreForm.data}
                                 onChange={(v) => restoreForm.setData(v)}

@@ -20,7 +20,7 @@ import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
-import ScopeFields, { EMPTY_SCOPE, scopeReady, type BranchOption, type ExpenseScopeKind, type ScopeValue } from './ScopeFields';
+import ScopeFields, { EMPTY_SCOPE, scopeMovesTheEntry, scopeReady, type BranchOption, type ExpenseScopeKind, type ScopeValue } from './ScopeFields';
 
 interface ExpenseRow {
     id: number;
@@ -682,7 +682,7 @@ export default function ExpensesIndex() {
                             currency={currency}
                             errors={scopeForm.errors as Record<string, string | undefined>}
                         />
-                        {scoping && (
+                        {scoping && scopeMovesTheEntry(scoping.branch_id, scopeForm.data) && (
                             <PeriodCorrection
                                 correction={scoping.correction}
                                 value={scopeForm.data}
@@ -699,7 +699,9 @@ export default function ExpensesIndex() {
                                 loading={scopeForm.processing}
                                 disabled={
                                     !scopeReady(scopeForm.data, scoping?.amount ?? 0) ||
-                                    !correctionReady(scoping?.correction, scopeForm.data)
+                                    (scoping !== null &&
+                                        scopeMovesTheEntry(scoping.branch_id, scopeForm.data) &&
+                                        !correctionReady(scoping.correction, scopeForm.data))
                                 }
                             >
                                 <Check />

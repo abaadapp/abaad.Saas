@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import PeriodCorrection, { EMPTY_CORRECTION, correctionReady, type Correction } from '@/Components/PeriodCorrection';
+import PeriodCorrection, { EMPTY_CORRECTION, REASON_MAX, correctionReady, type Correction } from '@/Components/PeriodCorrection';
+import { EMPTY_SCOPE, scopeMovesTheEntry } from '@/Pages/Admin/Expenses/ScopeFields';
 import { pageProps } from './setup';
 
 /**
@@ -69,6 +70,33 @@ describe('سؤالُ تصحيح الفترة السابقة', () => {
         );
 
         expect(screen.getByText(/الدفاتر مقفلة حتى 2026-09-30/)).toBeInTheDocument();
+    });
+
+    /** الاستعادةُ تُعيد القيدَ بيوم حذفه — فلا تُسمّيه «تاريخ القيد الأصليّ» */
+    it('يسمّي تاريخَ الحذف باسمه في الاستعادة', () => {
+        render(<PeriodCorrection subject="deletion" correction={crossing()} value={EMPTY_CORRECTION} onChange={() => {}} />);
+
+        expect(screen.getByLabelText(/بتاريخ الحذف \(2026-09-30\)/)).toBeInTheDocument();
+        expect(screen.queryByLabelText(/بتاريخ القيد الأصلي/)).not.toBeInTheDocument();
+        expect(screen.getByText(/حُذف هذا المصروف من الدفتر بتاريخ 2026-09-30/)).toBeInTheDocument();
+    });
+
+    /** وسببٌ أطول ممّا يقبله الخادم يُقطع ذيلُه في القيد — فلا يُكتب أصلًا */
+    it('لا يقبل سببًا أطولَ ممّا يحفظه القيد', () => {
+        render(<PeriodCorrection correction={crossing()} value={EMPTY_CORRECTION} onChange={() => {}} />);
+
+        expect(REASON_MAX).toBe(120);
+        expect(screen.getByRole('textbox')).toHaveAttribute('maxLength', String(REASON_MAX));
+    });
+
+    /** وتغييرُ نطاقٍ لا يبدّل فرعَ القيد لا يمسّ الدفتر — فلا يُسأل عن سببٍ لا يُحفظ */
+    it('يُسأل في النطاق حين يتبدّل فرعُ القيد وحده', () => {
+        expect(scopeMovesTheEntry(5, { ...EMPTY_SCOPE, scope: 'branch', branch_id: '5' })).toBe(false);
+        expect(scopeMovesTheEntry(null, { ...EMPTY_SCOPE, scope: 'split' })).toBe(false);
+        expect(scopeMovesTheEntry(null, EMPTY_SCOPE)).toBe(false);
+        expect(scopeMovesTheEntry(5, EMPTY_SCOPE)).toBe(true);
+        expect(scopeMovesTheEntry(5, { ...EMPTY_SCOPE, scope: 'branch', branch_id: '7' })).toBe(true);
+        expect(scopeMovesTheEntry(null, { ...EMPTY_SCOPE, scope: 'branch', branch_id: '3' })).toBe(true);
     });
 
     it('لا يكتمل الطلبُ بلا اختيارٍ وسبب حين يعبر حدَّ شهر', () => {

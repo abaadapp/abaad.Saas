@@ -25,6 +25,9 @@ export interface CorrectionValue {
 
 export const EMPTY_CORRECTION: CorrectionValue = { correction: '', correction_reason: '' };
 
+/** أطولُ سببٍ يقبله الخادم (`BooksPeriod::REASON_MAX`) — ليبقى كاملًا في القيد وسطر النشاط */
+export const REASON_MAX = 120;
+
 /** هل اكتمل ما يُرسَل؟ — اختيارٌ وسببٌ حين يعبر التصحيحُ حدَّ شهر */
 export const correctionReady = (c: Correction | undefined, v: CorrectionValue): boolean =>
     !c?.crosses || (v.correction !== '' && v.correction_reason.trim() !== '');
@@ -34,15 +37,26 @@ export default function PeriodCorrection({
     value,
     onChange,
     errors,
+    subject = 'entry',
 }: {
     correction: Correction;
     value: CorrectionValue;
     onChange: (v: CorrectionValue) => void;
     errors?: Record<string, string | undefined>;
+    /**
+     * ما يُصحَّح: قيدُ المصروف (الحذف وتغيير النطاق)، أو قيدُ حذفه (الاستعادة).
+     *
+     * فالاستعادةُ تُعيد القيدَ بتاريخ عكسه — يومِ الحذف — لا بتاريخ المصروف.
+     * و«بتاريخ القيد الأصليّ» هناك كان يُقرأ تاريخَ المصروف وهو يومُ الحذف.
+     */
+    subject?: 'entry' | 'deletion';
 }) {
     const t = useTranslate();
 
     if (!correction.crosses) return null;
+
+    const date = correction.entry_date ?? '';
+    const deletion = subject === 'deletion';
 
     const why =
         correction.status === 'closed'
@@ -60,8 +74,12 @@ export default function PeriodCorrection({
         },
         {
             key: 'original',
-            label: t('بتاريخ القيد الأصلي (:date)', { date: correction.entry_date ?? '' }),
-            hint: correction.original_allowed ? t('يُصحَّح الشهر السابق نفسه، ولا يتأثّر الشهر الحالي.') : why,
+            label: deletion ? t('بتاريخ الحذف (:date)', { date }) : t('بتاريخ القيد الأصلي (:date)', { date }),
+            hint: correction.original_allowed
+                ? deletion
+                    ? t('يعود المصروف في الشهر الذي حُذف منه، ولا يتأثّر الشهر الحالي.')
+                    : t('يُصحَّح الشهر السابق نفسه، ولا يتأثّر الشهر الحالي.')
+                : why,
             disabled: !correction.original_allowed,
         },
     ];
@@ -70,9 +88,9 @@ export default function PeriodCorrection({
         <div className="space-y-3 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3" data-testid="period-correction">
             <p className="flex items-start gap-2 text-[12.5px] text-[#92400e]">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                {t('قيدُ هذا المصروف بتاريخ :date، في شهرٍ غير الشهر الجاري. اختر أين يُسجَّل التصحيح، واكتب سببه.', {
-                    date: correction.entry_date ?? '',
-                })}
+                {deletion
+                    ? t('حُذف هذا المصروف من الدفتر بتاريخ :date، في شهرٍ غير الشهر الجاري. اختر أين تُسجَّل الاستعادة، واكتب سببها.', { date })
+                    : t('قيدُ هذا المصروف بتاريخ :date، في شهرٍ غير الشهر الجاري. اختر أين يُسجَّل التصحيح، واكتب سببه.', { date })}
             </p>
             <div className="grid gap-2">
                 {options.map((o) => (
@@ -103,7 +121,7 @@ export default function PeriodCorrection({
             <Field label={t('سبب التصحيح')} error={errors?.correction_reason} required>
                 <textarea
                     rows={2}
-                    maxLength={200}
+                    maxLength={REASON_MAX}
                     value={value.correction_reason}
                     onChange={(e) => onChange({ ...value, correction_reason: e.target.value })}
                     className="w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-2 text-sm transition-[border-color,box-shadow] focus:border-[#d1d5db] focus:shadow-[0_0_0_3px_rgba(0,0,0,0.05)] focus:outline-none"

@@ -311,11 +311,19 @@ class Books
      * يُنادى هذا عند السداد لا عند التسجيل.
      *
      * و`$at` لقيدٍ يُعاد بعد عكسه: الاستعادةُ وتغييرُ النطاق يكتبانه بتاريخ
-     * ما يقابله لا بتاريخ المصروف — انظر `BooksPeriod`.
+     * ما يقابله لا بتاريخ المصروف — انظر `BooksPeriod`. ومعه كاتبُه وسببُه
+     * (`$userId` و`$note`): القيدُ المعاد تصحيحٌ، ومن يقرؤه يسأل مَن ولماذا.
      */
-    public static function recordExpense(Expense $expense, ?Carbon $at = null): void
+    public static function recordExpense(Expense $expense, ?Carbon $at = null, ?int $userId = null, ?string $note = null): void
     {
-        if (self::hasEntry($expense)) {
+        /*
+         * ومصروفٌ قيدُه في مكانٍ آخر لا يُكتب له قيدٌ ثانٍ.
+         *
+         * الحذفُ القديم كان يُخفي مصروفَ شاشة المالية وصفَّ هالك المخزون ولا
+         * يعكس قيدَيهما، فإذا استُعيد أحدهما لم يجد هذا قيدًا على المصروف
+         * فكتب واحدًا — والمالُ نفسُه يخرج مرّتين في الدفتر.
+         */
+        if (self::hasEntry($expense) || self::postedElsewhere($expense)) {
             return;
         }
 
@@ -326,7 +334,7 @@ class Books
 
         Ledger::post(
             $expense->business_id,
-            __('مصروف: ').$expense->type,
+            mb_substr(__('مصروف: ').$expense->type.($note ? ' — '.$note : ''), 0, 255),
             [
                 ['account' => self::expenseAccount($expense->type, $expense->business_id), 'debit' => $amount, 'memo' => $expense->description],
                 ['account' => self::payingAccount($expense->method), 'credit' => $amount],
@@ -335,7 +343,7 @@ class Books
             self::EXPENSE,
             // فرعُ المصروف المباشر — والموزَّعُ قيدٌ واحد للنشاط لا قيدٌ لكلّ فرع
             ExpenseScope::journalBranch($expense),
-            null,
+            $userId,
             $expense,
         );
     }
@@ -378,12 +386,44 @@ class Books
         return $date ? Carbon::parse($date) : null;
     }
 
-    /** هل كُتب لهذا المصروف قيدٌ قطّ — حيًّا أو معكوسًا؟ وهو دليلٌ لا يُمحى */
+    /**
+     * هل كُتب لهذا المصروف قيدٌ قطّ — حيًّا أو معكوسًا؟ وهو دليلٌ لا يُمحى.
+     *
+     * وقيدُ مصروف شاشة المالية على حركته (`recordMovement`): محوُ المصروف
+     * يمحو الحركةَ معه، ويبقى قيدُها يشير إلى لا شيء.
+     */
     public static function expenseHasHistory(Expense $expense): bool
     {
         return JournalEntry::where('sourceable_type', $expense::class)
             ->where('sourceable_id', $expense->id)
-            ->exists();
+            ->exists()
+            || ($expense->transaction_id && Transaction::withTrashed()->whereKey($expense->transaction_id)
+                ->whereNotNull('journal_entry_id')->exists())
+            // وصفُّ الهالك يعرض قيدًا على حركة المخزون — هو وجهُه في المصروفات
+            || $expense->method === StockLosses::EXPENSE_METHOD;
+    }
+
+    /**
+     * هل قيدُ هذا المصروف يُكتب في مكانٍ آخر — حركةُ مالية أو هالكُ مخزون؟
+     *
+     * فلا يُبنى قيدُه من نوعه ووسيلته هنا: «قيد داخلي» ليست وسيلةً يعرفها
+     * `payingAccount` فيقع على الصندوق، وقيدُ الحركة حيٌّ أصلًا.
+     */
+    public static function postedElsewhere(Expense $expense): bool
+    {
+        return $expense->method === StockLosses::EXPENSE_METHOD || self::movementEntryIsLive($expense);
+    }
+
+    /** هل قيدُ الحركة التي وُلد منها المصروفُ حيّ؟ فهو قيدُه، وإن خلا المصروفُ من قيد */
+    public static function movementEntryIsLive(Expense $expense): bool
+    {
+        if (! $expense->transaction_id) {
+            return false;
+        }
+
+        $entryId = Transaction::withTrashed()->whereKey($expense->transaction_id)->value('journal_entry_id');
+
+        return $entryId !== null && JournalEntry::whereKey($entryId)->whereNull('reversed_at')->exists();
     }
 
     /**

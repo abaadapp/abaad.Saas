@@ -8,6 +8,7 @@ use App\Models\NotificationState;
 use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Notifications;
+use DomainException;
 use Illuminate\Console\Command;
 
 /**
@@ -67,7 +68,15 @@ class TrashPurge extends Command
                  * والعدد هنا صغير بطبعه — ما حُذف قبل ثلاثة أشهر ولم يُستردّ.
                  */
                 if (! $dry) {
-                    TrashController::purgeRow($type, $row);
+                    /*
+                     * ورفضُ صفٍّ واحد لا يوقف الأمرَ كلَّه: استُعيد بين القراءة
+                     * والمحو، أو كُتب له قيدٌ — `purgeRow` يسأل ثانيةً تحت قفل.
+                     */
+                    try {
+                        TrashController::purgeRow($type, $row);
+                    } catch (DomainException) {
+                        continue;
+                    }
                 }
                 $erased++;
                 $total++;

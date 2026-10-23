@@ -54,6 +54,15 @@ class BooksPeriod
 
     public const MODES = [self::CURRENT, self::ORIGINAL];
 
+    /**
+     * أطولُ سببٍ يُقبل — ليبقى كاملًا في وصف القيد وسطرِ النشاط.
+     *
+     * كلاهما عمودٌ بـ255 حرفًا، والسببُ يُكتب بعد اسم الفعل والتاريخين.
+     * وكان 200: سببٌ طويلٌ يُقطع ذيلُه في القيد، ويُسقط سطرَ النشاط على
+     * PostgreSQL بعد أن تمّ الحذفُ نفسُه — فيرى التاجرُ خطأً عن شيءٍ وقع.
+     */
+    public const REASON_MAX = 120;
+
     public const OPEN = 'open';
 
     public const CLOSED = 'closed';
@@ -206,7 +215,7 @@ class BooksPeriod
             return $action;
         }
 
-        return $action.' — '.__('تصحيح فترة سابقة: القيد بتاريخ :entry، والتصحيح بتاريخ :at — :why', [
+        return $action.' — '.__('تصحيح فترة سابقة (القيد :entry، التصحيح :at): :why', [
             'entry' => $entryDate->toDateString(),
             'at' => $at->toDateString(),
             'why' => trim((string) $why),

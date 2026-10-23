@@ -9,7 +9,7 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\ProductImages;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * صور المنتج — مسارٌ بذاته، لا حقلٌ في نموذج المنتج.
@@ -52,8 +52,8 @@ class ProductImageController extends Controller
     /**
      * رفع صورةٍ أو أكثر إلى المعرض.
      *
-     * والسقف يُقاس على ما سيصير لا على ما هو: من عنده ستٌّ ورفع أربعًا يُردّ
-     * قبل أن يُكتب شيء — لا أن تُقبل اثنتان وتُطرح اثنتان بلا أن يُقال أيّهما.
+     * والسقف يُقاس على ما سيصير لا على ما هو: من عنده ثلاثٌ ورفع ثلاثًا يُردّ
+     * قبل أن يُكتب شيء — لا أن تُقبل اثنتان وتُطرح واحدة بلا أن يُقال أيّها.
      */
     public function store(Request $request, string $id)
     {
@@ -70,31 +70,35 @@ class ProductImageController extends Controller
             'images.*.max' => __('حجم الصورة يتجاوز :n ميغابايت.', ['n' => round($limits['perFile'] / 1024, 1)]),
         ], ['images' => __('الصور')]);
 
-        $files = $request->file('images');
-        $have = ProductImages::count($product);
+        $files = array_values($request->file('images'));
 
-        if ($have + count($files) > ProductImages::MAX) {
-            throw ValidationException::withMessages([
-                'images' => __('لا يحمل المنتج أكثر من :max صور — عنده :have الآن.', [
-                    'max' => ProductImages::MAX, 'have' => $have,
-                ]),
-            ]);
-        }
+        // والسقفُ قبل القرص: صنفٌ ممتلئ — أو قديمٌ فوق السقف — لا يُكتب له ملفٌّ ثمّ يُمحى
+        ProductImages::assertRoom($product, count($files));
 
         /*
-         * ومنتجٌ بلا صورةٍ رئيسية تصير أُولى المرفوعات رئيسيتَه.
+         * الملفّاتُ تُحفظ وتُضغط أوّلًا، خارج المعاملة.
          *
-         * وإلّا رفع التاجر صورةً فبقيت بطاقتُه تعرض بديل النظام، وصورتُه في
-         * معرضٍ لا يفتحه أحد — فيظنّ أنّ الرفع لم ينجح ويعيده.
+         * ضغطُ خمس صورٍ يأخذ ثوانيَ، وقفلُ صفّ المنتج طوالها يُوقف الصندوق
+         * عن بيعه (البيعُ يقفل الصفّ نفسه ليخصم كميّته). فالقفلُ يُؤخذ بعدها
+         * لكتابة الصفوف وحدها، ويُعاد فيه عدُّ السقف: رفعان من تبويبين معًا
+         * يمرّ كلٌّ منهما بالعدّ الأوّل وحده.
+         *
+         * ومنتجٌ بلا صورةٍ رئيسية تصير أُولى المرفوعات رئيسيتَه (`attach`).
          */
-        foreach ($files as $file) {
-            if (! ProductImages::hasRealMain($product)) {
-                $product->forceFill(['image' => $file->store('products', 'public')])->save();
+        $paths = ProductImages::putAll($files);
 
-                continue;
-            }
+        try {
+            DB::transaction(function () use ($product, $paths) {
+                $locked = Product::where('business_id', $this->bid())->lockForUpdate()->findOrFail($product->id);
 
-            ProductImages::add($product, $file);
+                ProductImages::assertRoom($locked, count($paths));
+                ProductImages::attach($locked, $paths);
+            });
+        } catch (\Throwable $e) {
+            // ولا يبقى على القرص ملفٌّ لم يُكتب صفُّه
+            ProductImages::forgetFiles($paths);
+
+            throw $e;
         }
 
         Activity::log('updated', 'أضاف صورًا للمنتج: '.$product->name, ['subject_id' => $product->id]);
@@ -103,6 +107,27 @@ class ProductImageController extends Controller
             'msg' => trans_choice('{1}أُضيفت صورة|[2,*]أُضيفت :count صور', count($files), ['count' => count($files)]),
             'type' => 'success',
         ]);
+    }
+
+    /**
+     * يرتّب صورَ المعرض كما يراها التاجر.
+     *
+     * والمنتجُ يُقرأ من متجره قبل أن تُفحص القائمة: منتجُ الجار يُردّ بـ404
+     * أيًّا كان ما أُرسل معه، لا بخطأ تحقّقٍ يخفي أنّ الباب لم يُسأل.
+     */
+    public function order(Request $request, string $id)
+    {
+        $product = $this->product($id);
+
+        $data = $request->validate([
+            'ids' => ['present', 'array', 'max:'.(ProductImages::MAX * 2)],
+            'ids.*' => ['integer', 'distinct'],
+        ], [], ['ids' => __('الصور')]);
+
+        ProductImages::reorder($product, $data['ids']);
+        Activity::log('updated', 'رتّب صور المنتج: '.$product->name, ['subject_id' => $product->id]);
+
+        return back()->with('toast', ['msg' => __('حُفظ ترتيب الصور'), 'type' => 'success']);
     }
 
     /** يجعل صورةً من المعرض رئيسيةً — والقديمة تنزل مكانها لا تُفقد */

@@ -743,6 +743,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      * فالصور تُدار بطلباتٍ صغيرة لا تمسّ عمودًا آخر.
      */
     Route::post('/products/{id}/images', [ProductImageController::class, 'store'])->name('products.images.store');
+    Route::put('/products/{id}/images/order', [ProductImageController::class, 'order'])->name('products.images.order');
     Route::post('/products/{id}/images/{imageId}/main', [ProductImageController::class, 'promote'])->name('products.images.promote');
     Route::delete('/products/{id}/images/{imageId}', [ProductImageController::class, 'destroy'])->name('products.images.destroy');
     Route::delete('/products/{id}/image', [ProductImageController::class, 'destroyMain'])->name('products.images.destroyMain');

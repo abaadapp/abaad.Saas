@@ -203,8 +203,10 @@ final class StoreImageUpload
      * فكُّ صورةٍ بخمسين ميغابكسل يأخذ نحو مئتي ميغابايت. ونفادُ الذاكرة في
      * PHP لا يُلتقط — يسقط الطلبُ كلُّه بخطأٍ أبيض. فيُحسب قبل أن يُفكّ،
      * ويُحفظ الأصلُ إن لم يتّسع.
+     *
+     * وعامّةٌ لأنّ صور المنتجات تُضغط بالحساب نفسه (`ProductImages::put`).
      */
-    private static function roomFor(int $pixels): bool
+    public static function roomFor(int $pixels): bool
     {
         // البكسلُ أربعةُ بايتات، ونسخةٌ للتصغير، وهامشٌ للمكتبة
         $need = memory_get_usage() + (int) ($pixels * 4 * 2.2) + 32 * 1024 * 1024;
@@ -220,8 +222,13 @@ final class StoreImageUpload
             && self::bytes((string) ini_get('memory_limit')) >= $need;
     }
 
-    /** يُصغَّر حتّى يبلغ ضلعُه الأطول `MAX_SIDE` — بنسبته، والشفافيّةُ باقية */
-    private static function fitted(\GdImage $image): \GdImage
+    /**
+     * يُصغَّر حتّى يبلغ ضلعُه الأطول `$side` — بنسبته، والشفافيّةُ باقية.
+     *
+     * والضلعُ يُمرَّر: صورةُ واجهة المتجر تُعرض عريضةً (`MAX_SIDE`)، وصورةُ
+     * المنتج في مربّعٍ أصغر — فتُصغَّر أكثر (`ProductImages::MAX_SIDE`).
+     */
+    public static function fitted(\GdImage $image, int $side = self::MAX_SIDE): \GdImage
     {
         $w = imagesx($image);
         $h = imagesy($image);
@@ -234,11 +241,11 @@ final class StoreImageUpload
         imagealphablending($image, false);
         imagesavealpha($image, true);
 
-        if ($long <= self::MAX_SIDE) {
+        if ($long <= $side) {
             return $image;
         }
 
-        $scale = self::MAX_SIDE / $long;
+        $scale = $side / $long;
         $nw = max(1, (int) round($w * $scale));
         $nh = max(1, (int) round($h * $scale));
         $out = imagecreatetruecolor($nw, $nh);
@@ -255,7 +262,7 @@ final class StoreImageUpload
      *
      * و`imagerotate` تُدير عكسَ عقارب الساعة: ٢٧٠ ربعٌ مع العقارب.
      */
-    private static function oriented(\GdImage $image, int $orientation): \GdImage
+    public static function oriented(\GdImage $image, int $orientation): \GdImage
     {
         $rotate = fn (\GdImage $im, int $deg) => imagerotate($im, $deg, 0) ?: $im;
 

@@ -19,6 +19,7 @@ use App\Support\StockLedger;
 use App\Support\Store\GiftCardProduct;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class ProductController extends Controller
@@ -232,6 +233,8 @@ class ProductController extends Controller
 
     public function store(Request $request)
     {
+        $limits = ProductImages::uploadLimits();
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'name_en' => ['nullable', 'string', 'max:255'],
@@ -271,14 +274,43 @@ class ProductController extends Controller
             // وضريبةٌ ٩٠٠٪ تُخرج فاتورةً بعشرة أضعاف ثمنها. كانا يُقبلان
             'tax' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'discount' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'image' => ['nullable', 'image', 'max:4096'],
+            /*
+             * والصورُ كلُّها من هذه الشاشة — الرئيسيةُ في `image` وما معها في
+             * `images` — فلا يُنشأ الصنفُ ثمّ يُفتح للتعديل ليُكمَل معرضُه.
+             *
+             * وحدُّ الملفّ حدُّ المعرض نفسه (`uploadLimits`): رقمٌ واحدٌ تقرؤه
+             * الشاشةُ والبابان، فلا يقبل الإنشاءُ ما يردّه التعديل.
+             */
+            'image' => ['nullable', 'image', 'max:'.$limits['perFile']],
+            'images' => ['nullable', 'array'],
+            'images.*' => ['image', 'max:'.$limits['perFile']],
             // التركيب يُملأ مع المنتج لا بعده — انظر ProductCompositionController::draftRules
         ] + ProductCompositionController::draftRules($this->bid()),
-            ['category_id.exists' => __('قسم غير معروف')] + ProductCompositionController::draftMessages());
+            ['category_id.exists' => __('قسم غير معروف')]
+            + array_fill_keys(['image.image', 'images.*.image'], __('الملفّ ليس صورة.'))
+            + array_fill_keys(['image.max', 'images.*.max'], __('حجم الصورة يتجاوز :n ميغابايت.', ['n' => round($limits['perFile'] / 1024, 1)]))
+            + ProductCompositionController::draftMessages());
 
         // مسوّدةُ التركيب ليست عمودًا في products؛ تُنحّى قبل الإنشاء وتُكتب بعده
         $composition = $data['composition'] ?? [];
         unset($data['composition']);
+
+        /*
+         * والصورُ بترتيبها: الرئيسيةُ أوّلًا ثمّ المعرض — كما تقرؤها الشاشاتُ كلُّها.
+         *
+         * والسقفُ يُقاس قبل أن يُكتب ملفّ: سادسةٌ تُردّ الطلبَ كلَّه برسالةٍ
+         * تقول كم اختار، لا أن تُحفظ خمسٌ وتُطرح واحدةٌ لا يعرف أيّها.
+         */
+        $files = array_values(array_filter([$request->file('image'), ...array_values($request->file('images', []))]));
+        unset($data['image'], $data['images']);
+
+        if (count($files) > ProductImages::MAX) {
+            throw ValidationException::withMessages([
+                'images' => __('لا يحمل المنتج أكثر من :max صور — اخترتَ :got.', [
+                    'max' => ProductImages::MAX, 'got' => count($files),
+                ]),
+            ]);
+        }
 
         $data['business_id'] = $this->bid();
         PlanLimits::enforce(auth()->user()->business, 'products');
@@ -332,31 +364,54 @@ class ProductController extends Controller
          * متجر التاجر على الإنترنت (`Storefront` تسأل `hasRealMain`)،
          * وتُعدّ في سقف الصور، ويُرسم لها زرُّ حذفٍ لملفٍّ لا وجود له.
          * ووقع على متجرٍ حقيقيّ: صنفٌ اسمه «لانيارد» يحمل صورةَ شيءٍ آخر.
-         */
-        $data['image'] = $request->hasFile('image')
-            ? $request->file('image')->store('products', 'public')
-            : null;
-        $product = Product::create($data);
-        // إسناد الكمية الافتتاحية إلى الفرع الحالي/الأول ليبقى مجموع الفروع = كمية المنتج
-        BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
-        /*
-         * والرصيدُ الافتتاحيّ يُقيَّد حركةً.
          *
-         * وبلا هذا السطر يبدأ الصنفُ برقمٍ لا يقول أحدٌ من أين جاء: تُجمع
-         * حركاتُه كلُّها فلا تُساوي رصيدَه، ويبقى الفرقُ بلا تفسير. وكان
-         * ذلك واقعًا في الإنتاج — سبعةُ أصناف.
+         * ═══ والملفّاتُ قبل الصفوف، والصفوفُ معاملةٌ واحدة ═══
+         *
+         * تُحفظ الصورُ وتُضغط أوّلًا (`putAll`) — وما تعذّر منها يمحو ما قبله
+         * ويردّ الطلب برسالةٍ تقول أيّ صورة. ثمّ يُكتب الصنفُ ورصيدُه وصورُه
+         * وتركيبُه معًا أو لا شيء: صنفٌ أُنشئ ثمّ سقط معرضُه يبقى في القائمة
+         * بنصف صوره، ويُضاف ثانيةً فيصير صنفين.
+         *
+         * وإن سقطت المعاملة مُحيت الملفّاتُ التي حُفظت لها — فلا يبقى على
+         * القرص ما لا يشير إليه صفّ.
          */
-        StockLedger::note(
-            $this->bid(), $this->defaultBranchId(), $product,
-            (int) ($data['quantity'] ?? 0), StockLedger::OPENING, auth()->user()->name,
-        );
-        Activity::log('created', 'أضاف منتجًا: '.$data['name']);
+        $paths = ProductImages::putAll($files);
 
-        // المقاسات والوصفة والإضافات التي كُتبت في نفس الشاشة — بعد أن صار
-        // للمنتج معرّفٌ تُعلَّق به
-        if ($composition) {
-            ProductCompositionController::applyDraft($product, $composition);
+        try {
+            $product = \DB::transaction(function () use ($data, $paths, $composition) {
+                $product = Product::create(['image' => $paths[0] ?? null] + $data);
+                // إسناد الكمية الافتتاحية إلى الفرع الحالي/الأول ليبقى مجموع الفروع = كمية المنتج
+                BranchStock::adjust($this->bid(), $this->defaultBranchId(), $product->id, (int) ($data['quantity'] ?? 0));
+                /*
+                 * والرصيدُ الافتتاحيّ يُقيَّد حركةً.
+                 *
+                 * وبلا هذا السطر يبدأ الصنفُ برقمٍ لا يقول أحدٌ من أين جاء: تُجمع
+                 * حركاتُه كلُّها فلا تُساوي رصيدَه، ويبقى الفرقُ بلا تفسير. وكان
+                 * ذلك واقعًا في الإنتاج — سبعةُ أصناف.
+                 */
+                StockLedger::note(
+                    $this->bid(), $this->defaultBranchId(), $product,
+                    (int) ($data['quantity'] ?? 0), StockLedger::OPENING, auth()->user()->name,
+                );
+
+                // وما بعد الرئيسية إلى المعرض بترتيبه — القاعدةُ نفسُها التي يرفع بها المعرض
+                ProductImages::attach($product, array_slice($paths, 1));
+
+                // المقاسات والوصفة والإضافات التي كُتبت في نفس الشاشة — بعد أن صار
+                // للمنتج معرّفٌ تُعلَّق به
+                if ($composition) {
+                    ProductCompositionController::applyDraft($product, $composition);
+                }
+
+                return $product;
+            });
+        } catch (\Throwable $e) {
+            ProductImages::forgetFiles($paths);
+
+            throw $e;
         }
+
+        Activity::log('created', 'أضاف منتجًا: '.$data['name']);
 
         /*
          * الإضافة تنتهي فيُخرَج منها، خلافًا للتعديل الذي يبقى في مكانه.

@@ -54,6 +54,19 @@ interface Props {
     customerFlags: { alerts: boolean; blocking: boolean; birthdays: boolean };
     /** «طلب دفعة» — روابطُ دفع هذا العميل وحالُ Paymob (`PaymentLinks::panel`) */
     paymentLinks?: PaymentLinksPanel;
+    /** سجلُّ نقاط الولاء — آخرُ الحركات، ومصدرُ كلٍّ منها: فاتورةٌ سُدّدت برابط، أو طلب، أو يد */
+    pointHistory?: PointRow[];
+}
+
+interface PointRow {
+    id: number;
+    type: 'earn' | 'redeem';
+    points: number;
+    balance_after: number;
+    note: string | null;
+    at: string | null;
+    invoice: { id: number; number: string | null } | null;
+    order: string | null;
 }
 
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
@@ -69,7 +82,7 @@ export function birthdayLabel(c: { birth_day?: number | null; birth_month?: numb
 const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 
 export default function CustomerShow() {
-    const { customer, orders, addresses, context, branches = [], customerFlags, paymentLinks, auth } = usePage<PageProps<Props>>().props;
+    const { customer, orders, addresses, context, branches = [], customerFlags, paymentLinks, pointHistory = [], auth } = usePage<PageProps<Props>>().props;
     /*
      * ورفعُ حظر البيع لمن يملك تجاوزَه — كما يقبله الخادم (`CustomerController::internal`).
      * فلا يُرسم مفتاحٌ يُطفئ الحظرَ لمن يُردّ عنه: يُقال له من يرفعه.
@@ -99,7 +112,7 @@ export default function CustomerShow() {
         language: customer.language ?? '',
         branch_id: customer.branch_id ? String(customer.branch_id) : '',
     });
-    const [tab, setTab] = useState<'orders' | 'addresses'>('orders');
+    const [tab, setTab] = useState<'orders' | 'addresses' | 'points'>('orders');
 
     const notes = useForm({ notes: customer.notes ?? '' });
 
@@ -377,13 +390,45 @@ export default function CustomerShow() {
                         tabs={[
                             { key: 'orders', label: 'سجل الطلبات' },
                             { key: 'addresses', label: 'العناوين', count: addresses.length },
+                            { key: 'points', label: 'نقاط الولاء', count: pointHistory.length },
                         ]}
                         current={tab}
-                        onChange={(k) => setTab(k as 'orders' | 'addresses')}
+                        onChange={(k) => setTab(k as 'orders' | 'addresses' | 'points')}
                         className="px-5"
                     />
 
-                    {tab === 'addresses' ? (
+                    {tab === 'points' ? (
+                        /* كلُّ حركةٍ بمصدرها والرصيدِ بعدها — كما كُتبت، لا محسوبةً هنا */
+                        <Table data-testid="customer-points">
+                            <TableHeader>
+                                <TableRow className="hover:bg-transparent">
+                                    {['التاريخ', 'الحركة', 'الرصيد بعدها', 'المصدر'].map((h) => (
+                                        <TableHead key={h}>{t(h)}</TableHead>
+                                    ))}
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {pointHistory.length === 0 ? (
+                                    <TableEmpty colSpan={4}>{t('لا حركات نقاط لهذا العميل بعد')}</TableEmpty>
+                                ) : pointHistory.map((p) => (
+                                    <TableRow key={p.id} data-testid="customer-point-row">
+                                        <TableCell className="text-[#6b7280]">{p.at}</TableCell>
+                                        <TableCell className={p.points >= 0 ? 'tabular-nums font-semibold text-[#15803d]' : 'tabular-nums font-semibold text-[#b45309]'}>
+                                            {p.points > 0 ? '+' : ''}{number(p.points)}
+                                        </TableCell>
+                                        <TableCell className="tabular-nums">{number(p.balance_after)}</TableCell>
+                                        <TableCell className="text-[#4b4b4b]">
+                                            {p.invoice ? (
+                                                <SmartLink routeName="admin.customerInvoices.show" href={route('admin.customerInvoices.show', p.invoice.id)}
+                                                    className="font-medium text-[#6d28d9] hover:underline">{p.invoice.number ?? `#${p.invoice.id}`}</SmartLink>
+                                            ) : p.order ? <span className="font-medium">{p.order}</span> : null}
+                                            {p.note && <span className="block text-[12px] text-[#9ca3af]">{p.note}</span>}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : tab === 'addresses' ? (
                         <div className="p-5">
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 {addresses.map((a) => (

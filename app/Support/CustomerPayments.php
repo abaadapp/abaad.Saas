@@ -329,6 +329,9 @@ final class CustomerPayments
                 'cancellation_reason' => $reason,
             ]);
 
+            // ونقاطُ سداد فاتورةٍ برابطٍ تُعكس معه — بحركةٍ لا بمحو، وفي معاملته
+            InvoiceLoyalty::reversePayment($payment, $userId);
+
             Activity::log('deleted', 'ألغى تحصيل '.$payment->number.' — '.$reason, [
                 'subject_id' => $payment->id, 'subject_type' => 'customer_payment',
             ]);

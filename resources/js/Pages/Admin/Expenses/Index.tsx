@@ -674,9 +674,14 @@ export default function ExpensesIndex() {
                         <p className="text-[12.5px] text-[#6b7280]">
                             {t('يغيّر لمن يُحسب المصروف في ربح الفروع وحده — المبلغ والتاريخ والحالة لا تتغيّر.')}
                         </p>
+                        {/*
+                         * يُدمَج النطاقُ في النموذج ولا يحلّ محلَّه: النموذجُ يحمل اختيارَ
+                         * تصحيح الفترة وسببَه أيضًا، والاستبدالُ كان يُسقطهما فتنهار
+                         * الشاشةُ عند أوّل فرعٍ يُختار لمصروفٍ من شهرٍ مضى.
+                         */}
                         <ScopeFields
                             value={scopeForm.data}
-                            onChange={(v) => scopeForm.setData(v)}
+                            onChange={(v) => scopeForm.setData((d) => ({ ...d, ...v }))}
                             amount={scoping?.amount ?? 0}
                             branches={branches}
                             currency={currency}

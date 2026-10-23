@@ -30,7 +30,7 @@ export const REASON_MAX = 120;
 
 /** هل اكتمل ما يُرسَل؟ — اختيارٌ وسببٌ حين يعبر التصحيحُ حدَّ شهر */
 export const correctionReady = (c: Correction | undefined, v: CorrectionValue): boolean =>
-    !c?.crosses || (v.correction !== '' && v.correction_reason.trim() !== '');
+    !c?.crosses || (Boolean(v.correction) && (v.correction_reason ?? '').trim() !== '');
 
 export default function PeriodCorrection({
     correction,

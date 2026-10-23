@@ -91,6 +91,8 @@ class PageController extends Controller
             // حقلُ «البوتيك» لمن خلف بابه شيء — انظر `Boutiques::options`
             'boutiques' => Boutiques::options(Business::find(auth()->user()->business_id ?? Demo::bid())),
             'addonsDisplay' => $this->addonsDisplay(),
+            // أيُربط صنفُ بوتيكٍ بإضافةٍ من نافذتها — انظر `AddonController::boutiqueLinks`
+            'addonBoutiqueLinks' => AddonController::boutiqueLinks(Business::find(auth()->user()->business_id ?? Demo::bid())),
         ]);
     }
 
@@ -182,6 +184,7 @@ class PageController extends Controller
             // منتجاتُ البوتيك في هذه الباقة — `null` لمن لم يُفتح له السجلّ، فلا يُرسم القسم
             'boutiqueParts' => $model ? BoutiquePartsController::payload($model) : null,
             'addonsDisplay' => $this->addonsDisplay(),
+            'addonBoutiqueLinks' => AddonController::boutiqueLinks(Business::find(auth()->user()->business_id ?? Demo::bid())),
         ]);
     }
 

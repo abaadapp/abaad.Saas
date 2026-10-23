@@ -71,7 +71,8 @@ class TwoPaymobNoticesAtOnceEarnOnePointsRowTest extends TestCase
         return [$proc, $pipes];
     }
 
-    public function test_two_notices_at_once_write_one_payment_and_one_points_row(): void
+    /** متجرٌ وعميلٌ برصيد ٧ وفاتورةٌ بعشرة ورابطُها كما يُنشئه `PaymentLinks::create` — وإشعارُ نجاحه موقَّعًا */
+    private function scene(): array
     {
         $shop = Business::create(['name' => 'ورود التزامن', 'type' => 'عام', 'status' => 'نشط']);
         Ledger::seedChart($shop->id);
@@ -102,22 +103,33 @@ class TwoPaymobNoticesAtOnceEarnOnePointsRowTest extends TestCase
             'owner' => 1, 'pending' => false, 'source_data' => ['pan' => '2346', 'sub_type' => 'Visa', 'type' => 'card'],
             'success' => true, 'is_live' => false,
         ];
-        $hmac = Paymob::signature($obj, 'hmac-race');
 
+        return [$shop, $customer, $link, $obj, Paymob::signature($obj, 'hmac-race')];
+    }
+
+    /** سكربتُ عمليّةٍ مستقلّة: تُقلع التطبيق، وتنتظر اللحظة، ثمّ تُنفّذ `$body` */
+    private function script(string $body): string
+    {
         $script = tempnam(sys_get_temp_dir(), 'notice');
-        file_put_contents($script, <<<'PHP'
+        file_put_contents($script, <<<PHP
 <?php
-[$self, $root, $obj, $hmac, $at] = $argv;
-require $root.'/vendor/autoload.php';
-$app = require $root.'/bootstrap/app.php';
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-while (microtime(true) < (float) $at) { usleep(200); }
-App\Support\PaymentLinks::callback(json_decode($obj, true), $hmac);
+[\$self, \$root, \$obj, \$hmac, \$at] = \$argv;
+require \$root.'/vendor/autoload.php';
+\$app = require \$root.'/bootstrap/app.php';
+\$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+while (microtime(true) < (float) \$at) { usleep(200); }
+{$body}
 echo 'done';
 PHP);
 
+        return $script;
+    }
+
+    /** يُشغّل العمليّتين معًا وينتظرهما — ويُسقط الاختبارَ إن سقطت إحداهما */
+    private function race(array $scripts, array $obj, string $hmac): void
+    {
         $at = microtime(true) + 2.0;
-        $runs = [$this->notice($script, $obj, $hmac, $at), $this->notice($script, $obj, $hmac, $at)];
+        $runs = array_map(fn ($script) => $this->notice($script, $obj, $hmac, $at), $scripts);
         $out = '';
         foreach ($runs as [$proc, $pipes]) {
             $out .= stream_get_contents($pipes[1]).stream_get_contents($pipes[2]);
@@ -125,9 +137,16 @@ PHP);
             fclose($pipes[2]);
             $this->assertSame(0, proc_close($proc), $out);
         }
-        @unlink($script);
+        foreach (array_unique($scripts) as $script) {
+            @unlink($script);
+        }
 
-        $this->assertSame(2, substr_count($out, 'done'), $out);
+        $this->assertSame(count($scripts), substr_count($out, 'done'), $out);
+    }
+
+    /** تحصيلٌ واحد، وحركةُ نقاطٍ واحدة، والرصيدُ ٧ + ٥٠، ولا خطأ على الرابط */
+    private function assertEarnedOnce(Business $shop, Customer $customer, CustomerPaymentLink $link): void
+    {
         $this->assertSame(1, CustomerPayment::where('business_id', $shop->id)->count(), 'تحصيلان لدفعةٍ واحدة');
         $this->assertSame(1, PointTransaction::where('customer_id', $customer->id)->count(), 'حركتا نقاط لدفعةٍ واحدة');
         $this->assertSame(57, (int) $customer->fresh()->points, '٧ + ٥٠');
@@ -135,5 +154,33 @@ PHP);
         $meta = (array) CustomerPaymentLink::find($link->id)->meta;
         $this->assertSame('awarded', $meta['loyalty']);
         $this->assertArrayNotHasKey('loyalty_error', $meta, 'ولا خطأَ كُتب على الرابط من الخاسر');
+    }
+
+    public function test_two_notices_at_once_write_one_payment_and_one_points_row(): void
+    {
+        [$shop, $customer, $link, $obj, $hmac] = $this->scene();
+        $notice = $this->script('App\\Support\\PaymentLinks::callback(json_decode($obj, true), $hmac);');
+
+        $this->race([$notice, $notice], $obj, $hmac);
+
+        $this->assertEarnedOnce($shop, $customer, $link);
+    }
+
+    public function test_the_scheduled_retry_racing_the_notice_does_not_award_twice(): void
+    {
+        /*
+         * الأمرُ المجدول (`customer-invoices:reconcile-loyalty`) يمرّ كلَّ عشر
+         * دقائق على كلّ رابطٍ مدفوعٍ ينتظر نقاطه. فقد يمرّ في اللحظة التي ثبت
+         * فيها التحصيلُ ولم تُحسم نقاطُه بعد — والإشعارُ يحسمها في الأثناء.
+         * فيُدار هنا بلا توقّف طوال ثلاث ثوانٍ في عمليّةٍ ثانية، والإشعارُ في
+         * الأولى.
+         */
+        [$shop, $customer, $link, $obj, $hmac] = $this->scene();
+        $notice = $this->script('App\\Support\\PaymentLinks::callback(json_decode($obj, true), $hmac);');
+        $retry = $this->script('$until = microtime(true) + 3; while (microtime(true) < $until) { Illuminate\\Support\\Facades\\Artisan::call(\'customer-invoices:reconcile-loyalty\'); usleep(1000); }');
+
+        $this->race([$notice, $retry], $obj, $hmac);
+
+        $this->assertEarnedOnce($shop, $customer, $link);
     }
 }

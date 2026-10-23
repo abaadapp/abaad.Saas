@@ -217,6 +217,72 @@ class AnInvoicePaidByLinkEarnsItsPointsOnceTest extends TestCase
         $this->assertSame(2, PointTransaction::where('customer_id', $this->customer->id)->count());
     }
 
+    public function test_three_partial_payments_add_up_to_the_whole_and_no_more(): void
+    {
+        $invoice = $this->invoice();
+
+        $this->pay($invoice, 3.333);
+        $this->assertSame(16, $this->points(), '٣٫٣٣٣ × ٥ = ١٦٫٦٦٥ ← ١٦');
+        $this->pay($invoice, 3.333);
+        $this->assertSame(33, $this->points(), '٦٫٦٦٦ × ٥ = ٣٣٫٣٣ ← ٣٣، لا ١٦ + ١٦');
+        $this->pay($invoice, 3.334);
+        $this->assertSame(50, $this->points(), 'والمجموعُ ١٠٫٠٠٠ × ٥ = ٥٠ بالضبط');
+
+        $this->assertSame([16, 17, 17], PointTransaction::where('customer_id', $this->customer->id)->orderBy('id')->pluck('points')->map(fn ($p) => (int) $p)->all());
+        $this->assertSame(10.0, round($invoice->fresh()->paidTotal(), 3));
+    }
+
+    public function test_each_shop_earns_at_its_own_rate(): void
+    {
+        // متجرُ الجار يعطي نقطتين لكلّ ريال — والمتجرُ هنا خمسًا
+        Setting::where('business_id', $this->other->id)->where('key', 'loyalty_earn_rate')->update(['value' => '2']);
+        PaymentGateway::create([
+            'business_id' => $this->other->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
+            'public_key' => 'pk2', 'secret_key' => 'sk2', 'hmac_secret' => 'hmac-other',
+            'card_integration_id' => '444', 'api_key' => 'api2', 'mode' => PaymentGateway::TEST,
+        ]);
+        $theirCustomer = Customer::create(['business_id' => $this->other->id, 'name' => 'زبون الجار', 'phone' => '99000001']);
+        $theirOwner = User::create([
+            'business_id' => $this->other->id, 'name' => 'مالك الجار', 'email' => 'other@points.om',
+            'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط',
+        ]);
+
+        $this->pay($this->invoice());
+
+        $theirLink = PaymentLinks::create($this->other->id, $theirCustomer, $this->invoice(10, $theirCustomer, $this->other), null, null, $theirOwner->id);
+        $theirLink->forceFill(['provider_order_id' => (string) (++$this->order)])->save();
+        $obj = $this->obj($theirLink->fresh(), ['integration_id' => 444]);
+        $this->postJson('/webhooks/paymob?hmac='.Paymob::signature($obj, 'hmac-other'), ['type' => 'TRANSACTION', 'obj' => $obj])->assertOk();
+
+        $this->assertSame(50, $this->points(), '١٠ × ٥ هنا');
+        $this->assertSame(20, $this->points($theirCustomer), '١٠ × ٢ عند الجار');
+    }
+
+    public function test_an_invoice_of_another_customer_in_the_same_shop_earns_no_one_anything(): void
+    {
+        $someoneElse = Customer::create(['business_id' => $this->shop->id, 'name' => 'عميلٌ آخر', 'phone' => '91110000']);
+        $hers = $this->invoice(10, $someoneElse);
+
+        // لا يُنشأ رابطٌ لعميلٍ على فاتورة غيره أصلًا
+        try {
+            PaymentLinks::create($this->shop->id, $this->customer, $hers, null, null, $this->owner->id);
+            $this->fail('أُنشئ رابطٌ لعميلٍ على فاتورة غيره');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('ليست على هذا العميل', $e->getMessage());
+        }
+
+        // ورابطٌ عُبث بصفّه ليشير إليها: يردّه التحصيلُ نفسُه (`CustomerPayments`)، ولا نقاط
+        $link = $this->link($this->invoice());
+        $link->forceFill(['customer_invoice_id' => $hers->id])->save();
+        $obj = $this->obj($link->fresh());
+        $this->postJson('/webhooks/paymob?hmac='.Paymob::signature($obj, 'hmac-shop'), ['type' => 'TRANSACTION', 'obj' => $obj]);
+
+        $this->assertSame(0, $this->points());
+        $this->assertSame(0, $this->points($someoneElse));
+        $this->assertSame(0, PointTransaction::count());
+        $this->assertSame(0.0, $hers->fresh()->paidTotal(), 'خُصِّص مالُ عميلٍ لفاتورة غيره');
+    }
+
     public function test_a_declined_or_pending_payment_earns_nothing(): void
     {
         $invoice = $this->invoice();

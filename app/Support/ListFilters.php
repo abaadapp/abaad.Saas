@@ -127,6 +127,15 @@ class ListFilters
         }
 
         if ($stock = $request->query('stock')) {
+            /*
+             * وحالةُ المخزون لما على رفّ: الخدمةُ رصيدُها صفرٌ دائمًا، فكانت
+             * تقع تحت «نفد المخزون» والقائمةُ نفسُها تقول عنها «غير مرتبط
+             * بالمخزون» (`Product::UNTRACKED`).
+             */
+            if (in_array($stock, ['نفد المخزون', 'منخفض', 'متوفر', 'راكد'], true)) {
+                $q->where('tracks_stock', true);
+            }
+
             match ($stock) {
                 'نفد المخزون' => $q->where('quantity', '<=', 0),
                 'منخفض' => $q->whereColumn('quantity', '<', 'alert_qty')->where('quantity', '>', 0),

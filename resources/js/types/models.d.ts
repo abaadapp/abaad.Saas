@@ -153,6 +153,10 @@ export interface InventoryItem {
     status: string;
     cost: number;
     value: number;
+    /** على رفٍّ (`tracks_stock`) — وما ليس عليه لا قيمةَ له وإن بقيت له كميّة */
+    tracked?: boolean;
+    /** أمانةُ بوتيك — على الرفّ، ولا قيمةَ لها في مال المحلّ */
+    consigned?: boolean;
     updated: string;
     branches: { name: string; quantity: number }[];
 }

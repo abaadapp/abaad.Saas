@@ -45,11 +45,12 @@ export default function InventoryIndex() {
     const { products: live, updatedAt } = useLiveStock(route('admin.products.stockFeed'), mapped);
 
     // القيمة تتبع الكمية: تركُها كما جاءت من الخادم يعني صفًّا يقول
-    // «الكمية 2» و«القيمة 240» في آن واحد
+    // «الكمية 2» و«القيمة 240» في آن واحد. وما لا رفَّ له لا قيمةَ له وإن
+    // بقيت له كميّةٌ قديمة، وأمانةُ البوتيك ليست مالَ المحلّ (`Demo::inventory`)
     const inventory = live.map((i) => ({
         ...i,
         status: i.stock_status,
-        value: Math.round(i.cost * i.qty * 1000) / 1000,
+        value: i.tracked === false || i.consigned ? 0 : Math.round(i.cost * i.qty * 1000) / 1000,
     }));
 
 

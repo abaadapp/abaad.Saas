@@ -14,6 +14,7 @@ interface Props {
     product: Product;
     categories: Category[];
     description: string;
+    descriptionEn?: string;
     composition: CompositionData | null;
     /** معرض الصور — الرئيسية أوّلًا ثمّ ما بعدها */
     gallery: GalleryImage[];
@@ -29,7 +30,7 @@ interface Props {
 }
 
 export default function ProductEdit() {
-    const { product, categories, description, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, addonsDisplay, boutiqueParts, context } =
+    const { product, categories, description, descriptionEn, composition, gallery, galleryMax, galleryLimits, boutiques, boutiqueId, addonsDisplay, boutiqueParts, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -44,6 +45,7 @@ export default function ProductEdit() {
                 product={product}
                 categories={categories}
                 description={description}
+                descriptionEn={descriptionEn}
                 currencyLabel={context!.currency.symbol || context!.currency.code}
                 composition={composition}
                 gallery={gallery}

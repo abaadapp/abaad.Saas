@@ -14,6 +14,7 @@ use App\Models\Review;
 use App\Support\CategoryName;
 use App\Support\NotesAndEdits;
 use App\Support\ProductAddons;
+use App\Support\ProductDescription;
 use App\Support\ProductName;
 use App\Support\SaleLines;
 use App\Support\FlowerOrder;
@@ -639,7 +640,11 @@ class RibbonController extends Controller
              */
             'ogImage' => $p->image ? (str_starts_with((string) $p->image, 'http') ? $p->image : url($p->image)) : null,
             'product' => $this->card($p, $lang, $business, $currency) + [
-                'description' => (string) $p->description,
+                /*
+                 * بلغة الصفحة، وحيث اختار صاحبُه — والمطفأُ فراغٌ فلا يُرسم سطرُه
+                 * (`ProductDescription::online`). والقالبُ يهرّبه كأيّ نصّ.
+                 */
+                'description' => ProductDescription::online($p, $lang),
                 'available' => $available,
                 'sizes' => $this->sizes($p, $lang, $currency),
                 'gallery' => $this->gallery($p),

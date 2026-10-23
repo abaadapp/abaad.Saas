@@ -30,10 +30,11 @@ interface Props {
     movements: Movement[];
     thumbs: string[];
     description: string;
+    descriptionEn?: string;
 }
 
 export default function ProductShow() {
-    const { product, stats, movements, thumbs, description, context } = usePage<PageProps<Props>>().props;
+    const { product, stats, movements, thumbs, description, descriptionEn, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const [current, setCurrent] = useState(thumbs[0] ?? product.image ?? '');
@@ -121,7 +122,12 @@ export default function ProductShow() {
                         </span>
                     </div>
 
-                    <p className="mt-4 text-sm leading-relaxed text-[#4b4b4b]">{description}</p>
+                    {description && <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-[#4b4b4b]">{description}</p>}
+                    {descriptionEn && (
+                        <p dir="ltr" className="mt-2 whitespace-pre-line text-start text-sm leading-relaxed text-[#4b4b4b]">
+                            {descriptionEn}
+                        </p>
+                    )}
 
                     <dl className="mt-6 grid grid-cols-2 gap-4 text-sm">
                         {facts.map((f) => (

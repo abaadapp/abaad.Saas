@@ -662,7 +662,8 @@ class Storefront
                 return [
                     'id' => $p->id,
                     'name' => $p->name,
-                    'description' => $p->description,
+                    // والصفحةُ عربيّة — والوصفُ المطفأُ في الموقع لا يُرسم (`ProductDescription::online`)
+                    'description' => ProductDescription::online($p, 'ar'),
                     'category_id' => $p->category_id,
                     // الخام لا المقروء: `getImageAttribute` يردّ صورةً بديلة من
                     // الإنترنت لمنتجٍ بلا صورة — ولا تُعرض صورةُ غريبٍ بضاعةً للتاجر

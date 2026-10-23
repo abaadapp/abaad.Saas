@@ -8547,5 +8547,7 @@
     "لا إضافات عامة": "No general add-ons",
     "لا إضافات مخصصة": "No specific add-ons",
     "لا إضافات بهذا العرض": "No add-ons in this view",
-    "لا تظهر مع أي منتج — اربطها بمنتج أو اجعلها عامة.": "Shows with no product — link it to a product or make it general."
+    "لا تظهر مع أي منتج — اربطها بمنتج أو اجعلها عامة.": "Shows with no product — link it to a product or make it general.",
+    "هذا مصروف ورقة تسوية البوتيك :number، فلا يُحذف: حذفُه لا يُلغي الورقة، ويُظهر مستحقَّها كأنّه لم يُدفع.": "This expense pays boutique settlement sheet :number, so it cannot be deleted: deleting it does not cancel the sheet, and it would show the sheet's due as unpaid.",
+    "مرجعُ هذا القيد لا يتبع هذا النشاط، فلم يُكتب القيد.": "This entry's source document does not belong to this business, so the entry was not written."
 }

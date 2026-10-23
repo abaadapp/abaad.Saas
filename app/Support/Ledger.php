@@ -6,9 +6,11 @@ use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Models\JournalLine;
 use App\Models\Order;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /**
@@ -352,7 +354,7 @@ class Ledger
      * والمعاملة تلفّ الكل: قيدٌ يُكتب رأسُه ثم تسقط سطوره يترك في الدفتر
      * رأسًا بلا مبلغ — يظهر في القوائم ولا يعني شيئًا، ولا يُعرف ما كان.
      *
-     * @throws RuntimeException إن اختلّ التوازن أو غاب حسابٌ أو كان غير قابلٍ للترحيل
+     * @throws RuntimeException إن اختلّ التوازن أو غاب حسابٌ أو كان غير قابلٍ للترحيل، أو كان المرجعُ لغير متجر القيد
      */
     public static function post(
         int $businessId,
@@ -368,6 +370,8 @@ class Ledger
         if (count($lines) < 2) {
             throw new RuntimeException(__('القيد يحتاج سطرين على الأقل: مدين ودائن'));
         }
+
+        self::assertOwnSource($businessId, $sourceable);
 
         return DB::transaction(function () use (
             $businessId, $description, $lines, $date, $source, $branchId, $userId, $sourceable, $unwinding
@@ -483,6 +487,42 @@ class Ledger
      *
      * @return JournalEntry|null القيد العكسيّ — أو null إن كان معكوسًا أصلًا
      */
+    /**
+     * مرجعُ القيد مستندٌ من متجر القيد نفسه — وإلّا لا يُكتب شيء.
+     *
+     * كان `sourceable` يُكتب كما وصل: قيدٌ في متجرٍ مصدرُه مصروفُ متجرٍ آخر
+     * يمرّ بلا اعتراض، فتقرأ شاشاتُ الجار «قيدُه حيّ» عن مصروفٍ لم يُقيّده هو.
+     * وكلُّ مستدعٍ اليوم يمرّر مستنده، فهذا حارسُ ما يُكتب غدًا أو يُستدعى
+     * مباشرةً — لا فحصٌ في متحكّمٍ يُنسى في غيره.
+     *
+     * والقاعدةُ عامّةٌ لا قائمة: كلُّ نوعٍ يُرحَّل عليه اليوم (مصروف، حركة، طلب،
+     * فاتورة، سند، ورقة بوتيك، حركة مخزون، تسوية Paymob، أصل، رواتب، حساب بنك…)
+     * صفُّه يحمل `business_id`. وما لا يُعرف متجرُه — نموذجٌ بلا العمود، أو لم
+     * يُحفظ، أو ليس نموذجًا — لا يُفترض آمنًا. والرسالةُ لا تذكر المستند ولا
+     * صاحبه: لا تؤكّد لأحدٍ أنّ رقمًا ما موجودٌ عند غيره.
+     */
+    private static function assertOwnSource(int $businessId, mixed $sourceable): void
+    {
+        if ($sourceable === null) {
+            return;
+        }
+
+        $owner = null;
+
+        if ($sourceable instanceof Model && $sourceable->exists && $sourceable->getKey() !== null) {
+            $owner = array_key_exists('business_id', $sourceable->getAttributes())
+                ? $sourceable->getAttribute('business_id')
+                // نموذجٌ قُرئت بعضُ أعمدته: يُسأل الصفُّ نفسُه، لا يُفترض
+                : (Schema::hasColumn($sourceable->getTable(), 'business_id')
+                    ? $sourceable->newQueryWithoutScopes()->whereKey($sourceable->getKey())->value('business_id')
+                    : null);
+        }
+
+        if ($owner === null || (int) $owner !== $businessId) {
+            throw new RuntimeException(__('مرجعُ هذا القيد لا يتبع هذا النشاط، فلم يُكتب القيد.'));
+        }
+    }
+
     public static function reverse(
         JournalEntry $entry,
         ?Carbon $date = null,

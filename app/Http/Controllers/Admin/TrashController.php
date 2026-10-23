@@ -14,6 +14,7 @@ use App\Support\Books;
 use App\Support\Demo;
 use App\Support\PlanLimits;
 use App\Support\ProductImages;
+use DomainException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -405,7 +406,11 @@ class TrashController extends Controller
         $row = self::findTrashed($type, $id);
         $label = self::label($type, $row);
 
-        self::purgeRow($type, $row);
+        try {
+            self::purgeRow($type, $row);
+        } catch (DomainException $refused) {
+            return back()->with('toast', ['msg' => $refused->getMessage(), 'type' => 'danger']);
+        }
 
         Activity::log('deleted', match ($type) {
             'product' => 'محا المنتج نهائيًّا: ',
@@ -427,6 +432,11 @@ class TrashController extends Controller
      */
     public static function purgeRow(string $type, $row): void
     {
+        // مصروفُ ورقة البوتيك دليلُ سدادها — يُسأل عنه قبل أن يُمحى ملفٌّ أو حركة
+        if ($type === 'expense' && ($sheet = $row->sheetItSettles())) {
+            throw new DomainException(Expense::sheetRefusal($sheet));
+        }
+
         /*
          * القيمة الخام لا المقروءة: `Product::getImageAttribute` يردّ رابطًا
          * جاهزًا للعرض (‎/storage/…‎، أو رابط صورةٍ بديلة إن لم تكن هناك صورة).

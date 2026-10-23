@@ -56,7 +56,23 @@ interface Subscription {
     end: string;
     amount: number;
     payment: string;
+    status: string;
 }
+
+/** تجديدُ المتجر كما تقرؤه لوحةُ المنصّة — `PageController::businessesShow` */
+export interface Renewal {
+    monthly: number;
+    semiannual: number;
+    yearly: number;
+    endsAt: string | null;
+    status: string;
+    /** فاتورةُ التجديد التي تنتظر سدادها — والاشتراكُ كما هو حتى تُسدَّد */
+    pending: { invoice_id: number; number: string | null; cycle: string | null; amount: number; issued: string | null } | null;
+    unpaid: { id: number; number: string; amount: number; date: string | null; kind: string }[];
+}
+
+/** اسمُ الدورة كما يقرؤه مديرُ المنصّة */
+const CYCLE_LABEL: Record<string, string> = { monthly: 'شهر', semiannual: 'ستّة أشهر', yearly: 'سنة' };
 
 interface BranchRow {
     id: number;
@@ -88,7 +104,7 @@ interface Props {
     business: Business;
     subscription: Subscription | null;
     usage: UsageRow[];
-    renewal: { monthly: number; semiannual: number; yearly: number; endsAt: string | null };
+    renewal: Renewal;
     stats: Stat[];
     overview: { sales: string; orders: number; average: string };
     branches: BranchRow[];
@@ -319,6 +335,20 @@ export default function BusinessShow() {
                                     <Badge status={subscription.payment} />
                                 </dd>
                             </div>
+                            <div className="flex justify-between gap-3">
+                                <dt className="text-[#6b7280]">{t('حالة الاشتراك')}</dt>
+                                <dd>
+                                    <Badge status={renewal.status} />
+                                </dd>
+                            </div>
+                            {renewal.pending && (
+                                <div className="flex justify-between gap-3">
+                                    <dt className="text-[#6b7280]">{t('التجديد')}</dt>
+                                    <dd>
+                                        <Badge status="بانتظار السداد" />
+                                    </dd>
+                                </div>
+                            )}
                         </dl>
                     ) : (
                         <p className="py-6 text-center text-sm text-[#9ca3af]">{t('لا يوجد اشتراك')}</p>
@@ -394,43 +424,7 @@ export default function BusinessShow() {
                             })}
                         </div>
 
-                        {/* التجديد: دورةٌ كاملة وفاتورةٌ تُصدَر معها */}
-                        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-[12px] bg-[#fafafa] p-4">
-                            <span className="text-sm text-[#4b4b4b]">
-                                {renewal.endsAt
-                                    ? `${t('ينتهي في')} ${renewal.endsAt}`
-                                    : t('لا تاريخ انتهاء محدَّد')}
-                            </span>
-                            <span className="flex-1" />
-                            {/*
-                                يُستأذن قبل الضغط: التجديد يُصدر فاتورةً ويُطيل
-                                الاشتراك دورةً كاملة، والضغطتان تُصدران فاتورتين
-                                ودورتين — لا سبيل إلى ردّهما إلا بحذف الاشتراك.
-                            */}
-                            {(
-                                [
-                                    ['monthly', 'جدّد شهرًا', renewal.monthly, 'شهرًا'],
-                                    ['semiannual', 'جدّد ستّة أشهر', renewal.semiannual, 'ستّة أشهر'],
-                                    ['yearly', 'جدّد سنة', renewal.yearly, 'سنة'],
-                                ] as const
-                            ).map(([cycle, label, price, span]) => (
-                                <Button
-                                    key={cycle}
-                                    variant={cycle === 'yearly' ? undefined : 'outline'}
-                                    onClick={() => {
-                                        if (
-                                            !confirm(
-                                                `${t('تجديد')} ${t(span)} ${t('بمبلغ')} ${money(price, currency)}${t('؟ تُصدَر فاتورة بهذا المبلغ ويُمدَّد الاشتراك.')}`,
-                                            )
-                                        )
-                                            return;
-                                        router.post(route('super-admin.businesses.renew', business.id), { cycle });
-                                    }}
-                                >
-                                    {t(label)} · {money(price, currency)}
-                                </Button>
-                            ))}
-                        </div>
+                        <RenewalPanel businessId={business.id} renewal={renewal} currency={currency} />
                     </div>
                 )}
 
@@ -680,5 +674,111 @@ export function DangerZone({ name, id, run }: { name: string; id: number; run: P
                 </DialogContent>
             </Dialog>
         </Card>
+    );
+}
+
+/**
+ * التجديدُ في لوحة المنصّة: فاتورةٌ تُصدَر أوّلًا، والمدّةُ تبدأ يوم يُسجَّل سدادُها.
+ *
+ * ما دامت فاتورةُ تجديدٍ تنتظر تُطفأ أزرارُ الإصدار (تجديدٌ معلّقٌ واحد للمتجر —
+ * `Billing::renew`)، ويُقال أيُّ فاتورةٍ تنتظر وبكم. والخادمُ يرفض الثانيةَ على
+ * أيّ حال؛ إطفاءُ الزرّ راحةٌ لا حراسة.
+ */
+export function RenewalPanel({ businessId, renewal, currency }: { businessId: number; renewal: Renewal; currency: Currency }) {
+    const t = useTranslate();
+
+    return (
+        <>
+            {/* التجديد: فاتورةٌ تُصدَر أوّلًا، والمدّةُ تبدأ يوم يُسجَّل سدادُها */}
+            <div className="mt-6 flex flex-wrap items-center gap-3 rounded-[12px] bg-[#fafafa] p-4">
+                <span className="text-sm text-[#4b4b4b]">
+                    {renewal.endsAt
+                        ? `${t('ينتهي في')} ${renewal.endsAt}`
+                        : t('لا تاريخ انتهاء محدَّد')}
+                </span>
+                <span className="flex-1" />
+                {/*
+                    يُستأذن قبل الضغط: الضغطةُ تُصدر فاتورة. ولا يُمدَّد
+                    شيءٌ قبل سدادها، وتجديدٌ معلّقٌ واحد للمتجر — فالأزرارُ
+                    تُطفأ ما دامت فاتورةٌ تنتظر.
+                */}
+                {(
+                    [
+                        ['monthly', 'جدّد شهرًا', renewal.monthly],
+                        ['semiannual', 'جدّد ستّة أشهر', renewal.semiannual],
+                        ['yearly', 'جدّد سنة', renewal.yearly],
+                    ] as const
+                ).map(([cycle, label, price]) => (
+                    <Button
+                        key={cycle}
+                        variant={cycle === 'yearly' ? undefined : 'outline'}
+                        disabled={renewal.pending !== null}
+                        onClick={() => {
+                            if (
+                                !confirm(
+                                    `${t('تصدر فاتورة تجديد')} ${t(CYCLE_LABEL[cycle])} ${t('بمبلغ')} ${money(price, currency)}. ${t('لن يتم تمديد الاشتراك إلا بعد تسجيل السداد.')}`,
+                                )
+                            )
+                                return;
+                            router.post(route('super-admin.businesses.renew', businessId), { cycle });
+                        }}
+                    >
+                        {t(label)} · {money(price, currency)}
+                    </Button>
+                ))}
+            </div>
+
+            {renewal.pending && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 rounded-[12px] border border-[#fde68a] bg-[#fffbeb] p-4 text-sm text-[#92400e]">
+                    <Badge status="بانتظار السداد" />
+                    <span>
+                        {t('تجديد')} {t(CYCLE_LABEL[renewal.pending.cycle ?? 'monthly'] ?? 'شهر')} ·{' '}
+                        <span className="font-mono">{renewal.pending.number}</span> ·{' '}
+                        {money(renewal.pending.amount, currency)}
+                    </span>
+                    <span className="flex-1" />
+                    <span>{t('لن يتم تمديد الاشتراك إلا بعد تسجيل السداد.')}</span>
+                </div>
+            )}
+
+            {renewal.unpaid.length > 0 && (
+                <div className="mt-3 rounded-[12px] bg-[#fafafa] p-4">
+                    <h4 className="mb-2 text-sm font-semibold text-[#111]">{t('الفواتير غير المدفوعة')}</h4>
+                    <ul className="space-y-2 text-sm">
+                        {renewal.unpaid.map((i) => (
+                            <li key={i.id} className="flex flex-wrap items-center gap-2">
+                                <span className="font-mono text-[#111]">{i.number}</span>
+                                <span dir="ltr" className="text-[#6b7280]">
+                                    {i.date}
+                                </span>
+                                <span className="font-medium tabular-nums">{money(i.amount, currency)}</span>
+                                <span className="flex-1" />
+                                <Button
+                                    size="sm"
+                                    onClick={() => {
+                                        if (!confirm(`${t('تسجيل سداد')} ${i.number}${t('؟')}`)) return;
+                                        router.post(route('super-admin.invoices.pay', i.id));
+                                    }}
+                                >
+                                    {t('تسجيل السداد')}
+                                </Button>
+                                {renewal.pending?.invoice_id === i.id && (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                            if (!confirm(`${t('إلغاء فاتورة التجديد')} ${i.number}${t('؟')}`)) return;
+                                            router.post(route('super-admin.invoices.cancel', i.id));
+                                        }}
+                                    >
+                                        {t('إلغاء الفاتورة')}
+                                    </Button>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+        </>
     );
 }

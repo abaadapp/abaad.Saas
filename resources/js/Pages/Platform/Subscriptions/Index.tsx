@@ -112,18 +112,30 @@ export default function SubscriptionsIndex() {
                         href: route('super-admin.businesses.show', s.business_id),
                         routeName: 'super-admin.businesses.show',
                     }}
-                    destroy={{
-                        url: route('super-admin.subscriptions.destroy', s.id),
-                        message:
-                            'سيُحذف سجلّ هذه الدورة، ويعود تاريخ انتهاء المتجر إلى الدورة السابقة. هل تريد المتابعة؟',
-                    }}
-                    extra={[
-                        {
-                            label: 'تعديل',
-                            icon: <Pencil className="size-4" />,
-                            onSelect: () => setEditing(s),
-                        },
-                    ]}
+                    /*
+                        تجديدٌ بانتظار السداد لا يُعدَّل ولا يُحذف من هنا: يُسدَّد أو
+                        تُلغى فاتورته من شاشة المتجر. والتعديلُ كان سيمنح مدّته بلا سداد.
+                    */
+                    destroy={
+                        s.status === 'بانتظار السداد'
+                            ? undefined
+                            : {
+                                  url: route('super-admin.subscriptions.destroy', s.id),
+                                  message:
+                                      'سيُحذف سجلّ هذه الدورة، ويعود تاريخ انتهاء المتجر إلى الدورة السابقة. هل تريد المتابعة؟',
+                              }
+                    }
+                    extra={
+                        s.status === 'بانتظار السداد' || s.status === 'ملغى'
+                            ? []
+                            : [
+                                  {
+                                      label: 'تعديل',
+                                      icon: <Pencil className="size-4" />,
+                                      onSelect: () => setEditing(s),
+                                  },
+                              ]
+                    }
                 />
             ),
         },

@@ -156,7 +156,9 @@ class PageController extends Controller
              * الرحمة» في صلالة وآخر في نزوى — فيُعرض في ملفّ أحدهما اشتراكُ
              * الآخر وتاريخُ انتهائه. والأحدث أولى حين تكون له دورات كثيرة.
              */
-            'subscription' => collect(Demo::subscriptions())->firstWhere('business_id', $business['id']),
+            // والتجديدُ المعلّق ليس «الاشتراك الحالي»: لم يمنح يومًا بعد — يُعرض في `renewal.pending`
+            'subscription' => collect(Demo::subscriptions())->first(fn ($s) => $s['business_id'] == $business['id']
+                && ! in_array($s['status'], [Billing::SUB_PENDING, Billing::SUB_CANCELLED], true)),
             /*
              * وبابُ الحذف النهائيّ — يُرسم إن كان مفتوحًا على هذا الخادم.
              *
@@ -199,6 +201,30 @@ class PageController extends Controller
                 'semiannual' => Billing::price($model, 'semiannual'),
                 'yearly' => Billing::price($model, 'yearly'),
                 'endsAt' => optional($model->ends_at)->format('Y-m-d'),
+                'status' => $model->status,
+                /*
+                 * فاتورةُ التجديد التي تنتظر سدادها — والأزرارُ تُطفأ ما دامت.
+                 *
+                 * تجديدٌ معلّقٌ واحد للمتجر (`Billing::renew`)، فيُقال لمدير
+                 * المنصّة أيّ فاتورةٍ تنتظر وبكم، لا أن يضغط فيُرفض.
+                 */
+                'pending' => ($p = Billing::pendingRenewal($model)) ? [
+                    'invoice_id' => $p->invoice_id,
+                    'number' => $p->invoice?->number,
+                    'cycle' => $p->cycle,
+                    'amount' => (float) $p->amount,
+                    'issued' => optional($p->invoice?->issued_at)->format('Y-m-d'),
+                ] : null,
+                // فواتيرُ المتجر غيرُ المدفوعة كلُّها — تجديداتٍ ورسائل
+                'unpaid' => Invoice::where('business_id', $model->id)->where('status', Billing::UNPAID)
+                    ->orderByDesc('id')->get()
+                    ->map(fn (Invoice $i) => [
+                        'id' => $i->id,
+                        'number' => $i->number,
+                        'amount' => (float) $i->amount,
+                        'date' => optional($i->issued_at)->format('Y-m-d'),
+                        'kind' => $i->kind,
+                    ])->all(),
             ],
             // واتساب هذا المتجر: حدُّه واستهلاكه وأذونه — بلا رمزٍ ولا سرّ
             'whatsapp' => WhatsAppController::businessView($model),

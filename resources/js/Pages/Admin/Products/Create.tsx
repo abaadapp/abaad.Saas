@@ -4,18 +4,19 @@ import PageHeader from '@/Components/PageHeader';
 import ProductForm from './partials/ProductForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
-import type { CompositionData } from './partials/addons';
+import type { BoutiqueLinks, CompositionData } from './partials/addons';
 import type { Category } from '@/types/models';
 import type { BoutiqueOption } from './partials/boutique';
 
 export default function ProductCreate() {
-    const { categories, composition, boutiques, addonsDisplay, context } =
+    const { categories, composition, boutiques, addonsDisplay, addonBoutiqueLinks, context } =
         usePage<
             PageProps<{
                 categories: Category[];
                 composition: CompositionData;
                 boutiques?: BoutiqueOption[];
                 addonsDisplay?: { layout: string; can_change: boolean };
+                addonBoutiqueLinks?: BoutiqueLinks;
             }>
         >().props;
     const t = useTranslate();
@@ -33,6 +34,7 @@ export default function ProductCreate() {
                 composition={composition}
                 boutiques={boutiques}
                 addonsDisplay={addonsDisplay}
+                addonBoutiqueLinks={addonBoutiqueLinks}
             />
         </AdminLayout>
     );

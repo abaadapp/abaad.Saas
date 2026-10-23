@@ -49,13 +49,87 @@ export interface AddonOption {
     /** ما تأكله من ذلك الصنف في كلّ إضافةٍ تُباع — والفراغ واحدة */
     inventory_quantity?: number | null;
     product_ids?: number[];
+    /**
+     * من أين — خدمةٌ من المتجر، أو صنفٌ من رفّه، أو قطعةٌ من رفّ بوتيك.
+     * انظر `CatalogQuickAddController::sourceOf`.
+     */
+    source?: AddonSource;
+    stock_name?: string | null;
+    boutique_id?: number | null;
+    boutique_name?: string | null;
+    /** مستحقُّ البوتيك عن كلّ إضافةٍ تُباع — ثمنُ القطعة × عددها، للعرض وحده */
+    boutique_due?: number | null;
+    /** المملوكةُ لمنتجٍ واحد: اسمُه — في صفحة الإضافات */
+    owner_name?: string | null;
+}
+
+export type AddonSource = 'shop' | 'stock' | 'boutique';
+
+/** أيُربط صنفُ بوتيكٍ بإضافة — انظر `AddonController::boutiqueLinks` */
+export interface BoutiqueLinks {
+    hosts: boolean;
+    allowed: boolean;
+    reason?: string | null;
+}
+
+export type AddonChannels = 'both' | 'pos' | 'web' | 'none';
+
+/** أين تُباع — والغائبُ كما كانت كلُّ إضافةٍ قبل الحقلين: الصندوقُ لا الموقع */
+export function addonChannels(a: Pick<AddonOption, 'pos_enabled' | 'web_enabled'>): AddonChannels {
+    const pos = a.pos_enabled !== false;
+    const web = a.web_enabled === true;
+    if (pos && web) return 'both';
+    if (pos) return 'pos';
+    if (web) return 'web';
+    return 'none';
+}
+
+export const CHANNEL_LABEL: Record<AddonChannels, string> = {
+    both: 'نقطة البيع والموقع',
+    pos: 'نقطة البيع فقط',
+    web: 'الموقع فقط',
+    none: 'غير متاحة في أي قناة',
+};
+
+/** نطاقُها كما يُقرأ — والمملوكةُ لمنتجٍ واحد ثالثةٌ لا تُنشأ بعد اليوم */
+export function addonScope(a: Pick<AddonOption, 'scope' | 'private'>): 'all' | 'selected' | 'product' {
+    if (a.private || a.scope === 'product') return 'product';
+    return a.scope === 'selected' ? 'selected' : 'all';
+}
+
+/**
+ * أيُعرض مع هذا المنتج؟ — قاعدةُ البيع نفسُها (`ProductAddons::passes`).
+ *
+ * المملوكةُ مع صاحبها، والمخصّصةُ مع منتجاتها، والعامّةُ مع الجميع ما لم
+ * تكن للمنتج قائمةٌ قديمة تستثنيها (`legacy_addon_ids`). ومنتجٌ لم يُحفظ
+ * بعد لا مخصّصةَ معه: لا معرّفَ له يُربط به.
+ */
+export function appliesTo(a: AddonOption, productId: number | null, legacy: number[] | null): boolean {
+    const scope = addonScope(a);
+    if (scope === 'product') return productId !== null && a.product_id === productId;
+    if (scope === 'selected') return productId !== null && (a.product_ids ?? []).includes(productId);
+    return legacy === null || legacy.includes(a.value);
 }
 
 /** ما تقرؤه شاشةُ المنتج من حمولة `composition` — انظر ترويسة الملفّ */
 export interface CompositionData {
     addons: AddonOption[];
     /** الأصناف الصالحة لأن تكون مخزونَ إضافة — بلا ما له وصفة */
-    stock_items: { value: number; label: string; quantity: number }[];
+    stock_items: StockItem[];
     /** منتجات المتجر — لاختيار «تظهر مع: منتجات محدّدة» */
     products: { value: number; label: string }[];
+    /** قائمةُ المنتج القديمة — `null` لا قائمة، فالعامّةُ كلُّها معه */
+    legacy_addon_ids?: number[] | null;
+}
+
+/** صنفٌ يُربط بإضافة — ومعه بوتيكُه وثمنُه لخيار «منتج من بوتيك» */
+export interface StockItem {
+    value: number;
+    label: string;
+    quantity?: number;
+    /** ملكُ بوتيكٍ لا يُقبل ربطُه الجديد في هذا المتجر الآن */
+    boutique?: boolean;
+    boutique_id?: number | null;
+    boutique_name?: string | null;
+    price?: number;
 }

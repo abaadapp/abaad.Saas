@@ -210,10 +210,12 @@ class ProductCompositionController extends Controller
         ]);
 
         DB::transaction(function () use ($product, $bid, $data) {
+            // كـ`syncScopeProducts` من جهة المنتج: حفظان يتعاقبان، وربطٌ متزامنٌ بالزوج نفسه لا يُسقطه
+            DB::table('products')->where('id', $product->id)->lock('for no key update')->first();
             DB::table('product_addons')->where('product_id', $product->id)->delete();
 
             foreach (array_values(array_unique($data['addon_ids'])) as $i => $addonId) {
-                DB::table('product_addons')->insert([
+                DB::table('product_addons')->insertOrIgnore([
                     'business_id' => $bid,
                     'product_id' => $product->id,
                     'addon_id' => (int) $addonId,
@@ -313,6 +315,12 @@ class ProductCompositionController extends Controller
             'products' => self::productOptions((int) $product->business_id),
             'addon_ids' => DB::table('product_addons')->where('product_id', $product->id)
                 ->orderBy('sort_order')->pluck('addon_id')->map(fn ($i) => (int) $i)->all(),
+            /*
+             * قائمةُ المنتج القديمة إن كانت (`ProductAddons::legacyFor`) — فلا
+             * تقول «إضافات هذا المنتج» عن إضافةٍ عامّةٍ إنّها تُعرض معه وقائمتُه
+             * تستثنيها. و`null` لا قائمة: العامّةُ كلُّها معه.
+             */
+            'legacy_addon_ids' => \App\Support\ProductAddons::legacyFor($product),
         ];
     }
 
@@ -335,6 +343,8 @@ class ProductCompositionController extends Controller
             'stock_items' => self::stockItemOptions($businessId),
             'products' => self::productOptions($businessId),
             'addon_ids' => [],
+            // منتجٌ لم يُحفظ بعد: لا قائمةَ له، فالعامّةُ كلُّها معه
+            'legacy_addon_ids' => null,
         ];
     }
 
@@ -362,6 +372,7 @@ class ProductCompositionController extends Controller
     {
         return Addon::where('business_id', $businessId)
             ->where(fn ($q) => $q->whereNull('product_id')->when($productId, fn ($w) => $w->orWhere('product_id', $productId)))
+            ->with('inventoryProduct.boutique')
             ->orderBy('id')->get()
             ->map(fn (Addon $a) => CatalogQuickAddController::addonPayload($a))
             ->all();
@@ -376,25 +387,34 @@ class ProductCompositionController extends Controller
      * وما له وصفةٌ يُستثنى: باقةٌ تُصنع من غيرها ليست قطعةً على رفّ، وربطُ
      * إضافةٍ بها كان سيُنقص رصيدًا لا وجود له بينما يبقى ورُدها كاملًا.
      */
-    private static function stockItemOptions(int $businessId): array
+    public static function stockItemOptions(int $businessId): array
     {
         // ومتجرٌ فُتح له سجلُّ مستحقّات المكوّنات يربط صنفَ البوتيك كغيره — انظر `Boutiques::refuseNewLink`
         $linkable = \App\Support\BoutiqueDues::active($businessId) && ! \App\Support\Vat::enabled($businessId);
 
         return Product::where('business_id', $businessId)
             ->whereNotIn('id', RecipeItem::where('business_id', $businessId)->distinct()->pluck('product_id'))
-            ->orderBy('name')->get(['id', 'name', 'sku', 'quantity', 'boutique_id'])
+            ->with('boutique:id,name,name_en')
+            ->orderBy('name')->get(['id', 'name', 'sku', 'quantity', 'boutique_id', 'price'])
             ->map(fn ($p) => [
                 'value' => $p->id,
                 'label' => $p->sku ? $p->name.' — '.$p->sku : $p->name,
                 'quantity' => (int) $p->quantity,
                 // ملكُ بوتيكٍ لا يُربط بعد — تعرضه الشاشةُ ولا تقبل ربطَه الجديد (`Boutiques::refuseNewLink`)
                 'boutique' => $p->boutique_id !== null && ! $linkable,
+                /*
+                 * وبوتيكُه وثمنُه — لاختيار «منتج من بوتيك» في نافذة الإضافة:
+                 * تُعرض قطعُ البوتيك المختار وحده، ويُعرض مستحقُّه (ثمنُ
+                 * القطعة × عددها) بجانب سعر الزبون.
+                 */
+                'boutique_id' => $p->boutique_id === null ? null : (int) $p->boutique_id,
+                'boutique_name' => $p->boutique?->label(),
+                'price' => (float) $p->price,
             ])->all();
     }
 
     /** منتجات المتجر — لاختيار «تظهر مع: منتجات محدّدة» */
-    private static function productOptions(int $businessId): array
+    public static function productOptions(int $businessId): array
     {
         return Product::where('business_id', $businessId)
             ->orderBy('name')->get(['id', 'name', 'sku'])

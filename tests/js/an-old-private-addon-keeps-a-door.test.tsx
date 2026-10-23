@@ -63,10 +63,12 @@ const form = (product: Record<string, unknown> | undefined, addons: Record<strin
 };
 
 describe('حقلُ إضافات هذا المنتج', () => {
-    it('يُعرض لمالكها وحدَه', () => {
+    it('يُعرض لمالكها وحدَه — في «المخصصة» بوسم «خاصة بهذا المنتج»', () => {
         form(saved(41), [shopAddon, ownAddon()]);
 
-        expect(screen.getByText('إضافات خاصّة بهذا المنتج')).toBeInTheDocument();
+        const specific = screen.getByTestId('product-addons-specific');
+        expect(specific.textContent).toContain('شريط ذهبي');
+        expect(specific.textContent).toContain('خاصة بهذا المنتج');
         expect(screen.getByRole('button', { name: /شريط ذهبي/ })).toBeInTheDocument();
     });
 
@@ -77,37 +79,36 @@ describe('حقلُ إضافات هذا المنتج', () => {
     it('ولا يُعرض في شاشة منتجٍ آخر', () => {
         form(saved(8), [shopAddon, ownAddon()]);
 
-        expect(screen.queryByText('إضافات خاصّة بهذا المنتج')).toBeNull();
-        expect(screen.queryByText('شريط ذهبي')).toBeNull();
+        expect(screen.getByTestId('product-addons').textContent).not.toContain('شريط ذهبي');
     });
 
     it('ولا في شاشة الإنشاء', () => {
         form(undefined, [shopAddon, ownAddon()]);
 
-        expect(screen.queryByText('إضافات خاصّة بهذا المنتج')).toBeNull();
+        expect(screen.getByTestId('product-addons').textContent).not.toContain('شريط ذهبي');
     });
 
-    it('ولا يُعرض لمنتجٍ لا صفوفَ له — حقلٌ فارغٌ يسأل عن بابٍ لا وجود له', () => {
+    it('ولمنتجٍ لا مخصّصةَ له تقول المجموعةُ ذلك — والعامّةُ في مجموعتها', () => {
         form(saved(41), [shopAddon]);
 
-        expect(screen.queryByText('إضافات خاصّة بهذا المنتج')).toBeNull();
-        expect(screen.getByText('تغليف')).toBeInTheDocument();
+        expect(screen.getByTestId('product-addons-specific').textContent).toContain('لا إضافات مخصصة');
+        expect(screen.getByTestId('product-addons-general').textContent).toContain('تغليف');
     });
 
     /* ولا تُحسب مرّتين: هي في حقلها لا في حقل إضافات المتجر */
     it('ولا تظهر ضمن إضافات المتجر', () => {
         form(saved(41), [shopAddon, ownAddon()]);
 
-        const shopField = screen.getByText('إضافات مع كلّ المنتجات').closest('div');
+        const general = screen.getByTestId('product-addons-general');
 
-        expect(shopField?.textContent).toContain('تغليف');
-        expect(shopField?.textContent).not.toContain('شريط ذهبي');
+        expect(general.textContent).toContain('تغليف');
+        expect(general.textContent).not.toContain('شريط ذهبي');
     });
 
-    it('والمعطّلةُ تُقال معطّلة', () => {
+    it('والموقوفةُ تُقال موقوفة', () => {
         form(saved(41), [shopAddon, ownAddon({ active: false })]);
 
-        expect(screen.getByRole('button', { name: /معطّلة/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /موقوفة/ })).toBeInTheDocument();
     });
 });
 
@@ -125,15 +126,15 @@ describe('ونافذتُها بابُ تعديلٍ لا بابُ تحويل', ()
         expect(screen.queryByText('منتجات محددة')).toBeNull();
     });
 
-    it('ويُعرض بابُ التعطيل', () => {
+    it('ويُعرض بابُ الإيقاف', () => {
         open();
 
-        expect(screen.getByText('هل تُعرض في الكاشير؟')).toBeInTheDocument();
-        expect(screen.getByText('مفعّلة')).toBeInTheDocument();
-        expect(screen.getByText('معطّلة')).toBeInTheDocument();
+        expect(screen.getByText('حالة الإضافة')).toBeInTheDocument();
+        expect(screen.getByTestId('addon-active-on')).toBeInTheDocument();
+        expect(screen.getByTestId('addon-active-off')).toBeInTheDocument();
     });
 
-    /* وإضافةُ المتجر تبقى كما كانت: مداها يُختار، ولا بابَ تعطيلٍ لها هنا */
+    /* وإضافةُ المتجر يبقى مداها يُختار — وحالتُها كذلك، لكلّ إضافة */
     it('وإضافةُ المتجر يبقى لها مداها', () => {
         form(saved(41), [shopAddon, ownAddon()]);
         fireEvent.click(screen.getByRole('button', { name: /تغليف/ }));

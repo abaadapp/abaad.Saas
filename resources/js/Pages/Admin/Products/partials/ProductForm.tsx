@@ -11,7 +11,8 @@ import { useTranslate } from '@/lib/i18n';
 import { csrfHeaders } from '@/lib/csrf';
 import { cn } from '@/lib/utils';
 import AddonDialog from './AddonDialog';
-import type { AddonOption, CompositionData } from './addons';
+import ProductAddonsPanel from './ProductAddonsPanel';
+import type { AddonOption, BoutiqueLinks, CompositionData } from './addons';
 import Gallery, { type GalleryImage } from './Gallery';
 import { boutiqueMove, type BoutiqueOption } from './boutique';
 import AddonsLayoutSwitch from './AddonsLayoutSwitch';
@@ -51,6 +52,8 @@ interface Props {
      * مستحقّات المكوّنات، فلا يُرسم القسم. انظر `BoutiquePartsController`.
      */
     boutiqueParts?: BoutiquePartsData | null;
+    /** أيُربط صنفُ بوتيكٍ بإضافة — لنافذة الإضافة. انظر `AddonController::boutiqueLinks` */
+    addonBoutiqueLinks?: BoutiqueLinks;
 }
 
 const NAV = [
@@ -117,6 +120,7 @@ export default function ProductForm({
     boutiqueParts = null,
     boutiqueId = null,
     addonsDisplay,
+    addonBoutiqueLinks,
 }: Props) {
     const t = useTranslate();
     const editing = !!product;
@@ -252,23 +256,15 @@ export default function ProductForm({
     /** النافذة مفتوحةٌ على إضافةٍ تُعدَّل، أو على `null` لواحدةٍ جديدة */
     const [addonOpen, setAddonOpen] = useState<AddonOption | null | undefined>(undefined);
 
-    const shopAddons = addonList.filter((a) => !a.private);
-
-    /**
-     * إضافاتُ هذا المنتج وحدَه — ما بقي منها في القاعدة.
-     *
-     * كتبها قسمُ التركيب قبل أن يزول، وكان بابَها الوحيد. فبلا هذا الحقل
-     * يبقى للتاجر إضافةٌ تُعرض في الكاشير ولا يملك تصحيح سعرها ولا إطفاءها.
-     *
-     * ولا بابَ لإنشاء واحدةٍ جديدة: لا زرَّ هنا، والخادمُ يردّ الطلب
-     * (`noOwnership`). فالحقلُ يعرض ما وُجد ولا يصنع.
-     *
-     * والخادمُ لا يرسل إلّا إضافاتِ هذا المنتج (`addonOptions`)، والشرطُ
-     * هنا ثانيًا: منتجٌ آخرَ لا تُعرض إضافتُه في شاشته، ولا في شاشة إنشاء.
+    /*
+     * إضافةٌ جديدةٌ من «إضافات هذا المنتج» تُفتح مخصّصةً له — ويبقى مداها بيد
+     * التاجر في النافذة. وفي شاشة الإنشاء لا معرّفَ له بعد: تُفتح عامّة.
      */
-    const ownAddons = product?.id
-        ? addonList.filter((a) => a.private && a.product_id === product.id)
-        : [];
+    const [addonFor, setAddonFor] = useState<number | null>(null);
+    const openAddon = (a: AddonOption | null) => {
+        setAddonFor(a === null && product?.id ? product.id : null);
+        setAddonOpen(a);
+    };
 
     /**
      * تُضاف أو تُستبدل — لا تُلحق دائمًا.
@@ -583,89 +579,6 @@ export default function ProductForm({
                                     )}
                                 </Field>
 
-                                {/* المكان الذي كان فارغًا بجانب القسم: الإضافات
-                                    العامّة تُقرَّر مع القسم لا في قسمٍ يُفتح لكلّ
-                                    منتج */}
-                                <Field
-                                    label="إضافات مع كلّ المنتجات"
-                                    hint="اضغط إضافةً لتعديل سعرها أو مداها أو ما تخصمه من المخزون."
-                                >
-                                    <span className="flex items-start gap-2">
-                                        <span className="flex min-h-[42px] flex-1 flex-wrap items-center gap-1.5 rounded-[10px] border border-[#e8e8e8] px-2 py-1.5">
-                                            {shopAddons.length === 0 ? (
-                                                <span className="px-1 text-[13px] text-[#9ca3af]">{t('لا إضافات عامّة')}</span>
-                                            ) : (
-                                                shopAddons.map((a) => (
-                                                    /* الشريحة نفسها هي بابُ التعديل: زرٌّ ثالث بجانب
-                                                       كلّ إضافةٍ يملأ الحقل بأزرارٍ لا بمعلومات */
-                                                    <button
-                                                        key={a.value}
-                                                        type="button"
-                                                        disabled={a.value < 0}
-                                                        onClick={() => setAddonOpen(a)}
-                                                        className="rounded-[8px] bg-[#f3f3f1] px-2 py-1 text-[12px] text-[#4b4b4b] enabled:hover:bg-[#e8e8e6]"
-                                                    >
-                                                        {a.label}
-                                                        <span className="ms-1 tabular-nums opacity-60">
-                                                            {a.price} {currencyLabel}
-                                                        </span>
-                                                        {a.scope === 'selected' && (
-                                                            <span className="ms-1 opacity-60">· {t('منتجات محددة')}</span>
-                                                        )}
-                                                        {a.inventory_product_id && (
-                                                            <span className="ms-1 opacity-60">
-                                                                · {t('تخصم')} {a.inventory_quantity ?? 1}
-                                                            </span>
-                                                        )}
-                                                    </button>
-                                                ))
-                                            )}
-                                        </span>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="icon"
-                                            aria-label={t('إضافة جديدة')}
-                                            title={t('إضافة جديدة')}
-                                            onClick={() => setAddonOpen(null)}
-                                        >
-                                            <Plus />
-                                        </Button>
-                                    </span>
-                                    {addonsDisplay && (
-                                        <AddonsLayoutSwitch
-                                            initial={addonsDisplay.layout}
-                                            canChange={addonsDisplay.can_change}
-                                        />
-                                    )}
-                                </Field>
-
-                                {/* ولا يُعرض الحقلُ لمن لا صفوفَ له: حقلٌ فارغٌ
-                                    في كلّ شاشةٍ يسأل عن بابٍ لا وجود له */}
-                                {ownAddons.length > 0 && (
-                                    <Field
-                                        label="إضافات خاصّة بهذا المنتج"
-                                        hint="تظهر معه وحده. اضغطها لتعديل سعرها أو تعطيلها — ولا تُنشأ جديدة."
-                                    >
-                                        <span className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-[10px] border border-[#e8e8e8] px-2 py-1.5">
-                                            {ownAddons.map((a) => (
-                                                <button
-                                                    key={a.value}
-                                                    type="button"
-                                                    onClick={() => setAddonOpen(a)}
-                                                    className="rounded-[8px] bg-[#f3f3f1] px-2 py-1 text-[12px] text-[#4b4b4b] hover:bg-[#e8e8e6]"
-                                                >
-                                                    {a.label}
-                                                    <span className="ms-1 tabular-nums opacity-60">
-                                                        {a.price} {currencyLabel}
-                                                    </span>
-                                                    {/* والمعطّلةُ تُقال: وإلّا بدت كالمعروضة */}
-                                                    {!a.active && <span className="ms-1 opacity-60">· {t('معطّلة')}</span>}
-                                                </button>
-                                            ))}
-                                        </span>
-                                    </Field>
-                                )}
                                 {/*
                                     لمن الصنف: المحلُّ أم بوتيكٌ يبيع تحت سقفه.
 
@@ -715,6 +628,28 @@ export default function ProductForm({
                                     />
                                 </Field>
                             </div>
+                        </Card>
+
+                        {/*
+                            إضافاتُ هذا المنتج — عامّةٌ تنطبق عليه، ومخصّصةٌ رُبطت به.
+                            بطاقةٌ في «المعلومات الأساسية» لا تبويبٌ خامس: الإضافاتُ تُقرَّر
+                            مع المنتج، وصفحةُ الإضافات تديرها كلَّها.
+                        */}
+                        <Card className="p-6">
+                            <ProductAddonsPanel
+                                addons={addonList}
+                                productId={product?.id ?? null}
+                                legacy={composition?.legacy_addon_ids ?? null}
+                                onOpen={openAddon}
+                                onChanged={upsertAddon}
+                            >
+                                {addonsDisplay && (
+                                    <AddonsLayoutSwitch
+                                        initial={addonsDisplay.layout}
+                                        canChange={addonsDisplay.can_change}
+                                    />
+                                )}
+                            </ProductAddonsPanel>
                         </Card>
 
                         <Card className="p-6" data-testid="product-channels">
@@ -1064,6 +999,9 @@ export default function ProductForm({
                         products={composition?.products ?? []}
                         onClose={() => setAddonOpen(undefined)}
                         onSaved={upsertAddon}
+                        boutiques={boutiques}
+                        boutiqueLinks={addonBoutiqueLinks}
+                        forProduct={addonFor}
                     />
                 )}
 

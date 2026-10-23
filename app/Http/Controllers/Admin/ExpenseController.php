@@ -403,7 +403,8 @@ class ExpenseController extends Controller
                  * ويُسأل ثانيةً تحت قفل — «أهي مسدَّدة؟» أعلاه تُسأل بلا قفل.
                  *
                  * ثلاثُ ضغطاتٍ متزامنة على PostgreSQL وجدتها غيرَ مسدَّدة كلُّها،
-                 * فكتبت كلٌّ حركتَها: قيدٌ واحد في الدفتر، وثلاثُ حركاتٍ في الصندوق.
+                 * فكتبت كلٌّ حركتَها: قيدٌ واحد في الدفتر، وثلاثُ حركاتٍ في الصندوق —
+                 * ولورقة بوتيكٍ: مستحقًّا دُفع ثلاث مرّات.
                  */
                 $locked = Expense::whereKey($expense->id)->lockForUpdate()->firstOrFail();
 
@@ -453,6 +454,11 @@ class ExpenseController extends Controller
         try {
             [$why, $at] = DB::transaction(function () use ($bid, $id, $correction) {
                 $expense = Expense::where('business_id', $bid)->lockForUpdate()->findOrFail($id);
+
+                // ومصروفُ ورقة البوتيك يُسأل عنه أوّلًا، قبل أن يُمسّ صندوقٌ أو قيد — انظر `Expense::booted`
+                if ($sheet = $expense->sheetItSettles()) {
+                    throw ValidationException::withMessages(['expense' => Expense::sheetRefusal($sheet)]);
+                }
 
                 /*
                  * ومصروفٌ وُلد من حركةٍ في شاشة المالية لا يُحذف من هنا.

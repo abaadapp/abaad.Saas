@@ -460,6 +460,11 @@ class TrashController extends Controller
      */
     public static function purgeRow(string $type, $row): void
     {
+        // مصروفُ ورقة البوتيك دليلُ سدادها — يُسأل عنه قبل أن يُمحى ملفٌّ أو حركة
+        if ($type === 'expense' && ($sheet = $row->sheetItSettles())) {
+            throw new DomainException(Expense::sheetRefusal($sheet));
+        }
+
         // المصروفُ يُسأل عنه تحت قفل — انظر `purgeExpense`
         if ($type === 'expense') {
             self::purgeExpense($row);

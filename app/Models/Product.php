@@ -20,7 +20,7 @@ class Product extends Model
      * و`published` معه لا بدونه: تركُه عددًا يجعل `$product->published` تردّ 1
      * حيث تردّ أختُها true — فيخرج في JSON عددًا إلى واجهةٍ تنتظر منطقيًّا.
      */
-    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean', 'pos_enabled' => 'boolean', 'tracks_stock' => 'boolean'];
+    protected $casts = ['price' => 'decimal:3', 'cost' => 'decimal:3', 'active' => 'boolean', 'published' => 'boolean', 'pos_enabled' => 'boolean', 'tracks_stock' => 'boolean', 'description_web_enabled' => 'boolean', 'description_pos_enabled' => 'boolean'];
 
     /** حالةُ صنفٍ لا يُعدّ على رفّ — لا «متوفر» ولا «نفد» */
     public const UNTRACKED = 'غير مرتبط بالمخزون';

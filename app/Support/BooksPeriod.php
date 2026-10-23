@@ -190,6 +190,15 @@ class BooksPeriod
             return now();
         }
 
+        /*
+         * والصلاحيةُ قبل الفترة: من لا يملك التاريخَ الأصليّ لا يُدَلّ على
+         * «حدّد تاريخ الإقفال أوّلًا» — بابٌ في الإعدادات قد لا يملكه، ولا
+         * يفتح له هذا الخيارَ ولو فتحه.
+         */
+        if (! $context['owner']) {
+            throw ValidationException::withMessages(['correction' => __('التصحيح بتاريخ فترةٍ سابقة لصاحب النشاط وحده.')]);
+        }
+
         return match (self::status($context, $entryDate)) {
             self::CLOSED => throw ValidationException::withMessages(['correction' => __(
                 'الدفاتر مقفلة حتى :closed، فلا يُكتب في فترة :date شيء. سجّل التصحيح في الفترة الحاليّة.',
@@ -198,9 +207,7 @@ class BooksPeriod
             self::UNKNOWN => throw ValidationException::withMessages(['correction' => __(
                 'لم يُحدَّد تاريخ إقفال الدفاتر في الإعدادات، فلا يُفترض أنّ شهرًا مضى مفتوح. سجّل التصحيح في الفترة الحاليّة، أو حدّد تاريخ الإقفال أوّلًا.',
             )]),
-            default => $context['owner']
-                ? $entryDate->copy()
-                : throw ValidationException::withMessages(['correction' => __('التصحيح بتاريخ فترةٍ سابقة لصاحب النشاط وحده.')]),
+            default => $entryDate->copy(),
         };
     }
 

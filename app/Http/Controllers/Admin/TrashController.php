@@ -589,7 +589,7 @@ class TrashController extends Controller
                  */
                 if ($expense->method === StockLosses::EXPENSE_METHOD && $reversal) {
                     throw ValidationException::withMessages(['expense' => __(
-                        'هذا هالكُ مخزونٍ عُكس قيدُه في الدفتر، ولا يُعاد من هنا: قيدُه على المخزون لا على الصندوق. وإن كان صحيحًا فسجّله من جديد من المخزون.',
+                        'هذا هالكُ مخزونٍ عُكس قيدُه في الدفتر، فلا يُعاد من هنا: قيدُه على المخزون لا على الصندوق، واستعادتُه من المصروفات تكتبه على الصندوق.',
                     )]);
                 }
 

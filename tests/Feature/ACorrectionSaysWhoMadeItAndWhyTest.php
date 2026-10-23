@@ -112,6 +112,21 @@ class ACorrectionSaysWhoMadeItAndWhyTest extends TestCase
         $this->assertStringEndsWith('فاتورةٌ مكرّرة', ActivityLog::where('subject_id', $e->id)->where('action', 'deleted')->sole()->description);
     }
 
+    /** ومن لا يملك التاريخَ الأصليّ لا يُدَلّ على بابٍ في الإعدادات لا يفتحه له */
+    public function test_a_non_owner_is_told_whose_choice_it_is_not_where_to_close_the_books(): void
+    {
+        Setting::where('business_id', $this->business->id)->where('key', BooksPeriod::SETTING)->delete();
+        $e = $this->spend('2026-09-30');
+        $accountant = User::create([
+            'business_id' => $this->business->id, 'name' => 'المحاسب', 'email' => 'acc@abaad.om',
+            'password' => bcrypt('password'), 'role' => 'accountant', 'status' => 'نشط',
+        ]);
+
+        $this->actingAs($accountant)->delete(route('admin.expenses.destroy', $e->id), ['correction' => BooksPeriod::ORIGINAL, 'correction_reason' => 'x'])
+            ->assertSessionHasErrors(['correction' => __('التصحيح بتاريخ فترةٍ سابقة لصاحب النشاط وحده.')]);
+        $this->assertNotSoftDeleted($e);
+    }
+
     public function test_a_reposted_entry_says_who_restored_it_and_why(): void
     {
         $e = $this->spend('2026-10-05');

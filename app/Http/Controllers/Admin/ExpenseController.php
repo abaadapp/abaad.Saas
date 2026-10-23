@@ -479,7 +479,7 @@ class ExpenseController extends Controller
                  */
                 if ($expense->method === StockLosses::EXPENSE_METHOD) {
                     throw ValidationException::withMessages(['expense' => __(
-                        'هذا هالكُ مخزونٍ قُيّد من الجرد، وقيدُه على المخزون لا على الصندوق — فلا يُحذف من هنا. وإن كان خطأً فصحّحه بتعديل مخزونٍ معاكس.',
+                        'هذا هالكُ مخزونٍ قُيّد من الجرد، وقيدُه على المخزون لا على الصندوق — فلا يُحذف من شاشة المصروفات، كي لا يختفي من هنا ويبقى في الدفتر.',
                     )]);
                 }
 

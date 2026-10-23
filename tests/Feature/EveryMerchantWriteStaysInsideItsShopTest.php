@@ -72,6 +72,12 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['الإضافات', 'put', 'admin.products.addons.sync', ['id' => 'product']],
                 ['الإضافات', 'delete', 'admin.products.addons.destroy', ['id' => 'product', 'addon' => 'addon'], ['id']],
                 ['الإضافات', 'put', 'admin.products.addons.update', ['addon' => 'addon']],
+                // وصفحةُ الإضافات: الإيقافُ، ومنتجٌ يدخل مدى إضافةٍ مخصّصة أو يخرج منه — بالاتّجاهين
+                ['الإضافات', 'put', 'admin.addons.active', ['addon' => 'addon'], [], ['active' => false]],
+                ['الإضافات', 'put', 'admin.products.addons.link', ['id' => 'product', 'addon' => 'addon'], ['id']],
+                ['الإضافات', 'put', 'admin.products.addons.link', ['id' => 'product', 'addon' => 'addon'], ['addon']],
+                ['الإضافات', 'delete', 'admin.products.addons.unlink', ['id' => 'product', 'addon' => 'addon'], ['id']],
+                ['الإضافات', 'delete', 'admin.products.addons.unlink', ['id' => 'product', 'addon' => 'addon'], ['addon']],
                 ['الأقسام', 'patch', 'admin.products.categories.update', ['category' => 'category'], [], ['name' => 'مسروق', 'name_en' => 'Stolen']],
                 ['الأقسام', 'delete', 'admin.products.categories.destroy', ['category' => 'category']],
                 ['بطاقة القسم', 'patch', 'admin.products.categories.card', ['category' => 'category'], [], ['card_hidden' => true]],

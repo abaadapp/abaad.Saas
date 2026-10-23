@@ -4,6 +4,7 @@ use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\Admin\BankStatementController;
 use App\Http\Controllers\Admin\BranchController;
 use App\Http\Controllers\Admin\BusinessArchiveController;
+use App\Http\Controllers\Admin\AddonController;
 use App\Http\Controllers\Admin\CatalogQuickAddController;
 use App\Http\Controllers\Admin\ChequeController;
 use App\Http\Controllers\Admin\CouponController;
@@ -785,6 +786,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     // تعديل إضافةٍ قائمة — سعرها ومداها وما تأكله من الرفّ. ويسبق مسار
     // «products/{id}/addons» فلا يبتلعه: هذا معرّف إضافةٍ لا معرّف منتج
     Route::put('/products/addons/{addon}', [CatalogQuickAddController::class, 'updateAddon'])->name('products.addons.update');
+    // صفحةُ الإضافات — قائمتُها وإيقافُها من مكانٍ واحد، وحفظُها بالبابين فوق. انظر AddonController
+    Route::get('/addons', [AddonController::class, 'index'])->name('addons.index');
+    Route::put('/addons/{addon}/active', [AddonController::class, 'active'])->whereNumber('addon')->name('addons.active');
+    // منتجٌ يدخل مدى إضافةٍ مخصّصة أو يخرج منه — من شاشة المنتج
+    Route::put('/products/{id}/addons/{addon}/link', [AddonController::class, 'link'])
+        ->whereNumber('id')->whereNumber('addon')->name('products.addons.link');
+    Route::delete('/products/{id}/addons/{addon}/link', [AddonController::class, 'unlink'])
+        ->whereNumber('id')->whereNumber('addon')->name('products.addons.unlink');
 
     Route::post('/products/{id}/variants', [ProductCompositionController::class, 'storeVariant'])->name('products.variants.store');
     Route::put('/products/{id}/variants/{variant}', [ProductCompositionController::class, 'updateVariant'])->name('products.variants.update');

@@ -265,11 +265,13 @@ class CatalogQuickAddController extends Controller
         $bid = $this->bid();
 
         $data = $request->validate(self::noOwnership() + self::addonRules($bid), self::addonMessages());
+        self::assertWholeBoutiquePieces($bid, $data);
 
         // والاسمُ الإنجليزيّ ما كتبه التاجر — لا يُملأ من المعجم: «شوكولاتة بلجيكية» اسمُ بضاعته
         $addon = Addon::create(collect($data)->only(['name', 'name_en', 'price'])->all() + [
             'business_id' => $bid,
-            'active' => true,
+            // فعّالةً ما لم يُطلب غيرُ ذلك — ومن صفحة الإضافات قد تُنشأ موقوفةً لتُجهَّز ثمّ تُفتح
+            'active' => array_key_exists('active', $data) && $data['active'] !== null ? (bool) $data['active'] : true,
         ] + self::channelAttributes($data, null) + [
             // لا مالك: بابُ الإضافة الخاصّة بمنتجٍ مغلقٌ — انظر `noOwnership`
             'product_id' => null,
@@ -334,6 +336,7 @@ class CatalogQuickAddController extends Controller
             self::ownershipStays($owner) + self::addonRules($bid, $model->id, $owner),
             self::addonMessages(),
         );
+        self::assertWholeBoutiquePieces($bid, $data);
 
         // والاسمُ الإنجليزيّ كما أُرسل: ما خُزّن يبقى إن لم يُرسَل، ولا يُملأ من المعجم إن فرغ
         $model->update(collect($data)->only(['name', 'name_en', 'price'])->all() + [
@@ -504,6 +507,33 @@ class CatalogQuickAddController extends Controller
         ];
     }
 
+    /**
+     * قطعةُ البوتيك تُؤخذ قطعًا كاملة — يُقال ذلك عند الحفظ لا عند كلّ بيعة.
+     *
+     * المستحقُّ ثمنُ القطعة × عددها (`BoutiqueDues::due`)، وكسرُ القطعة لا
+     * مستحقَّ له يُعرف: فالبيعُ يردّه (`BoutiqueDues::refusal`). وكانت الإضافةُ
+     * تُحفظ بكمّيّة ١٫٥ ثمّ تُردّ كلُّ بيعةٍ لها في الصندوق والموقع — والتاجرُ
+     * لا يعرف أنّ العيب في إضافةٍ حفظها أمس.
+     *
+     * @throws ValidationException
+     */
+    private static function assertWholeBoutiquePieces(int $bid, array $data): void
+    {
+        $pid = $data['inventory_product_id'] ?? null;
+        if ($pid === null || $pid === '') {
+            return;
+        }
+
+        $owned = Product::where('business_id', $bid)->whereKey((int) $pid)->whereNotNull('boutique_id')->exists();
+        $each = (float) ($data['inventory_quantity'] ?? 1);
+
+        if ($owned && abs($each - round($each)) > 0.0001) {
+            throw ValidationException::withMessages([
+                'inventory_quantity' => __('قطعةُ البوتيك تُؤخذ قطعًا كاملة — اكتب عددًا صحيحًا.'),
+            ]);
+        }
+    }
+
     /** المدى يُكتب فراغًا حين يكون «مع الجميع» — والفراغ هو مدى كلّ إضافةٍ قديمة */
     private static function scopeAttributes(array $data, ?int $owner): array
     {
@@ -554,6 +584,37 @@ class CatalogQuickAddController extends Controller
     }
 
     /**
+     * من أين الإضافة — خدمةٌ من المتجر، أو صنفٌ من رفّه، أو قطعةٌ من رفّ بوتيك.
+     *
+     * والمستحقُّ المعروض قاعدةُ `BoutiqueDues::due` نفسُها: ثمنُ القطعة اليوم ×
+     * عددها في كلّ إضافة. للشاشة وحدها — ما يُكتب يُحسب عند البيع ويُثبَّت
+     * في لقطته، فتغييرُ ثمن القطعة غدًا لا يمسّ بيعةً مضت. ولا يُعرض الفرقُ
+     * بين سعر الزبون والمستحقّ ربحًا: تكاليفُ المتجر الأخرى لا يعرفها هنا أحد.
+     *
+     * @return array{source: string, stock_name: ?string, boutique_id: ?int, boutique_name: ?string, boutique_due: ?float}
+     */
+    private static function sourceOf(Addon $addon): array
+    {
+        $item = $addon->inventory_product_id ? $addon->inventoryProduct : null;
+
+        if (! $item) {
+            return ['source' => 'shop', 'stock_name' => null, 'boutique_id' => null, 'boutique_name' => null, 'boutique_due' => null];
+        }
+
+        if ($item->boutique_id === null) {
+            return ['source' => 'stock', 'stock_name' => $item->name, 'boutique_id' => null, 'boutique_name' => null, 'boutique_due' => null];
+        }
+
+        return [
+            'source' => 'boutique',
+            'stock_name' => $item->name,
+            'boutique_id' => (int) $item->boutique_id,
+            'boutique_name' => $item->boutique?->label(),
+            'boutique_due' => round((float) $item->price * (float) \App\Support\AddonStock::each($addon), 3),
+        ];
+    }
+
+    /**
      * ما تعرفه الشاشة عن الإضافة — بلا تكلفةٍ ولا شيءٍ يخصّ الزبون.
      *
      * @return array<string, mixed>
@@ -575,6 +636,7 @@ class CatalogQuickAddController extends Controller
             'inventory_quantity' => $addon->inventory_product_id
                 ? (float) \App\Support\AddonStock::each($addon)
                 : null,
+        ] + self::sourceOf($addon) + [
             'product_ids' => $addon->scopeName() === Addon::SCOPE_SELECTED
                 ? \Illuminate\Support\Facades\DB::table('product_addons')->where('addon_id', $addon->id)
                     ->orderBy('sort_order')->pluck('product_id')->map(fn ($i) => (int) $i)->all()

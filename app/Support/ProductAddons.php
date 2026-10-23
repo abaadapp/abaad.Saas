@@ -52,6 +52,22 @@ class ProductAddons
     }
 
     /**
+     * قائمةُ هذا المنتج القديمة — لشاشته.
+     *
+     * تقرؤها «إضافات هذا المنتج» لتقول أيّ العامّة تُعرض معه بقاعدة البيع
+     * نفسِها (`passes`): العامّةُ معه ما لم تكن له قائمةٌ قديمةٌ تستثنيها.
+     * والمخصّصةُ والمملوكةُ تُقرآن من صفوفهما في الشاشة. و`null` لا قائمة.
+     *
+     * @return int[]|null
+     */
+    public static function legacyFor(Product $product): ?array
+    {
+        $all = Addon::where('business_id', $product->business_id)->get();
+
+        return self::legacyList(self::map((int) $product->business_id)[$product->id] ?? null, $all);
+    }
+
+    /**
      * قائمةُ المنتج القديمة — بلا صفوف الإضافات ذات المدى المحدّد.
      *
      * الصفّ في product_addons يحمل معنيين منذ أن صار للإضافة مدى: كان

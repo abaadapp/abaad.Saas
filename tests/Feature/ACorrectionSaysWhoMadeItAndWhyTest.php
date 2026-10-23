@@ -100,6 +100,8 @@ class ACorrectionSaysWhoMadeItAndWhyTest extends TestCase
     {
         $e = $this->spend('2026-09-30', ['type' => str_repeat('ن', 240)]);
         $this->assertLessThanOrEqual(255, mb_strlen(Books::liveEntriesFor($e)->sole()->description));
+        // وسطرُ «سجّل مصروف <النوع>» كان يُسقط الحفظَ نفسَه على PostgreSQL (`22001`)
+        $this->assertTrue(ActivityLog::where('action', 'created')->exists(), 'لم يُقيَّد تسجيلُ المصروف');
 
         $this->delete(route('admin.expenses.destroy', $e->id), ['correction' => BooksPeriod::CURRENT, 'correction_reason' => 'فاتورةٌ مكرّرة'])
             ->assertSessionHasNoErrors();

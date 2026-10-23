@@ -454,6 +454,57 @@ class AnInvoicePaidByLinkEarnsItsPointsOnceTest extends TestCase
         $this->assertSame(0, $this->points());
     }
 
+    public function test_cancelling_one_partial_payment_leaves_exactly_what_the_rest_earn_and_a_repayment_tops_up_to_the_whole(): void
+    {
+        /*
+         * التراكمُ يوزّع كسورَ التقريب بترتيب الدفعات: ٣٫٣٣٣ ← ١٦ ثمّ ٦٫٦٦٧ ← ٣٤.
+         * فإلغاءُ الأولى بعكس نقاطها وحدها (١٦) يُبقي ٣٤ — والسادسةُ وحدها
+         * تستحقّ ٣٣. ثمّ سدادُها من جديد يعطي ١٧، فيصير المجموعُ ٥١ لفاتورةٍ
+         * بعشرة ريالات. فالعكسُ يُبقي ما تستحقّه الدفعاتُ الباقية بالضبط.
+         */
+        $invoice = $this->invoice();
+        $first = $this->pay($invoice, 3.333);
+        $this->pay($invoice, 6.667);
+        $this->assertSame(50, $this->points());
+
+        CustomerPayments::cancel(CustomerPayment::findOrFail($first->customer_payment_id), 'خطأ في المبلغ', $this->owner->id);
+        $this->assertSame(33, $this->points(), '٦٫٦٦٧ × ٥ = ٣٣٫٣٣ ← ٣٣، لا ٣٤');
+        $this->assertSame(-17, (int) PointTransaction::where('type', 'redeem')->sole()->points);
+
+        $this->pay($invoice, 3.333);
+        $this->assertSame(50, $this->points(), 'والفاتورةُ مسدّدةً كلَّها تعطي خمسين — لا ٥١');
+    }
+
+    public function test_cancelling_the_later_partial_payment_works_the_same_way(): void
+    {
+        $invoice = $this->invoice();
+        $this->pay($invoice, 3.333);
+        $second = $this->pay($invoice, 6.667);
+
+        CustomerPayments::cancel(CustomerPayment::findOrFail($second->customer_payment_id), 'خطأ في المبلغ', $this->owner->id);
+        $this->assertSame(16, $this->points(), '٣٫٣٣٣ × ٥ ← ١٦');
+
+        $this->pay($invoice, 6.667);
+        $this->assertSame(50, $this->points());
+    }
+
+    public function test_a_rate_changed_between_earning_and_cancelling_reverses_no_more_or_less_than_a_point_off_what_was_earned(): void
+    {
+        $invoice = $this->invoice();
+        $first = $this->pay($invoice, 4);
+        $this->pay($invoice, 6);
+        $this->assertSame(50, $this->points(), '٢٠ + ٣٠');
+
+        // ضاعف التاجرُ النسبةَ بعدها: الباقيةُ «تستحقّ» اليوم ٦٠ — والعكسُ لا يصير صفرًا
+        Setting::where('business_id', $this->shop->id)->where('key', 'loyalty_earn_rate')->update(['value' => '10']);
+        CustomerPayments::cancel(CustomerPayment::findOrFail($first->customer_payment_id), 'خطأ', $this->owner->id);
+
+        $reversed = -(int) PointTransaction::where('type', 'redeem')->sole()->points;
+        $this->assertGreaterThanOrEqual(19, $reversed, 'عُكس أقلّ ممّا كُسب بأكثر من كسر تقريب');
+        $this->assertLessThanOrEqual(21, $reversed);
+        $this->assertSame(50 - $reversed, $this->points());
+    }
+
     public function test_a_link_paid_before_this_feature_earns_nothing_even_when_paymob_repeats(): void
     {
         $invoice = $this->invoice();

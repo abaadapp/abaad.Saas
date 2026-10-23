@@ -183,19 +183,24 @@ class InvoiceLoyalty
             return $none('الفاتورة تغطّي طلباتٍ اكتسبت نقاطها عند البيع');
         }
 
-        // ما خُصِّص قبلُ من دفعاتِ روابطَ كسبت نقاطَها على هذه الفاتورة — ولم تُلغَ
-        $before = round((float) CustomerPaymentAllocation::where('customer_invoice_id', $invoice->id)
-            ->whereIn('customer_payment_id', PointTransaction::where('customer_invoice_id', $invoice->id)
-                ->where('type', 'earn')->where('source_key', 'like', 'link:%')->select('customer_payment_id'))
-            ->whereIn('customer_payment_id', CustomerPayment::whereNull('cancelled_at')->select('id'))
-            ->where('customer_payment_id', '<>', $payment->id)
-            ->sum('amount'), 3);
+        $before = self::earnedAllocations($invoice, $payment->id);
 
         $points = self::floor(($before + $allocated) * $share * $rate) - self::floor($before * $share * $rate);
 
         return $points > 0
             ? [$points, null, $invoice, $payment]
             : $none('المبلغ أصغر من أن يعطي نقطة');
+    }
+
+    /** ما خُصِّص للفاتورة من دفعاتِ روابطَ كسبت نقاطَها عليها — ولم تُلغَ */
+    private static function earnedAllocations(CustomerInvoice $invoice, ?int $except = null): float
+    {
+        return round((float) CustomerPaymentAllocation::where('customer_invoice_id', $invoice->id)
+            ->whereIn('customer_payment_id', PointTransaction::where('customer_invoice_id', $invoice->id)
+                ->where('type', 'earn')->where('source_key', 'like', 'link:%')->select('customer_payment_id'))
+            ->whereIn('customer_payment_id', CustomerPayment::whereNull('cancelled_at')->select('id'))
+            ->when($except, fn ($q) => $q->where('customer_payment_id', '<>', $except))
+            ->sum('amount'), 3);
     }
 
     /**
@@ -247,7 +252,7 @@ class InvoiceLoyalty
                 continue;
             }
 
-            $take = min((int) $earn->points, max(0, (int) $customer->points));
+            $take = min(self::reversal($earn, $payment), max(0, (int) $customer->points));
             if ($take > 0) {
                 $customer->decrement('points', $take);
             }
@@ -264,6 +269,34 @@ class InvoiceLoyalty
                 'source_key' => $key,
             ]);
         }
+    }
+
+    /**
+     * كم يُعكس عن تحصيلٍ أُلغي — ليبقى للفاتورة ما تستحقّه دفعاتُها الباقيةُ بالضبط.
+     *
+     * التراكمُ يوزّع كسورَ التقريب بترتيب الدفعات: ٣٫٣٣٣ ← ١٦ ثمّ ٦٫٦٦٧ ← ٣٤.
+     * فعكسُ نقاط الأولى وحدها يُبقي ٣٤ والثانيةُ وحدها تستحقّ ٣٣، ثمّ سدادٌ جديدٌ
+     * يُكمل إلى ٥١. فيُعكس ما بقي من نقاط روابط الفاتورة ناقصًا ما تستحقّه
+     * دفعاتُها الباقية (والملغاةُ قد كُتب إلغاؤها قبل هذا النداء).
+     *
+     * ولا يبعد عن نقاط التحصيل نفسه أكثرَ من نقطة: الفرقُ كسرُ تقريبٍ لا غير، ونسبةٌ
+     * تغيّرت بين الاكتساب والإلغاء لا يُعكس بها ما لم يُكسب بها.
+     */
+    private static function reversal(PointTransaction $earn, CustomerPayment $payment): int
+    {
+        $own = (int) $earn->points;
+        $invoice = CustomerInvoice::where('business_id', $payment->business_id)->whereKey($earn->customer_invoice_id)->first();
+        $rate = self::rate((int) $payment->business_id);
+
+        if (! $invoice || $rate <= 0) {
+            return $own;
+        }
+
+        $held = (int) PointTransaction::where('customer_invoice_id', $invoice->id)
+            ->where('customer_id', $earn->customer_id)->where('source_key', 'like', 'link:%')->sum('points');
+        $due = self::floor(self::earnedAllocations($invoice) * self::eligibleShare($invoice) * $rate);
+
+        return max(0, min($own + 1, max($own - 1, $held - $due)));
     }
 
     /**

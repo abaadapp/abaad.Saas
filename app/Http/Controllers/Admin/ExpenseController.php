@@ -350,12 +350,37 @@ class ExpenseController extends Controller
          * الدفتر هو العطبُ نفسُه الذي في `store`.
          */
         try {
-            DB::transaction(function () use ($expense) {
-                $expense->update(['status' => Expense::PAID, 'spent_at' => now()]);
-                $this->postToLedger($expense->fresh());
+            $paid = DB::transaction(function () use ($expense) {
+                /*
+                 * ويُعاد السؤالُ تحت قفل الصفّ.
+                 *
+                 * «أمسدَّدة؟» أعلاه تُقرأ قبل المعاملة، فضغطتان معًا تجيبان «لا»
+                 * وتكتبان دفعتين وحركتَي صندوق — ولورقة بوتيكٍ: مستحقًّا دُفع
+                 * مرّتين. والثاني ينتظر هنا حتى يلتزم الأوّل، ثمّ يجدها مسدَّدة.
+                 */
+                $locked = Expense::whereKey($expense->id)->lockForUpdate()->first();
+
+                if (! $locked) {
+                    return null;
+                }
+
+                if ($locked->isPaid()) {
+                    return false;
+                }
+
+                $locked->update(['status' => Expense::PAID, 'spent_at' => now()]);
+                $this->postToLedger($locked->fresh());
+
+                return true;
             });
         } catch (Throwable $e) {
             return back()->withErrors(['pay' => $this->postingFailed($e)]);
+        }
+
+        abort_if($paid === null, 404);
+
+        if (! $paid) {
+            return back()->with('toast', ['msg' => __('الفاتورة مسدَّدة أصلًا'), 'type' => 'info']);
         }
 
         Activity::log('updated', 'سدّد المصروف: '.$expense->reference, ['subject_id' => $expense->id]);
@@ -366,6 +391,11 @@ class ExpenseController extends Controller
     public function destroy($id)
     {
         $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
+
+        // ومصروفُ ورقة البوتيك يُسأل عنه قبل أن يُمسّ صندوقٌ أو قيد — انظر `Expense::booted`
+        if ($sheet = $expense->sheetItSettles()) {
+            return back()->with('toast', ['msg' => Expense::sheetRefusal($sheet), 'type' => 'danger']);
+        }
 
         /*
          * القيد يتبع مصروفه.

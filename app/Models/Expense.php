@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use DomainException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -26,6 +27,35 @@ class Expense extends Model
 
     protected $guarded = [];
     protected $casts = ['amount' => 'decimal:3', 'spent_at' => 'date', 'due_date' => 'date'];
+
+    /**
+     * مصروفُ ورقة تسوية البوتيك لا يُحذف ولا يُمحى — من أيّ باب.
+     *
+     * حذفُه لا يُلغي الورقة: تبقى صادرةً وبنودُها محجوزةً لها، والمالُ إن كان
+     * خرج فقد خرج. والحارسُ هنا على النموذج كي لا يفلت منه بابٌ يُفتح غدًا؛
+     * والأبوابُ القائمة تسأل قبله (`sheetItSettles`) كي تردّ برسالةٍ قبل أن
+     * تمسّ صندوقًا أو قيدًا. وإلغاءُ الورقة مستندٌ له قرارُه — لا حذفٌ عاديّ.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (Expense $expense) {
+            if ($sheet = $expense->sheetItSettles()) {
+                throw new DomainException(self::sheetRefusal($sheet));
+            }
+        });
+    }
+
+    /** ورقةُ تسوية البوتيك التي يسدّدها هذا المصروف — من متجره هو */
+    public function sheetItSettles(): ?BoutiqueSettlement
+    {
+        return BoutiqueSettlement::where('business_id', $this->business_id)->where('expense_id', $this->id)->first();
+    }
+
+    public static function sheetRefusal(BoutiqueSettlement $sheet): string
+    {
+        return __('هذا مصروف ورقة تسوية البوتيك :number، فلا يُحذف: حذفُه لا يُلغي الورقة، ويُظهر مستحقَّها كأنّه لم يُدفع.', ['number' => $sheet->number]);
+    }
+
     public function business(): BelongsTo { return $this->belongsTo(Business::class); }
 
     /** قيد الدفتر المقابل — يُنشأ يوم السداد لا يوم التسجيل */

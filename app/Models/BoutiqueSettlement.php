@@ -48,9 +48,17 @@ class BoutiqueSettlement extends Model
         return $this->belongsTo(Boutique::class);
     }
 
+    /**
+     * مصروفُ الورقة — ولو حُذف.
+     *
+     * كانت العلاقةُ تمرّ بنطاق `SoftDeletes`، فمصروفٌ مدفوعٌ حُذف يصير «لا
+     * مصروف»، وكلُّ من يقرأ «أسُدِّدت؟» من هنا يجيب «لا»: ٢٣ ر.ع سُلّمت للبوتيك
+     * تعود دَينًا على المحلّ في شاشة المستحقّات، فيدفعها أحدٌ ثانية. والحذفُ لا
+     * يُلغي سدادًا وقع — فالحالةُ تُقرأ من الصفّ كما هو.
+     */
     public function expense(): BelongsTo
     {
-        return $this->belongsTo(Expense::class);
+        return $this->belongsTo(Expense::class)->withTrashed();
     }
 
     /** أسُدِّد ما عليه؟ — يُقرأ من المصروف لا من عمودٍ ثانٍ يُنسى */

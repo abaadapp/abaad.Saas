@@ -8495,5 +8495,7 @@
     "الوصف يظهر للكاشير في نقطة البيع فقط.": "The description shows to the cashier at the POS only.",
     "الوصف يظهر للعميل في الموقع فقط.": "The description shows to customers on the website only.",
     "الوصف مخفي في القناتين.": "The description is hidden in both channels.",
-    "وصف المنتج": "Product description"
+    "وصف المنتج": "Product description",
+    "هذا مصروف ورقة تسوية البوتيك :number، فلا يُحذف: حذفُه لا يُلغي الورقة، ويُظهر مستحقَّها كأنّه لم يُدفع.": "This expense pays boutique settlement sheet :number, so it cannot be deleted: deleting it does not cancel the sheet, and it would show the sheet's due as unpaid.",
+    "مرجعُ هذا القيد لا يتبع هذا النشاط، فلم يُكتب القيد.": "This entry's source document does not belong to this business, so the entry was not written."
 }

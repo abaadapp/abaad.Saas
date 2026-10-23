@@ -37,6 +37,7 @@ class TrashPurge extends Command
         $dry = (bool) $this->option('dry-run');
         $cutoff = now()->subDays($days);
         $total = 0;
+        $kept = 0;
 
         /*
          * الفرع ليس في PURGEABLE فلا يمرّ هنا: محوُه يمحو تسجيل صناديقه
@@ -52,6 +53,13 @@ class TrashPurge extends Command
                  * ورصيدَ المنتج في الفروع، وحذفٌ جماعيّ يترك ذلك كلّه يتيمًا.
                  * والعدد هنا صغير بطبعه — ما حُذف قبل ثلاثة أشهر ولم يُستردّ.
                  */
+                // ومصروفُ ورقة البوتيك يبقى ولا يوقف ما بعده — انظر `Expense::booted`
+                if ($type === 'expense' && $row->sheetItSettles()) {
+                    $kept++;
+
+                    continue;
+                }
+
                 if (! $dry) {
                     TrashController::purgeRow($type, $row);
                 }
@@ -64,6 +72,10 @@ class TrashPurge extends Command
         $this->info($dry
             ? "سيُمحى {$total} صفًّا مضى على حذفها أكثر من {$days} يومًا"
             : "مُحي {$total} صفًّا نهائيًّا (أقدم من {$days} يومًا)");
+
+        if ($kept > 0) {
+            $this->line("  بقي {$kept} مصروفَ ورقة تسوية بوتيك — دليلُ سدادها لا يُمحى");
+        }
 
         $this->purgeDismissals($dry);
 

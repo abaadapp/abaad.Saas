@@ -11,6 +11,7 @@ use App\Support\Activity;
 use App\Support\Pagination;
 use App\Support\PlatformDocuments;
 use App\Support\Search;
+use App\Support\SigningCodes;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -49,6 +50,8 @@ class DocumentController extends Controller
             'documents' => collect($page->items())->map(fn (PlatformDocument $d) => self::row($d))->all(),
             'pagination' => Pagination::meta($page),
             'filters' => ['state' => $state, 'q' => $q],
+            // بلا مزوّدٍ يوصل رمزَ التحقّق يبقى التوقيعُ مغلقًا — والمديرُ يُقال له قبل أن يرسل
+            'signing_ready' => SigningCodes::available(),
             'counts' => [
                 'sent' => PlatformDocument::where('status', PlatformDocument::SENT)
                     ->where(fn ($w) => $w->whereNull('expires_at')->orWhere('expires_at', '>=', now()))->count(),
@@ -88,6 +91,7 @@ class DocumentController extends Controller
         ], [], [
             'template_id' => __('نوع المستند'),
             'business_id' => __('النشاط'),
+            'client' => __('بيانات العميل'),
             'plan_id' => __('الباقة'),
             'cycle' => __('دورة الاشتراك'),
             'amount' => __('المبلغ'),
@@ -108,7 +112,8 @@ class DocumentController extends Controller
     {
         $doc = PlatformDocument::with('business:id,name')->findOrFail($id);
         $link = route('documents.sign', $doc->token);
-        $phone = preg_replace('/\D+/', '', (string) ($doc->client['phone'] ?? ''));
+        // الرابطُ إلى الرقم المعتمد نفسه — إليه يصل الرمز
+        $phone = (string) $doc->signing_phone;
 
         return Inertia::render('Platform/Documents/Show', [
             'document' => self::row($doc) + [
@@ -125,6 +130,9 @@ class DocumentController extends Controller
                 'cancel_reason' => $doc->cancel_reason,
                 'signer_ip' => $doc->signer_ip,
                 'signer_agent' => $doc->signer_agent,
+                'signing_phone' => $doc->signing_phone ? '+'.$doc->signing_phone : null,
+                'phone_verified_at' => $doc->phone_verified_at ? PlatformDocuments::date($doc->phone_verified_at) : null,
+                'signing_ready' => SigningCodes::available(),
                 'content_hash' => $doc->content_hash,
                 'intact' => $doc->status === PlatformDocument::SIGNED ? PlatformDocuments::intact($doc) : null,
                 'signature' => PlatformDocuments::signatureDataUri($doc),
@@ -151,6 +159,8 @@ class DocumentController extends Controller
         if (! $changed) {
             return back()->withErrors(['document' => __('لا يُلغى إلا مستندٌ لم يُوقَّع بعد.')]);
         }
+        // ورمزٌ أُرسل أو إذنٌ في جلسةٍ لا يبقيان بعد الإلغاء
+        SigningCodes::revoke($doc);
 
         Activity::log('updated', 'ألغى رابط المستند: '.$doc->number, ['business_id' => null, 'subject_id' => $doc->id, 'subject_type' => PlatformDocument::class]);
 

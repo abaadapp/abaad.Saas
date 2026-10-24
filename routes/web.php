@@ -2225,22 +2225,35 @@ Route::post('/r/{token}', [ReviewInviteController::class, 'store'])
 /*
  * توقيعُ مستندات أبعاد — يفتحه العميلُ من رابطٍ أرسله مدير المنصّة.
  *
- * اثنان وثلاثون حرفًا لا تُخمَّن، بلا دخول. والكتابةُ أضيقُ حدًّا من الفتح،
- * والورقةُ لا تُنزَّل قبل التوقيع. انظر `PlatformDocuments`.
+ * اثنان وثلاثون حرفًا لا تُخمَّن، بلا دخول — ولا توقيعَ ولا بيانَ قبل رمزٍ
+ * يصل الهاتفَ المعتمد. والكتابةُ أضيقُ حدًّا من الفتح، وطلبُ الرمز أضيقُ منهما
+ * (ولكلّ مستندٍ حدُّه في `SigningCodes` فوق حدّ العنوان هنا). انظر `PlatformDocuments`.
  */
+// ولكلّ بابٍ عدّادُه (البادئة الثالثة): بلاها يتشارك العنوانُ عدّادًا واحدًا مع كلّ
+// صفحةٍ محدودة، فعميلٌ فتح الصفحةَ عشرَ مرّات يُردّ توقيعُه بـ429
 Route::get('/sign/{token}', [ContractSigningController::class, 'show'])
     ->where('token', '[A-Za-z0-9]{32}')
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:60,1,sign-page')
     ->name('documents.sign');
+
+Route::post('/sign/{token}/code', [ContractSigningController::class, 'code'])
+    ->where('token', '[A-Za-z0-9]{32}')
+    ->middleware('throttle:5,10,sign-code')
+    ->name('documents.sign.code');
+
+Route::post('/sign/{token}/verify', [ContractSigningController::class, 'verify'])
+    ->where('token', '[A-Za-z0-9]{32}')
+    ->middleware('throttle:10,1,sign-verify')
+    ->name('documents.sign.verify');
 
 Route::post('/sign/{token}', [ContractSigningController::class, 'sign'])
     ->where('token', '[A-Za-z0-9]{32}')
-    ->middleware('throttle:10,1')
+    ->middleware('throttle:10,1,sign-submit')
     ->name('documents.sign.submit');
 
 Route::get('/sign/{token}/pdf', [ContractSigningController::class, 'pdf'])
     ->where('token', '[A-Za-z0-9]{32}')
-    ->middleware('throttle:30,1')
+    ->middleware('throttle:30,1,sign-paper')
     ->name('documents.sign.pdf');
 
 /*

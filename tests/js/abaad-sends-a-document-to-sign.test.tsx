@@ -35,17 +35,18 @@ const row = (over = {}) => ({
     ...over,
 });
 
-function index(templates: { includes_plan: boolean; includes_amount: boolean }[]) {
+function index(templates: { includes_plan: boolean; includes_amount: boolean }[], signingReady = true) {
     layout('super-admin.documents.index');
     Object.assign(pageProps, {
         documents: [row()],
         pagination: { current_page: 1, last_page: 1, from: 1, to: 1, total: 1, per_page: 20, prev_page_url: null, next_page_url: null },
         filters: { state: '', q: '' },
+        signing_ready: signingReady,
         counts: { sent: 1, signed: 0 },
         templates: templates.map((t, i) => ({ id: i + 1, name: 'قالب ' + (i + 1), service: null, ...t })),
         plans: [{ id: 2, name: 'الباقة الاحترافية', prices: { monthly: '29.900', semiannual: '179.400', yearly: '299.000' } }],
         cycles: [{ value: 'monthly', label: 'شهري' }, { value: 'yearly', label: 'سنوي' }],
-        businesses: [{ id: 5, name: 'زهور الريان', plan_id: 2, owner: 'سالم', phone: '+968' }],
+        businesses: [{ id: 5, name: 'زهور الريان', plan_id: 2, owner: 'سالم', phone: '+96891234567' }],
         days: 14,
     });
 
@@ -64,6 +65,7 @@ function show(over = {}) {
             client: { name: 'سالم الهنائي', biz: 'زهور الريان' },
             notes: null, created_by: 'مدير المنصة', viewed_at: '—', cancelled_at: '—', cancel_reason: null,
             signer_ip: null, signer_agent: null, content_hash: null, intact: null, signature: null,
+            signing_phone: '+96891234567', phone_verified_at: null, signing_ready: true,
             link: 'https://app.abaadapp.om/sign/abcdefghijklmnopqrstuvwxyz123456',
             whatsapp: 'https://wa.me/96891234567?text=x',
             ...over,
@@ -96,6 +98,29 @@ describe('the platform documents section', () => {
         expect(screen.queryByText('المبلغ (ر.ع)')).toBeNull();
     });
 
+    it('asks for the approved phone for a registered business too, and fills it from the business', async () => {
+        index([{ includes_plan: true, includes_amount: false }]);
+        await userEvent.click(screen.getByRole('button', { name: 'مستند جديد' }));
+        const phone = document.querySelector('[data-testid="signing-phone"]') as HTMLInputElement;
+        expect(phone).not.toBeNull();
+        expect(screen.getByText('هاتف العميل المعتمد')).toBeInTheDocument();
+
+        // قائمة Radix تحمل <select> أصليًّا مخفيًّا داخل النموذج — يُختار منه النشاط
+        const select = [...document.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.value === '5'))!;
+        await userEvent.selectOptions(select, '5');
+        expect(phone.value).toBe('+96891234567');
+    });
+
+    it('tells the admin that signing is closed while no code sender is wired', () => {
+        index([{ includes_plan: true, includes_amount: false }], false);
+        expect(document.querySelector('[data-testid="signing-closed"]')).not.toBeNull();
+    });
+
+    it('says nothing when signing is open', () => {
+        index([{ includes_plan: true, includes_amount: false }], true);
+        expect(document.querySelector('[data-testid="signing-closed"]')).toBeNull();
+    });
+
     it('asks for the amount when the template carries it — and a new client is written by hand', async () => {
         index([{ includes_plan: false, includes_amount: true }]);
         await userEvent.click(screen.getByRole('button', { name: 'مستند جديد' }));
@@ -126,9 +151,25 @@ describe('the platform documents section', () => {
 
         expect(document.querySelector('[data-testid="document-link"]')).toBeNull();
         expect(screen.getByAltText('التوقيع')).toHaveAttribute('src', 'data:image/png;base64,AAAA');
+        expect(document.querySelector('[data-testid="phone-proof"]')).toBeNull();
         expect(document.body.textContent).toContain('f'.repeat(64));
         expect(screen.queryByRole('button', { name: /إلغاء الرابط/ })).toBeNull();
         expect(screen.queryByText('تغيّر محتوى المستند بعد التوقيع — البصمة لا تطابق')).toBeNull();
+    });
+
+    it('shows when and to which phone the code proved the signer', () => {
+        show({ state: 'signed', state_label: 'موقّع', content_hash: 'a'.repeat(64), intact: true, phone_verified_at: '2026-10-25 11:58' });
+
+        const proof = document.querySelector('[data-testid="phone-proof"]') as HTMLElement;
+        expect(proof.textContent).toContain('2026-10-25 11:58');
+        expect(proof.textContent).toContain('+96891234567');
+    });
+
+    it('shows a sent document the phone its code goes to — and warns while signing is closed', () => {
+        show({ signing_ready: false });
+
+        expect(document.querySelector('[data-testid="signing-phone"]')?.textContent).toContain('+96891234567');
+        expect(document.querySelector('[data-testid="signing-closed"]')).not.toBeNull();
     });
 
     it('warns when the signed content no longer matches its fingerprint', () => {

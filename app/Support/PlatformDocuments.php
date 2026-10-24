@@ -24,9 +24,10 @@ use RuntimeException;
  *
  * ═══ التوقيع ═══
  *
- * العميلُ يكمل بياناته ويقرّ ويرسم توقيعه، فيُقفل المستند: يُحفظ التوقيعُ صورةً
- * خاصّة، وعنوانُ الجهاز ومتصفّحُه ووقتُه، وبصمةُ sha256 لكلّ ما وُقِّع عليه.
- * والقفلُ تحت قفل الصفّ: ضغطتان على «اعتماد» لا تكتبان توقيعين.
+ * يُثبت العميلُ أوّلًا أنّه يملك الهاتفَ المعتمد برمزٍ يصله (`SigningCodes`)،
+ * ثمّ يكمل بياناته ويقرّ ويرسم توقيعه، فيُقفل المستند: يُحفظ التوقيعُ صورةً
+ * خاصّة، وعنوانُ الجهاز ومتصفّحُه ووقتُه ووقتُ التحقّق، وبصمةُ sha256 لكلّ ما
+ * وُقِّع عليه. والقفلُ تحت قفل الصفّ: ضغطتان على «اعتماد» لا تكتبان توقيعين.
  */
 class PlatformDocuments
 {
@@ -135,6 +136,11 @@ class PlatformDocuments
         if (($client['name'] ?? '') === '' && ($client['biz'] ?? '') === '') {
             throw new RuntimeException(__('اذكر اسم العميل أو اسم نشاطه.'));
         }
+        // الرقمُ المعتمد: إليه وحده يُرسل رمزُ التحقّق قبل التوقيع (`SigningCodes`)
+        $phone = WhatsAppPhone::normalize($client['phone'] ?? null);
+        if ($phone === null) {
+            throw new RuntimeException(__('اكتب هاتف العميل صحيحًا — إليه يُرسل رمز التحقق قبل التوقيع.'));
+        }
 
         $plan = null;
         if ($template->includes_plan) {
@@ -155,7 +161,7 @@ class PlatformDocuments
 
         $days = max(1, min(90, (int) ($data['days'] ?? self::DEFAULT_DAYS)));
 
-        return DB::transaction(function () use ($by, $template, $business, $client, $plan, $amount, $data, $days) {
+        return DB::transaction(function () use ($by, $template, $business, $client, $phone, $plan, $amount, $data, $days) {
             $doc = PlatformDocument::create([
                 // رقمٌ مؤقّتٌ فريد، ثمّ رقمُ العقد من معرّفه — لا عدّادَ يتسابق عليه اثنان
                 'number' => 'TMP-'.Str::random(24),
@@ -171,6 +177,7 @@ class PlatformDocuments
                 'provider' => self::provider(),
                 'client' => $client,
                 'client_label' => self::label($client),
+                'signing_phone' => $phone,
                 'token' => self::token(),
                 'status' => PlatformDocument::SENT,
                 'expires_at' => now()->addDays($days)->endOfDay(),
@@ -209,13 +216,19 @@ class PlatformDocuments
     /**
      * التوقيع — يقفل المستند ولا يُعاد.
      *
-     * @param  array<string, string>  $client  بيانُ العميل كما أقرّه
+     * ولا يوقّع إلّا متصفّحٌ أثبت الرقمَ المعتمد (`$grant` من جلسته): يُستهلك
+     * الإذنُ هنا في معاملة التوقيع نفسها، فطلبان بإذنٍ واحد لا يوقّعان مرّتين،
+     * ورفضٌ بعده يُبقيه لمحاولةٍ ثانية.
+     *
+     * @param  array<string, string>  $client  بيانُ العميل كما أقرّه — بلا الهاتف: المعتمدُ لا يُبدَّل
+     * @param  array{0:int, 1:string}|null  $grant
      */
-    public static function sign(PlatformDocument $document, array $client, string $signature, ?string $ip, ?string $agent): PlatformDocument
+    public static function sign(PlatformDocument $document, array $client, string $signature, ?string $ip, ?string $agent, ?array $grant): PlatformDocument
     {
         $png = self::decodeSignature($signature);
+        unset($client['phone']);
 
-        return DB::transaction(function () use ($document, $client, $png, $ip, $agent) {
+        return DB::transaction(function () use ($document, $client, $png, $ip, $agent, $grant) {
             $doc = PlatformDocument::whereKey($document->id)->lockForUpdate()->firstOrFail();
             if ($doc->status === PlatformDocument::SIGNED) {
                 throw new RuntimeException(__('وُقِّع هذا المستند من قبل.'));
@@ -230,6 +243,8 @@ class PlatformDocuments
                 throw new RuntimeException(__('أكمل: :fields', ['fields' => implode('، ', array_map(fn ($f) => $f['ar'], $missing))]));
             }
 
+            $proof = SigningCodes::consume($doc, $grant);
+
             $path = 'documents/'.$doc->id.'/signature-'.Str::random(24).'.png';
             Storage::disk('local')->put($path, $png);
 
@@ -240,6 +255,7 @@ class PlatformDocuments
                 'signed_at' => now(),
                 'signer_ip' => $ip ? mb_substr($ip, 0, 45) : null,
                 'signer_agent' => $agent ? mb_substr($agent, 0, 512) : null,
+                'phone_verified_at' => $proof->verified_at,
                 'signature_path' => $path,
             ]);
             $doc->content_hash = self::hash($doc, $png);
@@ -298,6 +314,8 @@ class PlatformDocuments
             'signed_at' => optional($doc->signed_at)->format('Y-m-d H:i:s'),
             'signer_ip' => $doc->signer_ip,
             'signer_agent' => $doc->signer_agent,
+            'signing_phone' => $doc->signing_phone,
+            'phone_verified_at' => optional($doc->phone_verified_at)->format('Y-m-d H:i:s'),
             'signature' => hash('sha256', $png),
         ], JSON_UNESCAPED_UNICODE));
     }

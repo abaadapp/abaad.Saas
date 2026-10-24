@@ -7,11 +7,14 @@
 
     و`noindex`: الرابطُ لا يُخمَّن، لكنّ محرّك بحثٍ يزحف إليه من مشاركةٍ عابرة
     يجعل عقد عميلٍ مقروءًا للجميع.
+
+    والرابطُ وحده لا يفتح شيئًا: قبل رمز الهاتف المعتمد (`$granted`) لا يظهر إلّا
+    عنوانُ المستند وخانةُ الرمز. والهاتفُ يُعرض ولا يُكتب — المعتمدُ لا يُبدَّل هنا.
 --}}
 @php
     $state = $doc->state();
     $signed = $state === \App\Models\PlatformDocument::SIGNED;
-    $open = $state === \App\Models\PlatformDocument::SENT;
+    $open = $granted && $state === \App\Models\PlatformDocument::SENT;
     $client = $doc->client ?? [];
     $plan = $doc->plan;
     $val = fn (string $k) => old('client.'.$k, $client[$k] ?? '');
@@ -125,7 +128,7 @@
         </div>
     </div>
 
-    @if ($readable)
+    @if ($granted)
     <div class="pad rule">
         <div class="parties">
             <div class="party">
@@ -151,11 +154,45 @@
         <div class="pad rule"><div class="alert info">وُقِّع هذا المستند، وانتهت مدة عرض نسخته عبر هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على نسختك.</div></div>
     @endif
 
+    {{-- الخطوةُ الأولى: رمزٌ يصل الهاتفَ المعتمد — ولا شيءَ من المستند قبله --}}
+    @if ($readable && ! $granted)
+        <div class="pad rule" id="verify">
+            <h2>التحقق من رقم الهاتف <span class="en">Phone verification</span></h2>
+            @if (! $available)
+                <div class="alert info">التوقيع الإلكتروني غير متاح حاليًا. تواصل مع {{ $provider['name'] }}.</div>
+            @else
+                <p class="sm muted" style="margin:0 0 12px">
+                    {{ $signed ? 'لعرض نسختك الموقّعة' : 'قبل عرض المستند وتوقيعه' }}، نرسل رمزًا من 6 أرقام إلى رقم الهاتف المعتمد المنتهي بـ <b class="ltr">{{ $masked }}</b>. الرمز صالح 10 دقائق.
+                </p>
+                @if ($errors->has('code'))
+                    <div class="alert bad" style="margin-bottom:12px">{{ $errors->first('code') }}</div>
+                @elseif (session('code_sent'))
+                    <div class="alert ok" style="margin-bottom:12px">أرسلنا الرمز إلى <span class="ltr">{{ $masked }}</span>.</div>
+                @endif
+                @if ($pending)
+                    <form method="POST" action="{{ route('documents.sign.verify', $token) }}" id="verify-form">
+                        @csrf
+                        <label class="f">رمز التحقق<span class="en">Code</span>
+                            <input class="t ltr" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required
+                                   style="letter-spacing:.3em; text-align:center; font-size:20px">
+                        </label>
+                        <button type="submit" class="btn wide" style="margin-top:12px">تحقق</button>
+                    </form>
+                @endif
+                <form method="POST" action="{{ route('documents.sign.code', $token) }}" style="margin-top:10px" id="code-form">
+                    @csrf
+                    <button type="submit" class="btn wide {{ $pending ? 'ghost' : '' }}">{{ $pending ? 'إعادة إرسال الرمز' : 'إرسال رمز التحقق' }}</button>
+                </form>
+                <p class="xs faint" style="margin:10px 0 0">الرمز يثبت أنك تملك الهاتف المعتمد لهذا المستند. لا تشاركه مع أحد.</p>
+            @endif
+        </div>
+    @endif
+
     @if (session('done'))
         <div class="pad rule no-print"><div class="alert ok">شكرًا لك — تم توقيع المستند بنجاح، ووصلت نسخته إلى {{ $provider['name'] }}. احفظ نسختك PDF الآن؛ يبقى الرابط يعرضها {{ \App\Models\PlatformDocument::COPY_DAYS }} يومًا.</div></div>
     @endif
 
-    @if ($readable)
+    @if ($granted)
     <form method="POST" action="{{ route('documents.sign.submit', $token) }}" id="sign-form">
         @csrf
 
@@ -165,7 +202,7 @@
                 @foreach ($fields as $f)
                     <label class="f">
                         {{ $f['ar'] }}@if ($f['req'])<span class="req"> *</span>@endif<span class="en">{{ $f['en'] }}</span>
-                        @if ($open)
+                        @if ($open && $f['k'] !== 'phone')
                             <input class="t" name="client[{{ $f['k'] }}]" value="{{ $val($f['k']) }}"
                                    type="{{ $f['type'] ?? 'text' }}" dir="{{ $f['dir'] ?? 'rtl' }}"
                                    @if ($f['req']) required @endif maxlength="190" autocomplete="off">
@@ -213,6 +250,9 @@
             @if ($signed)
                 <div class="stamp"><span class="tick">✓</span> تم توقيع المستند · Signed</div>
                 <div class="sm muted" style="margin-top:4px">بتاريخ <span class="ltr">{{ \App\Support\PlatformDocuments::date($doc->signed_at) }}</span></div>
+                @if ($doc->phone_verified_at)
+                    <div class="xs muted">بعد التحقق من الهاتف المعتمد <span class="ltr">{{ $masked }}</span> برمز لمرة واحدة · <span class="ltr">{{ \App\Support\PlatformDocuments::date($doc->phone_verified_at) }}</span></div>
+                @endif
                 @if ($signature)<img class="sig-img" src="{{ $signature }}" alt="التوقيع">@endif
                 <div class="xs faint hash" style="margin-top:10px">بصمة المستند (SHA-256): <span class="ltr">{{ $doc->content_hash }}</span></div>
                 <div class="row no-print" style="margin-top:16px">

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * مستندٌ أُرسل إلى عميلٍ ليوقّعه — نسخةٌ من قالبه ساعةَ الإصدار.
@@ -46,8 +47,15 @@ class PlatformDocument extends Model
         'expires_at' => 'datetime',
         'viewed_at' => 'datetime',
         'signed_at' => 'datetime',
+        'phone_verified_at' => 'datetime',
         'cancelled_at' => 'datetime',
     ];
+
+    /** رموزُ التحقّق التي أُرسلت إلى هاتفه المعتمد — انظر `SigningCodes` */
+    public function codes(): HasMany
+    {
+        return $this->hasMany(PlatformDocumentCode::class, 'document_id');
+    }
 
     public function template(): BelongsTo
     {

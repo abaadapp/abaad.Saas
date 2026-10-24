@@ -115,6 +115,9 @@
                 <td style="vertical-align:top; border-bottom:none">
                     <div class="small"><span class="muted">{{ __('وقت التوقيع') }}:</span> <span dir="ltr">{{ \App\Support\PlatformDocuments::date($doc->signed_at) }}</span></div>
                     <div class="small"><span class="muted">{{ __('عنوان الجهاز') }}:</span> <span dir="ltr">{{ $doc->signer_ip ?: '—' }}</span></div>
+                    @if ($doc->phone_verified_at)
+                        <div class="small"><span class="muted">{{ __('تحقق الهاتف المعتمد برمز') }}:</span> <span dir="ltr">{{ \App\Support\SigningCodes::mask($doc->signing_phone) }} · {{ \App\Support\PlatformDocuments::date($doc->phone_verified_at) }}</span></div>
+                    @endif
                 </td>
             </tr>
         </table>

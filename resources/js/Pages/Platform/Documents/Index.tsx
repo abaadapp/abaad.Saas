@@ -3,6 +3,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { FilePlus2, FileSignature, LayoutTemplate } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
+import SigningClosed from '@/Components/SigningClosed';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import Field, { Select } from '@/Components/Field';
@@ -40,6 +41,7 @@ interface Props {
     documents: DocumentRow[];
     pagination: ServerPagination;
     filters: { state: string; q: string };
+    signing_ready: boolean;
     counts: { sent: number; signed: number };
     templates: Template[];
     plans: PlanOption[];
@@ -49,7 +51,7 @@ interface Props {
 }
 
 export default function DocumentsIndex() {
-    const { documents, pagination, filters, counts, templates, plans, cycles, businesses, days } =
+    const { documents, pagination, filters, signing_ready, counts, templates, plans, cycles, businesses, days } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [creating, setCreating] = useState(false);
@@ -131,6 +133,8 @@ export default function DocumentsIndex() {
                 }
             />
 
+            {!signing_ready && <SigningClosed />}
+
             <DataTable
                 rows={documents}
                 columns={columns}
@@ -194,14 +198,25 @@ function NewDocumentDialog({
 
     const pickBusiness = (id: string) => {
         const b = businesses.find((x) => String(x.id) === id);
-        form.setData((d) => ({ ...d, business_id: id, plan_id: b?.plan_id ? String(b.plan_id) : d.plan_id }));
+        form.setData((d) => ({
+            ...d,
+            business_id: id,
+            plan_id: b?.plan_id ? String(b.plan_id) : d.plan_id,
+            // هاتفُ النشاط اقتراحٌ يُراجَع — إليه يُرسل رمزُ التحقق
+            client: { ...d.client, phone: b?.phone ?? '' },
+        }));
     };
     const setClient = (k: keyof typeof form.data.client, v: string) =>
         form.setData('client', { ...form.data.client, [k]: v });
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
-        form.transform((d) => ({ ...d, business_id: source === 'business' ? d.business_id : '' }));
+        // للنشاط المسجّل يُرسل الهاتفُ وحده — اسمٌ كُتب في التبويب الآخر لا يعبر
+        form.transform((d) =>
+            source === 'business'
+                ? { ...d, client: { phone: d.client.phone } }
+                : { ...d, business_id: '' },
+        );
         form.post(route('super-admin.documents.store'), { onSuccess: () => onClose() });
     };
 
@@ -260,14 +275,6 @@ function NewDocumentDialog({
                             <Field label="اسم النشاط" error={errors['client.biz']}>
                                 <Input value={form.data.client.biz} onChange={(e) => setClient('biz', e.target.value)} />
                             </Field>
-                            <Field label="الهاتف" error={errors['client.phone']}>
-                                <Input
-                                    dir="ltr"
-                                    value={form.data.client.phone}
-                                    onChange={(e) => setClient('phone', e.target.value)}
-                                    placeholder="+968"
-                                />
-                            </Field>
                             <Field label="البريد الإلكتروني" error={errors['client.email']}>
                                 <Input
                                     dir="ltr"
@@ -278,6 +285,21 @@ function NewDocumentDialog({
                             </Field>
                         </div>
                     )}
+
+                    <Field
+                        label="هاتف العميل المعتمد"
+                        required
+                        hint="إليه وحده يُرسل رمز التحقق قبل التوقيع، ولا يغيّره العميل"
+                        error={errors['client.phone']}
+                    >
+                        <Input
+                            dir="ltr"
+                            value={form.data.client.phone}
+                            onChange={(e) => setClient('phone', e.target.value)}
+                            placeholder="+968"
+                            data-testid="signing-phone"
+                        />
+                    </Field>
 
                     {template?.includes_plan && (
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

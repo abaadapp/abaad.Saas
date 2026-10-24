@@ -6,6 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import BackLink from '@/Components/BackLink';
 import SmartLink from '@/Components/SmartLink';
 import CopyButton from '@/Components/CopyButton';
+import SigningClosed from '@/Components/SigningClosed';
 import Field from '@/Components/Field';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -46,6 +47,9 @@ interface Props {
         cancel_reason: string | null;
         signer_ip: string | null;
         signer_agent: string | null;
+        signing_phone: string | null;
+        phone_verified_at: string | null;
+        signing_ready: boolean;
         content_hash: string | null;
         intact: boolean | null;
         signature: string | null;
@@ -85,6 +89,8 @@ export default function DocumentShow() {
                 }
             />
 
+            {open && !doc.signing_ready && <SigningClosed />}
+
             <div className="grid gap-4 lg:grid-cols-3">
                 <div className="space-y-4 lg:col-span-2">
                     <Card className="p-5">
@@ -120,6 +126,10 @@ export default function DocumentShow() {
                                         </a>
                                     </Button>
                                 </div>
+                                <p className="text-[12px] text-[#6b7280]" data-testid="signing-phone">
+                                    {t('يُفتح برمز تحقق يُرسل إلى الهاتف المعتمد')}{' '}
+                                    <span dir="ltr">{doc.signing_phone ?? '—'}</span>
+                                </p>
                                 <p className="text-[12px] text-[#6b7280]">
                                     {doc.state === 'expired'
                                         ? t('انتهت صلاحية الرابط في :at — أصدر مستندًا جديدًا للعميل', { at: doc.expires_at })
@@ -144,6 +154,12 @@ export default function DocumentShow() {
                                     <CheckCircle2 className="size-5" />
                                     {t('وقّعه العميل في :at', { at: doc.signed_at })}
                                 </div>
+                                {doc.phone_verified_at && (
+                                    <div className="text-[12px] text-[#6b7280]" data-testid="phone-proof">
+                                        {t('بعد التحقق من الهاتف المعتمد برمز لمرة واحدة في :at', { at: doc.phone_verified_at })}{' '}
+                                        · <span dir="ltr">{doc.signing_phone}</span>
+                                    </div>
+                                )}
                                 {doc.signature && (
                                     <img
                                         src={doc.signature}

@@ -98,13 +98,17 @@ Schedule::command('whatsapp:sync-templates')->hourly()->withoutOverlapping();
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 
 /*
- * صحّةُ الصناديق وطابعاتها — قراءةٌ فقط (`pos:printing-audit`).
+ * المراقبةُ اليوميّة لصحّة الصناديق وطابعاتها (`pos:printing-watch`) — مطفأة.
  *
- * سطرٌ في السجلّ حين يتغيّر ما ثبت (صندوقٌ لن يخرج منه إيصالُه، ورقٌ عالق)،
- * وصمتٌ ما دام كما كان. لا يكتب في القاعدة ولا يراسل تاجرًا — وجرسُ التاجر
- * خلف `pos.till_health_bell`.
+ * لا تعمل إلّا بـ`POS_PRINTING_AUDIT_ENABLED=true`، وذاك بموافقة مالك المنصّة.
+ * والتدقيقُ اليدويّ (`pos:printing-audit`) لا يُجدوَل أبدًا.
+ *
+ * تقرأ القاعدةَ في معاملة READ ONLY، وتكتب سطرًا في السجلّ حين يتغيّر ما ثبت،
+ * وبصمتَها في ملفّ. ولا `withoutOverlapping`: قفلُه صفٌّ في `cache_locks` على
+ * القاعدة، وقراءةٌ يوميّةٌ تأخذ ثوانيَ لا تتزاحم — ولو تزاحمت لقرأت مرّتين.
  */
-Schedule::command('pos:printing-audit --watch')->dailyAt('06:20')->withoutOverlapping();
+Schedule::command('pos:printing-watch')->dailyAt('06:20')
+    ->when(fn () => (bool) config('pos.daily_printing_audit'));
 
 // تقرير الأداء الشهري بالبريد (أول كل شهر 07:00)
 Schedule::command('reports:email')->monthlyOn(1, '07:00')->withoutOverlapping();

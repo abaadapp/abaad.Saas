@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Http\Controllers\Pos\DeviceController;
+use App\Models\BankAccount;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\JobTitle;
@@ -12,6 +13,7 @@ use App\Models\PosPeripheral;
 use App\Models\Product;
 use App\Models\Shift;
 use App\Models\User;
+use App\Support\Ledger;
 use App\Support\PosTerminal;
 use App\Support\TillActivation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -898,6 +900,17 @@ class PosDeviceTest extends TestCase
         [$old] = $this->device($this->khuwair, 'كاشير الخوير');
         $printer = $this->printer($old);
         $sale = $this->sale($old);
+        $shift = Shift::create([
+            'business_id' => $this->a->id, 'branch_id' => $this->khuwair->id,
+            'pos_device_id' => $old->id, 'user_id' => $this->ownerA->id,
+            'employee_name' => 'مالك أ', 'opened_at' => now()->subHours(3),
+            'closed_at' => now(), 'opening_balance' => 20, 'status' => 'مغلقة',
+        ]);
+        $bank = BankAccount::create([
+            'business_id' => $this->a->id, 'label' => 'بنك مسقط', 'active' => true, 'is_primary' => true,
+            'opening_balance' => 0, 'account_id' => Ledger::account($this->a->id, 'bank')->id,
+        ]);
+        $old->update(['bank_account_id' => $bank->id]);
         PosTerminal::revoke($old);
         $old->refresh();
 
@@ -912,6 +925,9 @@ class PosDeviceTest extends TestCase
         $this->assertSame('كاشير الخوير (التطبيق)', $old->name);
         $this->assertSame($old->id, $printer->fresh()->pos_device_id);
         $this->assertSame($old->id, $sale->fresh()->pos_device_id, 'نسبةُ البيع إلى صندوقه تبدّلت');
+        $this->assertSame($old->id, $shift->fresh()->pos_device_id, 'نسبةُ الورديّة إلى صندوقها تبدّلت');
+        $this->assertSame($bank->id, $old->bank_account_id, 'الصندوقُ المستبدَل فقد بنكه');
+        $this->assertSame($this->khuwair->id, $old->branch_id);
     }
 
     /** وصندوقٌ يعمل الآن على جهازٍ آخر لا يُوقَف بلا تأكيدٍ صريح */

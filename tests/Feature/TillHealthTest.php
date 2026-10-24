@@ -42,16 +42,21 @@ class TillHealthTest extends TestCase
         $this->assertSame([], TillHealth::assess([$this->till(1)], [$this->printer(1, 1)]));
     }
 
-    /** الأثرُ الذي يُبحث عنه: صندوقٌ جديدٌ بلا طابعة، وطابعتُه على الملغى في فرعه */
-    public function test_a_printer_left_on_a_revoked_till_is_confirmed(): void
+    /**
+     * صندوقٌ جديدٌ بلا طابعة، وفي فرعه ملغى يحملها — مشتبهٌ لا مؤكَّد.
+     *
+     * لا صفَّ يربط الصندوقين: قد يكون الجديدُ بديلَ الملغى فبقيت طابعتُه خلفه،
+     * وقد يكون الملغى أُلغي عمدًا والجديدُ يطبع من المتصفّح. فلا يُقال «عطل».
+     */
+    public function test_a_printer_left_on_a_revoked_till_is_only_suspected(): void
     {
         $found = TillHealth::assess(
             [$this->till(1, ['status' => PosDevice::REVOKED]), $this->till(2, ['activated_at' => '2026-10-20 09:00:00'])],
             [$this->printer(1, 1)],
         );
 
-        $this->assertSame([TillHealth::ORPHANED_PRINTER], $this->codes($found, 2));
-        $this->assertSame(TillHealth::CONFIRMED, $found[2][0]['level']);
+        $this->assertSame([TillHealth::PRINTER_ON_REVOKED_TILL], $this->codes($found, 2));
+        $this->assertSame(TillHealth::SUSPECTED, $found[2][0]['level']);
         $this->assertSame(1, $found[2][0]['other']);
         $this->assertArrayNotHasKey(1, $found, 'الملغى نفسُه لا يُقيَّم');
     }
@@ -96,10 +101,12 @@ class TillHealthTest extends TestCase
         $this->assertSame([], $found);
     }
 
+    /** طابعتان ولا «طابعة إيصال» مسمّاة — يُطبع على الأقدم كما كان، فيُراجَع ولا يُقال «عطل» */
     public function test_two_unnamed_printers_are_ambiguous_and_a_named_one_settles_it(): void
     {
         $found = TillHealth::assess([$this->till(1)], [$this->printer(1, 1), $this->printer(2, 1)]);
         $this->assertSame([TillHealth::AMBIGUOUS_RECEIPT], $this->codes($found, 1));
+        $this->assertSame(TillHealth::SUSPECTED, $found[1][0]['level']);
 
         $found = TillHealth::assess([$this->till(1)], [$this->printer(1, 1), $this->printer(2, 1, ['is_receipt_printer' => true])]);
         $this->assertSame([], $found);
@@ -141,13 +148,28 @@ class TillHealthTest extends TestCase
             $this->printer(1, 1, ['address' => '192.168.1.50', 'port' => null, 'is_receipt_printer' => true]),
             $this->printer(2, 1, ['address' => '192.168.1.50', 'port' => 9100]),
         ];
-        $this->assertSame([TillHealth::DUPLICATE_PRINTER], $this->codes(TillHealth::assess([$this->till(1)], $twice), 1));
+        $found = TillHealth::assess([$this->till(1)], $twice);
+        $this->assertSame([TillHealth::DUPLICATE_PRINTER], $this->codes($found, 1));
+        $this->assertSame(TillHealth::CONFIRMED, $found[1][0]['level']);
 
         $twoPorts = [
             $this->printer(1, 1, ['address' => '192.168.1.50', 'port' => 9100, 'is_receipt_printer' => true]),
             $this->printer(2, 1, ['address' => '192.168.1.50', 'port' => 9101]),
         ];
         $this->assertSame([], TillHealth::assess([$this->till(1)], $twoPorts));
+    }
+
+    /** والاسمُ والتوصيلُ نفسُهما وحدهما مشتبه: طابعتا USB تُسمّيان «طابعة» قد تكونان اثنتين */
+    public function test_the_same_name_alone_is_only_suspected(): void
+    {
+        $found = TillHealth::assess([$this->till(1)], [
+            $this->printer(1, 1, ['connection' => 'usb', 'address' => null, 'name' => 'طابعة', 'is_receipt_printer' => true]),
+            $this->printer(2, 1, ['connection' => 'usb', 'address' => null, 'name' => 'طابعة']),
+        ]);
+
+        $this->assertSame([TillHealth::SAME_NAME_PRINTER], $this->codes($found, 1));
+        $this->assertSame(TillHealth::SUSPECTED, $found[1][0]['level']);
+        $this->assertSame(2, $found[1][0]['peripheral']);
     }
 
     public function test_auto_print_on_a_printer_that_is_not_the_receipt_printer_has_no_effect(): void
@@ -161,12 +183,29 @@ class TillHealthTest extends TestCase
         $this->assertSame(2, $found[1][0]['peripheral']);
     }
 
-    /** ولكلّ رمزٍ جملةٌ للتاجر ودرجة */
+    /**
+     * ولكلّ رمزٍ جملةٌ للتاجر ودرجة — والمشتبهُ يُقال بشرطه («إن كان…»)، فلا
+     * يُخبَر تاجرٌ بعطلٍ لم يثبت.
+     */
     public function test_every_code_has_a_level_and_a_sentence(): void
     {
         foreach (TillHealth::LEVELS as $code => $level) {
             $this->assertContains($level, [TillHealth::CONFIRMED, TillHealth::SUSPECTED]);
             $this->assertNotSame($code, TillHealth::message($code), 'لا جملة للرمز '.$code);
         }
+
+        foreach ([TillHealth::PRINTER_ON_REVOKED_TILL, TillHealth::STALE_TILL_HOLDS_PRINTER, TillHealth::SAME_NAME_PRINTER] as $code) {
+            foreach (['ar' => 'إن ', 'en' => 'If '] as $locale => $if) {
+                app()->setLocale($locale);
+                $this->assertStringContainsString($if, TillHealth::message($code), "المشتبهُ يُقال بلا شرط ({$locale}): {$code}");
+            }
+        }
+    }
+
+    /** وما يجهله التدقيقُ عن صندوقين لا يُعدّ مؤكَّدًا أبدًا: الأنماطُ بين صندوقين كلُّها مشتبهة */
+    public function test_nothing_read_across_two_tills_is_ever_confirmed(): void
+    {
+        $this->assertSame(TillHealth::SUSPECTED, TillHealth::LEVELS[TillHealth::PRINTER_ON_REVOKED_TILL]);
+        $this->assertSame(TillHealth::SUSPECTED, TillHealth::LEVELS[TillHealth::STALE_TILL_HOLDS_PRINTER]);
     }
 }

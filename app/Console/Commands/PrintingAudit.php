@@ -8,9 +8,7 @@ use App\Models\PrintJob;
 use App\Support\PrintJobs;
 use App\Support\TillHealth;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * تدقيقُ صناديق كلّ المتاجر وطابعاتها — قراءةٌ فقط.
@@ -23,6 +21,9 @@ use Illuminate\Support\Facades\Log;
  * فيه أصلًا (يطبع من المتصفّح أو لا يطبع)، وصندوقٌ بلا طابعةٍ لا يقول جارُه
  * إنّ طابعتَه عنده.
  *
+ * والتصنيفُ (`classification`) لكلّ صندوقٍ نشطٍ ولكلّ متجر: «مؤكَّد» إن كان فيه
+ * ما ثبت، وإلّا «مشتبه» إن كان فيه ما يحتاج مراجعة، وإلّا «سليم».
+ *
  * ═══ وما لا يُفعل ═══
  *
  * لا كتابةَ في القاعدة: على PostgreSQL معاملةٌ `READ ONLY`، وعلى SQLite
@@ -30,31 +31,30 @@ use Illuminate\Support\Facades\Log;
  * ولا يُبطل صندوقًا ولا يمسّ ورقة. ولا يُخرج عنوانًا ولا اسمَ زبونٍ ولا رمزًا:
  * معرّفاتُ المتاجر والصناديق والرموزُ والأعداد وحدها.
  *
- * والتشغيلُ على الإنتاج بموافقة المالك وحده.
+ * ولا يكتب في غير القاعدة أيضًا: لا كاشَ ولا سجلّ. المراقبةُ اليوميّة التي
+ * تتذكّر وتكتب أمرٌ آخر (`pos:printing-watch`)، خلف مفتاحها.
+ *
+ * والتشغيلُ على الإنتاج بموافقة المالك وحده، ولا يُجدوَل.
  *
  *     php artisan pos:printing-audit             # ملخّص
  *     php artisan pos:printing-audit --detail    # ومعه: متجر ← صندوق ← رموز
  *     php artisan pos:printing-audit --json
- *     php artisan pos:printing-audit --watch     # الفحص الدوريّ: سطرٌ في السجلّ حين يتغيّر شيءٌ مؤكَّد
  */
 class PrintingAudit extends Command
 {
     protected $signature = 'pos:printing-audit
         {--business= : متجرٌ واحد بمعرّفه}
         {--detail : الصناديقُ ورموزُها لكلّ متجر}
-        {--json : الناتجُ JSON}
-        {--watch : الفحص الدوريّ — يكتب في السجلّ حين يتغيّر المؤكَّد وحده}';
+        {--json : الناتجُ JSON}';
 
     protected $description = 'تدقيق صناديق نقاط البيع وطابعاتها في كل المتاجر — قراءة فقط';
 
-    /** آخرُ ما رآه الفحصُ الدوريّ — بصمةٌ في الذاكرة المؤقّتة، لا في القاعدة */
-    public const WATCH_KEY = 'pos:printing-audit:confirmed';
-
     /** ما يُوصى به لكلّ رمز — للمالك، لا للتاجر */
     public const ADVICE = [
-        TillHealth::ORPHANED_PRINTER => 'يُعاد تفعيل الجهاز بخيار «يحلّ محلّ» الصندوق الملغى، فيعود بطابعته. لا يُنقل شيء آليًّا.',
+        TillHealth::PRINTER_ON_REVOKED_TILL => 'يُسأل التاجر: إن كان هذا الجهاز بديلَ الصندوق الملغى فليُفعَّل بخيار «يحلّ محلّ» ذلك الصندوق فيعود بطابعته. وإلّا فلا شيء. لا يُنقل شيء آليًّا.',
         TillHealth::STALE_TILL_HOLDS_PRINTER => 'يُسأل التاجر: إن كان الجهاز الأحدث بديلًا فليُفعَّل بخيار «يحلّ محلّ». وإن كانا صندوقين فلا شيء.',
         TillHealth::AMBIGUOUS_RECEIPT => 'يحدّد التاجر «طابعة الإيصال» من الإعدادات. يُطبع حتى ذلك على الأقدم كما كان.',
+        TillHealth::SAME_NAME_PRINTER => 'يتحقّق التاجر: إن كانتا الطابعة نفسها فليحذف المكرّرة أو يعطّلها. وإن كانتا طابعتين فليغيّر اسم إحداهما.',
         TillHealth::RECEIPT_DISABLED => 'يفعّل التاجر طابعة الإيصال أو يحدّد غيرها.',
         TillHealth::INVALID_ADDRESS => 'يصحّح التاجر العنوان (عنوان محلّي فقط، والمنفذ في حقله) ثم «اختبار الطابعة» من الجهاز نفسه.',
         TillHealth::DUPLICATE_PRINTER => 'يحذف التاجر المكرّرة أو يعطّلها بعد التأكّد أيّها تعمل.',
@@ -66,10 +66,6 @@ class PrintingAudit extends Command
     public function handle(): int
     {
         $report = self::readOnly(fn () => self::collect($this->option('business') ? (int) $this->option('business') : null));
-
-        if ($this->option('watch')) {
-            return $this->watch($report);
-        }
 
         if ($this->option('json')) {
             $this->line(json_encode($this->option('detail') ? $report : array_diff_key($report, ['detail' => true]), JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
@@ -85,8 +81,13 @@ class PrintingAudit extends Command
     /**
      * يقرأ ولا يكتب — والقاعدةُ تحرس ذلك، لا حسنُ النيّة.
      *
-     * وداخل معاملةٍ قائمة (الاختبارات) لا تُفرض «قراءةٌ فقط» على PostgreSQL:
-     * المعاملةُ ليست لنا، وقلبُها للقراءة يمنع من فتحها أن يكتب بعدنا.
+     * - SQLite: `query_only`.
+     * - PostgreSQL خارج معاملة: معاملةٌ `READ ONLY` لنا.
+     * - PostgreSQL داخل معاملةٍ ليست لنا (الاختبارات، أو نداءٌ من داخل عمل):
+     *   نقطةُ حفظٍ تُقلب للقراءة ثمّ يُتراجع إليها — فيسقط ما يكتب، ويعود من
+     *   فتح المعاملةَ قابلًا للكتابة بعدنا. ولا يضيع شيء: لم يُكتب فيها شيء.
+     *
+     * وقاعدةٌ غيرهما لا تُقرأ: «قراءةٌ فقط» لا يحرسها إلّا القاعدة.
      */
     public static function readOnly(callable $work): mixed
     {
@@ -102,7 +103,11 @@ class PrintingAudit extends Command
             }
         }
 
-        if ($driver === 'pgsql' && DB::transactionLevel() === 0) {
+        if ($driver !== 'pgsql') {
+            throw new \RuntimeException("pos:printing-audit يقرأ على PostgreSQL وSQLite وحدهما — لا حارسَ للقراءة على {$driver}.");
+        }
+
+        if (DB::transactionLevel() === 0) {
             return DB::transaction(function () use ($work) {
                 DB::statement('SET TRANSACTION READ ONLY');
 
@@ -110,11 +115,19 @@ class PrintingAudit extends Command
             });
         }
 
-        return $work();
+        DB::beginTransaction();
+
+        try {
+            DB::statement('SET LOCAL transaction_read_only = on');
+
+            return $work();
+        } finally {
+            DB::rollBack();
+        }
     }
 
     /**
-     * @return array{summary: array<string, int>, issues: array<string, array{level: string, tills: int, businesses: int, advice: string}>, queue: array<string, array{jobs: int, businesses: int, advice: string}>, legitimate: array<string, int>, detail: array<int, array<int, list<string>>>}
+     * @return array{summary: array<string, int>, classification: array{tills: array<string, int>, businesses: array<string, int>}, issues: array<string, array{level: string, tills: int, businesses: int, advice: string}>, queue: array<string, array{jobs: int, businesses: int, advice: string}>, legitimate: array<string, int>, detail: array<int, array<int, list<string>>>}
      */
     public static function collect(?int $only = null): array
     {
@@ -123,6 +136,8 @@ class PrintingAudit extends Command
             ->distinct()->orderBy('business_id')->pluck('business_id')->map(fn ($id) => (int) $id);
 
         $summary = ['businesses_with_tills' => $businesses->count(), 'active_tills' => 0, 'revoked_tills' => 0, 'printers_active' => 0];
+        $blank = [TillHealth::CONFIRMED => 0, TillHealth::SUSPECTED => 0, 'healthy' => 0];
+        $classification = ['tills' => $blank, 'businesses' => $blank];
         $issues = [];
         $detail = [];
         $legitimate = ['businesses_without_any_printer' => 0, 'active_tills_without_printer_unflagged' => 0];
@@ -155,6 +170,25 @@ class PrintingAudit extends Command
                 }
             }
 
+            /*
+             * الصندوقُ بأسوأ ما فيه، والمتجرُ بأسوأ صناديقه: مؤكَّدٌ إن ثبت فيه
+             * شيء، وإلّا مشتبهٌ إن كان فيه ما يُراجَع، وإلّا سليم.
+             */
+            $worst = 'healthy';
+
+            foreach ($devices->where('status', PosDevice::ACTIVE) as $d) {
+                $levels = collect($found[(int) $d->id] ?? [])->pluck('level');
+                $level = $levels->contains(TillHealth::CONFIRMED) ? TillHealth::CONFIRMED
+                    : ($levels->isNotEmpty() ? TillHealth::SUSPECTED : 'healthy');
+                $classification['tills'][$level]++;
+
+                if ($level === TillHealth::CONFIRMED || ($level === TillHealth::SUSPECTED && $worst === 'healthy')) {
+                    $worst = $level;
+                }
+            }
+
+            $classification['businesses'][$worst]++;
+
             if ($printers->isNotEmpty()) {
                 $legitimate['active_tills_without_printer_unflagged'] += $devices
                     ->where('status', PosDevice::ACTIVE)
@@ -172,6 +206,7 @@ class PrintingAudit extends Command
 
         return [
             'summary' => $summary,
+            'classification' => $classification,
             'issues' => $issues,
             'queue' => self::queue($only),
             'legitimate' => $legitimate,
@@ -193,60 +228,18 @@ class PrintingAudit extends Command
         ];
     }
 
-    /**
-     * الفحصُ الدوريّ — سطرٌ في السجلّ حين يتغيّر المؤكَّد، وصمتٌ ما دام كما كان.
-     *
-     * لا يكتب في القاعدة ولا يراسل تاجرًا: البصمةُ في الذاكرة المؤقّتة،
-     * والسطرُ أعدادٌ ورموزٌ ومعرّفاتُ متاجر — بلا اسمٍ ولا عنوان.
-     */
-    private function watch(array $report): int
-    {
-        $confirmed = [];
-
-        foreach ($report['detail'] as $bid => $tills) {
-            foreach ($tills as $till => $codes) {
-                foreach ($codes as $code) {
-                    if (TillHealth::LEVELS[$code] === TillHealth::CONFIRMED) {
-                        $confirmed[] = $bid.':'.$till.':'.$code;
-                    }
-                }
-            }
-        }
-
-        foreach (['claim_expired', 'pending_stale'] as $kind) {
-            if ($report['queue'][$kind]['jobs'] > 0) {
-                $confirmed[] = 'queue:'.$kind.':'.$report['queue'][$kind]['jobs'];
-            }
-        }
-
-        sort($confirmed);
-        $now = hash('sha256', implode('|', $confirmed));
-        $before = Cache::get(self::WATCH_KEY);
-
-        if ($before !== $now) {
-            Cache::forever(self::WATCH_KEY, $now);
-
-            $counts = collect($report['issues'])->filter(fn ($i) => $i['level'] === TillHealth::CONFIRMED)->map(fn ($i) => $i['tills'])->all();
-            $queue = collect($report['queue'])->map(fn ($q) => $q['jobs'])->all();
-
-            Log::warning('pos.printing-health changed', [
-                'confirmed_tills_by_code' => $counts,
-                'stuck_jobs' => $queue,
-                'businesses' => collect($report['detail'])->keys()->values()->all(),
-            ]);
-            $this->line('changed');
-        }
-
-        return self::SUCCESS;
-    }
-
     private function print(array $report): void
     {
         $this->info('صناديق نقاط البيع وطابعاتها — قراءة فقط');
         $this->table(['المقياس', 'العدد'], collect($report['summary'])->map(fn ($v, $k) => [$k, $v])->values()->all());
 
         $this->line('');
-        $this->info('ما يمنع الطباعة أو يحرفها');
+        $this->info('التصنيف — مؤكَّد · مشتبه · سليم');
+        $this->table(['', TillHealth::CONFIRMED, TillHealth::SUSPECTED, 'healthy'], collect($report['classification'])
+            ->map(fn ($c, $what) => [$what, $c[TillHealth::CONFIRMED], $c[TillHealth::SUSPECTED], $c['healthy']])->values()->all());
+
+        $this->line('');
+        $this->info('ما يمنع الطباعة أو يحرفها، وما يحتاج مراجعة');
         $this->table(['الرمز', 'الدرجة', 'صناديق', 'متاجر', 'العلاج'], collect($report['issues'])
             ->map(fn ($i, $code) => [$code, $i['level'], $i['tills'], $i['businesses'], $i['advice']])->values()->all());
 

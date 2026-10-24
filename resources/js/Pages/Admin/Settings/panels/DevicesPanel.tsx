@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { MonitorSmartphone, Pencil, Plug, TriangleAlert } from 'lucide-react';
+import { CircleHelp, MonitorSmartphone, Pencil, Plug, TriangleAlert } from 'lucide-react';
 import DataTable, { type Column } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
 import Field, { Select } from '@/Components/Field';
@@ -12,7 +12,12 @@ import { useTranslate } from '@/lib/i18n';
 import PeripheralsDialog, { type Peripheral } from '../../Devices/partials/PeripheralsDialog';
 import type { PageProps } from '@/types';
 
-/** ما يمنع إيصالَ صندوقٍ من الخروج — يقيسه الخادم (`TillHealth`) */
+/**
+ * ما يمنع إيصالَ صندوقٍ من الخروج، أو يحتاج مراجعة — يقيسه الخادم (`TillHealth`).
+ *
+ * `confirmed` يُعرض تحذيرًا. و`suspected` يُعرض «للمراجعة» بلونٍ هادئ: نمطٌ
+ * قد يكون مقصودًا، فلا يُقال للتاجر إنّه عطل.
+ */
 export interface TillIssue {
     code: string;
     level: 'confirmed' | 'suspected';
@@ -115,15 +120,22 @@ export default function DevicesPanel({
                                 </span>
                             )}
                         </span>
-                        {/* ما يمنع إيصالَه من الخروج — أوّلُه، ومعه عددُ البقيّة */}
+                        {/* ما يمنع إيصالَه من الخروج أو يُراجَع — أوّلُه (المؤكَّدُ أوّلًا)، ومعه عددُ البقيّة */}
                         {!!d.issues?.length && (
                             <button
                                 type="button"
                                 onClick={() => setLinking(d.id)}
-                                className="mt-1 flex items-start gap-1 text-start text-[12px] text-[#b45309] hover:underline"
+                                className={`mt-1 flex items-start gap-1 text-start text-[12px] hover:underline ${
+                                    d.issues[0].level === 'confirmed' ? 'text-[#b45309]' : 'text-[#475569]'
+                                }`}
                             >
-                                <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                                {d.issues[0].level === 'confirmed' ? (
+                                    <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                                ) : (
+                                    <CircleHelp className="mt-px size-3.5 shrink-0" />
+                                )}
                                 <span>
+                                    {d.issues[0].level === 'confirmed' ? '' : `${t('للمراجعة')}: `}
                                     {d.issues[0].message}
                                     {d.issues.length > 1 ? ` (+${d.issues.length - 1})` : ''}
                                 </span>

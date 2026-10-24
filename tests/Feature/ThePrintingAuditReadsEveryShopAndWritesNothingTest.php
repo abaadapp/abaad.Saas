@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Console\Commands\PrintingAudit;
+use App\Console\Commands\PrintingWatch;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\PosDevice;
@@ -11,8 +12,10 @@ use App\Models\PrintJob;
 use App\Models\User;
 use App\Support\TillHealth;
 use Illuminate\Database\QueryException;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -20,10 +23,11 @@ use Tests\TestCase;
 
 /**
  * تدقيقُ صناديق كلّ المتاجر (`pos:printing-audit`) — يقرأ ولا يكتب، ولا يُفشي.
+ * والمراقبةُ اليوميّة (`pos:printing-watch`) أمرٌ آخر، مطفأٌ حتى يُشعَل.
  *
- * ثلاثةُ متاجر: واحدٌ وقع فيه الأثرُ المبحوثُ عنه (طابعةٌ على صندوقٍ ملغى وخلفُه
- * بلا طابعة، وعنوانٌ يرفضه التطبيق)، وواحدٌ سليم، وواحدٌ بلا طابعةٍ أصلًا —
- * مشروعٌ لا يُعدّ عطلًا.
+ * ثلاثةُ متاجر: واحدٌ فيه مشتبهٌ (طابعةٌ على صندوقٍ ملغى وخلفُه بلا طابعة) ومؤكَّدٌ
+ * (عنوانٌ يرفضه التطبيق)، وواحدٌ سليم، وواحدٌ بلا طابعةٍ أصلًا — مشروعٌ لا يُعدّ
+ * عطلًا.
  */
 class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
 {
@@ -37,6 +41,8 @@ class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
 
     private PosDevice $orphan;
 
+    private PosDevice $odd;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -48,8 +54,8 @@ class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
         $old = $this->till($this->broken, PosDevice::REVOKED, '2026-10-01');
         $this->printer($old, ['address' => '192.168.100.235']);
         $this->orphan = $this->till($this->broken, PosDevice::ACTIVE, '2026-10-20');
-        $odd = $this->till($this->broken, PosDevice::ACTIVE, '2026-10-21');
-        $this->printer($odd, ['address' => '192.168.1.50:9100']);
+        $this->odd = $this->till($this->broken, PosDevice::ACTIVE, '2026-10-21');
+        $this->printer($this->odd, ['address' => '192.168.1.50:9100']);
 
         $this->printer($this->till($this->healthy, PosDevice::ACTIVE, '2026-10-01'), ['is_receipt_printer' => true]);
         $this->till($this->paperless, PosDevice::ACTIVE, '2026-10-01');
@@ -86,11 +92,16 @@ class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
         $report = $this->audit(['--detail' => true]);
 
         $this->assertSame(3, $report['summary']['businesses_with_tills']);
-        $this->assertSame(['level' => TillHealth::CONFIRMED, 'tills' => 1, 'businesses' => 1], array_diff_key($report['issues'][TillHealth::ORPHANED_PRINTER], ['advice' => true]));
-        $this->assertSame(1, $report['issues'][TillHealth::INVALID_ADDRESS]['tills']);
+        $this->assertSame(['level' => TillHealth::SUSPECTED, 'tills' => 1, 'businesses' => 1], array_diff_key($report['issues'][TillHealth::PRINTER_ON_REVOKED_TILL], ['advice' => true]));
+        $this->assertSame(['level' => TillHealth::CONFIRMED, 'tills' => 1, 'businesses' => 1], array_diff_key($report['issues'][TillHealth::INVALID_ADDRESS], ['advice' => true]));
         $this->assertSame(1, $report['legitimate']['businesses_without_any_printer'], 'متجرٌ بلا طابعة يُعدّ عطلًا');
         $this->assertSame([$this->orphan->id], array_keys(collect($report['detail'][$this->broken->id])->filter(
-            fn ($codes) => in_array(TillHealth::ORPHANED_PRINTER, $codes, true))->all()));
+            fn ($codes) => in_array(TillHealth::PRINTER_ON_REVOKED_TILL, $codes, true))->all()));
+
+        // مؤكَّدٌ · مشتبه · سليم — لكلّ صندوقٍ نشطٍ مرّةً، ولكلّ متجرٍ بأسوأ صناديقه
+        $this->assertSame([TillHealth::CONFIRMED => 1, TillHealth::SUSPECTED => 1, 'healthy' => 2], $report['classification']['tills']);
+        $this->assertSame([TillHealth::CONFIRMED => 1, TillHealth::SUSPECTED => 0, 'healthy' => 2], $report['classification']['businesses']);
+        $this->assertSame($report['summary']['active_tills'], array_sum($report['classification']['tills']));
         $this->assertArrayNotHasKey($this->healthy->id, $report['detail']);
         $this->assertArrayNotHasKey($this->paperless->id, $report['detail']);
     }
@@ -130,13 +141,14 @@ class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
         ];
     }
 
-    /** والقاعدةُ تحرس «قراءةً فقط» — لا حسنُ النيّة: سطرٌ يكتب يسقط */
+    /**
+     * والقاعدةُ تحرس «قراءةً فقط» — لا حسنُ النيّة: سطرٌ يكتب يسقط.
+     *
+     * على SQLite وعلى PostgreSQL معًا — وفي PostgreSQL داخل معاملة الاختبار:
+     * نقطةُ حفظٍ تُقلب للقراءة ثمّ يُتراجع إليها.
+     */
     public function test_a_write_inside_the_audit_is_refused(): void
     {
-        if (DB::getDriverName() !== 'sqlite') {
-            $this->markTestSkipped('على PostgreSQL تُفرض المعاملةُ READ ONLY خارج معاملة الاختبار وحدها.');
-        }
-
         try {
             PrintingAudit::readOnly(fn () => DB::table('pos_devices')->update(['name' => 'كُتب']));
             $this->fail('كُتب داخل التدقيق');
@@ -164,19 +176,99 @@ class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
         $this->assertSame(1, $report['queue']['pending_stale']['businesses']);
     }
 
-    /** والفحصُ الدوريّ: سطرٌ حين يتغيّر المؤكَّد، وصمتٌ ما دام كما كان */
-    public function test_the_daily_watch_speaks_only_when_something_confirmed_changes(): void
+    /* ═══════════ المراقبةُ اليوميّة — أمرٌ آخر، خلف مفتاحٍ مطفأ ═══════════ */
+
+    private function watching(bool $on = true): void
     {
+        config(['pos.daily_printing_audit' => $on, 'pos.printing_watch_store' => 'array']);
+    }
+
+    /** مطفأةٌ افتراضًا: لا تقرأ ولا تكتب ولا تقول شيئًا */
+    public function test_the_daily_watch_is_off_until_the_owner_turns_it_on(): void
+    {
+        $this->assertFalse(config('pos.daily_printing_audit'), 'المراقبةُ مشتعلةٌ بلا موافقة');
+        config(['pos.printing_watch_store' => 'array']);
         Log::spy();
 
-        Artisan::call('pos:printing-audit', ['--watch' => true]);
-        Artisan::call('pos:printing-audit', ['--watch' => true]);
+        $this->assertSame(0, Artisan::call('pos:printing-watch'));
+
+        Log::shouldNotHaveReceived('warning');
+        $this->assertNull(Cache::store('array')->get(PrintingWatch::KEY));
+    }
+
+    /** والجدولةُ تفحص المفتاح قبل أن تناديها — والتدقيقُ اليدويّ لا يُجدوَل أبدًا */
+    public function test_the_schedule_skips_the_watch_while_it_is_off(): void
+    {
+        $events = collect(app(Schedule::class)->events());
+        $watch = $events->filter(fn ($e) => str_contains((string) $e->command, 'pos:printing-watch'));
+
+        $this->assertCount(1, $watch);
+        $this->assertSame([], $events->filter(fn ($e) => str_contains((string) $e->command, 'pos:printing-audit'))->all(), 'التدقيقُ اليدويّ مجدوَل');
+
+        $this->watching(false);
+        $this->assertFalse($watch->first()->filtersPass(app()), 'تُنادى المراقبةُ وهي مطفأة');
+
+        $this->watching();
+        $this->assertTrue($watch->first()->filtersPass(app()));
+    }
+
+    /** وإطفاءُ المراقبة لا يُطفئ التدقيقَ اليدويّ المأذون */
+    public function test_the_manual_audit_runs_with_the_watch_off(): void
+    {
+        $this->watching(false);
+
+        $this->assertSame(1, $this->audit()['issues'][TillHealth::INVALID_ADDRESS]['tills']);
+    }
+
+    /** سطرٌ حين يتغيّر المؤكَّد، وصمتٌ ما دام كما كان — والمشتبهُ لا يحرّكها */
+    public function test_the_daily_watch_speaks_only_when_something_confirmed_changes(): void
+    {
+        $this->watching();
+        Log::spy();
+
+        Artisan::call('pos:printing-watch');
+        Artisan::call('pos:printing-watch');
+        Log::shouldHaveReceived('warning')->once();
+
+        // يزول المشتبه (طابعةُ الملغى تُعطَّل) — لا يتغيّر المؤكَّد، فلا يُقال شيء
+        PosPeripheral::where('address', '192.168.100.235')->update(['active' => false]);
+        Artisan::call('pos:printing-watch');
         Log::shouldHaveReceived('warning')->once();
 
         // يُصلَح العنوان — فيتغيّر المؤكَّد، فيُقال مرّةً أخرى
         PosPeripheral::where('address', '192.168.1.50:9100')->update(['address' => '192.168.1.50']);
-        Artisan::call('pos:printing-audit', ['--watch' => true]);
+        Artisan::call('pos:printing-watch');
         Log::shouldHaveReceived('warning')->twice();
+    }
+
+    /**
+     * ولا تكتب في القاعدة — ولو كان الكاشُ الافتراضيّ فيها، كما على الإنتاج:
+     * بصمتُها في مخزنها، ولا قفلَ في `cache_locks`.
+     */
+    public function test_the_daily_watch_writes_nothing_to_the_database(): void
+    {
+        config(['cache.default' => 'database']);
+        $this->watching();
+        $before = $this->snapshot();
+
+        $this->assertSame(0, Artisan::call('pos:printing-watch'));
+
+        $this->assertNotNull(Cache::store('array')->get(PrintingWatch::KEY));
+        $this->assertSame(0, DB::table('cache')->count(), 'كُتبت البصمةُ في جدول cache');
+        $this->assertSame(0, DB::table('cache_locks')->count());
+        $this->assertSame($before, $this->snapshot());
+    }
+
+    /** ومخزنٌ في القاعدة يُرفض — ولا يُقرأ شيءٌ بعده */
+    public function test_a_watch_store_in_the_database_is_refused(): void
+    {
+        config(['pos.daily_printing_audit' => true, 'pos.printing_watch_store' => 'database']);
+        Log::spy();
+
+        $this->assertSame(1, Artisan::call('pos:printing-watch'));
+
+        $this->assertSame(0, DB::table('cache')->count());
+        Log::shouldNotHaveReceived('warning');
     }
 
     /* ═══════════ جرسُ التاجر — خلف مفتاح، لمن يملك الإعدادات ═══════════ */
@@ -203,9 +295,15 @@ class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
         $this->assertSame([], $this->bell($owner));
 
         config(['pos.till_health_bell' => true]);
-        $keys = $this->bell($owner);
-        $this->assertContains('till-printer-'.$this->orphan->id, $keys);
-        $this->assertCount(2, $keys, 'صفٌّ لكلّ صندوقٍ فيه مؤكَّد — لا أكثر');
+        $this->assertSame(['till-printer-'.$this->odd->id], $this->bell($owner), 'صفٌّ لكلّ صندوقٍ فيه مؤكَّد — لا أكثر');
+    }
+
+    /** والمشتبهُ لا يدقّ الجرس: «طابعةٌ على صندوقٍ ملغى» قد تكون مقصودة */
+    public function test_the_bell_never_rings_for_what_is_only_suspected(): void
+    {
+        config(['pos.till_health_bell' => true]);
+
+        $this->assertNotContains('till-printer-'.$this->orphan->id, $this->bell($this->owner($this->broken)));
     }
 
     public function test_the_bell_rings_only_for_settings_and_stops_when_fixed(): void
@@ -217,8 +315,6 @@ class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
         $this->assertSame([], $this->bell($this->owner($this->healthy)));
 
         $owner = $this->owner($this->broken);
-        PosPeripheral::where('pos_device_id', '!=', $this->orphan->id)->where('business_id', $this->broken->id)
-            ->where('address', '192.168.100.235')->update(['pos_device_id' => $this->orphan->id]);
         PosPeripheral::where('address', '192.168.1.50:9100')->update(['address' => '192.168.1.50']);
 
         $this->assertSame([], $this->bell($owner));

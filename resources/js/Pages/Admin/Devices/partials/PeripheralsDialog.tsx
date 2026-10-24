@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Barcode, CheckCircle2, Loader2, Monitor, Pencil, Plug, Plus, Printer, Scale, Trash2, TriangleAlert, Wallet, XCircle } from 'lucide-react';
+import { Barcode, CheckCircle2, CircleHelp, Loader2, Monitor, Pencil, Plug, Plus, Printer, Scale, Trash2, TriangleAlert, Wallet, XCircle } from 'lucide-react';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
@@ -231,14 +231,29 @@ export default function PeripheralsDialog({
                         {/*
                             ما يمنع إيصالَ هذا الصندوق من الخروج — كما يقيسه الخادم
                             (`TillHealth`) لهذه الشاشة وللتدقيق معًا. يُقال ولا يُصلَح:
-                            القرارُ لصاحب الصندوق.
+                            القرارُ لصاحب الصندوق. والمشتبهُ «للمراجعة» بلونٍ هادئ.
                         */}
                         {issues.length > 0 && (
-                            <ul className="space-y-1 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#b45309]" role="status">
+                            <ul
+                                className={`space-y-1 rounded-[10px] border p-3 text-[12px] ${
+                                    issues.some((issue) => issue.level === 'confirmed')
+                                        ? 'border-[#fde68a] bg-[#fffbeb]'
+                                        : 'border-[#e2e8f0] bg-[#f8fafc]'
+                                }`}
+                                role="status"
+                            >
                                 {issues.map((issue, i) => (
-                                    <li key={`${issue.code}-${issue.peripheral ?? i}`} className="flex items-start gap-1.5">
-                                        <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                                    <li
+                                        key={`${issue.code}-${issue.peripheral ?? i}`}
+                                        className={`flex items-start gap-1.5 ${issue.level === 'confirmed' ? 'text-[#b45309]' : 'text-[#475569]'}`}
+                                    >
+                                        {issue.level === 'confirmed' ? (
+                                            <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                                        ) : (
+                                            <CircleHelp className="mt-px size-3.5 shrink-0" />
+                                        )}
                                         <span>
+                                            {issue.level === 'confirmed' ? '' : `${t('للمراجعة')}: `}
                                             {issue.message}
                                             {issue.peripheral
                                                 ? ` — ${peripherals.find((p) => p.id === issue.peripheral)?.name ?? ''}`

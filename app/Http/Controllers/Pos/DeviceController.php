@@ -205,7 +205,8 @@ class DeviceController extends Controller
                     'erasable' => ! $d->isActive() && $d->orders_count === 0 && $d->shifts_count === 0,
                     'orders' => (int) $d->orders_count,
                     'shifts' => (int) $d->shifts_count,
-                    'issues' => collect($health[$d->id] ?? [])->map(fn ($i) => [
+                    // ما ثبت أوّلًا، ثمّ ما يُراجَع — والشاشةُ تعرض الأوّل
+                    'issues' => collect($health[$d->id] ?? [])->sortBy(fn ($i) => $i['level'] === TillHealth::CONFIRMED ? 0 : 1)->map(fn ($i) => [
                         'code' => $i['code'],
                         'level' => $i['level'],
                         'peripheral' => $i['peripheral'],

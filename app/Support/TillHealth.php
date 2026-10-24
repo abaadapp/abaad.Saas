@@ -27,11 +27,25 @@ use Illuminate\Support\Facades\DB;
  *
  * ═══ ودرجتان ═══
  *
- * - `confirmed` — واقعةٌ تمنع الطباعةَ أو تحرفها، تُقرأ من الصفوف وحدها:
- *   عنوانٌ يرفضه التطبيق، طابعتان ولا طابعةَ إيصالٍ مسمّاة، طابعةٌ مكرّرة،
- *   طابعةٌ بقيت على صندوقٍ ملغى وخلفُه بلا طابعة.
- * - `suspected` — نمطٌ يحتمل الخطأ ويحتمل القصد، يحتاج عينَ صاحبه: صندوقٌ
- *   قديمٌ نشطٌ لم يُرَ منذ فُعّل صندوقٌ أحدثُ بلا طابعة.
+ * - `confirmed` — إعدادُ الصندوق نفسِه يناقض نفسَه، يُقرأ من صفوفه وحدها ولا
+ *   يحتمل القصد: عنوانٌ يرفضه التطبيق، «طابعةُ الإيصال» المسمّاة معطّلة،
+ *   «طباعةٌ تلقائيّة» على طابعةٍ لا يُطبع عليها الإيصال، والطابعةُ نفسُها
+ *   (العنوانُ والمنفذ) مسجّلةٌ مرّتين.
+ * - `suspected` — نمطٌ يحتمل الخطأ ويحتمل القصد، يحتاج عينَ صاحبه ولا يُقال
+ *   له «عطل»: طابعتان ولا «طابعة إيصال» مسمّاة (يُطبع على الأقدم كما كان)،
+ *   طابعتان بالاسم والتوصيل نفسيهما، وصندوقٌ بلا طابعةٍ وفي فرعه صندوقٌ آخر
+ *   يحملها (ملغى، أو نشطٌ لم يُرَ منذ فُعّل هذا).
+ *
+ * ═══ ولمَ «طابعةٌ على صندوقٍ ملغى» مشتبهةٌ لا مؤكَّدة ═══
+ *
+ * لا صفَّ يربط صندوقين: التفعيلُ القديم كان يولّد صفًّا جديدًا ولا يكتب من
+ * أين جاء. فالصندوقان في فرعٍ واحد قد يكونان جهازًا استُبدل فبقيت طابعتُه
+ * خلفه — وقد يكونان صندوقين: أُلغي أحدهما عمدًا ويطبع الآخرُ من المتصفّح.
+ * والصفوفُ لا تفرّق، فلا يُقال للتاجر «فُقدت طابعتُك» ولا يدقّ الجرس. ومنذ
+ * `TillActivation` لا يولد هذا النمطُ من استبدال: «يحلّ محلّ» يُحيي الصفَّ
+ * نفسَه بطابعته.
+ *
+ * والجرسُ (`bellItems`) والمراقبةُ اليوميّة للمؤكَّد وحده.
  *
  * وصندوقٌ بلا طابعةٍ ليس معطوبًا بذاته — كثيرٌ من المتاجر تطبع من المتصفّح
  * أو لا تطبع. فلا يُعدّ إلّا حين يقول جارُه إنّ طابعتَه هناك.
@@ -42,8 +56,8 @@ final class TillHealth
 
     public const SUSPECTED = 'suspected';
 
-    /** صندوقٌ نشطٌ بلا طابعة، وطابعتُه على صندوقٍ ملغى في فرعه — أثرُ تفعيلٍ من متصفّحٍ آخر */
-    public const ORPHANED_PRINTER = 'orphaned_printer';
+    /** صندوقٌ نشطٌ بلا طابعة، وفي فرعه صندوقٌ ملغى يحمل طابعةً مفعّلة — قد يكون بديلَه، وقد لا */
+    public const PRINTER_ON_REVOKED_TILL = 'printer_on_revoked_till';
 
     /** صندوقٌ أحدثُ بلا طابعة، وأقدمُ نشطٌ بطابعته لم يُرَ منذ فُعّل الأحدث */
     public const STALE_TILL_HOLDS_PRINTER = 'stale_till_holds_printer';
@@ -57,20 +71,24 @@ final class TillHealth
     /** طابعةُ شبكةٍ بعنوانٍ يرفضه التطبيق (`PrinterAddress`) */
     public const INVALID_ADDRESS = 'invalid_address';
 
-    /** طابعتان مفعّلتان بالعنوان والمنفذ نفسيهما، أو بالاسم والتوصيل نفسيهما */
+    /** طابعتا شبكةٍ مفعّلتان بالعنوان والمنفذ الفعليّ نفسيهما — جهازٌ واحدٌ سُجّل مرّتين */
     public const DUPLICATE_PRINTER = 'duplicate_printer';
+
+    /** طابعتان مفعّلتان بالاسم والتوصيل نفسيهما — قد تكونان واحدة، وقد تكونان طابعتين */
+    public const SAME_NAME_PRINTER = 'same_name_printer';
 
     /** «طباعة تلقائية بعد البيع» على طابعةٍ ليست طابعةَ الإيصال — لا أثرَ لها */
     public const AUTO_PRINT_ELSEWHERE = 'auto_print_elsewhere';
 
     public const LEVELS = [
-        self::ORPHANED_PRINTER => self::CONFIRMED,
-        self::STALE_TILL_HOLDS_PRINTER => self::SUSPECTED,
-        self::AMBIGUOUS_RECEIPT => self::CONFIRMED,
         self::RECEIPT_DISABLED => self::CONFIRMED,
         self::INVALID_ADDRESS => self::CONFIRMED,
         self::DUPLICATE_PRINTER => self::CONFIRMED,
         self::AUTO_PRINT_ELSEWHERE => self::CONFIRMED,
+        self::AMBIGUOUS_RECEIPT => self::SUSPECTED,
+        self::SAME_NAME_PRINTER => self::SUSPECTED,
+        self::PRINTER_ON_REVOKED_TILL => self::SUSPECTED,
+        self::STALE_TILL_HOLDS_PRINTER => self::SUSPECTED,
     ];
 
     /** المنفذُ حين لا يُكتب — كما في التطبيقين (`mobile/PROTOCOL.md` §4) */
@@ -127,8 +145,8 @@ final class TillHealth
                 }
             }
 
-            foreach (self::duplicates($active) as $p) {
-                $note($id, self::DUPLICATE_PRINTER, $p['id']);
+            foreach (self::duplicates($active) as [$p, $code]) {
+                $note($id, $code, $p['id']);
             }
 
             if ($active->isEmpty()) {
@@ -140,12 +158,12 @@ final class TillHealth
     }
 
     /**
-     * صندوقٌ نشطٌ بلا طابعة: أطابعتُه على صندوقٍ آخر في فرعه؟
+     * صندوقٌ نشطٌ بلا طابعة: أطابعتُه على صندوقٍ آخر في فرعه؟ — مشتبهٌ أبدًا.
      *
-     * - على صندوقٍ **ملغى** — مؤكَّد: الطابعةُ لا تخدم أحدًا، وهذا أثرُ تفعيلٍ
-     *   من متصفّحٍ أو تطبيقٍ آخر وُلد فيه صفٌّ جديد.
-     * - على صندوقٍ **نشطٍ أقدمَ** لم يُرَ منذ فُعّل هذا — مشتبه: قد يكون جهازًا
-     *   هُجر، وقد يكون صندوقًا ثانيًا مطفأً منذ أيّام.
+     * - على صندوقٍ **ملغى**: قد يكون أثرَ تفعيلٍ من متصفّحٍ أو تطبيقٍ آخر وُلد
+     *   فيه صفٌّ جديد، وقد يكون صندوقًا أُلغي عمدًا. لا صفَّ يربطهما.
+     * - على صندوقٍ **نشطٍ أقدمَ** لم يُرَ منذ فُعّل هذا: قد يكون جهازًا هُجر،
+     *   وقد يكون صندوقًا ثانيًا مطفأً منذ أيّام.
      * - على صندوقٍ نشطٍ يُستعمل — لا شيء: صندوقان في المحلّ، واحدٌ بلا طابعة.
      */
     private static function holder(array $d, $devices, callable $activeOf, callable $note): void
@@ -162,7 +180,7 @@ final class TillHealth
             }
 
             if ($o['status'] !== PosDevice::ACTIVE) {
-                $note($d['id'], self::ORPHANED_PRINTER, null, $otherId);
+                $note($d['id'], self::PRINTER_ON_REVOKED_TILL, null, $otherId);
 
                 return;
             }
@@ -180,8 +198,11 @@ final class TillHealth
     /**
      * المكرّرةُ بين طابعات صندوقٍ مفعّلة — كلُّ ما بعد الأولى من كلّ مجموعة.
      *
-     * طابعتا شبكةٍ بالعنوان والمنفذ الفعليّ نفسيهما (والفارغُ 9100) طابعةٌ
-     * واحدةٌ سُجّلت مرّتين. وطابعتان بالاسم والتوصيل نفسيهما كذلك.
+     * طابعتا شبكةٍ بالعنوان والمنفذ الفعليّ نفسيهما (والفارغُ 9100) جهازٌ واحدٌ
+     * سُجّل مرّتين — مؤكَّد. وطابعتان بالاسم والتوصيل نفسيهما فقط مشتبهتان:
+     * طابعتا USB تُسمّيان «طابعة» قد تكونان طابعتين حقًّا.
+     *
+     * @return list<array{0: array, 1: string}>
      */
     private static function duplicates($active): array
     {
@@ -189,18 +210,21 @@ final class TillHealth
         $dupes = [];
 
         foreach ($active as $p) {
-            $keys = ['name:'.$p['connection'].':'.mb_strtolower(trim((string) $p['name']))];
+            $name = 'name:'.$p['connection'].':'.mb_strtolower(trim((string) $p['name']));
+            $net = $p['connection'] === 'network' && trim((string) $p['address']) !== ''
+                ? 'net:'.mb_strtolower(trim((string) $p['address'])).':'.((int) $p['port'] ?: self::DEFAULT_PORT)
+                : null;
 
-            if ($p['connection'] === 'network' && trim((string) $p['address']) !== '') {
-                $keys[] = 'net:'.mb_strtolower(trim((string) $p['address'])).':'.((int) $p['port'] ?: self::DEFAULT_PORT);
+            if ($net !== null && isset($seen[$net])) {
+                $dupes[] = [$p, self::DUPLICATE_PRINTER];
+            } elseif (isset($seen[$name])) {
+                $dupes[] = [$p, self::SAME_NAME_PRINTER];
             }
 
-            if (array_intersect($keys, array_keys($seen))) {
-                $dupes[] = $p;
-            }
+            $seen[$name] = true;
 
-            foreach ($keys as $key) {
-                $seen[$key] = true;
+            if ($net !== null) {
+                $seen[$net] = true;
             }
         }
 
@@ -272,13 +296,19 @@ final class TillHealth
         return $items;
     }
 
-    /** ما يقوله كلُّ رمزٍ للتاجر — جملةٌ تقول ما يقع وماذا يفعل */
+    /**
+     * ما يقوله كلُّ رمزٍ للتاجر — جملةٌ تقول ما يقع وماذا يفعل.
+     *
+     * والمشتبهُ يُقال بشرطه («إن كان…»)، ومعه أنّ تركَه قد يكون صوابًا: لا
+     * يُقال لتاجرٍ «فُقدت طابعتُك» عن صفوفٍ لا تقول ذلك.
+     */
     public static function message(string $code): string
     {
         return match ($code) {
-            self::ORPHANED_PRINTER => __('هذا الصندوق بلا طابعة، وطابعته ما زالت على صندوق ملغى في الفرع نفسه. أعد تفعيل الجهاز واختر «يحلّ محلّ» ذلك الصندوق، أو أضف الطابعة هنا.'),
-            self::STALE_TILL_HOLDS_PRINTER => __('هذا الصندوق بلا طابعة، وصندوق أقدم في الفرع نفسه يحمل طابعة ولم يُستعمل منذ فُعّل هذا. إن كان هذا الجهاز بديله فأعد التفعيل واختر «يحلّ محلّ» ذلك الصندوق.'),
-            self::AMBIGUOUS_RECEIPT => __('على هذا الصندوق أكثر من طابعة مفعّلة ولم تُحدَّد طابعة الإيصال — يُطبع على الأقدم. حدّد طابعة الإيصال أو عطّل الزائدة.'),
+            self::PRINTER_ON_REVOKED_TILL => __('هذا الصندوق بلا طابعة، وفي الفرع نفسه صندوق ملغى عليه طابعة. إن كان هذا الجهاز بديله فأعد التفعيل واختر «يحلّ محلّ» ذلك الصندوق ليعود بطابعته، أو أضف طابعة هنا. وإن كان مقصودًا فلا شيء عليك.'),
+            self::STALE_TILL_HOLDS_PRINTER => __('هذا الصندوق بلا طابعة، وصندوق أقدم في الفرع نفسه يحمل طابعة ولم يُستعمل منذ فُعّل هذا. إن كان هذا الجهاز بديله فأعد التفعيل واختر «يحلّ محلّ» ذلك الصندوق. وإن كانا صندوقين فلا شيء عليك.'),
+            self::AMBIGUOUS_RECEIPT => __('على هذا الصندوق أكثر من طابعة مفعّلة ولم تُحدَّد طابعة الإيصال، فيُطبع الإيصال على أقدمها كما كان. حدّد طابعة الإيصال ليكون الاختيار صريحًا.'),
+            self::SAME_NAME_PRINTER => __('طابعتان بالاسم والتوصيل نفسيهما على هذا الصندوق. إن كانتا الطابعة نفسها فاحذف المكرّرة أو عطّلها، وإن كانتا طابعتين فغيّر اسم إحداهما.'),
             self::RECEIPT_DISABLED => __('طابعة الإيصال المحدّدة معطّلة — فعّلها أو حدّد طابعة أخرى.'),
             self::INVALID_ADDRESS => __('عنوان طابعة الشبكة غير صالح، فلن يطبع عليها تطبيق أبعاد. صحّح العنوان (مثل 192.168.1.50) والمنفذ في حقله.'),
             self::DUPLICATE_PRINTER => __('طابعة مسجّلة مرّتين على هذا الصندوق — احذف المكرّرة أو عطّلها.'),

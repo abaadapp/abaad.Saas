@@ -32,7 +32,8 @@ interface StatementRow {
     reference: string;
     date: string;
     description: string;
-    method: string;
+    /** مصدرُ القيد في الدفتر — بيع، تحصيل عميل، سداد مورّد… */
+    source: string | null;
     debit: number;
     credit: number;
     balance: number;
@@ -65,7 +66,15 @@ interface Props {
     accounts: { id: number; label: string }[];
     /** تاريخ اليوم بتوقيت الخادم — تعبئة تاريخ الرصيد الافتتاحي حين لا يكون محفوظًا */
     today: string;
-    statement: { opening: number; rows: StatementRow[]; closing: number };
+    statement: {
+        opening: number;
+        rows: StatementRow[];
+        closing: number;
+        /** سطورُ الورقة قبل تاريخ الرصيد الافتتاحي — داخلةٌ فيه فلا تُعدّ، وتُقال */
+        before_opening: { count: number; net: number };
+        /** رصيدُ ورقة الحساب في الدفتر كلِّه */
+        ledger_balance: number;
+    };
     lines: BankLine[];
     reconciliation: {
         lines: number;
@@ -236,8 +245,9 @@ export default function FinanceStatement() {
                         </Table>
                     </Card>
                     <p className="mt-3 text-[12px] text-[#9ca3af]">
-                        {t('الرصيد يُحتسب تلقائيًا: الرصيد الافتتاحي + الإيرادات − المصروفات، مرتّبًا بالتاريخ. ولا يدخله إلا ما مرّ بالبنك — البطاقة والتحويل — ولا ما سبق تاريخ الرصيد الافتتاحي لأنه داخلٌ فيه.')}
+                        {t('الكشف يُقرأ من دفتر الأستاذ: الرصيد الافتتاحي ثمّ كلّ ما رُحّل إلى حساب هذا البنك بعد تاريخه — المبيعات والتحصيلات والتحويلات والمدفوعات — مرتّبًا بالتاريخ. وما سبق تاريخ الرصيد الافتتاحي داخلٌ فيه فلا يُعدّ ثانيةً.')}
                     </p>
+                    <BeforeOpeningNotice statement={statement} format={m} />
                 </>
             )}
 
@@ -459,5 +469,43 @@ export default function FinanceStatement() {
 
             {confirmDialog}
         </AdminLayout>
+    );
+}
+
+/**
+ * حركاتٌ في الدفتر قبل تاريخ الرصيد الافتتاحي.
+ *
+ * الكشفُ لا يعدّها لأنّ الرصيد الافتتاحيّ يتضمّنها. لكنّ متجرًا أدخل رصيده
+ * الافتتاحيّ بعد حركاتٍ سبقته يقرأ في الكشف رصيدًا غيرَ رصيد الدفتر بلا سبب
+ * ظاهر. فيُقال العددُ والصافي ورصيدُ الدفتر، ليُراجَع التاريخُ أو المبلغ.
+ */
+export function BeforeOpeningNotice({
+    statement,
+    format,
+}: {
+    statement: Props['statement'];
+    format: (v: number) => string;
+}) {
+    const t = useTranslate();
+
+    if (!statement.before_opening || statement.before_opening.count === 0) {
+        return null;
+    }
+
+    return (
+        <div
+            role="note"
+            data-testid="before-opening-notice"
+            className="mt-3 rounded-lg border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#92400e]"
+        >
+            {t(
+                'في الدفتر :count حركة على هذا الحساب قبل تاريخ الرصيد الافتتاحي، صافيها :net، ولا تظهر في الكشف. ورصيد الحساب في الدفتر كلّه :ledger. إن كان الرصيد الافتتاحي لا يتضمّنها فراجع مبلغه أو تاريخه.',
+                {
+                    count: statement.before_opening.count,
+                    net: format(statement.before_opening.net),
+                    ledger: format(statement.ledger_balance),
+                },
+            )}
+        </div>
     );
 }

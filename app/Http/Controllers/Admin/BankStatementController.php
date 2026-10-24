@@ -288,7 +288,8 @@ class BankStatementController extends Controller
             $incoming = (float) $line->amount >= 0;
 
             foreach ($transactions as $t) {
-                if (($t->type === 'دخل') !== $incoming) {
+                // والاتجاهُ من `Bank::isDeposit`: التحويلُ من الصندوق إيداعٌ لا سحب
+                if (Bank::isDeposit($t) !== $incoming) {
                     continue;
                 }
                 if (abs(abs((float) $t->amount) - $target) > self::AMOUNT_TOLERANCE) {

@@ -4875,35 +4875,45 @@ class Demo
     }
 
     /**
-     * كشف حساب محسوب من معاملات النظام برصيد تراكمي.
+     * كشف حساب من دفتر الأستاذ برصيد تراكمي.
      *
-     * ما مرّ بالبنك وحده وبعد تاريخ الرصيد الافتتاحي — انظر Bank::transactions.
+     * سطورُ ورقة الحساب بعد تاريخ رصيده الافتتاحي — انظر `Bank::statement`.
+     * فالرصيدُ الختاميّ رصيدُ الورقة منذ ذلك التاريخ، لا رقمٌ يُحسب من جدولٍ
+     * آخر فيفترق عنه. و«مدين» في الكشف ما خرج من البنك و«دائن» ما دخله،
+     * كما يقرأ صاحبُ الحساب كشفَ مصرفه.
      */
     public static function bankStatement(?int $accountId = null): array
     {
         $acc = self::bankAccount($accountId);
-        $balance = $acc['opening_balance'];
+        $opening = (float) $acc['opening_balance'];
+        $account = $acc['id'] ? BankAccount::where('business_id', self::bid())->find($acc['id']) : null;
+        $book = $account
+            ? Bank::statement(self::bid(), $account)
+            : ['rows' => [], 'before_opening' => ['count' => 0, 'net' => 0.0], 'ledger_balance' => 0.0];
 
-        $rows = Bank::transactions(self::bid(), $acc['id'] ?? null)
-            ->orderBy('occurred_at')->orderBy('id')->get()->map(function ($t) use (&$balance) {
-                // المصروفات مخزّنة بإشارة سالبة — نوحّد على القيمة المطلقة والاتجاه من النوع
-                $in = $t->type === 'دخل';
-                $amount = abs((float) $t->amount);
-                $balance += $in ? $amount : -$amount;
+        $balance = $opening;
+        $rows = array_map(function (array $l) use (&$balance) {
+            $balance += $l['in'] - $l['out'];
 
-                return [
-                    'id' => $t->id,
-                    'reference' => $t->reference,
-                    'date' => optional($t->occurred_at)->format('Y-m-d') ?? '—',
-                    'description' => $t->description,
-                    'method' => $t->method,
-                    'debit' => $in ? 0.0 : $amount,
-                    'credit' => $in ? $amount : 0.0,
-                    'balance' => round($balance, 3),
-                ];
-            })->all();
+            return [
+                'id' => $l['id'],
+                'reference' => $l['reference'],
+                'date' => $l['date'],
+                'description' => $l['description'],
+                'source' => $l['source'],
+                'debit' => $l['out'],
+                'credit' => $l['in'],
+                'balance' => round($balance, 3),
+            ];
+        }, $book['rows']);
 
-        return ['opening' => $acc['opening_balance'], 'rows' => $rows, 'closing' => round($balance, 3)];
+        return [
+            'opening' => $opening,
+            'rows' => $rows,
+            'closing' => round($balance, 3),
+            'before_opening' => $book['before_opening'],
+            'ledger_balance' => $book['ledger_balance'],
+        ];
     }
 
     /** أسطر كشف البنك المستوردة مع حالة المطابقة — لحسابٍ واحد */

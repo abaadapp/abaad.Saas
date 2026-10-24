@@ -544,10 +544,10 @@ class Books
         return self::TYPE_ACCOUNTS[$name] ?? 'other_expenses';
     }
 
-    /** من أين خرج المال — والافتراض الصندوق */
+    /** من أين خرج المال — والافتراض الصندوق. والأسماءُ من `PaymentMethods::isBank` */
     public static function payingAccount(?string $method): string
     {
-        return in_array(trim((string) $method), ['تحويل', 'بطاقة', 'شيك', 'بنك'], true) ? 'bank' : 'cash';
+        return PaymentMethods::isBank($method) ? 'bank' : 'cash';
     }
 
     /* ============================ الحركة المالية ============================ */

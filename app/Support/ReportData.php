@@ -482,8 +482,16 @@ class ReportData
          */
         $live = (clone $base)->notCancelled();
 
+        /*
+         * والتحويلُ بين الصندوق والبنك لا دخلٌ ولا صرف.
+         *
+         * مالٌ انتقل من جيبٍ إلى جيبٍ للتاجر نفسه، وصفُّه نوعُه «تحويل». وكان
+         * كلُّ ما ليس «دخلًا» يُجمع في المدفوعات، فإيداعُ ٥٠ من الدرج في البنك
+         * يُقرأ ٥٠ دفعها التاجر وصافيًا ناقصًا بها. يبقى في الجدول ولا يُجمع —
+         * كما تفعل شاشةُ «الحركة المالية».
+         */
         $income = (float) (clone $live)->where('type', 'دخل')->sum('amount');
-        $outgo = (float) (clone $live)->where('type', '!=', 'دخل')->sum('amount');
+        $outgo = (float) (clone $live)->whereNotIn('type', ['دخل', 'تحويل'])->sum('amount');
         $total = (clone $base)->count();
 
         $rows = (clone $base)->with('order:id,status')

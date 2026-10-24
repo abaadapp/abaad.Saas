@@ -92,8 +92,14 @@ class OrderCorrection
              * الملغاة — فعادت اثنتان ثانيةً، وكُتب للملغاة إجماليٌّ وقيد. وكانت
              * الشاشةُ تعرض الزرَّ لها في يومها. والقفلُ نفسُه يُصفّ هذا الباب
              * مع إلغاءٍ يقع في اللحظة نفسها: الإلغاءُ يقفل الفاتورة لا البند.
+             *
+             * ويُكمل البابُ بالنسخة المقفلة لا بالتي في اليد — كما `addLine`.
+             * تصحيحان لبندين من فاتورةٍ واحدة في اللحظة نفسها: الثاني قرأها
+             * بخمسين وانتظر القفلَ والأوّلُ يُنزلها إلى أربعين ويردّ عشرة، ثمّ
+             * حسب فرقَه من الخمسين فردّ عشرين. انظر
+             * `ACorrectionSettlesFromTheTotalItLockedTest`.
              */
-            self::lockOrder($order);
+            $order = self::lockOrder($order);
 
             /*
              * ═══ والبندُ يُقرأ من جديدٍ مقفلًا قبل أن يُكتب فوقه ═══
@@ -739,8 +745,8 @@ class OrderCorrection
         return DB::transaction(function () use ($order, $item, $row, $oldQty, $newQty, $reason, $settles, $settle, $method) {
             $bid = (int) $order->business_id;
 
-            // والفاتورةُ مقفلةً وغيرَ ملغاة قبل الإضافة — كما في `setQuantity`
-            self::lockOrder($order);
+            // والفاتورةُ مقفلةً وغيرَ ملغاة قبل الإضافة، وبنسختها المقفلة — كما في `setQuantity`
+            $order = self::lockOrder($order);
 
             // وصفُّ الإضافة يُقرأ مقفلًا كما يُقرأ البند — العلّةُ واحدة
             $locked = OrderItemAddon::whereKey($row->id)->lockForUpdate()->first();

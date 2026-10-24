@@ -15,6 +15,8 @@ interface CopyButtonProps {
     variant?: ButtonProps['variant'];
     size?: ButtonProps['size'];
     className?: string;
+    /** يُنادى بعد نسخٍ وقع فعلًا — لا عند ضغطةٍ لم تنسخ */
+    onCopied?: () => void;
 }
 
 /**
@@ -33,6 +35,7 @@ export default function CopyButton({
     variant = 'outline',
     size = 'sm',
     className,
+    onCopied,
 }: CopyButtonProps) {
     const t = useTranslate();
     const { copy, copied } = useCopy();
@@ -46,7 +49,9 @@ export default function CopyButton({
             variant={variant}
             size={size}
             className={className}
-            onClick={() => copy(text)}
+            onClick={async () => {
+                if ((await copy(text)) && onCopied) onCopied();
+            }}
             aria-label={label ? undefined : spoken}
             title={label ? undefined : spoken}
         >

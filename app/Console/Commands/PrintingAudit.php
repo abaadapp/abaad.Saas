@@ -49,6 +49,9 @@ class PrintingAudit extends Command
 
     protected $description = 'تدقيق صناديق نقاط البيع وطابعاتها في كل المتاجر — قراءة فقط';
 
+    /** سقفُ استعلامٍ واحد على PostgreSQL — قراءةٌ لا تُثقل قاعدةَ الإنتاج مهما كبرت */
+    public const STATEMENT_TIMEOUT_MS = 30000;
+
     /** ما يُوصى به لكلّ رمز — للمالك، لا للتاجر */
     public const ADVICE = [
         TillHealth::PRINTER_ON_REVOKED_TILL => 'يُسأل التاجر: إن كان هذا الجهاز بديلَ الصندوق الملغى فليُفعَّل بخيار «يحلّ محلّ» ذلك الصندوق فيعود بطابعته. وإلّا فلا شيء. لا يُنقل شيء آليًّا.',
@@ -110,6 +113,7 @@ class PrintingAudit extends Command
         if (DB::transactionLevel() === 0) {
             return DB::transaction(function () use ($work) {
                 DB::statement('SET TRANSACTION READ ONLY');
+                DB::statement('SET LOCAL statement_timeout = '.self::STATEMENT_TIMEOUT_MS);
 
                 return $work();
             });
@@ -119,6 +123,7 @@ class PrintingAudit extends Command
 
         try {
             DB::statement('SET LOCAL transaction_read_only = on');
+            DB::statement('SET LOCAL statement_timeout = '.self::STATEMENT_TIMEOUT_MS);
 
             return $work();
         } finally {
@@ -131,9 +136,23 @@ class PrintingAudit extends Command
      */
     public static function collect(?int $only = null): array
     {
-        $businesses = DB::table('pos_devices')
+        /*
+         * استعلامان لكلّ المتاجر، لا اثنان لكلّ متجر: الصناديقُ وملحقاتُها
+         * صفوفٌ قليلةٌ لكلّ متجر، فتُقرأ مرّةً وتُجمَّع هنا — ولا يكبر عددُ
+         * الاستعلامات بعدد المتاجر.
+         */
+        $allDevices = DB::table('pos_devices')
             ->when($only, fn ($q) => $q->where('business_id', $only))
-            ->distinct()->orderBy('business_id')->pluck('business_id')->map(fn ($id) => (int) $id);
+            ->orderBy('id')
+            ->get(['id', 'business_id', 'branch_id', 'name', 'status', 'activated_at', 'last_seen_at'])
+            ->groupBy(fn ($d) => (int) $d->business_id);
+        $allPeripherals = DB::table('pos_peripherals')
+            ->when($only, fn ($q) => $q->where('business_id', $only))
+            ->whereNotNull('pos_device_id')
+            ->orderBy('id')
+            ->get(['id', 'business_id', 'pos_device_id', 'name', 'type', 'connection', 'address', 'port', 'active', 'auto_print', 'is_receipt_printer'])
+            ->groupBy(fn ($p) => (int) $p->business_id);
+        $businesses = $allDevices->keys()->sort()->values();
 
         $summary = ['businesses_with_tills' => $businesses->count(), 'active_tills' => 0, 'revoked_tills' => 0, 'printers_active' => 0];
         $blank = [TillHealth::CONFIRMED => 0, TillHealth::SUSPECTED => 0, 'healthy' => 0];
@@ -143,11 +162,10 @@ class PrintingAudit extends Command
         $legitimate = ['businesses_without_any_printer' => 0, 'active_tills_without_printer_unflagged' => 0];
 
         foreach ($businesses as $bid) {
-            $devices = DB::table('pos_devices')->where('business_id', $bid)
-                ->get(['id', 'business_id', 'branch_id', 'name', 'status', 'activated_at', 'last_seen_at']);
-            $peripherals = DB::table('pos_peripherals')->where('business_id', $bid)
-                ->whereIn('pos_device_id', $devices->pluck('id'))
-                ->get(['id', 'pos_device_id', 'name', 'type', 'connection', 'address', 'port', 'active', 'auto_print', 'is_receipt_printer']);
+            $devices = $allDevices->get($bid);
+            // ملحقُ المتجر على صندوقٍ من صناديقه وحدها — لا يُنسب ملحقٌ إلى متجرٍ غير متجر صندوقه
+            $ids = $devices->pluck('id')->map(fn ($id) => (int) $id)->flip();
+            $peripherals = collect($allPeripherals->get($bid, []))->filter(fn ($p) => $ids->has((int) $p->pos_device_id))->values();
             $printers = $peripherals->where('type', PosPeripheral::PRINTER);
             $activePrinters = $printers->filter(fn ($p) => (bool) $p->active);
 

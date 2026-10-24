@@ -1115,21 +1115,55 @@ class PosDeviceTest extends TestCase
 
         $this->assertSame(1, PosDevice::where('business_id', $c->id)->count(), 'وُلد صندوقٌ بلا طابعة بلا سؤال');
 
-        // والكاشيرُ يرى الاختيار — ويفتح صندوقًا جديدًا بنفسه، ولا يستبدل
+        // والكاشيرُ يرى الاختيار — ولا يستبدل، ولا يولّد بجوار الطابعة صندوقًا بلا طابعة
         $page = $this->actingAs($cashier)->get(route('pos.setup'))->assertOk()->viewData('page');
         $this->assertSame('Pos/DeviceSetup', $page['component']);
         $this->assertFalse($page['props']['canReplace']);
+        $this->assertSame([$only->id], $page['props']['newNeedsManager']);
 
         $this->actingAs($cashier)->post(route('pos.setup.activate'), [
             'mode' => 'replace', 'replaces' => $old->id, 'version' => TillActivation::version($old),
             'branch_id' => $only->id, 'name' => 'لي', 'confirm_active' => true,
         ])->assertSessionHasErrors('replaces');
 
+        /*
+         * «صندوق جديد» كان الخيارَ الوحيدَ المفتوحَ له — فيعود العطبُ بضغطة:
+         * صندوقٌ بلا طابعة، والطابعةُ على القديم. الآن للمدير.
+         */
         $this->actingAs($cashier)->post(route('pos.setup.activate'), [
+            'mode' => 'new', 'branch_id' => $only->id, 'name' => 'كاشير 02',
+        ])->assertSessionHasErrors('mode');
+        // وصفحةٌ قديمةٌ بلا اختيار لا تفتح البابَ نفسَه
+        $this->actingAs($cashier)->post(route('pos.setup.activate'), [
+            'branch_id' => $only->id, 'name' => 'كاشير 02',
+        ])->assertSessionHasErrors('mode');
+        $this->assertSame(1, PosDevice::where('business_id', $c->id)->count(), 'وُلد صندوقٌ بلا طابعة بجوار طابعة');
+        $this->assertSame(PosDevice::ACTIVE, $old->fresh()->status);
+
+        // والمديرُ يفتح الثاني إن أراده صندوقًا إضافيًّا
+        $manager = User::create([
+            'business_id' => $c->id, 'name' => 'مدير د', 'email' => 'd-'.Str::random(4).'@abaad.om',
+            'password' => 'password', 'role' => 'admin', 'status' => 'نشط',
+        ]);
+        $this->assertSame([], $this->actingAs($manager)->get(route('pos.setup'))->viewData('page')['props']['newNeedsManager']);
+        $this->actingAs($manager)->post(route('pos.setup.activate'), [
             'mode' => 'new', 'branch_id' => $only->id, 'name' => 'كاشير 02',
         ])->assertRedirect(route('pos.index'));
         $this->assertSame(2, PosDevice::where('business_id', $c->id)->count());
-        $this->assertSame(PosDevice::ACTIVE, $old->fresh()->status);
+    }
+
+    /** ومتجرٌ لا طابعةَ فيه: الكاشيرُ يفتح صندوقًا ثانيًا بنفسه كما كان — لا طابعةَ تُفقد */
+    public function test_a_cashier_still_opens_a_second_till_where_no_printer_can_be_lost(): void
+    {
+        [$c, $only, $cashier] = $this->oneBranchShop();
+        $this->device($only, 'كاشير المحلّ');
+
+        $this->defaultCookies = [];
+        $this->actingAs($cashier)->post(route('pos.setup.activate'), [
+            'mode' => 'new', 'branch_id' => $only->id, 'name' => 'كاشير 02',
+        ])->assertRedirect(route('pos.index'));
+
+        $this->assertSame(2, PosDevice::where('business_id', $c->id)->count());
     }
 
     /** وصندوقُ هذا المتصفّح نفسِه يُحيا وحدَه — باسمه وطابعته */

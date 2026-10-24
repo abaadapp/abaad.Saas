@@ -58,14 +58,15 @@ class DeviceController extends Controller
         }
 
         $previous = PosTerminal::previous($bid);
+        $branches = Branch::where('business_id', $bid)->orderBy('id')->get(['id', 'business_id', 'name']);
 
         return Inertia::render('Pos/DeviceSetup', [
-            'branches' => Branch::where('business_id', $bid)
-                ->orderBy('id')->get(['id', 'name'])
-                ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
+            'branches' => $branches->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
             'businessName' => Demo::businessName(),
             // أيستبدل صندوقًا قائمًا؟ — يوقف جهازًا آخر، فللإعدادات وحدها
             'canReplace' => TillActivation::mayReplace($user),
+            // فرعٌ فيه صندوقٌ بطابعة: «صندوق جديد» لمن يملك الإعدادات (`TillActivation::guardNew`)
+            'newNeedsManager' => $branches->filter(fn ($b) => TillActivation::newNeedsSettings($b, $user))->pluck('id')->values()->all(),
             // الصندوقُ الذي كانه هذا المتصفّح — يُعرض أوّلَ الخيارات، ولا يُختار عنه
             'previous' => $previous?->id,
             /*

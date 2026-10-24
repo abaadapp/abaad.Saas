@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Branch;
 use App\Models\PosDevice;
+use App\Models\PosPeripheral;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -36,6 +37,15 @@ use Illuminate\Validation\ValidationException;
  *   نفسِه** إن كان ملغًى في الفرع نفسه — الجهازُ نفسُه عاد. وإن كان صفُّه نشطًا
  *   على جهازٍ آخر، أو في فرعٍ آخر، لا يُسلب ولا يُنقل: يُطلب الاختيار. وإلّا
  *   صندوقٌ جديد كما كان.
+ *
+ * ═══ وصندوقٌ جديدٌ بجوار طابعةٍ قائمة — للمدير ═══
+ *
+ * موظفُ نقطة البيع في متجر الفرع الواحد يفتح صندوقًا جديدًا بنفسه. لكنّ
+ * «صندوق جديد» كان الخيارَ الوحيدَ المفتوحَ له، فكاشيرٌ انتقل إلى التطبيق
+ * يختاره ويعود العطبُ نفسُه بضغطة: صندوقٌ بلا طابعة، والطابعةُ على القديم.
+ * فإن كان في الفرع صندوقٌ عليه طابعةٌ مفعّلة، فالجديدُ بيد من يملك الإعدادات
+ * (`newNeedsSettings`) — هو من يرى الاثنين ويختار «يحلّ محلّ» أو «جديد».
+ * ومتجرٌ لا طابعةَ فيه يبقى كما كان: لا طابعةَ تُفقد.
  *
  * ولا يمسّ الطلبات ولا الورديات ولا القيود: يُكتب صفُّ الجهاز وحده.
  */
@@ -92,11 +102,41 @@ final class TillActivation
             }
 
             if ($mode === self::NEW) {
+                self::guardNew($branch, $by);
+
                 return ['device' => PosTerminal::activate($branch, $name, $by->id), 'replaced' => null];
             }
 
             return self::sameBrowser($branch, $name, $by);
         });
+    }
+
+    /**
+     * صندوقٌ في هذا الفرع عليه طابعةٌ مفعّلة — فالجديدُ بجواره لمن يملك الإعدادات.
+     *
+     * يُقرأ للشاشة (تُغلق «صندوق جديد» وتقول لماذا) وللحارس معًا.
+     */
+    public static function printerHolder(Branch $branch): ?PosDevice
+    {
+        return PosDevice::where('business_id', $branch->business_id)->where('branch_id', $branch->id)
+            ->whereHas('peripherals', fn ($q) => $q->where('type', PosPeripheral::PRINTER)->where('active', true))
+            ->orderBy('id')->first();
+    }
+
+    public static function newNeedsSettings(Branch $branch, User $by): bool
+    {
+        return ! self::mayReplace($by) && self::printerHolder($branch) !== null;
+    }
+
+    private static function guardNew(Branch $branch, User $by): void
+    {
+        if (! self::newNeedsSettings($branch, $by)) {
+            return;
+        }
+
+        throw ValidationException::withMessages(['mode' => __('في هذا الفرع صندوق «:name» عليه طابعة. إن كان هذا الجهاز بديله فاطلب من المدير تفعيله بخيار «يحلّ محلّ» ذلك الصندوق ليعمل بطابعته، وإن كان صندوقًا إضافيًّا فالمدير يفعّله.', [
+            'name' => self::printerHolder($branch)?->name ?? '—',
+        ])]);
     }
 
     /** «يحلّ محلّ» صندوقٍ اختاره المدير — بحرّاسه الأربعة */
@@ -156,6 +196,11 @@ final class TillActivation
                 'name' => $previous->name,
                 'branch' => $previous->branch?->name ?? '—',
             ])]);
+        }
+
+        // ولا صفَّ لهذا المتصفّح: صندوقٌ جديد — بحارس الجديد نفسِه
+        if ($previous === null) {
+            self::guardNew($branch, $by);
         }
 
         return ['device' => PosTerminal::activate($branch, $name, $by->id, $previous), 'replaced' => null];

@@ -161,6 +161,94 @@ class ThePrintingAuditReadsEveryShopAndWritesNothingTest extends TestCase
         $this->assertSame('بعد التدقيق', $this->orphan->fresh()->name);
     }
 
+    /**
+     * وعلى PostgreSQL خارج أيّ معاملة — كما يُشغَّل على الخادم: معاملتُه هو
+     * `READ ONLY`، وسطرٌ يكتب يسقط، والاتّصالُ يعود قابلًا للكتابة بعده.
+     *
+     * اتّصالٌ ثانٍ إلى القاعدة نفسِها: معاملةُ الاختبار على الأوّل لا تمسّه.
+     */
+    public function test_on_postgres_its_own_transaction_is_read_only(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('PostgreSQL وحدَها — SQLite محروسةٌ بـquery_only أعلاه.');
+        }
+
+        $default = DB::getDefaultConnection();
+        config(['database.connections.printing_audit_probe' => config("database.connections.{$default}")]);
+        DB::setDefaultConnection('printing_audit_probe');
+
+        try {
+            $this->assertSame(0, DB::transactionLevel());
+
+            try {
+                PrintingAudit::readOnly(fn () => DB::table('pos_devices')->where('id', -1)->update(['name' => 'كُتب']));
+                $this->fail('كُتب داخل التدقيق على PostgreSQL');
+            } catch (QueryException $e) {
+                $this->assertStringContainsString('read-only transaction', $e->getMessage());
+            }
+
+            $this->assertSame('off', DB::selectOne('SHOW transaction_read_only')->transaction_read_only);
+            $this->assertSame(0, DB::transactionLevel());
+        } finally {
+            DB::purge('printing_audit_probe');
+            DB::setDefaultConnection($default);
+        }
+    }
+
+    /** ولا يكتب في الكاش ولا في السجلّ — ولو كان الكاشُ في القاعدة كما على الإنتاج */
+    public function test_the_manual_audit_writes_no_cache_and_no_log(): void
+    {
+        config(['cache.default' => 'database']);
+        Log::spy();
+
+        $this->audit(['--detail' => true]);
+        Artisan::call('pos:printing-audit');
+
+        $this->assertSame(0, DB::table('cache')->count());
+        $this->assertSame(0, DB::table('cache_locks')->count());
+        Log::shouldNotHaveReceived('warning');
+        Log::shouldNotHaveReceived('info');
+        Log::shouldNotHaveReceived('error');
+    }
+
+    /** وعددُ استعلاماته لا يكبر بعدد المتاجر — مئةُ متجرٍ كثلاثة */
+    public function test_its_queries_do_not_grow_with_the_number_of_shops(): void
+    {
+        $count = function (): int {
+            $n = 0;
+            DB::listen(function () use (&$n) {
+                $n++;
+            });
+            PrintingAudit::collect();
+
+            return $n;
+        };
+
+        $three = $count();
+
+        foreach (range(1, 5) as $i) {
+            $shop = Business::create(['name' => 'متجر '.$i, 'type' => 'عام', 'status' => 'نشط']);
+            $this->printer($this->till($shop, PosDevice::ACTIVE, '2026-10-01'));
+        }
+
+        $this->assertSame($three, $count(), 'كلُّ متجرٍ يزيد استعلامًا');
+    }
+
+    /** وملحقٌ متجرُه غيرُ متجر صندوقه لا يُنسب إليه — لا خلطَ بين متجرين */
+    public function test_a_peripheral_is_never_counted_on_another_shops_till(): void
+    {
+        DB::table('pos_peripherals')->insert([
+            'business_id' => $this->healthy->id, 'pos_device_id' => $this->orphan->id, 'name' => 'دخيلة',
+            'type' => PosPeripheral::PRINTER, 'connection' => 'usb', 'active' => true,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $report = $this->audit(['--detail' => true]);
+
+        $this->assertContains(TillHealth::PRINTER_ON_REVOKED_TILL, $report['detail'][$this->broken->id][$this->orphan->id], 'نُسبت طابعةُ متجرٍ آخر إلى الصندوق');
+        $this->assertArrayNotHasKey($this->healthy->id, $report['detail']);
+    }
+
     /** وورقٌ عالق: حجزٌ فاتت مهلتُه، وورقةٌ لم يستلمها صندوقٌ في يوم */
     public function test_it_counts_stuck_papers_without_naming_them(): void
     {

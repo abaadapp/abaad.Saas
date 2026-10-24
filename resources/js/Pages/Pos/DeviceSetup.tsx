@@ -32,6 +32,12 @@ interface Props {
     previous?: number | null;
     /** أيستبدل صندوقًا قائمًا؟ — للإعدادات وحدها */
     canReplace?: boolean;
+    /**
+     * فروعٌ فيها صندوقٌ بطابعة — «صندوق جديد» فيها لمن يملك الإعدادات وحده
+     * (`TillActivation::guardNew`): كاشيرٌ انتقل إلى التطبيق لا يولّد صندوقًا
+     * بلا طابعة بضغطة.
+     */
+    newNeedsManager?: number[];
 }
 
 type Mode = '' | 'new' | 'replace';
@@ -51,7 +57,15 @@ type Mode = '' | 'new' | 'replace';
  * يقول أيَّ جهازٍ وأيَّ فرعٍ وما يقع له.
  */
 export default function DeviceSetup() {
-    const { branches, businessName, devices = [], previous = null, canReplace = false, errors } = usePage<PageProps<Props>>().props;
+    const {
+        branches,
+        businessName,
+        devices = [],
+        previous = null,
+        canReplace = false,
+        newNeedsManager = [],
+        errors,
+    } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [ask, confirmDialog] = useConfirm();
     // فرعٌ واحد لا اختيار فيه — يُملأ سلفًا
@@ -68,6 +82,7 @@ export default function DeviceSetup() {
     });
     const replaced = devices.find((d) => String(d.id) === form.data.replaces) ?? null;
     const replacing = form.data.mode === 'replace';
+    const newBlocked = newNeedsManager.includes(Number(form.data.branch_id || onlyBranch));
 
     const pickMode = (mode: Mode) => {
         setUnchosen(false);
@@ -159,10 +174,11 @@ export default function DeviceSetup() {
                                 <div className="grid grid-cols-2 gap-2">
                                     <ModeCard
                                         on={form.data.mode === 'new'}
+                                        disabled={newBlocked}
                                         onPick={() => pickMode('new')}
                                         icon={<SquarePlus className="size-4" />}
                                         title={t('صندوق جديد')}
-                                        hint={t('يبدأ بلا طابعة ولا إعدادات')}
+                                        hint={newBlocked ? t('في هذا الفرع صندوق عليه طابعة — يفعّله المدير') : t('يبدأ بلا طابعة ولا إعدادات')}
                                     />
                                     <ModeCard
                                         on={replacing}
@@ -173,6 +189,11 @@ export default function DeviceSetup() {
                                         hint={canReplace ? t('تبقى طابعته وإعداداته ومبيعاته') : t('يحتاج صلاحية الإعدادات — اطلبه من المدير')}
                                     />
                                 </div>
+                                {newBlocked && !canReplace && (
+                                    <p className="text-[12px] text-[#b45309]">
+                                        {t('في هذا الفرع صندوق عليه طابعة. اطلب من المدير أن يدخل من هذا الجهاز ويفعّله بخيار «يحلّ محلّ» ذلك الصندوق، فيعمل بطابعته.')}
+                                    </p>
+                                )}
                                 {(unchosen || errors.mode) && (
                                     <p className="text-[12px] text-[#b91c1c]">{errors.mode ?? t('اختر: صندوق جديد، أو يحلّ محلّ صندوق قائم.')}</p>
                                 )}

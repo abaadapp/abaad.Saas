@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\BranchStock;
 use App\Models\Business;
+use App\Models\ImportBatch;
 use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\StockAdjustment;
@@ -323,5 +324,67 @@ class TheShelfAndTheBookMoveTogetherTest extends TestCase
         $this->assertCount(2, $moves, 'التراجعُ محا الرصيد ولم يقل إنّه محاه');
         $this->assertSame('-80', (string) $moves[1]->quantity);
         $this->assertStringContainsString('تراجع', (string) $moves[1]->note);
+    }
+
+    /* ═════════════ والتراجعُ لا يمحو بيعةً وقعت بعد الاستيراد ═════════════ */
+
+    private function sellAtMuscat(Product $product, int $qty): void
+    {
+        $this->actingAs($this->owner)->withSession(['current_branch' => $this->muscat->id])
+            ->postJson('/pos/checkout', [
+                'items' => [['id' => $product->id, 'name' => $product->name, 'qty' => $qty]],
+                'payment_method' => 'نقدي', 'client_uuid' => uniqid('u', true),
+            ])->assertOk();
+    }
+
+    public function test_undoing_an_import_after_a_sale_takes_back_the_file_not_the_sale(): void
+    {
+        /*
+         * التراجعُ كان يكتب كميّةَ ما قبل الملفّ رقمًا مطلقًا (٣٠)، ويحرّك
+         * الفروعَ بالفرق (−٢٠). فبيعةٌ بينهما تبقى منقوصةً من الفرع وتعود
+         * إلى الإجماليّ: ٣٠ في الدفتر و٢٥ على الرفوف.
+         */
+        $product = $this->product(30, 0);
+        $this->importCsv("الاسم,السعر,الكمية\nوردة,5,50\n");
+        $this->sellAtMuscat($product, 5);
+        $this->assertSame(45, (int) $product->fresh()->quantity);
+
+        $this->actingAs($this->owner)->post(route('admin.products.import.undo'))->assertRedirect();
+
+        $this->assertSame(25, (int) $product->fresh()->quantity, 'عادت البيعةُ إلى الرفّ مع التراجع');
+        $this->assertSame(25, $this->balance($this->muscat, $product));
+        $this->assertBooksBalance($product, 'افترق الإجماليُّ عن الفروع بعد التراجع');
+    }
+
+    public function test_undoing_a_price_only_import_does_not_bring_back_what_was_sold(): void
+    {
+        // ملفٌّ يغيّر السعر وحده — والكميّةُ محفوظةٌ في «ما قبله» كما كانت
+        $product = $this->product(30, 0);
+        $this->importCsv("الاسم,السعر\nوردة,7\n");
+        $this->assertSame(7.0, (float) $product->fresh()->price);
+        $this->sellAtMuscat($product, 5);
+
+        $this->actingAs($this->owner)->post(route('admin.products.import.undo'))->assertRedirect();
+
+        $this->assertSame(5.0, (float) $product->fresh()->price, 'لم يعد السعر');
+        $this->assertSame(25, (int) $product->fresh()->quantity, 'بُعثت خمسُ وردٍ مبيعة');
+        $this->assertBooksBalance($product, 'افترق الإجماليُّ عن الفروع بعد التراجع');
+    }
+
+    public function test_an_import_written_before_the_change_is_undone_by_its_branch_deltas(): void
+    {
+        // دفعةٌ كُتبت قبل أن تحفظ `moved` — فروقُ فروعها وحدها
+        $product = $this->product(30, 0);
+        $this->importCsv("الاسم,السعر,الكمية\nوردة,5,50\n");
+        $batch = ImportBatch::latest('id')->firstOrFail();
+        $payload = $batch->payload;
+        unset($payload['updated'][0]['moved']);
+        $batch->forceFill(['payload' => $payload])->save();
+        $this->sellAtMuscat($product, 5);
+
+        $this->actingAs($this->owner)->post(route('admin.products.import.undo'))->assertRedirect();
+
+        $this->assertSame(25, (int) $product->fresh()->quantity);
+        $this->assertBooksBalance($product, 'افترق الإجماليُّ عن الفروع بعد تراجع دفعةٍ قديمة');
     }
 }

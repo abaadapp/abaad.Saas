@@ -496,7 +496,11 @@ class ProductImportExportController extends Controller
                     }
                 }
 
-                $undo['updated'][] = ['id' => $product->id, 'before' => $before, 'deltas' => $deltas];
+                // وكم حرّك الملفُّ الكميّة — ليُردّ الفرقُ لا الرقم (انظر `undo`)
+                $undo['updated'][] = [
+                    'id' => $product->id, 'before' => $before, 'deltas' => $deltas,
+                    'moved' => $quantityStated ? (int) $r['quantity'] - $oldQty : 0,
+                ];
                 $updated++;
             }
 
@@ -550,7 +554,23 @@ class ProductImportExportController extends Controller
                 if (! $product) {
                     continue;
                 }
-                $product->update($u['before']);
+                /*
+                 * والكميّةُ تُردّ بالفرق لا بالرقم.
+                 *
+                 * «ما قبل» يحمل كميّةَ يوم الاستيراد، وكانت تُكتب كما هي: ملفٌّ
+                 * غيّر السعرَ وحده ثمّ بيعت خمس، فيُعيد التراجعُ الخمسَ إلى
+                 * الإجماليّ والفروعُ لا تراها. فيُطرح ما حرّكه الملفُّ وحده، وما
+                 * بيع بعده يبقى مبيعًا. ودفعةٌ كُتبت قبل `moved` تُقرأ من فروقها.
+                 */
+                $before = $u['before'];
+                unset($before['quantity']);
+                $product->update($before);
+
+                $moved = (int) ($u['moved'] ?? array_sum(array_map('intval', $u['deltas'] ?? [])));
+                if ($moved !== 0) {
+                    $product->decrement('quantity', $moved);
+                }
+
                 foreach ($u['deltas'] ?? [] as $branch => $delta) {
                     BranchStock::adjust($bid, (int) $branch, $product->id, -$delta);
                     // والتراجعُ حركةٌ كما كان الاستيراد حركة — لا محوٌ لما جرى

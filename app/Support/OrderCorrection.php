@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Addon;
 use App\Models\BranchStock;
 use App\Models\Coupon;
 use App\Models\Customer;
@@ -238,7 +239,13 @@ class OrderCorrection
         }
     }
 
-    private static function moveStock(Order $order, OrderItem $item, int $delta): void
+    /**
+     * وحين يُعطى `$gather` (الإلغاءُ الكامل) تُجمع فيه كسورُ الوصفات والإضافات
+     * المستقلّة ولا تُحرَّك هنا — انظر `returnGathered`.
+     *
+     * @param  array{recipe: array<int, float>, addon: array<int, float>}|null  $gather
+     */
+    private static function moveStock(Order $order, OrderItem $item, int $delta, ?array &$gather = null): void
     {
         if ($delta === 0) {
             return;
@@ -253,6 +260,17 @@ class OrderCorrection
          */
         if ($item->isCustom()) {
             self::moveArrangement($order, $item, $delta);
+
+            return;
+        }
+
+        /*
+         * والإضافةُ المبيعةُ بندًا مستقلًّا لا صنفَ لها كذلك — وصنفُ مخزونها
+         * على الإضافة (`SaleLines::addonConsumption`). فكانت تسقط من الباب
+         * التالي: يُلغى البيعُ ويبقى الدبُّ منقوصًا من الرفّ وهو في الثلاجة.
+         */
+        if (! $item->product_id && $item->standalone_addon_id) {
+            self::moveStandaloneAddon($order, $item, $delta, $gather);
 
             return;
         }
@@ -286,8 +304,18 @@ class OrderCorrection
         $recipe = Recipe::forLine($product, $variant);
 
         if ($recipe->isNotEmpty()) {
-            self::moveComponents($order, $product, $variant, $delta, $branchId);
+            self::moveComponents($order, $product, $variant, $delta, $branchId, $gather);
 
+            return;
+        }
+
+        /*
+         * وما لا رفَّ له لا يُردّ إليه ولا يُؤخذ منه — كما لم يُخصم عند بيعه
+         * (`StockLedger::move` يتخطّاه، وكذلك البيع). وكان الإلغاءُ يزيد كميّةَ
+         * الخدمة ويكتب حركةً كأنّها عادت إلى رفّ، فتتغيّر الكميّةُ القديمةُ
+         * المحفوظةُ لإعادة التتبّع بلا بضاعة.
+         */
+        if (! $product->tracksStock()) {
             return;
         }
 
@@ -351,9 +379,17 @@ class OrderCorrection
      * نفسها التي يطبّقها Recipe::units عند البيع، وتطبيقُ قاعدتين على
      * الطريقين يجعل التصحيح يردّ غير ما أخذ.
      */
-    private static function moveComponents(Order $order, Product $product, ?ProductVariant $variant, int $delta, ?int $branchId): void
+    private static function moveComponents(Order $order, Product $product, ?ProductVariant $variant, int $delta, ?int $branchId, ?array &$gather = null): void
     {
         $per = Recipe::consumptionFor($product, $variant, abs($delta));
+
+        if ($gather !== null && $delta > 0) {
+            foreach ($per as $pid => $q) {
+                $gather['recipe'][$pid] = ($gather['recipe'][$pid] ?? 0.0) + $q;
+            }
+
+            return;
+        }
 
         $units = [];
         foreach ($per as $pid => $q) {
@@ -370,6 +406,45 @@ class OrderCorrection
 
         StockLedger::move(
             (int) $order->business_id, $branchId, $units,
+            StockLedger::CORRECTION,
+            PosCashier::name() ?? auth()->user()?->name,
+            $order->number,
+        );
+    }
+
+    /**
+     * يردّ صنفَ مخزون الإضافة المبيعة بندًا مستقلًّا — أو يأخذه حين تزيد كميّتُه.
+     *
+     * بقاعدة البيع نفسها: `AddonStock::each` لكلّ قطعة، ثمّ `Recipe::units`
+     * على المجموع. والإضافةُ تُقرأ اليوم لا يوم البيع — الحدُّ نفسُه الذي في
+     * الوصفة أعلاه. وإضافةٌ حُذفت لا صنفَ لها ولا ما يُردّ.
+     */
+    private static function moveStandaloneAddon(Order $order, OrderItem $item, int $delta, ?array &$gather = null): void
+    {
+        $addon = Addon::where('business_id', $order->business_id)->find($item->standalone_addon_id);
+        $pid = (int) ($addon?->inventory_product_id ?? 0);
+
+        if ($gather !== null && $delta > 0) {
+            $each = $addon ? AddonStock::each($addon) : 0.0;
+            if ($pid > 0 && $each > 0) {
+                $gather['addon'][$pid] = ($gather['addon'][$pid] ?? 0.0) + $each * $delta;
+            }
+
+            return;
+        }
+
+        $n = $addon ? Recipe::units(AddonStock::each($addon) * abs($delta)) : 0;
+
+        if ($pid < 1 || $n <= 0) {
+            return;
+        }
+
+        if ($delta < 0) {
+            self::assertAvailable($order, [$pid => $n], $order->branch_id);
+        }
+
+        StockLedger::move(
+            (int) $order->business_id, $order->branch_id, [$pid => $delta > 0 ? $n : -$n],
             StockLedger::CORRECTION,
             PosCashier::name() ?? auth()->user()?->name,
             $order->number,
@@ -485,14 +560,49 @@ class OrderCorrection
     }
 
     /**
+     * يردّ ما جُمع من كسور الطلب كلِّه — بالرفع نفسه الذي أُخذ به.
+     *
+     * البيعُ يجمع كسورَ الوصفات على السلّة ثمّ يرفعها مرّةً، والإضافاتِ كذلك
+     * مرّةً (`PosController`، `WebCheckout`). وكان الإلغاءُ يرفع كلَّ بندٍ وحده:
+     * باقتان بنصف لفّةٍ لكلٍّ أخذتا لفّةً، وعادت لفّتان — ويظهر في الجرد ما لم
+     * يُشترَ. فيُجمع المردودُ كما جُمع المأخوذ، ويُرفع كلُّ مجموعٍ مرّة.
+     *
+     * @param  array{recipe: array<int, float>, addon: array<int, float>}  $gather
+     */
+    private static function returnGathered(Order $order, array $gather): void
+    {
+        $by = PosCashier::name() ?? auth()->user()?->name;
+
+        StockLedger::move(
+            (int) $order->business_id, $order->branch_id,
+            array_map(fn ($q) => Recipe::units($q), $gather['recipe']),
+            StockLedger::CORRECTION, $by, $order->number,
+        );
+
+        StockLedger::move(
+            (int) $order->business_id, $order->branch_id,
+            AddonStock::units($gather['addon']),
+            StockLedger::CORRECTION, $by, $order->number,
+        );
+    }
+
+    /**
      * يردّ بضاعة الإضافات حين يُحذف البند كلُّه.
      *
      * الإضافة كميّةٌ مطلقة على البند لا مضروبةٌ في كميّته: «شوكولاتة ×١»
      * تبقى واحدة سواء بيعت باقةٌ أو اثنتان. فتغيير الكمية لا يمسّها، وحذفُ
      * البند يردّها كاملة — وإلّا بقي الدبّ منقوصًا من الرفّ وهو في الثلاجة.
      */
-    private static function releaseAddons(Order $order, OrderItem $item): void
+    private static function releaseAddons(Order $order, OrderItem $item, ?array &$gather = null): void
     {
+        if ($gather !== null) {
+            foreach (AddonStock::consumedBy($item->addons) as $pid => $q) {
+                $gather['addon'][$pid] = ($gather['addon'][$pid] ?? 0.0) + $q;
+            }
+
+            return;
+        }
+
         /*
          * ويُقرأ ما أُخذ من لقطة البند لا من الإضافة اليوم.
          *
@@ -1517,10 +1627,12 @@ class OrderCorrection
             $order->loadMissing('items.addons.addon', 'items.components');
 
             // ما بيع يعود إلى الرفّ — بالطريق نفسه الذي خرج به
+            $gather = ['recipe' => [], 'addon' => []];
             foreach ($order->items as $item) {
-                self::moveStock($order, $item, (int) $item->quantity);
-                self::releaseAddons($order, $item);
+                self::moveStock($order, $item, (int) $item->quantity, $gather);
+                self::releaseAddons($order, $item, $gather);
             }
+            self::returnGathered($order, $gather);
 
             self::releaseCoupon($order);
             self::reverseLoyalty($order);

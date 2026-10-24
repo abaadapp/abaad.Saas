@@ -64,6 +64,8 @@ class AnIssuedInvoiceClosesTest extends TestCase
         ]);
 
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_rate', 'value' => '5']);
+        // متجرٌ يجبي الضريبة صراحةً — والفاتورةُ تُكتب بما يُعيده حسابُها (`OrderCorrection::assertTaxStands`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
 
         $cat = Category::create(['business_id' => $this->business->id, 'name' => 'عام']);
         $this->product = Product::create([
@@ -83,8 +85,9 @@ class AnIssuedInvoiceClosesTest extends TestCase
             'business_id' => $this->business->id, 'branch_id' => $this->branch->id,
             'number' => 'INV-'.uniqid(), 'customer_name' => 'عميل نقدي',
             'employee_name' => 'نورة', 'user_id' => $this->cashier->id,
-            'subtotal' => 30, 'discount' => 0, 'tax' => 1.5, 'delivery_fee' => 0,
-            'total' => 31.5, 'payment_method' => 'نقدي',
+            // ثلاثةُ قمصانٍ ووردة: ٣٥ وضريبتُها — كما يكتبها البيع
+            'subtotal' => 35, 'discount' => 0, 'tax' => 1.75, 'delivery_fee' => 0,
+            'total' => 36.75, 'payment_method' => 'نقدي',
             'status' => 'مكتمل', 'payment_status' => 'مدفوع', 'is_held' => false,
             'ordered_at' => $at,
         ]);

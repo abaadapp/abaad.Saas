@@ -189,10 +189,26 @@ class ReportData
          * وضريبتُه على الشاشة كي لا يُقرأ الرقمُ ناقصًا بلا سبب.
          */
         $bought = (clone $invoices)->where('approval_status', SupplierInvoices::APPROVED)
-            ->get(['issued_at', 'subtotal', 'tax']);
+            ->get(['id', 'issued_at', 'subtotal', 'tax']);
 
-        $waiting = (clone $invoices)->where('approval_status', SupplierInvoices::PENDING)
-            ->get(['tax']);
+        /*
+         * ═══ والمخصومُ ما رحّله الدفتر إلى «ضريبة المدخلات»، لا المكتوبُ على السند ═══
+         *
+         * السندُ يحمل ضريبةَ المورّد مكتوبةً أيًّا كان حالُ المتجر. لكنّ الاعتمادَ
+         * يسأل `Vat::enabled` يومَه: متجرٌ غير مسجَّلٍ تدخل الضريبةُ في كلفة
+         * بضاعته ولا يُقيَّد منها شيءٌ في 1250 (`SupplierInvoices::approve`).
+         * فكان الإقرارُ يخصم ما لا يملك المتجرُ خصمَه، ويخالف الدفترَ بالفرق.
+         * فيُقرأ لكلّ سندٍ ما رُحّل منه فعلًا — وعكسُه إن أُلغي يُنقصه.
+         *
+         * وسندٌ معتمَدٌ لا قيدَ له أصلًا (سبق الدفترَ) لا يقول الدفترُ عنه
+         * شيئًا، فتبقى ضريبتُه المكتوبة كما كانت.
+         */
+        $posted = self::postedInputTax($bid, $bought->pluck('id'));
+
+        // والمعلَّقُ يُذكر بضريبته متى كانت ستُخصم عند اعتماده — لا والضريبةُ مطفأة
+        $waiting = Vat::enabled($bid)
+            ? (clone $invoices)->where('approval_status', SupplierInvoices::PENDING)->get(['tax'])
+            : collect();
 
         /*
          * الصفوف شهريّة لا يوميّة.
@@ -247,7 +263,7 @@ class ReportData
             $key = optional($invoice->issued_at)->format('Y-m') ?? '—';
             $months[$key] ??= self::vatRow($key);
             $months[$key]['purchases'] += (float) $invoice->subtotal;
-            $months[$key]['input'] += (float) $invoice->tax;
+            $months[$key]['input'] += $posted[$invoice->id] ?? (float) $invoice->tax;
         }
 
         krsort($months);
@@ -288,6 +304,37 @@ class ReportData
             ],
             'options' => [],
         ]);
+    }
+
+    /**
+     * ضريبةُ المدخلات التي رحّلها الدفترُ لكلّ سند مورّد: سندٌ ← مبلغ.
+     *
+     * من سطور «ضريبة المدخلات» (`tax_input`) في قيود السند نفسه — اعتمادُه
+     * وعكسُه إن أُلغي (العكسُ يحمل مصدرَ أصله). ومن دفتر هذا المتجر وحده.
+     * وكلُّ سندٍ له قيدٌ يُذكر ولو بصفر: صفرٌ قاله الدفتر، والغائبُ لم يقل.
+     *
+     * @param  Collection<int, int>  $ids
+     * @return array<int, float>
+     */
+    private static function postedInputTax(int $bid, Collection $ids): array
+    {
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        return DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->where('journal_entries.business_id', $bid)
+            ->where('accounts.business_id', $bid)
+            ->where('journal_entries.posted', true)
+            ->where('journal_entries.sourceable_type', SupplierInvoice::class)
+            ->whereIn('journal_entries.sourceable_id', $ids->all())
+            ->groupBy('journal_entries.sourceable_id')
+            ->selectRaw("journal_entries.sourceable_id as invoice_id, sum(case when accounts.system_key = 'tax_input' then journal_lines.debit - journal_lines.credit else 0 end) as tax")
+            ->pluck('tax', 'invoice_id')
+            ->map(fn ($tax) => round((float) $tax, 3))
+            ->all();
     }
 
     /** صفُّ شهرٍ فارغ — والاسم يُقرأ بالعربية لا «2026-08» */

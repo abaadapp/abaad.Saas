@@ -113,7 +113,8 @@ final class BranchReports
                 'in_transit_quantity' => $inTransit['quantity'],
                 'in_transit_value' => $inTransit['value'],
                 'branches' => count($rows),
-                'best' => $ranked->first()['branch'] ?? null,
+                // والأعلى والأقلُّ مقارنةٌ: فرعٌ واحدٌ له نشاطٌ لا يُسمّى «أعلى» ولو خسر
+                'best' => $ranked->count() > 1 ? $ranked->first()['branch'] : null,
                 'worst' => $ranked->count() > 1 ? $ranked->last()['branch'] : null,
             ],
         ];

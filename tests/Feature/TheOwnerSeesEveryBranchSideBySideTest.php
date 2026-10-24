@@ -93,11 +93,32 @@ class TheOwnerSeesEveryBranchSideBySideTest extends TestCase
         // صلالة: الوردُ ٢ (بِيع منه ٢) والورقُ ٠ — كلاهما تحت حدّه ٥
         $this->assertSame(2, $byName['صلالة']['low_stock']);
         $this->assertSame(0, $byName['مسقط']['low_stock']);
+
+        $this->assertSame('مسقط', $report['summary']['best']);
+        $this->assertSame('صلالة', $report['summary']['worst']);
+    }
+
+    /**
+     * وفرعٌ واحدٌ له نشاطٌ لا يُسمّى «أعلى فرع ربحًا».
+     *
+     * وُجد في المتصفّح: فرعٌ خسر ٣ ر.ع بفقدٍ أثناء النقل، والآخرُ بلا نشاط —
+     * فظهر الخاسرُ «أعلى فرع ربحًا». ومتجرا المؤسسات على الإنتاج بفرعٍ واحد،
+     * فكان فرعُهما الوحيد سيُسمّى «الأعلى» دائمًا.
+     */
+    public function test_one_active_branch_is_not_named_the_best(): void
+    {
+        $this->sellAt($this->muscat, 4);
+
+        $summary = BranchReports::branches($this->shop->id, ReportingPeriod::preset('month'))['summary'];
+
+        $this->assertNull($summary['best']);
+        $this->assertNull($summary['worst']);
     }
 
     public function test_the_screen_ranks_and_isolates_and_counts_what_is_open(): void
     {
         $this->sellAt($this->muscat, 4);
+        $this->sellAt($this->salalah, 1);
         $this->actingAs($this->salalahManager)->post(route('admin.inventory.supply.store'), [
             'branch_id' => $this->salalah->id, 'items' => [['product_id' => $this->rose->id, 'quantity' => 5]],
         ])->assertSessionHasNoErrors();

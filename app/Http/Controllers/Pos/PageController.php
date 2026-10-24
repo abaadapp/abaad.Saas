@@ -292,12 +292,12 @@ class PageController extends Controller
             return false;
         }
 
-        $sold = Order::where('business_id', Demo::bid())
-            ->where('number', $number)->value('ordered_at')
-            ?? Order::where('business_id', Demo::bid())
-                ->where('number', $number)->value('created_at');
+        $order = Order::where('business_id', Demo::bid())->where('number', $number)
+            ->first(['ordered_at', 'created_at', 'status']);
+        $sold = $order?->ordered_at ?? $order?->created_at;
 
-        return $sold !== null && Carbon::parse($sold)->isSameDay(now());
+        // والملغاةُ لا تُصحَّح — والخادمُ يردّها (`OrderCorrection::lockOrder`)
+        return $sold !== null && $order->status !== Order::CANCELLED && Carbon::parse($sold)->isSameDay(now());
     }
 
     /**

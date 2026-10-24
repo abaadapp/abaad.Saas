@@ -409,6 +409,11 @@ class PageController extends Controller
             return ['can' => false, 'reason' => null];
         }
 
+        // والملغاةُ لا تُصحَّح — والخادمُ يردّها (`OrderCorrection::lockOrder`)
+        if ($order->status === Order::CANCELLED) {
+            return ['can' => false, 'reason' => __('الفاتورة ملغاة — لا تُعدَّل.')];
+        }
+
         return Carbon::parse($soldOn)->isSameDay(now())
             ? ['can' => true, 'reason' => null]
             : ['can' => false, 'reason' => __('تعديل الفاتورة — انتهى يومها')];

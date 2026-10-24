@@ -11,4 +11,13 @@ return [
      */
     'leads_to' => env('CONTACT_LEADS_TO', 'abaadappom@gmail.com'),
 
+    /*
+     * رقمُ واتساب داخليٌّ لفريق أبعاد يصله تنبيهُ كلِّ طلبٍ جديد من الموقع.
+     *
+     * في ملفّ الخادم لا في الكود. وفراغُه يُطفئ التنبيه ولا يمسّ الطلب: الطلبُ
+     * في CRM قبل أيّ تنبيه. والتنبيهُ يخرج من خطّ مبيعات أبعاد بقالبٍ معتمَد
+     * وحدَه — انظر WebsiteLeadWhatsAppAlert.
+     */
+    'leads_whatsapp_to' => env('WEBSITE_LEAD_WHATSAPP_TO'),
+
 ];

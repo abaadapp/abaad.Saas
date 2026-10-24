@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\CrmWebsiteInquiries;
+use App\Support\WebsiteLeadWhatsAppAlert;
 use App\Support\WhatsAppPhone;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -103,6 +104,8 @@ class WebsiteContactController extends Controller
 
         if ($inquiry['note']) {
             CrmWebsiteInquiries::notify($inquiry['lead'], $inquiry['note'], $data);
+            // وتنبيهُ واتساب لفريق أبعاد — بعد الـcommit، ولا يُسقط الطلبَ شيءٌ منه
+            WebsiteLeadWhatsAppAlert::queue($inquiry['lead'], $inquiry['note']);
         }
 
         // الردُّ واحدٌ لرقمٍ جديد ولرقمٍ معروف — لا يُعرف منه من في الدفتر

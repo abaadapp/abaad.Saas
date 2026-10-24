@@ -152,7 +152,7 @@ export default function ReportsBranchesWeekly() {
                 {Object.entries(COLUMNS).map(([section, cols]) => {
                     const rows = sections[section] ?? [];
                     return (
-                        <Card key={section} className="overflow-x-auto" data-testid={`weekly-${section}`}>
+                        <Card key={section} className="overflow-x-auto no-scrollbar" data-testid={`weekly-${section}`}>
                             <h2 className="px-4 pt-4 text-[14px] font-bold text-[#111]">
                                 {t(section)} <span className="text-[12px] font-normal text-[#9ca3af]">({number(rows.length)})</span>
                             </h2>

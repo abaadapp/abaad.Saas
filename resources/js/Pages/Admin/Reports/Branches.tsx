@@ -123,7 +123,7 @@ export default function ReportsBranches() {
                 </div>
             </div>
 
-            <Card className="overflow-x-auto">
+            <Card className="overflow-x-auto no-scrollbar">
                 <Table data-testid="branches-table">
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">

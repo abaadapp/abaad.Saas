@@ -145,7 +145,7 @@ export default function TransferShow() {
                 )}
             </Card>
 
-            <Card className="mb-4 overflow-x-auto">
+            <Card className="mb-4 overflow-x-auto no-scrollbar">
                 <Table>
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">

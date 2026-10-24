@@ -81,7 +81,7 @@ export default function ReportsTransfers() {
             stats={stats}
             truncated={truncated}
         >
-            <Card className="overflow-x-auto">
+            <Card className="overflow-x-auto no-scrollbar">
                 <Table data-testid="transfers-log">
                     <TableHeader>
                         <TableRow className="hover:bg-transparent">

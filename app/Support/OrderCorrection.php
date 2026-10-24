@@ -18,6 +18,7 @@ use App\Models\Setting;
 use App\Models\Transaction;
 use App\Support\Store\GiftCardProduct;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -55,6 +56,7 @@ class OrderCorrection
         }
 
         self::assertSameDay($order);
+        self::assertTaxStands($order);
 
         if ($newQty < 0) {
             throw new RuntimeException(__('الكمية لا تكون سالبة.'));
@@ -524,8 +526,54 @@ class OrderCorrection
      */
     private static function recompute(Order $order): void
     {
+        $order->update(self::totals($order, $order->items));
+    }
+
+    /**
+     * ضريبةُ الفاتورة لا تُعاد بإعدادٍ تغيّر بعد بيعها.
+     *
+     * ═══ ما كان يقع ═══
+     *
+     * الفاتورةُ تحفظ مبلغَ ضريبتها وحده — لا نسبةَ كلّ بند، ولا أكانت الضريبة
+     * مفعّلة، ولا أمشمولةً كانت. و`recompute` تقرأ ذلك كلَّه من إعداد اليوم.
+     * فبيعةٌ بوردتين ومزهريةٍ بضريبة ٥٪ (٤٢)، ثمّ أُطفئت الضريبة، ثمّ أُنقصت
+     * وردةٌ واحدة: صارت ٣٠ لا ٣١٫٥ — سقطت ضريبةُ المزهرية التي لم يمسّها
+     * أحد، ورُدّ للزبون ما لم يدفعه زيادةً، ونقص من الإقرار ما جُبي فعلًا.
+     * والعكسُ كذلك: بيعةٌ بلا ضريبة تُضاف إليها بعد تفعيلها. ومثلُهما نسبةُ
+     * المتجر أو نسبةُ صنفٍ أو طريقةُ الاحتساب.
+     *
+     * ═══ والسؤالُ قبل الكتابة ═══
+     *
+     * تُحسب الفاتورةُ كما هي — قبل التصحيح — بإعداد اليوم. فإن أعادت ضريبتَها
+     * المحفوظة فالإعدادُ هو الذي بيعت به، ويمضي التصحيحُ كما كان. وإن لم
+     * تُعِدها رُفض برسالة: لا تُعاد ضريبةُ ما لم يُصحَّح بإعدادٍ لم يُبَع به.
+     * ويبقى الإلغاءُ الكامل — يعكس المبالغَ المحفوظة ولا يحسبها (`cancel`).
+     *
+     * ولا لقطةَ ضريبيّة هنا: هي تُكتب للبيعات الجديدة وحدها، والقديمةُ بلا
+     * لقطة تحتاج هذا السؤالَ على كلّ حال.
+     *
+     * @throws RuntimeException برسالةٍ تُعرض للكاشير كما هي
+     */
+    private static function assertTaxStands(Order $order): void
+    {
+        $now = self::totals($order, $order->items()->get())['tax'];
+
+        if (abs($now - round((float) $order->tax, 3)) < 0.0005) {
+            return;
+        }
+
+        throw new RuntimeException(__('تغيّر إعداد الضريبة منذ بيعت هذه الفاتورة، وتصحيحُ بندٍ فيها يُعيد حسابَ ضريبتها كلِّها بإعداد اليوم فتتغيّر ضريبةُ ما لم يُصحَّح. لا تُصحَّح بنودُها — ويبقى إلغاؤها كاملةً وبيعُها من جديد.'));
+    }
+
+    /**
+     * مبالغُ الفاتورة من بنودٍ تُعطى — بالمعادلة نفسها التي بيعت بها.
+     *
+     * @param  Collection<int, OrderItem>  $items
+     * @return array{subtotal: float, discount: float, coupon_discount: float, tax: float, total: float}
+     */
+    private static function totals(Order $order, Collection $items): array
+    {
         $bid = (int) $order->business_id;
-        $items = $order->items;
 
         // ثمن البند كاملًا: مقاسه وإضافاته. وبإهمال الإضافات كان تصحيحُ
         // كميّةٍ واحدة يُسقط ثمن الشوكولاتة من الفاتورة كلّها بلا أثر
@@ -569,13 +617,13 @@ class OrderCorrection
         // «مشمولة»: المعروض هو المستحقّ، فالمجموع الفرعيّ يُنقص منه ما استُخرج
         $subtotal = Vat::inclusive($bid) ? round($gross - $tax, 3) : $gross;
 
-        $order->update([
+        return [
             'subtotal' => $subtotal,
             'discount' => $discount,
             'coupon_discount' => $couponDiscount,
             'tax' => $tax,
             'total' => round($subtotal - $discount + $tax + (float) $order->delivery_fee, 3),
-        ]);
+        ];
     }
 
     /**
@@ -600,6 +648,7 @@ class OrderCorrection
         }
 
         self::assertSameDay($order);
+        self::assertTaxStands($order);
 
         if ($newQty < 0) {
             throw new RuntimeException(__('الكمية لا تكون سالبة.'));
@@ -1158,6 +1207,7 @@ class OrderCorrection
 
         self::assertSameDay($order);
         self::assertNotFiled($order);
+        self::assertTaxStands($order);
 
         if ($order->customerInvoices()->where('status', '!=', CustomerInvoice::CANCELLED)->exists()) {
             throw new RuntimeException(__('صدرت لهذا الطلب فاتورة عميل — صحّحها بإشعار دائن لا بتعديل البنود.'));

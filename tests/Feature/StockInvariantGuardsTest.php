@@ -10,6 +10,7 @@ use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\StockAdjustment;
 use App\Models\User;
 use App\Support\OrderCorrection;
@@ -103,6 +104,8 @@ class StockInvariantGuardsTest extends TestCase
     public function test_an_invoice_correction_on_an_undistributed_product_keeps_it_balanced(): void
     {
         $p = $this->undistributed(10);
+        // فاتورةٌ بلا ضريبة في متجرٍ لا يجبيها — صراحةً (`OrderCorrection::assertTaxStands`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '0']);
 
         $order = Order::create([
             'business_id' => $this->business->id, 'branch_id' => $this->other->id,

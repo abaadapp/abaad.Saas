@@ -981,6 +981,12 @@ class ReportData
             ->when($category, fn ($q) => $q->where('category_id', $category))
             ->with('category')->orderBy('name')->get();
 
+        /*
+         * وما لا رفَّ له (`tracks_stock = false`) يبقى صفًّا بكميّته القديمة —
+         * ولا قيمةَ له ولا «تحت الحدّ»: ليس بضاعة. و«تحت الحدّ» قاعدةُ اللوحة
+         * نفسُها (`needsStockAlert`): أقلُّ من الحدّ لا يساويه — كان `<=` هنا،
+         * فصنفٌ على حدّه «متوفر» على اللوحة و«تحت الحدّ» في التقرير.
+         */
         $rows = $products->map(fn ($p) => [
             'id' => $p->id,
             'name' => Demo::ln($p->name, $p->name_en),
@@ -989,8 +995,10 @@ class ReportData
             'quantity' => (int) $p->quantity,
             'alert' => (int) $p->alert_qty,
             'cost' => round((float) $p->cost, 3),
-            'value' => round((float) $p->cost * (int) $p->quantity, 3),
-            'below' => (int) $p->quantity <= (int) $p->alert_qty,
+            // وأمانةُ البوتيك على الرفّ ولا قيمةَ لها في مال المحلّ (`Boutiques::CONSIGNED_COST`)
+            'value' => $p->tracksStock() && ! $p->boutique_id ? round((float) $p->cost * (int) $p->quantity, 3) : 0.0,
+            'below' => $p->tracksStock() && (int) $p->quantity < (int) $p->alert_qty,
+            'tracked' => $p->tracksStock(),
         ]);
 
         /*
@@ -1000,7 +1008,7 @@ class ReportData
         $below = $rows->where('below', true)->count();
         $summary = [
             'items' => $rows->count(),
-            'quantity' => (int) $rows->sum('quantity'),
+            'quantity' => (int) $rows->where('tracked', true)->sum('quantity'),
             'value' => round((float) $rows->sum('value'), 3),
             'below' => $below,
             /*

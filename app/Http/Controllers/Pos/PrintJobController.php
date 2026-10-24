@@ -42,6 +42,18 @@ class PrintJobController extends Controller
         $device = $this->terminal();
         $serves = $device !== null && PrintJobs::serves($device);
 
+        /*
+         * وحجزٌ انقضت مهلتُه يُقال «فشل» هنا أيضًا — لا عند الحجز التالي وحده.
+         *
+         * صندوقُ المتصفّح لا يحجز إلّا بضغطة، وزرُّها لا يظهر إلّا وفي الطابور
+         * ورقة. فحجزٌ انقطع ردُّه (أُغلق اللسان، سقطت الشبكة) كان يبقى «يطبعها
+         * الصندوق الآن» أبدًا، واللوحةُ لا تعيده ولا تؤكّده. وهذا السؤالُ يقع
+         * كلَّ عشرين ثانية.
+         */
+        if ($serves) {
+            PrintJobs::expireClaims((int) $device->business_id);
+        }
+
         return response()->json([
             'designated' => $serves,
             'waiting' => $serves ? PrintJobs::waitingFor($device) : 0,
@@ -84,13 +96,37 @@ class PrintJobController extends Controller
 
         $job = PrintJob::where('business_id', $device->business_id)->findOrFail($id);
         abort_unless(
-            $job->status === PrintJob::CLAIMED && (int) $job->claimed_by_device_id === (int) $device->id,
+            (int) $job->claimed_by_device_id === (int) $device->id
+                && ($job->status === PrintJob::CLAIMED || self::justOpenedInATab($job)),
             404,
         );
 
         [$prep, $invoice] = $this->subject($job);
 
         return CustomerInvoicePreparations::internalPdf($prep, $invoice);
+    }
+
+    /**
+     * لسانٌ فتحه الصندوقُ في الضغطة نفسِها، وردُّه سبق طلبَ الملفّ.
+     *
+     * ═══ ولمَ ═══
+     *
+     * في Safari وFirefox (لا طباعةَ من الصفحة) يُفتح لسانٌ فارغٌ في الضغطة، ثمّ
+     * يُوجَّه إلى هذا الملفّ، ويقول الصندوقُ في اللحظة نفسِها «فُتح» (`via=browser`).
+     * والطلبان يتسابقان: إن كُتب الردُّ أوّلًا صارت الورقةُ «فُتح حوارها» قبل أن
+     * يُقرأ الملفّ — فيرى الكاشيرُ صفحةَ 404 والخادمُ يقول «فُتح»، ويجيب «لم
+     * تخرج» فيضغط ثانيةً فيسبقه الردُّ ثانيةً.
+     *
+     * فيُنزَّل لصندوقه وحده، لهذا الطريق وحده، في مهلة الحجز وحدها. وتنزيلُ ملفٍّ
+     * لا يطبع شيئًا بنفسه: الطباعةُ الثانية الوحيدة يد الكاشير — وهي له على أيّ
+     * حال من «فتح PDF». وبعد المهلة يعود الجواب 404 كما كان.
+     */
+    private static function justOpenedInATab(PrintJob $job): bool
+    {
+        return $job->status === PrintJob::REQUESTED
+            && $job->via === 'browser'
+            && $job->requested_at !== null
+            && $job->requested_at->gt(now()->subSeconds(PrintJobs::CLAIM_SECONDS));
     }
 
     /** يقول الصندوقُ ما جرى — ولا يكتب على حجز غيره */

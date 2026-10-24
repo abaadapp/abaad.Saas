@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Support\CrmWebsiteInquiries;
 use App\Support\CrmWhatsApp;
+use App\Models\PosPeripheral;
 use App\Support\Boutiques;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\Demo;
@@ -147,9 +148,15 @@ class HandleInertiaRequests extends Middleware
                  * و`notes` لا تُرسل — ملاحظاتُ التركيب ليست ممّا يحتاجه الصندوق.
                  */
                 'peripherals' => PosTerminal::current()
-                    ?->peripherals()->where('active', true)->get()
-                    ->map(fn ($p) => [
+                    ?->peripherals()->where('active', true)->orderBy('id')->get()
+                    ->pipe(fn ($till) => $till->map(fn ($p) => [
                         'id' => $p->id,
+                        /*
+                         * طابعةُ إيصال البيع — يحسبها الخادمُ وحده، والشاشةُ تقرأ
+                         * العلامة (`PosPeripheral::receiptAmong`). وكانت «أوّلَ
+                         * طابعة» في قائمةٍ بلا ترتيب.
+                         */
+                        'receipt' => $p->is(PosPeripheral::receiptAmong($till)),
                         'type' => $p->type,
                         'name' => $p->name,
                         'model' => $p->model,
@@ -176,7 +183,7 @@ class HandleInertiaRequests extends Middleware
                         'autoPrintCustomerInvoices' => (bool) $p->auto_print_customer_invoices
                             && (int) $p->business_id === (int) $user->business_id
                             && CustomerInvoicePreparations::on((int) $user->business_id),
-                    ])->values()->all() ?? [],
+                    ])->values()->all()) ?? [],
                 'currency' => Demo::displayCurrency(),
                 'currencies' => collect(Demo::currencies())->where('active', true)->values()->all(),
                 /*

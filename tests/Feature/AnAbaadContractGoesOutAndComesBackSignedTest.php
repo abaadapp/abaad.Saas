@@ -17,6 +17,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
+use Tests\Support\AbaadSubscriptionContract;
 use Tests\TestCase;
 
 /**
@@ -34,6 +35,7 @@ use Tests\TestCase;
  */
 class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
 {
+    use AbaadSubscriptionContract;
     use RefreshDatabase;
 
     private User $super;
@@ -63,7 +65,7 @@ class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
             'name' => 'مدير المنصة', 'email' => 'super@abaadapp.test',
             'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
-        $this->contract = PlatformDocumentTemplate::where('name', 'عقد اشتراك أبعاد')->firstOrFail();
+        $this->contract = $this->subscriptionContract();
     }
 
     private function issue(array $data = []): PlatformDocument

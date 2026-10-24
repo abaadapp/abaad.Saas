@@ -13,6 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Tests\Support\AbaadSubscriptionContract;
 use Tests\Support\PdfText;
 use Tests\TestCase;
 
@@ -29,6 +30,7 @@ use Tests\TestCase;
  */
 class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 {
+    use AbaadSubscriptionContract;
     use RefreshDatabase;
 
     private User $super;
@@ -65,7 +67,7 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         ]);
 
         // القالبُ الأوّل تكتبه الهجرة نفسُها — عقدُ الاشتراك كما صُمِّم
-        $this->contract = PlatformDocumentTemplate::where('name', 'عقد اشتراك أبعاد')->firstOrFail();
+        $this->contract = $this->subscriptionContract();
     }
 
     /** العميلُ يفتح الرابط — بلا حساب ولا رمز */

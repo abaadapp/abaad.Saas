@@ -9,6 +9,7 @@ use App\Models\PosDevice;
 use App\Models\Transaction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * ما مرّ بالحساب البنكي فعلًا.
@@ -184,34 +185,43 @@ class Bank
             return;
         }
 
-        $live->each(fn (JournalEntry $e) => Ledger::reverse($e, null, $userId, __('تصحيح الرصيد الافتتاحي')));
+        /*
+         * والعكسُ وكتابةُ الجديد معًا أو لا شيء.
+         *
+         * كان العكسُ يلتزم وحده: افتتاحيٌّ جديد بتاريخٍ في فترةٍ مقفلة
+         * يُردّ (`BooksPeriod::assertOpen`) بعد أن عُكس القديم — فيُمحى
+         * الافتتاحيُّ من الدفتر ويبقى في الشاشة.
+         */
+        DB::transaction(function () use ($account, $leaf, $live, $wanted, $userId) {
+            $live->each(fn (JournalEntry $e) => Ledger::reverse($e, null, $userId, __('تصحيح الرصيد الافتتاحي')));
 
-        if (abs($wanted) < 0.0005) {
-            return;
-        }
+            if (abs($wanted) < 0.0005) {
+                return;
+            }
 
-        $equity = Ledger::account((int) $account->business_id, 'opening_balance_equity');
+            $equity = Ledger::account((int) $account->business_id, 'opening_balance_equity');
 
-        // وحقوقُ الملكية كذلك: الطرفان يُرحَّل إليهما أو لا قيد
-        if (! $equity?->isPostable()) {
-            return;
-        }
+            // وحقوقُ الملكية كذلك: الطرفان يُرحَّل إليهما أو لا قيد
+            if (! $equity?->isPostable()) {
+                return;
+            }
 
-        $side = $wanted > 0;
+            $side = $wanted > 0;
 
-        Ledger::post(
-            (int) $account->business_id,
-            __('رصيد افتتاحي — ').$account->displayName(),
-            [
-                ['account' => $leaf, $side ? 'debit' : 'credit' => abs($wanted)],
-                ['account' => $equity, $side ? 'credit' : 'debit' => abs($wanted)],
-            ],
-            $account->opening_date ? $account->opening_date->copy() : Carbon::parse($account->created_at ?? now()),
-            self::OPENING,
-            null,
-            $userId,
-            $account,
-        );
+            Ledger::post(
+                (int) $account->business_id,
+                __('رصيد افتتاحي — ').$account->displayName(),
+                [
+                    ['account' => $leaf, $side ? 'debit' : 'credit' => abs($wanted)],
+                    ['account' => $equity, $side ? 'credit' : 'debit' => abs($wanted)],
+                ],
+                $account->opening_date ? $account->opening_date->copy() : Carbon::parse($account->created_at ?? now()),
+                self::OPENING,
+                null,
+                $userId,
+                $account,
+            );
+        });
     }
 
     /**

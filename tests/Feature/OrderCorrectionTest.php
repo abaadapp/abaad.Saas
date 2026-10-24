@@ -44,6 +44,8 @@ class OrderCorrectionTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'متجري', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         $this->cashier = User::create([
             'business_id' => $this->business->id, 'name' => 'نورة', 'email' => 'n@abaadapp.om',

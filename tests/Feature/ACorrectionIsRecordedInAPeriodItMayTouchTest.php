@@ -166,8 +166,9 @@ class ACorrectionIsRecordedInAPeriodItMayTouchTest extends TestCase
 
     public function test_a_closed_month_is_never_written_into(): void
     {
-        $this->closeBooksThrough('2026-09-30');
+        // يُكتب المصروفُ ثمّ يُقفل شهرُه — مصروفٌ جديد بعد الإقفال لا يُكتب أصلًا
         $e = $this->spend('2026-09-30');
+        $this->closeBooksThrough('2026-09-30');
 
         $this->delete(route('admin.expenses.destroy', $e->id), [
             'correction' => 'original', 'correction_reason' => 'x',
@@ -185,8 +186,8 @@ class ACorrectionIsRecordedInAPeriodItMayTouchTest extends TestCase
     public function test_a_filed_tax_return_closes_its_period_too(): void
     {
         $this->closeBooksThrough('2026-08-31');
-        $this->closeBooksThrough('2026-09-30', 'vat_filed_through');
         $e = $this->spend('2026-09-30');
+        $this->closeBooksThrough('2026-09-30', 'vat_filed_through');
 
         $this->delete(route('admin.expenses.destroy', $e->id), [
             'correction' => 'original', 'correction_reason' => 'x',

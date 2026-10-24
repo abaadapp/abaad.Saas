@@ -67,6 +67,8 @@ class TheBooksAnswerTheSameNumberToEveryScreenTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'زهور مسقط', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         Currency::create([
             'business_id' => $this->business->id, 'code' => 'OMR', 'name' => 'ريال عماني',
@@ -163,7 +165,7 @@ class TheBooksAnswerTheSameNumberToEveryScreenTest extends TestCase
     public function test_a_shop_that_switched_vat_off_reads_zero_everywhere(): void
     {
         Setting::create(['business_id' => null, 'key' => 'vat_rate', 'value' => '10']);
-        Setting::create(['business_id' => $this->bid(), 'key' => 'vat_enabled', 'value' => '0']);
+        Setting::updateOrCreate(['business_id' => $this->bid(), 'key' => 'vat_enabled'], ['value' => '0']);
 
         $this->assertSame(0.0, Vat::rate($this->bid()));
         $this->assertSame(0.0, (new SaleLines($this->bid()))->vatRate());

@@ -48,6 +48,8 @@ class VatSwitchesTest extends TestCase
         ]);
 
         $this->set('vat_rate', '5');
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        $this->set('vat_enabled', '1');
         $this->actingAs($this->cashier);
     }
 
@@ -82,7 +84,23 @@ class VatSwitchesTest extends TestCase
 
     /* ------------------------ تفعيل الضريبة ------------------------ */
 
-    public function test_by_default_vat_is_applied(): void
+    /**
+     * ومن لم يُجب لا يجبي.
+     *
+     * كان هذا الاختبارُ يقول العكس — «الافتراضيُّ ضريبة» — فمتجرٌ لم يفتح
+     * إعداداته يجبي ٥٪ بلا رقمٍ ضريبيّ. والتفعيلُ الآن صريحٌ أو لا يكون.
+     */
+    public function test_a_shop_that_never_answered_charges_no_vat(): void
+    {
+        Setting::where('business_id', $this->business->id)->where('key', 'vat_enabled')->delete();
+
+        $order = $this->sell();
+
+        $this->assertSame(0.0, (float) $order->tax, 'غيابُ المفتاح قُرئ تفعيلًا');
+        $this->assertSame(100.0, (float) $order->total);
+    }
+
+    public function test_an_explicitly_enabled_shop_charges_vat(): void
     {
         $order = $this->sell();
 

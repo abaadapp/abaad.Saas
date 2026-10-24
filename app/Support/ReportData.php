@@ -313,6 +313,10 @@ class ReportData
      * وعكسُه إن أُلغي (العكسُ يحمل مصدرَ أصله). ومن دفتر هذا المتجر وحده.
      * وكلُّ سندٍ له قيدٌ يُذكر ولو بصفر: صفرٌ قاله الدفتر، والغائبُ لم يقل.
      *
+     * وسندٌ اعتُمد قبل 2026-09-19 (42c2ccea) رحّل ضريبتَه مدينةً على «ضريبة
+     * مستحقّة» (`tax_payable`) لا على حسابها — فهي في الدفتر، تُنقص المستحقَّ
+     * مباشرة. فتُقرأ من الحسابين، وإلّا سقطت من الإقرار ضريبةٌ رحّلها الدفتر.
+     *
      * @param  Collection<int, int>  $ids
      * @return array<int, float>
      */
@@ -331,7 +335,7 @@ class ReportData
             ->where('journal_entries.sourceable_type', SupplierInvoice::class)
             ->whereIn('journal_entries.sourceable_id', $ids->all())
             ->groupBy('journal_entries.sourceable_id')
-            ->selectRaw("journal_entries.sourceable_id as invoice_id, sum(case when accounts.system_key = 'tax_input' then journal_lines.debit - journal_lines.credit else 0 end) as tax")
+            ->selectRaw("journal_entries.sourceable_id as invoice_id, sum(case when accounts.system_key in ('tax_input', 'tax_payable') then journal_lines.debit - journal_lines.credit else 0 end) as tax")
             ->pluck('tax', 'invoice_id')
             ->map(fn ($tax) => round((float) $tax, 3))
             ->all();

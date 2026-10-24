@@ -478,6 +478,9 @@ export default function FinanceStatement() {
  * الكشفُ لا يعدّها لأنّ الرصيد الافتتاحيّ يتضمّنها. لكنّ متجرًا أدخل رصيده
  * الافتتاحيّ بعد حركاتٍ سبقته يقرأ في الكشف رصيدًا غيرَ رصيد الدفتر بلا سبب
  * ظاهر. فيُقال العددُ والصافي ورصيدُ الدفتر، ليُراجَع التاريخُ أو المبلغ.
+ *
+ * وحسابٌ رصيدُه الافتتاحيّ لم يُقيَّد في الدفتر (أُنشئ قبل أن يُقيَّد) لا
+ * حركةَ قبله، ويختم كشفُه بغير رصيد الدفتر — فيُقال الرقمان أيضًا.
  */
 export function BeforeOpeningNotice({
     statement,
@@ -488,7 +491,11 @@ export function BeforeOpeningNotice({
 }) {
     const t = useTranslate();
 
-    if (!statement.before_opening || statement.before_opening.count === 0) {
+    const before = statement.before_opening?.count ?? 0;
+    // بالبيسة: فرقٌ أصغر منها كسرُ فاصلةٍ عائمة لا مال
+    const apart = Math.abs(statement.closing - statement.ledger_balance) >= 0.0005;
+
+    if (before === 0 && !apart) {
         return null;
     }
 
@@ -498,14 +505,19 @@ export function BeforeOpeningNotice({
             data-testid="before-opening-notice"
             className="mt-3 rounded-lg border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#92400e]"
         >
-            {t(
-                'في الدفتر :count حركة على هذا الحساب قبل تاريخ الرصيد الافتتاحي، صافيها :net، ولا تظهر في الكشف. ورصيد الحساب في الدفتر كلّه :ledger. إن كان الرصيد الافتتاحي لا يتضمّنها فراجع مبلغه أو تاريخه.',
-                {
-                    count: statement.before_opening.count,
-                    net: format(statement.before_opening.net),
-                    ledger: format(statement.ledger_balance),
-                },
-            )}
+            {before > 0
+                ? t(
+                      'في الدفتر :count حركة على هذا الحساب قبل تاريخ الرصيد الافتتاحي، صافيها :net، ولا تظهر في الكشف. ورصيد الحساب في الدفتر كلّه :ledger. إن كان الرصيد الافتتاحي لا يتضمّنها فراجع مبلغه أو تاريخه.',
+                      {
+                          count: before,
+                          net: format(statement.before_opening.net),
+                          ledger: format(statement.ledger_balance),
+                      },
+                  )
+                : t('يختم الكشف بـ :closing ورصيد الحساب في الدفتر :ledger. الرصيد الافتتاحي في الكشف غير مقيَّد في الدفتر بمبلغه — راجعه مع المحاسب.', {
+                      closing: format(statement.closing),
+                      ledger: format(statement.ledger_balance),
+                  })}
         </div>
     );
 }

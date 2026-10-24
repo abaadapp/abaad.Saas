@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Account;
 use App\Models\Addon;
 use App\Models\BranchStock;
 use App\Models\Coupon;
@@ -1171,12 +1172,18 @@ class OrderCorrection
      * الصندوقُ أو البنك. وصفُّ البيعة لا ينقص — هو ما دُفع فيها.
      *
      * و«ما سُوّي بعد البيع» نقص قبل ترحيل البيعة (`settleDifference`).
+     *
+     * وردٌّ بالبطاقة لطلبٍ مالُه عند Paymob (`Books::heldByPaymob`) يخرج من
+     * «Paymob تحت التسوية»: البوّابةُ تردّه من رصيدها وتُنقص تحويلَها القادم.
+     * لو خرج من البنك لبقي في التسوية مالٌ لن يصل أبدًا، ونقص البنكُ ما لم يخرج منه.
      */
     private static function refund(Order $order, float $amount, string $method, string $reason): OrderEdit
     {
+        $side = $method === PaymentMethods::CARD && Books::heldByPaymob($order) ? 'paymob_clearing' : self::sideFor($order, $method);
+
         self::settlementRow($order, Transaction::ORDER_REFUND, $amount, $method, __('ردّ فرق الفاتورة ').$order->number, [
             ['account' => 'receivable', 'debit' => $amount],
-            ['account' => self::sideFor($order, $method), 'credit' => $amount],
+            ['account' => $side, 'credit' => $amount],
         ]);
 
         $edit = self::trace($order, OrderEdit::REFUND, $order->number, (float) $order->total, $reason, [
@@ -1196,7 +1203,7 @@ class OrderCorrection
      * لو كان مصدرُه الطلب لَعكسه أوّلُ تصحيحٍ بعده مع قيد البيعة
      * (`Books::unpostSale` تعكس كلَّ قيدٍ حيٍّ للطلب) — فيضيع تحصيلٌ وقع.
      *
-     * @param  list<array{account: string, debit?: float, credit?: float}>  $lines
+     * @param  list<array{account: Account|string, debit?: float, credit?: float}>  $lines
      */
     private static function settlementRow(Order $order, string $kind, float $amount, string $method, string $description, array $lines): void
     {
@@ -1229,8 +1236,15 @@ class OrderCorrection
         $row->update(['journal_entry_id' => $entry->id]);
     }
 
-    /** الوسيلةُ تقول أين دخل المالُ أو خرج: النقدُ الصندوق، وما سواه البنك */
-    private static function sideFor(Order $order, string $method): string
+    /**
+     * الوسيلةُ تقول أين دخل المالُ أو خرج: النقدُ الصندوق، وما سواه البنك.
+     *
+     * وورقةُ البنك حسابٌ لا مفتاح — فالنوعُ `Account|string`. كان `string`
+     * فيحوّل PHP الحسابَ نصَّ JSON (`Model::__toString`)، ويرفضه الدفتر
+     * «حسابٌ غير موجود في الشجرة»: كلُّ تحصيلٍ أو ردٍّ بالبطاقة أو التحويل
+     * في متجرٍ له حسابٌ بنكيّ كان يسقط. وجدها فحصُ ما قبل نشر #168.
+     */
+    private static function sideFor(Order $order, string $method): Account|string
     {
         return in_array($method, ['نقدي', 'كاش'], true)
             ? 'cash'

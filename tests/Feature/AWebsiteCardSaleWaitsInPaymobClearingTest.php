@@ -93,18 +93,18 @@ class AWebsiteCardSaleWaitsInPaymobClearingTest extends TestCase
         parent::tearDown();
     }
 
-    /** زبونٌ يدفع ٢٠ بالبطاقة في الموقع، ويصل إشعارُ Paymob الموقَّع */
-    private function paidWebsiteOrder(): Order
+    /** زبونٌ يدفع ٢٠ لكلّ باقة بالبطاقة في الموقع، ويصل إشعارُ Paymob الموقَّع */
+    private function paidWebsiteOrder(int $qty = 1): Order
     {
         Http::fake(['oman.paymob.com/*' => Http::response(['client_secret' => 'csk_x'], 201)]);
         $this->postJson('/s/wardshop/checkout', [
-            'items' => [['id' => $this->rose->id, 'qty' => 1]],
+            'items' => [['id' => $this->rose->id, 'qty' => $qty]],
             'name' => 'زبون', 'phone' => '95000001', 'fulfil' => 'pickup', 'date' => '2027-02-12', 'pay' => 'card',
         ])->assertOk();
 
         $intent = StorePaymentIntent::where('business_id', $this->shop->id)->latest('id')->firstOrFail();
         $obj = [
-            'amount_cents' => 20000, 'created_at' => '2027-02-10T10:00:10.100000', 'currency' => 'OMR',
+            'amount_cents' => 20000 * $qty, 'created_at' => '2027-02-10T10:00:10.100000', 'currency' => 'OMR',
             'error_occured' => false, 'has_parent_transaction' => false, 'id' => 990000 + $intent->id,
             'integration_id' => 4569876, 'is_3d_secure' => true, 'is_auth' => false, 'is_capture' => false,
             'is_refunded' => false, 'is_standalone_payment' => true, 'is_voided' => false,
@@ -199,6 +199,62 @@ class AWebsiteCardSaleWaitsInPaymobClearingTest extends TestCase
         Books::recordSale($order->fresh(['items.addons']));
 
         $this->assertSame([0.0, 20.0], [$this->clearing(), $this->bank()], 'نقل التصحيحُ مالًا قديمًا من البنك إلى التسوية');
+    }
+
+    /**
+     * وطلبُ موقعٍ بالبطاقة لا دفعةَ Paymob خلفه — صُحّحت وسيلتُه إليها وقد دُفع
+     * بجهاز الشبكة عند الباب — يُعاد ترحيلُه إلى البنك كبطاقة الصندوق، لا إلى
+     * التسوية ولا إلى حيث رُحّل أوّلَ مرّة.
+     */
+    public function test_a_reposted_website_card_sale_with_no_paymob_payment_enters_the_bank(): void
+    {
+        $order = $this->paidWebsiteOrder();
+        StorePaymentIntent::where('order_id', $order->id)->update(['order_id' => null]);
+
+        Books::unpostSale($order);
+        Books::recordSale($order->fresh(['items.addons']));
+
+        $this->assertSame([0.0, 20.0], [$this->clearing(), $this->bank()], 'انتظر عند Paymob مالٌ لم يمرّ بها');
+    }
+
+    /**
+     * وردُّ الفرق بالبطاقة لطلبٍ مالُه عند Paymob يخرج من التسوية: البوّابةُ
+     * تردّه من رصيدها وتُنقص تحويلَها القادم. لو خرج من البنك لبقي في التسوية
+     * مالٌ لن يصل، ونقص البنكُ ما لم يخرج منه. وجدها فحصُ ما قبل النشر.
+     */
+    public function test_a_card_refund_of_a_paymob_sale_leaves_clearing_not_the_bank(): void
+    {
+        $this->shop->forceFill(['order_notes_and_edits_enabled' => true])->save();
+        $order = $this->paidWebsiteOrder(2);
+        $this->assertSame(40.0, $this->clearing(), 'تهيئة: باقتان عند Paymob');
+
+        // استبدالُ البند بأصغرَ منه — والفرقُ يُردّ بإقرار الموظّف ووسيلته (`settleDifference`)
+        OrderCorrection::replaceLine($order->fresh(), $order->items()->firstOrFail(), ['product_id' => $this->rose->id, 'qty' => 1], 'أعاد باقة', OrderCorrection::SETTLE_REFUNDED, 'بطاقة');
+
+        $this->assertSame([20.0, 0.0], [$this->clearing(), $this->bank()], 'خرج ردُّ Paymob من البنك');
+
+        // والتحويلُ القادم بما بقي يُسوّي التسويةَ إلى صفر
+        PaymobSettlements::record($this->shop->id, ['gross' => 20, 'fee' => 0.6, 'net' => 19.4, 'settled_on' => '2027-02-13'], $this->owner->id);
+        $this->assertSame([0.0, 19.4], [$this->clearing(), $this->bank()]);
+    }
+
+    /**
+     * وتحصيلُ فرقٍ بالتحويل في متجرٍ له حسابٌ بنكيّ يدخل ورقةَ البنك. كان
+     * `OrderCorrection::sideFor` يُعيد الحسابَ نصًّا فيرفضه الدفترُ ويسقط
+     * التحصيلُ كلُّه — وRIBBON مفتوحٌ له التعديلُ وله حسابٌ بنكيّ.
+     */
+    public function test_a_difference_collected_by_transfer_enters_the_bank_leaf(): void
+    {
+        $this->shop->forceFill(['order_notes_and_edits_enabled' => true])->save();
+        $this->postJson('/pos/checkout', [
+            'items' => [['id' => $this->rose->id, 'name' => 'باقة ورد', 'qty' => 1, 'price' => 20]],
+            'payment_method' => 'نقدي',
+        ])->assertOk();
+        $order = Order::where('business_id', $this->shop->id)->latest('id')->firstOrFail();
+
+        OrderCorrection::addLine($order, ['product_id' => $this->rose->id, 'qty' => 1], 'زاد باقة', OrderCorrection::SETTLE_COLLECTED, 'تحويل بنكي');
+
+        $this->assertSame([20.0, 20.0, 0.0], [$this->bank(), Ledger::balance($this->shop->id, 'cash'), $this->clearing()]);
     }
 
     public function test_a_card_sale_at_the_till_still_enters_the_bank(): void

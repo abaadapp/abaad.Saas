@@ -40,8 +40,27 @@ describe('ما سبق الرصيدَ الافتتاحيّ', () => {
     });
 
     it('ولا يُقال شيءٌ حين لا شيءَ قبله', () => {
-        render(<BeforeOpeningNotice statement={statement({ before_opening: { count: 0, net: 0 } })} format={(v) => v.toFixed(3)} />);
+        render(
+            <BeforeOpeningNotice
+                statement={statement({ before_opening: { count: 0, net: 0 }, ledger_balance: 2434.68 })}
+                format={(v) => v.toFixed(3)}
+            />,
+        );
 
         expect(screen.queryByTestId('before-opening-notice')).not.toBeInTheDocument();
+    });
+
+    /** وحسابٌ رصيدُه الافتتاحيّ غيرُ مقيَّدٍ في الدفتر يختم كشفُه بغير رصيده — فيُقال الرقمان */
+    it('ويُقال الرقمان حين يختم الكشف بغير رصيد الدفتر ولا شيء قبله', () => {
+        render(
+            <BeforeOpeningNotice
+                statement={statement({ before_opening: { count: 0, net: 0 }, closing: 12500, ledger_balance: 0 })}
+                format={(v) => v.toFixed(3)}
+            />,
+        );
+
+        const note = screen.getByTestId('before-opening-notice');
+        expect(note).toHaveTextContent('12500.000');
+        expect(note).toHaveTextContent('غير مقيَّد');
     });
 });

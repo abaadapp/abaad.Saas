@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
+use App\Models\JournalEntry;
 use App\Models\Setting;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
@@ -13,6 +14,7 @@ use App\Support\Ledger;
 use App\Support\SupplierInvoices;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -125,6 +127,24 @@ class TheVatReturnDeductsWhatTheBooksHoldTest extends TestCase
 
         $this->assertSame(SupplierInvoices::PENDING, SupplierInvoice::where('business_id', $this->business->id)->value('approval_status'));
         $this->assertSame([0, 0.0], [$this->summary()['pending'], $this->summary()['pendingTax']]);
+    }
+
+    /**
+     * وسندٌ اعتُمد قبل 2026-09-19 رحّل ضريبتَه مدينةً على «ضريبة مستحقّة» لا على
+     * حسابها — هي في الدفتر، فتُخصم. وجدها فحصُ ما قبل نشر #168 في سندٍ قديمٍ
+     * لمتجرٍ آخر: الإقرارُ كان سيُسقط ضريبةً رحّلها الدفتر.
+     */
+    public function test_an_older_bill_posted_against_tax_payable_is_still_deducted(): void
+    {
+        $this->vat('1');
+        $bill = $this->bill('S-1');
+        DB::table('journal_lines')
+            ->whereIn('journal_entry_id', JournalEntry::where('sourceable_type', SupplierInvoice::class)->where('sourceable_id', $bill->id)->pluck('id'))
+            ->where('account_id', Ledger::account($this->business->id, 'tax_input')->id)
+            ->update(['account_id' => Ledger::account($this->business->id, 'tax_payable')->id]);
+        $this->assertSame(0.0, Ledger::balance($this->business->id, 'tax_input'), 'تهيئة: ترحيلُ ما قبل 42c2ccea');
+
+        $this->assertSame(5.0, $this->summary()['input']);
     }
 
     /** ولا يُخصم في إقرار متجرٍ ما رحّله دفترُ جاره */

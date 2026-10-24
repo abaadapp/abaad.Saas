@@ -174,6 +174,40 @@ class Reports
             'icon' => 'clipboard-list',
             'route' => 'admin.reports.stocktake',
         ],
+        /*
+         * ═══ وتقاريرُ المؤسسات عن الفروع ═══
+         *
+         * تُخفى بطاقاتُها بقدرتها كما تُقفل مساراتُها (`CheckPlanFeature`): سجلُّ
+         * النقل بـ«نقل المخزون بين الفروع»، وأداءُ الفروع والتقريرُ الأسبوعيّ
+         * بقدرتيهما.
+         */
+        [
+            'key' => 'transfers',
+            'category' => 'operational',
+            'section' => 'inventory',
+            'title' => 'سجل نقل المخزون',
+            'desc' => 'سندات النقل بين الفروع خلال الفترة: الكميات المرسلة والمستلمة والفروقات ومن نفّذ كل مرحلة.',
+            'icon' => 'arrow-left-right',
+            'route' => 'admin.reports.transfers',
+        ],
+        [
+            'key' => 'branches',
+            'category' => 'analytical',
+            'section' => 'reports',
+            'title' => 'أداء الفروع',
+            'desc' => 'مبيعات كل فرع وأرباحه ومخزونه وطلباته المفتوحة جنبًا إلى جنب، مع ملخّص النشاط كلّه.',
+            'icon' => 'building',
+            'route' => 'admin.reports.branches',
+        ],
+        [
+            'key' => 'branchesWeekly',
+            'category' => 'analytical',
+            'section' => 'reports',
+            'title' => 'التقرير الأسبوعي للفروع',
+            'desc' => 'ملخّص أسبوعٍ لجميع الفروع: المبيعات والأرباح والأكثر مبيعًا والمخزون المنخفض والتحويلات والفروقات.',
+            'icon' => 'calendar-range',
+            'route' => 'admin.reports.branchesWeekly',
+        ],
         [
             'key' => 'purchases',
             'category' => 'operational',
@@ -357,6 +391,7 @@ class Reports
      */
     public const PERIODS = [
         'sales' => 'month', 'profit' => 'month', 'finance' => 'month', 'vat' => 'month',
+        'branches' => 'month', 'transfers' => 'month',
         'expenses' => 'month', 'payments' => 'month', 'bank' => 'month', 'orders' => 'month',
         'products' => 'month', 'stocktake' => 'month', 'purchases' => 'month', 'staff' => 'month',
         'activity' => 'month', 'customers' => 'month', 'addons' => 'month', 'marketing' => 'month',

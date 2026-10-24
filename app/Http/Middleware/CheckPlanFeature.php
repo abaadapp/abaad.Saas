@@ -116,6 +116,29 @@ class CheckPlanFeature
         'admin.integrations.google*' => 'integrations',
         // وربطُ واتساب وإعدادُه — بقدرة واتساب، كإشعاراته وسجلّه
         'admin.integrations.whatsapp*' => 'whatsapp',
+        /*
+         * ═══ وإدارةُ الفروع — قدراتُ المؤسسات ═══
+         *
+         * ما يُنشئ عملًا جديدًا يُقفل: طلبُ النقل واعتمادُه وتحضيرُه وإرسالُه،
+         * وطلبُ التزويد واعتمادُه. أمّا ما يُغلق عملًا قائمًا — الاستلامُ وتسويةُ
+         * الفرق والرفضُ والإلغاءُ والقراءة — فيبقى بعد تخفيض الباقة: بضاعةٌ خرجت
+         * من فرعٍ قبل التخفيض تُستلم في الآخر بعده، ولا تبقى معلّقةً قيدَ النقل
+         * لأنّ الباقة تغيّرت. ولا يُفتح بذلك جديد: الشاشةُ تُقرأ لمن له فيها سجلّ
+         * (`BranchTransferController::enter`)، و`BranchTransfers::refusal` تسأل
+         * القدرةَ نفسَها ثانيةً على الاعتماد والإرسال.
+         *
+         * والقراءاتُ — أداءُ الفروع والتقريرُ الأسبوعيّ — تُقفل كلُّها، وتصديرُها معها
+         * (`Reports::FEATURES`).
+         */
+        'admin.inventory.transfers.store' => 'enterprise_transfers',
+        'admin.inventory.transfers.approve' => 'enterprise_transfers',
+        'admin.inventory.transfers.prepare' => 'enterprise_transfers',
+        'admin.inventory.transfers.dispatch' => 'enterprise_transfers',
+        'admin.inventory.supply.store' => 'enterprise_replenishment',
+        'admin.inventory.supply.approve' => 'enterprise_replenishment',
+        'admin.reports.transfers' => 'enterprise_transfers',
+        'admin.reports.branches' => 'enterprise_branch_analytics',
+        'admin.reports.branchesWeekly' => 'enterprise_weekly_report',
     ];
 
     /**

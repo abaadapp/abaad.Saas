@@ -670,6 +670,26 @@ class ReportData
      * يقول «لا مبيعات» وهو لم يُسأل، والثاني يُعرض تحت اسمٍ لم يُختر. والمحذوفُ
      * حذفًا ناعمًا يبقى مقروءًا — تاريخُه تاريخُه.
      */
+    /*
+     * ═══ تقاريرُ المؤسسات عن الفروع — حسابُها في `BranchReports` ═══
+     *
+     * وهنا بابُها الذي يقرؤه متحكّما الشاشة والتنزيل باسم التقرير.
+     */
+    public static function branches(int $bid, array $filters): array
+    {
+        return BranchReports::branches($bid, self::period($filters));
+    }
+
+    public static function branchesWeekly(int $bid, array $filters): array
+    {
+        return BranchReports::weekly($bid, self::pick($filters, 'week'));
+    }
+
+    public static function transfers(int $bid, array $filters): array
+    {
+        return BranchReports::transfers($bid, self::period($filters), self::pick($filters, 'branch_id'), self::pick($filters, 'status'), self::cap());
+    }
+
     public static function profit(int $bid, array $filters): array
     {
         $period = self::period($filters);

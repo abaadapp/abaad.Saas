@@ -700,6 +700,13 @@ class PageController extends Controller
                 'count' => count($all),
                 'value' => round(array_sum(array_column($all, 'value')), 3),
             ],
+            /*
+             * وما قيدَ النقل بين الفروع — خرج من رفّ المصدر ولم يدخل رفَّ المستلم.
+             *
+             * ليس في الصفوف ولا في القيمة أعلاه (هي ما على الرفوف)، فيُقال
+             * وحده: مخزونُ النشاط = ما على الرفوف + ما قيدَ النقل (`BranchTransfers`).
+             */
+            'inTransit' => \App\Support\BranchTransfers::inTransit(Demo::bid()),
             'branches' => Demo::branches(),
             'currentBranchId' => Demo::currentBranchId(),
         ]);

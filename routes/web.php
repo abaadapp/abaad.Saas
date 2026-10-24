@@ -32,8 +32,10 @@ use App\Http\Controllers\Admin\GoogleBusinessController;
 use App\Http\Controllers\Admin\HelpController;
 use App\Http\Controllers\Admin\IntegrationsController;
 use App\Http\Controllers\Admin\WhatsAppOnboardingController;
+use App\Http\Controllers\Admin\Inventory\BranchTransferController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
 use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
+use App\Http\Controllers\Admin\Inventory\SupplyRequestController;
 use App\Http\Controllers\Admin\InventoryController;
 use App\Http\Controllers\Admin\JobTitleController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -1030,6 +1032,43 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('inventory.receipts.show');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
+    /*
+     * ═══ نقلُ المخزون بين الفروع وطلباتُ التزويد — باقة المؤسسات ═══
+     *
+     * تحت قسم «المخزون»، وكلُّ مرحلةٍ فعلٌ باسمه يُفحص مع إسناد الفرع في
+     * `BranchTransfers` لا هنا. والقدرةُ تُفحص في `CheckPlanFeature` على ما
+     * يُنشئ عملًا جديدًا وحده: ما أُرسل قبل تخفيض الباقة يُستلم ويُسوّى بعده.
+     */
+    Route::get('/inventory/transfers', [BranchTransferController::class, 'index'])->name('inventory.transfers');
+    Route::get('/inventory/transfers/products', [BranchTransferController::class, 'products'])->name('inventory.transfers.products');
+    Route::post('/inventory/transfers', [BranchTransferController::class, 'store'])->name('inventory.transfers.store');
+    Route::get('/inventory/transfers/{id}', [BranchTransferController::class, 'show'])
+        ->whereNumber('id')->name('inventory.transfers.show');
+    Route::post('/inventory/transfers/{id}/approve', [BranchTransferController::class, 'approve'])
+        ->whereNumber('id')->name('inventory.transfers.approve');
+    Route::post('/inventory/transfers/{id}/reject', [BranchTransferController::class, 'reject'])
+        ->whereNumber('id')->name('inventory.transfers.reject');
+    Route::post('/inventory/transfers/{id}/prepare', [BranchTransferController::class, 'prepare'])
+        ->whereNumber('id')->name('inventory.transfers.prepare');
+    Route::post('/inventory/transfers/{id}/dispatch', [BranchTransferController::class, 'send'])
+        ->whereNumber('id')->name('inventory.transfers.dispatch');
+    Route::post('/inventory/transfers/{id}/receive', [BranchTransferController::class, 'receive'])
+        ->whereNumber('id')->name('inventory.transfers.receive');
+    Route::post('/inventory/transfers/{id}/resolve', [BranchTransferController::class, 'resolve'])
+        ->whereNumber('id')->name('inventory.transfers.resolve');
+    Route::post('/inventory/transfers/{id}/cancel', [BranchTransferController::class, 'cancel'])
+        ->whereNumber('id')->name('inventory.transfers.cancel');
+    Route::get('/inventory/supply', [SupplyRequestController::class, 'index'])->name('inventory.supply');
+    Route::post('/inventory/supply', [SupplyRequestController::class, 'store'])->name('inventory.supply.store');
+    Route::get('/inventory/supply/{id}', [SupplyRequestController::class, 'show'])
+        ->whereNumber('id')->name('inventory.supply.show');
+    Route::post('/inventory/supply/{id}/approve', [SupplyRequestController::class, 'approve'])
+        ->whereNumber('id')->name('inventory.supply.approve');
+    Route::post('/inventory/supply/{id}/reject', [SupplyRequestController::class, 'reject'])
+        ->whereNumber('id')->name('inventory.supply.reject');
+    Route::post('/inventory/supply/{id}/cancel', [SupplyRequestController::class, 'cancel'])
+        ->whereNumber('id')->name('inventory.supply.cancel');
+
     // المورّدون
     Route::get('/suppliers', [PageController::class, 'suppliersIndex'])->name('suppliers.index');
     // التصدير قبل {id}: لو جاء بعده لابتلع «export» مسارَ المورّد الواحد
@@ -1774,6 +1813,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/reports/addons', [ReportPageController::class, 'addons'])->name('reports.addons');
     // عمليات جرد المخزون — أين فارق الدفترُ الواقع، وبكم
     Route::get('/reports/stocktake', [ReportPageController::class, 'stocktake'])->name('reports.stocktake');
+    // تقاريرُ المؤسسات عن الفروع — قدراتُها في `CheckPlanFeature`
+    Route::get('/reports/transfers', [ReportPageController::class, 'transfers'])->name('reports.transfers');
+    Route::get('/reports/branches', [ReportPageController::class, 'branches'])->name('reports.branches');
+    Route::get('/reports/branches-weekly', [ReportPageController::class, 'branchesWeekly'])->name('reports.branchesWeekly');
 
     /*
      * تنزيلُ أيّ تقريرٍ بالصيغ الثلاث المعتمدة.

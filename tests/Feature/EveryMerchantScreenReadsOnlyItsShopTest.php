@@ -184,6 +184,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.finance.statement' => ['id' => 'bank'],
         'admin.finance.transactionPaper' => ['id' => 'transaction'],
         'admin.inventory.receipts.show' => ['id' => 'grn'],
+        'admin.inventory.transfers.show' => ['id' => 'transfer'],
+        'admin.inventory.supply.show' => ['id' => 'supply'],
         'admin.inventory.receipts.attachment' => ['id' => 'grn'],
         'admin.inventory.receipts.pdf' => ['id' => 'grn'],
         'admin.orders.giftcard' => ['id' => 'order'],

@@ -10,6 +10,7 @@ use App\Models\Expense;
 use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\Plan;
 use App\Models\Product;
 use App\Models\Season;
 use App\Models\StockAdjustment;
@@ -17,6 +18,7 @@ use App\Models\Supplier;
 use App\Models\SupplierInvoice;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\PlanFeatures;
 use App\Support\ReportColumns;
 use App\Support\ReportData;
 use App\Support\Reports;
@@ -61,6 +63,7 @@ class AFileSaysWhatItsScreenSaysTest extends TestCase
         'purchases' => 'Purchases', 'suppliers' => 'Suppliers', 'activity' => 'Activity',
         'seasons' => 'Seasons', 'marketing' => 'Marketing', 'waste' => 'Waste',
         'addons' => 'Addons', 'profit' => 'Profit', 'costs' => 'Costs',
+        'branches' => 'Branches', 'transfers' => 'Transfers', 'branchesWeekly' => 'BranchesWeekly',
     ];
 
     private Business $shop;
@@ -82,7 +85,8 @@ class AFileSaysWhatItsScreenSaysTest extends TestCase
         $neighbour = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
         $gone = Branch::create(['business_id' => $neighbour->id, 'name' => 'فرعُ الجار']);
 
-        $this->shop = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ يملك كلَّ قدرة — وقدراتُ المؤسسات لا تُفتح بلا باقةٍ تسمّيها (`PlanFeatures::ENTERPRISE`)
+        $this->shop = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط', 'plan_id' => Plan::create(['name' => 'كل القدرات', 'monthly_price' => 0, 'yearly_price' => 0, 'capabilities' => PlanFeatures::keys()])->id]);
         $this->branch = Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
         JobTitle::create(['business_id' => $this->shop->id, 'name' => 'مدير', 'role' => 'admin']);
 

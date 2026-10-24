@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Support\CostsAndLosses;
 use App\Support\Demo;
+use App\Support\Permissions;
 use App\Support\ReportData;
 use App\Support\ReportingPeriod;
 use App\Support\Reports;
@@ -103,6 +104,43 @@ class ReportPageController extends Controller
     public function profit(Request $request): Response
     {
         return $this->report($request, 'profit', 'Profit', ['branch_id']);
+    }
+
+    /**
+     * أداءُ الفروع — مقارنتُها جنبًا إلى جنب، والقدرةُ في `CheckPlanFeature`.
+     */
+    public function branches(Request $request): Response
+    {
+        return $this->report($request, 'branches', 'Branches');
+    }
+
+    /** التقريرُ الأسبوعيّ للفروع — الأسبوعُ من `week` (أيُّ يومٍ فيه) */
+    public function branchesWeekly(Request $request): Response
+    {
+        return $this->report($request, 'branchesWeekly', 'BranchesWeekly', ['week']);
+    }
+
+    /**
+     * سجلُّ نقل المخزون — تحويلاتُ الفروع كلِّها.
+     *
+     * فيه ما بين كلّ فرعين، فيُقرأ لمن يرى تحويلاتِ النشاط كلَّها لا لكلّ من
+     * يفتح «المخزون»: أمينُ مخزن صحار يرى سنداتِ صحار في شاشتها.
+     */
+    public function transfers(Request $request): Response
+    {
+        self::seesAllTransfers();
+
+        return $this->report($request, 'transfers', 'Transfers', ['branch_id', 'status']);
+    }
+
+    public static function seesAllTransfers(): void
+    {
+        $user = auth()->user();
+        abort_unless(
+            Permissions::isOwner($user) || $user?->may(Permissions::TRANSFER_VIEW_ALL),
+            403,
+            __('سجل نقل المخزون لمن يشاهد جميع تحويلات النشاط.'),
+        );
     }
 
     /**

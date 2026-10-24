@@ -93,6 +93,9 @@ class TenantTables
          */
         'boutique_settlements',
         'fixed_assets', 'inventory_movements', 'stock_adjustments', 'stock_transfers',
+        // وطلباتُ التزويد قبل سنداتها، والسنداتُ قبل أسطرها — مفتاحُ كلٍّ يشير إلى ما قبله
+        'branch_supply_requests', 'branch_supply_request_lines',
+        'branch_transfers', 'branch_transfer_lines', 'branch_operation_events',
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',
         /*

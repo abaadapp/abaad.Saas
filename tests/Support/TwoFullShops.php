@@ -136,6 +136,10 @@ trait TwoFullShops
             'payment' => $this->row('customer_payments', ['business_id' => $bid, 'customer_id' => $customer, 'number' => "RC-{$tag}-1", 'amount' => 5, 'method' => 'cheque', 'occurred_at' => now()->toDateString()]),
             'payment_link' => $this->row('customer_payment_links', ['business_id' => $bid, 'customer_id' => $customer, 'reference' => 'pay-'.strtolower($tag).'-1', 'amount' => 5, 'currency' => 'OMR', 'status' => 'pending', 'provider_link_id' => '1']),
             'grn' => $this->row('goods_receipt_notes', ['business_id' => $bid, 'number' => "GRN-{$tag}-1", 'received_at' => now()->toDateString(), 'status' => 'pending']),
+            // سندُ نقلٍ بين فرعين وطلبُ تزويد — بانتظار الموافقة، فيُطرق كلُّ بابٍ من أبوابهما
+            'transfer' => $transfer = $this->row('branch_transfers', ['business_id' => $bid, 'number' => "TRF-{$tag}-1", 'status' => 'pending', 'from_branch_id' => $branch, 'to_branch_id' => $branch, 'from_branch_name' => "فرع {$tag}", 'to_branch_name' => "فرع {$tag}"]),
+            'transfer_line' => $this->row('branch_transfer_lines', ['business_id' => $bid, 'branch_transfer_id' => $transfer, 'product_id' => $product, 'product_name' => "صنف {$tag}", 'requested_qty' => 1]),
+            'supply' => $this->row('branch_supply_requests', ['business_id' => $bid, 'number' => "SUP-{$tag}-1", 'branch_id' => $branch, 'branch_name' => "فرع {$tag}"]),
             'website' => $website,
             'page' => $this->row('website_pages', ['website_id' => $website, 'business_id' => $bid, 'key' => 'about', 'title' => "صفحة {$tag}", 'slug' => 'about-'.strtolower($tag)]),
             'section' => $this->row('website_sections', ['website_id' => $website, 'business_id' => $bid, 'type' => 'text', 'data' => '{}']),

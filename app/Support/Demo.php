@@ -4441,6 +4441,19 @@ class Demo
                 'url' => route('admin.inventory.index'),
             ]);
         }
+
+        /*
+         * ═══ وتنبيهاتُ الفروع — للمؤسسات ═══
+         *
+         * طلباتُ التزويد والنقل المعلّقة، والتحويلاتُ المتأخّرة، وفروقُ
+         * الاستلام، ونقصُ الصنف في فرعٍ بعينه — لمن يخصّه كلٌّ منها
+         * (`BranchAlerts`). وبالقدرة وحدها: باقةٌ لا تملكها لا يُبنى لها شيء.
+         */
+        if ($u && $u->business && PlanFeatures::allows($u->business, 'enterprise_alerts')) {
+            foreach (BranchAlerts::for($u, $limit) as $key => $item) {
+                $add($key, $item);
+            }
+        }
         /*
          * العميل الراكد: اشترى يومًا ثم انقطع. من لم يشترِ قطّ ليس راكدًا بل
          * لم يبدأ — انظر AlertMetrics::dormantCustomers. المدّة تُضبط من

@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\CheckPlanFeature;
 use App\Models\Branch;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Exports\PdfRows;
 use App\Support\Exports\Workbook;
 use App\Support\Pdf;
+use App\Support\PlanFeatures;
 use App\Support\ReportColumns;
 use App\Support\ReportData;
 use App\Support\ReportingPeriod;
@@ -48,6 +50,21 @@ class ReportDownloadController extends Controller
             403,
             __('ليس لديك صلاحية للوصول إلى قسم «:section».', ['section' => $section]),
         );
+
+        /*
+         * وقدرةُ الشاشة تُسأل عن ملفّها.
+         *
+         * بابُ التنزيل واحدٌ لكلّ التقارير، ويُقفل بـ«التقارير المتقدّمة» وحدها.
+         * فتقريرٌ تقفله باقتُه بقدرةٍ أخرى — أداءُ الفروع للمؤسسات — كان يُنزَّل
+         * كاملًا من باقةٍ تملك التصدير ولا تملك الشاشة.
+         */
+        if ($feature = CheckPlanFeature::featureFor('admin.reports.'.$report)) {
+            PlanFeatures::enforce(auth()->user()?->business, $feature);
+        }
+
+        if ($report === 'transfers') {
+            ReportPageController::seesAllTransfers();
+        }
 
         $filters = $request->query();
 

@@ -93,6 +93,56 @@ class PlanFeatures
             'label' => 'التطبيقات التكاملية',
             'hint' => 'ربط المتجر بالخدمات الخارجية وضبطها من «التطبيقات التكاملية»',
         ],
+        /*
+         * ═══ وإدارةُ الفروع — قدراتُ المؤسسات ═══
+         *
+         * خمسُ قدراتٍ تُباع مع باقة المؤسسات وحدها، وكلٌّ لها حارسُها في
+         * `CheckPlanFeature`. وهي **مغلقةٌ افتراضًا** خلافًا لما فوقها — انظر
+         * `ENTERPRISE`.
+         */
+        'enterprise_transfers' => [
+            'label' => 'نقل المخزون بين الفروع',
+            'hint' => 'سندات النقل والموافقة والإرسال والاستلام ومعالجة الفروقات وسجلّها',
+        ],
+        'enterprise_replenishment' => [
+            'label' => 'طلبات تزويد الفروع',
+            'hint' => 'تطلب الفروع البضاعة وتعتمدها الإدارة سندَ نقل — تحتاج «نقل المخزون بين الفروع»',
+        ],
+        'enterprise_branch_analytics' => [
+            'label' => 'أداء الفروع',
+            'hint' => 'لوحة مركزية تقارن مبيعات الفروع وأرباحها ومخزونها',
+        ],
+        'enterprise_weekly_report' => [
+            'label' => 'التقرير الأسبوعي للفروع',
+            'hint' => 'ملخّص أسبوعيّ لكلّ الفروع داخل اللوحة',
+        ],
+        'enterprise_alerts' => [
+            'label' => 'التنبيهات المركزية للفروع',
+            'hint' => 'تنبيهات طلبات التزويد والتحويلات المتأخرة وفروق الاستلام ونقص مخزون الفروع',
+        ],
+    ];
+
+    /**
+     * قدراتُ المؤسسات — تُفتح بالقائمة الصريحة وحدها.
+     *
+     * ═══ ولمَ لا تتبع الافتراض المفتوح ═══
+     *
+     * «بلا باقة» و«باقةٌ لم تُملأ قدراتُها» تفتحان كلّ ما فوق: هي قدراتٌ كانت
+     * تعمل قبل أن يكون للقدرات عمود، والقفلُ الخاطئ عليها يوقف عملًا قائمًا.
+     * وهذه وُلدت مع عمودها: لا متجرَ يعمل بها اليوم فيُقفل دونه. فالفتحُ
+     * الخاطئ هنا لا يُكتشف ويُصحَّح — هو بيعُ باقة المؤسسات بسعر الأساسيّة،
+     * وتسرّبُها إلى كلّ باقةٍ قديمةٍ عمودُها فارغ أو مخصّصةٍ لم يؤشَّر فيها.
+     *
+     * فلا يفتحها إلّا مفتاحُها في `capabilities` — يكتبه ترحيلُ باقة المؤسسات
+     * (`2026_10_24_090000_the_enterprise_plan_runs_its_branches`) أو يؤشّره
+     * صاحبُ المنصّة صراحةً في محرّر الباقة.
+     */
+    public const ENTERPRISE = [
+        'enterprise_transfers',
+        'enterprise_replenishment',
+        'enterprise_branch_analytics',
+        'enterprise_weekly_report',
+        'enterprise_alerts',
     ];
 
     /** هل تفتح باقةُ هذا المتجر هذه القدرة؟ */
@@ -105,6 +155,11 @@ class PlanFeatures
     public static function allowedBy(?Plan $plan, string $key): bool
     {
         $granted = $plan?->capabilities;
+
+        // وقدراتُ المؤسسات بالقائمة الصريحة وحدها — لا افتراضَ يفتحها
+        if (in_array($key, self::ENTERPRISE, true)) {
+            return is_array($granted) && in_array($key, $granted, true);
+        }
 
         // بلا باقة، أو بباقةٍ لم تُملأ قدراتُها: مفتوحٌ كما كان
         if ($plan === null || ! is_array($granted)) {
@@ -162,6 +217,12 @@ class PlanFeatures
     public static function keys(): array
     {
         return array_keys(self::CAPABILITIES);
+    }
+
+    /** ما دون قدرات المؤسسات — قائمةُ الاحترافيّة */
+    public static function baseKeys(): array
+    {
+        return array_values(array_diff(self::keys(), self::ENTERPRISE));
     }
 
     /**

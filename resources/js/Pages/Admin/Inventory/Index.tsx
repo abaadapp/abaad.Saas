@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import SectionTabs, { INVENTORY_TABS } from '@/Components/SectionTabs';
 import ExportMenu from '@/Components/ExportMenu';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
@@ -23,12 +24,14 @@ interface Props {
     sorts: string[];
     /** عددُ الأصناف وقيمتُها للمخزن كلِّه لا للصفحة */
     summary: { count: number; value: number };
+    /** ما قيدَ النقل بين الفروع — ليس في الصفوف ولا في القيمة (`BranchTransfers::inTransit`) */
+    inTransit?: { quantity: number; value: number; transfers: number };
     branches: Branch[];
     currentBranchId: number | null;
 }
 
 export default function InventoryIndex() {
-    const { inventory: serverInventory, pagination, filters: params, sorts, summary, context } = usePage<PageProps<Props>>().props;
+    const { inventory: serverInventory, pagination, filters: params, sorts, summary, inTransit, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
 
@@ -136,6 +139,20 @@ export default function InventoryIndex() {
             />
 
             <SectionTabs tabs={INVENTORY_TABS} current="admin.inventory.index" />
+
+            {/* مخزونُ النشاط = ما على الرفوف أعلاه + ما قيدَ النقل — ويُستلم من شاشة التحويلات ولو تغيّرت الباقة */}
+            {inTransit && inTransit.quantity > 0 && (
+                <p className="mb-3 rounded-lg bg-[#eff6ff] px-3 py-2 text-[13px] text-[#1e40af]" data-testid="inventory-in-transit">
+                    {t('قيد النقل بين الفروع: :n قطعة بقيمة :value في :count سند — ليست في الأرصدة أعلاه حتى تُستلم.', {
+                        n: number(inTransit.quantity),
+                        value: money(inTransit.value, currency),
+                        count: number(inTransit.transfers),
+                    })}{' '}
+                    <SmartLink routeName="admin.inventory.transfers" href={route('admin.inventory.transfers')} className="font-medium underline">
+                        {t('عرض التحويلات')}
+                    </SmartLink>
+                </p>
+            )}
 
             {updatedAt && (
                 <p className="mb-3 text-[12px] text-[#9ca3af]">

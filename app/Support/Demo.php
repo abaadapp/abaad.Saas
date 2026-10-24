@@ -1008,12 +1008,16 @@ class Demo
      *
      * والقاعدةُ هي قاعدةُ `Product::statusFor` نفسُها — «أقلُّ من الحدّ» —
      * مطبَّقةً على رصيد الفرع. ولا تُعاد كتابتُها هنا استعلامًا ثالثًا.
+     *
+     * والمتتبَّعُ وحده كما في الإجماليّ (`needsStockAlert`): خدمةٌ رصيدُها
+     * صفرٌ تحت حدٍّ عشرة كانت ترفع العدّاد كلّما اختار التاجرُ فرعًا، و«كل
+     * الفروع» لا يعدّها — سؤالٌ واحد بجوابين.
      */
     private static function lowStockInBranch(int $businessId, int $branchId): int
     {
         $books = BranchStock::books($businessId);
 
-        return Product::where('business_id', $businessId)->get(['id', 'alert_qty'])
+        return Product::where('business_id', $businessId)->where('tracks_stock', true)->get(['id', 'alert_qty'])
             ->filter(fn ($p) => (int) ($books[$p->id][$branchId] ?? 0) < (int) $p->alert_qty)
             ->count();
     }
@@ -1841,7 +1845,8 @@ class Demo
     /** اقتراح إعادة الطلب: منتجات وصلت حدّ التنبيه (كمية مقترحة تُعيدها لضعف الحدّ) */
     public static function reorderSuggestions(): array
     {
-        return Product::where('business_id', self::bid())->where('active', true)
+        // ولا يُقترح شراءُ ما لا رفَّ له — خدمةٌ أو رسمٌ أو صنفٌ أُوقف تتبّعُه
+        return Product::where('business_id', self::bid())->where('active', true)->where('tracks_stock', true)
             ->whereColumn('quantity', '<=', 'alert_qty')->orderBy('quantity')->get()->map(fn ($p) => [
                 'id' => $p->id,
                 'name' => $p->name,
@@ -2290,6 +2295,20 @@ class Demo
         $books = BranchStock::books(self::bid());
         $here = self::currentBranchId();
 
+        /*
+         * والقيمةُ لما على رفٍّ وحده.
+         *
+         * صنفٌ أُوقف تتبّعُه تبقى له كميّتُه القديمة — لا تُمحى، فهي ما يعود
+         * إن أُعيد التتبّع — وكانت تُضرب في تكلفته فتُحسب بضاعةً في قيمة
+         * المخزون. فتبقى الكميّةُ معروضةً كما هي، وقيمتُها صفر.
+         *
+         * وبضاعةُ البوتيك أمانةٌ يملكها هو حتّى تُباع — «لا تدخل قيمةَ مخزون
+         * المحلّ» (`Boutiques::CONSIGNED_COST`). على الرفّ هي فتُعدّ ويُنبَّه
+         * بنفادها، ولا قيمةَ لها في مال التاجر.
+         */
+        $worth = fn (Product $p, int $qty) => $p->tracksStock() && ! $p->boutique_id
+            ? round((float) $p->cost * $qty, 3) : 0.0;
+
         return Product::where('business_id', self::bid())->orderBy('id')->get()->map(fn ($p) => [
             'id' => $p->id,
             'name' => $p->name,
@@ -2313,9 +2332,11 @@ class Demo
              * (cost × qty) فتقرأ الصواب، والملفّ يأخذ ما أُرسل — فيختلف
              * الرقم بين ما رآه التاجر وما أرسله إلى محاسبه.
              */
-            'value' => round((float) $p->cost * ($here ? (int) ($books[$p->id][$here] ?? 0) : (int) $p->quantity), 3),
+            'value' => $worth($p, $here ? (int) ($books[$p->id][$here] ?? 0) : (int) $p->quantity),
             // وقيمة الشركة تبقى معروضةً باسمها لا تحت اسم الفرع
-            'totalValue' => round((float) $p->cost * (int) $p->quantity, 3),
+            'totalValue' => $worth($p, (int) $p->quantity),
+            'tracked' => $p->tracksStock(),
+            'consigned' => (bool) $p->boutique_id,
             'updated' => optional($p->updated_at)->format('Y-m-d') ?? '—',
             'branches' => ($stocks[$p->id] ?? collect())
                 ->map(fn ($s) => ['name' => $branchNames[$s->branch_id] ?? '—', 'qty' => (int) $s->quantity])

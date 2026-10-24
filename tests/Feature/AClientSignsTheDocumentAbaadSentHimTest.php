@@ -144,7 +144,7 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $this->assertSame('299.000', $doc->plan['price']);
         $this->assertSame('سنوي', $doc->plan['cycle_label']);
         $this->assertSame('حتى 3 فروع · حتى 15 مستخدم · حتى 10,000 منتج', $doc->plan['limits']);
-        $this->assertCount(7, $doc->terms);
+        $this->assertSame($this->contract->terms, $doc->terms);
         $this->assertTrue($doc->expires_at->between(now()->addDays(13), now()->addDays(15)));
 
         $this->actingAs($this->super)->get(route('super-admin.documents.show', $doc->id))->assertOk()
@@ -244,7 +244,7 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $this->pro->update(['yearly_price' => 399]);
 
         $fresh = $doc->fresh();
-        $this->assertCount(7, $fresh->terms);
+        $this->assertSame($this->contract->terms, $fresh->terms);
         $this->assertSame('299.000', $fresh->plan['price']);
 
         $this->asClient();

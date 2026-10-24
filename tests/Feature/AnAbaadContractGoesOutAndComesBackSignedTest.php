@@ -328,6 +328,23 @@ class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
         $this->assertStringContainsString('ستة أشهر للدورة النصف سنوية', $terms);
         $this->assertStringContainsString('اثني عشر شهرًا للدورة السنوية', $terms);
         $this->assertStringContainsString('ولا تُمدَّد مدة الاشتراك إلا بعد سداد رسوم الدورة الجديدة', $terms);
+
+        // لا عبارةَ تجديدٍ ماليٍّ بلا سداد، والتوقيعُ ليس سدادًا
+        $this->assertStringNotContainsString('وتتجدد بنفس الدورة', $terms);
+        $this->assertStringContainsString('ولا يُعدّ توقيع هذا العقد بذاته سدادًا ولا تجديدًا', $terms);
+
+        // الطرفُ الأوّل بكيانه المسجّل واسمِ المنصّة التجاريّ — ولا رقمَ سجلٍّ أو عنوانَ مخترَع
+        $parties = $this->contract->terms[0];
+        $this->assertSame('الطرفان:', $parties['h']);
+        $this->assertStringContainsString('«مشاريع الذهلي الجديدة»', $parties['b']);
+        $this->assertStringContainsString('الاسم التجاري للمنصة «أبعاد»', $parties['b']);
+        $this->assertDoesNotMatchRegularExpression('/[0-9٠-٩]/u', $parties['b']);
+
+        // وما طلب المالكُ مراجعتَه بندٌ بعنوانه
+        $heads = collect($this->contract->terms)->pluck('h');
+        foreach (['التجديد:', 'عدم السداد:', 'الإلغاء واسترداد الرسوم:', 'الترقية والتغيير:', 'البيانات وحمايتها:', 'حدود المسؤولية:'] as $h) {
+            $this->assertContains($h, $heads);
+        }
     }
 
     /* ═══ التجديد: عقدٌ يتبع سابقَه، ولا يمسّ الاشتراك ═══ */

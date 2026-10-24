@@ -228,7 +228,7 @@ function NewTransfer({
                         {t('طلب نقل مخزون')}
                     </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={submit} className="space-y-4" data-testid="transfer-form">
+                <form onSubmit={submit} className="space-y-4 px-5 pb-5" data-testid="transfer-form">
                     <div className="grid gap-3 sm:grid-cols-2">
                         <Field label="الفرع المصدر" required>
                             <Select

@@ -147,7 +147,7 @@ function NewSupply({ branches, error, onClose }: { branches: Props['branches']; 
                         {t('طلب تزويد')}
                     </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={submit} className="space-y-4" data-testid="supply-form">
+                <form onSubmit={submit} className="space-y-4 px-5 pb-5" data-testid="supply-form">
                     <Field label="الفرع الذي يحتاج البضاعة" required>
                         <Select
                             value={form.data.branch_id}

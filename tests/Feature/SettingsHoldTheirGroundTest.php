@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\CheckPlanFeature;
 use App\Models\Branch;
 use App\Models\BranchStock;
+use App\Models\BranchTransfer;
 use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Order;
@@ -12,6 +14,7 @@ use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\PlanFeatures;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -201,15 +204,34 @@ class SettingsHoldTheirGroundTest extends TestCase
     /**
      * والبابُ المحذوف لا يُترك مفتوحًا في العنوان.
      *
-     * حُذف النقل بين الفروع بطلب صاحب النظام: لا شاشةَ ولا حفظَ ولا طباعة.
-     * وبقاءُ المسار وحده يعني بابًا يفتحه من حفظ رابطه، ويُنشئ حركاتٍ لا
-     * شاشةَ تعرضها.
+     * حُذف النقل بين الفروع بطلب صاحب النظام (cb30394a): لا شاشةَ ولا حفظَ
+     * ولا طباعة. وبقاءُ المسار وحده كان يعني بابًا يفتحه من حفظ رابطه،
+     * ويُنشئ حركاتٍ لا شاشةَ تعرضها.
+     *
+     * ثمّ أعاده صاحبُ النظام سندًا بمراحلَ وشاشةٍ لباقة المؤسسات وحدها
+     * (`BranchTransfers`). فما يُحرس الآن: ورقةُ السند القديمة لا تعود،
+     * والرابطُ المحفوظ لا يُنشئ سندًا ولا يحرّك رفًّا في متجرٍ لم تُمنح
+     * باقتُه النقل — بلا باقة، ولا على الاحترافيّة.
      */
-    public function test_the_deleted_transfer_screen_is_gone_from_the_routes(): void
+    public function test_the_old_transfer_door_stays_shut_outside_the_enterprise_plan(): void
     {
-        $this->assertFalse(Route::has('admin.inventory.transfers'));
-        $this->assertFalse(Route::has('admin.inventory.transfers.store'));
         $this->assertFalse(Route::has('admin.inventory.transfers.pdf'));
+        $this->assertSame('enterprise_transfers', CheckPlanFeature::featureFor('admin.inventory.transfers.store'));
+
+        $other = Branch::create(['business_id' => $this->business->id, 'name' => 'الفرع الثاني']);
+        $move = fn () => $this->actingAs($this->owner->fresh())->post(route('admin.inventory.transfers.store'), [
+            'from_branch_id' => $this->branch->id, 'to_branch_id' => $other->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 5]], 'execute' => true,
+        ]);
+
+        $move()->assertForbidden();
+        $this->business->update(['plan_id' => Plan::create([
+            'name' => 'الاحترافيّة', 'monthly_price' => 0, 'yearly_price' => 0, 'capabilities' => PlanFeatures::baseKeys(),
+        ])->id]);
+        $move()->assertForbidden();
+
+        $this->assertSame(0, BranchTransfer::count());
+        $this->assertSame(500, (int) $this->product->fresh()->quantity);
     }
 
     /* ============ الإعداد يصل إلى موضعه، ولا يكسر ما قبله ============ */

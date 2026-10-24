@@ -74,6 +74,7 @@ return new class extends Migration
             $table->foreignId('source_branch_id')->nullable()->constrained('branches')->nullOnDelete();
             $table->timestamps();
 
+            $table->index('business_id');
             $table->index('branch_supply_request_id');
             $table->index('product_id');
             $table->index('source_branch_id');
@@ -161,6 +162,7 @@ return new class extends Migration
             $table->decimal('unit_cost', 12, 3)->nullable();
             $table->timestamps();
 
+            $table->index('business_id');
             $table->index('branch_transfer_id');
             $table->index('product_id');
         });

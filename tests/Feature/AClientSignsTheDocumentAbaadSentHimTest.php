@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\Plan;
 use App\Models\PlatformDocument;
 use App\Models\PlatformDocumentTemplate;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\PlatformDocuments;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,8 +23,9 @@ use Tests\TestCase;
  *   - البابُ لمدير المنصّة وحده؛ والرابطُ وحده مفتاحُ العميل، بلا حساب.
  *   - المستندُ نسخةٌ ساعةَ إصداره: تعديلُ القالب أو سعرِ الباقة لا يغيّره.
  *   - التوقيعُ يكتمل ببياناته وإقراره ورسمه، ويُقفل مرّةً — ولا يُعاد.
- *   - الملغى والمنتهي يُقرآن ولا يُوقَّعان، والورقةُ لا تُنزَّل قبل التوقيع.
- *   - البصمةُ تكشف ما عُدِّل في الصفّ بعد التوقيع.
+ *   - الملغى والمنتهي لا يُوقَّعان ولا يعرضان بيانَ العميل، والورقةُ لا تُنزَّل قبل التوقيع.
+ *   - نسخةُ الموقَّع على رابطها أيّامًا ثمّ يُغلق، ومديرُ المنصّة ينزّلها متى شاء.
+ *   - الطرفُ الأوّل كما كان يومَ الإصدار، والبصمةُ تكشف ما عُدِّل في الصفّ بعد التوقيع.
  */
 class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 {
@@ -136,9 +138,13 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
                 ->where('document.link', route('documents.sign', $doc->token))
                 ->where('document.state', 'sent'));
 
-        // والقائمةُ تجده باسم العميل
+        // والقائمةُ تجده باسم العميل، وبرقمه كيفما كُتبت حروفه — و«%» وحدها لا تُرجع كلَّ شيء
         $this->actingAs($this->super)->get(route('super-admin.documents.index', ['q' => 'الريان']))
             ->assertInertia(fn ($p) => $p->has('documents', 1));
+        $this->get(route('super-admin.documents.index', ['q' => strtolower($doc->number)]))
+            ->assertInertia(fn ($p) => $p->has('documents', 1)->where('filters.q', strtolower($doc->number)));
+        $this->get(route('super-admin.documents.index', ['q' => '%']))
+            ->assertInertia(fn ($p) => $p->where('filters.q', ''));
     }
 
     public function test_a_new_client_gets_a_service_document_with_its_amount(): void
@@ -228,19 +234,23 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
             ->assertSee('موضوع العقد:')->assertDontSee('بندٌ كُتب بعد الإرسال.')->assertSee('299.000');
     }
 
-    public function test_a_cancelled_or_expired_link_is_read_but_not_signed(): void
+    public function test_a_cancelled_or_expired_link_says_so_and_shows_nothing_of_the_client(): void
     {
         $cancelled = $this->issue();
         $this->actingAs($this->super)->post(route('super-admin.documents.cancel', $cancelled->id), ['reason' => 'أُرسل بالخطأ'])
             ->assertSessionHasNoErrors();
         $this->assertSame(PlatformDocument::CANCELLED, $cancelled->fresh()->status);
 
+        // رابطٌ أُلغي لأنّه ذهب إلى رقمٍ خاطئ لا يبقى يعرض اسم المالك وهاتفه
         $this->sign($cancelled)->assertSessionHasErrors('sign');
-        $this->get(route('documents.sign', $cancelled->token))->assertOk()->assertSee('أُلغي هذا المستند');
+        $this->get(route('documents.sign', $cancelled->token))->assertOk()->assertSee('أُلغي هذا المستند')
+            ->assertDontSee('سالم الهنائي')->assertDontSee('+96891234567')->assertDontSee('299.000')
+            ->assertDontSee('id="sign-form"', false);
 
         $late = $this->issue(['days' => 3]);
         $this->travel(4)->days();
-        $this->get(route('documents.sign', $late->token))->assertOk()->assertSee('انتهت صلاحية هذا الرابط');
+        $this->get(route('documents.sign', $late->token))->assertOk()->assertSee('انتهت صلاحية هذا الرابط')
+            ->assertDontSee('سالم الهنائي')->assertDontSee('+96891234567')->assertDontSee('id="sign-form"', false);
         $this->sign($late)->assertSessionHasErrors('sign');
         $this->assertSame('expired', $late->fresh()->state());
 
@@ -274,6 +284,51 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $this->assertStringContainsString('1234567', $text);
     }
 
+    public function test_the_signed_copy_stays_on_its_link_for_its_days_and_then_the_link_closes(): void
+    {
+        $doc = $this->issue();
+        $this->sign($doc)->assertSessionHasNoErrors();
+
+        // العميلُ يرى نسخته وينزّلها — ولا تبقى في ذاكرة متصفّحٍ مشترك
+        $page = $this->get(route('documents.sign', $doc->token));
+        $page->assertOk()->assertSee('98765432')->assertSee('data:image/png', false);
+        $this->assertStringContainsString('no-store', (string) $page->headers->get('Cache-Control'));
+        $paper = $this->get(route('documents.sign.pdf', $doc->token));
+        $paper->assertOk();
+        $this->assertStringContainsString('no-store', (string) $paper->headers->get('Cache-Control'));
+
+        $this->travel(PlatformDocument::COPY_DAYS - 1)->days();
+        $this->get(route('documents.sign.pdf', $doc->token))->assertOk();
+
+        // وبعد أيّامها رابطٌ في محادثةٍ قديمة لا يفتح رقمَه المدنيّ وتوقيعه
+        $this->travel(2)->days();
+        $this->get(route('documents.sign', $doc->token))->assertOk()
+            ->assertSee('انتهت مدة عرض نسخته')
+            ->assertDontSee('98765432')->assertDontSee('سالم الهنائي')->assertDontSee('data:image/png', false);
+        $this->get(route('documents.sign.pdf', $doc->token))->assertNotFound();
+
+        // ومديرُ المنصّة ينزّلها متى شاء ويرسلها لعميله
+        $admin = $this->actingAs($this->super)->get(route('super-admin.documents.pdf', $doc->id));
+        $admin->assertOk();
+        $this->assertStringContainsString('98765432', implode(' ', array_column(PdfText::pages($admin->getContent()), 'text')));
+        $this->travelBack();
+    }
+
+    public function test_the_signed_paper_keeps_abaad_as_it_was_on_the_day(): void
+    {
+        Setting::create(['business_id' => null, 'key' => 'company', 'value' => 'Abaad Old LLC']);
+        $doc = $this->issue();
+        $this->sign($doc)->assertSessionHasNoErrors();
+
+        Setting::whereNull('business_id')->where('key', 'company')->update(['value' => 'Abaad New LLC']);
+
+        $this->get(route('documents.sign', $doc->token))->assertSee('Abaad Old LLC')->assertDontSee('Abaad New LLC');
+        $text = implode(' ', array_column(PdfText::pages($this->get(route('documents.sign.pdf', $doc->token))->getContent()), 'text'));
+        $this->assertStringContainsString('Abaad Old LLC', $text);
+        $this->assertStringNotContainsString('Abaad New LLC', $text);
+        $this->assertTrue(PlatformDocuments::intact($doc->fresh()));
+    }
+
     public function test_an_unknown_link_says_nothing(): void
     {
         $this->issue();
@@ -289,6 +344,17 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $doc = $this->issue();
         $this->sign($doc)->assertSessionHasNoErrors();
         $this->assertTrue(PlatformDocuments::intact($doc->fresh()));
+
+        // كلُّ ما تطبعه الورقة داخلٌ في البصمة — الطرفُ الأوّل وجهازُ الموقِّع كبيان العميل
+        $row = DB::table('platform_documents')->where('id', $doc->id)->first();
+        $provider = json_decode($row->provider, true);
+        $provider['name'] = 'Someone Else';
+        foreach (['provider' => json_encode($provider), 'signer_ip' => '198.51.100.7', 'title_en' => 'Other'] as $column => $forged) {
+            DB::table('platform_documents')->where('id', $doc->id)->update([$column => $forged]);
+            $this->assertFalse(PlatformDocuments::intact($doc->fresh()), $column);
+            DB::table('platform_documents')->where('id', $doc->id)->update([$column => $row->{$column}]);
+            $this->assertTrue(PlatformDocuments::intact($doc->fresh()), $column.' restored');
+        }
 
         $client = $doc->fresh()->client;
         $client['civil'] = '11111111';

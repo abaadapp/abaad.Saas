@@ -125,6 +125,7 @@
         </div>
     </div>
 
+    @if ($readable)
     <div class="pad rule">
         <div class="parties">
             <div class="party">
@@ -139,17 +140,22 @@
             </div>
         </div>
     </div>
+    @endif
 
+    {{-- الرابطُ المغلق يقول حالَه وحدها — لا بيانَ عميلٍ ولا باقةَ ولا توقيع --}}
     @if ($state === \App\Models\PlatformDocument::CANCELLED)
         <div class="pad rule"><div class="alert bad">أُلغي هذا المستند ولم يعد يقبل التوقيع. تواصل مع {{ $provider['name'] }} للحصول على رابط جديد.</div></div>
     @elseif ($state === 'expired')
         <div class="pad rule"><div class="alert bad">انتهت صلاحية هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على رابط جديد.</div></div>
+    @elseif (! $readable)
+        <div class="pad rule"><div class="alert info">وُقِّع هذا المستند، وانتهت مدة عرض نسخته عبر هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على نسختك.</div></div>
     @endif
 
     @if (session('done'))
-        <div class="pad rule no-print"><div class="alert ok">شكرًا لك — تم توقيع المستند بنجاح، ووصلت نسخته إلى {{ $provider['name'] }}.</div></div>
+        <div class="pad rule no-print"><div class="alert ok">شكرًا لك — تم توقيع المستند بنجاح، ووصلت نسخته إلى {{ $provider['name'] }}. احفظ نسختك PDF الآن؛ يبقى الرابط يعرضها {{ \App\Models\PlatformDocument::COPY_DAYS }} يومًا.</div></div>
     @endif
 
+    @if ($readable)
     <form method="POST" action="{{ route('documents.sign.submit', $token) }}" id="sign-form">
         @csrf
 
@@ -234,11 +240,10 @@
                     <button type="submit" class="btn wide" id="submit" disabled>اعتماد وتوقيع المستند</button>
                     <div class="xs muted" id="missing" style="margin-top:6px; text-align:center"></div>
                 </div>
-            @else
-                <div class="alert info">لم يُوقَّع هذا المستند.</div>
             @endif
         </div>
     </form>
+    @endif
 </div>
 <footer class="xs faint">© {{ $provider['name'] }}@if ($provider['website']) · <span class="ltr">{{ $provider['website'] }}</span>@endif</footer>
 

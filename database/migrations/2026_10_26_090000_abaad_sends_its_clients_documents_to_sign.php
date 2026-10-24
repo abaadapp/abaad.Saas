@@ -71,6 +71,8 @@ return new class extends Migration
             $table->json('plan')->nullable();
             $table->decimal('amount', 12, 3)->nullable();
             $table->string('amount_label')->nullable();
+            // الطرفُ الأوّل كما كان يومَ الإصدار — تغييرُ اسم أبعاد غدًا لا يغيّر عقدًا وُقِّع
+            $table->json('provider')->nullable();
 
             // ما كتبه المدير مسبقًا، ثمّ ما أقرّه العميلُ عند التوقيع
             $table->json('client');

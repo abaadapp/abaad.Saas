@@ -9,10 +9,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * مستندٌ أُرسل إلى عميلٍ ليوقّعه — نسخةٌ من قالبه ساعةَ الإصدار.
  *
  * حالاتُه ثلاث: أُرسل (الرابطُ يعمل)، وُقِّع (لا يتغيّر بعدها)، أُلغي. والمنتهي
- * ليس حالةً تُكتب: هو مُرسَلٌ تجاوز `expires_at`، فيُقرأ ولا يُوقَّع.
+ * ليس حالةً تُكتب: هو مُرسَلٌ تجاوز `expires_at`، فلا يُوقَّع.
+ *
+ * والرابطُ يعرض ما فيه ما دام للتوقيع، ثمّ نسخةَ الموقَّع أيّامًا ينزّلها فيها
+ * العميل. والملغى والمنتهي وما مضت أيّامُ نسخته يقول حالَه فقط: رابطٌ أُرسل
+ * إلى رقمٍ خاطئ أو بقي في محادثةٍ لا يبقى بابًا إلى رقم العميل المدنيّ وتوقيعه.
  */
 class PlatformDocument extends Model
 {
+    /** أيّامُ بقاء النسخة الموقَّعة على رابطها — وبعدها تُطلب من مدير المنصّة */
+    public const COPY_DAYS = 30;
+
     public const SENT = 'sent';
 
     public const SIGNED = 'signed';
@@ -34,6 +41,7 @@ class PlatformDocument extends Model
         'terms' => 'array',
         'plan' => 'array',
         'client' => 'array',
+        'provider' => 'array',
         'amount' => 'decimal:3',
         'expires_at' => 'datetime',
         'viewed_at' => 'datetime',
@@ -65,5 +73,18 @@ class PlatformDocument extends Model
     public function signable(): bool
     {
         return $this->status === self::SENT && ! $this->expired();
+    }
+
+    /** الموقَّعُ في أيّام نسخته — يُعرض على رابطه وتُنزَّل ورقتُه */
+    public function copyOpen(): bool
+    {
+        return $this->status === self::SIGNED && $this->signed_at !== null
+            && $this->signed_at->copy()->addDays(self::COPY_DAYS)->isFuture();
+    }
+
+    /** هل يعرض الرابطُ بيانَ العميل؟ — وإلّا قال حالَه وحدها */
+    public function readable(): bool
+    {
+        return $this->signable() || $this->copyOpen();
     }
 }

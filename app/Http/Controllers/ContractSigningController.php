@@ -6,18 +6,22 @@ use App\Models\PlatformDocument;
 use App\Support\PlatformDocuments;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * ما يفتحه العميلُ من رابط المستند — يقرأ ويكمل بياناته ويوقّع، بلا حساب.
  *
  * والرابطُ وحده مفتاحه: ٣٢ حرفًا لا تُخمَّن، ورمزٌ مجهولٌ ٤٠٤ لا يقول أكثر.
  * والموقَّعُ يُعرض كما وُقِّع، ولا يُعاد توقيعُه ولا يُعدَّل.
+ *
+ * وما يعرضه الرابطُ يضيق بحاله (`PlatformDocument::readable`): الملغى والمنتهي
+ * وما مضت أيّامُ نسخته يقول حالَه بلا بيان العميل. و`no-store` على الصفحة
+ * والورقة: رقمٌ مدنيٌّ وتوقيعٌ لا يبقيان في ذاكرة متصفّحٍ مشترك.
  */
 class ContractSigningController extends Controller
 {
-    public function show(string $token): View
+    public function show(string $token): Response
     {
         $doc = $this->find($token);
 
@@ -26,13 +30,16 @@ class ContractSigningController extends Controller
             PlatformDocument::whereKey($doc->id)->whereNull('viewed_at')->update(['viewed_at' => now()]);
         }
 
-        return view('public.sign', [
+        $readable = $doc->readable();
+
+        return response()->view('public.sign', [
             'doc' => $doc,
             'token' => $token,
-            'provider' => PlatformDocuments::provider(),
+            'readable' => $readable,
+            'provider' => PlatformDocuments::providerOf($doc),
             'fields' => PlatformDocuments::FIELDS,
-            'signature' => $doc->status === PlatformDocument::SIGNED ? PlatformDocuments::signatureDataUri($doc) : null,
-        ]);
+            'signature' => $readable && $doc->status === PlatformDocument::SIGNED ? PlatformDocuments::signatureDataUri($doc) : null,
+        ])->header('Cache-Control', 'no-store, private');
     }
 
     public function sign(Request $request, string $token): RedirectResponse
@@ -58,13 +65,16 @@ class ContractSigningController extends Controller
         return redirect()->route('documents.sign', $token)->with('done', true);
     }
 
-    /** الورقةُ بعد التوقيع وحده — قبله يُقرأ المستند على الشاشة */
-    public function pdf(string $token)
+    /** الورقةُ بعد التوقيع وفي أيّام نسخته — قبله يُقرأ المستند على الشاشة، وبعدها تُطلب من مدير المنصّة */
+    public function pdf(string $token): Response
     {
         $doc = $this->find($token);
-        abort_unless($doc->status === PlatformDocument::SIGNED, 404);
+        abort_unless($doc->copyOpen(), 404);
 
-        return PlatformDocuments::pdf($doc);
+        $paper = PlatformDocuments::pdf($doc);
+        $paper->headers->set('Cache-Control', 'no-store, private');
+
+        return $paper;
     }
 
     private function find(string $token): PlatformDocument

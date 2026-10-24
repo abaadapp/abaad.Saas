@@ -168,6 +168,7 @@ class PlatformDocuments
                 'plan' => $plan,
                 'amount' => $amount,
                 'amount_label' => $amount !== null ? (trim((string) ($data['amount_label'] ?? '')) ?: $template->name) : null,
+                'provider' => self::provider(),
                 'client' => $client,
                 'client_label' => self::label($client),
                 'token' => self::token(),
@@ -273,7 +274,8 @@ class PlatformDocuments
     }
 
     /**
-     * بصمةُ ما وُقِّع عليه — رقمُه ونصُّه وباقتُه وبيانُ العميل والتوقيعُ ووقتُه.
+     * بصمةُ ما وُقِّع عليه — كلُّ ما تطبعه الورقة: رقمُه وتاريخُه وطرفاه ونصُّه
+     * وباقتُه، والتوقيعُ ووقتُه وجهازُه.
      *
      * تُطبع في الورقة. فإن عُدِّل شيءٌ في الصفّ بعد التوقيع لم تعد البصمةُ تطابقه.
      */
@@ -283,13 +285,19 @@ class PlatformDocuments
 
         return hash('sha256', json_encode([
             'number' => $doc->number,
+            'issued' => optional($doc->created_at)->format('Y-m-d'),
+            'provider' => $doc->provider,
+            'service' => $doc->service,
             'title' => $doc->title,
+            'title_en' => $doc->title_en,
             'terms' => $doc->terms,
             'plan' => $doc->plan,
             'amount' => $doc->amount === null ? null : (string) $doc->amount,
             'amount_label' => $doc->amount_label,
             'client' => $doc->client,
             'signed_at' => optional($doc->signed_at)->format('Y-m-d H:i:s'),
+            'signer_ip' => $doc->signer_ip,
+            'signer_agent' => $doc->signer_agent,
             'signature' => hash('sha256', $png),
         ], JSON_UNESCAPED_UNICODE));
     }
@@ -310,7 +318,13 @@ class PlatformDocuments
         return 'data:image/png;base64,'.base64_encode((string) Storage::disk('local')->get($doc->signature_path));
     }
 
-    /** هويّةُ أبعاد في رأس المستند — من إعدادات المنصّة لا من الكود */
+    /** الطرفُ الأوّل في مستندٍ صدر — كما نُسخ يومَ إصداره */
+    public static function providerOf(PlatformDocument $doc): array
+    {
+        return ($doc->provider ?? []) + ['name' => __('أبعاد'), 'email' => '', 'phone' => '', 'website' => ''];
+    }
+
+    /** هويّةُ أبعاد في رأس المستند — من إعدادات المنصّة لا من الكود، تُنسخ فيه ساعةَ الإصدار */
     public static function provider(): array
     {
         $s = Setting::whereNull('business_id')
@@ -334,7 +348,7 @@ class PlatformDocuments
     {
         $html = view('pdf.platform-document', [
             'doc' => $doc,
-            'provider' => self::provider(),
+            'provider' => self::providerOf($doc),
             'fields' => self::FIELDS,
             'signature' => self::signatureDataUri($doc),
         ])->render();

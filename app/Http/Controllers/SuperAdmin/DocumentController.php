@@ -10,6 +10,7 @@ use App\Models\PlatformDocumentTemplate;
 use App\Support\Activity;
 use App\Support\Pagination;
 use App\Support\PlatformDocuments;
+use App\Support\Search;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -28,7 +29,7 @@ class DocumentController extends Controller
     public function index(Request $request): Response
     {
         $state = (string) $request->query('state', '');
-        $q = trim((string) $request->query('q', ''));
+        $q = Search::term($request);
 
         $query = PlatformDocument::query()->latest('id');
         match ($state) {
@@ -39,8 +40,8 @@ class DocumentController extends Controller
             default => null,
         };
         if ($q !== '') {
-            $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $q).'%';
-            $query->where(fn ($w) => $w->where('number', 'like', $like)->orWhere('client_label', 'like', $like)->orWhere('title', 'like', $like));
+            $like = Search::like();
+            $query->where(fn ($w) => $w->where('number', $like, "%{$q}%")->orWhere('client_label', $like, "%{$q}%")->orWhere('title', $like, "%{$q}%"));
         }
         $page = $query->paginate(20)->withQueryString();
 

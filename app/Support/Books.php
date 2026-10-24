@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Account;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\JournalEntry;
@@ -101,6 +102,7 @@ class Books
         $debit = match (true) {
             (string) $order->payment_status === 'غير مدفوع' => 'receivable',
             in_array((string) $order->payment_method, ['نقدي', 'كاش'], true) => 'cash',
+            self::paidThroughPaymob($order) => self::paymobDebit($order),
             default => Bank::leaf((int) $order->business_id, $order->bank_account_id) ?? 'bank',
         };
 
@@ -230,6 +232,50 @@ class Books
         self::liveEntriesFor($order)->each(
             fn (JournalEntry $e) => Ledger::reverse($e, null, $userId, $reason)
         );
+    }
+
+    /**
+     * بيعةُ الموقع بالبطاقة — مالُها عند Paymob لا في البنك.
+     *
+     * الموقعُ لا يقبل البطاقةَ إلّا عبر Paymob، ولا يُكتب طلبُها حتّى يصل
+     * إشعارُ الدفع (`PaymobController::settle`). وPaymob لا تحوّل المالَ يومَه:
+     * تجمعه أيّامًا وتحوّله ناقصًا رسومَها. وكانت البيعةُ تُدين البنكَ
+     * بإجماليّها يومَ البيع، ثمّ تأتي التسويةُ (`PaymobSettlements::record`)
+     * فتُدينه بصافيها ثانيةً من «Paymob تحت التسوية»: المالُ نفسُه يدخل البنك
+     * مرّتين، وتُستنزف التسويةُ تحصيلاتِ روابطٍ لم تُسوَّ، والرسومُ لا تُقيَّد.
+     * فبيعةُ الموقع بالبطاقة تُدين حسابَ التسوية (1360) كتحصيل الرابط، والتسويةُ
+     * تنقلها إلى البنك بالصافي والرسوم.
+     */
+    private static function paidThroughPaymob(Order $order): bool
+    {
+        return (string) $order->channel === SalesChannel::WEBSITE
+            && (string) $order->payment_method === PaymentMethods::CARD;
+    }
+
+    /**
+     * أين يُدان مالُ بيعةِ موقعٍ بالبطاقة.
+     *
+     * حسابُ التسوية — إلّا بيعةً رُحّلت قبل هذا إلى البنك ثمّ أُعيد ترحيلُها
+     * بعد تصحيح (`OrderCorrection`): تعود إلى حيث رُحّلت أوّلَ مرّة. فالتصحيحُ
+     * لا ينقل مالًا قديمًا من البنك إلى التسوية بصمت؛ ذاك قرارٌ لصاحب المتجر.
+     */
+    private static function paymobDebit(Order $order): Account|string
+    {
+        $first = JournalEntry::where('business_id', $order->business_id)
+            ->where('sourceable_type', Order::class)
+            ->where('sourceable_id', $order->id)
+            ->where('source', self::SALE)
+            ->whereNull('reverses_id')
+            ->orderBy('id')->with('lines.account')->first();
+
+        $took = $first?->lines
+            ->first(fn ($l) => (float) $l->debit > 0 && $l->account?->system_key !== 'receivable')?->account;
+
+        if (! $took || $took->system_key === 'paymob_clearing') {
+            return 'paymob_clearing';
+        }
+
+        return $took->isPostable() ? $took : (Bank::leaf((int) $order->business_id, $order->bank_account_id) ?? 'bank');
     }
 
     /**

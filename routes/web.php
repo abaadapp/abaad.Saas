@@ -95,6 +95,7 @@ use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicDocumentController;
 use App\Http\Controllers\PublishedSiteController;
+use App\Http\Controllers\ContractSigningController;
 use App\Http\Controllers\ReviewInviteController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\PaymobController;
@@ -108,6 +109,8 @@ use App\Http\Controllers\SuperAdmin\CrmAttachmentController;
 use App\Http\Controllers\SuperAdmin\CrmController;
 use App\Http\Controllers\SuperAdmin\CrmConversationController;
 use App\Http\Controllers\SuperAdmin\DemoController;
+use App\Http\Controllers\SuperAdmin\DocumentController;
+use App\Http\Controllers\SuperAdmin\DocumentTemplateController;
 use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
 use App\Http\Controllers\SuperAdmin\PlanController;
@@ -278,6 +281,21 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/demo', [DemoController::class, 'store'])->name('demo.store');
     Route::post('/demo/{id}/reseed', [DemoController::class, 'reseed'])->name('demo.reseed');
     Route::delete('/demo/{id}', [DemoController::class, 'destroy'])->name('demo.destroy');
+
+    /*
+     * المستندات — عقودُ أبعاد مع عملائها، تُرسَل برابطٍ وتُوقَّع من الهاتف.
+     *
+     * القوالبُ قبل `{id}`: عنوانٌ ثابت لا يُقرأ معرّفًا. انظر `PlatformDocuments`.
+     */
+    Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
+    Route::post('/documents', [DocumentController::class, 'store'])->name('documents.store');
+    Route::get('/documents/templates', [DocumentTemplateController::class, 'index'])->name('documents.templates');
+    Route::post('/documents/templates', [DocumentTemplateController::class, 'store'])->name('documents.templates.store');
+    Route::put('/documents/templates/{id}', [DocumentTemplateController::class, 'update'])->whereNumber('id')->name('documents.templates.update');
+    Route::get('/documents/{id}', [DocumentController::class, 'show'])->whereNumber('id')->name('documents.show');
+    Route::post('/documents/{id}/cancel', [DocumentController::class, 'cancel'])->whereNumber('id')->name('documents.cancel');
+    Route::post('/documents/{id}/shared', [DocumentController::class, 'shared'])->whereNumber('id')->name('documents.shared');
+    Route::get('/documents/{id}/pdf', [DocumentController::class, 'pdf'])->whereNumber('id')->name('documents.pdf');
 
     /*
      * جرسُ مدير المنصّة — أبوابُه هنا لأنّ لوحتَه هنا.
@@ -2208,6 +2226,29 @@ Route::post('/r/{token}', [ReviewInviteController::class, 'store'])
     ->where('token', '[A-Za-z0-9]{22}')
     ->middleware('throttle:10,1')
     ->name('review.submit');
+
+/*
+ * توقيعُ مستندات أبعاد — يفتحه العميلُ من رابطٍ أرسله مدير المنصّة.
+ *
+ * اثنان وثلاثون حرفًا لا تُخمَّن، بلا دخول ولا رمز — الرابطُ وحده مفتاحه، بصلاحيّةٍ
+ * محدودة. والكتابةُ أضيقُ حدًّا من الفتح. انظر `PlatformDocuments`.
+ */
+// ولكلّ بابٍ عدّادُه (البادئة الثالثة): بلاها يتشارك العنوانُ عدّادًا واحدًا مع كلّ
+// صفحةٍ محدودة، فعميلٌ فتح الصفحةَ عشرَ مرّات يُردّ توقيعُه بـ429
+Route::get('/sign/{token}', [ContractSigningController::class, 'show'])
+    ->where('token', '[A-Za-z0-9]{32}')
+    ->middleware('throttle:60,1,sign-page')
+    ->name('documents.sign');
+
+Route::post('/sign/{token}', [ContractSigningController::class, 'sign'])
+    ->where('token', '[A-Za-z0-9]{32}')
+    ->middleware('throttle:10,1,sign-submit')
+    ->name('documents.sign.submit');
+
+Route::get('/sign/{token}/pdf', [ContractSigningController::class, 'pdf'])
+    ->where('token', '[A-Za-z0-9]{32}')
+    ->middleware('throttle:30,1,sign-paper')
+    ->name('documents.sign.pdf');
 
 /*
  * إشعارات ميتا — بابٌ عامّ بلا جلسة، وحارسه توقيعٌ لا كلمة سرّ.

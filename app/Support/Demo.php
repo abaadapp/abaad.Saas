@@ -31,6 +31,7 @@ use App\Models\OrderEdit;
 use App\Models\OrderItem;
 use App\Models\OrderItemAddon;
 use App\Models\Plan;
+use App\Models\PlatformDocument;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
@@ -4177,6 +4178,28 @@ class Demo
                     ])),
                     'icon' => 'user-plus', 'color' => 'success',
                     'url' => route('super-admin.businesses.show', $b->id),
+                ]);
+            }
+
+            /*
+             * وعقدٌ وقّعه عميلُه — خبرٌ لكلّ مديرٍ في المنصّة، أسبوعًا.
+             *
+             * لا يُرسله أحد: الجرسُ يُبنى من حال المستندات، فيظهر السطرُ في
+             * الاستطلاع التالي أيًّا كانت الطريقُ التي وصل بها الرابطُ إلى العميل.
+             * والمفتاحُ رقمُ المستند: من أخفاه لا يعود إليه.
+             */
+            $signed = PlatformDocument::where('status', PlatformDocument::SIGNED)
+                ->where('signed_at', '>=', now()->subDays(7))
+                ->orderByDesc('signed_at')->limit($limit)->get();
+            foreach ($signed as $d) {
+                $add('document-signed-'.$d->id, [
+                    'text' => __('وقّع :client المستند :number', [
+                        'client' => $d->client['biz'] ?? $d->client['name'] ?? '—',
+                        'number' => $d->number,
+                    ]),
+                    'time' => optional($d->signed_at)->diffForHumans(),
+                    'icon' => 'badge-check', 'color' => 'success',
+                    'url' => route('super-admin.documents.show', $d->id),
                 ]);
             }
 

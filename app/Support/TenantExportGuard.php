@@ -88,6 +88,10 @@ final class TenantExportGuard
         'admin.suppliers.export.pdf',
         'admin.orders.xlsx',
         'admin.orders.exportPdf',
+        // وسجلُّ عمليات البيع في «فواتير العملاء» — الطلباتُ والفواتيرُ معًا
+        'admin.customerInvoices.sales.xlsx',
+        'admin.customerInvoices.sales.csv',
+        'admin.customerInvoices.sales.pdf',
         'admin.inventory.xlsx',
         'admin.inventory.exportPdf',
         'admin.expenses.xlsx',

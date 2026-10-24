@@ -476,7 +476,7 @@ class APaymobPayoutNeverCountsTheBankTwiceTest extends TestCase
         // والمرحّلةُ لا تُلغى من هنا
         Books::recordSale(Order::findOrFail($intent->order_id)->fresh(['items.addons']));
         $posted = $this->settle([$intent], 0.6, 19.4);
-        $this->post(route('admin.finance.paymobSettlements.cancel', $posted->id))->assertSessionHas('toast.type', 'error');
+        $this->post(route('admin.finance.paymobSettlements.cancel', $posted->id))->assertSessionHas('toast.type', 'danger');
         $this->assertSame(PaymobSettlements::POSTED, $posted->fresh()->status);
     }
 

@@ -240,7 +240,7 @@ class PaymentLinkController extends Controller
         try {
             $settlement = PaymobSettlements::retry($this->bid(), $id, auth()->id());
         } catch (RuntimeException $e) {
-            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'error']);
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
         }
 
         return back()->with('toast', $settlement->status === PaymobSettlements::POSTED
@@ -257,7 +257,7 @@ class PaymentLinkController extends Controller
         try {
             PaymobSettlements::cancel($this->bid(), $id);
         } catch (RuntimeException $e) {
-            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'error']);
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
         }
 
         return back()->with('toast', ['msg' => __('أُلغيت التسوية المعلّقة'), 'type' => 'success']);

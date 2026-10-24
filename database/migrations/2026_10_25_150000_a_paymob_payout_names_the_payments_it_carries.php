@@ -43,7 +43,7 @@ return new class extends Migration
         Schema::create('paymob_settlement_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('business_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('paymob_settlement_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('paymob_settlement_id')->index()->constrained()->cascadeOnDelete();
 
             // المدفوعةُ نفسُها — واحدٌ من الاثنين، وكلٌّ منهما لا يُسوّى مرّتين
             $table->foreignId('store_payment_intent_id')->nullable()->unique()->constrained()->restrictOnDelete();
@@ -54,7 +54,7 @@ return new class extends Migration
             $table->decimal('amount', 12, 3);
             // أين كان مالُها ساعةَ التسوية: clearing · bank · unknown
             $table->string('booked', 16);
-            $table->foreignId('account_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('account_id')->nullable()->index()->constrained()->nullOnDelete();
             $table->string('reason', 255)->nullable();
             $table->timestamps();
 

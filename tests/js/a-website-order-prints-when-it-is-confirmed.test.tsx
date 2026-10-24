@@ -535,7 +535,11 @@ describe('خيارُ الطابعة في شاشة الجهاز الملحق', ()
         await userEvent.click(screen.getByRole('button', { name: /إضافة جهاز ملحق/ }));
 
         expect(screen.getByText('طباعة تلقائية بعد البيع')).toBeInTheDocument();
-        expect(screen.getByText('فتح إيصال الطباعة فور إتمام البيع في نقطة البيع.')).toBeInTheDocument();
+        // وعلى طابعة الإيصال وحدها — اختيارٌ غيرُ «طابعة الإيصال» نفسِها، ولا يَعِد المتصفّحَ بطباعةٍ صامتة
+        expect(
+            screen.getByText('على طابعة الإيصال وحدها: يُطبع الإيصال فور إتمام البيع (مباشرةً في تطبيق أبعاد، وبفتح الإيصال في المتصفّح).'),
+        ).toBeInTheDocument();
+        expect(screen.getByText('طابعة الإيصال لهذا الصندوق')).toBeInTheDocument();
         expect(screen.getByText('طباعة تلقائية عند تأكيد طلب الموقع')).toBeInTheDocument();
         expect(screen.getByText('فتح إيصال طلب الموقع عند تأكيده على هذا الجهاز.')).toBeInTheDocument();
         expect(switchFor('طباعة تلقائية عند تأكيد طلب الموقع')).toHaveAttribute('aria-checked', 'false');

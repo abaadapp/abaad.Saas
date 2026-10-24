@@ -104,9 +104,11 @@ class AlertMetrics
     public static function value(string $metric, int $businessId): float
     {
         return match ($metric) {
+            // «مبيعات اليوم» نفسُها في اللوحة: الطلباتُ وفواتيرُ العملاء التي لا طلبَ لها
             'daily_sales' => (float) Order::where('business_id', $businessId)
                 ->sold()
-                ->whereDate('ordered_at', today())->sum('total'),
+                ->whereDate('ordered_at', today())->sum('total')
+                + StandaloneInvoiceSales::total($businessId, today(), today()->addDay()),
 
             'monthly_expenses' => (float) Expense::where('business_id', $businessId)
                 ->whereBetween('spent_at', [now()->startOfMonth(), now()->endOfMonth()])

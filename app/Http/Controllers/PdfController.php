@@ -267,10 +267,10 @@ class PdfController extends Controller
      */
     private static function stripWidth(string $paper): int
     {
-        $terminal = PosTerminal::current()
-            ?->peripherals()->where('active', true)
-            ->where('type', PosPeripheral::PRINTER)
-            ->value('paper_width');
+        // طابعةُ الإيصال بقاعدتها الواحدة — لا أوّلُ صفٍّ يقرؤه PostgreSQL بلا ترتيب
+        $terminal = PosPeripheral::receiptAmong(
+            PosTerminal::current()?->peripherals()->where('active', true)->get() ?? [],
+        )?->paper_width;
 
         return (int) ($terminal ?: ($paper === '58mm' ? 58 : 80));
     }

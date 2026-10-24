@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
 import { Barcode, CheckCircle2, Loader2, Monitor, Pencil, Plug, Plus, Printer, Scale, Trash2, Wallet, XCircle } from 'lucide-react';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import Field, { Select } from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -28,6 +29,8 @@ export interface Peripheral {
     active: boolean;
     /** تقودها نقطة البيع فعلًا، أم تُسجَّل للجرد وحده */
     drivable: boolean;
+    /** طابعةُ إيصال البيع على هذا الصندوق — يحسبها الخادم (`PosPeripheral::receiptAmong`) */
+    receipt?: boolean;
 }
 
 interface Props {
@@ -53,6 +56,19 @@ const CONNECTIONS = [
     { value: 'network', label: 'شبكة' },
     { value: 'bluetooth', label: 'بلوتوث' },
 ];
+
+/**
+ * ما تعنيه طريقةُ التوصيل للطابعة — يُقال قبل الحفظ لا بعد أوّل بيع.
+ *
+ * تطبيقُ أبعاد يطبع مباشرةً على طابعة الشبكة وحدها (`mobile/PROTOCOL.md`).
+ * وUSB والبلوتوث يمرّان بحوار الطباعة في النظام: يعملان على حاسوبٍ ثُبّتت فيه
+ * الطابعة، ولا يصلهما جهازٌ لوحيّ إلّا بتطبيقٍ من صانعها.
+ */
+const CONNECTION_HINTS: Record<string, string> = {
+    network: 'تطبيق أبعاد يطبع عليها مباشرةً. وفي المتصفّح يُفتح حوار الطباعة.',
+    usb: 'لا يطبع عليها تطبيق أبعاد مباشرةً: يُفتح حوار الطباعة في النظام، فتعمل على حاسوب ثُبّتت فيه الطابعة. على الجهاز اللوحي اختر طابعة شبكة.',
+    bluetooth: 'لا يطبع عليها تطبيق أبعاد مباشرةً: يُفتح حوار الطباعة في النظام، فتعمل حيث ثُبّتت الطابعة في النظام. على الجهاز اللوحي اختر طابعة شبكة.',
+};
 
 const EMPTY = {
     name: '',
@@ -95,6 +111,13 @@ export default function PeripheralsDialog({
     const [adding, setAdding] = useState(false);
     const form = useForm({ ...EMPTY });
     const [test, setTest] = useState<{ stage: PrintStage; outcome: PrintOutcome | null }>({ stage: 'idle', outcome: null });
+    const [ask, confirmDialog] = useConfirm();
+    /*
+        أكثرُ من طابعةٍ مفعّلة على صندوقٍ واحد — يُقال أيُّها يطبع الإيصال.
+        كانت «الأولى» صامتةً، فطابعةٌ أُضيفت مرّتين تطبع على القديمة ولا يُعرف لمَ.
+    */
+    const activePrinters = peripherals.filter((p) => p.active && p.type === 'طابعة');
+    const receipt = activePrinters.find((p) => p.receipt) ?? null;
 
     const open = (p: Peripheral | null) => {
         setTest({ stage: 'idle', outcome: null });
@@ -171,7 +194,16 @@ export default function PeripheralsDialog({
         }
     };
 
-    const remove = (p: Peripheral) => {
+    // الحذفُ يُسأل عنه: نقرةٌ خاطئة كانت تمحو طابعةَ الصندوق وإعداداتِها بلا رجعة
+    const remove = async (p: Peripheral) => {
+        const yes = await ask({
+            message: 'حذف «:name» من هذا الصندوق؟ تُمحى إعداداته، ولا تُمسّ المبيعات. ولإيقافه مؤقتًا عطّله بدل حذفه.',
+            values: { name: p.name },
+            action: 'حذف',
+            danger: true,
+        });
+        if (!yes) return;
+
         router.delete(route('admin.devices.peripherals.destroy', [deviceId, p.id]), {
             preserveScroll: true,
         });
@@ -192,6 +224,14 @@ export default function PeripheralsDialog({
                     </DialogHeader>
 
                     <div className="space-y-3 px-5 pb-5">
+                        {activePrinters.length > 1 && receipt && (
+                            <p className="rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#b45309]">
+                                {t('على هذا الصندوق أكثر من طابعة مفعّلة. إيصال البيع يُطبع على «:name» — وهي التي عليها «طباعة تلقائية بعد البيع» إن وُجدت. عطّل المكرّرة أو احذفها.', {
+                                    name: receipt.name,
+                                })}
+                            </p>
+                        )}
+
                         {peripherals.length === 0 && (
                             <p className="rounded-[10px] bg-[#fafafa] p-6 text-center text-[13px] text-[#9ca3af]">
                                 {t('لا ملحقات على هذا الصندوق بعد.')}
@@ -222,6 +262,11 @@ export default function PeripheralsDialog({
                                             {!p.active && (
                                                 <span className="ms-2 rounded-full bg-[#fef2f2] px-2 py-0.5 text-[11px] text-[#b91c1c]">
                                                     {t('معطّل')}
+                                                </span>
+                                            )}
+                                            {p.receipt && activePrinters.length > 1 && (
+                                                <span className="ms-2 rounded-full bg-[#ecfdf5] px-2 py-0.5 text-[11px] text-[#047857]">
+                                                    {t('طابعة الإيصال')}
                                                 </span>
                                             )}
                                         </p>
@@ -296,7 +341,12 @@ export default function PeripheralsDialog({
                                 />
                             </Field>
 
-                            <Field label="طريقة التوصيل" required error={form.errors.connection}>
+                            <Field
+                                label="طريقة التوصيل"
+                                required
+                                hint={isPrinter ? CONNECTION_HINTS[form.data.connection] : undefined}
+                                error={form.errors.connection}
+                            >
                                 <Select
                                     value={form.data.connection}
                                     onChange={(e) => form.setData('connection', e.target.value)}
@@ -447,6 +497,8 @@ export default function PeripheralsDialog({
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {confirmDialog}
         </>
     );
 }

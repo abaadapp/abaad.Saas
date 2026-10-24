@@ -239,6 +239,8 @@ class PosPeripheralTest extends TestCase
             ->get(route('admin.devices.index'))
             ->assertInertia(fn ($page) => $page->where('context.peripherals', fn ($list) => collect($list)->all() === [[
                 'id' => $printer->id,
+                // طابعتُه الوحيدة — فهي طابعةُ الإيصال (`PosPeripheral::receiptAmong`)
+                'receipt' => true,
                 'type' => PosPeripheral::PRINTER,
                 'name' => 'طابعة الكاشير',
                 'model' => 'TM-80',
@@ -276,5 +278,64 @@ class PosPeripheralTest extends TestCase
         $this->device->delete();
 
         $this->assertDatabaseCount('pos_peripherals', 0);
+    }
+
+    /* ═══════════ طابعةُ الإيصال — قاعدةٌ لا «أوّلُ صفّ» ═══════════ */
+
+    private function printerRow(array $over): PosPeripheral
+    {
+        return $this->device->peripherals()->create($this->payload($over) + ['business_id' => $this->business->id]);
+    }
+
+    /**
+     * طابعةٌ أُضيفت مرّتين — «USB» أوّلًا ثمّ «شبكة» بطباعةٍ تلقائية: الإيصالُ
+     * على الثانية. كان على الأولى، فلا يقع التلقائيّ ولا يطبع التطبيقُ مباشرةً.
+     */
+    public function test_the_printer_named_for_receipts_wins_over_an_older_duplicate(): void
+    {
+        $this->printerRow(['name' => 'قديمة USB', 'connection' => 'usb']);
+        $network = $this->printerRow(['name' => 'شبكة', 'connection' => 'network', 'address' => '192.168.1.50', 'auto_print' => true]);
+
+        $this->assertTrue($network->is(PosPeripheral::receiptAmong($this->device->peripherals()->get())));
+
+        $this->actingAs($this->owner)->get(route('admin.devices.index'))
+            ->assertInertia(fn ($page) => $page
+                ->where('context.peripherals', fn ($list) => collect($list)->where('receipt', true)->pluck('name')->all() === ['شبكة'])
+                ->where('devices.0.peripherals', fn ($list) => collect($list)->where('receipt', true)->pluck('name')->all() === ['شبكة']));
+    }
+
+    public function test_without_auto_print_the_directly_printable_one_wins_then_the_oldest(): void
+    {
+        $this->printerRow(['name' => 'USB', 'connection' => 'usb']);
+        $network = $this->printerRow(['name' => 'شبكة', 'connection' => 'network', 'address' => '10.0.0.7']);
+        $this->assertTrue($network->is(PosPeripheral::receiptAmong($this->device->peripherals()->get())));
+
+        $network->update(['connection' => 'usb', 'address' => null]);
+        $this->assertSame('USB', PosPeripheral::receiptAmong($this->device->peripherals()->get())?->name);
+    }
+
+    public function test_a_disabled_printer_or_another_kind_is_never_the_receipt_printer(): void
+    {
+        $this->printerRow(['name' => 'معطّلة', 'connection' => 'network', 'address' => '10.0.0.7', 'auto_print' => true, 'active' => false]);
+        $this->printerRow(['name' => 'ماسح', 'type' => PosPeripheral::SCANNER]);
+        $this->assertNull(PosPeripheral::receiptAmong($this->device->peripherals()->get()));
+
+        $usb = $this->printerRow(['name' => 'USB', 'connection' => 'usb']);
+        $this->assertTrue($usb->is(PosPeripheral::receiptAmong($this->device->peripherals()->get())));
+    }
+
+    /** وحذفُ الملحق يُسأل عنه في الواجهة؛ والخادمُ يحذف ملحقَ صندوقه وحده */
+    public function test_deleting_a_printer_leaves_the_register_and_its_other_hardware(): void
+    {
+        $gone = $this->printerRow(['name' => 'مكرّرة']);
+        $kept = $this->printerRow(['name' => 'الأصل']);
+
+        $this->actingAs($this->owner)
+            ->delete(route('admin.devices.peripherals.destroy', [$this->device->id, $gone->id]))
+            ->assertSessionHas('toast.type', 'warning');
+
+        $this->assertModelMissing($gone);
+        $this->assertModelExists($kept);
+        $this->assertModelExists($this->device);
     }
 }

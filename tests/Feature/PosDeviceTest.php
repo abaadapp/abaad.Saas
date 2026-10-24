@@ -866,4 +866,104 @@ class PosDeviceTest extends TestCase
         $this->actingAs($cashier)->get(route('pos.index'))->assertRedirect(route('pos.setup'));
         $this->assertSame(0, PosDevice::where('business_id', $this->a->id)->count());
     }
+
+    /* ═══════════ جهازٌ يحلّ محلَّ صندوقٍ قائم — من متصفّحٍ آخر أو من التطبيق ═══════════ */
+
+    /**
+     * من انتقل من Chrome إلى تطبيق أبعاد لا يحمل كوكي الصندوق القديم: كان
+     * يُولد صفٌّ جديدٌ بلا طابعة، وطابعتُه على صفٍّ لا يُحذف لأنّه باع.
+     * فيختار المديرُ الصندوقَ القديم، فيُحيا صفُّه بطابعته.
+     */
+    public function test_a_new_browser_takes_over_an_existing_register_with_its_printer(): void
+    {
+        [$old, $oldRaw] = $this->device($this->khuwair, 'كاشير الخوير');
+        $printer = $this->printer($old);
+
+        // متصفّحٌ آخر — بلا كوكي
+        $this->actingAs($this->ownerA)->post(route('pos.setup.activate'), [
+            'branch_id' => $this->khuwair->id, 'name' => 'كاشير الخوير', 'replaces' => $old->id,
+        ])->assertRedirect(route('pos.index'));
+
+        $this->assertSame(1, PosDevice::where('business_id', $this->a->id)->count(), 'وُلد صندوقٌ ثانٍ بلا طابعة');
+        $this->assertSame($old->id, $printer->fresh()->pos_device_id);
+        $this->assertSame(PosDevice::ACTIVE, $old->fresh()->status);
+
+        // والجهازُ القديم يتوقّف: رمزُه دُوِّر — لا صندوقان يبيعان باسمٍ واحد
+        $cashier = $this->cashier($this->a, 'k30@abaad.om');
+        $this->enterPos($old->fresh(), $oldRaw, $cashier)->assertRedirect(route('pos.setup'));
+    }
+
+    public function test_a_revoked_register_that_sold_is_revived_rather_than_orphaned(): void
+    {
+        [$old] = $this->device($this->khuwair, 'كاشير قديم');
+        $this->printer($old);
+        $this->actingAs($this->ownerA)->delete(route('admin.devices.revoke', $old->id));
+
+        $this->actingAs($this->ownerA)->post(route('pos.setup.activate'), [
+            'branch_id' => $this->seeb->id, 'name' => 'كاشير السيب', 'replaces' => $old->id,
+        ])->assertRedirect(route('pos.index'));
+
+        $old->refresh();
+        $this->assertSame(PosDevice::ACTIVE, $old->status);
+        $this->assertSame($this->seeb->id, $old->branch_id);
+        $this->assertSame('كاشير السيب', $old->name);
+        $this->assertCount(1, $old->peripherals);
+    }
+
+    /** وبلا اختيارٍ يبقى ما كان: صندوقٌ جديد */
+    public function test_without_a_choice_a_new_register_is_made(): void
+    {
+        [$old] = $this->device($this->khuwair, 'كاشير الخوير');
+
+        $this->actingAs($this->ownerA)->post(route('pos.setup.activate'), [
+            'branch_id' => $this->khuwair->id, 'name' => 'كاشير 02',
+        ])->assertRedirect(route('pos.index'));
+
+        $this->assertSame(2, PosDevice::where('business_id', $this->a->id)->count());
+        $this->assertSame(PosDevice::ACTIVE, $old->fresh()->status);
+    }
+
+    /** وصندوقُ متجرٍ آخر لا يُتبنّى بمعرّفه */
+    public function test_a_register_of_another_shop_cannot_be_taken_over(): void
+    {
+        [$theirs] = $this->device($this->branchB, 'جهازهم');
+        $this->printer($theirs);
+
+        $this->actingAs($this->ownerA)->post(route('pos.setup.activate'), [
+            'branch_id' => $this->khuwair->id, 'name' => 'كاشير', 'replaces' => $theirs->id,
+        ])->assertSessionHasErrors('replaces');
+
+        $this->assertSame($this->b->id, $theirs->fresh()->business_id);
+        $this->assertSame('جهازهم', $theirs->fresh()->name);
+        $this->assertSame(0, PosDevice::where('business_id', $this->a->id)->count());
+    }
+
+    /** والكاشير لا يتبنّى صندوقًا — التفعيلُ كلُّه بصلاحية الإعدادات */
+    public function test_a_cashier_cannot_take_over_a_register(): void
+    {
+        [$old] = $this->device($this->khuwair, 'كاشير الخوير');
+        $cashier = $this->cashier($this->a, 'k31@abaad.om');
+
+        $this->actingAs($cashier)->post(route('pos.setup.activate'), [
+            'branch_id' => $this->khuwair->id, 'name' => 'لي', 'replaces' => $old->id,
+        ])->assertForbidden();
+
+        $this->assertSame('كاشير الخوير', $old->fresh()->name);
+    }
+
+    /** وشاشةُ الإعداد تعرض صناديقَ المتجر وحده، بعدد طابعاتها */
+    public function test_the_setup_screen_lists_this_shops_registers_only(): void
+    {
+        [$mine] = $this->device($this->khuwair, 'كاشير الخوير');
+        $this->printer($mine);
+        $this->device($this->branchB, 'جهازهم');
+
+        $devices = $this->actingAs($this->ownerA)->get(route('pos.setup'))->assertOk()
+            ->viewData('page')['props']['devices'];
+
+        $this->assertSame([[
+            'id' => $mine->id, 'name' => 'كاشير الخوير', 'branchId' => $this->khuwair->id,
+            'branch' => 'الخوير', 'active' => true, 'printers' => 1,
+        ]], $devices);
+    }
 }

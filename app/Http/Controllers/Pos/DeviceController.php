@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
 use App\Models\Branch;
 use App\Models\PosDevice;
+use App\Models\PosPeripheral;
 use App\Support\Activity;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\Demo;
@@ -54,6 +55,25 @@ class DeviceController extends Controller
                 ->orderBy('id')->get(['id', 'name'])
                 ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
             'businessName' => Demo::businessName(),
+            /*
+             * صناديقُ المتجر القائمة — ليحلّ هذا الجهازُ محلَّ أحدها (`activate`).
+             *
+             * ومعها عددُ طابعاتها النشطة: هي ما يضيع حين يُفعَّل الجهازُ صفًّا
+             * جديدًا، فيُرى قبل الاختيار لا بعده.
+             */
+            'devices' => PosDevice::where('business_id', Demo::bid())
+                ->with('branch:id,name')
+                ->withCount(['peripherals as printers' => fn ($p) => $p
+                    ->where('active', true)->where('type', PosPeripheral::PRINTER)])
+                ->orderByDesc('id')->get()
+                ->map(fn ($d) => [
+                    'id' => $d->id,
+                    'name' => $d->name,
+                    'branchId' => $d->branch_id,
+                    'branch' => $d->branch?->name ?? '—',
+                    'active' => $d->isActive(),
+                    'printers' => (int) $d->printers,
+                ])->values()->all(),
         ]);
     }
 
@@ -64,9 +84,11 @@ class DeviceController extends Controller
         $data = $request->validate([
             'branch_id' => ['required', 'integer'],
             'name' => ['required', 'string', 'max:60'],
+            'replaces' => ['nullable', 'integer'],
         ], [], [
             'branch_id' => __('الفرع'),
             'name' => __('اسم الجهاز'),
+            'replaces' => __('الصندوق القديم'),
         ]);
 
         // الفرع يُقيَّد بمتجر المستخدم: معرّفٌ من الواجهة لا يُوثق به
@@ -75,9 +97,37 @@ class DeviceController extends Controller
             return back()->withInput()->withErrors(['branch_id' => __('هذا الفرع غير متاح.')]);
         }
 
-        $device = PosTerminal::activate($branch, $data['name'], auth()->id());
+        /*
+         * ═══ «يحلّ محلَّ صندوقٍ قائم» — وطابعتُه معه ═══
+         *
+         * الجهازُ يُعرف بكوكي متصفّحه. فمن انتقل من Chrome إلى تطبيق أبعاد، أو
+         * مسح بيانات المتصفّح، أو بدّل الجهازَ اللوحيّ، يفعّل صفًّا جديدًا بلا
+         * طابعة — وطابعتُه ودرجُه وإعداداتُهما على الصفّ القديم. فيضيف الطابعةَ
+         * من جديد، ويحاول حذفَ القديم فلا يُحذف (باع)، والإيصالُ لا يخرج.
+         *
+         * فيُختار الصندوقُ القديم هنا ويُحيا صفُّه بالرمز الجديد — كما يُحيا حين
+         * يُفعَّل من المتصفّح نفسِه (`PosTerminal::claimed`). ويموت رمزُ الجهاز
+         * القديم بالتدوير نفسِه، فلا يبيع صندوقان باسمٍ واحد.
+         *
+         * والمعرّفُ محصورٌ بالمتجر: صندوقُ جارٍ لا يُتبنّى.
+         */
+        $replaces = null;
 
-        Activity::log('created', 'فعّل جهاز نقطة بيع: '.$device->name.' — فرع '.$branch->name, [
+        if (filled($data['replaces'] ?? null)) {
+            $replaces = PosDevice::where('business_id', Demo::bid())->find($data['replaces']);
+
+            if (! $replaces) {
+                return back()->withInput()->withErrors(['replaces' => __('هذا الصندوق غير متاح.')]);
+            }
+        }
+
+        // اسمُه قبل أن يُكتب فوقه — يُذكر في السجلّ
+        $replacedName = $replaces?->name;
+        $device = PosTerminal::activate($branch, $data['name'], auth()->id(), $replaces);
+
+        Activity::log('created', ($replaces
+            ? 'فعّل جهازًا مكان صندوق «'.$replacedName.'» بملحقاته: '
+            : 'فعّل جهاز نقطة بيع: ').$device->name.' — فرع '.$branch->name, [
             'subject_id' => $device->id,
         ]);
 
@@ -110,7 +160,7 @@ class DeviceController extends Controller
             // أيُعرض خيارُ «فواتير العملاء المسدَّدة» على الطابعات؟ — لمن فُتح له التجهيزُ بعد السداد
             'customerInvoicePrinting' => CustomerInvoicePreparations::on((int) Demo::bid()),
             'devices' => PosDevice::where('business_id', Demo::bid())
-                ->with('branch:id,name', 'activatedBy:id,name', 'peripherals', 'bankAccount')
+                ->with(['branch:id,name', 'activatedBy:id,name', 'peripherals' => fn ($p) => $p->orderBy('id'), 'bankAccount'])
                 ->withCount('orders', 'shifts')
                 ->orderByDesc('id')->get()->map(fn ($d) => [
                     'id' => $d->id,
@@ -158,6 +208,8 @@ class DeviceController extends Controller
                         'active' => $p->active,
                         // تقودها نقطة البيع فعلًا، أم تُسجَّل للجرد وحده
                         'drivable' => $p->isDrivable(),
+                        // طابعةُ إيصال البيع — بالقاعدة التي يطبع بها الصندوق (`PosPeripheral::receiptAmong`)
+                        'receipt' => $p->is(PosPeripheral::receiptAmong($d->peripherals)),
                     ])->values()->all(),
                 ])->values()->all(),
             'branches' => Branch::where('business_id', Demo::bid())

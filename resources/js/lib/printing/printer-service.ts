@@ -35,9 +35,15 @@ export const PRINTER = 'طابعة';
 /** المنفذُ الذي يطلبه التطبيقُ حين لا يُضبط منفذ — الافتراضيُّ الموثَّق للطباعة الخام، لا قاعدةٌ لكلّ طابعة */
 export const DEFAULT_RAW_PORT = 9100;
 
-/** طابعةُ هذا الصندوق — الأولى بين ملحقاته النشطة، كما كانت تُقرأ */
+/**
+ * طابعةُ إيصال البيع على هذا الصندوق — التي علّمها الخادم (`receipt`).
+ *
+ * وكانت «الأولى بين ملحقاته»: طابعةٌ أُضيفت مرّتين كانت تطبع على أقدمهما، ولو
+ * كانت «طباعة تلقائية بعد البيع» على الأخرى. والقاعدةُ في الخادم وحده
+ * (`PosPeripheral::receiptAmong`)؛ والأولى هنا لصفحةٍ قديمة لم تحمل العلامة بعد.
+ */
 export function receiptPrinter(peripherals?: PrinterLike[] | null): PrinterLike | null {
-    return peripherals?.find((p) => p.type === PRINTER) ?? null;
+    return peripherals?.find((p) => p.type === PRINTER && p.receipt) ?? peripherals?.find((p) => p.type === PRINTER) ?? null;
 }
 
 /** طابعةُ شبكةٍ لها عنوان — ما يقدر التطبيقُ أن يطبع عليه مباشرةً */

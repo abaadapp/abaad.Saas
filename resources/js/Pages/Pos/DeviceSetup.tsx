@@ -9,9 +9,20 @@ import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
+/** صندوقٌ قائمٌ في المتجر — قد يحلّ هذا الجهازُ محلَّه بملحقاته */
+interface ExistingTill {
+    id: number;
+    name: string;
+    branchId: number;
+    branch: string;
+    active: boolean;
+    printers: number;
+}
+
 interface Props {
     branches: { value: number; label: string }[];
     businessName: string;
+    devices?: ExistingTill[];
 }
 
 /**
@@ -21,13 +32,29 @@ interface Props {
  * والجهاز هو من يعرف الفرع.
  */
 export default function DeviceSetup() {
-    const { branches, businessName, errors } = usePage<PageProps<Props>>().props;
+    const { branches, businessName, devices = [], errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    // فرعٌ واحد لا اختيار فيه — يُملأ سلفًا
+    const onlyBranch = branches.length === 1 ? String(branches[0].value) : '';
     const form = useForm({
-        // فرعٌ واحد لا اختيار فيه — يُملأ سلفًا
-        branch_id: branches.length === 1 ? String(branches[0].value) : '',
+        branch_id: onlyBranch,
         name: '',
+        replaces: '',
     });
+    const replaced = devices.find((d) => String(d.id) === form.data.replaces) ?? null;
+
+    /*
+        صندوقٌ قديمٌ اختير: اسمُه وفرعُه يُملآن منه — ويبقيان قابلَين للتعديل.
+        و«جهازٌ جديد» يُفرغ ما مُلئ، فلا يُفعَّل صندوقٌ جديد باسم القديم صدفة.
+    */
+    const choose = (value: string) => {
+        const till = devices.find((d) => String(d.id) === value);
+        form.setData({
+            replaces: value,
+            name: till ? till.name : '',
+            branch_id: till ? String(till.branchId) : onlyBranch,
+        });
+    };
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
@@ -70,6 +97,38 @@ export default function DeviceSetup() {
                     )}
 
                     <form onSubmit={submit} className="space-y-5">
+                        {/*
+                            الجهازُ يُعرف بمتصفّحه. فمن انتقل إلى تطبيق أبعاد أو
+                            بدّل جهازَه اللوحيّ يختار صندوقَه القديم هنا: يبقى
+                            سجلُّه وطابعتُه وإعداداتُها، ويتوقّف الجهازُ القديم.
+                            وبلا اختيارٍ يُنشأ صندوقٌ جديدٌ بلا ملحقات.
+                        */}
+                        {devices.length > 0 && (
+                            <Field
+                                label="هل يحلّ هذا الجهاز محلّ صندوق قائم؟"
+                                hint="اختر الصندوق القديم إن انتقلت إلى تطبيق أبعاد أو بدّلت الجهاز — تبقى طابعته وإعداداتها"
+                                error={errors.replaces}
+                            >
+                                <Select
+                                    value={form.data.replaces}
+                                    onChange={(e) => choose(e.target.value)}
+                                    // «لا» هو الخيارُ الفارغ: Radix لا يقبل قيمةً فارغة على خيار
+                                    placeholder="لا — جهاز جديد"
+                                    options={devices.map((d) => ({
+                                        value: String(d.id),
+                                        label: `${d.name} — ${d.branch} — ${t('طابعات')}: ${d.printers}${d.active ? '' : ` (${t('ملغى')})`}`,
+                                    }))}
+                                />
+                            </Field>
+                        )}
+
+                        {replaced?.active && (
+                            <div className="flex items-start gap-2 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[13px] text-[#b45309]">
+                                <TriangleAlert className="mt-px size-4 shrink-0" />
+                                <span>{t('هذا الصندوق مفعَّل على جهاز آخر — سيتوقّف هناك ويعمل هنا بطابعته وإعداداتها.')}</span>
+                            </div>
+                        )}
+
                         <Field label="الفرع" required error={errors.branch_id}>
                             <Select
                                 value={form.data.branch_id}

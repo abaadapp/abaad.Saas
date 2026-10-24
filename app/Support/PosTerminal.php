@@ -48,7 +48,7 @@ class PosTerminal
      * الرمز الخام يُرجَع مرّةً واحدة ليوضع في الكوكي، ولا يُخزَّن ولا يُعرض:
      * ما لا يُخزَّن لا يُسرَّب من قاعدة بيانات.
      */
-    public static function activate(Branch $branch, string $name, ?int $byUserId = null): PosDevice
+    public static function activate(Branch $branch, string $name, ?int $byUserId = null, ?PosDevice $replaces = null): PosDevice
     {
         $raw = Str::random(64);
 
@@ -78,7 +78,13 @@ class PosTerminal
          * مشفَّرةٌ بمفتاح التطبيق فلا يكتبها إلّا نحن — ومع ذلك تُحصر بالمتجر،
          * فمعرّفُ جهازِ جارٍ لا يُتبنّى.
          */
-        $device = self::claimed($branch->business_id);
+        /*
+         * أو صفٌّ اختاره المديرُ بيده: «هذا الجهازُ يحلّ محلَّ ذاك» — من متصفّحٍ
+         * آخر أو من تطبيق أبعاد، حيث لا كوكي تقول من كان (`DeviceController::activate`).
+         */
+        $device = $replaces !== null && (int) $replaces->business_id === (int) $branch->business_id
+            ? $replaces
+            : self::claimed($branch->business_id);
 
         if ($device) {
             $device->update($columns);

@@ -105,6 +105,9 @@ final class PrintJobs
     /** آخرُ ورقةٍ لمهمّة — لتُقرأ حالُها في اللوحة */
     public static function forPreparation(CustomerInvoicePreparation $prep): ?PrintJob
     {
+        // حجزٌ انقضت مهلتُه يصير «فشل» قبل أن يُسأل عنه — فيُعاد أو يُؤكَّد من اللوحة
+        self::expireClaims((int) $prep->business_id);
+
         return PrintJob::where('business_id', $prep->business_id)
             ->where('subject_type', 'customer_invoice_preparation')
             ->where('subject_id', $prep->id)

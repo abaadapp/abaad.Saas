@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Pos;
 use App\Http\Controllers\Controller;
 use App\Models\PosDevice;
 use App\Models\PosPeripheral;
+use App\Rules\PrinterAddress;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\Activity;
 use App\Support\Demo;
@@ -70,7 +71,15 @@ class PeripheralController extends Controller
             'type' => ['required', Rule::in(PosPeripheral::TYPES)],
             'connection' => ['required', Rule::in(PosPeripheral::CONNECTIONS)],
             'model' => ['nullable', 'string', 'max:60'],
-            'address' => ['nullable', 'string', 'max:100', 'required_if:connection,network'],
+            /*
+             * وعنوانُ طابعة الشبكة يُفحص هنا بقاعدة التطبيق نفسِها (`PrinterAddress`):
+             * ما يردّه التطبيقُ عند الطباعة يُردّ عند الحفظ، لا بعد أوّل بيع.
+             */
+            'address' => ['nullable', 'string', 'max:100', 'required_if:connection,network',
+                Rule::when(
+                    $request->input('connection') === 'network' && $request->input('type') === PosPeripheral::PRINTER,
+                    [new PrinterAddress],
+                )],
             'port' => ['nullable', 'integer', 'min:1', 'max:65535'],
             'paper_width' => ['nullable', Rule::in(PosPeripheral::PAPER_WIDTHS)],
             'auto_print' => ['boolean'],

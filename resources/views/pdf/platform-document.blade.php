@@ -77,6 +77,11 @@
                         <td>
                             <div class="b">{{ __('الباقة') }}: {{ $plan['name'] }} · {{ $plan['cycle_label'] }}</div>
                             <div class="muted small">{{ $plan['limits'] }}</div>
+                            @if ($doc->term_starts_on)
+                                <div class="small">{{ __('مدة الاشتراك') }}: {{ $plan['duration'] ?? $plan['cycle_label'] }} ·
+                                    {{ __('من') }} <span dir="ltr">{{ \App\Support\PlatformDocuments::day($doc->term_starts_on) }}</span>
+                                    {{ __('إلى') }} <span dir="ltr">{{ \App\Support\PlatformDocuments::day($doc->term_ends_on) }}</span></div>
+                            @endif
                         </td>
                         <td class="amt"><span dir="ltr">{{ $plan['price'] }}</span> {{ __('ر.ع') }} / {{ $plan['unit'] }}</td>
                     </tr>
@@ -106,7 +111,7 @@
         <table class="grid">
             <tr>
                 <td style="width:50%; vertical-align:top; border-bottom:none">
-                    <div class="muted small">{{ __('أقر بأن البيانات أعلاه صحيحة، وأوافق على الشروط والأحكام الواردة في هذا المستند.') }}</div>
+                    <div class="muted small">{{ $doc->consent_text ?: __('أقر بأن البيانات أعلاه صحيحة، وأوافق على الشروط والأحكام الواردة في هذا المستند.') }}</div>
                     @if ($signature)
                         <img src="{{ $signature }}" style="max-height:60pt; max-width:200pt; margin-top:6pt" alt="">
                     @endif
@@ -114,10 +119,9 @@
                 </td>
                 <td style="vertical-align:top; border-bottom:none">
                     <div class="small"><span class="muted">{{ __('وقت التوقيع') }}:</span> <span dir="ltr">{{ \App\Support\PlatformDocuments::date($doc->signed_at) }}</span></div>
+                    <div class="small"><span class="muted">{{ __('وقت الموافقة على الشروط') }}:</span> <span dir="ltr">{{ \App\Support\PlatformDocuments::date($doc->agreed_at) }}</span></div>
                     <div class="small"><span class="muted">{{ __('عنوان الجهاز') }}:</span> <span dir="ltr">{{ $doc->signer_ip ?: '—' }}</span></div>
-                    @if ($doc->phone_verified_at)
-                        <div class="small"><span class="muted">{{ __('تحقق الهاتف المعتمد برمز') }}:</span> <span dir="ltr">{{ \App\Support\SigningCodes::mask($doc->signing_phone) }} · {{ \App\Support\PlatformDocuments::date($doc->phone_verified_at) }}</span></div>
-                    @endif
+                    <div class="small"><span class="muted">{{ __('المتصفح') }}:</span> <span dir="ltr">{{ \Illuminate\Support\Str::limit((string) $doc->signer_agent, 90) ?: '—' }}</span></div>
                 </td>
             </tr>
         </table>
@@ -131,4 +135,7 @@
 
 @section('foot')
     {{ __('صادر عن :name — يُوقَّع إلكترونيًا عبر رابطٍ خاصّ بالعميل.', ['name' => $provider['name']]) }}
+    @if ($doc->renews_document_id && $doc->renews)
+        · {{ __('تجديد للعقد :n', ['n' => $doc->renews->number]) }}
+    @endif
 @endsection

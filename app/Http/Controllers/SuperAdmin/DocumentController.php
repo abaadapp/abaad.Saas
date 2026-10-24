@@ -8,10 +8,10 @@ use App\Models\Plan;
 use App\Models\PlatformDocument;
 use App\Models\PlatformDocumentTemplate;
 use App\Support\Activity;
+use App\Support\Billing;
 use App\Support\Pagination;
 use App\Support\PlatformDocuments;
 use App\Support\Search;
-use App\Support\SigningCodes;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -23,7 +23,9 @@ use RuntimeException;
  * قسم المستندات — يُصدر مديرُ المنصّة لكلّ عميلٍ مستنداتِ خدمته، ويرسل رابطها.
  *
  * والرابطُ يُرسله المديرُ بنفسه (نسخٌ أو واتساب من جهازه): لا رسالةَ تخرج من
- * الخادم وحدها. انظر `PlatformDocuments`.
+ * الخادم وحدها، ولا مزوّدَ رسائلَ مدفوع. والشاشتان تستطلعان الخادمَ ما دام فيهما
+ * ما ينتظر التوقيع، فيظهر التوقيعُ عند المدير دون أن يعيد تحميل شيء.
+ * انظر `PlatformDocuments`.
  */
 class DocumentController extends Controller
 {
@@ -32,12 +34,13 @@ class DocumentController extends Controller
         $state = (string) $request->query('state', '');
         $q = Search::term($request);
 
-        $query = PlatformDocument::query()->latest('id');
+        $query = PlatformDocument::query()->with('business:id,name')->latest('id');
         match ($state) {
             PlatformDocument::SIGNED, PlatformDocument::CANCELLED => $query->where('status', $state),
             PlatformDocument::SENT => $query->where('status', PlatformDocument::SENT)
                 ->where(fn ($w) => $w->whereNull('expires_at')->orWhere('expires_at', '>=', now())),
             'expired' => $query->where('status', PlatformDocument::SENT)->where('expires_at', '<', now()),
+            'renewal' => $query->whereNotNull('renews_document_id'),
             default => null,
         };
         if ($q !== '') {
@@ -46,19 +49,23 @@ class DocumentController extends Controller
         }
         $page = $query->paginate(20)->withQueryString();
 
+        // عقدُ تجديدٍ يُفتح من عقدٍ موقَّع (?renew=) — نافذةُ الإصدار تبدأ ببيانه
+        $renew = $request->filled('renew')
+            ? PlatformDocument::whereKey((int) $request->query('renew'))->where('status', PlatformDocument::SIGNED)->first()
+            : null;
+        $templates = PlatformDocumentTemplate::where('active', true)->orderBy('id')
+            ->get(['id', 'name', 'service', 'title', 'terms', 'includes_plan', 'includes_amount']);
+
         return Inertia::render('Platform/Documents/Index', [
             'documents' => collect($page->items())->map(fn (PlatformDocument $d) => self::row($d))->all(),
             'pagination' => Pagination::meta($page),
             'filters' => ['state' => $state, 'q' => $q],
-            // بلا مزوّدٍ يوصل رمزَ التحقّق يبقى التوقيعُ مغلقًا — والمديرُ يُقال له قبل أن يرسل
-            'signing_ready' => SigningCodes::available(),
             'counts' => [
                 'sent' => PlatformDocument::where('status', PlatformDocument::SENT)
                     ->where(fn ($w) => $w->whereNull('expires_at')->orWhere('expires_at', '>=', now()))->count(),
                 'signed' => PlatformDocument::where('status', PlatformDocument::SIGNED)->count(),
             ],
-            'templates' => PlatformDocumentTemplate::where('active', true)->orderBy('id')
-                ->get(['id', 'name', 'service', 'includes_plan', 'includes_amount']),
+            'templates' => $templates,
             'plans' => Plan::orderBy('monthly_price')->get()->map(fn (Plan $p) => [
                 'id' => $p->id,
                 'name' => $p->name,
@@ -68,10 +75,26 @@ class DocumentController extends Controller
                     'yearly' => PlatformDocuments::planSnapshot($p, 'yearly')['price'],
                 ],
             ]),
-            'cycles' => collect(PlatformDocuments::CYCLES)->map(fn ($c, $k) => ['value' => $k, 'label' => $c['label']])->values(),
-            'businesses' => Business::orderBy('name')->limit(1000)->get(['id', 'name', 'plan_id', 'owner_name', 'phone'])
-                ->map(fn (Business $b) => ['id' => $b->id, 'name' => $b->name, 'plan_id' => $b->plan_id, 'owner' => $b->owner_name, 'phone' => $b->phone]),
+            'cycles' => collect(PlatformDocuments::CYCLES)
+                ->map(fn ($c, $k) => ['value' => $k, 'label' => $c['label'], 'months' => $c['months'], 'duration' => $c['duration']])->values(),
+            'businesses' => Business::orderBy('name')->limit(1000)->get(['id', 'name', 'plan_id', 'owner_name', 'phone', 'ends_at'])
+                ->map(fn (Business $b) => [
+                    'id' => $b->id, 'name' => $b->name, 'plan_id' => $b->plan_id, 'owner' => $b->owner_name, 'phone' => $b->phone,
+                    // بدايةُ مدّةٍ جديدة كما يبدؤها سدادُ التجديد
+                    'starts_on' => PlatformDocuments::defaultStart($b)->toDateString(),
+                ]),
+            'today' => now()->toDateString(),
             'days' => PlatformDocuments::DEFAULT_DAYS,
+            'renew' => $renew ? [
+                'id' => $renew->id,
+                'number' => $renew->number,
+                'client' => $renew->client_label,
+                'phone' => $renew->client['phone'] ?? '',
+                'template_id' => $templates->firstWhere('id', $renew->template_id)?->id ?? $templates->firstWhere('includes_plan', true)?->id,
+                'plan_id' => $renew->plan['plan_id'] ?? null,
+                'cycle' => $renew->plan['cycle'] ?? 'monthly',
+                'starts_on' => $renew->term_ends_on?->toDateString(),
+            ] : null,
         ]);
     }
 
@@ -80,10 +103,13 @@ class DocumentController extends Controller
         $data = $request->validate([
             'template_id' => ['required', 'integer', Rule::exists('platform_document_templates', 'id')->where('active', true)],
             'business_id' => ['nullable', 'integer', 'exists:businesses,id'],
+            'renews_document_id' => ['nullable', 'integer', 'exists:platform_documents,id'],
             'client' => ['nullable', 'array'],
             'client.*' => ['nullable', 'string', 'max:190'],
             'plan_id' => ['nullable', 'integer', 'exists:plans,id'],
             'cycle' => ['nullable', Rule::in(array_keys(PlatformDocuments::CYCLES))],
+            'term_starts_on' => ['nullable', 'date'],
+            'term_ends_on' => ['nullable', 'date', 'after:term_starts_on'],
             'amount' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             'amount_label' => ['nullable', 'string', 'max:190'],
             'days' => ['nullable', 'integer', 'min:1', 'max:90'],
@@ -91,9 +117,12 @@ class DocumentController extends Controller
         ], [], [
             'template_id' => __('نوع المستند'),
             'business_id' => __('النشاط'),
+            'renews_document_id' => __('العقد المجدَّد'),
             'client' => __('بيانات العميل'),
             'plan_id' => __('الباقة'),
             'cycle' => __('دورة الاشتراك'),
+            'term_starts_on' => __('بداية الاشتراك'),
+            'term_ends_on' => __('نهاية الاشتراك'),
             'amount' => __('المبلغ'),
             'days' => __('صلاحية الرابط'),
         ]);
@@ -105,24 +134,29 @@ class DocumentController extends Controller
         }
 
         return redirect()->route('super-admin.documents.show', $doc->id)
-            ->with('toast', ['msg' => __('أُصدر المستند — انسخ الرابط وأرسله للعميل'), 'type' => 'success']);
+            ->with('toast', ['msg' => __('أُصدر المستند — انسخ الرابط أو أرسله عبر واتساب'), 'type' => 'success']);
     }
 
     public function show(int $id): Response
     {
-        $doc = PlatformDocument::with('business:id,name')->findOrFail($id);
+        $doc = PlatformDocument::with(['business:id,name,plan_id,starts_at,ends_at,status', 'business.plan:id,name', 'renews:id,number', 'renewals'])
+            ->findOrFail($id);
         $link = route('documents.sign', $doc->token);
-        // الرابطُ إلى الرقم المعتمد نفسه — إليه يصل الرمز
-        $phone = (string) $doc->signing_phone;
+        $business = $doc->business;
+        $pending = $business ? Billing::pendingRenewal($business) : null;
+        $openRenewal = $doc->renewals->first(fn (PlatformDocument $r) => $r->status === PlatformDocument::SIGNED || $r->signable());
 
         return Inertia::render('Platform/Documents/Show', [
             'document' => self::row($doc) + [
                 'title_en' => $doc->title_en,
                 'terms' => $doc->terms,
                 'plan' => $doc->plan,
+                'term_starts_on' => PlatformDocuments::day($doc->term_starts_on),
+                'term_ends_on' => PlatformDocuments::day($doc->term_ends_on),
                 'amount' => $doc->amount === null ? null : (string) $doc->amount,
                 'amount_label' => $doc->amount_label,
                 'client' => $doc->client ?? [],
+                'client_phone' => $doc->client_phone ? '+'.$doc->client_phone : null,
                 'notes' => $doc->notes,
                 'created_by' => $doc->created_by_name,
                 'viewed_at' => PlatformDocuments::date($doc->viewed_at),
@@ -130,18 +164,43 @@ class DocumentController extends Controller
                 'cancel_reason' => $doc->cancel_reason,
                 'signer_ip' => $doc->signer_ip,
                 'signer_agent' => $doc->signer_agent,
-                'signing_phone' => $doc->signing_phone ? '+'.$doc->signing_phone : null,
-                'phone_verified_at' => $doc->phone_verified_at ? PlatformDocuments::date($doc->phone_verified_at) : null,
-                'signing_ready' => SigningCodes::available(),
+                'consent_text' => $doc->consent_text,
+                'agreed_at' => $doc->agreed_at ? PlatformDocuments::date($doc->agreed_at) : null,
                 'content_hash' => $doc->content_hash,
+                'pdf_hash' => $doc->pdf_hash,
                 'intact' => $doc->status === PlatformDocument::SIGNED ? PlatformDocuments::intact($doc) : null,
                 'signature' => PlatformDocuments::signatureDataUri($doc),
                 'link' => $link,
                 // واتساب يُفتح من جهاز المدير برسالةٍ جاهزة — هو من يضغط «إرسال»
-                'whatsapp' => 'https://wa.me/'.$phone.'?text='.rawurlencode(__('مرحبًا، هذا رابط :title من أبعاد للمراجعة والتوقيع:', ['title' => $doc->title]).' '.$link),
+                'whatsapp' => 'https://wa.me/'.$doc->client_phone.'?text='.rawurlencode(PlatformDocuments::whatsappText($doc, $link)),
+                'renews' => $doc->renews ? ['id' => $doc->renews->id, 'number' => $doc->renews->number, 'url' => route('super-admin.documents.show', $doc->renews->id)] : null,
+                'renewals' => $doc->renewals->map(fn (PlatformDocument $r) => [
+                    'id' => $r->id, 'number' => $r->number, 'url' => route('super-admin.documents.show', $r->id),
+                    'state_label' => PlatformDocument::LABELS[$r->state()] ?? $r->state(),
+                ])->values(),
+                'can_renew' => $doc->status === PlatformDocument::SIGNED && $doc->plan !== null && ! $openRenewal,
+                // الاشتراكُ كما هو في المنصّة — العقدُ يقرؤه ولا يكتبه
+                'subscription' => $business ? [
+                    'plan' => $business->plan?->name,
+                    'starts_at' => PlatformDocuments::day($business->starts_at),
+                    'ends_at' => PlatformDocuments::day($business->ends_at),
+                    'status' => $business->status,
+                    'pending_invoice' => $pending?->invoice?->number,
+                    'pending_amount' => $pending ? number_format((float) $pending->amount, 3, '.', '') : null,
+                    'pending_payment' => $pending?->payment_status,
+                ] : null,
             ],
             'fields' => PlatformDocuments::FIELDS,
         ]);
+    }
+
+    /** المديرُ نسخ الرابطَ أو فتح به واتساب — يُسجَّل فعلُه، لا وصولُ الرسالة */
+    public function shared(Request $request, int $id): RedirectResponse
+    {
+        $data = $request->validate(['via' => ['required', Rule::in(array_keys(PlatformDocument::SHARED))]], [], ['via' => __('طريقة المشاركة')]);
+        PlatformDocuments::share(PlatformDocument::findOrFail($id), $data['via']);
+
+        return back();
     }
 
     public function cancel(Request $request, int $id): RedirectResponse
@@ -159,17 +218,16 @@ class DocumentController extends Controller
         if (! $changed) {
             return back()->withErrors(['document' => __('لا يُلغى إلا مستندٌ لم يُوقَّع بعد.')]);
         }
-        // ورمزٌ أُرسل أو إذنٌ في جلسةٍ لا يبقيان بعد الإلغاء
-        SigningCodes::revoke($doc);
 
         Activity::log('updated', 'ألغى رابط المستند: '.$doc->number, ['business_id' => null, 'subject_id' => $doc->id, 'subject_type' => PlatformDocument::class]);
 
         return back()->with('toast', ['msg' => __('أُلغي المستند — الرابط لم يعد يقبل التوقيع'), 'type' => 'success']);
     }
 
+    /** الورقة — المحفوظةُ للموقَّع، والمرسومةُ الآن لما لم يُوقَّع */
     public function pdf(int $id)
     {
-        return PlatformDocuments::pdf(PlatformDocument::findOrFail($id));
+        return PlatformDocuments::paper(PlatformDocument::findOrFail($id));
     }
 
     /** صفُّ المستند في القائمة وفي رأس صفحته */
@@ -180,12 +238,21 @@ class DocumentController extends Controller
         return [
             'id' => $d->id,
             'url' => route('super-admin.documents.show', $d->id),
+            'pdf_url' => route('super-admin.documents.pdf', $d->id),
             'number' => $d->number,
             'title' => $d->title,
             'service' => $d->service,
             'client_name' => $d->client['name'] ?? null,
             'client_biz' => $d->client['biz'] ?? null,
             'business' => $d->client_business_id ? ['id' => $d->client_business_id, 'name' => $d->business?->name] : null,
+            'plan_name' => $d->plan['name'] ?? null,
+            'cycle_label' => $d->plan['cycle_label'] ?? null,
+            // قيمةُ العقد: سعرُ دورة الباقة، أو مبلغُ الخدمة، أو كلاهما
+            'value' => $d->plan ? $d->plan['price'] : ($d->amount === null ? null : number_format((float) $d->amount, 3, '.', '')),
+            'value_unit' => $d->plan['unit'] ?? null,
+            'renewal' => $d->renews_document_id !== null,
+            'shared' => $d->shared_via ? (PlatformDocument::SHARED[$d->shared_via] ?? $d->shared_via) : null,
+            'shared_at' => $d->shared_at ? PlatformDocuments::date($d->shared_at) : null,
             'state' => $state,
             'state_label' => PlatformDocument::LABELS[$state] ?? $state,
             'created_at' => PlatformDocuments::date($d->created_at),

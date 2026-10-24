@@ -9,12 +9,10 @@ use App\Models\PlatformDocumentTemplate;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\PlatformDocuments;
-use App\Support\SigningCodeSender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Tests\Support\FakeSigningCodeSender;
 use Tests\Support\PdfText;
 use Tests\TestCase;
 
@@ -43,8 +41,6 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 
     private PlatformDocumentTemplate $contract;
 
-    private FakeSigningCodeSender $sender;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -70,21 +66,12 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 
         // القالبُ الأوّل تكتبه الهجرة نفسُها — عقدُ الاشتراك كما صُمِّم
         $this->contract = PlatformDocumentTemplate::where('name', 'عقد اشتراك أبعاد')->firstOrFail();
-
-        // رمزُ التحقّق يصل «هاتف» العميل هنا — في الذاكرة
-        $this->sender = new FakeSigningCodeSender;
-        $this->app->instance(SigningCodeSender::class, $this->sender);
     }
 
-    /** يثبت المتصفّحُ الرقمَ المعتمد كما يثبته العميل: يطلب الرمز ويكتبه */
-    private function unlock(PlatformDocument $doc): void
+    /** العميلُ يفتح الرابط — بلا حساب ولا رمز */
+    private function asClient(): void
     {
         auth()->logout();
-        $this->post(route('documents.sign.code', $doc->token));
-        $code = $this->sender->last($doc);
-        if ($code !== '') {
-            $this->post(route('documents.sign.verify', $doc->token), ['code' => $code]);
-        }
     }
 
     private function issue(array $data = []): PlatformDocument
@@ -112,7 +99,7 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 
     private function sign(PlatformDocument $doc, array $over = [])
     {
-        $this->unlock($doc);
+        $this->asClient();
 
         return $this->post(route('documents.sign.submit', $doc->token), $over + [
             'client' => ['cr' => '1234567', 'civil' => '98765432'],
@@ -197,16 +184,10 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $doc = $this->issue();
         auth()->logout();
 
-        // الرابطُ وحده: عنوانُ المستند وآخرُ أربعة أرقامٍ من الهاتف — لا الباقةُ ولا بيانُ العميل
+        // الرابطُ وحده يفتح العقدَ للقراءة والتوقيع — بلا رمز
         $this->get(route('documents.sign', $doc->token))->assertOk()
-            ->assertSee('عقد اشتراك')->assertSee('•••• 4567')->assertSee('noindex, nofollow', false)
-            ->assertDontSee('الباقة الاحترافية')->assertDontSee('299.000')->assertDontSee('سالم الهنائي')
-            ->assertDontSee('id="sign-form"', false);
-        $this->assertNull($doc->fresh()->viewed_at, 'فتحُ الرابط (ومعاينةُ واتساب) ليس فتحَ العميل');
-
-        $this->unlock($doc);
-        $this->get(route('documents.sign', $doc->token))->assertOk()
-            ->assertSee('الباقة الاحترافية')->assertSee('299.000')->assertSee('id="sign-form"', false);
+            ->assertSee('عقد اشتراك')->assertSee('الباقة الاحترافية')->assertSee('299.000')
+            ->assertSee('noindex, nofollow', false)->assertSee('id="sign-form"', false)->assertSee('إرسال التوقيع');
         $this->assertNotNull($doc->fresh()->viewed_at);
 
         // بلا توقيع، وبلا إقرار، وبلا السجلّ والرقم المدنيّ — لا يُقفل
@@ -235,7 +216,10 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $this->sign($doc, ['client' => ['cr' => '0000000', 'civil' => '0000000']])->assertSessionHasErrors('sign');
         $this->assertSame('1234567', $doc->fresh()->client['cr']);
         $this->assertSame($signed->signed_at->toDateTimeString(), $doc->fresh()->signed_at->toDateTimeString());
-        $this->assertCount(1, Storage::disk('local')->allFiles());
+        // صورةُ توقيعٍ واحدة، وورقةٌ موقَّعةٌ محفوظةٌ واحدة
+        $files = collect(Storage::disk('local')->allFiles());
+        $this->assertCount(1, $files->filter(fn ($f) => str_ends_with($f, '.png')));
+        $this->assertCount(1, $files->filter(fn ($f) => str_ends_with($f, '.pdf')));
 
         $this->get(route('documents.sign', $doc->token))->assertOk()->assertSee('تم توقيع المستند')->assertDontSee('id="sig"', false);
     }
@@ -255,7 +239,7 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $this->assertCount(7, $fresh->terms);
         $this->assertSame('299.000', $fresh->plan['price']);
 
-        $this->unlock($doc);
+        $this->asClient();
         $this->get(route('documents.sign', $doc->token))->assertOk()
             ->assertSee('موضوع العقد:')->assertDontSee('بندٌ كُتب بعد الإرسال.')->assertSee('299.000');
     }
@@ -323,11 +307,7 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $paper->assertOk();
         $this->assertStringContainsString('no-store', (string) $paper->headers->get('Cache-Control'));
 
-        // وبعد أيّام: إذنُ تلك الجلسة انتهى — يعود برمزٍ جديد إلى هاتفه، لا بالرابط وحده
         $this->travel(PlatformDocument::COPY_DAYS - 1)->days();
-        $this->get(route('documents.sign.pdf', $doc->token))->assertRedirect(route('documents.sign', $doc->token));
-        $this->get(route('documents.sign', $doc->token))->assertOk()->assertDontSee('98765432');
-        $this->unlock($doc);
         $this->get(route('documents.sign.pdf', $doc->token))->assertOk();
 
         // وبعد أيّامها رابطٌ في محادثةٍ قديمة لا يفتح رقمَه المدنيّ وتوقيعه

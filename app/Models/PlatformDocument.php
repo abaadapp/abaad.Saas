@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * مستندٌ أُرسل إلى عميلٍ ليوقّعه — نسخةٌ من قالبه ساعةَ الإصدار.
@@ -12,9 +13,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * حالاتُه ثلاث: أُرسل (الرابطُ يعمل)، وُقِّع (لا يتغيّر بعدها)، أُلغي. والمنتهي
  * ليس حالةً تُكتب: هو مُرسَلٌ تجاوز `expires_at`، فلا يُوقَّع.
  *
- * والرابطُ يعرض ما فيه ما دام للتوقيع، ثمّ نسخةَ الموقَّع أيّامًا ينزّلها فيها
- * العميل. والملغى والمنتهي وما مضت أيّامُ نسخته يقول حالَه فقط: رابطٌ أُرسل
- * إلى رقمٍ خاطئ أو بقي في محادثةٍ لا يبقى بابًا إلى رقم العميل المدنيّ وتوقيعه.
+ * والرابطُ وحده مفتاحُه — لا رمزَ ولا حساب. فيعرض ما فيه ما دام للتوقيع، ثمّ
+ * نسخةَ الموقَّع أيّامًا ينزّلها فيها العميل. والملغى والمنتهي وما مضت أيّامُ
+ * نسخته يقول حالَه فقط: رابطٌ أُرسل إلى رقمٍ خاطئ أو بقي في محادثةٍ لا يبقى
+ * بابًا إلى رقم العميل المدنيّ وتوقيعه.
+ *
+ * وتوقيعُ العقد شيءٌ وتمديدُ الاشتراك شيءٌ آخر: العقدُ لا يمسّ `subscriptions`
+ * ولا الفواتير — التمديدُ يقع عند سداد فاتورة التجديد (`Billing::markPaid`).
  */
 class PlatformDocument extends Model
 {
@@ -34,6 +39,12 @@ class PlatformDocument extends Model
         'expired' => 'انتهت صلاحية الرابط',
     ];
 
+    /** طرقُ مشاركة الرابط التي يسجّلها المدير — فعلُه هو، لا دليلُ وصول */
+    public const SHARED = [
+        'copy' => 'نُسخ الرابط',
+        'whatsapp' => 'فُتح واتساب',
+    ];
+
     protected $guarded = [];
 
     protected $hidden = ['token'];
@@ -44,18 +55,15 @@ class PlatformDocument extends Model
         'client' => 'array',
         'provider' => 'array',
         'amount' => 'decimal:3',
+        'term_starts_on' => 'date',
+        'term_ends_on' => 'date',
         'expires_at' => 'datetime',
         'viewed_at' => 'datetime',
         'signed_at' => 'datetime',
-        'phone_verified_at' => 'datetime',
+        'agreed_at' => 'datetime',
+        'shared_at' => 'datetime',
         'cancelled_at' => 'datetime',
     ];
-
-    /** رموزُ التحقّق التي أُرسلت إلى هاتفه المعتمد — انظر `SigningCodes` */
-    public function codes(): HasMany
-    {
-        return $this->hasMany(PlatformDocumentCode::class, 'document_id');
-    }
 
     public function template(): BelongsTo
     {
@@ -65,6 +73,18 @@ class PlatformDocument extends Model
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class, 'client_business_id');
+    }
+
+    /** العقدُ الذي يجدّده هذا */
+    public function renews(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'renews_document_id');
+    }
+
+    /** عقودُ التجديد التي صدرت عنه */
+    public function renewals(): HasMany
+    {
+        return $this->hasMany(self::class, 'renews_document_id');
     }
 
     public function expired(): bool
@@ -88,6 +108,12 @@ class PlatformDocument extends Model
     {
         return $this->status === self::SIGNED && $this->signed_at !== null
             && $this->signed_at->copy()->addDays(self::COPY_DAYS)->isFuture();
+    }
+
+    /** آخرُ يومٍ تُعرض فيه النسخةُ الموقَّعة على رابطها */
+    public function copyUntil(): ?Carbon
+    {
+        return $this->signed_at?->copy()->addDays(self::COPY_DAYS);
     }
 
     /** هل يعرض الرابطُ بيانَ العميل؟ — وإلّا قال حالَه وحدها */

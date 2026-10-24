@@ -294,6 +294,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::put('/documents/templates/{id}', [DocumentTemplateController::class, 'update'])->whereNumber('id')->name('documents.templates.update');
     Route::get('/documents/{id}', [DocumentController::class, 'show'])->whereNumber('id')->name('documents.show');
     Route::post('/documents/{id}/cancel', [DocumentController::class, 'cancel'])->whereNumber('id')->name('documents.cancel');
+    Route::post('/documents/{id}/shared', [DocumentController::class, 'shared'])->whereNumber('id')->name('documents.shared');
     Route::get('/documents/{id}/pdf', [DocumentController::class, 'pdf'])->whereNumber('id')->name('documents.pdf');
 
     /*
@@ -2225,9 +2226,8 @@ Route::post('/r/{token}', [ReviewInviteController::class, 'store'])
 /*
  * توقيعُ مستندات أبعاد — يفتحه العميلُ من رابطٍ أرسله مدير المنصّة.
  *
- * اثنان وثلاثون حرفًا لا تُخمَّن، بلا دخول — ولا توقيعَ ولا بيانَ قبل رمزٍ
- * يصل الهاتفَ المعتمد. والكتابةُ أضيقُ حدًّا من الفتح، وطلبُ الرمز أضيقُ منهما
- * (ولكلّ مستندٍ حدُّه في `SigningCodes` فوق حدّ العنوان هنا). انظر `PlatformDocuments`.
+ * اثنان وثلاثون حرفًا لا تُخمَّن، بلا دخول ولا رمز — الرابطُ وحده مفتاحه، بصلاحيّةٍ
+ * محدودة. والكتابةُ أضيقُ حدًّا من الفتح. انظر `PlatformDocuments`.
  */
 // ولكلّ بابٍ عدّادُه (البادئة الثالثة): بلاها يتشارك العنوانُ عدّادًا واحدًا مع كلّ
 // صفحةٍ محدودة، فعميلٌ فتح الصفحةَ عشرَ مرّات يُردّ توقيعُه بـ429
@@ -2235,16 +2235,6 @@ Route::get('/sign/{token}', [ContractSigningController::class, 'show'])
     ->where('token', '[A-Za-z0-9]{32}')
     ->middleware('throttle:60,1,sign-page')
     ->name('documents.sign');
-
-Route::post('/sign/{token}/code', [ContractSigningController::class, 'code'])
-    ->where('token', '[A-Za-z0-9]{32}')
-    ->middleware('throttle:5,10,sign-code')
-    ->name('documents.sign.code');
-
-Route::post('/sign/{token}/verify', [ContractSigningController::class, 'verify'])
-    ->where('token', '[A-Za-z0-9]{32}')
-    ->middleware('throttle:10,1,sign-verify')
-    ->name('documents.sign.verify');
 
 Route::post('/sign/{token}', [ContractSigningController::class, 'sign'])
     ->where('token', '[A-Za-z0-9]{32}')

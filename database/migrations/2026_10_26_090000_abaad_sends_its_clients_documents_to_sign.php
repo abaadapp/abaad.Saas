@@ -30,8 +30,8 @@ return new class extends Migration
 {
     public const SUBSCRIPTION_TERMS = [
         ['h' => 'موضوع العقد:', 'b' => 'يمنح الطرف الأول الطرف الثاني حق استخدام نظام أبعاد السحابي وفق الباقة المختارة أعلاه وحدودها.'],
-        ['h' => 'مدة الاشتراك:', 'b' => 'تبدأ من تاريخ التفعيل وتمتد شهرًا أو سنة حسب الدورة المختارة، وتتجدد بنفس الدورة ما لم يُطلب الإلغاء قبل نهايتها.'],
-        ['h' => 'الرسوم والدفع:', 'b' => 'يلتزم الطرف الثاني بسداد رسوم الاشتراك مقدمًا عند بداية كل دورة. يحق للطرف الأول إيقاف الخدمة مؤقتًا عند عدم السداد.'],
+        ['h' => 'مدة الاشتراك:', 'b' => 'تبدأ في تاريخ بداية الاشتراك المذكور أعلاه وتمتد حسب الدورة المختارة: شهرًا واحدًا للدورة الشهرية، أو ستة أشهر للدورة النصف سنوية، أو اثني عشر شهرًا للدورة السنوية، وتتجدد بنفس الدورة ما لم يُطلب الإلغاء قبل نهايتها.'],
+        ['h' => 'الرسوم والدفع:', 'b' => 'يلتزم الطرف الثاني بسداد رسوم الاشتراك مقدمًا عند بداية كل دورة، ولا تُمدَّد مدة الاشتراك إلا بعد سداد رسوم الدورة الجديدة. يحق للطرف الأول إيقاف الخدمة مؤقتًا عند عدم السداد.'],
         ['h' => 'الإضافات:', 'b' => 'الأجهزة وتخصيص الموقع ورقم واتساب الخاص ورسائل واتساب الإضافية خدمات منفصلة تُحتسب بحسب الطلب.'],
         ['h' => 'البيانات:', 'b' => 'تبقى بيانات الطرف الثاني ملكًا له، ويلتزم الطرف الأول بحفظها وعدم مشاركتها مع أي طرف آخر إلا بموافقته أو بموجب القانون.'],
         ['h' => 'الترقية والتغيير:', 'b' => 'يمكن للطرف الثاني ترقية الباقة في أي وقت، وتُحتسب الرسوم الجديدة من تاريخ الترقية.'],
@@ -62,6 +62,9 @@ return new class extends Migration
                 ->constrained('platform_document_templates')->nullOnDelete();
             $table->foreignId('client_business_id')->nullable()->index()
                 ->constrained('businesses')->nullOnDelete();
+            // عقدُ التجديد يشير إلى العقد الذي يجدّده
+            $table->foreignId('renews_document_id')->nullable()->index()
+                ->constrained('platform_documents')->nullOnDelete();
 
             // نسخةُ القالب ساعةَ الإصدار — لا تتبعه بعدها
             $table->string('service')->nullable();
@@ -69,6 +72,9 @@ return new class extends Migration
             $table->string('title_en')->nullable();
             $table->json('terms');
             $table->json('plan')->nullable();
+            // مدّةُ الاشتراك كما اتُّفق عليها — بدايتُها ونهايتُها
+            $table->date('term_starts_on')->nullable();
+            $table->date('term_ends_on')->nullable();
             $table->decimal('amount', 12, 3)->nullable();
             $table->string('amount_label')->nullable();
             // الطرفُ الأوّل كما كان يومَ الإصدار — تغييرُ اسم أبعاد غدًا لا يغيّر عقدًا وُقِّع
@@ -78,6 +84,12 @@ return new class extends Migration
             $table->json('client');
             // اسمُ العميل ونشاطُه وهاتفُه نصًّا — للبحث والقائمة (JSON لا يُبحث فيه بـLIKE)
             $table->string('client_label')->nullable()->index();
+            // هاتفُ العميل دوليًّا بلا + — إليه يُفتح واتساب من جهاز المدير
+            $table->string('client_phone', 20)->nullable();
+
+            // آخرُ طريقةٍ شارك بها المديرُ الرابط — فعلُه هو، لا دليلُ وصولٍ ولا استلام
+            $table->string('shared_via', 16)->nullable();
+            $table->timestamp('shared_at')->nullable();
 
             $table->string('token', 32)->unique();
             $table->string('status', 16)->default('sent')->index();
@@ -87,8 +99,14 @@ return new class extends Migration
             $table->string('signer_ip', 45)->nullable();
             $table->string('signer_agent', 512)->nullable();
             $table->string('signature_path')->nullable();
+            // الإقرارُ الصريح كما قرأه العميل ووقتُه
+            $table->text('consent_text')->nullable();
+            $table->timestamp('agreed_at')->nullable();
             // بصمةُ ما وُقِّع عليه — تُطبع في الورقة، ويُعاد حسابُها للتحقّق
             $table->string('content_hash', 64)->nullable();
+            // الورقةُ الموقَّعة محفوظةً كما نُزّلت أوّلَ مرّة، وبصمةُ ملفّها
+            $table->string('pdf_path')->nullable();
+            $table->string('pdf_hash', 64)->nullable();
             $table->timestamp('cancelled_at')->nullable();
             $table->string('cancel_reason')->nullable();
 

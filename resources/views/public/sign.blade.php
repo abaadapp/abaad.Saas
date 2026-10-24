@@ -1,20 +1,22 @@
 {{--
     مستندٌ من أبعاد إلى عميلها — يُقرأ ويُكمَل ويُوقَّع من الهاتف.
 
-    صفحةٌ واحدة بلا أصولٍ خارجية، كصفحة التقييم: تُفتح من رابطٍ في واتساب على
-    شبكةٍ قد تكون ضعيفة. والتوقيعُ لوحةٌ يُرسم عليها بالإصبع أو الماوس، تُرسَل
-    صورتُها PNG في حقلٍ مخفيّ — ومن غير جافاسكربت لا توقيع، والصفحةُ تقول ذلك.
+    صفحةٌ واحدة بلا أصولٍ من خارج المنصّة ولا أدواتِ تحليل: تُفتح من رابطٍ في واتساب
+    على شبكةٍ قد تكون ضعيفة، وفيها رقمٌ مدنيّ. والتوقيعُ لوحةٌ يُرسم عليها بالإصبع
+    أو الماوس، تُرسَل صورتُها PNG — ومن غير جافاسكربت لا توقيع، والصفحةُ تقول ذلك.
 
     و`noindex`: الرابطُ لا يُخمَّن، لكنّ محرّك بحثٍ يزحف إليه من مشاركةٍ عابرة
     يجعل عقد عميلٍ مقروءًا للجميع.
 
-    والرابطُ وحده لا يفتح شيئًا: قبل رمز الهاتف المعتمد (`$granted`) لا يظهر إلّا
-    عنوانُ المستند وخانةُ الرمز. والهاتفُ يُعرض ولا يُكتب — المعتمدُ لا يُبدَّل هنا.
+    والإرسالُ طلبُ JSON لا انتقالُ صفحة: إن انقطعت الشبكة بقي الرسمُ والبيانُ في
+    الصفحة وقيل ذلك، ولا يُقال «تم» إلّا بعد أن يحفظه الخادم.
 --}}
+@use('App\Models\PlatformDocument')
+@use('App\Support\PlatformDocuments')
 @php
     $state = $doc->state();
-    $signed = $state === \App\Models\PlatformDocument::SIGNED;
-    $open = $granted && $state === \App\Models\PlatformDocument::SENT;
+    $signed = $state === PlatformDocument::SIGNED;
+    $open = $state === PlatformDocument::SENT;
     $client = $doc->client ?? [];
     $plan = $doc->plan;
     $val = fn (string $k) => old('client.'.$k, $client[$k] ?? '');
@@ -25,6 +27,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
+    <meta name="referrer" content="no-referrer">
     <title>{{ $doc->title }} — {{ $provider['name'] }}</title>
     <style>
         :root {
@@ -47,7 +50,8 @@
         .sm { font-size: 13.5px; }
         .ltr { direction: ltr; unicode-bidi: isolate; }
         .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-        .brand { font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
+        .logo { height: 26px; width: auto; display: block; margin-bottom: 6px; }
+        .brand { font-size: 15px; font-weight: 700; }
         h1 { font-size: 24px; margin: 0; line-height: 1.3; }
         h1 small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); }
         .meta { text-align: end; font-size: 13px; color: var(--muted); }
@@ -72,6 +76,10 @@
         .plan .name { font-weight: 700; font-size: 17px; }
         .price { font-size: 22px; font-weight: 800; white-space: nowrap; }
         .price small { font-size: 13px; font-weight: 500; color: var(--muted); }
+        .term { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 10px; }
+        .term div { background: var(--soft); border-radius: 10px; padding: 8px 12px; }
+        .term span { display: block; font-size: 12px; color: var(--muted); }
+        .term b { font-weight: 700; }
         ol.terms { margin: 0; padding: 0 18px 0 0; }
         ol.terms li { margin-bottom: 8px; }
         ol.terms b { font-weight: 700; }
@@ -114,6 +122,7 @@
 <div class="sheet">
     <div class="pad top">
         <div>
+            <img class="logo" src="{{ asset('brand/abaad/logo.svg') }}" alt="{{ $provider['name'] }}">
             <div class="brand">{{ $provider['name'] }}</div>
             <div class="xs muted">
                 @if ($provider['website'])<span class="ltr">{{ $provider['website'] }}</span>@endif
@@ -128,7 +137,7 @@
         </div>
     </div>
 
-    @if ($granted)
+    @if ($readable)
     <div class="pad rule">
         <div class="parties">
             <div class="party">
@@ -146,7 +155,7 @@
     @endif
 
     {{-- الرابطُ المغلق يقول حالَه وحدها — لا بيانَ عميلٍ ولا باقةَ ولا توقيع --}}
-    @if ($state === \App\Models\PlatformDocument::CANCELLED)
+    @if ($state === PlatformDocument::CANCELLED)
         <div class="pad rule"><div class="alert bad">أُلغي هذا المستند ولم يعد يقبل التوقيع. تواصل مع {{ $provider['name'] }} للحصول على رابط جديد.</div></div>
     @elseif ($state === 'expired')
         <div class="pad rule"><div class="alert bad">انتهت صلاحية هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على رابط جديد.</div></div>
@@ -154,45 +163,11 @@
         <div class="pad rule"><div class="alert info">وُقِّع هذا المستند، وانتهت مدة عرض نسخته عبر هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على نسختك.</div></div>
     @endif
 
-    {{-- الخطوةُ الأولى: رمزٌ يصل الهاتفَ المعتمد — ولا شيءَ من المستند قبله --}}
-    @if ($readable && ! $granted)
-        <div class="pad rule" id="verify">
-            <h2>التحقق من رقم الهاتف <span class="en">Phone verification</span></h2>
-            @if (! $available)
-                <div class="alert info">التوقيع الإلكتروني غير متاح حاليًا. تواصل مع {{ $provider['name'] }}.</div>
-            @else
-                <p class="sm muted" style="margin:0 0 12px">
-                    {{ $signed ? 'لعرض نسختك الموقّعة' : 'قبل عرض المستند وتوقيعه' }}، نرسل رمزًا من 6 أرقام إلى رقم الهاتف المعتمد المنتهي بـ <b class="ltr">{{ $masked }}</b>. الرمز صالح 10 دقائق.
-                </p>
-                @if ($errors->has('code'))
-                    <div class="alert bad" style="margin-bottom:12px">{{ $errors->first('code') }}</div>
-                @elseif (session('code_sent'))
-                    <div class="alert ok" style="margin-bottom:12px">أرسلنا الرمز إلى <span class="ltr">{{ $masked }}</span>.</div>
-                @endif
-                @if ($pending)
-                    <form method="POST" action="{{ route('documents.sign.verify', $token) }}" id="verify-form">
-                        @csrf
-                        <label class="f">رمز التحقق<span class="en">Code</span>
-                            <input class="t ltr" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required
-                                   style="letter-spacing:.3em; text-align:center; font-size:20px">
-                        </label>
-                        <button type="submit" class="btn wide" style="margin-top:12px">تحقق</button>
-                    </form>
-                @endif
-                <form method="POST" action="{{ route('documents.sign.code', $token) }}" style="margin-top:10px" id="code-form">
-                    @csrf
-                    <button type="submit" class="btn wide {{ $pending ? 'ghost' : '' }}">{{ $pending ? 'إعادة إرسال الرمز' : 'إرسال رمز التحقق' }}</button>
-                </form>
-                <p class="xs faint" style="margin:10px 0 0">الرمز يثبت أنك تملك الهاتف المعتمد لهذا المستند. لا تشاركه مع أحد.</p>
-            @endif
-        </div>
-    @endif
-
     @if (session('done'))
-        <div class="pad rule no-print"><div class="alert ok">شكرًا لك — تم توقيع المستند بنجاح، ووصلت نسخته إلى {{ $provider['name'] }}. احفظ نسختك PDF الآن؛ يبقى الرابط يعرضها {{ \App\Models\PlatformDocument::COPY_DAYS }} يومًا.</div></div>
+        <div class="pad rule no-print" id="done"><div class="alert ok">شكرًا لك — تم إرسال توقيعك وحفظ المستند موقّعًا، ووصلت نسخته إلى {{ $provider['name'] }}. نزّل نسختك PDF من أسفل الصفحة.</div></div>
     @endif
 
-    @if ($granted)
+    @if ($readable)
     <form method="POST" action="{{ route('documents.sign.submit', $token) }}" id="sign-form">
         @csrf
 
@@ -216,7 +191,7 @@
 
         @if ($plan || $doc->amount !== null)
             <div class="pad rule">
-                <h2><span class="n">02 —</span> {{ $plan ? 'الباقة ومدة الاشتراك' : 'الخدمة والمبلغ' }} <span class="en">{{ $plan ? 'Plan & billing' : 'Service & amount' }}</span></h2>
+                <h2><span class="n">02 —</span> {{ $plan ? 'الباقة ومدة الاشتراك' : 'الخدمة والمبلغ' }} <span class="en">{{ $plan ? 'Plan & term' : 'Service & amount' }}</span></h2>
                 @if ($plan)
                     <div class="plan">
                         <div>
@@ -225,6 +200,13 @@
                         </div>
                         <div class="price"><span class="ltr">{{ $plan['price'] }}</span> <small>ر.ع / {{ $plan['unit'] }}</small></div>
                     </div>
+                    @if ($doc->term_starts_on)
+                        <div class="term" id="term">
+                            <div><span>مدة الاشتراك</span><b>{{ $plan['duration'] ?? $plan['cycle_label'] }}</b></div>
+                            <div><span>تبدأ في</span><b class="ltr">{{ PlatformDocuments::day($doc->term_starts_on) }}</b></div>
+                            <div><span>تنتهي في</span><b class="ltr">{{ PlatformDocuments::day($doc->term_ends_on) }}</b></div>
+                        </div>
+                    @endif
                 @endif
                 @if ($doc->amount !== null)
                     <div class="plan" @if ($plan) style="margin-top:10px" @endif>
@@ -249,22 +231,20 @@
 
             @if ($signed)
                 <div class="stamp"><span class="tick">✓</span> تم توقيع المستند · Signed</div>
-                <div class="sm muted" style="margin-top:4px">بتاريخ <span class="ltr">{{ \App\Support\PlatformDocuments::date($doc->signed_at) }}</span></div>
-                @if ($doc->phone_verified_at)
-                    <div class="xs muted">بعد التحقق من الهاتف المعتمد <span class="ltr">{{ $masked }}</span> برمز لمرة واحدة · <span class="ltr">{{ \App\Support\PlatformDocuments::date($doc->phone_verified_at) }}</span></div>
-                @endif
+                <div class="sm muted" style="margin-top:4px">بتاريخ <span class="ltr">{{ PlatformDocuments::date($doc->signed_at) }}</span></div>
                 @if ($signature)<img class="sig-img" src="{{ $signature }}" alt="التوقيع">@endif
                 <div class="xs faint hash" style="margin-top:10px">بصمة المستند (SHA-256): <span class="ltr">{{ $doc->content_hash }}</span></div>
                 <div class="row no-print" style="margin-top:16px">
-                    <a class="btn wide" href="{{ route('documents.sign.pdf', $token) }}">حفظ PDF</a>
+                    <a class="btn wide" href="{{ route('documents.sign.pdf', $token) }}" id="pdf">تنزيل نسختك PDF</a>
                 </div>
+                <p class="xs muted no-print" style="margin:10px 0 0">احتفظ بهذا الرابط لنفسك: من يملكه يستطيع عرض نسختك وتنزيلها حتى <span class="ltr">{{ PlatformDocuments::day($doc->copyUntil()) }}</span>.</p>
             @elseif ($open)
                 @if ($errors->any())
                     <div class="alert bad" style="margin-bottom:12px">{{ $errors->first() }}</div>
                 @endif
                 <label class="agree">
                     <input type="checkbox" name="agree" value="1" id="agree" @checked(old('agree'))>
-                    <span>أقر بأن البيانات أعلاه صحيحة، وأوافق على الشروط والأحكام الواردة في هذا المستند.</span>
+                    <span>{{ $consent }}</span>
                 </label>
                 <div class="pad-sig">
                     <canvas id="sig" aria-label="لوحة التوقيع"></canvas>
@@ -272,12 +252,13 @@
                 </div>
                 <input type="hidden" name="signature" id="signature">
                 <div class="row">
-                    <span class="xs muted" id="sig-state">التوقيع مطلوب لاعتماد المستند</span>
+                    <span class="xs muted" id="sig-state">التوقيع مطلوب لإرسال المستند</span>
                     <button type="button" class="btn ghost" id="clear">مسح التوقيع</button>
                 </div>
                 <noscript><div class="alert bad" style="margin-top:12px">التوقيع يحتاج تفعيل JavaScript في المتصفح.</div></noscript>
+                <div class="alert bad" id="send-error" role="alert" style="margin-top:12px; display:none"></div>
                 <div style="margin-top:16px">
-                    <button type="submit" class="btn wide" id="submit" disabled>اعتماد وتوقيع المستند</button>
+                    <button type="submit" class="btn wide" id="submit" disabled>إرسال التوقيع</button>
                     <div class="xs muted" id="missing" style="margin-top:6px; text-align:center"></div>
                 </div>
             @endif
@@ -298,7 +279,8 @@
     var submit = document.getElementById('submit');
     var missing = document.getElementById('missing');
     var state = document.getElementById('sig-state');
-    var drawn = false, drawing = false, ctx;
+    var error = document.getElementById('send-error');
+    var drawn = false, drawing = false, sending = false, ctx;
 
     function setup(keep) {
         var prev = keep && drawn ? canvas.toDataURL('image/png') : null;
@@ -333,16 +315,48 @@
             .map(function (i) { return i.closest('label').firstChild.textContent.trim(); });
         var msg = empty.length ? 'أكمل: ' + empty.join('، ') : !agree.checked ? 'وافق على الشروط' : !drawn ? 'أضف توقيعك' : '';
         missing.textContent = msg;
-        state.textContent = drawn ? 'تم إضافة التوقيع' : 'التوقيع مطلوب لاعتماد المستند';
-        submit.disabled = !!msg;
+        state.textContent = drawn ? 'تم إضافة التوقيع' : 'التوقيع مطلوب لإرسال المستند';
+        submit.disabled = sending || !!msg;
     }
     required.forEach(function (i) { i.addEventListener('input', check); });
     agree.addEventListener('change', check);
 
+    // يُرسَل طلبًا لا انتقالًا: فشلُ الشبكة يُبقي الرسمَ والبيانَ ويقول ذلك، والنجاحُ يُقال بعد الحفظ وحده
+    function fail(message) {
+        sending = false;
+        error.textContent = message;
+        error.style.display = '';
+        submit.textContent = 'إرسال التوقيع';
+        check();
+    }
     form.addEventListener('submit', function (e) {
-        if (submit.disabled) { e.preventDefault(); return; }
+        e.preventDefault();
+        if (sending || submit.disabled) return;
+        sending = true;
         out.value = canvas.toDataURL('image/png');
-        submit.disabled = true; submit.textContent = 'جارٍ الاعتماد…';
+        error.style.display = 'none';
+        submit.disabled = true; submit.textContent = 'جارٍ الإرسال…';
+
+        fetch(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            credentials: 'same-origin',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+        }).then(function (res) {
+            return res.json().catch(function () { return {}; }).then(function (data) {
+                if (res.ok && data.ok) { window.location.replace(data.redirect); return; }
+                if (res.status === 409 && data.redirect) {
+                    fail(data.message || 'هذا المستند موقّع بالفعل.');
+                    setTimeout(function () { window.location.replace(data.redirect); }, 1500);
+                    return;
+                }
+                if (res.status === 419) { fail('انتهت جلسة الصفحة — حدّث الصفحة ثم وقّع مرة أخرى.'); return; }
+                if (res.status === 429) { fail('محاولات كثيرة — انتظر دقيقة ثم اضغط «إرسال التوقيع» مرة أخرى.'); return; }
+                fail(data.message || 'تعذّر حفظ التوقيع — اضغط «إرسال التوقيع» مرة أخرى.');
+            });
+        }).catch(function () {
+            fail('تعذّر الاتصال بالخادم — تحقّق من الإنترنت ثم اضغط «إرسال التوقيع» مرة أخرى. توقيعك ما زال في الصفحة ولم يُحفظ بعد.');
+        });
     });
 
     setup(false);

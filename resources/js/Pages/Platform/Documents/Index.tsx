@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { FilePlus2, FileSignature, LayoutTemplate } from 'lucide-react';
+import { FileDown, FilePlus2, FileSignature, LayoutTemplate, RefreshCcw } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
-import SigningClosed from '@/Components/SigningClosed';
 import SmartLink from '@/Components/SmartLink';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import Field, { Select } from '@/Components/Field';
@@ -12,13 +11,15 @@ import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
-import { STATE_VARIANT, type DocumentRow } from '@/lib/platformDocuments';
+import { STATE_VARIANT, addMonths, useLiveReload, type DocumentRow } from '@/lib/platformDocuments';
 import type { PageProps } from '@/types';
 
 interface Template {
     id: number;
     name: string;
     service: string | null;
+    title: string;
+    terms: { h: string; b: string }[];
     includes_plan: boolean;
     includes_amount: boolean;
 }
@@ -29,32 +30,56 @@ interface PlanOption {
     prices: Record<string, string>;
 }
 
+interface CycleOption {
+    value: string;
+    label: string;
+    months: number;
+    duration: string;
+}
+
 interface BusinessOption {
     id: number;
     name: string;
     plan_id: number | null;
     owner: string | null;
     phone: string | null;
+    starts_on: string;
+}
+
+/** عقدٌ موقَّعٌ يُفتح منه عقدُ تجديد (`?renew=`) */
+interface Renewal {
+    id: number;
+    number: string;
+    client: string | null;
+    phone: string;
+    template_id: number | null;
+    plan_id: number | null;
+    cycle: string;
+    starts_on: string | null;
 }
 
 interface Props {
     documents: DocumentRow[];
     pagination: ServerPagination;
     filters: { state: string; q: string };
-    signing_ready: boolean;
     counts: { sent: number; signed: number };
     templates: Template[];
     plans: PlanOption[];
-    cycles: { value: string; label: string }[];
+    cycles: CycleOption[];
     businesses: BusinessOption[];
+    today: string;
     days: number;
+    renew: Renewal | null;
 }
 
 export default function DocumentsIndex() {
-    const { documents, pagination, filters, signing_ready, counts, templates, plans, cycles, businesses, days } =
+    const { documents, pagination, filters, counts, templates, plans, cycles, businesses, today, days, renew } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const [creating, setCreating] = useState(false);
+    const [creating, setCreating] = useState(renew !== null);
+
+    // ما ينتظر التوقيع يتحدّث وحده: توقيعُ العميل يظهر هنا والشاشةُ مفتوحة
+    useLiveReload(['documents', 'counts', 'pagination'], counts.sent > 0);
 
     const columns: Column<DocumentRow>[] = [
         {
@@ -62,7 +87,10 @@ export default function DocumentsIndex() {
             header: 'المستند',
             cell: (d) => (
                 <SmartLink routeName="super-admin.documents.show" href={d.url} className="block min-w-0">
-                    <div className="truncate font-medium text-[#111]">{d.title}</div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="truncate font-medium text-[#111]">{d.title}</span>
+                        {d.renewal && <Badge variant="info">{t('تجديد')}</Badge>}
+                    </div>
                     <div dir="ltr" className="truncate text-end font-mono text-[12px] text-[#6b7280]">
                         {d.number}
                     </div>
@@ -81,7 +109,28 @@ export default function DocumentsIndex() {
                 </div>
             ),
         },
-        { key: 'service', header: 'الخدمة', cell: (d) => d.service || '—' },
+        {
+            key: 'service',
+            header: 'الباقة أو الخدمة',
+            cell: (d) => (
+                <div className="min-w-0">
+                    <div className="truncate">{d.plan_name || d.service || '—'}</div>
+                    {d.cycle_label && <div className="text-[12px] text-[#6b7280]">{t(d.cycle_label)}</div>}
+                </div>
+            ),
+        },
+        {
+            key: 'value',
+            header: 'القيمة',
+            cell: (d) =>
+                d.value ? (
+                    <span className="whitespace-nowrap">
+                        <span dir="ltr">{d.value}</span> <span className="text-[12px] text-[#6b7280]">{t('ر.ع')}</span>
+                    </span>
+                ) : (
+                    '—'
+                ),
+        },
         {
             key: 'state',
             header: 'الحالة',
@@ -92,6 +141,37 @@ export default function DocumentsIndex() {
             key: 'signed_at',
             header: 'وُقِّع',
             cell: (d) => <span dir="ltr">{d.state === 'signed' ? d.signed_at : '—'}</span>,
+        },
+        {
+            key: 'shared',
+            header: 'المشاركة',
+            cell: (d) =>
+                d.shared ? (
+                    <div className="min-w-0 text-[12px]">
+                        <div>{t(d.shared)}</div>
+                        <div dir="ltr" className="text-end text-[#6b7280]">{d.shared_at}</div>
+                    </div>
+                ) : (
+                    <span className="text-[#9ca3af]">—</span>
+                ),
+        },
+        {
+            key: 'actions',
+            header: '',
+            cell: (d) => (
+                <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="sm" asChild>
+                        <SmartLink routeName="super-admin.documents.show" href={d.url}>
+                            {t('عرض')}
+                        </SmartLink>
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" asChild>
+                        <a href={d.pdf_url} target="_blank" rel="noreferrer" aria-label={t('تحميل PDF')} title={t('تحميل PDF')}>
+                            <FileDown />
+                        </a>
+                    </Button>
+                </div>
+            ),
         },
     ];
 
@@ -105,6 +185,7 @@ export default function DocumentsIndex() {
                 { label: 'موقّع', value: 'signed' },
                 { label: 'انتهت صلاحية الرابط', value: 'expired' },
                 { label: 'ملغى', value: 'cancelled' },
+                { label: 'عقود التجديد', value: 'renewal' },
             ],
         },
     ];
@@ -133,8 +214,6 @@ export default function DocumentsIndex() {
                 }
             />
 
-            {!signing_ready && <SigningClosed />}
-
             <DataTable
                 rows={documents}
                 columns={columns}
@@ -156,7 +235,9 @@ export default function DocumentsIndex() {
                     plans={plans}
                     cycles={cycles}
                     businesses={businesses}
+                    today={today}
                     days={days}
+                    renew={renew}
                     onClose={() => setCreating(false)}
                 />
             )}
@@ -169,24 +250,38 @@ function NewDocumentDialog({
     plans,
     cycles,
     businesses,
+    today,
     days,
+    renew,
     onClose,
 }: {
     templates: Template[];
     plans: PlanOption[];
-    cycles: { value: string; label: string }[];
+    cycles: CycleOption[];
     businesses: BusinessOption[];
+    today: string;
     days: number;
+    renew: Renewal | null;
     onClose: () => void;
 }) {
     const t = useTranslate();
     const [source, setSource] = useState<'business' | 'new'>('business');
+    const [previewing, setPreviewing] = useState(false);
+    // نهايةُ المدّة تتبع بدايتَها ودورتَها — حتى يكتب المديرُ نهايةً اتُّفق عليها
+    const [endTouched, setEndTouched] = useState(false);
+    const firstCycle = renew?.cycle ?? 'monthly';
+    const firstStart = renew?.starts_on ?? today;
+    const monthsOf = (cycle: string) => cycles.find((c) => c.value === cycle)?.months ?? 1;
+
     const form = useForm({
-        template_id: String(templates[0]?.id ?? ''),
+        template_id: String(renew?.template_id ?? templates[0]?.id ?? ''),
         business_id: '',
-        client: { name: '', biz: '', phone: '', email: '' },
-        plan_id: '',
-        cycle: 'monthly',
+        renews_document_id: renew ? String(renew.id) : '',
+        client: { name: '', biz: '', phone: renew?.phone ?? '', email: '' },
+        plan_id: renew?.plan_id ? String(renew.plan_id) : '',
+        cycle: firstCycle,
+        term_starts_on: firstStart,
+        term_ends_on: addMonths(firstStart, monthsOf(firstCycle)),
         amount: '',
         amount_label: '',
         days: String(days),
@@ -194,16 +289,29 @@ function NewDocumentDialog({
     });
     const template = templates.find((x) => String(x.id) === form.data.template_id);
     const plan = plans.find((p) => String(p.id) === form.data.plan_id);
+    const cycle = cycles.find((c) => c.value === form.data.cycle);
     const errors = form.errors as Record<string, string | undefined>;
+
+    const setTerm = (start: string, nextCycle: string) =>
+        form.setData((d) => ({
+            ...d,
+            term_starts_on: start,
+            cycle: nextCycle,
+            term_ends_on: endTouched ? d.term_ends_on : addMonths(start, monthsOf(nextCycle)),
+        }));
 
     const pickBusiness = (id: string) => {
         const b = businesses.find((x) => String(x.id) === id);
+        const start = b?.starts_on ?? today;
         form.setData((d) => ({
             ...d,
             business_id: id,
             plan_id: b?.plan_id ? String(b.plan_id) : d.plan_id,
-            // هاتفُ النشاط اقتراحٌ يُراجَع — إليه يُرسل رمزُ التحقق
+            // هاتفُ النشاط اقتراحٌ يُراجَع — إليه يُفتح واتساب
             client: { ...d.client, phone: b?.phone ?? '' },
+            // المدّةُ الجديدة تبدأ حيث ينتهي اشتراكُه الجاري
+            term_starts_on: start,
+            term_ends_on: endTouched ? d.term_ends_on : addMonths(start, monthsOf(d.cycle)),
         }));
     };
     const setClient = (k: keyof typeof form.data.client, v: string) =>
@@ -211,12 +319,16 @@ function NewDocumentDialog({
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
-        // للنشاط المسجّل يُرسل الهاتفُ وحده — اسمٌ كُتب في التبويب الآخر لا يعبر
-        form.transform((d) =>
-            source === 'business'
-                ? { ...d, client: { phone: d.client.phone } }
-                : { ...d, business_id: '' },
-        );
+        form.transform((d) => {
+            const term = template?.includes_plan
+                ? { term_starts_on: d.term_starts_on, term_ends_on: d.term_ends_on }
+                : { term_starts_on: '', term_ends_on: '' };
+            if (renew) return { ...d, ...term, business_id: '', client: { phone: d.client.phone } };
+            // للنشاط المسجّل يُرسل الهاتفُ وحده — اسمٌ كُتب في التبويب الآخر لا يعبر
+            return source === 'business'
+                ? { ...d, ...term, renews_document_id: '', client: { phone: d.client.phone } }
+                : { ...d, ...term, renews_document_id: '', business_id: '' };
+        });
         form.post(route('super-admin.documents.store'), { onSuccess: () => onClose() });
     };
 
@@ -224,9 +336,21 @@ function NewDocumentDialog({
         <Dialog open onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="max-w-xl">
                 <DialogHeader>
-                    <DialogTitle>{t('مستند جديد للتوقيع')}</DialogTitle>
+                    <DialogTitle>{renew ? t('عقد تجديد للتوقيع') : t('مستند جديد للتوقيع')}</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={submit} className="space-y-4 px-5 pb-5" data-testid="new-document">
+                    {renew && (
+                        <div className="flex items-start gap-2 rounded-[10px] bg-[#eff6ff] px-3 py-2 text-[13px] text-[#1e40af]" data-testid="renewal-of">
+                            <RefreshCcw className="mt-0.5 size-4 shrink-0" />
+                            <span>
+                                {t('تجديد للعقد :n — :client. يبدأ ببيان العميل وباقته من العقد السابق.', {
+                                    n: renew.number,
+                                    client: renew.client ?? '—',
+                                })}
+                            </span>
+                        </div>
+                    )}
+
                     <Field label="نوع المستند" required error={errors.template_id}>
                         <Select
                             value={form.data.template_id}
@@ -238,91 +362,154 @@ function NewDocumentDialog({
                         />
                     </Field>
 
-                    <div className="flex gap-1 rounded-[10px] bg-[#f4f4f5] p-1 text-[13px]" role="tablist">
-                        {(['business', 'new'] as const).map((s) => (
+                    {template && (
+                        <div className="rounded-[10px] border border-[#e7e8ea]">
                             <button
-                                key={s}
                                 type="button"
-                                role="tab"
-                                aria-selected={source === s}
-                                onClick={() => setSource(s)}
-                                className={`flex-1 rounded-[8px] px-3 py-1.5 ${source === s ? 'bg-white font-medium shadow-sm' : 'text-[#6b7280]'}`}
+                                className="flex w-full items-center justify-between px-3 py-2 text-[13px] text-[#111]"
+                                onClick={() => setPreviewing((v) => !v)}
+                                aria-expanded={previewing}
                             >
-                                {s === 'business' ? t('نشاط مسجّل') : t('عميل جديد')}
+                                <span>{t('معاينة البنود (:n)', { n: String(template.terms.length) })}</span>
+                                <span className="text-[#6b7280]">{previewing ? t('إخفاء') : t('عرض')}</span>
                             </button>
-                        ))}
-                    </div>
-
-                    {source === 'business' ? (
-                        <Field
-                            label="النشاط"
-                            required
-                            hint="تُعبّأ بيانات النشاط في المستند، ويكمل العميل الباقي عند التوقيع"
-                            error={errors.business_id}
-                        >
-                            <Select
-                                value={form.data.business_id}
-                                onChange={(e) => pickBusiness(e.target.value)}
-                                placeholder="اختر النشاط"
-                                options={businesses.map((b) => ({ label: b.name, value: String(b.id) }))}
-                            />
-                        </Field>
-                    ) : (
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <Field label="اسم العميل" error={errors['client.name']}>
-                                <Input value={form.data.client.name} onChange={(e) => setClient('name', e.target.value)} />
-                            </Field>
-                            <Field label="اسم النشاط" error={errors['client.biz']}>
-                                <Input value={form.data.client.biz} onChange={(e) => setClient('biz', e.target.value)} />
-                            </Field>
-                            <Field label="البريد الإلكتروني" error={errors['client.email']}>
-                                <Input
-                                    dir="ltr"
-                                    type="email"
-                                    value={form.data.client.email}
-                                    onChange={(e) => setClient('email', e.target.value)}
-                                />
-                            </Field>
+                            {previewing && (
+                                <ol
+                                    className="max-h-56 list-decimal space-y-1.5 overflow-y-auto border-t border-[#e7e8ea] py-2 ps-8 pe-3 text-[12.5px] leading-relaxed text-[#374151]"
+                                    data-testid="terms-preview"
+                                >
+                                    {template.terms.map((term, i) => (
+                                        <li key={i}>
+                                            {term.h && <span className="font-semibold text-[#111]">{term.h} </span>}
+                                            {term.b}
+                                        </li>
+                                    ))}
+                                </ol>
+                            )}
                         </div>
                     )}
 
-                    <Field
-                        label="هاتف العميل المعتمد"
-                        required
-                        hint="إليه وحده يُرسل رمز التحقق قبل التوقيع، ولا يغيّره العميل"
-                        error={errors['client.phone']}
-                    >
+                    {!renew && (
+                        <div className="flex gap-1 rounded-[10px] bg-[#f4f4f5] p-1 text-[13px]" role="tablist">
+                            {(['business', 'new'] as const).map((s) => (
+                                <button
+                                    key={s}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={source === s}
+                                    onClick={() => setSource(s)}
+                                    className={`flex-1 rounded-[8px] px-3 py-1.5 ${source === s ? 'bg-white font-medium shadow-sm' : 'text-[#6b7280]'}`}
+                                >
+                                    {s === 'business' ? t('نشاط مسجّل') : t('عميل جديد')}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {!renew &&
+                        (source === 'business' ? (
+                            <Field
+                                label="النشاط"
+                                required
+                                hint="تُعبّأ بيانات النشاط في المستند، ويكمل العميل الباقي عند التوقيع"
+                                error={errors.business_id}
+                            >
+                                <Select
+                                    value={form.data.business_id}
+                                    onChange={(e) => pickBusiness(e.target.value)}
+                                    placeholder="اختر النشاط"
+                                    options={businesses.map((b) => ({ label: b.name, value: String(b.id) }))}
+                                />
+                            </Field>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <Field label="اسم العميل" error={errors['client.name']}>
+                                    <Input
+                                        value={form.data.client.name}
+                                        onChange={(e) => setClient('name', e.target.value)}
+                                        data-testid="client-name"
+                                    />
+                                </Field>
+                                <Field label="اسم النشاط" error={errors['client.biz']}>
+                                    <Input
+                                        value={form.data.client.biz}
+                                        onChange={(e) => setClient('biz', e.target.value)}
+                                        data-testid="client-biz"
+                                    />
+                                </Field>
+                                <Field label="البريد الإلكتروني" error={errors['client.email']}>
+                                    <Input
+                                        dir="ltr"
+                                        type="email"
+                                        value={form.data.client.email}
+                                        onChange={(e) => setClient('email', e.target.value)}
+                                    />
+                                </Field>
+                            </div>
+                        ))}
+
+                    <Field label="هاتف العميل" required hint="إليه يُفتح واتساب لإرسال الرابط" error={errors['client.phone']}>
                         <Input
                             dir="ltr"
                             value={form.data.client.phone}
                             onChange={(e) => setClient('phone', e.target.value)}
                             placeholder="+968"
-                            data-testid="signing-phone"
+                            data-testid="client-phone"
                         />
                     </Field>
 
                     {template?.includes_plan && (
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <Field label="الباقة" required error={errors.plan_id}>
-                                <Select
-                                    value={form.data.plan_id}
-                                    onChange={(e) => form.setData('plan_id', e.target.value)}
-                                    placeholder="اختر الباقة"
-                                    options={plans.map((p) => ({ label: p.name, value: String(p.id) }))}
-                                />
-                            </Field>
-                            <Field
-                                label="دورة الاشتراك"
-                                hint={plan ? t(':price ر.ع', { price: plan.prices[form.data.cycle] ?? '' }) : undefined}
-                                error={errors.cycle}
-                            >
-                                <Select
-                                    value={form.data.cycle}
-                                    onChange={(e) => form.setData('cycle', e.target.value)}
-                                    options={cycles.map((c) => ({ label: c.label, value: c.value }))}
-                                />
-                            </Field>
-                        </div>
+                        <>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <Field label="الباقة" required error={errors.plan_id}>
+                                    <Select
+                                        value={form.data.plan_id}
+                                        onChange={(e) => form.setData('plan_id', e.target.value)}
+                                        placeholder="اختر الباقة"
+                                        options={plans.map((p) => ({ label: p.name, value: String(p.id) }))}
+                                    />
+                                </Field>
+                                <Field
+                                    label="دورة الاشتراك"
+                                    hint={plan ? t(':price ر.ع', { price: plan.prices[form.data.cycle] ?? '' }) : undefined}
+                                    error={errors.cycle}
+                                >
+                                    <Select
+                                        value={form.data.cycle}
+                                        onChange={(e) => setTerm(form.data.term_starts_on, e.target.value)}
+                                        options={cycles.map((c) => ({ label: c.label, value: c.value }))}
+                                    />
+                                </Field>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <Field label="بداية الاشتراك" required error={errors.term_starts_on}>
+                                    <Input
+                                        dir="ltr"
+                                        type="date"
+                                        value={form.data.term_starts_on}
+                                        onChange={(e) => setTerm(e.target.value, form.data.cycle)}
+                                        data-testid="term-start"
+                                    />
+                                </Field>
+                                <Field
+                                    label="نهاية الاشتراك"
+                                    required
+                                    hint={cycle ? t('المدة: :d — عدّلها إن اتُّفق على غيرها', { d: cycle.duration }) : undefined}
+                                    error={errors.term_ends_on}
+                                >
+                                    <Input
+                                        dir="ltr"
+                                        type="date"
+                                        value={form.data.term_ends_on}
+                                        onChange={(e) => {
+                                            setEndTouched(true);
+                                            form.setData('term_ends_on', e.target.value);
+                                        }}
+                                        data-testid="term-end"
+                                    />
+                                </Field>
+                            </div>
+                        </>
                     )}
 
                     {template?.includes_amount && (

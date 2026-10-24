@@ -63,6 +63,14 @@ class DashboardMetrics
 
         $sums = $rows->pluck('s', 'bucket');
         $counts = $rows->pluck('c', 'bucket');
+
+        /*
+         * وفواتيرُ العملاء التي لا طلبَ لها في شهر صدورها — كبطاقة «مبيعات
+         * الشهر» فوقها (`StandaloneInvoiceSales`). وعددُ العمود طلباتُه كما
+         * كان: الفاتورةُ اليدويّة مبلغٌ لا طلب.
+         */
+        $invoices = StandaloneInvoiceSales::byBucket($bid, 'month', $start, $cutoff->copy()->startOfDay()->addDay(), $branch);
+
         $labels = [];
         $full = [];
         $data = [];
@@ -74,7 +82,7 @@ class DashboardMetrics
             $future = $cursor->startOfMonth()->gt($cutoff);
             $labels[] = $cursor->translatedFormat('M');
             $full[] = $cursor->translatedFormat('F Y');
-            $data[] = $future ? null : round((float) ($sums[$key] ?? 0), 3);
+            $data[] = $future ? null : round((float) ($sums[$key] ?? 0) + ($invoices[$key] ?? 0), 3);
             $orders[] = $future ? null : (int) ($counts[$key] ?? 0);
             $cursor->addMonthNoOverflow();
         }
@@ -89,22 +97,37 @@ class DashboardMetrics
         ];
     }
 
-    /** توزيع طرق الدفع للشهر الجاري داخل الفرع المختار. */
+    /**
+     * توزيع طرق الدفع للشهر الجاري داخل الفرع المختار.
+     *
+     * وفواتيرُ العملاء التي لا طلبَ لها شريطٌ واحدٌ باسمها، لا وسيلةٌ تُخمَّن:
+     * الفاتورةُ تصدر آجلةً وتُحصَّل بعدُ بوسيلةٍ أو بوسائل، أو لا تُحصَّل. وقيمتُها
+     * قيمةُ صدورها — فلا يصير تحصيلٌ جزئيٌّ أو كاملٌ مبيعاتٍ ثانية. وبه يساوي
+     * مجموعُ الأشرطة بطاقةَ «مبيعات الشهر».
+     */
     public static function paymentDistribution(): array
     {
         $branch = Demo::currentBranchId();
+        $month = now()->startOfMonth();
         $rows = Order::where('business_id', Demo::bid())
             ->sold()
             ->when($branch, fn ($q) => $q->where('branch_id', $branch))
-            ->where('ordered_at', '>=', now()->startOfMonth())
+            ->where('ordered_at', '>=', $month)
             ->selectRaw('payment_method, SUM(total) as s')
             ->groupBy('payment_method')
             ->orderByDesc('s')
-            ->get();
+            ->get()
+            ->map(fn ($row) => [Demo::methodLabel((string) $row->payment_method), round((float) $row->s, 3)]);
+
+        // وشهرٌ أنقصته إشعاراتُ الدائن إلى الصفر أو دونه لا يُرسم شريطًا سالبًا
+        $invoices = StandaloneInvoiceSales::total(Demo::bid(), $month, $month->copy()->addMonthNoOverflow(), $branch);
+        if ($invoices > 0) {
+            $rows = $rows->push([__('فواتير العملاء'), $invoices])->sortByDesc(1)->values();
+        }
 
         return [
-            'labels' => $rows->map(fn ($row) => Demo::methodLabel((string) $row->payment_method))->all(),
-            'series' => $rows->map(fn ($row) => round((float) $row->s, 3))->all(),
+            'labels' => $rows->pluck(0)->all(),
+            'series' => $rows->pluck(1)->all(),
         ];
     }
 }

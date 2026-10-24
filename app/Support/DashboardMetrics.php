@@ -63,6 +63,18 @@ class DashboardMetrics
 
         $sums = $rows->pluck('s', 'bucket');
         $counts = $rows->pluck('c', 'bucket');
+
+        /*
+         * وفواتيرُ العملاء التي لا طلبَ لها في شهر صدورها — كبطاقة «مبيعات
+         * الشهر» فوقها (`StandaloneInvoiceSales`). وعددُ العمود طلباتُه كما
+         * كان: الفاتورةُ اليدويّة مبلغٌ لا طلب.
+         *
+         * والحدُّ آخرُ الشهر الجاري لا اليوم، كحدّ البطاقة: فاتورةٌ تُؤرَّخ
+         * بعد أيّامٍ من هذا الشهر قيدُها فيه، فتعدّها البطاقة. ولو وقف العمودُ
+         * عند اليوم لَقال رقمًا غيرَ رقمها. والأشهرُ القادمة فارغةٌ على حالها.
+         */
+        $invoices = StandaloneInvoiceSales::byBucket($bid, 'month', $start, $cutoff->copy()->startOfMonth()->addMonthNoOverflow(), $branch);
+
         $labels = [];
         $full = [];
         $data = [];
@@ -74,7 +86,7 @@ class DashboardMetrics
             $future = $cursor->startOfMonth()->gt($cutoff);
             $labels[] = $cursor->translatedFormat('M');
             $full[] = $cursor->translatedFormat('F Y');
-            $data[] = $future ? null : round((float) ($sums[$key] ?? 0), 3);
+            $data[] = $future ? null : round((float) ($sums[$key] ?? 0) + ($invoices[$key] ?? 0), 3);
             $orders[] = $future ? null : (int) ($counts[$key] ?? 0);
             $cursor->addMonthNoOverflow();
         }
@@ -89,22 +101,42 @@ class DashboardMetrics
         ];
     }
 
-    /** توزيع طرق الدفع للشهر الجاري داخل الفرع المختار. */
+    /**
+     * توزيع طرق الدفع للشهر الجاري داخل الفرع المختار.
+     *
+     * وفواتيرُ العملاء التي لا طلبَ لها شريطٌ واحدٌ باسمها، لا وسيلةٌ تُخمَّن:
+     * الفاتورةُ تصدر آجلةً وتُحصَّل بعدُ بوسيلةٍ أو بوسائل، أو لا تُحصَّل. وقيمتُها
+     * قيمةُ صدورها — فلا يصير تحصيلٌ جزئيٌّ أو كاملٌ مبيعاتٍ ثانية. وبه يساوي
+     * مجموعُ الأشرطة بطاقةَ «مبيعات الشهر».
+     *
+     * والصافي يُقال كما هو ولو سالبًا: إلغاءُ فاتورةِ شهرٍ مضى أو إشعارٌ دائن
+     * يُنقص هذا الشهر. وإخفاؤه يجعل الأشرطةَ أكبرَ من البطاقة بمقدار ما أُنقص
+     * — صورةٌ أحسنُ من الحقيقة. والشريطُ نفسُه لا يُرسم سالبًا (`BarChart`):
+     * يُكتب الرقمُ بلا عرضٍ ولا نسبة.
+     */
     public static function paymentDistribution(): array
     {
         $branch = Demo::currentBranchId();
+        $month = now()->startOfMonth();
         $rows = Order::where('business_id', Demo::bid())
             ->sold()
             ->when($branch, fn ($q) => $q->where('branch_id', $branch))
-            ->where('ordered_at', '>=', now()->startOfMonth())
+            ->where('ordered_at', '>=', $month)
             ->selectRaw('payment_method, SUM(total) as s')
             ->groupBy('payment_method')
             ->orderByDesc('s')
-            ->get();
+            ->get()
+            ->map(fn ($row) => [Demo::methodLabel((string) $row->payment_method), round((float) $row->s, 3)]);
+
+        // والصفرُ وحده بلا شريط: لا يُغيّر المجموع، ولا فاتورةَ له في الشهر تُقال
+        $invoices = StandaloneInvoiceSales::total(Demo::bid(), $month, $month->copy()->addMonthNoOverflow(), $branch);
+        if ($invoices != 0.0) {
+            $rows = $rows->push([__('فواتير العملاء'), $invoices])->sortByDesc(1)->values();
+        }
 
         return [
-            'labels' => $rows->map(fn ($row) => Demo::methodLabel((string) $row->payment_method))->all(),
-            'series' => $rows->map(fn ($row) => round((float) $row->s, 3))->all(),
+            'labels' => $rows->pluck(0)->all(),
+            'series' => $rows->pluck(1)->all(),
         ];
     }
 }

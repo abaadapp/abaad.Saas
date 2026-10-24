@@ -827,9 +827,12 @@ class Demo
 
         $orders = fn () => Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start, $end]);
-        $sales = (float) $orders()->sum('total');
+        $ordersSales = (float) $orders()->sum('total');
         $count = $orders()->count();
-        $avg = $count ? $sales / $count : 0;
+        // والمتوسّطُ طلباتٌ على طلبات — الفاتورةُ اليدويّة ليست طلبًا (انظر `adminStats`)
+        $avg = $count ? $ordersSales / $count : 0;
+        // والمبيعاتُ الطلباتُ وفواتيرُ العملاء التي لا طلبَ لها — كبطاقة اللوحة
+        $sales = $ordersSales + StandaloneInvoiceSales::total($bid, $start, $start->copy()->addDay());
         $newCustomers = Customer::where('business_id', $bid)->whereBetween('created_at', [$start, $end])->count();
         // المصروفاتُ التشغيليّة من الدفتر — المصدرُ الواحد (`Ledger::operatingExpenses`)
         $expenses = Ledger::operatingExpenses($bid, $start, $start->copy()->addDay());
@@ -850,7 +853,8 @@ class Demo
 
         // مقارنة بأمس (لاتجاه المبيعات)
         $prevSales = (float) Order::where('business_id', $bid)->sold()
-            ->whereBetween('ordered_at', [$start->copy()->subDay(), $end->copy()->subDay()])->sum('total');
+            ->whereBetween('ordered_at', [$start->copy()->subDay(), $end->copy()->subDay()])->sum('total')
+            + StandaloneInvoiceSales::total($bid, $start->copy()->subDay(), $start);
 
         return [
             'date' => $start->format('Y-m-d'),
@@ -875,10 +879,24 @@ class Demo
         $orders = fn () => Order::where('business_id', $bid)->sold()
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()));
 
-        // المبيعات: اليوم/أمس، والشهر/الشهر السابق (بيانات حقيقية بلا تلفيق)
-        $salesToday = (float) $orders()->whereDate('ordered_at', today())->sum('total');
-        $salesYesterday = (float) $orders()->whereDate('ordered_at', today()->subDay())->sum('total');
-        $salesMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('total');
+        /*
+         * المبيعات: اليوم/أمس، والشهر/الشهر السابق — الطلباتُ وفواتيرُ العملاء.
+         *
+         * كانت الطلباتُ وحدها، ففاتورةُ العميل اليدويّة — ولا طلبَ لها —
+         * تغيب عن البطاقتين وتحضر في «صافي الأرباح» تحتهما. فيُجمع إلى الطلبات
+         * ما رحّلته الفاتورةُ يومَ صدورها، شاملًا ضريبتَه كما `orders.total`؛
+         * والمولودةُ من طلبٍ لا قيدَ لها فلا تُعدّ ثانيةً. انظر
+         * `StandaloneInvoiceSales`.
+         */
+        $branch = self::currentBranchId();
+        $invoices = fn (Carbon $from, Carbon $to) => StandaloneInvoiceSales::total($bid, $from, $to, $branch);
+
+        $salesToday = (float) $orders()->whereDate('ordered_at', today())->sum('total')
+            + $invoices(today(), today()->addDay());
+        $salesYesterday = (float) $orders()->whereDate('ordered_at', today()->subDay())->sum('total')
+            + $invoices(today()->subDay(), today());
+        $ordersSalesMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('total');
+        $salesMonth = $ordersSalesMonth + $invoices($mStart, $mStart->copy()->addMonthNoOverflow());
 
         /*
          * ═══ وحدُّ الشهرين لا يقع في الشهرين ═══
@@ -896,8 +914,9 @@ class Demo
          *
          * فالحدُّ الأعلى مفتوحٌ دائمًا: `>= البداية` و`< بداية التالي`.
          */
-        $salesLastMonth = (float) $orders()->where('ordered_at', '>=', $lmStart)
+        $ordersSalesLastMonth = (float) $orders()->where('ordered_at', '>=', $lmStart)
             ->where('ordered_at', '<', $mStart)->sum('total');
+        $salesLastMonth = $ordersSalesLastMonth + $invoices($lmStart, $mStart);
 
         // الطلبات: الإجمالي (القيمة) + نمو الشهر (الاتجاه)
         $ordersTotal = $orders()->count();
@@ -905,9 +924,14 @@ class Demo
         $ordersLastMonth = $orders()->where('ordered_at', '>=', $lmStart)
             ->where('ordered_at', '<', $mStart)->count();
 
-        // متوسط قيمة الطلب: هذا الشهر مقابل السابق
-        $avg = $ordersMonth ? $salesMonth / $ordersMonth : 0;
-        $avgLast = $ordersLastMonth ? $salesLastMonth / $ordersLastMonth : 0;
+        /*
+         * متوسط قيمة الطلب: هذا الشهر مقابل السابق — طلباتٌ على طلبات.
+         *
+         * والفاتورةُ اليدويّة ليست طلبًا ولا تُعدّ في «عدد الطلبات»، فلو قُسم
+         * مجموعُها على عدد الطلبات لَنفخت متوسّطًا لا طلبَ وراءه.
+         */
+        $avg = $ordersMonth ? $ordersSalesMonth / $ordersMonth : 0;
+        $avgLast = $ordersLastMonth ? $ordersSalesLastMonth / $ordersLastMonth : 0;
 
         // العملاء: الإجمالي (القيمة) + الجدد هذا الشهر مقابل السابق (الاتجاه)
         $customersTotal = Customer::where('business_id', $bid)->count();
@@ -968,7 +992,6 @@ class Demo
          * بطاقاتُ اللوحة كلُّها مقيَّدةٌ به، ولو بقيت التكلفةُ على المتجر كلِّه
          * لَقرأ صاحبُ فرعٍ صغيرٍ خسارةً من بضاعةٍ باعها غيرُه.
          */
-        $branch = self::currentBranchId();
         $revenueMonth = Ledger::netRevenue($bid, $mStart, null, $branch);
         $revenueLastMonth = Ledger::netRevenue($bid, $lmStart, $mStart, $branch);
         $cogsMonth = self::cogsFor($bid, $mStart, null, $branch);

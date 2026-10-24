@@ -16,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Support\AbaadSubscriptionContract;
 use Tests\TestCase;
@@ -94,11 +95,21 @@ class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
     {
         auth()->logout();
 
-        return $this->postJson(route('documents.sign.submit', $doc->token), $over + [
+        return $this->keepCopy($this->postJson(route('documents.sign.submit', $doc->token), $over + [
             'client' => ['cr' => '1234567', 'civil' => '98765432'],
             'agree' => '1',
             'signature' => $this->signature(),
-        ]);
+        ]));
+    }
+
+    /** متصفّحُ العميل يحفظ كوكي نسخته ويعيده — كما يفعل المتصفّحُ الحقيقيّ */
+    private function keepCopy($response)
+    {
+        if ($cookie = $response->getCookie(PlatformDocument::COPY_COOKIE)) {
+            $this->withCookie(PlatformDocument::COPY_COOKIE, $cookie->getValue());
+        }
+
+        return $response;
     }
 
     /** السيناريو كاملًا من طريقٍ واحد — ويعيد ما يراه المديرُ بعده */
@@ -197,6 +208,54 @@ class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
         }
         $this->assertSame(array_keys($viaCopy->client), array_keys($viaWhatsapp->client));
         $this->assertNotNull($viaWhatsapp->pdf_hash);
+    }
+
+    public function test_a_link_passed_on_after_signing_shows_nothing_of_the_client(): void
+    {
+        $doc = $this->issue();
+        $signed = $this->send($doc)->assertOk();
+
+        // مفتاحُ النسخة: لا يقرؤه جافاسكربت، على مسار الرابط وحده، لأيّام النسخة — والقاعدةُ تحفظ بصمتَه لا قيمتَه
+        $cookie = $signed->getCookie(PlatformDocument::COPY_COOKIE);
+        $this->assertNotNull($cookie);
+        $this->assertTrue($cookie->isHttpOnly());
+        $this->assertSame('/sign/'.$doc->token, $cookie->getPath());
+        $this->assertSame('lax', $cookie->getSameSite());
+        $this->assertEqualsWithDelta(now()->addDays(PlatformDocument::COPY_DAYS)->timestamp, $cookie->getExpiresTime(), 5);
+        $key = $cookie->getValue();
+        $this->assertSame(40, strlen($key));
+        $row = DB::table('platform_documents')->where('id', $doc->id)->first();
+        $this->assertSame(hash('sha256', $key), $row->copy_key_hash);
+        $this->assertStringNotContainsString($key, json_encode($row, JSON_UNESCAPED_UNICODE));
+
+        // جهازُ الموقِّع يرى نسخته وينزّلها
+        $this->get(route('documents.sign', $doc->token))->assertOk()
+            ->assertSee('98765432')->assertSee('data:image/png', false)->assertSee('id="pdf"', false);
+        $this->get(route('documents.sign.pdf', $doc->token))->assertOk();
+
+        // ومن مُرِّر إليه الرابطُ — بلا كوكي، أو بمفتاحٍ آخر، أو فارغ — يرى «وُقِّع» وحده
+        foreach ([null, Str::random(40), ''] as $other) {
+            $this->defaultCookies = $other === null ? [] : [PlatformDocument::COPY_COOKIE => $other];
+            $this->get(route('documents.sign', $doc->token))->assertOk()
+                ->assertSee('لا تُعرض نسخته الموقَّعة إلا على الجهاز')
+                ->assertDontSee('98765432')->assertDontSee('1234567')->assertDontSee('سالم الهنائي')->assertDontSee('زهور الريان')
+                ->assertDontSee('299.000')->assertDontSee('data:image/png', false)->assertDontSee('id="pdf"', false);
+            $this->get(route('documents.sign.pdf', $doc->token))->assertNotFound();
+        }
+
+        // وتوقيعٌ ثانٍ منه لا يعطيه مفتاحًا ولا يبدّل مفتاحَ الموقِّع
+        $this->send($doc)->assertStatus(409)->assertCookieMissing(PlatformDocument::COPY_COOKIE);
+        $this->assertSame(hash('sha256', $key), DB::table('platform_documents')->where('id', $doc->id)->value('copy_key_hash'));
+
+        // ومفتاحُ الموقِّع نفسُه لا يفتح بعد أيّام النسخة
+        $this->defaultCookies = [PlatformDocument::COPY_COOKIE => $key];
+        $this->travel(PlatformDocument::COPY_DAYS + 1)->days();
+        $this->get(route('documents.sign', $doc->token))->assertSee('انتهت مدة عرض نسخته')->assertDontSee('98765432');
+        $this->get(route('documents.sign.pdf', $doc->token))->assertNotFound();
+
+        // والمديرُ ينزّلها متى شاء ويرسلها لعميله
+        $this->actingAs($this->super)->get(route('super-admin.documents.pdf', $doc->id))->assertOk();
+        $this->travelBack();
     }
 
     public function test_sharing_is_recorded_as_the_admins_act_and_never_signs_or_leaks_the_link(): void

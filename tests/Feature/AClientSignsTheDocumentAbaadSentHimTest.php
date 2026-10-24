@@ -103,11 +103,17 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
     {
         $this->asClient();
 
-        return $this->post(route('documents.sign.submit', $doc->token), $over + [
+        $response = $this->post(route('documents.sign.submit', $doc->token), $over + [
             'client' => ['cr' => '1234567', 'civil' => '98765432'],
             'agree' => '1',
             'signature' => $this->signature(),
         ]);
+        // متصفّحُ الموقِّع يحفظ كوكي نسخته ويعيده
+        if ($cookie = $response->getCookie(PlatformDocument::COPY_COOKIE)) {
+            $this->withCookie(PlatformDocument::COPY_COOKIE, $cookie->getValue());
+        }
+
+        return $response;
     }
 
     public function test_only_the_platform_reaches_the_documents_section(): void

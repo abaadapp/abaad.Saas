@@ -107,6 +107,8 @@ return new class extends Migration
             // الورقةُ الموقَّعة محفوظةً كما نُزّلت أوّلَ مرّة، وبصمةُ ملفّها
             $table->string('pdf_path')->nullable();
             $table->string('pdf_hash', 64)->nullable();
+            // مفتاحُ نسخة الموقِّع على جهازه — بصمتُه وحدها، والمفتاحُ في كوكي متصفّحه
+            $table->string('copy_key_hash', 64)->nullable();
             $table->timestamp('cancelled_at')->nullable();
             $table->string('cancel_reason')->nullable();
 

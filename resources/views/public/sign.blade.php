@@ -159,6 +159,9 @@
         <div class="pad rule"><div class="alert bad">أُلغي هذا المستند ولم يعد يقبل التوقيع. تواصل مع {{ $provider['name'] }} للحصول على رابط جديد.</div></div>
     @elseif ($state === 'expired')
         <div class="pad rule"><div class="alert bad">انتهت صلاحية هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على رابط جديد.</div></div>
+    @elseif (! $readable && $doc->copyOpen())
+        {{-- رابطٌ مُرِّر بعد التوقيع: النسخةُ على جهاز الموقِّع وحده --}}
+        <div class="pad rule"><div class="alert info">وُقِّع هذا المستند. ولحماية بيانات العميل وتوقيعه لا تُعرض نسخته الموقَّعة إلا على الجهاز والمتصفح الذي وُقِّع منه. تواصل مع {{ $provider['name'] }} للحصول على نسختك.</div></div>
     @elseif (! $readable)
         <div class="pad rule"><div class="alert info">وُقِّع هذا المستند، وانتهت مدة عرض نسخته عبر هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على نسختك.</div></div>
     @endif
@@ -237,7 +240,7 @@
                 <div class="row no-print" style="margin-top:16px">
                     <a class="btn wide" href="{{ route('documents.sign.pdf', $token) }}" id="pdf">تنزيل نسختك PDF</a>
                 </div>
-                <p class="xs muted no-print" style="margin:10px 0 0">احتفظ بهذا الرابط لنفسك: من يملكه يستطيع عرض نسختك وتنزيلها حتى <span class="ltr">{{ PlatformDocuments::day($doc->copyUntil()) }}</span>.</p>
+                <p class="xs muted no-print" style="margin:10px 0 0">تبقى نسختك على هذا الجهاز وهذا المتصفح وحدهما حتى <span class="ltr">{{ PlatformDocuments::day($doc->copyUntil()) }}</span>، فنزّلها الآن واحتفظ بها. من يفتح الرابط من جهاز آخر لا يرى بياناتك ولا توقيعك، وإن مسحت بيانات المتصفح فاطلب نسختك من {{ $provider['name'] }}.</p>
             @elseif ($open)
                 @if ($errors->any())
                     <div class="alert bad" style="margin-bottom:12px">{{ $errors->first() }}</div>

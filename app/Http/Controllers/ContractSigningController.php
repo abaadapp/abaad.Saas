@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -19,15 +20,17 @@ use Symfony\Component\HttpFoundation\Response;
  * والموقَّعُ يُعرض كما وُقِّع، ولا يُعاد توقيعُه ولا يُعدَّل.
  *
  * وما يعرضه الرابطُ يضيق بحاله (`PlatformDocument::readable`): الملغى والمنتهي
- * وما مضت أيّامُ نسخته يقول حالَه وحدها. و`no-store` على الصفحة والورقة:
- * رقمٌ مدنيٌّ وتوقيعٌ لا يبقيان في ذاكرة متصفّحٍ مشترك.
+ * وما مضت أيّامُ نسخته يقول حالَه وحدها. والموقَّعُ يُعرض وتُنزَّل ورقتُه للمتصفّح
+ * الذي وقّع وحده — كوكي `HttpOnly` على مسار الرابط يحمل مفتاحَ نسخته، ومن مُرِّر
+ * إليه الرابطُ بعدها يرى «وُقِّع» فقط. و`no-store` على الصفحة والورقة: رقمٌ مدنيٌّ
+ * وتوقيعٌ لا يبقيان في ذاكرة متصفّحٍ مشترك.
  *
  * والتوقيعُ يصل من الصفحة طلبَ JSON: إن انقطعت الشبكة بقي الرسمُ في اللوحة
  * ويُعاد الإرسال، ولا تُقال «نجح» إلّا بعد أن يُحفظ.
  */
 class ContractSigningController extends Controller
 {
-    public function show(string $token): Response
+    public function show(Request $request, string $token): Response
     {
         $doc = $this->find($token);
 
@@ -36,7 +39,7 @@ class ContractSigningController extends Controller
             PlatformDocument::whereKey($doc->id)->whereNull('viewed_at')->update(['viewed_at' => now()]);
         }
 
-        $readable = $doc->readable();
+        $readable = $doc->readable($request->cookie(PlatformDocument::COPY_COOKIE));
 
         return response()->view('public.sign', [
             'doc' => $doc,
@@ -76,9 +79,10 @@ class ContractSigningController extends Controller
                 : back()->withInput($keep)->withErrors($validator);
         }
         $data = $validator->validated();
+        $copyKey = Str::random(40);
 
         try {
-            PlatformDocuments::sign($doc, $data['client'] ?? [], $data['signature'], $request->ip(), $request->userAgent());
+            PlatformDocuments::sign($doc, $data['client'] ?? [], $data['signature'], $request->ip(), $request->userAgent(), $copyKey);
         } catch (AlreadySigned $e) {
             // ربما نجح طلبٌ قبله وضاع ردُّه — الصفحةُ تُعاد فتُري النسخةَ الموقَّعة
             return $json
@@ -92,16 +96,20 @@ class ContractSigningController extends Controller
 
         session()->flash('done', true);
 
-        return $json
+        // مفتاحُ النسخة لهذا المتصفّح وحده: لا يقرؤه جافاسكربت، ولا يُرسَل إلّا إلى مسار هذا الرابط
+        $copy = cookie(PlatformDocument::COPY_COOKIE, $copyKey, PlatformDocument::COPY_DAYS * 24 * 60,
+            parse_url($page, PHP_URL_PATH) ?: '/', null, $request->isSecure(), true, false, 'lax');
+
+        return ($json
             ? response()->json(['ok' => true, 'redirect' => $page])
-            : redirect($page);
+            : redirect($page))->withCookie($copy);
     }
 
-    /** الورقةُ بعد التوقيع وفي أيّام نسخته — وبعدها تُطلب من مدير المنصّة */
-    public function pdf(string $token): Response
+    /** الورقةُ لمن وقّع على جهازه وفي أيّام نسخته — وغيرُه يطلبها من مدير المنصّة */
+    public function pdf(Request $request, string $token): Response
     {
         $doc = $this->find($token);
-        abort_unless($doc->copyOpen(), 404);
+        abort_unless($doc->holdsCopy($request->cookie(PlatformDocument::COPY_COOKIE)), 404);
 
         $paper = PlatformDocuments::paper($doc);
         $paper->headers->set('Cache-Control', 'no-store, private');

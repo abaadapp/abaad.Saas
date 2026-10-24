@@ -331,14 +331,17 @@ class PlatformDocuments
      * إلزاميٌّ ناقص، أو صورةٌ ليست توقيعًا. وطلبان معًا ينتظر ثانيهما قفلَ الأوّل
      * فيرى «موقَّع».
      *
+     * و`$copyKey` مفتاحُ نسخة الموقِّع على جهازه: تُحفظ بصمتُه مع التوقيع في المعاملة
+     * نفسها، والمفتاحُ نفسُه لا يُكتب هنا.
+     *
      * @param  array<string, string>  $client  بيانُ العميل كما أقرّه — بلا الهاتف: يعتمده المدير
      */
-    public static function sign(PlatformDocument $document, array $client, string $signature, ?string $ip, ?string $agent): PlatformDocument
+    public static function sign(PlatformDocument $document, array $client, string $signature, ?string $ip, ?string $agent, ?string $copyKey = null): PlatformDocument
     {
         $png = self::decodeSignature($signature);
         unset($client['phone']);
 
-        $doc = DB::transaction(function () use ($document, $client, $png, $ip, $agent) {
+        $doc = DB::transaction(function () use ($document, $client, $png, $ip, $agent, $copyKey) {
             $doc = PlatformDocument::whereKey($document->id)->lockForUpdate()->firstOrFail();
             if ($doc->status === PlatformDocument::SIGNED) {
                 throw new AlreadySigned(__('وُقِّع هذا المستند من قبل.'));
@@ -363,6 +366,7 @@ class PlatformDocuments
                 'signed_at' => now(),
                 'agreed_at' => now(),
                 'consent_text' => self::CONSENT,
+                'copy_key_hash' => $copyKey !== null && $copyKey !== '' ? hash('sha256', $copyKey) : null,
                 'signer_ip' => $ip ? mb_substr($ip, 0, 45) : null,
                 'signer_agent' => $agent ? mb_substr($agent, 0, 512) : null,
                 'signature_path' => $path,

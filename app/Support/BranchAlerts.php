@@ -133,6 +133,10 @@ final class BranchAlerts
 
         // ونقصُ الصنف في فرعٍ بعينه — والإجماليُّ له تنبيهه (`low-`)
         $names = Branch::where('business_id', $bid)->pluck('name', 'id');
+        // وفي متجرٍ بفرعٍ واحد نقصُ الفرع هو نقصُ الإجماليّ: لا يُنبَّه عليه مرّتين
+        if ($names->count() < 2) {
+            return $out;
+        }
         $count = 0;
         foreach (BranchReports::stockByBranch($bid) as $branchId => $stock) {
             if (! BranchTransfers::covers($user, $branchId)) {

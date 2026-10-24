@@ -68,8 +68,12 @@ class DashboardMetrics
          * وفواتيرُ العملاء التي لا طلبَ لها في شهر صدورها — كبطاقة «مبيعات
          * الشهر» فوقها (`StandaloneInvoiceSales`). وعددُ العمود طلباتُه كما
          * كان: الفاتورةُ اليدويّة مبلغٌ لا طلب.
+         *
+         * والحدُّ آخرُ الشهر الجاري لا اليوم، كحدّ البطاقة: فاتورةٌ تُؤرَّخ
+         * بعد أيّامٍ من هذا الشهر قيدُها فيه، فتعدّها البطاقة. ولو وقف العمودُ
+         * عند اليوم لَقال رقمًا غيرَ رقمها. والأشهرُ القادمة فارغةٌ على حالها.
          */
-        $invoices = StandaloneInvoiceSales::byBucket($bid, 'month', $start, $cutoff->copy()->startOfDay()->addDay(), $branch);
+        $invoices = StandaloneInvoiceSales::byBucket($bid, 'month', $start, $cutoff->copy()->startOfMonth()->addMonthNoOverflow(), $branch);
 
         $labels = [];
         $full = [];
@@ -104,6 +108,11 @@ class DashboardMetrics
      * الفاتورةُ تصدر آجلةً وتُحصَّل بعدُ بوسيلةٍ أو بوسائل، أو لا تُحصَّل. وقيمتُها
      * قيمةُ صدورها — فلا يصير تحصيلٌ جزئيٌّ أو كاملٌ مبيعاتٍ ثانية. وبه يساوي
      * مجموعُ الأشرطة بطاقةَ «مبيعات الشهر».
+     *
+     * والصافي يُقال كما هو ولو سالبًا: إلغاءُ فاتورةِ شهرٍ مضى أو إشعارٌ دائن
+     * يُنقص هذا الشهر. وإخفاؤه يجعل الأشرطةَ أكبرَ من البطاقة بمقدار ما أُنقص
+     * — صورةٌ أحسنُ من الحقيقة. والشريطُ نفسُه لا يُرسم سالبًا (`BarChart`):
+     * يُكتب الرقمُ بلا عرضٍ ولا نسبة.
      */
     public static function paymentDistribution(): array
     {
@@ -119,9 +128,9 @@ class DashboardMetrics
             ->get()
             ->map(fn ($row) => [Demo::methodLabel((string) $row->payment_method), round((float) $row->s, 3)]);
 
-        // وشهرٌ أنقصته إشعاراتُ الدائن إلى الصفر أو دونه لا يُرسم شريطًا سالبًا
+        // والصفرُ وحده بلا شريط: لا يُغيّر المجموع، ولا فاتورةَ له في الشهر تُقال
         $invoices = StandaloneInvoiceSales::total(Demo::bid(), $month, $month->copy()->addMonthNoOverflow(), $branch);
-        if ($invoices > 0) {
+        if ($invoices != 0.0) {
             $rows = $rows->push([__('فواتير العملاء'), $invoices])->sortByDesc(1)->values();
         }
 

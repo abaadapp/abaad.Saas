@@ -22,6 +22,7 @@ use App\Support\OrderStatus;
 use App\Support\StandaloneInvoiceSales;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -97,11 +98,12 @@ class ACustomerInvoiceSellsOnTheDashboardOnceTest extends TestCase
     }
 
     /** بيعةٌ كما يكتبها الصندوق — ثمّ قيدُها من `Books::recordSale` */
-    private function sale(float $net, string $at, float $tax = 0, ?Branch $branch = null, float $cost = 0): Order
+    private function sale(float $net, string $at, float $tax = 0, ?Branch $branch = null, float $cost = 0, ?Business $shop = null): Order
     {
-        $product = Product::create(['business_id' => $this->shop->id, 'name' => 'باقة', 'price' => $net, 'cost' => $cost, 'quantity' => 50]);
+        $shop ??= $this->shop;
+        $product = Product::create(['business_id' => $shop->id, 'name' => 'باقة', 'price' => $net, 'cost' => $cost, 'quantity' => 50]);
         $order = Order::create([
-            'business_id' => $this->shop->id, 'branch_id' => ($branch ?? $this->muscat)->id, 'channel' => 'pos',
+            'business_id' => $shop->id, 'branch_id' => ($branch ?? $this->muscat)->id, 'channel' => 'pos',
             'number' => 'INV-'.uniqid(), 'status' => 'مكتمل', 'payment_status' => 'مدفوع', 'is_held' => false,
             'payment_method' => 'نقدي', 'subtotal' => $net, 'discount' => 0, 'tax' => $tax, 'total' => $net + $tax,
             'ordered_at' => Carbon::parse($at),
@@ -407,5 +409,168 @@ class ACustomerInvoiceSellsOnTheDashboardOnceTest extends TestCase
         $this->assertTrue($summary['trend']['up']);
 
         $this->assertSame(155.0, AlertMetrics::value('daily_sales', $this->shop->id));
+    }
+
+    /* ═══════════ توزيعُ الدفع لا يُخفي ما أنقص الشهر ═══════════ */
+
+    /** مجموعُ الأشرطة كما يجمعه من يقرؤها */
+    private function splitTotal(): float
+    {
+        return round(array_sum(DashboardMetrics::paymentDistribution()['series']), 3);
+    }
+
+    /** المبلغُ في بطاقة «مبيعات الشهر» رقمًا — من المصدرين اللذين تجمعهما */
+    private function monthCard(): float
+    {
+        $orders = (float) Order::where('business_id', $this->shop->id)->sold()->where('ordered_at', '>=', '2026-10-01')->sum('total');
+
+        return round($orders + StandaloneInvoiceSales::total($this->shop->id, Carbon::parse('2026-10-01'), Carbon::parse('2026-11-01')), 3);
+    }
+
+    public function test_the_payment_split_adds_up_to_the_month_through_every_reduction(): void
+    {
+        // ١ — فاتورةٌ بمئة (١٠٥)
+        $kept = $this->invoice(100);
+        $this->assertSame([__('فواتير العملاء')], DashboardMetrics::paymentDistribution()['labels']);
+        $this->assertSame(105.0, $this->splitTotal());
+
+        // ٢ — إشعارُ دائنٍ جزئيّ ٥٢٫٥
+        CustomerInvoices::creditNote($kept, 52.5, 2.5, 'مردود', $this->owner->id);
+        $this->assertSame(52.5, $this->splitTotal());
+
+        // ٣ — فاتورةُ يومٍ سابقٍ من الشهر تُلغى اليوم: صدورُها وعكسُها في الشهر نفسه
+        CustomerInvoices::cancel($this->invoice(200, '2026-10-19'), 'خطأ', $this->owner->id);
+        $this->assertSame(52.5, $this->splitTotal());
+
+        // ٤ — فاتورةُ الشهر الماضي بخمسين تُلغى اليوم: صافي الفواتير صفر — فلا شريط ولا فرق
+        CustomerInvoices::cancel($this->invoice(50, '2026-09-30'), 'خطأ', $this->owner->id);
+        $this->assertSame(0.0, StandaloneInvoiceSales::total($this->shop->id, Carbon::parse('2026-10-01'), Carbon::parse('2026-11-01')));
+        $this->assertSame([], DashboardMetrics::paymentDistribution()['labels']);
+        $this->assertCard(0, 'مبيعات الشهر');
+
+        // ٥ — وفاتورةٌ أخرى من الماضي بمئتين تُلغى: الصافي سالب، ويُقال سالبًا
+        CustomerInvoices::cancel($this->invoice(200, '2026-09-29'), 'خطأ', $this->owner->id);
+        $split = DashboardMetrics::paymentDistribution();
+        $this->assertSame([__('فواتير العملاء')], $split['labels'], 'صافي الفواتير السالب أُخفي من التوزيع');
+        $this->assertSame([-210.0], $split['series']);
+        $this->assertCard(-210, 'مبيعات الشهر');
+
+        // ٦ — ومعها بيعةُ صندوق: كلُّ رقمٍ في مكانه، والمجموعُ بطاقةُ الشهر والدفتر
+        $this->sale(50, '2026-10-20 09:00');
+        $split = DashboardMetrics::paymentDistribution();
+        $this->assertSame([Demo::methodLabel('نقدي'), __('فواتير العملاء')], $split['labels']);
+        $this->assertSame([50.0, -210.0], $split['series']);
+        $this->assertSame(-160.0, $this->splitTotal());
+        $this->assertSame($this->monthCard(), $this->splitTotal(), 'الأشرطةُ لا تجمع بطاقةَ الشهر');
+        $this->assertCard(-160, 'مبيعات الشهر');
+        $this->assertSame(-160.0, $this->ledgerGross('2026-10-01', '2026-11-01'));
+
+        // ولا يصير تحصيلٌ وسيلةَ بيع
+        $this->pay($kept->fresh(), 52.5, '2026-10-20', 'بطاقة');
+        $this->assertSame($split, DashboardMetrics::paymentDistribution(), 'التحصيلُ حرّك التوزيع');
+    }
+
+    /* ═══════════ تاريخُ اللوحة تاريخُ القيد ═══════════ */
+
+    public function test_every_day_and_the_month_read_the_entry_date(): void
+    {
+        $this->invoice(10, '2026-10-01');
+        $paidLater = $this->invoice(20, '2026-10-19');
+        $this->pay($paidLater, 21, '2026-10-20');
+        CustomerInvoices::creditNote($this->invoice(30, '2026-10-18'), 10.5, 0.5, 'مردود', $this->owner->id);
+        // فاتورةٌ بتاريخٍ لاحقٍ من الشهر نفسه: قيدُها في أكتوبر
+        $this->invoice(40, '2026-10-25');
+
+        foreach (['2026-10-01', '2026-10-18', '2026-10-19', '2026-10-20', '2026-10-25'] as $day) {
+            $next = Carbon::parse($day)->addDay()->toDateString();
+            $this->assertSame(
+                $this->ledgerGross($day, $next),
+                StandaloneInvoiceSales::total($this->shop->id, Carbon::parse($day), Carbon::parse($next)),
+                'يومُ '.$day.' في اللوحة غيرُ يومه في الدفتر',
+            );
+        }
+
+        // اليوم: إشعارُ الدائن وحده (−١٠٫٥)؛ لا سدادُ فاتورة أمس
+        $this->assertCard(-10.5, 'مبيعات اليوم');
+
+        // الشهر: ١٠٫٥ + ٢١ + ٣١٫٥ − ١٠٫٥ + ٤٢ — والمخطّطُ يقول ما تقوله البطاقة
+        $this->assertCard(94.5, 'مبيعات الشهر');
+        $this->assertSame(94.5, $this->ledgerGross('2026-10-01', '2026-11-01'));
+        $this->assertEquals(94.5, DashboardMetrics::salesYear()['data'][9], 'عمودُ الشهر الجاري أسقط فاتورةً مؤرّخةً بعد اليوم وبطاقتُه تعدّها');
+        $this->assertSame(94.5, $this->splitTotal());
+    }
+
+    public function test_invoices_alone_with_no_order_at_all(): void
+    {
+        $this->invoice(100);
+        $this->invoice(60, '2026-10-02');
+
+        $this->assertSame(0, Order::where('business_id', $this->shop->id)->count());
+        $this->assertCard(105, 'مبيعات اليوم');
+        $this->assertCard(168, 'مبيعات الشهر');
+        $this->assertSame('0', $this->card('عدد الطلبات'));
+        $this->assertCard(0, 'متوسط قيمة الطلب');
+        $this->assertSame(168.0, $this->ledgerGross('2026-10-01', '2026-11-01'));
+        $this->assertSame(168.0, (float) Demo::reportSummary('month')['sales']);
+        $this->assertSame(168.0, $this->splitTotal());
+        $this->assertSame(0, DashboardMetrics::salesYear()['counts'][9]);
+        // صافي الأرباح: ١٦٠ إيرادًا بلا ضريبة ولا تكلفة
+        $this->assertCard(160, 'صافي الأرباح');
+    }
+
+    /* ═══════════ ثلاثةُ متاجر، لكلٍّ فرعان ═══════════ */
+
+    public function test_three_shops_with_two_branches_each_never_meet(): void
+    {
+        [$third, $thirdOwner, $thirdA, $thirdB] = $this->business('الثالث', 'owner@third.om');
+        $otherOwner = User::where('business_id', $this->other->id)->firstOrFail();
+        [$otherA, $otherB] = Branch::where('business_id', $this->other->id)->orderBy('id')->get()->all();
+
+        // لكلّ متجر: فاتورةٌ في فرعه الأوّل، وأخرى في الثاني، وثالثةٌ بلا فرع، وبيعةُ صندوق
+        $plan = [
+            [$this->shop, $this->owner, $this->muscat, $this->sohar, 100],
+            [$this->other, $otherOwner, $otherA, $otherB, 1000],
+            [$third, $thirdOwner, $thirdA, $thirdB, 10000],
+        ];
+        foreach ($plan as [$shop, , $a, $b, $unit]) {
+            $this->invoice($unit, branch: $a, shop: $shop);
+            $this->invoice($unit * 2, branch: $b, shop: $shop);
+            $this->invoice($unit * 3, shop: $shop);
+            $this->sale($unit / 2, '2026-10-20 09:00', branch: $a, shop: $shop);
+        }
+
+        $stockBefore = [DB::table('products')->orderBy('id')->get(['id', 'quantity'])->all(), DB::table('branch_stocks')->orderBy('id')->get()->all()];
+
+        foreach ($plan as [$shop, $owner, $a, $b, $unit]) {
+            $this->actingAs($owner);
+            session()->forget('current_branch');
+
+            // الشركةُ: ١٫٠٥ × (١ + ٢ + ٣) وحدات + نصفُ وحدةٍ بيعةً — كلُّ فاتورةٍ مرّة
+            $company = round($unit * 1.05 * 6 + $unit / 2, 3);
+            $this->assertCard($company, 'مبيعات اليوم', $shop->name.': المتجرُ كلُّه');
+            $this->assertSame($company, round((float) Demo::reportSummary('month')['sales'], 3), $shop->name.': تقريرُ المبيعات');
+            $this->assertSame($company, round(Ledger::netRevenue($shop->id, Carbon::parse('2026-10-01')) + Ledger::outputTax($shop->id, Carbon::parse('2026-10-01')), 3));
+            $this->assertSame($company, round(array_sum(DashboardMetrics::paymentDistribution()['series']), 3));
+            $this->assertSame($company, Demo::dailySummaryFor($shop->id)['sales']);
+
+            foreach ([[$a, $unit * 1.05 + $unit / 2], [$b, $unit * 2 * 1.05]] as [$branch, $expected]) {
+                session(['current_branch' => $branch->id]);
+                $expected = round($expected, 3);
+                $this->assertCard($expected, 'مبيعات الشهر', $shop->name.' / '.$branch->name);
+                $this->assertSame($expected, round((float) Demo::reportSummary('month', null, $branch->id)['sales'], 3), $shop->name.' / '.$branch->name.': التقرير');
+                $this->assertEquals($expected, DashboardMetrics::salesYear()['data'][9]);
+                $this->assertSame($expected, round(array_sum(DashboardMetrics::paymentDistribution()['series']), 3));
+            }
+
+            // والفاتورةُ بلا فرع للشركة وحدها: الفرعان معًا ينقصان عنها بمقدارها
+            $this->assertSame(round($unit * 3 * 1.05, 3), round($company - ($unit * 1.05 + $unit / 2) - $unit * 2 * 1.05, 3));
+
+            // وفرعُ متجرٍ آخر في الجلسة لا يفتح شيئًا منه — يعود إلى المتجر كلِّه
+            session(['current_branch' => $thirdA->is($a) ? $this->muscat->id : $thirdA->id]);
+            $this->assertCard($company, 'مبيعات اليوم', $shop->name.': فرعُ متجرٍ آخر رشّح اللوحة');
+        }
+
+        $stockAfter = [DB::table('products')->orderBy('id')->get(['id', 'quantity'])->all(), DB::table('branch_stocks')->orderBy('id')->get()->all()];
+        $this->assertEquals($stockBefore, $stockAfter, 'قراءةُ اللوحة حرّكت مخزونًا');
     }
 }

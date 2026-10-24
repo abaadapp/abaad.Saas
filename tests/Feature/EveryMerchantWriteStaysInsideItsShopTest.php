@@ -160,6 +160,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['الشيكات', 'post', 'admin.finance.cheques.clear', ['id' => 'payment']],
                 ['الشيكات', 'post', 'admin.finance.cheques.bounce', ['id' => 'payment']],
                 ['روابط الدفع', 'post', 'admin.finance.paymentLinks.cancel', ['id' => 'payment_link']],
+                ['روابط الدفع', 'post', 'admin.finance.paymobSettlements.retry', ['id' => 'paymob_settlement']],
+                ['روابط الدفع', 'post', 'admin.finance.paymobSettlements.cancel', ['id' => 'paymob_settlement']],
                 ['المراجعات', 'post', 'admin.marketing.reviews.status', ['id' => 'review']],
                 ['المراجعات', 'post', 'admin.marketing.reviews.reply', ['id' => 'review']],
                 ['المراجعات', 'delete', 'admin.marketing.reviews.destroy', ['id' => 'review']],

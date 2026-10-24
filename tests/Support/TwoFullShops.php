@@ -135,6 +135,8 @@ trait TwoFullShops
             'attach_path' => $attachPath,
             'payment' => $this->row('customer_payments', ['business_id' => $bid, 'customer_id' => $customer, 'number' => "RC-{$tag}-1", 'amount' => 5, 'method' => 'cheque', 'occurred_at' => now()->toDateString()]),
             'payment_link' => $this->row('customer_payment_links', ['business_id' => $bid, 'customer_id' => $customer, 'reference' => 'pay-'.strtolower($tag).'-1', 'amount' => 5, 'currency' => 'OMR', 'status' => 'pending', 'provider_link_id' => '1']),
+            // تسويةُ Paymob معلّقة — تُطرق أبوابُ إعادة فحصها وإلغائها
+            'paymob_settlement' => $this->row('paymob_settlements', ['business_id' => $bid, 'gross' => 5, 'fee' => 0, 'net' => 5, 'status' => 'held', 'hold_reason' => "تعليق {$tag}", 'settled_on' => now()->toDateString()]),
             'grn' => $this->row('goods_receipt_notes', ['business_id' => $bid, 'number' => "GRN-{$tag}-1", 'received_at' => now()->toDateString(), 'status' => 'pending']),
             // سندُ نقلٍ بين فرعين وطلبُ تزويد — بانتظار الموافقة، فيُطرق كلُّ بابٍ من أبوابهما
             'transfer' => $transfer = $this->row('branch_transfers', ['business_id' => $bid, 'number' => "TRF-{$tag}-1", 'status' => 'pending', 'from_branch_id' => $branch, 'to_branch_id' => $branch, 'from_branch_name' => "فرع {$tag}", 'to_branch_name' => "فرع {$tag}"]),

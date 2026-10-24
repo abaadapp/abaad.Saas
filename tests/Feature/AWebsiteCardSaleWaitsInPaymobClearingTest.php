@@ -121,6 +121,12 @@ class AWebsiteCardSaleWaitsInPaymobClearingTest extends TestCase
         return round(Bank::leaf($this->shop->id)->balance(), 3);
     }
 
+    /** مدفوعةُ Paymob لطلبٍ — ما تسمّيه التسوية (`PaymobSettlements`) */
+    private function payment(Order $order): string
+    {
+        return 'intent:'.StorePaymentIntent::where('order_id', $order->id)->value('id');
+    }
+
     private function clearing(): float
     {
         return Ledger::balance($this->shop->id, 'paymob_clearing');
@@ -138,10 +144,10 @@ class AWebsiteCardSaleWaitsInPaymobClearingTest extends TestCase
 
     public function test_the_settlement_reaches_the_bank_at_its_net_and_books_the_fee_once(): void
     {
-        $this->paidWebsiteOrder();
+        $order = $this->paidWebsiteOrder();
 
         PaymobSettlements::record($this->shop->id, [
-            'gross' => 20, 'fee' => 0.6, 'net' => 19.4, 'settled_on' => '2027-02-13',
+            'items' => [$this->payment($order)], 'fee' => 0.6, 'net' => 19.4, 'settled_on' => '2027-02-13',
             'bank_account_id' => Bank::current($this->shop->id)->id,
         ], $this->owner->id);
 
@@ -158,10 +164,11 @@ class AWebsiteCardSaleWaitsInPaymobClearingTest extends TestCase
 
     public function test_a_payout_larger_than_what_waits_is_refused(): void
     {
-        $this->paidWebsiteOrder();
+        $order = $this->paidWebsiteOrder();
 
+        // تحويلٌ بأربعين لا يحمله إلّا ما ينتظر — والمدفوعةُ عشرون
         try {
-            PaymobSettlements::record($this->shop->id, ['gross' => 40, 'fee' => 1, 'net' => 39, 'settled_on' => '2027-02-13'], $this->owner->id);
+            PaymobSettlements::record($this->shop->id, ['items' => [$this->payment($order)], 'fee' => 1, 'net' => 39, 'settled_on' => '2027-02-13'], $this->owner->id);
             $this->fail('قُبلت تسويةٌ بأكثر ممّا ينتظر عند Paymob');
         } catch (RuntimeException) {
         }
@@ -234,7 +241,7 @@ class AWebsiteCardSaleWaitsInPaymobClearingTest extends TestCase
         $this->assertSame([20.0, 0.0], [$this->clearing(), $this->bank()], 'خرج ردُّ Paymob من البنك');
 
         // والتحويلُ القادم بما بقي يُسوّي التسويةَ إلى صفر
-        PaymobSettlements::record($this->shop->id, ['gross' => 20, 'fee' => 0.6, 'net' => 19.4, 'settled_on' => '2027-02-13'], $this->owner->id);
+        PaymobSettlements::record($this->shop->id, ['items' => [$this->payment($order)], 'fee' => 0.6, 'net' => 19.4, 'settled_on' => '2027-02-13'], $this->owner->id);
         $this->assertSame([0.0, 19.4], [$this->clearing(), $this->bank()]);
     }
 
@@ -270,13 +277,13 @@ class AWebsiteCardSaleWaitsInPaymobClearingTest extends TestCase
     /** وتسويةُ متجرٍ لا تمسّ حسابَ تسويةِ جاره */
     public function test_a_neighbours_settlement_cannot_drain_this_shops_clearing(): void
     {
-        $this->paidWebsiteOrder();
+        $order = $this->paidWebsiteOrder();
 
         $other = Business::create(['name' => 'الجار', 'type' => 'عام', 'status' => 'نشط']);
         Ledger::seedChart($other->id);
 
         try {
-            PaymobSettlements::record($other->id, ['gross' => 20, 'fee' => 0.6, 'net' => 19.4, 'settled_on' => '2027-02-13'], null);
+            PaymobSettlements::record($other->id, ['items' => [$this->payment($order)], 'fee' => 0.6, 'net' => 19.4, 'settled_on' => '2027-02-13'], null);
             $this->fail('سُوّي عند الجار مالٌ ليس في تسويته');
         } catch (RuntimeException) {
         }

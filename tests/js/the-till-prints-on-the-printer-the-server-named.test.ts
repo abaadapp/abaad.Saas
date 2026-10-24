@@ -1,13 +1,13 @@
-import { describe, expect, it } from 'vitest';
-import { receiptPrinter } from '@/lib/printing/printer-service';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { mayHavePrinted, printReceipt, receiptPrinter } from '@/lib/printing/printer-service';
 import type { PrinterLike } from '@/lib/printing/types';
 
 /**
  * طابعةُ إيصال البيع هي التي علّمها الخادم (`PosPeripheral::receiptAmong`)
  * — لا «أوّلُ طابعة» في القائمة.
  *
- * كانت الأولى: طابعةٌ أُضيفت مرّتين («USB» ثمّ «شبكة» بطباعةٍ تلقائية) تطبع
- * على القديمة — حوارَ نظامٍ لا يجد طابعة — ولا يقع التلقائيّ أبدًا.
+ * كانت الأولى: طابعةٌ أُضيفت مرّتين («USB» ثمّ «شبكة») تطبع على القديمة —
+ * حوارَ نظامٍ لا يجد طابعة.
  */
 const usb: PrinterLike = { id: 1, type: 'طابعة', name: 'قديمة', connection: 'usb', autoPrint: false };
 const network: PrinterLike = {
@@ -35,5 +35,46 @@ describe('the receipt printer', () => {
         expect(receiptPrinter([{ ...scanner, receipt: true }])).toBeNull();
         expect(receiptPrinter([])).toBeNull();
         expect(receiptPrinter(null)).toBeNull();
+    });
+});
+
+/**
+ * عطلٌ لا يُعرف موضعُه من الجسر — رميٌ أو ردٌّ لا يطابق العقد — قد يقع بعد أن
+ * بلغت الطابعةَ بايتات. فيُقال «ربّما طُبعت»، فلا يُعيده الطابورُ وحده.
+ */
+describe('an unexplained bridge failure', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    const app = (printReceipt: () => Promise<unknown>) =>
+        vi.stubGlobal('AbaadPrinter', {
+            version: 1,
+            platform: 'android',
+            isAvailable: () => true,
+            printReceipt,
+            testPrinter: vi.fn(),
+            openReceipt: vi.fn(),
+        });
+
+    it('may have printed when the bridge throws mid-print', async () => {
+        app(async () => {
+            throw new Error('socket gone');
+        });
+
+        const outcome = await printReceipt({ invoice: 'INV-1', url: '/pos/receipt/INV-1/pdf', printer: network });
+
+        expect(outcome.ok).toBe(false);
+        expect(mayHavePrinted(outcome)).toBe(true);
+    });
+
+    it('may have printed when the reply does not match the contract', async () => {
+        app(async () => 'printed?');
+
+        expect(mayHavePrinted(await printReceipt({ invoice: 'INV-1', url: '/pos/receipt/INV-1/pdf', printer: network }))).toBe(true);
+    });
+
+    it('a refusal the app names is still safe to resend', async () => {
+        app(async () => ({ ok: false, code: 'CONNECT_TIMEOUT', mayHavePrinted: false }));
+
+        expect(mayHavePrinted(await printReceipt({ invoice: 'INV-1', url: '/pos/receipt/INV-1/pdf', printer: network }))).toBe(false);
     });
 });

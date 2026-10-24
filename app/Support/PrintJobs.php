@@ -43,6 +43,15 @@ final class PrintJobs
     /** مهلةُ الحجز — أطولُ من مهلة الطابعة في التطبيق (١٢٠ ث صمت) */
     public const CLAIM_SECONDS = 180;
 
+    /**
+     * ورقةٌ لم يستلمها صندوقٌ في هذه الساعات تُقال «فشل» — لا تنتظر أبدًا.
+     *
+     * فرعٌ بلا صندوقٍ معيَّن، أو صندوقٌ مطفأٌ أيّامًا: كانت الورقةُ تبقى «تنتظر
+     * الصندوق» بلا نهاية، ثمّ تخرج وحدَها صباحَ يفتح بعد عطلة — ورقُ أمسِ مع
+     * طلبات اليوم. ولم يُطبع منها شيء، فإعادتُها من اللوحة آمنة.
+     */
+    public const PENDING_HOURS = 24;
+
     /** محاولاتٌ لم يُطبع منها شيء — بعدها يُنتظر إنسان */
     public const MAX_ATTEMPTS = 3;
 
@@ -421,7 +430,7 @@ final class PrintJobs
             ->orderBy('id')
             ->get();
 
-        $n = 0;
+        $n = self::expirePending($businessId);
 
         foreach ($expired as $job) {
             $done = PrintJob::whereKey($job->id)
@@ -438,6 +447,37 @@ final class PrintJobs
             if ($done === 1) {
                 $n++;
                 self::audit($job, 'لم يؤكّد الصندوق خروجها في مهلتها — لا تُعاد وحدها');
+            }
+        }
+
+        return $n;
+    }
+
+    /** ورقٌ لم يُحجز في مهلته — «فشل» بسببه، يُعاد من اللوحة بضغطة */
+    private static function expirePending(int $businessId): int
+    {
+        $stale = PrintJob::where('business_id', $businessId)
+            ->where('status', PrintJob::PENDING)
+            ->where('updated_at', '<', now()->subHours(self::PENDING_HOURS))
+            ->orderBy('id')
+            ->get();
+
+        $n = 0;
+
+        foreach ($stale as $job) {
+            $done = PrintJob::whereKey($job->id)
+                ->where('status', PrintJob::PENDING)
+                ->where('updated_at', '<', now()->subHours(self::PENDING_HOURS))
+                ->update([
+                    'status' => PrintJob::FAILED,
+                    'failed_at' => now(),
+                    'last_error' => __('لم يستلمها صندوق خلال :hours ساعة — لم يُطبع منها شيء. تحقّق من صندوق الفرع وطابعته ثم أعد الإرسال.', ['hours' => self::PENDING_HOURS]),
+                    'updated_at' => now(),
+                ]);
+
+            if ($done === 1) {
+                $n++;
+                self::audit($job, 'لم يستلمها صندوق في مهلتها — لم يُطبع منها شيء');
             }
         }
 

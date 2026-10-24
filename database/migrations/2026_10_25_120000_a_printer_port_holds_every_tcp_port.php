@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -24,8 +25,21 @@ return new class extends Migration
         });
     }
 
+    /**
+     * والتراجعُ لا يقصّ منفذًا ولا يمحوه.
+     *
+     * منفذٌ فوق 32767 حُفظ بعد الترقية لا يتّسع له `smallint`: يتوقّف التراجعُ
+     * هنا ويُسمّي الصفوف، ولا يُكمل ليسقط في منتصف `ALTER` أو يقصّ رقمًا. ومن
+     * أراد التراجع فعلًا يصحّح تلك المنافذ بيده أوّلًا — قرارٌ لا يُتّخذ عنه.
+     */
     public function down(): void
     {
+        $wide = DB::table('pos_peripherals')->where('port', '>', 32767)->pluck('id');
+
+        if ($wide->isNotEmpty()) {
+            throw new RuntimeException('لا يُتراجع: منافذ فوق 32767 في pos_peripherals (المعرّفات: '.$wide->implode(', ').'). صحّحها يدويًّا أوّلًا.');
+        }
+
         Schema::table('pos_peripherals', function (Blueprint $table) {
             $table->unsignedSmallInteger('port')->nullable()->change();
         });

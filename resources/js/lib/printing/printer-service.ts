@@ -122,6 +122,15 @@ export async function printReceipt(request: ReceiptRequest): Promise<PrintOutcom
             ),
         );
 
+        /*
+         * عطلٌ لا يُعرف موضعُه (`INTERNAL`: رميٌ من الجسر أو ردٌّ لا يطابق العقد)
+         * قد يقع بعد أن بلغت الطابعةَ بايتات — فيُقال «ربّما طُبعت»، ولا يُعاد
+         * وحده (`PrintJobs::acknowledge`). ورقتان أسوأ من ورقةٍ يُسأل عنها.
+         */
+        if (!result.ok && result.code === 'INTERNAL') {
+            return { ...result, mayHavePrinted: true, via: 'native' };
+        }
+
         return { ...result, via: 'native' };
     }
 

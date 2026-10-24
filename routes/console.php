@@ -97,6 +97,15 @@ Schedule::command('whatsapp:sync-templates')->hourly()->withoutOverlapping();
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 
+/*
+ * صحّةُ الصناديق وطابعاتها — قراءةٌ فقط (`pos:printing-audit`).
+ *
+ * سطرٌ في السجلّ حين يتغيّر ما ثبت (صندوقٌ لن يخرج منه إيصالُه، ورقٌ عالق)،
+ * وصمتٌ ما دام كما كان. لا يكتب في القاعدة ولا يراسل تاجرًا — وجرسُ التاجر
+ * خلف `pos.till_health_bell`.
+ */
+Schedule::command('pos:printing-audit --watch')->dailyAt('06:20')->withoutOverlapping();
+
 // تقرير الأداء الشهري بالبريد (أول كل شهر 07:00)
 Schedule::command('reports:email')->monthlyOn(1, '07:00')->withoutOverlapping();
 

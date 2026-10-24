@@ -102,4 +102,30 @@ class APrinterAddressIsRefusedWhereTheAppWouldRefuseItTest extends TestCase
         $this->save(['address' => '10.0.0.7', 'port' => 65535])->assertSessionHasNoErrors();
         $this->assertSame(65535, PosPeripheral::sole()->port);
     }
+
+    /** والمنفذُ من 1 إلى 65535 — لا يُفترض 9100، ولا يُقبل ما لا يكون */
+    public function test_the_port_runs_from_one_to_65535(): void
+    {
+        $this->save(['address' => '10.0.0.7', 'port' => 1])->assertSessionHasNoErrors();
+        $this->save(['address' => '10.0.0.8', 'port' => 0])->assertSessionHasErrors('port');
+        $this->save(['address' => '10.0.0.9', 'port' => 65536])->assertSessionHasErrors('port');
+
+        $this->assertSame([1], PosPeripheral::pluck('port')->all());
+    }
+
+    /** والتراجعُ عن الهجرة لا يقصّ منفذًا: يتوقّف ويُسمّي الصفوف */
+    public function test_rolling_back_stops_before_cutting_a_wide_port(): void
+    {
+        $this->save(['address' => '10.0.0.7', 'port' => 40000])->assertSessionHasNoErrors();
+        $migration = require base_path('database/migrations/2026_10_25_120000_a_printer_port_holds_every_tcp_port.php');
+
+        try {
+            $migration->down();
+            $this->fail('تراجعت الهجرةُ فوق منفذٍ لا يتّسع له smallint');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString((string) PosPeripheral::sole()->id, $e->getMessage());
+        }
+
+        $this->assertSame(40000, PosPeripheral::sole()->port);
+    }
 }

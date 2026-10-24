@@ -11,6 +11,7 @@ use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\PrintJobs;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -26,7 +27,23 @@ class PeripheralController extends Controller
         $device = $this->device($deviceId);
         $data = $this->validated($request);
 
-        $peripheral = $device->peripherals()->create($data + ['business_id' => Demo::bid()]);
+        $peripheral = DB::transaction(function () use ($device, $data) {
+            $this->lockTill($device);
+
+            /*
+             * وأوّلُ طابعةٍ على صندوقٍ لا طابعةَ عليه هي طابعةُ إيصاله — لا لبسَ
+             * فيها. وما بعدها لا يُسمّى إلّا بيد التاجر: الثانيةُ لا تأخذ مكان
+             * الأولى صامتةً.
+             */
+            if ($data['type'] === PosPeripheral::PRINTER
+                && ! $device->peripherals()->where('type', PosPeripheral::PRINTER)->exists()) {
+                $data['is_receipt_printer'] = true;
+            }
+
+            $this->oneReceiptPrinter($device, $data);
+
+            return $device->peripherals()->create($data + ['business_id' => Demo::bid(), 'is_receipt_printer' => false]);
+        });
         Activity::log('created', 'أضاف ملحقًا: '.$peripheral->name.' — '.$device->name, [
             'subject_id' => $device->id,
         ]);
@@ -37,7 +54,13 @@ class PeripheralController extends Controller
     public function update(Request $request, int $deviceId, int $id)
     {
         $peripheral = $this->peripheral($deviceId, $id);
-        $peripheral->update($this->validated($request));
+        $data = $this->validated($request);
+
+        DB::transaction(function () use ($peripheral, $data) {
+            $this->lockTill($peripheral->device);
+            $this->oneReceiptPrinter($peripheral->device, $data, $peripheral->id);
+            $peripheral->update($data);
+        });
         Activity::log('updated', 'عدّل ملحقًا: '.$peripheral->name, ['subject_id' => $deviceId]);
         // طابعةٌ رُفع عنها «فواتير العملاء» أو عُطّلت: ورقُ صندوقها المنتظِر لا يعلق عليه
         PrintJobs::release($this->device($deviceId));
@@ -54,6 +77,30 @@ class PeripheralController extends Controller
         PrintJobs::release($this->device($deviceId));
 
         return back()->with('toast', ['msg' => __('حُذف الجهاز الملحق'), 'type' => 'warning']);
+    }
+
+    /**
+     * طابعةُ إيصالٍ واحدةٌ على الصندوق — من سُمّيت الآن تأخذ مكان السابقة.
+     *
+     * وفي القاعدة فهرسٌ فريدٌ جزئيّ يمنع اثنتين (`pos_peripherals_one_receipt_printer`)؛
+     * وهذا الرفعُ قبل الكتابة يجعل التبديلَ خطوةً واحدة لا خطأً من القاعدة.
+     */
+    private function oneReceiptPrinter(PosDevice $device, array $data, ?int $except = null): void
+    {
+        if (! ($data['is_receipt_printer'] ?? false)) {
+            return;
+        }
+
+        $device->peripherals()
+            ->where('is_receipt_printer', true)
+            ->when($except, fn ($q) => $q->whereKeyNot($except))
+            ->update(['is_receipt_printer' => false]);
+    }
+
+    /** حفظان معًا على صندوقٍ واحد يُصفّان — لا يسمّي كلٌّ منهما طابعتَه في اللحظة نفسِها */
+    private function lockTill(PosDevice $device): void
+    {
+        PosDevice::whereKey($device->id)->lockForUpdate()->first();
     }
 
     /**
@@ -85,6 +132,7 @@ class PeripheralController extends Controller
             'auto_print' => ['boolean'],
             'auto_print_website_confirm' => ['boolean'],
             'auto_print_customer_invoices' => ['boolean'],
+            'is_receipt_printer' => ['boolean'],
             'notes' => ['nullable', 'string', 'max:500'],
             'active' => ['boolean'],
         ], [], [
@@ -116,12 +164,23 @@ class PeripheralController extends Controller
              */
             $data['auto_print_customer_invoices'] = $request->boolean('auto_print_customer_invoices')
                 && CustomerInvoicePreparations::on((int) Demo::bid());
+            /*
+             * و«طابعة الإيصال» اختيارٌ صريحٌ غيرُ «الطباعة التلقائية»: الأولى تقول
+             * أيَّ طابعةٍ يطبع عليها الصندوقُ إيصالَ البيع، والثانية هل يطبعه وحده.
+             */
+            if ($request->has('is_receipt_printer')) {
+                $data['is_receipt_printer'] = $request->boolean('is_receipt_printer');
+            } else {
+                // صفحةٌ أقدمُ من الحقل لا تمحو التسميةَ بغيابه — يبقى ما كان
+                unset($data['is_receipt_printer']);
+            }
         } else {
             $data['paper_width'] = null;
             $data['auto_print'] = false;
             // والماسحُ والدرجُ والشاشةُ والميزانُ لا يطبعون — فلا يحملون الخيار
             $data['auto_print_website_confirm'] = false;
             $data['auto_print_customer_invoices'] = false;
+            $data['is_receipt_printer'] = false;
         }
 
         return $data;

@@ -137,7 +137,7 @@ class APaperNeverWaitsOnAGoneTillTest extends TestCase
         $this->paidTask();
         $job = PrintJob::sole();
 
-        $this->put(route('admin.devices.update', $moving->id), ['name' => $moving->name, 'branch_id' => $this->elsewhere->id])->assertRedirect();
+        $this->put(route('admin.devices.update', $moving->id), ['name' => $moving->name, 'branch_id' => $this->elsewhere->id, 'confirm_move' => true])->assertRedirect();
         $this->assertSame($staying->id, (int) $job->fresh()->pos_device_id);
 
         // وأُعيد تفعيلُه في فرعه الجديد — لا يحمل ورقَ فرعه القديم

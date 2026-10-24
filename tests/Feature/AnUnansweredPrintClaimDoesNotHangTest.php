@@ -77,4 +77,31 @@ class AnUnansweredPrintClaimDoesNotHangTest extends TestCase
         $this->actingAs($this->owner)->post(route('admin.preparation.invoiceRequeue', $task->id))
             ->assertSessionHas('toast.type', 'danger');
     }
+
+    /**
+     * وورقةٌ لم يستلمها صندوقٌ في يوم — فرعٌ بلا صندوقٍ معيَّن، أو صندوقٌ مطفأ:
+     * كانت «تنتظر» أبدًا ثمّ تخرج وحدَها بعد عطلة. الآن «لم تُطبع» بسببها،
+     * ويُعيدها إنسانٌ من اللوحة — ولم يُطبع منها شيء.
+     */
+    public function test_a_paper_no_till_picked_up_in_a_day_fails_with_its_reason(): void
+    {
+        $this->till(designated: false);
+        $task = $this->paidTask();
+        $this->assertSame(PrintJob::PENDING, PrintJob::sole()->status);
+
+        $this->travel(PrintJobs::PENDING_HOURS - 1)->hours();
+        $this->actingAs($this->owner)->get(route('admin.preparation.index'))->assertOk();
+        $this->assertSame(PrintJob::PENDING, PrintJob::sole()->status, 'فشلت قبل مهلتها');
+
+        $this->travel(2)->hours();
+        $this->actingAs($this->owner)->get(route('admin.preparation.index'))->assertOk();
+        $job = PrintJob::sole();
+        $this->assertSame(PrintJob::FAILED, $job->status);
+        $this->assertStringContainsString('لم يستلمها صندوق', (string) $job->last_error);
+        $this->assertNull($job->printed_at);
+
+        $this->actingAs($this->owner)->post(route('admin.preparation.invoiceRequeue', $task->id))
+            ->assertSessionHas('toast.type', 'success');
+        $this->assertSame(PrintJob::PENDING, PrintJob::sole()->status);
+    }
 }

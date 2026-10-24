@@ -8,6 +8,8 @@ use App\Models\JobTitle;
 use App\Models\PosDevice;
 use App\Models\PosPeripheral;
 use App\Models\User;
+use App\Support\TillHealth;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -280,23 +282,28 @@ class PosPeripheralTest extends TestCase
         $this->assertDatabaseCount('pos_peripherals', 0);
     }
 
-    /* ═══════════ طابعةُ الإيصال — قاعدةٌ لا «أوّلُ صفّ» ═══════════ */
+    /* ═══════════ طابعةُ الإيصال — اختيارٌ صريحٌ واحد لكلّ صندوق ═══════════ */
 
     private function printerRow(array $over): PosPeripheral
     {
         return $this->device->peripherals()->create($this->payload($over) + ['business_id' => $this->business->id]);
     }
 
+    private function receipt(): ?PosPeripheral
+    {
+        return PosPeripheral::receiptAmong($this->device->peripherals()->get());
+    }
+
     /**
-     * طابعةٌ أُضيفت مرّتين — «USB» أوّلًا ثمّ «شبكة» بطباعةٍ تلقائية: الإيصالُ
-     * على الثانية. كان على الأولى، فلا يقع التلقائيّ ولا يطبع التطبيقُ مباشرةً.
+     * طابعةٌ أُضيفت مرّتين («USB» ثمّ «شبكة»): يُطبع على ما سمّاه التاجر — لا
+     * على «أوّل صفّ» يقرؤه PostgreSQL، ولا على ما عليه الطباعةُ التلقائية.
      */
-    public function test_the_printer_named_for_receipts_wins_over_an_older_duplicate(): void
+    public function test_the_named_receipt_printer_wins_over_an_older_duplicate(): void
     {
         $this->printerRow(['name' => 'قديمة USB', 'connection' => 'usb']);
-        $network = $this->printerRow(['name' => 'شبكة', 'connection' => 'network', 'address' => '192.168.1.50', 'auto_print' => true]);
+        $network = $this->printerRow(['name' => 'شبكة', 'connection' => 'network', 'address' => '192.168.1.50', 'is_receipt_printer' => true]);
 
-        $this->assertTrue($network->is(PosPeripheral::receiptAmong($this->device->peripherals()->get())));
+        $this->assertTrue($network->is($this->receipt()));
 
         $this->actingAs($this->owner)->get(route('admin.devices.index'))
             ->assertInertia(fn ($page) => $page
@@ -304,24 +311,90 @@ class PosPeripheralTest extends TestCase
                 ->where('devices.0.peripherals', fn ($list) => collect($list)->where('receipt', true)->pluck('name')->all() === ['شبكة']));
     }
 
-    public function test_without_auto_print_the_directly_printable_one_wins_then_the_oldest(): void
+    /**
+     * ولم يُسمِّ — طابعتان مفعّلتان: يُطبع على الأقدم كما كان «أوّلُ صفّ»،
+     * ولا تأخذ الطباعةُ التلقائيةُ مكانَ الاختيار. والالتباسُ يُقال في الشاشة.
+     */
+    public function test_an_unnamed_pair_prints_on_the_oldest_and_says_it_is_ambiguous(): void
     {
-        $this->printerRow(['name' => 'USB', 'connection' => 'usb']);
-        $network = $this->printerRow(['name' => 'شبكة', 'connection' => 'network', 'address' => '10.0.0.7']);
-        $this->assertTrue($network->is(PosPeripheral::receiptAmong($this->device->peripherals()->get())));
+        $old = $this->printerRow(['name' => 'USB', 'connection' => 'usb']);
+        $this->printerRow(['name' => 'شبكة', 'connection' => 'network', 'address' => '10.0.0.7', 'auto_print' => true]);
 
-        $network->update(['connection' => 'usb', 'address' => null]);
-        $this->assertSame('USB', PosPeripheral::receiptAmong($this->device->peripherals()->get())?->name);
+        $this->assertTrue($old->is($this->receipt()));
+
+        $this->actingAs($this->owner)->get(route('admin.devices.index'))
+            ->assertInertia(fn ($page) => $page
+                ->where('devices.0.issues', fn ($issues) => collect($issues)->pluck('code')->sort()->values()->all()
+                    === [TillHealth::AMBIGUOUS_RECEIPT, TillHealth::AUTO_PRINT_ELSEWHERE]));
     }
 
-    public function test_a_disabled_printer_or_another_kind_is_never_the_receipt_printer(): void
+    public function test_a_disabled_named_printer_falls_back_and_another_kind_never_prints(): void
     {
-        $this->printerRow(['name' => 'معطّلة', 'connection' => 'network', 'address' => '10.0.0.7', 'auto_print' => true, 'active' => false]);
+        $this->printerRow(['name' => 'المسمّاة', 'is_receipt_printer' => true, 'active' => false]);
         $this->printerRow(['name' => 'ماسح', 'type' => PosPeripheral::SCANNER]);
-        $this->assertNull(PosPeripheral::receiptAmong($this->device->peripherals()->get()));
+        $this->assertNull($this->receipt());
 
-        $usb = $this->printerRow(['name' => 'USB', 'connection' => 'usb']);
-        $this->assertTrue($usb->is(PosPeripheral::receiptAmong($this->device->peripherals()->get())));
+        $usb = $this->printerRow(['name' => 'USB']);
+        $this->assertTrue($usb->is($this->receipt()));
+    }
+
+    /** والأولى على صندوقٍ بلا طابعة تُسمّى وحدَها — والثانيةُ لا تأخذ مكانها صامتة */
+    public function test_the_first_printer_is_named_and_a_second_is_not(): void
+    {
+        $post = fn (array $over) => $this->actingAs($this->owner)
+            ->post(route('admin.devices.peripherals.store', $this->device->id), $this->payload($over));
+
+        $post(['name' => 'الأولى'])->assertSessionHasNoErrors();
+        $post(['name' => 'الثانية'])->assertSessionHasNoErrors();
+
+        $this->assertSame(['الأولى' => true, 'الثانية' => false],
+            PosPeripheral::orderBy('id')->pluck('is_receipt_printer', 'name')->map(fn ($v) => (bool) $v)->all());
+    }
+
+    /** وتسميةُ أخرى ترفعها عن السابقة — واحدةٌ لكلّ صندوق */
+    public function test_naming_another_printer_moves_the_mark(): void
+    {
+        $first = $this->printerRow(['name' => 'الأولى', 'is_receipt_printer' => true]);
+        $second = $this->printerRow(['name' => 'الثانية']);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.devices.peripherals.update', [$this->device->id, $second->id]), $this->payload([
+                'name' => 'الثانية', 'is_receipt_printer' => true,
+            ]))->assertSessionHasNoErrors();
+
+        $this->assertFalse((bool) $first->fresh()->is_receipt_printer);
+        $this->assertTrue((bool) $second->fresh()->is_receipt_printer);
+    }
+
+    /** وصفحةٌ أقدمُ من الحقل لا تمحو التسميةَ بغيابه */
+    public function test_a_save_without_the_field_keeps_the_mark(): void
+    {
+        $named = $this->printerRow(['name' => 'المسمّاة', 'is_receipt_printer' => true]);
+
+        $this->actingAs($this->owner)
+            ->put(route('admin.devices.peripherals.update', [$this->device->id, $named->id]), $this->payload(['name' => 'اسمٌ جديد']))
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue((bool) $named->fresh()->is_receipt_printer);
+    }
+
+    /** والماسحُ لا يكون طابعةَ إيصال — ولو أُرسل */
+    public function test_only_a_printer_can_be_named(): void
+    {
+        $this->actingAs($this->owner)->post(route('admin.devices.peripherals.store', $this->device->id), $this->payload([
+            'type' => PosPeripheral::SCANNER, 'is_receipt_printer' => true,
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertFalse((bool) PosPeripheral::sole()->is_receipt_printer);
+    }
+
+    /** والقاعدةُ نفسُها تمنع طابعتَي إيصالٍ على صندوقٍ واحد — لا الكودُ وحده */
+    public function test_the_database_refuses_two_receipt_printers_on_one_register(): void
+    {
+        $this->printerRow(['name' => 'الأولى', 'is_receipt_printer' => true]);
+
+        $this->expectException(QueryException::class);
+        $this->printerRow(['name' => 'الثانية', 'is_receipt_printer' => true]);
     }
 
     /** وحذفُ الملحق يُسأل عنه في الواجهة؛ والخادمُ يحذف ملحقَ صندوقه وحده */

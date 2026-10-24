@@ -657,6 +657,8 @@ return [
         'branch' => 'الفرع',
         'branch_id' => 'الفرع',
         'branches' => 'الفروع',
+        // صندوقٌ قائمٌ يحلّ محلَّه جهازٌ يُفعَّل — `DeviceController::activate`
+        'replaces' => 'الصندوق القديم',
         'business_id' => 'الشركة',
         'customer' => 'العميل',
         'supplier_id' => 'المورّد',

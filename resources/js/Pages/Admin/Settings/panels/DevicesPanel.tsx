@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { MonitorSmartphone, Pencil, Plug } from 'lucide-react';
+import { CircleHelp, MonitorSmartphone, Pencil, Plug, TriangleAlert } from 'lucide-react';
 import DataTable, { type Column } from '@/Components/DataTable';
 import RowActions from '@/Components/RowActions';
 import Field, { Select } from '@/Components/Field';
@@ -11,6 +11,19 @@ import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import PeripheralsDialog, { type Peripheral } from '../../Devices/partials/PeripheralsDialog';
 import type { PageProps } from '@/types';
+
+/**
+ * ما يمنع إيصالَ صندوقٍ من الخروج، أو يحتاج مراجعة — يقيسه الخادم (`TillHealth`).
+ *
+ * `confirmed` يُعرض تحذيرًا. و`suspected` يُعرض «للمراجعة» بلونٍ هادئ: نمطٌ
+ * قد يكون مقصودًا، فلا يُقال للتاجر إنّه عطل.
+ */
+export interface TillIssue {
+    code: string;
+    level: 'confirmed' | 'suspected';
+    peripheral: number | null;
+    message: string;
+}
 
 export interface Device {
     id: number;
@@ -30,6 +43,7 @@ export interface Device {
     orders: number;
     shifts: number;
     peripherals: Peripheral[];
+    issues?: TillIssue[];
 }
 
 export interface DevicesData {
@@ -59,7 +73,10 @@ export default function DevicesPanel({
     const t = useTranslate();
     const [editing, setEditing] = useState<Device | null>(null);
     const [linking, setLinking] = useState<number | null>(null);
-    const form = useForm({ name: '', branch_id: '', bank_account_id: '' });
+    const form = useForm({ name: '', branch_id: '', bank_account_id: '', confirm_move: false as boolean });
+    // نقلٌ إلى فرعٍ آخر — يُعرض أثرُه ويُؤكَّد قبل الحفظ (`DeviceController::update`)
+    const moving = !!editing && form.data.branch_id !== '' && form.data.branch_id !== String(editing.branchId);
+    const movingPrinters = editing ? editing.peripherals.filter((p) => p.active && p.type === 'طابعة').length : 0;
 
     // Radix Select لا يقبل قيمةً تتغيّر أثناء الفتح، فتُملأ عند تبديل الجهاز
     useEffect(() => {
@@ -68,6 +85,7 @@ export default function DevicesPanel({
                 name: editing.name,
                 branch_id: String(editing.branchId),
                 bank_account_id: editing.bankAccountId ? String(editing.bankAccountId) : '',
+                confirm_move: false,
             });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,12 +111,35 @@ export default function DevicesPanel({
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[#f2f2f0] text-[#4b4b4b]">
                         <MonitorSmartphone className="size-4" />
                     </span>
-                    <span className="font-medium text-[#111]">
-                        {d.name}
-                        {d.isThis && (
-                            <span className="ms-2 rounded-full bg-[#eef2ff] px-2 py-0.5 text-[11px] text-[#4338ca]">
-                                {t('هذا الجهاز')}
-                            </span>
+                    <span className="min-w-0">
+                        <span className="font-medium text-[#111]">
+                            {d.name}
+                            {d.isThis && (
+                                <span className="ms-2 rounded-full bg-[#eef2ff] px-2 py-0.5 text-[11px] text-[#4338ca]">
+                                    {t('هذا الجهاز')}
+                                </span>
+                            )}
+                        </span>
+                        {/* ما يمنع إيصالَه من الخروج أو يُراجَع — أوّلُه (المؤكَّدُ أوّلًا)، ومعه عددُ البقيّة */}
+                        {!!d.issues?.length && (
+                            <button
+                                type="button"
+                                onClick={() => setLinking(d.id)}
+                                className={`mt-1 flex items-start gap-1 text-start text-[12px] hover:underline ${
+                                    d.issues[0].level === 'confirmed' ? 'text-[#b45309]' : 'text-[#475569]'
+                                }`}
+                            >
+                                {d.issues[0].level === 'confirmed' ? (
+                                    <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                                ) : (
+                                    <CircleHelp className="mt-px size-3.5 shrink-0" />
+                                )}
+                                <span>
+                                    {d.issues[0].level === 'confirmed' ? '' : `${t('للمراجعة')}: `}
+                                    {d.issues[0].message}
+                                    {d.issues.length > 1 ? ` (+${d.issues.length - 1})` : ''}
+                                </span>
+                            </button>
                         )}
                     </span>
                 </div>
@@ -266,11 +307,44 @@ export default function DevicesPanel({
                             />
                         </Field>
 
+                        {/*
+                            النقلُ يُرى أثرُه قبل أن يقع: يُبطل التفعيل، والطابعةُ على
+                            شبكة الفرع القديم، والبنكُ يتبع الجهاز. والخادمُ يردّ
+                            نقلًا بلا هذا التأكيد (`confirm_move`).
+                        */}
+                        {moving && (
+                            <div className="space-y-2 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[12px] text-[#b45309]">
+                                <p className="font-medium">{t('نقل الصندوق إلى فرع آخر')}</p>
+                                <ul className="list-disc space-y-0.5 ps-4">
+                                    <li>{t('يُبطل تفعيله، ويُعاد من الجهاز نفسه في الفرع الجديد.')}</li>
+                                    <li>
+                                        {t('طابعاته المفعّلة: :n — تبقى بعناوينها على شبكة الفرع القديم؛ راجعها بعد النقل.', { n: movingPrinters })}
+                                    </li>
+                                    <li>
+                                        {t('بنك جهاز الشبكة: :bank', {
+                                            bank:
+                                                bankAccounts.find((b) => String(b.value) === form.data.bank_account_id)?.label ??
+                                                t('الحساب الرئيسي'),
+                                        })}
+                                    </li>
+                                </ul>
+                                <label className="flex items-center gap-2 text-[#111]">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.data.confirm_move}
+                                        onChange={(e) => form.setData('confirm_move', e.target.checked)}
+                                    />
+                                    {t('راجعت الطابعات والبنك، وأريد النقل')}
+                                </label>
+                                {errors.confirm_move && <p className="text-[#b91c1c]">{errors.confirm_move}</p>}
+                            </div>
+                        )}
+
                         <div className="flex justify-end gap-2 pt-1">
                             <Button type="button" variant="outline" onClick={() => setEditing(null)}>
                                 {t('إلغاء')}
                             </Button>
-                            <Button type="submit" disabled={form.processing}>
+                            <Button type="submit" disabled={form.processing || (moving && !form.data.confirm_move)}>
                                 {t('حفظ التغييرات')}
                             </Button>
                         </div>
@@ -289,6 +363,7 @@ export default function DevicesPanel({
                             deviceId={d.id}
                             deviceName={d.name}
                             peripherals={d.peripherals}
+                            issues={d.issues ?? []}
                             types={peripheralTypes}
                             drivableTypes={drivableTypes}
                             paperWidths={paperWidths}

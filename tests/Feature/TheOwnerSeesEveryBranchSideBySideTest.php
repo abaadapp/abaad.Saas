@@ -205,4 +205,22 @@ class TheOwnerSeesEveryBranchSideBySideTest extends TestCase
         $this->assertContains('branch-low-'.$this->salalah->id.'-'.$this->rose->id, $keys($this->salalahManager));
         $this->assertNotContains('branch-low-'.$this->salalah->id.'-'.$this->rose->id, $keys($this->muscatManager));
     }
+
+    /**
+     * ومتجرٌ بفرعٍ واحد لا يُنبَّه مرّتين على الصنف نفسه.
+     *
+     * نقصُ الفرع الوحيد هو نقصُ الإجماليّ، وله تنبيهُه القائم (`low-`). ومتجرا
+     * المؤسسات على الإنتاج يوم النشر بفرعٍ واحد كلٌّ منهما — فكان كلُّ صنفٍ
+     * منخفضٍ سيظهر في الجرس سطرين.
+     */
+    public function test_a_shop_with_one_branch_hears_of_a_low_product_once(): void
+    {
+        $only = Branch::create(['business_id' => $this->neighbour->id, 'name' => 'الوحيد']);
+        $low = $this->stocked('شمع', 1, [$only->id => 2], $this->neighbour);
+        $this->actingAs($this->staff('مالك الجار', 'admin', [], $this->neighbour));
+
+        $keys = collect(Demo::allNotifications())->pluck('key');
+        $this->assertContains('low-'.$low->id, $keys, 'التنبيهُ القائم باقٍ');
+        $this->assertSame([], $keys->filter(fn ($k) => str_starts_with($k, 'branch-low-'))->values()->all());
+    }
 }

@@ -34,8 +34,13 @@ class DocumentController extends Controller
     {
         $state = (string) $request->query('state', '');
         $q = Search::term($request);
+        // مستنداتُ شركةٍ واحدة (?business=) — من ملفّها؛ ونافذةُ الإصدار تبدأ بها
+        $company = $request->filled('business') ? Business::find((int) $request->query('business'), ['id', 'name']) : null;
 
         $query = PlatformDocument::query()->with('business:id,name')->latest('id');
+        if ($company) {
+            $query->where('client_business_id', $company->id);
+        }
         match ($state) {
             PlatformDocument::SIGNED, PlatformDocument::CANCELLED => $query->where('status', $state),
             PlatformDocument::SENT => $query->where('status', PlatformDocument::SENT)
@@ -56,8 +61,16 @@ class DocumentController extends Controller
             : null;
         // ما يُصدر منه وحده: مفعّلٌ ونصُّه هو المعتمد — والنموذجُ كما سيُكتب في المستند
         $line = PlatformDocuments::providerLine(PlatformDocuments::provider());
-        $templates = PlatformDocumentTemplate::where('active', true)->orderBy('id')->get()
-            ->filter(fn (PlatformDocumentTemplate $t) => $t->approved())
+        $all = PlatformDocumentTemplate::orderBy('id')->get();
+        // وما لا يُصدر منه بعدُ يُعرض باسمه وسببه — لا يختفي فيُظنّ مفقودًا
+        $waiting = $all->reject(fn (PlatformDocumentTemplate $t) => $t->issuable())
+            ->map(fn (PlatformDocumentTemplate $t) => [
+                'id' => $t->id,
+                'name' => $t->name,
+                'service' => $t->service,
+                'reason' => $t->approved() ? __('معتمد — غير مفعّل') : __('بانتظار الاعتماد'),
+            ])->values();
+        $templates = $all->filter(fn (PlatformDocumentTemplate $t) => $t->issuable())
             ->map(fn (PlatformDocumentTemplate $t) => [
                 'id' => $t->id,
                 'name' => $t->name,
@@ -75,13 +88,16 @@ class DocumentController extends Controller
         return Inertia::render('Platform/Documents/Index', [
             'documents' => collect($page->items())->map(fn (PlatformDocument $d) => self::row($d))->all(),
             'pagination' => Pagination::meta($page),
-            'filters' => ['state' => $state, 'q' => $q],
+            'filters' => ['state' => $state, 'q' => $q] + ($company ? ['business' => (string) $company->id] : []),
+            'company' => $company ? ['id' => $company->id, 'name' => $company->name, 'url' => route('super-admin.businesses.show', $company->id)] : null,
+            'opening' => $company !== null && $request->boolean('new'),
             'counts' => [
                 'sent' => PlatformDocument::where('status', PlatformDocument::SENT)
                     ->where(fn ($w) => $w->whereNull('expires_at')->orWhere('expires_at', '>=', now()))->count(),
                 'signed' => PlatformDocument::where('status', PlatformDocument::SIGNED)->count(),
             ],
             'templates' => $templates,
+            'waiting' => $waiting,
             'plans' => Plan::orderBy('monthly_price')->get()->map(fn (Plan $p) => [
                 'id' => $p->id,
                 'name' => $p->name,

@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Plan;
 use App\Models\PlatformDocument;
 use App\Models\PlatformDocumentTemplate;
+use App\Models\Setting;
 use App\Models\Subscription;
 use App\Models\User;
 use App\Support\Document\Pdf\Driver;
@@ -67,6 +68,11 @@ class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
         $this->contract = $this->subscriptionContract();
+        // مقدّمُ الخدمة كما تكتبه الهجرة — يُزرع هنا لأنّ اختبارًا يفرّغ القاعدة قبله في
+        // قسم PostgreSQL نفسه يمحو ما زرعته، والاسمُ لا يُستعار حين يغيب
+        foreach (['legal_name' => 'مشاريع الذهلي الجديدة', 'legal_trade_name' => 'أبعاد'] as $key => $value) {
+            Setting::updateOrCreate(['business_id' => null, 'key' => $key], ['value' => $value]);
+        }
     }
 
     private function issue(array $data = []): PlatformDocument

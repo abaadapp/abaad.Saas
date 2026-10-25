@@ -9140,5 +9140,6 @@
     "تُرك التحديد — عادت المدفوعة إلى المراجعة": "Decision removed — the payment is back under review",
     "رقم كشف Paymob أو تاريخه": "Paymob statement number or date",
     "ترك هذا التحديد؟ تعود المدفوعة إلى المراجعة، ولا يُكتب في الدفتر شيء.": "Remove this decision? The payment goes back under review, and nothing is written to the books.",
-    "تسجيل تسويات Paymob متوقّف في هذا الإصدار — القاعدة تسمّي مدفوعات التحويلات، فيُسجَّل التحويل حين يعود الإصدار الذي يسمّيها. لم يُكتب شيء.": "Recording Paymob settlements is stopped in this version — the database names payout payments, so the payout is recorded once the version that names them is back. Nothing was written."
+    "تسجيل تسويات Paymob متوقّف في هذا الإصدار — القاعدة تسمّي مدفوعات التحويلات، فيُسجَّل التحويل حين يعود الإصدار الذي يسمّيها. لم يُكتب شيء.": "Recording Paymob settlements is stopped in this version — the database names payout payments, so the payout is recorded once the version that names them is back. Nothing was written.",
+    "تسجيل تسويات Paymob موقوف مؤقّتًا في كلّ المتاجر — الدفعُ والمبيعاتُ تمضي، ويُسجَّل التحويل حين يُفتح. لم يُكتب شيء.": "Recording Paymob settlements is paused for every shop — payments and sales go on, and the payout is recorded once it reopens. Nothing was written."
 }

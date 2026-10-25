@@ -115,6 +115,19 @@ class PosDeviceTest extends TestCase
         return $this->onDevice($device, $raw)->actingAs($user)->get(route('pos.index'));
     }
 
+    /**
+     * الفرعُ الذي قرأه الصندوقُ في طلبه — من ترويسته، لا من الجلسة.
+     *
+     * كانت هذه الاختبارات تقرأ `session('current_branch')`. والجلسةُ لم تعد
+     * تُكتب (#165): الفرعُ على الطلب وحده، فيُقرأ ممّا رسمه الصندوق نفسُه.
+     */
+    private function tillBranch($response): ?int
+    {
+        $response->assertOk();
+
+        return $response->viewData('page')['props']['context']['branchId'] ?? null;
+    }
+
     /* ------------------------- لا باب إلا واحد ------------------------- */
 
     /** شاشة الرمز ومسارها رُفعا من النظام */
@@ -353,13 +366,13 @@ class PosDeviceTest extends TestCase
         [$d1, $r1] = $this->device($this->khuwair);
         [$d2, $r2] = $this->device($this->seeb, 'كاشير 02');
 
-        $this->enterPos($d1, $r1, $cashier);
+        $res = $this->enterPos($d1, $r1, $cashier);
         $this->assertAuthenticated();
-        $this->assertSame($this->khuwair->id, session('current_branch'));
+        $this->assertSame($this->khuwair->id, $this->tillBranch($res));
 
-        $this->enterPos($d2, $r2, $cashier);
+        $res = $this->enterPos($d2, $r2, $cashier);
         $this->assertAuthenticated();
-        $this->assertSame($this->seeb->id, session('current_branch'));
+        $this->assertSame($this->seeb->id, $this->tillBranch($res));
     }
 
     /** وبلا تحديد يعمل في كل فروع متجره — وإلا أُقفل كل كاشير قائم يوم النشر */
@@ -368,9 +381,9 @@ class PosDeviceTest extends TestCase
         $cashier = $this->cashier($this->a, 'k3@abaad.om');
         [$dev, $raw] = $this->device($this->seeb);
 
-        $this->enterPos($dev, $raw, $cashier);
+        $res = $this->enterPos($dev, $raw, $cashier);
         $this->assertAuthenticated();
-        $this->assertSame($this->seeb->id, session('current_branch'));
+        $this->assertSame($this->seeb->id, $this->tillBranch($res));
     }
 
     /* --------------------------- إبطال الجهاز --------------------------- */
@@ -555,17 +568,22 @@ class PosDeviceTest extends TestCase
 
     /* -------------------------- سياق الجلسة -------------------------- */
 
-    /** الجلسة تحمل الموظف والفرع والجهاز والمتجر الصحيح */
+    /**
+     * الجلسة تحمل الموظف والجهاز والمتجر الصحيح، والطلبُ يحمل الفرع.
+     *
+     * والفرعُ لا يُكتب في الجلسة: هي جلسةُ لوحة الإدارة كذلك (#165).
+     */
     public function test_the_session_carries_the_right_context(): void
     {
         $cashier = $this->cashier($this->a, 'k8@abaad.om', [$this->seeb->id]);
         [$dev, $raw] = $this->device($this->seeb);
 
-        $this->enterPos($dev, $raw, $cashier);
+        $res = $this->enterPos($dev, $raw, $cashier);
 
         $this->assertSame($cashier->id, auth()->id());
         $this->assertSame($this->a->id, auth()->user()->business_id);
-        $this->assertSame($this->seeb->id, session('current_branch'));
+        $this->assertSame($this->seeb->id, $this->tillBranch($res));
+        $this->assertNull(session('current_branch'), 'كتب الصندوقُ فرعَه في جلسة الإدارة');
         $this->assertNotNull($dev->fresh()->last_seen_at);
     }
 
@@ -575,13 +593,14 @@ class PosDeviceTest extends TestCase
         [$dev, $raw] = $this->device($this->seeb);
 
         // المالك يفتح نقطة البيع وجلسته على «كل الفروع» (null)
-        // «كل الفروع» = null في الجلسة. الوجهة لا تهمّ هنا (قد تُطلب شاشة
-        // اختيار الكاشير) — المهمّ أن الفرع صار فرع الجهاز قبل أن يُقرأ.
-        $this->onDevice($dev, $raw)->actingAs($this->ownerA)
+        // «كل الفروع» = null في الجلسة. والمهمّ أن الصندوق قرأ فرعَ الجهاز،
+        // وأنّ «كل الفروع» بقيت للوحة كما اختارها.
+        $res = $this->onDevice($dev, $raw)->actingAs($this->ownerA)
             ->withSession(['current_branch' => null])
             ->get(route('pos.index'));
 
-        $this->assertSame($this->seeb->id, session('current_branch'));
+        $this->assertSame($this->seeb->id, $this->tillBranch($res));
+        $this->assertNull(session('current_branch'));
     }
 
     /** وجهازٌ غير مفعَّل لا يبيع — يُساق إلى شاشة الإعداد */
@@ -631,9 +650,9 @@ class PosDeviceTest extends TestCase
         $this->assertGuest();
 
         // والجهاز ما زال يعرف نفسه: الكاشير التالي يدخل ببريده ويجد فرعه
-        $this->enterPos($dev, $raw, $cashier);
+        $res = $this->enterPos($dev, $raw, $cashier);
         $this->assertAuthenticated();
-        $this->assertSame($this->khuwair->id, session('current_branch'));
+        $this->assertSame($this->khuwair->id, $this->tillBranch($res));
     }
 
     /* ─────────── حذفُ صفّ الجهاز — غيرُ إبطال تفعيله ─────────── */

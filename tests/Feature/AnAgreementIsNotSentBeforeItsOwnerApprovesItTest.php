@@ -19,17 +19,18 @@ use Tests\Support\AbaadSubscriptionContract;
 use Tests\TestCase;
 
 /**
- * لا يُرسل للتوقيع نصٌّ لم يعتمده صاحبُ المنصّة — ولا رسومٌ لم يعتمدها.
+ * لا يُرسل للتوقيع نصٌّ لم ينشره صاحبُ المنصّة — ولا رسومٌ لم ينشرها.
  *
  * ═══ ما يُحرس ═══
  *
- *   - الاتفاقياتُ الخمس تصل مسوّداتٍ معطَّلة: لا تُعرض في نافذة الإصدار ولا يُصدر
- *     منها ولو فُعِّلت بيدٍ في القاعدة.
- *   - الاعتمادُ لمدير المنصّة وحده، بكلمة مروره، على بصمة ما رآه. والاعتمادُ لا
- *     يفعّل؛ والتفعيلُ لا يسبق الاعتماد.
- *   - وبياناتُ مقدّم الخدمة (السجلّ والعنوان) لا تمنع اعتمادًا ولا إصدارًا — قرارُ
+ *   - القوالبُ الستّة كلُّها تُعرض في نافذة الإصدار وتُختار (قرارُ المالك 2026-10-25).
+ *     وما لم يُنشر إصدارُه الحاليّ لا يُصدر منه إلّا بتأكيد نشره، على بصمة ما رآه
+ *     المدير — والنشرُ والمستندُ معًا: إن رُدّ أحدُهما لم يقع الآخر.
+ *   - النشرُ لمدير المنصّة وحده، بتأكيدٍ واحدٍ بلا كلمة مرور، ويُسجَّل باسمه
+ *     ووقته وإصداره وبصمته. ولا يُنشر قالبٌ بنشر تحديثٍ برمجيّ.
+ *   - وبياناتُ مقدّم الخدمة (السجلّ والعنوان) لا تمنع نشرًا ولا إصدارًا — قرارُ
  *     المالك: ما كُتب منها يُطبع، وما لم يُكتب لا يُطبع.
- *   - تعديلُ نصٍّ معتمد أو رسومه إصدارٌ جديدٌ معطَّل — وما صدر قبله لا يتغيّر.
+ *   - تعديلُ نصٍّ منشور أو رسومه إصدارٌ جديدٌ غيرُ منشور — وما صدر قبله لا يتغيّر.
  *   - الرسومُ الثابتة هي المبلغ ويذكرها النصّ، و«يبدأ من» حدٌّ أدنى. وتوقيعُ
  *     اتفاقيةٍ لا يكتب فاتورةً ولا دفعةً ولا قيدًا.
  *   - العقدُ القصير القائم يبقى يعمل كما كان، ويحتاج اعتمادًا إن عُدِّل.
@@ -75,72 +76,102 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         ]);
     }
 
-    private function approve(PlatformDocumentTemplate $t, array $body = [])
+    private function publish(PlatformDocumentTemplate $t, array $body = [])
     {
-        return $this->actingAs($this->super)->post(route('super-admin.documents.templates.approve', $t->id), $body + [
-            'hash' => $t->fresh()->contentHash(), 'password' => 'password',
+        return $this->actingAs($this->super)->post(route('super-admin.documents.templates.publish', $t->id), $body + [
+            'hash' => $t->fresh()->contentHash(),
         ]);
     }
 
-    private function activate(PlatformDocumentTemplate $t)
+    /** يُصدر ويؤكّد نشرَ الإصدار الحاليّ في الطلب نفسه — كما تفعل نافذةُ الإصدار */
+    private function publishAndIssue(PlatformDocumentTemplate $t, array $data = [])
     {
-        $t = $t->fresh();
-
-        return $this->actingAs($this->super)->put(route('super-admin.documents.templates.update', $t->id), [
-            'name' => $t->name, 'service' => $t->service, 'title' => $t->title, 'title_en' => $t->title_en,
-            'terms' => $t->terms ?: null, 'includes_plan' => $t->includes_plan, 'includes_amount' => $t->includes_amount,
-            'default_amount' => $t->default_amount, 'default_amount_label' => $t->default_amount_label, 'amount_rule' => $t->amount_rule,
-            'active' => true,
-        ]);
+        return $this->issueRequest($t, $data + ['publish' => true, 'template_hash' => $t->fresh()->contentHash()]);
     }
 
-    public function test_a_draft_agreement_is_neither_offered_nor_issued(): void
+    public function test_every_agreement_is_offered_and_a_draft_is_issued_only_once_its_publishing_is_confirmed(): void
     {
         $draft = $this->template('whatsapp-integration');
 
+        // الستّةُ كلُّها في نافذة الإصدار — والمسوّدةُ منها بإصدارها وبصمتها
         $this->actingAs($this->super)->get(route('super-admin.documents.index'))->assertOk()
-            ->assertInertia(fn ($p) => $p->where('templates', fn ($list) => collect($list)->pluck('id')->doesntContain($draft->id)));
-        $this->issueRequest($draft)->assertSessionHasErrors('template_id');
+            ->assertInertia(fn ($p) => $p->has('templates', 6)
+                ->where('templates', fn ($list) => collect($list)->firstWhere('id', $draft->id)['published'] === false
+                    && collect($list)->firstWhere('id', $draft->id)['hash'] === $draft->contentHash()));
 
-        // ولو فُعِّلت بيدٍ في القاعدة: نصٌّ لم يُعتمد لا يُصدر منه
-        DB::table('platform_document_templates')->where('id', $draft->id)->update(['active' => true]);
-        $this->issueRequest($draft)->assertSessionHasErrors(['document' => 'هذا القالب لم يُعتمد بنصّه الحاليّ — لا يُصدر منه مستند حتى يعتمده مدير المنصّة.']);
+        // بلا تأكيد النشر: لا مستندَ ولا نشر
+        $this->issueRequest($draft)->assertSessionHasErrors(['document' => 'الإصدار 1 من هذا القالب لم يُنشر بعد — أكّد نشره وإصدار المستند.']);
+        // وتأكيدٌ على نصٍّ تغيّر منذ فُتح يُردّ
+        $this->issueRequest($draft, ['publish' => true, 'template_hash' => str_repeat('a', 64)])
+            ->assertSessionHasErrors(['document' => 'تغيّر القالب منذ فتحته — راجعه من جديد ثمّ انشره.']);
+        // ومستندٌ يُردّ لنقصٍ فيه لا ينشر قالبَه
+        $this->publishAndIssue($draft, ['client' => ['phone' => 'x'], 'business_id' => null])->assertSessionHasErrors('document');
         $this->assertSame(0, PlatformDocument::count());
-
-        // ولا يُفعَّل من الشاشة قبل اعتماده
-        DB::table('platform_document_templates')->where('id', $draft->id)->update(['active' => false]);
-        $this->activate($draft)->assertSessionHasErrors('active');
+        $this->assertSame('draft', $draft->fresh()->approvalState());
         $this->assertFalse($draft->fresh()->active);
+
+        $this->publishAndIssue($draft)->assertSessionHasNoErrors()->assertRedirect();
+        $doc = PlatformDocument::latest('id')->firstOrFail();
+        $draft = $draft->fresh();
+        $this->assertTrue($draft->issuable(), 'نُشر الإصدار وصدر منه المستند معًا');
+        $this->assertSame($this->super->id, (int) $draft->approved_by);
+        $this->assertSame('مدير المنصة', $draft->approved_by_name);
+        $this->assertNotNull($draft->approved_at);
+        $this->assertSame(1, $doc->template_version);
+        $version = $draft->versions()->where('version', 1)->firstOrFail();
+        $this->assertSame($draft->contentHash(), $version->content_hash);
+        $this->assertSame('مدير المنصة', $version->published_by_name);
+        $this->assertTrue(ActivityLog::where('subject_id', $draft->id)->where('subject_type', PlatformDocumentTemplate::class)
+            ->where('description', 'like', 'نشر قالب مستند (الإصدار 1%')->exists());
+
+        // والمنشورُ يُصدر منه بلا تأكيدٍ ثانٍ
+        $this->issueRequest($draft)->assertSessionHasNoErrors();
+        $this->assertSame(2, PlatformDocument::count());
     }
 
-    public function test_approval_is_by_password_on_what_was_seen(): void
+    public function test_publishing_from_the_templates_screen_is_one_confirmation_on_what_was_seen(): void
     {
         $t = $this->template('payment-integration');
         $this->completeProvider();
 
-        // كلمةُ مرورٍ خاطئة، أو قالبٌ تغيّر بعد أن فُتح
-        $this->approve($t, ['password' => 'wrong'])->assertSessionHasErrors('password');
+        // قالبٌ تغيّر بعد أن فُتح
         $seen = $t->contentHash();
         DB::table('platform_document_templates')->where('id', $t->id)->update(['default_amount' => 13]);
-        $this->approve($t, ['hash' => $seen])->assertSessionHasErrors(['approve' => 'تغيّر القالب منذ فتحته — راجعه من جديد ثمّ اعتمده.']);
+        $this->publish($t, ['hash' => $seen])->assertSessionHasErrors(['publish' => 'تغيّر القالب منذ فتحته — راجعه من جديد ثمّ انشره.']);
         $this->assertSame('draft', $t->fresh()->approvalState());
         DB::table('platform_document_templates')->where('id', $t->id)->update(['default_amount' => 12]);
 
-        $this->approve($t)->assertSessionHasNoErrors();
+        // بلا كلمة مرور — تأكيدٌ واحد
+        $this->publish($t)->assertSessionHasNoErrors();
         $t = $t->fresh();
-        $this->assertSame('approved', $t->approvalState());
+        $this->assertTrue($t->issuable());
         $this->assertSame($this->super->id, (int) $t->approved_by);
-        $this->assertSame('مدير المنصة', $t->approved_by_name);
-        $this->assertFalse($t->active, 'الاعتمادُ لا يفعّل — التفعيلُ قرارٌ بعده');
         $this->assertTrue(ActivityLog::where('subject_id', $t->id)->where('subject_type', PlatformDocumentTemplate::class)
-            ->where('description', 'like', 'اعتمد قالب مستند%')->exists());
+            ->where('description', 'like', 'نشر قالب مستند%')->exists());
 
-        $this->activate($t)->assertSessionHasNoErrors();
         $this->issueRequest($t)->assertSessionHasNoErrors()->assertRedirect();
         $doc = PlatformDocument::latest('id')->firstOrFail();
         $this->assertSame(1, $doc->template_version);
         $this->assertSame('TEST-CR-0001', $doc->provider['cr'], 'مقدّمُ الخدمة نسخةٌ في المستند');
 
+        // وإيقافُ النشر يعيده إلى التأكيد — ومستندُه كما صدر
+        $this->actingAs($this->super)->post(route('super-admin.documents.templates.unpublish', $t->id))->assertSessionHasNoErrors();
+        $this->assertFalse($t->fresh()->issuable());
+        $this->issueRequest($t)->assertSessionHasErrors('document');
+        $this->assertTrue($doc->fresh()->is($doc));
+        $this->publishAndIssue($t)->assertSessionHasNoErrors();
+    }
+
+    public function test_a_fee_the_text_names_is_needed_before_publishing(): void
+    {
+        $t = $this->template('store-setup');
+        DB::table('platform_document_templates')->where('id', $t->id)->update(['default_amount' => null]);
+        $t = $t->fresh();
+
+        $this->publish($t)->assertSessionHasErrors(['publish' => 'اكتب رسوم القالب قبل نشره — نصّه يذكرها.']);
+        $this->publishAndIssue($t)->assertSessionHasErrors(['document' => 'اكتب رسوم القالب قبل نشره — نصّه يذكرها.']);
+        $this->assertSame(0, PlatformDocument::count());
+        $this->assertFalse($t->fresh()->issuable());
     }
 
     /**
@@ -154,9 +185,8 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $t = $this->template('subscription-agreement');
         Setting::updateOrCreate(['business_id' => null, 'key' => 'legal_trade_name'], ['value' => 'أبعاد']);
 
-        $this->approve($t)->assertSessionHasNoErrors();
+        $this->publish($t)->assertSessionHasNoErrors();
         $this->assertSame('approved', $t->fresh()->approvalState());
-        $this->activate($t)->assertSessionHasNoErrors();
         $this->issueRequest($t)->assertSessionHasNoErrors()->assertRedirect();
         $doc = PlatformDocument::latest('id')->firstOrFail();
         $this->assertSame('', $doc->provider['cr']);
@@ -175,16 +205,33 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $this->assertSame('', $doc->fresh()->provider['cr']);
     }
 
-    public function test_only_a_platform_admin_approves(): void
+    public function test_only_a_platform_admin_publishes_edits_previews_or_issues(): void
     {
         $this->completeProvider();
         $t = $this->template('store-setup');
         $merchant = User::create(['business_id' => $this->shop->id, 'name' => 'المالك', 'email' => 'owner@shop.test', 'password' => bcrypt('password'), 'role' => 'admin', 'status' => 'نشط']);
+        $calls = [
+            ['post', route('super-admin.documents.templates.publish', $t->id), ['hash' => $t->contentHash()]],
+            ['post', route('super-admin.documents.templates.unpublish', $t->id), []],
+            ['put', route('super-admin.documents.templates.update', $t->id), ['name' => 'X', 'title' => 'X', 'form' => $t->form]],
+            ['post', route('super-admin.documents.templates.store'), ['name' => 'X', 'title' => 'X', 'terms' => [['h' => '', 'b' => 'X']]]],
+            ['get', route('super-admin.documents.templates.preview', $t->id), []],
+            ['get', route('super-admin.documents.templates.preview-pdf', $t->id), []],
+            ['post', route('super-admin.documents.store'), ['template_id' => $t->id, 'business_id' => $this->shop->id, 'publish' => true, 'template_hash' => $t->contentHash()]],
+        ];
 
-        $this->actingAs($merchant)->post(route('super-admin.documents.templates.approve', $t->id), ['hash' => $t->contentHash(), 'password' => 'password'])->assertForbidden();
+        foreach ($calls as [$verb, $url, $body]) {
+            $this->actingAs($merchant)->{$verb}($url, $body)->assertForbidden();
+        }
         auth()->logout();
-        $this->post(route('super-admin.documents.templates.approve', $t->id), ['hash' => $t->contentHash(), 'password' => 'password'])->assertRedirect();
-        $this->assertSame('draft', $t->fresh()->approvalState());
+        foreach ($calls as [$verb, $url, $body]) {
+            $this->{$verb}($url, $body)->assertRedirect(route('login'));
+        }
+        $t = $t->fresh();
+        $this->assertSame('draft', $t->approvalState());
+        $this->assertSame(1, $t->version);
+        $this->assertSame(0, PlatformDocument::count());
+        $this->assertSame(0, PlatformDocumentTemplate::where('name', 'X')->count());
     }
 
     public function test_editing_an_approved_text_is_a_new_version_and_what_was_issued_stays(): void
@@ -195,11 +242,11 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
             'includes_plan' => false, 'includes_amount' => true, 'active' => true, 'default_amount' => '100', 'amount_rule' => 'fixed',
         ])->assertSessionHasNoErrors();
         $t = PlatformDocumentTemplate::where('name', 'تطبيق خاص')->firstOrFail();
-        $this->assertFalse($t->active, 'القالبُ الجديد مسوّدةٌ ولو طُلب تفعيلُه');
+        $this->assertFalse($t->active, 'القالبُ الجديد غيرُ منشورٍ ولو طُلب تفعيلُه');
         $this->assertSame('draft', $t->approvalState());
+        $this->assertSame(1, $t->versions()->count());
 
-        $this->approve($t)->assertSessionHasNoErrors();
-        $this->activate($t)->assertSessionHasNoErrors();
+        $this->publish($t)->assertSessionHasNoErrors();
         $this->issueRequest($t, ['client' => ['phone' => '+96891234567']])->assertSessionHasNoErrors();
         $first = PlatformDocument::latest('id')->firstOrFail();
         $this->post(route('documents.sign.submit', $first->token), [
@@ -208,7 +255,7 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $first = $first->fresh();
         $this->assertSame(PlatformDocument::SIGNED, $first->status);
 
-        // نصٌّ جديد: الإصدارُ الثاني، معطَّلٌ حتى يُعتمد
+        // نصٌّ جديد: الإصدارُ الثاني، غيرُ منشورٍ حتى يُؤكَّد نشرُه
         $t = $t->fresh();
         $this->actingAs($this->super)->put(route('super-admin.documents.templates.update', $t->id), [
             'name' => $t->name, 'title' => $t->title, 'terms' => [['h' => 'التسليم:', 'b' => 'خلال ستين يومًا.']],
@@ -218,7 +265,9 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $this->assertSame(2, $t->version);
         $this->assertFalse($t->active);
         $this->assertSame('draft', $t->approvalState());
-        $this->issueRequest($t)->assertSessionHasErrors('template_id');
+        $this->assertSame([2, 1], $t->versions()->pluck('version')->all(), 'الإصدارُ الأوّل باقٍ في سجلّه');
+        $this->assertSame('خلال ثلاثين يومًا.', $t->versions()->where('version', 1)->firstOrFail()->content['terms'][0]['b']);
+        $this->issueRequest($t)->assertSessionHasErrors('document');
 
         // والموقَّعُ قبله كما وُقِّع: نصُّه وبصمتُه وإصدارُه وورقتُه
         $first = $first->fresh();
@@ -227,11 +276,11 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $this->assertTrue(PlatformDocuments::intact($first));
         $this->actingAs($this->super)->get(route('super-admin.documents.pdf', $first->id))->assertOk();
 
-        // وتعطيلُ القالب لا يمسّ مستنداته
+        // وإصدارٌ جديدٌ غيرُ منشور لا يمسّ مستنداته
         $this->assertSame(1, $t->documents()->count());
     }
 
-    public function test_the_short_contract_keeps_issuing_and_needs_approval_once_edited(): void
+    public function test_the_short_contract_keeps_issuing_and_needs_publishing_once_edited(): void
     {
         $short = $this->subscriptionContract();
         $this->assertSame('legacy', $short->approvalState());
@@ -244,6 +293,10 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $short = $short->fresh();
         $this->assertSame('draft', $short->approvalState());
         $this->assertFalse($short->active);
+        $this->issueRequest($short)->assertSessionHasErrors('document');
+        $this->publishAndIssue($short)->assertSessionHasNoErrors();
+        $this->assertSame('عقد اشتراك معدَّل', PlatformDocument::latest('id')->firstOrFail()->title);
+        $this->assertSame('عقد اشتراك', PlatformDocument::oldest('id')->firstOrFail()->title, 'العقدُ الذي صدر قبله بعنوانه');
     }
 
     public function test_a_fixed_fee_is_the_amount_and_the_text_says_it(): void
@@ -251,7 +304,7 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $this->completeProvider();
         $t = $this->approveTemplate($this->template('whatsapp-integration'));
 
-        $this->issueRequest($t, ['amount' => '20'])->assertSessionHasErrors(['document' => 'رسوم هذه الخدمة ثابتة: 25.000 ر.ع كما اعتُمدت. لتغييرها عدّل القالب واعتمده من جديد.']);
+        $this->issueRequest($t, ['amount' => '20'])->assertSessionHasErrors(['document' => 'رسوم هذه الخدمة ثابتة: 25.000 ر.ع كما نُشرت. لتغييرها عدّل القالب وانشره من جديد.']);
         // وبلوحةٍ عربيّة هو الرقمُ نفسُه، وبلا رقمٍ يُؤخذ المعتمد
         $this->issueRequest($t, ['amount' => '٢٥'])->assertSessionHasNoErrors();
         $this->issueRequest($t, ['amount' => ''])->assertSessionHasNoErrors();
@@ -262,8 +315,8 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
 
         // رسومٌ جديدة من اللوحة: إصدارٌ يُعتمد، ثمّ يقولها النصُّ والمبلغُ معًا — والقديمُ بسعره
         $this->actingAs($this->super)->put(route('super-admin.documents.templates.update', $t->id), [
-            'name' => $t->name, 'service' => $t->service, 'title' => $t->title, 'title_en' => $t->title_en,
-            'includes_plan' => false, 'includes_amount' => true, 'default_amount' => '٢٧٫٥٠٠', 'default_amount_label' => $t->default_amount_label,
+            'name' => $t->name, 'service' => $t->service, 'title' => $t->title, 'title_en' => $t->title_en, 'form' => $t->form,
+            'includes_plan' => false, 'includes_amount' => true, 'default_amount' => '٢٧٫٥٠٠', 'default_amount_label' => $t->default_amount_label, 'amount_rule' => $t->amount_rule,
         ])->assertSessionHasNoErrors();
         $t = $this->approveTemplate($t->fresh());
         $this->assertSame('27.500', (string) $t->default_amount);
@@ -286,7 +339,7 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $this->completeProvider();
         $t = $this->approveTemplate($this->template('website-customization'));
 
-        $this->issueRequest($t, ['amount' => '59.999'])->assertSessionHasErrors(['document' => 'سعر هذه الخدمة يبدأ من 60.000 ر.ع كما اعتُمد.']);
+        $this->issueRequest($t, ['amount' => '59.999'])->assertSessionHasErrors(['document' => 'سعر هذه الخدمة يبدأ من 60.000 ر.ع كما نُشر.']);
         $this->issueRequest($t, ['amount' => '75.1234'])->assertSessionHasErrors('amount');
         $this->issueRequest($t, ['amount' => '٧٥٫٢٥٠'])->assertSessionHasNoErrors();
         $doc = PlatformDocument::latest('id')->firstOrFail();
@@ -295,10 +348,10 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
 
         // ورسومُ القالب بثلاث خاناتٍ لا أكثر — والعربيّةُ تُقرأ
         $this->actingAs($this->super)->put(route('super-admin.documents.templates.update', $t->id), [
-            'name' => $t->name, 'title' => $t->title, 'includes_amount' => true, 'default_amount' => '60.0001',
+            'name' => $t->name, 'title' => $t->title, 'form' => $t->form, 'includes_amount' => true, 'default_amount' => '60.0001',
         ])->assertSessionHasErrors('default_amount');
         $this->actingAs($this->super)->put(route('super-admin.documents.templates.update', $t->id), [
-            'name' => $t->name, 'title' => $t->title, 'includes_amount' => true, 'default_amount' => 'ستون',
+            'name' => $t->name, 'title' => $t->title, 'form' => $t->form, 'includes_amount' => true, 'default_amount' => 'ستون',
         ])->assertSessionHasErrors('default_amount');
     }
 

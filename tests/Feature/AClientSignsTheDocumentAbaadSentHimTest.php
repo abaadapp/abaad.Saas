@@ -129,7 +129,7 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 
         $this->actingAs($this->super)->get(route('super-admin.documents.index'))->assertOk()
             ->assertInertia(fn ($p) => $p->component('Platform/Documents/Index')
-                ->has('templates', PlatformDocumentTemplate::all()->filter(fn ($t) => $t->issuable())->count()));
+                ->has('templates', PlatformDocumentTemplate::count()));
         $this->actingAs($this->super)->get(route('super-admin.documents.templates'))->assertOk();
     }
 

@@ -25,6 +25,11 @@ import type { PageProps } from '@/types';
 
 interface Template {
     id: number;
+    /** إصدارُه الحاليّ منشور — وإلّا نُشر بتأكيد المدير وهو يُصدر منه */
+    published: boolean;
+    version: number;
+    /** بصمةُ الإصدار الحاليّ — يُرسل مع تأكيد النشر فيُردّ إن تغيّر القالب بعد فتحه */
+    hash: string;
     name: string;
     service: string | null;
     title: string;
@@ -35,7 +40,7 @@ interface Template {
     includes_amount: boolean;
     default_amount: string | null;
     default_amount_label: string | null;
-    /** fixed: الرسومُ كما اعتُمدت ويذكرها النصّ · min: تبدأ منها · null: يكتبها المدير */
+    /** fixed: الرسومُ كما نُشرت ويذكرها النصّ · min: تبدأ منها · null: يكتبها المدير */
     amount_rule: 'fixed' | 'min' | null;
 }
 
@@ -59,14 +64,6 @@ interface BusinessOption {
     owner: string | null;
     phone: string | null;
     starts_on: string;
-}
-
-/** قالبٌ لا يُصدر منه بعد — يُعرض في القائمة معطَّلًا بسببه */
-interface WaitingTemplate {
-    id: number;
-    name: string;
-    service: string | null;
-    reason: string;
 }
 
 /** الشركةُ التي فُتحت مستنداتُها من ملفّها (`?business=`) */
@@ -94,7 +91,6 @@ interface Props {
     filters: { state: string; q: string; business?: string };
     counts: { sent: number; signed: number };
     templates: Template[];
-    waiting: WaitingTemplate[];
     company: Company | null;
     /** «مستند جديد» من ملفّ الشركة: النافذةُ تُفتح والشركةُ مختارة */
     opening: boolean;
@@ -113,7 +109,6 @@ export default function DocumentsIndex() {
         filters,
         counts,
         templates,
-        waiting = [],
         company = null,
         opening = false,
         plans,
@@ -300,7 +295,6 @@ export default function DocumentsIndex() {
             {creating && (
                 <NewDocumentDialog
                     templates={templates}
-                    waiting={waiting}
                     company={company}
                     plans={plans}
                     cycles={cycles}
@@ -317,7 +311,6 @@ export default function DocumentsIndex() {
 
 function NewDocumentDialog({
     templates,
-    waiting,
     company,
     plans,
     cycles,
@@ -328,7 +321,6 @@ function NewDocumentDialog({
     onClose,
 }: {
     templates: Template[];
-    waiting: WaitingTemplate[];
     company: Company | null;
     plans: PlanOption[];
     cycles: CycleOption[];
@@ -342,6 +334,8 @@ function NewDocumentDialog({
     const [source, setSource] = useState<'business' | 'new'>('business');
     const [previewing, setPreviewing] = useState(false);
     const [teamOpen, setTeamOpen] = useState(false);
+    // قالبٌ لم يُنشر إصدارُه: تأكيدٌ واحدٌ ينشره ويُصدر المستند معًا
+    const [confirming, setConfirming] = useState(false);
     // نهايةُ المدّة تتبع بدايتَها ودورتَها — حتى يكتب المديرُ نهايةً اتُّفق عليها
     const [endTouched, setEndTouched] = useState(false);
     const firstCycle = renew?.cycle ?? 'monthly';
@@ -375,6 +369,7 @@ function NewDocumentDialog({
     // قالبٌ آخر: مبلغُه المقترح، وحقولُ فريقٍ فارغةٌ له
     const pickTemplate = (id: string) => {
         const next = templates.find((x) => String(x.id) === id);
+        setConfirming(false);
         form.setData((d) => ({
             ...d,
             template_id: id,
@@ -409,19 +404,26 @@ function NewDocumentDialog({
     const setClient = (k: keyof typeof form.data.client, v: string) =>
         form.setData('client', { ...form.data.client, [k]: v });
 
+    const unpublished = !!template && !template.published;
     const submit = (e: FormEvent) => {
         e.preventDefault();
+        // غيرُ المنشور يُراجع أوّلًا: يُعرض ما سيُنشر، ثمّ تأكيدٌ واحد
+        if (unpublished && !confirming) {
+            setConfirming(true);
+            return;
+        }
+        const publish = unpublished && template ? { publish: true, template_hash: template.hash } : {};
         form.transform((d) => {
             const term = template?.includes_plan
                 ? { term_starts_on: d.term_starts_on, term_ends_on: d.term_ends_on }
                 : { term_starts_on: '', term_ends_on: '' };
-            if (renew) return { ...d, ...term, business_id: '', client: { phone: d.client.phone } };
+            if (renew) return { ...d, ...term, ...publish, business_id: '', client: { phone: d.client.phone } };
             // للنشاط المسجّل يُرسل الهاتفُ وحده — اسمٌ كُتب في التبويب الآخر لا يعبر
             return source === 'business'
-                ? { ...d, ...term, renews_document_id: '', client: { phone: d.client.phone } }
-                : { ...d, ...term, renews_document_id: '', business_id: '' };
+                ? { ...d, ...term, ...publish, renews_document_id: '', client: { phone: d.client.phone } }
+                : { ...d, ...term, ...publish, renews_document_id: '', business_id: '' };
         });
-        form.post(route('super-admin.documents.store'), { onSuccess: () => onClose() });
+        form.post(route('super-admin.documents.store'), { onSuccess: () => onClose(), onError: () => setConfirming(false) });
     };
 
     return (
@@ -447,28 +449,17 @@ function NewDocumentDialog({
                         <Select
                             value={form.data.template_id}
                             onChange={(e) => pickTemplate(e.target.value)}
-                            options={[
-                                ...templates.map((x) => ({
-                                    label: x.service ? `${x.name} · ${x.service}` : x.name,
-                                    value: String(x.id),
-                                })),
-                                // ما لا يُصدر منه بعدُ ظاهرٌ باسمه وسببه، ولا يُختار
-                                ...waiting.map((x) => ({
-                                    label: `${x.name} — ${t(x.reason)}`,
-                                    value: `waiting-${x.id}`,
-                                    disabled: true,
-                                })),
-                            ]}
+                            // القوالبُ كلُّها تُختار — وغيرُ المنشور يُقال ذلك بجانبه
+                            options={templates.map((x) => ({
+                                label: [x.service ? `${x.name} · ${x.service}` : x.name, x.published ? '' : t('غير منشور')].filter(Boolean).join(' — '),
+                                value: String(x.id),
+                            }))}
                         />
-                        {waiting.length > 0 && (
-                            <p className="mt-1 text-[12px] text-[#6b7280]" data-testid="waiting-templates">
-                                {t('يُصدر من القالب المعتمد والمفعّل وحده — :n بانتظارك في', { n: String(waiting.length) })}{' '}
-                                <SmartLink
-                                    routeName="super-admin.documents.templates"
-                                    href={route('super-admin.documents.templates')}
-                                    className="underline"
-                                >
-                                    {t('القوالب')}
+                        {unpublished && template && (
+                            <p className="mt-1 text-[12px] text-[#92400e]" data-testid="unpublished-note">
+                                {t('الإصدار :v من هذا القالب غير منشور. راجعه بالمعاينة، ثم يُنشر ويصدر المستند بتأكيد واحد.', { v: String(template.version) })}{' '}
+                                <SmartLink routeName="super-admin.documents.templates" href={route('super-admin.documents.templates')} className="underline">
+                                    {t('تحرير القالب')}
                                 </SmartLink>
                             </p>
                         )}
@@ -648,9 +639,9 @@ function NewDocumentDialog({
                                 error={errors.amount}
                                 hint={
                                     template.amount_rule === 'fixed'
-                                        ? t('رسوم ثابتة كما اعتُمدت ويذكرها نص الاتفاقية — تُغيَّر من القالب ثم يُعتمد من جديد')
+                                        ? t('رسوم ثابتة كما نُشرت ويذكرها نص الاتفاقية — تُغيَّر من القالب ثم يُنشر من جديد')
                                         : template.amount_rule === 'min' && template.default_amount
-                                          ? t('يبدأ من :fee ر.ع كما اعتُمد', { fee: template.default_amount })
+                                          ? t('يبدأ من :fee ر.ع كما نُشر', { fee: template.default_amount })
                                           : undefined
                                 }
                             >
@@ -706,12 +697,26 @@ function NewDocumentDialog({
 
                     {errors.document && <p className="text-[13px] text-[#b91c1c]">{errors.document}</p>}
 
+                    {confirming && template && (
+                        <div className="space-y-2 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]" data-testid="publish-confirm">
+                            <p className="font-medium">{t('تأكيد نشر الإصدار :v وإصدار المستند', { v: String(template.version) })}</p>
+                            <p>
+                                {t('يُنشر «:name» بنصه ورسومه كما في المعاينة أعلاه، ويُسجَّل النشر باسمك، ثم يصدر المستند ورابطه. المستندات السابقة لا تتغيّر.', {
+                                    name: template.name,
+                                })}
+                            </p>
+                            <p dir="ltr" className="text-end font-mono text-[11.5px] text-[#a16207]">
+                                {template.hash.slice(0, 12)}
+                            </p>
+                        </div>
+                    )}
+
                     <div className="flex justify-end gap-2 pt-2">
-                        <Button type="button" variant="ghost" onClick={onClose}>
-                            {t('إلغاء')}
+                        <Button type="button" variant="ghost" onClick={confirming ? () => setConfirming(false) : onClose}>
+                            {confirming ? t('رجوع') : t('إلغاء')}
                         </Button>
-                        <Button type="submit" loading={form.processing}>
-                            {t('إصدار المستند وإنشاء الرابط')}
+                        <Button type="submit" loading={form.processing} data-testid="issue-submit">
+                            {confirming ? t('تأكيد النشر والإصدار') : unpublished ? t('مراجعة النشر والإصدار') : t('إصدار المستند وإنشاء الرابط')}
                         </Button>
                     </div>
                 </form>

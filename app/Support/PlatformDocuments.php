@@ -49,12 +49,13 @@ use Throwable;
  * الفريق (`team`) ساعةَ الإصدار، وإجاباتُ العميل (`answers`) ساعةَ التوقيع. وإن
  * سأل النموذجُ العميلَ عن بياناته بحقوله فهي بيانُه، لا `FIELDS`.
  *
- * ═══ الاعتماد ═══
+ * ═══ النشر ═══
  *
- * لا يُصدر إلّا من قالبٍ معتمدٍ نصُّه كما هو الآن (`PlatformDocumentTemplate::approved`).
- * ورسومُه كما اعتُمدت: الثابتةُ هي المبلغ، و«يبدأ من» حدُّه الأدنى. ومقدّمُ الخدمة
- * بما كُتب من بياناته نسخةٌ في المستند ساعتَها — وما لم يُكتب (السجلّ، العنوان) لا
- * يُطبع، ولا يمنع اعتمادًا ولا إصدارًا: قرارُ المالك.
+ * يُصدر من الإصدار المنشور من القالب (`PlatformDocumentTemplate::issuable`)، وما لم
+ * يُنشر يُنشر بتأكيد المدير وهو يُصدر منه (`TemplatePublishing`). ورسومُه كما نُشرت:
+ * الثابتةُ هي المبلغ، و«يبدأ من» حدُّه الأدنى. ومقدّمُ الخدمة بما كُتب من بياناته
+ * نسخةٌ في المستند ساعتَها — وما لم يُكتب (السجلّ، العنوان) لا يُطبع، ولا يمنع
+ * نشرًا ولا إصدارًا: قرارُ المالك.
  */
 class PlatformDocuments
 {
@@ -180,13 +181,26 @@ class PlatformDocuments
      * ودورتُه أساسٌ يعدّله المدير، ومدّتُه تبدأ حيث انتهت مدّةُ سابقه. ولا يُصدر
      * تجديدٌ ثانٍ لعقدٍ له تجديدٌ قائم.
      *
-     * @param  array{template_id:int, business_id?:?int, client?:array, plan_id?:?int, cycle?:?string, term_starts_on?:?string, term_ends_on?:?string, renews_document_id?:?int, amount?:mixed, amount_label?:?string, days?:?int, notes?:?string, team?:array}  $data
+     * وكلُّ قالبٍ يُختار. وما لم يُنشر إصدارُه الحاليّ يُنشر هنا بتأكيد المدير
+     * (`publish`) على بصمة ما رآه (`template_hash`) — في معاملة المستند نفسها:
+     * فإن رُدّ الإصدارُ لم يُنشر، وإن تغيّر القالبُ منذ فتحه رُدّا معًا.
+     *
+     * @param  array{template_id:int, publish?:bool, template_hash?:?string, business_id?:?int, client?:array, plan_id?:?int, cycle?:?string, term_starts_on?:?string, term_ends_on?:?string, renews_document_id?:?int, amount?:mixed, amount_label?:?string, days?:?int, notes?:?string, team?:array}  $data
      */
     public static function issue(User $by, array $data): PlatformDocument
     {
-        $template = PlatformDocumentTemplate::where('active', true)->findOrFail($data['template_id']);
-        if (! $template->approved()) {
-            throw new RuntimeException(__('هذا القالب لم يُعتمد بنصّه الحاليّ — لا يُصدر منه مستند حتى يعتمده مدير المنصّة.'));
+        $template = PlatformDocumentTemplate::findOrFail($data['template_id']);
+        $publish = ! $template->issuable();
+        if ($publish) {
+            if (empty($data['publish'])) {
+                throw new RuntimeException(__('الإصدار :v من هذا القالب لم يُنشر بعد — أكّد نشره وإصدار المستند.', ['v' => $template->version]));
+            }
+            if (! hash_equals($template->contentHash(), (string) ($data['template_hash'] ?? ''))) {
+                throw new RuntimeException(__('تغيّر القالب منذ فتحته — راجعه من جديد ثمّ انشره.'));
+            }
+            if ($problems = TemplatePublishing::publishProblems($template)) {
+                throw new RuntimeException($problems[0]);
+            }
         }
         // مقدّمُ الخدمة كما هو اليوم — بما كُتب منه، وما لم يُكتب لا يُطبع
         $provider = self::provider();
@@ -247,7 +261,7 @@ class PlatformDocuments
             // رسومٌ ثابتة: المبلغُ هو ما اعتُمد ويذكره النصّ — لا يُكتب غيرُه هنا
             if ($template->amount_rule === PlatformDocumentTemplate::AMOUNT_FIXED && $fee !== null) {
                 if ($given !== null && $given !== '' && (! is_numeric($given) || round((float) $given, 3) !== $fee)) {
-                    throw new RuntimeException(__('رسوم هذه الخدمة ثابتة: :fee ر.ع كما اعتُمدت. لتغييرها عدّل القالب واعتمده من جديد.', ['fee' => number_format($fee, 3, '.', '')]));
+                    throw new RuntimeException(__('رسوم هذه الخدمة ثابتة: :fee ر.ع كما نُشرت. لتغييرها عدّل القالب وانشره من جديد.', ['fee' => number_format($fee, 3, '.', '')]));
                 }
                 $given = $fee;
             }
@@ -256,7 +270,7 @@ class PlatformDocuments
             }
             $amount = round((float) $given, 3);
             if ($template->amount_rule === PlatformDocumentTemplate::AMOUNT_MIN && $fee !== null && $amount < $fee) {
-                throw new RuntimeException(__('سعر هذه الخدمة يبدأ من :fee ر.ع كما اعتُمد.', ['fee' => number_format($fee, 3, '.', '')]));
+                throw new RuntimeException(__('سعر هذه الخدمة يبدأ من :fee ر.ع كما نُشر.', ['fee' => number_format($fee, 3, '.', '')]));
             }
         }
 
@@ -269,7 +283,11 @@ class PlatformDocuments
         ]);
         $team = $form ? (DocumentForms::clean($form, is_array($data['team'] ?? null) ? $data['team'] : [], 'team') ?: null) : null;
 
-        return DB::transaction(function () use ($by, $template, $business, $renews, $client, $phone, $plan, $start, $end, $amount, $data, $days, $form, $team, $provider) {
+        return DB::transaction(function () use ($by, $template, $publish, $business, $renews, $client, $phone, $plan, $start, $end, $amount, $data, $days, $form, $team, $provider) {
+            // النشرُ والمستندُ معًا — تحت قفل القالب، على البصمة نفسها التي بُني منها المستند
+            if ($publish) {
+                TemplatePublishing::publishLocked($template->id, $by, $template->contentHash());
+            }
             $doc = PlatformDocument::create([
                 // رقمٌ مؤقّتٌ فريد، ثمّ رقمُ العقد من معرّفه — لا عدّادَ يتسابق عليه اثنان
                 'number' => 'TMP-'.Str::random(24),
@@ -605,13 +623,15 @@ class PlatformDocuments
      *
      * والقالبُ جداولُ وحدها: محرّكُ الورق لا يقرأ flex ولا grid.
      */
-    public static function pdf(PlatformDocument $doc)
+    public static function pdf(PlatformDocument $doc, bool $preview = false)
     {
         $html = view('pdf.platform-document', [
             'doc' => $doc,
             'provider' => self::providerOf($doc),
             'fields' => self::FIELDS,
             'signature' => self::signatureDataUri($doc),
+            // معاينةُ القالب قبل نشره — ورقةٌ موسومةٌ لا مستند (`DocumentTemplateController::previewPdf`)
+            'preview' => $preview,
         ])->render();
 
         return Pdf::a4($html, $doc->number);

@@ -107,29 +107,33 @@ class ACompanyKeepsItsDocumentsTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('company', null)->where('opening', false)->has('documents', 2));
     }
 
-    public function test_the_dialog_names_every_template_and_issues_from_the_ready_ones_only(): void
+    public function test_the_dialog_offers_all_six_templates_and_none_is_held_back(): void
     {
         $drafts = PlatformDocumentTemplate::whereNull('approved_hash')->orderBy('id')->get();
-        $this->assertCount(5, $drafts, 'الاتفاقياتُ الخمس مسوّدات');
-        // واحدةٌ اعتُمدت ولم تُفعَّل
-        $approved = $drafts->first();
-        $approved->forceFill(['approved_hash' => $approved->contentHash(), 'approval_basis' => PlatformDocumentTemplate::BY_OWNER, 'approved_at' => now()])->save();
+        $this->assertCount(5, $drafts, 'الاتفاقياتُ الخمس لم تُنشر بعد');
 
         $this->actingAs($this->super)->get(route('super-admin.documents.index'))->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('templates', 1)
+                ->has('templates', 6)
                 ->where('templates.0.id', $this->subscriptionContract()->id)
-                ->has('waiting', 5)
-                ->where('waiting.0.id', $approved->id)
-                ->where('waiting.0.reason', 'معتمد — غير مفعّل')
-                ->where('waiting.1.reason', 'بانتظار الاعتماد')
-                ->where('waiting.4.reason', 'بانتظار الاعتماد'));
+                ->where('templates.0.published', true)
+                ->where('templates.1.published', false)
+                ->where('templates.5.published', false)
+                ->where('templates.5.hash', $drafts->last()->contentHash())
+                ->missing('waiting'));
 
-        // والمنتظرُ لا يُصدر منه ولو أُرسل رقمُه
-        $count = PlatformDocument::count();
+        // ومن ملفّ الشركة تُصدر أيُّ اتفاقيةٍ لها بتأكيد نشرها — فتظهر في ملفّها
+        $last = $drafts->last();
         $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
-            'template_id' => $drafts->last()->id, 'business_id' => $this->shop->id, 'amount' => $drafts->last()->default_amount,
-        ])->assertSessionHasErrors();
-        $this->assertSame($count, PlatformDocument::count());
+            'template_id' => $last->id, 'business_id' => $this->shop->id, 'amount' => $last->default_amount,
+            'publish' => true, 'template_hash' => $last->contentHash(),
+        ])->assertSessionHasNoErrors();
+        $this->actingAs($this->super)->get(route('super-admin.businesses.show', $this->shop->id))
+            ->assertInertia(fn (Assert $page) => $page->where('documents.count', 1)->where('documents.rows.0.title', $last->title));
+        $this->actingAs($this->super)->get(route('super-admin.businesses.edit', $this->shop->id))
+            ->assertInertia(fn (Assert $page) => $page->where('documents.count', 1)->where('documents.rows.0.title', $last->title)
+                ->where('documents.rows.0.pdf_url', route('super-admin.documents.pdf', PlatformDocument::latest('id')->value('id'))));
+        $this->actingAs($this->super)->get(route('super-admin.businesses.edit', $this->other->id))
+            ->assertInertia(fn (Assert $page) => $page->where('documents.count', 0)->has('documents.rows', 0));
     }
 }

@@ -42,6 +42,12 @@ use Throwable;
  * التوقيع: تُرسم عند أوّل طلبٍ لها من البيانات الموقَّعة نفسها.
  *
  * ولا يمدّد التوقيعُ اشتراكًا ولا يكتب فاتورة: التمديدُ عند سداد فاتورة التجديد.
+ *
+ * ═══ النماذج ═══
+ *
+ * قالبٌ بنموذج (`form`، انظر `DocumentForms`) يُنسخ نموذجُه في المستند مع حقول
+ * الفريق (`team`) ساعةَ الإصدار، وإجاباتُ العميل (`answers`) ساعةَ التوقيع. وإن
+ * سأل النموذجُ العميلَ عن بياناته بحقوله فهي بيانُه، لا `FIELDS`.
  */
 class PlatformDocuments
 {
@@ -167,7 +173,7 @@ class PlatformDocuments
      * ودورتُه أساسٌ يعدّله المدير، ومدّتُه تبدأ حيث انتهت مدّةُ سابقه. ولا يُصدر
      * تجديدٌ ثانٍ لعقدٍ له تجديدٌ قائم.
      *
-     * @param  array{template_id:int, business_id?:?int, client?:array, plan_id?:?int, cycle?:?string, term_starts_on?:?string, term_ends_on?:?string, renews_document_id?:?int, amount?:mixed, amount_label?:?string, days?:?int, notes?:?string}  $data
+     * @param  array{template_id:int, business_id?:?int, client?:array, plan_id?:?int, cycle?:?string, term_starts_on?:?string, term_ends_on?:?string, renews_document_id?:?int, amount?:mixed, amount_label?:?string, days?:?int, notes?:?string, team?:array}  $data
      */
     public static function issue(User $by, array $data): PlatformDocument
     {
@@ -232,7 +238,11 @@ class PlatformDocuments
 
         $days = max(1, min(90, (int) ($data['days'] ?? self::DEFAULT_DAYS)));
 
-        return DB::transaction(function () use ($by, $template, $business, $renews, $client, $phone, $plan, $start, $end, $amount, $data, $days) {
+        // النموذجُ نسخةٌ في المستند، ومعه ما كتبه الفريقُ في حقوله وحدها
+        $form = $template->form ?: null;
+        $team = $form ? (DocumentForms::clean($form, is_array($data['team'] ?? null) ? $data['team'] : [], 'team') ?: null) : null;
+
+        return DB::transaction(function () use ($by, $template, $business, $renews, $client, $phone, $plan, $start, $end, $amount, $data, $days, $form, $team) {
             $doc = PlatformDocument::create([
                 // رقمٌ مؤقّتٌ فريد، ثمّ رقمُ العقد من معرّفه — لا عدّادَ يتسابق عليه اثنان
                 'number' => 'TMP-'.Str::random(24),
@@ -243,11 +253,13 @@ class PlatformDocuments
                 'title' => $template->title,
                 'title_en' => $template->title_en,
                 'terms' => array_values($template->terms ?? []),
+                'form' => $form,
+                'team' => $team,
                 'plan' => $plan,
                 'term_starts_on' => $start?->toDateString(),
                 'term_ends_on' => $end?->toDateString(),
                 'amount' => $amount,
-                'amount_label' => $amount !== null ? (trim((string) ($data['amount_label'] ?? '')) ?: $template->name) : null,
+                'amount_label' => $amount !== null ? (trim((string) ($data['amount_label'] ?? '')) ?: ($template->default_amount_label ?: $template->name)) : null,
                 'provider' => self::provider(),
                 'client' => $client,
                 'client_label' => self::label($client),
@@ -334,14 +346,17 @@ class PlatformDocuments
      * و`$copyKey` مفتاحُ نسخة الموقِّع على جهازه: تُحفظ بصمتُه مع التوقيع في المعاملة
      * نفسها، والمفتاحُ نفسُه لا يُكتب هنا.
      *
+     * و`$answers` إجاباتُه في حقول النموذج (إن كان للمستند نموذج): يُقبل منها ما
+     * للعميل وحده، وحقولُه الإلزاميّة شرطٌ كبيان العميل.
+     *
      * @param  array<string, string>  $client  بيانُ العميل كما أقرّه — بلا الهاتف: يعتمده المدير
      */
-    public static function sign(PlatformDocument $document, array $client, string $signature, ?string $ip, ?string $agent, ?string $copyKey = null): PlatformDocument
+    public static function sign(PlatformDocument $document, array $client, string $signature, ?string $ip, ?string $agent, ?string $copyKey = null, array $answers = []): PlatformDocument
     {
         $png = self::decodeSignature($signature);
         unset($client['phone']);
 
-        $doc = DB::transaction(function () use ($document, $client, $png, $ip, $agent, $copyKey) {
+        $doc = DB::transaction(function () use ($document, $client, $png, $ip, $agent, $copyKey, $answers) {
             $doc = PlatformDocument::whereKey($document->id)->lockForUpdate()->firstOrFail();
             if ($doc->status === PlatformDocument::SIGNED) {
                 throw new AlreadySigned(__('وُقِّع هذا المستند من قبل.'));
@@ -350,10 +365,18 @@ class PlatformDocuments
                 throw new RuntimeException(__('هذا الرابط لم يعد صالحًا للتوقيع.'));
             }
 
-            $values = array_merge($doc->client ?? [], self::clean($client));
-            $missing = array_values(array_filter(self::FIELDS, fn ($f) => $f['req'] && ($values[$f['k']] ?? '') === ''));
+            $form = $doc->form ?: null;
+            $given = $form ? DocumentForms::clean($form, $answers, 'client') : [];
+            if (DocumentForms::asksClient($form)) {
+                // بيانُ العميل في حقول النموذج — والعامُّ يبقى كما أصدره المدير
+                $values = $doc->client ?? [];
+                $missing = DocumentForms::missing($form, $given);
+            } else {
+                $values = array_merge($doc->client ?? [], self::clean($client));
+                $missing = array_map(fn ($f) => $f['ar'], array_values(array_filter(self::FIELDS, fn ($f) => $f['req'] && ($values[$f['k']] ?? '') === '')));
+            }
             if ($missing) {
-                throw new RuntimeException(__('أكمل: :fields', ['fields' => implode('، ', array_map(fn ($f) => $f['ar'], $missing))]));
+                throw new RuntimeException(__('أكمل: :fields', ['fields' => implode('، ', $missing)]));
             }
 
             $path = 'documents/'.$doc->id.'/signature-'.Str::random(24).'.png';
@@ -365,7 +388,8 @@ class PlatformDocuments
                 'status' => PlatformDocument::SIGNED,
                 'signed_at' => now(),
                 'agreed_at' => now(),
-                'consent_text' => self::CONSENT,
+                'consent_text' => DocumentForms::consent($form) ?? self::CONSENT,
+                'answers' => $form ? ($given ?: null) : null,
                 'copy_key_hash' => $copyKey !== null && $copyKey !== '' ? hash('sha256', $copyKey) : null,
                 'signer_ip' => $ip ? mb_substr($ip, 0, 45) : null,
                 'signer_agent' => $agent ? mb_substr($agent, 0, 512) : null,
@@ -421,7 +445,7 @@ class PlatformDocuments
     {
         $png ??= $doc->signature_path ? (string) Storage::disk('local')->get($doc->signature_path) : '';
 
-        return hash('sha256', json_encode([
+        $signed = [
             'number' => $doc->number,
             'issued' => optional($doc->created_at)->format('Y-m-d'),
             'renews' => $doc->renews_document_id,
@@ -441,7 +465,13 @@ class PlatformDocuments
             'signer_ip' => $doc->signer_ip,
             'signer_agent' => $doc->signer_agent,
             'signature' => hash('sha256', $png),
-        ], JSON_UNESCAPED_UNICODE));
+        ];
+        // النموذجُ وما كُتب فيه — لمستندات النماذج وحدها، فبصمةُ ما وُقِّع قبلها لا تتغيّر
+        if ($doc->form) {
+            $signed += ['form' => $doc->form, 'team' => $doc->team, 'answers' => $doc->answers];
+        }
+
+        return hash('sha256', json_encode($signed, JSON_UNESCAPED_UNICODE));
     }
 
     /** هل ما في الصفّ هو ما وُقِّع عليه؟ */

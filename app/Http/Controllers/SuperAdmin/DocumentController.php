@@ -54,7 +54,7 @@ class DocumentController extends Controller
             ? PlatformDocument::whereKey((int) $request->query('renew'))->where('status', PlatformDocument::SIGNED)->first()
             : null;
         $templates = PlatformDocumentTemplate::where('active', true)->orderBy('id')
-            ->get(['id', 'name', 'service', 'title', 'terms', 'includes_plan', 'includes_amount']);
+            ->get(['id', 'name', 'service', 'title', 'terms', 'form', 'includes_plan', 'includes_amount', 'default_amount', 'default_amount_label']);
 
         return Inertia::render('Platform/Documents/Index', [
             'documents' => collect($page->items())->map(fn (PlatformDocument $d) => self::row($d))->all(),
@@ -114,6 +114,7 @@ class DocumentController extends Controller
             'amount_label' => ['nullable', 'string', 'max:190'],
             'days' => ['nullable', 'integer', 'min:1', 'max:90'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'team' => ['nullable', 'array'],
         ], [], [
             'template_id' => __('نوع المستند'),
             'business_id' => __('النشاط'),
@@ -125,6 +126,7 @@ class DocumentController extends Controller
             'term_ends_on' => __('نهاية الاشتراك'),
             'amount' => __('المبلغ'),
             'days' => __('صلاحية الرابط'),
+            'team' => __('حقول فريق أبعاد'),
         ]);
 
         try {
@@ -150,6 +152,9 @@ class DocumentController extends Controller
             'document' => self::row($doc) + [
                 'title_en' => $doc->title_en,
                 'terms' => $doc->terms,
+                'form' => $doc->form,
+                'team' => $doc->team ?? [],
+                'answers' => $doc->answers ?? [],
                 'plan' => $doc->plan,
                 'term_starts_on' => PlatformDocuments::day($doc->term_starts_on),
                 'term_ends_on' => PlatformDocuments::day($doc->term_ends_on),

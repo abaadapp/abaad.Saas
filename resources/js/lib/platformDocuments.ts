@@ -69,3 +69,50 @@ export function addMonths(iso: string, months: number): string {
     target.setUTCDate(Math.min(d, last));
     return target.toISOString().slice(0, 10);
 }
+
+/** إدخالٌ في نموذج مستند — يعبّئه العميل (client) أو فريقُ أبعاد (team). انظر `DocumentForms` */
+export type FormInput =
+    | { kind: 'field'; by: 'client' | 'team'; k: string; label: string; req: boolean; type: string; dir: string; ph: string }
+    | { kind: 'checks'; by: 'client' | 'team'; k: string; head: string; items: string[] }
+    | { kind: 'table'; by: 'client' | 'team'; k: string; head: string[]; types: string[]; ph: string[]; rows: string[]; picks: string[] }
+    | { kind: 'yesno'; by: 'client' | 'team'; k: string; label: string };
+
+export type FormPart =
+    | { kind: 'p'; text: string }
+    | { kind: 'list'; items: string[] }
+    | { kind: 'note'; text: string }
+    | { kind: 'cols'; cols: { head: string; items: string[] }[] }
+    | { kind: 'amount'; label: string }
+    | FormInput;
+
+export interface FormSection {
+    title: string;
+    /** يُعبّأ بعد تنفيذ الخدمة — يُطبع فارغًا ولا يقبل إدخالًا هنا */
+    after: boolean;
+    parts: FormPart[];
+}
+
+/** نموذجُ اتفاقيةٍ كما صمّمها المالك — أقسامٌ وحقولٌ وقوائمُ وجداول */
+export interface DocumentForm {
+    intro: string | null;
+    highlights: { label: string; text: string }[];
+    sections: FormSection[];
+    consent: string;
+    agree: string;
+    footer: string | null;
+}
+
+/** ما كُتب في إدخالات النموذج: نصٌّ للحقل، وأرقامُ البنود للقائمة، وخلايا للجدول */
+export type FormValues = Record<string, string | number[] | string[][]>;
+
+export function isInput(part: FormPart): part is FormInput {
+    return part.kind === 'field' || part.kind === 'checks' || part.kind === 'table' || part.kind === 'yesno';
+}
+
+/** إدخالاتُ صاحبها خارج أقسام «بعد التنفيذ» — كما يقبلها الخادم */
+export function formInputs(form: DocumentForm | null | undefined, by: 'client' | 'team'): { section: string; part: FormInput }[] {
+    if (!form) return [];
+    return form.sections.flatMap((s) =>
+        s.after ? [] : s.parts.filter(isInput).filter((p) => p.by === by).map((part) => ({ section: s.title, part })),
+    );
+}

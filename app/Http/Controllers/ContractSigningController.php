@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PlatformDocument;
 use App\Support\AlreadySigned;
+use App\Support\DocumentForms;
 use App\Support\PlatformDocuments;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -40,6 +41,7 @@ class ContractSigningController extends Controller
         }
 
         $readable = $doc->readable($request->cookie(PlatformDocument::COPY_COOKIE));
+        $form = $doc->form ?: null;
 
         return response()->view('public.sign', [
             'doc' => $doc,
@@ -49,6 +51,14 @@ class ContractSigningController extends Controller
             'fields' => PlatformDocuments::FIELDS,
             'consent' => PlatformDocuments::CONSENT,
             'signature' => $readable && $doc->status === PlatformDocument::SIGNED ? PlatformDocuments::signatureDataUri($doc) : null,
+            // النموذج: ما كتبه الفريق، وما أجاب به العميل — أو ما يُقترح له قبل أن يجيب
+            'form' => $readable ? $form : null,
+            'team' => $doc->team ?? [],
+            'answers' => $doc->status === PlatformDocument::SIGNED
+                ? ($doc->answers ?? [])
+                : array_replace(DocumentForms::prefill($form, $doc->client ?? []), (array) old('answers', [])),
+            'asksClient' => DocumentForms::asksClient($form),
+            'amountInForm' => DocumentForms::showsAmount($form),
         ])->header('Cache-Control', 'no-store, private');
     }
 
@@ -61,6 +71,7 @@ class ContractSigningController extends Controller
         $validator = Validator::make($request->all(), [
             'client' => ['nullable', 'array'],
             'client.*' => ['nullable', 'string', 'max:190'],
+            'answers' => ['nullable', 'array'],
             'agree' => ['accepted'],
             'signature' => ['required', 'string', 'max:'.(int) (PlatformDocuments::MAX_SIGNATURE_BYTES * 1.4)],
         ], [
@@ -68,6 +79,7 @@ class ContractSigningController extends Controller
             'signature.required' => __('أضف توقيعك.'),
         ], [
             'client' => __('بيانات العميل'),
+            'answers' => __('إجابات النموذج'),
             'agree' => __('الموافقة'),
             'signature' => __('التوقيع'),
         ]);
@@ -82,7 +94,7 @@ class ContractSigningController extends Controller
         $copyKey = Str::random(40);
 
         try {
-            PlatformDocuments::sign($doc, $data['client'] ?? [], $data['signature'], $request->ip(), $request->userAgent(), $copyKey);
+            PlatformDocuments::sign($doc, $data['client'] ?? [], $data['signature'], $request->ip(), $request->userAgent(), $copyKey, $data['answers'] ?? []);
         } catch (AlreadySigned $e) {
             // ربما نجح طلبٌ قبله وضاع ردُّه — الصفحةُ تُعاد فتُري النسخةَ الموقَّعة
             return $json

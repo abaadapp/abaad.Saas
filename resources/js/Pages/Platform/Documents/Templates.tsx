@@ -10,7 +10,9 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
+import { DocumentFormView } from '@/Components/DocumentFormView';
 import { useTranslate } from '@/lib/i18n';
+import type { DocumentForm } from '@/lib/platformDocuments';
 import type { PageProps } from '@/types';
 
 interface Term {
@@ -25,6 +27,10 @@ interface Template {
     title: string;
     title_en: string | null;
     terms: Term[];
+    /** اتفاقيةُ المالك بنموذجها — تُقرأ هنا ولا تُحرَّر */
+    form: DocumentForm | null;
+    default_amount: string | null;
+    default_amount_label: string | null;
     includes_plan: boolean;
     includes_amount: boolean;
     active: boolean;
@@ -57,7 +63,8 @@ export default function DocumentTemplates() {
                             <div className="min-w-0">
                                 <div className="truncate text-[15px] font-semibold text-[#111]">{tpl.name}</div>
                                 <div className="text-[12px] text-[#6b7280]">
-                                    {tpl.service || t('بلا خدمة محددة')} · {t(':n بند', { n: String(tpl.terms.length) })} ·{' '}
+                                    {tpl.service || t('بلا خدمة محددة')} ·{' '}
+                                    {tpl.form ? t(':n قسمًا', { n: String(tpl.form.sections.length) }) : t(':n بند', { n: String(tpl.terms.length) })} ·{' '}
                                     {t(':n مستند', { n: String(tpl.documents_count) })}
                                 </div>
                             </div>
@@ -67,6 +74,7 @@ export default function DocumentTemplates() {
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                             {!tpl.active && <Badge variant="neutral">{t('معطّل')}</Badge>}
+                            {tpl.form && <Badge variant="success">{t('نموذج كما صُمّم')}</Badge>}
                             {tpl.includes_plan && <Badge variant="info">{t('الباقة والدورة')}</Badge>}
                             {tpl.includes_amount && <Badge variant="info">{t('مبلغ الخدمة')}</Badge>}
                         </div>
@@ -90,7 +98,10 @@ function TemplateDialog({ template, onClose }: { template: Template | null; onCl
         includes_plan: template?.includes_plan ?? false,
         includes_amount: template?.includes_amount ?? false,
         active: template?.active ?? true,
+        default_amount: template?.default_amount ?? '',
+        default_amount_label: template?.default_amount_label ?? '',
     });
+    const isForm = !!template?.form;
     const errors = form.errors as Record<string, string | undefined>;
 
     const setTerm = (i: number, key: keyof Term, value: string) =>
@@ -160,6 +171,30 @@ function TemplateDialog({ template, onClose }: { template: Template | null; onCl
                         </label>
                     </div>
 
+                    {form.data.includes_amount && (
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <Field label="المبلغ المقترح (ر.ع)" hint="يُقترح في نافذة الإصدار ويُعدَّل فيها" error={errors.default_amount}>
+                                <Input dir="ltr" inputMode="decimal" value={form.data.default_amount} onChange={(e) => form.setData('default_amount', e.target.value)} />
+                            </Field>
+                            <Field label="بيان المبلغ" error={errors.default_amount_label}>
+                                <Input value={form.data.default_amount_label} onChange={(e) => form.setData('default_amount_label', e.target.value)} />
+                            </Field>
+                        </div>
+                    )}
+
+                    {isForm && template?.form && (
+                        <div className="space-y-2">
+                            <div className="text-[13px] font-medium text-[#111]">{t('النموذج')}</div>
+                            <p className="text-[12px] text-[#6b7280]">
+                                {t('هذه الاتفاقية بنموذجها كما صمّمتها: أقسامها وحقولها وقوائمها. يُعدَّل هنا اسمها وعنوانها ومبلغها وتفعيلها.')}
+                            </p>
+                            <div className="max-h-80 overflow-y-auto rounded-[10px] border border-[#e7e8ea] p-3">
+                                <DocumentFormView form={template.form} />
+                            </div>
+                        </div>
+                    )}
+
+                    {!isForm && (
                     <div className="space-y-2">
                         <div className="text-[13px] font-medium text-[#111]">{t('البنود')}</div>
                         {errors.terms && <p className="text-[12px] text-[#b91c1c]">{errors.terms}</p>}
@@ -211,6 +246,7 @@ function TemplateDialog({ template, onClose }: { template: Template | null; onCl
                             {t('إضافة بند')}
                         </Button>
                     </div>
+                    )}
 
                     <div className="flex justify-end gap-2 pt-2">
                         <Button type="button" variant="ghost" onClick={onClose}>

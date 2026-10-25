@@ -9074,5 +9074,22 @@
     "الباقة أو الخدمة": "Plan or service",
     "المشاركة": "Sharing",
     "نُسخ الرابط": "Link copied",
-    "فُتح واتساب": "WhatsApp opened"
+    "فُتح واتساب": "WhatsApp opened",
+    "يُعبّأ هذا القسم بعد تنفيذ الخدمة": "This section is completed on delivery",
+    "مبلغ المستند: :label": "Document amount: :label",
+    "معاينة النموذج (:n قسمًا)": "Preview the form (:n sections)",
+    "حقول فريق أبعاد (:n) — اختيارية": "Abaad team fields (:n) — optional",
+    "يراها العميل ولا يعدّلها. ما يبقى فارغًا يُطبع سطرًا يُكتب عليه.": "The client sees them but cannot edit them. Anything left empty is printed as a blank line.",
+    ":n قسمًا": ":n sections",
+    "نموذج كما صُمّم": "Form as designed",
+    "النموذج": "Form",
+    "هذه الاتفاقية بنموذجها كما صمّمتها: أقسامها وحقولها وقوائمها. يُعدَّل هنا اسمها وعنوانها ومبلغها وتفعيلها.": "This agreement keeps its form as you designed it: its sections, fields and lists. Its name, title, amount and status are edited here.",
+    "النموذج كما وقّعه العميل": "The form as the client signed it",
+    "النموذج كما أُرسل": "The form as sent",
+    "إجابات النموذج": "form answers",
+    "حقول فريق أبعاد": "Abaad team fields",
+    "المبلغ المقترح": "suggested amount",
+    "المبلغ المقترح (ر.ع)": "Suggested amount (OMR)",
+    "يُقترح في نافذة الإصدار ويُعدَّل فيها": "Suggested when issuing, and editable there",
+    "بيان المبلغ": "Amount label"
 }

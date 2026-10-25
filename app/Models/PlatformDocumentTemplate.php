@@ -11,12 +11,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * بنودُه `[{h, b}]`: عنوانُ البند ونصُّه. و`includes_plan` يضع في المستند
  * الباقةَ ودورتَها وسعرَها من باقات النظام، و`includes_amount` مبلغًا مقطوعًا
  * لخدمةٍ لا باقةَ لها (تخصيص موقع، تطبيق، أجهزة).
+ *
+ * و`form` نموذجٌ كاملٌ بحقوله وقوائمه وجداوله (انظر `DocumentForms`) — اتفاقياتُ
+ * المالك كما صمّمها. وقالبُ النموذج لا بنودَ له: نصُّه في أقسامه.
  */
 class PlatformDocumentTemplate extends Model
 {
     protected $guarded = [];
 
-    protected $casts = ['terms' => 'array', 'includes_plan' => 'boolean', 'includes_amount' => 'boolean', 'active' => 'boolean'];
+    protected $casts = ['terms' => 'array', 'form' => 'array', 'default_amount' => 'decimal:3', 'includes_plan' => 'boolean', 'includes_amount' => 'boolean', 'active' => 'boolean'];
 
     public function documents(): HasMany
     {

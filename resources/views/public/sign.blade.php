@@ -20,6 +20,10 @@
     $client = $doc->client ?? [];
     $plan = $doc->plan;
     $val = fn (string $k) => old('client.'.$k, $client[$k] ?? '');
+    // أقسامُ الصفحة مرقّمةٌ بترتيب ظهورها — ونموذجُ المستند يضيف أقسامَه بينها
+    $num = 0;
+    $next = function () use (&$num) { return str_pad((string) ++$num, 2, '0', STR_PAD_LEFT); };
+    $form ??= null;
 @endphp
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -106,8 +110,32 @@
         .sig-img { max-width: 260px; max-height: 110px; display: block; margin-top: 8px; }
         .hash { word-break: break-all; }
         footer { max-width: 760px; margin: 14px auto 0; text-align: center; }
+        .highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+        .highlights div { background: var(--soft); border-radius: 12px; padding: 10px 12px; font-size: 13.5px; }
+        .highlights span { display: block; font-size: 12px; color: var(--muted); }
+        .para { margin: 0 0 10px; }
+        ul.items { margin: 0 0 10px; padding: 0 18px 0 0; }
+        ul.items li { margin-bottom: 4px; }
+        .note { background: var(--soft); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; margin: 8px 0; }
+        .after { font-size: 12.5px; color: var(--muted); margin: -6px 0 10px; }
+        .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .col { border: 1px solid var(--rule); border-radius: 12px; padding: 10px 12px; }
+        .col-head { font-weight: 700; font-size: 13.5px; margin-bottom: 6px; }
+        .form-field { margin-bottom: 10px; }
+        .checks { margin: 6px 0 10px; }
+        label.check { display: flex; gap: 8px; align-items: flex-start; margin: 4px 0; font-size: 14px; cursor: pointer; }
+        label.check input { width: 18px; height: 18px; margin-top: 3px; accent-color: #0f0f0f; flex-shrink: 0; }
+        .box { width: 18px; height: 18px; border: 1px solid var(--muted); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; margin-top: 3px; }
+        .yesno { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+        .grid-wrap { overflow-x: auto; margin: 8px 0 10px; }
+        table.grid { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 460px; }
+        table.grid th, table.grid td { border: 1px solid var(--rule); padding: 6px 8px; text-align: start; vertical-align: middle; }
+        table.grid th { background: var(--soft); font-weight: 600; }
+        table.grid .t { margin-top: 0; padding: 6px 8px; font-size: 13px; }
+        table.grid input[type=checkbox] { width: 18px; height: 18px; accent-color: #0f0f0f; }
+        .lead { margin: 0 0 10px; font-size: 14px; }
         @media (max-width: 560px) {
-            .parties, .fields { grid-template-columns: 1fr; }
+            .parties, .fields, .cols { grid-template-columns: 1fr; }
             .meta { text-align: start; }
             h1 { font-size: 21px; }
         }
@@ -174,8 +202,18 @@
     <form method="POST" action="{{ route('documents.sign.submit', $token) }}" id="sign-form">
         @csrf
 
+        @if ($form && (! empty($form['highlights']) || ! empty($form['intro'])))
+            <div class="pad rule">
+                @if (! empty($form['intro']))<p class="para">{{ $form['intro'] }}</p>@endif
+                @if (! empty($form['highlights']))
+                    <div class="highlights">@foreach ($form['highlights'] as $h)<div><span>{{ $h['label'] }}</span>{{ $h['text'] }}</div>@endforeach</div>
+                @endif
+            </div>
+        @endif
+
+        @unless ($asksClient ?? false)
         <div class="pad rule">
-            <h2><span class="n">01 —</span> بيانات العميل <span class="en">Customer details</span></h2>
+            <h2><span class="n">{{ $next() }} —</span> بيانات العميل <span class="en">Customer details</span></h2>
             <div class="fields">
                 @foreach ($fields as $f)
                     <label class="f">
@@ -191,10 +229,12 @@
                 @endforeach
             </div>
         </div>
+        @endunless
 
-        @if ($plan || $doc->amount !== null)
+        @php $amountHere = $doc->amount !== null && ! ($amountInForm ?? false); @endphp
+        @if ($plan || $amountHere)
             <div class="pad rule">
-                <h2><span class="n">02 —</span> {{ $plan ? 'الباقة ومدة الاشتراك' : 'الخدمة والمبلغ' }} <span class="en">{{ $plan ? 'Plan & term' : 'Service & amount' }}</span></h2>
+                <h2><span class="n">{{ $next() }} —</span> {{ $plan ? 'الباقة ومدة الاشتراك' : 'الخدمة والمبلغ' }} <span class="en">{{ $plan ? 'Plan & term' : 'Service & amount' }}</span></h2>
                 @if ($plan)
                     <div class="plan">
                         <div>
@@ -211,7 +251,7 @@
                         </div>
                     @endif
                 @endif
-                @if ($doc->amount !== null)
+                @if ($amountHere)
                     <div class="plan" @if ($plan) style="margin-top:10px" @endif>
                         <div class="name">{{ $doc->amount_label }}</div>
                         <div class="price"><span class="ltr">{{ number_format((float) $doc->amount, 3) }}</span> <small>ر.ع</small></div>
@@ -220,17 +260,21 @@
             </div>
         @endif
 
-        <div class="pad rule">
-            <h2><span class="n">{{ ($plan || $doc->amount !== null) ? '03' : '02' }} —</span> الشروط والأحكام <span class="en">Terms &amp; conditions</span></h2>
-            <ol class="terms">
-                @foreach ($doc->terms as $term)
-                    <li>@if ($term['h'] ?? '')<b>{{ $term['h'] }}</b> @endif{{ $term['b'] }}</li>
-                @endforeach
-            </ol>
-        </div>
+        @if ($form)
+            @include('public.partials.document-form')
+        @else
+            <div class="pad rule">
+                <h2><span class="n">{{ $next() }} —</span> الشروط والأحكام <span class="en">Terms &amp; conditions</span></h2>
+                <ol class="terms">
+                    @foreach ($doc->terms as $term)
+                        <li>@if ($term['h'] ?? '')<b>{{ $term['h'] }}</b> @endif{{ $term['b'] }}</li>
+                    @endforeach
+                </ol>
+            </div>
+        @endif
 
         <div class="pad rule">
-            <h2><span class="n">{{ ($plan || $doc->amount !== null) ? '04' : '03' }} —</span> التوقيع <span class="en">Signature</span></h2>
+            <h2><span class="n">{{ $next() }} —</span> التوقيع <span class="en">Signature</span></h2>
 
             @if ($signed)
                 <div class="stamp"><span class="tick">✓</span> تم توقيع المستند · Signed</div>
@@ -245,9 +289,10 @@
                 @if ($errors->any())
                     <div class="alert bad" style="margin-bottom:12px">{{ $errors->first() }}</div>
                 @endif
+                @if ($form && ! empty($form['consent']))<p class="lead" id="consent-lead">{{ $form['consent'] }}</p>@endif
                 <label class="agree">
                     <input type="checkbox" name="agree" value="1" id="agree" @checked(old('agree'))>
-                    <span>{{ $consent }}</span>
+                    <span>{{ $form['agree'] ?? $consent }}</span>
                 </label>
                 <div class="pad-sig">
                     <canvas id="sig" aria-label="لوحة التوقيع"></canvas>
@@ -265,6 +310,7 @@
                     <div class="xs muted" id="missing" style="margin-top:6px; text-align:center"></div>
                 </div>
             @endif
+            @if ($form && ! empty($form['footer']))<p class="xs muted" style="margin:12px 0 0" id="form-footer">{{ $form['footer'] }}</p>@endif
         </div>
     </form>
     @endif

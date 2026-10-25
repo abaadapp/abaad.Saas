@@ -22,6 +22,9 @@
         'address' => $provider['website'],
     ];
     $section = 1;
+    $form = $doc->form ?: null;
+    $asksClient = \App\Support\DocumentForms::asksClient($form);
+    $amountHere = $doc->amount !== null && ! \App\Support\DocumentForms::showsAmount($form);
 @endphp
 
 @section('title', $doc->title)
@@ -50,6 +53,18 @@
         </tr>
     </table>
 
+    @if ($form && (! empty($form['intro']) || ! empty($form['highlights'])))
+        @if (! empty($form['intro']))<div style="margin-bottom:6pt">{{ $form['intro'] }}</div>@endif
+        @if (! empty($form['highlights']))
+            <table class="grid" style="margin-bottom:8pt">
+                @foreach ($form['highlights'] as $h)
+                    <tr><td style="width:22%" class="muted small">{{ $h['label'] }}</td><td>{{ $h['text'] }}</td></tr>
+                @endforeach
+            </table>
+        @endif
+    @endif
+
+    @unless ($asksClient)
     <h2>{{ str_pad((string) $section++, 2, '0', STR_PAD_LEFT) }} — {{ __('بيانات العميل') }}</h2>
     <table class="grid">
         @foreach (array_chunk($fields, 2) as $pair)
@@ -61,8 +76,9 @@
             </tr>
         @endforeach
     </table>
+    @endunless
 
-    @if ($plan || $doc->amount !== null)
+    @if ($plan || $amountHere)
         <h2>{{ str_pad((string) $section++, 2, '0', STR_PAD_LEFT) }} — {{ $plan ? __('الباقة ومدة الاشتراك') : __('الخدمة والمبلغ') }}</h2>
         <table class="grid">
             <thead>
@@ -86,7 +102,7 @@
                         <td class="amt"><span dir="ltr">{{ $plan['price'] }}</span> {{ __('ر.ع') }} / {{ $plan['unit'] }}</td>
                     </tr>
                 @endif
-                @if ($doc->amount !== null)
+                @if ($amountHere)
                     <tr>
                         <td class="b">{{ $doc->amount_label }}</td>
                         <td class="amt"><span dir="ltr">{{ number_format((float) $doc->amount, 3) }}</span> {{ __('ر.ع') }}</td>
@@ -96,6 +112,10 @@
         </table>
     @endif
 
+    @if ($form)
+        @include('pdf.partials.document-form', ['sectionNo' => $section])
+        @php $section += count($form['sections']); @endphp
+    @else
     <h2>{{ str_pad((string) $section++, 2, '0', STR_PAD_LEFT) }} — {{ __('الشروط والأحكام') }}</h2>
     <table class="grid">
         @foreach ($doc->terms as $i => $term)
@@ -105,6 +125,7 @@
             </tr>
         @endforeach
     </table>
+    @endif
 
     <h2>{{ str_pad((string) $section++, 2, '0', STR_PAD_LEFT) }} — {{ __('التوقيع') }}</h2>
     @if ($signed)
@@ -130,6 +151,9 @@
         </div>
     @else
         <div class="note muted">{{ __('لم يُوقَّع هذا المستند بعد.') }}</div>
+    @endif
+    @if ($form && ! empty($form['footer']))
+        <div class="muted small" style="margin-top:6pt">{{ $form['footer'] }}</div>
     @endif
 @endsection
 

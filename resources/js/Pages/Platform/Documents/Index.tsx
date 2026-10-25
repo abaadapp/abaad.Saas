@@ -11,7 +11,16 @@ import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
-import { STATE_VARIANT, addMonths, useLiveReload, type DocumentRow } from '@/lib/platformDocuments';
+import { DocumentFormView, TeamInputs } from '@/Components/DocumentFormView';
+import {
+    STATE_VARIANT,
+    addMonths,
+    formInputs,
+    useLiveReload,
+    type DocumentForm,
+    type DocumentRow,
+    type FormValues,
+} from '@/lib/platformDocuments';
 import type { PageProps } from '@/types';
 
 interface Template {
@@ -20,8 +29,12 @@ interface Template {
     service: string | null;
     title: string;
     terms: { h: string; b: string }[];
+    /** اتفاقيةٌ بنموذجها كما صمّمها المالك — وإلّا فبنودٌ */
+    form: DocumentForm | null;
     includes_plan: boolean;
     includes_amount: boolean;
+    default_amount: string | null;
+    default_amount_label: string | null;
 }
 
 interface PlanOption {
@@ -267,14 +280,16 @@ function NewDocumentDialog({
     const t = useTranslate();
     const [source, setSource] = useState<'business' | 'new'>('business');
     const [previewing, setPreviewing] = useState(false);
+    const [teamOpen, setTeamOpen] = useState(false);
     // نهايةُ المدّة تتبع بدايتَها ودورتَها — حتى يكتب المديرُ نهايةً اتُّفق عليها
     const [endTouched, setEndTouched] = useState(false);
     const firstCycle = renew?.cycle ?? 'monthly';
     const firstStart = renew?.starts_on ?? today;
     const monthsOf = (cycle: string) => cycles.find((c) => c.value === cycle)?.months ?? 1;
 
+    const firstTemplate = templates.find((x) => x.id === renew?.template_id) ?? templates[0];
     const form = useForm({
-        template_id: String(renew?.template_id ?? templates[0]?.id ?? ''),
+        template_id: String(firstTemplate?.id ?? ''),
         business_id: '',
         renews_document_id: renew ? String(renew.id) : '',
         client: { name: '', biz: '', phone: renew?.phone ?? '', email: '' },
@@ -282,15 +297,29 @@ function NewDocumentDialog({
         cycle: firstCycle,
         term_starts_on: firstStart,
         term_ends_on: addMonths(firstStart, monthsOf(firstCycle)),
-        amount: '',
-        amount_label: '',
+        amount: firstTemplate?.default_amount ?? '',
+        amount_label: firstTemplate?.default_amount_label ?? '',
         days: String(days),
         notes: '',
+        team: {} as FormValues,
     });
     const template = templates.find((x) => String(x.id) === form.data.template_id);
     const plan = plans.find((p) => String(p.id) === form.data.plan_id);
     const cycle = cycles.find((c) => c.value === form.data.cycle);
     const errors = form.errors as Record<string, string | undefined>;
+    const teamInputs = formInputs(template?.form, 'team');
+
+    // قالبٌ آخر: مبلغُه المقترح، وحقولُ فريقٍ فارغةٌ له
+    const pickTemplate = (id: string) => {
+        const next = templates.find((x) => String(x.id) === id);
+        form.setData((d) => ({
+            ...d,
+            template_id: id,
+            amount: next?.default_amount ?? '',
+            amount_label: next?.default_amount_label ?? '',
+            team: {},
+        }));
+    };
 
     const setTerm = (start: string, nextCycle: string) =>
         form.setData((d) => ({
@@ -354,7 +383,7 @@ function NewDocumentDialog({
                     <Field label="نوع المستند" required error={errors.template_id}>
                         <Select
                             value={form.data.template_id}
-                            onChange={(e) => form.setData('template_id', e.target.value)}
+                            onChange={(e) => pickTemplate(e.target.value)}
                             options={templates.map((x) => ({
                                 label: x.service ? `${x.name} · ${x.service}` : x.name,
                                 value: String(x.id),
@@ -370,10 +399,19 @@ function NewDocumentDialog({
                                 onClick={() => setPreviewing((v) => !v)}
                                 aria-expanded={previewing}
                             >
-                                <span>{t('معاينة البنود (:n)', { n: String(template.terms.length) })}</span>
+                                <span>
+                                    {template.form
+                                        ? t('معاينة النموذج (:n قسمًا)', { n: String(template.form.sections.length) })
+                                        : t('معاينة البنود (:n)', { n: String(template.terms.length) })}
+                                </span>
                                 <span className="text-[#6b7280]">{previewing ? t('إخفاء') : t('عرض')}</span>
                             </button>
-                            {previewing && (
+                            {previewing && template.form && (
+                                <div className="max-h-72 overflow-y-auto border-t border-[#e7e8ea] px-3 py-2" data-testid="terms-preview">
+                                    <DocumentFormView form={template.form} />
+                                </div>
+                            )}
+                            {previewing && !template.form && (
                                 <ol
                                     className="max-h-56 list-decimal space-y-1.5 overflow-y-auto border-t border-[#e7e8ea] py-2 ps-8 pe-3 text-[12.5px] leading-relaxed text-[#374151]"
                                     data-testid="terms-preview"
@@ -529,6 +567,28 @@ function NewDocumentDialog({
                                     onChange={(e) => form.setData('amount', e.target.value)}
                                 />
                             </Field>
+                        </div>
+                    )}
+
+                    {template?.form && teamInputs.length > 0 && (
+                        <div className="rounded-[10px] border border-[#e7e8ea]">
+                            <button
+                                type="button"
+                                className="flex w-full items-center justify-between px-3 py-2 text-[13px] text-[#111]"
+                                onClick={() => setTeamOpen((v) => !v)}
+                                aria-expanded={teamOpen}
+                            >
+                                <span>{t('حقول فريق أبعاد (:n) — اختيارية', { n: String(teamInputs.length) })}</span>
+                                <span className="text-[#6b7280]">{teamOpen ? t('إخفاء') : t('عرض')}</span>
+                            </button>
+                            {teamOpen && (
+                                <div className="max-h-80 overflow-y-auto border-t border-[#e7e8ea] px-3 py-3">
+                                    <p className="mb-2 text-[12px] text-[#6b7280]">
+                                        {t('يراها العميل ولا يعدّلها. ما يبقى فارغًا يُطبع سطرًا يُكتب عليه.')}
+                                    </p>
+                                    <TeamInputs form={template.form} value={form.data.team} onChange={(v) => form.setData('team', v)} />
+                                </div>
+                            )}
                         </div>
                     )}
 

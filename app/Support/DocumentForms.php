@@ -54,7 +54,8 @@ class DocumentForms
      * يزرع قوالبَ المالك الخمسة إن غابت — مسوّداتٍ معطَّلةً لم تُعتمد.
      *
      * لا يمسّ قالبًا موجودًا (ربما عدّله المدير أو أعاد تسميتَه)، ولا يعطّل غيرَها ولا
-     * يحذف شيئًا. ويعرف قالبَه بمفتاح بذرته (`seed_key`) إن وُجد العمود، وإلّا باسمه.
+     * يحذف شيئًا. ويعرف قالبَه بمفتاح بذرته (`seed_key`) إن وُجد العمود، أو باسمه، أو
+     * بعنوانه وخدمته معًا — فقالبٌ أُعيدت تسميتُه لا يُزرع بجانبه آخر.
      * والنشرُ قرارُ مدير المنصّة.
      */
     public static function seedTemplates(): void
@@ -63,7 +64,8 @@ class DocumentForms
         foreach (self::SEEDED as $slug) {
             $t = self::seed($slug);
             $exists = DB::table('platform_document_templates')
-                ->where(fn ($w) => $keyed ? $w->where('seed_key', $slug)->orWhere('name', $t['name']) : $w->where('name', $t['name']))
+                ->where(fn ($w) => ($keyed ? $w->where('seed_key', $slug)->orWhere('name', $t['name']) : $w->where('name', $t['name']))
+                    ->orWhere(fn ($same) => $same->whereNotNull('form')->where('title', $t['title'])->where('service', $t['service'])))
                 ->exists();
             if ($exists) {
                 continue;
@@ -85,6 +87,28 @@ class DocumentForms
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+        }
+    }
+
+    /**
+     * يعرّف قوالبَ البذرة القائمة بمفاتيحها: باسمها كما زُرعت، وإلّا بعنوانها وخدمتها
+     * — ما أُعيدت تسميتُه قبل المفتاح يُعرف بهما. وما التبس (قالبان لبذرةٍ واحدة) لا يُخمَّن.
+     */
+    public static function keySeeds(): void
+    {
+        foreach (self::SEEDED as $slug) {
+            if (DB::table('platform_document_templates')->where('seed_key', $slug)->exists()) {
+                continue;
+            }
+            $t = self::seed($slug);
+            $unkeyed = fn () => DB::table('platform_document_templates')->whereNull('seed_key');
+            $ids = $unkeyed()->where('name', $t['name'])->pluck('id');
+            if ($ids->isEmpty()) {
+                $ids = $unkeyed()->whereNotNull('form')->where('title', $t['title'])->where('service', $t['service'])->pluck('id');
+            }
+            if ($ids->count() === 1) {
+                DB::table('platform_document_templates')->where('id', $ids->first())->update(['seed_key' => $slug]);
+            }
         }
     }
 

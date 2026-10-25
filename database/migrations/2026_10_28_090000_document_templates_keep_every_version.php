@@ -19,6 +19,11 @@ use Illuminate\Support\Facades\Schema;
  * ولا يُستبدل ما عدّله المدير.
  *
  * ولا يمسّ مستندًا صدر ولا بصمةً ولا ملفًّا: يقرأ القوالبَ ويكتب سجلَّها وحده.
+ *
+ * والرجوعُ عنه بالكود وحده (Revert PR): الجدولُ والعمودُ يبقيان، والكودُ القديم
+ * لا يقرؤهما ولا يتعثّر بهما. و`down()` يرفض ما دام في السجلّ ما لا يُعاد بناؤه
+ * من القوالب نفسها — إصدارٌ سابق، أو حفظٌ من الشاشة، أو قالبُ بذرةٍ أُعيدت
+ * تسميتُه فلا يعرفه بعد المفتاح إلّا اسمُه القديم.
  */
 return new class extends Migration
 {
@@ -43,11 +48,8 @@ return new class extends Migration
             $table->string('seed_key', 64)->nullable()->unique();
         });
 
-        // قوالبُ المالك الخمسة بأسمائها كما زُرعت — ما أُعيدت تسميتُه قبل اليوم لا يُخمَّن
-        foreach (DocumentForms::SEEDED as $slug) {
-            DB::table('platform_document_templates')->whereNull('seed_key')
-                ->where('name', DocumentForms::seed($slug)['name'])->update(['seed_key' => $slug]);
-        }
+        // قوالبُ المالك الخمسة بأسمائها كما زُرعت، وما أُعيدت تسميتُه بعنوانه وخدمته
+        DocumentForms::keySeeds();
 
         // الإصدارُ الحاليّ لكلّ قالب أوّلُ صفٍّ في سجلّه — منشورًا إن كان نصُّه هو المعتمد
         foreach (PlatformDocumentTemplate::orderBy('id')->get() as $template) {
@@ -70,6 +72,24 @@ return new class extends Migration
 
     public function down(): void
     {
+        $versions = DB::table('platform_document_template_versions')->get()->groupBy('template_id');
+        $history = PlatformDocumentTemplate::orderBy('id')->get()->filter(function (PlatformDocumentTemplate $template) use ($versions) {
+            $own = $versions->get($template->id, collect());
+            $row = $own->first();
+
+            return $own->count() > 1 || ($row && ((int) $row->version !== (int) $template->version
+                || $row->content_hash !== $template->contentHash() || $row->saved_by !== null || $row->saved_by_name !== null));
+        })->pluck('id');
+        $renamed = DB::table('platform_document_templates')->whereIn('seed_key', DocumentForms::SEEDED)->get(['id', 'name', 'seed_key'])
+            ->filter(fn ($t) => $t->name !== DocumentForms::seed($t->seed_key)['name'])->pluck('id');
+
+        if ($history->isNotEmpty() || $renamed->isNotEmpty()) {
+            throw new RuntimeException('لا يُتراجع: في سجلّ إصدارات القوالب تاريخٌ لا نسخة له في القوالب نفسها'
+                .($history->isNotEmpty() ? ' (إصداراتُ القوالب: '.$history->implode(', ').')' : '')
+                .($renamed->isNotEmpty() ? ' (قوالبُ بذرةٍ أُعيدت تسميتُها: '.$renamed->implode(', ').')' : '')
+                .'. ارجع بالكود وحده (Revert PR) واترك الجدولَ والعمود — الكودُ القديم يعمل عليهما.');
+        }
+
         Schema::table('platform_document_templates', function (Blueprint $table) {
             $table->dropUnique(['seed_key']);
             $table->dropColumn('seed_key');

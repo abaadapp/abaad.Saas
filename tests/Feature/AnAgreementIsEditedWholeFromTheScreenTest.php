@@ -32,7 +32,8 @@ use Tests\TestCase;
  *     وتُطبع ورقتُه، وبصمتُه سليمة.
  *   - وما صدر ووُقِّع قبله لا يتغيّر: صفُّه ورقمُه ورابطُه وصورةُ توقيعه وورقتُه وبصمتُه.
  *   - والمعاينةُ صفحةُ العميل وورقتُه من الإصدار الحاليّ، بلا مستندٍ يُكتب ولا توقيعٍ يُرسل.
- *   - والبذورُ لا تستبدل ما عدّله المدير ولا تزرع بجانبه ما أعاد تسميتَه.
+ *   - والبذورُ لا تستبدل ما عدّله المدير ولا تزرع بجانبه ما أعاد تسميتَه — ولو قبل المفتاح.
+ *   - والرجوعُ عن الهجرة يُرفض ما دام في سجلّ الإصدارات ما لا يُعاد بناؤه من القوالب.
  *   - ولا يمسّ شيءٌ من ذلك مالًا ولا اشتراكًا.
  */
 class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
@@ -308,6 +309,70 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
         $this->assertSame($count, PlatformDocumentTemplate::count(), 'لا يُزرع بجانبه قالبٌ بالاسم القديم');
         $this->assertSame($edited, $t->fresh()->form, 'ولا يُستبدل نصُّه');
         $this->assertSame('اتفاقية واتساب — معدّلة', $t->fresh()->name);
+    }
+
+    public function test_a_seed_renamed_before_it_had_a_key_is_still_known_and_never_seeded_twice(): void
+    {
+        $count = PlatformDocumentTemplate::count();
+        $whatsapp = $this->whatsapp();
+        $setup = PlatformDocumentTemplate::where('seed_key', 'store-setup')->firstOrFail();
+        // كما كان قبل الهجرة: بلا مفتاح، وقد أعاد المديرُ تسميتَه على الكود القديم
+        DB::table('platform_document_templates')->where('id', $whatsapp->id)->update(['seed_key' => null, 'name' => 'واتساب المتجر — اسمٌ جديد']);
+
+        DocumentForms::keySeeds();
+        $this->assertSame('whatsapp-integration', DB::table('platform_document_templates')->where('id', $whatsapp->id)->value('seed_key'));
+
+        // قالبان لبذرةٍ واحدة لا يُختار أحدُهما — ولا يُزرع بجانبهما ثالث
+        DB::table('platform_document_templates')->where('id', $setup->id)->update(['seed_key' => null, 'name' => 'تجهيز المتجر — أ']);
+        DB::table('platform_document_templates')->insert(collect((array) DB::table('platform_document_templates')->find($setup->id))
+            ->except('id')->merge(['name' => 'تجهيز المتجر — ب'])->all());
+        DocumentForms::keySeeds();
+        $this->assertNull(DB::table('platform_document_templates')->where('id', $setup->id)->value('seed_key'));
+
+        DocumentForms::seedTemplates();
+        $this->assertSame($count + 1, PlatformDocumentTemplate::count(), 'لا يُزرع قالبٌ أُعيدت تسميتُه بجانبه');
+    }
+
+    public function test_rolling_the_migration_back_never_erases_a_real_version_history(): void
+    {
+        $migration = require database_path('migrations/2026_10_28_090000_document_templates_keep_every_version.php');
+        $refused = function () use ($migration): string {
+            try {
+                $migration->down();
+            } catch (\RuntimeException $e) {
+                return $e->getMessage();
+            }
+            $this->fail('رُجع عن الهجرة وفي السجلّ ما لا يُعاد بناؤه');
+        };
+        $t = $this->whatsapp();
+        $name = $t->name;
+
+        // اسمٌ جديد وحده لا يصنع إصدارًا — لكنّ البذرة لا تعرفه بعد المفتاح
+        $this->save($t, $t->form, ['name' => 'اتفاقية واتساب — معدّلة'])->assertSessionHasNoErrors();
+        $this->assertSame(1, $t->fresh()->version);
+        $message = $refused();
+        $this->assertStringContainsString('أُعيدت تسميتُها: '.$t->id, $message);
+        $this->assertStringNotContainsString('إصداراتُ القوالب', $message);
+
+        $this->save($t->fresh(), $t->form, ['name' => $name])->assertSessionHasNoErrors();
+
+        // قالبٌ بُني على الشاشة: نصُّه في صفّه، ومن حفظه في السجلّ وحده
+        $this->actingAs($this->super)->post(route('super-admin.documents.templates.store'), [
+            'name' => 'تطبيق خاص', 'service' => 'تطبيق', 'title' => 'طلب تطبيق خاص', 'includes_plan' => false, 'includes_amount' => false,
+            'form' => ['intro' => null, 'highlights' => [], 'sections' => [['title' => 'الطلب', 'after' => false, 'parts' => [['kind' => 'p', 'text' => 'نصّ الطلب.']]]],
+                'consent' => 'أقر بأنني اطلعت على النموذج.', 'agree' => 'أوافق.', 'footer' => null],
+        ])->assertSessionHasNoErrors();
+        $built = PlatformDocumentTemplate::where('name', 'تطبيق خاص')->firstOrFail();
+        $this->assertStringContainsString('إصداراتُ القوالب: '.$built->id.')', $refused());
+
+        $this->save($t->fresh(), $this->edited($t->form))->assertSessionHasNoErrors();
+        $message = $refused();
+        $this->assertStringContainsString('إصداراتُ القوالب: '.$t->id.', '.$built->id.')', $message);
+        $this->assertStringContainsString('Revert PR', $message);
+
+        $this->assertTrue(Schema::hasTable('platform_document_template_versions'));
+        $this->assertTrue(Schema::hasColumn('platform_document_templates', 'seed_key'));
+        $this->assertSame(2, (int) $t->versions()->max('version'), 'والإصدارُ المحفوظ باقٍ في سجلّه');
     }
 
     public function test_a_new_agreement_is_built_from_sections_on_the_screen(): void

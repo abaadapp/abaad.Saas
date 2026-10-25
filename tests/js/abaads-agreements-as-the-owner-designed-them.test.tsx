@@ -15,9 +15,9 @@ import { pageProps } from './setup';
  * (`AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest`). وهنا:
  *   - نافذةُ الإصدار تعرض النموذجَ وتقترح مبلغَه وتفتح حقولَ الفريق وحدها.
  *   - صفحةُ المستند تعرض ما كتبه الفريقُ وما أجاب به العميل، والفارغَ سطرًا.
- *   - شاشةُ القوالب: غيرُ المنشور موسومٌ بإصداره، والنشرُ يُعرض بنصّه ورسومه ومقدّم
- *     خدمته بتأكيدٍ واحد. وسجلٌّ أو عنوانٌ لم يُكتبا يُنبَّه إليهما ولا يمنعان.
- *     (المحرّرُ ونافذةُ الإصدار في `an-owner-edits-and-publishes-any-agreement`.)
+ *   - شاشةُ القوالب: المحفوظُ «جاهز للإصدار» بإصداره، ومعاينتُه بنصّه ورسومه ومقدّم
+ *     خدمته. وسجلٌّ أو عنوانٌ لم يُكتبا يُنبَّه إليهما ولا يمنعان.
+ *     (المحرّرُ ونافذةُ الإصدار في `an-owner-edits-and-issues-any-agreement`.)
  *   - والرسومُ الثابتة في نافذة الإصدار تُقرأ ولا تُكتب.
  */
 
@@ -88,7 +88,7 @@ describe('the owner’s agreements, as forms', () => {
             documents: [], pagination: { current_page: 1, last_page: 1, from: 0, to: 0, total: 0, per_page: 20, prev_page_url: null, next_page_url: null },
             filters: { state: '', q: '' }, counts: { sent: 0, signed: 0 },
             templates: [{
-                id: 4, published: true, version: 1, hash: 'f'.repeat(64), name: 'نموذج طلب واتفاقية خدمة ربط واتساب', service: 'ربط واتساب', title: 'نموذج طلب واتفاقية خدمة ربط واتساب',
+                id: 4, problems: [], version: 1, hash: 'f'.repeat(64), preview_url: '/p/4', preview_pdf_url: '/p/4.pdf', name: 'نموذج طلب واتفاقية خدمة ربط واتساب', service: 'ربط واتساب', title: 'نموذج طلب واتفاقية خدمة ربط واتساب',
                 terms: [], form: FORM, includes_plan: false, includes_amount: true, default_amount: '25.000', default_amount_label: 'رسوم الربط (مرة واحدة)',
                 amount_rule: 'fixed',
             }],
@@ -100,7 +100,7 @@ describe('the owner’s agreements, as forms', () => {
         const dialog = screen.getByTestId('new-document');
 
         expect(within(dialog).getByDisplayValue('25.000')).toBeInTheDocument();
-        // رسومٌ ثابتة كما اعتُمدت: تُقرأ ولا تُكتب هنا
+        // رسومٌ ثابتة كما في القالب: تُقرأ ولا تُكتب هنا
         expect(within(dialog).getByTestId('amount')).toHaveAttribute('readonly');
         expect(within(dialog).getByDisplayValue('رسوم الربط (مرة واحدة)')).toBeInTheDocument();
 
@@ -151,27 +151,25 @@ describe('the owner’s agreements, as forms', () => {
     const template = {
         id: 4, name: 'نموذج طلب واتفاقية خدمة ربط واتساب', service: 'ربط واتساب', title: 'نموذج طلب واتفاقية خدمة ربط واتساب', title_en: null,
         terms: [], form: FORM, default_amount: '25.000', default_amount_label: 'رسوم الربط (مرة واحدة)', amount_rule: 'fixed' as const,
-        includes_plan: false, includes_amount: true, documents_count: 0, version: 1, status: 'draft' as const,
-        published_at: null, published_by: null, hash: 'f'.repeat(64), problems: [],
+        includes_plan: false, includes_amount: true, documents_count: 0, version: 1,
+        hash: 'f'.repeat(64), problems: [] as string[],
         preview_url: '/super-admin/documents/templates/4/preview', preview_pdf_url: '/super-admin/documents/templates/4/preview.pdf', versions: [],
     };
     const provider = { name: 'مشاريع الذهلي الجديدة', legal_name: 'مشاريع الذهلي الجديدة', trade_name: 'أبعاد', cr: '', address: '' };
 
-    it('an unpublished agreement is marked with its version; a blank CR or address only notes, never blocks publishing', async () => {
+    it('a saved agreement is ready with its version; a blank CR or address only notes, never blocks issuing', async () => {
         layout('super-admin.documents.templates');
         Object.assign(pageProps, { templates: [template], provider, providerLine: 'مشاريع الذهلي الجديدة — الاسم التجاري للمنصة: أبعاد', providerMissing: ['رقم السجل التجاري', 'العنوان القانوني'] });
         render(<DocumentTemplates />);
 
-        expect(screen.getByTestId('status-4')).toHaveTextContent('غير منشور · الإصدار 1');
+        expect(screen.getByTestId('ready-4')).toHaveTextContent('جاهز للإصدار · الإصدار 1');
         expect(screen.getByTestId('provider-missing')).toHaveTextContent('رقم السجل التجاري، العنوان القانوني');
-        expect(screen.getByTestId('provider-missing')).toHaveTextContent('ولا تمنع النشر ولا الإصدار');
+        expect(screen.getByTestId('provider-missing')).toHaveTextContent('ولا تمنع الإصدار');
         expect(screen.getByTestId('preview-4')).toHaveAttribute('href', template.preview_url);
 
-        await userEvent.click(screen.getByTestId('publish-4'));
-        const publish = screen.getByTestId('publish-form');
-        expect(within(publish).getByTestId('publish-fee')).toHaveTextContent('25.000');
+        await userEvent.click(screen.getByTestId('edit-4'));
+        await userEvent.click(screen.getByTestId('tab-preview'));
         // الرسومُ مملوءةٌ في المعاينة كما ستُكتب في المستند
-        expect(within(publish).getByText('25.000 ر.ع تُدفع مرة واحدة')).toBeInTheDocument();
-        expect(within(publish).getByTestId('publish-submit')).toBeEnabled();
+        expect(within(screen.getByTestId('live-preview')).getByText('25.000 ر.ع تُدفع مرة واحدة')).toBeInTheDocument();
     });
 });

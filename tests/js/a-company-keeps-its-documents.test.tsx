@@ -10,7 +10,7 @@ import { pageProps } from './setup';
  * مستنداتُ الشركة في ملفّها، ونافذةُ الإصدار تسمّي القوالبَ كلَّها.
  *
  * ما يُربط بالشركة وما يُصدر منه يحرسه PHP (`ACompanyKeepsItsDocumentsTest`). وهنا:
- *   - القوالبُ كلُّها في القائمة وتُختار — غيرُ المنشور موسومٌ ولا يُعطَّل.
+ *   - القوالبُ كلُّها في القائمة وتُختار — لا «غير منشور» ولا تعطيل.
  *   - «مستند جديد» من ملفّ الشركة يفتح النافذةَ والشركةُ مختارة.
  *   - بطاقةُ «مستندات الشركة» أسفلَ ملفّها تعرض مستنداتها ورابطَ مستندٍ جديد لها.
  */
@@ -43,11 +43,11 @@ const documentsPage = (over: Record<string, unknown> = {}) => {
         filters: { state: '', q: '', business: '5' }, counts: { sent: 0, signed: 1 },
         templates: [
             {
-                id: 1, published: true, version: 1, hash: 'a'.repeat(64), name: 'عقد اشتراك أبعاد', service: 'اشتراك النظام', title: 'عقد اشتراك', terms: [{ h: 'البند', b: 'نصّه' }], form: null,
+                id: 1, problems: [], version: 1, hash: 'a'.repeat(64), preview_url: '/p/1', preview_pdf_url: '/p/1.pdf', name: 'عقد اشتراك أبعاد', service: 'اشتراك النظام', title: 'عقد اشتراك', terms: [{ h: 'البند', b: 'نصّه' }], form: null,
                 includes_plan: false, includes_amount: false, default_amount: null, default_amount_label: null, amount_rule: null,
             },
             {
-                id: 2, published: false, version: 1, hash: 'b'.repeat(64), name: 'اتفاقية الاشتراك واستخدام منصة أبعاد', service: 'اشتراك النظام', title: 'اتفاقية الاشتراك', terms: [], form: null,
+                id: 2, problems: [], version: 1, hash: 'b'.repeat(64), preview_url: '/p/2', preview_pdf_url: '/p/2.pdf', name: 'اتفاقية الاشتراك واستخدام منصة أبعاد', service: 'اشتراك النظام', title: 'اتفاقية الاشتراك', terms: [], form: null,
                 includes_plan: false, includes_amount: false, default_amount: null, default_amount_label: null, amount_rule: null,
             },
         ],
@@ -93,8 +93,9 @@ describe('a company keeps its documents', () => {
 
         expect(within(dialog).getAllByRole('combobox')[1]).not.toHaveTextContent('زهور الريان');
         await user.click(within(dialog).getAllByRole('combobox')[0]);
-        const unpublished = await screen.findByRole('option', { name: 'اتفاقية الاشتراك واستخدام منصة أبعاد · اشتراك النظام — غير منشور' });
-        expect(unpublished).not.toHaveAttribute('aria-disabled', 'true');
+        const agreement = await screen.findByRole('option', { name: 'اتفاقية الاشتراك واستخدام منصة أبعاد · اشتراك النظام' });
+        expect(agreement).not.toHaveAttribute('aria-disabled', 'true');
+        expect(document.body.textContent).not.toContain('غير منشور');
         expect(screen.getByRole('option', { name: 'عقد اشتراك أبعاد · اشتراك النظام' })).not.toHaveAttribute('aria-disabled', 'true');
     });
 

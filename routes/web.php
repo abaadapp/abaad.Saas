@@ -293,8 +293,6 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/documents/templates', [DocumentTemplateController::class, 'index'])->name('documents.templates');
     Route::post('/documents/templates', [DocumentTemplateController::class, 'store'])->name('documents.templates.store');
     Route::put('/documents/templates/{id}', [DocumentTemplateController::class, 'update'])->whereNumber('id')->name('documents.templates.update');
-    Route::post('/documents/templates/{id}/publish', [DocumentTemplateController::class, 'publish'])->whereNumber('id')->name('documents.templates.publish');
-    Route::post('/documents/templates/{id}/unpublish', [DocumentTemplateController::class, 'unpublish'])->whereNumber('id')->name('documents.templates.unpublish');
     Route::get('/documents/templates/{id}/preview', [DocumentTemplateController::class, 'preview'])->whereNumber('id')->name('documents.templates.preview');
     Route::get('/documents/templates/{id}/preview.pdf', [DocumentTemplateController::class, 'previewPdf'])->whereNumber('id')->name('documents.templates.preview-pdf');
     Route::get('/documents/{id}', [DocumentController::class, 'show'])->whereNumber('id')->name('documents.show');

@@ -49,13 +49,13 @@ use Throwable;
  * الفريق (`team`) ساعةَ الإصدار، وإجاباتُ العميل (`answers`) ساعةَ التوقيع. وإن
  * سأل النموذجُ العميلَ عن بياناته بحقوله فهي بيانُه، لا `FIELDS`.
  *
- * ═══ النشر ═══
+ * ═══ القالب ═══
  *
- * يُصدر من الإصدار المنشور من القالب (`PlatformDocumentTemplate::issuable`)، وما لم
- * يُنشر يُنشر بتأكيد المدير وهو يُصدر منه (`TemplatePublishing`). ورسومُه كما نُشرت:
- * الثابتةُ هي المبلغ، و«يبدأ من» حدُّه الأدنى. ومقدّمُ الخدمة بما كُتب من بياناته
- * نسخةٌ في المستند ساعتَها — وما لم يُكتب (السجلّ، العنوان) لا يُطبع، ولا يمنع
- * نشرًا ولا إصدارًا: قرارُ المالك.
+ * يُصدر من الإصدار الحاليّ لأيّ قالبٍ صالح (`PlatformDocumentTemplate::issuable`) —
+ * بلا اعتمادٍ ولا نشرٍ ولا تفعيل — على بصمة ما عاينه المدير وأكّده (`template_hash`).
+ * ورسومُه كما في القالب: الثابتةُ هي المبلغ، و«يبدأ من» حدُّه الأدنى. ومقدّمُ الخدمة
+ * بما كُتب من بياناته نسخةٌ في المستند ساعتَها — وما لم يُكتب (السجلّ، العنوان) لا
+ * يُطبع، ولا يمنع إصدارًا: قرارُ المالك.
  */
 class PlatformDocuments
 {
@@ -181,26 +181,19 @@ class PlatformDocuments
      * ودورتُه أساسٌ يعدّله المدير، ومدّتُه تبدأ حيث انتهت مدّةُ سابقه. ولا يُصدر
      * تجديدٌ ثانٍ لعقدٍ له تجديدٌ قائم.
      *
-     * وكلُّ قالبٍ يُختار. وما لم يُنشر إصدارُه الحاليّ يُنشر هنا بتأكيد المدير
-     * (`publish`) على بصمة ما رآه (`template_hash`) — في معاملة المستند نفسها:
-     * فإن رُدّ الإصدارُ لم يُنشر، وإن تغيّر القالبُ منذ فتحه رُدّا معًا.
+     * وكلُّ قالبٍ صالحٍ يُصدر منه، وما فيه خطأٌ يُردّ بما هو. والمستندُ من الإصدار
+     * الذي عاينه المدير وأكّده (`template_hash`): فإن تغيّر القالبُ بعدها رُدّ.
      *
-     * @param  array{template_id:int, publish?:bool, template_hash?:?string, business_id?:?int, client?:array, plan_id?:?int, cycle?:?string, term_starts_on?:?string, term_ends_on?:?string, renews_document_id?:?int, amount?:mixed, amount_label?:?string, days?:?int, notes?:?string, team?:array}  $data
+     * @param  array{template_id:int, template_hash:string, business_id?:?int, client?:array, plan_id?:?int, cycle?:?string, term_starts_on?:?string, term_ends_on?:?string, renews_document_id?:?int, amount?:mixed, amount_label?:?string, days?:?int, notes?:?string, team?:array}  $data
      */
     public static function issue(User $by, array $data): PlatformDocument
     {
         $template = PlatformDocumentTemplate::findOrFail($data['template_id']);
-        $publish = ! $template->issuable();
-        if ($publish) {
-            if (empty($data['publish'])) {
-                throw new RuntimeException(__('الإصدار :v من هذا القالب لم يُنشر بعد — أكّد نشره وإصدار المستند.', ['v' => $template->version]));
-            }
-            if (! hash_equals($template->contentHash(), (string) ($data['template_hash'] ?? ''))) {
-                throw new RuntimeException(__('تغيّر القالب منذ فتحته — راجعه من جديد ثمّ انشره.'));
-            }
-            if ($problems = TemplatePublishing::publishProblems($template)) {
-                throw new RuntimeException($problems[0]);
-            }
+        if ($problems = $template->problems()) {
+            throw new RuntimeException(__('لا يُصدر من هذا القالب حتى يُصحَّح: :problems', ['problems' => implode(' ', $problems)]));
+        }
+        if (! hash_equals($template->contentHash(), (string) ($data['template_hash'] ?? ''))) {
+            throw new RuntimeException(__('تغيّر القالب منذ عاينت المستند — راجعه من جديد ثمّ أكّد إصداره.'));
         }
         // مقدّمُ الخدمة كما هو اليوم — بما كُتب منه، وما لم يُكتب لا يُطبع
         $provider = self::provider();
@@ -258,10 +251,10 @@ class PlatformDocuments
         if ($template->includes_amount) {
             $fee = $template->default_amount === null ? null : round((float) $template->default_amount, 3);
             $given = $data['amount'] ?? null;
-            // رسومٌ ثابتة: المبلغُ هو ما اعتُمد ويذكره النصّ — لا يُكتب غيرُه هنا
+            // رسومٌ ثابتة: المبلغُ هو رسومُ القالب ويذكره النصّ — لا يُكتب غيرُه هنا
             if ($template->amount_rule === PlatformDocumentTemplate::AMOUNT_FIXED && $fee !== null) {
                 if ($given !== null && $given !== '' && (! is_numeric($given) || round((float) $given, 3) !== $fee)) {
-                    throw new RuntimeException(__('رسوم هذه الخدمة ثابتة: :fee ر.ع كما نُشرت. لتغييرها عدّل القالب وانشره من جديد.', ['fee' => number_format($fee, 3, '.', '')]));
+                    throw new RuntimeException(__('رسوم هذه الخدمة ثابتة: :fee ر.ع كما في القالب. لتغييرها عدّل القالب.', ['fee' => number_format($fee, 3, '.', '')]));
                 }
                 $given = $fee;
             }
@@ -270,7 +263,7 @@ class PlatformDocuments
             }
             $amount = round((float) $given, 3);
             if ($template->amount_rule === PlatformDocumentTemplate::AMOUNT_MIN && $fee !== null && $amount < $fee) {
-                throw new RuntimeException(__('سعر هذه الخدمة يبدأ من :fee ر.ع كما نُشر.', ['fee' => number_format($fee, 3, '.', '')]));
+                throw new RuntimeException(__('سعر هذه الخدمة يبدأ من :fee ر.ع كما في القالب.', ['fee' => number_format($fee, 3, '.', '')]));
             }
         }
 
@@ -283,11 +276,7 @@ class PlatformDocuments
         ]);
         $team = $form ? (DocumentForms::clean($form, is_array($data['team'] ?? null) ? $data['team'] : [], 'team') ?: null) : null;
 
-        return DB::transaction(function () use ($by, $template, $publish, $business, $renews, $client, $phone, $plan, $start, $end, $amount, $data, $days, $form, $team, $provider) {
-            // النشرُ والمستندُ معًا — تحت قفل القالب، على البصمة نفسها التي بُني منها المستند
-            if ($publish) {
-                TemplatePublishing::publishLocked($template->id, $by, $template->contentHash());
-            }
+        return DB::transaction(function () use ($by, $template, $business, $renews, $client, $phone, $plan, $start, $end, $amount, $data, $days, $form, $team, $provider) {
             $doc = PlatformDocument::create([
                 // رقمٌ مؤقّتٌ فريد، ثمّ رقمُ العقد من معرّفه — لا عدّادَ يتسابق عليه اثنان
                 'number' => 'TMP-'.Str::random(24),

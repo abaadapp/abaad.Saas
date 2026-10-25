@@ -65,10 +65,10 @@ class ASignedAgreementCannotBeAlteredUnseenTest extends TestCase
 
     private function issue(): PlatformDocument
     {
-        $t = $this->approveTemplate(PlatformDocumentTemplate::where('name', DocumentForms::seed('whatsapp-integration')['name'])->firstOrFail());
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
+        $t = PlatformDocumentTemplate::where('name', DocumentForms::seed('whatsapp-integration')['name'])->firstOrFail();
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed([
             'template_id' => $t->id, 'business_id' => $this->shop->id, 'team' => ['itype' => 'WhatsApp Cloud API'],
-        ])->assertSessionHasNoErrors();
+        ]))->assertSessionHasNoErrors();
         auth()->logout();
 
         return PlatformDocument::latest('id')->firstOrFail();

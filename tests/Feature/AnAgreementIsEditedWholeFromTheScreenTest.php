@@ -25,7 +25,7 @@ use Tests\TestCase;
  * ═══ ما يُحرس ═══
  *
  *   - أقسامُها ونصوصُها وحقولُها وقوائمُها وجداولُها ورسومُها تُعدَّل وتُضاف وتُحذف
- *     وتُرتَّب، وتُحفظ إصدارًا جديدًا غيرَ منشور، والرموزُ (`{fee}`) باقيةٌ في نصّها.
+ *     وتُرتَّب، وتُحفظ إصدارًا جديدًا يُصدر منه فورًا، والرموزُ (`{fee}`) باقيةٌ في نصّها.
  *   - ونموذجٌ مكسور (مفتاحٌ مكرّر أو غيرُ صالح، جدولُ اختيارٍ بلا خيارات، إقرارٌ
  *     فارغ) يُردّ قبل الحفظ، والقالبُ كما كان.
  *   - والإصدارُ الجديد يُوقَّع بحقوله الجديدة: يُطلب إلزاميُّها، وتُحفظ إجاباتُها،
@@ -81,12 +81,13 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
         ]);
     }
 
-    private function publishAndIssue(PlatformDocumentTemplate $t): PlatformDocument
+    /** كما تفعل نافذةُ الإصدار بعد المعاينة: على بصمة الإصدار الذي عاينه المدير */
+    private function issueFrom(PlatformDocumentTemplate $t): PlatformDocument
     {
         $t = $t->fresh();
         $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
             'template_id' => $t->id, 'business_id' => $this->shop->id, 'amount' => $t->default_amount,
-            'publish' => true, 'template_hash' => $t->contentHash(),
+            'template_hash' => $t->contentHash(),
         ])->assertSessionHasNoErrors()->assertRedirect();
         auth()->logout();
 
@@ -146,7 +147,7 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
 
         $t = $t->fresh();
         $this->assertSame(2, $t->version);
-        $this->assertFalse($t->issuable(), 'الإصدارُ الجديد غيرُ منشور');
+        $this->assertTrue($t->issuable(), 'الإصدارُ الجديد يُصدر منه فورًا');
         $this->assertSame('بيانات العميل الأساسية', $t->form['sections'][0]['title']);
         $this->assertTrue($t->form['sections'][0]['parts'][4]['req']);
         $this->assertCount(count($original['sections'][2]['parts']) - 1, $t->form['sections'][2]['parts']);
@@ -167,22 +168,22 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
         // والشاشةُ تعرض النموذجَ برموزه للمحرّر
         $this->actingAs($this->super)->get(route('super-admin.documents.templates'))->assertOk()
             ->assertInertia(fn (Assert $p) => $p->where('templates', fn ($list) => collect($list)->firstWhere('id', $t->id)['form']['consent'] === $t->form['consent']
-                && collect($list)->firstWhere('id', $t->id)['status'] === 'draft'
+                && collect($list)->firstWhere('id', $t->id)['problems'] === []
                 && count(collect($list)->firstWhere('id', $t->id)['versions']) === 2));
     }
 
     public function test_saving_an_unchanged_form_is_not_a_new_version(): void
     {
-        $t = $this->approveTemplate($this->whatsapp());
+        $t = $this->whatsapp();
         $this->save($t, $t->form)->assertSessionHasNoErrors();
         $this->assertSame(1, $t->fresh()->version);
-        $this->assertTrue($t->fresh()->issuable(), 'ما زال منشورًا');
+        $this->assertTrue($t->fresh()->issuable(), 'ما زال جاهزًا');
 
         // ونموذجٌ حُفظ بترتيب مفاتيحٍ آخر يبقى كما حُفظ — لا يصير إصدارًا بترتيبه
         $reordered = $t->form;
         $reordered['sections'] = array_map(fn ($sec) => array_reverse($sec, true), $reordered['sections']);
         DB::table('platform_document_templates')->where('id', $t->id)->update(['form' => json_encode(array_reverse($reordered, true), JSON_UNESCAPED_UNICODE)]);
-        $t = $this->approveTemplate($t->fresh());
+        $t = $t->fresh();
         $stored = DB::table('platform_document_templates')->where('id', $t->id)->value('form');
         $this->save($t, $t->form)->assertSessionHasNoErrors();
         $this->assertSame(1, $t->fresh()->version);
@@ -217,7 +218,7 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
     {
         $t = $this->whatsapp();
         $this->save($t, $this->edited($t->form))->assertSessionHasNoErrors();
-        $doc = $this->publishAndIssue($t);
+        $doc = $this->issueFrom($t);
         $this->assertSame(2, $doc->template_version);
         $this->assertStringContainsString('البالغة 25 ريالًا عُمانيًا', $doc->form['consent'], 'الرمزُ مملوءٌ في المستند');
 
@@ -246,23 +247,23 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
         $this->assertStringContainsString('1029384756', $text);
     }
 
-    public function test_editing_and_publishing_never_touch_what_was_issued_or_signed(): void
+    public function test_editing_and_issuing_never_touch_what_was_issued_or_signed(): void
     {
         $t = $this->whatsapp();
-        $signed = $this->publishAndIssue($t);
+        $signed = $this->issueFrom($t);
         $this->send($signed, self::CLIENT)->assertOk();
-        $sent = $this->publishAndIssue($t);
+        $sent = $this->issueFrom($t);
         $short = $this->subscriptionContract();
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), ['template_id' => $short->id, 'business_id' => $this->shop->id, 'cycle' => 'yearly'])->assertSessionHasNoErrors();
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed(['template_id' => $short->id, 'business_id' => $this->shop->id, 'cycle' => 'yearly']))->assertSessionHasNoErrors();
         auth()->logout();
 
         $rows = fn () => DB::table('platform_documents')->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
         $files = fn () => collect(Storage::disk('local')->allFiles())->mapWithKeys(fn ($f) => [$f => hash('sha256', (string) Storage::disk('local')->get($f))])->all();
         $before = [$rows(), $files()];
 
-        // تحريرٌ ونشرٌ وإصدارٌ جديد، وتحريرُ العقد القصير
+        // تحريرٌ وإصدارٌ جديد، وتحريرُ العقد القصير
         $this->save($t->fresh(), $this->edited($t->fresh()->form))->assertSessionHasNoErrors();
-        $this->publishAndIssue($t);
+        $this->issueFrom($t);
         $this->actingAs($this->super)->put(route('super-admin.documents.templates.update', $short->id), [
             'name' => $short->name, 'service' => $short->service, 'title' => 'عقد اشتراك معدَّل', 'title_en' => $short->title_en,
             'terms' => $short->terms, 'includes_plan' => true, 'includes_amount' => false,
@@ -282,6 +283,7 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
         $this->save($t, $this->edited($t->form))->assertSessionHasNoErrors();
         $counts = fn () => [PlatformDocument::count(), ActivityLog::count(), DB::table('platform_document_template_versions')->count()];
         $before = $counts();
+        $row = (array) DB::table('platform_document_templates')->where('id', $t->id)->first();
 
         $page = $this->actingAs($this->super)->get(route('super-admin.documents.templates.preview', $t->id))->assertOk();
         $page->assertSee('id="preview-banner"', false)->assertSee('بيانات إضافية للربط')->assertSee('معرّف حساب Meta')
@@ -294,7 +296,7 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
         $this->assertStringContainsString('Meta', implode(' ', array_column(PdfText::pages($pdf->getContent()), 'text')));
 
         $this->assertSame($before, $counts(), 'المعاينةُ لا تكتب مستندًا ولا سجلًّا');
-        $this->assertFalse($t->fresh()->issuable(), 'ولا تنشر');
+        $this->assertSame($row, (array) DB::table('platform_document_templates')->where('id', $t->id)->first(), 'ولا تكتب في القالب');
     }
 
     public function test_seeding_again_neither_replaces_nor_duplicates_an_edited_template(): void
@@ -400,8 +402,8 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
         $t = PlatformDocumentTemplate::where('name', 'تطبيق خاص')->firstOrFail();
         $this->assertSame('بيانات الطلب', $t->form['sections'][0]['title']);
         $this->assertSame([], $t->terms);
-        $this->assertFalse($t->issuable());
-        $doc = $this->publishAndIssue($t);
+        $this->assertTrue($t->issuable(), 'يُصدر منه فور حفظه');
+        $doc = $this->issueFrom($t);
         $this->assertSame('150.000 ر.ع', $doc->form['highlights'][0]['text']);
     }
 
@@ -412,7 +414,7 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
 
         $t = $this->whatsapp();
         $this->save($t, $this->edited($t->form))->assertSessionHasNoErrors();
-        $doc = $this->publishAndIssue($t);
+        $doc = $this->issueFrom($t);
         $this->send($doc, self::CLIENT + ['cr' => '1234567', 'metaId' => '1'])->assertOk();
 
         $after = [array_map(fn ($t) => DB::table($t)->count(), $tables), DB::table('businesses')->orderBy('id')->get(['id', 'plan_id', 'status', 'starts_at', 'ends_at'])->toArray()];

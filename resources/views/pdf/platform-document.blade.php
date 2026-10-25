@@ -38,7 +38,11 @@
     <div>{{ __('رقم المستند') }}: <strong dir="ltr">{{ $doc->number }}</strong></div>
     <div><span class="k">{{ __('التاريخ') }}:</span> <span dir="ltr">{{ $doc->created_at->format('Y-m-d') }}</span></div>
     <div style="margin-top:4pt">
-        <span class="pill {{ $signed ? 'income' : 'expense' }} b">{{ __(\App\Models\PlatformDocument::LABELS[$doc->state()] ?? $doc->state()) }}</span>
+        @if ($preview ?? false)
+            <span class="pill expense b">{{ __('معاينة — ليست مستندًا صادرًا') }}</span>
+        @else
+            <span class="pill {{ $signed ? 'income' : 'expense' }} b">{{ __(\App\Models\PlatformDocument::LABELS[$doc->state()] ?? $doc->state()) }}</span>
+        @endif
     </div>
 @endsection
 

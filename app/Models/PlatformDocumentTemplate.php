@@ -15,15 +15,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * و`form` نموذجٌ كاملٌ بحقوله وقوائمه وجداوله (انظر `DocumentForms`) — اتفاقياتُ
  * المالك كما صمّمها. وقالبُ النموذج لا بنودَ له: نصُّه في أقسامه.
  *
- * ═══ الاعتماد ═══
+ * ═══ النشر ═══
  *
- * لا يُصدر مستندٌ من نصٍّ لم يُعتمد. والاعتمادُ بصمةُ المحتوى ساعتَها
- * (`approved_hash`، انظر `content`): نصُّه ورسومُه وقاعدةُ مبلغه. فإن عُدِّل
- * شيءٌ منها بعده لم تعد البصمةُ تطابق، فلا يُصدر منه حتى يُعتمد إصدارُه الجديد
- * (`version`). وما صدر قبلها نسخةٌ في مستنده لا تتغيّر.
+ * يُصدر المستندُ من الإصدار المنشور: مفعّلٌ (`active`) وبصمةُ محتواه هي ما نُشر
+ * (`approved_hash`، انظر `content`): نصُّه ورسومُه وقاعدةُ مبلغه. فإن عُدِّل شيءٌ
+ * منها بعده صار إصدارًا جديدًا (`version`) غيرَ منشور. وما صدر قبله نسخةٌ في
+ * مستنده لا تتغيّر.
  *
- * والقالبُ القائم قبل سياسة الاعتماد (`approval_basis = legacy`) يبقى يعمل كما
- * كان — لم يراجعه أحدٌ بهذه الشاشة، فلا يُقال «معتمد»، ويحتاج اعتمادًا إن عُدِّل.
+ * والنشرُ قرارُ مدير المنصّة بتأكيدٍ واحد — من نافذة الإصدار وهو يُصدر منه، أو من
+ * شاشة القوالب — على بصمة ما رآه، ويُسجَّل باسمه ووقته في القالب وفي سجلّ
+ * إصداراته (`versions`). ولا يُنشر قالبٌ بنشر تحديثٍ برمجيّ.
+ *
+ * والقالبُ القائم قبل سياسة الاعتماد (`approval_basis = legacy`) يبقى منشورًا كما
+ * كان، ويحتاج نشرًا إن عُدِّل.
  */
 class PlatformDocumentTemplate extends Model
 {
@@ -57,6 +61,23 @@ class PlatformDocumentTemplate extends Model
         return $this->hasMany(PlatformDocument::class, 'template_id');
     }
 
+    /** سجلُّ إصداراته — الأحدثُ أوّلًا */
+    public function versions(): HasMany
+    {
+        return $this->hasMany(PlatformDocumentTemplateVersion::class, 'template_id')->orderByDesc('version');
+    }
+
+    /**
+     * يكتب الإصدارَ الحاليّ في سجلّه — مرّةً لكلّ رقم، فلا يُكتب فوق إصدارٍ حُفظ.
+     */
+    public function recordVersion(?User $by): PlatformDocumentTemplateVersion
+    {
+        return PlatformDocumentTemplateVersion::firstOrCreate(
+            ['template_id' => $this->id, 'version' => $this->version],
+            ['content' => $this->content(), 'content_hash' => $this->contentHash(), 'saved_by' => $by?->id, 'saved_by_name' => $by?->name],
+        );
+    }
+
     /** ما يُعتمد — كلُّ ما يصل إلى المستند من القالب، بلا اسمه الداخليّ ولا تفعيله */
     public function content(): array
     {
@@ -85,7 +106,7 @@ class PlatformDocumentTemplate extends Model
         return $this->approved_hash !== null && hash_equals($this->approved_hash, $this->contentHash());
     }
 
-    /** يُصدر منه: مفعّلٌ ونصُّه هو المعتمد */
+    /** منشور: مفعّلٌ ونصُّه هو ما نُشر — يُصدر منه بلا تأكيد */
     public function issuable(): bool
     {
         return $this->active && $this->approved();

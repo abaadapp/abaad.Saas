@@ -15,8 +15,9 @@ import { pageProps } from './setup';
  * (`AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest`). وهنا:
  *   - نافذةُ الإصدار تعرض النموذجَ وتقترح مبلغَه وتفتح حقولَ الفريق وحدها.
  *   - صفحةُ المستند تعرض ما كتبه الفريقُ وما أجاب به العميل، والفارغَ سطرًا.
- *   - شاشةُ القوالب: المسوّدةُ موسومةٌ ولا تُفعَّل، والاعتمادُ يُعرض بنصّه ورسومه ومقدّم
- *     خدمته ولا يُرسل بلا مراجعةٍ وكلمة مرور. وسجلٌّ أو عنوانٌ لم يُكتبا يُنبَّه إليهما ولا يمنعان.
+ *   - شاشةُ القوالب: غيرُ المنشور موسومٌ بإصداره، والنشرُ يُعرض بنصّه ورسومه ومقدّم
+ *     خدمته بتأكيدٍ واحد. وسجلٌّ أو عنوانٌ لم يُكتبا يُنبَّه إليهما ولا يمنعان.
+ *     (المحرّرُ ونافذةُ الإصدار في `an-owner-edits-and-publishes-any-agreement`.)
  *   - والرسومُ الثابتة في نافذة الإصدار تُقرأ ولا تُكتب.
  */
 
@@ -87,7 +88,7 @@ describe('the owner’s agreements, as forms', () => {
             documents: [], pagination: { current_page: 1, last_page: 1, from: 0, to: 0, total: 0, per_page: 20, prev_page_url: null, next_page_url: null },
             filters: { state: '', q: '' }, counts: { sent: 0, signed: 0 },
             templates: [{
-                id: 4, name: 'نموذج طلب واتفاقية خدمة ربط واتساب', service: 'ربط واتساب', title: 'نموذج طلب واتفاقية خدمة ربط واتساب',
+                id: 4, published: true, version: 1, hash: 'f'.repeat(64), name: 'نموذج طلب واتفاقية خدمة ربط واتساب', service: 'ربط واتساب', title: 'نموذج طلب واتفاقية خدمة ربط واتساب',
                 terms: [], form: FORM, includes_plan: false, includes_amount: true, default_amount: '25.000', default_amount_label: 'رسوم الربط (مرة واحدة)',
                 amount_rule: 'fixed',
             }],
@@ -150,47 +151,27 @@ describe('the owner’s agreements, as forms', () => {
     const template = {
         id: 4, name: 'نموذج طلب واتفاقية خدمة ربط واتساب', service: 'ربط واتساب', title: 'نموذج طلب واتفاقية خدمة ربط واتساب', title_en: null,
         terms: [], form: FORM, default_amount: '25.000', default_amount_label: 'رسوم الربط (مرة واحدة)', amount_rule: 'fixed' as const,
-        includes_plan: false, includes_amount: true, active: false, documents_count: 0, version: 1,
-        approval: 'draft' as const, approved_at: null, approved_by: null, hash: 'f'.repeat(64),
+        includes_plan: false, includes_amount: true, documents_count: 0, version: 1, status: 'draft' as const,
+        published_at: null, published_by: null, hash: 'f'.repeat(64), problems: [],
+        preview_url: '/super-admin/documents/templates/4/preview', preview_pdf_url: '/super-admin/documents/templates/4/preview.pdf', versions: [],
     };
     const provider = { name: 'مشاريع الذهلي الجديدة', legal_name: 'مشاريع الذهلي الجديدة', trade_name: 'أبعاد', cr: '', address: '' };
 
-    it('a draft agreement is marked and cannot be activated; a blank CR or address only notes, never blocks approval', async () => {
+    it('an unpublished agreement is marked with its version; a blank CR or address only notes, never blocks publishing', async () => {
         layout('super-admin.documents.templates');
-        Object.assign(pageProps, { templates: [template], provider, providerMissing: ['رقم السجل التجاري', 'العنوان القانوني'] });
+        Object.assign(pageProps, { templates: [template], provider, providerLine: 'مشاريع الذهلي الجديدة — الاسم التجاري للمنصة: أبعاد', providerMissing: ['رقم السجل التجاري', 'العنوان القانوني'] });
         render(<DocumentTemplates />);
 
-        expect(screen.getByTestId('approval-4')).toHaveTextContent('مسوّدة — بانتظار المراجعة القانونية');
+        expect(screen.getByTestId('status-4')).toHaveTextContent('غير منشور · الإصدار 1');
         expect(screen.getByTestId('provider-missing')).toHaveTextContent('رقم السجل التجاري، العنوان القانوني');
+        expect(screen.getByTestId('provider-missing')).toHaveTextContent('ولا تمنع النشر ولا الإصدار');
+        expect(screen.getByTestId('preview-4')).toHaveAttribute('href', template.preview_url);
 
-        await userEvent.click(screen.getByRole('button', { name: 'تعديل' }));
-        expect(screen.getByTestId('template-active')).toBeDisabled();
-        expect(screen.getByTestId('needs-approval')).toBeInTheDocument();
-        expect(screen.getByTestId('draft-notice')).toBeInTheDocument();
-        await userEvent.keyboard('{Escape}');
-
-        await userEvent.click(screen.getByTestId('approve-4'));
-        const approve = screen.getByTestId('approve-form');
-        expect(within(approve).getByTestId('approve-fee')).toHaveTextContent('25.000');
-        expect(within(approve).getByTestId('approve-provider-note')).toHaveTextContent('رقم السجل التجاري');
-        await userEvent.click(within(approve).getByTestId('approve-reviewed'));
-        await userEvent.type(within(approve).getByTestId('approve-password'), 'x');
-        expect(within(approve).getByTestId('approve-submit')).toBeEnabled();
-    });
-
-    it('with the provider complete, approval needs the review tick and the password', async () => {
-        layout('super-admin.documents.templates');
-        Object.assign(pageProps, { templates: [template], provider: { ...provider, cr: 'TEST-CR', address: 'مسقط' }, providerMissing: [] });
-        render(<DocumentTemplates />);
-
-        await userEvent.click(screen.getByTestId('approve-4'));
-        const approve = screen.getByTestId('approve-form');
-        expect(within(approve).getByTestId('approve-provider')).toHaveTextContent('مشاريع الذهلي الجديدة — أبعاد — TEST-CR — مسقط');
-        const submit = within(approve).getByTestId('approve-submit');
-        expect(submit).toBeDisabled();
-        await userEvent.click(within(approve).getByTestId('approve-reviewed'));
-        expect(submit).toBeDisabled();
-        await userEvent.type(within(approve).getByTestId('approve-password'), 'secret');
-        expect(submit).toBeEnabled();
+        await userEvent.click(screen.getByTestId('publish-4'));
+        const publish = screen.getByTestId('publish-form');
+        expect(within(publish).getByTestId('publish-fee')).toHaveTextContent('25.000');
+        // الرسومُ مملوءةٌ في المعاينة كما ستُكتب في المستند
+        expect(within(publish).getByText('25.000 ر.ع تُدفع مرة واحدة')).toBeInTheDocument();
+        expect(within(publish).getByTestId('publish-submit')).toBeEnabled();
     });
 });

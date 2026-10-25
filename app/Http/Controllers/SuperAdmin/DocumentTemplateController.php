@@ -3,34 +3,36 @@
 namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Plan;
+use App\Models\PlatformDocument;
 use App\Models\PlatformDocumentTemplate;
+use App\Models\PlatformDocumentTemplateVersion;
 use App\Support\Activity;
 use App\Support\DocumentForms;
 use App\Support\PlatformDocuments;
+use App\Support\TemplatePublishing;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use RuntimeException;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 /**
- * قوالبُ المستندات — قالبٌ لكلّ خدمة، يكتب المديرُ عنوانَه وبنودَه.
+ * قوالبُ المستندات — يحرّرها مديرُ المنصّة كلَّها من الشاشة: أسماءها وعناوينها
+ * ورسومها، وبنودَها أو نموذجَها بأقسامه وحقوله وقوائمه وجداوله (`DocumentForms`).
  *
  * وتعديلُ القالب لا يمسّ مستندًا صدر منه: المستندُ نسخةٌ ساعةَ إصداره. ولا
- * يُحذف قالب، يُعطَّل: مستنداتٌ صدرت منه تشير إليه.
+ * يُحذف قالب، يُوقَف نشرُه: مستنداتٌ صدرت منه تشير إليه.
  *
- * وقالبُ النموذج (اتفاقياتُ المالك، انظر `DocumentForms`) يُعدَّل اسمُه وعنوانُه
- * ورسومُه وتفعيلُه، ونموذجُه وقاعدةُ مبلغه كما صُمِّما — لا تمسّهما هذه الشاشة.
+ * ═══ الإصدارات والنشر ═══
  *
- * ═══ الاعتماد ═══
- *
- * القالبُ الجديد مسوّدةٌ معطَّلة. ويعتمده مديرُ المنصّة بكلمة مروره على بصمة ما
- * رآه (`hash`): فإن تغيّر القالبُ بين فتحه وضغطه رُدّ الاعتماد. ولا يُفعَّل قبل
- * اعتماده. وبياناتُ مقدّم الخدمة (السجلّ والعنوان) لا تمنع الاعتماد: ما لم يُكتب منها
- * لا يُطبع، والقرارُ للمالك. وتعديلُ ما يُعتمد (نصُّه
- * ورسومُه وقاعدةُ مبلغه) إصدارٌ جديدٌ يُعطَّل حتى يُعتمد.
+ * تعديلُ ما يصل إلى المستند (نصُّه ورسومُه وقاعدةُ مبلغه) إصدارٌ جديدٌ غيرُ منشور،
+ * يُحفظ في سجلّ الإصدارات كما هو. ويُعاين قبل نشره صفحةَ توقيعٍ وورقةً كما يراهما
+ * العميل، بلا مستندٍ يُكتب. ويُنشر بتأكيدٍ واحد — من هنا، أو من نافذة الإصدار
+ * وهو يُصدر منه — على بصمة ما رآه المدير (`TemplatePublishing`).
  */
 class DocumentTemplateController extends Controller
 {
@@ -39,7 +41,7 @@ class DocumentTemplateController extends Controller
         $provider = PlatformDocuments::provider();
 
         return Inertia::render('Platform/Documents/Templates', [
-            'templates' => PlatformDocumentTemplate::withCount('documents')->orderBy('id')->get()
+            'templates' => PlatformDocumentTemplate::withCount('documents')->with('versions')->orderBy('id')->get()
                 ->map(fn (PlatformDocumentTemplate $t) => [
                     'id' => $t->id,
                     'name' => $t->name,
@@ -47,107 +49,192 @@ class DocumentTemplateController extends Controller
                     'title' => $t->title,
                     'title_en' => $t->title_en,
                     'terms' => $t->terms ?? [],
-                    // النموذجُ كما سيُكتب في المستند لو صدر اليوم: برسومه ومقدّم خدمته
-                    'form' => DocumentForms::render($t->form, ['fee' => $t->default_amount, 'provider' => PlatformDocuments::providerLine($provider)]),
+                    // النموذجُ كما يُحرَّر — برموزه (`{fee}`، `{provider}`) تُملأ ساعةَ الإصدار
+                    'form' => $t->form ?: null,
                     'default_amount' => $t->default_amount === null ? null : (string) $t->default_amount,
                     'default_amount_label' => $t->default_amount_label,
                     'amount_rule' => $t->amount_rule,
                     'includes_plan' => $t->includes_plan,
                     'includes_amount' => $t->includes_amount,
-                    'active' => $t->active,
                     'documents_count' => $t->documents_count,
                     'version' => $t->version,
-                    'approval' => $t->approvalState(),
-                    'approved_at' => $t->approved_at ? PlatformDocuments::date($t->approved_at) : null,
-                    'approved_by' => $t->approved_by_name,
+                    'status' => self::status($t),
+                    'published_at' => $t->issuable() && $t->approved_at ? PlatformDocuments::date($t->approved_at) : null,
+                    'published_by' => $t->issuable() ? $t->approved_by_name : null,
                     'hash' => $t->contentHash(),
+                    'problems' => TemplatePublishing::publishProblems($t),
+                    'preview_url' => route('super-admin.documents.templates.preview', $t->id),
+                    'preview_pdf_url' => route('super-admin.documents.templates.preview-pdf', $t->id),
+                    'versions' => $t->versions->map(fn (PlatformDocumentTemplateVersion $v) => [
+                        'version' => $v->version,
+                        'hash' => substr($v->content_hash, 0, 12),
+                        'saved_at' => PlatformDocuments::date($v->created_at),
+                        'saved_by' => $v->saved_by_name,
+                        'published_at' => $v->published_at ? PlatformDocuments::date($v->published_at) : null,
+                        'published_by' => $v->published_by_name,
+                    ])->all(),
                 ]),
             'provider' => $provider,
+            'providerLine' => PlatformDocuments::providerLine($provider),
             'providerMissing' => PlatformDocuments::providerMissing($provider),
         ]);
     }
 
+    /** published: منشور · paused: نُشر ثمّ أُوقف · changed: عُدِّل بعد نشره · draft: لم يُنشر قطّ */
+    public static function status(PlatformDocumentTemplate $t): string
+    {
+        return match (true) {
+            $t->issuable() => 'published',
+            $t->approved() => 'paused',
+            $t->approved_hash !== null => 'changed',
+            default => 'draft',
+        };
+    }
+
     public function store(Request $request): RedirectResponse
     {
-        // القالبُ الجديد مسوّدة: لا يُفعَّل قبل أن يُعتمد
-        $template = PlatformDocumentTemplate::create(['active' => false, 'version' => 1] + $this->validated($request));
-        Activity::log('created', 'أضاف قالب مستند (مسوّدة): '.$template->name, ['business_id' => null, 'subject_id' => $template->id, 'subject_type' => PlatformDocumentTemplate::class]);
+        // القالبُ الجديد غيرُ منشور: يُعاين ثمّ يُنشر
+        $template = PlatformDocumentTemplate::create(['active' => false, 'version' => 1] + $this->validated($request, $request->input('form') !== null));
+        $template->recordVersion($request->user());
+        Activity::log('created', 'أضاف قالب مستند (غير منشور): '.$template->name, ['business_id' => null, 'subject_id' => $template->id, 'subject_type' => PlatformDocumentTemplate::class]);
 
-        return back()->with('toast', ['msg' => __('أُضيف القالب مسوّدةً — اعتمده ثمّ فعّله ليُصدر منه'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('أُضيف القالب — عاينه ثمّ انشره، أو انشره وأنت تُصدر منه'), 'type' => 'success']);
     }
 
     public function update(Request $request, int $id): RedirectResponse
     {
         $template = PlatformDocumentTemplate::findOrFail($id);
         $data = $this->validated($request, $template->form !== null);
+        // نموذجٌ لم يتغيّر بعد التنظيف يبقى كما حُفظ — فلا يصير إصدارًا جديدًا بترتيب مفاتيحه
+        if (array_key_exists('form', $data) && DocumentForms::same($template->form, $data['form'])) {
+            $data['form'] = $template->form;
+        }
         $before = $template->contentHash();
-        $wasApproved = $template->approved();
+        $wasPublished = $template->issuable();
 
         $template->fill($data);
         $changed = $template->contentHash() !== $before;
         if ($changed) {
-            // نصٌّ جديد إصدارٌ جديد: لا اعتمادَ له ولا يُصدر منه حتى يُعتمد
+            // نصٌّ جديد إصدارٌ جديد غيرُ منشور — وما نُشر قبله باقٍ في سجلّه وفي مستنداته
             $template->forceFill([
                 'version' => $template->version + 1,
                 'approved_hash' => null, 'approval_basis' => null, 'approved_at' => null, 'approved_by' => null, 'approved_by_name' => null,
                 'active' => false,
             ]);
-        } elseif ($template->active && ! $template->approved()) {
-            throw ValidationException::withMessages(['active' => __('اعتمد القالب قبل تفعيله.')]);
         }
         $template->save();
+        if ($changed) {
+            $template->recordVersion($request->user());
+        }
 
-        Activity::log('updated', ($changed && $wasApproved ? 'عدّل نص قالب معتمد — صار الإصدار '.$template->version.' بانتظار الاعتماد: ' : 'عدّل قالب مستند: ').$template->name, [
+        Activity::log('updated', ($changed ? 'عدّل نص قالب مستند — صار الإصدار '.$template->version.($wasPublished ? ' (غير منشور)' : '').': ' : 'عدّل قالب مستند: ').$template->name, [
             'business_id' => null, 'subject_id' => $template->id, 'subject_type' => PlatformDocumentTemplate::class,
         ]);
 
         return back()->with('toast', [
             'msg' => $changed
-                ? __('حُفظ إصدارًا جديدًا معطّلًا — اعتمده ثمّ فعّله. المستندات التي صدرت منه لا تتغيّر')
+                ? __('حُفظ الإصدار :v — عاينه ثمّ انشره. المستندات التي صدرت لا تتغيّر', ['v' => $template->version])
                 : __('حُفظ القالب — المستندات التي صدرت منه لا تتغيّر'),
             'type' => 'success',
         ]);
     }
 
-    /**
-     * اعتمادُ القالب — بكلمة مرور المدير، على بصمة ما رآه.
-     *
-     * الاعتمادُ لا يفعّله: التفعيلُ قرارٌ بعده.
-     */
-    public function approve(Request $request, int $id): RedirectResponse
+    /** نشرُ الإصدار الحاليّ — تأكيدٌ واحد على بصمة ما رآه المدير */
+    public function publish(Request $request, int $id): RedirectResponse
     {
-        $request->validate([
-            'hash' => ['required', 'string', 'size:64'],
-            'password' => ['required', 'current_password'],
-        ], [], ['hash' => __('بصمة القالب'), 'password' => __('كلمة المرور')]);
+        $request->validate(['hash' => ['required', 'string', 'size:64']], [], ['hash' => __('بصمة القالب')]);
 
-        return DB::transaction(function () use ($request, $id) {
-            $template = PlatformDocumentTemplate::whereKey($id)->lockForUpdate()->firstOrFail();
-            $hash = $template->contentHash();
-            if (! hash_equals($hash, (string) $request->input('hash'))) {
-                return back()->withErrors(['approve' => __('تغيّر القالب منذ فتحته — راجعه من جديد ثمّ اعتمده.')]);
-            }
-            // نصٌّ يذكر رسومه، أو قاعدةُ مبلغٍ تحتاجها، بلا رقم: وعدٌ بمبلغٍ لا يُعرف
-            $needsFee = ($template->includes_amount && $template->amount_rule !== null)
-                || array_intersect(['fee', 'fee_short'], DocumentForms::tokens($template->form)) !== [];
-            if ($needsFee && $template->default_amount === null) {
-                return back()->withErrors(['approve' => __('اكتب رسوم القالب قبل اعتماده — نصّه يذكرها.')]);
-            }
+        try {
+            $template = TemplatePublishing::publish($id, $request->user(), (string) $request->input('hash'));
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['publish' => $e->getMessage()]);
+        }
 
-            $template->forceFill([
-                'approved_hash' => $hash,
-                'approval_basis' => PlatformDocumentTemplate::BY_OWNER,
-                'approved_at' => now(),
-                'approved_by' => $request->user()->id,
-                'approved_by_name' => $request->user()->name,
-            ])->save();
+        return back()->with('toast', ['msg' => __('نُشر الإصدار :v — يُصدر منه الآن', ['v' => $template->version]), 'type' => 'success']);
+    }
 
-            Activity::log('updated', 'اعتمد قالب مستند (الإصدار '.$template->version.'، البصمة '.substr($hash, 0, 12).'): '.$template->name, [
+    /** إيقافُ النشر — لا يُصدر منه حتى يُنشر ثانية، وما صدر منه كما هو */
+    public function unpublish(int $id): RedirectResponse
+    {
+        $template = PlatformDocumentTemplate::findOrFail($id);
+        if ($template->active) {
+            $template->forceFill(['active' => false])->save();
+            Activity::log('updated', 'أوقف نشر قالب مستند (الإصدار '.$template->version.'): '.$template->name, [
                 'business_id' => null, 'subject_id' => $template->id, 'subject_type' => PlatformDocumentTemplate::class,
             ]);
+        }
 
-            return back()->with('toast', ['msg' => __('اعتُمد القالب — فعّله ليُصدر منه'), 'type' => 'success']);
-        });
+        return back()->with('toast', ['msg' => __('أُوقف نشر القالب — المستندات التي صدرت منه لا تتغيّر'), 'type' => 'success']);
+    }
+
+    /** صفحةُ التوقيع كما يراها العميل — من الإصدار الحاليّ، بلا مستندٍ يُكتب ولا توقيعٍ يُرسل */
+    public function preview(int $id): HttpResponse
+    {
+        $doc = $this->sample(PlatformDocumentTemplate::findOrFail($id));
+        $form = $doc->form ?: null;
+
+        return response()->view('public.sign', [
+            'doc' => $doc,
+            'token' => str_repeat('0', 32),
+            'readable' => true,
+            'preview' => true,
+            'provider' => PlatformDocuments::providerOf($doc),
+            'fields' => PlatformDocuments::FIELDS,
+            'consent' => PlatformDocuments::CONSENT,
+            'signature' => null,
+            'form' => $form,
+            'team' => [],
+            'answers' => [],
+            'asksClient' => DocumentForms::asksClient($form),
+            'amountInForm' => DocumentForms::showsAmount($form),
+        ])->header('Cache-Control', 'no-store, private')->header('X-Robots-Tag', 'noindex, nofollow');
+    }
+
+    /** ورقةُ PDF كما تُطبع — من الإصدار الحاليّ، موسومةً «معاينة» */
+    public function previewPdf(int $id): HttpResponse
+    {
+        $response = PlatformDocuments::pdf($this->sample(PlatformDocumentTemplate::findOrFail($id)), true);
+        $response->headers->set('Cache-Control', 'no-store, private');
+
+        return $response;
+    }
+
+    /**
+     * مستندٌ في الذاكرة من الإصدار الحاليّ — لا يُحفظ.
+     *
+     * برسوم القالب ومقدّم الخدمة اليوم كما لو صدر الآن. وما يُكتب عند الإصدار
+     * (بيانُ العميل) فارغ، والباقةُ أرخصُ باقةٍ شهريّةً مثالًا على مكانها.
+     */
+    private function sample(PlatformDocumentTemplate $t): PlatformDocument
+    {
+        $provider = PlatformDocuments::provider();
+        $plan = $t->includes_plan && ($p = Plan::orderBy('monthly_price')->first()) ? PlatformDocuments::planSnapshot($p, 'monthly') : null;
+        $start = now()->startOfDay();
+        $doc = new PlatformDocument;
+        $doc->forceFill([
+            'number' => __('معاينة'),
+            'service' => $t->service,
+            'title' => $t->title,
+            'title_en' => $t->title_en,
+            'terms' => array_values($t->terms ?? []),
+            'form' => DocumentForms::render($t->form ?: null, [
+                'fee' => $t->default_amount === null ? null : (string) $t->default_amount,
+                'provider' => PlatformDocuments::providerLine($provider),
+            ]),
+            'plan' => $plan,
+            'term_starts_on' => $plan ? $start->toDateString() : null,
+            'term_ends_on' => $plan ? PlatformDocuments::termEnd($start, $plan['cycle'])->toDateString() : null,
+            'amount' => $t->includes_amount ? $t->default_amount : null,
+            'amount_label' => $t->includes_amount ? ($t->default_amount_label ?: $t->name) : null,
+            'provider' => $provider,
+            'template_version' => $t->version,
+            'client' => [],
+            'status' => PlatformDocument::SENT,
+            'expires_at' => now()->addDays(PlatformDocuments::DEFAULT_DAYS)->endOfDay(),
+        ]);
+        $doc->created_at = now();
+
+        return $doc;
     }
 
     private function validated(Request $request, bool $isForm = false): array
@@ -161,9 +248,9 @@ class DocumentTemplateController extends Controller
             'terms.*.h' => ['nullable', 'string', 'max:120'],
             // ولقالب النموذج لا بنود: ما وصل منها يُترك (انظر أسفل) ولا يردّ الحفظ
             'terms.*.b' => $isForm ? ['nullable'] : ['required', 'string', 'max:3000'],
+            'form' => $isForm ? ['required', 'array'] : ['nullable', 'prohibited'],
             'includes_plan' => ['boolean'],
             'includes_amount' => ['boolean'],
-            'active' => ['boolean'],
             'default_amount' => ['nullable', 'numeric', 'decimal:0,3', 'min:0', 'max:1000000'],
             'default_amount_label' => ['nullable', 'string', 'max:190'],
             'amount_rule' => ['nullable', Rule::in([PlatformDocumentTemplate::AMOUNT_FIXED, PlatformDocumentTemplate::AMOUNT_MIN])],
@@ -173,21 +260,27 @@ class DocumentTemplateController extends Controller
             'title' => __('عنوان المستند'),
             'terms' => __('البنود'),
             'terms.*.b' => __('نص البند'),
+            'form' => __('النموذج'),
             'default_amount' => __('المبلغ المقترح'),
             'amount_rule' => __('قاعدة المبلغ'),
         ]);
-
-        // نموذجُ القالب كما صُمِّم — بنودُه في أقسامه، وقاعدةُ مبلغه من نصّه (رسومٌ ثابتة أو «تبدأ من»)
-        if ($isForm) {
-            unset($data['terms'], $data['amount_rule']);
-
-            return $data;
-        }
 
         // قاعدةُ مبلغٍ بلا رسوم: وعدٌ بمبلغٍ لا يُعرف
         if (($data['amount_rule'] ?? null) !== null && ($data['default_amount'] ?? null) === null) {
             throw ValidationException::withMessages(['default_amount' => __('اكتب الرسوم — قاعدة المبلغ تحتاجها.')]);
         }
+
+        // النموذجُ بأقسامه وحقوله: يُنظَّف ثمّ يُفحص — ما تقوم عليه صفحةُ التوقيع وورقتُها
+        if ($isForm) {
+            $data['form'] = DocumentForms::normalize((array) $data['form']);
+            if ($problems = DocumentForms::problems($data['form'])) {
+                throw ValidationException::withMessages(['form' => implode("\n", $problems)]);
+            }
+            $data['terms'] = [];
+
+            return $data;
+        }
+        unset($data['form']);
 
         $data['terms'] = array_values(array_map(fn ($t) => [
             'h' => trim((string) ($t['h'] ?? '')),

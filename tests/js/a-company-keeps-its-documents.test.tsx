@@ -10,9 +10,9 @@ import { pageProps } from './setup';
  * مستنداتُ الشركة في ملفّها، ونافذةُ الإصدار تسمّي القوالبَ كلَّها.
  *
  * ما يُربط بالشركة وما يُصدر منه يحرسه PHP (`ACompanyKeepsItsDocumentsTest`). وهنا:
- *   - القالبُ المنتظر ظاهرٌ في القائمة باسمه وسببه، ولا يُختار.
+ *   - القوالبُ كلُّها في القائمة وتُختار — غيرُ المنشور موسومٌ ولا يُعطَّل.
  *   - «مستند جديد» من ملفّ الشركة يفتح النافذةَ والشركةُ مختارة.
- *   - تبويبُ «المستندات» في ملفّ الشركة يعرض مستنداتها ورابطَ مستندٍ جديد لها.
+ *   - بطاقةُ «مستندات الشركة» أسفلَ ملفّها تعرض مستنداتها ورابطَ مستندٍ جديد لها.
  */
 
 const layout = (current: string) => {
@@ -41,13 +41,15 @@ const documentsPage = (over: Record<string, unknown> = {}) => {
     Object.assign(pageProps, {
         documents: [row], pagination: { current_page: 1, last_page: 1, from: 1, to: 1, total: 1, per_page: 20, prev_page_url: null, next_page_url: null },
         filters: { state: '', q: '', business: '5' }, counts: { sent: 0, signed: 1 },
-        templates: [{
-            id: 1, name: 'عقد اشتراك أبعاد', service: 'اشتراك النظام', title: 'عقد اشتراك', terms: [{ h: 'البند', b: 'نصّه' }], form: null,
-            includes_plan: false, includes_amount: false, default_amount: null, default_amount_label: null, amount_rule: null,
-        }],
-        waiting: [
-            { id: 2, name: 'اتفاقية الاشتراك واستخدام منصة أبعاد', service: 'اشتراك النظام', reason: 'بانتظار الاعتماد' },
-            { id: 3, name: 'نموذج تجهيز المتجر', service: 'تجهيز', reason: 'معتمد — غير مفعّل' },
+        templates: [
+            {
+                id: 1, published: true, version: 1, hash: 'a'.repeat(64), name: 'عقد اشتراك أبعاد', service: 'اشتراك النظام', title: 'عقد اشتراك', terms: [{ h: 'البند', b: 'نصّه' }], form: null,
+                includes_plan: false, includes_amount: false, default_amount: null, default_amount_label: null, amount_rule: null,
+            },
+            {
+                id: 2, published: false, version: 1, hash: 'b'.repeat(64), name: 'اتفاقية الاشتراك واستخدام منصة أبعاد', service: 'اشتراك النظام', title: 'اتفاقية الاشتراك', terms: [], form: null,
+                includes_plan: false, includes_amount: false, default_amount: null, default_amount_label: null, amount_rule: null,
+            },
         ],
         company: { id: 5, name: 'زهور الريان', url: '/super-admin/businesses/5' },
         opening: true,
@@ -83,18 +85,16 @@ describe('a company keeps its documents', () => {
         expect(screen.getByTestId('company-filter')).toHaveTextContent('مستندات زهور الريان');
     });
 
-    it('the list names the waiting templates with their reason, and they cannot be chosen', async () => {
+    it('every template can be chosen — none is greyed out for an old approval', async () => {
         const user = userEvent.setup();
         documentsPage({ opening: false, company: null, filters: { state: '', q: '' } });
         await user.click(screen.getByRole('button', { name: 'مستند جديد' }));
         const dialog = screen.getByTestId('new-document');
 
-        expect(within(dialog).getByTestId('waiting-templates')).toHaveTextContent('2 بانتظارك في');
         expect(within(dialog).getAllByRole('combobox')[1]).not.toHaveTextContent('زهور الريان');
         await user.click(within(dialog).getAllByRole('combobox')[0]);
-        const waiting = await screen.findByRole('option', { name: 'اتفاقية الاشتراك واستخدام منصة أبعاد — بانتظار الاعتماد' });
-        expect(waiting).toHaveAttribute('aria-disabled', 'true');
-        expect(screen.getByRole('option', { name: 'نموذج تجهيز المتجر — معتمد — غير مفعّل' })).toHaveAttribute('aria-disabled', 'true');
+        const unpublished = await screen.findByRole('option', { name: 'اتفاقية الاشتراك واستخدام منصة أبعاد · اشتراك النظام — غير منشور' });
+        expect(unpublished).not.toHaveAttribute('aria-disabled', 'true');
         expect(screen.getByRole('option', { name: 'عقد اشتراك أبعاد · اشتراك النظام' })).not.toHaveAttribute('aria-disabled', 'true');
     });
 
@@ -111,7 +111,8 @@ describe('a company keeps its documents', () => {
         expect(within(box).getByText('AB-202610-0009')).toBeInTheDocument();
         expect(within(box).getByText('موقّع')).toBeInTheDocument();
         expect(within(box).getByTestId('business-new-document')).toHaveAttribute('href', '/super-admin/documents?business=5&new=1');
-        expect(within(box).getByRole('link', { name: 'كل مستندات الشركة' })).toHaveAttribute('href', '/super-admin/documents?business=5');
+        expect(within(box).getByTestId('business-all-documents')).toHaveAttribute('href', '/super-admin/documents?business=5');
+        expect(within(box).getByRole('link', { name: 'PDF AB-202610-0009' })).toHaveAttribute('href', '/super-admin/documents/9/pdf');
     });
 
     it('a company without documents says so', () => {
@@ -119,6 +120,6 @@ describe('a company keeps its documents', () => {
         render(<BusinessDocuments documents={{ rows: [], count: 0, new_url: '/n', all_url: '/a' }} />);
 
         expect(screen.getByText('لا مستندات لهذه الشركة بعد')).toBeInTheDocument();
-        expect(screen.queryByRole('link', { name: 'كل مستندات الشركة' })).toBeNull();
+        expect(screen.getByTestId('business-new-document')).toHaveAttribute('href', '/n');
     });
 });

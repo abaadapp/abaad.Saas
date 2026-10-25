@@ -116,3 +116,81 @@ export function formInputs(form: DocumentForm | null | undefined, by: 'client' |
         s.after ? [] : s.parts.filter(isInput).filter((p) => p.by === by).map((part) => ({ section: s.title, part })),
     );
 }
+
+/** رموزُ القالب التي تُملأ ساعةَ الإصدار — انظر `DocumentForms::render` */
+export const TOKENS = ['{fee}', '{fee_short}', '{provider}'] as const;
+
+/** أيُّ الرموز في النموذج؟ — لتنبيه المحرّر إن أُزيل منها شيء */
+export function formTokens(form: DocumentForm | null | undefined): string[] {
+    if (!form) return [];
+    const text = JSON.stringify(form);
+    return TOKENS.filter((tok) => text.includes(tok));
+}
+
+/**
+ * النموذجُ برموزه مملوءةً — كما يكتبه الخادم في المستند (`DocumentForms::render`):
+ * الرسومُ بثلاث خانات ومختصرة، ومقدّمُ الخدمة بما كُتب منه، وسطرُ «الأبرز» الذي
+ * لم يبق فيه شيءٌ يسقط. للمعاينة وحدها — المستندُ يُكتب في الخادم.
+ */
+export function renderTokens(form: DocumentForm, values: { fee: string | null; provider: string }): DocumentForm {
+    const fee = values.fee === null || values.fee === '' ? null : Number(values.fee);
+    const full = fee === null || Number.isNaN(fee) ? '—' : fee.toFixed(3);
+    const short = fee === null || Number.isNaN(fee) ? '—' : String(Number(fee.toFixed(3)));
+    const fill = (v: unknown): unknown => {
+        if (typeof v === 'string') return v.split('{fee_short}').join(short).split('{fee}').join(full).split('{provider}').join(values.provider.trim());
+        if (Array.isArray(v)) return v.map(fill);
+        if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fill(x)]));
+        return v;
+    };
+    const out = fill(form) as DocumentForm;
+    return { ...out, highlights: out.highlights.filter((h) => h.text.trim() !== '') };
+}
+
+/** أسماءُ الأجزاء كما يقرؤها المدير — `DocumentForms::LABELS` */
+export const PART_LABELS: Record<FormPart['kind'], string> = {
+    p: 'فقرة',
+    list: 'قائمة',
+    note: 'ملاحظة',
+    cols: 'أعمدة',
+    amount: 'مبلغ المستند',
+    field: 'حقل',
+    checks: 'خيارات للتأشير',
+    table: 'جدول',
+    yesno: 'سؤال نعم/لا',
+};
+
+/** مفتاحُ إدخالٍ جديد لا يتكرّر في النموذج — بادئةٌ ورقم */
+export function nextKey(form: DocumentForm, prefix: string): string {
+    const used = new Set(form.sections.flatMap((s) => s.parts.filter(isInput).map((p) => p.k)));
+    let n = 1;
+    while (used.has(`${prefix}${n}`)) n++;
+    return `${prefix}${n}`;
+}
+
+/** جزءٌ جديدٌ فارغ من نوعه — يكتبه المدير */
+export function newPart(kind: FormPart['kind'], form: DocumentForm): FormPart {
+    switch (kind) {
+        case 'p':
+        case 'note':
+            return { kind, text: '' };
+        case 'list':
+            return { kind, items: [''] };
+        case 'cols':
+            return { kind, cols: [{ head: '', items: [''] }] };
+        case 'amount':
+            return { kind, label: '' };
+        case 'field':
+            return { kind, by: 'client', k: nextKey(form, 'field'), label: '', req: false, type: 'text', dir: 'rtl', ph: '' };
+        case 'checks':
+            return { kind, by: 'client', k: nextKey(form, 'checks'), head: '', items: [''] };
+        case 'yesno':
+            return { kind, by: 'client', k: nextKey(form, 'yesno'), label: '' };
+        case 'table':
+            return { kind, by: 'client', k: nextKey(form, 'table'), head: ['', ''], types: ['text'], ph: [''], rows: [''], picks: [] };
+    }
+}
+
+/** نموذجٌ جديد — قسمٌ بفقرة، والإقرارُ يكتبه المدير */
+export function emptyForm(): DocumentForm {
+    return { intro: null, highlights: [], sections: [{ title: '', after: false, parts: [{ kind: 'p', text: '' }] }], consent: '', agree: '', footer: null };
+}

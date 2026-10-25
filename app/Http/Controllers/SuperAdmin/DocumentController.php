@@ -59,20 +59,15 @@ class DocumentController extends Controller
         $renew = $request->filled('renew')
             ? PlatformDocument::whereKey((int) $request->query('renew'))->where('status', PlatformDocument::SIGNED)->first()
             : null;
-        // ما يُصدر منه وحده: مفعّلٌ ونصُّه هو المعتمد — والنموذجُ كما سيُكتب في المستند
+        // القوالبُ كلُّها تُختار — والنموذجُ كما سيُكتب في المستند. وما لم يُنشر إصدارُه
+        // الحاليّ يُنشر بتأكيد المدير وهو يُصدر منه، على بصمة ما رآه (`hash`)
         $line = PlatformDocuments::providerLine(PlatformDocuments::provider());
-        $all = PlatformDocumentTemplate::orderBy('id')->get();
-        // وما لا يُصدر منه بعدُ يُعرض باسمه وسببه — لا يختفي فيُظنّ مفقودًا
-        $waiting = $all->reject(fn (PlatformDocumentTemplate $t) => $t->issuable())
+        $templates = PlatformDocumentTemplate::orderBy('id')->get()
             ->map(fn (PlatformDocumentTemplate $t) => [
                 'id' => $t->id,
-                'name' => $t->name,
-                'service' => $t->service,
-                'reason' => $t->approved() ? __('معتمد — غير مفعّل') : __('بانتظار الاعتماد'),
-            ])->values();
-        $templates = $all->filter(fn (PlatformDocumentTemplate $t) => $t->issuable())
-            ->map(fn (PlatformDocumentTemplate $t) => [
-                'id' => $t->id,
+                'published' => $t->issuable(),
+                'version' => $t->version,
+                'hash' => $t->contentHash(),
                 'name' => $t->name,
                 'service' => $t->service,
                 'title' => $t->title,
@@ -97,7 +92,6 @@ class DocumentController extends Controller
                 'signed' => PlatformDocument::where('status', PlatformDocument::SIGNED)->count(),
             ],
             'templates' => $templates,
-            'waiting' => $waiting,
             'plans' => Plan::orderBy('monthly_price')->get()->map(fn (Plan $p) => [
                 'id' => $p->id,
                 'name' => $p->name,
@@ -133,7 +127,10 @@ class DocumentController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'template_id' => ['required', 'integer', Rule::exists('platform_document_templates', 'id')->where('active', true)],
+            'template_id' => ['required', 'integer', Rule::exists('platform_document_templates', 'id')],
+            // تأكيدُ نشر الإصدار الحاليّ مع الإصدار — على بصمة ما رآه المدير
+            'publish' => ['nullable', 'boolean'],
+            'template_hash' => ['nullable', 'string', 'size:64'],
             'business_id' => ['nullable', 'integer', 'exists:businesses,id'],
             'renews_document_id' => ['nullable', 'integer', 'exists:platform_documents,id'],
             'client' => ['nullable', 'array'],
@@ -149,6 +146,8 @@ class DocumentController extends Controller
             'team' => ['nullable', 'array'],
         ], [], [
             'template_id' => __('نوع المستند'),
+            'publish' => __('تأكيد النشر'),
+            'template_hash' => __('بصمة القالب'),
             'business_id' => __('النشاط'),
             'renews_document_id' => __('العقد المجدَّد'),
             'client' => __('بيانات العميل'),
@@ -296,6 +295,24 @@ class DocumentController extends Controller
             'created_at' => PlatformDocuments::date($d->created_at),
             'expires_at' => PlatformDocuments::date($d->expires_at),
             'signed_at' => PlatformDocuments::date($d->signed_at),
+        ];
+    }
+
+    /**
+     * مستنداتُ شركةٍ لبطاقتها في ملفّها (عرضًا وتعديلًا) — ما صدر لها بمعرّفها.
+     *
+     * المستندُ يُربط بالشركة ساعةَ يُصدر لها (`client_business_id`) فلا يُنسخ ولا
+     * يُربط ثانية. ومن البطاقة مستندٌ جديد والشركةُ مختارةٌ في نافذته.
+     */
+    public static function forCompany(int $businessId): array
+    {
+        return [
+            'rows' => PlatformDocument::with('business:id,name')->where('client_business_id', $businessId)
+                ->latest('id')->limit(50)->get()
+                ->map(fn (PlatformDocument $d) => self::row($d))->all(),
+            'count' => PlatformDocument::where('client_business_id', $businessId)->count(),
+            'new_url' => route('super-admin.documents.index', ['business' => $businessId, 'new' => 1]),
+            'all_url' => route('super-admin.documents.index', ['business' => $businessId]),
         ];
     }
 }

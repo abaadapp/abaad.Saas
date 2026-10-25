@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import BusinessForm, { type BusinessOptions } from './partials/BusinessForm';
+import { BusinessDocuments, type BusinessDocumentsData } from './partials/BusinessDocuments';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -34,7 +35,7 @@ interface EditableBusiness {
 }
 
 export default function BusinessEdit() {
-    const { business, options } = usePage<PageProps<{ business: EditableBusiness; options: BusinessOptions }>>().props;
+    const { business, options, documents } = usePage<PageProps<{ business: EditableBusiness; options: BusinessOptions; documents?: BusinessDocumentsData }>>().props;
     const t = useTranslate();
 
     return (
@@ -86,6 +87,9 @@ export default function BusinessEdit() {
                 submitLabel="حفظ التعديلات"
                 cancelHref={route('super-admin.businesses.index')}
             />
+
+            {/* مستنداتُ الشركة بعد النموذج وأزراره — روابطُها في تبويبٍ جديد فلا يضيع ما لم يُحفظ */}
+            {documents && <BusinessDocuments documents={documents} newTab />}
         </PlatformLayout>
     );
 }

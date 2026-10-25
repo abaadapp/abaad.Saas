@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/react';
 import { Plus } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SectionTabs, { CUSTOMER_INVOICE_TABS } from '@/Components/SectionTabs';
 import SmartLink from '@/Components/SmartLink';
 import StatCard from '@/Components/StatCard';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
@@ -182,6 +183,8 @@ export default function CustomerInvoicesIndex({
                     </Button>
                 }
             />
+
+            <SectionTabs tabs={CUSTOMER_INVOICE_TABS} current="admin.customerInvoices.index" />
 
             <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <StatCard stat={{ label: t('إجمالي الذمم'), value: m(totals.total), icon: 'wallet', color: 'primary' }} index={0} />

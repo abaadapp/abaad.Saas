@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useForm, usePage } from '@inertiajs/react';
-import { FileDown, FilePlus2, FileSignature, LayoutTemplate, RefreshCcw } from 'lucide-react';
+import { Building2, FileDown, FilePlus2, FileSignature, LayoutTemplate, RefreshCcw, X } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -61,6 +61,21 @@ interface BusinessOption {
     starts_on: string;
 }
 
+/** قالبٌ لا يُصدر منه بعد — يُعرض في القائمة معطَّلًا بسببه */
+interface WaitingTemplate {
+    id: number;
+    name: string;
+    service: string | null;
+    reason: string;
+}
+
+/** الشركةُ التي فُتحت مستنداتُها من ملفّها (`?business=`) */
+interface Company {
+    id: number;
+    name: string;
+    url: string;
+}
+
 /** عقدٌ موقَّعٌ يُفتح منه عقدُ تجديد (`?renew=`) */
 interface Renewal {
     id: number;
@@ -76,9 +91,13 @@ interface Renewal {
 interface Props {
     documents: DocumentRow[];
     pagination: ServerPagination;
-    filters: { state: string; q: string };
+    filters: { state: string; q: string; business?: string };
     counts: { sent: number; signed: number };
     templates: Template[];
+    waiting: WaitingTemplate[];
+    company: Company | null;
+    /** «مستند جديد» من ملفّ الشركة: النافذةُ تُفتح والشركةُ مختارة */
+    opening: boolean;
     plans: PlanOption[];
     cycles: CycleOption[];
     businesses: BusinessOption[];
@@ -88,10 +107,24 @@ interface Props {
 }
 
 export default function DocumentsIndex() {
-    const { documents, pagination, filters, counts, templates, plans, cycles, businesses, today, days, renew } =
-        usePage<PageProps<Props>>().props;
+    const {
+        documents,
+        pagination,
+        filters,
+        counts,
+        templates,
+        waiting = [],
+        company = null,
+        opening = false,
+        plans,
+        cycles,
+        businesses,
+        today,
+        days,
+        renew,
+    } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
-    const [creating, setCreating] = useState(renew !== null);
+    const [creating, setCreating] = useState(renew !== null || opening);
 
     // ما ينتظر التوقيع يتحدّث وحده: توقيعُ العميل يظهر هنا والشاشةُ مفتوحة
     useLiveReload(['documents', 'counts', 'pagination'], counts.sent > 0);
@@ -229,6 +262,26 @@ export default function DocumentsIndex() {
                 }
             />
 
+            {company && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-[13px]" data-testid="company-filter">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f4f4f5] px-3 py-1 text-[#111]">
+                        <Building2 className="size-3.5" />
+                        {t('مستندات :name', { name: company.name })}
+                        <SmartLink
+                            routeName="super-admin.documents.index"
+                            href={route('super-admin.documents.index')}
+                            className="text-[#6b7280] hover:text-[#111]"
+                            aria-label={t('عرض كل المستندات')}
+                        >
+                            <X className="size-3.5" />
+                        </SmartLink>
+                    </span>
+                    <SmartLink routeName="super-admin.businesses.show" href={company.url} className="text-[#6b7280] underline">
+                        {t('ملف الشركة')}
+                    </SmartLink>
+                </div>
+            )}
+
             <DataTable
                 rows={documents}
                 columns={columns}
@@ -247,6 +300,8 @@ export default function DocumentsIndex() {
             {creating && (
                 <NewDocumentDialog
                     templates={templates}
+                    waiting={waiting}
+                    company={company}
                     plans={plans}
                     cycles={cycles}
                     businesses={businesses}
@@ -262,6 +317,8 @@ export default function DocumentsIndex() {
 
 function NewDocumentDialog({
     templates,
+    waiting,
+    company,
     plans,
     cycles,
     businesses,
@@ -271,6 +328,8 @@ function NewDocumentDialog({
     onClose,
 }: {
     templates: Template[];
+    waiting: WaitingTemplate[];
+    company: Company | null;
     plans: PlanOption[];
     cycles: CycleOption[];
     businesses: BusinessOption[];
@@ -286,16 +345,18 @@ function NewDocumentDialog({
     // نهايةُ المدّة تتبع بدايتَها ودورتَها — حتى يكتب المديرُ نهايةً اتُّفق عليها
     const [endTouched, setEndTouched] = useState(false);
     const firstCycle = renew?.cycle ?? 'monthly';
-    const firstStart = renew?.starts_on ?? today;
+    // من ملفّ الشركة: تبدأ النافذةُ بها كما لو اختيرت من القائمة
+    const firstBusiness = renew ? undefined : businesses.find((b) => b.id === company?.id);
+    const firstStart = renew?.starts_on ?? firstBusiness?.starts_on ?? today;
     const monthsOf = (cycle: string) => cycles.find((c) => c.value === cycle)?.months ?? 1;
 
     const firstTemplate = templates.find((x) => x.id === renew?.template_id) ?? templates[0];
     const form = useForm({
         template_id: String(firstTemplate?.id ?? ''),
-        business_id: '',
+        business_id: firstBusiness ? String(firstBusiness.id) : '',
         renews_document_id: renew ? String(renew.id) : '',
-        client: { name: '', biz: '', phone: renew?.phone ?? '', email: '' },
-        plan_id: renew?.plan_id ? String(renew.plan_id) : '',
+        client: { name: '', biz: '', phone: renew?.phone ?? firstBusiness?.phone ?? '', email: '' },
+        plan_id: renew?.plan_id ? String(renew.plan_id) : firstBusiness?.plan_id ? String(firstBusiness.plan_id) : '',
         cycle: firstCycle,
         term_starts_on: firstStart,
         term_ends_on: addMonths(firstStart, monthsOf(firstCycle)),
@@ -386,11 +447,31 @@ function NewDocumentDialog({
                         <Select
                             value={form.data.template_id}
                             onChange={(e) => pickTemplate(e.target.value)}
-                            options={templates.map((x) => ({
-                                label: x.service ? `${x.name} · ${x.service}` : x.name,
-                                value: String(x.id),
-                            }))}
+                            options={[
+                                ...templates.map((x) => ({
+                                    label: x.service ? `${x.name} · ${x.service}` : x.name,
+                                    value: String(x.id),
+                                })),
+                                // ما لا يُصدر منه بعدُ ظاهرٌ باسمه وسببه، ولا يُختار
+                                ...waiting.map((x) => ({
+                                    label: `${x.name} — ${t(x.reason)}`,
+                                    value: `waiting-${x.id}`,
+                                    disabled: true,
+                                })),
+                            ]}
                         />
+                        {waiting.length > 0 && (
+                            <p className="mt-1 text-[12px] text-[#6b7280]" data-testid="waiting-templates">
+                                {t('يُصدر من القالب المعتمد والمفعّل وحده — :n بانتظارك في', { n: String(waiting.length) })}{' '}
+                                <SmartLink
+                                    routeName="super-admin.documents.templates"
+                                    href={route('super-admin.documents.templates')}
+                                    className="underline"
+                                >
+                                    {t('القوالب')}
+                                </SmartLink>
+                            </p>
+                        )}
                     </Field>
 
                     {template && (

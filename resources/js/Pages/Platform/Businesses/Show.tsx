@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Archive, KeyRound, Layers, Loader2, LogIn, Pencil, Phone, Power, Trash2, User } from 'lucide-react';
+import { AlertTriangle, Archive, FilePlus2, KeyRound, Layers, Loader2, LogIn, Pencil, Phone, Power, Trash2, User } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import DeleteButton from '@/Components/DeleteButton';
@@ -28,6 +28,7 @@ import {
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { STATE_VARIANT, type DocumentRow } from '@/lib/platformDocuments';
 import { isDisabled } from '@/lib/tenancy';
 import { cn } from '@/lib/utils';
 import type { Currency, PageProps } from '@/types';
@@ -118,17 +119,35 @@ interface Props {
     purge: boolean;
     /** حالُ آخرِ محاولةِ حذفٍ نهائيّ لهذه الشركة — أو `null` إن لم تكن */
     purgeRun: PurgeRunState | null;
+    /** مستنداتُ الشركة من قسم المستندات — آخرُ خمسين، والعددُ كلُّه */
+    documents: { rows: DocumentRow[]; count: number; new_url: string; all_url: string };
 }
 
 const TABS = [
     { key: 'overview', label: 'نظرة عامة' },
     { key: 'branches', label: 'الفروع' },
     { key: 'orders', label: 'آخر الطلبات' },
+    { key: 'documents', label: 'المستندات' },
 ];
 
 export default function BusinessShow() {
-    const { business, subscription, usage, renewal, stats, overview, branches, orders, currency, whatsapp, recovery, google, purge, purgeRun } =
-        usePage<PageProps<Props>>().props;
+    const {
+        business,
+        subscription,
+        usage,
+        renewal,
+        stats,
+        overview,
+        branches,
+        orders,
+        currency,
+        whatsapp,
+        recovery,
+        google,
+        purge,
+        purgeRun,
+        documents,
+    } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
     const facts = [
@@ -496,11 +515,84 @@ export default function BusinessShow() {
                         </TableBody>
                     </Table>
                 )}
+
+                {tab === 'documents' && <BusinessDocuments documents={documents} />}
             </Card>
 
             {purge && <DangerZone name={business.name} id={business.id} run={purgeRun} />}
 
         </PlatformLayout>
+    );
+}
+
+/**
+ * مستنداتُ الشركة — ما صدر لها من قسم المستندات، ومنه مستندٌ جديد والشركةُ مختارة.
+ *
+ * المستندُ يُربط بالشركة ساعةَ يُصدر لها، فلا يُبحث عنه بين مستندات العملاء كلّهم.
+ */
+export function BusinessDocuments({ documents }: { documents: Props['documents'] }) {
+    const t = useTranslate();
+
+    return (
+        <div data-testid="business-documents">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
+                <p className="text-sm text-[#6b7280]">
+                    {t('ما صدر لهذه الشركة من قسم المستندات — :n مستند', { n: number(documents.count) })}
+                </p>
+                <div className="flex gap-2">
+                    {documents.count > 0 && (
+                        <Button variant="outline" size="sm" asChild>
+                            <SmartLink routeName="super-admin.documents.index" href={documents.all_url}>
+                                {t('كل مستندات الشركة')}
+                            </SmartLink>
+                        </Button>
+                    )}
+                    <Button size="sm" asChild>
+                        <SmartLink routeName="super-admin.documents.index" href={documents.new_url} data-testid="business-new-document">
+                            <FilePlus2 />
+                            {t('مستند جديد')}
+                        </SmartLink>
+                    </Button>
+                </div>
+            </div>
+            <Table>
+                <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                        {['المستند', 'الباقة أو الخدمة', 'الحالة', 'أُصدر', 'وُقِّع'].map((h) => (
+                            <TableHead key={h}>{t(h)}</TableHead>
+                        ))}
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {documents.rows.length === 0 ? (
+                        <TableEmpty colSpan={5}>{t('لا مستندات لهذه الشركة بعد')}</TableEmpty>
+                    ) : (
+                        documents.rows.map((d) => (
+                            <TableRow key={d.id}>
+                                <TableCell>
+                                    <SmartLink routeName="super-admin.documents.show" href={d.url} className="block min-w-0">
+                                        <div className="truncate font-medium text-[#111]">{d.title}</div>
+                                        <div dir="ltr" className="truncate text-end font-mono text-[12px] text-[#6b7280]">
+                                            {d.number}
+                                        </div>
+                                    </SmartLink>
+                                </TableCell>
+                                <TableCell className="text-[#4b4b4b]">{d.plan_name || d.service || '—'}</TableCell>
+                                <TableCell>
+                                    <Badge variant={STATE_VARIANT[d.state]}>{t(d.state_label)}</Badge>
+                                </TableCell>
+                                <TableCell dir="ltr" className="text-[#6b7280]">
+                                    {d.created_at}
+                                </TableCell>
+                                <TableCell dir="ltr" className="text-[#6b7280]">
+                                    {d.state === 'signed' ? d.signed_at : '—'}
+                                </TableCell>
+                            </TableRow>
+                        ))
+                    )}
+                </TableBody>
+            </Table>
+        </div>
     );
 }
 

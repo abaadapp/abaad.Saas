@@ -7,6 +7,7 @@ use App\Models\Boutique;
 use App\Models\BoutiqueSettlement;
 use App\Models\Business;
 use App\Models\Expense;
+use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
@@ -24,6 +25,9 @@ final class Boutiques
 {
     /** نوعُ المصروف الذي تُولده التسوية — به تُرشَّح في شاشة المصروفات */
     public const EXPENSE_TYPE = 'تسوية بوتيكات';
+
+    /** مصدرُ قيد الورقة يومَ صدورها — انظر `write` و`accrual` */
+    public const ACCRUAL = 'استحقاق بوتيك';
 
     /**
      * ═══ بضاعةُ البوتيك أمانة ═══
@@ -640,12 +644,64 @@ final class Boutiques
 
             BoutiqueDues::claim((int) $settlement->id, $components);
 
+            /*
+             * ═══ والورقةُ تُقيَّد يومَ صدورها — لا يومَ سدادها ═══
+             *
+             * كان مصروفُها لا يدخل الدفترَ حتّى يُسدَّد، فيُقيَّد بيوم السداد:
+             * ورقةُ أكتوبر تُدفع في نوفمبر، فيُقرأ ربحُ أكتوبر أعلى بحصّة
+             * البوتيك كلِّها وربحُ نوفمبر أقلّ بها — والميزانيةُ لا تعرف أنّ
+             * على المحلّ شيئًا. ولا يصحّ الشهرُ إلّا بأن يُكتب «مدفوع» على
+             * مالٍ لم يخرج.
+             *
+             * فحصّةُ البوتيك مصروفٌ في شهر بيعها، ودَينٌ في 2160 حتّى يُدفع
+             * (`Books::recordExpense` يُطفئه). وشهرٌ مقفل لا يُكتب فيه: تُقيَّد
+             * في أوّل يومٍ مفتوح كسائر ما يُكتب بعد الإقفال.
+             */
+            if ($expense !== null && (float) $expense->amount > 0) {
+                Ledger::post(
+                    (int) $business->id,
+                    __('استحقاق تسوية بوتيك — ورقة ').$number,
+                    [
+                        ['account' => Books::expenseAccount(self::EXPENSE_TYPE, (int) $business->id), 'debit' => round((float) $expense->amount, 3), 'memo' => $expense->description],
+                        ['account' => 'boutique_payable', 'credit' => round((float) $expense->amount, 3)],
+                    ],
+                    BooksPeriod::openOr((int) $business->id, $due->copy()),
+                    self::ACCRUAL,
+                    ExpenseScope::journalBranch($expense),
+                    auth()->id(),
+                    $settlement,
+                );
+            }
+
             Activity::log('created', 'تسوية بوتيك '.$boutique->name.' عن '.$period.' بمبلغ '.$statement['net'], [
                 'business_id' => $business->id, 'subject_id' => $settlement->id, 'subject_type' => 'boutique_settlement',
             ]);
 
             return $settlement;
         });
+    }
+
+    /**
+     * قيدُ الورقة يومَ صدورها لمصروفها هذا — أو `null`.
+     *
+     * و`null` لمصروفٍ ليس ورقةَ بوتيك، ولورقةٍ صدرت قبل أن تُقيَّد يومَ
+     * صدورها: تلك تُسدَّد على طريقتها الأولى (مصروفٌ يومَ السداد)، فلا
+     * يُطفأ عنها دَينٌ لم يُكتب.
+     */
+    public static function accrual(Expense $expense): ?JournalEntry
+    {
+        $settlement = BoutiqueSettlement::where('business_id', $expense->business_id)
+            ->where('expense_id', $expense->id)->value('id');
+
+        if ($settlement === null) {
+            return null;
+        }
+
+        return JournalEntry::where('business_id', $expense->business_id)
+            ->where('sourceable_type', BoutiqueSettlement::class)->where('sourceable_id', $settlement)
+            ->where('source', self::ACCRUAL)->where('posted', true)
+            ->whereNull('reverses_id')->whereNull('reversed_at')
+            ->first();
     }
 
     /** رقمُ التسوية — «BQ-2027-02-3» : الشهرُ فيه ليُقرأ بلا فتحه */

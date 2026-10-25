@@ -9,6 +9,7 @@ use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
 use App\Support\BooksPeriod;
+use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\ExpenseScope;
 use App\Support\ListFilters;
@@ -428,7 +429,12 @@ class ExpenseController extends Controller
                     return false;
                 }
 
-                $locked->update(['status' => Expense::PAID, 'spent_at' => now()] + ($method ? ['method' => $method] : []));
+                /*
+                 * ويومُ المصروف يومُ سداده — إلّا ورقةَ بوتيكٍ قُيّدت يومَ صدورها:
+                 * مصروفُها في شهر بيعها، فيبقى يومُها ولا تنتقل إلى شهر الدفع.
+                 */
+                $accrued = Boutiques::accrual($locked) !== null;
+                $locked->update(['status' => Expense::PAID] + ($accrued ? [] : ['spent_at' => now()]) + ($method ? ['method' => $method] : []));
                 $this->postToLedger($locked->fresh());
 
                 return true;

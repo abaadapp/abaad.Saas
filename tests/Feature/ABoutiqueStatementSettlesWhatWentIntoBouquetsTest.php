@@ -189,23 +189,23 @@ class ABoutiqueStatementSettlesWhatWentIntoBouquetsTest extends TestCase
         $this->assertSame('قطعة فضّة', $st['components']['lines'][0]['name']);
         $this->assertSame(27.0, $st['payable']);
 
-        // الإصدارُ لا يكتب قيدًا — التكلفةُ كُتبت يوم البيع
+        // الإصدارُ يكتب قيدًا واحدًا: حصّةُ المنفرد مصروفٌ ودَينٌ في 2160 — والمكوّناتُ كُتبت يوم البيع
         $entries = JournalEntry::where('business_id', $this->shop->id)->count();
         $s = $this->settle();
-        $this->assertSame($entries, JournalEntry::where('business_id', $this->shop->id)->count(), 'كُتب قيدٌ عند الإصدار');
+        $this->assertSame($entries + 1, JournalEntry::where('business_id', $this->shop->id)->count(), 'الإصدارُ قيدُ استحقاقٍ واحد');
         $this->assertSame([20.0, 7.0, 0.0, 7.0], [(float) $s->net, (float) $s->components_due, (float) $s->components_credit, (float) $s->components_net]);
         $this->assertSame(20.0, (float) Expense::findOrFail($s->expense_id)->amount, 'مصروفُ المنفرد بصافيه وحده — لا المكوّنات');
         $this->assertSame((int) $s->id, (int) BoutiqueComponentDue::query()->value('boutique_settlement_id'), 'صفُّ الفضّة محجوزٌ بالورقة');
-        $this->assertSame(['cash' => 45.0, 'sales' => 45.0, 'cogs' => 7.0, 'other' => 0.0, 'profit' => 38.0, 'payable' => 7.0, 'receivable' => 0.0], $this->books(), 'بعد الإصدار');
+        $this->assertSame(['cash' => 45.0, 'sales' => 45.0, 'cogs' => 7.0, 'other' => 20.0, 'profit' => 18.0, 'payable' => 27.0, 'receivable' => 0.0], $this->books(), 'بعد الإصدار');
         $this->assertFalse($s->fresh()->paid());
 
         // سدادُ المكوّنات: 2160 وحده — لا تكلفة ولا مصروف
         BoutiqueDues::pay($s, 'نقدي');
         BoutiqueDues::pay($s->fresh(), 'نقدي');
-        $this->assertSame(['cash' => 38.0, 'sales' => 45.0, 'cogs' => 7.0, 'other' => 0.0, 'profit' => 38.0, 'payable' => 0.0, 'receivable' => 0.0], $this->books(), 'بعد سداد المكوّنات — ومرّةً واحدة');
+        $this->assertSame(['cash' => 38.0, 'sales' => 45.0, 'cogs' => 7.0, 'other' => 20.0, 'profit' => 18.0, 'payable' => 20.0, 'receivable' => 0.0], $this->books(), 'بعد سداد المكوّنات — ومرّةً واحدة');
         $this->assertFalse($s->fresh()->paid(), 'والمنفردُ لم يُسدَّد بعد');
 
-        // والمنفردُ على طريقه القائم: مصروفٌ يومَ سداده
+        // والمنفردُ يُطفئ دَينَه يومَ سداده — والربحُ لا يتحرّك ثانيةً
         $this->payStandalone($s);
         $this->assertSame(['cash' => 18.0, 'sales' => 45.0, 'cogs' => 7.0, 'other' => 20.0, 'profit' => 18.0, 'payable' => 0.0, 'receivable' => 0.0], $this->books(), 'بعد السداد كلِّه: ١٣ + ٥');
         $this->assertTrue($s->fresh()->paid());
@@ -232,11 +232,12 @@ class ABoutiqueStatementSettlesWhatWentIntoBouquetsTest extends TestCase
         $this->assertSame([7.0, 14.0], [(float) $first->components_due, (float) $second->components_due]);
         $this->assertSame(0.0, (float) $first->net, 'الأولى بلا منفرد');
         $this->assertNull($first->expense_id, 'ولا مصروفَ لورقةٍ بلا منفرد');
-        $this->assertSame(21.0, $this->balance('boutique_payable'));
+        // ٢١ مكوّنات + ٢٠ منفردُ الثانية، قُيّد يومَ صدورها
+        $this->assertSame(41.0, $this->balance('boutique_payable'));
 
         BoutiqueDues::pay($first, 'نقدي');
         BoutiqueDues::pay($second, 'تحويل');
-        $this->assertSame(0.0, $this->balance('boutique_payable'));
+        $this->assertSame(20.0, $this->balance('boutique_payable'), 'منفردُ الثانية دَينٌ حتّى يُسدَّد مصروفُه');
         $this->assertSame(-14.0, $this->balance('bank'), 'الثانيةُ من البنك');
         $this->assertTrue($first->fresh()->paid());
     }

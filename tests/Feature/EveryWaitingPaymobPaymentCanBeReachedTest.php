@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Support\PaymobSettlements;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\PaymobPayouts;
 use Tests\TestCase;
 
@@ -43,6 +44,18 @@ class EveryWaitingPaymobPaymentCanBeReachedTest extends TestCase
         parent::tearDown();
     }
 
+    /** الرابطُ التالي يأخذ هذا الرقم — في SQLite وPostgreSQL */
+    private function linkIdsStartAt(int $next): void
+    {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement("SELECT setval(pg_get_serial_sequence('customer_payment_links', 'id'), ".($next - 1).', true)');
+
+            return;
+        }
+
+        DB::table('sqlite_sequence')->updateOrInsert(['name' => 'customer_payment_links'], ['seq' => $next - 1]);
+    }
+
     /** كلُّ ما ينتظر — بالمرور على الدفعات حتّى آخرها */
     private function walk(int $size): array
     {
@@ -73,7 +86,10 @@ class EveryWaitingPaymobPaymentCanBeReachedTest extends TestCase
 
     public function test_every_waiting_payment_is_reached_once_batch_after_batch(): void
     {
+        // الأرقامُ تعبر ٩٩ إلى ١٠٠: الترتيبُ بالرقم عددًا لا نصًّا (link:100 بعد link:99) — سقط مرّةً في CI
+        $this->linkIdsStartAt(98);
         $made = array_map(fn ($p) => $this->key($p), $this->links(7));
+        $this->assertGreaterThanOrEqual(100, (int) explode(':', end($made))[1]);
         $made[] = $this->key($this->newSale());
 
         [$keys, $pages] = $this->walk(3);

@@ -179,9 +179,8 @@ final class PaymobSettlements
         $last = $page->last();
 
         return [
-            'rows' => $page->map(fn ($r) => self::classify($businessId, (string) $r->type, (int) $r->id))
-                ->sortBy(fn (array $r) => ($r['paid_at'] ?? '').'|'.$r['key'])
-                ->values()->all(),
+            // بترتيب المؤشّر نفسه (وقتُ الدفع، النوع، الرقمُ عددًا) — لا نصًّا: link:100 بعد link:99
+            'rows' => $page->map(fn ($r) => self::classify($businessId, (string) $r->type, (int) $r->id))->values()->all(),
             'next' => $more && $last ? $last->at.'|'.$last->type.'|'.$last->id : null,
         ];
     }

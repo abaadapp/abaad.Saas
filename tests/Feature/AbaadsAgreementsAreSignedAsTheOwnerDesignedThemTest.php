@@ -71,11 +71,11 @@ class AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest extends TestCase
 
     private function issue(string $slug, array $data = []): PlatformDocument
     {
-        $template = $this->approveTemplate($this->template($slug));
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $data + [
+        $template = $this->template($slug);
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed($data + [
             'template_id' => $template->id, 'business_id' => $this->shop->id,
             'amount' => $template->default_amount, 'cycle' => 'yearly',
-        ])->assertSessionHasNoErrors()->assertRedirect();
+        ]))->assertSessionHasNoErrors()->assertRedirect();
         auth()->logout();
 
         return PlatformDocument::latest('id')->firstOrFail();
@@ -104,7 +104,7 @@ class AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest extends TestCase
         'email' => 'salem@rayan.om', 'store' => 'زهور الريان', 'wa' => '+96891234567', 'biz' => 'زهور الريان',
     ];
 
-    public function test_the_owners_five_agreements_arrive_as_drafts_and_the_short_contract_keeps_working(): void
+    public function test_the_owners_five_agreements_arrive_ready_and_the_short_contract_keeps_working(): void
     {
         $short = $this->subscriptionContract();
         DocumentForms::seedTemplates();
@@ -112,16 +112,13 @@ class AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest extends TestCase
         foreach (DocumentForms::SEEDED as $slug) {
             $seed = DocumentForms::seed($slug);
             $t = $this->template($slug);
-            $this->assertFalse($t->active, 'مسوّدةٌ معطَّلة حتى يعتمدها المالك: '.$slug);
-            $this->assertSame('draft', $t->approvalState(), $slug);
+            $this->assertTrue($t->issuable(), 'يُصدر منها كما زُرعت — بلا اعتمادٍ ولا تفعيل: '.$slug);
             $this->assertSame(1, $t->version);
             $this->assertSame($seed['form'], $t->form, 'النموذج كما خرج من التصميم: '.$slug);
             $this->assertSame([], $t->terms);
         }
         $short = $short->fresh();
-        $this->assertTrue($short->active, 'العقدُ القصير لا يُعطَّل لأنّ غيرَه وصل');
-        $this->assertTrue($short->issuable(), 'ويبقى يُصدر منه كما كان قبل سياسة الاعتماد');
-        $this->assertSame('legacy', $short->approvalState());
+        $this->assertTrue($short->issuable(), 'العقدُ القصير يبقى يُصدر منه كما كان');
         $this->assertSame('fixed', $this->template('whatsapp-integration')->amount_rule);
         $this->assertSame('min', $this->template('website-customization')->amount_rule);
         $this->assertSame('25.000', (string) $this->template('whatsapp-integration')->default_amount);
@@ -332,7 +329,7 @@ class AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest extends TestCase
 
     public function test_an_agreement_template_keeps_its_form_when_edited(): void
     {
-        $t = $this->approveTemplate($this->template('payment-integration'));
+        $t = $this->template('payment-integration');
         // النموذجُ كما يرسله المحرّر: الأجزاءُ نفسُها بترتيب مفاتيحٍ آخر
         $shuffled = $t->form;
         foreach ($shuffled['sections'] as &$section) {
@@ -355,10 +352,9 @@ class AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest extends TestCase
         $this->assertSame('fixed', $t->amount_rule);
         $this->assertSame(DocumentForms::seed('payment-integration')['form'], $t->form, 'نموذجٌ لم يتغيّر يبقى كما صُمِّم حرفًا بحرف');
         $this->assertSame([], $t->terms);
-        // وتعديلُ الرسوم إصدارٌ جديد غيرُ منشور
+        // وتعديلُ الرسوم إصدارٌ جديد يُصدر منه فورًا
         $this->assertSame(2, $t->version);
-        $this->assertFalse($t->active);
-        $this->assertSame('draft', $t->approvalState());
+        $this->assertTrue($t->issuable());
     }
 
     public function test_rolling_back_refuses_once_an_agreement_was_issued(): void

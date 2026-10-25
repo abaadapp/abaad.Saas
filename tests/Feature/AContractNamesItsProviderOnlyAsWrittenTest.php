@@ -67,9 +67,9 @@ class AContractNamesItsProviderOnlyAsWrittenTest extends TestCase
 
     private function issue(PlatformDocumentTemplate $t): PlatformDocument
     {
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed([
             'template_id' => $t->id, 'business_id' => $this->shop->id, 'amount' => $t->default_amount, 'cycle' => 'yearly',
-        ])->assertSessionHasNoErrors()->assertRedirect();
+        ]))->assertSessionHasNoErrors()->assertRedirect();
 
         return PlatformDocument::latest('id')->firstOrFail();
     }
@@ -112,14 +112,11 @@ class AContractNamesItsProviderOnlyAsWrittenTest extends TestCase
         $this->assertSame('Legal Entity LLC', PlatformDocuments::providerLine($provider));
     }
 
-    public function test_with_no_provider_details_an_agreement_is_approved_issued_and_prints_none(): void
+    public function test_with_no_provider_details_an_agreement_is_issued_and_prints_none(): void
     {
         $t = $this->agreement();
-        // لا اسمَ ولا سجلَّ ولا عنوان — والنشرُ والإصدار يمرّان
-        $this->actingAs($this->super)->post(route('super-admin.documents.templates.publish', $t->id), [
-            'hash' => $t->fresh()->contentHash(),
-        ])->assertSessionHasNoErrors();
-        $this->assertSame('approved', $t->fresh()->approvalState());
+        // لا اسمَ ولا سجلَّ ولا عنوان — والإصدارُ يمرّ
+        $this->assertTrue($t->fresh()->issuable());
         $doc = $this->issue($t->fresh());
 
         $this->assertSame(['name' => '', 'legal_name' => '', 'trade_name' => '', 'cr' => '', 'address' => ''], array_intersect_key($doc->provider, array_flip(['name', 'legal_name', 'trade_name', 'cr', 'address'])));
@@ -166,7 +163,7 @@ class AContractNamesItsProviderOnlyAsWrittenTest extends TestCase
     {
         // الاسمُ التجاريّ وحده: يُخاطَب به العميل، ولا يُطبع مكانَ الاسم القانونيّ
         Setting::updateOrCreate(['business_id' => null, 'key' => 'legal_trade_name'], ['value' => 'Trade Only']);
-        $t = $this->approveTemplate($this->agreement());
+        $t = $this->agreement();
         $doc = $this->issue($t);
 
         $this->assertSame('', $doc->provider['legal_name']);

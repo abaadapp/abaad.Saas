@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\DocumentForms;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -15,29 +16,24 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * و`form` نموذجٌ كاملٌ بحقوله وقوائمه وجداوله (انظر `DocumentForms`) — اتفاقياتُ
  * المالك كما صمّمها. وقالبُ النموذج لا بنودَ له: نصُّه في أقسامه.
  *
- * ═══ النشر ═══
+ * ═══ الإصدار منه ═══
  *
- * يُصدر المستندُ من الإصدار المنشور: مفعّلٌ (`active`) وبصمةُ محتواه هي ما نُشر
- * (`approved_hash`، انظر `content`): نصُّه ورسومُه وقاعدةُ مبلغه. فإن عُدِّل شيءٌ
- * منها بعده صار إصدارًا جديدًا (`version`) غيرَ منشور. وما صدر قبله نسخةٌ في
- * مستنده لا تتغيّر.
+ * كلُّ قالبٍ محفوظٍ صالحٍ يُصدر منه مباشرةً (`issuable`) — لا اعتمادَ ولا نشرَ ولا
+ * تفعيل. وما فيه خطأ (`problems`) لا يُصدر منه حتى يُصحَّح، ويُقال للمدير ما هو.
  *
- * والنشرُ قرارُ مدير المنصّة بتأكيدٍ واحد — من نافذة الإصدار وهو يُصدر منه، أو من
- * شاشة القوالب — على بصمة ما رآه، ويُسجَّل باسمه ووقته في القالب وفي سجلّ
- * إصداراته (`versions`). ولا يُنشر قالبٌ بنشر تحديثٍ برمجيّ.
+ * وتعديلُ ما يصل إلى المستند (`content`: نصُّه ورسومُه وقاعدةُ مبلغه) إصدارٌ جديد
+ * (`version`) يُحفظ في سجلّه (`versions`) ببصمته ومن حفظه ومتى، ويُصدر منه فورًا.
+ * وما صدر قبله نسخةٌ في مستنده لا تتغيّر.
  *
- * والقالبُ القائم قبل سياسة الاعتماد (`approval_basis = legacy`) يبقى منشورًا كما
- * كان، ويحتاج نشرًا إن عُدِّل.
+ * و`active` و`approved_*` من زمن الاعتماد والنشر: باقيةٌ في الصفّ تاريخًا، لا
+ * يقرؤها الإصدارُ ولا يكتبها الحفظ.
  */
 class PlatformDocumentTemplate extends Model
 {
-    /** اعتمده مدير المنصّة من شاشة القوالب */
-    public const BY_OWNER = 'owner';
-
-    /** كان يُصدر منه قبل سياسة الاعتماد — يبقى كما كان حتى يُعدَّل */
+    /** تاريخيّ: وسمٌ كتبته هجرةُ النماذج على العقد القائم قبل الاعتماد — لا يقرؤه الإصدار */
     public const LEGACY = 'legacy';
 
-    /** المبلغُ هو رسومُ القالب كما اعتُمدت — نصُّه يذكرها */
+    /** المبلغُ هو رسومُ القالب — نصُّه يذكرها */
     public const AMOUNT_FIXED = 'fixed';
 
     /** المبلغُ يبدأ من رسوم القالب — «يبدأ من 60 ر.ع» */
@@ -100,25 +96,40 @@ class PlatformDocumentTemplate extends Model
         return hash('sha256', json_encode($this->content(), JSON_UNESCAPED_UNICODE));
     }
 
-    /** هل ما في القالب الآن هو ما اعتُمد؟ */
+    /** تاريخيّ: أكان ما في القالب هو ما اعتُمد زمنَ الاعتماد؟ — يقرؤه سجلُّ الإصدارات ساعةَ أُنشئ */
     public function approved(): bool
     {
         return $this->approved_hash !== null && hash_equals($this->approved_hash, $this->contentHash());
     }
 
-    /** منشور: مفعّلٌ ونصُّه هو ما نُشر — يُصدر منه بلا تأكيد */
+    /** يُصدر منه الآن: محفوظٌ وصالح — لا شرطَ غيرُه */
     public function issuable(): bool
     {
-        return $this->active && $this->approved();
+        return $this->problems() === [];
     }
 
-    /** draft: مسوّدة · approved: معتمد · legacy: قائمٌ قبل الاعتماد · changed: عُدِّل بعد اعتماده */
-    public function approvalState(): string
+    /**
+     * ما يمنع الإصدارَ منه الآن — بعباراتٍ يقرؤها المدير فيصحّحها من شاشة القوالب.
+     *
+     * @return list<string>
+     */
+    public function problems(): array
     {
-        if ($this->approved()) {
-            return $this->approval_basis === self::LEGACY ? 'legacy' : 'approved';
+        $out = $this->form ? DocumentForms::problems(DocumentForms::normalize($this->form)) : [];
+        if (! $this->form && array_filter($this->terms ?? [], fn ($t) => trim((string) ($t['b'] ?? '')) !== '') === []) {
+            $out[] = __('القالب بلا بنود.');
+        }
+        if ($this->needsFee() && $this->default_amount === null) {
+            $out[] = __('اكتب رسوم القالب — نصّه يذكرها.');
         }
 
-        return $this->approved_hash !== null ? 'changed' : 'draft';
+        return $out;
+    }
+
+    /** نصٌّ يذكر رسومه، أو قاعدةُ مبلغٍ تحتاجها: بلا رقمٍ وعدٌ بمبلغٍ لا يُعرف */
+    public function needsFee(): bool
+    {
+        return ($this->includes_amount && $this->amount_rule !== null)
+            || array_intersect(['fee', 'fee_short'], DocumentForms::tokens($this->form ?: null)) !== [];
     }
 }

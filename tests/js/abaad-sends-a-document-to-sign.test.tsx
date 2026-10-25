@@ -46,6 +46,7 @@ const CONTRACT = {
     id: 1, name: 'عقد اشتراك أبعاد', service: 'اشتراك النظام', title: 'عقد اشتراك',
     terms: [{ h: 'مدة الاشتراك:', b: 'شهرًا واحدًا للدورة الشهرية، أو ستة أشهر، أو اثني عشر شهرًا.' }],
     includes_plan: true, includes_amount: false,
+    problems: [], version: 1, hash: 'a'.repeat(64), preview_url: '/p/1', preview_pdf_url: '/p/1.pdf',
 };
 
 function index(over: Record<string, unknown> = {}) {

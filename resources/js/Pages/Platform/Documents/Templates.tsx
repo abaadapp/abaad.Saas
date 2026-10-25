@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowDown, ArrowUp, Eye, FileDown, History, Pencil, Plus, Send, Square, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, FileDown, History, Pencil, Plus, Trash2 } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import BackLink from '@/Components/BackLink';
@@ -26,8 +26,6 @@ interface Version {
     hash: string;
     saved_at: string;
     saved_by: string | null;
-    published_at: string | null;
-    published_by: string | null;
 }
 
 interface Template {
@@ -47,13 +45,9 @@ interface Template {
     includes_amount: boolean;
     documents_count: number;
     version: number;
-    /** published: منشور · draft: لم يُنشر قطّ · changed: عُدِّل بعد نشره · paused: أُوقف نشرُه */
-    status: 'published' | 'draft' | 'changed' | 'paused';
-    published_at: string | null;
-    published_by: string | null;
-    /** بصمةُ الإصدار الحاليّ — يُرسل مع النشر فيُردّ إن تغيّر القالب بعد فتحه */
+    /** بصمةُ الإصدار الحاليّ */
     hash: string;
-    /** ما يمنع نشرَه الآن — من الخادم */
+    /** ما يمنع الإصدارَ منه حتى يُصحَّح — من الخادم، فارغةٌ لكلّ قالبٍ صالح */
     problems: string[];
     preview_url: string;
     preview_pdf_url: string;
@@ -70,26 +64,17 @@ interface Provider {
 
 type TemplatesProps = { templates: Template[]; provider: Provider; providerLine: string; providerMissing: string[] };
 
-const STATUS: Record<Template['status'], { label: string; variant: 'warning' | 'success' | 'neutral' | 'danger' }> = {
-    published: { label: 'منشور', variant: 'success' },
-    draft: { label: 'غير منشور', variant: 'warning' },
-    changed: { label: 'عُدِّل — الإصدار الجديد غير منشور', variant: 'warning' },
-    paused: { label: 'موقوف', variant: 'neutral' },
-};
-
 export default function DocumentTemplates() {
     const { templates, providerMissing } = usePage<PageProps<TemplatesProps>>().props;
     const t = useTranslate();
     const [editing, setEditing] = useState<Template | 'new' | null>(null);
-    const [publishing, setPublishing] = useState<Template | null>(null);
-    const [pausing, setPausing] = useState<Template | null>(null);
 
     return (
         <PlatformLayout title="قوالب المستندات">
             <BackLink routeName="super-admin.documents.index" href={route('super-admin.documents.index')} label="المستندات" />
             <PageHeader
                 title="قوالب المستندات"
-                subtitle={t('حرّر أي قالب كاملًا، عاينه كما يراه العميل، ثم انشره — تعديله لا يغيّر مستندًا صدر منه')}
+                subtitle={t('حرّر أي قالب كاملًا وعاينه كما يراه العميل — ما تحفظه يُصدر منه فورًا، ولا يغيّر مستندًا صدر منه')}
                 actions={
                     <Button onClick={() => setEditing('new')}>
                         <Plus />
@@ -100,7 +85,7 @@ export default function DocumentTemplates() {
 
             {providerMissing.length > 0 && (
                 <Card className="mb-3 p-4 text-[13px] text-[#6b7280]" data-testid="provider-missing">
-                    {t('لم تُكتب في بيانات مقدّم الخدمة: :fields — لا تظهر في العقود حتى تُكتب، ولا تمنع النشر ولا الإصدار.', { fields: providerMissing.map((f) => t(f)).join('، ') })}{' '}
+                    {t('لم تُكتب في بيانات مقدّم الخدمة: :fields — لا تظهر في العقود حتى تُكتب، ولا تمنع الإصدار.', { fields: providerMissing.map((f) => t(f)).join('، ') })}{' '}
                     <Link href={route('super-admin.settings.index')} className="font-medium underline">
                         {t('إعدادات المنصة')}
                     </Link>
@@ -109,26 +94,20 @@ export default function DocumentTemplates() {
 
             <div className="grid gap-3 md:grid-cols-2">
                 {templates.map((tpl) => (
-                    <TemplateCard
-                        key={tpl.id}
-                        tpl={tpl}
-                        onEdit={() => setEditing(tpl)}
-                        onPublish={() => setPublishing(tpl)}
-                        onPause={() => setPausing(tpl)}
-                    />
+                    <TemplateCard key={tpl.id} tpl={tpl} onEdit={() => setEditing(tpl)} />
                 ))}
             </div>
 
             {editing && <TemplateDialog template={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
-            {publishing && <PublishDialog template={publishing} onClose={() => setPublishing(null)} />}
-            {pausing && <PauseDialog template={pausing} onClose={() => setPausing(null)} />}
         </PlatformLayout>
     );
 }
 
-function TemplateCard({ tpl, onEdit, onPublish, onPause }: { tpl: Template; onEdit: () => void; onPublish: () => void; onPause: () => void }) {
+function TemplateCard({ tpl, onEdit }: { tpl: Template; onEdit: () => void }) {
     const t = useTranslate();
     const [history, setHistory] = useState(false);
+    const ready = tpl.problems.length === 0;
+    const last = tpl.versions[0];
 
     return (
         <Card className="flex flex-col gap-2 p-5" data-testid={`template-${tpl.id}`}>
@@ -146,21 +125,25 @@ function TemplateCard({ tpl, onEdit, onPublish, onPause }: { tpl: Template; onEd
                 </Button>
             </div>
             <div className="flex flex-wrap gap-1.5">
-                <Badge variant={STATUS[tpl.status].variant} data-testid={`status-${tpl.id}`}>
-                    {t(STATUS[tpl.status].label)} · {t('الإصدار :n', { n: String(tpl.version) })}
+                <Badge variant={ready ? 'success' : 'danger'} data-testid={`ready-${tpl.id}`}>
+                    {ready ? t('جاهز للإصدار') : t('يحتاج تصحيحًا')} · {t('الإصدار :n', { n: String(tpl.version) })}
                 </Badge>
                 {tpl.form && <Badge variant="neutral">{t('نموذج بأقسام')}</Badge>}
                 {tpl.includes_plan && <Badge variant="info">{t('الباقة والدورة')}</Badge>}
                 {tpl.includes_amount && <Badge variant="info">{t('مبلغ الخدمة')}</Badge>}
             </div>
-            {tpl.status === 'published' && tpl.published_at && (
-                <div className="text-[11.5px] text-[#6b7280]">
-                    {/* ما نُشر قبل سجلّ النشر لا اسمَ لناشره */}
-                    {tpl.published_by ? t('نشره :name في :at', { name: tpl.published_by, at: tpl.published_at }) : t('منشور منذ :at', { at: tpl.published_at })}
-                </div>
+            {!ready && (
+                <ul className="list-disc rounded-[10px] bg-[#fef2f2] px-3 py-2 ps-7 text-[12px] text-[#b91c1c]" data-testid={`problems-${tpl.id}`}>
+                    {tpl.problems.map((p) => (
+                        <li key={p}>{p}</li>
+                    ))}
+                </ul>
             )}
-            {tpl.status !== 'published' && (
-                <div className="text-[11.5px] text-[#6b7280]">{t('يُختار عند إصدار مستند، ويُنشر بتأكيد واحد. أو انشره من هنا.')}</div>
+            {last && (
+                <div className="text-[11.5px] text-[#6b7280]">
+                    {/* ما حُفظ قبل سجلّ الإصدارات لا اسمَ لحافظه */}
+                    {last.saved_by ? t('آخر حفظ :at · :name', { at: last.saved_at, name: last.saved_by }) : t('آخر حفظ :at', { at: last.saved_at })}
+                </div>
             )}
             <div className="flex flex-wrap gap-2 pt-1">
                 <Button variant="outline" size="sm" asChild>
@@ -175,17 +158,6 @@ function TemplateCard({ tpl, onEdit, onPublish, onPause }: { tpl: Template; onEd
                         PDF
                     </a>
                 </Button>
-                {tpl.status === 'published' ? (
-                    <Button variant="ghost" size="sm" onClick={onPause} data-testid={`pause-${tpl.id}`}>
-                        <Square />
-                        {t('إيقاف النشر')}
-                    </Button>
-                ) : (
-                    <Button size="sm" onClick={onPublish} data-testid={`publish-${tpl.id}`}>
-                        <Send />
-                        {t('نشر الإصدار :n', { n: String(tpl.version) })}
-                    </Button>
-                )}
                 <Button variant="ghost" size="sm" onClick={() => setHistory((v) => !v)} aria-expanded={history}>
                     <History />
                     {t('الإصدارات (:n)', { n: String(tpl.versions.length) })}
@@ -197,7 +169,6 @@ function TemplateCard({ tpl, onEdit, onPublish, onPause }: { tpl: Template; onEd
                         <li key={v.version}>
                             <b className="text-[#111]">{t('الإصدار :n', { n: String(v.version) })}</b> · {t('حُفظ :at', { at: v.saved_at })}
                             {v.saved_by && ` · ${v.saved_by}`}
-                            {v.published_at && ` · ${t('نُشر :at بيد :name', { at: v.published_at, name: v.published_by ?? '—' })}`}
                             <span dir="ltr" className="ms-1 font-mono text-[11px] text-[#9ca3af]">
                                 {v.hash}
                             </span>
@@ -212,7 +183,7 @@ function TemplateCard({ tpl, onEdit, onPublish, onPause }: { tpl: Template; onEd
 /**
  * تحريرُ القالب كلِّه — اسمُه وعناوينُه ورسومُه وقاعدةُ مبلغه، وبنودُه أو نموذجُه.
  * والمعاينةُ بجانبه كما سيُكتب في المستند (برسومه ومقدّم خدمته). والحفظُ إصدارٌ
- * جديدٌ غيرُ منشور إن تغيّر ما يصل إلى المستند.
+ * جديدٌ يُصدر منه فورًا إن تغيّر ما يصل إلى المستند — وما فيه خطأٌ يردّه الخادم بما هو.
  */
 function TemplateDialog({ template, onClose }: { template: Template | null; onClose: () => void }) {
     const t = useTranslate();
@@ -316,6 +287,9 @@ function TemplateDialog({ template, onClose }: { template: Template | null; onCl
                         </label>
                     </div>
 
+                    {errors.default_amount && !form.data.includes_amount && (
+                        <p className="text-[12px] text-[#b91c1c]">{errors.default_amount}</p>
+                    )}
                     {form.data.includes_amount && (
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                             <Field
@@ -452,7 +426,7 @@ function TemplateDialog({ template, onClose }: { template: Template | null; onCl
                     )}
 
                     <p className="text-[12px] text-[#6b7280]">
-                        {t('الحفظ لا ينشر: يصير إصدارًا جديدًا تعاينه ثم تنشره، أو تنشره وأنت تُصدر منه. المستندات التي صدرت لا تتغيّر.')}
+                        {t('ما تحفظه يُصدر منه فورًا، ويُسجَّل إصدارًا جديدًا باسمك. الحفظ لا يُصدر مستندًا ولا يرسل شيئًا، والمستندات التي صدرت لا تتغيّر.')}
                     </p>
                     <div className="flex justify-end gap-2 pt-2">
                         <Button type="button" variant="ghost" onClick={onClose}>
@@ -463,120 +437,6 @@ function TemplateDialog({ template, onClose }: { template: Template | null; onCl
                         </Button>
                     </div>
                 </form>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-/**
- * نشرُ الإصدار الحاليّ — تأكيدٌ واحد بلا كلمة مرور، على بصمة ما يُعرض هنا.
- * ويُسجَّل باسم المدير ووقته وإصداره وبصمته.
- */
-function PublishDialog({ template, onClose }: { template: Template; onClose: () => void }) {
-    const t = useTranslate();
-    const { providerLine } = usePage<PageProps<TemplatesProps>>().props;
-    const form = useForm({ hash: template.hash });
-    const errors = form.errors as Record<string, string | undefined>;
-    const preview = template.form ? renderTokens(template.form, { fee: template.default_amount, provider: providerLine }) : null;
-
-    const submit = (e: FormEvent) => {
-        e.preventDefault();
-        form.post(route('super-admin.documents.templates.publish', template.id), { preserveScroll: true, onSuccess: () => onClose() });
-    };
-
-    return (
-        <Dialog open onOpenChange={(o) => !o && onClose()}>
-            <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                    <DialogTitle>{t('نشر الإصدار :v: :name', { v: String(template.version), name: template.name })}</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={submit} className="space-y-4 px-5 pb-5" data-testid="publish-form">
-                    <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 text-[13px] sm:grid-cols-2">
-                        <dt className="text-[#6b7280]">{t('مقدّم الخدمة')}</dt>
-                        <dd className="text-[#111]">{providerLine || '—'}</dd>
-                        {template.includes_amount && (
-                            <>
-                                <dt className="text-[#6b7280]">{t('الرسوم')}</dt>
-                                <dd className="text-[#111]" data-testid="publish-fee">
-                                    {template.default_amount ? `${template.default_amount} ${t('ر.ع')}` : '—'}
-                                    {template.amount_rule === 'fixed' && ` · ${t('ثابتة')}`}
-                                    {template.amount_rule === 'min' && ` · ${t('يبدأ منها')}`}
-                                </dd>
-                            </>
-                        )}
-                        <dt className="text-[#6b7280]">{t('البصمة')}</dt>
-                        <dd dir="ltr" className="text-end font-mono text-[12px] text-[#6b7280]">
-                            {template.hash.slice(0, 12)}
-                        </dd>
-                    </dl>
-                    <div className="max-h-80 overflow-y-auto rounded-[10px] border border-[#e7e8ea] p-3">
-                        {preview ? (
-                            <DocumentFormView form={preview} />
-                        ) : (
-                            <ol className="list-decimal space-y-1 ps-5 text-[13px] text-[#374151]">
-                                {template.terms.map((term, i) => (
-                                    <li key={i}>
-                                        {term.h && <b>{term.h}: </b>}
-                                        {term.b}
-                                    </li>
-                                ))}
-                            </ol>
-                        )}
-                    </div>
-                    {template.problems.length > 0 && (
-                        <ul className="list-disc rounded-[10px] bg-[#fef2f2] px-3 py-2 ps-7 text-[12.5px] text-[#b91c1c]" data-testid="publish-problems">
-                            {template.problems.map((p) => (
-                                <li key={p}>{p}</li>
-                            ))}
-                        </ul>
-                    )}
-                    {errors.publish && <p className="text-[12.5px] text-[#b91c1c]">{errors.publish}</p>}
-                    <p className="text-[12.5px] text-[#4b5563]">
-                        {t('يُنشر هذا الإصدار بنصه ورسومه كما تراه هنا، ويُسجَّل النشر باسمك. المستندات التي صدرت من إصدار سابق لا تتغيّر.')}
-                    </p>
-                    <div className="flex justify-end gap-2 pt-2">
-                        <Button type="button" variant="ghost" onClick={onClose}>
-                            {t('إلغاء')}
-                        </Button>
-                        <Button type="submit" loading={form.processing} disabled={template.problems.length > 0} data-testid="publish-submit">
-                            {t('نشر الإصدار :n', { n: String(template.version) })}
-                        </Button>
-                    </div>
-                </form>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
-function PauseDialog({ template, onClose }: { template: Template; onClose: () => void }) {
-    const t = useTranslate();
-    const form = useForm({});
-
-    return (
-        <Dialog open onOpenChange={(o) => !o && onClose()}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{t('إيقاف نشر: :name', { name: template.name })}</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 px-5 pb-5">
-                    <p className="text-[13px] text-[#4b5563]">
-                        {t('يبقى القالب ظاهرًا في نافذة الإصدار، ويحتاج تأكيد نشره عند الإصدار منه. المستندات التي صدرت منه لا تتغيّر وروابطها تعمل.')}
-                    </p>
-                    <div className="flex justify-end gap-2">
-                        <Button type="button" variant="ghost" onClick={onClose}>
-                            {t('إلغاء')}
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            loading={form.processing}
-                            onClick={() => form.post(route('super-admin.documents.templates.unpublish', template.id), { preserveScroll: true, onSuccess: () => onClose() })}
-                            data-testid="pause-submit"
-                        >
-                            {t('إيقاف النشر')}
-                        </Button>
-                    </div>
-                </div>
             </DialogContent>
         </Dialog>
     );

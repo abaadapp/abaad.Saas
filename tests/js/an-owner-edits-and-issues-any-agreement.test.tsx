@@ -5,14 +5,16 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pageProps } from './setup';
 
 /**
- * مديرُ المنصّة يحرّر أيَّ اتفاقيةٍ كاملةً ويُصدر منها بتأكيدٍ واحد.
+ * مديرُ المنصّة يحرّر أيَّ اتفاقيةٍ كاملةً، يحفظها، ويُصدر منها: معاينةٌ ثمّ تأكيد.
  *
- * ما يُقبل ويُحفظ ويُنشر يحرسه PHP (`AnAgreementIsEditedWholeFromTheScreenTest`،
- * `AnAgreementIsNotSentBeforeItsOwnerApprovesItTest`). وهنا ما تفعله الشاشات:
+ * ما يُقبل ويُحفظ ويُصدر يحرسه PHP (`AnAgreementIsEditedWholeFromTheScreenTest`،
+ * `ASavedAgreementIsIssuedWithoutPublishingTest`). وهنا ما تفعله الشاشات:
  *   - المحرّرُ يكتب الأقسامَ والأجزاءَ والجداولَ كما يقرؤها الخادم، والمعاينةُ تعرضها
  *     برسومها، وإزالةُ رمزٍ يُنبَّه إليها.
- *   - النشرُ من شاشة القوالب تأكيدٌ واحدٌ بلا كلمة مرور، على بصمة ما يُعرض.
- *   - نافذةُ الإصدار تعرض القوالب كلَّها قابلةً للاختيار، وغيرُ المنشور يُنشر ويُصدر بتأكيدٍ واحد.
+ *   - لا نشرَ ولا إيقافَ في شاشة القوالب: القالبُ المحفوظ «جاهز للإصدار»، وما فيه خطأٌ
+ *     يقول ما هو.
+ *   - نافذةُ الإصدار تعرض القوالب كلَّها بلا «غير منشور»، والمستندُ يُعاين ثمّ يُصدر
+ *     بتأكيدٍ واحد على بصمة ما عوين.
  *   - وبطاقةُ مستندات الشركة بروابطها، وفي صفحة التعديل تُفتح في تبويبٍ جديد.
  */
 
@@ -96,10 +98,10 @@ const FORM = {
 const template = (over: Record<string, unknown> = {}) => ({
     id: 4, name: 'نموذج ربط واتساب', service: 'ربط واتساب', title: 'نموذج ربط واتساب', title_en: null,
     terms: [], form: FORM, default_amount: '25.000', default_amount_label: 'رسوم الربط', amount_rule: 'fixed' as const,
-    includes_plan: false, includes_amount: true, documents_count: 0, version: 1, status: 'draft' as const,
-    published_at: null, published_by: null, hash: 'f'.repeat(64), problems: [],
+    includes_plan: false, includes_amount: true, documents_count: 0, version: 1,
+    hash: 'f'.repeat(64), problems: [] as string[],
     preview_url: '/super-admin/documents/templates/4/preview', preview_pdf_url: '/super-admin/documents/templates/4/preview.pdf',
-    versions: [{ version: 1, hash: 'ffffffffffff', saved_at: '2026-10-25 10:00', saved_by: null, published_at: null, published_by: null }],
+    versions: [{ version: 1, hash: 'ffffffffffff', saved_at: '2026-10-25 10:00', saved_by: 'مدير المنصة' }],
     ...over,
 });
 
@@ -184,36 +186,27 @@ describe('the template editor', () => {
         expect(within(dialog).getByTestId('removed-tokens')).toHaveTextContent('{fee}');
     });
 
-    it('publishes with one confirmation and no password, on the fingerprint it shows', async () => {
+    it('a saved template is ready to issue — no publish or pause anywhere', async () => {
         const user = userEvent.setup();
         templatesPage();
-        expect(screen.getByTestId('status-4')).toHaveTextContent('غير منشور · الإصدار 1');
 
-        await user.click(screen.getByTestId('publish-4'));
-        const dialog = screen.getByTestId('publish-form');
-        expect(within(dialog).getByTestId('publish-fee')).toHaveTextContent('25.000');
-        expect(dialog.querySelector('input[type="password"]')).toBeNull();
-        await user.click(within(dialog).getByTestId('publish-submit'));
-
-        expect(sent).toEqual([{ url: expect.stringContaining('super-admin.documents.templates.publish'), payload: { hash: 'f'.repeat(64) } }]);
-    });
-
-    it('a template the server finds incomplete says why and cannot be published', async () => {
-        const user = userEvent.setup();
-        templatesPage(template({ problems: ['اكتب رسوم القالب قبل نشره — نصّه يذكرها.'] }));
-        await user.click(screen.getByTestId('publish-4'));
-
-        expect(screen.getByTestId('publish-problems')).toHaveTextContent('اكتب رسوم القالب قبل نشره');
-        expect(screen.getByTestId('publish-submit')).toBeDisabled();
-    });
-
-    it('a published template is paused, not published again', () => {
-        templatesPage(template({ status: 'published', published_at: '2026-10-25 10:00', published_by: 'مدير المنصة' }));
-
-        expect(screen.getByTestId('status-4')).toHaveTextContent('منشور · الإصدار 1');
-        expect(screen.getByTestId('pause-4')).toBeInTheDocument();
+        expect(screen.getByTestId('ready-4')).toHaveTextContent('جاهز للإصدار · الإصدار 1');
+        expect(screen.getByText('آخر حفظ 2026-10-25 10:00 · مدير المنصة')).toBeInTheDocument();
         expect(screen.queryByTestId('publish-4')).toBeNull();
-        expect(screen.getByText('نشره مدير المنصة في 2026-10-25 10:00')).toBeInTheDocument();
+        expect(screen.queryByTestId('pause-4')).toBeNull();
+        expect(document.body.textContent).not.toMatch(/نشر|منشور|موقوف/);
+
+        await user.click(screen.getByTestId('edit-4'));
+        expect(screen.getByTestId('template-form')).toHaveTextContent('ما تحفظه يُصدر منه فورًا');
+        expect(document.body.textContent).not.toMatch(/نشر|منشور|موقوف/);
+    });
+
+    it('a template the server finds broken says why and is marked to be fixed', () => {
+        templatesPage(template({ problems: ['اكتب رسوم القالب — نصّه يذكرها.'] }));
+
+        expect(screen.getByTestId('ready-4')).toHaveTextContent('يحتاج تصحيحًا · الإصدار 1');
+        expect(screen.getByTestId('problems-4')).toHaveTextContent('اكتب رسوم القالب — نصّه يذكرها.');
+        expect(screen.getByTestId('edit-4')).toBeEnabled();
     });
 });
 
@@ -223,8 +216,9 @@ describe('issuing from any template', () => {
             documents: [], pagination: { current_page: 1, last_page: 1, from: 0, to: 0, total: 0, per_page: 20, prev_page_url: null, next_page_url: null },
             filters: { state: '', q: '', business: '5' }, counts: { sent: 0, signed: 0 },
             templates: [
-                { id: 1, published: true, version: 1, hash: 'a'.repeat(64), name: 'عقد اشتراك أبعاد', service: 'اشتراك النظام', title: 'عقد اشتراك', terms: [{ h: '', b: 'بند' }], form: null, includes_plan: false, includes_amount: false, default_amount: null, default_amount_label: null, amount_rule: null },
-                { id: 4, published: false, version: 2, hash: 'b'.repeat(64), name: 'نموذج ربط واتساب', service: 'ربط واتساب', title: 'نموذج ربط واتساب', terms: [], form: { ...FORM, highlights: [{ label: 'الرسوم', text: '25.000 ر.ع' }] }, includes_plan: false, includes_amount: true, default_amount: '25.000', default_amount_label: 'رسوم الربط', amount_rule: 'fixed' },
+                { id: 1, problems: [], version: 1, hash: 'a'.repeat(64), preview_url: '/p/1', preview_pdf_url: '/p/1.pdf', name: 'عقد اشتراك أبعاد', service: 'اشتراك النظام', title: 'عقد اشتراك', terms: [{ h: '', b: 'بند' }], form: null, includes_plan: false, includes_amount: false, default_amount: null, default_amount_label: null, amount_rule: null },
+                { id: 4, problems: [], version: 2, hash: 'b'.repeat(64), preview_url: '/p/4', preview_pdf_url: '/p/4.pdf', name: 'نموذج ربط واتساب', service: 'ربط واتساب', title: 'نموذج ربط واتساب', terms: [], form: { ...FORM, highlights: [{ label: 'الرسوم', text: '25.000 ر.ع' }] }, includes_plan: false, includes_amount: true, default_amount: '25.000', default_amount_label: 'رسوم الربط', amount_rule: 'fixed' },
+                { id: 6, problems: ['اكتب رسوم القالب — نصّه يذكرها.'], version: 1, hash: 'c'.repeat(64), preview_url: '/p/6', preview_pdf_url: '/p/6.pdf', name: 'نموذج تجهيز المتجر', service: 'تجهيز', title: 'نموذج تجهيز المتجر', terms: [], form: FORM, includes_plan: false, includes_amount: true, default_amount: null, default_amount_label: null, amount_rule: null },
             ],
             company: { id: 5, name: 'زهور الريان', url: '/super-admin/businesses/5' },
             opening: true,
@@ -236,36 +230,71 @@ describe('issuing from any template', () => {
         return render(<DocumentsIndex />);
     };
 
-    it('lists every template as choosable and issues an unpublished one after a single confirmation', async () => {
+    it('lists every template with no “unpublished” mark and issues after a preview and one confirmation', async () => {
         const user = userEvent.setup();
         issuePage();
         const dialog = screen.getByTestId('new-document');
 
         await user.click(within(dialog).getAllByRole('combobox')[0]);
         const options = await screen.findAllByRole('option');
-        expect(options.map((o) => o.textContent)).toEqual(['عقد اشتراك أبعاد · اشتراك النظام', 'نموذج ربط واتساب · ربط واتساب — غير منشور']);
+        expect(options.map((o) => o.textContent)).toEqual([
+            'عقد اشتراك أبعاد · اشتراك النظام',
+            'نموذج ربط واتساب · ربط واتساب',
+            'نموذج تجهيز المتجر · تجهيز — يحتاج تصحيحًا',
+        ]);
         options.forEach((o) => expect(o).not.toHaveAttribute('aria-disabled', 'true'));
         await user.click(options[1]);
+        expect(document.body.textContent).not.toMatch(/منشور|نشر/);
 
-        expect(within(dialog).getByTestId('unpublished-note')).toHaveTextContent('الإصدار 2 من هذا القالب غير منشور');
+        // الضغطةُ الأولى معاينة: ما سيصدر كما سيصدر — ولا يُرسل شيء
+        expect(within(dialog).getByTestId('issue-submit')).toHaveTextContent('معاينة المستند');
         await user.click(within(dialog).getByTestId('issue-submit'));
         expect(sent).toHaveLength(0);
-        expect(within(dialog).getByTestId('publish-confirm')).toHaveTextContent('تأكيد نشر الإصدار 2 وإصدار المستند');
+        const confirm = within(dialog).getByTestId('issue-confirm');
+        expect(confirm).toHaveTextContent('راجع المستند قبل إصداره');
+        expect(confirm).toHaveTextContent('نموذج ربط واتساب — الإصدار 2');
+        expect(confirm).toHaveTextContent('زهور الريان');
+        expect(confirm).toHaveTextContent('25.000 ر.ع');
+        expect(confirm).toHaveTextContent('ولا يُرسل للعميل حتى تشاركه أنت');
+        expect(within(confirm).getByTestId('confirm-preview')).toHaveAttribute('href', '/p/4');
 
-        await user.click(within(dialog).getByRole('button', { name: 'تأكيد النشر والإصدار' }));
+        // والثانيةُ تأكيدُ الإصدار — على بصمة الإصدار الذي عوين
+        await user.click(within(dialog).getByRole('button', { name: 'تأكيد الإصدار وإنشاء الرابط' }));
         expect(sent).toHaveLength(1);
-        expect(sent[0].payload).toMatchObject({ template_id: '4', business_id: '5', publish: true, template_hash: 'b'.repeat(64) });
+        expect(sent[0].payload).toMatchObject({ template_id: '4', business_id: '5', template_hash: 'b'.repeat(64) });
+        expect(sent[0].payload).not.toHaveProperty('publish');
     });
 
-    it('a published template issues straight away, with no confirmation step', async () => {
+    it('the short contract waits for the same preview and confirmation, and “back” returns to editing', async () => {
         const user = userEvent.setup();
         issuePage();
         const dialog = screen.getByTestId('new-document');
 
-        expect(within(dialog).queryByTestId('unpublished-note')).toBeNull();
+        await user.click(within(dialog).getByTestId('issue-submit'));
+        expect(sent).toHaveLength(0);
+        expect(within(dialog).getByTestId('issue-confirm')).toHaveTextContent('عقد اشتراك — الإصدار 1');
+        await user.click(within(dialog).getByRole('button', { name: 'رجوع' }));
+        expect(within(dialog).queryByTestId('issue-confirm')).toBeNull();
+
+        await user.click(within(dialog).getByTestId('issue-submit'));
         await user.click(within(dialog).getByTestId('issue-submit'));
         expect(sent).toHaveLength(1);
-        expect(sent[0].payload).not.toHaveProperty('publish');
+        expect(sent[0].payload).toMatchObject({ template_id: '1', template_hash: 'a'.repeat(64) });
+    });
+
+    it('a broken template is chosen, says why, and is not issued until it is fixed', async () => {
+        const user = userEvent.setup();
+        issuePage();
+        const dialog = screen.getByTestId('new-document');
+
+        await user.click(within(dialog).getAllByRole('combobox')[0]);
+        await user.click(await screen.findByRole('option', { name: 'نموذج تجهيز المتجر · تجهيز — يحتاج تصحيحًا' }));
+        const note = within(dialog).getByTestId('template-problems');
+        expect(note).toHaveTextContent('لا يُصدر من هذا القالب حتى يُصحَّح');
+        expect(note).toHaveTextContent('اكتب رسوم القالب — نصّه يذكرها.');
+        expect(within(note).getByRole('link', { name: 'تصحيح القالب' })).toBeInTheDocument();
+        expect(within(dialog).getByTestId('issue-submit')).toBeDisabled();
+        expect(sent).toHaveLength(0);
     });
 });
 

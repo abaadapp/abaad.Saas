@@ -77,9 +77,9 @@ class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
 
     private function issue(array $data = []): PlatformDocument
     {
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $data + [
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed($data + [
             'template_id' => $this->contract->id, 'business_id' => $this->shop->id, 'cycle' => 'yearly',
-        ])->assertSessionHasNoErrors()->assertRedirect();
+        ]))->assertSessionHasNoErrors()->assertRedirect();
         auth()->logout();
 
         return PlatformDocument::latest('id')->firstOrFail();
@@ -317,10 +317,10 @@ class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
 
         // ونهايةٌ اتُّفق عليها تُحفظ كما كُتبت — ولا تسبق البداية
         $this->assertSame('2027-12-31', $this->issue(['term_starts_on' => '2027-01-01', 'term_ends_on' => '2027-12-31'])->term_ends_on->toDateString());
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed([
             'template_id' => $this->contract->id, 'business_id' => $this->shop->id, 'cycle' => 'yearly',
             'term_starts_on' => '2027-01-01', 'term_ends_on' => '2026-12-31',
-        ])->assertSessionHasErrors('term_ends_on');
+        ]))->assertSessionHasErrors('term_ends_on');
 
         // والسعرُ من الباقة لا من الكود: لا خصمٌ ولا تعديلٌ على الباقة
         $this->assertSame('29.900', number_format((float) $this->pro->fresh()->monthly_price, 3, '.', ''));
@@ -370,9 +370,9 @@ class AnAbaadContractGoesOutAndComesBackSignedTest extends TestCase
         $this->assertSame('1234567', $renewal->client['cr'], 'بيانُ العميل من العقد السابق');
 
         // تجديدٌ ثانٍ للعقد نفسه لا يُصدر وأوّلُه قائم
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed([
             'template_id' => $this->contract->id, 'renews_document_id' => $first->id, 'cycle' => 'yearly',
-        ])->assertSessionHasErrors('document');
+        ]))->assertSessionHasErrors('document');
         $this->actingAs($this->super)->get(route('super-admin.documents.index', ['state' => 'renewal']))
             ->assertInertia(fn ($p) => $p->has('documents', 1)->where('documents.0.number', $renewal->number));
 

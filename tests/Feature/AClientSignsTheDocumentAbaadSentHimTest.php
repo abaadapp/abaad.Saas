@@ -128,7 +128,8 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
         $this->assertSame(0, PlatformDocument::count());
 
         $this->actingAs($this->super)->get(route('super-admin.documents.index'))->assertOk()
-            ->assertInertia(fn ($p) => $p->component('Platform/Documents/Index')->has('templates', PlatformDocumentTemplate::where('active', true)->count()));
+            ->assertInertia(fn ($p) => $p->component('Platform/Documents/Index')
+                ->has('templates', PlatformDocumentTemplate::all()->filter(fn ($t) => $t->issuable())->count()));
         $this->actingAs($this->super)->get(route('super-admin.documents.templates'))->assertOk();
     }
 
@@ -169,6 +170,10 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
             'includes_plan' => false, 'includes_amount' => true, 'active' => true,
         ])->assertSessionHasNoErrors();
         $app = PlatformDocumentTemplate::where('name', 'تطبيق خاص')->firstOrFail();
+        // القالبُ الجديد مسوّدةٌ معطَّلة — يعتمده المدير ويفعّله قبل أن يُصدر منه
+        $this->assertFalse($app->active);
+        $this->completeProvider();
+        $this->approveTemplate($app);
 
         // بلا اسم ولا نشاط لا مستند
         $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
@@ -334,16 +339,23 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 
     public function test_the_signed_paper_keeps_abaad_as_it_was_on_the_day(): void
     {
-        Setting::create(['business_id' => null, 'key' => 'company', 'value' => 'Abaad Old LLC']);
+        // الطرفُ الأوّل باسمه القانونيّ وسجلّه من «مقدّم الخدمة في العقود» — لا من «اسم الشركة المالكة»
+        Setting::updateOrCreate(['business_id' => null, 'key' => 'legal_name'], ['value' => 'Abaad Old LLC']);
+        Setting::updateOrCreate(['business_id' => null, 'key' => 'legal_cr'], ['value' => 'OLD-CR-1']);
+        Setting::updateOrCreate(['business_id' => null, 'key' => 'company'], ['value' => 'Company Field LLC']);
         $doc = $this->issue();
         $this->sign($doc)->assertSessionHasNoErrors();
 
-        Setting::whereNull('business_id')->where('key', 'company')->update(['value' => 'Abaad New LLC']);
+        Setting::whereNull('business_id')->where('key', 'legal_name')->update(['value' => 'Abaad New LLC']);
+        Setting::whereNull('business_id')->where('key', 'legal_cr')->update(['value' => 'NEW-CR-2']);
 
-        $this->get(route('documents.sign', $doc->token))->assertSee('Abaad Old LLC')->assertDontSee('Abaad New LLC');
+        $this->get(route('documents.sign', $doc->token))->assertSee('Abaad Old LLC')->assertSee('OLD-CR-1')
+            ->assertDontSee('Abaad New LLC')->assertDontSee('NEW-CR-2')->assertDontSee('Company Field LLC');
         $text = implode(' ', array_column(PdfText::pages($this->get(route('documents.sign.pdf', $doc->token))->getContent()), 'text'));
         $this->assertStringContainsString('Abaad Old LLC', $text);
+        $this->assertStringContainsString('OLD-CR-1', $text);
         $this->assertStringNotContainsString('Abaad New LLC', $text);
+        $this->assertStringNotContainsString('NEW-CR-2', $text);
         $this->assertTrue(PlatformDocuments::intact($doc->fresh()));
     }
 

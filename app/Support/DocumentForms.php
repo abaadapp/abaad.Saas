@@ -38,10 +38,10 @@ class DocumentForms
     private const PREFILL = ['org' => 'biz', 'person' => 'name', 'store' => 'biz', 'biz' => 'biz', 'phone' => 'phone', 'email' => 'email', 'cr' => 'cr'];
 
     /**
-     * يزرع قوالبَ المالك الخمسة إن غابت — ويعطّل العقدَ القصير الأوّل للإصدار.
+     * يزرع قوالبَ المالك الخمسة إن غابت — مسوّداتٍ معطَّلةً لم تُعتمد.
      *
-     * لا يمسّ قالبًا موجودًا باسمه (ربما عدّله المدير)، ولا يحذف شيئًا: العقدُ
-     * القصير يبقى لما صدر منه، ويُفعَّل من شاشة القوالب إن احتيج.
+     * لا يمسّ قالبًا موجودًا باسمه (ربما عدّله المدير)، ولا يعطّل غيرَها ولا يحذف
+     * شيئًا. والاعتمادُ والتفعيلُ قرارا مدير المنصّة من شاشة القوالب.
      */
     public static function seedTemplates(): void
     {
@@ -61,14 +61,13 @@ class DocumentForms
                 'includes_amount' => $t['includes_amount'],
                 'default_amount' => $t['default_amount'],
                 'default_amount_label' => $t['default_amount_label'],
-                'active' => true,
+                'amount_rule' => $t['amount_rule'] ?? null,
+                'version' => 1,
+                'active' => false,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
         }
-
-        DB::table('platform_document_templates')->where('name', 'عقد اشتراك أبعاد')->whereNull('form')
-            ->update(['active' => false, 'updated_at' => now()]);
     }
 
     /** القالبُ كما خرج من التصميم */
@@ -81,6 +80,53 @@ class DocumentForms
         }
 
         return $data;
+    }
+
+    /**
+     * النموذجُ بقيمه — يُكتب في المستند ساعةَ إصداره نصًّا تامًّا.
+     *
+     * نصُّ التصميم يذكر الرسومَ في مواضعَ (الأبرز، والتفاصيل، والإقرار): «12.000
+     * ر.ع» و«12 ريالًا». فيُكتب في القالب `{fee}` و`{fee_short}`، ويُملأ من رسوم
+     * القالب المعتمدة — فلا يقول النصُّ رقمًا ومبلغُ المستند غيرَه. ومقدّمُ الخدمة
+     * `{provider}` من بياناته القانونيّة ساعتَها.
+     *
+     * والمستندُ يحمل النتيجة لا الرموز: ما وقّعه العميل نصٌّ لا يتغيّر بتغيّر
+     * القالب ولا الإعدادات.
+     *
+     * @param  array{fee?:?string, provider?:?string}  $values
+     */
+    public static function render(?array $form, array $values): ?array
+    {
+        if (! $form) {
+            return null;
+        }
+        $fee = $values['fee'] ?? null;
+        $map = [
+            '{fee}' => $fee === null ? '—' : number_format((float) $fee, 3, '.', ''),
+            '{fee_short}' => $fee === null ? '—' : rtrim(rtrim(number_format((float) $fee, 3, '.', ''), '0'), '.'),
+            '{provider}' => trim((string) ($values['provider'] ?? '')) ?: '—',
+        ];
+        array_walk_recursive($form, function (&$v) use ($map) {
+            if (is_string($v) && str_contains($v, '{')) {
+                $v = strtr($v, $map);
+            }
+        });
+
+        return $form;
+    }
+
+    /** هل في النموذج رموزٌ تُملأ ساعةَ الإصدار؟ — نصُّ القالب لا المستند */
+    public static function tokens(?array $form): array
+    {
+        $found = [];
+        $walk = $form ?? [];
+        array_walk_recursive($walk, function ($v) use (&$found) {
+            if (is_string($v) && preg_match_all('/\{(fee|fee_short|provider)\}/', $v, $m)) {
+                $found = array_merge($found, $m[1]);
+            }
+        });
+
+        return array_values(array_unique($found));
     }
 
     /**

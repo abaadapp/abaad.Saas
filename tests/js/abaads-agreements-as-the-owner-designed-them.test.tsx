@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import DocumentsIndex from '@/Pages/Platform/Documents/Index';
 import DocumentShow from '@/Pages/Platform/Documents/Show';
+import DocumentTemplates from '@/Pages/Platform/Documents/Templates';
 import { formInputs, type DocumentForm } from '@/lib/platformDocuments';
 import { pageProps } from './setup';
 
@@ -14,6 +15,9 @@ import { pageProps } from './setup';
  * (`AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest`). وهنا:
  *   - نافذةُ الإصدار تعرض النموذجَ وتقترح مبلغَه وتفتح حقولَ الفريق وحدها.
  *   - صفحةُ المستند تعرض ما كتبه الفريقُ وما أجاب به العميل، والفارغَ سطرًا.
+ *   - شاشةُ القوالب: المسوّدةُ موسومةٌ ولا تُفعَّل، والاعتمادُ يُعرض بنصّه ورسومه ومقدّم
+ *     خدمته ولا يُرسل بلا مراجعةٍ وكلمة مرور — ولا بمقدّم خدمةٍ ناقص.
+ *   - والرسومُ الثابتة في نافذة الإصدار تُقرأ ولا تُكتب.
  */
 
 const FORM: DocumentForm = {
@@ -85,6 +89,7 @@ describe('the owner’s agreements, as forms', () => {
             templates: [{
                 id: 4, name: 'نموذج طلب واتفاقية خدمة ربط واتساب', service: 'ربط واتساب', title: 'نموذج طلب واتفاقية خدمة ربط واتساب',
                 terms: [], form: FORM, includes_plan: false, includes_amount: true, default_amount: '25.000', default_amount_label: 'رسوم الربط (مرة واحدة)',
+                amount_rule: 'fixed',
             }],
             plans: [], cycles: [], businesses: [{ id: 5, name: 'زهور الريان', plan_id: null, owner: 'سالم', phone: '+96891234567', starts_on: '2026-10-25' }],
             today: '2026-10-25', days: 14, renew: null,
@@ -94,6 +99,8 @@ describe('the owner’s agreements, as forms', () => {
         const dialog = screen.getByTestId('new-document');
 
         expect(within(dialog).getByDisplayValue('25.000')).toBeInTheDocument();
+        // رسومٌ ثابتة كما اعتُمدت: تُقرأ ولا تُكتب هنا
+        expect(within(dialog).getByTestId('amount')).toHaveAttribute('readonly');
         expect(within(dialog).getByDisplayValue('رسوم الربط (مرة واحدة)')).toBeInTheDocument();
 
         await userEvent.click(within(dialog).getByRole('button', { name: /معاينة النموذج/ }));
@@ -138,5 +145,52 @@ describe('the owner’s agreements, as forms', () => {
         expect(within(form).getByText('اسم النشاط مسجل في Meta').previousSibling).toHaveTextContent('☑');
         expect(within(form).getByText('لدي حساب Meta Business Portfolio').previousSibling).toHaveTextContent('☐');
         expect(screen.queryByText('الشروط والأحكام')).toBeNull();
+    });
+
+    const template = {
+        id: 4, name: 'نموذج طلب واتفاقية خدمة ربط واتساب', service: 'ربط واتساب', title: 'نموذج طلب واتفاقية خدمة ربط واتساب', title_en: null,
+        terms: [], form: FORM, default_amount: '25.000', default_amount_label: 'رسوم الربط (مرة واحدة)', amount_rule: 'fixed' as const,
+        includes_plan: false, includes_amount: true, active: false, documents_count: 0, version: 1,
+        approval: 'draft' as const, approved_at: null, approved_by: null, hash: 'f'.repeat(64),
+    };
+    const provider = { name: 'مشاريع الذهلي الجديدة', legal_name: 'مشاريع الذهلي الجديدة', trade_name: 'أبعاد', cr: '', address: '' };
+
+    it('a draft agreement is marked, cannot be activated, and is not approved while the provider is incomplete', async () => {
+        layout('super-admin.documents.templates');
+        Object.assign(pageProps, { templates: [template], provider, providerMissing: ['رقم السجل التجاري', 'العنوان القانوني'] });
+        render(<DocumentTemplates />);
+
+        expect(screen.getByTestId('approval-4')).toHaveTextContent('مسوّدة — بانتظار المراجعة القانونية');
+        expect(screen.getByTestId('provider-missing')).toHaveTextContent('رقم السجل التجاري، العنوان القانوني');
+
+        await userEvent.click(screen.getByRole('button', { name: 'تعديل' }));
+        expect(screen.getByTestId('template-active')).toBeDisabled();
+        expect(screen.getByTestId('needs-approval')).toBeInTheDocument();
+        expect(screen.getByTestId('draft-notice')).toBeInTheDocument();
+        await userEvent.keyboard('{Escape}');
+
+        await userEvent.click(screen.getByTestId('approve-4'));
+        const approve = screen.getByTestId('approve-form');
+        expect(within(approve).getByTestId('approve-fee')).toHaveTextContent('25.000');
+        expect(within(approve).getByTestId('approve-blocked')).toBeInTheDocument();
+        await userEvent.click(within(approve).getByTestId('approve-reviewed'));
+        await userEvent.type(within(approve).getByTestId('approve-password'), 'x');
+        expect(within(approve).getByTestId('approve-submit')).toBeDisabled();
+    });
+
+    it('with the provider complete, approval needs the review tick and the password', async () => {
+        layout('super-admin.documents.templates');
+        Object.assign(pageProps, { templates: [template], provider: { ...provider, cr: 'TEST-CR', address: 'مسقط' }, providerMissing: [] });
+        render(<DocumentTemplates />);
+
+        await userEvent.click(screen.getByTestId('approve-4'));
+        const approve = screen.getByTestId('approve-form');
+        expect(within(approve).getByTestId('approve-provider')).toHaveTextContent('مشاريع الذهلي الجديدة — أبعاد — TEST-CR — مسقط');
+        const submit = within(approve).getByTestId('approve-submit');
+        expect(submit).toBeDisabled();
+        await userEvent.click(within(approve).getByTestId('approve-reviewed'));
+        expect(submit).toBeDisabled();
+        await userEvent.type(within(approve).getByTestId('approve-password'), 'secret');
+        expect(submit).toBeEnabled();
     });
 });

@@ -35,6 +35,8 @@ interface Template {
     includes_amount: boolean;
     default_amount: string | null;
     default_amount_label: string | null;
+    /** fixed: الرسومُ كما اعتُمدت ويذكرها النصّ · min: تبدأ منها · null: يكتبها المدير */
+    amount_rule: 'fixed' | 'min' | null;
 }
 
 interface PlanOption {
@@ -559,12 +561,25 @@ function NewDocumentDialog({
                                     placeholder={template.name}
                                 />
                             </Field>
-                            <Field label="المبلغ (ر.ع)" required error={errors.amount}>
+                            <Field
+                                label="المبلغ (ر.ع)"
+                                required
+                                error={errors.amount}
+                                hint={
+                                    template.amount_rule === 'fixed'
+                                        ? t('رسوم ثابتة كما اعتُمدت ويذكرها نص الاتفاقية — تُغيَّر من القالب ثم يُعتمد من جديد')
+                                        : template.amount_rule === 'min' && template.default_amount
+                                          ? t('يبدأ من :fee ر.ع كما اعتُمد', { fee: template.default_amount })
+                                          : undefined
+                                }
+                            >
                                 <Input
                                     dir="ltr"
                                     inputMode="decimal"
                                     value={form.data.amount}
+                                    readOnly={template.amount_rule === 'fixed'}
                                     onChange={(e) => form.setData('amount', e.target.value)}
+                                    data-testid="amount"
                                 />
                             </Field>
                         </div>

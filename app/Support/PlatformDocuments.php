@@ -48,6 +48,12 @@ use Throwable;
  * قالبٌ بنموذج (`form`، انظر `DocumentForms`) يُنسخ نموذجُه في المستند مع حقول
  * الفريق (`team`) ساعةَ الإصدار، وإجاباتُ العميل (`answers`) ساعةَ التوقيع. وإن
  * سأل النموذجُ العميلَ عن بياناته بحقوله فهي بيانُه، لا `FIELDS`.
+ *
+ * ═══ الاعتماد ═══
+ *
+ * لا يُصدر إلّا من قالبٍ معتمدٍ نصُّه كما هو الآن (`PlatformDocumentTemplate::approved`).
+ * ورسومُه كما اعتُمدت: الثابتةُ هي المبلغ، و«يبدأ من» حدُّه الأدنى. ومقدّمُ الخدمة
+ * ببياناته القانونيّة كاملةً (الاسم والسجلّ والعنوان) نسخةٌ في المستند ساعتَها.
  */
 class PlatformDocuments
 {
@@ -178,6 +184,14 @@ class PlatformDocuments
     public static function issue(User $by, array $data): PlatformDocument
     {
         $template = PlatformDocumentTemplate::where('active', true)->findOrFail($data['template_id']);
+        if (! $template->approved()) {
+            throw new RuntimeException(__('هذا القالب لم يُعتمد بنصّه الحاليّ — لا يُصدر منه مستند حتى يعتمده مدير المنصّة.'));
+        }
+        // مقدّمُ الخدمة كما هو اليوم — وقالبٌ اعتُمد بهذه السياسة لا يُصدر بلا سجلّه وعنوانه
+        $provider = self::provider();
+        if ($template->approval_basis !== PlatformDocumentTemplate::LEGACY && ($gap = self::providerMissing($provider))) {
+            throw new RuntimeException(__('أكمل بيانات مقدّم الخدمة في إعدادات المنصّة: :fields', ['fields' => implode('، ', $gap)]));
+        }
 
         $renews = ! empty($data['renews_document_id']) ? PlatformDocument::findOrFail($data['renews_document_id']) : null;
         if ($renews) {
@@ -230,19 +244,34 @@ class PlatformDocuments
 
         $amount = null;
         if ($template->includes_amount) {
-            if (! is_numeric($data['amount'] ?? null) || (float) $data['amount'] < 0) {
+            $fee = $template->default_amount === null ? null : round((float) $template->default_amount, 3);
+            $given = $data['amount'] ?? null;
+            // رسومٌ ثابتة: المبلغُ هو ما اعتُمد ويذكره النصّ — لا يُكتب غيرُه هنا
+            if ($template->amount_rule === PlatformDocumentTemplate::AMOUNT_FIXED && $fee !== null) {
+                if ($given !== null && $given !== '' && (! is_numeric($given) || round((float) $given, 3) !== $fee)) {
+                    throw new RuntimeException(__('رسوم هذه الخدمة ثابتة: :fee ر.ع كما اعتُمدت. لتغييرها عدّل القالب واعتمده من جديد.', ['fee' => number_format($fee, 3, '.', '')]));
+                }
+                $given = $fee;
+            }
+            if (! is_numeric($given) || (float) $given < 0) {
                 throw new RuntimeException(__('اكتب مبلغ الخدمة.'));
             }
-            $amount = round((float) $data['amount'], 3);
+            $amount = round((float) $given, 3);
+            if ($template->amount_rule === PlatformDocumentTemplate::AMOUNT_MIN && $fee !== null && $amount < $fee) {
+                throw new RuntimeException(__('سعر هذه الخدمة يبدأ من :fee ر.ع كما اعتُمد.', ['fee' => number_format($fee, 3, '.', '')]));
+            }
         }
 
         $days = max(1, min(90, (int) ($data['days'] ?? self::DEFAULT_DAYS)));
 
-        // النموذجُ نسخةٌ في المستند، ومعه ما كتبه الفريقُ في حقوله وحدها
-        $form = $template->form ?: null;
+        // النموذجُ نسخةٌ في المستند بنصّه التامّ (رسومُه ومقدّمُ خدمته)، ومعه ما كتبه الفريقُ في حقوله وحدها
+        $form = DocumentForms::render($template->form ?: null, [
+            'fee' => $template->default_amount === null ? null : (string) $template->default_amount,
+            'provider' => self::providerLine($provider),
+        ]);
         $team = $form ? (DocumentForms::clean($form, is_array($data['team'] ?? null) ? $data['team'] : [], 'team') ?: null) : null;
 
-        return DB::transaction(function () use ($by, $template, $business, $renews, $client, $phone, $plan, $start, $end, $amount, $data, $days, $form, $team) {
+        return DB::transaction(function () use ($by, $template, $business, $renews, $client, $phone, $plan, $start, $end, $amount, $data, $days, $form, $team, $provider) {
             $doc = PlatformDocument::create([
                 // رقمٌ مؤقّتٌ فريد، ثمّ رقمُ العقد من معرّفه — لا عدّادَ يتسابق عليه اثنان
                 'number' => 'TMP-'.Str::random(24),
@@ -260,7 +289,8 @@ class PlatformDocuments
                 'term_ends_on' => $end?->toDateString(),
                 'amount' => $amount,
                 'amount_label' => $amount !== null ? (trim((string) ($data['amount_label'] ?? '')) ?: ($template->default_amount_label ?: $template->name)) : null,
-                'provider' => self::provider(),
+                'provider' => $provider,
+                'template_version' => $template->version,
                 'client' => $client,
                 'client_label' => self::label($client),
                 'client_phone' => $phone,
@@ -321,7 +351,9 @@ class PlatformDocuments
     /** رسالةُ واتساب الجاهزة — يراجعها المديرُ ويضغط «إرسال» بنفسه */
     public static function whatsappText(PlatformDocument $doc, string $link): string
     {
-        $provider = self::providerOf($doc)['name'];
+        // الرسالةُ باسم المنصّة الذي يعرفه العميل — والاسمُ القانونيّ في العقد نفسه
+        $p = self::providerOf($doc);
+        $provider = $p['trade_name'] ?: $p['name'];
         $who = $doc->client['name'] ?? $doc->client['biz'] ?? '';
 
         return implode("\n", [
@@ -380,7 +412,15 @@ class PlatformDocuments
             }
 
             $path = 'documents/'.$doc->id.'/signature-'.Str::random(24).'.png';
-            Storage::disk('local')->put($path, $png);
+            /*
+             * والقرصُ الذي لا يكتب يقول `false` ولا يرمي (`throw` مطفأ في ضبطه) — فلو
+             * مضى التوقيعُ لَحُفظ مستندٌ «موقَّع» بلا صورة توقيعه، وبصمتُه تُحسب من
+             * صورةٍ في الذاكرة لا في القرص: يُرى غدًا «تغيّر بعد توقيعه». فيُردّ هنا
+             * والمعاملةُ لم تكتب شيئًا، ويُعيد العميلُ الإرسال.
+             */
+            if (! Storage::disk('local')->put($path, $png)) {
+                throw new RuntimeException(__('تعذّر حفظ التوقيع الآن — أعد الإرسال بعد قليل.'));
+            }
 
             $doc->forceFill([
                 'client' => $values,
@@ -490,25 +530,58 @@ class PlatformDocuments
         return 'data:image/png;base64,'.base64_encode((string) Storage::disk('local')->get($doc->signature_path));
     }
 
+    /** بياناتُ مقدّم الخدمة القانونيّة التي لا يُعتمد قالبٌ ولا يُصدر بغيرها — بمفاتيحها في `provider()` */
+    public const PROVIDER_REQUIRED = ['legal_name' => 'الاسم القانوني', 'cr' => 'رقم السجل التجاري', 'address' => 'العنوان القانوني'];
+
     /** الطرفُ الأوّل في مستندٍ صدر — كما نُسخ يومَ إصداره */
     public static function providerOf(PlatformDocument $doc): array
     {
-        return ($doc->provider ?? []) + ['name' => __('أبعاد'), 'email' => '', 'phone' => '', 'website' => ''];
+        return ($doc->provider ?? []) + ['name' => __('أبعاد'), 'legal_name' => '', 'trade_name' => '', 'cr' => '', 'address' => '', 'email' => '', 'phone' => '', 'website' => ''];
     }
 
-    /** هويّةُ أبعاد في رأس المستند — من إعدادات المنصّة لا من الكود، تُنسخ فيه ساعةَ الإصدار */
+    /**
+     * هويّةُ أبعاد في رأس المستند — من إعدادات المنصّة لا من الكود، تُنسخ فيه ساعةَ الإصدار.
+     *
+     * والاسمُ القانونيّ وسجلُّه وعنوانُه من «مقدّم الخدمة في العقود» (`legal_*`) لا من
+     * «اسم الشركة المالكة»: ذاك افتراضُه في الشاشة اسمٌ لا كيانَ له، فلا يُطبع طرفًا في عقد.
+     * وما لم يُكتب يبقى فارغًا — لا يُملأ بما يشبهه.
+     */
     public static function provider(): array
     {
         $s = Setting::whereNull('business_id')
-            ->whereIn('key', ['app_name', 'company', 'official_email', 'phone', 'website'])
+            ->whereIn('key', ['app_name', 'company', 'official_email', 'phone', 'website', 'legal_name', 'legal_trade_name', 'legal_cr', 'legal_address'])
             ->pluck('value', 'key');
+        $get = fn (string $k) => trim((string) $s->get($k));
 
         return [
-            'name' => trim((string) $s->get('company')) ?: (trim((string) $s->get('app_name')) ?: __('أبعاد')),
-            'email' => trim((string) $s->get('official_email')),
-            'phone' => trim((string) $s->get('phone')),
-            'website' => trim((string) $s->get('website')),
+            'name' => $get('legal_name') ?: ($get('company') ?: ($get('app_name') ?: __('أبعاد'))),
+            'legal_name' => $get('legal_name'),
+            'trade_name' => $get('legal_trade_name'),
+            'cr' => $get('legal_cr'),
+            'address' => $get('legal_address'),
+            'email' => $get('official_email'),
+            'phone' => $get('phone'),
+            'website' => $get('website'),
         ];
+    }
+
+    /** ما ينقص من بيانات مقدّم الخدمة القانونيّة — بعناوينه */
+    public static function providerMissing(array $provider): array
+    {
+        return array_values(array_map(
+            fn ($k) => self::PROVIDER_REQUIRED[$k],
+            array_filter(array_keys(self::PROVIDER_REQUIRED), fn ($k) => trim((string) ($provider[$k] ?? '')) === ''),
+        ));
+    }
+
+    /** «مشاريع الذهلي الجديدة — الاسم التجاري للمنصة: أبعاد — السجل التجاري رقم …» — ما كُتب منه وحده */
+    public static function providerLine(array $provider): string
+    {
+        return implode(' — ', array_filter([
+            trim((string) ($provider['legal_name'] ?? '')) ?: trim((string) ($provider['name'] ?? '')),
+            ($provider['trade_name'] ?? '') !== '' ? 'الاسم التجاري للمنصة: '.$provider['trade_name'] : null,
+            ($provider['cr'] ?? '') !== '' ? 'السجل التجاري رقم '.$provider['cr'] : null,
+        ]));
     }
 
     /**

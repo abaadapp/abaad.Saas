@@ -171,6 +171,10 @@
             <div class="party">
                 <div class="xs muted">الطرف الأول · مزوّد الخدمة <span class="faint">Provider</span></div>
                 <div class="who">{{ $provider['name'] }}</div>
+                {{-- بياناتُه القانونيّة كما نُسخت في المستند يومَ إصداره — ما كُتب منها وحده --}}
+                @if ($provider['trade_name'])<div class="xs muted" id="provider-trade">الاسم التجاري للمنصة: {{ $provider['trade_name'] }}</div>@endif
+                @if ($provider['cr'])<div class="xs muted" id="provider-cr">السجل التجاري رقم <span class="ltr">{{ $provider['cr'] }}</span></div>@endif
+                @if ($provider['address'])<div class="xs muted" id="provider-address">{{ $provider['address'] }}</div>@endif
                 <div class="xs muted">نظام سحابي متكامل لإدارة الأعمال</div>
             </div>
             <div class="party">

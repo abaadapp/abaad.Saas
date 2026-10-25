@@ -101,7 +101,7 @@ function Part({ part, value }: { part: FormPart; value: FormValues[string] | und
         case 'table': {
             const cells = Array.isArray(value) ? (value as string[][]) : [];
             return (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto no-scrollbar">
                     <table className="w-full min-w-[420px] border-collapse text-[12px]">
                         <thead>
                             <tr>
@@ -188,7 +188,7 @@ function TeamTable({ part, value, onChange }: { part: Extract<FormInput, { kind:
     };
 
     return (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto no-scrollbar">
             <table className="w-full min-w-[420px] border-collapse text-[12px]" data-testid={`team-${part.k}`}>
                 <thead>
                     <tr>
@@ -223,11 +223,13 @@ function TeamTable({ part, value, onChange }: { part: Extract<FormInput, { kind:
                                                 ))}
                                             </select>
                                         ) : (
-                                            <input
+                                            // `Input` لا حقلٌ خام: رقمٌ يُكتب بلوحةٍ عربيّة في خليّةٍ يُحفظ لاتينيًّا كبقيّة الحقول
+                                            <Input
                                                 value={cell}
                                                 onChange={(e) => setCell(r, c, e.target.value)}
                                                 placeholder={part.ph[c] ?? ''}
-                                                className="w-full rounded-[6px] border border-[#e7e8ea] px-2 py-1"
+                                                className="h-8 rounded-[6px] px-2 py-1 text-[12px] touch:h-9"
+                                                data-testid={`team-${part.k}-${r}-${c}`}
                                             />
                                         )}
                                     </td>

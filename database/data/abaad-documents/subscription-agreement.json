@@ -7,12 +7,13 @@
  "includes_amount": false,
  "default_amount": null,
  "default_amount_label": null,
+ "amount_rule": null,
  "form": {
   "intro": "مرحبًا بك في أبعاد! نسعد بثقتك واختيارك لمنصتنا لإدارة أعمالك. تهدف هذه الاتفاقية إلى توضيح حقوقك والتزاماتنا بصورة بسيطة وشفافة، لضمان تجربة استخدام آمنة ومستقرة.",
   "highlights": [
    {
     "label": "مقدم الخدمة",
-    "text": "مشاريع الذهلي الجديدة — الاسم التجاري للمنصة: أبعاد"
+    "text": "{provider}"
    }
   ],
   "sections": [

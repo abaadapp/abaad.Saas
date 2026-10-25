@@ -9,6 +9,7 @@ use App\Models\PlatformDocument;
 use App\Models\PlatformDocumentTemplate;
 use App\Support\Activity;
 use App\Support\Billing;
+use App\Support\DocumentForms;
 use App\Support\Pagination;
 use App\Support\PlatformDocuments;
 use App\Support\Search;
@@ -53,8 +54,23 @@ class DocumentController extends Controller
         $renew = $request->filled('renew')
             ? PlatformDocument::whereKey((int) $request->query('renew'))->where('status', PlatformDocument::SIGNED)->first()
             : null;
-        $templates = PlatformDocumentTemplate::where('active', true)->orderBy('id')
-            ->get(['id', 'name', 'service', 'title', 'terms', 'form', 'includes_plan', 'includes_amount', 'default_amount', 'default_amount_label']);
+        // ما يُصدر منه وحده: مفعّلٌ ونصُّه هو المعتمد — والنموذجُ كما سيُكتب في المستند
+        $line = PlatformDocuments::providerLine(PlatformDocuments::provider());
+        $templates = PlatformDocumentTemplate::where('active', true)->orderBy('id')->get()
+            ->filter(fn (PlatformDocumentTemplate $t) => $t->approved())
+            ->map(fn (PlatformDocumentTemplate $t) => [
+                'id' => $t->id,
+                'name' => $t->name,
+                'service' => $t->service,
+                'title' => $t->title,
+                'terms' => $t->terms ?? [],
+                'form' => DocumentForms::render($t->form, ['fee' => $t->default_amount, 'provider' => $line]),
+                'includes_plan' => $t->includes_plan,
+                'includes_amount' => $t->includes_amount,
+                'default_amount' => $t->default_amount === null ? null : (string) $t->default_amount,
+                'default_amount_label' => $t->default_amount_label,
+                'amount_rule' => $t->amount_rule,
+            ])->values();
 
         return Inertia::render('Platform/Documents/Index', [
             'documents' => collect($page->items())->map(fn (PlatformDocument $d) => self::row($d))->all(),
@@ -90,7 +106,7 @@ class DocumentController extends Controller
                 'number' => $renew->number,
                 'client' => $renew->client_label,
                 'phone' => $renew->client['phone'] ?? '',
-                'template_id' => $templates->firstWhere('id', $renew->template_id)?->id ?? $templates->firstWhere('includes_plan', true)?->id,
+                'template_id' => $templates->firstWhere('id', $renew->template_id)['id'] ?? $templates->firstWhere('includes_plan', true)['id'] ?? null,
                 'plan_id' => $renew->plan['plan_id'] ?? null,
                 'cycle' => $renew->plan['cycle'] ?? 'monthly',
                 'starts_on' => $renew->term_ends_on?->toDateString(),
@@ -110,7 +126,7 @@ class DocumentController extends Controller
             'cycle' => ['nullable', Rule::in(array_keys(PlatformDocuments::CYCLES))],
             'term_starts_on' => ['nullable', 'date'],
             'term_ends_on' => ['nullable', 'date', 'after:term_starts_on'],
-            'amount' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'amount' => ['nullable', 'numeric', 'decimal:0,3', 'min:0', 'max:1000000'],
             'amount_label' => ['nullable', 'string', 'max:190'],
             'days' => ['nullable', 'integer', 'min:1', 'max:90'],
             'notes' => ['nullable', 'string', 'max:2000'],
@@ -151,6 +167,7 @@ class DocumentController extends Controller
         return Inertia::render('Platform/Documents/Show', [
             'document' => self::row($doc) + [
                 'title_en' => $doc->title_en,
+                'template_version' => $doc->template_version,
                 'terms' => $doc->terms,
                 'form' => $doc->form,
                 'team' => $doc->team ?? [],

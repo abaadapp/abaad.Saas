@@ -43,6 +43,9 @@
             <td style="width:50%; border-bottom:none; vertical-align:top">
                 <div class="faint small">{{ __('الطرف الأول · مزوّد الخدمة') }}</div>
                 <div class="b">{{ $provider['name'] }}</div>
+                @if ($provider['trade_name'])<div class="muted small">{{ __('الاسم التجاري للمنصة') }}: {{ $provider['trade_name'] }}</div>@endif
+                @if ($provider['cr'])<div class="muted small">{{ __('السجل التجاري رقم') }} <span dir="ltr">{{ $provider['cr'] }}</span></div>@endif
+                @if ($provider['address'])<div class="muted small">{{ $provider['address'] }}</div>@endif
                 <div class="muted small">{{ __('نظام سحابي متكامل لإدارة الأعمال') }}</div>
             </td>
             <td style="border-bottom:none; vertical-align:top">

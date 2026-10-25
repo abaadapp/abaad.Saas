@@ -72,6 +72,8 @@ class ACorrectionReadsTheLineItRewritesTest extends TestCase
         ]);
 
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_rate', 'value' => '5']);
+        // متجرٌ يجبي الضريبة صراحةً — والفاتورةُ تُكتب بما يُعيده حسابُها (`OrderCorrection::assertTaxStands`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
 
         $cat = Category::create(['business_id' => $this->business->id, 'name' => 'عام']);
         $this->product = Product::create([
@@ -88,7 +90,8 @@ class ACorrectionReadsTheLineItRewritesTest extends TestCase
     private function sale(int $qty = 3): Order
     {
         $gross = 10 * $qty;
-        $tax = round($gross * 5 / 100, 3);
+        // والتغليفُ بضريبة المتجر كالقميص — ضريبةُ الفاتورة كما يحسبها البيع
+        $tax = round(($gross + 10) * 5 / 100, 3);
 
         $order = Order::create([
             'business_id' => $this->business->id, 'branch_id' => $this->branch->id,

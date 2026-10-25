@@ -1898,6 +1898,7 @@
     "انتهى الاشتراك": "Subscription expired",
     "انتهى في": "Expired on",
     "انتهى يومُ هذه الفاتورة فأُقفلت — التصحيح في يوم البيع وحده. وما بعده إلغاءٌ كامل لا تعديلٌ في الأصل.": "This invoice's day has ended and it is closed — corrections are allowed on the day of sale only. After that, a full cancellation, not an edit to the original.",
+    "تغيّر إعداد الضريبة منذ بيعت هذه الفاتورة، وتصحيحُ بندٍ فيها يُعيد حسابَ ضريبتها كلِّها بإعداد اليوم فتتغيّر ضريبةُ ما لم يُصحَّح. لا تُصحَّح بنودُها — ويبقى إلغاؤها كاملةً وبيعُها من جديد.": "VAT settings have changed since this invoice was sold. Correcting a line would recompute the whole invoice's VAT with today's settings and change the VAT on lines that were not corrected. Its lines cannot be corrected — you can still cancel it in full and sell it again.",
     "انخفض": "fell",
     "انخفضت مبيعات هذا الشهر بنسبة :pct% مقارنةً بالشهر السابق": "This month's sales dropped by :pct% compared to the previous month",
     "انسخ العنوان": "Copy address",

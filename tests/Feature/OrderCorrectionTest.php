@@ -51,6 +51,8 @@ class OrderCorrectionTest extends TestCase
         ]);
 
         Setting::create(['business_id' => $this->business->id, 'key' => 'vat_rate', 'value' => '5']);
+        // متجرٌ يجبي الضريبة صراحةً — والفاتورةُ تُكتب بما يُعيده حسابُها (`OrderCorrection::assertTaxStands`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
 
         $cat = Category::create(['business_id' => $this->business->id, 'name' => 'عام']);
         $this->product = Product::create([
@@ -309,6 +311,8 @@ class OrderCorrectionTest extends TestCase
         $order->items()->create([
             'product_id' => null, 'name' => 'كيس', 'price' => 1, 'quantity' => 1, 'total' => 1,
         ]);
+        // والكيسُ في مبالغ الفاتورة كما لو بيع معها
+        $order->update(['subtotal' => 31, 'tax' => 1.55, 'total' => 32.55]);
         $this->actingAs($this->cashier);
 
         OrderCorrection::setQuantity($order, $order->fresh('items')->items->first(), 0, 'صنف مكرّر');
@@ -477,6 +481,7 @@ class OrderCorrectionTest extends TestCase
         // قائمتان تحت فاتورةٍ واحدة تجعلان القارئ يجمعهما بعينه
         $order = $this->sale(3);
         $order->items()->create(['product_id' => null, 'name' => 'كيس', 'price' => 1, 'quantity' => 1, 'total' => 1]);
+        $order->update(['subtotal' => 31, 'tax' => 1.55, 'total' => 32.55]);
         $this->actingAs($this->cashier);
 
         OrderCorrection::setPaymentMethod($order, 'بطاقة', 'دفع بالبطاقة');

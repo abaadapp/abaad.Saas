@@ -9074,5 +9074,6 @@
     "الباقة أو الخدمة": "Plan or service",
     "المشاركة": "Sharing",
     "نُسخ الرابط": "Link copied",
-    "فُتح واتساب": "WhatsApp opened"
+    "فُتح واتساب": "WhatsApp opened",
+    "تسجيل تسويات Paymob متوقّف في هذا الإصدار — القاعدة تسمّي مدفوعات التحويلات، فيُسجَّل التحويل حين يعود الإصدار الذي يسمّيها. لم يُكتب شيء.": "Recording Paymob settlements is stopped in this version — the database names payout payments, so the payout is recorded once the version that names them is back. Nothing was written."
 }

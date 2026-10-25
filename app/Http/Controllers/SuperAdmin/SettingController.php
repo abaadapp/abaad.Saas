@@ -33,6 +33,19 @@ class SettingController extends Controller
         'phone' => ['nullable', 'string', 'max:50'],
         'website' => ['nullable', 'string', 'max:200'],
 
+        /*
+         * مقدّمُ الخدمة في العقود — الطرفُ الأوّل في كلّ مستندٍ يُوقَّع.
+         *
+         * ولا افتراضَ لها: اسمٌ أو سجلٌّ يُملأ بما يشبهه طرفٌ في عقدٍ لا وجود
+         * له. وما لم يُكتب منها لا يُطبع، ولا يمنع اعتمادًا ولا إصدارًا (قرارُ
+         * المالك). ويُنسخ ما فيها في المستند ساعةَ إصداره، فتعديلُها لا يغيّر
+         * عقدًا صدر.
+         */
+        'legal_name' => ['nullable', 'string', 'max:190'],
+        'legal_trade_name' => ['nullable', 'string', 'max:120'],
+        'legal_cr' => ['nullable', 'string', 'max:40'],
+        'legal_address' => ['nullable', 'string', 'max:300'],
+
         'trial_days' => ['nullable', 'integer', 'min:0', 'max:365'],
         'grace_days' => ['nullable', 'integer', 'min:0', 'max:365'],
         'default_plan' => ['nullable', 'string', 'max:100'],
@@ -111,6 +124,10 @@ class SettingController extends Controller
             'vat_rate' => __('نسبة الضريبة'),
             'official_email' => __('البريد الرسمي'),
             'from_address' => __('بريد المُرسِل'),
+            'legal_name' => __('الاسم القانوني'),
+            'legal_trade_name' => __('الاسم التجاري'),
+            'legal_cr' => __('رقم السجل التجاري'),
+            'legal_address' => __('العنوان القانوني'),
         ]);
 
         /*

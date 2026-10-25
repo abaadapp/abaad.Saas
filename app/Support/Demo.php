@@ -31,6 +31,7 @@ use App\Models\OrderEdit;
 use App\Models\OrderItem;
 use App\Models\OrderItemAddon;
 use App\Models\Plan;
+use App\Models\PlatformDocument;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
@@ -4180,6 +4181,28 @@ class Demo
                 ]);
             }
 
+            /*
+             * وعقدٌ وقّعه عميلُه — خبرٌ لكلّ مديرٍ في المنصّة، أسبوعًا.
+             *
+             * لا يُرسله أحد: الجرسُ يُبنى من حال المستندات، فيظهر السطرُ في
+             * الاستطلاع التالي أيًّا كانت الطريقُ التي وصل بها الرابطُ إلى العميل.
+             * والمفتاحُ رقمُ المستند: من أخفاه لا يعود إليه.
+             */
+            $signed = PlatformDocument::where('status', PlatformDocument::SIGNED)
+                ->where('signed_at', '>=', now()->subDays(7))
+                ->orderByDesc('signed_at')->limit($limit)->get();
+            foreach ($signed as $d) {
+                $add('document-signed-'.$d->id, [
+                    'text' => __('وقّع :client المستند :number', [
+                        'client' => $d->client['biz'] ?? $d->client['name'] ?? '—',
+                        'number' => $d->number,
+                    ]),
+                    'time' => optional($d->signed_at)->diffForHumans(),
+                    'icon' => 'badge-check', 'color' => 'success',
+                    'url' => route('super-admin.documents.show', $d->id),
+                ]);
+            }
+
             $subs = Subscription::with('business')
                 ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
                 ->whereDate('ends_at', '<=', now()->addDays(30))
@@ -4463,6 +4486,23 @@ class Demo
                 'icon' => 'alert-triangle', 'color' => $p->quantity <= 0 ? 'danger' : 'warning',
                 'url' => route('admin.inventory.index'),
             ]);
+        }
+
+        /*
+         * ═══ وصندوقٌ لن يخرج منه إيصالُه ═══
+         *
+         * طابعةٌ بقيت على صندوقٍ ملغى وخلفُه بلا طابعة، وطابعتان ولا طابعةَ
+         * إيصال، وعنوانٌ يرفضه التطبيق — ما **ثبت** وحده (`TillHealth::CONFIRMED`)،
+         * صفٌّ لكلّ صندوق، لمن يملك الإعدادات. ويغيب وحده حين يُصلَح.
+         *
+         * وخلف مفتاح (`pos.till_health_bell`، مطفأٌ افتراضًا): يُشعَل بعد أن
+         * يُقرأ تقريرُ التدقيق على الإنتاج، لا يوم النشر — فلا يدقّ جرسُ كلّ
+         * تاجرٍ في صباحٍ واحد بما لم يُراجَع.
+         */
+        if (config('pos.till_health_bell') && ($unfiltered || ($u && $u->allows('settings')))) {
+            foreach (TillHealth::bellItems((int) $bid) as $key => $item) {
+                $add($key, $item + ['section' => 'settings']);
+            }
         }
 
         /*
@@ -4875,35 +4915,45 @@ class Demo
     }
 
     /**
-     * كشف حساب محسوب من معاملات النظام برصيد تراكمي.
+     * كشف حساب من دفتر الأستاذ برصيد تراكمي.
      *
-     * ما مرّ بالبنك وحده وبعد تاريخ الرصيد الافتتاحي — انظر Bank::transactions.
+     * سطورُ ورقة الحساب بعد تاريخ رصيده الافتتاحي — انظر `Bank::statement`.
+     * فالرصيدُ الختاميّ رصيدُ الورقة منذ ذلك التاريخ، لا رقمٌ يُحسب من جدولٍ
+     * آخر فيفترق عنه. و«مدين» في الكشف ما خرج من البنك و«دائن» ما دخله،
+     * كما يقرأ صاحبُ الحساب كشفَ مصرفه.
      */
     public static function bankStatement(?int $accountId = null): array
     {
         $acc = self::bankAccount($accountId);
-        $balance = $acc['opening_balance'];
+        $opening = (float) $acc['opening_balance'];
+        $account = $acc['id'] ? BankAccount::where('business_id', self::bid())->find($acc['id']) : null;
+        $book = $account
+            ? Bank::statement(self::bid(), $account)
+            : ['rows' => [], 'before_opening' => ['count' => 0, 'net' => 0.0], 'ledger_balance' => 0.0];
 
-        $rows = Bank::transactions(self::bid(), $acc['id'] ?? null)
-            ->orderBy('occurred_at')->orderBy('id')->get()->map(function ($t) use (&$balance) {
-                // المصروفات مخزّنة بإشارة سالبة — نوحّد على القيمة المطلقة والاتجاه من النوع
-                $in = $t->type === 'دخل';
-                $amount = abs((float) $t->amount);
-                $balance += $in ? $amount : -$amount;
+        $balance = $opening;
+        $rows = array_map(function (array $l) use (&$balance) {
+            $balance += $l['in'] - $l['out'];
 
-                return [
-                    'id' => $t->id,
-                    'reference' => $t->reference,
-                    'date' => optional($t->occurred_at)->format('Y-m-d') ?? '—',
-                    'description' => $t->description,
-                    'method' => $t->method,
-                    'debit' => $in ? 0.0 : $amount,
-                    'credit' => $in ? $amount : 0.0,
-                    'balance' => round($balance, 3),
-                ];
-            })->all();
+            return [
+                'id' => $l['id'],
+                'reference' => $l['reference'],
+                'date' => $l['date'],
+                'description' => $l['description'],
+                'source' => $l['source'],
+                'debit' => $l['out'],
+                'credit' => $l['in'],
+                'balance' => round($balance, 3),
+            ];
+        }, $book['rows']);
 
-        return ['opening' => $acc['opening_balance'], 'rows' => $rows, 'closing' => round($balance, 3)];
+        return [
+            'opening' => $opening,
+            'rows' => $rows,
+            'closing' => round($balance, 3),
+            'before_opening' => $book['before_opening'],
+            'ledger_balance' => $book['ledger_balance'],
+        ];
     }
 
     /** أسطر كشف البنك المستوردة مع حالة المطابقة — لحسابٍ واحد */

@@ -900,6 +900,9 @@ class PreparationController extends Controller
             'branch:id,name',
         ])->orderBy('scheduled_for')->limit(self::BOARD_LIMIT)->get();
 
+        // وما انقضت مهلةُ حجزه يُعرض «لم يؤكَّد» بأزراره، لا «يطبعها الصندوق الآن» أبدًا
+        PrintJobs::expireClaims((int) $this->bid());
+
         $jobs = PrintJob::where('business_id', $this->bid())
             ->where('subject_type', 'customer_invoice_preparation')
             ->whereIn('subject_id', $tasks->pluck('id')->all())

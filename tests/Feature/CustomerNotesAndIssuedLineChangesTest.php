@@ -655,7 +655,8 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
         $order->refresh();
         $this->assertEquals(31.5, (float) $order->balance_due);
         $this->assertEquals(21, (float) $this->saleRow($order)->amount);
-        $this->assertSame(21.0, round(Ledger::balance($this->shop->id, 'bank'), 3));
+        // بطاقةُ الموقع تنتظر في «Paymob تحت التسوية» حتّى تُحوَّل — انظر `Books::paidThroughPaymob`
+        $this->assertSame(21.0, round(Ledger::balance($this->shop->id, 'paymob_clearing'), 3));
         $this->assertSame(31.5, round(Ledger::balance($this->shop->id, 'receivable'), 3));
         $this->assertLedgerBalanced();
 
@@ -673,7 +674,7 @@ class CustomerNotesAndIssuedLineChangesTest extends TestCase
         $this->assertSame('نقدي', $row->method);
         $this->assertSame('2027-03-12', $row->occurred_at->toDateString());
         $this->assertSame(31.5, round(Ledger::balance($this->shop->id, 'cash'), 3));
-        $this->assertSame(21.0, round(Ledger::balance($this->shop->id, 'bank'), 3));
+        $this->assertSame(21.0, round(Ledger::balance($this->shop->id, 'paymob_clearing'), 3));
         $this->assertSame(0.0, round(Ledger::balance($this->shop->id, 'receivable'), 3));
         $this->assertLedgerBalanced();
 

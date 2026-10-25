@@ -140,7 +140,14 @@ final class CustomerPayments
             throw new RuntimeException(__('مبلغ التحصيل يجب أن يكون أكبر من صفر.'));
         }
 
-        $method = in_array($data['method'] ?? '', [...self::METHODS, self::PAYMOB], true) ? $data['method'] : 'نقدي';
+        /*
+         * و«تحويل بنكي» اسمُ التحويل في نقطة البيع — وهو «تحويل» هنا.
+         *
+         * دفعةُ البيع الآجل في الصندوق تُسجَّل بوسيلة الطلب نفسها، وكان ما
+         * ليس في القائمة يصير «نقدي»: فتحويلٌ دخل البنك يُرحَّل إلى الدرج.
+         */
+        $asked = ($data['method'] ?? '') === PaymentMethods::TRANSFER ? 'تحويل' : ($data['method'] ?? '');
+        $method = in_array($asked, [...self::METHODS, self::PAYMOB], true) ? $asked : 'نقدي';
         $bankAccountId = self::accountFor($businessId, $method, $data['bank_account_id'] ?? null);
 
         return DB::transaction(function () use ($businessId, $customer, $amount, $data, $allocations, $method, $bankAccountId, $userId) {

@@ -95,7 +95,19 @@ class AnOpenedPrintDialogIsNotAPrintedPaperTest extends TestCase
 
         // ولا تُطبع وحدها مرّةً ثانية — لا على صندوقها ولا على غيره، ولا يُنزَّل ملفُّها
         $this->assertNull($this->claim($till));
-        $this->assertNull($this->claim($this->till()));
+        $other = $this->till();
+        $this->assertNull($this->claim($other));
+
+        if ($via === 'browser') {
+            /*
+             * إلّا للّسان الذي فُتح في الضغطة: ردُّه يسبق طلبَ الملفّ أحيانًا،
+             * فيصله في مهلة الحجز — لصندوقه وحده (`PrintJobController::justOpenedInATab`).
+             */
+            $this->at($till)->get(route('pos.printJobs.pdf', $row->id))->assertOk();
+            $this->at($other)->get(route('pos.printJobs.pdf', $row->id))->assertNotFound();
+            $this->travel(PrintJobs::CLAIM_SECONDS + 1)->seconds();
+        }
+
         $this->at($till)->get(route('pos.printJobs.pdf', $row->id))->assertNotFound();
 
         // ويُسأل عنها الكاشير — من الخادم، فيبقى السؤالُ بعد إعادة التحميل

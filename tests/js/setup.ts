@@ -39,7 +39,7 @@ vi.mock('@inertiajs/react', async () => {
         ...actual,
         usePage: () => ({ props: pageProps, url: '/', component: 'Test' }),
         // و`on` يردّ ما يردّه الأصل: دالّةً تُلغي الاشتراك — يُناديها المحرّرُ حين يُغلق
-        router: { visit: vi.fn(), get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), put: vi.fn(), on: vi.fn(() => () => {}) },
+        router: { visit: vi.fn(), get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), put: vi.fn(), reload: vi.fn(), on: vi.fn(() => () => {}) },
         /*
          * و`Head` جسدٌ فارغ.
          *

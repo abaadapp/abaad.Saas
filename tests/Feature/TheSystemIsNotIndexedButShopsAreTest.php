@@ -191,7 +191,7 @@ class TheSystemIsNotIndexedButShopsAreTest extends TestCase
             'store/show' => 'public', 'store/ribbon/layout' => 'public', 'site/show' => 'public',
             // عامّةٌ لكنّها لا تُفهرَس بقرارها هي، من قبل هذا العمل
             'site/maintenance' => 'own-noindex', 'public/paper' => 'own-noindex',
-            'public/review' => 'own-noindex', 'public/verify' => 'own-noindex',
+            'public/review' => 'own-noindex', 'public/verify' => 'own-noindex', 'public/sign' => 'own-noindex',
             // وصفحةُ «حدّث الصفحة» لتبويبٍ قديم طلب ملفًّا — داخليّةٌ برأسها هي (`TenantExportGuard`)
             'stale-export' => 'own-noindex',
             // ليست صفحاتٍ على الويب: رسائلُ بريد، وصفحةٌ داخل ملفّ تصدير، وفهرسُ أرشيفٍ مضغوط

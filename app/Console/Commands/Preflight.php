@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Rules\PlatformEmailDomain;
 use App\Support\Archive\Policy as ArchivePolicy;
 use App\Support\Mailer;
+use App\Support\PaymobSettlements;
 use App\Support\WhatsAppHealth;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
@@ -304,6 +305,21 @@ class Preflight extends Command
                 warnOnly: true,
             );
         }
+
+        /*
+         * وحالُ تسجيل تسويات Paymob — يُقرأ من الإعداد المخزَّن الذي يقرؤه الموقع.
+         *
+         * `deploy.sh` يشغّل هذا الفحص بعد `config:cache` وإعادة تحميل php-fpm،
+         * فالسطرُ في سجلّ كلّ نشر يقول ما يعمل فعلًا: موقوفٌ أم مفتوح. وتنبيهٌ
+         * لا مانع — الإيقافُ قرارٌ مقصود، والبيعُ والدفعُ يمضيان معه.
+         */
+        $this->check(
+            'تسجيل تسويات Paymob مفتوح',
+            ! PaymobSettlements::paused(),
+            'تسجيل تسويات Paymob موقوف (PAYMOB_SETTLEMENTS_PAUSED=true): التجّار يرون التنبيه ولا يُسجَّل تحويل؛ البيعُ والدفعُ وإشعاراتُ Paymob تمضي.'
+                .' للفتح: false في .env ثمّ config:cache وإعادة تحميل php-fpm',
+            warnOnly: true,
+        );
 
         /* ------------------------------- الخلاصة ------------------------------- */
         $this->newLine();

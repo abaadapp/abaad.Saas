@@ -62,6 +62,8 @@ export interface PosPeripheral {
     autoPrintWebsite?: boolean;
     /** يستلم «فاتورة عميل — نسخة داخلية» حين تُسدَّد — انظر `lib/printing/print-jobs` */
     autoPrintCustomerInvoices?: boolean;
+    /** طابعةُ إيصال البيع على هذا الصندوق — يحسبها الخادم (`PosPeripheral::receiptAmong`) */
+    receipt?: boolean;
 }
 
 export interface Currency {

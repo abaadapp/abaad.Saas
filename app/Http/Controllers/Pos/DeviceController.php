@@ -6,12 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\BankAccount;
 use App\Models\Branch;
 use App\Models\PosDevice;
+use App\Models\PosPeripheral;
 use App\Support\Activity;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\Demo;
 use App\Support\PosTerminal;
 use App\Support\PrintJobs;
+use App\Support\TillActivation;
+use App\Support\TillHealth;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 /**
@@ -38,51 +42,103 @@ class DeviceController extends Controller
             return redirect()->route('pos.index');
         }
 
+        $bid = (int) Demo::bid();
+        $user = auth()->user();
+
         /*
          * من لا يملك التفعيل لا يُصفع بـ403: كتب بريدَه وكلمتَه صحيحَين
          * ووصل. يُقال له ما ينقص ومن يفعله — والتفعيلُ نفسُه يبقى محروسًا
-         * في `activate`.
+         * في `activate`. وموظفُ نقطة البيع في متجر الفرع الواحد يفتح صندوقًا
+         * جديدًا بنفسه (`TillActivation::mayActivate`) — ولا يستبدل قائمًا.
          */
-        if (! auth()->user()->allows('settings')) {
+        if (! TillActivation::mayActivate($user, $bid)) {
             return Inertia::render('Pos/DeviceNotActivated', [
                 'businessName' => Demo::businessName(),
             ]);
         }
 
+        $previous = PosTerminal::previous($bid);
+        $branches = Branch::where('business_id', $bid)->orderBy('id')->get(['id', 'business_id', 'name']);
+
         return Inertia::render('Pos/DeviceSetup', [
-            'branches' => Branch::where('business_id', Demo::bid())
-                ->orderBy('id')->get(['id', 'name'])
-                ->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
+            'branches' => $branches->map(fn ($b) => ['value' => $b->id, 'label' => $b->name])->values()->all(),
             'businessName' => Demo::businessName(),
+            // أيستبدل صندوقًا قائمًا؟ — يوقف جهازًا آخر، فللإعدادات وحدها
+            'canReplace' => TillActivation::mayReplace($user),
+            // فرعٌ فيه صندوقٌ بطابعة: «صندوق جديد» لمن يملك الإعدادات (`TillActivation::guardNew`)
+            'newNeedsManager' => $branches->filter(fn ($b) => TillActivation::newNeedsSettings($b, $user))->pluck('id')->values()->all(),
+            // الصندوقُ الذي كانه هذا المتصفّح — يُعرض أوّلَ الخيارات، ولا يُختار عنه
+            'previous' => $previous?->id,
+            /*
+             * صناديقُ المتجر القائمة — ليحلّ هذا الجهازُ محلَّ أحدها.
+             *
+             * ومع كلٍّ: عددُ طابعاته النشطة (هي ما يضيع حين يُفعَّل صفٌّ جديد)،
+             * وآخرُ ما رُئي (أيعمل الآن في مكانٍ آخر؟)، وبصمةُ حاله كما عُرضت —
+             * تُقارن عند الضغط تحت قفل الصفّ (`TillActivation::version`).
+             */
+            'devices' => PosDevice::where('business_id', $bid)
+                ->with('branch:id,name')
+                ->withCount(['peripherals as printers' => fn ($p) => $p
+                    ->where('active', true)->where('type', PosPeripheral::PRINTER)])
+                ->orderByDesc('id')->get()
+                ->map(fn ($d) => [
+                    'id' => $d->id,
+                    'name' => $d->name,
+                    'branchId' => $d->branch_id,
+                    'branch' => $d->branch?->name ?? '—',
+                    'active' => $d->isActive(),
+                    'printers' => (int) $d->printers,
+                    'lastSeen' => $d->last_seen_at?->diffForHumans(),
+                    'version' => TillActivation::version($d),
+                ])->values()->all(),
         ]);
     }
 
     public function activate(Request $request)
     {
-        $this->authorizeActivation();
+        $bid = (int) Demo::bid();
+        abort_unless(TillActivation::mayActivate(auth()->user(), $bid), 403, __('تفعيل الجهاز يحتاج صلاحية الإعدادات.'));
 
         $data = $request->validate([
             'branch_id' => ['required', 'integer'],
             'name' => ['required', 'string', 'max:60'],
+            'mode' => ['nullable', Rule::in(TillActivation::MODES)],
+            'replaces' => ['nullable', 'integer', 'required_if:mode,'.TillActivation::REPLACE],
+            'version' => ['nullable', 'string', 'max:64', 'required_if:mode,'.TillActivation::REPLACE],
+            'confirm_active' => ['boolean'],
         ], [], [
             'branch_id' => __('الفرع'),
             'name' => __('اسم الجهاز'),
+            'mode' => __('نوع التفعيل'),
+            'replaces' => __('الصندوق القديم'),
+            'version' => __('حال الصندوق'),
+            'confirm_active' => __('تأكيد الاستبدال'),
         ]);
 
         // الفرع يُقيَّد بمتجر المستخدم: معرّفٌ من الواجهة لا يُوثق به
-        $branch = Branch::where('business_id', Demo::bid())->find($data['branch_id']);
+        $branch = Branch::where('business_id', $bid)->find($data['branch_id']);
         if (! $branch) {
             return back()->withInput()->withErrors(['branch_id' => __('هذا الفرع غير متاح.')]);
         }
 
-        $device = PosTerminal::activate($branch, $data['name'], auth()->id());
+        // من يملك نقطة البيع وحدها لا يستبدل — ولا يُحيي صفًّا بغير متصفّحه (`TillActivation`)
+        ['device' => $device, 'replaced' => $replaced] = TillActivation::run($branch, $data['name'], auth()->user(), [
+            'mode' => $data['mode'] ?? null,
+            'replaces' => $data['replaces'] ?? null,
+            'version' => $data['version'] ?? null,
+            'confirm_active' => $request->boolean('confirm_active'),
+        ]);
 
-        Activity::log('created', 'فعّل جهاز نقطة بيع: '.$device->name.' — فرع '.$branch->name, [
+        Activity::log('created', ($replaced !== null
+            ? 'فعّل جهازًا مكان صندوق «'.$replaced.'» بملحقاته: '
+            : 'فعّل جهاز نقطة بيع: ').$device->name.' — فرع '.$branch->name, [
             'subject_id' => $device->id,
         ]);
 
         return redirect()->route('pos.index')->with('toast', [
-            'msg' => __('تم تفعيل الجهاز على فرع :branch', ['branch' => $branch->name]),
+            'msg' => $replaced !== null
+                ? __('يعمل هذا الجهاز الآن صندوقًا مكان «:name» بطابعته وإعداداتها', ['name' => $replaced])
+                : __('تم تفعيل الجهاز على فرع :branch', ['branch' => $branch->name]),
             'type' => 'success',
         ]);
     }
@@ -105,14 +161,22 @@ class DeviceController extends Controller
     public static function panelData(): array
     {
         $current = PosTerminal::current();
+        $devices = PosDevice::where('business_id', Demo::bid())
+            ->with(['branch:id,name', 'activatedBy:id,name', 'peripherals' => fn ($p) => $p->orderBy('id'), 'bankAccount'])
+            ->withCount('orders', 'shifts')
+            ->orderByDesc('id')->get();
+
+        /*
+         * ما يمنع الإيصالَ من الخروج في كلّ صندوق — يُقرأ ولا يُصلَح (`TillHealth`).
+         * بالقاعدة نفسِها التي يقرأ بها التدقيقُ كلَّ المتاجر، فلا تقول الشاشةُ
+         * «سليم» والتقريرُ «معطوب».
+         */
+        $health = TillHealth::assess($devices, $devices->flatMap->peripherals);
 
         return [
             // أيُعرض خيارُ «فواتير العملاء المسدَّدة» على الطابعات؟ — لمن فُتح له التجهيزُ بعد السداد
             'customerInvoicePrinting' => CustomerInvoicePreparations::on((int) Demo::bid()),
-            'devices' => PosDevice::where('business_id', Demo::bid())
-                ->with('branch:id,name', 'activatedBy:id,name', 'peripherals', 'bankAccount')
-                ->withCount('orders', 'shifts')
-                ->orderByDesc('id')->get()->map(fn ($d) => [
+            'devices' => $devices->map(fn ($d) => [
                     'id' => $d->id,
                     'name' => $d->name,
                     'branch' => $d->branch?->name ?? '—',
@@ -142,6 +206,13 @@ class DeviceController extends Controller
                     'erasable' => ! $d->isActive() && $d->orders_count === 0 && $d->shifts_count === 0,
                     'orders' => (int) $d->orders_count,
                     'shifts' => (int) $d->shifts_count,
+                    // ما ثبت أوّلًا، ثمّ ما يُراجَع — والشاشةُ تعرض الأوّل
+                    'issues' => collect($health[$d->id] ?? [])->sortBy(fn ($i) => $i['level'] === TillHealth::CONFIRMED ? 0 : 1)->map(fn ($i) => [
+                        'code' => $i['code'],
+                        'level' => $i['level'],
+                        'peripheral' => $i['peripheral'],
+                        'message' => TillHealth::message($i['code']),
+                    ])->values()->all(),
                     'peripherals' => $d->peripherals->map(fn ($p) => [
                         'id' => $p->id,
                         'name' => $p->name,
@@ -158,6 +229,10 @@ class DeviceController extends Controller
                         'active' => $p->active,
                         // تقودها نقطة البيع فعلًا، أم تُسجَّل للجرد وحده
                         'drivable' => $p->isDrivable(),
+                        // طابعةُ إيصال البيع — بالقاعدة التي يطبع بها الصندوق (`PosPeripheral::receiptAmong`)
+                        'receipt' => $p->is(PosPeripheral::receiptAmong($d->peripherals)),
+                        // وما سمّاه التاجرُ بيده — مفتاحُ «طابعة الإيصال» في النموذج
+                        'isReceipt' => (bool) $p->is_receipt_printer,
                     ])->values()->all(),
                 ])->values()->all(),
             'branches' => Branch::where('business_id', Demo::bid())
@@ -186,6 +261,9 @@ class DeviceController extends Controller
             'name' => ['required', 'string', 'max:60'],
             'branch_id' => ['required', 'integer'],
             'bank_account_id' => ['nullable', 'integer'],
+            'confirm_move' => ['boolean'],
+        ], [], [
+            'confirm_move' => __('تأكيد النقل'),
         ]);
 
         $branch = Branch::where('business_id', Demo::bid())->find($data['branch_id']);
@@ -213,7 +291,25 @@ class DeviceController extends Controller
             $bankAccountId = (int) $data['bank_account_id'];
         }
 
-        $moved = $device->branch_id !== $branch->id;
+        $moved = (int) $device->branch_id !== (int) $branch->id;
+
+        /*
+         * ═══ والنقلُ يُؤكَّد بعد أن يُرى أثرُه ═══
+         *
+         * الطابعةُ على شبكة محلّها: عنوانُها في الفرع القديم لا يبلغه صندوقٌ في
+         * الجديد. والحسابُ البنكيّ يتبع الجهاز. فلا يُنقل صندوقٌ بعتاده إلى فرعٍ
+         * آخر بنقرةٍ على قائمة — تُعرض الطابعاتُ والبنك، ويُقال «نعم».
+         */
+        if ($moved && ! $request->boolean('confirm_move')) {
+            $printers = $device->peripherals()->where('type', PosPeripheral::PRINTER)->where('active', true)->count();
+
+            return back()->withErrors(['confirm_move' => __('نقل الصندوق إلى «:branch» يُبطل تفعيله. طابعاته المفعّلة (:printers) تبقى بعناوينها على شبكة الفرع القديم، وبنك جهاز الشبكة: :bank. راجعها ثم أكّد النقل.', [
+                'branch' => $branch->name,
+                'printers' => $printers,
+                'bank' => $bankAccountId ? (BankAccount::find($bankAccountId)?->displayName() ?? '—') : __('الحساب الرئيسي'),
+            ])]);
+        }
+
         $device->update([
             'name' => $data['name'],
             'branch_id' => $branch->id,
@@ -319,18 +415,6 @@ class DeviceController extends Controller
     private static function refuse(string $message): \Illuminate\Http\RedirectResponse
     {
         return back()->with('toast', ['msg' => $message, 'type' => 'danger']);
-    }
-
-    /**
-     * التفعيل فعلٌ إداريّ لا يملكه الكاشير.
-     *
-     * صلاحية «نقطة البيع» تفتح الشاشة، ولا تكفي لربط الصندوق بفرع: من يستطيع
-     * ذلك يستطيع تحويل مبيعات فرعٍ إلى فرعٍ آخر بنقرتين. فيُشترط قسم الإعدادات
-     * — وهو ما يملكه صاحب النشاط والمدير.
-     */
-    private function authorizeActivation(): void
-    {
-        abort_unless(auth()->user()->allows('settings'), 403, __('تفعيل الجهاز يحتاج صلاحية الإعدادات.'));
     }
 
     /** الجهاز داخل متجر المستخدم وحده — منعًا لتخطّي المستأجرين بالمعرّف */

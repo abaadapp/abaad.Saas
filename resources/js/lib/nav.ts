@@ -15,6 +15,7 @@ import {
     BarChart3,
     Blocks,
     FileText,
+    FileSignature,
     Boxes,
     Building2,
     ClipboardList,
@@ -343,6 +344,13 @@ export const PLATFORM_NAV: NavGroup[] = [
             { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
             { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },
             { label: 'المستخدمون', icon: Users, route: 'super-admin.users.index' },
+            /* عقودُ أبعاد مع عملائها — تُرسَل برابطٍ وتُوقَّع من الهاتف */
+            {
+                label: 'المستندات',
+                icon: FileSignature,
+                route: 'super-admin.documents.index',
+                covers: ['super-admin.documents.show', 'super-admin.documents.templates'],
+            },
         ],
     },
     {

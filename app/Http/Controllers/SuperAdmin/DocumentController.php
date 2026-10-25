@@ -59,15 +59,17 @@ class DocumentController extends Controller
         $renew = $request->filled('renew')
             ? PlatformDocument::whereKey((int) $request->query('renew'))->where('status', PlatformDocument::SIGNED)->first()
             : null;
-        // القوالبُ كلُّها تُختار — والنموذجُ كما سيُكتب في المستند. وما لم يُنشر إصدارُه
-        // الحاليّ يُنشر بتأكيد المدير وهو يُصدر منه، على بصمة ما رآه (`hash`)
+        // القوالبُ كلُّها تُختار — والنموذجُ كما سيُكتب في المستند. وما فيه خطأٌ يُقال ما هو
+        // (`problems`)، والإصدارُ على بصمة ما عاينه المدير وأكّده (`hash`)
         $line = PlatformDocuments::providerLine(PlatformDocuments::provider());
         $templates = PlatformDocumentTemplate::orderBy('id')->get()
             ->map(fn (PlatformDocumentTemplate $t) => [
                 'id' => $t->id,
-                'published' => $t->issuable(),
+                'problems' => $t->problems(),
                 'version' => $t->version,
                 'hash' => $t->contentHash(),
+                'preview_url' => route('super-admin.documents.templates.preview', $t->id),
+                'preview_pdf_url' => route('super-admin.documents.templates.preview-pdf', $t->id),
                 'name' => $t->name,
                 'service' => $t->service,
                 'title' => $t->title,
@@ -128,9 +130,8 @@ class DocumentController extends Controller
     {
         $data = $request->validate([
             'template_id' => ['required', 'integer', Rule::exists('platform_document_templates', 'id')],
-            // تأكيدُ نشر الإصدار الحاليّ مع الإصدار — على بصمة ما رآه المدير
-            'publish' => ['nullable', 'boolean'],
-            'template_hash' => ['nullable', 'string', 'size:64'],
+            // تأكيدُ المدير: بصمةُ الإصدار الذي عاينه — فلا يصدر غيرُه
+            'template_hash' => ['required', 'string', 'size:64'],
             'business_id' => ['nullable', 'integer', 'exists:businesses,id'],
             'renews_document_id' => ['nullable', 'integer', 'exists:platform_documents,id'],
             'client' => ['nullable', 'array'],
@@ -144,9 +145,8 @@ class DocumentController extends Controller
             'days' => ['nullable', 'integer', 'min:1', 'max:90'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'team' => ['nullable', 'array'],
-        ], [], [
+        ], ['template_hash.required' => __('عاين المستند ثمّ أكّد إصداره.')], [
             'template_id' => __('نوع المستند'),
-            'publish' => __('تأكيد النشر'),
             'template_hash' => __('بصمة القالب'),
             'business_id' => __('النشاط'),
             'renews_document_id' => __('العقد المجدَّد'),

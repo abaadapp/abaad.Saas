@@ -55,9 +55,9 @@ class ACompanyKeepsItsDocumentsTest extends TestCase
 
     private function issue(array $data): PlatformDocument
     {
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $data + [
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed($data + [
             'template_id' => $this->subscriptionContract()->id, 'cycle' => 'yearly',
-        ])->assertSessionHasNoErrors()->assertRedirect();
+        ]))->assertSessionHasNoErrors()->assertRedirect();
 
         return PlatformDocument::latest('id')->firstOrFail();
     }
@@ -110,23 +110,25 @@ class ACompanyKeepsItsDocumentsTest extends TestCase
     public function test_the_dialog_offers_all_six_templates_and_none_is_held_back(): void
     {
         $drafts = PlatformDocumentTemplate::whereNull('approved_hash')->orderBy('id')->get();
-        $this->assertCount(5, $drafts, 'الاتفاقياتُ الخمس لم تُنشر بعد');
+        $this->assertCount(5, $drafts, 'الاتفاقياتُ الخمس كما زُرعت — بلا اعتمادٍ ولا تفعيل');
 
+        // الستّةُ كلُّها جاهزة — لا شيءَ يقول «غير منشور»
         $this->actingAs($this->super)->get(route('super-admin.documents.index'))->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('templates', 6)
                 ->where('templates.0.id', $this->subscriptionContract()->id)
-                ->where('templates.0.published', true)
-                ->where('templates.1.published', false)
-                ->where('templates.5.published', false)
+                ->where('templates.0.problems', [])
+                ->where('templates.1.problems', [])
+                ->where('templates.5.problems', [])
+                ->missing('templates.5.published')
                 ->where('templates.5.hash', $drafts->last()->contentHash())
                 ->missing('waiting'));
 
-        // ومن ملفّ الشركة تُصدر أيُّ اتفاقيةٍ لها بتأكيد نشرها — فتظهر في ملفّها
+        // ومن ملفّ الشركة تُصدر أيُّ اتفاقيةٍ لها بتأكيد إصدارها — فتظهر في ملفّها
         $last = $drafts->last();
         $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
             'template_id' => $last->id, 'business_id' => $this->shop->id, 'amount' => $last->default_amount,
-            'publish' => true, 'template_hash' => $last->contentHash(),
+            'template_hash' => $last->contentHash(),
         ])->assertSessionHasNoErrors();
         $this->actingAs($this->super)->get(route('super-admin.businesses.show', $this->shop->id))
             ->assertInertia(fn (Assert $page) => $page->where('documents.count', 1)->where('documents.rows.0.title', $last->title));

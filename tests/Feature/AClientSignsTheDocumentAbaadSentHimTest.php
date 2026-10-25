@@ -78,11 +78,11 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 
     private function issue(array $data = []): PlatformDocument
     {
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $data + [
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed($data + [
             'template_id' => $this->contract->id,
             'business_id' => $this->shop->id,
             'cycle' => 'yearly',
-        ])->assertSessionHasNoErrors()->assertRedirect();
+        ]))->assertSessionHasNoErrors()->assertRedirect();
 
         return PlatformDocument::latest('id')->firstOrFail();
     }
@@ -122,9 +122,9 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
 
         $this->actingAs($this->merchant)->get(route('super-admin.documents.index'))->assertForbidden();
         $this->actingAs($this->merchant)->get(route('super-admin.documents.templates'))->assertForbidden();
-        $this->actingAs($this->merchant)->post(route('super-admin.documents.store'), [
+        $this->actingAs($this->merchant)->post(route('super-admin.documents.store'), $this->confirmed([
             'template_id' => $this->contract->id, 'business_id' => $this->shop->id,
-        ])->assertForbidden();
+        ]))->assertForbidden();
         $this->assertSame(0, PlatformDocument::count());
 
         $this->actingAs($this->super)->get(route('super-admin.documents.index'))->assertOk()
@@ -170,15 +170,14 @@ class AClientSignsTheDocumentAbaadSentHimTest extends TestCase
             'includes_plan' => false, 'includes_amount' => true, 'active' => true,
         ])->assertSessionHasNoErrors();
         $app = PlatformDocumentTemplate::where('name', 'تطبيق خاص')->firstOrFail();
-        // القالبُ الجديد مسوّدةٌ معطَّلة — يعتمده المدير ويفعّله قبل أن يُصدر منه
-        $this->assertFalse($app->active);
+        // القالبُ الجديد يُصدر منه فور حفظه — بلا اعتمادٍ ولا تفعيل
+        $this->assertTrue($app->issuable());
         $this->completeProvider();
-        $this->approveTemplate($app);
 
         // بلا اسم ولا نشاط لا مستند
-        $this->actingAs($this->super)->post(route('super-admin.documents.store'), [
+        $this->actingAs($this->super)->post(route('super-admin.documents.store'), $this->confirmed([
             'template_id' => $app->id, 'amount' => 880,
-        ])->assertSessionHasErrors('document');
+        ]))->assertSessionHasErrors('document');
 
         $doc = $this->issue([
             'template_id' => $app->id, 'business_id' => null, 'amount' => '880', 'amount_label' => 'تطبيق جوال خاص',

@@ -25,11 +25,13 @@ import type { PageProps } from '@/types';
 
 interface Template {
     id: number;
-    /** إصدارُه الحاليّ منشور — وإلّا نُشر بتأكيد المدير وهو يُصدر منه */
-    published: boolean;
+    /** ما يمنع الإصدارَ منه حتى يُصحَّح — فارغةٌ لكلّ قالبٍ صالح */
+    problems: string[];
     version: number;
-    /** بصمةُ الإصدار الحاليّ — يُرسل مع تأكيد النشر فيُردّ إن تغيّر القالب بعد فتحه */
+    /** بصمةُ الإصدار الذي يُعاين — تُرسل مع تأكيد الإصدار فيُردّ إن تغيّر القالب بعدها */
     hash: string;
+    preview_url: string;
+    preview_pdf_url: string;
     name: string;
     service: string | null;
     title: string;
@@ -40,7 +42,7 @@ interface Template {
     includes_amount: boolean;
     default_amount: string | null;
     default_amount_label: string | null;
-    /** fixed: الرسومُ كما نُشرت ويذكرها النصّ · min: تبدأ منها · null: يكتبها المدير */
+    /** fixed: الرسومُ كما في القالب ويذكرها النصّ · min: تبدأ منها · null: يكتبها المدير */
     amount_rule: 'fixed' | 'min' | null;
 }
 
@@ -334,7 +336,7 @@ function NewDocumentDialog({
     const [source, setSource] = useState<'business' | 'new'>('business');
     const [previewing, setPreviewing] = useState(false);
     const [teamOpen, setTeamOpen] = useState(false);
-    // قالبٌ لم يُنشر إصدارُه: تأكيدٌ واحدٌ ينشره ويُصدر المستند معًا
+    // المستندُ يُعاين أوّلًا كما سيصدر، ثمّ تأكيدٌ واحدٌ يُصدره وينشئ رابطه
     const [confirming, setConfirming] = useState(false);
     // نهايةُ المدّة تتبع بدايتَها ودورتَها — حتى يكتب المديرُ نهايةً اتُّفق عليها
     const [endTouched, setEndTouched] = useState(false);
@@ -404,24 +406,32 @@ function NewDocumentDialog({
     const setClient = (k: keyof typeof form.data.client, v: string) =>
         form.setData('client', { ...form.data.client, [k]: v });
 
-    const unpublished = !!template && !template.published;
+    // قالبٌ فيه خطأ لا يُصدر منه حتى يُصحَّح — ويُقال ما هو
+    const blocked = !!template && template.problems.length > 0;
+    const business = businesses.find((b) => String(b.id) === form.data.business_id);
+    const clientLabel = renew
+        ? renew.client
+        : source === 'business'
+          ? business?.name
+          : [form.data.client.name, form.data.client.biz].filter(Boolean).join(' · ');
     const submit = (e: FormEvent) => {
         e.preventDefault();
-        // غيرُ المنشور يُراجع أوّلًا: يُعرض ما سيُنشر، ثمّ تأكيدٌ واحد
-        if (unpublished && !confirming) {
+        if (!template || blocked) return;
+        if (!confirming) {
             setConfirming(true);
             return;
         }
-        const publish = unpublished && template ? { publish: true, template_hash: template.hash } : {};
+        // ما يصدر هو الإصدارُ الذي عاينه — فإن تغيّر القالبُ بعدها ردّه الخادم
+        const confirmed = { template_hash: template.hash };
         form.transform((d) => {
-            const term = template?.includes_plan
+            const term = template.includes_plan
                 ? { term_starts_on: d.term_starts_on, term_ends_on: d.term_ends_on }
                 : { term_starts_on: '', term_ends_on: '' };
-            if (renew) return { ...d, ...term, ...publish, business_id: '', client: { phone: d.client.phone } };
+            if (renew) return { ...d, ...term, ...confirmed, business_id: '', client: { phone: d.client.phone } };
             // للنشاط المسجّل يُرسل الهاتفُ وحده — اسمٌ كُتب في التبويب الآخر لا يعبر
             return source === 'business'
-                ? { ...d, ...term, ...publish, renews_document_id: '', client: { phone: d.client.phone } }
-                : { ...d, ...term, ...publish, renews_document_id: '', business_id: '' };
+                ? { ...d, ...term, ...confirmed, renews_document_id: '', client: { phone: d.client.phone } }
+                : { ...d, ...term, ...confirmed, renews_document_id: '', business_id: '' };
         });
         form.post(route('super-admin.documents.store'), { onSuccess: () => onClose(), onError: () => setConfirming(false) });
     };
@@ -449,19 +459,24 @@ function NewDocumentDialog({
                         <Select
                             value={form.data.template_id}
                             onChange={(e) => pickTemplate(e.target.value)}
-                            // القوالبُ كلُّها تُختار — وغيرُ المنشور يُقال ذلك بجانبه
+                            // القوالبُ كلُّها تُختار — وما فيه خطأٌ يُقال ذلك بجانبه
                             options={templates.map((x) => ({
-                                label: [x.service ? `${x.name} · ${x.service}` : x.name, x.published ? '' : t('غير منشور')].filter(Boolean).join(' — '),
+                                label: [x.service ? `${x.name} · ${x.service}` : x.name, x.problems.length ? t('يحتاج تصحيحًا') : ''].filter(Boolean).join(' — '),
                                 value: String(x.id),
                             }))}
                         />
-                        {unpublished && template && (
-                            <p className="mt-1 text-[12px] text-[#92400e]" data-testid="unpublished-note">
-                                {t('الإصدار :v من هذا القالب غير منشور. راجعه بالمعاينة، ثم يُنشر ويصدر المستند بتأكيد واحد.', { v: String(template.version) })}{' '}
-                                <SmartLink routeName="super-admin.documents.templates" href={route('super-admin.documents.templates')} className="underline">
-                                    {t('تحرير القالب')}
+                        {blocked && template && (
+                            <div className="mt-1 rounded-[10px] bg-[#fef2f2] px-3 py-2 text-[12px] text-[#b91c1c]" data-testid="template-problems">
+                                <p>{t('لا يُصدر من هذا القالب حتى يُصحَّح:')}</p>
+                                <ul className="list-disc ps-5">
+                                    {template.problems.map((p) => (
+                                        <li key={p}>{p}</li>
+                                    ))}
+                                </ul>
+                                <SmartLink routeName="super-admin.documents.templates" href={route('super-admin.documents.templates')} className="font-medium underline">
+                                    {t('تصحيح القالب')}
                                 </SmartLink>
-                            </p>
+                            </div>
                         )}
                     </Field>
 
@@ -639,9 +654,9 @@ function NewDocumentDialog({
                                 error={errors.amount}
                                 hint={
                                     template.amount_rule === 'fixed'
-                                        ? t('رسوم ثابتة كما نُشرت ويذكرها نص الاتفاقية — تُغيَّر من القالب ثم يُنشر من جديد')
+                                        ? t('رسوم ثابتة كما في القالب ويذكرها نص الاتفاقية — تُغيَّر من القالب')
                                         : template.amount_rule === 'min' && template.default_amount
-                                          ? t('يبدأ من :fee ر.ع كما نُشر', { fee: template.default_amount })
+                                          ? t('يبدأ من :fee ر.ع كما في القالب', { fee: template.default_amount })
                                           : undefined
                                 }
                             >
@@ -696,17 +711,47 @@ function NewDocumentDialog({
                     </div>
 
                     {errors.document && <p className="text-[13px] text-[#b91c1c]">{errors.document}</p>}
+                    {errors.template_hash && <p className="text-[13px] text-[#b91c1c]">{errors.template_hash}</p>}
 
                     {confirming && template && (
-                        <div className="space-y-2 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]" data-testid="publish-confirm">
-                            <p className="font-medium">{t('تأكيد نشر الإصدار :v وإصدار المستند', { v: String(template.version) })}</p>
-                            <p>
-                                {t('يُنشر «:name» بنصه ورسومه كما في المعاينة أعلاه، ويُسجَّل النشر باسمك، ثم يصدر المستند ورابطه. المستندات السابقة لا تتغيّر.', {
-                                    name: template.name,
-                                })}
+                        <div className="space-y-2 rounded-[10px] border border-[#bfdbfe] bg-[#eff6ff] p-3 text-[13px] text-[#1e3a8a]" data-testid="issue-confirm">
+                            <p className="font-medium">{t('راجع المستند قبل إصداره')}</p>
+                            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                                <dt className="text-[#64748b]">{t('المستند')}</dt>
+                                <dd>{t(':title — الإصدار :v', { title: template.title, v: String(template.version) })}</dd>
+                                <dt className="text-[#64748b]">{t('العميل')}</dt>
+                                <dd>{clientLabel || '—'}</dd>
+                                <dt className="text-[#64748b]">{t('الهاتف')}</dt>
+                                <dd dir="ltr" className="text-end">{form.data.client.phone || '—'}</dd>
+                                {template.includes_plan && (
+                                    <>
+                                        <dt className="text-[#64748b]">{t('الباقة')}</dt>
+                                        <dd>{[plan?.name, cycle?.label].filter(Boolean).join(' · ') || '—'}</dd>
+                                        <dt className="text-[#64748b]">{t('المدة')}</dt>
+                                        <dd dir="ltr" className="text-end">{`${form.data.term_starts_on} → ${form.data.term_ends_on}`}</dd>
+                                    </>
+                                )}
+                                {template.includes_amount && (
+                                    <>
+                                        <dt className="text-[#64748b]">{t('المبلغ')}</dt>
+                                        <dd>{form.data.amount ? t(':price ر.ع', { price: form.data.amount }) : '—'}</dd>
+                                    </>
+                                )}
+                                <dt className="text-[#64748b]">{t('صلاحية الرابط')}</dt>
+                                <dd>{t(':n يومًا', { n: form.data.days })}</dd>
+                            </dl>
+                            <p className="text-[12px]">
+                                {t('القالب كما يراه العميل:')}{' '}
+                                <a href={template.preview_url} target="_blank" rel="noopener noreferrer" className="underline" data-testid="confirm-preview">
+                                    {t('صفحة التوقيع')}
+                                </a>{' '}
+                                ·{' '}
+                                <a href={template.preview_pdf_url} target="_blank" rel="noopener noreferrer" className="underline">
+                                    PDF
+                                </a>
                             </p>
-                            <p dir="ltr" className="text-end font-mono text-[11.5px] text-[#a16207]">
-                                {template.hash.slice(0, 12)}
+                            <p className="text-[12px]">
+                                {t('يصدر المستند وينشأ رابط التوقيع، ولا يُرسل للعميل حتى تشاركه أنت. المستندات السابقة لا تتغيّر.')}
                             </p>
                         </div>
                     )}
@@ -715,8 +760,8 @@ function NewDocumentDialog({
                         <Button type="button" variant="ghost" onClick={confirming ? () => setConfirming(false) : onClose}>
                             {confirming ? t('رجوع') : t('إلغاء')}
                         </Button>
-                        <Button type="submit" loading={form.processing} data-testid="issue-submit">
-                            {confirming ? t('تأكيد النشر والإصدار') : unpublished ? t('مراجعة النشر والإصدار') : t('إصدار المستند وإنشاء الرابط')}
+                        <Button type="submit" loading={form.processing} disabled={blocked} data-testid="issue-submit">
+                            {confirming ? t('تأكيد الإصدار وإنشاء الرابط') : t('معاينة المستند')}
                         </Button>
                     </div>
                 </form>

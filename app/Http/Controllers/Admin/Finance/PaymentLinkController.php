@@ -69,7 +69,12 @@ class PaymentLinkController extends Controller
                 ->map(fn (Customer $c) => ['value' => (string) $c->id, 'label' => trim($c->name.($c->phone ? ' — '.$c->phone : ''))])->all(),
             'clearing' => PaymobSettlements::clearing($bid),
             // ما ينتظر أن يُسوّى، وأين مالُ كلٍّ منه — يختار منه التاجرُ ما حمله التحويل
-            'payouts' => PaymobSettlements::candidates($bid),
+            'payouts' => ($page = PaymobSettlements::candidatesPage($bid))['rows'],
+            // والبقيّةُ دفعةً بعد دفعة — لا تختفي مدفوعةٌ خلف أقدمِ ثلاثمئة
+            'payouts_next' => $page['next'],
+            'payouts_waiting' => PaymobSettlements::waiting($bid),
+            // ما يُرسَل في الطلب الواحد — والتحويلُ الأكبرُ يُجمع على دفعات
+            'payouts_chunk' => PaymobSettlements::CHUNK,
             'payouts_paused' => PaymobSettlements::paused(),
             'settlements' => PaymobSettlement::where('business_id', $bid)->with('bankAccount')->withCount('items')
                 ->latest('settled_on')->latest('id')->limit(50)->get()
@@ -91,6 +96,14 @@ class PaymentLinkController extends Controller
                 ->get(['id', 'label', 'bank_name', 'account_name', 'iban', 'is_primary'])
                 ->map(fn (BankAccount $a) => ['value' => (string) $a->id, 'label' => $a->displayName()])->all(),
         ]);
+    }
+
+    /** الدفعةُ التالية ممّا ينتظر أن يُسوّى — بعد آخرِ صفٍّ عُرض (`after`) */
+    public function payoutCandidates(Request $request): JsonResponse
+    {
+        $page = PaymobSettlements::candidatesPage($this->bid(), $request->string('after')->toString() ?: null);
+
+        return response()->json(['payouts' => $page['rows'], 'next' => $page['next']]);
     }
 
     /** فواتيرُ عميلٍ عليها باقٍ — لاختيار فاتورة الرابط */
@@ -203,7 +216,7 @@ class PaymentLinkController extends Controller
     public function settle(Request $request)
     {
         $data = $request->validate([
-            'items' => ['required', 'array', 'min:1', 'max:300'],
+            'items' => ['required', 'array', 'min:1', 'max:'.PaymobSettlements::CHUNK],
             'items.*' => ['required', 'string', 'regex:/^(intent|link):[0-9]+$/'],
             'fee' => ['required', 'numeric', 'min:0'],
             'net' => ['required', 'numeric', 'gt:0'],
@@ -250,6 +263,120 @@ class PaymentLinkController extends Controller
             : ['msg' => __('ما زالت التسوية معلّقة — انظر السبب'), 'type' => 'warning']);
     }
 
+    /*
+     * ═══ تحويلٌ بآلاف المدفوعات — على دفعات ═══
+     *
+     * لا يُرسَل في طلبٍ واحد: يُفتح بأرقام كشفه، وتُضاف مدفوعاتُه دفعةً بعد دفعة
+     * (`CHUNK`) — بأسمائها أو «كلُّ ما ينتظر حتّى يوم» — ثمّ يُرحَّل قيدًا واحدًا.
+     * انظر `PaymobSettlements::openDraft` … `postDraft`. ومسوّدةُ متجرٍ آخر ٤٠٤.
+     */
+
+    public function openSettlementDraft(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'fee' => ['required', 'numeric', 'min:0'],
+            'net' => ['required', 'numeric', 'gt:0'],
+            'settled_on' => ['required', 'date'],
+            'bank_account_id' => ['nullable', 'integer'],
+            'reference' => ['nullable', 'string', 'max:80'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ], [], [
+            'fee' => __('الرسوم'),
+            'net' => __('الصافي'),
+            'settled_on' => __('تاريخ التسوية'),
+            'bank_account_id' => __('الحساب البنكي'),
+            'reference' => __('المرجع'),
+            'notes' => __('ملاحظات'),
+        ]);
+
+        return response()->json($this->draftJson($this->draftStep(fn () => PaymobSettlements::openDraft($this->bid(), $data, auth()->id()))), 201);
+    }
+
+    public function addToSettlementDraft(Request $request, int $id): JsonResponse
+    {
+        $this->ownDraft($id);
+        $data = $this->draftItems($request);
+
+        return response()->json($this->draftJson($this->draftStep(fn () => PaymobSettlements::addToDraft($this->bid(), $id, $data['items']))));
+    }
+
+    public function addWaitingToSettlementDraft(Request $request, int $id): JsonResponse
+    {
+        $this->ownDraft($id);
+        $data = $request->validate(['through' => ['required', 'date']], [], ['through' => __('حتى تاريخ')]);
+        $step = $this->draftStep(fn () => PaymobSettlements::addWaitingToDraft($this->bid(), $id, $data['through']));
+
+        return response()->json($this->draftJson($step['draft']) + ['added' => $step['added'], 'remaining' => $step['remaining']]);
+    }
+
+    public function removeFromSettlementDraft(Request $request, int $id): JsonResponse
+    {
+        $this->ownDraft($id);
+        $data = $this->draftItems($request);
+
+        return response()->json($this->draftJson($this->draftStep(fn () => PaymobSettlements::removeFromDraft($this->bid(), $id, $data['items']))));
+    }
+
+    public function dropUnsureFromSettlementDraft(int $id)
+    {
+        $this->ownDraft($id);
+
+        try {
+            PaymobSettlements::dropUnsureFromDraft($this->bid(), $id);
+        } catch (RuntimeException $e) {
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
+        }
+
+        return back()->with('toast', ['msg' => __('أُخرجت المدفوعات غير المؤكّدة من التحويل — تعود لتنتظر'), 'type' => 'success']);
+    }
+
+    public function postSettlementDraft(int $id)
+    {
+        $this->ownDraft($id);
+
+        try {
+            $settlement = PaymobSettlements::postDraft($this->bid(), $id, auth()->id());
+        } catch (RuntimeException $e) {
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
+        }
+
+        return back()->with('toast', $settlement->status === PaymobSettlements::POSTED
+            ? ['msg' => __('سُجّلت تسوية Paymob'), 'type' => 'success']
+            : ['msg' => __('لم يُرحَّل التحويل — بقي مسوّدة، انظر السبب'), 'type' => 'warning']);
+    }
+
+    // مسوّدةُ متجرٍ آخر ٤٠٤ — قبل الـtry: `ModelNotFoundException` نفسُها RuntimeException
+    private function ownDraft(int $id): void
+    {
+        PaymobSettlement::where('business_id', $this->bid())->findOrFail($id);
+    }
+
+    private function draftItems(Request $request): array
+    {
+        return $request->validate([
+            'items' => ['required', 'array', 'min:1', 'max:'.PaymobSettlements::CHUNK],
+            'items.*' => ['required', 'string', 'regex:/^(intent|link):[0-9]+$/'],
+        ], [], [
+            'items' => __('مدفوعات التحويل'),
+            'items.*' => __('مدفوعات التحويل'),
+        ]);
+    }
+
+    private function draftStep(callable $step): mixed
+    {
+        try {
+            return $step();
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['items' => $e->getMessage()]);
+        }
+    }
+
+    /** @return array{id: int, status: string, count: int, gross: float} */
+    private function draftJson(PaymobSettlement $draft): array
+    {
+        return ['id' => (int) $draft->id, 'status' => (string) $draft->status, 'count' => $draft->items()->count(), 'gross' => (float) $draft->gross];
+    }
+
     /**
      * تحويلٌ سُجّل قبل التحديث لا يسمّي مدفوعاته: صاحبُ المتجر يحدّد ما حمله من
      * كشف Paymob، ويكتب ما استند إليه. لا قيدَ يُكتب — انظر `PaymobSettlements::attribute`.
@@ -260,7 +387,7 @@ class PaymentLinkController extends Controller
         PaymobSettlement::where('business_id', $this->bid())->findOrFail($id);
 
         $data = $request->validate([
-            'items' => ['required', 'array', 'min:1', 'max:300'],
+            'items' => ['required', 'array', 'min:1', 'max:'.PaymobSettlements::CHUNK],
             'items.*' => ['required', 'string', 'regex:/^(intent|link):[0-9]+$/'],
             'note' => ['required', 'string', 'min:5', 'max:255'],
         ], [], [

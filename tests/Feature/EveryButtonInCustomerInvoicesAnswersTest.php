@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\CustomerInvoices;
 use App\Support\InvoiceAttachments;
 use App\Support\Ledger;
+use App\Support\TenantExportGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
@@ -123,7 +124,12 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
                 $params[$p] = $bindings[$p] ?? 1;
             }
 
-            $this->actingAs($this->owner)->get(route($name, $params))
+            // وملفُّ النشاط كلِّه يحمل توقُّعَ نشاطه كما يحمله من الشاشة (`TenantExportGuard::REQUIRED`)
+            $url = in_array($name, TenantExportGuard::REQUIRED, true)
+                ? $this->exportRoute($name, $params, $this->business->id)
+                : route($name, $params);
+
+            $this->actingAs($this->owner)->get($url)
                 ->assertOk();
             $checked++;
         }

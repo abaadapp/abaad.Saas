@@ -161,7 +161,8 @@ class DocumentTemplateController extends Controller
             'title_en' => ['nullable', 'string', 'max:120'],
             'terms' => $isForm ? ['nullable', 'array', 'max:40'] : ['required', 'array', 'min:1', 'max:40'],
             'terms.*.h' => ['nullable', 'string', 'max:120'],
-            'terms.*.b' => ['required', 'string', 'max:3000'],
+            // ولقالب النموذج لا بنود: ما وصل منها يُترك (انظر أسفل) ولا يردّ الحفظ
+            'terms.*.b' => $isForm ? ['nullable'] : ['required', 'string', 'max:3000'],
             'includes_plan' => ['boolean'],
             'includes_amount' => ['boolean'],
             'active' => ['boolean'],

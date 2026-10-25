@@ -337,6 +337,8 @@ class AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest extends TestCase
             'name' => $t->name, 'title' => 'ربط الدفع', 'service' => $t->service,
             'includes_plan' => false, 'includes_amount' => true, 'active' => true,
             'default_amount' => '١٤٫٥', 'default_amount_label' => 'رسوم الربط', 'amount_rule' => null,
+            // ما كانت ترسله النافذة: بندٌ فارغٌ لقالبٍ لا بنودَ له — كان يردّ الحفظ بخطأٍ لا يُرى
+            'terms' => [['h' => '', 'b' => '']],
         ])->assertSessionHasNoErrors();
 
         $t = $t->fresh();

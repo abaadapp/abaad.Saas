@@ -151,7 +151,8 @@ function TemplateDialog({ template, onClose }: { template: Template | null; onCl
         service: template?.service ?? '',
         title: template?.title ?? '',
         title_en: template?.title_en ?? '',
-        terms: template?.terms?.length ? template.terms : [{ h: '', b: '' }],
+        // قالبُ النموذج لا بنودَ له — وبندٌ فارغٌ يُرسل معه يردّ الحفظَ بخطأٍ على حقلٍ لا يُرى
+        terms: template?.form ? [] : template?.terms?.length ? template.terms : [{ h: '', b: '' }],
         includes_plan: template?.includes_plan ?? false,
         includes_amount: template?.includes_amount ?? false,
         active: template?.active ?? false,

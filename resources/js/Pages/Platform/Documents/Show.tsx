@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
-import { STATE_VARIANT, useLiveReload, type DocumentRow } from '@/lib/platformDocuments';
+import { DocumentFormView } from '@/Components/DocumentFormView';
+import { STATE_VARIANT, useLiveReload, type DocumentForm, type DocumentRow, type FormValues } from '@/lib/platformDocuments';
 
 interface Plan {
     name: string;
@@ -46,6 +47,10 @@ interface Props {
     document: DocumentRow & {
         title_en: string | null;
         terms: { h: string; b: string }[];
+        /** النموذجُ كما صدر، وما كتبه الفريق، وما أجاب به العميل */
+        form: DocumentForm | null;
+        team: FormValues;
+        answers: FormValues;
         plan: Plan | null;
         term_starts_on: string;
         term_ends_on: string;
@@ -239,6 +244,15 @@ export default function DocumentShow() {
                         )}
                     </Card>
 
+                    {doc.form && (
+                        <Card className="p-5">
+                            <h3 className="mb-3 text-[14px] font-semibold text-[#111]">
+                                {doc.state === 'signed' ? t('النموذج كما وقّعه العميل') : t('النموذج كما أُرسل')}
+                            </h3>
+                            <DocumentFormView form={doc.form} team={doc.team} answers={doc.answers} />
+                        </Card>
+                    )}
+
                     <Card className="p-5">
                         <h3 className="mb-3 text-[14px] font-semibold text-[#111]">{t('بيانات العميل')}</h3>
                         <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
@@ -253,17 +267,19 @@ export default function DocumentShow() {
                         </dl>
                     </Card>
 
-                    <Card className="p-5">
-                        <h3 className="mb-3 text-[14px] font-semibold text-[#111]">{t('الشروط والأحكام')}</h3>
-                        <ol className="list-decimal space-y-2 ps-5 text-[13px] leading-relaxed text-[#374151]">
-                            {doc.terms.map((term, i) => (
-                                <li key={i}>
-                                    {term.h && <span className="font-semibold text-[#111]">{term.h} </span>}
-                                    {term.b}
-                                </li>
-                            ))}
-                        </ol>
-                    </Card>
+                    {!doc.form && (
+                        <Card className="p-5">
+                            <h3 className="mb-3 text-[14px] font-semibold text-[#111]">{t('الشروط والأحكام')}</h3>
+                            <ol className="list-decimal space-y-2 ps-5 text-[13px] leading-relaxed text-[#374151]">
+                                {doc.terms.map((term, i) => (
+                                    <li key={i}>
+                                        {term.h && <span className="font-semibold text-[#111]">{term.h} </span>}
+                                        {term.b}
+                                    </li>
+                                ))}
+                            </ol>
+                        </Card>
+                    )}
                 </div>
 
                 <div className="space-y-4">

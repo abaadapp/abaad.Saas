@@ -292,6 +292,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/documents/templates', [DocumentTemplateController::class, 'index'])->name('documents.templates');
     Route::post('/documents/templates', [DocumentTemplateController::class, 'store'])->name('documents.templates.store');
     Route::put('/documents/templates/{id}', [DocumentTemplateController::class, 'update'])->whereNumber('id')->name('documents.templates.update');
+    Route::post('/documents/templates/{id}/approve', [DocumentTemplateController::class, 'approve'])->whereNumber('id')->name('documents.templates.approve');
     Route::get('/documents/{id}', [DocumentController::class, 'show'])->whereNumber('id')->name('documents.show');
     Route::post('/documents/{id}/cancel', [DocumentController::class, 'cancel'])->whereNumber('id')->name('documents.cancel');
     Route::post('/documents/{id}/shared', [DocumentController::class, 'shared'])->whereNumber('id')->name('documents.shared');

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * تسويةُ Paymob — ما حوّلته إلى بنك التاجر ناقصًا رسومَها. انظر `PaymobSettlements`.
@@ -50,6 +51,11 @@ class PaymobSettlement extends Model
     public function bankAccount(): BelongsTo
     {
         return $this->belongsTo(BankAccount::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(PaymobSettlementItem::class);
     }
 
     public function creator(): BelongsTo

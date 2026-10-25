@@ -188,7 +188,9 @@ describe('المالية ← روابط الدفع', () => {
         reset({
             ...panel({ links: [row(), row({ id: 2, status: 'paid', invoice: null, payment: { id: 9, number: 'RCPT-000009' } })] }),
             status: null, counts: { pending: 1, paid: 1 }, customers: [{ value: '7', label: 'وزارة الثقافة' }],
-            clearing: 105, settlements: [{ id: 1, settled_on: '2026-10-13', gross: 100, fee: 2, net: 98, bank: 'بنك مسقط', reference: 'PMB-1', notes: null }],
+            clearing: 105, settlements: [{ id: 1, settled_on: '2026-10-13', gross: 100, fee: 2, net: 98, bank: 'بنك مسقط', reference: 'PMB-1', notes: null, status: 'posted', hold_reason: null, items: 1 }],
+            // زرُّ التسوية لما ينتظر من مدفوعات — انظر a-paymob-payout-names-its-payments
+            payouts: [{ key: 'link:2', type: 'link', id: 2, amount: 105, label: 'رابط دفع — تحصيل RCPT-000009', paid_at: '2026-10-12', booked: 'clearing', reason: null }],
             bankAccounts: [{ value: '4', label: 'بنك مسقط' }],
             ...over,
         });

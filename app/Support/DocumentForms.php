@@ -88,7 +88,8 @@ class DocumentForms
      * نصُّ التصميم يذكر الرسومَ في مواضعَ (الأبرز، والتفاصيل، والإقرار): «12.000
      * ر.ع» و«12 ريالًا». فيُكتب في القالب `{fee}` و`{fee_short}`، ويُملأ من رسوم
      * القالب المعتمدة — فلا يقول النصُّ رقمًا ومبلغُ المستند غيرَه. ومقدّمُ الخدمة
-     * `{provider}` من بياناته القانونيّة ساعتَها.
+     * `{provider}` من بياناته القانونيّة ساعتَها؛ فإن لم يُكتب منها شيءٌ سقط السطرُ
+     * الذي لا يحمل غيرَه — لا شَرطةٌ ولا اسمٌ يُستعار.
      *
      * والمستندُ يحمل النتيجة لا الرموز: ما وقّعه العميل نصٌّ لا يتغيّر بتغيّر
      * القالب ولا الإعدادات.
@@ -104,13 +105,16 @@ class DocumentForms
         $map = [
             '{fee}' => $fee === null ? '—' : number_format((float) $fee, 3, '.', ''),
             '{fee_short}' => $fee === null ? '—' : rtrim(rtrim(number_format((float) $fee, 3, '.', ''), '0'), '.'),
-            '{provider}' => trim((string) ($values['provider'] ?? '')) ?: '—',
+            '{provider}' => trim((string) ($values['provider'] ?? '')),
         ];
         array_walk_recursive($form, function (&$v) use ($map) {
             if (is_string($v) && str_contains($v, '{')) {
                 $v = strtr($v, $map);
             }
         });
+        if (isset($form['highlights'])) {
+            $form['highlights'] = array_values(array_filter($form['highlights'], fn ($h) => trim((string) ($h['text'] ?? '')) !== ''));
+        }
 
         return $form;
     }

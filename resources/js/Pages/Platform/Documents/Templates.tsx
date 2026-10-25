@@ -405,7 +405,7 @@ function ApproveDialog({ template, onClose }: { template: Template; onClose: () 
                         <dd className="text-[#111]">{template.version}</dd>
                         <dt className="text-[#6b7280]">{t('مقدّم الخدمة')}</dt>
                         <dd className="text-[#111]" data-testid="approve-provider">
-                            {[provider.legal_name || provider.name, provider.trade_name, provider.cr, provider.address].filter(Boolean).join(' — ')}
+                            {[provider.legal_name, provider.trade_name, provider.cr, provider.address].filter(Boolean).join(' — ')}
                         </dd>
                         {template.includes_amount && (
                             <>

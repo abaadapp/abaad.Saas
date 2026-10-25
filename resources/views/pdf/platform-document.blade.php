@@ -14,9 +14,14 @@
     $client = $doc->client ?? [];
     $plan = $doc->plan;
 
-    /* ترويسةُ المنصّة من إعداداتها — انظر PlatformDocuments::provider */
+    /*
+     * ترويسةُ المنصّة كما نُسخت في المستند — انظر PlatformDocuments::provider.
+     * ما لم يُكتب منها لا يُطبع، ولا يُستعار له اسمُ النظام ($unnamed).
+     */
+    $shown = \App\Support\PlatformDocuments::providerName($provider);
+    $unnamed = '';
     $business = [
-        'name' => $provider['name'],
+        'name' => $shown,
         'phone' => $provider['phone'],
         'email' => $provider['email'],
         'address' => $provider['website'],
@@ -42,11 +47,11 @@
         <tr>
             <td style="width:50%; border-bottom:none; vertical-align:top">
                 <div class="faint small">{{ __('الطرف الأول · مزوّد الخدمة') }}</div>
-                <div class="b">{{ $provider['name'] }}</div>
+                {{-- ما كُتب منه وحده: لا سطرٌ فارغ ولا وصفٌ لم يكتبه --}}
+                @if (trim((string) $provider['name']) !== '')<div class="b">{{ $provider['name'] }}</div>@endif
                 @if ($provider['trade_name'])<div class="muted small">{{ __('الاسم التجاري للمنصة') }}: {{ $provider['trade_name'] }}</div>@endif
                 @if ($provider['cr'])<div class="muted small">{{ __('السجل التجاري رقم') }} <span dir="ltr">{{ $provider['cr'] }}</span></div>@endif
                 @if ($provider['address'])<div class="muted small">{{ $provider['address'] }}</div>@endif
-                <div class="muted small">{{ __('نظام سحابي متكامل لإدارة الأعمال') }}</div>
             </td>
             <td style="border-bottom:none; vertical-align:top">
                 <div class="faint small">{{ __('الطرف الثاني · العميل') }}</div>
@@ -161,7 +166,11 @@
 @endsection
 
 @section('foot')
-    {{ __('صادر عن :name — يُوقَّع إلكترونيًا عبر رابطٍ خاصّ بالعميل.', ['name' => $provider['name']]) }}
+    @if ($shown !== '')
+        {{ __('صادر عن :name — يُوقَّع إلكترونيًا عبر رابطٍ خاصّ بالعميل.', ['name' => $shown]) }}
+    @else
+        {{ __('يُوقَّع إلكترونيًا عبر رابطٍ خاصّ بالعميل.') }}
+    @endif
     @if ($doc->renews_document_id && $doc->renews)
         · {{ __('تجديد للعقد :n', ['n' => $doc->renews->number]) }}
     @endif

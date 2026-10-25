@@ -68,6 +68,10 @@ const FIELD_TAB: Record<string, string> = {
     official_email: 'platform',
     phone: 'platform',
     website: 'platform',
+    legal_name: 'platform',
+    legal_trade_name: 'platform',
+    legal_cr: 'platform',
+    legal_address: 'platform',
 
     trial_days: 'subscriptions',
     grace_days: 'subscriptions',
@@ -177,6 +181,10 @@ export default function PlatformSettings() {
         official_email: get('official_email'),
         phone: get('phone'),
         website: get('website'),
+        legal_name: get('legal_name'),
+        legal_trade_name: get('legal_trade_name'),
+        legal_cr: get('legal_cr'),
+        legal_address: get('legal_address'),
 
         trial_days: get('trial_days'),
         grace_days: get('grace_days'),
@@ -362,6 +370,20 @@ export default function PlatformSettings() {
                             <p className="text-[12px] text-[#9ca3af]">
                                 {t('هذه البيانات يراها التاجر في صفحة انتهاء الاشتراك ليتواصل معك — لا تُعرض في غيرها.')}
                             </p>
+                            <div className="space-y-3 border-t border-[#f0f0f0] pt-5" data-testid="legal-provider">
+                                <div>
+                                    <div className="text-[14px] font-semibold text-[#111]">{t('مقدّم الخدمة في العقود')}</div>
+                                    <p className="text-[12px] text-[#9ca3af]">
+                                        {t('الطرف الأول في كل مستند يوقّعه العميل. بلا الاسم القانوني ورقم السجل التجاري والعنوان لا يُعتمد قالب ولا يُصدر منه. يُنسخ في المستند ساعة إصداره، فتعديله لا يغيّر عقدًا صدر.')}
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    {text('legal_name', 'الاسم القانوني')}
+                                    {text('legal_trade_name', 'الاسم التجاري')}
+                                    {text('legal_cr', 'رقم السجل التجاري', { ltr: true })}
+                                    {text('legal_address', 'العنوان القانوني')}
+                                </div>
+                            </div>
                         </div>
                         {saveBar}
                     </Card>

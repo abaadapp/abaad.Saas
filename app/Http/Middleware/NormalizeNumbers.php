@@ -104,6 +104,9 @@ class NormalizeNumbers
          * قبل أن يصل أحدٌ إلى الشاشة.
          */
         'whatsapp_pack_price',
+
+        // ورسومُ قالب المستند في لوحة المنصّة — «١٥٫٠٠٠» بلوحةٍ عربيّة كسعر الباقة
+        'default_amount',
     ];
 
     public function handle(Request $request, Closure $next)

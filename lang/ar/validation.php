@@ -204,6 +204,19 @@ return [
     */
 
     'attributes' => [
+        // نقلُ المخزون بين الفروع وطلباتُ التزويد
+        'from_branch_id' => 'الفرع المصدر',
+        'to_branch_id' => 'الفرع المستلم',
+        'responsible_user_id' => 'الموظف المسؤول',
+        'client_key' => 'رمز الطلب',
+        'execute' => 'التنفيذ المباشر',
+        'self_approve' => 'تأكيد الاعتماد الذاتي',
+        'quantities' => 'الكميات',
+        'quantities.*' => 'الكمية',
+        'line_id' => 'سطر السند',
+        'supply' => 'خطة التزويد',
+        'supply.*.source_branch_id' => 'الفرع المزوّد',
+        'supply.*.quantity' => 'الكمية المعتمدة',
 
         // عام
         'name' => 'الاسم',
@@ -644,6 +657,8 @@ return [
         'branch' => 'الفرع',
         'branch_id' => 'الفرع',
         'branches' => 'الفروع',
+        // صندوقٌ قائمٌ يحلّ محلَّه جهازٌ يُفعَّل — `DeviceController::activate`
+        'replaces' => 'الصندوق القديم',
         'business_id' => 'الشركة',
         'customer' => 'العميل',
         'supplier_id' => 'المورّد',

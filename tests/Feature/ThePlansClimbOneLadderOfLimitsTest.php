@@ -103,9 +103,11 @@ class ThePlansClimbOneLadderOfLimitsTest extends TestCase
         $seeded = collect(SeedData::plans())->keyBy(fn ($p) => ($p['code'] ?? null) === 'basic' ? 'basic' : $p['name']);
 
         $this->assertSame(array_keys($after), $seeded->keys()->all());
+        // ونصُّ المؤسسات كتبه بعده ترحيلُ إدارة الفروع — والسقفُ سقفُ هذا
+        $enterprise = (require database_path('migrations/2026_10_24_090000_the_enterprise_plan_runs_its_branches.php'))::AFTER;
         foreach ($after as $which => [$branches, $employees, $products, $features]) {
             $this->assertSame([$branches, $employees, $products], $seeded[$which]['limits'], $which);
-            $this->assertSame($features, $seeded[$which]['features'], $which);
+            $this->assertSame($which === 'باقة المؤسسات' ? $enterprise : $features, $seeded[$which]['features'], $which);
         }
     }
 

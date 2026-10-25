@@ -49,6 +49,22 @@ class PreflightChecksTest extends TestCase
         $this->assertStringNotContainsString('المجدول لا يعمل من نفسه', $out);
     }
 
+    public function test_every_deploy_log_says_whether_paymob_settling_is_paused(): void
+    {
+        // يقرأ الإعدادَ المخزَّن كما يقرؤه الموقع — فسجلُّ النشر يقول ما يعمل
+        config(['services.paymob.settlements_paused' => false]);
+        \Illuminate\Support\Facades\Artisan::call('abaad:preflight');
+        $this->assertStringContainsString('✓ تسجيل تسويات Paymob مفتوح', \Illuminate\Support\Facades\Artisan::output());
+
+        config(['services.paymob.settlements_paused' => true]);
+        \Illuminate\Support\Facades\Artisan::call('abaad:preflight');
+        $out = \Illuminate\Support\Facades\Artisan::output();
+        $this->assertStringContainsString('! تسجيل تسويات Paymob مفتوح', $out);
+        $this->assertStringContainsString('PAYMOB_SETTLEMENTS_PAUSED=true', $out);
+        // تنبيهٌ لا مانع: الإيقافُ وحده لا يُسقط النشر
+        $this->assertStringNotContainsString('• تسجيل تسويات Paymob موقوف', explode('تنبيهات', $out)[0]);
+    }
+
     public function test_a_blocker_still_fails_the_command(): void
     {
         // الغرض من الأمر أن يصلح لخطّ نشر آليّ: مانعٌ واحد ⇒ خروجٌ بـ1

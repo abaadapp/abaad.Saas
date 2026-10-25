@@ -90,9 +90,9 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
             $plans['الباقة الأساسية']['features'],
         );
 
-        foreach (['الباقة الاحترافية', 'باقة المؤسسات'] as $name) {
-            $this->assertEqualsCanonicalizing(PlanFeatures::keys(), $plans[$name]['capabilities'], $name);
-        }
+        // والاحترافيّةُ كلُّ ما قبل المؤسسات، والمؤسساتُ كلُّ شيء (`PlanFeatures::ENTERPRISE`)
+        $this->assertEqualsCanonicalizing(PlanFeatures::baseKeys(), $plans['الباقة الاحترافية']['capabilities']);
+        $this->assertEqualsCanonicalizing(PlanFeatures::keys(), $plans['باقة المؤسسات']['capabilities']);
     }
 
     /** والحارسُ يوافق البذرة — قدرةً قدرة، باقةً باقة */
@@ -108,7 +108,9 @@ class TheDefaultPlansSellWhatTheySayTest extends TestCase
             ]);
 
             foreach (PlanFeatures::keys() as $key) {
-                $expected = ! ($spec['name'] === 'الباقة الأساسية' && in_array($key, $closedOnBasic, true));
+                $expected = ! ($spec['name'] === 'الباقة الأساسية' && in_array($key, $closedOnBasic, true))
+                    // وقدراتُ المؤسسات لا تُفتح في الاحترافيّة
+                    && ! ($spec['name'] === 'الباقة الاحترافية' && in_array($key, PlanFeatures::ENTERPRISE, true));
                 $this->assertSame($expected, PlanFeatures::allowedBy($plan, $key), "«{$spec['name']}» و«{$key}»");
             }
         }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\CustomOrderTemplate;
 use App\Models\Order;
+use App\Models\PosDevice;
 use App\Support\Activity;
 use App\Support\CustomArrangement;
 use App\Support\CustomerFlags;
@@ -17,6 +18,7 @@ use App\Support\PlanFeatures;
 use App\Support\PosAddonsLayout;
 use App\Support\PosCashier;
 use App\Support\PosTerminal;
+use App\Support\TillActivation;
 use App\Support\ReceiptVisibility;
 use App\Support\Vat;
 use Illuminate\Http\RedirectResponse;
@@ -109,12 +111,36 @@ class PageController extends Controller
             $branches = Branch::where('business_id', Demo::bid())->orderBy('id')->get(['id', 'name']);
             if ($branches->count() === 1 && auth()->user()?->allows('pos')) {
                 $only = Branch::find($branches->first()->id);
-                $device = PosTerminal::activate($only, __('جهاز :name', ['name' => auth()->user()->name]), auth()->id());
-                Activity::log('created', 'فُعّل جهاز نقطة بيع تلقائيًّا: '.$device->name.' — فرع '.$only->name.' (الفرع الوحيد)', [
-                    'subject_id' => $device->id,
-                ]);
 
-                return redirect()->route('pos.index');
+                /*
+                 * ═══ ووحدَه في حالتين لا ثالثةَ لهما ═══
+                 *
+                 * - **أوّلُ صندوقٍ في المتجر** — لا صندوقَ قائمٌ يُخلط به.
+                 * - **صندوقُ هذا المتصفّح نفسِه** ملغًى — الجهازُ نفسُه عاد، فيُحيا
+                 *   باسمه وعتاده (`TillActivation::sameBrowser`).
+                 *
+                 * وما سواهما متصفّحٌ جديد في متجرٍ له صناديق: كان يولد له صفٌّ
+                 * جديدٌ بلا طابعة بلا سؤال — من تطبيق أبعاد بعد المتصفّح، أو بعد
+                 * مسح البيانات — وطابعتُه على الصفّ القديم. فيُسأل في شاشة الإعداد:
+                 * «صندوقٌ جديد» يفتحه الموظفُ بنفسه، و«يحلّ محلّ صندوقٍ قائم» للمدير.
+                 */
+                $previous = PosTerminal::previous((int) Demo::bid());
+                $first = ! PosDevice::where('business_id', Demo::bid())->exists();
+                $revive = $previous && ! $previous->isActive() && (int) $previous->branch_id === (int) $only->id;
+
+                if ($first || $revive) {
+                    ['device' => $device] = TillActivation::run(
+                        $only,
+                        $revive ? $previous->name : __('جهاز :name', ['name' => auth()->user()->name]),
+                        auth()->user(),
+                        ['mode' => $revive ? null : TillActivation::NEW],
+                    );
+                    Activity::log('created', 'فُعّل جهاز نقطة بيع تلقائيًّا: '.$device->name.' — فرع '.$only->name.' (الفرع الوحيد)', [
+                        'subject_id' => $device->id,
+                    ]);
+
+                    return redirect()->route('pos.index');
+                }
             }
 
             return redirect()->route('pos.setup');
@@ -292,12 +318,12 @@ class PageController extends Controller
             return false;
         }
 
-        $sold = Order::where('business_id', Demo::bid())
-            ->where('number', $number)->value('ordered_at')
-            ?? Order::where('business_id', Demo::bid())
-                ->where('number', $number)->value('created_at');
+        $order = Order::where('business_id', Demo::bid())->where('number', $number)
+            ->first(['ordered_at', 'created_at', 'status']);
+        $sold = $order?->ordered_at ?? $order?->created_at;
 
-        return $sold !== null && Carbon::parse($sold)->isSameDay(now());
+        // والملغاةُ لا تُصحَّح — والخادمُ يردّها (`OrderCorrection::lockOrder`)
+        return $sold !== null && $order->status !== Order::CANCELLED && Carbon::parse($sold)->isSameDay(now());
     }
 
     /**

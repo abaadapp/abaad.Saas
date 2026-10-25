@@ -2,11 +2,13 @@
 
 namespace App\Support;
 
+use App\Models\Account;
 use App\Models\Expense;
 use App\Models\ExpenseType;
 use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\StorePaymentIntent;
 use App\Models\Transaction;
 use App\Support\SalesChannel;
 use Illuminate\Support\Carbon;
@@ -101,6 +103,7 @@ class Books
         $debit = match (true) {
             (string) $order->payment_status === 'غير مدفوع' => 'receivable',
             in_array((string) $order->payment_method, ['نقدي', 'كاش'], true) => 'cash',
+            self::paidThroughPaymob($order) => self::paymobDebit($order),
             default => Bank::leaf((int) $order->business_id, $order->bank_account_id) ?? 'bank',
         };
 
@@ -230,6 +233,79 @@ class Books
         self::liveEntriesFor($order)->each(
             fn (JournalEntry $e) => Ledger::reverse($e, null, $userId, $reason)
         );
+    }
+
+    /**
+     * بيعةُ الموقع بالبطاقة — مالُها عند Paymob لا في البنك.
+     *
+     * الموقعُ لا يقبل البطاقةَ إلّا عبر Paymob، ولا يُكتب طلبُها حتّى يصل
+     * إشعارُ الدفع (`PaymobController::settle`). وPaymob لا تحوّل المالَ يومَه:
+     * تجمعه أيّامًا وتحوّله ناقصًا رسومَها. وكانت البيعةُ تُدين البنكَ
+     * بإجماليّها يومَ البيع، ثمّ تأتي التسويةُ (`PaymobSettlements::record`)
+     * فتُدينه بصافيها ثانيةً من «Paymob تحت التسوية»: المالُ نفسُه يدخل البنك
+     * مرّتين، وتُستنزف التسويةُ تحصيلاتِ روابطٍ لم تُسوَّ، والرسومُ لا تُقيَّد.
+     * فبيعةُ الموقع بالبطاقة تُدين حسابَ التسوية (1360) كتحصيل الرابط، والتسويةُ
+     * تنقلها إلى البنك بالصافي والرسوم.
+     */
+    private static function paidThroughPaymob(Order $order): bool
+    {
+        return (string) $order->channel === SalesChannel::WEBSITE
+            && (string) $order->payment_method === PaymentMethods::CARD;
+    }
+
+    /**
+     * أين يُدان مالُ بيعةِ موقعٍ بالبطاقة.
+     *
+     * حسابُ التسوية — إلّا بيعةً رُحّلت قبل هذا إلى البنك ثمّ أُعيد ترحيلُها
+     * بعد تصحيح (`OrderCorrection`): تعود إلى حيث رُحّلت أوّلَ مرّة. فالتصحيحُ
+     * لا ينقل مالًا قديمًا من البنك إلى التسوية بصمت؛ ذاك قرارٌ لصاحب المتجر.
+     *
+     * وإعادةُ الترحيل تسأل Paymob نفسَها: طلبُ موقعٍ دُفع عند التسليم ثمّ
+     * صُحّحت وسيلتُه إلى «بطاقة» (جهازُ الشبكة عند الباب) لا نيّةَ دفعٍ
+     * مدفوعةً له — مالُه في البنك كبطاقة الصندوق، لا عند Paymob ولا في الدرج.
+     * وأوّلُ ترحيلٍ لا يسأل: يقع قبل أن تُربط النيّةُ بطلبها
+     * (`PaymobController::settle`)، والموقعُ لا يكتب طلبَ بطاقةٍ بلا إشعارها.
+     */
+    private static function paymobDebit(Order $order): Account|string
+    {
+        $first = JournalEntry::where('business_id', $order->business_id)
+            ->where('sourceable_type', Order::class)
+            ->where('sourceable_id', $order->id)
+            ->where('source', self::SALE)
+            ->whereNull('reverses_id')
+            ->orderBy('id')->with('lines.account')->first();
+
+        if ($first && ! StorePaymentIntent::where('business_id', $order->business_id)
+            ->where('order_id', $order->id)->where('status', StorePaymentIntent::PAID)->exists()) {
+            return Bank::leaf((int) $order->business_id, $order->bank_account_id) ?? 'bank';
+        }
+
+        $took = $first?->lines
+            ->first(fn ($l) => (float) $l->debit > 0 && $l->account?->system_key !== 'receivable')?->account;
+
+        if (! $took || $took->system_key === 'paymob_clearing') {
+            return 'paymob_clearing';
+        }
+
+        return $took->isPostable() ? $took : (Bank::leaf((int) $order->business_id, $order->bank_account_id) ?? 'bank');
+    }
+
+    /**
+     * أمالُ هذا الطلب عند Paymob؟ — مدينُ بيعته الأولى «Paymob تحت التسوية».
+     *
+     * يسأله ردُّ الفرق بالبطاقة (`OrderCorrection::refund`): Paymob تردّ للزبون
+     * من رصيدها وتُنقص به تحويلَها القادم، فالردُّ يخرج من التسوية لا من البنك.
+     */
+    public static function heldByPaymob(Order $order): bool
+    {
+        return JournalEntry::where('business_id', $order->business_id)
+            ->where('sourceable_type', Order::class)
+            ->where('sourceable_id', $order->id)
+            ->where('source', self::SALE)
+            ->whereNull('reverses_id')
+            ->orderBy('id')->first()
+            ?->lines()->where('debit', '>', 0)
+            ->whereHas('account', fn ($q) => $q->where('system_key', 'paymob_clearing'))->exists() ?? false;
     }
 
     /**
@@ -544,10 +620,10 @@ class Books
         return self::TYPE_ACCOUNTS[$name] ?? 'other_expenses';
     }
 
-    /** من أين خرج المال — والافتراض الصندوق */
+    /** من أين خرج المال — والافتراض الصندوق. والأسماءُ من `PaymentMethods::isBank` */
     public static function payingAccount(?string $method): string
     {
-        return in_array(trim((string) $method), ['تحويل', 'بطاقة', 'شيك', 'بنك'], true) ? 'bank' : 'cash';
+        return PaymentMethods::isBank($method) ? 'bank' : 'cash';
     }
 
     /* ============================ الحركة المالية ============================ */

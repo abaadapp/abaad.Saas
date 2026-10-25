@@ -257,7 +257,11 @@ class Bank
      */
     public static function transactions(int $businessId, int|string|null $bankAccountId = null): Builder
     {
-        $openingDate = self::current($businessId)?->opening_date;
+        // وتاريخُ الافتتاح تاريخُ الحساب المسؤول عنه لا تاريخُ الرئيسيّ
+        $named = ($bankAccountId !== null && $bankAccountId !== '')
+            ? BankAccount::where('business_id', $businessId)->whereKey($bankAccountId)->first()
+            : null;
+        $openingDate = ($named ?? self::current($businessId))?->opening_date;
 
         return Transaction::query()
             ->where('business_id', $businessId)
@@ -265,5 +269,122 @@ class Bank
             ->when($bankAccountId, fn ($q) => $q->where(fn ($w) => $w
                 ->where('bank_account_id', $bankAccountId)->orWhereNull('bank_account_id')))
             ->when($openingDate, fn ($q) => $q->where('occurred_at', '>=', $openingDate->copy()->startOfDay()));
+    }
+
+    /**
+     * اتّجاهُ معاملةٍ في البنك: إيداعٌ أم سحب.
+     *
+     * كان يُقرأ من النوع وحده — «دخل» وارد وما سواه صادر. والتحويلُ من
+     * الصندوق إلى البنك نوعُه «تحويل»، فيُقرأ سحبًا وهو إيداع: لا يُطابَق
+     * بإيداعه في كشف المصرف، ويُطابَق بسحبٍ لم يقع. فالتحويلُ يُقرأ من
+     * نوعه (`kind`)، وما سواه من «دخل».
+     */
+    public static function isDeposit(Transaction $transaction): bool
+    {
+        return match ($transaction->kind) {
+            'cash_to_bank' => true,
+            'bank_to_cash' => false,
+            default => $transaction->type === 'دخل',
+        };
+    }
+
+    /**
+     * ورقةُ الدفتر التي يُقرأ منها كشفُ حساب — حيث رحّل الدفترُ مالَه فعلًا.
+     *
+     * ورقتُه هو إن كانت قابلةً للترحيل. وإلّا فالرئيسيُّ يقرأ الورقةَ النظاميّة
+     * (1200): إليها يسقط `Ledger::resolve('bank')` حين لا ورقةَ للحساب. وغيرُ
+     * الرئيسيّ بلا ورقةٍ لا يملك في الدفتر ما يُقرأ. ولا يُنشئ شيئًا.
+     */
+    public static function statementLeaf(int $businessId, BankAccount $account): ?Account
+    {
+        if ((int) $account->business_id !== $businessId) {
+            return null;
+        }
+
+        if ($leaf = self::leaf($businessId, $account->id)) {
+            return $leaf;
+        }
+
+        if (self::current($businessId)?->id !== $account->id) {
+            return null;
+        }
+
+        return Account::where('business_id', $businessId)->where('system_key', 'bank')->first();
+    }
+
+    /**
+     * كشفُ حسابٍ بنكيّ من دفتر الأستاذ — سطورُ ورقته بعد تاريخ رصيده الافتتاحي.
+     *
+     * ═══ لماذا الدفتر لا جدولُ الحركات ═══
+     *
+     * كان الكشفُ يقرأ جدولَ الحركات (`transactions`)، وكثيرٌ ممّا يدخل البنك
+     * أو يخرج منه لا يكتب فيه صفًّا: تحصيلُ فاتورة العميل بالتحويل، وتسويةُ
+     * Paymob، والشيكُ المحصَّل، وسدادُ المورّد، والرواتب. وما يكتب صفًّا قد
+     * يُقرأ اتّجاهه خطأً (التحويلُ من الصندوق كان سحبًا)، وقد يكتبه بيعٌ
+     * آجلٌ لم يُقبض. فيقول الكشفُ رصيدًا والدفترُ رصيدًا آخر، ولا شيء يقول
+     * أيّهما الصحيح. والدفترُ هو ما تقرؤه الميزانيّة؛ فالكشفُ يقرؤه أيضًا،
+     * فيتّفقان بالبناء لا بالتذكّر.
+     *
+     * ═══ والرصيدُ الافتتاحيّ رأسُ الكشف لا سطرٌ فيه ═══
+     *
+     * قيدُه (وعكسُه إن عُدّل) يُستبعد من السطور، ويُقرأ رقمُه من الحساب.
+     * وما قبل تاريخه داخلٌ فيه فلا يُعدّ ثانيةً — لكنّه لا يُخفى صامتًا:
+     * يُقال عددُه وصافيه (`before_opening`)، ومعه رصيدُ الورقة كلّها. فمتجرٌ
+     * أدخل رصيدَه الافتتاحيّ بعد حركاتٍ سبقته يرى الفرقَ ويعرف سببه.
+     *
+     * @return array{rows: list<array<string, mixed>>, before_opening: array{count: int, net: float}, ledger_balance: float}
+     */
+    public static function statement(int $businessId, BankAccount $account): array
+    {
+        $leaf = self::statementLeaf($businessId, $account);
+
+        if (! $leaf) {
+            return ['rows' => [], 'before_opening' => ['count' => 0, 'net' => 0.0], 'ledger_balance' => 0.0];
+        }
+
+        $openingDate = $account->opening_date?->toDateString();
+
+        $lines = fn () => DB::table('journal_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_lines.journal_entry_id')
+            ->join('accounts', 'accounts.id', '=', 'journal_lines.account_id')
+            ->where('journal_entries.business_id', $businessId)
+            ->where('accounts.business_id', $businessId)
+            ->where('journal_entries.posted', true)
+            ->where('journal_lines.account_id', $leaf->id);
+
+        // قيدُ الرصيد الافتتاحيّ لهذا الحساب وعكوسُه — رقمُه رأسُ الكشف
+        $notOpening = fn ($q) => $q->where(fn ($w) => $w
+            ->whereNull('journal_entries.sourceable_type')
+            ->orWhere('journal_entries.sourceable_type', '!=', BankAccount::class)
+            ->orWhere('journal_entries.sourceable_id', '!=', $account->id));
+
+        $before = $openingDate
+            ? $notOpening($lines())->where('journal_entries.entry_date', '<', $openingDate)
+                ->selectRaw('count(*) as n, coalesce(sum(journal_lines.debit - journal_lines.credit), 0) as net')->first()
+            : null;
+
+        $rows = $notOpening($lines())
+            ->when($openingDate, fn ($q) => $q->where('journal_entries.entry_date', '>=', $openingDate))
+            ->orderBy('journal_entries.entry_date')->orderBy('journal_entries.id')->orderBy('journal_lines.id')
+            ->get([
+                'journal_lines.id', 'journal_lines.debit', 'journal_lines.credit', 'journal_entries.number',
+                'journal_entries.entry_date', 'journal_entries.description', 'journal_entries.source',
+            ])
+            ->map(fn ($l) => [
+                'id' => (int) $l->id,
+                'reference' => $l->number,
+                'date' => Carbon::parse($l->entry_date)->toDateString(),
+                'description' => $l->description,
+                'source' => $l->source,
+                // مدينُ الورقة مالٌ دخل البنك، ودائنُها مالٌ خرج منه
+                'in' => round((float) $l->debit, 3),
+                'out' => round((float) $l->credit, 3),
+            ])->all();
+
+        return [
+            'rows' => $rows,
+            'before_opening' => ['count' => (int) ($before->n ?? 0), 'net' => round((float) ($before->net ?? 0), 3)],
+            'ledger_balance' => round((float) $lines()->sum(DB::raw('journal_lines.debit - journal_lines.credit')), 3),
+        ];
     }
 }

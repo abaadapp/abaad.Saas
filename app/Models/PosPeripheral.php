@@ -49,6 +49,8 @@ class PosPeripheral extends Model
             'active' => 'boolean',
             'auto_print' => 'boolean',
             'auto_print_website_confirm' => 'boolean',
+            // طابعةُ إيصال البيع على صندوقها — واحدةٌ لكلّ صندوق (فهرسٌ فريدٌ جزئيّ)
+            'is_receipt_printer' => 'boolean',
             // ويستلم «فاتورة عميل — نسخة داخلية» حين تُسدَّد — انظر `PrintJobs`
             'auto_print_customer_invoices' => 'boolean',
             'paper_width' => 'integer',
@@ -69,5 +71,49 @@ class PosPeripheral extends Model
     public function isDrivable(): bool
     {
         return in_array($this->type, self::DRIVABLE, true);
+    }
+
+    /**
+     * طابعةُ شبكةٍ لها عنوان — ما يطبع عليه تطبيقُ أبعاد مباشرةً.
+     *
+     * و`getAttribute` لا `$this->connection`: داخل النموذج يقرأ ذاك خاصيّةَ
+     * Eloquent المحميّة (اسمَ اتّصال القاعدة) لا العمود — فيكون `null` أبدًا.
+     */
+    public function printsDirectly(): bool
+    {
+        return $this->getAttribute('connection') === 'network' && trim((string) $this->address) !== '';
+    }
+
+    /**
+     * طابعةُ إيصال البيع بين ملحقات صندوقٍ واحد — بقاعدةٍ واحدة يقرؤها الكلّ.
+     *
+     * ═══ ولمَ لزمت ═══
+     *
+     * كانت «أوّلَ طابعةٍ» في قائمةٍ بلا ترتيب: الشاشةُ تأخذ أوّلَ ما وصلها،
+     * والخادمُ يأخذ عرضَ الورق من أوّل ما يقرؤه — وPostgreSQL لا يَعِد بترتيبٍ
+     * بلا `ORDER BY`. فطابعةٌ أُضيفت مرّتين يطبع الصندوقُ على أيّهما اتّفق.
+     *
+     * ═══ والقاعدة ═══
+     *
+     * 1. ما سمّاه التاجرُ «طابعة الإيصال» (`is_receipt_printer`) — إن كانت مفعّلة.
+     * 2. وإلّا الطابعةُ المفعّلةُ الوحيدة.
+     * 3. وإلّا — طابعتان أو أكثر ولم يُسمِّ — **الأقدم**: أقربُ ما يكون إلى «أوّل
+     *    صفّ» الذي كان يطبع عليه، فلا تتبدّل طابعتُه بصمت. والالتباسُ يُعرض في
+     *    الإعدادات ليُختار (`TillHealth::AMBIGUOUS_RECEIPT`).
+     *
+     * و«الطباعة التلقائية بعد البيع» لا تختار الطابعة: تقول هل تطبع طابعةُ
+     * الإيصال وحدها بعد البيع. وتُحسب القاعدةُ هنا وحدها: الشاشةُ تقرأ العلامة
+     * `receipt` (`HandleInertiaRequests`)، وعرضُ الورق منها (`PdfController`).
+     *
+     * @param  iterable<self>  $peripherals
+     */
+    public static function receiptAmong(iterable $peripherals): ?self
+    {
+        $printers = collect($peripherals)
+            ->filter(fn (self $p) => $p->active && $p->type === self::PRINTER)
+            ->sortBy('id')
+            ->values();
+
+        return $printers->first(fn (self $p) => $p->is_receipt_printer) ?? $printers->first();
     }
 }

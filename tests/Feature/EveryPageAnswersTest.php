@@ -5,7 +5,9 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\JobTitle;
+use App\Models\Plan;
 use App\Models\User;
+use App\Support\PlanFeatures;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -33,7 +35,8 @@ class EveryPageAnswersTest extends TestCase
     {
         parent::setUp();
 
-        $business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ يملك كلَّ قدرة — وقدراتُ المؤسسات لا تُفتح بلا باقةٍ تسمّيها (`PlanFeatures::ENTERPRISE`)
+        $business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط', 'plan_id' => Plan::create(['name' => 'كل القدرات', 'monthly_price' => 0, 'yearly_price' => 0, 'capabilities' => PlanFeatures::keys()])->id]);
         Branch::create(['business_id' => $business->id, 'name' => 'الرئيسي']);
         JobTitle::create(['business_id' => $business->id, 'name' => 'مدير', 'role' => 'admin']);
 

@@ -13,7 +13,7 @@
     به — انظر App\Support\Pdf::pageNumbers.
 --}}
 @php
-    $brand = \App\Support\Paper::brand($business ?? null, $vatNumber ?? '');
+    $brand = \App\Support\Paper::brand($business ?? null, $vatNumber ?? '', $unnamed ?? null);
     /* والترويسةُ تتبع اتّجاهَ الورقة: العنوانُ في الطرف المقابل للاسم */
     $headEnd = \App\Support\Paper::rtl() ? 'left' : 'right';
 @endphp
@@ -25,7 +25,9 @@
             @if ($brand['logo'])
                 <img src="{{ $brand['logo'] }}" style="max-height:42pt; margin-bottom:3pt;" alt="">
             @endif
-            <div class="p-brand">{{ $brand['name'] }}</div>
+            @if ($brand['name'] !== '')
+                <div class="p-brand">{{ $brand['name'] }}</div>
+            @endif
             @if ($brand['sub'] !== '')
                 <div class="muted small">{{ $brand['sub'] }}</div>
             @endif

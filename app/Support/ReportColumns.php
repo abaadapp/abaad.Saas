@@ -68,6 +68,22 @@ class ReportColumns
             ['quantity', 'الرصيد', 'number'], ['alert', 'الحدّ الأدنى', 'number'],
             ['cost', 'التكلفة', 'money'], ['value', 'القيمة', 'money'],
         ],
+        'branches' => [
+            ['branch', 'الفرع', 'text'], ['sales', 'المبيعات', 'money'], ['orders', 'عدد الطلبات', 'number'],
+            ['net_revenue', 'صافي الإيرادات', 'money'], ['gross_profit', 'مجمل الربح', 'money'],
+            ['expenses', 'مصروفات الفرع', 'money'], ['net_profit', 'صافي الربح', 'money'],
+            ['margin', 'هامش الربح %', 'number'], ['stock_quantity', 'كمية المخزون', 'number'],
+            ['stock_value', 'قيمة المخزون', 'money'], ['low_stock', 'منخفض المخزون', 'number'],
+            ['open_supply', 'طلبات تزويد مفتوحة', 'number'], ['transfers_open', 'تحويلات قيد التنفيذ', 'number'],
+        ],
+        'transfers' => [
+            ['number', 'السند', 'text'], ['at', 'التاريخ', 'text'], ['from', 'من', 'text'], ['to', 'إلى', 'text'],
+            ['product', 'الصنف', 'text'], ['requested', 'الكمية المطلوبة', 'number'], ['sent', 'المرسل', 'number'],
+            ['received', 'استُلم', 'number'], ['outstanding', 'فرق معلّق', 'number'], ['lost', 'فُقد', 'number'],
+            ['returned', 'أُعيد', 'number'], ['late', 'وصل متأخرًا', 'number'], ['status_label', 'الحالة', 'text'],
+            ['requested_by', 'طلبه', 'text'], ['approved_by', 'اعتمده', 'text'], ['dispatched_by', 'أرسله', 'text'],
+            ['received_by', 'استلمه', 'text'], ['dispatched_at', 'وقت الإرسال', 'text'], ['received_at', 'وقت الاستلام', 'text'],
+        ],
         'stocktake' => [
             ['at', 'الوقت', 'text'], ['number', 'السند', 'text'], ['product', 'الصنف', 'text'],
             ['branch', 'الفرع', 'text'], ['reason', 'النتيجة', 'text'],
@@ -272,6 +288,27 @@ class ReportColumns
             // والنطاقُ آخرًا كما في «صافي الربح»: الشاشةُ تكتبه في رأسها، والملفُّ يحمله
             ['scope_name', 'نطاق التقرير', 'text'],
         ],
+        'branches' => [
+            ['sales', 'مبيعات النشاط', 'money'],
+            ['net_profit', 'صافي ربح النشاط', 'money'],
+            ['unallocated', 'مصروفات عامة غير موزعة', 'money'],
+            ['stock_value', 'قيمة المخزون في الفروع', 'money'],
+            ['in_transit_value', 'قيمة المخزون قيد النقل', 'money'],
+            ['best', 'أعلى فرع ربحًا', 'text'],
+        ],
+        'transfers' => [
+            ['transfers', 'عدد السندات', 'number'],
+            ['sent', 'الكمية المرسلة', 'number'],
+            ['received', 'الكمية المستلمة', 'number'],
+            ['outstanding', 'فروقات معلّقة', 'number'],
+        ],
+        'branchesWeekly' => [
+            ['sales', 'مبيعات الأسبوع', 'money'],
+            ['net_profit', 'صافي ربح الأسبوع', 'money'],
+            ['top_branch', 'أعلى فرع مبيعات', 'text'],
+            ['late', 'تحويلات متأخرة', 'number'],
+            ['discrepancies', 'فروقات لم تُحل', 'number'],
+        ],
         'stocktake' => [
             ['operations', 'عمليات الجرد', 'number'],
             ['items', 'أصناف اختلفت', 'number'],
@@ -398,6 +435,30 @@ class ReportColumns
      * @var array<string, array<string, list<array{0: string, 1: string, 2: string}>>>
      */
     public const SECTIONS = [
+        'branchesWeekly' => [
+            'الفروع' => [
+                ['branch', 'الفرع', 'text'], ['sales', 'المبيعات', 'money'], ['orders', 'الطلبات', 'number'],
+                ['net_profit', 'صافي الربح', 'money'], ['margin', 'هامش الربح %', 'number'], ['low_stock', 'منخفض المخزون', 'number'],
+            ],
+            'الأكثر مبيعًا' => [
+                ['product', 'الصنف', 'text'], ['sold', 'الكمية', 'number'], ['revenue', 'الإيراد', 'money'],
+            ],
+            'منخفض المخزون' => [
+                ['branch', 'الفرع', 'text'], ['product', 'الصنف', 'text'], ['quantity', 'الرصيد', 'number'], ['alert', 'حد التنبيه', 'number'],
+            ],
+            'طلبات التزويد المفتوحة' => [
+                ['number', 'طلب التزويد', 'text'], ['branch', 'الفرع', 'text'], ['quantity', 'الكمية', 'number'], ['requested_at', 'التاريخ', 'text'],
+            ],
+            'التحويلات المكتملة' => [
+                ['number', 'السند', 'text'], ['from', 'من', 'text'], ['to', 'إلى', 'text'], ['quantity', 'استُلم', 'number'], ['received_at', 'وقت الاستلام', 'text'],
+            ],
+            'التحويلات المتأخرة' => [
+                ['number', 'السند', 'text'], ['from', 'من', 'text'], ['to', 'إلى', 'text'], ['quantity', 'قيد النقل', 'number'], ['dispatched_at', 'وقت الإرسال', 'text'],
+            ],
+            'فروقات الاستلام' => [
+                ['number', 'السند', 'text'], ['from', 'من', 'text'], ['to', 'إلى', 'text'], ['quantity', 'المعلّق', 'number'], ['received_at', 'وقت الاستلام', 'text'],
+            ],
+        ],
         'waste' => [
             'بالصنف' => [
                 ['label', 'الصنف', 'text'], ['quantity', 'الكمية', 'number'], ['value', 'القيمة', 'money'],

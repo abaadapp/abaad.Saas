@@ -245,6 +245,41 @@ class Permissions
      */
     public const POS_MOVEMENT = 'pos.movement';
 
+    /**
+     * ═══ وعملياتُ الفروع — نقلُ المخزون وطلباتُ التزويد ═══
+     *
+     * أفعالٌ لا قسم: من يُمنح «المخزون» ليرى رفوفَه أو يجرد لا يعني أنّه
+     * يُخرج بضاعةً من فرعٍ إلى آخر، ولا أنّه يعتمد ما يطلبه غيرُه. فكلُّ مرحلةٍ
+     * من السند فعلٌ باسمه، ويُفحص معه إسنادُ الموظّف إلى الفرع (`User::worksAt`)
+     * في `App\Support\BranchTransfers` — لا الدورُ وحده.
+     *
+     * وصاحبُ النشاط يملكها كلَّها بدوره. ومديرُ الفرع يملك التشغيلَ في فروعه —
+     * الطلبَ والتجهيزَ والإرسالَ والاستلام — لا الاعتمادَ ولا تسويةَ الفرق ولا
+     * رؤيةَ تحويلات الفروع كلِّها: تلك تُمنح باسمه. وأمينُ المخزن يُرسل
+     * ويستلم. والموظّفُ العاديّ لا يُمنح منها شيئًا بدوره.
+     */
+    public const TRANSFER_VIEW = 'transfer.view';
+
+    public const TRANSFER_VIEW_ALL = 'transfer.viewAll';
+
+    public const TRANSFER_CREATE = 'transfer.create';
+
+    public const TRANSFER_APPROVE = 'transfer.approve';
+
+    public const TRANSFER_DISPATCH = 'transfer.dispatch';
+
+    public const TRANSFER_RECEIVE = 'transfer.receive';
+
+    public const TRANSFER_RESOLVE = 'transfer.resolve';
+
+    public const SUPPLY_CREATE = 'supply.create';
+
+    /** أفعالُ السند كلُّها — من يملك أحدَها يرى سنداتِ فروعه */
+    public const TRANSFER_ACTIONS = [
+        self::TRANSFER_VIEW, self::TRANSFER_VIEW_ALL, self::TRANSFER_CREATE, self::TRANSFER_APPROVE,
+        self::TRANSFER_DISPATCH, self::TRANSFER_RECEIVE, self::TRANSFER_RESOLVE, self::SUPPLY_CREATE,
+    ];
+
     public const ACTIONS = [
         /*
          * والاسمُ يقول ما يشمل: فاتورةُ الصندوق وطلبُ الموقع كلاهما `Order`،
@@ -335,6 +370,14 @@ class Permissions
         self::CUSTOMER_PAYMENT_CANCEL => 'إلغاء تحصيل عميل',
         self::PAYMENT_LINK_CREATE => 'إنشاء روابط الدفع',
         self::ATTACHMENT_VIEW => 'فتح مرفقات المستندات المالية',
+        self::TRANSFER_VIEW => 'مشاهدة تحويلات فروعه',
+        self::TRANSFER_VIEW_ALL => 'مشاهدة جميع تحويلات النشاط',
+        self::TRANSFER_CREATE => 'إنشاء طلب نقل مخزون',
+        self::TRANSFER_APPROVE => 'الموافقة على النقل وطلبات التزويد',
+        self::TRANSFER_DISPATCH => 'تجهيز البضاعة وتأكيد الإرسال',
+        self::TRANSFER_RECEIVE => 'تأكيد استلام التحويل',
+        self::TRANSFER_RESOLVE => 'معالجة فرق الاستلام',
+        self::SUPPLY_CREATE => 'إنشاء طلب تزويد',
     ];
 
     /**
@@ -437,6 +480,15 @@ class Permissions
         self::PAYROLL_VIEW => ['admin', 'manager', 'accountant'],
         self::PAYROLL_APPROVE => ['admin', 'manager'],
         self::PAYROLL_PAY => ['admin', 'manager'],
+        // عملياتُ الفروع — انظر `TRANSFER_VIEW`
+        self::TRANSFER_VIEW => ['admin', 'manager', 'inventory'],
+        self::TRANSFER_VIEW_ALL => ['admin'],
+        self::TRANSFER_CREATE => ['admin', 'manager'],
+        self::TRANSFER_APPROVE => ['admin'],
+        self::TRANSFER_DISPATCH => ['admin', 'manager', 'inventory'],
+        self::TRANSFER_RECEIVE => ['admin', 'manager', 'inventory'],
+        self::TRANSFER_RESOLVE => ['admin'],
+        self::SUPPLY_CREATE => ['admin', 'manager'],
     ];
 
     /**
@@ -676,6 +728,14 @@ class Permissions
         self::PAYMENT_LINK_CREATE => 'إنشاء رابط دفع Paymob لفاتورة عميل أو لعميل، ونسخه وإرساله. لا يسجّل تحصيلًا ولا يفتح شاشات المالية ولا إعدادات Paymob ولا يلغي رابطًا — والمال يُسجَّل حين تؤكّد Paymob الدفع وحدها.',
         self::PREPARATION_CANCEL => 'إلغاء الطلب من صفحته في «المبيعات» أو من لوحة التجهيز: يعيد المخزون والنقاط والكوبون ويعكس قيد الإيراد.',
         'order.edit' => 'يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني. وحيث فُتحت الميزة للنشاط: إضافة صنف أو استبداله في يوم البيع، وتعديل ملاحظة المنتج، وتحصيل المتبقّي.',
+        self::TRANSFER_VIEW => 'سندات النقل وطلبات التزويد التي تخصّ الفروع المسندة إليه.',
+        self::TRANSFER_VIEW_ALL => 'سندات النقل وطلبات التزويد في كل فروع النشاط، ولو لم يُسنَد إليها.',
+        self::TRANSFER_CREATE => 'طلب نقل بضاعة من فرعٍ مسند إليه أو إليه. لا يحرّك المخزون حتى يُعتمد ويُرسل.',
+        self::TRANSFER_APPROVE => 'اعتماد طلبات النقل والتزويد أو رفضها لفروعٍ مسندة إليه. لا يعتمد طلبًا قدّمه هو.',
+        self::TRANSFER_DISPATCH => 'تجهيز السند المعتمد وتأكيد إرساله من فرعٍ مسند إليه: تخرج الكمية من رفّ المصدر وتصير قيد النقل.',
+        self::TRANSFER_RECEIVE => 'تأكيد الكميات التي وصلت إلى فرعٍ مسند إليه: تدخل رفّه، وما نقص يبقى فرقًا معلّقًا.',
+        self::TRANSFER_RESOLVE => 'تسوية فرق الاستلام بسببٍ يُكتب: فُقد أو تلف (يُقيَّد خسارة)، أو أُعيد إلى المصدر، أو وصل متأخرًا.',
+        self::SUPPLY_CREATE => 'طلب بضاعة لفرعٍ مسند إليه من الإدارة. لا يحرّك المخزون.',
     ];
 
     /** @return array<string, string> */

@@ -78,8 +78,16 @@ class PlanOpensWhatItSoldTest extends TestCase
          * متجرٌ أُنشئ قبل الباقات لا يُقفل لأنّ حقلًا فيه فارغ — كما في
          * `PlanLimits`: «بلا باقة لا سقف».
          */
-        foreach (array_keys(PlanFeatures::CAPABILITIES) as $key) {
+        foreach (PlanFeatures::baseKeys() as $key) {
             $this->assertTrue(PlanFeatures::allows($this->business, $key), "أُغلق «{$key}» على متجرٍ بلا باقة");
+        }
+
+        /*
+         * إلّا قدراتِ المؤسسات: وُلدت مع عمودها فلا عملَ قائمًا يُقفل دونها،
+         * والفتحُ الخاطئ هنا بيعُ المؤسسات بلا ثمن (`PlanFeatures::ENTERPRISE`).
+         */
+        foreach (PlanFeatures::ENTERPRISE as $key) {
+            $this->assertFalse(PlanFeatures::allows($this->business, $key), "فُتح «{$key}» لمتجرٍ بلا باقة");
         }
 
         $this->actingAs($this->owner)->get(route('admin.reports.waste'))->assertOk();

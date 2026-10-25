@@ -13,7 +13,13 @@ export type PlanFeatureKey =
     | 'whatsapp'
     | 'website'
     | 'marketing_tools'
-    | 'integrations';
+    | 'integrations'
+    // قدراتُ المؤسسات — مغلقةٌ إلّا بالقائمة الصريحة (`PlanFeatures::ENTERPRISE`)
+    | 'enterprise_transfers'
+    | 'enterprise_replenishment'
+    | 'enterprise_branch_analytics'
+    | 'enterprise_weekly_report'
+    | 'enterprise_alerts';
 
 export interface User {
     id: number;
@@ -56,6 +62,8 @@ export interface PosPeripheral {
     autoPrintWebsite?: boolean;
     /** يستلم «فاتورة عميل — نسخة داخلية» حين تُسدَّد — انظر `lib/printing/print-jobs` */
     autoPrintCustomerInvoices?: boolean;
+    /** طابعةُ إيصال البيع على هذا الصندوق — يحسبها الخادم (`PosPeripheral::receiptAmong`) */
+    receipt?: boolean;
 }
 
 export interface Currency {

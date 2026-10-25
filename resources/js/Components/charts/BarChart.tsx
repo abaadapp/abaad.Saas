@@ -31,7 +31,14 @@ export default function BarChart({ labels, series, format = String, className }:
     const t = useTranslate();
     const known = series.filter((v): v is number => v !== null);
     const max = Math.max(...known, 1);
-    const total = known.reduce((sum, value) => sum + value, 0);
+    /*
+     * والنِّسَبُ من الموجب وحده.
+     *
+     * قد يصل صافٍ سالب — فواتيرُ العملاء في شهرٍ أُلغيت فيه فاتورةُ شهرٍ مضى
+     * (`DashboardMetrics::paymentDistribution`). ولو دخل المقسومَ عليه لَصارت
+     * نسبُ الباقين فوق المئة. فيُكتب رقمُه سالبًا بلا عرضٍ ولا نسبة.
+     */
+    const total = known.reduce((sum, value) => sum + Math.max(value, 0), 0);
 
     if (series.length === 0) {
         return (
@@ -62,10 +69,11 @@ export default function BarChart({ labels, series, format = String, className }:
                 }
 
                 const value = raw ?? 0;
-                const share = total > 0 ? (value / total) * 100 : 0;
+                const negative = value < 0;
+                const share = total > 0 && !negative ? (value / total) * 100 : 0;
 
                 return (
-                    <div key={label} className="group">
+                    <div key={label} className="group" data-negative={negative || undefined}>
                         <div className="mb-1.5 flex items-baseline justify-between gap-3">
                             <span className="flex items-center gap-2 text-[13px] text-[#111]">
                                 {/* علامة اللون بجانب النص — الهوية ليست باللون وحده */}
@@ -75,16 +83,16 @@ export default function BarChart({ labels, series, format = String, className }:
                                 />
                                 {label}
                             </span>
-                            <span className="text-[12px] tabular-nums text-[#6b7280]">
+                            <span className={cn('text-[12px] tabular-nums', negative ? 'text-[#dc2626]' : 'text-[#6b7280]')}>
                                 {format(value)}
-                                <span className="ms-1.5 text-[#9ca3af]">({share.toFixed(0)}%)</span>
+                                {!negative && <span className="ms-1.5 text-[#9ca3af]">({share.toFixed(0)}%)</span>}
                             </span>
                         </div>
 
                         <div className="h-2 w-full overflow-hidden rounded-full bg-[#f2f2f0]">
                             <motion.div
                                 initial={{ width: 0 }}
-                                animate={{ width: `${(value / max) * 100}%` }}
+                                animate={{ width: `${(Math.max(value, 0) / max) * 100}%` }}
                                 transition={{ duration: 0.6, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}
                                 className="h-full rounded-full"
                                 style={{ backgroundColor: CATEGORICAL[i % CATEGORICAL.length] }}

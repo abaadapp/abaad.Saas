@@ -9,9 +9,11 @@ use App\Models\Business;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\Demo;
+use App\Support\Ledger;
 use App\Support\ReportData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -67,6 +69,15 @@ class BankReconciliationTest extends TestCase
         ]);
     }
 
+    /** بيعةٌ في الدفتر: مدينُ الصندوق أو البنك، ودائنُ المبيعات */
+    private function sale(string $side, float $amount, ?Carbon $on = null): void
+    {
+        Ledger::post($this->business->id, 'بيع', [
+            ['account' => $side, 'debit' => $amount],
+            ['account' => 'sales', 'credit' => $amount],
+        ], $on ?? now());
+    }
+
     private function line(float $amount, ?string $date = null, ?string $ref = null): BankStatementLine
     {
         return BankStatementLine::create([
@@ -81,9 +92,14 @@ class BankReconciliationTest extends TestCase
 
     public function test_cash_never_enters_the_bank_statement(): void
     {
-        $this->trx('دخل', 100, 'نقدي');
-        $this->trx('دخل', 40, 'تحويل بنكي');
-        $this->trx('دخل', 10, 'بطاقة');
+        /*
+         * والكشفُ يُقرأ من الدفتر لا من جدول الحركات (`Bank::statement`):
+         * فالبيعاتُ هنا قيودٌ كما يكتبها البيع — النقدُ في الصندوق، والتحويلُ
+         * والبطاقةُ في البنك.
+         */
+        $this->sale('cash', 100);
+        $this->sale('bank', 40);
+        $this->sale('bank', 10);
 
         $statement = Demo::bankStatement();
 
@@ -145,9 +161,12 @@ class BankReconciliationTest extends TestCase
             'opening_date' => now()->startOfMonth()->toDateString(),
         ]);
 
-        $this->trx('دخل', 500, 'تحويل بنكي', now()->subMonth()->toDateTimeString());
+        $this->sale('bank', 500, now()->subMonth());
 
-        $this->assertSame(1000.0, Demo::bankStatement()['closing'], 'حُسب ما قبل التاريخ مرّتين');
+        $statement = Demo::bankStatement();
+        $this->assertSame(1000.0, $statement['closing'], 'حُسب ما قبل التاريخ مرّتين');
+        // ولا يُخفى صامتًا: يُقال عددُه وصافيه
+        $this->assertSame(['count' => 1, 'net' => 500.0], $statement['before_opening']);
     }
 
     public function test_what_follows_the_opening_balance_is_counted(): void
@@ -159,7 +178,7 @@ class BankReconciliationTest extends TestCase
             'opening_date' => now()->startOfMonth()->toDateString(),
         ]);
 
-        $this->trx('دخل', 500, 'تحويل بنكي', now()->toDateTimeString());
+        $this->sale('bank', 500, now());
 
         $this->assertSame(1500.0, Demo::bankStatement()['closing']);
     }

@@ -33,10 +33,16 @@ interface Settlement {
     bank: string | null;
     reference: string | null;
     notes: string | null;
-    /** posted رُحّلت · held حُفظت ولم تُرحَّل (والسببُ في hold_reason) · cancelled أُلغيت قبل ترحيلها */
-    status: 'posted' | 'held' | 'cancelled';
+    /**
+     * posted رُحّلت · held حُفظت ولم تُرحَّل (والسببُ في hold_reason) · cancelled أُلغيت قبل ترحيلها
+     * · legacy سُجّلت قبل التحديث بثلاثة أرقام ولا تسمّي مدفوعاتها
+     */
+    status: 'posted' | 'held' | 'cancelled' | 'legacy';
     hold_reason: string | null;
     items: number;
+    /** للقديمة وحدها: ما بقي من إجماليّها غيرَ محدَّد، وما حُدّد أنّها حملته */
+    open?: number;
+    attributed?: Array<{ id: number; label: string; amount: number; reason: string | null; by: string | null; at: string | null }>;
 }
 
 /**
@@ -52,6 +58,8 @@ export interface Payout {
     paid_at: string | null;
     booked: 'clearing' | 'bank' | 'unknown';
     reason: string | null;
+    /** تحويلاتٌ سُجّلت قبل التحديث ربما حملتها — يُحدَّد منها */
+    legacy?: number[];
 }
 
 interface Props extends PaymentLinksPanel {
@@ -60,6 +68,8 @@ interface Props extends PaymentLinksPanel {
     customers: Option[];
     clearing: number;
     payouts?: Payout[];
+    /** التسجيلُ موقوفٌ مؤقّتًا من المنصّة */
+    payouts_paused?: boolean;
     settlements: Settlement[];
     bankAccounts: Option[];
 }
@@ -90,6 +100,7 @@ export default function PaymentLinksPage() {
 
     const [creating, setCreating] = useState(false);
     const [settling, setSettling] = useState(false);
+    const [naming, setNaming] = useState<Settlement | null>(null);
 
     const go = (next: PaymentLinkRow['status'] | null) =>
         router.get(route('admin.finance.paymentLinks'), next ? { status: next } : {}, { preserveScroll: true, preserveState: true, replace: true });
@@ -215,10 +226,16 @@ export default function PaymentLinksPage() {
                         <Landmark className="size-4" />
                         {t('تسويات Paymob')}
                     </h2>
-                    <Button variant="outline" onClick={() => setSettling(true)} data-testid="paymob-settle-open" disabled={payouts.length === 0}>
+                    <Button variant="outline" onClick={() => setSettling(true)} data-testid="paymob-settle-open" disabled={payouts.length === 0 || props.payouts_paused}>
                         {t('تسجيل تسوية')}
                     </Button>
                 </div>
+
+                {props.payouts_paused && (
+                    <p className="mb-3 rounded-md bg-[#fffbeb] p-2 text-[13px] text-[#92400e]" data-testid="paymob-settle-paused">
+                        {t('تسجيل تسويات Paymob موقوف مؤقتًا من المنصة — لا يُفقد شيء، ويُسجَّل حين يُفتح.')}
+                    </p>
+                )}
 
                 <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <StatCard
@@ -289,6 +306,20 @@ export default function PaymentLinksPage() {
                                             </div>
                                         ) : s.status === 'cancelled' ? (
                                             <span className="text-[#9ca3af]">{t('أُلغيت قبل الترحيل')}</span>
+                                        ) : s.status === 'legacy' ? (
+                                            <div className="grid gap-1.5">
+                                                <span className="font-bold">{t('سُجّلت قبل التحديث — لا تسمّي مدفوعاتها')}</span>
+                                                <span className="text-[12px] text-[#6b7280]" data-testid="paymob-settlement-open">
+                                                    {(s.open ?? 0) > 0
+                                                        ? t('لم يُحدَّد ما حملته بعد: :a — مدفوعاتٌ قبلها تبقى للمراجعة حتى يُحدَّد', { a: (s.open ?? 0).toFixed(3) })
+                                                        : t('حُدّد كل ما حملته')}
+                                                </span>
+                                                <div>
+                                                    <Button size="sm" variant="outline" data-testid="paymob-settlement-name" onClick={() => setNaming(s)}>
+                                                        {t('ما حمله هذا التحويل')}
+                                                    </Button>
+                                                </div>
+                                            </div>
                                         ) : (
                                             <span>{t('مرحّلة')}</span>
                                         )}
@@ -302,6 +333,7 @@ export default function PaymentLinksPage() {
 
             <CreateDialog open={creating} onClose={() => setCreating(false)} customers={customers} />
             <SettleDialog open={settling} onClose={() => setSettling(false)} payouts={payouts} bankAccounts={bankAccounts} />
+            {naming && <LegacyDialog settlement={naming} payouts={payouts} paused={!!props.payouts_paused} onClose={() => setNaming(null)} ask={ask} />}
             {confirmDialog}
         </AdminLayout>
     );
@@ -383,6 +415,135 @@ function CreateDialog({ open, onClose, customers }: { open: boolean; onClose: ()
                             {t('إلغاء')}
                         </Button>
                     </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/**
+ * «ما حمله هذا التحويل» — تحويلٌ سُجّل قبل التحديث بثلاثة أرقام.
+ *
+ * يختار صاحبُ المتجر من كشف Paymob المدفوعاتِ التي حملها، ويكتب ما استند إليه.
+ * لا يُكتب في الدفتر شيء: ذاك التحويلُ رُحّل يومَه. وتُعرض هنا المدفوعاتُ التي
+ * دُفعت قبله وحدها — ما بعده لا يمكن أن يكون فيه. ويُتراجع عن تحديدٍ خاطئ.
+ */
+function LegacyDialog({
+    settlement,
+    payouts,
+    paused,
+    onClose,
+    ask,
+}: {
+    settlement: Settlement;
+    payouts: Payout[];
+    paused: boolean;
+    onClose: () => void;
+    ask: (o: { message: string; action?: string; danger?: boolean }) => Promise<boolean>;
+}) {
+    const t = useTranslate();
+    const eligible = payouts.filter((p) => (p.legacy ?? []).includes(settlement.id));
+    const form = useForm<{ items: string[]; note: string }>({ items: [], note: '' });
+    const chosen = eligible.filter((p) => form.data.items.includes(p.key)).reduce((sum, p) => sum + Math.round(p.amount * 1000), 0) / 1000;
+    const open = settlement.open ?? 0;
+
+    const toggle = (key: string) =>
+        form.setData((d) => ({ ...d, items: d.items.includes(key) ? d.items.filter((k) => k !== key) : [...d.items, key] }));
+
+    const submit = (e: React.FormEvent) => {
+        e.preventDefault();
+        form.post(route('admin.finance.paymobSettlements.attribute', settlement.id), { preserveScroll: true, onSuccess: onClose });
+    };
+
+    return (
+        <Dialog open onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>{t('ما حمله تحويل Paymob القديم')}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={submit} className="grid gap-3 px-5 pb-5" data-testid="paymob-legacy-form">
+                    <p className="text-[13px] text-[#374151]">
+                        {t('سُجّل هذا التحويل قبل التحديث بمبلغ واحد. اختر من كشف Paymob المدفوعات التي حملها — لا يُكتب في الدفتر شيء، وتُحجز فلا تُسوّى مرة ثانية.')}
+                    </p>
+                    <p className="text-[12px] text-[#6b7280]" data-testid="paymob-legacy-open">
+                        {t('لم يُحدَّد بعد: :a — والمختار: :c', { a: open.toFixed(3), c: chosen.toFixed(3) })}
+                    </p>
+                    {eligible.length === 0 ? (
+                        <p className="text-[13px] text-[#9ca3af]">{t('لا مدفوعة قبله تنتظر التحديد.')}</p>
+                    ) : (
+                        <div className="grid gap-1.5">
+                            {eligible.map((p) => (
+                                <label key={p.key} className="flex items-start gap-2 text-[13px]">
+                                    <input
+                                        type="checkbox"
+                                        className="mt-1"
+                                        checked={form.data.items.includes(p.key)}
+                                        onChange={() => toggle(p.key)}
+                                        aria-label={p.label}
+                                        data-testid="paymob-legacy-pick"
+                                    />
+                                    <span className="flex-1">
+                                        {p.label}
+                                        {p.paid_at && (
+                                            <span dir="ltr" className="ms-2 text-[12px] text-[#9ca3af]">
+                                                {p.paid_at}
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="tabular-nums">{p.amount.toFixed(3)}</span>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                    <Field label="ما استندتَ إليه" hint="رقم كشف Paymob أو تاريخه" error={form.errors.note}>
+                        <Input value={form.data.note} onChange={(e) => form.setData('note', e.target.value)} aria-label={t('ما استندتَ إليه')} />
+                    </Field>
+                    {form.errors.items && <p className="text-[12px] text-[#b91c1c]">{form.errors.items}</p>}
+                    {chosen > open + 0.0005 && (
+                        <p className="text-[12px] text-[#b91c1c]" data-testid="paymob-legacy-over">
+                            {t('المختار أكبر مما بقي غير محدَّد من هذا التحويل.')}
+                        </p>
+                    )}
+                    <div className="flex gap-2">
+                        <Button
+                            type="submit"
+                            loading={form.processing}
+                            disabled={paused || form.data.items.length === 0 || form.data.note.trim().length < 5 || chosen > open + 0.0005}
+                            data-testid="paymob-legacy-submit"
+                        >
+                            {t('حفظ ما حمله')}
+                        </Button>
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إغلاق')}
+                        </Button>
+                    </div>
+                    {(settlement.attributed ?? []).length > 0 && (
+                        <div className="grid gap-1.5 border-t border-[#e5e7eb] pt-3" data-testid="paymob-legacy-attributed">
+                            <p className="text-[13px] font-bold">{t('حُدّد أنه حمل')}</p>
+                            {(settlement.attributed ?? []).map((a) => (
+                                <div key={a.id} className="flex flex-wrap items-center gap-2 text-[13px]">
+                                    <span className="flex-1">
+                                        {a.label} — <span className="tabular-nums">{a.amount.toFixed(3)}</span>
+                                        <span className="block text-[12px] text-[#6b7280]">
+                                            {[a.reason, a.by, a.at].filter(Boolean).join(' · ')}
+                                        </span>
+                                    </span>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        data-testid="paymob-legacy-undo"
+                                        onClick={async () => {
+                                            if (!(await ask({ message: 'ترك هذا التحديد؟ تعود المدفوعة إلى المراجعة، ولا يُكتب في الدفتر شيء.', action: 'ترك التحديد' }))) return;
+                                            router.post(route('admin.finance.paymobSettlementItems.remove', a.id), {}, { preserveScroll: true, onSuccess: onClose });
+                                        }}
+                                    >
+                                        {t('ترك التحديد')}
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </form>
             </DialogContent>
         </Dialog>

@@ -1608,6 +1608,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('finance.paymobSettlements.retry');
     Route::post('/finance/paymob-settlements/{id}/cancel', [PaymentLinkController::class, 'cancelSettlement'])
         ->whereNumber('id')->name('finance.paymobSettlements.cancel');
+    // تحويلٌ سُجّل قبل التحديث: ما حمله يحدّده صاحبُ المتجر، ويُتراجع عن تحديدٍ خاطئ
+    Route::post('/finance/paymob-settlements/{id}/attribute', [PaymentLinkController::class, 'attributeSettlement'])
+        ->whereNumber('id')->name('finance.paymobSettlements.attribute');
+    Route::post('/finance/paymob-settlement-items/{id}/remove', [PaymentLinkController::class, 'unattributeSettlementItem'])
+        ->whereNumber('id')->name('finance.paymobSettlementItems.remove');
 
     Route::get('/finance/receivables', [ReceivablesController::class, 'index'])->name('finance.receivables');
     /*

@@ -3,35 +3,24 @@
 namespace Tests\Feature;
 
 use App\Models\BankAccount;
-use App\Models\Branch;
-use App\Models\Business;
-use App\Models\Currency;
-use App\Models\Customer;
-use App\Models\CustomerPaymentLink;
 use App\Models\JournalEntry;
 use App\Models\Order;
-use App\Models\OrderItem;
-use App\Models\PaymentGateway;
 use App\Models\PaymobSettlement;
-use App\Models\Product;
-use App\Models\Setting;
 use App\Models\StorePaymentIntent;
-use App\Models\User;
 use App\Support\Bank;
 use App\Support\Books;
 use App\Support\Ledger;
-use App\Support\MarketingSettings;
 use App\Support\OrderCorrection;
-use App\Support\PaymentLinks;
 use App\Support\PaymobSettlements;
 use App\Support\Store\Paymob;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Inertia\Testing\AssertableInertia;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
+use Tests\Support\PaymobPayouts;
 use Tests\TestCase;
 
 /**
@@ -48,13 +37,8 @@ use Tests\TestCase;
  */
 class APaymobPayoutNeverCountsTheBankTwiceTest extends TestCase
 {
+    use PaymobPayouts;
     use RefreshDatabase;
-
-    private Business $shop;
-
-    private User $owner;
-
-    private Product $rose;
 
     protected function setUp(): void
     {
@@ -74,134 +58,6 @@ class APaymobPayoutNeverCountsTheBankTwiceTest extends TestCase
     {
         Carbon::setTestNow();
         parent::tearDown();
-    }
-
-    /** متجرٌ بموقعٍ وPaymob وحسابٍ بنكيّ رئيسيّ */
-    private function openShop(string $slug, string $email): array
-    {
-        $shop = Business::create([
-            'name' => 'متجر '.$slug, 'type' => 'محل ورد', 'status' => 'نشط', 'phone' => '96890000001',
-            'city' => 'مسقط', 'site_slug' => $slug, 'tier' => 'gold', 'storefront_theme' => 'ribbon',
-        ]);
-        Currency::create(['business_id' => $shop->id, 'code' => 'OMR', 'name' => 'ريال عماني', 'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true]);
-        Ledger::seedChart($shop->id);
-        Branch::create(['business_id' => $shop->id, 'name' => 'الرئيسي']);
-        Setting::create(['business_id' => $shop->id, 'key' => 'vat_enabled', 'value' => '0']);
-        $owner = User::create(['business_id' => $shop->id, 'name' => 'المالك', 'email' => $email, 'password' => bcrypt('x'), 'role' => 'admin', 'status' => 'نشط']);
-        MarketingSettings::save($shop->id, 'website', ['store_on' => '1', 'store_pay_cod' => '1']);
-        $rose = Product::create([
-            'business_id' => $shop->id, 'name' => 'باقة ورد', 'price' => 20,
-            'cost' => 0, 'quantity' => 50, 'alert_qty' => 1, 'active' => true, 'published' => true,
-        ]);
-        PaymentGateway::create([
-            'business_id' => $shop->id, 'provider' => PaymentGateway::PAYMOB,
-            'public_key' => 'pk_test_abc', 'secret_key' => 'sk_test_abc', 'hmac_secret' => 'hmac_secret_value',
-            'card_integration_id' => '4569876', 'active' => true,
-        ]);
-        $this->actingAs($owner)->post(route('admin.finance.banks.store'), [
-            'bank_name' => 'بنك مسقط', 'opening_balance' => 0, 'opening_date' => '2027-01-01',
-        ])->assertSessionHasNoErrors();
-
-        return [$shop, $owner, $rose];
-    }
-
-    /** بيعةُ موقعٍ بالبطاقة اليوم (#168): زبونٌ يدفع ويصل إشعارُ Paymob الموقَّع ⇒ في التسوية */
-    private function newSale(int $qty = 1, ?Business $shop = null): StorePaymentIntent
-    {
-        $shop ??= $this->shop;
-        Http::fake(['oman.paymob.com/*' => Http::response(['client_secret' => 'csk_x'], 201)]);
-        $this->postJson('/s/'.$shop->site_slug.'/checkout', [
-            'items' => [['id' => Product::where('business_id', $shop->id)->value('id'), 'qty' => $qty]],
-            'name' => 'زبون', 'phone' => '95000001', 'fulfil' => 'pickup', 'date' => '2027-02-12', 'pay' => 'card',
-        ])->assertOk();
-
-        $intent = StorePaymentIntent::where('business_id', $shop->id)->latest('id')->firstOrFail();
-        $obj = [
-            'amount_cents' => 20000 * $qty, 'created_at' => '2027-02-10T10:00:10.100000', 'currency' => 'OMR',
-            'error_occured' => false, 'has_parent_transaction' => false, 'id' => 990000 + $intent->id,
-            'integration_id' => 4569876, 'is_3d_secure' => true, 'is_auth' => false, 'is_capture' => false,
-            'is_refunded' => false, 'is_standalone_payment' => true, 'is_voided' => false,
-            'order' => ['id' => 770000 + $intent->id, 'merchant_order_id' => $intent->reference], 'owner' => 4705,
-            'pending' => false, 'source_data' => ['pan' => '2346', 'sub_type' => 'Visa', 'type' => 'card'], 'success' => true,
-        ];
-        $this->postJson('/webhooks/paymob?hmac='.Paymob::signature($obj, 'hmac_secret_value'), ['obj' => $obj])->assertOk();
-
-        return $intent->fresh();
-    }
-
-    /**
-     * بيعةُ موقعٍ بالبطاقة قبل #168 — كما رحّلها الإصدارُ السابق حرفًا: يُدان
-     * البنكُ بإجماليّها يومَ البيع (`Bank::leaf` وإلّا «البنك»)، والنيّةُ مدفوعة.
-     */
-    private function oldSale(float $amount = 20, ?int $bankAccountId = null): StorePaymentIntent
-    {
-        $branch = Branch::where('business_id', $this->shop->id)->value('id');
-        $order = Order::forceCreate([
-            'business_id' => $this->shop->id, 'number' => 'OLD-'.Order::count(), 'channel' => 'website', 'payment_method' => 'بطاقة',
-            'payment_status' => 'مدفوع', 'status' => 'مكتمل', 'subtotal' => $amount, 'discount' => 0, 'tax' => 0, 'delivery_fee' => 0,
-            'total' => $amount, 'branch_id' => $branch, 'ordered_at' => now()->subDays(3), 'customer_name' => 'زبون', 'balance_due' => 0, 'paid_after_sale' => 0,
-        ]);
-        OrderItem::forceCreate(['order_id' => $order->id, 'product_id' => $this->rose->id, 'name' => 'باقة ورد', 'price' => $amount, 'quantity' => 1, 'total' => $amount, 'cost' => 0]);
-        Ledger::post($this->shop->id, 'مبيعات '.$order->number, [
-            ['account' => Bank::leaf($this->shop->id, $bankAccountId) ?? 'bank', 'debit' => $amount],
-            ['account' => 'sales_website', 'credit' => $amount],
-        ], now()->subDays(3), Books::SALE, $branch, $this->owner->id, $order);
-
-        return StorePaymentIntent::forceCreate([
-            'business_id' => $this->shop->id, 'reference' => 'OLD-INTENT-'.$order->id, 'payload' => '{}', 'amount' => $amount,
-            'status' => StorePaymentIntent::PAID, 'provider_transaction_id' => 'OLD-TX-'.$order->id, 'order_id' => $order->id, 'paid_at' => now()->subDays(3),
-        ]);
-    }
-
-    /** رابطُ دفعٍ دُفع — يُكتب تحصيلُه في التسوية كما يكتبه إشعارُ Paymob */
-    private function paidLink(float $amount = 30): CustomerPaymentLink
-    {
-        $customer = Customer::create(['business_id' => $this->shop->id, 'name' => 'عميل', 'phone' => '9500'.random_int(1000, 9999)]);
-        $link = CustomerPaymentLink::create([
-            'business_id' => $this->shop->id, 'customer_id' => $customer->id, 'reference' => 'pay-'.uniqid(),
-            'amount' => $amount, 'currency' => 'OMR', 'status' => CustomerPaymentLink::PENDING, 'provider_link_id' => '1',
-        ]);
-        PaymentLinks::settle($link, 'TX-'.$link->id);
-
-        return $link->fresh();
-    }
-
-    private function key(StorePaymentIntent|CustomerPaymentLink $p): string
-    {
-        return ($p instanceof StorePaymentIntent ? 'intent:' : 'link:').$p->id;
-    }
-
-    private function settle(array $payments, float $fee, float $net, array $extra = []): PaymobSettlement
-    {
-        return PaymobSettlements::record($this->shop->id, [
-            'items' => array_map(fn ($p) => $this->key($p), $payments), 'fee' => $fee, 'net' => $net, 'settled_on' => '2027-02-13',
-        ] + $extra, $this->owner->id);
-    }
-
-    /** مالُ البنك كلُّه: كلُّ أوراقه */
-    private function bank(?int $shop = null): float
-    {
-        return round(Bank::total($shop ?? $this->shop->id), 3);
-    }
-
-    private function clearing(?int $shop = null): float
-    {
-        return round(Ledger::balance($shop ?? $this->shop->id, 'paymob_clearing'), 3);
-    }
-
-    private function fees(): float
-    {
-        return round(Ledger::balance($this->shop->id, 'payment_gateway_fees'), 3);
-    }
-
-    /** بصمةُ كلِّ قيدٍ وسطرٍ حتى رقمٍ — والعكسُ فيها: التسويةُ لا تعكس شيئًا */
-    private function history(int $upto): string
-    {
-        return md5(json_encode([
-            DB::table('journal_entries')->where('id', '<=', $upto)->orderBy('id')
-                ->get(['id', 'business_id', 'number', 'entry_date', 'source', 'sourceable_type', 'sourceable_id', 'posted', 'reverses_id', 'reversed_at']),
-            DB::table('journal_lines')->where('journal_entry_id', '<=', $upto)->orderBy('id')->get(['id', 'journal_entry_id', 'account_id', 'debit', 'credit']),
-        ]));
     }
 
     /* ═══════════ ١ · أين مالُ كلِّ مدفوعة ═══════════ */
@@ -377,6 +233,20 @@ class APaymobPayoutNeverCountsTheBankTwiceTest extends TestCase
         $this->assertSame([0.0, 38.8], [$this->clearing(), $this->bank()]);
     }
 
+    /** والقاعدةُ نفسُها تردّ سطرًا ثانيًا للمدفوعة — ولو تخطّى كودٌ فحصَه */
+    public function test_the_database_refuses_a_second_line_for_one_payment(): void
+    {
+        $a = $this->newSale();
+        $this->settle([$a], 0.6, 19.4);
+        $settlement = PaymobSettlement::sole();
+
+        $this->expectException(QueryException::class);
+        DB::table('paymob_settlement_items')->insert([
+            'business_id' => $this->shop->id, 'paymob_settlement_id' => $settlement->id, 'store_payment_intent_id' => $a->id,
+            'source' => $this->key($a), 'amount' => 20, 'booked' => 'clearing', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
     public function test_the_payout_must_add_up_to_the_payments_chosen(): void
     {
         $a = $this->newSale();
@@ -509,12 +379,5 @@ class APaymobPayoutNeverCountsTheBankTwiceTest extends TestCase
         $this->post(route('admin.finance.paymobSettlements.retry', $theirHeld->id))->assertNotFound();
         $this->post(route('admin.finance.paymobSettlements.cancel', $theirHeld->id))->assertNotFound();
         $this->assertSame(PaymobSettlements::HELD, $theirHeld->fresh()->status);
-    }
-
-    private function settleFor(int $shop, array $payments, float $fee, float $net): PaymobSettlement
-    {
-        return PaymobSettlements::record($shop, [
-            'items' => array_map(fn ($p) => $this->key($p), $payments), 'fee' => $fee, 'net' => $net, 'settled_on' => '2027-02-13',
-        ], null);
     }
 }

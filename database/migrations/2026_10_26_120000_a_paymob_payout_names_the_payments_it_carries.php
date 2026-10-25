@@ -25,8 +25,14 @@ use Illuminate\Support\Facades\Schema;
  * ═══ والحالُ ═══
  *
  * `posted` رُحّلت، `held` حُفظت ولم تُرحَّل لأنّ حالَ مدفوعةٍ فيها غيرُ مؤكَّد
- * (`hold_reason`)، `cancelled` أُلغيت قبل الترحيل. والصفوفُ القائمة كلُّها
- * مرحَّلة — فالافتراضيّ `posted`.
+ * (`hold_reason`)، `cancelled` أُلغيت قبل الترحيل — والكودُ الجديد يكتب الحالَ
+ * صراحةً دائمًا.
+ *
+ * و`legacy` هو **الافتراضيّ**: صفٌّ لم يقل حالَه كتبه كودٌ لا يسمّي المدفوعات —
+ * كلُّ صفٍّ قائمٍ ساعةَ الهجرة، وكلُّ صفٍّ يكتبه إصدارٌ أقدم إن رُجع إليه بعدها.
+ * تسويةٌ رُحّلت بثلاثة أرقام، ولا يُعرف ما حملته. فلا تُعدّ مدفوعةٌ دُفعت قبلها
+ * «تنتظر» حتّى يُحدَّد ما حملته (`PaymobSettlements::attribute`) — ولا يُخترع
+ * ذلك من تشابه مبلغٍ أو تاريخ.
  *
  * إضافةٌ لا غير: جدولٌ جديد وعمودان. الكودُ السابق لا يقرؤها ولا يحتاجها، ولا
  * قيدَ ولا صفَّ قائمًا يتغيّر.
@@ -36,7 +42,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('paymob_settlements', function (Blueprint $table) {
-            $table->string('status', 16)->default('posted')->after('net');
+            $table->string('status', 16)->default('legacy')->after('net');
             $table->string('hold_reason', 500)->nullable()->after('status');
         });
 
@@ -52,10 +58,12 @@ return new class extends Migration
             $table->string('source', 40);
 
             $table->decimal('amount', 12, 3);
-            // أين كان مالُها ساعةَ التسوية: clearing · bank · unknown
+            // أين كان مالُها ساعةَ التسوية: clearing · bank · unknown — أو legacy: حملتها تسويةٌ قديمة بقرار صاحب المتجر
             $table->string('booked', 16);
             $table->foreignId('account_id')->nullable()->index()->constrained()->nullOnDelete();
             $table->string('reason', 255)->nullable();
+            // ومن قرّر أنّ تسويةً قديمةً حملتها (`legacy`) — قرارُ صاحب المتجر لا الكود
+            $table->foreignId('decided_by')->nullable()->index()->constrained('users')->nullOnDelete();
             $table->timestamps();
 
             $table->index(['business_id', 'paymob_settlement_id']);

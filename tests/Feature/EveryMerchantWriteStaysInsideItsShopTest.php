@@ -162,6 +162,8 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['روابط الدفع', 'post', 'admin.finance.paymentLinks.cancel', ['id' => 'payment_link']],
                 ['روابط الدفع', 'post', 'admin.finance.paymobSettlements.retry', ['id' => 'paymob_settlement']],
                 ['روابط الدفع', 'post', 'admin.finance.paymobSettlements.cancel', ['id' => 'paymob_settlement']],
+                ['روابط الدفع', 'post', 'admin.finance.paymobSettlements.attribute', ['id' => 'paymob_settlement'], [], ['items' => ['link:1'], 'note' => 'كشف Paymob']],
+                ['روابط الدفع', 'post', 'admin.finance.paymobSettlementItems.remove', ['id' => 'paymob_settlement_item']],
                 ['المراجعات', 'post', 'admin.marketing.reviews.status', ['id' => 'review']],
                 ['المراجعات', 'post', 'admin.marketing.reviews.reply', ['id' => 'review']],
                 ['المراجعات', 'delete', 'admin.marketing.reviews.destroy', ['id' => 'review']],

@@ -151,3 +151,62 @@ describe('التسويةُ المعلّقة', () => {
         expect(screen.queryByTestId('paymob-settlement-retry')).toBeNull();
     });
 });
+
+describe('تحويلٌ سُجّل قبل التحديث', () => {
+    const legacy = {
+        id: 5, settled_on: '2027-02-11', gross: 30, fee: 0.9, net: 29.1, bank: 'بنك مسقط', reference: 'OLD-PMB', notes: null, items: 0,
+        status: 'legacy', hold_reason: null, open: 30, attributed: [],
+    };
+    const suspects: Payout[] = [
+        payout({ key: 'link:1', type: 'link', id: 1, amount: 30, label: 'رابط دفع — تحصيل RC-1', booked: 'unknown', reason: 'ربما حملها تحويلٌ سُجّل قبل التحديث', legacy: [5] }),
+        payout({ key: 'link:2', type: 'link', id: 2, amount: 20, label: 'رابط دفع — تحصيل RC-2', booked: 'unknown', reason: 'ربما حملها تحويلٌ سُجّل قبل التحديث', legacy: [5] }),
+        payout({ key: 'intent:9', id: 9, amount: 20, label: 'طلب الموقع W-9', booked: 'clearing', legacy: [] }),
+    ];
+
+    it('يقول إنّه لا يسمّي مدفوعاته وكم بقي منه غيرَ محدَّد', () => {
+        page({ settlements: [legacy], payouts: suspects });
+
+        const status = screen.getByTestId('paymob-settlement-status');
+        expect(status).toHaveTextContent('سُجّلت قبل التحديث — لا تسمّي مدفوعاتها');
+        expect(within(status).getByTestId('paymob-settlement-open')).toHaveTextContent('30.000');
+    });
+
+    it('ويُحدَّد ما حمله ممّا دُفع قبله وحده، بمستند، ولا يتجاوز ما بقي', () => {
+        page({ settlements: [legacy], payouts: suspects });
+        fireEvent.click(screen.getByTestId('paymob-settlement-name'));
+        const form = screen.getByTestId('paymob-legacy-form');
+
+        // ما دُفع بعده لا يُعرض
+        expect(within(form).getAllByTestId('paymob-legacy-pick')).toHaveLength(2);
+        expect(within(form).queryByRole('checkbox', { name: 'طلب الموقع W-9' })).toBeNull();
+
+        fireEvent.click(within(form).getByRole('checkbox', { name: 'رابط دفع — تحصيل RC-1' }));
+        expect(within(form).getByTestId('paymob-legacy-submit')).toBeDisabled();   // بلا مستند
+        fireEvent.change(within(form).getByRole('textbox', { name: 'ما استندتَ إليه' }), { target: { value: 'كشف Paymob 11 فبراير' } });
+        expect(within(form).getByTestId('paymob-legacy-submit')).toBeEnabled();
+
+        fireEvent.click(within(form).getByRole('checkbox', { name: 'رابط دفع — تحصيل RC-2' }));
+        expect(screen.getByTestId('paymob-legacy-over')).toHaveTextContent('أكبر مما بقي');
+        expect(within(form).getByTestId('paymob-legacy-submit')).toBeDisabled();
+    });
+
+    it('وتحديدٌ خاطئ يُترك بتأكيدٍ من النظام', async () => {
+        page({
+            settlements: [{ ...legacy, open: 0, attributed: [{ id: 41, label: 'رابط دفع — تحصيل RC-1', amount: 30, reason: 'كشف Paymob', by: 'المالك', at: '2027-02-12 09:00' }] }],
+            payouts: suspects,
+        });
+        fireEvent.click(screen.getByTestId('paymob-settlement-name'));
+        expect(screen.getByTestId('paymob-legacy-attributed')).toHaveTextContent('كشف Paymob · المالك');
+
+        fireEvent.click(screen.getByTestId('paymob-legacy-undo'));
+        fireEvent.click(await screen.findByRole('button', { name: 'ترك التحديد' }));
+        await vi.waitFor(() => expect(vi.mocked(router.post).mock.calls[0]?.[0]).toBe('/admin.finance.paymobSettlementItems.remove/41'));
+    });
+
+    it('والتسجيلُ الموقوفُ من المنصّة يقول ذلك ولا يفتح نافذةَ التسوية', () => {
+        page({ payouts_paused: true });
+
+        expect(screen.getByTestId('paymob-settle-paused')).toHaveTextContent('موقوف مؤقتًا');
+        expect(screen.getByTestId('paymob-settle-open')).toBeDisabled();
+    });
+});

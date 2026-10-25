@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPaymentLink;
 use App\Models\PaymobSettlement;
+use App\Models\PaymobSettlementItem;
 use App\Support\Demo;
 use App\Support\PaymentLinks;
 use App\Support\PaymobSettlements;
@@ -69,6 +70,7 @@ class PaymentLinkController extends Controller
             'clearing' => PaymobSettlements::clearing($bid),
             // ما ينتظر أن يُسوّى، وأين مالُ كلٍّ منه — يختار منه التاجرُ ما حمله التحويل
             'payouts' => PaymobSettlements::candidates($bid),
+            'payouts_paused' => PaymobSettlements::paused(),
             'settlements' => PaymobSettlement::where('business_id', $bid)->with('bankAccount')->withCount('items')
                 ->latest('settled_on')->latest('id')->limit(50)->get()
                 ->map(fn (PaymobSettlement $s) => [
@@ -83,7 +85,7 @@ class PaymentLinkController extends Controller
                     'status' => $s->status,
                     'hold_reason' => $s->hold_reason,
                     'items' => (int) $s->items_count,
-                ])->all(),
+                ] + ($s->status === PaymobSettlements::LEGACY ? PaymobSettlements::legacyPanel($s) : []))->all(),
             'bankAccounts' => BankAccount::where('business_id', $bid)->where('active', true)
                 ->orderByDesc('is_primary')->orderBy('id')
                 ->get(['id', 'label', 'bank_name', 'account_name', 'iban', 'is_primary'])
@@ -246,6 +248,48 @@ class PaymentLinkController extends Controller
         return back()->with('toast', $settlement->status === PaymobSettlements::POSTED
             ? ['msg' => __('رُحّلت التسوية'), 'type' => 'success']
             : ['msg' => __('ما زالت التسوية معلّقة — انظر السبب'), 'type' => 'warning']);
+    }
+
+    /**
+     * تحويلٌ سُجّل قبل التحديث لا يسمّي مدفوعاته: صاحبُ المتجر يحدّد ما حمله من
+     * كشف Paymob، ويكتب ما استند إليه. لا قيدَ يُكتب — انظر `PaymobSettlements::attribute`.
+     */
+    public function attributeSettlement(Request $request, int $id)
+    {
+        // تسويةُ متجرٍ آخر ٤٠٤ — قبل الـtry: `ModelNotFoundException` نفسُها RuntimeException
+        PaymobSettlement::where('business_id', $this->bid())->findOrFail($id);
+
+        $data = $request->validate([
+            'items' => ['required', 'array', 'min:1', 'max:300'],
+            'items.*' => ['required', 'string', 'regex:/^(intent|link):[0-9]+$/'],
+            'note' => ['required', 'string', 'min:5', 'max:255'],
+        ], [], [
+            'items' => __('مدفوعات التحويل'),
+            'items.*' => __('مدفوعات التحويل'),
+            'note' => __('ما استندتَ إليه'),
+        ]);
+
+        try {
+            PaymobSettlements::attribute($this->bid(), $id, $data['items'], $data['note'], auth()->id());
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['items' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('حُدّد ما حمله التحويل القديم'), 'type' => 'success']);
+    }
+
+    /** تراجعٌ عن تحديدٍ خاطئ لما حمله تحويلٌ قديم — تعود المدفوعةُ للمراجعة */
+    public function unattributeSettlementItem(int $id)
+    {
+        PaymobSettlementItem::where('business_id', $this->bid())->findOrFail($id);
+
+        try {
+            PaymobSettlements::unattribute($this->bid(), $id);
+        } catch (RuntimeException $e) {
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
+        }
+
+        return back()->with('toast', ['msg' => __('تُرك التحديد — عادت المدفوعة إلى المراجعة'), 'type' => 'success']);
     }
 
     /** تسويةٌ معلّقة تُلغى قبل ترحيلها — وتعود مدفوعاتُها لتُختار */

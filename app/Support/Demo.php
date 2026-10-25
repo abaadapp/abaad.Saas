@@ -286,6 +286,24 @@ class Demo
         return 0;
     }
 
+    /**
+     * فرعُ الصندوق في طلبه هو — يضعه `BindPosBranch` على الطلب لا في الجلسة.
+     *
+     * كان يُكتب في `current_branch`، والجلسةُ واحدةٌ بين تبويب الصندوق وتبويب
+     * الإدارة. فيفتح المالكُ الصندوقَ على جهاز الخوير، ثمّ يعود إلى لوحته فيجدها
+     * كلَّها على الخوير: مبيعاتُ موظّفي السيب «اختفت» ولم يلمسها أحد (#165).
+     *
+     * فصار للطلب وحده: كلُّ ما يقرؤه الصندوق — رصيدُ ما يبيع، وفرعُ البيعة،
+     * والدرجُ، وقائمةُ طلباته — يقرأ فرعَ الجهاز كما كان، واختيارُ المالك في
+     * لوحته يبقى له.
+     */
+    private const TILL_BRANCH = 'abaad.till_branch';
+
+    public static function bindTillBranch(int $branchId): void
+    {
+        request()->attributes->set(self::TILL_BRANCH, $branchId);
+    }
+
     /** الفرع الحالي المختار (من الجلسة) — null = كل الفروع */
     /**
      * الفرعُ المختار — إن كان ما يزال فرعًا في هذا المتجر.
@@ -307,7 +325,7 @@ class Demo
      */
     public static function currentBranchId(): ?int
     {
-        $id = (int) session('current_branch');
+        $id = (int) (request()->attributes->get(self::TILL_BRANCH) ?? session('current_branch'));
 
         // ولا تحرس هذه سلوكًا — `whereKey(0)` تردّ فارغًا على كلّ حال. تمنع
         // استعلامًا في أكثر الحالات شيوعًا: «كل الفروع»، وهو اللاشيء في الجلسة.

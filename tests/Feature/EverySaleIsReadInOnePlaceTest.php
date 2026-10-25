@@ -456,9 +456,12 @@ class EverySaleIsReadInOnePlaceTest extends TestCase
         $soharInvoice = $this->invoice(10, null, $this->sohar);
 
         /*
-         * والصندوقُ المربوط بفرعٍ يكتب فرعَه في الجلسة (`BindPosBranch`) —
-         * فالسجلُّ بعد بيعةٍ على جهاز صحار يقول إنّه على صحار، ولا يصمت.
+         * والفرعُ المختار في الترويسة يُقال فوق السجلّ، ولا يصمت.
+         *
+         * يُختار بمبدّل الفروع لا بفتح الصندوق: الصندوقُ كان يكتب فرعَ جهازه
+         * في جلسة الإدارة (#165)، ولا يُتّكل على ذلك هنا.
          */
+        $this->actingAs($this->owner)->get(route('admin.branch.switch', $this->sohar->id));
         $props = $this->register();
         $this->assertSame('صحار', $props['branch']);
         $this->assertEqualsCanonicalizing(['order:'.$sohar->id, 'invoice:'.$soharInvoice->id], array_column($props['rows'], 'key'));
@@ -587,6 +590,25 @@ class EverySaleIsReadInOnePlaceTest extends TestCase
         $this->assertSame([20.0, 20.0, 0.0], [$first['sales'], $first['collected'], $first['outstanding']]);
         $second = $this->register(['q' => 'CR-1'])['totals'];
         $this->assertSame([15.0, 5.0, 10.0], [$second['sales'], $second['collected'], $second['outstanding']]);
+    }
+
+    /**
+     * وطلبُ الموقع المدفوع ببطاقة يقع في «Paymob تحت التسوية» لا في البنك (#168).
+     *
+     * والسجلُّ يقرأ المستندَ لا الحساب: هو محصَّلٌ من الزبون مرّةً واحدة، ولا
+     * يصير ذمّةً عليه وإن لم يصل المالُ إلى البنك بعد — ذاك سؤالُ التسوية.
+     */
+    public function test_a_website_card_sale_held_by_paymob_is_collected_once_and_owes_nothing(): void
+    {
+        $order = $this->websiteOrder(30);
+
+        $this->assertTrue(Books::heldByPaymob($order), 'لم يقع الطلبُ في حساب Paymob — تغيّر قيدُ الموقع');
+
+        $totals = $this->register()['totals'];
+
+        $this->assertSame([1, 30.0, 30.0, 0.0], [$totals['count'], $totals['sales'], $totals['collected'], $totals['outstanding']]);
+        $this->assertSame(0.0, round(Ledger::balance($this->shop->id, 'receivable'), 3));
+        $this->assertSame(30.0, round(Ledger::balance($this->shop->id, 'paymob_clearing'), 3));
     }
 
     /* ═══════════ O — التصدير بالمرشِّحات نفسِها ═══════════ */

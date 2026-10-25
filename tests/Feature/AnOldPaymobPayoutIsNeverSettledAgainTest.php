@@ -256,6 +256,25 @@ class AnOldPaymobPayoutIsNeverSettledAgainTest extends TestCase
         $this->assertSame(PaymobSettlements::IN_CLEARING, $this->booked()[$this->key($ours)]);
     }
 
+    /**
+     * وكودٌ لا يقول حالَ التسوية لا يكتبها بالنموذج — الحارسُ نفسُه الذي يُبقي
+     * الإصدارَ الأقدم (#170) عن التسوية بمبلغٍ واحد إن رُجع إليه. والاستعادةُ تكتب
+     * بلا نموذج فتمرّ، ويُقرأ صفُّها قديمًا.
+     */
+    public function test_code_that_does_not_say_a_settlements_status_cannot_write_one(): void
+    {
+        try {
+            PaymobSettlement::create(['business_id' => $this->shop->id, 'gross' => 1, 'fee' => 0, 'net' => 1, 'settled_on' => now()->toDateString()]);
+            $this->fail('كُتبت تسويةٌ لا تقول حالَها');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('متوقّف في هذا الإصدار', $e->getMessage());
+        }
+        $this->assertSame(0, PaymobSettlement::count());
+
+        DB::table('paymob_settlements')->insert(['business_id' => $this->shop->id, 'gross' => 1, 'fee' => 0, 'net' => 1, 'settled_on' => now()->toDateString(), 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame(PaymobSettlements::LEGACY, PaymobSettlement::sole()->status);
+    }
+
     /* ═══════════ ٤ · الإيقافُ المؤقّت ═══════════ */
 
     public function test_while_paused_nothing_is_settled_rechecked_or_named_but_a_hold_can_be_cancelled(): void

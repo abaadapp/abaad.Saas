@@ -9139,5 +9139,6 @@
     "حُدّد ما حمله التحويل القديم": "What the old payout carried was saved",
     "تُرك التحديد — عادت المدفوعة إلى المراجعة": "Decision removed — the payment is back under review",
     "رقم كشف Paymob أو تاريخه": "Paymob statement number or date",
-    "ترك هذا التحديد؟ تعود المدفوعة إلى المراجعة، ولا يُكتب في الدفتر شيء.": "Remove this decision? The payment goes back under review, and nothing is written to the books."
+    "ترك هذا التحديد؟ تعود المدفوعة إلى المراجعة، ولا يُكتب في الدفتر شيء.": "Remove this decision? The payment goes back under review, and nothing is written to the books.",
+    "تسجيل تسويات Paymob متوقّف في هذا الإصدار — القاعدة تسمّي مدفوعات التحويلات، فيُسجَّل التحويل حين يعود الإصدار الذي يسمّيها. لم يُكتب شيء.": "Recording Paymob settlements is stopped in this version — the database names payout payments, so the payout is recorded once the version that names them is back. Nothing was written."
 }

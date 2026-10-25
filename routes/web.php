@@ -1617,6 +1617,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/finance/payment-links/{id}/cancel', [PaymentLinkController::class, 'cancel'])
         ->whereNumber('id')->name('finance.paymentLinks.cancel');
     Route::post('/finance/paymob-settlements', [PaymentLinkController::class, 'settle'])->name('finance.paymobSettlements.store');
+    Route::get('/finance/paymob-settlements/candidates', [PaymentLinkController::class, 'payoutCandidates'])->name('finance.paymobSettlements.candidates');
     Route::post('/finance/paymob-settlements/{id}/retry', [PaymentLinkController::class, 'retrySettlement'])
         ->whereNumber('id')->name('finance.paymobSettlements.retry');
     Route::post('/finance/paymob-settlements/{id}/cancel', [PaymentLinkController::class, 'cancelSettlement'])

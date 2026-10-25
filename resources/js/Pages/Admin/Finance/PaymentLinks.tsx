@@ -68,6 +68,10 @@ interface Props extends PaymentLinksPanel {
     customers: Option[];
     clearing: number;
     payouts?: Payout[];
+    /** مؤشّرُ الدفعة التالية ممّا ينتظر — `null` حين عُرض كلُّه */
+    payouts_next?: string | null;
+    /** كم ينتظر في كلّ الدفعات */
+    payouts_waiting?: number;
     /** التسجيلُ موقوفٌ مؤقّتًا من المنصّة */
     payouts_paused?: boolean;
     settlements: Settlement[];
@@ -92,8 +96,31 @@ const FILTERS: Array<{ key: PaymentLinkRow['status'] | null; label: string }> = 
 export default function PaymentLinksPage() {
     const props = usePage<PageProps<Props>>().props;
     const { links, ready, can, can_cancel, settings_url, status, counts, customers, clearing, settlements, bankAccounts, context } = props;
-    const payouts = props.payouts ?? [];
     const t = useTranslate();
+    // ما ينتظر يُعرض دفعةً بعد دفعة: الأولى مع الصفحة، والبقيّةُ بطلبه — ويُعاد من الأولى كلّما تجدّدت
+    const [later, setLater] = useState<{ rows: Payout[]; next: string | null; loading: boolean }>({ rows: [], next: null, loading: false });
+    useEffect(() => setLater({ rows: [], next: null, loading: false }), [props.payouts]);
+    const first = props.payouts ?? [];
+    const payouts = [...first, ...later.rows.filter((p) => !first.some((f) => f.key === p.key))];
+    const nextPayouts = later.rows.length > 0 ? later.next : (props.payouts_next ?? null);
+    const more: MorePayouts = {
+        shown: payouts.length,
+        waiting: Math.max(props.payouts_waiting ?? payouts.length, payouts.length),
+        loading: later.loading,
+        load: nextPayouts
+            ? () => {
+                  setLater((l) => ({ ...l, loading: true }));
+                  fetch(route('admin.finance.paymobSettlements.candidates', { after: nextPayouts }), {
+                      headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                  })
+                      .then((r) => (r.ok ? r.json() : Promise.reject()))
+                      .then((d: { payouts?: Payout[]; next?: string | null }) =>
+                          setLater((l) => ({ rows: [...l.rows, ...(d.payouts ?? [])], next: d.next ?? null, loading: false })),
+                      )
+                      .catch(() => setLater((l) => ({ ...l, loading: false })));
+              }
+            : null,
+    };
     // نافذةُ التأكيد من النظام لا من المتصفّح — انظر ConfirmDialog
     const [ask, confirmDialog] = useConfirm();
     const m = (v: number) => money(v, context!.currency);
@@ -332,8 +359,8 @@ export default function PaymentLinksPage() {
             </section>
 
             <CreateDialog open={creating} onClose={() => setCreating(false)} customers={customers} />
-            <SettleDialog open={settling} onClose={() => setSettling(false)} payouts={payouts} bankAccounts={bankAccounts} />
-            {naming && <LegacyDialog settlement={naming} payouts={payouts} paused={!!props.payouts_paused} onClose={() => setNaming(null)} ask={ask} />}
+            <SettleDialog open={settling} onClose={() => setSettling(false)} payouts={payouts} more={more} bankAccounts={bankAccounts} />
+            {naming && <LegacyDialog settlement={naming} payouts={payouts} more={more} paused={!!props.payouts_paused} onClose={() => setNaming(null)} ask={ask} />}
             {confirmDialog}
         </AdminLayout>
     );
@@ -431,12 +458,14 @@ function CreateDialog({ open, onClose, customers }: { open: boolean; onClose: ()
 function LegacyDialog({
     settlement,
     payouts,
+    more,
     paused,
     onClose,
     ask,
 }: {
     settlement: Settlement;
     payouts: Payout[];
+    more: MorePayouts;
     paused: boolean;
     onClose: () => void;
     ask: (o: { message: string; action?: string; danger?: boolean }) => Promise<boolean>;
@@ -495,6 +524,7 @@ function LegacyDialog({
                             ))}
                         </div>
                     )}
+                    <MorePayoutsButton more={more} />
                     <Field label="ما استندتَ إليه" hint="رقم كشف Paymob أو تاريخه" error={form.errors.note}>
                         <Input value={form.data.note} onChange={(e) => form.setData('note', e.target.value)} aria-label={t('ما استندتَ إليه')} />
                     </Field>
@@ -568,7 +598,29 @@ const BOOKED: Array<{ key: Payout['booked']; title: string; hint: string }> = [
  * البنك، والخادمُ يتحقّق أنّ الإجماليّ = الصافي + الرسوم. وكلُّ مدفوعةٍ تقول
  * أين مالُها: فلا يدخل مالُ بيعةٍ قديمةٍ البنكَ مرّتين.
  */
-function SettleDialog({ open, onClose, payouts, bankAccounts }: { open: boolean; onClose: () => void; payouts: Payout[]; bankAccounts: Option[] }) {
+/** ما لم يُعرض بعد ممّا ينتظر — زرٌّ يجلب الدفعة التالية، فلا تختفي مدفوعةٌ خلف الأولى */
+interface MorePayouts {
+    shown: number;
+    waiting: number;
+    loading: boolean;
+    load: (() => void) | null;
+}
+
+function MorePayoutsButton({ more }: { more: MorePayouts }) {
+    const t = useTranslate();
+    if (!more.load) return null;
+
+    return (
+        <div className="flex items-center justify-between gap-2 text-[12px] text-[#6b7280]" data-testid="paymob-payouts-more">
+            <span>{t('يُعرض :n من :w مدفوعة تنتظر', { n: String(more.shown), w: String(more.waiting) })}</span>
+            <Button type="button" variant="outline" size="sm" onClick={more.load} disabled={more.loading} data-testid="paymob-payouts-more-load">
+                {t('عرض المزيد')}
+            </Button>
+        </div>
+    );
+}
+
+function SettleDialog({ open, onClose, payouts, more, bankAccounts }: { open: boolean; onClose: () => void; payouts: Payout[]; more: MorePayouts; bankAccounts: Option[] }) {
     const t = useTranslate();
     const form = useForm<{ items: string[]; fee: string; net: string; settled_on: string; bank_account_id: string; reference: string; notes: string }>({
         items: [],
@@ -650,6 +702,7 @@ function SettleDialog({ open, onClose, payouts, bankAccounts }: { open: boolean;
                                 </fieldset>
                             );
                         })}
+                        <MorePayoutsButton more={more} />
                         {form.errors.items && <p className="text-[12px] text-[#b91c1c]">{form.errors.items}</p>}
                         {picked.some((p) => p.booked === 'bank') && (
                             <p className="rounded-md bg-[#eff6ff] p-2 text-[12px] text-[#1e40af]" data-testid="paymob-settle-bank-notice">

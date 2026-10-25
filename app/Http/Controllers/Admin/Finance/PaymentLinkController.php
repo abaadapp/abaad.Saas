@@ -69,7 +69,10 @@ class PaymentLinkController extends Controller
                 ->map(fn (Customer $c) => ['value' => (string) $c->id, 'label' => trim($c->name.($c->phone ? ' — '.$c->phone : ''))])->all(),
             'clearing' => PaymobSettlements::clearing($bid),
             // ما ينتظر أن يُسوّى، وأين مالُ كلٍّ منه — يختار منه التاجرُ ما حمله التحويل
-            'payouts' => PaymobSettlements::candidates($bid),
+            'payouts' => ($page = PaymobSettlements::candidatesPage($bid))['rows'],
+            // والبقيّةُ دفعةً بعد دفعة — لا تختفي مدفوعةٌ خلف أقدمِ ثلاثمئة
+            'payouts_next' => $page['next'],
+            'payouts_waiting' => PaymobSettlements::waiting($bid),
             'payouts_paused' => PaymobSettlements::paused(),
             'settlements' => PaymobSettlement::where('business_id', $bid)->with('bankAccount')->withCount('items')
                 ->latest('settled_on')->latest('id')->limit(50)->get()
@@ -91,6 +94,14 @@ class PaymentLinkController extends Controller
                 ->get(['id', 'label', 'bank_name', 'account_name', 'iban', 'is_primary'])
                 ->map(fn (BankAccount $a) => ['value' => (string) $a->id, 'label' => $a->displayName()])->all(),
         ]);
+    }
+
+    /** الدفعةُ التالية ممّا ينتظر أن يُسوّى — بعد آخرِ صفٍّ عُرض (`after`) */
+    public function payoutCandidates(Request $request): JsonResponse
+    {
+        $page = PaymobSettlements::candidatesPage($this->bid(), $request->string('after')->toString() ?: null);
+
+        return response()->json(['payouts' => $page['rows'], 'next' => $page['next']]);
     }
 
     /** فواتيرُ عميلٍ عليها باقٍ — لاختيار فاتورة الرابط */
@@ -203,7 +214,7 @@ class PaymentLinkController extends Controller
     public function settle(Request $request)
     {
         $data = $request->validate([
-            'items' => ['required', 'array', 'min:1', 'max:300'],
+            'items' => ['required', 'array', 'min:1', 'max:'.PaymobSettlements::MAX_ITEMS],
             'items.*' => ['required', 'string', 'regex:/^(intent|link):[0-9]+$/'],
             'fee' => ['required', 'numeric', 'min:0'],
             'net' => ['required', 'numeric', 'gt:0'],
@@ -260,7 +271,7 @@ class PaymentLinkController extends Controller
         PaymobSettlement::where('business_id', $this->bid())->findOrFail($id);
 
         $data = $request->validate([
-            'items' => ['required', 'array', 'min:1', 'max:300'],
+            'items' => ['required', 'array', 'min:1', 'max:'.PaymobSettlements::MAX_ITEMS],
             'items.*' => ['required', 'string', 'regex:/^(intent|link):[0-9]+$/'],
             'note' => ['required', 'string', 'min:5', 'max:255'],
         ], [], [

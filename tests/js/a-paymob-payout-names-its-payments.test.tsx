@@ -210,3 +210,34 @@ describe('تحويلٌ سُجّل قبل التحديث', () => {
         expect(screen.getByTestId('paymob-settle-open')).toBeDisabled();
     });
 });
+
+/*
+ * وما ينتظر يُعرض دفعةً بعد دفعة: لا تختفي مدفوعةٌ خلف الأولى (كانت تُقطع عند
+ * 300 بلا تتمّة). الزرُّ يجلب التاليةَ بالمؤشّر ويضيفها إلى ما يُختار منه.
+ */
+describe('ما ينتظر يُعرض دفعةً بعد دفعة', () => {
+    it('بلا دفعةٍ تالية لا زرّ', () => {
+        page();
+        open();
+
+        expect(screen.queryByTestId('paymob-payouts-more')).toBeNull();
+    });
+
+    it('الدفعةُ التالية تُجلب بالمؤشّر وتُضاف إلى ما يُختار منه', async () => {
+        const next = payout({ key: 'link:9', type: 'link', id: 9, amount: 12, label: 'رابط دفع — تحصيل RC-9' });
+        const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            new Response(JSON.stringify({ payouts: [next], next: null }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        );
+        page({ payouts: [PAYOUTS[0]], payouts_next: '2027-02-10 10:00:00|intent|1', payouts_waiting: 2 });
+        const form = open();
+
+        expect(within(form).getByTestId('paymob-payouts-more')).toHaveTextContent('يُعرض 1 من 2 مدفوعة تنتظر');
+        fireEvent.click(within(form).getByTestId('paymob-payouts-more-load'));
+
+        expect(await within(form).findByText('رابط دفع — تحصيل RC-9')).toBeInTheDocument();
+        expect(JSON.stringify(fetched.mock.calls[0][0])).toContain('admin.finance.paymobSettlements.candidates');
+        expect(JSON.stringify(fetched.mock.calls[0][0])).toContain('2027-02-10 10:00:00|intent|1');
+        expect(within(form).queryByTestId('paymob-payouts-more')).toBeNull();
+        expect(within(screen.getByTestId('paymob-settle-group-clearing')).getAllByTestId('paymob-settle-pick')).toHaveLength(2);
+    });
+});

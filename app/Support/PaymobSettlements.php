@@ -119,25 +119,84 @@ final class PaymobSettlements
         return round(Ledger::balance($businessId, 'paymob_clearing'), 3);
     }
 
+    /** دفعةُ العرض الواحدة — حجمُ صفحةٍ لا سقفٌ على ما يُرى: البقيّةُ بـ`candidatesPage` */
+    public const BATCH = 300;
+
+    /** أكبرُ عددِ مدفوعاتٍ في تحويلٍ واحد — حارسُ طلبٍ لا حدٌّ ماليّ (يُفحص كلٌّ منها تحت قفل المتجر) */
+    public const MAX_ITEMS = 2000;
+
     /**
      * ما ينتظر أن يُسوّى: مدفوعاتُ Paymob المقبوضة التي لم تحملها تسويةٌ بعد،
-     * الأقدمُ أوّلًا، ومع كلٍّ أين مالُه.
+     * الأقدمُ أوّلًا، ومع كلٍّ أين مالُه. الدفعةُ الأولى — انظر `candidatesPage`.
      *
      * @return list<array{key: string, type: string, id: int, amount: float, label: string, paid_at: ?string, booked: string, account_id: ?int, reason: ?string}>
      */
-    public static function candidates(int $businessId, int $limit = 300): array
+    public static function candidates(int $businessId, int $limit = self::BATCH): array
+    {
+        return self::candidatesPage($businessId, null, $limit)['rows'];
+    }
+
+    /**
+     * ما ينتظر — دفعةً بعد دفعة، فلا تختفي مدفوعةٌ خلف أقدمِ ثلاثمئة.
+     *
+     * كان الحدُّ 300 لكلّ نوعٍ بلا تتمّة: متجرٌ تراكم عنده أكثرُ لا يرى الأحدثَ
+     * ولا يسوّيه حتّى يسوّي الأقدم. فصار الترتيبُ واحدًا للنوعين معًا (وقتُ
+     * الدفع، ثمّ النوع، ثمّ الرقم)، والمؤشّرُ `next` آخرُ صفٍّ في الدفعة: الدفعةُ
+     * التالية تبدأ بعده بالضبط. ومؤشّرٌ لا مفتاحَ إزاحة: مدفوعةٌ تُسوّى بين
+     * دفعتين لا تُزيح غيرَها فتُتخطّى.
+     *
+     * @return array{rows: list<array>, next: ?string}
+     */
+    public static function candidatesPage(int $businessId, ?string $after = null, int $limit = self::BATCH): array
+    {
+        $limit = max(1, $limit);
+        $open = fn (string $table, string $column, string $type) => DB::table($table.' as p')
+            ->where('p.business_id', $businessId)
+            ->where('p.status', 'paid')
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('paymob_settlement_items as s')->whereColumn('s.'.$column, 'p.id'))
+            ->selectRaw("'".$type."' as type, p.id as id, coalesce(p.paid_at, p.created_at) as at");
+
+        $cursor = self::cursor($after);
+        $page = DB::query()
+            ->fromSub($open('store_payment_intents', 'store_payment_intent_id', self::INTENT)->unionAll($open('customer_payment_links', 'customer_payment_link_id', self::LINK)), 'c')
+            ->when($cursor, fn ($q) => $q->where(fn ($w) => $w->where('at', '>', $cursor['at'])
+                ->orWhere(fn ($x) => $x->where('at', $cursor['at'])->where('type', '>', $cursor['type']))
+                ->orWhere(fn ($x) => $x->where('at', $cursor['at'])->where('type', $cursor['type'])->where('id', '>', $cursor['id']))))
+            ->orderBy('at')->orderBy('type')->orderBy('id')
+            ->limit($limit + 1)->get();
+
+        $more = $page->count() > $limit;
+        $page = $page->take($limit);
+        $last = $page->last();
+
+        return [
+            'rows' => $page->map(fn ($r) => self::classify($businessId, (string) $r->type, (int) $r->id))
+                ->sortBy(fn (array $r) => ($r['paid_at'] ?? '').'|'.$r['key'])
+                ->values()->all(),
+            'next' => $more && $last ? $last->at.'|'.$last->type.'|'.$last->id : null,
+        ];
+    }
+
+    /** كم ينتظر في كلّ الدفعات — للعرض «يُعرض س من ص» */
+    public static function waiting(int $businessId): int
     {
         $open = fn (string $table, string $column) => DB::table($table.' as p')
             ->where('p.business_id', $businessId)
             ->where('p.status', 'paid')
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('paymob_settlement_items as s')->whereColumn('s.'.$column, 'p.id'))
-            ->orderBy('p.paid_at')->orderBy('p.id')->limit($limit)->pluck('p.id');
+            ->count();
 
-        return collect()
-            ->merge($open('store_payment_intents', 'store_payment_intent_id')->map(fn ($id) => self::classify($businessId, self::INTENT, (int) $id)))
-            ->merge($open('customer_payment_links', 'customer_payment_link_id')->map(fn ($id) => self::classify($businessId, self::LINK, (int) $id)))
-            ->sortBy(fn (array $r) => ($r['paid_at'] ?? '').'|'.$r['key'])
-            ->values()->all();
+        return $open('store_payment_intents', 'store_payment_intent_id') + $open('customer_payment_links', 'customer_payment_link_id');
+    }
+
+    /** @return array{at: string, type: string, id: int}|null */
+    private static function cursor(?string $after): ?array
+    {
+        if ($after === null || ! preg_match('/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.\d+)?\|(intent|link)\|(\d+)$/', $after, $m)) {
+            return null;
+        }
+
+        return ['at' => $m[1], 'type' => $m[2], 'id' => (int) $m[3]];
     }
 
     /**

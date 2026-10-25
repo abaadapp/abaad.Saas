@@ -9230,5 +9230,7 @@
     "مدفوع جزئيًا": "Partially paid",
     "رقم العملية أو العميل أو الموظف": "Sale number, customer or employee",
     ":n عملية بيع سُجّلت قبل أن يُحفظ مصدرُ البيع — لا تظهر هنا، وتظهر في «جميع عمليات البيع» بمصدر «غير محدّدة».": ":n sales were recorded before the sales source was saved — they are not shown here; they appear in “All sales” with the source “Unspecified”.",
-    "غير مرتبط بحساب موظف": "Not linked to an employee account"
+    "غير مرتبط بحساب موظف": "Not linked to an employee account",
+    "عرض المزيد": "Show more",
+    "يُعرض :n من :w مدفوعة تنتظر": "Showing :n of :w waiting payments"
 }

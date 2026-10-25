@@ -8506,6 +8506,8 @@
     "سداد مستحقّات مكوّنات — ورقة ": "Component dues payment — settlement ",
     "استحقاق تسوية بوتيك — ورقة ": "Boutique settlement accrued — settlement ",
     "سداد تسوية بوتيك: ": "Boutique settlement payment: ",
+    "بند «:item» في ورقة تسوية البوتيك :number — لا يُلغى الطلب ولا يُغيَّر هذا البند بعد إصدارها، كي لا يبقى للبوتيك مستحقٌّ عن بيعٍ لم يتمّ. يُصحَّح ذلك بتسويةٍ مستقلّة مع البوتيك.": "Line \":item\" is on boutique settlement sheet :number — the order can't be cancelled and this line can't be changed after the sheet is issued, so the boutique isn't left owed for a sale that didn't happen. It is corrected with a separate settlement with the boutique.",
+    "تغيّرت مبيعات البوتيك في هذا الشهر قبل لحظة — افتح الكشف من جديد وراجعه قبل الإصدار.": "The boutique's sales for this month changed a moment ago — open the statement again and review it before issuing.",
     "نطاق ورقة البوتيك يُقرأ من فروع مبيعاتها — لا يُغيَّر يدويًّا.": "A boutique sheet's scope comes from the branches of its sales — it can't be changed by hand.",
     "لا رصيدَ للمتجر على هذا البوتيك يُستردّ.": "The shop has no credit with this boutique to recover.",
     "استرداد من :name — سند ": "Refund from :name — voucher ",

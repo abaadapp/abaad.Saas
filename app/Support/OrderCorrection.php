@@ -59,6 +59,7 @@ class OrderCorrection
 
         self::assertSameDay($order);
         self::assertTaxStands($order);
+        self::assertNotOnBoutiqueSheet($order, $item);
 
         if ($newQty < 0) {
             throw new RuntimeException(__('الكمية لا تكون سالبة.'));
@@ -103,6 +104,7 @@ class OrderCorrection
              * `ACorrectionSettlesFromTheTotalItLockedTest`.
              */
             $order = self::lockOrder($order);
+            self::assertNotOnBoutiqueSheet($order, $item);
 
             /*
              * ═══ والبندُ يُقرأ من جديدٍ مقفلًا قبل أن يُكتب فوقه ═══
@@ -220,6 +222,45 @@ class OrderCorrection
         throw new RuntimeException(__(
             'هذه الفاتورة داخلةٌ في إقرارٍ ضريبيّ قُدِّم في :date — لا تُلغى. وتصحيحُها يكون بإشعارِ دائنٍ في فترةٍ مفتوحة.',
             ['date' => optional(Vat::filedThrough((int) $order->business_id))->format('Y-m-d')],
+        ));
+    }
+
+    /**
+     * ═══ وبندُ بوتيكٍ دخل ورقةَ تسوية لا يُلغى ولا يُغيَّر ═══
+     *
+     * الورقةُ حصّةُ البوتيك ممّا بِيع، مجمَّدةً يومَ صدورها: قُيّدت دَينًا في
+     * 2160 (`Boutiques::write`) أو دُفعت. فإلغاءُ البيعة بعدها — أو نقصُ
+     * كمّيّتها أو استبدالُ بندها — يردّ للزبون مالَه ويعيد القطعة، ويُبقي
+     * للبوتيك مستحقًّا عن بيعٍ لم يقع: يُدفع له ما لم يُبَع، ولا تقول ذلك شاشة.
+     *
+     * والورقةُ لا تُعدَّل بعد صدورها ولا قيدُها. فيُردّ الفعلُ برسالةٍ تسمّي
+     * الورقة، إلى أن يُبنى تصحيحٌ مستقلّ بمستنده. وتشمل الأوراقَ القديمة كذلك:
+     * ما دُفع عنها للبوتيك دُفع. والمكوّناتُ خارجُ هذا — لها دفترُها ورصيدُها
+     * (`BoutiqueDues::cancel`).
+     *
+     * ويُسأل مرّتين: قبل المعاملة ليُردّ سريعًا، وتحت قفل الفاتورة. والورقةُ
+     * تقفل فواتيرَها قبل أن تختم بنودَها، فلا تمرّ إحداهما بين سؤال الأخرى
+     * وكتابتها.
+     *
+     * @throws RuntimeException برسالةٍ تُعرض كما هي
+     */
+    private static function assertNotOnBoutiqueSheet(Order $order, ?OrderItem $item = null): void
+    {
+        $settled = OrderItem::query()
+            ->join('boutique_settlements as s', 's.id', '=', 'order_items.boutique_settlement_id')
+            ->where('order_items.order_id', $order->id)
+            ->when($item, fn ($q) => $q->where('order_items.id', $item->id))
+            ->whereNotNull('order_items.boutique_id')
+            ->orderBy('order_items.id')
+            ->first(['order_items.name', 's.number']);
+
+        if ($settled === null) {
+            return;
+        }
+
+        throw new RuntimeException(__(
+            'بند «:item» في ورقة تسوية البوتيك :number — لا يُلغى الطلب ولا يُغيَّر هذا البند بعد إصدارها، كي لا يبقى للبوتيك مستحقٌّ عن بيعٍ لم يتمّ. يُصحَّح ذلك بتسويةٍ مستقلّة مع البوتيك.',
+            ['item' => $settled->name, 'number' => $settled->number],
         ));
     }
 
@@ -1040,10 +1081,12 @@ class OrderCorrection
 
         self::assertLinesMayChange($order);
         self::assertNotCardLine($order, $old);
+        self::assertNotOnBoutiqueSheet($order, $old);
         $method = self::settleMethod($order, $settle, $method);
 
         return DB::transaction(function () use ($order, $old, $wanted, $reason, $settle, $method) {
             $order = self::lockOrder($order);
+            self::assertNotOnBoutiqueSheet($order, $old);
             $locked = OrderItem::whereKey($old->id)->lockForUpdate()->first();
 
             if (! $locked || $locked->order_id !== $order->id) {
@@ -1696,6 +1739,8 @@ class OrderCorrection
             return;
         }
 
+        self::assertNotOnBoutiqueSheet($order);
+
         DB::transaction(function () use ($order, $reason, $boutiqueReturned) {
             /*
              * والحال تُقرأ ثانيةً تحت قفل — والقراءة الأولى لا تكفي.
@@ -1712,6 +1757,8 @@ class OrderCorrection
             if (! $fresh || $fresh->status === OrderStatus::CANCELLED) {
                 return;
             }
+
+            self::assertNotOnBoutiqueSheet($fresh);
 
             $totalBefore = (float) $order->total;
 

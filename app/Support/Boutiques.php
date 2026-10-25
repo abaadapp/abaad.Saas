@@ -569,6 +569,29 @@ final class Boutiques
              * الشهرَ لم يعد وحدة، فانتقل الحارسُ ولم يزُل — ولا فحصَ ثانٍ
              * يقرأ حالًا تتبدّل بين قراءته وكتابته.
              */
+            /*
+             * ═══ والفواتيرُ تُقفل قبل أن تُختم بنودُها ═══
+             *
+             * إلغاءُ البيعة يقفل فاتورتَها ثمّ يسأل: أدخل بندُها ورقة؟
+             * (`OrderCorrection::assertNotOnBoutiqueSheet`). فلو ختمت الورقةُ
+             * بندًا والإلغاءُ بين سؤاله وكتابته، لَحملت بيعةً أُلغيت — وللبوتيك
+             * ثمنُ قطعةٍ عادت. فتقفل الورقةُ فواتيرَها أوّلًا بترتيبٍ واحد،
+             * فيقع أحدُهما بعد الآخر كاملًا.
+             *
+             * ثمّ يُقرأ الكشفُ ثانيةً تحت القفل: ما صُدِّق في الشاشة هو ما يُصدَر،
+             * أو يُردّ ليُراجَع — لا ورقةٌ برقمٍ قُرئ قبل أن يتغيّر.
+             */
+            $orders = self::unsettled((int) $business->id, (int) $boutique->id, $period)
+                ->distinct()->orderBy('order_items.order_id')->pluck('order_items.order_id')->all();
+            Order::whereIn('id', $orders)->orderBy('id')->lockForUpdate()->pluck('id');
+
+            $now = self::statement((int) $business->id, (int) $boutique->id, $period);
+            $same = fn (array $s) => [$s['lines_count'], $s['gross'], $s['net'], $s['components']['count'], $s['components']['net']];
+
+            if ($same($now) !== $same($statement)) {
+                throw new SettlementRefused(__('تغيّرت مبيعات البوتيك في هذا الشهر قبل لحظة — افتح الكشف من جديد وراجعه قبل الإصدار.'));
+            }
+
             $ids = self::unsettled((int) $business->id, (int) $boutique->id, $period)
                 ->pluck('order_items.id')->all();
 

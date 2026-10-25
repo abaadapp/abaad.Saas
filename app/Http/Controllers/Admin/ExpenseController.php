@@ -14,6 +14,7 @@ use App\Support\ExpenseScope;
 use App\Support\ListFilters;
 use App\Support\Lists\ExpensesList;
 use App\Support\Pagination;
+use App\Support\PaymentMethods;
 use App\Support\Permissions;
 use App\Support\ReportingPeriod;
 use App\Support\Sort;
@@ -95,6 +96,8 @@ class ExpenseController extends Controller
                 'type' => $e->type,
                 'amount' => (float) $e->amount,
                 'status' => $e->status,
+                // وطريقتُه — يفتح بها سؤالُ «تسجيل السداد» على ما كُتب
+                'method' => $e->method,
                 /*
                  * ورابطُ المرفق بابٌ يسأل — لا مسارٌ على القرص العامّ.
                  *
@@ -385,9 +388,22 @@ class ExpenseController extends Controller
         return back()->with('toast', ['msg' => __('حُفظ نطاق المصروف'), 'type' => 'success']);
     }
 
-    public function markPaid($id)
+    public function markPaid(Request $request, $id)
     {
         $expense = Expense::where('business_id', $this->bid())->findOrFail($id);
+
+        /*
+         * ومن أين خرج المال — يُسأل ساعةَ السداد.
+         *
+         * المصروفُ غيرُ المدفوع قد كُتب قبل أن يُعرف كيف يُدفع، ومصروفُ ورقة
+         * البوتيك يُكتب بلا طريقةٍ أصلًا فتبقى «نقدي». وكان الزرُّ يرسل طلبًا
+         * فارغًا والخادمُ لا يقرأ شيئًا: فتسويةٌ حُوّلت من البنك تُقيَّد من
+         * الصندوق — الدرجُ ينقص مالًا لم يخرج منه، والبنكُ يبقى بمالٍ خرج.
+         * والغيابُ يُبقي ما كُتب، كما كان.
+         */
+        $method = $request->validate([
+            'method' => ['nullable', 'string', Rule::in(PaymentMethods::ALL)],
+        ])['method'] ?? null;
 
         if ($expense->isPaid()) {
             return back()->with('toast', ['msg' => __('الفاتورة مسدَّدة أصلًا'), 'type' => 'info']);
@@ -398,7 +414,7 @@ class ExpenseController extends Controller
          * الدفتر هو العطبُ نفسُه الذي في `store`.
          */
         try {
-            $paid = DB::transaction(function () use ($expense) {
+            $paid = DB::transaction(function () use ($expense, $method) {
                 /*
                  * ويُسأل ثانيةً تحت قفل — «أهي مسدَّدة؟» أعلاه تُسأل بلا قفل.
                  *
@@ -412,7 +428,7 @@ class ExpenseController extends Controller
                     return false;
                 }
 
-                $locked->update(['status' => Expense::PAID, 'spent_at' => now()]);
+                $locked->update(['status' => Expense::PAID, 'spent_at' => now()] + ($method ? ['method' => $method] : []));
                 $this->postToLedger($locked->fresh());
 
                 return true;

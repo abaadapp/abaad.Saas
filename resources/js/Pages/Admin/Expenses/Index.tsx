@@ -29,6 +29,8 @@ interface ExpenseRow {
     type: string;
     amount: number;
     status: string;
+    /** طريقةُ الدفع كما كُتبت — يفتح بها سؤالُ «تسجيل السداد» */
+    method: string | null;
     attachment: string | null;
     attachment_name: string | null;
     description: string | null;
@@ -149,6 +151,30 @@ export default function ExpensesIndex() {
         deleteForm.delete(route('admin.expenses.destroy', deleting.id), {
             preserveScroll: true,
             onSuccess: () => setDeleting(null),
+        });
+    };
+
+    /*
+     * تسجيلُ سدادِ مصروفٍ غير مدفوع — ويُسأل من أين خرج المال.
+     *
+     * كان الزرُّ يرسل طلبًا فارغًا فيبقى ما كُتب، وورقةُ البوتيك تُكتب «نقدي»:
+     * تسويةٌ حُوّلت من البنك تُقيَّد من الصندوق. والسؤالُ يفتح على ما كُتب.
+     */
+    const [paying, setPaying] = useState<ExpenseRow | null>(null);
+    const payForm = useForm<{ method: string }>({ method: PAY_METHODS[0].value });
+
+    const openPay = (row: ExpenseRow) => {
+        payForm.setData('method', payMethodFor(row.method));
+        payForm.clearErrors();
+        setPaying(row);
+    };
+
+    const submitPay = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!paying) return;
+        payForm.post(route('admin.expenses.paid', paying.id), {
+            preserveScroll: true,
+            onSuccess: () => setPaying(null),
         });
     };
 
@@ -279,8 +305,7 @@ export default function ExpensesIndex() {
                                       // لحظة خروج المال هي لحظة قيده في الدفتر
                                       label: 'تسجيل السداد',
                                       icon: <CheckCircle2 className="size-4" />,
-                                      onSelect: () =>
-                                          router.post(route('admin.expenses.paid', e.id), {}, { preserveScroll: true }),
+                                      onSelect: () => openPay(e),
                                   },
                               ]),
                     ]}
@@ -588,11 +613,7 @@ export default function ExpensesIndex() {
                                 <Select
                                     value={expense.data.method}
                                     onChange={(e) => expense.setData('method', e.target.value)}
-                                    options={[
-                                        { label: 'نقدي', value: 'نقدي' },
-                                        { label: 'بطاقة', value: 'بطاقة' },
-                                        { label: 'تحويل بنكي', value: 'تحويل بنكي' },
-                                    ]}
+                                    options={PAY_METHODS}
                                 />
                             </Field>
                         </div>
@@ -717,6 +738,33 @@ export default function ExpensesIndex() {
                 </DialogContent>
             </Dialog>
 
+            {/* تسجيلُ السداد — من أين خرج المال */}
+            <Dialog open={paying !== null} onOpenChange={(open) => !open && setPaying(null)}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {t('تسجيل السداد')} — {paying?.reference ?? ''}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitPay} className="space-y-4 px-5 pb-5" data-testid="pay-dialog">
+                        <PayMethodField
+                            value={payForm.data.method}
+                            onChange={(v) => payForm.setData('method', v)}
+                            error={payForm.errors.method}
+                        />
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button type="button" variant="ghost" onClick={() => setPaying(null)}>
+                                {t('إلغاء')}
+                            </Button>
+                            <Button type="submit" loading={payForm.processing}>
+                                <CheckCircle2 />
+                                {t('تسجيل السداد')}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
             {/* حذفُ مصروفٍ قيدُه من شهرٍ آخر — أين يُسجَّل العكسُ ولماذا */}
             <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="max-w-lg">
@@ -820,5 +868,42 @@ export default function ExpensesIndex() {
                 </DialogContent>
             </Dialog>
         </AdminLayout>
+    );
+}
+
+/** طرقُ الدفع — نفسُها في «مصروف جديد» و«تسجيل السداد» (`PaymentMethods::ALL` في الخادم) */
+export const PAY_METHODS = [
+    { label: 'نقدي', value: 'نقدي' },
+    { label: 'بطاقة', value: 'بطاقة' },
+    { label: 'تحويل بنكي', value: 'تحويل بنكي' },
+];
+
+/** ما يُفتح عليه سؤالُ السداد: ما كُتب إن كان من الثلاث، وإلّا النقد */
+export function payMethodFor(method: string | null | undefined): string {
+    return PAY_METHODS.some((o) => o.value === method) ? (method as string) : PAY_METHODS[0].value;
+}
+
+/**
+ * من أين خرج المال — والجوابُ يقرّر الحساب: النقدُ على الصندوق، والبطاقةُ
+ * والتحويلُ على البنك.
+ */
+export function PayMethodField({
+    value,
+    onChange,
+    error,
+}: {
+    value: string;
+    onChange: (v: string) => void;
+    error?: string;
+}) {
+    const t = useTranslate();
+
+    return (
+        <Field label="من أين خرج المال؟" error={error}>
+            <Select value={value} onChange={(e) => onChange(e.target.value)} options={PAY_METHODS} />
+            <p className="mt-1.5 text-[12px] text-[#6b7280]">
+                {t('النقد يُقيَّد على الصندوق، والبطاقة والتحويل على البنك.')}
+            </p>
+        </Field>
     );
 }

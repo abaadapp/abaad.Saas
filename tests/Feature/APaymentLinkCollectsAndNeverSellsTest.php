@@ -584,8 +584,9 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
         $opex = Ledger::operatingExpenses($this->shop->id);
         $bankBefore = Bank::total($this->shop->id);
 
+        // التحويلُ يسمّي مدفوعاتِه، والإجماليُّ مجموعُها (١٠٥)
         $this->post(route('admin.finance.paymobSettlements.store'), [
-            'gross' => 105, 'fee' => 2, 'net' => 103, 'settled_on' => '2026-10-13', 'bank_account_id' => $bank->id, 'reference' => 'PMB-77',
+            'items' => ['link:'.$link->id], 'fee' => 2, 'net' => 103, 'settled_on' => '2026-10-13', 'bank_account_id' => $bank->id, 'reference' => 'PMB-77',
         ])->assertSessionHasNoErrors();
 
         $settlement = PaymobSettlement::firstOrFail();
@@ -603,43 +604,19 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
 
     public function test_a_settlement_must_add_up_and_cannot_exceed_what_waits(): void
     {
-        $this->hook($this->obj($this->link($this->invoice())));
+        $this->hook($this->obj($link = $this->link($this->invoice())));
         $foreign = BankAccount::create(['business_id' => $this->other->id, 'label' => 'بنك الجار', 'active' => true]);
 
-        $send = fn (array $d) => $this->post(route('admin.finance.paymobSettlements.store'), $d + ['settled_on' => '2026-10-13']);
+        $send = fn (array $d) => $this->post(route('admin.finance.paymobSettlements.store'), $d + ['items' => ['link:'.$link->id], 'settled_on' => '2026-10-13']);
 
-        $send(['gross' => 105, 'fee' => 2, 'net' => 100])->assertSessionHasErrors(['gross' => 'الإجمالي يجب أن يساوي الصافي + الرسوم.']);
-        $send(['gross' => 200, 'fee' => 0, 'net' => 200])->assertSessionHasErrors('gross');
-        $send(['gross' => 105, 'fee' => 2, 'net' => 103, 'bank_account_id' => $foreign->id])->assertSessionHasErrors('gross');
-
-        $this->assertSame(0, PaymobSettlement::count());
-        $this->assertEquals(105.0, $this->balance('paymob_clearing'));
-    }
-
-    /**
-     * وقاعدةٌ تسمّي مدفوعاتِ تحويلاتها (#168) لا تُكتب فيها هنا تسويةٌ بمبلغٍ واحد.
-     *
-     * إن رُجع عن #168 إلى هذا الإصدار بقي جدولُه: هذا الكودُ لا يفرّق بين مالٍ في
-     * التسوية ومالِ بيعةٍ في البنك، فيُردّ ولا يُكتب شيء حتّى يعود. والاستعادةُ
-     * تكتب بلا نموذج فلا تُردّ.
-     */
-    public function test_a_lump_sum_settlement_waits_while_the_database_names_payout_payments(): void
-    {
-        $this->hook($this->obj($this->link($this->invoice())));
-        // ما تتركه هجرةُ #168 بعد الرجوع عنه
-        \Illuminate\Support\Facades\Schema::create('paymob_settlement_items', fn (\Illuminate\Database\Schema\Blueprint $t) => $t->id());
-
-        $this->post(route('admin.finance.paymobSettlements.store'), ['gross' => 105, 'fee' => 2, 'net' => 103, 'settled_on' => '2026-10-13'])
-            ->assertSessionHasErrors(['gross' => 'تسجيل تسويات Paymob متوقّف في هذا الإصدار — القاعدة تسمّي مدفوعات التحويلات، فيُسجَّل التحويل حين يعود الإصدار الذي يسمّيها. لم يُكتب شيء.']);
+        // الإجماليُّ مجموعُ المدفوعات المختارة (١٠٥) — والصافي والرسومُ يساويانه
+        $send(['fee' => 2, 'net' => 100])->assertSessionHasErrors(['items' => 'مجموعُ المدفوعات المختارة (105.000) لا يساوي الصافيَ والرسوم (102.000).']);
+        $send(['fee' => 0, 'net' => 200])->assertSessionHasErrors('items');
+        $send(['fee' => 2, 'net' => 103, 'bank_account_id' => $foreign->id])->assertSessionHasErrors('items');
+        $send(['items' => [], 'fee' => 2, 'net' => 103])->assertSessionHasErrors('items');
 
         $this->assertSame(0, PaymobSettlement::count());
         $this->assertEquals(105.0, $this->balance('paymob_clearing'));
-        $this->assertEquals(0.0, $this->balance('payment_gateway_fees'));
-
-        \Illuminate\Support\Facades\DB::table('paymob_settlements')->insert([
-            'business_id' => $this->shop->id, 'gross' => 1, 'fee' => 0, 'net' => 1, 'settled_on' => '2026-10-13', 'created_at' => now(), 'updated_at' => now(),
-        ]);
-        $this->assertSame(1, PaymobSettlement::count(), 'رُدّت الاستعادة');
     }
 
     /* ═══════════ ٦ · الإلغاء والانتهاء ═══════════ */

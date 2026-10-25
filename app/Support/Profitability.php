@@ -109,13 +109,19 @@ final class Profitability
     /**
      * المصروفاتُ المدفوعة في الفترة — كلُّ مصروفٍ مرّةً واحدة.
      *
+     * ومعها ورقةُ البوتيك التي قُيّدت يومَ صدورها (`Boutiques::accruedExpenseIds`)
+     * ولو لم تُسدَّد: مصروفُها في الدفتر من يومها، وربحُ المتجر يعدّه منه، فلو
+     * انتظر الفرعُ سدادَها لَقرأ ربحًا أعلى من ربح متجره. وسدادُها لا يُضيف
+     * صفًّا ولا يغيّر يومَها، فلا تُعدّ مرّتين.
+     *
      * والتاريخُ يُقارَن تاريخًا: `spent_at` عمودُ يوم، وقياسُه ببداية الفترة
      * ساعةً (`00:00:00`) يُسقط على SQLite مصروفَ اليوم الأوّل — نصٌّ أقصرُ من
      * نصّ — وعلى PostgreSQL لا يُسقطه. فالمقارنةُ بالتاريخ وحده تصدق على الاثنين.
      */
     public static function expenses(int $bid, ?Carbon $start, ?Carbon $end = null)
     {
-        return Expense::where('expenses.business_id', $bid)->paid()
+        return Expense::where('expenses.business_id', $bid)
+            ->where(fn ($q) => $q->paid()->orWhereIn('expenses.id', Boutiques::accruedExpenseIds($bid)))
             ->when($start, fn ($q) => $q->where('spent_at', '>=', $start->toDateString()))
             ->when($end, fn ($q) => $q->where('spent_at', '<', $end->toDateString()));
     }
@@ -132,7 +138,7 @@ final class Profitability
      * حصصُ فرعٍ من المصروفات الموزَّعة المدفوعة — والمحذوفُ لا حصّةَ له.
      *
      * الحصّةُ لا تُحسب وحدها: تُقرأ من مصروفها الأب، فما حُذف منه (`deleted_at`)
-     * أو لم يُدفع بعد لا يُقرأ له شيء.
+     * أو لم يُدفع بعد لا يُقرأ له شيء — إلّا ورقةَ بوتيكٍ قُيّدت (انظر `expenses`).
      */
     public static function shares(int $bid, ?Carbon $start, ?Carbon $end, int $branchId)
     {

@@ -577,6 +577,14 @@ final class Boutiques
             $partial = ! self::isClosed($period);
 
             /*
+             * ويومُ المصروف يومُ قيده — آخرُ بيعةٍ في الورقة، أو أوّلُ يومٍ مفتوح
+             * إن كان شهرُها مقفلًا. فلا يُقرأ في تقرير الفروع مصروفًا في شهرٍ
+             * مقفل لم يُرحَّل فيه شيء. وأيّامُ البيع نفسُها تبقى في الورقة
+             * (`covered_from` و`covered_to`) وفي `due_date`.
+             */
+            $postedAt = BooksPeriod::openOr((int) $business->id, $due->copy());
+
+            /*
              * والمصروفُ بصافي ما للبوتيك — لا بالإجماليّ.
              *
              * البيعةُ دخلت إيرادًا بكاملها ساعةَ وقوعها (وهي طريقةُ الإجمالي
@@ -603,7 +611,7 @@ final class Boutiques
                 'amount' => $statement['net'],
                 'reference' => $number,
                 'due_date' => $due->toDateString(),
-                'spent_at' => $due->toDateString(),
+                'spent_at' => $postedAt->toDateString(),
                 'status' => Expense::UNPAID,
                 'employee_name' => $employee,
             ]);
@@ -656,8 +664,16 @@ final class Boutiques
              * فحصّةُ البوتيك مصروفٌ في شهر بيعها، ودَينٌ في 2160 حتّى يُدفع
              * (`Books::recordExpense` يُطفئه). وشهرٌ مقفل لا يُكتب فيه: تُقيَّد
              * في أوّل يومٍ مفتوح كسائر ما يُكتب بعد الإقفال.
+             *
+             * والمكوّناتُ لا تمرّ من هنا: ثمنُها قُيّد في 2160 يومَ البيع.
              */
             if ($expense !== null && (float) $expense->amount > 0) {
+                // وفرعُه من فروع بنوده، قبل القيد: القيدُ يحمل فرعَ المصروف المباشر
+                $scope = self::branchScope($ids, (float) $expense->amount);
+                if ($scope !== null) {
+                    ExpenseScope::apply($expense, $scope);
+                }
+
                 Ledger::post(
                     (int) $business->id,
                     __('استحقاق تسوية بوتيك — ورقة ').$number,
@@ -665,7 +681,7 @@ final class Boutiques
                         ['account' => Books::expenseAccount(self::EXPENSE_TYPE, (int) $business->id), 'debit' => round((float) $expense->amount, 3), 'memo' => $expense->description],
                         ['account' => 'boutique_payable', 'credit' => round((float) $expense->amount, 3)],
                     ],
-                    BooksPeriod::openOr((int) $business->id, $due->copy()),
+                    $postedAt,
                     self::ACCRUAL,
                     ExpenseScope::journalBranch($expense),
                     auth()->id(),
@@ -679,6 +695,84 @@ final class Boutiques
 
             return $settlement;
         });
+    }
+
+    /**
+     * فرعُ مصروف الورقة من فروع البنود التي حملتها — لا يُخمَّن.
+     *
+     * بنودٌ كلُّها من فرعٍ واحد ← المصروفُ على ذلك الفرع. ومن فروعٍ ← موزَّعٌ
+     * بصافي كلّ فرعٍ من بنوده. وبندٌ طلبُه بلا فرع ← `null`: يبقى المصروفُ
+     * للنشاط كلِّه ويُقال في تقرير الفروع «عامٌّ غير موزّع» — لا يُنسب إلى
+     * فرعٍ لم يبعه.
+     *
+     * وصافي الفرع يُحسب كما يُحسب الكشف: إجماليُّ الصنف ونسبتُه مقرّبًا على
+     * السطر (`statement`). وما يبقى من تقريب السطور — أجزاءٌ من الألف —
+     * يُضمّ إلى أكبر الفروع، فيساوي المجموعُ صافيَ الورقة بالبيسة.
+     *
+     * @param  list<int>  $ids
+     * @return array{scope: string, branch_id: ?int, allocations: list<array{branch_id: int, amount: float}>}|null
+     */
+    private static function branchScope(array $ids, float $net): ?array
+    {
+        $groups = [];
+        $rows = OrderItem::query()->whereIn('order_items.id', $ids)
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->get(['orders.branch_id', 'order_items.product_id', 'order_items.name', 'order_items.variant_name', 'order_items.total', 'order_items.boutique_rate']);
+
+        foreach ($rows as $r) {
+            $rate = round((float) ($r->boutique_rate ?? 0), 2);
+            $key = ((int) $r->product_id).'|'.$r->name.'|'.($r->variant_name ?? '').'|'.$rate;
+            $branch = (int) ($r->branch_id ?? 0);
+
+            $groups[$branch][$key] ??= ['gross' => 0.0, 'rate' => $rate];
+            $groups[$branch][$key]['gross'] += (float) $r->total;
+        }
+
+        if ($groups === [] || isset($groups[0])) {
+            return null;
+        }
+
+        $mils = [];
+        foreach ($groups as $branch => $lines) {
+            $mils[$branch] = 0;
+            foreach ($lines as $l) {
+                $gross = round($l['gross'], 3);
+                $mils[$branch] += (int) round(($gross - round($gross * $l['rate'] / 100, 3)) * 1000);
+            }
+        }
+
+        if (count($mils) === 1) {
+            return ['scope' => ExpenseScope::BRANCH, 'branch_id' => (int) array_key_first($mils), 'allocations' => []];
+        }
+
+        arsort($mils);
+        $mils[array_key_first($mils)] += (int) round($net * 1000) - array_sum($mils);
+
+        return ['scope' => ExpenseScope::SPLIT, 'branch_id' => null, 'allocations' => collect($mils)
+            ->filter(fn (int $m) => $m > 0)
+            ->map(fn (int $m, int $branch) => ['branch_id' => $branch, 'amount' => $m / 1000])
+            ->values()->all()];
+    }
+
+    /**
+     * مصروفاتُ الأوراق التي قُيّدت يومَ صدورها في هذا المتجر — استعلامٌ فرعيّ.
+     *
+     * يقرؤه تقريرُ الفروع (`Profitability::expenses`): مصروفٌ قُيّد في الدفتر
+     * يُعدّ في فترة قيده ولو لم يُسدَّد بعد، كما يعدّه ربحُ المتجر من الدفتر.
+     */
+    public static function accruedExpenseIds(int $businessId)
+    {
+        return BoutiqueSettlement::query()
+            ->join('journal_entries as je', function ($j) {
+                $j->on('je.sourceable_id', '=', 'boutique_settlements.id')
+                    ->where('je.sourceable_type', '=', BoutiqueSettlement::class);
+            })
+            ->where('boutique_settlements.business_id', $businessId)
+            ->where('je.business_id', $businessId)
+            ->whereNotNull('boutique_settlements.expense_id')
+            ->where('je.source', self::ACCRUAL)->where('je.posted', true)
+            ->whereNull('je.reverses_id')->whereNull('je.reversed_at')
+            ->select('boutique_settlements.expense_id');
     }
 
     /**

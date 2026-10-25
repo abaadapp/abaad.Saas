@@ -334,6 +334,15 @@ class ExpenseController extends Controller
         $bid = $this->bid();
         $expense = Expense::where('business_id', $bid)->findOrFail($id);
 
+        /*
+         * وورقةُ البوتيك المقيَّدة يومَ صدورها نطاقُها من فروع مبيعاتها
+         * (`Boutiques::branchScope`)، وقيدُها كُتب بفرعها. فتغييرُه هنا يُفرّق
+         * تقريرَ الفروع عن الدفتر — ولا يُعاد قيدُ الاستحقاق من هذا الباب.
+         */
+        if (Boutiques::accrual($expense) !== null) {
+            return back()->withErrors(['scope' => __('نطاق ورقة البوتيك يُقرأ من فروع مبيعاتها — لا يُغيَّر يدويًّا.')]);
+        }
+
         $scope = ExpenseScope::read($bid, $request->all(), (float) $expense->amount);
         $correction = $this->correction($request);
 

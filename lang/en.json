@@ -8506,6 +8506,7 @@
     "سداد مستحقّات مكوّنات — ورقة ": "Component dues payment — settlement ",
     "استحقاق تسوية بوتيك — ورقة ": "Boutique settlement accrued — settlement ",
     "سداد تسوية بوتيك: ": "Boutique settlement payment: ",
+    "نطاق ورقة البوتيك يُقرأ من فروع مبيعاتها — لا يُغيَّر يدويًّا.": "A boutique sheet's scope comes from the branches of its sales — it can't be changed by hand.",
     "لا رصيدَ للمتجر على هذا البوتيك يُستردّ.": "The shop has no credit with this boutique to recover.",
     "استرداد من :name — سند ": "Refund from :name — voucher ",
     "«:name»: ما عاد وما لم يعد أكثرُ من :qty قطعة في الطلب.": "“:name”: returned and not returned are more than the :qty pieces in the order.",

@@ -25,6 +25,7 @@ use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\OrderCorrection;
+use App\Support\Profitability;
 use App\Support\Store\Paymob;
 use App\Support\Store\WebCheckout;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -240,6 +241,36 @@ class ABoutiqueStatementSettlesWhatWentIntoBouquetsTest extends TestCase
         $this->assertSame(20.0, $this->balance('boutique_payable'), 'منفردُ الثانية دَينٌ حتّى يُسدَّد مصروفُه');
         $this->assertSame(-14.0, $this->balance('bank'), 'الثانيةُ من البنك');
         $this->assertTrue($first->fresh()->paid());
+    }
+
+    /**
+     * ورقةٌ تجمع المنفردَ والمكوّنات: الإصدارُ يقيّد المنفردَ وحده.
+     *
+     * المكوّناتُ قُيّدت تكلفةً ودَينًا في 2160 يومَ البيع، فلو دخلت قيدَ
+     * الإصدار لخُصم ثمنُها من الربح مرّتين. ويقرأ تقريرُ الفرع الورقةَ كما
+     * يقرؤها المتجر، قبل السداد وبعده.
+     */
+    public function test_a_mixed_sheet_books_only_its_standalone_share_and_the_branch_agrees(): void
+    {
+        $this->sell($this->bouquet);   // ٢٠، للمى ٧ عن الفضّة — تكلفةٌ و2160 يومَ البيع
+        $this->sell($this->scarf);     // ٢٥ منفردًا، للمى ٢٠ بعد عمولة ٥
+        $s = $this->settle();
+
+        $accrual = JournalEntry::where('business_id', $this->shop->id)->where('source', Boutiques::ACCRUAL)->sole();
+        $this->assertSame(20.0, round((float) $accrual->lines()->sum('debit'), 3), 'قيدُ الإصدار بصافي المنفرد وحده');
+
+        $branch = Branch::where('business_id', $this->shop->id)->orderBy('id')->firstOrFail();
+        $month = fn (?int $branchId = null) => Profitability::summary($this->shop->id, Carbon::parse('2027-02-01'), Carbon::parse('2027-03-01'), $branchId);
+
+        $this->assertSame([7.0, 20.0, 18.0], [$month()['cogs'], $month()['expenses'], $month()['net_profit']]);
+        $this->assertSame($month()['net_profit'], $month($branch->id)['net_profit'], 'الفرعُ والمتجرُ ربحٌ واحد');
+
+        BoutiqueDues::pay($s, 'نقدي');
+        $this->payStandalone($s);
+
+        $this->assertSame([7.0, 20.0, 18.0], [$month()['cogs'], $month()['expenses'], $month()['net_profit']], 'السدادُ لا يمسّ الربح');
+        $this->assertSame($month()['net_profit'], $month($branch->id)['net_profit']);
+        $this->assertSame([0.0, 18.0], [$this->balance('boutique_payable'), $this->balance('cash')]);
     }
 
     /* ═══════════ الإلغاء قبل التسوية ═══════════ */

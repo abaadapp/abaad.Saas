@@ -309,6 +309,13 @@ class AnAgreementIsEditedWholeFromTheScreenTest extends TestCase
         $this->assertSame($count, PlatformDocumentTemplate::count(), 'لا يُزرع بجانبه قالبٌ بالاسم القديم');
         $this->assertSame($edited, $t->fresh()->form, 'ولا يُستبدل نصُّه');
         $this->assertSame('اتفاقية واتساب — معدّلة', $t->fresh()->name);
+
+        // وما يُزرع بعد سجلّ الإصدارات يدخله بإصداره الأوّل — لا يبدأ تاريخُه من الثاني
+        DB::table('platform_document_templates')->where('seed_key', 'payment-integration')->delete();
+        DocumentForms::seedTemplates();
+        $seeded = PlatformDocumentTemplate::where('seed_key', 'payment-integration')->firstOrFail();
+        $this->assertSame([1], $seeded->versions()->pluck('version')->all());
+        $this->assertSame($seeded->contentHash(), $seeded->versions()->firstOrFail()->content_hash);
     }
 
     public function test_a_seed_renamed_before_it_had_a_key_is_still_known_and_never_seeded_twice(): void

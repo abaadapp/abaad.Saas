@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\PlatformDocumentTemplate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -56,11 +57,13 @@ class DocumentForms
      * لا يمسّ قالبًا موجودًا (ربما عدّله المدير أو أعاد تسميتَه)، ولا يعطّل غيرَها ولا
      * يحذف شيئًا. ويعرف قالبَه بمفتاح بذرته (`seed_key`) إن وُجد العمود، أو باسمه، أو
      * بعنوانه وخدمته معًا — فقالبٌ أُعيدت تسميتُه لا يُزرع بجانبه آخر.
+     * وما يُزرع بعد سجلّ الإصدارات يدخل سجلَّه بإصداره الأوّل.
      * والنشرُ قرارُ مدير المنصّة.
      */
     public static function seedTemplates(): void
     {
         $keyed = Schema::hasColumn('platform_document_templates', 'seed_key');
+        $history = Schema::hasTable('platform_document_template_versions');
         foreach (self::SEEDED as $slug) {
             $t = self::seed($slug);
             $exists = DB::table('platform_document_templates')
@@ -70,7 +73,7 @@ class DocumentForms
             if ($exists) {
                 continue;
             }
-            DB::table('platform_document_templates')->insert(($keyed ? ['seed_key' => $slug] : []) + [
+            $id = DB::table('platform_document_templates')->insertGetId(($keyed ? ['seed_key' => $slug] : []) + [
                 'name' => $t['name'],
                 'service' => $t['service'],
                 'title' => $t['title'],
@@ -87,6 +90,9 @@ class DocumentForms
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            if ($history) {
+                PlatformDocumentTemplate::findOrFail($id)->recordVersion(null);
+            }
         }
     }
 

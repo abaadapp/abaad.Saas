@@ -13,10 +13,12 @@ use App\Models\PaymobSettlement;
 use App\Models\PaymobSettlementItem;
 use App\Models\StorePaymentIntent;
 use App\Models\Transaction;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\LazyCollection;
 use RuntimeException;
 
 /**
@@ -64,7 +66,7 @@ use RuntimeException;
  * ═══ ولا تُسوّى مدفوعةٌ مرّتين ═══
  *
  * فهرسٌ فريدٌ على كلٍّ من النيّة والرابط في `paymob_settlement_items` —
- * والمعلّقةُ تحجز مدفوعاتِها كالمرحّلة.
+ * والمعلّقةُ تحجز مدفوعاتِها كالمرحّلة، والمسوّدةُ (`DRAFT`) كذلك من لحظة إضافتها.
  */
 final class PaymobSettlements
 {
@@ -77,6 +79,13 @@ final class PaymobSettlements
     public const HELD = 'held';
 
     public const CANCELLED = 'cancelled';
+
+    /**
+     * تحويلٌ واحدٌ يُجمع على دفعات (`openDraft` … `postDraft`): صفُّه واحدٌ بأرقام
+     * كشفه، ومدفوعاتُه تُحجز بفهرسها الفريد كلّما أُضيفت، ولا قيدَ حتّى يُرحَّل
+     * كلُّه مرّةً واحدة. وما يمنع ترحيلَه يُكتب سببًا ويبقى مسوّدةً تُصحَّح.
+     */
+    public const DRAFT = 'draft';
 
     /**
      * كتبها كودٌ لا يسمّي المدفوعات: كلُّ تسويةٍ قبل #168، وكلُّ ما يكتبه إصدارٌ
@@ -122,8 +131,15 @@ final class PaymobSettlements
     /** دفعةُ العرض الواحدة — حجمُ صفحةٍ لا سقفٌ على ما يُرى: البقيّةُ بـ`candidatesPage` */
     public const BATCH = 300;
 
-    /** أكبرُ عددِ مدفوعاتٍ في تحويلٍ واحد — حارسُ طلبٍ لا حدٌّ ماليّ (يُفحص كلٌّ منها تحت قفل المتجر) */
-    public const MAX_ITEMS = 2000;
+    /**
+     * ما يُفحص ويُكتب في الطلب الواحد — حجمُ دفعةِ معالجةٍ لا سقفٌ على التحويل.
+     *
+     * كلُّ مدفوعةٍ تُصنَّف بستّة استعلاماتٍ تحت قفل المتجر، والطلبُ على الخادم
+     * ٣٠ ثانية: تحويلٌ بآلاف المدفوعات في طلبٍ واحد يسقط في منتصفه ويوقف بيعَ
+     * المتجر ما دام. فما زاد على دفعةٍ يُجمع في مسوّدةٍ (`DRAFT`) دفعةً بعد دفعة
+     * — كلٌّ في معاملةٍ قصيرة — ثمّ يُرحَّل بمجاميعَ من القاعدة لا بحلقة.
+     */
+    public const CHUNK = 500;
 
     /**
      * ما ينتظر أن يُسوّى: مدفوعاتُ Paymob المقبوضة التي لم تحملها تسويةٌ بعد،
@@ -150,15 +166,8 @@ final class PaymobSettlements
     public static function candidatesPage(int $businessId, ?string $after = null, int $limit = self::BATCH): array
     {
         $limit = max(1, $limit);
-        $open = fn (string $table, string $column, string $type) => DB::table($table.' as p')
-            ->where('p.business_id', $businessId)
-            ->where('p.status', 'paid')
-            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('paymob_settlement_items as s')->whereColumn('s.'.$column, 'p.id'))
-            ->selectRaw("'".$type."' as type, p.id as id, coalesce(p.paid_at, p.created_at) as at");
-
         $cursor = self::cursor($after);
-        $page = DB::query()
-            ->fromSub($open('store_payment_intents', 'store_payment_intent_id', self::INTENT)->unionAll($open('customer_payment_links', 'customer_payment_link_id', self::LINK)), 'c')
+        $page = self::waitingQuery($businessId)
             ->when($cursor, fn ($q) => $q->where(fn ($w) => $w->where('at', '>', $cursor['at'])
                 ->orWhere(fn ($x) => $x->where('at', $cursor['at'])->where('type', '>', $cursor['type']))
                 ->orWhere(fn ($x) => $x->where('at', $cursor['at'])->where('type', $cursor['type'])->where('id', '>', $cursor['id']))))
@@ -180,13 +189,25 @@ final class PaymobSettlements
     /** كم ينتظر في كلّ الدفعات — للعرض «يُعرض س من ص» */
     public static function waiting(int $businessId): int
     {
-        $open = fn (string $table, string $column) => DB::table($table.' as p')
+        return self::waitingQuery($businessId)->count();
+    }
+
+    /**
+     * مدفوعاتُ Paymob المقبوضة التي لم يحجزها تحويلٌ بعد (مرحّلٌ أو معلّقٌ أو
+     * مسوّدة) — نوعُها ورقمُها ووقتُ دفعها، للنوعين في استعلامٍ واحد.
+     */
+    private static function waitingQuery(int $businessId): Builder
+    {
+        $open = fn (string $table, string $column, string $type) => DB::table($table.' as p')
             ->where('p.business_id', $businessId)
             ->where('p.status', 'paid')
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('paymob_settlement_items as s')->whereColumn('s.'.$column, 'p.id'))
-            ->count();
+            ->selectRaw("'".$type."' as type, p.id as id, coalesce(p.paid_at, p.created_at) as at");
 
-        return $open('store_payment_intents', 'store_payment_intent_id') + $open('customer_payment_links', 'customer_payment_link_id');
+        return DB::query()->fromSub(
+            $open('store_payment_intents', 'store_payment_intent_id', self::INTENT)->unionAll($open('customer_payment_links', 'customer_payment_link_id', self::LINK)),
+            'c',
+        );
     }
 
     /** @return array{at: string, type: string, id: int}|null */
@@ -427,14 +448,12 @@ final class PaymobSettlements
     public static function record(int $businessId, array $data, ?int $userId = null): PaymobSettlement
     {
         self::refuseWhilePaused();
-        $fee = round((float) ($data['fee'] ?? 0), 3);
-        $net = round((float) ($data['net'] ?? 0), 3);
-
-        if ($net <= 0 || $fee < 0) {
-            throw new RuntimeException(__('الصافي أكبر من صفر، والرسوم لا تكون سالبة.'));
-        }
+        [$fee, $net] = self::amounts($data);
 
         $picked = self::picked($data['items'] ?? []);
+        if (count($picked) > self::CHUNK) {
+            throw new RuntimeException(__('تحويلٌ بأكثر من :n مدفوعة يُسجَّل على دفعات — لم يُكتب شيء.', ['n' => self::CHUNK]));
+        }
         $bankId = self::payoutBank($businessId, $data['bank_account_id'] ?? null);
         $on = Carbon::parse($data['settled_on'])->startOfDay();
 
@@ -539,7 +558,7 @@ final class PaymobSettlements
             Business::whereKey($businessId)->lockForUpdate()->first();
             $settlement = PaymobSettlement::where('business_id', $businessId)->whereKey($id)->firstOrFail();
 
-            if ($settlement->status !== self::HELD) {
+            if (! in_array($settlement->status, [self::HELD, self::DRAFT], true)) {
                 throw new RuntimeException(__('لا تُلغى إلّا تسويةٌ معلّقةٌ لم تُرحَّل.'));
             }
 
@@ -552,6 +571,340 @@ final class PaymobSettlements
 
             return $settlement->fresh();
         });
+    }
+
+    /* ═══════════ تحويلٌ واحدٌ بآلاف المدفوعات: يُجمع على دفعات ويُرحَّل مرّةً ═══════════ */
+
+    /**
+     * يفتح مسوّدةَ تحويلٍ واحد بأرقام كشفه — صفٌّ واحد، بلا مدفوعاتٍ ولا قيد.
+     *
+     * @param  array{fee: float|string, net: float|string, settled_on: string, bank_account_id?: int|string|null, reference?: ?string, notes?: ?string}  $data
+     */
+    public static function openDraft(int $businessId, array $data, ?int $userId = null): PaymobSettlement
+    {
+        self::refuseWhilePaused();
+        [$fee, $net] = self::amounts($data);
+        $bankId = self::payoutBank($businessId, $data['bank_account_id'] ?? null);
+        $on = Carbon::parse($data['settled_on'])->startOfDay();
+        // يُسأل الإقفالُ الآن لا بعد آلاف المدفوعات — ويُسأل ثانيةً عند الترحيل (`Ledger::post`)
+        BooksPeriod::assertOpen($businessId, $on);
+
+        return DB::transaction(function () use ($businessId, $fee, $net, $bankId, $on, $data, $userId) {
+            Business::whereKey($businessId)->lockForUpdate()->first();
+
+            $draft = PaymobSettlement::create([
+                'business_id' => $businessId,
+                'bank_account_id' => $bankId,
+                'gross' => 0,
+                'fee' => $fee,
+                'net' => $net,
+                'status' => self::DRAFT,
+                'settled_on' => $on->toDateString(),
+                'reference' => filled($data['reference'] ?? null) ? mb_substr(trim((string) $data['reference']), 0, 80) : null,
+                'notes' => filled($data['notes'] ?? null) ? mb_substr(trim((string) $data['notes']), 0, 500) : null,
+                'created_by' => $userId,
+            ]);
+
+            Activity::log('created', 'بدأ تسجيل تحويل Paymob على دفعات: رسوم '.number_format($fee, 3).' — صافي '.number_format($net, 3), [
+                'subject_id' => $draft->id, 'subject_type' => 'paymob_settlement', 'business_id' => $businessId,
+            ]);
+
+            return $draft;
+        });
+    }
+
+    /**
+     * يضيف إلى المسوّدة مدفوعاتٍ بعينها — دفعةً (`CHUNK`) في معاملةٍ واحدة: تُحجز
+     * كلُّها أو لا شيء منها. وإعادةُ إرسال الدفعة نفسها (انقطاعٌ بعد نجاحها) لا تكرّر.
+     */
+    public static function addToDraft(int $businessId, int $id, array $items): PaymobSettlement
+    {
+        self::refuseWhilePaused();
+        $picked = self::picked($items);
+        self::fitsOneChunk(count($picked));
+
+        return DB::transaction(function () use ($businessId, $id, $picked) {
+            Business::whereKey($businessId)->lockForUpdate()->first();
+            $draft = self::draft($businessId, $id);
+            self::reserve($draft, collect($picked));
+
+            return self::regross($draft);
+        });
+    }
+
+    /**
+     * يضيف الدفعةَ التالية ممّا ينتظر ودُفع حتّى يومٍ بعينه — بلا أسماءٍ في الطلب.
+     * لا مؤشّرَ يُحمل: ما حُجز لا يعود فيما ينتظر، فالتاليةُ تبدأ حيث انتهت السابقة.
+     *
+     * @return array{draft: PaymobSettlement, added: int, remaining: int}
+     */
+    public static function addWaitingToDraft(int $businessId, int $id, string $through): array
+    {
+        self::refuseWhilePaused();
+        $until = Carbon::parse($through)->endOfDay()->toDateTimeString();
+
+        return DB::transaction(function () use ($businessId, $id, $until) {
+            Business::whereKey($businessId)->lockForUpdate()->first();
+            $draft = self::draft($businessId, $id);
+
+            $next = self::waitingQuery($businessId)->where('at', '<=', $until)
+                ->orderBy('at')->orderBy('type')->orderBy('id')->limit(self::CHUNK)->get();
+            self::reserve($draft, $next->map(fn ($r) => ['type' => (string) $r->type, 'id' => (int) $r->id]));
+
+            return [
+                'draft' => self::regross($draft),
+                'added' => $next->count(),
+                'remaining' => self::waitingQuery($businessId)->where('at', '<=', $until)->count(),
+            ];
+        });
+    }
+
+    /** يُخرج من المسوّدة مدفوعاتٍ بعينها — فتعود لتنتظر */
+    public static function removeFromDraft(int $businessId, int $id, array $items): PaymobSettlement
+    {
+        $picked = self::picked($items);
+        self::fitsOneChunk(count($picked));
+
+        return DB::transaction(function () use ($businessId, $id, $picked) {
+            Business::whereKey($businessId)->lockForUpdate()->first();
+            $draft = self::draft($businessId, $id);
+            $draft->items()->whereIn('source', array_map(fn (array $p) => $p['type'].':'.$p['id'], $picked))->delete();
+
+            return self::regross($draft);
+        });
+    }
+
+    /** يُخرج من المسوّدة كلَّ ما لم يتأكّد أين مالُه — باستعلامٍ واحد لا بأسمائها */
+    public static function dropUnsureFromDraft(int $businessId, int $id): PaymobSettlement
+    {
+        return DB::transaction(function () use ($businessId, $id) {
+            Business::whereKey($businessId)->lockForUpdate()->first();
+            $draft = self::draft($businessId, $id);
+            $draft->items()->where('booked', self::UNSURE)->delete();
+
+            return self::regross($draft);
+        });
+    }
+
+    /**
+     * يرحّل المسوّدة تحويلًا واحدًا: قيدٌ واحد، كلُّه أو لا شيء.
+     *
+     * ═══ لماذا لا يُعاد تصنيفُ كلِّ مدفوعةٍ هنا ═══
+     *
+     * كلُّ مدفوعةٍ صُنّفت حين أُضيفت، تحت قفل المتجر. وإعادةُ تصنيف آلافها في
+     * هذه المعاملة تعني آلافَ الاستعلامات تحت القفل — بيعُ المتجر ينتظر، والطلبُ
+     * يتجاوز وقتَه. فيُعاد تصنيفُ ما قد يكون تغيّر وحده (`staleItems`)، ثمّ تُقرأ
+     * المجاميعُ من القاعدة: الإجماليّ، وما خرج من «تحت التسوية»، وما في كلّ ورقةِ
+     * بنك — بلا حلقةٍ على الصفوف ولا تحميلِها.
+     *
+     * وما يمنع الترحيل لا يُرحِّل جزءًا: مدفوعةٌ غيرُ مؤكَّدة، أو مجموعٌ لا يساوي
+     * الصافيَ والرسوم، أو أكثرُ ممّا في التسوية — يُكتب سببًا وتبقى مسوّدة. وفترةٌ
+     * مقفلة يردّها `Ledger::post` فتعود المعاملةُ كلُّها.
+     */
+    public static function postDraft(int $businessId, int $id, ?int $userId = null): PaymobSettlement
+    {
+        self::refuseWhilePaused();
+
+        return DB::transaction(function () use ($businessId, $id, $userId) {
+            Business::whereKey($businessId)->lockForUpdate()->first();
+            $draft = self::draft($businessId, $id);
+
+            foreach (self::staleItems($draft) as $item) {
+                [$type, $sid] = array_pad(explode(':', (string) $item->source, 2), 2, 0);
+                try {
+                    $row = self::classify($businessId, (string) $type, (int) $sid);
+                } catch (RuntimeException) {
+                    $row = self::unsure(['key' => $item->source, 'type' => $type, 'id' => (int) $sid, 'amount' => (float) $item->amount,
+                        'label' => $item->source, 'paid_at' => null, 'paid_ts' => null, 'legacy' => []], __('لم تعد مدفوعةً مقبوضة'));
+                }
+                $item->forceFill(self::itemFields($row))->save();
+            }
+
+            $items = fn () => DB::table('paymob_settlement_items')->where('paymob_settlement_id', $draft->id);
+            $count = $items()->count();
+            if ($count === 0) {
+                throw new RuntimeException(__('لم تُضف إلى هذا التحويل مدفوعاتٌ بعد.'));
+            }
+
+            $gross = round((float) $items()->sum('amount'), 3);
+            $fromClearing = round((float) $items()->where('booked', self::IN_CLEARING)->sum('amount'), 3);
+            $inBank = $items()->where('booked', self::IN_BANK)->groupBy('account_id')
+                ->selectRaw('account_id, sum(amount) as amount')->pluck('amount', 'account_id')
+                ->map(fn ($v) => round((float) $v, 3))->all();
+            $unsure = $items()->where('booked', self::UNSURE)->count();
+
+            $fee = round((float) $draft->fee, 3);
+            $net = round((float) $draft->net, 3);
+            $why = [];
+            if ($unsure > 0) {
+                $why[] = __(':n مدفوعة لم يتأكّد أين مالُها — منها :list', ['n' => $unsure, 'list' => $items()->where('booked', self::UNSURE)
+                    ->orderBy('id')->limit(3)->get(['source', 'reason'])->map(fn ($r) => $r->source.': '.$r->reason)->implode(' · ')]);
+            }
+            if (! self::same($gross, $net + $fee)) {
+                $why[] = __('مجموعُ المدفوعات المختارة (:g) لا يساوي الصافيَ والرسوم (:s).', [
+                    'g' => number_format($gross, 3), 's' => number_format($net + $fee, 3),
+                ]);
+            }
+            $waiting = self::clearing($businessId);
+            if ($fromClearing > $waiting + 0.0005) {
+                $why[] = __('في التسوية :w وتقول المدفوعاتُ إنّ فيها :c', ['w' => number_format($waiting, 3), 'c' => number_format($fromClearing, 3)]);
+            }
+
+            $draft->forceFill(['gross' => $gross, 'hold_reason' => $why === [] ? null : mb_substr(implode(' · ', $why), 0, 500)])->save();
+
+            if ($why !== []) {
+                Activity::log('updated', 'لم يُرحَّل تحويل Paymob — بقي مسوّدة: '.$count.' مدفوعة، إجمالي '.number_format($gross, 3), [
+                    'subject_id' => $draft->id, 'subject_type' => 'paymob_settlement', 'business_id' => $businessId,
+                ]);
+
+                return $draft->fresh();
+            }
+
+            self::post($draft, $fromClearing, $inBank, $userId);
+
+            Activity::log('created', 'سجّل تسوية Paymob على دفعات: '.$count.' مدفوعة — إجمالي '.number_format($gross, 3).' — رسوم '.number_format($fee, 3).' — صافي '.number_format($net, 3), [
+                'subject_id' => $draft->id, 'subject_type' => 'paymob_settlement', 'business_id' => $businessId,
+            ]);
+
+            return $draft->fresh();
+        });
+    }
+
+    /**
+     * ما قد يكون تغيّر من مدفوعات المسوّدة منذ فُتحت — فيُصنَّف من جديد وحده.
+     *
+     * المدفوعةُ صُنّفت حين أُضيفت، وتصنيفُها (`classify`) يقرأ صفَّها وطلبَها أو
+     * تحصيلَها وحركاتِ طلبها وقيودَ هذه المستندات. فيُعاد ما تغيّر فيه شيءٌ من
+     * ذلك، يُسأل بالجملة: صفٌّ لم يعد كما صُنّف (لم تعد مدفوعة، طُلب ردُّها، الطلبُ
+     * ملغى، التحصيلُ ملغى أو تغيّر مبلغُه)، أو مُسّ بعد الفتح، أو قيدٌ كُتب أو عُكس
+     * لمستنداتها بعده (والعكسُ يحمل مستندَ أصله). ومع ذلك كلُّ غيرِ مؤكَّد، وكلُّ ما
+     * في ورقةِ بنكٍ لم تعد من أوراقه — وكلُّها إن بقي تحويلٌ قديمٌ لم يُحدَّد ما حمله.
+     * والهامشُ ثوانٍ قبل الفتح: الأحوطُ أن يُعاد ما لم يتغيّر لا أن يُترك ما تغيّر.
+     *
+     * @return LazyCollection<int, PaymobSettlementItem>
+     */
+    private static function staleItems(PaymobSettlement $draft): LazyCollection
+    {
+        $businessId = (int) $draft->business_id;
+        $all = PaymobSettlementItem::query()->from('paymob_settlement_items as i')->select('i.*')->where('i.paymob_settlement_id', $draft->id);
+
+        if (self::openLegacy($businessId, null)->isNotEmpty()) {
+            return $all->lazyById(self::CHUNK, 'i.id', 'id');
+        }
+
+        $since = Carbon::parse($draft->created_at)->subSeconds(5)->toDateTimeString();
+        $after = fn ($q, string $alias) => $q->where(fn ($w) => $w->where($alias.'.created_at', '>=', $since)->orWhere($alias.'.reversed_at', '>=', $since));
+        $banks = self::bankLeaves($businessId);
+
+        return $all->where(function ($w) use ($businessId, $since, $after, $banks) {
+            $w->where('i.booked', self::UNSURE)
+                ->orWhere(fn ($b) => $b->where('i.booked', self::IN_BANK)->whereNotIn('i.account_id', $banks === [] ? [0] : $banks))
+                // دفعُ الموقع: النيّةُ وطلبُها كما صُنّفا، ولم يُكتب لهما أو لحركاتهما قيد
+                ->orWhere(fn ($n) => $n->whereNotNull('i.store_payment_intent_id')->where(fn ($x) => $x
+                    ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('store_payment_intents as p')
+                        ->join('orders as o', 'o.id', '=', 'p.order_id')
+                        ->whereColumn('p.id', 'i.store_payment_intent_id')
+                        ->where('p.status', StorePaymentIntent::PAID)->whereNull('p.refund_status')->where('p.updated_at', '<', $since)
+                        ->where('o.status', '!=', OrderStatus::CANCELLED)->where('o.updated_at', '<', $since))
+                    ->orWhereExists(fn ($q) => $q->select(DB::raw(1))->from('transactions as t')
+                        ->join('store_payment_intents as p', 'p.order_id', '=', 't.order_id')
+                        ->whereColumn('p.id', 'i.store_payment_intent_id')->where('t.business_id', $businessId)
+                        ->where(fn ($t) => $t->where('t.created_at', '>=', $since)->orWhere('t.updated_at', '>=', $since)->orWhere('t.deleted_at', '>=', $since)))
+                    ->orWhereExists(fn ($q) => $after($q->select(DB::raw(1))->from('journal_entries as e')
+                        ->join('store_payment_intents as p', 'p.order_id', '=', 'e.sourceable_id')
+                        ->whereColumn('p.id', 'i.store_payment_intent_id')
+                        ->where('e.business_id', $businessId)->where('e.sourceable_type', Order::class), 'e'))
+                    ->orWhereExists(fn ($q) => $after($q->select(DB::raw(1))->from('journal_entries as e')
+                        ->join('transactions as t', 't.id', '=', 'e.sourceable_id')
+                        ->join('store_payment_intents as p', 'p.order_id', '=', 't.order_id')
+                        ->whereColumn('p.id', 'i.store_payment_intent_id')->where('t.business_id', $businessId)
+                        ->where('e.business_id', $businessId)->where('e.sourceable_type', Transaction::class), 'e'))))
+                // رابطُ الدفع: الرابطُ وتحصيلُه كما صُنّفا، بمبلغه، ولم يُكتب لتحصيله قيد
+                ->orWhere(fn ($n) => $n->whereNotNull('i.customer_payment_link_id')->where(fn ($x) => $x
+                    ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('customer_payment_links as k')
+                        ->join('customer_payments as cp', 'cp.id', '=', 'k.customer_payment_id')
+                        ->whereColumn('k.id', 'i.customer_payment_link_id')
+                        ->where('k.status', CustomerPaymentLink::PAID)->where('k.updated_at', '<', $since)
+                        ->whereNull('cp.cancelled_at')->whereColumn('cp.amount', 'i.amount')->where('cp.updated_at', '<', $since))
+                    ->orWhereExists(fn ($q) => $after($q->select(DB::raw(1))->from('journal_entries as e')
+                        ->join('customer_payment_links as k', 'k.customer_payment_id', '=', 'e.sourceable_id')
+                        ->whereColumn('k.id', 'i.customer_payment_link_id')
+                        ->where('e.business_id', $businessId)->where('e.sourceable_type', CustomerPayment::class), 'e'))));
+        })->lazyById(self::CHUNK, 'i.id', 'id');
+    }
+
+    /** يحجز مدفوعاتٍ في المسوّدة بعد تصنيفها — والفهرسُ الفريد يمنع حجزَها في غيرها */
+    private static function reserve(PaymobSettlement $draft, Collection $picked): void
+    {
+        $businessId = (int) $draft->business_id;
+        $now = now();
+        $rows = [];
+
+        foreach ($picked as $p) {
+            $row = self::classify($businessId, $p['type'], $p['id']);
+            $in = PaymobSettlementItem::where(self::column($p['type']), $p['id'])->value('paymob_settlement_id');
+
+            if ($in !== null) {
+                if ((int) $in === (int) $draft->id) {
+                    continue;
+                }
+
+                throw new RuntimeException(__(':what سبقت تسويتُها — لا تُسوّى مدفوعةٌ مرّتين.', ['what' => $row['label']]));
+            }
+
+            $rows[] = [
+                'business_id' => $businessId,
+                'paymob_settlement_id' => $draft->id,
+                'store_payment_intent_id' => $row['type'] === self::INTENT ? $row['id'] : null,
+                'customer_payment_link_id' => $row['type'] === self::LINK ? $row['id'] : null,
+                'source' => $row['key'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ] + self::itemFields($row);
+        }
+
+        foreach (array_chunk($rows, 250) as $part) {
+            self::once(fn () => DB::table('paymob_settlement_items')->insert($part));
+        }
+    }
+
+    /** إجماليُّ المسوّدة مجموعُ ما فيها — يُقرأ من القاعدة بعد كلّ دفعة */
+    private static function regross(PaymobSettlement $draft): PaymobSettlement
+    {
+        $draft->forceFill(['gross' => round((float) $draft->items()->sum('amount'), 3), 'hold_reason' => null])->save();
+
+        return $draft->fresh();
+    }
+
+    private static function draft(int $businessId, int $id): PaymobSettlement
+    {
+        $draft = PaymobSettlement::where('business_id', $businessId)->whereKey($id)->firstOrFail();
+
+        if ($draft->status !== self::DRAFT) {
+            throw new RuntimeException(__('هذا التحويل ليس مسوّدةً تُكمَل — رُحّل أو أُلغي.'));
+        }
+
+        return $draft;
+    }
+
+    private static function fitsOneChunk(int $n): void
+    {
+        if ($n > self::CHUNK) {
+            throw new RuntimeException(__('تُضاف المدفوعات دفعاتٍ: :n في المرّة على الأكثر — لم يُكتب شيء.', ['n' => self::CHUNK]));
+        }
+    }
+
+    /** @return array{0: float, 1: float} الرسومُ والصافي من الكشف */
+    private static function amounts(array $data): array
+    {
+        $fee = round((float) ($data['fee'] ?? 0), 3);
+        $net = round((float) ($data['net'] ?? 0), 3);
+
+        if ($net <= 0 || $fee < 0) {
+            throw new RuntimeException(__('الصافي أكبر من صفر، والرسوم لا تكون سالبة.'));
+        }
+
+        return [$fee, $net];
     }
 
     /**
@@ -687,6 +1040,24 @@ final class PaymobSettlements
             return;
         }
 
+        $inBank = [];
+        foreach ($rows->where('booked', self::IN_BANK) as $row) {
+            $inBank[(int) $row['account_id']] = round(($inBank[(int) $row['account_id']] ?? 0) + $row['amount'], 3);
+        }
+
+        self::post($settlement, $fromClearing, $inBank, $userId);
+    }
+
+    /**
+     * قيدُ التحويل الواحد — من مجاميعه لا من صفوفه: ما خرج من «تحت التسوية»،
+     * وما كان في كلّ ورقةِ بنكٍ منذ يوم البيع (`[account_id => amount]`).
+     */
+    private static function post(PaymobSettlement $settlement, float $fromClearing, array $inBank, ?int $userId): void
+    {
+        $businessId = (int) $settlement->business_id;
+        $fee = round((float) $settlement->fee, 3);
+        $net = round((float) $settlement->net, 3);
+
         // كلُّ حسابٍ رقمٌ واحد: المدينُ موجب
         $move = [];
         $add = function (int $accountId, float $amount) use (&$move) {
@@ -696,8 +1067,8 @@ final class PaymobSettlements
         $add((Bank::leaf($businessId, $settlement->bank_account_id) ?? self::account($businessId, 'bank'))->id, $net);
         $add(self::account($businessId, 'payment_gateway_fees')->id, $fee);
         $add(self::account($businessId, 'paymob_clearing')->id, -$fromClearing);
-        foreach ($rows->where('booked', self::IN_BANK) as $row) {
-            $add((int) $row['account_id'], -$row['amount']);
+        foreach ($inBank as $accountId => $amount) {
+            $add((int) $accountId, -$amount);
         }
 
         $lines = collect($move)->reject(fn (float $v) => abs($v) < 0.0005)->sortDesc()

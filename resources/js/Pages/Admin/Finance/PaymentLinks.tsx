@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { Input } from '@/Components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { money } from '@/lib/format';
+import { csrfHeaders } from '@/lib/csrf';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
@@ -36,8 +37,9 @@ interface Settlement {
     /**
      * posted رُحّلت · held حُفظت ولم تُرحَّل (والسببُ في hold_reason) · cancelled أُلغيت قبل ترحيلها
      * · legacy سُجّلت قبل التحديث بثلاثة أرقام ولا تسمّي مدفوعاتها
+     * · draft تحويلٌ كبيرٌ يُجمع على دفعات ولم يُرحَّل (وما منع ترحيلَه في hold_reason)
      */
-    status: 'posted' | 'held' | 'cancelled' | 'legacy';
+    status: 'posted' | 'held' | 'cancelled' | 'legacy' | 'draft';
     hold_reason: string | null;
     items: number;
     /** للقديمة وحدها: ما بقي من إجماليّها غيرَ محدَّد، وما حُدّد أنّها حملته */
@@ -72,6 +74,8 @@ interface Props extends PaymentLinksPanel {
     payouts_next?: string | null;
     /** كم ينتظر في كلّ الدفعات */
     payouts_waiting?: number;
+    /** ما يُرسَل في الطلب الواحد — والتحويلُ الأكبرُ يُجمع على دفعات */
+    payouts_chunk?: number;
     /** التسجيلُ موقوفٌ مؤقّتًا من المنصّة */
     payouts_paused?: boolean;
     settlements: Settlement[];
@@ -331,6 +335,46 @@ export default function PaymentLinksPage() {
                                                     </Button>
                                                 </div>
                                             </div>
+                                        ) : s.status === 'draft' ? (
+                                            <div className="grid gap-1.5" data-testid="paymob-settlement-draft">
+                                                <span className="font-bold text-[#b45309]">
+                                                    {t('مسوّدة — لم تُرحَّل')} · {t(':n مدفوعة', { n: String(s.items) })}
+                                                </span>
+                                                {s.hold_reason && (
+                                                    <span className="text-[12px] text-[#6b7280]" data-testid="paymob-settlement-hold-reason">
+                                                        {s.hold_reason}
+                                                    </span>
+                                                )}
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        data-testid="paymob-settlement-post"
+                                                        onClick={() => router.post(route('admin.finance.paymobSettlements.post', s.id), {}, { preserveScroll: true })}
+                                                    >
+                                                        {t('ترحيل التحويل')}
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        data-testid="paymob-settlement-drop-unsure"
+                                                        onClick={() => router.post(route('admin.finance.paymobSettlements.dropUnsure', s.id), {}, { preserveScroll: true })}
+                                                    >
+                                                        {t('إخراج غير المؤكّدة')}
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        data-testid="paymob-settlement-cancel"
+                                                        onClick={async () => {
+                                                            if (!(await ask({ message: 'إلغاء هذه التسوية قبل ترحيلها؟ تعود مدفوعاتها لتُختار، ولا يُكتب في الدفتر شيء.', action: 'إلغاء التسوية' }))) return;
+                                                            router.post(route('admin.finance.paymobSettlements.cancel', s.id), {}, { preserveScroll: true });
+                                                        }}
+                                                    >
+                                                        {t('إلغاء قبل الترحيل')}
+                                                    </Button>
+                                                </div>
+                                            </div>
                                         ) : s.status === 'cancelled' ? (
                                             <span className="text-[#9ca3af]">{t('أُلغيت قبل الترحيل')}</span>
                                         ) : s.status === 'legacy' ? (
@@ -359,7 +403,7 @@ export default function PaymentLinksPage() {
             </section>
 
             <CreateDialog open={creating} onClose={() => setCreating(false)} customers={customers} />
-            <SettleDialog open={settling} onClose={() => setSettling(false)} payouts={payouts} more={more} bankAccounts={bankAccounts} />
+            <SettleDialog open={settling} onClose={() => setSettling(false)} payouts={payouts} more={more} chunk={props.payouts_chunk ?? 500} bankAccounts={bankAccounts} />
             {naming && <LegacyDialog settlement={naming} payouts={payouts} more={more} paused={!!props.payouts_paused} onClose={() => setNaming(null)} ask={ask} />}
             {confirmDialog}
         </AdminLayout>
@@ -620,7 +664,21 @@ function MorePayoutsButton({ more }: { more: MorePayouts }) {
     );
 }
 
-function SettleDialog({ open, onClose, payouts, more, bankAccounts }: { open: boolean; onClose: () => void; payouts: Payout[]; more: MorePayouts; bankAccounts: Option[] }) {
+function SettleDialog({
+    open,
+    onClose,
+    payouts,
+    more,
+    chunk,
+    bankAccounts,
+}: {
+    open: boolean;
+    onClose: () => void;
+    payouts: Payout[];
+    more: MorePayouts;
+    chunk: number;
+    bankAccounts: Option[];
+}) {
     const t = useTranslate();
     const form = useForm<{ items: string[]; fee: string; net: string; settled_on: string; bank_account_id: string; reference: string; notes: string }>({
         items: [],
@@ -647,8 +705,70 @@ function SettleDialog({ open, onClose, payouts, more, bankAccounts }: { open: bo
             return { ...d, items, net: suggest(total(items), d.fee) };
         });
 
+    /*
+     * تحويلٌ بمدفوعاتٍ كثيرة لا يُرسَل في طلبٍ واحد: يُفتح بأرقام كشفه، وتُضاف
+     * مدفوعاتُه دفعاتٍ — بأسمائها أو «كلُّ ما ينتظر حتى يوم» — ثمّ يُرحَّل مرّةً.
+     * وما انقطع في منتصفه يبقى مسوّدةً في جدول التسويات، لا قيدَ فيه.
+     */
+    const [through, setThrough] = useState('');
+    const [run, setRun] = useState<{ busy: boolean; done: number; error: string | null }>({ busy: false, done: 0, error: null });
+    const inBatches = !!through || form.data.items.length > chunk;
+
+    const send = async (url: string, body: object) => {
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...csrfHeaders() },
+            body: JSON.stringify(body),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            const first = d?.errors ? (Object.values(d.errors as Record<string, string[]>)[0] ?? [])[0] : null;
+            throw new Error(first ?? d?.message ?? t('تعذّر الاتصال'));
+        }
+
+        return d;
+    };
+
+    const settleInBatches = async () => {
+        setRun({ busy: true, done: 0, error: null });
+        let id: number | null = null;
+        try {
+            const { items, ...head } = form.data;
+            id = (await send(route('admin.finance.paymobSettlements.drafts.store'), head)).id as number;
+            if (through) {
+                let step: { count: number; added: number; remaining: number };
+                do {
+                    step = await send(route('admin.finance.paymobSettlements.waiting', id), { through });
+                    setRun((r) => ({ ...r, done: step.count }));
+                } while (step.remaining > 0 && step.added > 0);
+            } else {
+                for (let i = 0; i < items.length; i += chunk) {
+                    const step = await send(route('admin.finance.paymobSettlements.items.store', id), { items: items.slice(i, i + chunk) });
+                    setRun((r) => ({ ...r, done: step.count }));
+                }
+            }
+            router.post(route('admin.finance.paymobSettlements.post', id), {}, {
+                preserveScroll: true,
+                onFinish: () => {
+                    setRun({ busy: false, done: 0, error: null });
+                    form.reset();
+                    setThrough('');
+                    onClose();
+                },
+            });
+        } catch (err) {
+            setRun({ busy: false, done: 0, error: (err as Error).message + (id ? ' — ' + t('حُفظ ما أُضيف مسوّدةً في جدول التسويات — رحّله أو ألغه من هناك.') : '') });
+            if (id) router.reload({ only: ['settlements', 'payouts', 'payouts_next', 'payouts_waiting', 'clearing'] });
+        }
+    };
+
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
+        if (inBatches) {
+            void settleInBatches();
+
+            return;
+        }
         form.post(route('admin.finance.paymobSettlements.store'), {
             preserveScroll: true,
             onSuccess: () => {
@@ -703,6 +823,36 @@ function SettleDialog({ open, onClose, payouts, more, bankAccounts }: { open: bo
                             );
                         })}
                         <MorePayoutsButton more={more} />
+                        <label className="flex items-start gap-2 text-[13px]">
+                            <input
+                                type="checkbox"
+                                className="mt-1"
+                                checked={!!through}
+                                onChange={(e) => setThrough(e.target.checked ? form.data.settled_on : '')}
+                                data-testid="paymob-settle-through-toggle"
+                            />
+                            <span>{t('كلُّ ما ينتظر ودُفع حتى يومٍ بعينه — لتحويلٍ بمدفوعاتٍ كثيرة')}</span>
+                        </label>
+                        {through && (
+                            <Input type="date" dir="ltr" value={through} onChange={(e) => setThrough(e.target.value)} aria-label={t('حتى تاريخ')} data-testid="paymob-settle-through" />
+                        )}
+                        {inBatches && (
+                            <p className="rounded-md bg-[#eff6ff] p-2 text-[12px] text-[#1e40af]" data-testid="paymob-settle-batches-notice">
+                                {through
+                                    ? t('تُضاف المدفوعات على دفعات ثمّ يُرحَّل التحويل مرّةً واحدة — ويبقى مسوّدةً إن لم يساوِ مجموعُها الصافيَ والرسوم.')
+                                    : t('أكثر من :n مدفوعة — تُسجَّل على دفعات ثمّ تُرحَّل مرّةً واحدة.', { n: String(chunk) })}
+                            </p>
+                        )}
+                        {run.busy && (
+                            <p className="text-[12px] text-[#374151]" data-testid="paymob-settle-progress">
+                                {t('تُضاف المدفوعات على دفعات: :n حتى الآن', { n: String(run.done) })}
+                            </p>
+                        )}
+                        {run.error && (
+                            <p className="text-[12px] text-[#b91c1c]" data-testid="paymob-settle-batch-error">
+                                {run.error}
+                            </p>
+                        )}
                         {form.errors.items && <p className="text-[12px] text-[#b91c1c]">{form.errors.items}</p>}
                         {picked.some((p) => p.booked === 'bank') && (
                             <p className="rounded-md bg-[#eff6ff] p-2 text-[12px] text-[#1e40af]" data-testid="paymob-settle-bank-notice">
@@ -749,7 +899,7 @@ function SettleDialog({ open, onClose, payouts, more, bankAccounts }: { open: bo
                         <Input value={form.data.notes} onChange={(e) => form.setData('notes', e.target.value)} aria-label={t('ملاحظات')} />
                     </Field>
                     <div className="flex gap-2 sm:col-span-2">
-                        <Button type="submit" loading={form.processing} disabled={form.data.items.length === 0} data-testid="paymob-settle-submit">
+                        <Button type="submit" loading={form.processing || run.busy} disabled={(form.data.items.length === 0 && !through) || run.busy} data-testid="paymob-settle-submit">
                             {t('تسجيل التسوية')}
                         </Button>
                         <Button type="button" variant="outline" onClick={onClose}>

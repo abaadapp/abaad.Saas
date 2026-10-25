@@ -15,7 +15,8 @@ use Tests\TestCase;
  *
  * كان `candidates()` يقطع عند 300 لكلّ نوعٍ بلا تتمّة، والتحويلُ الواحد لا
  * يسمّي أكثرَ من 300: متجرٌ تراكم عنده أكثرُ لا يرى الأحدثَ ولا يسوّيه. فصار
- * العرضُ دفعاتٍ بمؤشّرٍ (`candidatesPage`) والتحويلُ يسمّي حتّى `MAX_ITEMS`.
+ * العرضُ دفعاتٍ بمؤشّرٍ (`candidatesPage`)، والتحويلُ الأكبرُ من دفعةٍ يُجمع في
+ * مسوّدة (انظر `APaymobPayoutOfThousandsIsOneSettlementTest`).
  * ويبقى كلُّ حارس: لا مدفوعةَ في تسويتين، ولا متجرَ يرى مدفوعاتِ غيره.
  */
 class EveryWaitingPaymobPaymentCanBeReachedTest extends TestCase
@@ -134,17 +135,17 @@ class EveryWaitingPaymobPaymentCanBeReachedTest extends TestCase
         $this->actingAs($seller)->getJson(route('admin.finance.paymobSettlements.candidates'))->assertForbidden();
     }
 
-    public function test_one_payout_may_name_more_than_three_hundred_payments(): void
+    public function test_one_request_carries_one_batch_and_no_more(): void
     {
         $keys = fn (int $n) => array_map(fn ($i) => 'link:'.(900000 + $i), range(1, $n));
         $error = fn (int $n) => $this->post(route('admin.finance.paymobSettlements.store'), [
             'items' => $keys($n), 'fee' => 0, 'net' => 1, 'settled_on' => '2027-02-10',
         ])->assertSessionHasErrors('items')->getSession()->get('errors')->first('items');
 
-        // ٣٠١ اسمًا تبلغ الفحصَ نفسه (فيُردّ لأنّها ليست مدفوعات) — لا سقفَ العدد
+        // ٣٠١ اسمًا تبلغ الفحصَ نفسه (فتُردّ لأنّها ليست مدفوعات) — لا سقفَ ٣٠٠ بعد اليوم
         $this->assertStringNotContainsString('300', $error(301));
-        // وما فوق MAX_ITEMS حارسُ طلبٍ يُردّ قبل أيّ قراءة
-        $this->assertStringContainsString((string) PaymobSettlements::MAX_ITEMS, $error(PaymobSettlements::MAX_ITEMS + 1));
+        // وما فوق الدفعة في طلبٍ واحد يُردّ قبل أيّ قراءة: الأكبرُ يُجمع في مسوّدة
+        $this->assertStringContainsString((string) PaymobSettlements::CHUNK, $error(PaymobSettlements::CHUNK + 1));
         $this->assertSame(0, PaymobSettlement::count());
     }
 }

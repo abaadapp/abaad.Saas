@@ -241,3 +241,78 @@ describe('ما ينتظر يُعرض دفعةً بعد دفعة', () => {
         expect(within(screen.getByTestId('paymob-settle-group-clearing')).getAllByTestId('paymob-settle-pick')).toHaveLength(2);
     });
 });
+
+/*
+ * وتحويلٌ بمدفوعاتٍ كثيرة لا يُرسَل في طلبٍ واحد: يُفتح بأرقام كشفه، وتُضاف
+ * مدفوعاتُه دفعاتٍ، ثمّ يُرحَّل مرّةً. وما انقطع في منتصفه يقول إنّه بقي مسوّدة.
+ */
+describe('تحويلٌ بمدفوعاتٍ كثيرة يُسجَّل على دفعات ثمّ يُرحَّل مرّةً', () => {
+    const replies = (list: Array<{ status?: number; body: unknown }>) =>
+        vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+            const next = list.shift()!;
+
+            return new Response(JSON.stringify(next.body), { status: next.status ?? 200, headers: { 'Content-Type': 'application/json' } });
+        });
+
+    beforeEach(() => vi.mocked(router.reload).mockClear());
+
+    it('«كلُّ ما ينتظر حتى يوم»: يُفتح، ثمّ يُضاف دفعةً بعد دفعة، ثمّ يُرحَّل', async () => {
+        const fetched = replies([
+            { status: 201, body: { id: 7, status: 'draft', count: 0, gross: 0 } },
+            { body: { id: 7, status: 'draft', count: 500, gross: 500, added: 500, remaining: 100 } },
+            { body: { id: 7, status: 'draft', count: 600, gross: 600, added: 100, remaining: 0 } },
+        ]);
+        page({ payouts_chunk: 500 });
+        const form = open();
+
+        fireEvent.click(within(form).getByTestId('paymob-settle-through-toggle'));
+        expect(within(form).getByTestId('paymob-settle-batches-notice')).toHaveTextContent('يُرحَّل التحويل مرّةً واحدة');
+        fireEvent.change(within(form).getByRole('textbox', { name: 'الصافي' }), { target: { value: '590' } });
+        fireEvent.click(within(form).getByTestId('paymob-settle-submit'));
+
+        await vi.waitFor(() => expect(router.post).toHaveBeenCalled());
+        const urls = fetched.mock.calls.map((c) => JSON.stringify(c[0]));
+        expect(urls).toHaveLength(3);
+        expect(urls[0]).toContain('admin.finance.paymobSettlements.drafts.store');
+        expect(urls[1]).toContain('admin.finance.paymobSettlements.waiting/7');
+        expect(urls[2]).toContain('admin.finance.paymobSettlements.waiting/7');
+        expect(String(vi.mocked(router.post).mock.calls[0][0])).toContain('admin.finance.paymobSettlements.post/7');
+        // ولا اسمَ مدفوعةٍ في أيّ طلب — اليومُ وحده
+        expect(JSON.parse(String(fetched.mock.calls[1][1]?.body))).toEqual({ through: expect.any(String) });
+    });
+
+    it('انقطاعٌ في منتصفه يقول إنّ ما أُضيف بقي مسوّدة — ولا يُرحَّل', async () => {
+        replies([
+            { status: 201, body: { id: 8, status: 'draft', count: 0, gross: 0 } },
+            { status: 422, body: { message: 'x', errors: { items: ['رابط دفع سبقت تسويتُها — لا تُسوّى مدفوعةٌ مرّتين.'] } } },
+        ]);
+        page({ payouts_chunk: 500 });
+        const form = open();
+
+        fireEvent.click(within(form).getByTestId('paymob-settle-through-toggle'));
+        fireEvent.change(within(form).getByRole('textbox', { name: 'الصافي' }), { target: { value: '10' } });
+        fireEvent.click(within(form).getByTestId('paymob-settle-submit'));
+
+        expect(await within(form).findByTestId('paymob-settle-batch-error')).toHaveTextContent('سبقت تسويتُها');
+        expect(within(form).getByTestId('paymob-settle-batch-error')).toHaveTextContent('حُفظ ما أُضيف مسوّدةً في جدول التسويات');
+        expect(router.post).not.toHaveBeenCalled();
+        expect(router.reload).toHaveBeenCalled();
+    });
+
+    it('في الجدول: المسوّدةُ تقول عددَها وسببَها، وتُرحَّل أو تُفرَّغ من غير المؤكّد', () => {
+        page({
+            settlements: [{ id: 9, settled_on: '2027-02-10', gross: 2101, fee: 52.525, net: 2048.475, bank: 'بنك مسقط', reference: 'PMB-9', notes: null,
+                status: 'draft', hold_reason: 'مجموعُ المدفوعات المختارة (2101.000) لا يساوي الصافيَ والرسوم (2000.000).', items: 2101 }],
+        });
+
+        const draft = screen.getByTestId('paymob-settlement-draft');
+        expect(draft).toHaveTextContent('مسوّدة — لم تُرحَّل');
+        expect(draft).toHaveTextContent('2101 مدفوعة');
+        expect(within(draft).getByTestId('paymob-settlement-hold-reason')).toHaveTextContent('لا يساوي');
+
+        fireEvent.click(within(draft).getByTestId('paymob-settlement-post'));
+        expect(String(vi.mocked(router.post).mock.calls.at(-1)![0])).toContain('admin.finance.paymobSettlements.post/9');
+        fireEvent.click(within(draft).getByTestId('paymob-settlement-drop-unsure'));
+        expect(String(vi.mocked(router.post).mock.calls.at(-1)![0])).toContain('admin.finance.paymobSettlements.dropUnsure/9');
+    });
+});

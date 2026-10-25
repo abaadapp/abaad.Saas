@@ -30,10 +30,10 @@ return new class extends Migration
             $table->unsignedInteger('version');
             $table->json('content');
             $table->string('content_hash', 64);
-            $table->foreignId('saved_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('saved_by')->nullable()->index()->constrained('users')->nullOnDelete();
             $table->string('saved_by_name', 120)->nullable();
             $table->timestamp('published_at')->nullable();
-            $table->foreignId('published_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('published_by')->nullable()->index()->constrained('users')->nullOnDelete();
             $table->string('published_by_name', 120)->nullable();
             $table->timestamps();
             $table->unique(['template_id', 'version']);

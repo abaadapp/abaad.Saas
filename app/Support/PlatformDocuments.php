@@ -53,7 +53,8 @@ use Throwable;
  *
  * لا يُصدر إلّا من قالبٍ معتمدٍ نصُّه كما هو الآن (`PlatformDocumentTemplate::approved`).
  * ورسومُه كما اعتُمدت: الثابتةُ هي المبلغ، و«يبدأ من» حدُّه الأدنى. ومقدّمُ الخدمة
- * ببياناته القانونيّة كاملةً (الاسم والسجلّ والعنوان) نسخةٌ في المستند ساعتَها.
+ * بما كُتب من بياناته نسخةٌ في المستند ساعتَها — وما لم يُكتب (السجلّ، العنوان) لا
+ * يُطبع، ولا يمنع اعتمادًا ولا إصدارًا: قرارُ المالك.
  */
 class PlatformDocuments
 {
@@ -187,11 +188,8 @@ class PlatformDocuments
         if (! $template->approved()) {
             throw new RuntimeException(__('هذا القالب لم يُعتمد بنصّه الحاليّ — لا يُصدر منه مستند حتى يعتمده مدير المنصّة.'));
         }
-        // مقدّمُ الخدمة كما هو اليوم — وقالبٌ اعتُمد بهذه السياسة لا يُصدر بلا سجلّه وعنوانه
+        // مقدّمُ الخدمة كما هو اليوم — بما كُتب منه، وما لم يُكتب لا يُطبع
         $provider = self::provider();
-        if ($template->approval_basis !== PlatformDocumentTemplate::LEGACY && ($gap = self::providerMissing($provider))) {
-            throw new RuntimeException(__('أكمل بيانات مقدّم الخدمة في إعدادات المنصّة: :fields', ['fields' => implode('، ', $gap)]));
-        }
 
         $renews = ! empty($data['renews_document_id']) ? PlatformDocument::findOrFail($data['renews_document_id']) : null;
         if ($renews) {
@@ -530,7 +528,7 @@ class PlatformDocuments
         return 'data:image/png;base64,'.base64_encode((string) Storage::disk('local')->get($doc->signature_path));
     }
 
-    /** بياناتُ مقدّم الخدمة القانونيّة التي لا يُعتمد قالبٌ ولا يُصدر بغيرها — بمفاتيحها في `provider()` */
+    /** بياناتُ مقدّم الخدمة القانونيّة — تُطبع إن كُتبت، ولا تمنع شيئًا إن لم تُكتب. بمفاتيحها في `provider()` */
     public const PROVIDER_REQUIRED = ['legal_name' => 'الاسم القانوني', 'cr' => 'رقم السجل التجاري', 'address' => 'العنوان القانوني'];
 
     /** الطرفُ الأوّل في مستندٍ صدر — كما نُسخ يومَ إصداره */
@@ -565,7 +563,7 @@ class PlatformDocuments
         ];
     }
 
-    /** ما ينقص من بيانات مقدّم الخدمة القانونيّة — بعناوينه */
+    /** ما لم يُكتب من بيانات مقدّم الخدمة القانونيّة — بعناوينه، للتنبيه وحده */
     public static function providerMissing(array $provider): array
     {
         return array_values(array_map(

@@ -25,8 +25,10 @@ use Tests\TestCase;
  *
  *   - الاتفاقياتُ الخمس تصل مسوّداتٍ معطَّلة: لا تُعرض في نافذة الإصدار ولا يُصدر
  *     منها ولو فُعِّلت بيدٍ في القاعدة.
- *   - الاعتمادُ لمدير المنصّة وحده، بكلمة مروره، على بصمة ما رآه، وبياناتُ مقدّم
- *     الخدمة القانونيّة كاملة. والاعتمادُ لا يفعّل؛ والتفعيلُ لا يسبق الاعتماد.
+ *   - الاعتمادُ لمدير المنصّة وحده، بكلمة مروره، على بصمة ما رآه. والاعتمادُ لا
+ *     يفعّل؛ والتفعيلُ لا يسبق الاعتماد.
+ *   - وبياناتُ مقدّم الخدمة (السجلّ والعنوان) لا تمنع اعتمادًا ولا إصدارًا — قرارُ
+ *     المالك: ما كُتب منها يُطبع، وما لم يُكتب لا يُطبع.
  *   - تعديلُ نصٍّ معتمد أو رسومه إصدارٌ جديدٌ معطَّل — وما صدر قبله لا يتغيّر.
  *   - الرسومُ الثابتة هي المبلغ ويذكرها النصّ، و«يبدأ من» حدٌّ أدنى. وتوقيعُ
  *     اتفاقيةٍ لا يكتب فاتورةً ولا دفعةً ولا قيدًا.
@@ -111,12 +113,9 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $this->assertFalse($draft->fresh()->active);
     }
 
-    public function test_approval_is_by_password_on_what_was_seen_and_needs_the_providers_legal_details(): void
+    public function test_approval_is_by_password_on_what_was_seen(): void
     {
         $t = $this->template('payment-integration');
-
-        // بلا سجلٍّ ولا عنوان لا اعتماد — وتُسمّى الناقصة
-        $this->approve($t)->assertSessionHasErrors(['approve' => 'أكمل بيانات مقدّم الخدمة في إعدادات المنصّة قبل الاعتماد: رقم السجل التجاري، العنوان القانوني']);
         $this->completeProvider();
 
         // كلمةُ مرورٍ خاطئة، أو قالبٌ تغيّر بعد أن فُتح
@@ -142,9 +141,38 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $this->assertSame(1, $doc->template_version);
         $this->assertSame('TEST-CR-0001', $doc->provider['cr'], 'مقدّمُ الخدمة نسخةٌ في المستند');
 
-        // وسجلٌّ يُمحى بعدها من الإعدادات: لا يُصدر قالبٌ معتمد بطرفٍ أوّل ناقص
-        Setting::whereNull('business_id')->where('key', 'legal_cr')->update(['value' => '']);
-        $this->issueRequest($t)->assertSessionHasErrors(['document' => 'أكمل بيانات مقدّم الخدمة في إعدادات المنصّة: رقم السجل التجاري']);
+    }
+
+    /**
+     * وبياناتُ مقدّم الخدمة لا تقيّد المالك — قرارُه (2026-10-25).
+     *
+     * بلا سجلٍّ ولا عنوان يُعتمد القالبُ ويُصدر منه، ولا يُطبع في العقد سطرٌ فارغ
+     * ولا رقمٌ يُخترع. وما يُكتب بعدها يظهر في المستندات التالية وحدها.
+     */
+    public function test_the_providers_cr_and_address_never_block_approval_or_issuing(): void
+    {
+        $t = $this->template('subscription-agreement');
+        Setting::updateOrCreate(['business_id' => null, 'key' => 'legal_trade_name'], ['value' => 'أبعاد']);
+
+        $this->approve($t)->assertSessionHasNoErrors();
+        $this->assertSame('approved', $t->fresh()->approvalState());
+        $this->activate($t)->assertSessionHasNoErrors();
+        $this->issueRequest($t)->assertSessionHasNoErrors()->assertRedirect();
+        $doc = PlatformDocument::latest('id')->firstOrFail();
+        $this->assertSame('', $doc->provider['cr']);
+        $this->assertSame('', $doc->provider['address']);
+        $this->assertSame('مشاريع الذهلي الجديدة — الاسم التجاري للمنصة: أبعاد', $doc->form['highlights'][0]['text'], 'الطرفُ الأوّل بما كُتب منه وحده');
+        auth()->logout();
+        $this->get(route('documents.sign', $doc->token))->assertOk()
+            ->assertSee('مشاريع الذهلي الجديدة')->assertDontSee('السجل التجاري رقم')->assertDontSee('id="provider-address"', false);
+
+        // ويُكتب السجلُّ بعدها فيظهر فيما يصدر بعده — والأوّلُ كما صدر
+        $this->completeProvider();
+        $this->issueRequest($t)->assertSessionHasNoErrors();
+        $next = PlatformDocument::latest('id')->firstOrFail();
+        $this->assertSame('TEST-CR-0001', $next->provider['cr']);
+        $this->assertStringContainsString('السجل التجاري رقم TEST-CR-0001', $next->form['highlights'][0]['text']);
+        $this->assertSame('', $doc->fresh()->provider['cr']);
     }
 
     public function test_only_a_platform_admin_approves(): void

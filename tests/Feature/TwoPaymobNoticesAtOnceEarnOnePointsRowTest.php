@@ -83,7 +83,7 @@ class TwoPaymobNoticesAtOnceEarnOnePointsRowTest extends TestCase
         PaymentGateway::create([
             'business_id' => $shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
             'public_key' => 'pk', 'secret_key' => 'sk', 'hmac_secret' => 'hmac-race',
-            'card_integration_id' => '111', 'api_key' => 'api', 'mode' => PaymentGateway::TEST,
+            'card_integration_id' => '111', 'api_key' => 'api', 'mode' => PaymentGateway::LIVE,
         ]);
         $invoice = CustomerInvoices::issue(CustomerInvoices::create($shop->id, $customer, ['issued_at' => now()->toDateString()], [
             ['description' => 'باقة', 'quantity' => 1, 'unit_price' => 10, 'tax_rate' => 0],
@@ -92,7 +92,7 @@ class TwoPaymobNoticesAtOnceEarnOnePointsRowTest extends TestCase
         $link = CustomerPaymentLink::create([
             'business_id' => $shop->id, 'customer_id' => $customer->id, 'customer_invoice_id' => $invoice->id,
             'reference' => 'pay-race-1', 'amount' => 10, 'currency' => 'OMR', 'status' => CustomerPaymentLink::PENDING,
-            'provider_order_id' => '777001', 'is_live' => false, 'created_by' => $owner->id,
+            'provider_order_id' => '777001', 'is_live' => true, 'created_by' => $owner->id,
         ]);
 
         $obj = [
@@ -101,7 +101,7 @@ class TwoPaymobNoticesAtOnceEarnOnePointsRowTest extends TestCase
             'is_3d_secure' => true, 'is_auth' => false, 'is_capture' => false, 'is_refunded' => false,
             'is_standalone_payment' => true, 'is_voided' => false, 'order' => ['id' => 777001, 'merchant_order_id' => null],
             'owner' => 1, 'pending' => false, 'source_data' => ['pan' => '2346', 'sub_type' => 'Visa', 'type' => 'card'],
-            'success' => true, 'is_live' => false,
+            'success' => true, 'is_live' => true,
         ];
 
         return [$shop, $customer, $link, $obj, Paymob::signature($obj, 'hmac-race')];

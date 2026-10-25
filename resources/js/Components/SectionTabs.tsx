@@ -142,17 +142,15 @@ export const CUSTOMER_TABS: SectionTab[] = [
 ];
 
 /*
- * فواتيرُ العملاء وسجلُّ البيع كلِّه — بابٌ واحدٌ بأربعة تبويبات.
+ * فواتيرُ العملاء — الفواتيرُ وحدها بمسوّداتها.
  *
- * البيعةُ طلبٌ (الصندوق والموقع) أو فاتورةٌ مستقلّة، ولوحةُ التجهيز تعرض
- * النوعين. فـ«جميع عمليات البيع» تجمعهما من سجلٍّ واحد (`SalesRegister`)،
- * و«فواتير العملاء» تبقى الفواتيرَ وحدها بمسوّداتها كما كانت.
+ * كانت معها ثلاثةُ تبويباتٍ من سجلّ البيع (`SalesRegister`): جميع عمليات
+ * البيع، ومبيعات نقطة البيع، وطلبات الموقع. رُفعت من الواجهة بقرار المالك،
+ * ومساراتُها وملفّاتُها باقية: رابطٌ قديمٌ محفوظٌ يُفتح ولا يردّ 404. وتبويبٌ
+ * واحدٌ لا يُرسم شريطًا (`SectionTabs`)، فتعود الصفحةُ كما كانت قبلها.
  */
 export const CUSTOMER_INVOICE_TABS: SectionTab[] = [
-    { label: 'جميع عمليات البيع', routeName: 'admin.customerInvoices.sales', section: 'orders' },
     { label: 'فواتير العملاء', routeName: 'admin.customerInvoices.index', section: 'orders' },
-    { label: 'مبيعات نقطة البيع', routeName: 'admin.customerInvoices.posSales', section: 'orders' },
-    { label: 'طلبات الموقع الإلكتروني', routeName: 'admin.customerInvoices.websiteOrders', section: 'orders' },
 ];
 
 /**

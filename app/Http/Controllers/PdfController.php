@@ -25,6 +25,7 @@ use App\Support\Lists\BusinessesList;
 use App\Support\Lists\ExpensesList;
 use App\Support\Lists\InventoryList;
 use App\Support\Lists\OrdersList;
+use App\Support\Lists\PaidLinksList;
 use App\Support\Lists\PlatformInvoicesList;
 use App\Support\Lists\ProductsList;
 use App\Support\Lists\TransactionsList;
@@ -362,6 +363,11 @@ class PdfController extends Controller
     /** تقرير قائمة الطلبات (PDF) */
     public function ordersReport()
     {
+        // و«رابط دفع» في مُرشِّح المصدر تحصيلاتٌ لا طلبات — ورقتُها ما في شاشتها
+        if (PaidLinksList::chosen(request())) {
+            return $this->paidLinksReport();
+        }
+
         if ($refused = PdfRows::refuse(OrdersList::filtered(request())->count())) {
             return $refused;
         }
@@ -382,6 +388,26 @@ class PdfController extends Controller
         Activity::log('report', 'صدّر قائمة الطلبات (PDF)');
 
         return $this->pdf($html, 'orders-report-'.now()->format('Y-m-d'));
+    }
+
+    /** تحصيلاتُ روابط الدفع (PDF) — صفوفُ مُرشِّح «رابط دفع» في «المبيعات» */
+    private function paidLinksReport()
+    {
+        if ($refused = PdfRows::refuse(PaidLinksList::filtered(request())->count())) {
+            return $refused;
+        }
+
+        $html = view('pdf.payment-link-collections', [
+            'business' => TenantExportGuard::business(),
+            'branch' => Demo::scopeName(true),
+            'rows' => PaidLinksList::rows(request()),
+            'totals' => PaidLinksList::totals(request()),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+        ])->render();
+
+        Activity::log('report', 'صدّر تحصيلات روابط الدفع (PDF)');
+
+        return $this->pdf($html, 'payment-link-collections-'.now()->format('Y-m-d'));
     }
 
     /** تقرير المنتجات (PDF) */

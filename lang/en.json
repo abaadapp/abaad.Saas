@@ -9362,5 +9362,20 @@
     "السعر يبدأ منها: لا يُصدر مستند بأقل منها": "Price starts from it: no document is issued below it",
     "رسوم ثابتة كما نُشرت ويذكرها نص الاتفاقية — تُغيَّر من القالب ثم يُنشر من جديد": "A fixed fee as published, stated by the agreement text — change it in the template, then publish again",
     "يبدأ من :fee ر.ع كما نُشر": "Starts from :fee OMR as published",
-    "منشور منذ :at": "Published since :at"
+    "منشور منذ :at": "Published since :at",
+    "عن الطلب :n": "For order :n",
+    "مدفوع — يحتاج مراجعة": "Paid — needs review",
+    "سند القبض": "Receipt voucher",
+    "تحصيلات عبر روابط الدفع": "Collections via payment links",
+    "منه على فواتير": "Of which on invoices",
+    "منه دون فاتورة": "Of which without an invoice",
+    "تحصيلٌ لا بيعٌ جديد: البيعُ محسوبٌ في فاتورته، ولا يُضاف هذا إلى إجمالي المبيعات.": "A collection, not a new sale: the sale is counted in its invoice, and this is not added to the sales total.",
+    "وتحصيلات عبر روابط الدفع (ليست ضمن الإجمالي)": "Plus collections via payment links (not in the total)",
+    "تحصيلات روابط الدفع": "Payment link collections",
+    "مرجع Paymob": "Paymob reference",
+    "عدد التحصيلات": "Number of collections",
+    "لا توجد تحصيلات ناجحة عبر روابط الدفع": "No successful collections via payment links",
+    "تحصيل فاتورة": "Invoice collection",
+    "تحصيل عبر رابط دفع": "Collection via payment link",
+    "ابحث برقم السند أو العميل أو الفاتورة أو مرجع Paymob…": "Search by voucher no., customer, invoice or Paymob reference…"
 }

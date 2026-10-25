@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { Eye, Globe, Plus, Store, Trash2 } from 'lucide-react';
+import { Eye, Globe, Link2, Plus, Store, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import PageHeader from '@/Components/PageHeader';
@@ -35,16 +35,52 @@ interface Props {
     channelOptions: { value: string; label: string }[];
     /** زرُّ «حذف» لصاحب النشاط وحده (`role === 'admin'`) — والخادمُ يردّ غيرَه بـ403 */
     mayDelete: boolean;
+    /** تحصيلاتُ روابط الدفع حين يُختار مصدرُها «رابط دفع» — `PaidLinksList` */
+    collections?: Collection[];
+    collectionTotals?: {
+        count: number;
+        amount: number;
+        on_invoices: { count: number; amount: number };
+        standalone: { count: number; amount: number };
+    };
+    /** سندُ القبض صفحةُ «المالية» — زرُّه لمن يفتحها */
+    mayOpenReceipts?: boolean;
+    /** عددُ تحصيلات الروابط ومبلغُها تحت إجمالي «كل المصادر» — ليست منه */
+    linkCollections?: { count: number; amount: number } | null;
 }
+
+/** تحصيلٌ عبر رابط دفع — مالٌ قُبض عن بيعٍ محسوبٍ في فاتورته، لا طلب */
+export interface Collection {
+    key: string;
+    /** رقمُ سند القبض */
+    id: string;
+    /** مرجعُ العمليّة عند Paymob */
+    reference: string;
+    customer: string;
+    type: 'تحصيل فاتورة' | 'تحصيل عبر رابط دفع';
+    invoice: { id: number; number: string } | null;
+    /** الطلباتُ التي صدرت عنها الفاتورة — بيعُها هناك */
+    orders: string[];
+    amount: number;
+    date: string;
+    status: string;
+    review: boolean;
+    payment: { id: number; number: string };
+}
+
+const PAYMENT_LINK = 'payment_link';
 
 export default function OrdersIndex() {
     const {
         orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount, period,
         websiteCount, websiteAmount, statusOptions, channelOptions, mayDelete, context,
+        collections, collectionTotals, mayOpenReceipts, linkCollections,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
     const [ask, confirmDialog] = useConfirm();
+    // «رابط دفع» — الجدولُ تحصيلاتٌ من الخادم لا طلبات (`PaidLinksList`)
+    const onLinks = filters.channel === PAYMENT_LINK && collections !== undefined;
 
     /*
      * «حذف» البيعة إلغاؤها ماليًّا — `OrderController::destroy` ← `OrderCorrection::cancel`.
@@ -240,6 +276,101 @@ export default function OrdersIndex() {
               ] as Filter<Order>[])),
     ];
 
+    /*
+     * ═══ «رابط دفع» — تحصيلٌ لا طلب ═══
+     *
+     * مالٌ قبضته Paymob عن فاتورةٍ (بيعُها محسوبٌ فيها) أو رصيدًا للعميل. فلا
+     * عمودَ منتجاتٍ ولا موظّفَ ولا موعدَ تسليم، ولا «حذف»: إلغاءُ التحصيل
+     * بابُه سندُ القبض في «المالية». ومُرشِّحاتُ الطلب (الحالة والوسيلة والموعد)
+     * تُرفع هنا — الخادمُ لا يسألها عن تحصيل.
+     */
+    const collectionColumns: Column<Collection>[] = [
+        {
+            key: 'id',
+            header: 'رقم السند',
+            cell: (c) => (
+                <span className="flex flex-col">
+                    <span className="font-medium text-[#111]">{c.id}</span>
+                    <span className="text-[11px] text-[#9ca3af]" dir="ltr">
+                        Paymob · {c.reference}
+                    </span>
+                </span>
+            ),
+        },
+        { key: 'customer', header: 'العميل', cell: (c) => c.customer || '—' },
+        {
+            key: 'channel',
+            header: 'المصدر',
+            cell: () => (
+                <Badge variant="primary">
+                    <Link2 className="size-3" />
+                    {t('رابط دفع')}
+                </Badge>
+            ),
+        },
+        {
+            key: 'type',
+            header: 'النوع',
+            cell: (c) => (
+                <span className="flex flex-col" data-testid="collection-type">
+                    <span>{t(c.type)}</span>
+                    {c.invoice && (
+                        <SmartLink
+                            routeName="admin.customerInvoices.show"
+                            href={route('admin.customerInvoices.show', c.invoice.id)}
+                            className="text-[12px] text-[#6d28d9] hover:underline"
+                        >
+                            {c.invoice.number}
+                        </SmartLink>
+                    )}
+                    {c.orders.length > 0 && (
+                        <span className="text-[11px] text-[#9ca3af]">
+                            {t('عن الطلب :n', { n: c.orders.join('، ') })}
+                        </span>
+                    )}
+                </span>
+            ),
+        },
+        {
+            key: 'total',
+            header: 'المبلغ',
+            align: 'end',
+            cell: (c) => <span className="tabular-nums font-medium">{money(c.amount, currency)}</span>,
+        },
+        { key: 'payment', header: 'الدفع', cell: () => <Badge variant="neutral">Paymob</Badge> },
+        { key: 'date', header: 'تاريخ الدفع', cell: (c) => <span className="text-[#6b7280]">{c.date}</span> },
+        {
+            key: 'status',
+            header: 'الحالة',
+            cell: (c) =>
+                c.review ? <Badge variant="warning">{t('مدفوع — يحتاج مراجعة')}</Badge> : <Badge status="مدفوع">{t('مدفوع')}</Badge>,
+        },
+        {
+            key: 'actions',
+            header: 'إجراءات',
+            align: 'end',
+            cell: (c) =>
+                mayOpenReceipts ? (
+                    <Button variant="ghost" size="sm" asChild>
+                        <SmartLink routeName="admin.customerPayments.show" href={route('admin.customerPayments.show', c.payment.id)}>
+                            <Eye />
+                            {t('سند القبض')}
+                        </SmartLink>
+                    </Button>
+                ) : null,
+        },
+    ];
+    const collectionFilters: Filter<Collection>[] = tableFilters
+        .filter((f) => f.param === 'channel' || f.type === 'date')
+        .map(({ label, type, options, param }) => ({ label, type, options, param }));
+
+    // الرابطُ من سطر «كل المصادر» إلى مُرشِّحه — بالبحث والفترة نفسَيهما
+    const linkParams = Object.fromEntries(
+        Object.entries(filters).filter(
+            ([k, v]) => v !== null && v !== '' && !['channel', 'status', 'payment', 'when', 'sort', 'dir', 'page'].includes(k),
+        ),
+    );
+
     return (
         <AdminLayout title="المبيعات">
             <PageHeader
@@ -265,6 +396,38 @@ export default function OrdersIndex() {
             {/* الفترةُ على تاريخ الطلب — و«موعد التسليم» مُرشِّحٌ آخر على عموده (`when`) */}
             {period && <PeriodControls period={period} params={filters} />}
 
+            {onLinks ? (
+                <Card className="overflow-hidden">
+                    <DataTable
+                        rows={collections ?? []}
+                        columns={collectionColumns}
+                        rowKey={(c) => c.key}
+                        searchPlaceholder="ابحث برقم السند أو العميل أو الفاتورة أو مرجع Paymob…"
+                        searchable={() => ''}
+                        filters={collectionFilters}
+                        empty="لا توجد تحصيلات ناجحة عبر روابط الدفع"
+                        server={{ pagination, params: filters, sorts }}
+                    />
+                    {/*
+                        المحصَّلُ لا «الإجمالي»: هذه أموالٌ قُبضت عن مبيعاتٍ محسوبةٍ
+                        في فواتيرها، أو رصيدٌ للعميل — ولا يُضاف شيءٌ منها إلى المبيعات.
+                    */}
+                    <div
+                        className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm text-[#6b7280]"
+                        data-testid="collection-totals"
+                    >
+                        {t('تحصيلات عبر روابط الدفع')}: {number(collectionTotals?.count ?? 0)} — {t('المحصّل')}:{' '}
+                        <span className="font-semibold text-[#111]">{money(collectionTotals?.amount ?? 0, currency)}</span>
+                        <span className="mt-1 block">
+                            {t('منه على فواتير')}: {money(collectionTotals?.on_invoices.amount ?? 0, currency)} —{' '}
+                            {t('منه دون فاتورة')}: {money(collectionTotals?.standalone.amount ?? 0, currency)}
+                        </span>
+                        <span className="mt-1 block text-[#9ca3af]">
+                            {t('تحصيلٌ لا بيعٌ جديد: البيعُ محسوبٌ في فاتورته، ولا يُضاف هذا إلى إجمالي المبيعات.')}
+                        </span>
+                    </div>
+                </Card>
+            ) : (
             <Card className="overflow-hidden">
                 <DataTable
                     rows={orders}
@@ -301,8 +464,26 @@ export default function OrdersIndex() {
                             <span className="font-semibold">{money(websiteAmount, currency)}</span>
                         </span>
                     )}
+                    {/*
+                        وتحصيلاتُ روابط الدفع خارج الإجمالي — تُذكر ولا تُجمع:
+                        مالٌ قُبض عن بيعٍ محسوبٍ في فاتورته. ويُفتح بمُرشِّحه.
+                    */}
+                    {linkCollections && (
+                        <span className="mt-1 block" data-testid="link-collections">
+                            {t('وتحصيلات عبر روابط الدفع (ليست ضمن الإجمالي)')}: {number(linkCollections.count)} —{' '}
+                            <span className="font-semibold">{money(linkCollections.amount, currency)}</span>{' '}
+                            <SmartLink
+                                routeName="admin.orders.index"
+                                href={route('admin.orders.index', { ...linkParams, channel: PAYMENT_LINK })}
+                                className="text-[#6d28d9] hover:underline"
+                            >
+                                {t('عرضها')}
+                            </SmartLink>
+                        </span>
+                    )}
                 </div>
             </Card>
+            )}
             {confirmDialog}
         </AdminLayout>
     );

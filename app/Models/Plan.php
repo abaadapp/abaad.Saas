@@ -15,6 +15,15 @@ class Plan extends Model
      */
     public const CODE_BASIC = 'basic';
 
+    /**
+     * ورمزُ باقة المؤسسات — يكتبه ترحيلُها حين تُعرف بلا لبس.
+     *
+     * ولا يفتح شيئًا وحده: القدرةُ تُقرأ من `capabilities` لا من الرمز
+     * (`PlanFeatures::allowedBy`). يقرؤه الترحيلُ ليعرف أيَّ صفٍّ يمنحه قدراتِ
+     * المؤسسات ونصَّها، فلا يُمنح بالاسم ولا بالسعر.
+     */
+    public const CODE_ENTERPRISE = 'enterprise';
+
     protected $guarded = [];
 
     protected $casts = ['features' => 'array', 'capabilities' => 'array', 'is_popular' => 'boolean', 'monthly_price' => 'decimal:3', 'yearly_price' => 'decimal:3'];

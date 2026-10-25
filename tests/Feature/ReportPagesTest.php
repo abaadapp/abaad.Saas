@@ -6,10 +6,12 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\Order;
+use App\Models\Plan;
 use App\Models\Product;
 use App\Models\StockAdjustment;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\PlanFeatures;
 use App\Support\ReportColumns;
 use App\Support\ReportData;
 use App\Support\Reports;
@@ -61,7 +63,8 @@ class ReportPagesTest extends TestCase
         parent::setUp();
         app()->setLocale('ar');
 
-        $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ يملك كلَّ قدرة — وقدراتُ المؤسسات لا تُفتح بلا باقةٍ تسمّيها (`PlanFeatures::ENTERPRISE`)
+        $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط', 'plan_id' => Plan::create(['name' => 'كل القدرات', 'monthly_price' => 0, 'yearly_price' => 0, 'capabilities' => PlanFeatures::keys()])->id]);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         JobTitle::create(['business_id' => $this->business->id, 'name' => 'مدير', 'role' => 'admin']);
 

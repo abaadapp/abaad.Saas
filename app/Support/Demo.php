@@ -31,6 +31,7 @@ use App\Models\OrderEdit;
 use App\Models\OrderItem;
 use App\Models\OrderItemAddon;
 use App\Models\Plan;
+use App\Models\PlatformDocument;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
@@ -827,9 +828,12 @@ class Demo
 
         $orders = fn () => Order::where('business_id', $bid)->sold()
             ->whereBetween('ordered_at', [$start, $end]);
-        $sales = (float) $orders()->sum('total');
+        $ordersSales = (float) $orders()->sum('total');
         $count = $orders()->count();
-        $avg = $count ? $sales / $count : 0;
+        // والمتوسّطُ طلباتٌ على طلبات — الفاتورةُ اليدويّة ليست طلبًا (انظر `adminStats`)
+        $avg = $count ? $ordersSales / $count : 0;
+        // والمبيعاتُ الطلباتُ وفواتيرُ العملاء التي لا طلبَ لها — كبطاقة اللوحة
+        $sales = $ordersSales + StandaloneInvoiceSales::total($bid, $start, $start->copy()->addDay());
         $newCustomers = Customer::where('business_id', $bid)->whereBetween('created_at', [$start, $end])->count();
         // المصروفاتُ التشغيليّة من الدفتر — المصدرُ الواحد (`Ledger::operatingExpenses`)
         $expenses = Ledger::operatingExpenses($bid, $start, $start->copy()->addDay());
@@ -850,7 +854,8 @@ class Demo
 
         // مقارنة بأمس (لاتجاه المبيعات)
         $prevSales = (float) Order::where('business_id', $bid)->sold()
-            ->whereBetween('ordered_at', [$start->copy()->subDay(), $end->copy()->subDay()])->sum('total');
+            ->whereBetween('ordered_at', [$start->copy()->subDay(), $end->copy()->subDay()])->sum('total')
+            + StandaloneInvoiceSales::total($bid, $start->copy()->subDay(), $start);
 
         return [
             'date' => $start->format('Y-m-d'),
@@ -875,10 +880,24 @@ class Demo
         $orders = fn () => Order::where('business_id', $bid)->sold()
             ->when(self::currentBranchId(), fn ($q) => $q->where('branch_id', self::currentBranchId()));
 
-        // المبيعات: اليوم/أمس، والشهر/الشهر السابق (بيانات حقيقية بلا تلفيق)
-        $salesToday = (float) $orders()->whereDate('ordered_at', today())->sum('total');
-        $salesYesterday = (float) $orders()->whereDate('ordered_at', today()->subDay())->sum('total');
-        $salesMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('total');
+        /*
+         * المبيعات: اليوم/أمس، والشهر/الشهر السابق — الطلباتُ وفواتيرُ العملاء.
+         *
+         * كانت الطلباتُ وحدها، ففاتورةُ العميل اليدويّة — ولا طلبَ لها —
+         * تغيب عن البطاقتين وتحضر في «صافي الأرباح» تحتهما. فيُجمع إلى الطلبات
+         * ما رحّلته الفاتورةُ يومَ صدورها، شاملًا ضريبتَه كما `orders.total`؛
+         * والمولودةُ من طلبٍ لا قيدَ لها فلا تُعدّ ثانيةً. انظر
+         * `StandaloneInvoiceSales`.
+         */
+        $branch = self::currentBranchId();
+        $invoices = fn (Carbon $from, Carbon $to) => StandaloneInvoiceSales::total($bid, $from, $to, $branch);
+
+        $salesToday = (float) $orders()->whereDate('ordered_at', today())->sum('total')
+            + $invoices(today(), today()->addDay());
+        $salesYesterday = (float) $orders()->whereDate('ordered_at', today()->subDay())->sum('total')
+            + $invoices(today()->subDay(), today());
+        $ordersSalesMonth = (float) $orders()->where('ordered_at', '>=', $mStart)->sum('total');
+        $salesMonth = $ordersSalesMonth + $invoices($mStart, $mStart->copy()->addMonthNoOverflow());
 
         /*
          * ═══ وحدُّ الشهرين لا يقع في الشهرين ═══
@@ -896,8 +915,9 @@ class Demo
          *
          * فالحدُّ الأعلى مفتوحٌ دائمًا: `>= البداية` و`< بداية التالي`.
          */
-        $salesLastMonth = (float) $orders()->where('ordered_at', '>=', $lmStart)
+        $ordersSalesLastMonth = (float) $orders()->where('ordered_at', '>=', $lmStart)
             ->where('ordered_at', '<', $mStart)->sum('total');
+        $salesLastMonth = $ordersSalesLastMonth + $invoices($lmStart, $mStart);
 
         // الطلبات: الإجمالي (القيمة) + نمو الشهر (الاتجاه)
         $ordersTotal = $orders()->count();
@@ -905,9 +925,14 @@ class Demo
         $ordersLastMonth = $orders()->where('ordered_at', '>=', $lmStart)
             ->where('ordered_at', '<', $mStart)->count();
 
-        // متوسط قيمة الطلب: هذا الشهر مقابل السابق
-        $avg = $ordersMonth ? $salesMonth / $ordersMonth : 0;
-        $avgLast = $ordersLastMonth ? $salesLastMonth / $ordersLastMonth : 0;
+        /*
+         * متوسط قيمة الطلب: هذا الشهر مقابل السابق — طلباتٌ على طلبات.
+         *
+         * والفاتورةُ اليدويّة ليست طلبًا ولا تُعدّ في «عدد الطلبات»، فلو قُسم
+         * مجموعُها على عدد الطلبات لَنفخت متوسّطًا لا طلبَ وراءه.
+         */
+        $avg = $ordersMonth ? $ordersSalesMonth / $ordersMonth : 0;
+        $avgLast = $ordersLastMonth ? $ordersSalesLastMonth / $ordersLastMonth : 0;
 
         // العملاء: الإجمالي (القيمة) + الجدد هذا الشهر مقابل السابق (الاتجاه)
         $customersTotal = Customer::where('business_id', $bid)->count();
@@ -968,7 +993,6 @@ class Demo
          * بطاقاتُ اللوحة كلُّها مقيَّدةٌ به، ولو بقيت التكلفةُ على المتجر كلِّه
          * لَقرأ صاحبُ فرعٍ صغيرٍ خسارةً من بضاعةٍ باعها غيرُه.
          */
-        $branch = self::currentBranchId();
         $revenueMonth = Ledger::netRevenue($bid, $mStart, null, $branch);
         $revenueLastMonth = Ledger::netRevenue($bid, $lmStart, $mStart, $branch);
         $cogsMonth = self::cogsFor($bid, $mStart, null, $branch);
@@ -4157,6 +4181,28 @@ class Demo
                 ]);
             }
 
+            /*
+             * وعقدٌ وقّعه عميلُه — خبرٌ لكلّ مديرٍ في المنصّة، أسبوعًا.
+             *
+             * لا يُرسله أحد: الجرسُ يُبنى من حال المستندات، فيظهر السطرُ في
+             * الاستطلاع التالي أيًّا كانت الطريقُ التي وصل بها الرابطُ إلى العميل.
+             * والمفتاحُ رقمُ المستند: من أخفاه لا يعود إليه.
+             */
+            $signed = PlatformDocument::where('status', PlatformDocument::SIGNED)
+                ->where('signed_at', '>=', now()->subDays(7))
+                ->orderByDesc('signed_at')->limit($limit)->get();
+            foreach ($signed as $d) {
+                $add('document-signed-'.$d->id, [
+                    'text' => __('وقّع :client المستند :number', [
+                        'client' => $d->client['biz'] ?? $d->client['name'] ?? '—',
+                        'number' => $d->number,
+                    ]),
+                    'time' => optional($d->signed_at)->diffForHumans(),
+                    'icon' => 'badge-check', 'color' => 'success',
+                    'url' => route('super-admin.documents.show', $d->id),
+                ]);
+            }
+
             $subs = Subscription::with('business')
                 ->whereNotNull('ends_at')->whereDate('ends_at', '>=', now())
                 ->whereDate('ends_at', '<=', now()->addDays(30))
@@ -4440,6 +4486,36 @@ class Demo
                 'icon' => 'alert-triangle', 'color' => $p->quantity <= 0 ? 'danger' : 'warning',
                 'url' => route('admin.inventory.index'),
             ]);
+        }
+
+        /*
+         * ═══ وصندوقٌ لن يخرج منه إيصالُه ═══
+         *
+         * طابعةٌ بقيت على صندوقٍ ملغى وخلفُه بلا طابعة، وطابعتان ولا طابعةَ
+         * إيصال، وعنوانٌ يرفضه التطبيق — ما **ثبت** وحده (`TillHealth::CONFIRMED`)،
+         * صفٌّ لكلّ صندوق، لمن يملك الإعدادات. ويغيب وحده حين يُصلَح.
+         *
+         * وخلف مفتاح (`pos.till_health_bell`، مطفأٌ افتراضًا): يُشعَل بعد أن
+         * يُقرأ تقريرُ التدقيق على الإنتاج، لا يوم النشر — فلا يدقّ جرسُ كلّ
+         * تاجرٍ في صباحٍ واحد بما لم يُراجَع.
+         */
+        if (config('pos.till_health_bell') && ($unfiltered || ($u && $u->allows('settings')))) {
+            foreach (TillHealth::bellItems((int) $bid) as $key => $item) {
+                $add($key, $item + ['section' => 'settings']);
+            }
+        }
+
+        /*
+         * ═══ وتنبيهاتُ الفروع — للمؤسسات ═══
+         *
+         * طلباتُ التزويد والنقل المعلّقة، والتحويلاتُ المتأخّرة، وفروقُ
+         * الاستلام، ونقصُ الصنف في فرعٍ بعينه — لمن يخصّه كلٌّ منها
+         * (`BranchAlerts`). وبالقدرة وحدها: باقةٌ لا تملكها لا يُبنى لها شيء.
+         */
+        if ($u && $u->business && PlanFeatures::allows($u->business, 'enterprise_alerts')) {
+            foreach (BranchAlerts::for($u, $limit) as $key => $item) {
+                $add($key, $item);
+            }
         }
         /*
          * العميل الراكد: اشترى يومًا ثم انقطع. من لم يشترِ قطّ ليس راكدًا بل
@@ -4839,35 +4915,45 @@ class Demo
     }
 
     /**
-     * كشف حساب محسوب من معاملات النظام برصيد تراكمي.
+     * كشف حساب من دفتر الأستاذ برصيد تراكمي.
      *
-     * ما مرّ بالبنك وحده وبعد تاريخ الرصيد الافتتاحي — انظر Bank::transactions.
+     * سطورُ ورقة الحساب بعد تاريخ رصيده الافتتاحي — انظر `Bank::statement`.
+     * فالرصيدُ الختاميّ رصيدُ الورقة منذ ذلك التاريخ، لا رقمٌ يُحسب من جدولٍ
+     * آخر فيفترق عنه. و«مدين» في الكشف ما خرج من البنك و«دائن» ما دخله،
+     * كما يقرأ صاحبُ الحساب كشفَ مصرفه.
      */
     public static function bankStatement(?int $accountId = null): array
     {
         $acc = self::bankAccount($accountId);
-        $balance = $acc['opening_balance'];
+        $opening = (float) $acc['opening_balance'];
+        $account = $acc['id'] ? BankAccount::where('business_id', self::bid())->find($acc['id']) : null;
+        $book = $account
+            ? Bank::statement(self::bid(), $account)
+            : ['rows' => [], 'before_opening' => ['count' => 0, 'net' => 0.0], 'ledger_balance' => 0.0];
 
-        $rows = Bank::transactions(self::bid(), $acc['id'] ?? null)
-            ->orderBy('occurred_at')->orderBy('id')->get()->map(function ($t) use (&$balance) {
-                // المصروفات مخزّنة بإشارة سالبة — نوحّد على القيمة المطلقة والاتجاه من النوع
-                $in = $t->type === 'دخل';
-                $amount = abs((float) $t->amount);
-                $balance += $in ? $amount : -$amount;
+        $balance = $opening;
+        $rows = array_map(function (array $l) use (&$balance) {
+            $balance += $l['in'] - $l['out'];
 
-                return [
-                    'id' => $t->id,
-                    'reference' => $t->reference,
-                    'date' => optional($t->occurred_at)->format('Y-m-d') ?? '—',
-                    'description' => $t->description,
-                    'method' => $t->method,
-                    'debit' => $in ? 0.0 : $amount,
-                    'credit' => $in ? $amount : 0.0,
-                    'balance' => round($balance, 3),
-                ];
-            })->all();
+            return [
+                'id' => $l['id'],
+                'reference' => $l['reference'],
+                'date' => $l['date'],
+                'description' => $l['description'],
+                'source' => $l['source'],
+                'debit' => $l['out'],
+                'credit' => $l['in'],
+                'balance' => round($balance, 3),
+            ];
+        }, $book['rows']);
 
-        return ['opening' => $acc['opening_balance'], 'rows' => $rows, 'closing' => round($balance, 3)];
+        return [
+            'opening' => $opening,
+            'rows' => $rows,
+            'closing' => round($balance, 3),
+            'before_opening' => $book['before_opening'],
+            'ledger_balance' => $book['ledger_balance'],
+        ];
     }
 
     /** أسطر كشف البنك المستوردة مع حالة المطابقة — لحسابٍ واحد */

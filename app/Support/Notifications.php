@@ -78,6 +78,15 @@ class Notifications
         'archive-' => [self::INFO, self::MANUAL],
         'grn-' => [self::TASK, self::AUTO],
         'low-' => [self::TASK, self::AUTO],
+        // صندوقٌ لن يخرج منه إيصالُه — يُغلق وحده حين يُصلَح (`TillHealth::bellItems`)
+        'till-printer-' => [self::TASK, self::AUTO],
+        /*
+         * وتنبيهاتُ الفروع: ما يُنجز يُغلق وحده حين يزول سببه — اعتُمد الطلب،
+         * أُرسل السند، استُلم، سُوّي الفرق. والرفضُ والتكرارُ خبران يُقرآن.
+         */
+        'branch-rejected-' => [self::INFO, self::AUTO],
+        'branch-repeat-' => [self::INFO, self::AUTO],
+        'branch-' => [self::TASK, self::AUTO],
         'dormant-' => [self::TASK, self::MANUAL],
         'custom-' => [self::TASK, self::MANUAL],
         'stray-payment-' => [self::TASK, self::MANUAL],

@@ -93,6 +93,9 @@ class TenantTables
          */
         'boutique_settlements',
         'fixed_assets', 'inventory_movements', 'stock_adjustments', 'stock_transfers',
+        // وطلباتُ التزويد قبل سنداتها، والسنداتُ قبل أسطرها — مفتاحُ كلٍّ يشير إلى ما قبله
+        'branch_supply_requests', 'branch_supply_request_lines',
+        'branch_transfers', 'branch_transfer_lines', 'branch_operation_events',
         'purchase_orders', 'purchase_order_items', 'supplier_invoices',
         'goods_receipt_notes', 'goods_receipt_note_items',
         /*
@@ -149,9 +152,9 @@ class TenantTables
         /*
          * وروابطُ الدفع بعد التحصيلات: الرابطُ المدفوع يشير إلى تحصيله
          * وفاتورته. وتسوياتُ Paymob بعد القيود والحسابات البنكيّة التي
-         * تشير إليها.
+         * تشير إليها، وسطورُها بعدها وبعد نوايا الدفع والروابط التي تسمّيها.
          */
-        'customer_payment_links', 'paymob_settlements',
+        'customer_payment_links', 'paymob_settlements', 'paymob_settlement_items',
         /*
          * وتجهيزُ فاتورة العميل بعد فاتورته وتحصيلها: يشير إلى الفاتورة وإلى
          * الدفعة التي أظهرته وإلى فرعه. عملٌ لا مال — ويُستعاد كما كُتب.
@@ -339,6 +342,8 @@ class TenantTables
          * رابطٌ إلى متجرٍ صار مشتركًا، لا ملكيّةُ متجرٍ لصفّ.
          */
         'crm_leads' => 'دفترُ مبيعات أبعاد — عملاءُ المنصّة المحتملون، لا بيانات متجر',
+        'platform_documents' => 'مستنداتُ أبعاد وعقودُها مع عملائها — سجلُّ المنصّة يبقى بعد النشاط، ولا يُستعاد بملفّ متجر',
+        'platform_document_templates' => 'قوالبُ مستندات المنصّة لكلّ خدمة — يكتبها مديرُ المنصّة لا التاجر',
         'crm_notes' => 'ملاحظاتُ فريق المبيعات الداخليّة — لا تبلغ من كُتبت عنه بحال',
         'crm_tasks' => 'مهامُّ فريق المبيعات — عملُ المنصّة لا عملُ المتجر',
         'crm_stage_events' => 'تاريخُ مراحل البيع — سجلُّ المنصّة، ومنه تُحسب تقاريرها',

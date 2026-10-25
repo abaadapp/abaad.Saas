@@ -409,6 +409,11 @@ class PageController extends Controller
             return ['can' => false, 'reason' => null];
         }
 
+        // والملغاةُ لا تُصحَّح — والخادمُ يردّها (`OrderCorrection::lockOrder`)
+        if ($order->status === Order::CANCELLED) {
+            return ['can' => false, 'reason' => __('الفاتورة ملغاة — لا تُعدَّل.')];
+        }
+
         return Carbon::parse($soldOn)->isSameDay(now())
             ? ['can' => true, 'reason' => null]
             : ['can' => false, 'reason' => __('تعديل الفاتورة — انتهى يومها')];
@@ -700,6 +705,13 @@ class PageController extends Controller
                 'count' => count($all),
                 'value' => round(array_sum(array_column($all, 'value')), 3),
             ],
+            /*
+             * وما قيدَ النقل بين الفروع — خرج من رفّ المصدر ولم يدخل رفَّ المستلم.
+             *
+             * ليس في الصفوف ولا في القيمة أعلاه (هي ما على الرفوف)، فيُقال
+             * وحده: مخزونُ النشاط = ما على الرفوف + ما قيدَ النقل (`BranchTransfers`).
+             */
+            'inTransit' => \App\Support\BranchTransfers::inTransit(Demo::bid()),
             'branches' => Demo::branches(),
             'currentBranchId' => Demo::currentBranchId(),
         ]);

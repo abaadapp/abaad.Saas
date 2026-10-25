@@ -2,7 +2,7 @@ import { usePage } from '@inertiajs/react';
 import SmartLink from '@/Components/SmartLink';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import type { PageProps } from '@/types';
+import type { PageProps, PlanFeatureKey } from '@/types';
 
 export interface SectionTab {
     label: string;
@@ -34,6 +34,10 @@ export interface SectionTab {
      * فمن لا يُؤجّر ركنًا لبوتيك لا يُزاد في شريطه تبويبٌ يسأل عمّا لا يعرف.
      */
     hosts?: string;
+    /** قدرةُ الباقة — تبويبٌ تقفله الباقةُ لا يُعرض (`PlanFeatures::map`) */
+    feature?: PlanFeatureKey;
+    /** أيُّ فعلٍ من هذه يكفي — لشاشةٍ تجمع مراحلَ يملك كلَّ واحدةٍ منها موظّفٌ غيرُ الآخر */
+    anyAction?: string[];
 }
 
 interface Props {
@@ -64,6 +68,8 @@ export default function SectionTabs({ tabs: all, current, className }: Props) {
         (tb) =>
             (!tb.section || (auth?.abilities.includes(tb.section) ?? false)) &&
             (!tb.action || (auth?.mayActions?.includes(tb.action) ?? false)) &&
+            (!tb.anyAction || tb.anyAction.some((a) => auth?.mayActions?.includes(a) ?? false)) &&
+            (!tb.feature || (auth?.planFeatures?.[tb.feature] ?? false)) &&
             (!tb.hosts || (context?.hosted?.includes(tb.hosts) ?? false)),
     );
 
@@ -284,9 +290,18 @@ export const PURCHASE_TABS: SectionTab[] = [
  * بابان في قسمين. والتحويل بين الفروع وحركات المخزون قراءاتٌ من قراءات
  * «المنتجات»، فلا تُفرد لهما تبويبات.
  */
+/** أفعالُ عمليات الفروع — كما في `Permissions::TRANSFER_ACTIONS` */
+export const TRANSFER_ACTIONS = [
+    'transfer.view', 'transfer.viewAll', 'transfer.create', 'transfer.approve',
+    'transfer.dispatch', 'transfer.receive', 'transfer.resolve', 'supply.create',
+];
+
 export const INVENTORY_TABS: SectionTab[] = [
     { label: 'المنتجات', routeName: 'admin.inventory.index', section: 'inventory' },
     { label: 'عمليات جرد المخزون', routeName: 'admin.inventory.stocktake', section: 'inventory' },
     { label: 'سجل المخزون', routeName: 'admin.inventory.adjustments', section: 'inventory' },
     { label: 'إشعار استلام بضاعة', routeName: 'admin.inventory.receipts', section: 'inventory', action: 'receipt.view' },
+    // للمؤسسات — ولمن له فعلٌ في التحويلات (`Permissions::TRANSFER_ACTIONS`)
+    { label: 'نقل المخزون بين الفروع', routeName: 'admin.inventory.transfers', section: 'inventory', feature: 'enterprise_transfers', anyAction: TRANSFER_ACTIONS },
+    { label: 'طلبات تزويد الفروع', routeName: 'admin.inventory.supply', section: 'inventory', feature: 'enterprise_replenishment', anyAction: TRANSFER_ACTIONS },
 ];

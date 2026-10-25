@@ -32,8 +32,10 @@ use App\Http\Controllers\Admin\GoogleBusinessController;
 use App\Http\Controllers\Admin\HelpController;
 use App\Http\Controllers\Admin\IntegrationsController;
 use App\Http\Controllers\Admin\WhatsAppOnboardingController;
+use App\Http\Controllers\Admin\Inventory\BranchTransferController;
 use App\Http\Controllers\Admin\Inventory\GoodsReceiptNoteController;
 use App\Http\Controllers\Admin\Inventory\StockAdjustmentController;
+use App\Http\Controllers\Admin\Inventory\SupplyRequestController;
 use App\Http\Controllers\Admin\InventoryController;
 use App\Http\Controllers\Admin\JobTitleController;
 use App\Http\Controllers\Admin\LanguageController;
@@ -93,6 +95,7 @@ use App\Http\Controllers\Pos\PosController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicDocumentController;
 use App\Http\Controllers\PublishedSiteController;
+use App\Http\Controllers\ContractSigningController;
 use App\Http\Controllers\ReviewInviteController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\PaymobController;
@@ -106,6 +109,8 @@ use App\Http\Controllers\SuperAdmin\CrmAttachmentController;
 use App\Http\Controllers\SuperAdmin\CrmController;
 use App\Http\Controllers\SuperAdmin\CrmConversationController;
 use App\Http\Controllers\SuperAdmin\DemoController;
+use App\Http\Controllers\SuperAdmin\DocumentController;
+use App\Http\Controllers\SuperAdmin\DocumentTemplateController;
 use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
 use App\Http\Controllers\SuperAdmin\PlanController;
@@ -276,6 +281,22 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/demo', [DemoController::class, 'store'])->name('demo.store');
     Route::post('/demo/{id}/reseed', [DemoController::class, 'reseed'])->name('demo.reseed');
     Route::delete('/demo/{id}', [DemoController::class, 'destroy'])->name('demo.destroy');
+
+    /*
+     * المستندات — عقودُ أبعاد مع عملائها، تُرسَل برابطٍ وتُوقَّع من الهاتف.
+     *
+     * القوالبُ قبل `{id}`: عنوانٌ ثابت لا يُقرأ معرّفًا. انظر `PlatformDocuments`.
+     */
+    Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
+    Route::post('/documents', [DocumentController::class, 'store'])->name('documents.store');
+    Route::get('/documents/templates', [DocumentTemplateController::class, 'index'])->name('documents.templates');
+    Route::post('/documents/templates', [DocumentTemplateController::class, 'store'])->name('documents.templates.store');
+    Route::put('/documents/templates/{id}', [DocumentTemplateController::class, 'update'])->whereNumber('id')->name('documents.templates.update');
+    Route::post('/documents/templates/{id}/approve', [DocumentTemplateController::class, 'approve'])->whereNumber('id')->name('documents.templates.approve');
+    Route::get('/documents/{id}', [DocumentController::class, 'show'])->whereNumber('id')->name('documents.show');
+    Route::post('/documents/{id}/cancel', [DocumentController::class, 'cancel'])->whereNumber('id')->name('documents.cancel');
+    Route::post('/documents/{id}/shared', [DocumentController::class, 'shared'])->whereNumber('id')->name('documents.shared');
+    Route::get('/documents/{id}/pdf', [DocumentController::class, 'pdf'])->whereNumber('id')->name('documents.pdf');
 
     /*
      * جرسُ مدير المنصّة — أبوابُه هنا لأنّ لوحتَه هنا.
@@ -1030,6 +1051,43 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('inventory.receipts.show');
     Route::post('/inventory/movements', [InventoryController::class, 'store'])->name('inventory.store');
 
+    /*
+     * ═══ نقلُ المخزون بين الفروع وطلباتُ التزويد — باقة المؤسسات ═══
+     *
+     * تحت قسم «المخزون»، وكلُّ مرحلةٍ فعلٌ باسمه يُفحص مع إسناد الفرع في
+     * `BranchTransfers` لا هنا. والقدرةُ تُفحص في `CheckPlanFeature` على ما
+     * يُنشئ عملًا جديدًا وحده: ما أُرسل قبل تخفيض الباقة يُستلم ويُسوّى بعده.
+     */
+    Route::get('/inventory/transfers', [BranchTransferController::class, 'index'])->name('inventory.transfers');
+    Route::get('/inventory/transfers/products', [BranchTransferController::class, 'products'])->name('inventory.transfers.products');
+    Route::post('/inventory/transfers', [BranchTransferController::class, 'store'])->name('inventory.transfers.store');
+    Route::get('/inventory/transfers/{id}', [BranchTransferController::class, 'show'])
+        ->whereNumber('id')->name('inventory.transfers.show');
+    Route::post('/inventory/transfers/{id}/approve', [BranchTransferController::class, 'approve'])
+        ->whereNumber('id')->name('inventory.transfers.approve');
+    Route::post('/inventory/transfers/{id}/reject', [BranchTransferController::class, 'reject'])
+        ->whereNumber('id')->name('inventory.transfers.reject');
+    Route::post('/inventory/transfers/{id}/prepare', [BranchTransferController::class, 'prepare'])
+        ->whereNumber('id')->name('inventory.transfers.prepare');
+    Route::post('/inventory/transfers/{id}/dispatch', [BranchTransferController::class, 'send'])
+        ->whereNumber('id')->name('inventory.transfers.dispatch');
+    Route::post('/inventory/transfers/{id}/receive', [BranchTransferController::class, 'receive'])
+        ->whereNumber('id')->name('inventory.transfers.receive');
+    Route::post('/inventory/transfers/{id}/resolve', [BranchTransferController::class, 'resolve'])
+        ->whereNumber('id')->name('inventory.transfers.resolve');
+    Route::post('/inventory/transfers/{id}/cancel', [BranchTransferController::class, 'cancel'])
+        ->whereNumber('id')->name('inventory.transfers.cancel');
+    Route::get('/inventory/supply', [SupplyRequestController::class, 'index'])->name('inventory.supply');
+    Route::post('/inventory/supply', [SupplyRequestController::class, 'store'])->name('inventory.supply.store');
+    Route::get('/inventory/supply/{id}', [SupplyRequestController::class, 'show'])
+        ->whereNumber('id')->name('inventory.supply.show');
+    Route::post('/inventory/supply/{id}/approve', [SupplyRequestController::class, 'approve'])
+        ->whereNumber('id')->name('inventory.supply.approve');
+    Route::post('/inventory/supply/{id}/reject', [SupplyRequestController::class, 'reject'])
+        ->whereNumber('id')->name('inventory.supply.reject');
+    Route::post('/inventory/supply/{id}/cancel', [SupplyRequestController::class, 'cancel'])
+        ->whereNumber('id')->name('inventory.supply.cancel');
+
     // المورّدون
     Route::get('/suppliers', [PageController::class, 'suppliersIndex'])->name('suppliers.index');
     // التصدير قبل {id}: لو جاء بعده لابتلع «export» مسارَ المورّد الواحد
@@ -1547,6 +1605,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/finance/payment-links/{id}/cancel', [PaymentLinkController::class, 'cancel'])
         ->whereNumber('id')->name('finance.paymentLinks.cancel');
     Route::post('/finance/paymob-settlements', [PaymentLinkController::class, 'settle'])->name('finance.paymobSettlements.store');
+    Route::post('/finance/paymob-settlements/{id}/retry', [PaymentLinkController::class, 'retrySettlement'])
+        ->whereNumber('id')->name('finance.paymobSettlements.retry');
+    Route::post('/finance/paymob-settlements/{id}/cancel', [PaymentLinkController::class, 'cancelSettlement'])
+        ->whereNumber('id')->name('finance.paymobSettlements.cancel');
+    // تحويلٌ سُجّل قبل التحديث: ما حمله يحدّده صاحبُ المتجر، ويُتراجع عن تحديدٍ خاطئ
+    Route::post('/finance/paymob-settlements/{id}/attribute', [PaymentLinkController::class, 'attributeSettlement'])
+        ->whereNumber('id')->name('finance.paymobSettlements.attribute');
+    Route::post('/finance/paymob-settlement-items/{id}/remove', [PaymentLinkController::class, 'unattributeSettlementItem'])
+        ->whereNumber('id')->name('finance.paymobSettlementItems.remove');
 
     Route::get('/finance/receivables', [ReceivablesController::class, 'index'])->name('finance.receivables');
     /*
@@ -1774,6 +1841,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/reports/addons', [ReportPageController::class, 'addons'])->name('reports.addons');
     // عمليات جرد المخزون — أين فارق الدفترُ الواقع، وبكم
     Route::get('/reports/stocktake', [ReportPageController::class, 'stocktake'])->name('reports.stocktake');
+    // تقاريرُ المؤسسات عن الفروع — قدراتُها في `CheckPlanFeature`
+    Route::get('/reports/transfers', [ReportPageController::class, 'transfers'])->name('reports.transfers');
+    Route::get('/reports/branches', [ReportPageController::class, 'branches'])->name('reports.branches');
+    Route::get('/reports/branches-weekly', [ReportPageController::class, 'branchesWeekly'])->name('reports.branchesWeekly');
 
     /*
      * تنزيلُ أيّ تقريرٍ بالصيغ الثلاث المعتمدة.
@@ -2161,6 +2232,29 @@ Route::post('/r/{token}', [ReviewInviteController::class, 'store'])
     ->where('token', '[A-Za-z0-9]{22}')
     ->middleware('throttle:10,1')
     ->name('review.submit');
+
+/*
+ * توقيعُ مستندات أبعاد — يفتحه العميلُ من رابطٍ أرسله مدير المنصّة.
+ *
+ * اثنان وثلاثون حرفًا لا تُخمَّن، بلا دخول ولا رمز — الرابطُ وحده مفتاحه، بصلاحيّةٍ
+ * محدودة. والكتابةُ أضيقُ حدًّا من الفتح. انظر `PlatformDocuments`.
+ */
+// ولكلّ بابٍ عدّادُه (البادئة الثالثة): بلاها يتشارك العنوانُ عدّادًا واحدًا مع كلّ
+// صفحةٍ محدودة، فعميلٌ فتح الصفحةَ عشرَ مرّات يُردّ توقيعُه بـ429
+Route::get('/sign/{token}', [ContractSigningController::class, 'show'])
+    ->where('token', '[A-Za-z0-9]{32}')
+    ->middleware('throttle:60,1,sign-page')
+    ->name('documents.sign');
+
+Route::post('/sign/{token}', [ContractSigningController::class, 'sign'])
+    ->where('token', '[A-Za-z0-9]{32}')
+    ->middleware('throttle:10,1,sign-submit')
+    ->name('documents.sign.submit');
+
+Route::get('/sign/{token}/pdf', [ContractSigningController::class, 'pdf'])
+    ->where('token', '[A-Za-z0-9]{32}')
+    ->middleware('throttle:30,1,sign-paper')
+    ->name('documents.sign.pdf');
 
 /*
  * إشعارات ميتا — بابٌ عامّ بلا جلسة، وحارسه توقيعٌ لا كلمة سرّ.

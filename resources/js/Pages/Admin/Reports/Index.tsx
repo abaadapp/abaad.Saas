@@ -2,9 +2,12 @@ import { useMemo, useState } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import {
     ArrowDownCircle,
+    ArrowLeftRight,
     ArrowLeft,
     Boxes,
+    Building2,
     CalendarDays,
+    CalendarRange,
     ClipboardList,
     Clock,
     Gift,
@@ -60,8 +63,11 @@ interface Props {
  */
 const ICONS: Record<string, LucideIcon> = {
     'arrow-down-circle': ArrowDownCircle,
+    'arrow-left-right': ArrowLeftRight,
     boxes: Boxes,
+    building: Building2,
     'calendar-days': CalendarDays,
+    'calendar-range': CalendarRange,
     'clipboard-list': ClipboardList,
     clock: Clock,
     'credit-card': CreditCard,

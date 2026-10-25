@@ -68,7 +68,10 @@ else
     cp "$(grep '^DB_DATABASE=' .env | cut -d= -f2)" "$DUMP" 2>/dev/null || die "تعذّرت نسخة القاعدة"
 fi
 
-printf 'commit قبل النشر: %s\nالنسخة: %s\n' "$FROM_COMMIT" "$DUMP" > "$BACKUP_DIR/ROLLBACK.txt"
+# الرجوعُ رجوعُ كود: النسخةُ لا تُستعاد فوق القاعدة الحيّة — تمحو كلَّ ما بِيع
+# بعدها، وتُعيد عدّادات الفواتير. تُفتح في قاعدةٍ منفصلة للمقارنة إن احتيج
+printf 'commit قبل النشر: %s\nالنسخة: %s\nللرجوع (الكود وحده): sudo bash %s/scripts/rollback-code.sh %s\nلا تستعِد النسخة فوق القاعدة الحيّة — تمحو كلَّ ما بِيع بعدها. تُفتح في قاعدةٍ منفصلة للمقارنة فقط.\n' \
+    "$FROM_COMMIT" "$DUMP" "$APP_DIR" "$FROM_COMMIT" > "$BACKUP_DIR/ROLLBACK.txt"
 ok "$(du -h "$DUMP" | cut -f1) → $DUMP"
 
 # ---------------------------------------------------------------------------
@@ -148,11 +151,12 @@ CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$HEALTH_URL" || ec
 if [[ "$CODE" == "200" ]]; then
     ok "$HEALTH_URL → 200"
 else
-    die "الموقع يردّ $CODE — أرجِع فورًا:
-    cd $APP_DIR && sudo -u $APP_USER git reset --hard $FROM_COMMIT
-    sudo -u postgres pg_restore -c -d abaad $DUMP
-    sudo -u $APP_USER php artisan config:cache route:cache view:cache
-    systemctl reload php8.4-fpm"
+    # كانت هنا `pg_restore -c` فوق القاعدة الحيّة: تمحو كلَّ طلبٍ ودفعةٍ وقيدٍ
+    # بعد النسخة. والرجوعُ رجوعُ كود — ويرفض وحده إن جرت في هذا النشر هجرة
+    die "الموقع يردّ $CODE — أرجِع الكود وحده، والقاعدةُ لا تُمسّ:
+    sudo bash $APP_DIR/scripts/rollback-code.sh $FROM_COMMIT
+ثمّ أرجِع main نفسَه (Revert PR)، وإلّا أعاد النشرُ التالي الكودَ نفسه.
+ولا تستعِد $DUMP فوق القاعدة الحيّة — تمحو كلَّ ما بِيع بعدها."
 fi
 
 # ---------------------------------------------------------------------------

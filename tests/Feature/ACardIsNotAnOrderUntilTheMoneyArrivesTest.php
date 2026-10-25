@@ -45,6 +45,17 @@ class ACardIsNotAnOrderUntilTheMoneyArrivesTest extends TestCase
     {
         parent::setUp();
         Carbon::setTestNow('2027-02-10 10:00:00');
+        /*
+         * ومتجرُ سعود في الإنتاج رقمُه ٥، وله قواعدُ خاصّة (اسمٌ بالإنجليزيّة،
+         * وكرتُ هديّة). ورقمُ الصفّ هنا يتبع تسلسلَ القاعدة — فقد يصير ٥ على
+         * PostgreSQL حين يتغيّر ما قبله في القسم، كما في
+         * `ALimitedCouponOpensNoPaymentPageWithoutItsHoldTest`.
+         */
+        config([
+            'storefront.ribbon_english_checkout_businesses' => [],
+            'storefront.ribbon_gift_card_product_businesses' => [],
+            'storefront.ribbon_free_gift_card_message_businesses' => [],
+        ]);
 
         $this->shop = Business::create([
             'name' => 'RIBBON', 'type' => 'محل ورد', 'status' => 'نشط', 'phone' => '96895259066',

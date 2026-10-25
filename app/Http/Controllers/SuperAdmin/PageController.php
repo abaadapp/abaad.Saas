@@ -10,6 +10,7 @@ use App\Models\Business;
 use App\Models\GoogleBusinessAccount;
 use App\Models\Invoice;
 use App\Models\Plan;
+use App\Models\PlatformDocument;
 use App\Models\PurgeRun;
 use App\Models\Setting;
 use App\Models\Subscription;
@@ -231,6 +232,21 @@ class PageController extends Controller
             // ووسيلة استعادته: العنوان وحاله — أوّل ما يُسأل عنه حين يتّصل صاحبه
             'recovery' => RecoveryController::view($model),
             'google' => self::googleView($model),
+            /*
+             * مستنداتُ الشركة — ما صدر لها من قسم المستندات، موقَّعًا وغيرَ موقَّع.
+             *
+             * المستندُ يُربط بالشركة ساعةَ يُصدر لها (`client_business_id`)، فيُرى
+             * هنا مع ملفّها ولا يضيع بين مستندات العملاء كلّهم. ومنها يُصدر لها
+             * مستندٌ جديد والشركةُ مختارةٌ في نافذته.
+             */
+            'documents' => [
+                'rows' => PlatformDocument::with('business:id,name')->where('client_business_id', $model->id)
+                    ->latest('id')->limit(50)->get()
+                    ->map(fn (PlatformDocument $d) => DocumentController::row($d))->all(),
+                'count' => PlatformDocument::where('client_business_id', $model->id)->count(),
+                'new_url' => route('super-admin.documents.index', ['business' => $model->id, 'new' => 1]),
+                'all_url' => route('super-admin.documents.index', ['business' => $model->id]),
+            ],
         ]);
     }
 

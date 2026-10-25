@@ -1617,6 +1617,19 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/finance/payment-links/{id}/cancel', [PaymentLinkController::class, 'cancel'])
         ->whereNumber('id')->name('finance.paymentLinks.cancel');
     Route::post('/finance/paymob-settlements', [PaymentLinkController::class, 'settle'])->name('finance.paymobSettlements.store');
+    Route::get('/finance/paymob-settlements/candidates', [PaymentLinkController::class, 'payoutCandidates'])->name('finance.paymobSettlements.candidates');
+    // تحويلٌ بآلاف المدفوعات: يُفتح، تُضاف مدفوعاتُه دفعاتٍ، يُرحَّل مرّةً
+    Route::post('/finance/paymob-settlements/drafts', [PaymentLinkController::class, 'openSettlementDraft'])->name('finance.paymobSettlements.drafts.store');
+    Route::post('/finance/paymob-settlements/{id}/items', [PaymentLinkController::class, 'addToSettlementDraft'])
+        ->whereNumber('id')->name('finance.paymobSettlements.items.store');
+    Route::post('/finance/paymob-settlements/{id}/waiting', [PaymentLinkController::class, 'addWaitingToSettlementDraft'])
+        ->whereNumber('id')->name('finance.paymobSettlements.waiting');
+    Route::post('/finance/paymob-settlements/{id}/items/remove', [PaymentLinkController::class, 'removeFromSettlementDraft'])
+        ->whereNumber('id')->name('finance.paymobSettlements.items.remove');
+    Route::post('/finance/paymob-settlements/{id}/drop-unsure', [PaymentLinkController::class, 'dropUnsureFromSettlementDraft'])
+        ->whereNumber('id')->name('finance.paymobSettlements.dropUnsure');
+    Route::post('/finance/paymob-settlements/{id}/post', [PaymentLinkController::class, 'postSettlementDraft'])
+        ->whereNumber('id')->name('finance.paymobSettlements.post');
     Route::post('/finance/paymob-settlements/{id}/retry', [PaymentLinkController::class, 'retrySettlement'])
         ->whereNumber('id')->name('finance.paymobSettlements.retry');
     Route::post('/finance/paymob-settlements/{id}/cancel', [PaymentLinkController::class, 'cancelSettlement'])

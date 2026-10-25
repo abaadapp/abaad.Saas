@@ -19,7 +19,7 @@ type SaleRow = import('@/Pages/Admin/CustomerInvoices/Sales').SaleRow;
  * ٢) طلبُ الموقع بلا بائعٍ مختلَق، وما لا يُعرف بائعُه «غير محدد».
  * ٣) الطلبُ المفوتَر طلبٌ يُذكر رقمُ فاتورته — لا يُسمّى فاتورة، ورابطُه طلبُه.
  * ٤) الفرعُ المختار يُقال فوق الجدول، ومعه بابُ «كل الفروع».
- * ٥) التبويباتُ الأربعة لمن يملك المبيعات.
+ * ٥) والرابطُ القديم يُفتح بلا شريط تبويبات — رُفعت من «فواتير العملاء».
  */
 
 const base: SaleRow = {
@@ -123,12 +123,19 @@ describe('جميع عمليات البيع', () => {
         expect(screen.queryByTestId('unknown-source-notice')).toBeNull();
     });
 
-    it('التبويباتُ الأربعة لمن يملك المبيعات', () => {
+    /*
+     * والتبويباتُ الثلاثة رُفعت من «فواتير العملاء» بقرار المالك، والصفحةُ باقيةٌ
+     * لرابطٍ قديمٍ محفوظ. وتبويبٌ واحدٌ لا يُرسم شريطًا — فلا تبويبَ هنا يقود
+     * إلى صفحةٍ رُفعت.
+     */
+    it('الرابطُ القديم يُفتح بلا شريط تبويبات', () => {
         setAuth(['orders']);
         render(<Sales {...props([base])} />);
 
-        for (const tab of ['جميع عمليات البيع', 'فواتير العملاء', 'مبيعات نقطة البيع', 'طلبات الموقع الإلكتروني']) {
-            expect(screen.getAllByText(tab).length).toBeGreaterThan(0);
+        expect(screen.getByText('INV-1')).toBeInTheDocument();
+        for (const tab of ['مبيعات نقطة البيع', 'طلبات الموقع الإلكتروني']) {
+            expect(screen.queryByText(tab)).toBeNull();
         }
+        expect(screen.queryByRole('link', { name: 'فواتير العملاء' })).toBeNull();
     });
 });

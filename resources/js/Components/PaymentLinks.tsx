@@ -364,6 +364,11 @@ export default function PaymentLinksCard({
                                         {t('التحصيل')} {l.payment.number}
                                     </SmartLink>
                                 )}
+                                {l.status === 'paid' && !l.is_live && !l.payment && (
+                                    <span className="text-[12px] text-[#71717a]" data-testid="payment-link-test-paid">
+                                        {t('دفعة تجربة — لم تُسجَّل تحصيلًا ولا قيدًا')}
+                                    </span>
+                                )}
                                 {l.review && <span className="text-[12px] text-[#b45309]">{t('تحتاج مراجعة — انظر سجل النشاط')}</span>}
                                 <LinkWhy link={l} />
                             </div>

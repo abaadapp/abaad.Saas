@@ -200,6 +200,8 @@ final class PaymobSettlements
         $open = fn (string $table, string $column, string $type) => DB::table($table.' as p')
             ->where('p.business_id', $businessId)
             ->where('p.status', 'paid')
+            // ورابطُ التجربة ليس مالًا تحوّله Paymob — ولو كُتب له تحصيلٌ قبل أن يُمنع (`classifyLink`)
+            ->when($type === self::LINK, fn ($q) => $q->where('p.is_live', true))
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('paymob_settlement_items as s')->whereColumn('s.'.$column, 'p.id'))
             ->selectRaw("'".$type."' as type, p.id as id, coalesce(p.paid_at, p.created_at) as at");
 
@@ -288,6 +290,16 @@ final class PaymobSettlements
 
         if (! $link) {
             throw new RuntimeException(__('مدفوعةٌ ليست من مدفوعات Paymob المقبوضة في متجرك.'));
+        }
+
+        /*
+         * ورابطُ التجربة لا يُسوّى أبدًا: دُفع ببطاقة تجربة، فلا تحوّل Paymob عنه
+         * شيئًا. وما سُجّل له تحصيلٌ قبل أن يُمنع (`PaymentLinks::settle`) يبقى
+         * مالُه المخترَعُ في التسوية حتّى يُلغى التحصيلُ بيد صاحبه — لا يخرج
+         * إلى البنك فيشهد الدفترُ بتحويلٍ لم يقع.
+         */
+        if (! $link->is_live) {
+            throw new RuntimeException(__('رابط دفعٍ تجريبيّ (Test) — دُفع ببطاقة تجربة فلا تحوّل Paymob عنه شيئًا، ولا يُسوّى.'));
         }
 
         $payment = $link->customer_payment_id
@@ -823,7 +835,7 @@ final class PaymobSettlements
                     ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('customer_payment_links as k')
                         ->join('customer_payments as cp', 'cp.id', '=', 'k.customer_payment_id')
                         ->whereColumn('k.id', 'i.customer_payment_link_id')
-                        ->where('k.status', CustomerPaymentLink::PAID)->where('k.updated_at', '<', $since)
+                        ->where('k.status', CustomerPaymentLink::PAID)->where('k.is_live', true)->where('k.updated_at', '<', $since)
                         ->whereNull('cp.cancelled_at')->whereColumn('cp.amount', 'i.amount')->where('cp.updated_at', '<', $since))
                     ->orWhereExists(fn ($q) => $after($q->select(DB::raw(1))->from('journal_entries as e')
                         ->join('customer_payment_links as k', 'k.customer_payment_id', '=', 'e.sourceable_id')

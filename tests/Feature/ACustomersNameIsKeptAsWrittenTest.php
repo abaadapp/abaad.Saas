@@ -329,7 +329,7 @@ class ACustomersNameIsKeptAsWrittenTest extends TestCase
         ]);
         $link = CustomerPaymentLink::create([
             'business_id' => $this->shop->id, 'customer_id' => $customer->id, 'reference' => 'ref-'.uniqid(),
-            'amount' => 5, 'currency' => 'OMR', 'status' => CustomerPaymentLink::PAID, 'paid_at' => now(),
+            'amount' => 5, 'currency' => 'OMR', 'status' => CustomerPaymentLink::PAID, 'paid_at' => now(), 'is_live' => true,
         ]);
 
         $this->actingAs($this->owner);

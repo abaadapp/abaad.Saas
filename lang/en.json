@@ -9272,5 +9272,7 @@
     "هذا التحويل ليس مسوّدةً تُكمَل — رُحّل أو أُلغي.": "This payout is not a draft to complete — it was posted or cancelled.",
     "تُضاف المدفوعات دفعاتٍ: :n في المرّة على الأكثر — لم يُكتب شيء.": "Payments are added in batches: at most :n at a time — nothing was written.",
     "أُخرجت المدفوعات غير المؤكّدة من التحويل — تعود لتنتظر": "The uncertain payments were removed from the payout — they are waiting again",
-    "لم يُرحَّل التحويل — بقي مسوّدة، انظر السبب": "The payout was not posted — it stays a draft, see the reason"
+    "لم يُرحَّل التحويل — بقي مسوّدة، انظر السبب": "The payout was not posted — it stays a draft, see the reason",
+    "دفعة تجربة — لم تُسجَّل تحصيلًا ولا قيدًا": "Test payment — not recorded as a collection or journal entry",
+    "رابط دفعٍ تجريبيّ (Test) — دُفع ببطاقة تجربة فلا تحوّل Paymob عنه شيئًا، ولا يُسوّى.": "Test payment link — paid with a test card, so Paymob pays nothing out for it and it cannot be settled."
 }

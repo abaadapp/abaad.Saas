@@ -67,7 +67,7 @@ class APaidLinkRingsTheBellTest extends TestCase
             PaymentGateway::create([
                 'business_id' => $shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
                 'public_key' => 'pk_'.$shop->id, 'secret_key' => 'sk_'.$shop->id, 'hmac_secret' => 'hmac-'.$shop->id,
-                'card_integration_id' => '111', 'api_key' => 'api-'.$shop->id, 'mode' => PaymentGateway::TEST,
+                'card_integration_id' => '111', 'api_key' => 'api-'.$shop->id, 'mode' => PaymentGateway::LIVE,
             ]);
         }
 
@@ -121,7 +121,7 @@ class APaidLinkRingsTheBellTest extends TestCase
             'is_refunded' => false, 'is_standalone_payment' => true, 'is_voided' => false,
             'order' => ['id' => (int) $link->provider_order_id, 'merchant_order_id' => null],
             'owner' => 1, 'pending' => false, 'source_data' => ['pan' => '2346', 'sub_type' => 'MasterCard', 'type' => 'card'],
-            'success' => true, 'is_live' => false,
+            'success' => true, 'is_live' => true,
         ];
 
         $this->postJson('/webhooks/paymob?hmac='.Paymob::signature($obj, 'hmac-'.$this->shop->id), ['type' => 'TRANSACTION', 'obj' => $obj])->assertOk();

@@ -301,6 +301,8 @@ class TheSalesListShowsWhatItFiltersByTest extends TestCase
     /** وفاتورةُ فرعك تُصحَّح كما كانت — الحدُّ على الفرع لا على الفعل */
     public function test_your_own_branchs_invoice_is_still_corrected(): void
     {
+        // فاتورةٌ بلا ضريبة في متجرٍ لا يجبيها — صراحةً (`OrderCorrection::assertTaxStands`)
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '0']);
         $order = $this->order($this->muscat, ['subtotal' => 30, 'total' => 30]);
         $item = $order->items()->create([
             'product_id' => $this->rose->id, 'name' => 'بوكيه',

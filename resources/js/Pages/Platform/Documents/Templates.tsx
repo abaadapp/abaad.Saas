@@ -10,6 +10,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
+import { PasswordInput } from '@/Components/ui/password-input';
 import { DocumentFormView } from '@/Components/DocumentFormView';
 import { useTranslate } from '@/lib/i18n';
 import type { DocumentForm } from '@/lib/platformDocuments';
@@ -450,7 +451,7 @@ function ApproveDialog({ template, onClose }: { template: Template; onClose: () 
                         {t('راجعت نص هذا القالب ورسومه وبيانات مقدّم الخدمة، وأعتمده للإصدار. يُسجَّل الاعتماد باسمي.')}
                     </label>
                     <Field label="كلمة المرور" required error={errors.password}>
-                        <Input type="password" autoComplete="current-password" value={form.data.password} onChange={(e) => form.setData('password', e.target.value)} data-testid="approve-password" />
+                        <PasswordInput autoComplete="current-password" value={form.data.password} onChange={(e) => form.setData('password', e.target.value)} data-testid="approve-password" />
                     </Field>
                     {(errors.approve || errors.hash) && <p className="text-[12.5px] text-[#b91c1c]">{errors.approve ?? errors.hash}</p>}
 

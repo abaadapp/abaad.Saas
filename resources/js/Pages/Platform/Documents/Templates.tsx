@@ -88,8 +88,8 @@ export default function DocumentTemplates() {
             />
 
             {providerMissing.length > 0 && (
-                <Card className="mb-3 border-[#fde68a] bg-[#fffbeb] p-4 text-[13px] text-[#92400e]" data-testid="provider-missing">
-                    {t('بيانات مقدّم الخدمة ناقصة: :fields — لا يُعتمد قالب ولا يُصدر من قالب معتمد قبل إكمالها.', { fields: providerMissing.map((f) => t(f)).join('، ') })}{' '}
+                <Card className="mb-3 p-4 text-[13px] text-[#6b7280]" data-testid="provider-missing">
+                    {t('لم تُكتب في بيانات مقدّم الخدمة: :fields — لا تظهر في العقود حتى تُكتب، ولا تمنع الاعتماد ولا الإصدار.', { fields: providerMissing.map((f) => t(f)).join('، ') })}{' '}
                     <Link href={route('super-admin.settings.index')} className="font-medium underline">
                         {t('إعدادات المنصة')}
                     </Link>
@@ -405,7 +405,7 @@ function ApproveDialog({ template, onClose }: { template: Template; onClose: () 
                         <dd className="text-[#111]">{template.version}</dd>
                         <dt className="text-[#6b7280]">{t('مقدّم الخدمة')}</dt>
                         <dd className="text-[#111]" data-testid="approve-provider">
-                            {[provider.legal_name || provider.name, provider.trade_name, provider.cr, provider.address].filter(Boolean).join(' — ')}
+                            {[provider.legal_name, provider.trade_name, provider.cr, provider.address].filter(Boolean).join(' — ')}
                         </dd>
                         {template.includes_amount && (
                             <>
@@ -426,8 +426,8 @@ function ApproveDialog({ template, onClose }: { template: Template; onClose: () 
                     </dl>
 
                     {providerMissing.length > 0 && (
-                        <p className="text-[12.5px] text-[#b91c1c]" data-testid="approve-blocked">
-                            {t('لا يُعتمد قبل إكمال بيانات مقدّم الخدمة: :fields', { fields: providerMissing.map((f) => t(f)).join('، ') })}
+                        <p className="text-[12.5px] text-[#6b7280]" data-testid="approve-provider-note">
+                            {t('لن يظهر في العقد ما لم يُكتب من بيانات مقدّم الخدمة: :fields', { fields: providerMissing.map((f) => t(f)).join('، ') })}
                         </p>
                     )}
 
@@ -459,7 +459,7 @@ function ApproveDialog({ template, onClose }: { template: Template; onClose: () 
                         <Button type="button" variant="ghost" onClick={onClose}>
                             {t('إلغاء')}
                         </Button>
-                        <Button type="submit" loading={form.processing} disabled={!reviewed || form.data.password === '' || providerMissing.length > 0} data-testid="approve-submit">
+                        <Button type="submit" loading={form.processing} disabled={!reviewed || form.data.password === ''} data-testid="approve-submit">
                             {t('اعتماد القالب')}
                         </Button>
                     </div>

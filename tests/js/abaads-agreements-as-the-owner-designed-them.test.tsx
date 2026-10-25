@@ -16,7 +16,7 @@ import { pageProps } from './setup';
  *   - نافذةُ الإصدار تعرض النموذجَ وتقترح مبلغَه وتفتح حقولَ الفريق وحدها.
  *   - صفحةُ المستند تعرض ما كتبه الفريقُ وما أجاب به العميل، والفارغَ سطرًا.
  *   - شاشةُ القوالب: المسوّدةُ موسومةٌ ولا تُفعَّل، والاعتمادُ يُعرض بنصّه ورسومه ومقدّم
- *     خدمته ولا يُرسل بلا مراجعةٍ وكلمة مرور — ولا بمقدّم خدمةٍ ناقص.
+ *     خدمته ولا يُرسل بلا مراجعةٍ وكلمة مرور. وسجلٌّ أو عنوانٌ لم يُكتبا يُنبَّه إليهما ولا يمنعان.
  *   - والرسومُ الثابتة في نافذة الإصدار تُقرأ ولا تُكتب.
  */
 
@@ -155,7 +155,7 @@ describe('the owner’s agreements, as forms', () => {
     };
     const provider = { name: 'مشاريع الذهلي الجديدة', legal_name: 'مشاريع الذهلي الجديدة', trade_name: 'أبعاد', cr: '', address: '' };
 
-    it('a draft agreement is marked, cannot be activated, and is not approved while the provider is incomplete', async () => {
+    it('a draft agreement is marked and cannot be activated; a blank CR or address only notes, never blocks approval', async () => {
         layout('super-admin.documents.templates');
         Object.assign(pageProps, { templates: [template], provider, providerMissing: ['رقم السجل التجاري', 'العنوان القانوني'] });
         render(<DocumentTemplates />);
@@ -172,10 +172,10 @@ describe('the owner’s agreements, as forms', () => {
         await userEvent.click(screen.getByTestId('approve-4'));
         const approve = screen.getByTestId('approve-form');
         expect(within(approve).getByTestId('approve-fee')).toHaveTextContent('25.000');
-        expect(within(approve).getByTestId('approve-blocked')).toBeInTheDocument();
+        expect(within(approve).getByTestId('approve-provider-note')).toHaveTextContent('رقم السجل التجاري');
         await userEvent.click(within(approve).getByTestId('approve-reviewed'));
         await userEvent.type(within(approve).getByTestId('approve-password'), 'x');
-        expect(within(approve).getByTestId('approve-submit')).toBeDisabled();
+        expect(within(approve).getByTestId('approve-submit')).toBeEnabled();
     });
 
     it('with the provider complete, approval needs the review tick and the password', async () => {

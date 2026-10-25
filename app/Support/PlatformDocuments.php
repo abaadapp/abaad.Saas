@@ -53,7 +53,8 @@ use Throwable;
  *
  * لا يُصدر إلّا من قالبٍ معتمدٍ نصُّه كما هو الآن (`PlatformDocumentTemplate::approved`).
  * ورسومُه كما اعتُمدت: الثابتةُ هي المبلغ، و«يبدأ من» حدُّه الأدنى. ومقدّمُ الخدمة
- * ببياناته القانونيّة كاملةً (الاسم والسجلّ والعنوان) نسخةٌ في المستند ساعتَها.
+ * بما كُتب من بياناته نسخةٌ في المستند ساعتَها — وما لم يُكتب (السجلّ، العنوان) لا
+ * يُطبع، ولا يمنع اعتمادًا ولا إصدارًا: قرارُ المالك.
  */
 class PlatformDocuments
 {
@@ -187,11 +188,8 @@ class PlatformDocuments
         if (! $template->approved()) {
             throw new RuntimeException(__('هذا القالب لم يُعتمد بنصّه الحاليّ — لا يُصدر منه مستند حتى يعتمده مدير المنصّة.'));
         }
-        // مقدّمُ الخدمة كما هو اليوم — وقالبٌ اعتُمد بهذه السياسة لا يُصدر بلا سجلّه وعنوانه
+        // مقدّمُ الخدمة كما هو اليوم — بما كُتب منه، وما لم يُكتب لا يُطبع
         $provider = self::provider();
-        if ($template->approval_basis !== PlatformDocumentTemplate::LEGACY && ($gap = self::providerMissing($provider))) {
-            throw new RuntimeException(__('أكمل بيانات مقدّم الخدمة في إعدادات المنصّة: :fields', ['fields' => implode('، ', $gap)]));
-        }
 
         $renews = ! empty($data['renews_document_id']) ? PlatformDocument::findOrFail($data['renews_document_id']) : null;
         if ($renews) {
@@ -351,21 +349,22 @@ class PlatformDocuments
     /** رسالةُ واتساب الجاهزة — يراجعها المديرُ ويضغط «إرسال» بنفسه */
     public static function whatsappText(PlatformDocument $doc, string $link): string
     {
-        // الرسالةُ باسم المنصّة الذي يعرفه العميل — والاسمُ القانونيّ في العقد نفسه
-        $p = self::providerOf($doc);
-        $provider = $p['trade_name'] ?: $p['name'];
+        // الرسالةُ باسم المنصّة الذي يعرفه العميل — والاسمُ القانونيّ في العقد نفسه.
+        // وإن لم يُكتب اسمٌ قيلت الرسالةُ بلا اسم، لا باسمٍ يُستعار
+        $provider = self::providerName(self::providerOf($doc));
         $who = $doc->client['name'] ?? $doc->client['biz'] ?? '';
+        $what = ['provider' => $provider, 'title' => $doc->title, 'number' => $doc->number];
 
-        return implode("\n", [
+        return implode("\n", array_filter([
             __('مرحبًا :name،', ['name' => $who]),
-            __('يسعدنا في :provider إرسال :title رقم :number لمراجعته وتوقيعه إلكترونيًا عبر الرابط التالي:', [
-                'provider' => $provider, 'title' => $doc->title, 'number' => $doc->number,
-            ]),
+            $provider !== ''
+                ? __('يسعدنا في :provider إرسال :title رقم :number لمراجعته وتوقيعه إلكترونيًا عبر الرابط التالي:', $what)
+                : __('يسعدنا إرسال :title رقم :number لمراجعته وتوقيعه إلكترونيًا عبر الرابط التالي:', $what),
             $link,
             __('الرابط صالح حتى :date.', ['date' => $doc->expires_at?->copy()->timezone(config('app.timezone'))->format('Y-m-d') ?? '—']),
             __('مع التحية،'),
             $provider,
-        ]);
+        ], fn ($line) => $line !== ''));
     }
 
     /**
@@ -530,31 +529,48 @@ class PlatformDocuments
         return 'data:image/png;base64,'.base64_encode((string) Storage::disk('local')->get($doc->signature_path));
     }
 
-    /** بياناتُ مقدّم الخدمة القانونيّة التي لا يُعتمد قالبٌ ولا يُصدر بغيرها — بمفاتيحها في `provider()` */
+    /** بياناتُ مقدّم الخدمة القانونيّة — تُطبع إن كُتبت، ولا تمنع شيئًا إن لم تُكتب. بمفاتيحها في `provider()` */
     public const PROVIDER_REQUIRED = ['legal_name' => 'الاسم القانوني', 'cr' => 'رقم السجل التجاري', 'address' => 'العنوان القانوني'];
 
-    /** الطرفُ الأوّل في مستندٍ صدر — كما نُسخ يومَ إصداره */
+    /**
+     * الطرفُ الأوّل في مستندٍ صدر — كما نُسخ يومَ إصداره.
+     *
+     * وما لم يُنسخ فيه فارغ: مستندٌ قديم يُعرض بما حمله، لا يُكمَّل باسمٍ من اليوم.
+     */
     public static function providerOf(PlatformDocument $doc): array
     {
-        return ($doc->provider ?? []) + ['name' => __('أبعاد'), 'legal_name' => '', 'trade_name' => '', 'cr' => '', 'address' => '', 'email' => '', 'phone' => '', 'website' => ''];
+        return ($doc->provider ?? []) + ['name' => '', 'legal_name' => '', 'trade_name' => '', 'cr' => '', 'address' => '', 'email' => '', 'phone' => '', 'website' => ''];
+    }
+
+    /**
+     * الاسمُ الذي يُخاطَب به العميل — في الرسالة و«تواصل مع …» والترويسة.
+     *
+     * الاسمُ التجاريّ إن كُتب، وإلّا الاسمُ الذي في المستند (القانونيّ). وإن لم
+     * يُكتب أيٌّ منهما فارغ — والجملةُ تُقال بلا اسم.
+     */
+    public static function providerName(array $provider): string
+    {
+        return trim((string) ($provider['trade_name'] ?? '')) ?: trim((string) ($provider['name'] ?? ''));
     }
 
     /**
      * هويّةُ أبعاد في رأس المستند — من إعدادات المنصّة لا من الكود، تُنسخ فيه ساعةَ الإصدار.
      *
-     * والاسمُ القانونيّ وسجلُّه وعنوانُه من «مقدّم الخدمة في العقود» (`legal_*`) لا من
-     * «اسم الشركة المالكة»: ذاك افتراضُه في الشاشة اسمٌ لا كيانَ له، فلا يُطبع طرفًا في عقد.
-     * وما لم يُكتب يبقى فارغًا — لا يُملأ بما يشبهه.
+     * والاسمُ القانونيّ وسجلُّه وعنوانُه من «مقدّم الخدمة في العقود» (`legal_*`) وحدها
+     * — لا من «اسم الشركة المالكة» (`company`، افتراضُه في الشاشة اسمٌ لا كيانَ له) ولا
+     * من اسم التطبيق ولا من اسمٍ في الكود. وما لم يُكتب يبقى فارغًا — لا يُملأ بما يشبهه.
+     *
+     * و`name` هو الاسمُ القانونيّ نفسُه: المفتاحُ الذي قرأته المستنداتُ قبل `legal_name`.
      */
     public static function provider(): array
     {
         $s = Setting::whereNull('business_id')
-            ->whereIn('key', ['app_name', 'company', 'official_email', 'phone', 'website', 'legal_name', 'legal_trade_name', 'legal_cr', 'legal_address'])
+            ->whereIn('key', ['official_email', 'phone', 'website', 'legal_name', 'legal_trade_name', 'legal_cr', 'legal_address'])
             ->pluck('value', 'key');
         $get = fn (string $k) => trim((string) $s->get($k));
 
         return [
-            'name' => $get('legal_name') ?: ($get('company') ?: ($get('app_name') ?: __('أبعاد'))),
+            'name' => $get('legal_name'),
             'legal_name' => $get('legal_name'),
             'trade_name' => $get('legal_trade_name'),
             'cr' => $get('legal_cr'),
@@ -565,7 +581,7 @@ class PlatformDocuments
         ];
     }
 
-    /** ما ينقص من بيانات مقدّم الخدمة القانونيّة — بعناوينه */
+    /** ما لم يُكتب من بيانات مقدّم الخدمة القانونيّة — بعناوينه، للتنبيه وحده */
     public static function providerMissing(array $provider): array
     {
         return array_values(array_map(
@@ -578,7 +594,7 @@ class PlatformDocuments
     public static function providerLine(array $provider): string
     {
         return implode(' — ', array_filter([
-            trim((string) ($provider['legal_name'] ?? '')) ?: trim((string) ($provider['name'] ?? '')),
+            trim((string) ($provider['legal_name'] ?? '')),
             ($provider['trade_name'] ?? '') !== '' ? 'الاسم التجاري للمنصة: '.$provider['trade_name'] : null,
             ($provider['cr'] ?? '') !== '' ? 'السجل التجاري رقم '.$provider['cr'] : null,
         ]));

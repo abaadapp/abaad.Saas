@@ -22,7 +22,7 @@ class Paper
      * @param  array<string,mixed>|Business|null  $business
      * @return array{name: string, sub: string, logo: ?string, lines: array<int, string>}
      */
-    public static function brand(mixed $business, string $vatNumber = ''): array
+    public static function brand(mixed $business, string $vatNumber = '', ?string $unnamed = null): array
     {
         $get = static fn (string $key): string => trim((string) (is_array($business)
             ? ($business[$key] ?? '')
@@ -75,11 +75,14 @@ class Paper
          * وحده تفترق عن أخواتها يومَ تُبدَّل إحداها.
          *
          * وفارغٌ يعني «لم يُسجَّل»: يردّ العربيَّ ولا يُترجم اسمًا قانونيًّا.
+         *
+         * ومتجرٌ بلا اسمٍ تُطبع ورقتُه باسم النظام. وورقةٌ لا تقبل اسمًا بديلًا
+         * (عقدُ المنصّة مع عميلها) تمرّر `$unnamed = ''` فتبقى بلا اسم.
          */
         $name = Demo::ln($get('name'), $get('name_en'));
 
         return [
-            'name' => $name !== '' ? $name : __('نظام Abad POS'),
+            'name' => $name !== '' ? $name : ($unnamed ?? __('نظام Abad POS')),
             'sub' => implode(' — ', $sub),
             'logo' => ($logo = $get('logo')) !== '' ? $logo : null,
             'lines' => $lines,

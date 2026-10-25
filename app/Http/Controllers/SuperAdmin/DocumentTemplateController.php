@@ -27,8 +27,9 @@ use Inertia\Response;
  * ═══ الاعتماد ═══
  *
  * القالبُ الجديد مسوّدةٌ معطَّلة. ويعتمده مديرُ المنصّة بكلمة مروره على بصمة ما
- * رآه (`hash`): فإن تغيّر القالبُ بين فتحه وضغطه رُدّ الاعتماد. ولا يُعتمد وبياناتُ
- * مقدّم الخدمة القانونيّة ناقصة، ولا يُفعَّل قبل اعتماده. وتعديلُ ما يُعتمد (نصُّه
+ * رآه (`hash`): فإن تغيّر القالبُ بين فتحه وضغطه رُدّ الاعتماد. ولا يُفعَّل قبل
+ * اعتماده. وبياناتُ مقدّم الخدمة (السجلّ والعنوان) لا تمنع الاعتماد: ما لم يُكتب منها
+ * لا يُطبع، والقرارُ للمالك. وتعديلُ ما يُعتمد (نصُّه
  * ورسومُه وقاعدةُ مبلغه) إصدارٌ جديدٌ يُعطَّل حتى يُعتمد.
  */
 class DocumentTemplateController extends Controller
@@ -109,7 +110,7 @@ class DocumentTemplateController extends Controller
     }
 
     /**
-     * اعتمادُ القالب — بكلمة مرور المدير، على بصمة ما رآه، وبياناتُ مقدّم الخدمة كاملة.
+     * اعتمادُ القالب — بكلمة مرور المدير، على بصمة ما رآه.
      *
      * الاعتمادُ لا يفعّله: التفعيلُ قرارٌ بعده.
      */
@@ -125,9 +126,6 @@ class DocumentTemplateController extends Controller
             $hash = $template->contentHash();
             if (! hash_equals($hash, (string) $request->input('hash'))) {
                 return back()->withErrors(['approve' => __('تغيّر القالب منذ فتحته — راجعه من جديد ثمّ اعتمده.')]);
-            }
-            if ($gap = PlatformDocuments::providerMissing(PlatformDocuments::provider())) {
-                return back()->withErrors(['approve' => __('أكمل بيانات مقدّم الخدمة في إعدادات المنصّة قبل الاعتماد: :fields', ['fields' => implode('، ', $gap)])]);
             }
             // نصٌّ يذكر رسومه، أو قاعدةُ مبلغٍ تحتاجها، بلا رقم: وعدٌ بمبلغٍ لا يُعرف
             $needsFee = ($template->includes_amount && $template->amount_rule !== null)

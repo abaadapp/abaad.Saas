@@ -24,6 +24,9 @@
     $num = 0;
     $next = function () use (&$num) { return str_pad((string) ++$num, 2, '0', STR_PAD_LEFT); };
     $form ??= null;
+    // مقدّمُ الخدمة بما كُتب منه وحده: الاسمُ الذي يُخاطَب به العميل، وإن غاب قيلت الجملةُ بلا اسم
+    $shown = PlatformDocuments::providerName($provider);
+    $contact = $shown !== '' ? $shown : 'مُرسِل المستند';
 @endphp
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -32,7 +35,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
     <meta name="referrer" content="no-referrer">
-    <title>{{ $doc->title }} — {{ $provider['name'] }}</title>
+    <title>{{ $doc->title }}@if ($shown !== '') — {{ $shown }}@endif</title>
     <style>
         :root {
             --ink: #0f0f0f; --muted: #6b7280; --faint: #9ca3af;
@@ -150,8 +153,8 @@
 <div class="sheet">
     <div class="pad top">
         <div>
-            <img class="logo" src="{{ asset('brand/abaad/logo.svg') }}" alt="{{ $provider['name'] }}">
-            <div class="brand">{{ $provider['name'] }}</div>
+            <img class="logo" src="{{ asset('brand/abaad/logo.svg') }}" alt="{{ $shown }}">
+            @if ($shown !== '')<div class="brand">{{ $shown }}</div>@endif
             <div class="xs muted">
                 @if ($provider['website'])<span class="ltr">{{ $provider['website'] }}</span>@endif
                 @if ($provider['phone']) · <span class="ltr">{{ $provider['phone'] }}</span>@endif
@@ -170,12 +173,11 @@
         <div class="parties">
             <div class="party">
                 <div class="xs muted">الطرف الأول · مزوّد الخدمة <span class="faint">Provider</span></div>
-                <div class="who">{{ $provider['name'] }}</div>
                 {{-- بياناتُه القانونيّة كما نُسخت في المستند يومَ إصداره — ما كُتب منها وحده --}}
+                @if (trim((string) $provider['name']) !== '')<div class="who" id="provider-name">{{ $provider['name'] }}</div>@endif
                 @if ($provider['trade_name'])<div class="xs muted" id="provider-trade">الاسم التجاري للمنصة: {{ $provider['trade_name'] }}</div>@endif
                 @if ($provider['cr'])<div class="xs muted" id="provider-cr">السجل التجاري رقم <span class="ltr">{{ $provider['cr'] }}</span></div>@endif
                 @if ($provider['address'])<div class="xs muted" id="provider-address">{{ $provider['address'] }}</div>@endif
-                <div class="xs muted">نظام سحابي متكامل لإدارة الأعمال</div>
             </div>
             <div class="party">
                 <div class="xs muted">الطرف الثاني · العميل <span class="faint">Customer</span></div>
@@ -188,18 +190,18 @@
 
     {{-- الرابطُ المغلق يقول حالَه وحدها — لا بيانَ عميلٍ ولا باقةَ ولا توقيع --}}
     @if ($state === PlatformDocument::CANCELLED)
-        <div class="pad rule"><div class="alert bad">أُلغي هذا المستند ولم يعد يقبل التوقيع. تواصل مع {{ $provider['name'] }} للحصول على رابط جديد.</div></div>
+        <div class="pad rule"><div class="alert bad">أُلغي هذا المستند ولم يعد يقبل التوقيع. تواصل مع {{ $contact }} للحصول على رابط جديد.</div></div>
     @elseif ($state === 'expired')
-        <div class="pad rule"><div class="alert bad">انتهت صلاحية هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على رابط جديد.</div></div>
+        <div class="pad rule"><div class="alert bad">انتهت صلاحية هذا الرابط. تواصل مع {{ $contact }} للحصول على رابط جديد.</div></div>
     @elseif (! $readable && $doc->copyOpen())
         {{-- رابطٌ مُرِّر بعد التوقيع: النسخةُ على جهاز الموقِّع وحده --}}
-        <div class="pad rule"><div class="alert info">وُقِّع هذا المستند. ولحماية بيانات العميل وتوقيعه لا تُعرض نسخته الموقَّعة إلا على الجهاز والمتصفح الذي وُقِّع منه. تواصل مع {{ $provider['name'] }} للحصول على نسختك.</div></div>
+        <div class="pad rule"><div class="alert info">وُقِّع هذا المستند. ولحماية بيانات العميل وتوقيعه لا تُعرض نسخته الموقَّعة إلا على الجهاز والمتصفح الذي وُقِّع منه. تواصل مع {{ $contact }} للحصول على نسختك.</div></div>
     @elseif (! $readable)
-        <div class="pad rule"><div class="alert info">وُقِّع هذا المستند، وانتهت مدة عرض نسخته عبر هذا الرابط. تواصل مع {{ $provider['name'] }} للحصول على نسختك.</div></div>
+        <div class="pad rule"><div class="alert info">وُقِّع هذا المستند، وانتهت مدة عرض نسخته عبر هذا الرابط. تواصل مع {{ $contact }} للحصول على نسختك.</div></div>
     @endif
 
     @if (session('done'))
-        <div class="pad rule no-print" id="done"><div class="alert ok">شكرًا لك — تم إرسال توقيعك وحفظ المستند موقّعًا، ووصلت نسخته إلى {{ $provider['name'] }}. نزّل نسختك PDF من أسفل الصفحة.</div></div>
+        <div class="pad rule no-print" id="done"><div class="alert ok">شكرًا لك — تم إرسال توقيعك وحفظ المستند موقّعًا، ووصلت نسخته إلى {{ $contact }}. نزّل نسختك PDF من أسفل الصفحة.</div></div>
     @endif
 
     @if ($readable)
@@ -288,7 +290,7 @@
                 <div class="row no-print" style="margin-top:16px">
                     <a class="btn wide" href="{{ route('documents.sign.pdf', $token) }}" id="pdf">تنزيل نسختك PDF</a>
                 </div>
-                <p class="xs muted no-print" style="margin:10px 0 0">تبقى نسختك على هذا الجهاز وهذا المتصفح وحدهما حتى <span class="ltr">{{ PlatformDocuments::day($doc->copyUntil()) }}</span>، فنزّلها الآن واحتفظ بها. من يفتح الرابط من جهاز آخر لا يرى بياناتك ولا توقيعك، وإن مسحت بيانات المتصفح فاطلب نسختك من {{ $provider['name'] }}.</p>
+                <p class="xs muted no-print" style="margin:10px 0 0">تبقى نسختك على هذا الجهاز وهذا المتصفح وحدهما حتى <span class="ltr">{{ PlatformDocuments::day($doc->copyUntil()) }}</span>، فنزّلها الآن واحتفظ بها. من يفتح الرابط من جهاز آخر لا يرى بياناتك ولا توقيعك، وإن مسحت بيانات المتصفح فاطلب نسختك من {{ $contact }}.</p>
             @elseif ($open)
                 @if ($errors->any())
                     <div class="alert bad" style="margin-bottom:12px">{{ $errors->first() }}</div>
@@ -319,7 +321,7 @@
     </form>
     @endif
 </div>
-<footer class="xs faint">© {{ $provider['name'] }}@if ($provider['website']) · <span class="ltr">{{ $provider['website'] }}</span>@endif</footer>
+<footer class="xs faint">@if ($shown !== '')© {{ $shown }}@endif @if ($shown !== '' && $provider['website'])· @endif @if ($provider['website'])<span class="ltr">{{ $provider['website'] }}</span>@endif</footer>
 
 @if ($open)
 <script>

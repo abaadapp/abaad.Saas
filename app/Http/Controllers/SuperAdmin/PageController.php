@@ -703,6 +703,11 @@ class PageController extends Controller
         'official_email' => 'info@abad.om',
         'phone' => '+968 24000000',
         'website' => 'https://abad.om',
+        // مقدّمُ الخدمة في العقود — فارغةٌ عمدًا: لا يُطبع طرفًا في عقدٍ ما لم يكتبه المالك
+        'legal_name' => '',
+        'legal_trade_name' => '',
+        'legal_cr' => '',
+        'legal_address' => '',
         'trial_days' => '14',
         'grace_days' => '7',
         /*

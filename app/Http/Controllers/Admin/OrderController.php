@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Lists\OrdersList;
+use App\Support\Lists\PaidLinksList;
 use App\Support\OrderCorrection;
 use App\Support\SalesChannel;
 use Illuminate\Http\Request;
@@ -21,6 +22,11 @@ class OrderController extends Controller
 
     public function index(Request $request)
     {
+        // «رابط دفع» تحصيلاتٌ من جدولها لا طلبات — انظر `PaidLinksList`
+        if (PaidLinksList::chosen($request)) {
+            return $this->collections($request);
+        }
+
         // الاستعلامُ نفسُه الذي يقرؤه الملفّ — الشاشةُ ترقّمه والتصديرُ يقرؤه كلَّه
         $q = OrdersList::filtered($request);
 
@@ -70,10 +76,71 @@ class OrderController extends Controller
             // قائمة الحالات من مصدرها الواحد — لا تُكتب في الشاشة مرّةً ثانية
             'statusOptions' => \App\Support\OrderStatus::options(),
             // والقنوات من مصدرها الواحد كذلك — انظر App\Support\SalesChannel
-            'channelOptions' => SalesChannel::options(),
+            'channelOptions' => self::channelOptions(),
+            /*
+             * وتحصيلاتُ روابط الدفع تُذكر سطرًا تحت الإجمالي — لا فيه.
+             *
+             * من دفع عبر رابطٍ يبحث عن ماله في «المبيعات». والمالُ تحصيلٌ لبيعٍ
+             * محسوبٍ في فاتورته، فيُقال عددُه ومبلغُه بجوار الإجمالي، ويُفتح
+             * بمُرشِّحه. وحين يُختار مصدرٌ آخر لا يُذكر: سُئل عن غيره.
+             */
+            'linkCollections' => $request->filled('channel') ? null : self::linkSummary($request),
             // زرُّ «حذف» لصاحب النشاط وحده — الحكمُ نفسُه الذي يردّ به `destroy`
             'mayDelete' => self::isOwner(),
         ]);
+    }
+
+    /**
+     * «رابط دفع» — الشاشةُ نفسُها، وصفوفُها تحصيلاتٌ لا طلبات.
+     *
+     * ومجاميعُ الطلبات أصفارٌ هنا عن قصد: لا طلبَ في هذا المُرشِّح، والمحصَّلُ
+     * يُقال في سطره (`collectionTotals`) ولا يُقرأ «إجماليَّ مبيعات».
+     */
+    private function collections(Request $request)
+    {
+        $page = PaidLinksList::page($request);
+
+        return \Inertia\Inertia::render('Admin/Orders/Index', [
+            'orders' => [],
+            'collections' => $page->items(),
+            'collectionTotals' => PaidLinksList::totals($request),
+            // سندُ القبض صفحةُ «المالية» — والزرُّ لمن يفتحها
+            'mayOpenReceipts' => (bool) auth()->user()?->allows('finance'),
+            'pagination' => \App\Support\Pagination::meta($page),
+            'filters' => $request->only('q', 'payment', 'status', 'when', 'channel')
+                + \App\Support\ListFilters::orderPeriod($request)->params()
+                + \App\Support\Sort::params($request, PaidLinksList::SORTS),
+            'period' => \App\Support\ListFilters::orderPeriod($request)->screen($this->bid()),
+            'sorts' => \App\Support\Sort::keys(PaidLinksList::SORTS),
+            'totalAmount' => 0.0,
+            'totalCount' => 0,
+            'cancelledCount' => 0,
+            'websiteCount' => 0,
+            'websiteAmount' => 0.0,
+            'statusOptions' => \App\Support\OrderStatus::options(),
+            'channelOptions' => self::channelOptions(),
+            'linkCollections' => null,
+            'mayDelete' => false,
+        ]);
+    }
+
+    /**
+     * قنواتُ الطلبات من مصدرها الواحد (`SalesChannel`) — ومعها «رابط دفع».
+     *
+     * يُلحق هنا لا في `SalesChannel::options`: تلك قنواتُ أبواب البيع تقرؤها
+     * شاشاتٌ أخرى، والرابطُ ليس منها.
+     */
+    private static function channelOptions(): array
+    {
+        return [...SalesChannel::options(), PaidLinksList::option()];
+    }
+
+    /** عددُ التحصيلات ومبلغُها بما سيعرضه مُرشِّحُها — أو `null` حين لا شيء */
+    private static function linkSummary(Request $request): ?array
+    {
+        $totals = PaidLinksList::totals($request);
+
+        return $totals['count'] > 0 ? ['count' => $totals['count'], 'amount' => $totals['amount']] : null;
     }
 
     /**

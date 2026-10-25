@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Currency;
 use App\Models\Customer;
+use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -23,6 +24,7 @@ use App\Support\MarketingSettings;
 use App\Support\PaymentLinks;
 use App\Support\PaymobSettlements;
 use App\Support\Store\Paymob;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -134,6 +136,45 @@ trait PaymobPayouts
         PaymentLinks::settle($link, 'TX-'.$link->id);
 
         return $link->fresh();
+    }
+
+    /**
+     * آلافُ روابطَ مدفوعة بلا آلاف طلبات: رابطٌ يُدفع كما يدفعه إشعارُ Paymob
+     * (`paidLink`)، ثمّ تُنسخ صفوفُه نفسُها — التحصيلُ ورابطُه وقيدُه وسطورُه —
+     * بأرقامٍ جديدة. فما يقرؤه التصنيفُ صفوفٌ حقيقيّة، وكلٌّ في «تحت التسوية» بمبلغه.
+     *
+     * @return list<string> مفاتيحُها بترتيب دفعها: link:12 …
+     */
+    protected function manyPaidLinks(int $n, float $amount = 1.0): array
+    {
+        $seed = $this->paidLink($amount);
+        $pay = (array) DB::table('customer_payments')->where('id', $seed->customer_payment_id)->first();
+        $link = (array) DB::table('customer_payment_links')->where('id', $seed->id)->first();
+        $entries = DB::table('journal_entries')->where('sourceable_type', CustomerPayment::class)->where('sourceable_id', $pay['id'])->get()->map(fn ($e) => (array) $e);
+        $lines = DB::table('journal_lines')->whereIn('journal_entry_id', $entries->pluck('id'))->get()->map(fn ($l) => (array) $l)->groupBy('journal_entry_id');
+        $keys = [$this->key($seed)];
+
+        for ($i = 1; $i < $n; $i++) {
+            $pid = DB::table('customer_payments')->insertGetId(['number' => $pay['number'].'-'.$i] + Arr::except($pay, ['id', 'number']));
+            $keys[] = 'link:'.DB::table('customer_payment_links')->insertGetId([
+                'reference' => $link['reference'].'-'.$i,
+                'provider_transaction_id' => $link['provider_transaction_id'] !== null ? $link['provider_transaction_id'].'-'.$i : null,
+                'customer_payment_id' => $pid,
+            ] + Arr::except($link, ['id', 'reference', 'provider_transaction_id', 'customer_payment_id']));
+
+            foreach ($entries as $e) {
+                $eid = DB::table('journal_entries')->insertGetId(['number' => $e['number'].'-'.$i, 'sourceable_id' => $pid] + Arr::except($e, ['id', 'number', 'sourceable_id']));
+                DB::table('journal_lines')->insert($lines[$e['id']]->map(fn (array $l) => ['journal_entry_id' => $eid] + Arr::except($l, ['id', 'journal_entry_id']))->all());
+            }
+        }
+
+        // آلافُ صفوفٍ في معاملة الاختبار لم يرها المخطِّط: بلا إحصاءٍ يختار مسحًا كاملًا
+        // لكلّ استعلام. والإنتاجُ يُحلَّل وحده — هذا للاختبار وحده.
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::statement('ANALYZE customer_payments, customer_payment_links, journal_entries, journal_lines, paymob_settlement_items');
+        }
+
+        return $keys;
     }
 
     protected function key(StorePaymentIntent|CustomerPaymentLink $p): string

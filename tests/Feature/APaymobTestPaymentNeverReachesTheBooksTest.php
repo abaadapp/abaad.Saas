@@ -365,6 +365,37 @@ class APaymobTestPaymentNeverReachesTheBooksTest extends TestCase
         $this->assertSame([], $this->candidates());
     }
 
+    /* ═══════════ ٥ب · ولا في مسوّدة تحويلٍ كبير ═══════════ */
+
+    public function test_a_payout_draft_never_takes_a_test_link_and_rechecks_one_before_posting(): void
+    {
+        $test = $this->link($this->invoice(), 30);
+        $this->hook($this->obj($test));
+        $this->mode($this->shop, PaymentGateway::LIVE);
+        $live = $this->link($this->invoice(), 50);
+        $this->hook($this->obj($live));
+
+        $this->assertSame(1, PaymobSettlements::waiting($this->shop->id), 'رابطُ التجربة يُعدّ فيما ينتظر');
+
+        // بعد دقائق: ما لم يُمسّ بعد فتح المسوّدة لا يُعاد فحصُه بوقته — بصفّه وحده
+        Carbon::setTestNow('2026-10-25 10:05:00');
+        $draft = PaymobSettlements::openDraft($this->shop->id, ['fee' => 0, 'net' => 50, 'settled_on' => '2026-10-25'], $this->owner->id);
+        try {
+            PaymobSettlements::addToDraft($this->shop->id, $draft->id, ['link:'.$test->id]);
+            $this->fail('دخل رابطُ تجربةٍ مسوّدةَ تحويل');
+        } catch (RuntimeException) {
+        }
+        $this->assertSame(1, PaymobSettlements::addWaitingToDraft($this->shop->id, $draft->id, '2026-10-25')['added']);
+        $this->assertSame(['link:'.$live->id], $draft->fresh()->items()->pluck('source')->all());
+
+        // رابطٌ في المسوّدة صار صفُّه «تجربة» بعد اختياره — يُعاد فحصُه ولا يُرحَّل
+        CustomerPaymentLink::whereKey($live->id)->toBase()->update(['is_live' => false]);
+        $before = $this->books();
+        $held = PaymobSettlements::postDraft($this->shop->id, $draft->id, $this->owner->id);
+        $this->assertSame(PaymobSettlements::DRAFT, $held->status);
+        $this->assertSame($before, $this->books(), 'رُحّل تحويلٌ فيه رابطُ تجربة');
+    }
+
     /* ═══════════ ٦ · لكلّ متجرٍ مالُه وتجاربُه ═══════════ */
 
     public function test_each_shop_keeps_its_own_test_and_live_money_apart(): void

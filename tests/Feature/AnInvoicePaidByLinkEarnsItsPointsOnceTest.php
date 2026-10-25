@@ -84,7 +84,7 @@ class AnInvoicePaidByLinkEarnsItsPointsOnceTest extends TestCase
             'business_id' => $this->shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
             'public_key' => 'pk', 'secret_key' => 'sk', 'hmac_secret' => 'hmac-shop',
             'card_integration_id' => '111', 'omannet_integration_id' => '222', 'apple_pay_integration_id' => '333',
-            'api_key' => 'api', 'mode' => PaymentGateway::TEST,
+            'api_key' => 'api', 'mode' => PaymentGateway::LIVE,
         ]);
 
         Http::fake([
@@ -137,7 +137,7 @@ class AnInvoicePaidByLinkEarnsItsPointsOnceTest extends TestCase
             'order' => ['id' => (int) $link->provider_order_id, 'merchant_order_id' => null],
             'owner' => 1, 'pending' => false,
             'source_data' => ['pan' => '2346', 'sub_type' => 'MasterCard', 'type' => 'card'],
-            'success' => true, 'is_live' => false,
+            'success' => true, 'is_live' => true,
         ], $over);
     }
 
@@ -239,7 +239,7 @@ class AnInvoicePaidByLinkEarnsItsPointsOnceTest extends TestCase
         PaymentGateway::create([
             'business_id' => $this->other->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
             'public_key' => 'pk2', 'secret_key' => 'sk2', 'hmac_secret' => 'hmac-other',
-            'card_integration_id' => '444', 'api_key' => 'api2', 'mode' => PaymentGateway::TEST,
+            'card_integration_id' => '444', 'api_key' => 'api2', 'mode' => PaymentGateway::LIVE,
         ]);
         $theirCustomer = Customer::create(['business_id' => $this->other->id, 'name' => 'زبون الجار', 'phone' => '99000001']);
         $theirOwner = User::create([

@@ -107,7 +107,7 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
 
     /* ============================== أدوات ============================== */
 
-    private function gateway(Business $shop, string $hmac, ?string $api, string $mode = PaymentGateway::TEST): PaymentGateway
+    private function gateway(Business $shop, string $hmac, ?string $api, string $mode = PaymentGateway::LIVE): PaymentGateway
     {
         return PaymentGateway::create([
             'business_id' => $shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
@@ -159,7 +159,7 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
             'order' => ['id' => (int) $link->provider_order_id, 'merchant_order_id' => null],
             'owner' => 1, 'pending' => false,
             'source_data' => ['pan' => '2346', 'sub_type' => 'MasterCard', 'type' => 'card'],
-            'success' => true, 'is_live' => false,
+            'success' => true, 'is_live' => true,
         ], $over);
     }
 
@@ -214,7 +214,7 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
         $page = $this->get(route('admin.integrations.paymob'))->assertOk();
         $props = $page->viewData('page')['props']['gateway'];
         $this->assertTrue($props['has_api_key']);
-        $this->assertSame('test', $props['mode']);
+        $this->assertSame('live', $props['mode']);
         $this->assertTrue($props['links_ready']);
         $this->assertStringNotContainsString('api-shop', json_encode($page->viewData('page')));
 
@@ -223,9 +223,9 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
             'active' => true, 'public_key' => 'pk_1', 'card_integration_id' => '111',
             'omannet_integration_id' => '222', 'apple_pay_integration_id' => '333',
         ]);
-        $save(['mode' => 'live'])->assertSessionHasNoErrors();
+        $save(['mode' => 'test'])->assertSessionHasNoErrors();
         $this->assertSame('api-shop', $gateway->fresh()->api_key);
-        $this->assertSame('live', $gateway->fresh()->mode);
+        $this->assertSame('test', $gateway->fresh()->mode);
         $save(['api_key' => 'api-new'])->assertSessionHasNoErrors();
         $this->assertSame('api-new', $gateway->fresh()->api_key);
         $save(['mode' => 'production'])->assertSessionHasErrors('mode');
@@ -240,6 +240,7 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
 
     public function test_test_and_live_are_never_mixed_apple_pay_rides_only_with_live(): void
     {
+        PaymentGateway::where('business_id', $this->shop->id)->update(['mode' => PaymentGateway::TEST]);
         $this->link($this->invoice());
 
         Http::assertSent(function (HttpRequest $r) {
@@ -456,7 +457,7 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
         $this->hook($this->obj($link, ['is_voided' => true]));                               // أُلغيت
         $this->hook($this->obj($link, ['is_refunded' => true]));                             // استُرجعت
         $this->hook($this->obj($link, ['success' => false, 'data' => ['message' => 'Declined']])); // رُدّت
-        $this->hook($this->obj($link, ['is_live' => true]));                                 // بيئةٌ أخرى
+        $this->hook($this->obj($link, ['is_live' => false]));                                 // بيئةٌ أخرى
 
         $this->assertSame(0, CustomerPayment::count());
         $this->assertSame(CustomerPaymentLink::PENDING, $link->fresh()->status);

@@ -103,7 +103,7 @@ class AnInvoiceIsIssuedAndAskedForPaymentInOneStepTest extends TestCase
             'business_id' => $shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
             'public_key' => 'pk_'.$shop->id, 'secret_key' => 'sk_'.$shop->id, 'hmac_secret' => $hmac,
             'card_integration_id' => '111', 'omannet_integration_id' => '222', 'apple_pay_integration_id' => '333',
-            'api_key' => $api, 'mode' => PaymentGateway::TEST,
+            'api_key' => $api, 'mode' => PaymentGateway::LIVE,
         ]);
     }
 
@@ -169,7 +169,7 @@ class AnInvoiceIsIssuedAndAskedForPaymentInOneStepTest extends TestCase
             'order' => ['id' => (int) $link->provider_order_id, 'merchant_order_id' => null],
             'owner' => 1, 'pending' => false,
             'source_data' => ['pan' => '2346', 'sub_type' => 'MasterCard', 'type' => 'card'],
-            'success' => true, 'is_live' => false,
+            'success' => true, 'is_live' => true,
         ];
 
         $this->postJson('/webhooks/paymob?hmac='.Paymob::signature($obj, $secret), ['type' => 'TRANSACTION', 'obj' => $obj])->assertOk();
@@ -266,7 +266,7 @@ class AnInvoiceIsIssuedAndAskedForPaymentInOneStepTest extends TestCase
             // والشاشةُ لا تعرض زرًّا يُردّ عنه
             $this->assertFalse($this->get(route('admin.customerInvoices.create'))->viewData('page')['props']['payment_links_ready']);
 
-            $gateway->forceFill(['api_key' => 'api-shop', 'mode' => PaymentGateway::TEST, 'active' => true])->save();
+            $gateway->forceFill(['api_key' => 'api-shop', 'mode' => PaymentGateway::LIVE, 'active' => true])->save();
         }
 
         $this->assertTrue($this->get(route('admin.customerInvoices.create'))->viewData('page')['props']['payment_links_ready']);

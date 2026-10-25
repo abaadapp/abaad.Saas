@@ -121,13 +121,17 @@ trait PaymobPayouts
         ]);
     }
 
-    /** رابطُ دفعٍ دُفع — يُكتب تحصيلُه في التسوية كما يكتبه إشعارُ Paymob */
+    /**
+     * رابطُ دفعٍ حيٌّ دُفع — يُكتب تحصيلُه في التسوية كما يكتبه إشعارُ Paymob.
+     * ورابطُ التجربة لا تحصيلَ له ولا تسوية (`PaymentLinks::settle`).
+     */
     protected function paidLink(float $amount = 30): CustomerPaymentLink
     {
         $customer = Customer::create(['business_id' => $this->shop->id, 'name' => 'عميل', 'phone' => '9500'.random_int(1000, 9999)]);
         $link = CustomerPaymentLink::create([
             'business_id' => $this->shop->id, 'customer_id' => $customer->id, 'reference' => 'pay-'.uniqid(),
             'amount' => $amount, 'currency' => 'OMR', 'status' => CustomerPaymentLink::PENDING, 'provider_link_id' => '1',
+            'is_live' => true,
         ]);
         PaymentLinks::settle($link, 'TX-'.$link->id);
 

@@ -79,7 +79,7 @@ class APaidInvoiceReachesItsPayerOnWhatsAppTest extends TestCase
         PaymentGateway::create([
             'business_id' => $this->shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
             'public_key' => 'pk', 'secret_key' => 'sk', 'hmac_secret' => 'hmac-shop',
-            'card_integration_id' => '111', 'api_key' => 'api', 'mode' => PaymentGateway::TEST,
+            'card_integration_id' => '111', 'api_key' => 'api', 'mode' => PaymentGateway::LIVE,
         ]);
 
         Setting::updateOrCreate(['business_id' => null, 'key' => 'whatsapp_enabled'], ['value' => '1']);
@@ -144,7 +144,7 @@ class APaidInvoiceReachesItsPayerOnWhatsAppTest extends TestCase
             'is_refunded' => false, 'is_standalone_payment' => true, 'is_voided' => false,
             'order' => ['id' => (int) $link->provider_order_id, 'merchant_order_id' => null],
             'owner' => 1, 'pending' => false, 'source_data' => ['pan' => '2346', 'sub_type' => 'MasterCard', 'type' => 'card'],
-            'success' => true, 'is_live' => false,
+            'success' => true, 'is_live' => true,
         ];
 
         $this->postJson('/webhooks/paymob?hmac='.Paymob::signature($obj, 'hmac-shop'), ['type' => 'TRANSACTION', 'obj' => $obj])->assertOk();

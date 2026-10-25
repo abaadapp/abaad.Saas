@@ -612,6 +612,36 @@ final class PaymentLinks
                     return null;
                 }
 
+                /*
+                 * ═══ ودفعةُ التجربة تُغلق الرابط ولا تمسّ الدفاتر ═══
+                 *
+                 * رابطٌ فُتح ببوّابةٍ في بيئة التجربة (`is_live = false`) لا يُدفع
+                 * إلّا ببطاقة تجربة: Paymob تردّ رقمَ تكاملٍ من غير بيئة الرابط.
+                 * وكان يُكتب تحصيلًا حقيقيًّا — مدين «Paymob تحت التسوية» بمالٍ لن
+                 * تحوّله Paymob أبدًا، ودائن ذمم العميل — فتُرى فاتورتُه مسدَّدةً
+                 * بما لم يدفعه، ويُعرض للتسوية البنكيّة.
+                 *
+                 * فيُوسم «مدفوعًا» بعمليّته — يرى من يجرّب أنّ الدفعَ وصل والإشعارَ
+                 * صُدّق — بلا تحصيلٍ ولا قيدٍ ولا تخصيصٍ ولا نقاطٍ ولا رسالة. والحكمُ
+                 * بصفّ الرابط لا بـ`is_live` في الإشعار: ذاك حقلٌ خارج التوقيع
+                 * (`Paymob::HMAC_FIELDS`).
+                 */
+                if (! $locked->is_live) {
+                    $locked->forceFill([
+                        'status' => CustomerPaymentLink::PAID,
+                        'paid_at' => now(),
+                        'provider_transaction_id' => $transactionId,
+                        'error' => null,
+                    ])->save();
+
+                    Activity::log('created', 'دُفع رابط دفعٍ تجريبيّ عبر Paymob بمبلغ '.number_format((float) $locked->amount, 3).' '.$locked->currency
+                        .' — دفعة تجربة: لا تحصيل ولا قيد', [
+                            'subject_id' => $locked->id, 'subject_type' => 'customer_payment_link', 'business_id' => (int) $locked->business_id,
+                        ]);
+
+                    return null;
+                }
+
                 $customer = Customer::withTrashed()->where('business_id', $locked->business_id)->findOrFail($locked->customer_id);
                 $invoiceId = $locked->customer_invoice_id;
 

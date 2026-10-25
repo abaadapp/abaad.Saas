@@ -329,6 +329,44 @@ class AnAgreementIsNotSentBeforeItsOwnerApprovesItTest extends TestCase
         $this->assertSame(5, PlatformDocumentTemplate::whereNotNull('form')->where('active', false)->count());
     }
 
+    /**
+     * والنشرُ لا يمسّ عقدًا موقَّعًا ولا ملفّيه ولا اشتراكَ تاجر — ذهابًا وإيابًا.
+     *
+     * الهجرةُ تضيف أعمدةً على جدول العقود نفسه: فيُحرس أنّ صفَّ عقدٍ وُقِّع قبلها
+     * بقي بصمتُه وصورةُ توقيعه وورقتُه، وأنّ الأنشطةَ واشتراكاتِها كما كانت.
+     */
+    public function test_the_migration_leaves_signed_contracts_their_files_and_subscriptions_as_they_were(): void
+    {
+        $this->shop->forceFill(['starts_at' => '2026-01-01', 'ends_at' => '2026-12-31'])->save();
+        $short = $this->subscriptionContract();
+        $this->issueRequest($short)->assertSessionHasNoErrors();
+        $doc = PlatformDocument::latest('id')->firstOrFail();
+        auth()->logout();
+        $this->postJson(route('documents.sign.submit', $doc->token), [
+            'agree' => '1', 'signature' => $this->signature(), 'client' => ['cr' => '1234567', 'civil' => '98765432'],
+        ])->assertOk();
+        $signed = $doc->fresh();
+        $this->assertNotNull($signed->pdf_path);
+
+        $snapshot = fn () => [
+            'businesses' => DB::table('businesses')->orderBy('id')->get(['id', 'plan_id', 'status', 'starts_at', 'ends_at'])->toArray(),
+            'subscriptions' => Schema::hasTable('subscriptions') ? DB::table('subscriptions')->orderBy('id')->get()->toArray() : [],
+            'document' => (array) DB::table('platform_documents')->where('id', $doc->id)
+                ->first(['number', 'status', 'terms', 'client', 'provider', 'consent_text', 'signed_at', 'signature_path', 'content_hash', 'pdf_path', 'pdf_hash']),
+        ];
+        $before = $snapshot();
+
+        $migration = require database_path('migrations/2026_10_27_090000_abaads_service_agreements_arrive_as_forms.php');
+        $migration->down();
+        $migration->up();
+
+        $this->assertEquals($before, $snapshot(), 'تغيّر عقدٌ موقَّع أو نشاطٌ أو اشتراك');
+        $after = $doc->fresh();
+        $this->assertTrue(PlatformDocuments::intact($after), 'بصمةُ العقد الموقَّع بعد الهجرة');
+        $this->assertTrue(Storage::disk('local')->exists($after->signature_path));
+        $this->assertSame($after->pdf_hash, hash('sha256', (string) Storage::disk('local')->get($after->pdf_path)), 'الورقةُ المحفوظة كما هي');
+    }
+
     private function signature(): string
     {
         $img = imagecreatetruecolor(600, 200);

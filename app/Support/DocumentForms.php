@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 /**
@@ -34,23 +35,40 @@ class DocumentForms
 
     public const INPUTS = ['field', 'checks', 'table', 'yesno'];
 
+    /** أجزاءُ القسم كلُّها — نصوصٌ ثمّ إدخالات */
+    public const PARTS = ['p', 'list', 'note', 'cols', 'amount', 'field', 'checks', 'table', 'yesno'];
+
+    /** أنواعُ الحقل كما تقرؤها صفحةُ التوقيع */
+    public const FIELD_TYPES = ['text', 'textarea', 'number', 'date', 'time', 'tel', 'email'];
+
+    /** أنواعُ خانات الجدول: نصّ، وتأشير، واختيارٌ من `picks` */
+    public const CELL_TYPES = ['text', 'check', 'pick'];
+
+    /** مفتاحُ الإدخال: حروفٌ إنجليزيّة وأرقام، يبدأ بحرف — به تُحفظ إجاباتُه */
+    public const KEY = '/^[A-Za-z][A-Za-z0-9_]{0,39}$/';
+
     /** ما يُعرف عن العميل يُقترح في حقول النموذج المماثلة — ويعدّله هو */
     private const PREFILL = ['org' => 'biz', 'person' => 'name', 'store' => 'biz', 'biz' => 'biz', 'phone' => 'phone', 'email' => 'email', 'cr' => 'cr'];
 
     /**
      * يزرع قوالبَ المالك الخمسة إن غابت — مسوّداتٍ معطَّلةً لم تُعتمد.
      *
-     * لا يمسّ قالبًا موجودًا باسمه (ربما عدّله المدير)، ولا يعطّل غيرَها ولا يحذف
-     * شيئًا. والاعتمادُ والتفعيلُ قرارا مدير المنصّة من شاشة القوالب.
+     * لا يمسّ قالبًا موجودًا (ربما عدّله المدير أو أعاد تسميتَه)، ولا يعطّل غيرَها ولا
+     * يحذف شيئًا. ويعرف قالبَه بمفتاح بذرته (`seed_key`) إن وُجد العمود، وإلّا باسمه.
+     * والنشرُ قرارُ مدير المنصّة.
      */
     public static function seedTemplates(): void
     {
+        $keyed = Schema::hasColumn('platform_document_templates', 'seed_key');
         foreach (self::SEEDED as $slug) {
             $t = self::seed($slug);
-            if (DB::table('platform_document_templates')->where('name', $t['name'])->exists()) {
+            $exists = DB::table('platform_document_templates')
+                ->where(fn ($w) => $keyed ? $w->where('seed_key', $slug)->orWhere('name', $t['name']) : $w->where('name', $t['name']))
+                ->exists();
+            if ($exists) {
                 continue;
             }
-            DB::table('platform_document_templates')->insert([
+            DB::table('platform_document_templates')->insert(($keyed ? ['seed_key' => $slug] : []) + [
                 'name' => $t['name'],
                 'service' => $t['service'],
                 'title' => $t['title'],
@@ -246,6 +264,179 @@ class DocumentForms
 
         return trim(implode("\n", array_filter([trim((string) ($form['consent'] ?? '')), trim((string) ($form['agree'] ?? ''))]))) ?: null;
     }
+
+    /**
+     * النموذجُ كما يُحفظ من المحرّر — مفاتيحُ كلّ جزءٍ المعروفةُ وحدها، نصوصًا مشذّبة.
+     *
+     * وأعمدةُ الجدول مواضعُ لا قائمة: عنوانُ العمود ونوعُه وتلميحُه تُقرأ بموضعها،
+     * فتُكمَّل بفراغٍ ولا تُرصّ. وما لا يعرفه النموذجُ يُترك.
+     */
+    public static function normalize(array $form): array
+    {
+        $str = fn ($v) => is_scalar($v) ? trim((string) $v) : '';
+        $lines = fn ($v) => array_values(array_filter(array_map($str, is_array($v) ? $v : []), fn ($x) => $x !== ''));
+        $by = fn ($v) => $v === 'team' ? 'team' : 'client';
+        $list = fn ($v) => array_values(array_filter(is_array($v) ? $v : [], 'is_array'));
+
+        $part = function (array $p) use ($str, $lines, $by, $list): array {
+            $kind = $str($p['kind'] ?? '');
+            $input = fn (array $more) => ['kind' => $kind, 'by' => $by($p['by'] ?? ''), 'k' => $str($p['k'] ?? '')] + $more;
+
+            return match ($kind) {
+                'p', 'note' => ['kind' => $kind, 'text' => $str($p['text'] ?? '')],
+                'list' => ['kind' => 'list', 'items' => $lines($p['items'] ?? [])],
+                'cols' => ['kind' => 'cols', 'cols' => array_map(fn ($c) => ['head' => $str($c['head'] ?? ''), 'items' => $lines($c['items'] ?? [])], $list($p['cols'] ?? []))],
+                'amount' => ['kind' => 'amount', 'label' => $str($p['label'] ?? '')],
+                'field' => $input([
+                    'label' => $str($p['label'] ?? ''),
+                    'req' => filter_var($p['req'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                    'type' => $str($p['type'] ?? '') ?: 'text',
+                    'dir' => ($p['dir'] ?? '') === 'ltr' ? 'ltr' : 'rtl',
+                    'ph' => $str($p['ph'] ?? ''),
+                ]),
+                'checks' => $input(['head' => $str($p['head'] ?? ''), 'items' => $lines($p['items'] ?? [])]),
+                'yesno' => $input(['label' => $str($p['label'] ?? '')]),
+                'table' => (function () use ($p, $str, $lines, $input) {
+                    $types = array_map(fn ($t) => in_array($t, self::CELL_TYPES, true) ? $t : $str($t), array_values(is_array($p['types'] ?? null) ? $p['types'] : []));
+                    $at = fn ($v, int $n) => array_map(fn ($i) => $str((is_array($v) ? array_values($v) : [])[$i] ?? ''), range(0, max(0, $n - 1)));
+
+                    return $input([
+                        'head' => $at($p['head'] ?? [], count($types) + 1),
+                        'types' => $types,
+                        'ph' => $types === [] ? [] : $at($p['ph'] ?? [], count($types)),
+                        'rows' => $lines($p['rows'] ?? []),
+                        'picks' => $lines($p['picks'] ?? []),
+                    ]);
+                })(),
+                default => ['kind' => $kind],
+            };
+        };
+
+        $optional = fn ($v) => ($v = $str($v)) === '' ? null : $v;
+
+        return [
+            'intro' => $optional($form['intro'] ?? null),
+            'highlights' => array_values(array_filter(
+                array_map(fn ($h) => ['label' => $str($h['label'] ?? ''), 'text' => $str($h['text'] ?? '')], $list($form['highlights'] ?? [])),
+                fn ($h) => $h['label'] !== '' || $h['text'] !== '',
+            )),
+            'sections' => array_map(fn ($sec) => [
+                'title' => $str($sec['title'] ?? ''),
+                'after' => filter_var($sec['after'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'parts' => array_map($part, $list($sec['parts'] ?? [])),
+            ], $list($form['sections'] ?? [])),
+            'consent' => $str($form['consent'] ?? ''),
+            'agree' => $str($form['agree'] ?? ''),
+            'footer' => $optional($form['footer'] ?? null),
+        ];
+    }
+
+    /**
+     * ما يمنع حفظَ النموذج أو نشرَه — بعباراتٍ يقرؤها المدير، أو قائمةٌ فارغة.
+     *
+     * يحرس ما تقوم عليه صفحةُ التوقيع وورقتُها: لكلّ إدخالٍ مفتاحٌ صالحٌ فريد (به
+     * تُحفظ إجاباتُه وتُقرأ)، ولكلّ حقلٍ اسمٌ ونوعٌ معروف، ولكلّ جدولٍ صفوفٌ وأعمدةٌ
+     * بأنواعٍ معروفة، وللإقرار نصٌّ يوقّع عليه العميل.
+     *
+     * @return list<string>
+     */
+    public static function problems(array $form): array
+    {
+        $out = [];
+        $sections = $form['sections'] ?? [];
+        if ($sections === [] || count($sections) > 60) {
+            $out[] = $sections === [] ? __('أضف قسمًا واحدًا على الأقل.') : __('الأقسام أكثر من 60.');
+        }
+        $keys = [];
+        $long = fn ($v) => mb_strlen((string) $v) > 5000;
+        foreach ($sections as $i => $section) {
+            $where = ($section['title'] ?? '') !== '' ? '«'.$section['title'].'»' : __('القسم :n', ['n' => $i + 1]);
+            if (($section['title'] ?? '') === '') {
+                $out[] = __('القسم :n بلا عنوان.', ['n' => $i + 1]);
+            }
+            if (count($section['parts'] ?? []) > 80) {
+                $out[] = __('في :where أكثر من 80 جزءًا.', ['where' => $where]);
+            }
+            foreach ($section['parts'] ?? [] as $p) {
+                $kind = $p['kind'] ?? '';
+                if (! in_array($kind, self::PARTS, true)) {
+                    $out[] = __('في :where جزء من نوع غير معروف.', ['where' => $where]);
+
+                    continue;
+                }
+                $empty = match ($kind) {
+                    'p', 'note' => ($p['text'] ?? '') === '' || $long($p['text']),
+                    'list' => ($p['items'] ?? []) === [],
+                    'cols' => ($p['cols'] ?? []) === [] || count($p['cols']) > 6
+                        || array_filter($p['cols'], fn ($c) => $c['head'] === '' && $c['items'] === []) !== [],
+                    'amount', 'yesno' => ($p['label'] ?? '') === '',
+                    'field' => ($p['label'] ?? '') === '',
+                    'checks' => ($p['items'] ?? []) === [],
+                    'table' => ($p['rows'] ?? []) === [] || ($p['types'] ?? []) === [],
+                    default => false,
+                };
+                if ($empty) {
+                    $out[] = __('في :where جزء ناقص (:kind) — اكتبه أو احذفه.', ['where' => $where, 'kind' => __(self::LABELS[$kind])]);
+                }
+                if (! in_array($kind, self::INPUTS, true)) {
+                    continue;
+                }
+                $k = (string) ($p['k'] ?? '');
+                if (! preg_match(self::KEY, $k)) {
+                    $out[] = __('مفتاح الإدخال «:k» في :where غير صالح — حروف إنجليزية وأرقام، يبدأ بحرف.', ['k' => $k, 'where' => $where]);
+                } elseif (isset($keys[$k])) {
+                    $out[] = __('المفتاح «:k» مكرر — لكل إدخال مفتاحه.', ['k' => $k]);
+                }
+                $keys[$k] = true;
+                if ($kind === 'field' && ! in_array($p['type'] ?? '', self::FIELD_TYPES, true)) {
+                    $out[] = __('نوع الحقل «:label» غير معروف.', ['label' => $p['label'] ?? $k]);
+                }
+                if ($kind === 'table') {
+                    if (count($p['types'] ?? []) > 8 || count($p['rows'] ?? []) > 40) {
+                        $out[] = __('الجدول «:k» أكبر من المسموح (8 أعمدة و40 صفًّا).', ['k' => $k]);
+                    }
+                    if (array_diff($p['types'] ?? [], self::CELL_TYPES) !== []) {
+                        $out[] = __('في الجدول «:k» عمود من نوع غير معروف.', ['k' => $k]);
+                    }
+                    if (in_array('pick', $p['types'] ?? [], true) && ($p['picks'] ?? []) === []) {
+                        $out[] = __('في الجدول «:k» عمود اختيار بلا خيارات.', ['k' => $k]);
+                    }
+                }
+            }
+        }
+        if (($form['consent'] ?? '') === '') {
+            $out[] = __('اكتب نص الإقرار — يوقّع عليه العميل.');
+        }
+        if (($form['agree'] ?? '') === '') {
+            $out[] = __('اكتب نص خانة الموافقة.');
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /** أهما النموذجُ نفسُه؟ — بعد التنظيف، أيًّا كان ترتيبُ مفاتيحه */
+    public static function same(?array $a, ?array $b): bool
+    {
+        $canon = function ($v) use (&$canon) {
+            if (! is_array($v)) {
+                return $v;
+            }
+            if (! array_is_list($v)) {
+                ksort($v);
+            }
+
+            return array_map($canon, $v);
+        };
+
+        return json_encode($canon($a === null ? null : self::normalize($a)), JSON_UNESCAPED_UNICODE)
+            === json_encode($canon($b === null ? null : self::normalize($b)), JSON_UNESCAPED_UNICODE);
+    }
+
+    /** أسماءُ الأجزاء كما يقرؤها المدير — في المحرّر وفي رسائل الحفظ */
+    public const LABELS = [
+        'p' => 'فقرة', 'list' => 'قائمة', 'note' => 'ملاحظة', 'cols' => 'أعمدة', 'amount' => 'مبلغ المستند',
+        'field' => 'حقل', 'checks' => 'خيارات للتأشير', 'table' => 'جدول', 'yesno' => 'سؤال نعم/لا',
+    ];
 
     private static function text(mixed $v, int $max): ?string
     {

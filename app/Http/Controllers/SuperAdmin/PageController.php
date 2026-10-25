@@ -10,7 +10,6 @@ use App\Models\Business;
 use App\Models\GoogleBusinessAccount;
 use App\Models\Invoice;
 use App\Models\Plan;
-use App\Models\PlatformDocument;
 use App\Models\PurgeRun;
 use App\Models\Setting;
 use App\Models\Subscription;
@@ -239,14 +238,7 @@ class PageController extends Controller
              * هنا مع ملفّها ولا يضيع بين مستندات العملاء كلّهم. ومنها يُصدر لها
              * مستندٌ جديد والشركةُ مختارةٌ في نافذته.
              */
-            'documents' => [
-                'rows' => PlatformDocument::with('business:id,name')->where('client_business_id', $model->id)
-                    ->latest('id')->limit(50)->get()
-                    ->map(fn (PlatformDocument $d) => DocumentController::row($d))->all(),
-                'count' => PlatformDocument::where('client_business_id', $model->id)->count(),
-                'new_url' => route('super-admin.documents.index', ['business' => $model->id, 'new' => 1]),
-                'all_url' => route('super-admin.documents.index', ['business' => $model->id]),
-            ],
+            'documents' => DocumentController::forCompany($model->id),
         ]);
     }
 
@@ -343,6 +335,8 @@ class PageController extends Controller
                 'owner_email' => $model ? MerchantAccount::owner($model)?->email : null,
             ],
             'options' => $this->businessOptions(),
+            // ومستنداتُ الشركة أسفلَ النموذج — كما في صفحة عرضها
+            'documents' => DocumentController::forCompany((int) $business['id']),
         ]);
     }
 

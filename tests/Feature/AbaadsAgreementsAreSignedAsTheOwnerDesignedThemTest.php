@@ -333,10 +333,18 @@ class AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest extends TestCase
     public function test_an_agreement_template_keeps_its_form_when_edited(): void
     {
         $t = $this->approveTemplate($this->template('payment-integration'));
+        // النموذجُ كما يرسله المحرّر: الأجزاءُ نفسُها بترتيب مفاتيحٍ آخر
+        $shuffled = $t->form;
+        foreach ($shuffled['sections'] as &$section) {
+            $section = array_reverse($section, true);
+            $section['parts'] = array_map(fn ($p) => array_reverse($p, true), $section['parts']);
+        }
+        unset($section);
         $this->actingAs($this->super)->put(route('super-admin.documents.templates.update', $t->id), [
             'name' => $t->name, 'title' => 'ربط الدفع', 'service' => $t->service,
             'includes_plan' => false, 'includes_amount' => true, 'active' => true,
-            'default_amount' => '١٤٫٥', 'default_amount_label' => 'رسوم الربط', 'amount_rule' => null,
+            'default_amount' => '١٤٫٥', 'default_amount_label' => 'رسوم الربط', 'amount_rule' => 'fixed',
+            'form' => $shuffled,
             // ما كانت ترسله النافذة: بندٌ فارغٌ لقالبٍ لا بنودَ له — كان يردّ الحفظ بخطأٍ لا يُرى
             'terms' => [['h' => '', 'b' => '']],
         ])->assertSessionHasNoErrors();
@@ -344,9 +352,10 @@ class AbaadsAgreementsAreSignedAsTheOwnerDesignedThemTest extends TestCase
         $t = $t->fresh();
         $this->assertSame('ربط الدفع', $t->title);
         $this->assertSame('14.500', (string) $t->default_amount, 'الرسومُ بلوحةٍ عربيّة تُقرأ كما كُتبت');
-        $this->assertSame('fixed', $t->amount_rule, 'قاعدةُ المبلغ من نصّ الاتفاقية — لا تمسّها الشاشة');
-        $this->assertSame(DocumentForms::seed('payment-integration')['form'], $t->form, 'النموذجُ كما صُمِّم — لا تمسّه الشاشة');
-        // وتعديلُ الرسوم إصدارٌ جديد: معطَّلٌ حتى يُعتمد
+        $this->assertSame('fixed', $t->amount_rule);
+        $this->assertSame(DocumentForms::seed('payment-integration')['form'], $t->form, 'نموذجٌ لم يتغيّر يبقى كما صُمِّم حرفًا بحرف');
+        $this->assertSame([], $t->terms);
+        // وتعديلُ الرسوم إصدارٌ جديد غيرُ منشور
         $this->assertSame(2, $t->version);
         $this->assertFalse($t->active);
         $this->assertSame('draft', $t->approvalState());

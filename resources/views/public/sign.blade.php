@@ -24,6 +24,8 @@
     $num = 0;
     $next = function () use (&$num) { return str_pad((string) ++$num, 2, '0', STR_PAD_LEFT); };
     $form ??= null;
+    // معاينةُ القالب لمدير المنصّة — الصفحةُ نفسُها بلا مستندٍ ولا إرسال (`DocumentTemplateController::preview`)
+    $preview ??= false;
     // مقدّمُ الخدمة بما كُتب منه وحده: الاسمُ الذي يُخاطَب به العميل، وإن غاب قيلت الجملةُ بلا اسم
     $shown = PlatformDocuments::providerName($provider);
     $contact = $shown !== '' ? $shown : 'مُرسِل المستند';
@@ -150,6 +152,9 @@
     </style>
 </head>
 <body>
+@if ($preview)
+    <div class="alert info no-print" id="preview-banner" style="max-width:820px; margin:12px auto 0">معاينة من القالب (الإصدار {{ $doc->template_version }}) كما سيراها العميل — ليست مستندًا صادرًا، ولا يُرسل منها توقيع.</div>
+@endif
 <div class="sheet">
     <div class="pad top">
         <div>
@@ -205,7 +210,7 @@
     @endif
 
     @if ($readable)
-    <form method="POST" action="{{ route('documents.sign.submit', $token) }}" id="sign-form">
+    <form method="POST" action="{{ $preview ? '#' : route('documents.sign.submit', $token) }}" id="sign-form">
         @csrf
 
         @if ($form && (! empty($form['highlights']) || ! empty($form['intro'])))
@@ -323,7 +328,7 @@
 </div>
 <footer class="xs faint">@if ($shown !== '')© {{ $shown }}@endif @if ($shown !== '' && $provider['website'])· @endif @if ($provider['website'])<span class="ltr">{{ $provider['website'] }}</span>@endif</footer>
 
-@if ($open)
+@if ($open && ! $preview)
 <script>
 (function () {
     var form = document.getElementById('sign-form');

@@ -115,12 +115,11 @@ class AContractNamesItsProviderOnlyAsWrittenTest extends TestCase
     public function test_with_no_provider_details_an_agreement_is_approved_issued_and_prints_none(): void
     {
         $t = $this->agreement();
-        // لا اسمَ ولا سجلَّ ولا عنوان — والاعتمادُ والإصدار يمرّان
-        $this->actingAs($this->super)->post(route('super-admin.documents.templates.approve', $t->id), [
-            'hash' => $t->fresh()->contentHash(), 'password' => 'password',
+        // لا اسمَ ولا سجلَّ ولا عنوان — والنشرُ والإصدار يمرّان
+        $this->actingAs($this->super)->post(route('super-admin.documents.templates.publish', $t->id), [
+            'hash' => $t->fresh()->contentHash(),
         ])->assertSessionHasNoErrors();
         $this->assertSame('approved', $t->fresh()->approvalState());
-        $t->fresh()->forceFill(['active' => true])->save();
         $doc = $this->issue($t->fresh());
 
         $this->assertSame(['name' => '', 'legal_name' => '', 'trade_name' => '', 'cr' => '', 'address' => ''], array_intersect_key($doc->provider, array_flip(['name', 'legal_name', 'trade_name', 'cr', 'address'])));

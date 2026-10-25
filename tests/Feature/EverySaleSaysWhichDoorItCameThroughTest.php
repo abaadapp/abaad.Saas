@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Support\Books;
 use App\Support\Demo;
 use App\Support\Ledger;
+use App\Support\Lists\PaidLinksList;
 use App\Support\MarketingSettings;
 use App\Support\Permissions;
 use App\Support\SalesChannel;
@@ -199,10 +200,16 @@ class EverySaleSaysWhichDoorItCameThroughTest extends TestCase
         $this->assertSame(1, $props['websiteCount']);
         $this->assertSame(40.0, $props['websiteAmount']);
 
-        // والقنواتُ تُعرض مُرشِّحًا — من مصدرها الواحد
+        // والقنواتُ تُعرض مُرشِّحًا — من مصدرها الواحد، ومعها «رابط دفع» آخرَها:
+        // تحصيلاتٌ تُقرأ من جدولها لا قناةُ طلب (`PaidLinksList`)
+        $this->assertSame(
+            [SalesChannel::WEBSITE, SalesChannel::POS, SalesChannel::UNKNOWN, PaidLinksList::SOURCE],
+            array_column($props['channelOptions'], 'value'),
+        );
         $this->assertSame(
             [SalesChannel::WEBSITE, SalesChannel::POS, SalesChannel::UNKNOWN],
-            array_column($props['channelOptions'], 'value'),
+            array_column(SalesChannel::options(), 'value'),
+            'دخل «رابط دفع» قنواتِ الطلبات',
         );
     }
 

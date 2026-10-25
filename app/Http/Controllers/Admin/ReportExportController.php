@@ -12,6 +12,7 @@ use App\Support\Lists\CustomersList;
 use App\Support\Lists\ExpensesList;
 use App\Support\Lists\InventoryList;
 use App\Support\Lists\OrdersList;
+use App\Support\Lists\PaidLinksList;
 use App\Support\Lists\PlatformInvoicesList;
 use App\Support\Lists\ProductsList;
 use App\Support\Lists\SuppliersList;
@@ -287,6 +288,13 @@ class ReportExportController extends Controller
      */
     public function ordersXlsx()
     {
+        // و«رابط دفع» في مُرشِّح المصدر تحصيلاتٌ لا طلبات — ملفُّها ما في شاشتها
+        if (PaidLinksList::chosen(request())) {
+            Activity::log('report', 'صدّر تحصيلات روابط الدفع (Excel)');
+
+            return Exports::xlsx(PaidLinksList::export(request()));
+        }
+
         Activity::log('report', 'صدّر قائمة الطلبات (Excel)');
 
         return Exports::xlsx(OrdersList::export(request()));

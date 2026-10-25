@@ -9,6 +9,7 @@ use App\Support\Lists\CustomersList;
 use App\Support\Lists\ExpensesList;
 use App\Support\Lists\InventoryList;
 use App\Support\Lists\OrdersList;
+use App\Support\Lists\PaidLinksList;
 use App\Support\Lists\PlatformInvoicesList;
 use App\Support\Lists\ProductsList;
 use App\Support\Lists\SuppliersList;
@@ -94,8 +95,10 @@ class ExportController extends Controller
 
     public function orders()
     {
-        // الصفوفُ صفوفُ ملفّ Excel نفسُها — انظر `OrdersList::export`
-        return Exports::csv(OrdersList::export(request()));
+        // الصفوفُ صفوفُ ملفّ Excel نفسُها — انظر `OrdersList::export`، و«رابط دفع» تحصيلاتُه
+        return Exports::csv(PaidLinksList::chosen(request())
+            ? PaidLinksList::export(request())
+            : OrdersList::export(request()));
     }
 
     public function customers()

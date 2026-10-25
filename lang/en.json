@@ -7212,6 +7212,8 @@
     "تعذّرت استعادة المصروف — لم يتغيّر شيء.": "The expense could not be restored — nothing changed.",
     "لا تُقفل دفاترُ يومٍ لم ينتهِ — اختر يومًا مضى.": "You cannot close the books for a day that has not ended — choose a past day.",
     "الدفاتر مقفلة حتى :date، فلا يُكتب في تلك الفترة شيء.": "The books are closed through :date, so nothing can be written in that period.",
+    "الدفاتر مقفلة حتى :through، فلا يُكتب قيدٌ بتاريخ :date. اختر تاريخًا بعده، أو يُعيد صاحبُ النشاط فتحَ الفترة من الإعدادات.": "The books are closed through :through, so no entry can be dated :date. Choose a later date, or the business owner can reopen the period from Settings.",
+    "قُدِّم إقرارُ الضريبة حتى :through، فلا يُكتب قيدٌ بتاريخ :date. اختر تاريخًا بعد :through.": "A VAT return has been filed through :through, so no entry can be dated :date. Choose a date after :through.",
     "لم يُحدَّد تاريخ إقفال الدفاتر في الإعدادات، فلا يُفترض أنّ شهرًا مضى مفتوح.": "No books closing date is set in Settings, so a past month is not assumed to be open.",
     "التسجيل بتاريخ فترةٍ سابقة لصاحب النشاط وحده.": "Only the business owner can record it in a prior period.",
     "في الفترة الحاليّة": "In the current period",

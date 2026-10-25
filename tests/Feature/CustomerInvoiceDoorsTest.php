@@ -7,6 +7,7 @@ use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoices;
 use App\Support\Ledger;
@@ -29,6 +30,8 @@ class CustomerInvoiceDoorsTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'زهور مسقط', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         Currency::create([
             'business_id' => $this->business->id, 'code' => 'OMR', 'name' => 'ريال عماني',
             'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true,

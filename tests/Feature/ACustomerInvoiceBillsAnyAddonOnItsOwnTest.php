@@ -74,6 +74,8 @@ class ACustomerInvoiceBillsAnyAddonOnItsOwnTest extends TestCase
         app()->setLocale('ar');
 
         $this->shop = Business::create(['name' => 'ورود الفاتورة', 'type' => 'محل ورود', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '1']);
         $this->neighbour = Business::create(['name' => 'متجر الجار', 'type' => 'محل ورود', 'status' => 'نشط']);
         $this->branch = Branch::create(['business_id' => $this->shop->id, 'name' => 'مسقط']);
         Ledger::seedChart($this->shop->id);

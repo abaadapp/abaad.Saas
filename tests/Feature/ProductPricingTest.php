@@ -39,6 +39,8 @@ class ProductPricingTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         $this->owner = User::create([
             'business_id' => $this->business->id, 'name' => 'المالك', 'email' => 'o@abaad.om',

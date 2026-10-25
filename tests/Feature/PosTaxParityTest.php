@@ -34,6 +34,8 @@ class PosTaxParityTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'متجري', 'status' => 'نشط']);
+        // متجرٌ مسجَّل: الضريبةُ مطفأةٌ ما لم تُفعَّل صراحةً (`Vat::enabled`)
+        Setting::create(['business_id' => $this->business->id, 'key' => 'vat_enabled', 'value' => '1']);
         $this->owner = User::create([
             'business_id' => $this->business->id, 'name' => 'المالك', 'email' => 'o@abaadapp.om',
             'password' => bcrypt('secret12345'), 'role' => 'admin', 'status' => 'نشط',
@@ -102,7 +104,7 @@ class PosTaxParityTest extends TestCase
     public function test_turning_vat_off_zeroes_the_screen_too(): void
     {
         // الإطفاء يسبق كل نسبة — نسبة المتجر ونسبة الصنف معًا
-        Setting::create(['business_id' => $this->business->id, 'key' => 'vat_enabled', 'value' => '0']);
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '0']);
         $p = $this->product('صنف', 15.0);
 
         $this->assertSame(0.0, $this->rateOnScreen('صنف'));
@@ -135,7 +137,7 @@ class PosTaxParityTest extends TestCase
          * نسبة الصنف. ولم يكن لها مُنادٍ يومها — والخطأ الذي لا يُنادى اليوم
          * يُنادى غدًا.
          */
-        Setting::create(['business_id' => $this->business->id, 'key' => 'vat_enabled', 'value' => '0']);
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '0']);
         $p = $this->product('صنف بنسبة', 15.0);
 
         $this->assertSame(0.0, \App\Support\Vat::rateFor($p, $this->business->id));

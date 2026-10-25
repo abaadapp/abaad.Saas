@@ -33,6 +33,8 @@ class AShopSaysItsOwnNameTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         Currency::create([
             'business_id' => $this->business->id, 'code' => 'OMR', 'name' => 'ريال عماني',
             'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true,
@@ -274,7 +276,7 @@ class AShopSaysItsOwnNameTest extends TestCase
         $steps = collect(ShopIdentity::steps($this->business))->keyBy('key');
         $this->assertFalse($steps['vat']['done']);
 
-        Setting::create(['business_id' => $this->business->id, 'key' => 'vat_enabled', 'value' => '0']);
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '0']);
 
         $steps = collect(ShopIdentity::steps($this->business->fresh()))->keyBy('key');
         $this->assertTrue($steps['vat']['done']);

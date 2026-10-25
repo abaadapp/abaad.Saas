@@ -46,6 +46,7 @@ use App\Support\ShopIdentity;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\StorePage;
 use App\Support\Storefront;
+use App\Support\Vat;
 use App\Support\Website\Commerce;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -886,7 +887,12 @@ class PageController extends Controller
         $section = is_string($section) ? $section : null;
 
         return Inertia::render('Admin/Settings/Index', [
-            'settings' => Demo::businessSettings(),
+            /*
+             * والضريبةُ كما يحسبها النظامُ فعلًا (`Vat::enabled`) لا الصفُّ الخام:
+             * متجرٌ قائمٌ بلا جوابٍ صريح يجبيها، فتُعرض مفعّلة — ولا يكتبها «مطفأة»
+             * أوّلُ حفظٍ لقسم المالية وهو لا يقصد.
+             */
+            'settings' => ['vat_enabled' => Vat::enabled((int) Demo::bid()) ? '1' : '0'] + Demo::businessSettings(),
             /*
              * وأيُّ حقلٍ يخصّ أيَّ قسم — من مصدرها لا مكتوبةً في الشاشة.
              *

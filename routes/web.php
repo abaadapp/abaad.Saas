@@ -62,6 +62,7 @@ use App\Http\Controllers\Admin\ReportDownloadController;
 use App\Http\Controllers\Admin\ReportExportController;
 use App\Http\Controllers\Admin\ReportFeedController;
 use App\Http\Controllers\Admin\ReportPageController;
+use App\Http\Controllers\Admin\SalesRegisterController;
 use App\Http\Controllers\Admin\SeasonController;
 use App\Http\Controllers\Admin\SetupController;
 use App\Http\Controllers\Admin\SupplierController;
@@ -1511,6 +1512,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      * يعدّل في أحدهما ويقرأ من الآخر.
      */
     Route::get('/customer-invoices', [CustomerInvoiceController::class, 'index'])->name('customerInvoices.index');
+    /*
+     * و«جميع عمليات البيع» تبويبٌ بجانبها — الطلباتُ والفواتيرُ المستقلّة من
+     * سجلٍّ واحد للقراءة (`SalesRegister`). وتحت اسم القسم نفسه، فيحرسها
+     * حارسُه (`customerInvoices` ← `orders`).
+     */
+    Route::get('/customer-invoices/sales', [SalesRegisterController::class, 'index'])->name('customerInvoices.sales');
+    Route::get('/customer-invoices/pos-sales', [SalesRegisterController::class, 'pos'])->name('customerInvoices.posSales');
+    Route::get('/customer-invoices/website-orders', [SalesRegisterController::class, 'website'])->name('customerInvoices.websiteOrders');
+    Route::get('/customer-invoices/sales/export-xlsx', [SalesRegisterController::class, 'xlsx'])->name('customerInvoices.sales.xlsx');
+    Route::get('/customer-invoices/sales/export-csv', [SalesRegisterController::class, 'csv'])->name('customerInvoices.sales.csv');
+    Route::get('/customer-invoices/sales/export-pdf', [SalesRegisterController::class, 'pdf'])->name('customerInvoices.sales.pdf');
     /*
      * و«create» تسبق «{id}» — والذي يحميها فعلًا `Route::pattern('id', '[0-9]+')`
      * في أعلى الملفّ: بلا ذلك القيد يبتلع المعرّفُ كلَّ كلمةٍ تليه، فتُقرأ

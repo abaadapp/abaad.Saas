@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\BackupService;
 use App\Support\FlowerOrder;
@@ -38,6 +39,8 @@ class FlowerOrderTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'محل ورد', 'type' => 'محل ورود', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
 
         $this->owner = User::create([

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FixedAsset;
 use App\Support\Activity;
 use App\Support\AssetCategories;
+use App\Support\BooksPeriod;
 use App\Support\Demo;
 use App\Support\Ledger;
 use Illuminate\Http\Request;
@@ -112,6 +113,17 @@ class FixedAssetController extends Controller
             // من أين دُفع ثمنه — وبلا اختيار لا يُقيَّد شراؤه
             'paid_from' => ['nullable', Rule::in(['cash', 'bank', 'payable'])],
         ]);
+
+        /*
+         * والفترةُ المقفلة تُسأل قبل الأصل لا بعده.
+         *
+         * الأصلُ يبقى مسجَّلًا إن تعذّر قيدُه لعطبٍ يُستدرك (أدناه). لكنّ
+         * شراءً بتاريخٍ مقفل لا يُستدرك أبدًا: أصلٌ في السجلّ بلا ثمنٍ في
+         * الدفتر، ثمّ إهلاكٌ كلَّ شهرٍ على تكلفةٍ لم تدخله. فيُردّ كلُّه.
+         */
+        if (! empty($data['paid_from'])) {
+            BooksPeriod::assertOpen($bid, Carbon::parse($data['purchased_at']));
+        }
 
         $asset = FixedAsset::create([
             'business_id' => $bid,

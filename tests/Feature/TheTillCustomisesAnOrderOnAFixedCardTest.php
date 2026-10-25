@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\CustomOrderTemplate;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomArrangement;
 use App\Support\DocumentRenderer;
@@ -43,6 +44,8 @@ class TheTillCustomisesAnOrderOnAFixedCardTest extends TestCase
         $this->app->setLocale('ar');
 
         $this->shop = Business::create(['name' => 'محل ورد', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '1']);
         Branch::create(['business_id' => $this->shop->id, 'name' => 'الخوض']);
 
         $this->cashier = User::create([

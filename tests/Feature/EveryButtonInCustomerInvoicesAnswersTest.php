@@ -8,10 +8,12 @@ use App\Models\Currency;
 use App\Models\Customer;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoices;
 use App\Support\InvoiceAttachments;
 use App\Support\Ledger;
+use App\Support\TenantExportGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Route;
@@ -42,6 +44,8 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
         parent::setUp();
 
         $this->business = Business::create(['name' => 'زهور مسقط', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
         Currency::create([
             'business_id' => $this->business->id, 'code' => 'OMR', 'name' => 'ريال عماني',
             'symbol' => 'ر.ع', 'rate' => 1, 'is_base' => true, 'active' => true,
@@ -120,7 +124,12 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
                 $params[$p] = $bindings[$p] ?? 1;
             }
 
-            $this->actingAs($this->owner)->get(route($name, $params))
+            // وملفُّ النشاط كلِّه يحمل توقُّعَ نشاطه كما يحمله من الشاشة (`TenantExportGuard::REQUIRED`)
+            $url = in_array($name, TenantExportGuard::REQUIRED, true)
+                ? $this->exportRoute($name, $params, $this->business->id)
+                : route($name, $params);
+
+            $this->actingAs($this->owner)->get($url)
                 ->assertOk();
             $checked++;
         }

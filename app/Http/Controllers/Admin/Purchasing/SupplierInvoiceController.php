@@ -391,12 +391,23 @@ class SupplierInvoiceController extends Controller
              *
              * و«اعتمِد الآن» لمن يملك الفعل: متجرٌ صاحبُه محاسبُه لا يُلزَم
              * بضغطتين على ورقةٍ كتبها بيده.
+             *
+             * ═══ والاثنان معًا أو لا شيء ═══
+             *
+             * كان السندُ يلتزم ثمّ يُرفض اعتمادُه — بفترةٍ مقفلة أو بغيرها —
+             * فيبقى السندُ معلّقًا ويُحذف مرفقُه من القرص تحته (السطر التالي)،
+             * ويُردّ إعادةُ الإرسال بـ«رقم السند مكرّر». فصار الرفضُ يُرجع
+             * الصفحةَ كما كانت: لا سندَ كُتب، والنموذجُ بقيمه.
              */
-            $invoice = SupplierInvoices::create($bid, $data, auth()->user());
+            $invoice = DB::transaction(function () use ($bid, $data, $request) {
+                $invoice = SupplierInvoices::create($bid, $data, auth()->user());
 
-            if ($request->boolean('approve_now') && auth()->user()?->may(Permissions::INVOICE_APPROVE)) {
-                SupplierInvoices::approve($invoice, auth()->user(), $request->input('override_reason'));
-            }
+                if ($request->boolean('approve_now') && auth()->user()?->may(Permissions::INVOICE_APPROVE)) {
+                    SupplierInvoices::approve($invoice, auth()->user(), $request->input('override_reason'));
+                }
+
+                return $invoice;
+            });
         } catch (RuntimeException $e) {
             if ($stored) {
                 Storage::disk('local')->delete($stored);

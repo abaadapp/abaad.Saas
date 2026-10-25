@@ -16,6 +16,7 @@ use App\Models\Order;
 use App\Models\PaymentGateway;
 use App\Models\PrintJob;
 use App\Models\Product;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
@@ -75,6 +76,8 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
         app()->setLocale('ar');
 
         $this->shop = Business::create(['name' => 'ورود سعود', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '1']);
         $this->other = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
         Ledger::seedChart($this->shop->id);
         Ledger::seedChart($this->other->id);

@@ -7,6 +7,7 @@ use App\Models\Business;
 use App\Models\JobTitle;
 use App\Models\Order;
 use App\Models\Plan;
+use App\Models\Setting;
 use App\Models\Supplier;
 use App\Models\SupplierInvoice;
 use App\Models\User;
@@ -40,6 +41,8 @@ class VatReportTest extends TestCase
         $this->business = Business::create(['name' => 'متجري', 'type' => 'عام', 'status' => 'نشط']);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);
         JobTitle::create(['business_id' => $this->business->id, 'name' => 'مدير', 'role' => 'admin']);
+        // متجرٌ مسجَّلٌ ضريبيًّا — صراحةً، فالمتجرُ الجديد بلا جوابٍ لا يجبيها (#157)
+        Setting::updateOrCreate(['business_id' => $this->business->id, 'key' => 'vat_enabled'], ['value' => '1']);
 
         $this->owner = User::create([
             'business_id' => $this->business->id, 'name' => 'المالك', 'email' => 'o@abaadapp.om',

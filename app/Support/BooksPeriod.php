@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Exceptions\ClosedPeriod;
 use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Support\Carbon;
@@ -84,6 +85,41 @@ class BooksPeriod
         $dates = array_filter([self::booksClosedThrough($businessId), Vat::filedThrough($businessId)]);
 
         return $dates ? max($dates) : null;
+    }
+
+    /**
+     * لا قيدَ بتاريخٍ في فترةٍ مقفلة — من أيّ بابٍ جاء.
+     *
+     * ═══ العطبُ الذي سدّه ═══
+     *
+     * كان الإقفالُ يُسأل في بابٍ واحد: تصحيحُ المصروف (`resolve`). والقيدُ
+     * اليدويّ يقبل أيَّ تاريخ، وعكسُه يُكتب بتاريخ أصله، وسندُ المورّد
+     * والتحصيلُ والرواتبُ والأصلُ الثابت تُكتب بتواريخ مستنداتها — كلُّها
+     * تمرّ إلى `Ledger::post` ولا شيء يسأل. فتاجرٌ يُقفل سبتمبر ويقدّم
+     * إقرارَه، ثمّ يكتب قيدًا بتاريخ سبتمبر من شاشة القيود، فيتغيّر تقريرٌ
+     * صدر — بلا ورقةٍ ولا رسالة.
+     *
+     * فصار السؤالُ في الدفتر نفسه (`Ledger::post`، ومنه `reverse`): بابٌ
+     * يُنسى فيه الفحصُ لا يكتب. والتاريخُ لا يُزاح إلى يومٍ مفتوح هنا — من
+     * أراد الفترةَ الجارية اختارها صراحةً (`resolve`، `openOr`).
+     *
+     * والحدُّ مقفلٌ معه: «مقفلة حتى ٣٠ سبتمبر» تعني أنّ ٣٠ سبتمبر نفسَه مقفل.
+     * ويُقارن اليومُ وحده — كما يُكتب `entry_date` — لا الساعة.
+     *
+     * @throws ClosedPeriod
+     */
+    public static function assertOpen(int $businessId, Carbon $date): void
+    {
+        $books = self::booksClosedThrough($businessId);
+        $filed = Vat::filedThrough($businessId);
+        $byVat = $filed !== null && ($books === null || $filed->gte($books));
+        $closed = $byVat ? $filed : $books;
+
+        if ($closed === null || $date->toDateString() > $closed->toDateString()) {
+            return;
+        }
+
+        throw new ClosedPeriod($date, $closed, $byVat);
     }
 
     /**

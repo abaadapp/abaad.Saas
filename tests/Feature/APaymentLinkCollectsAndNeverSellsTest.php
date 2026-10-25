@@ -14,6 +14,7 @@ use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\PaymentGateway;
 use App\Models\PaymobSettlement;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\Bank;
 use App\Support\CustomerInvoices;
@@ -73,6 +74,8 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
         app()->setLocale('ar');
 
         $this->shop = Business::create(['name' => 'ورود مسقط', 'type' => 'عام', 'status' => 'نشط']);
+        // متجرٌ مسجَّل يجبي الضريبة — بالتفعيل الصريح، فالغيابُ إطفاء (`Vat::enabled`)
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '1']);
         $this->other = Business::create(['name' => 'متجر الجار', 'type' => 'عام', 'status' => 'نشط']);
         Ledger::seedChart($this->shop->id);
         Ledger::seedChart($this->other->id);

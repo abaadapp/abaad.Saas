@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\ShopIdentity;
+use App\Support\Vat;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -39,7 +40,13 @@ class SetupController extends Controller
                 'address' => (string) $business->address,
                 'logo' => (string) $business->logo,
                 'vat_number' => (string) ($settings['vat_number'] ?? ''),
-                'vat_enabled' => (string) ($settings['vat_enabled'] ?? '1') !== '0',
+                /*
+                 * ما يحسبه النظامُ فعلًا لا افتراضٌ ثانٍ هنا.
+                 *
+                 * كان الغيابُ يُعرض «مسجَّلًا»، والنموذجُ يُرسل المفتاحَ مع الاسم:
+                 * تاجرٌ جديد يحفظ اسمَ متجره فيُفعّل الضريبةَ بلا رقمٍ ولا قصد.
+                 */
+                'vat_enabled' => Vat::enabled((int) $business->id),
             ],
             'steps' => ShopIdentity::steps($business),
             'confirmed' => ShopIdentity::confirmed($business),

@@ -53,6 +53,8 @@ class ATaxInvoiceDoesNotContradictItselfTest extends TestCase
 
         $this->shop = Business::create(['name' => 'متجر', 'type' => 'عام', 'status' => 'نشط']);
         Setting::create(['business_id' => $this->shop->id, 'key' => 'vat_rate', 'value' => '5']);
+        // متجرٌ مسجَّل: الضريبةُ مطفأةٌ ما لم تُفعَّل صراحةً (`Vat::enabled`)
+        Setting::create(['business_id' => $this->shop->id, 'key' => 'vat_enabled', 'value' => '1']);
 
         $this->owner = User::create([
             'business_id' => $this->shop->id, 'name' => 'مالك', 'email' => 'o@abaadapp.om',

@@ -74,6 +74,15 @@ return [
      */
     'outbound_ip' => env('OUTBOUND_IP'),
 
+    /*
+     * تسوياتُ Paymob — إيقافٌ مؤقّتٌ لتسجيلها في كلّ المتاجر (`PaymobSettlements::paused`).
+     * للنشر المتدرّج والطوارئ: لا يُسجَّل تحويلٌ ولا يُعاد فحصُه ولا يُحدَّد ما حمله
+     * تحويلٌ قديم حتّى يُفتح. ولا يمسّ الدفعَ نفسَه ولا إشعاراتِ Paymob.
+     */
+    'paymob' => [
+        'settlements_paused' => (bool) env('PAYMOB_SETTLEMENTS_PAUSED', false),
+    ],
+
     'slack' => [
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),

@@ -616,6 +616,60 @@ class APaymentLinkCollectsAndNeverSellsTest extends TestCase
         $this->assertEquals(105.0, $this->balance('paymob_clearing'));
     }
 
+    /**
+     * وقاعدةٌ تسمّي مدفوعاتِ تحويلاتها (#168) لا تُكتب فيها هنا تسويةٌ بمبلغٍ واحد.
+     *
+     * إن رُجع عن #168 إلى هذا الإصدار بقي جدولُه: هذا الكودُ لا يفرّق بين مالٍ في
+     * التسوية ومالِ بيعةٍ في البنك، فيُردّ ولا يُكتب شيء حتّى يعود. والاستعادةُ
+     * تكتب بلا نموذج فلا تُردّ.
+     */
+    public function test_a_lump_sum_settlement_waits_while_the_database_names_payout_payments(): void
+    {
+        $this->hook($this->obj($this->link($this->invoice())));
+        // ما تتركه هجرةُ #168 بعد الرجوع عنه
+        \Illuminate\Support\Facades\Schema::create('paymob_settlement_items', fn (\Illuminate\Database\Schema\Blueprint $t) => $t->id());
+
+        $this->post(route('admin.finance.paymobSettlements.store'), ['gross' => 105, 'fee' => 2, 'net' => 103, 'settled_on' => '2026-10-13'])
+            ->assertSessionHasErrors(['gross' => 'تسجيل تسويات Paymob متوقّف في هذا الإصدار — القاعدة تسمّي مدفوعات التحويلات، فيُسجَّل التحويل حين يعود الإصدار الذي يسمّيها. لم يُكتب شيء.']);
+
+        $this->assertSame(0, PaymobSettlement::count());
+        $this->assertEquals(105.0, $this->balance('paymob_clearing'));
+        $this->assertEquals(0.0, $this->balance('payment_gateway_fees'));
+
+        \Illuminate\Support\Facades\DB::table('paymob_settlements')->insert([
+            'business_id' => $this->shop->id, 'gross' => 1, 'fee' => 0, 'net' => 1, 'settled_on' => '2026-10-13', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertSame(1, PaymobSettlement::count(), 'رُدّت الاستعادة');
+    }
+
+    /**
+     * والإيقافُ المؤقّت (`PAYMOB_SETTLEMENTS_PAUSED`) يسري في هذا الإصدار أيضًا.
+     *
+     * يُضبط قبل نشر #168 فلا تُكتب تسويةٌ في نافذة الانتقال — والبيعُ والدفعُ
+     * يمضيان. والاستعادةُ تكتب بلا نموذج فلا تُردّ.
+     */
+    public function test_while_settling_is_paused_no_settlement_is_written_but_a_link_is_still_paid(): void
+    {
+        config(['services.paymob.settlements_paused' => true]);
+        $this->hook($this->obj($link = $this->link($this->invoice())));
+        $this->assertSame(CustomerPaymentLink::PAID, $link->fresh()->status);
+        $this->assertEquals(105.0, $this->balance('paymob_clearing'));
+
+        try {
+            PaymobSettlement::create(['business_id' => $this->shop->id, 'gross' => 105, 'fee' => 2, 'net' => 103, 'settled_on' => '2026-10-13']);
+            $this->fail('كُتبت تسويةٌ والتسجيلُ موقوف');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('موقوف مؤقّتًا', $e->getMessage());
+        }
+        $this->assertSame(0, PaymobSettlement::count());
+        $this->assertEquals(105.0, $this->balance('paymob_clearing'));
+
+        \Illuminate\Support\Facades\DB::table('paymob_settlements')->insert([
+            'business_id' => $this->shop->id, 'gross' => 1, 'fee' => 0, 'net' => 1, 'settled_on' => '2026-10-13', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->assertSame(1, PaymobSettlement::count(), 'رُدّت الاستعادة');
+    }
+
     /* ═══════════ ٦ · الإلغاء والانتهاء ═══════════ */
 
     public function test_a_pending_link_is_cancelled_at_paymob_first_and_a_paid_one_never(): void

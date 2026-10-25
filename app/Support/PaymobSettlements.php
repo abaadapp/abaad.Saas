@@ -127,15 +127,17 @@ final class PaymobSettlements
      */
     public static function candidates(int $businessId, int $limit = 300): array
     {
-        $open = fn (string $table, string $column) => DB::table($table.' as p')
+        $open = fn (string $table, string $column, bool $liveOnly = false) => DB::table($table.' as p')
             ->where('p.business_id', $businessId)
             ->where('p.status', 'paid')
+            // ورابطُ التجربة ليس مالًا تحوّله Paymob — ولو كُتب له تحصيلٌ قبل أن يُمنع (`classifyLink`)
+            ->when($liveOnly, fn ($q) => $q->where('p.is_live', true))
             ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('paymob_settlement_items as s')->whereColumn('s.'.$column, 'p.id'))
             ->orderBy('p.paid_at')->orderBy('p.id')->limit($limit)->pluck('p.id');
 
         return collect()
             ->merge($open('store_payment_intents', 'store_payment_intent_id')->map(fn ($id) => self::classify($businessId, self::INTENT, (int) $id)))
-            ->merge($open('customer_payment_links', 'customer_payment_link_id')->map(fn ($id) => self::classify($businessId, self::LINK, (int) $id)))
+            ->merge($open('customer_payment_links', 'customer_payment_link_id', true)->map(fn ($id) => self::classify($businessId, self::LINK, (int) $id)))
             ->sortBy(fn (array $r) => ($r['paid_at'] ?? '').'|'.$r['key'])
             ->values()->all();
     }
@@ -209,6 +211,16 @@ final class PaymobSettlements
 
         if (! $link) {
             throw new RuntimeException(__('مدفوعةٌ ليست من مدفوعات Paymob المقبوضة في متجرك.'));
+        }
+
+        /*
+         * ورابطُ التجربة لا يُسوّى أبدًا: دُفع ببطاقة تجربة، فلا تحوّل Paymob عنه
+         * شيئًا. وما سُجّل له تحصيلٌ قبل أن يُمنع (`PaymentLinks::settle`) يبقى
+         * مالُه المخترَعُ في التسوية حتّى يُلغى التحصيلُ بيد صاحبه — لا يخرج
+         * إلى البنك فيشهد الدفترُ بتحويلٍ لم يقع.
+         */
+        if (! $link->is_live) {
+            throw new RuntimeException(__('رابط دفعٍ تجريبيّ (Test) — دُفع ببطاقة تجربة فلا تحوّل Paymob عنه شيئًا، ولا يُسوّى.'));
         }
 
         $payment = $link->customer_payment_id

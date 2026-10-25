@@ -94,7 +94,7 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
             'business_id' => $this->shop->id, 'provider' => PaymentGateway::PAYMOB, 'active' => true,
             'public_key' => 'pk', 'secret_key' => 'sk', 'hmac_secret' => 'hmac-shop',
             'card_integration_id' => '111', 'omannet_integration_id' => '222', 'apple_pay_integration_id' => '333',
-            'api_key' => 'api', 'mode' => PaymentGateway::TEST,
+            'api_key' => 'api', 'mode' => PaymentGateway::LIVE,
         ]);
 
         Http::fake([
@@ -173,7 +173,7 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
             'order' => ['id' => (int) $link->provider_order_id, 'merchant_order_id' => null],
             'owner' => 1, 'pending' => false,
             'source_data' => ['pan' => '2346', 'sub_type' => 'MasterCard', 'type' => 'card'],
-            'success' => true, 'is_live' => false,
+            'success' => true, 'is_live' => true,
         ], $over);
     }
 
@@ -514,7 +514,7 @@ class ACustomerInvoiceIsPreparedOnceItIsPaidTest extends TestCase
         $this->hook($this->obj($link, ['pending' => true]));
         $this->hook($this->obj($link, ['amount_cents' => 100]));
         $this->hook($this->obj($link, ['currency' => 'USD']));
-        $this->hook($this->obj($link, ['is_live' => true]));
+        $this->hook($this->obj($link, ['is_live' => false]));
 
         $this->assertSame(0, CustomerPayment::count());
         $this->assertNull($this->prep($invoice)->activated_at);

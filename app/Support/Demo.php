@@ -4698,9 +4698,12 @@ class Demo
          *
          * ولمن يفتح «المالية»: بابُ الروابط هناك. ويقود إلى الفاتورة نفسِها
          * لمن يفتح قسمَها، وإلى صفحة الروابط لمن لا يفتحه.
+         *
+         * ودفعةُ التجربة ليست مالًا وصل — تُرى في صفحة الروابط بوسمها لا هنا.
          */
         $paidLinks = CustomerPaymentLink::where('business_id', $bid)
             ->where('status', CustomerPaymentLink::PAID)
+            ->where('is_live', true)
             ->where('paid_at', '>=', now()->subDays(self::PAID_LINK_DAYS))
             ->with(['customer:id,name,name_en', 'invoice:id,number'])
             ->orderByDesc('paid_at')->limit($limit)->get();

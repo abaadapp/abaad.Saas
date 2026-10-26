@@ -139,6 +139,27 @@ class CheckPlanFeature
         'admin.reports.transfers' => 'enterprise_transfers',
         'admin.reports.branches' => 'enterprise_branch_analytics',
         'admin.reports.branchesWeekly' => 'enterprise_weekly_report',
+        /*
+         * ═══ ونقطةُ البيع — إضافةٌ لمتاجر السياسة الجديدة ═══
+         *
+         * ما يُنشئ بيعًا جديدًا يُقفل: فتحُ الصندوق، وتفعيلُ جهازه، والدفعُ،
+         * والتعليق، وحركةُ الدرج، والكوبون، وإضافةُ بندٍ أو استبدالُه في بيعةٍ
+         * قائمة. وما يُغلق عملًا قائمًا يبقى بعد انقضاء الإضافة: الإيصالاتُ
+         * وطباعتُها، وتصحيحُ البند والدفع، وتحصيلُ الباقي، وسجلُّ الطلبات —
+         * ولوحةُ الإدارة كلُّها كما هي.
+         *
+         * ولا يُقفل على متجر السياسة السابقة شيء: `PlanFeatures::allows` تفتح
+         * نقطةَ البيع له كما كانت لكلّ باقة.
+         */
+        'pos.index' => 'pos',
+        'pos.setup' => 'pos',
+        'pos.setup.activate' => 'pos',
+        'pos.checkout' => 'pos',
+        'pos.hold' => 'pos',
+        'pos.movements.store' => 'pos',
+        'pos.coupon.apply' => 'pos',
+        'pos.orders.items.store' => 'pos',
+        'pos.orders.items.replace' => 'pos',
     ];
 
     /**

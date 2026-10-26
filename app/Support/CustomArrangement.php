@@ -2,11 +2,15 @@
 
 namespace App\Support;
 
+use App\Models\Business;
 use App\Models\CustomOrderField;
 use App\Models\CustomOrderTemplate;
 use App\Models\OrderItemComponent;
 use App\Models\Product;
 use App\Models\Setting;
+use App\Support\Addons\Catalog;
+use App\Support\Addons\Entitlements;
+use App\Support\Addons\PricingPolicy;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
@@ -71,8 +75,20 @@ class CustomArrangement
      */
     public static function enabled(int $businessId): bool
     {
-        return (string) (Setting::where('business_id', $businessId)
+        $on = (string) (Setting::where('business_id', $businessId)
             ->where('key', self::ENABLED_KEY)->value('value') ?? '1') !== '0';
+
+        /*
+         * ومتجرُ السياسة الجديدة يحتاج إضافتَها — «الهدايا والطلبات المخصّصة».
+         *
+         * والسابقةُ كما كانت: الميزةُ تعمل في كلّ متجرٍ قائم، ولا يُطفئها إطلاقُ
+         * الإضافات. ويُسأل هنا لا في شاشةٍ: الصندوقُ (`SaleLines`) يقرأ هذا.
+         */
+        if ($on && ($business = Business::find($businessId)) && PricingPolicy::isAddons($business)) {
+            return Entitlements::has($business, Catalog::GIFT_ORDERS);
+        }
+
+        return $on;
     }
 
     /**

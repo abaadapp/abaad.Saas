@@ -183,6 +183,21 @@ class Business extends Model
         return in_array($this->storefront_theme, self::THEMES, true) ? $this->storefront_theme : null;
     }
 
+    /**
+     * سياسةُ التسعير تُختم على المتجر يومَ يُنشأ — ولا تتبدّل بعده بمرور الوقت.
+     *
+     * كلُّ بابٍ يُنشئ متجرًا (التسجيلُ الذاتيّ، ولوحةُ المنصّة، والعرضُ) يمرّ هنا،
+     * فلا يُنسى بابٌ. وما كُتبت سياستُه صراحةً لا يُمسّ. انظر `Addons\PricingPolicy`.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Business $business) {
+            if (blank($business->pricing_policy)) {
+                $business->pricing_policy = \App\Support\Addons\PricingPolicy::forNewMerchant();
+            }
+        });
+    }
+
     public function boutiques(): HasMany { return $this->hasMany(Boutique::class); }
     public function plan(): BelongsTo { return $this->belongsTo(Plan::class); }
     public function users(): HasMany { return $this->hasMany(User::class); }
@@ -192,6 +207,8 @@ class Business extends Model
     public function customers(): HasMany { return $this->hasMany(Customer::class); }
     public function orders(): HasMany { return $this->hasMany(Order::class); }
     public function subscriptions(): HasMany { return $this->hasMany(Subscription::class); }
+    /** استحقاقاتُ إضافات الاشتراك — ما اشتراه المتجر أو مُنح له (`Addons\Entitlements`) */
+    public function addons(): HasMany { return $this->hasMany(BusinessAddon::class); }
     public function invoices(): HasMany { return $this->hasMany(Invoice::class); }
     public function expenses(): HasMany { return $this->hasMany(Expense::class); }
     public function transactions(): HasMany { return $this->hasMany(Transaction::class); }

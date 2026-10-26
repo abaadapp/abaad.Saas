@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\Addons\Entitlements;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -68,7 +69,18 @@ class PlanLimits
         $column = self::LIMITS[$key]['column'] ?? null;
         $cap = $column ? $business?->plan?->{$column} : null;
 
-        return $cap ? (int) $cap : null;
+        return $cap ? (int) $cap + self::extra($business, $key) : null;
+    }
+
+    /**
+     * ما فوق سقف الباقة من إضافاتٍ سارية — «فرعٌ إضافيّ» يرفع سقف الفروع وحده.
+     *
+     * ولا يُنشئ فرعًا. وانقضاؤه يُنزل السقفَ ولا يمسّ فرعًا قائمًا: المنعُ عند
+     * الإنشاء وحده (`enforce`)، فيبقى ما فُتح ويُمنع الجديد.
+     */
+    private static function extra(?Business $business, string $key): int
+    {
+        return $key === 'branches' && $business !== null ? Entitlements::extraBranches($business) : 0;
     }
 
     /** هل بلغ المتجر سقفه؟ */
@@ -118,10 +130,11 @@ class PlanLimits
                 continue;
             }
 
+            $cap = (int) $cap + self::extra($business, $key);
             $used = self::used($business->id, $key);
-            if ($used > (int) $cap) {
+            if ($used > $cap) {
                 $over[] = __(':label :used من :cap', [
-                    'label' => __($meta['label']), 'used' => $used, 'cap' => (int) $cap,
+                    'label' => __($meta['label']), 'used' => $used, 'cap' => $cap,
                 ]);
             }
         }

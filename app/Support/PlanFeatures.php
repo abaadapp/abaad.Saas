@@ -4,6 +4,9 @@ namespace App\Support;
 
 use App\Models\Business;
 use App\Models\Plan;
+use App\Support\Addons\Catalog;
+use App\Support\Addons\Entitlements;
+use App\Support\Addons\PricingPolicy;
 
 /**
  * قدرات الباقة — ما تفتحه فعلًا، لا ما تعد به في صفحة التسعير.
@@ -145,10 +148,34 @@ class PlanFeatures
         'enterprise_alerts',
     ];
 
-    /** هل تفتح باقةُ هذا المتجر هذه القدرة؟ */
+    /**
+     * هل يفتح اشتراكُ هذا المتجر هذه القدرة؟
+     *
+     * ═══ وللسياسة الجديدة بابٌ قبل الباقة ═══
+     *
+     * متجرٌ أُنشئ بعد إطلاق الإضافات (`Addons\PricingPolicy`) تُفتح له قدراتُ
+     * الكتالوج (`Addons\Catalog::FEATURE_KEYS`، ونقطةُ البيع منها) بشمولها في
+     * باقته أو بإضافةٍ ساريةٍ له — لا بقائمة `capabilities`. وما سواها من قدرات
+     * الباقة يُقرأ من الباقة كما كان.
+     *
+     * ومتجرُ السياسة السابقة كما كان حرفًا بحرف: نقطةُ البيع مفتوحةٌ له (لم
+     * تُبَع منفصلةً يومًا)، وباقتُه تقرّر الباقي. ومنحةٌ ساريةٌ من صاحب المنصّة
+     * تفتح فوقها ولا تُغلق ما فيها.
+     */
     public static function allows(?Business $business, string $key): bool
     {
-        return self::allowedBy($business?->plan, $key);
+        $sold = in_array($key, Catalog::FEATURE_KEYS, true);
+
+        if ($sold && $business !== null && PricingPolicy::isAddons($business)) {
+            return Entitlements::has($business, $key);
+        }
+
+        if ($key === Catalog::POS) {
+            return true;
+        }
+
+        return self::allowedBy($business?->plan, $key)
+            || ($sold && $business !== null && Entitlements::active($business, $key));
     }
 
     /** الجواب نفسه عن باقةٍ بعينها — تُسأل قبل النقل إليها */
@@ -188,8 +215,15 @@ class PlanFeatures
     /** نصّ الرفض — يُقرأ في الشاشة وفي رسالة التحقّق معًا */
     public static function refusal(?Business $business, string $key): string
     {
+        $feature = __(self::CAPABILITIES[$key]['label'] ?? Catalog::CAPABILITIES[$key] ?? $key);
+
+        // ومتجرُ السياسة الجديدة يشتري الإضافةَ لا يرقّي الباقة
+        if (PricingPolicy::isAddons($business) && in_array($key, Catalog::FEATURE_KEYS, true)) {
+            return __('«:feature» ليست ضمن اشتراكك. اطلبها من «إضافات متجرك».', ['feature' => $feature]);
+        }
+
         return __('«:feature» ليست في باقة «:plan». رقِّ الباقة لفتحها.', [
-            'feature' => __(self::CAPABILITIES[$key]['label'] ?? $key),
+            'feature' => $feature,
             'plan' => $business?->plan?->name ?? __('الحالية'),
         ]);
     }
@@ -209,6 +243,9 @@ class PlanFeatures
         foreach (array_keys(self::CAPABILITIES) as $key) {
             $out[$key] = self::allows($business, $key);
         }
+
+        // ونقطةُ البيع — ليست في محرّر الباقة، وتسألها الواجهةُ لتُخفي زرَّها
+        $out[Catalog::POS] = self::allows($business, Catalog::POS);
 
         return $out;
     }

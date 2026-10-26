@@ -65,6 +65,7 @@ use App\Http\Controllers\Admin\ReportPageController;
 use App\Http\Controllers\Admin\SalesRegisterController;
 use App\Http\Controllers\Admin\SeasonController;
 use App\Http\Controllers\Admin\SetupController;
+use App\Http\Controllers\Admin\SubscriptionAddonController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\SupplierExportController;
 use App\Http\Controllers\Admin\TemplateController;
@@ -103,6 +104,7 @@ use App\Http\Controllers\Store\PaymobController;
 use App\Http\Controllers\Admin\Finance\PaymentLinkController;
 use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
+use App\Http\Controllers\SuperAdmin\AddonController as SubscriptionAddonCatalogController;
 use App\Http\Controllers\SuperAdmin\BillingController;
 use App\Http\Controllers\SuperAdmin\BusinessController;
 use App\Http\Controllers\SuperAdmin\ConversationController;
@@ -422,6 +424,25 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // الباقات
     Route::post('/plans', [PlanController::class, 'store'])->name('plans.store');
     Route::put('/plans/{id}', [PlanController::class, 'update'])->name('plans.update');
+
+    /*
+     * إضافاتُ الاشتراكات — للمتاجر التي تُسجَّل بعد إطلاقها (`Addons\PricingPolicy`).
+     *
+     * الكتالوجُ وأماكنُ بيعه، والطلباتُ وفواتيرُها، ومنحُ متجرٍ وتجديدُه وإنهاؤه،
+     * وإطلاقُ السياسة الجديدة وسعرُ الباقة فيها. والسدادُ نفسُه في `invoices.pay`.
+     */
+    Route::get('/subscriptions/addons', [SubscriptionAddonCatalogController::class, 'index'])->name('subscriptions.addons');
+    Route::post('/subscriptions/addons', [SubscriptionAddonCatalogController::class, 'store'])->name('addons.store');
+    Route::post('/subscriptions/addons/launch', [SubscriptionAddonCatalogController::class, 'launch'])->name('addons.launch');
+    Route::put('/subscriptions/addons/{id}', [SubscriptionAddonCatalogController::class, 'update'])->whereNumber('id')->name('addons.update');
+    Route::put('/subscriptions/addons/{id}/plans', [SubscriptionAddonCatalogController::class, 'plans'])->whereNumber('id')->name('addons.plans');
+    Route::put('/plans/{id}/policy-price', [SubscriptionAddonCatalogController::class, 'planPrice'])->whereNumber('id')->name('plans.policyPrice');
+    Route::post('/addon-orders/{id}/approve', [SubscriptionAddonCatalogController::class, 'approve'])->whereNumber('id')->name('addonOrders.approve');
+    Route::post('/addon-orders/{id}/cancel', [SubscriptionAddonCatalogController::class, 'cancelOrder'])->whereNumber('id')->name('addonOrders.cancel');
+    Route::post('/businesses/{id}/addons', [SubscriptionAddonCatalogController::class, 'grant'])->whereNumber('id')->name('businesses.addons.grant');
+    Route::post('/business-addons/{id}/renew', [SubscriptionAddonCatalogController::class, 'renew'])->whereNumber('id')->name('businessAddons.renew');
+    Route::put('/business-addons/{id}/renews', [SubscriptionAddonCatalogController::class, 'renews'])->whereNumber('id')->name('businessAddons.renews');
+    Route::post('/business-addons/{id}/end', [SubscriptionAddonCatalogController::class, 'end'])->whereNumber('id')->name('businessAddons.end');
 
     // اللغة — مسار المنصة، فمسار لوحة التاجر يحرسه middleware أدوار لا يشمل مدير المنصة
     Route::post('/language', [LanguageController::class, 'update'])->name('language.update');
@@ -1906,6 +1927,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
 
     Route::get('/activity', [ActivityController::class, 'adminIndex'])->name('activity.index');
     Route::get('/settings', [PageController::class, 'settingsIndex'])->name('settings.index');
+    /*
+     * «إضافات متجرك» — يقرؤها من يفتح الإعدادات، ويطلب صاحبُ النشاط وحده
+     * (`SubscriptionAddonController::mayBuy`). والطلبُ يُصدر فاتورة: لا يُضغط عشرَ مرّات.
+     */
+    Route::get('/subscription/addons', [SubscriptionAddonController::class, 'index'])->name('subscription.addons');
+    Route::post('/subscription/addons', [SubscriptionAddonController::class, 'request'])->middleware('throttle:10,1')->name('subscription.addons.request');
+    Route::put('/subscription/addons/{id}/renews', [SubscriptionAddonController::class, 'renews'])->whereNumber('id')->name('subscription.addons.renews');
     Route::post('/language', [LanguageController::class, 'update'])->name('language.update');
     Route::post('/settings', [App\Http\Controllers\Admin\SettingController::class, 'update'])->name('settings.update');
     // الشعار وحده: ملفٌّ يحتاج multipart، وخلطُه بنموذج الإعدادات يُرسل كل مقبضٍ نصًّا
@@ -1973,7 +2001,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
  * صارت صلاحيةً تُمنح، بقي المربّع بلا حارس: يرفع صاحب النشاط علامة «نقطة
  * البيع» عن موظف فلا يتغيّر شيء — يكتب العنوان فتُفتح له.
  */
-Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant', 'business', 'ability', 'pos.branch'])->group(function () {
+/*
+ * و`plan` على نقطة البيع: متجرُ سياسة الإضافات لا يبيع منها بلا إضافتها —
+ * والحارسُ يقفل ما يُنشئ بيعًا جديدًا وحده (`CheckPlanFeature::ROUTES`)،
+ * ويُبقي الإيصالاتِ والتصحيحَ والتحصيلَ. والسياسةُ السابقة لا يُقفل عليها شيء.
+ */
+Route::prefix('pos')->name('pos.')->middleware(['auth', 'export.tenant', 'tenant', 'business', 'ability', 'plan', 'pos.branch'])->group(function () {
     Route::get('/', [App\Http\Controllers\Pos\PageController::class, 'index'])->name('index');
 
     /*

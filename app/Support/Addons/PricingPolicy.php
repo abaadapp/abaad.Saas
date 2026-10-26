@@ -111,9 +111,18 @@ final class PricingPolicy
             $out[] = __('قدرات الباقة الأساسيّة غير محدّدة — حدّدها في شاشة الباقات.');
         }
 
-        $pos = SubscriptionAddon::where('capability', Catalog::POS)->whereHas('plans', fn ($q) => $q->whereKey($basic->id))->exists();
-        if (! $pos) {
-            $out[] = __('نقطة البيع ليست إضافةً تُشترى أو تُشمل في الباقة الأساسيّة.');
+        /*
+         * ونقطةُ البيع في الأساسيّة الجديدة **تُشترى** — هذا ما تفصله السياسة.
+         * فمشمولةً فيها لا تُفصل، وغيرَ معروضةٍ للبيع لا يبلغها تاجرٌ جديد.
+         */
+        $pos = SubscriptionAddon::where('capability', Catalog::POS)->first();
+        $mode = $pos ? $pos->plans()->whereKey($basic->id)->value('subscription_addon_plans.mode') : null;
+        if ($mode === Catalog::INCLUDED) {
+            $out[] = __('نقطة البيع مشمولةٌ في الباقة الأساسيّة — والسياسة الجديدة تفصلها عنها. اجعلها «تُشترى» في الأساسيّة قبل الإطلاق.');
+        } elseif ($mode !== Catalog::ELIGIBLE) {
+            $out[] = __('نقطة البيع ليست إضافةً تُشترى في الباقة الأساسيّة.');
+        } elseif (! $pos->for_sale || ! $pos->for_new_merchants) {
+            $out[] = __('نقطة البيع لا تُعرض للبيع للمتاجر الجديدة — اعرضها قبل الإطلاق.');
         }
 
         $unpriced = SubscriptionAddon::where('for_sale', true)->where('for_new_merchants', true)

@@ -116,6 +116,9 @@ return new class extends Migration
             $table->foreignId('business_addon_id')->nullable()->index()->constrained('business_addons')->nullOnDelete();
             $table->string('kind', 10)->default('new');
             $table->string('cycle', 10);
+            // نوعُ التسعير ساعةَ طُلب — مجّانيّةٌ أو مدفوعةٌ أو حسب الطلب. يُقرأ عند
+            // السداد بدل الكتالوج: تغييرُه بعد الطلب لا يمسّ ما اتُّفق عليه
+            $table->string('pricing', 10);
             $table->unsignedInteger('quantity')->default(1);
             $table->decimal('unit_price', 10, 3)->nullable();
             $table->decimal('amount', 10, 3)->nullable();

@@ -26,11 +26,14 @@ use Illuminate\Support\Facades\DB;
  * وهو طريقُ حزم رسائل واتساب نفسُه (`WhatsAppPacks`): لا تحصيلَ إلكترونيّ لفواتير
  * المنصّة، والسدادُ تحويلٌ يُراجعه صاحبُ المنصّة ويسجّله.
  *
- * ═══ والسعرُ يُثبَّت ═══
+ * ═══ وشروطُ الطلب تُثبَّت ═══
  *
- * يُنسخ سعرُ الوحدة في الطلب ساعةَ يُطلب، وفي الاستحقاق ساعةَ يُفعَّل، ويُجدَّد
- * به. فتعديلُ الكتالوج غدًا لا يُعيد تسعيرَ طلبٍ ولا فاتورةٍ صدرت ولا دورةٍ
- * اتُّفق عليها.
+ * يُنسخ في الطلب ساعةَ يُطلب نوعُ تسعيره وسعرُ وحدته ودورتُه وعددُه، وفي
+ * الاستحقاق ساعةَ يُفعَّل، ويُجدَّد به. والسدادُ يُفعِّل ما في الطلب لا ما في
+ * الكتالوج ساعتَها: إضافةٌ صارت «مجّانيّة» بعد أن صدرت فاتورتُها المدفوعة تُفعَّل
+ * شهرًا أو سنةً كما بيعت — لا استحقاقًا بلا نهاية؛ ومجّانيّةٌ صارت مدفوعةً لا
+ * تُطالِب من أخذها مجّانًا بشيء. فتعديلُ الكتالوج غدًا لا يُعيد تسعيرَ طلبٍ ولا
+ * فاتورةٍ صدرت ولا دورةٍ اتُّفق عليها.
  *
  * ═══ ودورةُ الإضافة مستقلّة ═══
  *
@@ -144,6 +147,7 @@ final class AddonOrders
                     'subscription_addon_id' => $addon->id,
                     'kind' => self::KIND_NEW,
                     'cycle' => $cycle,
+                    'pricing' => $addon->pricing,
                     'quantity' => $quantity,
                     'unit_price' => $unit,
                     'amount' => $unit === null ? null : round($unit * $quantity, 3),
@@ -158,7 +162,7 @@ final class AddonOrders
                 ]);
 
                 // والمجّانيّةُ لا فاتورةَ لها ولا اعتماد: تُفعَّل بطلبها
-                if ($addon->pricing === Catalog::FREE) {
+                if ($order->pricing === Catalog::FREE) {
                     self::activate($order);
                 }
 
@@ -288,18 +292,29 @@ final class AddonOrders
      * يُصدر صاحبُ المنصّة فاتورةَ تجديد استحقاقٍ — بسعره المتّفق وكمّيّته ودورته.
      *
      * ولا يُجدَّد ما أوقف التاجرُ تجديدَه، ولا ما أُلغي، ولا منحةٌ بلا سعر (تُمدّ
-     * المنحةُ بمنحة).
+     * المنحةُ بمنحة)، ولا مجّانيّةٌ أُخذت بلا دورة — ولو صارت مدفوعةً بعدها.
+     *
+     * ولا ما صار مشمولًا في باقة المتجر: من رُقّي إلى باقةٍ تشمل نقطةَ البيع
+     * لا تُصدر له فاتورةُ نقطة بيعٍ ثانية فوق باقته.
      */
     public static function renew(BusinessAddon $entitlement): AddonOrder
     {
         if ($entitlement->cancelled_at !== null) {
             throw new DomainException(__('أُلغيت هذه الإضافة — لا تُجدَّد.'));
         }
-        if ($entitlement->source !== BusinessAddon::PURCHASE || ! $entitlement->cycle) {
+        if ($entitlement->source !== BusinessAddon::PURCHASE) {
             throw new DomainException(__('المنحة لا تُجدَّد بفاتورة — امنحها ثانيةً بمدّتها.'));
+        }
+        if (! $entitlement->cycle) {
+            throw new DomainException(__('أُخذت هذه الإضافة مجّانًا بلا دورة — لا تُجدَّد بفاتورة.'));
         }
         if (! $entitlement->renews) {
             throw new DomainException(__('أوقف التاجر تجديد هذه الإضافة.'));
+        }
+
+        $business = Business::findOrFail($entitlement->business_id);
+        if (PricingPolicy::isAddons($business) && self::modeFor($business, $entitlement->addon) === Catalog::INCLUDED) {
+            throw new DomainException(__('«:n» صارت مشمولةً في باقة المتجر — لا تُجدَّد بفاتورة.', ['n' => $entitlement->addon->name]));
         }
 
         $key = 'renew:'.$entitlement->id;
@@ -319,6 +334,8 @@ final class AddonOrders
                     'business_addon_id' => $entitlement->id,
                     'kind' => self::KIND_RENEWAL,
                     'cycle' => $entitlement->cycle,
+                    // بشروط الطلب الذي فتحه — لا بنوع الكتالوج اليوم
+                    'pricing' => AddonOrder::where('business_addon_id', $entitlement->id)->orderBy('id')->value('pricing') ?? Catalog::PAID,
                     'quantity' => $entitlement->quantity,
                     'unit_price' => $entitlement->unit_price,
                     'amount' => $amount,
@@ -431,9 +448,22 @@ final class AddonOrders
         return $entitlement->fresh();
     }
 
-    /** يفعّل الطلبَ المحسوم — تحت قفله ومعاملته */
+    /**
+     * يفعّل الطلبَ المحسوم — تحت قفله ومعاملته، وبشروطه هو.
+     *
+     * ولا يُفعَّل طلبٌ حُسم من قبل، ولا طلبٌ بمبلغٍ لم تُسدَّد فاتورتُه: البابُ
+     * الوحيدُ لاستحقاقٍ مدفوع فاتورةٌ مسدَّدة.
+     */
     private static function activate(AddonOrder $order): BusinessAddon
     {
+        if (! in_array($order->status, self::OPEN, true)) {
+            throw new DomainException(__('حُسم هذا الطلب من قبل — لا يُفعَّل ثانيةً.'));
+        }
+        if ((float) $order->amount > 0
+            && Invoice::whereKey($order->invoice_id ?? 0)->value('status') !== Billing::PAID) {
+            throw new DomainException(__('لا تُفعَّل إضافةٌ مدفوعةٌ قبل سداد فاتورتها.'));
+        }
+
         $today = now()->startOfDay();
 
         if ($order->kind === self::KIND_RENEWAL && $order->business_addon_id) {
@@ -449,8 +479,8 @@ final class AddonOrders
                 'unit_price' => $order->unit_price,
             ]);
         } else {
-            $addon = SubscriptionAddon::findOrFail($order->subscription_addon_id);
-            $free = $addon->pricing === Catalog::FREE;
+            // مجّانيّةٌ يومَ طُلبت — لا يومَ سُدّدت
+            $free = $order->pricing === Catalog::FREE;
 
             $row = BusinessAddon::create([
                 'business_id' => $order->business_id,

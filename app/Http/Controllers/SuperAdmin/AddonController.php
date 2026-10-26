@@ -63,18 +63,24 @@ class AddonController extends Controller
         $data = $this->validated($request, $addon);
 
         /*
-         * وما تفتحه لا يتبدّل تحت من اشتراها: استحقاقٌ دُفع ليفتح نقطةَ البيع
-         * لا يصير يفتح غيرَها. تُنشأ إضافةٌ أخرى بدلها.
+         * وما تفتحه لا يتبدّل تحت من اشتراها ولا تحت من طلبها: استحقاقٌ دُفع —
+         * أو فاتورةٌ صدرت — ليفتح نقطةَ البيع لا يصير يفتح غيرَها. تُنشأ إضافةٌ
+         * أخرى بدلها.
          */
-        if (($data['capability'] ?? null) !== $addon->capability && $addon->entitlements()->exists()) {
-            return back()->withErrors(['capability' => __('لهذه الإضافة استحقاقات — لا يتغيّر ما تفتحه. أنشئ إضافةً أخرى.')]);
+        if (($data['capability'] ?? null) !== $addon->capability
+            && ($addon->entitlements()->exists() || AddonOrder::where('subscription_addon_id', $addon->id)->whereIn('status', AddonOrders::OPEN)->exists())) {
+            return back()->withErrors(['capability' => __('لهذه الإضافة استحقاقاتٌ أو طلباتٌ مفتوحة — لا يتغيّر ما تفتحه. أنشئ إضافةً أخرى.')]);
         }
 
         // والرمزُ ثابت: يُكتب يومَ تُنشأ ولا يُعدَّل
         unset($data['code']);
-        $addon->update($data);
-        Entitlements::flush();
-        Activity::log('updated', 'عدّل إضافة الاشتراك: '.$addon->name, ['business_id' => null, 'subject_id' => $addon->id]);
+        $refused = $this->keepingTheLaunch('addon', function () use ($addon, $data) {
+            $addon->update($data);
+            Activity::log('updated', 'عدّل إضافة الاشتراك: '.$addon->name, ['business_id' => null, 'subject_id' => $addon->id]);
+        });
+        if ($refused) {
+            return $refused;
+        }
 
         return back()->with('toast', ['msg' => __('حُفظت الإضافة — الطلبات والفواتير الصادرة بأسعارها'), 'type' => 'success']);
     }
@@ -108,9 +114,13 @@ class AddonController extends Controller
             }
         }
 
-        $addon->plans()->sync($wanted->map(fn ($mode) => ['mode' => $mode])->all());
-        Entitlements::flush();
-        Activity::log('updated', 'عدّل باقات إضافة الاشتراك: '.$addon->name, ['business_id' => null, 'subject_id' => $addon->id]);
+        $refused = $this->keepingTheLaunch('plans', function () use ($addon, $wanted) {
+            $addon->plans()->sync($wanted->map(fn ($mode) => ['mode' => $mode])->all());
+            Activity::log('updated', 'عدّل باقات إضافة الاشتراك: '.$addon->name, ['business_id' => null, 'subject_id' => $addon->id]);
+        });
+        if ($refused) {
+            return $refused;
+        }
 
         return back()->with('toast', ['msg' => __('حُفظت باقات الإضافة'), 'type' => 'success']);
     }
@@ -191,6 +201,34 @@ class AddonController extends Controller
         ]);
 
         return $this->attempt(fn () => PricingPolicy::setPlanPrice(Plan::findOrFail($planId), PricingPolicy::ADDONS, (float) $data['monthly'], (float) $data['yearly']), __('اعتُمد سعر الباقة في سياسة الإضافات'));
+    }
+
+    /**
+     * يحفظ تعديلَ الكتالوج — ويردّه كلَّه إن ترك الإطلاقَ المفتوحَ ناقصًا.
+     *
+     * والإطلاقُ لا يُفتح إلّا مكتملًا (`PricingPolicy::setEnabled`)؛ وهذا يُبقيه
+     * مكتملًا ما دام مفتوحًا: نقطةُ بيعٍ تُشمل في الأساسيّة، أو تُرفع من بيعها،
+     * أو إضافةٌ مدفوعةٌ بلا سعر — كلُّها تُرجع كلَّ متجرٍ جديدٍ إلى السابقة في
+     * صمت. فإن أُريد شيءٌ منها أُطفئ الإطلاقُ أوّلًا، وهذا قرارٌ يُرى.
+     */
+    private function keepingTheLaunch(string $field, callable $change): ?RedirectResponse
+    {
+        try {
+            DB::transaction(function () use ($change) {
+                $change();
+                Entitlements::flush();
+
+                if (PricingPolicy::enabled() && ($blockers = PricingPolicy::blockers()) !== []) {
+                    throw new DomainException(__('الإطلاق مفتوح وهذا التعديل يتركه ناقصًا: :list — أطفئ الإطلاق أوّلًا إن أردته.', ['list' => implode(' · ', $blockers)]));
+                }
+            });
+        } catch (DomainException $e) {
+            return back()->withErrors([$field => $e->getMessage()])->with('toast', ['msg' => $e->getMessage(), 'type' => 'danger']);
+        } finally {
+            Entitlements::flush();
+        }
+
+        return null;
     }
 
     /** يُنفّذ الفعلَ ويقول نتيجتَه — وسببُ الرفض يُرى في الشاشة */

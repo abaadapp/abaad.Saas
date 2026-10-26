@@ -52,8 +52,8 @@ class TwoRequestsForOneAddonAtOnceMakeOneOrderTest extends TestCase
         $c = DB::connection()->getConfig();
         $dsn = sprintf('pgsql:host=%s;port=%s;dbname=%s', $c['host'], $c['port'] ?? 5432, $c['database']);
         $sql = ($locksTheShop ? "SELECT id FROM businesses WHERE id = {$businessId} FOR UPDATE;" : '')
-            .'INSERT INTO addon_orders (business_id, subscription_addon_id, kind, cycle, quantity, unit_price, amount, status, open_key, created_at, updated_at)'
-            ." VALUES ({$businessId}, {$addonId}, 'new', 'monthly', 1, 3.9, 3.9, 'requested', 'new:{$businessId}:{$addonId}', now(), now());";
+            .'INSERT INTO addon_orders (business_id, subscription_addon_id, kind, cycle, pricing, quantity, unit_price, amount, status, open_key, created_at, updated_at)'
+            ." VALUES ({$businessId}, {$addonId}, 'new', 'monthly', 'paid', 1, 3.9, 3.9, 'requested', 'new:{$businessId}:{$addonId}', now(), now());";
         $code = sprintf(
             '$p = new PDO(%s, %s, %s); $p->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);'
             .' $p->beginTransaction(); $p->exec(%s); usleep(1500000); $p->commit();',

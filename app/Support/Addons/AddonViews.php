@@ -207,7 +207,8 @@ final class AddonViews
     {
         return [
             'id' => $o->id,
-            'addon' => ['id' => $o->subscription_addon_id, 'name' => $o->addon?->name, 'pricing' => $o->addon?->pricing],
+            // نوعُ التسعير كما ثُبّت في الطلب — لا كما صار في الكتالوج
+            'addon' => ['id' => $o->subscription_addon_id, 'name' => $o->addon?->name, 'pricing' => $o->pricing],
             'kind' => $o->kind,
             'cycle' => $o->cycle,
             'quantity' => (int) $o->quantity,

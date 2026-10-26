@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Business;
+use App\Models\BusinessAddon;
 use App\Models\Invoice;
 use App\Models\Plan;
 use App\Models\Subscription;
@@ -251,5 +252,47 @@ class AnExistingShopKeepsItsSubscriptionWhenAddonsLaunchTest extends TestCase
         $this->assertSame($endsBefore, $business->fresh()->ends_at?->toDateString(), 'سدادُ إضافةٍ مدّ الاشتراك');
         $this->assertSame(0, Subscription::where('business_id', $business->id)->count());
         $this->assertSame(1, Invoice::where('business_id', $business->id)->count());
+    }
+
+    public function test_existing_shops_on_every_plan_stay_legacy_and_bill_their_old_prices_however_often_the_launch_is_toggled(): void
+    {
+        $shops = $history = [];
+        foreach (['basic', 'professional', 'enterprise'] as $i => $plan) {
+            [$shops[$plan]] = $this->shop($plan, "toggle{$i}@shop.om");
+            $history[$plan] = Billing::issue($shops[$plan], 1.234 + $i);
+            Billing::markPaid($history[$plan]);
+        }
+        $before = array_map(fn ($b) => $this->snapshot($b), $shops);
+
+        // أسعارٌ جديدةٌ للباقات الثلاث في السياسة الجديدة — ثمّ يُفتح ويُطفأ مرارًا
+        PricingPolicy::setPlanPrice($this->plans['professional'], PricingPolicy::ADDONS, 19.9, 199);
+        PricingPolicy::setPlanPrice($this->plans['enterprise'], PricingPolicy::ADDONS, 49.9, 499);
+        $this->launch();
+        [$on] = $this->shop('basic', 'on@shop.om');
+        PricingPolicy::setEnabled(false);
+        [$off] = $this->shop('professional', 'off@shop.om');
+        PricingPolicy::setEnabled(true);
+        PricingPolicy::setEnabled(false);
+
+        foreach ($shops as $plan => $business) {
+            $business = $business->fresh();
+            $this->assertSame(PricingPolicy::LEGACY, $business->pricing_policy, "نُقل متجرٌ قائمٌ على {$plan}");
+            $this->assertSame((int) $this->plans[$plan]->id, (int) $business->plan_id, "تبدّلت باقةُ متجرٍ قائمٍ على {$plan}");
+            $this->assertSame($before[$plan], $this->snapshot($business), "تغيّر اشتراكُ متجرٍ قائمٍ على {$plan}");
+            $this->assertTrue($this->allows($business, Catalog::POS), "توقّفت نقطةُ البيع عن {$plan}");
+
+            // والتجديدُ بسعر الباقة القديم — لا بسعرها في السياسة الجديدة
+            $renewal = Billing::renew($business, 'monthly');
+            $this->assertSame((float) $this->plans[$plan]->monthly_price, (float) $renewal['invoice']->amount, "جُدّد {$plan} بسعر السياسة الجديدة");
+
+            // والفاتورةُ التاريخيّة كما صدرت
+            $this->assertSame([(float) $history[$plan]->amount, Billing::PAID], [(float) $history[$plan]->fresh()->amount, $history[$plan]->fresh()->status]);
+            $this->assertSame(0, BusinessAddon::where('business_id', $business->id)->count());
+        }
+
+        // والجديدُ يُختم بما كان ساعةَ إنشائه — ولا يتبدّل بالإطفاء بعده
+        $this->assertSame([PricingPolicy::ADDONS, PricingPolicy::LEGACY], [$on->fresh()->pricing_policy, $off->fresh()->pricing_policy]);
+        $this->assertSame([4.9, 29.9], [Billing::price($on->fresh(), 'monthly'), Billing::price($off->fresh(), 'monthly')]);
+        $this->assertSame(1, Business::where('pricing_policy', PricingPolicy::ADDONS)->count(), 'نُقل متجرٌ إلى السياسة الجديدة من نفسه');
     }
 }

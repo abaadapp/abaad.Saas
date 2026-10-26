@@ -85,6 +85,8 @@ return new class extends Migration
             // والإشعارُ الواحد لا يُخصم من الورقة الواحدة مرّتين
             $table->unique(['boutique_return_id', 'boutique_settlement_id']);
             $table->index(['business_id', 'boutique_id']);
+            // وما خُصم من ورقةٍ يُقرأ بها عند سدادها (`BoutiqueReturns::reductions`)
+            $table->index('boutique_settlement_id');
         });
     }
 

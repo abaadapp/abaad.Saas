@@ -851,6 +851,8 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     // تصدير قائمة الطلبات (قبل /orders/{id} حتى لا يبتلعها نمط المعرّف)
     Route::get('/orders/export-xlsx', [ReportExportController::class, 'ordersXlsx'])->name('orders.xlsx');
     Route::get('/orders/export-pdf', [PdfController::class, 'ordersReport'])->name('orders.exportPdf');
+    // «عرض» تحصيلٍ عبر رابط دفع — فاتورتُه الأصليّة، أو تحصيلُه حين لا فاتورة (`OrderController::collection`)
+    Route::get('/orders/collections/{id}', [OrderController::class, 'collection'])->whereNumber('id')->name('orders.collection');
     Route::get('/orders/{number}', [PageController::class, 'ordersShow'])->name('orders.show');
     // «حذف» البيعة لصاحب النشاط وحده — إلغاءٌ ماليّ لا محو. انظر `OrderController::destroy`
     Route::delete('/orders/{number}', [OrderController::class, 'destroy'])->name('orders.destroy');

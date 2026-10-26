@@ -6,6 +6,7 @@ import PageHeader from '@/Components/PageHeader';
 import DocumentMeta from '@/Components/DocumentMeta';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
 import SmartLink from '@/Components/SmartLink';
+import PaidLinkCollectionCard, { OrderLinks, type PaidCollection } from '@/Components/PaidLinkCollection';
 import PaymentLinksCard, { invoiceLinkView, InvoicePaymentLink, PaymentLinkRetry, type PaymentLinkFailure, type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import InvoiceLoyaltyPanel, { type InvoiceLoyaltyData } from './partials/InvoiceLoyaltyPanel';
@@ -90,7 +91,7 @@ interface May {
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, context, flash } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, context, flash } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -110,6 +111,10 @@ export default function CustomerInvoiceShow() {
                 preparation: PreparationPanelData | null;
                 /** نقاطُ الولاء على سدادها برابط — و`null` حين لا تُكسب عليها نقاط (`InvoiceLoyalty`) */
                 loyalty?: InvoiceLoyaltyData | null;
+                /** التحصيلُ الذي فُتحت منه الفاتورة في «المبيعات» (`?link=`) — `PaidLinksList::detail` */
+                collection?: PaidCollection | null;
+                /** سندُ القبض صفحةُ «المالية» — رابطُه لمن يفتحها */
+                mayOpenReceipts?: boolean;
             }>
         >().props;
     const t = useTranslate();
@@ -222,6 +227,13 @@ export default function CustomerInvoiceShow() {
             )}
             {crediting && <CreditNoteForm invoice={invoice} onDone={() => setCrediting(false)} />}
 
+            {/* فُتحت من «المبيعات» على تحصيلٍ عبر رابط دفع: مبلغُه عند Paymob ويومُه ومرجعُه وسندُه */}
+            {collection && (
+                <div className="mb-4">
+                    <PaidLinkCollectionCard collection={collection} mayOpenReceipts={!!mayOpenReceipts} />
+                </div>
+            )}
+
             {/*
                 ═══ عمودان: ما يقوله الدفتر عن الفاتورة، وما ستقرؤه الجهة ═══
 
@@ -248,7 +260,7 @@ export default function CustomerInvoiceShow() {
                             invoice.cost_center ? { label: 'مركز التكلفة', value: invoice.cost_center } : null,
                             invoice.attention_to ? { label: 'عناية', value: invoice.attention_to } : null,
                             invoice.orders.length > 0
-                                ? { label: 'طلبات مضمومة', value: invoice.orders.join(' · '), wide: true }
+                                ? { label: 'طلبات مضمومة', value: <OrderLinks numbers={invoice.orders} />, wide: true }
                                 : null,
                             invoice.notes ? { label: 'ملاحظات تُطبع', value: invoice.notes, wide: true } : null,
                         ]}

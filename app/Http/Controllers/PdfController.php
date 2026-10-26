@@ -25,6 +25,7 @@ use App\Support\Lists\BusinessesList;
 use App\Support\Lists\ExpensesList;
 use App\Support\Lists\InventoryList;
 use App\Support\Lists\OrdersList;
+use App\Support\Lists\AllSalesList;
 use App\Support\Lists\PaidLinksList;
 use App\Support\Lists\PlatformInvoicesList;
 use App\Support\Lists\ProductsList;
@@ -368,20 +369,27 @@ class PdfController extends Controller
             return $this->paidLinksReport();
         }
 
-        if ($refused = PdfRows::refuse(OrdersList::filtered(request())->count())) {
+        // و«كل المصادر» بتحصيلاتها حين تعرضها الشاشة — انظر `AllSalesList`
+        $merged = AllSalesList::merges(request());
+
+        if ($refused = PdfRows::refuse($merged ? AllSalesList::count(request()) : OrdersList::filtered(request())->count())) {
             return $refused;
         }
-        // صفوفُ الشاشة كلُّها بترتيبها — `OrdersList` الذي ترقّمه الشاشة
-        $orders = OrdersList::rows(request());
+        // صفوفُ الشاشة كلُّها بترتيبها — `OrdersList` الذي ترقّمه الشاشة، أو اتّحادُها بالتحصيلات
+        $rows = $merged ? AllSalesList::rows(request()) : OrdersList::rows(request());
+        $orders = array_values(array_filter($rows, fn ($r) => ($r['kind'] ?? AllSalesList::ORDER) === AllSalesList::ORDER));
         $html = view('pdf.orders-report', [
             'business' => TenantExportGuard::business(),
             'branch' => Demo::scopeName(true),
-            'orders' => $orders,
+            'rows' => $rows,
+            'ordersCount' => count($orders),
             // الملغى خارج المجموع كما في الشاشة — انظر ReportExportController::ordersXlsx
             'total' => array_sum(array_map(
                 fn ($o) => $o['status'] === OrderStatus::CANCELLED ? 0.0 : (float) $o['total'],
                 $orders,
             )),
+            // والتحصيلُ مجموعُه وحده — ليس من المبيعات
+            'links' => $merged ? PaidLinksList::totals(request()) : null,
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();
 

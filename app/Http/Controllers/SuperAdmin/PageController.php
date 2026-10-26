@@ -16,6 +16,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use App\Models\WhatsAppConnection;
 use App\Support\Activity;
+use App\Support\Addons\AddonViews;
 use App\Support\Billing;
 use App\Support\BusinessPurge;
 use App\Support\BusinessTypes;
@@ -82,6 +83,16 @@ class PageController extends Controller
      * هو Demo::displayCurrency نفسه الذي كانت Demo::money تستخدمه في القوالب،
      * فيخرج نفس النص حرفًا بحرف.
      */
+    /** سعرُ دورةٍ من باقة المتجر — أو `null` حين لا سعرَ معتمدًا في سياسته */
+    private static function planPrice(Business $business, string $cycle): ?float
+    {
+        try {
+            return Billing::price($business, $cycle);
+        } catch (\DomainException) {
+            return null;
+        }
+    }
+
     private function page(string $component, array $props): Response
     {
         return Inertia::render($component, [...$props, 'currency' => Demo::displayCurrency()]);
@@ -196,10 +207,13 @@ class PageController extends Controller
              * سقفه هو المرشَّح للترقية، ولا سبيل لمعرفته إن لم يُعرض.
              */
             'usage' => PlanLimits::usage($model),
+            // سياسةُ تسعير المتجر وإضافاتُه — استحقاقاتٍ وطلبات (`Addons\AddonViews`)
+            'addons' => AddonViews::forBusiness($model),
             'renewal' => [
-                'monthly' => Billing::price($model, 'monthly'),
-                'semiannual' => Billing::price($model, 'semiannual'),
-                'yearly' => Billing::price($model, 'yearly'),
+                // وسعرُ الباقة في سياسة المتجر — وبلا سعرٍ معتمدٍ فيها فراغٌ لا صفحةُ خطأ
+                'monthly' => self::planPrice($model, 'monthly'),
+                'semiannual' => self::planPrice($model, 'semiannual'),
+                'yearly' => self::planPrice($model, 'yearly'),
                 'endsAt' => optional($model->ends_at)->format('Y-m-d'),
                 'status' => $model->status,
                 /*

@@ -317,6 +317,8 @@ export const NAV: NavGroup[] = [
                 covers: ['admin.help.show'],
                 badge: 'support',
             },
+            /* «إضافات متجرك» — يطلب منها صاحبُ النشاط، ويقرؤها من يفتح الإعدادات */
+            { label: 'إضافات متجرك', icon: Package, route: 'admin.subscription.addons', section: 'settings' },
             {
                 label: 'الإعدادات',
                 icon: Settings,
@@ -343,6 +345,8 @@ export const PLATFORM_NAV: NavGroup[] = [
             { label: 'الشركات', icon: Building2, route: 'super-admin.businesses.index' },
             { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
             { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },
+            /* إضافاتُ الاشتراكات — كتالوجُها وطلباتُها وإطلاقُ سياستها للمتاجر الجديدة */
+            { label: 'إضافات الاشتراكات', icon: Package, route: 'super-admin.subscriptions.addons' },
             { label: 'المستخدمون', icon: Users, route: 'super-admin.users.index' },
             /* عقودُ أبعاد مع عملائها — تُرسَل برابطٍ وتُوقَّع من الهاتف */
             {

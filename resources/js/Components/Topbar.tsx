@@ -398,7 +398,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
                          * ضبطه — وهو ما لا يُفتح له من الشريط الجانبيّ. والأقسامُ
                          * تصل من الخادم (`auth.abilities`) لا تُخمَّن من الدور.
                          */}
-                        {abilities.includes('pos') && (
+                        {/* ونقطةُ البيع إضافةٌ لمتاجر سياسة الإضافات — لا زرَّ لمتجرٍ لم يشترِها */}
+                        {abilities.includes('pos') && auth?.planFeatures?.pos !== false && (
                             <Button asChild variant="ghost" size="icon" title={t('نقطة البيع')}>
                                 <Link href={route('pos.index')}>
                                     <Store />

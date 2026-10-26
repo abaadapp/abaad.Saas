@@ -18,6 +18,7 @@ import { BusinessDocuments, type BusinessDocumentsData } from './partials/Busine
 import WhatsAppCard, { type BusinessWhatsApp } from './partials/WhatsAppCard';
 import RecoveryCard, { type BusinessRecovery } from './partials/RecoveryCard';
 import GoogleCard, { type BusinessGoogle } from './partials/GoogleCard';
+import AddonsPanel, { type BusinessAddons } from './partials/AddonsPanel';
 import {
     Table,
     TableBody,
@@ -121,6 +122,8 @@ interface Props {
     purgeRun: PurgeRunState | null;
     /** مستنداتُ الشركة من قسم المستندات — آخرُ خمسين، والعددُ كلُّه */
     documents: BusinessDocumentsData;
+    /** سياسةُ التسعير وإضافاتُ الاشتراك — `Addons\AddonViews::forBusiness` */
+    addons: BusinessAddons;
 }
 
 
@@ -128,6 +131,7 @@ const TABS = [
     { key: 'overview', label: 'نظرة عامة' },
     { key: 'branches', label: 'الفروع' },
     { key: 'orders', label: 'آخر الطلبات' },
+    { key: 'addons', label: 'الإضافات' },
 ];
 
 export default function BusinessShow() {
@@ -147,6 +151,7 @@ export default function BusinessShow() {
         purge,
         purgeRun,
         documents,
+        addons,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [tab, setTab] = useState('overview');
@@ -378,6 +383,8 @@ export default function BusinessShow() {
             <Card className="overflow-hidden">
                 {/* داخل بطاقة: الحشو يُبعد التبويبات عن حدّها */}
                 <Tabs tabs={TABS} current={tab} onChange={setTab} className="px-4" />
+
+                {tab === 'addons' && <AddonsPanel businessId={business.id} data={addons} currency={currency} />}
 
                 {tab === 'overview' && (
                     <div className="p-5">

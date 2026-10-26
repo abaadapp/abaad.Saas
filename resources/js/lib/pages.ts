@@ -160,7 +160,7 @@ export function adminPages(reports: ReportLink[] = []): PageEntry[] {
     }
 
     // نقطة البيع — شاشةٌ خارج اللوحة، فلا مدخل لها في القائمة الجانبية
-    add({ label: 'نقطة البيع', icon: Store, href: route('pos.index'), group: 'أقسام النظام', section: 'pos' });
+    add({ label: 'نقطة البيع', icon: Store, href: route('pos.index'), group: 'أقسام النظام', section: 'pos', feature: 'pos' });
 
     /*
      * وأقسام الإعدادات تُفتح بـ`?section=` لا بالمرساة.

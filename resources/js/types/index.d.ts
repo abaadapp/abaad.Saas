@@ -14,6 +14,8 @@ export type PlanFeatureKey =
     | 'website'
     | 'marketing_tools'
     | 'integrations'
+    // نقطةُ البيع — إضافةٌ لمتاجر سياسة الإضافات، ومفتوحةٌ لكلّ متجرٍ قبلها
+    | 'pos'
     // قدراتُ المؤسسات — مغلقةٌ إلّا بالقائمة الصريحة (`PlanFeatures::ENTERPRISE`)
     | 'enterprise_transfers'
     | 'enterprise_replenishment'

@@ -9453,5 +9453,22 @@
     "سُجّل الاستلام من البوتيك": "Receipt from the boutique recorded",
     "خُصم :amount من الورقة :number": ":amount offset against sheet :number",
     "استُلمت قطعة البوتيك المرتجعة": "Returned boutique piece received",
-    "حُفظ حالُ القطع المرتجعة": "Returned pieces recorded"
+    "حُفظ حالُ القطع المرتجعة": "Returned pieces recorded",
+    "رقم الطلب أو السند": "Order or receipt no.",
+    "المحصّل عبر رابط دفع": "Collected via payment link",
+    "عدد التحصيلات عبر روابط الدفع": "Payment-link collections",
+    "مجموع التحصيلات عبر روابط الدفع (ليس من المبيعات)": "Payment-link collections total (not sales)",
+    "الطلبات وتحصيلات روابط الدفع": "Orders and payment-link collections",
+    "المبلغ المحصّل عبر Paymob": "Amount collected via Paymob",
+    "مرجع عملية Paymob": "Paymob transaction reference",
+    "مرجع الرابط": "Link reference",
+    "لا توجد فاتورة مرتبطة بهذا التحصيل": "No invoice is linked to this collection",
+    "عن الطلب": "For order",
+    "وصف الرابط": "Link description",
+    "طباعة سند القبض": "Print receipt",
+    "لا توجد فاتورة مرتبطة بهذا التحصيل — دُفع عبر رابط دفعٍ مستقلّ فسُجّل رصيدًا للعميل. ولا تُنشأ له فاتورة.": "No invoice is linked to this collection — it was paid through a standalone payment link and recorded as customer credit. No invoice is created for it.",
+    "دون فاتورة": "No invoice",
+    "محصّل": "Collected",
+    "مجموع التحصيلات عبر روابط الدفع (صفوفها في الجدول، وليست من إجمالي المبيعات)": "Payment-link collections total (listed in the table, not part of total sales)",
+    "رقم سند القبض": "Receipt no."
 }

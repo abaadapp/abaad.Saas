@@ -7,6 +7,7 @@ import ExportMenu from '@/Components/ExportMenu';
 import PeriodControls, { type PeriodState } from '@/Components/PeriodControls';
 import DataTable, { type Column, type Filter, type ServerPagination } from '@/Components/DataTable';
 import SmartLink from '@/Components/SmartLink';
+import { collectionHref, type PaidCollection } from '@/Components/PaidLinkCollection';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
@@ -18,7 +19,8 @@ import type { Order } from '@/types/models';
 interface Props {
     /** الفترةُ على تاريخ الطلب (`ListFilters::orderPeriod`) — من/إلى القديمة أو شهرٌ أو سنة */
     period?: PeriodState;
-    orders: Order[];
+    /** صفوفُ الصفحة — طلباتٌ، ومعها تحصيلاتُ الروابط في «كل المصادر» حين `withLinks` */
+    orders: SaleRow[];
     pagination: ServerPagination;
     filters: Record<string, string | null>;
     /** أعمدة يرتّبها الخادم — مصدرها `Sort::keys` في المتحكّم */
@@ -47,26 +49,20 @@ interface Props {
     mayOpenReceipts?: boolean;
     /** عددُ تحصيلات الروابط ومبلغُها تحت إجمالي «كل المصادر» — ليست منه */
     linkCollections?: { count: number; amount: number } | null;
+    /** أفي جدول «كل المصادر» تحصيلاتٌ بين الطلبات؟ — `AllSalesList::merges` */
+    withLinks?: boolean;
 }
 
-/** تحصيلٌ عبر رابط دفع — مالٌ قُبض عن بيعٍ محسوبٍ في فاتورته، لا طلب */
-export interface Collection {
-    key: string;
-    /** رقمُ سند القبض */
-    id: string;
-    /** مرجعُ العمليّة عند Paymob */
-    reference: string;
-    customer: string;
-    type: 'تحصيل فاتورة' | 'تحصيل عبر رابط دفع';
-    invoice: { id: number; number: string } | null;
-    /** الطلباتُ التي صدرت عنها الفاتورة — بيعُها هناك */
-    orders: string[];
-    amount: number;
-    date: string;
-    status: string;
-    review: boolean;
-    payment: { id: number; number: string };
-}
+/**
+ * صفُّ «كل المصادر»: طلبٌ، أو تحصيلٌ عبر رابط دفع بين الطلبات بيوم دفعه
+ * (`AllSalesList`). والطلبُ بلا `kind` هو الطلبُ كما كان.
+ */
+export type SaleRow = (Order & { kind?: 'order' }) | (Collection & { kind: 'link' });
+
+const isLink = (r: SaleRow): r is Collection & { kind: 'link' } => r.kind === 'link';
+
+/** تحصيلٌ عبر رابط دفع — مالٌ قُبض عن بيعٍ محسوبٍ في فاتورته، لا طلب (`PaidLinksList::row`) */
+export type Collection = PaidCollection;
 
 const PAYMENT_LINK = 'payment_link';
 
@@ -74,7 +70,7 @@ export default function OrdersIndex() {
     const {
         orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount, period,
         websiteCount, websiteAmount, statusOptions, channelOptions, mayDelete, context,
-        collections, collectionTotals, mayOpenReceipts, linkCollections,
+        collections, collectionTotals, mayOpenReceipts, linkCollections, withLinks,
     } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const currency = context!.currency;
@@ -86,7 +82,7 @@ export default function OrdersIndex() {
      * «حذف» البيعة إلغاؤها ماليًّا — `OrderController::destroy` ← `OrderCorrection::cancel`.
      * والصفُّ يبقى بحالة «ملغي»: الصفحةُ تُعاد من الخادم بالترشيح نفسه.
      */
-    const remove = async (o: Order) => {
+    const remove = async (o: SaleRow) => {
         const ok = await ask({
             title: 'حذف البيعة',
             message: 'هل تريد حذف هذه البيعة؟ سيُلغى أثرها المالي ويُعاد المخزون.',
@@ -96,8 +92,30 @@ export default function OrdersIndex() {
         if (ok) router.delete(route('admin.orders.destroy', o.id), { preserveScroll: true });
     };
 
-    const columns: Column<Order>[] = [
-        { key: 'id', header: 'رقم الطلب', cell: (o) => <span className="font-medium text-[#111]">{o.id}</span> },
+    /*
+     * ═══ صفُّ التحصيل بين الطلبات ═══
+     *
+     * في «كل المصادر» لمتجرٍ فُتحت فيه روابطُ الدفع يقع التحصيلُ بين الطلبات
+     * بيوم دفعه (`AllSalesList`). وهو مالٌ قُبض عن بيعٍ محسوبٍ في فاتورته: لا
+     * منتجاتَ له ولا موظّفَ ولا موعد، ومبلغُه «محصّل» لا إجماليُّ بيع، ولا «حذف».
+     * و«عرض» يفتح فاتورتَه الأصليّة — أو تحصيلَه حين لا فاتورة.
+     */
+    const columns: Column<SaleRow>[] = [
+        {
+            key: 'id',
+            header: 'رقم الطلب',
+            cell: (o) =>
+                isLink(o) ? (
+                    <span className="flex flex-col">
+                        <span className="font-medium text-[#111]">{o.id}</span>
+                        <span className="text-[11px] text-[#9ca3af]" dir="ltr">
+                            Paymob · {o.reference}
+                        </span>
+                    </span>
+                ) : (
+                    <span className="font-medium text-[#111]">{o.id}</span>
+                ),
+        },
         { key: 'customer', header: 'العميل', cell: (o) => o.customer || '—' },
         {
             /*
@@ -115,7 +133,17 @@ export default function OrdersIndex() {
             key: 'channel',
             header: 'المصدر',
             cell: (o) =>
-                o.channel === 'website' ? (
+                isLink(o) ? (
+                    <span className="flex flex-col items-start gap-0.5" data-testid="collection-type">
+                        <Badge variant="primary">
+                            <Link2 className="size-3" />
+                            {t('رابط دفع')}
+                        </Badge>
+                        <span className="text-[11px] text-[#6b7280]">
+                            {o.invoice ? `${t('تحصيل فاتورة')} ${o.invoice.number}` : t('دون فاتورة')}
+                        </span>
+                    </span>
+                ) : o.channel === 'website' ? (
                     <Badge variant="primary">
                         <Globe className="size-3" />
                         {t('الموقع الإلكتروني')}
@@ -132,30 +160,51 @@ export default function OrdersIndex() {
         {
             key: 'employee',
             header: 'الموظف',
-            cell: (o) => (o.channel === 'website' ? <span className="text-[#9ca3af]">—</span> : o.employee || '—'),
+            cell: (o) => (isLink(o) || o.channel === 'website' ? <span className="text-[#9ca3af]">—</span> : o.employee || '—'),
         },
         { key: 'branch', header: 'الفرع', cell: (o) => o.branch || '—' },
         {
             key: 'items_count',
             header: 'المنتجات',
             align: 'end',
-            cell: (o) => (
-                <span className="tabular-nums">
-                    {number(o.items_count)} {t('منتج')}
-                </span>
-            ),
+            cell: (o) =>
+                isLink(o) ? (
+                    <span className="text-[#9ca3af]">—</span>
+                ) : (
+                    <span className="tabular-nums">
+                        {number(o.items_count)} {t('منتج')}
+                    </span>
+                ),
         },
         {
             key: 'total',
             header: 'الإجمالي',
             align: 'end',
-            cell: (o) => <span className="tabular-nums font-medium">{money(o.total, currency)}</span>,
+            cell: (o) =>
+                isLink(o) ? (
+                    // محصّلٌ لا إجماليُّ بيع — لا يُجمع مع الطلبات
+                    <span className="flex flex-col items-end" data-testid="collection-amount">
+                        <span className="tabular-nums font-medium text-[#6d28d9]">{money(o.amount, currency)}</span>
+                        <span className="text-[11px] text-[#9ca3af]">{t('محصّل')}</span>
+                    </span>
+                ) : (
+                    <span className="tabular-nums font-medium">{money(o.total, currency)}</span>
+                ),
         },
         {
             key: 'payment',
             header: 'الدفع',
             // "بطاقة" تُعرض "فيزا" كما في القالب الأصلي
-            cell: (o) => <Badge status={o.payment}>{t(o.payment === 'بطاقة' ? 'فيزا' : o.payment)}</Badge>,
+            cell: (o) =>
+                isLink(o) ? (
+                    o.review ? (
+                        <Badge variant="warning">{t('مدفوع — يحتاج مراجعة')}</Badge>
+                    ) : (
+                        <Badge variant="neutral">Paymob</Badge>
+                    )
+                ) : (
+                    <Badge status={o.payment}>{t(o.payment === 'بطاقة' ? 'فيزا' : o.payment)}</Badge>
+                ),
         },
         { key: 'date', header: 'التاريخ', cell: (o) => <span className="text-[#6b7280]">{o.date}</span> },
         {
@@ -175,7 +224,7 @@ export default function OrdersIndex() {
             key: 'scheduled',
             header: 'موعد التسليم',
             cell: (o) =>
-                o.scheduled && o.scheduled !== '—' ? (
+                !isLink(o) && o.scheduled && o.scheduled !== '—' ? (
                     <span className="flex flex-col">
                         <span className={o.late ? 'font-medium text-[#b91c1c]' : 'text-[#4b4b4b]'}>
                             {o.scheduled}
@@ -192,7 +241,25 @@ export default function OrdersIndex() {
             key: 'actions',
             header: 'إجراءات',
             align: 'end',
-            cell: (o) => (
+            cell: (o) =>
+                isLink(o) ? (
+                    <div className="flex items-center justify-end gap-1">
+                        {/* «عرض» يفتح الفاتورةَ الأصليّة نفسَها — لا سندَ القبض */}
+                        <Button variant="ghost" size="sm" asChild>
+                            <SmartLink {...collectionHref(o)} data-testid="collection-view">
+                                <Eye />
+                                {t('عرض')}
+                            </SmartLink>
+                        </Button>
+                        {mayOpenReceipts && (
+                            <Button variant="ghost" size="sm" asChild>
+                                <SmartLink routeName="admin.customerPayments.show" href={route('admin.customerPayments.show', o.payment.id)}>
+                                    {t('سند القبض')}
+                                </SmartLink>
+                            </Button>
+                        )}
+                    </div>
+                ) : (
                 <div className="flex items-center justify-end gap-1">
                     <Button variant="ghost" size="sm" asChild>
                         <SmartLink routeName="admin.orders.show" href={route('admin.orders.show', o.id)}>
@@ -214,11 +281,11 @@ export default function OrdersIndex() {
                         </Button>
                     )}
                 </div>
-            ),
+                ),
         },
     ];
 
-    const tableFilters: Filter<Order>[] = [
+    const tableFilters: Filter<SaleRow>[] = [
         {
             /*
              * والقناةُ أوّلُ مُرشِّحٍ لا آخرُه: «كم باع الموقع؟» سؤالٌ يُسأل
@@ -273,7 +340,7 @@ export default function OrdersIndex() {
             : ([
                   { label: 'من', type: 'date', param: 'from' },
                   { label: 'إلى', type: 'date', param: 'to' },
-              ] as Filter<Order>[])),
+              ] as Filter<SaleRow>[])),
     ];
 
     /*
@@ -349,15 +416,24 @@ export default function OrdersIndex() {
             key: 'actions',
             header: 'إجراءات',
             align: 'end',
-            cell: (c) =>
-                mayOpenReceipts ? (
+            cell: (c) => (
+                <div className="flex items-center justify-end gap-1">
+                    {/* «عرض» يفتح الفاتورةَ الأصليّة نفسَها — أو تحصيلَه حين لا فاتورة */}
                     <Button variant="ghost" size="sm" asChild>
-                        <SmartLink routeName="admin.customerPayments.show" href={route('admin.customerPayments.show', c.payment.id)}>
+                        <SmartLink {...collectionHref(c)} data-testid="collection-view">
                             <Eye />
-                            {t('سند القبض')}
+                            {t('عرض')}
                         </SmartLink>
                     </Button>
-                ) : null,
+                    {mayOpenReceipts && (
+                        <Button variant="ghost" size="sm" asChild>
+                            <SmartLink routeName="admin.customerPayments.show" href={route('admin.customerPayments.show', c.payment.id)}>
+                                {t('سند القبض')}
+                            </SmartLink>
+                        </Button>
+                    )}
+                </div>
+            ),
         },
     ];
     const collectionFilters: Filter<Collection>[] = tableFilters
@@ -432,7 +508,7 @@ export default function OrdersIndex() {
                 <DataTable
                     rows={orders}
                     columns={columns}
-                    rowKey={(o) => o.id}
+                    rowKey={(o) => (isLink(o) ? o.key : o.id)}
                     searchPlaceholder="ابحث برقم الطلب أو العميل أو الموظف…"
                     searchable={() => ''}
                     filters={tableFilters}
@@ -444,8 +520,10 @@ export default function OrdersIndex() {
                     والملغى يُذكر صراحةً كي لا يُقرأ الفرقُ خطأً في الجمع.
                 */}
                 <div className="border-t border-[var(--ui-border,#e8e8e8)] px-4 py-3 text-sm text-[#6b7280]">
-                    {t('الفواتير')}: {number(totalCount)} — {t('الإجمالي')}:{' '}
-                    <span className="font-semibold text-[#111]">{money(totalAmount, currency)}</span>
+                    {t('الفواتير')}: {number(totalCount)} — {withLinks ? t('إجمالي المبيعات') : t('الإجمالي')}:{' '}
+                    <span className="font-semibold text-[#111]" data-testid="sales-total">
+                        {money(totalAmount, currency)}
+                    </span>
                     {cancelledCount > 0 && (
                         <span className="text-[#9ca3af]">
                             {' '}
@@ -470,7 +548,10 @@ export default function OrdersIndex() {
                     */}
                     {linkCollections && (
                         <span className="mt-1 block" data-testid="link-collections">
-                            {t('وتحصيلات عبر روابط الدفع (ليست ضمن الإجمالي)')}: {number(linkCollections.count)} —{' '}
+                            {withLinks
+                                ? t('مجموع التحصيلات عبر روابط الدفع (صفوفها في الجدول، وليست من إجمالي المبيعات)')
+                                : t('وتحصيلات عبر روابط الدفع (ليست ضمن الإجمالي)')}
+                            : {number(linkCollections.count)} —{' '}
                             <span className="font-semibold">{money(linkCollections.amount, currency)}</span>{' '}
                             <SmartLink
                                 routeName="admin.orders.index"

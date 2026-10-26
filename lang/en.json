@@ -9486,5 +9486,6 @@
     "دون فاتورة": "No invoice",
     "محصّل": "Collected",
     "مجموع التحصيلات عبر روابط الدفع (صفوفها في الجدول، وليست من إجمالي المبيعات)": "Payment-link collections total (listed in the table, not part of total sales)",
-    "رقم سند القبض": "Receipt no."
+    "رقم سند القبض": "Receipt no.",
+    "حُفظ ما سوى الصورة — صورةٌ لم تُرفع فلم تُحفظ. أعد رفعها من حقلها ثمّ احفظ.": "Everything but the image was saved — an image did not upload, so it was not saved. Upload it again from its field, then save."
 }

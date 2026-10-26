@@ -24,7 +24,7 @@ import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
-import { uploads, useUploadsInFlight } from '@/lib/uploads';
+import { uploads, useUploadFailures, useUploadsInFlight } from '@/lib/uploads';
 import { cn } from '@/lib/utils';
 import { type ArrivalsCuration, CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
 import CatalogFitField from './theme/CatalogFitField';
@@ -498,6 +498,9 @@ export default function ThemeEditor({
     const queue = useRef<{ busy: boolean; keys: Set<string>; order: string[] | null }>({ busy: false, keys: new Set(), order: null });
     const uploading = useUploadsInFlight();
     const [failure, setFailure] = useState<string | null>(null);
+    // وصورةٌ لم تُرفع: ما سواها حُفظ وهي لم تُحفظ — فلا يُقال «حُفظ» وحده
+    const imageLeft = useUploadFailures() > 0 && status === 'saved';
+    const imageLeftText = t('حُفظ ما سوى الصورة — صورةٌ لم تُرفع فلم تُحفظ. أعد رفعها من حقلها ثمّ احفظ.');
 
     const failedBecause = (status: number) =>
         status === 419 || status === 401
@@ -1209,13 +1212,13 @@ export default function ThemeEditor({
                                 </Button>
                             </div>
                         )}
-                        {r.fields.length > 0 && (status === 'waiting' || (status === 'failed' && failure)) && (
+                        {r.fields.length > 0 && (status === 'waiting' || (status === 'failed' && failure) || imageLeft) && (
                             <p
-                                role={status === 'failed' ? 'alert' : 'status'}
+                                role={status === 'waiting' ? 'status' : 'alert'}
                                 data-testid={`row-${r.key}-save-status`}
-                                className={cn('mt-2 text-end text-[12px]', status === 'failed' ? 'text-[#b91c1c]' : 'text-[#6b7280]')}
+                                className={cn('mt-2 text-end text-[12px]', status === 'waiting' ? 'text-[#6b7280]' : 'text-[#b91c1c]')}
                             >
-                                {status === 'waiting' ? t('ينتظر اكتمال رفع الصورة ثمّ يحفظ…') : failure}
+                                {status === 'waiting' ? t('ينتظر اكتمال رفع الصورة ثمّ يحفظ…') : imageLeft ? imageLeftText : failure}
                             </p>
                         )}
                     </div>
@@ -1268,9 +1271,11 @@ export default function ThemeEditor({
             <div className="mb-4 flex items-center justify-end gap-2">
                 <span className="flex items-center gap-1.5 text-[12px] text-[#6b7280]">
                     {(status === 'saving' || status === 'waiting') && <Loader2 className="size-3.5 animate-spin" />}
-                    {status === 'saved' && <Check className="size-3.5 text-[#059669]" />}
-                    {status === 'failed' && <CircleAlert className="size-3.5 text-[#b91c1c]" />}
+                    {status === 'saved' && ! imageLeft && <Check className="size-3.5 text-[#059669]" />}
+                    {(status === 'failed' || imageLeft) && <CircleAlert className="size-3.5 text-[#b91c1c]" />}
+                    {imageLeft && <span data-testid="editor-image-not-saved">{imageLeftText}</span>}
                     {status !== 'clean' &&
+                        ! imageLeft &&
                         t(status === 'saving' ? 'يُحفظ…' : status === 'waiting' ? 'ينتظر اكتمال رفع الصورة ثمّ يحفظ…' : status === 'saved' ? 'حُفظ' : 'تعذّر الحفظ')}
                     {status === 'failed' && failure && <span data-testid="editor-save-failure">— {failure}</span>}
                 </span>

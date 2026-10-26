@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { router as core } from '@inertiajs/core';
@@ -32,7 +32,9 @@ const { default: ThemeEditor } = await import('@/Pages/Admin/Website/ThemeEditor
  *    بلا صورة فتمحوها، فتصير الوحدةُ فارغةً تُطرح عند الحفظ.
  *  • وما يُكتب أثناء الرفع لا يمحوه الرفعُ حين يعود.
  *  • ورفعٌ يفشل يقول لماذا، ويُعاد من الحقل نفسِه.
- *  • والحفظُ والصورةُ تُرفع ينتظرها ثمّ يُرسل الصفحةَ بصورتها.
+ *  • والحفظُ والصورةُ تُرفع ينتظرها ثمّ يُرسل الصفحةَ بصورتها — والكبيرةُ تُنتظر
+ *    من لحظة اختيارها، فتصغيرُها على الهاتف ثوانٍ قبل أن يُرسل شيء.
+ *  • ورفعٌ فشل لا يُقال بعده «حُفظ»: ما سوى الصورة حُفظ، وهي لم تُحفظ.
  *  • وحفظٌ واحدٌ في الطريق: الثاني ينتظر ويُرسَل بآخر ما في الشاشة، وما يُعدّ
  *    محفوظًا هو ما أُرسل — وما كُتب أثناءه يبقى غيرَ محفوظ.
  *  • وفشلُ الحفظ (حقلٌ مرفوض، انقطاعٌ، جلسةٌ انتهت) يُقال ويُبقي ما كُتب.
@@ -69,9 +71,9 @@ const linkTo = (slug: string, title: string): MenuItem => ({ type: 'link', id: '
 
 const URL_A = '/storage/website/1/a.jpg';
 
-const draw = (menu = serializeMenu([...parseMenu(''), linkTo('services', 'خدماتنا')]), pages = serializePages([page()])) => {
+const draw = (menu = serializeMenu([...parseMenu(''), linkTo('services', 'خدماتنا')]), pages = serializePages([page()]), props: Record<string, unknown> = {}) => {
     for (const k of Object.keys(pageProps)) delete (pageProps as Record<string, unknown>)[k];
-    Object.assign(pageProps, { translations: {}, auth: { user: { id: 7, businessId: 5 }, abilities: [], mayActions: [] } });
+    Object.assign(pageProps, { translations: {}, auth: { user: { id: 7, businessId: 5 }, abilities: [], mayActions: [] }, ...props });
 
     const view = render(
         <ThemeEditor
@@ -133,14 +135,27 @@ const uploadsAnswered = () => {
 const openServices = () => fireEvent.click(screen.getByTestId('menu-item-4-open'));
 const P = 'menu-item-4-page';
 const pagesOf = (data: Record<string, unknown>) => parsePages(String(data.store_custom_pages));
-const pick = (testid: string) => {
+const pick = (testid: string, file = new File(['x'], 'p.jpg', { type: 'image/jpeg' })) => {
     const input = within(screen.getByTestId(testid)).getByLabelText('الصورة', { selector: 'input' });
-    fireEvent.change(input, { target: { files: [new File(['x'], 'p.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.change(input, { target: { files: [file] } });
+};
+
+/** صورةُ هاتفٍ تُفكّ ببطء — `decoded` يُكملها حين يُطلب */
+const slowPhoneImage = () => {
+    let decoded!: () => void;
+    vi.stubGlobal('createImageBitmap', vi.fn(() => new Promise((resolve) => {
+        decoded = () => resolve({ width: 4032, height: 3024, close: () => {} });
+    })));
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: () => {} } as never);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((done: BlobCallback) => done(new Blob(['y'], { type: 'image/jpeg' })));
+
+    return { file: new File(['x'.repeat(100)], 'IMG_0001.jpg', { type: 'image/jpeg' }), decode: () => act(() => decoded()) };
 };
 
 beforeEach(() => window.localStorage.clear());
 afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
 });
 
@@ -219,6 +234,91 @@ describe('صورةُ الوحدة', () => {
         await reply(0, 200, { url: URL_A, meta: null });
         expect(sent).toHaveLength(1);
         expect(pagesOf(sent[0].data)[0].blocks[0]).toEqual({ type: 'image', image: URL_A, fit: 'contain' });
+    });
+
+    it('وصورةٌ كبيرةٌ تُصغَّر أوّلًا: الحفظُ ينتظرها من لحظة اختيارها — لا من لحظة إرسالها', async () => {
+        const { fetched, reply } = uploadsAnswered();
+        const { sent } = capture();
+        const phone = slowPhoneImage();
+        // والحدُّ دون الصورة — فتُصغَّر قبل أن تُرسل
+        draw(undefined, undefined, { uploadMax: 50 });
+        openServices();
+        fireEvent.click(screen.getByTestId(`${P}-add-image`));
+
+        pick(`${P}-block-0`, phone.file);
+        fireEvent.click(screen.getByTestId('row-menu-save'));
+
+        // تُصغَّر بعد: لا رفعَ ولا حفظ — والحفظُ يقول إنّه ينتظرها
+        expect(fetched).not.toHaveBeenCalled();
+        expect(sent).toHaveLength(0);
+        expect(screen.getByTestId('row-menu-save-status')).toHaveTextContent('ينتظر اكتمال رفع الصورة');
+
+        phone.decode();
+        await waitFor(() => expect(fetched).toHaveBeenCalledTimes(1));
+        expect((fetched.mock.calls[0][1]?.body as FormData).get('image')).toHaveProperty('size', 1);
+        expect(sent).toHaveLength(0);
+
+        await reply(0, 200, { url: URL_A, meta: { w: 2000, h: 1500 } });
+        expect(sent).toHaveLength(1);
+        expect(pagesOf(sent[0].data)[0].blocks).toEqual([{ type: 'image', image: URL_A, fit: 'contain' }]);
+    });
+
+    it('ورفعٌ يفشل والحفظُ ينتظره: يُحفظ ما كُتب — ولا يُقال «حُفظ» والصورةُ لم تُحفظ', async () => {
+        const { reply } = uploadsAnswered();
+        const { sent, answer } = capture();
+        draw();
+        openServices();
+        fireEvent.click(screen.getByTestId(`${P}-add-heading`));
+        fireEvent.click(screen.getByTestId(`${P}-add-image`));
+        fireEvent.change(screen.getByTestId(`${P}-block-0-text`), { target: { value: 'Strategic Business Collaborations' } });
+
+        pick(`${P}-block-1`);
+        fireEvent.click(screen.getByTestId('row-menu-save'));
+        await reply(0, 413, {});
+
+        // ما كُتب يُرسَل ولا ينتظر صورةً لن تأتي
+        expect(sent).toHaveLength(1);
+        expect(pagesOf(sent[0].data)[0].blocks[0]).toEqual({ type: 'heading', text_ar: 'Strategic Business Collaborations', text_en: '' });
+        answer(0);
+
+        expect(screen.queryByText('حُفظ')).toBeNull();
+        expect(screen.getByTestId('editor-image-not-saved')).toHaveTextContent('صورةٌ لم تُرفع فلم تُحفظ');
+        expect(screen.getByTestId('row-menu-save-status')).toHaveTextContent('صورةٌ لم تُرفع فلم تُحفظ');
+        expect(screen.getByText(/الصورة أكبر ممّا يقبله الخادم/)).toBeInTheDocument();
+
+        // ثمّ تُعاد فتُرفع وتُحفظ — فيُقال «حُفظ»
+        pick(`${P}-block-1`);
+        await reply(1, 200, { url: URL_A, meta: null });
+        expect(screen.queryByTestId('editor-image-not-saved')).toBeNull();
+        fireEvent.click(screen.getByTestId('row-menu-save'));
+        expect(pagesOf(sent[1].data)[0].blocks[1]).toEqual({ type: 'image', image: URL_A, fit: 'contain' });
+        answer(1);
+        expect(screen.getByText('حُفظ')).toBeInTheDocument();
+    });
+
+    it('ورفعٌ يفشل بعد حفظٍ ناجح: «حُفظ» لا يبقى — حتى تُزال الوحدةُ أو تُعاد صورتُها', async () => {
+        const { reply } = uploadsAnswered();
+        const { answer } = capture();
+        draw();
+        openServices();
+        fireEvent.click(screen.getByTestId(`${P}-add-heading`));
+        fireEvent.change(screen.getByTestId(`${P}-block-0-text`), { target: { value: 'Monthly Flower Subscriptions' } });
+        fireEvent.click(screen.getByTestId('row-menu-save'));
+        answer(0);
+        expect(screen.getByText('حُفظ')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId(`${P}-add-image`));
+        pick(`${P}-block-1`);
+        await reply(0, 500, {});
+
+        expect(screen.getByText('تعذّر رفع الصورة — أعد المحاولة.')).toBeInTheDocument();
+        expect(screen.queryByText('حُفظ')).toBeNull();
+        expect(screen.getByTestId('editor-image-not-saved')).toBeInTheDocument();
+
+        // وحذفُ الوحدة يُسقطها من الحساب — فما بقي هو المحفوظ
+        fireEvent.click(screen.getByTestId(`${P}-block-1-delete`));
+        expect(screen.queryByTestId('editor-image-not-saved')).toBeNull();
+        expect(screen.getByText('حُفظ')).toBeInTheDocument();
     });
 });
 

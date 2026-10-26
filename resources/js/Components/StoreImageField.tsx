@@ -41,7 +41,7 @@ import { cn } from '@/lib/utils';
  * تُكتب «الصورة كاملة» بالنسخة نفسِها التي لا صورةَ فيها — فتُمحى الصورةُ في
  * اللحظة التي وصلت فيها، وتصير الوحدةُ فارغةً تُطرح عند الحفظ (حادثة RIBBON،
  * ٢٦ أكتوبر: الصورةُ على القرص ولا تذكرها صفحة). فالرابطُ يُكتب بآخر دالّةٍ رُسمت
- * (`latest`)، والطريقةُ بعد أن تصل الصورةُ قيمتَها (`fitAfter`).
+ * (`latest`)، والطريقةُ بعد أن تصل الصورةُ قيمتَها (`landing`).
  *
  * ═══ والرفعُ طلبٌ وحده لا زيارةُ Inertia ═══
  *
@@ -177,22 +177,61 @@ export default function StoreImageField({
     const latest = useRef({ onChange, onFitChange });
     latest.current = { onChange, onFitChange };
     const mounted = useRef(true);
+
+    // والرفعُ مفتوحٌ من لحظة الاختيار حتى تستقرّ الصورةُ في الصفحة — والحفظُ ينتظره (`uploads`)
+    const open = useRef<(() => void) | null>(null);
+    const close = () => {
+        const finish = open.current;
+        open.current = null;
+        finish?.();
+    };
+    const self = useRef({});
+    const fail = (message: string) => {
+        setError(message);
+        uploads.failed(self.current, true);
+    };
+    const clear = () => {
+        setError(null);
+        uploads.failed(self.current, false);
+    };
+
     useEffect(() => {
         mounted.current = true;
+        const field = self.current;
 
+        // وحقلٌ أُزيل لا يُنتظر — ولا تُعدّ صورتُه التي لم تُرفع
         return () => {
             mounted.current = false;
+            close();
+            uploads.failed(field, false);
         };
     }, []);
 
-    // وكلُّ صورةٍ جديدةٍ تبدأ «كاملة» — تُكتب بعد أن تصل الصورةُ قيمتَها، لا من النسخة التي لا صورةَ فيها
-    const [fitAfter, setFitAfter] = useState<string | null>(null);
+    /*
+        ورابطُها ثمّ «كاملة» — كلٌّ في رسمٍ بعد الآخر، لا من النسخة التي لا صورةَ فيها.
+        ولا يُغلَق الرفعُ حتى يصلا الصفحةَ: فحفظٌ ينتظر الصورةَ يقرأ الشاشةَ وهما فيها.
+    */
+    const [landing, setLanding] = useState<{ url: string; asked: boolean } | null>(null);
     useEffect(() => {
-        if (fitAfter !== null && value === fitAfter) {
-            setFitAfter(null);
-            latest.current.onFitChange?.('contain');
+        if (! landing) return;
+
+        // وأمٌّ لم تكتب الرابطَ في رسمه لا تُعلِّق الحفظ — و«كاملة» تُكتب حين يصل
+        if (value !== landing.url) {
+            close();
+
+            return;
         }
-    }, [value, fitAfter]);
+
+        if (latest.current.onFitChange && fit !== 'contain' && ! landing.asked) {
+            latest.current.onFitChange('contain');
+            setLanding({ url: landing.url, asked: true });
+
+            return;
+        }
+
+        setLanding(null);
+        close();
+    }, [value, fit, landing]);
 
     const send = async (file: File) => {
         const done = () => {
@@ -202,12 +241,12 @@ export default function StoreImageField({
 
         if (file.size > max) {
             done();
-            setError(t('الصورة أكبر من :mb ميغابايت — صغّرها ثمّ ارفعها.', { mb }));
+            fail(t('الصورة أكبر من :mb ميغابايت — صغّرها ثمّ ارفعها.', { mb }));
+            close();
 
             return;
         }
 
-        const finished = uploads.begin();
         try {
             const body = new FormData();
             body.append('image', file);
@@ -225,16 +264,17 @@ export default function StoreImageField({
             if (res.ok && data?.url) {
                 latest.current.onChange(data.url);
                 setMeta(data.meta ?? null);
-                if (latest.current.onFitChange) setFitAfter(data.url);
+                setLanding({ url: data.url, asked: false });
 
                 return;
             }
 
-            setError(uploadFailure(res.status, data, mb, t));
+            fail(uploadFailure(res.status, data, mb, t));
+            close();
         } catch {
-            if (mounted.current) setError(t('تعذّر الاتصال — تحقّق من الإنترنت ثمّ أعد المحاولة. لم يضع شيءٌ ممّا كتبت.'));
+            if (mounted.current) fail(t('تعذّر الاتصال — تحقّق من الإنترنت ثمّ أعد المحاولة. لم يضع شيءٌ ممّا كتبت.'));
+            close();
         } finally {
-            finished();
             if (mounted.current) done();
         }
     };
@@ -243,7 +283,10 @@ export default function StoreImageField({
         if (! file) return;
 
         setBusy(true);
-        setError(null);
+        clear();
+        close();
+        setLanding(null);
+        open.current = uploads.begin();
 
         // وما يسعه الحدُّ يُرسَل في الحال كما هو — والكبيرُ يُصغَّر أوّلًا
         if (needsShrink(file, max)) {
@@ -331,7 +374,10 @@ export default function StoreImageField({
                         <button
                             type="button"
                             aria-label={`${t('أزل')} ${t(label)}`}
-                            onClick={() => onChange('')}
+                            onClick={() => {
+                                onChange('');
+                                clear();
+                            }}
                             className="shrink-0 rounded-md p-1.5 text-[#6b7280] hover:bg-[#f3f4f6]"
                         >
                             <X className="size-4" />

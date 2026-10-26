@@ -342,8 +342,9 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
         $this->assertSame([2.0, 20.0], [$props['invoice']['items'][0]['quantity'], $props['invoice']['items'][0]['unit_price']]);
         $this->assertStringContainsString('باقة ورد CR-1', $props['invoice']['items'][0]['description']);
         $this->assertSame(round((float) $invoice->total, 3), round((float) $props['invoice']['total'], 3));
-        $this->assertArrayHasKey('tax_total', $props['invoice']);
-        $this->assertArrayHasKey('discount_total', $props['invoice']);
+        $this->assertSame(round((float) $invoice->tax_total, 3), round((float) $props['invoice']['tax_total'], 3));
+        $this->assertSame(round((float) $invoice->discount_total, 3), round((float) $props['invoice']['discount_total'], 3));
+        $this->assertStringContainsString($invoice->number, $props['paper']['html'], 'لم تُبنَ ورقةُ الفاتورة للطباعة');
         $this->assertSame(0.0, round((float) $props['invoice']['outstanding'], 3), 'لم يُقرأ السدادُ في الفاتورة');
 
         $c = $props['collection'];
@@ -365,11 +366,21 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
     {
         $web = $this->order('WEB-7', SalesChannel::WEBSITE, 55, '2026-10-19 09:00:00', 'غير مدفوع', $this->ministry);
         $invoice = $this->invoiceOf($web, $this->ministry);
-        $link = $this->pay($this->link($invoice, 55.0, $this->ministry));
+        $link = $this->pay($this->link($invoice, null, $this->ministry));
 
+        $this->get(route('admin.orders.collection', $link->id))
+            ->assertRedirect(route('admin.customerInvoices.show', ['id' => $invoice->id, 'link' => $link->id]));
         $props = $this->get(route('admin.customerInvoices.show', ['id' => $invoice->id, 'link' => $link->id]))->assertOk()->viewData('page')['props'];
         $this->assertSame(['WEB-7'], $props['invoice']['orders']);
+        $this->assertSame([2.0, 27.5], [$props['invoice']['items'][0]['quantity'], $props['invoice']['items'][0]['unit_price']]);
+        $this->assertStringContainsString('باقة ورد WEB-7', $props['invoice']['items'][0]['description']);
+        $this->assertSame(round((float) $invoice->tax_total, 3), round((float) $props['invoice']['tax_total'], 3));
+        $this->assertSame(round((float) $invoice->total, 3), round((float) $props['invoice']['total'], 3));
+        $this->assertSame(0.0, round((float) $props['invoice']['outstanding'], 3));
         $this->assertSame($link->id, $props['collection']['link_id']);
+        $this->assertSame((string) $link->provider_transaction_id, (string) $props['collection']['reference']);
+        $this->assertStringContainsString($invoice->number, $props['paper']['html']);
+        $this->get(route('admin.customerInvoices.pdf', $invoice->id))->assertOk();
         $this->get(route('admin.orders.show', 'WEB-7'))->assertOk();
     }
 
@@ -486,13 +497,16 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
         $credit = $this->order('CR-1', SalesChannel::POS, 40, '2026-10-19 09:00:00', 'غير مدفوع', $this->company);
         $invoice = $this->invoiceOf($credit, $this->company);
         $this->order('POS-1', SalesChannel::POS, 10);
+        $web = $this->invoiceOf($this->order('WEB-1', SalesChannel::WEBSITE, 30, '2026-10-19 10:00:00', 'غير مدفوع', $this->ministry), $this->ministry);
         $before = $this->sales();
         $revenue = [round(Ledger::netRevenue($this->shop->id), 3), round(Ledger::outputTax($this->shop->id), 3)];
 
-        $link = $this->pay($this->link($invoice, 40.0, $this->company));
+        $link = $this->pay($this->link($invoice, null, $this->company));
+        $this->pay($this->link($web, null, $this->ministry));
         $standalone = $this->pay($this->link(null, 25, $this->company));
 
         $after = $this->sales();
+        $this->assertCount(3, array_filter($after['orders'], fn ($r) => ($r['kind'] ?? '') === AllSalesList::LINK));
         $this->assertSame([$before['totalCount'], $before['totalAmount'], $before['cancelledCount']], [$after['totalCount'], $after['totalAmount'], $after['cancelledCount']]);
         $this->assertSame($revenue, [round(Ledger::netRevenue($this->shop->id), 3), round(Ledger::outputTax($this->shop->id), 3)], 'تحرّك الإيرادُ أو الضريبة بتحصيل');
 
@@ -544,6 +558,30 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
         // والجارُ يرى ما له وحده
         $this->assertSame(['عميل الجار'], array_column(array_filter($this->sales([], $this->stranger)['orders'], fn ($r) => ($r['kind'] ?? '') === AllSalesList::LINK), 'customer'));
         $this->actingAs($this->stranger)->get(route('admin.orders.collection', $alone->id))->assertNotFound();
+    }
+
+    /** كلُّ متجرٍ فُتحت فيه الروابطُ يرى تحصيلاتِه — بلا معرّفِ متجرٍ ثابت */
+    public function test_every_shop_with_payment_links_reads_its_own_collections(): void
+    {
+        $mine = $this->pay($this->link(null, 10));
+        $theirs = PaymentLinks::create($this->other->id, Customer::create(['business_id' => $this->other->id, 'name' => 'عميل الجار', 'phone' => '93333333']), null, 20, null, null);
+        $this->hook($this->obj($theirs), 'hmac-other');
+        $theirs = $theirs->fresh();
+
+        // ومتجرٌ ثالثٌ لم تُفتح فيه الروابط: «كل المصادر» كما كانت
+        [$third, $thirdOwner] = $this->business('متجر بلا روابط', 'third@all-sales.om', 'hmac-third');
+        PaymentGateway::where('business_id', $third->id)->delete();
+
+        foreach ([[$this->owner, $mine], [$this->stranger, $theirs]] as [$who, $link]) {
+            $props = $this->sales([], $who);
+            $this->assertTrue($props['withLinks'], $who->email);
+            $this->assertSame(
+                [CustomerPayment::findOrFail($link->customer_payment_id)->number],
+                array_column(array_filter($props['orders'], fn ($r) => ($r['kind'] ?? '') === AllSalesList::LINK), 'id'),
+                $who->email,
+            );
+        }
+        $this->assertFalse($this->sales([], $thirdOwner)['withLinks']);
     }
 
     public function test_a_chosen_branch_reads_only_the_collections_of_its_invoices(): void

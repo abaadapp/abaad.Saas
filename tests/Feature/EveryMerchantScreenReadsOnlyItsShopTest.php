@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\PaymentGateway;
 use App\Support\ReportColumns;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
@@ -39,6 +41,20 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         parent::setUp();
         $this->buildTwoShops();
         $this->markShopB();
+
+        /*
+         * والمتجران فُتحت فيهما روابطُ الدفع (`PaymentLinks::ready`): فتُقرأ «كل
+         * المصادر» بتحصيلاتها (`AllSalesList`) — ولكلٍّ تحصيلٌ مدفوع (`paid_link`)
+         * عميلُه في B معلَّم. ولا طلبَ يخرج إلى Paymob من شاشةٍ تُقرأ.
+         */
+        Http::preventStrayRequests();
+        foreach (['a', 'b'] as $shop) {
+            PaymentGateway::create([
+                'business_id' => $this->ids[$shop]['bid'], 'provider' => PaymentGateway::PAYMOB, 'active' => true,
+                'public_key' => 'pk_'.$shop, 'secret_key' => 'sk_'.$shop, 'hmac_secret' => 'hmac_'.$shop,
+                'card_integration_id' => '111', 'api_key' => 'api_'.$shop, 'mode' => PaymentGateway::LIVE,
+            ]);
+        }
     }
 
     /** يعلّم صفوفَ B — وكلُّ علامةٍ تبدأ بـ`MARK` */
@@ -189,6 +205,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.inventory.receipts.attachment' => ['id' => 'grn'],
         'admin.inventory.receipts.pdf' => ['id' => 'grn'],
         'admin.orders.giftcard' => ['id' => 'order'],
+        // «عرض» تحصيلٍ عبر رابط دفعٍ مستقلّ — `PaidLinksList::detail` مقيّدٌ بمتجر الجلسة
+        'admin.orders.collection' => ['id' => 'paid_link'],
         'admin.orders.show' => ['number' => 'order_number'],
         'admin.orders.deliveryNote' => ['number' => 'order_number'],
         'admin.orders.deliveryNoteThermal' => ['number' => 'order_number'],
@@ -319,7 +337,52 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         $this->assertSame([], $missing, "شاشاتٌ بمعرّفٍ لا يفحصها هذا الاختبار:\n".implode("\n", $missing));
     }
 
-    /* ══════════════ ٣ · التصدير ══════════════ */
+    /* ══════════════ ٣ · تحصيلاتُ روابط الدفع ══════════════ */
+
+    /**
+     * تاجرُ A يرى تحصيلَه في «كل المصادر» ويفتحه — ولا يفتح تحصيلَ B ولا
+     * فاتورتَه ولا سندَه، ولا يُلصق تحصيلُ B بفاتورته هو، ولا يجده بمرجعه.
+     */
+    public function test_a_merchant_opens_its_own_collection_and_nothing_of_shop_b(): void
+    {
+        $a = $this->ids['a'];
+        $b = $this->ids['b'];
+        $this->actingAs($this->ownerA);
+
+        $all = $this->get(route('admin.orders.index'))->assertOk();
+        $this->assertNull($this->leak($all));
+        $props = $all->viewData('page')['props'];
+        $this->assertTrue($props['withLinks']);
+        $receipts = array_column(array_filter($props['orders'], fn ($r) => ($r['kind'] ?? '') === 'link'), 'id');
+        $this->assertContains('RC-A-1', $receipts);
+        $this->assertNotContains('RC-B-1', $receipts);
+
+        $own = $this->get(route('admin.orders.collection', $a['paid_link']))->assertOk();
+        $this->assertSame('Admin/Orders/Collection', $own->viewData('page')['component']);
+        $this->assertSame('RC-A-1', $own->viewData('page')['props']['collection']['payment']['number']);
+        $this->assertNull($this->leak($own));
+
+        $this->get(route('admin.orders.collection', $b['paid_link']))->assertNotFound();
+        foreach ([
+            route('admin.customerInvoices.show', ['id' => $b['invoice'], 'link' => $b['paid_link']]),
+            route('admin.customerPayments.show', $b['payment']),
+            $this->exportRoute('admin.customerPayments.pdf', $b['payment']),
+        ] as $url) {
+            $res = $this->get($url);
+            $this->assertContains($res->getStatusCode(), [403, 404], $url);
+            $this->assertNull($this->leak($res), $url);
+        }
+
+        $mine = $this->get(route('admin.customerInvoices.show', ['id' => $a['invoice'], 'link' => $b['paid_link']]))->assertOk();
+        $this->assertNull($mine->viewData('page')['props']['collection'], 'أُلصق تحصيلُ B بفاتورة A');
+        $this->assertNull($this->leak($mine));
+
+        $search = $this->get(route('admin.orders.index', ['q' => 'TX-B-1']))->assertOk();
+        $this->assertSame([], $search->viewData('page')['props']['orders']);
+        $this->assertNull($this->leak($search));
+    }
+
+    /* ══════════════ ٤ · التصدير ══════════════ */
 
     public function test_every_report_export_reads_only_its_shop(): void
     {

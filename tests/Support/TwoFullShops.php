@@ -133,8 +133,10 @@ trait TwoFullShops
             'invoice' => $invoice,
             'invoice_attachment' => $this->row('customer_invoice_attachments', ['business_id' => $bid, 'customer_invoice_id' => $invoice, 'path' => $attachPath, 'name' => 'doc.pdf']),
             'attach_path' => $attachPath,
-            'payment' => $this->row('customer_payments', ['business_id' => $bid, 'customer_id' => $customer, 'number' => "RC-{$tag}-1", 'amount' => 5, 'method' => 'cheque', 'occurred_at' => now()->toDateString()]),
+            'payment' => $payment = $this->row('customer_payments', ['business_id' => $bid, 'customer_id' => $customer, 'number' => "RC-{$tag}-1", 'amount' => 5, 'method' => 'cheque', 'occurred_at' => now()->toDateString()]),
             'payment_link' => $this->row('customer_payment_links', ['business_id' => $bid, 'customer_id' => $customer, 'reference' => 'pay-'.strtolower($tag).'-1', 'amount' => 5, 'currency' => 'OMR', 'status' => 'pending', 'provider_link_id' => '1']),
+            // وتحصيلٌ ناجحٌ عبر رابطٍ مستقلّ — حيٌّ مدفوعٌ بمرجع Paymob وسندِه (`PaidLinksList`)، يُطرق بابُ «عرض» تحصيله
+            'paid_link' => $this->row('customer_payment_links', ['business_id' => $bid, 'customer_id' => $customer, 'customer_payment_id' => $payment, 'reference' => 'paid-'.strtolower($tag).'-1', 'amount' => 5, 'currency' => 'OMR', 'status' => 'paid', 'is_live' => true, 'provider_link_id' => '2', 'provider_transaction_id' => "TX-{$tag}-1", 'paid_at' => now()]),
             // تسويةُ Paymob معلّقة — تُطرق أبوابُ إعادة فحصها وإلغائها
             'paymob_settlement' => $settlement = $this->row('paymob_settlements', ['business_id' => $bid, 'gross' => 5, 'fee' => 0, 'net' => 5, 'status' => 'held', 'hold_reason' => "تعليق {$tag}", 'settled_on' => now()->toDateString()]),
             // وسطرٌ حدّده صاحبُ المتجر لتحويلٍ قديم — يُطرق بابُ التراجع عنه

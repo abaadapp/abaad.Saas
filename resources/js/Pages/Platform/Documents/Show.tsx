@@ -132,6 +132,17 @@ export default function DocumentShow() {
             <div className="grid gap-4 lg:grid-cols-3">
                 <div className="space-y-4 lg:col-span-2">
                     <Card className="p-5">
+                        {/* رقمُه وتاريخُ إصداره كما في الورقة وصفحة التوقيع — لا يُكتبان باليد */}
+                        <dl className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-[13px]" data-testid="document-identity">
+                            <div className="flex gap-1.5">
+                                <dt className="text-[#6b7280]">{t('رقم المستند')}</dt>
+                                <dd dir="ltr" className="font-mono font-medium text-[#111]" data-testid="document-number">{doc.number}</dd>
+                            </div>
+                            <div className="flex gap-1.5">
+                                <dt className="text-[#6b7280]">{t('تاريخ الإصدار')}</dt>
+                                <dd dir="ltr" className="font-mono font-medium text-[#111]" data-testid="document-issued-on">{doc.issued_on}</dd>
+                            </div>
+                        </dl>
                         <div className="mb-3 flex flex-wrap items-center gap-2">
                             <Badge variant={STATE_VARIANT[doc.state]}>{t(doc.state_label)}</Badge>
                             {doc.renewal && doc.renews && (

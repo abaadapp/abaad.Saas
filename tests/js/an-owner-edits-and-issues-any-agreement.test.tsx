@@ -304,7 +304,7 @@ describe('the company documents card', () => {
         title: 'نموذج ربط واتساب', service: 'ربط واتساب', client_name: 'سالم', client_biz: 'زهور الريان',
         business: { id: 5, name: 'زهور الريان' }, plan_name: null, cycle_label: null, value: '25.000', value_unit: null, renewal: false,
         shared: 'فُتح واتساب', shared_at: '2026-10-25 10:05', state: 'sent' as const, state_label: 'بانتظار التوقيع',
-        created_at: '2026-10-25 10:00', expires_at: '2026-11-08 23:59', signed_at: '—',
+        issued_on: '2026/10/25', created_at: '2026-10-25 10:00', expires_at: '2026-11-08 23:59', signed_at: '—',
     }];
     const docs = { rows, count: 1, new_url: '/super-admin/documents?business=5&new=1', all_url: '/super-admin/documents?business=5' };
 

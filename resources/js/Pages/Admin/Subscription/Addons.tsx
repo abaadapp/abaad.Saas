@@ -75,12 +75,12 @@ export default function SubscriptionAddons() {
     const props = usePage<PageProps<Props>>().props;
     const { policy, plan, included, available, active, orders, addons_total, may_request, mayBuy, currency } = props;
     const t = useTranslate();
-    const [confirm, confirmDialog] = useConfirm();
+    const [ask, confirmDialog] = useConfirm();
     const [buying, setBuying] = useState<MerchantAddon | null>(null);
 
     const toggleRenews = async (row: Active) => {
         const next = !row.renews;
-        const ok = await confirm({
+        const ok = await ask({
             message: next ? 'تتجدّد الإضافة بفاتورةٍ عند نهاية دورتها.' : 'تبقى الإضافة ساريةً حتى :d ثمّ تتوقّف — ولا يُحذف شيءٌ من بيانات متجرك.',
             values: { d: row.ends_at ?? '—' },
             action: next ? 'إعادة التجديد' : 'إيقاف التجديد',

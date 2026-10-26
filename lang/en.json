@@ -9453,5 +9453,21 @@
     "سُجّل الاستلام من البوتيك": "Receipt from the boutique recorded",
     "خُصم :amount من الورقة :number": ":amount offset against sheet :number",
     "استُلمت قطعة البوتيك المرتجعة": "Returned boutique piece received",
-    "حُفظ حالُ القطع المرتجعة": "Returned pieces recorded"
+    "حُفظ حالُ القطع المرتجعة": "Returned pieces recorded",
+    "الصورة أكبر ممّا يقبله الخادم (:mb ميغابايت) — صغّرها ثمّ ارفعها.": "The image is larger than the server accepts (:mb MB) — shrink it, then upload it.",
+    "انتهت جلستك — حدّث الصفحة وادخل من جديد ثمّ ارفع الصورة. تعديلاتك محفوظة على هذا الجهاز.": "Your session has ended — refresh the page, sign in again, then upload the image. Your edits are kept on this device.",
+    "لا تملك صلاحيّة رفع الصور هنا.": "You are not allowed to upload images here.",
+    "تعذّر رفع الصورة — أعد المحاولة.": "The image could not be uploaded — try again.",
+    "تعذّر الاتصال — تحقّق من الإنترنت ثمّ أعد المحاولة. لم يضع شيءٌ ممّا كتبت.": "Could not connect — check the internet and try again. Nothing you wrote was lost.",
+    "انتهت جلستك — لم يُحفظ شيء. حدّث الصفحة وادخل من جديد: تعديلاتك محفوظة على هذا الجهاز وتُعرض لتسترجعها.": "Your session has ended — nothing was saved. Refresh the page and sign in again: your edits are kept on this device and offered back to you.",
+    "ما تحفظه أكبر ممّا يقبله الخادم — احذف بعض المحتوى ثمّ احفظ.": "What you are saving is larger than the server accepts — remove some content, then save.",
+    "تعذّر الحفظ على الخادم — لم يُحفظ شيء، وتعديلاتك باقية. أعد المحاولة.": "The server could not save — nothing was saved and your edits are still here. Try again.",
+    "راجع ما عُلِّم بالأحمر ثمّ احفظ — ما كتبته باقٍ.": "Check what is marked in red, then save — what you wrote is still here.",
+    "تعذّر الاتصال — لم يُحفظ شيء. تعديلاتك باقية هنا وعلى هذا الجهاز؛ احفظ حين يعود الاتصال.": "Could not connect — nothing was saved. Your edits are still here and on this device; save when the connection is back.",
+    "لم يكتمل الحفظ — أعد المحاولة.": "The save did not finish — try again.",
+    "ينتظر اكتمال رفع الصورة ثمّ يحفظ…": "Waiting for the image upload to finish, then saving…",
+    "على هذا الجهاز تعديلاتٌ لم تُحفظ (:when) — تسترجعها؟ تعود إلى الشاشة ولا تُحفظ حتى تضغط «احفظ».": "This device has edits that were not saved (:when) — restore them? They come back to the screen and are not saved until you press “Save”.",
+    "استرجعها": "Restore them",
+    "تجاهلها": "Discard them",
+    "بلغت هذه الصفحة حدَّها — :max وحدة. ما فيها باقٍ ويُحفظ؛ ولإضافة المزيد أنشئ صفحةً أخرى من «عناصر القائمة».": "This page has reached its limit — :max blocks. What it holds stays and is saved; to add more, create another page from “Menu items”."
 }

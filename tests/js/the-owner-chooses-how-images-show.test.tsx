@@ -88,25 +88,30 @@ describe('حقلُ الصورة وطريقةُ عرضها', () => {
         expect(onFit).toHaveBeenCalledWith('contain');
     });
 
-    it('وكلُّ صورةٍ تُرفع من جديد تبدأ «كاملة» — بأبعادها وشكلها', () => {
+    it('وكلُّ صورةٍ تُرفع من جديد تبدأ «كاملة» — بأبعادها وشكلها، بعد أن تصل الصورةُ قيمتَها', async () => {
         reset();
         const onChange = vi.fn();
         const onFit = vi.fn();
-        vi.mocked(router.post).mockImplementation(((_url: string, _data: unknown, options: { onSuccess?: (page: unknown) => void; onFinish?: () => void }) => {
-            options.onSuccess?.({ props: { flash: { uploaded: '/storage/website/1/new.jpg', uploaded_meta: { w: 1000, h: 3000 } } } });
-            options.onFinish?.();
-        }) as never);
+        // والرفعُ طلبٌ وحده (`fetch`) لا زيارةُ Inertia — فلا يقطع حفظًا ولا يقطعه حفظ
+        const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            new Response(JSON.stringify({ url: '/storage/website/1/new.jpg', meta: { w: 1000, h: 3000 } }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        );
 
         const { rerender } = render(<StoreImageField name="hero" label="صورة الواجهة" value="" onChange={onChange} fit="" onFitChange={onFit} />);
         const input = document.querySelector('input[type=file]') as HTMLInputElement;
         fireEvent.change(input, { target: { files: [new File(['x'], 'p.jpg', { type: 'image/jpeg' })] } });
 
-        expect(onChange).toHaveBeenCalledWith('/storage/website/1/new.jpg');
-        expect(onFit).toHaveBeenCalledWith('contain');
+        await vi.waitFor(() => expect(onChange).toHaveBeenCalledWith('/storage/website/1/new.jpg'));
+        expect(router.post).not.toHaveBeenCalled();
+        expect(JSON.stringify(fetched.mock.calls[0][0])).toContain('admin.marketing.store.image');
+        // والطريقةُ لا تُكتب من النسخة التي لا صورةَ فيها: تنتظر أن تصل الصورةُ قيمتَها
+        expect(onFit).not.toHaveBeenCalled();
 
-        rerender(<StoreImageField name="hero" label="صورة الواجهة" value="/storage/website/1/new.jpg" onChange={onChange} fit="contain" onFitChange={onFit} />);
+        rerender(<StoreImageField name="hero" label="صورة الواجهة" value="/storage/website/1/new.jpg" onChange={onChange} fit="" onFitChange={onFit} />);
+        expect(onFit).toHaveBeenCalledWith('contain');
         expect(screen.getByTestId('hero-meta').textContent).toContain('1000 × 3000');
         expect(screen.getByTestId('hero-meta').textContent).toContain('طوليّة');
+        fetched.mockRestore();
     });
 
     it('وما تجاوز الحدَّ ولا يُصغَّر يُقال حدُّه — ولا يُرسَل', () => {

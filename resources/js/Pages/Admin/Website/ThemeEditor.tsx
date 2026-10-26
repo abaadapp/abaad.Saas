@@ -24,6 +24,7 @@ import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import { uploads, useUploadsInFlight } from '@/lib/uploads';
 import { cn } from '@/lib/utils';
 import { type ArrivalsCuration, CategoriesPanel, type CatalogTools, NewArrivalsPanel } from './theme/CatalogTools';
 import CatalogFitField from './theme/CatalogFitField';
@@ -206,7 +207,7 @@ interface Props extends ThemeShell {
 }
 
 /** ما يقوله سطرُ الحال — وكلٌّ منها حالٌ وقعت لا حالٌ مفترضة */
-type Status = 'clean' | 'saving' | 'saved' | 'failed';
+type Status = 'clean' | 'saving' | 'waiting' | 'saved' | 'failed';
 
 /** علامةُ القسم المطفأ في موضعه — `StorePage::HIDDEN` */
 const HIDDEN = '!';
@@ -428,11 +429,33 @@ export default function ThemeEditor({
         وتُرسَل بعد أن يسكت القلم لا مع كلّ حرف: تصييرُ الصفحة كاملةً عند
         كلّ ضغطةِ مفتاح يُثقل الخادمَ ويُرعش الإطار تحت عين الكاتب.
     */
+    /*
+        وعلى الهاتف أبطأ، ولا يُرسم ما لا يُرى.
+
+        الإطارُ يرسم المتجرَ كلَّه بعرض الحاسوب وصورِه، ويُعاد مع كلّ توقّف —
+        وعلى iPhone يتراكم هذا مع صورٍ تُرفع فتُغلق الصفحةُ («Can't open this
+        page»). فالمعاينةُ تحت المحرّر على الهاتف لا تُرسم وهي خارج الشاشة،
+        وتُرسم مرّةً بآخر المسوّدة حين تُرى؛ والتوقّفُ عليه أطول.
+    */
+    const [seen, setSeen] = useState(true);
     useEffect(() => {
-        const id = window.setTimeout(paint, 600);
+        const el = stage.current;
+        if (! el || typeof IntersectionObserver === 'undefined') return;
+
+        const io = new IntersectionObserver(([e]) => setSeen(e.isIntersecting));
+        io.observe(el);
+
+        return () => io.disconnect();
+    }, []);
+    const narrow = useMemo(() => typeof window !== 'undefined' && window.matchMedia?.('(max-width: 1023px)').matches === true, []);
+
+    useEffect(() => {
+        if (! seen) return;
+
+        const id = window.setTimeout(paint, narrow ? 1500 : 600);
 
         return () => window.clearTimeout(id);
-    }, [draft, frame, target]);
+    }, [draft, frame, target, seen]);
 
     const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
@@ -453,73 +476,135 @@ export default function ThemeEditor({
 
     const refresh = () => setFrame((n) => n + 1);
 
-    /** حفظُ مفاتيحَ بعينها — لا حمولةَ الشاشة كلَّها */
-    const save = (keys: string[]) => {
+    /*
+        ═══ حفظٌ واحدٌ في الطريق — وما يُعدّ محفوظًا هو ما أُرسل ═══
+
+        الحفظُ والترتيبُ زيارتا Inertia، والزيارةُ تقطع ما قبلها: حفظُ صفٍّ يقطع
+        حفظَ صفٍّ آخر، وسهمُ الترتيب يقطع حفظَ الصفحات — فيُكتب أحدهما أو لا يُكتب،
+        ولا يعرف المحرّرُ أيّهما. فكلُّ ما يُحفظ يمرّ بطابورٍ واحد: طلبٌ في الطريق،
+        وما يُضغط أثناءه ينتظره ثمّ يُرسَل بآخر ما في الشاشة. فلا يصل جوابٌ قديم
+        بعد جديد، ولا يُكتب ترتيبٌ قديمٌ فوق أحدث.
+
+        وما يُوسم محفوظًا هو ما أُرسل حرفًا (`sent`) — لا ما في الشاشة ساعةَ الجواب:
+        ما كُتب والحفظُ في الطريق يبقى «غير محفوظ» حتّى يُحفظ.
+
+        وحفظٌ ضُغط وصورةٌ تُرفع ينتظر رفعَها (`uploads`)، ثمّ يُرسل الصفحةَ بصورتها.
+
+        وما فشل لا يمسّ الشاشة: يبقى ما كُتب كما هو، ويُقال لماذا (الحقلُ المرفوض،
+        انتهاءُ الجلسة، انقطاعُ الاتّصال)، ويُعاد الحفظُ بضغطة.
+    */
+    const now = useRef({ data: form.data, form });
+    now.current = { data: form.data, form };
+    const queue = useRef<{ busy: boolean; keys: Set<string>; order: string[] | null }>({ busy: false, keys: new Set(), order: null });
+    const uploading = useUploadsInFlight();
+    const [failure, setFailure] = useState<string | null>(null);
+
+    const failedBecause = (status: number) =>
+        status === 419 || status === 401
+            ? t('انتهت جلستك — لم يُحفظ شيء. حدّث الصفحة وادخل من جديد: تعديلاتك محفوظة على هذا الجهاز وتُعرض لتسترجعها.')
+            : status === 413
+              ? t('ما تحفظه أكبر ممّا يقبله الخادم — احذف بعض المحتوى ثمّ احفظ.')
+              : t('تعذّر الحفظ على الخادم — لم يُحفظ شيء، وتعديلاتك باقية. أعد المحاولة.');
+
+    const send = (payload: Record<string, string>, keys: string[] | null) => {
+        queue.current.busy = true;
         setStatus('saving');
-        form.transform((d) => Object.fromEntries(keys.map((k) => [k, outgoing(k, d[k] ?? '')])));
-        form.post(route('admin.marketing.store.save'), {
+        setFailure(null);
+        let ok = false;
+
+        const options = {
             preserveScroll: true,
             preserveState: true,
             onSuccess: () => {
-                setStatus('saved');
-                keys.forEach((k) => { saved.current![k] = outgoing(k, form.data[k] ?? ''); });
-                refresh();
+                ok = true;
+                if (keys) keys.forEach((k) => { saved.current![k] = payload[k]; });
             },
-            onError: () => setStatus('failed'),
-            onFinish: () => form.transform((d) => d),
-        });
-    };
+            // والمرفوضُ يُقال تحت حقله — وهنا أين يُنظر
+            onError: () => setFailure(t('راجع ما عُلِّم بالأحمر ثمّ احفظ — ما كتبته باقٍ.')),
+            onHttpException: (response: { status: number }) => {
+                setFailure(failedBecause(response.status));
 
-    /*
-        والترتيبُ يُحفظ بالضغطة — لا ينتظر زرًّا، فالمعاينةُ تُجيب فورًا.
+                return false;
+            },
+            onNetworkError: () => {
+                setFailure(t('تعذّر الاتصال — لم يُحفظ شيء. تعديلاتك باقية هنا وعلى هذا الجهاز؛ احفظ حين يعود الاتصال.'));
 
-        ═══ وحفظٌ واحدٌ في الطريق ═══
-
-        كانت كلُّ ضغطةٍ ترسل حفظَها في الحال. فضغطتان سريعتان على السهم تُرسلان
-        حفظين معًا، ولا شيءَ يضمن أنّ الخادم يكتبهما بترتيب الضغط: إن وصل الأوّلُ
-        آخرًا كتب الترتيبَ الأوسط فوق الأخير، والشاشةُ تقول الأخير. فصار ما يُضغط
-        والحفظُ في الطريق ينتظره، ثمّ يُرسَل آخرُه وحده — ترتيبٌ واحدٌ هو ما تراه.
-    */
-    const ordering = useRef<{ busy: boolean; waiting: string[] | null }>({ busy: false, waiting: null });
-
-    const sendOrder = (next: string[]) => {
-        ordering.current.busy = true;
-        router.post(
-            route('admin.marketing.store.save'),
-            { store_sections: next.join(',') },
-            {
-                preserveScroll: true,
-                preserveState: true,
-                onSuccess: () => {
-                    if (ordering.current.waiting !== null) return;
+                return false;
+            },
+            onCancel: () => setFailure(t('لم يكتمل الحفظ — أعد المحاولة.')),
+            onFinish: () => {
+                if (keys) now.current.form.transform((d) => d);
+                queue.current.busy = false;
+                const more = queue.current.order !== null || queue.current.keys.size > 0;
+                if (! ok) {
+                    setStatus('failed');
+                } else if (! more) {
                     setStatus('saved');
                     refresh();
-                },
-                onError: () => {
-                    ordering.current.waiting = null;
-                    setStatus('failed');
-                },
-                onFinish: () => {
-                    ordering.current.busy = false;
-                    const waiting = ordering.current.waiting;
-                    ordering.current.waiting = null;
-                    if (waiting !== null) sendOrder(waiting);
-                },
+                }
+                flush();
             },
-        );
-    };
+        };
 
-    const writeOrder = (next: string[]) => {
-        setLayout(next);
-        setStatus('saving');
-
-        if (ordering.current.busy) {
-            ordering.current.waiting = next;
+        // والترتيبُ زيارةٌ وحده؛ والمفاتيحُ بالنموذج — يحمل ما أُرسل حرفًا (`payload`) ويُري أخطاءَ حقوله
+        if (keys === null) {
+            router.post(route('admin.marketing.store.save'), payload, options);
 
             return;
         }
 
-        sendOrder(next);
+        const f = now.current.form;
+        f.transform(() => payload);
+        f.post(route('admin.marketing.store.save'), options);
+    };
+
+    const flush = () => {
+        const q = queue.current;
+        if (q.busy) return;
+
+        if (q.order !== null) {
+            const next = q.order;
+            q.order = null;
+            send({ store_sections: next.join(',') }, null);
+
+            return;
+        }
+
+        if (q.keys.size === 0) return;
+
+        // والصورةُ تُرفع: ينتظرها ثمّ يُرسل (`useEffect` أدناه)
+        if (uploads.count() > 0) {
+            setStatus('waiting');
+
+            return;
+        }
+
+        const keys = [...q.keys];
+        q.keys.clear();
+        const data = now.current.data;
+        send(Object.fromEntries(keys.map((k) => [k, outgoing(k, data[k] ?? '')])), keys);
+    };
+
+    useEffect(() => {
+        if (uploading === 0) flush();
+    }, [uploading]);
+
+    /** حفظُ مفاتيحَ بعينها — لا حمولةَ الشاشة كلَّها */
+    const save = (keys: string[]) => {
+        keys.forEach((k) => queue.current.keys.add(k));
+        setStatus('saving');
+        flush();
+    };
+
+    /*
+        والترتيبُ يُحفظ بالضغطة — لا ينتظر زرًّا، فالمعاينةُ تُجيب فورًا. وفي الطابور
+        نفسِه: ضغطتان سريعتان على السهم والحفظُ في الطريق تُرسلان آخرَهما وحده.
+    */
+    const writeOrder = (next: string[]) => {
+        setLayout(next);
+        queue.current.order = next;
+        setStatus('saving');
+        flush();
     };
 
     /*
@@ -586,7 +671,7 @@ export default function ThemeEditor({
               onChange: (mode, ids) =>
                   form.setData((d) => ({ ...d, store_new_arrivals_mode: mode, store_new_arrivals: ids.join(',') })),
               onSave: () => save(['store_new_arrivals_mode', 'store_new_arrivals']),
-              saving: form.processing,
+              saving: status === 'saving' || status === 'waiting',
               error: (form.errors as Record<string, string | undefined>).store_new_arrivals
                   ?? (form.errors as Record<string, string | undefined>).store_new_arrivals_mode,
           }
@@ -646,6 +731,69 @@ export default function ThemeEditor({
             off();
         };
     }, [dirty.length > 0]);
+
+    /*
+        ═══ ونسخةٌ على هذا الجهاز ممّا لم يُحفظ ═══
+
+        `beforeunload` يسأل من يغلق الصفحة — ولا يسأل متصفّحًا انهار («Can't open
+        this page» على iPhone)، ولا جلسةً انتهت، ولا اتّصالًا انقطع. فما لم يُحفظ
+        يُكتب على هذا الجهاز بعد كلّ توقّف، بمفتاحٍ لكلّ نشاطٍ ومستخدم، ويُعرض حين
+        يُفتح المحرّرُ ثانيةً: «استرجعها» تعيده إلى الشاشة غيرَ محفوظ — لا يُحفظ
+        وحده، والحفظُ والنشرُ كما كانا — و«تجاهلها» تمحوه. وما حُفظ يخرج منها.
+    */
+    const who = (usePage().props as { auth?: { user?: { id?: number; businessId?: number } } }).auth?.user;
+    const backupKey = `abaad.editor.unsaved.${who?.businessId ?? 0}.${who?.id ?? 0}`;
+    const [backup, setBackup] = useState<{ at: number; data: Record<string, string> } | null>(() => {
+        try {
+            const raw = window.localStorage.getItem(backupKey);
+            const kept = raw ? (JSON.parse(raw) as { at?: unknown; data?: unknown }) : null;
+            if (! kept || typeof kept.data !== 'object' || kept.data === null) return null;
+
+            const data = Object.fromEntries(
+                Object.entries(kept.data as Record<string, unknown>).filter(
+                    ([k, v]) => typeof v === 'string' && k in saved.current! && outgoing(k, v) !== saved.current![k],
+                ),
+            ) as Record<string, string>;
+
+            return Object.keys(data).length > 0 ? { at: Number(kept.at) || 0, data } : null;
+        } catch {
+            return null;
+        }
+    });
+    const unsaved = JSON.stringify(Object.fromEntries(dirty.map((k) => [k, form.data[k] ?? ''])));
+
+    useEffect(() => {
+        // ونسخةٌ تنتظر قرارَ صاحبها لا يُكتب فوقها
+        if (backup) return;
+
+        const id = window.setTimeout(() => {
+            try {
+                if (dirty.length === 0) window.localStorage.removeItem(backupKey);
+                else window.localStorage.setItem(backupKey, JSON.stringify({ at: Date.now(), data: JSON.parse(unsaved) }));
+            } catch {
+                // تصفّحٌ خاصّ أو مساحةٌ ممتلئة — المحرّرُ يعمل بدونها
+            }
+        }, 700);
+
+        return () => window.clearTimeout(id);
+    }, [unsaved, backup]);
+
+    const restoreBackup = () => {
+        const kept = backup;
+        if (! kept) return;
+
+        form.setData((d) => ({ ...d, ...Object.fromEntries(Object.entries(kept.data).filter(([k]) => k in d)) }));
+        setBackup(null);
+    };
+
+    const discardBackup = () => {
+        try {
+            window.localStorage.removeItem(backupKey);
+        } catch {
+            // لا شيء يُمحى
+        }
+        setBackup(null);
+    };
 
     const field = (f: EditorField) => {
         if (f.gate && (form.data[f.gate] ?? '0') !== '1') return null;
@@ -924,7 +1072,7 @@ export default function ThemeEditor({
                     value={form.data.store_shelf_order ?? ''}
                     onChange={(v) => form.setData('store_shelf_order', v)}
                     onSave={() => save(['store_shelf_order'])}
-                    saving={form.processing}
+                    saving={status === 'saving' || status === 'waiting'}
                     dirty={(form.data.store_shelf_order ?? '') !== (saved.current!.store_shelf_order ?? '')}
                     error={(form.errors as Record<string, string | undefined>).store_shelf_order}
                     categories={shortcutCategories}
@@ -1052,7 +1200,7 @@ export default function ThemeEditor({
                                 <Button
                                     type="button"
                                     size="sm"
-                                    loading={form.processing}
+                                    loading={status === 'saving' || status === 'waiting'}
                                     onClick={() => save(r.fields.flatMap((f) => (f.fit ? [f.key, f.fit] : [f.key])))}
                                     data-testid={`row-${r.key}-save`}
                                 >
@@ -1060,6 +1208,15 @@ export default function ThemeEditor({
                                     {t('احفظ')}
                                 </Button>
                             </div>
+                        )}
+                        {r.fields.length > 0 && (status === 'waiting' || (status === 'failed' && failure)) && (
+                            <p
+                                role={status === 'failed' ? 'alert' : 'status'}
+                                data-testid={`row-${r.key}-save-status`}
+                                className={cn('mt-2 text-end text-[12px]', status === 'failed' ? 'text-[#b91c1c]' : 'text-[#6b7280]')}
+                            >
+                                {status === 'waiting' ? t('ينتظر اكتمال رفع الصورة ثمّ يحفظ…') : failure}
+                            </p>
                         )}
                     </div>
                 )}
@@ -1110,13 +1267,36 @@ export default function ThemeEditor({
 
             <div className="mb-4 flex items-center justify-end gap-2">
                 <span className="flex items-center gap-1.5 text-[12px] text-[#6b7280]">
-                    {status === 'saving' && <Loader2 className="size-3.5 animate-spin" />}
+                    {(status === 'saving' || status === 'waiting') && <Loader2 className="size-3.5 animate-spin" />}
                     {status === 'saved' && <Check className="size-3.5 text-[#059669]" />}
                     {status === 'failed' && <CircleAlert className="size-3.5 text-[#b91c1c]" />}
                     {status !== 'clean' &&
-                        t(status === 'saving' ? 'يُحفظ…' : status === 'saved' ? 'حُفظ' : 'تعذّر الحفظ')}
+                        t(status === 'saving' ? 'يُحفظ…' : status === 'waiting' ? 'ينتظر اكتمال رفع الصورة ثمّ يحفظ…' : status === 'saved' ? 'حُفظ' : 'تعذّر الحفظ')}
+                    {status === 'failed' && failure && <span data-testid="editor-save-failure">— {failure}</span>}
                 </span>
             </div>
+
+            {backup && (
+                <div
+                    role="status"
+                    data-testid="editor-unsaved-backup"
+                    className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#92400e] ring-1 ring-[#fde68a]"
+                >
+                    <span>
+                        {t('على هذا الجهاز تعديلاتٌ لم تُحفظ (:when) — تسترجعها؟ تعود إلى الشاشة ولا تُحفظ حتى تضغط «احفظ».', {
+                            when: new Date(backup.at).toLocaleString(),
+                        })}
+                    </span>
+                    <span className="flex gap-2">
+                        <Button type="button" size="sm" onClick={restoreBackup} data-testid="editor-unsaved-restore">
+                            {t('استرجعها')}
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={discardBackup} data-testid="editor-unsaved-discard">
+                            {t('تجاهلها')}
+                        </Button>
+                    </span>
+                </div>
+            )}
 
             {/*
                 ولا يُشترط النشرُ لفتح المحرّر — فمن يجهّز متجره يرتّب صفحتَه

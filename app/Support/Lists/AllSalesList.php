@@ -99,13 +99,13 @@ final class AllSalesList
     {
         $page = self::sorted($request)->paginate($per)->withQueryString();
 
-        return $page->setCollection(collect(self::hydrate(collect($page->items()))));
+        return $page->setCollection(collect(self::hydrate(collect($page->items()), $request)));
     }
 
     /** صفوفُ الشاشة كلُّها — بلا ترقيم — لورقة PDF */
     public static function rows(Request $request): array
     {
-        return self::hydrate(self::sorted($request)->get());
+        return self::hydrate(self::sorted($request)->get(), $request);
     }
 
     public static function count(Request $request): int
@@ -150,7 +150,7 @@ final class AllSalesList
             ],
             rows: function () use ($request) {
                 foreach (self::sorted($request)->lazy(500)->chunk(500) as $chunk) {
-                    foreach (self::hydrate(collect($chunk->all())) as $r) {
+                    foreach (self::hydrate(collect($chunk->all()), $request) as $r) {
                         yield $r['kind'] === self::LINK
                             ? [
                                 'cells' => [
@@ -222,11 +222,13 @@ final class AllSalesList
      * صفوفُ صفحةٍ من صاحبَيها — بترتيب الاتّحاد.
      *
      * والطلبُ يُقرأ من متجره ولو جاء معرّفُه من استعلامٍ مُرشَّحٍ به: بابٌ ثانٍ
-     * لا يُبنى على أنّ الأوّل لم يُخطئ.
+     * لا يُبنى على أنّ الأوّل لم يُخطئ. والتحصيلُ بالطلب نفسِه الذي رُشّح به
+     * الاتّحاد — لا بطلب HTTP الجاري: من مرّر طلبًا غيرَه (ملفٌّ يُبنى بمُرشِّحاتٍ
+     * أخرى) كان يجد صفوفَ تحصيلٍ تسقط بصمتٍ بمُرشِّحاتٍ لم يطلبها.
      *
      * @param  Collection<int, object>  $keys
      */
-    private static function hydrate(Collection $keys): array
+    private static function hydrate(Collection $keys, Request $request): array
     {
         $ids = fn (string $kind) => $keys->where('kind', $kind)->pluck('rid')->map(fn ($id) => (int) $id)->values()->all();
         $bid = (int) (auth()->user()->business_id ?? Demo::bid());
@@ -236,7 +238,7 @@ final class AllSalesList
 
         $links = collect();
         if (($l = $ids(self::LINK)) !== []) {
-            $links = PaidLinksList::query(request())->whereIn('l.id', $l)->get()->keyBy('id');
+            $links = PaidLinksList::query($request)->whereIn('l.id', $l)->get()->keyBy('id');
         }
         $covered = PaidLinksList::ordersOf($links->values());
 

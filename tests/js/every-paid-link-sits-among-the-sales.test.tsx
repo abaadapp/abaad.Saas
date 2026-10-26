@@ -114,6 +114,13 @@ describe('التحصيلُ صفٌّ بين الطلبات', () => {
         expect(viewOf(rowOf('RC-0001'))).toBe('/admin.customerInvoices.show/4/1');
     });
 
+    it('الدفعةُ التي تحتاج مراجعة تُقال في صفّها وبطاقتها', () => {
+        draw({ orders: [{ ...onInvoice, kind: 'link', review: true }, pos] });
+
+        expect(rowOf('RC-0001')).toHaveTextContent('مدفوع — يحتاج مراجعة');
+        expect(rowOf('POS-9')).not.toHaveTextContent('يحتاج مراجعة');
+    });
+
     it('«إجمالي المبيعات» ومجموعُ التحصيلات كلٌّ باسمه', () => {
         draw();
 
@@ -171,6 +178,12 @@ describe('صفحةُ التحصيل وبطاقتُه', () => {
         expect(within(card).getByTestId('collection-no-invoice')).toBeInTheDocument();
         // وطباعةُ السند تحمل نشاطَ الصفحة
         expect(within(card).getByText('طباعة سند القبض').closest('a')?.getAttribute('href')).toContain('expected_business_id=1');
+    });
+
+    it('وبطاقةُ دفعةٍ تحتاج مراجعة تقول ذلك لا «مدفوع» وحده', () => {
+        render(<PaidLinkCollectionCard collection={{ ...standalone, review: true }} mayOpenReceipts={false} />);
+
+        expect(screen.getByTestId('paid-collection')).toHaveTextContent('مدفوع — يحتاج مراجعة');
     });
 
     it('المرتبطُ بفاتورةٍ يقول فاتورتَه وطلباتِه روابطَ — ولا سندَ بلا «مالية»', () => {

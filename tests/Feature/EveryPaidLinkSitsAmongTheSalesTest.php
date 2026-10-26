@@ -29,6 +29,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\View;
 use Tests\TestCase;
 
 /**
@@ -224,6 +225,8 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
             'payments' => DB::table('customer_payments')->get()->toJson(),
             'links' => DB::table('customer_payment_links')->get()->toJson(),
             'stock' => DB::table('inventory_movements')->count(),
+            'customers' => DB::table('customers')->get()->toJson(),
+            'settlements' => DB::table('paymob_settlements')->count(),
         ];
     }
 
@@ -499,7 +502,13 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
         $this->order('POS-1', SalesChannel::POS, 10);
         $web = $this->invoiceOf($this->order('WEB-1', SalesChannel::WEBSITE, 30, '2026-10-19 10:00:00', 'غير مدفوع', $this->ministry), $this->ministry);
         $before = $this->sales();
-        $revenue = [round(Ledger::netRevenue($this->shop->id), 3), round(Ledger::outputTax($this->shop->id), 3)];
+        // الإيرادُ والضريبةُ وتكلفةُ المبيعات — والربحُ منها
+        $figures = fn () => [
+            round(Ledger::netRevenue($this->shop->id), 3),
+            round(Ledger::outputTax($this->shop->id), 3),
+            round(Ledger::balance($this->shop->id, 'cogs'), 3),
+        ];
+        $revenue = $figures();
 
         $link = $this->pay($this->link($invoice, null, $this->company));
         $this->pay($this->link($web, null, $this->ministry));
@@ -508,7 +517,7 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
         $after = $this->sales();
         $this->assertCount(3, array_filter($after['orders'], fn ($r) => ($r['kind'] ?? '') === AllSalesList::LINK));
         $this->assertSame([$before['totalCount'], $before['totalAmount'], $before['cancelledCount']], [$after['totalCount'], $after['totalAmount'], $after['cancelledCount']]);
-        $this->assertSame($revenue, [round(Ledger::netRevenue($this->shop->id), 3), round(Ledger::outputTax($this->shop->id), 3)], 'تحرّك الإيرادُ أو الضريبة بتحصيل');
+        $this->assertSame($revenue, $figures(), 'تحرّك الإيرادُ أو الضريبةُ أو تكلفةُ المبيعات بتحصيل');
 
         $snapshot = $this->books();
         $this->sales();
@@ -545,6 +554,7 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
         $cashier = $this->staff('cashier', 'cashier@all-sales.om');
         $this->actingAs($cashier)->get(route('admin.orders.index'))->assertForbidden();
         $this->actingAs($cashier)->get(route('admin.orders.collection', $alone->id))->assertForbidden();
+        $this->actingAs($cashier)->get(route('admin.customerInvoices.show', ['id' => $invoice->id, 'link' => $mine->id]))->assertForbidden();
 
         // والجارُ لا يُقرأ هنا، ولا يُفتح تحصيلُه بعنوانه، ولا يُلصق بفاتورتي
         $this->actingAs($this->owner);
@@ -597,5 +607,140 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
         $this->assertContains($this->receipt($inBranch), $ids);
         $this->assertNotContains($this->receipt($alone), $ids, 'رابطٌ بلا فاتورةٍ نُسب إلى فرع');
         $this->assertSame('مسقط', collect($this->sales()['orders'])->firstWhere('id', $this->receipt($inBranch))['branch']);
+    }
+
+    /* ═══════════ ١١ — المراجعةُ النهائيّة ═══════════ */
+
+    /** الصفوفُ تُقرأ بالطلب المعطى — لا بطلب HTTP الجاري (خللٌ وُجد في المراجعة) */
+    public function test_rows_are_read_with_the_request_given_not_the_current_one(): void
+    {
+        $this->order('POS-1', SalesChannel::POS, 10);
+        $link = $this->pay($this->link(null, 25, $this->company));
+
+        // طلبُ HTTP الجاري بمُرشِّحٍ لا يطابق شيئًا — والملفُّ يُبنى بطلبٍ بلا مُرشِّح
+        app()->instance('request', Request::create('/admin/orders', 'GET', ['q' => 'لا-يطابق-شيئًا']));
+
+        $this->assertEqualsCanonicalizing(['POS-1', $this->receipt($link)], array_column(AllSalesList::rows(Request::create('/admin/orders')), 'id'));
+    }
+
+    /** دفعةٌ ثانيةٌ على الرابط نفسه: «مدفوع — يحتاج مراجعة»، لا تسويةٌ بنكيّة */
+    public function test_a_payment_needing_review_reads_so_and_settles_nothing(): void
+    {
+        $link = $this->pay($this->link(null, 25, $this->company));
+        $this->hook($this->obj($link)); // عمليّةٌ ثانيةٌ برقمٍ آخر على الرابط نفسه
+        $this->assertNotSame([], (array) ($link->fresh()->meta['extra_transactions'] ?? []), 'لم تُسجَّل الدفعةُ الثانية');
+
+        $row = collect($this->sales()['orders'])->firstWhere('kind', AllSalesList::LINK);
+        $this->assertTrue($row['review']);
+        $this->assertTrue($this->get(route('admin.orders.collection', $link->id))->viewData('page')['props']['collection']['review']);
+        $this->assertStringContainsString('مدفوع — يحتاج مراجعة', $this->get($this->exportRoute('admin.export.orders'))->assertOk()->streamedContent());
+        $this->assertSame(1, DB::table('customer_payments')->where('business_id', $this->shop->id)->count(), 'كُتب تحصيلٌ ثانٍ');
+        $this->assertSame(0, DB::table('paymob_settlements')->count());
+    }
+
+    /** التحصيلُ الملغى لا يُفتح، وفاتورتُه تُفتح بباقيها */
+    public function test_a_cancelled_collection_opens_nothing_and_its_invoice_stays_open(): void
+    {
+        $invoice = $this->invoice(40);
+        $link = $this->pay($this->link($invoice));
+        CustomerPayments::cancel(CustomerPayment::findOrFail($link->customer_payment_id), 'استُرجع', $this->owner->id);
+
+        $this->assertNotContains($this->receipt($link), array_column($this->sales()['orders'], 'id'));
+        $this->get(route('admin.orders.collection', $link->id))->assertNotFound();
+        $props = $this->get(route('admin.customerInvoices.show', ['id' => $invoice->id, 'link' => $link->id]))->assertOk()->viewData('page')['props'];
+        $this->assertNull($props['collection']);
+        $this->assertSame(round((float) $invoice->total, 3), round((float) $props['invoice']['outstanding'], 3));
+    }
+
+    /**
+     * الفرعُ المختار مُرشِّحُ قوائم — والتفاصيلُ بمتجرها كما في النظام كلِّه.
+     *
+     * الطلبُ والفاتورةُ والسند تُفتح بمتجرها وإن اختير فرعٌ آخر، وإسنادُ الموظّف
+     * إلى فرعٍ (`branch_user`) قيدُ البيع في الصندوق لا قراءة المبيعات. فالتحصيلُ
+     * يُفتح كما تُفتح فاتورتُه — ويُحرس هنا أنّه لا يفترق عنها.
+     */
+    public function test_view_follows_the_shop_not_the_chosen_branch_like_every_detail_screen(): void
+    {
+        $sohar = Branch::create(['business_id' => $this->shop->id, 'name' => 'صحار']);
+        $invoice = $this->invoice(10);
+        DB::table('customer_invoices')->where('id', $invoice->id)->update(['branch_id' => $sohar->id]);
+        $onSohar = $this->pay($this->link($invoice->fresh()));
+        $alone = $this->pay($this->link(null, 30));
+        $order = $this->order('SOH-1', SalesChannel::POS, 15);
+        DB::table('orders')->where('id', $order->id)->update(['branch_id' => $sohar->id, 'branch' => 'صحار']);
+
+        $this->get(route('admin.branch.switch', $this->muscat->id));
+        $ids = array_column($this->sales()['orders'], 'id');
+        foreach (['SOH-1', $this->receipt($onSohar), $this->receipt($alone)] as $id) {
+            $this->assertNotContains($id, $ids, "قائمةُ مسقط تعرض {$id}");
+        }
+
+        // والتفاصيلُ بمتجرها — الطلبُ والفاتورةُ كما كانا، والتحصيلُ مثلُهما
+        $this->get(route('admin.orders.show', 'SOH-1'))->assertOk();
+        $props = $this->get(route('admin.customerInvoices.show', ['id' => $invoice->id, 'link' => $onSohar->id]))->assertOk()->viewData('page')['props'];
+        $this->assertSame($onSohar->id, $props['collection']['link_id']);
+        $this->get(route('admin.orders.collection', $alone->id))->assertOk();
+
+        // وموظّفُ مبيعاتٍ مُسنَدٌ إلى مسقط وحدها، بلا «مالية»: يقرأ ما يقرأ الطلبَ والفاتورة، ولا سندَ له
+        $sales = $this->staff('sales', 'branch-sales@all-sales.om');
+        $sales->branches()->attach($this->muscat->id);
+        $this->actingAs($sales)->get(route('admin.orders.show', 'SOH-1'))->assertOk();
+        $this->actingAs($sales)->get(route('admin.orders.collection', $alone->id))->assertOk();
+        $own = $this->actingAs($sales)->get(route('admin.customerInvoices.show', ['id' => $invoice->id, 'link' => $onSohar->id]))->assertOk()->viewData('page')['props'];
+        $this->assertSame($onSohar->id, $own['collection']['link_id']);
+        $this->assertFalse($own['mayOpenReceipts']);
+        $this->actingAs($sales)->get(route('admin.customerPayments.show', $onSohar->customer_payment_id))->assertForbidden();
+    }
+
+    /** الملفّاتُ الثلاثة بالفرع والفترة صفوفُ الشاشة نفسُها — والمجموعان منفصلان */
+    public function test_files_follow_the_chosen_branch_and_period_and_never_double_count(): void
+    {
+        $sohar = Branch::create(['business_id' => $this->shop->id, 'name' => 'صحار']);
+        $this->order('IN-1', SalesChannel::POS, 10, '2026-10-20 08:00:00');
+        $this->order('OLD-1', SalesChannel::POS, 20, '2026-09-01 08:00:00');
+        $mine = $this->invoice(30);
+        DB::table('customer_invoices')->where('id', $mine->id)->update(['branch_id' => $this->muscat->id]);
+        $inBranch = $this->pay($this->link($mine->fresh()));
+        $theirs = $this->invoice(40);
+        DB::table('customer_invoices')->where('id', $theirs->id)->update(['branch_id' => $sohar->id]);
+        $this->pay($this->link($theirs->fresh()));
+        $this->pay($this->link(null, 25, $this->company));
+
+        $this->get(route('admin.branch.switch', $this->muscat->id));
+        $q = ['from' => '2026-10-15', 'to' => '2026-10-31'];
+        $screen = array_column($this->sales($q)['orders'], 'id');
+        $this->assertSame([$this->receipt($inBranch), 'IN-1'], $screen);
+
+        // CSV: العمودُ الأوّل صفوفُ الشاشة بترتيبها
+        $csv = $this->get($this->exportRoute('admin.export.orders', $q))->assertOk()->streamedContent();
+        $lines = array_slice(preg_split('/\R/u', trim($csv)), 1);
+        $this->assertSame($screen, array_map(fn ($l) => trim(explode(',', $l)[0], '"'), $lines));
+
+        // Excel: الصفوفُ نفسُها وعمودُ المحصّل ومجموعُه باسمه
+        $file = tempnam(sys_get_temp_dir(), 'xlsx');
+        file_put_contents($file, $this->get($this->exportRoute('admin.orders.xlsx', $q))->assertOk()->streamedContent());
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($file));
+        $text = '';
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $text .= (string) $zip->getFromIndex($i);
+        }
+        $zip->close();
+        @unlink($file);
+        foreach ([...$screen, 'المحصّل عبر رابط دفع', 'ليس من المبيعات', (string) $inBranch->provider_transaction_id] as $needle) {
+            $this->assertStringContainsString($needle, $text);
+        }
+        $this->assertStringNotContainsString('OLD-1', $text);
+        $this->assertStringNotContainsString($this->receipt(CustomerPaymentLink::where('customer_invoice_id', $theirs->id)->firstOrFail()), $text);
+
+        // PDF: ما يُرسل إلى ورقته — الصفوفُ، والمبيعاتُ وحدها في إجماليّها، والتحصيلُ وحده
+        $sent = null;
+        View::composer('pdf.orders-report', function ($view) use (&$sent) {
+            $sent = $view->getData();
+        });
+        $this->get($this->exportRoute('admin.orders.exportPdf', $q))->assertOk();
+        $this->assertSame($screen, array_column($sent['rows'], 'id'));
+        $this->assertSame([1, 10.0], [$sent['ordersCount'], (float) $sent['total']]);
+        $this->assertSame(['count' => 1, 'amount' => round((float) $mine->total, 3)], array_intersect_key($sent['links'], ['count' => 0, 'amount' => 0]));
     }
 }

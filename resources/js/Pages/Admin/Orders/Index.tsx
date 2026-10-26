@@ -630,7 +630,7 @@ function Confirmed({ c }: { c: SaleConfirmation }) {
         c.state === 'pending' ? 'text-[#b45309]' : c.state === 'confirmed' && c.by ? 'text-[#166534]' : 'text-[#6b7280]';
 
     return (
-        <span className={`text-[12px] ${tone}`} data-testid="order-confirmation" data-state={c.state}>
+        <span className={`block max-w-[8rem] text-[12px] ${tone}`} data-testid="order-confirmation" data-state={c.state}>
             {c.label}
         </span>
     );
@@ -639,7 +639,8 @@ function Confirmed({ c }: { c: SaleConfirmation }) {
 /** «منتجان — 5 قطع» وتحتها الإضافات — من الخادم (`SaleCells::products`) */
 function Bought({ p }: { p: SaleProducts }) {
     return (
-        <span className="flex flex-col whitespace-nowrap" data-testid="order-products">
+        // يلتفّ على سطرين ولا يمدّ الجدول: عمودٌ عريضٌ يُخرج «عرض» من الشاشة على 1366
+        <span className="flex max-w-[6.5rem] flex-col" data-testid="order-products">
             <span className="tabular-nums">{p.label}</span>
             {p.addons_label && <span className="text-[11px] text-[#9ca3af]">{p.addons_label}</span>}
         </span>
@@ -662,7 +663,7 @@ function Handover({ h, late }: { h: SaleHandover | null; late: boolean }) {
                     {late && <Badge variant="danger">{t('متأخّر')}</Badge>}
                 </span>
             )}
-            <span className={late ? 'text-[12px] font-medium text-[#b91c1c]' : 'text-[12px] text-[#4b4b4b]'} dir="auto">
+            <span className={late ? 'text-[11.5px] font-medium text-[#b91c1c]' : 'text-[11.5px] text-[#4b4b4b]'} dir="auto">
                 {h.when ?? (h.type ? t('لم يُحدد موعد') : h.label)}
             </span>
             {h.details && h.details.length > 0 && (

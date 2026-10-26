@@ -138,10 +138,11 @@ final class SaleCells
         if ($o->confirmed_at !== null) {
             $at = $o->confirmed_at->copy()->setTimezone(ShopClock::zone());
             $by = $o->confirmed_by_name !== null && trim($o->confirmed_by_name) !== '' ? $o->confirmed_by_name : null;
-            // الوقتُ وحده ليومٍ هو يومُ الطلب، وإلّا يومُه معه
+            // الوقتُ وحده ليومٍ هو يومُ الطلب، وإلّا يومُه وشهرُه معه — والسنةُ في صفحة الطلب وملفّه (`at`)
+            $lang = app()->getLocale();
             $when = $o->ordered_at !== null && $at->isSameDay($o->ordered_at->copy()->setTimezone(ShopClock::zone()))
-                ? ShopClock::time($at, app()->getLocale())
-                : self::moment($at);
+                ? ShopClock::time($at, $lang)
+                : $at->format('d/m').($lang === 'en' ? ', ' : '، ').ShopClock::time($at, $lang);
 
             return [
                 'state' => 'confirmed',

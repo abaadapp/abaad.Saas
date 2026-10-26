@@ -65,6 +65,12 @@ final class RestoreIsolation
             'boutique_settlement_id' => 'boutique_settlements',
         ],
         'boutique_credit_offsets' => ['boutique_id' => 'boutiques'],
+        'boutique_returns' => [
+            'boutique_id' => 'boutiques', 'order_id' => 'orders', 'order_item_id' => 'order_items',
+            'order_edit_id' => 'order_edits', 'branch_id' => 'branches', 'product_id' => 'products',
+            'split_from_id' => 'boutique_returns', 'user_id' => 'users', 'decided_by' => 'users',
+        ],
+        'boutique_return_recoveries' => ['boutique_id' => 'boutiques', 'user_id' => 'users'],
         'coupon_redemptions' => ['customer_id' => 'customers'],
         'order_prep_checks' => ['user_id' => 'users'],
         'shifts' => ['user_id' => 'users', 'branch_id' => 'branches'],

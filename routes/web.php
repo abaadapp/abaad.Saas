@@ -749,6 +749,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/products/boutiques/{id}/settlements/{settlement}/pay', [BoutiqueController::class, 'payComponents'])
         ->whereNumber('id')->whereNumber('settlement')->name('boutiques.components.pay');
     Route::post('/products/boutiques/{id}/refund', [BoutiqueController::class, 'refund'])->whereNumber('id')->name('boutiques.refund');
+    // مرتجعٌ بعد الورقة: قرارُ المحاسب، واستلامٌ من البوتيك بمستند، وخصمٌ من ورقةٍ لاحقة — انظر `BoutiqueReturns`
+    Route::post('/products/boutiques/{id}/returns/review', [BoutiqueController::class, 'reviewReturn'])->whereNumber('id')->name('boutiques.returns.review');
+    Route::post('/products/boutiques/{id}/returns/receipt', [BoutiqueController::class, 'returnReceipt'])->whereNumber('id')->name('boutiques.returns.receipt');
+    Route::post('/products/boutiques/{id}/returns/offset', [BoutiqueController::class, 'returnOffset'])->whereNumber('id')->name('boutiques.returns.offset');
     Route::get('/products/{id}', [PageController::class, 'productsShow'])->name('products.show');
     Route::post('/products/{id}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
     // تعطيلُ صنفٍ وتفعيلُه — البديلُ الذي يقصده أكثرُ من يضغط «حذف»
@@ -868,6 +872,7 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::put('/orders/{number}/details', [OrderDetailController::class, 'update'])->name('orders.details.update');
     Route::post('/orders/{number}/status', [OrderDetailController::class, 'status'])->name('orders.status');
     Route::post('/orders/{number}/boutique-pieces', [OrderDetailController::class, 'boutiquePieces'])->name('orders.boutique-pieces');
+    Route::post('/orders/{number}/boutique-returns', [OrderDetailController::class, 'boutiqueReturns'])->name('orders.boutique-returns');
     /*
      * تصحيح الفاتورة من شاشة المبيعات — الكتابةُ نفسُها التي يُصحّح بها الكاشير.
      *

@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import ProductsDialog, { type PickRow } from './ProductsDialog';
 import ComponentsPanel, { type BoutiqueLedger, type ComponentsPart, type SettlementComponents } from './ComponentsPanel';
+import ReturnsPanel, { type BoutiqueReturnsPart } from './ReturnsPanel';
 
 interface Line {
     product_id: number | null;
@@ -30,7 +31,10 @@ interface Props {
     boutique: {
         id: number; name: string; name_en: string | null; phone: string | null;
         contact_person: string | null; rate: number; active: boolean; notes: string | null;
+        returns_terms: string | null; returns_terms_ref: string | null;
     };
+    /** مرتجعاتٌ بعد أوراقها — انظر `BoutiqueReturns` */
+    returns?: BoutiqueReturnsPart;
     statement: {
         /** أتُصدَر على شهرٍ ما زال يبيع؟ — خبرٌ من الخادم لا حسبةٌ في المتصفّح */
         partial: boolean;
@@ -70,7 +74,7 @@ interface Props {
  * الكشفُ لأجله)، ثمّ ما بُني منه صنفًا صنفًا، ثمّ ما صدر من قبل.
  */
 export default function BoutiqueShow() {
-    const { boutique, statement, period, periods, settlement, history, products, catalog, q, ledger, context } =
+    const { boutique, statement, period, periods, settlement, history, products, catalog, q, ledger, returns, context } =
         usePage<PageProps<Props>>().props;
     const [picking, setPicking] = useState(false);
     const t = useTranslate();
@@ -233,6 +237,16 @@ export default function BoutiqueShow() {
                     payable={statement.payable ?? statement.net}
                     ledger={ledger}
                     settlement={settlement ? { ...settlement, id: settlement.id, number: settlement.number } : null}
+                    currency={currency}
+                />
+            )}
+
+            {returns && (
+                <ReturnsPanel
+                    boutiqueId={boutique.id}
+                    terms={boutique.returns_terms}
+                    termsRef={boutique.returns_terms_ref}
+                    part={returns}
                     currency={currency}
                 />
             )}

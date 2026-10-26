@@ -403,7 +403,10 @@ class Books
             return;
         }
 
-        $amount = round((float) $expense->amount, 3);
+        // وورقةُ بوتيكٍ خُفّض مستحقُّها بمرتجعٍ أو خصمٍ يُسدَّد صافيها — انظر `BoutiqueReturns::payable`
+        $amount = BoutiqueReturns::sheetOf($expense) !== null
+            ? BoutiqueReturns::payable($expense)
+            : round((float) $expense->amount, 3);
         if ($amount <= 0) {
             return;
         }

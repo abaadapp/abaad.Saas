@@ -53,11 +53,11 @@ final class OrderTransition
      * و`$boutiquePieces` حالُ كلّ قطعة بوتيك حين يُلغى الطلب — انظر `BoutiqueDues::cancel`.
      * ومن لم يُرسلها (لوحةُ التجهيز، وحذفُ البيعة) فقطعُه «لم يُتحقَّق منها».
      */
-    public static function apply(Order $order, string $to, ?string &$from = null, ?array $boutiquePieces = null): ?string
+    public static function apply(Order $order, string $to, ?string &$from = null, ?array $boutiquePieces = null, ?array $boutiqueLines = null): ?string
     {
         $from = null;
 
-        return DB::transaction(function () use ($order, $to, &$from, $boutiquePieces) {
+        return DB::transaction(function () use ($order, $to, &$from, $boutiquePieces, $boutiqueLines) {
             // الحال تُقرأ تحت قفل: ما قرأه المتصفّح قد تجاوزه غيرُه
             $fresh = Order::whereKey($order->id)->lockForUpdate()->first();
 
@@ -89,7 +89,7 @@ final class OrderTransition
                  * منها يصير خمسمئةً على موظّفٍ ضغط زرًّا مشروعًا.
                  */
                 try {
-                    OrderCorrection::cancel($fresh, null, $boutiquePieces);
+                    OrderCorrection::cancel($fresh, null, $boutiquePieces, $boutiqueLines);
                 } catch (\RuntimeException $e) {
                     return $e->getMessage();
                 }

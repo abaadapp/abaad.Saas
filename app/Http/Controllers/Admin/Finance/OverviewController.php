@@ -11,6 +11,7 @@ use App\Models\PayrollRun;
 use App\Models\SupplierInvoice;
 use App\Models\Transaction;
 use App\Support\Bank;
+use App\Support\BoutiqueReturns;
 use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\Receivables;
@@ -215,6 +216,9 @@ class OverviewController extends Controller
             ->get(['expense_id', 'boutique_id'])
             ->mapWithKeys(fn ($s) => [(int) $s->expense_id => $s->boutique?->label()]);
 
+        // وورقةٌ خفّضها مرتجعٌ أو خصمٌ بعد صدورها: يُعرض صافيها — هو ما يُسدَّد (`BoutiqueReturns::payable`)
+        $reduced = BoutiqueReturns::unpaidReductions($bid, $expenses->pluck('id')->all());
+
         return Inertia::render('Admin/Finance/Dues', [
             'expenses' => $expenses->map(fn ($e) => [
                 'id' => $e->id,
@@ -223,7 +227,7 @@ class OverviewController extends Controller
                 'type' => $e->type,
                 // اسمُ البوتيك لمصروف تسويته — `null` لكلّ مصروفٍ آخر
                 'boutique' => $boutiqueOf[$e->id] ?? null,
-                'amount' => (float) $e->amount,
+                'amount' => round((float) $e->amount - ($reduced[$e->id] ?? 0), 3),
                 'due' => optional($e->due_date)->format('Y-m-d'),
                 'overdue' => $e->due_date !== null && $e->due_date->lt($today),
             ])->all(),
@@ -272,7 +276,8 @@ class OverviewController extends Controller
      */
     private function dueTotals(int $bid): array
     {
-        $expenses = (float) Expense::where('business_id', $bid)->unpaid()->sum('amount');
+        $expenses = round((float) Expense::where('business_id', $bid)->unpaid()->sum('amount')
+            - array_sum(BoutiqueReturns::unpaidReductions($bid)), 3);
 
         $invoices = round((float) SupplierInvoice::where('business_id', $bid)
             ->owed()->whereColumn('paid', '<', 'total')

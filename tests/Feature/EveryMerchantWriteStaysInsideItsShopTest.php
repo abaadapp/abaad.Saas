@@ -99,6 +99,9 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['البوتيكات', 'post', 'admin.boutiques.settle', ['id' => 'boutique']],
                 ['البوتيكات', 'post', 'admin.boutiques.components.pay', ['id' => 'boutique', 'settlement' => 'boutique_settlement'], ['id'], ['method' => 'نقدي']],
                 ['البوتيكات', 'post', 'admin.boutiques.refund', ['id' => 'boutique'], [], ['method' => 'نقدي']],
+                ['البوتيكات', 'post', 'admin.boutiques.returns.review', ['id' => 'boutique'], [], ['note' => 1, 'bearer' => 'shop', 'why' => 'HACKED']],
+                ['البوتيكات', 'post', 'admin.boutiques.returns.receipt', ['id' => 'boutique'], [], ['method' => 'نقدي', 'reference' => 'HACKED']],
+                ['البوتيكات', 'post', 'admin.boutiques.returns.offset', ['id' => 'boutique'], [], ['settlement' => 1]],
                 ['منتجات البوتيك', 'post', 'admin.products.boutique-parts.store', ['id' => 'product'], [], ['mode' => 'included', 'quantity' => 1]],
                 ['منتجات البوتيك', 'delete', 'admin.products.boutique-parts.destroy', ['id' => 'product', 'kind' => 'part_kind', 'part' => 'recipe'], ['id']],
                 ['الكوبونات', 'post', 'admin.coupons.toggle', ['id' => 'coupon']],
@@ -124,6 +127,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['الطلبات', 'put', 'admin.orders.details.update', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.status', ['number' => 'order_number']],
                 ['الطلبات', 'post', 'admin.orders.boutique-pieces', ['number' => 'order_number'], [], ['action' => 'returned', 'pieces' => [1 => 1]]],
+                ['الطلبات', 'post', 'admin.orders.boutique-returns', ['number' => 'order_number'], [], ['note' => 1, 'sellable' => 1, 'damaged' => 0]],
                 ['الطلبات', 'post', 'admin.orders.send', ['number' => 'order_number']],
                 // رسالةٌ لمستلِم الهديّة ليُعرف موقعُه — لا تبلغ طلبَ متجرٍ آخر (GiftOrders)
                 ['الطلبات', 'post', 'admin.orders.contactRecipient', ['number' => 'order_number']],

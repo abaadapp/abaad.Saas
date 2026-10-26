@@ -17,6 +17,9 @@ export interface BoutiqueFields {
     commission_rate: number;
     active: boolean;
     notes?: string | null;
+    /** شرطُ المرتجع في الاتّفاقية: `sellable` أو `all`، والفراغُ غيرُ موثَّق — انظر `BoutiqueReturns` */
+    returns_terms?: string | null;
+    returns_terms_ref?: string | null;
 }
 
 interface Props {
@@ -29,6 +32,7 @@ interface Props {
 
 const EMPTY: BoutiqueFields = {
     name: '', name_en: '', phone: '', contact_person: '', commission_rate: 0, active: true, notes: '',
+    returns_terms: '', returns_terms_ref: '',
 };
 
 /**
@@ -129,6 +133,40 @@ export default function BoutiqueDialog({ open, onOpenChange, id = null, initial 
                             className="w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] px-3 py-2 text-sm"
                         />
                     </Field>
+
+                    {/*
+                        وشرطُ المرتجع كما في الاتّفاقية بمرجعه. وبلا شرطٍ لا يُفترض
+                        أنّ البوتيك يتحمّل: يُعرض كلُّ مرتجعٍ بعد ورقته للمراجعة.
+                    */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <Field
+                            label="من يتحمّل المرتجع بعد الورقة"
+                            hint="كما تنصّ الاتفاقية — وبلا شرطٍ يُعرض المرتجع للمراجعة المحاسبية"
+                            error={form.errors.returns_terms}
+                        >
+                            <select
+                                value={form.data.returns_terms ?? ''}
+                                onChange={(e) => form.setData('returns_terms', e.target.value)}
+                                className="h-10 w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 text-sm"
+                                data-testid="boutique-returns-terms"
+                            >
+                                <option value="">{t('غير موثّق في الاتفاقية')}</option>
+                                <option value="sellable">{t('البوتيك — إن عادت القطعة سليمة')}</option>
+                                <option value="all">{t('البوتيك — كلّ مرتجع')}</option>
+                            </select>
+                        </Field>
+                        <Field
+                            label="مرجع الاتفاقية"
+                            hint="رقمها وبند المرتجع فيها"
+                            required={!!form.data.returns_terms}
+                            error={form.errors.returns_terms_ref}
+                        >
+                            <Input
+                                value={form.data.returns_terms_ref ?? ''}
+                                onChange={(e) => form.setData('returns_terms_ref', e.target.value)}
+                            />
+                        </Field>
+                    </div>
 
                     <label className="flex cursor-pointer items-center gap-2.5">
                         <input

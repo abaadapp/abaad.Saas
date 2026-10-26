@@ -59,7 +59,10 @@ class OrderCorrection
 
         self::assertSameDay($order);
         self::assertTaxStands($order);
-        self::assertNotOnBoutiqueSheet($order, $item);
+
+        if ($newQty > (int) $item->quantity) {
+            self::assertNotOnBoutiqueSheet($order, $item);
+        }
 
         if ($newQty < 0) {
             throw new RuntimeException(__('الكمية لا تكون سالبة.'));
@@ -104,7 +107,9 @@ class OrderCorrection
              * `ACorrectionSettlesFromTheTotalItLockedTest`.
              */
             $order = self::lockOrder($order);
-            self::assertNotOnBoutiqueSheet($order, $item);
+            if ($newQty > $oldQty) {
+                self::assertNotOnBoutiqueSheet($order, $item);
+            }
 
             /*
              * ═══ والبندُ يُقرأ من جديدٍ مقفلًا قبل أن يُكتب فوقه ═══
@@ -140,6 +145,9 @@ class OrderCorrection
             $totalBefore = (float) $order->total;
             $itemName = $item->name;
             $itemId = $item->id;
+            // بندٌ حملته ورقةُ بوتيك يُلتقط قبل أن يُنقص — وما نقص منه إشعارٌ بعد التصحيح
+            $sheetLine = $locked->boutique_id && $locked->boutique_settlement_id ? BoutiqueReturns::snapshot($locked) : null;
+            $grossBefore = round((float) $locked->total, 3);
 
             self::moveStock($order, $item, $oldQty - $newQty);
             // ومستحقُّ البوتيك بالكمّيّة الجديدة وبسعر البيعة — عكسٌ ثمّ صفٌّ جديد
@@ -175,6 +183,11 @@ class OrderCorrection
                 'user_id' => PosCashier::id() ?? auth()->id(),
                 'employee_name' => PosCashier::name() ?? auth()->user()?->name,
             ]);
+
+            if ($sheetLine !== null) {
+                $grossAfter = $newQty === 0 ? 0.0 : round((float) $locked->price * $newQty, 3);
+                BoutiqueReturns::onDecrease($order, $sheetLine, $oldQty - $newQty, round($grossBefore - $grossAfter, 3), $reason, $edit->id);
+            }
 
             Activity::log('updated', $newQty === 0
                 ? 'حذف بند «'.$itemName.'» من الفاتورة '.$order->number.' — '.$reason
@@ -226,17 +239,13 @@ class OrderCorrection
     }
 
     /**
-     * ═══ وبندُ بوتيكٍ دخل ورقةَ تسوية لا يُلغى ولا يُغيَّر ═══
+     * ═══ وبندُ بوتيكٍ حملته ورقةُ تسوية لا يُزاد ولا يُستبدل ═══
      *
-     * الورقةُ حصّةُ البوتيك ممّا بِيع، مجمَّدةً يومَ صدورها: قُيّدت دَينًا في
-     * 2160 (`Boutiques::write`) أو دُفعت. فإلغاءُ البيعة بعدها — أو نقصُ
-     * كمّيّتها أو استبدالُ بندها — يردّ للزبون مالَه ويعيد القطعة، ويُبقي
-     * للبوتيك مستحقًّا عن بيعٍ لم يقع: يُدفع له ما لم يُبَع، ولا تقول ذلك شاشة.
-     *
-     * والورقةُ لا تُعدَّل بعد صدورها ولا قيدُها. فيُردّ الفعلُ برسالةٍ تسمّي
-     * الورقة، إلى أن يُبنى تصحيحٌ مستقلّ بمستنده. وتشمل الأوراقَ القديمة كذلك:
-     * ما دُفع عنها للبوتيك دُفع. والمكوّناتُ خارجُ هذا — لها دفترُها ورصيدُها
-     * (`BoutiqueDues::cancel`).
+     * الورقةُ حصّةُ البوتيك ممّا بِيع، مجمَّدةً يومَ صدورها. ونقصُ البند أو
+     * إلغاءُ طلبه يُكتب إشعارَ مرتجعٍ مرتبطًا بها (`BoutiqueReturns`). أمّا
+     * زيادتُه فقطعٌ جديدة على بندٍ «سُوّي» فلا تحملها ورقةٌ أبدًا — يُباع
+     * للبوتيك ما لا يُدفع له. واستبدالُه بيعٌ آخر في مكانه. فيُردّان، والطريقُ
+     * بندٌ جديد أو إنقاصٌ ثمّ إضافة.
      *
      * ويُسأل مرّتين: قبل المعاملة ليُردّ سريعًا، وتحت قفل الفاتورة. والورقةُ
      * تقفل فواتيرَها قبل أن تختم بنودَها، فلا تمرّ إحداهما بين سؤال الأخرى
@@ -259,7 +268,7 @@ class OrderCorrection
         }
 
         throw new RuntimeException(__(
-            'بند «:item» في ورقة تسوية البوتيك :number — لا يُلغى الطلب ولا يُغيَّر هذا البند بعد إصدارها، كي لا يبقى للبوتيك مستحقٌّ عن بيعٍ لم يتمّ. يُصحَّح ذلك بتسويةٍ مستقلّة مع البوتيك.',
+            'بند «:item» في ورقة تسوية البوتيك :number — لا تُزاد كمّيّتُه ولا يُستبدل بعد صدورها. أضف القطعة بندًا جديدًا، وإنقاصُه أو إلغاءُ الطلب يُكتب إشعارَ مرتجعٍ مرتبطًا بالورقة.',
             ['item' => $settled->name, 'number' => $settled->number],
         ));
     }
@@ -1730,8 +1739,11 @@ class OrderCorrection
      * و`$boutiqueReturned` جوابُ «هل تعود قطعُ البوتيك في هذا الطلب إلى الرفّ؟»
      * لكلّ قطعةٍ وكمّيّتها — ما عاد يُعكس مستحقُّه، وغيرُه يبقى موثَّقًا.
      * انظر `BoutiqueDues::cancel`.
+     *
+     * و`$boutiqueLines` مثلُه لبنود البوتيك المنفردة التي حملتها ورقة:
+     * `[رقمُ البند => ['sellable' => n, 'damaged' => n]]` — انظر `BoutiqueReturns::onCancel`.
      */
-    public static function cancel(Order $order, ?string $reason = null, bool|array|null $boutiqueReturned = null): void
+    public static function cancel(Order $order, ?string $reason = null, bool|array|null $boutiqueReturned = null, ?array $boutiqueLines = null): void
     {
         self::assertNotFiled($order);
 
@@ -1739,9 +1751,7 @@ class OrderCorrection
             return;
         }
 
-        self::assertNotOnBoutiqueSheet($order);
-
-        DB::transaction(function () use ($order, $reason, $boutiqueReturned) {
+        DB::transaction(function () use ($order, $reason, $boutiqueReturned, $boutiqueLines) {
             /*
              * والحال تُقرأ ثانيةً تحت قفل — والقراءة الأولى لا تكفي.
              *
@@ -1757,8 +1767,6 @@ class OrderCorrection
             if (! $fresh || $fresh->status === OrderStatus::CANCELLED) {
                 return;
             }
-
-            self::assertNotOnBoutiqueSheet($fresh);
 
             $totalBefore = (float) $order->total;
 
@@ -1816,7 +1824,7 @@ class OrderCorrection
                 $reason ?: null,
             );
 
-            OrderEdit::create([
+            $edit = OrderEdit::create([
                 'business_id' => $order->business_id,
                 'order_id' => $order->id,
                 'order_item_id' => null,
@@ -1828,6 +1836,14 @@ class OrderCorrection
                 'user_id' => PosCashier::id() ?? auth()->id(),
                 'employee_name' => PosCashier::name() ?? auth()->user()?->name,
             ]);
+
+            /*
+             * وبندُ بوتيكٍ حملته ورقةٌ: إشعارُ مرتجعٍ مرتبطٌ بها — والورقةُ كما هي.
+             *
+             * في المعاملة نفسِها: لا يُردّ للزبون مالُه وحصّةُ البوتيك عن البيع
+             * الملغى باقيةٌ بلا إشعار. وما لم يُقَل حالُه من القطع ينتظر استلامه.
+             */
+            BoutiqueReturns::onCancel($fresh, $boutiqueLines, $reason ?: __('إلغاء الطلب'), (int) $edit->id);
         });
     }
 

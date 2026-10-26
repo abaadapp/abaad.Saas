@@ -4,6 +4,9 @@ namespace App\Support;
 
 use App\Models\Business;
 use App\Models\Setting;
+use App\Support\Addons\Catalog;
+use App\Support\Addons\Entitlements;
+use App\Support\Addons\PricingPolicy;
 
 /**
  * من يملك أن يفعل ماذا — الإذن في موضعٍ واحد.
@@ -46,10 +49,23 @@ class WhatsAppFeature
         return self::platformFlag(self::SHARED_KEY, true);
     }
 
-    /** هل يملك هذا المتجر ربط رقمه الخاص؟ */
+    /**
+     * هل يملك هذا المتجر ربط رقمه الخاص؟
+     *
+     * العمودُ يُمنح بالولادة ويُسحب ممّن أساء (`whatsapp_own_allowed`) — وهو كلُّ
+     * الجواب لمتجر السياسة السابقة، كما كان.
+     *
+     * ومتجرُ سياسة الإضافات يحتاج فوقه إضافةَ «ربط واتساب برقم المتجر» — «حسب
+     * الطلب»: لا تسري حتى يعتمدها صاحبُ المنصّة ويُسدَّد عرضُها (`Addons\AddonOrders`).
+     * والسحبُ يبقى سحبًا: عمودٌ مطفأ يُغلق ولو سرت الإضافة.
+     */
     public static function canUseOwnNumber(Business $business): bool
     {
-        return (bool) $business->whatsapp_own_allowed;
+        if (! $business->whatsapp_own_allowed) {
+            return false;
+        }
+
+        return ! PricingPolicy::isAddons($business) || Entitlements::has($business, Catalog::OWN_NUMBER);
     }
 
     /**

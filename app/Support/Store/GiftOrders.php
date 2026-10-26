@@ -5,6 +5,8 @@ namespace App\Support\Store;
 use App\Models\Business;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\Addons\Catalog;
+use App\Support\Addons\Entitlements;
 use App\Support\FlowerOrder;
 use App\Support\WhatsAppPhone;
 use Illuminate\Validation\Rule;
@@ -52,13 +54,18 @@ final class GiftOrders
     public const CONTACT = 'contact_recipient';
 
     /**
-     * هل فتح مديرُ المنصّة الإهداءَ لهذا النشاط؟ — عمودُه وحده.
+     * هل فُتح الإهداءُ لهذا النشاط؟ — عمودُه، أو إضافةُ «الهدايا والطلبات المخصّصة».
      *
-     * ولا يُسأل عن إعدادات الموقع: ما يكتبه التاجرُ هناك لا يفتح شيئًا.
+     * العمودُ يفتحه مديرُ المنصّة كما كان. والإضافةُ تفتحه لمن اشتراها أو شُملت
+     * في باقته في السياسة الجديدة (`Addons\Entitlements`). ولا يُسأل عن إعدادات
+     * الموقع: ما يكتبه التاجرُ هناك لا يفتح شيئًا.
      */
     public static function on(int $businessId): bool
     {
-        return (bool) Business::whereKey($businessId)->value('gift_orders_enabled');
+        $business = Business::find($businessId);
+
+        return $business !== null
+            && ((bool) $business->gift_orders_enabled || Entitlements::has($business, Catalog::GIFT_ORDERS));
     }
 
     /**

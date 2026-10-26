@@ -5,6 +5,8 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\Invoice;
 use App\Models\Subscription;
+use App\Support\Addons\AddonOrders;
+use App\Support\Addons\PricingPolicy;
 use Carbon\CarbonInterface;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +57,9 @@ class Billing
     /** حزمةُ رسائل واتساب */
     public const KIND_MESSAGES = 'رسائل';
 
+    /** إضافةُ اشتراك — فاتورتُها منفصلةٌ عن الباقة (`Addons\AddonOrders`) */
+    public const KIND_ADDON = 'إضافة';
+
     /**
      * أسُدِّد لهذا المتجر اشتراكٌ قطّ؟ — فاتورةُ اشتراكٍ مدفوعة، ساريةً أو منقضية.
      *
@@ -80,19 +85,15 @@ class Billing
      */
     public const CYCLES = ['monthly', 'semiannual', 'yearly'];
 
-    /** ما تُكلّفه دورةٌ من الباقة */
+    /**
+     * ما تُكلّفه دورةٌ من الباقة — بسعرها في سياسة تسعير المتجر.
+     *
+     * متجرُ السياسة السابقة بسعر الباقة كما كان، والجديدةُ بسعرها المعتمد فيها
+     * (`Addons\PricingPolicy::planPrice`). والإضافاتُ لا تدخل هنا: لكلٍّ فاتورتُها.
+     */
     public static function price(Business $business, string $cycle): float
     {
-        $plan = $business->plan;
-        if (! $plan) {
-            return 0.0;
-        }
-
-        return match ($cycle) {
-            'yearly' => (float) $plan->yearly_price,
-            'semiannual' => round((float) $plan->monthly_price * 6, 3),
-            default => (float) $plan->monthly_price,
-        };
+        return PricingPolicy::planPrice($business, $cycle);
     }
 
     /**
@@ -256,6 +257,9 @@ class Billing
              * إمّا أن تُقيَّد الفاتورة مدفوعةً ويُضاف الرصيد معًا، وإمّا ألّا يقع شيء.
              */
             WhatsAppPacks::settle($invoice);
+
+            // وفاتورةُ الإضافة يُفعَّل استحقاقُها هنا — في المعاملة نفسِها وتحت قفلها
+            AddonOrders::settle($invoice);
 
             Activity::log('created', 'سجّل سداد الفاتورة: '.$invoice->number, [
                 'business_id' => null,

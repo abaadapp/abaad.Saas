@@ -2,6 +2,7 @@ import { Wallet } from 'lucide-react';
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { SettingsGroup, SettingsSection } from '@/Components/Settings';
+import StoreBranchSettings, { type StoreBranch } from '@/Components/StoreBranchSettings';
 import { Input, Textarea } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import DeliveryPlanner from './DeliveryPlanner';
@@ -49,7 +50,7 @@ const FULFILMENTS = [
  * وساعاتُ العمل ليست هنا: تُكتب في تذييل كلّ صفحة، فموضعُها صفُّ «التذييل»
  * في محرّر الصفحة. ومقبضان لشيءٍ واحد في موضعين يفترقان عند أوّل حفظ.
  */
-export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gatewayReady: boolean }) {
+export default function Checkout({ form, gatewayReady, branches = [] }: { form: ThemeForm; gatewayReady: boolean; branches?: StoreBranch[] }) {
     const t = useTranslate();
 
     return (
@@ -341,6 +342,18 @@ export default function Checkout({ form, gatewayReady }: { form: ThemeForm; gate
                                 })}
                             </div>
                         </Field>
+                    </div>
+
+                    {/* ومن أيّ فرعٍ يُنفَّذ — لمتجرٍ له أكثرُ من فرع (`Store\StoreBranches`) */}
+                    <div className="mt-5">
+                        <StoreBranchSettings
+                            branches={branches}
+                            branchId={form.data.store_branch_id}
+                            onBranch={(id) => form.setData('store_branch_id', id)}
+                            choice={form.data.store_pickup_branch_choice}
+                            onChoice={(on) => form.setData('store_pickup_branch_choice', on)}
+                            error={form.errors.store_branch_id}
+                        />
                     </div>
                 </SettingsGroup>
             </SettingsSection>

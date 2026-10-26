@@ -94,6 +94,8 @@ class MarketingToolsTest extends TestCase
             // واشتراطُ الموافقة على الشروط — يقرؤه `Store\StoreTerms` في الإتمام
             'store_terms_on',
             'store_pay_cod', 'store_pay_transfer', 'store_bank',
+            // وفرعُ طلبات الموقع واختيارُ الزبون فرعَ استلامه — يقرؤهما إتمامُ الطلب (`Store\StoreBranches`)
+            'store_branch_id', 'store_pickup_branch_choice',
             // وإيصالُ الدفع للزبون في صفحة الشكر — يقرؤه `Store\PaidReceipt`
             'store_paid_receipt',
             // ونصوصُ صفحة الشكر لكلّ لغة — تقرؤها `Store\ThankYouPage` في صفحة التأكيد

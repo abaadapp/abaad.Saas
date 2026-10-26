@@ -40,7 +40,7 @@
             @endif
             <th>{{ __('الموظف') }}</th>
             <th>{{ __('الفرع') }}</th>
-            <th>{{ __('الأصناف') }}</th>
+            <th>{{ __('المنتجات') }}</th>
             <th>{{ __('الإجمالي') }}</th>
             @if ($links)
                 <th>{{ __('المحصّل عبر رابط دفع') }}</th>
@@ -48,7 +48,7 @@
             <th>{{ __('الدفع') }}</th>
             <th>{{ __('الحالة') }}</th>
             <th>{{ __('التاريخ') }}</th>
-            <th>{{ __('موعد التسليم') }}</th>
+            <th>{{ __('التسليم / الاستلام') }}</th>
         </tr>
         @foreach ($rows as $o)
             @if (($o['kind'] ?? 'order') === 'link')
@@ -56,15 +56,16 @@
                     <td>{{ $o['id'] }}<br>Paymob · {{ $o['reference'] }}</td>
                     <td>{{ $o['customer'] }}</td>
                     <td>{{ __('رابط دفع') }} — {{ $o['invoice']['number'] ?? __($o['type']) }}</td>
-                    <td>—</td>
-                    <td>{{ $o['branch'] ?? '—' }}</td>
-                    <td>—</td>
+                    {{-- ومنشئُ الرابط موظّفُ التحصيل، والفرعُ والمنتجاتُ والموعدُ من فاتورته (`PaidLinksList::row`) --}}
+                    <td>{{ $o['creator'] ?? '—' }}</td>
+                    <td>{{ \App\Support\Lists\AllSalesList::branchCell($o) }}</td>
+                    <td>{{ $o['products']['label'] ?? __('لا توجد منتجات مرتبطة') }}</td>
                     <td>—</td>
                     <td>{{ \App\Support\Demo::moneyBase($o['amount']) }}</td>
                     <td>Paymob</td>
                     <td>{{ $o['review'] ? __('مدفوع — يحتاج مراجعة') : __($o['status']) }}</td>
                     <td>{{ $o['date'] }}</td>
-                    <td>—</td>
+                    <td>{{ \App\Support\Lists\AllSalesList::handoverCell($o) }}</td>
                 </tr>
             @else
                 <tr>
@@ -73,9 +74,10 @@
                     @if ($links)
                         <td>{{ __($o['channel_label']) }}</td>
                     @endif
-                    <td>{{ $o['employee'] }}</td>
+                    {{-- ومن أكّده تحت من أنشأه — لا بدلَه (`SaleCells::confirmation`) --}}
+                    <td>{{ $o['employee'] }}@if (! empty($o['confirmation']))<br>{{ $o['confirmation']['label'] }}@endif</td>
                     <td>{{ $o['branch'] }}</td>
-                    <td>{{ $o['items_count'] }}</td>
+                    <td>{{ $o['products']['label'] ?? $o['items_count'] }}@if (! empty($o['products']['addons_label']))<br>{{ $o['products']['addons_label'] }}@endif</td>
                     <td>{{ \App\Support\Demo::moneyBase($o['total']) }}</td>
                     @if ($links)
                         <td>—</td>
@@ -83,7 +85,7 @@
                     <td>{{ __($o['payment']) }}</td>
                     <td>{{ __($o['status']) }}</td>
                     <td>{{ $o['date'] }}</td>
-                    <td>{{ $o['scheduled'] }}</td>
+                    <td>{{ $o['handover']['label'] ?? '—' }}@if (! empty($o['late']))<br>{{ __('متأخّر') }}@endif</td>
                 </tr>
             @endif
         @endforeach

@@ -92,7 +92,9 @@ final class PaidLinksList
                 ->orWhere('c.name', $like, "%{$s}%")
                 ->orWhere('i.number', $like, "%{$s}%")
                 ->orWhere('l.provider_transaction_id', $like, "%{$s}%")
-                ->orWhere('l.reference', $like, "%{$s}%"));
+                ->orWhere('l.reference', $like, "%{$s}%")
+                // وباسم منشئ الرابط — كما يُبحث الطلبُ باسم موظّفه
+                ->orWhere('u.name', $like, "%{$s}%"));
         }
 
         // الفترةُ نفسُها التي تُقرأ بها الطلبات — على يوم الدفع
@@ -116,6 +118,8 @@ final class PaidLinksList
                 ->on('c.business_id', '=', 'l.business_id'))
             ->leftJoin('customer_invoices as i', fn ($j) => $j->on('i.id', '=', 'l.customer_invoice_id')
                 ->on('i.business_id', '=', 'l.business_id'))
+            // ومنشئُ الرابط من متجره وحده — حسابٌ من متجرٍ آخر لا يُقرأ اسمُه هنا
+            ->leftJoin('users as u', fn ($j) => $j->on('u.id', '=', 'l.created_by')->on('u.business_id', '=', 'l.business_id'))
             ->where('l.business_id', $bid)
             ->where('l.status', CustomerPaymentLink::PAID)
             ->where('l.is_live', true)
@@ -144,25 +148,25 @@ final class PaidLinksList
                 'l.id', 'l.reference', 'l.provider_transaction_id', 'l.amount', 'l.paid_at', 'l.meta', 'l.description',
                 'l.customer_invoice_id', 'i.number as invoice_number', 'b.name as branch_name',
                 'p.id as payment_id', 'p.number as payment_number',
-                'c.name as customer_name',
+                'c.name as customer_name', 'u.name as creator_name',
             ]);
     }
 
     public static function page(Request $request, int $per = 10): LengthAwarePaginator
     {
         $page = self::query($request)->paginate($per)->withQueryString();
-        $orders = self::ordersOf(collect($page->items()));
+        $context = self::context(collect($page->items()));
 
-        return $page->through(fn ($r) => self::row($r, $orders));
+        return $page->through(fn ($r) => self::row($r, $context));
     }
 
     /** صفوفُ الشاشة كلُّها — بلا ترقيم — لورقة PDF */
     public static function rows(Request $request): array
     {
         $rows = self::query($request)->get();
-        $orders = self::ordersOf($rows);
+        $context = self::context($rows);
 
-        return $rows->map(fn ($r) => self::row($r, $orders))->all();
+        return $rows->map(fn ($r) => self::row($r, $context))->all();
     }
 
     /**
@@ -171,12 +175,26 @@ final class PaidLinksList
      * والفاتورةُ التي صدرت عن طلبٍ تُذكر طلباتُها: البيعُ هناك في «المبيعات»
      * صفًّا واحدًا، وهذا سدادُه لا بيعٌ ثانٍ.
      *
-     * @param  array<int, list<string>>  $orders
+     * ═══ وما حول التحصيل — من مصدره لا ظنًّا ═══
+     *
+     * - **الموظف:** منشئُ الرابط (`created_by`) — لا من أكّد طلبًا ولا من قبض.
+     * - **الفرع:** فرعُ الفاتورة، ثمّ فرعُ مهمّة تجهيزها، ثمّ فرعُ طلبها.
+     *   وطلباتٌ من فروعٍ شتّى: «فروع متعددة» وأسماؤها. ولا فرعَ للموظّف يُنسب.
+     * - **المنتجات:** بنودُ الفاتورة نفسِها — لا بنودُ طلباتها فوقها، فلا يُعدّ
+     *   البيعُ مرّتين.
+     * - **التسليم:** موعدُ مهمّة التجهيز، ثمّ موعدُ الطلب، و«مواعيد متعددة».
+     *
+     * والرابطُ بلا فاتورةٍ لا فرعَ له ولا منتجاتٍ ولا موعد: لا يُخترع.
+     *
+     * @param  array<int, array<string, mixed>>  $context  `context()` — بمعرّف الفاتورة
      */
-    public static function row(object $r, array $orders = []): array
+    public static function row(object $r, array $context = []): array
     {
         $meta = is_string($r->meta) ? (json_decode($r->meta, true) ?: []) : (array) ($r->meta ?? []);
         $invoice = $r->customer_invoice_id ? (int) $r->customer_invoice_id : null;
+        $ctx = $invoice ? ($context[$invoice] ?? []) : [];
+        $creator = isset($r->creator_name) && trim((string) $r->creator_name) !== '' ? (string) $r->creator_name : null;
+        [$branch, $branches] = self::branchOf($r->branch_name ?? null, $ctx);
 
         return [
             'key' => 'link:'.$r->id,
@@ -188,9 +206,17 @@ final class PaidLinksList
             'customer' => Demo::customerLabel($r->customer_name),
             'type' => $invoice ? self::INVOICE : self::STANDALONE,
             'invoice' => $invoice ? ['id' => $invoice, 'number' => $r->invoice_number] : null,
-            'orders' => $invoice ? ($orders[$invoice] ?? []) : [],
-            // فرعُ فاتورته — والرابطُ بلا فاتورةٍ لا فرعَ له
-            'branch' => $r->branch_name ?? null,
+            'orders' => $ctx['orders'] ?? [],
+            // منشئُ الرابط — وهو «الموظف» في صفّ التحصيل
+            'creator' => $creator,
+            'branch' => $branch,
+            // وأسماءُ الفروع حين تعدّدت — تفاصيلُ «فروع متعددة»
+            'branches' => $branches,
+            // بنودُ فاتورته — والرابطُ بلا فاتورةٍ «لا توجد منتجات مرتبطة» (`null`)
+            'products' => isset($ctx['products'])
+                ? SaleCells::products($ctx['products']['lines'], $ctx['products']['pieces'], $ctx['products']['addons'])
+                : null,
+            'handover' => self::handoverOf($ctx),
             'amount' => round((float) $r->amount, 3),
             'date' => Carbon::parse($r->paid_at)->format('Y-m-d H:i'),
             'status' => 'مدفوع',
@@ -248,18 +274,29 @@ final class PaidLinksList
                 Workbook::money('المبلغ') => Workbook::MONEY,
                 __('تاريخ الدفع') => Workbook::DATETIME,
                 __('الحالة') => Workbook::TEXT,
+                __('منشئ رابط الدفع') => Workbook::TEXT,
+                __('الفرع') => Workbook::TEXT,
+                __('المنتجات') => Workbook::TEXT,
+                __('التسليم / الاستلام') => Workbook::TEXT,
             ],
             rows: function () use ($request) {
-                foreach (self::query($request)->cursor() as $r) {
-                    $row = self::row($r);
-                    yield [
-                        'cells' => [
-                            $row['id'], $row['reference'], $row['customer'], __($row['type']),
-                            $row['invoice']['number'] ?? '—', $row['amount'], $row['date'],
-                            $row['review'] ? __('مدفوع — يحتاج مراجعة') : __($row['status']),
-                        ],
-                        'fill' => null,
-                    ];
+                // دفعاتٍ لا صفًّا صفًّا: ما حول كلّ دفعةٍ ثلاثةُ أسئلة (`context`)
+                foreach (self::query($request)->lazy(500)->chunk(500) as $chunk) {
+                    $rows = collect($chunk->all());
+                    $context = self::context($rows);
+                    foreach ($rows as $r) {
+                        $row = self::row($r, $context);
+                        yield [
+                            'cells' => [
+                                $row['id'], $row['reference'], $row['customer'], __($row['type']),
+                                $row['invoice']['number'] ?? '—', $row['amount'], $row['date'],
+                                $row['review'] ? __('مدفوع — يحتاج مراجعة') : __($row['status']),
+                                $row['creator'] ?? '—', AllSalesList::branchCell($row),
+                                $row['products']['label'] ?? __('لا توجد منتجات مرتبطة'), AllSalesList::handoverCell($row),
+                            ],
+                            'fill' => null,
+                        ];
+                    }
                 }
             },
             totals: [
@@ -295,36 +332,126 @@ final class PaidLinksList
             return null;
         }
 
-        return self::row($r, self::ordersOf(collect([$r]))) + [
+        return self::row($r, self::context(collect([$r]))) + [
             'link_reference' => $r->reference,
             'description' => $r->description,
         ];
     }
 
     /**
-     * أرقامُ الطلبات التي صدرت عنها كلُّ فاتورة — دفعةً واحدة للصفحة.
+     * ما حول تحصيلات صفحةٍ كاملة — ثلاثةُ أسئلةٍ مهما كثرت الصفوف.
+     *
+     * لكلّ فاتورة: أرقامُ طلباتها وفروعُها ومواعيدُها، وبنودُها (منتجاتٌ
+     * وقطعٌ وإضافات)، ومهمّةُ تجهيزها. وكلُّ سؤالٍ بمتجر المستخدم: فاتورةٌ أو
+     * طلبٌ أو فرعٌ من متجرٍ آخر لا يدخل الصفّ ولو حمل الرقمَ نفسَه.
      *
      * @param  Collection<int, object>  $rows
-     * @return array<int, list<string>>
+     * @return array<int, array<string, mixed>>
      */
-    public static function ordersOf($rows): array
+    public static function context($rows): array
     {
-        $ids = $rows->pluck('customer_invoice_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $ids = collect($rows)->pluck('customer_invoice_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
 
         if ($ids === []) {
             return [];
         }
 
         $bid = (int) (auth()->user()->business_id ?? Demo::bid());
+        $out = array_fill_keys($ids, ['orders' => [], 'order_branches' => [], 'schedules' => []]);
 
-        return DB::table('customer_invoice_orders as x')
+        $orders = DB::table('customer_invoice_orders as x')
             ->join('orders as o', 'o.id', '=', 'x.order_id')
+            ->join('customer_invoices as ci', fn ($j) => $j->on('ci.id', '=', 'x.customer_invoice_id')->on('ci.business_id', '=', 'o.business_id'))
             ->whereIn('x.customer_invoice_id', $ids)
             ->where('o.business_id', $bid)
             ->orderBy('o.id')
-            ->get(['x.customer_invoice_id', 'o.number'])
-            ->groupBy('customer_invoice_id')
-            ->map(fn ($g) => $g->pluck('number')->map(fn ($n) => (string) $n)->values()->all())
-            ->all();
+            ->get(['x.customer_invoice_id', 'o.number', 'o.branch', 'o.fulfillment_type', 'o.scheduled_for', 'o.scheduled_until']);
+
+        foreach ($orders as $o) {
+            $at = &$out[(int) $o->customer_invoice_id];
+            $at['orders'][] = (string) $o->number;
+            if (filled($o->branch) && ! in_array((string) $o->branch, $at['order_branches'], true)) {
+                $at['order_branches'][] = (string) $o->branch;
+            }
+            $handover = SaleCells::handover(
+                $o->fulfillment_type,
+                $o->scheduled_for !== null ? Carbon::parse($o->scheduled_for) : null,
+                $o->scheduled_until !== null ? Carbon::parse($o->scheduled_until) : null,
+            );
+            if ($handover !== null) {
+                $at['schedules'][] = $handover + ['order' => (string) $o->number];
+            }
+            unset($at);
+        }
+
+        // بنودُ الفاتورة نفسِها: المنتجُ بندٌ ليس إضافةً ولا تابعًا لصنف
+        $product = 't.addon_id IS NULL AND t.parent_item_id IS NULL';
+        $items = DB::table('customer_invoice_items as t')
+            ->join('customer_invoices as ci', 'ci.id', '=', 't.customer_invoice_id')
+            ->where('ci.business_id', $bid)
+            ->whereIn('t.customer_invoice_id', $ids)
+            ->groupBy('t.customer_invoice_id')
+            ->selectRaw("t.customer_invoice_id, SUM(CASE WHEN {$product} THEN 1 ELSE 0 END) AS product_lines, "
+                ."SUM(CASE WHEN {$product} THEN t.quantity ELSE 0 END) AS pieces, "
+                ."SUM(CASE WHEN {$product} THEN 0 ELSE 1 END) AS addon_lines")
+            ->get();
+
+        foreach ($items as $i) {
+            $out[(int) $i->customer_invoice_id]['products'] = [
+                'lines' => (int) $i->product_lines, 'pieces' => (float) $i->pieces, 'addons' => (int) $i->addon_lines,
+            ];
+        }
+
+        $preps = DB::table('customer_invoice_preparations as r')
+            ->leftJoin('branches as b', fn ($j) => $j->on('b.id', '=', 'r.branch_id')->on('b.business_id', '=', 'r.business_id'))
+            ->where('r.business_id', $bid)
+            ->whereIn('r.customer_invoice_id', $ids)
+            ->get(['r.customer_invoice_id', 'r.fulfillment_type', 'r.scheduled_for', 'b.name as branch_name']);
+
+        foreach ($preps as $p) {
+            $out[(int) $p->customer_invoice_id]['prep'] = [
+                'branch' => $p->branch_name,
+                'handover' => SaleCells::handover($p->fulfillment_type, $p->scheduled_for !== null ? Carbon::parse($p->scheduled_for) : null),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * فرعُ التحصيل — ومعه أسماءُ الفروع حين تعدّدت.
+     *
+     * @return array{0: ?string, 1: list<string>}
+     */
+    private static function branchOf(?string $invoiceBranch, array $ctx): array
+    {
+        $fromOrders = $ctx['order_branches'] ?? [];
+
+        return match (true) {
+            count($fromOrders) > 1 => [__('فروع متعددة'), $fromOrders],
+            filled($invoiceBranch) => [$invoiceBranch, []],
+            filled($ctx['prep']['branch'] ?? null) => [$ctx['prep']['branch'], []],
+            count($fromOrders) === 1 => [$fromOrders[0], []],
+            default => [null, []],
+        };
+    }
+
+    /** موعدُ التحصيل — مهمّةُ التجهيز، ثمّ طلبُه، و«مواعيد متعددة» بتفاصيلها */
+    private static function handoverOf(array $ctx): ?array
+    {
+        if (($prep = $ctx['prep']['handover'] ?? null) !== null) {
+            return $prep;
+        }
+
+        $distinct = collect($ctx['schedules'] ?? [])->unique('label')->values();
+
+        return match (true) {
+            $distinct->count() > 1 => [
+                'kind' => null, 'type' => null, 'when' => null, 'label' => __('مواعيد متعددة'),
+                'details' => $distinct->map(fn ($h) => $h['order'].': '.$h['label'])->all(),
+            ],
+            $distinct->count() === 1 => collect($distinct->first())->except('order')->all(),
+            default => null,
+        };
     }
 }

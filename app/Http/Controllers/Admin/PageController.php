@@ -44,6 +44,7 @@ use App\Support\Roles;
 use App\Support\Search;
 use App\Support\ShopIdentity;
 use App\Support\Store\CheckoutFields;
+use App\Support\Store\StoreBranches;
 use App\Support\Store\StorePage;
 use App\Support\Storefront;
 use App\Support\Vat;
@@ -959,6 +960,8 @@ class PageController extends Controller
              */
             'fieldStates' => CheckoutFields::all(Demo::bid()),
             'fulfilments' => CheckoutFields::fulfilments(Demo::bid()),
+            // وفروعُ المتجر الحيّة — لفرع طلبات الموقع وفرع الاستلام (`Store\StoreBranches`)
+            'storeBranches' => StoreBranches::live(Demo::bid())->map(fn ($b) => ['id' => (int) $b->id, 'name' => (string) $b->name])->values(),
             // وأقسامُ الصفحة مرتَّبةً — تُحسب في الخادم كما تُقرأ في المتجر
             'pageSections' => StorePage::order(Demo::bid()),
             /*

@@ -700,6 +700,9 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             // وما يقرؤه الزبونُ حين لا موعدَ للتوصيل — بأسطره كما كُتبت
             'store_delivery_unavailable' => "لا مواعيد توصيل متاحة هذا الأسبوع.\nيمكنك الاستلام من المحل.",
             'store_delivery_unavailable_en' => "No delivery times are left this week.\nYou can pick up from the shop.",
+            // وفرعُ طلبات الموقع — فرعٌ حيٌّ من فروع هذا المتجر (`Store\StoreBranches`)، واختيارُ الزبون فرعَ استلامه
+            'store_branch_id' => (string) Branch::create(['business_id' => $this->shop->id, 'name' => 'مسقط'])->id,
+            'store_pickup_branch_choice' => '1',
         ];
 
         /*

@@ -39,6 +39,8 @@ const BLANK: ThemeSettingsData = {
     store_thanks_continue: '',
     store_thanks_continue_en: '',
     store_bank: '',
+    store_branch_id: '',
+    store_pickup_branch_choice: false,
     store_delivery_fee: '',
     store_free_delivery_over: '',
     store_delivery_areas: '',

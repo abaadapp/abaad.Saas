@@ -46,6 +46,7 @@ use App\Models\SupportMessage;
 use App\Models\SupportRead;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Lists\SaleCells;
 use App\Support\Lists\SelfSignupsList;
 use App\Support\Store\GiftCardProduct;
 use App\Support\Store\GiftOrders;
@@ -1451,6 +1452,13 @@ class Demo
             )),
             // قناةُ الطلب — تقرؤها «طباعة تلقائية عند تأكيد طلب الموقع» لتفتح نافذتها في الضغطة
             'channel' => $o->channel,
+            /*
+             * ومن أكّده أوّلَ مرّةٍ ومتى — غيرُ «الموظف» الذي أنشأه (`OrderTransition::confirms`).
+             * و`moment` يومُ التأكيد وساعتُه كاملين: الصفحةُ تقرؤه وحده لا بجوار يوم الطلب.
+             */
+            'confirmation' => ($c = SaleCells::confirmation($o)) === null ? null : $c + [
+                'moment' => $o->confirmed_at !== null ? SaleCells::moment($o->confirmed_at) : null,
+            ],
             'occasions' => FlowerOrder::occasionOptions(),
             'fulfillments' => FlowerOrder::fulfillmentOptions(),
             'items' => $items,

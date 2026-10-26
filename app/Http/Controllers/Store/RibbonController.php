@@ -22,6 +22,7 @@ use App\Support\MarketingSettings;
 use App\Support\Money;
 use App\Support\PaymentMethods;
 use App\Support\Seo;
+use App\Support\Store\StoreBranches;
 use App\Support\Store\BestSellers;
 use App\Support\Store\RibbonPicks;
 use App\Support\Store\RibbonTexts;
@@ -820,6 +821,12 @@ class RibbonController extends Controller
              */
             'fields' => CheckoutFields::all($bid),
             'fulfilments' => CheckoutFields::fulfilments($bid),
+            /*
+             * وفروعُ الاستلام التي يختار منها الزبون — لا شيء ما لم يفتحها
+             * صاحبُ المتجر وله أكثرُ من فرع. والخادمُ يردّ فرعًا ليس منها
+             * (`Store\StoreBranches::resolve`).
+             */
+            'pickupBranches' => StoreBranches::forPage($bid),
             // الاسمان والعنوانُ بالإنجليزيّة — والخادمُ يحرسها (`EnglishCheckout`)
             'englishOnly' => EnglishCheckout::on($bid),
             // وملاحظاتُ الطلب — خانةٌ حرّةٌ بالإنجليزيّة لمن فُتحت له الميزة (`NotesAndEdits`)

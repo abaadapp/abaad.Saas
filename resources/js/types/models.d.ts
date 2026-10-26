@@ -321,6 +321,38 @@ export interface Order {
     channel?: string;
     /** اسمُ القناة كما يكتبه الخادم — لا تُترجمها الشاشةُ بقائمةٍ ثانية */
     channel_label?: string;
+    /** من أكّد الطلب أوّلَ مرّة — `SaleCells::confirmation`؛ `null` لبيعةٍ لا تأكيدَ فيها */
+    confirmation?: SaleConfirmation | null;
+    /** «منتجان — 5 قطع» — `SaleCells::products` */
+    products?: SaleProducts;
+    /** «التسليم / الاستلام» — `SaleCells::handover`؛ `null` لبيعة المنضدة */
+    handover?: SaleHandover | null;
+}
+
+export interface SaleConfirmation {
+    /** confirmed: سُجّل من أكّده · pending: بانتظار التأكيد · unknown: أُكّد قبل أن يُحفظ المؤكِّد · none: أُلغي بلا تأكيد */
+    state: 'confirmed' | 'pending' | 'unknown' | 'none';
+    by: string | null;
+    by_id: number | null;
+    at: string | null;
+    label: string;
+}
+
+export interface SaleProducts {
+    lines: number;
+    pieces: number;
+    addons: number;
+    label: string;
+    addons_label: string | null;
+}
+
+export interface SaleHandover {
+    kind: 'delivery' | 'pickup' | null;
+    type: string | null;
+    when: string | null;
+    label: string;
+    /** «مواعيد متعددة» — موعدُ كلّ طلبٍ في فاتورة التحصيل */
+    details?: string[];
 }
 
 export interface Expense {

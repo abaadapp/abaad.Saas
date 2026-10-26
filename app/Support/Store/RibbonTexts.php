@@ -29,7 +29,7 @@ final class RibbonTexts
         'cartTitle' => 'السلة', 'cartEmpty' => 'سلتك فارغة', 'continueShopping' => 'متابعة التسوّق', 'remove' => 'حذف', 'subtotal' => 'المجموع الفرعي', 'toCheckout' => 'إتمام الطلب',
         'checkoutTitle' => 'إتمام الطلب', 's1' => 'بياناتك', 's2' => 'التوصيل', 's3' => 'بيانات المستلم', 's3card' => 'كرت الهدية', 's4' => 'الدفع',
         'fName' => 'الاسم الكامل', 'fPhone' => 'رقم الهاتف', 'fArea' => 'المنطقة', 'fAddress' => 'العنوان بالتفصيل (المنطقة، الشارع، رقم المنزل)',
-        'delivery' => 'توصيل للعنوان', 'pickup' => 'استلام من المحل', 'pickupAddr' => 'الاستلام من المحل',
+        'delivery' => 'توصيل للعنوان', 'pickup' => 'استلام من المحل', 'pickupAddr' => 'الاستلام من المحل', 'pickupBranch' => 'فرع الاستلام', 'pickupBranchChoose' => 'اختر فرع الاستلام',
         'fCard' => 'رسالة تُكتب على كرت الهدية (اختياري)', 'cardHint' => 'حتى 500 حرف',
         // المستلِمُ غيرُ المشتري — وأكثرُ الطلبات تُشترى لغيرِ مشتريها
         'forOther' => 'الطلب هدية لشخصٍ آخر', 'fRecipient' => 'اسم المستلِم', 'fRecipientPhone' => 'هاتف المستلِم',
@@ -145,7 +145,7 @@ final class RibbonTexts
         'cartTitle' => 'Your cart', 'cartEmpty' => 'Your cart is empty', 'continueShopping' => 'Continue shopping', 'remove' => 'Remove', 'subtotal' => 'Subtotal', 'toCheckout' => 'Checkout',
         'checkoutTitle' => 'Checkout', 's1' => 'Your details', 's2' => 'Delivery', 's3' => 'Recipient details', 's3card' => 'Gift card', 's4' => 'Payment',
         'fName' => 'Full name', 'fPhone' => 'Phone number', 'fArea' => 'Area', 'fAddress' => 'Full address (area, street, house no.)',
-        'delivery' => 'Deliver to address', 'pickup' => 'Pick up in store', 'pickupAddr' => 'Pick up in store',
+        'delivery' => 'Deliver to address', 'pickup' => 'Pick up in store', 'pickupAddr' => 'Pick up in store', 'pickupBranch' => 'Pickup branch', 'pickupBranchChoose' => 'Choose a pickup branch',
         'fCard' => 'Message for the gift card (optional)', 'cardHint' => 'Up to 500 characters',
         'forOther' => 'This order is a gift for someone else', 'fRecipient' => 'Recipient name', 'fRecipientPhone' => 'Recipient phone',
         'addCard' => 'Add a gift card', 'cardAlign' => 'Text alignment', 'alignRight' => 'Right', 'alignCenter' => 'Center', 'alignLeft' => 'Left',

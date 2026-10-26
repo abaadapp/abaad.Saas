@@ -35,6 +35,8 @@ class Order extends Model
         'scheduled_until' => 'datetime',
         // ومتى وافق على شروط المتجر — انظر `Store\StoreTerms`
         'terms_accepted_at' => 'datetime',
+        // ومتى أُكّد أوّلَ مرّة — ومن أكّده في `confirmed_by` (`OrderTransition::confirms`)
+        'confirmed_at' => 'datetime',
     ];
 
     /**

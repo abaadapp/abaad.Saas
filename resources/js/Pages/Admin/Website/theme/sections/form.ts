@@ -45,6 +45,9 @@ export interface ThemeSettingsData {
     store_thanks_continue: string;
     store_thanks_continue_en: string;
     store_bank: string;
+    /* فرعُ طلبات الموقع (فارغًا أوّلُ الفروع) واختيارُ الزبون فرعَ استلامه — `Store\StoreBranches` */
+    store_branch_id: string;
+    store_pickup_branch_choice: boolean;
     store_delivery_fee: string;
     store_free_delivery_over: string;
     store_delivery_areas: string;
@@ -144,6 +147,8 @@ export function seed(s: ThemeSeed): ThemeSettingsData {
         store_thanks_continue: v.store_thanks_continue ?? '',
         store_thanks_continue_en: v.store_thanks_continue_en ?? '',
         store_bank: v.store_bank ?? '',
+        store_branch_id: v.store_branch_id ?? '',
+        store_pickup_branch_choice: (v.store_pickup_branch_choice ?? '0') === '1',
         store_delivery_fee: v.store_delivery_fee ?? '',
         store_free_delivery_over: v.store_free_delivery_over ?? '',
         store_delivery_areas: v.store_delivery_areas ?? '',
@@ -209,7 +214,7 @@ export const SCREEN_KEYS = {
         'store_thanks_receipt', 'store_thanks_receipt_en', 'store_thanks_continue', 'store_thanks_continue_en',
         'store_delivery_fee', 'store_free_delivery_over', 'store_delivery_areas',
         'store_delivery_slots', 'store_delivery_schedule_on', 'store_delivery_schedule', 'store_delivery_unavailable', 'store_delivery_unavailable_en', 'store_delivery_note', 'store_delivery_note_en', 'store_delivery_area_note', 'store_delivery_area_note_en',
-        'store_max_days', 'store_fulfil',
+        'store_max_days', 'store_fulfil', 'store_branch_id', 'store_pickup_branch_choice',
         'store_field_area', 'store_field_address', 'store_field_date', 'store_field_slot',
         'store_field_recipient', 'store_field_promo', 'store_image_note', 'store_image_note_en',
         'store_gift_card', 'store_gift_card_price',

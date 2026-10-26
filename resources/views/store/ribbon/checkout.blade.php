@@ -98,6 +98,21 @@
                     @endif
                 </div>
                 <div data-rb-pickup style="display:none;border:1px solid var(--rb-line);border-radius:var(--rb-r);background:#fff;padding:14px;font-size:14px;line-height:1.7">{{ $t['pickupAddr'] }}@if ($identity['address'] !== '') — {{ $identity['address'] }}@endif @if ($hours !== '') · {{ $hours }}@endif</div>
+                {{--
+                    وفرعُ الاستلام — لمتجرٍ فتح الاختيار وله أكثرُ من فرع (`StoreBranches`).
+                    والخادمُ يردّ فرعًا ليس في القائمة، ويخصم المخزونَ من الفرع المختار.
+                --}}
+                @if (! empty($pickupBranches))
+                    <div data-rb-pickup-branch style="display:none;margin-top:10px">
+                        <select class="rb-input" name="pickup_branch" aria-label="{{ $t['pickupBranch'] }}" data-testid="rb-pickup-branch" required>
+                            <option value="">{{ $t['pickupBranchChoose'] }}</option>
+                            @foreach ($pickupBranches as $b)
+                                <option value="{{ $b['id'] }}">{{ $b['name'] }}@if ($b['address']) — {{ $b['address'] }}@endif</option>
+                            @endforeach
+                        </select>
+                        <div class="rb-error" data-err="pickup_branch"></div>
+                    </div>
+                @endif
                 @if ($schedule !== null)
                     {{--
                         ═══ وموعدٌ من جدول المتجر — المتاحُ وحدَه ═══
@@ -694,6 +709,8 @@
         // والهديّةُ تُوصَّل كأيّ طلب: العنوانُ هنا عنوانُ المستلِم
         if (d) d.style.display = fulfil === 'delivery' ? 'grid' : 'none';
         if (p) p.style.display = fulfil === 'pickup' ? 'block' : 'none';
+        var pb = form.querySelector('[data-rb-pickup-branch]');
+        if (pb) pb.style.display = fulfil === 'pickup' ? 'block' : 'none';
         if (giftOrder) giftOrder.fulfil(fulfil);
         // والاستلامُ قد يكون له جدولُه — فتُبدَّل الأيّامُ مع الطريقة
         if (schedule) schedule.fulfil(fulfil);
@@ -750,6 +767,8 @@
             address: $('[name=address]') ? $('[name=address]').value : '',
             date: $('[name=date]') ? $('[name=date]').value : '',
             slot: $('[name=slot]') ? $('[name=slot]').value : '',
+            // وفرعُ الاستلام لمن اختار الاستلام وحده — والتوصيلُ من فرع طلبات الموقع
+            pickup_branch: (fulfil === 'pickup' && $('[name=pickup_branch]')) ? $('[name=pickup_branch]').value : '',
             card: cardMsg ? cardMsg.card() : ((cardWay === 'text' && $('[name=card]')) ? $('[name=card]').value : ''),
             recipient_name: $('[name=recipient_name]') ? $('[name=recipient_name]').value : '',
             recipient_phone: $('[name=recipient_phone]') ? $('[name=recipient_phone]').value : '',

@@ -149,6 +149,12 @@ class MarketingSettings
             'store_pay_transfer' => '0',
             'store_bank' => '',
             /*
+             * وفرعُ طلبات الموقع واختيارُ الزبون فرعَ استلامه — فارغٌ ومطفأ:
+             * متجرٌ قائمٌ يُنسب طلبُه إلى أوّل فروعه كما كان. انظر `Store\StoreBranches`.
+             */
+            'store_branch_id' => '',
+            'store_pickup_branch_choice' => '0',
+            /*
              * وإيصالُ الدفع الإلكترونيّ في صفحة الشكر — مغلقٌ حتّى يفتحه صاحبُه.
              * انظر `Store\PaidReceipt`.
              */

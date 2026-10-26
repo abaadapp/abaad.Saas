@@ -14,7 +14,7 @@ import { Card } from '@/Components/ui/card';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
-import type { Order } from '@/types/models';
+import type { Order, SaleConfirmation, SaleHandover, SaleProducts } from '@/types/models';
 
 interface Props {
     /** الفترةُ على تاريخ الطلب (`ListFilters::orderPeriod`) — من/إلى القديمة أو شهرٌ أو سنة */
@@ -158,18 +158,67 @@ export default function OrdersIndex() {
                 ),
         },
         {
+            /*
+             * ═══ الموظف — من أنشأ، ومن أكّد، ومن أنشأ الرابط ═══
+             *
+             * بيعةُ الصندوق: الكاشير، وتحته من أكّدها إن انتظرت تأكيدًا. وطلبُ
+             * الموقع لا بائعَ له (المصدرُ قاله)، فيُقرأ فيه من أكّده — أو أنّه
+             * «بانتظار التأكيد»، أو «مؤكّد — الموظف غير معروف» لطلبٍ أُكّد قبل
+             * أن يُحفظ المؤكِّد. والتحصيلُ: منشئُ رابطه، لا مؤكِّدُ طلب.
+             */
             key: 'employee',
             header: 'الموظف',
-            cell: (o) => (isLink(o) || o.channel === 'website' ? <span className="text-[#9ca3af]">—</span> : o.employee || '—'),
-        },
-        { key: 'branch', header: 'الفرع', cell: (o) => o.branch || '—' },
-        {
-            key: 'items_count',
-            header: 'المنتجات',
-            align: 'end',
             cell: (o) =>
                 isLink(o) ? (
-                    <span className="text-[#9ca3af]">—</span>
+                    o.creator ? (
+                        <span className="flex flex-col" data-testid="link-creator">
+                            <span className="text-[11px] text-[#9ca3af]">{t('أنشأ الرابط')}</span>
+                            <span>{o.creator}</span>
+                        </span>
+                    ) : (
+                        <span className="text-[#9ca3af]">—</span>
+                    )
+                ) : o.channel === 'website' ? (
+                    o.confirmation ? <Confirmed c={o.confirmation} /> : <span className="text-[#9ca3af]">—</span>
+                ) : (
+                    <span className="flex flex-col">
+                        <span>{o.employee || '—'}</span>
+                        {o.confirmation && <Confirmed c={o.confirmation} />}
+                    </span>
+                ),
+        },
+        {
+            key: 'branch',
+            header: 'الفرع',
+            cell: (o) =>
+                isLink(o) && o.branches && o.branches.length > 0 ? (
+                    <span className="flex flex-col" data-testid="link-branches" title={o.branches.join('، ')}>
+                        <span>{o.branch}</span>
+                        <span className="text-[11px] text-[#9ca3af]">{o.branches.join('، ')}</span>
+                    </span>
+                ) : (
+                    o.branch || '—'
+                ),
+        },
+        {
+            /*
+             * «منتجان — 5 قطع» — بنودُ المنتجات المختلفة وقطعُها، والإضافاتُ
+             * المبيعةُ سطرًا في سطرها (`SaleCells::products`). والتحصيلُ: بنودُ
+             * فاتورته — لا بنودُ طلباتها فوقها — أو «لا توجد منتجات مرتبطة».
+             */
+            key: 'items_count',
+            header: 'المنتجات',
+            cell: (o) =>
+                isLink(o) ? (
+                    o.products ? (
+                        <Bought p={o.products} />
+                    ) : (
+                        <span className="text-[12px] text-[#9ca3af]" data-testid="no-products">
+                            {t('لا توجد منتجات مرتبطة')}
+                        </span>
+                    )
+                ) : o.products ? (
+                    <Bought p={o.products} />
                 ) : (
                     <span className="tabular-nums">
                         {number(o.items_count)} {t('منتج')}
@@ -221,21 +270,13 @@ export default function OrdersIndex() {
              * والوسمُ من الخادم لا من مقارنةِ نصٍّ في المتصفّح: `Order::isLate`
              * هي قاعدةُ المُرشِّح نفسُها، فلا يفترق ما يُرشَّح عمّا يُوسَم.
              */
+            /*
+             * و«التسليم / الاستلام» — نوعُ التنفيذ دائمًا، ثمّ موعدُه بطرفي فترته
+             * أو «لم يُحدد موعد». و«متأخّر» وسمٌ بجانب النوع لا بدلَه.
+             */
             key: 'scheduled',
-            header: 'موعد التسليم',
-            cell: (o) =>
-                !isLink(o) && o.scheduled && o.scheduled !== '—' ? (
-                    <span className="flex flex-col">
-                        <span className={o.late ? 'font-medium text-[#b91c1c]' : 'text-[#4b4b4b]'}>
-                            {o.scheduled}
-                        </span>
-                        <span className="text-[11px] text-[#9ca3af]">
-                            {o.late ? t('متأخّر') : o.fulfillment ? t(o.fulfillment) : ''}
-                        </span>
-                    </span>
-                ) : (
-                    <span className="text-[#9ca3af]">—</span>
-                ),
+            header: 'التسليم / الاستلام',
+            cell: (o) => <Handover h={o.handover ?? null} late={!isLink(o) && !!o.late} />,
         },
         {
             key: 'actions',
@@ -365,6 +406,19 @@ export default function OrdersIndex() {
             ),
         },
         { key: 'customer', header: 'العميل', cell: (c) => c.customer || '—' },
+        { key: 'employee', header: 'أنشأ الرابط', cell: (c) => c.creator || <span className="text-[#9ca3af]">—</span> },
+        {
+            key: 'branch',
+            header: 'الفرع',
+            cell: (c) => (c.branches && c.branches.length > 0 ? `${c.branch}: ${c.branches.join('، ')}` : c.branch || '—'),
+        },
+        {
+            key: 'items_count',
+            header: 'المنتجات',
+            cell: (c) =>
+                c.products ? <Bought p={c.products} /> : <span className="text-[12px] text-[#9ca3af]">{t('لا توجد منتجات مرتبطة')}</span>,
+        },
+        { key: 'scheduled', header: 'التسليم / الاستلام', cell: (c) => <Handover h={c.handover ?? null} late={false} /> },
         {
             key: 'channel',
             header: 'المصدر',
@@ -567,5 +621,56 @@ export default function OrdersIndex() {
             )}
             {confirmDialog}
         </AdminLayout>
+    );
+}
+
+/** من أكّد الطلب — والجملةُ من الخادم (`SaleCells::confirmation`) */
+function Confirmed({ c }: { c: SaleConfirmation }) {
+    const tone =
+        c.state === 'pending' ? 'text-[#b45309]' : c.state === 'confirmed' && c.by ? 'text-[#166534]' : 'text-[#6b7280]';
+
+    return (
+        <span className={`block max-w-[8rem] text-[12px] ${tone}`} data-testid="order-confirmation" data-state={c.state}>
+            {c.label}
+        </span>
+    );
+}
+
+/** «منتجان — 5 قطع» وتحتها الإضافات — من الخادم (`SaleCells::products`) */
+function Bought({ p }: { p: SaleProducts }) {
+    return (
+        // يلتفّ على سطرين ولا يمدّ الجدول: عمودٌ عريضٌ يُخرج «عرض» من الشاشة على 1366
+        <span className="flex max-w-[6.5rem] flex-col" data-testid="order-products">
+            <span className="tabular-nums">{p.label}</span>
+            {p.addons_label && <span className="text-[11px] text-[#9ca3af]">{p.addons_label}</span>}
+        </span>
+    );
+}
+
+/** نوعُ التنفيذ دائمًا، و«متأخّر» بجانبه، ثمّ الموعدُ أو «لم يُحدد موعد» (`SaleCells::handover`) */
+function Handover({ h, late }: { h: SaleHandover | null; late: boolean }) {
+    const t = useTranslate();
+
+    if (!h) {
+        return <span className="text-[#9ca3af]">—</span>;
+    }
+
+    return (
+        <span className="flex flex-col" data-testid="handover" data-kind={h.kind ?? ''}>
+            {(h.type || late) && (
+                <span className="flex flex-wrap items-center gap-1">
+                    {h.type && <span className="font-medium text-[#111]">{h.type}</span>}
+                    {late && <Badge variant="danger">{t('متأخّر')}</Badge>}
+                </span>
+            )}
+            <span className={late ? 'text-[11.5px] font-medium text-[#b91c1c]' : 'text-[11.5px] text-[#4b4b4b]'} dir="auto">
+                {h.when ?? (h.type ? t('لم يُحدد موعد') : h.label)}
+            </span>
+            {h.details && h.details.length > 0 && (
+                <span className="text-[11px] text-[#9ca3af]" data-testid="handover-details">
+                    {h.details.join(' · ')}
+                </span>
+            )}
+        </span>
     );
 }

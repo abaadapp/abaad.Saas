@@ -21,6 +21,7 @@ use App\Support\Store\CheckoutFields;
 use App\Support\Store\DeliverySchedule;
 use App\Support\Store\NewArrivals;
 use App\Support\Store\OrderWindow;
+use App\Support\Store\StoreBranches;
 use App\Support\Store\StoreTerms;
 use App\Support\Store\PaidReceipt;
 use App\Support\Store\ShelfOrder;
@@ -271,6 +272,14 @@ class MarketingController extends Controller
             'store_instagram' => ['nullable', 'string', 'max:100'],
             'store_pay_cod' => ['sometimes', 'boolean'],
             'store_pay_transfer' => ['sometimes', 'boolean'],
+            /*
+             * وفرعُ طلبات الموقع — من فروع هذا المتجر الحيّة وحدها، وفارغًا يعني
+             * أوّلَها كما كان. واختيارُ الزبون فرعَ الاستلام مقبضٌ مطفأ. انظر
+             * `Store\StoreBranches`.
+             */
+            StoreBranches::DEFAULT => ['nullable', 'integer', Rule::exists('branches', 'id')
+                ->where('business_id', $business->id)->whereNull('deleted_at')],
+            StoreBranches::CHOICE => ['sometimes', 'boolean'],
             // إيصالُ الدفع الإلكترونيّ للزبون — انظر `Store\PaidReceipt` وحارسَه تحت
             'store_paid_receipt' => ['sometimes', 'boolean'],
             /*
@@ -747,7 +756,7 @@ class MarketingController extends Controller
         Domains::sync($business->refresh());
 
         foreach (['store_on', 'store_show_prices', 'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_paid_receipt', 'store_gift_card', 'store_block_on', 'store_seo_index',
-            OrderWindow::ON, OrderWindow::MESSAGE_ON, StoreTerms::ON, DeliverySchedule::ON] as $flag) {
+            OrderWindow::ON, OrderWindow::MESSAGE_ON, StoreTerms::ON, DeliverySchedule::ON, StoreBranches::CHOICE] as $flag) {
             if (array_key_exists($flag, $data)) {
                 $data[$flag] = $request->boolean($flag) ? '1' : '0';
             }

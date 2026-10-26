@@ -17,6 +17,8 @@ interface Props extends ThemeShell, ThemeSeed {
     gateway: GatewayState;
     orderDesk: OrderDesk;
     terms: TermsSeed;
+    /** فروعُ المتجر الحيّة — لفرع طلبات الموقع وفرع الاستلام (`Store\StoreBranches`) */
+    storeBranches?: { id: number; name: string }[];
 }
 
 /**
@@ -39,7 +41,7 @@ interface Props extends ThemeShell, ThemeSeed {
  */
 export default function ThemeStore() {
     const props = usePage<PageProps<Props>>().props;
-    const { site, gateway, orderDesk, terms } = props;
+    const { site, gateway, orderDesk, terms, storeBranches } = props;
     const t = useTranslate();
 
     const form = useForm<ThemeSettingsData>(seed(props));
@@ -68,7 +70,7 @@ export default function ThemeStore() {
                     {/* متى يُستقبل الطلبُ أوّلًا — هو ما يُسأل عنه قبل كيف يُدفع ويُسلَّم */}
                     <Orders form={form} desk={orderDesk} />
 
-                    <Checkout form={form} gatewayReady={gateway.online} />
+                    <Checkout form={form} gatewayReady={gateway.online} branches={storeBranches ?? []} />
 
                     <Fields form={form} />
 

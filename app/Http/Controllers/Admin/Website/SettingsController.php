@@ -12,6 +12,7 @@ use App\Support\Store\OrderWindow;
 use App\Support\Store\Paymob;
 use App\Support\Store\PaymobSettings;
 use App\Support\Store\ShopClock;
+use App\Support\Store\StoreBranches;
 use App\Support\Store\StoreTerms;
 use App\Support\Store\RibbonTexts;
 use App\Support\Store\StoreNav;
@@ -211,6 +212,8 @@ class SettingsController extends Controller
             'orderDesk' => $this->orderDesk($bid),
             // والشروطُ القائمة — آخرُ نسخها ورقمُها ومتى كُتبت (`Store\StoreTerms`)
             'terms' => $this->termsSeed($bid),
+            // وفروعُ المتجر الحيّة — لفرع طلبات الموقع وفرع الاستلام (`Store\StoreBranches`)
+            'storeBranches' => StoreBranches::live($bid)->map(fn ($b) => ['id' => (int) $b->id, 'name' => (string) $b->name])->values(),
         ]);
     }
 

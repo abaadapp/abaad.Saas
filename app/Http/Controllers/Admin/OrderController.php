@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\Lists\AllSalesList;
 use App\Support\Lists\OrdersList;
 use App\Support\Lists\PaidLinksList;
 use App\Support\OrderCorrection;
@@ -53,8 +54,15 @@ class OrderController extends Controller
         $websiteAmount = (float) $filtered->clone()->sold()
             ->where('channel', SalesChannel::WEBSITE)->sum('total');
 
-        $orders = OrdersList::query($request)->paginate(10)->withQueryString()
-            ->through(fn ($o) => OrdersList::row($o));
+        /*
+         * و«كل المصادر» لمتجرٍ فُتحت فيه روابطُ الدفع: الطلباتُ وتحصيلاتُها في
+         * جدولٍ واحد بيوم كلٍّ منها (`AllSalesList`). والمجاميعُ فوقُ من الطلبات
+         * وحدها كما كانت — والتحصيلُ مجموعُه وحده (`linkCollections`).
+         */
+        $merged = AllSalesList::merges($request);
+        $orders = $merged
+            ? AllSalesList::page($request)
+            : OrdersList::query($request)->paginate(10)->withQueryString()->through(fn ($o) => OrdersList::row($o));
 
         return \Inertia\Inertia::render('Admin/Orders/Index', [
             'orders' => $orders->items(),
@@ -85,8 +93,37 @@ class OrderController extends Controller
              * بمُرشِّحه. وحين يُختار مصدرٌ آخر لا يُذكر: سُئل عن غيره.
              */
             'linkCollections' => $request->filled('channel') ? null : self::linkSummary($request),
+            // أفي الجدول تحصيلات؟ — فيُسمّى الإجماليُّ «إجمالي المبيعات» والتحصيلُ مجموعَه
+            'withLinks' => $merged,
+            // سندُ القبض صفحةُ «المالية» — والزرُّ لمن يفتحها
+            'mayOpenReceipts' => (bool) auth()->user()?->allows('finance'),
             // زرُّ «حذف» لصاحب النشاط وحده — الحكمُ نفسُه الذي يردّ به `destroy`
             'mayDelete' => self::isOwner(),
+        ]);
+    }
+
+    /**
+     * «عرض» تحصيلٍ عبر رابط دفع.
+     *
+     * المرتبطُ بفاتورةٍ يُفتح على فاتورته الأصليّة نفسِها — بنودِها وضريبتِها
+     * وطباعتِها، وطلباتِها إن صدرت عن بيع — ومعه تحصيلُه (`?link=`). والرابطُ
+     * المستقلُّ يُفتح على تحصيله: لا فاتورةَ له، ولا تُنشأ له ولا تُعاد.
+     *
+     * ولا يُفتح ما لا تعرضه القائمة: معلَّقٌ أو تجربةٌ أو ملغًى أو لمتجرٍ آخر
+     * — 404 (`PaidLinksList::detail`). والقراءةُ لا تكتب.
+     */
+    public function collection(int $id)
+    {
+        $collection = PaidLinksList::detail($id);
+        abort_if($collection === null, 404);
+
+        if ($collection['invoice'] !== null) {
+            return redirect()->route('admin.customerInvoices.show', ['id' => $collection['invoice']['id'], 'link' => $id]);
+        }
+
+        return \Inertia\Inertia::render('Admin/Orders/Collection', [
+            'collection' => $collection,
+            'mayOpenReceipts' => (bool) auth()->user()?->allows('finance'),
         ]);
     }
 

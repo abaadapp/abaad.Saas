@@ -25,13 +25,13 @@ const pos: Order = {
 };
 
 const onInvoice: Collection = {
-    key: 'link:1', id: 'RC-0001', reference: '7001', customer: 'وزارة الثقافة', type: 'تحصيل فاتورة',
+    key: 'link:1', link_id: 1, id: 'RC-0001', reference: '7001', customer: 'وزارة الثقافة', type: 'تحصيل فاتورة',
     invoice: { id: 4, number: 'CI-0004' }, orders: ['CR-1'], amount: 40, date: '2026-10-20 10:00',
     status: 'مدفوع', review: false, payment: { id: 9, number: 'RC-0001' },
 };
 
 const standalone: Collection = {
-    ...onInvoice, key: 'link:2', id: 'RC-0002', reference: '7002', customer: 'شركة الورد', type: 'تحصيل عبر رابط دفع',
+    ...onInvoice, key: 'link:2', link_id: 2, id: 'RC-0002', reference: '7002', customer: 'شركة الورد', type: 'تحصيل عبر رابط دفع',
     invoice: null, orders: [], amount: 25, payment: { id: 10, number: 'RC-0002' },
 };
 

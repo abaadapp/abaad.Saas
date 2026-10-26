@@ -20,6 +20,7 @@ use App\Support\Activity;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
+use App\Support\Lists\PaidLinksList;
 use App\Support\PaymentLinks;
 use App\Support\Customers;
 use App\Support\Demo;
@@ -243,6 +244,18 @@ class CustomerInvoiceController extends Controller
         return ['on' => $on, 'rows' => $rows, 'waiting' => $waiting];
     }
 
+    /** تحصيلُ `?link=` على هذه الفاتورة — أو `null` */
+    private function collectionOf(CustomerInvoice $invoice): ?array
+    {
+        $link = request()->query('link');
+        if (! is_string($link) || ! ctype_digit($link)) {
+            return null;
+        }
+        $collection = PaidLinksList::detail((int) $link);
+
+        return ($collection['invoice']['id'] ?? null) === $invoice->id ? $collection : null;
+    }
+
     public function show(int|string $id): Response
     {
         $invoice = $this->find($id);
@@ -262,6 +275,13 @@ class CustomerInvoiceController extends Controller
              * لا تُعرف نتيجتُها تُقال كذلك، ولا يُعاد الطلبُ بعدها إلّا بقرار.
              */
             'paymentLinkFailure' => PaymentLinks::failureRow(PaymentLinks::lastFailure($invoice)),
+            /*
+             * والتحصيلُ الذي فُتحت منه الفاتورة في «المبيعات» (`?link=`) — مبلغُه
+             * عند Paymob ويومُه ومرجعُ عمليّته وسندُه. ومن هذه الفاتورة ومن هذا
+             * المتجر ومدفوعًا حقًّا وحده (`PaidLinksList::detail`)، وإلّا لا شيء.
+             */
+            'collection' => $this->collectionOf($invoice),
+            'mayOpenReceipts' => (bool) auth()->user()?->allows('finance'),
             /*
              * والتجهيزُ بعد السداد — ما طُلب، وأين وصل، ولمَ لم يظهر بعد.
              * و`null` لمن لم يُفتح له: الصفحةُ كما كانت.

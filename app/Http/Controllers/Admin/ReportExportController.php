@@ -12,6 +12,7 @@ use App\Support\Lists\CustomersList;
 use App\Support\Lists\ExpensesList;
 use App\Support\Lists\InventoryList;
 use App\Support\Lists\OrdersList;
+use App\Support\Lists\AllSalesList;
 use App\Support\Lists\PaidLinksList;
 use App\Support\Lists\PlatformInvoicesList;
 use App\Support\Lists\ProductsList;
@@ -297,7 +298,8 @@ class ReportExportController extends Controller
 
         Activity::log('report', 'صدّر قائمة الطلبات (Excel)');
 
-        return Exports::xlsx(OrdersList::export(request()));
+        // و«كل المصادر» بتحصيلاتها حين تعرضها الشاشة — انظر `AllSalesList`
+        return Exports::xlsx(AllSalesList::merges(request()) ? AllSalesList::export(request()) : OrdersList::export(request()));
     }
 
     /**

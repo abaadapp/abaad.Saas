@@ -216,7 +216,8 @@ class APaidPaymentLinkShowsInSalesAsACollectionTest extends TestCase
         $p = $this->sales();
 
         return [
-            'rows' => array_column($p['orders'], 'id'),
+            // صفوفُ الطلبات وحدها — والتحصيلُ صفٌّ بينها منذ «كل المصادر» الموحَّد (`AllSalesList`)
+            'rows' => array_column(array_values(array_filter($p['orders'], fn ($r) => ($r['kind'] ?? 'order') === 'order')), 'id'),
             'count' => $p['totalCount'],
             'amount' => $p['totalAmount'],
             'cancelled' => $p['cancelledCount'],
@@ -408,10 +409,11 @@ class APaidPaymentLinkShowsInSalesAsACollectionTest extends TestCase
         $this->order('POS-1', SalesChannel::POS, 10);
         $this->order('WEB-1', SalesChannel::WEBSITE, 20);
         $this->order('OLD-1', null, 30);
-        $this->pay($this->link(null, 5));
+        $receipt = CustomerPayment::findOrFail($this->pay($this->link(null, 5))->customer_payment_id)->number;
 
+        // «كل المصادر» الطلباتُ الثلاثة وتحصيلُ الرابط صفًّا بينها — والمجاميعُ للطلبات وحدها
         $all = $this->sales();
-        $this->assertEqualsCanonicalizing(['POS-1', 'WEB-1', 'OLD-1'], array_column($all['orders'], 'id'));
+        $this->assertEqualsCanonicalizing(['POS-1', 'WEB-1', 'OLD-1', $receipt], array_column($all['orders'], 'id'));
         $this->assertSame([3, 60.0, 1, 20.0], [$all['totalCount'], (float) $all['totalAmount'], $all['websiteCount'], (float) $all['websiteAmount']]);
         $this->assertArrayNotHasKey('collections', $all);
 
@@ -461,9 +463,9 @@ class APaidPaymentLinkShowsInSalesAsACollectionTest extends TestCase
         $this->get($this->exportRoute('admin.orders.xlsx', ['channel' => PaidLinksList::SOURCE]))->assertOk();
         $this->get($this->exportRoute('admin.orders.exportPdf', ['channel' => PaidLinksList::SOURCE]))->assertOk();
 
-        // وملفُّ الطلبات بلا المُرشِّح كما كان: لا تحصيلَ فيه
+        // وملفُّ «كل المصادر» ما في شاشته: التحصيلاتُ صفوفٌ فيه بين الطلبات (`AllSalesList::export`)
         $orders = $this->get($this->exportRoute('admin.export.orders'))->assertOk()->streamedContent();
-        $this->assertStringNotContainsString('عميل 7', $orders);
+        $this->assertStringContainsString('عميل 7', $orders);
     }
 
     /** والرابطُ التاريخيُّ يُقرأ في فترته — ويوم الدفع هو الفترة */

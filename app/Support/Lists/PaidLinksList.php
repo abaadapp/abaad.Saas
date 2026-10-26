@@ -80,21 +80,7 @@ final class PaidLinksList
      */
     public static function filtered(Request $request): Builder
     {
-        $bid = (int) (auth()->user()->business_id ?? Demo::bid());
-
-        $q = DB::table('customer_payment_links as l')
-            ->join('customer_payments as p', fn ($j) => $j->on('p.id', '=', 'l.customer_payment_id')
-                ->on('p.business_id', '=', 'l.business_id'))
-            ->join('customers as c', fn ($j) => $j->on('c.id', '=', 'l.customer_id')
-                ->on('c.business_id', '=', 'l.business_id'))
-            ->leftJoin('customer_invoices as i', fn ($j) => $j->on('i.id', '=', 'l.customer_invoice_id')
-                ->on('i.business_id', '=', 'l.business_id'))
-            ->where('l.business_id', $bid)
-            ->where('l.status', CustomerPaymentLink::PAID)
-            ->where('l.is_live', true)
-            ->whereNotNull('l.provider_transaction_id')
-            ->whereNotNull('l.paid_at')
-            ->whereNull('p.cancelled_at');
+        $q = self::paid((int) (auth()->user()->business_id ?? Demo::bid()));
 
         if ($branch = Demo::currentBranchId()) {
             $q->where('i.branch_id', $branch);
@@ -115,15 +101,33 @@ final class PaidLinksList
         return $q;
     }
 
+    /**
+     * الروابطُ المدفوعة حقًّا في متجرٍ — بلا بحثٍ ولا فترةٍ ولا فرع.
+     *
+     * وهي قاعدةُ «مدفوع» في موضعٍ واحد: القائمةُ تُرشّحها، وصفحةُ التحصيل
+     * (`detail`) تقرأ منها صفًّا — فلا يُفتح بالعنوان ما لا تعرضه القائمة.
+     */
+    private static function paid(int $bid): Builder
+    {
+        return DB::table('customer_payment_links as l')
+            ->join('customer_payments as p', fn ($j) => $j->on('p.id', '=', 'l.customer_payment_id')
+                ->on('p.business_id', '=', 'l.business_id'))
+            ->join('customers as c', fn ($j) => $j->on('c.id', '=', 'l.customer_id')
+                ->on('c.business_id', '=', 'l.business_id'))
+            ->leftJoin('customer_invoices as i', fn ($j) => $j->on('i.id', '=', 'l.customer_invoice_id')
+                ->on('i.business_id', '=', 'l.business_id'))
+            ->where('l.business_id', $bid)
+            ->where('l.status', CustomerPaymentLink::PAID)
+            ->where('l.is_live', true)
+            ->whereNotNull('l.provider_transaction_id')
+            ->whereNotNull('l.paid_at')
+            ->whereNull('p.cancelled_at');
+    }
+
     /** وبترتيب الشاشة — ما يرقّمه الجدول وما يُصدَّر */
     public static function query(Request $request): Builder
     {
-        $q = self::filtered($request)->select([
-            'l.id', 'l.reference', 'l.provider_transaction_id', 'l.amount', 'l.paid_at', 'l.meta',
-            'l.customer_invoice_id', 'i.number as invoice_number',
-            'p.id as payment_id', 'p.number as payment_number',
-            'c.name as customer_name',
-        ]);
+        $q = self::columns(self::filtered($request));
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('l.paid_at'));
         // وفاصلٌ ثابت: مبلغان متساويان لا يتبدّلان بين صفحةٍ وصفحة
@@ -132,10 +136,22 @@ final class PaidLinksList
         return $q;
     }
 
+    /** ما يُقرأ من صفّ التحصيل — للقائمة ولصفحته */
+    private static function columns(Builder $q): Builder
+    {
+        return $q->leftJoin('branches as b', fn ($j) => $j->on('b.id', '=', 'i.branch_id')->on('b.business_id', '=', 'l.business_id'))
+            ->select([
+                'l.id', 'l.reference', 'l.provider_transaction_id', 'l.amount', 'l.paid_at', 'l.meta', 'l.description',
+                'l.customer_invoice_id', 'i.number as invoice_number', 'b.name as branch_name',
+                'p.id as payment_id', 'p.number as payment_number',
+                'c.name as customer_name',
+            ]);
+    }
+
     public static function page(Request $request, int $per = 10): LengthAwarePaginator
     {
         $page = self::query($request)->paginate($per)->withQueryString();
-        $orders = self::coveredOrders(collect($page->items()));
+        $orders = self::ordersOf(collect($page->items()));
 
         return $page->through(fn ($r) => self::row($r, $orders));
     }
@@ -144,7 +160,7 @@ final class PaidLinksList
     public static function rows(Request $request): array
     {
         $rows = self::query($request)->get();
-        $orders = self::coveredOrders($rows);
+        $orders = self::ordersOf($rows);
 
         return $rows->map(fn ($r) => self::row($r, $orders))->all();
     }
@@ -164,6 +180,8 @@ final class PaidLinksList
 
         return [
             'key' => 'link:'.$r->id,
+            // الرابطُ نفسُه — به يُفتح تحصيلُه من «عرض»
+            'link_id' => (int) $r->id,
             'id' => $r->payment_number,
             // مرجعُ العمليّة عند Paymob — ما يطابقه صاحبُ المحلّ في لوحتها
             'reference' => $r->provider_transaction_id,
@@ -171,6 +189,8 @@ final class PaidLinksList
             'type' => $invoice ? self::INVOICE : self::STANDALONE,
             'invoice' => $invoice ? ['id' => $invoice, 'number' => $r->invoice_number] : null,
             'orders' => $invoice ? ($orders[$invoice] ?? []) : [],
+            // فرعُ فاتورته — والرابطُ بلا فاتورةٍ لا فرعَ له
+            'branch' => $r->branch_name ?? null,
             'amount' => round((float) $r->amount, 3),
             'date' => Carbon::parse($r->paid_at)->format('Y-m-d H:i'),
             'status' => 'مدفوع',
@@ -252,12 +272,42 @@ final class PaidLinksList
     }
 
     /**
+     * تحصيلٌ واحد كما تفتحه «عرض» — أو `null` حين لا يكون في هذا المتجر
+     * مدفوعًا حقًّا (معلَّقًا أو تجربةً أو ملغًى أو لمتجرٍ آخر).
+     *
+     * صفُّ القائمة نفسُه، ومعه وصفُ الرابط ومرجعُه عندنا.
+     *
+     * ═══ والمتجرُ قيدُه لا الفرعُ المختار ═══
+     *
+     * الفرعُ في الشريط (`Demo::currentBranchId`، جلسةٌ يختارها المستخدم)
+     * مُرشِّحُ قوائم لا صلاحية — وكلُّ صفحة تفاصيلٍ في النظام تُفتح بمتجرها
+     * وحده: الطلبُ (`Demo::orderDetails`) والفاتورةُ (`CustomerInvoiceController::find`)
+     * وسندُ القبض (`paymentShow`). وإسنادُ الموظّف إلى فروعٍ (`branch_user` و
+     * `User::worksAt`) قيدٌ على البيع في الصندوق ونقل المخزون وتقرير التكاليف،
+     * لا على قراءة «المبيعات» ولا تفاصيلها. فيُفتح التحصيلُ كما تُفتح فاتورتُه:
+     * بمتجره — ولو حُجب الفرعُ هنا لَفُتحت الفاتورةُ نفسُها بعنوانها وأُغلق تحصيلُها.
+     */
+    public static function detail(int $id): ?array
+    {
+        $r = self::columns(self::paid((int) (auth()->user()->business_id ?? Demo::bid())))->where('l.id', $id)->first();
+
+        if ($r === null) {
+            return null;
+        }
+
+        return self::row($r, self::ordersOf(collect([$r]))) + [
+            'link_reference' => $r->reference,
+            'description' => $r->description,
+        ];
+    }
+
+    /**
      * أرقامُ الطلبات التي صدرت عنها كلُّ فاتورة — دفعةً واحدة للصفحة.
      *
      * @param  Collection<int, object>  $rows
      * @return array<int, list<string>>
      */
-    private static function coveredOrders($rows): array
+    public static function ordersOf($rows): array
     {
         $ids = $rows->pluck('customer_invoice_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
 

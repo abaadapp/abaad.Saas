@@ -9,6 +9,7 @@ use App\Support\Lists\CustomersList;
 use App\Support\Lists\ExpensesList;
 use App\Support\Lists\InventoryList;
 use App\Support\Lists\OrdersList;
+use App\Support\Lists\AllSalesList;
 use App\Support\Lists\PaidLinksList;
 use App\Support\Lists\PlatformInvoicesList;
 use App\Support\Lists\ProductsList;
@@ -96,9 +97,12 @@ class ExportController extends Controller
     public function orders()
     {
         // الصفوفُ صفوفُ ملفّ Excel نفسُها — انظر `OrdersList::export`، و«رابط دفع» تحصيلاتُه
-        return Exports::csv(PaidLinksList::chosen(request())
-            ? PaidLinksList::export(request())
-            : OrdersList::export(request()));
+        return Exports::csv(match (true) {
+            PaidLinksList::chosen(request()) => PaidLinksList::export(request()),
+            // و«كل المصادر» بتحصيلاتها حين تعرضها الشاشة — انظر `AllSalesList`
+            AllSalesList::merges(request()) => AllSalesList::export(request()),
+            default => OrdersList::export(request()),
+        });
     }
 
     public function customers()

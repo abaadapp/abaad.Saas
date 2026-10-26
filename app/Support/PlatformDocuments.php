@@ -26,6 +26,14 @@ use Throwable;
  * يومَها، ومدّةُ الاشتراك بدايةً ونهاية. فلا يغيّر تعديلُ القالب أو سعرِ الباقة
  * غدًا عقدًا أُرسل.
  *
+ * ═══ رقمُه وتاريخُ إصداره ═══
+ *
+ * يُكتبان ساعةَ الإصدار ولا يُكتبان بعدها، ولا يُطلبان من أحد: الرقمُ من معرّف
+ * الصفّ وشهرِ صدوره (`number`) — فلا يتسابق عليه اثنان — والتاريخُ يومُ صدوره
+ * بتوقيت مسقط على الخادم (`issuedOn`)، وهو في البصمة. والتجديدُ مستندٌ جديد برقمه
+ * وتاريخه، يذكر الذي يجدّده. والمعاينةُ رقمُها توضيحيٌّ (`previewNumber`) لا يحجز
+ * رقمًا، وتاريخُها اليوم.
+ *
  * ═══ المشاركة ═══
  *
  * المديرُ ينسخ الرابطَ أو يفتح به واتساب من جهازه — ويُسجَّل فعلُه ذاك (`share`)،
@@ -90,6 +98,9 @@ class PlatformDocuments
 
     /** أكبرُ صورةِ توقيعٍ تُقبل — رسمُ إصبعٍ على لوحةٍ لا يبلغها */
     public const MAX_SIGNATURE_BYTES = 400_000;
+
+    /** ساعةُ المستند: رقمُه وتاريخُ إصداره بتوقيت مسقط — لا بساعة جهاز المدير أو العميل */
+    public const TIMEZONE = 'Asia/Muscat';
 
     public static function keys(): array
     {
@@ -306,7 +317,7 @@ class PlatformDocuments
                 'created_by_name' => $by->name,
                 'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
             ]);
-            $doc->update(['number' => 'AB-'.now()->format('Ym').'-'.str_pad((string) $doc->id, 4, '0', STR_PAD_LEFT)]);
+            $doc->update(['number' => self::number($doc)]);
 
             Activity::log('created', ($renews ? 'أصدر عقد تجديد للتوقيع: ' : 'أصدر مستندًا للتوقيع: ').$doc->number.' — '.($client['biz'] ?? $client['name'] ?? ''), [
                 'business_id' => null, 'subject_id' => $doc->id, 'subject_type' => PlatformDocument::class,
@@ -314,6 +325,24 @@ class PlatformDocuments
 
             return $doc;
         });
+    }
+
+    /** «AB-202610-0042»: شهرُ صدوره بتوقيت مسقط ومعرّفُه — فريدٌ بفرادة المعرّف */
+    public static function number(PlatformDocument $doc): string
+    {
+        return 'AB-'.$doc->created_at->copy()->timezone(self::TIMEZONE)->format('Ym').'-'.str_pad((string) $doc->id, 4, '0', STR_PAD_LEFT);
+    }
+
+    /** رقمُ المعاينة — بشكل الرقم الحقيقيّ، ولا يحجز رقمًا ولا يكتب صفًّا */
+    public static function previewNumber(): string
+    {
+        return 'AB-'.now(self::TIMEZONE)->format('Ym').'-0000';
+    }
+
+    /** «تاريخ الإصدار» كما يُطبع ويُعرض في كلّ مكان: يومُ صدوره بتوقيت مسقط، YYYY/MM/DD */
+    public static function issuedOn(PlatformDocument $doc): string
+    {
+        return $doc->created_at ? $doc->created_at->copy()->timezone(self::TIMEZONE)->format('Y/m/d') : '—';
     }
 
     /** «الاسم — النشاط · الهاتف»: ما يُعرض في القائمة ويُبحث فيه */

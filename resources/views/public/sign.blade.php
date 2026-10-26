@@ -168,8 +168,11 @@
         </div>
         <div class="meta">
             <h1>{{ $doc->title }}@if ($doc->title_en)<small>{{ $doc->title_en }}</small>@endif</h1>
-            <div>رقم المستند · No. <b class="ltr">{{ $doc->number }}</b></div>
-            <div>التاريخ · Date <b class="ltr">{{ $doc->created_at->format('Y-m-d') }}</b></div>
+            <div>رقم المستند · No. <b class="ltr" data-testid="document-number">{{ $doc->number }}</b>@if ($preview) <span class="xs muted">(معاينة)</span>@endif</div>
+            <div>تاريخ الإصدار · Issue date <b class="ltr" data-testid="document-issued-on">{{ \App\Support\PlatformDocuments::issuedOn($doc) }}</b></div>
+            @if ($doc->renews_document_id && $doc->renews)
+                <div class="xs muted">تجديد للعقد · Renews <span class="ltr">{{ $doc->renews->number }}</span></div>
+            @endif
         </div>
     </div>
 

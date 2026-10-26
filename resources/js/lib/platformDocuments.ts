@@ -7,6 +7,8 @@ export interface DocumentRow {
     url: string;
     pdf_url: string;
     number: string;
+    /** «تاريخ الإصدار» — يومُ صدوره بتوقيت مسقط، YYYY/MM/DD، كما في الورقة وصفحة التوقيع */
+    issued_on: string;
     title: string;
     service: string | null;
     client_name: string | null;

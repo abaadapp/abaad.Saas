@@ -166,7 +166,7 @@ class DocumentTemplateController extends Controller
         $start = now()->startOfDay();
         $doc = new PlatformDocument;
         $doc->forceFill([
-            'number' => __('معاينة'),
+            'number' => PlatformDocuments::previewNumber(),
             'service' => $t->service,
             'title' => $t->title,
             'title_en' => $t->title_en,

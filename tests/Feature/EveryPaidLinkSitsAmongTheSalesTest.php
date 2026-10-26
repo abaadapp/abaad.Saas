@@ -743,4 +743,116 @@ class EveryPaidLinkSitsAmongTheSalesTest extends TestCase
         $this->assertSame([1, 10.0], [$sent['ordersCount'], (float) $sent['total']]);
         $this->assertSame(['count' => 1, 'amount' => round((float) $mine->total, 3)], array_intersect_key($sent['links'], ['count' => 0, 'amount' => 0]));
     }
+
+    /* ═══════════ ما حول التحصيل: منشئُه وفرعُه ومنتجاتُه وموعدُه — من مصدره ═══════════ */
+
+    private function linkRow(CustomerPaymentLink $link): array
+    {
+        return collect($this->sales()['orders'])->firstWhere('link_id', $link->id) ?? $this->fail('لا صفَّ للتحصيل');
+    }
+
+    public function test_a_link_row_names_its_maker_and_reads_its_invoice_lines_and_preparation(): void
+    {
+        $sales = $this->staff('sales', 'maker@all-sales.om');
+        $invoice = $this->invoice(60);
+        $link = $this->pay(PaymentLinks::create($this->shop->id, $this->ministry, $invoice, null, null, $sales->id));
+
+        $row = $this->linkRow($link);
+        $this->assertSame('موظّف sales', $row['creator']);
+        $this->assertSame('منتج واحد — قطعتان', $row['products']['label'], 'بنودُ الفاتورة لم تُقرأ');
+        $this->assertNull($row['handover'], 'اختُرع موعدٌ لفاتورةٍ بلا تجهيزٍ ولا طلب');
+
+        // ومهمّةُ تجهيز الفاتورة تقول فرعَها وموعدَها
+        DB::table('customer_invoice_preparations')->insert([
+            'business_id' => $this->shop->id, 'customer_invoice_id' => $invoice->id, 'branch_id' => $this->muscat->id,
+            'fulfillment_type' => 'delivery', 'scheduled_for' => '2026-10-22 17:00:00', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $row = $this->linkRow($link);
+        $this->assertSame('مسقط', $row['branch']);
+        $this->assertSame('توصيل — 22/10/2026، 5:00 م', $row['handover']['label']);
+
+        // ومنشئٌ من متجرٍ آخر لا يُقرأ اسمُه هنا
+        DB::table('customer_payment_links')->where('id', $link->id)->update(['created_by' => $this->stranger->id]);
+        $this->assertNull($this->linkRow($link)['creator']);
+    }
+
+    public function test_a_link_on_an_invoice_of_orders_reads_its_lines_once_and_the_orders_time(): void
+    {
+        $order = $this->order('CR-1', SalesChannel::POS, 30, payment: 'غير مدفوع', customer: $this->ministry);
+        $order->update(['fulfillment_type' => 'pickup', 'scheduled_for' => '2026-10-23 16:00:00']);
+        $invoice = $this->invoiceOf($order, $this->ministry);
+        $link = $this->pay(PaymentLinks::create($this->shop->id, $this->ministry, $invoice, null, null, $this->owner->id));
+
+        $row = $this->linkRow($link);
+        $this->assertSame('صاحب ورود الجدول', $row['creator']);
+        $this->assertSame(['CR-1'], $row['orders']);
+        // بندُ الفاتورة وحده — لا بندُ الطلب فوقه
+        $this->assertSame(['lines' => 1, 'pieces' => 2], array_intersect_key($row['products'], ['lines' => 0, 'pieces' => 0]));
+        $this->assertSame('استلام من المحل — 23/10/2026، 4:00 م', $row['handover']['label']);
+        $this->assertSame('مسقط', $row['branch']);
+    }
+
+    public function test_an_invoice_of_orders_from_two_branches_and_two_times_says_so_with_details(): void
+    {
+        $khuwair = Branch::create(['business_id' => $this->shop->id, 'name' => 'الخوير']);
+        $a = $this->order('CR-1', SalesChannel::POS, 30, payment: 'غير مدفوع', customer: $this->ministry);
+        $b = $this->order('CR-2', SalesChannel::POS, 20, payment: 'غير مدفوع', customer: $this->ministry);
+        $a->update(['fulfillment_type' => 'delivery', 'scheduled_for' => '2026-10-23 10:00:00']);
+        $b->update(['branch_id' => $khuwair->id, 'branch' => 'الخوير', 'fulfillment_type' => 'pickup', 'scheduled_for' => '2026-10-24 18:00:00']);
+        $invoice = CustomerInvoices::consolidate($this->ministry, [$a->id, $b->id], [], $this->owner->id);
+        $invoice = ($invoice->status === CustomerInvoice::ISSUED ? $invoice : CustomerInvoices::issue($invoice, $this->owner->id))->fresh();
+        $link = $this->pay($this->link($invoice));
+
+        $row = $this->linkRow($link);
+        $this->assertSame('فروع متعددة', $row['branch']);
+        $this->assertSame(['مسقط', 'الخوير'], $row['branches']);
+        $this->assertSame('مواعيد متعددة', $row['handover']['label']);
+        $this->assertSame(['CR-1: توصيل — 23/10/2026، 10:00 ص', 'CR-2: استلام من المحل — 24/10/2026، 6:00 م'], $row['handover']['details']);
+        $this->assertSame(2, $row['products']['lines']);
+
+        // والملفُّ يقولها بأسمائها
+        $csv = $this->get($this->exportRoute('admin.export.orders'))->assertOk()->streamedContent();
+        $this->assertStringContainsString('فروع متعددة: مسقط، الخوير', $csv);
+        $this->assertStringContainsString('مواعيد متعددة: CR-1: توصيل', $csv);
+    }
+
+    public function test_a_standalone_link_invents_no_branch_products_or_time(): void
+    {
+        $alone = $this->pay(PaymentLinks::create($this->shop->id, $this->company, null, 10, 'دفعة مقدّمة', $this->owner->id));
+
+        $row = $this->linkRow($alone);
+        $this->assertSame('صاحب ورود الجدول', $row['creator']);
+        $this->assertSame([null, [], null, null], [$row['branch'], $row['branches'], $row['products'], $row['handover']]);
+        $this->assertSame(0, CustomerInvoice::count(), 'أُنشئت فاتورةٌ لرابطٍ مستقلّ');
+
+        // والملفُّ المستقلّ يقول «لا توجد منتجات مرتبطة»، وصفحتُه تقول منشئَه
+        $csv = $this->get($this->exportRoute('admin.export.orders', ['channel' => PaidLinksList::SOURCE]))->assertOk()->streamedContent();
+        $this->assertStringContainsString('لا توجد منتجات مرتبطة', $csv);
+        $this->assertStringContainsString('صاحب ورود الجدول', $csv);
+        $this->assertSame('صاحب ورود الجدول', $this->get(route('admin.orders.collection', $alone->id))->assertOk()->viewData('page')['props']['collection']['creator']);
+    }
+
+    public function test_link_rows_ask_a_fixed_number_of_questions_however_many(): void
+    {
+        $count = function (): int {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            $this->actingAs($this->owner)->get(route('admin.orders.index'))->assertOk();
+            $n = count(DB::getQueryLog());
+            DB::disableQueryLog();
+
+            return $n;
+        };
+
+        $this->pay($this->link($this->invoice(20)));
+        $count();
+        $few = $count();
+
+        foreach (range(1, 6) as $i) {
+            $this->pay($this->link($this->invoice(10 + $i)));
+            $this->pay($this->link(null, 5 + $i, $this->company));
+        }
+
+        $this->assertSame($few, $count(), 'كلُّ تحصيلٍ يسأل القاعدةَ وحده');
+    }
 }

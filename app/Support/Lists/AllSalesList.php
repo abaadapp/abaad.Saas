@@ -137,7 +137,7 @@ final class AllSalesList
                 __('المصدر') => Workbook::TEXT,
                 __('الموظف') => Workbook::TEXT,
                 __('الفرع') => Workbook::TEXT,
-                __('عدد الأصناف') => Workbook::INT,
+                __('عدد المنتجات') => Workbook::INT,
                 Workbook::money('الإجمالي') => Workbook::MONEY,
                 __('الدفع') => Workbook::TEXT,
                 __('الحالة') => Workbook::TEXT,
@@ -147,6 +147,8 @@ final class AllSalesList
                 Workbook::money('المحصّل عبر رابط دفع') => Workbook::MONEY,
                 __('مرجع Paymob') => Workbook::CODE,
                 __('الفاتورة') => Workbook::CODE,
+                ...OrdersList::detailColumns(),
+                __('منشئ رابط الدفع') => Workbook::TEXT,
             ],
             rows: function () use ($request) {
                 foreach (self::sorted($request)->lazy(500)->chunk(500) as $chunk) {
@@ -154,19 +156,23 @@ final class AllSalesList
                         yield $r['kind'] === self::LINK
                             ? [
                                 'cells' => [
-                                    $r['id'], $r['customer'], __('رابط دفع'), '—', $r['branch'] ?? '—', null, null,
+                                    $r['id'], $r['customer'], __('رابط دفع'), $r['creator'] ?? '—', self::branchCell($r), $r['products']['lines'] ?? null, null,
                                     'Paymob', $r['review'] ? __('مدفوع — يحتاج مراجعة') : __($r['status']), $r['date'], '—',
-                                    '—', $r['amount'], $r['reference'], $r['invoice']['number'] ?? __('دون فاتورة'),
+                                    $r['handover']['type'] ?? '—', $r['amount'], $r['reference'], $r['invoice']['number'] ?? __('دون فاتورة'),
+                                    $r['products']['pieces'] ?? null, $r['products']['addons'] ?? null,
+                                    self::handoverCell($r), '—', '—', $r['creator'] ?? '—',
                                 ],
                                 'fill' => null,
                             ]
                             : [
                                 'cells' => [
                                     $r['id'], $r['customer'], __($r['channel_label']), $r['employee'], $r['branch'],
-                                    $r['items_count'], $r['total'],
+                                    $r['products']['lines'], $r['total'],
                                     $r['payment'] === 'بطاقة' ? __('فيزا') : __((string) $r['payment']),
                                     __((string) $r['status']), $r['date'], $r['scheduled'], $r['fulfillment'] ?? '—',
                                     null, null, null,
+                                    ...OrdersList::detailCells($r),
+                                    '—',
                                 ],
                                 'fill' => $r['status'] === OrderStatus::CANCELLED ? 'FEF3C7' : null,
                             ];
@@ -179,6 +185,24 @@ final class AllSalesList
                 [Workbook::money('مجموع التحصيلات عبر روابط الدفع (ليس من المبيعات)'), $links['amount']],
             ],
         );
+    }
+
+    /** فرعُ صفّ التحصيل في الملفّ — و«فروع متعددة» بأسمائها */
+    public static function branchCell(array $r): string
+    {
+        return $r['branches'] !== [] ? $r['branch'].': '.implode('، ', $r['branches']) : ($r['branch'] ?? '—');
+    }
+
+    /** تسليمُ صفّ التحصيل في الملفّ — و«مواعيد متعددة» بتفاصيلها، ولا شيءَ يُخترع لرابطٍ مستقلّ */
+    public static function handoverCell(array $r): string
+    {
+        $h = $r['handover'];
+
+        return match (true) {
+            $h === null => '—',
+            ! empty($h['details']) => $h['label'].': '.implode('؛ ', $h['details']),
+            default => $h['label'],
+        };
     }
 
     /**
@@ -209,7 +233,8 @@ final class AllSalesList
             'l.amount AS amount',
             'c.name AS customer',
             'p.number AS code',
-            DB::raw('NULL AS employee'),
+            // وموظّفُ التحصيل منشئُ رابطه — به يُرتَّب مع موظّفي الطلبات
+            'u.name AS employee',
             DB::raw("'Paymob' AS payment"),
             DB::raw('NULL AS scheduled'),
             DB::raw('NULL AS items'),
@@ -234,21 +259,21 @@ final class AllSalesList
         $bid = (int) (auth()->user()->business_id ?? Demo::bid());
 
         $orders = ($o = $ids(self::ORDER)) === [] ? collect()
-            : Order::where('business_id', $bid)->withCount('items')->whereIn('id', $o)->get()->keyBy('id');
+            : OrdersList::counted(Order::where('business_id', $bid))->whereIn('id', $o)->get()->keyBy('id');
 
         $links = collect();
         if (($l = $ids(self::LINK)) !== []) {
             $links = PaidLinksList::query($request)->whereIn('l.id', $l)->get()->keyBy('id');
         }
-        $covered = PaidLinksList::ordersOf($links->values());
+        $context = PaidLinksList::context($links->values());
 
         return $keys
-            ->map(function ($k) use ($orders, $links, $covered) {
+            ->map(function ($k) use ($orders, $links, $context) {
                 $id = (int) $k->rid;
 
                 return match (true) {
                     $k->kind === self::ORDER && $orders->has($id) => ['kind' => self::ORDER] + OrdersList::row($orders[$id]),
-                    $k->kind === self::LINK && $links->has($id) => ['kind' => self::LINK] + PaidLinksList::row($links[$id], $covered),
+                    $k->kind === self::LINK && $links->has($id) => ['kind' => self::LINK] + PaidLinksList::row($links[$id], $context),
                     default => null,
                 };
             })

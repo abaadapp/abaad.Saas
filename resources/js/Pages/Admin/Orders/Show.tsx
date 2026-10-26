@@ -3,6 +3,7 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import {
     Building2,
     Calendar,
+    CheckCircle2,
     ClipboardList,
     FileText,
     Gift,
@@ -20,6 +21,7 @@ import {
     User,
 } from 'lucide-react';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
+import type { SaleConfirmation } from '@/types/models';
 import {
     CollectDialog,
     CorrectItemDialog,
@@ -100,6 +102,8 @@ interface OrderDetail {
     next_statuses: string[];
     /** قناةُ الطلب — `website` لطلب الموقع */
     channel?: string | null;
+    /** من أكّده أوّلَ مرّةٍ ومتى — `SaleCells::confirmation`، و`moment` يومُه وساعتُه */
+    confirmation?: (SaleConfirmation & { moment: string | null }) | null;
     /** موافقةُ زبون الموقع على الشروط — نسختُها ولغتُها ووقتُها ونصُّها (`Store\StoreTerms`) */
     terms?: { version: number; lang: string; at: string; hash: string; text: string } | null;
     occasions: { value: string; label: string }[];
@@ -925,6 +929,27 @@ export default function OrderShow() {
                                     <User className="size-4 text-[#9ca3af]" />
                                     {t('الموظف')}: {order.employee}
                                 </div>
+                                {/*
+                                    ومن أكّده — غيرُ من أنشأه: طلبُ الموقع «الموظف» فيه بابُه،
+                                    والمؤكِّدُ يُقرأ هنا باسمه ويومه وساعته، أو أنّه ينتظر.
+                                */}
+                                {order.confirmation && (
+                                    <div className="flex items-start gap-2" data-testid="order-confirmed-by">
+                                        <CheckCircle2 className="mt-0.5 size-4 text-[#9ca3af]" />
+                                        <span className="flex flex-col">
+                                            <span>
+                                                {order.confirmation.state === 'confirmed'
+                                                    ? `${t('أكّده')}: ${order.confirmation.by ?? t('الموظف غير معروف')}`
+                                                    : order.confirmation.label}
+                                            </span>
+                                            {order.confirmation.moment && (
+                                                <span className="text-[12px] text-[#6b7280]">
+                                                    {t('وقت التأكيد')}: {order.confirmation.moment}
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-2">
                                     <Calendar className="size-4 text-[#9ca3af]" />
                                     {order.date}

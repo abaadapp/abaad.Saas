@@ -94,7 +94,7 @@ final class OrderTransition
                     return $e->getMessage();
                 }
             } else {
-                $fresh->update(['status' => $to]);
+                $fresh->update(['status' => $to] + self::confirmation($fresh, $from, $to));
             }
 
             // ونسخةُ المنادي تُساير ما وقع، فلا يُقيَّد في السجلّ حالٌ قديمة
@@ -103,5 +103,39 @@ final class OrderTransition
 
             return null;
         });
+    }
+
+    /**
+     * أهذا النقلُ هو التأكيدُ الأوّل؟ — خروجُ الطلب من «جديد» إلى العمل.
+     *
+     * «مؤكّد» أو «قيد التجهيز» مباشرةً (`OrderStatus::NEXT` يجيزها): كلاهما
+     * قبولٌ للطلب. والإلغاءُ من «جديد» ليس تأكيدًا.
+     *
+     * ═══ والأوّلُ وحده ═══
+     *
+     * «من أكّده؟» يُسأل عن قبول الطلب لا عن آخر من حرّكه: الطلبُ يعود من
+     * «قيد التجهيز» إلى «مؤكّد» ثمّ يمضي، ولا يُكتب فوق الأوّل. والسؤالُ
+     * على النسخة المقفلة — موظّفان يقبلانه في اللحظة نفسها يكتب أحدُهما.
+     */
+    public static function confirms(?string $from, string $to): bool
+    {
+        return $from === OrderStatus::PENDING && in_array($to, [OrderStatus::CONFIRMED, OrderStatus::PREPARING], true);
+    }
+
+    /** أعمدةُ التأكيد الأوّل — فارغةٌ لكلّ نقلٍ آخر */
+    private static function confirmation(Order $fresh, ?string $from, string $to): array
+    {
+        if (! self::confirms($from, $to) || $fresh->confirmed_at !== null) {
+            return [];
+        }
+
+        $user = auth()->user();
+
+        return [
+            'confirmed_at' => now(),
+            'confirmed_by' => $user?->id,
+            // والاسمُ لقطة: يبقى على الطلب ولو حُذف الحساب
+            'confirmed_by_name' => $user?->name !== null ? mb_substr((string) $user->name, 0, 120) : null,
+        ];
     }
 }

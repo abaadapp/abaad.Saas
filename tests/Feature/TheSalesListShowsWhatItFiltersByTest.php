@@ -171,7 +171,8 @@ class TheSalesListShowsWhatItFiltersByTest extends TestCase
         $screen = file_get_contents(base_path('resources/js/Pages/Admin/Orders/Index.tsx'));
 
         $this->assertStringContainsString("key: 'scheduled'", $screen);
-        $this->assertStringContainsString("header: 'موعد التسليم'", $screen);
+        // «التسليم / الاستلام» — اسمُه منذ صار يقول نوعَ التنفيذ مع موعده، بطلب صاحب المنصّة
+        $this->assertStringContainsString("header: 'التسليم / الاستلام'", $screen);
     }
 
     /** والملفُّ يتبع المُرشِّح: من رشّح «متأخّر» وصدّر يجد المواعيد في ملفّه */

@@ -94,6 +94,14 @@ final class WebCheckout
     public const SLOT = '_slot';
 
     /**
+     * والفرعُ الذي فُحص رفُّه قبل صفحة البنك — يُكتب منه الطلبُ المدفوع.
+     *
+     * يكتبه الخادم في `toCard` (`StoreBranches::resolve`)، فلا يتبدّل فرعُ
+     * الطلب بين الدفع والإشعار ولا يأتي من المتصفّح.
+     */
+    public const BRANCH = '_branch';
+
+    /**
      * أسعارُ قطع البوتيك وأصحابُها ساعةَ فُتحت صفحةُ البنك.
      *
      * يتغيّر سعرُ القطعة والزبونُ عند البنك — فيُكتب مستحقُّها بما فُحص
@@ -288,7 +296,7 @@ final class WebCheckout
         if (! $settling) {
             $sale->assertStock(array_map(fn ($l) => [
                 'product' => null, 'qty' => (int) $l['qty'], 'addons' => $l['addons'] ?? [],
-            ], $lines), $business->branches()->orderBy('id')->value('id'));
+            ], $lines), StoreBranches::resolve($bid, self::text($payload['fulfil'] ?? ''), $payload[StoreBranches::FIELD] ?? null, strict: false)?->id);
         }
         // ونصُّ كرت الهدية مع بنده — يُردّ الكرتُ بلا نصّ، ويُمحى عمّا سواه
         $lines = GiftCardProduct::settle($bid, $lines);
@@ -456,7 +464,9 @@ final class WebCheckout
          * الأخيرة. ذاك يُردّ في `place` ويُحفظ مالًا بلا طلبٍ يُقال لصاحب المحلّ
          * (`StorePaymentIntent::strayPayment`) — كما كان قبل هذا السطر.
          */
-        (new SaleLines($bid))->assertStock($quote['_lines'], $business->branches()->orderBy('id')->value('id'));
+        // ومن فرعه: فرعُ الاستلام الذي اختاره الزبون، أو فرعُ طلبات الموقع (`StoreBranches`)
+        $branch = StoreBranches::resolve($bid, $form['fulfil'], $form[StoreBranches::FIELD] ?? null);
+        (new SaleLines($bid))->assertStock($quote['_lines'], $branch?->id);
 
         /*
          * ورسالةُ بطاقةٍ تقول اسمَ من أخفى اسمَه — يُسأل قبل أن تُفتح دفعة.
@@ -479,6 +489,7 @@ final class WebCheckout
          */
         $payload[StoreTerms::STAMP] = StoreTerms::stamp($bid, $lang);
         $payload[self::SLOT] = self::chosenSlot($bid, $form);
+        $payload[self::BRANCH] = $branch?->id;
         $payload[self::BOUTIQUE_PRICES] = BoutiqueDues::pinned($quote['_lines']);
 
         /*
@@ -591,8 +602,20 @@ final class WebCheckout
             if (! $paid) {
                 CardIdentity::check($bid, $form, $lines);
             }
-            $branchId = $business->branches()->orderBy('id')->value('id');
-            $branchName = $business->branches()->orderBy('id')->value('name') ?? 'الفرع الرئيسي';
+            /*
+             * ═══ والفرعُ الذي يُنفَّذ منه — لا أوّلُ الفروع دائمًا ═══
+             *
+             * طلبٌ جديد: فرعُ الاستلام الذي اختاره الزبون (ويُردّ فرعٌ ليس في
+             * القائمة)، أو فرعُ طلبات الموقع. ودفعةٌ قُبضت: الفرعُ الذي فُحص
+             * رفُّه قبل صفحة البنك (`BRANCH`) — وإن حُذف بعدها ففرعُ طلبات الموقع،
+             * لا مالٌ بلا طلب. انظر `StoreBranches`.
+             */
+            $branch = $paid
+                ? (StoreBranches::live($bid)->firstWhere('id', (int) ($payload[self::BRANCH] ?? 0))
+                    ?? StoreBranches::resolve($bid, $form['fulfil'], $form[StoreBranches::FIELD] ?? null, strict: false))
+                : StoreBranches::resolve($bid, $form['fulfil'], $form[StoreBranches::FIELD] ?? null);
+            $branchId = $branch?->id;
+            $branchName = $branch?->name ?? 'الفرع الرئيسي';
 
             (new SaleLines($bid))->assertStock($lines, $branchId);
 
@@ -1186,6 +1209,8 @@ final class WebCheckout
             'slot' => $settling !== null ? ['nullable', 'string', 'max:60'] : $field('slot', ['string', 'max:60']),
             'card' => ['nullable', 'string', 'max:'.FlowerOrder::CARD_MAX],
             'pay' => ['required', 'in:'.implode(',', array_keys($payments) ?: ['-'])],
+            // فرعُ الاستلام — شكلُه هنا، وأنّه من فروع المتجر الحيّة في `StoreBranches::resolve`
+            StoreBranches::FIELD => ['nullable', 'integer', 'min:1'],
 
             /*
              * ═══ والمستلِمُ غيرُ المشتري ═══

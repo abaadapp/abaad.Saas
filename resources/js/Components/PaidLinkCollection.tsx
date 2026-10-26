@@ -10,6 +10,7 @@ import { useTenantLink } from '@/lib/exportLink';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
+import type { SaleHandover, SaleProducts } from '@/types/models';
 
 /**
  * تحصيلٌ عبر رابط دفع كما يُفتح من «المبيعات» — `PaidLinksList::detail`.
@@ -30,8 +31,16 @@ export interface PaidCollection {
     invoice: { id: number; number: string } | null;
     /** الطلباتُ التي صدرت عنها الفاتورة — بيعُها هناك */
     orders: string[];
-    /** فرعُ فاتورته — والرابطُ بلا فاتورةٍ لا فرعَ له */
+    /** فرعُ فاتورته (أو تجهيزها أو طلبها) — والرابطُ بلا فاتورةٍ لا فرعَ له */
     branch?: string | null;
+    /** أسماءُ الفروع حين تعدّدت طلباتُ الفاتورة — تفاصيلُ «فروع متعددة» */
+    branches?: string[];
+    /** منشئُ رابط الدفع — «الموظف» في صفّ التحصيل */
+    creator?: string | null;
+    /** بنودُ فاتورته — `null` لرابطٍ بلا فاتورة: «لا توجد منتجات مرتبطة» */
+    products?: SaleProducts | null;
+    /** موعدُ تجهيز الفاتورة أو طلبِها — و«مواعيد متعددة» بتفاصيلها */
+    handover?: SaleHandover | null;
     amount: number;
     date: string;
     status: string;
@@ -82,6 +91,8 @@ export default function PaidLinkCollectionCard({ collection: c, mayOpenReceipts 
                     c.link_reference ? { label: 'مرجع الرابط', value: c.link_reference, ltr: true } : null,
                     { label: 'رقم سند القبض', value: c.payment.number, ltr: true },
                     { label: 'العميل', value: c.customer || '—' },
+                    { label: 'أنشأ الرابط', value: c.creator || t('غير معروف') },
+                    c.branch ? { label: 'الفرع', value: c.branches && c.branches.length > 0 ? `${c.branch}: ${c.branches.join('، ')}` : c.branch } : null,
                     {
                         label: 'الفاتورة',
                         value: c.invoice ? (

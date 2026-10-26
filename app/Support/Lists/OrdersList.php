@@ -44,13 +44,29 @@ final class OrdersList
     /** المرشِّحاتُ بلا ترتيب — للمجاميع التي تُحسب على ما رُشّح كلِّه */
     public static function filtered(Request $request): Builder
     {
-        $q = Order::where('business_id', auth()->user()->business_id ?? Demo::bid())
-            ->where('is_held', false)->withCount('items')
-            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId()));
+        $q = self::counted(Order::where('business_id', auth()->user()->business_id ?? Demo::bid())
+            ->where('is_held', false)
+            ->when(Demo::currentBranchId(), fn ($w) => $w->where('branch_id', Demo::currentBranchId())));
 
         ListFilters::orders($q, $request);
 
         return $q;
+    }
+
+    /**
+     * ما اشتُري في كلّ طلب — في الاستعلام نفسِه لا سؤالًا لكلّ صفّ.
+     *
+     * `items_count` البنودُ كلُّها (ترتيبُ عمود «المنتجات» عليه كما كان)،
+     * و`product_lines` و`pieces` المنتجاتُ الرئيسة وقطعُها، و`addon_lines`
+     * الإضافاتُ المبيعةُ سطرًا (`standalone_addon_id`) — لا تُعدّ منتجًا.
+     */
+    public static function counted(Builder $q): Builder
+    {
+        $products = fn ($w) => $w->whereNull('standalone_addon_id');
+
+        return $q->withCount(['items', 'items as product_lines' => $products])
+            ->withSum(['items as pieces' => $products], 'quantity')
+            ->withCount(['items as addon_lines' => fn ($w) => $w->whereNotNull('standalone_addon_id')]);
     }
 
     /** وبترتيب الشاشة — ما يرقّمه الجدول وما يُصدَّر */
@@ -73,8 +89,19 @@ final class OrdersList
             // والتصدير — بأيّ لغةٍ كانت الواجهة (Customers::asEntered)
             'customer' => Demo::customerLabel($o->customer_name),
             'employee' => $o->employee_name ?? '—',
+            /*
+             * ومن أكّده — غيرُ من أنشأه. `employee_name` يقول البابَ («الموقع
+             * الإلكتروني» أو الكاشير) ولا يُكتب فوقه؛ والمؤكِّدُ من `confirmed_*`.
+             */
+            'confirmation' => SaleCells::confirmation($o),
             'branch' => $o->branch,
             'items_count' => $o->items_count,
+            // «منتجان — 5 قطع» — والإضافاتُ المبيعةُ سطرًا في سطرها
+            'products' => SaleCells::products(
+                (int) ($o->product_lines ?? $o->items_count ?? 0),
+                (float) ($o->pieces ?? 0),
+                (int) ($o->addon_lines ?? 0),
+            ),
             'total' => (float) $o->total,
             'payment' => $o->payment_method,
             'status' => $o->status,
@@ -99,6 +126,8 @@ final class OrdersList
             'late' => $o->isLate(),
             // ونوعُ التنفيذ باسمه لا برمزه: 'delivery' ليست كلمةً تُقرأ
             'fulfillment' => $o->fulfillment_type ? FlowerOrder::fulfillmentLabel($o->fulfillment_type) : null,
+            // «التسليم / الاستلام» — النوعُ دائمًا وموعدُه بطرفي فترته (`SaleCells::handover`)
+            'handover' => SaleCells::handover($o->fulfillment_type, $o->scheduled_for, $o->scheduled_until),
         ];
     }
 
@@ -133,13 +162,14 @@ final class OrdersList
                 __('المصدر') => Workbook::TEXT,
                 __('الموظف') => Workbook::TEXT,
                 __('الفرع') => Workbook::TEXT,
-                __('عدد الأصناف') => Workbook::INT,
+                __('عدد المنتجات') => Workbook::INT,
                 Workbook::money('الإجمالي') => Workbook::MONEY,
                 __('الدفع') => Workbook::TEXT,
                 __('الحالة') => Workbook::TEXT,
                 __('التاريخ') => Workbook::DATETIME,
                 __('موعد التسليم') => Workbook::DATETIME,
                 __('نوع التنفيذ') => Workbook::TEXT,
+                ...self::detailColumns(),
             ],
             rows: function () use ($request) {
                 foreach (self::query($request)->cursor() as $o) {
@@ -147,9 +177,10 @@ final class OrdersList
                     yield [
                         'cells' => [
                             $r['id'], $r['customer'], __($r['channel_label']), $r['employee'], $r['branch'],
-                            $r['items_count'], $r['total'],
+                            $r['products']['lines'], $r['total'],
                             $r['payment'] === 'بطاقة' ? __('فيزا') : __((string) $r['payment']),
                             __((string) $r['status']), $r['date'], $r['scheduled'], $r['fulfillment'] ?? '—',
+                            ...self::detailCells($r),
                         ],
                         'fill' => $r['status'] === OrderStatus::CANCELLED ? 'FEF3C7' : null,
                     ];
@@ -161,6 +192,36 @@ final class OrdersList
                 [__('منها ملغاة'), $cancelled, Workbook::INT],
             ],
         );
+    }
+
+    /**
+     * أعمدةُ ما تقوله الشاشةُ جملًا — القطعُ والإضافاتُ والتسليمُ والمؤكِّد.
+     *
+     * بعد أعمدة الملفّ القديمة لا بينها: من بنى على ترتيبها لا ينكسر.
+     */
+    public static function detailColumns(): array
+    {
+        return [
+            __('عدد القطع') => Workbook::INT,
+            __('الإضافات') => Workbook::INT,
+            __('التسليم / الاستلام') => Workbook::TEXT,
+            __('المؤكِّد') => Workbook::TEXT,
+            __('وقت التأكيد') => Workbook::DATETIME,
+        ];
+    }
+
+    /** خلايا تلك الأعمدة لصفّ طلب — من `row` نفسِه */
+    public static function detailCells(array $r): array
+    {
+        $c = $r['confirmation'];
+
+        return [
+            $r['products']['pieces'],
+            $r['products']['addons'],
+            $r['handover']['label'] ?? '—',
+            $c === null ? '—' : ($c['by'] ?? $c['label']),
+            $c['at'] ?? '—',
+        ];
     }
 
     /** المرشِّحاتُ الفعّالة كما يقرؤها التاجر — لا «الحالة: الكل» */

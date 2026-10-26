@@ -25,6 +25,7 @@ import {
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import Field, { Select } from '@/Components/Field';
+import StoreBranchSettings from '@/Components/StoreBranchSettings';
 import { type ReadinessStep } from '@/Components/StoreReadinessList';
 import StatusPill from '@/Components/StatusPill';
 import Toggle from '@/Components/Toggle';
@@ -199,6 +200,8 @@ interface Props {
     locale: string;
     /* لا تصل إلا حين يُطلب قسمها في الرابط — انظر settingsSection في PageController */
     branches?: Branch[];
+    /** فروعُ المتجر الحيّة — لفرع طلبات الموقع وفرع الاستلام (`Store\StoreBranches`) */
+    storeBranches?: { id: number; name: string }[];
     employees?: Employee[];
     jobTitles?: JobTitle[];
     devices?: DevicesData['devices'];
@@ -328,7 +331,7 @@ const NOTIF_COLORS: Record<string, string> = {
 };
 
 export default function SettingsIndex() {
-    const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, pageSections, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
+    const { settings, settingsFields, business, recovery, mail, site, fieldStates, fulfilments, pageSections, store, templates, notificationsAll, customAlerts, alertMetrics, alertSections, staffPermissions, locale, branches, storeBranches, employees, jobTitles, devices, branchOptions, bankAccounts, peripheralTypes, drivableTypes, paperWidths,
         logs, pagination, filters, products, expenses, customers: trashedCustomers, trashedBranches, windowDays,
         accounts, trial, types, archive, backups } =
         usePage<PageProps<Props>>().props;
@@ -597,6 +600,9 @@ export default function SettingsIndex() {
         store_field_recipient: fieldStates?.recipient ?? 'optional',
         store_field_promo: fieldStates?.promo ?? 'optional',
         store_fulfil: (fulfilments ?? ['pickup', 'delivery']).join(','),
+        // فرعُ طلبات الموقع واختيارُ الزبون فرعَ استلامه — `Store\StoreBranches`
+        store_branch_id: site?.store_branch_id ?? '',
+        store_pickup_branch_choice: (site?.store_pickup_branch_choice ?? '0') === '1',
         store_max_days: site?.store_max_days ?? '',
         // وصفحةُ المتجر — ما فيها وترتيبُه (انظر `Store\StorePage`)
         store_hero_image: site?.store_hero_image ?? '',
@@ -1268,6 +1274,17 @@ export default function SettingsIndex() {
                                                 aria-label={t('الحجز مقدّمًا (أيام)')}
                                             />
                                         </Field>
+                                    </div>
+
+                                    <div className="mt-4">
+                                        <StoreBranchSettings
+                                            branches={storeBranches ?? []}
+                                            branchId={storeForm.data.store_branch_id}
+                                            onBranch={(id) => storeForm.setData('store_branch_id', id)}
+                                            choice={storeForm.data.store_pickup_branch_choice}
+                                            onChoice={(on) => storeForm.setData('store_pickup_branch_choice', on)}
+                                            error={storeForm.errors.store_branch_id}
+                                        />
                                     </div>
                                 </div>
 

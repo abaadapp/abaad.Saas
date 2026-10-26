@@ -41,6 +41,11 @@
             <th>{{ __('المبلغ') }}</th>
             <th>{{ __('تاريخ الدفع') }}</th>
             <th>{{ __('الحالة') }}</th>
+            {{-- وما حول التحصيل — كما في ملفَّيه (`PaidLinksList::export`) --}}
+            <th>{{ __('منشئ رابط الدفع') }}</th>
+            <th>{{ __('الفرع') }}</th>
+            <th>{{ __('المنتجات') }}</th>
+            <th>{{ __('التسليم / الاستلام') }}</th>
         </tr>
         @foreach ($rows as $r)
             <tr>
@@ -52,6 +57,10 @@
                 <td>{{ \App\Support\Demo::moneyBase($r['amount']) }}</td>
                 <td>{{ $r['date'] }}</td>
                 <td>{{ $r['review'] ? __('مدفوع — يحتاج مراجعة') : __($r['status']) }}</td>
+                <td>{{ $r['creator'] ?? '—' }}</td>
+                <td>{{ \App\Support\Lists\AllSalesList::branchCell($r) }}</td>
+                <td>{{ $r['products']['label'] ?? __('لا توجد منتجات مرتبطة') }}</td>
+                <td>{{ \App\Support\Lists\AllSalesList::handoverCell($r) }}</td>
             </tr>
         @endforeach
     </table>

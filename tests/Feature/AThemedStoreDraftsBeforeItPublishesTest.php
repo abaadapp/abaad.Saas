@@ -124,9 +124,11 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         // تشغيلٌ يسري على زبونٍ يشتري الآن، فيسري فورًا ولا ينتظر نشرَ التصميم
         // وترتيبُ الرفّ اليدويّ (`store_shelf_order`، واحد) ترتيبٌ يراه الزائر — يُنشر (#139)
         // ورسالتا عدم توفّر التوصيل (اثنتان) تُقرآن في الإتمام كأخواتهما — تسريان فورًا (#137)
-        $this->assertCount(104, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        // وفرعُ طلبات الموقع واختيارُ الزبون فرعَ استلامه (اثنان) — منهما يُخصم المخزون
+        // ويُنسب الطلب، تشغيلٌ لا تصميم — يسريان فورًا (`Store\StoreBranches`)
+        $this->assertCount(106, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
         $this->assertCount(49, $versioned, 'تبدّل عددُ ما يُنشر');
-        $this->assertCount(55, $live, 'تبدّل عددُ ما يسري فورًا');
+        $this->assertCount(57, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),
             'مفتاحٌ في العقد وليس في المجموعة: '.implode(', ', array_diff($versioned, $all)));
@@ -149,6 +151,8 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
             'store_allow_orders', 'store_pay_cod', 'store_pay_transfer', 'store_bank',
             // توصيل واستلام
             'store_delivery_areas', 'store_delivery_slots', 'store_fulfil', 'store_max_days',
+            // ومن أيّ فرعٍ يُنفَّذ الطلبُ ويُخصم رفُّه — `Store\StoreBranches`
+            'store_branch_id', 'store_pickup_branch_choice',
             'store_delivery_note', 'store_delivery_note_en', 'store_image_note', 'store_image_note_en', 'store_gift_card',
             // وتنبيها نطاق التوصيل — سطرٌ في قسم التوصيل يقرؤه زبونٌ يشتري الآن
             'store_delivery_area_note', 'store_delivery_area_note_en',
@@ -180,7 +184,7 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
                 'المفتاح «'.$key.'» دخل النشر — وهو يسري على زبونٍ يشتري الآن.');
         }
 
-        $this->assertCount(46, $mustStayLive, 'قائمةُ الحيّ ناقصةٌ أو زائدة');
+        $this->assertCount(48, $mustStayLive, 'قائمةُ الحيّ ناقصةٌ أو زائدة');
         $this->assertSame([], array_diff($mustStayLive, array_keys(MarketingSettings::GROUPS['website'])));
     }
 

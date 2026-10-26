@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Exceptions\SettlementRefused;
 use App\Http\Controllers\Controller;
 use App\Models\Boutique;
+use App\Models\BoutiqueReturn;
 use App\Models\BoutiqueSettlement;
 use App\Models\Business;
 use App\Models\Expense;
@@ -12,6 +13,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Support\BoutiqueDues;
+use App\Support\BoutiqueReturns;
 use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\Search;
@@ -83,6 +85,10 @@ class BoutiqueController extends Controller
                 'contact_person' => $b->contact_person,
                 'rate' => (float) $b->commission_rate,
                 'active' => (bool) $b->active,
+                // وما تحمله نافذةُ التعديل كلُّه — حقلٌ لا يصلها يُرسَل فارغًا فيُمحى
+                'notes' => $b->notes,
+                'returns_terms' => $b->returns_terms,
+                'returns_terms_ref' => $b->returns_terms_ref,
                 'products_count' => (int) $b->products_count,
                 'gross' => round((float) ($sold[$b->id] ?? 0), 3),
                 // وكم ينتظر ورقةً منه — به يُعرف الصفُّ الذي يُفتح
@@ -129,8 +135,12 @@ class BoutiqueController extends Controller
                 'rate' => (float) $boutique->commission_rate,
                 'active' => (bool) $boutique->active,
                 'notes' => $boutique->notes,
+                'returns_terms' => $boutique->returns_terms,
+                'returns_terms_ref' => $boutique->returns_terms_ref,
             ],
             'statement' => $statement,
+            // مرتجعاتٌ بعد الورقة وما ينتظر منها — انظر `BoutiqueReturns`
+            'returns' => $this->returnsOf((int) $business->id, $boutique),
             'period' => $period,
             'periods' => $this->periodOptions(),
             /*
@@ -209,7 +219,14 @@ class BoutiqueController extends Controller
          * فرفعُها اليوم لا يُعيد حسبةَ كشفِ الشهر الماضي. وهذا مقصودٌ
          * ومحروس — انظر ترويسة الهجرة.
          */
+        $before = [$boutique->returns_terms, $boutique->returns_terms_ref];
         $boutique->update($this->validated($request));
+
+        // وشرطُ المرتجع يحسم مَن يتحمّل — فمن غيّره ومتى يُقرأ في السجلّ
+        if ($before !== [$boutique->returns_terms, $boutique->returns_terms_ref]) {
+            \App\Support\Activity::log('updated', 'شرط مرتجع البوتيك '.$boutique->name.': '.($boutique->returns_terms ?? 'غير موثّق')
+                .($boutique->returns_terms_ref ? ' — '.$boutique->returns_terms_ref : ''), ['subject_id' => $boutique->id, 'subject_type' => 'boutique']);
+        }
 
         return back()->with('toast', ['msg' => __('حُفظ البوتيك'), 'type' => 'success']);
     }
@@ -228,6 +245,10 @@ class BoutiqueController extends Controller
         if (BoutiqueSettlement::where('boutique_id', $boutique->id)->whereHas('expense', fn ($q) => $q
             ->where('status', '!=', Expense::PAID))->exists()) {
             return back()->withErrors(['boutique' => __('عليه تسويةٌ لم تُسدَّد — سدّدها قبل حذفه.')]);
+        }
+
+        if (BoutiqueReturn::where('boutique_id', $boutique->id)->whereIn('status', BoutiqueReturn::OPEN)->exists()) {
+            return back()->withErrors(['boutique' => __('له مرتجعاتٌ لم تُحسم أو لم تُستردّ — أتمّها قبل حذفه.')]);
         }
 
         $boutique->delete();
@@ -291,6 +312,120 @@ class BoutiqueController extends Controller
         }
 
         return back()->with('toast', ['msg' => __('سُجّل الاسترداد :number', ['number' => $doc->number]), 'type' => 'success']);
+    }
+
+    /* ═══════════ مرتجعٌ بعد الورقة ═══════════ */
+
+    /**
+     * قرارُ المحاسب في مرتجعٍ لا يحسمه شرطٌ موثَّق — على البوتيك أو على المتجر، بسببه.
+     *
+     * بقسم المصروفات لا بقسم المنتجات وحده: هو من يسدّد الأوراق، والقرارُ
+     * يُنقص مستحقًّا أو يُنشئ مطالبة.
+     */
+    public function reviewReturn(Request $request, int $id)
+    {
+        $business = $this->shop();
+        $boutique = $this->find($id);
+        abort_unless(auth()->user()?->allows('expenses'), 403);
+
+        $data = $request->validate([
+            'note' => ['required', 'integer'],
+            'bearer' => ['required', \Illuminate\Validation\Rule::in(['boutique', 'shop'])],
+            'why' => ['required', 'string', 'max:500'],
+        ]);
+
+        $note = BoutiqueReturn::where('business_id', $business->id)->where('boutique_id', $boutique->id)->findOrFail($data['note']);
+
+        try {
+            BoutiqueReturns::review($note, $data['bearer'], $data['why']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['returns' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('حُسم المرتجع'), 'type' => 'success']);
+    }
+
+    /** استلامٌ من البوتيك بمستندٍ ومرجع — يُطفئ مطالباتِه الأقدمَ أوّلًا */
+    public function returnReceipt(Request $request, int $id)
+    {
+        $business = $this->shop();
+        $boutique = $this->find($id);
+        abort_unless(auth()->user()?->allows('expenses'), 403);
+
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0', 'max:1000000'],
+            'method' => ['required', 'string', \Illuminate\Validation\Rule::in(self::METHODS)],
+            'reference' => ['required', 'string', 'max:120'],
+        ]);
+
+        try {
+            BoutiqueReturns::receipt($business, $boutique, (float) $data['amount'], $data['method'], $data['reference']);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['returns' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('سُجّل الاستلام من البوتيك'), 'type' => 'success']);
+    }
+
+    /** خصمُ المطالبات المفتوحة من ورقةٍ لاحقة لهذا البوتيك لم تُسدَّد */
+    public function returnOffset(Request $request, int $id)
+    {
+        $business = $this->shop();
+        $boutique = $this->find($id);
+        abort_unless(auth()->user()?->allows('expenses'), 403);
+
+        $data = $request->validate(['settlement' => ['required', 'integer']]);
+        $target = BoutiqueSettlement::where('business_id', $business->id)->where('boutique_id', $boutique->id)->findOrFail($data['settlement']);
+
+        try {
+            $total = BoutiqueReturns::offset($business, $boutique, $target);
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['returns' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('خُصم :amount من الورقة :number', ['amount' => number_format($total, 3), 'number' => $target->number]), 'type' => 'success']);
+    }
+
+    /**
+     * مرتجعاتُ البوتيك بعد أوراقها — وما يُخصم منه وما يُفعل.
+     *
+     * @return array{notes: list<array<string, mixed>>, open: float, review: int, targets: list<array<string, mixed>>, can_decide: bool}
+     */
+    private function returnsOf(int $businessId, Boutique $boutique): array
+    {
+        $notes = BoutiqueReturn::where('business_id', $businessId)->where('boutique_id', $boutique->id)
+            ->with(['settlement:id,number', 'order:id,number'])->latest('id')->limit(100)->get();
+
+        // أوراقٌ لم تُسدَّد قُيّدت يومَ صدورها — منها وحدها يُخصم
+        $targets = BoutiqueSettlement::where('business_id', $businessId)->where('boutique_id', $boutique->id)
+            ->where('kind', BoutiqueSettlement::SETTLEMENT)->whereNotNull('expense_id')->with('expense')->latest('id')->limit(24)->get()
+            ->filter(fn (BoutiqueSettlement $s) => $s->expense && ! $s->expense->isPaid() && Boutiques::accrual($s->expense) !== null)
+            ->map(fn (BoutiqueSettlement $s) => ['id' => $s->id, 'number' => $s->number, 'payable' => BoutiqueReturns::payable($s->expense)])
+            ->values()->all();
+
+        return [
+            'notes' => $notes->map(fn (BoutiqueReturn $n) => [
+                'id' => $n->id,
+                'order' => $n->order?->number,
+                'sheet' => $n->settlement?->number,
+                'name' => $n->name,
+                'quantity' => (int) $n->quantity,
+                'amount' => (float) $n->amount,
+                'condition' => $n->condition,
+                'status' => $n->status,
+                'basis' => $n->basis,
+                'terms_ref' => $n->terms_ref,
+                'decision_note' => $n->decision_note,
+                'sold_at' => optional($n->sold_at)->format('Y-m-d'),
+                'returned_at' => optional($n->returned_at)->format('Y-m-d'),
+                'booked_at' => optional($n->booked_at)->format('Y-m-d'),
+                'remaining' => $n->status === BoutiqueReturn::CLAIM ? BoutiqueReturns::remaining($n) : 0.0,
+            ])->all(),
+            'open' => round(BoutiqueReturns::claims($businessId, (int) $boutique->id)->sum(fn ($c) => BoutiqueReturns::remaining($c)), 3),
+            'review' => $notes->where('status', BoutiqueReturn::REVIEW)->count(),
+            'targets' => $targets,
+            'can_decide' => (bool) auth()->user()?->allows('expenses'),
+        ];
     }
 
     public function settle(Request $request, int $id)
@@ -502,6 +637,14 @@ class BoutiqueController extends Controller
             'commission_rate' => ['required', 'numeric', 'min:0', 'max:100'],
             'active' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            /*
+             * وشرطُ المرتجع في الاتّفاقية بمرجعه — شرطٌ بلا مرجعٍ لا يُوثَّق.
+             *
+             * وبلا شرطٍ لا يُفترض أنّ البوتيك يتحمّل: يُعرض كلُّ مرتجعٍ بعد
+             * ورقته للمراجعة المحاسبيّة (`BoutiqueReturns::settle`).
+             */
+            'returns_terms' => ['nullable', \Illuminate\Validation\Rule::in(BoutiqueReturns::TERMS)],
+            'returns_terms_ref' => ['nullable', 'required_with:returns_terms', 'string', 'max:255'],
         ], [
             'name.required' => __('اسم البوتيك مطلوب'),
             'commission_rate.max' => __('النسبة لا تتجاوز ١٠٠٪ — وإلا صار الصافي دَينًا على البوتيك.'),

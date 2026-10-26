@@ -242,6 +242,34 @@ class PageController extends Controller
         return $order ? \App\Support\BoutiqueDues::piecesOf($order) : [];
     }
 
+    /**
+     * بنودُ البوتيك التي حملتها ورقةٌ في طلب — يُسأل عن حالها عند الإلغاء —
+     * وإشعاراتُ مرتجعٍ تنتظر استلامَ قطعها بعده. انظر `BoutiqueReturns`.
+     *
+     * @return array{lines: list<array<string, mixed>>, awaiting: list<array<string, mixed>>}
+     */
+    private function boutiqueReturns(string $number): array
+    {
+        $order = \App\Models\Order::where('business_id', Demo::bid())->where('number', $number)->first();
+        if (! $order) {
+            return ['lines' => [], 'awaiting' => []];
+        }
+
+        $sheets = \App\Models\BoutiqueSettlement::where('business_id', $order->business_id)
+            ->whereIn('id', \App\Models\OrderItem::where('order_id', $order->id)->whereNotNull('boutique_settlement_id')->select('boutique_settlement_id'))
+            ->pluck('number', 'id');
+
+        return [
+            'lines' => $order->status === Order::CANCELLED ? [] : \App\Support\BoutiqueReturns::settledLines($order)
+                ->map(fn ($i) => ['id' => $i->id, 'name' => $i->name, 'quantity' => (int) $i->quantity, 'sheet' => $sheets[$i->boutique_settlement_id] ?? null])
+                ->values()->all(),
+            'awaiting' => \App\Models\BoutiqueReturn::where('business_id', $order->business_id)->where('order_id', $order->id)
+                ->where('status', \App\Models\BoutiqueReturn::AWAITING)->orderBy('id')->get()
+                ->map(fn ($n) => ['id' => $n->id, 'name' => $n->name, 'quantity' => (int) $n->quantity, 'sheet' => $sheets[$n->boutique_settlement_id] ?? null])
+                ->values()->all(),
+        ];
+    }
+
     public function ordersShow(string $number): Response
     {
         $order = Demo::orderDetails($number);
@@ -284,6 +312,8 @@ class PageController extends Controller
              */
             // قطعُ البوتيك في الطلب — ليُسأل عن كلٍّ منها عند الإلغاء وبعده. انظر `BoutiqueDues::piecesOf`
             'boutiquePieces' => $this->boutiquePieces($number),
+            // وبنودُ البوتيك التي حملتها ورقة — مرتجعُها إشعارٌ مرتبطٌ بها. انظر `BoutiqueReturns`
+            'boutiqueReturns' => $this->boutiqueReturns($number),
             'googleReview' => $this->googleReviewState($number),
             /*
              * ورأيُ الزبون لموقع المتجر — بابٌ آخر غير Google.

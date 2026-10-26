@@ -79,12 +79,18 @@ class ARollbackReturnsTheCodeAndNeverTheDatabaseTest extends TestCase
     /** @return array{0: int, 1: string} */
     private function rollback(string ...$args): array
     {
+        return $this->rollbackWith([], ...$args);
+    }
+
+    /** @param  array<string, string>  $env */
+    private function rollbackWith(array $env, string ...$args): array
+    {
         $proc = proc_open(
             array_merge(['bash', base_path('scripts/rollback-code.sh')], $args),
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             $this->repo,
-            ['DRY_RUN' => '1', 'APP_DIR' => $this->repo, 'TMPDIR' => $this->repo, 'PATH' => getenv('PATH'), 'HOME' => $this->repo],
+            $env + ['DRY_RUN' => '1', 'APP_DIR' => $this->repo, 'TMPDIR' => $this->repo, 'PATH' => getenv('PATH'), 'HOME' => $this->repo],
         );
         $out = stream_get_contents($pipes[1]).stream_get_contents($pipes[2]);
         fclose($pipes[1]);
@@ -145,6 +151,26 @@ class ARollbackReturnsTheCodeAndNeverTheDatabaseTest extends TestCase
         $this->assertStringContainsString('هجرات', $out);
         $this->assertStringContainsString('2026_02_01_000000_c.php', $out);
         $this->assertSame($h['c'], $this->git('rev-parse --short HEAD'));
+    }
+
+    /**
+     * هجرةٌ إضافيّةٌ درسها صاحبُها فسمّاها — يُرجَع الكودُ وتبقى جداولُها.
+     *
+     * وتسميةُ غيرِها لا تفتح الباب: كلُّ هجرةٍ تُعبَر تُسمّى باسمها.
+     */
+    public function test_a_named_additive_migration_lets_the_code_go_back_and_keeps_its_tables(): void
+    {
+        $h = $this->history();
+
+        [$rc, $out] = $this->rollbackWith(['ALLOW_MIGRATIONS' => '2026_02_01_000000_c.php'], $h['b']);
+        $this->assertSame(0, $rc, $out);
+        $this->assertStringContainsString('سمّاها ALLOW_MIGRATIONS', $out);
+        $this->assertStringContainsString('git reset --hard '.$h['b'], $out);
+        $this->assertSame($h['c'], $this->git('rev-parse --short HEAD'), 'التجربةُ الجافّة غيّرت الكود');
+
+        [$rc, $out] = $this->rollbackWith(['ALLOW_MIGRATIONS' => '2026_01_01_000000_a.php'], $h['b']);
+        $this->assertSame(1, $rc, $out);
+        $this->assertStringContainsString('2026_02_01_000000_c.php', $out);
     }
 
     public function test_it_will_not_erase_an_uncommitted_change_or_guess_a_commit(): void

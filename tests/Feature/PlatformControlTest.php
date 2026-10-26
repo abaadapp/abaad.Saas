@@ -348,7 +348,8 @@ class PlatformControlTest extends TestCase
             ->post(route('super-admin.invoices.pay', Invoice::where('business_id', $biz->id)->value('id')))
             ->assertSessionHasNoErrors();
 
-        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addDays(5)->addMonth()));
+        // بحساب `Billing::extend` نفسِه: ٣١ أكتوبر وشهرٌ = ٣٠ نوفمبر لا الأوّل من ديسمبر
+        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addDays(5)->addMonthsNoOverflow(1)));
     }
 
     /** تجديدٌ سُدّدت فاتورتُه — الدورةُ الممنوحة كما كانت تُمنح عند الإصدار قبل أن تنتظر السداد */
@@ -373,7 +374,7 @@ class PlatformControlTest extends TestCase
 
         $this->renewedAndPaid($biz);
 
-        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addDays(20)->addMonth()));
+        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addDays(20)->addMonthsNoOverflow(1)));
     }
 
     /** والمنتهي يُجدَّد من اليوم لا من ماضٍ مضى */
@@ -388,7 +389,7 @@ class PlatformControlTest extends TestCase
 
         Billing::markPaid(Invoice::where('business_id', $biz->id)->firstOrFail());
 
-        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addMonth()));
+        $this->assertTrue($biz->fresh()->ends_at->isSameDay(now()->addMonthsNoOverflow(1)));
         $this->assertSame('نشط', $biz->fresh()->status);
     }
 

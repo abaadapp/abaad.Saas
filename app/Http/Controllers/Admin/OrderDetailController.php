@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\SettlementRefused;
 use App\Http\Controllers\Controller;
+use App\Models\BoutiqueReturn;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Support\Activity;
 use App\Support\BoutiqueDues;
+use App\Support\BoutiqueReturns;
 use App\Support\BranchGoogle;
 use App\Support\Demo;
 use App\Support\FlowerOrder;
@@ -424,6 +427,34 @@ class OrderDetailController extends Controller
     }
 
     /**
+     * قطعُ بوتيكٍ حملتها ورقةٌ ولم تُستلم بعد المرتجع: كم عاد سليمًا وكم تالفًا.
+     *
+     * بإذن الإلغاء نفسِه — هو من سجّل المرتجع. وحصّةُ البوتيك تُحسم بعدها
+     * بشرط اتّفاقيته أو تنتظر المحاسب (`BoutiqueReturns::receive`).
+     */
+    public function boutiqueReturns(Request $request, string $number)
+    {
+        abort_unless(auth()->user()?->may(Permissions::PREPARATION_CANCEL), 403);
+        $order = Order::where('business_id', $this->bid())->where('number', $number)->firstOrFail();
+
+        $data = $request->validate([
+            'note' => ['required', 'integer'],
+            'sellable' => ['required', 'integer', 'min:0', 'max:1000'],
+            'damaged' => ['required', 'integer', 'min:0', 'max:1000'],
+        ]);
+
+        $note = BoutiqueReturn::where('business_id', $order->business_id)->where('order_id', $order->id)->findOrFail($data['note']);
+
+        try {
+            BoutiqueReturns::receive($note, (int) $data['sellable'], (int) $data['damaged'], __('استُلمت قطعة البوتيك المرتجعة'));
+        } catch (SettlementRefused $e) {
+            return back()->withErrors(['pieces' => $e->getMessage()]);
+        }
+
+        return back()->with('toast', ['msg' => __('حُفظ حالُ القطع المرتجعة'), 'type' => 'success']);
+    }
+
+    /**
      * نقل الحالة — بحارسٍ في الخادم لا في الشاشة.
      *
      * الشاشة تعرض ما يجوز، والطلب يصل من عنوانٍ يُكتب. و«تم التسليم ← قيد
@@ -440,6 +471,10 @@ class OrderDetailController extends Controller
             'pieces' => ['nullable', 'array'],
             'pieces.*.returned' => ['nullable', 'integer', 'min:0', 'max:1000'],
             'pieces.*.lost' => ['nullable', 'integer', 'min:0', 'max:1000'],
+            // وبنودُ البوتيك التي حملتها ورقة: [رقمُ البند => سليم، تالف] — والباقي لم يُستلم (`BoutiqueReturns::onCancel`)
+            'lines' => ['nullable', 'array'],
+            'lines.*.sellable' => ['nullable', 'integer', 'min:0', 'max:1000'],
+            'lines.*.damaged' => ['nullable', 'integer', 'min:0', 'max:1000'],
         ]);
 
         /*
@@ -459,7 +494,8 @@ class OrderDetailController extends Controller
 
         // بابٌ واحد للنقل تدخل منه هذه الشاشة ولوحة التجهيز — انظر OrderTransition
         $pieces = isset($data['pieces']) ? array_map(fn ($p) => array_map('intval', (array) $p), $data['pieces']) : null;
-        if ($error = OrderTransition::apply($order, $data['status'], $from, $pieces)) {
+        $lines = isset($data['lines']) ? array_map(fn ($l) => array_map('intval', (array) $l), $data['lines']) : null;
+        if ($error = OrderTransition::apply($order, $data['status'], $from, $pieces, $lines)) {
             return back()
                 ->with('toast', ['msg' => $error, 'type' => 'danger'])
                 ->withErrors(['status' => $error]);

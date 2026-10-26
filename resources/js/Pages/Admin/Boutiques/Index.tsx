@@ -22,6 +22,9 @@ export interface BoutiqueRow {
     contact_person: string | null;
     rate: number;
     active: boolean;
+    notes: string | null;
+    returns_terms: string | null;
+    returns_terms_ref: string | null;
     products_count: number;
     /** ما بِيع له في الشهر المختار — من الخادم لا من عدٍّ في الشاشة */
     gross: number;
@@ -53,7 +56,8 @@ export default function BoutiquesIndex() {
 
     const fields = (b: BoutiqueRow): BoutiqueFields => ({
         name: b.name, name_en: b.name_en, phone: b.phone, contact_person: b.contact_person,
-        commission_rate: b.rate, active: b.active, notes: null,
+        commission_rate: b.rate, active: b.active, notes: b.notes,
+        returns_terms: b.returns_terms, returns_terms_ref: b.returns_terms_ref,
     });
 
     const edit = (b: BoutiqueRow) => {

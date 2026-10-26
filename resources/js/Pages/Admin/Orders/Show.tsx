@@ -52,7 +52,7 @@ import { useTranslate } from "@/lib/i18n";
 import { prepareWebsiteConfirmPrint, websiteConfirmPrintCallbacks } from '@/lib/website-confirm-print';
 import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
-import { CancelWithPieces, KeptPieces, type BoutiquePiece } from './BoutiquePieces';
+import { AwaitingReturns, CancelWithPieces, KeptPieces, type BoutiquePiece, type SheetLine } from './BoutiquePieces';
 import { AddonRows, IncludedAddons, lineAmount, type AddonsMode, type ItemAddon } from './ItemAddons';
 
 interface OrderDetail {
@@ -165,12 +165,14 @@ interface OrderDetail {
  * صلاحيةُ `order.edit` ويومُ البيع، يقيسهما الخادم قبل الرسم وعند الكتابة.
  */
 export default function OrderShow() {
-    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch, lineEdit, deliveryNote, boutiquePieces = [] } =
+    const { order, context, taxInvoice, googleReview, storeReview, statusNotice, paper, invoiceEdit, otherBranch, lineEdit, deliveryNote, boutiquePieces = [], boutiqueReturns } =
         usePage<
         PageProps<{
             order: OrderDetail;
             /** قطعُ البوتيك في الطلب — يُسأل عن كلٍّ منها عند الإلغاء (`BoutiqueDues::piecesOf`) */
             boutiquePieces?: BoutiquePiece[];
+            /** بنودُ بوتيكٍ حملتها ورقةٌ، وإشعاراتٌ تنتظر استلامَ قطعها (`BoutiqueReturns`) */
+            boutiqueReturns?: { lines: SheetLine[]; awaiting: SheetLine[] };
             /** إضافةُ صنفٍ واستبدالُه وملاحظتُه — `null` لنشاطٍ لم تُفتح له (`NotesAndEdits::screen`) */
             lineEdit?: LineEdit | null;
             /** أيُصحَّح متنُ الفاتورة الآن — وإن لم يُصحَّح فلمَ. يُقاس في الخادم */
@@ -243,6 +245,7 @@ export default function OrderShow() {
     // إلغاءٌ فيه قطعُ بوتيكٍ حيّة يسأل عن كلّ قطعة قبل أن يُرسَل
     const [cancelling, setCancelling] = useState(false);
     const livePieces = boutiquePieces.filter((p) => p.state === null);
+    const sheetLines = boutiqueReturns?.lines ?? [];
 
 
     /*
@@ -1007,7 +1010,7 @@ export default function OrderShow() {
                                             variant="outline"
                                             size="sm"
                                             onClick={() => {
-                                                if (s === 'ملغي' && livePieces.length > 0) {
+                                                if (s === 'ملغي' && (livePieces.length > 0 || sheetLines.length > 0)) {
                                                     setCancelling(true);
                                                     return;
                                                 }
@@ -1045,14 +1048,16 @@ export default function OrderShow() {
                         <CancelWithPieces
                             open={cancelling}
                             pieces={livePieces}
+                            lines={sheetLines}
                             onClose={() => setCancelling(false)}
-                            onConfirm={(pieces) => router.post(
+                            onConfirm={(pieces, lines) => router.post(
                                 route('admin.orders.status', order.id),
-                                { status: 'ملغي', pieces },
+                                { status: 'ملغي', pieces, lines },
                                 { preserveScroll: true, onFinish: () => setCancelling(false) },
                             )}
                         />
                         {order.status === 'ملغي' && <KeptPieces orderNumber={String(order.id)} pieces={boutiquePieces} />}
+                        <AwaitingReturns orderNumber={String(order.id)} notes={boutiqueReturns?.awaiting ?? []} />
 
                         {order.notes && (
                             <Card className="p-6">

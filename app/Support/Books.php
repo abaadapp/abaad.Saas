@@ -403,19 +403,30 @@ class Books
             return;
         }
 
-        $amount = round((float) $expense->amount, 3);
+        // وورقةُ بوتيكٍ خُفّض مستحقُّها بمرتجعٍ أو خصمٍ يُسدَّد صافيها — انظر `BoutiqueReturns::payable`
+        $amount = BoutiqueReturns::sheetOf($expense) !== null
+            ? BoutiqueReturns::payable($expense)
+            : round((float) $expense->amount, 3);
         if ($amount <= 0) {
             return;
         }
 
+        /*
+         * وورقةُ بوتيكٍ قُيّدت يومَ صدورها كُتب مصروفُها هناك ودَينُها في 2160
+         * (`Boutiques::write`). فسدادُها يُطفئ الدَّين ولا يكتب المصروفَ ثانيةً —
+         * وإلّا خُصمت حصّةُ البوتيك من الربح مرّتين. ويُكتب بيوم خروج المال:
+         * `spent_at` يبقى يومَ الورقة، والبنكُ لا ينقص في الماضي.
+         */
+        $accrued = Boutiques::accrual($expense) !== null;
+
         Ledger::post(
             $expense->business_id,
-            BooksPeriod::fit(__('مصروف: ').$expense->type, $note),
+            BooksPeriod::fit($accrued ? __('سداد تسوية بوتيك: ').$expense->reference : __('مصروف: ').$expense->type, $note),
             [
-                ['account' => self::expenseAccount($expense->type, $expense->business_id), 'debit' => $amount, 'memo' => $expense->description],
+                ['account' => $accrued ? 'boutique_payable' : self::expenseAccount($expense->type, $expense->business_id), 'debit' => $amount, 'memo' => $expense->description],
                 ['account' => self::payingAccount($expense->method), 'credit' => $amount],
             ],
-            $at ?? Carbon::parse($expense->spent_at ?? now()),
+            $at ?? ($accrued ? now() : Carbon::parse($expense->spent_at ?? now())),
             self::EXPENSE,
             // فرعُ المصروف المباشر — والموزَّعُ قيدٌ واحد للنشاط لا قيدٌ لكلّ فرع
             ExpenseScope::journalBranch($expense),

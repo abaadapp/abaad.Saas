@@ -60,6 +60,10 @@ class OrderCorrection
         self::assertSameDay($order);
         self::assertTaxStands($order);
 
+        if ($newQty > (int) $item->quantity) {
+            self::assertNotOnBoutiqueSheet($order, $item);
+        }
+
         if ($newQty < 0) {
             throw new RuntimeException(__('الكمية لا تكون سالبة.'));
         }
@@ -103,6 +107,9 @@ class OrderCorrection
              * `ACorrectionSettlesFromTheTotalItLockedTest`.
              */
             $order = self::lockOrder($order);
+            if ($newQty > $oldQty) {
+                self::assertNotOnBoutiqueSheet($order, $item);
+            }
 
             /*
              * ═══ والبندُ يُقرأ من جديدٍ مقفلًا قبل أن يُكتب فوقه ═══
@@ -138,6 +145,9 @@ class OrderCorrection
             $totalBefore = (float) $order->total;
             $itemName = $item->name;
             $itemId = $item->id;
+            // بندٌ حملته ورقةُ بوتيك يُلتقط قبل أن يُنقص — وما نقص منه إشعارٌ بعد التصحيح
+            $sheetLine = $locked->boutique_id && $locked->boutique_settlement_id ? BoutiqueReturns::snapshot($locked) : null;
+            $grossBefore = round((float) $locked->total, 3);
 
             self::moveStock($order, $item, $oldQty - $newQty);
             // ومستحقُّ البوتيك بالكمّيّة الجديدة وبسعر البيعة — عكسٌ ثمّ صفٌّ جديد
@@ -173,6 +183,11 @@ class OrderCorrection
                 'user_id' => PosCashier::id() ?? auth()->id(),
                 'employee_name' => PosCashier::name() ?? auth()->user()?->name,
             ]);
+
+            if ($sheetLine !== null) {
+                $grossAfter = $newQty === 0 ? 0.0 : round((float) $locked->price * $newQty, 3);
+                BoutiqueReturns::onDecrease($order, $sheetLine, $oldQty - $newQty, round($grossBefore - $grossAfter, 3), $reason, $edit->id);
+            }
 
             Activity::log('updated', $newQty === 0
                 ? 'حذف بند «'.$itemName.'» من الفاتورة '.$order->number.' — '.$reason
@@ -220,6 +235,41 @@ class OrderCorrection
         throw new RuntimeException(__(
             'هذه الفاتورة داخلةٌ في إقرارٍ ضريبيّ قُدِّم في :date — لا تُلغى. وتصحيحُها يكون بإشعارِ دائنٍ في فترةٍ مفتوحة.',
             ['date' => optional(Vat::filedThrough((int) $order->business_id))->format('Y-m-d')],
+        ));
+    }
+
+    /**
+     * ═══ وبندُ بوتيكٍ حملته ورقةُ تسوية لا يُزاد ولا يُستبدل ═══
+     *
+     * الورقةُ حصّةُ البوتيك ممّا بِيع، مجمَّدةً يومَ صدورها. ونقصُ البند أو
+     * إلغاءُ طلبه يُكتب إشعارَ مرتجعٍ مرتبطًا بها (`BoutiqueReturns`). أمّا
+     * زيادتُه فقطعٌ جديدة على بندٍ «سُوّي» فلا تحملها ورقةٌ أبدًا — يُباع
+     * للبوتيك ما لا يُدفع له. واستبدالُه بيعٌ آخر في مكانه. فيُردّان، والطريقُ
+     * بندٌ جديد أو إنقاصٌ ثمّ إضافة.
+     *
+     * ويُسأل مرّتين: قبل المعاملة ليُردّ سريعًا، وتحت قفل الفاتورة. والورقةُ
+     * تقفل فواتيرَها قبل أن تختم بنودَها، فلا تمرّ إحداهما بين سؤال الأخرى
+     * وكتابتها.
+     *
+     * @throws RuntimeException برسالةٍ تُعرض كما هي
+     */
+    private static function assertNotOnBoutiqueSheet(Order $order, ?OrderItem $item = null): void
+    {
+        $settled = OrderItem::query()
+            ->join('boutique_settlements as s', 's.id', '=', 'order_items.boutique_settlement_id')
+            ->where('order_items.order_id', $order->id)
+            ->when($item, fn ($q) => $q->where('order_items.id', $item->id))
+            ->whereNotNull('order_items.boutique_id')
+            ->orderBy('order_items.id')
+            ->first(['order_items.name', 's.number']);
+
+        if ($settled === null) {
+            return;
+        }
+
+        throw new RuntimeException(__(
+            'بند «:item» في ورقة تسوية البوتيك :number — لا تُزاد كمّيّتُه ولا يُستبدل بعد صدورها. أضف القطعة بندًا جديدًا، وإنقاصُه أو إلغاءُ الطلب يُكتب إشعارَ مرتجعٍ مرتبطًا بالورقة.',
+            ['item' => $settled->name, 'number' => $settled->number],
         ));
     }
 
@@ -1040,10 +1090,12 @@ class OrderCorrection
 
         self::assertLinesMayChange($order);
         self::assertNotCardLine($order, $old);
+        self::assertNotOnBoutiqueSheet($order, $old);
         $method = self::settleMethod($order, $settle, $method);
 
         return DB::transaction(function () use ($order, $old, $wanted, $reason, $settle, $method) {
             $order = self::lockOrder($order);
+            self::assertNotOnBoutiqueSheet($order, $old);
             $locked = OrderItem::whereKey($old->id)->lockForUpdate()->first();
 
             if (! $locked || $locked->order_id !== $order->id) {
@@ -1687,8 +1739,11 @@ class OrderCorrection
      * و`$boutiqueReturned` جوابُ «هل تعود قطعُ البوتيك في هذا الطلب إلى الرفّ؟»
      * لكلّ قطعةٍ وكمّيّتها — ما عاد يُعكس مستحقُّه، وغيرُه يبقى موثَّقًا.
      * انظر `BoutiqueDues::cancel`.
+     *
+     * و`$boutiqueLines` مثلُه لبنود البوتيك المنفردة التي حملتها ورقة:
+     * `[رقمُ البند => ['sellable' => n, 'damaged' => n]]` — انظر `BoutiqueReturns::onCancel`.
      */
-    public static function cancel(Order $order, ?string $reason = null, bool|array|null $boutiqueReturned = null): void
+    public static function cancel(Order $order, ?string $reason = null, bool|array|null $boutiqueReturned = null, ?array $boutiqueLines = null): void
     {
         self::assertNotFiled($order);
 
@@ -1696,7 +1751,7 @@ class OrderCorrection
             return;
         }
 
-        DB::transaction(function () use ($order, $reason, $boutiqueReturned) {
+        DB::transaction(function () use ($order, $reason, $boutiqueReturned, $boutiqueLines) {
             /*
              * والحال تُقرأ ثانيةً تحت قفل — والقراءة الأولى لا تكفي.
              *
@@ -1769,7 +1824,7 @@ class OrderCorrection
                 $reason ?: null,
             );
 
-            OrderEdit::create([
+            $edit = OrderEdit::create([
                 'business_id' => $order->business_id,
                 'order_id' => $order->id,
                 'order_item_id' => null,
@@ -1781,6 +1836,14 @@ class OrderCorrection
                 'user_id' => PosCashier::id() ?? auth()->id(),
                 'employee_name' => PosCashier::name() ?? auth()->user()?->name,
             ]);
+
+            /*
+             * وبندُ بوتيكٍ حملته ورقةٌ: إشعارُ مرتجعٍ مرتبطٌ بها — والورقةُ كما هي.
+             *
+             * في المعاملة نفسِها: لا يُردّ للزبون مالُه وحصّةُ البوتيك عن البيع
+             * الملغى باقيةٌ بلا إشعار. وما لم يُقَل حالُه من القطع ينتظر استلامه.
+             */
+            BoutiqueReturns::onCancel($fresh, $boutiqueLines, $reason ?: __('إلغاء الطلب'), (int) $edit->id);
         });
     }
 

@@ -109,30 +109,51 @@ final class Profitability
     /**
      * المصروفاتُ المدفوعة في الفترة — كلُّ مصروفٍ مرّةً واحدة.
      *
+     * ومعها ورقةُ البوتيك التي قُيّدت يومَ صدورها (`Boutiques::accruedExpenseIds`)
+     * ولو لم تُسدَّد: مصروفُها في الدفتر من يومها، وربحُ المتجر يعدّه منه، فلو
+     * انتظر الفرعُ سدادَها لَقرأ ربحًا أعلى من ربح متجره. وسدادُها لا يُضيف
+     * صفًّا ولا يغيّر يومَها، فلا تُعدّ مرّتين.
+     *
      * والتاريخُ يُقارَن تاريخًا: `spent_at` عمودُ يوم، وقياسُه ببداية الفترة
      * ساعةً (`00:00:00`) يُسقط على SQLite مصروفَ اليوم الأوّل — نصٌّ أقصرُ من
      * نصّ — وعلى PostgreSQL لا يُسقطه. فالمقارنةُ بالتاريخ وحده تصدق على الاثنين.
      */
     public static function expenses(int $bid, ?Carbon $start, ?Carbon $end = null)
     {
-        return Expense::where('expenses.business_id', $bid)->paid()
+        return Expense::where('expenses.business_id', $bid)
+            ->where(fn ($q) => $q->paid()->orWhereIn('expenses.id', Boutiques::accruedExpenseIds($bid)))
             ->when($start, fn ($q) => $q->where('spent_at', '>=', $start->toDateString()))
             ->when($end, fn ($q) => $q->where('spent_at', '<', $end->toDateString()));
     }
 
-    /** مصروفاتُ الفرع: المباشرُ عليه وحصّتُه من الموزَّع */
+    /** مصروفاتُ الفرع: المباشرُ عليه وحصّتُه من الموزَّع — ناقصًا ما ردّه مرتجعُ بوتيك */
     public static function attributed(int $bid, ?Carbon $start, ?Carbon $end, int $branchId): float
     {
         $direct = (float) self::expenses($bid, $start, $end)->where('expenses.branch_id', $branchId)->sum('amount');
+        $returned = (float) self::returned($bid, $start, $end, $branchId)->sum('amount');
 
-        return round($direct + (float) self::shares($bid, $start, $end, $branchId)->sum('a.amount'), 3);
+        return round($direct + (float) self::shares($bid, $start, $end, $branchId)->sum('a.amount') - $returned, 3);
+    }
+
+    /**
+     * مرتجعاتُ بوتيكٍ بعد أوراقها دخل أثرُها الدفترَ — بيوم دخوله وفرعِ ورقتها.
+     *
+     * الإشعارُ يُنقص حصّةَ البوتيك من مصروفات النشاط في الدفتر (دائن حساب
+     * الحصّة). والفرعُ يقرأ جدولَ المصروفات لا الدفتر، فيُنقص منه هنا — وإلّا
+     * حمل الفرعُ حصّةَ بيعٍ أُلغي وقرأ ربحًا أقلّ من ربح متجره. و`null` لورقةٍ
+     * عامّةٍ بلا توزيع: يُنقص من العامّ.
+     */
+    public static function returned(int $bid, ?Carbon $start, ?Carbon $end, ?int $branchId)
+    {
+        return BoutiqueReturns::booked($bid, $start, $end)
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId), fn ($q) => $q->whereNull('branch_id'));
     }
 
     /**
      * حصصُ فرعٍ من المصروفات الموزَّعة المدفوعة — والمحذوفُ لا حصّةَ له.
      *
      * الحصّةُ لا تُحسب وحدها: تُقرأ من مصروفها الأب، فما حُذف منه (`deleted_at`)
-     * أو لم يُدفع بعد لا يُقرأ له شيء.
+     * أو لم يُدفع بعد لا يُقرأ له شيء — إلّا ورقةَ بوتيكٍ قُيّدت (انظر `expenses`).
      */
     public static function shares(int $bid, ?Carbon $start, ?Carbon $end, int $branchId)
     {
@@ -149,8 +170,9 @@ final class Profitability
     public static function unallocated(int $bid, ?Carbon $start, ?Carbon $end = null): array
     {
         $q = self::expenses($bid, $start, $end)->whereNull('expenses.branch_id')->whereDoesntHave('allocations');
+        $returned = (float) self::returned($bid, $start, $end, null)->sum('amount');
 
-        return ['amount' => round((float) (clone $q)->sum('amount'), 3), 'count' => (clone $q)->count()];
+        return ['amount' => round((float) (clone $q)->sum('amount') - $returned, 3), 'count' => (clone $q)->count()];
     }
 
     /**
@@ -192,6 +214,12 @@ final class Profitability
         if ($branchId !== null) {
             foreach (self::bucketSums(self::shares($bid, $start, $end, $branchId)->selectRaw("{$expenseBucket} as bucket, SUM(a.amount) as v")) as $key => $v) {
                 $expenses[$key] = ($expenses[$key] ?? 0.0) + $v;
+            }
+
+            // ومرتجعُ البوتيك في عمود يوم دخوله الدفترَ — كجملته في `attributed`
+            $returnBucket = $unit === 'hour' ? "'00'" : Demo::bucketSql('booked_at', $unit);
+            foreach (self::bucketSums(self::returned($bid, $start, $end, $branchId)->selectRaw("{$returnBucket} as bucket, SUM(amount) as v")) as $key => $v) {
+                $expenses[$key] = ($expenses[$key] ?? 0.0) - $v;
             }
         }
 

@@ -9,6 +9,8 @@ use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Books;
 use App\Support\BooksPeriod;
+use App\Support\BoutiqueReturns;
+use App\Support\Boutiques;
 use App\Support\Demo;
 use App\Support\ExpenseScope;
 use App\Support\ListFilters;
@@ -263,21 +265,34 @@ class ExpenseController extends Controller
      */
     private function postToLedger(Expense $expense): void
     {
-        $transaction = Transaction::create([
-            'business_id' => $expense->business_id,
-            // فرعُ المصروف المباشر — والموزَّعُ دفعةٌ واحدة للنشاط (`ExpenseScope::journalBranch`)
-            'branch_id' => ExpenseScope::journalBranch($expense),
-            'reference' => Transaction::nextReference($expense->business_id),
-            // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
-            'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
-            'method' => $expense->method,
-            'type' => 'مصروف',
-            'amount' => $expense->amount,
-            'employee_name' => $expense->employee_name,
-            'occurred_at' => $expense->spent_at,
-        ]);
+        /*
+         * وورقةُ البوتيك يخرج لها صافيها: مبلغُها ناقصًا ما خفّضه مرتجعٌ أو
+         * خصمٌ بعد صدورها (`BoutiqueReturns::payable`). ويومُ الحركة يومُ خروج
+         * المال: ورقةٌ قُيّدت يومَ صدورها يبقى `spent_at` يومَها، والدرجُ لا
+         * ينقص في شهرٍ مضى.
+         */
+        $sheet = BoutiqueReturns::sheetOf($expense) !== null;
+        $amount = $sheet ? BoutiqueReturns::payable($expense) : (float) $expense->amount;
+        $accrued = $sheet && Boutiques::accrual($expense) !== null;
 
-        $expense->update(['transaction_id' => $transaction->id]);
+        // ورقةٌ استُنفد صافيها لا حركةَ لها — وسائرُ المصروفات كما كانت
+        if (! $sheet || $amount > 0) {
+            $transaction = Transaction::create([
+                'business_id' => $expense->business_id,
+                // فرعُ المصروف المباشر — والموزَّعُ دفعةٌ واحدة للنشاط (`ExpenseScope::journalBranch`)
+                'branch_id' => ExpenseScope::journalBranch($expense),
+                'reference' => Transaction::nextReference($expense->business_id),
+                // الوصف اختياريّ فقد يغيب عن الطلب أصلًا — لا يكفي أن يكون nullable
+                'description' => $expense->type.(($expense->description ?? '') !== '' ? ' — '.$expense->description : ''),
+                'method' => $expense->method,
+                'type' => 'مصروف',
+                'amount' => $amount,
+                'employee_name' => $expense->employee_name,
+                'occurred_at' => $accrued ? now() : $expense->spent_at,
+            ]);
+
+            $expense->update(['transaction_id' => $transaction->id]);
+        }
 
         /*
          * وقيدٌ مزدوج معه.
@@ -332,6 +347,15 @@ class ExpenseController extends Controller
     {
         $bid = $this->bid();
         $expense = Expense::where('business_id', $bid)->findOrFail($id);
+
+        /*
+         * وورقةُ البوتيك المقيَّدة يومَ صدورها نطاقُها من فروع مبيعاتها
+         * (`Boutiques::branchScope`)، وقيدُها كُتب بفرعها. فتغييرُه هنا يُفرّق
+         * تقريرَ الفروع عن الدفتر — ولا يُعاد قيدُ الاستحقاق من هذا الباب.
+         */
+        if (Boutiques::accrual($expense) !== null) {
+            return back()->withErrors(['scope' => __('نطاق ورقة البوتيك يُقرأ من فروع مبيعاتها — لا يُغيَّر يدويًّا.')]);
+        }
 
         $scope = ExpenseScope::read($bid, $request->all(), (float) $expense->amount);
         $correction = $this->correction($request);
@@ -428,8 +452,15 @@ class ExpenseController extends Controller
                     return false;
                 }
 
-                $locked->update(['status' => Expense::PAID, 'spent_at' => now()] + ($method ? ['method' => $method] : []));
+                /*
+                 * ويومُ المصروف يومُ سداده — إلّا ورقةَ بوتيكٍ قُيّدت يومَ صدورها:
+                 * مصروفُها في شهر بيعها، فيبقى يومُها ولا تنتقل إلى شهر الدفع.
+                 */
+                $accrued = Boutiques::accrual($locked) !== null;
+                $locked->update(['status' => Expense::PAID] + ($accrued ? [] : ['spent_at' => now()]) + ($method ? ['method' => $method] : []));
                 $this->postToLedger($locked->fresh());
+                // ومرتجعاتٌ خُفّض بها صافي ورقةٍ قديمة تدخل الدفترَ يومَ سدادها
+                BoutiqueReturns::onSheetPaid($locked, now());
 
                 return true;
             });

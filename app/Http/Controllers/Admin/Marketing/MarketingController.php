@@ -938,6 +938,11 @@ class MarketingController extends Controller
         // في مجلّد النشاط لا في مجلّدٍ عامّ — فنسخُ متجرٍ أو حذفُه يعرف ما يخصّه
         $saved = StoreImageUpload::store($this->bid(), $request->file('image'));
 
+        // والمحرّرُ يرفع بطلبٍ وحده (`fetch`) لا بزيارة — فلا يقطع حفظًا جاريًا ولا يقطعه حفظ
+        if ($request->expectsJson()) {
+            return response()->json(['url' => $saved['url'], 'meta' => ['w' => $saved['w'], 'h' => $saved['h']]]);
+        }
+
         return back()
             ->with('uploaded', $saved['url'])
             // وأبعادُها — يقرؤها المحرّرُ فيُري الصورةَ بنسبتها قبل أن تُحفظ

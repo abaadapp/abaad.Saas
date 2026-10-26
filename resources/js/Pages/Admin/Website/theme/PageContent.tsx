@@ -384,7 +384,15 @@ export default function PageContent({
 
             {/* وأزرارُ ما يُضاف — ما يناسب نوعَ الصفحة وحده */}
             <div className="space-y-2">
-                <p className="text-[12px] font-semibold text-[#6b7280]">{full ? t('بلغت الحدّ — :max وحدة', { max: String(maxBlocks) }) : t('أضف إلى الصفحة')}</p>
+                {/*
+                    والحدُّ للصفحة لا للموقع: يُقال ذلك، ويُدلّ على ما يتّسع له المزيد —
+                    وما في الصفحة يبقى، والحفظُ متاح.
+                */}
+                <p className="text-[12px] font-semibold text-[#6b7280]" data-testid={`${testid}-blocks-limit`}>
+                    {full
+                        ? t('بلغت هذه الصفحة حدَّها — :max وحدة. ما فيها باقٍ ويُحفظ؛ ولإضافة المزيد أنشئ صفحةً أخرى من «عناصر القائمة».', { max: String(maxBlocks) })
+                        : t('أضف إلى الصفحة')}
+                </p>
                 <div className="flex flex-wrap gap-2">
                     {KIND_BLOCKS[page.kind].map((type) => {
                         const { add: addLabel, icon: Icon } = BLOCK_LABEL[type];

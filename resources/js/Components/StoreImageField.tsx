@@ -1,10 +1,12 @@
-import { router, usePage } from '@inertiajs/react';
+import { usePage } from '@inertiajs/react';
 import { ImagePlus, Loader2, Upload, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
+import { csrfHeaders } from '@/lib/csrf';
 import { useTranslate } from '@/lib/i18n';
+import { uploads } from '@/lib/uploads';
 import { cn } from '@/lib/utils';
 
 /**
@@ -31,7 +33,37 @@ import { cn } from '@/lib/utils';
  * أصلًا فيُردّ بخطأٍ لا يقول شيئًا. فتُصغَّر هنا بنسبتها حتّى يبلغ ضلعُها الأطول
  * `MAX_SIDE`، ويُصحّح المتصفّحُ اتّجاهَها. وما تعذّر تصغيرُه يُرسَل كما هو،
  * والخادمُ يقول ما يقبل. وما يصل يُفحص هناك من محتواه لا من امتداده.
+ *
+ * ═══ وما يعود من الرفع يُكتب في آخر ما في الشاشة — لا في نسختها يومَ بدأ ═══
+ *
+ * الرفعُ يعود بعد ثوانٍ، وكان يكتب الرابطَ بدالّة الرسم الذي بدأ فيه: صفحةٌ
+ * مخصّصةٌ تبني الصفحاتِ كلَّها من نسختها يومئذ، فيمحو ما كُتب أثناء الرفع. ثمّ
+ * تُكتب «الصورة كاملة» بالنسخة نفسِها التي لا صورةَ فيها — فتُمحى الصورةُ في
+ * اللحظة التي وصلت فيها، وتصير الوحدةُ فارغةً تُطرح عند الحفظ (حادثة RIBBON،
+ * ٢٦ أكتوبر: الصورةُ على القرص ولا تذكرها صفحة). فالرابطُ يُكتب بآخر دالّةٍ رُسمت
+ * (`latest`)، والطريقةُ بعد أن تصل الصورةُ قيمتَها (`landing`).
+ *
+ * ═══ والرفعُ طلبٌ وحده لا زيارةُ Inertia ═══
+ *
+ * زيارةُ Inertia تقطع ما قبلها: رفعٌ يقطع حفظًا جاريًا، وحفظٌ يقطع رفعًا فيُكتب
+ * الملفُّ على القرص ولا يعود رابطُه. فالرفعُ `fetch` بـJSON، وكلُّ فشلٍ يُقال
+ * بسببه (الحجم، الجلسة، الاتّصال) ويبقى الحقلُ يُعاد منه. ويُعدّ ما يُرفع
+ * (`uploads`) فينتظره الحفظ.
  */
+
+/** ما يُقال عن رفعٍ لم يتمّ — بسببه، لا «حدث خطأ» */
+export function uploadFailure(status: number, body: unknown, mb: string, t: (s: string, v?: Record<string, string>) => string): string {
+    const errors = (body as { errors?: Record<string, string[] | string> } | null)?.errors;
+    const first = errors ? Object.values(errors)[0] : undefined;
+    const said = Array.isArray(first) ? first[0] : first;
+
+    if (status === 422 && said) return said;
+    if (status === 413) return t('الصورة أكبر ممّا يقبله الخادم (:mb ميغابايت) — صغّرها ثمّ ارفعها.', { mb });
+    if (status === 419 || status === 401) return t('انتهت جلستك — حدّث الصفحة وادخل من جديد ثمّ ارفع الصورة. تعديلاتك محفوظة على هذا الجهاز.');
+    if (status === 403) return t('لا تملك صلاحيّة رفع الصور هنا.');
+
+    return t('تعذّر رفع الصورة — أعد المحاولة.');
+}
 
 /** أطولُ ضلعٍ يُرسَل — كما في `StoreImageUpload::MAX_SIDE` */
 export const MAX_SIDE = 2560;
@@ -95,6 +127,9 @@ export async function shrink(file: File, side = MAX_SIDE): Promise<File> {
 
         const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
         const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done, type, 0.88));
+        // ويُفرَغ الإطارُ في الحال: صورةُ هاتفٍ بعد أخرى تملأ ذاكرةَ Safari وChrome على iPhone فتُغلق الصفحة
+        canvas.width = 0;
+        canvas.height = 0;
 
         if (! blob) return file;
 
@@ -138,53 +173,126 @@ export default function StoreImageField({
     const shown = fitOf(fit);
     const id = name ?? 'image';
 
-    const send = (file: File) => {
-        if (file.size > max) {
-            setBusy(false);
-            setError(t('الصورة أكبر من :mb ميغابايت — صغّرها ثمّ ارفعها.', { mb }));
-            if (input.current) input.current.value = '';
+    // آخرُ ما رُسم — فما يعود من الرفع يُكتب في الشاشة كما هي الآن
+    const latest = useRef({ onChange, onFitChange });
+    latest.current = { onChange, onFitChange };
+    const mounted = useRef(true);
+
+    // والرفعُ مفتوحٌ من لحظة الاختيار حتى تستقرّ الصورةُ في الصفحة — والحفظُ ينتظره (`uploads`)
+    const open = useRef<(() => void) | null>(null);
+    const close = () => {
+        const finish = open.current;
+        open.current = null;
+        finish?.();
+    };
+    const self = useRef({});
+    const fail = (message: string) => {
+        setError(message);
+        uploads.failed(self.current, true);
+    };
+    const clear = () => {
+        setError(null);
+        uploads.failed(self.current, false);
+    };
+
+    useEffect(() => {
+        mounted.current = true;
+        const field = self.current;
+
+        // وحقلٌ أُزيل لا يُنتظر — ولا تُعدّ صورتُه التي لم تُرفع
+        return () => {
+            mounted.current = false;
+            close();
+            uploads.failed(field, false);
+        };
+    }, []);
+
+    /*
+        ورابطُها ثمّ «كاملة» — كلٌّ في رسمٍ بعد الآخر، لا من النسخة التي لا صورةَ فيها.
+        ولا يُغلَق الرفعُ حتى يصلا الصفحةَ: فحفظٌ ينتظر الصورةَ يقرأ الشاشةَ وهما فيها.
+    */
+    const [landing, setLanding] = useState<{ url: string; asked: boolean } | null>(null);
+    useEffect(() => {
+        if (! landing) return;
+
+        // وأمٌّ لم تكتب الرابطَ في رسمه لا تُعلِّق الحفظ — و«كاملة» تُكتب حين يصل
+        if (value !== landing.url) {
+            close();
 
             return;
         }
 
-        router.post(
-            route('admin.marketing.store.image'),
-            { image: file },
-            {
-                forceFormData: true,
-                preserveScroll: true,
-                preserveState: true,
-                onSuccess: (page) => {
-                    const flash = (page.props as unknown as { flash?: { uploaded?: string | null; uploaded_meta?: { w: number; h: number } | null } }).flash;
-                    const url = flash?.uploaded;
+        if (latest.current.onFitChange && fit !== 'contain' && ! landing.asked) {
+            latest.current.onFitChange('contain');
+            setLanding({ url: landing.url, asked: true });
 
-                    if (url) {
-                        onChange(url);
-                        setMeta(flash?.uploaded_meta ?? null);
-                        // وكلُّ صورةٍ جديدةٍ تبدأ «كاملة» — لا يُقصّ منها شيءٌ حتّى يختار
-                        onFitChange?.('contain');
-                    }
-                },
-                onError: (errors) => setError(Object.values(errors)[0] ?? t('تعذّر رفع الصورة')),
-                onFinish: () => {
-                    setBusy(false);
-                    if (input.current) input.current.value = '';
-                },
-            },
-        );
+            return;
+        }
+
+        setLanding(null);
+        close();
+    }, [value, fit, landing]);
+
+    const send = async (file: File) => {
+        const done = () => {
+            setBusy(false);
+            if (input.current) input.current.value = '';
+        };
+
+        if (file.size > max) {
+            done();
+            fail(t('الصورة أكبر من :mb ميغابايت — صغّرها ثمّ ارفعها.', { mb }));
+            close();
+
+            return;
+        }
+
+        try {
+            const body = new FormData();
+            body.append('image', file);
+            const res = await fetch(route('admin.marketing.store.image'), {
+                method: 'POST',
+                body,
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...csrfHeaders() },
+            });
+            const data = (await res.json().catch(() => null)) as { url?: string; meta?: { w: number; h: number } | null } | null;
+
+            // حقلٌ أُزيل أثناء الرفع لا يُكتب فيه — ولا في وحدةٍ حلّت محلَّه
+            if (! mounted.current) return;
+
+            if (res.ok && data?.url) {
+                latest.current.onChange(data.url);
+                setMeta(data.meta ?? null);
+                setLanding({ url: data.url, asked: false });
+
+                return;
+            }
+
+            fail(uploadFailure(res.status, data, mb, t));
+            close();
+        } catch {
+            if (mounted.current) fail(t('تعذّر الاتصال — تحقّق من الإنترنت ثمّ أعد المحاولة. لم يضع شيءٌ ممّا كتبت.'));
+            close();
+        } finally {
+            if (mounted.current) done();
+        }
     };
 
     const pick = (file: File | undefined) => {
         if (! file) return;
 
         setBusy(true);
-        setError(null);
+        clear();
+        close();
+        setLanding(null);
+        open.current = uploads.begin();
 
         // وما يسعه الحدُّ يُرسَل في الحال كما هو — والكبيرُ يُصغَّر أوّلًا
         if (needsShrink(file, max)) {
             void shrink(file).then(send);
         } else {
-            send(file);
+            void send(file);
         }
     };
 
@@ -266,7 +374,10 @@ export default function StoreImageField({
                         <button
                             type="button"
                             aria-label={`${t('أزل')} ${t(label)}`}
-                            onClick={() => onChange('')}
+                            onClick={() => {
+                                onChange('');
+                                clear();
+                            }}
                             className="shrink-0 rounded-md p-1.5 text-[#6b7280] hover:bg-[#f3f4f6]"
                         >
                             <X className="size-4" />

@@ -277,6 +277,7 @@ class DocumentController extends Controller
             'url' => route('super-admin.documents.show', $d->id),
             'pdf_url' => route('super-admin.documents.pdf', $d->id),
             'number' => $d->number,
+            'issued_on' => PlatformDocuments::issuedOn($d),
             'title' => $d->title,
             'service' => $d->service,
             'client_name' => $d->client['name'] ?? null,

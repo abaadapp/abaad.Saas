@@ -137,7 +137,7 @@ export default function DocumentsIndex() {
                         {d.renewal && <Badge variant="info">{t('تجديد')}</Badge>}
                     </div>
                     <div dir="ltr" className="truncate text-end font-mono text-[12px] text-[#6b7280]">
-                        {d.number}
+                        {d.number} · {d.issued_on}
                     </div>
                 </SmartLink>
             ),

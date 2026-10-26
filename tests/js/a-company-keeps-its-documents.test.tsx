@@ -33,7 +33,7 @@ const row = {
     title: 'عقد اشتراك', service: 'اشتراك النظام', client_name: 'سالم الهنائي', client_biz: 'زهور الريان',
     business: { id: 5, name: 'زهور الريان' }, plan_name: 'الباقة الاحترافية', cycle_label: 'سنوي', value: '299.000', value_unit: null, renewal: false,
     shared: null, shared_at: null, state: 'signed' as const, state_label: 'موقّع',
-    created_at: '2026-10-25 10:00', expires_at: '2026-11-08 23:59', signed_at: '2026-10-25 11:00',
+    issued_on: '2026/10/25', created_at: '2026-10-25 10:00', expires_at: '2026-11-08 23:59', signed_at: '2026-10-25 11:00',
 };
 
 const documentsPage = (over: Record<string, unknown> = {}) => {

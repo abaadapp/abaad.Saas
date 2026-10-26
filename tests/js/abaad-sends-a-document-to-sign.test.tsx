@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { router } from '@inertiajs/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -38,7 +38,7 @@ const row = (over = {}) => ({
     client_name: 'سالم الهنائي', client_biz: 'زهور الريان', business: null,
     plan_name: 'الباقة الاحترافية', cycle_label: 'سنوي', value: '299.000', value_unit: 'سنويًا', renewal: false,
     shared: null, shared_at: null, state: 'sent' as const,
-    state_label: 'بانتظار التوقيع', created_at: '2026-10-24 10:00', expires_at: '2026-11-07 23:59', signed_at: '—',
+    state_label: 'بانتظار التوقيع', issued_on: '2026/10/24', created_at: '2026-10-24 10:00', expires_at: '2026-11-07 23:59', signed_at: '—',
     ...over,
 });
 
@@ -220,6 +220,21 @@ describe('the platform documents section', () => {
         expect(screen.queryByRole('button', { name: /إلغاء الرابط/ })).toBeNull();
         expect(screen.getByText('عقد تجديد').closest('a')).toHaveAttribute('href', '/super-admin.documents.index/3');
         expect(screen.queryByText('تغيّر محتوى المستند بعد التوقيع — البصمة لا تطابق')).toBeNull();
+    });
+
+    it('shows the document number and issue date as the paper prints them — read-only, never a field to type in', () => {
+        show({ state: 'signed', state_label: 'موقّع', signed_at: '2026-10-25 12:00' });
+
+        const identity = document.querySelector('[data-testid="document-identity"]') as HTMLElement;
+        expect(within(identity).getByTestId('document-number')).toHaveTextContent('AB-202610-0003');
+        expect(within(identity).getByTestId('document-issued-on')).toHaveTextContent('2026/10/24');
+        expect(identity.textContent).toContain('تاريخ الإصدار');
+        expect(identity.querySelector('input, textarea, select')).toBeNull();
+    });
+
+    it('lists each document with its number and issue date', () => {
+        index();
+        expect(screen.getByText('AB-202610-0003 · 2026/10/24')).toBeInTheDocument();
     });
 
     it('says the subscription is extended by paying its renewal invoice, not by signing', () => {

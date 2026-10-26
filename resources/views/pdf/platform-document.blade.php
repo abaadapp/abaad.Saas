@@ -35,8 +35,8 @@
 @section('title', $doc->title)
 
 @section('meta')
-    <div>{{ __('رقم المستند') }}: <strong dir="ltr">{{ $doc->number }}</strong></div>
-    <div><span class="k">{{ __('التاريخ') }}:</span> <span dir="ltr">{{ $doc->created_at->format('Y-m-d') }}</span></div>
+    <div>{{ __('رقم المستند') }}: <strong dir="ltr">{{ $doc->number }}</strong>@if ($preview ?? false) <span class="k">({{ __('معاينة') }})</span>@endif</div>
+    <div><span class="k">{{ __('تاريخ الإصدار') }}:</span> <span dir="ltr">{{ \App\Support\PlatformDocuments::issuedOn($doc) }}</span></div>
     <div style="margin-top:4pt">
         @if ($preview ?? false)
             <span class="pill expense b">{{ __('معاينة — ليست مستندًا صادرًا') }}</span>

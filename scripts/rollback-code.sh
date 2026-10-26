@@ -20,6 +20,10 @@
 #   - بين الحاليّ والهدف هجرة: الكودُ القديم على شكلٍ جديد قد لا يعمل،
 #     و`migrate:rollback` يعتمد على down() وقد يحذف عمودًا بما فيه. ذاك قرارٌ
 #     يُدرس، لا سطرٌ يُنفَّذ في عجلة.
+#     ومن درسها فوجدها إضافيّةً — جداولُ جديدة وأعمدةٌ فارغة لا يقرؤها الكودُ
+#     القديم — يسمّيها واحدةً واحدة، فيُرجَع الكودُ وتبقى الجداولُ وبياناتُها:
+#       ALLOW_MIGRATIONS="2026_10_29_090000_a_boutique_return_after_its_sheet_is_a_note.php" \
+#         sudo -E bash /var/www/abaad/scripts/rollback-code.sh <commit>
 #   - في الشجرة تعديلٌ غير مودَع: `reset --hard` يمحوه.
 #   - الإيداعُ غير معروف هنا.
 #
@@ -71,12 +75,24 @@ TO="$("${G[@]}" rev-parse --short "$TARGET^{commit}")"
     || die "في الشجرة تعديلٌ غير مودَع — \`reset --hard\` يمحوه. انظر: git status"
 
 MIGRATIONS="$("${G[@]}" diff --name-only "$TO" "$FROM" -- database/migrations)"
-if [[ -n "$MIGRATIONS" ]]; then
+# وما سمّاه ALLOW_MIGRATIONS بعد دراسته يُعبَر — وكلُّ ما لم يُسمَّ يردّ الرجوعَ كلَّه
+UNLISTED=""
+while IFS= read -r m; do
+    [[ -z "$m" ]] && continue
+    [[ " ${ALLOW_MIGRATIONS:-} " == *" $(basename "$m") "* ]] || UNLISTED+="$m"$'\n'
+done <<<"$MIGRATIONS"
+if [[ -n "$UNLISTED" ]]; then
     die "بين $TO و$FROM هجرات — الكودُ القديم قد لا يعمل على الشكل الجديد، والشكلُ لا يُرجَع بأمر:
-$(sed 's/^/    /' <<<"$MIGRATIONS")
-توقّف هنا. ولا تستعِد نسخةً فوق القاعدة الحيّة: تمحو كلَّ ما بِيع بعدها."
+$(sed '/^$/d; s/^/    /' <<<"$UNLISTED")
+توقّف هنا. ولا تستعِد نسخةً فوق القاعدة الحيّة: تمحو كلَّ ما بِيع بعدها.
+وإن درستَها فوجدتَها إضافيّةً لا يقرؤها الكودُ القديم، فسمِّها في ALLOW_MIGRATIONS وأعِد الأمر."
 fi
-ok "لا هجرةَ بين $TO و$FROM — الرجوعُ بالكود وحده كامل، والقاعدةُ لا تُمسّ"
+if [[ -n "$MIGRATIONS" ]]; then
+    ok "هجراتٌ بين $TO و$FROM سمّاها ALLOW_MIGRATIONS — تبقى جداولُها وبياناتُها، ولا down():
+$(sed 's/^/    /' <<<"$MIGRATIONS")"
+else
+    ok "لا هجرةَ بين $TO و$FROM — الرجوعُ بالكود وحده كامل، والقاعدةُ لا تُمسّ"
+fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
     printf '\nتجربةٌ جافّة — لن يُنفَّذ شيء. لو شُغّل لفعل بالترتيب:\n'

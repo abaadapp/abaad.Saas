@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -90,8 +91,33 @@ return new class extends Migration
         });
     }
 
+    /**
+     * ═══ ولا يُتراجع عنها وفيها ما يُفقد ═══
+     *
+     * الإشعارُ واستردادُه مستندا قيودٍ في الدفتر (`sourceable`)، وشرطُ المرتجع
+     * على البوتيك مرجعُ اتّفاقيته. فحذفُ الجداول أو العمودين وفيها شيءٌ يترك
+     * قيودًا بلا مستند وبوتيكاتٍ بلا شرط — ولا يعود إلّا من نسخة. فيُردّ بأرقامه،
+     * والرجوعُ حينها رجوعُ كودٍ وحده تبقى معه الجداول (`scripts/rollback-code.sh`
+     * مع `ALLOW_MIGRATIONS`): الكودُ القديم لا يقرؤها ولا يكتب فيها.
+     */
     public function down(): void
     {
+        $held = array_filter([
+            'boutique_returns' => Schema::hasTable('boutique_returns') ? DB::table('boutique_returns')->count() : 0,
+            'boutique_return_recoveries' => Schema::hasTable('boutique_return_recoveries') ? DB::table('boutique_return_recoveries')->count() : 0,
+            'boutiques.returns_terms' => Schema::hasColumn('boutiques', 'returns_terms')
+                ? DB::table('boutiques')->where(fn ($q) => $q->whereNotNull('returns_terms')->orWhereNotNull('returns_terms_ref'))->count()
+                : 0,
+        ]);
+
+        if ($held !== []) {
+            throw new RuntimeException(
+                'لا يُتراجع عن هجرة مرتجعات البوتيك وفيها ما يُفقد — '
+                .implode('، ', array_map(fn ($t, $n) => $t.': '.$n, array_keys($held), $held))
+                .'. ارجع بالكود وحده (scripts/rollback-code.sh مع ALLOW_MIGRATIONS) فتبقى الجداول وبياناتها.'
+            );
+        }
+
         Schema::dropIfExists('boutique_return_recoveries');
         Schema::dropIfExists('boutique_returns');
 

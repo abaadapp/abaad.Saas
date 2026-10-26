@@ -553,7 +553,7 @@ export function SubscribersTab({ rows, currency }: { rows: EntitlementRow[]; cur
     }
 
     return (
-        <Card className="overflow-x-auto" data-testid="addon-subscribers">
+        <Card className="overflow-x-auto no-scrollbar" data-testid="addon-subscribers">
             <table className="w-full min-w-[640px] text-[13px]">
                 <thead className="bg-[#fafafa] text-[#6b7280]">
                     <tr>

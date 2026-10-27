@@ -3,18 +3,15 @@
 namespace App\Support;
 
 /**
- * الأحداث التي تُرسل عندها رسالة — أربعةٌ لا أكثر.
+ * أحداث واتساب التي يعرفها النظام.
  *
- * وكلٌّ منها مربوطٌ بحالةٍ قائمة في `OrderStatus` لا بحالةٍ اخترعناها له:
- * حالتان لمعنًى واحد تفترقان عند أوّل تعديل، فيرسل النظام على «جاهز» بينما
- * تعرض الشاشة «قيد التجهيز».
- *
- * و«قيد التجهيز» ليست منها عمدًا: الزبون لا يحتاج أن يعرف أنّ باقته على
- * الطاولة الآن، ورسالةٌ لا تُنتظر تُقرأ إزعاجًا — والرسائل محدودةٌ بحصّة،
- * فكلُّ رسالةٍ لا تُفيد تأكل واحدةً تُفيد.
+ * الدورة الافتراضيّة تبقى كما كانت لبقيّة المتاجر. أمّا RIBBON فله ملفّ
+ * صريحٌ من أربع رسائل فقط؛ فلا يغيّر طلبُ متجرٍ واحد سلوكَ كلّ المنصّة.
  */
 class WhatsAppEvent
 {
+    public const ORDER_RECEIVED = 'order_received';
+
     public const ORDER_CONFIRMED = 'order_confirmed';
 
     public const ORDER_READY = 'order_ready';
@@ -23,16 +20,15 @@ class WhatsAppEvent
 
     public const ORDER_DELIVERED = 'order_delivered';
 
-    /** فاتورةٌ يقترب استحقاقُها */
     public const INVOICE_DUE_SOON = 'invoice_due_soon';
 
-    /** فاتورةٌ تجاوزت استحقاقَها */
     public const INVOICE_OVERDUE = 'invoice_overdue';
 
-    /** فاتورةٌ دُفعت برابط دفع — وتُرسَل إلى العميل ملفًّا */
     public const INVOICE_PAID = 'invoice_paid';
 
+    /** كلّ الأحداث التي يعرفها المرسل — لا يعني أنّ كلّ متجر يستعملها كلّها. */
     public const ALL = [
+        self::ORDER_RECEIVED,
         self::ORDER_CONFIRMED,
         self::ORDER_READY,
         self::ORDER_OUT_FOR_DELIVERY,
@@ -42,20 +38,29 @@ class WhatsAppEvent
         self::INVOICE_PAID,
     ];
 
-    /**
-     * ما يُربط قالبُه حين تعتمده ميتا — لا قبل.
-     *
-     * الأحداثُ الستّة الأولى تُهيَّأ قوالبُها مع الوصلة (`WhatsAppTemplates::seed`)،
-     * وتُعدّ في «قوالب رسائلك معتمَدة» عند كلّ تاجر. وحدثٌ جديدٌ لو هُيّئ كذلك
-     * لَكان صفُّه `MISSING` حتّى يُنشأ قالبُه عند ميتا — فتحمرّ تلك الخطوةُ عند
-     * **كلّ** متجرٍ على رقم أبعاد لأجل رسالةٍ لم تُطلب بعد.
-     *
-     * فيُربط في المزامنة الساعيّة يومَ تقول ميتا إنّه معتمَد، وقبلها لا صفّ:
-     * `resolve` يردّ فراغًا، والرسالةُ تُتخطّى بسببها، ولا يتغيّر شيءٌ على أحد.
-     */
+    /** دورة أبعاد الافتراضيّة لبقيّة المتاجر — كما كانت قبل تخصيص RIBBON. */
+    public const DEFAULT_EVENTS = [
+        self::ORDER_CONFIRMED,
+        self::ORDER_READY,
+        self::ORDER_OUT_FOR_DELIVERY,
+        self::ORDER_DELIVERED,
+        self::INVOICE_DUE_SOON,
+        self::INVOICE_OVERDUE,
+        self::INVOICE_PAID,
+    ];
+
+    /** ما طلبه RIBBON حرفيًّا — لا تسليم ولا رسائل فواتير. */
+    public const RIBBON_EVENTS = [
+        self::ORDER_RECEIVED,
+        self::ORDER_CONFIRMED,
+        self::ORDER_READY,
+        self::ORDER_OUT_FOR_DELIVERY,
+    ];
+
+    /** ما يُربط قالبُه فقط يومَ يظهر عند ميتا معتمَدًا. */
     public const ON_APPROVAL = [self::INVOICE_PAID];
 
-    /** الحالة التي تُطلق كلّ حدث — من `OrderStatus` لا من نصٍّ مكتوبٍ هنا */
+    /** الدورة الافتراضيّة للحالات — RIBBON يمرّ من forBusinessStatus أدناه. */
     public static function statusMap(): array
     {
         return [
@@ -66,31 +71,62 @@ class WhatsAppEvent
         ];
     }
 
-    /** حدث هذه الحالة، أو لا شيء إن كانت حالةً لا تُرسَل عندها رسالة */
     public static function forStatus(?string $status): ?string
     {
         return self::statusMap()[$status] ?? null;
     }
 
+    /** أهذا أحد متاجر RIBBON التي خُصّصت لها دورة سعود؟ */
+    public static function isRibbonBusiness(int $businessId): bool
+    {
+        return in_array($businessId, array_map('intval', (array) config('whatsapp.ribbon_businesses', [])), true);
+    }
+
+    /** الأحداث التي يجوز لهذا المتجر أن يرسلها أصلًا. */
+    public static function eventsForBusiness(int $businessId): array
+    {
+        return self::isRibbonBusiness($businessId) ? self::RIBBON_EVENTS : self::DEFAULT_EVENTS;
+    }
+
+    public static function allowedForBusiness(int $businessId, string $event): bool
+    {
+        return in_array($event, self::eventsForBusiness($businessId), true);
+    }
+
     /**
-     * مفتاح الإطفاء في إعدادات المتجر.
+     * حالة الطلب → حدث هذا المتجر.
      *
-     * وهي مفاتيح `wa_on_*` القائمة منذ شاشة «إشعارات واتساب» — تُعاد قراءتها
-     * لا تُستنسخ: مفتاحٌ ثانٍ لنفس المقبض يعني تاجرًا يُطفئ أحدهما ويبقى
-     * الآخر يعمل.
+     * RIBBON وحده يعتبر «جديد» استلامًا للطلب، ولا يرسل عند «تم التسليم».
      */
+    public static function forBusinessStatus(int $businessId, ?string $status): ?string
+    {
+        if (! self::isRibbonBusiness($businessId)) {
+            return self::forStatus($status);
+        }
+
+        return match ($status) {
+            OrderStatus::PENDING => self::ORDER_RECEIVED,
+            OrderStatus::CONFIRMED => self::ORDER_CONFIRMED,
+            OrderStatus::READY => self::ORDER_READY,
+            OrderStatus::OUT_FOR_DELIVERY => self::ORDER_OUT_FOR_DELIVERY,
+            default => null,
+        };
+    }
+
+    /** مفاتيح مقابض الإرسال في إعدادات المتجر. */
     public const SETTING_KEYS = [
+        self::ORDER_RECEIVED => 'wa_on_received',
         self::ORDER_CONFIRMED => 'wa_on_order',
         self::ORDER_READY => 'wa_on_ready',
         self::ORDER_OUT_FOR_DELIVERY => 'wa_on_out_for_delivery',
         self::ORDER_DELIVERED => 'wa_on_delivered',
-        // ومفتاحان جديدان: من لم يفعّلهما لا تُرسَل تذكيراتُه
         self::INVOICE_DUE_SOON => 'wa_on_invoice_due_soon',
         self::INVOICE_OVERDUE => 'wa_on_invoice_overdue',
         self::INVOICE_PAID => 'wa_on_invoice_paid',
     ];
 
     public const LABELS = [
+        self::ORDER_RECEIVED => 'استلام الطلب',
         self::ORDER_CONFIRMED => 'تأكيد الطلب',
         self::ORDER_READY => 'جاهزية الطلب',
         self::ORDER_OUT_FOR_DELIVERY => 'خروج الطلب للتوصيل',
@@ -100,15 +136,11 @@ class WhatsAppEvent
         self::INVOICE_PAID => 'إرسال الفاتورة بعد دفعها برابط الدفع',
     ];
 
-    /**
-     * لغاتُ الرسائل التي يُخيَّر فيها الزبون — والقالبُ يُعتمد عند ميتا بكلٍّ منها.
-     *
-     * مصدرٌ واحد: يقرؤه تحقّقُ نموذج العميل، وقائمةُ الشاشة، والمزامنة.
-     */
     public const LANGUAGES = ['ar', 'en'];
 
-    /** اسم قالب أبعاد الافتراضي لكلّ حدث — يُهيَّأ عند ربط الرقم المشترك */
+    /** أسماء أبعاد الافتراضيّة لبقيّة الحسابات. */
     public const DEFAULT_TEMPLATES = [
+        self::ORDER_RECEIVED => 'abaad_order_received',
         self::ORDER_CONFIRMED => 'abaad_order_confirmed',
         self::ORDER_READY => 'abaad_order_ready',
         self::ORDER_OUT_FOR_DELIVERY => 'abaad_order_out_for_delivery',
@@ -117,6 +149,23 @@ class WhatsAppEvent
         self::INVOICE_OVERDUE => 'abaad_invoice_overdue',
         self::INVOICE_PAID => 'abaad_invoice_paid',
     ];
+
+    /** أسماء القوالب التي سينشئها سعود في WABA الخاص بـRIBBON. */
+    public const RIBBON_TEMPLATES = [
+        self::ORDER_RECEIVED => 'ribbon_order_received',
+        self::ORDER_CONFIRMED => 'ribbon_order_confirmed',
+        self::ORDER_READY => 'ribbon_order_ready',
+        self::ORDER_OUT_FOR_DELIVERY => 'ribbon_order_out_for_delivery',
+    ];
+
+    public static function templateNameForBusiness(int $businessId, string $event): string
+    {
+        if (self::isRibbonBusiness($businessId) && isset(self::RIBBON_TEMPLATES[$event])) {
+            return self::RIBBON_TEMPLATES[$event];
+        }
+
+        return self::DEFAULT_TEMPLATES[$event] ?? $event;
+    }
 
     public static function label(string $event): string
     {

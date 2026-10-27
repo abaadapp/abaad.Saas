@@ -182,7 +182,7 @@ class SendWhatsAppMessage implements ShouldQueue
         $paid = $message->event_type === WhatsAppEvent::INVOICE_PAID;
 
         $variables = match (true) {
-            $order !== null => WhatsAppTemplates::variables($business, $order),
+            $order !== null => WhatsAppTemplates::variables($business, $order, $message->source_mode),
             // وما دُفع يُقرأ من الصفّ — كتبه الرابطُ يومَ دُفع (`handlePaidLink`)
             $invoice !== null && $paid => isset(($message->metadata ?? [])['amount'])
                 ? WhatsAppTemplates::paidVariables($business, $invoice, (float) $message->metadata['amount'])

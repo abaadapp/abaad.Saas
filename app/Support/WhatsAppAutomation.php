@@ -81,7 +81,7 @@ class WhatsAppAutomation
 
         $phone = WhatsAppRecipient::forOrder($order);
         $connection = WhatsAppConnections::resolve($business);
-        $template = WhatsAppTemplates::resolve($business, $event, $mode);
+        $template = WhatsAppTemplates::resolve($business, $event, $mode, $order->customer?->language);
 
         $base = [
             'business_id' => $business->id,

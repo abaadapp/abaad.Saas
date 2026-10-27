@@ -158,6 +158,32 @@ class WhatsAppEvent
         self::ORDER_OUT_FOR_DELIVERY => 'ribbon_order_out_for_delivery',
     ];
 
+    /**
+     * استثناءٌ مؤقّت/مقصود لاسم النسخة الإنجليزية من «استلام الطلب».
+     * Meta كانت تحذف النسخة الإنجليزية القديمة بالاسم الأساسي، فأنشأ سعود
+     * النسخة الجديدة باسم مستقل حتى لا نوقف بقية القوالب.
+     */
+    public const RIBBON_LANGUAGE_TEMPLATES = [
+        self::ORDER_RECEIVED => [
+            'en' => 'ribbon_order_received_en',
+        ],
+    ];
+
+    public static function templateNameForBusinessLanguage(int $businessId, string $event, ?string $language): string
+    {
+        $language = strtolower((string) $language);
+
+        if (self::isRibbonBusiness($businessId) && str_starts_with($language, 'en')) {
+            $english = self::RIBBON_LANGUAGE_TEMPLATES[$event]['en'] ?? null;
+
+            if ($english !== null) {
+                return $english;
+            }
+        }
+
+        return self::templateNameForBusiness($businessId, $event);
+    }
+
     public static function templateNameForBusiness(int $businessId, string $event): string
     {
         if (self::isRibbonBusiness($businessId) && isset(self::RIBBON_TEMPLATES[$event])) {

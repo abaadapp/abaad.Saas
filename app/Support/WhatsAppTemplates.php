@@ -232,10 +232,11 @@ class WhatsAppTemplates
      *
      * @return array<int, string>
      */
-    public static function variables(Business $business, Order $order): array
+    public static function variables(Business $business, Order $order, ?string $mode = null): array
     {
-        // قوالب RIBBON الأربعة ثابتة بلا {{1}} ولا {{2}} — كما اعتُمِدت عند ميتا.
-        if (WhatsAppEvent::isRibbonBusiness((int) $business->id)) {
+        // قوالب RIBBON الأربعة ثابتة بلا {{1}} ولا {{2}} حين يرسل من رقمه الخاص.
+        // وإن استُخدم رقم أبعاد يومًا فالقالبُ الافتراضي يحتاج متغيّريه كالمعتاد.
+        if (WhatsAppEvent::isRibbonBusiness((int) $business->id) && $mode === WhatsAppMode::BUSINESS_OWN) {
             return [];
         }
 

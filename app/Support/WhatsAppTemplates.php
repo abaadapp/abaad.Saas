@@ -71,6 +71,18 @@ class WhatsAppTemplates
             return null;
         }
 
+        /*
+         * RIBBON جديد على هذه الأسماء: لا نغامر بحالٍ مجهولة.
+         * بعد الترحيل تُصفَّر حالة Meta عمدًا، فلا يخرج شيء حتى تسجّل
+         * المزامنة APPROVED للقالب نفسه داخل WABA سعود.
+         */
+        if ($mapping !== null
+            && $mode === WhatsAppMode::BUSINESS_OWN
+            && WhatsAppEvent::isRibbonBusiness((int) $business->id)
+            && $mapping->meta_status !== self::APPROVED) {
+            return null;
+        }
+
         return $mapping;
     }
 

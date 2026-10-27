@@ -45,6 +45,7 @@ use App\Support\Store\StoreHeader;
 use App\Support\Store\StoreNav;
 use App\Support\Store\StoreSeo;
 use App\Support\Store\StoreVisualBar;
+use App\Support\Store\StoreWhatsapp;
 use App\Support\Store\StorePage;
 use App\Support\Store\CardIdentity;
 use App\Support\Store\CardIdentityUnconfirmed;
@@ -1054,30 +1055,18 @@ class RibbonController extends Controller
             'visualBar' => StoreVisualBar::cards($bid, $lang, $base, $current),
             // وما يقرؤه غوغل — عنوانُ الصفحة ووصفُها وإذنُ الفهرسة
             'seo' => StoreSeo::head($business, $current, $t, $identity, $base, request()->getPathInfo(), $lang),
-        ] + $this->floatingWhatsapp($bid, $identity, $t);
-    }
-
-    /**
-     * زرُّ واتساب العائم — في القالب العامّ، فيظهر في كلّ صفحة.
-     *
-     * لمن في `storefront.ribbon_floating_whatsapp_businesses` وحده، وبرقم
-     * «بيانات المتجر» نفسِه الذي يحمله رابطُ التذييل — أرقامًا وحدها كما
-     * ينظّفه التذييل. ومعه رسالةٌ جاهزةٌ بلغة الصفحة. وبلا رقمٍ لا زرّ.
-     *
-     * @return array{showFloatingWhatsapp: bool, floatingWhatsappUrl: string|null}
-     */
-    private function floatingWhatsapp(int $bid, array $identity, array $t): array
-    {
-        $listed = in_array($bid, array_map('intval', (array) config('storefront.ribbon_floating_whatsapp_businesses', [])), true);
-        $digits = preg_replace('/\D/', '', (string) ($identity['whatsapp'] ?? ''));
-
-        if (! $listed || $digits === '') {
-            return ['showFloatingWhatsapp' => false, 'floatingWhatsappUrl' => null];
-        }
-
-        return [
-            'showFloatingWhatsapp' => true,
-            'floatingWhatsappUrl' => 'https://wa.me/'.$digits.'?text='.rawurlencode($t['waFloatText']),
+            /*
+             * وزرُّ واتساب العائم — في القالب العامّ، فيظهر في كلّ صفحة.
+             *
+             * لمن في `storefront.ribbon_floating_whatsapp_businesses` وحده، وبرقم
+             * «بيانات المتجر» نفسِه الذي يحمله رابطُ التذييل. وبلا رقمٍ لا زرّ.
+             * ورسالتُه بحسب الصفحة تُكتب عند الرسم (`render`) حين تُعرف أسماءُ ما فيها.
+             */
+            'waNumber' => $wa = StoreWhatsapp::number($bid, $identity),
+            'waAt' => [$current, $here],
+            'showFloatingWhatsapp' => $wa !== '',
+            'floatingWhatsappUrl' => null,
+            'floatingWhatsappSized' => null,
         ];
     }
 
@@ -1126,6 +1115,22 @@ class RibbonController extends Controller
 
     private function render(string $view, array $data): Response
     {
+        /*
+         * ورسالةُ واتساب بحسب الصفحة — هنا، بعد أن عُرفت أسماءُ ما فيها: الصنفُ
+         * والقسمُ والمجموعةُ وعبارةُ البحث. والصنفُ بخياراتٍ له رابطٌ ثانٍ يُكتب
+         * فيه ما يختاره الزائر. انظر `StoreWhatsapp`.
+         */
+        if ($data['showFloatingWhatsapp'] ?? false) {
+            [$current, $here] = $data['waAt'];
+            $data['floatingWhatsappUrl'] = StoreWhatsapp::url($data['waNumber'], StoreWhatsapp::page($data['t'], (string) $data['business']->name, $current, $here, $data));
+
+            if ($current === 'p' && ($data['product']['sizes'] ?? []) !== []) {
+                $data['floatingWhatsappSized'] = StoreWhatsapp::url($data['waNumber'], StoreWhatsapp::product(
+                    $data['t'], (string) $data['product']['name'], StoreWhatsapp::productLink($data['base'], (int) $data['product']['id']), StoreWhatsapp::OPTION,
+                ));
+            }
+        }
+
         $res = response()->view($view, $data)->header('Cache-Control', 'no-store');
 
         if (in_array(request()->query('lang'), ['ar', 'en'], true)) {

@@ -30,9 +30,10 @@ class TheRibbonFloatsItsWhatsappOnEveryPageTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const AR_TEXT = 'السلام عليكم، أحتاج مساعدة بخصوص طلبي من متجر RIBBON.';
+    // رسالةُ الرئيسية باسم المتجر ورابطها — وسائرُ الصفحات في `TheRibbonWhatsappAsksAboutWhereTheVisitorIsTest`
+    private const AR_TEXT = "السلام عليكم، لديّ استفسار عن متجر RIBBON ribbon.\nhttp://localhost/s/ribbon";
 
-    private const EN_TEXT = 'Hello, I need help with my order from RIBBON.';
+    private const EN_TEXT = "Hello, I have a question about RIBBON ribbon.\nhttp://localhost/s/ribbon";
 
     private Business $shop;
 
@@ -91,9 +92,12 @@ class TheRibbonFloatsItsWhatsappOnEveryPageTest extends TestCase
             $html = $this->page($path);
 
             $this->assertNotNull($this->button($html), "لا زرَّ في «{$path}»");
-            $this->assertStringContainsString('target="_blank" rel="noopener"', substr($html, strpos($html, 'class="rb-wa-float"'), 400));
+            // وسمُ الزرّ كلُّه — فرابطُه يطول بما يقف عليه الزائر
+            $at = strpos($html, 'class="rb-wa-float"');
+            $end = strpos($html, '>', $at);
+            $this->assertStringContainsString('target="_blank" rel="noopener"', substr($html, $at, $end - $at));
             $this->assertStringContainsString('aria-label="تواصل معنا عبر واتساب"', $html);
-            $this->assertStringContainsString('<svg viewBox="0 0 24 24"', substr($html, strpos($html, 'class="rb-wa-float"'), 600), 'الزرُّ شعارٌ لا كلمة');
+            $this->assertStringContainsString('<svg viewBox="0 0 24 24"', substr($html, $end, 200), 'الزرُّ شعارٌ لا كلمة');
         }
     }
 

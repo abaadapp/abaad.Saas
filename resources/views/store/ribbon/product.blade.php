@@ -54,7 +54,7 @@
                     <div style="font-size:13px;margin-bottom:8px">{{ $t['size'] }}</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap" data-rb-sizes>
                         @foreach ($product['sizes'] as $i => $s)
-                            <button type="button" class="rb-pill {{ $i === 0 ? 'on' : '' }}" data-variant="{{ $s['id'] }}" data-price="{{ $s['price_text'] }}" data-amount="{{ $s['price'] }}" style="min-width:80px">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
+                            <button type="button" class="rb-pill {{ $i === 0 ? 'on' : '' }}" data-variant="{{ $s['id'] }}" data-name="{{ $s['name'] }}" data-price="{{ $s['price_text'] }}" data-amount="{{ $s['price'] }}" style="min-width:80px">{{ $s['name'] }} · {{ $s['price_text'] }}</button>
                         @endforeach
                     </div>
                 </div>
@@ -345,6 +345,9 @@
             document.querySelector('[data-rb-price]').textContent = b.dataset.price;
             if (addons) addons.repaint();
             if (ups) ups.repaint();
+            // ورسالةُ واتساب تحمل الخيارَ الذي اختاره — لا الأوّلَ المختارَ سلفًا (`StoreWhatsapp::product`)
+            var wa = document.querySelector('[data-rb-wa-sized]');
+            if (wa) wa.href = wa.dataset.rbWaSized.replace(@json(\App\Support\Store\StoreWhatsapp::OPTION), encodeURIComponent(b.dataset.name));
         });
     }
     var q = document.querySelector('[data-rb-qty]');

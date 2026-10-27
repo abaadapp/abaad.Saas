@@ -90,6 +90,36 @@ class RibbonWhatsAppTemplatesTest extends TestCase
         );
     }
 
+    public function test_received_uses_the_alternate_english_template_name_only_for_english(): void
+    {
+        WhatsAppTemplates::seedBusinessDefaults($this->ribbon->id, 'ar');
+
+        WhatsAppTemplateMapping::where('business_id', $this->ribbon->id)
+            ->where('event_type', WhatsAppEvent::ORDER_RECEIVED)
+            ->update([
+                'meta_status' => WhatsAppTemplates::APPROVED,
+                'approved_languages' => ['ar', 'en'],
+            ]);
+
+        $arabic = WhatsAppTemplates::resolve(
+            $this->ribbon,
+            WhatsAppEvent::ORDER_RECEIVED,
+            WhatsAppMode::BUSINESS_OWN,
+            'ar',
+        );
+        $english = WhatsAppTemplates::resolve(
+            $this->ribbon,
+            WhatsAppEvent::ORDER_RECEIVED,
+            WhatsAppMode::BUSINESS_OWN,
+            'en',
+        );
+
+        $this->assertSame('ribbon_order_received', $arabic?->template_name);
+        $this->assertSame('ar', $arabic?->languageFor('ar'));
+        $this->assertSame('ribbon_order_received_en', $english?->template_name);
+        $this->assertSame('en', $english?->languageFor('en'));
+    }
+
     public function test_ribbon_waits_for_meta_approval_before_a_template_is_usable(): void
     {
         WhatsAppTemplates::seedBusinessDefaults($this->ribbon->id, 'ar');

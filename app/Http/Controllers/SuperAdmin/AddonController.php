@@ -14,9 +14,9 @@ use App\Support\Addons\AddonViews;
 use App\Support\Addons\Catalog;
 use App\Support\Addons\Entitlements;
 use App\Support\Addons\PricingPolicy;
+use App\Support\Contention;
 use App\Support\Demo;
 use DomainException;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -58,17 +58,8 @@ class AddonController extends Controller
     {
         $data = $this->validated($request, null);
 
-        for ($try = 1; ; $try++) {
-            try {
-                // في معاملةٍ وحدها: كتابةٌ ترتدّ على PostgreSQL لا تُفسد ما بعدها
-                $addon = DB::transaction(fn () => SubscriptionAddon::create(['code' => Catalog::newCode()] + $data));
-                break;
-            } catch (UniqueConstraintViolationException $e) {
-                if ($try >= 3 || SubscriptionAddon::where('capability', $data['capability'] ?? '')->whereNotNull('capability')->exists()) {
-                    throw $e;
-                }
-            }
-        }
+        // كلُّ محاولةٍ في نقطة حفظها (`Contention::retry`) — ورمزٌ جديدٌ لكلٍّ منها
+        $addon = Contention::retry(fn () => SubscriptionAddon::create(['code' => Catalog::newCode()] + $data), 3);
         Entitlements::flush();
         Activity::log('created', 'أضاف إضافة اشتراك: '.$addon->name.' ('.$addon->code.')', ['business_id' => null, 'subject_id' => $addon->id]);
 

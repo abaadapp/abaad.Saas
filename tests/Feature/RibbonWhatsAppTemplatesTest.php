@@ -83,7 +83,11 @@ class RibbonWhatsAppTemplatesTest extends TestCase
     {
         $order = new Order(['number' => 'RIB-1001']);
 
-        $this->assertSame([], WhatsAppTemplates::variables($this->ribbon, $order));
+        $this->assertSame([], WhatsAppTemplates::variables($this->ribbon, $order, WhatsAppMode::BUSINESS_OWN));
+        $this->assertSame(
+            ['RIBBON Flower Lounge', 'RIB-1001'],
+            WhatsAppTemplates::variables($this->ribbon, $order, WhatsAppMode::ABAAD_SHARED),
+        );
     }
 
     public function test_other_shops_keep_the_existing_default_cycle(): void

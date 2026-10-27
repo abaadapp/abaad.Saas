@@ -19,7 +19,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('subscriptions', function (Blueprint $table) {
-            $table->foreignId('from_plan_id')->nullable()->after('plan_id')->constrained('plans')->nullOnDelete();
+            $table->foreignId('from_plan_id')->nullable()->after('plan_id')->index()->constrained('plans')->nullOnDelete();
         });
     }
 

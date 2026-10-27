@@ -3,6 +3,7 @@
 namespace App\Support\Lists;
 
 use App\Models\Customer;
+use App\Support\CustomerPurchases;
 use App\Support\Demo;
 use App\Support\Exports\Dataset;
 use App\Support\Exports\Workbook;
@@ -11,7 +12,6 @@ use App\Support\Search;
 use App\Support\Sort;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 
 /**
  * قائمةُ العملاء — استعلامٌ واحد تقرؤه الشاشةُ وملفُّها.
@@ -24,14 +24,15 @@ final class CustomersList
     /**
      * ما يُرتَّب في قائمة العملاء.
      *
-     * والمجاميع تُرتَّب بأسماء `withCount`/`withSum` نفسها: هي أعمدةٌ في
-     * الاستعلام المُنتَج، فترتيبها لا يحتاج ضمًّا زائدًا.
+     * والمجاميع تُرتَّب بأسماء أعمدتها في `CustomerPurchases::apply`: هي أعمدةٌ
+     * في الاستعلام المُنتَج، فترتيبها لا يحتاج ضمًّا زائدًا. والمفاتيحُ باقيةٌ
+     * بأسمائها القديمة لروابط الترتيب المحفوظة — وما تعدّه المشترياتُ لا الطلبات.
      */
     public const SORTS = [
         'name' => 'name',
-        'orders' => 'orders_count',
-        'total_spent' => 'orders_sum_total',
-        'last_order' => 'orders_max_ordered_at',
+        'orders' => 'purchases_count',
+        'total_spent' => 'purchases_total',
+        'last_order' => 'last_purchase_at',
         'points' => 'points',
     ];
 
@@ -39,17 +40,10 @@ final class CustomersList
     public static function filtered(Request $request): Builder
     {
         /*
-         * ما اشتراه العميل فعلًا — لا الملغى ولا سلّةً معلّقة.
-         *
-         * `withCount('orders')` تعدّ العلاقة كما هي فتتجاوز النطاق: فكانت
-         * البطاقة فوق الجدول تستثني الملغى وصفوفُه تحتها تجمعه.
+         * ما اشتراه العميل فعلًا — طلباتُه المبيعة وفواتيرُه المستقلّة، لا
+         * الملغى ولا سلّةً معلّقة ولا دفعةً بلا بيع. انظر `CustomerPurchases`.
          */
-        $sold = fn ($q) => $q->sold();
-
-        $q = Customer::where('business_id', auth()->user()->business_id ?? Demo::bid())
-            ->withCount(['orders as orders_count' => $sold])
-            ->withSum(['orders as orders_sum_total' => $sold], 'total')
-            ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at');
+        $q = CustomerPurchases::apply(Customer::where('business_id', auth()->user()->business_id ?? Demo::bid()));
 
         ListFilters::customers($q, $request);
 
@@ -73,10 +67,12 @@ final class CustomersList
             // الاسمُ كما كُتب، بأيّ لغةٍ كانت الواجهة — انظر Customers::asEntered
             'label' => $c->name,
             'phone' => $c->phone, 'email' => $c->email,
-            'orders' => $c->orders_count,
-            'total_spent' => (float) ($c->orders_sum_total ?? 0),
-            'last_order' => $c->orders_max_ordered_at
-                ? Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d') : '—',
+            // عددُ المشتريات وإجماليُّها — الطلبُ والفاتورةُ المستقلّة، انظر `CustomerPurchases`
+            'orders' => CustomerPurchases::count($c),
+            'total_spent' => CustomerPurchases::total($c),
+            'last_order' => ($last = CustomerPurchases::last($c)) ? $last['date'] : '—',
+            // وآخرُ شراءٍ برقمه وقيمته — طلبًا أو فاتورة — يُفتح من صفّه
+            'last_purchase' => $last,
             'points' => $c->points,
             'language' => $c->language,
         ];
@@ -100,9 +96,11 @@ final class CustomersList
                 __('الاسم') => Workbook::TEXT,
                 __('الهاتف') => Workbook::CODE,
                 __('البريد') => Workbook::TEXT,
-                __('عدد الطلبات') => Workbook::INT,
-                Workbook::money('إجمالي الإنفاق') => Workbook::MONEY,
-                __('آخر طلب') => Workbook::DATE,
+                __('عدد المشتريات') => Workbook::INT,
+                Workbook::money('إجمالي المشتريات') => Workbook::MONEY,
+                __('آخر شراء') => Workbook::DATE,
+                __('رقم آخر شراء') => Workbook::TEXT,
+                Workbook::money('قيمة آخر شراء') => Workbook::MONEY,
                 __('النقاط') => Workbook::INT,
                 __('اللغة') => Workbook::TEXT,
             ],
@@ -111,7 +109,7 @@ final class CustomersList
                     $r = self::row($c);
                     yield [
                         $r['label'], $r['phone'], $r['email'], $r['orders'], $r['total_spent'],
-                        $r['last_order'], $r['points'],
+                        $r['last_order'], $r['last_purchase']['number'] ?? '—', $r['last_purchase']['amount'] ?? null, $r['points'],
                         match ($r['language']) {
                             'ar' => __('العربية'), 'en' => 'English', default => '—'
                         },

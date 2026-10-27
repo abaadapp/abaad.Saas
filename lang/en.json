@@ -9747,5 +9747,22 @@
     "أبلغت Paymob بردّ :amount من :total دفعها :name عبر رابط الدفع — التحصيل :payment قائمٌ حتى يُسوّى": "Paymob reported a refund of :amount of the :total :name paid by payment link — collection :payment stands until settled",
     "لا يُعكس شيءٌ تلقائيًّا. راجع المبلغ في لوحة Paymob قبل التسوية.": "Nothing is reversed automatically. Check the amount in the Paymob dashboard before settling.",
     "لا يُعكس شيءٌ تلقائيًّا. الردُّ الكامل يُسوّى بإلغاء التحصيل من المالية.": "Nothing is reversed automatically. A full refund is settled by cancelling the collection in Finance.",
-    "ردٌّ جزئيّ — لا تُلغِ التحصيل كلَّه.": "Partial refund — do not cancel the whole collection."
+    "ردٌّ جزئيّ — لا تُلغِ التحصيل كلَّه.": "Partial refund — do not cancel the whole collection.",
+    "آخر شراء": "Last purchase",
+    "رقم آخر شراء": "Last purchase number",
+    "قيمة آخر شراء": "Last purchase value",
+    "سجل المشتريات": "Purchase history",
+    "سجل التحصيلات": "Collections",
+    "لا مشتريات لهذا العميل بعد.": "This customer has no purchases yet.",
+    "لا مشتريات لهذا العميل بعد": "This customer has no purchases yet",
+    "المحصَّل منها": "Collected",
+    "المتبقّي عليها": "Outstanding",
+    "فاتورة مستقلة": "Standalone invoice",
+    "مجموع التحصيلات": "Total collected",
+    "على": "Applied to",
+    "لا تحصيلات لهذا العميل بعد": "No collections for this customer yet",
+    "عند البيع": "At sale",
+    "رصيد للعميل": "Customer credit",
+    "مقبوض": "Received",
+    "متوسط قيمة الشراء": "Average purchase value"
 }

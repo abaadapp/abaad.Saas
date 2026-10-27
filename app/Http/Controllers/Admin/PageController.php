@@ -541,7 +541,15 @@ class PageController extends Controller
                 'blocking' => \App\Support\CustomerFlags::on($flags, \App\Support\CustomerFlags::BLOCKING),
                 'birthdays' => \App\Support\CustomerFlags::on($flags, \App\Support\CustomerFlags::BIRTHDAYS),
             ],
-            'orders' => Demo::customerOrders($id),
+            /*
+             * سجلُّ مشترياته — من سجلّ عمليات البيع نفسه (`SalesRegister`): طلبُ
+             * الموقع وبيعةُ الصندوق والفاتورةُ المستقلّة، بحال سدادها، والطلبُ
+             * الذي غطّته فاتورةٌ صفٌّ واحد برقمها. ومجموعُه رقمُه في القائمة.
+             */
+            'history' => \App\Support\Lists\SalesRegister::customerRows((int) Demo::bid(), (int) $id),
+            'historyTotals' => \App\Support\Lists\SalesRegister::customerTotals((int) Demo::bid(), (int) $id),
+            // وسجلُّ تحصيلاته — كلُّ دفعةٍ ببابها ومستندها، والرابطُ المستقلّ رصيدٌ لا شراء
+            'collections' => \App\Support\CustomerCollections::rows((int) Demo::bid(), (int) $id),
             // الافتراضي أولًا ثم الأقدم — ترتيب ثابت لا يقفز بين التحميلات
             'addresses' => CustomerAddress::where('customer_id', $id)
                 ->orderByDesc('is_default')->orderBy('id')->get()

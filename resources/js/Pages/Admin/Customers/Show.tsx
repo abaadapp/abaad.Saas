@@ -33,8 +33,11 @@ import { useConfirm } from '@/Components/ConfirmDialog';
 import { useTranslate } from '@/lib/i18n';
 import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
-import type { Customer, Order } from '@/types/models';
+import type { Customer } from '@/types/models';
 import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
+import {
+    CollectionHistory, PurchaseHistory, type CollectionRow, type PurchaseRow, type PurchaseTotals,
+} from '@/Components/CustomerHistory';
 
 interface Address {
     id: number;
@@ -48,7 +51,11 @@ interface Address {
 interface Props {
     customer: Customer & { address?: string | null; notes?: string | null; branch_id?: number | null; language?: string | null };
     branches?: { id: number; name: string }[];
-    orders: Order[];
+    /** سجلُّ مشترياته — صفوفُ سجلّ عمليات البيع له وحده (`SalesRegister::customerRows`) */
+    history: PurchaseRow[];
+    historyTotals: PurchaseTotals;
+    /** وسجلُّ تحصيلاته — كلُّ دفعةٍ ببابها ومستندها (`CustomerCollections::rows`) */
+    collections: CollectionRow[];
     addresses: Address[];
     /** ما أذنت به «الإعدادات ← العملاء» — المُطفأ يُخفى ولا يُمحى */
     customerFlags: { alerts: boolean; blocking: boolean; birthdays: boolean };
@@ -69,6 +76,10 @@ interface PointRow {
     order: string | null;
 }
 
+type Tab = 'purchases' | 'collections' | 'addresses' | 'points';
+
+const NO_TOTALS: PurchaseTotals = { count: 0, sales: 0, collected: 0, outstanding: 0, cancelled: 0 };
+
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
 /** الميلادُ كما يُقرأ: «١٢ مارس» — والسنةُ إن عُرفت، ولا سنةَ تُخترع */
@@ -82,7 +93,10 @@ export function birthdayLabel(c: { birth_day?: number | null; birth_month?: numb
 const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 
 export default function CustomerShow() {
-    const { customer, orders, addresses, context, branches = [], customerFlags, paymentLinks, pointHistory = [], auth } = usePage<PageProps<Props>>().props;
+    const {
+        customer, history = [], historyTotals = NO_TOTALS, collections = [], addresses, context, branches = [],
+        customerFlags, paymentLinks, pointHistory = [], auth,
+    } = usePage<PageProps<Props>>().props;
     /*
      * ورفعُ حظر البيع لمن يملك تجاوزَه — كما يقبله الخادم (`CustomerController::internal`).
      * فلا يُرسم مفتاحٌ يُطفئ الحظرَ لمن يُردّ عنه: يُقال له من يرفعه.
@@ -112,7 +126,7 @@ export default function CustomerShow() {
         language: customer.language ?? '',
         branch_id: customer.branch_id ? String(customer.branch_id) : '',
     });
-    const [tab, setTab] = useState<'orders' | 'addresses' | 'points'>('orders');
+    const [tab, setTab] = useState<Tab>('purchases');
 
     const notes = useForm({ notes: customer.notes ?? '' });
 
@@ -162,10 +176,11 @@ export default function CustomerShow() {
     };
 
     const stats = [
-        { label: t('عدد الطلبات'), value: String(customer.orders), icon: 'shopping-bag', color: 'primary' },
+        // الطلبُ والفاتورةُ المستقلّة — تعريفُ قائمة العملاء نفسُه (`CustomerPurchases`)
+        { label: t('عدد المشتريات'), value: String(customer.orders), icon: 'shopping-bag', color: 'primary' },
         { label: t('إجمالي المشتريات'), value: m(customer.total_spent), icon: 'wallet', color: 'success' },
         {
-            label: t('متوسط الطلب'),
+            label: t('متوسط قيمة الشراء'),
             value: m(customer.orders > 0 ? customer.total_spent / customer.orders : 0),
             icon: 'calculator', color: 'info',
         },
@@ -388,12 +403,13 @@ export default function CustomerShow() {
                     {/* داخل بطاقة: الحشو يُبعد التبويبات عن حدّها */}
                     <Tabs
                         tabs={[
-                            { key: 'orders', label: 'سجل الطلبات' },
+                            { key: 'purchases', label: 'سجل المشتريات', count: history.length },
+                            { key: 'collections', label: 'سجل التحصيلات', count: collections.length },
                             { key: 'addresses', label: 'العناوين', count: addresses.length },
                             { key: 'points', label: 'نقاط الولاء', count: pointHistory.length },
                         ]}
                         current={tab}
-                        onChange={(k) => setTab(k as 'orders' | 'addresses' | 'points')}
+                        onChange={(k) => setTab(k as Tab)}
                         className="px-5"
                     />
 
@@ -491,33 +507,10 @@ export default function CustomerShow() {
                                 </button>
                             </div>
                         </div>
+                    ) : tab === 'collections' ? (
+                        <CollectionHistory rows={collections} money={m} />
                     ) : (
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="hover:bg-transparent">
-                                {['رقم الطلب', 'المنتجات', 'الإجمالي', 'الدفع', 'الحالة', 'التاريخ'].map((h) => (
-                                    <TableHead key={h}>{t(h)}</TableHead>
-                                ))}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {orders.length === 0 ? (
-                                <TableEmpty colSpan={6}>{t('لا توجد طلبات لهذا العميل بعد')}</TableEmpty>
-                            ) : orders.map((o) => (
-                                <TableRow key={o.id}>
-                                    <TableCell>
-                                        <SmartLink routeName="admin.orders.show" href={route('admin.orders.show', o.id)}
-                                            className="font-medium text-[#111] hover:underline">{o.id}</SmartLink>
-                                    </TableCell>
-                                    <TableCell className="tabular-nums text-[#4b4b4b]">{number(o.items_count)}</TableCell>
-                                    <TableCell className="tabular-nums font-medium">{m(o.total)}</TableCell>
-                                    <TableCell>{t(o.payment === 'بطاقة' ? 'فيزا' : o.payment)}</TableCell>
-                                    <TableCell><Badge status={o.status}>{t(o.status)}</Badge></TableCell>
-                                    <TableCell className="text-[#6b7280]">{o.date}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                        <PurchaseHistory rows={history} totals={historyTotals} money={m} />
                     )}
                 </Card>
             </div>

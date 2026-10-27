@@ -190,6 +190,39 @@ final class SalesRegister
     }
 
     /**
+     * بيعاتُ عميلٍ واحد — سجلُّ مشترياته في صفحته.
+     *
+     * المتجرُ كلُّه لا فرعُ الترويسة، والفتراتُ كلُّها: رقمُه في قائمة العملاء
+     * لا يتبع فرعًا (`CustomerPurchases`)، فسجلُّه الذي يُجمع إليه لا يتبعه.
+     * والملغى صفٌّ موسوم لا يُمحى — تاريخُه باقٍ ولا يُعدّ.
+     *
+     * @return Builder على `r`
+     */
+    public static function forCustomer(int $businessId, int $customerId): Builder
+    {
+        $all = ReportingPeriod::all();
+
+        return DB::query()->fromSub(
+            self::orders($businessId, null, $all, null, $customerId)
+                ->unionAll(self::invoices($businessId, null, $all, $customerId)),
+            'r',
+        );
+    }
+
+    /** صفوفُ سجلّ العميل بترتيب السجلّ — الأحدثُ أوّلًا */
+    public static function customerRows(int $businessId, int $customerId): array
+    {
+        return self::sorted(self::forCustomer($businessId, $customerId))->get()
+            ->map(fn ($r) => self::row($r))->all();
+    }
+
+    /** ومجاميعُه — بقاعدة مجاميع السجلّ نفسِها */
+    public static function customerTotals(int $businessId, int $customerId): array
+    {
+        return self::sum(self::forCustomer($businessId, $customerId));
+    }
+
+    /**
      * «الموظّف»: معرّفُ حساب، أو «الموقع»، أو «غير مرتبط بحساب موظف» — وفيه
      * الطلبُ القديم الذي حُفظ اسمُ بائعه بلا حسابه، فلا يبقى بلا مرشِّحٍ يبلغه.
      *
@@ -215,7 +248,7 @@ final class SalesRegister
      * فاتورةٌ صادرة يبقى ما حُصِّل منه وما بقي فارغين هنا: يُوزَّعان من الفاتورة
      * في `coveredShares`، لا يُقرآن مرّتين.
      */
-    private static function orders(int $bid, ?int $branch, ReportingPeriod $period, ?string $source): Builder
+    private static function orders(int $bid, ?int $branch, ReportingPeriod $period, ?string $source, ?int $customer = null): Builder
     {
         $issued = "'".CustomerInvoice::ISSUED."'";
         $cancelled = "'".OrderStatus::CANCELLED."'";
@@ -233,6 +266,7 @@ final class SalesRegister
             ->where('o.business_id', $bid)
             ->where('o.is_held', false)
             ->when($branch, fn ($w) => $w->where('o.branch_id', $branch))
+            ->when($customer !== null, fn ($w) => $w->where('o.customer_id', $customer))
             ->selectRaw(implode(', ', [
                 "'".self::ORDER."' as kind",
                 'o.id as id',
@@ -277,7 +311,7 @@ final class SalesRegister
      *
      * ومنشئُها من `users` بلا شرط الحذف: موظّفٌ غادر يبقى اسمُه على ما كتب.
      */
-    private static function invoices(int $bid, ?int $branch, ReportingPeriod $period): Builder
+    private static function invoices(int $bid, ?int $branch, ReportingPeriod $period, ?int $customer = null): Builder
     {
         $issued = "customer_invoices.status = '".CustomerInvoice::ISSUED."'";
         $out = CustomerInvoice::outstandingSql();
@@ -296,6 +330,7 @@ final class SalesRegister
             ->whereNotExists(fn ($w) => $w->selectRaw('1')->from('customer_invoice_orders as l')
                 ->whereColumn('l.customer_invoice_id', 'customer_invoices.id'))
             ->when($branch, fn ($w) => $w->where('customer_invoices.branch_id', $branch))
+            ->when($customer !== null, fn ($w) => $w->where('customer_invoices.customer_id', $customer))
             ->selectRaw(implode(', ', [
                 "'".self::INVOICE."' as kind",
                 'customer_invoices.id as id',
@@ -469,7 +504,12 @@ final class SalesRegister
      */
     public static function totals(Request $request, ?string $fixedSource = null): array
     {
-        $base = self::filtered($request, $fixedSource);
+        return self::sum(self::filtered($request, $fixedSource));
+    }
+
+    /** @return array{count: int, sales: float, collected: float, outstanding: float, cancelled: int} */
+    private static function sum(Builder $base): array
+    {
         $void = implode(', ', array_map(fn ($s) => "'{$s}'", self::CANCELLED));
 
         $agg = (clone $base)->selectRaw(implode(', ', [

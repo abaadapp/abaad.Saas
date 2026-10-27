@@ -338,20 +338,20 @@ class PdfController extends Controller
         $bid = TenantExportGuard::businessId();
         $customer = Customer::where('business_id', $bid)->findOrFail($id);
 
-        $orders = Order::where('business_id', $bid)->where('customer_id', $customer->id)->sold()
-            ->orderBy('ordered_at')->get();
-        $returns = collect();
-
-        $totalSpent = (float) $orders->sum('total');
-        $totalReturned = 0.0;
+        /*
+         * مشترياتُه كما يقولها سجلُّه في صفحته — الطلبُ والفاتورةُ المستقلّة،
+         * من الأقدم — ومجموعُها رقمُه في قائمة العملاء (`CustomerPurchases`).
+         * وكانت الورقةُ تعدّ الطلبات وحدها، فتقول لوزارةٍ اشترت بفاتورة «٠».
+         */
+        $rows = array_reverse(\App\Support\Lists\SalesRegister::customerRows($bid, (int) $customer->id));
+        $totals = \App\Support\Lists\SalesRegister::customerTotals($bid, (int) $customer->id);
 
         $html = view('pdf.customer-statement', [
             'customer' => $customer,
-            'orders' => $orders,
-            'returns' => $returns,
-            'totalSpent' => $totalSpent,
-            'totalReturned' => $totalReturned,
-            'net' => $totalSpent - $totalReturned,
+            'rows' => $rows,
+            'totalSpent' => $totals['sales'],
+            'collected' => $totals['collected'],
+            'outstanding' => $totals['outstanding'],
             'business' => Demo::business($bid),
             'generatedAt' => now()->format('Y-m-d H:i'),
         ])->render();

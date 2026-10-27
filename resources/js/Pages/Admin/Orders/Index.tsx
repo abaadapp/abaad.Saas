@@ -70,8 +70,10 @@ export default function OrdersIndex() {
     const {
         orders, pagination, filters, sorts, totalAmount, totalCount, cancelledCount, period,
         websiteCount, websiteAmount, statusOptions, channelOptions, mayDelete, context,
-        collections, collectionTotals, mayOpenReceipts, linkCollections, withLinks,
+        collections, collectionTotals, mayOpenReceipts, linkCollections, withLinks, auth,
     } = usePage<PageProps<Props>>().props;
+    // «إنشاء طلب» يفتح نقطةَ البيع — ومتجرٌ لا يملكها لا يُعرض له بابٌ يردّه الخادم (`CheckPlanFeature`)
+    const hasPos = auth?.planFeatures?.pos !== false;
     const t = useTranslate();
     const currency = context!.currency;
     const [ask, confirmDialog] = useConfirm();
@@ -513,12 +515,14 @@ export default function OrdersIndex() {
                             pdf={route('admin.orders.exportPdf')}
                             csv={route('admin.export.orders')}
                         />
-                        <Button asChild>
-                            <SmartLink routeName="pos.index" href={route('pos.index')}>
-                                <Plus />
-                                {t('إنشاء طلب')}
-                            </SmartLink>
-                        </Button>
+                        {hasPos && (
+                            <Button asChild>
+                                <SmartLink routeName="pos.index" href={route('pos.index')} data-testid="orders-new-pos">
+                                    <Plus />
+                                    {t('إنشاء طلب')}
+                                </SmartLink>
+                            </Button>
+                        )}
                     </>
                 }
             />

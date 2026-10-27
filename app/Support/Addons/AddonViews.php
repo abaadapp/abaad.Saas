@@ -36,6 +36,7 @@ final class AddonViews
             'pricing' => $addon->pricing,
             'unit' => $addon->unit,
             'monthly_price' => $addon->monthly_price === null ? null : (float) $addon->monthly_price,
+            'semiannual_price' => $addon->monthly_price === null ? null : round((float) $addon->monthly_price * 6, 3),
             'yearly_price' => $addon->yearly_price === null ? null : (float) $addon->yearly_price,
             'for_sale' => (bool) $addon->for_sale,
             'for_new_merchants' => (bool) $addon->for_new_merchants,
@@ -64,9 +65,9 @@ final class AddonViews
             'id' => $p->id,
             'name' => $p->name,
             'code' => $p->code,
-            'legacy' => ['monthly' => (float) $p->monthly_price, 'yearly' => (float) $p->yearly_price],
+            'legacy' => self::cycles((float) $p->monthly_price, (float) $p->yearly_price),
             'addons' => isset($prices[$p->id])
-                ? ['monthly' => (float) $prices[$p->id]->monthly_price, 'yearly' => (float) $prices[$p->id]->yearly_price]
+                ? self::cycles((float) $prices[$p->id]->monthly_price, (float) $prices[$p->id]->yearly_price)
                 : null,
             'capabilities_set' => is_array($p->capabilities),
             'businesses' => [
@@ -123,6 +124,23 @@ final class AddonViews
                 ->map(fn (AddonOrder $o) => self::orderRow($o))->all(),
             'grantable' => SubscriptionAddon::orderBy('sort')->get(['id', 'name', 'unit'])
                 ->map(fn ($a) => ['id' => $a->id, 'name' => $a->name, 'counted' => Catalog::counted($a->unit)])->all(),
+            /*
+             * ما يطلبه فريقُ أبعاد للتاجر بفاتورة — ما يُباع في باقته وحدها، ولمتجر
+             * سياسة الإضافات وحده (`AddonOrders::orderFor` يحكم بها هو أيضًا).
+             */
+            'orderable' => PricingPolicy::isAddons($business) && $business->plan_id
+                ? SubscriptionAddon::where('for_sale', true)->orderBy('sort')->get()
+                    ->filter(fn (SubscriptionAddon $a) => AddonOrders::modeFor($business, $a) === Catalog::ELIGIBLE)
+                    ->map(fn (SubscriptionAddon $a) => [
+                        'id' => $a->id,
+                        'name' => $a->name,
+                        'pricing' => $a->pricing,
+                        'counted' => Catalog::counted($a->unit),
+                        'prices' => $a->pricing === Catalog::PAID
+                            ? ['monthly' => Catalog::unitPrice($a, 'monthly'), 'semiannual' => Catalog::unitPrice($a, 'semiannual'), 'yearly' => Catalog::unitPrice($a, 'yearly')]
+                            : null,
+                    ])->values()->all()
+                : [],
         ];
     }
 
@@ -162,7 +180,7 @@ final class AddonViews
                 'available' => [],
                 'active' => [],
                 'orders' => [],
-                'addons_total' => ['monthly' => 0, 'yearly' => 0],
+                'addons_total' => ['monthly' => 0, 'semiannual' => 0, 'yearly' => 0],
                 'may_request' => false,
             ];
         }
@@ -177,7 +195,7 @@ final class AddonViews
         $planPrice = null;
         if ($plan) {
             try {
-                $planPrice = ['monthly' => PricingPolicy::planPrice($business, 'monthly'), 'yearly' => PricingPolicy::planPrice($business, 'yearly')];
+                $planPrice = ['monthly' => PricingPolicy::planPrice($business, 'monthly'), 'semiannual' => PricingPolicy::planPrice($business, 'semiannual'), 'yearly' => PricingPolicy::planPrice($business, 'yearly')];
             } catch (\DomainException) {
                 $planPrice = null;
             }
@@ -200,10 +218,17 @@ final class AddonViews
             // ما تدفعه الإضافاتُ السارية في دورتها — يُقرأ بجوار سعر الباقة، ولكلٍّ فاتورتُها
             'addons_total' => [
                 'monthly' => round((float) $paid->where('cycle', 'monthly')->sum(fn ($e) => (float) $e->unit_price * $e->quantity), 3),
+                'semiannual' => round((float) $paid->where('cycle', 'semiannual')->sum(fn ($e) => (float) $e->unit_price * $e->quantity), 3),
                 'yearly' => round((float) $paid->where('cycle', 'yearly')->sum(fn ($e) => (float) $e->unit_price * $e->quantity), 3),
             ],
             'may_request' => true,
         ];
+    }
+
+    /** سعرُ الدورات الثلاث — ونصفُ السنة ستّةُ أشهرٍ بسعر الشهر، بلا عمودٍ ولا خصم */
+    public static function cycles(float $monthly, float $yearly): array
+    {
+        return ['monthly' => $monthly, 'semiannual' => round($monthly * 6, 3), 'yearly' => $yearly];
     }
 
     /** في الاشتراك — يقوله حارسُ القدرة نفسُه */
@@ -299,6 +324,7 @@ final class AddonViews
             'unit' => $a->unit,
             'counted' => Catalog::counted($a->unit),
             'monthly_price' => $a->monthly_price === null ? null : (float) $a->monthly_price,
+            'semiannual_price' => $a->monthly_price === null ? null : round((float) $a->monthly_price * 6, 3),
             'yearly_price' => $a->yearly_price === null ? null : (float) $a->yearly_price,
         ];
     }

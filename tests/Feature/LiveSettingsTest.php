@@ -265,9 +265,11 @@ class LiveSettingsTest extends TestCase
         $this->platform('trial_days', '30');
 
         $super = $this->superAdmin();
+        // وتاريخٌ يكتبه المديرُ بلا سداد منحةٌ صريحة: بتاريخها وسببها (`NewMerchantSubscription::GRANT`)
         $this->actingAs($super)->post(route('super-admin.businesses.store'), [
             'name' => 'متجر بعقد', 'type' => 'عام', 'status' => 'نشط',
-            'starts_at' => now()->toDateString(), 'ends_at' => now()->addYear()->toDateString(),
+            'subscription_mode' => 'grant', 'grant_until' => now()->addYear()->toDateString(), 'grant_reason' => 'عقد سنوي موقّع',
+            'plan_id' => \App\Models\Plan::create(['name' => 'باقة العقد', 'monthly_price' => 29.9, 'yearly_price' => 299])->id,
             'login_username' => 'contract', 'login_password' => 'secret123',
         ]);
 

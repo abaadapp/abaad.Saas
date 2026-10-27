@@ -69,8 +69,14 @@ final class Catalog
 
     public const UNITS = [self::UNIT_STORE, self::UNIT_BRANCH, self::UNIT_USAGE];
 
-    /** دورتا الإضافة — شهرٌ أو سنة، ولكلٍّ سعرُها في الكتالوج */
-    public const CYCLES = ['monthly', 'yearly'];
+    /**
+     * دوراتُ الإضافة — شهرٌ أو نصفُ سنةٍ أو سنة، كدورات الباقة (`Billing::CYCLES`).
+     *
+     * ونصفُ السنة ستّةُ أشهرٍ بسعر الشهر ستَّ مرّات، بلا عمودٍ ولا خصم — كما يُسعَّر
+     * نصفُ سنة الباقة (`PricingPolicy::planPrice`). فلا سعرَ ثالثٌ يُعتمد في الكتالوج،
+     * ولا شرطَ إطلاقٍ جديد: سعرُ الشهر المعتمد يكفيه.
+     */
+    public const CYCLES = ['monthly', 'semiannual', 'yearly'];
 
     /** تُشترى في الباقة */
     public const ELIGIBLE = 'eligible';
@@ -127,6 +133,26 @@ final class Catalog
         }
 
         throw new \RuntimeException('subscription add-on code: no free code after 5 tries');
+    }
+
+    /** سعرُ وحدةٍ من الإضافة لدورة — كما في الكتالوج اليوم، والنصفُ ستّةُ أشهر */
+    public static function unitPrice(SubscriptionAddon $addon, string $cycle): float
+    {
+        return match ($cycle) {
+            'yearly' => (float) $addon->yearly_price,
+            'semiannual' => round((float) $addon->monthly_price * 6, 3),
+            default => (float) $addon->monthly_price,
+        };
+    }
+
+    /** الدورةُ كما تُكتب في الفاتورة والسجلّ */
+    public static function cycleLabel(?string $cycle): string
+    {
+        return match ($cycle) {
+            'yearly' => 'سنويًّا',
+            'semiannual' => 'نصف سنويًّا',
+            default => 'شهريًّا',
+        };
     }
 
     /** وصفُ الإضافة كما يُعرض للتاجر — ما كتبه صاحبُ المنصّة، وإلّا ما يفتحه بابُها */

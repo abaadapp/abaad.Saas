@@ -32,6 +32,8 @@ interface EditableBusiness {
     customer_invoice_preparation_enabled: boolean;
     logo_url: string | null;
     owner_email: string | null;
+    /** يُسأل عن منحةٍ إداريّة — `AdminGrants::asked` */
+    grantable?: boolean;
 }
 
 export default function BusinessEdit() {
@@ -82,6 +84,7 @@ export default function BusinessEdit() {
                 }}
                 logoUrl={business.logo_url}
                 ownerEmail={business.owner_email}
+                grantable={business.grantable ?? false}
                 action={route('super-admin.businesses.update', business.id)}
                 method="put"
                 submitLabel="حفظ التعديلات"

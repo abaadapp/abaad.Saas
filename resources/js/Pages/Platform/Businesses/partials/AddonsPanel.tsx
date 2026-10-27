@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { Gift } from 'lucide-react';
+import { Gift, Plus } from 'lucide-react';
 import Field, { Select } from '@/Components/Field';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { Badge } from '@/Components/ui/badge';
@@ -17,6 +17,16 @@ export interface BusinessAddons {
     entitlements: EntitlementRow[];
     orders: OrderRow[];
     grantable: { id: number; name: string; counted: boolean }[];
+    /** ما يُطلب للتاجر بفاتورة — إضافاتُ باقته المؤهّلة، لسياسة الإضافات وحدها */
+    orderable?: OrderableAddon[];
+}
+
+export interface OrderableAddon {
+    id: number;
+    name: string;
+    pricing: 'paid' | 'free' | 'quote';
+    counted: boolean;
+    prices: { monthly: number; semiannual: number; yearly: number } | null;
 }
 
 /**
@@ -29,6 +39,7 @@ export default function AddonsPanel({ businessId, data, currency }: { businessId
     const t = useTranslate();
     const [confirm, confirmDialog] = useConfirm();
     const [granting, setGranting] = useState(false);
+    const [ordering, setOrdering] = useState(false);
     const [ending, setEnding] = useState<EntitlementRow | null>(null);
 
     const renew = async (row: EntitlementRow) => {
@@ -49,10 +60,18 @@ export default function AddonsPanel({ businessId, data, currency }: { businessId
                         {t(data.policy === 'addons_v1' ? 'سياسة الإضافات' : 'السياسة السابقة')}
                     </Badge>
                 </div>
-                <Button size="sm" onClick={() => setGranting(true)}>
-                    <Gift />
-                    {t('منح إضافة')}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                    {(data.orderable?.length ?? 0) > 0 && (
+                        <Button size="sm" onClick={() => setOrdering(true)} data-testid="order-addon">
+                            <Plus />
+                            {t('طلب إضافة للتاجر')}
+                        </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => setGranting(true)}>
+                        <Gift />
+                        {t('منح إضافة')}
+                    </Button>
+                </div>
             </div>
 
             {data.entitlements.length === 0 ? (
@@ -104,6 +123,7 @@ export default function AddonsPanel({ businessId, data, currency }: { businessId
                 <OrdersTab orders={data.orders.filter((o) => o.status === 'requested' || o.status === 'invoiced')} currency={currency} empty="لا طلبات مفتوحة لهذا المتجر." />
             </div>
 
+            {ordering && <OrderDialog businessId={businessId} orderable={data.orderable ?? []} currency={currency} onClose={() => setOrdering(false)} />}
             {granting && <GrantDialog businessId={businessId} grantable={data.grantable} onClose={() => setGranting(false)} />}
             {ending && <EndDialog row={ending} onClose={() => setEnding(null)} />}
             {confirmDialog}
@@ -141,7 +161,7 @@ function GrantDialog({ businessId, grantable, onClose }: { businessId: number; g
                             <Input type="number" min="1" max="50" dir="ltr" value={form.data.quantity} onChange={(e) => form.setData('quantity', e.target.value)} />
                         </Field>
                     )}
-                    <Field label="حتى تاريخ" hint="الفراغ: بلا نهاية" error={form.errors.ends_at}>
+                    <Field label="حتى تاريخ" required hint="المنحة مؤرّخة: تنتهي في يومها" error={form.errors.ends_at}>
                         <Input type="date" dir="ltr" value={form.data.ends_at} onChange={(e) => form.setData('ends_at', e.target.value)} />
                     </Field>
                     <Field label="السبب" required error={form.errors.reason}>
@@ -153,6 +173,91 @@ function GrantDialog({ businessId, grantable, onClose }: { businessId: number; g
                         </Button>
                         <Button type="submit" loading={form.processing}>
                             {t('منح')}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+/**
+ * طلبُ إضافةٍ يكتبه فريقُ أبعاد للتاجر — يُعتمد وتصدر فاتورتُه معًا (`AddonOrders::orderFor`).
+ *
+ * والإضافةُ تسري بتسجيل سداد فاتورتها، لا بهذا الطلب. و«حسب الطلب» تحتاج سعرًا،
+ * وسعرٌ غيرُ سعر الكتالوج يحتاج سببًا.
+ */
+function OrderDialog({ businessId, orderable, currency, onClose }: { businessId: number; orderable: OrderableAddon[]; currency: Currency; onClose: () => void }) {
+    const t = useTranslate();
+    const form = useForm({ addon_id: '', cycle: 'monthly', quantity: '1', unit_price: '', note: '' });
+    const addon = orderable.find((a) => String(a.id) === form.data.addon_id);
+    const catalog = addon?.prices ? addon.prices[form.data.cycle as 'monthly' | 'semiannual' | 'yearly'] : addon?.pricing === 'free' ? 0 : null;
+    const unit = form.data.unit_price !== '' ? Number(form.data.unit_price) : catalog;
+    const qty = addon?.counted ? Math.max(1, Number(form.data.quantity) || 1) : 1;
+
+    const submit = (e: FormEvent) => {
+        e.preventDefault();
+        form.post(route('super-admin.businesses.addons.order', businessId), { preserveScroll: true, onSuccess: onClose });
+    };
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>{t('طلب إضافة للتاجر')}</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={submit} className="space-y-3 px-5 pb-5" data-testid="order-addon-form">
+                    <Field label="الإضافة" required error={form.errors.addon_id}>
+                        <Select
+                            value={form.data.addon_id}
+                            placeholder="اختر"
+                            onChange={(e) => form.setData('addon_id', e.target.value)}
+                            options={orderable.map((a) => ({ value: String(a.id), label: a.name }))}
+                        />
+                    </Field>
+                    <Field label="الدورة" required error={form.errors.cycle}>
+                        <Select
+                            value={form.data.cycle}
+                            onChange={(e) => form.setData('cycle', e.target.value)}
+                            options={[
+                                { value: 'monthly', label: 'شهري' },
+                                { value: 'semiannual', label: 'نصف سنوي' },
+                                { value: 'yearly', label: 'سنوي' },
+                            ]}
+                        />
+                    </Field>
+                    {addon?.counted && (
+                        <Field label="العدد" error={form.errors.quantity}>
+                            <Input type="number" min="1" max="50" dir="ltr" value={form.data.quantity} onChange={(e) => form.setData('quantity', e.target.value)} />
+                        </Field>
+                    )}
+                    <Field
+                        label="سعر الوحدة"
+                        required={addon?.pricing === 'quote'}
+                        hint={catalog != null ? t('سعر الكتالوج: :p — اتركه فارغًا لاعتماده', { p: money(catalog, currency) }) : t('حسب الطلب: اكتب السعر المتّفق')}
+                        error={form.errors.unit_price}
+                    >
+                        <Input type="number" step="0.001" min="0" dir="ltr" value={form.data.unit_price} onChange={(e) => form.setData('unit_price', e.target.value)} />
+                    </Field>
+                    {form.data.unit_price !== '' && catalog != null && Number(form.data.unit_price) !== catalog && (
+                        <Field label="سبب تغيير السعر" required error={form.errors.note}>
+                            <Input value={form.data.note} onChange={(e) => form.setData('note', e.target.value)} />
+                        </Field>
+                    )}
+                    {(form.errors as Record<string, string>).addon && <p className="text-[12px] text-[#b91c1c]">{(form.errors as Record<string, string>).addon}</p>}
+                    <p className="text-[13px] text-[#4b4b4b]" data-testid="order-addon-summary">
+                        {unit == null
+                            ? t('اكتب السعر قبل إصدار الفاتورة.')
+                            : unit * qty > 0
+                              ? t('تصدر فاتورة بمبلغ :a، وتسري الإضافة بتسجيل سدادها.', { a: money(unit * qty, currency) })
+                              : t('بلا مبلغ — تُفعَّل الإضافة باعتماد هذا الطلب.')}
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button type="submit" loading={form.processing} disabled={!addon}>
+                            {t('إصدار الطلب والفاتورة')}
                         </Button>
                     </div>
                 </form>

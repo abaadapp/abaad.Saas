@@ -400,6 +400,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::get('/subscriptions/invoices/pdf', [PdfController::class, 'invoicesReport'])->name('invoices.exportPdf');
     // التجديد وتسجيل السداد — الجدولان كانا يُقرآن ولا يُكتب فيهما
     Route::post('/businesses/{id}/renew', [BillingController::class, 'renew'])->name('businesses.renew');
+    Route::post('/businesses/{id}/upgrade', [BillingController::class, 'upgrade'])->name('businesses.upgrade');
     Route::post('/invoices/{id}/pay', [BillingController::class, 'pay'])->name('invoices.pay');
     Route::post('/invoices/{id}/cancel', [BillingController::class, 'cancel'])->name('invoices.cancel');
     Route::put('/subscriptions/{id}', [SubscriptionController::class, 'update'])->name('subscriptions.update');
@@ -440,6 +441,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/addon-orders/{id}/approve', [SubscriptionAddonCatalogController::class, 'approve'])->whereNumber('id')->name('addonOrders.approve');
     Route::post('/addon-orders/{id}/cancel', [SubscriptionAddonCatalogController::class, 'cancelOrder'])->whereNumber('id')->name('addonOrders.cancel');
     Route::post('/businesses/{id}/addons', [SubscriptionAddonCatalogController::class, 'grant'])->whereNumber('id')->name('businesses.addons.grant');
+    Route::post('/businesses/{id}/addon-orders', [SubscriptionAddonCatalogController::class, 'order'])->whereNumber('id')->name('businesses.addons.order');
     Route::post('/business-addons/{id}/renew', [SubscriptionAddonCatalogController::class, 'renew'])->whereNumber('id')->name('businessAddons.renew');
     Route::put('/business-addons/{id}/renews', [SubscriptionAddonCatalogController::class, 'renews'])->whereNumber('id')->name('businessAddons.renews');
     Route::post('/business-addons/{id}/end', [SubscriptionAddonCatalogController::class, 'end'])->whereNumber('id')->name('businessAddons.end');

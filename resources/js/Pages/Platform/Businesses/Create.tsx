@@ -40,6 +40,12 @@ export default function BusinessCreate() {
                     order_notes_and_edits_enabled: false,
                     thermal_delivery_note_enabled: false,
                     customer_invoice_preparation_enabled: false,
+                    // أضيقُ الطرق افتراضًا: تجربةُ الأساسية — والمدفوعُ والمنحةُ يُختاران صراحةً
+                    subscription_mode: 'trial',
+                    cycle: '',
+                    grant_until: '',
+                    grant_reason: '',
+                    addons: [],
                 }}
                 action={route('super-admin.businesses.store')}
                 method="post"

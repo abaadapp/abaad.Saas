@@ -134,7 +134,7 @@ class AnOldShopBrowsesAbaadServicesWithoutBuyingTest extends TestCase
         [$theirs, $theirOwner] = $this->shop('basic', 'theirs@shop.om');
 
         $api = $this->addon('api_integrations');
-        AddonOrders::grant($mine, $api, 1, null, 'منحة اختبار', $this->platform);
+        AddonOrders::grant($mine, $api, 1, now()->addYear()->toDateString(), 'منحة اختبار', $this->platform);
         $api->update(['for_sale' => false]);
 
         $state = fn ($business) => collect(AddonViews::showcase($business->fresh()))->firstWhere('id', $api->id)['state'] ?? 'hidden';
@@ -267,10 +267,10 @@ class AnOldShopBrowsesAbaadServicesWithoutBuyingTest extends TestCase
         [$expired] = $this->shop('basic', 'expired@shop.om');
         [$ended] = $this->shop('basic', 'ended@shop.om');
 
-        AddonOrders::grant($live, $api, 1, null, 'منحة سارية', $this->platform);
-        AddonOrders::grant($expired, $api, 1, null, 'منحة انقضت', $this->platform)
+        AddonOrders::grant($live, $api, 1, now()->addYear()->toDateString(), 'منحة سارية', $this->platform);
+        AddonOrders::grant($expired, $api, 1, now()->addYear()->toDateString(), 'منحة انقضت', $this->platform)
             ->forceFill(['starts_at' => now()->subMonths(2)->toDateString(), 'ends_at' => now()->subDay()->toDateString()])->save();
-        AddonOrders::end(AddonOrders::grant($ended, $api, 1, null, 'منحة أُنهيت', $this->platform), 'أنهاها صاحب المنصة');
+        AddonOrders::end(AddonOrders::grant($ended, $api, 1, now()->addYear()->toDateString(), 'منحة أُنهيت', $this->platform), 'أنهاها صاحب المنصة');
         $api->update(['for_sale' => false]);
 
         $shown = fn ($business) => collect(AddonViews::showcase($business->fresh()))->firstWhere('id', $api->id);

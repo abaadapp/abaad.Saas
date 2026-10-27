@@ -4,8 +4,10 @@ namespace App\Support;
 
 use App\Models\Business;
 use App\Models\Invoice;
+use App\Models\Plan;
 use App\Models\Subscription;
 use App\Support\Addons\AddonOrders;
+use App\Support\Addons\Entitlements;
 use App\Support\Addons\PricingPolicy;
 use Carbon\CarbonInterface;
 use DomainException;
@@ -153,6 +155,64 @@ class Billing
         });
     }
 
+    /**
+     * ترقيةُ المتجر إلى باقةٍ أخرى في حسابه نفسِه — تُفوتَر الآن وتسري بالسداد.
+     *
+     * ═══ ولمَ لا تُبدَّل الباقةُ الآن ═══
+     *
+     * قدراتُ الباقة تتبع `plan_id` لحظةَ يتغيّر (`PlanFeatures`): تبديلُه قبل
+     * السداد يفتح للتجربة مزايا الاحترافيّة وفاتورتُها لم تُدفع. فالفاتورةُ تصدر
+     * بباقتها وسعرِها في سياسة المتجر، والمتجرُ على باقته حتى تُسدَّد — وعندها
+     * ينتقل (`start`) ببياناته كلّها: لا متجرَ جديد ولا حسابَ مكرّر.
+     *
+     * ودورتُها تبدأ يومَ السداد لا بعد ما بقي من الحالية: ما بقي من تجربةٍ
+     * مجّانيّةٍ لا يصير أيّامًا مدفوعةً على باقةٍ أغلى.
+     *
+     * @return array{subscription: Subscription, invoice: Invoice}
+     */
+    public static function upgrade(Business $business, Plan $to, string $cycle): array
+    {
+        if (! in_array($cycle, self::CYCLES, true)) {
+            throw new InvalidArgumentException('Unknown billing cycle: '.$cycle);
+        }
+
+        return DB::transaction(function () use ($business, $to, $cycle) {
+            $business = Business::whereKey($business->id)->lockForUpdate()->firstOrFail();
+
+            if ((int) $business->plan_id === (int) $to->id) {
+                throw new DomainException(__('المتجر على «:p» أصلًا — جدّد اشتراكه بدل ترقيته.', ['p' => $to->name]));
+            }
+            if ($open = self::pendingRenewal($business)) {
+                throw new DomainException(__('للمتجر فاتورةُ تجديد :n بانتظار السداد. سجّل سدادها أو ألغِها قبل إصدار غيرها.', [
+                    'n' => $open->invoice?->number ?? '—',
+                ]));
+            }
+
+            $amount = PricingPolicy::planPriceFor($business, $to, $cycle);
+            $invoice = self::issue($business, $amount, $to);
+
+            $subscription = Subscription::create([
+                'business_id' => $business->id,
+                'plan_id' => $to->id,
+                'from_plan_id' => $business->plan_id,
+                'starts_at' => null,
+                'ends_at' => null,
+                'amount' => $amount,
+                'payment_status' => 'غير مدفوع',
+                'status' => self::SUB_PENDING,
+                'invoice_id' => $invoice->id,
+                'cycle' => $cycle,
+            ]);
+
+            Activity::log('created', 'أصدر فاتورة ترقية '.$invoice->number.' لـ'.$business->name.' إلى «'.$to->name.'» — تسري بالسداد', [
+                'business_id' => null,
+                'subject_id' => $business->id,
+            ]);
+
+            return ['subscription' => $subscription, 'invoice' => $invoice];
+        });
+    }
+
     /** تجديدُ المتجر الذي صدرت فاتورتُه ولم تُسدَّد — إن كان */
     public static function pendingRenewal(Business $business): ?Subscription
     {
@@ -178,18 +238,20 @@ class Billing
         };
     }
 
-    /** فاتورة جديدة برقمٍ متسلسل لا يتكرّر */
-    public static function issue(Business $business, float $amount): Invoice
+    /** فاتورة جديدة برقمٍ متسلسل لا يتكرّر — بباقة المتجر، أو بالتي يُرقّى إليها */
+    public static function issue(Business $business, float $amount, ?Plan $plan = null): Invoice
     {
+        $plan ??= $business->plan;
+
         return Invoice::create([
             'number' => self::nextNumber(),
             'business_id' => $business->id,
-            'plan_id' => $business->plan_id,
+            'plan_id' => $plan?->id ?? $business->plan_id,
             'amount' => $amount,
             'issued_at' => now(),
             'status' => self::UNPAID,
             'kind' => self::KIND_SUBSCRIPTION,
-            'note' => $business->plan?->name,
+            'note' => $plan?->name,
         ]);
     }
 
@@ -296,11 +358,15 @@ class Billing
          * يمنحه دورةً على باقةٍ أغلى بسعر الأرخص — أو العكس. فيُرفض السداد
          * ويُقال لماذا: تُلغى وتُصدر فاتورةٌ بالباقة الحاليّة.
          */
-        if ($renewal->plan_id && (int) $renewal->plan_id !== (int) $business->plan_id) {
+        $upgrade = $renewal->from_plan_id !== null;
+
+        // والترقيةُ صدرت لنقله من باقةٍ بعينها: إن نُقل بعدها بيدٍ أخرى فهي لغيره
+        $expected = $upgrade ? $renewal->from_plan_id : $renewal->plan_id;
+        if ($expected && (int) $expected !== (int) $business->plan_id) {
             throw new DomainException(__('تغيّرت باقة المتجر بعد إصدار الفاتورة :n. ألغِها وأصدر فاتورة تجديد بالباقة الحالية.', ['n' => $invoice->number]));
         }
 
-        $from = ($business->ends_at && $business->ends_at->isFuture())
+        $from = (! $upgrade && $business->ends_at && $business->ends_at->isFuture())
             ? $business->ends_at->copy()
             : now()->startOfDay();
         $ends = self::extend($from, $renewal->cycle);
@@ -316,7 +382,12 @@ class Billing
             'starts_at' => $business->starts_at ?? now()->startOfDay(),
             'ends_at' => $ends,
             'status' => 'نشط',
-        ]);
+        ] + ($upgrade ? ['plan_id' => $renewal->plan_id] : []));
+
+        if ($upgrade) {
+            // قدراتُ الباقة الجديدة تُقرأ من الآن — لا ما خُزّن قبل الانتقال
+            Entitlements::flush();
+        }
 
         Activity::log('updated', 'فُعّل تجديد '.$business->name.' حتى '.$ends->format('Y-m-d').' بسداد '.$invoice->number, [
             'business_id' => null,

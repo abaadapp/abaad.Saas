@@ -5,8 +5,10 @@ namespace App\Http\Controllers\SuperAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Business;
 use App\Models\Invoice;
+use App\Models\Plan;
 use App\Models\Subscription;
 use App\Support\Billing;
+use App\Support\PlanLimits;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -39,6 +41,44 @@ class BillingController extends Controller
         return back()->with('toast', [
             'msg' => __('تم إصدار فاتورة التجديد :n. لن يتم تمديد الاشتراك إلا بعد تسجيل السداد.', [
                 'n' => $result['invoice']->number,
+            ]),
+            'type' => 'success',
+        ]);
+    }
+
+    /**
+     * ترقيةُ المتجر — تجربةٌ إلى اشتراكٍ مدفوع، أو باقةٌ إلى أخرى — في حسابه نفسِه.
+     *
+     * تصدر فاتورةُ الباقة الجديدة، والمتجرُ على باقته حتى تُسدَّد (`Billing::upgrade`).
+     * ولا تُنزَّل باقةٌ يتجاوزها المتجر — كما في تعديله (`BusinessController::update`).
+     */
+    public function upgrade(Request $request, $businessId)
+    {
+        $data = $request->validate([
+            'plan_id' => ['required', 'integer', 'exists:plans,id'],
+            'cycle' => ['required', Rule::in(Billing::CYCLES)],
+        ]);
+
+        $business = Business::findOrFail($businessId);
+        $target = Plan::findOrFail($data['plan_id']);
+
+        if ($over = PlanLimits::exceededBy($business, $target)) {
+            return back()->withErrors(['plan_id' => __('المتجر يتجاوز باقة «:plan»: :over. أنقص الزائد قبل التنزيل.', [
+                'plan' => $target->name,
+                'over' => implode('، ', $over),
+            ])])->with('toast', ['msg' => __('المتجر يتجاوز الباقة المختارة.'), 'type' => 'warning']);
+        }
+
+        try {
+            $result = Billing::upgrade($business, $target, $data['cycle']);
+        } catch (DomainException $e) {
+            return back()->with('toast', ['msg' => $e->getMessage(), 'type' => 'warning']);
+        }
+
+        return back()->with('toast', [
+            'msg' => __('صدرت فاتورة الترقية :n. يبقى المتجر على باقته حتى يُسجَّل سدادها، ثمّ ينتقل إلى «:p».', [
+                'n' => $result['invoice']->number,
+                'p' => $target->name,
             ]),
             'type' => 'success',
         ]);

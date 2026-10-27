@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Support\Addons\Catalog;
 use App\Support\Addons\Entitlements;
+use App\Support\Addons\PricingPolicy;
 use App\Support\FlowerOrder;
 use App\Support\WhatsAppPhone;
 use Illuminate\Validation\Rule;
@@ -59,13 +60,23 @@ final class GiftOrders
      * العمودُ يفتحه مديرُ المنصّة كما كان. والإضافةُ تفتحه لمن اشتراها أو شُملت
      * في باقته في السياسة الجديدة (`Addons\Entitlements`). ولا يُسأل عن إعدادات
      * الموقع: ما يكتبه التاجرُ هناك لا يفتح شيئًا.
+     *
+     * ومتجرُ السياسة الجديدة بالإضافة وحدها، كأخيه `CustomArrangement::on`:
+     * العمودُ مفتاحٌ بلا فاتورةٍ ولا تاريخ، فلو فتح هنا لكان منحةً لا تنتهي.
      */
     public static function on(int $businessId): bool
     {
         $business = Business::find($businessId);
 
-        return $business !== null
-            && ((bool) $business->gift_orders_enabled || Entitlements::has($business, Catalog::GIFT_ORDERS));
+        if ($business === null) {
+            return false;
+        }
+
+        if (PricingPolicy::isAddons($business)) {
+            return Entitlements::has($business, Catalog::GIFT_ORDERS);
+        }
+
+        return (bool) $business->gift_orders_enabled || Entitlements::has($business, Catalog::GIFT_ORDERS);
     }
 
     /**

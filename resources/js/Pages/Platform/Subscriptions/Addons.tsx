@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { Check, Package, Pencil, Plus, Power, Rocket } from 'lucide-react';
+import { Check, CheckCircle2, CircleAlert, Package, Pencil, Plus, Power, ShieldAlert, SlidersHorizontal } from 'lucide-react';
 import PlatformLayout from '@/Layouts/PlatformLayout';
 import PageHeader from '@/Components/PageHeader';
 import SmartLink from '@/Components/SmartLink';
@@ -78,12 +78,20 @@ export interface EntitlementRow {
     business?: { id: number; name: string };
 }
 
+/** شرطٌ من شروط التفعيل — `PricingPolicy::checks` */
+export interface LaunchCheck {
+    key: string;
+    label: string;
+    ok: boolean;
+    problems: string[];
+}
+
 interface Props {
     catalog: CatalogAddon[];
     plans: PlanRow[];
     orders: OrderRow[];
     subscribers: EntitlementRow[];
-    launch: { enabled: boolean; blockers: string[]; counts: { legacy: number; addons: number } };
+    launch: { enabled: boolean; checks?: LaunchCheck[]; blockers: string[]; counts: { legacy: number; addons: number } };
     capabilityOptions: { key: string; label: string }[];
     currency: Currency;
 }
@@ -117,7 +125,7 @@ export default function Addons() {
         <PlatformLayout title="إضافات الاشتراكات">
             <PageHeader
                 title="إضافات الاشتراكات"
-                subtitle={t('إضافاتٌ تُشترى فوق الباقة — للمتاجر التي تُسجَّل بعد الإطلاق وحدها، والمتاجر القائمة على اشتراكها كما هو')}
+                subtitle={t('خدماتٌ تُشترى فوق الباقة لمتاجر نظام الإضافات — والمتاجر القائمة على اشتراكها كما هو')}
                 actions={
                     <>
                         <Button variant="outline" asChild>
@@ -138,10 +146,10 @@ export default function Addons() {
                 current={tab}
                 onChange={setTab}
                 tabs={[
-                    { key: 'catalog', label: 'الكتالوج', count: catalog.length },
-                    { key: 'orders', label: 'الطلبات', count: orders.length, alert: orders.some((o) => o.status === 'requested') },
+                    { key: 'catalog', label: 'كتالوج الإضافات', count: catalog.length },
+                    { key: 'orders', label: 'طلبات الإضافات', count: orders.length, alert: orders.some((o) => o.status === 'requested') },
                     { key: 'subscribers', label: 'المشتركون', count: subscribers.length },
-                    { key: 'launch', label: 'الإطلاق', alert: !launch.enabled && launch.blockers.length > 0 },
+                    { key: 'settings', label: 'التسعير والإعدادات' },
                 ]}
             />
 
@@ -157,7 +165,7 @@ export default function Addons() {
             )}
             {tab === 'orders' && <OrdersTab orders={orders} currency={currency} />}
             {tab === 'subscribers' && <SubscribersTab rows={subscribers} currency={currency} />}
-            {tab === 'launch' && <LaunchTab launch={launch} plans={plans} currency={currency} />}
+            {tab === 'settings' && <SettingsTab launch={launch} plans={plans} currency={currency} />}
 
             {editing && (
                 <AddonDialog
@@ -200,15 +208,17 @@ function CatalogTab({
     }
 
     return (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" data-testid="addons-catalog">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="addons-catalog">
             {catalog.map((a) => (
                 <Card key={a.id} className="flex flex-col gap-3 p-5" data-testid="addon-card">
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                            <h3 className="text-[15px] font-bold text-[#111]">{a.name}</h3>
-                            <p className="mt-0.5 text-[12px] text-[#9ca3af]" dir="ltr">
-                                {a.code}
-                            </p>
+                            <h3 className="text-[15px] font-bold break-words text-[#111]">{a.name}</h3>
+                            {a.name_en && (
+                                <p className="mt-0.5 text-[12px] text-[#9ca3af]" dir="ltr">
+                                    {a.name_en}
+                                </p>
+                            )}
                         </div>
                         <div className="flex shrink-0 flex-wrap justify-end gap-1">
                             <Badge variant={a.for_sale ? 'success' : 'neutral'}>{t(a.for_sale ? 'تُباع' : 'موقوف بيعها')}</Badge>
@@ -261,8 +271,8 @@ function AddonDialog({
     onClose: () => void;
 }) {
     const t = useTranslate();
+    // والرمزُ لا يُرسل: يولّده الخادم يومَ تُنشأ ولا يتبدّل (`AddonController::store`)
     const form = useForm({
-        code: addon?.code ?? '',
         name: addon?.name ?? '',
         name_en: addon?.name_en ?? '',
         description: addon?.description ?? '',
@@ -295,9 +305,6 @@ function AddonDialog({
                     <DialogTitle>{t(addon ? 'تعديل الإضافة' : 'إضافة اشتراك جديدة')}</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={submit} className="space-y-4 px-5 pb-5" data-testid="addon-form">
-                    <Field label="الرمز" required={!addon} error={form.errors.code} hint={t('ثابتٌ لا يتغيّر بعد الحفظ — حروفٌ لاتينيّة صغيرة وشرطة سفليّة')}>
-                        <Input dir="ltr" value={form.data.code} disabled={!!addon} onChange={(e) => form.setData('code', e.target.value)} />
-                    </Field>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <Field label="الاسم بالعربية" required error={form.errors.name}>
                             <Input value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} />
@@ -312,7 +319,7 @@ function AddonDialog({
                     <Field label="الوصف بالإنجليزية" error={form.errors.description_en}>
                         <Textarea dir="ltr" rows={2} value={form.data.description_en} onChange={(e) => form.setData('description_en', e.target.value)} />
                     </Field>
-                    <Field label="ما تفتحه" error={form.errors.capability}>
+                    <Field label="ما تفتحه" error={form.errors.capability} hint={t('القدرة البرمجية التي تفتحها الإضافة. بلا اختيار: خدمة إدارية أو تجارية لا تفتح نظامًا تلقائيًا')}>
                         <Select
                             value={form.data.capability}
                             placeholder="خدمة تقدّمها أبعاد — بلا باب في النظام"
@@ -368,6 +375,19 @@ function AddonDialog({
                         ))}
                     </div>
                     <p className="text-[12px] text-[#9ca3af]">{t('تعديل السعر لا يمسّ طلبًا ولا فاتورةً صدرت ولا دورةً اتُّفق عليها.')}</p>
+                    <p className="text-[12px] text-[#9ca3af]">{t('إيقاف البيع يمنع الطلبات الجديدة وحدها — ومن اشتراها تبقى سارية له حتى نهاية دورتها.')}</p>
+                    {addon && (
+                        <details className="rounded-[12px] bg-[#fafafa] px-4 py-2 text-[12px] text-[#6b7280]" data-testid="addon-technical">
+                            <summary className="cursor-pointer select-none font-medium">{t('تفاصيل تقنية')}</summary>
+                            <p className="mt-2">
+                                {t('المعرّف الداخلي')}:{' '}
+                                <span dir="ltr" className="font-mono break-all">
+                                    {addon.code}
+                                </span>
+                            </p>
+                            <p className="mt-1">{t('يولّده النظام ولا يتغيّر بتعديل الاسم.')}</p>
+                        </details>
+                    )}
                     <div className="flex justify-end gap-2 pt-1">
                         <Button type="button" variant="outline" onClick={onClose}>
                             {t('إلغاء')}
@@ -554,14 +574,17 @@ export function SubscribersTab({ rows, currency }: { rows: EntitlementRow[]; cur
 
     return (
         <Card className="overflow-x-auto no-scrollbar" data-testid="addon-subscribers">
-            <table className="w-full min-w-[640px] text-[13px]">
+            <table className="w-full min-w-[880px] text-[13px]">
                 <thead className="bg-[#fafafa] text-[#6b7280]">
                     <tr>
                         <th className="px-4 py-2 text-start font-medium">{t('المتجر')}</th>
                         <th className="px-4 py-2 text-start font-medium">{t('الإضافة')}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t('الحالة')}</th>
                         <th className="px-4 py-2 text-start font-medium">{t('المصدر')}</th>
                         <th className="px-4 py-2 text-start font-medium">{t('من')}</th>
                         <th className="px-4 py-2 text-start font-medium">{t('حتى')}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t('الدورة')}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t('التجديد')}</th>
                         <th className="px-4 py-2 text-start font-medium">{t('السعر')}</th>
                     </tr>
                 </thead>
@@ -579,9 +602,16 @@ export function SubscribersTab({ rows, currency }: { rows: EntitlementRow[]; cur
                                 {r.addon.name}
                                 {r.quantity > 1 && <span className="tabular-nums"> × {r.quantity}</span>}
                             </td>
+                            <td className="px-4 py-2" data-testid="entitlement-state">
+                                <Badge variant={r.active ? 'success' : 'neutral'}>{t(r.active ? 'سارية' : 'منتهية')}</Badge>
+                            </td>
                             <td className="px-4 py-2">{t(r.source === 'grant' ? 'منحة' : 'شراء')}</td>
                             <td className="px-4 py-2 tabular-nums">{r.starts_at}</td>
                             <td className="px-4 py-2 tabular-nums">{r.ends_at ?? t('بلا نهاية')}</td>
+                            <td className="px-4 py-2">{r.cycle ? t(CYCLE[r.cycle]) : '—'}</td>
+                            <td className="px-4 py-2" data-testid="entitlement-renewal">
+                                {!r.cycle ? t('لا تجديد') : r.renews ? t('يتجدّد') : t('التجديد موقوف')}
+                            </td>
                             <td className="px-4 py-2 tabular-nums">
                                 {r.source === 'grant' ? '—' : `${money(r.unit_price * r.quantity, currency)} ${r.cycle ? t(CYCLE[r.cycle]) : ''}`}
                             </td>
@@ -593,47 +623,95 @@ export function SubscribersTab({ rows, currency }: { rows: EntitlementRow[]; cur
     );
 }
 
-function LaunchTab({ launch, plans, currency }: { launch: Props['launch']; plans: PlanRow[]; currency: Currency }) {
+/**
+ * «التسعير والإعدادات» — أسعارُ الباقات، وحالةُ نظام الإضافات وشروطُه، والسياستان.
+ *
+ * كان تبويبًا باسم «الإطلاق». والمقبضُ نفسُه لم يتغيّر (`PricingPolicy::setEnabled`):
+ * لا يُفعَّل وشرطٌ ناقص، ولا بغير موافقةٍ صريحة تصل مع الطلب (`acknowledged`).
+ * والإيقافُ للطوارئ بتأكيدين، ولا ينقل متجرًا ولا يمسّ استحقاقًا.
+ */
+function SettingsTab({ launch, plans, currency }: { launch: Props['launch']; plans: PlanRow[]; currency: Currency }) {
     const t = useTranslate();
-    const [confirm, confirmDialog] = useConfirm();
+    const [ask, confirmDialog] = useConfirm();
+    const [activating, setActivating] = useState(false);
+    const checks = launch.checks ?? [];
+    const ready = launch.blockers.length === 0;
 
-    const toggle = async () => {
-        const on = !launch.enabled;
-        const ok = await confirm({
-            message: on
-                ? 'كل متجر يُسجَّل بعد الآن يُختم على سياسة الإضافات: باقته بسعرها الجديد، ونقطة البيع وغيرها إضافات. المتاجر القائمة لا تتغيّر.'
-                : 'المتاجر الجديدة تعود إلى السياسة السابقة. ومن خُتمت سياسته على الإضافات يبقى عليها.',
-            action: on ? 'فتح الإطلاق' : 'إطفاء الإطلاق',
-            danger: !on,
+    const stop = async () => {
+        const first = await ask({
+            message: 'تعود التسجيلات الجديدة إلى السياسة السابقة. المتاجر الموجودة تبقى على سياستها وأسعارها واستحقاقاتها، ولا تُحذف أي إضافة.',
+            action: 'متابعة الإيقاف',
+            danger: true,
         });
-        if (ok) {
-            router.post(route('super-admin.addons.launch'), { enabled: on }, { preserveScroll: true });
+        if (!first) return;
+        const second = await ask({
+            message: 'تأكيد أخير: إيقاف نظام الإضافات للتسجيلات الجديدة؟',
+            action: 'إيقاف نظام الإضافات',
+            danger: true,
+        });
+        if (second) {
+            router.post(route('super-admin.addons.launch'), { enabled: false }, { preserveScroll: true });
         }
     };
 
     return (
         <div className="space-y-5" data-testid="addons-launch">
-            <Card className="space-y-4 p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <p className="flex items-center gap-2 font-bold text-[#111]">
-                            <Rocket className="size-4" />
-                            {t('سياسة الإضافات للمتاجر الجديدة')}
-                        </p>
-                        <p className="mt-1 text-[13px] text-[#6b7280]">
-                            {t('متاجر على السياسة السابقة: :a · على سياسة الإضافات: :b', { a: launch.counts.legacy, b: launch.counts.addons })}
-                        </p>
+            <Card className="space-y-4 p-5 sm:p-6" data-testid="launch-status">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                        <span className={`flex size-11 shrink-0 items-center justify-center rounded-[12px] ${launch.enabled ? 'bg-[#ecfdf5] text-[#047857]' : 'bg-[#f2f2f0] text-[#4b4b4b]'}`}>
+                            <SlidersHorizontal className="size-5" />
+                        </span>
+                        <div className="min-w-0">
+                            <p className="text-[16px] font-bold text-[#111]">
+                                {t(launch.enabled ? 'نظام الإضافات مفعّل للتسجيلات الجديدة' : 'نظام الاشتراكات الجديد غير مفعّل')}
+                            </p>
+                            <p className="mt-1 text-[13px] leading-6 text-[#6b7280]">
+                                {t(
+                                    launch.enabled
+                                        ? 'كل متجر يُسجَّل الآن يُختم على نظام الإضافات. المتاجر الموجودة على سياستها كما هي.'
+                                        : 'المتاجر الجديدة تستمر حاليًا على سياسة الاشتراكات السابقة، حتى تعتمد النظام الجديد.',
+                                )}
+                            </p>
+                            <p className="mt-2 text-[13px] text-[#4b4b4b] tabular-nums" data-testid="policy-counts">
+                                {t('متاجر على السياسة السابقة: :a · على نظام الإضافات: :b', { a: launch.counts.legacy, b: launch.counts.addons })}
+                            </p>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <Badge variant={launch.enabled ? 'success' : 'neutral'} data-testid="launch-state">
-                            {t(launch.enabled ? 'مفتوح' : 'مطفأ')}
+                    <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                        <Badge variant={launch.enabled ? 'success' : 'neutral'} data-testid="launch-state" className="self-start sm:self-end">
+                            {t(launch.enabled ? 'مفعّل' : 'غير مفعّل')}
                         </Badge>
-                        <Button variant={launch.enabled ? 'outline' : 'primary'} disabled={!launch.enabled && launch.blockers.length > 0} onClick={toggle}>
-                            <Power />
-                            {t(launch.enabled ? 'إطفاء الإطلاق' : 'فتح الإطلاق')}
-                        </Button>
+                        {!launch.enabled && (
+                            <Button disabled={!ready} onClick={() => setActivating(true)} data-testid="launch-activate">
+                                <Power />
+                                {t('تفعيل نظام الإضافات للتجار الجدد')}
+                            </Button>
+                        )}
                     </div>
                 </div>
+
+                {checks.length > 0 && (
+                    <div className="border-t border-[var(--ui-border,#e8e8e8)] pt-4">
+                        <p className="mb-2 text-[13px] font-semibold text-[#111]">{t('شروط الجاهزية')}</p>
+                        <ul className="space-y-2" data-testid="launch-checks">
+                            {checks.map((c) => (
+                                <li key={c.key} className="flex items-start gap-2 text-[13px]" data-testid="launch-check" data-ok={c.ok ? '1' : '0'}>
+                                    {c.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#047857]" /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-[#b45309]" />}
+                                    <div className="min-w-0">
+                                        <p className={c.ok ? 'text-[#111]' : 'font-medium text-[#92400e]'}>{c.label}</p>
+                                        {c.problems.map((p) => (
+                                            <p key={p} className="text-[12px] text-[#92400e]">
+                                                {p}
+                                            </p>
+                                        ))}
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
                 {launch.blockers.length > 0 && (
                     <ul className="space-y-1 rounded-[12px] bg-[#fffbeb] px-4 py-3 text-[13px] text-[#92400e]" data-testid="launch-blockers">
                         {launch.blockers.map((b) => (
@@ -643,14 +721,103 @@ function LaunchTab({ launch, plans, currency }: { launch: Props['launch']; plans
                 )}
             </Card>
 
-            <Card className="divide-y divide-[var(--ui-border,#e8e8e8)]">
-                <p className="px-5 py-3 text-[13px] font-bold text-[#111]">{t('سعر الباقة في سياسة الإضافات')}</p>
-                {plans.map((p) => (
-                    <PlanPriceRow key={p.id} plan={p} currency={currency} />
-                ))}
+            <Card className="overflow-hidden">
+                <div className="border-b border-[var(--ui-border,#e8e8e8)] px-5 py-4">
+                    <p className="text-[15px] font-bold text-[#111]">{t('أسعار الباقات')}</p>
+                    <p className="mt-0.5 text-[12px] text-[#6b7280]">
+                        {t('السعر الحالي لمتاجر السياسة السابقة، وسعر النظام الجديد لمتاجره. اعتماد سعر جديد لا يمسّ فاتورة صدرت ولا اشتراكًا قائمًا.')}
+                    </p>
+                </div>
+                <div className="divide-y divide-[var(--ui-border,#e8e8e8)]">
+                    {plans.map((p) => (
+                        <PlanPriceRow key={p.id} plan={p} currency={currency} />
+                    ))}
+                </div>
             </Card>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2" data-testid="policies-info">
+                <Card className="p-5">
+                    <p className="text-[14px] font-bold text-[#111]">{t('السياسة السابقة')}</p>
+                    <p className="mt-1 text-[13px] leading-6 text-[#6b7280]">
+                        {t('كل متجر قائم، وكل متجر يُسجَّل والنظام الجديد غير مفعّل. باقته وخدماتها وأسعارها ونقطة البيع كما كانت، ولا يُطلب منه شراء شيء.')}
+                    </p>
+                </Card>
+                <Card className="p-5">
+                    <p className="text-[14px] font-bold text-[#111]">{t('نظام الإضافات')}</p>
+                    <p className="mt-1 text-[13px] leading-6 text-[#6b7280]">
+                        {t('متجر يُسجَّل بعد التفعيل. باقته بسعرها الجديد، ونقطة البيع وغيرها إضافات تُشترى وتُفوتَر وتتجدّد. والسياسة تُختم يوم التسجيل ولا تتبدّل بعده.')}
+                    </p>
+                </Card>
+            </div>
+
+            {launch.enabled && (
+                <Card className="flex flex-col gap-3 border-[#fecaca] p-5 sm:flex-row sm:items-center sm:justify-between" data-testid="launch-emergency">
+                    <div className="flex min-w-0 items-start gap-3">
+                        <ShieldAlert className="mt-0.5 size-5 shrink-0 text-[#b91c1c]" />
+                        <div className="min-w-0">
+                            <p className="text-[14px] font-bold text-[#111]">{t('إيقاف الطوارئ')}</p>
+                            <p className="mt-0.5 text-[13px] leading-6 text-[#6b7280]">
+                                {t('يعيد التسجيلات الجديدة إلى السياسة السابقة. لا تتغيّر سياسة متجر موجود، ولا تتعطّل استحقاقاته، ولا تتغيّر أسعاره، ولا تُحذف إضافة.')}
+                            </p>
+                        </div>
+                    </div>
+                    <Button variant="outline" className="shrink-0" onClick={stop} data-testid="launch-stop">
+                        <Power />
+                        {t('إيقاف نظام الإضافات')}
+                    </Button>
+                </Card>
+            )}
+
+            {activating && <ActivateDialog launch={launch} plans={plans} currency={currency} onClose={() => setActivating(false)} />}
             {confirmDialog}
         </div>
+    );
+}
+
+/** نافذةُ التفعيل — تلخّص أثرَه، ولا تُرسل قبل موافقةٍ تُؤشَّر بيد صاحب المنصّة */
+function ActivateDialog({ launch, plans, currency, onClose }: { launch: Props['launch']; plans: PlanRow[]; currency: Currency; onClose: () => void }) {
+    const t = useTranslate();
+    const [agreed, setAgreed] = useState(false);
+    const [sending, setSending] = useState(false);
+    const basic = plans.find((p) => p.code === 'basic');
+
+    const activate = () => {
+        setSending(true);
+        router.post(route('super-admin.addons.launch'), { enabled: true, acknowledged: true }, { preserveScroll: true, onFinish: () => setSending(false), onSuccess: onClose });
+    };
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>{t('تفعيل نظام الإضافات للتجار الجدد')}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 px-5 pb-5" data-testid="launch-dialog">
+                    <ul className="space-y-2 text-[13px] leading-6 text-[#4b4b4b]">
+                        <li>
+                            •{' '}
+                            {basic?.addons
+                                ? t('كل متجر يُسجَّل بعد التفعيل يبدأ بالباقة الأساسية بسعرها الجديد :p شهريًا، ونقطة البيع وغيرها إضافات تُشترى.', { p: money(basic.addons.monthly, currency) })
+                                : t('كل متجر يُسجَّل بعد التفعيل يبدأ على نظام الإضافات، ونقطة البيع وغيرها إضافات تُشترى.')}
+                        </li>
+                        <li>• {t('المتاجر الموجودة (:n) تبقى على سياستها وباقاتها وأسعارها وخدماتها كما هي.', { n: launch.counts.legacy + launch.counts.addons })}</li>
+                        <li>• {t('يمكن إيقاف التفعيل لاحقًا من هنا، ولا ينقل الإيقاف أي متجر بين السياستين.')}</li>
+                    </ul>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] px-4 py-3">
+                        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 size-5 rounded accent-[#111]" data-testid="launch-ack" />
+                        <span className="text-[13px] font-medium text-[#374151]">{t('قرأت أثر التفعيل وأوافق على تفعيل نظام الإضافات للتسجيلات الجديدة')}</span>
+                    </label>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <Button type="button" variant="outline" onClick={onClose}>
+                            {t('إلغاء')}
+                        </Button>
+                        <Button type="button" disabled={!agreed} loading={sending} onClick={activate} data-testid="launch-confirm">
+                            {t('تفعيل نظام الإضافات للتجار الجدد')}
+                        </Button>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -664,28 +831,38 @@ function PlanPriceRow({ plan, currency }: { plan: PlanRow; currency: Currency })
     };
 
     return (
-        <form onSubmit={submit} className="flex flex-wrap items-end justify-between gap-3 px-5 py-3" data-testid="plan-price-row">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end" data-testid="plan-price-row">
             <div className="min-w-0 text-[13px]">
                 <p className="font-semibold text-[#111]">{plan.name}</p>
-                <p className="mt-0.5 text-[12px] text-[#6b7280]">
-                    {t('السابقة (لمتاجرها كما هي):')} {money(plan.legacy.monthly, currency)} · {money(plan.legacy.yearly, currency)}
+                <p className="mt-0.5 text-[12px] text-[#6b7280] tabular-nums">
+                    {t('متاجره: :a على السابقة · :b على الإضافات', { a: plan.businesses.legacy, b: plan.businesses.addons })}
                 </p>
+            </div>
+            <div className="min-w-0 rounded-[12px] bg-[#fafafa] px-4 py-2.5 text-[13px]" data-testid="plan-legacy-price">
+                <p className="text-[12px] text-[#6b7280]">{t('السعر الحالي — السياسة السابقة')}</p>
+                <p className="mt-0.5 tabular-nums text-[#111]">
+                    {money(plan.legacy.monthly, currency)} {t('/ شهريًا')} · {money(plan.legacy.yearly, currency)} {t('سنويًا')}
+                </p>
+                <p className="mt-0.5 text-[11.5px] text-[#9ca3af]">{t('يُعدَّل من شاشة الباقات')}</p>
+            </div>
+            <div className="min-w-0">
+                <p className="mb-1 text-[12px] text-[#6b7280]">{t('سعر النظام الجديد')}</p>
+                <div className="flex flex-wrap items-end gap-2">
+                    <Field label="شهري" error={form.errors.monthly}>
+                        <Input type="number" step="0.001" min="0.001" dir="ltr" className="w-28" value={form.data.monthly} onChange={(e) => form.setData('monthly', e.target.value)} />
+                    </Field>
+                    <Field label="سنوي" error={form.errors.yearly}>
+                        <Input type="number" step="0.001" min="0.001" dir="ltr" className="w-28" value={form.data.yearly} onChange={(e) => form.setData('yearly', e.target.value)} />
+                    </Field>
+                    <Button type="submit" size="sm" loading={form.processing}>
+                        {t('اعتماد')}
+                    </Button>
+                </div>
                 {!plan.addons && (
-                    <p className="mt-0.5 text-[12px] text-[#b45309]">
-                        {plan.code === 'basic' ? t('لم يُعتمد — يمنع الإطلاق') : t('لم يُعتمد — تُفوتَر بسعرها السابق')}
+                    <p className="mt-1 text-[12px] text-[#b45309]">
+                        {plan.code === 'basic' ? t('لم يُعتمد — يمنع التفعيل') : t('لم يُعتمد — تُفوتَر بسعرها السابق')}
                     </p>
                 )}
-            </div>
-            <div className="flex items-end gap-2">
-                <Field label="شهري" error={form.errors.monthly}>
-                    <Input type="number" step="0.001" min="0.001" dir="ltr" className="w-28" value={form.data.monthly} onChange={(e) => form.setData('monthly', e.target.value)} />
-                </Field>
-                <Field label="سنوي" error={form.errors.yearly}>
-                    <Input type="number" step="0.001" min="0.001" dir="ltr" className="w-28" value={form.data.yearly} onChange={(e) => form.setData('yearly', e.target.value)} />
-                </Field>
-                <Button type="submit" size="sm" loading={form.processing}>
-                    {t('اعتماد')}
-                </Button>
             </div>
         </form>
     );

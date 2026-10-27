@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Addons\Catalog;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -21,6 +22,20 @@ class SubscriptionAddon extends Model
         'for_sale' => 'boolean',
         'for_new_merchants' => 'boolean',
     ];
+
+    /**
+     * والرمزُ يُولَّد إن لم يُعطَ — ولا يُعطى إلّا من الكود (الترحيلُ وبذوره).
+     *
+     * شاشةُ المنصّة لا ترسله، والمتحكّمُ يُسقطه لو أُرسل: انظر `Catalog::newCode`.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (self $addon) {
+            if (blank($addon->code)) {
+                $addon->code = Catalog::newCode();
+            }
+        });
+    }
 
     /** الباقاتُ وما هي فيها: `eligible` تُشترى، `included` مشمولة */
     public function plans(): BelongsToMany

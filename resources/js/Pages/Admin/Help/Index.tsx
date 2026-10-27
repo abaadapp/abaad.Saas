@@ -24,6 +24,8 @@ interface Props {
     maxFiles: number;
     maxKb: number;
     extensions: string[];
+    /** موضوعٌ جاهز — «تواصل مع أبعاد» من «إضافات متجرك» */
+    draft?: { subject: string; category: string } | null;
 }
 
 const statusTone = (status: string) =>
@@ -36,9 +38,9 @@ const statusTone = (status: string) =>
         closed: 'bg-[#f4f4f5] text-[#52525b]',
     })[status] ?? 'bg-[#f4f4f5] text-[#52525b]';
 
-export default function Help({ conversations, categories, maxFiles, maxKb, extensions }: Props) {
+export default function Help({ conversations, categories, maxFiles, maxKb, extensions, draft = null }: Props) {
     const t = useTranslate();
-    const [open, setOpen] = useState(conversations.data.length === 0);
+    const [open, setOpen] = useState(conversations.data.length === 0 || draft !== null);
 
     return (
         <AdminLayout title="المساعدة والدعم">
@@ -136,6 +138,7 @@ export default function Help({ conversations, categories, maxFiles, maxKb, exten
                         maxFiles={maxFiles}
                         maxKb={maxKb}
                         extensions={extensions}
+                        draft={draft}
                         onClose={conversations.data.length > 0 ? () => setOpen(false) : undefined}
                     />
                 )}
@@ -155,20 +158,22 @@ function NewConversation({
     maxFiles,
     maxKb,
     extensions,
+    draft = null,
     onClose,
 }: {
     categories: { value: string; label: string }[];
     maxFiles: number;
     maxKb: number;
     extensions: string[];
+    draft?: Props['draft'];
     onClose?: () => void;
 }) {
     const t = useTranslate();
     const picker = useRef<HTMLInputElement>(null);
 
     const form = useForm<{ subject: string; category: string; body: string; files: File[] }>({
-        subject: '',
-        category: categories[0]?.value ?? '',
+        subject: draft?.subject ?? '',
+        category: categories.some((c) => c.value === draft?.category) ? (draft?.category ?? '') : (categories[0]?.value ?? ''),
         body: '',
         files: [],
     });

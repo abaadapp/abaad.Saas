@@ -63,6 +63,13 @@ class HelpController extends Controller
             'maxFiles' => Support::MAX_FILES,
             'maxKb' => Support::MAX_KB,
             'extensions' => Support::EXTENSIONS,
+            /*
+             * «تواصل مع أبعاد» من «إضافات متجرك» يفتح نموذجًا موضوعُه جاهز —
+             * ولا يُرسَل شيءٌ قبل أن يكتب التاجرُ رسالته ويضغط «إرسال».
+             */
+            'draft' => $request->query('topic') === 'services'
+                ? ['subject' => __('الاستفسار عن خدمات أبعاد'), 'category' => 'الحساب والاشتراك']
+                : null,
         ]);
     }
 

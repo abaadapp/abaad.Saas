@@ -1,8 +1,24 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, type ReactNode, useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { CheckCircle2, Package, ShoppingCart } from 'lucide-react';
+import {
+    Award,
+    Building2,
+    CheckCircle2,
+    Gift,
+    Globe,
+    Headset,
+    type LucideIcon,
+    MessageCircle,
+    ScanBarcode,
+    ShieldCheck,
+    ShoppingCart,
+    Smartphone,
+    Sparkles,
+    TicketPercent,
+} from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { Badge } from '@/Components/ui/badge';
@@ -16,6 +32,7 @@ import type { Currency, PageProps } from '@/types';
 
 interface MerchantAddon {
     code: string;
+    capability?: string | null;
     name: string;
     description: string | null;
     pricing: 'paid' | 'free' | 'quote';
@@ -25,6 +42,16 @@ interface MerchantAddon {
     yearly_price: number | null;
     active?: boolean;
     pending?: boolean;
+}
+
+/** خدمةٌ في كتالوج السياسة السابقة — تعريفٌ بلا سعرٍ ولا رمز (`AddonViews::showcase`) */
+interface Showcased {
+    id: number;
+    capability: string | null;
+    name: string;
+    description: string | null;
+    state: 'included' | 'learn' | 'not_included';
+    note: string | null;
 }
 
 interface Active {
@@ -53,6 +80,8 @@ interface Order {
 interface Props {
     policy: 'legacy' | 'addons_v1';
     plan: { name: string; price: { monthly: number; yearly: number } | null } | null;
+    subscription?: { status: string | null; live: boolean; ends_at: string | null };
+    showcase?: Showcased[];
     included: MerchantAddon[];
     available: MerchantAddon[];
     active: Active[];
@@ -65,18 +94,45 @@ interface Props {
 
 const CYCLE: Record<string, string> = { monthly: 'شهري', yearly: 'سنوي' };
 
+/** أيقونةُ الخدمة بما تفتحه — والخدمةُ بلا باب بأيقونةٍ عامّة */
+const ICONS: Record<string, LucideIcon> = {
+    pos: ScanBarcode,
+    website: Globe,
+    marketing_tools: TicketPercent,
+    loyalty: Award,
+    whatsapp: MessageCircle,
+    gift_orders: Gift,
+    whatsapp_own_number: Smartphone,
+    branches: Building2,
+};
+
+const SHOWN: Record<Showcased['state'], { label: string; variant: 'success' | 'outline' | 'neutral' }> = {
+    included: { label: 'متوفرة في اشتراكك', variant: 'success' },
+    learn: { label: 'تعرّف على الخدمة', variant: 'outline' },
+    not_included: { label: 'ليست ضمن باقتك الحالية', variant: 'neutral' },
+};
+
+const GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3';
+
 /**
- * «إضافات متجرك» — ما يشمله الاشتراك، وما يُطلب، وما يسري.
+ * «طوّر متجرك مع أبعاد» — ما يشمله الاشتراك، وخدماتُ أبعاد، وما يُطلب ويسري.
  *
- * الأزرارُ ترسم ما يقبله الخادم ولا تقرّر شيئًا: الطلبُ يُرسل رمزَ الإضافة
+ * ═══ سياستان، وصفحةٌ واحدةُ الشكل ═══
+ *
+ *   - **السابقة**: كتالوجٌ تعريفيّ. لا سعرَ ولا زرَّ شراء — ولا يصل من الخادم
+ *     ما يُشترى به أصلًا (`showcase` بلا رمزٍ ولا سعر)، والطلبُ يُردّ هناك.
+ *   - **الإضافات**: كتالوجٌ تجاريّ بأسعاره وطلبه وتجديده.
+ *
+ * والأزرارُ ترسم ما يقبله الخادم ولا تقرّر شيئًا: الطلبُ يُرسل رمزَ الإضافة
  * ودورتَها وعددَها، والسعرُ والشمولُ والسياسةُ تُقرأ هناك.
  */
 export default function SubscriptionAddons() {
     const props = usePage<PageProps<Props>>().props;
-    const { policy, plan, included, available, active, orders, addons_total, may_request, mayBuy, currency } = props;
+    const { policy, plan, subscription, showcase = [], included, available, active, orders, addons_total, may_request, mayBuy, currency } = props;
     const t = useTranslate();
     const [ask, confirmDialog] = useConfirm();
     const [buying, setBuying] = useState<MerchantAddon | null>(null);
+    const legacy = policy !== 'addons_v1';
 
     const toggleRenews = async (row: Active) => {
         const next = !row.renews;
@@ -91,154 +147,223 @@ export default function SubscriptionAddons() {
         }
     };
 
+    const covered = legacy ? showcase.filter((s) => s.state === 'included').map((s) => ({ key: `s${s.id}`, name: s.name })) : included.map((a) => ({ key: a.code, name: a.name }));
+
     return (
         <AdminLayout title="إضافات متجرك">
-            <PageHeader title="إضافات متجرك" subtitle={t('طوّر اشتراكك بالإضافات التي يحتاجها متجرك — ولكلّ إضافةٍ فاتورتُها ودورتُها')} />
+            <PageHeader title="طوّر متجرك مع أبعاد" subtitle={t('اكتشف الخدمات والأدوات التي تساعدك على تطوير نشاطك، مع المحافظة على اشتراكك الحالي ومميزاته.')} />
 
-            {policy === 'legacy' ? (
-                <Card className="p-5 text-[14px] text-[#4b4b4b]" data-testid="legacy-policy-note">
-                    <p className="font-semibold text-[#111]">{t('اشتراكك على سياسته السابقة')}</p>
-                    <p className="mt-1">{t('ميزات باقتك وأسعارها كما هي، ولا يُطلب منك شراء شيءٍ منها. الإضافات للمتاجر التي تُسجَّل بعد إطلاقها — ولأيّ تعديلٍ تواصل مع أبعاد.')}</p>
-                </Card>
-            ) : (
-                <div className="space-y-6">
-                    <Card className="flex flex-wrap items-center justify-between gap-3 p-5" data-testid="plan-summary">
-                        <div>
-                            <p className="text-[13px] text-[#9ca3af]">{t('باقتك')}</p>
-                            <p className="text-[17px] font-bold text-[#111]">{plan?.name ?? '—'}</p>
-                        </div>
-                        <div className="text-end text-[13px] text-[#4b4b4b] tabular-nums">
-                            {plan?.price && (
-                                <p>
-                                    {t('الباقة')}: {money(plan.price.monthly, currency)} {t('/ شهريًا')}
+            <div className="space-y-6">
+                <Card className="p-5 sm:p-6" data-testid={legacy ? 'legacy-policy-note' : 'plan-summary'}>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
+                            <span className="flex size-11 shrink-0 items-center justify-center rounded-[12px] bg-[#ecfdf5] text-[#047857]">
+                                <ShieldCheck className="size-5" />
+                            </span>
+                            <div className="min-w-0">
+                                <p className="text-[13px] text-[#6b7280]">{t(legacy ? 'اشتراكك الحالي محفوظ' : 'باقتك')}</p>
+                                <p className="mt-0.5 text-[18px] font-bold text-[#111]" data-testid="current-plan">
+                                    {plan?.name ?? '—'}
                                 </p>
-                            )}
-                            {(addons_total.monthly > 0 || addons_total.yearly > 0) && (
-                                <p data-testid="addons-total">
-                                    {t('الإضافات السارية')}: {addons_total.monthly > 0 && `${money(addons_total.monthly, currency)} ${t('/ شهريًا')}`}
-                                    {addons_total.monthly > 0 && addons_total.yearly > 0 && ' · '}
-                                    {addons_total.yearly > 0 && `${money(addons_total.yearly, currency)} ${t('سنويًا')}`}
-                                </p>
-                            )}
+                                {subscription?.status && (
+                                    <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-[#6b7280]" data-testid="subscription-status">
+                                        <Badge variant={subscription.live ? 'success' : 'warning'}>{subscription.status}</Badge>
+                                        {subscription.ends_at && <span className="tabular-nums">{t('حتى :d', { d: subscription.ends_at })}</span>}
+                                    </p>
+                                )}
+                            </div>
                         </div>
-                    </Card>
+                        {!legacy && (
+                            <div className="text-[13px] text-[#4b4b4b] tabular-nums sm:text-end">
+                                {plan?.price && (
+                                    <p>
+                                        {t('الباقة')}: {money(plan.price.monthly, currency)} {t('/ شهريًا')}
+                                    </p>
+                                )}
+                                {(addons_total.monthly > 0 || addons_total.yearly > 0) && (
+                                    <p data-testid="addons-total">
+                                        {t('الإضافات السارية')}: {addons_total.monthly > 0 && `${money(addons_total.monthly, currency)} ${t('/ شهريًا')}`}
+                                        {addons_total.monthly > 0 && addons_total.yearly > 0 && ' · '}
+                                        {addons_total.yearly > 0 && `${money(addons_total.yearly, currency)} ${t('سنويًا')}`}
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
-                    {included.length > 0 && (
-                        <section>
-                            <h2 className="mb-2 text-[14px] font-bold text-[#111]">{t('مشمولة في باقتك')}</h2>
+                    {legacy && (
+                        <p className="mt-4 text-[14px] leading-7 text-[#4b4b4b]">
+                            {t('جميع خدمات باقتك وأسعار اشتراكك الحالية مستمرة دون تغيير. يمكنك الاطلاع على خدمات أبعاد الأخرى والتواصل معنا لمعرفة خيارات التطوير.')}
+                        </p>
+                    )}
+
+                    {covered.length > 0 && (
+                        <div className="mt-4 border-t border-[var(--ui-border,#e8e8e8)] pt-4">
+                            <p className="mb-2 text-[13px] font-semibold text-[#111]">{t(legacy ? 'متوفرة في اشتراكك' : 'مشمولة في باقتك')}</p>
                             <div className="flex flex-wrap gap-2" data-testid="included-addons">
-                                {included.map((a) => (
-                                    <Badge key={a.code} variant="success">
+                                {covered.map((a) => (
+                                    <Badge key={a.key} variant="success">
                                         <CheckCircle2 className="me-1 size-3.5" />
                                         {a.name}
                                     </Badge>
                                 ))}
                             </div>
-                        </section>
+                        </div>
                     )}
+                </Card>
 
-                    {active.length > 0 && (
-                        <section>
-                            <h2 className="mb-2 text-[14px] font-bold text-[#111]">{t('إضافاتك السارية')}</h2>
-                            <Card className="divide-y divide-[var(--ui-border,#e8e8e8)]" data-testid="active-addons">
-                                {active.map((row) => (
-                                    <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-[13px]">
-                                        <div>
-                                            <p className="font-semibold text-[#111]">
-                                                {row.addon.name}
-                                                {row.quantity > 1 && <span className="tabular-nums"> × {row.quantity}</span>}
-                                            </p>
-                                            <p className="mt-0.5 text-[12px] text-[#6b7280]">
-                                                {row.ends_at ? t('سارية حتى :d', { d: row.ends_at }) : t('بلا نهاية')}
-                                                {row.source === 'grant' && ` · ${t('منحة من أبعاد')}`}
-                                                {row.source === 'purchase' && row.cycle && ` · ${money(row.unit_price * row.quantity, currency)} ${t(CYCLE[row.cycle])}`}
-                                            </p>
-                                        </div>
-                                        {mayBuy && row.source === 'purchase' && row.cycle && (
-                                            <Button size="sm" variant="outline" onClick={() => toggleRenews(row)}>
-                                                {t(row.renews ? 'إيقاف التجديد' : 'إعادة التجديد')}
-                                            </Button>
-                                        )}
-                                    </div>
-                                ))}
-                            </Card>
-                        </section>
-                    )}
-
-                    {orders.length > 0 && (
-                        <section>
-                            <h2 className="mb-2 text-[14px] font-bold text-[#111]">{t('طلباتك')}</h2>
-                            <Card className="divide-y divide-[var(--ui-border,#e8e8e8)]" data-testid="addon-requests">
-                                {orders.map((o) => (
-                                    <div key={o.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-[13px]">
-                                        <p className="font-semibold text-[#111]">
-                                            {o.addon.name}
-                                            {o.quantity > 1 && <span className="tabular-nums"> × {o.quantity}</span>}
-                                            {o.kind === 'renewal' && <span className="ms-1 font-normal text-[#6b7280]">({t('تجديد')})</span>}
-                                        </p>
-                                        <span className="text-[12px] text-[#6b7280]">
-                                            {o.status === 'requested'
-                                                ? o.amount === null
-                                                    ? t('بانتظار عرض السعر من أبعاد')
-                                                    : t('بانتظار إصدار الفاتورة')
-                                                : t('فاتورة :n بانتظار السداد — :a', { n: o.invoice?.number ?? '—', a: money(o.amount, currency) })}
-                                        </span>
-                                    </div>
-                                ))}
-                            </Card>
-                        </section>
-                    )}
-
+                {!legacy && active.length > 0 && (
                     <section>
-                        <h2 className="mb-2 text-[14px] font-bold text-[#111]">{t('إضافات متاحة لباقتك')}</h2>
-                        {available.length === 0 ? (
-                            <p className="text-[13px] text-[#9ca3af]">{t('لا إضافات أخرى لباقتك الآن.')}</p>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2" data-testid="available-addons">
-                                {available.map((a) => (
-                                    <Card key={a.code} className="flex flex-col gap-2 p-5">
-                                        <div className="flex items-start gap-3">
-                                            <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-[#f2f2f0] text-[#4b4b4b]">
-                                                <Package className="size-5" />
-                                            </span>
-                                            <div className="min-w-0">
-                                                <p className="font-bold text-[#111]">{a.name}</p>
-                                                {a.description && <p className="mt-0.5 text-[12px] text-[#6b7280]">{a.description}</p>}
-                                            </div>
-                                        </div>
-                                        <p className="text-[13px] tabular-nums text-[#111]">
-                                            {a.pricing === 'quote'
-                                                ? t('حسب الطلب')
-                                                : a.pricing === 'free'
-                                                  ? t('مجانية')
-                                                  : `${money(a.monthly_price, currency)} ${t('/ شهريًا')} · ${money(a.yearly_price, currency)} ${t('سنويًا')}`}
-                                            {a.counted && <span className="text-[#6b7280]"> · {t(a.unit === 'branch' ? 'لكل فرع' : 'لكل وحدة')}</span>}
+                        <h2 className="mb-2 text-[15px] font-bold text-[#111]">{t('إضافاتك السارية')}</h2>
+                        <Card className="divide-y divide-[var(--ui-border,#e8e8e8)]" data-testid="active-addons">
+                            {active.map((row) => (
+                                <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-[13px]">
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-[#111]">
+                                            {row.addon.name}
+                                            {row.quantity > 1 && <span className="tabular-nums"> × {row.quantity}</span>}
                                         </p>
-                                        <div className="mt-auto flex justify-end">
-                                            {a.active ? (
-                                                <Badge variant="success">{t('مفعّلة')}</Badge>
-                                            ) : a.pending ? (
-                                                <Badge variant="warning">{t('طلبك قيد المعالجة')}</Badge>
-                                            ) : may_request && mayBuy ? (
-                                                <Button size="sm" onClick={() => setBuying(a)} data-testid={`request-${a.code}`}>
-                                                    <ShoppingCart />
-                                                    {t(a.pricing === 'quote' ? 'اطلب عرض سعر' : 'اطلب الإضافة')}
-                                                </Button>
-                                            ) : (
-                                                <span className="text-[12px] text-[#9ca3af]">{t('يطلبها صاحب النشاط')}</span>
-                                            )}
+                                        <p className="mt-0.5 text-[12px] text-[#6b7280]">
+                                            {row.ends_at ? t('سارية حتى :d', { d: row.ends_at }) : t('بلا نهاية')}
+                                            {row.source === 'grant' && ` · ${t('منحة من أبعاد')}`}
+                                            {row.source === 'purchase' && row.cycle && ` · ${money(row.unit_price * row.quantity, currency)} ${t(CYCLE[row.cycle])}`}
+                                            {row.source === 'purchase' && row.cycle && !row.renews && ` · ${t('التجديد موقوف')}`}
+                                        </p>
+                                    </div>
+                                    {mayBuy && row.source === 'purchase' && row.cycle && (
+                                        <Button size="sm" variant="outline" onClick={() => toggleRenews(row)}>
+                                            {t(row.renews ? 'إيقاف التجديد' : 'إعادة التجديد')}
+                                        </Button>
+                                    )}
+                                </div>
+                            ))}
+                        </Card>
+                    </section>
+                )}
+
+                {!legacy && orders.length > 0 && (
+                    <section>
+                        <h2 className="mb-2 text-[15px] font-bold text-[#111]">{t('طلباتك')}</h2>
+                        <Card className="divide-y divide-[var(--ui-border,#e8e8e8)]" data-testid="addon-requests">
+                            {orders.map((o) => (
+                                <div key={o.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-[13px]">
+                                    <p className="font-semibold text-[#111]">
+                                        {o.addon.name}
+                                        {o.quantity > 1 && <span className="tabular-nums"> × {o.quantity}</span>}
+                                        {o.kind === 'renewal' && <span className="ms-1 font-normal text-[#6b7280]">({t('تجديد')})</span>}
+                                    </p>
+                                    <span className="text-[12px] text-[#6b7280]">
+                                        {o.status === 'requested'
+                                            ? o.amount === null
+                                                ? t('بانتظار عرض السعر من أبعاد')
+                                                : t('بانتظار إصدار الفاتورة')
+                                            : t('فاتورة :n بانتظار السداد — :a', { n: o.invoice?.number ?? '—', a: money(o.amount, currency) })}
+                                    </span>
+                                </div>
+                            ))}
+                        </Card>
+                    </section>
+                )}
+
+                <section>
+                    <h2 className="mb-1 text-[15px] font-bold text-[#111]">{t(legacy ? 'خدمات أبعاد' : 'إضافات متاحة لباقتك')}</h2>
+                    {legacy && <p className="mb-3 text-[13px] text-[#6b7280]">{t('تعرّف على ما تقدّمه أبعاد لمتجرك — والاستفسار لا يغيّر اشتراكك.')}</p>}
+
+                    {legacy ? (
+                        showcase.length === 0 ? (
+                            <Card className="px-5 py-10 text-center text-[13px] text-[#6b7280]" data-testid="showcase-empty">
+                                {t('لا خدمات معروضة الآن.')}
+                            </Card>
+                        ) : (
+                            <div className={GRID} data-testid="services-showcase">
+                                {showcase.map((s) => (
+                                    <ServiceCard key={s.id} capability={s.capability} name={s.name} description={s.description} testId="service-card">
+                                        {s.note && <p className="text-[12px] text-[#6b7280]">{s.note}</p>}
+                                        <div className="mt-auto pt-1">
+                                            <Badge variant={SHOWN[s.state].variant} data-testid="service-state" data-state={s.state}>
+                                                {s.state === 'included' && <CheckCircle2 className="me-1 size-3.5" />}
+                                                {t(SHOWN[s.state].label)}
+                                            </Badge>
                                         </div>
-                                    </Card>
+                                    </ServiceCard>
                                 ))}
                             </div>
-                        )}
-                    </section>
-                </div>
-            )}
+                        )
+                    ) : available.length === 0 ? (
+                        <Card className="px-5 py-10 text-center text-[13px] text-[#6b7280]">{t('لا إضافات أخرى لباقتك الآن.')}</Card>
+                    ) : (
+                        <div className={GRID} data-testid="available-addons">
+                            {available.map((a) => (
+                                <ServiceCard key={a.code} capability={a.capability ?? null} name={a.name} description={a.description}>
+                                    <p className="text-[13px] tabular-nums text-[#111]">
+                                        {a.pricing === 'quote'
+                                            ? t('حسب الطلب')
+                                            : a.pricing === 'free'
+                                              ? t('مجانية')
+                                              : `${money(a.monthly_price, currency)} ${t('/ شهريًا')} · ${money(a.yearly_price, currency)} ${t('سنويًا')}`}
+                                        {a.counted && <span className="text-[#6b7280]"> · {t(a.unit === 'branch' ? 'لكل فرع' : 'لكل وحدة')}</span>}
+                                    </p>
+                                    <div className="mt-auto flex justify-end pt-1">
+                                        {a.active ? (
+                                            <Badge variant="success">{t('مفعّلة')}</Badge>
+                                        ) : a.pending ? (
+                                            <Badge variant="warning">{t('طلبك قيد المعالجة')}</Badge>
+                                        ) : may_request && mayBuy ? (
+                                            <Button size="sm" onClick={() => setBuying(a)} data-testid={`request-${a.code}`}>
+                                                <ShoppingCart />
+                                                {t(a.pricing === 'quote' ? 'اطلب عرض سعر' : 'اطلب الإضافة')}
+                                            </Button>
+                                        ) : (
+                                            <span className="text-[12px] text-[#9ca3af]">{t('يطلبها صاحب النشاط')}</span>
+                                        )}
+                                    </div>
+                                </ServiceCard>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                <Card className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6" data-testid="contact-abaad">
+                    <div className="flex min-w-0 items-start gap-3">
+                        <span className="flex size-11 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f3ff] text-[#6d28d9]">
+                            <Headset className="size-5" />
+                        </span>
+                        <div className="min-w-0">
+                            <p className="text-[15px] font-bold text-[#111]">{t('تحتاج خدمة إضافية لمتجرك؟')}</p>
+                            <p className="mt-0.5 text-[13px] text-[#6b7280]">{t('فريق أبعاد يساعدك في معرفة خيارات التطوير المناسبة لنشاطك التجاري.')}</p>
+                        </div>
+                    </div>
+                    <Button asChild className="w-full sm:w-auto">
+                        <SmartLink routeName="admin.help.index" href={route('admin.help.index', { topic: 'services' })} data-testid="contact-abaad-button">
+                            {t('تواصل مع أبعاد')}
+                        </SmartLink>
+                    </Button>
+                </Card>
+            </div>
 
             {buying && <RequestDialog addon={buying} currency={currency} onClose={() => setBuying(null)} />}
             {confirmDialog}
         </AdminLayout>
+    );
+}
+
+/** بطاقةُ خدمة — أيقونتُها واسمُها ووصفُها، وما تحتها لكلّ سياسةٍ ما يخصّها */
+function ServiceCard({ capability, name, description, testId, children }: { capability: string | null; name: string; description: string | null; testId?: string; children: ReactNode }) {
+    const Icon = (capability && ICONS[capability]) || Sparkles;
+
+    return (
+        <Card className="flex h-full min-w-0 flex-col gap-3 p-5" data-testid={testId}>
+            <div className="flex items-start gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-[#f2f2f0] text-[#4b4b4b]">
+                    <Icon className="size-5" />
+                </span>
+                <div className="min-w-0">
+                    <p className="font-bold leading-6 break-words text-[#111]">{name}</p>
+                    {description && <p className="mt-1 text-[13px] leading-6 text-[#6b7280]">{description}</p>}
+                </div>
+            </div>
+            {children}
+        </Card>
     );
 }
 

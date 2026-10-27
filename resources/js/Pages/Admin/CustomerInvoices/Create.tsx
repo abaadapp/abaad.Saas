@@ -35,6 +35,8 @@ import CustomerInvoicePreparationFields, {
 interface CustomerRow {
     id: number;
     name: string;
+    /** اسمُه الإنجليزيّ — يُبحث به كما يُبحث بالاسم */
+    name_en?: string | null;
     customer_type: string | null;
     legal_name: string | null;
     tax_number: string | null;
@@ -50,6 +52,37 @@ interface CustomerRow {
     contact_person: string | null;
     payment_terms_days: number | null;
     allow_credit_sales: boolean;
+    /** مفاتيحُ رقمه مطبَّعةً في الخادم (`Customers::phoneKeys`) — الهاتفُ ورقمُ التواصل */
+    phone_keys?: string[];
+}
+
+/**
+ * ما كتبه الباحثُ أرقامًا — أو `null` إن لم يكن رقمَ هاتف.
+ *
+ * قاعدةُ `Customers::phoneNeedle` نفسُها: نصٌّ فيه حرفٌ ليس هاتفًا، و«00» تسقط،
+ * وأقلُّ من ثلاث خانات لا يُبحث به. والرقمُ المخزَّن طُبِّع في الخادم
+ * (`phone_keys`)، فلا يُعاد تطبيعُه هنا: «+968 9123 4567» و«91234567» و«٩١٢٣»
+ * كلُّها أرقامٌ داخل مفتاحه.
+ */
+export function phoneNeedle(q: string): string | null {
+    const western = fold(q);
+    if (!/^[\d\s+().\/-]+$/.test(western)) return null;
+
+    let digits = western.replace(/\D+/g, '');
+    if (digits.startsWith('00')) digits = digits.slice(2);
+
+    return digits.length >= 3 ? digits : null;
+}
+
+/** هل يطابق العميلُ ما كُتب — باسمه العربيّ أو الإنجليزيّ، أو برقمه */
+export function customerMatches(c: Pick<CustomerRow, 'name' | 'name_en' | 'phone_keys'>, q: string): boolean {
+    const needle = fold(q);
+    if (needle === '') return true;
+    if (fold(c.name).includes(needle) || fold(c.name_en ?? '').includes(needle)) return true;
+
+    const digits = phoneNeedle(q);
+
+    return digits !== null && (c.phone_keys ?? []).some((k) => k.includes(digits));
 }
 
 interface ProductRow {
@@ -2001,11 +2034,8 @@ function CustomerPicker({
         return null;
     }
 
-    const needle = q.trim().toLowerCase();
-    const shown = (needle === '' ? customers : customers.filter((c) => c.name.toLowerCase().includes(needle))).slice(
-        0,
-        50,
-    );
+    // بالاسم أو بالرقم — ولا يُنشأ عميلٌ من البحث: «عميل جديد» زرٌّ مستقلّ
+    const shown = customers.filter((c) => customerMatches(c, q)).slice(0, 50);
 
     return (
         <div className="relative">
@@ -2017,7 +2047,7 @@ function CustomerPicker({
                 }}
                 onFocus={() => setOpen(true)}
                 onBlur={() => window.setTimeout(() => setOpen(false), 150)}
-                placeholder={t('ابحث عن عميل أو اختر من القائمة')}
+                placeholder={t('ابحث باسم العميل أو رقم هاتفه، أو اختر من القائمة')}
             />
 
             {open && (
@@ -2037,10 +2067,16 @@ function CustomerPicker({
                             {c.customer_type && c.customer_type !== 'فرد' && (
                                 <span className="ms-2 text-[11px] text-[#9ca3af]">{c.customer_type}</span>
                             )}
+                            {/* والرقمُ معه دائمًا — عميلان باسمٍ واحد يفرّقهما رقمُهما */}
+                            {(c.phone || c.contact_phone) && (
+                                <span className="block text-[11px] text-[#6b7280]" data-testid="picker-phone">
+                                    <bdi dir="ltr">{c.phone || c.contact_phone}</bdi>
+                                </span>
+                            )}
                         </button>
                     ))}
                     {shown.length === 0 && (
-                        <p className="p-3 text-[12px] text-[#9ca3af]">{t('لا عميل بهذا الاسم')}</p>
+                        <p className="p-3 text-[12px] text-[#9ca3af]">{t('لا عميل بهذا الاسم أو الرقم')}</p>
                     )}
                 </div>
             )}

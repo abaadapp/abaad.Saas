@@ -16,6 +16,8 @@ interface Row {
     /** فارغٌ للمسودّة: الرقمُ يُقطع عند الإصدار */
     number: string | null;
     customer: string;
+    /** هاتفُ العميل أو رقمُ التواصل — تحت اسمه، يفرّق بين اسمين متشابهين */
+    customer_phone?: string | null;
     customer_id: number | null;
     status: string;
     state: string;
@@ -89,7 +91,20 @@ export default function CustomerInvoicesIndex({
                 </>
             ),
         },
-        { key: 'customer', header: 'العميل', cell: (i) => i.customer },
+        {
+            key: 'customer',
+            header: 'العميل',
+            cell: (i) => (
+                <>
+                    {i.customer}
+                    {i.customer_phone && (
+                        <div className="text-[11px] text-[#9ca3af]" data-testid="invoice-customer-phone">
+                            <bdi dir="ltr">{i.customer_phone}</bdi>
+                        </div>
+                    )}
+                </>
+            ),
+        },
         {
             key: 'issued_at',
             header: 'تاريخ الإصدار',
@@ -197,7 +212,7 @@ export default function CustomerInvoicesIndex({
                 rows={invoices}
                 columns={columns}
                 rowKey={(i) => i.id}
-                searchPlaceholder="رقم الفاتورة أو أمر الشراء أو العميل"
+                searchPlaceholder="ابحث برقم الفاتورة أو اسم العميل أو رقم هاتفه أو أمر الشراء"
                 searchable={() => ''}
                 filters={tableFilters}
                 empty="لا فواتير بعد"

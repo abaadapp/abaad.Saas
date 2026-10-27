@@ -135,10 +135,17 @@ class CustomerInvoiceController extends Controller
             // والمعاملُ من `Search::like` لا مكتوبًا بيده: `like` على Postgres
             // حسّاسٌ لحالة الأحرف و`ilike` ليس كذلك — ومن كتبه بيده أصاب في
             // شاشةٍ وأخطأ في أخرى
+            /*
+             * وبرقم هاتف العميل أيضًا — كاملًا أو جزءًا، بمفتاح عُمان أو بدونه،
+             * وبالهاتف أو رقم التواصل. والرقمُ يُطابَق مطبَّعًا لا كما كُتب
+             * (`Customers::idsByPhone`)، ومن عملاء هذا المتجر وحده.
+             */
             ->when($request->string('q')->toString(), fn ($q, $s) => $q->where(
                 fn ($w) => $w->where('number', Search::like(), "%{$s}%")
                     ->orWhere('po_number', Search::like(), "%{$s}%")
-                    ->orWhereHas('customer', fn ($c) => $c->where('name', Search::like(), "%{$s}%"))
+                    ->orWhereHas('customer', fn ($c) => $c->where('name', Search::like(), "%{$s}%")
+                        ->orWhere('name_en', Search::like(), "%{$s}%"))
+                    ->when(Customers::idsByPhone($bid, $s), fn ($w, $ids) => $w->orWhereIn('customer_id', $ids))
             ))
             ->when($request->integer('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
             // حالُ المستند: مسودة / صادرة / ملغاة
@@ -181,6 +188,8 @@ class CustomerInvoiceController extends Controller
             'id' => $i->id,
             'number' => $i->number,
             'customer' => $i->customer?->name ?? $i->customer_name ?? '—',
+            // ورقمُه تحت اسمه — يفرّق بين عميلين باسمٍ واحد
+            'customer_phone' => $i->customer?->phone ?: ($i->customer?->contact_phone ?: null),
             'customer_id' => $i->customer_id,
             'status' => $i->status,
             'state' => $i->paymentState(),
@@ -533,11 +542,17 @@ class CustomerInvoiceController extends Controller
         $bid = $this->bid();
 
         return Inertia::render('Admin/CustomerInvoices/Create', [
+            /*
+             * ومع كلّ عميلٍ مفاتيحُ رقمه (`Customers::phoneKeys`) — يُبحث بها في
+             * الشاشة برقمٍ كُتب بأيّ شكل، والتطبيعُ هنا لا مكتوبًا ثانيةً هناك.
+             */
             'customers' => Customer::where('business_id', $bid)->orderBy('name')->get([
-                'id', 'name', 'customer_type', 'legal_name', 'tax_number',
+                'id', 'name', 'name_en', 'customer_type', 'legal_name', 'tax_number',
                 'commercial_registration', 'phone', 'contact_phone', 'email', 'contact_email',
                 'address', 'billing_address', 'department', 'customer_reference',
                 'contact_person', 'payment_terms_days', 'allow_credit_sales',
+            ])->map(fn (Customer $c) => $c->toArray() + [
+                'phone_keys' => Customers::phoneKeys($c->phone, $c->contact_phone),
             ])->all(),
             /*
              * والكتالوج للاختيار لا للإلزام: بندٌ مخصَّصٌ يُكتب بيده كذلك.

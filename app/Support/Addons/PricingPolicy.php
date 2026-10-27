@@ -196,7 +196,17 @@ final class PricingPolicy
      */
     public static function planPrice(Business $business, string $cycle): float
     {
-        $plan = $business->plan;
+        return self::planPriceFor($business, $business->plan, $cycle);
+    }
+
+    /**
+     * سعرُ دورةٍ من باقةٍ بعينها لهذا المتجر — بسياسته هو.
+     *
+     * لترقيةٍ تُفوتَر قبل أن ينتقل المتجرُ إلى باقتها (`Billing::upgrade`)، ولمتجرٍ
+     * يُنشأ من لوحة المنصّة فيُعرض سعرُه قبل حفظه.
+     */
+    public static function planPriceFor(Business $business, ?Plan $plan, string $cycle): float
+    {
         if (! $plan) {
             return 0.0;
         }

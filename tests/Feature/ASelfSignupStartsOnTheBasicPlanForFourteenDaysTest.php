@@ -185,10 +185,11 @@ class ASelfSignupStartsOnTheBasicPlanForFourteenDaysTest extends TestCase
 
     /* ═══════════════ ٢ · زرُّ المنصّة كما كان ═══════════════ */
 
-    public function test_a_platform_created_business_keeps_its_own_plan_and_trial_and_is_stamped_manual(): void
+    public function test_a_platform_created_trial_is_on_basic_and_another_plan_needs_a_dated_reasoned_grant(): void
     {
+        // التجربةُ من لوحة المنصّة كالتجربة الذاتيّة: الأساسيّةُ بمدّة الإعداد — لا الباقةُ الافتراضيّة
         $this->actingAs($this->superAdmin())->post(route('super-admin.businesses.store'), [
-            'name' => 'متجر يدوي', 'type' => 'عام', 'status' => 'نشط',
+            'name' => 'متجر يدوي', 'type' => 'عام', 'status' => 'نشط', 'subscription_mode' => 'trial',
             'login_username' => 'manualshop', 'login_password' => 'secret123',
             // ولا يُختم من الطلب هنا أيضًا
             'registration_source' => Business::SOURCE_SELF_SIGNUP,
@@ -197,9 +198,24 @@ class ASelfSignupStartsOnTheBasicPlanForFourteenDaysTest extends TestCase
         $business = Business::where('name', 'متجر يدوي')->firstOrFail();
 
         $this->assertSame(Business::SOURCE_PLATFORM_MANUAL, $business->registration_source);
-        // باقتُه ومدّتُه من الإعدادين كما كانتا — لا الأساسيّة ولا الأربعة عشر
-        $this->assertSame($this->pro->id, (int) $business->plan_id);
+        $this->assertSame($this->basic->id, (int) $business->plan_id);
         $this->assertSame(now()->addDays(30)->toDateString(), $business->ends_at->toDateString());
+
+        // وباقةٌ غيرُها بلا سداد: منحةٌ بتاريخها وسببها — وبلا سببٍ لا تُفتح
+        $this->post(route('super-admin.businesses.store'), [
+            'name' => 'متجر ممنوح', 'type' => 'عام', 'status' => 'نشط', 'subscription_mode' => 'grant',
+            'plan_id' => $this->pro->id, 'grant_until' => now()->addDays(10)->toDateString(),
+            'login_username' => 'grantshop', 'login_password' => 'secret123',
+        ])->assertSessionHasErrors('grant_reason');
+        $this->assertNull(Business::where('name', 'متجر ممنوح')->first());
+
+        $this->post(route('super-admin.businesses.store'), [
+            'name' => 'متجر ممنوح', 'type' => 'عام', 'status' => 'نشط', 'subscription_mode' => 'grant',
+            'plan_id' => $this->pro->id, 'grant_until' => now()->addDays(10)->toDateString(), 'grant_reason' => 'عرض افتتاح متّفق عليه',
+            'login_username' => 'grantshop', 'login_password' => 'secret123',
+        ])->assertSessionHasNoErrors();
+        $granted = Business::where('name', 'متجر ممنوح')->firstOrFail();
+        $this->assertSame([$this->pro->id, now()->addDays(10)->toDateString()], [(int) $granted->plan_id, $granted->ends_at->toDateString()]);
     }
 
     public function test_editing_a_business_does_not_restamp_it(): void

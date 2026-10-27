@@ -27,6 +27,8 @@ class Tenancy
 
     public const SUBSCRIPTION_EXPIRED = 'subscription_expired';
 
+    public const AWAITING_PAYMENT = 'awaiting_payment';
+
     /** حالات الحساب التي تعني «موقوف» — الواجهة تكتبها بأكثر من لفظ */
     private const BLOCKED_USER = ['موقوف', 'معطل', 'معطّل'];
 
@@ -72,6 +74,11 @@ class Tenancy
 
         if (in_array((string) $business->status, self::BLOCKED_BUSINESS, true)) {
             return self::BUSINESS_DISABLED;
+        }
+
+        // اشتراكٌ مدفوعٌ فُتح ولم تُسدَّد فاتورتُه — يُفتح بسدادها لا قبله
+        if ((string) $business->status === Business::AWAITING_PAYMENT) {
+            return self::AWAITING_PAYMENT;
         }
 
         // بعد المهلة لا عندها: المهلة موجودة كي لا يقف متجرٌ لتأخّر حوالةٍ يومًا
@@ -251,6 +258,7 @@ class Tenancy
             self::USER_REMOVED => __('لم يعد هذا الحساب موجودًا. راجع صاحب النشاط.'),
             self::BUSINESS_DISABLED => __('حساب المتجر معطَّل. تواصل مع الدعم.'),
             self::SUBSCRIPTION_EXPIRED => __('انتهى اشتراك المتجر. جدّده لمتابعة العمل.'),
+            self::AWAITING_PAYMENT => __('اشتراك متجرك بانتظار السداد — يُفتح حسابك حين يُسجَّل سداد فاتورته. تواصل مع أبعاد على واتساب 71141624.'),
             default => __('لا يمكن الدخول الآن.'),
         };
     }

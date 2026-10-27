@@ -108,8 +108,9 @@ export default function Plans() {
                                 </span>
                                 <span className="ms-1 text-sm text-[#9ca3af]">{t('/ شهريًا')}</span>
                             </div>
-                            <p className="mb-5 text-sm text-[#6b7280]">
-                                {t('أو')} {money(plan.yearly, currency)} {t('سنويًا')}
+                            {/* ونصفُ السنة ستّةُ أشهرٍ بسعر الشهر — بلا عمودٍ ولا خصم (`PricingPolicy::planPrice`) */}
+                            <p className="mb-5 text-sm text-[#6b7280]" data-testid={`plan-${plan.id}-cycles`}>
+                                {money(Math.round(plan.monthly * 6 * 1000) / 1000, currency)} {t('نصف سنويًا')} · {money(plan.yearly, currency)} {t('سنويًا')}
                             </p>
 
                             <ul className="mb-6 flex-1 space-y-3">

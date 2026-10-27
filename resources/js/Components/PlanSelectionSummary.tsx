@@ -14,6 +14,8 @@ export interface PlanOption {
     label: string;
     value: number;
     monthly: number;
+    /** ستّةُ أشهرٍ بسعر الشهر ستَّ مرّات — بلا خصم (وغيابُه يُحسب كذلك) */
+    semiannual?: number;
     yearly: number;
     /** ما تعرضه الباقة سطرًا سطرًا — كما كتبه مديرُ المنصّة في «تعديل الباقة» */
     features: string[];
@@ -56,6 +58,9 @@ export default function PlanSelectionSummary({ plan }: { plan: PlanOption | null
 
             <p className="mt-1 text-[13px] tabular-nums text-[#111]">
                 {money(plan.monthly, currency)} <span className="text-[#6b7280]">/ {t('شهريًا')}</span>
+            </p>
+            <p className="text-[13px] tabular-nums text-[#111]">
+                {money(plan.semiannual ?? Math.round(plan.monthly * 6 * 1000) / 1000, currency)} <span className="text-[#6b7280]">/ {t('نصف سنويًا')}</span>
             </p>
             <p className="text-[13px] tabular-nums text-[#111]">
                 {money(plan.yearly, currency)} <span className="text-[#6b7280]">/ {t('سنويًا')}</span>

@@ -13,6 +13,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
+import Field, { Select } from '@/Components/Field';
 import AccountCard from './partials/AccountCard';
 import { BusinessDocuments, type BusinessDocumentsData } from './partials/BusinessDocuments';
 import WhatsAppCard, { type BusinessWhatsApp } from './partials/WhatsAppCard';
@@ -69,7 +70,9 @@ export interface Renewal {
     endsAt: string | null;
     status: string;
     /** فاتورةُ التجديد التي تنتظر سدادها — والاشتراكُ كما هو حتى تُسدَّد */
-    pending: { invoice_id: number; number: string | null; cycle: string | null; amount: number; issued: string | null } | null;
+    pending: { invoice_id: number; number: string | null; cycle: string | null; amount: number; issued: string | null; upgrade_to?: string | null } | null;
+    /** باقاتٌ يُرقّى إليها في الحساب نفسِه — بسعرها في سياسته، وتسري بسداد فاتورتها */
+    upgrades?: { id: number; name: string; prices: { monthly: number; semiannual: number; yearly: number } | null }[];
     unpaid: { id: number; number: string; amount: number; date: string | null; kind: string }[];
 }
 
@@ -715,6 +718,63 @@ export function DangerZone({ name, id, run }: { name: string; id: number; run: P
  * `Billing::renew`)، ويُقال أيُّ فاتورةٍ تنتظر وبكم. والخادمُ يرفض الثانيةَ على
  * أيّ حال؛ إطفاءُ الزرّ راحةٌ لا حراسة.
  */
+/**
+ * ترقيةُ المتجر في حسابه نفسِه — تجربةٌ إلى اشتراكٍ مدفوع، أو باقةٌ إلى أخرى.
+ *
+ * تصدر فاتورةُ الباقة الجديدة بسعرها في سياسة المتجر، ويبقى المتجرُ على باقته حتى
+ * يُسجَّل سدادُها؛ ثمّ ينتقل ببياناته كلّها، ودورتُه من يوم السداد (`Billing::upgrade`).
+ */
+export function UpgradeForm({ businessId, upgrades, disabled, currency }: { businessId: number; upgrades: NonNullable<Renewal['upgrades']>; disabled: boolean; currency: Currency }) {
+    const t = useTranslate();
+    const [planId, setPlanId] = useState('');
+    const [cycle, setCycle] = useState<'monthly' | 'semiannual' | 'yearly'>('monthly');
+    const [asking, setAsking] = useState(false);
+    const plan = upgrades.find((p) => String(p.id) === planId);
+    const price = plan?.prices ? plan.prices[cycle] : null;
+
+    return (
+        <div className="mt-3 rounded-[12px] border border-[var(--ui-border,#e8e8e8)] p-4" data-testid="upgrade-form">
+            <p className="text-[13px] font-bold text-[#111]">{t('ترقية الباقة في الحساب نفسه')}</p>
+            <p className="mt-0.5 text-[12px] text-[#6b7280]">{t('تصدر فاتورة الباقة الجديدة، ويبقى المتجر على باقته وبياناته حتى يُسجَّل سدادها.')}</p>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+                <Field label="الباقة الجديدة">
+                    <Select
+                        value={planId}
+                        placeholder="اختر"
+                        onChange={(e) => { setPlanId(e.target.value); setAsking(false); }}
+                        options={upgrades.map((p) => ({ value: String(p.id), label: p.name }))}
+                    />
+                </Field>
+                <Field label="المدة">
+                    <Select
+                        value={cycle}
+                        onChange={(e) => { setCycle(e.target.value as typeof cycle); setAsking(false); }}
+                        options={[
+                            { value: 'monthly', label: 'شهري' },
+                            { value: 'semiannual', label: 'نصف سنوي' },
+                            { value: 'yearly', label: 'سنوي' },
+                        ]}
+                    />
+                </Field>
+                {!asking ? (
+                    <Button variant="outline" disabled={disabled || !plan || price === null} onClick={() => setAsking(true)} data-testid="upgrade-ask">
+                        {t('إصدار فاتورة الترقية')}
+                    </Button>
+                ) : (
+                    <Button
+                        data-testid="upgrade-confirm"
+                        onClick={() => router.post(route('super-admin.businesses.upgrade', businessId), { plan_id: planId, cycle }, { preserveScroll: true, onFinish: () => setAsking(false) })}
+                    >
+                        {t('تأكيد — :p بمبلغ :a', { p: plan?.name ?? '', a: money(price ?? 0, currency) })}
+                    </Button>
+                )}
+            </div>
+            {plan && price === null && <p className="mt-2 text-[12px] text-[#b45309]">{t('سعر هذه الباقة في سياسة المتجر لم يُعتمد بعد.')}</p>}
+            {disabled && <p className="mt-2 text-[12px] text-[#6b7280]">{t('للمتجر فاتورة اشتراك بانتظار السداد — تُسدَّد أو تُلغى أوّلًا.')}</p>}
+        </div>
+    );
+}
+
 export function RenewalPanel({ businessId, renewal, currency }: { businessId: number; renewal: Renewal; currency: Currency }) {
     const t = useTranslate();
 
@@ -759,11 +819,16 @@ export function RenewalPanel({ businessId, renewal, currency }: { businessId: nu
                 ))}
             </div>
 
+            {(renewal.upgrades?.length ?? 0) > 0 && (
+                <UpgradeForm businessId={businessId} upgrades={renewal.upgrades ?? []} disabled={renewal.pending !== null} currency={currency} />
+            )}
+
             {renewal.pending && (
                 <div className="mt-3 flex flex-wrap items-center gap-3 rounded-[12px] border border-[#fde68a] bg-[#fffbeb] p-4 text-sm text-[#92400e]">
                     <Badge status="بانتظار السداد" />
                     <span>
-                        {t('تجديد')} {t(CYCLE_LABEL[renewal.pending.cycle ?? 'monthly'] ?? 'شهر')} ·{' '}
+                        {renewal.pending.upgrade_to ? t('ترقية إلى «:p»', { p: renewal.pending.upgrade_to }) : t('تجديد')}{' '}
+                        {t(CYCLE_LABEL[renewal.pending.cycle ?? 'monthly'] ?? 'شهر')} ·{' '}
                         <span className="font-mono">{renewal.pending.number}</span> ·{' '}
                         {money(renewal.pending.amount, currency)}
                     </span>

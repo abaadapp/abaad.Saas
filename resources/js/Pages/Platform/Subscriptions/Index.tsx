@@ -13,6 +13,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
+import AdminGrantField from '@/Pages/Platform/Businesses/partials/AdminGrantField';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency, PageProps } from '@/types';
@@ -28,6 +29,8 @@ interface Subscription {
     amount: number;
     payment: string;
     status: string;
+    /** يُسأل متجرُه عن منحةٍ إداريّة — `AdminGrants::asked`، والغائبُ لا */
+    grantable?: boolean;
 }
 
 interface Props {
@@ -50,6 +53,7 @@ export default function SubscriptionsIndex() {
         amount: '',
         payment_status: 'غير مدفوع',
         status: 'نشط',
+        grant_reason: '',
     });
 
     /*
@@ -69,6 +73,7 @@ export default function SubscriptionsIndex() {
             amount: String(editing.amount),
             payment_status: editing.payment || 'غير مدفوع',
             status: editing.status || 'نشط',
+            grant_reason: '',
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editing?.id]);
@@ -82,7 +87,7 @@ export default function SubscriptionsIndex() {
     };
 
     /** سعر الباقة المختارة — يملأ المبلغ ولا يفرضه (الخصم يبقى ممكنًا) */
-    const suggest = (cycle: 'monthly' | 'yearly') => {
+    const suggest = (cycle: 'monthly' | 'semiannual' | 'yearly') => {
         const plan = planOptions.find((p) => String(p.value) === form.data.plan_id);
         if (plan) form.setData('amount', String(plan[cycle]));
     };
@@ -280,6 +285,13 @@ export default function SubscriptionsIndex() {
                                 </button>
                                 <button
                                     type="button"
+                                    onClick={() => suggest('semiannual')}
+                                    className="rounded-[8px] bg-[#f2f2f0] px-2.5 py-1 text-[12px] text-[#4b4b4b] transition-colors hover:bg-[#e8e8e6]"
+                                >
+                                    {t('سعر نصف السنة')}
+                                </button>
+                                <button
+                                    type="button"
                                     onClick={() => suggest('yearly')}
                                     className="rounded-[8px] bg-[#f2f2f0] px-2.5 py-1 text-[12px] text-[#4b4b4b] transition-colors hover:bg-[#e8e8e6]"
                                 >
@@ -318,6 +330,20 @@ export default function SubscriptionsIndex() {
                         <p className="text-[12px] text-[#9ca3af] sm:col-span-2">
                             {t('تعديل أحدث دورة يُحدّث باقة المتجر وتاريخ انتهائه.')}
                         </p>
+
+                        {/*
+                            باقةٌ أعلى أو تاريخٌ أبعد يردّهما الخادم لمتجر التسعير الجديد
+                            (`AdminGrants`) — يُرقّى ويُجدَّد بفاتورته، أو يُكتب سببُ المنحة هنا.
+                        */}
+                        <AdminGrantField
+                            key={editing?.id}
+                            grantable={!!editing?.grantable}
+                            value={form.data.grant_reason}
+                            error={form.errors.grant_reason}
+                            onChange={(v) => form.setData('grant_reason', v)}
+                            testId="subscription-grant"
+                            className="sm:col-span-2"
+                        />
 
                         <div className="flex justify-end gap-2 sm:col-span-2">
                             <Button type="button" variant="ghost" onClick={() => setEditing(null)}>

@@ -73,7 +73,7 @@ class TheOwnerAloneBuysAddonsForHisOwnShopTest extends TestCase
             'business_id' => $business->id, 'name' => 'الكاشير', 'email' => 'cashier@shop.om',
             'password' => bcrypt('x'), 'role' => 'cashier', 'status' => 'نشط',
         ]);
-        $row = AddonOrders::grant($business, $this->addon('loyalty'), 1, null, 'منحة اختبار', $this->platform);
+        $row = AddonOrders::grant($business, $this->addon('loyalty'), 1, now()->addYear()->toDateString(), 'منحة اختبار', $this->platform);
 
         $this->actingAs($manager)->get(route('admin.subscription.addons'))->assertOk()
             ->assertInertia(fn ($page) => $page->where('mayBuy', false));
@@ -90,7 +90,7 @@ class TheOwnerAloneBuysAddonsForHisOwnShopTest extends TestCase
     {
         [$mine, $owner] = $this->shop('basic', 'mine@shop.om');
         [$theirs] = $this->shop('basic', 'theirs@shop.om');
-        $their = AddonOrders::grant($theirs, $this->addon('website'), 1, null, 'منحة الجار', $this->platform);
+        $their = AddonOrders::grant($theirs, $this->addon('website'), 1, now()->addYear()->toDateString(), 'منحة الجار', $this->platform);
         $order = AddonOrders::approve(AddonOrders::request($theirs, $this->addon('pos'), 'monthly')['order']);
 
         $this->actingAs($owner)->get(route('admin.subscription.addons'))->assertOk()
@@ -155,7 +155,7 @@ class TheOwnerAloneBuysAddonsForHisOwnShopTest extends TestCase
 
         // وما تفتحه لا يتبدّل تحت من اشتراها
         [$basic] = $this->shop('basic', 'b@shop.om');
-        AddonOrders::grant($basic, $this->addon('loyalty'), 1, null, 'منحة اختبار', $this->platform);
+        AddonOrders::grant($basic, $this->addon('loyalty'), 1, now()->addYear()->toDateString(), 'منحة اختبار', $this->platform);
         $loyalty = $this->addon('loyalty');
         $this->actingAs($this->platform)->put(route('super-admin.addons.update', $loyalty->id), [
             'name' => $loyalty->name, 'capability' => 'website', 'pricing' => 'paid', 'unit' => 'store',

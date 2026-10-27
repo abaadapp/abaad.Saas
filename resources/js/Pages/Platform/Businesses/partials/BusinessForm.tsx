@@ -1,5 +1,5 @@
 import { type FormEvent, useRef, useState } from 'react';
-import { useForm } from '@inertiajs/react';
+import { useForm, usePage } from '@inertiajs/react';
 import { Building2, Check, Crown, Image as ImageIcon, KeyRound, Layers, RefreshCw, Upload, User, X } from 'lucide-react';
 import PlanSelectionSummary, { type PlanOption } from '@/Components/PlanSelectionSummary';
 import SmartLink from '@/Components/SmartLink';
@@ -12,6 +12,9 @@ import { UsernameInput } from '@/Components/ui/username-input';
 import { useTranslate } from '@/lib/i18n';
 import { randomPassword } from '@/lib/password';
 import AccountCard from './AccountCard';
+import AdminGrantField from './AdminGrantField';
+import NewSubscriptionFields, { type NewSubscriptionOptions, type NewSubscriptionValues } from './NewSubscriptionFields';
+import type { Currency } from '@/types';
 
 export interface BusinessOptions {
     types: string[];
@@ -19,6 +22,8 @@ export interface BusinessOptions {
     statuses: string[];
     /** الباقات بتفاصيلها — تُعرض المختارةُ منها تحت الاختيار */
     plans: PlanOption[];
+    /** طرقُ فتح الاشتراك لمتجرٍ جديد — في الإنشاء وحده (`NewMerchantSubscription::options`) */
+    subscription?: NewSubscriptionOptions;
 }
 
 export interface BusinessValues {
@@ -54,6 +59,12 @@ export interface BusinessValues {
     thermal_delivery_note_enabled?: boolean;
     /** تجهيزُ فواتير العملاء بعد الدفع — الغائبُ مغلق (`CustomerInvoicePreparations::on`) */
     customer_invoice_preparation_enabled?: boolean;
+    /** اشتراكُ المتجر الجديد — في الإنشاء وحده */
+    subscription_mode?: NewSubscriptionValues['subscription_mode'];
+    cycle?: NewSubscriptionValues['cycle'];
+    grant_until?: string;
+    grant_reason?: string;
+    addons?: NewSubscriptionValues['addons'];
 }
 
 /* النطاق ومكوّنه في مكانٍ واحد — انظر Components/ui/username-input */
@@ -72,6 +83,8 @@ interface Props {
     ownerEmail?: string | null;
     /** مطلوب عند التعديل: بطاقة الحساب تحفظ بمسارها الخاص */
     businessId?: number;
+    /** يُسأل عن منحةٍ إداريّة في التعديل — `AdminGrants::asked`، والغائبُ لا */
+    grantable?: boolean;
     action: string;
     /** التعديل يمرّ بـPUT عبر _method لأن الطلب متعدّد الأجزاء (رفع ملف) */
     method: 'post' | 'put';
@@ -92,6 +105,7 @@ export default function BusinessForm({
     logoUrl,
     ownerEmail,
     businessId,
+    grantable = false,
     action,
     method,
     submitLabel,
@@ -99,6 +113,9 @@ export default function BusinessForm({
 }: Props) {
     const t = useTranslate();
     const creating = method === 'post';
+    const { currency } = usePage<{ currency: Currency }>().props;
+    // الإنشاءُ بطريقة اشتراكٍ صريحة — والخادمُ يكتب الحالةَ والتاريخين بحسبها
+    const newSubscription = creating ? options.subscription : undefined;
     /*
      * الحساب يُطلب عند الإنشاء، وعند تعديل شركةٍ لا حساب لها.
      *
@@ -185,6 +202,8 @@ export default function BusinessForm({
              * الخادم يحرس نفسه من هذا، لكنّ الطلب لا يقول ما لا يقصده.
              */
             if (!out.logo) delete out.logo;
+            // ولا سببُ منحةٍ لم يُفتح حقلُها (`AdminGrantField`)
+            if (!out.grant_reason) delete out.grant_reason;
 
             return out;
         });
@@ -386,10 +405,15 @@ export default function BusinessForm({
                 <Layers className="size-5" />,
                 'الاشتراك والباقة',
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                    <Field label="الباقة" error={form.errors.plan_id}>
+                    <Field label="الباقة" error={form.errors.plan_id} hint={newSubscription && form.data.subscription_mode === 'trial' ? t('التجربة على الأساسية') : undefined}>
                         <Select
-                            value={form.data.plan_id}
-                            onChange={(e) => form.setData('plan_id', e.target.value)}
+                            value={newSubscription && form.data.subscription_mode === 'trial' ? String(newSubscription.basic_plan_id ?? form.data.plan_id) : form.data.plan_id}
+                            disabled={!!newSubscription && form.data.subscription_mode === 'trial'}
+                            // والإضافاتُ إضافاتُ الباقة: تُسقط حين تتغيّر
+                            onChange={(e) => {
+                                form.setData('plan_id', e.target.value);
+                                if (newSubscription) form.setData('addons', []);
+                            }}
                             options={options.plans.map((p) => ({ label: p.label, value: p.value }))}
                             placeholder="اختر الباقة…"
                         />
@@ -398,6 +422,27 @@ export default function BusinessForm({
                             plan={options.plans.find((p) => String(p.value) === String(form.data.plan_id))}
                         />
                     </Field>
+                    {newSubscription ? (
+                        <div className="md:col-span-2">
+                            <NewSubscriptionFields
+                                options={newSubscription}
+                                planId={form.data.plan_id}
+                                values={{
+                                    subscription_mode: form.data.subscription_mode ?? 'trial',
+                                    cycle: form.data.cycle ?? '',
+                                    grant_until: form.data.grant_until ?? '',
+                                    grant_reason: form.data.grant_reason ?? '',
+                                    addons: form.data.addons ?? [],
+                                }}
+                                set={(key, value) =>
+                                    form.setData((d) => ({ ...d, [key]: value, ...(key === 'subscription_mode' && value === 'trial' ? { addons: [] } : {}) }))
+                                }
+                                errors={form.errors as Partial<Record<string, string>>}
+                                currency={currency}
+                            />
+                        </div>
+                    ) : (
+                    <>
                     <Field label="حالة الحساب" required error={form.errors.status}>
                         <Select
                             value={form.data.status}
@@ -423,6 +468,23 @@ export default function BusinessForm({
                             onChange={(e) => form.setData('ends_at', e.target.value)}
                         />
                     </Field>
+                    {/*
+                        ═══ والمنحةُ الإداريّة صريحةٌ هنا ═══
+
+                        باقةٌ أعلى أو مدّةٌ أطول أو حسابٌ بانتظار السداد يردّها الخادم
+                        ويسمّيها (`AdminGrants`): تُرقّى وتُجدَّد بفاتورتها من صفحة المتجر.
+                        ومن أراد منحتها فتحها وكتب سببها — فتُحفظ بتاريخ الانتهاء وتُسجَّل.
+                    */}
+                    <AdminGrantField
+                        grantable={grantable}
+                        value={form.data.grant_reason ?? ''}
+                        error={form.errors.grant_reason}
+                        onChange={(v) => form.setData('grant_reason', v)}
+                        testId="business-grant"
+                        className="md:col-span-2"
+                    />
+                    </>
+                    )}
                 </div>,
             )}
 

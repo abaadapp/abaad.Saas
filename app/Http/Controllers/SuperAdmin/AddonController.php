@@ -147,6 +147,32 @@ class AddonController extends Controller
         ), __('اعتُمد الطلب — وتسري الإضافة بتسجيل سداد فاتورتها'));
     }
 
+    /**
+     * طلبُ إضافةٍ مدفوعةٍ يكتبه فريقُ أبعاد للتاجر — ويُعتمد ويُفوتَر معًا.
+     *
+     * والإضافةُ تسري بسداد فاتورتها (`Billing::markPaid`)، لا بهذا الطلب.
+     */
+    public function order(Request $request, int $businessId): RedirectResponse
+    {
+        $data = $request->validate([
+            'addon_id' => ['required', 'integer', 'exists:subscription_addons,id'],
+            'cycle' => ['required', Rule::in(Catalog::CYCLES)],
+            'quantity' => ['nullable', 'integer', 'min:1', 'max:'.Catalog::MAX_QUANTITY],
+            'unit_price' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        return $this->attempt(fn () => AddonOrders::orderFor(
+            Business::findOrFail($businessId),
+            SubscriptionAddon::findOrFail($data['addon_id']),
+            $data['cycle'],
+            (int) ($data['quantity'] ?? 1),
+            $request->user(),
+            isset($data['unit_price']) ? (float) $data['unit_price'] : null,
+            $data['note'] ?? null,
+        ), __('صدر طلب الإضافة وفاتورته — وتسري الإضافة بتسجيل سدادها'));
+    }
+
     public function cancelOrder(Request $request, int $id): RedirectResponse
     {
         $data = $request->validate(['note' => ['nullable', 'string', 'max:500']]);
@@ -159,7 +185,8 @@ class AddonController extends Controller
         $data = $request->validate([
             'addon_id' => ['required', 'integer', 'exists:subscription_addons,id'],
             'quantity' => ['nullable', 'integer', 'min:1', 'max:'.Catalog::MAX_QUANTITY],
-            'ends_at' => ['nullable', 'date'],
+            // المنحةُ مؤرّخة: لا تُفتح بلا نهاية (`AddonOrders::grant`)
+            'ends_at' => ['required', 'date'],
             'reason' => ['required', 'string', 'min:5', 'max:255'],
         ]);
 

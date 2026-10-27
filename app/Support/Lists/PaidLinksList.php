@@ -9,6 +9,7 @@ use App\Support\Exports\Workbook;
 use App\Support\ListFilters;
 use App\Support\Search;
 use App\Support\Sort;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -101,6 +102,41 @@ final class PaidLinksList
         ListFilters::orderPeriod($request)->bound($q, 'l.paid_at');
 
         return $q;
+    }
+
+    /**
+     * ما حُصّل عبر روابط الدفع بين لحظتين — بقاعدة «مدفوع» نفسِها (`paid`).
+     *
+     * يقرؤه سطرُ «روابط الدفع» تحت «مبيعات اليوم» في اللوحة. واليومُ من وقت
+     * الدفع المؤكَّد (`paid_at`، بتوقيت المتجر) لا من يوم فُتح الرابط. والفرعُ
+     * فرعُ الفاتورة كما في القائمة: رابطٌ بلا فاتورة في «كل الفروع» وحده.
+     */
+    public static function collected(int $bid, CarbonInterface $from, CarbonInterface $to, ?int $branchId = null): float
+    {
+        return round((float) self::paid($bid)
+            ->where('l.paid_at', '>=', $from)
+            ->where('l.paid_at', '<', $to)
+            ->when($branchId !== null, fn ($q) => $q->where('i.branch_id', $branchId))
+            ->sum('l.amount'), 3);
+    }
+
+    /**
+     * ما يُنتظر عبر روابط الدفع الآن — رابطٌ حقيقيٌّ معلّقٌ لم تنقضِ مهلتُه.
+     *
+     * مالٌ طُلب ولم يصل: يُقال بجوار المبيعات ولا يدخلها. ويُقرأ بلا كتابة —
+     * المنتهي يُستثنى بمهلته هنا، لا بـ`PaymentLinks::expireDue` الذي يكتب.
+     */
+    public static function awaiting(int $bid, ?int $branchId = null): float
+    {
+        return round((float) DB::table('customer_payment_links as l')
+            ->leftJoin('customer_invoices as i', fn ($j) => $j->on('i.id', '=', 'l.customer_invoice_id')
+                ->on('i.business_id', '=', 'l.business_id'))
+            ->where('l.business_id', $bid)
+            ->where('l.status', CustomerPaymentLink::PENDING)
+            ->where('l.is_live', true)
+            ->where(fn ($q) => $q->whereNull('l.expires_at')->orWhere('l.expires_at', '>', now()))
+            ->when($branchId !== null, fn ($q) => $q->where('i.branch_id', $branchId))
+            ->sum('l.amount'), 3);
     }
 
     /**

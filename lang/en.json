@@ -9727,5 +9727,6 @@
     "إرسال حالة الطلب إلى العميل عبر واتساب.": "Send order status to the customer on WhatsApp.",
     "طلبات الإهداء ببيانات المستلم ومناسبته، والطلبات المخصّصة بحقولها.": "Gift orders with the recipient and occasion, and custom orders with their own fields.",
     "إرسال رسائل متجرك من رقم واتساب الخاص به بدل الرقم المشترك.": "Send your store's messages from its own WhatsApp number instead of the shared one.",
-    "فروعٌ فوق حدّ الفروع في باقتك.": "Branches beyond your plan's branch limit."
+    "فروعٌ فوق حدّ الفروع في باقتك.": "Branches beyond your plan's branch limit.",
+    "روابط الدفع: حُصّل اليوم :a · بانتظار الدفع :b": "Payment links: collected today :a \u00b7 awaiting payment :b"
 }

@@ -46,6 +46,7 @@ use App\Models\SupportMessage;
 use App\Models\SupportRead;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\Lists\PaidLinksList;
 use App\Support\Lists\SaleCells;
 use App\Support\Lists\SelfSignupsList;
 use App\Support\Store\GiftCardProduct;
@@ -1025,7 +1026,7 @@ class Demo
         $expTrend['up'] = ! $expTrend['up'];
 
         return [
-            array_merge(['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'color' => 'primary'], self::trend($salesToday, $salesYesterday)),
+            array_merge(['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'color' => 'primary'], self::trend($salesToday, $salesYesterday), self::linksHint($bid, $branch)),
             array_merge(['label' => __('مبيعات الشهر'), 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'color' => 'success'], self::trend($salesMonth, $salesLastMonth)),
             array_merge(['label' => __('عدد الطلبات'), 'value' => (string) $ordersTotal, 'icon' => 'receipt', 'color' => 'info'], self::trend($ordersMonth, $ordersLastMonth)),
             array_merge(['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'color' => 'secondary'], self::trend($avg, $avgLast)),
@@ -1044,6 +1045,31 @@ class Demo
                 'color' => $net < 0 ? 'danger' : 'success',
             ], self::trend($net, $netLast)),
         ];
+    }
+
+    /**
+     * سطرُ «روابط الدفع» تحت «مبيعات اليوم» — ما وصل اليوم وما يُنتظر.
+     *
+     * الرابطُ طلبُ مالٍ لا بيع: لا يدخل الرقمَ فوقه قبل أن يُدفع (انظر
+     * `StandaloneInvoiceSales`). فيُقال هنا بجواره ما حُصّل عبر الروابط اليوم
+     * وما زال معلّقًا — فلا يبحث التاجرُ عن مالٍ أرسل رابطَه في رقم المبيعات.
+     *
+     * ولمتجرٍ فتح رابطًا حقيقيًّا يومًا وحده: من لا يستعمل Paymob لا يرى سطرًا.
+     *
+     * @return array{hint?: string}
+     */
+    private static function linksHint(int $bid, ?int $branch): array
+    {
+        $uses = DB::table('customer_payment_links')->where('business_id', $bid)->where('is_live', true)->exists();
+
+        if (! $uses) {
+            return [];
+        }
+
+        return ['hint' => __('روابط الدفع: حُصّل اليوم :a · بانتظار الدفع :b', [
+            'a' => self::money(PaidLinksList::collected($bid, today(), today()->addDay(), $branch)),
+            'b' => self::money(PaidLinksList::awaiting($bid, $branch)),
+        ])];
     }
 
     /**

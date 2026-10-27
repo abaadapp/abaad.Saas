@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Customer;
+
 class Customers
 {
     /**
@@ -129,5 +131,93 @@ class Customers
                 ? __('هذا الرقم مسجَّل لعميل محذوف: «:name» — استعِده من الإعدادات ← المحذوفات.', ['name' => $clash->name])
                 : __('هذا الرقم مسجَّل لعميل آخر — نقاط الولاء تتبع الرقم.'));
         }];
+    }
+
+    /**
+     * مفاتيحُ البحث برقم العميل — رقمُه كما تفهمه `WhatsAppPhone`، لا كما كُتب.
+     *
+     * العمودُ يحمل الرقم كما كتبه صاحبُه: «91234567» و«+968 9123 4567»
+     * و«٩١٢٣-٤٥٦٧». ومن يبحث يكتبه بشكلٍ آخر. فلكلّ رقمٍ مفتاحان: المطبَّعُ
+     * (`WhatsAppPhone::normalize` — يُسقط الرموز ويُلبس المحلّيَّ مفتاحَ دولته)،
+     * وأرقامُه كما هي لرقمٍ لا يصلح للتطبيع (تحويلةٌ داخليّة). والهاتفُ ورقمُ
+     * التواصل معًا: الجهةُ تُعرف بمن يردّ عنها.
+     *
+     * ويقرؤها البحثُ في الخادم (`idsByPhone`) وفي شاشة الفاتورة الجديدة —
+     * فلا يُكتب التطبيعُ مرّتين.
+     *
+     * @return list<string>
+     */
+    public static function phoneKeys(?string ...$phones): array
+    {
+        $keys = [];
+        foreach ($phones as $raw) {
+            if (blank($raw)) {
+                continue;
+            }
+
+            $keys[] = WhatsAppPhone::normalize($raw);
+            $keys[] = preg_replace('/\D+/', '', Digits::western((string) $raw));
+        }
+
+        return array_values(array_unique(array_filter($keys, fn ($k) => $k !== null && $k !== '')));
+    }
+
+    /**
+     * ما كتبه الباحثُ أرقامًا — أو `null` إن لم يكن رقمَ هاتف.
+     *
+     * نصٌّ فيه حرف (رقمُ فاتورة «CINV-0003»، أو اسم) ليس هاتفًا، فلا يُطابَق
+     * بأرقامه. و«00» بادئةُ الاتصال الدوليّ تسقط كما تسقط في `WhatsAppPhone`.
+     * وأقلُّ من ثلاث خانات لا يُبحث به: كلُّ رقمٍ فيه «9».
+     */
+    public static function phoneNeedle(string $term): ?string
+    {
+        $western = Digits::western(trim($term));
+
+        if (! preg_match('/^[\d\s+().\/-]+$/', $western)) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', $western) ?? '';
+        if (str_starts_with($digits, '00')) {
+            $digits = substr($digits, 2);
+        }
+
+        return strlen($digits) >= 3 ? $digits : null;
+    }
+
+    /**
+     * عملاءُ المتجر الذين يحمل رقمُهم — أو رقمُ التواصل — ما كُتب، كاملًا أو جزءًا.
+     *
+     * والمقابلةُ في التطبيق لا في `where`: التطبيعُ دالّةُ تطبيقٍ لا دالّةُ قاعدة
+     * (كما في `phoneRule`). وهي قراءةُ ثلاثة أعمدةٍ لعملاء متجرٍ واحد — ومن متجره
+     * وحده، فرقمٌ مطابقٌ في متجرٍ آخر لا يُرى.
+     *
+     * @return list<int>
+     */
+    public static function idsByPhone(int $businessId, string $term): array
+    {
+        $needle = self::phoneNeedle($term);
+        if ($needle === null) {
+            return [];
+        }
+
+        return Customer::where('business_id', $businessId)
+            ->where(fn ($q) => $q->where(fn ($w) => $w->whereNotNull('phone')->where('phone', '!=', ''))
+                ->orWhere(fn ($w) => $w->whereNotNull('contact_phone')->where('contact_phone', '!=', '')))
+            ->get(['id', 'phone', 'contact_phone'])
+            ->filter(fn ($c) => self::phoneMatches(self::phoneKeys($c->phone, $c->contact_phone), $needle))
+            ->map(fn ($c) => (int) $c->id)->values()->all();
+    }
+
+    /** @param  list<string>  $keys */
+    public static function phoneMatches(array $keys, string $needle): bool
+    {
+        foreach ($keys as $key) {
+            if (str_contains($key, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

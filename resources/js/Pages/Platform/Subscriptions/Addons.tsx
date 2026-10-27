@@ -282,7 +282,8 @@ function AddonDialog({
         unit: addon?.unit ?? 'store',
         monthly_price: addon?.monthly_price?.toString() ?? '',
         yearly_price: addon?.yearly_price?.toString() ?? '',
-        for_sale: addon?.for_sale ?? true,
+        // والجديدةُ موقوفٌ بيعُها حتى تجهز — لا تظهر لتاجرٍ قبل أن يُقرَّر عرضُها
+        for_sale: addon?.for_sale ?? false,
         for_new_merchants: addon?.for_new_merchants ?? true,
         sort: addon?.sort?.toString() ?? '0',
     });

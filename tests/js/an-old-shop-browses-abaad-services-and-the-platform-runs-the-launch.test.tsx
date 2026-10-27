@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { router } from '@inertiajs/react';
+import { router as core } from '@inertiajs/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { pageProps } from './setup';
@@ -178,6 +179,29 @@ describe('«إضافات الاشتراكات» في لوحة المنصّة', (
         expect(within(form).queryByText('الرمز')).toBeNull();
         expect(within(form).getByText('الاسم بالعربية')).toBeInTheDocument();
         expect(within(form).queryByTestId('addon-technical')).toBeNull();
+    });
+
+    it('الإضافةُ الجديدة موقوفٌ بيعُها حتى يُقرَّر — والقائمةُ تبقى على حالها', () => {
+        showPlatform(platform());
+        const post = vi.spyOn(core, 'post').mockImplementation((() => {}) as never);
+
+        fireEvent.click(screen.getByRole('button', { name: /إضافة جديدة/ }));
+        const form = screen.getByTestId('addon-form');
+        const forSale = within(form).getByText('تُباع الآن').closest('label')!.querySelector('input') as HTMLInputElement;
+        expect(forSale.checked).toBe(false);
+        fireEvent.change(within(form).getAllByRole('textbox')[0], { target: { value: 'تصوير المنتجات' } });
+        fireEvent.submit(form);
+        expect(post).toHaveBeenCalledTimes(1);
+        expect(post.mock.calls[0][1]).toMatchObject({ name: 'تصوير المنتجات', for_sale: false });
+        expect(post.mock.calls[0][1]).not.toHaveProperty('code');
+        post.mockRestore();
+    });
+
+    it('وتعديلُ إضافةٍ معروضةٍ يُبقيها معروضة', () => {
+        showPlatform(platform());
+        fireEvent.click(within(screen.getAllByTestId('addon-card')[0]).getByRole('button', { name: /تعديل/ }));
+        const forSale = within(screen.getByTestId('addon-form')).getByText('تُباع الآن').closest('label')!.querySelector('input') as HTMLInputElement;
+        expect(forSale.checked).toBe(true);
     });
 
     it('والتعديلُ يُظهر المعرّفَ للقراءة في «تفاصيل تقنية» وحدها', () => {

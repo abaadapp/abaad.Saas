@@ -284,7 +284,8 @@ class AddonController extends Controller
             'unit' => ['required', Rule::in(Catalog::UNITS)],
             'monthly_price' => ['nullable', 'required_if:pricing,'.Catalog::PAID, 'numeric', 'min:0.001', 'max:100000'],
             'yearly_price' => ['nullable', 'required_if:pricing,'.Catalog::PAID, 'numeric', 'min:0.001', 'max:1000000'],
-            'for_sale' => ['required', 'boolean'],
+            // وإضافةٌ جديدةٌ لا تُعرض حتى تُعرض: بلا قيمةٍ = موقوفٌ بيعُها (`store`)
+            'for_sale' => [$addon ? 'required' : 'nullable', 'boolean'],
             'for_new_merchants' => ['required', 'boolean'],
             'sort' => ['nullable', 'integer', 'min:0', 'max:10000'],
         ], [], [
@@ -303,6 +304,17 @@ class AddonController extends Controller
         }
 
         $data['sort'] = (int) ($data['sort'] ?? 0);
+
+        /*
+         * والجديدةُ موقوفٌ بيعُها ما لم يُقل غيرُ ذلك صراحةً.
+         *
+         * «تُباع» تعني أنّها تُعرض في كتالوج كلّ تاجرٍ قديم فورًا (`AddonViews::showcase`)
+         * وتُطلب في السياسة الجديدة — وخدمةٌ أُنشئت للتوّ لم تُكتب أوصافُها ولا
+         * باقاتُها بعد. فعمودُ القاعدة (`default(true)`) لا يُترك يقرّر.
+         */
+        if ($addon === null) {
+            $data['for_sale'] = (bool) ($data['for_sale'] ?? false);
+        }
 
         return $data;
     }

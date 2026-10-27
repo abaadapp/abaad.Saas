@@ -39,6 +39,8 @@ use Tests\TestCase;
  *   6. نقطةُ البيع وسعرُ التجديد كما كانا.
  *   7. لا يرى متجرٌ منحةَ متجرٍ آخر ولا باقتَه.
  *   8. «تواصل مع أبعاد» يفتح نموذجَ الدعم بموضوعه — ولا يُرسل شيئًا.
+ *   9. الإضافةُ الجديدة موقوفٌ بيعُها حتى يُقرَّر عرضُها، والقائمةُ كما هي.
+ *  10. الموقوفُ بيعُها لا يراها إلّا من له استحقاقٌ ساريٌ لها — لا المنتهي ولا المُنهى.
  */
 class AnOldShopBrowsesAbaadServicesWithoutBuyingTest extends TestCase
 {
@@ -226,5 +228,59 @@ class AnOldShopBrowsesAbaadServicesWithoutBuyingTest extends TestCase
         app()->setLocale('ar');
 
         $this->assertSame(['Loyalty & rewards', 'Points'], [$loyalty['name'], $loyalty['description']]);
+    }
+
+    public function test_a_new_addon_starts_off_sale_and_stays_out_of_the_old_shops_catalog_while_existing_ones_keep_their_state(): void
+    {
+        [$business] = $this->shop('basic', 'catalog@shop.om');
+        $this->addon('marketing')->update(['for_sale' => false]);
+        $before = SubscriptionAddon::orderBy('id')->get(['id', 'code', 'for_sale', 'for_new_merchants'])->toArray();
+
+        // بلا «تُباع الآن»: موقوفٌ بيعُها — لا يقرّره عمودُ القاعدة
+        $this->actingAs($this->platform)->post(route('super-admin.addons.store'), [
+            'name' => 'تصوير المنتجات', 'pricing' => 'quote', 'unit' => 'store', 'for_new_merchants' => true,
+        ])->assertSessionHasNoErrors();
+        // وبها صريحةً: تُباع
+        $this->actingAs($this->platform)->post(route('super-admin.addons.store'), [
+            'name' => 'دعم بأولوية', 'pricing' => 'quote', 'unit' => 'store', 'for_sale' => true, 'for_new_merchants' => true,
+        ])->assertSessionHasNoErrors();
+
+        $draft = SubscriptionAddon::where('name', 'تصوير المنتجات')->sole();
+        $ready = SubscriptionAddon::where('name', 'دعم بأولوية')->sole();
+        $this->assertFalse($draft->for_sale, 'إضافةٌ جديدةٌ عُرضت للبيع بلا قرار');
+        $this->assertTrue($ready->for_sale);
+
+        // والإضافاتُ القائمة بحالاتها — المعروضةُ والموقوفة
+        $this->assertSame($before, SubscriptionAddon::whereKey(array_column($before, 'id'))->orderBy('id')->get(['id', 'code', 'for_sale', 'for_new_merchants'])->toArray());
+
+        $ids = collect(AddonViews::showcase($business->fresh()))->pluck('id');
+        $this->assertNotContains($draft->id, $ids, 'ظهرت خدمةٌ غيرُ جاهزةٍ في كتالوج تاجرٍ قديم');
+        $this->assertNotContains($this->addon('marketing')->id, $ids);
+        $this->assertContains($ready->id, $ids);
+    }
+
+    public function test_an_off_sale_service_shows_only_to_a_shop_with_a_live_entitlement(): void
+    {
+        $api = $this->addon('api_integrations');
+        [$live] = $this->shop('basic', 'live@shop.om');
+        [$none] = $this->shop('basic', 'none@shop.om');
+        [$expired] = $this->shop('basic', 'expired@shop.om');
+        [$ended] = $this->shop('basic', 'ended@shop.om');
+
+        AddonOrders::grant($live, $api, 1, null, 'منحة سارية', $this->platform);
+        AddonOrders::grant($expired, $api, 1, null, 'منحة انقضت', $this->platform)
+            ->forceFill(['starts_at' => now()->subMonths(2)->toDateString(), 'ends_at' => now()->subDay()->toDateString()])->save();
+        AddonOrders::end(AddonOrders::grant($ended, $api, 1, null, 'منحة أُنهيت', $this->platform), 'أنهاها صاحب المنصة');
+        $api->update(['for_sale' => false]);
+
+        $shown = fn ($business) => collect(AddonViews::showcase($business->fresh()))->firstWhere('id', $api->id);
+        $this->assertSame(AddonViews::SHOWN_INCLUDED, $shown($live)['state'] ?? null);
+        $this->assertNull($shown($none), 'عُرضت خدمةٌ موقوفةٌ لمن لا يملكها');
+        $this->assertNull($shown($expired), 'عُرضت خدمةٌ موقوفةٌ لاستحقاقٍ منتهٍ');
+        $this->assertNull($shown($ended), 'عُرضت خدمةٌ موقوفةٌ لاستحقاقٍ مُنهى');
+
+        // وعرضُها من جديد يُظهرها للجميع
+        $api->update(['for_sale' => true]);
+        $this->assertSame(AddonViews::SHOWN_LEARN, $shown($none)['state']);
     }
 }

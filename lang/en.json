@@ -9806,5 +9806,15 @@
     "أبلغت Paymob بردّ :amount من :total دفعها :name عبر رابط الدفع — التحصيل :payment قائمٌ حتى يُسوّى": "Paymob reported a refund of :amount of the :total :name paid by payment link — collection :payment stands until settled",
     "لا يُعكس شيءٌ تلقائيًّا. راجع المبلغ في لوحة Paymob قبل التسوية.": "Nothing is reversed automatically. Check the amount in the Paymob dashboard before settling.",
     "لا يُعكس شيءٌ تلقائيًّا. الردُّ الكامل يُسوّى بإلغاء التحصيل من المالية.": "Nothing is reversed automatically. A full refund is settled by cancelling the collection in Finance.",
-    "ردٌّ جزئيّ — لا تُلغِ التحصيل كلَّه.": "Partial refund — do not cancel the whole collection."
+    "ردٌّ جزئيّ — لا تُلغِ التحصيل كلَّه.": "Partial refund — do not cancel the whole collection.",
+    "سبب المنحة الإدارية": "Administrative grant reason",
+    "تُسجَّل في سجل النشاط، والحساب يُفتح بلا سداد حتى تاريخ الانتهاء.": "It is recorded in the activity log, and the account opens without payment until the end date.",
+    "حساب بانتظار السداد": "an account awaiting payment",
+    "باقة «:plan»": "the «:plan» plan",
+    "مدة حتى :date": "time until :date",
+    "مدة بلا تاريخ انتهاء": "time with no end date",
+    "هذا التعديل يفتح بلا سداد: :what. رقِّ الباقة أو جدّدها من صفحة المتجر بفاتورتها، أو اكتب سبب المنحة الإدارية.": "This change opens without payment: :what. Upgrade or renew the plan from the shop page with its invoice, or write the reason for the administrative grant.",
+    "المنحة تحتاج تاريخ انتهاء لم يمضِ.": "A grant needs an end date that has not passed.",
+    "طلبات الإهداء إضافة لهذا المتجر: اطلبها له أو امنحها بتاريخ من «خدمات أبعاد» في صفحته.": "Gift orders are an add-on for this shop: order it or grant it with a date from «Abaad services» on its page.",
+    "هذا الحساب مقفل حتى سداد فاتورته — ألغِ الفاتورة إن لم يعد مطلوبًا.": "This account is locked until its invoice is paid — cancel the invoice if it is no longer needed."
 }

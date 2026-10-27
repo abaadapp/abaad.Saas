@@ -227,6 +227,23 @@ class BusinessController extends Controller
             }
         }
 
+        /*
+         * ولا يفتح هذا البابُ ما يُشترى بفاتورة (`AdminGrants`).
+         *
+         * باقةٌ أعلى، أو مدّةٌ أطول، أو حسابٌ بانتظار السداد — تُرقّى وتُجدَّد من
+         * صفحة المتجر بفاتورتها، أو تُكتب منحةً بسببٍ وتاريخ. والإهداءُ لمتجر
+         * السياسة الجديدة إضافةٌ تُطلب أو تُمنح مؤرّخةً من «خدمات أبعاد»، لا
+         * مفتاحٌ بلا تاريخ يفتحها أبدًا.
+         */
+        $grant = $request->validate(['grant_reason' => ['nullable', 'string', 'min:5', 'max:500']]);
+        \App\Support\Addons\AdminGrants::authorize($business, $data, $grant['grant_reason'] ?? null);
+
+        if (! empty($data['gift_orders_enabled']) && ! $business->gift_orders_enabled && \App\Support\Addons\PricingPolicy::isAddons($business)) {
+            return back()->withInput()->withErrors([
+                'gift_orders_enabled' => __('طلبات الإهداء إضافة لهذا المتجر: اطلبها له أو امنحها بتاريخ من «خدمات أبعاد» في صفحته.'),
+            ]);
+        }
+
         $giftingBefore = (bool) $business->gift_orders_enabled;
         $notesBefore = (bool) $business->order_notes_and_edits_enabled;
         $thermalBefore = (bool) $business->thermal_delivery_note_enabled;
@@ -300,6 +317,12 @@ class BusinessController extends Controller
     public function destroy($id)
     {
         $business = Business::findOrFail($id);
+
+        // مقفلٌ أصلًا حتى السداد — وتعطيلُه ثمّ إعادةُ تشغيله تفتحه بلا سداد (`activate`)
+        if ($business->status === Business::AWAITING_PAYMENT) {
+            return back()->with('toast', ['msg' => __('هذا الحساب مقفل حتى سداد فاتورته — ألغِ الفاتورة إن لم يعد مطلوبًا.'), 'type' => 'warning']);
+        }
+
         $business->update(['status' => 'معطل']);
         \App\Support\Activity::log('deleted', 'عطّل الشركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 

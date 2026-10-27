@@ -50,6 +50,7 @@ export default function SubscriptionsIndex() {
         amount: '',
         payment_status: 'غير مدفوع',
         status: 'نشط',
+        grant_reason: '',
     });
 
     /*
@@ -69,6 +70,7 @@ export default function SubscriptionsIndex() {
             amount: String(editing.amount),
             payment_status: editing.payment || 'غير مدفوع',
             status: editing.status || 'نشط',
+            grant_reason: '',
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editing?.id]);
@@ -325,6 +327,20 @@ export default function SubscriptionsIndex() {
                         <p className="text-[12px] text-[#9ca3af] sm:col-span-2">
                             {t('تعديل أحدث دورة يُحدّث باقة المتجر وتاريخ انتهائه.')}
                         </p>
+
+                        {/*
+                            باقةٌ أعلى أو تاريخٌ أبعد يردّهما الخادم لمتجر التسعير الجديد
+                            (`AdminGrants`) — يُرقّى ويُجدَّد بفاتورته، أو يُكتب سببُ المنحة هنا.
+                        */}
+                        {(form.errors.grant_reason || form.data.grant_reason) && (
+                            <Field label="سبب المنحة الإدارية" className="sm:col-span-2" error={form.errors.grant_reason} hint={t('تُسجَّل في سجل النشاط، والحساب يُفتح بلا سداد حتى تاريخ الانتهاء.')}>
+                                <Input
+                                    data-testid="subscription-grant-reason"
+                                    value={form.data.grant_reason}
+                                    onChange={(e) => form.setData('grant_reason', e.target.value)}
+                                />
+                            </Field>
+                        )}
 
                         <div className="flex justify-end gap-2 sm:col-span-2">
                             <Button type="button" variant="ghost" onClick={() => setEditing(null)}>

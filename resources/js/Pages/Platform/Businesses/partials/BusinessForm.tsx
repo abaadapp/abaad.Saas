@@ -462,6 +462,22 @@ export default function BusinessForm({
                             onChange={(e) => form.setData('ends_at', e.target.value)}
                         />
                     </Field>
+                    {/*
+                        ═══ والمنحةُ الإداريّة صريحةٌ هنا ═══
+
+                        باقةٌ أعلى أو مدّةٌ أطول أو حسابٌ بانتظار السداد يردّها الخادم
+                        ويسمّيها (`AdminGrants`): تُرقّى وتُجدَّد بفاتورتها من صفحة المتجر.
+                        ومن أراد منحتها كتب سببها هنا — فتُحفظ بتاريخ الانتهاء وتُسجَّل.
+                    */}
+                    {(form.errors.grant_reason || form.data.grant_reason) && (
+                        <Field label="سبب المنحة الإدارية" className="md:col-span-2" error={form.errors.grant_reason} hint={t('تُسجَّل في سجل النشاط، والحساب يُفتح بلا سداد حتى تاريخ الانتهاء.')}>
+                            <Input
+                                data-testid="business-grant-reason"
+                                value={form.data.grant_reason ?? ''}
+                                onChange={(e) => form.setData('grant_reason', e.target.value)}
+                            />
+                        </Field>
+                    )}
                     </>
                     )}
                 </div>,

@@ -37,15 +37,19 @@ class SubscriptionController extends Controller
             'amount' => ['required', 'numeric', 'min:0'],
             'payment_status' => ['required', 'in:مدفوع,غير مدفوع'],
             'status' => ['required', 'in:نشط,منتهي,معطل'],
+            // منحةٌ إداريّة — حين يفتح التعديلُ ما يُشترى بفاتورة (`AdminGrants`)
+            'grant_reason' => ['nullable', 'string', 'min:5', 'max:500'],
         ], [], [
             'starts_at' => __('تاريخ البداية'),
             'ends_at' => __('تاريخ الانتهاء'),
             'amount' => __('المبلغ'),
         ]);
+        $reason = $data['grant_reason'] ?? null;
+        unset($data['grant_reason']);
 
-        DB::transaction(function () use ($subscription, $data) {
+        DB::transaction(function () use ($subscription, $data, $reason) {
             $subscription->update($data);
-            $this->syncBusiness($subscription);
+            $this->syncBusiness($subscription, $reason);
         });
 
         Activity::log('updated', 'عدّل اشتراك: '.($subscription->business?->name ?? '—'), [
@@ -113,7 +117,7 @@ class SubscriptionController extends Controller
      * وتركُهما منفصلين يعني لوحةً تقول «نشط حتى ٢٠٢٧» وبابًا يُقفل اليوم —
      * والمصدران المفترقان أسوأ من مصدرٍ خاطئ، لأن أحدهما يبدو دائمًا صحيحًا.
      */
-    private function syncBusiness(Subscription $subscription): void
+    private function syncBusiness(Subscription $subscription, ?string $grantReason = null): void
     {
         $business = $subscription->business;
         if (! $business) {
@@ -148,11 +152,23 @@ class SubscriptionController extends Controller
             ]);
         }
 
-        $business->update([
+        $after = [
             'plan_id' => $subscription->plan_id ?: $business->plan_id,
             'starts_at' => $subscription->starts_at,
             'ends_at' => $subscription->ends_at,
-        ]);
+        ];
+
+        /*
+         * ═══ ولا يُرقّى متجرٌ ولا يُمدّ له بلا فاتورة ═══
+         *
+         * لمتجر السياسة الجديدة الباقةُ تفتح ما تشمله: دورةٌ تُعدَّل إلى باقةٍ أعلى أو
+         * تاريخٍ أبعد كانت ترقيةً وتجديدًا بلا سداد. فتُردّ (`AdminGrants`) إلّا منحةً
+         * بسببٍ مكتوب — والرمي داخل المعاملة يُرجع الدورةَ كما كانت. والتصحيحُ الذي
+         * لا يفتح شيئًا، والسابقةُ كلُّها، كما كانا.
+         */
+        \App\Support\Addons\AdminGrants::authorize($business, $after, $grantReason);
+
+        $business->update($after);
     }
 
     /**

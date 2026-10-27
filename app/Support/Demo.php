@@ -1025,8 +1025,8 @@ class Demo
         $expTrend = self::trend($expMonth, $expLastMonth);
         $expTrend['up'] = ! $expTrend['up'];
 
-        return [
-            array_merge(['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'color' => 'primary'], self::trend($salesToday, $salesYesterday), self::linksHint($bid, $branch)),
+        $cards = [
+            array_merge(['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'color' => 'primary'], self::trend($salesToday, $salesYesterday)),
             array_merge(['label' => __('مبيعات الشهر'), 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'color' => 'success'], self::trend($salesMonth, $salesLastMonth)),
             array_merge(['label' => __('عدد الطلبات'), 'value' => (string) $ordersTotal, 'icon' => 'receipt', 'color' => 'info'], self::trend($ordersMonth, $ordersLastMonth)),
             array_merge(['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'color' => 'secondary'], self::trend($avg, $avgLast)),
@@ -1045,31 +1045,56 @@ class Demo
                 'color' => $net < 0 ? 'danger' : 'success',
             ], self::trend($net, $netLast)),
         ];
+
+        // و«تحصيلات اليوم» بجوار «مبيعات اليوم» لا داخلَها — انظر `collectionsCard`
+        if ($collected = self::collectionsCard($bid, $branch)) {
+            array_splice($cards, 1, 0, [$collected]);
+        }
+
+        return $cards;
     }
 
     /**
-     * سطرُ «روابط الدفع» تحت «مبيعات اليوم» — ما وصل اليوم وما يُنتظر.
+     * «تحصيلات اليوم» — مالٌ قبضه المتجرُ اليومَ من عملائه.
      *
-     * الرابطُ طلبُ مالٍ لا بيع: لا يدخل الرقمَ فوقه قبل أن يُدفع (انظر
-     * `StandaloneInvoiceSales`). فيُقال هنا بجواره ما حُصّل عبر الروابط اليوم
-     * وما زال معلّقًا — فلا يبحث التاجرُ عن مالٍ أرسل رابطَه في رقم المبيعات.
+     * ═══ البيعُ غيرُ القبض ═══
      *
-     * ولمتجرٍ فتح رابطًا حقيقيًّا يومًا وحده: من لا يستعمل Paymob لا يرى سطرًا.
+     * رابطُ دفعٍ بلا فاتورة يُدفع: مالٌ حقيقيٌّ وصل ولا بيعَ وراءه — يبقى رصيدًا
+     * للعميل (`PaymentLinks::settle`). فلا يدخل «مبيعات اليوم» ولا يُخترع له
+     * إيراد. وكان سطرُ «روابط الدفع: حُصّل اليوم» تحت «مبيعات اليوم» يقول مبلغًا
+     * ليس في الرقم فوقه، فيُقرأ بيعًا ضاع.
      *
-     * @return array{hint?: string}
+     * فالقبضُ رقمٌ مستقلّ، من `Settlements::collections` نفسِها التي تقرؤها
+     * «تحصيلات العملاء» في المالية: كلُّ تحصيلٍ مرّةً بأيّ وسيلة، والشيكُ يومَ
+     * يُصرف، والملغى خارج. فالرابطُ على فاتورة تحصيلٌ واحدٌ هنا ولو عُدّت
+     * فاتورتُه في «مبيعات اليوم» يومَ دُفعت — رقمان لسؤالين، لا مالٌ مرّتين.
+     * ورابطُ التجربة لا تحصيلَ له أصلًا.
+     *
+     * وبيعُ الصندوق والموقع المدفوعُ ساعتَه في «مبيعات اليوم»، ولا يُعاد هنا:
+     * ليس تحصيلًا من عميلٍ يُدين. ولمتجرٍ لم يُحصّل من عميلٍ ولم يفتح رابطًا
+     * حقيقيًّا يومًا لا بطاقة: اللوحةُ كما يعرفها.
      */
-    private static function linksHint(int $bid, ?int $branch): array
+    private static function collectionsCard(int $bid, ?int $branch): ?array
     {
-        $uses = DB::table('customer_payment_links')->where('business_id', $bid)->where('is_live', true)->exists();
+        $links = DB::table('customer_payment_links')->where('business_id', $bid)->where('is_live', true)->exists();
 
-        if (! $uses) {
-            return [];
+        if (! $links && ! DB::table('customer_payments')->where('business_id', $bid)->exists()) {
+            return null;
         }
 
-        return ['hint' => __('روابط الدفع: حُصّل اليوم :a · بانتظار الدفع :b', [
-            'a' => self::money(PaidLinksList::collected($bid, today(), today()->addDay(), $branch)),
-            'b' => self::money(PaidLinksList::awaiting($bid, $branch)),
-        ])];
+        $today = Settlements::collections($bid, today(), today()->addDay(), $branch)['amount'];
+        $yesterday = Settlements::collections($bid, today()->subDay(), today(), $branch)['amount'];
+
+        return array_merge(
+            ['label' => __('تحصيلات اليوم'), 'value' => self::money($today), 'icon' => 'wallet', 'color' => 'success'],
+            self::trend($today, $yesterday),
+            ['hint' => $links
+                ? __('من العملاء، منها روابط الدفع :a · بانتظار الدفع :b', [
+                    'a' => self::money(PaidLinksList::collected($bid, today(), today()->addDay(), $branch)),
+                    'b' => self::money(PaidLinksList::awaiting($bid, $branch)),
+                ])
+                : __('من العملاء: الفواتير والدفعات المقدّمة')],
+        );
     }
 
     /**

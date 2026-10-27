@@ -237,14 +237,23 @@ class ACustomerInvoiceSellsOnTheDashboardOnceTest extends TestCase
     public function test_a_partial_then_full_payment_adds_no_sale(): void
     {
         $invoice = $this->invoice(100);
-        $before = DashboardMetrics::snapshot();
+        // والتحصيلُ يُقال في «تحصيلات اليوم» وحدها — وبقيّةُ اللوحة لا يمسّها
+        $sales = function () {
+            $snapshot = DashboardMetrics::snapshot();
+            $snapshot['stats'] = array_values(array_filter($snapshot['stats'], fn ($c) => $c['label'] !== 'تحصيلات اليوم'));
+
+            return $snapshot;
+        };
+        $before = $sales();
 
         $this->pay($invoice, 40, '2026-10-20');
-        $this->assertEquals($before, DashboardMetrics::snapshot(), 'الدفعةُ الجزئيّة غيّرت اللوحة');
+        $this->assertEquals($before, $sales(), 'الدفعةُ الجزئيّة غيّرت اللوحة');
+        $this->assertCard(40, 'تحصيلات اليوم');
 
         $this->pay($invoice, 65, '2026-10-20', 'تحويل بنكي');
         $this->assertSame(0.0, (float) $invoice->fresh()->outstanding());
-        $this->assertEquals($before, DashboardMetrics::snapshot(), 'السدادُ الكامل غيّر اللوحة');
+        $this->assertEquals($before, $sales(), 'السدادُ الكامل غيّر اللوحة');
+        $this->assertCard(105, 'تحصيلات اليوم');
 
         // ولا وسيلةَ تُخمَّن للفاتورة من تحصيلها
         $this->assertSame([__('فواتير العملاء')], $before['paymentDistribution']['labels']);

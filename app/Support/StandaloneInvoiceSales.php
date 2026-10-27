@@ -48,7 +48,7 @@ use Illuminate\Support\Facades\DB;
  * اليوم» بإجماليّها لحظةَ يُرسَل الرابط — قبل أن يدفع العميلُ شيئًا — فيقرأ
  * التاجرُ مالًا لم يصل، ولو رفض العميلُ أو انقضى الرابط.
  *
- * فالفاتورةُ التي فُتح عليها رابطُ دفعٍ حقيقيّ (`billedByLink`) تُعدّ هنا
+ * فالفاتورةُ التي فُتح عليها رابطُ دفعٍ حقيقيّ يومَ صدورها (`billedByLink`) تُعدّ هنا
  * **بما سُدّد منها فعلًا، يومَ سداده** (`collections`) — بالرابط أو نقدًا أو
  * بأيّ وسيلة — لا بإجماليّها يومَ صدورها. فرابطٌ معلّقٌ أو مرفوضٌ أو منتهٍ
  * لا يُعدّ، والجزئيُّ بقدره، والباقي يُعدّ يومَ يُدفع. ولا يتجاوز ما يُعدّ
@@ -98,13 +98,29 @@ final class StandaloneInvoiceSales
      * فواتيرُ هذا المتجر التي فُتح عليها رابطُ دفعٍ حقيقيّ — معلّقًا أو مدفوعًا
      * أو منتهيًا أو ملغى. وما فشل إنشاؤه لم يصل العميلَ، ورابطُ التجربة ليس
      * طلبَ مال.
+     *
+     * ═══ ورابطٌ فُتح يومَ الفاتورة لا بعده ═══
+     *
+     * فاتورةٌ صدرت الاثنين بلا رابط عُدّت في مبيعات الاثنين، ثمّ أُرسل لها رابطٌ
+     * الثلاثاء ودُفع الأربعاء. لو صار رابطُ الثلاثاء يُخرجها من الاثنين لتغيّر
+     * رقمُ يومٍ مضى — قرأه التاجرُ ووصله في الملخّص اليوميّ — ولَعادت يومَ
+     * الأربعاء بيعًا لم يقع فيه. فهي بيعُ الاثنين كما كانت، ومالُ الأربعاء
+     * تحصيلٌ في «تحصيلات اليوم» (`Settlements::collections`) لا بيعٌ ثانٍ.
+     *
+     * فالمطلوبةُ برابطٍ ما فُتح رابطُها يومَ صدورها أو قبله — بتاريخها
+     * (`issued_at`) أو بيومِ إصدارها فعلًا (`issued_by_at`) إن صدرت بتاريخٍ مضى:
+     * «أصدر الفاتورة وأنشئ رابط دفع» ضغطةٌ واحدةٌ في يومٍ واحد.
      */
     private static function billedByLink(Builder $q, int $businessId): Builder
     {
         return $q->selectRaw('1')->from('customer_payment_links as bl')
+            ->join('customer_invoices as bi', fn ($j) => $j->on('bi.id', '=', 'bl.customer_invoice_id')
+                ->on('bi.business_id', '=', 'bl.business_id'))
             ->where('bl.business_id', $businessId)
             ->where('bl.is_live', true)
-            ->where('bl.status', '!=', CustomerPaymentLink::FAILED);
+            ->where('bl.status', '!=', CustomerPaymentLink::FAILED)
+            ->where(fn ($w) => $w->whereRaw('DATE(bl.created_at) <= DATE(bi.issued_at)')
+                ->orWhereRaw('DATE(bl.created_at) <= DATE(bi.issued_by_at)'));
     }
 
     /**

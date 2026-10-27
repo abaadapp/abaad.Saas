@@ -23,6 +23,7 @@ use App\Support\Ledger;
 use App\Support\Lists\PaidLinksList;
 use App\Support\PaymentLinks;
 use App\Support\Paymob\Amount;
+use App\Support\Settlements;
 use App\Support\StandaloneInvoiceSales;
 use App\Support\Store\Paymob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,8 +45,8 @@ use Tests\TestCase;
  *
  * الفاتورةُ التي فُتح عليها رابطٌ حقيقيٌّ تُعدّ في البطاقة **بما سُدّد منها،
  * يومَ سداده**. والدفترُ كما هو: إيرادُها وضريبتُها يومَ صدورها، و«صافي
- * الأرباح» والتقاريرُ والإقرارُ تقرؤها هناك. وتحت البطاقة سطرٌ يقول ما حُصّل
- * عبر الروابط اليوم وما ينتظر.
+ * الأرباح» والتقاريرُ والإقرارُ تقرؤها هناك. وبجوار البطاقة «تحصيلات اليوم»:
+ * مالٌ قُبض من العملاء — ومنه الرابطُ المستقلّ الذي لا بيعَ وراءه — وما ينتظر.
  *
  * ═══ ما يُحرس — بأرقام بنود الموجز ═══
  *
@@ -56,6 +57,7 @@ use Tests\TestCase;
  *   12. استرجاع.  13. المبيعاتُ غيرُ المقبوضات.  14. الدفترُ والضريبةُ كما هما.
  *   15. الصندوقُ والموقع.  16. متجران وفرعان.  17. البطاقةُ والملخّصُ والتنبيهُ
  *   والمخطّطُ وشاشةُ المبيعات.  19. التجربةُ ليست مالًا.  20. الفاتورةُ بلا رابطٍ كما كانت.
+ *   21. رابطٌ بعد يوم الفاتورة لا يُعيد كتابةَ يومٍ مضى.  22. «تحصيلات اليوم» كلُّ قبضٍ مرّة.
  */
 class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
 {
@@ -174,7 +176,7 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         return $link->fresh();
     }
 
-    private function stat(string $label): array
+    private function stat(string $label): ?array
     {
         return collect(Demo::adminStats())->firstWhere('label', $label);
     }
@@ -189,14 +191,25 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         return StandaloneInvoiceSales::total($this->shop->id, Carbon::parse($date), Carbon::parse($date)->addDay());
     }
 
-    private function hint(): ?string
+    /** بطاقةُ «تحصيلات اليوم» — أو لا بطاقة */
+    private function collected(): ?array
     {
-        return $this->stat('مبيعات اليوم')['hint'] ?? null;
+        return $this->stat('تحصيلات اليوم');
     }
 
-    private function hintSays(float $collected, float $awaiting): string
+    private function assertCollected(float $amount, string $why = ''): void
     {
-        return __('روابط الدفع: حُصّل اليوم :a · بانتظار الدفع :b', ['a' => Demo::money($collected), 'b' => Demo::money($awaiting)]);
+        $this->assertSame(Demo::money($amount), $this->collected()['value'] ?? null, $why ?: 'تحصيلات اليوم');
+    }
+
+    private function hint(): ?string
+    {
+        return $this->collected()['hint'] ?? null;
+    }
+
+    private function hintSays(float $links, float $awaiting): string
+    {
+        return __('من العملاء، منها روابط الدفع :a · بانتظار الدفع :b', ['a' => Demo::money($links), 'b' => Demo::money($awaiting)]);
     }
 
     /** الدفترُ كلُّه — ما لا يجوز أن يمسّه رابطٌ يُرسَل */
@@ -225,7 +238,9 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         $this->assertSame(CustomerPaymentLink::PENDING, $link->status);
 
         $this->assertToday(0, 'رابطٌ معلّقٌ دخل «مبيعات اليوم»');
+        $this->assertCollected(0, 'رابطٌ معلّقٌ دخل «تحصيلات اليوم»');
         $this->assertSame($this->hintSays(0, 20), $this->hint());
+        $this->assertArrayNotHasKey('hint', $this->stat('مبيعات اليوم'), 'سطرُ التحصيل عاد تحت المبيعات');
         $this->assertSame(0.0, PaidLinksList::collected($this->shop->id, today(), today()->addDay()));
         $this->assertSame(20.0, PaidLinksList::awaiting($this->shop->id));
 
@@ -262,6 +277,7 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         $this->assertSame('2026-10-27', $link->paid_at->toDateString());
 
         $this->assertToday(20);
+        $this->assertCollected(20);
         $this->assertSame($this->hintSays(20, 0), $this->hint());
         $this->assertSame(1, CustomerPayment::where('business_id', $this->shop->id)->count(), 'تحصيلان لدفعةٍ واحدة');
         $this->assertSame(0.0, $invoice->fresh()->outstanding());
@@ -336,7 +352,10 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         $this->pay($link);
 
         $this->assertToday(0, 'رابطٌ مستقلٌّ صار بيعًا');
+        $this->assertCollected(12.5, 'رابطٌ مستقلٌّ دُفع ولا يراه التاجرُ في المقبوض');
         $this->assertSame($this->hintSays(12.5, 0), $this->hint());
+        // رصيدٌ للعميل: مالٌ قُبض ولا فاتورةَ يسدّها
+        $this->assertSame(12.5, CustomerPayment::where('business_id', $this->shop->id)->firstOrFail()->unallocated());
         $this->assertSame(0, CustomerInvoice::where('business_id', $this->shop->id)->count(), 'أُنشئت فاتورةٌ لرابطٍ مستقلّ');
         $this->assertSame(0.0, round(Ledger::netRevenue($this->shop->id, today(), today()->addDay()), 3), 'إيرادٌ وهميّ');
         $this->assertSame(0, Order::where('business_id', $this->shop->id)->count(), 'طلبٌ لرابط');
@@ -361,12 +380,14 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
 
         // ولا مبلغَ منها في المبيعات ولا في المقبوض — والمعلّقُ وحده ينتظر
         $this->assertToday(0);
+        $this->assertCollected(0);
         $this->assertSame($this->hintSays(0, 7), $this->hint());
         $this->assertSame(0, CustomerPayment::where('business_id', $this->shop->id)->count());
 
         // والفاتورةُ التي أُلغي رابطُها تُعدّ يومَ تُدفع بأيّ وسيلة — لا يومَ أُلغي
         CustomerPayments::record($this->shop->id, $this->customer, 9, ['method' => 'نقدي', 'occurred_at' => today()->toDateString()], [$cancelledInvoice->id => 9], $this->owner->id);
         $this->assertToday(9);
+        $this->assertCollected(9);
     }
 
     /* ═══════════ ١٠ — رابطان على الفاتورة نفسِها ═══════════ */
@@ -400,10 +421,12 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         $this->hook($this->obj($link, ['id' => (int) $link->provider_transaction_id, 'success' => true, 'is_refunded' => true]));
         $this->assertSame('refunded', ((array) $link->fresh()->meta)['provider_refund'] ?? null);
         $this->assertToday(20);
+        $this->assertCollected(20);
 
         CustomerPayments::cancel(CustomerPayment::findOrFail($link->customer_payment_id), 'استرجاع عبر Paymob', $this->owner->id);
 
         $this->assertToday(0, 'تحصيلٌ مُلغى بقي في المبيعات');
+        $this->assertCollected(0, 'تحصيلٌ مُلغى بقي في المقبوض');
         $this->assertSame($this->hintSays(0, 0), $this->hint());
         $this->assertSame(20.0, $invoice->fresh()->outstanding());
     }
@@ -432,7 +455,8 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         $this->link($this->invoice(44, shop: $this->other, customer: $theirCustomer), shop: $this->other, customer: $theirCustomer);
 
         $this->assertToday(0, 'تحصيلُ متجرٍ آخر في بطاقتي');
-        $this->assertNull($this->hint(), 'متجري لم يفتح رابطًا — ولا سطرَ يُقرأ من غيره');
+        $this->assertNull($this->collected(), 'متجري لم يحصّل ولم يفتح رابطًا — ولا بطاقةَ تُقرأ من غيره');
+        $this->assertCount(8, Demo::adminStats(), 'لوحةُ من لا يحصّل تغيّرت');
         $this->assertSame(40.0, StandaloneInvoiceSales::total($this->other->id, today(), today()->addDay()));
 
         // وفرعُ الفاتورة: مسقط تراها، وصحار لا
@@ -442,6 +466,14 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         $this->assertSame(0.0, StandaloneInvoiceSales::total($this->shop->id, today(), today()->addDay(), $this->sohar->id));
         $this->assertSame(0.0, PaidLinksList::collected($this->shop->id, today(), today()->addDay(), $this->sohar->id));
         $this->assertSame(25.0, PaidLinksList::collected($this->shop->id, today(), today()->addDay(), $this->muscat->id));
+
+        // والمقبوضُ كذلك: حصّةُ الفرع ما خُصّص لفواتيره، والرابطُ بلا فاتورةٍ في «كل الفروع» وحده
+        $this->pay($this->link(null, 5));
+        $collected = fn (?Branch $b) => Settlements::collections($this->shop->id, today(), today()->addDay(), $b?->id)['amount'];
+        $this->assertSame(25.0, $collected($this->muscat));
+        $this->assertSame(0.0, $collected($this->sohar));
+        $this->assertSame(30.0, $collected(null));
+        $this->assertSame(40.0, Settlements::collections($this->other->id, today(), today()->addDay())['amount']);
     }
 
     /* ═══════════ ١٧ — رقمٌ واحدٌ في كلّ مكان ═══════════ */
@@ -481,7 +513,7 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         $this->assertSame(0, CustomerPayment::where('business_id', $this->shop->id)->count(), 'دفعةُ تجربةٍ صارت تحصيلًا');
         $this->assertSame(0.0, PaidLinksList::collected($this->shop->id, today(), today()->addDay()));
         $this->assertToday(20);
-        $this->assertNull($this->hint(), 'رابطُ التجربة أظهر سطرَ تحصيل');
+        $this->assertNull($this->collected(), 'رابطُ التجربة أظهر بطاقةَ تحصيل');
     }
 
     /* ═══════════ ٢٠ — ما قبل الروابط كما هو ═══════════ */
@@ -497,6 +529,84 @@ class APaymentLinkIsNotASaleUntilItIsPaidTest extends TestCase
         // ورابطٌ على فاتورةٍ أخرى لا يمسّها
         $this->pay($this->link($this->invoice(20)));
         $this->assertSame(60.0, $this->day('2026-10-20'));
+    }
+
+    /* ═══════════ ٢١ — فاتورةُ الاثنين، ورابطُ الثلاثاء، ودفعُ الأربعاء ═══════════ */
+
+    public function test_an_invoice_issued_monday_linked_tuesday_and_paid_wednesday_keeps_monday_and_collects_on_wednesday(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-10-26 10:00:00', 'Asia/Muscat'));
+        $invoice = $this->invoice(30);
+        $this->assertToday(30);
+        $monday = Demo::dailySummaryFor($this->shop->id, now())['sales'];
+        $this->assertSame(30.0, $monday);
+
+        // الثلاثاء: رابطٌ لفاتورةٍ عُدّت أمس — والأمسُ لا يُعاد كتابتُه
+        Carbon::setTestNow(Carbon::parse('2026-10-27 10:00:00', 'Asia/Muscat'));
+        $link = $this->link($invoice);
+        $this->assertSame(30.0, $this->day('2026-10-26'), 'رابطُ الثلاثاء غيّر مبيعاتِ الاثنين');
+        $this->assertSame($monday, Demo::dailySummaryFor($this->shop->id, Carbon::parse('2026-10-26 12:00:00'))['sales']);
+        $this->assertToday(0);
+        $this->assertSame($this->hintSays(0, 30), $this->hint());
+
+        // الأربعاء: يُدفع — تحصيلٌ لا بيعٌ ثانٍ
+        Carbon::setTestNow(Carbon::parse('2026-10-28 10:00:00', 'Asia/Muscat'));
+        $this->pay($link);
+
+        $this->assertToday(0, 'فاتورةُ الاثنين عُدّت بيعًا ثانيًا يومَ دُفعت');
+        $this->assertCollected(30);
+        $this->assertSame($this->hintSays(30, 0), $this->hint());
+        $this->assertSame(30.0, $this->day('2026-10-26'));
+        $this->assertSame(Demo::money(30), $this->stat('مبيعات الشهر')['value'], 'الشهرُ عدّ الفاتورةَ مرّتين');
+
+        // والدفترُ والتقاريرُ يومَ صدورها كما كانت
+        $this->assertSame(30.0, round(Ledger::netRevenue($this->shop->id, Carbon::parse('2026-10-26'), Carbon::parse('2026-10-27')), 3));
+        $this->assertSame(0.0, round(Ledger::netRevenue($this->shop->id, Carbon::parse('2026-10-28'), Carbon::parse('2026-10-29')), 3));
+        $this->assertSame(0.0, $invoice->fresh()->outstanding());
+    }
+
+    /* ═══════════ ٢١ — تُصدَر اليومَ بتاريخٍ مضى ورابطُها معها ═══════════ */
+
+    public function test_an_invoice_dated_last_week_and_linked_the_day_it_is_issued_waits_for_its_payment(): void
+    {
+        $link = $this->link($this->invoice(25, '2026-10-20'));
+        $this->assertSame(0.0, $this->day('2026-10-20'), 'رابطٌ معلّقٌ عُدّ في يومٍ مضى');
+
+        $this->pay($link);
+        $this->assertSame(0.0, $this->day('2026-10-20'));
+        $this->assertToday(25);
+        $this->assertCollected(25);
+
+        // والدفترُ بالتاريخ الذي كتبه صاحبُها
+        $this->assertSame(25.0, round(Ledger::netRevenue($this->shop->id, Carbon::parse('2026-10-20'), Carbon::parse('2026-10-21')), 3));
+    }
+
+    /* ═══════════ ٢٢ — «تحصيلات اليوم» بجوار «مبيعات اليوم»: كلُّ قبضٍ مرّة ═══════════ */
+
+    public function test_todays_collections_hold_every_receipt_from_customers_once_beside_sales(): void
+    {
+        $this->order(50, 'pos', 'مدفوع');                  // بيعُ صندوقٍ مدفوع: مبيعات
+        $this->pay($this->link($this->invoice(20)));       // فاتورةٌ برابطٍ دُفع: بيعٌ وتحصيلٌ واحد
+        $this->pay($this->link(null, 12.5));               // رابطٌ مستقلّ: تحصيلٌ لا بيع
+        $this->link($this->invoice(35));                   // معلّق: لا هذا ولا ذاك
+        $cash = $this->invoice(9);                         // فاتورةٌ بلا رابطٍ سُدّدت نقدًا
+        CustomerPayments::record($this->shop->id, $this->customer, 9, ['method' => 'نقدي', 'occurred_at' => today()->toDateString()], [$cash->id => 9], $this->owner->id);
+
+        $this->assertToday(79);                            // 50 + 20 + 9
+        $this->assertCollected(41.5);                      // 20 + 12.5 + 9
+        $this->assertSame($this->hintSays(32.5, 35), $this->hint());
+        $this->assertSame(3, CustomerPayment::where('business_id', $this->shop->id)->count());
+
+        // متجاورتان، والمبيعاتُ لا تحمل سطرَ تحصيل
+        $this->assertSame(['مبيعات اليوم', 'تحصيلات اليوم', 'مبيعات الشهر'], array_slice(array_column(Demo::adminStats(), 'label'), 0, 3));
+        $this->assertArrayNotHasKey('hint', $this->stat('مبيعات اليوم'));
+
+        // وهو رقمُ «تحصيلات العملاء» في المالية نفسُه
+        $this->assertSame(41.5, Settlements::collections($this->shop->id, today())['amount']);
+
+        // والغدُ يبدأ من صفر — والأمسُ في الاتّجاه
+        Carbon::setTestNow(Carbon::parse('2026-10-28 09:00:00', 'Asia/Muscat'));
+        $this->assertCollected(0);
     }
 
     private function order(float $total, string $channel, string $payment): Order

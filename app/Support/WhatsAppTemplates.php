@@ -40,7 +40,7 @@ class WhatsAppTemplates
      * ولا يُخلط بينهما: اسم القالب معتمَدٌ داخل حسابٍ بعينه، وقالب أبعاد لا
      * وجود له في حساب المحلّ فيُردّ النداء بخطأ.
      */
-    public static function resolve(Business $business, string $event, string $mode): ?WhatsAppTemplateMapping
+    public static function resolve(Business $business, string $event, string $mode, ?string $wantedLanguage = null): ?WhatsAppTemplateMapping
     {
         $mapping = $mode === WhatsAppMode::BUSINESS_OWN
             ? WhatsAppTemplateMapping::where('scope_type', WhatsAppMode::OWNER_BUSINESS)
@@ -81,6 +81,29 @@ class WhatsAppTemplates
             && WhatsAppEvent::isRibbonBusiness((int) $business->id)
             && $mapping->meta_status !== self::APPROVED) {
             return null;
+        }
+
+        /*
+         * نسخة «استلام الطلب» الإنجليزية في RIBBON لها اسم Meta مستقل.
+         * نحتفظ بصفّ حدثٍ واحد في القاعدة، وننسخ الـmapping في الذاكرة فقط
+         * عند عميلٍ إنجليزي وبعد أن تكون النسخة الإنجليزية معتمدة.
+         */
+        if ($mapping !== null
+            && $mode === WhatsAppMode::BUSINESS_OWN
+            && WhatsAppEvent::isRibbonBusiness((int) $business->id)
+            && $event === WhatsAppEvent::ORDER_RECEIVED
+            && str_starts_with(strtolower((string) $wantedLanguage), 'en')
+            && in_array('en', (array) ($mapping->approved_languages ?? []), true)) {
+            $english = clone $mapping;
+            $english->template_name = WhatsAppEvent::templateNameForBusinessLanguage(
+                (int) $business->id,
+                $event,
+                'en',
+            );
+            $english->language_code = 'en';
+            $english->approved_languages = ['en'];
+
+            return $english;
         }
 
         return $mapping;
@@ -138,6 +161,28 @@ class WhatsAppTemplates
                 ->unique()->values()->all();
 
             /*
+             * RIBBON/received: النسخة الإنجليزية باسم مستقل عند Meta.
+             * ندمج اعتمادها في اللغات المعتمدة للحدث نفسه.
+             */
+            $alternateEnglishName = $businessId !== null
+                && WhatsAppEvent::isRibbonBusiness((int) $businessId)
+                && $row->event_type === WhatsAppEvent::ORDER_RECEIVED
+                    ? WhatsAppEvent::templateNameForBusinessLanguage((int) $businessId, $row->event_type, 'en')
+                    : null;
+
+            if ($alternateEnglishName !== null && $alternateEnglishName !== $row->template_name) {
+                $alternateStatuses = (array) ($result['templates'][$alternateEnglishName] ?? []);
+                $englishApproved = collect($alternateStatuses)->contains(
+                    fn ($s, $lang) => str_starts_with(strtolower((string) $lang), 'en')
+                        && $s === self::APPROVED
+                );
+
+                if ($englishApproved && ! in_array('en', $approvedLanguages, true)) {
+                    $approvedLanguages[] = 'en';
+                }
+            }
+
+            /*
              * ونصُّ BODY لكلّ لغةٍ كما اعتمدته ميتا — لِيُكتب نصُّ الرسالة
              * وقتَ إرسالها (`snapshot`). و`*` يُنسب إلى لغة القالب كما فوقه.
              * ولا يمسّ الحالَ ولا اللغاتِ المعتمَدة: سطرٌ مستقلٌّ بجوارهما.
@@ -145,6 +190,15 @@ class WhatsAppTemplates
             $bodies = [];
             foreach ((array) ($result['bodies'][$row->template_name] ?? []) as $lang => $text) {
                 $bodies[$lang === '*' ? (string) $row->language_code : (string) $lang] = (string) $text;
+            }
+
+            if ($alternateEnglishName !== null && $alternateEnglishName !== $row->template_name) {
+                foreach ((array) ($result['bodies'][$alternateEnglishName] ?? []) as $lang => $text) {
+                    if (str_starts_with(strtolower((string) $lang), 'en')) {
+                        $bodies['en'] = (string) $text;
+                        break;
+                    }
+                }
             }
 
             $row->forceFill([
@@ -203,10 +257,19 @@ class WhatsAppTemplates
             return null;
         }
 
-        $mapping = WhatsAppTemplateMapping::where('scope_type', $scope)
+        $mappingQuery = WhatsAppTemplateMapping::where('scope_type', $scope)
             ->when($businessId === null, fn ($q) => $q->whereNull('business_id'))
-            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
-            ->where('template_name', $template)
+            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId));
+
+        if ($businessId !== null
+            && WhatsAppEvent::isRibbonBusiness((int) $businessId)
+            && $template === WhatsAppEvent::templateNameForBusinessLanguage((int) $businessId, WhatsAppEvent::ORDER_RECEIVED, 'en')) {
+            $mappingQuery->where('event_type', WhatsAppEvent::ORDER_RECEIVED);
+        } else {
+            $mappingQuery->where('template_name', $template);
+        }
+
+        $mapping = $mappingQuery
             ->orderBy('id')
             ->get(['body_by_language'])
             ->map(fn ($m) => (array) ($m->body_by_language ?? []))

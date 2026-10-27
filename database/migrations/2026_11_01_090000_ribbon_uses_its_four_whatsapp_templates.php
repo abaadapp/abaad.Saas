@@ -33,6 +33,13 @@ return new class extends Migration
                 continue;
             }
 
+            // سعود يريد أن تخرج رسائل RIBBON من رقمه وحده، لا من رقم أبعاد المشترك.
+            $businessUpdate = ['whatsapp_mode' => 'business_own'];
+            if (Schema::hasColumn('businesses', 'whatsapp_shared_allowed')) {
+                $businessUpdate['whatsapp_shared_allowed'] = false;
+            }
+            DB::table('businesses')->where('id', $businessId)->update($businessUpdate);
+
             DB::table('whatsapp_template_mappings')
                 ->where('scope_type', 'business')
                 ->where('business_id', $businessId)

@@ -59,7 +59,7 @@ interface Active {
     addon: { name: string; code: string };
     quantity: number;
     source: 'purchase' | 'grant';
-    cycle: 'monthly' | 'yearly' | null;
+    cycle: 'monthly' | 'semiannual' | 'yearly' | null;
     unit_price: number;
     starts_at: string | null;
     ends_at: string | null;
@@ -70,7 +70,7 @@ interface Order {
     id: number;
     addon: { name: string; pricing: string };
     kind: 'new' | 'renewal';
-    cycle: 'monthly' | 'yearly';
+    cycle: 'monthly' | 'semiannual' | 'yearly';
     quantity: number;
     amount: number | null;
     status: 'requested' | 'invoiced';
@@ -86,13 +86,16 @@ interface Props {
     available: MerchantAddon[];
     active: Active[];
     orders: Order[];
-    addons_total: { monthly: number; yearly: number };
+    addons_total: { monthly: number; semiannual?: number; yearly: number };
     may_request: boolean;
     mayBuy: boolean;
     currency: Currency;
 }
 
-const CYCLE: Record<string, string> = { monthly: 'شهري', yearly: 'سنوي' };
+const CYCLE: Record<string, string> = { monthly: 'شهري', semiannual: 'نصف سنوي', yearly: 'سنوي' };
+
+/** ستّةُ أشهرٍ بسعر الشهر ستَّ مرّات — كما تُفوتَر (`Catalog::unitPrice`) */
+const halfYear = (monthly: number | null) => (monthly == null ? null : Math.round(monthly * 6 * 1000) / 1000);
 
 /** أيقونةُ الخدمة بما تفتحه — والخدمةُ بلا باب بأيقونةٍ عامّة */
 const ICONS: Record<string, LucideIcon> = {
@@ -180,11 +183,16 @@ export default function SubscriptionAddons() {
                                         {t('الباقة')}: {money(plan.price.monthly, currency)} {t('/ شهريًا')}
                                     </p>
                                 )}
-                                {(addons_total.monthly > 0 || addons_total.yearly > 0) && (
+                                {(addons_total.monthly > 0 || (addons_total.semiannual ?? 0) > 0 || addons_total.yearly > 0) && (
                                     <p data-testid="addons-total">
-                                        {t('الإضافات السارية')}: {addons_total.monthly > 0 && `${money(addons_total.monthly, currency)} ${t('/ شهريًا')}`}
-                                        {addons_total.monthly > 0 && addons_total.yearly > 0 && ' · '}
-                                        {addons_total.yearly > 0 && `${money(addons_total.yearly, currency)} ${t('سنويًا')}`}
+                                        {t('الإضافات السارية')}:{' '}
+                                        {[
+                                            addons_total.monthly > 0 && `${money(addons_total.monthly, currency)} ${t('/ شهريًا')}`,
+                                            (addons_total.semiannual ?? 0) > 0 && `${money(addons_total.semiannual ?? 0, currency)} ${t('نصف سنويًا')}`,
+                                            addons_total.yearly > 0 && `${money(addons_total.yearly, currency)} ${t('سنويًا')}`,
+                                        ]
+                                            .filter(Boolean)
+                                            .join(' · ')}
                                     </p>
                                 )}
                             </div>
@@ -300,7 +308,7 @@ export default function SubscriptionAddons() {
                                             ? t('حسب الطلب')
                                             : a.pricing === 'free'
                                               ? t('مجانية')
-                                              : `${money(a.monthly_price, currency)} ${t('/ شهريًا')} · ${money(a.yearly_price, currency)} ${t('سنويًا')}`}
+                                              : `${money(a.monthly_price, currency)} ${t('/ شهريًا')} · ${money(halfYear(a.monthly_price), currency)} ${t('نصف سنويًا')} · ${money(a.yearly_price, currency)} ${t('سنويًا')}`}
                                         {a.counted && <span className="text-[#6b7280]"> · {t(a.unit === 'branch' ? 'لكل فرع' : 'لكل وحدة')}</span>}
                                     </p>
                                     <div className="mt-auto flex justify-end pt-1">
@@ -370,7 +378,7 @@ function ServiceCard({ capability, name, description, testId, children }: { capa
 function RequestDialog({ addon, currency, onClose }: { addon: MerchantAddon; currency: Currency; onClose: () => void }) {
     const t = useTranslate();
     const form = useForm({ code: addon.code, cycle: 'monthly', quantity: '1' });
-    const unit = form.data.cycle === 'yearly' ? addon.yearly_price : addon.monthly_price;
+    const unit = form.data.cycle === 'yearly' ? addon.yearly_price : form.data.cycle === 'semiannual' ? halfYear(addon.monthly_price) : addon.monthly_price;
     const qty = addon.counted ? Math.max(1, Number(form.data.quantity) || 1) : 1;
 
     const submit = (e: FormEvent) => {
@@ -391,6 +399,7 @@ function RequestDialog({ addon, currency, onClose }: { addon: MerchantAddon; cur
                             onChange={(e) => form.setData('cycle', e.target.value)}
                             options={[
                                 { value: 'monthly', label: 'شهري' },
+                                { value: 'semiannual', label: 'نصف سنوي' },
                                 { value: 'yearly', label: 'سنوي' },
                             ]}
                         />
@@ -405,7 +414,7 @@ function RequestDialog({ addon, currency, onClose }: { addon: MerchantAddon; cur
                         {addon.pricing === 'quote'
                             ? t('تُرسل أبعاد عرض سعر — ولا تُفعَّل الإضافة قبل اعتماده وسداده.')
                             : addon.pricing === 'free'
-                              ? t('مجانية — تُفعَّل فور الطلب.')
+                              ? t('مجانية — تُفعَّل حين يعتمدها فريق أبعاد.')
                               : t('المبلغ :a — تصلك فاتورته، وتُفعَّل الإضافة فور تسجيل السداد.', { a: money((unit ?? 0) * qty, currency) })}
                     </p>
                     <div className="flex justify-end gap-2">

@@ -176,7 +176,7 @@ class APlanChangeKeepsWhatTheShopBuiltTest extends TestCase
             $basic = collect($plans)->firstWhere('value', $this->basic->id);
 
             $this->assertSame([
-                'label' => 'الباقة الأساسية', 'value' => $this->basic->id, 'monthly' => 9.9, 'yearly' => 99.0,
+                'label' => 'الباقة الأساسية', 'value' => $this->basic->id, 'monthly' => 9.9, 'semiannual' => 59.4, 'yearly' => 99.0,
                 'features' => ['إدارة متجرك اليومية', 'سطرٌ أضافه المدير اليوم'],
                 'max_branches' => 1, 'max_employees' => 3, 'max_products' => 500,
             ], $basic, $where);

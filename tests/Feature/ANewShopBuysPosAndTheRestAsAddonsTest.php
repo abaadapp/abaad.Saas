@@ -339,7 +339,7 @@ class ANewShopBuysPosAndTheRestAsAddonsTest extends TestCase
         $this->assertSame($invoices + 1, Invoice::count());
         $this->assertSame(99.0, (float) Invoice::latest('id')->first()->amount);
 
-        AddonOrders::grant($business, $this->addon('loyalty'), 1, null, 'هدية افتتاح', $this->platform);
+        AddonOrders::grant($business, $this->addon('loyalty'), 1, now()->addYear()->toDateString(), 'هدية افتتاح', $this->platform);
         $this->assertSame($invoices + 1, Invoice::count(), 'المنحةُ أصدرت فاتورة');
         $this->assertTrue($this->allows($business, 'loyalty'));
         $this->assertSame($entries, JournalEntry::count());

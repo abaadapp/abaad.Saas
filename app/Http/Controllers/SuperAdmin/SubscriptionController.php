@@ -172,6 +172,8 @@ class SubscriptionController extends Controller
                 'label' => $p->name,
                 'value' => $p->id,
                 'monthly' => (float) $p->monthly_price,
+                // ستّةُ أشهرٍ بسعر الشهر ستَّ مرّات، بلا خصم — كما تُفوتَر (`PricingPolicy::planPrice`)
+                'semiannual' => round((float) $p->monthly_price * 6, 3),
                 'yearly' => (float) $p->yearly_price,
                 'features' => array_values($p->features ?? []),
                 'max_branches' => $p->max_branches,

@@ -107,7 +107,7 @@ final class AddonOrders
             throw new DomainException(__('«:n» لا تُباع في باقتك.', ['n' => $addon->name]));
         }
         if (! in_array($cycle, Catalog::CYCLES, true)) {
-            throw new DomainException(__('اختر دورةً شهريّةً أو سنويّة.'));
+            throw new DomainException(__('اختر دورةً شهريّةً أو نصف سنويّةٍ أو سنويّة.'));
         }
 
         $quantity = Catalog::counted($addon->unit) ? $quantity : 1;
@@ -125,7 +125,7 @@ final class AddonOrders
         $unit = match ($addon->pricing) {
             Catalog::QUOTE => null,
             Catalog::FREE => 0.0,
-            default => (float) ($cycle === 'yearly' ? $addon->yearly_price : $addon->monthly_price),
+            default => Catalog::unitPrice($addon, $cycle),
         };
 
         if ($addon->pricing === Catalog::PAID && ! ($unit > 0)) {
@@ -157,14 +157,17 @@ final class AddonOrders
                     'requested_by_name' => $by?->name,
                 ]);
 
-                Activity::log('created', 'طلب إضافة الاشتراك «'.$addon->name.'»'.($quantity > 1 ? ' × '.$quantity : '').' — '.($cycle === 'yearly' ? 'سنويًّا' : 'شهريًّا'), [
+                Activity::log('created', 'طلب إضافة الاشتراك «'.$addon->name.'»'.($quantity > 1 ? ' × '.$quantity : '').' — '.Catalog::cycleLabel($cycle), [
                     'business_id' => $business->id, 'subject_id' => $order->id, 'subject_type' => 'addon_order',
                 ]);
 
-                // والمجّانيّةُ لا فاتورةَ لها ولا اعتماد: تُفعَّل بطلبها
-                if ($order->pricing === Catalog::FREE) {
-                    self::activate($order);
-                }
+                /*
+                 * والمجّانيّةُ تنتظر الاعتمادَ كغيرها — لا تُفعَّل بطلب التاجر.
+                 *
+                 * كانت تُفعَّل بضغطته: إضافةٌ مجّانيّةٌ اليوم يُسعّرها صاحبُ المنصّة غدًا
+                 * تبقى مفتوحةً بلا نهاية لمن طلبها يومَ كانت بلا ثمن. والتفعيلُ قرارُ
+                 * فريق أبعاد: يعتمدها مديرُ المنصّة (`approve`) فتُفعَّل بلا فاتورة.
+                 */
 
                 return ['order' => $order->fresh(), 'created' => true];
             });
@@ -228,6 +231,26 @@ final class AddonOrders
             ]);
 
             return $order->fresh();
+        });
+    }
+
+    /**
+     * طلبُ إضافةٍ يكتبه مديرُ المنصّة لمتجر — ويعتمده في الخطوة نفسها.
+     *
+     * هو طريقُ طلب التاجر نفسُه لا بابٌ حوله: `request` بأهليّة الباقة وسياسة المتجر
+     * وسعر الكتالوج، ثمّ `approve` بفاتورته — والاستحقاقُ يُكتب عند سدادها
+     * (`Billing::markPaid`)، لا هنا. وسعرٌ غيرُ سعر الكتالوج يحتاج سببًا كما في الاعتماد.
+     */
+    public static function orderFor(Business $business, SubscriptionAddon $addon, string $cycle, int $quantity, User $by, ?float $unitPrice = null, ?string $note = null): AddonOrder
+    {
+        return DB::transaction(function () use ($business, $addon, $cycle, $quantity, $by, $unitPrice, $note) {
+            ['order' => $order, 'created' => $created] = self::request($business, $addon, $cycle, $quantity, $by);
+
+            if (! $created) {
+                throw new DomainException(__('لـ«:n» طلبٌ مفتوحٌ لهذا المتجر — اعتمده أو ألغِه من قائمة الطلبات.', ['n' => $addon->name]));
+            }
+
+            return self::approve($order, $unitPrice, $note);
         });
     }
 
@@ -382,7 +405,10 @@ final class AddonOrders
     }
 
     /**
-     * منحةٌ يدويّة أو عرضٌ خاصّ — بسببٍ مكتوب، ومدّةٍ أو بلا نهاية.
+     * منحةٌ يدويّة أو عرضٌ خاصّ — بسببٍ مكتوب وتاريخِ نهاية.
+     *
+     * والتاريخُ لازم: منحةٌ بلا نهاية بابٌ مفتوحٌ حول الفوترة لا يُغلقه أحد. ومن
+     * أراد أطولَ كتب أبعدَ تاريخ — مكتوبًا يُقرأ في السجلّ.
      */
     public static function grant(Business $business, SubscriptionAddon $addon, int $quantity, ?string $endsAt, string $reason, ?User $by = null): BusinessAddon
     {
@@ -395,8 +421,11 @@ final class AddonOrders
             throw new DomainException(__('العدد بين 1 و:max.', ['max' => Catalog::MAX_QUANTITY]));
         }
 
-        $ends = filled($endsAt) ? Carbon::parse($endsAt)->startOfDay() : null;
-        if ($ends && $ends->lt(now()->startOfDay())) {
+        if (! filled($endsAt)) {
+            throw new DomainException(__('حدّد تاريخ نهاية المنحة.'));
+        }
+        $ends = Carbon::parse($endsAt)->startOfDay();
+        if ($ends->lt(now()->startOfDay())) {
             throw new DomainException(__('نهاية المنحة لا تكون قبل اليوم.'));
         }
 
@@ -526,7 +555,7 @@ final class AddonOrders
             'status' => Billing::UNPAID,
             'kind' => Billing::KIND_ADDON,
             'note' => mb_substr($addon->name.((int) $order->quantity > 1 ? ' × '.$order->quantity : '')
-                .' — '.($order->cycle === 'yearly' ? 'سنويًّا' : 'شهريًّا')
+                .' — '.Catalog::cycleLabel($order->cycle)
                 .($order->kind === self::KIND_RENEWAL ? ' (تجديد)' : ''), 0, 160),
         ]);
     }

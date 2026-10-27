@@ -84,6 +84,7 @@ class BusinessController extends Controller
         // ومتجرٌ جديدٌ لا يُفتح له السجلّ: ضريبتُه لم تُضبط بعد
         self::assertComponentsMayOpen(null, $data);
         $account = $this->validateAccount($request);
+        $subscription = $this->validateSubscription($request);
 
         $data['logo'] = $request->hasFile('logo') ? $request->file('logo')->store('logos', 'public') : null;
 
@@ -108,28 +109,91 @@ class BusinessController extends Controller
             }
         }
 
-        if (empty($data['ends_at'])) {
-            $days = (int) \App\Support\Tenancy::platform('trial_days', 14);
-            $starts = ! empty($data['starts_at']) ? \Illuminate\Support\Carbon::parse($data['starts_at']) : now();
-            $data['starts_at'] = $data['starts_at'] ?? $starts->toDateString();
-            if ($days > 0) {
-                $data['ends_at'] = $starts->copy()->addDays($days)->toDateString();
-            }
+        /*
+         * والاشتراكُ بطريقةٍ صريحة (`NewMerchantSubscription`): تجربةُ الأساسيّة، أو
+         * باقةٌ مدفوعةٌ تنتظر سدادَ فاتورتها، أو منحةٌ بتاريخٍ وسبب. فالباقةُ والحالةُ
+         * والتاريخان يكتبها الخادم بحسبها — لا ما أرسلته الشاشة.
+         */
+        if ($subscription['subscription_mode'] !== \App\Support\NewMerchantSubscription::TRIAL && empty($data['plan_id'])) {
+            return back()->withInput()->withErrors(['plan_id' => __('اختر الباقة.')]);
+        }
+
+        try {
+            $data = array_merge($data, \App\Support\NewMerchantSubscription::shape($subscription, $data['plan_id'] ?? null));
+        } catch (\DomainException $e) {
+            return back()->withInput()->withErrors(['subscription_mode' => $e->getMessage()]);
         }
 
         // بابُ الإنشاء يختمه الخادم — `validateData` لا يقبله من الطلب
         $data['registration_source'] = Business::SOURCE_PLATFORM_MANUAL;
 
-        $business = Business::create($data);
-        $owner = \App\Support\MerchantAccount::create($business, $account['login_username'], $account['login_password']);
-        // بذرة تصنيفات حسب النوع — لئلا يفتح التاجر لوحته على صفحة بيضاء
-        \App\Support\BusinessTypes::provision($business);
-        \App\Support\Activity::log('created', 'أضاف شركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
+        try {
+            [$business, $owner, $started] = \Illuminate\Support\Facades\DB::transaction(function () use ($data, $account, $subscription, $request) {
+                $business = Business::create($data);
+                $owner = \App\Support\MerchantAccount::create($business, $account['login_username'], $account['login_password']);
+                // بذرة تصنيفات حسب النوع — لئلا يفتح التاجر لوحته على صفحة بيضاء
+                \App\Support\BusinessTypes::provision($business);
+                \App\Support\Activity::log('created', 'أضاف شركة: ' . $business->name, ['business_id' => null, 'subject_id' => $business->id]);
 
-        return redirect()->route('super-admin.businesses.index')->with('toast', [
-            'msg' => __('تم إضافة الشركة · حساب الدخول: :email', ['email' => $owner->email]),
-            'type' => 'success',
+                // فاتورةُ الباقة وفواتيرُ الإضافات — وفشلُ أيٍّ منها يُرجع الشركةَ كلَّها
+                $started = \App\Support\NewMerchantSubscription::start($business->fresh('plan'), $subscription, $request->user());
+
+                return [$business, $owner, $started];
+            });
+        } catch (\DomainException $e) {
+            return back()->withInput()->withErrors(['subscription_mode' => $e->getMessage()]);
+        }
+
+        $msg = __('تم إضافة الشركة · حساب الدخول: :email', ['email' => $owner->email]);
+        if ($started['invoices'] !== []) {
+            $msg .= ' · '.__('الفواتير: :list', ['list' => implode('، ', $started['invoices'])]);
+        }
+        if ($business->status === Business::AWAITING_PAYMENT) {
+            $msg .= ' · '.__('يُفتح الحساب بتسجيل سداد فاتورة الباقة.');
+        }
+
+        return redirect()->route('super-admin.businesses.index')->with('toast', ['msg' => $msg, 'type' => 'success']);
+    }
+
+    /**
+     * طريقةُ فتح الاشتراك — وما تحتاجه كلُّ طريقة.
+     *
+     * المدفوعُ بدورةٍ تُفوتَر؛ والمنحةُ بتاريخٍ لا يسبق اليوم وسببٍ مكتوب؛ والإضافاتُ
+     * للمدفوع والممنوح وحدهما، بدورة الباقة نفسِها — والتجربةُ لا فاتورةَ لها.
+     */
+    private function validateSubscription(Request $request): array
+    {
+        // ومن لم يذكر طريقةً فتجربة: أضيقُ الطرق — لا باقةَ مدفوعةً ولا أيّامَ بلا سداد
+        $request->mergeIfMissing(['subscription_mode' => \App\Support\NewMerchantSubscription::TRIAL]);
+
+        $data = $request->validate([
+            'subscription_mode' => ['required', Rule::in(\App\Support\NewMerchantSubscription::MODES)],
+            'cycle' => ['nullable', 'required_if:subscription_mode,paid', Rule::in(\App\Support\Billing::CYCLES)],
+            'grant_until' => ['nullable', 'required_if:subscription_mode,grant', 'date', 'after_or_equal:today'],
+            'grant_reason' => ['nullable', 'required_if:subscription_mode,grant', 'string', 'min:5', 'max:255'],
+            'addons' => ['nullable', 'array', 'max:20'],
+            'addons.*.addon_id' => ['required', 'integer', 'distinct', 'exists:subscription_addons,id'],
+            'addons.*.quantity' => ['nullable', 'integer', 'min:1', 'max:'.\App\Support\Addons\Catalog::MAX_QUANTITY],
+            'addons.*.unit_price' => ['nullable', 'numeric', 'min:0', 'max:100000'],
+            'addons.*.note' => ['nullable', 'string', 'max:500'],
+        ], [], [
+            'subscription_mode' => __('طريقة الاشتراك'),
+            'cycle' => __('مدة الاشتراك'),
+            'grant_until' => __('نهاية المنحة'),
+            'grant_reason' => __('سبب المنحة'),
+            'addons' => __('الإضافات'),
         ]);
+
+        if (! empty($data['addons'])) {
+            if ($data['subscription_mode'] === \App\Support\NewMerchantSubscription::TRIAL) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['addons' => __('التجربة بلا إضافات — تُطلب بعد الاشتراك.')]);
+            }
+            if (empty($data['cycle'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['cycle' => __('اختر مدّة الاشتراك — الإضافات تُفوتَر بها.')]);
+            }
+        }
+
+        return $data;
     }
 
     public function update(Request $request, $id)

@@ -82,7 +82,7 @@ export default function SubscriptionsIndex() {
     };
 
     /** سعر الباقة المختارة — يملأ المبلغ ولا يفرضه (الخصم يبقى ممكنًا) */
-    const suggest = (cycle: 'monthly' | 'yearly') => {
+    const suggest = (cycle: 'monthly' | 'semiannual' | 'yearly') => {
         const plan = planOptions.find((p) => String(p.value) === form.data.plan_id);
         if (plan) form.setData('amount', String(plan[cycle]));
     };
@@ -277,6 +277,13 @@ export default function SubscriptionsIndex() {
                                     className="rounded-[8px] bg-[#f2f2f0] px-2.5 py-1 text-[12px] text-[#4b4b4b] transition-colors hover:bg-[#e8e8e6]"
                                 >
                                     {t('سعر الشهر')}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => suggest('semiannual')}
+                                    className="rounded-[8px] bg-[#f2f2f0] px-2.5 py-1 text-[12px] text-[#4b4b4b] transition-colors hover:bg-[#e8e8e6]"
+                                >
+                                    {t('سعر نصف السنة')}
                                 </button>
                                 <button
                                     type="button"

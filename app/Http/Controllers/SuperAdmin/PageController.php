@@ -73,7 +73,7 @@ class PageController extends Controller
      * «الشركات النشطة» يقارن بـ«نشط» فلا يعدّها. متجرٌ يعمل ولا يُحصى ولا
      * يُوقَف، ولا شاشةَ تستطيع أن تُعيده إلى حالةٍ معروفة.
      */
-    public const STATUSES = ['نشط', 'منتهي', 'معطل'];
+    public const STATUSES = ['نشط', 'منتهي', 'معطل', \App\Models\Business::AWAITING_PAYMENT];
 
     /**
      * عرض صفحة منصة.
@@ -84,6 +84,20 @@ class PageController extends Controller
      * فيخرج نفس النص حرفًا بحرف.
      */
     /** سعرُ دورةٍ من باقة المتجر — أو `null` حين لا سعرَ معتمدًا في سياسته */
+    /** سعرُ باقةٍ يُرقّى إليها المتجر بدوراتها — بسياسته؛ وما لم يُعتمد فيها فارغ */
+    private static function upgradePrices(Business $business, \App\Models\Plan $plan): ?array
+    {
+        try {
+            return [
+                'monthly' => \App\Support\Addons\PricingPolicy::planPriceFor($business, $plan, 'monthly'),
+                'semiannual' => \App\Support\Addons\PricingPolicy::planPriceFor($business, $plan, 'semiannual'),
+                'yearly' => \App\Support\Addons\PricingPolicy::planPriceFor($business, $plan, 'yearly'),
+            ];
+        } catch (\DomainException) {
+            return null;
+        }
+    }
+
     private static function planPrice(Business $business, string $cycle): ?float
     {
         try {
@@ -217,6 +231,13 @@ class PageController extends Controller
                 'endsAt' => optional($model->ends_at)->format('Y-m-d'),
                 'status' => $model->status,
                 /*
+                 * الترقيةُ في الحساب نفسِه — تجربةٌ إلى مدفوع، أو باقةٌ إلى أخرى — بسعر
+                 * كلّ باقةٍ في سياسة المتجر. تُفوتَر الآن وتسري بالسداد (`Billing::upgrade`).
+                 */
+                'upgrades' => \App\Models\Plan::where('id', '!=', (int) $model->plan_id)->orderBy('monthly_price')->get()
+                    ->map(fn (\App\Models\Plan $p) => ['id' => $p->id, 'name' => $p->name, 'prices' => self::upgradePrices($model, $p)])
+                    ->values()->all(),
+                /*
                  * فاتورةُ التجديد التي تنتظر سدادها — والأزرارُ تُطفأ ما دامت.
                  *
                  * تجديدٌ معلّقٌ واحد للمتجر (`Billing::renew`)، فيُقال لمدير
@@ -226,6 +247,8 @@ class PageController extends Controller
                     'invoice_id' => $p->invoice_id,
                     'number' => $p->invoice?->number,
                     'cycle' => $p->cycle,
+                    // وفاتورةُ ترقيةٍ تقول إلى أين — والمتجرُ على باقته حتى تُسدَّد
+                    'upgrade_to' => $p->from_plan_id ? $p->plan?->name : null,
                     'amount' => (float) $p->amount,
                     'issued' => optional($p->invoice?->issued_at)->format('Y-m-d'),
                 ] : null,
@@ -870,6 +893,8 @@ class PageController extends Controller
             'statuses' => self::STATUSES,
             // وتفاصيلُ كلّ باقةٍ معها — تُعرض تحت الاختيار، من مصدرٍ واحدٍ مع نموذج الاشتراك
             'plans' => SubscriptionController::planOptions(),
+            // وطرقُ فتح الاشتراك لمتجرٍ جديد: السياسةُ والأسعارُ بدوراتها والإضافات
+            'subscription' => \App\Support\NewMerchantSubscription::options(),
         ];
     }
 

@@ -114,7 +114,10 @@ class AnAddonOrderKeepsTheTermsItWasPlacedOnTest extends TestCase
     {
         $this->makeFree('loyalty');
         [$early] = $this->shop('basic', 'early@shop.om');
+        // والمجّانيّةُ تنتظر اعتمادَ مدير المنصّة — لا تُفعَّل بطلب التاجر (`AddonOrders::request`)
         $taken = AddonOrders::request($early, $this->addon('loyalty'), 'monthly')['order'];
+        $this->assertSame([AddonOrders::REQUESTED, Catalog::FREE, null], [$taken->status, $taken->pricing, $taken->invoice_id]);
+        $taken = AddonOrders::approve($taken);
         $this->assertSame([AddonOrders::PAID, Catalog::FREE, null], [$taken->status, $taken->pricing, $taken->invoice_id]);
         $row = $this->entitlementOf($taken);
         $this->assertSame([BusinessAddon::PURCHASE, null, 0.0, '2026-11-02', null, false], $this->terms($row));

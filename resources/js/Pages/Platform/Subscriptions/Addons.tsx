@@ -51,7 +51,7 @@ export interface OrderRow {
     id: number;
     addon: { id: number; name: string; pricing: string };
     kind: 'new' | 'renewal';
-    cycle: 'monthly' | 'yearly';
+    cycle: 'monthly' | 'semiannual' | 'yearly';
     quantity: number;
     unit_price: number | null;
     amount: number | null;
@@ -67,7 +67,7 @@ export interface EntitlementRow {
     addon: { id: number; name: string; code: string };
     quantity: number;
     source: 'purchase' | 'grant';
-    cycle: 'monthly' | 'yearly' | null;
+    cycle: 'monthly' | 'semiannual' | 'yearly' | null;
     unit_price: number;
     starts_at: string | null;
     ends_at: string | null;
@@ -103,7 +103,10 @@ export const ORDER_STATUS: Record<OrderRow['status'], string> = {
     cancelled: 'ملغى',
 };
 
-export const CYCLE: Record<string, string> = { monthly: 'شهري', yearly: 'سنوي' };
+export const CYCLE: Record<string, string> = { monthly: 'شهري', semiannual: 'نصف سنوي', yearly: 'سنوي' };
+
+/** ستّةُ أشهرٍ بسعر الشهر ستَّ مرّات — بلا عمودٍ ولا خصم، كالباقة (`Catalog::unitPrice`) */
+export const halfYear = (monthly: number | null | undefined) => (monthly == null ? null : Math.round(monthly * 6 * 1000) / 1000);
 
 const UNIT: Record<string, string> = { store: 'للمتجر', branch: 'لكل فرع', usage: 'لكل وحدة استخدام' };
 
@@ -111,7 +114,7 @@ export function priceText(a: Pick<CatalogAddon, 'pricing' | 'monthly_price' | 'y
     if (a.pricing === 'quote') return t('حسب الطلب');
     if (a.pricing === 'free') return t('مجانية');
 
-    return `${money(a.monthly_price, currency)} ${t('/ شهريًا')} · ${money(a.yearly_price, currency)} ${t('سنويًا')}`;
+    return `${money(a.monthly_price, currency)} ${t('/ شهريًا')} · ${money(halfYear(a.monthly_price), currency)} ${t('نصف سنويًا')} · ${money(a.yearly_price, currency)} ${t('سنويًا')}`;
 }
 
 export default function Addons() {
@@ -171,6 +174,7 @@ export default function Addons() {
                 <AddonDialog
                     addon={editing === 'new' ? null : editing}
                     capabilityOptions={capabilityOptions}
+                    currency={currency}
                     onClose={() => setEditing(null)}
                 />
             )}
@@ -264,10 +268,12 @@ function CatalogTab({
 function AddonDialog({
     addon,
     capabilityOptions,
+    currency,
     onClose,
 }: {
     addon: CatalogAddon | null;
     capabilityOptions: Props['capabilityOptions'];
+    currency: Currency;
     onClose: () => void;
 }) {
     const t = useTranslate();
@@ -360,6 +366,9 @@ function AddonDialog({
                             <Field label="السعر السنوي" required error={form.errors.yearly_price}>
                                 <Input type="number" step="0.001" min="0.001" dir="ltr" value={form.data.yearly_price} onChange={(e) => form.setData('yearly_price', e.target.value)} />
                             </Field>
+                            <p className="col-span-2 text-[12px] text-[#6b7280]" data-testid="addon-semiannual-price">
+                                {t('نصف السنوي: :p — ستّة أشهر بالسعر الشهري، بلا خصم', { p: money(halfYear(Number(form.data.monthly_price) || 0), currency) })}
+                            </p>
                         </div>
                     )}
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -842,7 +851,7 @@ function PlanPriceRow({ plan, currency }: { plan: PlanRow; currency: Currency })
             <div className="min-w-0 rounded-[12px] bg-[#fafafa] px-4 py-2.5 text-[13px]" data-testid="plan-legacy-price">
                 <p className="text-[12px] text-[#6b7280]">{t('السعر الحالي — السياسة السابقة')}</p>
                 <p className="mt-0.5 tabular-nums text-[#111]">
-                    {money(plan.legacy.monthly, currency)} {t('/ شهريًا')} · {money(plan.legacy.yearly, currency)} {t('سنويًا')}
+                    {money(plan.legacy.monthly, currency)} {t('/ شهريًا')} · {money(halfYear(plan.legacy.monthly), currency)} {t('نصف سنويًا')} · {money(plan.legacy.yearly, currency)} {t('سنويًا')}
                 </p>
                 <p className="mt-0.5 text-[11.5px] text-[#9ca3af]">{t('يُعدَّل من شاشة الباقات')}</p>
             </div>
@@ -859,6 +868,10 @@ function PlanPriceRow({ plan, currency }: { plan: PlanRow; currency: Currency })
                         {t('اعتماد')}
                     </Button>
                 </div>
+                {/* ونصفُ السنة لا يُكتب: ستّةُ أشهرٍ بالشهريّ — كما يُفوتَر */}
+                <p className="mt-1 text-[12px] tabular-nums text-[#6b7280]" data-testid="plan-semiannual-price">
+                    {t('نصف سنوي: :p', { p: money(halfYear(Number(form.data.monthly) || 0), currency) })}
+                </p>
                 {!plan.addons && (
                     <p className="mt-1 text-[12px] text-[#b45309]">
                         {plan.code === 'basic' ? t('لم يُعتمد — يمنع التفعيل') : t('لم يُعتمد — تُفوتَر بسعرها السابق')}

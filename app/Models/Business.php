@@ -57,6 +57,15 @@ class Business extends Model
     /* ═══ بابُ الإنشاء — انظر هجرة `a_business_remembers_how_it_was_opened` ═══ */
 
     /** فتحها صاحبُها بنفسه من صفحة التسجيل (`Support\Signup`) */
+    /**
+     * حسابٌ فتحه مديرُ المنصّة باشتراكٍ مدفوع ولم تُسدَّد فاتورتُه بعد.
+     *
+     * لا يُدخل إليه (`Tenancy::blockReason`) حتى يُسجَّل سدادُ فاتورة الباقة،
+     * وعندها يصير «نشط» بدورته (`Billing::start`). والمنحةُ الإداريّة طريقٌ آخر
+     * صريحٌ بتاريخٍ وسبب (`NewMerchantSubscription::GRANT`).
+     */
+    public const AWAITING_PAYMENT = 'بانتظار السداد';
+
     public const SOURCE_SELF_SIGNUP = 'self_signup';
 
     /** أضافها مديرُ المنصّة من لوحته (`SuperAdmin\BusinessController::store`) */

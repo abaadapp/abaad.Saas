@@ -53,12 +53,17 @@ class RibbonWhatsAppTemplatesTest extends TestCase
             ->pluck('template_name', 'event_type')
             ->all();
 
-        $this->assertSame([
+        $expected = [
             WhatsAppEvent::ORDER_RECEIVED => 'ribbon_order_received',
             WhatsAppEvent::ORDER_CONFIRMED => 'ribbon_order_confirmed',
             WhatsAppEvent::ORDER_READY => 'ribbon_order_ready',
             WhatsAppEvent::ORDER_OUT_FOR_DELIVERY => 'ribbon_order_out_for_delivery',
-        ], $rows);
+        ];
+
+        ksort($expected);
+        ksort($rows);
+
+        $this->assertSame($expected, $rows);
 
         $this->assertArrayNotHasKey(WhatsAppEvent::ORDER_DELIVERED, $rows);
         $this->assertArrayNotHasKey(WhatsAppEvent::INVOICE_DUE_SOON, $rows);

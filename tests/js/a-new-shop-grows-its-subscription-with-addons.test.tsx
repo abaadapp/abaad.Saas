@@ -19,7 +19,7 @@ const { default: PlatformAddons } = await import('@/Pages/Platform/Subscriptions
  *   - متجرُ السياسة السابقة يُقال له إنّ اشتراكه كما هو — ولا زرَّ شراء.
  *   - المشمولةُ تُرى مشمولةً لا تُشترى، والمتاحةُ بسعرها، و«حسب الطلب» بلا سعر.
  *   - زرُّ الطلب لصاحب النشاط وحده، والطلبُ يُرسل رمزَ الإضافة ودورتَها لا سعرَها.
- *   - الإطلاقُ لا يُضغط وشرطُه ناقص، ويقول ما ينقصه.
+ *   - التفعيلُ (كان «الإطلاق») لا يُضغط وشرطُه ناقص، ويقول ما ينقصه.
  *
  * والخادمُ هو الحارس (`TheOwnerAloneBuysAddonsForHisOwnShopTest`) — فهذا ما يُرى.
  */
@@ -56,7 +56,7 @@ describe('«إضافات متجرك»', () => {
     it('متجرُ السياسة السابقة: اشتراكُك كما هو — ولا زرَّ شراء', () => {
         showMerchant(merchant({ policy: 'legacy', available: [], may_request: false }));
 
-        expect(screen.getByTestId('legacy-policy-note')).toHaveTextContent('ميزات باقتك وأسعارها كما هي');
+        expect(screen.getByTestId('legacy-policy-note')).toHaveTextContent('جميع خدمات باقتك وأسعار اشتراكك الحالية مستمرة دون تغيير');
         expect(screen.queryByRole('button', { name: /اطلب/ })).toBeNull();
     });
 
@@ -144,12 +144,12 @@ describe('«إضافات الاشتراكات» في لوحة المنصّة', (
 
     it('الإطلاقُ لا يُضغط وشرطُه ناقص — ويقول ما ينقصه، وسعرُ الأساسيّة يمنعه', () => {
         showPlatform(platform());
-        fireEvent.click(screen.getByRole('tab', { name: /الإطلاق/ }));
+        fireEvent.click(screen.getByRole('tab', { name: /التسعير والإعدادات/ }));
 
-        expect(screen.getByTestId('launch-state')).toHaveTextContent('مطفأ');
-        expect(screen.getByRole('button', { name: /فتح الإطلاق/ })).toBeDisabled();
+        expect(screen.getByTestId('launch-state')).toHaveTextContent('غير مفعّل');
+        expect(screen.getByRole('button', { name: /تفعيل نظام الإضافات للتجار الجدد/ })).toBeDisabled();
         expect(screen.getByTestId('launch-blockers')).toHaveTextContent('سعر الباقة الأساسيّة');
-        expect(screen.getAllByTestId('plan-price-row')[0]).toHaveTextContent('لم يُعتمد — يمنع الإطلاق');
+        expect(screen.getAllByTestId('plan-price-row')[0]).toHaveTextContent('لم يُعتمد — يمنع التفعيل');
         expect(screen.getAllByTestId('plan-price-row')[1]).toHaveTextContent('تُفوتَر بسعرها السابق');
     });
 
@@ -160,7 +160,7 @@ describe('«إضافات الاشتراكات» في لوحة المنصّة', (
                 { id: 8, addon: { id: 2, name: 'API', pricing: 'quote' }, kind: 'new', cycle: 'yearly', quantity: 1, unit_price: 50, amount: 50, status: 'invoiced', invoice: { id: 11, number: 'INV-P-0011', paid: false }, requested_by: null, created_at: '2026-11-02', business: { id: 4, name: 'زهور' } },
             ],
         }));
-        fireEvent.click(screen.getByRole('tab', { name: /الطلبات/ }));
+        fireEvent.click(screen.getByRole('tab', { name: /طلبات الإضافات/ }));
 
         const rows = screen.getAllByTestId('addon-order-row');
         expect(within(rows[0]).getByRole('button', { name: /اعتماد/ })).toBeInTheDocument();

@@ -99,7 +99,7 @@ class TheNewBasicPlanSellsPosAndNeverIncludesItTest extends TestCase
                 $this->assertStringContainsString($why, $e->getMessage());
             }
             // ومن الشاشة: يُردّ بسببه، ولا يُفتح
-            $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => true])
+            $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => true, 'acknowledged' => true])
                 ->assertSessionHasErrors('addon');
             $this->assertFalse(PricingPolicy::enabled());
         };
@@ -158,7 +158,7 @@ class TheNewBasicPlanSellsPosAndNeverIncludesItTest extends TestCase
         $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => false]);
         $this->actingAs($this->platform)->put(route('super-admin.addons.plans', $pos->id), $plans(Catalog::INCLUDED))
             ->assertSessionHasNoErrors();
-        $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => true])
+        $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => true, 'acknowledged' => true])
             ->assertSessionHasErrors('addon');
         $this->assertFalse(PricingPolicy::enabled());
     }

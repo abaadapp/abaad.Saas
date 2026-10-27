@@ -6,6 +6,7 @@ use App\Models\AddonOrder;
 use App\Models\BusinessAddon;
 use App\Models\Invoice;
 use App\Models\PlanPolicyPrice;
+use App\Models\SubscriptionAddon;
 use App\Models\User;
 use App\Support\Addons\AddonOrders;
 use App\Support\Addons\Catalog;
@@ -121,23 +122,28 @@ class TheOwnerAloneBuysAddonsForHisOwnShopTest extends TestCase
             ->assertInertia(fn ($page) => $page->component('Platform/Subscriptions/Addons')
                 ->has('catalog', 9)->where('launch.enabled', true)->where('launch.blockers', []));
 
+        // والرمزُ يولّده الخادم — لا يُكتب في النموذج، ولا يُقرأ من الطلب لو أُرسل
         $this->actingAs($this->platform)->post(route('super-admin.addons.store'), [
             'code' => 'priority_support', 'name' => 'دعم بأولوية', 'pricing' => 'paid', 'unit' => 'store',
             'monthly_price' => 1.5, 'yearly_price' => 15, 'for_sale' => true, 'for_new_merchants' => true,
         ])->assertSessionHasNoErrors();
-        $added = $this->addon('priority_support');
+        $added = SubscriptionAddon::where('name', 'دعم بأولوية')->sole();
         $this->assertNull($added->capability, 'خدمةٌ بلا باب');
+        $this->assertMatchesRegularExpression('/^addon_[0-9a-z]{26}$/', $added->code);
+        $this->assertSame(0, SubscriptionAddon::where('code', 'priority_support')->count(), 'قُبل رمزٌ من الطلب');
 
         // والرمزُ لا يتغيّر بالتعديل
+        $code = $added->code;
         $this->actingAs($this->platform)->put(route('super-admin.addons.update', $added->id), [
             'code' => 'renamed', 'name' => 'دعم بأولوية', 'pricing' => 'quote', 'unit' => 'store', 'for_sale' => false, 'for_new_merchants' => true,
         ])->assertSessionHasNoErrors();
-        $this->assertSame(['priority_support', 'quote', null, false], [$added->fresh()->code, $added->fresh()->pricing, $added->fresh()->monthly_price, $added->fresh()->for_sale]);
+        $this->assertSame([$code, 'quote', null, false], [$added->fresh()->code, $added->fresh()->pricing, $added->fresh()->monthly_price, $added->fresh()->for_sale]);
 
-        // مدفوعةٌ بلا سعر تُردّ، ورمزٌ مكرَّر يُردّ
+        // ومدفوعةٌ بلا سعر تُردّ — والرمزُ ليس سببًا للردّ: لا يُقرأ أصلًا
         $this->actingAs($this->platform)->post(route('super-admin.addons.store'), [
             'code' => 'pos', 'name' => 'x', 'pricing' => 'paid', 'unit' => 'store', 'for_sale' => true, 'for_new_merchants' => true,
-        ])->assertSessionHasErrors(['code', 'monthly_price', 'yearly_price']);
+        ])->assertSessionHasErrors(['monthly_price', 'yearly_price'])->assertSessionDoesntHaveErrors('code');
+        $this->assertSame(1, SubscriptionAddon::where('code', 'pos')->count());
 
         // والشمولُ لا يُسحب من باقةٍ عليها متاجرُ السياسة الجديدة
         [$pro] = $this->shop('professional', 'pro@shop.om');
@@ -162,12 +168,12 @@ class TheOwnerAloneBuysAddonsForHisOwnShopTest extends TestCase
         PricingPolicy::setEnabled(false);
         PlanPolicyPrice::query()->delete();
 
-        $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => true]);
+        $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => true, 'acknowledged' => true]);
         $this->assertFalse(PricingPolicy::enabled(), 'فُتح الإطلاقُ بلا سعر');
 
         $this->actingAs($this->platform)->put(route('super-admin.plans.policyPrice', $this->plans['basic']->id), ['monthly' => 5.5, 'yearly' => 55])
             ->assertSessionHasNoErrors();
-        $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => true]);
+        $this->actingAs($this->platform)->post(route('super-admin.addons.launch'), ['enabled' => true, 'acknowledged' => true]);
         $this->assertTrue(PricingPolicy::enabled());
 
         [$business] = $this->shop('basic', 'flow@shop.om');

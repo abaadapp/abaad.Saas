@@ -2,6 +2,9 @@
 
 namespace App\Support\Addons;
 
+use App\Models\SubscriptionAddon;
+use Illuminate\Support\Str;
+
 /**
  * ما تفتحه إضافاتُ الاشتراك — قائمةٌ مغلقة، وكلُّ مفتاحٍ فيها له حارسُه.
  *
@@ -9,7 +12,7 @@ namespace App\Support\Addons;
  *
  * إضافةٌ يكتب صاحبُ المنصّة رمزَها بيده ولا يقرؤه حارسٌ تُباع ولا تفتح شيئًا،
  * وأخرى برمز قدرةٍ لم يُرد بيعَها تُغلق على متاجر السياسة الجديدة ما كان مشمولًا.
- * فالرمزُ (`code`) حرٌّ يكتبه، وما تفتحه (`capability`) يُختار من هنا:
+ * فالرمزُ (`code`) يولّده الخادم (`newCode`)، وما تفتحه (`capability`) يُختار من هنا:
  *
  *   - مفاتيحُ الباقة (`FEATURE_KEYS`): تُسأل في `PlanFeatures::allows`.
  *   - `gift_orders`: الإهداءُ في `GiftOrders::on`، والطلبُ المخصَّص في
@@ -79,6 +82,66 @@ final class Catalog
 
     /** أقصى وحداتٍ في طلبٍ واحد — حدٌّ لخطأ إصبعٍ لا سقفٌ تجاريّ */
     public const MAX_QUANTITY = 50;
+
+    /**
+     * وصفٌ لما يفتحه البابُ فعلًا — لإضافةٍ لم يكتب لها صاحبُ المنصّة وصفًا.
+     *
+     * كلُّ سطرٍ يقول ما يفتحه حارسُ قدرته، لا ما يُتمنّى. والخدمةُ بلا باب
+     * (`capability = null`) لا وصفَ لها هنا: قد تكون أيَّ شيءٍ يقدّمه فريقُ أبعاد،
+     * فلا يُنسب إليها ما لا يُعرف.
+     */
+    public const DESCRIPTIONS = [
+        self::POS => 'البيع من صندوق المحلّ وإصدار الإيصالات ومتابعة جلسات الكاشير.',
+        'website' => 'متجرٌ إلكترونيٌّ باسمك يستقبل طلبات زبائنك وتديرها من لوحتك.',
+        'marketing_tools' => 'الكوبونات والعروض وتقييمات العملاء.',
+        'loyalty' => 'نقاطٌ يجمعها عملاؤك من مشترياتهم ويستبدلونها عند الصندوق.',
+        'whatsapp' => 'إرسال حالة الطلب إلى العميل عبر واتساب.',
+        self::GIFT_ORDERS => 'طلبات الإهداء ببيانات المستلم ومناسبته، والطلبات المخصّصة بحقولها.',
+        self::OWN_NUMBER => 'إرسال رسائل متجرك من رقم واتساب الخاص به بدل الرقم المشترك.',
+        self::BRANCHES => 'فروعٌ فوق حدّ الفروع في باقتك.',
+    ];
+
+    /** طولُ عمود الرمز في القاعدة — `subscription_addons.code` */
+    public const CODE_MAX = 40;
+
+    /**
+     * رمزٌ داخليٌّ لإضافةٍ جديدة — يولّده الخادم ولا يكتبه أحد.
+     *
+     * ═══ ولمَ لا من الاسم ═══
+     *
+     * الاسمُ يُعدَّل، ويتكرّر («دعم بأولوية» مرّتين لباقتين)، وعربيٌّ لا يصلح
+     * رمزًا. والرمزُ مفتاحٌ تقرؤه الطلباتُ والفواتيرُ والاستحقاقات، فيُكتب مرّةً
+     * يومَ تُنشأ ولا يتبدّل بعدها.
+     *
+     * `addon_` وULID بحروفٍ صغيرة: ٣٢ حرفًا في عمودٍ من ٤٠، فريدٌ بلا تنسيق،
+     * ويُفحص قبل أن يُكتب. والفهرسُ الفريد في القاعدة يبقى الحارسَ الأخير.
+     */
+    public static function newCode(): string
+    {
+        for ($i = 0; $i < 5; $i++) {
+            $code = 'addon_'.Str::lower((string) Str::ulid());
+
+            if (! SubscriptionAddon::where('code', $code)->exists()) {
+                return $code;
+            }
+        }
+
+        throw new \RuntimeException('subscription add-on code: no free code after 5 tries');
+    }
+
+    /** وصفُ الإضافة كما يُعرض للتاجر — ما كتبه صاحبُ المنصّة، وإلّا ما يفتحه بابُها */
+    public static function describe(SubscriptionAddon $addon, bool $en): ?string
+    {
+        $own = $en && filled($addon->description_en) ? $addon->description_en : $addon->description;
+
+        if (filled($own)) {
+            return $own;
+        }
+
+        $fallback = self::DESCRIPTIONS[$addon->capability ?? ''] ?? null;
+
+        return $fallback === null ? null : __($fallback);
+    }
 
     /** هل تُباع هذه الوحدة بعددٍ؟ — الفرعُ ووحدةُ الاستخدام، لا المتجر */
     public static function counted(string $unit): bool

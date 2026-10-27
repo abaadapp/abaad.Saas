@@ -92,24 +92,34 @@ final class PricingPolicy
     /**
      * ما يمنع فتحَ الإطلاق — قائمةٌ تُقرأ، وفارغةٌ إن اكتمل.
      *
+     * رسائلُ ما لم يكتمل من `checks` بترتيبها: الشاشةُ تعرض الشروطَ واحدًا
+     * واحدًا، والقفلُ يقرأ ما بقي منها — والاثنان من مصدرٍ واحد.
+     *
+     * @param  list<array{problems: list<string>}>|null  $checks  ما قُرئ للتوّ — لا يُسأل مرّتين في طلب
      * @return list<string>
      */
-    public static function blockers(): array
+    public static function blockers(?array $checks = null): array
     {
-        $out = [];
+        return array_values(array_merge(...array_column($checks ?? self::checks(), 'problems')));
+    }
+
+    /**
+     * شروطُ الإطلاق واحدًا واحدًا — تقرؤها «التسعير والإعدادات» قائمةً تُؤشَّر.
+     *
+     * @return list<array{key: string, label: string, ok: bool, problems: list<string>}>
+     */
+    public static function checks(): array
+    {
+        $check = fn (string $key, string $label, array $problems) => ['key' => $key, 'label' => __($label), 'ok' => $problems === [], 'problems' => $problems];
         $basic = Plan::where('code', Plan::CODE_BASIC)->first();
 
         if (! $basic) {
-            return [__('لا باقة أساسيّة برمز basic.')];
+            return [$check('basic_plan', 'الباقة الأساسيّة موجودة', [__('لا باقة أساسيّة برمز basic.')])];
         }
 
-        if (! self::price($basic, self::ADDONS)) {
-            $out[] = __('سعر الباقة الأساسيّة في السياسة الجديدة لم يُعتمد.');
-        }
+        $price = self::price($basic, self::ADDONS) ? [] : [__('سعر الباقة الأساسيّة في السياسة الجديدة لم يُعتمد.')];
 
-        if (! is_array($basic->capabilities)) {
-            $out[] = __('قدرات الباقة الأساسيّة غير محدّدة — حدّدها في شاشة الباقات.');
-        }
+        $capabilities = is_array($basic->capabilities) ? [] : [__('قدرات الباقة الأساسيّة غير محدّدة — حدّدها في شاشة الباقات.')];
 
         /*
          * ونقطةُ البيع في الأساسيّة الجديدة **تُشترى** — هذا ما تفصله السياسة.
@@ -117,23 +127,25 @@ final class PricingPolicy
          */
         $pos = SubscriptionAddon::where('capability', Catalog::POS)->first();
         $mode = $pos ? $pos->plans()->whereKey($basic->id)->value('subscription_addon_plans.mode') : null;
-        if ($mode === Catalog::INCLUDED) {
-            $out[] = __('نقطة البيع مشمولةٌ في الباقة الأساسيّة — والسياسة الجديدة تفصلها عنها. اجعلها «تُشترى» في الأساسيّة قبل الإطلاق.');
-        } elseif ($mode !== Catalog::ELIGIBLE) {
-            $out[] = __('نقطة البيع ليست إضافةً تُشترى في الباقة الأساسيّة.');
-        } elseif (! $pos->for_sale || ! $pos->for_new_merchants) {
-            $out[] = __('نقطة البيع لا تُعرض للبيع للمتاجر الجديدة — اعرضها قبل الإطلاق.');
-        }
+        $separate = match (true) {
+            $mode === Catalog::INCLUDED => [__('نقطة البيع مشمولةٌ في الباقة الأساسيّة — والسياسة الجديدة تفصلها عنها. اجعلها «تُشترى» في الأساسيّة قبل الإطلاق.')],
+            $mode !== Catalog::ELIGIBLE => [__('نقطة البيع ليست إضافةً تُشترى في الباقة الأساسيّة.')],
+            ! $pos->for_sale || ! $pos->for_new_merchants => [__('نقطة البيع لا تُعرض للبيع للمتاجر الجديدة — اعرضها قبل الإطلاق.')],
+            default => [],
+        };
 
         $unpriced = SubscriptionAddon::where('for_sale', true)->where('for_new_merchants', true)
             ->where('pricing', Catalog::PAID)
             ->where(fn ($q) => $q->whereNull('monthly_price')->orWhereNull('yearly_price')->orWhere('monthly_price', '<=', 0)->orWhere('yearly_price', '<=', 0))
-            ->pluck('name');
-        foreach ($unpriced as $name) {
-            $out[] = __('الإضافة المدفوعة «:n» بلا سعرٍ شهريّ وسنويّ.', ['n' => $name]);
-        }
+            ->pluck('name')
+            ->map(fn ($name) => __('الإضافة المدفوعة «:n» بلا سعرٍ شهريّ وسنويّ.', ['n' => $name]))->all();
 
-        return $out;
+        return [
+            $check('basic_price', 'سعر الباقة الأساسيّة الجديدة معتمد', $price),
+            $check('basic_capabilities', 'قدرات الباقة الأساسيّة محدّدة', $capabilities),
+            $check('pos_separate', 'نقطة البيع منفصلة عن الأساسيّة الجديدة ومعروضة للبيع', $separate),
+            $check('catalog_priced', 'كل إضافة مدفوعة معروضة لها سعر شهري وسنوي', $unpriced),
+        ];
     }
 
     /** يفتح الإطلاق أو يطفئه — والفتحُ يُردّ ما بقي شرطٌ ناقص */

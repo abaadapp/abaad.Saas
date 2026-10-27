@@ -8,6 +8,10 @@ use App\Models\BusinessAddon;
 use App\Models\Plan;
 use App\Models\SubscriptionAddon;
 use App\Support\Billing;
+use App\Support\PlanFeatures;
+use App\Support\PlanLimits;
+use App\Support\Store\GiftOrders;
+use App\Support\WhatsAppFeature;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -90,12 +94,15 @@ final class AddonViews
             ->all();
     }
 
-    /** الإطلاقُ وما ينقصه */
+    /** الإطلاقُ وشروطُه وما ينقصه — يُقرأ ولا يُكتب: زيارةُ الشاشة لا تمسّ المفتاح */
     public static function launch(): array
     {
+        $checks = PricingPolicy::checks();
+
         return [
             'enabled' => PricingPolicy::enabled(),
-            'blockers' => PricingPolicy::blockers(),
+            'checks' => $checks,
+            'blockers' => PricingPolicy::blockers($checks),
             'counts' => [
                 'legacy' => Business::where('pricing_policy', PricingPolicy::LEGACY)->count(),
                 'addons' => Business::where('pricing_policy', PricingPolicy::ADDONS)->count(),
@@ -120,26 +127,55 @@ final class AddonViews
     }
 
     /**
-     * شاشةُ «إضافات متجرك» — باقتُه وما يشمله، وما يُشترى بسعره، وما يسري له.
+     * شاشةُ «إضافات متجرك» — باقتُه وما يشمله، وما يُشترى بسعره، وما يسري.
      *
      * والسعرُ والشمولُ من القاعدة: الأزرارُ ترسم ما يقبله الخادم، ولا يقبل
      * الخادمُ إلّا ما يقرّره هو (`AddonOrders::request`).
+     *
+     * ═══ وللسياسة السابقة كتالوجٌ يُقرأ لا يُشترى ═══
+     *
+     * كانت تُعطى قائمةً فارغة، فيرى التاجرُ القديمُ صفحةً فيها سطرٌ واحد.
+     * فصارت تُعطى `showcase`: خدماتُ أبعاد المعروضة باسمها ووصفها وحالتها
+     * عنده — **بلا سعرٍ ولا رمزٍ ولا نوعِ تسعير**، فلا شيءَ في الصفحة يُشترى به.
+     * والشراءُ مغلقٌ في الخادم لا في الصفحة (`AddonOrders::request`).
      */
     public static function forMerchant(Business $business): array
     {
         $policy = PricingPolicy::of($business);
         $plan = $business->plan;
+        $base = [
+            'policy' => $policy,
+            // حالةُ الاشتراك كما يقرؤها `Business::scopeLive` — لا تخمينٌ من الشاشة
+            'subscription' => [
+                'status' => filled($business->status) ? __($business->status) : null,
+                'live' => ! in_array($business->status, ['معطل', 'معطّل'], true)
+                    && ($business->ends_at === null || $business->ends_at->gte(now()->startOfDay())),
+                'ends_at' => $business->ends_at?->format('Y-m-d'),
+            ],
+        ];
+
+        if ($policy !== PricingPolicy::ADDONS) {
+            return $base + [
+                'plan' => $plan ? ['name' => $plan->name, 'price' => null] : null,
+                'showcase' => self::showcase($business),
+                'included' => [],
+                'available' => [],
+                'active' => [],
+                'orders' => [],
+                'addons_total' => ['monthly' => 0, 'yearly' => 0],
+                'may_request' => false,
+            ];
+        }
+
         $modes = $plan ? DB::table('subscription_addon_plans')->where('plan_id', $plan->id)->pluck('mode', 'subscription_addon_id')->all() : [];
         $active = BusinessAddon::with('addon:id,name,name_en,code,unit,capability')->where('business_id', $business->id)->active()->get();
         $open = AddonOrder::with(['addon:id,name,name_en,pricing,unit', 'invoice:id,number,status'])
             ->where('business_id', $business->id)->whereIn('status', AddonOrders::OPEN)->latest('id')->get();
 
-        $addons = $policy === PricingPolicy::ADDONS
-            ? SubscriptionAddon::whereIn('id', array_keys($modes))->orderBy('sort')->orderBy('id')->get()
-            : collect();
+        $addons = SubscriptionAddon::whereIn('id', array_keys($modes))->orderBy('sort')->orderBy('id')->get();
 
         $planPrice = null;
-        if ($plan && $policy === PricingPolicy::ADDONS) {
+        if ($plan) {
             try {
                 $planPrice = ['monthly' => PricingPolicy::planPrice($business, 'monthly'), 'yearly' => PricingPolicy::planPrice($business, 'yearly')];
             } catch (\DomainException) {
@@ -149,9 +185,9 @@ final class AddonViews
 
         $paid = $active->where('source', BusinessAddon::PURCHASE)->filter(fn ($e) => $e->cycle);
 
-        return [
-            'policy' => $policy,
+        return $base + [
             'plan' => $plan ? ['name' => $plan->name, 'price' => $planPrice] : null,
+            'showcase' => [],
             'included' => $addons->filter(fn ($a) => ($modes[$a->id] ?? null) === Catalog::INCLUDED)
                 ->map(fn ($a) => self::merchantAddon($a))->values()->all(),
             'available' => $addons->filter(fn ($a) => ($modes[$a->id] ?? null) === Catalog::ELIGIBLE && $a->for_sale && $a->for_new_merchants)
@@ -166,8 +202,88 @@ final class AddonViews
                 'monthly' => round((float) $paid->where('cycle', 'monthly')->sum(fn ($e) => (float) $e->unit_price * $e->quantity), 3),
                 'yearly' => round((float) $paid->where('cycle', 'yearly')->sum(fn ($e) => (float) $e->unit_price * $e->quantity), 3),
             ],
-            'may_request' => $policy === PricingPolicy::ADDONS,
+            'may_request' => true,
         ];
+    }
+
+    /** في الاشتراك — يقوله حارسُ القدرة نفسُه */
+    public const SHOWN_INCLUDED = 'included';
+
+    /** لا يُعرف من مصدرٍ موثوق — «تعرّف على الخدمة» */
+    public const SHOWN_LEARN = 'learn';
+
+    /** باقتُه لا تفتحها — يقوله حارسُ القدرة نفسُه */
+    public const SHOWN_NOT_INCLUDED = 'not_included';
+
+    /**
+     * خدماتُ أبعاد لمتجر السياسة السابقة — تعريفٌ بلا شراء.
+     *
+     * المعروضةُ للبيع (`for_sale`)، وما يملكه المتجرُ منها بمنحةٍ ساريةٍ ولو
+     * أُوقف بيعُها. وحالةُ كلٍّ من الحارس الذي يفتح بابَها أو يُغلقه (`state`)،
+     * لا من غياب صفٍّ في `business_addons`: متجرٌ قديمٌ لم يشترِ شيئًا يملك
+     * نقطةَ البيع وكلَّ ما في باقته.
+     *
+     * @return list<array{id: int, capability: ?string, name: string, description: ?string, state: string, note: ?string}>
+     */
+    public static function showcase(Business $business): array
+    {
+        $held = Entitlements::rows($business)->pluck('subscription_addon_id')->unique()->all();
+        $en = app()->getLocale() === 'en';
+
+        return SubscriptionAddon::query()
+            ->where(fn ($q) => $q->where('for_sale', true)->orWhereIn('id', $held))
+            ->orderBy('sort')->orderBy('id')
+            ->get(['id', 'name', 'name_en', 'description', 'description_en', 'capability'])
+            ->map(function (SubscriptionAddon $a) use ($business, $held, $en) {
+                [$state, $note] = self::state($business, $a, in_array($a->id, $held, true));
+
+                return [
+                    'id' => $a->id,
+                    'capability' => $a->capability,
+                    'name' => $en && filled($a->name_en) ? $a->name_en : $a->name,
+                    'description' => Catalog::describe($a, $en),
+                    'state' => $state,
+                    'note' => $note,
+                ];
+            })->values()->all();
+    }
+
+    /**
+     * أهذه الخدمةُ في اشتراك متجر السياسة السابقة؟ — من بابها لا من اسمها.
+     *
+     *   - منحةٌ ساريةٌ لها: في اشتراكه.
+     *   - قدراتُ الباقة (`Catalog::FEATURE_KEYS`): `PlanFeatures::allows` — ما
+     *     يفتح الصفحةَ أو يردّها بـ403. فـ«في اشتراكك» و«ليست في باقتك» كلاهما
+     *     من الحارس نفسه. ونقطةُ البيع مفتوحةٌ للسابقة دائمًا.
+     *   - الهدايا: عمودُها أو إضافتُها (`GiftOrders::on`). ومغلقًا لا يُقال
+     *     «ليست في باقتك»: الطلباتُ المخصّصة في الإضافة نفسها مفتوحةٌ للسابقة.
+     *   - الرقمُ الخاصّ: `canUseOwnNumber` وإشعاراتُ واتساب معًا.
+     *   - الفروع: سقفٌ لا قدرة — يُقال حدُّ الباقة كما يحسبه `PlanLimits`.
+     *   - خدمةٌ بلا باب: لا مصدرَ يقول، فـ«تعرّف على الخدمة».
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    private static function state(Business $business, SubscriptionAddon $addon, bool $held): array
+    {
+        $capability = $addon->capability;
+
+        if ($held) {
+            return [self::SHOWN_INCLUDED, null];
+        }
+
+        if (in_array($capability, Catalog::FEATURE_KEYS, true)) {
+            return [PlanFeatures::allows($business, $capability) ? self::SHOWN_INCLUDED : self::SHOWN_NOT_INCLUDED, null];
+        }
+
+        return match ($capability) {
+            Catalog::GIFT_ORDERS => [GiftOrders::on($business->id) ? self::SHOWN_INCLUDED : self::SHOWN_LEARN, null],
+            Catalog::OWN_NUMBER => [WhatsAppFeature::canUseOwnNumber($business) && PlanFeatures::allows($business, 'whatsapp')
+                ? self::SHOWN_INCLUDED : self::SHOWN_LEARN, null],
+            Catalog::BRANCHES => [self::SHOWN_LEARN, ($cap = PlanLimits::cap($business, 'branches')) === null
+                ? __('باقتك بلا حدٍّ لعدد الفروع.')
+                : __('حدّ الفروع في باقتك: :n', ['n' => $cap])],
+            default => [self::SHOWN_LEARN, null],
+        };
     }
 
     private static function merchantAddon(SubscriptionAddon $a): array
@@ -176,8 +292,9 @@ final class AddonViews
 
         return [
             'code' => $a->code,
+            'capability' => $a->capability,
             'name' => $en && filled($a->name_en) ? $a->name_en : $a->name,
-            'description' => $en && filled($a->description_en) ? $a->description_en : $a->description,
+            'description' => Catalog::describe($a, $en),
             'pricing' => $a->pricing,
             'unit' => $a->unit,
             'counted' => Catalog::counted($a->unit),

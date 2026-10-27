@@ -14,6 +14,7 @@ use App\Support\Addons\AddonViews;
 use App\Support\Addons\Catalog;
 use App\Support\Addons\Entitlements;
 use App\Support\Addons\PricingPolicy;
+use App\Support\Contention;
 use App\Support\Demo;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -46,11 +47,19 @@ class AddonController extends Controller
         ]);
     }
 
+    /**
+     * إضافةٌ جديدة — والرمزُ يولّده الخادم (`Catalog::newCode`).
+     *
+     * لا يُقرأ من الطلب ولو أُرسل: الرمزُ مفتاحٌ تقرؤه الطلباتُ والاستحقاقات،
+     * ورمزٌ يختاره المرسلُ قد يكون رمزَ إضافةٍ أُخرى يومًا. وتصادمٌ نادرٌ بين
+     * الفحص والكتابة (طلبان في اللحظة نفسها) يُعاد برمزٍ آخر.
+     */
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request, null);
 
-        $addon = SubscriptionAddon::create($data);
+        // كلُّ محاولةٍ في نقطة حفظها (`Contention::retry`) — ورمزٌ جديدٌ لكلٍّ منها
+        $addon = Contention::retry(fn () => SubscriptionAddon::create(['code' => Catalog::newCode()] + $data), 3);
         Entitlements::flush();
         Activity::log('created', 'أضاف إضافة اشتراك: '.$addon->name.' ('.$addon->code.')', ['business_id' => null, 'subject_id' => $addon->id]);
 
@@ -72,8 +81,7 @@ class AddonController extends Controller
             return back()->withErrors(['capability' => __('لهذه الإضافة استحقاقاتٌ أو طلباتٌ مفتوحة — لا يتغيّر ما تفتحه. أنشئ إضافةً أخرى.')]);
         }
 
-        // والرمزُ ثابت: يُكتب يومَ تُنشأ ولا يُعدَّل
-        unset($data['code']);
+        // والرمزُ ثابت: لا يُقرأ من الطلب أصلًا (`validated`)، فلا يتبدّل باسمٍ ولا بتعديل
         $refused = $this->keepingTheLaunch('addon', function () use ($addon, $data) {
             $addon->update($data);
             Activity::log('updated', 'عدّل إضافة الاشتراك: '.$addon->name, ['business_id' => null, 'subject_id' => $addon->id]);
@@ -184,13 +192,24 @@ class AddonController extends Controller
         return $this->attempt(fn () => AddonOrders::end(BusinessAddon::findOrFail($id), $data['reason']), __('أُنهيت الإضافة — ولم يُحذف شيءٌ من بيانات المتجر'));
     }
 
+    /**
+     * يفتح الإطلاق أو يطفئه — والفتحُ بموافقةٍ صريحة تصل مع الطلب.
+     *
+     * والشروطُ تُفحص في `PricingPolicy::setEnabled`؛ والموافقةُ هنا تقول إنّ
+     * صاحب المنصّة قرأ أثرَ الفتح في نافذته ووافق عليه، لا إنّ زرًّا ضُغط.
+     */
     public function launch(Request $request): RedirectResponse
     {
-        $data = $request->validate(['enabled' => ['required', 'boolean']]);
+        $data = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'acknowledged' => ['exclude_unless:enabled,1,true', 'accepted'],
+        ], [
+            'acknowledged.accepted' => __('أكّد أنك قرأت أثر التفعيل قبل تفعيل نظام الإضافات.'),
+        ]);
 
         return $this->attempt(fn () => PricingPolicy::setEnabled((bool) $data['enabled']), $data['enabled']
-            ? __('فُتح الإطلاق — المتاجر الجديدة من الآن على سياسة الإضافات')
-            : __('أُطفئ الإطلاق — المتاجر الجديدة على السياسة السابقة، ولم يُمسّ متجرٌ قائم'));
+            ? __('فُعّل نظام الإضافات للتسجيلات الجديدة — المتاجر القائمة كما هي')
+            : __('أُوقف نظام الإضافات للتسجيلات الجديدة — ولم يُمسّ متجرٌ قائم ولا استحقاقه'));
     }
 
     public function planPrice(Request $request, int $planId): RedirectResponse
@@ -246,7 +265,7 @@ class AddonController extends Controller
     private function validated(Request $request, ?SubscriptionAddon $addon): array
     {
         $data = $request->validate([
-            'code' => [$addon ? 'nullable' : 'required', 'string', 'regex:/^[a-z][a-z0-9_]{1,39}$/', Rule::unique('subscription_addons', 'code')->ignore($addon?->id)],
+            // والرمزُ لا قاعدةَ له هنا: لا يُكتب باليد ولا يُقرأ من الطلب — `store`
             'name' => ['required', 'string', 'max:100'],
             'name_en' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string', 'max:500'],
@@ -256,11 +275,12 @@ class AddonController extends Controller
             'unit' => ['required', Rule::in(Catalog::UNITS)],
             'monthly_price' => ['nullable', 'required_if:pricing,'.Catalog::PAID, 'numeric', 'min:0.001', 'max:100000'],
             'yearly_price' => ['nullable', 'required_if:pricing,'.Catalog::PAID, 'numeric', 'min:0.001', 'max:1000000'],
-            'for_sale' => ['required', 'boolean'],
+            // وإضافةٌ جديدةٌ لا تُعرض حتى تُعرض: بلا قيمةٍ = موقوفٌ بيعُها (`store`)
+            'for_sale' => [$addon ? 'required' : 'nullable', 'boolean'],
             'for_new_merchants' => ['required', 'boolean'],
             'sort' => ['nullable', 'integer', 'min:0', 'max:10000'],
         ], [], [
-            'code' => __('الرمز'), 'name' => __('الاسم'), 'capability' => __('ما تفتحه'),
+            'name' => __('الاسم'), 'capability' => __('ما تفتحه'),
             'monthly_price' => __('السعر الشهري'), 'yearly_price' => __('السعر السنوي'),
         ]);
 
@@ -275,6 +295,17 @@ class AddonController extends Controller
         }
 
         $data['sort'] = (int) ($data['sort'] ?? 0);
+
+        /*
+         * والجديدةُ موقوفٌ بيعُها ما لم يُقل غيرُ ذلك صراحةً.
+         *
+         * «تُباع» تعني أنّها تُعرض في كتالوج كلّ تاجرٍ قديم فورًا (`AddonViews::showcase`)
+         * وتُطلب في السياسة الجديدة — وخدمةٌ أُنشئت للتوّ لم تُكتب أوصافُها ولا
+         * باقاتُها بعد. فعمودُ القاعدة (`default(true)`) لا يُترك يقرّر.
+         */
+        if ($addon === null) {
+            $data['for_sale'] = (bool) ($data['for_sale'] ?? false);
+        }
 
         return $data;
     }

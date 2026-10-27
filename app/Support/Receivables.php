@@ -8,6 +8,7 @@ use App\Models\CustomerPayment;
 use App\Models\Order;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * الذممُ المدينة — «ما لك» — من موضعٍ واحد.
@@ -57,22 +58,23 @@ final class Receivables
      * `receivable` لحظتَها، فلو لم تُعدّ هنا لقالت الشاشة أقلَّ ممّا يقوله
      * الدفتر، ولانكسرت المطابقة.
      */
-    public static function uninvoicedOrders(int $businessId, ?int $customerId = null): Collection
+    public static function uninvoicedOrders(int $businessId, ?int $customerId = null, ?int $branchId = null): Collection
     {
         return Order::where('business_id', $businessId)
             ->where('payment_status', 'غير مدفوع')
             ->whereNotNull('customer_id')
             ->where('status', '!=', Order::CANCELLED)
             ->when($customerId !== null, fn ($q) => $q->where('customer_id', $customerId))
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->whereDoesntHave('customerInvoices', fn ($q) => $q->where('status', '!=', CustomerInvoice::CANCELLED))
             ->orderBy('ordered_at')->orderBy('id')->get();
     }
 
     /** مجموعُ ما لم يُفوتَر — بمبالغ الطلبات كما رُحّلت */
-    public static function uninvoicedTotal(int $businessId, ?int $customerId = null): float
+    public static function uninvoicedTotal(int $businessId, ?int $customerId = null, ?int $branchId = null): float
     {
-        return round(self::uninvoicedOrders($businessId, $customerId)
-            ->sum(fn (Order $o) => (float) $o->total) + self::orderBalances($businessId, $customerId), 3);
+        return round(self::uninvoicedOrders($businessId, $customerId, $branchId)
+            ->sum(fn (Order $o) => (float) $o->total) + self::orderBalances($businessId, $customerId, $branchId), 3);
     }
 
     /**
@@ -82,14 +84,89 @@ final class Receivables
      * (`Books::recordSale`)، فيُعدّ هنا وإلّا قالت الشاشةُ أقلَّ من الدفتر
      * وانكسرت المطابقة. ويُعدّ بلا عميلٍ أيضًا حين يُسأل عن المتجر كلِّه.
      */
-    public static function orderBalances(int $businessId, ?int $customerId = null): float
+    public static function orderBalances(int $businessId, ?int $customerId = null, ?int $branchId = null): float
     {
         return round((float) Order::where('business_id', $businessId)
             ->where('payment_status', '!=', 'غير مدفوع')
             ->where('status', '!=', Order::CANCELLED)
             ->where('balance_due', '>', 0)
             ->when($customerId !== null, fn ($q) => $q->where('customer_id', $customerId))
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
             ->sum('balance_due'), 3);
+    }
+
+    /**
+     * «مستحقات العملاء» في اللوحة — ما يُدين به العملاءُ للمتجر، في فرعٍ أو كلِّها.
+     *
+     * المجموعُ نفسُه الذي يقوله `totals()['total']` لشاشة الذمم والملخّص
+     * الماليّ — بقاعدة الباقي نفسِها (`CustomerInvoice::outstandingSql`) — لكن
+     * بالقاعدة لا بتحميل كلّ فاتورة: اللوحةُ تسأله كلَّ خمس عشرة ثانية.
+     *
+     *   - الفاتورةُ الصادرةُ بباقيها: إجماليُّها − ما خُصّص لها من دفعاتٍ حيّة
+     *     (والشيكُ المرتجع ليس دفعة) − إشعاراتُها الدائنة. والمسدّدةُ والملغاةُ
+     *     والمسودّةُ لا تُعدّ؛
+     *   - والبيعُ الآجلُ الذي لم يُفوتَر بعد، وما بقي على طلبٍ دُفع ثمّ زاد
+     *     (`uninvoicedTotal`) — والمفوتَرُ منه في فاتورته، فلا يُعدّ مرّتين.
+     *
+     * ورصيدُ العميل الدائن (`credit`) لا يُطرح منه: دفعةٌ مقدّمةٌ من عميلٍ لا
+     * تُسقط دَينَ عميلٍ غيره، ولا فاتورةً لم تُخصَّص لها. يُقال بجواره.
+     *
+     * والفرعُ فرعُ الفاتورة أو الطلب؛ والفاتورةُ بلا فرع في «كل الفروع» وحده.
+     */
+    public static function outstanding(int $businessId, ?int $branchId = null): float
+    {
+        $owed = CustomerInvoice::outstandingSql();
+        $invoices = (float) CustomerInvoice::where('business_id', $businessId)->live()
+            ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
+            ->whereRaw("{$owed} > 0.0005")
+            ->sum(DB::raw($owed));
+
+        return round($invoices + self::uninvoicedTotal($businessId, null, $branchId), 3);
+    }
+
+    /** ما على الفواتير التي لا فرعَ لها — جزءٌ من «كل الفروع» لا يراه فرع */
+    public static function unattributed(int $businessId): float
+    {
+        $owed = CustomerInvoice::outstandingSql();
+
+        return round((float) CustomerInvoice::where('business_id', $businessId)->live()->whereNull('branch_id')
+            ->whereRaw("{$owed} > 0.0005")->sum(DB::raw($owed)), 3);
+    }
+
+    /**
+     * رصيدُ العملاء الدائن — ما للعميل على المتجر — للمتجر كلِّه أو لعميلٍ واحد.
+     *
+     * والرقمُ ما يقوله الدفتر في `receivable` دائنًا، من بابين:
+     *
+     *   - **دفعةٌ لم تُخصَّص** — مقدّمةٌ، أو زادت عن فواتيره. والشيكُ المرتجع
+     *     ليس دفعة: عُكس قيدُه (`Cheques::bounce`) فلا رصيدَ له. وكان يُعدّ
+     *     هنا ما دام بلا تخصيص — مالٌ لم يصل يُقرأ حقًّا للعميل.
+     *   - **فاتورةٌ رُدّ منها بإشعارٍ دائنٍ أكثرُ ممّا بقي عليها** — سُدّدت
+     *     أربعين ثمّ صدر إشعارٌ بعشرة: باقيها سالبُ عشرة، وهي حقٌّ للعميل قيّده
+     *     الإشعارُ دائنًا في الذمم (`CustomerInvoices::creditNote`). وكان لا
+     *     يُقرأ هنا: الشاشةُ تقول «لا شيء له» والدفترُ يقول «له عشرة»، وتنكسر
+     *     المطابقة (`reconcile`).
+     *
+     * ولا يُطرح من «مستحقات العملاء»: حقُّ عميلٍ لا يُسقط دَينَ غيره، ولا
+     * فاتورةً لم يُخصَّص لها. ولا يُكتب شيءٌ — يُقرأ ممّا كُتب.
+     */
+    public static function credit(int $businessId, ?int $customerId = null): float
+    {
+        $live = fn ($q) => $q->where('p.business_id', $businessId)->whereNull('p.cancelled_at')
+            ->where(fn ($w) => $w->whereNull('p.cheque_status')->orWhere('p.cheque_status', '<>', Cheques::BOUNCED))
+            ->when($customerId !== null, fn ($w) => $w->where('p.customer_id', $customerId));
+
+        $paid = (float) $live(DB::table('customer_payments as p'))->sum('p.amount');
+        $allocated = (float) $live(DB::table('customer_payment_allocations as a')
+            ->join('customer_payments as p', 'p.id', '=', 'a.customer_payment_id'))->sum('a.amount');
+
+        $owed = CustomerInvoice::outstandingSql();
+        $overCredited = (float) CustomerInvoice::where('business_id', $businessId)->live()
+            ->when($customerId !== null, fn ($q) => $q->where('customer_id', $customerId))
+            ->whereRaw("{$owed} < -0.0005")
+            ->sum(DB::raw("0 - {$owed}"));
+
+        return round($paid - $allocated + $overCredited, 3);
     }
 
     /** ما على عميلٍ واحد — مفوترًا كان أو لم يُفوتَر بعد */
@@ -101,16 +178,14 @@ final class Receivables
     }
 
     /**
-     * رصيدُ العميل الدائن — ما دفعه ولم يُخصَّص بعد.
+     * رصيدُ العميل الدائن — ما دفعه ولم يُخصَّص بعد، وما رُدّ له بإشعارٍ بعد سداده.
      *
      * دفعةٌ زادت عن فواتيره لا تُهدر ولا تجعل فاتورةً سالبة: تبقى هنا حتّى
-     * تُخصَّص على فاتورةٍ قادمة.
+     * تُخصَّص على فاتورةٍ قادمة. والقاعدةُ قاعدةُ المتجر كلِّه (`credit`).
      */
     public static function customerCredit(int $businessId, int $customerId): float
     {
-        return round(CustomerPayment::where('business_id', $businessId)
-            ->where('customer_id', $customerId)->live()->get()
-            ->sum(fn (CustomerPayment $p) => $p->unallocated()), 3);
+        return self::credit($businessId, $customerId);
     }
 
     /** ما يستطيع العميل أن يستدينه بعد — `null` حين لا حدَّ له */
@@ -144,8 +219,7 @@ final class Receivables
             'due_soon' => round($open->filter(fn ($i) => $i->due_at !== null
                 && $i->daysOverdue() === 0 && $i->due_at->endOfDay()->lte($soon))
                 ->sum(fn ($i) => $i->outstanding()), 3),
-            'credit' => round(CustomerPayment::where('business_id', $businessId)->live()->get()
-                ->sum(fn ($p) => $p->unallocated()), 3),
+            'credit' => self::credit($businessId),
             'invoices' => $open->count(),
             'customers' => $open->pluck('customer_id')->unique()->count(),
         ];

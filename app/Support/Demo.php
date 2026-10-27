@@ -1024,8 +1024,8 @@ class Demo
         $expTrend = self::trend($expMonth, $expLastMonth);
         $expTrend['up'] = ! $expTrend['up'];
 
-        return [
-            array_merge(['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'color' => 'primary'], self::trend($salesToday, $salesYesterday)),
+        $cards = [
+            array_merge(['label' => __('مبيعات اليوم'), 'value' => self::money($salesToday), 'icon' => 'shopping-bag', 'color' => 'primary'], self::trend($salesToday, $salesYesterday), ['hint' => __('نقدًا وآجلًا، يومَ البيع أو صدور الفاتورة')]),
             array_merge(['label' => __('مبيعات الشهر'), 'value' => self::money($salesMonth), 'icon' => 'trending-up', 'color' => 'success'], self::trend($salesMonth, $salesLastMonth)),
             array_merge(['label' => __('عدد الطلبات'), 'value' => (string) $ordersTotal, 'icon' => 'receipt', 'color' => 'info'], self::trend($ordersMonth, $ordersLastMonth)),
             array_merge(['label' => __('متوسط قيمة الطلب'), 'value' => self::money($avg), 'icon' => 'calculator', 'color' => 'secondary'], self::trend($avg, $avgLast)),
@@ -1044,6 +1044,133 @@ class Demo
                 'color' => $net < 0 ? 'danger' : 'success',
             ], self::trend($net, $netLast)),
         ];
+
+        // والمالُ بجوار البيع لا داخلَه — انظر `moneyCards`
+        array_splice($cards, 1, 0, self::moneyCards($bid, $branch));
+
+        return $cards;
+    }
+
+    /**
+     * ما وصل، وما بقي على العملاء، وما يُنتظر عبر الروابط — بجوار «مبيعات اليوم».
+     *
+     * ═══ أربعةُ أسئلةٍ لا رقمٌ واحد ═══
+     *
+     * «كم بعتُ؟» غيرُ «كم وصلني؟». فاتورةٌ آجلةٌ بمئةٍ صدرت اليوم بيعٌ اليوم ولم
+     * يصل منها شيء، وتحصيلُ فاتورةِ الشهر الماضي مالٌ وصل ولا بيعَ فيه اليوم،
+     * ورابطٌ بلا فاتورةٍ دُفع مقدّمًا مالٌ وصل ولا بيعَ وراءه أصلًا — يبقى رصيدًا
+     * للعميل. فلكلّ سؤالٍ بطاقتُه، ومصدرُه الماليّ القائم لا حسابٌ جديد:
+     *
+     *   - «مقبوضات اليوم» من الدفتر (`Receipts`): كلُّ مالٍ وصل مرّةً، والردُّ يومَ ردّه؛
+     *   - «مستحقات العملاء» من الذمم (`Receivables::outstanding`) — ما تقوله شاشةُ الذمم؛
+     *   - «روابط بانتظار الدفع» (`PaymentLinks::awaiting`) — مؤشّرٌ لا دَينٌ يُضاف إلى المستحقات.
+     *
+     * و«مبيعات اليوم» قبلها كما كانت: الطلباتُ وفواتيرُ العملاء يومَ صدورها،
+     * والرابطُ لا يغيّر يومَ بيع ولا يصنع بيعًا.
+     *
+     * وبطاقةُ الروابط لمتجرٍ له Paymob أو رابطٌ حقيقيّ — من لا يستعمله لا يُشغَل
+     * بصفرٍ دائم.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function moneyCards(int $bid, ?int $branch): array
+    {
+        $in = Receipts::between($bid, today(), today()->addDay(), $branch);
+        $inYesterday = Receipts::between($bid, today()->subDay(), today(), $branch)['total'];
+        $refunds = PaymobRefunds::awaiting($bid, $branch);
+        /*
+         * و«غير منسوب لفرع» في «كل الفروع» لمتجرٍ له فروع — ومتجرُ الفرع الواحد
+         * لا يُسأل عن فرعٍ آخر: فاتورتُه بلا فرعٍ في فرعه الوحيد معنًى.
+         */
+        $branches = $branch === null && Branch::where('business_id', $bid)->count() > 1;
+        $free = fn (float $amount) => $branches && abs($amount) > 0.0005
+            ? __('غير منسوب لفرع :a', ['a' => self::isolatedMoney($amount)]) : null;
+
+        $cards = [
+            array_merge(
+                ['label' => __('مقبوضات اليوم'), 'value' => self::money($in['total']), 'icon' => 'wallet', 'color' => 'success'],
+                self::trend($in['total'], $inYesterday),
+                ['hint' => self::joinHint([
+                    abs($in['paymob']) > 0.0005 ? __('منه عبر Paymob :a', ['a' => self::isolatedMoney($in['paymob'])]) : null,
+                    $in['out'] > 0.0005 ? __('بعد ردّ :a', ['a' => self::isolatedMoney($in['out'])]) : null,
+                    $free($in['unattributed']),
+                    self::refundsHint($refunds),
+                ], __('مالٌ وصل فعلًا'))],
+            ),
+        ];
+
+        $credit = $branch === null ? Receivables::credit($bid) : 0.0;
+        $cards[] = [
+            'label' => __('مستحقات العملاء'), 'value' => self::money(Receivables::outstanding($bid, $branch)),
+            'icon' => 'banknote', 'color' => 'warning',
+            'hint' => self::joinHint([
+                __('فواتير قائمة وبيع آجل'),
+                $credit > 0.0005 ? __('رصيدٌ دائن للعملاء :a لا يُطرح منها', ['a' => self::isolatedMoney($credit)]) : null,
+                $branch === null ? $free(Receivables::unattributed($bid)) : null,
+            ]),
+        ];
+
+        if (PaymentLinks::ready($bid) || DB::table('customer_payment_links')->where('business_id', $bid)->where('is_live', true)->exists()) {
+            $wait = PaymentLinks::awaiting($bid, $branch);
+            $cards[] = [
+                'label' => __('روابط بانتظار الدفع'), 'value' => self::money($wait['amount']),
+                'icon' => 'hourglass', 'color' => 'info',
+                'hint' => self::joinHint([
+                    __('عدد الروابط :n — لا تُجمع مع المستحقات', ['n' => $wait['count']]),
+                    $wait['capped'] > 0.0005 ? __('لم يُعدّ :a فوق باقي فواتيرها', ['a' => self::isolatedMoney($wait['capped'])]) : null,
+                    $free($wait['unattributed']),
+                ]),
+            ];
+        }
+
+        return $cards;
+    }
+
+    /**
+     * ردٌّ من Paymob ينتظر التسوية — بمبلغه الموقَّع، وما لا يُعرف مبلغُه بعددِه.
+     *
+     * انظر `PaymobRefunds`: لا يُقال مبلغُ ردٍّ لم يُوقَّع، فلا يُلغى تحصيلٌ
+     * بقي أكثرُه لأنّ البطاقة قالت إنّه رُدّ كلُّه.
+     */
+    private static function refundsHint(array $refunds): ?string
+    {
+        if ($refunds['cases'] === 0) {
+            return null;
+        }
+
+        $amount = self::isolatedMoney($refunds['amount']);
+
+        return match (true) {
+            $refunds['unknown'] === 0 => __('استرجاعٌ من Paymob ينتظر التسوية :a', ['a' => $amount]),
+            $refunds['amount'] > 0.0005 => __('استرجاعٌ من Paymob ينتظر التسوية :a، و:n بمبلغٍ يُراجَع في Paymob', ['a' => $amount, 'n' => $refunds['unknown']]),
+            default => __('استرجاعٌ من Paymob ينتظر التسوية: :n بمبلغٍ يُراجَع في Paymob', ['n' => $refunds['unknown']]),
+        };
+    }
+
+    /**
+     * سطورُ البطاقة الصغيرة — لكلّ معلومةٍ سطرٌ، وما لا يُقال يسقط.
+     *
+     * كانت تُجمع في سطرٍ واحدٍ بفاصل، فيلتفّ في بطاقةٍ ضيّقة ثلاثَ مرّات ويقع
+     * الرقمُ في آخر سطرٍ وعملتُه في أوّل الذي يليه. والسطرُ يُكسر هنا
+     * (`StatCard` تعرضه `whitespace-pre-line`)، وحين لا تفصيلَ يُقال المعنى.
+     */
+    private static function joinHint(array $parts, ?string $otherwise = null): string
+    {
+        $lines = array_values(array_filter($parts));
+
+        return implode("\n", $lines === [] && $otherwise !== null ? [$otherwise] : $lines);
+    }
+
+    /**
+     * مبلغٌ داخلَ جملة — وحدةٌ واحدةٌ لا تنقسم ولا تختلط بما حولها.
+     *
+     * «منه عبر Paymob ١١٥٫٠٠٠ ر.ع» تُقرأ في سطرٍ عربيّ «ر.ع ١١٥٫٠٠٠ Paymob»:
+     * الكلمةُ اللاتينيّةُ والرقمُ يصيران مقطعًا واحدًا من اليسار. فيُعزل المبلغ
+     * (FSI…PDI) ويُربط رقمُه بعملته بمسافةٍ لا تنكسر.
+     */
+    public static function isolatedMoney(float $amount): string
+    {
+        return "\u{2068}".str_replace(' ', "\u{00A0}", self::money($amount))."\u{2069}";
     }
 
     /**
@@ -4733,6 +4860,43 @@ class Demo
                 'color' => 'success',
                 'url' => $toInvoice
                     ? route('admin.customerInvoices.show', $link->customer_invoice_id)
+                    : route('admin.finance.paymentLinks'),
+            ]);
+        }
+
+        /*
+         * ═══ وردٌّ أبلغت به Paymob على رابطٍ مدفوع — ينتظر التسوية ═══
+         *
+         * لا يُعكس شيءٌ تلقائيًّا (`PaymobRefunds`): المالُ في المقبوض كما
+         * يقوله الدفتر حتّى يُسوّيه صاحبُه. فيُقال له الردُّ بمبلغه الموقَّع —
+         * كاملًا أو جزءًا — أو «يُراجَع في Paymob» حين لا يُعرف كم. وإجراءٌ لا
+         * خبر: يبقى ما بقي التحصيلُ قائمًا، والمفتاحُ بمبلغه فردٌّ ثانٍ يُقال ثانيةً.
+         */
+        foreach (PaymobRefunds::linkCases($bid, $limit) as $case) {
+            $name = $case['customer'] ?: '—';
+            $toInvoice = $case['invoice_id'] !== null && ($unfiltered || ($u && $u->allows('orders')));
+            $refunded = $case['refunded'];
+
+            $add('link-refund-'.$case['id'].'-'.(int) round(($refunded ?? 0) * 1000), [
+                'text' => match (true) {
+                    $refunded === null => __('أبلغت Paymob باسترجاعٍ من دفعة :name عبر رابط الدفع — المبلغ يُراجَع في Paymob', ['name' => $name]),
+                    $refunded >= $case['amount'] => __('أبلغت Paymob بردّ :amount كاملًا من دفعة :name عبر رابط الدفع — التحصيل :payment قائمٌ حتى يُسوّى', [
+                        'amount' => self::money($refunded), 'name' => $name, 'payment' => $case['payment'],
+                    ]),
+                    default => __('أبلغت Paymob بردّ :amount من :total دفعها :name عبر رابط الدفع — التحصيل :payment قائمٌ حتى يُسوّى', [
+                        'amount' => self::money($refunded), 'total' => self::money($case['amount']), 'name' => $name, 'payment' => $case['payment'],
+                    ]),
+                },
+                'hint' => match (true) {
+                    $refunded === null => __('لا يُعكس شيءٌ تلقائيًّا. راجع المبلغ في لوحة Paymob قبل التسوية.'),
+                    $refunded >= $case['amount'] => __('لا يُعكس شيءٌ تلقائيًّا. الردُّ الكامل يُسوّى بإلغاء التحصيل من المالية.'),
+                    default => __('ردٌّ جزئيّ — لا تُلغِ التحصيل كلَّه.'),
+                },
+                'section' => 'finance',
+                'icon' => 'credit-card',
+                'color' => 'warning',
+                'url' => $toInvoice
+                    ? route('admin.customerInvoices.show', $case['invoice_id'])
                     : route('admin.finance.paymentLinks'),
             ]);
         }

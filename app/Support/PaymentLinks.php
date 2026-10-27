@@ -399,6 +399,65 @@ final class PaymentLinks
             ->update(['status' => CustomerPaymentLink::EXPIRED, 'updated_at' => now()]);
     }
 
+    /**
+     * «روابط بانتظار الدفع» — طلباتُ مالٍ حقيقيّةٌ ما زالت تُدفع، لا دَينٌ ولا قبض.
+     *
+     * المعلَّقُ الحقيقيُّ الذي لم تنقضِ مهلتُه — ولو لم يمرّ عليه `expireDue`
+     * بعد. فلا يُعدّ رابطُ التجربة ولا المدفوعُ ولا الملغى ولا الفاشلُ ولا المنتهي.
+     *
+     * ═══ ولا يُطلب للفاتورة أكثرُ من باقيها ═══
+     *
+     * رابطان على فاتورةٍ واحدة، أو رابطٌ سُدّد بعضُ فاتورته نقدًا بعده، يطلبان
+     * أكثرَ ممّا عليها — ولا يُدفع منهما فوق الباقي إلّا رصيدًا للعميل. فيُعدّ
+     * لكلّ فاتورةٍ الأقلُّ من مجموع روابطها وباقيها (`outstanding`)، والفارقُ
+     * يُقال (`capped`) لا يُخفى. والرابطُ بلا فاتورةٍ بمبلغه: دفعةٌ مقدّمةٌ تُطلب.
+     *
+     * وهذا مؤشّرٌ لا دَين: ما على الفواتير منه داخلٌ في «مستحقات العملاء»
+     * أصلًا (`Receivables::outstanding`) — فلا يُجمعان.
+     *
+     * والفرعُ فرعُ الفاتورة؛ والرابطُ بلا فاتورةٍ أو على فاتورةٍ بلا فرع غيرُ
+     * منسوب (`unattributed`) — في «كل الفروع» وحده.
+     *
+     * @return array{amount: float, count: int, capped: float, unattributed: float}
+     */
+    public static function awaiting(int $businessId, ?int $branchId = null): array
+    {
+        $links = CustomerPaymentLink::where('business_id', $businessId)
+            ->where('is_live', true)
+            ->where('status', CustomerPaymentLink::PENDING)
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->get(['id', 'customer_invoice_id', 'amount']);
+
+        $invoices = CustomerInvoice::where('business_id', $businessId)
+            ->whereIn('id', $links->pluck('customer_invoice_id')->filter()->unique())
+            ->get()->keyBy('id');
+
+        $out = ['amount' => 0.0, 'count' => 0, 'capped' => 0.0, 'unattributed' => 0.0];
+
+        foreach ($links->groupBy(fn ($l) => (int) $l->customer_invoice_id) as $invoiceId => $group) {
+            $asked = round((float) $group->sum('amount'), 3);
+            $invoice = $invoiceId ? $invoices->get($invoiceId) : null;
+            // فاتورةٌ أُلغيت أو لم تعد في هذا المتجر لا يُطلب لها شيء
+            $counted = $invoiceId
+                ? ($invoice && $invoice->status === CustomerInvoice::ISSUED ? min($asked, $invoice->outstanding()) : 0.0)
+                : $asked;
+            $branch = $invoice?->branch_id;
+
+            if ($branchId !== null && (int) $branch !== $branchId) {
+                continue;
+            }
+
+            $out['amount'] += $counted;
+            $out['count'] += $group->count();
+            $out['capped'] += $asked - $counted;
+            if ($branch === null) {
+                $out['unattributed'] += $counted;
+            }
+        }
+
+        return array_map(fn ($v) => is_float($v) ? round($v, 3) : $v, $out);
+    }
+
     /* ═══════════ ما تعرضه الشاشات ═══════════ */
 
     /**
@@ -428,7 +487,7 @@ final class PaymentLinks
             'paid_at' => optional($link->paid_at)->format('Y-m-d H:i'),
             'payment' => $link->payment ? ['id' => $link->payment->id, 'number' => $link->payment->number] : null,
             'error' => $link->status === CustomerPaymentLink::PAID ? null : $link->error,
-            'review' => $extra !== [] || isset(($link->meta ?? [])['provider_refund']),
+            'review' => $extra !== [] || PaymobRefunds::flagged((array) ($link->meta ?? [])),
         ];
     }
 
@@ -512,6 +571,26 @@ final class PaymentLinks
         }
 
         $flag = fn (string $key) => filter_var(data_get($obj, $key), FILTER_VALIDATE_BOOL);
+
+        /*
+         * ═══ وعمليّةٌ لها أصل على رابطٍ مدفوع — ردٌّ لا دفعة ═══
+         *
+         * Paymob تكتب الاسترجاعَ والإلغاءَ عمليّةً جديدةً على الطلب نفسِه:
+         * أصلُها الدفعةُ (`has_parent_transaction`) ومبلغُها ما رُدّ — وكلاهما من
+         * الحقول الموقَّعة (`Paymob::HMAC_FIELDS`). وكانت تمرّ من هنا كأيّ دفعة:
+         * ردٌّ بالمبلغ كلِّه يُقرأ «دفعةٌ ثانيةٌ على رابطٍ مدفوع»، وردٌّ جزئيٌّ يُقرأ
+         * «المبلغُ لا يطابق الرابط» — خبران كاذبان عن مالٍ خرج، ولا تنبيهَ بالردّ.
+         *
+         * فيُكتب المبلغُ على الرابط (`PaymobRefunds::record`) ولا يمسّ الدفتر:
+         * لا عكسَ تلقائيًّا. والاستلامُ (`is_capture`) أصلُه دفعةٌ لا ردّ. ورابطٌ لم
+         * يُدفع بعدُ لا يُسأل هذا: الدفعةُ الأولى تمضي كما كانت.
+         */
+        if ($link->status === CustomerPaymentLink::PAID && $flag('has_parent_transaction') && ! $flag('is_capture')
+            && trim((string) data_get($obj, 'id', '')) !== (string) $link->provider_transaction_id) {
+            PaymobRefunds::record($link, $obj, $flag);
+
+            return true;
+        }
 
         // والقاعدةُ نفسُها في `PaymobController::callback`: نجحت، ولم تُعلَّق، ولم تُلغَ، ولم تُستردّ
         $settled = $flag('success') && ! $flag('pending') && ! $flag('is_voided') && ! $flag('is_refunded');

@@ -90,6 +90,28 @@ class RibbonWhatsAppTemplatesTest extends TestCase
         );
     }
 
+    public function test_ribbon_waits_for_meta_approval_before_a_template_is_usable(): void
+    {
+        WhatsAppTemplates::seedBusinessDefaults($this->ribbon->id, 'ar');
+
+        $this->assertNull(
+            WhatsAppTemplates::resolve($this->ribbon, WhatsAppEvent::ORDER_READY, WhatsAppMode::BUSINESS_OWN),
+        );
+
+        WhatsAppTemplateMapping::where('business_id', $this->ribbon->id)
+            ->where('event_type', WhatsAppEvent::ORDER_READY)
+            ->update(['meta_status' => WhatsAppTemplates::APPROVED]);
+
+        $this->assertSame(
+            'ribbon_order_ready',
+            WhatsAppTemplates::resolve(
+                $this->ribbon,
+                WhatsAppEvent::ORDER_READY,
+                WhatsAppMode::BUSINESS_OWN,
+            )?->template_name,
+        );
+    }
+
     public function test_other_shops_keep_the_existing_default_cycle(): void
     {
         $other = Business::create([

@@ -166,7 +166,7 @@ export default function StatCard({ stat, index = 0 }: { stat: Stat; index?: numb
                             {stat.value}
                         </p>
                         {stat.hint && (
-                            <p className="mt-1 text-[11.5px] leading-snug text-[#9ca3af]" data-testid="stat-hint">
+                            <p className="mt-1 whitespace-pre-line text-[11.5px] leading-snug text-[#9ca3af]" data-testid="stat-hint">
                                 {t(stat.hint)}
                             </p>
                         )}

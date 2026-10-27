@@ -134,18 +134,39 @@ final class Receivables
     }
 
     /**
-     * رصيدُ عملاء المتجر الدائن — ما دُفع ولم يُخصَّص — بالقاعدة.
+     * رصيدُ العملاء الدائن — ما للعميل على المتجر — للمتجر كلِّه أو لعميلٍ واحد.
      *
-     * مجموعُ `customerCredit` لكلّ عميل، وهو ما يقوله `totals()['credit']`.
+     * والرقمُ ما يقوله الدفتر في `receivable` دائنًا، من بابين:
+     *
+     *   - **دفعةٌ لم تُخصَّص** — مقدّمةٌ، أو زادت عن فواتيره. والشيكُ المرتجع
+     *     ليس دفعة: عُكس قيدُه (`Cheques::bounce`) فلا رصيدَ له. وكان يُعدّ
+     *     هنا ما دام بلا تخصيص — مالٌ لم يصل يُقرأ حقًّا للعميل.
+     *   - **فاتورةٌ رُدّ منها بإشعارٍ دائنٍ أكثرُ ممّا بقي عليها** — سُدّدت
+     *     أربعين ثمّ صدر إشعارٌ بعشرة: باقيها سالبُ عشرة، وهي حقٌّ للعميل قيّده
+     *     الإشعارُ دائنًا في الذمم (`CustomerInvoices::creditNote`). وكان لا
+     *     يُقرأ هنا: الشاشةُ تقول «لا شيء له» والدفترُ يقول «له عشرة»، وتنكسر
+     *     المطابقة (`reconcile`).
+     *
+     * ولا يُطرح من «مستحقات العملاء»: حقُّ عميلٍ لا يُسقط دَينَ غيره، ولا
+     * فاتورةً لم يُخصَّص لها. ولا يُكتب شيءٌ — يُقرأ ممّا كُتب.
      */
-    public static function credit(int $businessId): float
+    public static function credit(int $businessId, ?int $customerId = null): float
     {
-        $paid = (float) CustomerPayment::where('business_id', $businessId)->live()->sum('amount');
-        $allocated = (float) DB::table('customer_payment_allocations as a')
-            ->join('customer_payments as p', 'p.id', '=', 'a.customer_payment_id')
-            ->where('p.business_id', $businessId)->whereNull('p.cancelled_at')->sum('a.amount');
+        $live = fn ($q) => $q->where('p.business_id', $businessId)->whereNull('p.cancelled_at')
+            ->where(fn ($w) => $w->whereNull('p.cheque_status')->orWhere('p.cheque_status', '<>', Cheques::BOUNCED))
+            ->when($customerId !== null, fn ($w) => $w->where('p.customer_id', $customerId));
 
-        return round($paid - $allocated, 3);
+        $paid = (float) $live(DB::table('customer_payments as p'))->sum('p.amount');
+        $allocated = (float) $live(DB::table('customer_payment_allocations as a')
+            ->join('customer_payments as p', 'p.id', '=', 'a.customer_payment_id'))->sum('a.amount');
+
+        $owed = CustomerInvoice::outstandingSql();
+        $overCredited = (float) CustomerInvoice::where('business_id', $businessId)->live()
+            ->when($customerId !== null, fn ($q) => $q->where('customer_id', $customerId))
+            ->whereRaw("{$owed} < -0.0005")
+            ->sum(DB::raw("0 - {$owed}"));
+
+        return round($paid - $allocated + $overCredited, 3);
     }
 
     /** ما على عميلٍ واحد — مفوترًا كان أو لم يُفوتَر بعد */
@@ -157,16 +178,14 @@ final class Receivables
     }
 
     /**
-     * رصيدُ العميل الدائن — ما دفعه ولم يُخصَّص بعد.
+     * رصيدُ العميل الدائن — ما دفعه ولم يُخصَّص بعد، وما رُدّ له بإشعارٍ بعد سداده.
      *
      * دفعةٌ زادت عن فواتيره لا تُهدر ولا تجعل فاتورةً سالبة: تبقى هنا حتّى
-     * تُخصَّص على فاتورةٍ قادمة.
+     * تُخصَّص على فاتورةٍ قادمة. والقاعدةُ قاعدةُ المتجر كلِّه (`credit`).
      */
     public static function customerCredit(int $businessId, int $customerId): float
     {
-        return round(CustomerPayment::where('business_id', $businessId)
-            ->where('customer_id', $customerId)->live()->get()
-            ->sum(fn (CustomerPayment $p) => $p->unallocated()), 3);
+        return self::credit($businessId, $customerId);
     }
 
     /** ما يستطيع العميل أن يستدينه بعد — `null` حين لا حدَّ له */
@@ -200,8 +219,7 @@ final class Receivables
             'due_soon' => round($open->filter(fn ($i) => $i->due_at !== null
                 && $i->daysOverdue() === 0 && $i->due_at->endOfDay()->lte($soon))
                 ->sum(fn ($i) => $i->outstanding()), 3),
-            'credit' => round(CustomerPayment::where('business_id', $businessId)->live()->get()
-                ->sum(fn ($p) => $p->unallocated()), 3),
+            'credit' => self::credit($businessId),
             'invoices' => $open->count(),
             'customers' => $open->pluck('customer_id')->unique()->count(),
         ];

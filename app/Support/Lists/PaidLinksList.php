@@ -7,6 +7,7 @@ use App\Support\Demo;
 use App\Support\Exports\Dataset;
 use App\Support\Exports\Workbook;
 use App\Support\ListFilters;
+use App\Support\PaymobRefunds;
 use App\Support\Search;
 use App\Support\Sort;
 use Illuminate\Database\Query\Builder;
@@ -221,7 +222,7 @@ final class PaidLinksList
             'date' => Carbon::parse($r->paid_at)->format('Y-m-d H:i'),
             'status' => 'مدفوع',
             // دفعةٌ ثانيةٌ على الرابط نفسه أو استرجاعٌ أبلغت به Paymob — كما في لوحة الروابط
-            'review' => ((array) ($meta['extra_transactions'] ?? [])) !== [] || isset($meta['provider_refund']),
+            'review' => ((array) ($meta['extra_transactions'] ?? [])) !== [] || PaymobRefunds::flagged($meta),
             'payment' => ['id' => (int) $r->payment_id, 'number' => $r->payment_number],
         ];
     }

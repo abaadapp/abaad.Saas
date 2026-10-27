@@ -458,31 +458,6 @@ final class PaymentLinks
         return array_map(fn ($v) => is_float($v) ? round($v, 3) : $v, $out);
     }
 
-    /**
-     * مالٌ أبلغت Paymob باسترجاعه ولم يُلغَ تحصيلُه بعد — يُقال بجوار المقبوضات.
-     *
-     * الاسترجاعُ يُكتب على الرابط ولا يمسّ الدفتر (`notSettled`): التحصيلُ قائمٌ
-     * حتّى يُلغيه صاحبُ المحلّ فيُعكس قيدُه يومَ إلغائه. وإلى أن يفعل، يبقى
-     * المالُ في المقبوض كما يقوله الدفتر — فيُقال هذا الرقمُ بجواره كي لا يُقرأ
-     * مالًا باقيًا.
-     */
-    public static function refundsToReverse(int $businessId, ?int $branchId = null): float
-    {
-        return round((float) CustomerPaymentLink::query()->from('customer_payment_links as l')
-            ->join('customer_payments as p', fn ($j) => $j->on('p.id', '=', 'l.customer_payment_id')
-                ->on('p.business_id', '=', 'l.business_id'))
-            ->leftJoin('customer_invoices as i', fn ($j) => $j->on('i.id', '=', 'l.customer_invoice_id')
-                ->on('i.business_id', '=', 'l.business_id'))
-            ->where('l.business_id', $businessId)
-            ->where('l.status', CustomerPaymentLink::PAID)
-            ->where('l.is_live', true)
-            ->whereNull('p.cancelled_at')
-            ->when($branchId !== null, fn ($q) => $q->where('i.branch_id', $branchId))
-            ->get(['l.amount', 'l.meta'])
-            ->filter(fn ($l) => filled(((array) ($l->meta ?? []))['provider_refund'] ?? null))
-            ->sum('amount'), 3);
-    }
-
     /* ═══════════ ما تعرضه الشاشات ═══════════ */
 
     /**
@@ -512,7 +487,7 @@ final class PaymentLinks
             'paid_at' => optional($link->paid_at)->format('Y-m-d H:i'),
             'payment' => $link->payment ? ['id' => $link->payment->id, 'number' => $link->payment->number] : null,
             'error' => $link->status === CustomerPaymentLink::PAID ? null : $link->error,
-            'review' => $extra !== [] || isset(($link->meta ?? [])['provider_refund']),
+            'review' => $extra !== [] || PaymobRefunds::flagged((array) ($link->meta ?? [])),
         ];
     }
 
@@ -596,6 +571,26 @@ final class PaymentLinks
         }
 
         $flag = fn (string $key) => filter_var(data_get($obj, $key), FILTER_VALIDATE_BOOL);
+
+        /*
+         * ═══ وعمليّةٌ لها أصل على رابطٍ مدفوع — ردٌّ لا دفعة ═══
+         *
+         * Paymob تكتب الاسترجاعَ والإلغاءَ عمليّةً جديدةً على الطلب نفسِه:
+         * أصلُها الدفعةُ (`has_parent_transaction`) ومبلغُها ما رُدّ — وكلاهما من
+         * الحقول الموقَّعة (`Paymob::HMAC_FIELDS`). وكانت تمرّ من هنا كأيّ دفعة:
+         * ردٌّ بالمبلغ كلِّه يُقرأ «دفعةٌ ثانيةٌ على رابطٍ مدفوع»، وردٌّ جزئيٌّ يُقرأ
+         * «المبلغُ لا يطابق الرابط» — خبران كاذبان عن مالٍ خرج، ولا تنبيهَ بالردّ.
+         *
+         * فيُكتب المبلغُ على الرابط (`PaymobRefunds::record`) ولا يمسّ الدفتر:
+         * لا عكسَ تلقائيًّا. والاستلامُ (`is_capture`) أصلُه دفعةٌ لا ردّ. ورابطٌ لم
+         * يُدفع بعدُ لا يُسأل هذا: الدفعةُ الأولى تمضي كما كانت.
+         */
+        if ($link->status === CustomerPaymentLink::PAID && $flag('has_parent_transaction') && ! $flag('is_capture')
+            && trim((string) data_get($obj, 'id', '')) !== (string) $link->provider_transaction_id) {
+            PaymobRefunds::record($link, $obj, $flag);
+
+            return true;
+        }
 
         // والقاعدةُ نفسُها في `PaymobController::callback`: نجحت، ولم تُعلَّق، ولم تُلغَ، ولم تُستردّ
         $settled = $flag('success') && ! $flag('pending') && ! $flag('is_voided') && ! $flag('is_refunded');

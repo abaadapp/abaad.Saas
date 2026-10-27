@@ -12,6 +12,7 @@ use App\Models\CustomerPaymentLink;
 use App\Models\JournalEntry;
 use App\Models\Order;
 use App\Models\PaymentGateway;
+use App\Models\StorePaymentIntent;
 use App\Models\User;
 use App\Support\AlertMetrics;
 use App\Support\Books;
@@ -22,6 +23,7 @@ use App\Support\Demo;
 use App\Support\Ledger;
 use App\Support\PaymentLinks;
 use App\Support\Paymob\Amount;
+use App\Support\PaymobRefunds;
 use App\Support\Receipts;
 use App\Support\Receivables;
 use App\Support\StandaloneInvoiceSales;
@@ -246,7 +248,7 @@ class TheDashboardTellsSoldReceivedOwedAndAwaitedApartTest extends TestCase
         $this->says('روابط بانتظار الدفع', 0);
 
         // والعشرون المقدّمة رصيدٌ للعميل يُقال بجوار المستحقات ولا يُطرح منها
-        $this->assertStringContainsString(Demo::money(20), $this->hint('مستحقات العملاء'));
+        $this->assertStringContainsString(Demo::isolatedMoney(20), $this->hint('مستحقات العملاء'));
         $this->assertSame(20.0, Receivables::credit($this->shop->id));
 
         // والرقمُ هو رقمُ شاشة الذمم نفسُه
@@ -292,7 +294,7 @@ class TheDashboardTellsSoldReceivedOwedAndAwaitedApartTest extends TestCase
 
         $this->says('مبيعات اليوم', 20, 'الدفعُ صار بيعًا ثانيًا');
         $this->says('مقبوضات اليوم', 20);
-        $this->assertStringContainsString(__('منه عبر Paymob :a', ['a' => Demo::money(20)]), $this->hint('مقبوضات اليوم'));
+        $this->assertStringContainsString(__('منه عبر Paymob :a', ['a' => Demo::isolatedMoney(20)]), $this->hint('مقبوضات اليوم'));
         $this->says('مستحقات العملاء', 0);
         $this->says('روابط بانتظار الدفع', 0);
         $this->assertSame(1, CustomerPayment::where('business_id', $this->shop->id)->count(), 'تحصيلان لدفعةٍ واحدة');
@@ -370,28 +372,138 @@ class TheDashboardTellsSoldReceivedOwedAndAwaitedApartTest extends TestCase
         $this->assertSame(40.0, $this->sold('2026-10-27'), 'الإشعارُ غيّر يومَ البيع');
         $this->says('مقبوضات اليوم', 0, 'إشعارٌ دائنٌ صار مالًا خارجًا');
         $this->says('مستحقات العملاء', 0, 'فاتورةٌ مسدّدةٌ صارت دينًا سالبًا');
+
+        // وحقُّ العميل بالعشرة رصيدٌ دائنٌ له — كما قيّده الإشعارُ في الدفتر
+        $this->assertSame(10.0, Receivables::credit($this->shop->id));
+        $this->assertSame(10.0, Receivables::customerCredit($this->shop->id, $this->customer->id));
+        $this->assertSame(10.0, Receivables::totals($this->shop->id)['credit']);
+        $this->assertStringContainsString(__('رصيدٌ دائن للعملاء :a لا يُطرح منها', ['a' => Demo::isolatedMoney(10)]), $this->hint('مستحقات العملاء'));
+        $reconcile = Receivables::reconcile($this->shop->id);
+        $this->assertTrue($reconcile['balanced'], 'الذممُ تفترق عن الدفتر بفارق '.$reconcile['difference']);
+        $this->assertSame(-10.0, $reconcile['ledger']);
+
+        // وتحصيلٌ أُلغي بعدها يُعيد الحسابَ كما يقوله الدفتر: عليه ثلاثون، ولا رصيدَ له
+        CustomerPayments::cancel(CustomerPayment::where('business_id', $this->shop->id)->firstOrFail(), 'خطأ', $this->owner->id);
+        $this->says('مستحقات العملاء', 30);
+        $this->assertSame(0.0, Receivables::credit($this->shop->id));
+        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
     }
 
-    public function test_a_paymob_refund_is_flagged_and_its_reversal_is_read_on_its_own_day_without_rewriting_the_payment_day(): void
+    public function test_a_bounced_cheque_left_unallocated_is_no_credit_for_the_customer(): void
+    {
+        $cheque = $this->collect(30, [], Cheques::METHOD);
+        // تحت التحصيل: الذمّةُ انتقلت إلى الورقة — رصيدٌ للعميل كما يقوله الدفتر
+        $this->assertSame(30.0, Receivables::credit($this->shop->id));
+
+        Cheques::bounce($cheque, 'رصيد غير كافٍ', $this->owner->id);
+
+        $this->assertSame(0.0, Receivables::credit($this->shop->id), 'شيكٌ مرتجعٌ بقي رصيدًا للعميل');
+        $this->assertSame(0.0, Receivables::customerCredit($this->shop->id, $this->customer->id));
+        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
+        $this->says('مقبوضات اليوم', 0);
+    }
+
+    public function test_a_refund_paymob_only_flags_is_said_without_an_amount_and_its_reversal_reads_on_its_own_day(): void
     {
         $invoice = $this->invoice(20);
         $link = $this->pay($this->link($invoice));
-        $this->says('مقبوضات اليوم', 20);
+        $books = $this->books();
 
-        // Paymob تُبلغ بالاسترجاع: الدفترُ لا يتغيّر بلا يد، والبطاقةُ تقوله
+        // الدفعةُ الأصل صارت «مستردّة» — ولا مبلغَ موقَّعًا يقول كم
         $this->hook($this->obj($link, ['id' => (int) $link->provider_transaction_id, 'is_refunded' => true]));
-        $this->says('مقبوضات اليوم', 20);
-        $this->assertStringContainsString(__('استرجاعٌ من Paymob ينتظر إلغاء تحصيله :a', ['a' => Demo::money(20)]), $this->hint('مقبوضات اليوم'));
 
-        // ويُلغى التحصيلُ غدًا — ردٌّ في يومه، ويومُ القبض كما قُرئ
+        $this->says('مقبوضات اليوم', 20, 'عُكس المالُ تلقائيًّا');
+        $this->assertSame($books, $this->books(), 'كُتب في الدفتر بلا يد');
+        $this->assertStringContainsString(__('استرجاعٌ من Paymob ينتظر التسوية: :n بمبلغٍ يُراجَع في Paymob', ['n' => 1]), $this->hint('مقبوضات اليوم'));
+        $this->assertSame(['amount' => 0.0, 'cases' => 1, 'unknown' => 1], PaymobRefunds::awaiting($this->shop->id));
+        $this->assertContains(__('أبلغت Paymob باسترجاعٍ من دفعة :name عبر رابط الدفع — المبلغ يُراجَع في Paymob', ['name' => $this->customer->name]),
+            array_column(Demo::notifications(), 'text'));
+
+        // ويُلغى التحصيلُ غدًا — ردٌّ في يومه، ويومُ القبض كما قُرئ، والتنبيهُ يزول
         Carbon::setTestNow(Carbon::parse('2026-10-28 10:00:00', 'Asia/Muscat'));
         CustomerPayments::cancel(CustomerPayment::findOrFail($link->customer_payment_id), 'استرجاع عبر Paymob', $this->owner->id);
 
         $this->says('مقبوضات اليوم', -20);
-        $this->assertStringContainsString(__('بعد ردّ :a', ['a' => Demo::money(20)]), $this->hint('مقبوضات اليوم'));
-        $this->assertStringNotContainsString(__('استرجاعٌ من Paymob ينتظر إلغاء تحصيله :a', ['a' => Demo::money(20)]), $this->hint('مقبوضات اليوم'));
+        $this->assertStringContainsString(__('بعد ردّ :a', ['a' => Demo::isolatedMoney(20)]), $this->hint('مقبوضات اليوم'));
+        $this->assertSame(['amount' => 0.0, 'cases' => 0, 'unknown' => 0], PaymobRefunds::awaiting($this->shop->id));
         $this->assertSame(20.0, $this->received('2026-10-27')['total'], 'الإلغاءُ أعاد كتابةَ يومٍ مضى');
         $this->says('مستحقات العملاء', 20);
+    }
+
+    public function test_full_and_partial_paymob_refunds_are_read_from_their_signed_amount_once_and_never_reverse_anything(): void
+    {
+        $full = $this->pay($this->link($this->invoice(20)));
+        $part = $this->pay($this->link(null, 30));
+        $books = $this->books();
+        $refund = fn (CustomerPaymentLink $l, float $amount, int $id) => $this->obj($l, [
+            'id' => $id, 'has_parent_transaction' => true, 'amount_cents' => Amount::toMinor($amount, 'OMR'),
+        ]);
+
+        // ردٌّ كاملٌ وإشعارُه مكرّر، وردٌّ جزئيٌّ بخمسةٍ من ثلاثين
+        $this->hook($refund($full, 20, 990001));
+        $this->hook($refund($full, 20, 990001));
+        $this->hook($refund($part, 5, 990002));
+
+        // لا «دفعةٌ ثانية» ولا «المبلغُ لا يطابق» — ولا قيدٌ ولا تحصيلٌ جديد
+        foreach ([$full, $part] as $l) {
+            $meta = (array) $l->fresh()->meta;
+            $this->assertArrayNotHasKey('extra_transactions', $meta, 'ردٌّ قُرئ دفعةً ثانية');
+            $this->assertNull($l->fresh()->error, 'ردٌّ قُرئ مبلغًا لا يطابق');
+        }
+        $this->assertSame($books, $this->books(), 'الردُّ عكس المالَ بلا يد');
+        $this->assertSame(2, CustomerPayment::where('business_id', $this->shop->id)->count());
+
+        // والمبلغُ ما وُقّع: خمسةٌ وعشرون، لا خمسون
+        $this->assertSame(['amount' => 25.0, 'cases' => 2, 'unknown' => 0], PaymobRefunds::awaiting($this->shop->id));
+        $this->says('مقبوضات اليوم', 50);
+        $this->assertStringContainsString(__('استرجاعٌ من Paymob ينتظر التسوية :a', ['a' => Demo::isolatedMoney(25)]), $this->hint('مقبوضات اليوم'));
+
+        $texts = array_column(Demo::notifications(), 'text');
+        $this->assertContains(__('أبلغت Paymob بردّ :amount كاملًا من دفعة :name عبر رابط الدفع — التحصيل :payment قائمٌ حتى يُسوّى', [
+            'amount' => Demo::money(20), 'name' => $this->customer->name, 'payment' => $full->fresh()->payment->number,
+        ]), $texts);
+        $this->assertContains(__('أبلغت Paymob بردّ :amount من :total دفعها :name عبر رابط الدفع — التحصيل :payment قائمٌ حتى يُسوّى', [
+            'amount' => Demo::money(5), 'total' => Demo::money(30), 'name' => $this->customer->name, 'payment' => $part->fresh()->payment->number,
+        ]), $texts);
+
+        // وردٌّ ثانٍ على الجزئيّ يُجمع ولا يتجاوز الدفعة
+        $this->hook($refund($part, 40, 990003));
+        $this->assertSame(50.0, PaymobRefunds::awaiting($this->shop->id)['amount']);
+
+        // والإلغاءُ قبل التسوية يردّ الدفعةَ كلَّها
+        $void = $this->pay($this->link(null, 7));
+        $this->hook($this->obj($void, ['id' => (int) $void->provider_transaction_id, 'is_voided' => true]));
+        $this->assertSame(7.0, PaymobRefunds::refunded(7, 'OMR', (array) $void->fresh()->meta));
+    }
+
+    public function test_a_child_notice_on_an_unpaid_link_is_not_a_refund_and_the_first_payment_still_settles(): void
+    {
+        $link = $this->link($this->invoice(20));
+        $this->hook($this->obj($link, ['id' => 990010, 'has_parent_transaction' => true]));
+
+        // رابطٌ لم يُدفع لا يُسأل عن ردّ — والإشعارُ يمضي كما كان
+        $this->assertSame(CustomerPaymentLink::PAID, $link->fresh()->status);
+        $this->assertArrayNotHasKey('provider_refunds', (array) $link->fresh()->meta);
+        $this->says('مقبوضات اليوم', 20);
+        $this->assertSame(0, PaymobRefunds::awaiting($this->shop->id)['cases']);
+    }
+
+    public function test_a_website_order_whose_payment_was_refunded_waits_for_settlement_until_it_is_cancelled(): void
+    {
+        $order = $this->order(25, 'website', 'مدفوع', 'بطاقة');
+        StorePaymentIntent::create([
+            'business_id' => $this->shop->id, 'order_id' => $order->id, 'reference' => 'web-refunded-1',
+            'amount' => 25, 'currency' => 'OMR', 'status' => StorePaymentIntent::PAID, 'payload' => [],
+            'refund_status' => StorePaymentIntent::REFUND_SENT, 'refunded_at' => now(),
+        ]);
+
+        $this->says('مقبوضات اليوم', 25);
+        $this->assertSame(['amount' => 0.0, 'cases' => 1, 'unknown' => 1], PaymobRefunds::awaiting($this->shop->id));
+        $this->assertSame(1, PaymobRefunds::awaiting($this->shop->id, $this->muscat->id)['cases']);
+        $this->assertSame(0, PaymobRefunds::awaiting($this->shop->id, $this->sohar->id)['cases']);
+
+        $order->update(['status' => Order::CANCELLED]);
+        $this->assertSame(0, PaymobRefunds::awaiting($this->shop->id)['cases']);
     }
 
     public function test_a_cheque_is_received_the_day_it_clears_and_never_when_it_bounces(): void
@@ -424,7 +536,7 @@ class TheDashboardTellsSoldReceivedOwedAndAwaitedApartTest extends TestCase
         $this->says('مستحقات العملاء', 0);
         $this->assertSame(20.0, Receivables::credit($this->shop->id));
         $this->assertSame(Receivables::totals($this->shop->id)['credit'], Receivables::credit($this->shop->id));
-        $this->assertStringContainsString(__('ورصيدٌ دائن للعملاء :a لا يُطرح منها', ['a' => Demo::money(20)]), $this->hint('مستحقات العملاء'));
+        $this->assertStringContainsString(__('رصيدٌ دائن للعملاء :a لا يُطرح منها', ['a' => Demo::isolatedMoney(20)]), $this->hint('مستحقات العملاء'));
     }
 
     public function test_a_cancelled_invoice_owes_nothing_and_a_cancelled_payment_is_returned_on_its_day(): void
@@ -514,7 +626,7 @@ class TheDashboardTellsSoldReceivedOwedAndAwaitedApartTest extends TestCase
         $wait = PaymentLinks::awaiting($this->shop->id);
         $this->assertSame(['amount' => 32.5, 'count' => 2, 'capped' => 10.0, 'unattributed' => 32.5], $wait);
         $this->says('روابط بانتظار الدفع', 32.5);
-        $this->assertStringContainsString(__('ولم يُعدّ :a فوق باقي فواتيرها', ['a' => Demo::money(10)]), $this->hint('روابط بانتظار الدفع'));
+        $this->assertStringContainsString(__('لم يُعدّ :a فوق باقي فواتيرها', ['a' => Demo::isolatedMoney(10)]), $this->hint('روابط بانتظار الدفع'));
 
         // ومؤشّرٌ لا دَين: المستحقاتُ باقي الفواتير وحده، لا يُضاف إليه ما يُطلب
         $this->says('مستحقات العملاء', 20 + 8 + 9 + 6 + 7);
@@ -546,8 +658,8 @@ class TheDashboardTellsSoldReceivedOwedAndAwaitedApartTest extends TestCase
         $this->assertSame($all['total'], round($muscat + $sohar + $all['unattributed'], 3), 'الفروعُ وغيرُ المنسوب لا تساوي النشاط');
 
         $this->says('مقبوضات اليوم', 60, branch: $this->muscat);
-        $this->assertStringContainsString(__('غير منسوب لفرع :a', ['a' => Demo::money(50)]), $this->hint('مقبوضات اليوم'));
-        $this->assertStringNotContainsString(__('غير منسوب لفرع :a', ['a' => Demo::money(50)]), $this->hint('مقبوضات اليوم', $this->muscat));
+        $this->assertStringContainsString(__('غير منسوب لفرع :a', ['a' => Demo::isolatedMoney(50)]), $this->hint('مقبوضات اليوم'));
+        $this->assertStringNotContainsString(__('غير منسوب لفرع :a', ['a' => Demo::isolatedMoney(50)]), $this->hint('مقبوضات اليوم', $this->muscat));
 
         // والمستحقاتُ والروابطُ بفرع الفاتورة
         $this->invoice(70, branch: $this->muscat);

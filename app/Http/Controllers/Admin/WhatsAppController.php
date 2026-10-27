@@ -120,7 +120,7 @@ class WhatsAppController extends Controller
             'pack' => $mode === WhatsAppMode::ABAAD_SHARED ? WhatsAppPacks::view($business) : null,
             'events' => array_map(
                 fn ($e) => ['key' => $e, 'setting' => WhatsAppEvent::SETTING_KEYS[$e], 'label' => WhatsAppEvent::label($e)],
-                WhatsAppEvent::ALL,
+                WhatsAppEvent::eventsForBusiness((int) $business->id),
             ),
         ];
     }

@@ -12,6 +12,7 @@ import { UsernameInput } from '@/Components/ui/username-input';
 import { useTranslate } from '@/lib/i18n';
 import { randomPassword } from '@/lib/password';
 import AccountCard from './AccountCard';
+import AdminGrantField from './AdminGrantField';
 import NewSubscriptionFields, { type NewSubscriptionOptions, type NewSubscriptionValues } from './NewSubscriptionFields';
 import type { Currency } from '@/types';
 
@@ -82,6 +83,8 @@ interface Props {
     ownerEmail?: string | null;
     /** مطلوب عند التعديل: بطاقة الحساب تحفظ بمسارها الخاص */
     businessId?: number;
+    /** يُسأل عن منحةٍ إداريّة في التعديل — `AdminGrants::asked`، والغائبُ لا */
+    grantable?: boolean;
     action: string;
     /** التعديل يمرّ بـPUT عبر _method لأن الطلب متعدّد الأجزاء (رفع ملف) */
     method: 'post' | 'put';
@@ -102,6 +105,7 @@ export default function BusinessForm({
     logoUrl,
     ownerEmail,
     businessId,
+    grantable = false,
     action,
     method,
     submitLabel,
@@ -198,6 +202,8 @@ export default function BusinessForm({
              * الخادم يحرس نفسه من هذا، لكنّ الطلب لا يقول ما لا يقصده.
              */
             if (!out.logo) delete out.logo;
+            // ولا سببُ منحةٍ لم يُفتح حقلُها (`AdminGrantField`)
+            if (!out.grant_reason) delete out.grant_reason;
 
             return out;
         });
@@ -467,17 +473,16 @@ export default function BusinessForm({
 
                         باقةٌ أعلى أو مدّةٌ أطول أو حسابٌ بانتظار السداد يردّها الخادم
                         ويسمّيها (`AdminGrants`): تُرقّى وتُجدَّد بفاتورتها من صفحة المتجر.
-                        ومن أراد منحتها كتب سببها هنا — فتُحفظ بتاريخ الانتهاء وتُسجَّل.
+                        ومن أراد منحتها فتحها وكتب سببها — فتُحفظ بتاريخ الانتهاء وتُسجَّل.
                     */}
-                    {(form.errors.grant_reason || form.data.grant_reason) && (
-                        <Field label="سبب المنحة الإدارية" className="md:col-span-2" error={form.errors.grant_reason} hint={t('تُسجَّل في سجل النشاط، والحساب يُفتح بلا سداد حتى تاريخ الانتهاء.')}>
-                            <Input
-                                data-testid="business-grant-reason"
-                                value={form.data.grant_reason ?? ''}
-                                onChange={(e) => form.setData('grant_reason', e.target.value)}
-                            />
-                        </Field>
-                    )}
+                    <AdminGrantField
+                        grantable={grantable}
+                        value={form.data.grant_reason ?? ''}
+                        error={form.errors.grant_reason}
+                        onChange={(v) => form.setData('grant_reason', v)}
+                        testId="business-grant"
+                        className="md:col-span-2"
+                    />
                     </>
                     )}
                 </div>,

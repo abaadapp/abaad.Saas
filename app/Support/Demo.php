@@ -770,6 +770,8 @@ class Demo
             'amount' => (float) $s->amount,
             'payment' => $s->payment_status,
             'status' => $s->status,
+            // زرُّ المنحة في نافذة التعديل — لمتجرٍ يُسأل عنها وحده (`AdminGrants::asked`)
+            'grantable' => $s->business ? \App\Support\Addons\AdminGrants::asked($s->business) : false,
         ])->all();
     }
 

@@ -370,6 +370,8 @@ class PageController extends Controller
                 'logo_url' => self::logoUrl($model?->logo),
                 // حساب الدخول يُعرض ولا يُعاد إنشاؤه من هنا
                 'owner_email' => $model ? MerchantAccount::owner($model)?->email : null,
+                // ويُعرض زرُّ المنحة الإداريّة لمن يُسأل عنها وحده — والسابقةُ لا
+                'grantable' => $model ? \App\Support\Addons\AdminGrants::asked($model) : false,
             ],
             'options' => $this->businessOptions(),
             // ومستنداتُ الشركة أسفلَ النموذج — كما في صفحة عرضها

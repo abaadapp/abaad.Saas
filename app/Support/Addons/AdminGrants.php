@@ -33,6 +33,16 @@ final class AdminGrants
     private const CAPS = ['max_branches', 'max_employees', 'max_products'];
 
     /**
+     * أيُسأل هذا المتجرُ عن منحة؟ — فتعرض الشاشتان زرَّها قبل الإرسال.
+     *
+     * السابقةُ لا يُسأل عنها شيءٌ إلّا حسابًا بانتظار السداد، فلا زرَّ لها.
+     */
+    public static function asked(Business $business): bool
+    {
+        return PricingPolicy::isAddons($business) || $business->status === Business::AWAITING_PAYMENT;
+    }
+
+    /**
      * ما يفتحه هذا التعديل — قائمةٌ تُقال للمشغّل، وفراغُها «لا شيء يُفتح».
      *
      * @param  array{plan_id?: mixed, ends_at?: mixed, status?: mixed}  $after

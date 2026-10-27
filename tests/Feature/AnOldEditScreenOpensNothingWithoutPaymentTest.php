@@ -29,6 +29,7 @@ use Tests\TestCase;
  *  • ومربّعُ الإهداء لا يفتح الإضافةَ لمتجر السياسة الجديدة — من أيّ بابٍ كُتب.
  *  • والتصحيحُ الذي لا يفتح شيئًا يمرّ: مبلغٌ، وتاريخٌ أقصر، وتنزيلٌ.
  *  • والمتجرُ على السياسة السابقة يُعدَّل كما كان.
+ *  • وزرُّ «منحة إدارية…» في الشاشتين لمن يُسأل عنها وحده — والسابقةُ بلا زرّ.
  *
  * والترقيةُ المدفوعة لا تفتح إلّا بسدادها: `AbaadsTeamOpensAndGrowsEveryMerchantsSubscriptionTest`.
  */
@@ -197,5 +198,31 @@ class AnOldEditScreenOpensNothingWithoutPaymentTest extends TestCase
         $this->assertSame([(int) $this->plans['professional']->id, '2028-06-01'], [(int) $edited->plan_id, $edited->ends_at->toDateString()]);
         $this->assertTrue(GiftOrders::on($legacy->id), 'مربّعُ الإهداء يفتح للسابقة كما كان');
         $this->assertSame(0, ActivityLog::where('description', 'like', '%منحة إدارية%')->count());
+    }
+
+    public function test_the_two_screens_offer_the_grant_button_only_to_a_shop_it_is_asked_of(): void
+    {
+        // السابقةُ قبل الإطلاق، والجديدةُ بعده — كما يختمهما الإنشاء
+        [$legacy] = $this->shop('basic', 'old-button@shop.om');
+        $this->launch(9.9, 99);
+        [$fresh] = $this->shop('basic', 'new-button@shop.om');
+        $this->paidCycle($legacy);
+        $this->paidCycle($fresh);
+
+        foreach ([[$legacy, false], [$fresh, true]] as [$shop, $asked]) {
+            $this->actingAs($this->platform)->get(route('super-admin.businesses.edit', $shop->id))->assertOk()
+                ->assertInertia(fn ($page) => $page->where('business.grantable', $asked));
+        }
+
+        $this->actingAs($this->platform)->get(route('super-admin.subscriptions.index'))->assertOk()
+            ->assertInertia(function ($page) use ($legacy, $fresh) {
+                $rows = collect($page->toArray()['props']['subscriptions'])->keyBy('business_id');
+                $this->assertSame([false, true], [$rows[$legacy->id]['grantable'], $rows[$fresh->id]['grantable']]);
+            });
+
+        // وحسابٌ بانتظار السداد يُسأل عنها في أيّ سياسة
+        $legacy->forceFill(['status' => Business::AWAITING_PAYMENT])->save();
+        $this->actingAs($this->platform)->get(route('super-admin.businesses.edit', $legacy->id))
+            ->assertInertia(fn ($page) => $page->where('business.grantable', true));
     }
 }

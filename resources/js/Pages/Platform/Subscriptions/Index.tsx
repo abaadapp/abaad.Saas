@@ -13,6 +13,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { Input } from '@/Components/ui/input';
+import AdminGrantField from '@/Pages/Platform/Businesses/partials/AdminGrantField';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import type { Currency, PageProps } from '@/types';
@@ -28,6 +29,8 @@ interface Subscription {
     amount: number;
     payment: string;
     status: string;
+    /** يُسأل متجرُه عن منحةٍ إداريّة — `AdminGrants::asked`، والغائبُ لا */
+    grantable?: boolean;
 }
 
 interface Props {
@@ -332,15 +335,15 @@ export default function SubscriptionsIndex() {
                             باقةٌ أعلى أو تاريخٌ أبعد يردّهما الخادم لمتجر التسعير الجديد
                             (`AdminGrants`) — يُرقّى ويُجدَّد بفاتورته، أو يُكتب سببُ المنحة هنا.
                         */}
-                        {(form.errors.grant_reason || form.data.grant_reason) && (
-                            <Field label="سبب المنحة الإدارية" className="sm:col-span-2" error={form.errors.grant_reason} hint={t('تُسجَّل في سجل النشاط، والحساب يُفتح بلا سداد حتى تاريخ الانتهاء.')}>
-                                <Input
-                                    data-testid="subscription-grant-reason"
-                                    value={form.data.grant_reason}
-                                    onChange={(e) => form.setData('grant_reason', e.target.value)}
-                                />
-                            </Field>
-                        )}
+                        <AdminGrantField
+                            key={editing?.id}
+                            grantable={!!editing?.grantable}
+                            value={form.data.grant_reason}
+                            error={form.errors.grant_reason}
+                            onChange={(v) => form.setData('grant_reason', v)}
+                            testId="subscription-grant"
+                            className="sm:col-span-2"
+                        />
 
                         <div className="flex justify-end gap-2 sm:col-span-2">
                             <Button type="button" variant="ghost" onClick={() => setEditing(null)}>

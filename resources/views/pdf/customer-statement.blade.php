@@ -37,7 +37,7 @@
     <h2>{{ __('الملخّص') }}</h2>
     <table class="grid">
         <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('إجمالي المشتريات') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($totalSpent) }}</td></tr>
-        <tr><td style="color:#6b7280;">{{ __('المحصَّل منها') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($collected) }}</td></tr>
+        <tr><td style="color:#6b7280;">{{ __('المسدَّد منها') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($collected) }}</td></tr>
         <tr><td style="color:#6b7280;">{{ __('المتبقّي عليها') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($outstanding) }}</td></tr>
     </table>
 @endsection

@@ -9814,10 +9814,8 @@
     "سجل التحصيلات": "Collections",
     "لا مشتريات لهذا العميل بعد.": "This customer has no purchases yet.",
     "لا مشتريات لهذا العميل بعد": "This customer has no purchases yet",
-    "المحصَّل منها": "Collected",
     "المتبقّي عليها": "Outstanding",
     "فاتورة مستقلة": "Standalone invoice",
-    "مجموع التحصيلات": "Total collected",
     "على": "Applied to",
     "لا تحصيلات لهذا العميل بعد": "No collections for this customer yet",
     "عند البيع": "At sale",
@@ -9836,5 +9834,11 @@
     "منحة إدارية…": "Administrative grant…",
     "لترقية أو تمديد بلا فاتورة — تتطلب سببًا وتاريخ انتهاء.": "To upgrade or extend without an invoice — requires a reason and an end date.",
     "المنحة تتطلب سببًا واضحًا وتاريخ انتهاء لم يمضِ، وتُسجَّل في سجل النشاط. والخادم يحكم بها: ما لا يفتح شيئًا يُحفظ بلا منحة.": "A grant requires a clear reason and an end date that has not passed, and is recorded in the activity log. The server decides: a change that opens nothing is saved without a grant.",
-    "إلغاء المنحة": "Cancel grant"
+    "إلغاء المنحة": "Cancel grant",
+    "المسدَّد منها": "Settled",
+    "المقبوض فعلًا": "Actually received",
+    "لا تُجمع حتى تُصرف": "not counted until cleared",
+    "تحصيل متبقٍّ": "Balance collected",
+    "ردّ فرق": "Difference refunded",
+    "مردود": "Refunded"
 }

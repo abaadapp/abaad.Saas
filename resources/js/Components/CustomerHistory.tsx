@@ -42,19 +42,30 @@ export interface PurchaseTotals {
 
 export interface CollectionRow {
     key: string;
-    kind: 'payment' | 'sale';
+    /** تحصيلٌ مسجَّل، أو الدفعُ عند البيع، أو تحصيلُ متبقٍّ أو ردُّ فرقٍ بعده */
+    kind: 'payment' | 'sale' | 'balance' | 'refund';
     id: number;
     number: string | null;
     date: string;
     method: string;
     amount: number;
     state: string;
+    /** مالٌ وصل فعلًا — لا ملغى ولا مرتجع ولا شيكٌ تحت التحصيل */
     counted: boolean;
+    /** شيكٌ تحت التحصيل: يُعرض بحاله ولا يُجمع إلى المقبوض */
+    pending: boolean;
+    /** ملغى أو مرتجع — يُشطب */
+    void: boolean;
     reference: string | null;
     link: string | null;
     invoices: { id: number; number: string | null; amount: number; orders: { id: number; number: string }[] }[];
     order: { id: number; number: string; source: string | null } | null;
     credit: number;
+}
+
+export interface CollectionTotals {
+    received: number;
+    pending: number;
 }
 
 /** ألوانُ حال السداد — ألوانُ سجلّ عمليات البيع نفسُها */
@@ -66,6 +77,7 @@ export const payTone = (state: string) =>
 
 const collectionTone = (state: string) =>
     state === 'مقبوض' || state === 'محصَّل' ? 'bg-[#ecfdf5] text-[#047857]'
+    : state === 'مردود' ? 'bg-[#f5f3ff] text-[#6d28d9]'
     : state === 'تحت التحصيل' ? 'bg-[#fffbeb] text-[#b45309]'
     : state === 'مرتجع' ? 'bg-[#fef2f2] text-[#b91c1c]'
     : 'bg-[#f4f4f5] text-[#71717a]';
@@ -91,7 +103,8 @@ export function PurchaseHistory({ rows, totals, money }: { rows: PurchaseRow[]; 
         <>
             <div className="flex flex-wrap gap-x-6 gap-y-1 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-3 text-[13px] text-[#4b4b4b]" data-testid="purchase-totals">
                 <span>{t('المشتريات')}: <b className="tabular-nums text-[#111]">{money(totals.sales)}</b></span>
-                <span>{t('المحصَّل منها')}: <b className="tabular-nums text-[#047857]">{money(totals.collected)}</b></span>
+                {/* «المسدَّد» كما تقرؤه الفاتورة — والشيكُ تحت التحصيل يسدّدها ولم يصل مالُه بعد */}
+                <span>{t('المسدَّد منها')}: <b className="tabular-nums text-[#047857]">{money(totals.collected)}</b></span>
                 <span>{t('المتبقّي عليها')}: <b className="tabular-nums text-[#b45309]">{money(totals.outstanding)}</b></span>
             </div>
             <Table data-testid="customer-purchases">
@@ -136,14 +149,19 @@ export function PurchaseHistory({ rows, totals, money }: { rows: PurchaseRow[]; 
     );
 }
 
-export function CollectionHistory({ rows, money }: { rows: CollectionRow[]; money: (n: number) => string }) {
+export function CollectionHistory({ rows, totals, money }: { rows: CollectionRow[]; totals: CollectionTotals; money: (n: number) => string }) {
     const t = useTranslate();
-    const total = rows.filter((r) => r.counted).reduce((s, r) => s + r.amount, 0);
 
     return (
         <>
-            <div className="border-b border-[var(--ui-border,#e8e8e8)] px-5 py-3 text-[13px] text-[#4b4b4b]" data-testid="collection-totals">
-                {t('مجموع التحصيلات')}: <b className="tabular-nums text-[#111]">{money(total)}</b>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 border-b border-[var(--ui-border,#e8e8e8)] px-5 py-3 text-[13px] text-[#4b4b4b]" data-testid="collection-totals">
+                <span>{t('المقبوض فعلًا')}: <b className="tabular-nums text-[#111]">{money(totals.received)}</b></span>
+                {totals.pending > 0 && (
+                    <span data-testid="collection-pending">
+                        {t('شيكات تحت التحصيل')}: <b className="tabular-nums text-[#b45309]">{money(totals.pending)}</b>
+                        <span className="text-[#9ca3af]"> — {t('لا تُجمع حتى تُصرف')}</span>
+                    </span>
+                )}
             </div>
             <Table data-testid="customer-collections">
                 <TableHeader>
@@ -157,20 +175,22 @@ export function CollectionHistory({ rows, money }: { rows: CollectionRow[]; mone
                     {rows.length === 0 ? (
                         <TableEmpty colSpan={6}>{t('لا تحصيلات لهذا العميل بعد')}</TableEmpty>
                     ) : rows.map((r) => (
-                        <TableRow key={r.key} data-testid="customer-collection-row" className={r.counted ? undefined : 'opacity-60'}>
+                        <TableRow key={r.key} data-testid="customer-collection-row" className={r.void ? 'opacity-60' : undefined}>
                             <TableCell dir="ltr" className="whitespace-nowrap text-[#6b7280]">{r.date}</TableCell>
                             <TableCell className="whitespace-nowrap">
                                 {r.kind === 'payment' ? (
                                     <SmartLink routeName="admin.customerPayments.show" href={route('admin.customerPayments.show', r.id)}
                                         className="font-mono font-medium text-[#6d28d9] hover:underline">{r.number ?? `#${r.id}`}</SmartLink>
                                 ) : (
-                                    <span className="text-[12px] text-[#6b7280]">{t('عند البيع')}</span>
+                                    <span className="text-[12px] text-[#6b7280]">
+                                        {t(r.kind === 'balance' ? 'تحصيل متبقٍّ' : r.kind === 'refund' ? 'ردّ فرق' : 'عند البيع')}
+                                    </span>
                                 )}
                                 {r.link && <span className="block text-[11px] text-[#6b7280]">{t('رابط دفع')} <span className="font-mono">{r.link}</span></span>}
                             </TableCell>
                             <TableCell className="text-[#4b4b4b]">{t(r.method === 'بطاقة' ? 'فيزا' : r.method)}</TableCell>
                             <TableCell className="whitespace-nowrap tabular-nums font-medium">
-                                <span className={r.counted ? undefined : 'line-through'}>{money(r.amount)}</span>
+                                <span className={r.void ? 'line-through' : undefined}>{money(r.amount)}</span>
                             </TableCell>
                             <TableCell className="whitespace-nowrap text-[12px]">
                                 {r.order && <span className="block">{t('طلب')} <DocLink kind="order" id={r.order.id} number={r.order.number} /></span>}

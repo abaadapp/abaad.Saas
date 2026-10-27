@@ -15,6 +15,7 @@ use App\Models\Product;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\Books;
+use App\Support\Cheques;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
 use App\Support\Demo;
@@ -22,6 +23,7 @@ use App\Support\Exports\Workbook;
 use App\Support\Ledger;
 use App\Support\Lists\CustomersList;
 use App\Support\MarketingSettings;
+use App\Support\OrderCorrection;
 use App\Support\PaymentLinks;
 use App\Support\Paymob\Amount;
 use App\Support\ReportingPeriod;
@@ -224,6 +226,15 @@ class ACustomersRecordHoldsWhatTheyBoughtAndWhatTheyPaidTest extends TestCase
         $this->fail('العميلُ غائبٌ عن ملفّه');
     }
 
+    private function books(): array
+    {
+        return [
+            DB::table('journal_entries')->where('business_id', $this->shop->id)->count(),
+            (string) DB::table('journal_lines as l')->join('journal_entries as e', 'e.id', '=', 'l.journal_entry_id')
+                ->where('e.business_id', $this->shop->id)->selectRaw('COALESCE(SUM(l.debit), 0) + COALESCE(SUM(l.credit), 0) + COUNT(*) as v')->value('v'),
+        ];
+    }
+
     private function reportTotal(Customer $customer): ?float
     {
         $row = collect(Demo::customerSpend(ReportingPeriod::all(), $this->shop->id))->firstWhere('name', $customer->name);
@@ -344,6 +355,114 @@ class ACustomersRecordHoldsWhatTheyBoughtAndWhatTheyPaidTest extends TestCase
         $this->assertNull($this->reportTotal($this->customer), 'التقريرُ عدّ الرابطَ المستقلّ شراءً');
     }
 
+    /* ═════════════ الشيكُ تحت التحصيل ═════════════ */
+
+    public function test_a_cheque_under_collection_shows_its_state_and_is_not_received_until_it_clears(): void
+    {
+        $invoice = $this->invoice(100);
+        $cheque = CustomerPayments::record($this->shop->id, $this->customer, 100,
+            ['method' => Cheques::METHOD, 'occurred_at' => today()->toDateString(), 'cheque_due_at' => '2027-02-20', 'auto_allocate' => false],
+            [$invoice->id => 100], $this->owner->id);
+        $books = $this->books();
+
+        $page = $this->page($this->customer);
+        $row = $page['collections'][0];
+        $this->assertSame(Cheques::PENDING, $row['state']);
+        $this->assertFalse($row['counted'], 'شيكٌ لم يُصرف عُدّ مالًا وصل');
+        $this->assertTrue($row['pending']);
+        $this->assertFalse($row['void'], 'شيكٌ تحت التحصيل شُطب كأنّه ملغى');
+        $this->assertSame(['received' => 0.0, 'pending' => 100.0], $page['collectionTotals']);
+        // والفاتورةُ تقرؤه سدادًا كما يقرؤه الدفتر — العرضُ لا يغيّر حكمَه
+        $this->assertSame('مدفوع', $page['history'][0]['pay_state']);
+        $this->assertSame($books, $this->books(), 'قراءةُ السجلّ مسّت الدفتر');
+
+        Cheques::clear($cheque, '2027-02-20', null, $this->owner->id);
+        $page = $this->page($this->customer);
+        $this->assertSame(Cheques::CLEARED, $page['collections'][0]['state']);
+        $this->assertSame(['received' => 100.0, 'pending' => 0.0], $page['collectionTotals']);
+    }
+
+    public function test_a_bounced_cheque_is_struck_and_never_counted(): void
+    {
+        $invoice = $this->invoice(40);
+        $cheque = CustomerPayments::record($this->shop->id, $this->customer, 40,
+            ['method' => Cheques::METHOD, 'occurred_at' => today()->toDateString(), 'cheque_due_at' => '2027-02-20', 'auto_allocate' => false],
+            [$invoice->id => 40], $this->owner->id);
+        Cheques::bounce($cheque, 'رصيد غير كافٍ', $this->owner->id);
+
+        $page = $this->page($this->customer);
+        $this->assertSame(Cheques::BOUNCED, $page['collections'][0]['state']);
+        $this->assertTrue($page['collections'][0]['void']);
+        $this->assertSame(['received' => 0.0, 'pending' => 0.0], $page['collectionTotals']);
+        $this->assertSame('غير مدفوع', $page['history'][0]['pay_state']);
+    }
+
+    /* ═════════════ لا تحصيلَ يُعدّ مرّتين ═════════════ */
+
+    public function test_a_credit_sale_with_a_down_payment_is_one_purchase_and_one_collection(): void
+    {
+        // كما يكتبه الصندوق (`PosController`): طلبٌ آجل، وفاتورتُه، ودفعتُه المقدّمة مخصّصةً لها
+        $order = $this->order(100, 'pos', 'غير مدفوع', 'نقدي');
+        $invoice = CustomerInvoices::issue(CustomerInvoices::fromOrder($order, [], $this->owner->id), $this->owner->id);
+        CustomerPayments::record($this->shop->id, $this->customer, 30,
+            ['method' => 'نقدي', 'occurred_at' => now()], [$invoice->id => 30], $this->owner->id);
+
+        // وعميلُ الفوترة الشهريّة: طلبٌ آجلٌ بلا ورقة، ودفعتُه بلا فاتورة — تذهب لأقدم ما عليه
+        $monthly = $this->order(50, 'pos', 'غير مدفوع', 'نقدي');
+        CustomerPayments::record($this->shop->id, $this->customer, 20, ['method' => 'نقدي', 'occurred_at' => now()], [], $this->owner->id);
+
+        $page = $this->page($this->customer);
+        $this->assertCount(2, $page['collections'], 'الدفعةُ المقدّمة قُرئت تحصيلًا ودفعًا عند البيع معًا');
+        $this->assertSame(['payment', 'payment'], array_column($page['collections'], 'kind'));
+        $this->assertSame(['received' => 50.0, 'pending' => 0.0], $page['collectionTotals']);
+
+        $states = array_column($page['history'], 'pay_state', 'number');
+        $this->assertSame('مدفوع جزئيًا', $states[$order->number]);
+        $this->assertSame('غير مدفوع', $states[$monthly->number]);
+        $this->assertSame(2, $page['customer']['orders']);
+        $this->assertSame(150.0, $page['customer']['total_spent']);
+    }
+
+    public function test_an_old_invoice_paid_by_a_link_today_is_one_collection_and_not_a_new_purchase(): void
+    {
+        $old = $this->invoice(60, '2027-01-05');
+        $obj = $this->obj($this->link($old));
+        $this->hook($obj);
+        $this->hook($obj);
+
+        $row = $this->listRow($this->customer);
+        $this->assertSame(1, $row['orders']);
+        $this->assertSame(60.0, $row['total_spent']);
+        $this->assertSame('2027-01-05', $row['last_order'], 'سدادُ القديم صار آخرَ شراء');
+
+        $page = $this->page($this->customer);
+        $this->assertCount(1, $page['collections']);
+        $this->assertSame(['received' => 60.0, 'pending' => 0.0], $page['collectionTotals']);
+        $this->assertSame('مدفوع', $page['history'][0]['pay_state']);
+    }
+
+    public function test_a_balance_collected_after_the_sale_is_its_own_row_and_the_sale_keeps_what_it_took(): void
+    {
+        $this->shop->forceFill(['order_notes_and_edits_enabled' => true])->save();
+        $order = $this->order(50);
+        $order->forceFill(['balance_due' => 20])->save();
+
+        $page = $this->page($this->customer);
+        $this->assertSame([30.0], array_column($page['collections'], 'amount'), 'عند البيع ما دُفع فيه لا الإجماليّ');
+
+        Carbon::setTestNow(Carbon::parse('2027-02-12 11:00:00', 'Asia/Muscat'));
+        OrderCorrection::collectBalance($order->fresh(), 'نقدي', 'دفع الباقي');
+
+        $page = $this->page($this->customer);
+        $rows = collect($page['collections']);
+        $this->assertSame(['balance', 'sale'], $rows->pluck('kind')->all());
+        $this->assertSame([20.0, 30.0], $rows->pluck('amount')->all());
+        $this->assertSame(['2027-02-12', '2027-02-10'], $rows->pluck('date')->all());
+        $this->assertSame(['received' => 50.0, 'pending' => 0.0], $page['collectionTotals'], 'المتبقّي حُسب مرّتين');
+        $this->assertSame(1, $page['customer']['orders']);
+        $this->assertSame(50.0, $page['customer']['total_spent']);
+    }
+
     /* ═════════════ الآجلُ وسدادُ القديم ═════════════ */
 
     public function test_a_credit_sale_counts_when_sold_and_paying_an_old_invoice_adds_no_purchase(): void
@@ -444,6 +563,14 @@ class ACustomersRecordHoldsWhatTheyBoughtAndWhatTheyPaidTest extends TestCase
         $this->assertSame($expected, (float) $file[Workbook::money('إجمالي المشتريات')], 'الملفّ');
         $this->assertSame(4, $file[__('عدد المشتريات')]);
         $this->assertSame($expected, $this->reportTotal($this->customer), 'تقريرُ الأكثر إنفاقًا');
+
+        // وآخرُ شراءٍ واحدٌ في القائمة والصفحة والملفّ — وهو أوّلُ صفٍّ حيٍّ في السجلّ
+        $first = collect($page['history'])->firstWhere('cancelled', false);
+        $this->assertSame($row['last_purchase'], $page['customer']['last_purchase']);
+        $this->assertSame([$first['kind'], $first['id']], [$row['last_purchase']['kind'], $row['last_purchase']['id']]);
+        $this->assertSame($row['last_order'], $file[__('آخر شراء')]);
+        $this->assertSame($row['last_purchase']['number'], $file[__('رقم آخر شراء')]);
+        $this->assertSame($row['last_purchase']['amount'], (float) $file[Workbook::money('قيمة آخر شراء')]);
         $this->assertSame($expected, round((float) Demo::customerStats()['total_purchases'], 3), 'بطاقةُ القائمة');
 
         // ولا يُفتح عميلُ متجرٍ آخر من هنا

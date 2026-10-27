@@ -36,7 +36,7 @@ import type { PageProps } from '@/types';
 import type { Customer } from '@/types/models';
 import PaymentLinksCard, { type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import {
-    CollectionHistory, PurchaseHistory, type CollectionRow, type PurchaseRow, type PurchaseTotals,
+    CollectionHistory, PurchaseHistory, type CollectionRow, type CollectionTotals, type PurchaseRow, type PurchaseTotals,
 } from '@/Components/CustomerHistory';
 
 interface Address {
@@ -56,6 +56,7 @@ interface Props {
     historyTotals: PurchaseTotals;
     /** وسجلُّ تحصيلاته — كلُّ دفعةٍ ببابها ومستندها (`CustomerCollections::rows`) */
     collections: CollectionRow[];
+    collectionTotals: CollectionTotals;
     addresses: Address[];
     /** ما أذنت به «الإعدادات ← العملاء» — المُطفأ يُخفى ولا يُمحى */
     customerFlags: { alerts: boolean; blocking: boolean; birthdays: boolean };
@@ -79,6 +80,7 @@ interface PointRow {
 type Tab = 'purchases' | 'collections' | 'addresses' | 'points';
 
 const NO_TOTALS: PurchaseTotals = { count: 0, sales: 0, collected: 0, outstanding: 0, cancelled: 0 };
+const NO_RECEIPTS: CollectionTotals = { received: 0, pending: 0 };
 
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
@@ -94,7 +96,7 @@ const BLANK = { address_id: '', label: '', city: '', area: '', street: '' };
 
 export default function CustomerShow() {
     const {
-        customer, history = [], historyTotals = NO_TOTALS, collections = [], addresses, context, branches = [],
+        customer, history = [], historyTotals = NO_TOTALS, collections = [], collectionTotals = NO_RECEIPTS, addresses, context, branches = [],
         customerFlags, paymentLinks, pointHistory = [], auth,
     } = usePage<PageProps<Props>>().props;
     /*
@@ -508,7 +510,7 @@ export default function CustomerShow() {
                             </div>
                         </div>
                     ) : tab === 'collections' ? (
-                        <CollectionHistory rows={collections} money={m} />
+                        <CollectionHistory rows={collections} totals={collectionTotals} money={m} />
                     ) : (
                         <PurchaseHistory rows={history} totals={historyTotals} money={m} />
                     )}

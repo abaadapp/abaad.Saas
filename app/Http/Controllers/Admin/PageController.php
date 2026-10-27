@@ -549,7 +549,12 @@ class PageController extends Controller
             'history' => \App\Support\Lists\SalesRegister::customerRows((int) Demo::bid(), (int) $id),
             'historyTotals' => \App\Support\Lists\SalesRegister::customerTotals((int) Demo::bid(), (int) $id),
             // وسجلُّ تحصيلاته — كلُّ دفعةٍ ببابها ومستندها، والرابطُ المستقلّ رصيدٌ لا شراء
-            'collections' => \App\Support\CustomerCollections::rows((int) Demo::bid(), (int) $id),
+            'collections' => $collections = \App\Support\CustomerCollections::rows((int) Demo::bid(), (int) $id),
+            // المقبوضُ فعلًا، والشيكاتُ تحت التحصيل بجواره لا فيه
+            'collectionTotals' => [
+                'received' => \App\Support\CustomerCollections::received($collections),
+                'pending' => \App\Support\CustomerCollections::pending($collections),
+            ],
             // الافتراضي أولًا ثم الأقدم — ترتيب ثابت لا يقفز بين التحميلات
             'addresses' => CustomerAddress::where('customer_id', $id)
                 ->orderByDesc('is_default')->orderBy('id')->get()

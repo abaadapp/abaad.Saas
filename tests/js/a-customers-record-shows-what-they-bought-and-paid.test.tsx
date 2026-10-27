@@ -78,14 +78,20 @@ describe('ملفُّ العميل', () => {
             collections: [
                 {
                     key: 'payment:5', kind: 'payment', id: 5, number: 'RCPT-000005', date: '2027-02-10', method: 'Paymob', amount: 40,
-                    state: 'مقبوض', counted: true, reference: 'tx-1', link: 'pay-abc',
+                    state: 'مقبوض', counted: true, pending: false, void: false, reference: 'tx-1', link: 'pay-abc',
                     invoices: [{ id: 7, number: 'CINV-000007', amount: 40, orders: [] }], order: null, credit: 0,
                 },
                 {
                     key: 'payment:6', kind: 'payment', id: 6, number: 'RCPT-000006', date: '2027-02-09', method: 'Paymob', amount: 25,
-                    state: 'مقبوض', counted: true, reference: 'tx-2', link: 'pay-free', invoices: [], order: null, credit: 25,
+                    state: 'مقبوض', counted: true, pending: false, void: false, reference: 'tx-2', link: 'pay-free', invoices: [], order: null, credit: 25,
+                },
+                {
+                    key: 'payment:9', kind: 'payment', id: 9, number: 'RCPT-000009', date: '2027-02-08', method: 'شيك', amount: 30,
+                    state: 'تحت التحصيل', counted: false, pending: true, void: false, reference: null, link: null,
+                    invoices: [{ id: 7, number: 'CINV-000007', amount: 30, orders: [] }], order: null, credit: 0,
                 },
             ],
+            collectionTotals: { received: 65, pending: 30 },
         });
 
         return render(<CustomerShow />);
@@ -113,10 +119,15 @@ describe('ملفُّ العميل', () => {
         await userEvent.setup().click(screen.getByRole('tab', { name: /سجل التحصيلات/ }));
 
         const rows = screen.getAllByTestId('customer-collection-row');
-        expect(rows).toHaveLength(2);
+        expect(rows).toHaveLength(3);
         expect(within(rows[0]).getByRole('link', { name: 'CINV-000007' })).toBeInTheDocument();
         expect(rows[0].textContent).toContain('pay-abc');
         expect(rows[1].textContent).toContain('رصيد للعميل');
         expect(screen.getByTestId('collection-totals').textContent).toContain('65.000');
+
+        // والشيكُ تحت التحصيل بحاله — لا مشطوبٌ كالملغى، ولا مجموعٌ إلى المقبوض
+        expect(rows[2].textContent).toContain('تحت التحصيل');
+        expect(rows[2].querySelector('.line-through')).toBeNull();
+        expect(screen.getByTestId('collection-pending').textContent).toContain('30.000');
     });
 });

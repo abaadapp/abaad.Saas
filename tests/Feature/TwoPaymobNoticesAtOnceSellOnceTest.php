@@ -10,8 +10,9 @@ use App\Models\PaymentGateway;
 use App\Models\User;
 use App\Support\CustomerInvoices;
 use App\Support\Ledger;
-use App\Support\Lists\PaidLinksList;
+use App\Support\PaymentLinks;
 use App\Support\Paymob\Amount;
+use App\Support\Receipts;
 use App\Support\StandaloneInvoiceSales;
 use App\Support\Store\Paymob;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * إشعارا دفعٍ في اللحظة نفسِها — بيعٌ واحدٌ في «مبيعات اليوم» وتحصيلٌ واحد.
+ * إشعارا دفعٍ في اللحظة نفسِها — بيعٌ واحدٌ في «مبيعات اليوم» وقبضٌ واحدٌ في «مقبوضات اليوم».
  *
  * `APaymentLinkIsNotASaleUntilItIsPaidTest` يكرّر الإشعارَ متتاليًا، وهذا
  * يُطلقه في عمليّتين مستقلّتين معًا: كلٌّ بمعاملته واتّصاله، فلا يحمي أحدَهما
@@ -73,8 +74,12 @@ class TwoPaymobNoticesAtOnceSellOnceTest extends TestCase
             'provider_order_id' => '778001', 'is_live' => true, 'created_by' => $owner->id,
         ]);
 
+        // الفاتورةُ بيعُ يومِ صدورها، والرابطُ المعلّقُ ليس مالًا
         $today = fn () => StandaloneInvoiceSales::total($shop->id, today(), today()->addDay());
-        $this->assertSame(0.0, $today(), 'رابطٌ معلّقٌ عُدّ قبل الدفع');
+        $received = fn () => Receipts::between($shop->id, today(), today()->addDay())['total'];
+        $this->assertSame(20.0, $today());
+        $this->assertSame(0.0, $received(), 'رابطٌ معلّقٌ عُدّ قبل الدفع');
+        $this->assertSame(20.0, PaymentLinks::awaiting($shop->id)['amount']);
 
         $obj = [
             'amount_cents' => Amount::toMinor(20, 'OMR'), 'currency' => 'OMR', 'id' => 5560001,
@@ -87,7 +92,8 @@ class TwoPaymobNoticesAtOnceSellOnceTest extends TestCase
         $this->assertSame(1, CustomerPayment::where('business_id', $shop->id)->count(), 'تحصيلان لدفعةٍ واحدة');
         $this->assertSame(CustomerPaymentLink::PAID, $link->fresh()->status);
         $this->assertSame(20.0, $today(), 'بيعان لدفعةٍ واحدة');
-        $this->assertSame(20.0, PaidLinksList::collected($shop->id, today(), today()->addDay()));
+        $this->assertSame(20.0, $received(), 'قبضان لدفعةٍ واحدة');
+        $this->assertSame(0.0, PaymentLinks::awaiting($shop->id)['amount']);
         $this->assertSame(0.0, $invoice->fresh()->outstanding());
     }
 

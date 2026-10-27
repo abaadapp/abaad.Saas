@@ -61,12 +61,19 @@ class TheDashboardDoesNotComfortWithALieTest extends TestCase
         $this->actingAs($this->owner);
     }
 
-    /** البطاقةُ بموضعها — لا باسمها: العنوانُ يُترجَم واللوحةُ ثابتةُ الترتيب */
-    private const NET = 7;
+    /**
+     * البطاقةُ بموضعها — لا باسمها: العنوانُ يُترجَم واللوحةُ ثابتةُ الترتيب.
+     *
+     * وبعد «مبيعات اليوم» «مقبوضات اليوم» و«مستحقات العملاء» (`Demo::moneyCards`)؛
+     * و«روابط بانتظار الدفع» لا تظهر هنا: متجرٌ بلا Paymob.
+     */
+    private const MONTH = 3;
 
-    private const EXPENSES = 6;
+    private const NET = 9;
 
-    private const LOW_STOCK = 5;
+    private const EXPENSES = 8;
+
+    private const LOW_STOCK = 7;
 
     private function card(int $at): array
     {
@@ -165,7 +172,7 @@ class TheDashboardDoesNotComfortWithALieTest extends TestCase
         $this->sell($product, 1, over: ['ordered_at' => now()->startOfMonth()]);
 
         // مبيعاتُ الشهر ١٠٠ والماضي صفر — لا ١٠٠ في الاثنين
-        $this->assertSame('+100%', $this->card(1)['trend'], 'بيعةٌ على الحدّ حُسبت في الشهرين');
+        $this->assertSame('+100%', $this->card(self::MONTH)['trend'], 'بيعةٌ على الحدّ حُسبت في الشهرين');
     }
 
     /* ═════════════ المنخفضُ منخفضٌ في الفرع الذي تنظر إليه ═════════════ */

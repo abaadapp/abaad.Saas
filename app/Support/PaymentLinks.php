@@ -399,6 +399,90 @@ final class PaymentLinks
             ->update(['status' => CustomerPaymentLink::EXPIRED, 'updated_at' => now()]);
     }
 
+    /**
+     * «روابط بانتظار الدفع» — طلباتُ مالٍ حقيقيّةٌ ما زالت تُدفع، لا دَينٌ ولا قبض.
+     *
+     * المعلَّقُ الحقيقيُّ الذي لم تنقضِ مهلتُه — ولو لم يمرّ عليه `expireDue`
+     * بعد. فلا يُعدّ رابطُ التجربة ولا المدفوعُ ولا الملغى ولا الفاشلُ ولا المنتهي.
+     *
+     * ═══ ولا يُطلب للفاتورة أكثرُ من باقيها ═══
+     *
+     * رابطان على فاتورةٍ واحدة، أو رابطٌ سُدّد بعضُ فاتورته نقدًا بعده، يطلبان
+     * أكثرَ ممّا عليها — ولا يُدفع منهما فوق الباقي إلّا رصيدًا للعميل. فيُعدّ
+     * لكلّ فاتورةٍ الأقلُّ من مجموع روابطها وباقيها (`outstanding`)، والفارقُ
+     * يُقال (`capped`) لا يُخفى. والرابطُ بلا فاتورةٍ بمبلغه: دفعةٌ مقدّمةٌ تُطلب.
+     *
+     * وهذا مؤشّرٌ لا دَين: ما على الفواتير منه داخلٌ في «مستحقات العملاء»
+     * أصلًا (`Receivables::outstanding`) — فلا يُجمعان.
+     *
+     * والفرعُ فرعُ الفاتورة؛ والرابطُ بلا فاتورةٍ أو على فاتورةٍ بلا فرع غيرُ
+     * منسوب (`unattributed`) — في «كل الفروع» وحده.
+     *
+     * @return array{amount: float, count: int, capped: float, unattributed: float}
+     */
+    public static function awaiting(int $businessId, ?int $branchId = null): array
+    {
+        $links = CustomerPaymentLink::where('business_id', $businessId)
+            ->where('is_live', true)
+            ->where('status', CustomerPaymentLink::PENDING)
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->get(['id', 'customer_invoice_id', 'amount']);
+
+        $invoices = CustomerInvoice::where('business_id', $businessId)
+            ->whereIn('id', $links->pluck('customer_invoice_id')->filter()->unique())
+            ->get()->keyBy('id');
+
+        $out = ['amount' => 0.0, 'count' => 0, 'capped' => 0.0, 'unattributed' => 0.0];
+
+        foreach ($links->groupBy(fn ($l) => (int) $l->customer_invoice_id) as $invoiceId => $group) {
+            $asked = round((float) $group->sum('amount'), 3);
+            $invoice = $invoiceId ? $invoices->get($invoiceId) : null;
+            // فاتورةٌ أُلغيت أو لم تعد في هذا المتجر لا يُطلب لها شيء
+            $counted = $invoiceId
+                ? ($invoice && $invoice->status === CustomerInvoice::ISSUED ? min($asked, $invoice->outstanding()) : 0.0)
+                : $asked;
+            $branch = $invoice?->branch_id;
+
+            if ($branchId !== null && (int) $branch !== $branchId) {
+                continue;
+            }
+
+            $out['amount'] += $counted;
+            $out['count'] += $group->count();
+            $out['capped'] += $asked - $counted;
+            if ($branch === null) {
+                $out['unattributed'] += $counted;
+            }
+        }
+
+        return array_map(fn ($v) => is_float($v) ? round($v, 3) : $v, $out);
+    }
+
+    /**
+     * مالٌ أبلغت Paymob باسترجاعه ولم يُلغَ تحصيلُه بعد — يُقال بجوار المقبوضات.
+     *
+     * الاسترجاعُ يُكتب على الرابط ولا يمسّ الدفتر (`notSettled`): التحصيلُ قائمٌ
+     * حتّى يُلغيه صاحبُ المحلّ فيُعكس قيدُه يومَ إلغائه. وإلى أن يفعل، يبقى
+     * المالُ في المقبوض كما يقوله الدفتر — فيُقال هذا الرقمُ بجواره كي لا يُقرأ
+     * مالًا باقيًا.
+     */
+    public static function refundsToReverse(int $businessId, ?int $branchId = null): float
+    {
+        return round((float) CustomerPaymentLink::query()->from('customer_payment_links as l')
+            ->join('customer_payments as p', fn ($j) => $j->on('p.id', '=', 'l.customer_payment_id')
+                ->on('p.business_id', '=', 'l.business_id'))
+            ->leftJoin('customer_invoices as i', fn ($j) => $j->on('i.id', '=', 'l.customer_invoice_id')
+                ->on('i.business_id', '=', 'l.business_id'))
+            ->where('l.business_id', $businessId)
+            ->where('l.status', CustomerPaymentLink::PAID)
+            ->where('l.is_live', true)
+            ->whereNull('p.cancelled_at')
+            ->when($branchId !== null, fn ($q) => $q->where('i.branch_id', $branchId))
+            ->get(['l.amount', 'l.meta'])
+            ->filter(fn ($l) => filled(((array) ($l->meta ?? []))['provider_refund'] ?? null))
+            ->sum('amount'), 3);
+    }
+
     /* ═══════════ ما تعرضه الشاشات ═══════════ */
 
     /**

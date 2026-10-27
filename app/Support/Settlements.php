@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\CustomerPayment;
 use App\Models\SupplierInvoice;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -53,42 +54,21 @@ final class Settlements
     /**
      * تحصيلاتُ العملاء في المدة — المبلغُ وعددُ العمليات.
      *
-     * و`$end` حدٌّ مفتوح (ما قبله لا هو) — به تقرأ «تحصيلات اليوم» في اللوحة
-     * يومَها وحده (`Demo::collectionsCard`). وبلا حدٍّ إلى اليوم، كالملخّص.
-     *
-     * ═══ وفي فرعٍ بعينه ═══
-     *
-     * لا عمودَ فرعٍ في التحصيل، فحصّةُ الفرع ما خُصّص منه لفواتيره
-     * (`customer_invoices.branch_id`) — كما تُنسب الفاتورةُ نفسُها إليه في
-     * «مبيعات اليوم». وما لم يُخصَّص — رصيدٌ للعميل، أو رابطٌ بلا فاتورة — لا
-     * فرعَ له: في «كل الفروع» وحده، لا يُنسب إلى فرعٍ لم يقبضه ولا يُعدّ في كلّ فرع.
-     *
      * @return array{amount: float, count: int}
      */
-    public static function collections(int $businessId, ?Carbon $start, ?Carbon $end = null, ?int $branchId = null): array
+    public static function collections(int $businessId, ?Carbon $start): array
     {
         $day = $start?->toDateString();
-        $until = $end?->toDateString();
 
-        $q = DB::table('customer_payments as p')
-            ->where('p.business_id', $businessId)
-            ->whereNull('p.cancelled_at')
-            ->where(function ($q) use ($start, $end, $day, $until) {
-                $q->where(fn ($q) => $q->whereNull('p.cheque_status')
-                    ->when($day, fn ($q) => $q->where('p.occurred_at', '>=', $day))
-                    ->when($until, fn ($q) => $q->where('p.occurred_at', '<', $until)))
-                    ->orWhere(fn ($q) => $q->where('p.cheque_status', Cheques::CLEARED)
-                        ->when($start, fn ($q) => $q->where('p.cheque_settled_at', '>=', $start))
-                        ->when($end, fn ($q) => $q->where('p.cheque_settled_at', '<', $end)));
-            });
-
-        $row = $branchId === null
-            ? $q->selectRaw('COUNT(*) c, COALESCE(SUM(p.amount),0) s')->first()
-            : $q->join('customer_payment_allocations as a', 'a.customer_payment_id', '=', 'p.id')
-                ->join('customer_invoices as ci', fn ($j) => $j->on('ci.id', '=', 'a.customer_invoice_id')
-                    ->on('ci.business_id', '=', 'p.business_id'))
-                ->where('ci.branch_id', $branchId)
-                ->selectRaw('COUNT(DISTINCT p.id) c, COALESCE(SUM(a.amount),0) s')->first();
+        $row = CustomerPayment::where('business_id', $businessId)->live()
+            ->where(function ($q) use ($start, $day) {
+                $q->where(fn ($q) => $q->whereNull('cheque_status')
+                    ->when($day, fn ($q) => $q->where('occurred_at', '>=', $day)))
+                    ->orWhere(fn ($q) => $q->where('cheque_status', Cheques::CLEARED)
+                        ->when($start, fn ($q) => $q->where('cheque_settled_at', '>=', $start)));
+            })
+            ->selectRaw('COUNT(*) c, COALESCE(SUM(amount),0) s')
+            ->first();
 
         return ['amount' => round((float) $row->s, 3), 'count' => (int) $row->c];
     }

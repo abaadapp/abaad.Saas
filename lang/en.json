@@ -9728,7 +9728,16 @@
     "طلبات الإهداء ببيانات المستلم ومناسبته، والطلبات المخصّصة بحقولها.": "Gift orders with the recipient and occasion, and custom orders with their own fields.",
     "إرسال رسائل متجرك من رقم واتساب الخاص به بدل الرقم المشترك.": "Send your store's messages from its own WhatsApp number instead of the shared one.",
     "فروعٌ فوق حدّ الفروع في باقتك.": "Branches beyond your plan's branch limit.",
-    "تحصيلات اليوم": "Collected today",
-    "من العملاء، منها روابط الدفع :a · بانتظار الدفع :b": "From customers, of which payment links :a · awaiting payment :b",
-    "من العملاء: الفواتير والدفعات المقدّمة": "From customers: invoices and advance payments"
+    "نقدًا وآجلًا، يومَ البيع أو صدور الفاتورة": "Cash and credit, on the day of sale or invoice",
+    "مالٌ وصل فعلًا": "Money actually received",
+    "منه عبر Paymob :a": "of which via Paymob :a",
+    "بعد ردّ :a": "after refunding :a",
+    "غير منسوب لفرع :a": "not tied to a branch :a",
+    "استرجاعٌ من Paymob ينتظر إلغاء تحصيله :a": "Paymob refund awaiting cancellation of its collection :a",
+    "مستحقات العملاء": "Customer receivables",
+    "فواتير قائمة وبيع آجل": "Open invoices and credit sales",
+    "ورصيدٌ دائن للعملاء :a لا يُطرح منها": "customer credit :a, not deducted",
+    "روابط بانتظار الدفع": "Links awaiting payment",
+    "عدد الروابط :n — لا تُجمع مع المستحقات": ":n links — not added to receivables",
+    "ولم يُعدّ :a فوق باقي فواتيرها": ":a above their invoices' balance not counted"
 }

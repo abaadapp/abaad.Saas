@@ -334,11 +334,15 @@
         .rb-foot-bottom { padding-bottom: 76px; }
         @media (max-width: 640px) { .rb-wa-float { right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: 56px; height: 56px; } }
         @media print { .rb-wa-float { display: none; } }
-        /* و«استفسر عبر واتساب» على بطاقة الصنف — دائرةٌ صغيرةٌ في زاوية الصورة (`_card`) */
+        /*
+         * و«استفسر عبر واتساب» على بطاقة الصنف (`_card`) — منطقةُ لمسٍ ٤٤px في زاوية
+         * الصورة، والمرسومُ فيها دائرةٌ صغيرةٌ ٣٢px. وما سواها من الصورة يفتح الصنف.
+         */
         .rb-card-wrap { position: relative; }
-        .rb-card-wa { position: absolute; top: 8px; inset-inline-end: 8px; z-index: 2; width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 255, 255, .94); color: #25d366; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 0, 0, .16); }
-        .rb-card-wa svg { width: 20px; height: 20px; display: block; }
-        .rb-card-wa:focus-visible { outline: 3px solid var(--rb-olive); outline-offset: 2px; }
+        .rb-card-wa { position: absolute; top: 2px; inset-inline-end: 2px; z-index: 2; width: 44px; height: 44px; border-radius: 50%; color: #25d366; display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; }
+        .rb-card-wa::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: rgba(255, 255, 255, .94); box-shadow: 0 2px 8px rgba(0, 0, 0, .16); }
+        .rb-card-wa svg { position: relative; width: 18px; height: 18px; display: block; }
+        .rb-card-wa:focus-visible { outline: 3px solid var(--rb-olive); outline-offset: -3px; }
         @media print { .rb-card-wa { display: none; } }
         @endif
     </style>

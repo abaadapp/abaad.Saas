@@ -222,6 +222,20 @@ class TheRibbonWhatsappAsksAboutWhereTheVisitorIsTest extends TestCase
         $this->assertStringContainsString('aria-label="Ask on WhatsApp: Oud perfume"', $this->get('/s/ribbon/shop?lang=en')->getContent());
     }
 
+    public function test_the_card_button_is_a_44px_touch_area_around_a_small_icon(): void
+    {
+        $css = file_get_contents(resource_path('views/store/ribbon/layout.blade.php'));
+
+        $this->assertSame(1, preg_match('/\.rb-card-wa \{([^}]*)\}/', $css, $area));
+        $this->assertStringContainsString('width: 44px; height: 44px;', $area[1], 'منطقةُ اللمس ٤٤px');
+
+        // والمرسومُ دائرةٌ ٣٢px داخلها (٤٤ − ٦ − ٦) وشعارٌ ١٨px
+        $this->assertSame(1, preg_match('/\.rb-card-wa::before \{([^}]*)\}/', $css, $dot));
+        $this->assertStringContainsString('inset: 6px;', $dot[1]);
+        $this->assertSame(1, preg_match('/\.rb-card-wa svg \{([^}]*)\}/', $css, $icon));
+        $this->assertStringContainsString('width: 18px; height: 18px;', $icon[1]);
+    }
+
     public function test_no_card_button_where_the_floating_one_is_off(): void
     {
         config(['storefront.ribbon_floating_whatsapp_businesses' => []]);

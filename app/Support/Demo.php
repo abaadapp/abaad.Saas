@@ -1653,16 +1653,16 @@ class Demo
     /**
      * @param  Request|null  $filter  بحث الشاشة — الملفّ يتبعه
      */
-    public static function customers(?Request $filter = null): array
+    public static function customers(?Request $filter = null, ?int $id = null): array
     {
         /*
          * المُباع وحده، وباستعلامٍ واحد.
          *
          * كان الإنفاق وآخر طلبٍ يُسألان لكل عميل على حدة — ثلاثة استعلامات
          * في كل صفّ، فمئتا عميلٍ ستّمئة استعلام — ويجمعان الملغى والمعلّق
-         * معًا، فيخالفان صفحة العميل نفسه.
+         * معًا، فيخالفان صفحة العميل نفسه. وصارت المشترياتُ تعريفَ القائمة
+         * نفسَه: الطلبُ والفاتورةُ المستقلّة (`CustomerPurchases`).
          */
-        $sold = fn ($q) => $q->sold();
 
         /*
          * وآخرُ فاتورةٍ برقمها لا بتاريخها وحده.
@@ -1679,15 +1679,13 @@ class Demo
             ->orderByDesc('id')
             ->limit(1);
 
-        $query = Customer::where('business_id', self::bid())
+        $query = CustomerPurchases::apply(Customer::where('business_id', self::bid())
+            ->when($id !== null, fn ($q) => $q->whereKey($id))
             ->select('customers.*')
             ->addSelect([
                 'last_invoice' => $lastSold('number'),
                 'last_invoice_total' => $lastSold('total'),
-            ])
-            ->withCount(['orders as orders_count' => $sold])
-            ->withSum(['orders as orders_sum_total' => $sold], 'total')
-            ->withMax(['orders as orders_max_ordered_at' => $sold], 'ordered_at')
+            ]))
             ->orderBy('id');
 
         // الملفّ يتبع بحث الشاشة
@@ -1730,11 +1728,16 @@ class Demo
             'birth_year' => $c->birth_year,
             'alert_type' => $c->alert_type,
             'alert_reason' => $c->alert_reason,
-            'orders' => $c->orders_count,
-            'total_spent' => (float) ($c->orders_sum_total ?? 0),
-            'last_order' => $c->orders_max_ordered_at
-                ? \Illuminate\Support\Carbon::parse($c->orders_max_ordered_at)->format('Y-m-d')
-                : '—',
+            // عددُ المشتريات وإجماليُّها وآخرُها — تعريفُ قائمة العملاء نفسُه (`CustomerPurchases`)
+            'orders' => CustomerPurchases::count($c),
+            'total_spent' => CustomerPurchases::total($c),
+            'last_order' => ($last = CustomerPurchases::last($c)) ? $last['date'] : '—',
+            'last_purchase' => $last,
+            /*
+             * و«آخرُ فاتورة» للصندوق آخرُ **طلب**: يفتحها الكاشير برقمها في
+             * تفاصيل الطلب (`pos.order-details`) ليطبع نسخةً — والفاتورةُ
+             * المستقلّة لا تُفتح هناك.
+             */
             'last_invoice' => $c->last_invoice,
             'last_invoice_total' => $c->last_invoice === null ? null : (float) $c->last_invoice_total,
             'points' => $c->points,
@@ -1753,20 +1756,6 @@ class Demo
             'is_base' => (bool) $c->is_base,
             'active' => (bool) $c->active,
         ])->all();
-    }
-
-    /** طلبات عميل محدّد (سجل مشترياته) */
-    public static function customerOrders($id): array
-    {
-        return Order::where('business_id', self::bid())->where('customer_id', $id)->sold()
-            ->withCount('items')->orderByDesc('ordered_at')->get()->map(fn ($o) => [
-                'id' => $o->number,
-                'items_count' => $o->items_count,
-                'total' => (float) $o->total,
-                'payment' => $o->payment_method,
-                'status' => $o->status,
-                'date' => optional($o->ordered_at)->format('Y-m-d H:i') ?? '—',
-            ])->all();
     }
 
     /**
@@ -3236,11 +3225,10 @@ class Demo
          * مجموعُ عمود الإنفاق تحتها «٢٠٠»، و**قفز «متوسط الإنفاق» إلى ١٢٠٠**:
          * متوسّطٌ للفرد أكبرُ ممّا أنفقه كلُّ من تعرضهم الشاشة مجتمعين.
          *
-         * و`whereHas` تمرّ على العلاقة، فيسري عليها حذفُ العميل الناعم —
-         * فيُقرأ الجدولان من عالمٍ واحد.
+         * فتُجمع من صفوف العملاء أنفسِهم، فيسري عليها حذفُ العميل الناعم —
+         * فيُقرأ الجدولان من عالمٍ واحد، وبتعريف القائمة (`CustomerPurchases`).
          */
-        $totalPurchases = (float) Order::where('business_id', $bid)->sold()
-            ->whereHas('customer')->sum('total');
+        $totalPurchases = CustomerPurchases::storeTotal($bid);
 
         return [
             'total' => $total,
@@ -3969,7 +3957,8 @@ class Demo
 
     public static function customer($id): array
     {
-        return self::findById(self::customers(), $id);
+        // صفٌّ واحد بشرطه — لا المتجرُ كلُّه ثمّ يُلتقط منه واحد
+        return is_numeric($id) ? (self::customers(null, (int) $id)[0] ?? []) : [];
     }
 
     public static function employee($id): array

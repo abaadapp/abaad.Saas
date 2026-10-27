@@ -63,6 +63,14 @@ export interface Category {
     color: string;
 }
 
+export interface LastPurchase {
+    kind: 'order' | 'invoice';
+    id: number;
+    number: string | null;
+    amount: number;
+    date: string;
+}
+
 export interface Customer {
     id: number;
     name: string;
@@ -71,10 +79,15 @@ export interface Customer {
     phone: string;
     email: string | null;
     tax_number: string | null;
+    /** عددُ المشتريات — طلباتُه المبيعة وفواتيرُه المستقلّة (`CustomerPurchases`) */
     orders: number;
+    /** إجماليُّ المشتريات بعد الخصم والإلغاء وإشعارات الدائن */
     total_spent: number;
+    /** يومُ آخر شراء — أو «—» */
     last_order: string;
-    /** رقم آخر فاتورةٍ مباعة — null لعميلٍ لم يشترِ بعد */
+    /** آخرُ شراءٍ برقمه وقيمته: طلبٌ أو فاتورةٌ مستقلّة — null لمن لم يشترِ */
+    last_purchase?: LastPurchase | null;
+    /** رقم آخر **طلبٍ** مباع — يفتحه الصندوق في تفاصيل الطلب. null لعميلٍ لم يشترِ بعد */
     last_invoice?: string | null;
     last_invoice_total?: number | null;
     points: number;

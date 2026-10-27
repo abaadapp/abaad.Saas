@@ -100,10 +100,16 @@ export default function CustomersIndex() {
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#f5f3ff] text-[13px] font-bold text-[#6d28d9]">
                         {(c.label || c.name).slice(0, 1)}
                     </span>
-                    <span className="min-w-0">
+                    {/* والاسمُ يفتح سجلَّه — لا زرُّ «عرض» في آخر الصفّ وحده */}
+                    <SmartLink
+                        routeName="admin.customers.show"
+                        href={route('admin.customers.show', c.id)}
+                        className="min-w-0 hover:underline"
+                        data-testid="customer-open"
+                    >
                         <span className="block truncate font-medium text-[#111]">{c.label || c.name}</span>
                         <span className="block font-mono text-[11px] text-[#9ca3af]">#{c.id}</span>
-                    </span>
+                    </SmartLink>
                 </div>
             ),
         },
@@ -119,7 +125,8 @@ export default function CustomersIndex() {
         },
         {
             key: 'orders',
-            header: 'عدد الطلبات',
+            // الطلبُ والفاتورةُ المستقلّة — والفاتورةُ التي تغطّي طلبًا ليست شراءً ثانيًا
+            header: 'عدد المشتريات',
             align: 'end',
             cell: (c) => <span className="tabular-nums">{number(c.orders)}</span>,
         },
@@ -131,8 +138,31 @@ export default function CustomersIndex() {
         },
         {
             key: 'last_order',
-            header: 'آخر طلب',
-            cell: (c) => <span dir="ltr" className="text-[#6b7280]">{c.last_order}</span>,
+            header: 'آخر شراء',
+            /*
+                يومُه ثمّ رقمُه وقيمتُه — طلبًا كان أو فاتورةً مستقلّة، ويُفتح
+                من هنا. وآخرُ شراءٍ آخرُ بيعة، لا آخرُ دفعة.
+            */
+            cell: (c) =>
+                c.last_purchase ? (
+                    <span className="block leading-5" data-testid="customer-last-purchase">
+                        <span dir="ltr" className="block text-[#6b7280]">{c.last_purchase.date}</span>
+                        <span className="block text-[12px]">
+                            <SmartLink
+                                routeName={c.last_purchase.kind === 'invoice' ? 'admin.customerInvoices.show' : 'admin.orders.show'}
+                                href={c.last_purchase.kind === 'invoice'
+                                    ? route('admin.customerInvoices.show', c.last_purchase.id)
+                                    : route('admin.orders.show', c.last_purchase.number ?? c.last_purchase.id)}
+                                className="font-mono text-[#6d28d9] hover:underline"
+                            >
+                                {c.last_purchase.number ?? `#${c.last_purchase.id}`}
+                            </SmartLink>
+                            <span className="ms-1.5 tabular-nums text-[#4b4b4b]">{money(c.last_purchase.amount, currency)}</span>
+                        </span>
+                    </span>
+                ) : (
+                    <span className="text-[#9ca3af]">—</span>
+                ),
         },
         {
             key: 'points',

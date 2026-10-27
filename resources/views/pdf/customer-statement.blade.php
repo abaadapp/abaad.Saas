@@ -18,26 +18,27 @@
         </tr>
     </table>
 
-    <h2>{{ __('سجل الطلبات') }}</h2>
+    <h2>{{ __('سجل المشتريات') }}</h2>
     <table class="grid">
-        <tr><th>{{ __('رقم الطلب') }}</th><th>{{ __('التاريخ') }}</th><th>{{ __('الحالة') }}</th><th>{{ __('وسيلة الدفع') }}</th><th>{{ __('الإجمالي') }}</th></tr>
-        @forelse ($orders as $o)
+        <tr><th>{{ __('الرقم') }}</th><th>{{ __('التاريخ') }}</th><th>{{ __('المصدر') }}</th><th>{{ __('حالة الدفع') }}</th><th>{{ __('القيمة') }}</th></tr>
+        @forelse ($rows as $r)
             <tr>
-                <td>{{ $o->number }}</td>
-                <td>{{ optional($o->ordered_at)->format('Y-m-d') }}</td>
-                <td><span class="pill">{{ __($o->status) }}</span></td>
-                <td>{{ __($o->payment_method) }}</td>
-                <td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($o->total) }}</td>
+                <td>{{ $r['number'] ?? '—' }}@if ($r['cover'] && $r['kind'] === 'order') <span style="color:#6b7280;">({{ $r['cover']['number'] }})</span>@endif</td>
+                <td dir="ltr">{{ $r['date'] }}</td>
+                <td>{{ __($r['type']) }}</td>
+                <td><span class="pill">{{ __($r['pay_state']) }}</span></td>
+                <td style="text-align:left; font-weight:bold;">@if ($r['cancelled'])<span style="text-decoration:line-through; color:#9ca3af;">{{ \App\Support\Demo::moneyBase($r['amount']) }}</span>@else{{ \App\Support\Demo::moneyBase($r['amount']) }}@if (($r['credited'] ?? 0) > 0)<div style="font-weight:normal; color:#b45309;">{{ __('إشعار دائن') }} −{{ \App\Support\Demo::moneyBase($r['credited']) }}</div>@endif @endif</td>
             </tr>
         @empty
-            <tr><td colspan="5" class="empty">{{ __('لا توجد طلبات لهذا العميل.') }}</td></tr>
+            <tr><td colspan="5" class="empty">{{ __('لا مشتريات لهذا العميل بعد.') }}</td></tr>
         @endforelse
     </table>
 
     <h2>{{ __('الملخّص') }}</h2>
     <table class="grid">
-        <tr><td style="color:#6b7280;">{{ __('إجمالي المشتريات') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($totalSpent) }}</td></tr>
-        <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('صافي الإنفاق') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($net) }}</td></tr>
+        <tr style="border-top:2px solid #7c3aed;"><td style="font-weight:bold;">{{ __('إجمالي المشتريات') }}</td><td style="text-align:left; font-weight:bold; color:#7c3aed; font-size:14px;">{{ \App\Support\Demo::moneyBase($totalSpent) }}</td></tr>
+        <tr><td style="color:#6b7280;">{{ __('المسدَّد منها') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($collected) }}</td></tr>
+        <tr><td style="color:#6b7280;">{{ __('المتبقّي عليها') }}</td><td style="text-align:left; font-weight:bold;">{{ \App\Support\Demo::moneyBase($outstanding) }}</td></tr>
     </table>
 @endsection
 

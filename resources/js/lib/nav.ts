@@ -55,6 +55,13 @@ export interface NavItem {
      */
     section?: string;
     /**
+     * فعلٌ يحرس العنصر بدل القسم — يُخفى إن لم يُمنحه المستخدم (`auth.mayActions`).
+     *
+     * «محادثات واتساب» لا قسمَ لها: تُمنح بالاسم، ولا يفتحها «مدير الفرع»
+     * بـ`'*'` ولا «أدوات التسويق». والخادمُ يسأل الفعلَ نفسَه (`Permissions::ACTION_ROUTES`).
+     */
+    action?: string;
+    /**
      * قدرةُ الباقة التي يفتحها هذا العنصر — يُخفى إن لم تشمله باقة المتجر.
      *
      * غير `section`: ذاك صلاحيةُ الموظّف، وهذا ما اشتراه صاحب المتجر. وبابٌ
@@ -76,13 +83,13 @@ export interface NavItem {
      * في القائمة يقول الشيءَ نفسه أبدًا. فالحقلُ يقول «لهذا العنصر شارة»
      * والقيمةُ تأتي من الخادم في كلّ طلب.
      */
-    badge?: 'support' | 'crm' | 'crmLeads';
+    badge?: 'support' | 'crm' | 'crmLeads' | 'whatsappInbox';
     /**
      * يظهر لمن يُؤوي محلُّه هذا الشيء وحده — من `context.hosted`.
      *
      * ميزةٌ يفتحها مديرُ المنصّة لنشاطٍ بعينه (كـ`SectionTabs.hosts`).
      */
-    hosts?: string;
+    hosts?: string | string[];
     /** ويُخفى عمّن يُؤويه — لبندٍ يحلّ محلَّه بند `hosts` */
     unlessHosts?: string;
     /**
@@ -131,6 +138,22 @@ export const NAV: NavGroup[] = [
                 route: 'admin.customers.index',
                 section: 'customers',
                 covers: covers(CUSTOMER_TABS),
+            },
+            /*
+                «محادثات واتساب» — صندوقُ المتجر مع زبائنه.
+
+                بفعلٍ لا بقسم: يراه من مُنح المشاهدة أو الردّ باسمه، ولمتجرٍ
+                فتحه له فريقُ أبعاد (`whatsapp_inbox`). والشارةُ رسائلُ لم
+                يقرأها هذا الموظّف.
+            */
+            {
+                label: 'محادثات واتساب',
+                icon: MessagesSquare,
+                route: 'admin.whatsappInbox.index',
+                action: 'whatsapp.inbox.view',
+                feature: 'whatsapp',
+                hosts: 'whatsapp_inbox',
+                badge: 'whatsappInbox',
             },
         ],
     },
@@ -246,7 +269,12 @@ export const NAV: NavGroup[] = [
                         والمسارُ نفسُه محادثاتٍ لمن فُتحت له — `WhatsAppConversations`.
                         والخادمُ يقرّر ما يُرسم خلفه، والشريطُ يسمّيه.
                     */
-                    { label: 'محادثات واتساب', icon: MessagesSquare, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp', hosts: 'whatsapp_conversations' },
+                    { label: 'محادثات واتساب', icon: MessagesSquare, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp', hosts: 'whatsapp_conversations', unlessHosts: 'whatsapp_inbox' },
+                    /*
+                        ومن فُتح له صندوقُ المحادثات فهذه الصفحةُ سجلُّ إشعاراته —
+                        و«محادثات واتساب» اسمُ الصندوق، لا اسمان لشيئين.
+                    */
+                    { label: 'سجلّ إشعارات واتساب', icon: ScrollText, route: 'admin.marketing.whatsapp.log', section: 'marketing', feature: 'whatsapp', hosts: ['whatsapp_conversations', 'whatsapp_inbox'] },
                 ],
             },
         ],

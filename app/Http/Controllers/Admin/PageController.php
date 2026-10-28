@@ -649,6 +649,8 @@ class PageController extends Controller
             'titleGrants' => Permissions::titleGrants(Demo::bid()),
             // ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر EmployeeController
             'may_read_payroll' => (bool) auth()->user()?->may(Permissions::PAYROLL_VIEW),
+            // ومحادثاتُ واتساب: لا شيءَ افتراضًا، ويمنحها صاحبُ النشاط وحده
+            'inbox' => EmployeeController::inboxField(null),
         ]);
     }
 

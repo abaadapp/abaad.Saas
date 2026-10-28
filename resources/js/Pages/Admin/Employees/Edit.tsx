@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
+import type { InboxAccess } from './partials/InboxAccessField';
 import EmployeeForm, { type EmployeeFormValues } from './partials/EmployeeForm';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
@@ -30,10 +31,12 @@ interface Props {
     titleGrants?: Record<string, string[]>;
     /** ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر EmployeeController */
     may_read_payroll: boolean;
+    /** «محادثات واتساب» — لمتجرٍ فُتح له الصندوق (`EmployeeController::inboxField`) */
+    inbox?: InboxAccess | null;
 }
 
 export default function EmployeeEdit() {
-    const { employee, branches, branchOptions, jobTitles, sections, actions, actionHints, may_read_payroll, grantable, blockedTitles, titleGrants, auth } =
+    const { employee, branches, branchOptions, jobTitles, sections, actions, actionHints, may_read_payroll, inbox, grantable, blockedTitles, titleGrants, auth } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -51,6 +54,7 @@ export default function EmployeeEdit() {
             />
             <EmployeeForm
                 mayReadPayroll={may_read_payroll}
+                inbox={inbox}
                 employee={employee}
                 branches={branches}
                 branchOptions={branchOptions}

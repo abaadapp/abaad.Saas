@@ -25,6 +25,10 @@ export interface PageEntry {
     section?: string;
     /** قدرة الباقة — يُخفى ما لم يشمله اشتراك المتجر */
     feature?: string;
+    /** فعلٌ يحرسه بدل القسم — «محادثات واتساب» (انظر `NavItem.action`) */
+    action?: string;
+    /** ما يجب أن يُؤويه المحلّ ليُفتح — من `context.hosted` */
+    hosts?: string[];
 }
 
 /** تقريرٌ كما يرسله الخادم في المشترَك — انظر HandleInertiaRequests */
@@ -135,6 +139,8 @@ export function adminPages(reports: ReportLink[] = []): PageEntry[] {
             group: 'أقسام النظام',
             section: item.section,
             feature: item.feature,
+            action: item.action,
+            hosts: item.hosts ? [item.hosts].flat() : undefined,
         });
     }
 
@@ -220,10 +226,13 @@ export function platformPages(): PageEntry[] {
  * والغائب مفتوح: صفحةٌ قديمة في المتصفّح لا تحمل خريطة الباقة يجب ألّا
  * تُخفي على صاحبها ما اشتراه، والخادم هو الحارس على كل حال.
  */
-export function visibleTo(pages: PageEntry[], auth: SharedProps['auth']): PageEntry[] {
+export function visibleTo(pages: PageEntry[], auth: SharedProps['auth'], hosted: string[] = []): PageEntry[] {
     return pages.filter(
         (p) =>
             (!p.section || (auth?.abilities.includes(p.section) ?? false)) &&
-            (!p.feature || (auth?.planFeatures?.[p.feature] ?? true)),
+            (!p.feature || (auth?.planFeatures?.[p.feature] ?? true)) &&
+            // وما يحرسه فعلٌ أو ميزةٌ لمحلٍّ بعينه — كما يفعل الشريط الجانبيّ
+            (!p.action || (auth?.mayActions?.includes(p.action) ?? false)) &&
+            (!p.hosts || p.hosts.every((h) => hosted.includes(h))),
     );
 }

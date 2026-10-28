@@ -224,6 +224,8 @@ export interface SharedProps {
     supportBadge: number;
     /** وعددُ محادثات المبيعات التي تنتظر ردًّا — لمدير المنصّة وحدَه */
     crmBadge: number;
+    /** رسائلُ زبائن لم يقرأها هذا الموظّف في «محادثات واتساب» — انظر `WhatsAppInbox::unreadTotal` */
+    whatsappInboxBadge?: number;
     /** وعددُ العملاء المحتملين الذين لهم طلبُ موقعٍ لم يقرأه — لمدير المنصّة وحدَه */
     crmLeadsBadge: number;
     flash: {

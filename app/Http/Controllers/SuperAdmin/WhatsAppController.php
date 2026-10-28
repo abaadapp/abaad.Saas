@@ -7,8 +7,12 @@ use App\Models\Business;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessagePack;
 use App\Support\Activity;
+use App\Support\Addons\Catalog;
+use App\Support\Addons\Entitlements;
+use App\Support\Addons\PricingPolicy;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppFeature;
+use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
@@ -284,9 +288,14 @@ class WhatsAppController extends Controller
              */
             'whatsapp_monthly_limit' => ['sometimes', 'nullable', 'integer', 'min:-1', 'max:1000000'],
             'whatsapp_mode' => ['sometimes', Rule::in(WhatsAppMode::ALL)],
+            /*
+             * وصندوقُ المحادثات — يفتحه فريقُ أبعاد وحده، ولا يفتحه التاجرُ
+             * بنفسه. والأهليّةُ للرقم المستقلّ من الباقة والإضافات أدناه.
+             */
+            'whatsapp_inbox_enabled' => ['sometimes', 'boolean'],
         ]);
 
-        $before = $business->only(['whatsapp_enabled', 'whatsapp_own_allowed', 'whatsapp_shared_allowed', 'whatsapp_monthly_limit', 'whatsapp_mode']);
+        $before = $business->only(['whatsapp_enabled', 'whatsapp_own_allowed', 'whatsapp_shared_allowed', 'whatsapp_monthly_limit', 'whatsapp_mode', 'whatsapp_inbox_enabled']);
 
         /*
          * وضعٌ خاصٌّ بلا إذنٍ لا يُكتب.
@@ -297,6 +306,22 @@ class WhatsAppController extends Controller
             && ! ($data['whatsapp_own_allowed'] ?? $business->whatsapp_own_allowed)) {
             return back()->withErrors([
                 'whatsapp_mode' => __('لا يمكن اختيار رقم المتجر قبل منحه صلاحية الرقم الخاص.'),
+            ]);
+        }
+
+        /*
+         * ═══ و«API مستقلّ» لمتجر سياسة الإضافات إضافةٌ تُباع ═══
+         *
+         * لا يُختار له رقمُه قبل أن تسري إضافةُ «ربط واتساب برقم المتجر» —
+         * بطلبٍ يُسدَّد أو بمنحةٍ مؤرّخة من «خدمات أبعاد». ومتجرُ السياسة
+         * السابقة على حاله: صلاحيةُ الرقم الخاصّ وحدها.
+         */
+        if (($data['whatsapp_mode'] ?? null) === WhatsAppMode::BUSINESS_OWN
+            && $business->whatsapp_mode !== WhatsAppMode::BUSINESS_OWN
+            && PricingPolicy::isAddons($business)
+            && ! Entitlements::has($business, Catalog::OWN_NUMBER)) {
+            return back()->withErrors([
+                'whatsapp_mode' => __('API المستقلّ إضافةٌ لهذا المتجر — اطلبها له أو امنحها بتاريخ من «خدمات أبعاد» في صفحته.'),
             ]);
         }
 
@@ -316,6 +341,7 @@ class WhatsAppController extends Controller
             'whatsapp_shared_allowed' => 'الإرسال عبر رقم أبعاد',
             'whatsapp_monthly_limit' => 'حدّ الرسائل الشهري',
             'whatsapp_mode' => 'وضع الإرسال',
+            'whatsapp_inbox_enabled' => 'صندوق محادثات واتساب',
         ];
 
         foreach ($labels as $field => $label) {
@@ -392,6 +418,21 @@ class WhatsAppController extends Controller
             'pack_offer' => ['size' => WhatsAppPacks::size(), 'price' => WhatsAppPacks::price()],
             // معرّفات الوصلة تُعرض لمدير المنصّة وحده — لا الرمز، هو لا يُقرأ أبدًا
             'own_connection' => WhatsAppConnections::publicView($own, withIds: true),
+            /*
+             * وصحّةُ الوصلة كما تقولها الوقائع: آخرُ إشعارٍ وصل منها، وآخرُ خطأٍ
+             * قالته ميتا. وصمتُ الإشعارات لا يُصدر خطأً — يُقرأ من الختم وحده.
+             */
+            'own_health' => $own ? [
+                'last_webhook_at' => optional($own->last_webhook_at)->format('Y-m-d H:i'),
+                'last_error' => filled($own->last_error_message)
+                    ? mb_strimwidth((string) $own->last_error_message, 0, 200, '…') : null,
+                'last_error_at' => optional($own->last_error_at)->format('Y-m-d H:i'),
+            ] : null,
+            // أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`canUseOwnNumber`)
+            'own_eligible' => WhatsAppFeature::canUseOwnNumber($business),
+            'own_needs_addon' => PricingPolicy::isAddons($business) && ! Entitlements::has($business, Catalog::OWN_NUMBER),
+            'inbox_enabled' => (bool) $business->whatsapp_inbox_enabled,
+            'inbox_available' => WhatsAppInbox::available($business),
         ];
     }
 }

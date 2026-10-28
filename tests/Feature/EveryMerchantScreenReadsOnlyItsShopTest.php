@@ -316,6 +316,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.preparation.invoiceSheet' => 'مثلُه — وحارسُ ورقته `APreparationSheetPrintsWhatTheBenchNeedsTest::test_a_task_sheet_is_closed_while_the_feature_is_off_for_the_shop`',
         'pos.printJobs.pdf' => '{id} ورقةُ طابورٍ تُنزَّل لصندوقها الذي حجزها وحده — `APaidCustomerInvoicePrintsOnceAtItsTillTest::test_a_till_of_another_shop_cannot_download_a_paper`',
         'admin.marketing.whatsapp.conversations.older' => '{message} رسالةٌ — يُبدأ من المتجر والرقم الحاليّ، وحارسُه `WhatsAppConversationsTest::test_the_same_phone_in_two_shops_stays_two_and_a_foreign_message_id_is_404`',
+        'admin.whatsappInbox.older' => '{chat} محادثةٌ تُطلب داخل متجر الجلسة (`WhatsAppInbox::find`) — وحارسُه `AShopReadsAndAnswersItsCustomersOnWhatsAppTest::test_another_shops_chat_message_and_attachment_cannot_be_reached_by_changing_the_url`',
+        'admin.whatsappInbox.attachment' => 'مثلُه (`WhatsAppInbox::attachment`)',
     ];
 
     public function test_no_id_screen_is_left_out(): void

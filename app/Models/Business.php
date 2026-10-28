@@ -27,6 +27,8 @@ class Business extends Model
         'customer_invoice_preparation_enabled_at' => 'datetime',
         // أتُقرأ رسائلُ واتساب محادثاتٍ؟ — مغلقٌ افتراضًا (`WhatsAppConversations::enabled`)
         'whatsapp_conversations_enabled' => 'boolean',
+        // أيُفتح صندوقُ محادثات واتساب؟ — يفتحه فريقُ أبعاد (`WhatsAppInbox::available`)
+        'whatsapp_inbox_enabled' => 'boolean',
         // أيُرسل من رقم أبعاد المشترك؟ — يُغلقه مديرُ المنصّة (`WhatsAppFeature::canUseShared`)
         'whatsapp_shared_allowed' => 'boolean',
     ];

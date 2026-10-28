@@ -18,6 +18,7 @@ use App\Support\Support;
 use App\Support\Tenancy;
 use App\Support\WebsiteConfirmPrint;
 use App\Support\WhatsAppConversations;
+use App\Support\WhatsAppInbox;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -78,6 +79,9 @@ class HandleInertiaRequests extends Middleware
                 // الأقسام المسموح بها — الواجهة تخفي ما لا يُسمح به بدل تخمينه
                 'abilities' => collect(Permissions::sections())
                     ->filter(fn ($section) => $user->allows($section))
+                    // ومن دخل اللوحة بالمحادثات وحدها لا تُرسم له أقسامُ دوره فيها — انظر `Permissions::entersBySections`
+                    ->when(! Permissions::entersBySections($user) && WhatsAppInbox::canView($user),
+                        fn ($sections) => $sections->filter(fn ($section) => in_array($section, Permissions::OUTSIDE_PANEL, true)))
                     ->values()
                     ->all(),
                 /*
@@ -88,7 +92,8 @@ class HandleInertiaRequests extends Middleware
                  * «المشتريات» — ومن يملك القسم ولا يملك الفعل كان سيرى تبويبها
                  * ويصطدم بـ403. فتُرسل ليُخفى ما لا يُفتح.
                  */
-                'mayActions' => collect(Permissions::actions())
+                // ومعها فعلا محادثات واتساب — يُحفظان في عمودهما لا في القائمة (`Permissions::INBOX_VIEW`)
+                'mayActions' => collect([...Permissions::actions(), ...Permissions::INBOX_ACTIONS])
                     ->filter(fn ($action) => $user->may($action))
                     ->values()
                     ->all(),
@@ -122,6 +127,8 @@ class HandleInertiaRequests extends Middleware
                     Boutiques::holds($user->business) ? 'boutiques' : null,
                     // «محادثات واتساب» بدل «سجلّ رسائل واتساب» في الشريط — والخادمُ هو الحارس
                     $user->business && WhatsAppConversations::enabled($user->business) ? 'whatsapp_conversations' : null,
+                    // وصندوقُ المحادثات — يفتحه فريقُ أبعاد للنشاط، ويُرى بصلاحية الموظّف (`WhatsAppInbox`)
+                    WhatsAppInbox::available($user->business) ? 'whatsapp_inbox' : null,
                 ])),
                 // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،
                 // فصار مشتركًا لا خاصًّا باللوحة. null حين لم يُضبط بعد.
@@ -303,6 +310,15 @@ class HandleInertiaRequests extends Middleware
              */
             'crmLeadsBadge' => fn () => $user && $user->isSuperAdmin()
                 ? CrmWebsiteInquiries::badge($user)
+                : 0,
+
+            /*
+             * وشارةُ «محادثات واتساب» — رسائلُ زبائنَ لم يقرأها هذا الموظّف.
+             *
+             * لمن يقرأ الصندوقَ وحده: من لا يُرى له لا يُعدّ له.
+             */
+            'whatsappInboxBadge' => fn () => WhatsAppInbox::canView($user)
+                ? WhatsAppInbox::unreadTotal($user)
                 : 0,
 
             // رسائل الجلسة — الواجهة تعرضها كـtoast

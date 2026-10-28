@@ -150,6 +150,8 @@ trait TwoFullShops
             'page' => $this->row('website_pages', ['website_id' => $website, 'business_id' => $bid, 'key' => 'about', 'title' => "صفحة {$tag}", 'slug' => 'about-'.strtolower($tag)]),
             'section' => $this->row('website_sections', ['website_id' => $website, 'business_id' => $bid, 'type' => 'text', 'data' => '{}']),
             'version' => $this->row('website_versions', ['business_id' => $bid, 'number' => 1, 'payload' => '{}']),
+            // ومحادثةُ واتساب في صندوق المتجر — يُطرق بابُ الردّ عليها
+            'whatsapp_chat' => $this->row('whatsapp_chats', ['business_id' => $bid, 'phone_number_id' => "PN-{$tag}", 'source_mode' => 'business_own', 'customer_phone' => '9689123400'.($tag === 'A' ? '1' : '2'), 'last_inbound_at' => now(), 'last_message_at' => now()]),
         ];
     }
 

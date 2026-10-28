@@ -83,4 +83,15 @@ return [
     'ribbon_businesses' => [5],
 
     'conversations_businesses' => [5],
+
+    /*
+     * من يُفتح له «صندوق محادثات واتساب» عند الترحيل — مرّةً واحدة.
+     *
+     * قرارُ المالك: متجر سعود (RIBBON، `businesses.id = 5`) أوّلُ من يُجرَّب
+     * عليه. والقائمةُ تُقرأ في ترحيل `a_shop_reads_and_answers_its_customers_on_whatsapp`
+     * وحده لتكتب `businesses.whatsapp_inbox_enabled` — والكودُ يسأل العمودَ
+     * (`WhatsAppInbox::available`) لا هذه القائمة ولا معرّفًا. وبعده يفتحه
+     * فريقُ أبعاد لمن يُؤهَّل من بطاقة واتساب في ملفّ المتجر.
+     */
+    'inbox_businesses' => [5],
 ];

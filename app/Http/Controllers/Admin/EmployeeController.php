@@ -12,6 +12,7 @@ use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
+use App\Support\WhatsAppInbox;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
@@ -150,6 +151,7 @@ class EmployeeController extends Controller
             : null;
         $this->refuseManualPermissionsBeyondPlan($title->role, $manual);
         $this->refuseGrantingMoreThanIHave($title->role, $manual);
+        [, $inbox] = $this->inboxGrant($request, null);
 
         PlanLimits::enforce(auth()->user()->business, 'employees');
 
@@ -201,9 +203,12 @@ class EmployeeController extends Controller
             'permissions' => $request->boolean('manual_permissions')
                 ? array_values(array_unique($data['permissions'] ?? []))
                 : null,
+            // ومحادثاتُ واتساب لا شيءَ افتراضًا — يمنحها صاحبُ النشاط وحده (`inboxGrant`)
+            'whatsapp_inbox' => $inbox,
         ]);
         $this->syncBranches($employee, $data['branches'] ?? []);
         Activity::log('created', 'أضاف موظفًا: '.$data['name']);
+        $this->logInboxGrant($employee, null, $inbox);
 
         // والمولَّدةُ تُقرأ في بطاقته لا في القائمة: هناك وحدَه تُعرض — انظر `resetPassword`
         if ($issued !== null) {
@@ -540,6 +545,8 @@ class EmployeeController extends Controller
             'titleGrants' => Permissions::titleGrants(Demo::bid()),
             // ومن لا يقرأ الرواتب لا تُرسم له حقولُها — انظر `readsPayroll`
             'may_read_payroll' => $this->readsPayroll(),
+            // ومحادثاتُ واتساب — لمتجرٍ فُتحت له، ويمنحها صاحبُ النشاط وحده
+            'inbox' => self::inboxField($employee),
             'branches' => Demo::branches(),
             'branchOptions' => Branch::where('business_id', Demo::bid())
                 ->orderBy('id')->get(['id', 'name'])
@@ -812,10 +819,98 @@ class EmployeeController extends Controller
         }
         unset($data['branches']);
 
+        [$inboxSent, $inbox] = $this->inboxGrant($request, $employee);
+        $inboxBefore = $employee->whatsapp_inbox;
+
+        if ($inboxSent) {
+            $employee->whatsapp_inbox = $inbox;
+        }
+
         $employee->update($data);
         Activity::log('updated', 'عدّل بيانات الموظف: '.$employee->name, ['subject_id' => $employee->id]);
+        $this->logInboxGrant($employee, $inboxBefore, $employee->whatsapp_inbox);
 
         return redirect()->route('admin.employees.show', $employee->id)->with('toast', ['msg' => __('تم تحديث بيانات الموظف'), 'type' => 'success']);
+    }
+
+    /**
+     * صلاحيةُ محادثات واتساب من طلب الحفظ — لصاحب النشاط وحده.
+     *
+     * ═══ ولمَ لا تُقاس بـ«ما يملكه المانح» ═══
+     *
+     * القاعدةُ العامّة أنّ من يملك قسمًا يمنحه (`refuseGrantingMoreThanIHave`).
+     * ورسائلُ الزبائن خارجها بقرار المالك: مديرُ فرعٍ مُنح الردَّ لا يمنحه
+     * لغيره، ولا يرفع نفسَه، ولا ينزعه عن أحد. وما لم يتبدّل يُحفظ كما هو بيد
+     * أيٍّ كان — النموذجُ يرسله في كلّ حفظة، ومن عدّل رقمَ هاتف لا يُردّ.
+     *
+     * @return array{0: bool, 1: ?string} أُرسل الحقل؟ والقيمةُ المحفوظة
+     */
+    private function inboxGrant(Request $request, ?User $employee): array
+    {
+        if (! $request->has('whatsapp_inbox')) {
+            return [false, $employee?->whatsapp_inbox];
+        }
+
+        $request->validate([
+            'whatsapp_inbox' => ['nullable', 'string', Rule::in(['none', ...WhatsAppInbox::LEVELS])],
+        ]);
+
+        $wanted = in_array($request->input('whatsapp_inbox'), WhatsAppInbox::LEVELS, true)
+            ? (string) $request->input('whatsapp_inbox')
+            : null;
+
+        if ($wanted === ($employee?->whatsapp_inbox ?: null)) {
+            return [true, $wanted];
+        }
+
+        $refusal = match (true) {
+            ! Permissions::grantsInbox(auth()->user()) => __('صلاحيات محادثات واتساب يمنحها صاحب النشاط وحده.'),
+            $employee !== null && $employee->id === auth()->id() => __('لا يمكنك تعديل صلاحيات حسابك الخاص.'),
+            $wanted !== null && ! WhatsAppInbox::available(auth()->user()->business) => __('صندوق محادثات واتساب غير مفعّل لمتجرك — يفتحه فريق أبعاد.'),
+            default => null,
+        };
+
+        if ($refusal !== null) {
+            throw ValidationException::withMessages(['whatsapp_inbox' => $refusal]);
+        }
+
+        return [true, $wanted];
+    }
+
+    /** منحُ المحادثات أو سحبُها يُكتب في سجلّ النشاط باسم من فعله */
+    private function logInboxGrant(User $employee, ?string $before, ?string $after): void
+    {
+        if (($before ?: null) === ($after ?: null)) {
+            return;
+        }
+
+        $label = fn (?string $level) => match ($level) {
+            WhatsAppInbox::REPLY => 'مشاهدة ورد',
+            WhatsAppInbox::VIEW => 'مشاهدة فقط',
+            default => 'بدون صلاحية',
+        };
+
+        Activity::log('updated', 'محادثات واتساب لـ«'.$employee->name.'»: '.$label($before).' ← '.$label($after), [
+            'subject_id' => $employee->id,
+        ]);
+    }
+
+    /**
+     * ما تعرضه شاشةُ الموظّف عن محادثات واتساب — أو لا شيء لمتجرٍ لم تُفتح له.
+     *
+     * @return array{level: string, can_grant: bool}|null
+     */
+    public static function inboxField(?User $employee): ?array
+    {
+        if (! WhatsAppInbox::available(auth()->user()?->business)) {
+            return null;
+        }
+
+        return [
+            'level' => $employee?->whatsapp_inbox ?: 'none',
+            // ولا يُعدِّل أحدٌ صلاحيته هو — ولا صاحبُ النشاط، فهو يملكها بدوره
+            'can_grant' => Permissions::grantsInbox(auth()->user()) && $employee?->id !== auth()->id(),
+        ];
     }
 
     /**

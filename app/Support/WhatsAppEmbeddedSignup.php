@@ -313,12 +313,31 @@ class WhatsAppEmbeddedSignup
             return ['ok' => false, 'apps' => [], 'code' => $code, 'message' => $message];
         }
 
+        /*
+         * وردٌّ لا قائمةَ فيه لا يُقرأ «لا أحدَ مشترك».
+         *
+         * لو قُرئ كذلك لَنُودي `POST` على تخمين. فقائمةٌ غائبة، أو صفٌّ لا
+         * يُقرأ معرّفُ تطبيقه، قراءةٌ فاشلة — لا حكمَ بها على الاشتراك.
+         */
+        $data = $response->json('data');
+
+        if (! is_array($data) || ! array_is_list($data)) {
+            return ['ok' => false, 'apps' => [], 'code' => 'unreadable', 'message' => 'subscribed_apps without a data list'];
+        }
+
         $apps = [];
 
-        foreach ((array) ($response->json('data') ?? []) as $row) {
+        foreach ($data as $row) {
+            $app = is_array($row) ? ($row['whatsapp_business_api_data'] ?? null) : null;
+            $id = is_array($app) ? ($app['id'] ?? null) : null;
+
+            if (! is_scalar($id) || (string) $id === '') {
+                return ['ok' => false, 'apps' => [], 'code' => 'unreadable', 'message' => 'subscribed_apps row without an app id'];
+            }
+
             $apps[] = [
-                'app_id' => (string) ($row['whatsapp_business_api_data']['id'] ?? ''),
-                'name' => $row['whatsapp_business_api_data']['name'] ?? null,
+                'app_id' => (string) $id,
+                'name' => $app['name'] ?? null,
                 'override' => filled($row['override_callback_uri'] ?? null) ? (string) $row['override_callback_uri'] : null,
             ];
         }
@@ -331,7 +350,11 @@ class WhatsAppEmbeddedSignup
      *
      * وثيقةُ ميتا لمسار تطبيق الأعمال تقرأ `is_on_biz_app` على الرقم نفسه —
      * والرقمُ بعد التعايش يقرأ `platform_type = CLOUD_API` لا `SMB_APP`،
-     * فالنوعُ وحده لا يكفي. و`null` = لم نستطع أن نعرف.
+     * فالنوعُ وحده لا يكفي.
+     *
+     * ثلاثُ إجاباتٍ لا اثنتان: `true` عليه، و`false` قالت ميتا صراحةً إنّه
+     * ليس عليه، و`null` لم نعرف — نداءٌ فشل أو حقلٌ غاب. و`null` لا تُقرأ
+     * `false`: من يربط بها يربط رقمًا لا يدري ما هو (`WhatsAppLinkCheck::numberType`).
      */
     public static function onBusinessApp(string $phoneNumberId, string $token): ?bool
     {

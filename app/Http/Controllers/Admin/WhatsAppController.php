@@ -395,17 +395,22 @@ class WhatsAppController extends Controller
             return back()->withErrors(['phone_number_id' => (string) $number['message']]);
         }
 
-        // والتعايشُ لا يُربط من هنا: يُختار صراحةً في التسجيل المدمج وحده
-        if (WhatsAppLinkCheck::onBusinessApp((array) $number['number'], $token)) {
-            return back()->withErrors(['phone_number_id' => WhatsAppLinkCheck::say(WhatsAppLinkCheck::COEXISTENCE_NOT_CHOSEN)]);
+        // والتعايشُ لا يُربط من هنا: يُختار صراحةً في التسجيل المدمج وحده — ورقمٌ لم يُعرف نوعُه لا يُربط
+        $kind = WhatsAppLinkCheck::numberType((array) $number['number'], $token, false);
+
+        if ($kind['problem']) {
+            WhatsAppLinkCheck::log('manual_link_refused', $business->id, ['code' => $kind['problem'], 'message' => null]);
+
+            return back()->withErrors(['phone_number_id' => WhatsAppLinkCheck::say($kind['problem'])]);
         }
 
         $hook = WhatsAppLinkCheck::subscribe((string) $check['waba'], $token);
 
-        // ووصلةٌ تستقبل لا تُستبدل بوصلةٍ لم يثبت أنّها تستقبل
-        if ($hook['state'] !== WhatsAppLinkCheck::SUBSCRIBED
-            && in_array(WhatsAppLinkHealth::state($existing), [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true)) {
-            return back()->withErrors(['access_token' => __('لم يثبت اشتراك أبعاد في إشعارات هذا الحساب — بقي ربطك الحاليّ كما هو.')]);
+        // ولا يُحفظ على اشتراكٍ لم يُقرأ، ولا تُستبدل وصلةٌ تُرسل بوصلةٍ لم يثبت اشتراكُها
+        if ($refusal = WhatsAppLinkCheck::subscriptionRefusal($hook, $existing)) {
+            WhatsAppLinkCheck::log('manual_link_refused', $business->id, $hook['meta'] + ['code' => $refusal]);
+
+            return back()->withErrors(['access_token' => WhatsAppLinkCheck::say($refusal)]);
         }
 
         $attributes = [

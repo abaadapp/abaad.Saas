@@ -20,8 +20,11 @@ use Illuminate\Support\Facades\Log;
  *   ٢ · فحصِ الرمز: أصالحٌ هو؟ وأيّ صلاحياتٍ يحمل؟ ولأيّ حساباتٍ؟ ومتى ينتهي؟
  *   ٣ · تثبيتِ حساب الأعمال من **الرمز** لا من المتصفّح.
  *   ٤ · قراءةِ أرقام الحساب من ميتا، والتحقّقِ أنّ الرقم المختار منها.
- *   ٥ · الاشتراكِ في الإشعارات إن لم يكن مشتركًا — ثمّ قراءةِ `subscribed_apps`
- *       والتحقّقِ أنّ تطبيقَ أبعاد بعينه فيها (`WhatsAppLinkCheck::subscribe`).
+ *   ٥ · معرفةِ نوع الرقم: مستقلٌّ أكّدته ميتا، أو على تطبيق الأعمال والتعايشُ
+ *       مختار. ونوعٌ لم يُعرف يُردّ (`WhatsAppLinkCheck::numberType`).
+ *   ٦ · الاشتراكِ في الإشعارات إن قالت قراءةٌ ناجحةٌ إنّه غائب — ثمّ قراءةِ
+ *       `subscribed_apps` والتحقّقِ أنّ تطبيقَ أبعاد بعينه فيها
+ *       (`WhatsAppLinkCheck::subscribe`). وقراءةٌ فشلت توقف الربط بلا نداء.
  *
  * والرمزُ يُفحص بالباب نفسه الذي يمرّ به الربطُ اليدويّ (`WhatsAppLinkCheck`):
  * مُصدرُه تطبيقُ أبعاد، وصلاحياتُه، وحسابُه. وما يُكتب في القاعدة يُكتب
@@ -149,6 +152,10 @@ class WhatsAppOnboarding
 
             $hook = WhatsAppLinkCheck::subscribe($waba, $token);
 
+            if ($refusal = WhatsAppLinkCheck::subscriptionRefusal($hook, $existing)) {
+                return self::fail($business, 'code', WhatsAppLinkCheck::say($refusal), $hook['meta'] + ['problem' => $refusal]);
+            }
+
             $connection = self::save($business, $actor, [
                 'waba_id' => $waba,
                 'meta_business_id' => WhatsAppEmbeddedSignup::ownerBusinessId($waba, $token),
@@ -179,27 +186,25 @@ class WhatsAppOnboarding
          * ميتا منذ v4 تفتح مسارَ تطبيق الأعمال من تلقاء نفسها حين يُدخَل رقمٌ
          * عليه. فلا يُقرأ من الاختيار وحده: يُسأل الرقمُ نفسُه. ورقمٌ على
          * التطبيق والتاجرُ اختار «رقمًا مستقلًّا» — أو المسارُ مطفأٌ عندنا —
-         * لا يُربط ولا يُعلن.
+         * لا يُربط ولا يُعلن. ورقمٌ لم تقل ميتا ما نوعُه لا يُربط أصلًا.
          */
-        $onApp = WhatsAppLinkCheck::onBusinessApp($chosen, $token);
+        $kind = WhatsAppLinkCheck::numberType($chosen, $token, $type === self::COEXISTENCE && self::coexistenceOpen());
 
-        if ($onApp && ($type !== self::COEXISTENCE || ! self::coexistenceOpen())) {
-            return self::fail($business, 'code', WhatsAppLinkCheck::say(WhatsAppLinkCheck::COEXISTENCE_NOT_CHOSEN), [
-                'code' => 'coexistence_not_chosen', 'message' => 'type='.$type,
+        if ($kind['problem']) {
+            return self::fail($business, 'code', WhatsAppLinkCheck::say($kind['problem']), [
+                'code' => $kind['problem'], 'message' => 'type='.$type,
             ]);
         }
 
         $hook = WhatsAppLinkCheck::subscribe($waba, $token);
 
         /*
-         * ولا تُستبدل وصلةٌ تستقبل بوصلةٍ لا تستقبل.
-         *
-         * متجرٌ يصله اليوم ما يكتبه زبائنه، وأعاد الربط فلم يثبت اشتراكُ
-         * أبعاد على الحساب الجديد: لو حُفظ لَصار رقمُه يُرسل ولا يستقبل.
+         * ولا يُحفظ ربطٌ على اشتراكٍ لم يُقرأ، ولا يحلّ ربطٌ لم يثبت اشتراكُه
+         * محلَّ ربطٍ يُرسل اليوم: لو حُفظ لَصار رقمُ المتجر يُرسل ولا يستقبل،
+         * ولَضاع رمزُه القديم.
          */
-        if ($hook['state'] !== WhatsAppLinkCheck::SUBSCRIBED
-            && in_array(WhatsAppLinkHealth::state($existing), [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true)) {
-            return self::fail($business, 'code', __('لم يثبت اشتراك أبعاد في إشعارات الحساب الجديد — بقي ربطك الحاليّ كما هو.'), $hook['meta']);
+        if ($refusal = WhatsAppLinkCheck::subscriptionRefusal($hook, $existing)) {
+            return self::fail($business, 'code', WhatsAppLinkCheck::say($refusal), $hook['meta'] + ['problem' => $refusal]);
         }
 
         $connection = self::save($business, $actor, [
@@ -207,7 +212,7 @@ class WhatsAppOnboarding
             'meta_business_id' => WhatsAppEmbeddedSignup::ownerBusinessId($waba, $token),
             'phone_number_id' => $numberId,
             'display_phone_number' => $chosen['display_phone_number'] ?? null,
-            'coexistence' => $onApp,
+            'coexistence' => $kind['on_app'] === true,
             'access_token' => $token,
             'token_expires_at' => $check['expires_at'] ?? $exchange['expires_at'],
             'status' => WhatsAppConnection::ACTIVE,

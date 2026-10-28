@@ -239,7 +239,22 @@ class WhatsAppController extends Controller
             return [null, back()->withErrors(['phone_number_id' => (string) $number['message']])];
         }
 
+        // رقمُ أبعاد رقمُ Cloud API مستقلّ — لا تعايش، ولا رقمٌ لم يُعرف نوعُه
+        $kind = WhatsAppLinkCheck::numberType((array) $number['number'], $token, false);
+
+        if ($kind['problem']) {
+            WhatsAppLinkCheck::log('platform_link_refused', null, ['code' => $kind['problem'], 'message' => null]);
+
+            return [null, back()->withErrors(['phone_number_id' => WhatsAppLinkCheck::say($kind['problem'])])];
+        }
+
         $hook = WhatsAppLinkCheck::subscribe((string) $check['waba'], $token);
+
+        if ($refusal = WhatsAppLinkCheck::subscriptionRefusal($hook, $existing)) {
+            WhatsAppLinkCheck::log('platform_link_refused', null, $hook['meta'] + ['code' => $refusal]);
+
+            return [null, back()->withErrors(['access_token' => WhatsAppLinkCheck::say($refusal)])];
+        }
 
         return [['waba_id' => $check['waba'], 'token_expires_at' => $check['expires_at']]
             + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state']), null];

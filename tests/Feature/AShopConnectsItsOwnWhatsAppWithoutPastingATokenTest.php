@@ -108,6 +108,8 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
                 'id' => 'PN-1', 'display_phone_number' => '+968 9525 9066',
                 'verified_name' => 'RIBBON', 'platform_type' => 'CLOUD_API',
             ]]], 200),
+            // وميتا تقول صراحةً إنّه ليس على تطبيق الأعمال — وغيابُ الحقل «لم نعرف» فيُردّ
+            '*fields=is_on_biz_app*' => Http::response(['is_on_biz_app' => false, 'platform_type' => 'CLOUD_API'], 200),
             /*
              * والاشتراكُ كما تفعله ميتا: القائمةُ فارغةٌ حتى يُنادى `POST`، ثمّ
              * فيها تطبيقُنا — فالفحصُ بعده يجده (`WhatsAppLinkCheck::subscribe`).
@@ -541,7 +543,7 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
 
     public function test_the_test_button_asks_meta_and_writes_what_it_hears(): void
     {
-        $this->metaSays(['*/PN-1?*' => Http::response([
+        $this->metaSays(['*/PN-1?fields=display_phone_number*' => Http::response([
             'display_phone_number' => '+968 9525 9066', 'verified_name' => 'RIBBON',
         ], 200)]);
         $this->actingAs($this->owner)->finish();
@@ -554,7 +556,7 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
 
     public function test_a_number_that_does_not_answer_is_written_as_an_error(): void
     {
-        $this->metaSays(['*/PN-1?*' => Http::response([
+        $this->metaSays(['*/PN-1?fields=display_phone_number*' => Http::response([
             'error' => ['code' => 190, 'message' => 'Invalid OAuth access token.'],
         ], 401)]);
         $this->actingAs($this->owner)->finish();

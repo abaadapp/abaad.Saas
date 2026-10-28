@@ -24,9 +24,13 @@ use Illuminate\Support\Facades\Log;
  *   ٢ · أنّه يحمل `whatsapp_business_management` و`whatsapp_business_messaging`.
  *   ٣ · أنّ حساب واتساب للأعمال (WABA) ممّا مُنحه — بعينه لا بالتخمين.
  *   ٤ · أنّ الرقمَ من أرقام ذلك الحساب، وليس مربوطًا بوصلةٍ أخرى عندنا.
+ *   ٥ · أنّ نوعَ الرقم معروف: مستقلٌّ أكّدته ميتا، أو على تطبيق الأعمال
+ *       والتعايشُ مختارٌ ومفتوح. ونوعٌ لم يُعرف لا يُربط (`numberType`).
  *
  * ثمّ الاشتراك: `200` لا تكفي — يُقرأ `subscribed_apps` بعده ويُطلب فيه
  * تطبيقُنا بعينه، بلا عنوانٍ بديلٍ (override) يأخذ إشعاراتِه إلى غيرنا.
+ * و`POST` لا يُنادى إلّا بعد قراءةٍ ناجحةٍ تقول إنّ تطبيقَنا غائب: قراءةٌ
+ * فشلت (`UNKNOWN`) توقف الربطَ كلَّه، ولا يُحفظ عليها شيء (`subscriptionRefusal`).
  *
  * ═══ وما لا يُفعل هنا ═══
  *
@@ -57,6 +61,15 @@ final class WhatsAppLinkCheck
 
     /** رقمٌ على تطبيق الأعمال في الهاتف — والتاجرُ لم يختر التعايش صراحةً */
     public const COEXISTENCE_NOT_CHOSEN = 'coexistence_not_chosen';
+
+    /** لم تقل ميتا أمستقلٌّ الرقمُ أم على تطبيق الأعمال — فلا يُربط */
+    public const NUMBER_TYPE_UNKNOWN = 'number_type_unknown';
+
+    /** لم تُقرأ `subscribed_apps` — قبل النداء أو بعده — فلا يُحفظ شيء */
+    public const SUBSCRIPTION_UNVERIFIABLE = 'subscription_unverifiable';
+
+    /** لم يثبت اشتراكُنا، وللمتجر ربطٌ يُرسل اليوم — فيبقى كما هو */
+    public const SUBSCRIPTION_UNPROVEN = 'subscription_unproven';
 
     /** ما يقع على الرمز نفسه — `INCOMPLETE` ما يقع على تفويضه */
     public const TOKEN_PROBLEMS = [self::WRONG_APP, self::INVALID_TOKEN];
@@ -188,15 +201,41 @@ final class WhatsAppLinkCheck
     /**
      * أعلى تطبيق الأعمال في الهاتف هذا الرقم؟ — من القائمة أو من الرقم نفسه.
      *
+     * و`null` تبقى `null`: «لم نعرف» ليست «ليس عليه».
+     *
      * @param  array<string, mixed>  $number  صفُّ الرقم من `phone_numbers`
      */
-    public static function onBusinessApp(array $number, string $token): bool
+    public static function onBusinessApp(array $number, string $token): ?bool
     {
         if (($number['platform_type'] ?? null) === WhatsAppEmbeddedSignup::PLATFORM_SMB_APP) {
             return true;
         }
 
-        return WhatsAppEmbeddedSignup::onBusinessApp((string) ($number['id'] ?? ''), $token) === true;
+        $id = (string) ($number['id'] ?? '');
+
+        return $id === '' ? null : WhatsAppEmbeddedSignup::onBusinessApp($id, $token);
+    }
+
+    /**
+     * أيُربط هذا الرقمُ بنوعه؟ — قبل أيّ اشتراكٍ أو كتابة.
+     *
+     *   · `false` (أكّدت ميتا أنّه مستقلّ) ← يُربط Cloud API.
+     *   · `true` (على تطبيق الأعمال) ← لا يُربط إلّا والتعايشُ مختارٌ ومفتوح.
+     *   · `null` (لم نعرف) ← لا يُربط أبدًا: لو عُدّ مستقلًّا لَرُبط رقمٌ
+     *     قد يكون على هاتف التاجر بمسارٍ لا يصلح له.
+     *
+     * @param  array<string, mixed>  $number  صفُّ الرقم من `phone_numbers`
+     * @return array{problem:?string, on_app:?bool}
+     */
+    public static function numberType(array $number, string $token, bool $coexistence): array
+    {
+        $onApp = self::onBusinessApp($number, $token);
+
+        return ['on_app' => $onApp, 'problem' => match (true) {
+            $onApp === null => self::NUMBER_TYPE_UNKNOWN,
+            $onApp && ! $coexistence => self::COEXISTENCE_NOT_CHOSEN,
+            default => null,
+        }];
     }
 
     /**
@@ -228,8 +267,14 @@ final class WhatsAppLinkCheck
      * الاشتراكُ ثمّ إثباتُه: `GET` ← `POST` إن لزم ← `GET`.
      *
      * يُنادى برمزٍ ثبت أنّه من تطبيقنا (`token()`) — فميتا تُشرك مُصدرَه، وهو
-     * نحن. ولا `POST` فوق عنوانٍ بديل: الاشتراكُ بلا جسمٍ يمحوه، وذاك إعدادٌ
-     * وُضع عمدًا يُسأل عنه صاحبُه قبل أن يُمسّ.
+     * نحن. و`POST` لا يُنادى إلّا حين تقول قراءةٌ ناجحةٌ إنّ تطبيقَنا غائب
+     * (`NOT_SUBSCRIBED`). فما سواها يُعاد كما قُرئ بلا نداء:
+     *
+     *   · `SUBSCRIBED` — مشتركٌ أصلًا، فلا يُكرَّر.
+     *   · `OVERRIDE` — الاشتراكُ بلا جسمٍ يمحو العنوانَ البديل، وذاك إعدادٌ
+     *     وُضع عمدًا يُسأل عنه صاحبُه قبل أن يُمسّ.
+     *   · `UNKNOWN` — لم نقرأ، فلا نعرف أغائبٌ تطبيقُنا أم لا. ونداءٌ على
+     *     تخمينٍ نداءٌ لا يُدرى ما يغيّر.
      *
      * @return array{state:string, posted:bool, meta:array{code:?string, message:?string}}
      */
@@ -237,7 +282,7 @@ final class WhatsAppLinkCheck
     {
         $before = self::webhook($waba, $token);
 
-        if (in_array($before['state'], [self::SUBSCRIBED, self::OVERRIDE], true)) {
+        if ($before['state'] !== self::NOT_SUBSCRIBED) {
             return ['state' => $before['state'], 'posted' => false, 'meta' => $before['meta']];
         }
 
@@ -256,7 +301,27 @@ final class WhatsAppLinkCheck
          */
         $after = self::webhook($waba, $token);
 
-        return ['state' => $after['state'] === self::UNKNOWN ? self::UNKNOWN : $after['state'], 'posted' => true, 'meta' => $after['meta']];
+        return ['state' => $after['state'], 'posted' => true, 'meta' => $after['meta']];
+    }
+
+    /**
+     * أيُحفظ ربطٌ جديدٌ بهذا الاشتراك؟ — `null` نعم، وإلّا علّةُ الردّ.
+     *
+     *   · `UNKNOWN` لا يُحفظ عليه شيءٌ أبدًا: لم نقرأ، فلا نحكم.
+     *   · وما لم يثبت (`NOT_SUBSCRIBED` · `OVERRIDE`) لا يحلّ محلَّ ربطٍ يُرسل
+     *     اليوم: يبقى القديمُ برمزه ورقمه وحسابه.
+     *   · ومتجرٌ لا ربطَ له يُرسل يُحفظ له «متّصلٌ لا يستقبل» ويُقال له ذلك —
+     *     و«جاهز» لا تُقال إلّا لـ`SUBSCRIBED` (`WhatsAppLinkHealth`).
+     *
+     * @param  array{state:string}  $hook  ما أعاده `subscribe()`
+     */
+    public static function subscriptionRefusal(array $hook, ?WhatsAppConnection $existing): ?string
+    {
+        return match (true) {
+            $hook['state'] === self::UNKNOWN => self::SUBSCRIPTION_UNVERIFIABLE,
+            $hook['state'] !== self::SUBSCRIBED && (bool) $existing?->isUsable() => self::SUBSCRIPTION_UNPROVEN,
+            default => null,
+        };
     }
 
     /**
@@ -291,12 +356,15 @@ final class WhatsAppLinkCheck
             $webhook = self::webhook((string) $check['waba'], $token)['state'];
         }
 
+        // وقراءةُ اشتراكٍ فشلت لا تمحو ما قُرئ قبلها — كالرمز الذي لم نصل ميتا لنسأل عنه
+        $read = $webhook !== null && $webhook !== self::UNKNOWN;
+
         $connection->forceFill([
             'token_app_id' => $check['app_id'],
             'token_verified_at' => $check['ok'] && $problem === null ? now() : null,
             'link_problem' => $problem,
-            'webhook_state' => $webhook,
-            'webhook_checked_at' => $webhook !== null ? now() : $connection->webhook_checked_at,
+            'webhook_state' => $webhook === self::UNKNOWN ? $connection->webhook_state : $webhook,
+            'webhook_checked_at' => $read ? now() : $connection->webhook_checked_at,
         ])->save();
 
         self::log('link_rechecked', $connection->business_id, ['code' => $problem ?? $webhook, 'message' => null]);
@@ -347,6 +415,9 @@ final class WhatsAppLinkCheck
             self::NUMBER_NOT_IN_WABA => __('الرقم الذي اخترته ليس ضمن حسابك عند ميتا — أعد الربط.'),
             self::NUMBER_TAKEN => __('هذا الرقم مربوطٌ بحسابٍ آخر.'),
             self::COEXISTENCE_NOT_CHOSEN => __('هذا الرقم يعمل على تطبيق واتساب للأعمال في الهاتف. لم يُربط: التعايش مع التطبيق لا يُستعمل إلّا باختيارٍ صريح.'),
+            self::NUMBER_TYPE_UNKNOWN => __('تعذّر التأكّد من نوع هذا الرقم عند ميتا (رقم Cloud API مستقل أم على تطبيق واتساب للأعمال) — لم يُربط ولم يتغيّر شيء. أعد المحاولة بعد قليل.'),
+            self::SUBSCRIPTION_UNVERIFIABLE => __('تعذّر التحقّق من اشتراك تطبيق أبعاد في إشعارات حسابك عند ميتا — لم يُحفظ الربط ولم يتغيّر شيء. أعد المحاولة بعد قليل.'),
+            self::SUBSCRIPTION_UNPROVEN => __('لم يثبت اشتراك أبعاد في إشعارات هذا الحساب — بقي ربطك الحاليّ كما هو.'),
             default => __('تعذّر إكمال الربط مع ميتا — أعد المحاولة.'),
         };
     }

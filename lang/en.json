@@ -9939,10 +9939,6 @@
     "لا وصلة مكتملة لهذا المتجر بعد.": "This shop has no complete link yet.",
     "ربط رقمٍ على تطبيق واتساب للأعمال (التعايش) غير متاحٍ بعد — اختر «رقم Cloud API مستقل».": "Linking a number on the WhatsApp Business app (coexistence) is not available yet — choose «Independent Cloud API number».",
     "لم يثبت اشتراك أبعاد في إشعارات هذا الحساب — بقي ربطك الحاليّ كما هو.": "Abaad's subscription to this account's notifications could not be confirmed — your current link stays as it is.",
-    "اربط رقم واتساب API الخاص بمتجرك عبر تطبيق أبعاد — ثم نتحقق من وصول رسائل عملائك قبل أن نقول إنه يستقبل.": "Link your shop's WhatsApp API number through Abaad's app — then we verify that your customers' messages arrive before saying it receives.",
-    "رقم Cloud API مستقل": "Independent Cloud API number",
-    "رقم على تطبيق واتساب للأعمال (التعايش)": "Number on the WhatsApp Business app (coexistence)",
-    "ربط واتساب API": "Connect WhatsApp API",
     "أرقام المتاجر المستقلة": "Shops' own numbers",
     "فحص إعداد تطبيق أبعاد": "Check Abaad's app setup",
     "«متصل» لا يعني «يستقبل»: حالة التسليم خبرٌ عمّا أرسله المتجر، ورسالة العميل وحدها تُثبت أنّ ما يكتبه الزبائن يصل. الفحص قراءة عند ميتا فقط.": "“Connected” does not mean “receiving”: a delivery status is news about what the shop sent, and only a customer message proves that what customers write arrives. The check only reads from Meta.",
@@ -9980,5 +9976,9 @@
     "وصلت رسالة عميل ولم تُحفظ": "A customer message arrived but was not saved",
     "آخرُ رسالة عميل حُفظت في المحادثات: :at": "Last customer message saved in conversations: :at",
     "وصلت رسالةُ زبونٍ إلى رقم المتجر ولم تُحفظ في المحادثات: :why": "A customer message reached the shop's number but was not saved in conversations: :why",
-    "وصلت رسالةُ زبونٍ إلى رقم المتجر ولم يثبت حفظُها في المحادثات.": "A customer message reached the shop's number, but saving it in conversations was not confirmed."
+    "وصلت رسالةُ زبونٍ إلى رقم المتجر ولم يثبت حفظُها في المحادثات.": "A customer message reached the shop's number, but saving it in conversations was not confirmed.",
+    "اربط رقم واتساب API الخاص بمتجرك عبر تطبيق أبعاد — ثم نتحقق من وصول رسائل عملائك قبل أن نقول إنه يستقبل.": "Link your shop's WhatsApp API number through Abaad's app — then we verify that your customers' messages arrive before saying it receives.",
+    "رقم Cloud API مستقل": "Independent Cloud API number",
+    "رقم على تطبيق واتساب للأعمال (التعايش)": "Number on the WhatsApp Business app (coexistence)",
+    "ربط واتساب API": "Connect WhatsApp API"
 }

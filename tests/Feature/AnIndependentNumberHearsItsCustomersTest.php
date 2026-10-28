@@ -697,4 +697,54 @@ class AnIndependentNumberHearsItsCustomersTest extends TestCase
         $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($this->lineA->fresh()));
         $this->assertSame(0, $this->writesToMeta());
     }
+
+    /**
+     * وتفويضٌ جديدٌ برقمٍ آخر لا يرث ما سمعه الرقمُ القديم.
+     *
+     * الوصلةُ نفسُها تُحدَّث، فلو بقيت أختامُها لَقرأ الرقمُ الجديد «تم استقبال
+     * رسالة عميل» ولم يصله شيء. ومحادثاتُ الرقم القديم لا تُمسّ.
+     */
+    public function test_a_relink_to_another_number_forgets_what_the_old_number_heard(): void
+    {
+        $this->customerWrites('PN-A', 'wamid.OLD-1');
+        $this->delivered('PN-A');
+        $this->lineA->forceFill(['inbound_problem' => WhatsAppInbox::INBOX_CLOSED, 'inbound_problem_at' => now()])->save();
+        $this->tokenApp['token-N-from-abaads-app-0123'] = self::ABAAD_APP;
+
+        $this->actingAs($this->ownerA)->post(route('admin.integrations.whatsapp.embedded.callback'), [
+            'code' => 'AQD-short-lived-code-0123456789', 'waba_id' => 'WABA-N', 'phone_number_id' => 'PN-N',
+        ])->assertSessionHasNoErrors();
+
+        $line = $this->lineA->fresh();
+        $this->assertSame('PN-N', $line->phone_number_id);
+        $this->assertSame($this->lineA->id, WhatsAppConnections::forBusiness($this->shopA->id)->id, 'الوصلةُ نفسُها حُدّثت');
+        $this->assertEquals(WhatsAppLinkHealth::UNHEARD, $line->only(array_keys(WhatsAppLinkHealth::UNHEARD)));
+        $this->assertSame(WhatsAppLinkHealth::READY, WhatsAppLinkHealth::state($line), 'لا يُقال «استُقبلت» عن رقمٍ لم يصله شيء');
+        $this->assertNotNull($this->chatOf($this->shopA), 'محادثاتُ الرقم القديم باقية');
+
+        $this->customerWrites('PN-N', 'wamid.NEW-1');
+        $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($line->fresh()));
+    }
+
+    /** والربطُ اليدويّ مثلُه: الرقمُ نفسُه يبقى تاريخُه، ورقمٌ آخر يبدأ من لا شيء */
+    public function test_a_manual_relink_keeps_the_same_numbers_history_and_forgets_another_numbers(): void
+    {
+        $this->customerWrites('PN-A', 'wamid.KEPT-1');
+        $this->tokenApp['token-A2-from-abaads-app-0123'] = self::ABAAD_APP;
+
+        $this->actingAs($this->ownerA)->post(route('admin.integrations.whatsapp.connect'), [
+            'waba_id' => 'WABA-A', 'phone_number_id' => 'PN-A', 'access_token' => 'token-A2-from-abaads-app-0123',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($this->lineA->fresh()), 'الرقمُ نفسُه — تاريخُه باقٍ');
+
+        $this->tokenApp['token-N2-from-abaads-app-0123'] = self::ABAAD_APP;
+        $this->actingAs($this->ownerA)->post(route('admin.integrations.whatsapp.connect'), [
+            'waba_id' => 'WABA-N', 'phone_number_id' => 'PN-N', 'access_token' => 'token-N2-from-abaads-app-0123',
+        ])->assertSessionHasNoErrors();
+
+        $line = $this->lineA->fresh();
+        $this->assertSame('PN-N', $line->phone_number_id);
+        $this->assertEquals(WhatsAppLinkHealth::UNHEARD, $line->only(array_keys(WhatsAppLinkHealth::UNHEARD)));
+        $this->assertNotSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($line));
+    }
 }

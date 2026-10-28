@@ -63,6 +63,22 @@ final class WhatsAppLinkHealth
     /** ما يُعدّ ربطًا سليمًا في رسالة الفحص */
     public const HEALTHY = [self::READY, self::STATUSES, self::INBOUND];
 
+    /**
+     * ما سمعه الرقمُ السابق — يُمحى حين يحلّ رقمٌ آخر محلَّه على الوصلة نفسها.
+     *
+     * الأختامُ تُقرأ عن الرقم الحاليّ: رسالةٌ حُفظت على الرقم القديم تُقرأ
+     * «تم استقبال رسالة عميل» عن رقمٍ لم يصله شيء. ورقمٌ أُعيد ربطُه كما هو
+     * يبقى تاريخُه — هو الرقمُ نفسُه.
+     */
+    public const UNHEARD = [
+        'last_webhook_at' => null,
+        'last_status_at' => null,
+        'last_inbound_at' => null,
+        'last_inbound_saved_at' => null,
+        'inbound_problem' => null,
+        'inbound_problem_at' => null,
+    ];
+
     public static function state(?WhatsAppConnection $c): string
     {
         $link = WhatsAppLink::state($c);

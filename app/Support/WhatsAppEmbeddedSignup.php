@@ -585,12 +585,15 @@ class WhatsAppEmbeddedSignup
      * وتلك الرسالةُ تُكتب في `last_error_message` فتظهر للتاجر («ميتا تقول»)،
      * وفي السجلّ. فيُقطع ما بعد `?` في كلّ عنوان، وتُمحى المعاملاتُ السرّيّة
      * وترويسةُ `Bearer` ورموزُ ميتا (`EAA…`) وسرُّ التطبيق أينما ظهر.
+     *
+     * و`Bearer`/`OAuth` تُمحى بما بعدها إن كان رمزًا طويلًا وحده: «Invalid OAuth
+     * access token» نصُّ ميتا يحتاجه الدعم، لا سرَّ فيه.
      */
     public static function scrub(string $message): string
     {
         $clean = preg_replace('~(https?://[^\s?#]+)\?\S*~u', '$1?[redacted]', $message) ?? '';
         $clean = preg_replace('~\b(access_token|input_token|client_secret|appsecret_proof|code)=[^&\s]+~u', '$1=[redacted]', $clean) ?? '';
-        $clean = preg_replace('~\b(Bearer|OAuth)\s+\S+~u', '$1 [redacted]', $clean) ?? '';
+        $clean = preg_replace('~\b(Bearer|OAuth)\s+\S{16,}~u', '$1 [redacted]', $clean) ?? '';
         $clean = preg_replace('~\bEAA[A-Za-z0-9]{10,}~', '[redacted]', $clean) ?? '';
 
         $secret = (string) config('whatsapp.app_secret');

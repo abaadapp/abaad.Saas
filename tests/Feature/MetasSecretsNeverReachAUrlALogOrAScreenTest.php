@@ -226,6 +226,17 @@ class MetasSecretsNeverReachAUrlALogOrAScreenTest extends TestCase
         $this->assertStringContainsString('https://graph.facebook.com/v26.0/debug_token', $clean, 'العنوانُ بلا معاملاته يبقى للتشخيص');
     }
 
+    /** وما لا سرَّ فيه من نصّ ميتا يبقى كما هو — يحتاجه الدعم */
+    public function test_the_scrubber_keeps_metas_own_words_and_still_drops_a_token_after_oauth(): void
+    {
+        foreach (['(#190) Invalid OAuth access token - Cannot parse access token', 'Error validating access token: Session has expired', 'Bearer token required'] as $words) {
+            $this->assertSame($words, WhatsAppEmbeddedSignup::scrub($words));
+        }
+
+        $this->assertSame('sent OAuth [redacted] and Bearer [redacted]',
+            WhatsAppEmbeddedSignup::scrub('sent OAuth '.self::APP.'|someOtherSecretValue0123 and Bearer otherProviderTokenValue0123456'));
+    }
+
     /* ═════════════ ٣ · ناتجُ الفحص العامّ ═════════════ */
 
     public function test_the_fleet_command_prints_no_secret_and_no_token(): void

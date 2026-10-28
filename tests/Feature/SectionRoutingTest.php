@@ -62,6 +62,19 @@ class SectionRoutingTest extends TestCase
                 continue;
             }
 
+            /*
+             * وشاشةٌ يحرسها فعلٌ لا قسم تُقاس بفعلها: محادثاتُ واتساب لا قسمَ
+             * لها عمدًا (`Permissions::ACTION_ROUTES`) — والفعلُ يجب أن يكون
+             * ممّا يُمنح، لا اسمًا لا يملكه أحد.
+             */
+            if (($action = Permissions::routeAction($name)) !== null) {
+                if (! in_array($action, [...Permissions::actions(), ...Permissions::INBOX_ACTIONS], true)) {
+                    $orphans[] = "{$name} → {$action}";
+                }
+
+                continue;
+            }
+
             $section = Permissions::sectionFromRoute($name);
             if (! in_array($section, Permissions::SECTIONS, true)) {
                 $orphans[] = "{$name} → {$section}";

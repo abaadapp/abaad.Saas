@@ -151,6 +151,7 @@ final class TenantExportGuard
      * @var array<string, string>
      */
     public const EXEMPT = [
+        'admin.whatsappInbox.attachment' => 'مرفقُ محادثة واتساب مع زبون — يُقرأ بمعرّفه داخل متجر الجلسة؛ التبويبُ القديم يلقى 404 لا ملفَّ نشاطٍ آخر',
         'admin.help.attachment' => 'مرفقُ محادثة الدعم مع أبعاد — بمعرّفٍ عامّ، ويُقرأ بمحادثة النشاط الحاليّ؛ التبويبُ القديم يلقى 404 لا ملفَّ نشاطٍ آخر',
         'admin.finance.customerStatement' => 'شاشةُ Inertia لا ملفّ — تُرسم بجلسة الساعة',
         'admin.finance.statement' => 'شاشةُ Inertia لا ملفّ — تُرسم بجلسة الساعة',

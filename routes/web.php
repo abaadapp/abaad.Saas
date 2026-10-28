@@ -1511,6 +1511,25 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::get('/marketing/whatsapp/conversations/{message}/older', [App\Http\Controllers\Admin\WhatsAppController::class, 'olderMessages'])
         ->whereNumber('message')->name('marketing.whatsapp.conversations.older');
 
+    /*
+     * «محادثات واتساب» — صندوقُ المتجر مع زبائنه، بفعلٍ لا بقسم.
+     *
+     * والحارسُ مرّتان: `CheckAbility` يسأل الفعلَ بدل القسم (`Permissions::ACTION_ROUTES`)،
+     * و`may:` هنا — والإرسالُ تحت فعل الردّ وحده. ولا `business_id` في عنوان.
+     */
+    Route::prefix('whatsapp-inbox')->name('whatsappInbox.')
+        ->middleware('may:'.Permissions::INBOX_VIEW)->group(function () {
+            Route::get('/', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'index'])->name('index');
+            Route::get('/poll', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'poll'])
+                ->middleware('throttle:60,1')->name('poll');
+            Route::get('/{chat}/older', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'older'])
+                ->whereNumber('chat')->name('older');
+            Route::post('/{chat}/reply', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'reply'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:30,1'])->name('reply');
+            Route::get('/attachments/{attachment}', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'attachment'])
+                ->whereNumber('attachment')->name('attachment');
+        });
+
     Route::post('/coupons', [CouponController::class, 'store'])->name('coupons.store');
     // حدّاه وحدَهما يُعدَّلان — لا كودُه ولا قيمتُه (انظر `CouponController::limits`)
     Route::patch('/coupons/{id}/limits', [CouponController::class, 'limits'])->name('coupons.limits');

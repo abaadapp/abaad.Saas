@@ -274,6 +274,27 @@ class Permissions
 
     public const SUPPLY_CREATE = 'supply.create';
 
+    /**
+     * ═══ ومحادثاتُ واتساب — قراءتُها والردُّ فيها ═══
+     *
+     * فعلان لا قسم، ولا يُحفظان في قائمة الأقسام (`users.permissions`) بل في
+     * عمودٍ وحده (`users.whatsapp_inbox`: فارغٌ، أو `view`، أو `reply`).
+     *
+     * ولمَ عمودٌ وحده: رسائلُ الزبائن أخصُّ ما في المتجر. فلا تُورَث بدورٍ —
+     * لا «مدير الفرع» ولا «المحاسب» — ولا بقسم «أدوات التسويق» ولا
+     * «التطبيقات التكاملية»، ولا تُمنح باختيار «اتبع صلاحيات الوظيفة» ولا
+     * تسقط به. وصاحبُ النشاط وحده يملكها بدوره، ويمنحها وحده
+     * (`grantable`)، ولا يمنحها موظّفٌ لنفسه ولا لغيره.
+     *
+     * ويُسألان بـ`User::may` كأيّ فعل: الحارسُ على المسار (`may:`) والشاشةُ
+     * (`mayActions`) يقرآن الجوابَ نفسَه.
+     */
+    public const INBOX_VIEW = 'whatsapp.inbox.view';
+
+    public const INBOX_REPLY = 'whatsapp.inbox.reply';
+
+    public const INBOX_ACTIONS = [self::INBOX_VIEW, self::INBOX_REPLY];
+
     /** أفعالُ السند كلُّها — من يملك أحدَها يرى سنداتِ فروعه */
     public const TRANSFER_ACTIONS = [
         self::TRANSFER_VIEW, self::TRANSFER_VIEW_ALL, self::TRANSFER_CREATE, self::TRANSFER_APPROVE,
@@ -594,7 +615,41 @@ class Permissions
                 self::actions(),
                 fn ($a) => $employee->may($a) && ! $actor->may($a),
             ),
+            /*
+             * ومن يقرأ محادثاتِ الزبائن لا يمسّ حسابَه من لا يقرؤها: إعادةُ
+             * تعيين كلمة مروره بابٌ إلى رسائلَ لم يُؤذن له بها.
+             */
+            ...array_filter(
+                self::INBOX_ACTIONS,
+                fn ($a) => $employee->may($a) && ! $actor->may($a),
+            ),
         ];
+    }
+
+    /**
+     * أيملك هذا المستخدمُ فعلًا من أفعال المحادثات؟ — يسأله `User::may`.
+     *
+     * صاحبُ النشاط يملك الاثنين بدوره، ومن سواه بما كُتب في عموده وحده.
+     */
+    public static function inboxMay(User $user, string $action): bool
+    {
+        if (self::isOwner($user)) {
+            return true;
+        }
+
+        $level = $user->whatsapp_inbox;
+
+        return match ($action) {
+            self::INBOX_VIEW => in_array($level, \App\Support\WhatsAppInbox::LEVELS, true),
+            self::INBOX_REPLY => $level === \App\Support\WhatsAppInbox::REPLY,
+            default => false,
+        };
+    }
+
+    /** أيمنح هذا الفاعلُ صلاحياتِ المحادثات؟ — صاحبُ النشاط وحده */
+    public static function grantsInbox(?User $actor): bool
+    {
+        return self::isOwner($actor);
     }
 
     /**
@@ -820,6 +875,24 @@ class Permissions
      */
     public static function entersPanel(?User $user): bool
     {
+        /*
+         * ومن مُنح محادثاتِ واتساب وحدها يدخل ليقرأها — والفعلُ هنا بابٌ
+         * بقصد: له شاشتُه في اللوحة (`ACTION_ROUTES`)، ولا يُطلب معه قسم.
+         * ولا يفتح دخولُه غيرَها: انظر `entersBySections`.
+         */
+        return self::entersBySections($user) || WhatsAppInbox::canView($user);
+    }
+
+    /**
+     * أيدخل اللوحةَ بأقسامه — لا بمحادثات واتساب وحدها؟
+     *
+     * الكاشيرُ يحمل «لوحة التحكم» بدوره ولا يدخل اللوحة. فلو فتح له دخولُ
+     * المحادثات أقسامَه لَقرأ مبيعاتِ اليوم في اللوحة لأنّه مُنح الردَّ على
+     * الزبائن. فمن دخل بالمحادثات وحدها لا يبلغ في اللوحة إلّا صندوقَها
+     * وهيكلَها (`CheckAbility`).
+     */
+    public static function entersBySections(?User $user): bool
+    {
         if ($user === null) {
             return false;
         }
@@ -863,11 +936,35 @@ class Permissions
             return route('super-admin.dashboard');
         }
 
+        // ومن دخل بالمحادثات وحدها فوجهتُه صندوقُها — لا قسمٌ يحمله دورُه ولا يبلغه
+        if (! self::entersBySections($user)) {
+            return route('admin.whatsappInbox.index');
+        }
+
         return collect(self::SECTIONS)
             ->reject(fn ($s) => in_array($s, self::OUTSIDE_PANEL, true))
             ->filter(fn ($s) => $user->allows($s))
             ->map(fn ($s) => self::routeFor($s))
             ->first(fn ($r) => $r !== null);
+    }
+
+    /**
+     * شاشاتٌ يحرسها فعلٌ لا قسم — المقطعُ الثاني من اسم المسار ← الفعل.
+     *
+     * `CheckAbility` يسأل عن القسم المشتقّ من الاسم، و`whatsappInbox` ليس
+     * قسمًا يملكه أحد: لو سُئل لَفتحه `'*'` لكلّ مديرِ فرعٍ، وأغلقه على
+     * موظّفٍ مُنح المحادثاتِ وحدها. فيُسأل عن الفعل بدله.
+     */
+    public const ACTION_ROUTES = [
+        'whatsappInbox' => self::INBOX_VIEW,
+    ];
+
+    /** الفعلُ الذي يحرس هذا المسار بدل قسمه — أو لا شيء */
+    public static function routeAction(?string $route): ?string
+    {
+        $parts = explode('.', (string) $route);
+
+        return ($parts[0] ?? '') === 'admin' ? (self::ACTION_ROUTES[$parts[1] ?? ''] ?? null) : null;
     }
 
     /** القسم → مساره. مصدرٌ واحد يقرؤه التوجيه بعد الدخول وروابط التنبيهات */
@@ -920,7 +1017,7 @@ class Permissions
 
         $panel = self::entersPanel($user);
 
-        if ($panel && $user->allows('dashboard')) {
+        if (self::entersBySections($user) && $user->allows('dashboard')) {
             return route(self::ROUTES['dashboard']);
         }
 

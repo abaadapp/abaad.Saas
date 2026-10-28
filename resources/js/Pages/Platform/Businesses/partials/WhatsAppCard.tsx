@@ -44,8 +44,24 @@ export interface BusinessWhatsApp {
         usable: boolean;
         display_phone_number: string | null;
         phone_number_id?: string | null;
+        expires_at?: string | null;
     } | null;
+    /** آخرُ إشعارٍ وصل من رقم المتجر، وآخرُ خطأٍ قالته ميتا — لا رمزَ ولا سرّ */
+    own_health?: { last_webhook_at: string | null; last_error: string | null; last_error_at: string | null } | null;
+    /** أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`WhatsAppFeature::canUseOwnNumber`) */
+    own_eligible?: boolean;
+    /** متجرُ سياسة الإضافات بلا إضافة «ربط واتساب برقم المتجر» */
+    own_needs_addon?: boolean;
+    /** صندوقُ محادثات واتساب — يفتحه فريقُ أبعاد (`WhatsAppInbox::available`) */
+    inbox_enabled?: boolean;
+    /** مفتوحٌ فعلًا: المفتاحُ والباقةُ تشمل واتساب */
+    inbox_available?: boolean;
 }
+
+const MODES = [
+    { key: 'abaad_shared', title: 'رقم أبعاد المشترك', hint: 'تخرج رسائله من رقم أبعاد، وردودُ زبائنه تُنسب إليه حين يثبت أنّها له وحده' },
+    { key: 'business_own', title: 'API مستقل للمتجر', hint: 'رقمُه على WhatsApp Cloud API بحسابه — لا يُرسل من رقم أبعاد ولو انقطع' },
+] as const;
 
 /**
  * واتساب هذا المتجر — بطاقةٌ في ملفّه لا شاشةٌ جديدة.
@@ -61,15 +77,19 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
         whatsapp_enabled: data.enabled,
         whatsapp_own_allowed: data.own_allowed,
         whatsapp_shared_allowed: data.shared_allowed,
+        whatsapp_mode: data.mode,
+        whatsapp_inbox_enabled: data.inbox_enabled ?? false,
         // فارغٌ يعني «افتراضي المنصّة» — لا صفرًا، والصفر يعني المنع
         whatsapp_monthly_limit: data.limit_override === null ? '' : String(data.limit_override),
     });
 
     const submit = () => {
         // الفارغ يصل `null` — «افتراضي المنصّة»؛ ولو أُرسل نصًّا فارغًا لَقُرئ صفرًا، وهو المنع
-        form.transform((d) => ({
+        form.transform(({ whatsapp_mode, ...d }) => ({
             ...d,
             whatsapp_monthly_limit: d.whatsapp_monthly_limit === '' ? null : Number(d.whatsapp_monthly_limit),
+            // والوضعُ يُرسل حين يُبدَّل وحده — حفظُ الحدّ لا يعيد اختيار الرقم
+            ...(whatsapp_mode !== data.mode ? { whatsapp_mode } : {}),
         }));
 
         form.put(route('super-admin.businesses.whatsapp.update', businessId), { preserveScroll: true });
@@ -122,7 +142,77 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                 </div>
             </dl>
 
+            {data.own_connection && (
+                <dl className="mb-5 space-y-2 rounded-[12px] border border-[#f0f0f0] p-4 text-[13px]" data-testid="whatsapp-own-health">
+                    <div className="flex justify-between gap-3">
+                        <dt className="text-[#6b7280]">{t('حالة الربط')}</dt>
+                        <dd className="font-medium text-[#111]">{data.own_connection.status}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                        <dt className="text-[#6b7280]">{t('صلاحية الرمز')}</dt>
+                        <dd className="font-medium text-[#111]" dir="ltr">{data.own_connection.expires_at ?? t('لا تنتهي')}</dd>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                        <dt className="text-[#6b7280]">{t('آخر إشعار من ميتا')}</dt>
+                        <dd className="font-medium text-[#111]" dir="ltr">{data.own_health?.last_webhook_at ?? t('لم يصل بعد')}</dd>
+                    </div>
+                    {data.own_health?.last_error && (
+                        <div className="flex justify-between gap-3">
+                            <dt className="text-[#6b7280]">{t('آخر خطأ')}</dt>
+                            <dd className="text-end font-medium text-[#b91c1c]">
+                                {data.own_health.last_error}
+                                <span className="block text-[11px] text-[#9ca3af]" dir="ltr">{data.own_health.last_error_at}</span>
+                            </dd>
+                        </div>
+                    )}
+                </dl>
+            )}
+
             <div className="space-y-5">
+                {/*
+                    ═══ من أيّ رقمٍ يتكلّم المتجر ═══
+
+                    خياران لا ثالث لهما (`WhatsAppMode`). و«API مستقلّ» لمتجر
+                    سياسة الإضافات يحتاج إضافتَه سارية — والخادمُ يردّ سواه.
+                */}
+                <div className="space-y-2" data-testid="whatsapp-mode">
+                    <p className="text-[13px] font-medium text-[#111]">{t('رقم الإرسال')}</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label={t('رقم الإرسال')}>
+                        {MODES.map((m) => {
+                            const picked = form.data.whatsapp_mode === m.key;
+                            const locked = m.key === 'business_own' && !picked && data.own_needs_addon === true;
+
+                            return (
+                                <button
+                                    key={m.key}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={picked}
+                                    disabled={locked}
+                                    data-testid={`whatsapp-mode-${m.key}`}
+                                    onClick={() => form.setData('whatsapp_mode', m.key)}
+                                    className={`rounded-[10px] border p-3 text-start ${picked ? 'border-[#111] bg-[#f9fafb]' : 'border-[#e5e7eb]'} ${locked ? 'cursor-not-allowed opacity-60' : ''}`}
+                                >
+                                    <span className="block text-sm font-medium text-[#111]">{t(m.title)}</span>
+                                    <span className="mt-1 block text-[12px] text-[#6b7280]">{t(m.hint)}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {data.own_needs_addon && (
+                        <p className="text-[12px] text-[#92400e]">
+                            {t('API المستقلّ إضافةٌ لهذا المتجر — اطلبها له أو امنحها بتاريخ من «خدمات أبعاد» في صفحته.')}
+                        </p>
+                    )}
+                    {form.errors.whatsapp_mode && <p className="text-[12px] text-[#b91c1c]">{form.errors.whatsapp_mode}</p>}
+                </div>
+
+                <Toggle
+                    on={form.data.whatsapp_inbox_enabled}
+                    onChange={(v) => form.setData('whatsapp_inbox_enabled', v)}
+                    label="صندوق محادثات واتساب"
+                    hint="يستقبل رسائل زبائنه ويردّ موظّفوه المخوَّلون من لوحته — على رقمه المستقل، أو على رقم أبعاد لما ثبت أنه له وحده. إطفاؤه يخفي الصندوق ولا يحذف محادثاته"
+                />
                 <Toggle
                     on={form.data.whatsapp_enabled}
                     onChange={(v) => form.setData('whatsapp_enabled', v)}

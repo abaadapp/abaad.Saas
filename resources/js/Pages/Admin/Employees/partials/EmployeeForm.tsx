@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from '@inertiajs/react';
-import { Check, KeyRound, Plus, ShieldCheck, Target, UserRound, Wallet } from 'lucide-react';
+import { Check, KeyRound, MessagesSquare, Plus, ShieldCheck, Target, UserRound, Wallet } from 'lucide-react';
 import SmartLink from '@/Components/SmartLink';
 import Field, { Select } from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { useTranslate } from '@/lib/i18n';
 import { usePlanFeature } from '@/lib/plan';
 import type { Branch } from '@/types/models';
+import InboxAccessField, { type InboxAccess } from './InboxAccessField';
 
 export interface EmployeeFormValues {
     id?: number;
@@ -90,6 +91,13 @@ interface Props {
      * والخادمُ يرفع الحقلين من الحمولة كذلك، فلا يكفي إخفاؤهما.
      */
     mayReadPayroll?: boolean;
+    /**
+     * «محادثات واتساب» — لمتجرٍ فُتح له الصندوق، وإلّا لا شيء.
+     *
+     * والحقلُ لا يُرسل حين لا يُعرض: موظّفٌ مُنح الصندوقَ ثمّ أُغلق عن المتجر
+     * لا تُمحى صلاحيتُه بحفظِ رقم هاتفه.
+     */
+    inbox?: InboxAccess | null;
 }
 
 /** قسم داخل النموذج: عنوان وشرح سطر، ثم حقوله */
@@ -145,6 +153,7 @@ export default function EmployeeForm({
     titleGrants,
     canEditPermissions = true,
     mayReadPayroll = true,
+    inbox = null,
 }: Props) {
     const t = useTranslate();
     /*
@@ -224,6 +233,7 @@ export default function EmployeeForm({
          */
         manual_permissions: employee ? employee.permissions != null : false,
         permissions: employee?.permissions ?? employee?.role_permissions ?? [],
+        ...(inbox ? { whatsapp_inbox: inbox.level } : {}),
     });
 
     /*
@@ -820,6 +830,21 @@ export default function EmployeeForm({
                             )}
                         </div>
                     )}
+                </Section>
+            )}
+
+            {inbox && (
+                <Section
+                    icon={MessagesSquare}
+                    title="محادثات واتساب"
+                    hint="من يقرأ محادثات العملاء ومن يردّ عليها — لا تُمنح مع أيّ قسم ولا مع الوظيفة"
+                >
+                    <InboxAccessField
+                        value={form.data.whatsapp_inbox ?? inbox.level}
+                        canGrant={inbox.can_grant}
+                        onChange={(level) => form.setData('whatsapp_inbox', level)}
+                        error={(form.errors as Record<string, string | undefined>).whatsapp_inbox}
+                    />
                 </Section>
             )}
 

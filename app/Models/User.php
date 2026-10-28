@@ -245,6 +245,11 @@ class User extends Authenticatable
             return true;
         }
 
+        // ومحادثاتُ واتساب من عمودها لا من القائمة ولا من الدور — انظر `Permissions::INBOX_VIEW`
+        if (in_array($action, \App\Support\Permissions::INBOX_ACTIONS, true)) {
+            return \App\Support\Permissions::inboxMay($this, $action);
+        }
+
         $manual = $this->permissions;
 
         if (is_array($manual)) {

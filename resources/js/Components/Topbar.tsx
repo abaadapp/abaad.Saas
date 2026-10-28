@@ -284,8 +284,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
      * والشريط العلوي يُعاد رسمه مع كل استطلاعٍ للجرس، أي مرّتين في الدقيقة.
      */
     const pages = useMemo(
-        () => visibleTo(isPlatform ? platformPages() : adminPages(reportPages ?? []), auth),
-        [isPlatform, reportPages, auth],
+        () => visibleTo(isPlatform ? platformPages() : adminPages(reportPages ?? []), auth, context?.hosted ?? []),
+        [isPlatform, reportPages, auth, context?.hosted],
     );
 
     /**

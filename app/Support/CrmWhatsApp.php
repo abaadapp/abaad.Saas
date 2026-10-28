@@ -424,10 +424,13 @@ final class CrmWhatsApp
      * العمودُ يقول «بمَ جاءت هذه الرسالة»، والمرفقُ يقول «وأين هي». وصفٌّ
      * فيه مرفقٌ ولا نوعَ عليه يُقرأ نصًّا في كلّ تقريرٍ يُكتب بعد سنة.
      *
+     * وصندوقُ محادثات المتاجر يقرأ الواردَ بها نفسِها (`WhatsAppInbox::store`) —
+     * قراءةٌ واحدةٌ للنصّ والأزرار والملفّات، لا نسختان تفترقان.
+     *
      * @param  array<string, mixed>  $message
      * @return array{0: string, 1: ?string, 2: ?array{contents:string, mime:string, name:string}}
      */
-    private static function inbound(WhatsAppConnection $connection, array $message): array
+    public static function inbound(WhatsAppConnection $connection, array $message): array
     {
         $type = (string) ($message['type'] ?? '');
 

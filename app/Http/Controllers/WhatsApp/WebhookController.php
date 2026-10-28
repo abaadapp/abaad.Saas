@@ -10,6 +10,7 @@ use App\Support\CrmWhatsApp;
 use App\Support\MetaWhatsAppClient;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppAutoReply;
+use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
@@ -164,12 +165,28 @@ class WebhookController extends Controller
              * بنفسه: القرارُ كلُّه عندها في موضعٍ واحد.
              */
             if ($connection->owner_type === WhatsAppMode::OWNER_BUSINESS) {
+                /*
+                 * وصندوقُ المحادثات يكتب الواردَ قبل الردّ الآليّ — ولا يمسّه.
+                 *
+                 * كلٌّ يحرس نفسَه: الصندوقُ لا يكتب إلّا لمتجرٍ فُتح له وعلى
+                 * وصلته الحاليّة، والردُّ الآليّ على حاله كما كان.
+                 */
+                WhatsAppInbox::receiveOwn($connection, (array) $message, $this->profileName($value, (array) $message));
                 WhatsAppAutoReply::receive($connection, (array) $message);
 
                 continue;
             }
 
             SupportWhatsApp::receive($connection, (array) $message);
+
+            /*
+             * وردُّ زبونٍ على إشعارٍ خرج من رقم أبعاد يُكتب لمتجره — إن ثبت أنّه له وحده.
+             *
+             * والأبوابُ الثلاثة لا تتنازع: الدعمُ يكتب لرقم تاجر، والمبيعاتُ
+             * لغريبٍ لم نراسله قطّ، والصندوقُ لزبونٍ راسله متجرٌ واحدٌ بعينه —
+             * والشرطُ في كلٍّ عنده (`WhatsAppInbox::attribute`).
+             */
+            WhatsAppInbox::receiveShared($connection, (array) $message, $this->profileName($value, (array) $message));
 
             /*
              * ورقمُ الإشعارات قد يحمل دفترَ المبيعات معه — إن أُذن.
@@ -223,6 +240,11 @@ class WebhookController extends Controller
             ->first();
 
         if (! $message) {
+            // وردٌّ خرج من صندوق محادثات متجر — بمعرّفه ووصلته معًا
+            if (WhatsAppInbox::applyStatus($connection, (string) $id, $status)) {
+                return;
+            }
+
             /*
              * ومعرّفٌ لا نعرفه على رقم الإشعارات قد يكون ردَّ مبيعاتٍ خرج منه.
              *
@@ -300,6 +322,27 @@ class WebhookController extends Controller
         }
 
         $message->forceFill($attributes)->save();
+    }
+
+    /**
+     * اسمُ الزبون على واتساب كما أرسلته ميتا مع رسالته — أو لا شيء.
+     *
+     * ميتا تضعه في `contacts` بجوار `messages` لا داخلها، مقرونًا بالرقم.
+     *
+     * @param  array<string, mixed>  $value
+     * @param  array<string, mixed>  $message
+     */
+    private function profileName(array $value, array $message): ?string
+    {
+        foreach ((array) ($value['contacts'] ?? []) as $contact) {
+            if ((string) ($contact['wa_id'] ?? '') === (string) ($message['from'] ?? '')) {
+                $name = trim((string) ($contact['profile']['name'] ?? ''));
+
+                return $name !== '' ? $name : null;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -58,6 +58,7 @@ class CheckPlanFeature
         'admin.marketing.loyalty.save' => 'loyalty',
         // والإرسال نفسه يُفحص في WhatsAppFeature::blockReason — الإشعار يخرج من الطلب لا من زرّ
         'admin.marketing.whatsapp*' => 'whatsapp',
+        'admin.whatsappInbox.*' => 'whatsapp',
         /*
          * ═══ الموقعُ الإلكترونيّ — العائلةُ كلُّها باسمها ═══
          *

@@ -10,7 +10,7 @@ import { Input } from '@/Components/ui/input';
 import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { ConnectGate, ConnectSteps, type Readiness } from '@/Components/Connect';
-import WhatsappLinkCard, { type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
+import WhatsappLinkCard, { type LinkHealth, type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 import WhatsappAutoReply, { type AutoReplySettings } from '@/Pages/Admin/Integrations/partials/WhatsappAutoReply';
 import WhatsappQuotaPack, { type QuotaPack } from '@/Pages/Admin/Integrations/partials/WhatsappQuotaPack';
 import type { EmbeddedConfig } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
@@ -38,6 +38,8 @@ export interface Automation {
     embedded: EmbeddedConfig;
     /** حالُ الربط بحالاتها الستّ — من الخادم لا تُستنتج هنا */
     link: WhatsappLink;
+    /** أيستقبل فعلًا؟ — متّصلٌ ومشتركٌ ومُثبَت ثلاثةُ أشياء (`WhatsAppLinkHealth`) */
+    health: LinkHealth | null;
     auto_reply: AutoReplySettings | null;
     branches: { id: number; name: string }[];
     may_manage: boolean;
@@ -166,6 +168,7 @@ export default function IntegrationsWhatsapp() {
                 {automation.own_allowed && (
                     <WhatsappLinkCard
                         link={automation.link}
+                        health={automation.health}
                         config={automation.embedded}
                         mayManage={automation.may_manage}
                         sharedAllowed={automation.shared_allowed}

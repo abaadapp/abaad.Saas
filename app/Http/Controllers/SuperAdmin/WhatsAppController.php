@@ -13,6 +13,8 @@ use App\Support\Addons\PricingPolicy;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppInbox;
+use App\Support\WhatsAppLinkCheck;
+use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
@@ -88,19 +90,22 @@ class WhatsAppController extends Controller
             ]);
         }
 
+        [$verified, $refused] = $this->verifiedLine($data, $existing);
+
+        if ($refused) {
+            return $refused;
+        }
+
         $connection = $existing
-            ? tap($existing)->update($attributes)
-            : WhatsAppConnection::create($attributes);
+            ? tap($existing)->update($verified + $attributes)
+            : WhatsAppConnection::create($verified + $attributes);
 
         // قوالب أبعاد الأربعة تُهيَّأ مع الوصلة — وصلةٌ بلا قوالب لا تُرسل شيئًا
         WhatsAppTemplates::seedPlatformDefaults((string) config('whatsapp.language', 'ar'));
 
         Activity::log('settings', 'ربط رقم واتساب المشترك لأبعاد ('.($data['display_phone_number'] ?? $data['phone_number_id']).')');
 
-        return back()->with('toast', [
-            'msg' => __('تم ربط رقم واتساب المشترك'),
-            'type' => 'success',
-        ]);
+        return back()->with('toast', $this->linkedToast(__('تم ربط رقم واتساب المشترك'), $verified));
     }
 
     /**
@@ -194,11 +199,76 @@ class WhatsAppController extends Controller
             'disconnected_at' => null,
         ];
 
-        $existing ? $existing->update($attributes) : WhatsAppConnection::create($attributes);
+        [$verified, $refused] = $this->verifiedLine($data, $existing);
+
+        if ($refused) {
+            return $refused;
+        }
+
+        $existing ? $existing->update($verified + $attributes) : WhatsAppConnection::create($verified + $attributes);
 
         Activity::log('settings', 'ربط رقم واتساب مبيعات أبعاد ('.($data['display_phone_number'] ?? $data['phone_number_id']).')');
 
-        return back()->with('toast', ['msg' => __('تم ربط رقم المبيعات'), 'type' => 'success']);
+        return back()->with('toast', $this->linkedToast(__('تم ربط رقم المبيعات'), $verified));
+    }
+
+    /**
+     * رمزُ رقمٍ من أرقام أبعاد يُفحص كرمز أيّ متجر — بالباب نفسه.
+     *
+     * الويب هوك لا يقبل إلّا ما وُقّع بسرّ تطبيق أبعاد، فرمزٌ من تطبيقٍ آخر
+     * على رقم أبعاد يُشرك ذلك التطبيق — وتسكت ردودُ الزبائن والتجّار معًا.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{0: ?array<string, mixed>, 1: ?\Illuminate\Http\RedirectResponse}
+     */
+    private function verifiedLine(array $data, ?WhatsAppConnection $existing): array
+    {
+        $token = (string) $data['access_token'];
+        $check = WhatsAppLinkCheck::token($token, $data['waba_id'] ?? null);
+
+        if (! $check['ok']) {
+            WhatsAppLinkCheck::log('platform_link_refused', null, $check['meta'] + ['code' => $check['problem']]);
+            $field = $check['problem'] === WhatsAppLinkCheck::WABA_NOT_GRANTED ? 'waba_id' : 'access_token';
+
+            return [null, back()->withErrors([$field => (string) $check['message']])];
+        }
+
+        $number = WhatsAppLinkCheck::number((string) $check['waba'], $token, (string) $data['phone_number_id'], $existing?->id);
+
+        if (! $number['ok']) {
+            return [null, back()->withErrors(['phone_number_id' => (string) $number['message']])];
+        }
+
+        // رقمُ أبعاد رقمُ Cloud API مستقلّ — لا تعايش، ولا رقمٌ لم يُعرف نوعُه
+        $kind = WhatsAppLinkCheck::numberType((array) $number['number'], $token, false);
+
+        if ($kind['problem']) {
+            WhatsAppLinkCheck::log('platform_link_refused', null, ['code' => $kind['problem'], 'message' => null]);
+
+            return [null, back()->withErrors(['phone_number_id' => WhatsAppLinkCheck::say($kind['problem'])])];
+        }
+
+        $hook = WhatsAppLinkCheck::subscribe((string) $check['waba'], $token);
+
+        if ($refusal = WhatsAppLinkCheck::subscriptionRefusal($hook, $existing)) {
+            WhatsAppLinkCheck::log('platform_link_refused', null, $hook['meta'] + ['code' => $refusal]);
+
+            return [null, back()->withErrors(['access_token' => WhatsAppLinkCheck::say($refusal)])];
+        }
+
+        return [['waba_id' => $check['waba'], 'token_expires_at' => $check['expires_at']]
+            + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state']), null];
+    }
+
+    /**
+     * @param  array<string, mixed>  $verified
+     * @return array{msg:string, type:string}
+     */
+    private function linkedToast(string $done, array $verified): array
+    {
+        return $verified['webhook_state'] === WhatsAppLinkCheck::SUBSCRIBED
+            ? ['msg' => $done, 'type' => 'success']
+            : ['msg' => $done.' — '.__('لكنّ اشتراك أبعاد في إشعارات الحساب لم يثبت، فالردود الواردة لن تصل.'), 'type' => 'warning'];
     }
 
     /** فصلُ رقم المبيعات — تعطيلٌ لا حذف، فالخيوطُ تبقى مقروءة */
@@ -399,6 +469,33 @@ class WhatsAppController extends Controller
     }
 
     /** صورة استهلاك متجرٍ — تُقرأ في شاشة المتجر لدى المنصّة */
+    /**
+     * «فحص الربط» من لوحة المنصّة — قراءةٌ عند ميتا لا غير.
+     *
+     * يقول فريقُ أبعاد به أيُّ تطبيقٍ أصدر رمزَ المتجر وهل تطبيقُنا مشتركٌ في
+     * إشعارات حسابه، دون أن ينتظر صاحبَ المتجر. ولا يُنادى `POST` ولا
+     * `DELETE` ولا يُمسّ رمزٌ ولا رقمٌ ولا حال (`WhatsAppLinkCheck::recheck`).
+     */
+    public function checkBusinessLink(int $id)
+    {
+        $business = Business::findOrFail($id);
+        $own = WhatsAppConnections::forBusiness($business->id);
+
+        if (! $own || blank($own->phone_number_id) || blank($own->access_token)) {
+            return back()->withErrors(['whatsapp' => __('لا وصلة مكتملة لهذا المتجر بعد.')]);
+        }
+
+        WhatsAppLinkCheck::recheck($own);
+        $health = WhatsAppLinkHealth::state($own->refresh());
+
+        Activity::log('settings', 'واتساب — فحص ربط «'.$business->name.'»: '.WhatsAppLinkHealth::label($health));
+
+        return back()->with('toast', [
+            'msg' => WhatsAppLinkHealth::label($health).' — '.WhatsAppLinkHealth::hint($health, $own),
+            'type' => in_array($health, [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true) ? 'success' : 'warning',
+        ]);
+    }
+
     public static function businessView(Business $business): array
     {
         $own = WhatsAppConnections::forBusiness($business->id);
@@ -427,6 +524,9 @@ class WhatsAppController extends Controller
                 'last_error' => filled($own->last_error_message)
                     ? mb_strimwidth((string) $own->last_error_message, 0, 200, '…') : null,
                 'last_error_at' => optional($own->last_error_at)->format('Y-m-d H:i'),
+                // متّصلٌ أم مشتركٌ أم يستقبل فعلًا — بلا رمزٍ ولا معرّفِ تطبيقٍ آخر
+                'link' => WhatsAppLinkHealth::view($own),
+                'can_check' => filled($own->phone_number_id) && filled($own->access_token),
             ] : null,
             // أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`canUseOwnNumber`)
             'own_eligible' => WhatsAppFeature::canUseOwnNumber($business),

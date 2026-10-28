@@ -43,7 +43,7 @@ describe('بطاقةُ الربط', () => {
         expect(line).toContain('واتساب غير مربوط');
         expect(line).not.toContain('رقم أبعاد');
         // وبابُ الربط القائم حاضر
-        expect(screen.getByRole('button', { name: /ربط WhatsApp Business/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /ربط واتساب API/ })).toBeInTheDocument();
     });
 
     it('وغيرُه كما كان', () => {

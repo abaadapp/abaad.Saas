@@ -500,6 +500,10 @@ export default function Register() {
                         {trial?.plan && (
                             <p data-trial-note className="rounded-[10px] bg-[#f5f5f4] px-3 py-2.5 text-[12.5px] text-[#4b4b4b]">
                                 {t('تجربة مجانية لمدة :days يومًا على :plan', { days: trial.days, plan: t(trial.plan) })}
+                                {/* والتجربةُ بلا نقطة البيع (`TrialOffer`) — يُقال قبل التسجيل لا بعده */}
+                                <span className="mt-1 block text-[12px] text-[#6b7280]" data-trial-without-pos>
+                                    {t('لا تشمل التجربة نقطة البيع POS ولا الإضافات، ويفعّلها فريق أبعاد عند الاشتراك.')}
+                                </span>
                             </p>
                         )}
                     </div>

@@ -31,7 +31,8 @@ use Tests\TestCase;
  *
  *   1. المتجرُ القائم يحتفظ بقدراته وأسعاره قبل الإطلاق وبعده.
  *   2. ويحتفظ بنقطة البيع بعد تجديد اشتراكه.
- *   15. التسجيلُ الذاتيّ والتجربةُ كما كانا والإطلاقُ مطفأ؛ ومفتوحًا يُختم الجديدُ بلا نقطة بيع.
+ *   15. التسجيلُ الذاتيّ والتجربةُ كما كانا والإطلاقُ مطفأ — إلّا نقطةَ البيع: التجربةُ بلا نقطة بيعٍ
+ *       في الحالين (`TrialOffer`)؛ ومفتوحًا يُختم الجديدُ على السياسة الجديدة.
  *   16. إطفاءُ الإطلاق لا يمسّ متجرًا خُتمت سياستُه.
  *   18. الترحيلُ على قاعدةٍ قائمة: كلُّ متجرٍ على السابقة، ولا باقةَ ولا اشتراكَ ولا فاتورةَ تتغيّر.
  *   والإطلاقُ لا يُفتح قبل سعر الأساسيّة؛ وباقةٌ قدراتُها `null` كما كانت.
@@ -156,7 +157,8 @@ class AnExistingShopKeepsItsSubscriptionWhenAddonsLaunchTest extends TestCase
         $this->assertSame(PricingPolicy::LEGACY, $before->pricing_policy);
         $this->assertSame($this->plans['basic']->id, (int) $before->plan_id);
         $this->assertSame(now()->addDays(Signup::TRIAL_DAYS)->toDateString(), $before->ends_at->toDateString());
-        $this->assertTrue($this->allows($before, Catalog::POS));
+        // كانت تُفتح لها نقطةُ البيع مجّانًا — والتجربةُ بلا نقطة البيع ولو كان الإطلاقُ مطفأً (TrialOffer، قرار المالك 2026-10-28)
+        $this->assertFalse($this->allows($before, Catalog::POS));
 
         $this->launch();
         $after = Signup::register($data('after@signup.om'))->business;
@@ -172,8 +174,8 @@ class AnExistingShopKeepsItsSubscriptionWhenAddonsLaunchTest extends TestCase
         $this->assertFalse(WhatsAppFeature::canUseOwnNumber($after));
         $this->assertSame([4.9, 49.0], [Billing::price($after, 'monthly'), Billing::price($after, 'yearly')]);
 
-        // والقديمُ بجواره كما كان
-        $this->assertTrue($this->allows($before, Catalog::POS));
+        // والقديمُ بجواره كما كان — وتجربتُه بلا نقطة البيع كما خُتمت
+        $this->assertFalse($this->allows($before, Catalog::POS));
         $this->assertTrue(CustomArrangement::enabled($before->id));
     }
 

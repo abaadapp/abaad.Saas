@@ -3,6 +3,8 @@
 namespace App\Support;
 
 use App\Models\Business;
+use App\Models\BusinessAddon;
+use App\Models\Order;
 use App\Models\Plan;
 use App\Support\Addons\Catalog;
 use App\Support\Addons\Entitlements;
@@ -170,8 +172,9 @@ class PlanFeatures
             return Entitlements::has($business, $key);
         }
 
+        // والتجربةُ الذاتيّة بلا نقطة البيع — إلّا منحةً ساريةً من فريق أبعاد (TrialOffer)
         if ($key === Catalog::POS) {
-            return true;
+            return ! TrialOffer::closesPos($business) || Entitlements::active($business, $key);
         }
 
         return self::allowedBy($business?->plan, $key)
@@ -210,6 +213,31 @@ class PlanFeatures
         }
 
         abort(403, self::refusal($business, $key));
+    }
+
+    /**
+     * أبوابُ نقطة البيع التي لا تُنشئ بيعًا — لمن يملكها الآن أو باع منها يومًا.
+     *
+     * متجرٌ انقضت إضافتُه أو نزل من باقةٍ تشملها يُغلق عملَه القائم: يطبع إيصالًا،
+     * ويصحّح بندًا، ويحصّل باقيًا. ومتجرٌ لم يبع من الصندوق قطّ ولا ملك إضافتَه لا
+     * عملَ له هناك — والبابُ المفتوح له نقطةُ بيعٍ مجّانيّةٌ تُطرق بطلبٍ مباشر.
+     */
+    public static function allowsPosRecords(?Business $business): bool
+    {
+        if ($business === null || self::allows($business, Catalog::POS)) {
+            return true;
+        }
+
+        return Order::where('business_id', $business->id)->where('channel', SalesChannel::POS)->exists()
+            || BusinessAddon::where('business_id', $business->id)
+                ->whereHas('addon', fn ($q) => $q->where('capability', Catalog::POS))->exists();
+    }
+
+    public static function enforcePosRecords(?Business $business): void
+    {
+        if (! self::allowsPosRecords($business)) {
+            abort(403, self::refusal($business, Catalog::POS));
+        }
     }
 
     /** نصّ الرفض — يُقرأ في الشاشة وفي رسالة التحقّق معًا */

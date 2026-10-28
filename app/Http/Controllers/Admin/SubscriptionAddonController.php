@@ -11,6 +11,7 @@ use App\Support\Addons\AddonViews;
 use App\Support\Addons\Catalog;
 use App\Support\Demo;
 use App\Support\Permissions;
+use App\Support\Tenancy;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,6 +36,9 @@ class SubscriptionAddonController extends Controller
     private function mayBuy(): void
     {
         abort_unless(Permissions::isOwner(auth()->user()), 403, __('طلب الإضافات لصاحب النشاط وحده.'));
+
+        // والتجربةُ المجّانيّة لا تطلب ولا تجدّد: لا طلبَ تفعيلٍ ولا دورةَ فوترة — فريقُ أبعاد يفعّل
+        abort_if(Tenancy::isUnpaidSelfSignup($this->business()), 403, __('أنت في التجربة المجانية — الإضافات للعرض والاستفسار، وفريق أبعاد يفعّل ما تحتاجه.'));
     }
 
     public function index(): Response

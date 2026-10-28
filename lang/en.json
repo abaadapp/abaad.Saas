@@ -9840,5 +9840,14 @@
     "لا تُجمع حتى تُصرف": "not counted until cleared",
     "تحصيل متبقٍّ": "Balance collected",
     "ردّ فرق": "Difference refunded",
-    "مردود": "Refunded"
+    "مردود": "Refunded",
+    "أنت في التجربة المجانية — الإضافات للعرض والاستفسار، وفريق أبعاد يفعّل ما تحتاجه.": "You're on the free trial — add-ons are here to browse and ask about, and the Abaad team activates what you need.",
+    "أنت في التجربة المجانية. الإضافات هنا للعرض والاستفسار، وفريق أبعاد يفعّل ما تحتاجه بعد الاتفاق على اشتراكك.": "You're on the free trial. Add-ons here are to browse and ask about, and the Abaad team activates what you need once your subscription is agreed.",
+    "استفسر عبر فريق أبعاد": "Ask the Abaad team",
+    "تنتهي في": "Ends on",
+    "اليوم آخر يوم": "Today is the last day",
+    "بقي يوم واحد": "1 day left",
+    "بقي :n يومًا": ":n days left",
+    "نقطة البيع والإضافات غير مشمولة في التجربة، ويفعّلها فريق أبعاد عند الاشتراك.": "Point of sale and add-ons are not part of the trial — the Abaad team activates them when you subscribe.",
+    "لا تشمل التجربة نقطة البيع POS ولا الإضافات، ويفعّلها فريق أبعاد عند الاشتراك.": "The trial doesn't include the POS or add-ons — the Abaad team activates them when you subscribe."
 }

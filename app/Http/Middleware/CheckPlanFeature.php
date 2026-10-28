@@ -190,10 +190,22 @@ class CheckPlanFeature
 
         if ($key !== null && ! self::isOpenExport($name, $route?->parameter('report'))) {
             PlanFeatures::enforce($request->user()?->business, $key);
+        } elseif ($key === null && str_starts_with($name, self::POS_PREFIX)) {
+            PlanFeatures::enforcePosRecords($request->user()?->business);
         }
 
         return $next($request);
     }
+
+    /**
+     * ═══ وبقيّةُ أبواب نقطة البيع — لمن باع منها يومًا ═══
+     *
+     * ما لا يُنشئ بيعًا جديدًا (الإيصالاتُ والطباعةُ والتصحيحُ وتحصيلُ الباقي وشاشاتُ
+     * الصندوق) يبقى بعد انقضاء الإضافة ليُغلق عملًا قائمًا. لكنّ متجرًا لم يملك نقطةَ
+     * البيع قطّ — تجربةُ الأساسيّة — لا عملَ له فيها يُغلق: فيُردّ عن كلّ بابٍ اسمُه
+     * `pos.*` ولو طرقه بطلبٍ مباشر. انظر `PlanFeatures::allowsPosRecords`.
+     */
+    public const POS_PREFIX = 'pos.';
 
     /** هل هذا تنزيلُ تقريرٍ مفتوحٍ للجميع؟ — يُقاس بالمعامل لا بالاسم */
     public static function isOpenExport(string $route, ?string $report): bool

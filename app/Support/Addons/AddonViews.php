@@ -11,6 +11,7 @@ use App\Support\Billing;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
 use App\Support\Store\GiftOrders;
+use App\Support\Tenancy;
 use App\Support\WhatsAppFeature;
 use Illuminate\Support\Facades\DB;
 
@@ -161,8 +162,11 @@ final class AddonViews
     {
         $policy = PricingPolicy::of($business);
         $plan = $business->plan;
+        // التجربةُ المجّانيّة للعرض والاستفسار — التفعيلُ عبر فريق أبعاد، لا طلبٌ من هنا
+        $trial = Tenancy::isUnpaidSelfSignup($business);
         $base = [
             'policy' => $policy,
+            'trial' => $trial,
             // حالةُ الاشتراك كما يقرؤها `Business::scopeLive` — لا تخمينٌ من الشاشة
             'subscription' => [
                 'status' => filled($business->status) ? __($business->status) : null,
@@ -221,7 +225,7 @@ final class AddonViews
                 'semiannual' => round((float) $paid->where('cycle', 'semiannual')->sum(fn ($e) => (float) $e->unit_price * $e->quantity), 3),
                 'yearly' => round((float) $paid->where('cycle', 'yearly')->sum(fn ($e) => (float) $e->unit_price * $e->quantity), 3),
             ],
-            'may_request' => true,
+            'may_request' => ! $trial,
         ];
     }
 

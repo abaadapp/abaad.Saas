@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\Plan;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\Addons\PricingPolicy;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -64,6 +65,23 @@ class Signup
      * بلا مشغّل. ومن أراد إقفالَه كتب `self_signup = 0` في إعدادات المنصّة،
      * فتختفي الصفحةُ ورابطُها معًا.
      */
+    /**
+     * هل يُختم المسجِّلُ بنفسه على الباقات المعلنة؟
+     *
+     * ═══ ولمَ لا يُسجَّل على السابقة ═══
+     *
+     * الموقعُ يبيع الأساسيّةَ بلا نقطة البيع — عقدُ `addons_v1`. والسابقةُ تفتح نقطةَ
+     * البيع لكلّ باقة: تجربةٌ عليها تصير بأوّل سدادٍ أساسيّةً بنقطة بيعٍ مجّانيّة،
+     * وهو ما لا يبيعه أحد. فإن كان الإطلاقُ مطفأً أو شرطُه ناقصًا، يقف التسجيلُ
+     * الذاتيّ برسالةٍ صريحة، ويفتح فريقُ أبعاد الحسابَ من لوحة المنصّة.
+     *
+     * ولا يمسّ متجرًا قائمًا: من سجّل على السابقة قبلها يبقى عليها بحقوقه.
+     */
+    public static function ready(): bool
+    {
+        return PricingPolicy::forNewMerchant() === PricingPolicy::ADDONS;
+    }
+
     public static function open(): bool
     {
         /*
@@ -98,6 +116,11 @@ class Signup
         // الباقةُ تُطلب قبل المعاملة: لا باقةَ أساسيّةً مؤكَّدة ← لا شيءَ يُكتب أصلًا
         $plan = self::plan();
 
+        // وكذلك السياسة: متجرٌ على السابقة يناقض الباقات المعلنة — انظر ready()
+        if (! self::ready()) {
+            throw new SelfSignupPolicyNotReady;
+        }
+
         return DB::transaction(function () use ($data, $plan) {
             $business = Business::create([
                 'name' => trim($data['shop']),
@@ -111,6 +134,11 @@ class Signup
                 'registration_source' => Business::SOURCE_SELF_SIGNUP,
             ] + self::subscription($plan));
 
+            // والختمُ يُقرأ بعد الكتابة: إطلاقٌ أُطفئ بين السؤال والكتابة لا يترك متجرًا على السابقة
+            if ($business->pricing_policy !== PricingPolicy::ADDONS) {
+                throw new SelfSignupPolicyNotReady;
+            }
+
             $owner = MerchantAccount::provision(
                 $business,
                 $data['email'],
@@ -121,8 +149,6 @@ class Signup
             // تصنيفاتُ البداية بحسب النوع — لئلا يفتح لوحتَه على صفحةٍ بيضاء
             BusinessTypes::provision($business);
 
-            // والتجربةُ بلا نقطة البيع، مطفأً كان مفتاحُ الإطلاق أو مفتوحًا — انظر TrialOffer
-            TrialOffer::stamp($business);
 
             /*
              * وحجمُ الفريق إعدادٌ لا عمود.

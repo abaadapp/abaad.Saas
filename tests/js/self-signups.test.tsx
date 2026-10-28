@@ -124,7 +124,16 @@ describe('the signup wizard on the self-signup contract', () => {
     it('tells the trial on the last step from the server — and asks for no plan', async () => {
         await toLastStep();
 
-        expect(document.querySelector('[data-trial-note]')!.textContent).toBe('تجربة مجانية لمدة 14 يومًا على الباقة الأساسية');
+        // اسمُ الباقة ومدّتُها في سطرها — من الخادم لا من نصٍّ في الواجهة
+        const note = document.querySelector('[data-trial-note]')!.textContent;
+        expect(note).toBe('تجربة مجانية لمدة 14 يومًا على الباقة الأساسية');
+        expect(note).toContain('الباقة الأساسية');
+        expect(note).toContain('14 يومًا');
+        // وما لا تشمله التجربة في سطرٍ وحده: نقطةُ البيع، والإضافات
+        const without = document.querySelector('[data-trial-without-pos]')!.textContent!;
+        expect(without).toContain('نقطة البيع POS');
+        expect(without).toContain('الإضافات');
+        expect(without).toContain('فريق أبعاد');
         // لا خيارَ باقة: لا زرَّ اختيار ولا قائمة
         expect(screen.queryByRole('radio')).not.toBeInTheDocument();
         expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
@@ -135,6 +144,18 @@ describe('the signup wizard on the self-signup contract', () => {
         await toLastStep();
 
         expect(document.querySelector('[data-trial-note]')).toBeNull();
+        expect(document.querySelector('[data-trial-without-pos]')).toBeNull();
+    });
+
+    it('says the door is closed from the first step when the new policy would not be stamped — and promises no trial', () => {
+        Object.assign(pageProps, { closed: true });
+        render(<Register />);
+
+        expect(screen.getByRole('alert')).toHaveTextContent('التسجيل غير متاح الآن');
+        // لا يُنقل إلى آخر خطوة قبل أن يكتب شيئًا
+        expect(screen.getByLabelText(/الاسم/)).toBeInTheDocument();
+        expect(document.querySelector('[data-trial-note]')).toBeNull();
+        Object.assign(pageProps, { closed: undefined });
     });
 
     it('shows the closed-door refusal as the reason — not as a field error', () => {

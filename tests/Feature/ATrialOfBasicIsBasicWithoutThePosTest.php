@@ -7,7 +7,7 @@ use App\Models\Business;
 use App\Models\BusinessAddon;
 use App\Models\Invoice;
 use App\Models\JobTitle;
-use App\Models\Setting;
+use App\Models\SubscriptionAddon;
 use App\Models\User;
 use App\Support\Addons\AddonOrders;
 use App\Support\Addons\Catalog;
@@ -16,8 +16,8 @@ use App\Support\Addons\PricingPolicy;
 use App\Support\Billing;
 use App\Support\MerchantAccount;
 use App\Support\PlanFeatures;
+use App\Support\SelfSignupPolicyNotReady;
 use App\Support\Signup;
-use App\Support\TrialOffer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Route;
@@ -25,19 +25,21 @@ use Tests\Support\SubscriptionAddons;
 use Tests\TestCase;
 
 /**
- * تجربةُ الأساسيّة هي الأساسيّة — بلا نقطة البيع ولا إضافة، مطفأً كان الإطلاقُ أو مفتوحًا.
+ * تجربةُ الأساسيّة هي الأساسيّة المعلنة — بلا نقطة البيع ولا إضافة، ولا تُفتح على غيرها.
  *
  * ═══ ما يُحرس ═══
  *
- *   1. التسجيلُ الذاتيّ على الأساسيّة أربعةَ عشر يومًا، ومختومٌ «بلا نقطة البيع».
- *   2. والإطلاقُ مطفأ (السياسة السابقة): لا نقطةَ بيعٍ مجّانيّة — كان يفتحها لكلّ باقة.
- *   3. والإطلاقُ مفتوح (`addons_v1`): الأساسيّةُ بلا إضافة، كما كانت.
- *   4. كلُّ بابٍ اسمُه `pos.*` يُردّ بطلبٍ مباشر — لا فتحُ الصندوق وحده.
- *   5. الموقعُ والتسويقُ والولاءُ وواتساب مغلقةٌ في الخادم.
- *   6. اللوحةُ تقول الباقةَ و«تجربة مجانية» ويومَ انتهائها.
- *   7. التجربةُ لا تطلب إضافةً ولا تجدّدها — للعرض والاستفسار.
- *   8. تجربةٌ قائمةٌ قبل الختم لا يُغلق عليها شيء، والسدادُ يُنهي الإغلاق، ومنحةُ أبعاد تفتح.
- *   9. اسمُ دخولٍ على نطاق أبعاد لا يجعل التاجرَ مديرَ منصّة.
+ *   1. التسجيلُ الذاتيّ على الأساسيّة أربعةَ عشر يومًا، مختومًا على `addons_v1`.
+ *   2. والإطلاقُ مطفأٌ أو شرطُه ناقص: يُردّ التسجيلُ برسالةٍ صريحة ولا يُكتب شيء —
+ *      كان يُختم على السابقة فتصير نقطةُ البيع مشمولةً مجّانًا بأوّل سداد.
+ *   3. وإطلاقٌ أُطفئ بين السؤال والكتابة لا يترك متجرًا على السابقة.
+ *   4. كلُّ بابٍ اسمُه `pos.*` يُردّ بطلبٍ مباشر، وكلُّ مسارٍ تحت `/pos` اسمُه منها ومحروس.
+ *   5. والحارسُ يُغلق إن لم يكن خلف الحساب متجر.
+ *   6. الموقعُ والتسويقُ والولاءُ وواتساب مغلقةٌ في الخادم.
+ *   7. اللوحةُ تقول الباقةَ و«تجربة مجانية» ويومَ انتهائها.
+ *   8. التجربةُ لا تطلب إضافةً ولا تجدّدها — للعرض والاستفسار.
+ *   9. السدادُ لا يفتح نقطةَ البيع في الأساسيّة؛ منحةُ أبعاد تفتحها؛ وتسجيلٌ قديمٌ على السابقة بحقوقه.
+ *   10. اسمُ دخولٍ على نطاق أبعاد لا يجعل التاجرَ مديرَ منصّة.
  */
 class ATrialOfBasicIsBasicWithoutThePosTest extends TestCase
 {
@@ -89,36 +91,71 @@ class ATrialOfBasicIsBasicWithoutThePosTest extends TestCase
         return $open;
     }
 
-    /* ═══════════════ ١–٢ · الإطلاقُ مطفأ ═══════════════ */
+    /* ═══════════════ ٢–٣ · لا تسجيلَ على السابقة ═══════════════ */
 
-    public function test_a_self_signup_with_the_launch_shut_gets_basic_for_fourteen_days_and_no_pos(): void
+    public function test_a_self_signup_is_refused_plainly_while_the_launch_is_shut_and_nothing_is_written(): void
     {
         $this->assertFalse(PricingPolicy::enabled());
-        $business = $this->signUp();
+        $this->assertFalse(Signup::ready());
 
-        $this->assertSame(PricingPolicy::LEGACY, $business->pricing_policy, 'السياسةُ كما يختمها الإطلاقُ المطفأ');
-        $this->assertSame($this->plans['basic']->id, (int) $business->plan_id);
-        $this->assertSame(now()->addDays(Signup::TRIAL_DAYS)->toDateString(), $business->ends_at->toDateString());
-        $this->assertSame('1', Setting::where('business_id', $business->id)->where('key', TrialOffer::WITHOUT_POS)->value('value'));
+        // والصفحةُ تقوله قبل أن يُملأ شيء
+        $this->get(route('register'))->assertInertia(fn ($page) => $page->where('closed', true));
 
-        // كانت السابقةُ تفتح نقطةَ البيع لكلّ باقة — والتجربةُ الآن لا
-        $this->assertTrue(TrialOffer::closesPos($business));
-        $this->assertFalse(PlanFeatures::allows($business, Catalog::POS));
-        foreach (['website', 'marketing_tools', 'loyalty', 'whatsapp'] as $key) {
-            $this->assertFalse(PlanFeatures::allows($business, $key), $key);
+        $this->post(route('register.store'), [
+            'name' => 'زائر يجرّب', 'phone' => '+96891234567', 'type' => 'محل ورود', 'shop' => 'Trial Flowers',
+            'email' => 'visitor@example.com', 'password' => 'abaad2026',
+        ])->assertSessionHasErrors(['signup' => 'التسجيل غير متاح الآن. تواصل مع فريق أبعاد وسنفتح حسابك.']);
+
+        $this->assertSame(0, Business::count(), 'متجرٌ على السياسة السابقة يناقض الباقات المعلنة');
+        $this->assertSame(0, User::where('email', 'visitor@example.com')->count());
+        $this->assertGuest();
+    }
+
+    public function test_an_open_launch_with_a_missing_condition_also_refuses_rather_than_falling_back(): void
+    {
+        $this->launch(9.900, 99.000);
+        $this->assertTrue(Signup::ready());
+
+        // شرطٌ نقص بعد الفتح — نقطةُ البيع لم تعد تُعرض للبيع
+        SubscriptionAddon::where('code', Catalog::POS)->update(['for_sale' => false]);
+        $this->assertTrue(PricingPolicy::enabled());
+        $this->assertFalse(Signup::ready());
+
+        $this->expectException(SelfSignupPolicyNotReady::class);
+        try {
+            Signup::register(['name' => 'زائر', 'phone' => '+96891234567', 'type' => 'محل ورود', 'shop' => 'Half Open', 'email' => 'half@example.com', 'password' => 'abaad2026']);
+        } finally {
+            $this->assertSame(0, Business::count());
         }
+    }
 
-        $this->assertSame([], $this->knockOnEveryPosDoor(), 'بابٌ من نقطة البيع بقي مفتوحًا لتجربة الأساسيّة');
+    public function test_a_launch_switched_off_between_the_question_and_the_write_leaves_no_shop(): void
+    {
+        $this->launch(9.900, 99.000);
+        // كأنّ المفتاحَ أُطفئ بعد السؤال: يُختم المتجرُ على السابقة لحظةَ إنشائه
+        Business::creating(fn (Business $b) => $b->pricing_policy = PricingPolicy::LEGACY);
+
+        try {
+            Signup::register(['name' => 'زائر', 'phone' => '+96891234567', 'type' => 'محل ورود', 'shop' => 'Race', 'email' => 'race@example.com', 'password' => 'abaad2026']);
+            $this->fail('خُتم متجرٌ على السابقة بالتسجيل الذاتيّ');
+        } catch (SelfSignupPolicyNotReady) {
+            // المعاملةُ كلُّها أُلغيت: لا متجر ولا مالك ولا تصنيفات
+            $this->assertSame(0, Business::count());
+            $this->assertSame(0, User::where('email', 'race@example.com')->count());
+        }
     }
 
     /* ═══════════════ ٣ · الإطلاقُ مفتوح ═══════════════ */
 
-    public function test_a_self_signup_with_the_launch_open_is_on_addons_and_still_has_only_basic(): void
+    public function test_a_self_signup_with_the_launch_open_is_on_addons_for_fourteen_days_and_has_only_basic(): void
     {
         $this->launch(9.900, 99.000);
+        $this->get(route('register'))->assertInertia(fn ($page) => $page->where('closed', false));
         $business = $this->signUp();
 
         $this->assertSame(PricingPolicy::ADDONS, $business->pricing_policy);
+        $this->assertSame($this->plans['basic']->id, (int) $business->plan_id);
+        $this->assertSame(now()->addDays(Signup::TRIAL_DAYS)->toDateString(), $business->ends_at->toDateString());
         $this->assertFalse(PlanFeatures::allows($business, Catalog::POS));
         foreach (Catalog::FEATURE_KEYS as $key) {
             $this->assertFalse(PlanFeatures::allows($business, $key), $key);
@@ -131,6 +168,7 @@ class ATrialOfBasicIsBasicWithoutThePosTest extends TestCase
 
     public function test_the_trial_cannot_reach_the_till_or_any_addon_by_a_direct_request(): void
     {
+        $this->launch(9.900, 99.000);
         $this->signUp();
 
         $this->getJson(route('pos.index'))->assertForbidden();
@@ -150,6 +188,7 @@ class ATrialOfBasicIsBasicWithoutThePosTest extends TestCase
 
     public function test_the_dashboard_names_the_plan_the_trial_and_its_last_day(): void
     {
+        $this->launch(9.900, 99.000);
         $business = $this->signUp();
 
         $this->get(route('admin.dashboard'))->assertInertia(fn ($page) => $page
@@ -180,24 +219,14 @@ class ATrialOfBasicIsBasicWithoutThePosTest extends TestCase
         $this->put(route('admin.subscription.addons.renews', $grant->id), ['renews' => true])->assertForbidden();
     }
 
-    /* ═══════════════ ٨ · لا يُمسّ ما وُعد به قبل الختم ═══════════════ */
+    /* ═══════════════ ٩ · السدادُ لا يفتح، والمنحةُ تفتح، والقديمُ بحقوقه ═══════════════ */
 
-    public function test_a_trial_that_began_before_the_stamp_keeps_what_it_was_promised(): void
+    public function test_paying_does_not_put_the_till_in_basic_and_a_grant_from_abaad_opens_it(): void
     {
-        [$business] = $this->shop('basic', 'early@shop.om');
-        $business->forceFill(['registration_source' => Business::SOURCE_SELF_SIGNUP])->save();
-
-        $this->assertSame(PricingPolicy::LEGACY, $business->fresh()->pricing_policy);
-        $this->assertFalse(TrialOffer::closesPos($business->fresh()));
-        $this->assertTrue(PlanFeatures::allows($business->fresh(), Catalog::POS), 'تجربةٌ قائمة لا يُغلق عليها شيءٌ في منتصفها');
-    }
-
-    public function test_paying_ends_the_trial_and_a_grant_from_abaad_opens_the_till_inside_it(): void
-    {
+        $this->launch(9.900, 99.000);
         $business = $this->signUp();
-        $this->assertFalse(PlanFeatures::allows($business, Catalog::POS));
 
-        // منحةٌ ساريةٌ من فريق أبعاد تفتحها في التجربة
+        // منحةٌ ساريةٌ من فريق أبعاد تفتحها في التجربة، وانقضاؤها يغلقها
         $grant = AddonOrders::grant($business, $this->addon('pos'), 1, now()->addDays(7)->toDateString(), 'تجربة الصندوق بموافقة أبعاد', $this->platform);
         Entitlements::flush();
         $this->assertTrue(PlanFeatures::allows($business->fresh(), Catalog::POS));
@@ -205,13 +234,55 @@ class ATrialOfBasicIsBasicWithoutThePosTest extends TestCase
         Entitlements::flush();
         $this->assertFalse(PlanFeatures::allows($business->fresh(), Catalog::POS));
 
-        // والسدادُ يُنهي التجربة: تقرّر السياسةُ والباقةُ كما لغيره
+        // وسدادُ الأساسيّة لا يجعل نقطةَ البيع مشمولةً فيها — كانت السابقةُ تفعل
         Invoice::create([
             'number' => 'INV-T-0001', 'business_id' => $business->id, 'amount' => 9.9,
             'issued_at' => now(), 'status' => Billing::PAID, 'kind' => Billing::KIND_SUBSCRIPTION,
         ]);
-        $this->assertFalse(TrialOffer::closesPos($business->fresh()));
-        $this->assertTrue(PlanFeatures::allows($business->fresh(), Catalog::POS), 'السياسةُ السابقة بعد السداد كما كانت');
+        $this->assertTrue(Billing::hasPaidSubscription($business->fresh()));
+        $this->assertFalse(PlanFeatures::allows($business->fresh(), Catalog::POS), 'السدادُ فتح نقطةَ البيع في الأساسيّة');
+    }
+
+    public function test_an_old_legacy_self_signup_keeps_what_it_was_promised(): void
+    {
+        // كالمتجر #6 على الإنتاج: سجّل قبل الإطلاق — لا يُمسّ
+        [$business] = $this->shop('basic', 'early@shop.om');
+        $business->forceFill(['registration_source' => Business::SOURCE_SELF_SIGNUP])->save();
+        $this->launch(9.900, 99.000);
+
+        $this->assertSame(PricingPolicy::LEGACY, $business->fresh()->pricing_policy);
+        $this->assertTrue(PlanFeatures::allows($business->fresh(), Catalog::POS), 'تسجيلٌ قديمٌ على السابقة فقد ما وُعد به');
+    }
+
+    /* ═══════════════ ٤–٥ · كلُّ مسارات نقطة البيع، والحارسُ يُغلق بلا متجر ═══════════════ */
+
+    public function test_every_route_under_pos_is_named_pos_and_passes_the_plan_guard(): void
+    {
+        $loose = [];
+        foreach (Route::getRoutes() as $route) {
+            if (! preg_match('#^pos(/|$)#', $route->uri())) {
+                continue;
+            }
+            $name = (string) $route->getName();
+            if (! str_starts_with($name, 'pos.') || ! in_array('plan', $route->gatherMiddleware(), true)) {
+                $loose[] = $route->uri().' ('.($name ?: 'بلا اسم').')';
+            }
+        }
+
+        $this->assertSame([], $loose, 'مسارٌ تحت /pos لا يمرّ بحارس الاستحقاق');
+    }
+
+    public function test_the_pos_guard_closes_when_no_shop_stands_behind_the_account(): void
+    {
+        $this->assertFalse(PlanFeatures::allowsPosRecords(null));
+
+        // حسابٌ يحمل رقمَ متجرٍ لا يُقرأ — لا «بلا باقةٍ مفتوح» على صندوق
+        [, $owner] = $this->shop('basic', 'ghost@shop.om');
+        $owner->setRelation('business', null);
+        $this->actingAs($owner);
+
+        $this->getJson(route('pos.receipts'))->assertForbidden();
+        $this->getJson(route('pos.index'))->assertForbidden();
     }
 
     /* ═══════════════ ٩ · نطاقُ البريد ليس صلاحيّة ═══════════════ */

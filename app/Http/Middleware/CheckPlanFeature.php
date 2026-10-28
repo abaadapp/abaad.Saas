@@ -187,11 +187,18 @@ class CheckPlanFeature
         $route = $request->route();
         $name = (string) $route?->getName();
         $key = self::featureFor($name);
+        $business = $request->user()?->business;
 
-        if ($key !== null && ! self::isOpenExport($name, $route?->parameter('report'))) {
-            PlanFeatures::enforce($request->user()?->business, $key);
-        } elseif ($key === null && str_starts_with($name, self::POS_PREFIX)) {
-            PlanFeatures::enforcePosRecords($request->user()?->business);
+        if (str_starts_with($name, self::POS_PREFIX)) {
+            /*
+             * كلُّ بابٍ من نقطة البيع بحسب الاستحقاق — ولا يُفتح بلا متجرٍ يُسأل عنه.
+             * «بلا باقةٍ مفتوح» (`PlanFeatures::allowedBy`) يحمي متجرًا قديمًا لم تُملأ
+             * قدراتُه، ولا يسري على حسابٍ لا متجرَ خلفه يبيع من صندوقه.
+             */
+            abort_if($business === null, 403, __('حسابك غير مرتبط بأي متجر.'));
+            $key === null ? PlanFeatures::enforcePosRecords($business) : PlanFeatures::enforce($business, $key);
+        } elseif ($key !== null && ! self::isOpenExport($name, $route?->parameter('report'))) {
+            PlanFeatures::enforce($business, $key);
         }
 
         return $next($request);

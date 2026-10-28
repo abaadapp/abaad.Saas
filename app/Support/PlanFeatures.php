@@ -172,9 +172,8 @@ class PlanFeatures
             return Entitlements::has($business, $key);
         }
 
-        // والتجربةُ الذاتيّة بلا نقطة البيع — إلّا منحةً ساريةً من فريق أبعاد (TrialOffer)
         if ($key === Catalog::POS) {
-            return ! TrialOffer::closesPos($business) || Entitlements::active($business, $key);
+            return true;
         }
 
         return self::allowedBy($business?->plan, $key)
@@ -224,7 +223,12 @@ class PlanFeatures
      */
     public static function allowsPosRecords(?Business $business): bool
     {
-        if ($business === null || self::allows($business, Catalog::POS)) {
+        // ولا يُفتح صندوقٌ بلا متجرٍ يُسأل عنه — «بلا باقة مفتوح» لا يسري على نقطة البيع
+        if ($business === null) {
+            return false;
+        }
+
+        if (self::allows($business, Catalog::POS)) {
             return true;
         }
 

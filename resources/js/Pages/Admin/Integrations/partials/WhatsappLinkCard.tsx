@@ -33,6 +33,7 @@ export interface WhatsappLink {
  * أيستقبل الرقمُ رسائلَ زبائنه فعلًا؟ — انظر App\Support\WhatsAppLinkHealth.
  *
  * «متّصل» وحدها لا تقول ذلك: الرقمُ قد يُرسل وإشعاراتُه تذهب إلى تطبيقٍ آخر.
+ * و«وصلت حالةُ تسليم» لا تقول أنّ رسالةَ زبونٍ وصلت — لكلٍّ ختمُه.
  */
 export interface LinkHealth {
     key:
@@ -41,13 +42,25 @@ export interface LinkHealth {
         | 'incomplete_authorization'
         | 'number_connected'
         | 'webhook_incomplete'
+        | 'routing_elsewhere'
+        | 'app_subscribed'
         | 'ready'
-        | 'receiving'
+        | 'status_received'
+        | 'inbound_received'
+        | 'inbound_refused'
         | 'needs_repair';
     label: string;
     hint: string;
     tone: 'success' | 'info' | 'neutral' | 'danger';
     checked_at: string | null;
+    /** آخرُ حالةِ تسليمٍ وصلت لما أرسله المتجر */
+    last_status_at?: string | null;
+    /** آخرُ رسالةٍ كتبها زبونٌ ووصلت الرقم — وصولٌ لا حفظ */
+    last_inbound_at?: string | null;
+    /** آخرُ رسالةِ زبونٍ حُفظت في المحادثات — دليلُ الاستقبال */
+    last_inbound_saved_at?: string | null;
+    /** لماذا لم تُحفظ آخرُ رسالةٍ وصلت — بلا نصّها */
+    inbound_problem?: string | null;
 }
 
 const HEALTH_TONE: Record<LinkHealth['tone'], string> = {
@@ -177,6 +190,26 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
                     <p className="font-semibold">{t(health.label)}</p>
                     <p className="mt-0.5">{t(health.hint)}</p>
                     {health.checked_at && <p className="mt-0.5 opacity-80" dir="auto">{t('آخر فحص')}: <span dir="ltr">{health.checked_at}</span></p>}
+                    <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 opacity-80" data-testid="link-health-facts">
+                        <div>
+                            <dt className="inline">{t('آخر حالة تسليم')}: </dt>
+                            <dd className="inline" dir="ltr">{health.last_status_at ?? '—'}</dd>
+                        </div>
+                        <div>
+                            <dt className="inline">{t('آخر رسالة عميل وصلت')}: </dt>
+                            <dd className="inline" dir="ltr">{health.last_inbound_at ?? '—'}</dd>
+                        </div>
+                        <div>
+                            <dt className="inline">{t('آخر رسالة حُفظت في المحادثات')}: </dt>
+                            <dd className="inline" dir="ltr" data-testid="link-health-saved">{health.last_inbound_saved_at ?? '—'}</dd>
+                        </div>
+                        {health.inbound_problem && (
+                            <div className="basis-full" data-testid="link-health-refusal">
+                                <dt className="inline">{t('لم تُحفظ آخر رسالة')}: </dt>
+                                <dd className="inline">{t(health.inbound_problem)}</dd>
+                            </div>
+                        )}
+                    </dl>
                 </div>
             )}
 

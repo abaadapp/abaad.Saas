@@ -14,6 +14,8 @@ use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppStatus;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 /**
  * إشعارات ميتا — بابٌ مفتوح على الإنترنت، فلا يُوثق بحرفٍ ممّا يصله.
@@ -91,8 +93,22 @@ class WebhookController extends Controller
 
         $connection = WhatsAppConnection::where('phone_number_id', $phoneNumberId)->first();
 
-        // رقمٌ لا نعرفه: إشعارٌ ليس لنا، أو وصلةٌ حُذفت — لا يُكتب منه شيء
+        /*
+         * رقمٌ لا نعرفه: إشعارٌ ليس لنا، أو وصلةٌ حُذفت — لا يُكتب منه شيء.
+         *
+         * لكنّه يُقيَّد: موقَّعٌ بسرّ تطبيقنا، فحسابُه مشتركٌ في تطبيقنا ورقمُه
+         * ليس على وصلةٍ عندنا — وهذا بعينه ما يُسأل عنه حين يقول متجرٌ «لا
+         * يصلني شيء». ومرّةً في الساعة لكلّ رقم، بالأعداد لا بالنصوص.
+         */
         if (! $connection) {
+            if (Cache::add('whatsapp.webhook_unmatched.'.$phoneNumberId, 1, now()->addHour())) {
+                Log::warning('whatsapp.webhook_unmatched', [
+                    'phone_number_id' => mb_substr((string) $phoneNumberId, 0, 40),
+                    'messages' => count((array) ($value['messages'] ?? [])),
+                    'statuses' => count((array) ($value['statuses'] ?? [])),
+                ]);
+            }
+
             return;
         }
 
@@ -106,10 +122,26 @@ class WebhookController extends Controller
          * أبدًا ولا يعلم أنّ الاشتراك سقط. وختمُ الزمن هذا هو الجوابُ
          * الوحيد على سؤال «متى آخرُ ما وصلنا منه؟».
          *
-         * و`forceFill`+`save` على عمودٍ واحد: لا مُراقِبَ ولا حدثَ يُطلق،
+         * و`forceFill`+`save` على أعمدة الختم وحدها: لا مُراقِبَ ولا حدثَ يُطلق،
          * وهذا بابٌ يُنادى آلافَ المرّات في اليوم.
+         *
+         * ═══ وحالةُ التسليم ليست رسالةَ زبون ═══
+         *
+         * أكثرُ ما يصل «وصلت» و«قُرئت» لما أرسله المتجر — وتلك لا تقول إنّ
+         * ما يكتبه زبونٌ من نفسه يصل. فلكلٍّ ختمُه: `last_status_at` لحالات
+         * التسليم، و`last_inbound_at` لرسالةٍ كتبها زبونٌ **وصلت** هذه الوصلة.
+         *
+         * والوصولُ ليس الحفظ: ما حُفظ في الصندوق يختمه `WhatsAppInbox::receiveOwn`
+         * وحده (`last_inbound_saved_at`)، وما رُدّ يكتب سببه — فلا يُقال «استُقبلت»
+         * عن رسالةٍ وصلت ورُدّت (`WhatsAppLinkHealth`).
          */
-        $connection->forceFill(['last_webhook_at' => now()])->save();
+        $customerWrote = collect((array) ($value['messages'] ?? []))->contains(fn ($m) => filled($m['from'] ?? null));
+
+        $connection->forceFill(array_filter([
+            'last_webhook_at' => now(),
+            'last_status_at' => ! empty($value['statuses']) ? now() : null,
+            'last_inbound_at' => $customerWrote ? now() : null,
+        ]))->save();
 
         foreach ((array) ($value['statuses'] ?? []) as $status) {
             $this->applyStatus($connection, (array) $status);

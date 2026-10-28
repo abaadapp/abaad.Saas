@@ -90,6 +90,28 @@ final class WhatsAppLinkCheck
     /** لم نستطع القراءة */
     public const UNKNOWN = 'unknown';
 
+    /* ═══ إعدادُ الإشعارات في تطبيق أبعاد نفسه — واحدٌ لكلّ المتاجر ═══ */
+
+    /** العنوانُ عنوانُنا، و`messages` مُشعَل */
+    public const APP_LISTENING = 'listening';
+
+    /** العنوانُ في التطبيق ليس `/webhooks/whatsapp` عندنا */
+    public const APP_CALLBACK_ELSEWHERE = 'callback_elsewhere';
+
+    /** حقلُ `messages` غيرُ مُشعَلٍ في التطبيق — لا يصل من متجرٍ حرف */
+    public const APP_MESSAGES_OFF = 'messages_off';
+
+    /* ═══ توجيهُ المحادثات عند ميتا (Conversation Routing) لرقمٍ بعينه ═══ */
+
+    /** لا توجيه على الرقم: كلُّ مستجيبٍ متّصلٍ يصله كلُّ وارد */
+    public const ROUTING_OFF = 'routing_off';
+
+    /** أبعاد المستجيبُ الأساسيّ لنقطة «الخدمة» (`customer_service`) */
+    public const ROUTING_OURS = 'service_primary';
+
+    /** توجيهٌ مُفعَّلٌ وأبعاد ليست أساسيّةً للخدمة — الواردُ يذهب إلى غيرها */
+    public const ROUTING_ELSEWHERE = 'not_primary';
+
     public static function appId(): string
     {
         return (string) config('whatsapp.app_id');
@@ -325,6 +347,97 @@ final class WhatsAppLinkCheck
     }
 
     /**
+     * فحصُ وصلةٍ قائمة عند ميتا — قراءةٌ لا غير، ولا يُكتب حرفٌ في قاعدة.
+     *
+     * ما يُسأل: أيُّ تطبيقٍ أصدر الرمز، وصلاحياتُه وحسابُه، وأنّ الرقمَ من
+     * أرقام الحساب، وحالُ `subscribed_apps` والعنوانِ البديل. وهو ما يقرؤه
+     * أمرُ `whatsapp:own-numbers` على كلّ الوصلات بلا أن يغيّر شيئًا.
+     *
+     * @return array{skipped:bool, routing:?string, app_id:?string, ours:?bool, problem:?string, webhook:?string, verified:bool}
+     */
+    public static function inspect(WhatsAppConnection $connection): array
+    {
+        $token = (string) $connection->access_token;
+
+        if ($token === '' || blank($connection->phone_number_id)) {
+            return ['skipped' => true, 'routing' => null, 'app_id' => null, 'ours' => null, 'problem' => null, 'webhook' => null, 'verified' => false];
+        }
+
+        $check = self::token($token, $connection->waba_id);
+        $problem = $check['ok'] ? null : $check['problem'];
+        $webhook = null;
+        $routing = null;
+
+        if ($check['ok']) {
+            $number = self::number((string) $check['waba'], $token, (string) $connection->phone_number_id, $connection->id);
+            $problem = $number['ok'] ? null : $number['problem'];
+            $webhook = self::webhook((string) $check['waba'], $token)['state'];
+            $routing = $number['ok'] ? self::routing((string) $connection->phone_number_id, $token)['state'] : null;
+        }
+
+        return [
+            'skipped' => false,
+            'routing' => $routing,
+            'app_id' => $check['app_id'],
+            // و`#100` لا يُسمّي التطبيق — لكنّه يقول إنّه ليس تطبيقنا
+            'ours' => $problem === self::WRONG_APP ? false : ($check['app_id'] === null ? null : $check['app_id'] === self::appId()),
+            'problem' => $problem,
+            'webhook' => $webhook,
+            'verified' => $check['ok'] && $problem === null,
+        ];
+    }
+
+    /**
+     * أيستمع تطبيقُ أبعاد نفسُه؟ — عنوانُه وحقلُ `messages`. قراءةٌ لا غير.
+     *
+     * @return array{state:string, callback_ours:?bool, fields:list<string>, meta:array{code:?string, message:?string}}
+     */
+    public static function appWebhook(): array
+    {
+        $read = WhatsAppEmbeddedSignup::appSubscription();
+        $meta = ['code' => $read['code'], 'message' => $read['message']];
+
+        if (! $read['ok']) {
+            return ['state' => self::UNKNOWN, 'callback_ours' => null, 'fields' => [], 'meta' => $meta];
+        }
+
+        $ours = filled($read['callback_url']) && self::isOurCallback($read['callback_url']);
+
+        return [
+            'state' => match (true) {
+                ! $ours => self::APP_CALLBACK_ELSEWHERE,
+                ! $read['active'] || ! in_array('messages', $read['fields'], true) => self::APP_MESSAGES_OFF,
+                default => self::APP_LISTENING,
+            },
+            'callback_ours' => $ours,
+            'fields' => $read['fields'],
+            'meta' => $meta,
+        ];
+    }
+
+    /**
+     * أيمرّ واردُ هذا الرقم بأبعاد في توجيه المحادثات عند ميتا؟ — قراءةٌ لا غير.
+     *
+     * الاشتراكُ في الحساب لا يكفي حين يكون للرقم توجيه: ميتا تُسلّم رسالةَ
+     * الزبون لمستجيب «الخدمة» الأساسيّ وحده. والإصلاحُ عند صاحب الحساب في
+     * Meta Business Suite — لا واجهةَ برمجيّةَ لضبطه، ولا نضبطه نحن.
+     *
+     * @return array{state:string, roles:list<string>, meta:array{code:?string, message:?string}}
+     */
+    public static function routing(string $phoneNumberId, string $token): array
+    {
+        $read = WhatsAppEmbeddedSignup::routingRoles($phoneNumberId, $token);
+        $meta = ['code' => $read['code'], 'message' => $read['message']];
+
+        return ['roles' => $read['roles'], 'meta' => $meta, 'state' => match (true) {
+            ! $read['ok'] => self::UNKNOWN,
+            $read['enabled'] === false => self::ROUTING_OFF,
+            in_array('customer_service', $read['roles'], true) => self::ROUTING_OURS,
+            default => self::ROUTING_ELSEWHERE,
+        }];
+    }
+
+    /**
      * فحصُ وصلةٍ قائمة — قراءةٌ عند ميتا، وكتابةٌ في أعمدة الفحص وحدها.
      *
      * لا يُمسّ الرمزُ ولا الرقمُ ولا `status`: وصلةٌ تُرسل اليوم برمزٍ من
@@ -335,36 +448,39 @@ final class WhatsAppLinkCheck
      */
     public static function recheck(WhatsAppConnection $connection): array
     {
-        $token = (string) $connection->access_token;
+        return self::record($connection, self::inspect($connection));
+    }
 
-        if ($token === '' || blank($connection->phone_number_id)) {
+    /**
+     * ما قرأه `inspect()` يُكتب في أعمدة الفحص وحدها.
+     *
+     * @param  array{skipped:bool, routing:?string, app_id:?string, ours:?bool, problem:?string, webhook:?string, verified:bool}  $found
+     * @return array{problem:?string, webhook:?string}
+     */
+    public static function record(WhatsAppConnection $connection, array $found): array
+    {
+        if ($found['skipped']) {
             return ['problem' => null, 'webhook' => null];
         }
 
-        $check = self::token($token, $connection->waba_id);
-        $problem = $check['ok'] ? null : $check['problem'];
-        $webhook = null;
+        $problem = $found['problem'];
+        $webhook = $found['webhook'];
 
         // علّةٌ لا يُحكم بها على رمزٍ لم نصل ميتا لنسأل عنه
         if ($problem === self::UNVERIFIABLE) {
             return ['problem' => $problem, 'webhook' => $connection->webhook_state];
         }
 
-        if ($check['ok']) {
-            $number = self::number((string) $check['waba'], $token, (string) $connection->phone_number_id, $connection->id);
-            $problem = $number['ok'] ? null : $number['problem'];
-            $webhook = self::webhook((string) $check['waba'], $token)['state'];
-        }
-
         // وقراءةُ اشتراكٍ فشلت لا تمحو ما قُرئ قبلها — كالرمز الذي لم نصل ميتا لنسأل عنه
         $read = $webhook !== null && $webhook !== self::UNKNOWN;
 
         $connection->forceFill([
-            'token_app_id' => $check['app_id'],
-            'token_verified_at' => $check['ok'] && $problem === null ? now() : null,
+            'token_app_id' => $found['app_id'],
+            'token_verified_at' => $found['verified'] ? now() : null,
             'link_problem' => $problem,
             'webhook_state' => $webhook === self::UNKNOWN ? $connection->webhook_state : $webhook,
             'webhook_checked_at' => $read ? now() : $connection->webhook_checked_at,
+            'routing_state' => in_array($found['routing'], [null, self::UNKNOWN], true) ? $connection->routing_state : $found['routing'],
         ])->save();
 
         self::log('link_rechecked', $connection->business_id, ['code' => $problem ?? $webhook, 'message' => null]);
@@ -377,7 +493,7 @@ final class WhatsAppLinkCheck
      *
      * @return array<string, mixed>
      */
-    public static function stamp(?string $appId, string $webhookState): array
+    public static function stamp(?string $appId, string $webhookState, ?string $routing = null): array
     {
         return [
             'token_app_id' => $appId,
@@ -385,6 +501,8 @@ final class WhatsAppLinkCheck
             'link_problem' => null,
             'webhook_state' => $webhookState,
             'webhook_checked_at' => now(),
+            // وتوجيهٌ لم يُقرأ لا يُحكم به — يُترك فارغًا حتى «فحص الربط»
+            'routing_state' => $routing === self::UNKNOWN ? null : $routing,
         ];
     }
 

@@ -80,6 +80,8 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
         $b = Business::create([
             'name' => $name, 'type' => 'محل ورود', 'status' => 'نشط',
             'whatsapp_enabled' => true, 'whatsapp_own_allowed' => true,
+            // «جاهز» تطلب صندوقَ المحادثات مفتوحًا — فما يصل يُحفظ ويُعرض (`WhatsAppLinkHealth::READY`)
+            'whatsapp_inbox_enabled' => true,
         ]);
         Branch::create(['business_id' => $b->id, 'name' => 'الرئيسي']);
 
@@ -105,7 +107,7 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
         return WhatsAppConnection::where('business_id', ($b ?? $this->shop)->id)->latest('id')->first();
     }
 
-    /** وصلةٌ تستقبل اليوم: من تطبيقنا، مشتركة، وصلها إشعار */
+    /** وصلةٌ تستقبل اليوم: من تطبيقنا، مشتركة، وصلتها حالةُ تسليمٍ ورسالةُ زبون */
     private function receiving(): WhatsAppConnection
     {
         return WhatsAppConnection::create([
@@ -115,6 +117,7 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
             'token_app_id' => self::ABAAD_APP, 'token_verified_at' => now()->subWeek(),
             'webhook_state' => WhatsAppLinkCheck::SUBSCRIBED, 'webhook_checked_at' => now()->subWeek(),
             'last_webhook_at' => now()->subDay(),
+            'last_status_at' => now()->subDay(), 'last_inbound_at' => now()->subDay(), 'last_inbound_saved_at' => now()->subDay(),
         ]);
     }
 
@@ -302,7 +305,7 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
 
         $this->assertSame($before, $old->fresh()->only(['phone_number_id', 'waba_id', 'status', 'webhook_state', 'token_app_id']));
         $this->assertSame('old-working-token-0123456789', $old->fresh()->access_token);
-        $this->assertSame(WhatsAppLinkHealth::RECEIVING, WhatsAppLinkHealth::state($old->fresh()));
+        $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($old->fresh()));
     }
 
     public function test_a_relink_whose_subscription_is_unproven_does_not_replace_a_receiving_connection(): void
@@ -390,7 +393,7 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
 
     /* ═════════════ ٦ · متّصلٌ ≠ مشتركٌ ≠ يستقبل ═════════════ */
 
-    public function test_receiving_is_claimed_only_after_a_signed_webhook_arrives(): void
+    public function test_receiving_is_claimed_only_after_a_signed_customer_message_arrives(): void
     {
         Http::fake($this->abaadAppMeta());
         $this->paste()->assertSessionHasNoErrors();
@@ -405,12 +408,25 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
         ], $body)->assertForbidden();
         $this->assertSame(WhatsAppLinkHealth::READY, WhatsAppLinkHealth::state($this->link()));
 
-        // وإشعارٌ موقَّعٌ بسرّ تطبيق أبعاد هو الدليل
+        // وإشعارٌ موقَّعٌ بسرّ تطبيق أبعاد يقول إنّ تطبيقنا يصله — حالةُ تسليم، لا رسالةُ زبون
         $this->call('POST', '/webhooks/whatsapp', [], [], [], [
             'CONTENT_TYPE' => 'application/json',
             'HTTP_X_HUB_SIGNATURE_256' => 'sha256='.hash_hmac('sha256', $body, 'test-secret-not-a-real-one'),
         ], $body)->assertOk();
-        $this->assertSame(WhatsAppLinkHealth::RECEIVING, WhatsAppLinkHealth::state($this->link()));
+        $this->assertSame(WhatsAppLinkHealth::STATUSES, WhatsAppLinkHealth::state($this->link()));
+
+        // ورسالةٌ كتبها زبونٌ موقَّعةٌ هي الدليل
+        $inbound = json_encode(['object' => 'whatsapp_business_account', 'entry' => [['id' => 'WABA-1', 'changes' => [[
+            'field' => 'messages', 'value' => ['metadata' => ['phone_number_id' => 'PN-1'], 'messages' => [[
+                'id' => 'wamid.FIRST', 'from' => '96891234567', 'type' => 'text', 'timestamp' => (string) now()->timestamp,
+                'text' => ['body' => 'مرحبا'],
+            ]]],
+        ]]]]]);
+        $this->call('POST', '/webhooks/whatsapp', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_HUB_SIGNATURE_256' => 'sha256='.hash_hmac('sha256', $inbound, 'test-secret-not-a-real-one'),
+        ], $inbound)->assertOk();
+        $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($this->link()));
     }
 
     public function test_a_lost_subscription_found_by_the_check_outweighs_older_webhooks(): void
@@ -678,7 +694,7 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
         $this->signup()->assertSessionHasErrors('code');
 
         $this->assertSame($before, $this->untouched($old));
-        $this->assertSame(WhatsAppLinkHealth::RECEIVING, WhatsAppLinkHealth::state($old->fresh()));
+        $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($old->fresh()));
         $this->assertSame(0, $this->posted('subscribed_apps'));
     }
 

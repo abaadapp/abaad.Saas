@@ -28,6 +28,10 @@ class WhatsAppConnection extends Model
         'last_error_at' => 'datetime',
         'token_verified_at' => 'datetime',
         'webhook_checked_at' => 'datetime',
+        'last_status_at' => 'datetime',
+        'last_inbound_at' => 'datetime',
+        'last_inbound_saved_at' => 'datetime',
+        'inbound_problem_at' => 'datetime',
         'coexistence' => 'boolean',
         'metadata' => 'array',
     ];

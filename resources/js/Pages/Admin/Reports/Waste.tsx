@@ -120,6 +120,7 @@ export default function WasteAnalytics() {
                         {period && <PeriodButton period={period} onClick={() => setPicking(true)} />}
                         {/* الملفّ يحمل المرشّحات المعروضة — `withFilters` تُلحق سلسلة الاستعلام */}
                             <ExportMenu
+                                action="report.export"
                                 feature="reports_advanced"
                             xlsx={route('admin.reports.export.xlsx', 'waste')}
                             pdf={route('admin.reports.export.pdf', 'waste')}

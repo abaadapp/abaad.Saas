@@ -14,11 +14,15 @@ use App\Models\CustomerInvoiceAttachment;
 use App\Models\CustomerInvoiceRevision;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
+use App\Models\FinancialCorrection;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
+use App\Models\User;
 use App\Support\Activity;
 use App\Support\CustomerInvoiceEdits;
+use App\Support\FinancialCorrections;
+use App\Support\NeedsApproval;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
@@ -321,6 +325,7 @@ class CustomerInvoiceController extends Controller
              */
             'mayEdit' => CustomerInvoiceEdits::mayOpen(auth()->user(), $invoice),
             'revisions' => $this->revisionsOf($invoice),
+            'corrections' => $this->correctionsOf($invoice),
             'invoice' => $this->row($invoice) + [
                 'revision' => (int) $invoice->revision,
                 'subtotal' => (float) $invoice->subtotal,
@@ -1866,6 +1871,7 @@ class CustomerInvoiceController extends Controller
             'needs_reason' => $plan['needs_reason'],
             'missing' => array_map(fn ($a) => $labels[$a] ?? $a, $plan['missing_actions']),
             'blockers' => $plan['blockers'],
+            'approval' => $plan['approval'],
         ]);
     }
 
@@ -1881,6 +1887,9 @@ class CustomerInvoiceController extends Controller
 
         try {
             $revision = CustomerInvoiceEdits::apply($invoice, $data, $user);
+        } catch (NeedsApproval) {
+            // الاعتمادُ الثنائيّ مُشعل: يُكتب طلبٌ ينتظر غيرَ صاحبه، ولا يتغيّر شيء
+            return $this->requestCorrection($invoice, $data, $user);
         } catch (AuthorizationException $e) {
             abort(403, $e->getMessage());
         } catch (RuntimeException $e) {
@@ -1895,6 +1904,41 @@ class CustomerInvoiceController extends Controller
         ]);
     }
 
+    private function requestCorrection(CustomerInvoice $invoice, array $data, User $user)
+    {
+        try {
+            FinancialCorrections::request($invoice, $data, $user);
+        } catch (AuthorizationException $e) {
+            abort(403, $e->getMessage());
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['edit' => $e->getMessage()]);
+        }
+
+        return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+            'msg' => __('أُرسل تصحيح الفاتورة :n للاعتماد — لا يتغيّر شيء حتى يعتمده موظف آخر.', ['n' => $invoice->number]),
+            'type' => 'info',
+        ]);
+    }
+
+    /**
+     * طلباتُ التصحيح على هذه الورقة — لمقدّمها ولمن يعتمد ولمن يقرأ السجلّ.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function correctionsOf(CustomerInvoice $invoice): array
+    {
+        $user = auth()->user();
+        $readsAll = $user?->may(Permissions::FINANCIAL_CORRECTION_APPROVE) || $user?->may(Permissions::CUSTOMER_INVOICE_HISTORY);
+
+        return FinancialCorrection::where('business_id', $invoice->business_id)
+            ->where('customer_invoice_id', $invoice->id)
+            ->when(! $readsAll, fn ($q) => $q->where('requested_by', $user?->id))
+            ->with(['requester:id,name', 'decider:id,name', 'revision:id,revision'])
+            ->latest('id')->limit(20)->get()
+            ->map(fn (FinancialCorrection $c) => FinancialCorrections::present($c, $user))
+            ->values()->all();
+    }
+
     /**
      * سجلُّ تعديلات الورقة — لمن يقرأ السجلّ وحده.
      *
@@ -1906,12 +1950,19 @@ class CustomerInvoiceController extends Controller
             return null;
         }
 
+        // ومن اعتمد التعديلَ حين انتظر شخصًا ثانيًا — `FinancialCorrections`
+        $approvers = FinancialCorrection::where('business_id', $invoice->business_id)
+            ->where('customer_invoice_id', $invoice->id)->whereNotNull('customer_invoice_revision_id')
+            ->with('decider:id,name')->get()
+            ->mapWithKeys(fn (FinancialCorrection $c) => [$c->customer_invoice_revision_id => $c->decider?->name]);
+
         return $invoice->revisions()->with('author:id,name')->get()->map(fn (CustomerInvoiceRevision $r) => [
             'revision' => $r->revision,
             'kind' => $r->kind,
             'reason' => $r->reason,
             'at' => optional($r->created_at)->format('Y-m-d H:i'),
             'by' => $r->author?->name,
+            'approved_by' => $approvers[$r->id] ?? null,
             'total_before' => (float) $r->total_before,
             'total_after' => (float) $r->total_after,
             'tax_before' => (float) $r->tax_before,

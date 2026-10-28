@@ -309,6 +309,7 @@ export default function CustomerInvoicesSales({
                 subtitle={t('كلُّ بيعة في متجرك من مكانٍ واحد: من باعها، ومن أين، وما سُدّد منها، وأين وصل تجهيزها.')}
                 actions={
                     <ExportMenu
+                        action="order.export"
                         xlsx={route('admin.customerInvoices.sales.xlsx', exportArgs)}
                         pdf={route('admin.customerInvoices.sales.pdf', exportArgs)}
                         csv={route('admin.customerInvoices.sales.csv', exportArgs)}

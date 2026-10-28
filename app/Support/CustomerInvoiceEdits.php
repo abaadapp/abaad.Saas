@@ -8,6 +8,7 @@ use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceItem;
 use App\Models\CustomerInvoiceRevision;
 use App\Models\CustomerPaymentLink;
+use App\Models\FinancialCorrection;
 use App\Models\JournalEntry;
 use App\Models\PointTransaction;
 use App\Models\User;
@@ -265,7 +266,7 @@ final class CustomerInvoiceEdits
      * @param  array<string, mixed>  $input  ما مرّ من `rules()`
      * @return array<string, mixed>
      */
-    public static function plan(CustomerInvoice $invoice, array $input, ?User $user): array
+    public static function plan(CustomerInvoice $invoice, array $input, ?User $user, ?FinancialCorrection $approving = null): array
     {
         $bid = (int) $invoice->business_id;
         $invoice->loadMissing('items', 'orders');
@@ -376,6 +377,16 @@ final class CustomerInvoiceEdits
             }
         }
 
+        /*
+         * وطلبُ تصحيحٍ ينتظر الاعتماد يُبقي الورقةَ كما هي حتى يُبتّ فيه.
+         *
+         * تعديلٌ يقع فوقه يغيّر بصمتها فيُغلق الطلب «تغيّرت الفاتورة» — فيُقال
+         * قبل الحفظ لا بعده. والطلبُ الذي يُعتمد الآن لا يمنع نفسه.
+         */
+        if (FinancialCorrections::pendingFor($invoice, $approving)) {
+            $blockers[] = __('على هذه الفاتورة طلب تصحيح مالي بانتظار الاعتماد — يُعتمد أو يُرفض أو يُسحب أولًا.');
+        }
+
         if ($itemsChanged && $invoice->preparation && $invoice->preparation->activated_at !== null) {
             $blockers[] = __('بدأ تجهيز هذه الفاتورة على لوحة التجهيز — لا تتغيّر بنودها تحت من يجهّزها. صحّح مالها بإشعار دائن.');
         }
@@ -422,7 +433,7 @@ final class CustomerInvoiceEdits
 
         $outstanding = round($newTotal - $paid - $credited, 3);
 
-        return [
+        $plan = [
             'kind' => $kind,
             'from_order' => $fromOrder,
             'changed' => $changes !== [] || $itemsChanged,
@@ -469,6 +480,13 @@ final class CustomerInvoiceEdits
             'missing_actions' => $missing,
             'blockers' => array_values(array_unique($blockers)),
         ];
+
+        // والاعتمادُ الثنائيّ: حين يُشعله صاحب النشاط ويمسّ التعديلُ المال — `FinancialCorrections`
+        $plan['approval'] = [
+            'required' => FinancialCorrections::required($bid) && FinancialCorrections::touchesMoney($plan),
+        ];
+
+        return $plan;
     }
 
     /**
@@ -480,12 +498,12 @@ final class CustomerInvoiceEdits
      * @throws ValidationException سببٌ أو موضعُ تصحيحٍ ناقص
      * @throws RuntimeException ما يمنع التعديل، بسببه
      */
-    public static function apply(CustomerInvoice $invoice, array $input, User $user): CustomerInvoiceRevision
+    public static function apply(CustomerInvoice $invoice, array $input, User $user, ?FinancialCorrection $approving = null): CustomerInvoiceRevision
     {
         $bid = (int) $invoice->business_id;
         $token = (string) $input['edit_token'];
 
-        return DB::transaction(function () use ($invoice, $input, $user, $bid, $token) {
+        return DB::transaction(function () use ($invoice, $input, $user, $bid, $token, $approving) {
             /*
              * والقفلُ قبل كلّ قراءة: موظّفان يحفظان الورقةَ نفسَها في اللحظة
              * نفسِها — الثاني ينتظر، ثمّ يجد العدّادَ قد تقدّم فيُردّ ولا يمحو
@@ -503,11 +521,16 @@ final class CustomerInvoiceEdits
                 return $twin;
             }
 
+            // والنموذجُ نفسُه أُرسل للاعتماد من قبل: الطلبُ الأوّل هو الجواب (`FinancialCorrections::request`)
+            if ($approving === null && FinancialCorrection::where('business_id', $bid)->where('edit_token', $token)->exists()) {
+                throw new NeedsApproval(__('هذا التصحيح يحتاج اعتماد شخص ثانٍ — أُرسل للاعتماد ولم يُنفَّذ بعد.'));
+            }
+
             if ((int) $locked->revision !== (int) $input['expected_revision']) {
                 throw new RuntimeException(__('عُدّلت هذه الفاتورة بعد أن فتحتها (التعديل :n) — افتحها من جديد لترى ما تغيّر، ثمّ أعد تعديلك.', ['n' => (int) $locked->revision]));
             }
 
-            $plan = self::plan($locked, $input, $user);
+            $plan = self::plan($locked, $input, $user, $approving);
 
             if ($plan['missing_actions'] !== []) {
                 throw new AuthorizationException(__('لا تملك صلاحية هذا التعديل: :a', [
@@ -529,6 +552,17 @@ final class CustomerInvoiceEdits
             }
 
             self::assertPeriodChosen($plan, $reason);
+
+            /*
+             * والاعتمادُ الثنائيّ مُشعل والتعديلُ يمسّ المال: لا يُكتب شيءٌ هنا.
+             *
+             * يُردّ قبل أوّل كتابة — والمتحكّمُ يحوّله طلبًا ينتظر غيرَ صاحبه
+             * (`FinancialCorrections::request`). ولا يُنفَّذ إلّا من `approve`،
+             * وهي تمرّر طلبَها المقفل هنا.
+             */
+            if ($plan['approval']['required'] && ($approving === null || (int) $approving->customer_invoice_id !== (int) $locked->id)) {
+                throw new NeedsApproval(__('هذا التصحيح يحتاج اعتماد شخص ثانٍ — أُرسل للاعتماد ولم يُنفَّذ بعد.'));
+            }
 
             $before = self::snapshot($locked);
             $number = (int) $locked->revision + 1;

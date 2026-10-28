@@ -42,6 +42,7 @@ use App\Support\Reports;
 use App\Support\ReviewInvite;
 use App\Support\Roles;
 use App\Support\Search;
+use App\Support\SectionActions;
 use App\Support\ShopIdentity;
 use App\Support\Store\CheckoutFields;
 use App\Support\Store\StoreBranches;
@@ -636,6 +637,8 @@ class PageController extends Controller
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
             'actionHints' => Permissions::actionHints(),
+            // وكلُّ قسمٍ وتحته ما يُفعل فيه — الشاشةُ ترسمها مجموعاتٍ لا قائمةً واحدة
+            'permissionGroups' => SectionActions::groups(),
             /*
              * وما يملك الفاعلُ منحَه — تُعطَّل سواه ولا تُرفع من الشاشة.
              *
@@ -1120,6 +1123,16 @@ class PageController extends Controller
                 ->map(fn ($m, $k) => ['key' => $k, 'label' => __($m['label']), 'unit' => $m['unit'], 'section' => $m['section']])
                 ->values()->all(),
             'alertSections' => Permissions::sectionLabels(),
+            /*
+             * والاعتمادُ الثنائيّ: يُشعله صاحبُ النشاط وحده، ويُقال له كم موظّفًا
+             * يعتمد — مفتاحٌ يُشعل ولا أحدَ غيرُه يعتمد يُوقف تصحيحاته هو.
+             */
+            'dualApproval' => [
+                'owner' => Permissions::isOwner(auth()->user()),
+                'approvers' => User::where('business_id', Demo::bid())->where('role', '!=', 'super_admin')
+                    ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'معطل'))
+                    ->get()->filter(fn (User $u) => $u->may(Permissions::FINANCIAL_CORRECTION_APPROVE))->count(),
+            ],
             // قسم «صلاحيات الموظفين»: الموظفون الفعليون وحالة صلاحية كلٍّ منهم
             'staffPermissions' => User::where('business_id', Demo::bid())
                 ->where('role', '!=', 'super_admin')->orderBy('name')->get()

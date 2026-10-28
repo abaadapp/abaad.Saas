@@ -511,6 +511,7 @@ export default function OrdersIndex() {
                 actions={
                     <>
                         <ExportMenu
+                            action="order.export"
                             xlsx={route('admin.orders.xlsx')}
                             pdf={route('admin.orders.exportPdf')}
                             csv={route('admin.export.orders')}

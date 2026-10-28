@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { Input } from '@/Components/ui/input';
 import { initials, money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useMay } from '@/lib/may';
 import type { PageProps } from '@/types';
 import type { Employee } from '@/types/models';
 
@@ -52,6 +53,7 @@ type TabKey = (typeof TABS)[number]['key'];
 export default function EmployeesPanel({ employees, jobTitles }: { employees: Employee[]; jobTitles: JobTitle[] }) {
     const { context } = usePage<PageProps>().props;
     const t = useTranslate();
+    const may = useMay();
     const currency = context!.currency;
     const [tab, setTab] = useState<TabKey>('employees');
 
@@ -264,13 +266,15 @@ export default function EmployeesPanel({ employees, jobTitles }: { employees: Em
                 className="mb-6"
                 trailing={
                     tab === 'employees' ? (
-                        <Button asChild className="mb-2">
-                            <SmartLink routeName={'admin.employees.create'} href={route('admin.employees.create')}>
-                                <Plus />
-                                {t('موظف جديد')}
-                            </SmartLink>
-                        </Button>
-                    ) : (
+                        may('employee.create') && (
+                            <Button asChild className="mb-2">
+                                <SmartLink routeName={'admin.employees.create'} href={route('admin.employees.create')}>
+                                    <Plus />
+                                    {t('موظف جديد')}
+                                </SmartLink>
+                            </Button>
+                        )
+                    ) : may('jobTitle.manage') && (
                         <Button onClick={() => openTitle()} className="mb-2">
                             <Plus />
                             {t('إضافة وظيفة')}

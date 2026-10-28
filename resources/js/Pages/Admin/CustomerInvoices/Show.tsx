@@ -11,6 +11,7 @@ import PaymentLinksCard, { invoiceLinkView, InvoicePaymentLink, PaymentLinkRetry
 import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import InvoiceLoyaltyPanel, { type InvoiceLoyaltyData } from './partials/InvoiceLoyaltyPanel';
 import InvoiceRevisions, { type InvoiceRevision } from './partials/InvoiceRevisions';
+import CorrectionRequests, { type CorrectionRequest } from './partials/CorrectionRequests';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -92,7 +93,7 @@ interface May {
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, mayEdit, revisions, context, flash } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, mayEdit, revisions, corrections, context, flash } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -120,6 +121,8 @@ export default function CustomerInvoiceShow() {
                 mayEdit?: boolean;
                 /** سجلُّ تعديلاتها — و`null` لمن لا يُمنح قراءته */
                 revisions?: InvoiceRevision[] | null;
+                /** طلباتُ التصحيح الماليّ عليها — لمقدّمها ولمن يعتمد ولمن يقرأ السجلّ */
+                corrections?: CorrectionRequest[];
             }>
         >().props;
     const t = useTranslate();
@@ -349,6 +352,9 @@ export default function CustomerInvoiceShow() {
                             <Row label={t('الباقي')} value={m(invoice.outstanding)} strong />
                         </dl>
                     </Card>
+
+                    {/* طلباتُ التصحيح بانتظار شخصٍ ثانٍ وما قُرّر فيها — `FinancialCorrections` */}
+                    <CorrectionRequests requests={corrections ?? []} m={m} />
 
                     {/* سجلُّ تعديلات الورقة — لمن يُمنح قراءته وحده */}
                     {revisions && <InvoiceRevisions revisions={revisions} m={m} />}

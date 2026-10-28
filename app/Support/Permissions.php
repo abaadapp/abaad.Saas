@@ -177,6 +177,15 @@ class Permissions
     /** قراءةُ سجلّ تعديلات الفواتير — ما كانت عليه الورقةُ ومن غيّرها ولماذا */
     public const CUSTOMER_INVOICE_HISTORY = 'customerInvoice.history';
 
+    /**
+     * اعتمادُ تصحيحٍ ماليّ طلبه غيرُه — حين يفتح صاحبُ النشاط الاعتمادَ الثنائيّ.
+     *
+     * فعلٌ جديد لا ينفصل عن قسم: لم يكن أحدٌ يعتمد شيئًا قبله. فلا يرثه إلّا
+     * صاحبُ النشاط، ولا تمنحه هجرة، ولا يعتمد به أحدٌ طلبَه هو
+     * (`FinancialCorrections::approve`).
+     */
+    public const FINANCIAL_CORRECTION_APPROVE = 'financialCorrection.approve';
+
     /** تسجيلُ تحصيل — مالٌ يدخل، وهو فعلٌ غيرُ الإصدار */
     public const CUSTOMER_PAYMENT_CREATE = 'customerPayment.create';
 
@@ -429,6 +438,9 @@ class Permissions
         self::TRANSFER_RECEIVE => 'تأكيد استلام التحويل',
         self::TRANSFER_RESOLVE => 'معالجة فرق الاستلام',
         self::SUPPLY_CREATE => 'إنشاء طلب تزويد',
+        self::FINANCIAL_CORRECTION_APPROVE => 'اعتماد تصحيح مالي طلبه موظف آخر',
+        // وما يُفعل داخل كلّ قسم — انفصل عن القسم ولم يُضَف إليه (`SectionActions`)
+        ...SectionActions::LABELS,
     ];
 
     /**
@@ -553,6 +565,8 @@ class Permissions
         self::TRANSFER_RECEIVE => ['admin', 'manager', 'inventory'],
         self::TRANSFER_RESOLVE => ['admin'],
         self::SUPPLY_CREATE => ['admin', 'manager'],
+        self::FINANCIAL_CORRECTION_APPROVE => ['admin'],
+        ...SectionActions::ROLES,
     ];
 
     /**
@@ -839,6 +853,8 @@ class Permissions
         self::TRANSFER_RECEIVE => 'تأكيد الكميات التي وصلت إلى فرعٍ مسند إليه: تدخل رفّه، وما نقص يبقى فرقًا معلّقًا.',
         self::TRANSFER_RESOLVE => 'تسوية فرق الاستلام بسببٍ يُكتب: فُقد أو تلف (يُقيَّد خسارة)، أو أُعيد إلى المصدر، أو وصل متأخرًا.',
         self::SUPPLY_CREATE => 'طلب بضاعة لفرعٍ مسند إليه من الإدارة. لا يحرّك المخزون.',
+        self::FINANCIAL_CORRECTION_APPROVE => 'حين يفتح صاحب النشاط «الاعتماد الثنائي»: مراجعة تصحيح فاتورة صادرة أو مدفوعة طلبه موظف آخر، واعتماده أو رفضه بسبب. لا يعتمد أحدٌ طلبه.',
+        ...SectionActions::HINTS,
     ];
 
     /** @return array<string, string> */

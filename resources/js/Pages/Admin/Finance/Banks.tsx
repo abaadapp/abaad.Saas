@@ -126,6 +126,7 @@ export default function Banks() {
                             ما رُشّح فيها.
                         */}
                         <ExportMenu
+                            action="finance.export"
                             label="الحركة المالية"
                             xlsx={route('admin.finance.xlsx', { range: 'month' })}
                             pdf={route('admin.finance.pdf', { range: 'month' })}

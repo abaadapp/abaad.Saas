@@ -9,6 +9,7 @@ import DataTable, { type Column, type Filter, type ServerPagination } from '@/Co
 import { Button } from '@/Components/ui/button';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useMay } from '@/lib/may';
 import type { PageProps } from '@/types';
 
 interface Row {
@@ -181,21 +182,37 @@ export default function CustomerInvoicesIndex({
         },
     ];
 
+    const may = useMay();
+
     return (
         <AdminLayout title={t('فواتير العملاء')}>
             <PageHeader
                 title={t('فواتير العملاء')}
                 subtitle={t('الفواتير الصادرة على الشركات والجهات، وما بقي منها.')}
                 actions={
-                    <Button asChild>
-                        <SmartLink
-                            routeName="admin.customerInvoices.create"
-                            href={route('admin.customerInvoices.create')}
-                        >
-                            <Plus />
-                            {t('إنشاء فاتورة')}
-                        </SmartLink>
-                    </Button>
+                    <>
+                        {/* طلباتُ التصحيح الماليّ — لمن يعتمدها ولمن يقرأ سجلّ التعديلات */}
+                        {(may('financialCorrection.approve') || may('customerInvoice.history')) && (
+                            <Button variant="outline" asChild>
+                                <SmartLink
+                                    routeName="admin.customerInvoices.corrections.index"
+                                    href={route('admin.customerInvoices.corrections.index')}
+                                    data-testid="corrections-link"
+                                >
+                                    {t('طلبات التصحيح')}
+                                </SmartLink>
+                            </Button>
+                        )}
+                        <Button asChild>
+                            <SmartLink
+                                routeName="admin.customerInvoices.create"
+                                href={route('admin.customerInvoices.create')}
+                            >
+                                <Plus />
+                                {t('إنشاء فاتورة')}
+                            </SmartLink>
+                        </Button>
+                    </>
                 }
             />
 

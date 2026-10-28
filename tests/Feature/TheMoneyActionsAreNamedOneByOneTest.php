@@ -15,6 +15,7 @@ use App\Support\Demo;
 use App\Support\GoodsReceipts;
 use App\Support\Ledger;
 use App\Support\Permissions;
+use App\Support\SectionActions;
 use App\Support\SupplierInvoices;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -370,7 +371,8 @@ class TheMoneyActionsAreNamedOneByOneTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'sales', 'status' => 'نشط',
             'basic_salary' => 300,
         ]);
-        $reader = $this->staff(['employees', Permissions::PAYROLL_VIEW]);
+        // وإعدادُ المسيرة فعلٌ ثالث (`payroll.create`) يملكه من مُنح القسم قبل الفصل
+        $reader = $this->staff(SectionActions::withActionsOf(['employees', Permissions::PAYROLL_VIEW]));
 
         $this->actingAs($reader)->post(route('admin.payroll.store'), [
             'period' => now()->format('Y-m'),

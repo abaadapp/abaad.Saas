@@ -11,6 +11,8 @@ export interface InvoiceRevision {
     reason: string | null;
     at: string | null;
     by: string | null;
+    /** من اعتمده حين انتظر شخصًا ثانيًا — `FinancialCorrections` */
+    approved_by?: string | null;
     total_before: number;
     total_after: number;
     tax_before: number;
@@ -72,6 +74,11 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                             </span>
                             <span className="flex items-center gap-2 text-[12px] text-[#6b7280]">
                                 <bdi>{r.by ?? '—'}</bdi>
+                                {r.approved_by && (
+                                    <span data-testid="invoice-revision-approver">
+                                        {t('اعتمده')} <bdi>{r.approved_by}</bdi>
+                                    </span>
+                                )}
                                 <span dir="ltr">{r.at}</span>
                                 <span dir="ltr" className="tabular-nums">
                                     {m(r.total_before)} ← {m(r.total_after)}

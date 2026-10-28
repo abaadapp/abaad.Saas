@@ -121,6 +121,8 @@ interface Plan {
     needs_reason: boolean;
     missing: string[];
     blockers: string[];
+    /** الاعتمادُ الثنائيّ مُشعل والتعديلُ يمسّ المال — يُرسل طلبًا ولا يُنفَّذ */
+    approval?: { required: boolean };
 }
 
 interface LineShown {
@@ -352,7 +354,7 @@ export default function CustomerInvoiceEdit() {
                         </Button>
                         <Button type="button" disabled={!ready || saving} onClick={save} data-testid="edit-save">
                             <Save />
-                            {t('حفظ التعديل')}
+                            {current?.approval?.required ? t('إرسال للاعتماد') : t('حفظ التعديل')}
                         </Button>
                     </>
                 }
@@ -667,6 +669,12 @@ export function PlanPanel({
     return (
         <Card className="space-y-4 p-4 text-[13px]" data-testid="plan">
             <h2 className="font-bold text-[#111]">{t('أثر التعديل')}</h2>
+
+            {plan.approval?.required && (
+                <p className="rounded-lg border border-[#bfdbfe] bg-[#eff6ff] p-3 text-[#1e40af]" data-testid="plan-approval">
+                    {t('يحتاج هذا التصحيح اعتماد شخص ثانٍ: يُرسل للاعتماد، ولا يتغيّر شيء في الفاتورة أو الدفتر أو المدفوعات حتى يعتمده موظف آخر يملك «اعتماد تصحيح مالي».')}
+                </p>
+            )}
 
             {plan.blockers.length > 0 && (
                 <div className="space-y-1 rounded-lg border border-[#fecaca] bg-[#fef2f2] p-3 text-[#b91c1c]" data-testid="plan-blockers">

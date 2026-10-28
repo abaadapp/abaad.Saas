@@ -243,6 +243,7 @@ export default function ReportsSales() {
                         {server.period && <PeriodButton period={server.period} onClick={() => setPicking(true)} />}
                         {/* الملفّ يحمل الفترة المعروضة — لا فترته الخاصّة */}
                         <ExportMenu
+                            action="report.export"
                             feature="reports_advanced"
                             xlsx={route('admin.reports.xlsx', params)}
                             pdf={route('admin.reports.pdf', params)}

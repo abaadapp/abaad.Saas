@@ -12,6 +12,7 @@ use App\Support\MerchantAccount;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
+use App\Support\SectionActions;
 use App\Support\WhatsAppInbox;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -536,6 +537,8 @@ class EmployeeController extends Controller
             'sections' => Permissions::sectionLabels(),
             'actions' => Permissions::actionLabels(),
             'actionHints' => Permissions::actionHints(),
+            // وكلُّ قسمٍ وتحته ما يُفعل فيه — الشاشةُ ترسمها مجموعاتٍ لا قائمةً واحدة
+            'permissionGroups' => SectionActions::groups(),
             // وما يملك الفاعلُ منحَه — سواه يُعطَّل بسببه مكتوبًا لا يُرفع
             'grantable' => Permissions::grantable(auth()->user()),
             'blockedTitles' => JobTitle::where('business_id', Demo::bid())->orderBy('name')->get()

@@ -35,7 +35,7 @@ const reset = (props: Record<string, unknown>) => {
     Object.assign(pageProps, {
         translations: {},
         context: { currency },
-        auth: { abilities: ['reports', 'finance'], mayActions: [], features: ['reports_advanced'], planFeatures: { reports_advanced: true } },
+        auth: { abilities: ['reports', 'finance'], mayActions: ['report.export'], features: ['reports_advanced'], planFeatures: { reports_advanced: true } },
         ...props,
     });
 };

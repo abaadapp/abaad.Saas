@@ -31,6 +31,7 @@ import {
 import { Input, Textarea } from '@/Components/ui/input';
 import { number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useMay } from '@/lib/may';
 import type { PageProps } from '@/types';
 import type { Supplier } from '@/types/models';
 
@@ -51,6 +52,7 @@ export default function SuppliersIndex() {
         }>
     >().props;
     const t = useTranslate();
+    const may = useMay();
     const [adding, setAdding] = useState(false);
     const [editing, setEditing] = useState<Supplier | null>(null);
     const [importing, setImporting] = useState(false);
@@ -259,6 +261,7 @@ export default function SuppliersIndex() {
                             وملفُّ الاستيراد بندٌ باسمه. والاستيرادُ في «المزيد».
                         */}
                         <ExportMenu
+                            action="supplier.export"
                             xlsx={route('admin.suppliers.xlsx')}
                             pdf={route('admin.suppliers.export.pdf')}
                             csv={route('admin.export.suppliers')}
@@ -284,10 +287,12 @@ export default function SuppliersIndex() {
                                 {t('أوامر الشراء')}
                             </SmartLink>
                         </Button>
-                        <Button onClick={() => setAdding(true)}>
-                            <Plus />
-                            {t('مورّد جديد')}
-                        </Button>
+                        {may('supplier.create') && (
+                            <Button onClick={() => setAdding(true)}>
+                                <Plus />
+                                {t('مورّد جديد')}
+                            </Button>
+                        )}
                     </>
                 }
             />

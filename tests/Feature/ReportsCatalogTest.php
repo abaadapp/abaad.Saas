@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Permissions;
 use App\Support\PlanFeatures;
 use App\Support\Reports;
+use App\Support\SectionActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -202,7 +203,8 @@ class ReportsCatalogTest extends TestCase
          * «الإعدادات». والزرّ مرسومٌ لكل من يفتح الصفحة — فالمحاسب، وهو
          * أكثر من يُصدّر، يفتح تقريرًا مأذونًا له ويُردّ بـ٤٠٣ عن ملفّه.
          */
-        $user = $this->staff(['reports']);
+        // ومن مُنح التقارير قبل فصل التصدير يبقى يصدّر — `SectionActions::withActionsOf`
+        $user = $this->staff(SectionActions::withActionsOf(['reports']));
 
         $this->actingAs($user)->get(route('admin.reports.sales'))->assertOk();
         $this->actingAs($user)->get($this->exportRoute('admin.export.reports'))->assertOk();

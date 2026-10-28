@@ -128,6 +128,7 @@ export default function ReportScreen({
                                 تجعل صاحبها يظنّ العطب في النظام.
                             */}
                             <ExportMenu
+                                action="report.export"
                                 feature={exportFeature ?? undefined}
                                 xlsx={route('admin.reports.export.xlsx', reportKey)}
                                 pdf={route('admin.reports.export.pdf', reportKey)}

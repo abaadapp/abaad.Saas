@@ -6,7 +6,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 
 /**
- * التسجيل المدمج عند ميتا — النداءاتُ الخمسة التي يحتاجها الربط، ولا سادس.
+ * التسجيل المدمج عند ميتا — نداءاتُ الربط وفحصِه، ولا نداءَ يغيّر عند ميتا
+ * غيرُ الاشتراك في الإشعارات (`subscribe`).
  *
  * ═══ ولمَ ملفٌّ ثانٍ وعندنا `MetaWhatsAppClient` ═══
  *
@@ -126,7 +127,14 @@ class WhatsAppEmbeddedSignup
      *
      * والنداء برمز التطبيق `{app_id}|{app_secret}` — وهو نداءُ خادمٍ لا غير.
      *
-     * @return array{ok:bool, scopes:list<string>, waba_ids:list<string>, expires_at:?Carbon, code:?string, message:?string}
+     * ═══ والتطبيقُ الذي أصدره ═══
+     *
+     * `data.app_id` يقول أيُّ تطبيقٍ عند ميتا أصدر الرمز. ورمزٌ من تطبيقٍ آخر
+     * يُرسل الرسائل ويُشرك **تطبيقَه هو** في إشعارات الحساب — لا تطبيقَنا —
+     * فيبدو الربطُ سليمًا ولا يصلنا حرف (هكذا وقع لمتجرٍ في 2026-10-28).
+     * فيُردّ معه `app_id` ليُقارن بـ`whatsapp.app_id` (`WhatsAppLinkCheck::token`).
+     *
+     * @return array{ok:bool, app_id:?string, scopes:list<string>, waba_ids:list<string>, messaging_waba_ids:list<string>, expires_at:?Carbon, code:?string, message:?string}
      */
     public static function inspect(string $token): array
     {
@@ -137,27 +145,29 @@ class WhatsAppEmbeddedSignup
                     'access_token' => config('whatsapp.app_id').'|'.config('whatsapp.app_secret'),
                 ]);
         } catch (\Throwable $e) {
-            return ['ok' => false, 'scopes' => [], 'waba_ids' => [], 'expires_at' => null,
+            return ['ok' => false, 'app_id' => null, 'scopes' => [], 'waba_ids' => [], 'messaging_waba_ids' => [], 'expires_at' => null,
                 'code' => 'network_error', 'message' => $e->getMessage()];
         }
 
         if (! $response->successful()) {
             [$code, $message] = self::error($response->json());
 
-            return ['ok' => false, 'scopes' => [], 'waba_ids' => [], 'expires_at' => null,
+            return ['ok' => false, 'app_id' => null, 'scopes' => [], 'waba_ids' => [], 'messaging_waba_ids' => [], 'expires_at' => null,
                 'code' => $code, 'message' => $message];
         }
 
         $data = (array) ($response->json('data') ?? []);
+        $appId = filled($data['app_id'] ?? null) ? (string) $data['app_id'] : null;
 
         if (! ($data['is_valid'] ?? false)) {
-            return ['ok' => false, 'scopes' => [], 'waba_ids' => [], 'expires_at' => null,
+            return ['ok' => false, 'app_id' => $appId, 'scopes' => [], 'waba_ids' => [], 'messaging_waba_ids' => [], 'expires_at' => null,
                 'code' => 'invalid_token', 'message' => __('الرمز الذي أعادته ميتا غير صالح.')];
         }
 
         $granular = (array) ($data['granular_scopes'] ?? []);
         $scopes = [];
         $wabaIds = [];
+        $messagingIds = [];
 
         foreach ($granular as $row) {
             $scope = (string) ($row['scope'] ?? '');
@@ -171,6 +181,12 @@ class WhatsAppEmbeddedSignup
             if ($scope === 'whatsapp_business_management') {
                 foreach ((array) ($row['target_ids'] ?? []) as $id) {
                     $wabaIds[] = (string) $id;
+                }
+            }
+
+            if ($scope === 'whatsapp_business_messaging') {
+                foreach ((array) ($row['target_ids'] ?? []) as $id) {
+                    $messagingIds[] = (string) $id;
                 }
             }
         }
@@ -188,8 +204,10 @@ class WhatsAppEmbeddedSignup
 
         return [
             'ok' => true,
+            'app_id' => $appId,
             'scopes' => array_values(array_unique($scopes)),
             'waba_ids' => array_values(array_unique($wabaIds)),
+            'messaging_waba_ids' => array_values(array_unique($messagingIds)),
             'expires_at' => $expires > 0 ? now()->setTimestamp($expires) : null,
             'code' => null,
             'message' => null,
@@ -249,18 +267,100 @@ class WhatsAppEmbeddedSignup
     /**
      * أمُشترِكٌ تطبيقُنا في إشعارات هذا الحساب؟
      *
-     * يُسأل قبل الاشتراك: `POST` ثانيةً لا يكسر شيئًا عند ميتا، لكنّ السؤال
-     * يجعل السجلّ يقول «كان مشتركًا» بدل أن يقول «اشتركنا» في كلّ مرّة —
-     * وأحدُهما خبرٌ والآخرُ ضجيج.
-     *
      * و`null` تعني «لم نستطع أن نعرف» — لا «لا». فمن قرأها «لا» اشترك
      * ثانيةً، ومن قرأها «نعم» ترك الاشتراك مفقودًا.
      */
     public static function subscribed(string $wabaId, string $token): ?bool
     {
+        $read = self::subscribedApps($wabaId, $token);
+
+        if (! $read['ok']) {
+            return null;
+        }
+
+        $appId = (string) config('whatsapp.app_id');
+
+        foreach ($read['apps'] as $app) {
+            if ($app['app_id'] === $appId) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * التطبيقاتُ المشتركة في إشعارات هذا الحساب — كما تعرفها ميتا.
+     *
+     * ويُقرأ معها `override_callback_uri`: تطبيقٌ مشتركٌ بعنوانٍ بديلٍ تذهب
+     * إشعاراتُه إلى ذلك العنوان لا إلى ما في لوحة التطبيق. وقراءةٌ فقط —
+     * `GET` لا يغيّر عند ميتا شيئًا.
+     *
+     * @return array{ok:bool, apps:list<array{app_id:string, name:?string, override:?string}>, code:?string, message:?string}
+     */
+    public static function subscribedApps(string $wabaId, string $token): array
+    {
         try {
             $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
                 ->get(self::base().'/'.$wabaId.'/subscribed_apps');
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'apps' => [], 'code' => 'network_error', 'message' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            [$code, $message] = self::error($response->json());
+
+            return ['ok' => false, 'apps' => [], 'code' => $code, 'message' => $message];
+        }
+
+        /*
+         * وردٌّ لا قائمةَ فيه لا يُقرأ «لا أحدَ مشترك».
+         *
+         * لو قُرئ كذلك لَنُودي `POST` على تخمين. فقائمةٌ غائبة، أو صفٌّ لا
+         * يُقرأ معرّفُ تطبيقه، قراءةٌ فاشلة — لا حكمَ بها على الاشتراك.
+         */
+        $data = $response->json('data');
+
+        if (! is_array($data) || ! array_is_list($data)) {
+            return ['ok' => false, 'apps' => [], 'code' => 'unreadable', 'message' => 'subscribed_apps without a data list'];
+        }
+
+        $apps = [];
+
+        foreach ($data as $row) {
+            $app = is_array($row) ? ($row['whatsapp_business_api_data'] ?? null) : null;
+            $id = is_array($app) ? ($app['id'] ?? null) : null;
+
+            if (! is_scalar($id) || (string) $id === '') {
+                return ['ok' => false, 'apps' => [], 'code' => 'unreadable', 'message' => 'subscribed_apps row without an app id'];
+            }
+
+            $apps[] = [
+                'app_id' => (string) $id,
+                'name' => $app['name'] ?? null,
+                'override' => filled($row['override_callback_uri'] ?? null) ? (string) $row['override_callback_uri'] : null,
+            ];
+        }
+
+        return ['ok' => true, 'apps' => $apps, 'code' => null, 'message' => null];
+    }
+
+    /**
+     * أهذا الرقمُ على تطبيق واتساب للأعمال في الهاتف أيضًا؟
+     *
+     * وثيقةُ ميتا لمسار تطبيق الأعمال تقرأ `is_on_biz_app` على الرقم نفسه —
+     * والرقمُ بعد التعايش يقرأ `platform_type = CLOUD_API` لا `SMB_APP`،
+     * فالنوعُ وحده لا يكفي.
+     *
+     * ثلاثُ إجاباتٍ لا اثنتان: `true` عليه، و`false` قالت ميتا صراحةً إنّه
+     * ليس عليه، و`null` لم نعرف — نداءٌ فشل أو حقلٌ غاب. و`null` لا تُقرأ
+     * `false`: من يربط بها يربط رقمًا لا يدري ما هو (`WhatsAppLinkCheck::numberType`).
+     */
+    public static function onBusinessApp(string $phoneNumberId, string $token): ?bool
+    {
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.$phoneNumberId, ['fields' => 'is_on_biz_app,platform_type']);
         } catch (\Throwable) {
             return null;
         }
@@ -269,15 +369,13 @@ class WhatsAppEmbeddedSignup
             return null;
         }
 
-        $appId = (string) config('whatsapp.app_id');
-
-        foreach ((array) ($response->json('data') ?? []) as $row) {
-            if ((string) ($row['whatsapp_business_api_data']['id'] ?? '') === $appId) {
-                return true;
-            }
+        if ($response->json('platform_type') === self::PLATFORM_SMB_APP) {
+            return true;
         }
 
-        return false;
+        $flag = $response->json('is_on_biz_app');
+
+        return is_bool($flag) ? $flag : null;
     }
 
     /**

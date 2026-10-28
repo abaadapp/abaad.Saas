@@ -11,6 +11,8 @@ use App\Support\WhatsAppAutoReply;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppFeature;
+use App\Support\WhatsAppLinkCheck;
+use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppOnboarding;
 use Illuminate\Http\Request;
 
@@ -101,7 +103,15 @@ class WhatsAppOnboardingController extends Controller
              */
             'waba_id' => ['nullable', 'string', 'max:100'],
             'phone_number_id' => ['nullable', 'string', 'max:100'],
+            // رقمٌ مستقلٌّ افتراضًا — والتعايشُ يُسمّى صراحةً أو لا يكون
+            'type' => ['nullable', 'string', 'in:'.implode(',', WhatsAppOnboarding::TYPES)],
         ]);
+
+        $type = $data['type'] ?? WhatsAppOnboarding::CLOUD_API;
+
+        if ($type === WhatsAppOnboarding::COEXISTENCE && ! WhatsAppOnboarding::coexistenceOpen()) {
+            return back()->withErrors(['code' => __('ربط رقمٍ على تطبيق واتساب للأعمال (التعايش) غير متاحٍ بعد — اختر «رقم Cloud API مستقل».')]);
+        }
 
         $result = WhatsAppOnboarding::connect(
             $business,
@@ -109,6 +119,7 @@ class WhatsAppOnboardingController extends Controller
             $data['code'],
             $data['waba_id'] ?? null,
             $data['phone_number_id'] ?? null,
+            $type,
         );
 
         if (! $result['ok']) {
@@ -117,7 +128,11 @@ class WhatsAppOnboardingController extends Controller
 
         return back()->with('toast', [
             'msg' => (string) $result['message'],
-            'type' => $result['pending'] ? 'info' : 'success',
+            'type' => match (true) {
+                $result['pending'] => 'info',
+                ($result['webhook'] ?? null) !== WhatsAppLinkCheck::SUBSCRIBED => 'warning',
+                default => 'success',
+            },
         ]);
     }
 
@@ -172,9 +187,19 @@ class WhatsAppOnboardingController extends Controller
             'last_error_at' => null,
         ])->save();
 
+        /*
+         * ثمّ الأهمّ: أيصلنا ما يكتبه الزبائن؟ — قراءةٌ عند ميتا لا غير.
+         *
+         * رقمٌ يردّ ليس رقمًا يستقبل. فيُفحص مُصدرُ الرمز واشتراكُ تطبيق
+         * أبعاد، ويُكتب ذلك في أعمدة الفحص وحدها (`WhatsAppLinkCheck::recheck`).
+         */
+        WhatsAppLinkCheck::recheck($connection->refresh());
+        $health = WhatsAppLinkHealth::state($connection->refresh());
+
         return back()->with('toast', [
-            'msg' => __('رقمك يردّ عند ميتا: :name', ['name' => $result['verified_name'] ?: $connection->display_phone_number]),
-            'type' => 'success',
+            'msg' => __('رقمك يردّ عند ميتا: :name', ['name' => $result['verified_name'] ?: $connection->display_phone_number])
+                .' — '.WhatsAppLinkHealth::label($health),
+            'type' => in_array($health, [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true) ? 'success' : 'warning',
         ]);
     }
 

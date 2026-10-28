@@ -565,6 +565,9 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     Route::post('/whatsapp/sales', [WhatsAppController::class, 'connectSales'])->name('whatsapp.sales.connect');
     Route::delete('/whatsapp/sales', [WhatsAppController::class, 'disconnectSales'])->name('whatsapp.sales.disconnect');
     Route::put('/businesses/{id}/whatsapp', [WhatsAppController::class, 'updateBusiness'])->name('businesses.whatsapp.update');
+    // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
+    Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])
+        ->middleware('throttle:20,1,whatsapp-link-check')->name('businesses.whatsapp.check');
 
     /*
      * حزمُ الرسائل — اعتمادٌ يُصدر فاتورة، وإلغاءٌ يُنهي طلبًا.

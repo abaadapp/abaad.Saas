@@ -21,6 +21,7 @@ use App\Support\WhatsAppTemplates;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
+use Tests\Support\FakesMetaLinking;
 use Tests\TestCase;
 
 /**
@@ -33,6 +34,7 @@ use Tests\TestCase;
 class WhatsAppSharedTest extends TestCase
 {
     use RefreshDatabase;
+    use FakesMetaLinking;
 
     private Business $business;
 
@@ -554,13 +556,17 @@ class WhatsAppSharedTest extends TestCase
             'password' => bcrypt('password'), 'role' => 'super_admin', 'status' => 'نشط',
         ]);
 
+        // رمزٌ يقبله الحارس — فيصل الربطُ إلى سجلّ النشاط ويُسأل ما كُتب فيه
+        Http::fake($this->abaadAppMeta(['WABA-AB' => ['NEW-PN']]));
+
         $this->actingAs($super)->post(route('super-admin.whatsapp.shared.connect'), [
             'phone_number_id' => 'NEW-PN',
             'display_phone_number' => '+96891111111',
             'access_token' => 'super-secret-token-value-123456',
-        ])->assertRedirect();
+        ])->assertRedirect()->assertSessionHasNoErrors();
 
         $logs = \App\Models\ActivityLog::pluck('description')->implode(' | ');
+        $this->assertStringContainsString('ربط رقم واتساب المشترك', $logs);
         $this->assertStringNotContainsString('super-secret-token', $logs);
     }
 }

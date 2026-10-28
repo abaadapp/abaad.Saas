@@ -40,6 +40,8 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
 
     private User $cashier;
 
+    private bool $subscribed = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -72,8 +74,8 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
     /**
      * ردُّ ميتا على المسار الكامل — والأرقامُ كما تُعيدها هي.
      *
-     * `platform_type = SMB_APP` تعني أنّ الرقم في تطبيق واتساب للأعمال —
-     * وهو ما يُكتب في `coexistence`.
+     * والرقمُ افتراضًا رقمُ Cloud API مستقلّ (`CLOUD_API`). و`SMB_APP` —
+     * رقمٌ في تطبيق واتساب للأعمال — لا يُربط إلّا باختيار التعايش صراحةً.
      *
      * @param  array<string, mixed>  $over
      */
@@ -94,6 +96,8 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
             '*/oauth/access_token*' => Http::response(['access_token' => 'BISU-TOKEN-VALUE-12345'], 200),
             '*/debug_token*' => Http::response(['data' => [
                 'is_valid' => true,
+                // مُصدرُ الرمز تطبيقُ أبعاد نفسُه (`WhatsAppLinkCheck::token`)
+                'app_id' => '1082481610822941',
                 'expires_at' => 0,
                 'granular_scopes' => [
                     ['scope' => 'whatsapp_business_management', 'target_ids' => ['WABA-1']],
@@ -102,9 +106,23 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
             ]], 200),
             '*/WABA-1/phone_numbers*' => Http::response(['data' => [[
                 'id' => 'PN-1', 'display_phone_number' => '+968 9525 9066',
-                'verified_name' => 'RIBBON', 'platform_type' => 'SMB_APP',
+                'verified_name' => 'RIBBON', 'platform_type' => 'CLOUD_API',
             ]]], 200),
-            '*/WABA-1/subscribed_apps' => Http::response(['data' => []], 200),
+            /*
+             * والاشتراكُ كما تفعله ميتا: القائمةُ فارغةٌ حتى يُنادى `POST`، ثمّ
+             * فيها تطبيقُنا — فالفحصُ بعده يجده (`WhatsAppLinkCheck::subscribe`).
+             */
+            '*/WABA-1/subscribed_apps' => function ($request) {
+                if ($request->method() === 'POST') {
+                    $this->subscribed = true;
+
+                    return Http::response(['success' => true], 200);
+                }
+
+                return Http::response(['data' => $this->subscribed
+                    ? [['whatsapp_business_api_data' => ['id' => '1082481610822941', 'name' => 'Abaad Messaging']]]
+                    : []], 200);
+            },
             '*/WABA-1?*' => Http::response(['id' => 'WABA-1', 'owner_business_info' => ['id' => 'MB-9']], 200),
             /* وإخراجُ الرسائل: الردُّ التلقائيّ يمرّ به */
             '*/messages' => Http::response(['messages' => [['id' => 'wamid.REPLY']]], 200),
@@ -193,11 +211,18 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
             || str_contains($request->url(), '/deregister'));
     }
 
-    /** والرقمُ الباقي في التطبيق يُقيَّد كذلك — فتقوله الشاشة ولا تعد بما لا تعرف */
+    /**
+     * والرقمُ الباقي في التطبيق يُقيَّد كذلك — فتقوله الشاشة ولا تعد بما لا تعرف.
+     *
+     * وذلك حين يُختار التعايشُ صراحةً ويكون مفتوحًا على الخادم وحده.
+     */
     public function test_a_number_that_stays_in_the_business_app_is_recorded_as_coexisting(): void
     {
-        $this->metaSays();
-        $this->actingAs($this->owner)->finish();
+        config(['whatsapp.coexistence_enabled' => true]);
+        $this->metaSays(['*/WABA-1/phone_numbers*' => Http::response(['data' => [[
+            'id' => 'PN-1', 'display_phone_number' => '+968 9525 9066', 'platform_type' => 'SMB_APP',
+        ]]], 200)]);
+        $this->actingAs($this->owner)->finish(['type' => 'coexistence'])->assertSessionHasNoErrors();
 
         $this->assertTrue($this->connection()->coexistence);
     }
@@ -267,7 +292,7 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
     public function test_a_token_missing_the_messaging_scope_is_refused(): void
     {
         $this->metaSays(['*/debug_token*' => Http::response(['data' => [
-            'is_valid' => true,
+            'is_valid' => true, 'app_id' => '1082481610822941',
             'granular_scopes' => [['scope' => 'whatsapp_business_management', 'target_ids' => ['WABA-1']]],
         ]], 200)]);
 
@@ -286,7 +311,7 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
     public function test_a_token_meta_calls_invalid_is_refused(): void
     {
         $this->metaSays(['*/debug_token*' => Http::response(['data' => [
-            'is_valid' => false,
+            'is_valid' => false, 'app_id' => '1082481610822941',
             'granular_scopes' => [
                 ['scope' => 'whatsapp_business_management', 'target_ids' => ['WABA-1']],
                 ['scope' => 'whatsapp_business_messaging', 'target_ids' => ['WABA-1']],
@@ -445,7 +470,7 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
     public function test_a_token_that_expires_soon_asks_for_reauthorisation_but_keeps_sending(): void
     {
         $this->metaSays(['*/debug_token*' => Http::response(['data' => [
-            'is_valid' => true,
+            'is_valid' => true, 'app_id' => '1082481610822941',
             'expires_at' => now()->addDays(5)->timestamp,
             'granular_scopes' => [
                 ['scope' => 'whatsapp_business_management', 'target_ids' => ['WABA-1']],
@@ -467,7 +492,7 @@ class AShopConnectsItsOwnWhatsAppWithoutPastingATokenTest extends TestCase
     public function test_an_expired_token_reads_as_expired_and_stops_sending(): void
     {
         $this->metaSays(['*/debug_token*' => Http::response(['data' => [
-            'is_valid' => true,
+            'is_valid' => true, 'app_id' => '1082481610822941',
             'expires_at' => now()->subDay()->timestamp,
             'granular_scopes' => [
                 ['scope' => 'whatsapp_business_management', 'target_ids' => ['WABA-1']],

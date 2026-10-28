@@ -17,8 +17,11 @@ use App\Support\WhatsAppEmbeddedSignup;
 use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppLink;
+use App\Support\WhatsAppLinkCheck;
+use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppLog;
 use App\Support\WhatsAppMode;
+use App\Support\WhatsAppOnboarding;
 use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
 use App\Support\WhatsAppStatus;
@@ -98,10 +101,17 @@ class WhatsAppController extends Controller
                 'graph_version' => (string) config('whatsapp.api_version'),
                 'feature_type' => (string) config('whatsapp.feature_type'),
                 'session_info_version' => (string) config('whatsapp.session_info_version'),
+                // نسخةُ التسجيل المدمج إن كُتبت — وبلا نسخةٍ تخدمها ميتا بـv4
+                'version' => config('whatsapp.es_version'),
+                // والتعايشُ يُعرض اختيارًا مطفأً بسببه ما لم يُفتح على الخادم
+                'coexistence_open' => WhatsAppOnboarding::coexistenceOpen(),
             ],
 
             /* حالُ الربط بحالاتها الستّ — تُحسب في الخادم ولا تُستنتج في الشاشة */
             'link' => WhatsAppLink::view($own),
+
+            /* وأيستقبل؟ — متّصلٌ ومشتركٌ ومُثبَت ثلاثةُ أشياء (`WhatsAppLinkHealth`) */
+            'health' => $own ? WhatsAppLinkHealth::view($own) : null,
 
             /* والردُّ التلقائيّ: ما حُفظ، وفروعُ المتجر التي يُختار منها */
             'auto_reply' => $ownAllowed ? WhatsAppAutoReply::settings($business->id) : null,
@@ -357,36 +367,78 @@ class WhatsAppController extends Controller
         ]);
 
         $existing = WhatsAppConnections::forBusiness($business->id);
+        $token = (string) $data['access_token'];
 
-        // رقمٌ يملكه غيره لا يُنتزع منه — والفهرس الفريد يرفض على كلّ حال
-        $clash = WhatsAppConnection::where('phone_number_id', $data['phone_number_id'])
-            ->when($existing, fn ($q) => $q->where('id', '!=', $existing->id))->exists();
+        /*
+         * ═══ الرمزُ الملصوق يُفحص كما يُفحص رمزُ التسجيل المدمج ═══
+         *
+         * هذا البابُ قبل يومًا رمزًا لصقه متجرٌ من تطبيقه هو عند ميتا: رقمٌ
+         * يُرسل ولا يصلنا منه شيء، لأنّ ميتا تُشرك في الإشعارات **التطبيقَ
+         * الذي أصدر الرمز**. فلا يُقبل رمزٌ إلّا من تطبيق
+         * أبعاد بصلاحياته ولحسابٍ مُنحه، والرقمُ من أرقام ذلك الحساب — وكلُّ
+         * ذلك قبل أن يُكتب حرفٌ، فالوصلةُ القائمة لا تُمسّ إن رُدّ.
+         */
+        $check = WhatsAppLinkCheck::token($token, $data['waba_id'] ?? null);
 
-        if ($clash) {
-            return back()->withErrors(['phone_number_id' => __('هذا الرقم مربوطٌ بحسابٍ آخر.')]);
+        if (! $check['ok']) {
+            WhatsAppLinkCheck::log('manual_link_refused', $business->id, $check['meta'] + ['code' => $check['problem']]);
+            $field = $check['problem'] === WhatsAppLinkCheck::WABA_NOT_GRANTED ? 'waba_id' : 'access_token';
+
+            return back()->withErrors([$field => (string) $check['message']]);
+        }
+
+        $number = WhatsAppLinkCheck::number((string) $check['waba'], $token, (string) $data['phone_number_id'], $existing?->id);
+
+        if (! $number['ok']) {
+            WhatsAppLinkCheck::log('manual_link_refused', $business->id, $number['meta'] + ['code' => $number['problem']]);
+
+            return back()->withErrors(['phone_number_id' => (string) $number['message']]);
+        }
+
+        // والتعايشُ لا يُربط من هنا: يُختار صراحةً في التسجيل المدمج وحده
+        if (WhatsAppLinkCheck::onBusinessApp((array) $number['number'], $token)) {
+            return back()->withErrors(['phone_number_id' => WhatsAppLinkCheck::say(WhatsAppLinkCheck::COEXISTENCE_NOT_CHOSEN)]);
+        }
+
+        $hook = WhatsAppLinkCheck::subscribe((string) $check['waba'], $token);
+
+        // ووصلةٌ تستقبل لا تُستبدل بوصلةٍ لم يثبت أنّها تستقبل
+        if ($hook['state'] !== WhatsAppLinkCheck::SUBSCRIBED
+            && in_array(WhatsAppLinkHealth::state($existing), [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true)) {
+            return back()->withErrors(['access_token' => __('لم يثبت اشتراك أبعاد في إشعارات هذا الحساب — بقي ربطك الحاليّ كما هو.')]);
         }
 
         $attributes = [
             'owner_type' => WhatsAppMode::OWNER_BUSINESS,
             'business_id' => $business->id,
             'provider' => 'meta_cloud',
-            'waba_id' => $data['waba_id'] ?? null,
+            'waba_id' => $check['waba'],
             'phone_number_id' => $data['phone_number_id'],
-            'display_phone_number' => $data['display_phone_number'] ?? null,
-            'access_token' => $data['access_token'],
+            'display_phone_number' => $data['display_phone_number'] ?? ($number['number']['display_phone_number'] ?? null),
+            'coexistence' => false,
+            'access_token' => $token,
+            'token_expires_at' => $check['expires_at'],
             'status' => WhatsAppConnection::ACTIVE,
             'connected_at' => now(),
+            'connected_by_user_id' => $request->user()->id,
             'disconnected_at' => null,
-        ];
+            'last_error_code' => null,
+            'last_error_message' => null,
+            'last_error_at' => null,
+        ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'])
+          + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? ['last_webhook_at' => null] : []);
 
         $connection = $existing ? tap($existing)->update($attributes) : WhatsAppConnection::create($attributes);
 
         // قوالب المحلّ تُهيَّأ بأسمائها الافتراضية — تُصحَّح إن اعتُمدت بأسماءٍ أخرى
         WhatsAppTemplates::seedBusinessDefaults($business->id);
 
-        Activity::log('settings', 'واتساب — ربط رقم المتجر ('.($data['display_phone_number'] ?? $data['phone_number_id']).')');
+        Activity::log('settings', 'واتساب — ربط رقم المتجر ('.($attributes['display_phone_number'] ?? $data['phone_number_id']).')');
 
-        return back()->with('toast', ['msg' => __('تم ربط رقم المتجر'), 'type' => 'success']);
+        return back()->with('toast', [
+            'msg' => WhatsAppOnboarding::linkedMessage($hook['state']),
+            'type' => $hook['state'] === WhatsAppLinkCheck::SUBSCRIBED ? 'success' : 'warning',
+        ]);
     }
 
     /**

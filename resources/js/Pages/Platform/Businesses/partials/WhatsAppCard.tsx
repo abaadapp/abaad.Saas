@@ -1,5 +1,5 @@
 import { router, useForm } from '@inertiajs/react';
-import { Check, MessageCircle, Save, X } from 'lucide-react';
+import { Check, MessageCircle, RefreshCw, Save, X } from 'lucide-react';
 import Field from '@/Components/Field';
 import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
@@ -47,7 +47,14 @@ export interface BusinessWhatsApp {
         expires_at?: string | null;
     } | null;
     /** آخرُ إشعارٍ وصل من رقم المتجر، وآخرُ خطأٍ قالته ميتا — لا رمزَ ولا سرّ */
-    own_health?: { last_webhook_at: string | null; last_error: string | null; last_error_at: string | null } | null;
+    own_health?: {
+        last_webhook_at: string | null;
+        last_error: string | null;
+        last_error_at: string | null;
+        /** متّصلٌ أم مشتركٌ أم يستقبل فعلًا — `WhatsAppLinkHealth::view` */
+        link?: { key: string; label: string; hint: string; tone: string; checked_at: string | null };
+        can_check?: boolean;
+    } | null;
     /** أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`WhatsAppFeature::canUseOwnNumber`) */
     own_eligible?: boolean;
     /** متجرُ سياسة الإضافات بلا إضافة «ربط واتساب برقم المتجر» */
@@ -163,6 +170,35 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                                 {data.own_health.last_error}
                                 <span className="block text-[11px] text-[#9ca3af]" dir="ltr">{data.own_health.last_error_at}</span>
                             </dd>
+                        </div>
+                    )}
+                    {/* أيستقبل؟ — تطبيقُ أبعاد مشتركٌ وإشعارٌ وصل، لا «متّصل» وحدها */}
+                    {data.own_health?.link && (
+                        <div className="border-t border-[#f0f0f0] pt-2" data-testid="whatsapp-link-health" data-state={data.own_health.link.key}>
+                            <div className="flex justify-between gap-3">
+                                <dt className="text-[#6b7280]">{t('استقبال الرسائل')}</dt>
+                                <dd className={data.own_health.link.tone === 'danger' ? 'font-medium text-[#b91c1c]' : data.own_health.link.tone === 'success' ? 'font-medium text-[#047857]' : 'font-medium text-[#111]'}>
+                                    {t(data.own_health.link.label)}
+                                </dd>
+                            </div>
+                            <p className="mt-1 text-[12px] leading-relaxed text-[#6b7280]">{t(data.own_health.link.hint)}</p>
+                            {data.own_health.link.checked_at && (
+                                <p className="mt-0.5 text-[11px] text-[#9ca3af]">{t('آخر فحص')}: <span dir="ltr">{data.own_health.link.checked_at}</span></p>
+                            )}
+                            {data.own_health.can_check && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2"
+                                    data-testid="whatsapp-link-check"
+                                    onClick={() => router.post(route('super-admin.businesses.whatsapp.check', businessId), {}, { preserveScroll: true })}
+                                >
+                                    <RefreshCw />
+                                    {t('فحص الربط')}
+                                </Button>
+                            )}
+                            <p className="mt-1 text-[11px] text-[#9ca3af]">{t('الفحص قراءة عند ميتا فقط — لا يغيّر الرقم ولا الرمز ولا الاشتراك.')}</p>
                         </div>
                     )}
                 </dl>

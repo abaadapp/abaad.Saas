@@ -20,7 +20,12 @@ use Illuminate\Support\Facades\Log;
  *   ٢ · فحصِ الرمز: أصالحٌ هو؟ وأيّ صلاحياتٍ يحمل؟ ولأيّ حساباتٍ؟ ومتى ينتهي؟
  *   ٣ · تثبيتِ حساب الأعمال من **الرمز** لا من المتصفّح.
  *   ٤ · قراءةِ أرقام الحساب من ميتا، والتحقّقِ أنّ الرقم المختار منها.
- *   ٥ · الاشتراكِ في الإشعارات إن لم يكن مشتركًا.
+ *   ٥ · الاشتراكِ في الإشعارات إن لم يكن مشتركًا — ثمّ قراءةِ `subscribed_apps`
+ *       والتحقّقِ أنّ تطبيقَ أبعاد بعينه فيها (`WhatsAppLinkCheck::subscribe`).
+ *
+ * والرمزُ يُفحص بالباب نفسه الذي يمرّ به الربطُ اليدويّ (`WhatsAppLinkCheck`):
+ * مُصدرُه تطبيقُ أبعاد، وصلاحياتُه، وحسابُه. وما يُكتب في القاعدة يُكتب
+ * بعد ذلك كلِّه — فربطٌ يفشل لا يمسّ وصلةً قائمة.
  *
  * وما دون ذلك يُردّ برسالةٍ عربيّةٍ تقول ما العمل، ولا يُكتب «متّصل».
  *
@@ -35,14 +40,36 @@ use Illuminate\Support\Facades\Log;
  */
 class WhatsAppOnboarding
 {
+    /** رقمُ Cloud API مستقلّ — المسارُ الافتراضيّ */
+    public const CLOUD_API = 'cloud_api';
+
+    /** رقمٌ يبقى على تطبيق واتساب للأعمال في الهاتف — باختيارٍ صريح وحده */
+    public const COEXISTENCE = 'coexistence';
+
+    public const TYPES = [self::CLOUD_API, self::COEXISTENCE];
+
+    /**
+     * أمفتوحٌ مسارُ التعايش على هذا الخادم؟
+     *
+     * مطفأٌ ما لم يُشعَل: التعايشُ عند ميتا يحتاج حقولَ إشعاراتٍ في التطبيق
+     * (`smb_message_echoes` و`history` و`smb_app_state_sync` و`account_update`)
+     * ومزامنةً خلال أربعٍ وعشرين ساعة لا تُعاد — ولا شيءَ منها مبنيٌّ عندنا
+     * بعد. وربطُ رقمٍ بالتعايش بلاها يُضيّع تاريخَ محادثاته مرّةً واحدةً
+     * وإلى الأبد.
+     */
+    public static function coexistenceOpen(): bool
+    {
+        return (bool) config('whatsapp.coexistence_enabled', false);
+    }
+
     /**
      * يربط رقمَ هذا المتجر بما أعادته ميتا.
      *
      * ومعرّفُ المتجر يصل من المتحكّم الذي قرأه من الجلسة — لا من الطلب.
-     * وما يصل من المتصفّح (`$wabaId`, `$phoneNumberId`) اقتراحٌ يُفحص، لا
-     * أمرٌ يُنفَّذ.
+     * وما يصل من المتصفّح (`$wabaId`, `$phoneNumberId`, `$type`) اقتراحٌ
+     * يُفحص، لا أمرٌ يُنفَّذ.
      *
-     * @return array{ok:bool, connection:?WhatsAppConnection, field:?string, message:?string, pending:bool}
+     * @return array{ok:bool, connection:?WhatsAppConnection, field:?string, message:?string, pending:bool, webhook:?string}
      */
     public static function connect(
         Business $business,
@@ -50,6 +77,7 @@ class WhatsAppOnboarding
         string $code,
         ?string $wabaId = null,
         ?string $phoneNumberId = null,
+        string $type = self::CLOUD_API,
     ): array {
         $exchange = WhatsAppEmbeddedSignup::exchange($code);
 
@@ -59,51 +87,26 @@ class WhatsAppOnboarding
 
         $token = (string) $exchange['token'];
 
-        $inspect = WhatsAppEmbeddedSignup::inspect($token);
-
-        if (! $inspect['ok']) {
-            return self::fail($business, 'code', __('تعذّر التحقّق من التفويض — أعد المحاولة.'), $inspect);
-        }
-
-        $missing = array_diff(WhatsAppEmbeddedSignup::REQUIRED_SCOPES, $inspect['scopes']);
-
-        if ($missing !== []) {
-            return self::fail($business, 'code', __('التفويض ناقص — أعد الربط واقبل كلّ الأذونات المطلوبة.'), [
-                'code' => 'missing_scopes',
-                'message' => 'missing: '.implode(',', $missing),
-            ]);
-        }
-
         /*
-         * ═══ حسابُ الأعمال: ما مُنحناه، لا ما قيل لنا ═══
+         * ═══ الرمز: من تطبيق أبعاد، بصلاحياته، ولحسابٍ مُنحه ═══
          *
-         * `granular_scopes` تُسمّي الحسابات التي يملك هذا الرمزُ إدارتَها.
-         * فإن أرسل المتصفّح معرّفًا ليس فيها — خطأً أو عبثًا — رُدّ. وإن لم
-         * يرسل شيئًا وكان المُنح حسابًا واحدًا أُخذ. وإن كانت عدّةً ولم
-         * يُسمَّ واحدٌ منها لم يُخمَّن: الخطأُ هنا أن نربط حسابَ تاجرٍ بآخر.
+         * والكودُ بُدّل بسرّ تطبيقنا فرمزُه منّا — لكنّ الفحص لا يُفترض:
+         * `debug_token` يقولها. والبابُ نفسُه يحرس الربطَ اليدويّ
+         * (`WhatsAppLinkCheck::token`)، فلا يتباعد الطريقان.
          */
-        $granted = $inspect['waba_ids'];
+        $check = WhatsAppLinkCheck::token($token, $wabaId);
 
-        /*
-         * ولا يُستبدل ما أرسله المتصفّح بغيره.
-         *
-         * أوّلُ كتابةٍ لهذا السطر كانت تُسقط المرسَل وتأخذ «الوحيدَ الممنوح»
-         * حين لا يُطابق. وذاك يبتلع تناقضًا: المتصفّح رأى حسابًا والرمزُ مُنح
-         * لآخر. ولو وقع ذلك حقًّا — بخطأٍ عند ميتا أو بعبثٍ في الحمولة —
-         * لَرُبط التاجر بحسابٍ لم يره قطّ، ولَخرجت رسائلُه منه.
-         *
-         * فما أُرسل يُطابَق أو يُردّ. وما لم يُرسل شيءٌ يُؤخذ الوحيدُ الممنوح.
-         */
-        $waba = filled($wabaId)
-            ? (in_array((string) $wabaId, $granted, true) ? (string) $wabaId : null)
-            : (count($granted) === 1 ? $granted[0] : null);
+        if (! $check['ok']) {
+            $field = $check['problem'] === WhatsAppLinkCheck::WABA_NOT_GRANTED ? 'waba_id' : 'code';
+            $message = $check['problem'] === WhatsAppLinkCheck::UNVERIFIABLE
+                ? __('تعذّر التحقّق من التفويض — أعد المحاولة.')
+                : (string) $check['message'];
 
-        if ($waba === null) {
-            return self::fail($business, 'waba_id', __('لم نتعرّف على حساب واتساب للأعمال الذي مُنحنا إدارته — أعد الربط.'), [
-                'code' => 'waba_mismatch',
-                'message' => 'sent='.(string) $wabaId.' granted='.implode(',', $granted),
-            ]);
+            return self::fail($business, $field, $message, $check['meta'] + ['problem' => $check['problem']]);
         }
+
+        $waba = (string) $check['waba'];
+        $existing = WhatsAppConnections::forBusiness($business->id);
 
         $numbers = WhatsAppEmbeddedSignup::phoneNumbers($waba, $token);
 
@@ -121,7 +124,7 @@ class WhatsAppOnboarding
          * وانتظارُه انتظارُ ما لا يأتي.
          */
         if ($chosen === null && filled($phoneNumberId)) {
-            return self::fail($business, 'phone_number_id', __('الرقم الذي اخترته ليس ضمن حسابك عند ميتا — أعد الربط.'), [
+            return self::fail($business, 'phone_number_id', WhatsAppLinkCheck::say(WhatsAppLinkCheck::NUMBER_NOT_IN_WABA), [
                 'code' => 'number_mismatch',
                 'message' => 'sent='.(string) $phoneNumberId,
             ]);
@@ -132,45 +135,71 @@ class WhatsAppOnboarding
          *
          * في مسار تطبيق واتساب للأعمال تُعيد ميتا حسابَ الأعمال أوّلًا، وقد
          * لا يظهر الرقمُ في قائمته إلّا بعد دقائق. والتفويضُ في يدنا صحيحٌ
-         * كاملٌ — فضياعُه لأنّ قائمةً تأخّرت خسارةٌ بلا سبب، ويعود التاجر
-         * يربط من أوّله.
+         * كاملٌ — فضياعُه لأنّ قائمةً تأخّرت خسارةٌ بلا سبب.
+         *
+         * إلّا أن يكون للمتجر رقمٌ يُرسل اليوم: «بانتظار ميتا» فوقه يُطفئ
+         * رسائلَه ليصير لا شيء. فيبقى ما كان، ويُقال للتاجر لماذا.
          */
         if ($chosen === null) {
+            if ($existing?->isUsable()) {
+                return self::fail($business, 'phone_number_id', __('تمّ التفويض، ولم يُظهر حسابك رقمًا بعد — بقي ربطك الحاليّ كما هو. أعد الربط بعد دقائق.'), [
+                    'code' => 'no_number_yet', 'message' => 'kept existing connection',
+                ]);
+            }
+
+            $hook = WhatsAppLinkCheck::subscribe($waba, $token);
+
             $connection = self::save($business, $actor, [
                 'waba_id' => $waba,
                 'meta_business_id' => WhatsAppEmbeddedSignup::ownerBusinessId($waba, $token),
                 'access_token' => $token,
-                'token_expires_at' => $inspect['expires_at'] ?? $exchange['expires_at'],
+                'token_expires_at' => $check['expires_at'] ?? $exchange['expires_at'],
                 'status' => WhatsAppConnection::PENDING,
                 'last_error_code' => null,
                 'last_error_message' => null,
                 'last_error_at' => null,
-            ]);
+            ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state']));
 
-            self::subscribeOnce($waba, $token, $connection);
-
-            return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => true,
+            return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => true, 'webhook' => $hook['state'],
                 'message' => __('تمّ التفويض — وحسابك لم يُظهر رقمًا بعد. نتابع، وستكتمل خلال دقائق.')];
         }
 
         $numberId = (string) $chosen['id'];
 
-        /*
-         * ورقمٌ يملكه متجرٌ آخر لا يُنتزع منه.
-         *
-         * الفهرسُ الفريد يرفض على كلّ حال، لكنّه يرفض بخطأِ قاعدةِ بيانات.
-         * وهذا يقول للتاجر ما جرى بلغةٍ يفهمها — وهو الحارسُ نفسُه الذي
-         * يحرس الربط اليدويّ.
-         */
-        $existing = WhatsAppConnections::forBusiness($business->id);
-
-        $clash = WhatsAppConnection::where('phone_number_id', $numberId)
-            ->when($existing, fn ($q) => $q->where('id', '!=', $existing->id))->exists();
-
-        if ($clash) {
-            return self::fail($business, 'phone_number_id', __('هذا الرقم مربوطٌ بحسابٍ آخر.'), [
+        // ورقمٌ يملكه متجرٌ آخر لا يُنتزع منه — الحارسُ نفسُه في الربط اليدويّ
+        if (WhatsAppLinkCheck::taken($numberId, $existing?->id)) {
+            return self::fail($business, 'phone_number_id', WhatsAppLinkCheck::say(WhatsAppLinkCheck::NUMBER_TAKEN), [
                 'code' => 'number_taken', 'message' => 'phone_number_id already bound',
             ]);
+        }
+
+        /*
+         * ═══ والتعايشُ باختيارٍ صريحٍ وحده ═══
+         *
+         * ميتا منذ v4 تفتح مسارَ تطبيق الأعمال من تلقاء نفسها حين يُدخَل رقمٌ
+         * عليه. فلا يُقرأ من الاختيار وحده: يُسأل الرقمُ نفسُه. ورقمٌ على
+         * التطبيق والتاجرُ اختار «رقمًا مستقلًّا» — أو المسارُ مطفأٌ عندنا —
+         * لا يُربط ولا يُعلن.
+         */
+        $onApp = WhatsAppLinkCheck::onBusinessApp($chosen, $token);
+
+        if ($onApp && ($type !== self::COEXISTENCE || ! self::coexistenceOpen())) {
+            return self::fail($business, 'code', WhatsAppLinkCheck::say(WhatsAppLinkCheck::COEXISTENCE_NOT_CHOSEN), [
+                'code' => 'coexistence_not_chosen', 'message' => 'type='.$type,
+            ]);
+        }
+
+        $hook = WhatsAppLinkCheck::subscribe($waba, $token);
+
+        /*
+         * ولا تُستبدل وصلةٌ تستقبل بوصلةٍ لا تستقبل.
+         *
+         * متجرٌ يصله اليوم ما يكتبه زبائنه، وأعاد الربط فلم يثبت اشتراكُ
+         * أبعاد على الحساب الجديد: لو حُفظ لَصار رقمُه يُرسل ولا يستقبل.
+         */
+        if ($hook['state'] !== WhatsAppLinkCheck::SUBSCRIBED
+            && in_array(WhatsAppLinkHealth::state($existing), [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true)) {
+            return self::fail($business, 'code', __('لم يثبت اشتراك أبعاد في إشعارات الحساب الجديد — بقي ربطك الحاليّ كما هو.'), $hook['meta']);
         }
 
         $connection = self::save($business, $actor, [
@@ -178,16 +207,19 @@ class WhatsAppOnboarding
             'meta_business_id' => WhatsAppEmbeddedSignup::ownerBusinessId($waba, $token),
             'phone_number_id' => $numberId,
             'display_phone_number' => $chosen['display_phone_number'] ?? null,
-            'coexistence' => ($chosen['platform_type'] ?? null) === WhatsAppEmbeddedSignup::PLATFORM_SMB_APP,
+            'coexistence' => $onApp,
             'access_token' => $token,
-            'token_expires_at' => $inspect['expires_at'] ?? $exchange['expires_at'],
+            'token_expires_at' => $check['expires_at'] ?? $exchange['expires_at'],
             'status' => WhatsAppConnection::ACTIVE,
             'last_error_code' => null,
             'last_error_message' => null,
             'last_error_at' => null,
-        ]);
+        ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'])
+          + ($existing && $existing->phone_number_id !== $numberId ? ['last_webhook_at' => null] : []));
 
-        self::subscribeOnce($waba, $token, $connection);
+        if ($hook['state'] !== WhatsAppLinkCheck::SUBSCRIBED) {
+            self::log('subscribe_unproven', $business->id, $hook['meta'] + ['code' => $hook['state']]);
+        }
 
         // قوالب المحلّ تُهيَّأ بأسمائها الافتراضية — كما في الربط اليدويّ
         WhatsAppTemplates::seedBusinessDefaults($business->id);
@@ -195,8 +227,16 @@ class WhatsAppOnboarding
         Activity::log('settings', 'واتساب — ربط رقم المتجر بالتسجيل المدمج ('
             .($chosen['display_phone_number'] ?? $numberId).')');
 
-        return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => false,
-            'message' => __('تمّ ربط رقمك بنجاح.')];
+        return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => false, 'webhook' => $hook['state'],
+            'message' => self::linkedMessage($hook['state'])];
+    }
+
+    /** ما يُقال بعد ربطٍ قُبل — والاستقبالُ لا يُدّعى قبل أن يثبت */
+    public static function linkedMessage(string $webhook): string
+    {
+        return $webhook === WhatsAppLinkCheck::SUBSCRIBED
+            ? __('تمّ ربط رقمك بنجاح، وتطبيق أبعاد مشترك في إشعاراته. يثبت استقبال الرسائل بأوّل رسالةٍ تصل.')
+            : __('رُبط رقمك للإرسال، لكنّ اشتراك أبعاد في إشعاراته لم يثبت — رسائل زبائنك لن تصل بعد. اضغط «فحص الربط» أو أعد الربط.');
     }
 
     /**
@@ -227,32 +267,6 @@ class WhatsAppOnboarding
         }
 
         return count($numbers) === 1 ? $numbers[0] : null;
-    }
-
-    /**
-     * الاشتراك في إشعارات الحساب — مرّةً، ولا يُكسر قائمٌ.
-     *
-     * وفشلُه لا يُفشل الربط: التاجرُ يستطيع أن يُرسل بلا إشعارات، وما ينقصه
-     * حالاتُ التسليم. فيُقيَّد السببُ على الوصلة ويُعرض، ولا تُهدم وصلةٌ
-     * صحيحةٌ من أجله.
-     */
-    private static function subscribeOnce(string $waba, string $token, WhatsAppConnection $connection): void
-    {
-        if (WhatsAppEmbeddedSignup::subscribed($waba, $token) === true) {
-            return;
-        }
-
-        $result = WhatsAppEmbeddedSignup::subscribe($waba, $token);
-
-        if (! $result['ok']) {
-            $connection->forceFill([
-                'last_error_code' => (string) $result['code'],
-                'last_error_message' => mb_substr((string) $result['message'], 0, 500),
-                'last_error_at' => now(),
-            ])->save();
-
-            self::log('subscribe_failed', $connection->business_id, $result);
-        }
     }
 
     /**

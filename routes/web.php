@@ -1521,11 +1521,11 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->middleware('may:'.Permissions::INBOX_VIEW)->group(function () {
             Route::get('/', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'index'])->name('index');
             Route::get('/poll', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'poll'])
-                ->middleware('throttle:60,1')->name('poll');
+                ->middleware('throttle:60,1,whatsapp-inbox-poll')->name('poll');
             Route::get('/{chat}/older', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'older'])
                 ->whereNumber('chat')->name('older');
             Route::post('/{chat}/reply', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'reply'])
-                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:30,1'])->name('reply');
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:30,1,whatsapp-inbox-reply'])->name('reply');
             Route::get('/attachments/{attachment}', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'attachment'])
                 ->whereNumber('attachment')->name('attachment');
         });

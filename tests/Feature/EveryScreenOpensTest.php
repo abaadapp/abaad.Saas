@@ -46,7 +46,7 @@ class EveryScreenOpensTest extends TestCase
          * عطب. لكنّ استثناءها من الكنس يتركها بلا حارسٍ يفتحها أصلًا، فيمرّ
          * فيها ٥٠٠ بلا أن يراه أحد. ففتحُها هنا يكنسها حقًّا.
          */
-        $business->update(['boutiques_enabled' => true]);
+        $business->update(['boutiques_enabled' => true, 'whatsapp_inbox_enabled' => true]);
 
         $this->owner = $business->users()->where('role', 'admin')->firstOrFail();
 

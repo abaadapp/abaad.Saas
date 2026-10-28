@@ -100,7 +100,7 @@ return new class extends Migration
         if (! Schema::hasTable('whatsapp_chat_attachments')) {
             Schema::create('whatsapp_chat_attachments', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('business_id')->constrained()->cascadeOnDelete();
+                $table->foreignId('business_id')->index()->constrained()->cascadeOnDelete();
                 $table->foreignId('message_id')->index()->constrained('whatsapp_chat_messages')->cascadeOnDelete();
                 $table->string('disk', 20);
                 $table->string('path');
@@ -114,7 +114,7 @@ return new class extends Migration
         if (! Schema::hasTable('whatsapp_chat_reads')) {
             Schema::create('whatsapp_chat_reads', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('business_id')->constrained()->cascadeOnDelete();
+                $table->foreignId('business_id')->index()->constrained()->cascadeOnDelete();
                 $table->foreignId('chat_id')->constrained('whatsapp_chats')->cascadeOnDelete();
                 $table->foreignId('user_id')->index()->constrained()->cascadeOnDelete();
                 $table->unsignedBigInteger('last_read_message_id')->default(0);

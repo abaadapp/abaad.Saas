@@ -167,6 +167,19 @@ class AShopReadsAndAnswersItsCustomersOnWhatsAppTest extends TestCase
         ]);
     }
 
+    /** ردٌّ من الزبون يقتبس رسالةً بعينها — `context.id` كما ترسله ميتا */
+    private function quoting(string $wamid, string $quoted): void
+    {
+        $this->webhook([
+            'metadata' => ['phone_number_id' => 'ABAAD-PN'],
+            'messages' => [[
+                'id' => $wamid, 'from' => self::CUSTOMER, 'type' => 'text',
+                'timestamp' => (string) now()->timestamp, 'text' => ['body' => 'بخصوص هذه'],
+                'context' => ['from' => '96870000000', 'id' => $quoted],
+            ]],
+        ]);
+    }
+
     /** إشعارُ طلبٍ خرج من رقم أبعاد باسم هذا المتجر */
     private function notified(Business $b, string $phone = self::CUSTOMER): WhatsAppMessage
     {
@@ -262,6 +275,42 @@ class AShopReadsAndAnswersItsCustomersOnWhatsAppTest extends TestCase
         $this->assertSame(0, WhatsAppChatMessage::count());
     }
 
+    public function test_a_customer_of_two_shops_on_the_shared_number_is_nobodys_unless_the_reply_quotes_one(): void
+    {
+        // الشوكولاتة راسلته قبل شهر، والهدايا اليوم — وهو يكتب بلا اقتباس
+        $old = $this->notified($this->sharedD);
+        $old->forceFill(['created_at' => now()->subDays(30)])->save();
+        $this->notified($this->sharedC);
+
+        $this->inbound('ABAAD-PN', 'wamid.WHICH-SHOP', 'متى يصل؟');
+        $this->assertSame(0, WhatsAppChatMessage::count(), 'نافذةُ الأسبوع وحدها كانت تنسبه للهدايا — وقد يكون يسأل الشوكولاتة');
+
+        // اقتباسٌ لا نعرفه (رسالةُ دعمٍ لأبعاد مثلًا) لا يُنسب ولا يُخمَّن بعده
+        $this->quoting('wamid.QUOTES-UNKNOWN', 'wamid.NOT-OURS');
+        $this->assertSame(0, WhatsAppChatMessage::count());
+
+        // واقتباسُ إشعار الشوكولاتة القديم يقين — له وحده
+        $this->quoting('wamid.QUOTES-D', (string) $old->provider_message_id);
+        $this->assertSame(1, WhatsAppChatMessage::where('business_id', $this->sharedD->id)->count());
+        $this->assertNull($this->chatOf($this->sharedC));
+
+        // وردُّه على رسالته هو في ذلك الخيط يتبعه
+        $this->quoting('wamid.QUOTES-ITSELF', 'wamid.QUOTES-D');
+        $this->assertSame(2, WhatsAppChatMessage::where('business_id', $this->sharedD->id)->count());
+        $this->assertNull($this->chatOf($this->sharedC));
+    }
+
+    public function test_a_shop_that_wrote_months_ago_does_not_cloud_the_one_that_wrote_this_week(): void
+    {
+        $this->notified($this->sharedD)->forceFill(['created_at' => now()->subDays(WhatsAppInbox::AMBIGUOUS_DAYS + 1)])->save();
+        $this->notified($this->sharedC);
+
+        $this->inbound('ABAAD-PN', 'wamid.THIS-WEEK');
+
+        $this->assertSame(1, WhatsAppChatMessage::where('business_id', $this->sharedC->id)->count());
+        $this->assertNull($this->chatOf($this->sharedD));
+    }
+
     public function test_a_shop_closed_to_abaads_number_gets_no_shared_messages(): void
     {
         $this->sharedC->update(['whatsapp_shared_allowed' => false]);
@@ -303,6 +352,23 @@ class AShopReadsAndAnswersItsCustomersOnWhatsAppTest extends TestCase
 
         $this->assertSame(1, WhatsAppChatMessage::where('wamid', 'wamid.BOTH')->count());
         $this->assertSame(WhatsAppInboundMessage::SENT, WhatsAppInboundMessage::where('wamid', 'wamid.BOTH')->value('reply_status'));
+
+        // والخيطُ يقول إنّ ردًّا آليًّا خرج — ولا يعرضه كأنّه رسالةٌ محفوظة
+        $thread = $this->actingAs($this->ownerA)
+            ->get(route('admin.whatsappInbox.index', ['c' => $this->chatOf($this->shopA)->id]))
+            ->assertOk()->viewData('page')['props']['thread']['messages'];
+
+        $this->assertCount(1, $thread);
+        $this->assertSame('in', $thread[0]['kind']);
+        $this->assertTrue($thread[0]['auto_replied']);
+        $this->assertStringNotContainsString('شكرًا لتواصلك', json_encode($thread, JSON_UNESCAPED_UNICODE));
+
+        // ورسالةٌ لم يُردّ عليها آليًّا (التهدئة) لا تحمل العلامة
+        $this->inbound('PN-A', 'wamid.COOLDOWN');
+        $thread = $this->actingAs($this->ownerA)
+            ->get(route('admin.whatsappInbox.index', ['c' => $this->chatOf($this->shopA)->id]))
+            ->viewData('page')['props']['thread']['messages'];
+        $this->assertFalse(collect($thread)->firstWhere('key', 'm'.WhatsAppChatMessage::where('wamid', 'wamid.COOLDOWN')->value('id'))['auto_replied']);
     }
 
     /* ============================== الصلاحيات ============================== */

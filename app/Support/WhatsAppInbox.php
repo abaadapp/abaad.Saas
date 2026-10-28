@@ -11,6 +11,7 @@ use App\Models\WhatsAppChatAttachment;
 use App\Models\WhatsAppChatMessage;
 use App\Models\WhatsAppChatRead;
 use App\Models\WhatsAppConnection;
+use App\Models\WhatsAppInboundMessage;
 use App\Models\WhatsAppMessage;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -28,9 +29,10 @@ use Illuminate\Validation\ValidationException;
  * - **رقمُ المتجر المستقلّ** (`business_own`): الرقمُ رقمُه، والإسنادُ يقين —
  *   الوصلةُ تُعرف من `phone_number_id` في إشعار ميتا، والمتجرُ صاحبُ الوصلة.
  * - **رقمُ أبعاد المشترك** (`abaad_shared`): رقمٌ واحدٌ يُرسل نيابةً عن كلّ
- *   المتاجر، فالمتجرُ لا يُعرف من الرقم. يُنسب الواردُ لمتجرٍ **واحدٍ** راسل
- *   هذا الزبونَ من الرقم المشترك في آخر `ATTRIBUTION_DAYS` يومًا — ومتجران
- *   أو لا أحد = لا يُكتب الواردُ في صندوق أحد (`attribute`).
+ *   المتاجر، فالمتجرُ لا يُعرف من الرقم. ردٌّ يقتبس رسالةً بعينها يُنسب لمتجر
+ *   تلك الرسالة وحده؛ وبلا اقتباسٍ يُنسب لمتجرٍ **واحدٍ** راسل هذا الزبونَ من
+ *   الرقم المشترك في آخر `ATTRIBUTION_DAYS` يومًا ولم يراسله غيرُه في آخر
+ *   `AMBIGUOUS_DAYS` — وما سوى ذلك لا يُكتب في صندوق أحد (`attribute`).
  *
  * ═══ والردُّ من رقم المحادثة وحده ═══
  *
@@ -59,6 +61,14 @@ final class WhatsAppInbox
 
     /** على الرقم المشترك: كم يومًا تُقرأ مراسلةُ المتجر للزبون دليلًا على أنّ الواردَ له */
     public const ATTRIBUTION_DAYS = 7;
+
+    /**
+     * وزبونٌ راسله متجرٌ آخرُ من الرقم نفسه في هذه المدّة لا يُعرف لمن كتب.
+     *
+     * فالزبونُ الذي يشتري من متجرين يردّ على إشعارٍ قديمٍ لأحدهما وقد وصله
+     * أحدثُ من الآخر — ونافذةُ الأيّام السبعة وحدها تنسبه للأحدث خطأً.
+     */
+    public const AMBIGUOUS_DAYS = 90;
 
     public const PER_PAGE = 30;
 
@@ -160,7 +170,7 @@ final class WhatsAppInbox
             return;
         }
 
-        $business = self::attribute($connection, $from);
+        $business = self::attribute($connection, $from, $message['context']['id'] ?? null);
 
         if (! self::available($business) || ! WhatsAppFeature::canUseShared($business)) {
             return;
@@ -172,15 +182,51 @@ final class WhatsAppInbox
     /**
      * لمن هذا الزبونُ على الرقم المشترك؟ — متجرٌ واحدٌ أو لا أحد.
      *
-     * والدليلُ ممّا كتبناه نحن لا ممّا يكتبه الزبون: إشعارٌ خرج إليه فعلًا من
-     * هذا الرقم باسم متجر، أو محادثةٌ جاريةٌ معه في صندوق متجر — في آخر
-     * `ATTRIBUTION_DAYS` يومًا. ونصُّ الرسالة لا يُقرأ في الإسناد: «طلبي من
-     * محلّ الورد» يكتبها من شاء.
+     * والدليلُ ممّا كتبناه نحن لا ممّا يكتبه الزبون — ونصُّ الرسالة لا يُقرأ
+     * في الإسناد: «طلبي من محلّ الورد» يكتبها من شاء.
+     *
+     * - **ردٌّ يقتبس رسالة** (`context.id` من ميتا، ومنه زرُّ الردّ السريع في
+     *   القالب): لمتجر تلك الرسالة على هذا الرقم وحده. واقتباسٌ لا نعرفه —
+     *   رسالةُ دعمٍ أو مبيعاتٍ لأبعاد — لا يُنسب لأحد، ولا يُخمَّن بعده.
+     * - **وبلا اقتباس**: متجرٌ راسله فعلًا من هذا الرقم (إشعارٌ خرج إليه، أو
+     *   محادثةٌ جاريةٌ في صندوقه) في آخر `ATTRIBUTION_DAYS` يومًا، **ولم**
+     *   يراسله متجرٌ غيرُه في آخر `AMBIGUOUS_DAYS`.
      */
-    public static function attribute(WhatsAppConnection $line, string $phone): ?Business
+    public static function attribute(WhatsAppConnection $line, string $phone, ?string $quoted = null): ?Business
     {
-        $since = now()->subDays(self::ATTRIBUTION_DAYS);
+        if (filled($quoted)) {
+            $owner = WhatsAppMessage::query()
+                ->where('whatsapp_connection_id', $line->id)
+                ->where('provider_message_id', (string) $quoted)
+                ->where('recipient_phone', $phone)
+                ->where('direction', 'outbound')
+                ->where('source_mode', WhatsAppMode::ABAAD_SHARED)
+                ->value('business_id')
+                ?? WhatsAppChatMessage::query()
+                    ->where('whatsapp_connection_id', $line->id)
+                    ->where('wamid', (string) $quoted)
+                    ->whereHas('chat', fn ($q) => $q->where('customer_phone', $phone)
+                        ->where('source_mode', WhatsAppMode::ABAAD_SHARED))
+                    ->value('business_id');
 
+            return $owner ? Business::find($owner) : null;
+        }
+
+        $recent = self::shopsThatWrote($line, $phone, now()->subDays(self::ATTRIBUTION_DAYS));
+        $known = self::shopsThatWrote($line, $phone, now()->subDays(self::AMBIGUOUS_DAYS));
+
+        return $recent->count() === 1 && $known->count() === 1
+            ? Business::find($recent->first())
+            : null;
+    }
+
+    /**
+     * المتاجرُ التي راسلت هذا الزبونَ من هذا الرقم منذ `$since`.
+     *
+     * @return Collection<int, int>
+     */
+    private static function shopsThatWrote(WhatsAppConnection $line, string $phone, $since): Collection
+    {
         $notified = WhatsAppMessage::query()
             ->where('whatsapp_connection_id', $line->id)
             ->where('recipient_phone', $phone)
@@ -197,9 +243,7 @@ final class WhatsAppInbox
             ->where('last_message_at', '>=', $since)
             ->pluck('business_id');
 
-        $ids = $notified->merge($talking)->filter()->map(fn ($id) => (int) $id)->unique()->values();
-
-        return $ids->count() === 1 ? Business::find($ids->first()) : null;
+        return $notified->merge($talking)->filter()->map(fn ($id) => (int) $id)->unique()->values();
     }
 
     /** رقمُ مستخدمٍ له متجر — والتضييقُ بآخر أربع خانات (انظر `WhatsAppAutoReply::languageOf`) */
@@ -686,7 +730,17 @@ final class WhatsAppInbox
             : null;
         $lower = $more ? $rows->last()->created_at : null;
 
-        $items = $rows->map(fn (WhatsAppChatMessage $m) => self::bubble($m))
+        /*
+         * والردُّ الآليّ لا يُحفظ نصُّه (`WhatsAppAutoReply::send` يُرسل ويختم
+         * الحال وحدها) — فلا يُعرض في الخيط وكأنّه منه. يُقال تحت رسالة الزبون
+         * إنّه خرج إليه ردٌّ آليّ، ولا يُخترع له نصّ.
+         */
+        $autoReplied = WhatsAppInboundMessage::where('business_id', $chat->business_id)
+            ->whereIn('wamid', $rows->where('direction', WhatsAppChatMessage::IN)->pluck('wamid')->filter()->values())
+            ->where('reply_status', WhatsAppInboundMessage::SENT)
+            ->pluck('wamid')->flip();
+
+        $items = $rows->map(fn (WhatsAppChatMessage $m) => self::bubble($m, $autoReplied->has((string) $m->wamid)))
             ->concat(self::notices($chat, $lower, $upper))
             ->sortBy([['ts', 'asc'], ['order', 'asc']])
             ->values();
@@ -731,7 +785,7 @@ final class WhatsAppInbox
     }
 
     /** @return array<string, mixed> */
-    public static function bubble(WhatsAppChatMessage $m): array
+    public static function bubble(WhatsAppChatMessage $m, bool $autoReplied = false): array
     {
         $at = $m->received_at ?? $m->created_at;
 
@@ -750,6 +804,7 @@ final class WhatsAppInbox
             'status' => $m->status,
             'status_label' => $m->direction === WhatsAppChatMessage::OUT ? WhatsAppStatus::label((string) $m->status) : null,
             'error' => $m->status === WhatsAppStatus::FAILED ? $m->error_message : null,
+            'auto_replied' => $autoReplied,
             'attachments' => $m->attachments->map(fn (WhatsAppChatAttachment $a) => [
                 'id' => $a->id,
                 'name' => (string) $a->name,

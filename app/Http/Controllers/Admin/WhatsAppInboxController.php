@@ -140,7 +140,7 @@ class WhatsAppInboxController extends Controller
 
         return back()->with('toast', $failed === 0
             ? ['msg' => __('أُرسل الردّ'), 'type' => 'success']
-            : ['msg' => __('لم يخرج جزءٌ من الردّ — سببُه مكتوبٌ تحته.'), 'type' => 'error']);
+            : ['msg' => __('لم يخرج جزءٌ من الردّ — سببُه مكتوبٌ تحته.'), 'type' => 'danger']);
     }
 
     /** مرفقٌ في محادثة — من متجر الجلسة وحده، وما سواه 404 */

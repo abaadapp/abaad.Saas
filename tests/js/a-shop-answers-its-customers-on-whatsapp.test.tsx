@@ -122,6 +122,20 @@ describe('صندوق المحادثات', () => {
         expect(screen.getByTestId('thread-customer')).toHaveAttribute('href', '/admin.customers.show/3');
     });
 
+    it('والردُّ الآليّ يُقال تحت رسالة الزبون ولا يُعرض كأنّه رسالة — نصُّه لا يُحفظ', () => {
+        const [notice, inbound, out] = THREAD.messages;
+        draw({ thread: { ...THREAD, messages: [notice, { ...inbound, auto_replied: true }, out] } });
+
+        expect(within(screen.getByTestId('bubble-in')).getByTestId('bubble-auto-replied')).toHaveTextContent('ردٌّ آليّ');
+        expect(screen.getAllByTestId('bubble-out')).toHaveLength(1);
+    });
+
+    it('ورسالةٌ لم يُردّ عليها آليًّا لا تحمل العلامة', () => {
+        draw();
+
+        expect(screen.queryByTestId('bubble-auto-replied')).toBeNull();
+    });
+
     it('الردّ: يرسل النصَّ إلى باب المحادثة نفسِها', async () => {
         draw({ canReply: true });
         const user = userEvent.setup();

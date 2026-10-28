@@ -36,6 +36,8 @@ export interface Item {
     status_label: string | null;
     error?: string | null;
     reason?: string | null;
+    /** رسالةُ الزبون: خرج إليه ردٌّ آليّ — نصُّه لا يُحفظ فلا يُعرض */
+    auto_replied?: boolean;
     attachments?: { id: number; name: string; image: boolean; url: string }[];
     /** الإشعار: الحدثُ ووصفُه حين لا نصَّ محفوظًا */
     event?: string;
@@ -148,8 +150,8 @@ export default function WhatsAppInbox() {
 
     if (revoked) {
         return (
-            <AdminLayout title="محادثات واتساب">
-                <PageHeader title="محادثات واتساب" />
+            <AdminLayout title="صندوق محادثات واتساب">
+                <PageHeader title="صندوق محادثات واتساب" />
                 <Card className="p-10 text-center text-[14px] text-[#6b7280]" data-testid="inbox-revoked">
                     {t('لم تعد لك صلاحية على محادثات واتساب — أُغلقت المحادثة. راجع صاحب المتجر.')}
                 </Card>
@@ -160,9 +162,9 @@ export default function WhatsAppInbox() {
     const empty = chats.length === 0 && params.q === '';
 
     return (
-        <AdminLayout title="محادثات واتساب">
+        <AdminLayout title="صندوق محادثات واتساب">
             <PageHeader
-                title="محادثات واتساب"
+                title="صندوق محادثات واتساب"
                 subtitle={line.mode === 'business_own'
                     ? (line.number ? t('على رقم متجرك :number', { number: line.number }) : t('على رقم متجرك'))
                     : t('ردود عملائك على رقم أبعاد المشترك — ما ثبت أنه لمتجرك وحده')}
@@ -402,6 +404,10 @@ function Bubble({ item: m }: { item: Item }) {
                 <span dir="ltr">{m.time}</span>
                 {ours && <StatusMark status={m.status} label={m.status_label} />}
             </div>
+
+            {m.kind === 'in' && m.auto_replied && (
+                <p className="mt-1 text-[11px] italic text-[#6b7280]" data-testid="bubble-auto-replied">{t('أُرسل إليه ردٌّ آليّ — نصُّه لا يُحفظ في المحادثة')}</p>
+            )}
 
             {m.status === 'failed' && (m.error || m.reason) && (
                 <p className="mt-1 text-[12px] leading-relaxed text-[#b91c1c]" data-testid="bubble-failure">{m.error ?? m.reason}</p>

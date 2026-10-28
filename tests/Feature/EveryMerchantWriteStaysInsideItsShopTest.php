@@ -37,7 +37,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
         $this->buildTwoShops();
         // ومستحقّاتُ مكوّنات البوتيك مفتوحةٌ للمتجرين: بلاها تُردّ أبوابُها بـ404 قبل أن يُسأل عن الملكيّة
         \Illuminate\Support\Facades\DB::table('businesses')->whereIn('id', [$this->a->id, $this->b->id])
-            ->update(['boutiques_enabled' => true, 'boutique_components_enabled' => true]);
+            ->update(['boutiques_enabled' => true, 'boutique_components_enabled' => true, 'whatsapp_inbox_enabled' => true]);
     }
 
     /**
@@ -246,6 +246,7 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['Google', 'delete', 'admin.integrations.google.branch.unlink', ['branch' => 'branch']],
                 ['Google Business', 'post', 'admin.integrations.googleBusiness.branch.link', ['branch' => 'branch']],
                 ['Google Business', 'post', 'admin.integrations.googleBusiness.branch.sync', ['branch' => 'branch']],
+                ['محادثات واتساب', 'post', 'admin.whatsappInbox.reply', ['chat' => 'whatsapp_chat']],
             ],
             'website' => [
                 ['صفحات الموقع', 'put', 'admin.website.pages.update', ['id' => 'page']],

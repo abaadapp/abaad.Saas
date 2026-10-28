@@ -9891,5 +9891,6 @@
     "مشاهدة فقط": "View only",
     "يقرأ المحادثات ولا يرسل ردًّا": "Reads conversations and does not send replies",
     "مشاهدة ورد": "View and reply",
-    "يقرأ المحادثات ويردّ على العملاء من رقم المتجر": "Reads conversations and replies to customers from the shop number"
+    "يقرأ المحادثات ويردّ على العملاء من رقم المتجر": "Reads conversations and replies to customers from the shop number",
+    "أُرسل إليه ردٌّ آليّ — نصُّه لا يُحفظ في المحادثة": "An auto-reply was sent — its text is not kept in the conversation"
 }

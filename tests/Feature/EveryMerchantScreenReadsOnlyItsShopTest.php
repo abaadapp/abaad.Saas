@@ -186,6 +186,7 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
     private const ID_SCREENS = [
         'admin.branch.switch' => ['branch' => 'branch'],
         'admin.customerInvoices.show' => ['id' => 'invoice'],
+        'admin.customerInvoices.edit' => ['id' => 'invoice'],
         'admin.customerInvoices.pdf' => ['id' => 'invoice'],
         'admin.customerInvoices.attachment' => ['id' => 'invoice', 'attachment' => 'invoice_attachment'],
         'admin.customerPayments.show' => ['id' => 'payment'],

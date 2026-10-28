@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Tests\Support\SelfSignupOpens;
 use Tests\TestCase;
 
 /**
@@ -44,6 +45,7 @@ use Tests\TestCase;
 class ASelfSignupStartsOnTheBasicPlanForFourteenDaysTest extends TestCase
 {
     use RefreshDatabase;
+    use SelfSignupOpens;
 
     private Plan $basic;
 
@@ -57,6 +59,8 @@ class ASelfSignupStartsOnTheBasicPlanForFourteenDaysTest extends TestCase
 
         $this->basic = Plan::create(['name' => 'الباقة الأساسية', 'code' => Plan::CODE_BASIC, 'monthly_price' => 9.9, 'yearly_price' => 99]);
         $this->pro = Plan::create(['name' => 'الباقة الاحترافية', 'monthly_price' => 29.9, 'yearly_price' => 299]);
+        // والإطلاقُ مفتوحٌ بشرطه — وإلّا يُردّ التسجيلُ الذاتيّ (`Signup::ready`)
+        $this->openSelfSignup();
 
         // إعداداتُ المنصّة لزرّ «إضافة شركة» — لا تخصّ من يسجّل بنفسه
         $this->platform('default_plan', 'الباقة الاحترافية');

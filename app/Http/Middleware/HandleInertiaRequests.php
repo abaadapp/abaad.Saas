@@ -210,6 +210,14 @@ class HandleInertiaRequests extends Middleware
                          * الصندوق، ومن لا يعرف الموعد يؤجّل إلى أن يفاجئه.
                          */
                         'graceLeft' => Tenancy::graceLeft($user->business),
+                        /*
+                         * والتجربةُ المجّانيّة تُقال باسمها وباسم باقتها من أوّل يوم —
+                         * لا «ينتهي اشتراكُك» في أسبوعها الأخير وحده. من لا يعرف أنّه
+                         * يجرّب لا يعرف أنّ عليه أن يشترك، ولا لماذا لا يجد نقطةَ البيع.
+                         */
+                        'trial' => Tenancy::isUnpaidSelfSignup($user->business),
+                        'plan' => $user->business->plan?->name,
+                        'trialWithoutPos' => Tenancy::isUnpaidSelfSignup($user->business) && ! PlanFeatures::allows($user->business, 'pos'),
                     ]
                     : null,
 

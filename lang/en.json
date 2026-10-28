@@ -9892,5 +9892,14 @@
     "يقرأ المحادثات ولا يرسل ردًّا": "Reads conversations and does not send replies",
     "مشاهدة ورد": "View and reply",
     "يقرأ المحادثات ويردّ على العملاء من رقم المتجر": "Reads conversations and replies to customers from the shop number",
-    "أُرسل إليه ردٌّ آليّ — نصُّه لا يُحفظ في المحادثة": "An auto-reply was sent — its text is not kept in the conversation"
+    "أُرسل إليه ردٌّ آليّ — نصُّه لا يُحفظ في المحادثة": "An auto-reply was sent — its text is not kept in the conversation",
+    "أنت في التجربة المجانية — الإضافات للعرض والاستفسار، وفريق أبعاد يفعّل ما تحتاجه.": "You're on the free trial — add-ons are here to browse and ask about, and the Abaad team activates what you need.",
+    "أنت في التجربة المجانية. الإضافات هنا للعرض والاستفسار، وفريق أبعاد يفعّل ما تحتاجه بعد الاتفاق على اشتراكك.": "You're on the free trial. Add-ons here are to browse and ask about, and the Abaad team activates what you need once your subscription is agreed.",
+    "استفسر عبر فريق أبعاد": "Ask the Abaad team",
+    "تنتهي في": "Ends on",
+    "اليوم آخر يوم": "Today is the last day",
+    "بقي يوم واحد": "1 day left",
+    "بقي :n يومًا": ":n days left",
+    "نقطة البيع والإضافات غير مشمولة في التجربة، ويفعّلها فريق أبعاد عند الاشتراك.": "Point of sale and add-ons are not part of the trial — the Abaad team activates them when you subscribe.",
+    "لا تشمل التجربة نقطة البيع POS ولا الإضافات، ويفعّلها فريق أبعاد عند الاشتراك.": "The trial doesn't include the POS or add-ons — the Abaad team activates them when you subscribe."
 }

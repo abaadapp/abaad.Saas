@@ -8,6 +8,7 @@ use App\Support\Activity;
 use App\Support\BusinessTypes;
 use App\Support\PosTerminal;
 use App\Support\SelfSignupPlanMissing;
+use App\Support\SelfSignupPolicyNotReady;
 use App\Support\Signup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -56,6 +57,8 @@ class RegisterController extends Controller
                 'days' => Signup::TRIAL_DAYS,
                 'plan' => Plan::where('code', Plan::CODE_BASIC)->value('name'),
             ],
+            // والبابُ متوقّفٌ إن لم تكن السياسةُ الجديدة ما سيُختم — يُقال قبل أن يُملأ شيء
+            'closed' => ! Signup::ready(),
         ]);
     }
 
@@ -122,7 +125,7 @@ class RegisterController extends Controller
 
         try {
             $owner = Signup::register($data);
-        } catch (SelfSignupPlanMissing $e) {
+        } catch (SelfSignupPlanMissing|SelfSignupPolicyNotReady $e) {
             /*
              * لا باقةَ أساسيّةً برمزها — فلا متجر، ورسالةٌ لا تدّعي خطأً في
              * حقلٍ كتبه. والسجلُّ لمن يدير المنصّة: البابُ واقفٌ حتى تُثبَّت.

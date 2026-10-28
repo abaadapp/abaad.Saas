@@ -14,6 +14,7 @@ use App\Support\Billing;
 use App\Support\CustomArrangement;
 use App\Support\PlanFeatures;
 use App\Support\PlanLimits;
+use App\Support\SelfSignupPolicyNotReady;
 use App\Support\Signup;
 use App\Support\Store\GiftOrders;
 use App\Support\WhatsAppFeature;
@@ -31,7 +32,8 @@ use Tests\TestCase;
  *
  *   1. المتجرُ القائم يحتفظ بقدراته وأسعاره قبل الإطلاق وبعده.
  *   2. ويحتفظ بنقطة البيع بعد تجديد اشتراكه.
- *   15. التسجيلُ الذاتيّ والتجربةُ كما كانا والإطلاقُ مطفأ؛ ومفتوحًا يُختم الجديدُ بلا نقطة بيع.
+ *   15. التسجيلُ الذاتيّ يُردّ والإطلاقُ مطفأ (`Signup::ready`)، ومن سجّل قبله بحقوقه؛
+ *       ومفتوحًا يُختم الجديدُ على السياسة الجديدة بلا نقطة بيع.
  *   16. إطفاءُ الإطلاق لا يمسّ متجرًا خُتمت سياستُه.
  *   18. الترحيلُ على قاعدةٍ قائمة: كلُّ متجرٍ على السابقة، ولا باقةَ ولا اشتراكَ ولا فاتورةَ تتغيّر.
  *   والإطلاقُ لا يُفتح قبل سعر الأساسيّة؛ وباقةٌ قدراتُها `null` كما كانت.
@@ -145,18 +147,27 @@ class AnExistingShopKeepsItsSubscriptionWhenAddonsLaunchTest extends TestCase
         Billing::price($business->fresh(), 'monthly');
     }
 
-    public function test_self_signup_and_its_trial_are_untouched_while_the_launch_is_off_and_a_new_shop_gets_no_paid_feature_after_it(): void
+    public function test_a_self_signup_is_refused_while_the_launch_is_off_an_older_one_keeps_its_rights_and_a_new_shop_gets_no_paid_feature_after_it(): void
     {
         $data = fn (string $email) => [
             'name' => 'سالم', 'phone' => '9'.random_int(1000000, 9999999), 'type' => 'محل ورود', 'shop' => 'ورد '.$email,
             'email' => $email, 'password' => 'Secret-Pass-123',
         ];
 
-        $before = Signup::register($data('before@signup.om'))->business;
-        $this->assertSame(PricingPolicy::LEGACY, $before->pricing_policy);
-        $this->assertSame($this->plans['basic']->id, (int) $before->plan_id);
-        $this->assertSame(now()->addDays(Signup::TRIAL_DAYS)->toDateString(), $before->ends_at->toDateString());
+        // تسجيلٌ قديمٌ على السابقة — قبل أن يُردّ التسجيلُ والإطلاقُ مطفأ
+        [$before] = $this->shop('basic', 'before@signup.om');
+        $before->forceFill(['registration_source' => Business::SOURCE_SELF_SIGNUP])->save();
+        $this->assertSame(PricingPolicy::LEGACY, $before->fresh()->pricing_policy);
         $this->assertTrue($this->allows($before, Catalog::POS));
+
+        // والإطلاقُ مطفأ: يُردّ التسجيلُ ولا يُكتب شيء — كان يُختم على السابقة فتصير نقطةُ
+        // البيع مشمولةً بأوّل سداد، ويناقض الباقاتِ المعلنة (قرار المالك 2026-10-28)
+        try {
+            Signup::register($data('refused@signup.om'));
+            $this->fail('سُجّل متجرٌ على السياسة السابقة');
+        } catch (SelfSignupPolicyNotReady) {
+            $this->assertSame(0, Business::where('email', 'refused@signup.om')->count());
+        }
 
         $this->launch();
         $after = Signup::register($data('after@signup.om'))->business;

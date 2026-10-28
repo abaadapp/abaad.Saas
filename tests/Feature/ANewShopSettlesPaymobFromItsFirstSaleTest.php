@@ -10,7 +10,10 @@ use App\Models\Plan;
 use App\Models\Product;
 use App\Models\Setting;
 use App\Models\StorePaymentIntent;
+use App\Models\SubscriptionAddon;
 use App\Models\User;
+use App\Support\Addons\AddonOrders;
+use App\Support\Addons\Entitlements;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\OrderCorrection;
@@ -22,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\Support\PaymobPayouts;
+use Tests\Support\SelfSignupOpens;
 use Tests\TestCase;
 
 /**
@@ -37,6 +41,7 @@ class ANewShopSettlesPaymobFromItsFirstSaleTest extends TestCase
 {
     use PaymobPayouts;
     use RefreshDatabase;
+    use SelfSignupOpens;
 
     protected function setUp(): void
     {
@@ -50,6 +55,8 @@ class ANewShopSettlesPaymobFromItsFirstSaleTest extends TestCase
             'storefront.ribbon_free_gift_card_message_businesses' => [],
         ]);
         Plan::create(['name' => 'الباقة الأساسية', 'code' => Plan::CODE_BASIC, 'monthly_price' => 9.9, 'yearly_price' => 99]);
+        // والإطلاقُ مفتوحٌ بشرطه — وإلّا يُردّ التسجيلُ الذاتيّ (`Signup::ready`)
+        $this->openSelfSignup();
     }
 
     protected function tearDown(): void
@@ -69,6 +76,10 @@ class ANewShopSettlesPaymobFromItsFirstSaleTest extends TestCase
         $this->shop = Business::where('registration_source', Business::SOURCE_SELF_SIGNUP)->sole();
         $this->owner = User::where('business_id', $this->shop->id)->sole();
         $this->actingAs($this->owner);
+
+        // والموقعُ على الأساسيّة الجديدة إضافةٌ يفتحها فريقُ أبعاد — لا تشملها التجربة
+        AddonOrders::grant($this->shop, SubscriptionAddon::where('code', 'website')->firstOrFail(), 1, '2027-12-31', 'موقع المتجر الجديد بموافقة أبعاد');
+        Entitlements::flush();
 
         // الموقعُ والدفعُ بالبطاقة — ما يضبطه التاجرُ من إعداداته
         $this->shop->forceFill(['site_slug' => 'newflowers', 'storefront_theme' => 'ribbon', 'tier' => 'gold'])->save();

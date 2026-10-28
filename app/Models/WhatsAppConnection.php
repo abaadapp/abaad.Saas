@@ -26,6 +26,8 @@ class WhatsAppConnection extends Model
         'disconnected_at' => 'datetime',
         'last_webhook_at' => 'datetime',
         'last_error_at' => 'datetime',
+        'token_verified_at' => 'datetime',
+        'webhook_checked_at' => 'datetime',
         'coexistence' => 'boolean',
         'metadata' => 'array',
     ];

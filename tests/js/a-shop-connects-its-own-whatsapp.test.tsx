@@ -3,11 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import EmbeddedSignup, {
     isMetaOrigin,
+    launchExtras,
     readSignupEvent,
     resetSdkForTests,
     type EmbeddedConfig,
 } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
-import WhatsappLinkCard, { pillFor, type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
+import WhatsappLinkCard, { pillFor, type LinkHealth, type WhatsappLink } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 
 /**
  * التسجيل المدمج في المتصفّح — ما يُقبل من ميتا، وما لا يُعدّ نجاحًا.
@@ -163,13 +164,13 @@ describe('زرُّ الربط', () => {
     };
 
     /**
-     * ═══ `featureType` بمحاذاة `setup` لا داخلَه ═══
+     * ═══ والتعايشُ لا يكون افتراضًا ═══
      *
-     * وثيقةُ ميتا تضعه في `extras` مباشرةً. ووضعُه داخل `setup` حقلٌ لا
-     * تقرؤه النافذة — فيُفتح المسارُ العاديّ بلا أن يُعلن أحدٌ خطأً، ويخرج
-     * رقمُ التاجر من تطبيق واتساب للأعمال وهو يظنّه باقيًا فيه.
+     * كان نوعُ ميزة تطبيق الأعمال يُرسل لكلّ تاجر — فيُفتح مسارُ التعايش
+     * لمن يريد رقمًا مستقلًّا. والافتراضُ اليوم رقمُ Cloud API مستقلّ بلا
+     * `featureType`، كما في مثال وثيقة ميتا للمسار العاديّ.
      */
-    it('يفتح النافذة بإعدادِ ميتا وبنوع الميزة في موضعه', async () => {
+    it('يفتح النافذة بإعدادِ ميتا — ورقمٌ مستقلٌّ بلا نوع ميزة التعايش', async () => {
         const login = fakeSdk('CODE-123');
         const { user } = button();
 
@@ -182,13 +183,32 @@ describe('زرُّ الربط', () => {
         expect(opts.config_id).toBe('2177821789438050');
         expect(opts.response_type).toBe('code');
         expect(opts.override_default_response_type).toBe(true);
-        expect(opts.extras).toEqual({
+        expect(opts.extras).toEqual({ setup: {}, sessionInfoVersion: '3' });
+    });
+
+    /**
+     * ═══ `featureType` للتعايش وحده — وبمحاذاة `setup` لا داخلَه ═══
+     *
+     * وثيقةُ ميتا تضعه في `extras` مباشرةً. ووضعُه داخل `setup` حقلٌ لا
+     * تقرؤه النافذة — فيُفتح المسارُ العاديّ بلا أن يُعلن أحدٌ خطأً، ويخرج
+     * رقمُ التاجر من تطبيق واتساب للأعمال وهو يظنّه باقيًا فيه.
+     */
+    it('والتعايشُ مختارًا يحمل نوعَ الميزة في موضعه', () => {
+        const extras = launchExtras(CONFIG, 'coexistence');
+
+        expect(extras).toEqual({
             setup: {},
             featureType: 'whatsapp_business_app_onboarding',
             sessionInfoVersion: '3',
         });
         // ولا نوعَ ميزةٍ مدفونٌ داخل `setup`
-        expect((opts.extras as { setup: Record<string, unknown> }).setup).toEqual({});
+        expect(extras.setup).toEqual({});
+    });
+
+    /** والنسخةُ تُرسل حين تُكتب في الخادم وحده — ولا تُفترض في الشاشة */
+    it('يُرسل نسخة التسجيل حين يكتبها الخادم فقط', () => {
+        expect(launchExtras(CONFIG, 'cloud_api')).not.toHaveProperty('version');
+        expect(launchExtras({ ...CONFIG, version: 'v5' }, 'cloud_api')).toMatchObject({ version: 'v5' });
     });
 
     it('يسلّم الكودَ مع ما التقطه المستمعُ من ميتا', async () => {
@@ -302,6 +322,51 @@ describe('بطاقةُ الحال', () => {
 
         expect(screen.queryByTestId('connect-whatsapp')).toBeNull();
         expect(screen.queryByTestId('disconnect-whatsapp')).toBeNull();
+    });
+
+    /** «متّصل» ليس «يستقبل» — والحالُ من الخادم كما هي */
+    it('تقول إنّ رمز الربط من تطبيقٍ غير أبعاد وإنّ الرسائل لا تصل', () => {
+        const health: LinkHealth = {
+            key: 'wrong_app', label: 'تطبيق Meta غير مطابق', tone: 'danger', checked_at: '2026-10-28 14:00',
+            hint: 'رمزُ هذا الربط صادرٌ من تطبيقٍ غير Abaad Messaging، فإشعاراتُ الرقم لا تصل أبعاد.',
+        };
+        render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={health} config={CONFIG} mayManage />);
+
+        const box = screen.getByTestId('link-health');
+        expect(box).toHaveAttribute('data-state', 'wrong_app');
+        expect(box.textContent).toContain('تطبيق Meta غير مطابق');
+        expect(box.textContent).toContain('Abaad Messaging');
+        expect(screen.getByTestId('link-line').textContent).toContain('رقمك مربوط');
+    });
+
+    it('ولا تقول «يستقبل» إلّا حين يقولها الخادم', () => {
+        const ready: LinkHealth = { key: 'ready', label: 'جاهز نظريًا لاستقبال الرسائل', hint: '…', tone: 'info', checked_at: null };
+        const { unmount } = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={ready} config={CONFIG} mayManage />);
+        expect(screen.getByTestId('link-health').textContent).not.toContain('تم إثبات استقبال');
+        unmount();
+
+        const proven: LinkHealth = { key: 'receiving', label: 'تم إثبات استقبال Webhook فعلي', hint: '…', tone: 'success', checked_at: null };
+        render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={proven} config={CONFIG} mayManage />);
+        expect(screen.getByTestId('link-health').textContent).toContain('تم إثبات استقبال');
+    });
+
+    /** والتعايشُ يُختار صراحةً — ومطفأٌ بسببه ما لم يُفتح على الخادم */
+    it('تجعل الرقم المستقلّ افتراضًا وتُطفئ التعايش حين لا يُفتح', () => {
+        card({ state: 'disconnected' });
+
+        expect(screen.getByTestId('link-kind-cloud_api').querySelector('input')).toBeChecked();
+        expect(screen.getByTestId('link-kind-coexistence').querySelector('input')).toBeDisabled();
+        expect(screen.getByTestId('link-kind-coexistence').textContent).toContain('غير متاح بعد');
+    });
+
+    it('تفتح التعايش اختيارًا حين يُفتح على الخادم', async () => {
+        render(<WhatsappLinkCard link={base} config={{ ...CONFIG, coexistence_open: true }} mayManage />);
+        const user = userEvent.setup();
+
+        const coexist = screen.getByTestId('link-kind-coexistence').querySelector('input')!;
+        expect(coexist).toBeEnabled();
+        await user.click(coexist);
+        expect(coexist).toBeChecked();
     });
 
     it('تعرض رسالة ميتا كما قالتها', () => {

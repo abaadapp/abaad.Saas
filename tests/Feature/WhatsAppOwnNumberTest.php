@@ -19,6 +19,7 @@ use App\Support\WhatsAppStatus;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Tests\Support\FakesMetaLinking;
 use Tests\TestCase;
 
 /**
@@ -31,6 +32,7 @@ use Tests\TestCase;
 class WhatsAppOwnNumberTest extends TestCase
 {
     use RefreshDatabase;
+    use FakesMetaLinking;
 
     private Business $business;
 
@@ -103,6 +105,12 @@ class WhatsAppOwnNumberTest extends TestCase
         ]);
     }
 
+    /** ميتا تعرف رمزَ المتجر: من تطبيق أبعاد، ولحسابه رقمان (`FakesMetaLinking`) */
+    private function linkable(): void
+    {
+        Http::fake($this->abaadAppMeta(['WABA-SHOP' => ['SHOP-PN', 'TAKEN-PN']]));
+    }
+
     private function fakeMeta(): void
     {
         Http::fake(['*/messages' => Http::response(['messages' => [['id' => 'wamid.OWN']]], 200)]);
@@ -144,6 +152,7 @@ class WhatsAppOwnNumberTest extends TestCase
 
     public function test_the_entitlement_allows_connecting_and_switching(): void
     {
+        $this->linkable();
         $this->grant();
 
         $this->post(route('admin.integrations.whatsapp.connect'), [
@@ -300,6 +309,7 @@ class WhatsAppOwnNumberTest extends TestCase
             'status' => WhatsAppConnection::ACTIVE,
         ]);
 
+        $this->linkable();
         $this->grant();
 
         $this->post(route('admin.integrations.whatsapp.connect'), [
@@ -321,6 +331,7 @@ class WhatsAppOwnNumberTest extends TestCase
      */
     public function test_a_forged_business_id_in_the_request_is_ignored(): void
     {
+        $this->linkable();
         $other = Business::create(['name' => 'ورد آخر', 'type' => 'محل ورود', 'status' => 'نشط']);
         $this->grant();
 

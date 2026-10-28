@@ -6,9 +6,42 @@ export interface EmbeddedConfig {
     app_id: string;
     config_id: string;
     graph_version: string;
-    /** `whatsapp_business_app_onboarding` — يُقرأ من الخادم ولا يُكتب هنا */
+    /** `whatsapp_business_app_onboarding` — يُقرأ من الخادم ولا يُكتب هنا، ويُرسل للتعايش وحده */
     feature_type: string;
     session_info_version: string;
+    /** نسخةُ التسجيل المدمج إن كُتبت في الخادم — وبلا نسخةٍ تخدمها ميتا بـv4 */
+    version?: string | null;
+    /** أمفتوحٌ مسارُ التعايش على الخادم؟ — `WhatsAppOnboarding::coexistenceOpen` */
+    coexistence_open?: boolean;
+}
+
+/**
+ * نوعُ الرقم الذي يربطه التاجر — باختياره هو.
+ *
+ * `cloud_api` رقمٌ مستقلٌّ للنظام (الافتراض)، و`coexistence` رقمٌ يبقى على
+ * تطبيق واتساب للأعمال في الهاتف. ولا يُرسل نوعُ ميزة التعايش لمن لم يختره.
+ */
+export type OnboardingKind = 'cloud_api' | 'coexistence';
+
+/**
+ * `extras` نافذةِ ميتا — بحسب ما اختاره التاجر.
+ *
+ * ═══ `featureType` بمحاذاة `setup` لا داخلَه — وللتعايش وحده ═══
+ *
+ * وثيقةُ ميتا تضعه في `extras` مباشرةً مع `sessionInfoVersion`. ووضعُه داخل
+ * `setup` يجعله حقلًا لا تقرؤه النافذة. وإرسالُه لكلّ تاجرٍ كان يفتح مسارَ
+ * تطبيق الأعمال لمن يريد رقمًا مستقلًّا — والتعايشُ لا يكون افتراضًا.
+ */
+export function launchExtras(config: EmbeddedConfig, kind: OnboardingKind): Record<string, unknown> {
+    const extras: Record<string, unknown> = { setup: {} };
+
+    if (kind === 'coexistence') extras.featureType = config.feature_type;
+
+    extras.sessionInfoVersion = config.session_info_version;
+
+    if (config.version) extras.version = config.version;
+
+    return extras;
 }
 
 /** ما تلتقطه الشاشةُ من نافذة ميتا — اقتراحٌ يُرسَل ليُفحص في الخادم */
@@ -170,6 +203,8 @@ export function resetSdkForTests(): void {
 
 interface Props {
     config: EmbeddedConfig;
+    /** نوعُ الرقم الذي اختاره التاجر — رقمٌ مستقلٌّ ما لم يختر التعايش */
+    kind?: OnboardingKind;
     /** يُنادى بالكود وبما التقطته الشاشة — والخادمُ وحده يقرّر النجاح */
     onCode: (code: string, assets: SignupAssets) => void;
     onCancel?: (step: string | null) => void;
@@ -191,7 +226,7 @@ interface Props {
  * ولا يمسّ `localStorage` ولا `sessionStorage`: الكودُ عمرُه ثلاثون ثانية
  * وليس ممّا يُخزَّن، والرمزُ لا يمرّ من هنا أصلًا.
  */
-export default function EmbeddedSignup({ config, onCode, onCancel, onError, children }: Props) {
+export default function EmbeddedSignup({ config, kind = 'cloud_api', onCode, onCancel, onError, children }: Props) {
     const [busy, setBusy] = useState(false);
 
     /*
@@ -269,20 +304,8 @@ export default function EmbeddedSignup({ config, onCode, onCancel, onError, chil
                         config_id: config.config_id,
                         response_type: 'code',
                         override_default_response_type: true,
-                        /*
-                         * ═══ `featureType` بمحاذاة `setup` لا داخلَه ═══
-                         *
-                         * وثيقةُ ميتا تضعه في `extras` مباشرةً مع
-                         * `sessionInfoVersion`. ووضعُه داخل `setup` يجعله
-                         * حقلًا لا تقرؤه النافذةُ — فيُفتح المسارُ العاديّ
-                         * بلا أن يُعلن أحدٌ خطأً، ويُنزع رقمُ التاجر من
-                         * تطبيق واتساب للأعمال وهو يظنّه باقيًا فيه.
-                         */
-                        extras: {
-                            setup: {},
-                            featureType: config.feature_type,
-                            sessionInfoVersion: config.session_info_version,
-                        },
+                        // بحسب نوع الرقم الذي اختاره التاجر (`launchExtras`)
+                        extras: launchExtras(config, kind),
                     },
                 );
             })
@@ -290,7 +313,7 @@ export default function EmbeddedSignup({ config, onCode, onCancel, onError, chil
                 setBusy(false);
                 onError?.(null);
             });
-    }, [busy, config, onCode, onError]);
+    }, [busy, config, kind, onCode, onError]);
 
     return <>{children({ open, busy })}</>;
 }

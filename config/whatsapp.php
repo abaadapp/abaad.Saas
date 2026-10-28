@@ -49,6 +49,27 @@ return [
     'session_info_version' => '3',
 
     /*
+     * ═══ نسخةُ التسجيل المدمج — لا تُفترض ═══
+     *
+     * وثيقةُ النسخ عند ميتا (2026-10-28): v2 وv3 أُوقفتا في 2026-10-15،
+     * و«طلبٌ بلا `version` أو بنسخةٍ غير صالحة يُخدَم بـv4». فما يجري اليوم
+     * v4 وإن لم يُكتب شيء. ويُكتب هنا (`v5` مثلًا) بعد فحص الإعداد في
+     * «Embedded Signup Builder › Check a launch config» — لا قبله.
+     */
+    'es_version' => env('META_WHATSAPP_ES_VERSION') ?: null,
+
+    /*
+     * ═══ التعايش مع تطبيق واتساب للأعمال — مطفأٌ ما لم يُشعَل ═══
+     *
+     * لا يُختار إلّا صراحةً من التاجر، ولا يُعرض اختيارُه إلّا إن أُشعل هنا.
+     * وشرطُ إشعاله عند ميتا: اشتراكُ التطبيق في حقول `smb_message_echoes` و
+     * `history` و`smb_app_state_sync` و`account_update`، ومزامنةُ البيانات
+     * خلال ٢٤ ساعة (`/<PHONE_NUMBER_ID>/smb_app_data`) — ولا شيءَ منها مبنيٌّ
+     * بعد. انظر `WhatsAppOnboarding::coexistenceOpen`.
+     */
+    'coexistence_enabled' => (bool) env('META_WHATSAPP_COEXISTENCE', false),
+
+    /*
      * مهلة النداء.
      *
      * البيع لا ينتظرها — الإرسال في طابور. لكنّ عاملًا معلّقًا دقيقتين على

@@ -27,6 +27,7 @@ use App\Support\WhatsAppTemplates;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
+use Tests\Support\FakesMetaLinking;
 use Tests\TestCase;
 
 /**
@@ -53,6 +54,7 @@ use Tests\TestCase;
 class AShopClosedToAbaadsNumberSpeaksOnlyFromItsOwnTest extends TestCase
 {
     use RefreshDatabase;
+    use FakesMetaLinking;
 
     private WhatsAppConnection $abaad;
 
@@ -148,23 +150,19 @@ class AShopClosedToAbaadsNumberSpeaksOnlyFromItsOwnTest extends TestCase
     {
         Http::fake([
             '*/oauth/access_token*' => Http::response(['access_token' => 'BISU-TOKEN-VALUE-12345'], 200),
-            '*/debug_token*' => Http::response(['data' => [
-                'is_valid' => true,
-                'expires_at' => 0,
-                'granular_scopes' => [
-                    ['scope' => 'whatsapp_business_management', 'target_ids' => ['WABA-1']],
-                    ['scope' => 'whatsapp_business_messaging', 'target_ids' => ['WABA-1']],
-                ],
-            ]], 200),
             '*/WABA-1/phone_numbers*' => Http::response(['data' => [[
                 'id' => 'PN-1', 'display_phone_number' => '+968 9525 9066',
                 'verified_name' => 'RIBBON', 'platform_type' => 'CLOUD_API',
             ]]], 200),
-            '*/WABA-1/subscribed_apps' => Http::response(['data' => []], 200),
             '*/WABA-1?*' => Http::response(['id' => 'WABA-1', 'owner_business_info' => ['id' => 'MB-9']], 200),
             '*/messages' => Http::response(['messages' => [['id' => 'wamid.OUT']]], 200),
-            '*' => Http::response(['id' => 'WABA-1'], 200),
-        ]);
+        ]
+            /*
+             * رمزٌ من تطبيق أبعاد لحسابَين: حسابِ المتجر، وحسابِ أبعاد نفسِه —
+             * فمحاولةُ انتزاع رقم أبعاد تُردّ عند حارس الرقم المربوط لا قبله.
+             */
+            + $this->abaadAppMeta(['WABA-1' => ['PN-1'], 'ABAAD-WABA' => ['ABAAD-PN']])
+            + ['*' => Http::response(['id' => 'WABA-1'], 200)]);
     }
 
     /** المتجرُ يربط رقمه بالتسجيل المدمج القائم — لا بمسارٍ خاصّ به */
@@ -306,6 +304,8 @@ class AShopClosedToAbaadsNumberSpeaksOnlyFromItsOwnTest extends TestCase
      */
     public function test_the_shop_cannot_claim_abaads_number_as_its_own(): void
     {
+        $this->meta();
+
         $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.connect'), [
             'phone_number_id' => 'ABAAD-PN',
             'waba_id' => 'ABAAD-WABA',

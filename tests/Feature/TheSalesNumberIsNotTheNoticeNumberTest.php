@@ -18,6 +18,7 @@ use App\Support\WhatsAppMode;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Tests\Support\FakesMetaLinking;
 use Tests\TestCase;
 
 /**
@@ -42,6 +43,7 @@ use Tests\TestCase;
 class TheSalesNumberIsNotTheNoticeNumberTest extends TestCase
 {
     use RefreshDatabase;
+    use FakesMetaLinking;
 
     private WhatsAppConnection $notices;
 
@@ -438,6 +440,9 @@ class TheSalesNumberIsNotTheNoticeNumberTest extends TestCase
     /** وربطُ رقم إشعاراتٍ جديد لا يسحب رقمَ المبيعات ويُحوّله */
     public function test_connecting_a_notice_number_does_not_steal_the_sales_row(): void
     {
+        // رمزٌ من تطبيق أبعاد لحساب أبعاد ورقمِه الجديد — فيصل الحارسَ الذي يُختبر هنا
+        Http::fake($this->abaadAppMeta(['WABA-AB' => ['NOTICES-2']]));
+
         $this->actingAs($this->admin)
             ->post(route('super-admin.whatsapp.shared.connect'), [
                 'phone_number_id' => 'NOTICES-2',

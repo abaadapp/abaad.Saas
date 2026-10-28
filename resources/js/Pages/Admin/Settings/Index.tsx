@@ -195,7 +195,7 @@ interface Props {
     customAlerts: CustomAlertRow[];
     staffPermissions: { id: number; name: string; job_title: string; manual: boolean; count: number }[];
     /** الاعتمادُ الثنائيّ — يُشعله صاحبُ النشاط وحده، ومعه عددُ من يعتمد */
-    dualApproval?: { owner: boolean; approvers: number };
+    dualApproval?: { owner: boolean; others: number };
     alertMetrics: AlertMetric[];
     alertSections: Record<string, string>;
     /** قوالبُ الطلب المخصَّص بحقولها — تُرسل كاملةً كما تُرسل التنبيهات فوقها */
@@ -2235,9 +2235,10 @@ export default function SettingsIndex() {
                                     {! dualApproval?.owner && (
                                         <p className="mt-1 text-[12px] text-[#6b7280]">{t('يغيّره صاحب النشاط وحده.')}</p>
                                     )}
-                                    {dualApproval?.owner && form.data.dual_approval_corrections && (dualApproval?.approvers ?? 0) < 2 && (
+                                    {/* ويُقال قبل الإشعال لا بعده: الخادمُ يردّ إشعالًا لا معتمدَ فيه غيرُه */}
+                                    {dualApproval?.owner && (dualApproval?.others ?? 0) === 0 && (
                                         <p className="mt-1 rounded-[10px] border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]" data-testid="dual-approval-alone">
-                                            {t('لا يملك «اعتماد تصحيح مالي» غيرك — امنحه لموظف آخر من ملفه، وإلا بقيت تصحيحاتك أنت بلا من يعتمدها.')}
+                                            {t('لا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — امنحه لموظف آخر من ملفه قبل إشعال الاعتماد الثنائي. وإن كان مفعّلًا، فتصحيحاتك المالية لا تُرسل حتى يوجد من يعتمدها أو تطفئه.')}
                                         </p>
                                     )}
                                 </div>

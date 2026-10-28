@@ -8,6 +8,7 @@ use App\Models\Currency;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\FinancialCorrections;
 use App\Support\InvoiceBranding;
 use App\Support\Permissions;
 use Illuminate\Http\Request;
@@ -365,6 +366,12 @@ class SettingController extends Controller
 
             if ($action !== 'owner' && ! $user?->may($action)) {
                 return [$key => __('ليس لديك صلاحية: :action', ['action' => Permissions::actionLabels()[$action] ?? $action])];
+            }
+
+            // ولا يُشعَل اعتمادٌ لا معتمدَ فيه غيرُ صاحب النشاط — يُعلّق تصحيحاتِه هو
+            if ($key === FinancialCorrections::SETTING && (bool) $data[$key]
+                && FinancialCorrections::approvers($bid, (int) $user->id) === 0) {
+                return [$key => __('لا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — امنحه لموظف آخر من ملفه أولًا، وإلا بقيت تصحيحاتك المالية بلا من يعتمدها.')];
             }
         }
 

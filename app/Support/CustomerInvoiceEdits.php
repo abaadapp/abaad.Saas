@@ -486,6 +486,16 @@ final class CustomerInvoiceEdits
             'required' => FinancialCorrections::required($bid) && FinancialCorrections::touchesMoney($plan),
         ];
 
+        /*
+         * ولا يُرسل طلبٌ لا يعتمده أحد: المعتمدُ غيرُ صاحبه (`mayDecide`). معتمدٌ
+         * عُطّل بعد الإشعال يترك صاحبَ النشاط وحده — فيُقال له قبل الحفظ لماذا
+         * وكيف يمضي، لا أن يُعلَّق تصحيحُه. والطلبُ الذي يُعتمد الآن له معتمدُه.
+         */
+        if ($plan['approval']['required'] && $approving === null && $user !== null
+            && FinancialCorrections::approvers($bid, (int) $user->id) === 0) {
+            $plan['blockers'][] = __('الاعتماد الثنائي مفعّل، ولا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — فلا يُرسل طلبٌ لا يعتمده أحد. امنح الصلاحية لموظف آخر من ملفه، أو يطفئ صاحب النشاط الاعتماد الثنائي من الإعدادات.');
+        }
+
         return $plan;
     }
 

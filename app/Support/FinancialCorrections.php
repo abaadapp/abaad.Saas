@@ -288,6 +288,22 @@ final class FinancialCorrections
         });
     }
 
+    /**
+     * كم موظّفًا نشطًا يعتمد غيرَ فلان — يملك `financialCorrection.approve` في متجره.
+     *
+     * مفتاحٌ يُشعَل ولا معتمدَ غيرُ صاحب التصحيح يُعلّق طلبَه بلا من يبتّ فيه —
+     * وصاحبُ النشاط وحده في متجرٍ صغير أوّلُ من يقع فيه. فيسأله الإشعالُ
+     * (`SettingController`) والطلبُ (`CustomerInvoiceEdits::plan`) معًا، ويُقال
+     * السببُ وطريقُه بدل أن يقف العملُ صامتًا.
+     */
+    public static function approvers(int $businessId, ?int $except = null): int
+    {
+        return User::where('business_id', $businessId)->where('role', '!=', 'super_admin')
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'معطل'))
+            ->when($except !== null, fn ($q) => $q->whereKeyNot($except))
+            ->get()->filter(fn (User $u) => $u->may(Permissions::FINANCIAL_CORRECTION_APPROVE))->count();
+    }
+
     /** أيبتّ هذا المستخدمُ في هذا الطلب؟ — للشاشة؛ والحارسُ `assertDecider` */
     public static function mayDecide(?User $user, FinancialCorrection $row): bool
     {

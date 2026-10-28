@@ -426,6 +426,56 @@ class AFinancialCorrectionWaitsForASecondPersonTest extends TestCase
         $this->assertTrue(FinancialCorrections::required($this->shop->id));
     }
 
+    /* ============================== صاحبُ النشاط وحده ============================== */
+
+    public function test_a_lone_owner_is_told_why_and_the_switch_stays_off(): void
+    {
+        // المعتمدُ الوحيدُ غيرُه عُطّل — فلا أحدَ يعتمد تصحيحَ صاحب النشاط
+        $this->approver->forceFill(['status' => 'معطل'])->save();
+        $this->assertSame(0, FinancialCorrections::approvers($this->shop->id, $this->owner->id));
+
+        $this->actingAs($this->owner)->post(route('admin.settings.update'), ['dual_approval_corrections' => true])
+            ->assertSessionHasErrors(['dual_approval_corrections' => __('لا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — امنحه لموظف آخر من ملفه أولًا، وإلا بقيت تصحيحاتك المالية بلا من يعتمدها.')]);
+        $this->assertFalse(FinancialCorrections::required($this->shop->id));
+
+        // والإطفاءُ لا يُسأل عنه، ومعتمدٌ نشطٌ يفتح الإشعال
+        $this->post(route('admin.settings.update'), ['dual_approval_corrections' => false])->assertSessionHasNoErrors();
+        $this->approver->forceFill(['status' => 'نشط'])->save();
+        $this->post(route('admin.settings.update'), ['dual_approval_corrections' => true])->assertSessionHasNoErrors();
+        $this->assertTrue(FinancialCorrections::required($this->shop->id));
+    }
+
+    public function test_an_approver_gone_after_it_was_turned_on_leaves_no_request_hanging(): void
+    {
+        $this->dualOn();
+        $invoice = $this->issued();
+        $total = (float) $invoice->fresh()->total;
+        $entries = $this->entries();
+        $this->approver->forceFill(['status' => 'معطل'])->save();
+        $why = __('الاعتماد الثنائي مفعّل، ولا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — فلا يُرسل طلبٌ لا يعتمده أحد. امنح الصلاحية لموظف آخر من ملفه، أو يطفئ صاحب النشاط الاعتماد الثنائي من الإعدادات.');
+
+        // المعاينةُ تقوله قبل الحفظ، والحفظُ يردّه بسببه — لا طلبَ معلّقٌ بلا من يبتّ فيه
+        $this->postJson(route('admin.customerInvoices.editPreview', $invoice->id), $this->form($invoice, [], 12))
+            ->assertOk()->assertJsonPath('approval.required', true)->assertJsonPath('blockers', [$why]);
+
+        $this->put(route('admin.customerInvoices.update', $invoice->id), $this->form($invoice, [], 12))
+            ->assertSessionHasErrors(['edit' => $why]);
+        $this->assertSame(0, FinancialCorrection::count());
+        $this->assertSame($total, (float) $invoice->fresh()->total);
+        $this->assertSame($entries, $this->entries());
+
+        // وما لا مالَ فيه يُحفظ كما كان
+        $this->put(route('admin.customerInvoices.update', $invoice->id), $this->form($invoice, ['notes' => 'سلّم صباحًا']))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(1, (int) $invoice->fresh()->revision);
+
+        // والموظّفُ يطلب فيعتمده صاحبُ النشاط — لا يُردّ إلّا من لا معتمدَ له
+        $clerk = $this->user('accountant', 'clerk-lone@dual.om', ['dashboard', 'orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]);
+        $correction = $this->request($invoice->fresh(), $clerk, 12);
+        $this->assertSame(FinancialCorrection::PENDING, $correction->status);
+        $this->assertTrue(FinancialCorrections::mayDecide($this->owner, $correction));
+    }
+
     public function test_another_shop_neither_sees_nor_decides_a_request(): void
     {
         $this->dualOn();

@@ -22,6 +22,7 @@ use App\Support\DeliveryPaper;
 use App\Support\Demo;
 use App\Support\DocumentTemplates;
 use App\Support\Emojis;
+use App\Support\FinancialCorrections;
 use App\Support\InvoiceBranding;
 use App\Support\Lists\InMemory;
 use App\Support\Lists\InventoryList;
@@ -1125,13 +1126,12 @@ class PageController extends Controller
             'alertSections' => Permissions::sectionLabels(),
             /*
              * والاعتمادُ الثنائيّ: يُشعله صاحبُ النشاط وحده، ويُقال له كم موظّفًا
-             * يعتمد — مفتاحٌ يُشعل ولا أحدَ غيرُه يعتمد يُوقف تصحيحاته هو.
+             * غيرَه يعتمد — مفتاحٌ يُشعل ولا أحدَ غيرُه يعتمد يُوقف تصحيحاته هو،
+             * فيردّه الخادم (`SettingController::guardedRefusal`) وتقوله الشاشة قبله.
              */
             'dualApproval' => [
                 'owner' => Permissions::isOwner(auth()->user()),
-                'approvers' => User::where('business_id', Demo::bid())->where('role', '!=', 'super_admin')
-                    ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'معطل'))
-                    ->get()->filter(fn (User $u) => $u->may(Permissions::FINANCIAL_CORRECTION_APPROVE))->count(),
+                'others' => FinancialCorrections::approvers(Demo::bid(), auth()->id()),
             ],
             // قسم «صلاحيات الموظفين»: الموظفون الفعليون وحالة صلاحية كلٍّ منهم
             'staffPermissions' => User::where('business_id', Demo::bid())

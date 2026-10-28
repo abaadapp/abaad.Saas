@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -212,6 +214,20 @@ describe('طلبُ التصحيح الماليّ', () => {
         expect(screen.getByTestId('correction-status').textContent).toContain('تغيّرت الفاتورة');
         expect(screen.getByTestId('correction-decision').textContent).toContain('منى');
         expect(screen.queryByTestId('correction-approve')).toBeNull();
+    });
+});
+
+describe('صاحبُ النشاط بلا معتمدٍ غيره', () => {
+    it('يُقال له قبل الإشعال لا بعده — من عدّ الخادم لمن يعتمد غيرَه', () => {
+        const src = readFileSync(path.resolve(__dirname, '../../resources/js/Pages/Admin/Settings/Index.tsx'), 'utf8');
+        const warning = src.indexOf('data-testid="dual-approval-alone"');
+        const condition = src.lastIndexOf('{dualApproval?.owner &&', warning);
+
+        expect(warning, 'التنبيه غائب').toBeGreaterThan(-1);
+        const guard = src.slice(condition, warning);
+        expect(guard).toContain('dualApproval?.others ?? 0) === 0');
+        // ولا ينتظر المفتاحَ مُشعلًا — من يقرؤه بعد الإشعال يقرؤه بعد أن ردّه الخادم
+        expect(guard).not.toContain('form.data.dual_approval_corrections');
     });
 });
 

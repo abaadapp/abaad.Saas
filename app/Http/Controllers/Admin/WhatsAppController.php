@@ -430,7 +430,7 @@ class WhatsAppController extends Controller
             'last_error_code' => null,
             'last_error_message' => null,
             'last_error_at' => null,
-        ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'])
+        ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing((string) $data['phone_number_id'], $token)['state'])
           + ($existing && $existing->phone_number_id !== $data['phone_number_id'] ? ['last_webhook_at' => null] : []);
 
         $connection = $existing ? tap($existing)->update($attributes) : WhatsAppConnection::create($attributes);

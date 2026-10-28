@@ -6,6 +6,7 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
+import type { LinkHealth } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 
 /** ما يصل من الخادم — بلا رمزٍ ولا سرّ (انظر SuperAdmin\WhatsAppController::businessView) */
 export interface BusinessWhatsApp {
@@ -52,7 +53,7 @@ export interface BusinessWhatsApp {
         last_error: string | null;
         last_error_at: string | null;
         /** متّصلٌ أم مشتركٌ أم يستقبل فعلًا — `WhatsAppLinkHealth::view` */
-        link?: { key: string; label: string; hint: string; tone: string; checked_at: string | null };
+        link?: LinkHealth;
         can_check?: boolean;
     } | null;
     /** أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`WhatsAppFeature::canUseOwnNumber`) */
@@ -185,6 +186,15 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                             {data.own_health.link.checked_at && (
                                 <p className="mt-0.5 text-[11px] text-[#9ca3af]">{t('آخر فحص')}: <span dir="ltr">{data.own_health.link.checked_at}</span></p>
                             )}
+                            {/* حالةُ التسليم ليست رسالةَ زبون — لكلٍّ ختمُه */}
+                            <div className="mt-2 flex justify-between gap-3" data-testid="whatsapp-last-status">
+                                <dt className="text-[#6b7280]">{t('آخر حالة تسليم')}</dt>
+                                <dd className="font-medium text-[#111]" dir="ltr">{data.own_health.link.last_status_at ?? '—'}</dd>
+                            </div>
+                            <div className="flex justify-between gap-3" data-testid="whatsapp-last-inbound">
+                                <dt className="text-[#6b7280]">{t('آخر رسالة عميل')}</dt>
+                                <dd className="font-medium text-[#111]" dir="ltr">{data.own_health.link.last_inbound_at ?? t('لم تصل بعد')}</dd>
+                            </div>
                             {data.own_health.can_check && (
                                 <Button
                                     type="button"

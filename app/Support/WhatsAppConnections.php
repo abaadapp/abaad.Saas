@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Business;
 use App\Models\WhatsAppConnection;
+use Illuminate\Support\Collection;
 
 /**
  * أيّ وصلةٍ تُرسل هذه الرسالة — وما الذي يُعرض منها للناس.
@@ -31,6 +32,27 @@ class WhatsAppConnections
             ->where('purpose', WhatsAppMode::PURPOSE_NOTIFICATIONS)
             ->where('status', WhatsAppConnection::ACTIVE)
             ->orderByDesc('id')->first();
+    }
+
+    /**
+     * وصلةُ كلِّ متجرٍ الحاليّة على رقمه المستقلّ — لشاشة الصحّة وأمرها.
+     *
+     * الحاليّةُ ما يقرؤه `forBusiness` (الأحدث)، والمفصولةُ (`inactive`) تُترك:
+     * صاحبُها فكّ الربط، فلا يُسأل عنها. ولا متجرٌ بعينه هنا.
+     *
+     * @return Collection<int, WhatsAppConnection>
+     */
+    public static function ownNumbers(?int $businessId = null): Collection
+    {
+        return WhatsAppConnection::query()
+            ->where('owner_type', WhatsAppMode::OWNER_BUSINESS)
+            ->whereNotNull('business_id')
+            ->when($businessId, fn ($q) => $q->where('business_id', $businessId))
+            ->with('business')
+            ->orderByDesc('id')->get()
+            ->unique('business_id')
+            ->reject(fn (WhatsAppConnection $c) => $c->status === WhatsAppConnection::INACTIVE)
+            ->values();
     }
 
     /** وصلة رقم المحلّ — أيًّا كان حالها، فالحال يُقرأ لا يُخفى */

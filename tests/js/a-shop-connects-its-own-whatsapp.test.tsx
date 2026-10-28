@@ -339,15 +339,29 @@ describe('بطاقةُ الحال', () => {
         expect(screen.getByTestId('link-line').textContent).toContain('رقمك مربوط');
     });
 
-    it('ولا تقول «يستقبل» إلّا حين يقولها الخادم', () => {
+    it('ولا تقول «وصلت رسالة عميل» إلّا حين يقولها الخادم — وحالةُ التسليم ليست رسالة', () => {
         const ready: LinkHealth = { key: 'ready', label: 'جاهز نظريًا لاستقبال الرسائل', hint: '…', tone: 'info', checked_at: null };
-        const { unmount } = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={ready} config={CONFIG} mayManage />);
-        expect(screen.getByTestId('link-health').textContent).not.toContain('تم إثبات استقبال');
-        unmount();
+        const first = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={ready} config={CONFIG} mayManage />);
+        expect(screen.getByTestId('link-health').textContent).not.toContain('رسالة عميل فعلية');
+        first.unmount();
 
-        const proven: LinkHealth = { key: 'receiving', label: 'تم إثبات استقبال Webhook فعلي', hint: '…', tone: 'success', checked_at: null };
+        const statuses: LinkHealth = {
+            key: 'status_received', label: 'تم استقبال Webhook لحالة تسليم', hint: '…', tone: 'info', checked_at: null,
+            last_status_at: '2026-10-28 15:00', last_inbound_at: null,
+        };
+        const second = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={statuses} config={CONFIG} mayManage />);
+        expect(screen.getByTestId('link-health')).toHaveAttribute('data-state', 'status_received');
+        expect(screen.getByTestId('link-health').textContent).not.toContain('رسالة عميل فعلية');
+        expect(screen.getByTestId('link-health-facts').textContent).toContain('2026-10-28 15:00');
+        second.unmount();
+
+        const proven: LinkHealth = {
+            key: 'inbound_received', label: 'تم استقبال رسالة عميل فعلية', hint: '…', tone: 'success', checked_at: null,
+            last_status_at: '2026-10-28 15:00', last_inbound_at: '2026-10-28 16:00',
+        };
         render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={proven} config={CONFIG} mayManage />);
-        expect(screen.getByTestId('link-health').textContent).toContain('تم إثبات استقبال');
+        expect(screen.getByTestId('link-health').textContent).toContain('تم استقبال رسالة عميل فعلية');
+        expect(screen.getByTestId('link-health-facts').textContent).toContain('2026-10-28 16:00');
     });
 
     /** والتعايشُ يُختار صراحةً — ومطفأٌ بسببه ما لم يُفتح على الخادم */

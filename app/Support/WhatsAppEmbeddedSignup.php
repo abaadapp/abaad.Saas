@@ -346,6 +346,114 @@ class WhatsAppEmbeddedSignup
     }
 
     /**
+     * إعدادُ الإشعارات في تطبيق أبعاد نفسه — العنوانُ وحقولُه. قراءةٌ برمز التطبيق.
+     *
+     * الاشتراكُ في حساب متجرٍ (`subscribed_apps`) يقول إنّ الحسابَ يُرسل
+     * إلى تطبيقنا؛ وهذا يقول إلى أيّ عنوانٍ يُرسل التطبيقُ، وأيّ الحقول
+     * مُشعَلة. فلو أُطفئ `messages` في لوحة التطبيق لَما وصل حرفٌ من أيّ
+     * متجر — والمتاجرُ كلُّها «مشتركة». `GET` لا يغيّر عند ميتا شيئًا.
+     *
+     * @return array{ok:bool, callback_url:?string, fields:list<string>, active:bool, code:?string, message:?string}
+     */
+    public static function appSubscription(): array
+    {
+        $none = ['ok' => false, 'callback_url' => null, 'fields' => [], 'active' => false];
+
+        if (blank(config('whatsapp.app_id')) || blank(config('whatsapp.app_secret'))) {
+            return $none + ['code' => 'not_configured', 'message' => 'whatsapp.app_id or app_secret missing'];
+        }
+
+        try {
+            $response = Http::timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.config('whatsapp.app_id').'/subscriptions', [
+                    'access_token' => config('whatsapp.app_id').'|'.config('whatsapp.app_secret'),
+                ]);
+        } catch (\Throwable $e) {
+            return $none + ['code' => 'network_error', 'message' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            [$code, $message] = self::error($response->json());
+
+            return $none + ['code' => $code, 'message' => $message];
+        }
+
+        $data = $response->json('data');
+
+        if (! is_array($data) || ! array_is_list($data)) {
+            return $none + ['code' => 'unreadable', 'message' => 'subscriptions without a data list'];
+        }
+
+        $row = collect($data)->first(fn ($r) => is_array($r) && ($r['object'] ?? null) === 'whatsapp_business_account');
+
+        // التطبيقُ بلا اشتراكٍ في كائن واتساب أصلًا — قراءةٌ ناجحةٌ تقول «لا شيء»
+        if ($row === null) {
+            return ['ok' => true, 'callback_url' => null, 'fields' => [], 'active' => false, 'code' => null, 'message' => null];
+        }
+
+        $fields = collect((array) ($row['fields'] ?? []))
+            ->map(fn ($f) => is_array($f) ? (string) ($f['name'] ?? '') : (string) $f)
+            ->filter()->values()->all();
+
+        return [
+            'ok' => true,
+            'callback_url' => filled($row['callback_url'] ?? null) ? (string) $row['callback_url'] : null,
+            'fields' => $fields,
+            'active' => (bool) ($row['active'] ?? false),
+            'code' => null,
+            'message' => null,
+        ];
+    }
+
+    /**
+     * أدوارُ أبعاد في توجيه محادثات هذا الرقم (Conversation Routing) — قراءةٌ لا غير.
+     *
+     * ميتا قد تُنشئ توجيهًا عند الربط من المستجيبين القائمين على الرقم، ولا
+     * تجعل الشريكَ الجديد أساسيًّا تلقائيًّا. فتطبيقٌ مشتركٌ في الحساب قد لا
+     * يصله وارد. و`#100` «not enabled» قراءةٌ ناجحة: لا توجيه، فكلُّ
+     * مستجيبٍ متّصلٍ يصله كلُّ وارد. والتوجيهُ يُضبط من Meta Business Suite
+     * وحده — لا واجهةَ برمجيّةَ لضبطه، ولا نضبطه نحن.
+     *
+     * @return array{ok:bool, enabled:?bool, roles:list<string>, standby:bool, code:?string, message:?string}
+     */
+    public static function routingRoles(string $phoneNumberId, string $token): array
+    {
+        $none = ['enabled' => null, 'roles' => [], 'standby' => false];
+
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.$phoneNumberId.'/routing_roles');
+        } catch (\Throwable $e) {
+            return ['ok' => false] + $none + ['code' => 'network_error', 'message' => $e->getMessage()];
+        }
+
+        if (! $response->successful()) {
+            [$code, $message] = self::error($response->json());
+
+            if ($code === '100' && str_contains(mb_strtolower($message), 'not enabled')) {
+                return ['ok' => true, 'enabled' => false, 'roles' => [], 'standby' => false, 'code' => null, 'message' => null];
+            }
+
+            return ['ok' => false] + $none + ['code' => $code, 'message' => $message];
+        }
+
+        $roles = $response->json('roles');
+
+        if (! is_array($roles) || ! array_is_list($roles)) {
+            return ['ok' => false] + $none + ['code' => 'unreadable', 'message' => 'routing_roles without a roles list'];
+        }
+
+        return [
+            'ok' => true,
+            'enabled' => true,
+            'roles' => array_values(array_map('strval', array_filter($roles, 'is_scalar'))),
+            'standby' => (bool) $response->json('is_standby', false),
+            'code' => null,
+            'message' => null,
+        ];
+    }
+
+    /**
      * أهذا الرقمُ على تطبيق واتساب للأعمال في الهاتف أيضًا؟
      *
      * وثيقةُ ميتا لمسار تطبيق الأعمال تقرأ `is_on_biz_app` على الرقم نفسه —

@@ -41,6 +41,7 @@ use App\Support\Roles;
 use App\Support\Search;
 use App\Support\SupportWhatsApp;
 use App\Support\WhatsAppConnections;
+use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppTemplates;
 use Illuminate\Http\JsonResponse;
@@ -702,6 +703,13 @@ class PageController extends Controller
                 'onNoticeLine' => CrmWhatsApp::sharingNoticeLine(),
                 'connected' => CrmWhatsApp::connected(),
             ],
+            /*
+             * وأرقامُ المتاجر المستقلّة كلُّها: أيصلنا ما يكتبه زبائنُها؟
+             *
+             * من الأعمدة المخزّنة وحدها — فتحُ الشاشة لا يُنادي ميتا، ولا يخرج
+             * رمزٌ ولا معرّفُ رقمٍ ولا تطبيقٍ آخر (`WhatsAppLinkHealth::fleet`).
+             */
+            'ownNumbers' => WhatsAppLinkHealth::fleet(),
         ]);
     }
 

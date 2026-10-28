@@ -257,7 +257,7 @@ class WhatsAppController extends Controller
         }
 
         return [['waba_id' => $check['waba'], 'token_expires_at' => $check['expires_at']]
-            + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state']), null];
+            + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing((string) $data['phone_number_id'], $token)['state']), null];
     }
 
     /**
@@ -492,7 +492,31 @@ class WhatsAppController extends Controller
 
         return back()->with('toast', [
             'msg' => WhatsAppLinkHealth::label($health).' — '.WhatsAppLinkHealth::hint($health, $own),
-            'type' => in_array($health, [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true) ? 'success' : 'warning',
+            'type' => in_array($health, WhatsAppLinkHealth::HEALTHY, true) ? 'success' : 'warning',
+        ]);
+    }
+
+    /**
+     * «فحص إعداد تطبيق أبعاد» — عنوانُ الإشعارات وحقلُ `messages` في التطبيق نفسه.
+     *
+     * واحدٌ لكلّ المتاجر: لو أُطفئ `messages` في لوحة التطبيق أو تبدّل العنوان
+     * لَما وصل من أيّ متجرٍ حرف، وكلُّها تقرأ «مشترك». قراءةٌ لا غير
+     * (`WhatsAppLinkCheck::appWebhook`) — ولا يُغيَّر من هنا إعدادٌ عند ميتا.
+     */
+    public function checkAppWebhook()
+    {
+        $app = WhatsAppLinkCheck::appWebhook();
+
+        Activity::log('settings', 'واتساب — فحص إعداد إشعارات تطبيق أبعاد: '.$app['state']);
+
+        return back()->with('toast', [
+            'msg' => match ($app['state']) {
+                WhatsAppLinkCheck::APP_LISTENING => __('تطبيق أبعاد يستقبل: عنوان الإشعارات عنوان أبعاد، وحقل messages مُفعّل.'),
+                WhatsAppLinkCheck::APP_CALLBACK_ELSEWHERE => __('عنوان الإشعارات في تطبيق أبعاد ليس عنوان أبعاد — لا يصل من أيّ متجر شيء.'),
+                WhatsAppLinkCheck::APP_MESSAGES_OFF => __('حقل messages غير مُفعّل في تطبيق أبعاد — رسائل الزبائن لا تصل من أيّ متجر.'),
+                default => __('تعذّرت قراءة إعداد الإشعارات في تطبيق أبعاد من ميتا — أعد المحاولة.'),
+            },
+            'type' => $app['state'] === WhatsAppLinkCheck::APP_LISTENING ? 'success' : 'warning',
         ]);
     }
 

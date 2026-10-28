@@ -33,6 +33,7 @@ export interface WhatsappLink {
  * أيستقبل الرقمُ رسائلَ زبائنه فعلًا؟ — انظر App\Support\WhatsAppLinkHealth.
  *
  * «متّصل» وحدها لا تقول ذلك: الرقمُ قد يُرسل وإشعاراتُه تذهب إلى تطبيقٍ آخر.
+ * و«وصلت حالةُ تسليم» لا تقول أنّ رسالةَ زبونٍ وصلت — لكلٍّ ختمُه.
  */
 export interface LinkHealth {
     key:
@@ -41,13 +42,22 @@ export interface LinkHealth {
         | 'incomplete_authorization'
         | 'number_connected'
         | 'webhook_incomplete'
+        | 'routing_elsewhere'
+        | 'app_subscribed'
         | 'ready'
-        | 'receiving'
+        | 'status_received'
+        | 'inbound_received'
         | 'needs_repair';
     label: string;
     hint: string;
     tone: 'success' | 'info' | 'neutral' | 'danger';
     checked_at: string | null;
+    /** آخرُ حالةِ تسليمٍ وصلت لما أرسله المتجر */
+    last_status_at?: string | null;
+    /** آخرُ رسالةٍ كتبها زبونٌ ووصلتنا */
+    last_inbound_at?: string | null;
+    /** لماذا لم تُحفظ آخرُ رسالةٍ وصلت — بلا نصّها */
+    inbound_problem?: string | null;
 }
 
 const HEALTH_TONE: Record<LinkHealth['tone'], string> = {
@@ -177,6 +187,16 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
                     <p className="font-semibold">{t(health.label)}</p>
                     <p className="mt-0.5">{t(health.hint)}</p>
                     {health.checked_at && <p className="mt-0.5 opacity-80" dir="auto">{t('آخر فحص')}: <span dir="ltr">{health.checked_at}</span></p>}
+                    <dl className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 opacity-80" data-testid="link-health-facts">
+                        <div>
+                            <dt className="inline">{t('آخر حالة تسليم')}: </dt>
+                            <dd className="inline" dir="ltr">{health.last_status_at ?? '—'}</dd>
+                        </div>
+                        <div>
+                            <dt className="inline">{t('آخر رسالة عميل')}: </dt>
+                            <dd className="inline" dir="ltr">{health.last_inbound_at ?? '—'}</dd>
+                        </div>
+                    </dl>
                 </div>
             )}
 

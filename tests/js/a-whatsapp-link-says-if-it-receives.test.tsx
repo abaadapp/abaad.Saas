@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { router } from '@inertiajs/react';
 import { describe, expect, it } from 'vitest';
 import WhatsAppCard, { type BusinessWhatsApp } from '@/Pages/Platform/Businesses/partials/WhatsAppCard';
+import type { LinkHealth } from '@/Pages/Admin/Integrations/partials/WhatsappLinkCard';
 
 /**
  * بطاقةُ واتساب المتجر في لوحة المنصّة — «متّصل» ليس «يستقبل».
@@ -71,11 +72,24 @@ describe('بطاقةُ واتساب المتجر عند المنصّة', () => {
         expect(screen.queryByTestId('whatsapp-link-check')).toBeNull();
     });
 
-    it('وتقول «تم إثبات الاستقبال» حين يقولها الخادم فقط', () => {
-        const proven = { key: 'receiving', label: 'تم إثبات استقبال Webhook فعلي', hint: 'آخرُ إشعارٍ وصل: 2026-10-28 15:00', tone: 'success', checked_at: null };
+    it('وتفرّق حالةَ التسليم عن رسالة العميل — ولا تقول «وصلت رسالة» إلّا حين يقولها الخادم', () => {
+        const statuses: LinkHealth = {
+            key: 'status_received', label: 'تم استقبال Webhook لحالة تسليم', hint: '…', tone: 'info', checked_at: null,
+            last_status_at: '2026-10-28 15:00', last_inbound_at: null,
+        };
+        const first = render(<WhatsAppCard businessId={5} data={{ ...DATA, own_health: { ...DATA.own_health!, link: statuses } }} />);
+        expect(screen.getByTestId('whatsapp-last-status').textContent).toContain('2026-10-28 15:00');
+        expect(screen.getByTestId('whatsapp-last-inbound').textContent).toContain('لم تصل بعد');
+        first.unmount();
+
+        const proven: LinkHealth = {
+            key: 'inbound_received', label: 'تم استقبال رسالة عميل فعلية', hint: 'آخرُ رسالة عميل وصلت: 2026-10-28 16:00', tone: 'success', checked_at: null,
+            last_status_at: '2026-10-28 15:00', last_inbound_at: '2026-10-28 16:00',
+        };
         render(<WhatsAppCard businessId={5} data={{ ...DATA, own_health: { ...DATA.own_health!, link: proven } }} />);
 
-        expect(screen.getByTestId('whatsapp-link-health')).toHaveAttribute('data-state', 'receiving');
-        expect(screen.getByTestId('whatsapp-link-health').textContent).toContain('تم إثبات استقبال');
+        expect(screen.getByTestId('whatsapp-link-health')).toHaveAttribute('data-state', 'inbound_received');
+        expect(screen.getByTestId('whatsapp-link-health').textContent).toContain('تم استقبال رسالة عميل فعلية');
+        expect(screen.getByTestId('whatsapp-last-inbound').textContent).toContain('2026-10-28 16:00');
     });
 });

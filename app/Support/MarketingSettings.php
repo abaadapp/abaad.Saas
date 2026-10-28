@@ -489,6 +489,8 @@ class MarketingSettings
          * MarketingKeepsItsPromisesTest — صار يقيس الاتّجاهين.
          */
         'whatsapp' => [
+            // RIBBON: «جديد» = استلام الطلب، ومشعَل كبقيّة رسائل الطلب الأساسية.
+            'wa_on_received' => '1',
             'wa_on_order' => '1',
             'wa_on_ready' => '1',
             'wa_on_out_for_delivery' => '1',

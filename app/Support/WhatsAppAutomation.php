@@ -55,6 +55,11 @@ class WhatsAppAutomation
             return null;
         }
 
+        // RIBBON لا يخرج منه إلا أحداث سعود الأربعة، ولو بقي إعدادٌ قديمٌ مشعَلًا.
+        if (! WhatsAppEvent::allowedForBusiness((int) $business->id, $event)) {
+            return null;
+        }
+
         /*
          * ما يُمنع قبل أن يُكتب له صفّ.
          *
@@ -76,7 +81,7 @@ class WhatsAppAutomation
 
         $phone = WhatsAppRecipient::forOrder($order);
         $connection = WhatsAppConnections::resolve($business);
-        $template = WhatsAppTemplates::resolve($business, $event, $mode);
+        $template = WhatsAppTemplates::resolve($business, $event, $mode, $order->customer?->language);
 
         $base = [
             'business_id' => $business->id,
@@ -195,6 +200,11 @@ class WhatsAppAutomation
         $business = Business::find($invoice->business_id);
 
         if (! $business || WhatsAppFeature::blockReason($business) !== null) {
+            return null;
+        }
+
+        // ملف RIBBON لا يتضمن رسائل الفواتير مهما بقيت مفاتيحها القديمة في القاعدة.
+        if (! WhatsAppEvent::allowedForBusiness((int) $business->id, $event)) {
             return null;
         }
 

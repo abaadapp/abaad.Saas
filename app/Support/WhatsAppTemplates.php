@@ -21,9 +21,9 @@ use App\Models\WhatsAppTemplateMapping;
  * لم تقل الرسالة «من محلّ الورد فلان» قرأها الزبون رسالةً من أبعاد عن طلبٍ
  * لا يعرفه — فلا يثق بها، أو يردّ على رقمٍ لا يقرأ ردَّه أحد.
  *
- * فترتيب المتغيّرات: {{1}} اسم المحلّ، {{2}} رقم الطلب. ومن ربط رقمه الخاصّ
- * يبقى الترتيب نفسه — قالبٌ واحد ومسار إرسالٍ واحد، ولو افترقا لَافترق
- * سلوكهما عند أوّل تعديل.
+ * والترتيب الافتراضيّ: {{1}} اسم المحلّ، {{2}} رقم الطلب. أمّا RIBBON
+ * فقوالبه الأربعة نصوصٌ ثابتة كما طلبها صاحبه، بلا متغيّرات أصلًا؛ وإرسال
+ * متغيّراتٍ إليها يجعل ميتا ترفض القالب. لذلك يختلف المحتوى لا مسار الإرسال.
  */
 class WhatsAppTemplates
 {
@@ -40,7 +40,7 @@ class WhatsAppTemplates
      * ولا يُخلط بينهما: اسم القالب معتمَدٌ داخل حسابٍ بعينه، وقالب أبعاد لا
      * وجود له في حساب المحلّ فيُردّ النداء بخطأ.
      */
-    public static function resolve(Business $business, string $event, string $mode): ?WhatsAppTemplateMapping
+    public static function resolve(Business $business, string $event, string $mode, ?string $wantedLanguage = null): ?WhatsAppTemplateMapping
     {
         $mapping = $mode === WhatsAppMode::BUSINESS_OWN
             ? WhatsAppTemplateMapping::where('scope_type', WhatsAppMode::OWNER_BUSINESS)
@@ -69,6 +69,41 @@ class WhatsAppTemplates
         if ($mapping !== null && filled($mapping->meta_status)
             && $mapping->meta_status !== self::APPROVED) {
             return null;
+        }
+
+        /*
+         * RIBBON جديد على هذه الأسماء: لا نغامر بحالٍ مجهولة.
+         * بعد الترحيل تُصفَّر حالة Meta عمدًا، فلا يخرج شيء حتى تسجّل
+         * المزامنة APPROVED للقالب نفسه داخل WABA سعود.
+         */
+        if ($mapping !== null
+            && $mode === WhatsAppMode::BUSINESS_OWN
+            && WhatsAppEvent::isRibbonBusiness((int) $business->id)
+            && $mapping->meta_status !== self::APPROVED) {
+            return null;
+        }
+
+        /*
+         * نسخة «استلام الطلب» الإنجليزية في RIBBON لها اسم Meta مستقل.
+         * نحتفظ بصفّ حدثٍ واحد في القاعدة، وننسخ الـmapping في الذاكرة فقط
+         * عند عميلٍ إنجليزي وبعد أن تكون النسخة الإنجليزية معتمدة.
+         */
+        if ($mapping !== null
+            && $mode === WhatsAppMode::BUSINESS_OWN
+            && WhatsAppEvent::isRibbonBusiness((int) $business->id)
+            && $event === WhatsAppEvent::ORDER_RECEIVED
+            && str_starts_with(strtolower((string) $wantedLanguage), 'en')
+            && in_array('en', (array) ($mapping->approved_languages ?? []), true)) {
+            $english = clone $mapping;
+            $english->template_name = WhatsAppEvent::templateNameForBusinessLanguage(
+                (int) $business->id,
+                $event,
+                'en',
+            );
+            $english->language_code = 'en';
+            $english->approved_languages = ['en'];
+
+            return $english;
         }
 
         return $mapping;
@@ -126,6 +161,28 @@ class WhatsAppTemplates
                 ->unique()->values()->all();
 
             /*
+             * RIBBON/received: النسخة الإنجليزية باسم مستقل عند Meta.
+             * ندمج اعتمادها في اللغات المعتمدة للحدث نفسه.
+             */
+            $alternateEnglishName = $businessId !== null
+                && WhatsAppEvent::isRibbonBusiness((int) $businessId)
+                && $row->event_type === WhatsAppEvent::ORDER_RECEIVED
+                    ? WhatsAppEvent::templateNameForBusinessLanguage((int) $businessId, $row->event_type, 'en')
+                    : null;
+
+            if ($alternateEnglishName !== null && $alternateEnglishName !== $row->template_name) {
+                $alternateStatuses = (array) ($result['templates'][$alternateEnglishName] ?? []);
+                $englishApproved = collect($alternateStatuses)->contains(
+                    fn ($s, $lang) => str_starts_with(strtolower((string) $lang), 'en')
+                        && $s === self::APPROVED
+                );
+
+                if ($englishApproved && ! in_array('en', $approvedLanguages, true)) {
+                    $approvedLanguages[] = 'en';
+                }
+            }
+
+            /*
              * ونصُّ BODY لكلّ لغةٍ كما اعتمدته ميتا — لِيُكتب نصُّ الرسالة
              * وقتَ إرسالها (`snapshot`). و`*` يُنسب إلى لغة القالب كما فوقه.
              * ولا يمسّ الحالَ ولا اللغاتِ المعتمَدة: سطرٌ مستقلٌّ بجوارهما.
@@ -133,6 +190,15 @@ class WhatsAppTemplates
             $bodies = [];
             foreach ((array) ($result['bodies'][$row->template_name] ?? []) as $lang => $text) {
                 $bodies[$lang === '*' ? (string) $row->language_code : (string) $lang] = (string) $text;
+            }
+
+            if ($alternateEnglishName !== null && $alternateEnglishName !== $row->template_name) {
+                foreach ((array) ($result['bodies'][$alternateEnglishName] ?? []) as $lang => $text) {
+                    if (str_starts_with(strtolower((string) $lang), 'en')) {
+                        $bodies['en'] = (string) $text;
+                        break;
+                    }
+                }
             }
 
             $row->forceFill([
@@ -191,10 +257,19 @@ class WhatsAppTemplates
             return null;
         }
 
-        $mapping = WhatsAppTemplateMapping::where('scope_type', $scope)
+        $mappingQuery = WhatsAppTemplateMapping::where('scope_type', $scope)
             ->when($businessId === null, fn ($q) => $q->whereNull('business_id'))
-            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
-            ->where('template_name', $template)
+            ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId));
+
+        if ($businessId !== null
+            && WhatsAppEvent::isRibbonBusiness((int) $businessId)
+            && $template === WhatsAppEvent::templateNameForBusinessLanguage((int) $businessId, WhatsAppEvent::ORDER_RECEIVED, 'en')) {
+            $mappingQuery->where('event_type', WhatsAppEvent::ORDER_RECEIVED);
+        } else {
+            $mappingQuery->where('template_name', $template);
+        }
+
+        $mapping = $mappingQuery
             ->orderBy('id')
             ->get(['body_by_language'])
             ->map(fn ($m) => (array) ($m->body_by_language ?? []))
@@ -232,8 +307,14 @@ class WhatsAppTemplates
      *
      * @return array<int, string>
      */
-    public static function variables(Business $business, Order $order): array
+    public static function variables(Business $business, Order $order, ?string $mode = null): array
     {
+        // قوالب RIBBON الأربعة ثابتة بلا {{1}} ولا {{2}} حين يرسل من رقمه الخاص.
+        // وإن استُخدم رقم أبعاد يومًا فالقالبُ الافتراضي يحتاج متغيّريه كالمعتاد.
+        if (WhatsAppEvent::isRibbonBusiness((int) $business->id) && $mode === WhatsAppMode::BUSINESS_OWN) {
+            return [];
+        }
+
         return [
             (string) ($business->name ?: __('متجر')),
             (string) $order->number,
@@ -301,40 +382,76 @@ class WhatsAppTemplates
         ];
     }
 
-    /** قوالب أبعاد الأربعة — تُهيَّأ عند ربط الرقم المشترك */
+    /** قوالب أبعاد الافتراضيّة — لا يدخل فيها حدث RIBBON الخاص «استلام الطلب». */
     public static function seedPlatformDefaults(?string $language = null): void
     {
         self::seed(WhatsAppMode::OWNER_PLATFORM, null, $language);
     }
 
-    /** قوالب المحلّ الأربعة — تُهيَّأ عند ربط رقمه */
+    /**
+     * قوالب رقم المتجر.
+     *
+     * RIBBON استثناءٌ مقصود: أربعة قوالب باسم ribbon_* فقط. وأي صفٍّ قديم
+     * (تسليم أو فاتورة) يُزال من نطاقه حتى لا تحسبه الجاهزية ولا يرسله
+     * مفتاحٌ قديم بقي مشعَلًا.
+     */
     public static function seedBusinessDefaults(int $businessId, ?string $language = null): void
     {
-        self::seed(WhatsAppMode::OWNER_BUSINESS, $businessId, $language);
+        $language ??= (string) config('whatsapp.language', 'ar');
+
+        if (! WhatsAppEvent::isRibbonBusiness($businessId)) {
+            self::seed(WhatsAppMode::OWNER_BUSINESS, $businessId, $language);
+
+            return;
+        }
+
+        WhatsAppTemplateMapping::where('scope_type', WhatsAppMode::OWNER_BUSINESS)
+            ->where('business_id', $businessId)
+            ->whereNotIn('event_type', WhatsAppEvent::RIBBON_EVENTS)
+            ->delete();
+
+        foreach (WhatsAppEvent::RIBBON_EVENTS as $event) {
+            $name = WhatsAppEvent::templateNameForBusiness($businessId, $event);
+            $row = WhatsAppTemplateMapping::firstOrNew([
+                'scope_type' => WhatsAppMode::OWNER_BUSINESS,
+                'business_id' => $businessId,
+                'event_type' => $event,
+            ]);
+
+            // اسمٌ جديد يعني أن حال ميتا القديمة تخص قالبًا آخر فلا تُورَّث له.
+            if ($row->exists && $row->template_name !== $name) {
+                $row->forceFill([
+                    'meta_status' => null,
+                    'meta_synced_at' => null,
+                    'approved_languages' => null,
+                    'body_by_language' => null,
+                ]);
+            }
+
+            $row->forceFill([
+                'template_name' => $name,
+                'language_code' => $language,
+                'enabled' => true,
+                'variable_mapping' => [],
+            ])->save();
+        }
     }
 
-    /**
-     * التهيئة في موضعٍ واحد للنطاقين.
-     *
-     * ولو كُتبت مرّتين لَافترقتا: تُضاف الحدثُ الخامس في إحداهما، فيرسل
-     * المشترك ولا يرسل من ربط رقمه — ولا شيء يقول لماذا.
-     *
-     * و`firstOrCreate` لا `updateOrCreate`: اسمٌ صحّحه التاجر بعد اعتماد
-     * قالبه عند ميتا لا يُعاد إلى الافتراضيّ عند أوّل إعادة ربط.
-     */
+    /** التهيئة الافتراضيّة لبقيّة المتاجر ولرقم أبعاد المشترك. */
     private static function seed(string $scope, ?int $businessId, ?string $language): void
     {
         $language ??= (string) config('whatsapp.language', 'ar');
 
-        // وما يُربط عند اعتماده لا يُهيَّأ هنا — انظر `WhatsAppEvent::ON_APPROVAL` و`adopt`
-        foreach (array_diff(WhatsAppEvent::ALL, WhatsAppEvent::ON_APPROVAL) as $event) {
+        // RIBBON لا يمرّ من هنا؛ والدورة الافتراضيّة لا تتغيّر عليه ولا بسببه.
+        foreach (array_diff(WhatsAppEvent::DEFAULT_EVENTS, WhatsAppEvent::ON_APPROVAL) as $event) {
             WhatsAppTemplateMapping::firstOrCreate(
                 ['scope_type' => $scope, 'business_id' => $businessId, 'event_type' => $event],
                 [
-                    'template_name' => WhatsAppEvent::DEFAULT_TEMPLATES[$event],
+                    'template_name' => $businessId !== null
+                        ? WhatsAppEvent::templateNameForBusiness($businessId, $event)
+                        : WhatsAppEvent::DEFAULT_TEMPLATES[$event],
                     'language_code' => $language,
                     'enabled' => true,
-                    // {{1}} اسم المحلّ، {{2}} رقم الطلب — يُقرأ ولا يُخمَّن
                     'variable_mapping' => ['1' => 'business_name', '2' => 'order_number'],
                 ],
             );
@@ -359,7 +476,13 @@ class WhatsAppTemplates
         $preferred = (string) config('whatsapp.language', 'ar');
 
         foreach (WhatsAppEvent::ON_APPROVAL as $event) {
-            $name = WhatsAppEvent::DEFAULT_TEMPLATES[$event];
+            if ($businessId !== null && ! WhatsAppEvent::allowedForBusiness($businessId, $event)) {
+                continue;
+            }
+
+            $name = $businessId !== null
+                ? WhatsAppEvent::templateNameForBusiness($businessId, $event)
+                : WhatsAppEvent::DEFAULT_TEMPLATES[$event];
             $approved = array_keys(array_filter((array) ($templates[$name] ?? []), fn ($status) => $status === self::APPROVED));
 
             if ($approved === []) {

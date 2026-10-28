@@ -10157,5 +10157,17 @@
     "ولا يمنح أحدٌ غيرَه ما لا يملكه هو، ولا يعدّل صلاحيات حسابه.": "No one grants others what they do not hold themselves, nor edits the permissions of their own account.",
     "مفاتيح Paymob وأرقام التكامل. لا يسجّل تحصيلًا ولا يرى المدفوعات.": "Paymob keys and integration IDs. It does not record payments nor see them.",
     "تقديم تاريخ «الدفاتر مقفلة حتى» أو «آخر إقرار قُدِّم»: لا يُكتب بعده قيدٌ في الفترة المقفلة. ويُنفَّذ من الإعدادات، فيلزمه معها تعديل الإعدادات.": "Move the “Books closed through” or “Last return filed” date: no entry can be written in the closed period after it. It is done from Settings, so it also needs editing settings.",
-    "أخذ نسخة وضبط تكرارها. والاستعادة لصاحب النشاط وحده، والتنزيل بصلاحية «تنزيل نسخة احتياطية».": "Take a backup and set its frequency. Restoring is for the business owner only, and downloading needs “Download a backup”."
+    "أخذ نسخة وضبط تكرارها. والاستعادة لصاحب النشاط وحده، والتنزيل بصلاحية «تنزيل نسخة احتياطية».": "Take a backup and set its frequency. Restoring is for the business owner only, and downloading needs “Download a backup”.",
+    "المهمّة «:status» — لا يتغيّر نوع التسليم تحت هذه الحال. انقلها إلى حالٍ تصلح للنوع الجديد أولًا.": "The task is “:status” — its delivery type can't change in this state. Move it to a state that suits the new type first.",
+    "لست مُسنَدًا إلى هذا الفرع — لا تُنقل المهمّة إليه ولا منه إلّا ممّن يعمل فيه.": "You're not assigned to this branch — the task is moved to or from it only by someone who works there.",
+    "لم يتغيّر شيء في بيانات التسليم.": "Nothing in the delivery details has changed.",
+    "حُفظت بيانات التسليم — وكُتبت ورقة داخلية جديدة لطابور الصندوق، فالمطبوعة قبل التعديل لم تعد صحيحة.": "Delivery details saved — a new internal copy was queued for the till, because the one printed before the change is no longer correct.",
+    "حُفظت بيانات التسليم: :what": "Delivery details saved: :what",
+    "حُفظ طلب التجهيز — وكُتبت ورقة داخلية جديدة لطابور الصندوق، فالمطبوعة قبل التعديل لم تعد صحيحة.": "Preparation request saved — a new internal copy was queued for the till, because the one printed before the change is no longer correct.",
+    "تعديل بيانات التجهيز والتسليم": "Edit preparation and delivery details",
+    "من لوحة التجهيز: تعديل موعد التسليم والمستلم وهاتفه والعنوان والفرع ونوع التسليم والتعليمات والملاحظات وبطاقة الهدية لمهمة فاتورة عميل لم تُسلَّم، ولو بعد سدادها. لا يغيّر بندًا ولا سعرًا ولا ضريبة ولا تحصيلًا.": "From the preparation board: edit the delivery time, recipient and phone, address, branch, delivery type, instructions, notes and gift card of a customer-invoice task that hasn't been delivered, even after it's paid. It changes no line, price, tax or collection.",
+    "تعديل تفاصيل التسليم": "Edit delivery details",
+    "حفظ بيانات التسليم": "Save delivery details",
+    "الهدية": "Gift",
+    "إخفاء اسم المرسل": "Hide the sender's name"
 }

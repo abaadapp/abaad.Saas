@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { router, useForm } from '@inertiajs/react';
 import { ClipboardList, Printer, Send, Trash2 } from 'lucide-react';
 import CustomerInvoicePreparationFields, {
-    EMPTY_PREPARATION,
+    preparationForm,
     preparationPayload,
-    type PreparationForm,
+    type PreparationData,
     type PreparationOptions,
 } from '@/Components/CustomerInvoicePreparationFields';
 import { Button } from '@/Components/ui/button';
@@ -29,11 +29,7 @@ export interface PreparationPanelData {
     removable: boolean;
     activatable: boolean;
     paid: boolean;
-    data: (Omit<PreparationForm, 'enabled' | 'branch_id' | 'fulfillment_type'> & {
-        branch_id: number | null;
-        branch: string | null;
-        fulfillment_type: 'delivery' | 'pickup';
-    }) | null;
+    data: PreparationData | null;
     active: boolean;
     status: string | null;
     activated_at: string | null;
@@ -50,25 +46,10 @@ const SOURCE: Record<string, string> = {
     manual: 'أرسلها موظف بعد السداد',
 };
 
-function asForm(data: PreparationPanelData['data']): PreparationForm {
-    if (!data) return { ...EMPTY_PREPARATION, enabled: true };
-
-    return {
-        ...EMPTY_PREPARATION,
-        ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v ?? ''])),
-        enabled: true,
-        branch_id: data.branch_id ? String(data.branch_id) : '',
-        fulfillment_type: data.fulfillment_type,
-        is_gift: Boolean(data.is_gift),
-        hide_sender: Boolean(data.hide_sender),
-        card_identity_confirmed: Boolean(data.card_identity_confirmed),
-    } as PreparationForm;
-}
-
 export default function PreparationPanel({ invoiceId, preparation }: { invoiceId: number; preparation: PreparationPanelData }) {
     const t = useTranslate();
     const [editing, setEditing] = useState(false);
-    const form = useForm({ preparation: asForm(preparation.data) });
+    const form = useForm({ preparation: preparationForm(preparation.data) });
     const p = preparation.data;
 
     const save = () => {

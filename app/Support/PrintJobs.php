@@ -111,6 +111,62 @@ final class PrintJobs
         return 'customer-invoice-internal:'.$prep->id;
     }
 
+    /**
+     * ورقةٌ داخليّةٌ جديدة بعد تعديل بيانات التسليم — فالتي خرجت تحمل القديم.
+     *
+     * تُنادى تحت قفل صفّ المهمّة (`CustomerInvoicePreparations::save`) فلا تُكتب
+     * ورقتان لتعديلٍ واحد. ومفتاحُها رقمُ نسختها بعد الأولى — والأولى باقيةٌ
+     * بحالها في السجلّ، لا تُمحى ولا تُعاد. وتُقرأ اللوحةُ من أحدثها
+     * (`forPreparation`)، والصندوقُ يطبعها ببيانات ساعتها.
+     */
+    public static function reissueInvoiceInternal(CustomerInvoicePreparation $prep): PrintJob
+    {
+        $edition = PrintJob::where('business_id', $prep->business_id)
+            ->where('subject_type', 'customer_invoice_preparation')
+            ->where('subject_id', $prep->id)
+            ->count() + 1;
+
+        $device = $prep->branch_id ? self::designatedDevices((int) $prep->business_id, (int) $prep->branch_id)->first() : null;
+
+        $job = PrintJob::create([
+            'business_id' => (int) $prep->business_id,
+            'branch_id' => $prep->branch_id,
+            'pos_device_id' => $device?->id,
+            'kind' => PrintJob::KIND_INVOICE_INTERNAL,
+            'subject_type' => 'customer_invoice_preparation',
+            'subject_id' => $prep->id,
+            'dedupe_key' => self::invoiceKey($prep).':'.$edition,
+            'status' => PrintJob::PENDING,
+        ]);
+
+        self::audit($job, 'عُدّلت بيانات التسليم بعد طباعتها — كُتبت ورقةٌ جديدة لطابور الصندوق');
+
+        return $job;
+    }
+
+    /**
+     * ورقةٌ تنتظر وقد نُقلت مهمّتُها إلى فرعٍ آخر — تتبعها إلى صندوقه.
+     *
+     * المنتظِرةُ وحدها: ما يحجزه صندوقٌ الآن قد يخرج في هذه اللحظة، وما خرج
+     * تُكتب له ورقةٌ جديدة. والشرطُ في الكتابة نفسِها — حجزٌ سبق لا يُنتزع.
+     */
+    public static function followBranch(PrintJob $job, int $branchId): bool
+    {
+        $device = self::designatedDevices((int) $job->business_id, $branchId)->first();
+
+        $done = PrintJob::whereKey($job->id)
+            ->where('status', PrintJob::PENDING)
+            ->update(['branch_id' => $branchId, 'pos_device_id' => $device?->id, 'updated_at' => now()]);
+
+        if ($done === 1) {
+            self::audit($job, $device
+                ? 'نُقلت المهمّة إلى فرعٍ آخر — الورقة لطابور صندوق «'.$device->name.'»'
+                : 'نُقلت المهمّة إلى فرعٍ آخر — الورقة تنتظر صندوقًا يُعيَّن فيه');
+        }
+
+        return $done === 1;
+    }
+
     /** آخرُ ورقةٍ لمهمّة — لتُقرأ حالُها في اللوحة */
     public static function forPreparation(CustomerInvoicePreparation $prep): ?PrintJob
     {

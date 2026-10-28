@@ -37,7 +37,6 @@ use App\Support\Document\Version;
 use App\Support\DocumentPaper;
 use App\Support\DocumentRenderer;
 use App\Support\DocumentTemplates;
-use App\Support\FlowerOrder;
 use App\Support\InvoiceAttachments;
 use App\Support\InvoiceLoyalty;
 use App\Support\InvoiceBranding;
@@ -700,26 +699,8 @@ class CustomerInvoiceController extends Controller
              * وقسمُ «التجهيز والتسليم» — لمن فُتح له وحده (`CustomerInvoicePreparations::on`).
              * و`null` لغيره: لا قسمَ يُرسم، ولا حقلٌ يُرسل.
              */
-            'preparation' => $this->preparationOptions($bid),
+            'preparation' => CustomerInvoicePreparations::options($bid),
         ]);
-    }
-
-    /**
-     * فروعُ التجهيز ومناسباتُ البطاقة — لنشاطٍ فُتح له التجهيز بعد السداد.
-     *
-     * @return array{branches: array<int, array{id: int, name: string}>, occasions: array<int, array{value: string, label: string}>}|null
-     */
-    private function preparationOptions(int $bid): ?array
-    {
-        if (! CustomerInvoicePreparations::on($bid)) {
-            return null;
-        }
-
-        return [
-            'branches' => Branch::where('business_id', $bid)->orderBy('id')->get(['id', 'name'])
-                ->map(fn (Branch $b) => ['id' => $b->id, 'name' => $b->name])->all(),
-            'occasions' => FlowerOrder::occasionOptions($bid),
-        ];
     }
 
     /**
@@ -757,24 +738,8 @@ class CustomerInvoiceController extends Controller
             'activatable' => $on && $prep && ! $prep->isActive() && $paid
                 && (bool) auth()->user()?->may(Permissions::CUSTOMER_PAYMENT_CREATE),
             'paid' => $paid,
-            'data' => $prep ? [
-                'branch_id' => $prep->branch_id,
-                'branch' => $prep->branch_id ? Branch::whereKey($prep->branch_id)->value('name') : null,
-                'fulfillment_type' => $prep->fulfillment_type,
-                'scheduled_for' => optional($prep->scheduled_for)->format('Y-m-d\\TH:i'),
-                'recipient_name' => $prep->recipient_name,
-                'recipient_phone' => $prep->recipient_phone,
-                'delivery_address' => $prep->delivery_address,
-                'delivery_notes' => $prep->delivery_notes,
-                'internal_notes' => $prep->internal_notes,
-                'is_gift' => (bool) $prep->is_gift,
-                'occasion_type' => $prep->occasion_type,
-                'occasion_text' => $prep->occasion_text,
-                'card_message' => $prep->card_message,
-                'sender_name' => $prep->sender_name,
-                'hide_sender' => (bool) $prep->hide_sender,
-                'card_identity_confirmed' => $prep->card_identity_confirmed_at !== null,
-            ] : null,
+            // والشكلُ نفسُه الذي يملأ نموذجَ اللوحة — يُبنى في موضعٍ واحد
+            'data' => $prep ? CustomerInvoicePreparations::formData($prep) : null,
             'active' => (bool) $prep?->isActive(),
             'status' => $prep?->status,
             'activated_at' => optional($prep?->activated_at)->format('Y-m-d H:i'),
@@ -783,7 +748,7 @@ class CustomerInvoiceController extends Controller
             // لمَ لم تظهر بعد — جملةٌ لا رمز
             'waiting_for' => $prep && ! $prep->isActive() ? CustomerInvoicePreparations::blocker($prep, $invoice) : null,
             'print' => PrintJobs::card($job),
-            'options' => $on ? $this->preparationOptions($bid) : null,
+            'options' => $on ? CustomerInvoicePreparations::options($bid) : null,
         ];
     }
 
@@ -2159,9 +2124,12 @@ class CustomerInvoiceController extends Controller
             ]);
         }
 
-        CustomerInvoicePreparations::save($invoice, $data, auth()->id());
+        $effect = null;
+        CustomerInvoicePreparations::save($invoice, $data, auth()->id(), $effect);
 
-        return back()->with('toast', ['msg' => __('حُفظ طلب التجهيز'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => $effect['reprinted']
+            ? __('حُفظ طلب التجهيز — وكُتبت ورقة داخلية جديدة لطابور الصندوق، فالمطبوعة قبل التعديل لم تعد صحيحة.')
+            : __('حُفظ طلب التجهيز'), 'type' => 'success']);
     }
 
     /** يُلغى طلبُ التجهيز ما لم يظهر في اللوحة */

@@ -178,6 +178,13 @@ class Permissions
     public const CUSTOMER_INVOICE_HISTORY = 'customerInvoice.history';
 
     /**
+     * تعديلُ بيانات التجهيز والتسليم من لوحة التجهيز — الموعدُ والمستلِمُ والعنوانُ
+     * والفرعُ والبطاقة، لمهمّةٍ لم تُسلَّم. لا مالَ فيه: لا بندَ ولا سعرَ ولا ضريبةَ
+     * ولا تحصيل (`CustomerInvoicePreparations::save`).
+     */
+    public const CUSTOMER_INVOICE_PREPARATION_EDIT = 'customerInvoice.preparation.edit';
+
+    /**
      * اعتمادُ تصحيحٍ ماليّ طلبه غيرُه — حين يفتح صاحبُ النشاط الاعتمادَ الثنائيّ.
      *
      * فعلٌ جديد لا ينفصل عن قسم: لم يكن أحدٌ يعتمد شيئًا قبله. فلا يرثه إلّا
@@ -425,6 +432,7 @@ class Permissions
         self::CUSTOMER_INVOICE_EDIT_PAID => 'تعديل فاتورة عميل مدفوعة جزئيًا أو كليًا',
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => 'تصحيح فاتورة عميل من فترة سابقة أو مقفلة',
         self::CUSTOMER_INVOICE_HISTORY => 'عرض سجل تعديلات فواتير العملاء',
+        self::CUSTOMER_INVOICE_PREPARATION_EDIT => 'تعديل بيانات التجهيز والتسليم',
         self::CUSTOMER_CREDIT_NOTE => 'إصدار إشعار دائن',
         self::CUSTOMER_PAYMENT_CREATE => 'تسجيل تحصيل من عميل',
         self::CUSTOMER_PAYMENT_CANCEL => 'إلغاء تحصيل عميل',
@@ -553,6 +561,8 @@ class Permissions
         self::CUSTOMER_INVOICE_EDIT_PAID => ['admin'],
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => ['admin'],
         self::CUSTOMER_INVOICE_HISTORY => ['admin', 'manager', 'accountant'],
+        // ومن يجهّز يُمنحه باسمه — لا يُورَث مع اللوحة ولا يمنحه ترحيل
+        self::CUSTOMER_INVOICE_PREPARATION_EDIT => ['admin', 'manager'],
         self::PAYROLL_VIEW => ['admin', 'manager', 'accountant'],
         self::PAYROLL_APPROVE => ['admin', 'manager'],
         self::PAYROLL_PAY => ['admin', 'manager'],
@@ -844,6 +854,7 @@ class Permissions
         self::CUSTOMER_INVOICE_EDIT_PAID => 'تعديل فاتورة دُفع منها جزء أو كلها: المقبوض لا يُمس، والفرق يصير باقيًا على العميل أو رصيدًا دائنًا له. لا يُرد مال تلقائيًا.',
         self::CUSTOMER_INVOICE_CORRECT_PERIOD => 'تصحيح فاتورة قيدها في شهر مضى أو فترة مقفلة: يُكتب التصحيح في الفترة الحالية بسبب مكتوب، ولا تُمس الفترة المقفلة.',
         self::CUSTOMER_INVOICE_HISTORY => 'قراءة ما كانت عليه الفاتورة قبل كل تعديل ومن عدّلها ومتى ولماذا، وقيود التصحيح.',
+        self::CUSTOMER_INVOICE_PREPARATION_EDIT => 'من لوحة التجهيز: تعديل موعد التسليم والمستلم وهاتفه والعنوان والفرع ونوع التسليم والتعليمات والملاحظات وبطاقة الهدية لمهمة فاتورة عميل لم تُسلَّم، ولو بعد سدادها. لا يغيّر بندًا ولا سعرًا ولا ضريبة ولا تحصيلًا.',
         'order.edit' => 'يسمح بتعديل كمية البنود أو وسيلة الدفع في نفس يوم البيع، سواء كانت الفاتورة من نقطة البيع أو الموقع الإلكتروني. وحيث فُتحت الميزة للنشاط: إضافة صنف أو استبداله في يوم البيع، وتعديل ملاحظة المنتج، وتحصيل المتبقّي.',
         self::TRANSFER_VIEW => 'سندات النقل وطلبات التزويد التي تخصّ الفروع المسندة إليه.',
         self::TRANSFER_VIEW_ALL => 'سندات النقل وطلبات التزويد في كل فروع النشاط، ولو لم يُسنَد إليها.',

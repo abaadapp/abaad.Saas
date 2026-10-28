@@ -613,7 +613,7 @@ final class SectionActions
             Permissions::CUSTOMER_INVOICE_HISTORY,
         ]],
         ['key' => 'pos', 'view' => 'pos', 'actions' => [Permissions::POS_MOVEMENT]],
-        ['key' => 'preparation', 'view' => 'preparation', 'actions' => []],
+        ['key' => 'preparation', 'view' => 'preparation', 'actions' => [Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT]],
         ['key' => 'products', 'view' => 'products', 'actions' => [
             'product.create', 'product.edit', 'product.delete', 'category.manage', 'addon.manage',
             'boutique.manage', 'boutique.settle', 'product.export',

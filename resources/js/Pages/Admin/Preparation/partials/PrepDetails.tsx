@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { Check, Clock, Gift, History, MapPin, Phone, Printer, RotateCcw, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
+import { Check, Clock, Gift, History, MapPin, Pencil, Phone, Printer, RotateCcw, StickyNote, Store, Truck, User, Wallet } from 'lucide-react';
 import PrintReceiptButton from '@/Components/PrintReceiptButton';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
@@ -8,7 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { money, number as fmt } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import type { PreparationOptions } from '@/Components/CustomerInvoicePreparationFields';
 import type { PageProps } from '@/types';
+import InvoiceDeliveryEdit from './InvoiceDeliveryEdit';
 import { checklistKeys, TASK_LABELS, type PrepOrder } from './types';
 
 /**
@@ -46,6 +48,8 @@ interface Props {
     onToggle: (key: string, checked: boolean) => void;
     deliveryNoteUrl: (number: string) => string;
     timelineUrl: (number: string) => string;
+    /** فروعُ من يعدّل بيانات التسليم ومناسباتُ البطاقة — وnull لمن لا يملكه */
+    detailsOptions?: PreparationOptions | null;
 }
 
 export default function PrepDetails({
@@ -57,12 +61,14 @@ export default function PrepDetails({
     onToggle,
     deliveryNoteUrl,
     timelineUrl,
+    detailsOptions = null,
 }: Props) {
     const t = useTranslate();
     const currency = usePage<PageProps>().props.context?.currency;
     const m = (v: number) => (currency ? money(v, currency) : String(v));
     const [events, setEvents] = useState<Timeline[] | null>(null);
     const [failed, setFailed] = useState(false);
+    const [editing, setEditing] = useState(false);
     // والسجلُّ بمفتاح المهمّة لفاتورة العميل، وبرقم الطلب للطلب — كما كان
     const number = o ? (o.kind === 'invoice' ? (o.key ?? null) : o.number) : null;
 
@@ -105,6 +111,12 @@ export default function PrepDetails({
     }, [number, timelineUrl]);
 
     if (!o) return null;
+
+    /*
+     * «تعديل تفاصيل التسليم» — لمهمّة فاتورةٍ على اللوحة، ولمن يملك الفعلَ باسمه:
+     * الخادمُ يرسل `details` له وحده. ومهمّةٌ نُقلت أو أُغلقت لا تُعدَّل من هنا.
+     */
+    const editable = o.kind === 'invoice' && !!o.prep_id && !!o.details && !!detailsOptions && !gone;
 
     const keys = checklistKeys(o);
     const done = keys.filter((k) => o.checks?.[k]).length;
@@ -460,6 +472,12 @@ export default function PrepDetails({
                     */}
                     {o.kind === 'invoice' && o.prep_id ? (
                         <>
+                            {editable && (
+                                <Button variant="outline" size="sm" data-testid="prep-edit-details" onClick={() => setEditing(true)}>
+                                    <Pencil className="size-3.5" />
+                                    {t('تعديل تفاصيل التسليم')}
+                                </Button>
+                            )}
                             <PrintReceiptButton
                                 number={String(o.prep_id)}
                                 routeName="admin.preparation.invoiceDeliveryNote"
@@ -526,6 +544,9 @@ export default function PrepDetails({
                     ))}
                 </div>
             </DialogContent>
+            {editing && editable && o.prep_id && o.details && detailsOptions && (
+                <InvoiceDeliveryEdit prepId={o.prep_id} details={o.details} options={detailsOptions} onClose={() => setEditing(false)} />
+            )}
         </Dialog>
     );
 }

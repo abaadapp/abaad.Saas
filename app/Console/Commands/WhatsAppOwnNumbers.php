@@ -16,7 +16,7 @@ use Illuminate\Console\Command;
  * من ميتا (قراءةٌ لا غير — `WhatsAppLinkCheck::inspect`): أيُّ تطبيقٍ أصدر
  * الرمز، وصلاحياتُه وحسابُه، وأنّ الرقمَ من أرقام الحساب، وحالُ
  * `subscribed_apps` والعنوانِ البديل، وتوجيهُ المحادثات (`routing_roles`). ومن القاعدة: آخرُ حالةِ تسليم، وآخرُ
- * رسالةِ زبون، ولماذا لم تُحفظ آخرُ رسالة، وآخرُ خطأ. ومرّةً واحدةً للكلّ:
+ * رسالةِ زبونٍ وصلت وآخرُ رسالةٍ حُفظت، ولماذا لم تُحفظ آخرُ رسالة، وآخرُ خطأ. ومرّةً واحدةً للكلّ:
  * إعدادُ الإشعارات في تطبيق أبعاد نفسه (`WhatsAppLinkCheck::appWebhook`).
  *
  * ═══ وما لا يُفعل ═══
@@ -60,7 +60,7 @@ class WhatsAppOwnNumbers extends Command
             .' · الحقول: '.(implode(',', $app['fields']) ?: '—'));
 
         $this->table(
-            ['متجر', 'الرقم', 'مُصدر الرمز', 'العلّة', 'الاشتراك', 'التوجيه', 'آخر حالة تسليم', 'آخر رسالة عميل', 'لم تُحفظ', 'آخر خطأ', 'الحال'],
+            ['متجر', 'الرقم', 'مُصدر الرمز', 'العلّة', 'الاشتراك', 'التوجيه', 'آخر حالة تسليم', 'آخر رسالة وصلت', 'آخر رسالة حُفظت', 'لم تُحفظ', 'آخر خطأ', 'الحال'],
             array_map(fn ($r) => [
                 $r['business_id'].' '.$r['business'],
                 $r['phone'] ?? '—',
@@ -70,6 +70,7 @@ class WhatsAppOwnNumbers extends Command
                 $r['live']['routing'] ?? '—',
                 $r['last_status_at'] ?? '—',
                 $r['last_inbound_at'] ?? '—',
+                $r['last_inbound_saved_at'] ?? '—',
                 $r['inbound_problem'] ?? '—',
                 $r['last_error_code'] ?? '—',
                 $r['health'],
@@ -102,6 +103,7 @@ class WhatsAppOwnNumbers extends Command
                 'last_webhook_at' => optional($c->last_webhook_at)->toIso8601String(),
                 'last_status_at' => optional($c->last_status_at)->toIso8601String(),
                 'last_inbound_at' => optional($c->last_inbound_at)->toIso8601String(),
+                'last_inbound_saved_at' => optional($c->last_inbound_saved_at)->toIso8601String(),
                 'inbound_problem' => $c->inbound_problem,
                 'last_error_code' => $c->last_error_code,
                 'health' => WhatsAppLinkHealth::state($c),

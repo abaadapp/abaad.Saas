@@ -129,7 +129,11 @@ class WebhookController extends Controller
          *
          * أكثرُ ما يصل «وصلت» و«قُرئت» لما أرسله المتجر — وتلك لا تقول إنّ
          * ما يكتبه زبونٌ من نفسه يصل. فلكلٍّ ختمُه: `last_status_at` لحالات
-         * التسليم، و`last_inbound_at` لرسالةٍ كتبها زبون (`WhatsAppLinkHealth`).
+         * التسليم، و`last_inbound_at` لرسالةٍ كتبها زبونٌ **وصلت** هذه الوصلة.
+         *
+         * والوصولُ ليس الحفظ: ما حُفظ في الصندوق يختمه `WhatsAppInbox::receiveOwn`
+         * وحده (`last_inbound_saved_at`)، وما رُدّ يكتب سببه — فلا يُقال «استُقبلت»
+         * عن رسالةٍ وصلت ورُدّت (`WhatsAppLinkHealth`).
          */
         $customerWrote = collect((array) ($value['messages'] ?? []))->contains(fn ($m) => filled($m['from'] ?? null));
 

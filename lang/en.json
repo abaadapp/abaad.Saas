@@ -9973,5 +9973,12 @@
     "تطبيق أبعاد يستقبل: عنوان الإشعارات عنوان أبعاد، وحقل messages مُفعّل.": "Abaad's app is listening: the callback URL is Abaad's and the messages field is on.",
     "عنوان الإشعارات في تطبيق أبعاد ليس عنوان أبعاد — لا يصل من أيّ متجر شيء.": "The callback URL in Abaad's app is not Abaad's — nothing arrives from any shop.",
     "حقل messages غير مُفعّل في تطبيق أبعاد — رسائل الزبائن لا تصل من أيّ متجر.": "The messages field is not on in Abaad's app — customer messages do not arrive from any shop.",
-    "تعذّرت قراءة إعداد الإشعارات في تطبيق أبعاد من ميتا — أعد المحاولة.": "Could not read Abaad's app notification setup from Meta — try again."
+    "تعذّرت قراءة إعداد الإشعارات في تطبيق أبعاد من ميتا — أعد المحاولة.": "Could not read Abaad's app notification setup from Meta — try again.",
+    "آخر رسالة عميل وصلت": "Last customer message arrived",
+    "آخر رسالة حُفظت في المحادثات": "Last message saved in conversations",
+    "لم تُحفظ آخر رسالة": "Last message not saved",
+    "وصلت رسالة عميل ولم تُحفظ": "A customer message arrived but was not saved",
+    "آخرُ رسالة عميل حُفظت في المحادثات: :at": "Last customer message saved in conversations: :at",
+    "وصلت رسالةُ زبونٍ إلى رقم المتجر ولم تُحفظ في المحادثات: :why": "A customer message reached the shop's number but was not saved in conversations: :why",
+    "وصلت رسالةُ زبونٍ إلى رقم المتجر ولم يثبت حفظُها في المحادثات.": "A customer message reached the shop's number, but saving it in conversations was not confirmed."
 }

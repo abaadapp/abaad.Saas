@@ -7,18 +7,21 @@ use App\Models\WhatsAppConnection;
 /**
  * أيستقبل هذا الرقمُ رسائلَ زبائنه فعلًا؟ — لا «متّصل» وحدها.
  *
- * خمسةُ أشياءَ مختلفة كانت تُقرأ كلمةً واحدة:
+ * ستّةُ أشياءَ مختلفة كانت تُقرأ كلمةً واحدة:
  *
  *   ١ · الرقمُ متّصلٌ ويُرسل (`WhatsAppLink::CONNECTED`).
  *   ٢ · تطبيقُ أبعاد مشتركٌ في إشعارات حسابه (`webhook_state = subscribed`).
  *   ٣ · وصندوقُ المحادثات مفتوحٌ للمتجر — فما يصل يُحفظ ويُعرض.
  *   ٤ · وصلتنا منه حالةُ تسليم (`last_status_at`).
- *   ٥ · ووصلتنا منه رسالةٌ كتبها زبون (`last_inbound_at`).
+ *   ٥ · ووصلتنا منه رسالةٌ كتبها زبون (`last_inbound_at`) — وصولٌ لا حفظ.
+ *   ٦ · وحُفظت رسالةُ زبونٍ في صندوقه (`last_inbound_saved_at`).
  *
- * والرابعُ ليس الخامس: حالةُ التسليم خبرٌ عمّا أرسله المتجر، ولا تقول إنّ
- * ما يكتبه زبونٌ من نفسه يصل. والخامسُ وحده دليلُ استقبال الرسائل: الويب
- * هوك يُرفض ما لم يُوقَّع بسرّ `whatsapp.app_secret` (`WebhookController::handle`)
- * — فرسالةٌ مرّت به ختمٌ على أنّ تطبيقنا هو المشترك ساعتَها.
+ * والرابعُ ليس الخامس، والخامسُ ليس السادس. حالةُ التسليم خبرٌ عمّا أرسله
+ * المتجر. ورسالةٌ وصلت ثمّ رُدّت (صندوقٌ مغلق، صفٌّ قديم) تكتب سببها في
+ * `inbound_problem` وتُقرأ «وصلت ولم تُحفظ». والسادسُ وحده دليلُ استقبال
+ * المحادثات: الويب هوك يُرفض ما لم يُوقَّع بسرّ `whatsapp.app_secret`
+ * (`WebhookController::handle`)، ثمّ لا يُختم الحفظُ إلّا بعد أن تُكتب الرسالةُ
+ * في صندوق المتجر (`WhatsAppInbox::receiveOwn`).
  *
  * وتُحسب هنا في الخادم وحده، من أعمدةٍ مخزّنة بلا نداءٍ لميتا، وتُعرض كما
  * هي في لوحتَي التاجر والمنصّة.
@@ -49,8 +52,11 @@ final class WhatsAppLinkHealth
     /** وصلت حالاتُ تسليم، ولم تصل رسالةُ زبونٍ بعد */
     public const STATUSES = 'status_received';
 
-    /** وصلت رسالةٌ كتبها زبون — الدليلُ الوحيد على الاستقبال */
+    /** حُفظت رسالةٌ كتبها زبونٌ في صندوق المتجر — الدليلُ الوحيد على الاستقبال */
     public const INBOUND = 'inbound_received';
+
+    /** وصلت رسالةُ زبونٍ ولم تُحفظ — والسببُ في `inbound_problem` */
+    public const INBOUND_REFUSED = 'inbound_refused';
 
     public const REPAIR = 'needs_repair';
 
@@ -88,16 +94,23 @@ final class WhatsAppLinkHealth
             && ($c->last_webhook_at === null || ($c->webhook_checked_at !== null && $c->webhook_checked_at->gt($c->last_webhook_at)));
 
         /*
-         * وتوجيهٌ قُرئ بعد آخر رسالة زبونٍ وأبعاد ليست فيه أساسيّةً للخدمة:
+         * وتوجيهٌ قُرئ بعد آخر رسالة زبونٍ حُفظت وأبعاد ليست فيه أساسيّةً للخدمة:
          * الاشتراكُ قائمٌ والواردُ يذهب إلى غيرنا (`WhatsAppLinkCheck::routing`).
          */
         $routedAway = $c->routing_state === WhatsAppLinkCheck::ROUTING_ELSEWHERE
-            && ($c->last_inbound_at === null || ($c->webhook_checked_at !== null && $c->webhook_checked_at->gt($c->last_inbound_at)));
+            && ($c->last_inbound_saved_at === null || ($c->webhook_checked_at !== null && $c->webhook_checked_at->gt($c->last_inbound_saved_at)));
 
         return match (true) {
             $lost => self::WEBHOOK_INCOMPLETE,
             $routedAway => self::ROUTED_AWAY,
-            $c->last_inbound_at !== null => self::INBOUND,
+            /*
+             * وعلّةٌ قائمةٌ أحدثُ من كلّ حفظ: تُمحى بأوّل رسالةٍ تُحفظ بعدها، فبقاؤها
+             * يعني أنّ آخرَ ما وصل رُدّ. ورسالةٌ وصلت ولم يُختم حفظُها قطّ لا تُعدّ
+             * استقبالًا ولو غاب السبب.
+             */
+            filled($c->inbound_problem) => self::INBOUND_REFUSED,
+            $c->last_inbound_saved_at !== null => self::INBOUND,
+            $c->last_inbound_at !== null => self::INBOUND_REFUSED,
             /*
              * و`last_webhook_at` وحده — وصلةٌ خُتمت قبل أن يُفرَّق بين النوعين —
              * يُقرأ حالةَ تسليم: لا يُدّعى عنه أنّه رسالةُ زبون.
@@ -122,6 +135,7 @@ final class WhatsAppLinkHealth
             self::READY => __('جاهز نظريًا لاستقبال الرسائل'),
             self::STATUSES => __('تم استقبال Webhook لحالة تسليم'),
             self::INBOUND => __('تم استقبال رسالة عميل فعلية'),
+            self::INBOUND_REFUSED => __('وصلت رسالة عميل ولم تُحفظ'),
             default => __('يحتاج إصلاحًا'),
         };
     }
@@ -141,12 +155,15 @@ final class WhatsAppLinkHealth
             self::SUBSCRIBED => __('تطبيقُ أبعاد مشتركٌ في الإشعارات، لكنّ صندوق محادثات واتساب غير مفتوحٍ لهذا المتجر — فرسائلُ الزبائن تصل ولا تُحفظ. يفتحه فريقُ أبعاد.'),
             self::READY => __('تطبيقُ أبعاد مشتركٌ في الإشعارات وصندوقُ المحادثات مفتوح، ولم يصل شيءٌ بعد. يثبت الاستقبال بأوّل رسالةٍ يكتبها زبون.'),
             self::STATUSES => __('وصلت حالاتُ تسليمٍ لما أرسله المتجر، ولم تصل رسالةُ زبونٍ بعد — حالةُ التسليم وحدها لا تُثبت أنّ رسائل الزبائن تصل.'),
-            self::INBOUND => __('آخرُ رسالة عميل وصلت: :at', ['at' => optional($c?->last_inbound_at)->format('Y-m-d H:i')]),
+            self::INBOUND => __('آخرُ رسالة عميل حُفظت في المحادثات: :at', ['at' => optional($c?->last_inbound_saved_at)->format('Y-m-d H:i')]),
+            self::INBOUND_REFUSED => filled($c?->inbound_problem)
+                ? __('وصلت رسالةُ زبونٍ إلى رقم المتجر ولم تُحفظ في المحادثات: :why', ['why' => WhatsAppInbox::refusal((string) $c->inbound_problem)])
+                : __('وصلت رسالةُ زبونٍ إلى رقم المتجر ولم يثبت حفظُها في المحادثات.'),
             default => (string) ($c?->last_error_message ?: __('أعد الربط أو اختبر الاتصال.')),
         };
 
-        // ورسالةٌ وصلت ولم تُحفظ تقول لماذا — بلا نصّها
-        if (filled($c?->inbound_problem)) {
+        // ورسالةٌ وصلت ولم تُحفظ تقول لماذا تحت أيّ حالٍ أعلى — بلا نصّها
+        if (filled($c?->inbound_problem) && $state !== self::INBOUND_REFUSED) {
             $hint .= ' '.__('آخرُ رسالةٍ وصلت لم تُحفظ: :why', ['why' => WhatsAppInbox::refusal((string) $c->inbound_problem)]);
         }
 
@@ -166,7 +183,7 @@ final class WhatsAppLinkHealth
     /**
      * ما تقرؤه الشاشتان — بلا رمزٍ ولا معرّفِ تطبيقٍ آخر ولا نصِّ رسالة.
      *
-     * @return array{key:string, label:string, hint:string, tone:string, checked_at:?string, last_status_at:?string, last_inbound_at:?string, inbound_problem:?string}
+     * @return array{key:string, label:string, hint:string, tone:string, checked_at:?string, last_status_at:?string, last_inbound_at:?string, last_inbound_saved_at:?string, inbound_problem:?string}
      */
     public static function view(?WhatsAppConnection $c): array
     {
@@ -180,6 +197,7 @@ final class WhatsAppLinkHealth
             'checked_at' => optional($c?->webhook_checked_at ?? $c?->token_verified_at)->format('Y-m-d H:i'),
             'last_status_at' => optional($c?->last_status_at ?? $c?->last_webhook_at)->format('Y-m-d H:i'),
             'last_inbound_at' => optional($c?->last_inbound_at)->format('Y-m-d H:i'),
+            'last_inbound_saved_at' => optional($c?->last_inbound_saved_at)->format('Y-m-d H:i'),
             'inbound_problem' => filled($c?->inbound_problem) ? WhatsAppInbox::refusal((string) $c->inbound_problem) : null,
         ];
     }

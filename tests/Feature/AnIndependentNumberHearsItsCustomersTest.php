@@ -35,8 +35,9 @@ use Tests\TestCase;
  *   ١ · رسالةٌ عاديّةٌ من زبونٍ لم نراسله قطّ — بلا `context.id` ولا إشعارٍ
  *       سابق — تفتح محادثةً في متجر الرقم وحده. وقواعدُ الرقم المشترك
  *       (٧ أيّام · ٩٠ يومًا) لا تمسّ رقمًا مستقلًّا، وتبقى على حالها هناك.
- *   ٢ · حالةُ التسليم ليست رسالةَ زبون: لكلٍّ ختمُه، و«تم استقبال رسالة
- *       عميل فعلية» لا تُقال إلّا برسالةٍ موقَّعةٍ كتبها زبون.
+ *   ٢ · حالةُ التسليم ليست رسالةَ زبون، والوصولُ ليس الحفظ: لكلٍّ ختمُه، و«تم
+ *       استقبال رسالة عميل فعلية» لا تُقال إلّا برسالةٍ كتبها زبونٌ وحُفظت في
+ *       صندوق متجرها. وما وصل ورُدّ يُقرأ «وصلت ولم تُحفظ» بسببه.
  *   ٣ · ما وصل ولم يُحفظ يقول لماذا — بلا نصّه. ورقمٌ لا نعرفه يُقيَّد مرّةً
  *       بلا نصّ. وتوقيعٌ مزوّرٌ لا يختم شيئًا.
  *   ٤ · المتاجرُ لا تتسرّب، والموظّفُ بلا صلاحيةٍ لا يرى، والردُّ من رقم
@@ -323,8 +324,41 @@ class AnIndependentNumberHearsItsCustomersTest extends TestCase
 
         $line = $this->lineA->fresh();
         $this->assertNotNull($line->last_inbound_at);
+        $this->assertNotNull($line->last_inbound_saved_at, 'حُفظت — لا وصلت فقط');
         $this->assertNull($line->inbound_problem);
         $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($line));
+    }
+
+    /** نسخةٌ تُعيدها ميتا من رسالةٍ حُفظت: لا محادثةَ ثانية، ولا علّة، ولا ختمَ حفظٍ جديد */
+    public function test_a_redelivered_message_is_neither_saved_twice_nor_called_refused(): void
+    {
+        $this->customerWrites('PN-A', 'wamid.AGAIN');
+        $saved = (string) $this->lineA->fresh()->last_inbound_saved_at;
+
+        $this->travel(5)->minutes();
+        $this->customerWrites('PN-A', 'wamid.AGAIN');
+
+        $line = $this->lineA->fresh();
+        $this->assertSame(1, WhatsAppChatMessage::where('wamid', 'wamid.AGAIN')->count());
+        $this->assertNull($line->inbound_problem);
+        $this->assertSame($saved, (string) $line->last_inbound_saved_at);
+        $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($line));
+    }
+
+    /** صاحبُ المتجر يقرأ في بطاقة ربطه متى حُفظت آخرُ رسالة — ومتى وصلت */
+    public function test_the_owner_reads_when_the_last_customer_message_was_saved(): void
+    {
+        $this->customerWrites('PN-A', 'wamid.CARD', 'نصٌّ لا يُعرض في البطاقة');
+
+        $health = $this->actingAs($this->ownerA)->get(route('admin.integrations.whatsapp'))->assertOk()
+            ->viewData('page')['props']['automation']['health'];
+
+        $this->assertSame(WhatsAppLinkHealth::INBOUND, $health['key']);
+        $this->assertNotNull($health['last_inbound_saved_at']);
+        $this->assertNotNull($health['last_inbound_at']);
+        $this->assertNull($health['inbound_problem']);
+        $this->assertStringNotContainsString('نصٌّ لا يُعرض', json_encode($health, JSON_UNESCAPED_UNICODE));
+        $this->assertStringNotContainsString(self::CUSTOMER, json_encode($health), 'ولا رقمُ الزبون');
     }
 
     /** رقمٌ مستقلٌّ لا يتشاركه أحد — فنوافذُ الرقم المشترك لا تُقرأ له، وتبقى هناك كما هي */
@@ -430,22 +464,58 @@ class AnIndependentNumberHearsItsCustomersTest extends TestCase
         $line = $this->lineA->fresh();
         $this->assertSame(0, WhatsAppChatMessage::count());
         $this->assertNotNull($line->last_inbound_at, 'وصلت — والخللُ بعد الوصول');
+        $this->assertNull($line->last_inbound_saved_at, 'ولم تُحفظ');
         $this->assertSame(WhatsAppInbox::INBOX_CLOSED, $line->inbound_problem);
+        $this->assertSame(WhatsAppLinkHealth::INBOUND_REFUSED, WhatsAppLinkHealth::state($line), 'لا «استُقبلت» عن رسالةٍ رُدّت');
         $view = WhatsAppLinkHealth::view($line);
+        $this->assertSame('وصلت رسالة عميل ولم تُحفظ', $view['label']);
+        $this->assertStringContainsString(WhatsAppInbox::refusal(WhatsAppInbox::INBOX_CLOSED), $view['hint']);
         $this->assertSame(WhatsAppInbox::refusal(WhatsAppInbox::INBOX_CLOSED), $view['inbound_problem']);
         $this->assertStringNotContainsString('نصٌّ لا يُكتب', json_encode($view, JSON_UNESCAPED_UNICODE));
+        $this->assertStringNotContainsString(self::CUSTOMER, json_encode($view));
 
-        // وفُتح: تُحفظ التالية، وتُمحى العلّة
+        // وفُتح: تُحفظ التالية، ويُختم حفظُها، وتُمحى العلّة
         $this->shopA->update(['whatsapp_inbox_enabled' => true]);
         $this->customerWrites('PN-A', 'wamid.OPEN');
-        $this->assertNull($this->lineA->fresh()->inbound_problem);
+        $line = $this->lineA->fresh();
+        $this->assertNull($line->inbound_problem);
+        $this->assertNotNull($line->last_inbound_saved_at);
+        $this->assertSame(WhatsAppLinkHealth::INBOUND, WhatsAppLinkHealth::state($line));
         $this->assertSame(1, WhatsAppChatMessage::count());
 
-        // وصفٌّ قديمٌ بقي على الرقم بعد أن ربط المتجرُ رقمًا آخر: لا يُدخل شيئًا، ويقول لماذا
+        // وصفٌّ قديمٌ بقي على الرقم بعد أن ربط المتجرُ رقمًا آخر: لا يُدخل شيئًا، ويقول لماذا — ولا يُقرأ «استُقبلت»
         $this->own($this->shopA, 'PN-A2', 'WABA-A', 'token-A2-from-abaads-app-0123', self::ABAAD_APP);
         $this->customerWrites('PN-A', 'wamid.OLD-ROW');
-        $this->assertSame(WhatsAppInbox::NOT_CURRENT, $this->lineA->fresh()->inbound_problem);
+        $old = $this->lineA->fresh();
+        $this->assertSame(WhatsAppInbox::NOT_CURRENT, $old->inbound_problem);
+        $this->assertSame(WhatsAppLinkHealth::INBOUND_REFUSED, WhatsAppLinkHealth::state($old));
         $this->assertSame(1, WhatsAppChatMessage::count());
+    }
+
+    /** وصولٌ بلا ختمِ حفظٍ ولا سبب لا يُقرأ نجاحًا — الوصولُ وحده ليس استقبالَ محادثة */
+    public function test_an_arrival_never_followed_by_a_save_is_not_called_received(): void
+    {
+        $this->lineA->update(['webhook_state' => WhatsAppLinkCheck::SUBSCRIBED, 'webhook_checked_at' => now()->subHour(), 'last_inbound_at' => now()]);
+
+        $line = $this->lineA->fresh();
+        $this->assertNull($line->last_inbound_saved_at);
+        $this->assertNull($line->inbound_problem);
+        $this->assertSame(WhatsAppLinkHealth::INBOUND_REFUSED, WhatsAppLinkHealth::state($line));
+        $this->assertStringContainsString('لم يثبت حفظُها', WhatsAppLinkHealth::hint(WhatsAppLinkHealth::INBOUND_REFUSED, $line));
+        $this->assertNotContains(WhatsAppLinkHealth::state($line), WhatsAppLinkHealth::HEALTHY);
+    }
+
+    /** واتصالٌ فصله صاحبُه: رسالتُه تصل ولا تُحفظ، ويُقال لماذا */
+    public function test_a_disconnected_own_number_records_why_and_claims_nothing(): void
+    {
+        $this->lineA->update(['status' => WhatsAppConnection::INACTIVE]);
+
+        $this->customerWrites('PN-A', 'wamid.OFF');
+
+        $line = $this->lineA->fresh();
+        $this->assertSame(0, WhatsAppChatMessage::count());
+        $this->assertSame(WhatsAppInbox::LINK_INACTIVE, $line->inbound_problem);
+        $this->assertNull($line->last_inbound_saved_at);
     }
 
     /* ═════════════ ٤ · العزل والصلاحيات والردّ والملفّات ═════════════ */

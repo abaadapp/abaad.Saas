@@ -339,7 +339,7 @@ describe('بطاقةُ الحال', () => {
         expect(screen.getByTestId('link-line').textContent).toContain('رقمك مربوط');
     });
 
-    it('ولا تقول «وصلت رسالة عميل» إلّا حين يقولها الخادم — وحالةُ التسليم ليست رسالة', () => {
+    it('ولا تقول «وصلت رسالة عميل» إلّا حين يقولها الخادم — وحالةُ التسليم والرفضُ ليسا استقبالًا', () => {
         const ready: LinkHealth = { key: 'ready', label: 'جاهز نظريًا لاستقبال الرسائل', hint: '…', tone: 'info', checked_at: null };
         const first = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={ready} config={CONFIG} mayManage />);
         expect(screen.getByTestId('link-health').textContent).not.toContain('رسالة عميل فعلية');
@@ -355,13 +355,26 @@ describe('بطاقةُ الحال', () => {
         expect(screen.getByTestId('link-health-facts').textContent).toContain('2026-10-28 15:00');
         second.unmount();
 
+        // وصلت ورُدّت: لا نجاح، والسببُ ظاهر
+        const refused: LinkHealth = {
+            key: 'inbound_refused', label: 'وصلت رسالة عميل ولم تُحفظ', hint: '…', tone: 'danger', checked_at: null,
+            last_status_at: null, last_inbound_at: '2026-10-28 15:30', last_inbound_saved_at: null,
+            inbound_problem: 'صندوق محادثات واتساب غير مفتوح لهذا المتجر',
+        };
+        const third = render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={refused} config={CONFIG} mayManage />);
+        expect(screen.getByTestId('link-health').textContent).not.toContain('رسالة عميل فعلية');
+        expect(screen.getByTestId('link-health-refusal').textContent).toContain('صندوق محادثات واتساب غير مفتوح');
+        expect(screen.getByTestId('link-health-saved').textContent).toBe('—');
+        third.unmount();
+
         const proven: LinkHealth = {
             key: 'inbound_received', label: 'تم استقبال رسالة عميل فعلية', hint: '…', tone: 'success', checked_at: null,
-            last_status_at: '2026-10-28 15:00', last_inbound_at: '2026-10-28 16:00',
+            last_status_at: '2026-10-28 15:00', last_inbound_at: '2026-10-28 16:00', last_inbound_saved_at: '2026-10-28 16:00',
         };
         render(<WhatsappLinkCard link={{ ...base, state: 'connected' }} health={proven} config={CONFIG} mayManage />);
         expect(screen.getByTestId('link-health').textContent).toContain('تم استقبال رسالة عميل فعلية');
-        expect(screen.getByTestId('link-health-facts').textContent).toContain('2026-10-28 16:00');
+        expect(screen.getByTestId('link-health-saved').textContent).toBe('2026-10-28 16:00');
+        expect(screen.queryByTestId('link-health-refusal')).toBeNull();
     });
 
     /** والتعايشُ يُختار صراحةً — ومطفأٌ بسببه ما لم يُفتح على الخادم */

@@ -84,12 +84,13 @@ describe('بطاقةُ واتساب المتجر عند المنصّة', () => {
 
         const proven: LinkHealth = {
             key: 'inbound_received', label: 'تم استقبال رسالة عميل فعلية', hint: 'آخرُ رسالة عميل وصلت: 2026-10-28 16:00', tone: 'success', checked_at: null,
-            last_status_at: '2026-10-28 15:00', last_inbound_at: '2026-10-28 16:00',
+            last_status_at: '2026-10-28 15:00', last_inbound_at: '2026-10-28 16:00', last_inbound_saved_at: '2026-10-28 16:00',
         };
         render(<WhatsAppCard businessId={5} data={{ ...DATA, own_health: { ...DATA.own_health!, link: proven } }} />);
 
         expect(screen.getByTestId('whatsapp-link-health')).toHaveAttribute('data-state', 'inbound_received');
         expect(screen.getByTestId('whatsapp-link-health').textContent).toContain('تم استقبال رسالة عميل فعلية');
         expect(screen.getByTestId('whatsapp-last-inbound').textContent).toContain('2026-10-28 16:00');
+        expect(screen.getByTestId('whatsapp-last-saved').textContent).toContain('2026-10-28 16:00');
     });
 });

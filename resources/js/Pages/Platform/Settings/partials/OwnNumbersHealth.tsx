@@ -78,8 +78,12 @@ export default function OwnNumbersHealth({ rows }: { rows: OwnNumberRow[] }) {
                                             <dd className="inline" dir="ltr">{row.health.last_status_at ?? '—'}</dd>
                                         </div>
                                         <div>
-                                            <dt className="inline">{t('آخر رسالة عميل')}: </dt>
+                                            <dt className="inline">{t('آخر رسالة عميل وصلت')}: </dt>
                                             <dd className="inline" dir="ltr">{row.health.last_inbound_at ?? '—'}</dd>
+                                        </div>
+                                        <div>
+                                            <dt className="inline">{t('آخر رسالة حُفظت في المحادثات')}: </dt>
+                                            <dd className="inline" dir="ltr">{row.health.last_inbound_saved_at ?? '—'}</dd>
                                         </div>
                                         <div>
                                             <dt className="inline">{t('صندوق المحادثات')}: </dt>

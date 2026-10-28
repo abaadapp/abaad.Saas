@@ -117,7 +117,7 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
             'token_app_id' => self::ABAAD_APP, 'token_verified_at' => now()->subWeek(),
             'webhook_state' => WhatsAppLinkCheck::SUBSCRIBED, 'webhook_checked_at' => now()->subWeek(),
             'last_webhook_at' => now()->subDay(),
-            'last_status_at' => now()->subDay(), 'last_inbound_at' => now()->subDay(),
+            'last_status_at' => now()->subDay(), 'last_inbound_at' => now()->subDay(), 'last_inbound_saved_at' => now()->subDay(),
         ]);
     }
 

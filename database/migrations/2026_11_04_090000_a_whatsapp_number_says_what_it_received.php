@@ -12,13 +12,18 @@ use Illuminate\Support\Facades\Schema;
  * من نفسه — ولا يقول ذلك العمودُ الواحد.
  *
  * - `last_status_at`: آخرُ حالةِ تسليمٍ وصلت لرسالةٍ خرجت من هذا الرقم.
- * - `last_inbound_at`: آخرُ رسالةٍ كتبها زبونٌ إلى هذا الرقم ووصلتنا.
- * - `inbound_problem`: لماذا لم تُحفظ آخرُ رسالةٍ وصلت (`WhatsAppInbox::*`) — بلا نصّها.
+ * - `last_inbound_at`: آخرُ رسالةٍ كتبها زبونٌ إلى هذا الرقم **ووصلت** الويب هوك على
+ *   هذه الوصلة — وصولٌ لا حفظ.
+ * - `last_inbound_saved_at`: آخرُ رسالةِ زبونٍ **حُفظت** في صندوق محادثات المتجر —
+ *   وهي وحدها دليلُ «تم استقبال رسالة عميل».
+ * - `inbound_problem`: لماذا لم تُحفظ آخرُ رسالةٍ وصلت (`WhatsAppInbox::*`) — بلا نصّها
+ *   ولا رقم مُرسِلها. يُمحى بأوّل رسالةٍ تُحفظ بعدها.
  * - `inbound_problem_at`: متى.
  * - `routing_state`: توجيهُ المحادثات عند ميتا (Conversation Routing) لهذا الرقم —
  *   أيمرّ الواردُ بأبعاد؟ (`WhatsAppLinkCheck::routing`). يُقرأ ولا يُضبط من هنا.
  *
  * أعمدةٌ فارغةٌ على الوصلات القائمة: لا تُملأ من الماضي، ولا يُمسّ رمزٌ ولا رقم.
+ * ووصلةٌ قائمةٌ بلا ختمٍ تُقرأ «لم يصل شيءٌ بعد» حتى أوّل إشعار — لا يُدّعى عنها نجاح.
  */
 return new class extends Migration
 {
@@ -30,6 +35,9 @@ return new class extends Migration
             }
             if (! Schema::hasColumn('whatsapp_connections', 'last_inbound_at')) {
                 $table->timestamp('last_inbound_at')->nullable();
+            }
+            if (! Schema::hasColumn('whatsapp_connections', 'last_inbound_saved_at')) {
+                $table->timestamp('last_inbound_saved_at')->nullable();
             }
             if (! Schema::hasColumn('whatsapp_connections', 'inbound_problem')) {
                 $table->string('inbound_problem', 40)->nullable();
@@ -47,7 +55,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('whatsapp_connections', function (Blueprint $table) {
-            foreach (['last_status_at', 'last_inbound_at', 'inbound_problem', 'inbound_problem_at', 'routing_state'] as $column) {
+            foreach (['last_status_at', 'last_inbound_at', 'last_inbound_saved_at', 'inbound_problem', 'inbound_problem_at', 'routing_state'] as $column) {
                 if (Schema::hasColumn('whatsapp_connections', $column)) {
                     $table->dropColumn($column);
                 }

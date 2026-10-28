@@ -83,7 +83,7 @@ class WhatsAppEmbeddedSignup
                     'code' => $code,
                 ]);
         } catch (\Throwable $e) {
-            return self::no('network_error', $e->getMessage());
+            return self::no('network_error', self::scrub($e->getMessage()));
         }
 
         if (! $response->successful()) {
@@ -127,6 +127,11 @@ class WhatsAppEmbeddedSignup
      *
      * والنداء برمز التطبيق `{app_id}|{app_secret}` — وهو نداءُ خادمٍ لا غير.
      *
+     * وهو في معاملات الطلب كما توثّقه ميتا وحده (`access_token` و`input_token`):
+     * لا وثيقةَ لرمز تطبيقٍ في الترويسة، وهذا بابُ كلِّ ربط — تغييرُه على
+     * تخمينٍ يُغلقه على كلّ التجّار. فالعنوانُ لا يخرج من الخادم: لا سجلَّ
+     * لطلبات HTTP، وكلُّ رسالة خطأٍ تمرّ بـ`scrub()` قبل أن تُكتب.
+     *
      * ═══ والتطبيقُ الذي أصدره ═══
      *
      * `data.app_id` يقول أيُّ تطبيقٍ عند ميتا أصدر الرمز. ورمزٌ من تطبيقٍ آخر
@@ -146,7 +151,7 @@ class WhatsAppEmbeddedSignup
                 ]);
         } catch (\Throwable $e) {
             return ['ok' => false, 'app_id' => null, 'scopes' => [], 'waba_ids' => [], 'messaging_waba_ids' => [], 'expires_at' => null,
-                'code' => 'network_error', 'message' => $e->getMessage()];
+                'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
 
         if (! $response->successful()) {
@@ -232,7 +237,7 @@ class WhatsAppEmbeddedSignup
                     'limit' => 50,
                 ]);
         } catch (\Throwable $e) {
-            return ['ok' => false, 'numbers' => [], 'code' => 'network_error', 'message' => $e->getMessage()];
+            return ['ok' => false, 'numbers' => [], 'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
 
         if (! $response->successful()) {
@@ -304,7 +309,7 @@ class WhatsAppEmbeddedSignup
             $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
                 ->get(self::base().'/'.$wabaId.'/subscribed_apps');
         } catch (\Throwable $e) {
-            return ['ok' => false, 'apps' => [], 'code' => 'network_error', 'message' => $e->getMessage()];
+            return ['ok' => false, 'apps' => [], 'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
 
         if (! $response->successful()) {
@@ -353,6 +358,14 @@ class WhatsAppEmbeddedSignup
      * مُشعَلة. فلو أُطفئ `messages` في لوحة التطبيق لَما وصل حرفٌ من أيّ
      * متجر — والمتاجرُ كلُّها «مشتركة». `GET` لا يغيّر عند ميتا شيئًا.
      *
+     * ═══ ورمزُ التطبيق في الترويسة لا في العنوان ═══
+     *
+     * رمزُ التطبيق (`{app_id}|{app_secret}`) يحمل السرَّ نفسَه، والعنوانُ يُكتب
+     * في رسائل الأخطاء وسجلّات الوسطاء. فيُرسل في `Authorization: Bearer`.
+     * ووثيقةُ ميتا لا تذكر لرمز التطبيق إلّا معاملَ `access_token` — فإن ردّت
+     * الترويسةَ قرأ الفحصُ «تعذّرت القراءة» ولم يتعطّل شيء، ولا يُعاد السرُّ إلى
+     * العنوان بديلًا.
+     *
      * @return array{ok:bool, callback_url:?string, fields:list<string>, active:bool, code:?string, message:?string}
      */
     public static function appSubscription(): array
@@ -364,12 +377,11 @@ class WhatsAppEmbeddedSignup
         }
 
         try {
-            $response = Http::timeout(self::timeout())->acceptJson()
-                ->get(self::base().'/'.config('whatsapp.app_id').'/subscriptions', [
-                    'access_token' => config('whatsapp.app_id').'|'.config('whatsapp.app_secret'),
-                ]);
+            $response = Http::withToken(config('whatsapp.app_id').'|'.config('whatsapp.app_secret'))
+                ->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.config('whatsapp.app_id').'/subscriptions');
         } catch (\Throwable $e) {
-            return $none + ['code' => 'network_error', 'message' => $e->getMessage()];
+            return $none + ['code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
 
         if (! $response->successful()) {
@@ -424,7 +436,7 @@ class WhatsAppEmbeddedSignup
             $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
                 ->get(self::base().'/'.$phoneNumberId.'/routing_roles');
         } catch (\Throwable $e) {
-            return ['ok' => false] + $none + ['code' => 'network_error', 'message' => $e->getMessage()];
+            return ['ok' => false] + $none + ['code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
 
         if (! $response->successful()) {
@@ -501,7 +513,7 @@ class WhatsAppEmbeddedSignup
             $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
                 ->post(self::base().'/'.$wabaId.'/subscribed_apps');
         } catch (\Throwable $e) {
-            return ['ok' => false, 'code' => 'network_error', 'message' => $e->getMessage()];
+            return ['ok' => false, 'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
 
         if (! $response->successful()) {
@@ -527,7 +539,7 @@ class WhatsAppEmbeddedSignup
                 ]);
         } catch (\Throwable $e) {
             return ['ok' => false, 'display_phone_number' => null, 'verified_name' => null,
-                'quality_rating' => null, 'code' => 'network_error', 'message' => $e->getMessage()];
+                'quality_rating' => null, 'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
 
         if (! $response->successful()) {
@@ -559,8 +571,35 @@ class WhatsAppEmbeddedSignup
 
         return [
             (string) ($error['code'] ?? 'meta_error'),
-            (string) ($error['message'] ?? __('لم تقبل ميتا الطلب.')),
+            self::scrub((string) ($error['message'] ?? __('لم تقبل ميتا الطلب.'))),
         ];
+    }
+
+    /**
+     * رسالةُ خطأٍ بلا سرّ — قبل أن تُكتب في سجلٍّ أو عمودٍ أو شاشة.
+     *
+     * ═══ ولمَ ═══
+     *
+     * خطأُ الاتصال (`ConnectionException`) يحمل عنوانَ الطلب كاملًا بمعاملاته:
+     * «cURL error 28 … for https://graph…/oauth/access_token?client_secret=…».
+     * وتلك الرسالةُ تُكتب في `last_error_message` فتظهر للتاجر («ميتا تقول»)،
+     * وفي السجلّ. فيُقطع ما بعد `?` في كلّ عنوان، وتُمحى المعاملاتُ السرّيّة
+     * وترويسةُ `Bearer` ورموزُ ميتا (`EAA…`) وسرُّ التطبيق أينما ظهر.
+     */
+    public static function scrub(string $message): string
+    {
+        $clean = preg_replace('~(https?://[^\s?#]+)\?\S*~u', '$1?[redacted]', $message) ?? '';
+        $clean = preg_replace('~\b(access_token|input_token|client_secret|appsecret_proof|code)=[^&\s]+~u', '$1=[redacted]', $clean) ?? '';
+        $clean = preg_replace('~\b(Bearer|OAuth)\s+\S+~u', '$1 [redacted]', $clean) ?? '';
+        $clean = preg_replace('~\bEAA[A-Za-z0-9]{10,}~', '[redacted]', $clean) ?? '';
+
+        $secret = (string) config('whatsapp.app_secret');
+
+        if ($secret !== '') {
+            $clean = str_replace([$secret, rawurlencode($secret)], '[redacted]', $clean);
+        }
+
+        return mb_substr($clean, 0, 500);
     }
 
     /**

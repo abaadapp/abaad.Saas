@@ -192,8 +192,12 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                                 <dd className="font-medium text-[#111]" dir="ltr">{data.own_health.link.last_status_at ?? '—'}</dd>
                             </div>
                             <div className="flex justify-between gap-3" data-testid="whatsapp-last-inbound">
-                                <dt className="text-[#6b7280]">{t('آخر رسالة عميل')}</dt>
+                                <dt className="text-[#6b7280]">{t('آخر رسالة عميل وصلت')}</dt>
                                 <dd className="font-medium text-[#111]" dir="ltr">{data.own_health.link.last_inbound_at ?? t('لم تصل بعد')}</dd>
+                            </div>
+                            <div className="flex justify-between gap-3" data-testid="whatsapp-last-saved">
+                                <dt className="text-[#6b7280]">{t('آخر رسالة حُفظت في المحادثات')}</dt>
+                                <dd className="font-medium text-[#111]" dir="ltr">{data.own_health.link.last_inbound_saved_at ?? '—'}</dd>
                             </div>
                             {data.own_health.can_check && (
                                 <Button

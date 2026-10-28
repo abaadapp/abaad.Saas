@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Tests\Support\SelfSignupOpens;
 use Tests\TestCase;
 
 /**
@@ -47,6 +48,7 @@ use Tests\TestCase;
 class AnUnpaidSelfSignupStopsWhenItsTrialEndsTest extends TestCase
 {
     use RefreshDatabase;
+    use SelfSignupOpens;
 
     protected function setUp(): void
     {
@@ -55,6 +57,8 @@ class AnUnpaidSelfSignupStopsWhenItsTrialEndsTest extends TestCase
         RateLimiter::clear('signup:127.0.0.1');
 
         Plan::create(['name' => 'الباقة الأساسية', 'code' => Plan::CODE_BASIC, 'monthly_price' => 9.9, 'yearly_price' => 99]);
+        // والإطلاقُ مفتوحٌ بشرطه — وإلّا يُردّ التسجيلُ الذاتيّ (`Signup::ready`)
+        $this->openSelfSignup();
         $this->platform('grace_days', '7');
     }
 

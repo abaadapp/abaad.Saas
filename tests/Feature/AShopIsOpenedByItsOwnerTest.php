@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\Signup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
+use Tests\Support\SelfSignupOpens;
 use Tests\TestCase;
 
 /**
@@ -32,6 +33,7 @@ use Tests\TestCase;
 class AShopIsOpenedByItsOwnerTest extends TestCase
 {
     use RefreshDatabase;
+    use SelfSignupOpens;
 
     protected function setUp(): void
     {
@@ -41,6 +43,8 @@ class AShopIsOpenedByItsOwnerTest extends TestCase
 
         // الباقةُ الأساسيّة برمزها — بدونها يُرفض التسجيلُ الذاتيّ صراحةً (`Signup::plan`)
         Plan::create(['name' => 'الباقة الأساسية', 'code' => Plan::CODE_BASIC, 'monthly_price' => 9.9, 'yearly_price' => 99]);
+        // والإطلاقُ مفتوحٌ بشرطه — وإلّا يُردّ التسجيلُ الذاتيّ (`Signup::ready`)
+        $this->openSelfSignup();
     }
 
     /** بيانٌ كاملٌ صالح — وما يفترق بين اختبارٍ وآخر يُمرَّر */

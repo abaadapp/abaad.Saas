@@ -26,6 +26,8 @@ interface Props {
     year: number;
     /** عقدُ التجربة من الخادم (`Signup::TRIAL_DAYS` واسمُ الباقة برمزها) — لا نصٌّ هنا */
     trial?: { days: number; plan: string | null };
+    /** البابُ متوقّف: السياسةُ الجديدة ليست ما سيُختم (`Signup::ready`) — يُقال قبل أن يُملأ شيء */
+    closed?: boolean;
 }
 
 /** ما يُحفظ بين تحديثٍ وآخر — ولا كلمةَ مرورٍ فيه، انظر `KEEP` أدناه */
@@ -64,7 +66,7 @@ const STORE_KEY = 'abaad.signup.draft';
  * إطلاقًا — `KEEP` تعدّ ما يُحفظ اسمًا اسمًا، فحقلٌ يُضاف لا يتسلّل إليها.
  */
 export default function Register() {
-    const { activities, teamSizes, year, trial, errors } = usePage<PageProps<Props>>().props;
+    const { activities, teamSizes, year, trial, closed = false, errors } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const form = useForm({
@@ -218,15 +220,17 @@ export default function Register() {
 
     /* أخطاءُ الخادم تقع كلُّها على الخطوة الأخيرة — وهي وحدها التي تُرسِل */
     // و`signup`: البابُ نفسُه متوقّف (لا باقةَ أساسيّة) — لا خطأَ في حقلٍ كتبه
-    const failure =
+    const serverFailure =
         errors.signup ?? errors.email ?? errors.password ?? errors.shop ?? errors.type ?? errors.phone ?? errors.name;
+    // والبابُ المتوقّف يُقال من أوّل خطوة — لا يُنقل الزائرُ إلى آخرها قبل أن يكتب شيئًا
+    const failure = serverFailure ?? (closed ? t('التسجيل غير متاح الآن. تواصل مع فريق أبعاد وسنفتح حسابك.') : undefined);
 
     useEffect(() => {
-        if (failure) {
+        if (serverFailure) {
             setStep(steps.length - 1);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [failure]);
+    }, [serverFailure]);
 
     const rules = [
         { label: '8 أحرف على الأقل', ok: form.data.password.length >= 8 },
@@ -497,10 +501,14 @@ export default function Register() {
                             ما يبدأ به الحساب — سطرٌ يُقرأ لا خيارٌ يُختار: التسجيلُ
                             الذاتيّ على الأساسيّة وحدها. وبلا باقةٍ مؤكَّدة لا يُقال شيء.
                         */}
-                        {trial?.plan && (
-                            <p data-trial-note className="rounded-[10px] bg-[#f5f5f4] px-3 py-2.5 text-[12.5px] text-[#4b4b4b]">
-                                {t('تجربة مجانية لمدة :days يومًا على :plan', { days: trial.days, plan: t(trial.plan) })}
-                            </p>
+                        {trial?.plan && !closed && (
+                            <div className="rounded-[10px] bg-[#f5f5f4] px-3 py-2.5 text-[12.5px] text-[#4b4b4b]">
+                                <p data-trial-note>{t('تجربة مجانية لمدة :days يومًا على :plan', { days: trial.days, plan: t(trial.plan) })}</p>
+                                {/* والأساسيّةُ المعلنة بلا نقطة البيع (`addons_v1`) — يُقال قبل التسجيل لا بعده */}
+                                <p className="mt-1 text-[12px] text-[#6b7280]" data-trial-without-pos>
+                                    {t('لا تشمل التجربة نقطة البيع POS ولا الإضافات، ويفعّلها فريق أبعاد عند الاشتراك.')}
+                                </p>
+                            </div>
                         )}
                     </div>
                 )}

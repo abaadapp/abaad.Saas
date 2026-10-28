@@ -191,7 +191,7 @@ export interface SharedProps {
         currency: Currency;
         currencies: Currency[];
         /** اشتراك المتجر — null لمن لا مدّة محدَّدة له */
-        subscription: { endsAt: string; daysLeft: number; graceLeft: number | null } | null;
+        subscription: { endsAt: string; daysLeft: number; graceLeft: number | null; trial?: boolean; plan?: string | null; trialWithoutPos?: boolean } | null;
         /** تهيئة المتجر — null حين أقرّ التاجر هويّته، فلا يبقى شريط بعد إتمامه */
         setup: { done: number; total: number; missing: string[] } | null;
     } | null;

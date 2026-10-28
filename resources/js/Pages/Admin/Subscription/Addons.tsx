@@ -89,6 +89,8 @@ interface Props {
     addons_total: { monthly: number; semiannual?: number; yearly: number };
     may_request: boolean;
     mayBuy: boolean;
+    /** تجربةٌ مجّانيّة لم تُدفع — الإضافاتُ فيها للعرض والاستفسار، وفريقُ أبعاد يفعّلها */
+    trial?: boolean;
     currency: Currency;
 }
 
@@ -131,7 +133,7 @@ const GRID = 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3';
  */
 export default function SubscriptionAddons() {
     const props = usePage<PageProps<Props>>().props;
-    const { policy, plan, subscription, showcase = [], included, available, active, orders, addons_total, may_request, mayBuy, currency } = props;
+    const { policy, plan, subscription, showcase = [], included, available, active, orders, addons_total, may_request, mayBuy, trial = false, currency } = props;
     const t = useTranslate();
     const [ask, confirmDialog] = useConfirm();
     const [buying, setBuying] = useState<MerchantAddon | null>(null);
@@ -199,7 +201,13 @@ export default function SubscriptionAddons() {
                         )}
                     </div>
 
-                    {legacy && (
+                    {trial && (
+                        <p className="mt-4 rounded-[10px] bg-[#f5f3ff] px-4 py-3 text-[13px] leading-6 text-[#5b21b6]" data-testid="trial-addons-note">
+                            {t('أنت في التجربة المجانية. الإضافات هنا للعرض والاستفسار، وفريق أبعاد يفعّل ما تحتاجه بعد الاتفاق على اشتراكك.')}
+                        </p>
+                    )}
+
+                    {legacy && !trial && (
                         <p className="mt-4 text-[14px] leading-7 text-[#4b4b4b]">
                             {t('جميع خدمات باقتك وأسعار اشتراكك الحالية مستمرة دون تغيير. يمكنك الاطلاع على خدمات أبعاد الأخرى والتواصل معنا لمعرفة خيارات التطوير.')}
                         </p>
@@ -238,7 +246,7 @@ export default function SubscriptionAddons() {
                                             {row.source === 'purchase' && row.cycle && !row.renews && ` · ${t('التجديد موقوف')}`}
                                         </p>
                                     </div>
-                                    {mayBuy && row.source === 'purchase' && row.cycle && (
+                                    {mayBuy && !trial && row.source === 'purchase' && row.cycle && (
                                         <Button size="sm" variant="outline" onClick={() => toggleRenews(row)}>
                                             {t(row.renews ? 'إيقاف التجديد' : 'إعادة التجديد')}
                                         </Button>
@@ -321,6 +329,10 @@ export default function SubscriptionAddons() {
                                                 <ShoppingCart />
                                                 {t(a.pricing === 'quote' ? 'اطلب عرض سعر' : 'اطلب الإضافة')}
                                             </Button>
+                                        ) : trial ? (
+                                            <SmartLink routeName="admin.help.index" href={route('admin.help.index', { topic: 'services' })} className="text-[12px] font-medium text-[#6d28d9] hover:underline" data-testid={`ask-${a.code}`}>
+                                                {t('استفسر عبر فريق أبعاد')}
+                                            </SmartLink>
                                         ) : (
                                             <span className="text-[12px] text-[#9ca3af]">{t('يطلبها صاحب النشاط')}</span>
                                         )}

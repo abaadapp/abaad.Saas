@@ -53,7 +53,7 @@ export default function InvoiceDeliveryEdit({
 
     return (
         <Dialog open onOpenChange={(open) => ! open && onClose()}>
-            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto p-0" data-testid="prep-edit-details-dialog">
+            <DialogContent className="max-w-2xl p-0" data-testid="prep-edit-details-dialog">
                 <DialogHeader className="border-b border-[var(--ui-border,#e8e8e8)] p-5">
                     <DialogTitle>{t('تعديل تفاصيل التسليم')}</DialogTitle>
                 </DialogHeader>

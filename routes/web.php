@@ -1613,6 +1613,16 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
     Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');
     Route::post('/customer-invoices/{id}/cancel', [CustomerInvoiceController::class, 'cancel'])->name('customerInvoices.cancel');
     Route::post('/customer-invoices/{id}/credit-note', [CustomerInvoiceController::class, 'creditNote'])->name('customerInvoices.creditNote');
+    /*
+     * تعديلُ الفاتورة بعد كتابتها — والفعلُ يُسأل بحال الورقة في المتحكّم
+     * (`CustomerInvoiceEdits::actionFor`)، والمعاينةُ لا تكتب شيئًا.
+     */
+    Route::get('/customer-invoices/{id}/edit', [CustomerInvoiceController::class, 'edit'])
+        ->whereNumber('id')->name('customerInvoices.edit');
+    Route::post('/customer-invoices/{id}/edit/preview', [CustomerInvoiceController::class, 'editPreview'])
+        ->whereNumber('id')->name('customerInvoices.editPreview');
+    Route::put('/customer-invoices/{id}', [CustomerInvoiceController::class, 'update'])
+        ->whereNumber('id')->middleware('throttle:30,1,customer-invoice-edit')->name('customerInvoices.update');
     Route::get('/customer-invoices/{id}/pdf', [PdfController::class, 'customerInvoice'])->name('customerInvoices.pdf');
     /*
      * مرفقاتُ الفاتورة — على القرص الخاصّ، وتُقرأ ببابٍ يسأل.

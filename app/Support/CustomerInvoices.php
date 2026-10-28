@@ -156,7 +156,7 @@ final class CustomerInvoices
      * @param  array<int, array<string, mixed>>  $lines
      * @return array{items: array<int, array<string, mixed>>, subtotal: float, discount: float, tax: float, total: float}
      */
-    public static function compute(int $businessId, array $lines, ?float $taxRate = null): array
+    public static function compute(int $businessId, array $lines, ?float $taxRate = null, ?bool $inclusive = null): array
     {
         /*
          * ونسبةُ الضريبة تُقرأ لمتجر الفاتورة لا لمتجر القارئ.
@@ -175,8 +175,14 @@ final class CustomerInvoices
          */
         $rate = $taxRate ?? Vat::rate($businessId);
 
-        /* ويُقرأ مرّةً لا لكلّ بند: استعلامٌ في حلقةٍ على فاتورةٍ بأربعين بندًا */
-        $inclusive = Vat::inclusive($businessId);
+        /*
+         * ويُقرأ مرّةً لا لكلّ بند: استعلامٌ في حلقةٍ على فاتورةٍ بأربعين بندًا.
+         *
+         * ويُعطى صراحةً حين تُعاد ورقةٌ صدرت: قاعدتُها قاعدةُ يوم إصدارها لا
+         * إعدادُ اليوم (`CustomerInvoiceEdits::inclusiveOf`). متجرٌ بدّل «الأسعار
+         * شاملة الضريبة» بعد الإصدار لا تتغيّر ضريبةُ بنودٍ لم يلمسها أحد.
+         */
+        $inclusive ??= Vat::inclusive($businessId);
 
         $items = [];
         $subtotal = 0.0;
@@ -479,6 +485,35 @@ final class CustomerInvoices
             throw new RuntimeException(__('هذا العميل ليس من عملاء متجرك.'));
         }
 
+        self::assertLinesBelong($businessId, $lines);
+
+        $totals = self::compute($businessId, $lines);
+
+        return DB::transaction(function () use ($businessId, $customer, $data, $totals, $userId) {
+            $invoice = CustomerInvoice::create(
+                self::attributes($businessId, $customer, $data, $totals) + ['created_by' => $userId]
+            );
+
+            self::writeItems($invoice, $totals['items']);
+
+            Activity::log('created', 'أنشأ مسودّة فاتورة عميل — '.$customer->name, [
+                'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
+            ]);
+
+            return $invoice->fresh('items');
+        });
+    }
+
+    /**
+     * بنودُ الورقة من متجرها — منتجًا كان البندُ أو إضافة.
+     *
+     * يسأله الإنشاءُ وتعديلُ الورقة بعده (`CustomerInvoiceEdits`): بندٌ يُضاف
+     * في التعديل لا يمرّ من بابٍ أوسع من الباب الذي كُتبت منه الورقة.
+     *
+     * @param  array<int, array<string, mixed>>  $lines
+     */
+    public static function assertLinesBelong(int $businessId, array $lines): void
+    {
         foreach ($lines as $line) {
             // والبندُ منتجٌ أو إضافة — لا إضافةٌ تلبس منتجًا ولا العكس
             if (! empty($line['product_id']) && ! empty($line['addon_id'])) {
@@ -506,41 +541,34 @@ final class CustomerInvoices
                 }
             }
         }
+    }
 
-        $totals = self::compute($businessId, $lines);
+    /**
+     * سطورُ البنود كما حسبتها `compute` — والإضافةُ المدفوعةُ تعرف صنفَها.
+     *
+     * بمجموعته في النموذج، تُقرأ هنا مفتاحًا بعد أن يُكتب الصنفُ قبلها. والمالُ
+     * في سطرها كما حُسب. ويكتب بها الإنشاءُ والبنودَ الجديدة في التعديل.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    public static function writeItems(CustomerInvoice $invoice, array $items): void
+    {
+        $written = [];
 
-        return DB::transaction(function () use ($businessId, $customer, $data, $totals, $userId) {
-            $invoice = CustomerInvoice::create(
-                self::attributes($businessId, $customer, $data, $totals) + ['created_by' => $userId]
-            );
+        foreach ($items as $item) {
+            $group = $item['group'] ?? null;
+            $parent = $item['parent'] ?? null;
+            unset($item['group'], $item['parent']);
 
-            /*
-             * والإضافةُ المدفوعةُ تعرف صنفَها — بمجموعته في النموذج، تُقرأ هنا
-             * مفتاحًا بعد أن يُكتب الصنفُ قبلها. والمالُ في سطرها كما حُسب.
-             */
-            $written = [];
-
-            foreach ($totals['items'] as $item) {
-                $group = $item['group'] ?? null;
-                $parent = $item['parent'] ?? null;
-                unset($item['group'], $item['parent']);
-
-                $row = CustomerInvoiceItem::create($item + [
-                    'customer_invoice_id' => $invoice->id,
-                    'parent_item_id' => $parent !== null ? ($written[$parent] ?? null) : null,
-                ]);
-
-                if ($group !== null) {
-                    $written[$group] = $row->id;
-                }
-            }
-
-            Activity::log('created', 'أنشأ مسودّة فاتورة عميل — '.$customer->name, [
-                'subject_id' => $invoice->id, 'subject_type' => 'customer_invoice',
+            $row = CustomerInvoiceItem::create($item + [
+                'customer_invoice_id' => $invoice->id,
+                'parent_item_id' => $parent !== null ? ($written[$parent] ?? null) : null,
             ]);
 
-            return $invoice->fresh('items');
-        });
+            if ($group !== null) {
+                $written[$group] = $row->id;
+            }
+        }
     }
 
     /**
@@ -617,6 +645,18 @@ final class CustomerInvoices
             return;
         }
 
+        self::postEntry($invoice, $userId);
+    }
+
+    /**
+     * قيدُ الورقة بمجاميعها كما هي الآن — مدين الذمم / دائن المبيعات والضريبة.
+     *
+     * يكتبه الإصدارُ بتاريخ الورقة، ويكتبه تعديلُ الورقة الصادرة بعد عكس قيدها
+     * (`CustomerInvoiceEdits::apply`) بتاريخ التصحيح الذي اختير. والمصدرُ
+     * والمرجعُ واحدٌ في الحالين، فيقرأ `ledgerLines` الأوّلَ وعكسَه والجديد معًا.
+     */
+    public static function postEntry(CustomerInvoice $invoice, ?int $userId, ?Carbon $date = null, ?string $description = null): JournalEntry
+    {
         $net = round((float) $invoice->subtotal - (float) $invoice->discount_total, 3);
         $tax = round((float) $invoice->tax_total, 3);
 
@@ -629,16 +669,33 @@ final class CustomerInvoices
             $lines[] = ['account' => 'tax_payable', 'credit' => $tax];
         }
 
-        Ledger::post(
+        return Ledger::post(
             (int) $invoice->business_id,
-            __('فاتورة عميل ').$invoice->number,
+            $description ?? __('فاتورة عميل ').$invoice->number,
             $lines,
-            Carbon::parse($invoice->issued_at),
+            $date ?? Carbon::parse($invoice->issued_at),
             self::SOURCE,
             $invoice->branch_id,
             $userId,
             $invoice,
         );
+    }
+
+    /**
+     * القيدُ القائم للورقة — ما رُحّل لها ولم يُعكس بعد.
+     *
+     * وبعد أوّل تعديلٍ تصير للورقة قيودٌ: الأوّلُ وعكسُه والجديد. والقائمُ هو
+     * الذي لم يُعكس — لا أحدثُها معرّفًا: قد يكون العكسُ نفسُه أحدثَ صفٍّ.
+     */
+    public static function liveEntry(CustomerInvoice $invoice): ?JournalEntry
+    {
+        return JournalEntry::where('business_id', $invoice->business_id)
+            ->where('sourceable_type', CustomerInvoice::class)
+            ->where('sourceable_id', $invoice->id)
+            ->where('source', self::SOURCE)
+            ->whereNull('reverses_id')
+            ->whereNull('reversed_at')
+            ->latest('id')->first();
     }
 
     /**
@@ -694,11 +751,8 @@ final class CustomerInvoices
 
         return DB::transaction(function () use ($invoice, $reason, $userId) {
             if ($invoice->status === CustomerInvoice::ISSUED && ! $invoice->coversOrders()) {
-                $entry = JournalEntry::where('business_id', $invoice->business_id)
-                    ->where('sourceable_type', CustomerInvoice::class)
-                    ->where('sourceable_id', $invoice->id)
-                    ->where('source', self::SOURCE)
-                    ->latest('id')->first();
+                // والقائمُ وحده: ورقةٌ عُدّلت لها قيدٌ عُكس وقيدٌ قائم
+                $entry = self::liveEntry($invoice);
 
                 if ($entry) {
                     Ledger::reverse($entry, now(), $userId, __('إلغاء فاتورة عميل ').$invoice->number);

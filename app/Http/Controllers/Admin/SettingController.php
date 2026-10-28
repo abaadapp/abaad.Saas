@@ -8,7 +8,9 @@ use App\Models\Currency;
 use App\Models\Setting;
 use App\Support\Activity;
 use App\Support\Demo;
+use App\Support\FinancialCorrections;
 use App\Support\InvoiceBranding;
+use App\Support\Permissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -186,6 +188,14 @@ class SettingController extends Controller
          */
         'staff_sees_performance' => ['section' => 'permissions', 'label' => 'إظهار أدائه للموظّف',
             'rules' => ['sometimes', 'boolean']],
+        /*
+         * الاعتمادُ الثنائيّ لتصحيح الفواتير الصادرة والمدفوعة — مطفأٌ افتراضًا.
+         *
+         * يُشعله صاحبُ النشاط وحده (`GUARDED`): هو من يقرّر أنّ تصحيحَ المال
+         * يحتاج عينًا ثانية. ومتجرٌ لم يُشعله يعمل كما كان (`FinancialCorrections`).
+         */
+        'dual_approval_corrections' => ['section' => 'permissions', 'label' => 'الاعتماد الثنائي للتصحيحات المالية',
+            'rules' => ['sometimes', 'boolean']],
 
         // التنبيهات
         'notify_new_order' => ['section' => 'notifications', 'label' => 'بريدٌ عند كل طلب جديد',
@@ -317,6 +327,66 @@ class SettingController extends Controller
         ]);
     }
 
+    /**
+     * حقولٌ لا يكفيها «تعديل الإعدادات» — الفعلُ الذي يغيّرها، أو «owner».
+     *
+     * إقفالُ الفترة يمنع كلَّ قيدٍ قبله: هو قرارُ من يملك الدفتر لا من يضبط
+     * شعار الفاتورة. والاعتمادُ الثنائيّ يقيّد من يصحّح المال — فلا يطفئه
+     * من يقيّده.
+     *
+     * ويُسأل عن التغيير لا عن الإرسال: الشاشةُ ترسل حقول القسم كلَّها كما
+     * قرأتها، فمن يحفظ العملة يرسل تاريخ الإقفال كما هو — ولا يُردّ.
+     */
+    private const GUARDED = [
+        'books_closed_through' => 'books.close',
+        'vat_filed_through' => 'books.close',
+        'dual_approval_corrections' => 'owner',
+    ];
+
+    /** @return array<string, string>|null الحقلُ → سببُ ردّه */
+    private function guardedRefusal(int $bid, array $data): ?array
+    {
+        $user = auth()->user();
+        $asked = array_intersect_key(self::GUARDED, $data);
+
+        if ($asked === []) {
+            return null;
+        }
+
+        $now = Setting::where('business_id', $bid)->whereIn('key', array_keys($asked))->pluck('value', 'key');
+
+        foreach ($asked as $key => $action) {
+            if (self::sameSetting($now[$key] ?? null, $data[$key])) {
+                continue;
+            }
+
+            if ($action === 'owner' && ! Permissions::isOwner($user)) {
+                return [$key => __('صاحب النشاط وحده يغيّر «:field».', ['field' => __(self::KEYS[$key]['label'])])];
+            }
+
+            if ($action !== 'owner' && ! $user?->may($action)) {
+                return [$key => __('ليس لديك صلاحية: :action', ['action' => Permissions::actionLabels()[$action] ?? $action])];
+            }
+
+            // ولا يُشعَل اعتمادٌ لا معتمدَ فيه غيرُ صاحب النشاط — يُعلّق تصحيحاتِه هو
+            if ($key === FinancialCorrections::SETTING && (bool) $data[$key]
+                && FinancialCorrections::approvers($bid, (int) $user->id) === 0) {
+                return [$key => __('لا يملك «اعتماد تصحيح مالي» موظفٌ نشطٌ غيرك — امنحه لموظف آخر من ملفه أولًا، وإلا بقيت تصحيحاتك المالية بلا من يعتمدها.')];
+            }
+        }
+
+        return null;
+    }
+
+    /** المحفوظُ والمرسَل سواء؟ — '1' كـtrue، والفارغ كـnull، والتاريخ بيومه */
+    private static function sameSetting(mixed $stored, mixed $sent): bool
+    {
+        $norm = fn (mixed $v): string => is_bool($v) ? ($v ? '1' : '0') : mb_substr(trim((string) $v), 0, 10);
+
+        return $norm($stored) === $norm($sent)
+            || (in_array($norm($stored), ['', '0'], true) && in_array($norm($sent), ['', '0'], true) && is_bool($sent));
+    }
+
     public function update(Request $request)
     {
         $validator = Validator::make($request->all(), self::rules(), [
@@ -337,6 +407,13 @@ class SettingController extends Controller
         $data = $validator->validated();
 
         $bid = auth()->user()->business_id ?? Demo::bid();
+
+        if ($refused = $this->guardedRefusal($bid, $data)) {
+            return back()
+                ->withErrors($refused)
+                ->withInput()
+                ->with('toast', ['msg' => __('لم يُحفظ شيء — :why', ['why' => reset($refused)]), 'type' => 'danger']);
+        }
 
         $profile = [];
         foreach (self::PROFILE as $field => $column) {

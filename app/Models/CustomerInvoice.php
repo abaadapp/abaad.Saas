@@ -112,6 +112,12 @@ class CustomerInvoice extends Model
         return $this->hasMany(CustomerCreditNote::class);
     }
 
+    /** تعديلاتُ الورقة بعد كتابتها — أحدثُها أوّلًا (`CustomerInvoiceEdits`) */
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(CustomerInvoiceRevision::class)->orderByDesc('revision');
+    }
+
     /** ما يُعدّ ذمّةً قائمة — الملغاة ليست ذمّة، والمسودّة لم تُصدر بعد */
     public function scopeLive($query)
     {

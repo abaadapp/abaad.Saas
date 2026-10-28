@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\CustomAlertController;
 use App\Http\Controllers\Admin\CustomerController;
 use App\Http\Controllers\Admin\CustomerImportExportController;
 use App\Http\Controllers\Admin\CustomerInvoiceController;
+use App\Http\Controllers\Admin\FinancialCorrectionController;
 use App\Http\Controllers\Admin\BoutiqueController;
 use App\Http\Controllers\Admin\CustomOrderTemplateController;
 use App\Http\Controllers\Admin\DocumentPrintController;
@@ -681,6 +682,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('preparation.invoiceRequeue');
     Route::post('/preparation/customer-invoices/{id}/print-confirm', [PreparationController::class, 'invoicePrintConfirm'])
         ->whereNumber('id')->name('preparation.invoicePrintConfirm');
+    // وتعديلُ بيانات التسليم بفعلٍ باسمه — لا يُورَث مع قسم اللوحة (`CUSTOMER_INVOICE_PREPARATION_EDIT`)
+    Route::post('/preparation/customer-invoices/{id}/details', [PreparationController::class, 'invoiceDetails'])
+        ->whereNumber('id')->middleware('may:'.Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT)->name('preparation.invoiceDetails');
 
     // الفروع
     Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');
@@ -1614,11 +1618,33 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('note')->name('customerInvoices.creditNotes.show');
     Route::get('/customer-invoices/credit-notes/{note}/pdf', [DocumentPrintController::class, 'creditNote'])
         ->whereNumber('note')->name('customerInvoices.creditNotes.pdf');
+    /*
+     * طلباتُ التصحيح الماليّ بانتظار شخصٍ ثانٍ — حين يُشعل صاحبُ النشاط
+     * الاعتمادَ الثنائيّ (`FinancialCorrections`). قبل `{id}` ولو قيّده النمط.
+     */
+    Route::get('/customer-invoices/corrections', [FinancialCorrectionController::class, 'index'])
+        ->name('customerInvoices.corrections.index');
+    Route::post('/customer-invoices/corrections/{correction}/approve', [FinancialCorrectionController::class, 'approve'])
+        ->whereNumber('correction')->middleware('throttle:30,1,financial-correction')->name('customerInvoices.corrections.approve');
+    Route::post('/customer-invoices/corrections/{correction}/reject', [FinancialCorrectionController::class, 'reject'])
+        ->whereNumber('correction')->middleware('throttle:30,1,financial-correction')->name('customerInvoices.corrections.reject');
+    Route::post('/customer-invoices/corrections/{correction}/withdraw', [FinancialCorrectionController::class, 'withdraw'])
+        ->whereNumber('correction')->middleware('throttle:30,1,financial-correction')->name('customerInvoices.corrections.withdraw');
     Route::get('/customer-invoices/{id}', [CustomerInvoiceController::class, 'show'])->name('customerInvoices.show');
     Route::post('/customer-invoices', [CustomerInvoiceController::class, 'store'])->name('customerInvoices.store');
     Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');
     Route::post('/customer-invoices/{id}/cancel', [CustomerInvoiceController::class, 'cancel'])->name('customerInvoices.cancel');
     Route::post('/customer-invoices/{id}/credit-note', [CustomerInvoiceController::class, 'creditNote'])->name('customerInvoices.creditNote');
+    /*
+     * تعديلُ الفاتورة بعد كتابتها — والفعلُ يُسأل بحال الورقة في المتحكّم
+     * (`CustomerInvoiceEdits::actionFor`)، والمعاينةُ لا تكتب شيئًا.
+     */
+    Route::get('/customer-invoices/{id}/edit', [CustomerInvoiceController::class, 'edit'])
+        ->whereNumber('id')->name('customerInvoices.edit');
+    Route::post('/customer-invoices/{id}/edit/preview', [CustomerInvoiceController::class, 'editPreview'])
+        ->whereNumber('id')->name('customerInvoices.editPreview');
+    Route::put('/customer-invoices/{id}', [CustomerInvoiceController::class, 'update'])
+        ->whereNumber('id')->middleware('throttle:30,1,customer-invoice-edit')->name('customerInvoices.update');
     Route::get('/customer-invoices/{id}/pdf', [PdfController::class, 'customerInvoice'])->name('customerInvoices.pdf');
     /*
      * مرفقاتُ الفاتورة — على القرص الخاصّ، وتُقرأ ببابٍ يسأل.

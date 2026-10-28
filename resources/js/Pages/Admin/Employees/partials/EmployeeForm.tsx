@@ -22,6 +22,7 @@ import { useTranslate } from '@/lib/i18n';
 import { usePlanFeature } from '@/lib/plan';
 import type { Branch } from '@/types/models';
 import InboxAccessField, { type InboxAccess } from './InboxAccessField';
+import PermissionGroups, { type PermissionGroup } from './PermissionGroups';
 
 export interface EmployeeFormValues {
     id?: number;
@@ -60,6 +61,12 @@ interface Props {
     actions?: Record<string, string>;
     /** سطرٌ يشرح الفعلَ تحت اسمه — انظر Permissions::ACTION_HINTS */
     actionHints?: Record<string, string>;
+    /**
+     * كلُّ قسمٍ وتحته ما يُفعل فيه — `SectionActions::groups()`.
+     *
+     * حين تصل تُرسم الصلاحياتُ بطاقاتٍ لكلّ قسم بدل قائمتَي الأقسام والأفعال.
+     */
+    permissionGroups?: PermissionGroup[];
     /**
      * ما يملك الفاعلُ منحَه — وسواه يُعطَّل بسببه مكتوبًا.
      *
@@ -148,6 +155,7 @@ export default function EmployeeForm({
     sections,
     actions,
     actionHints = {},
+    permissionGroups,
     grantable,
     blockedTitles,
     titleGrants,
@@ -754,6 +762,21 @@ export default function EmployeeForm({
                                 </p>
                             )}
 
+                            {permissionGroups && actions ? (
+                                <PermissionGroups
+                                    groups={permissionGroups}
+                                    sections={sections}
+                                    actions={actions}
+                                    hints={actionHints}
+                                    shown={shown}
+                                    roleGrants={roleGrants}
+                                    manual={form.data.manual_permissions}
+                                    live={boxesLive}
+                                    mayGrant={mayGrant}
+                                    onChange={(next) => form.setData('permissions', next)}
+                                />
+                            ) : (
+                            <>
                             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                                 {Object.entries(sections).map(([key, label]) => (
                                     <label
@@ -823,6 +846,8 @@ export default function EmployeeForm({
                                         </label>
                                     ))}
                                 </div>
+                            )}
+                            </>
                             )}
 
                             {form.errors.permissions && (

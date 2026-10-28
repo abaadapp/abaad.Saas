@@ -15,6 +15,7 @@ use App\Support\PlanFeatures;
 use App\Support\ReportColumns;
 use App\Support\ReportData;
 use App\Support\Reports;
+use App\Support\SectionActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
@@ -469,7 +470,12 @@ class ReportPagesTest extends TestCase
         $this->actingAs($this->staff(['orders']))
             ->get($this->exportRoute('admin.reports.export.csv', 'waste'))->assertForbidden();
 
+        // والقسمُ يفتح التقرير ولا يُخرج ملفّه: التصديرُ فعلٌ باسمه منذ فُصلت الأفعال
         $this->actingAs($this->staff(['reports']))
+            ->get($this->exportRoute('admin.reports.export.csv', 'waste'))->assertForbidden();
+
+        // ومن مُنح التقارير قبل الفصل معه التصدير — `SectionActions::withActionsOf`
+        $this->actingAs($this->staff(SectionActions::withActionsOf(['reports'])))
             ->get($this->exportRoute('admin.reports.export.csv', 'waste'))->assertOk();
     }
 

@@ -26,6 +26,7 @@ import {
 } from '@/Components/ui/table';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useMay } from '@/lib/may';
 import { cn } from '@/lib/utils';
 import { useTenantLink } from '@/lib/exportLink';
 import type { PageProps } from '@/types';
@@ -52,6 +53,7 @@ interface Props {
 export default function PurchasesIndex() {
     const { orders, stats, reorder, q, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    const may = useMay();
     // وروابطُ الملفّات تحمل نشاطَ هذه الصفحة — انظر `TenantExportGuard`
     const tenant = useTenantLink();
     const currency = context!.currency;
@@ -204,12 +206,14 @@ export default function PurchasesIndex() {
                                 {t('المورّدون')}
                             </SmartLink>
                         </Button>
-                        <Button asChild>
-                            <SmartLink routeName="admin.purchases.create" href={route('admin.purchases.create')}>
-                                <Plus />
-                                {t('أمر شراء جديد')}
-                            </SmartLink>
-                        </Button>
+                        {may('purchase.create') && (
+                            <Button asChild>
+                                <SmartLink routeName="admin.purchases.create" href={route('admin.purchases.create')}>
+                                    <Plus />
+                                    {t('أمر شراء جديد')}
+                                </SmartLink>
+                            </Button>
+                        )}
                     </>
                 }
             />

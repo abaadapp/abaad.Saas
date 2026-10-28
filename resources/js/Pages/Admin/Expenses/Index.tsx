@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/Components/u
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useMay } from '@/lib/may';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
 import ScopeFields, { EMPTY_SCOPE, scopeMovesTheEntry, scopeReady, type BranchOption, type ExpenseScopeKind, type ScopeValue } from './ScopeFields';
@@ -88,6 +89,7 @@ export default function ExpensesIndex() {
         dueSoonCount, overdueCount, month, monthTotal, monthUnpaid, monthCount, months, today, branches, period, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    const may = useMay();
     const currency = context!.currency;
     const m = (v: number) => money(v, currency);
 
@@ -403,10 +405,12 @@ export default function ExpensesIndex() {
                             }
                             options={months.map((x) => ({ value: x, label: x }))}
                         />
-                        <Button onClick={() => setAddingExpense(true)}>
-                            <Plus />
-                            {t('مصروف جديد')}
-                        </Button>
+                        {may('expense.create') && (
+                            <Button onClick={() => setAddingExpense(true)}>
+                                <Plus />
+                                {t('مصروف جديد')}
+                            </Button>
+                        )}
                     </>
                 }
             />
@@ -463,10 +467,12 @@ export default function ExpensesIndex() {
                         <FolderOpen className="mx-auto size-8 text-[#d1d5db]" />
                         <p className="mt-3 font-medium text-[#111]">{t('لا توجد مصروفات')}</p>
                         <p className="mt-1 text-[13px] text-[#9ca3af]">{t('أنشئ أول مصروف')}</p>
-                        <Button className="mt-5" onClick={() => setAddingExpense(true)}>
-                            <Plus />
-                            {t('مصروف جديد')}
-                        </Button>
+                        {may('expense.create') && (
+                            <Button className="mt-5" onClick={() => setAddingExpense(true)}>
+                                <Plus />
+                                {t('مصروف جديد')}
+                            </Button>
+                        )}
                     </Card>
                 ) : (
                     <Card className="overflow-hidden">
@@ -481,6 +487,7 @@ export default function ExpensesIndex() {
                             server={{ pagination, params: filters, sorts }}
                             toolbar={
                                 <ExportMenu
+                                    action="expense.export"
                                     xlsx={route('admin.expenses.xlsx')}
                                     pdf={route('admin.expenses.exportPdf')}
                                     csv={route('admin.export.expenses')}

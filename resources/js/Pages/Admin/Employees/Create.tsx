@@ -4,6 +4,7 @@ import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
 import type { InboxAccess } from './partials/InboxAccessField';
 import EmployeeForm from './partials/EmployeeForm';
+import type { PermissionGroup } from './partials/PermissionGroups';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 import type { Branch } from '@/types/models';
@@ -16,6 +17,8 @@ interface Props {
     sections: Record<string, string>;
     actions: Record<string, string>;
     actionHints?: Record<string, string>;
+    /** كلُّ قسمٍ وتحته ما يُفعل فيه — `SectionActions::groups()` */
+    permissionGroups?: PermissionGroup[];
     /**
      * ما يملك الفاعلُ منحَه — يُعطَّل سواه بسببه مكتوبًا.
      *
@@ -36,7 +39,7 @@ interface Props {
 }
 
 export default function EmployeeCreate() {
-    const { branches, branchOptions, jobTitles, currentBranchName, sections, actions, actionHints, may_read_payroll, inbox, grantable, blockedTitles, titleGrants } =
+    const { branches, branchOptions, jobTitles, currentBranchName, sections, actions, actionHints, permissionGroups, may_read_payroll, inbox, grantable, blockedTitles, titleGrants } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -61,6 +64,7 @@ export default function EmployeeCreate() {
                 sections={sections}
                 actions={actions}
                 actionHints={actionHints}
+                permissionGroups={permissionGroups}
                 grantable={grantable}
                 blockedTitles={blockedTitles}
                 titleGrants={titleGrants}

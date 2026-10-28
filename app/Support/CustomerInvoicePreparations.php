@@ -13,6 +13,8 @@ use App\Models\CustomerPaymentLink;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemAddon;
+use App\Models\PrintJob;
+use App\Models\User;
 use App\Support\Store\CardIdentity;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -86,6 +88,24 @@ final class CustomerInvoicePreparations
         'branch_id', 'fulfillment_type', 'scheduled_for',
         'recipient_name', 'recipient_phone', 'delivery_address', 'delivery_notes', 'internal_notes',
         'is_gift', 'occasion_type', 'occasion_text', 'card_message', 'sender_name', 'hide_sender',
+    ];
+
+    /** ما يُسمّى في السجلّ لكلّ حقلٍ تغيّر — «عدّل … : الموعد، المستلم» */
+    private const LABELS = [
+        'branch_id' => 'الفرع',
+        'fulfillment_type' => 'نوع التسليم',
+        'scheduled_for' => 'الموعد',
+        'recipient_name' => 'المستلم',
+        'recipient_phone' => 'هاتف المستلم',
+        'delivery_address' => 'العنوان',
+        'delivery_notes' => 'تعليمات التوصيل',
+        'internal_notes' => 'ملاحظات التجهيز',
+        'is_gift' => 'الهدية',
+        'occasion_type' => 'المناسبة',
+        'occasion_text' => 'المناسبة',
+        'card_message' => 'رسالة البطاقة',
+        'sender_name' => 'اسم المرسل',
+        'hide_sender' => 'إخفاء اسم المرسل',
     ];
 
     /** أفُتح التجهيزُ بعد السداد لهذا النشاط؟ — يفتحه مديرُ المنصّة وحده */
@@ -164,10 +184,21 @@ final class CustomerInvoicePreparations
      *   ثانيةٌ لها تجهيزٌ مكرَّر للبضاعة نفسِها.
      * - مهمّةٌ أُغلقت (سُلّمت) ← لا تُعدَّل.
      *
+     * ═══ ومهمّةٌ ظهرت في اللوحة ═══
+     *
+     * تُعدَّل ما لم تُسلَّم — من صفحة الفاتورة أو من اللوحة نفسِها. والأوراقُ
+     * تُبنى من الصفّ ساعةَ تُطبع، فما يُطبع بعد الحفظ يقول الجديد. ويبقى ما
+     * خرج قبله: ورقةُ الصندوق التي طُبعت تحمل موعدًا أو عنوانًا لم يعد صحيحًا
+     * — فتُكتب ورقةٌ جديدةٌ في طابور صندوق فرعها (`PrintJobs::reissueInvoiceInternal`)،
+     * والمنتظِرةُ تتبع المهمّةَ إن نُقلت إلى فرعٍ آخر. ولا يُبدَّل نوعُ التسليم
+     * تحت حالٍ لا تصلح له: مهمّةٌ «خرجت للتوصيل» لا تصير «استلامًا» بصمت.
+     *
      * @param  array<string, mixed>  $input  ما تحت `preparation.` بعد التحقّق
+     * @param  array{changed: list<string>, reprinted: bool, retargeted: bool}|null  $effect  ما وقع — للرسالة
      */
-    public static function save(CustomerInvoice $invoice, array $input, ?int $userId = null): CustomerInvoicePreparation
+    public static function save(CustomerInvoice $invoice, array $input, ?int $userId = null, ?array &$effect = null): CustomerInvoicePreparation
     {
+        $effect = ['changed' => [], 'reprinted' => false, 'retargeted' => false];
         $bid = (int) $invoice->business_id;
 
         if (! self::on($bid)) {
@@ -182,7 +213,7 @@ final class CustomerInvoicePreparations
 
         $data = self::normalize($input, $invoice);
 
-        return DB::transaction(function () use ($invoice, $data, $userId, $bid) {
+        return DB::transaction(function () use ($invoice, $data, $userId, $bid, &$effect) {
             $current = CustomerInvoicePreparation::where('customer_invoice_id', $invoice->id)->lockForUpdate()->first();
 
             if ($current && in_array($current->status, self::CLOSED, true)) {
@@ -190,8 +221,36 @@ final class CustomerInvoicePreparations
             }
 
             if ($current) {
+                if ($current->isActive() && in_array((string) $current->status, self::NOT_FOR[$data['fulfillment_type']] ?? [], true)) {
+                    throw ValidationException::withMessages(['preparation.fulfillment_type' => __(
+                        'المهمّة «:status» — لا يتغيّر نوع التسليم تحت هذه الحال. انقلها إلى حالٍ تصلح للنوع الجديد أولًا.',
+                        ['status' => __((string) $current->status)],
+                    )]);
+                }
+
+                $before = self::comparable($current);
+                $oldBranch = $current->branch_id !== null ? (int) $current->branch_id : null;
                 $current->forceFill($data)->save();
-                Activity::log('updated', 'عدّل تجهيز الفاتورة '.($invoice->number ?: '#'.$invoice->id), [
+                $changed = array_keys(array_diff_assoc(self::comparable($current), $before));
+
+                if ($changed === []) {
+                    return $current;
+                }
+
+                $labels = array_values(array_unique(array_map(fn ($f) => self::LABELS[$f], $changed)));
+                $effect['changed'] = array_map(fn ($l) => __($l), $labels);
+
+                if ($current->isActive()) {
+                    $job = PrintJobs::forPreparation($current);
+                    if ($job && in_array($job->status, [PrintJob::PRINTED, PrintJob::REQUESTED, PrintJob::CLAIMED], true)) {
+                        PrintJobs::reissueInvoiceInternal($current);
+                        $effect['reprinted'] = true;
+                    } elseif ($job && $job->status === PrintJob::PENDING && $oldBranch !== (int) $current->branch_id) {
+                        $effect['retargeted'] = PrintJobs::followBranch($job, (int) $current->branch_id);
+                    }
+                }
+
+                Activity::log('updated', 'عدّل تجهيز الفاتورة '.($invoice->number ?: '#'.$invoice->id).': '.implode('، ', $labels), [
                     'subject_id' => $current->id, 'subject_type' => 'customer_invoice_preparation', 'business_id' => $bid,
                 ]);
 
@@ -291,6 +350,78 @@ final class CustomerInvoicePreparations
         $data['card_identity_confirmed_at'] = $confirmed;
 
         return $data;
+    }
+
+    /**
+     * الحقولُ كما تُقارن — قبل الحفظ وبعده: الموعدُ بدقيقته، والفراغُ فراغٌ واحد.
+     *
+     * @return array<string, string>
+     */
+    private static function comparable(CustomerInvoicePreparation $prep): array
+    {
+        $out = [];
+        foreach (self::FIELDS as $field) {
+            $value = $prep->getAttribute($field);
+            $out[$field] = match (true) {
+                $value instanceof \DateTimeInterface => $value->format('Y-m-d H:i'),
+                is_bool($value) => $value ? '1' : '0',
+                default => trim((string) $value),
+            };
+        }
+
+        return $out;
+    }
+
+    /**
+     * التجهيزُ كما يملأ نموذجَه — في صفحة الفاتورة وفي لوحة التجهيز سواء.
+     *
+     * شكلٌ واحدٌ يُبنى في موضعٍ واحد: نموذجان يقرآن صفًّا واحدًا لا يفترقان.
+     *
+     * @return array<string, mixed>
+     */
+    public static function formData(CustomerInvoicePreparation $prep): array
+    {
+        return [
+            'branch_id' => $prep->branch_id,
+            // والفرعُ من علاقته إن حُمّلت — اللوحةُ تحمّلها لبطاقاتها كلّها مرّةً واحدة
+            'branch' => $prep->relationLoaded('branch') ? $prep->branch?->name
+                : ($prep->branch_id ? Branch::whereKey($prep->branch_id)->value('name') : null),
+            'fulfillment_type' => $prep->fulfillment_type,
+            'scheduled_for' => optional($prep->scheduled_for)->format('Y-m-d\\TH:i'),
+            'recipient_name' => $prep->recipient_name,
+            'recipient_phone' => $prep->recipient_phone,
+            'delivery_address' => $prep->delivery_address,
+            'delivery_notes' => $prep->delivery_notes,
+            'internal_notes' => $prep->internal_notes,
+            'is_gift' => (bool) $prep->is_gift,
+            'occasion_type' => $prep->occasion_type,
+            'occasion_text' => $prep->occasion_text,
+            'card_message' => $prep->card_message,
+            'sender_name' => $prep->sender_name,
+            'hide_sender' => (bool) $prep->hide_sender,
+            'card_identity_confirmed' => $prep->card_identity_confirmed_at !== null,
+        ];
+    }
+
+    /**
+     * فروعُ التجهيز ومناسباتُ البطاقة — لنشاطٍ فُتح له التجهيز بعد السداد.
+     *
+     * ومع مستخدمٍ: فروعُه وحدها — لا يُعرض فرعٌ يردّه الخادمُ عنه (`User::worksAt`).
+     *
+     * @return array{branches: array<int, array{id: int, name: string}>, occasions: array<int, array{value: string, label: string}>}|null
+     */
+    public static function options(int $businessId, ?User $only = null): ?array
+    {
+        if (! self::on($businessId)) {
+            return null;
+        }
+
+        return [
+            'branches' => Branch::where('business_id', $businessId)->orderBy('id')->get(['id', 'name'])
+                ->filter(fn (Branch $b) => $only === null || $only->worksAt((int) $b->id))
+                ->map(fn (Branch $b) => ['id' => $b->id, 'name' => $b->name])->values()->all(),
+            'occasions' => FlowerOrder::occasionOptions($businessId),
+        ];
     }
 
     /* ═══════════════════════════ التفعيل ═══════════════════════════ */

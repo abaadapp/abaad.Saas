@@ -25,6 +25,7 @@ import {
 import { Input } from '@/Components/ui/input';
 import { money, number } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
+import { useMay } from '@/lib/may';
 import type { PageProps } from '@/types';
 import type { Branch, Customer } from '@/types/models';
 
@@ -45,6 +46,7 @@ export default function CustomersIndex() {
     const { customers, pagination, filters, sorts, stats, branches, currentBranchId, unlanguaged, context } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
+    const may = useMay();
     const currency = context!.currency;
     const [adding, setAdding] = useState(false);
     const [importing, setImporting] = useState(false);
@@ -223,6 +225,7 @@ export default function CustomersIndex() {
                             بحثًا وترتيبًا، وملفُّ الاستيراد بندٌ باسمه.
                         */}
                         <ExportMenu
+                            action="customer.export"
                             xlsx={route('admin.customers.xlsx')}
                             pdf={route('admin.customers.export.pdf')}
                             csv={route('admin.export.customers')}
@@ -243,10 +246,12 @@ export default function CustomersIndex() {
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <Button onClick={() => setAdding(true)}>
-                            <UserPlus />
-                            {t('إضافة عميل')}
-                        </Button>
+                        {may('customer.create') && (
+                            <Button onClick={() => setAdding(true)}>
+                                <UserPlus />
+                                {t('إضافة عميل')}
+                            </Button>
+                        )}
                     </>
                 }
             />

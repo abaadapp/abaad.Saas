@@ -9,6 +9,7 @@ import {
 } from '@/Components/ui/dropdown-menu';
 import { downloadFile, useTenantLink, withFilters } from '@/lib/exportLink';
 import { useTranslate } from '@/lib/i18n';
+import { useMay } from '@/lib/may';
 import { usePlanFeature } from '@/lib/plan';
 
 interface Props {
@@ -31,6 +32,12 @@ interface Props {
      * وقفلُه على «التقارير المتقدّمة» يسحب من التاجر ما لم يُوعَد بسحبه.
      */
     feature?: string;
+    /**
+     * فعلُ التصدير الذي يحرسه الخادمُ لهذا الملفّ — `SectionActions` (مثل `customer.export`).
+     *
+     * من يفتح القسمَ ولا يملك تصديرَه لا يرى القائمة: الضغطُ كان سيُردّ بـ٤٠٣.
+     */
+    action?: string;
 }
 
 /**
@@ -39,8 +46,9 @@ interface Props {
  * روابط تنزيل حقيقية لا روابط Inertia: الاستجابة ملف لا صفحة،
  * وزيارتها عبر <Link> تُفشل التنزيل.
  */
-export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصدير', feature }: Props) {
+export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصدير', feature, action }: Props) {
     const t = useTranslate();
+    const may = useMay();
     /*
      * «جاري التصدير…» حتى يبدأ الملفّ — ولا نقرةَ ثانية تُنزّله مرّتين.
      * والخطأُ يُقال تحت الزرّ ولا يستبدل الصفحة (`downloadFile`).
@@ -73,6 +81,10 @@ export default function ExportMenu({ xlsx, pdf, csv, importXlsx, label = 'تصد
     const licensed = usePlanFeature(feature ?? '');
 
     if ((!xlsx && !pdf && !csv && !importXlsx) || !licensed) return null;
+
+    if (action && ! may(action)) {
+        return null;
+    }
 
     return (
         <DropdownMenu>

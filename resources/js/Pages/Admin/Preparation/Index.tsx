@@ -545,6 +545,7 @@ export default function PreparationIndex() {
                 onToggle={(key, checked) => shown && toggle(shown.number, key, checked)}
                 deliveryNoteUrl={deliveryNoteUrl}
                 timelineUrl={timelineUrl}
+                detailsOptions={page.invoiceDetails?.options ?? null}
             />
 
             {confirmDialog}

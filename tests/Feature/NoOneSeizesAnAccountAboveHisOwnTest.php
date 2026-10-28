@@ -9,6 +9,7 @@ use App\Models\JobTitle;
 use App\Models\User;
 use App\Support\Ledger;
 use App\Support\Permissions;
+use App\Support\SectionActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -196,7 +197,7 @@ class NoOneSeizesAnAccountAboveHisOwnTest extends TestCase
      */
     public function test_the_edit_screen_hides_the_salary_from_who_may_not_read_it(): void
     {
-        $supervisor = $this->staff('مشرف الشاشة', 'sup2', 'sales', ['employees', 'dashboard', 'pos']);
+        $supervisor = $this->staff('مشرف الشاشة', 'sup2', 'sales', SectionActions::withActionsOf(['employees', 'dashboard', 'pos']));
 
         $this->actingAs($supervisor)->get(route('admin.employees.edit', $this->cashier->id))
             ->assertOk()
@@ -236,7 +237,7 @@ class NoOneSeizesAnAccountAboveHisOwnTest extends TestCase
      */
     public function test_a_save_by_who_may_not_read_payroll_leaves_the_salary_alone(): void
     {
-        $supervisor = $this->staff('مشرف', 'sup1', 'sales', ['employees', 'dashboard', 'pos']);
+        $supervisor = $this->staff('مشرف', 'sup1', 'sales', SectionActions::withActionsOf(['employees', 'dashboard', 'pos']));
 
         $this->actingAs($supervisor)->put(route('admin.employees.update', $this->cashier->id), [
             'name' => 'الكاشير المعدَّل', 'login_username' => 'cash1', 'job_title' => 'كاشير',
@@ -262,7 +263,7 @@ class NoOneSeizesAnAccountAboveHisOwnTest extends TestCase
      */
     public function test_a_clerk_cannot_write_a_salary_on_a_new_employee(): void
     {
-        $supervisor = $this->staff('مشرف الرواتب', 'sup2', 'sales', ['employees', 'dashboard', 'pos']);
+        $supervisor = $this->staff('مشرف الرواتب', 'sup2', 'sales', SectionActions::withActionsOf(['employees', 'dashboard', 'pos']));
 
         $this->actingAs($supervisor)->post(route('admin.employees.store'), [
             'name' => 'موظف جديد', 'login_username' => 'newone', 'job_title' => 'كاشير',

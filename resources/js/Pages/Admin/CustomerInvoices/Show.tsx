@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router, useForm, usePage } from '@inertiajs/react';
-import { FileText, MessageCircle, Paperclip, Trash2, Undo2 } from 'lucide-react';
+import { FileText, MessageCircle, Paperclip, Pencil, Trash2, Undo2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import DocumentMeta from '@/Components/DocumentMeta';
@@ -10,6 +10,8 @@ import PaidLinkCollectionCard, { OrderLinks, type PaidCollection } from '@/Compo
 import PaymentLinksCard, { invoiceLinkView, InvoicePaymentLink, PaymentLinkRetry, type PaymentLinkFailure, type PaymentLinksPanel } from '@/Components/PaymentLinks';
 import PreparationPanel, { type PreparationPanelData } from './partials/PreparationPanel';
 import InvoiceLoyaltyPanel, { type InvoiceLoyaltyData } from './partials/InvoiceLoyaltyPanel';
+import InvoiceRevisions, { type InvoiceRevision } from './partials/InvoiceRevisions';
+import CorrectionRequests, { type CorrectionRequest } from './partials/CorrectionRequests';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
@@ -91,7 +93,7 @@ interface May {
 
 /** فاتورةُ عميل — بنودُها وتحصيلاتُها وما بقي منها */
 export default function CustomerInvoiceShow() {
-    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, context, flash } =
+    const { invoice, may, bank_accounts, methods, bank_methods, paper, paymentLinks, paymentLinkFailure, preparation, loyalty, collection, mayOpenReceipts, mayEdit, revisions, corrections, context, flash } =
         usePage<
             PageProps<{
                 invoice: Invoice;
@@ -115,6 +117,12 @@ export default function CustomerInvoiceShow() {
                 collection?: PaidCollection | null;
                 /** سندُ القبض صفحةُ «المالية» — رابطُه لمن يفتحها */
                 mayOpenReceipts?: boolean;
+                /** تعديلُ الورقة بحالها — `CustomerInvoiceEdits::mayOpen` */
+                mayEdit?: boolean;
+                /** سجلُّ تعديلاتها — و`null` لمن لا يُمنح قراءته */
+                revisions?: InvoiceRevision[] | null;
+                /** طلباتُ التصحيح الماليّ عليها — لمقدّمها ولمن يعتمد ولمن يقرأ السجلّ */
+                corrections?: CorrectionRequest[];
             }>
         >().props;
     const t = useTranslate();
@@ -156,6 +164,20 @@ export default function CustomerInvoiceShow() {
                 subtitle={`${invoice.customer} — ${invoice.state}`}
                 actions={
                     <>
+                        {/*
+                            وتعديلُ الورقة لمن يملكه بحالها — مسودّةً أو صادرةً أو
+                            مدفوعة. والخادمُ يسأل السؤالَ نفسَه في الشاشة والحفظ.
+                        */}
+                        {mayEdit && (
+                            <Button
+                                variant="outline"
+                                data-testid="edit-invoice"
+                                onClick={() => router.visit(route('admin.customerInvoices.edit', invoice.id))}
+                            >
+                                <Pencil />
+                                {t('تعديل الفاتورة')}
+                            </Button>
+                        )}
                         {invoice.status === 'مسودة' && may.issue && (
                             <Button disabled={issue.processing} onClick={() => issue.post(`/admin/customer-invoices/${invoice.id}/issue`, { preserveScroll: true })}>
                                 {t('إصدار الفاتورة')}
@@ -330,6 +352,12 @@ export default function CustomerInvoiceShow() {
                             <Row label={t('الباقي')} value={m(invoice.outstanding)} strong />
                         </dl>
                     </Card>
+
+                    {/* طلباتُ التصحيح بانتظار شخصٍ ثانٍ وما قُرّر فيها — `FinancialCorrections` */}
+                    <CorrectionRequests requests={corrections ?? []} m={m} />
+
+                    {/* سجلُّ تعديلات الورقة — لمن يُمنح قراءته وحده */}
+                    {revisions && <InvoiceRevisions revisions={revisions} m={m} />}
 
                     {/*
                         والسطرُ يفتح سندَه.

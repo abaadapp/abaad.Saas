@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Support\BackupService;
 use App\Support\ReviewInvite;
+use App\Support\SectionActions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -76,7 +77,7 @@ class OnlyTheOwnerMayWipeTheShopBackTest extends TestCase
     {
         return User::create(match ($who) {
             // موظّفٌ مُنح «الإعدادات» بيد صاحب النشاط
-            'staff' => ['role' => 'staff', 'permissions' => ['settings']],
+            'staff' => ['role' => 'staff', 'permissions' => SectionActions::withActionsOf(['settings'])],
             // مديرُ فرعٍ — يملك كلَّ قسم بـ`'*'`
             'manager' => ['role' => 'manager'],
             // شريكٌ دورُه admin وضُيّقت صلاحياتُه بيده — ليس صاحبَ النشاط

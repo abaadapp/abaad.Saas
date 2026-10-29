@@ -190,7 +190,8 @@ final class CustomerInvoicePreparations
      * تُبنى من الصفّ ساعةَ تُطبع، فما يُطبع بعد الحفظ يقول الجديد. ويبقى ما
      * خرج قبله: ورقةُ الصندوق التي طُبعت تحمل موعدًا أو عنوانًا لم يعد صحيحًا
      * — فتُكتب ورقةٌ جديدةٌ في طابور صندوق فرعها (`PrintJobs::reissueInvoiceInternal`)،
-     * والمنتظِرةُ تتبع المهمّةَ إن نُقلت إلى فرعٍ آخر. ولا يُبدَّل نوعُ التسليم
+     * والتي لم تخرج (تنتظر، أو فشلت، أو أُلغيت) تتبع المهمّةَ إن نُقلت إلى فرعٍ
+     * آخر — فإن أُعيدت بيدٍ طُبعت في صندوقه لا في القديم. ولا يُبدَّل نوعُ التسليم
      * تحت حالٍ لا تصلح له: مهمّةٌ «خرجت للتوصيل» لا تصير «استلامًا» بصمت.
      *
      * @param  array<string, mixed>  $input  ما تحت `preparation.` بعد التحقّق
@@ -245,7 +246,7 @@ final class CustomerInvoicePreparations
                     if ($job && in_array($job->status, [PrintJob::PRINTED, PrintJob::REQUESTED, PrintJob::CLAIMED], true)) {
                         PrintJobs::reissueInvoiceInternal($current);
                         $effect['reprinted'] = true;
-                    } elseif ($job && $job->status === PrintJob::PENDING && $oldBranch !== (int) $current->branch_id) {
+                    } elseif ($job && in_array($job->status, PrintJobs::FOLLOWS, true) && $oldBranch !== (int) $current->branch_id) {
                         $effect['retargeted'] = PrintJobs::followBranch($job, (int) $current->branch_id);
                     }
                 }

@@ -9,6 +9,7 @@ import { statusDot } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import useBoardLive from '@/hooks/useBoardLive';
+import useChangedPapersForgotten from '@/hooks/useChangedPapersForgotten';
 import useNewArrivals from '@/hooks/useNewArrivals';
 import { type PrintAttempt, prepareWebsiteConfirmPrint, websiteConfirmPrintCallbacks } from '@/lib/website-confirm-print';
 import { useTranslate } from '@/lib/i18n';
@@ -142,6 +143,9 @@ export default function PreparationIndex() {
     // والجديدُ يُعرف بهويّة البطاقة المصنَّفة — طلبٌ ومهمّةُ فاتورةٍ لا يتصادمان (`idOf`)
     const numbers = useMemo(() => orders.map(idOf), [orders]);
     const { fresh, acknowledge, armSound } = useNewArrivals(numbers, sound);
+
+    // ومهمّةٌ عُدّلت من جهازٍ آخر لا تُشارَك أوراقُها المجهَّزةُ هنا بما كانت عليه
+    useChangedPapersForgotten(orders);
 
     const tabs: TabItem[] = [
         { key: 'all', label: 'الكل', count: counts.all },
@@ -545,6 +549,7 @@ export default function PreparationIndex() {
                 onToggle={(key, checked) => shown && toggle(shown.number, key, checked)}
                 deliveryNoteUrl={deliveryNoteUrl}
                 timelineUrl={timelineUrl}
+                detailsOptions={page.invoiceDetails?.options ?? null}
             />
 
             {confirmDialog}

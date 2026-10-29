@@ -567,6 +567,9 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])
         ->middleware('throttle:20,1,whatsapp-link-check')->name('businesses.whatsapp.check');
+    // وإعدادُ الإشعارات في تطبيق أبعاد نفسه — واحدٌ لكلّ المتاجر، وقراءةٌ لا غير
+    Route::post('/whatsapp/app-webhook/check', [WhatsAppController::class, 'checkAppWebhook'])
+        ->middleware('throttle:10,1,whatsapp-app-webhook-check')->name('whatsapp.app-webhook.check');
 
     /*
      * حزمُ الرسائل — اعتمادٌ يُصدر فاتورة، وإلغاءٌ يُنهي طلبًا.
@@ -678,6 +681,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('preparation.invoiceRequeue');
     Route::post('/preparation/customer-invoices/{id}/print-confirm', [PreparationController::class, 'invoicePrintConfirm'])
         ->whereNumber('id')->name('preparation.invoicePrintConfirm');
+    // وتعديلُ بيانات التسليم بفعلٍ باسمه — لا يُورَث مع قسم اللوحة (`CUSTOMER_INVOICE_PREPARATION_EDIT`)
+    Route::post('/preparation/customer-invoices/{id}/details', [PreparationController::class, 'invoiceDetails'])
+        ->whereNumber('id')->middleware('may:'.Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT)->name('preparation.invoiceDetails');
 
     // الفروع
     Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');

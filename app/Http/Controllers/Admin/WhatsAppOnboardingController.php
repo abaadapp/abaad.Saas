@@ -199,7 +199,7 @@ class WhatsAppOnboardingController extends Controller
         return back()->with('toast', [
             'msg' => __('رقمك يردّ عند ميتا: :name', ['name' => $result['verified_name'] ?: $connection->display_phone_number])
                 .' — '.WhatsAppLinkHealth::label($health),
-            'type' => in_array($health, [WhatsAppLinkHealth::READY, WhatsAppLinkHealth::RECEIVING], true) ? 'success' : 'warning',
+            'type' => in_array($health, WhatsAppLinkHealth::HEALTHY, true) ? 'success' : 'warning',
         ]);
     }
 

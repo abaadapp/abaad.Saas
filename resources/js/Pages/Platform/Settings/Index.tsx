@@ -13,6 +13,7 @@ import { PasswordInput } from '@/Components/ui/password-input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PageProps } from '@/types';
+import OwnNumbersHealth, { type OwnNumberRow } from './partials/OwnNumbersHealth';
 
 type Settings = Record<string, string>;
 
@@ -117,7 +118,7 @@ const TABS = [
 ];
 
 export default function PlatformSettings() {
-    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth } =
+    const { settings, locale, mail, plans, whatsapp, salesWhatsapp, whatsappTemplates, crmLine, aiProvider, supportReach, googleHealth, ownNumbers } =
         usePage<PageProps<{
             settings: Settings;
             mail?: MailStatus;
@@ -133,6 +134,8 @@ export default function PlatformSettings() {
                 rows: { event: string; name: string; status: string | null }[];
             };
             crmLine?: { shared: boolean; onNoticeLine: boolean; connected: boolean };
+            /* وأرقامُ المتاجر المستقلّة: أيصلنا ما يكتبه زبائنُها؟ — انظر WhatsAppLinkHealth::fleet */
+            ownNumbers?: OwnNumberRow[];
             /* وحالُ مزوّد الذكاء — وجودُه لا قيمتُه */
             aiProvider?: { ready: boolean; name: string } | null;
             supportReach?: { reachable: number; total: number; ambiguous: number };
@@ -1002,6 +1005,9 @@ export default function PlatformSettings() {
                         </div>
                     </Card>
                 )}
+
+                {/* وأرقامُ المتاجر المستقلّة تحت رقمَي أبعاد — كلٌّ يقول أيصله ما يكتبه زبائنُه */}
+                {tab === 'whatsapp' && <OwnNumbersHealth rows={ownNumbers ?? []} />}
 
                 {tab === 'ai' && (
                     <Card className="p-6">

@@ -219,8 +219,8 @@ class WhatsAppOnboarding
             'last_error_code' => null,
             'last_error_message' => null,
             'last_error_at' => null,
-        ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'])
-          + ($existing && $existing->phone_number_id !== $numberId ? ['last_webhook_at' => null] : []));
+        ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing($numberId, $token)['state'])
+          + ($existing && $existing->phone_number_id !== $numberId ? WhatsAppLinkHealth::UNHEARD : []));
 
         if ($hook['state'] !== WhatsAppLinkCheck::SUBSCRIBED) {
             self::log('subscribe_unproven', $business->id, $hook['meta'] + ['code' => $hook['state']]);

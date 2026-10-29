@@ -80,6 +80,23 @@ final class WhatsAppInbox
     /** حدُّ واتساب للنصّ ٤٠٩٦ */
     public const MAX_BODY = 4000;
 
+    /* ═══ لماذا لم تُحفظ رسالةٌ وصلت رقمَ المتجر — يُكتب على وصلتها بلا نصّها ═══ */
+
+    /** صندوقُ المحادثات غير مفتوحٍ للمتجر — يفتحه فريقُ أبعاد */
+    public const INBOX_CLOSED = 'inbox_closed';
+
+    /** الرقمُ على صفٍّ قديمٍ ليس وصلةَ المتجر الحاليّة */
+    public const NOT_CURRENT = 'not_current_connection';
+
+    /** فصل صاحبُ المتجر هذه الوصلة */
+    public const LINK_INACTIVE = 'connection_inactive';
+
+    /** إشعارٌ بلا معرّف رسالةٍ أو بلا رقم مُرسِلٍ يُقرأ */
+    public const UNREADABLE = 'unreadable_message';
+
+    /** نسخةٌ من رسالةٍ حُفظت من قبل — ميتا تُعيد الإشعار. ليست علّةً ولا حفظًا جديدًا */
+    private const DUPLICATE = 'duplicate';
+
     /* ═══════════════════ الإذن ═══════════════════ */
 
     /**
@@ -128,23 +145,60 @@ final class WhatsAppInbox
      *
      * ويُطلب أن تكون **وصلتَه الحاليّة**: صفٌّ قديمٌ بقي يحمل الرقمَ نفسَه لا
      * يُدخل شيئًا، ووصلةٌ فُصلت (`inactive`) لا تُقرأ — فكَّ صاحبُها الربط.
+     *
+     * ═══ ولا شرطَ غيرُ ذلك ═══
+     *
+     * الرقمُ رقمُ المتجر، فكلُّ من كتب إليه زبونُه: لا يُطلب اقتباسٌ
+     * (`context.id`)، ولا إشعارٌ سابقٌ خرج إليه، ولا تُقرأ نوافذُ الرقم
+     * المشترك (`ATTRIBUTION_DAYS` · `AMBIGUOUS_DAYS`) — تلك لرقمٍ يتشاركه
+     * متاجر، وهذا لا يتشاركه أحد.
+     *
+     * ═══ والوصولُ ليس الحفظ ═══
+     *
+     * الويب هوك يختم `last_inbound_at` حين تصل رسالةُ زبونٍ إلى الوصلة. وهنا
+     * يُختم ما بعدها: رسالةٌ **حُفظت** في الصندوق تختم `last_inbound_saved_at`
+     * وتمحو العلّة، ورسالةٌ رُدّت تكتب سببها (`inbound_problem`) بلا نصّها ولا
+     * رقم مُرسِلها. ونسخةٌ مكرّرةٌ من رسالةٍ حُفظت لا تختم شيئًا. فلا تقول لوحةُ
+     * الصحّة «استُقبلت» عن رسالةٍ وصلت ورُدّت (`WhatsAppLinkHealth::INBOUND`).
+     *
+     * @return ?string سببُ ألّا تُحفظ (`self::INBOX_CLOSED` …) — أو `null` حُفظت أو كانت مكرّرة
      */
-    public static function receiveOwn(WhatsAppConnection $connection, array $message, ?string $profileName = null): void
+    public static function receiveOwn(WhatsAppConnection $connection, array $message, ?string $profileName = null): ?string
     {
         if ($connection->owner_type !== WhatsAppMode::OWNER_BUSINESS
-            || blank($connection->business_id) || blank($connection->phone_number_id)
-            || $connection->status === WhatsAppConnection::INACTIVE) {
-            return;
+            || blank($connection->business_id) || blank($connection->phone_number_id)) {
+            return null;
         }
 
         $business = Business::find($connection->business_id);
 
-        if (! self::available($business)
-            || WhatsAppConnections::forBusiness($business->id)?->id !== $connection->id) {
-            return;
+        $result = match (true) {
+            $connection->status === WhatsAppConnection::INACTIVE => self::LINK_INACTIVE,
+            ! self::available($business) => self::INBOX_CLOSED,
+            WhatsAppConnections::forBusiness($business->id)?->id !== $connection->id => self::NOT_CURRENT,
+            default => self::store($business, $connection, WhatsAppMode::BUSINESS_OWN, $message, $profileName),
+        };
+
+        if ($result === self::DUPLICATE) {
+            return null;
         }
 
-        self::store($business, $connection, WhatsAppMode::BUSINESS_OWN, $message, $profileName);
+        $connection->forceFill($result === null
+            ? ['last_inbound_saved_at' => now(), 'inbound_problem' => null, 'inbound_problem_at' => null]
+            : ['inbound_problem' => $result, 'inbound_problem_at' => now()])->save();
+
+        return $result;
+    }
+
+    /** ما يقرؤه صاحبُ المتجر ومديرُ المنصّة عن رسالةٍ لم تُحفظ */
+    public static function refusal(string $problem): string
+    {
+        return match ($problem) {
+            self::INBOX_CLOSED => __('صندوق محادثات واتساب غير مفتوح لهذا المتجر'),
+            self::NOT_CURRENT => __('وصلت على ربطٍ قديمٍ ليس ربطَ المتجر الحاليّ'),
+            self::LINK_INACTIVE => __('الرقم مفصولٌ عن المتجر'),
+            default => __('إشعارٌ لم يُقرأ منه معرّفُ الرسالة أو رقمُ المُرسِل'),
+        };
     }
 
     /**
@@ -261,14 +315,20 @@ final class WhatsAppInbox
      *
      * والتنزيلُ **قبل** الكتابة: نداءُ شبكةٍ داخل معاملةٍ يُبقي القفلَ حتّى
      * يردّ خادمٌ في بلدٍ آخر. والمعرّفُ الفريد (`wamid`) يحسم الإشعارَ المكرّر.
+     *
+     * @return ?string `null` حُفظ — و`self::UNREADABLE` لإشعارٍ لا يُقرأ، و`self::DUPLICATE` لنسخةٍ حُفظ أصلُها
      */
-    private static function store(Business $business, WhatsAppConnection $connection, string $mode, array $message, ?string $profileName): void
+    private static function store(Business $business, WhatsAppConnection $connection, string $mode, array $message, ?string $profileName): ?string
     {
         $wamid = (string) ($message['id'] ?? '');
         $from = WhatsAppPhone::normalize($message['from'] ?? null);
 
-        if ($wamid === '' || $from === null || WhatsAppChatMessage::where('wamid', $wamid)->exists()) {
-            return;
+        if ($wamid === '' || $from === null) {
+            return self::UNREADABLE;
+        }
+
+        if (WhatsAppChatMessage::where('wamid', $wamid)->exists()) {
+            return self::DUPLICATE;
         }
 
         [$body, $mediaType, $file] = CrmWhatsApp::inbound($connection, $message);
@@ -282,7 +342,8 @@ final class WhatsAppInbox
             ['whatsapp_connection_id' => $connection->id, 'source_mode' => $mode],
         ));
 
-        Contention::attempt(function () use ($business, $connection, $chat, $wamid, $body, $mediaType, $file, $at, $profileName) {
+        // ونسختان وصلتا معًا: الثانيةُ تصطدم بالمعرّف الفريد فلا تُكتب — وتُعدّ مكرّرة
+        $row = Contention::attempt(function () use ($business, $connection, $chat, $wamid, $body, $mediaType, $file, $at, $profileName) {
             $row = WhatsAppChatMessage::create([
                 'business_id' => $business->id,
                 'chat_id' => $chat->id,
@@ -313,6 +374,8 @@ final class WhatsAppInbox
 
             return $row;
         });
+
+        return $row === null ? self::DUPLICATE : null;
     }
 
     /**

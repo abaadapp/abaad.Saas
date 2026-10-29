@@ -38,6 +38,8 @@ import type { PrintOutcome } from './types';
 const PREPARED_LIMIT = 6;
 const prepared = new Map<string, File>();
 const preparing = new Map<string, Promise<File | PrintOutcome>>();
+/** كم مرّةً نُسي رابطٌ — تنزيلٌ بدأ قبل النسيان لا يحفظ ما جاء به */
+const forgotten = new Map<string, number>();
 
 function probe(): File | null {
     try {
@@ -85,22 +87,44 @@ export function prepareReceipt(url: string, invoice: string): Promise<File | Pri
     if (pending) return pending;
 
     prepared.delete(url);
+    const generation = forgotten.get(url) ?? 0;
 
     const job = downloadReceipt(url, 'share')
         .then((pdf): File | PrintOutcome => {
             if (!(pdf instanceof Blob)) return pdf;
 
             const file = new File([pdf], `${invoice}.pdf`, { type: 'application/pdf' });
-            prepared.set(url, file);
+            // ونُسي وهو يتنزّل: ما جاء به قد يكون من قبل التعديل — لا يُحفظ
+            if ((forgotten.get(url) ?? 0) === generation) prepared.set(url, file);
             while (prepared.size > PREPARED_LIMIT) prepared.delete(prepared.keys().next().value as string);
 
             return file;
         })
-        .finally(() => preparing.delete(url));
+        // وتنزيلٌ نُسي ثمّ بدأ غيرُه للرابط نفسِه لا يمحو الذي بعده
+        .finally(() => {
+            if (preparing.get(url) === job) preparing.delete(url);
+        });
 
     preparing.set(url, job);
 
     return job;
+}
+
+/**
+ * يُنسى ما جُهّز لورقةٍ تغيّرت بياناتُها — فلا تُشارَك نسخةٌ من قبل التعديل.
+ *
+ * الملفُّ المجهَّز يُشارَك في الضغطة التالية بلا تنزيل (`preparedReceipt`).
+ * فشاشةٌ عدّلت موعدَ التسليم أو عنوانَه تنسى ملفّاتِ تلك الورقة هنا، فتنزل
+ * الضغطةُ التالية من الخادم ببياناتها الجديدة. والتنزيلُ الجاري لا يُحفظ.
+ * وبلا شرطٍ يُنسى كلُّ شيء — كما تبدأ الاختباراتُ نظيفة.
+ */
+export function forgetPreparedReceipts(match: (url: string) => boolean = () => true): void {
+    for (const url of new Set([...prepared.keys(), ...preparing.keys()])) {
+        if (!match(url)) continue;
+        prepared.delete(url);
+        preparing.delete(url);
+        forgotten.set(url, (forgotten.get(url) ?? 0) + 1);
+    }
 }
 
 /**
@@ -133,10 +157,4 @@ function shareFailure(e: unknown): PrintOutcome {
     if (name === 'NotAllowedError') return { ...failure('SHARE_BLOCKED'), via: 'share' };
 
     return { ...failure('SHARE_FAILED'), via: 'share' };
-}
-
-/** للاختبار وحده */
-export function forgetPreparedReceipts(): void {
-    prepared.clear();
-    preparing.clear();
 }

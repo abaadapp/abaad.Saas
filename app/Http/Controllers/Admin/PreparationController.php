@@ -26,6 +26,7 @@ use App\Support\Store\GiftOrders;
 use App\Support\WebsiteConfirmPrint;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -213,7 +214,25 @@ class PreparationController extends Controller
              * لوحةٍ توقّف استطلاعُها منذ عشر دقائق وهو لا يعلم.
              */
             'fetchedAt' => now()->toIso8601String(),
+            /*
+             * «تعديل تفاصيل التسليم» لمهمّة الفاتورة — لمن يملك الفعلَ باسمه.
+             * والفروعُ فروعُه وحدها: لا يُعرض فرعٌ يردّه الخادمُ عنه.
+             */
+            'invoiceDetails' => $this->invoicesOn() && $this->mayEditDetails()
+                ? ['options' => CustomerInvoicePreparations::options($this->bid(), auth()->user())]
+                : null,
         ]);
+    }
+
+    /**
+     * أيعدّل هذا المستخدمُ بيانات التسليم؟
+     *
+     * يُسأل في كلّ طلبٍ ولا يُحفظ على المتحكّم: المتحكّمُ نفسُه قد يخدم طلبين
+     * لمستخدمين — فيصل جوابُ الأوّل إلى الثاني.
+     */
+    private function mayEditDetails(): bool
+    {
+        return (bool) auth()->user()?->may(Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT);
     }
 
     /**
@@ -908,8 +927,11 @@ class PreparationController extends Controller
             ->whereIn('subject_id', $tasks->pluck('id')->all())
             ->orderBy('id')->get()->keyBy('subject_id');
 
+        // ويُسأل مرّةً للوحة كلّها — لا مرّةً لكلّ بطاقة
+        $mayEdit = $this->mayEditDetails();
+
         $cards = $tasks->filter(fn (CustomerInvoicePreparation $p) => $p->invoice !== null)
-            ->map(fn (CustomerInvoicePreparation $p) => [$p->scheduled_for, $this->invoiceCard($p, $jobs->get($p->id))])
+            ->map(fn (CustomerInvoicePreparation $p) => [$p->scheduled_for, $this->invoiceCard($p, $jobs->get($p->id), $mayEdit)])
             ->values()->all();
 
         return [$cards, $count];
@@ -922,7 +944,7 @@ class PreparationController extends Controller
      * الفاتورة بكميّاتها، وحالُ السداد كما يُقرأ الآن ومن أين ثبت. ولا تكلفةَ
      * ولا ربحَ ولا «مجموع فرعي»: من يجهّز يرى ما يُحصَّل، لا ما كلّف.
      */
-    private function invoiceCard(CustomerInvoicePreparation $p, ?PrintJob $job): array
+    private function invoiceCard(CustomerInvoicePreparation $p, ?PrintJob $job, bool $mayEdit = false): array
     {
         $invoice = $p->invoice;
         $paid = $invoice->status === CustomerInvoice::ISSUED && (float) $invoice->board_outstanding <= 0.0005;
@@ -996,6 +1018,8 @@ class PreparationController extends Controller
                 'custom' => null,
             ])->values()->all(),
             'next' => CustomerInvoicePreparations::next($p),
+            // ما يملأ نموذجَ «تعديل تفاصيل التسليم» — لمن يملكه وحده
+            'details' => $mayEdit ? CustomerInvoicePreparations::formData($p) : null,
             // قائمةُ التحقّق لبنود الطلبات وحدها — مهمّةُ الفاتورة بلا علاماتٍ مخزَّنة
             'checks' => [],
             // حالُ ورقة الصندوق وما يجوز فيها — من الخادم وحده (`PrintJobs::card`)
@@ -1045,6 +1069,57 @@ class PreparationController extends Controller
         ]);
     }
 
+    /**
+     * «تعديل تفاصيل التسليم» من اللوحة — الموعدُ والمستلِمُ والعنوانُ والفرعُ والبطاقة.
+     *
+     * ═══ من يعدّل وماذا ═══
+     *
+     * من يملك `customerInvoice.preparation.edit` باسمه (والمسارُ يسأله قبل
+     * هذا: `may:`)، لمهمّةٍ ظهرت في لوحة متجره وفرعه ولم تُسلَّم — ولو سُدّدت
+     * عبر Paymob. والكتابةُ بابُ صفحة الفاتورة نفسُه (`CustomerInvoicePreparations::save`):
+     * حقولُ التجهيز وحدها، فلا بندَ ولا سعرَ ولا ضريبةَ ولا تحصيلَ يمرّ منه ولو أُرسل.
+     *
+     * ═══ والفرع ═══
+     *
+     * لا تُنقل المهمّةُ من فرعٍ ولا إليه إلّا ممّن يعمل فيه (`User::worksAt`) —
+     * كما لا تُنقل فاتورةٌ بين فرعين إلّا ممّن يعمل فيهما.
+     */
+    public function invoiceDetails(Request $request, int $id)
+    {
+        abort_unless($this->invoicesOn(), 404);
+        $user = auth()->user();
+
+        // ظهرت في لوحة متجره وفرعه — والمسلَّمةُ تُردّ بسببها تحت القفل لا بـ٤٠٤
+        $prep = CustomerInvoicePreparation::where('business_id', $this->bid())
+            ->whereNotNull('activated_at')
+            ->when(Demo::currentBranchId(), fn ($q, $branch) => $q->where('branch_id', $branch))
+            ->whereKey($id)->with('invoice')->firstOrFail();
+
+        $request->merge(['preparation' => array_merge((array) $request->input('preparation'), ['enabled' => true])]);
+        $data = $request->validate(
+            CustomerInvoicePreparations::rules($this->bid()),
+            [],
+            CustomerInvoicePreparations::attributes(),
+        )['preparation'] ?? [];
+
+        foreach (array_unique(array_filter([(int) $prep->branch_id, (int) $data['branch_id']])) as $branch) {
+            if (! $user->worksAt($branch)) {
+                throw ValidationException::withMessages([
+                    'preparation.branch_id' => __('لست مُسنَدًا إلى هذا الفرع — لا تُنقل المهمّة إليه ولا منه إلّا ممّن يعمل فيه.'),
+                ]);
+            }
+        }
+
+        $effect = null;
+        CustomerInvoicePreparations::save($prep->invoice, $data, (int) $user->id, $effect);
+
+        return back()->with('toast', match (true) {
+            $effect['changed'] === [] => ['msg' => __('لم يتغيّر شيء في بيانات التسليم.'), 'type' => 'info'],
+            $effect['reprinted'] => ['msg' => __('حُفظت بيانات التسليم — وكُتبت ورقة داخلية جديدة لطابور الصندوق، فالمطبوعة قبل التعديل لم تعد صحيحة.'), 'type' => 'success'],
+            default => ['msg' => __('حُفظت بيانات التسليم: :what', ['what' => implode('، ', $effect['changed'])]), 'type' => 'success'],
+        });
+    }
+
     /** سندُ التسليم شريطًا حراريًّا — بيدٍ وحدها، وبحمولةٍ آمنةٍ للمستلِم */
     public function invoiceDeliveryNote(int $id)
     {
@@ -1083,7 +1158,8 @@ class PreparationController extends Controller
         $rows = ActivityLog::where('business_id', $this->bid())
             ->where('subject_type', 'customer_invoice_preparation')
             ->where('subject_id', $prep->id)
-            ->whereIn('action', ['status', 'created'])
+            // وتعديلُ بيانات التسليم معها — من غيّر الموعدَ أو العنوانَ ومتى
+            ->whereIn('action', ['status', 'created', 'updated'])
             // والمعرّفُ بعد الوقت: خطوتان في الثانية نفسِها تُقرآن بترتيب وقوعهما
             ->orderBy('created_at')
             ->orderBy('id')

@@ -1,3 +1,5 @@
+import type { PreparationData, PreparationOptions } from '@/Components/CustomerInvoicePreparationFields';
+
 /**
  * ما يصل لوحةَ التجهيز من الخادم — ولا شيء سواه.
  *
@@ -76,6 +78,11 @@ export interface PrepOrder {
         confirmable?: boolean;
         requeueable?: boolean;
     } | null;
+    /**
+     * ما يملأ نموذجَ «تعديل تفاصيل التسليم» — لمهمّة الفاتورة، ولمن يملك
+     * `customerInvoice.preparation.edit` وحده؛ وإلّا غائبٌ فلا زرّ.
+     */
+    details?: PreparationData | null;
     number: string;
     status: string;
     /** قناةُ الطلب — `website` لطلب الموقع؛ تقرؤها طباعةُ التأكيد */
@@ -129,6 +136,8 @@ export interface PrepOrder {
 }
 
 export interface PrepProps {
+    /** فروعُ من يعدّل بيانات التسليم ومناسباتُ البطاقة — وnull لمن لا يملكه */
+    invoiceDetails?: { options: PreparationOptions } | null;
     orders: PrepOrder[];
     filters: { when: string | null; type: string | null };
     counts: { all: number; overdue: number; today: number; tomorrow: number };

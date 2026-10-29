@@ -62,6 +62,32 @@ export const EMPTY_PREPARATION: PreparationForm = {
     card_identity_confirmed: false,
 };
 
+/**
+ * التجهيزُ كما يصل من الخادم (`CustomerInvoicePreparations::formData`) — شكلٌ
+ * واحدٌ لصفحة الفاتورة ولوحة التجهيز.
+ */
+export type PreparationData = Omit<PreparationForm, 'enabled' | 'branch_id' | 'fulfillment_type'> & {
+    branch_id: number | null;
+    branch: string | null;
+    fulfillment_type: 'delivery' | 'pickup';
+};
+
+/** النموذجُ مملوءًا بما حُفظ — والفارغُ نصٌّ فارغ لا `null` في حقلٍ يُكتب فيه */
+export function preparationForm(data: PreparationData | null): PreparationForm {
+    if (!data) return { ...EMPTY_PREPARATION, enabled: true };
+
+    return {
+        ...EMPTY_PREPARATION,
+        ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v ?? ''])),
+        enabled: true,
+        branch_id: data.branch_id ? String(data.branch_id) : '',
+        fulfillment_type: data.fulfillment_type,
+        is_gift: Boolean(data.is_gift),
+        hide_sender: Boolean(data.hide_sender),
+        card_identity_confirmed: Boolean(data.card_identity_confirmed),
+    } as PreparationForm;
+}
+
 /** ما يُرسل — والمطفأُ لا يحمل غيرَ مفتاحه: حقلٌ مخفيٌّ لا يُرسل بقيمته القديمة */
 export function preparationPayload(value: PreparationForm): Partial<PreparationForm> {
     if (!value.enabled) return { enabled: false };

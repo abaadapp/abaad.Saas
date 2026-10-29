@@ -681,6 +681,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('preparation.invoiceRequeue');
     Route::post('/preparation/customer-invoices/{id}/print-confirm', [PreparationController::class, 'invoicePrintConfirm'])
         ->whereNumber('id')->name('preparation.invoicePrintConfirm');
+    // وتعديلُ بيانات التسليم بفعلٍ باسمه — لا يُورَث مع قسم اللوحة (`CUSTOMER_INVOICE_PREPARATION_EDIT`)
+    Route::post('/preparation/customer-invoices/{id}/details', [PreparationController::class, 'invoiceDetails'])
+        ->whereNumber('id')->middleware('may:'.Permissions::CUSTOMER_INVOICE_PREPARATION_EDIT)->name('preparation.invoiceDetails');
 
     // الفروع
     Route::get('/branches', [PageController::class, 'branchesIndex'])->name('branches.index');

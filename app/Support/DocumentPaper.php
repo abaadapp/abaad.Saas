@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerDebitNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPayment;
 use App\Models\GoodsReceiptNote;
@@ -690,6 +691,29 @@ class DocumentPaper
      */
     public static function forCreditNote(CustomerCreditNote $note): array
     {
+        return self::forNote($note, __('إشعار دائن'), 'credit');
+    }
+
+    /**
+     * إشعارٌ مدين — يزيد ذمّةَ العميل ولا يُعيد كتابة الفاتورة (م٥٠ من اللائحة).
+     *
+     * ورقةُ الإشعار الدائن نفسُها بعنوانه: رقمٌ وتاريخٌ وفاتورةٌ أصليّة، وبنودُ
+     * ما زاد وضريبتُه، وسببُه.
+     */
+    public static function forDebitNote(CustomerDebitNote $note): array
+    {
+        return self::forNote($note, __('إشعار مدين'), 'debit');
+    }
+
+    /**
+     * ورقةُ مستند التصحيح — بنودُه حين وُلد من تصحيح، ومبلغُه وحده حين كُتب بيد.
+     *
+     * والبندُ يقول ما تغيّر فيه («الكمية ٢ ← ٣»، «السعر ٥٠ ← ٤٥») ومبلغَ الفرق
+     * وضريبتَه: ما يُراجَع به المستندُ مقابل الفاتورة التي في يد العميل (م١٥٥:
+     * يشير إلى الفاتورة وإلى الضريبة المعدَّلة).
+     */
+    private static function forNote(CustomerCreditNote|CustomerDebitNote $note, string $title, string $kind): array
+    {
         $invoice = $note->invoice;
         $cur = self::currency($note->business_id, $note);
 
@@ -703,8 +727,11 @@ class DocumentPaper
 
         $totals[] = ['label' => 'إجمالي الإشعار', 'value' => self::money($note->amount, $cur), 'grand' => true];
 
+        $basis = $note->basis ? __(CustomerInvoiceEdits::BASIS_LABELS[$note->basis] ?? $note->basis) : null;
+
         return [
-            'title' => __('إشعار دائن'),
+            'title' => $title,
+            'kind' => $kind,
             'number' => (string) $note->number,
             'status' => '',
             'date' => optional($note->issued_at)->format('Y-m-d'),
@@ -720,7 +747,9 @@ class DocumentPaper
              */
             'meta' => array_values(array_filter([
                 ['label' => 'الفاتورة الأصلية', 'value' => (string) (optional($invoice)->number ?? '')],
+                ['label' => 'تاريخ الفاتورة الأصلية', 'value' => (string) (optional(optional($invoice)->issued_at)->format('Y-m-d') ?? '')],
                 ['label' => 'تاريخ الإشعار', 'value' => optional($note->issued_at)->format('Y-m-d')],
+                ['label' => 'أساس التصحيح', 'value' => (string) ($basis ?? '')],
             ], fn (array $r) => filled($r['value']))),
             'parties' => [[
                 'cap' => 'العميل',
@@ -732,10 +761,46 @@ class DocumentPaper
                     optional($invoice)->customer_address,
                 ])),
             ]],
-            'items' => [],
+            'items' => collect($note->items ?? [])->map(fn (array $l) => [
+                'name' => (string) ($l['description'] ?? ''),
+                'note' => self::noteChange($l, $cur),
+                'qty' => self::qty(abs((float) ($l['quantity_after'] ?? 0) - (float) ($l['quantity_before'] ?? 0)) ?: (float) ($l['quantity_after'] ?? $l['quantity_before'] ?? 0)),
+                'unit' => self::money((float) ($l['taxable'] ?? 0), $cur),
+                'total' => self::money((float) ($l['total'] ?? 0), $cur),
+            ])->values()->all(),
             'totals' => $totals,
             'notes' => (string) ($note->reason ?? ''),
         ];
+    }
+
+    /** ما تغيّر في البند كما يُقرأ تحت اسمه — والضريبةُ بنسبتها ومبلغها */
+    private static function noteChange(array $line, array $cur): string
+    {
+        $parts = [];
+        $change = $line['change'] ?? 'changed';
+
+        if ($change === 'added') {
+            $parts[] = __('بند مضاف');
+        } elseif ($change === 'removed') {
+            $parts[] = __('بند محذوف');
+        }
+
+        if (($line['quantity_before'] ?? null) !== null && ($line['quantity_after'] ?? null) !== null
+            && abs((float) $line['quantity_before'] - (float) $line['quantity_after']) >= 0.0005) {
+            $parts[] = __('الكمية').' '.self::qty($line['quantity_before']).' ← '.self::qty($line['quantity_after']);
+        }
+        if (($line['unit_price_before'] ?? null) !== null && ($line['unit_price_after'] ?? null) !== null
+            && abs((float) $line['unit_price_before'] - (float) $line['unit_price_after']) >= 0.0005) {
+            $parts[] = __('السعر').' '.self::money($line['unit_price_before'], $cur).' ← '.self::money($line['unit_price_after'], $cur);
+        }
+        if (($line['discount_before'] ?? null) !== null && ($line['discount_after'] ?? null) !== null
+            && abs((float) $line['discount_before'] - (float) $line['discount_after']) >= 0.0005) {
+            $parts[] = __('الخصم').' '.self::money($line['discount_before'], $cur).' ← '.self::money($line['discount_after'], $cur);
+        }
+
+        $parts[] = __('الضريبة').' '.rtrim(rtrim(number_format((float) ($line['tax_rate'] ?? 0), 3, '.', ''), '0'), '.').'%: '.self::money((float) ($line['tax'] ?? 0), $cur);
+
+        return implode(' · ', $parts);
     }
 
     /**

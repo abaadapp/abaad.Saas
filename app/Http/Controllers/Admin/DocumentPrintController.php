@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerDebitNote;
 use App\Models\CustomerPayment;
 use App\Models\GoodsReceiptNote;
 use App\Models\Order;
@@ -110,6 +111,26 @@ class DocumentPrintController extends Controller
             DocumentRenderer::generic($bid, 'credit_note', DocumentPaper::forCreditNote($note)),
             'credit-note-'.$note->number,
             __('إشعار دائن').' '.$note->number,
+        );
+    }
+
+    /**
+     * إشعار مدين — ورقةُ ما زاد على فاتورةٍ صدرت، بقالب الإشعار الدائن وعنوانه.
+     *
+     * والقيدُ على `business_id` كأخيه: رقمٌ مُخمَّن في العنوان لا يفتح إشعارَ جار.
+     */
+    public function debitNote(int $note)
+    {
+        $bid = $this->bid();
+        $note = CustomerDebitNote::where('business_id', $bid)->whereKey($note)
+            ->with('invoice')->firstOrFail();
+
+        Activity::log('report', 'طبع إشعار مدين: '.$note->number, ['subject_id' => $note->id]);
+
+        return DocumentRenderer::pdf(
+            DocumentRenderer::generic($bid, 'credit_note', DocumentPaper::forDebitNote($note)),
+            'debit-note-'.$note->number,
+            __('إشعار مدين').' '.$note->number,
         );
     }
 

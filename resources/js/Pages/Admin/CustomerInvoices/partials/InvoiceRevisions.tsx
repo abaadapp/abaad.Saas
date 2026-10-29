@@ -1,13 +1,24 @@
 import { useState } from 'react';
 import { ChevronDown, History } from 'lucide-react';
+import SmartLink from '@/Components/SmartLink';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+
+/** مستندُ تصحيحٍ أصدره تعديل — يُفتح وحده */
+export interface RevisionDocument {
+    kind: 'credit' | 'debit';
+    number: string;
+    amount: number;
+    url: string;
+}
 
 /** تعديلٌ واحد كما يرسله الخادم — `CustomerInvoiceController::revisionsOf` */
 export interface InvoiceRevision {
     revision: number;
     kind: 'draft' | 'issued' | 'paid';
+    /** أساسُ التصحيح بعد الإصدار مقروءًا — و`null` للمسودّة */
+    basis: string | null;
     reason: string | null;
     at: string | null;
     by: string | null;
@@ -16,12 +27,6 @@ export interface InvoiceRevision {
     tax_before: number;
     tax_after: number;
     paid_at_edit: number;
-    /** same · current · original — و`null` حين لم يتغيّر قيد */
-    period_mode: string | null;
-    reversal_date: string | null;
-    entry_date: string | null;
-    reversal_entry_id: number | null;
-    entry_id: number | null;
     fields: { field: string; label: string; before: string | null; after: string | null }[];
     lines: {
         change: 'added' | 'removed' | 'changed';
@@ -29,13 +34,15 @@ export interface InvoiceRevision {
         after: { description: string; quantity: number; unit_price: number } | null;
     }[];
     customer_credit: number;
+    documents: RevisionDocument[];
 }
 
 /**
- * سجلُّ تعديلات الفاتورة — ما كانت عليه، ومن غيّرها، ومتى، ولماذا.
+ * سجلُّ تعديلات الفاتورة وتصحيحاتها — ما كانت عليه، ومن غيّرها، ومتى، ولماذا، وبأيّ مستند.
  *
  * يُرسم لمن يُمنح قراءته وحده (`customerInvoice.history`)، ولا مقبضَ فيه
- * يحذف أو يعدّل: السجلُّ يُكتب مرّةً (`CustomerInvoiceRevision`).
+ * يحذف أو يعدّل: السجلُّ يُكتب مرّةً (`CustomerInvoiceRevision`). والمبلغان
+ * مبلغُ ما على الورقة قبل التصحيح وبعده — والفاتورةُ نفسُها كما صدرت.
  */
 export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceRevision[]; m: (v: number) => string }) {
     const t = useTranslate();
@@ -45,18 +52,13 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
         return null;
     }
 
-    const kind: Record<string, string> = { draft: t('مسودة'), issued: t('صادرة'), paid: t('مدفوعة') };
-    const period: Record<string, string> = {
-        same: t('بتاريخ القيد في شهره'),
-        current: t('في الفترة الحالية'),
-        original: t('بتاريخ القيد الأصلي'),
-    };
+    const kind: Record<string, string> = { draft: t('تعديل مسودة'), issued: t('تصحيح'), paid: t('تصحيح بعد الدفع') };
 
     return (
         <Card className="p-4" data-testid="invoice-revisions">
             <h2 className="mb-3 flex items-center gap-2 font-bold text-[#111]">
                 <History className="size-4" />
-                {t('سجل التعديلات')}
+                {t('سجل التعديلات والتصحيحات')}
             </h2>
             <ul className="space-y-2 text-[13px]">
                 {revisions.map((r) => (
@@ -68,7 +70,8 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                             aria-expanded={open === r.revision}
                         >
                             <span className="font-semibold">
-                                {t('التعديل')} {r.revision} — {kind[r.kind] ?? r.kind}
+                                {kind[r.kind] ?? r.kind} {r.revision}
+                                {r.basis && <span className="ms-1 font-normal text-[#6b7280]">— {r.basis}</span>}
                             </span>
                             <span className="flex items-center gap-2 text-[12px] text-[#6b7280]">
                                 <bdi>{r.by ?? '—'}</bdi>
@@ -82,6 +85,21 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                         {r.reason && (
                             <p className="px-3 pb-2 text-[12px] text-[#4b4b4b]">
                                 {t('السبب')}: <bdi>{r.reason}</bdi>
+                            </p>
+                        )}
+                        {r.documents.length > 0 && (
+                            <p className="flex flex-wrap gap-3 px-3 pb-2 text-[12px]" data-testid="invoice-revision-documents">
+                                {r.documents.map((d) => (
+                                    <SmartLink
+                                        key={d.number}
+                                        routeName={d.kind === 'debit' ? 'admin.customerInvoices.debitNotes.show' : 'admin.customerInvoices.creditNotes.show'}
+                                        href={d.url}
+                                        className="font-mono text-[#6d28d9] hover:underline"
+                                    >
+                                        {d.kind === 'debit' ? t('إشعار مدين') : t('إشعار دائن')} {d.number} ({d.kind === 'debit' ? '+' : '−'}
+                                        {m(d.amount)})
+                                    </SmartLink>
+                                ))}
                             </p>
                         )}
                         {open === r.revision && (
@@ -116,12 +134,6 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                                 {r.customer_credit > 0 && (
                                     <p>
                                         <span className="font-medium">{t('صار رصيدًا دائنًا للعميل')}:</span> {m(r.customer_credit)}
-                                    </p>
-                                )}
-                                {r.period_mode && (
-                                    <p data-testid="invoice-revision-ledger">
-                                        <span className="font-medium">{t('الدفتر')}:</span> {period[r.period_mode] ?? r.period_mode} —{' '}
-                                        {t('عكس')} <span dir="ltr">{r.reversal_date}</span>، {t('ترحيل')} <span dir="ltr">{r.entry_date}</span>
                                     </p>
                                 )}
                             </div>

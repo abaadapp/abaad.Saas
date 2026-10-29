@@ -15,6 +15,8 @@ import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
 interface Props {
+    /** دائنٌ يُنقص أو مدينٌ يزيد — والصفحةُ واحدةٌ لمستندَي التصحيح */
+    kind?: 'credit' | 'debit';
     note: {
         id: number;
         number: string;
@@ -45,9 +47,10 @@ interface Props {
  * يراجعه يطرح بيده ليعرف كم رُدّ من الضريبة.
  */
 export default function CreditNoteShow() {
-    const { note, invoice, paper, context } = usePage<PageProps<Props>>().props;
+    const { kind = 'credit', note, invoice, paper, context } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
+    const title = kind === 'debit' ? t('إشعار مدين') : t('إشعار دائن');
 
     const [previewing, setPreviewing] = useState(false);
 
@@ -61,7 +64,7 @@ export default function CreditNoteShow() {
 
             <PageHeader
                 title={note.number}
-                subtitle={`${t('إشعار دائن')}${invoice?.customer ? ` — ${invoice.customer}` : ''}`}
+                subtitle={`${title}${invoice?.customer ? ` — ${invoice.customer}` : ''}`}
                 actions={
                     <Button variant="outline" className="xl:hidden" onClick={() => setPreviewing(true)}>
                         <FileText />
@@ -119,7 +122,9 @@ export default function CreditNoteShow() {
                             وتبقى الورقةُ التي في يد الجهة كما صدرت.
                         */}
                         <p className="mt-4 text-[12px] leading-relaxed text-[#9ca3af]">
-                            {t('يُنقص هذا المبلغُ ما على الجهة — ولا يُعيد كتابة الفاتورة الأصلية.')}
+                            {kind === 'debit'
+                                ? t('يُزاد هذا المبلغُ على ما على الجهة — ولا يُعيد كتابة الفاتورة الأصلية.')
+                                : t('يُنقص هذا المبلغُ ما على الجهة — ولا يُعيد كتابة الفاتورة الأصلية.')}
                         </p>
                     </Card>
                 </div>
@@ -130,7 +135,7 @@ export default function CreditNoteShow() {
                         size={paper.size}
                         url={paper.url}
                         filename={`${note.number}.pdf`}
-                        label={`${t('إشعار دائن')} ${note.number}`}
+                        label={`${title} ${note.number}`}
                         open={previewing}
                         onOpenChange={setPreviewing}
                     />

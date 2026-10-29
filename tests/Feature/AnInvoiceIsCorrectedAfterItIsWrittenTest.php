@@ -2,13 +2,15 @@
 
 namespace Tests\Feature;
 
-use App\Exceptions\ClosedPeriod;
 use App\Models\Addon;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\CustomerCreditNote;
+use App\Models\CustomerDebitNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceItem;
+use App\Models\CustomerInvoicePreparation;
 use App\Models\CustomerInvoiceRevision;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
@@ -20,8 +22,11 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Books;
 use App\Support\BooksPeriod;
+use App\Support\CustomerInvoiceEdits;
+use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
+use App\Support\CustomerPurchases;
 use App\Support\Ledger;
 use App\Support\Permissions;
 use App\Support\Receivables;
@@ -33,18 +38,20 @@ use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
- * فاتورةُ العميل تُعدَّل بعد كتابتها — مسودّةً وصادرةً ومدفوعة — ولا يضيع شيء.
+ * تعديلُ فاتورة العميل وتصحيحُها — المسودّةُ تُعدَّل، والصادرةُ تُصحَّح بمستند.
  *
- * ═══ ما يُحرس هنا ═══
+ * ═══ ما يُحرس ═══
  *
- *   - المسودّةُ تُعدَّل بلا قيد، والصادرةُ يُعكس قيدُها ويُرحَّل قيدٌ بالمبلغ الجديد.
- *   - المدفوعةُ: المقبوضُ لا يُمسّ — الزيادةُ باقٍ على العميل، والنقصُ رصيدٌ دائنٌ له.
- *   - الفترةُ المقفلة لا تُكتب: التصحيحُ في الفترة الحاليّة، وتقريرُها كما أُعلن.
- *   - المولودةُ من طلبٍ لا تُعدَّل بنودُها ولا يتحرّك مخزونُها.
- *   - الإقرارُ والمبيعاتُ والذممُ والدفترُ برقمٍ واحد بعد التعديل.
- *   - الصلاحيةُ بحال الورقة، ومتجرٌ لا يبلغ ورقةَ غيره.
- *   - النموذجُ يُحفظ مرّةً، والتعديلُ المتزامنُ لا يمحو ما سبقه.
- *   - والتاجرُ الجديدُ يجد هذا كلَّه بلا إعداد.
+ *   - الفاتورةُ الصادرة كما صدرت: رقمُها وتاريخُها وبنودُها ومجاميعُها وقيدُها
+ *     وورقتُها — ولو صُحّحت مرّاتٍ ودُفعت كلُّها (م١٥٧(١) من اللائحة).
+ *   - ما نقص إشعارٌ دائن، وما زاد إشعارٌ مدين: لكلٍّ رقمُه وتسلسلُه وتاريخُه
+ *     وبنودُه وقيدُه في يومه، ويشير إلى الفاتورة (م٤٨ و٥٠ و١٥٥).
+ *   - المقبوضُ لا يُمسّ: الزيادةُ باقٍ على العميل، والنقصُ عمّا قُبض رصيدٌ له،
+ *     ولا يُردّ مالٌ ولا يُفعَّل رابطٌ قديم ولا تتكرّر مهمّةُ تجهيز.
+ *   - لا إيرادَ ولا ضريبةَ مرّتين، والإقرارُ والسجلُّ وكشفُ الحساب يقرؤون المستندات.
+ *   - ما لم يُحسم حكمُه الضريبيّ يُمنع: الفترةُ المُقرّة، والإرجاعُ بعد ثلاثة أشهر،
+ *     وتغييرُ الوصف أو النسبة أو بيانات الفاتورة المطبوعة.
+ *   - الصلاحياتُ بحال الورقة، وعزلُ المتاجر، والنموذجُ المكرّر، والنسخةُ القديمة.
  */
 class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
 {
@@ -109,17 +116,29 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         return CustomerInvoices::issue($invoice, $this->owner->id);
     }
 
-    private function pay(CustomerInvoice $invoice, float $amount, string $on = '2025-09-12'): CustomerPayment
+    private function pay(CustomerInvoice $invoice, float $amount, string $on = '2025-09-12', string $method = 'نقدي'): CustomerPayment
     {
         return CustomerPayments::record($this->shop->id, $this->ministry, $amount, [
-            'method' => 'نقدي', 'occurred_at' => $on,
+            'method' => $method, 'occurred_at' => $on,
         ], [$invoice->id => $amount], $this->owner->id);
     }
 
-    /** النموذجُ كما تُرسله الشاشة: البنودُ القائمةُ بمعرّفاتها — وما يُبدَّل فوقه */
+    /**
+     * النموذجُ كما تُرسله الشاشة — والبنودُ كما تعرضها: من حال الورقة بعد آخر
+     * تصحيح (`CustomerInvoiceEdits::state`) لصادرة، ومن صفوفها لمسودّة.
+     */
     private function form(CustomerInvoice $invoice, array $over = [], ?array $items = null): array
     {
         $invoice = $invoice->fresh('items');
+        $lines = $invoice->status === CustomerInvoice::DRAFT
+            ? $invoice->items->map(fn ($i) => [
+                'item_id' => $i->id, 'description' => $i->description, 'quantity' => (float) $i->quantity,
+                'unit_price' => (float) $i->unit_price, 'discount' => (float) $i->discount, 'tax_rate' => (float) $i->tax_rate,
+            ])->all()
+            : array_map(fn ($l) => [
+                'key' => $l['key'], 'description' => $l['description'], 'quantity' => (float) $l['quantity'],
+                'unit_price' => (float) $l['unit_price'], 'discount' => (float) $l['discount'], 'tax_rate' => (float) $l['tax_rate'],
+            ], CustomerInvoiceEdits::state($invoice)['lines']);
 
         return array_merge([
             'expected_revision' => (int) $invoice->revision,
@@ -130,19 +149,18 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
             'payment_terms_days' => $invoice->payment_terms_days,
             'branch_id' => $invoice->branch_id,
             'notes' => $invoice->notes,
+            'internal_notes' => $invoice->internal_notes,
             'reason' => 'تصحيح الكمية حسب أمر الشراء',
-            'items' => $items ?? $invoice->items->map(fn ($i) => [
-                'item_id' => $i->id, 'description' => $i->description, 'quantity' => (float) $i->quantity,
-                'unit_price' => (float) $i->unit_price, 'discount' => (float) $i->discount, 'tax_rate' => (float) $i->tax_rate,
-            ])->all(),
+            'basis' => CustomerInvoiceRevision::ERROR,
+            'items' => $items ?? $lines,
         ], $over);
     }
 
-    /** البندُ الأوّل بكمّيّةٍ أخرى */
-    private function withQuantity(CustomerInvoice $invoice, float $qty, array $over = []): array
+    /** البندُ الأوّل بكمّيّةٍ أو سعرٍ آخر */
+    private function withLine(CustomerInvoice $invoice, array $line, array $over = []): array
     {
         $form = $this->form($invoice, $over);
-        $form['items'][0]['quantity'] = $qty;
+        $form['items'][0] = array_merge($form['items'][0], $line);
 
         return $form;
     }
@@ -167,241 +185,278 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         ];
     }
 
-    private function entries(CustomerInvoice $invoice)
+    /** الفاتورةُ كما صدرت — رأسًا وبنودًا ومالًا وقيدًا */
+    private function asIssued(CustomerInvoice $invoice): array
     {
-        return JournalEntry::where('business_id', $this->shop->id)
-            ->where('sourceable_type', CustomerInvoice::class)->where('sourceable_id', $invoice->id)
-            ->orderBy('id')->get();
+        $invoice = $invoice->fresh('items');
+
+        return [
+            'head' => [$invoice->number, $invoice->status, $invoice->issued_at->toDateString(), (int) $invoice->customer_id, $invoice->customer_name],
+            'money' => [(float) $invoice->subtotal, (float) $invoice->discount_total, (float) $invoice->tax_total, (float) $invoice->total],
+            'items' => $invoice->items->map(fn ($i) => [$i->id, $i->description, (float) $i->quantity, (float) $i->unit_price, (float) $i->discount, (float) $i->tax_rate, (float) $i->tax_amount, (float) $i->line_total])->all(),
+            'entries' => JournalEntry::where('business_id', $this->shop->id)->where('sourceable_type', CustomerInvoice::class)
+                ->where('sourceable_id', $invoice->id)->get(['id', 'entry_date', 'reversed_at', 'reverses_id'])
+                ->map(fn ($e) => [$e->id, Carbon::parse($e->entry_date)->toDateString(), $e->reversed_at, $e->reverses_id])->all(),
+        ];
     }
 
     /* ═══════════ ١ · المسودّة ═══════════ */
 
-    public function test_a_draft_is_rewritten_with_no_entry_and_its_history_kept(): void
+    public function test_a_draft_is_rewritten_with_no_entry_no_document_and_its_history_kept(): void
     {
         $draft = CustomerInvoices::create($this->shop->id, $this->ministry, ['issued_at' => '2025-09-10'], [
-            ['description' => 'عرض سعر', 'quantity' => 1, 'unit_price' => 100],
+            ['description' => 'عرض', 'quantity' => 1, 'unit_price' => 10],
         ], $this->owner->id);
+        $other = Customer::create(['business_id' => $this->shop->id, 'name' => 'وزارة الصحة', 'phone' => '92222222', 'allow_credit_sales' => true]);
 
-        $form = $this->withQuantity($draft, 3, ['reason' => null, 'notes' => 'يُسلَّم صباحًا']);
-        $form['items'][] = ['description' => 'تغليف', 'quantity' => 1, 'unit_price' => 10];
-
-        $this->edit($draft, $form)->assertRedirect(route('admin.customerInvoices.show', $draft->id))->assertSessionHasNoErrors();
+        $form = $this->withLine($draft, ['quantity' => 3, 'unit_price' => 20, 'discount' => 5], ['reason' => null, 'basis' => null, 'customer_id' => $other->id, 'issued_at' => '2025-09-15']);
+        $this->edit($draft, $form)->assertSessionHasNoErrors();
 
         $draft->refresh();
         $this->assertSame(CustomerInvoice::DRAFT, $draft->status);
-        $this->assertNull($draft->number, 'المسودّةُ لا تأخذ رقمًا بتعديلها');
-        $this->assertEquals(325.5, (float) $draft->total);
-        $this->assertSame('يُسلَّم صباحًا', $draft->notes);
-        $this->assertCount(2, $draft->items);
-        $this->assertSame(0, $this->entries($draft)->count(), 'المسودّةُ لا قيد لها ولو عُدّلت');
-
-        $rev = $draft->revisions()->first();
-        $this->assertSame(CustomerInvoiceRevision::DRAFT, $rev->kind);
-        $this->assertSame(1, (int) $draft->revision);
-        $this->assertEquals(105.0, (float) $rev->total_before);
-        $this->assertEquals(325.5, (float) $rev->total_after);
+        $this->assertNull($draft->number, 'المسودّةُ لا رقمَ ضريبيّ لها بعد');
+        $this->assertSame('وزارة الصحة', $draft->customer_name);
+        $this->assertSame('2025-09-15', $draft->issued_at->toDateString());
+        $this->assertEquals(57.75, (float) $draft->total); // (60 − 5) × 1.05
+        $this->assertSame(0, JournalEntry::where('business_id', $this->shop->id)->count());
+        $this->assertSame(0, CustomerCreditNote::count() + CustomerDebitNote::count());
+        $this->assertSame(CustomerInvoiceRevision::DRAFT, $draft->revisions()->first()->kind);
     }
 
-    /* ═══════════ ٢ · الصادرة في شهرٍ مفتوح ═══════════ */
+    /* ═══════════ ٢ · الصادرة: الفاتورةُ كما صدرت، والتصحيحُ مستند ═══════════ */
 
-    public function test_an_issued_invoice_in_an_open_month_is_reversed_and_posted_again_on_its_own_day(): void
+    public function test_lowering_an_issued_invoice_issues_a_credit_note_and_leaves_the_invoice_as_issued(): void
     {
-        $invoice = $this->issued('2025-09-10', 2, 50); // 100 + 5
-        $number = $invoice->number;
+        $invoice = $this->issued('2025-09-10', 2, 50); // 100 + 5 = 105
+        $before = $this->asIssued($invoice);
 
-        $this->edit($invoice, $this->withQuantity($invoice, 3))->assertSessionHasNoErrors();
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1]))->assertSessionHasNoErrors()
+            ->assertSessionHas('toast.msg', fn ($m) => str_contains($m, 'CN-000001'));
 
+        // الفاتورةُ نفسُها: رقمُها وتاريخُها وبنودُها ومالُها وقيدُها كما صدرت — لا عكسَ ولا ترحيل
+        $this->assertSame($before, $this->asIssued($invoice));
+
+        $note = CustomerCreditNote::sole();
+        $this->assertSame('CN-000001', $note->number);
+        $this->assertSame('2025-09-20', $note->issued_at->toDateString());
+        $this->assertSame((int) $invoice->id, (int) $note->customer_invoice_id);
+        $this->assertEquals(52.5, (float) $note->amount);
+        $this->assertEquals(2.5, (float) $note->tax_amount);
+        $this->assertSame(CustomerInvoiceRevision::ERROR, $note->basis);
+        $this->assertSame('تصحيح الكمية حسب أمر الشراء', $note->reason);
+        $this->assertNotNull($note->revision_id);
+        $this->assertEquals([[
+            'key' => 'i'.$invoice->items()->first()->id, 'change' => 'changed', 'description' => 'توريد زهور',
+            'quantity_before' => 2.0, 'quantity_after' => 1.0, 'unit_price_before' => 50.0, 'unit_price_after' => 50.0,
+            'discount_before' => 0.0, 'discount_after' => 0.0, 'tax_rate' => 5.0, 'taxable' => 50.0, 'tax' => 2.5, 'total' => 52.5,
+        ]], $note->items);
+
+        // قيدُ الإشعار في يومه، والذمّةُ والمطلوبُ بعده
         $invoice->refresh();
-        $this->assertSame($number, $invoice->number, 'رقمُ الورقة الصادرة لا يتغيّر');
-        $this->assertEquals(157.5, (float) $invoice->total);
-        $this->assertEquals(7.5, (float) $invoice->tax_total);
-
-        // القيدُ الأوّل باقٍ معكوسًا، والعكسُ والجديدُ بيوم الورقة — لا حذفَ ولا إعادةُ تأريخ
-        [$first, $reversal, $fresh] = $this->entries($invoice)->all();
-        $this->assertNotNull($first->fresh()->reversed_at);
-        $this->assertSame($first->id, $reversal->reverses_id);
-        $this->assertSame('2025-09-10', Carbon::parse($reversal->entry_date)->toDateString());
-        $this->assertSame('2025-09-10', Carbon::parse($fresh->entry_date)->toDateString());
-        $this->assertEquals(157.5, (float) $fresh->lines()->sum('debit'));
-
-        // الإيرادُ مرّةً: الإقرارُ والدفترُ برقم الورقة الجديد
-        $this->assertEquals(150.0, $this->vat()['taxable']);
-        $this->assertEquals(7.5, $this->vat()['output']);
-        $this->assertSame(['net' => 150.0, 'tax' => 7.5], $this->ledger());
-        $this->assertEquals(157.5, StandaloneInvoiceSales::total($this->shop->id, Carbon::parse('2025-09-01'), Carbon::parse('2025-10-01')));
-
-        // والذمّةُ تتبع، والدفترُ يطابقها
-        $this->assertEquals(157.5, $invoice->outstanding());
+        $this->assertEquals(52.5, $invoice->effectiveTotal());
+        $this->assertEquals(52.5, $invoice->outstanding());
+        $this->assertSame(['net' => 50.0, 'tax' => 2.5], $this->ledger());
+        $this->assertEquals(2.5, $this->vat()['output']);
         $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
-
-        $rev = $invoice->revisions()->first();
-        $this->assertSame(CustomerInvoiceRevision::ISSUED, $rev->kind);
-        $this->assertSame($reversal->id, $rev->reversal_entry_id);
-        $this->assertSame($fresh->id, $rev->entry_id);
-        $this->assertSame('same', $rev->period_mode);
-        $this->assertSame('تصحيح الكمية حسب أمر الشراء', $rev->reason);
-        $this->assertEquals(105.0, (float) $rev->before['total']);
-        $this->assertEquals(157.5, (float) $rev->after['total']);
     }
 
-    public function test_an_issued_invoice_needs_a_reason(): void
+    public function test_raising_an_issued_invoice_issues_a_debit_note_with_its_own_sequence(): void
     {
         $invoice = $this->issued('2025-09-10', 2, 50);
+        $before = $this->asIssued($invoice);
 
-        $this->edit($invoice, $this->withQuantity($invoice, 3, ['reason' => '']))->assertSessionHasErrors('reason');
-        $this->assertEquals(105.0, (float) $invoice->fresh()->total);
-        $this->assertSame(1, $this->entries($invoice)->count());
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 3]))->assertSessionHasNoErrors();
+        $second = $this->issued('2025-09-11', 1, 10);
+        $this->edit($second, $this->withLine($second, ['unit_price' => 30]))->assertSessionHasNoErrors();
+
+        $this->assertSame($before, $this->asIssued($invoice));
+        $this->assertSame(['DN-000001', 'DN-000002'], CustomerDebitNote::orderBy('id')->pluck('number')->all(), 'تسلسلٌ للإشعارات المدينة مستقلٌّ عن الفواتير والدائنة');
+
+        $note = CustomerDebitNote::where('customer_invoice_id', $invoice->id)->sole();
+        $this->assertEquals(52.5, (float) $note->amount);
+        $this->assertEquals(2.5, (float) $note->tax_amount);
+        $entry = JournalEntry::where('sourceable_type', CustomerDebitNote::class)->where('sourceable_id', $note->id)->sole();
+        $this->assertSame(CustomerInvoices::SOURCE_DEBIT, $entry->source);
+        $this->assertSame('2025-09-20', Carbon::parse($entry->entry_date)->toDateString());
+
+        $this->assertEquals(157.5, $invoice->fresh()->outstanding());
+        $this->assertSame(['net' => 180.0, 'tax' => 9.0], $this->ledger()); // 100 + 50 + 10 + 20
+        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
+
+        // وإشعارٌ مدينٌ لا يُعدَّل ولا يُحذف
+        try {
+            $note->update(['amount' => 1]);
+            $this->fail('الإشعار المدين عُدّل');
+        } catch (\LogicException) {
+        }
+        $this->assertEquals(52.5, (float) $note->fresh()->amount);
     }
 
-    public function test_the_sales_report_reads_the_corrected_amount_once(): void
+    public function test_one_line_down_and_a_new_line_up_issue_both_documents_never_netted(): void
     {
         $invoice = $this->issued('2025-09-10', 2, 50);
-        $this->edit($invoice, $this->withQuantity($invoice, 4))->assertSessionHasNoErrors();
-
-        $screen = $this->get(route('admin.reports.sales', ['period' => 'month', 'month' => '2025-09']))
-            ->assertOk()->viewData('page')['props'];
-
-        $this->assertEquals(210.0, $screen['summary']['sales']);
-        $this->assertEquals(200.0, $screen['summary']['net_revenue']);
-        $this->assertEquals(10.0, $screen['summary']['tax']);
-    }
-
-    /* ═══════════ ٣ · المدفوعة ═══════════ */
-
-    public function test_raising_a_fully_paid_invoice_leaves_the_receipt_and_owes_the_difference(): void
-    {
-        $invoice = $this->issued('2025-09-10', 1, 100); // 105
-        $receipt = $this->pay($invoice, 105);
-        $this->assertSame('مدفوعة', $invoice->fresh()->paymentState());
-
-        $this->edit($invoice, $this->withQuantity($invoice, 2))->assertSessionHasNoErrors(); // 210
-
-        $invoice->refresh();
-        $this->assertEquals(210.0, (float) $invoice->total);
-        $this->assertEquals(105.0, $invoice->paidTotal(), 'المقبوضُ كما قُبض');
-        $this->assertEquals(105.0, $invoice->outstanding(), 'الفرقُ باقٍ على العميل');
-        $this->assertSame('مدفوعة جزئيًا', $invoice->paymentState());
-        $this->assertEquals(105.0, (float) $receipt->fresh()->amount, 'سندُ القبض لا يُعدَّل');
-        $this->assertNull($receipt->fresh()->cancelled_at);
-        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
-        $this->assertSame(CustomerInvoiceRevision::PAID, $invoice->revisions()->first()->kind);
-    }
-
-    public function test_lowering_a_paid_invoice_turns_the_excess_into_customer_credit_and_refunds_nothing(): void
-    {
-        $invoice = $this->issued('2025-09-10', 1, 100); // 105
-        $this->pay($invoice, 105);
-        $cash = Ledger::balance($this->shop->id, 'cash');
-
         $form = $this->form($invoice);
-        $form['items'][0]['unit_price'] = 80; // 84
+        $form['items'][0]['quantity'] = 1;
+        $form['items'][] = ['description' => 'تغليف فاخر', 'quantity' => 1, 'unit_price' => 30];
 
         $this->edit($invoice, $form)->assertSessionHasNoErrors();
 
-        $invoice->refresh();
-        $this->assertEquals(84.0, (float) $invoice->total);
-        $this->assertEquals(0.0, $invoice->outstanding());
-        $this->assertEquals(21.0, Receivables::customerCredit($this->shop->id, $this->ministry->id), 'الفائضُ رصيدٌ دائنٌ للعميل');
-        $this->assertEquals($cash, Ledger::balance($this->shop->id, 'cash'), 'لا مالَ يخرج من الصندوق تلقائيًّا');
-        $this->assertSame(1, CustomerPayment::where('business_id', $this->shop->id)->count());
-        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
-        $this->assertEquals(21.0, (float) $invoice->revisions()->first()->changes['money']['customer_credit']);
+        $credit = CustomerCreditNote::sole();
+        $debit = CustomerDebitNote::sole();
+        $this->assertEquals(52.5, (float) $credit->amount);
+        $this->assertEquals(31.5, (float) $debit->amount);
+        $this->assertSame((int) $credit->revision_id, (int) $debit->revision_id, 'مستندا تصحيحٍ واحد');
+        $this->assertSame('added', $debit->items[0]['change']);
+        $this->assertEquals(84.0, $invoice->fresh()->effectiveTotal()); // 105 − 52.5 + 31.5
+        $this->assertSame(['net' => 80.0, 'tax' => 4.0], $this->ledger());
     }
 
-    public function test_a_paid_invoice_needs_its_own_permission(): void
+    public function test_corrections_chain_from_the_last_state_not_from_the_invoice(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50); // 105
+
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1]))->assertSessionHasNoErrors(); // −52.5
+        $this->edit($invoice, $this->withLine($invoice->fresh(), ['unit_price' => 70]))->assertSessionHasNoErrors(); // 1 × 70 → +21
+
+        $invoice->refresh();
+        $this->assertSame(2, (int) $invoice->revision);
+        $this->assertEquals(105.0, (float) $invoice->total, 'الفاتورةُ بمبلغها كما صدرت');
+        $this->assertEquals(73.5, $invoice->effectiveTotal());
+        $this->assertSame([52.5], CustomerCreditNote::pluck('amount')->map(fn ($a) => (float) $a)->all());
+        $this->assertSame([21.0], CustomerDebitNote::pluck('amount')->map(fn ($a) => (float) $a)->all());
+
+        $state = CustomerInvoiceEdits::state($invoice);
+        $this->assertEquals(73.5, $state['total']);
+        $this->assertEquals(1.0, $state['lines'][0]['quantity']);
+        $this->assertEquals(70.0, $state['lines'][0]['unit_price']);
+        // وبنودُ الحال تساوي الفاتورةَ والمستندات — لا إيرادَ مرّتين
+        $this->assertEquals($invoice->effectiveTotal(), $state['total']);
+        $this->assertSame(['net' => 70.0, 'tax' => 3.5], $this->ledger());
+    }
+
+    /* ═══════════ ٣ · بعد الدفع — مثالُ الخمسين ═══════════ */
+
+    public function test_a_paymob_paid_fifty_raised_to_fifty_five_owes_five_and_its_receipt_stays(): void
+    {
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'tax_mode'], ['value' => 'inclusive']);
+        $invoice = $this->issued('2025-09-10', 1, 50); // شاملة: 50
+        $this->assertEquals(50.0, (float) $invoice->total);
+        $payment = $this->pay($invoice, 50, method: 'Paymob');
+
+        $this->edit($invoice, $this->withLine($invoice, ['unit_price' => 55]))->assertSessionHasNoErrors();
+
+        $note = CustomerDebitNote::sole();
+        $this->assertEquals(5.0, (float) $note->amount);
+        $this->assertEquals(0.238, (float) $note->tax_amount); // 5 × 5 ÷ 105
+        $invoice->refresh();
+        $this->assertEquals(5.0, $invoice->outstanding(), 'الخمسةُ باقيةٌ على العميل');
+        $this->assertSame('مدفوعة جزئيًا', $invoice->paymentState());
+        $this->assertEquals(50.0, (float) $payment->fresh()->amount, 'سندُ القبض كما هو');
+        $this->assertEquals(50.0, $invoice->paidTotal());
+        $this->assertSame(1, CustomerPayment::count());
+        $this->assertEquals(50.0, (float) $invoice->total);
+    }
+
+    public function test_a_paymob_paid_fifty_lowered_to_forty_five_is_a_credit_balance_and_nothing_is_refunded(): void
+    {
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'tax_mode'], ['value' => 'inclusive']);
+        $invoice = $this->issued('2025-09-10', 1, 50);
+        $payment = $this->pay($invoice, 50, method: 'Paymob');
+
+        $this->edit($invoice, $this->withLine($invoice, ['unit_price' => 45]))->assertSessionHasNoErrors();
+
+        $note = CustomerCreditNote::sole();
+        $this->assertEquals(5.0, (float) $note->amount);
+        $invoice->refresh();
+        $this->assertEquals(0.0, $invoice->outstanding());
+        $this->assertSame('مدفوعة', $invoice->paymentState());
+        $this->assertEquals(5.0, Receivables::credit($this->shop->id, $this->ministry->id), 'رصيدٌ دائنٌ للعميل — لا ردّ تلقائيّ');
+        $this->assertEquals(50.0, (float) $payment->fresh()->amount);
+        $this->assertNull($payment->fresh()->cancelled_at);
+        $this->assertSame(1, CustomerPayment::count(), 'لا سندَ صرفٍ ولا ردّ');
+    }
+
+    public function test_a_partly_paid_invoice_keeps_what_was_collected(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50); // 105
+        $this->pay($invoice, 30);
+
+        $this->edit($invoice, $this->withLine($invoice, ['unit_price' => 40]))->assertSessionHasNoErrors(); // 84 → دائن 21
+
+        $invoice->refresh();
+        $this->assertEquals(30.0, $invoice->paidTotal());
+        $this->assertEquals(54.0, $invoice->outstanding());
+        $this->assertSame(CustomerInvoiceRevision::PAID, $invoice->revisions()->first()->kind);
+        $this->assertEquals(30.0, (float) $invoice->revisions()->first()->paid_at_edit);
+    }
+
+    public function test_a_paid_task_on_the_board_is_corrected_in_price_and_never_duplicated(): void
+    {
+        $this->shop->forceFill(['customer_invoice_preparation_enabled' => true])->save();
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        CustomerInvoicePreparations::save($invoice, [
+            'fulfillment_type' => 'pickup', 'branch_id' => $this->branch->id, 'scheduled_for' => '2025-09-21 16:00',
+            'recipient_name' => 'سالم', 'recipient_phone' => '91234567',
+        ], $this->owner->id);
+        $this->pay($invoice, 105, method: 'Paymob');
+        [$task] = CustomerInvoicePreparations::activate($invoice->id, CustomerInvoicePreparations::FROM_PAYMOB);
+
+        // الكمّيّةُ لا تتغيّر تحت من يجهّزها
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 3]))->assertSessionHasErrors('edit');
+        $this->assertSame(0, CustomerDebitNote::count());
+
+        // والسعرُ يُصحَّح — والمهمّةُ واحدةٌ كما كانت
+        $this->edit($invoice, $this->withLine($invoice, ['unit_price' => 45]))->assertSessionHasNoErrors();
+        $this->assertSame(1, CustomerInvoicePreparation::where('customer_invoice_id', $invoice->id)->count());
+        $this->assertSame(CustomerInvoicePreparations::FROM_PAYMOB, $task->fresh()->activation_source);
+        $this->assertSame($task->activated_at->toDateTimeString(), $task->fresh()->activated_at->toDateTimeString());
+    }
+
+    /* ═══════════ ٤ · ما يُمنع ═══════════ */
+
+    public function test_printed_invoice_details_never_change_after_issue(): void
     {
         $invoice = $this->issued('2025-09-10', 1, 100);
-        $this->pay($invoice, 50);
+        $other = Customer::create(['business_id' => $this->shop->id, 'name' => 'وزارة الصحة', 'phone' => '92222222', 'allow_credit_sales' => true]);
 
-        // يعدّل الصادرةَ ولا يملك المدفوعة
-        $clerk = $this->user('accountant', 'clerk@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]);
-        $this->actingAs($clerk);
+        foreach ([
+            ['customer_id' => $other->id],
+            ['issued_at' => '2025-09-12'],
+            ['notes' => 'ملاحظة للعميل بعد الإصدار'],
+            ['po_number' => 'PO-1'],
+        ] as $over) {
+            $this->edit($invoice, $this->form($invoice, $over))->assertSessionHasErrors('edit');
+        }
 
-        $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertForbidden();
-        $this->edit($invoice, $this->withQuantity($invoice, 2))->assertForbidden();
-        $this->assertEquals(105.0, (float) $invoice->fresh()->total);
+        $form = $this->form($invoice);
+        $form['items'][0]['description'] = 'وصف آخر';
+        $this->edit($invoice, $form)->assertSessionHasErrors('edit');
+
+        $form = $this->form($invoice);
+        $form['items'][0]['tax_rate'] = 0;
+        $this->edit($invoice, $form)->assertSessionHasErrors('edit');
+
+        $form = $this->form($invoice);
+        $form['items'][] = ['description' => 'بند معفى', 'quantity' => 1, 'unit_price' => 10, 'tax_rate' => 0];
+        $this->edit($invoice, $form)->assertSessionHasErrors('edit');
+
+        $this->assertSame(0, CustomerInvoiceRevision::count());
+
+        // وما لا يُطبع يُعدَّل في مكانه
+        $this->edit($invoice, $this->form($invoice, ['internal_notes' => 'تابع مع المشتريات']))->assertSessionHasNoErrors();
+        $this->assertSame('تابع مع المشتريات', $invoice->fresh()->internal_notes);
+        $this->assertSame(0, CustomerCreditNote::count() + CustomerDebitNote::count());
     }
 
-    /* ═══════════ ٤ · الفترةُ المقفلة ═══════════ */
-
-    public function test_a_closed_month_is_never_rewritten_and_its_correction_lands_in_the_current_period(): void
-    {
-        $invoice = $this->issued('2025-09-10', 2, 50); // 100 + 5
-        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => BooksPeriod::SETTING], ['value' => '2025-09-30']);
-        Carbon::setTestNow('2025-10-05 10:00:00');
-
-        // بلا اختيارٍ لموضع التصحيح لا يُكتب شيء
-        $this->edit($invoice, $this->withQuantity($invoice, 3))->assertSessionHasErrors('period_mode');
-        // وبتاريخ القيد الأصليّ في فترةٍ مقفلة: مردود
-        $this->edit($invoice, $this->withQuantity($invoice, 3, ['period_mode' => BooksPeriod::ORIGINAL]))->assertSessionHasErrors('period_mode');
-        // ولا تُنقل الورقةُ من فترةٍ مقفلة
-        $this->edit($invoice, $this->withQuantity($invoice, 3, ['period_mode' => BooksPeriod::CURRENT, 'issued_at' => '2025-10-05']))->assertSessionHasErrors('edit');
-        $this->assertSame(1, $this->entries($invoice)->count());
-
-        $this->edit($invoice, $this->withQuantity($invoice, 3, ['period_mode' => BooksPeriod::CURRENT]))->assertSessionHasNoErrors();
-
-        // سبتمبرُ كما أُعلن — والفرقُ في أكتوبر
-        $this->assertEquals(100.0, $this->vat('2025-09')['taxable']);
-        $this->assertEquals(5.0, $this->vat('2025-09')['output']);
-        $this->assertSame(['net' => 100.0, 'tax' => 5.0], $this->ledger('2025-09'));
-        $this->assertEquals(50.0, $this->vat('2025-10')['taxable']);
-        $this->assertEquals(2.5, $this->vat('2025-10')['output']);
-        $this->assertSame(['net' => 50.0, 'tax' => 2.5], $this->ledger('2025-10'));
-
-        [, $reversal, $fresh] = $this->entries($invoice)->all();
-        $this->assertSame('2025-10-05', Carbon::parse($reversal->entry_date)->toDateString());
-        $this->assertSame('2025-10-05', Carbon::parse($fresh->entry_date)->toDateString());
-        $this->assertStringContainsString('تصحيح الكمية حسب أمر الشراء', $fresh->description);
-
-        $invoice->refresh();
-        $this->assertSame('2025-09-10', $invoice->issued_at->toDateString(), 'تاريخُ الورقة في الفترة المقفلة باقٍ');
-        $rev = $invoice->revisions()->first();
-        $this->assertSame(BooksPeriod::CURRENT, $rev->period_mode);
-        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
-    }
-
-    public function test_the_ledger_itself_refuses_a_closed_date(): void
-    {
-        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => BooksPeriod::SETTING], ['value' => '2025-09-15']);
-
-        $this->expectException(ClosedPeriod::class);
-        Ledger::post($this->shop->id, 'قيدٌ في فترةٍ مقفلة', [
-            ['account' => 'receivable', 'debit' => 10],
-            ['account' => 'sales', 'credit' => 10],
-        ], Carbon::parse('2025-09-10'));
-    }
-
-    public function test_a_previous_month_needs_its_own_permission_and_a_choice(): void
+    public function test_a_correction_needs_a_reason_and_a_basis(): void
     {
         $invoice = $this->issued('2025-09-10', 2, 50);
-        Carbon::setTestNow('2025-10-05 10:00:00');
 
-        $clerk = $this->user('accountant', 'prior@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]);
-        $this->actingAs($clerk);
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1], ['reason' => '']))->assertSessionHasErrors('reason');
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1], ['basis' => null]))->assertSessionHasErrors('basis');
 
-        // يملك تعديلَ الصادرة — ولا يملك تصحيحَ فترةٍ سابقة
-        $this->edit($invoice, $this->withQuantity($invoice, 3, ['period_mode' => BooksPeriod::CURRENT]))->assertForbidden();
-        $this->assertSame(1, $this->entries($invoice)->count());
-
-        // وما لا يعبر شهرًا يعدّله: الملاحظةُ لا تمسّ الدفتر
-        $this->edit($invoice, $this->form($invoice, ['notes' => 'سُلّمت للمخزن']))->assertSessionHasNoErrors();
-        $this->assertSame(1, $this->entries($invoice)->count());
+        $this->assertSame(0, CustomerCreditNote::count());
     }
-
-    public function test_the_original_date_is_the_owners_in_a_known_open_period(): void
-    {
-        $invoice = $this->issued('2025-09-10', 2, 50);
-        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => BooksPeriod::SETTING], ['value' => '2025-08-31']);
-        Carbon::setTestNow('2025-10-05 10:00:00');
-
-        $this->edit($invoice, $this->withQuantity($invoice, 3, ['period_mode' => BooksPeriod::ORIGINAL]))->assertSessionHasNoErrors();
-
-        // سبتمبرُ مفتوحٌ معلوم: يُصحَّح في يومه
-        $this->assertEquals(7.5, $this->vat('2025-09')['output']);
-        $this->assertEquals(0.0, $this->vat('2025-10')['output']);
-    }
-
-    /* ═══════════ ٥ · المولودةُ من طلب، والمخزون ═══════════ */
 
     public function test_an_invoice_born_of_an_order_keeps_its_lines_its_stock_and_its_books(): void
     {
@@ -417,188 +472,17 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         $invoice = CustomerInvoices::issue(CustomerInvoices::fromOrder($order, [], $this->owner->id), $this->owner->id);
         $entries = JournalEntry::where('business_id', $this->shop->id)->count();
 
-        $this->edit($invoice, $this->withQuantity($invoice, 5))->assertSessionHasErrors('edit');
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 5]))->assertSessionHasErrors('edit');
 
         $this->assertEquals(105.0, (float) $invoice->fresh()->total);
-        $this->assertEquals(105.0, (float) $order->fresh()->total);
         $this->assertSame(10, (int) $rose->fresh()->quantity, 'لا حركة مخزون');
         $this->assertSame($entries, JournalEntry::where('business_id', $this->shop->id)->count(), 'لا قيد ثانٍ للبيعة');
-
-        // وما لا مالَ فيه يُعدَّل
-        $this->edit($invoice, $this->form($invoice, ['po_number' => 'PO-77', 'items' => null]))->assertSessionHasNoErrors();
-        $this->assertSame('PO-77', $invoice->fresh()->po_number);
-        $this->assertSame($entries, JournalEntry::where('business_id', $this->shop->id)->count());
+        $this->assertSame(0, CustomerDebitNote::count());
+        $this->expectException(\RuntimeException::class);
+        CustomerInvoices::debitNote($invoice, 10, 0, 'زيادة', []);
     }
 
-    public function test_a_manual_invoice_line_of_a_product_moves_no_stock_when_corrected(): void
-    {
-        $rose = Product::create(['business_id' => $this->shop->id, 'name' => 'وردة', 'price' => 10, 'quantity' => 40]);
-        $invoice = $this->issued('2025-09-10', 2, 10, ['product_id' => $rose->id]);
-
-        $this->edit($invoice, $this->withQuantity($invoice, 7))->assertSessionHasNoErrors();
-        $this->edit($invoice->fresh(), $this->withQuantity($invoice->fresh(), 1))->assertSessionHasNoErrors();
-
-        $this->assertSame(40, (int) $rose->fresh()->quantity, 'الفاتورةُ اليدويّة لا تُخرج بضاعة — ولا تُرجع ما لم يخرج');
-        $this->assertEquals(10.5, (float) $invoice->fresh()->total);
-        $this->assertSame(['net' => 10.0, 'tax' => 0.5], $this->ledger());
-    }
-
-    /* ═══════════ ٥ب · البندُ القائمُ لقطتُه ═══════════ */
-
-    public function test_a_catalog_addon_line_keeps_the_price_it_was_sold_at(): void
-    {
-        $chocolate = Addon::create([
-            'business_id' => $this->shop->id, 'name' => 'شوكولاتة', 'price' => 3, 'active' => true, 'scope' => Addon::SCOPE_ALL,
-        ]);
-        // بسعر الكتالوج كما يكتبها الإنشاء (`addonsFromCatalog`)
-        $lines = CustomerInvoices::addonsFromCatalog($this->shop->id, [['addon_id' => $chocolate->id, 'quantity' => 2]]);
-        $invoice = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $this->ministry, ['issued_at' => '2025-09-10'], $lines, $this->owner->id), $this->owner->id);
-        $this->assertEquals(6.3, (float) $invoice->total);
-
-        // غُيّر ثمنُها في الكتالوج ثمّ أُوقفت — والبندُ الذي بيع بها لا يتبعها
-        $chocolate->update(['price' => 9, 'active' => false]);
-
-        $form = $this->withQuantity($invoice, 4);
-        $form['items'][0]['unit_price'] = 999; // ثمنٌ مكتوبٌ بيد لإضافة كتالوج — لا يُقرأ
-        $this->edit($invoice, $form)->assertSessionHasNoErrors();
-
-        $line = $invoice->fresh('items')->items->first();
-        $this->assertEquals(3.0, (float) $line->unit_price);
-        $this->assertSame('شوكولاتة', $line->description);
-        $this->assertEquals(12.6, (float) $invoice->fresh()->total);
-    }
-
-    public function test_an_item_leaves_with_its_paid_addons_or_not_at_all(): void
-    {
-        $invoice = $this->issued('2025-09-10', 1, 100);
-        $parent = $invoice->items()->first();
-        // إضافةٌ مدفوعةٌ تحت صنفها — كما تكتبها `InvoiceLineDetails::expand`
-        CustomerInvoiceItem::create([
-            'customer_invoice_id' => $invoice->id, 'parent_item_id' => $parent->id, 'description' => 'تغليف',
-            'quantity' => 1, 'unit_price' => 0, 'discount' => 0, 'tax_rate' => 5, 'tax_amount' => 0, 'line_total' => 0, 'sort_order' => 1,
-        ]);
-        $invoice = $invoice->fresh('items');
-        $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertOk();
-
-        $form = $this->form($invoice);
-        $child = $form['items'][1];
-        $kept = $this->form($invoice, [], [$child, ['description' => 'بند يدوي', 'quantity' => 1, 'unit_price' => 50]]);
-        $this->edit($invoice, $kept)->assertSessionHasErrors('items');
-        $this->assertCount(2, $invoice->fresh('items')->items);
-
-        $both = $this->form($invoice, [], [['description' => 'بند يدوي', 'quantity' => 1, 'unit_price' => 50]]);
-        $this->edit($invoice, $both)->assertSessionHasNoErrors();
-        $this->assertSame(['بند يدوي'], $invoice->fresh('items')->items->pluck('description')->all());
-        $this->assertEquals(52.5, (float) $invoice->fresh()->total);
-    }
-
-    /* ═══════════ ٦ · الضريبةُ بقاعدة الورقة ═══════════ */
-
-    public function test_an_untouched_line_keeps_its_tax_when_the_shop_changes_its_rule(): void
-    {
-        $invoice = $this->issued('2025-09-10', 1, 100); // مضافة: 100 + 5
-        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'tax_inclusive'], ['value' => '1']);
-        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_rate'], ['value' => '10']);
-
-        $form = $this->form($invoice);
-        $form['items'][] = ['description' => 'تغليف', 'quantity' => 1, 'unit_price' => 20, 'tax_rate' => 5];
-
-        $this->edit($invoice, $form)->assertSessionHasNoErrors();
-
-        $invoice->refresh();
-        // الأوّلُ كما صدر (105)، والجديدُ بقاعدة الورقة نفسِها: مضافة (21)
-        $this->assertEquals(126.0, (float) $invoice->total);
-        $this->assertEquals(6.0, (float) $invoice->tax_total);
-    }
-
-    /* ═══════════ ٧ · الصلاحيات والمتاجر ═══════════ */
-
-    public function test_who_edits_what_is_decided_by_the_papers_state(): void
-    {
-        $draft = CustomerInvoices::create($this->shop->id, $this->ministry, ['issued_at' => '2025-09-10'], [
-            ['description' => 'عرض', 'quantity' => 1, 'unit_price' => 10],
-        ], $this->owner->id);
-        $invoice = $this->issued('2025-09-10', 1, 100);
-
-        // البائعُ يعدّل المسودّة بدوره، ولا يعدّل الصادرة
-        $seller = $this->user('sales', 'seller@edit.om');
-        $this->actingAs($seller);
-        $this->edit($draft, $this->withQuantity($draft, 2, ['reason' => null]))->assertSessionHasNoErrors();
-        $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertForbidden();
-        $this->edit($invoice, $this->withQuantity($invoice, 2))->assertForbidden();
-
-        // ومديرُ الفرع والمحاسب لا يعدّلان الصادرةَ بدورهما — يُمنحانها بالاسم
-        foreach (['manager', 'accountant'] as $role) {
-            $this->actingAs($this->user($role, $role.'@edit.om'));
-            $this->edit($invoice, $this->withQuantity($invoice, 2))->assertForbidden();
-        }
-        $this->assertEquals(105.0, (float) $invoice->fresh()->total);
-
-        // ومن مُنحها بالاسم يعدّل
-        $this->actingAs($this->user('accountant', 'granted@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]));
-        $this->edit($invoice, $this->withQuantity($invoice, 2))->assertSessionHasNoErrors();
-        $this->assertEquals(210.0, (float) $invoice->fresh()->total);
-
-        // والسائقُ يفتح «المبيعات» ولا يعدّل حتى المسودّة
-        $this->actingAs($this->user('delivery', 'driver@edit.om'));
-        $this->edit($draft, $this->withQuantity($draft->fresh(), 5, ['reason' => null]))->assertForbidden();
-    }
-
-    public function test_a_shop_never_reaches_another_shops_invoice(): void
-    {
-        $stranger = Customer::create(['business_id' => $this->other->id, 'name' => 'زبون الجار', 'phone' => '97000000']);
-        $theirs = CustomerInvoices::issue(CustomerInvoices::create($this->other->id, $stranger, ['issued_at' => '2025-09-10'], [
-            ['description' => 'توريد', 'quantity' => 1, 'unit_price' => 700],
-        ]));
-
-        $this->get(route('admin.customerInvoices.edit', $theirs->id))->assertNotFound();
-        $this->post(route('admin.customerInvoices.editPreview', $theirs->id), $this->form($theirs))->assertNotFound();
-        $this->edit($theirs, $this->withQuantity($theirs, 9, ['customer_id' => $this->ministry->id]))->assertNotFound();
-
-        $this->assertEquals((float) $theirs->total, (float) $theirs->fresh()->total);
-        $this->assertSame(0, CustomerInvoiceRevision::count());
-
-        // ولا يُكتب في ورقته عميلٌ أو فرعٌ أو بندٌ من متجرٍ آخر
-        $mine = $this->issued('2025-09-10', 1, 100);
-        $this->edit($mine, $this->form($mine, ['customer_id' => $stranger->id]))->assertSessionHasErrors('customer_id');
-        $theirBranch = Branch::create(['business_id' => $this->other->id, 'name' => 'فرع الجار']);
-        $this->edit($mine, $this->form($mine, ['branch_id' => $theirBranch->id]))->assertSessionHasErrors('branch_id');
-        $theirItem = $theirs->items()->first();
-        $this->edit($mine, $this->form($mine, [], [['item_id' => $theirItem->id, 'quantity' => 1, 'unit_price' => 1]]))->assertSessionHasErrors('items');
-        $this->assertEquals(105.0, (float) $mine->fresh()->total);
-    }
-
-    /* ═══════════ ٨ · مرّةً واحدة، وبلا محوٍ لما سبق ═══════════ */
-
-    public function test_the_same_form_sent_twice_corrects_once(): void
-    {
-        $invoice = $this->issued('2025-09-10', 2, 50);
-        $form = $this->withQuantity($invoice, 3);
-
-        $this->edit($invoice, $form)->assertSessionHasNoErrors();
-        $this->edit($invoice, $form)->assertSessionHasNoErrors();
-
-        $this->assertSame(1, $invoice->revisions()->count());
-        $this->assertSame(3, $this->entries($invoice)->count(), 'قيدٌ وعكسُه وقيدٌ جديد — لا أكثر');
-        $this->assertSame(['net' => 150.0, 'tax' => 7.5], $this->ledger());
-    }
-
-    public function test_a_second_editor_with_an_old_copy_does_not_erase_the_first(): void
-    {
-        $invoice = $this->issued('2025-09-10', 2, 50);
-        $first = $this->withQuantity($invoice, 3);
-        $second = $this->withQuantity($invoice, 9); // فُتحت النسخةُ نفسُها قبل حفظ الأوّل
-
-        $this->edit($invoice, $first)->assertSessionHasNoErrors();
-        $this->edit($invoice, $second)->assertSessionHasErrors('edit');
-
-        $this->assertEquals(157.5, (float) $invoice->fresh()->total);
-        $this->assertSame(1, $invoice->revisions()->count());
-    }
-
-    /* ═══════════ ٩ · المالُ الذي لا يُمسّ ═══════════ */
-
-    public function test_a_pending_payment_link_holds_the_amount_but_not_the_notes(): void
+    public function test_a_pending_payment_link_holds_the_amount(): void
     {
         $invoice = $this->issued('2025-09-10', 1, 100);
         CustomerPaymentLink::create([
@@ -607,69 +491,288 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
             'expires_at' => now()->addDays(3), 'is_live' => true,
         ]);
 
-        $this->edit($invoice, $this->withQuantity($invoice, 2))->assertSessionHasErrors('edit');
-        $this->assertEquals(105.0, (float) $invoice->fresh()->total);
-
-        $this->edit($invoice, $this->form($invoice, ['notes' => 'تواصل مع المشتريات']))->assertSessionHasNoErrors();
-        $this->assertSame('تواصل مع المشتريات', $invoice->fresh()->notes);
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertSessionHasErrors('edit');
+        $this->assertSame(0, CustomerDebitNote::count());
+        $this->assertSame(CustomerPaymentLink::PENDING, CustomerPaymentLink::sole()->status, 'الرابطُ كما هو — لا يُعاد ولا يُلغى من هنا');
     }
 
-    public function test_the_customer_changes_only_where_no_money_moves_with_it(): void
-    {
-        $other = Customer::create(['business_id' => $this->shop->id, 'name' => 'وزارة الصحة', 'phone' => '92222222', 'allow_credit_sales' => true]);
-
-        // بلا تحصيل: تُنقل ولا يتحرّك الدفتر — الذمّةُ حسابٌ واحد
-        $free = $this->issued('2025-09-10', 1, 100);
-        $this->edit($free, $this->form($free, ['customer_id' => $other->id]))->assertSessionHasNoErrors();
-        $this->assertSame($other->id, $free->fresh()->customer_id);
-        $this->assertSame('وزارة الصحة', $free->fresh()->customer_name);
-        $this->assertSame(1, $this->entries($free)->count());
-        $this->assertEquals(105.0, Receivables::customerOutstanding($this->shop->id, $other->id));
-
-        // وعليها تحصيل: لا يُنقل مالُ عميلٍ إلى غيره في صمت
-        $paid = $this->issued('2025-09-11', 1, 100);
-        $this->pay($paid, 40);
-        $this->edit($paid, $this->form($paid, ['customer_id' => $other->id]))->assertSessionHasErrors('edit');
-        $this->assertSame($this->ministry->id, $paid->fresh()->customer_id);
-    }
-
-    public function test_credit_notes_set_a_floor_under_the_total(): void
+    public function test_manual_credit_notes_set_a_floor_under_the_lines(): void
     {
         $invoice = $this->issued('2025-09-10', 1, 100);
         CustomerInvoices::creditNote($invoice, 63, 3, 'مرتجع جزئي', $this->owner->id);
 
-        $form = $this->form($invoice);
-        $form['items'][0]['unit_price'] = 50; // 52.5 < 63
-
-        $this->edit($invoice, $form)->assertSessionHasErrors('edit');
-        $this->assertEquals(105.0, (float) $invoice->fresh()->total);
+        $this->edit($invoice, $this->withLine($invoice, ['unit_price' => 50]))->assertSessionHasErrors('edit'); // 52.5 < 63
+        $this->assertSame(1, CustomerCreditNote::count());
     }
 
-    public function test_a_cancelled_invoice_is_not_edited_and_an_edited_one_cancels_cleanly(): void
+    /* ═══════════ ٥ · الفترات والإقرار ═══════════ */
+
+    public function test_an_invoice_in_a_closed_month_is_corrected_today_by_its_own_permission(): void
     {
         $invoice = $this->issued('2025-09-10', 2, 50);
-        $this->edit($invoice, $this->withQuantity($invoice, 3))->assertSessionHasNoErrors();
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => BooksPeriod::SETTING], ['value' => '2025-09-30']);
+        Carbon::setTestNow('2025-10-05 10:00:00');
 
-        CustomerInvoices::cancel($invoice->fresh(), 'أُلغي التوريد', $this->owner->id);
+        // يملك تصحيحَ الصادرة ولا يملك تصحيحَ فترةٍ سابقة
+        $this->actingAs($this->user('accountant', 'prior@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]));
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 3]))->assertForbidden();
 
-        // يُعكس القيدُ القائم وحده — لا الأوّلُ المعكوسُ ثانيةً
-        $this->assertSame(['net' => 0.0, 'tax' => 0.0], $this->ledger());
+        $this->actingAs($this->owner);
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 3]))->assertSessionHasNoErrors();
+
+        // سبتمبرُ المقفلُ كما أُعلن — والفرقُ في أكتوبر يومَ المستند
+        $this->assertSame(['net' => 100.0, 'tax' => 5.0], $this->ledger('2025-09'));
+        $this->assertEquals(5.0, $this->vat('2025-09')['output']);
+        $this->assertSame(['net' => 50.0, 'tax' => 2.5], $this->ledger('2025-10'));
+        $this->assertEquals(2.5, $this->vat('2025-10')['output']);
+        $this->assertSame('2025-10-05', CustomerDebitNote::sole()->issued_at->toDateString());
         $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
-
-        $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertForbidden();
     }
 
-    /* ═══════════ ١٠ · السجلّ ═══════════ */
+    public function test_books_closed_through_today_take_no_document(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => BooksPeriod::SETTING], ['value' => '2025-09-20']);
+
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1]))->assertSessionHasErrors('edit');
+        $this->assertSame(0, CustomerCreditNote::count());
+    }
+
+    public function test_an_error_in_a_filed_vat_period_waits_for_the_accountant_and_a_return_does_not(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_filed_through'], ['value' => '2025-09-15']);
+
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1]))->assertSessionHasErrors('edit');
+        $this->assertSame(0, CustomerCreditNote::count());
+
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1], ['basis' => CustomerInvoiceRevision::RETURN, 'reason' => 'رُدّت باقة']))->assertSessionHasNoErrors();
+        $this->assertSame(CustomerInvoiceRevision::RETURN, CustomerCreditNote::sole()->basis);
+    }
+
+    public function test_a_return_never_raises_and_waits_for_the_accountant_after_three_months(): void
+    {
+        $old = $this->issued('2025-05-10', 2, 50);
+        $this->edit($old, $this->withLine($old, ['quantity' => 1], ['basis' => CustomerInvoiceRevision::RETURN]))->assertSessionHasErrors('edit');
+
+        $recent = $this->issued('2025-09-10', 2, 50);
+        $this->edit($recent, $this->withLine($recent, ['quantity' => 3], ['basis' => CustomerInvoiceRevision::RETURN]))->assertSessionHasErrors('edit');
+
+        $this->assertSame(0, CustomerCreditNote::count() + CustomerDebitNote::count());
+    }
+
+    public function test_a_merchant_not_registered_for_vat_corrects_by_documents_without_tax(): void
+    {
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '0']);
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        $this->assertEquals(100.0, (float) $invoice->total);
+        $this->assertEquals(0.0, (float) $invoice->tax_total);
+
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 3]))->assertSessionHasNoErrors();
+
+        $note = CustomerDebitNote::sole();
+        $this->assertEquals(50.0, (float) $note->amount);
+        $this->assertEquals(0.0, (float) $note->tax_amount);
+        $this->assertEquals(100.0, (float) $invoice->fresh()->total, 'ولا تُعاد كتابتُها هي أيضًا');
+        $this->assertSame(['net' => 150.0, 'tax' => 0.0], $this->ledger());
+    }
+
+    /* ═══════════ ٦ · الصلاحيات والعزل ═══════════ */
+
+    public function test_who_corrects_what_is_decided_by_the_papers_state(): void
+    {
+        $draft = CustomerInvoices::create($this->shop->id, $this->ministry, ['issued_at' => '2025-09-10'], [
+            ['description' => 'عرض', 'quantity' => 1, 'unit_price' => 10],
+        ], $this->owner->id);
+        $invoice = $this->issued('2025-09-10', 1, 100);
+        $paid = $this->issued('2025-09-11', 1, 100);
+        $this->pay($paid, 50);
+
+        // البائعُ يعدّل المسودّة بدوره، ولا يصحّح الصادرة ولا المدفوعة — ولا ببابٍ مباشر
+        $this->actingAs($this->user('sales', 'seller@edit.om'));
+        $this->edit($draft, $this->withLine($draft, ['quantity' => 2], ['reason' => null, 'basis' => null]))->assertSessionHasNoErrors();
+        $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertForbidden();
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertForbidden();
+        $this->edit($paid, $this->withLine($paid, ['quantity' => 2]))->assertForbidden();
+
+        // ومن يُصدر الفاتورة لا يصحّحها بذلك — ولا مديرُ الفرع والمحاسب بدورهما
+        $this->actingAs($this->user('accountant', 'issuer@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_ISSUE, Permissions::CUSTOMER_CREDIT_NOTE]));
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertForbidden();
+        foreach (['manager', 'accountant'] as $role) {
+            $this->actingAs($this->user($role, $role.'@edit.om'));
+            $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertForbidden();
+        }
+
+        // ومن مُنح تصحيحَ الصادرة يصحّحها — ولا يصحّح المدفوعة بها
+        $this->actingAs($this->user('accountant', 'granted@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]));
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertSessionHasNoErrors();
+        $this->edit($paid, $this->withLine($paid, ['quantity' => 2]))->assertForbidden();
+
+        $this->assertSame(1, CustomerDebitNote::count());
+        $this->assertSame((int) $invoice->id, (int) CustomerDebitNote::sole()->customer_invoice_id);
+
+        // والأفعالُ بأسمائها العربيّة في شاشة الموظّفين، والمدفوعةُ لصاحب النشاط وحده بدوره
+        $labels = Permissions::actionLabels();
+        $this->assertSame('تصحيح فاتورة عميل مدفوعة جزئيًا أو كليًا', $labels[Permissions::CUSTOMER_INVOICE_EDIT_PAID]);
+        $this->assertSame(['admin'], Permissions::ACTION_ROLES[Permissions::CUSTOMER_INVOICE_EDIT_PAID]);
+        $this->assertNotContains('sales', Permissions::ACTION_ROLES[Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]);
+    }
+
+    public function test_a_shop_never_reaches_another_shops_invoice_or_documents(): void
+    {
+        $stranger = Customer::create(['business_id' => $this->other->id, 'name' => 'زبون الجار', 'phone' => '97000000']);
+        $theirs = CustomerInvoices::issue(CustomerInvoices::create($this->other->id, $stranger, ['issued_at' => '2025-09-10'], [
+            ['description' => 'توريد', 'quantity' => 1, 'unit_price' => 700],
+        ]));
+        $theirOwner = $this->user('admin', 'neighbour@edit.om', null, $this->other);
+        $this->actingAs($theirOwner);
+        $this->edit($theirs, $this->withLine($theirs, ['quantity' => 2]))->assertSessionHasNoErrors();
+        $theirNote = CustomerDebitNote::sole();
+
+        $this->actingAs($this->owner);
+        $this->get(route('admin.customerInvoices.edit', $theirs->id))->assertNotFound();
+        $this->post(route('admin.customerInvoices.editPreview', $theirs->id), $this->form($theirs))->assertNotFound();
+        $this->edit($theirs, $this->withLine($theirs, ['quantity' => 9]))->assertNotFound();
+        $this->post(route('admin.customerInvoices.replace', $theirs->id), ['customer_id' => $this->ministry->id, 'reason' => 'x'])->assertNotFound();
+        $this->get(route('admin.customerInvoices.debitNotes.show', $theirNote->id))->assertNotFound();
+        $this->get(route('admin.customerInvoices.debitNotes.pdf', $theirNote->id))->assertNotFound();
+        $this->assertSame(1, CustomerDebitNote::count());
+
+        // ولا يُكتب في ورقته بندٌ من متجرٍ آخر
+        $mine = $this->issued('2025-09-10', 1, 100);
+        $this->edit($mine, $this->form($mine, [], [['key' => 'i'.$theirs->items()->first()->id, 'quantity' => 1, 'unit_price' => 1]]))->assertSessionHasErrors('items');
+    }
+
+    /* ═══════════ ٧ · مرّةً واحدة، وبلا محوٍ لما سبق ═══════════ */
+
+    public function test_the_same_form_sent_twice_issues_one_document(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        $form = $this->withLine($invoice, ['quantity' => 3]);
+
+        $this->edit($invoice, $form)->assertSessionHasNoErrors();
+        $this->edit($invoice, $form)->assertSessionHasNoErrors();
+
+        $this->assertSame(1, $invoice->revisions()->count());
+        $this->assertSame(1, CustomerDebitNote::count());
+        $this->assertSame(['net' => 150.0, 'tax' => 7.5], $this->ledger());
+    }
+
+    public function test_a_second_corrector_with_an_old_copy_issues_nothing(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        $first = $this->withLine($invoice, ['quantity' => 3]);
+        $second = $this->withLine($invoice, ['quantity' => 9]); // فُتحت النسخةُ نفسُها قبل حفظ الأوّل
+
+        $this->edit($invoice, $first)->assertSessionHasNoErrors();
+        $this->edit($invoice, $second)->assertSessionHasErrors('edit');
+
+        $this->assertSame(1, CustomerDebitNote::count());
+        $this->assertEquals(157.5, $invoice->fresh()->effectiveTotal());
+    }
+
+    /* ═══════════ ٨ · العميلُ الآخر: إلغاءٌ وبديلة ═══════════ */
+
+    public function test_another_customer_cancels_an_unpaid_invoice_and_writes_its_replacement_as_a_draft(): void
+    {
+        $other = Customer::create(['business_id' => $this->shop->id, 'name' => 'وزارة الصحة', 'phone' => '92222222', 'allow_credit_sales' => true]);
+        $invoice = $this->issued('2025-09-10', 2, 50);
+
+        // من لا يملك الإلغاء لا يستبدل
+        $this->actingAs($this->user('accountant', 'nocancel@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]));
+        $this->post(route('admin.customerInvoices.replace', $invoice->id), ['customer_id' => $other->id, 'reason' => 'العميل الصحيح'])->assertForbidden();
+
+        $this->actingAs($this->owner);
+        $this->post(route('admin.customerInvoices.replace', $invoice->id), ['customer_id' => $other->id, 'reason' => 'العميل الصحيح وزارة الصحة'])
+            ->assertSessionHasNoErrors()->assertRedirect();
+
+        $invoice->refresh();
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->status);
+        $this->assertSame('CINV-000001', $invoice->number, 'تبقى برقمها مقروءةً');
+        $draft = CustomerInvoice::where('replaces_invoice_id', $invoice->id)->sole();
+        $this->assertSame(CustomerInvoice::DRAFT, $draft->status);
+        $this->assertSame((int) $other->id, (int) $draft->customer_id);
+        $this->assertEquals(105.0, (float) $draft->total);
+        $this->assertSame(['net' => 0.0, 'tax' => 0.0], $this->ledger(), 'قيدُها عُكس — والبديلةُ مسودّةٌ بلا قيد');
+
+        // ومدفوعةٌ لا تُستبدل: مالُ عميلٍ لا ينتقل إلى غيره
+        $paid = $this->issued('2025-09-11', 1, 100);
+        $this->pay($paid, 10);
+        $this->post(route('admin.customerInvoices.replace', $paid->id), ['customer_id' => $other->id, 'reason' => 'x'])->assertSessionHasErrors('replace');
+        $this->assertSame(CustomerInvoice::ISSUED, $paid->fresh()->status);
+    }
+
+    /* ═══════════ ٩ · التقارير والأوراق ═══════════ */
+
+    public function test_reports_read_the_documents_once_and_in_their_own_day(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50); // 105
+        $this->pay($invoice, 105);
+        Carbon::setTestNow('2025-10-05 10:00:00');
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 3]))->assertSessionHasNoErrors(); // +52.5 في أكتوبر
+
+        // الإقرارُ ومبيعاتُ اللوحة: سبتمبرُ كما كان، والزيادةُ في أكتوبر
+        $this->assertEquals(5.0, $this->vat('2025-09')['output']);
+        $this->assertEquals(2.5, $this->vat('2025-10')['output']);
+        $this->assertEquals(52.5, StandaloneInvoiceSales::total($this->shop->id, Carbon::parse('2025-10-01'), Carbon::parse('2025-11-01')));
+        $this->assertEquals(105.0, StandaloneInvoiceSales::total($this->shop->id, Carbon::parse('2025-09-01'), Carbon::parse('2025-10-01')));
+
+        // كشفُ الحساب: الفاتورةُ والتحصيلُ والإشعارُ المدين — والباقي 52.5
+        $statement = Receivables::statement($this->shop->id, $this->ministry->id, Carbon::parse('2025-09-01'), Carbon::parse('2025-10-31'));
+        $this->assertSame(['فاتورة', 'تحصيل', 'إشعار مدين'], array_column($statement['rows'], 'kind'));
+        $this->assertEquals(52.5, $statement['closing']);
+
+        // ومشترياتُه في سجلّه: 157.5 لا 105 ولا 262.5
+        $row = CustomerPurchases::apply(Customer::whereKey($this->ministry->id))->first();
+        $this->assertEquals(157.5, CustomerPurchases::total($row));
+        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
+    }
+
+    public function test_the_original_and_each_document_open_and_print_on_their_own(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        $form = $this->form($invoice);
+        $form['items'][0]['quantity'] = 1;
+        $form['items'][] = ['description' => 'تغليف فاخر', 'quantity' => 1, 'unit_price' => 30];
+        $this->edit($invoice, $form)->assertSessionHasNoErrors();
+
+        $credit = CustomerCreditNote::sole();
+        $debit = CustomerDebitNote::sole();
+
+        $show = $this->get(route('admin.customerInvoices.show', $invoice->id))->assertOk()->viewData('page')['props'];
+        $this->assertEquals(105.0, $show['invoice']['total'], 'الفاتورةُ بمبلغها كما صدرت');
+        $this->assertEquals(84.0, $show['invoice']['effective_total']);
+        $this->assertSame($credit->number, $show['invoice']['credit_notes'][0]['number']);
+        $this->assertSame($debit->number, $show['invoice']['debit_notes'][0]['number']);
+        $this->assertCount(2, $show['revisions'][0]['documents']);
+
+        $page = $this->get(route('admin.customerInvoices.debitNotes.show', $debit->id))->assertOk()->viewData('page')['props'];
+        $this->assertSame('debit', $page['kind']);
+        $this->assertStringContainsString('إشعار مدين', $page['paper']['html']);
+        $this->assertStringContainsString('تغليف فاخر', $page['paper']['html']);
+        $this->assertStringContainsString($invoice->number, $page['paper']['html']);
+
+        $page = $this->get(route('admin.customerInvoices.creditNotes.show', $credit->id))->assertOk()->viewData('page')['props'];
+        $this->assertStringContainsString('إشعار دائن', $page['paper']['html']);
+        $this->assertStringContainsString('توريد زهور', $page['paper']['html']);
+
+        $this->get(route('admin.customerInvoices.debitNotes.pdf', $debit->id))->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->get(route('admin.customerInvoices.creditNotes.pdf', $credit->id))->assertOk()->assertHeader('content-type', 'application/pdf');
+        $this->get(route('admin.customerInvoices.pdf', $invoice->id))->assertOk();
+    }
+
+    /* ═══════════ ١٠ · السجلّ والمعاينة ═══════════ */
 
     public function test_the_history_is_read_by_who_may_and_never_rewritten(): void
     {
         $invoice = $this->issued('2025-09-10', 2, 50);
-        $this->edit($invoice, $this->withQuantity($invoice, 3))->assertSessionHasNoErrors();
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 3]))->assertSessionHasNoErrors();
 
         $page = $this->get(route('admin.customerInvoices.show', $invoice->id))->assertOk()->viewData('page')['props'];
         $this->assertTrue($page['mayEdit']);
         $this->assertCount(1, $page['revisions']);
         $this->assertSame('تصحيح الكمية حسب أمر الشراء', $page['revisions'][0]['reason']);
+        $this->assertSame('تصحيح خطأ في الفاتورة', $page['revisions'][0]['basis']);
         $this->assertEquals(157.5, $page['revisions'][0]['total_after']);
 
         $this->actingAs($this->user('sales', 'reader@edit.om'));
@@ -683,20 +786,14 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
             $this->fail('سجلُّ التعديل عُدّل');
         } catch (\LogicException) {
         }
-        try {
-            $rev->delete();
-            $this->fail('سجلُّ التعديل حُذف');
-        } catch (\LogicException) {
-        }
         $this->assertSame('تصحيح الكمية حسب أمر الشراء', $rev->fresh()->reason);
     }
 
-    public function test_the_preview_says_what_will_happen_and_writes_nothing(): void
+    public function test_the_preview_names_the_documents_and_writes_nothing(): void
     {
         $invoice = $this->issued('2025-09-10', 1, 100);
         $this->pay($invoice, 105);
-        $form = $this->form($invoice);
-        $form['items'][0]['unit_price'] = 80;
+        $form = $this->withLine($invoice, ['unit_price' => 80]);
 
         $plan = $this->postJson(route('admin.customerInvoices.editPreview', $invoice->id), $form)->assertOk()->json();
 
@@ -704,46 +801,62 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         $this->assertSame('paid', $plan['kind']);
         $this->assertEquals(-21.0, $plan['money']['difference']);
         $this->assertEquals(21.0, $plan['money']['customer_credit']);
+        $this->assertEquals(21.0, $plan['documents']['credit']['amount']);
+        $this->assertEquals(1.0, $plan['documents']['credit']['tax']);
+        $this->assertNull($plan['documents']['debit']);
+        $this->assertSame('2025-09-20', $plan['period']['note_date']);
         $this->assertFalse($plan['stock']['moves']);
-        $this->assertTrue($plan['ledger']['repost']);
         $this->assertSame([], $plan['blockers']);
 
-        $this->assertEquals(105.0, (float) $invoice->fresh()->total);
         $this->assertSame(0, CustomerInvoiceRevision::count());
+        $this->assertSame(0, CustomerCreditNote::count());
     }
 
-    /* ═══════════ ١١ · التاجرُ الجديد ═══════════ */
+    public function test_a_catalog_addon_line_keeps_the_price_it_was_sold_at(): void
+    {
+        $chocolate = Addon::create([
+            'business_id' => $this->shop->id, 'name' => 'شوكولاتة', 'price' => 3, 'active' => true, 'scope' => Addon::SCOPE_ALL,
+        ]);
+        $lines = CustomerInvoices::addonsFromCatalog($this->shop->id, [['addon_id' => $chocolate->id, 'quantity' => 2]]);
+        $invoice = CustomerInvoices::issue(CustomerInvoices::create($this->shop->id, $this->ministry, ['issued_at' => '2025-09-10'], $lines, $this->owner->id), $this->owner->id);
+        $chocolate->update(['price' => 9, 'active' => false]);
 
-    public function test_a_new_merchant_finds_the_edits_and_their_permissions_with_no_setup(): void
+        $form = $this->withLine($invoice, ['quantity' => 4, 'unit_price' => 999]); // ثمنٌ مكتوبٌ بيد لإضافة كتالوج — لا يُقرأ
+        $this->edit($invoice, $form)->assertSessionHasNoErrors();
+
+        $this->assertEquals(6.3, (float) CustomerDebitNote::sole()->amount); // 2 × 3 × 1.05
+    }
+
+    public function test_an_item_leaves_with_its_paid_addons_or_not_at_all(): void
+    {
+        $invoice = $this->issued('2025-09-10', 1, 100);
+        $parent = $invoice->items()->first();
+        CustomerInvoiceItem::create([
+            'customer_invoice_id' => $invoice->id, 'parent_item_id' => $parent->id, 'description' => 'تغليف',
+            'quantity' => 1, 'unit_price' => 0, 'discount' => 0, 'tax_rate' => 5, 'tax_amount' => 0, 'line_total' => 0, 'sort_order' => 1,
+        ]);
+        $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertOk();
+
+        $form = $this->form($invoice);
+        $child = $form['items'][1];
+        $this->edit($invoice, $this->form($invoice, [], [$child]))->assertSessionHasErrors('items');
+        $this->assertSame(0, CustomerCreditNote::count());
+    }
+
+    public function test_a_new_merchant_finds_the_corrections_and_their_permissions_with_no_setup(): void
     {
         $fresh = Business::create(['name' => 'متجرٌ جديد', 'type' => 'عام', 'status' => 'نشط']);
         Ledger::seedChart($fresh->id);
-        $owner = $this->user('admin', 'new-owner@edit.om', null, $fresh);
-        $staff = $this->user('sales', 'new-staff@edit.om', null, $fresh);
+        $owner = $this->user('admin', 'fresh@edit.om', null, $fresh);
+        $customer = Customer::create(['business_id' => $fresh->id, 'name' => 'عميل', 'phone' => '93333333', 'allow_credit_sales' => true]);
+        $invoice = CustomerInvoices::issue(CustomerInvoices::create($fresh->id, $customer, ['issued_at' => '2025-09-10'], [
+            ['description' => 'توريد', 'quantity' => 1, 'unit_price' => 100],
+        ], $owner->id), $owner->id);
+
         $this->actingAs($owner);
-
-        $page = $this->get(route('admin.employees.edit', $staff->id))->assertOk()->viewData('page')['props'];
-        foreach ([
-            Permissions::CUSTOMER_INVOICE_EDIT_DRAFT, Permissions::CUSTOMER_INVOICE_EDIT_ISSUED,
-            Permissions::CUSTOMER_INVOICE_EDIT_PAID, Permissions::CUSTOMER_INVOICE_CORRECT_PERIOD,
-            Permissions::CUSTOMER_INVOICE_HISTORY,
-        ] as $action) {
-            $this->assertArrayHasKey($action, $page['actions'], "«{$action}» لا يظهر في صلاحيات الموظفين");
-            $this->assertContains($action, $page['grantable'], 'صاحبُ النشاط لا يمنحه');
-        }
-
-        $customer = Customer::create(['business_id' => $fresh->id, 'name' => 'أوّل عميل', 'phone' => '93333333']);
-        $invoice = CustomerInvoices::issue(CustomerInvoices::create($fresh->id, $customer, ['issued_at' => '2025-09-15'], [
-            ['description' => 'خدمة', 'quantity' => 1, 'unit_price' => 30],
-        ]));
-
+        $this->assertTrue($this->get(route('admin.customerInvoices.show', $invoice->id))->assertOk()->viewData('page')['props']['mayEdit']);
         $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertOk();
-        $before = (float) $invoice->total;
-        $form = $this->form($invoice);
-        $form['items'][0]['quantity'] = 2;
-        $this->edit($invoice, $form)->assertSessionHasNoErrors();
-        // بضريبة متجره هو كما صدرت — لا بنسبة متجرٍ آخر
-        $this->assertEquals(round(2 * $before, 3), (float) $invoice->fresh()->total);
-        $this->assertTrue(Receivables::reconcile($fresh->id)['balanced']);
+        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertSessionHasNoErrors();
+        $this->assertSame('DN-000001', CustomerDebitNote::where('business_id', $fresh->id)->sole()->number);
     }
 }

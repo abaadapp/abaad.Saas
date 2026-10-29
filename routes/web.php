@@ -1617,13 +1617,18 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('note')->name('customerInvoices.creditNotes.show');
     Route::get('/customer-invoices/credit-notes/{note}/pdf', [DocumentPrintController::class, 'creditNote'])
         ->whereNumber('note')->name('customerInvoices.creditNotes.pdf');
+    // والإشعارُ المدين كأخيه — صفحتُه وورقتُه، قبل `/{id}` كذلك
+    Route::get('/customer-invoices/debit-notes/{note}', [CustomerInvoiceController::class, 'debitNoteShow'])
+        ->whereNumber('note')->name('customerInvoices.debitNotes.show');
+    Route::get('/customer-invoices/debit-notes/{note}/pdf', [DocumentPrintController::class, 'debitNote'])
+        ->whereNumber('note')->name('customerInvoices.debitNotes.pdf');
     Route::get('/customer-invoices/{id}', [CustomerInvoiceController::class, 'show'])->name('customerInvoices.show');
     Route::post('/customer-invoices', [CustomerInvoiceController::class, 'store'])->name('customerInvoices.store');
     Route::post('/customer-invoices/{id}/issue', [CustomerInvoiceController::class, 'issue'])->name('customerInvoices.issue');
     Route::post('/customer-invoices/{id}/cancel', [CustomerInvoiceController::class, 'cancel'])->name('customerInvoices.cancel');
     Route::post('/customer-invoices/{id}/credit-note', [CustomerInvoiceController::class, 'creditNote'])->name('customerInvoices.creditNote');
     /*
-     * تعديلُ الفاتورة بعد كتابتها — والفعلُ يُسأل بحال الورقة في المتحكّم
+     * تعديلُ الفاتورة وتصحيحُها — والفعلُ يُسأل بحال الورقة في المتحكّم
      * (`CustomerInvoiceEdits::actionFor`)، والمعاينةُ لا تكتب شيئًا.
      */
     Route::get('/customer-invoices/{id}/edit', [CustomerInvoiceController::class, 'edit'])
@@ -1632,6 +1637,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         ->whereNumber('id')->name('customerInvoices.editPreview');
     Route::put('/customer-invoices/{id}', [CustomerInvoiceController::class, 'update'])
         ->whereNumber('id')->middleware('throttle:30,1,customer-invoice-edit')->name('customerInvoices.update');
+    // وعميلٌ آخر لفاتورةٍ صدرت: تُلغى وتُكتب بديلتُها مسودّة (`CustomerInvoiceEdits::replace`)
+    Route::post('/customer-invoices/{id}/replace', [CustomerInvoiceController::class, 'replace'])
+        ->whereNumber('id')->middleware('throttle:30,1,customer-invoice-edit')->name('customerInvoices.replace');
     Route::get('/customer-invoices/{id}/pdf', [PdfController::class, 'customerInvoice'])->name('customerInvoices.pdf');
     /*
      * مرفقاتُ الفاتورة — على القرص الخاصّ، وتُقرأ ببابٍ يسأل.

@@ -32,6 +32,8 @@ export interface SaleRow {
     date: string;
     amount: number;
     credited: number | null;
+    /** ما زادته الإشعاراتُ المدينة — والمبلغُ مبلغُ الفاتورة كما صدرت */
+    debited?: number;
     pay_state: string;
     /** الفاتورةُ التي تغطّي الطلب — يُحصَّل عليها */
     cover: { id: number; number: string | null } | null;
@@ -190,6 +192,11 @@ export default function CustomerInvoicesSales({
                     {r.credited !== null && r.credited > 0 && (
                         <div className="text-[11px] tabular-nums text-[#b45309]">
                             {t('إشعار دائن')} −{m(r.credited)}
+                        </div>
+                    )}
+                    {(r.debited ?? 0) > 0 && (
+                        <div className="text-[11px] tabular-nums text-[#1d4ed8]" data-testid="sale-debited">
+                            {t('إشعار مدين')} +{m(r.debited ?? 0)}
                         </div>
                     )}
                 </>

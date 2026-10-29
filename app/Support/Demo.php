@@ -17,6 +17,7 @@ use App\Models\Currency;
 use App\Models\CustomAlert;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerDebitNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPaymentLink;
 use App\Models\DismissedNotification;
@@ -3846,6 +3847,15 @@ class Demo
             date: true,
         )->with('invoice:id,customer_id,customer_name')->get(['id', 'customer_invoice_id', 'amount'])
             ->each(fn ($n) => $add((int) $n->invoice->customer_id, $n->invoice->customer_name, -(float) $n->amount, 0));
+
+        // والإشعارُ المدين زيادةٌ على ما اشترى — في يومه، كأخيه الدائن
+        $period->bound(
+            CustomerDebitNote::where('business_id', $bid)
+                ->whereHas('invoice', fn ($q) => $q->where('status', '!=', CustomerInvoice::CANCELLED)),
+            'issued_at',
+            date: true,
+        )->with('invoice:id,customer_id,customer_name')->get(['id', 'customer_invoice_id', 'amount'])
+            ->each(fn ($n) => $add((int) $n->invoice->customer_id, $n->invoice->customer_name, (float) $n->amount, 0));
 
         // الاسمُ المعروض للمسجَّل اسمُه في سجلّ العملاء — من متجره وحده، ومحذوفُه يبقى مقروءًا
         $ids = array_values(array_filter(array_column($spend, 'id')));

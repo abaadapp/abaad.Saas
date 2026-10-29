@@ -309,6 +309,8 @@ class EveryMerchantScreenReadsOnlyItsShopTest extends TestCase
         'admin.archives.download' => '{archive} أرشيفٌ شهريّ — حارسُه `AnArchiveThatDoesNotComeBackIsNotAnArchiveTest`',
         'admin.customerInvoices.creditNotes.show' => '{note} إشعارٌ دائن — مقيّدٌ بـbusiness_id (CustomerInvoiceController:332)',
         'admin.customerInvoices.creditNotes.pdf' => 'مثلُه (DocumentPrintController:86)',
+        'admin.customerInvoices.debitNotes.show' => '{note} إشعارٌ مدين — مقيّدٌ بـbusiness_id (CustomerInvoiceController::debitNoteShow)، وحارسُه `AnInvoiceIsCorrectedAfterItIsWrittenTest::test_a_shop_never_reaches_another_shops_invoice_or_documents`',
+        'admin.customerInvoices.debitNotes.pdf' => 'مثلُه (DocumentPrintController::debitNote)',
         'admin.help.show' => 'محادثاتُ الدعم — `Support::visibleTo`',
         'admin.help.attachment' => 'مثلُه',
         'admin.preparation.invoiceDeliveryNote' => '{id} مهمّةُ تجهيزِ فاتورةٍ تظهر بسدادٍ موثَّق — مقيّدةٌ بمتجر الجلسة وفرعه (CustomerInvoicePreparations::board)، وحارسُها `TheBoardPreparesAPaidCustomerInvoiceTest::test_another_shop_neither_sees_nor_touches_the_task`',

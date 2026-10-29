@@ -65,7 +65,15 @@ interface Invoice {
         line_total: number;
     }[];
     payments: { id: number; number: string; amount: number; method: string; at: string | null }[];
-    credit_notes: { id: number; number: string; amount: number; reason: string | null; at: string | null }[];
+    credit_notes: { id: number; number: string; amount: number; reason: string | null; at: string | null; revision?: number | null }[];
+    /** الإشعاراتُ المدينة — زياداتٌ على الفاتورة كما صدرت، كلٌّ بمستنده */
+    debit_notes?: { id: number; number: string; amount: number; reason: string | null; at: string | null; revision?: number | null }[];
+    debited?: number;
+    /** ما على الورقة بعد مستندات تصحيحها — و`total` إجماليُّها كما صدرت */
+    effective_total?: number;
+    /** الفاتورةُ التي حلّت هذه محلَّها، والتي حلّت محلَّ هذه */
+    replaces?: { id: number; number: string | null } | null;
+    replaced_by?: { id: number; number: string | null; status: string }[];
 }
 
 /**
@@ -162,8 +170,9 @@ export default function CustomerInvoiceShow() {
                 actions={
                     <>
                         {/*
-                            وتعديلُ الورقة لمن يملكه بحالها — مسودّةً أو صادرةً أو
-                            مدفوعة. والخادمُ يسأل السؤالَ نفسَه في الشاشة والحفظ.
+                            «تعديل الفاتورة» للمسودّة و«تصحيح الفاتورة» لما صدر —
+                            لمن يملك الفعلَ بحال الورقة. والصادرةُ لا تُعاد كتابتُها:
+                            تصحيحُها مستندٌ مستقلّ. والخادمُ يسأل السؤالَ نفسَه.
                         */}
                         {mayEdit && (
                             <Button
@@ -172,7 +181,7 @@ export default function CustomerInvoiceShow() {
                                 onClick={() => router.visit(route('admin.customerInvoices.edit', invoice.id))}
                             >
                                 <Pencil />
-                                {t('تعديل الفاتورة')}
+                                {invoice.status === 'مسودة' ? t('تعديل الفاتورة') : t('تصحيح الفاتورة')}
                             </Button>
                         )}
                         {invoice.status === 'مسودة' && may.issue && (
@@ -232,6 +241,29 @@ export default function CustomerInvoiceShow() {
             {invoice.status === 'ملغاة' && (
                 <Card className="mb-4 border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]">
                     {t('فاتورة ملغاة')} — {invoice.cancellation_reason}
+                </Card>
+            )}
+
+            {/* والاستبدالُ لعميلٍ آخر طريقٌ يُقرأ في الورقتين — لا إلغاءٌ بلا أثر */}
+            {(invoice.replaces || (invoice.replaced_by ?? []).length > 0) && (
+                <Card className="mb-4 p-3 text-[13px] text-[#4b4b4b]" data-testid="invoice-replacement">
+                    {invoice.replaces && (
+                        <p>
+                            {t('حلّت محلّ الفاتورة الملغاة')}{' '}
+                            <SmartLink routeName="admin.customerInvoices.show" href={route('admin.customerInvoices.show', invoice.replaces.id)} className="font-mono text-[#6d28d9] hover:underline">
+                                {invoice.replaces.number ?? `#${invoice.replaces.id}`}
+                            </SmartLink>
+                        </p>
+                    )}
+                    {(invoice.replaced_by ?? []).map((r) => (
+                        <p key={r.id}>
+                            {t('بديلتها')}{' '}
+                            <SmartLink routeName="admin.customerInvoices.show" href={route('admin.customerInvoices.show', r.id)} className="font-mono text-[#6d28d9] hover:underline">
+                                {r.number ?? `${t('مسودة')} #${r.id}`}
+                            </SmartLink>{' '}
+                            — {t(r.status)}
+                        </p>
+                    ))}
                 </Card>
             )}
 
@@ -345,6 +377,13 @@ export default function CustomerInvoiceShow() {
                             )}
                             {invoice.tax_total > 0 && <Row label={t('الضريبة')} value={m(invoice.tax_total)} />}
                             <Row label={t('الإجمالي')} value={m(invoice.total)} strong />
+                            {/*
+                                والإجماليُّ إجماليُّ الفاتورة كما صدرت — لا يتغيّر بتصحيح.
+                                وما صحّحته المستنداتُ سطرٌ تحته: المطلوبُ بعدها.
+                            */}
+                            {invoice.effective_total !== undefined && Math.abs(invoice.effective_total - invoice.total) >= 0.0005 && (
+                                <Row label={t('المطلوب بعد مستندات التصحيح')} value={m(invoice.effective_total)} strong />
+                            )}
                             <Row label={t('المسدَّد')} value={m(invoice.paid)} />
                             <Row label={t('الباقي')} value={m(invoice.outstanding)} strong />
                         </dl>
@@ -412,6 +451,26 @@ export default function CustomerInvoiceShow() {
 
                     {/* ونقاطُ الولاء على سدادها برابط — لمن تُكسب على فاتورته وحده */}
                     {loyalty && <InvoiceLoyaltyPanel loyalty={loyalty} />}
+
+                    {(invoice.debit_notes ?? []).length > 0 && (
+                        <Card className="p-4" data-testid="invoice-debit-notes">
+                            <h3 className="mb-2 text-[13px] font-bold">{t('إشعارات مدينة')}</h3>
+                            {(invoice.debit_notes ?? []).map((n) => (
+                                <SmartLink
+                                    key={n.id}
+                                    routeName="admin.customerInvoices.debitNotes.show"
+                                    href={route('admin.customerInvoices.debitNotes.show', n.id)}
+                                    className="flex justify-between gap-3 border-t border-[var(--ui-border,#e8e8e8)] py-2 text-[13px] hover:bg-[#fafafa]"
+                                >
+                                    <span className="min-w-0 truncate text-[#6d28d9]">
+                                        {n.number}
+                                        {n.reason ? ` — ${n.reason}` : ''}
+                                    </span>
+                                    <span className="tabular-nums">+{m(n.amount)}</span>
+                                </SmartLink>
+                            ))}
+                        </Card>
+                    )}
 
                     {invoice.credit_notes.length > 0 && (
                         <Card className="p-4">

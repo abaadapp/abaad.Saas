@@ -1,6 +1,6 @@
 import { type ComponentProps, useMemo, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
-import { AlertTriangle, Eye, Plus, PlusCircle, Save, Star, Trash2 } from 'lucide-react';
+import { AlertTriangle, Eye, FileMinus, FilePlus, Plus, PlusCircle, Replace, Save, Star, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import BackLink from '@/Components/BackLink';
 import PageHeader from '@/Components/PageHeader';
@@ -19,10 +19,16 @@ import { AddonDialog, ProductDialog } from './Create';
 type Products = ComponentProps<typeof ProductDialog>['products'];
 type Addons = ComponentProps<typeof AddonDialog>['addons'];
 
-/** بندٌ كما صدر — بمعرّفه (`CustomerInvoiceController::edit`) */
+/**
+ * بندٌ كما هو الآن — بمفتاحه (`CustomerInvoiceController::edit`).
+ *
+ * للمسودّة صفُّها (`i{id}`)، وللصادرة حالُها بعد آخر تصحيح: البندُ الذي أضافه
+ * تصحيحٌ مفتاحُه من رقم ذلك التصحيح ولا صفَّ له — الفاتورةُ نفسُها كما صدرت.
+ */
 interface ItemRow {
-    item_id: number;
-    parent_item_id: number | null;
+    key: string;
+    item_id: number | null;
+    parent_key: string | null;
     product_id: number | null;
     addon_id: number | null;
     description: string;
@@ -45,6 +51,7 @@ interface InvoiceProps {
     from_order: boolean;
     orders: string[];
     customer_id: number;
+    customer: string | null;
     issued_at: string | null;
     due_at: string | null;
     payment_terms_days: number | null;
@@ -61,23 +68,29 @@ interface InvoiceProps {
     discount_total: number;
     tax_total: number;
     total: number;
+    /** إجماليُّ الفاتورة كما صدرت، وما عليها بعد مستندات تصحيحها */
+    issued_total: number;
+    effective_total: number;
     paid: number;
     credited: number;
+    debited: number;
     outstanding: number;
     items: ItemRow[];
 }
 
 /**
- * بندٌ في النموذج — القائمُ بمعرّفه، والجديدُ بلا معرّف.
+ * بندٌ في النموذج — القائمُ بمفتاحه، والجديدُ بلا مفتاحٍ من الخادم.
  *
- * والقائمُ يبقى صفَّه في الخادم: تتغيّر كمّيّتُه وسعرُه وخصمُه وضريبتُه،
- * ولقطتُه وأبوه كما كانا. وإضافةُ الكتالوج القائمة (`locked`) اسمُها وثمنُها
- * ثمنُ بيعها لا ثمنُ اليوم — فلا يُكتبان هنا.
+ * والقائمُ في الصادرة لا يتغيّر وصفُه ولا نسبةُ ضريبته (`locked_text`): من بيانات
+ * الفاتورة المطبوعة، وتغييرُهما قرارٌ ضريبيّ. وإضافةُ الكتالوج القائمة (`locked`)
+ * اسمُها وثمنُها ثمنُ بيعها لا ثمنُ اليوم.
  */
 export interface EditLine {
     key: string;
+    /** مفتاحُ البند عند الخادم — و`null` للجديد */
+    server_key: string | null;
     item_id: number | null;
-    parent_item_id: number | null;
+    parent_key: string | null;
     product_id: string;
     addon_id: string;
     description: string;
@@ -86,7 +99,16 @@ export interface EditLine {
     discount: string;
     tax_rate: string;
     locked: boolean;
+    locked_text: boolean;
     details: string[];
+}
+
+/** مستندُ تصحيحٍ سيصدر — من ردّ المعاينة */
+interface PlanDocument {
+    amount: number;
+    tax: number;
+    net: number;
+    lines: { description: string; change: string; total: number; tax: number }[];
 }
 
 /** ما سيقع لو حُفظ — `CustomerInvoiceController::editPreview` */
@@ -94,7 +116,7 @@ interface Plan {
     changed: boolean;
     kind: string;
     changes: { field: string; label: string; before: string | null; after: string | null }[];
-    lines: { change: 'added' | 'removed' | 'changed'; id: number | null; before: LineShown | null; after: LineShown | null }[];
+    lines: { change: 'added' | 'removed' | 'changed'; key: string | null; before: LineShown | null; after: LineShown | null }[];
     money: {
         total_before: number;
         total_after: number;
@@ -104,21 +126,16 @@ interface Plan {
         tax_difference: number;
         paid: number;
         credited: number;
+        debited: number;
         outstanding_before: number;
         outstanding_after: number;
         customer_credit: number;
     };
+    documents: { credit: PlanDocument | null; debit: PlanDocument | null };
     stock: { moves: boolean; why: string };
-    ledger: { repost: boolean; live_entry_date: string | null };
-    period: {
-        needs_choice: boolean;
-        mode: string | null;
-        reversal_date: string | null;
-        entry_date: string | null;
-        closed_through: string | null;
-        original_allowed: boolean;
-    };
+    period: { note_date: string | null; prior: boolean; closed_through: string | null; filed_through: string | null };
     needs_reason: boolean;
+    needs_basis: boolean;
     missing: string[];
     blockers: string[];
 }
@@ -134,12 +151,13 @@ interface LineShown {
 let seq = 0;
 const nextKey = () => `n${++seq}`;
 
-/** البنودُ كما صدرت — كلٌّ بمعرّفه */
-export function fromItems(items: ItemRow[]): EditLine[] {
+/** البنودُ كما هي الآن — كلٌّ بمفتاحه */
+export function fromItems(items: ItemRow[], correcting = false): EditLine[] {
     return items.map((i) => ({
-        key: `i${i.item_id}`,
+        key: i.key,
+        server_key: i.key,
         item_id: i.item_id,
-        parent_item_id: i.parent_item_id,
+        parent_key: i.parent_key,
         product_id: i.product_id ? String(i.product_id) : '',
         addon_id: i.addon_id ? String(i.addon_id) : '',
         description: i.description,
@@ -148,6 +166,7 @@ export function fromItems(items: ItemRow[]): EditLine[] {
         discount: String(i.discount),
         tax_rate: String(i.tax_rate),
         locked: i.addon_id !== null,
+        locked_text: correcting,
         details: i.details ?? [],
     }));
 }
@@ -155,21 +174,22 @@ export function fromItems(items: ItemRow[]): EditLine[] {
 /**
  * حذفُ بندٍ ومعه إضافاتُه المدفوعةُ تحته.
  *
- * إضافةٌ بلا صنفها يردّها الخادم (`CustomerInvoiceEdits::lines`) — فتُحذف
- * معه هنا ولا يُترك من يضغط «احفظ» أمام رسالة.
+ * إضافةٌ بلا صنفها يردّها الخادم — فتُحذف معه هنا ولا يُترك من يضغط «احفظ»
+ * أمام رسالة.
  */
 export function removeLine(lines: EditLine[], key: string): EditLine[] {
     const gone = lines.find((l) => l.key === key);
 
-    return lines.filter((l) => l.key !== key && !(gone?.item_id && l.parent_item_id === gone.item_id));
+    return lines.filter((l) => l.key !== key && !(gone?.server_key && l.parent_key === gone.server_key));
 }
 
-/** البنودُ كما يقرؤها الخادم — القائمُ بمعرّفه، والجديدُ ببنده */
+/** البنودُ كما يقرؤها الخادم — القائمُ بمفتاحه ومعرّفه، والجديدُ ببنده */
 export function linesPayload(lines: EditLine[]) {
     return lines.map((l) => ({
+        key: l.server_key,
         item_id: l.item_id,
-        product_id: l.item_id ? null : l.product_id || null,
-        addon_id: l.item_id ? null : l.addon_id || null,
+        product_id: l.server_key ? null : l.product_id || null,
+        addon_id: l.server_key ? null : l.addon_id || null,
         description: l.description,
         quantity: l.quantity,
         unit_price: l.unit_price,
@@ -188,14 +208,23 @@ function addDays(from: string, days: number): string {
 }
 
 /**
- * تعديلُ فاتورة العميل — مسودّةً أو صادرةً أو مدفوعة.
+ * تعديلُ المسودّة وتصحيحُ الفاتورة الصادرة.
  *
- * والحسابُ هنا معاينةٌ لا مصدر: الخادمُ يعيد كلَّ رقمٍ من البنود تحت قفل
- * الورقة. و«معاينة التعديل» تسأله ما سيقع — الفرقَ في المال والضريبة، وما
- * يبقى على العميل أو يصير له، وأين يُكتب التصحيح في الدفتر — قبل أن يُحفظ.
+ * ═══ المسودّة ═══
+ *
+ * تُكتب ثانيةً كما كُتبت: العميلُ والتواريخُ والبنودُ والمراجع.
+ *
+ * ═══ والصادرة ═══
+ *
+ * لا تُعاد كتابتُها: بياناتُها المطبوعة مقفلة، وتصحيحُ بنودها يُصدر إشعارًا دائنًا
+ * لما نقص ومدينًا لما زاد — بسببٍ وأساسٍ مطلوبين. و«معاينة التصحيح» تسمّي
+ * المستندين بمبالغهما وضريبتهما وما يبقى على العميل أو يصير له قبل أن يُحفظ.
+ * وعميلٌ آخر طريقُه «إلغاء وإصدار بديلة» تحتها.
+ *
+ * والحسابُ هنا معاينةٌ لا مصدر: الخادمُ يعيد كلَّ رقمٍ تحت قفل الورقة.
  */
 export default function CustomerInvoiceEdit() {
-    const { invoice, customers, branches, products, addons, tax_rate, tax_inclusive, today, edit_token, may, context, errors } = usePage<
+    const { invoice, customers, branches, products, addons, tax_rate, tax_rates, tax_inclusive, today, edit_token, bases, may, context, errors } = usePage<
         PageProps<{
             invoice: InvoiceProps;
             customers: { id: number; name: string; phone: string | null; payment_terms_days: number | null }[];
@@ -203,18 +232,23 @@ export default function CustomerInvoiceEdit() {
             products: Products;
             addons: Addons;
             tax_rate: number;
+            /** نسبُ بنود الصادرة — والبندُ الجديدُ بإحداها وحدها */
+            tax_rates: number[] | null;
             /** قاعدةُ الورقة نفسِها — و`null` حين لا تُعرف من بنودها */
             tax_inclusive: boolean | null;
             today: string;
             edit_token: string;
-            may: { correct_period: boolean; owner: boolean };
+            bases: { value: string; label: string }[];
+            may: { correct_period: boolean; owner: boolean; replace?: boolean };
             errors: Record<string, string>;
         }>
     >().props;
     const t = useTranslate();
     const m = (v: number) => money(v, context!.currency);
     const label = invoice.number ?? `${t('مسودة')} #${invoice.id}`;
+    const correcting = invoice.kind !== 'draft';
     const locked = invoice.from_order;
+    const verb = correcting ? t('تصحيح الفاتورة') : t('تعديل الفاتورة');
 
     const [head, setHead] = useState({
         customer_id: String(invoice.customer_id),
@@ -231,9 +265,9 @@ export default function CustomerInvoiceEdit() {
         notes: invoice.notes ?? '',
         internal_notes: invoice.internal_notes ?? '',
     });
-    const [lines, setLines] = useState<EditLine[]>(() => fromItems(invoice.items));
+    const [lines, setLines] = useState<EditLine[]>(() => fromItems(invoice.items, correcting));
     const [reason, setReason] = useState('');
-    const [periodMode, setPeriodMode] = useState('');
+    const [basis, setBasis] = useState('');
     const [plan, setPlan] = useState<{ key: string; plan: Plan } | null>(null);
     const [planError, setPlanError] = useState<string | null>(null);
     const [planning, setPlanning] = useState(false);
@@ -244,6 +278,13 @@ export default function CustomerInvoiceEdit() {
     const set = (key: keyof typeof head, value: string) => setHead((h) => ({ ...h, [key]: value }));
     const patch = (key: string, next: Partial<EditLine>) =>
         setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...next } : l)));
+
+    // والبندُ الجديدُ في الصادرة بنسبةٍ من نسبها — الأكثرُ فيها افتراضًا
+    const newRate = String(tax_rate);
+    const fresh = (over: Partial<EditLine>): EditLine => ({
+        key: nextKey(), server_key: null, item_id: null, parent_key: null, product_id: '', addon_id: '', description: '',
+        quantity: '1', unit_price: '0', discount: '0', tax_rate: newRate, locked: false, locked_text: false, details: [], ...over,
+    });
 
     /*
      * وما يُرسَل للمعاينة هو ما يُرسَل للحفظ — حمولةٌ واحدة.
@@ -258,11 +299,11 @@ export default function CustomerInvoiceEdit() {
             due_at: head.due_at === '' ? null : head.due_at,
             items: locked ? null : linesPayload(lines),
             reason,
-            period_mode: periodMode || null,
+            basis: basis || null,
             expected_revision: invoice.revision,
             edit_token,
         }),
-        [head, lines, reason, periodMode, locked, invoice.revision, edit_token],
+        [head, lines, reason, basis, locked, invoice.revision, edit_token],
     );
 
     // والمعاينةُ تخصّ النموذجَ الذي عوينت عليه — تغييرٌ بعدها يطلب معاينةً جديدة
@@ -314,27 +355,27 @@ export default function CustomerInvoiceEdit() {
         });
     };
 
-    const mayChoose = current?.period.needs_choice ?? false;
     const ready =
         current !== null &&
         current.changed &&
         current.blockers.length === 0 &&
         current.missing.length === 0 &&
         (!current.needs_reason || reason.trim() !== '') &&
-        (!mayChoose || periodMode !== '');
+        (!current.needs_basis || basis !== '');
 
     const kindLabel: Record<string, string> = {
-        draft: t('مسودة — لا قيد ولا ذمة'),
-        issued: t('صادرة غير مدفوعة — يُعكس قيدها ويُرحّل بالمبلغ الجديد'),
-        paid: t('مدفوعة جزئيًا أو كليًا — المقبوض لا يُمس'),
+        draft: t('مسودة — لا قيد ولا ذمة ولا رقم ضريبي بعد'),
+        issued: t('صادرة غير مدفوعة — تبقى كما صدرت، ويصدر مستند تصحيح'),
+        paid: t('مدفوعة جزئيًا أو كليًا — المقبوض لا يُمس، ويصدر مستند تصحيح'),
     };
 
     const termOptions = TERMS.map((d) => ({ label: d === 0 ? t('مستحق فورًا') : `${d} ${d <= 10 ? t('أيام') : t('يومًا')}`, value: String(d) }));
 
     const errorList = Object.entries(errors ?? {}).filter(([k]) => !k.startsWith('items.'));
+    const rates = (tax_rates ?? []).map((r) => ({ label: `${r}%`, value: String(r) }));
 
     return (
-        <AdminLayout title={`${t('تعديل الفاتورة')} ${label}`}>
+        <AdminLayout title={`${verb} ${label}`}>
             <BackLink
                 routeName="admin.customerInvoices.show"
                 href={route('admin.customerInvoices.show', invoice.id)}
@@ -342,17 +383,17 @@ export default function CustomerInvoiceEdit() {
             />
 
             <PageHeader
-                title={`${t('تعديل الفاتورة')} ${label}`}
+                title={`${verb} ${label}`}
                 subtitle={`${invoice.state} — ${kindLabel[invoice.kind]}`}
                 actions={
                     <>
                         <Button type="button" variant="outline" disabled={planning} onClick={preview} data-testid="edit-preview">
                             <Eye />
-                            {t('معاينة التعديل')}
+                            {correcting ? t('معاينة التصحيح') : t('معاينة التعديل')}
                         </Button>
                         <Button type="button" disabled={!ready || saving} onClick={save} data-testid="edit-save">
                             <Save />
-                            {t('حفظ التعديل')}
+                            {correcting ? t('اعتماد التصحيح') : t('حفظ التعديل')}
                         </Button>
                     </>
                 }
@@ -368,84 +409,86 @@ export default function CustomerInvoiceEdit() {
 
             {locked && (
                 <Card className="mb-4 border-[#fde68a] bg-[#fffbeb] p-3 text-[13px] text-[#92400e]" data-testid="edit-from-order">
-                    {t('هذه الفاتورة مولودة من طلب — بنودها ومبلغها وتاريخها وعميلها من الطلب. يُعدَّل هنا ما لا مال فيه، ويُصحَّح المال بإشعار دائن.')}
+                    {t('هذه الفاتورة مولودة من طلب — بنودها ومبلغها وقيدها ومخزونها من الطلب. صحّح الطلب نفسه، ويُعدَّل هنا ما لا يُطبع.')}
                 </Card>
             )}
 
-            {invoice.kind === 'paid' && (
-                <Card className="mb-4 border-[#bfdbfe] bg-[#eff6ff] p-3 text-[13px] text-[#1e40af]" data-testid="edit-paid-note">
-                    {t('دُفع من هذه الفاتورة :n. المقبوض لا يتغير: إن زاد الإجمالي بقي الفرق على العميل، وإن نقص عما قُبض صار الفائض رصيدًا دائنًا له — ولا يُرد مال تلقائيًا.').replace(':n', m(invoice.paid))}
+            {correcting && (
+                <Card className="mb-4 border-[#bfdbfe] bg-[#eff6ff] p-3 text-[13px] text-[#1e40af]" data-testid="edit-issued-note">
+                    {t('الفاتورة الصادرة تبقى كما صدرت برقمها وتاريخها وبنودها. ما تصحّحه هنا يصدر بمستند مستقل: إشعار دائن لما نقص، وإشعار مدين لما زاد، بتاريخ اليوم وقيده.')}
+                    {invoice.paid > 0 && (
+                        <span className="mt-1 block" data-testid="edit-paid-note">
+                            {t('دُفع منها :n. المقبوض لا يتغير: إن زاد المطلوب بقي الفرق على العميل، وإن نقص عما قُبض صار الفائض رصيدًا دائنًا له — ولا يُرد مال تلقائيًا.').replace(':n', m(invoice.paid))}
+                        </span>
+                    )}
                 </Card>
             )}
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
                 <div className="min-w-0 space-y-4 xl:col-span-3">
-                    <Card className="space-y-4 p-4">
-                        <h2 className="font-bold text-[#111]">{t('العميل والتواريخ')}</h2>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <Field label="العميل" error={errors?.customer_id}>
-                                <Select
-                                    id="customer"
-                                    value={head.customer_id}
-                                    disabled={locked}
-                                    onChange={(e) => set('customer_id', e.target.value)}
-                                    options={customers.map((c) => ({ label: c.phone ? `${c.name} — ${c.phone}` : c.name, value: String(c.id) }))}
-                                />
-                            </Field>
-                            <Field label="الفرع" error={errors?.branch_id}>
-                                <Select
-                                    id="branch"
-                                    value={head.branch_id}
-                                    disabled={locked}
-                                    onChange={(e) => set('branch_id', e.target.value)}
-                                    placeholder="بلا فرع"
-                                    options={branches.map((b) => ({ label: b.name, value: String(b.id), disabled: !b.allowed && String(b.id) !== head.branch_id }))}
-                                />
-                            </Field>
-                            <Field label="تاريخ الفاتورة" error={errors?.issued_at}>
-                                <Input
-                                    type="date"
-                                    value={head.issued_at}
-                                    disabled={locked}
-                                    onChange={(e) => set('issued_at', e.target.value)}
-                                    data-testid="edit-issued-at"
-                                />
-                            </Field>
-                            <Field label="شروط الدفع (أيام)">
-                                <Select
-                                    id="terms"
-                                    value={head.payment_terms_days}
-                                    onChange={(e) => {
-                                        const v = e.target.value;
-                                        setHead((h) => ({ ...h, payment_terms_days: v, due_at: v === '' ? h.due_at : addDays(h.issued_at || today, Number(v)) }));
-                                    }}
-                                    placeholder="بلا مدة"
-                                    options={termOptions}
-                                />
-                            </Field>
-                            <Field label="تاريخ الاستحقاق" error={errors?.due_at}>
-                                <Input type="date" value={head.due_at} onChange={(e) => setHead((h) => ({ ...h, due_at: e.target.value, payment_terms_days: '' }))} />
-                            </Field>
-                        </div>
-                    </Card>
+                    {correcting ? (
+                        <Card className="space-y-2 p-4 text-[13px]" data-testid="edit-printed">
+                            <h2 className="font-bold text-[#111]">{t('بيانات الفاتورة كما صدرت')}</h2>
+                            <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                <Row label={t('العميل')} value={invoice.customer ?? '—'} />
+                                <Row label={t('تاريخ الفاتورة')} value={invoice.issued_at ?? '—'} />
+                                <Row label={t('إجمالي الفاتورة')} value={m(invoice.issued_total)} />
+                            </dl>
+                            <p className="text-[12px] text-[#6b7280]">
+                                {t('العميل والتاريخ والمراجع والملاحظات المطبوعة لا تتغيّر بعد الإصدار. لعميل آخر استعمل «إلغاء وإصدار بديلة» أسفل الصفحة.')}
+                            </p>
+                        </Card>
+                    ) : (
+                        <Card className="space-y-4 p-4">
+                            <h2 className="font-bold text-[#111]">{t('العميل والتواريخ')}</h2>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <Field label="العميل" error={errors?.customer_id}>
+                                    <Select
+                                        id="customer"
+                                        value={head.customer_id}
+                                        disabled={locked}
+                                        onChange={(e) => set('customer_id', e.target.value)}
+                                        options={customers.map((c) => ({ label: c.phone ? `${c.name} — ${c.phone}` : c.name, value: String(c.id) }))}
+                                    />
+                                </Field>
+                                <Field label="الفرع" error={errors?.branch_id}>
+                                    <Select
+                                        id="branch"
+                                        value={head.branch_id}
+                                        disabled={locked}
+                                        onChange={(e) => set('branch_id', e.target.value)}
+                                        placeholder="بلا فرع"
+                                        options={branches.map((b) => ({ label: b.name, value: String(b.id), disabled: !b.allowed && String(b.id) !== head.branch_id }))}
+                                    />
+                                </Field>
+                                <Field label="تاريخ الفاتورة" error={errors?.issued_at}>
+                                    <Input type="date" value={head.issued_at} disabled={locked} onChange={(e) => set('issued_at', e.target.value)} data-testid="edit-issued-at" />
+                                </Field>
+                                <Field label="شروط الدفع (أيام)">
+                                    <Select
+                                        id="terms"
+                                        value={head.payment_terms_days}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            setHead((h) => ({ ...h, payment_terms_days: v, due_at: v === '' ? h.due_at : addDays(h.issued_at || today, Number(v)) }));
+                                        }}
+                                        placeholder="بلا مدة"
+                                        options={termOptions}
+                                    />
+                                </Field>
+                                <Field label="تاريخ الاستحقاق" error={errors?.due_at}>
+                                    <Input type="date" value={head.due_at} onChange={(e) => setHead((h) => ({ ...h, due_at: e.target.value, payment_terms_days: '' }))} />
+                                </Field>
+                            </div>
+                        </Card>
+                    )}
 
                     <Card className="p-4">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                            <h2 className="font-bold text-[#111]">{t('البنود')}</h2>
+                            <h2 className="font-bold text-[#111]">{correcting ? t('البنود كما هي الآن') : t('البنود')}</h2>
                             {!locked && (
                                 <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        data-testid="edit-add-line"
-                                        onClick={() =>
-                                            setLines((prev) => [
-                                                ...prev,
-                                                { key: nextKey(), item_id: null, parent_item_id: null, product_id: '', addon_id: '', description: '', quantity: '1', unit_price: '0', discount: '0', tax_rate: String(tax_rate), locked: false, details: [] },
-                                            ])
-                                        }
-                                    >
+                                    <Button type="button" variant="outline" size="sm" data-testid="edit-add-line" onClick={() => setLines((prev) => [...prev, fresh({})])}>
                                         <Plus />
                                         {t('إضافة بند')}
                                     </Button>
@@ -476,13 +519,14 @@ export default function CustomerInvoiceEdit() {
                                 </thead>
                                 <tbody>
                                     {lines.map((l) => (
-                                        <tr key={l.key} data-testid={l.item_id ? 'edit-line' : 'edit-line-new'} className="border-t border-[var(--ui-border,#e8e8e8)] align-top">
-                                            <td className={cn('p-2', l.parent_item_id && 'ps-6')}>
+                                        <tr key={l.key} data-testid={l.server_key ? 'edit-line' : 'edit-line-new'} className="border-t border-[var(--ui-border,#e8e8e8)] align-top">
+                                            <td className={cn('p-2', l.parent_key && 'ps-6')}>
                                                 <Input
                                                     value={l.description}
-                                                    disabled={locked || l.locked}
+                                                    disabled={locked || l.locked || l.locked_text}
                                                     onChange={(e) => patch(l.key, { description: e.target.value })}
                                                     placeholder={t('وصف البند')}
+                                                    data-testid="edit-description"
                                                 />
                                                 {l.details.map((d, k) => (
                                                     <span key={k} className="mt-1 block text-[12px] text-[#6b7280]">
@@ -501,7 +545,21 @@ export default function CustomerInvoiceEdit() {
                                                 <Input type="number" inputMode="decimal" min="0" step="any" value={l.discount} disabled={locked} onChange={(e) => patch(l.key, { discount: e.target.value })} data-testid="edit-discount" />
                                             </td>
                                             <td className="p-2">
-                                                <Input type="number" inputMode="decimal" min="0" max="100" step="any" value={l.tax_rate} disabled={locked} onChange={(e) => patch(l.key, { tax_rate: e.target.value })} data-testid="edit-tax" />
+                                                {correcting && !l.server_key && rates.length > 1 ? (
+                                                    <Select id={`rate-${l.key}`} value={l.tax_rate} onChange={(e) => patch(l.key, { tax_rate: e.target.value })} options={rates} />
+                                                ) : (
+                                                    <Input
+                                                        type="number"
+                                                        inputMode="decimal"
+                                                        min="0"
+                                                        max="100"
+                                                        step="any"
+                                                        value={l.tax_rate}
+                                                        disabled={locked || correcting}
+                                                        onChange={(e) => patch(l.key, { tax_rate: e.target.value })}
+                                                        data-testid="edit-tax"
+                                                    />
+                                                )}
                                             </td>
                                             <td className="p-2">
                                                 {!locked && lines.length > 1 && (
@@ -517,69 +575,74 @@ export default function CustomerInvoiceEdit() {
                         </div>
 
                         <dl className="mt-4 ms-auto max-w-xs space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-4 text-[13px]">
-                            <Row label={t('الإجمالي قبل التعديل')} value={m(invoice.total)} />
+                            <Row label={correcting ? t('البنود قبل التصحيح') : t('الإجمالي قبل التعديل')} value={m(invoice.total)} />
                             <Row label={t('المجموع الفرعي')} value={m(locked ? invoice.subtotal : totals.subtotal)} />
                             {(locked ? invoice.discount_total : totals.discount) > 0 && <Row label={t('الخصم')} value={m(locked ? invoice.discount_total : totals.discount)} />}
                             <Row label={t('الضريبة')} value={m(locked ? invoice.tax_total : totals.tax)} />
-                            <Row label={t('الإجمالي بعد التعديل')} value={m(locked ? invoice.total : totals.total)} strong />
+                            <Row label={correcting ? t('البنود بعد التصحيح') : t('الإجمالي بعد التعديل')} value={m(locked ? invoice.total : totals.total)} strong />
                         </dl>
-                        {tax_inclusive === null && !locked && invoice.kind !== 'draft' && (
-                            <p className="mt-2 text-[12px] text-[#b45309]">{t('تعذّر معرفة قاعدة ضريبة هذه الفاتورة من بنودها — تعديل مالها مردود، ويُصحَّح بإشعار دائن.')}</p>
+                        {tax_inclusive === null && !locked && correcting && (
+                            <p className="mt-2 text-[12px] text-[#b45309]">{t('تعذّر معرفة قاعدة ضريبة هذه الفاتورة من بنودها — تصحيح مالها مردود، ويُصحَّح بإشعار دائن بمبلغه.')}</p>
                         )}
                     </Card>
 
-                    <Card className="space-y-3 p-4">
-                        <h2 className="font-bold text-[#111]">{t('المراجع والملاحظات')}</h2>
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            {(
-                                [
-                                    ['po_number', 'مرجع العميل (أمر الشراء)'],
-                                    ['contract_number', 'رقم العقد'],
-                                    ['external_reference', 'رقم المرجع'],
-                                    ['department', 'القسم / الإدارة'],
-                                    ['cost_center', 'مركز التكلفة'],
-                                    ['attention_to', 'موجه إلى / عناية'],
-                                ] as const
-                            ).map(([key, name]) => (
-                                <Field key={key} label={name} error={errors?.[key]}>
-                                    <Input value={head[key]} onChange={(e) => set(key, e.target.value)} />
-                                </Field>
-                            ))}
-                        </div>
-                        <Field label="ملاحظات للعميل" error={errors?.notes}>
-                            <Textarea rows={3} value={head.notes} onChange={(e) => set('notes', e.target.value)} />
-                        </Field>
-                        <Field label="ملاحظات داخلية" error={errors?.internal_notes}>
-                            <Textarea rows={2} value={head.internal_notes} onChange={(e) => set('internal_notes', e.target.value)} />
-                        </Field>
-                    </Card>
+                    {correcting ? (
+                        <Card className="space-y-3 p-4">
+                            <h2 className="font-bold text-[#111]">{t('ملاحظات داخلية')}</h2>
+                            <p className="text-[12px] text-[#6b7280]">{t('لا تُطبع على الفاتورة — فتُعدَّل في مكانها.')}</p>
+                            <Textarea rows={2} value={head.internal_notes} onChange={(e) => set('internal_notes', e.target.value)} data-testid="edit-internal-notes" />
+                        </Card>
+                    ) : (
+                        <Card className="space-y-3 p-4">
+                            <h2 className="font-bold text-[#111]">{t('المراجع والملاحظات')}</h2>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                {(
+                                    [
+                                        ['po_number', 'مرجع العميل (أمر الشراء)'],
+                                        ['contract_number', 'رقم العقد'],
+                                        ['external_reference', 'رقم المرجع'],
+                                        ['department', 'القسم / الإدارة'],
+                                        ['cost_center', 'مركز التكلفة'],
+                                        ['attention_to', 'موجه إلى / عناية'],
+                                    ] as const
+                                ).map(([key, name]) => (
+                                    <Field key={key} label={name} error={errors?.[key]}>
+                                        <Input value={head[key]} onChange={(e) => set(key, e.target.value)} />
+                                    </Field>
+                                ))}
+                            </div>
+                            <Field label="ملاحظات للعميل" error={errors?.notes}>
+                                <Textarea rows={3} value={head.notes} onChange={(e) => set('notes', e.target.value)} />
+                            </Field>
+                            <Field label="ملاحظات داخلية" error={errors?.internal_notes}>
+                                <Textarea rows={2} value={head.internal_notes} onChange={(e) => set('internal_notes', e.target.value)} />
+                            </Field>
+                        </Card>
+                    )}
+
+                    {correcting && may.replace && <ReplaceCard invoiceId={invoice.id} customers={customers.filter((c) => c.id !== invoice.customer_id)} error={errors?.replace} />}
                 </div>
 
                 <div className="min-w-0 space-y-4 xl:col-span-2">
                     <Card className="space-y-3 p-4">
-                        <h2 className="font-bold text-[#111]">{t('سبب التعديل')}</h2>
+                        <h2 className="font-bold text-[#111]">{correcting ? t('أساس التصحيح وسببه') : t('سبب التعديل')}</h2>
+                        {correcting && (
+                            <Field label="أساس التصحيح" error={errors?.basis}>
+                                <Select id="basis" value={basis} onChange={(e) => setBasis(e.target.value)} placeholder="اختر" options={bases} data-testid="edit-basis" />
+                            </Field>
+                        )}
                         <Textarea
                             rows={3}
                             maxLength={120}
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
-                            placeholder={invoice.kind === 'draft' ? t('اختياري للمسودة') : t('يُحفظ في سجل التعديلات وعلى قيد التصحيح')}
+                            placeholder={correcting ? t('يُطبع على مستند التصحيح ويُحفظ في السجل') : t('اختياري للمسودة')}
                             data-testid="edit-reason"
                         />
                         {errors?.reason && <p className="text-[12px] text-[#b91c1c]">{errors.reason}</p>}
                     </Card>
 
-                    <PlanPanel
-                        plan={current}
-                        stale={plan !== null && current === null}
-                        error={planError}
-                        planning={planning}
-                        periodMode={periodMode}
-                        onPeriod={(v) => setPeriodMode(v)}
-                        mayCorrect={may.correct_period}
-                        periodError={errors?.period_mode}
-                        m={m}
-                    />
+                    <PlanPanel plan={current} stale={plan !== null && current === null} error={planError} planning={planning} mayCorrect={may.correct_period} m={m} />
                 </div>
             </div>
 
@@ -589,12 +652,7 @@ export default function CustomerInvoiceEdit() {
                 products={products}
                 truncated={false}
                 picked={lines.map((l) => Number(l.product_id)).filter((n) => n > 0)}
-                onPick={(p) =>
-                    setLines((prev) => [
-                        ...prev,
-                        { key: nextKey(), item_id: null, parent_item_id: null, product_id: String(p.id), addon_id: '', description: p.name, quantity: '1', unit_price: String(p.price), discount: '0', tax_rate: String(tax_rate), locked: false, details: [] },
-                    ])
-                }
+                onPick={(p) => setLines((prev) => [...prev, fresh({ product_id: String(p.id), description: p.name, unit_price: String(p.price) })])}
             />
             <AddonDialog
                 open={pickingAddon}
@@ -602,21 +660,57 @@ export default function CustomerInvoiceEdit() {
                 addons={addons}
                 truncated={false}
                 picked={lines.map((l) => Number(l.addon_id)).filter((n) => n > 0)}
-                onPick={(a) =>
-                    setLines((prev) => [
-                        ...prev,
-                        { key: nextKey(), item_id: null, parent_item_id: null, product_id: '', addon_id: String(a.id), description: a.name, quantity: '1', unit_price: String(a.price), discount: '0', tax_rate: String(tax_rate), locked: false, details: [] },
-                    ])
-                }
+                onPick={(a) => setLines((prev) => [...prev, fresh({ addon_id: String(a.id), description: a.name, unit_price: String(a.price) })])}
             />
         </AdminLayout>
     );
 }
 
 /**
- * ما سيقع لو حُفظ — الفرقُ والذمّةُ والدفترُ والمخزونُ وما يمنع.
+ * «إلغاء وإصدار بديلة» — عميلٌ آخر لفاتورةٍ صدرت ولم يُقبض منها شيء.
  *
- * يُرسم من ردّ الخادم وحده: لا يُحسب هنا أين يقع التصحيح ولا ما يبقى على
+ * تُلغى هذه برقمها وتُكتب بديلتُها مسودّةً للعميل الصحيح (`CustomerInvoiceEdits::replace`).
+ * والخادمُ يردّ ما عليه مالٌ أو إشعارٌ أو رابطٌ أو تجهيز، بسببه.
+ */
+function ReplaceCard({ invoiceId, customers, error }: { invoiceId: number; customers: { id: number; name: string; phone: string | null }[]; error?: string }) {
+    const t = useTranslate();
+    const [customer, setCustomer] = useState('');
+    const [why, setWhy] = useState('');
+    const [busy, setBusy] = useState(false);
+
+    return (
+        <Card className="space-y-3 p-4" data-testid="edit-replace">
+            <h2 className="flex items-center gap-2 font-bold text-[#111]">
+                <Replace className="size-4" />
+                {t('إلغاء وإصدار بديلة لعميل آخر')}
+            </h2>
+            <p className="text-[12px] text-[#6b7280]">
+                {t('لفاتورة لم يُقبض منها شيء: تُلغى برقمها ويُعكس قيدها اليوم، وتُكتب بديلتها مسودة للعميل الصحيح تراجعها ثم تصدرها برقم جديد.')}
+            </p>
+            <Field label="العميل الصحيح" error={error}>
+                <Select id="replace-customer" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="اختر" options={customers.map((c) => ({ label: c.phone ? `${c.name} — ${c.phone}` : c.name, value: String(c.id) }))} />
+            </Field>
+            <Input value={why} maxLength={120} onChange={(e) => setWhy(e.target.value)} placeholder={t('سبب الاستبدال')} data-testid="edit-replace-reason" />
+            <Button
+                type="button"
+                variant="outline"
+                disabled={customer === '' || why.trim() === '' || busy}
+                data-testid="edit-replace-submit"
+                onClick={() => {
+                    setBusy(true);
+                    router.post(route('admin.customerInvoices.replace', invoiceId), { customer_id: customer, reason: why }, { preserveScroll: true, onFinish: () => setBusy(false) });
+                }}
+            >
+                {t('إلغاء الفاتورة وكتابة البديلة')}
+            </Button>
+        </Card>
+    );
+}
+
+/**
+ * ما سيقع لو حُفظ — المستنداتُ والفرقُ والذمّةُ والمخزونُ وما يمنع.
+ *
+ * يُرسم من ردّ الخادم وحده: لا يُحسب هنا أيُّ مستندٍ يصدر ولا ما يبقى على
  * العميل — حسابان في موضعين يفترقان يومًا.
  */
 export function PlanPanel({
@@ -624,20 +718,14 @@ export function PlanPanel({
     stale,
     error,
     planning,
-    periodMode,
-    onPeriod,
     mayCorrect,
-    periodError,
     m,
 }: {
     plan: Plan | null;
     stale: boolean;
     error: string | null;
     planning: boolean;
-    periodMode: string;
-    onPeriod: (v: string) => void;
     mayCorrect: boolean;
-    periodError?: string;
     m: (v: number) => string;
 }) {
     const t = useTranslate();
@@ -656,17 +744,18 @@ export function PlanPanel({
                 {planning
                     ? t('يُحسب أثر التعديل…')
                     : stale
-                      ? t('تغيّر النموذج بعد المعاينة — اضغط «معاينة التعديل» من جديد قبل الحفظ.')
-                      : t('اضغط «معاينة التعديل» لترى الفرق في المال والضريبة، وأثره على المدفوعات والدفتر، قبل الحفظ.')}
+                      ? t('تغيّر النموذج بعد المعاينة — اضغط المعاينة من جديد قبل الحفظ.')
+                      : t('اضغط المعاينة لترى المستندات التي ستصدر، والفرق في المال والضريبة، وأثره على المدفوعات، قبل الحفظ.')}
             </Card>
         );
     }
 
     const diff = (v: number) => (v > 0 ? `+${m(v)}` : m(v));
+    const correcting = plan.kind !== 'draft';
 
     return (
         <Card className="space-y-4 p-4 text-[13px]" data-testid="plan">
-            <h2 className="font-bold text-[#111]">{t('أثر التعديل')}</h2>
+            <h2 className="font-bold text-[#111]">{correcting ? t('أثر التصحيح') : t('أثر التعديل')}</h2>
 
             {plan.blockers.length > 0 && (
                 <div className="space-y-1 rounded-lg border border-[#fecaca] bg-[#fef2f2] p-3 text-[#b91c1c]" data-testid="plan-blockers">
@@ -681,20 +770,27 @@ export function PlanPanel({
             {plan.missing.length > 0 && (
                 <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] p-3 text-[#b91c1c]" data-testid="plan-missing">
                     {t('لا تملك صلاحية هذا التعديل:')} {plan.missing.join('، ')}
+                    {!mayCorrect && plan.period.prior && <span className="block">{t('الفاتورة من فترة سابقة أو مقفلة.')}</span>}
                 </div>
             )}
             {!plan.changed && <p className="text-[#6b7280]">{t('لم يتغيّر شيء في الفاتورة.')}</p>}
 
+            {correcting && (plan.documents.credit || plan.documents.debit) && (
+                <div className="space-y-2" data-testid="plan-documents">
+                    <h3 className="font-semibold text-[#111]">{t('المستندات التي ستصدر')}</h3>
+                    {plan.documents.debit && <DocumentRow kind="debit" doc={plan.documents.debit} date={plan.period.note_date} m={m} />}
+                    {plan.documents.credit && <DocumentRow kind="credit" doc={plan.documents.credit} date={plan.period.note_date} m={m} />}
+                    <p className="text-[12px] text-[#6b7280]">{t('والفاتورة الأصلية تبقى كما صدرت، وتُفتح وتُطبع وحدها.')}</p>
+                </div>
+            )}
+
             <dl className="space-y-1.5">
-                <Row label={t('الإجمالي')} value={`${m(plan.money.total_before)} ← ${m(plan.money.total_after)}`} />
+                <Row label={correcting ? t('المطلوب') : t('الإجمالي')} value={`${m(plan.money.total_before)} ← ${m(plan.money.total_after)}`} />
                 <Row label={t('الفرق')} value={diff(plan.money.difference)} strong />
-                <Row label={t('فرق الضريبة')} value={diff(plan.money.tax_difference)} />
+                <Row label={t('الضريبة')} value={`${m(plan.money.tax_before)} ← ${m(plan.money.tax_after)}`} />
                 {plan.money.paid > 0 && <Row label={t('المقبوض — لا يتغير')} value={m(plan.money.paid)} />}
-                {plan.money.credited > 0 && <Row label={t('الإشعارات الدائنة')} value={m(plan.money.credited)} />}
-                <Row label={t('الباقي على العميل')} value={`${m(plan.money.outstanding_before)} ← ${m(plan.money.outstanding_after)}`} />
-                {plan.money.customer_credit > 0 && (
-                    <Row label={t('يصير رصيدًا دائنًا للعميل')} value={m(plan.money.customer_credit)} strong />
-                )}
+                {correcting && <Row label={t('الباقي على العميل')} value={`${m(plan.money.outstanding_before)} ← ${m(plan.money.outstanding_after)}`} />}
+                {plan.money.customer_credit > 0 && <Row label={t('يصير رصيدًا دائنًا للعميل')} value={m(plan.money.customer_credit)} strong />}
             </dl>
 
             {plan.money.customer_credit > 0 && (
@@ -734,42 +830,59 @@ export function PlanPanel({
                 <p data-testid="plan-stock">
                     <span className="font-medium">{t('المخزون')}:</span> {plan.stock.why}
                 </p>
-                <p data-testid="plan-ledger">
-                    <span className="font-medium">{t('الدفتر')}:</span>{' '}
-                    {plan.ledger.repost
-                        ? plan.period.mode
-                            ? t('يُعكس القيد بتاريخ :r ويُرحّل قيد بالمبلغ الجديد بتاريخ :e.')
-                                  .replace(':r', plan.period.reversal_date ?? '—')
-                                  .replace(':e', plan.period.entry_date ?? '—')
-                            : t('يُعكس قيد :d ويُرحّل قيد جديد — اختر موضع التصحيح.').replace(':d', plan.ledger.live_entry_date ?? '—')
-                        : t('لا قيد يتغيّر.')}
-                </p>
+                {correcting && (
+                    <p data-testid="plan-ledger">
+                        <span className="font-medium">{t('الدفتر')}:</span>{' '}
+                        {plan.documents.credit || plan.documents.debit
+                            ? t('يُقيَّد كل مستند بتاريخ :d، وأثره الضريبي في فترته. قيد الفاتورة الأصلي لا يُمس.').replace(':d', plan.period.note_date ?? '—')
+                            : t('لا قيد يتغيّر.')}
+                    </p>
+                )}
+                {plan.period.prior && (
+                    <p className="text-[#92400e]" data-testid="plan-prior">
+                        {t('الفاتورة من شهر مضى أو فترة مقفلة — يصدر المستند بتاريخ اليوم ويقع أثره في الفترة الحالية، ويحتاج صلاحية «تصحيح فاتورة عميل من فترة سابقة أو مقفلة».')}
+                    </p>
+                )}
                 {plan.period.closed_through && (
                     <p>
                         <span className="font-medium">{t('الدفاتر مقفلة حتى')}:</span> <bdi>{plan.period.closed_through}</bdi>
                     </p>
                 )}
             </div>
-
-            {plan.period.needs_choice && (
-                <fieldset className="space-y-2 rounded-lg border border-[#fde68a] bg-[#fffbeb] p-3" data-testid="plan-period">
-                    <legend className="px-1 text-[12px] font-semibold text-[#92400e]">{t('قيد الفاتورة في شهر مضى أو فترة مقفلة — أين يُسجَّل التصحيح؟')}</legend>
-                    {!mayCorrect && <p className="text-[12px] text-[#b91c1c]">{t('تصحيح فترة سابقة يحتاج صلاحية «تصحيح فاتورة عميل من فترة سابقة أو مقفلة».')}</p>}
-                    <label className="flex items-start gap-2">
-                        <input type="radio" name="period" value="current" checked={periodMode === 'current'} onChange={() => onPeriod('current')} />
-                        <span>{t('في الفترة الحالية — يظهر الفرق في الشهر الجاري، وتبقى الفترة السابقة كما أُعلنت.')}</span>
-                    </label>
-                    <label className={cn('flex items-start gap-2', !plan.period.original_allowed && 'opacity-50')}>
-                        <input type="radio" name="period" value="original" disabled={!plan.period.original_allowed} checked={periodMode === 'original'} onChange={() => onPeriod('original')} />
-                        <span>{t('بتاريخ القيد الأصلي — لصاحب النشاط في فترة مفتوحة معلومة.')}</span>
-                    </label>
-                    {periodError && <p className="text-[12px] text-[#b91c1c]">{periodError}</p>}
-                    {periodMode !== '' && periodMode !== plan.period.mode && (
-                        <p className="text-[12px] text-[#92400e]">{t('اضغط «معاينة التعديل» لترى التواريخ بالاختيار الجديد.')}</p>
-                    )}
-                </fieldset>
-            )}
         </Card>
+    );
+}
+
+function DocumentRow({ kind, doc, date, m }: { kind: 'credit' | 'debit'; doc: PlanDocument; date: string | null; m: (v: number) => string }) {
+    const t = useTranslate();
+    const Icon = kind === 'debit' ? FilePlus : FileMinus;
+
+    return (
+        <div className="rounded-lg border border-[var(--ui-border,#e8e8e8)] p-2" data-testid={`plan-doc-${kind}`}>
+            <p className="flex items-center justify-between gap-2 font-medium">
+                <span className="flex items-center gap-1.5">
+                    <Icon className="size-4" />
+                    {kind === 'debit' ? t('إشعار مدين — يزيد المطلوب') : t('إشعار دائن — ينقص المطلوب')}
+                </span>
+                <span dir="ltr" className="tabular-nums">
+                    {kind === 'debit' ? '+' : '−'}
+                    {m(doc.amount)}
+                </span>
+            </p>
+            <p className="text-[12px] text-[#6b7280]">
+                {t('قبل الضريبة')} <span dir="ltr">{m(doc.net)}</span> · {t('الضريبة')} <span dir="ltr">{m(doc.tax)}</span> · {t('بتاريخ')} <span dir="ltr">{date ?? '—'}</span>
+            </p>
+            <ul className="mt-1 space-y-0.5 text-[12px] text-[#4b4b4b]">
+                {doc.lines.map((l, i) => (
+                    <li key={i} className="flex justify-between gap-2">
+                        <bdi>{l.description}</bdi>
+                        <span dir="ltr" className="tabular-nums">
+                            {m(l.total)}
+                        </span>
+                    </li>
+                ))}
+            </ul>
+        </div>
     );
 }
 

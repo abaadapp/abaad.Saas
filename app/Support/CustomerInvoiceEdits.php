@@ -85,7 +85,6 @@ final class CustomerInvoiceEdits
     public const REASON_MAX = BooksPeriod::REASON_MAX;
 
     /** مدّةُ الإرجاع التي تُعدَّل فيها الضريبة — م٤٨(٤): ثلاثةُ أشهرٍ من التوريد */
-    public const RETURN_MONTHS = 3;
 
     /** ما يُسمّى في الشاشة والسجلّ لكلّ حقل */
     public const LABELS = [
@@ -109,6 +108,16 @@ final class CustomerInvoiceEdits
         CustomerInvoiceRevision::ERROR => 'تصحيح خطأ في الفاتورة',
         CustomerInvoiceRevision::RETURN => 'إرجاع أو إلغاء جزئي',
     ];
+
+    /**
+     * ما يُفتح من الأسس في شاشة التصحيح — تصحيحُ الخطأ وحده.
+     *
+     * الإرجاعُ والإلغاءُ الجزئيّ مسارٌ آخر: المادّة 48 من اللائحة (العدد 1383
+     * من الجريدة الرسميّة) تشترط للإلغاء والرفض «إشعار مدين» يشير إلى الفاتورة،
+     * واسترجاعَ السلع وإعادةَ المقابل خلال ثلاثة أشهر — لا إشعارًا دائنًا يُختار
+     * من اتّجاه الفرق. فيبقى مردودًا هنا حتى يحسم المحاسبُ الضريبيّ مستندَه.
+     */
+    public const OPEN_BASES = [CustomerInvoiceRevision::ERROR];
 
     /** حالُ الورقة ساعةَ تُعدَّل — ومنه الفعلُ الذي يُسأل */
     public static function kind(CustomerInvoice $invoice): string
@@ -135,6 +144,52 @@ final class CustomerInvoiceEdits
         return $user !== null
             && $invoice->status !== CustomerInvoice::CANCELLED
             && $user->may(self::actionFor(self::kind($invoice)));
+    }
+
+    /**
+     * ما يمنع تصحيحَ مال الفاتورة الآن — من حالها هي، قبل أن يُكتب شيء.
+     *
+     * تعرضه الشاشةُ عند فتحها فلا يكتشفه الموظّفُ بعد أن يصحّح البنود ويعاين،
+     * ويقرؤه `planCorrection` نفسُه — فالسببُ في الشاشة هو سببُ الردّ.
+     *
+     * @return array<string, string> order | link | filed | closed
+     */
+    public static function standing(CustomerInvoice $invoice): array
+    {
+        if (self::kind($invoice) === CustomerInvoiceRevision::DRAFT) {
+            return [];
+        }
+
+        $bid = (int) $invoice->business_id;
+        $reasons = [];
+
+        if ($invoice->orders()->exists()) {
+            $reasons['order'] = __('هذه الفاتورة مولودة من طلب: بنودها ومبلغها وقيدها ومخزونها من الطلب. صحّح الطلب نفسه فيتبعه قيده ومخزونه — ويُعدَّل هنا ما لا يُطبع.');
+        }
+
+        $pendingLink = CustomerPaymentLink::where('business_id', $bid)
+            ->where('customer_invoice_id', $invoice->id)
+            ->where('status', CustomerPaymentLink::PENDING)
+            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+            ->exists();
+
+        if ($pendingLink || PaymentLinks::doubt($invoice)) {
+            $reasons['link'] = __('على الفاتورة رابطُ دفعٍ لم يُدفع بعد أو محاولةٌ لم تُعرف نتيجتُها — ألغِ الرابط أوّلًا من «المالية ← روابط الدفع»، فلا يُطلب من العميل مبلغٌ غير ما عليه.');
+        }
+
+        if (Vat::isFiled($bid, $invoice->issued_at)) {
+            $reasons['filed'] = __('الفاتورة في فترة ضريبية قُدّم إقرارها حتى :d — تصحيح خطأ فيها قد يحتاج إقرارًا معدّلًا. القرار للمحاسب الضريبي قبل إصدار مستند التصحيح.', [
+                'd' => Vat::filedThrough($bid)?->toDateString(),
+            ]);
+        }
+
+        // المستندُ يُقيَّد يومَه — والدفاترُ المقفلةُ حتى اليوم لا يُكتب فيها
+        $closed = BooksPeriod::closedThrough($bid);
+        if ($closed !== null && $closed->gte(now()->startOfDay())) {
+            $reasons['closed'] = __('الدفاتر مقفلة حتى :d — لا يُقيَّد مستند تصحيح اليوم.', ['d' => $closed->toDateString()]);
+        }
+
+        return $reasons;
     }
 
     /**
@@ -393,7 +448,7 @@ final class CustomerInvoiceEdits
                 throw ValidationException::withMessages(['reason' => __('اكتب سبب تصحيح الفاتورة — يُطبع على مستند التصحيح ويُحفظ في السجل.')]);
             }
             if ($plan['needs_basis'] && $plan['basis'] === null) {
-                throw ValidationException::withMessages(['basis' => __('اختر أساس التصحيح: خطأ في الفاتورة أو إرجاع.')]);
+                throw ValidationException::withMessages(['basis' => __('اختر أساس التصحيح.')]);
             }
 
             $number = (int) $locked->revision + 1;
@@ -701,49 +756,34 @@ final class CustomerInvoiceEdits
         }
 
         /* ═══ ما يمنع ═══ */
-        if ($fromOrder && $itemsChanged) {
-            $blockers[] = __('هذه الفاتورة مولودة من طلب: بنودها ومبلغها وقيدها ومخزونها من الطلب. صحّح الطلب نفسه فيتبعه قيده ومخزونه — ويُعدَّل هنا ما لا يُطبع.');
+        $standing = self::standing($invoice);
+
+        if ($fromOrder && $itemsChanged && isset($standing['order'])) {
+            $blockers[] = $standing['order'];
         }
 
-        $pendingLink = CustomerPaymentLink::where('business_id', $bid)
-            ->where('customer_invoice_id', $invoice->id)
-            ->where('status', CustomerPaymentLink::PENDING)
-            ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
-            ->exists();
-
-        if ($moneyChanged && ($pendingLink || PaymentLinks::doubt($invoice))) {
-            $blockers[] = __('على الفاتورة رابطُ دفعٍ لم يُدفع بعد أو محاولةٌ لم تُعرف نتيجتُها — ألغِ الرابط أوّلًا من «المالية ← روابط الدفع»، فلا يُطلب من العميل مبلغٌ غير ما عليه.');
+        if ($moneyChanged) {
+            foreach (['link', 'filed', 'closed'] as $why) {
+                if (isset($standing[$why])) {
+                    $blockers[] = $standing[$why];
+                }
+            }
         }
 
         $prep = $invoice->preparation;
         if ($lines['quantities'] && $prep !== null && ! in_array($prep->status, CustomerInvoicePreparations::CLOSED, true)) {
-            $blockers[] = __('على الفاتورة طلب تجهيز لم يُسلَّم — لا تتغيّر أصنافها ولا كمياتها تحت من يجهّزها. يُصحَّح السعر والخصم هنا، والكمية بعد التسليم بإرجاع.');
+            $blockers[] = __('على الفاتورة طلب تجهيز لم يُسلَّم — لا تتغيّر أصنافها ولا كمياتها تحت من يجهّزها. يُصحَّح السعر والخصم هنا، والكمية بعد التسليم.');
         }
 
         $basis = in_array($input['basis'] ?? null, CustomerInvoiceRevision::BASES, true) ? $input['basis'] : null;
 
-        if ($basis === CustomerInvoiceRevision::RETURN && $debit !== null) {
-            $blockers[] = __('الإرجاع ينقص الفاتورة ولا يزيدها — زيادة المبلغ تصحيح خطأ بإشعار مدين.');
-        }
-
-        $supplied = Carbon::parse($invoice->issued_at)->startOfDay();
-        if ($basis === CustomerInvoiceRevision::RETURN && $credit !== null && $supplied->lt(now()->startOfDay()->subMonthsNoOverflow(self::RETURN_MONTHS))) {
-            $blockers[] = __('مضى على الفاتورة أكثر من ثلاثة أشهر — تعديل الضريبة بالإرجاع مشروط بالإرجاع خلالها (م48 من اللائحة). القرار للمحاسب الضريبي قبل إصدار هذا الإشعار.');
-        }
-
-        if ($basis === CustomerInvoiceRevision::ERROR && $moneyChanged && Vat::isFiled($bid, $invoice->issued_at)) {
-            $blockers[] = __('الفاتورة في فترة ضريبية قُدّم إقرارها حتى :d — تصحيح خطأ فيها قد يحتاج إقرارًا معدّلًا. القرار للمحاسب الضريبي قبل إصدار مستند التصحيح.', [
-                'd' => Vat::filedThrough($bid)?->toDateString(),
-            ]);
-        }
-
-        // المستندُ يُقيَّد يومَه — والدفاترُ المقفلةُ حتى اليوم لا يُكتب فيها
-        $closed = BooksPeriod::closedThrough($bid);
-        if ($moneyChanged && $closed !== null && $closed->gte(now()->startOfDay())) {
-            $blockers[] = __('الدفاتر مقفلة حتى :d — لا يُقيَّد مستند تصحيح اليوم.', ['d' => $closed->toDateString()]);
+        if ($basis !== null && ! in_array($basis, self::OPEN_BASES, true)) {
+            $blockers[] = __('الإرجاع والإلغاء الجزئي ليسا تصحيحًا لخطأ، ولم يُفتح مسارهما بعد: المادة 48 من اللائحة تشترط للإلغاء إشعارًا مدينًا يشير إلى الفاتورة، واسترجاع السلع وإعادة المقابل خلال ثلاثة أشهر. يُفتح بعد قرار المحاسب الضريبي.');
         }
 
         /* ═══ الصلاحيات ═══ */
+        $supplied = Carbon::parse($invoice->issued_at)->startOfDay();
+        $closed = BooksPeriod::closedThrough($bid);
         $prior = $supplied->lt(now()->startOfMonth()) || ($closed !== null && $supplied->lte($closed));
         $actions = [self::actionFor($kind)];
         if ($moneyChanged && $prior) {

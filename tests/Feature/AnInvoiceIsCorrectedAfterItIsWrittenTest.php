@@ -494,6 +494,10 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         $this->edit($invoice, $this->withLine($invoice, ['quantity' => 2]))->assertSessionHasErrors('edit');
         $this->assertSame(0, CustomerDebitNote::count());
         $this->assertSame(CustomerPaymentLink::PENDING, CustomerPaymentLink::sole()->status, 'الرابطُ كما هو — لا يُعاد ولا يُلغى من هنا');
+
+        // والسببُ نفسُه يُقال عند فتح الشاشة
+        $standing = (array) $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertOk()->viewData('page')['props']['standing'];
+        $this->assertSame(['link'], array_keys($standing));
     }
 
     public function test_manual_credit_notes_set_a_floor_under_the_lines(): void
@@ -538,7 +542,7 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         $this->assertSame(0, CustomerCreditNote::count());
     }
 
-    public function test_an_error_in_a_filed_vat_period_waits_for_the_accountant_and_a_return_does_not(): void
+    public function test_an_error_in_a_filed_vat_period_waits_for_the_accountant(): void
     {
         $invoice = $this->issued('2025-09-10', 2, 50);
         Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_filed_through'], ['value' => '2025-09-15']);
@@ -546,19 +550,33 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1]))->assertSessionHasErrors('edit');
         $this->assertSame(0, CustomerCreditNote::count());
 
-        $this->edit($invoice, $this->withLine($invoice, ['quantity' => 1], ['basis' => CustomerInvoiceRevision::RETURN, 'reason' => 'رُدّت باقة']))->assertSessionHasNoErrors();
-        $this->assertSame(CustomerInvoiceRevision::RETURN, CustomerCreditNote::sole()->basis);
+        // والشاشةُ تقوله عند فتحها — لا بعد المعاينة
+        $standing = $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertOk()->viewData('page')['props']['standing'];
+        $this->assertArrayHasKey('filed', (array) $standing);
     }
 
-    public function test_a_return_never_raises_and_waits_for_the_accountant_after_three_months(): void
+    /**
+     * الإرجاعُ ليس تصحيحَ خطأ — مسارُه مستقلٌّ ومقفلٌ حتى يحسم المحاسب.
+     *
+     * المادّة 48(2) في الجريدة الرسميّة (العدد 1383) تشترط للإلغاء «إشعار مدين»،
+     * فلا يُختار له إشعارٌ دائنٌ من اتّجاه الفرق — ولا زيادةَ ولا نقصَ ولا قديمَ ولا حديث.
+     */
+    public function test_a_return_is_not_an_error_correction_and_stays_closed(): void
     {
-        $old = $this->issued('2025-05-10', 2, 50);
-        $this->edit($old, $this->withLine($old, ['quantity' => 1], ['basis' => CustomerInvoiceRevision::RETURN]))->assertSessionHasErrors('edit');
+        foreach ([['2025-09-10', 1], ['2025-09-10', 3], ['2025-05-10', 1]] as [$on, $qty]) {
+            $invoice = $this->issued($on, 2, 50);
+            $this->edit($invoice, $this->withLine($invoice, ['quantity' => $qty], ['basis' => CustomerInvoiceRevision::RETURN, 'reason' => 'رُدّت باقة']))
+                ->assertSessionHasErrors('edit');
+        }
+        $this->assertSame(0, CustomerCreditNote::count() + CustomerDebitNote::count() + CustomerInvoiceRevision::count());
 
-        $recent = $this->issued('2025-09-10', 2, 50);
-        $this->edit($recent, $this->withLine($recent, ['quantity' => 3], ['basis' => CustomerInvoiceRevision::RETURN]))->assertSessionHasErrors('edit');
+        $plan = $this->postJson(route('admin.customerInvoices.editPreview', $invoice->id), $this->withLine($invoice, ['quantity' => 1], ['basis' => CustomerInvoiceRevision::RETURN]))->assertOk()->json();
+        $this->assertStringContainsString('المادة 48', implode(' ', $plan['blockers']));
 
-        $this->assertSame(0, CustomerCreditNote::count() + CustomerDebitNote::count());
+        // والشاشةُ تعرضه مقفلًا بسببه، وتصحيحُ الخطأ وحده مفتوح
+        $bases = $this->get(route('admin.customerInvoices.edit', $invoice->id))->assertOk()->viewData('page')['props']['bases'];
+        $this->assertSame([CustomerInvoiceRevision::ERROR => false, CustomerInvoiceRevision::RETURN => true], array_column($bases, 'disabled', 'value'));
+        $this->assertSame([CustomerInvoiceRevision::ERROR], CustomerInvoiceEdits::OPEN_BASES);
     }
 
     public function test_a_merchant_not_registered_for_vat_corrects_by_documents_without_tax(): void

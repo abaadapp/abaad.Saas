@@ -181,7 +181,7 @@ export default function CustomerInvoiceShow() {
                                 onClick={() => router.visit(route('admin.customerInvoices.edit', invoice.id))}
                             >
                                 <Pencil />
-                                {invoice.status === 'مسودة' ? t('تعديل الفاتورة') : t('تصحيح الفاتورة')}
+                                {invoice.status === 'مسودة' ? t('تعديل الفاتورة') : t('تصحيح خطأ في الفاتورة')}
                             </Button>
                         )}
                         {invoice.status === 'مسودة' && may.issue && (

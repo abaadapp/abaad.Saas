@@ -63,7 +63,7 @@ const reset = (over: Record<string, unknown> = {}) => {
         auth: { abilities: [], mayActions: [] }, flash: { toast: null, status: null }, errors: {},
         invoice: invoice(), customers: [{ id: 7, name: 'وزارة الثقافة', phone: null, payment_terms_days: null }, { id: 8, name: 'وزارة الصحة', phone: null, payment_terms_days: null }],
         branches: [], products: [], addons: [], tax_rate: 5, tax_rates: [5], tax_inclusive: false, today: '2026-10-28',
-        edit_token: 'tok-edit-1', bases: [{ value: 'error', label: 'تصحيح خطأ في الفاتورة' }, { value: 'return', label: 'إرجاع أو إلغاء جزئي' }],
+        edit_token: 'tok-edit-1', bases: [{ value: 'error', label: 'تصحيح خطأ في الفاتورة' }, { value: 'return', label: 'إرجاع أو إلغاء جزئي — مسار مستقل لم يُفتح بعد', disabled: true }],
         may: { correct_period: false, owner: false, replace: false },
         ...over,
     });
@@ -310,7 +310,7 @@ describe('صفحةُ الفاتورة', () => {
     it('ومن يملكه يُفتح له — «تصحيح» للصادرة', async () => {
         const user = userEvent.setup();
         showPage({ mayEdit: true });
-        expect(screen.getByTestId('edit-invoice')).toHaveTextContent('تصحيح الفاتورة');
+        expect(screen.getByTestId('edit-invoice')).toHaveTextContent('تصحيح خطأ في الفاتورة');
         await user.click(screen.getByTestId('edit-invoice'));
         expect(router.visit).toHaveBeenCalledWith('/admin.customerInvoices.edit/3');
     });
@@ -406,5 +406,32 @@ describe('شاشةُ التصحيح على الهاتف', () => {
         expect(bar.className).toMatch(/(^|\s)hidden(\s|$)/);
         await user.click(screen.getByTestId('edit-actions-status'));
         expect(bar.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    });
+});
+
+describe('الإرجاعُ مسارٌ مستقلّ، وما يمنع يُقال عند الفتح', () => {
+    it('أساسُ «الإرجاع» مقفلٌ في القائمة — وتصحيحُ الخطأ وحده يُختار', async () => {
+        const user = userEvent.setup();
+        render(<CustomerInvoiceEdit />);
+
+        await user.click(document.getElementById('basis') as HTMLElement);
+        expect(await screen.findByRole('option', { name: /إرجاع أو إلغاء جزئي/ })).toHaveAttribute('aria-disabled', 'true');
+        expect(screen.getByRole('option', { name: 'تصحيح خطأ في الفاتورة' })).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('رابطٌ معلّقٌ أو فترةٌ مُقرّة تُقال قبل أيّ تعديل — والمولودةُ من طلبٍ ببطاقتها وحدها', () => {
+        reset({ standing: { link: 'على الفاتورة رابطُ دفعٍ لم يُدفع بعد', filed: 'الفاتورة في فترة ضريبية قُدّم إقرارها', order: 'مولودة من طلب' } });
+        render(<CustomerInvoiceEdit />);
+
+        expect(screen.getByTestId('edit-standing')).toHaveTextContent('تصحيح المبلغ ممنوع الآن');
+        expect(screen.getByTestId('edit-standing-link')).toBeInTheDocument();
+        expect(screen.getByTestId('edit-standing-filed')).toBeInTheDocument();
+        expect(screen.queryByTestId('edit-standing-order')).toBeNull();
+    });
+
+    it('ولا بطاقةَ حين لا يمنع شيء', () => {
+        reset({ standing: {} });
+        render(<CustomerInvoiceEdit />);
+        expect(screen.queryByTestId('edit-standing')).toBeNull();
     });
 });

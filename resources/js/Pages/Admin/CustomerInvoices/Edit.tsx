@@ -260,7 +260,7 @@ function addDays(from: string, days: number): string {
  * والحسابُ هنا معاينةٌ لا مصدر: الخادمُ يعيد كلَّ رقمٍ تحت قفل الورقة.
  */
 export default function CustomerInvoiceEdit() {
-    const { invoice, customers, branches, products, addons, tax_rate, tax_rates, tax_inclusive, today, edit_token, bases, may, context, errors } = usePage<
+    const { invoice, customers, branches, products, addons, tax_rate, tax_rates, tax_inclusive, today, edit_token, bases, standing, may, context, errors } = usePage<
         PageProps<{
             invoice: InvoiceProps;
             customers: { id: number; name: string; phone: string | null; payment_terms_days: number | null }[];
@@ -274,7 +274,10 @@ export default function CustomerInvoiceEdit() {
             tax_inclusive: boolean | null;
             today: string;
             edit_token: string;
-            bases: { value: string; label: string }[];
+            /** والإرجاعُ مقفلٌ بسببه: مسارٌ مستقلّ لم يُفتح (`CustomerInvoiceEdits::OPEN_BASES`) */
+            bases: { value: string; label: string; disabled?: boolean }[];
+            /** ما يمنع تصحيحَ المال الآن من حال الفاتورة — `CustomerInvoiceEdits::standing` */
+            standing?: Record<string, string>;
             may: { correct_period: boolean; owner: boolean; replace?: boolean };
             errors: Record<string, string>;
         }>
@@ -284,7 +287,7 @@ export default function CustomerInvoiceEdit() {
     const label = invoice.number ?? `${t('مسودة')} #${invoice.id}`;
     const correcting = invoice.kind !== 'draft';
     const locked = invoice.from_order;
-    const verb = correcting ? t('تصحيح الفاتورة') : t('تعديل الفاتورة');
+    const verb = correcting ? t('تصحيح خطأ في الفاتورة') : t('تعديل الفاتورة');
 
     const [head, setHead] = useState({
         customer_id: String(invoice.customer_id),
@@ -498,6 +501,26 @@ export default function CustomerInvoiceEdit() {
                             {t('دُفع منها :n. المقبوض لا يتغير: إن زاد المطلوب بقي الفرق على العميل، وإن نقص عما قُبض صار الفائض رصيدًا دائنًا له — ولا يُرد مال تلقائيًا.').replace(':n', m(invoice.paid))}
                         </span>
                     )}
+                </Card>
+            )}
+
+            {/*
+             * وما يمنع تصحيحَ المال الآن يُقال عند الفتح — لا بعد أن يصحّح الموظّفُ
+             * البنودَ ويعاين. والمولودةُ من طلبٍ لها بطاقتُها أعلاه.
+             */}
+            {correcting && Object.entries(standing ?? {}).filter(([why]) => why !== 'order').length > 0 && (
+                <Card className="mb-4 border-[#fecaca] bg-[#fef2f2] p-3 text-[13px] text-[#b91c1c]" data-testid="edit-standing">
+                    <p className="mb-1 flex items-center gap-2 font-semibold">
+                        <AlertTriangle className="size-4 shrink-0" />
+                        {t('تصحيح المبلغ ممنوع الآن')}
+                    </p>
+                    {Object.entries(standing ?? {})
+                        .filter(([why]) => why !== 'order')
+                        .map(([why, text]) => (
+                            <p key={why} data-testid={`edit-standing-${why}`}>
+                                {text}
+                            </p>
+                        ))}
                 </Card>
             )}
 

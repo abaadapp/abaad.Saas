@@ -1864,7 +1864,13 @@ class CustomerInvoiceController extends Controller
             'tax_inclusive' => $inclusive,
             'today' => now()->toDateString(),
             'edit_token' => (string) Str::uuid(),
-            'bases' => collect(CustomerInvoiceEdits::BASIS_LABELS)->map(fn ($label, $value) => ['value' => $value, 'label' => __($label)])->values()->all(),
+            // والإرجاعُ يُعرض مقفلًا بسببه — مسارٌ مستقلّ لم يُفتح بعد (`CustomerInvoiceEdits::OPEN_BASES`)
+            'bases' => collect(CustomerInvoiceEdits::BASIS_LABELS)->map(fn ($label, $value) => [
+                'value' => $value,
+                'label' => in_array($value, CustomerInvoiceEdits::OPEN_BASES, true) ? __($label) : __($label).' — '.__('مسار مستقل لم يُفتح بعد'),
+                'disabled' => ! in_array($value, CustomerInvoiceEdits::OPEN_BASES, true),
+            ])->values()->all(),
+            'standing' => (object) CustomerInvoiceEdits::standing($invoice),
             'may' => [
                 'correct_period' => (bool) $user?->may(Permissions::CUSTOMER_INVOICE_CORRECT_PERIOD),
                 'owner' => Permissions::isOwner($user),

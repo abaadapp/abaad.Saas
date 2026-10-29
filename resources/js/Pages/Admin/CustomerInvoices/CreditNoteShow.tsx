@@ -77,7 +77,7 @@ export default function CreditNoteShow() {
                 <div className="min-w-0 space-y-4 xl:col-span-3">
                     <DocumentMeta
                         cells={[
-                            { label: 'تاريخ الإشعار', value: note.issued_at || '—', ltr: true },
+                            { label: kind === 'debit' ? 'تاريخ الإشعار المدين' : 'تاريخ الإشعار', value: note.issued_at || '—', ltr: true },
                             {
                                 label: 'الفاتورة الأصلية',
                                 value: invoice ? (
@@ -112,7 +112,7 @@ export default function CreditNoteShow() {
                                 </div>
                             )}
                             <div className="mt-2 flex items-center justify-between gap-3 border-t border-[var(--ui-border,#e8e8e8)] pt-3">
-                                <dt className="font-bold text-[#111]">{t('إجمالي الإشعار')}</dt>
+                                <dt className="font-bold text-[#111]">{kind === 'debit' ? t('إجمالي الإشعار المدين') : t('إجمالي الإشعار')}</dt>
                                 <dd className="font-bold tabular-nums text-[#111]">{m(note.amount)}</dd>
                             </div>
                         </dl>

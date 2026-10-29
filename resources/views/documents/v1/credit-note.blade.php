@@ -45,13 +45,13 @@
 @endsection
 
 @php
-    $metaCells = array_merge([['label' => 'رقم الإشعار', 'value' => $doc['number']]], $doc['meta'] ?? []);
+    $metaCells = array_merge([['label' => $debit ? 'رقم الإشعار المدين' : 'رقم الإشعار', 'value' => $doc['number']]], $doc['meta'] ?? []);
 @endphp
 
 @section('figure')
     {{-- ورقمُ الإشعار الأهمّ: كم يُنقَص من ذمّة العميل — انظر §٢٥ في المواصفة --}}
     @include('documents.v1.partials.figure', [
-        'label' => 'إجمالي الإشعار',
+        'label' => $debit ? 'إجمالي الإشعار المدين' : 'إجمالي الإشعار',
         'value' => collect($doc['totals'])->firstWhere('grand', true)['value'] ?? '',
         'status' => $doc['status'] ?? '',
     ])
@@ -76,7 +76,7 @@
             ['cap' => 'عن هذه الورقة', 'text' => $debit
                 ? __('يُزاد هذا المبلغُ على ما على الجهة من الفاتورة المذكورة أعلاه، وتبقى الفاتورةُ كما صدرت.')
                 : __('يُنقص هذا المبلغُ ما على الجهة من الفاتورة المذكورة أعلاه.')],
-            $show('show_notes') ? ['cap' => 'سبب الإشعار', 'text' => $doc['notes']] : [],
+            $show('show_notes') ? ['cap' => $debit ? 'سبب الإشعار المدين' : 'سبب الإشعار', 'text' => $doc['notes']] : [],
         ],
     ])
 @endsection

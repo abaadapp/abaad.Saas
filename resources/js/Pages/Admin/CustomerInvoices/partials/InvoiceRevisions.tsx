@@ -94,9 +94,10 @@ export default function InvoiceRevisions({ revisions, m }: { revisions: InvoiceR
                                         key={d.number}
                                         routeName={d.kind === 'debit' ? 'admin.customerInvoices.debitNotes.show' : 'admin.customerInvoices.creditNotes.show'}
                                         href={d.url}
-                                        className="font-mono text-[#6d28d9] hover:underline"
+                                        className="text-[#6d28d9] hover:underline"
                                     >
-                                        {d.kind === 'debit' ? t('إشعار مدين') : t('إشعار دائن')} {d.number} ({d.kind === 'debit' ? '+' : '−'}
+                                        {d.kind === 'debit' ? t('إشعار مدين') : t('إشعار دائن')} <span className="font-mono">{d.number}</span> (
+                                        {d.kind === 'debit' ? '+' : '−'}
                                         {m(d.amount)})
                                     </SmartLink>
                                 ))}

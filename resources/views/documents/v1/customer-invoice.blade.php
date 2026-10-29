@@ -74,6 +74,21 @@
     }
 
     $totals[] = ['label' => 'الإجمالي', 'value' => $money($invoice->total), 'grand' => true];
+    /*
+     * وما صُحّحت به بعد صدورها يُطبع بين إجماليّها وما سُدِّد، بأرقام مستنداته.
+     * الفاتورةُ نفسُها كما صدرت، و«الباقي» يقرأ الإشعارات (`outstanding()`) —
+     * فورقةٌ بلا هذين السطرين تقول «50 − 50 = 5».
+     */
+    if ($invoice->status !== \App\Models\CustomerInvoice::DRAFT) {
+        $debits = $invoice->debitNotes()->orderBy('id')->get(['number', 'amount']);
+        $credits = $invoice->creditNotes()->orderBy('id')->get(['number', 'amount']);
+        if ($debits->isNotEmpty()) {
+            $totals[] = ['label' => 'إشعارات مدينة', 'hint' => $debits->pluck('number')->implode('، '), 'value' => '+ '.$amount($debits->sum('amount'))];
+        }
+        if ($credits->isNotEmpty()) {
+            $totals[] = ['label' => 'إشعارات دائنة', 'hint' => $credits->pluck('number')->implode('، '), 'value' => '− '.$amount($credits->sum('amount'))];
+        }
+    }
     $totals[] = ['label' => 'المسدَّد', 'value' => $amount($paid)];
     $totals[] = ['label' => 'الباقي', 'value' => $money($outstanding), 'due' => true];
 

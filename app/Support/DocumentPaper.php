@@ -725,7 +725,7 @@ class DocumentPaper
             $totals[] = ['label' => 'ضريبة القيمة المضافة', 'value' => self::money($note->tax_amount, $cur)];
         }
 
-        $totals[] = ['label' => 'إجمالي الإشعار', 'value' => self::money($note->amount, $cur), 'grand' => true];
+        $totals[] = ['label' => $kind === 'debit' ? 'إجمالي الإشعار المدين' : 'إجمالي الإشعار', 'value' => self::money($note->amount, $cur), 'grand' => true];
 
         $basis = $note->basis ? __(CustomerInvoiceEdits::BASIS_LABELS[$note->basis] ?? $note->basis) : null;
 
@@ -748,7 +748,7 @@ class DocumentPaper
             'meta' => array_values(array_filter([
                 ['label' => 'الفاتورة الأصلية', 'value' => (string) (optional($invoice)->number ?? '')],
                 ['label' => 'تاريخ الفاتورة الأصلية', 'value' => (string) (optional(optional($invoice)->issued_at)->format('Y-m-d') ?? '')],
-                ['label' => 'تاريخ الإشعار', 'value' => optional($note->issued_at)->format('Y-m-d')],
+                ['label' => $kind === 'debit' ? 'تاريخ الإشعار المدين' : 'تاريخ الإشعار', 'value' => optional($note->issued_at)->format('Y-m-d')],
                 ['label' => 'أساس التصحيح', 'value' => (string) ($basis ?? '')],
             ], fn (array $r) => filled($r['value']))),
             'parties' => [[
@@ -787,15 +787,15 @@ class DocumentPaper
 
         if (($line['quantity_before'] ?? null) !== null && ($line['quantity_after'] ?? null) !== null
             && abs((float) $line['quantity_before'] - (float) $line['quantity_after']) >= 0.0005) {
-            $parts[] = __('الكمية').' '.self::qty($line['quantity_before']).' ← '.self::qty($line['quantity_after']);
+            $parts[] = __(':what من :before إلى :after', ['what' => __('الكمية'), 'before' => self::qty($line['quantity_before']), 'after' => self::qty($line['quantity_after'])]);
         }
         if (($line['unit_price_before'] ?? null) !== null && ($line['unit_price_after'] ?? null) !== null
             && abs((float) $line['unit_price_before'] - (float) $line['unit_price_after']) >= 0.0005) {
-            $parts[] = __('السعر').' '.self::money($line['unit_price_before'], $cur).' ← '.self::money($line['unit_price_after'], $cur);
+            $parts[] = __(':what من :before إلى :after', ['what' => __('السعر'), 'before' => self::money($line['unit_price_before'], $cur), 'after' => self::money($line['unit_price_after'], $cur)]);
         }
         if (($line['discount_before'] ?? null) !== null && ($line['discount_after'] ?? null) !== null
             && abs((float) $line['discount_before'] - (float) $line['discount_after']) >= 0.0005) {
-            $parts[] = __('الخصم').' '.self::money($line['discount_before'], $cur).' ← '.self::money($line['discount_after'], $cur);
+            $parts[] = __(':what من :before إلى :after', ['what' => __('الخصم'), 'before' => self::money($line['discount_before'], $cur), 'after' => self::money($line['discount_after'], $cur)]);
         }
 
         $parts[] = __('الضريبة').' '.rtrim(rtrim(number_format((float) ($line['tax_rate'] ?? 0), 3, '.', ''), '0'), '.').'%: '.self::money((float) ($line['tax'] ?? 0), $cur);

@@ -1,4 +1,4 @@
-import { type ComponentProps, useMemo, useState } from 'react';
+import { type ComponentProps, type FocusEvent, type ReactNode, useMemo, useRef, useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { AlertTriangle, Eye, FileMinus, FilePlus, Plus, PlusCircle, Replace, Save, Star, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
@@ -101,6 +101,42 @@ export interface EditLine {
     locked: boolean;
     locked_text: boolean;
     details: string[];
+}
+
+/**
+ * أعمدةُ البند من md فصاعدًا — رأسُها وصفوفُها بالقالب نفسِه.
+ *
+ * وتحتها كلُّ بندٍ بطاقةٌ بعمودين: البيانُ بعرضها، ثمّ الكمّيّةُ والسعر،
+ * ثمّ الخصمُ والضريبة. كان جدولًا بعرضٍ أدنى 640 في تمريرٍ أفقيّ بلا
+ * شريط، فيقع السعرُ — وهو ما يُصحَّح غالبًا — خارج شاشة الهاتف بلا ما
+ * يدلّ عليه. والاتّجاهُ من الصفحة: العمودُ الأوّل يمينًا بالعربيّة ويسارًا
+ * بالإنجليزيّة.
+ */
+const LINE_COLUMNS = 'md:grid-cols-[minmax(0,1fr)_6rem_7rem_6rem_5.5rem_2.5rem]';
+
+/**
+ * حقلُ بندٍ بعنوانه — ظاهرٌ فوقه على الهاتف، ولقارئ الشاشة وحده على الواسعة
+ * حيث رأسُ العمود يقوله. وما تحت الحقل (`after`) خارجَ عنوانه.
+ */
+function LineField({ label, className, after, children }: { label: string; className?: string; after?: ReactNode; children: ReactNode }) {
+    return (
+        <div className={cn('min-w-0', className)}>
+            <label className="block">
+                <span className="mb-1 block text-[12px] text-[#71717a] md:sr-only">{label}</span>
+                {children}
+            </label>
+            {after}
+        </div>
+    );
+}
+
+/** حقلٌ يُكتب فيه — فتنفتح له لوحةُ المفاتيح على الهاتف */
+function opensKeyboard(el: EventTarget): boolean {
+    if (el instanceof HTMLTextAreaElement) {
+        return true;
+    }
+
+    return el instanceof HTMLInputElement && !['checkbox', 'radio', 'button', 'submit', 'hidden', 'range', 'file'].includes(el.type);
 }
 
 /** مستندُ تصحيحٍ سيصدر — من ردّ المعاينة */
@@ -272,6 +308,9 @@ export default function CustomerInvoiceEdit() {
     const [planError, setPlanError] = useState<string | null>(null);
     const [planning, setPlanning] = useState(false);
     const [saving, setSaving] = useState(false);
+    // ولوحةُ المفاتيح مفتوحةٌ ما دام حقلٌ يُكتب فيه — فيغيب الشريطُ السفليّ كي لا يغطّيه
+    const [typing, setTyping] = useState(false);
+    const planRef = useRef<HTMLDivElement>(null);
     const [picking, setPicking] = useState(false);
     const [pickingAddon, setPickingAddon] = useState(false);
 
@@ -313,6 +352,19 @@ export default function CustomerInvoiceEdit() {
     const inclusive = tax_inclusive ?? false;
     const totals = useMemo(() => invoiceTotals(lines, inclusive), [lines, inclusive]);
 
+    /*
+     * وعلى الهاتف واللوحيّ لوحةُ المعاينة تحت النموذج كلِّه — فيُنزَل إليها
+     * بعد المعاينة، فيرى التاجرُ ما سيصدر قبل أن يعتمد. وعلى الواسعة هي
+     * بجانب النموذج فلا يتحرّك شيء.
+     */
+    const showPlan = () => {
+        const wide = typeof window.matchMedia === 'function' && window.matchMedia('(min-width: 1280px)').matches;
+
+        if (!wide) {
+            requestAnimationFrame(() => planRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+        }
+    };
+
     const preview = async () => {
         setPlanning(true);
         setPlanError(null);
@@ -344,6 +396,7 @@ export default function CustomerInvoiceEdit() {
             setPlanError(t('تعذّرت المعاينة — أعد المحاولة.'));
         } finally {
             setPlanning(false);
+            showPlan();
         }
     };
 
@@ -362,6 +415,30 @@ export default function CustomerInvoiceEdit() {
         current.missing.length === 0 &&
         (!current.needs_reason || reason.trim() !== '') &&
         (!current.needs_basis || basis !== '');
+
+    /* ما يقوله الشريطُ السفليّ في سطر — من ردّ المعاينة وحده كلوحتها */
+    const barStatus = planning
+        ? t('يُحسب أثر التعديل…')
+        : planError
+          ? planError
+          : current === null
+            ? plan !== null
+                ? t('تغيّر النموذج بعد المعاينة — عاين من جديد.')
+                : t('عاين قبل الاعتماد لترى ما سيصدر.')
+            : current.blockers.length > 0 || current.missing.length > 0
+              ? t('لا يُعتمد — انظر أثر التصحيح.')
+              : !current.changed
+                ? t('لم يتغيّر شيء في الفاتورة.')
+                : !ready
+                  ? t('أكمل أساس التصحيح وسببه.')
+                  : current.documents.debit || current.documents.credit
+                    ? [
+                          current.documents.debit && `${t('إشعار مدين')} +${m(current.documents.debit.amount)}`,
+                          current.documents.credit && `${t('إشعار دائن')} −${m(current.documents.credit.amount)}`,
+                      ]
+                          .filter(Boolean)
+                          .join(' · ')
+                    : `${t('الإجمالي')} ${m(current.money.total_before)} ← ${m(current.money.total_after)}`;
 
     const kindLabel: Record<string, string> = {
         draft: t('مسودة — لا قيد ولا ذمة ولا رقم ضريبي بعد'),
@@ -387,11 +464,11 @@ export default function CustomerInvoiceEdit() {
                 subtitle={`${invoice.state} — ${kindLabel[invoice.kind]}`}
                 actions={
                     <>
-                        <Button type="button" variant="outline" disabled={planning} onClick={preview} data-testid="edit-preview">
+                        <Button type="button" variant="outline" className="hidden xl:inline-flex" disabled={planning} onClick={preview} data-testid="edit-preview">
                             <Eye />
                             {correcting ? t('معاينة التصحيح') : t('معاينة التعديل')}
                         </Button>
-                        <Button type="button" disabled={!ready || saving} onClick={save} data-testid="edit-save">
+                        <Button type="button" className="hidden xl:inline-flex" disabled={!ready || saving} onClick={save} data-testid="edit-save">
                             <Save />
                             {correcting ? t('اعتماد التصحيح') : t('حفظ التعديل')}
                         </Button>
@@ -424,7 +501,11 @@ export default function CustomerInvoiceEdit() {
                 </Card>
             )}
 
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+            <div
+                className="grid grid-cols-1 gap-6 xl:grid-cols-5"
+                onFocus={(e: FocusEvent) => setTyping(opensKeyboard(e.target))}
+                onBlur={() => setTyping(false)}
+            >
                 <div className="min-w-0 space-y-4 xl:col-span-3">
                     {correcting ? (
                         <Card className="space-y-2 p-4 text-[13px]" data-testid="edit-printed">
@@ -505,73 +586,94 @@ export default function CustomerInvoiceEdit() {
                         </div>
                         {errors?.items && <p className="mb-2 text-[12px] text-[#b91c1c]">{errors.items}</p>}
 
-                        <div className="overflow-x-auto no-scrollbar">
-                            <table className="w-full min-w-[640px] text-[13px]">
-                                <thead className="text-[12px] text-[#71717a]">
-                                    <tr>
-                                        <th className="p-2 text-start">{t('البيان')}</th>
-                                        <th className="w-24 p-2 text-start">{t('الكمية')}</th>
-                                        <th className="w-28 p-2 text-start">{t('السعر')}</th>
-                                        <th className="w-24 p-2 text-start">{t('الخصم')}</th>
-                                        <th className="w-20 p-2 text-start">{t('الضريبة %')}</th>
-                                        <th className="w-10 p-2" />
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {lines.map((l) => (
-                                        <tr key={l.key} data-testid={l.server_key ? 'edit-line' : 'edit-line-new'} className="border-t border-[var(--ui-border,#e8e8e8)] align-top">
-                                            <td className={cn('p-2', l.parent_key && 'ps-6')}>
-                                                <Input
-                                                    value={l.description}
-                                                    disabled={locked || l.locked || l.locked_text}
-                                                    onChange={(e) => patch(l.key, { description: e.target.value })}
-                                                    placeholder={t('وصف البند')}
-                                                    data-testid="edit-description"
-                                                />
+                        <div className={cn('hidden gap-x-2 px-2 pb-1 text-[12px] text-[#71717a] md:grid', LINE_COLUMNS)} aria-hidden="true">
+                            <span>{t('البيان')}</span>
+                            <span>{t('الكمية')}</span>
+                            <span>{t('السعر')}</span>
+                            <span>{t('الخصم')}</span>
+                            <span>{t('الضريبة %')}</span>
+                            <span />
+                        </div>
+                        <div className="space-y-3 text-[13px] md:space-y-0" data-testid="edit-lines">
+                            {lines.map((l) => (
+                                <div
+                                    key={l.key}
+                                    data-testid={l.server_key ? 'edit-line' : 'edit-line-new'}
+                                    className={cn(
+                                        'grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg border border-[var(--ui-border,#e8e8e8)] p-3',
+                                        'md:items-start md:gap-x-2 md:gap-y-0 md:rounded-none md:border-x-0 md:border-b-0 md:p-2',
+                                        LINE_COLUMNS,
+                                        l.parent_key && 'ms-4 md:ms-0',
+                                    )}
+                                >
+                                    <LineField
+                                        label={t('البيان')}
+                                        className={cn('col-span-2 md:col-span-1', l.parent_key && 'md:ps-4')}
+                                        after={
+                                            <>
                                                 {l.details.map((d, k) => (
                                                     <span key={k} className="mt-1 block text-[12px] text-[#6b7280]">
                                                         <bdi>{d}</bdi>
                                                     </span>
                                                 ))}
                                                 {l.locked && <span className="mt-1 block text-[11px] text-[#6b7280]">{t('إضافة من الكتالوج — اسمها وسعرها كما بيعت')}</span>}
-                                            </td>
-                                            <td className="p-2">
-                                                <Input type="number" inputMode="decimal" min="0" step="any" value={l.quantity} disabled={locked} onChange={(e) => patch(l.key, { quantity: e.target.value })} data-testid="edit-qty" />
-                                            </td>
-                                            <td className="p-2">
-                                                <Input type="number" inputMode="decimal" min="0" step="any" value={l.unit_price} disabled={locked || l.locked} onChange={(e) => patch(l.key, { unit_price: e.target.value })} data-testid="edit-price" />
-                                            </td>
-                                            <td className="p-2">
-                                                <Input type="number" inputMode="decimal" min="0" step="any" value={l.discount} disabled={locked} onChange={(e) => patch(l.key, { discount: e.target.value })} data-testid="edit-discount" />
-                                            </td>
-                                            <td className="p-2">
-                                                {correcting && !l.server_key && rates.length > 1 ? (
-                                                    <Select id={`rate-${l.key}`} value={l.tax_rate} onChange={(e) => patch(l.key, { tax_rate: e.target.value })} options={rates} />
-                                                ) : (
-                                                    <Input
-                                                        type="number"
-                                                        inputMode="decimal"
-                                                        min="0"
-                                                        max="100"
-                                                        step="any"
-                                                        value={l.tax_rate}
-                                                        disabled={locked || correcting}
-                                                        onChange={(e) => patch(l.key, { tax_rate: e.target.value })}
-                                                        data-testid="edit-tax"
-                                                    />
-                                                )}
-                                            </td>
-                                            <td className="p-2">
-                                                {!locked && lines.length > 1 && (
-                                                    <Button type="button" variant="ghost" size="icon" aria-label={t('حذف البند')} onClick={() => setLines((prev) => removeLine(prev, l.key))}>
-                                                        <Trash2 />
-                                                    </Button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                            </>
+                                        }
+                                    >
+                                        <Input
+                                            value={l.description}
+                                            disabled={locked || l.locked || l.locked_text}
+                                            onChange={(e) => patch(l.key, { description: e.target.value })}
+                                            placeholder={t('وصف البند')}
+                                            data-testid="edit-description"
+                                        />
+                                    </LineField>
+                                    <LineField label={t('الكمية')}>
+                                        <Input type="number" inputMode="decimal" min="0" step="any" value={l.quantity} disabled={locked} onChange={(e) => patch(l.key, { quantity: e.target.value })} data-testid="edit-qty" />
+                                    </LineField>
+                                    <LineField label={t('السعر')}>
+                                        <Input type="number" inputMode="decimal" min="0" step="any" value={l.unit_price} disabled={locked || l.locked} onChange={(e) => patch(l.key, { unit_price: e.target.value })} data-testid="edit-price" />
+                                    </LineField>
+                                    <LineField label={t('الخصم')}>
+                                        <Input type="number" inputMode="decimal" min="0" step="any" value={l.discount} disabled={locked} onChange={(e) => patch(l.key, { discount: e.target.value })} data-testid="edit-discount" />
+                                    </LineField>
+                                    {correcting && !l.server_key && rates.length > 1 ? (
+                                        <div className="min-w-0">
+                                            <span className="mb-1 block text-[12px] text-[#71717a] md:sr-only">{t('الضريبة %')}</span>
+                                            <Select id={`rate-${l.key}`} value={l.tax_rate} onChange={(e) => patch(l.key, { tax_rate: e.target.value })} options={rates} />
+                                        </div>
+                                    ) : (
+                                        <LineField label={t('الضريبة %')}>
+                                            <Input
+                                                type="number"
+                                                inputMode="decimal"
+                                                min="0"
+                                                max="100"
+                                                step="any"
+                                                value={l.tax_rate}
+                                                disabled={locked || correcting}
+                                                onChange={(e) => patch(l.key, { tax_rate: e.target.value })}
+                                                data-testid="edit-tax"
+                                            />
+                                        </LineField>
+                                    )}
+                                    <div className="col-span-2 flex justify-end md:col-span-1 md:justify-center">
+                                        {!locked && lines.length > 1 && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-[#b91c1c] md:size-9 md:p-0 md:text-inherit"
+                                                aria-label={t('حذف البند')}
+                                                onClick={() => setLines((prev) => removeLine(prev, l.key))}
+                                            >
+                                                <Trash2 />
+                                                <span className="md:sr-only">{t('حذف البند')}</span>
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
 
                         <dl className="mt-4 ms-auto max-w-xs space-y-1.5 border-t border-[var(--ui-border,#e8e8e8)] pt-4 text-[13px]">
@@ -642,7 +744,40 @@ export default function CustomerInvoiceEdit() {
                         {errors?.reason && <p className="text-[12px] text-[#b91c1c]">{errors.reason}</p>}
                     </Card>
 
-                    <PlanPanel plan={current} stale={plan !== null && current === null} error={planError} planning={planning} mayCorrect={may.correct_period} m={m} />
+                    <div ref={planRef} className="scroll-mt-4">
+                        <PlanPanel plan={current} stale={plan !== null && current === null} error={planError} planning={planning} mayCorrect={may.correct_period} m={m} />
+                    </div>
+                </div>
+            </div>
+
+            {/*
+             * المعاينةُ والاعتمادُ تحت إصبع التاجر على الهاتف واللوحيّ.
+             *
+             * زرّا الرأس فوق النموذج، ولوحةُ المعاينة تحته كلِّه — فكان يصعد
+             * إلى الزرّ وينزل إلى النتيجة ثمّ يصعد ليعتمد. والشريطُ يلزم أسفل
+             * الشاشة ويقول في سطرٍ ما سيصدر، ويغيب ما دامت لوحةُ المفاتيح
+             * مفتوحة كي لا يغطّي الحقل الذي يُكتب فيه.
+             */}
+            <div
+                className={cn(
+                    'sticky bottom-0 z-20 -mx-4 mt-4 border-t border-[var(--ui-border,#e8e8e8)] bg-white/95 px-4 pt-3 backdrop-blur lg:-mx-6 lg:px-6 xl:hidden',
+                    'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+                    typing && 'hidden',
+                )}
+                data-testid="edit-actions-bar"
+            >
+                <p className="mb-2 truncate text-[12px] text-[#4b4b4b]" data-testid="edit-actions-status">
+                    {barStatus}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" disabled={planning} onClick={preview} data-testid="edit-preview-bar">
+                        <Eye />
+                        {correcting ? t('معاينة التصحيح') : t('معاينة التعديل')}
+                    </Button>
+                    <Button type="button" disabled={!ready || saving} onClick={save} data-testid="edit-save-bar">
+                        <Save />
+                        {correcting ? t('اعتماد التصحيح') : t('حفظ التعديل')}
+                    </Button>
                 </div>
             </div>
 

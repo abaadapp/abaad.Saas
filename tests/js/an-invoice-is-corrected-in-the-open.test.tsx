@@ -347,3 +347,64 @@ describe('صفحةُ الفاتورة', () => {
         expect(screen.queryByTestId('invoice-revisions')).toBeNull();
     });
 });
+
+describe('شاشةُ التصحيح على الهاتف', () => {
+    it('كلُّ حقلٍ في البند بعنوانه — بطاقةٌ لا جدولٌ في تمريرٍ أفقيّ يُخفي السعر', () => {
+        render(<CustomerInvoiceEdit />);
+
+        expect(document.querySelector('table')).toBeNull();
+        expect(document.querySelector('[class*="min-w-[640px]"]')).toBeNull();
+
+        const line = screen.getAllByTestId('edit-line')[0];
+        expect(line.className).toContain('grid-cols-2');
+        for (const [label, id] of [['البيان', 'edit-description'], ['الكمية', 'edit-qty'], ['السعر', 'edit-price'], ['الخصم', 'edit-discount'], ['الضريبة %', 'edit-tax']]) {
+            expect(within(line).getByLabelText(label)).toBe(within(line).getByTestId(id));
+        }
+    });
+
+    it('الشريطُ السفليّ يعاين ويعتمد، ويقول في سطرٍ ما سيصدر', async () => {
+        const user = userEvent.setup();
+        render(<CustomerInvoiceEdit />);
+
+        const bar = screen.getByTestId('edit-actions-bar');
+        expect(bar.className).toContain('xl:hidden');
+        expect(screen.getByTestId('edit-preview').className).toContain('xl:inline-flex');
+        expect(screen.getByTestId('edit-actions-status')).toHaveTextContent('عاين قبل الاعتماد');
+        expect(screen.getByTestId('edit-save-bar')).toBeDisabled();
+
+        await user.type(screen.getByTestId('edit-reason'), 'خطأ في السعر');
+        await chooseBasis(user);
+        await user.click(screen.getByTestId('edit-preview-bar'));
+        await waitFor(() => expect(screen.getByTestId('edit-save-bar')).toBeEnabled());
+        expect(screen.getByTestId('edit-actions-status')).toHaveTextContent('إشعار دائن −21.000');
+
+        await user.click(screen.getByTestId('edit-save-bar'));
+        expect(router.put).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(router.put).mock.calls[0][1]).toMatchObject({ reason: 'خطأ في السعر', basis: 'error', edit_token: 'tok-edit-1' });
+    });
+
+    it('ما يمنعه الخادم يمنعه الشريط — لا اعتمادَ بمانع', async () => {
+        answer(plan({ blockers: ['الفترة مُقرّة — بانتظار قرار المحاسب'] }));
+        const user = userEvent.setup();
+        render(<CustomerInvoiceEdit />);
+
+        await user.type(screen.getByTestId('edit-reason'), 'خطأ');
+        await chooseBasis(user);
+        await user.click(screen.getByTestId('edit-preview-bar'));
+        await waitFor(() => expect(screen.getByTestId('plan-blockers')).toBeInTheDocument());
+        expect(screen.getByTestId('edit-actions-status')).toHaveTextContent('لا يُعتمد');
+        expect(screen.getByTestId('edit-save-bar')).toBeDisabled();
+    });
+
+    it('يغيب الشريطُ ولوحةُ المفاتيح مفتوحة — ويعود حين تُغلق', async () => {
+        const user = userEvent.setup();
+        render(<CustomerInvoiceEdit />);
+
+        const bar = screen.getByTestId('edit-actions-bar');
+        expect(bar.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+        await user.click(within(screen.getAllByTestId('edit-line')[0]).getByTestId('edit-price'));
+        expect(bar.className).toMatch(/(^|\s)hidden(\s|$)/);
+        await user.click(screen.getByTestId('edit-actions-status'));
+        expect(bar.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    });
+});

@@ -691,6 +691,10 @@ final class CustomerInvoices
         if ($invoice->paidTotal() > 0) {
             throw new RuntimeException(__('سُدِّد من هذه الفاتورة :n — ألغِ التحصيل أو أصدر إشعار دائن قبل الإلغاء.', ['n' => $invoice->paidTotal()]));
         }
+        // ولا يُلغى ما قُدّم إقرارُه ولا ما يطلبه رابطٌ ينتظر — انظر `ManualInvoiceAdjustments`
+        if ($why = ManualInvoiceAdjustments::cancelRefusal($invoice)) {
+            throw new RuntimeException($why);
+        }
 
         return DB::transaction(function () use ($invoice, $reason, $userId) {
             if ($invoice->status === CustomerInvoice::ISSUED && ! $invoice->coversOrders()) {

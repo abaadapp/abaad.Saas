@@ -35,6 +35,7 @@ use App\Support\InvoiceAttachments;
 use App\Support\InvoiceLoyalty;
 use App\Support\InvoiceBranding;
 use App\Support\InvoiceLineDetails;
+use App\Support\ManualInvoiceAdjustments;
 use App\Support\Money;
 use App\Support\Pagination;
 use App\Support\Paper;
@@ -1642,8 +1643,11 @@ class CustomerInvoiceController extends Controller
             'reason' => __('سبب الإلغاء'),
         ]);
 
+        // وفاتورةُ متجرٍ آخر ٤٠٤ — لا خطأَ «لم يُعثر» يُلتقط في الـ`catch` ويُعرض للتاجر
+        $invoice = $this->find($id);
+
         try {
-            CustomerInvoices::cancel($this->find($id), $data['reason'], auth()->id());
+            CustomerInvoices::cancel($invoice, $data['reason'], auth()->id());
         } catch (RuntimeException $e) {
             return back()->withErrors(['invoice' => $e->getMessage()]);
         }
@@ -1665,9 +1669,15 @@ class CustomerInvoiceController extends Controller
             'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
         ]);
 
+        // ولا يُنزل ما يطلبه رابطٌ ينتظر، ولا يحمل ضريبةً لم تُحصَّل — انظر `ManualInvoiceAdjustments`
+        $invoice = $this->find($id);
+        if ($refused = ManualInvoiceAdjustments::creditNoteRefusal($invoice, (float) $data['amount'], (float) ($data['tax_amount'] ?? 0))) {
+            return back()->withErrors([$refused[0] => $refused[1]]);
+        }
+
         try {
             $note = CustomerInvoices::creditNote(
-                $this->find($id),
+                $invoice,
                 (float) $data['amount'],
                 (float) ($data['tax_amount'] ?? 0),
                 $data['reason'],

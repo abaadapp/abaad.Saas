@@ -720,6 +720,104 @@ class AnInvoiceIsCorrectedAfterItIsWrittenTest extends TestCase
         $this->assertSame(CustomerInvoice::ISSUED, $paid->fresh()->status);
     }
 
+    /** الاستبدالُ كما ترسله الشاشة — للعميل الآخر */
+    private function replace(CustomerInvoice $invoice, ?Customer $to = null, bool $json = false)
+    {
+        $to ??= Customer::firstOrCreate(['business_id' => $this->shop->id, 'phone' => '92222222'], ['name' => 'وزارة الصحة', 'allow_credit_sales' => true]);
+        $route = route('admin.customerInvoices.replace', $invoice->id);
+        $data = ['customer_id' => $to->id, 'reason' => 'العميل الصحيح وزارة الصحة'];
+
+        return $json ? $this->postJson($route, $data) : $this->post($route, $data);
+    }
+
+    /** لم يُلغَ شيء، ولم يُعكس قيد، ولم تُكتب بديلة */
+    private function assertNotReplaced(CustomerInvoice $invoice, array $before): void
+    {
+        $this->assertSame($before, $this->asIssued($invoice), 'الفاتورةُ وقيدُها كما صدرا');
+        $this->assertSame(0, CustomerInvoice::where('replaces_invoice_id', $invoice->id)->count(), 'ولا مسودّةَ بديلة');
+    }
+
+    /**
+     * الاستبدالُ إلغاءٌ يعكس ضريبةَ الفاتورة كلَّها اليوم بلا مستند تصحيح — فيُمنع
+     * في فترةٍ قُدّم إقرارُها كما يُمنع تصحيحُ مالها، ولا يتجاوزه المالكُ ولا طلبٌ مباشر.
+     */
+    public function test_a_replacement_in_a_filed_vat_period_waits_for_the_accountant(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        $before = $this->asIssued($invoice);
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_filed_through'], ['value' => '2025-09-15']);
+
+        $this->replace($invoice)->assertSessionHasErrors('replace');
+        $this->assertStringContainsString('قُدّم إقرارها حتى 2025-09-15', session('errors')->first('replace'));
+        $this->replace($invoice, json: true)->assertUnprocessable()->assertJsonValidationErrors('replace');
+        $this->assertNotReplaced($invoice, $before);
+        $this->assertSame(['net' => 100.0, 'tax' => 5.0], $this->ledger(), 'إقرارُ سبتمبر كما قُدِّم');
+
+        // وفاتورةٌ حملت ضريبةً ثمّ أُطفئت الضريبةُ في المتجر: إقرارُها قائم
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '0']);
+        $this->replace($invoice)->assertSessionHasErrors('replace');
+        $this->assertNotReplaced($invoice, $before);
+    }
+
+    /** لا يُكتب عكسُ القيد في دفاترَ مقفلة — وفاتورةُ شهرٍ مقفلٍ تُستبدل بصلاحية تصحيح الفترة */
+    public function test_a_replacement_writes_no_reversal_into_closed_books(): void
+    {
+        $today = $this->issued('2025-09-18', 1, 100);
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        $before = $this->asIssued($invoice);
+
+        // الدفاترُ مقفلةٌ حتى اليوم: لا يُعكس قيدٌ اليوم — ولا للمالك
+        $was = $this->asIssued($today);
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => BooksPeriod::SETTING], ['value' => '2025-09-20']);
+        $this->replace($today)->assertSessionHasErrors('replace');
+        $this->assertStringContainsString('الدفاتر مقفلة حتى 2025-09-20', session('errors')->first('replace'));
+        $this->assertNotReplaced($today, $was);
+
+        // سبتمبرُ مقفلٌ وأكتوبرُ مفتوح: يُعكس القيدُ في أكتوبر — بصلاحية تصحيح فترةٍ سابقة
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => BooksPeriod::SETTING], ['value' => '2025-09-30']);
+        Carbon::setTestNow('2025-10-05 10:00:00');
+
+        $this->actingAs($this->user('accountant', 'replace-prior@edit.om', ['orders', Permissions::CUSTOMER_INVOICE_CANCEL, Permissions::CUSTOMER_INVOICE_EDIT_ISSUED]));
+        $this->replace($invoice)->assertForbidden();
+        $this->assertNotReplaced($invoice, $before);
+
+        $this->actingAs($this->owner);
+        $this->replace($invoice)->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->fresh()->status);
+        $this->assertSame(['net' => 200.0, 'tax' => 10.0], $this->ledger('2025-09'), 'سبتمبرُ المقفلُ كما أُعلن');
+        $this->assertSame(['net' => -100.0, 'tax' => -5.0], $this->ledger('2025-10'), 'والعكسُ في يومه');
+    }
+
+    /** غيرُ المسجَّل في الضريبة لا إقرارَ له يُمنع به — والدفاترُ المقفلة تمنعه كغيره */
+    public function test_a_merchant_not_registered_for_vat_replaces_past_a_filed_date_but_not_into_closed_books(): void
+    {
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_enabled'], ['value' => '0']);
+        $invoice = $this->issued('2025-09-10', 2, 50);
+        $this->assertEquals(0.0, (float) $invoice->tax_total);
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_filed_through'], ['value' => '2025-09-15']);
+
+        $this->replace($invoice)->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertSame(CustomerInvoice::CANCELLED, $invoice->fresh()->status);
+        $this->assertSame(1, CustomerInvoice::where('replaces_invoice_id', $invoice->id)->count());
+
+        $late = $this->issued('2025-09-18', 1, 100);
+        $before = $this->asIssued($late);
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => BooksPeriod::SETTING], ['value' => '2025-09-20']);
+        $this->replace($late)->assertSessionHasErrors('replace');
+        $this->assertNotReplaced($late, $before);
+    }
+
+    public function test_a_replacement_sent_twice_writes_one_draft_and_one_reversal(): void
+    {
+        $invoice = $this->issued('2025-09-10', 2, 50);
+
+        $this->replace($invoice)->assertSessionHasNoErrors()->assertRedirect();
+        $this->replace($invoice)->assertSessionHasErrors('replace');
+
+        $this->assertSame(1, CustomerInvoice::where('replaces_invoice_id', $invoice->id)->count());
+        $this->assertSame(['net' => 0.0, 'tax' => 0.0], $this->ledger(), 'عُكس قيدُها مرّةً واحدة');
+    }
+
     /* ═══════════ ٩ · التقارير والأوراق ═══════════ */
 
     public function test_reports_read_the_documents_once_and_in_their_own_day(): void

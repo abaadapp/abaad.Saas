@@ -472,6 +472,10 @@ final class CustomerInvoiceEdits
      * ولا يكون إلّا لورقةٍ لم يُقبض منها شيءٌ ولا عليها إشعارٌ ولا رابطٌ ولا
      * نقاطٌ ولا تجهيزٌ قائم: مالٌ باسم عميلٍ لا ينتقل إلى غيره في صمت.
      *
+     * ولا في فترةٍ يُمنع فيها تصحيحُ مالها (`periodRefusal`): الإلغاءُ يعكس
+     * ضريبتَها كلَّها اليوم بلا مستند تصحيح. وفاتورةُ فترةٍ سابقة تُستبدل
+     * بصلاحية تصحيحها، كما يُصحَّح مالُها.
+     *
      * @throws AuthorizationException ما لا يملكه
      * @throws RuntimeException ما يمنعه، بسببه
      */
@@ -479,7 +483,12 @@ final class CustomerInvoiceEdits
     {
         $bid = (int) $invoice->business_id;
 
-        foreach ([Permissions::CUSTOMER_INVOICE_CANCEL, Permissions::CUSTOMER_INVOICE_EDIT_ISSUED] as $action) {
+        $actions = [Permissions::CUSTOMER_INVOICE_CANCEL, Permissions::CUSTOMER_INVOICE_EDIT_ISSUED];
+        if ($invoice->status === CustomerInvoice::ISSUED && self::prior($invoice)) {
+            $actions[] = Permissions::CUSTOMER_INVOICE_CORRECT_PERIOD;
+        }
+
+        foreach ($actions as $action) {
             if (! $user->may($action)) {
                 throw new AuthorizationException(__('لا تملك صلاحية هذا التعديل: :a', ['a' => Permissions::actionLabels()[$action] ?? $action]));
             }
@@ -504,7 +513,7 @@ final class CustomerInvoiceEdits
                 throw ValidationException::withMessages(['customer_id' => __('هذا عميل الفاتورة نفسه — اختر العميل الصحيح.')]);
             }
 
-            $why = match (true) {
+            $why = self::periodRefusal($locked) ?? match (true) {
                 $locked->orders->isNotEmpty() => __('هذه الفاتورة مولودة من طلب — يُصحَّح الطلب نفسه.'),
                 $locked->paidTotal() > 0 || $locked->allocations()->exists() => __('قُبض من هذه الفاتورة مال باسم عميلها — لا تُستبدل. أصدر إشعارًا دائنًا لعميلها، ثم فاتورة جديدة للعميل الصحيح.'),
                 $locked->creditNotes()->exists() || $locked->debitNotes()->exists() => __('على الفاتورة إشعارات تصحيح — لا تُستبدل. أصدر إشعارًا دائنًا بالباقي، ثم فاتورة جديدة للعميل الصحيح.'),
@@ -557,6 +566,43 @@ final class CustomerInvoiceEdits
 
             return $draft;
         });
+    }
+
+    /** فاتورةُ فترةٍ سابقة: قبل هذا الشهر، أو في دفاترَ أُقفلت — يُصحَّح مالُها ويُستبدل بصلاحيته */
+    private static function prior(CustomerInvoice $invoice): bool
+    {
+        $supplied = Carbon::parse($invoice->issued_at)->startOfDay();
+        $closed = BooksPeriod::closedThrough((int) $invoice->business_id);
+
+        return $supplied->lt(now()->startOfMonth()) || ($closed !== null && $supplied->lte($closed));
+    }
+
+    /**
+     * ما يمنع استبدالَ الفاتورة من فترتها — يُسأل تحت القفل قبل الإلغاء وعكسِ القيد والبديلة.
+     *
+     * الاستبدالُ يُلغي الفاتورةَ ويعكس قيدَها كلَّه اليوم، ولا يصدر له مستندُ
+     * تصحيح: فيُمنع بما يُمنع به تصحيحُ مالها (`standing`)، ولا تتجاوزه صلاحية.
+     *   - الفترةُ الضريبيّةُ المُقرّة: لمتجرٍ مسجَّلٍ في الضريبة، أو لفاتورةٍ حملت
+     *     ضريبةً ولو أُطفئت بعدها. وغيرُ المسجَّل لا إقرارَ له يُعكس فيه شيء.
+     *   - الدفاترُ المقفلةُ حتى اليوم: لا يُكتب فيها عكسُ القيد — لأيّ متجر.
+     */
+    private static function periodRefusal(CustomerInvoice $invoice): ?string
+    {
+        $bid = (int) $invoice->business_id;
+        $taxed = Vat::enabled($bid) || (float) $invoice->tax_total > 0;
+
+        if ($taxed && Vat::isFiled($bid, $invoice->issued_at)) {
+            return __('الفاتورة في فترة ضريبية قُدّم إقرارها حتى :d — استبدالها يلغيها ويعكس ضريبتها بلا مستند تصحيح، وقد يحتاج ذلك إقرارًا معدّلًا. القرار للمحاسب الضريبي، وتبقى الفاتورة كما صدرت.', [
+                'd' => Vat::filedThrough($bid)?->toDateString(),
+            ]);
+        }
+
+        $closed = BooksPeriod::closedThrough($bid);
+        if ($closed !== null && $closed->gte(now()->startOfDay())) {
+            return __('الدفاتر مقفلة حتى :d — لا يُعكس قيد الفاتورة اليوم، فلا تُلغى ولا تُستبدل.', ['d' => $closed->toDateString()]);
+        }
+
+        return null;
     }
 
     /* ═══════════════════════════ المسودّة ═══════════════════════════ */
@@ -782,9 +828,8 @@ final class CustomerInvoiceEdits
         }
 
         /* ═══ الصلاحيات ═══ */
-        $supplied = Carbon::parse($invoice->issued_at)->startOfDay();
         $closed = BooksPeriod::closedThrough($bid);
-        $prior = $supplied->lt(now()->startOfMonth()) || ($closed !== null && $supplied->lte($closed));
+        $prior = self::prior($invoice);
         $actions = [self::actionFor($kind)];
         if ($moneyChanged && $prior) {
             $actions[] = Permissions::CUSTOMER_INVOICE_CORRECT_PERIOD;

@@ -122,6 +122,7 @@ final class TenantExportGuard
         'admin.preparation.invoiceInternalPdf',
         'admin.customerInvoices.pdf',
         'admin.customerInvoices.creditNotes.pdf',
+        'admin.customerInvoices.debitNotes.pdf',
         'admin.customerInvoices.attachment',
         'admin.customerPayments.pdf',
         'admin.customers.statement',

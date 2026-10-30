@@ -112,6 +112,24 @@ class CustomerInvoice extends Model
         return $this->hasMany(CustomerCreditNote::class);
     }
 
+    /** الإشعاراتُ المدينة — زياداتٌ على الورقة بعد صدورها، كلٌّ بمستنده (م٥٠ من اللائحة) */
+    public function debitNotes(): HasMany
+    {
+        return $this->hasMany(CustomerDebitNote::class);
+    }
+
+    /** الفاتورةُ التي حلّت هذه محلَّها — حين تغيّر العميلُ فأُلغيت وكُتبت بديلتُها */
+    public function replaces(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'replaces_invoice_id');
+    }
+
+    /** تعديلاتُ الورقة بعد كتابتها — أحدثُها أوّلًا (`CustomerInvoiceEdits`) */
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(CustomerInvoiceRevision::class)->orderByDesc('revision');
+    }
+
     /** ما يُعدّ ذمّةً قائمة — الملغاة ليست ذمّة، والمسودّة لم تُصدر بعد */
     public function scopeLive($query)
     {
@@ -161,6 +179,18 @@ class CustomerInvoice extends Model
     }
 
     /**
+     * ما زادته الإشعاراتُ المدينة — والفاتورةُ نفسُها بمبلغها كما صدرت.
+     *
+     * فالذمّةُ = الإجماليُّ + المدينُ − المسدَّدُ − الدائن. ويُقرأ هنا وفي
+     * `debitedTotal` بالقاعدة نفسِها، كأخويه.
+     */
+    public static function debitedSql(): string
+    {
+        return '(SELECT COALESCE(SUM(d.amount), 0) FROM customer_debit_notes d'
+            .' WHERE d.customer_invoice_id = customer_invoices.id)';
+    }
+
+    /**
      * الباقي — بلا حصرٍ عند الصفر، عمدًا.
      *
      * `outstanding()` تحصره لأنّها تُعرَض: فاتورةٌ سالبة على الشاشة خبرٌ
@@ -174,7 +204,7 @@ class CustomerInvoice extends Model
      */
     public static function outstandingSql(): string
     {
-        return '(customer_invoices.total - '.self::paidSql().' - '.self::creditedSql().')';
+        return '(customer_invoices.total + '.self::debitedSql().' - '.self::paidSql().' - '.self::creditedSql().')';
     }
 
     /**
@@ -246,10 +276,26 @@ class CustomerInvoice extends Model
         return round((float) $this->creditNotes()->sum('amount'), 3);
     }
 
+    public function debitedTotal(): float
+    {
+        return round((float) $this->debitNotes()->sum('amount'), 3);
+    }
+
+    /**
+     * ما على الورقة بعد مستندات تصحيحها — الإجماليُّ كما صدر، والمدينُ فوقه، والدائنُ منه.
+     *
+     * وهو ما يُطالَب به العميلُ قبل أن يُخصم ما دفع. والإجماليُّ في العمود يبقى
+     * إجماليَّ الفاتورة كما صدرت: الورقةُ لا تُعاد كتابتُها (م١٥٧ من اللائحة).
+     */
+    public function effectiveTotal(): float
+    {
+        return round((float) $this->total + $this->debitedTotal() - $this->creditedTotal(), 3);
+    }
+
     /**
      * الباقي على العميل.
      *
-     * إجمالي - مسدَّد - مردود. ولا ينزل تحت الصفر: زيادةُ الدفع تبقى غيرَ
+     * إجمالي + مدين - مسدَّد - دائن. ولا ينزل تحت الصفر: زيادةُ الدفع تبقى غيرَ
      * مخصَّصةٍ في رصيد العميل ولا تجعل فاتورةً سالبة.
      */
     public function outstanding(): float
@@ -258,7 +304,7 @@ class CustomerInvoice extends Model
             return 0.0;
         }
 
-        return round(max(0, (float) $this->total - $this->paidTotal() - $this->creditedTotal()), 3);
+        return round(max(0, $this->effectiveTotal() - $this->paidTotal()), 3);
     }
 
     /**

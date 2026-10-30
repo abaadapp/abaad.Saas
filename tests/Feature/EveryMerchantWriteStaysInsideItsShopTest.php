@@ -149,6 +149,11 @@ class EveryMerchantWriteStaysInsideItsShopTest extends TestCase
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.issue', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.cancel', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.creditNote', ['id' => 'invoice']],
+                // وتعديلُ الورقة بعد كتابتها — المعاينةُ لا تكتب، والحفظُ يكتب: كلاهما من متجره وحده
+                ['فواتير العملاء', 'post', 'admin.customerInvoices.editPreview', ['id' => 'invoice']],
+                ['فواتير العملاء', 'put', 'admin.customerInvoices.update', ['id' => 'invoice']],
+                // و«إلغاء وإصدار بديلة» — يُلغي فاتورةً ويكتب مسودّة: من متجره وحده
+                ['فواتير العملاء', 'post', 'admin.customerInvoices.replace', ['id' => 'invoice']],
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.remind', ['id' => 'invoice']],
                 // ورابطُ دفع الفاتورة — على فاتورةٍ من المتجر نفسِه وحده
                 ['فواتير العملاء', 'post', 'admin.customerInvoices.paymentLink', ['id' => 'invoice']],

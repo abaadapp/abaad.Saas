@@ -9,14 +9,17 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
+use App\Models\CustomerDebitNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerInvoiceAttachment;
+use App\Models\CustomerInvoiceRevision;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\Setting;
 use App\Support\Activity;
+use App\Support\CustomerInvoiceEdits;
 use App\Support\CustomerInvoicePreparations;
 use App\Support\CustomerInvoices;
 use App\Support\CustomerPayments;
@@ -44,6 +47,7 @@ use App\Support\Receivables;
 use App\Support\Search;
 use App\Support\Vat;
 use App\Support\WhatsAppPhone;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
@@ -311,7 +315,26 @@ class CustomerInvoiceController extends Controller
              */
             'methods' => CustomerPayments::METHODS,
             'bank_methods' => CustomerInvoices::bankMethods(),
+            /*
+             * وتعديلُ الورقة بحالها — ومن لا يملكه لا يُرسَم له زرّ. وسجلُّ
+             * تعديلاتها لمن يقرأ السجلّ وحده، و`null` لغيره.
+             */
+            'mayEdit' => CustomerInvoiceEdits::mayOpen(auth()->user(), $invoice),
+            'revisions' => $this->revisionsOf($invoice),
             'invoice' => $this->row($invoice) + [
+                'revision' => (int) $invoice->revision,
+                /*
+                 * وما على الورقة بعد مستندات تصحيحها — والإجماليُّ أعلاه إجماليُّها
+                 * كما صدرت، لا يتغيّر (`CustomerInvoice::effectiveTotal`).
+                 */
+                'debited' => $invoice->status === CustomerInvoice::ISSUED ? $invoice->debitedTotal() : 0.0,
+                'effective_total' => $invoice->status === CustomerInvoice::ISSUED ? $invoice->effectiveTotal() : (float) $invoice->total,
+                'replaces' => $invoice->replaces_invoice_id ? [
+                    'id' => (int) $invoice->replaces_invoice_id,
+                    'number' => CustomerInvoice::where('business_id', $this->bid())->whereKey($invoice->replaces_invoice_id)->value('number'),
+                ] : null,
+                'replaced_by' => CustomerInvoice::where('business_id', $this->bid())->where('replaces_invoice_id', $invoice->id)
+                    ->get(['id', 'number', 'status'])->map(fn ($r) => ['id' => $r->id, 'number' => $r->number, 'status' => $r->status])->all(),
                 'subtotal' => (float) $invoice->subtotal,
                 'discount_total' => (float) $invoice->discount_total,
                 'tax_total' => (float) $invoice->tax_total,
@@ -373,6 +396,16 @@ class CustomerInvoiceController extends Controller
                     'amount' => (float) $n->amount,
                     'reason' => $n->reason,
                     'at' => optional($n->issued_at)->format('Y-m-d'),
+                    'revision' => $n->revision_id ? (int) CustomerInvoiceRevision::whereKey($n->revision_id)->value('revision') : null,
+                ])->all(),
+                // والإشعاراتُ المدينة — كلٌّ يُفتح ويُطبع وحده
+                'debit_notes' => $invoice->debitNotes()->orderBy('id')->get()->map(fn ($n) => [
+                    'id' => $n->id,
+                    'number' => $n->number,
+                    'amount' => (float) $n->amount,
+                    'reason' => $n->reason,
+                    'at' => optional($n->issued_at)->format('Y-m-d'),
+                    'revision' => $n->revision_id ? (int) CustomerInvoiceRevision::whereKey($n->revision_id)->value('revision') : null,
                 ])->all(),
             ],
             /*
@@ -428,6 +461,7 @@ class CustomerInvoiceController extends Controller
             ->with('invoice')->firstOrFail();
 
         return Inertia::render('Admin/CustomerInvoices/CreditNoteShow', [
+            'kind' => 'credit',
             'note' => [
                 'id' => $note->id,
                 'number' => $note->number,
@@ -449,6 +483,45 @@ class CustomerInvoiceController extends Controller
                 'html' => DocumentRenderer::generic($bid, 'credit_note', DocumentPaper::forCreditNote($note)),
                 'size' => PaperSize::A4,
                 'url' => route('admin.customerInvoices.creditNotes.pdf', $note->id),
+            ],
+        ]);
+    }
+
+    /**
+     * صفحةُ إشعارٍ مدين واحد — وورقتُه إلى جانبها، كأخيه الدائن.
+     *
+     * مستندٌ ضريبيٌّ مستقلٌّ برقمه، يزيد ما على العميل من فاتورةٍ صدرت ولا
+     * يُعيد كتابتها (م٥٠ من اللائحة). فيُفتح ويُطبع وحده، ويعود إلى فاتورته.
+     */
+    public function debitNoteShow(int|string $note): Response
+    {
+        $bid = $this->bid();
+
+        $note = CustomerDebitNote::where('business_id', $bid)->whereKey($note)
+            ->with('invoice')->firstOrFail();
+
+        return Inertia::render('Admin/CustomerInvoices/CreditNoteShow', [
+            'kind' => 'debit',
+            'note' => [
+                'id' => $note->id,
+                'number' => $note->number,
+                'amount' => (float) $note->amount,
+                'tax_amount' => (float) $note->tax_amount,
+                'net' => round((float) $note->amount - (float) $note->tax_amount, 3),
+                'reason' => $note->reason,
+                'issued_at' => optional($note->issued_at)->format('Y-m-d'),
+            ],
+            'invoice' => $note->invoice ? [
+                'id' => $note->invoice->id,
+                'number' => $note->invoice->number,
+                'customer' => $note->invoice->customer_name,
+                'total' => (float) $note->invoice->total,
+            ] : null,
+            'currency' => Money::of($bid),
+            'paper' => [
+                'html' => DocumentRenderer::generic($bid, 'credit_note', DocumentPaper::forDebitNote($note)),
+                'size' => PaperSize::A4,
+                'url' => route('admin.customerInvoices.debitNotes.pdf', $note->id),
             ],
         ]);
     }
@@ -1680,6 +1753,283 @@ class CustomerInvoiceController extends Controller
         return back()->with('toast', [
             'msg' => __('أُصدر إشعار الدائن :n', ['n' => $note->number]), 'type' => 'success',
         ]);
+    }
+
+    /**
+     * شاشةُ تعديل الفاتورة — المسودّةُ تُعدَّل، والصادرةُ تُصحَّح بمستند.
+     *
+     * والفعلُ يُسأل بحال الورقة (`CustomerInvoiceEdits::actionFor`): من يعدّل
+     * المسودّات لا يُفتح له تصحيحُ ورقةٍ صدرت، ومن يصحّح الصادرةَ لا يُفتح له
+     * تصحيحُ ما قُبض منه مال. والورقةُ من متجر الطالب قبل كلّ سؤال.
+     *
+     * وبنودُ الصادرة من حالها بعد آخر تصحيح (`CustomerInvoiceEdits::state`) لا من
+     * صفوفها: الفاتورةُ كما صدرت، وحالُها في سجلّ تصحيحاتها.
+     */
+    public function edit(int|string $id): Response
+    {
+        $bid = $this->bid();
+        $invoice = $this->find($id);
+        $user = auth()->user();
+
+        abort_unless(CustomerInvoiceEdits::mayOpen($user, $invoice), 403);
+
+        $invoice->loadMissing('orders', 'items');
+        $kind = CustomerInvoiceEdits::kind($invoice);
+        $draft = $kind === CustomerInvoiceRevision::DRAFT;
+        $inclusive = $draft ? Vat::inclusive($bid) : CustomerInvoiceEdits::inclusiveOf($invoice);
+        $state = $draft ? null : CustomerInvoiceEdits::state($invoice);
+        $staff = $invoice->items->keyBy('id');
+
+        $lines = $draft
+            ? $invoice->items->map(fn ($i) => [
+                'key' => 'i'.$i->id,
+                'item_id' => $i->id,
+                'parent_key' => $i->parent_item_id !== null ? 'i'.$i->parent_item_id : null,
+                'product_id' => $i->product_id,
+                'addon_id' => $i->addon_id,
+                'description' => $i->description,
+                'quantity' => (float) $i->quantity,
+                'unit_price' => (float) $i->unit_price,
+                'discount' => (float) $i->discount,
+                'tax_rate' => (float) $i->tax_rate,
+                'line_total' => (float) $i->line_total,
+                'details' => $this->lineDetails($i),
+            ])->values()->all()
+            : collect($state['lines'])->map(fn (array $l) => [
+                'key' => $l['key'],
+                'item_id' => $l['item_id'] ?? null,
+                'parent_key' => $l['parent_key'] ?? null,
+                'product_id' => $l['product_id'] ?? null,
+                'addon_id' => $l['addon_id'] ?? null,
+                'description' => $l['description'],
+                'quantity' => (float) $l['quantity'],
+                'unit_price' => (float) $l['unit_price'],
+                'discount' => (float) $l['discount'],
+                'tax_rate' => (float) $l['tax_rate'],
+                'line_total' => (float) $l['line_total'],
+                'details' => isset($l['item_id']) && $staff->has($l['item_id']) ? $this->lineDetails($staff->get($l['item_id'])) : [],
+            ])->values()->all();
+
+        return Inertia::render('Admin/CustomerInvoices/Edit', [
+            'invoice' => [
+                'id' => $invoice->id,
+                'number' => $invoice->number,
+                'status' => $invoice->status,
+                'state' => $invoice->paymentState(),
+                'kind' => $kind,
+                'revision' => (int) $invoice->revision,
+                'from_order' => $invoice->orders->isNotEmpty(),
+                'orders' => $invoice->orders->pluck('number')->all(),
+                'customer_id' => $invoice->customer_id,
+                'customer' => $invoice->customer_name,
+                'issued_at' => optional($invoice->issued_at)->format('Y-m-d'),
+                'due_at' => optional($invoice->due_at)->format('Y-m-d'),
+                'payment_terms_days' => $invoice->payment_terms_days,
+                'branch_id' => $invoice->branch_id,
+                'po_number' => $invoice->po_number,
+                'contract_number' => $invoice->contract_number,
+                'external_reference' => $invoice->external_reference,
+                'department' => $invoice->department,
+                'cost_center' => $invoice->cost_center,
+                'attention_to' => $invoice->attention_to,
+                'notes' => $invoice->notes,
+                'internal_notes' => $invoice->internal_notes,
+                // ما على الورقة الآن — بعد مستندات تصحيحها، والفاتورةُ نفسُها كما صدرت
+                'subtotal' => (float) ($state['subtotal'] ?? $invoice->subtotal),
+                'discount_total' => (float) ($state['discount_total'] ?? $invoice->discount_total),
+                'tax_total' => (float) ($state['tax_total'] ?? $invoice->tax_total),
+                'total' => (float) ($state['total'] ?? $invoice->total),
+                'issued_total' => (float) $invoice->total,
+                'effective_total' => $draft ? (float) $invoice->total : $invoice->effectiveTotal(),
+                'paid' => $draft ? 0.0 : $invoice->paidTotal(),
+                'credited' => $draft ? 0.0 : $invoice->creditedTotal(),
+                'debited' => $draft ? 0.0 : $invoice->debitedTotal(),
+                'outstanding' => $invoice->outstanding(),
+                'items' => $lines,
+            ],
+            'customers' => Customer::where('business_id', $bid)->orderBy('name')
+                ->get(['id', 'name', 'name_en', 'phone', 'payment_terms_days'])
+                ->map(fn (Customer $c) => $c->only(['id', 'name', 'name_en', 'phone', 'payment_terms_days']))->all(),
+            // والفروعُ التي يعمل فيها — لا يُنقل إلى فرعٍ لم يُسنَد إليه (`User::worksAt`)
+            'branches' => Branch::where('business_id', $bid)->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Branch $b) => ['id' => $b->id, 'name' => $b->name, 'allowed' => (bool) $user?->worksAt($b->id)])->all(),
+            'products' => $this->catalogProducts($bid),
+            'addons' => Addon::where('business_id', $bid)->where('active', true)->orderBy('name')
+                ->limit(self::CATALOG_LIMIT)->get(['id', 'name', 'name_en', 'price'])
+                ->map(fn (Addon $a) => ['id' => $a->id, 'name' => $a->name, 'name_en' => $a->name_en, 'price' => (float) $a->price])->all(),
+            // نسبةُ البند الجديد افتراضًا — وللصادرة من نسب بنودها وحدها
+            'tax_rate' => $draft ? Vat::rate($bid) : (float) (collect($lines)->pluck('tax_rate')->countBy()->sortDesc()->keys()->first() ?? 0),
+            'tax_rates' => $draft ? null : collect($lines)->pluck('tax_rate')->map(fn ($r) => (float) $r)->unique()->values()->all(),
+            // قاعدةُ الورقة نفسِها: شاملةٌ أم مضافة — و`null` حين لا تُعرف من بنودها
+            'tax_inclusive' => $inclusive,
+            'today' => now()->toDateString(),
+            'edit_token' => (string) Str::uuid(),
+            // والإرجاعُ يُعرض مقفلًا بسببه — مسارٌ مستقلّ لم يُفتح بعد (`CustomerInvoiceEdits::OPEN_BASES`)
+            'bases' => collect(CustomerInvoiceEdits::BASIS_LABELS)->map(fn ($label, $value) => [
+                'value' => $value,
+                'label' => in_array($value, CustomerInvoiceEdits::OPEN_BASES, true) ? __($label) : __($label).' — '.__('مسار مستقل لم يُفتح بعد'),
+                'disabled' => ! in_array($value, CustomerInvoiceEdits::OPEN_BASES, true),
+            ])->values()->all(),
+            'standing' => (object) CustomerInvoiceEdits::standing($invoice),
+            'may' => [
+                'correct_period' => (bool) $user?->may(Permissions::CUSTOMER_INVOICE_CORRECT_PERIOD),
+                'owner' => Permissions::isOwner($user),
+                'replace' => ! $draft && (bool) $user?->may(Permissions::CUSTOMER_INVOICE_CANCEL) && (bool) $user?->may(Permissions::CUSTOMER_INVOICE_EDIT_ISSUED),
+            ],
+        ]);
+    }
+
+    /** تفاصيلُ البند كما يقرؤها الموظّف — المقاسُ والإضافاتُ والبطاقة */
+    private function lineDetails($item): array
+    {
+        return array_values(array_map(
+            fn (array $d) => trim(($d['label'] ? $d['label'].': ' : '').$d['text']),
+            InvoiceLineDetails::rows(collect([$item]), InvoiceLineDetails::STAFF)[0]['subs'] ?? [],
+        ));
+    }
+
+    /**
+     * ما سيقع لو حُفظ التعديل — بلا أن يُكتب شيء.
+     *
+     * المستنداتُ التي ستصدر (دائنٌ لما نقص، ومدينٌ لما زاد) بمبالغها وضريبتها
+     * وبنودها، وما يبقى على العميل أو يصير له، وما يمنع. وهي الخطّةُ نفسُها
+     * التي يقرؤها الحفظ (`CustomerInvoiceEdits::plan`) — فما يُرى هو ما يقع.
+     */
+    public function editPreview(Request $request, int|string $id)
+    {
+        $invoice = $this->find($id);
+        $user = auth()->user();
+
+        abort_unless(CustomerInvoiceEdits::mayOpen($user, $invoice), 403);
+
+        $rules = CustomerInvoiceEdits::rules();
+        $rules['expected_revision'] = ['nullable', 'integer', 'min:0'];
+        $rules['edit_token'] = ['nullable', 'string', 'max:64'];
+        $data = $request->validate($rules, [], CustomerInvoiceEdits::attributes());
+
+        try {
+            $plan = CustomerInvoiceEdits::plan($invoice, $data, $user);
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['items' => $e->getMessage()]);
+        }
+
+        $labels = Permissions::actionLabels();
+
+        return response()->json([
+            'changed' => $plan['changed'],
+            'kind' => $plan['kind'],
+            'changes' => $plan['changes'],
+            'lines' => $plan['lines'],
+            'money' => $plan['money'],
+            'documents' => $plan['documents'],
+            'stock' => $plan['stock'],
+            'period' => $plan['period'],
+            'needs_reason' => $plan['needs_reason'],
+            'needs_basis' => $plan['needs_basis'],
+            'missing' => array_map(fn ($a) => $labels[$a] ?? $a, $plan['missing_actions']),
+            'blockers' => $plan['blockers'],
+        ]);
+    }
+
+    /** حفظُ التعديل — والخادمُ يعيد الحسابَ والفحصَ كلَّه تحت قفل الورقة */
+    public function update(Request $request, int|string $id)
+    {
+        $invoice = $this->find($id);
+        $user = auth()->user();
+
+        abort_unless(CustomerInvoiceEdits::mayOpen($user, $invoice), 403);
+
+        $data = $request->validate(CustomerInvoiceEdits::rules(), [], CustomerInvoiceEdits::attributes());
+
+        try {
+            $revision = CustomerInvoiceEdits::apply($invoice, $data, $user);
+        } catch (AuthorizationException $e) {
+            abort(403, $e->getMessage());
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['edit' => $e->getMessage()]);
+        }
+
+        $documents = collect([$revision->debitNote()->value('number'), $revision->creditNote()->value('number')])->filter()->implode('، ');
+
+        return redirect()->route('admin.customerInvoices.show', $invoice->id)->with('toast', [
+            'msg' => match (true) {
+                $invoice->status === CustomerInvoice::DRAFT => __('حُفظ تعديل المسودة'),
+                $documents !== '' => __('صُحّحت الفاتورة :n — صدر :d', ['n' => $invoice->number, 'd' => $documents]),
+                default => __('حُفظت ملاحظات الفاتورة :n', ['n' => $invoice->number]),
+            },
+            'type' => 'success',
+        ]);
+    }
+
+    /**
+     * «إلغاء وإصدار بديلة» — عميلٌ آخر لفاتورةٍ صدرت ولم يُقبض منها شيء.
+     *
+     * تُلغى هذه برقمها، وتُكتب بديلتُها مسودّةً للعميل الصحيح تُراجَع ثمّ تُصدَر
+     * (`CustomerInvoiceEdits::replace`). والفعلان يُسألان هناك: الإلغاءُ والتصحيح.
+     */
+    public function replace(Request $request, int|string $id)
+    {
+        $invoice = $this->find($id);
+        $user = auth()->user();
+
+        // والصلاحيةُ قبل النموذج: من لا يملك الاستبدالَ يُردّ بـ٤٠٣ لا بخطأ حقل
+        abort_unless($user?->may(Permissions::CUSTOMER_INVOICE_CANCEL) && $user->may(Permissions::CUSTOMER_INVOICE_EDIT_ISSUED), 403);
+
+        $data = $request->validate([
+            'customer_id' => ['required', 'integer'],
+            'reason' => ['required', 'string', 'max:'.CustomerInvoiceEdits::REASON_MAX],
+        ], [], ['customer_id' => __('العميل'), 'reason' => __('سبب الاستبدال')]);
+
+        $customer = Customer::where('business_id', $this->bid())->whereKey($data['customer_id'])->first();
+        if (! $customer) {
+            throw ValidationException::withMessages(['customer_id' => __('هذا العميل ليس من عملاء متجرك.')]);
+        }
+
+        try {
+            $draft = CustomerInvoiceEdits::replace($invoice, $customer, $data['reason'], $user);
+        } catch (AuthorizationException $e) {
+            abort(403, $e->getMessage());
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['replace' => $e->getMessage()]);
+        }
+
+        return redirect()->route('admin.customerInvoices.show', $draft->id)->with('toast', [
+            'msg' => __('أُلغيت الفاتورة :n وكُتبت بديلتها مسودة للعميل :c — راجعها ثم أصدرها.', ['n' => $invoice->number, 'c' => $customer->name]),
+            'type' => 'success',
+        ]);
+    }
+
+    /**
+     * سجلُّ تعديلات الورقة — لمن يقرأ السجلّ وحده، ومستنداتُ كلّ تصحيحٍ معه.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    private function revisionsOf(CustomerInvoice $invoice): ?array
+    {
+        if (! auth()->user()?->may(Permissions::CUSTOMER_INVOICE_HISTORY)) {
+            return null;
+        }
+
+        return $invoice->revisions()->with('author:id,name', 'creditNote', 'debitNote')->get()->map(fn (CustomerInvoiceRevision $r) => [
+            'revision' => $r->revision,
+            'kind' => $r->kind,
+            'basis' => $r->basis ? __(CustomerInvoiceEdits::BASIS_LABELS[$r->basis] ?? $r->basis) : null,
+            'reason' => $r->reason,
+            'at' => optional($r->created_at)->format('Y-m-d H:i'),
+            'by' => $r->author?->name,
+            'total_before' => (float) $r->total_before,
+            'total_after' => (float) $r->total_after,
+            'tax_before' => (float) $r->tax_before,
+            'tax_after' => (float) $r->tax_after,
+            'paid_at_edit' => (float) $r->paid_at_edit,
+            'fields' => $r->changes['fields'] ?? [],
+            'lines' => $r->changes['lines'] ?? [],
+            'customer_credit' => (float) ($r->changes['money']['customer_credit'] ?? 0),
+            'documents' => array_values(array_filter([
+                $r->debitNote ? ['kind' => 'debit', 'number' => $r->debitNote->number, 'amount' => (float) $r->debitNote->amount, 'url' => route('admin.customerInvoices.debitNotes.show', $r->debitNote->id)] : null,
+                $r->creditNote ? ['kind' => 'credit', 'number' => $r->creditNote->number, 'amount' => (float) $r->creditNote->amount, 'url' => route('admin.customerInvoices.creditNotes.show', $r->creditNote->id)] : null,
+            ])),
+        ])->all();
     }
 
     /** تسجيلُ تحصيل — من الفاتورة أو على حساب العميل */

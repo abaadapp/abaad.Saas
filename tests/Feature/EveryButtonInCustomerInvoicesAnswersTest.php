@@ -103,6 +103,8 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
          * ولا يقول أحدٌ إنّ العطبَ في الاسم.
          */
         $note = CustomerInvoices::creditNote($invoice, 10.0, 0.0, 'ردّ صنف', $this->owner->id);
+        // وإشعارٌ مدينٌ حقيقيّ — `{note}` تحت `debit-notes` يُقرأ منه لا من الدائن
+        $debit = CustomerInvoices::debitNote($invoice, 5.0, 0.0, 'زيادة صنف', [], null, null, $this->owner->id);
 
         $bindings = [
             'id' => $invoice->id,
@@ -121,7 +123,7 @@ class EveryButtonInCustomerInvoicesAnswersTest extends TestCase
 
             $params = [];
             foreach ($route->parameterNames() as $p) {
-                $params[$p] = $bindings[$p] ?? 1;
+                $params[$p] = $p === 'note' && str_contains($name, 'debitNotes') ? $debit->id : ($bindings[$p] ?? 1);
             }
 
             // وملفُّ النشاط كلِّه يحمل توقُّعَ نشاطه كما يحمله من الشاشة (`TenantExportGuard::REQUIRED`)

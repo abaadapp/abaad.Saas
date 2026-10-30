@@ -72,6 +72,21 @@ final class CustomerPurchases
             ->whereColumn('pni.business_id', 'customers.business_id');
     }
 
+    /**
+     * والإشعاراتُ المدينة على فواتيره المستقلّة — زيادةٌ على ما اشترى.
+     *
+     * فاتورةٌ بخمسين صُحّحت إلى خمسةٍ وخمسين بإشعارٍ مدين: اشترى بخمسةٍ وخمسين.
+     * والمولودةُ من طلبٍ لا إشعارَ مدينًا عليها (`CustomerInvoices::debitNote`).
+     */
+    private static function debits(): QueryBuilder
+    {
+        return DB::table('customer_debit_notes as pd')
+            ->join('customer_invoices as pdi', 'pdi.id', '=', 'pd.customer_invoice_id')
+            ->where('pdi.status', CustomerInvoice::ISSUED)
+            ->whereColumn('pdi.customer_id', 'customers.id')
+            ->whereColumn('pdi.business_id', 'customers.business_id');
+    }
+
     /** وساعةُ الفاتورة يومُها — كما في `SalesRegister::invoices` */
     private static function invoiceMoment(): string
     {
@@ -99,6 +114,7 @@ final class CustomerPurchases
         [$oSum, $oSumB] = $sub(self::orders()->selectRaw('COALESCE(SUM(orders.total), 0)'));
         [$iSum, $iSumB] = $sub(self::invoices()->selectRaw('COALESCE(SUM(pi.total), 0)'));
         [$nSum, $nSumB] = $sub(self::credits()->selectRaw('COALESCE(SUM(pn.amount), 0)'));
+        [$dSum, $dSumB] = $sub(self::debits()->selectRaw('COALESCE(SUM(pd.amount), 0)'));
         [$oLast, $oLastB] = $sub(self::orders()->selectRaw('MAX(orders.ordered_at)'));
         [$iLast, $iLastB] = $sub(self::invoices()->selectRaw('MAX('.self::invoiceMoment().')'));
 
@@ -109,7 +125,7 @@ final class CustomerPurchases
 
         return $customers
             ->selectRaw("({$oCount} + {$iCount}) as purchases_count", [...$oCountB, ...$iCountB])
-            ->selectRaw("({$oSum} + {$iSum} - {$nSum}) as purchases_total", [...$oSumB, ...$iSumB, ...$nSumB])
+            ->selectRaw("({$oSum} + {$iSum} - {$nSum} + {$dSum}) as purchases_total", [...$oSumB, ...$iSumB, ...$nSumB, ...$dSumB])
             ->selectRaw("CASE WHEN {$iLast} IS NULL THEN {$oLast} WHEN {$oLast} IS NULL THEN {$iLast}"
                 ." WHEN {$iLast} >= {$oLast} THEN {$iLast} ELSE {$oLast} END as last_purchase_at",
                 [...$iLastB, ...$oLastB, ...$oLastB, ...$iLastB, ...$iLastB, ...$oLastB, ...$iLastB, ...$oLastB])

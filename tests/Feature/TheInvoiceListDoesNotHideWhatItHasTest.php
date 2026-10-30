@@ -220,7 +220,7 @@ class TheInvoiceListDoesNotHideWhatItHasTest extends TestCase
         $this->pay($lateAndPartly, 100);                                 // متأخرة كذلك
 
         $credited = $this->issued(90, now()->addDays(30)->toDateString());
-        CustomerInvoices::creditNote($credited, 90, 0, 'مرتجع', $this->owner->id);
+        CustomerInvoices::creditNote($credited, 90, 0, 'مرتجع', $this->owner->id, basis: 'return');
 
         $all = CustomerInvoice::where('business_id', $this->business->id)->get();
 

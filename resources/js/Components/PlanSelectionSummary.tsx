@@ -23,6 +23,8 @@ export interface PlanOption {
     max_branches: number | null;
     max_employees: number | null;
     max_products: number | null;
+    /** قطاعُ الباقة — نماذجُ الشركة تعرض باقاتِ قطاعها وحده (`Sectors`) */
+    sector_id?: number | null;
 }
 
 /**

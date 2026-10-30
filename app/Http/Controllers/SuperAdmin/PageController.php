@@ -151,10 +151,20 @@ class PageController extends Controller
         ];
     }
 
-    public function businessesCreate(): Response
+    public function businessesCreate(Request $request): Response
     {
+        $options = $this->businessOptions();
+
         return $this->page('Platform/Businesses/Create', [
-            'options' => $this->businessOptions(),
+            'options' => $options,
+            /*
+             * القطاعُ المحدَّد سلفًا — من صفحة القطاع (`?sector=`)، أو الوحيدُ النشط.
+             *
+             * وقطاعٌ في الرابط لا يُقرأ إلّا إن كان بين النشطة: رابطٌ قديمٌ لقطاعٍ
+             * أُطفئ لا يفتح إضافةً إليه.
+             */
+            'sectorId' => collect($options['sectors'])->firstWhere('id', (int) $request->query('sector'))['id']
+                ?? (count($options['sectors']) === 1 ? $options['sectors'][0]['id'] : null),
         ]);
     }
 
@@ -235,7 +245,8 @@ class PageController extends Controller
                  * الترقيةُ في الحساب نفسِه — تجربةٌ إلى مدفوع، أو باقةٌ إلى أخرى — بسعر
                  * كلّ باقةٍ في سياسة المتجر. تُفوتَر الآن وتسري بالسداد (`Billing::upgrade`).
                  */
-                'upgrades' => \App\Models\Plan::where('id', '!=', (int) $model->plan_id)->orderBy('monthly_price')->get()
+                // ومن قطاع المتجر وحده — والخادمُ يردّ غيرَها (`Sectors::assertPlanFits`)
+                'upgrades' => \App\Models\Plan::where('id', '!=', (int) $model->plan_id)->where('sector_id', $model->sector_id)->orderBy('monthly_price')->get()
                     ->map(fn (\App\Models\Plan $p) => ['id' => $p->id, 'name' => $p->name, 'prices' => self::upgradePrices($model, $p)])
                     ->values()->all(),
                 /*
@@ -352,6 +363,7 @@ class PageController extends Controller
                 // العنوان وتاريخا الاشتراك كانت قيمًا ثابتة في القالب
                 'address' => $model?->address,
                 'plan_id' => $model?->plan_id,
+                'sector_id' => $model?->sector_id,
                 'starts_at' => optional($model?->starts_at)->format('Y-m-d'),
                 'ends_at' => optional($model?->ends_at)->format('Y-m-d'),
                 'tier' => $model?->tier,
@@ -403,30 +415,45 @@ class PageController extends Controller
 
     public function plans(): Response
     {
+        $sectors = \App\Models\Sector::orderBy('sort')->orderBy('id')->get(['id', 'name', 'active']);
+
         return $this->page('Platform/Subscriptions/Plans', [
-            'plans' => Plan::orderBy('id')->get()->map(fn ($p) => [
-                'id' => $p->id,
-                'name' => $p->name,
-                'monthly' => (float) $p->monthly_price,
-                'yearly' => (float) $p->yearly_price,
-                'color' => $p->color,
-                'popular' => (bool) $p->is_popular,
-                'features' => $p->features ?? [],
-                // السقوف تُحرَّر من الشاشة الآن، فتُقرأ فيها
-                'max_branches' => $p->max_branches,
-                'max_employees' => $p->max_employees,
-                'max_products' => $p->max_products,
-                /*
-                 * ما تفتحه الباقة — و`null` تعني «كلّ شيء» لا «لا شيء».
-                 *
-                 * تُرسل كما هي لا مُسوّاةً إلى قائمةٍ فارغة: الفرق بينهما هو
-                 * الفرق بين باقةٍ لم تُضبط بعد وباقةٍ أُغلقت عمدًا، والشاشة
-                 * تحتاج أن تقول أيّهما.
-                 */
-                'capabilities' => $p->capabilities,
-            ])->all(),
+            'plans' => self::planCards(Plan::orderBy('id')->get()),
             'capabilityOptions' => PlanFeatures::options(),
+            // وقطاعُ الباقة الجديدة يُختار هنا حين يتعدّد — ومن صفحة القطاع يصل معها
+            'sectors' => $sectors->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'active' => (bool) $s->active])->all(),
         ]);
+    }
+
+    /**
+     * بطاقاتُ الباقات — شكلٌ واحدٌ تقرؤه صفحةُ الباقات وتبويبُ باقات القطاع.
+     *
+     * @param  \Illuminate\Support\Collection<int, Plan>  $plans
+     */
+    public static function planCards(\Illuminate\Support\Collection $plans): array
+    {
+        return $plans->map(fn (Plan $p) => [
+            'id' => $p->id,
+            'name' => $p->name,
+            'monthly' => (float) $p->monthly_price,
+            'yearly' => (float) $p->yearly_price,
+            'color' => $p->color,
+            'popular' => (bool) $p->is_popular,
+            'features' => $p->features ?? [],
+            // السقوف تُحرَّر من الشاشة الآن، فتُقرأ فيها
+            'max_branches' => $p->max_branches,
+            'max_employees' => $p->max_employees,
+            'max_products' => $p->max_products,
+            /*
+             * ما تفتحه الباقة — و`null` تعني «كلّ شيء» لا «لا شيء».
+             *
+             * تُرسل كما هي لا مُسوّاةً إلى قائمةٍ فارغة: الفرق بينهما هو
+             * الفرق بين باقةٍ لم تُضبط بعد وباقةٍ أُغلقت عمدًا، والشاشة
+             * تحتاج أن تقول أيّهما.
+             */
+            'capabilities' => $p->capabilities,
+            'sector_id' => $p->sector_id,
+        ])->values()->all();
     }
 
     public function invoices(): Response
@@ -903,6 +930,10 @@ class PageController extends Controller
             'statuses' => self::STATUSES,
             // وتفاصيلُ كلّ باقةٍ معها — تُعرض تحت الاختيار، من مصدرٍ واحدٍ مع نموذج الاشتراك
             'plans' => SubscriptionController::planOptions(),
+            // والقطاعاتُ النشطة — والباقاتُ تُعرض من قطاع الشركة وحده (`Sectors`)
+            'sectors' => \App\Support\Sectors::active()
+                ->map(fn ($s) => ['id' => $s->id, 'name' => $s->name, 'name_en' => $s->name_en, 'icon' => $s->icon])
+                ->values()->all(),
             // وطرقُ فتح الاشتراك لمتجرٍ جديد: السياسةُ والأسعارُ بدوراتها والإضافات
             'subscription' => \App\Support\NewMerchantSubscription::options(),
         ];

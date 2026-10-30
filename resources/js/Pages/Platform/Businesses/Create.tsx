@@ -6,7 +6,8 @@ import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
 
 export default function BusinessCreate() {
-    const { options } = usePage<PageProps<{ options: BusinessOptions }>>().props;
+    // والقطاعُ محدَّدٌ سلفًا — من صفحة القطاع، أو الوحيدُ النشط (`PageController::businessesCreate`)
+    const { options, sectorId } = usePage<PageProps<{ options: BusinessOptions; sectorId?: number | null }>>().props;
     const t = useTranslate();
 
     return (
@@ -28,6 +29,7 @@ export default function BusinessCreate() {
                     phone: '',
                     email: '',
                     plan_id: '',
+                    sector_id: sectorId ? String(sectorId) : '',
                     tier: '',
                     storefront_theme: '',
                     status: 'نشط',
@@ -47,6 +49,7 @@ export default function BusinessCreate() {
                     grant_reason: '',
                     addons: [],
                 }}
+                sectorId={sectorId}
                 action={route('super-admin.businesses.store')}
                 method="post"
                 submitLabel="حفظ الشركة"

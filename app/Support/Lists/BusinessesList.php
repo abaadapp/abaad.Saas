@@ -31,7 +31,10 @@ final class BusinessesList
         'branches' => 'branches_count',
     ];
 
-    public static function query(Request $request): Builder
+    /**
+     * @param  ?int  $sectorId  قطاعٌ بعينه — صفحةُ القطاع تقرأ القائمةَ نفسَها مقيَّدةً به
+     */
+    public static function query(Request $request, ?int $sectorId = null): Builder
     {
         /*
          * متاجر التجّار وحدها — والتجريبيّة في قسم «الديمو».
@@ -65,6 +68,10 @@ final class BusinessesList
         }
         if ($st = $request->query('status')) {
             $q->where('status', $st);
+        }
+        // والقطاعُ — من صفحته، أو مرشّحًا في الرابط
+        if ($sec = $sectorId ?? (int) $request->query('sector')) {
+            $q->where('sector_id', $sec);
         }
 
         Sort::apply($q, $request, self::SORTS, fn ($w) => $w->orderByDesc('id'));

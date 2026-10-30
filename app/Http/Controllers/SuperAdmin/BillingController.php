@@ -62,6 +62,9 @@ class BillingController extends Controller
         $business = Business::findOrFail($businessId);
         $target = Plan::findOrFail($data['plan_id']);
 
+        // والباقةُ من قطاع المتجر — قبل أن تصدر فاتورةُ ترقيةٍ لا تُطبَّق (`Sectors`)
+        \App\Support\Sectors::assertPlanFits($business->sector_id, $target->id);
+
         if ($over = PlanLimits::exceededBy($business, $target)) {
             return back()->withErrors(['plan_id' => __('المتجر يتجاوز باقة «:plan»: :over. أنقص الزائد قبل التنزيل.', [
                 'plan' => $target->name,

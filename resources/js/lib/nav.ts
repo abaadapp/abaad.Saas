@@ -35,6 +35,7 @@ import {
     Package,
     RefreshCw,
     Settings,
+    Shapes,
     ShoppingCart,
     Star,
     TicketPercent,
@@ -370,6 +371,11 @@ export const PLATFORM_NAV: NavGroup[] = [
     {
         heading: 'الإدارة',
         items: [
+            /*
+             * القطاعاتُ مدخلٌ يجمع باقاتِ كلِّ قطاعٍ وشركاتِه واشتراكاتِها — ولا يحلّ
+             * محلَّ ما تحته: «الشركات» و«الباقات» و«الاشتراكات» تبقى كما هي.
+             */
+            { label: 'القطاعات', icon: Shapes, route: 'super-admin.sectors.index', covers: ['super-admin.sectors.show'] },
             { label: 'الشركات', icon: Building2, route: 'super-admin.businesses.index' },
             { label: 'الاشتراكات', icon: RefreshCw, route: 'super-admin.subscriptions.index' },
             { label: 'الباقات', icon: Layers, route: 'super-admin.subscriptions.plans' },

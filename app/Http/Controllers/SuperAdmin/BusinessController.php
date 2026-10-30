@@ -86,6 +86,19 @@ class BusinessController extends Controller
         $account = $this->validateAccount($request);
         $subscription = $this->validateSubscription($request);
 
+        /*
+         * ═══ القطاعُ أوّلًا — ثمّ باقةٌ من قطاعه وحده ═══
+         *
+         * قطاعٌ نشطٌ واحد يُختار وحده؛ وأكثرُ من واحدٍ يُختار صراحةً. والباقةُ —
+         * المختارةُ، أو الافتراضيّةُ، أو أساسيّةُ التجربة — من قطاعه أو يُردّ الطلب
+         * (`Sectors::assertPlanFits`): إخفاؤها في الشاشة ليس حراسة.
+         */
+        $data['sector_id'] = $data['sector_id'] ?? \App\Support\Sectors::only()?->id;
+
+        if (empty($data['sector_id']) || ! \App\Models\Sector::whereKey($data['sector_id'])->where('active', true)->exists()) {
+            return back()->withInput()->withErrors(['sector_id' => __('اختر القطاع.')]);
+        }
+
         $data['logo'] = $request->hasFile('logo') ? $request->file('logo')->store('logos', 'public') : null;
 
         /*
@@ -105,7 +118,8 @@ class BusinessController extends Controller
         if (empty($data['plan_id'])) {
             $name = trim((string) \App\Support\Tenancy::platform('default_plan', ''));
             if ($name !== '') {
-                $data['plan_id'] = \App\Models\Plan::where('name', $name)->value('id') ?: null;
+                // ومن قطاع الشركة وحده: باقةٌ افتراضيّةٌ من قطاعٍ آخر لا تُسنَد صامتةً
+                $data['plan_id'] = \App\Models\Plan::where('name', $name)->where('sector_id', $data['sector_id'])->value('id') ?: null;
             }
         }
 
@@ -124,11 +138,20 @@ class BusinessController extends Controller
             return back()->withInput()->withErrors(['subscription_mode' => $e->getMessage()]);
         }
 
+        // والتجربةُ على الأساسيّة — فإن لم تكن من قطاعه رُدّت تحت طريقة الاشتراك
+        \App\Support\Sectors::assertPlanFits($data['sector_id'], $data['plan_id'] ?? null,
+            $subscription['subscription_mode'] === \App\Support\NewMerchantSubscription::TRIAL ? 'subscription_mode' : 'plan_id');
+
         // بابُ الإنشاء يختمه الخادم — `validateData` لا يقبله من الطلب
         $data['registration_source'] = Business::SOURCE_PLATFORM_MANUAL;
 
         try {
-            [$business, $owner, $started] = \Illuminate\Support\Facades\DB::transaction(function () use ($data, $account, $subscription, $request) {
+            /*
+             * ضغطتان معًا، أو طلبٌ أُعيد إرسالُه: كلاهما فحص الاسمَ قبل أن يُكتب
+             * الأوّل، والفريدُ في القاعدة (`users.email`) يردّ الثاني — فتُرجَع
+             * الكتابةُ كلُّها في نقطة حفظها (`Contention`): لا شركةٌ ثانية ولا فاتورة.
+             */
+            $created = \App\Support\Contention::attempt(function () use ($data, $account, $subscription, $request) {
                 $business = Business::create($data);
                 $owner = \App\Support\MerchantAccount::create($business, $account['login_username'], $account['login_password']);
                 // بذرة تصنيفات حسب النوع — لئلا يفتح التاجر لوحته على صفحة بيضاء
@@ -143,6 +166,12 @@ class BusinessController extends Controller
         } catch (\DomainException $e) {
             return back()->withInput()->withErrors(['subscription_mode' => $e->getMessage()]);
         }
+
+        if ($created === null) {
+            return back()->withInput()->withErrors(['login_username' => __('أُضيفت شركةٌ بهذا الحساب للتوّ — لم يُكرَّر شيء.')]);
+        }
+
+        [$business, $owner, $started] = $created;
 
         $msg = __('تم إضافة الشركة · حساب الدخول: :email', ['email' => $owner->email]);
         if ($started['invoices'] !== []) {
@@ -201,6 +230,15 @@ class BusinessController extends Controller
         $business = Business::findOrFail($id);
         $data = $this->validateData($request);
         self::assertComponentsMayOpen($business, $data);
+
+        // والباقةُ — الجديدةُ أو القائمة — من قطاع الشركة، الجديدِ أو القائم (`Sectors`)
+        if (empty($data['sector_id'])) {
+            unset($data['sector_id']);
+        }
+        \App\Support\Sectors::assertPlanFits(
+            $data['sector_id'] ?? $business->sector_id,
+            array_key_exists('plan_id', $data) ? $data['plan_id'] : $business->plan_id,
+        );
 
         /*
          * لا تُنزَّل باقةٌ يتجاوزها المتجر أصلًا.
@@ -703,6 +741,8 @@ class BusinessController extends Controller
              * والموظفين، وهو عكس ما يُقصَد من إسناد باقة.
              */
             'plan_id' => ['nullable', 'integer', 'exists:plans,id'],
+            // والقطاعُ — تصنيفٌ إداريٌّ فوق نوع النشاط، والباقةُ من قطاعه (`Sectors`)
+            'sector_id' => ['nullable', 'integer', 'exists:sectors,id'],
             'logo' => ['nullable', 'image', 'max:2048'],
             // لا يُحفظ في العمود — يُقرأ في update ويُستبعد هنا
             'remove_logo' => ['nullable', 'boolean'],

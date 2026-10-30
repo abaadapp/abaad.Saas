@@ -763,6 +763,8 @@ class Demo
             'id' => $s->id,
             'business_id' => $s->business_id,
             'plan_id' => $s->plan_id,
+            // قطاعُ المتجر — نافذةُ التعديل تعرض باقاتِ قطاعه وحده (`Sectors`)
+            'sector_id' => $s->business?->sector_id,
             'business' => $s->business?->name ?? '—',
             'plan' => $s->plan?->name ?? '—',
             'start' => optional($s->starts_at)->format('Y-m-d') ?? '—',

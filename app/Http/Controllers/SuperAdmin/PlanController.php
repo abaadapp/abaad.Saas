@@ -45,8 +45,21 @@ class PlanController extends Controller
             'max_branches' => ['nullable', 'integer', 'min:1'],
             'max_employees' => ['nullable', 'integer', 'min:1'],
             'max_products' => ['nullable', 'integer', 'min:1'],
-        ]);
+            /*
+             * وقطاعُ الباقة — من صفحة القطاع يصل معها، ومن صفحة الباقات يُختار
+             * حين يتعدّد القطاع. ويُختم مرّةً: التعديلُ لا يقبله (`Plan::booted`).
+             */
+            'sector_id' => ['nullable', 'integer', 'exists:sectors,id'],
+        ], [], ['sector_id' => __('القطاع')]);
+
+        $sector = $data['sector_id'] ?? \App\Support\Sectors::only()?->id;
+
+        if (! $sector) {
+            return back()->withInput()->withErrors(['sector_id' => __('اختر قطاع الباقة.')]);
+        }
+
         Plan::create([
+            'sector_id' => $sector,
             'name' => $data['name'],
             'max_branches' => $data['max_branches'] ?? null,
             'max_employees' => $data['max_employees'] ?? null,

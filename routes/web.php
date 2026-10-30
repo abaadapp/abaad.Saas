@@ -118,6 +118,7 @@ use App\Http\Controllers\SuperAdmin\ImpersonationController;
 use App\Http\Controllers\SuperAdmin\PageController as SuperAdminPageController;
 use App\Http\Controllers\SuperAdmin\PlanController;
 use App\Http\Controllers\SuperAdmin\RecoveryController;
+use App\Http\Controllers\SuperAdmin\SectorController;
 use App\Http\Controllers\SuperAdmin\SettingController;
 use App\Http\Controllers\SuperAdmin\SubscriptionController;
 use App\Http\Controllers\SuperAdmin\UserController;
@@ -425,6 +426,17 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // الباقات
     Route::post('/plans', [PlanController::class, 'store'])->name('plans.store');
     Route::put('/plans/{id}', [PlanController::class, 'update'])->name('plans.update');
+
+    /*
+     * القطاعات — تصنيفٌ إداريٌّ فوق الباقات والشركات (`Sectors`).
+     *
+     * مدخلٌ يجمع ما هو قائم ولا يكرّره: باقاتُ القطاع تُحفظ ببابَي الباقات أعلاه،
+     * وشركاتُه تُفتح بصفحاتها، وإضافةُ شركةٍ منه نموذجُ الإنشاء نفسُه بقطاعه.
+     */
+    Route::get('/sectors', [SectorController::class, 'index'])->name('sectors.index');
+    Route::post('/sectors', [SectorController::class, 'store'])->name('sectors.store');
+    Route::get('/sectors/{id}', [SectorController::class, 'show'])->whereNumber('id')->name('sectors.show');
+    Route::put('/sectors/{id}', [SectorController::class, 'update'])->whereNumber('id')->name('sectors.update');
 
     /*
      * إضافاتُ الاشتراكات — للمتاجر التي تُسجَّل بعد إطلاقها (`Addons\PricingPolicy`).

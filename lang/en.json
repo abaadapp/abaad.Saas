@@ -2301,6 +2301,8 @@
     "لم يبقَ على الفاتورة ضريبة — لا يحمل إشعارها ضريبة.": "No tax is left on this invoice — its credit note carries no tax.",
     "لا تتجاوز ضريبة الإشعارات ضريبة الفاتورة — الباقي منها :n.": "Credit notes cannot carry more tax than the invoice — :n is left.",
     "لا تتجاوز الإشعارات قيمة الفاتورة — الباقي منها :n.": "Credit notes cannot exceed the invoice total — :n is left.",
+    "الطلب :order في الفاتورة :invoice، وعليها إشعار دائن (:notes) لا يُعرف أي طلب يخص — وإلغاء الطلب يعكس إيراده وضريبته مرة أخرى. راجع التسوية مع المحاسب قبل الإلغاء، وإن عادت البضاعة فسجّلها بتعديل مخزون.": "Order :order is on invoice :invoice, which carries a credit note (:notes) that does not say which order it covers — cancelling the order would reverse its revenue and tax a second time. Review the settlement with your accountant before cancelling; if the goods came back, record them with a stock adjustment.",
+    "الطلب :order في الفاتورة :invoice، ولم يبقَ منها ما يغطي مبلغه وضريبته — إلغاؤه ينقص أكثر مما بقي عليها. راجع التسوية مع المحاسب قبل الإلغاء.": "Order :order is on invoice :invoice, and what is left of the invoice does not cover its amount and tax — cancelling it would take off more than remains. Review the settlement with your accountant before cancelling.",
     "رُدّت الفاتورة كلها بإشعارات سابقة — لا يصدر عليها إشعار آخر.": "Earlier credit notes already cover the whole invoice — no further credit note can be issued.",
     "ضريبة الإشعار أكبر مما يحمله مبلغه بأعلى نسبة في الفاتورة (:r٪) — أقصاها :n.": "The note's tax is more than its amount carries at the invoice's highest rate (:r%) — at most :n.",
     "تصحيح وسيلة الدفع": "Correct the payment method",

@@ -40,10 +40,19 @@ final class Sectors
         return Sector::where('active', true)->orderBy('sort')->orderBy('id')->get();
     }
 
-    /** القطاعُ الذي يُختار وحده — حين لا نشطَ غيرُه */
+    /**
+     * القطاعُ الذي يُختار وحده — حين لا نشطَ غيرُه.
+     *
+     * وجدولٌ بلا قطاعٍ أصلًا (أُفرغ بعد الترحيل) قطاعُه التجاريّ كما في `retail()` —
+     * ولا يُطفأ آخرُ نشط، فالفراغُ لا يعني قطاعاتٍ موقوفة.
+     */
     public static function only(): ?Sector
     {
         $active = self::active();
+
+        if ($active->isEmpty() && ! Sector::exists()) {
+            return self::retail();
+        }
 
         return $active->count() === 1 ? $active->first() : null;
     }

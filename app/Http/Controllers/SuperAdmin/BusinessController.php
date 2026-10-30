@@ -146,7 +146,12 @@ class BusinessController extends Controller
         $data['registration_source'] = Business::SOURCE_PLATFORM_MANUAL;
 
         try {
-            [$business, $owner, $started] = \Illuminate\Support\Facades\DB::transaction(function () use ($data, $account, $subscription, $request) {
+            /*
+             * ضغطتان معًا، أو طلبٌ أُعيد إرسالُه: كلاهما فحص الاسمَ قبل أن يُكتب
+             * الأوّل، والفريدُ في القاعدة (`users.email`) يردّ الثاني — فتُرجَع
+             * الكتابةُ كلُّها في نقطة حفظها (`Contention`): لا شركةٌ ثانية ولا فاتورة.
+             */
+            $created = \App\Support\Contention::attempt(function () use ($data, $account, $subscription, $request) {
                 $business = Business::create($data);
                 $owner = \App\Support\MerchantAccount::create($business, $account['login_username'], $account['login_password']);
                 // بذرة تصنيفات حسب النوع — لئلا يفتح التاجر لوحته على صفحة بيضاء
@@ -160,14 +165,13 @@ class BusinessController extends Controller
             });
         } catch (\DomainException $e) {
             return back()->withInput()->withErrors(['subscription_mode' => $e->getMessage()]);
-        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
-            /*
-             * ضغطتان معًا، أو طلبٌ أُعيد إرسالُه: كلاهما فحص الاسمَ قبل أن يُكتب
-             * الأوّل، والفريدُ في القاعدة (`users.email`) يردّ الثاني — فتُرجَع
-             * المعاملةُ كلُّها: لا شركةٌ ثانية ولا فاتورة.
-             */
+        }
+
+        if ($created === null) {
             return back()->withInput()->withErrors(['login_username' => __('أُضيفت شركةٌ بهذا الحساب للتوّ — لم يُكرَّر شيء.')]);
         }
+
+        [$business, $owner, $started] = $created;
 
         $msg = __('تم إضافة الشركة · حساب الدخول: :email', ['email' => $owner->email]);
         if ($started['invoices'] !== []) {

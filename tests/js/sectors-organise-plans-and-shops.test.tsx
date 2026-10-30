@@ -277,6 +277,8 @@ describe('صفحة القطاع', () => {
         const table = screen.getByTestId('sector-businesses');
         expect(within(table).getAllByTestId('sector-business-state').map((s) => s.textContent)).toEqual(['في التجربة', 'مشترك']);
         expect(within(table).getAllByTestId('sector-business-subscription')[0]).toHaveAttribute('href', '/super-admin.businesses.show/12#subscription');
+        // والبحثُ ظاهرٌ — يُسأل الخادمُ به (`q`) ولا يُرشَّح في الصفحة
+        expect(within(table).getByPlaceholderText('ابحث باسم الشركة أو المالك أو البريد…')).toBeInTheDocument();
 
         await user.click(screen.getByRole('tab', { name: /النظام/ }));
         expect(screen.getByTestId('sector-system')).toHaveTextContent('نظام أبعاد');

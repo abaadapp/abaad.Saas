@@ -273,6 +273,23 @@ class ASectorGathersItsPlansAndShopsTest extends TestCase
         $this->assertSame($this->retail()->id, (int) Plan::where('name', 'باقة جديدة')->value('sector_id'));
     }
 
+    public function test_a_sectors_table_emptied_after_the_migration_still_takes_a_new_plan_and_shop_into_retail(): void
+    {
+        // كما يتركه اختبارُ تفريغٍ قبله في قسم PostgreSQL: الترحيلُ زرع القطاع ثمّ مُحي
+        DB::table('businesses')->update(['sector_id' => null]);
+        DB::table('plans')->update(['sector_id' => null]);
+        DB::table('sectors')->delete();
+
+        $this->actingAs($this->platform)->post(route('super-admin.plans.store'), [
+            'name' => 'باقة بعد التفريغ', 'monthly_price' => 5, 'yearly_price' => 50,
+        ])->assertSessionHasNoErrors();
+        $this->open()->assertSessionHasNoErrors()->assertRedirect();
+
+        $retail = Sector::where('code', Sector::CODE_RETAIL)->sole();
+        $this->assertSame($retail->id, (int) Plan::where('name', 'باقة بعد التفريغ')->value('sector_id'));
+        $this->assertSame($retail->id, (int) Business::where('name', 'زهرة القطاع')->value('sector_id'));
+    }
+
     /* ═══════════════ ٤ · إضافة شركة ═══════════════ */
 
     public function test_a_shop_added_from_the_main_menu_takes_the_only_active_sector(): void

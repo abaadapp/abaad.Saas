@@ -203,6 +203,8 @@ export default function SectorShow() {
                         rowKey={(b) => b.id}
                         filters={tableFilters}
                         searchPlaceholder="ابحث باسم الشركة أو المالك أو البريد…"
+                        // البحثُ في الخادم (`q`) — والمربّعُ لا يظهر بلا هذا
+                        searchable={() => ''}
                         empty={
                             <span className="flex flex-col items-center gap-2">
                                 <Building2 className="size-8 text-[#d1d5db]" />

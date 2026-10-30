@@ -1751,6 +1751,11 @@ class OrderCorrection
             return;
         }
 
+        // وطلبٌ تحمله فاتورةٌ عليها إشعارٌ لا يُعرف طلبُه لا يُلغى تلقائيًّا — يُسأل قبل أن يتحرّك شيء (`BilledOrderCancel`)
+        if ($why = BilledOrderCancel::refusal($order)) {
+            throw new RuntimeException($why);
+        }
+
         DB::transaction(function () use ($order, $reason, $boutiqueReturned, $boutiqueLines) {
             /*
              * والحال تُقرأ ثانيةً تحت قفل — والقراءة الأولى لا تكفي.
@@ -1782,6 +1787,9 @@ class OrderCorrection
 
             self::releaseCoupon($order);
             self::reverseLoyalty($order);
+
+            // ويُسأل ثانيةً تحت قفل المتجر قبل أوّل قيد — بعد أقفال الرفّ كالدفتر — والرفضُ يُرجع كلَّ ما سبق
+            BilledOrderCancel::assertUnderLock($fresh);
 
             /*
              * لا قيدَ دخلٍ على بيعةٍ لم تقع.

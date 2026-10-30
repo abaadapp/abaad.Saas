@@ -44,11 +44,13 @@ use App\Support\Receivables;
 use App\Support\Search;
 use App\Support\Vat;
 use App\Support\WhatsAppPhone;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -1642,8 +1644,11 @@ class CustomerInvoiceController extends Controller
             'reason' => __('سبب الإلغاء'),
         ]);
 
+        // وفاتورةُ متجرٍ آخر ٤٠٤ — لا خطأَ «لم يُعثر» يُلتقط في الـ`catch` ويُعرض للتاجر
+        $invoice = $this->find($id);
+
         try {
-            CustomerInvoices::cancel($this->find($id), $data['reason'], auth()->id());
+            CustomerInvoices::cancel($invoice, $data['reason'], auth()->id());
         } catch (RuntimeException $e) {
             return back()->withErrors(['invoice' => $e->getMessage()]);
         }
@@ -1661,20 +1666,48 @@ class CustomerInvoiceController extends Controller
             // والضريبةُ جزءٌ من المبلغ لا فوقه — وإلّا سقط على ميزان الدفتر برسالةٍ لا تسمّي الحقل
             'tax_amount' => ['nullable', 'numeric', 'min:0', 'lte:amount'],
             'reason' => ['required', 'string', 'max:200'],
+            // سببُ الإشعار — وما يمنعه سببُه تسأله الخدمةُ نفسُها (`ManualInvoiceAdjustments::assertCreditNote`)
+            'basis' => ['required', Rule::in(CustomerCreditNote::BASES)],
+            // رمزُ النموذج: يُرسَل مرّتين فيصدر إشعارٌ واحد
+            'token' => ['required', 'string', 'max:64'],
         ], [
             'tax_amount.lte' => __('الضريبة جزءٌ من مبلغ الإشعار — لا تفوقه.'),
         ]);
 
+        $invoice = $this->find($id);
+
+        /*
+         * ونموذجٌ أُرسل مرّتين — ضغطتان أو إعادةُ الطلب — يُصدر إشعارًا واحدًا.
+         *
+         * القفلُ على رمز النموذج يجعل الثاني ينتظر الأوّل، ثمّ يجد إشعارَه
+         * مكتوبًا فيقوله ولا يكتب غيرَه. والرمزُ يُحفظ بعد الإصدار وحده: نموذجٌ
+         * رُدّ لخطأٍ فيه يُصحَّح ويُرسل بالرمز نفسه.
+         */
+        $key = 'credit-note:'.$this->bid().':'.$data['token'];
+        $lock = Cache::lock($key.':lock', 30);
+
         try {
+            $lock->block(10);
+
+            if ($number = Cache::get($key)) {
+                return back()->with('toast', ['msg' => __('أُصدر إشعار الدائن :n', ['n' => $number]), 'type' => 'success']);
+            }
+
             $note = CustomerInvoices::creditNote(
-                $this->find($id),
+                $invoice,
                 (float) $data['amount'],
                 (float) ($data['tax_amount'] ?? 0),
                 $data['reason'],
                 auth()->id(),
+                basis: $data['basis'],
             );
+            Cache::put($key, $note->number, now()->addDay());
+        } catch (LockTimeoutException) {
+            return back()->withErrors(['amount' => __('يُصدر هذا الإشعار الآن — انتظر لحظة ثم أعد فتح الفاتورة.')]);
         } catch (RuntimeException $e) {
             return back()->withErrors(['amount' => $e->getMessage()]);
+        } finally {
+            $lock->release();
         }
 
         return back()->with('toast', [

@@ -517,7 +517,7 @@ class ACustomersRecordHoldsWhatTheyBoughtAndWhatTheyPaidTest extends TestCase
     public function test_cancellations_stay_in_the_record_and_leave_the_total_and_a_credit_note_comes_off(): void
     {
         $kept = $this->invoice(50);
-        CustomerInvoices::creditNote($kept, 10, 0, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($kept, 10, 0, 'مردود', $this->owner->id, basis: 'return');
         CustomerInvoices::cancel($this->invoice(20), 'خطأ', $this->owner->id);
         $this->order(30)->update(['status' => Order::CANCELLED]);
 
@@ -540,7 +540,7 @@ class ACustomersRecordHoldsWhatTheyBoughtAndWhatTheyPaidTest extends TestCase
         $this->order(50, 'pos');
         $this->order(30, 'website', 'مدفوع', 'Paymob');
         $manual = $this->invoice(100, '2027-02-05');
-        CustomerInvoices::creditNote($manual, 10, 0, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($manual, 10, 0, 'مردود', $this->owner->id, basis: 'return');
         $covered = $this->order(40, 'pos', 'غير مدفوع', 'آجل');
         CustomerInvoices::issue(CustomerInvoices::fromOrder($covered, [], $this->owner->id), $this->owner->id);
         $this->hook($this->obj($this->link(null, 25)));

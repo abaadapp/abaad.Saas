@@ -248,7 +248,7 @@ class ACustomerOwesAndTheBooksAgreeTest extends TestCase
 
         CustomerPayments::record($this->business->id, $this->ministry, 30, ['method' => 'نقدي'],
             [$invoice->id => 30], $this->owner->id);
-        CustomerInvoices::creditNote($invoice, 20, 0, 'مرتجع', $this->owner->id);
+        CustomerInvoices::creditNote($invoice, 20, 0, 'مرتجع', $this->owner->id, basis: 'return');
 
         $this->assertSame(50.0, $invoice->fresh()->outstanding());
         // والإجماليُّ كما صدر — الورقةُ في يد الزبون لم تتغيّر
@@ -264,7 +264,7 @@ class ACustomerOwesAndTheBooksAgreeTest extends TestCase
         CustomerInvoices::issue($this->govInvoice(300), $this->owner->id);
         CustomerPayments::record($this->business->id, $this->ministry, 200, ['method' => 'تحويل'],
             [$a->id => 200], $this->owner->id);
-        CustomerInvoices::creditNote($a, 50, 0, 'مرتجع', $this->owner->id);
+        CustomerInvoices::creditNote($a, 50, 0, 'مرتجع', $this->owner->id, basis: 'return');
 
         $r = Receivables::reconcile($this->business->id);
 

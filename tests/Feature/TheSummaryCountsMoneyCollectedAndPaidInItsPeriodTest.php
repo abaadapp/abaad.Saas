@@ -311,7 +311,7 @@ class TheSummaryCountsMoneyCollectedAndPaidInItsPeriodTest extends TestCase
         $invoice = $this->customerInvoice(500, '2026-10-01');
         $this->collect(200, '2026-10-02', $invoice);
 
-        $this->post(route('admin.customerInvoices.creditNote', $invoice->id), ['amount' => 100, 'reason' => 'خصمٌ بعد البيع']);
+        $this->post(route('admin.customerInvoices.creditNote', $invoice->id), ['amount' => 100, 'reason' => 'خصمٌ بعد البيع', 'basis' => 'discount', 'token' => 'summary-discount']);
 
         $this->assertSame(['amount' => 200.0, 'count' => 1], $this->collected());
     }

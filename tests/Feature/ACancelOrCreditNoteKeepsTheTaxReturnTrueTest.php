@@ -8,17 +8,21 @@ use App\Models\Business;
 use App\Models\Customer;
 use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
+use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentLink;
 use App\Models\JournalEntry;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\BooksPeriod;
 use App\Support\CustomerInvoices;
+use App\Support\CustomerPayments;
 use App\Support\Ledger;
+use App\Support\Receivables;
 use App\Support\ReportData;
 use App\Support\ReportingPeriod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
@@ -34,6 +38,8 @@ use Tests\TestCase;
  *     فاتورةً ملغاةً ولا أكثرَ ممّا عليه.
  *   - ضريبةُ الإشعار لا تفوق ما يحمله مبلغُه بأعلى نسبةٍ في الفاتورة، ولا
  *     تتجاوز الإشعاراتُ معًا ضريبةَ الفاتورة.
+ *   - والإشعاراتُ معًا لا تتجاوز إجماليَّ الفاتورة ولو سُدّدت كلُّها — والحدُّ
+ *     يُقرأ تحت قفل المتجر، فلا يمرّ إشعاران معًا فوقه.
  *   - والمشروعُ باقٍ: إلغاءُ ما لم يُقرّ، والإشعارُ لإرجاعٍ أو خصمٍ بعد الإقرار،
  *     والإشعارُ ببندٍ معفًى، وغيرُ المسجَّل في الضريبة.
  */
@@ -288,6 +294,162 @@ class ACancelOrCreditNoteKeepsTheTaxReturnTrueTest extends TestCase
         $this->credit($invoice, 10, 9, token: 'fixed-form')->assertSessionHasErrors('tax_amount');
         $this->credit($invoice, 10, 0.476, token: 'fixed-form')->assertSessionHasNoErrors();
         $this->assertSame(2, CustomerCreditNote::count());
+    }
+
+    /* ═══════════ ٤ب · الإشعاراتُ معًا لا تتجاوز الفاتورة ═══════════ */
+
+    /** فاتورةٌ بمئةٍ بلا ضريبة — بندٌ معفًى */
+    private function hundred(): CustomerInvoice
+    {
+        return $this->issued('2025-09-10', [['description' => 'كتاب', 'quantity' => 1, 'unit_price' => 100, 'tax_rate' => 0]]);
+    }
+
+    private function pay(CustomerInvoice $invoice, float $amount): void
+    {
+        CustomerPayments::record($this->shop->id, $this->customer, $amount,
+            ['method' => 'نقدي', 'occurred_at' => '2025-09-15'], [$invoice->id => $amount], $this->owner->id);
+    }
+
+    /** ما على العميل وما له — في الذمم والكشف والدفتر، رقمٌ واحد */
+    private function assertBooksSay(float $owed, float $credit): void
+    {
+        $this->assertEquals($credit, Receivables::credit($this->shop->id, $this->customer->id), 'رصيد العميل الدائن');
+        $this->assertEquals($owed, Receivables::customerOutstanding($this->shop->id, $this->customer->id), 'ما على العميل');
+        $this->assertEquals(round($owed - $credit, 3), Receivables::statement($this->shop->id, $this->customer->id,
+            Carbon::parse('2025-09-01'), Carbon::parse('2025-09-30'))['closing'], 'رصيد الكشف');
+        $this->assertEquals(round($owed - $credit, 3), round(Ledger::balance($this->shop->id, 'receivable'), 3), 'حساب الذمم في الدفتر');
+        $this->assertTrue(Receivables::reconcile($this->shop->id)['balanced']);
+    }
+
+    public function test_a_paid_hundred_takes_one_note_of_sixty_not_three(): void
+    {
+        $invoice = $this->hundred();
+        $this->pay($invoice, 100);
+        $journal = JournalEntry::where('business_id', $this->shop->id)->count();
+
+        $this->credit($invoice, 60, 0)->assertSessionHasNoErrors();
+        $this->credit($invoice, 60, 0)->assertSessionHasErrors('amount');
+        $this->assertStringContainsString('الباقي منها 40.000', session('errors')->first('amount'));
+        $this->credit($invoice, 60, 0)->assertSessionHasErrors('amount');
+
+        // ولا يتجاوزه استدعاءٌ آخر للخدمة
+        try {
+            CustomerInvoices::creditNote($invoice->fresh(), 60, 0, 'استدعاء مباشر', $this->owner->id, basis: CustomerCreditNote::RETURN);
+            $this->fail('صدر إشعارٌ فوق ما بقي من الفاتورة');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('amount', $e->errors());
+        }
+
+        $this->assertSame(1, CustomerCreditNote::count());
+        $this->assertSame($journal + 1, JournalEntry::where('business_id', $this->shop->id)->count(), 'قيدٌ واحد');
+        // ستّون للعميل رصيدًا — والتحصيلُ باقٍ كما هو: لا ردَّ مالٍ تلقائيّ
+        $this->assertBooksSay(owed: 0, credit: 60);
+        $this->assertSame(1, CustomerPayment::whereNull('cancelled_at')->count());
+        $this->assertEquals(100.0, $invoice->fresh()->paidTotal());
+    }
+
+    public function test_successive_notes_reach_the_invoice_exactly_and_not_a_baisa_beyond(): void
+    {
+        $invoice = $this->hundred();
+        $this->pay($invoice, 100);
+
+        $this->credit($invoice, 40, 0)->assertSessionHasNoErrors();
+        $this->credit($invoice, 35.5, 0)->assertSessionHasNoErrors();
+        $this->credit($invoice, 24.501, 0)->assertSessionHasErrors('amount');
+        $this->credit($invoice, 24.5, 0)->assertSessionHasNoErrors();
+        $this->credit($invoice, 0.001, 0)->assertSessionHasErrors('amount');
+        $this->assertStringContainsString('رُدّت الفاتورة كلها', session('errors')->first('amount'));
+
+        $this->assertSame(3, CustomerCreditNote::count());
+        $this->assertEquals(100.0, $invoice->fresh()->creditedTotal());
+        $this->assertSame('مدفوعة', $invoice->fresh()->paymentState());
+        $this->assertBooksSay(owed: 0, credit: 100);
+    }
+
+    public function test_a_part_paid_or_unpaid_invoice_is_credited_up_to_its_total(): void
+    {
+        // سُدّد ثلاثون: يُردّ الباقي، ثمّ ما دُفع رصيدًا للعميل — ولا شيءَ بعده
+        $part = $this->hundred();
+        $this->pay($part, 30);
+        $this->credit($part, 70, 0)->assertSessionHasNoErrors();
+        $this->credit($part, 30, 0)->assertSessionHasNoErrors();
+        $this->credit($part, 1, 0)->assertSessionHasErrors('amount');
+        $this->assertEquals(0.0, $part->fresh()->outstanding());
+        $this->assertBooksSay(owed: 0, credit: 30);
+
+        // ولم يُسدَّد منها شيء: تُردّ كلُّها ولا رصيدَ للعميل منها
+        $unpaid = $this->hundred();
+        $this->credit($unpaid, 100.001, 0)->assertSessionHasErrors('amount');
+        $this->credit($unpaid, 100, 0)->assertSessionHasNoErrors();
+        $this->credit($unpaid, 1, 0)->assertSessionHasErrors('amount');
+        $this->assertEquals(0.0, $unpaid->fresh()->outstanding());
+        $this->assertSame(3, CustomerCreditNote::count());
+        $this->assertBooksSay(owed: 0, credit: 30);
+    }
+
+    public function test_successive_notes_on_a_paid_taxed_invoice_stop_at_its_total_and_its_tax(): void
+    {
+        $invoice = $this->issued(); // ١٠٠ + ٥
+        $this->pay($invoice, 105);
+
+        $this->credit($invoice, 52.5, 2.5)->assertSessionHasNoErrors();
+        $this->credit($invoice, 52.5, 2.5)->assertSessionHasNoErrors();
+        $this->assertEquals(0.0, $this->outputTax());
+
+        // لم يبقَ منها مبلغٌ ولا ضريبة — ولا إشعارٌ بلا ضريبة يمرّ
+        $this->credit($invoice, 10, 0)->assertSessionHasErrors('amount');
+        $this->credit($invoice, 10, 0.476)->assertSessionHasErrors('amount');
+
+        $this->assertSame(2, CustomerCreditNote::count());
+        $this->assertEquals(0.0, $this->outputTax());
+        $this->assertBooksSay(owed: 0, credit: 105);
+    }
+
+    public function test_an_order_cancellation_note_counts_and_a_stale_copy_or_a_resent_form_adds_nothing(): void
+    {
+        // إشعارُ إلغاء الطلب يُعدّ فيما رُدّ — فلا يُردّ مبلغُه ثانيةً بإشعارٍ يدويّ
+        $invoice = $this->hundred();
+        $stale = $invoice->fresh();
+        CustomerInvoices::creditNote($invoice->fresh(), 60, 0, 'إلغاء طلب', null, CustomerInvoices::NOTE_ORDER_CANCELLED);
+        $this->credit($invoice, 60, 0)->assertSessionHasErrors('amount');
+
+        // ونسخةٌ قُرئت قبل الإشعار لا تُعيد الحدَّ إلى ما كان: يُقرأ من جديد
+        try {
+            CustomerInvoices::creditNote($stale, 41, 0, 'نسخة قديمة', $this->owner->id, basis: CustomerCreditNote::RETURN);
+            $this->fail('مرّ إشعارٌ بحدٍّ قُرئ قبل إشعارٍ صدر');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('amount', $e->errors());
+        }
+
+        // والنموذجُ يصل مرّتين: إشعارٌ واحد
+        $this->credit($invoice, 40, 0, token: 'twice')->assertSessionHasNoErrors();
+        $this->credit($invoice, 40, 0, token: 'twice')->assertSessionHasNoErrors();
+        $this->assertSame(2, CustomerCreditNote::count());
+        $this->assertEquals(100.0, $invoice->fresh()->creditedTotal());
+    }
+
+    public function test_the_limit_is_read_under_the_shops_lock(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('القفلُ يُكتب `FOR UPDATE` على PostgreSQL وحدها — SQLite تُسلسل الكتابة بنفسها.');
+        }
+
+        $invoice = $this->hundred();
+        $seen = [];
+        DB::listen(function ($q) use (&$seen) {
+            $seen[] = strtolower($q->sql);
+        });
+
+        CustomerInvoices::creditNote($invoice, 10, 0, 'تحت القفل', $this->owner->id, basis: CustomerCreditNote::RETURN);
+
+        $lock = collect($seen)->search(fn ($s) => str_contains($s, 'from "businesses"') && str_contains($s, 'for update'));
+        $read = collect($seen)->search(fn ($s) => str_contains($s, 'from "customer_credit_notes"'));
+        $write = collect($seen)->search(fn ($s) => str_contains($s, 'insert into "customer_credit_notes"'));
+
+        $this->assertNotFalse($lock, 'لا قفلَ على صفّ المتجر');
+        $this->assertNotFalse($read, 'لم يُقرأ ما رُدّ من الفاتورة');
+        $this->assertLessThan($read, $lock, 'قُرئ الحدُّ قبل القفل — إشعاران معًا يمرّان فوقه');
+        $this->assertLessThan($write, $read);
     }
 
     /* ═══════════ ٥ · الدفاترُ المقفلة، والصلاحيات، والعزل ═══════════ */

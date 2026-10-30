@@ -745,15 +745,26 @@ final class CustomerInvoices
         if ($amount <= 0) {
             throw new RuntimeException(__('مبلغ إشعار الدائن يجب أن يكون أكبر من صفر.'));
         }
-        // والإشعارُ اليدويّ يُسأل هنا لا في شاشته وحدها — سببُه وفترتُه ورابطُه وضريبتُه (`ManualInvoiceAdjustments`)
-        if ($source === self::NOTE_MANUAL) {
-            ManualInvoiceAdjustments::assertCreditNote($invoice, $amount, round($taxAmount, 3), $basis);
-        }
-        if ($amount > $invoice->outstanding() + $invoice->paidTotal()) {
-            throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
-        }
 
         return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis) {
+            /*
+             * والحدُّ يُقرأ تحت قفل المتجر — كما يأخذه التحصيلُ والترقيمُ والدفتر.
+             *
+             * إشعاران معًا على فاتورةٍ واحدة كانا يقرآن «الباقي» نفسَه قبل أن
+             * يُكتب أحدُهما، فيمرّ كلاهما ومجموعُهما فوق الفاتورة. والورقةُ تُقرأ
+             * من جديد بعد القفل: ما في يد المستدعي قد يكون قبل إشعارٍ صدر.
+             */
+            Business::whereKey($invoice->business_id)->lockForUpdate()->first();
+            $invoice = CustomerInvoice::where('business_id', $invoice->business_id)->findOrFail($invoice->id);
+
+            // والإشعارُ اليدويّ يُسأل هنا لا في شاشته وحدها — سببُه وفترتُه ورابطُه ومبلغُه وضريبتُه (`ManualInvoiceAdjustments`)
+            if ($source === self::NOTE_MANUAL) {
+                ManualInvoiceAdjustments::assertCreditNote($invoice, $amount, round($taxAmount, 3), $basis);
+            } elseif ($amount > $invoice->outstanding() + $invoice->paidTotal()) {
+                // وإشعارُ إلغاء الطلب مرآةُ قيدٍ عُكس (`Books::unpostSale`) — حدُّه كما كان (`onOrderCancelled`)
+                throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
+            }
+
             $note = CustomerCreditNote::create([
                 'business_id' => $invoice->business_id,
                 'customer_invoice_id' => $invoice->id,

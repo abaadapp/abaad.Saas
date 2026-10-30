@@ -2300,6 +2300,8 @@
     "على الفاتورة رابط دفع بـ :n لم يُدفع بعد أو محاولة لم تُعرف نتيجتها — والإشعار يُنزل ما عليها تحته. ألغِ الرابط أولًا، فلا يُطلب من العميل أكثر مما عليه.": "This invoice has a payment link for :n not yet paid, or an attempt with an unknown result — and this note would bring the balance below it. Cancel the link first, so the customer is not asked for more than they owe.",
     "لم يبقَ على الفاتورة ضريبة — لا يحمل إشعارها ضريبة.": "No tax is left on this invoice — its credit note carries no tax.",
     "لا تتجاوز ضريبة الإشعارات ضريبة الفاتورة — الباقي منها :n.": "Credit notes cannot carry more tax than the invoice — :n is left.",
+    "لا تتجاوز الإشعارات قيمة الفاتورة — الباقي منها :n.": "Credit notes cannot exceed the invoice total — :n is left.",
+    "رُدّت الفاتورة كلها بإشعارات سابقة — لا يصدر عليها إشعار آخر.": "Earlier credit notes already cover the whole invoice — no further credit note can be issued.",
     "ضريبة الإشعار أكبر مما يحمله مبلغه بأعلى نسبة في الفاتورة (:r٪) — أقصاها :n.": "The note's tax is more than its amount carries at the invoice's highest rate (:r%) — at most :n.",
     "تصحيح وسيلة الدفع": "Correct the payment method",
     "تصحيحات بعد البيع": "Corrections after the sale",

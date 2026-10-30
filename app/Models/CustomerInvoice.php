@@ -246,6 +246,24 @@ class CustomerInvoice extends Model
         return round((float) $this->creditNotes()->sum('amount'), 3);
     }
 
+    /**
+     * مبلغُها الباقي بعد إشعاراتها — ما يجوز أن يردّه إشعارٌ دائنٌ يدويٌّ بعدُ.
+     *
+     * من إجماليّها لا من باقيها على العميل: فاتورةٌ سُدّدت كلُّها باقيها صفر،
+     * وكان الحدُّ «الباقي + المسدَّد» يبقى مئةً بعد كلّ إشعار — فثلاثةُ
+     * إشعاراتٍ بستّين على فاتورةٍ بمئة تصير للعميل مئةً وثمانين.
+     *
+     * والمسودّةُ لا ذمّةَ عليها تُنقص، والملغاةُ عُكس قيدُها كلُّه — كما في `outstanding`.
+     */
+    public function amountLeft(): float
+    {
+        if ($this->status !== self::ISSUED) {
+            return 0.0;
+        }
+
+        return round(max(0.0, (float) $this->total - $this->creditedTotal()), 3);
+    }
+
     /** ضريبتُها الباقية بعد إشعاراتها — ما يجوز أن يردّه إشعارٌ دائنٌ بعدُ */
     public function taxLeft(): float
     {

@@ -203,7 +203,7 @@ class ACustomerInvoiceSellsOnTheDashboardOnceTest extends TestCase
         $this->assertNotContains(__('فواتير العملاء'), DashboardMetrics::paymentDistribution()['labels']);
 
         // وإشعارُ دائنٍ يدويٌّ عليها يُنقص اليومَ مرّةً — كما يُنقص الدفتر
-        CustomerInvoices::creditNote($invoice->fresh(), 21, 1, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($invoice->fresh(), 21, 1, 'مردود', $this->owner->id, basis: 'return');
         $this->assertCard(136.5, 'مبيعات اليوم');
         $this->assertSame(136.5, $this->ledgerGross('2026-10-20', '2026-10-21'));
     }
@@ -305,7 +305,7 @@ class ACustomerInvoiceSellsOnTheDashboardOnceTest extends TestCase
 
         // إشعارُ دائنٍ ٥٢٫٥ (منها ٢٫٥ ضريبة) يُنقص يومَه بقيمته الشاملة
         $kept = $this->invoice(100);
-        CustomerInvoices::creditNote($kept, 52.5, 2.5, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($kept, 52.5, 2.5, 'مردود', $this->owner->id, basis: 'return');
         $this->assertCard(52.5, 'مبيعات اليوم');
 
         // وفاتورةُ أمسِ تُلغى اليوم: أمسُ يبقى كما بِيع، واليومُ يحمل العكس — كالدفتر
@@ -447,7 +447,7 @@ class ACustomerInvoiceSellsOnTheDashboardOnceTest extends TestCase
         $this->assertSame(105.0, $this->splitTotal());
 
         // ٢ — إشعارُ دائنٍ جزئيّ ٥٢٫٥
-        CustomerInvoices::creditNote($kept, 52.5, 2.5, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($kept, 52.5, 2.5, 'مردود', $this->owner->id, basis: 'return');
         $this->assertSame(52.5, $this->splitTotal());
 
         // ٣ — فاتورةُ يومٍ سابقٍ من الشهر تُلغى اليوم: صدورُها وعكسُها في الشهر نفسه
@@ -489,7 +489,7 @@ class ACustomerInvoiceSellsOnTheDashboardOnceTest extends TestCase
         $this->invoice(10, '2026-10-01');
         $paidLater = $this->invoice(20, '2026-10-19');
         $this->pay($paidLater, 21, '2026-10-20');
-        CustomerInvoices::creditNote($this->invoice(30, '2026-10-18'), 10.5, 0.5, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($this->invoice(30, '2026-10-18'), 10.5, 0.5, 'مردود', $this->owner->id, basis: 'return');
         // فاتورةٌ بتاريخٍ لاحقٍ من الشهر نفسه: قيدُها في أكتوبر
         $this->invoice(40, '2026-10-25');
 

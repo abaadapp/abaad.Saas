@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
@@ -18,6 +19,7 @@ use App\Support\ReportData;
 use App\Support\ReportingPeriod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 /**
@@ -88,11 +90,14 @@ class ACancelOrCreditNoteKeepsTheTaxReturnTrueTest extends TestCase
         return $this->post(route('admin.customerInvoices.cancel', $invoice->id), ['reason' => 'طلب العميل']);
     }
 
-    private function credit(CustomerInvoice $invoice, float $amount, float $tax)
+    private int $n = 0;
+
+    private function credit(CustomerInvoice $invoice, float $amount, float $tax, ?string $basis = CustomerCreditNote::RETURN, ?string $token = null)
     {
-        return $this->post(route('admin.customerInvoices.creditNote', $invoice->id), [
-            'amount' => $amount, 'tax_amount' => $tax, 'reason' => 'رُدّت باقة',
-        ]);
+        return $this->post(route('admin.customerInvoices.creditNote', $invoice->id), array_filter([
+            'amount' => $amount, 'tax_amount' => $tax, 'reason' => 'رُدّت باقة', 'basis' => $basis,
+            'token' => $token ?? 'form-'.(++$this->n),
+        ], fn ($v) => $v !== null));
     }
 
     private function link(CustomerInvoice $invoice, float $amount, bool $live = true): CustomerPaymentLink
@@ -228,7 +233,64 @@ class ACancelOrCreditNoteKeepsTheTaxReturnTrueTest extends TestCase
         $this->credit($plain, 10, 0)->assertSessionHasNoErrors();
     }
 
-    /* ═══════════ ٤ · الدفاترُ المقفلة، والصلاحيات، والعزل ═══════════ */
+    /* ═══════════ ٤ · سببُ الإشعار ═══════════ */
+
+    public function test_a_manual_credit_note_says_why_and_an_error_waits_in_a_filed_period(): void
+    {
+        $invoice = $this->issued();
+
+        // بلا سبب، أو بسببٍ لا يُعرف: يُردّ
+        $this->credit($invoice, 10, 0.476, basis: null)->assertSessionHasErrors('basis');
+        $this->credit($invoice, 10, 0.476, basis: 'gift')->assertSessionHasErrors('basis');
+        $this->assertSame(0, CustomerCreditNote::count());
+
+        // فترةٌ قُدّم إقرارها: تصحيحُ الخطأ ينتظر المحاسب — ولو للمالك
+        Setting::updateOrCreate(['business_id' => $this->shop->id, 'key' => 'vat_filed_through'], ['value' => '2025-09-15']);
+        $this->credit($invoice, 10, 0.476, basis: CustomerCreditNote::ERROR)->assertSessionHasErrors('basis');
+        $this->assertStringContainsString('قُدّم إقرارها حتى 2025-09-15', session('errors')->first('basis'));
+        $this->assertSame(0, CustomerCreditNote::count());
+        $this->assertEquals(5.0, $this->outputTax());
+
+        // والإرجاعُ والخصمُ بعد الإقرار يُصدران — بسببهما، يومَهما
+        $this->credit($invoice, 21, 1, basis: CustomerCreditNote::RETURN)->assertSessionHasNoErrors();
+        $this->credit($invoice, 10.5, 0.5, basis: CustomerCreditNote::DISCOUNT)->assertSessionHasNoErrors();
+        $this->assertSame([CustomerCreditNote::RETURN, CustomerCreditNote::DISCOUNT], CustomerCreditNote::orderBy('id')->pluck('basis')->all());
+        $this->assertEquals(3.5, $this->outputTax());
+        $this->assertStringContainsString('خصم بعد البيع', (string) ActivityLog::latest('id')->value('description'));
+
+        // ولا يتجاوزه استدعاءٌ آخر للخدمة: بلا سبب، أو بتصحيح خطأٍ في الفترة المُقرّة
+        foreach ([null, CustomerCreditNote::ERROR] as $basis) {
+            try {
+                CustomerInvoices::creditNote($invoice->fresh(), 5, 0.238, 'استدعاء مباشر', $this->owner->id, basis: $basis);
+                $this->fail('أُصدر إشعارٌ يدويّ بلا سببٍ مقبول');
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey('basis', $e->errors());
+            }
+        }
+        $this->assertSame(2, CustomerCreditNote::count());
+
+        // وإشعارُ إلغاء الطلب الآليّ لا سببَ له ولا يُسأل عنه
+        $auto = CustomerInvoices::creditNote($invoice->fresh(), 5, 0.238, 'إلغاء طلب', null, CustomerInvoices::NOTE_ORDER_CANCELLED);
+        $this->assertNull($auto->basis);
+    }
+
+    public function test_a_credit_note_form_sent_twice_issues_one_note(): void
+    {
+        $invoice = $this->issued();
+        $journal = JournalEntry::where('business_id', $this->shop->id)->count();
+
+        $this->credit($invoice, 21, 1, token: 'same-form')->assertSessionHasNoErrors();
+        $this->credit($invoice, 21, 1, token: 'same-form')->assertSessionHasNoErrors();
+        $this->assertSame(1, CustomerCreditNote::count());
+        $this->assertSame($journal + 1, JournalEntry::where('business_id', $this->shop->id)->count(), 'قيدٌ واحد');
+
+        // ونموذجٌ رُدّ لخطأٍ فيه يُصحَّح ويُرسل بالرمز نفسه
+        $this->credit($invoice, 10, 9, token: 'fixed-form')->assertSessionHasErrors('tax_amount');
+        $this->credit($invoice, 10, 0.476, token: 'fixed-form')->assertSessionHasNoErrors();
+        $this->assertSame(2, CustomerCreditNote::count());
+    }
+
+    /* ═══════════ ٥ · الدفاترُ المقفلة، والصلاحيات، والعزل ═══════════ */
 
     public function test_closed_books_take_no_cancel_and_no_credit_note(): void
     {

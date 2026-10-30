@@ -246,6 +246,12 @@ class CustomerInvoice extends Model
         return round((float) $this->creditNotes()->sum('amount'), 3);
     }
 
+    /** ضريبتُها الباقية بعد إشعاراتها — ما يجوز أن يردّه إشعارٌ دائنٌ بعدُ */
+    public function taxLeft(): float
+    {
+        return round(max(0.0, (float) $this->tax_total - (float) $this->creditNotes()->sum('tax_amount')), 3);
+    }
+
     /**
      * الباقي على العميل.
      *

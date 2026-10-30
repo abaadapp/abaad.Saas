@@ -738,17 +738,22 @@ final class CustomerInvoices
         ?int $userId = null,
         string $source = self::NOTE_MANUAL,
         ?int $orderId = null,
+        ?string $basis = null,
     ): CustomerCreditNote {
         $amount = round($amount, 3);
 
         if ($amount <= 0) {
             throw new RuntimeException(__('مبلغ إشعار الدائن يجب أن يكون أكبر من صفر.'));
         }
+        // والإشعارُ اليدويّ يُسأل هنا لا في شاشته وحدها — سببُه وفترتُه ورابطُه وضريبتُه (`ManualInvoiceAdjustments`)
+        if ($source === self::NOTE_MANUAL) {
+            ManualInvoiceAdjustments::assertCreditNote($invoice, $amount, round($taxAmount, 3), $basis);
+        }
         if ($amount > $invoice->outstanding() + $invoice->paidTotal()) {
             throw new RuntimeException(__('لا يتجاوز إشعارُ الدائن قيمةَ الفاتورة.'));
         }
 
-        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId) {
+        return DB::transaction(function () use ($invoice, $amount, $taxAmount, $reason, $userId, $source, $orderId, $basis) {
             $note = CustomerCreditNote::create([
                 'business_id' => $invoice->business_id,
                 'customer_invoice_id' => $invoice->id,
@@ -759,6 +764,7 @@ final class CustomerInvoices
                 'reason' => $reason,
                 'source' => $source,
                 'order_id' => $orderId,
+                'basis' => $basis,
                 'created_by' => $userId,
             ]);
 
@@ -799,7 +805,8 @@ final class CustomerInvoices
                 $note,
             );
 
-            Activity::log('created', 'أصدر إشعار دائن '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number, [
+            Activity::log('created', 'أصدر إشعار دائن '.$note->number.' بمبلغ '.$amount.' على '.$invoice->number
+                .($basis ? ' — '.(CustomerCreditNote::BASIS_LABELS[$basis] ?? $basis) : '').' — '.$reason, [
                 'subject_id' => $note->id, 'subject_type' => 'customer_credit_note',
             ]);
 

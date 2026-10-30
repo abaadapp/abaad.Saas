@@ -13,6 +13,7 @@ import InvoiceLoyaltyPanel, { type InvoiceLoyaltyData } from './partials/Invoice
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
+import { Select } from '@/Components/Field';
 import { CHEQUE } from '@/lib/cheques';
 import { money } from '@/lib/format';
 import { useTranslate } from '@/lib/i18n';
@@ -692,10 +693,18 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
     const cap = round3(invoice.outstanding + invoice.paid);
     const share = invoice.total > 0 ? invoice.tax_total / invoice.total : 0;
 
+    /*
+     * وسببُ الإشعار يُختار ولا يُفترض (`CustomerCreditNote::BASES`): تصحيحُ خطأٍ
+     * في فترةٍ قُدّم إقرارُها يردّه الخادم، والإرجاعُ والخصمُ يُصدران بسببهما.
+     * ورمزُ النموذج يجعل الضغطتين إشعارًا واحدًا.
+     */
+    const [token] = useState(() => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
     const form = useForm({
         amount: String(cap),
         tax_amount: String(round3(cap * share)),
         reason: '',
+        basis: '',
+        token,
     });
 
     /* والضريبةُ تتبع المبلغ ما لم تُكتب بيد — فمن غيّرها يملكها */
@@ -730,6 +739,17 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
                 />
                 {form.errors.tax_amount && <p className="text-[12px] text-[#b91c1c]">{form.errors.tax_amount}</p>}
             </label>
+            <div className="text-[13px]" data-testid="credit-note-basis">
+                {t('سبب الإشعار')}
+                <Select
+                    id="credit-note-basis"
+                    value={form.data.basis}
+                    onChange={(e) => form.setData('basis', e.target.value)}
+                    placeholder={t('اختر')}
+                    options={CREDIT_NOTE_BASES.map((b) => ({ value: b.value, label: t(b.label) }))}
+                />
+                {form.errors.basis && <p className="text-[12px] text-[#b91c1c]">{form.errors.basis}</p>}
+            </div>
             <label className="flex-1 text-[13px]">
                 {t('السبب')}
                 <Input
@@ -753,6 +773,13 @@ function CreditNoteForm({ invoice, onDone }: { invoice: Invoice; onDone: () => v
         </Card>
     );
 }
+
+/** أسبابُ الإشعار اليدويّ — كما في `CustomerCreditNote::BASIS_LABELS` */
+const CREDIT_NOTE_BASES = [
+    { value: 'error', label: 'تصحيح خطأ في المبلغ' },
+    { value: 'return', label: 'إرجاع أو إلغاء توريد' },
+    { value: 'discount', label: 'خصم بعد البيع' },
+];
 
 /** ثلاثُ خاناتٍ — كما يُخزَّن المال في هذا النظام */
 function round3(v: number): number {

@@ -2,8 +2,10 @@
 
 namespace App\Support;
 
+use App\Models\CustomerCreditNote;
 use App\Models\CustomerInvoice;
 use App\Models\CustomerPaymentLink;
+use Illuminate\Validation\ValidationException;
 
 /**
  * ما يمنع إلغاءَ فاتورة العميل أو إشعارَها الدائنَ اليدويّ — يُسأل قبل أن يُكتب شيء.
@@ -23,6 +25,12 @@ use App\Models\CustomerPaymentLink;
  * وضريبةُ الإشعار يكتبها التاجر — وقد يكون ما رُدّ بندًا معفًى — لكنّها لا
  * تفوق ما يحمله مبلغُه بأعلى نسبةٍ في الفاتورة، ولا تتجاوز الإشعاراتُ معًا
  * ضريبةَ الفاتورة: ما زاد ضريبةٌ تُنقص من الإقرار ولم تُحصَّل قطّ.
+ *
+ * والإشعارُ اليدويّ يحمل سببَه (`CustomerCreditNote::BASES`): تصحيحُ خطأ، أو
+ * إرجاعٌ وإلغاءُ توريد، أو خصمٌ بعد البيع. وتصحيحُ الخطأ في فترةٍ قُدّم
+ * إقرارُها ينتظر المحاسب كما ينتظره تصحيحُ الفاتورة — ولا تتجاوزه الصلاحية.
+ * والإرجاعُ والخصمُ يبقيان: السببُ المختار لا يُثبت المشروعيّة وحده، ويبقى
+ * معه النصُّ المكتوب والمرفقاتُ وصلاحيةُ الإصدار وسجلُّ النشاط.
  *
  * والدفاترُ المقفلة يمنعها الدفترُ نفسُه (`BooksPeriod::assertOpen`).
  */
@@ -56,38 +64,52 @@ final class ManualInvoiceAdjustments
     }
 
     /**
-     * ما يمنع إشعارًا دائنًا يدويًّا بهذا المبلغ وهذه الضريبة — والحقلُ الذي يُقال عنده.
+     * يُسأل عن كلّ إشعارٍ دائنٍ يدويّ قبل أن يُكتب — من `CustomerInvoices::creditNote` نفسِها.
      *
-     * @return array{0: string, 1: string}|null [الحقل، السبب]
+     * فلا تتجاوزه شاشةٌ ولا طلبٌ مباشر ولا استدعاءٌ آخر. والسببُ يُقال عند حقله.
+     *
+     * @throws ValidationException
      */
-    public static function creditNoteRefusal(CustomerInvoice $invoice, float $amount, float $tax): ?array
+    public static function assertCreditNote(CustomerInvoice $invoice, float $amount, float $tax, ?string $basis): void
     {
-        $asked = self::asked($invoice);
-        if ($asked > 0 && $asked > round($invoice->outstanding() - $amount, 3) + self::ROUNDING) {
-            return ['amount', __('على الفاتورة رابط دفع بـ :n لم يُدفع بعد أو محاولة لم تُعرف نتيجتها — والإشعار يُنزل ما عليها تحته. ألغِ الرابط أولًا، فلا يُطلب من العميل أكثر مما عليه.', [
-                'n' => number_format($asked, 3),
-            ])];
+        $refuse = fn (string $field, string $why) => throw ValidationException::withMessages([$field => $why]);
+
+        if (! in_array($basis, CustomerCreditNote::BASES, true)) {
+            $refuse('basis', __('اختر سبب الإشعار: تصحيح خطأ، أو إرجاع أو إلغاء توريد، أو خصم بعد البيع.'));
         }
 
-        $left = round(max(0.0, (float) $invoice->tax_total - (float) $invoice->creditNotes()->sum('tax_amount')), 3);
+        $bid = (int) $invoice->business_id;
+        $taxed = Vat::enabled($bid) || (float) $invoice->tax_total > 0;
+        if ($basis === CustomerCreditNote::ERROR && $taxed && Vat::isFiled($bid, $invoice->issued_at)) {
+            $refuse('basis', __('الفاتورة في فترة ضريبية قُدّم إقرارها حتى :d — تصحيح خطأ فيها قد يحتاج إقرارًا معدّلًا، والقرار للمحاسب الضريبي قبل إصدار المستند. والإرجاع أو الخصم بعد الإقرار يُصدر بسببه.', [
+                'd' => Vat::filedThrough($bid)?->toDateString(),
+            ]));
+        }
+
+        $asked = self::asked($invoice);
+        if ($asked > 0 && $asked > round($invoice->outstanding() - $amount, 3) + self::ROUNDING) {
+            $refuse('amount', __('على الفاتورة رابط دفع بـ :n لم يُدفع بعد أو محاولة لم تُعرف نتيجتها — والإشعار يُنزل ما عليها تحته. ألغِ الرابط أولًا، فلا يُطلب من العميل أكثر مما عليه.', [
+                'n' => number_format($asked, 3),
+            ]));
+        }
+
+        $left = $invoice->taxLeft();
         if ($tax > $left + self::ROUNDING) {
-            return ['tax_amount', $left <= 0
+            $refuse('tax_amount', $left <= 0
                 ? __('لم يبقَ على الفاتورة ضريبة — لا يحمل إشعارها ضريبة.')
-                : __('لا تتجاوز ضريبة الإشعارات ضريبة الفاتورة — الباقي منها :n.', ['n' => number_format($left, 3)])];
+                : __('لا تتجاوز ضريبة الإشعارات ضريبة الفاتورة — الباقي منها :n.', ['n' => number_format($left, 3)]));
         }
 
         $rate = $invoice->items()->max('tax_rate');
         if ($rate !== null) {
             $most = round($amount * (float) $rate / (100 + (float) $rate), 3);
             if ($tax > $most + self::ROUNDING) {
-                return ['tax_amount', __('ضريبة الإشعار أكبر مما يحمله مبلغه بأعلى نسبة في الفاتورة (:r٪) — أقصاها :n.', [
+                $refuse('tax_amount', __('ضريبة الإشعار أكبر مما يحمله مبلغه بأعلى نسبة في الفاتورة (:r٪) — أقصاها :n.', [
                     'r' => rtrim(rtrim(number_format((float) $rate, 2, '.', ''), '0'), '.'),
                     'n' => number_format($most, 3),
-                ])];
+                ]));
             }
         }
-
-        return null;
     }
 
     /**

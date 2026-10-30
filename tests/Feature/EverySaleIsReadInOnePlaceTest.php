@@ -408,7 +408,7 @@ class EverySaleIsReadInOnePlaceTest extends TestCase
         $this->actingAs($this->owner)->delete(route('admin.orders.destroy', $order->number))->assertRedirect();
 
         $invoice = $this->invoice(100);
-        CustomerInvoices::creditNote($invoice, 52.5, 2.5, 'مردود', $this->owner->id);
+        CustomerInvoices::creditNote($invoice, 52.5, 2.5, 'مردود', $this->owner->id, basis: 'return');
 
         $props = $this->register();
         $cancelled = $this->row($props, 'order', $order->id);

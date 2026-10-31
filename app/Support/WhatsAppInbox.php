@@ -135,9 +135,10 @@ final class WhatsAppInbox
     public static function available(?Business $business): bool
     {
         // والعمودُ مفتوحٌ افتراضًا في القاعدة — ومتجرٌ في الذاكرة لم يُقرأ عمودُه لم يُطفأ عنه شيء
+        // وواتساب يُشترى مرّة: في الباقة، أو إضافة «ربط واتساب برقم المتجر» (`WhatsAppFeature::servicePurchased`)
         return $business !== null
             && (bool) ($business->whatsapp_enabled ?? true)
-            && PlanFeatures::allows($business, 'whatsapp');
+            && WhatsAppFeature::servicePurchased($business);
     }
 
     /** مستوى هذا المستخدم: `reply` أو `view` أو لا شيء */

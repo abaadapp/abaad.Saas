@@ -7,9 +7,6 @@ use App\Models\Business;
 use App\Models\WhatsAppConnection;
 use App\Models\WhatsAppMessagePack;
 use App\Support\Activity;
-use App\Support\Addons\Catalog;
-use App\Support\Addons\Entitlements;
-use App\Support\Addons\PricingPolicy;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppInbox;
@@ -601,7 +598,8 @@ class WhatsAppController extends Controller
             ] : null,
             // أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`canUseOwnNumber`)
             'own_eligible' => WhatsAppFeature::canUseOwnNumber($business),
-            'own_needs_addon' => PricingPolicy::isAddons($business) && ! Entitlements::has($business, Catalog::OWN_NUMBER),
+            // وشراءٌ واحدٌ يكفي: باقةٌ تشمل واتساب لا تُطلب فوقها الإضافة
+            'own_needs_addon' => WhatsAppFeature::needsOwnNumberAddon($business),
             // مفتوحٌ تلقائيًّا لمن تشمل باقتُه واتساب ولم يُطفأ عنه — قراءةٌ لا مقبض
             'inbox_available' => WhatsAppInbox::available($business),
         ];

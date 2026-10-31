@@ -204,12 +204,16 @@ php artisan abaad:preflight          # يجب أن يخرج ✓ جاهز للإ�
 **قاعدتا sudo، لا ثالثةَ لهما** (`deploy/abaad-deploy.sudoers`):
 
 ```
-abaad-deploy ALL=(www-data) NOPASSWD: /usr/bin/php /var/www/abaad/artisan *
-abaad-deploy ALL=(root)     NOPASSWD: /usr/bin/systemctl reload php8.4-fpm
+abaad-deploy ALL=(www-data) NOPASSWD: ABAAD_ARTISAN      # سبعةُ أوامر artisan بأعيانها
+abaad-deploy ALL=(root)     NOPASSWD: ABAAD_FPM_RELOAD   # /usr/bin/systemctl reload php8.4-fpm
 ```
 
-- **الأولى** تبيح أوامرَ Laravel بحساب www-data. والانتقالُ إلى www-data نزولٌ لا صعود:
-  www-data هويّةُ التطبيق، وأدنى من حساب النشر الذي يملك الكود — فلا حدَّ أمنيًّا يُكسَر.
+- **الأولى** تبيح أوامرَ Laravel السبعةَ التي يحتاجها النشرُ والرجوع، بوسائطها المثبّتة، بحساب
+  www-data: `migrate --force`، و`config:cache` و`route:cache` و`view:cache` و`package:discover`
+  و`queue:restart` (كلٌّ بـ`--quiet`)، و`abaad:preflight`. لا `artisan *`، فلا tinker ولا
+  `db:wipe` ولا `migrate:fresh` ولا أيُّ أمرٍ آخر. والقائمةُ في الملفّ نفسِه، وحارسٌ يمنع أن
+  يضيف السكربتُ أمرًا ليس فيها. والانتقالُ إلى www-data نزولٌ لا صعود: www-data هويّةُ
+  التطبيق، وأدنى من حساب النشر الذي يملك الكود — فلا حدَّ أمنيًّا يُكسَر.
 - **الثانية** أمرٌ واحدٌ بوسائطَ مثبّتة، لا `systemctl` عامٌّ. ولا shell بصلاحية root، ولا
   قاعدةَ لـwww-data إطلاقًا.
 

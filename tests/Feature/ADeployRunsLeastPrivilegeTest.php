@@ -160,6 +160,10 @@ class ADeployRunsLeastPrivilegeTest extends TestCase
         foreach (['/bin/bash', '/bin/sh', 'ALL=(ALL', '(ALL:ALL)'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $body, "sudoers يحوي $forbidden");
         }
+        // والوثيقةُ التي يُنفَّذ منها الانتقالُ تعرض القاعدةَ نفسَها، لا القديمةَ الواسعة
+        $doc = (string) file_get_contents(base_path('DEPLOYMENT.md'));
+        $this->assertStringNotContainsString('/var/www/abaad/artisan *', $doc, 'DEPLOYMENT.md يعرض artisan عامًّا بنجمة');
+        $this->assertStringContainsString('NOPASSWD: ABAAD_ARTISAN', $doc);
     }
 
     /** حارسُ الانحراف: كلُّ أمر artisan في السكربتين مثبّتٌ في sudoers، فلا يُضاف أمرٌ بلا قاعدة */

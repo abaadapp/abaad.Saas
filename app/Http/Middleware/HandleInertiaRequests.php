@@ -17,7 +17,6 @@ use App\Support\ShopIdentity;
 use App\Support\Support;
 use App\Support\Tenancy;
 use App\Support\WebsiteConfirmPrint;
-use App\Support\WhatsAppConversations;
 use App\Support\WhatsAppInbox;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -125,9 +124,7 @@ class HandleInertiaRequests extends Middleware
                  */
                 'hosted' => array_values(array_filter([
                     Boutiques::holds($user->business) ? 'boutiques' : null,
-                    // «محادثات واتساب» بدل «سجلّ رسائل واتساب» في الشريط — والخادمُ هو الحارس
-                    $user->business && WhatsAppConversations::enabled($user->business) ? 'whatsapp_conversations' : null,
-                    // وصندوقُ المحادثات — يفتحه فريقُ أبعاد للنشاط، ويُرى بصلاحية الموظّف (`WhatsAppInbox`)
+                    // وصندوقُ المحادثات — لكلّ متجرٍ يملك واتساب، ويُرى بصلاحية الموظّف (`WhatsAppInbox::available`)
                     WhatsAppInbox::available($user->business) ? 'whatsapp_inbox' : null,
                 ])),
                 // رابط موقع التاجر — يستعمله زرّ «الموقع الإلكتروني» في الهيدر،

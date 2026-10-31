@@ -231,7 +231,7 @@ class AnIndependentNumberHearsItsCustomersTest extends TestCase
         $b = Business::create([
             'name' => $name, 'type' => 'محل ورود', 'status' => 'نشط',
             'whatsapp_enabled' => true, 'whatsapp_own_allowed' => true, 'whatsapp_shared_allowed' => true,
-            'whatsapp_mode' => $mode, 'whatsapp_inbox_enabled' => true,
+            'whatsapp_mode' => $mode,
         ]);
         Branch::create(['business_id' => $b->id, 'name' => 'الرئيسي']);
 
@@ -457,8 +457,8 @@ class AnIndependentNumberHearsItsCustomersTest extends TestCase
 
     public function test_a_message_that_arrives_but_cannot_be_kept_says_why_without_its_text(): void
     {
-        // صندوقُ المحادثات مغلقٌ للمتجر: وصلت، ولم تُحفظ — ويُقال ذلك
-        $this->shopA->update(['whatsapp_inbox_enabled' => false]);
+        // صندوقُ المحادثات مغلقٌ للمتجر — واتساب مطفأٌ لحسابه: وصلت، ولم تُحفظ — ويُقال ذلك
+        $this->shopA->update(['whatsapp_enabled' => false]);
         $this->customerWrites('PN-A', 'wamid.CLOSED', 'نصٌّ لا يُكتب في سجلّ');
 
         $line = $this->lineA->fresh();
@@ -475,7 +475,7 @@ class AnIndependentNumberHearsItsCustomersTest extends TestCase
         $this->assertStringNotContainsString(self::CUSTOMER, json_encode($view));
 
         // وفُتح: تُحفظ التالية، ويُختم حفظُها، وتُمحى العلّة
-        $this->shopA->update(['whatsapp_inbox_enabled' => true]);
+        $this->shopA->update(['whatsapp_enabled' => true]);
         $this->customerWrites('PN-A', 'wamid.OPEN');
         $line = $this->lineA->fresh();
         $this->assertNull($line->inbound_problem);

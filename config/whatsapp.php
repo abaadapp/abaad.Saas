@@ -91,8 +91,9 @@ return [
      *
      * قرارُ المالك: لمتجر سعود (RIBBON، `businesses.id = 5`) وحده في المرحلة
      * الأولى. والقائمةُ تُقرأ في ترحيل `a_shop_may_read_its_whatsapp_as_conversations`
-     * وحده لتكتب `businesses.whatsapp_conversations_enabled` — والكودُ يسأل
-     * العمودَ (`WhatsAppConversations::enabled`) لا هذه القائمة ولا معرّفًا.
+     * وحده لتكتب `businesses.whatsapp_conversations_enabled`. ولم يعد العمودُ
+     * يُقرأ: تلك الشاشةُ صارت صندوقَ المحادثات لكلّ متجرٍ يملك واتساب
+     * (`WhatsAppInbox::available`). والقائمةُ باقيةٌ لأنّ الترحيلَ القديمَ يقرؤها.
      */
     /*
      * RIBBON (متجر سعود) له دورة إشعاراته المتفق عليها وحدها:
@@ -110,9 +111,10 @@ return [
      *
      * قرارُ المالك: متجر سعود (RIBBON، `businesses.id = 5`) أوّلُ من يُجرَّب
      * عليه. والقائمةُ تُقرأ في ترحيل `a_shop_reads_and_answers_its_customers_on_whatsapp`
-     * وحده لتكتب `businesses.whatsapp_inbox_enabled` — والكودُ يسأل العمودَ
-     * (`WhatsAppInbox::available`) لا هذه القائمة ولا معرّفًا. وبعده يفتحه
-     * فريقُ أبعاد لمن يُؤهَّل من بطاقة واتساب في ملفّ المتجر.
+     * وحده لتكتب `businesses.whatsapp_inbox_enabled`. ولم يعد العمودُ يُقرأ:
+     * الصندوقُ لكلّ متجرٍ تشمل باقتُه واتساب ولم يُطفأ لحسابه
+     * (`WhatsAppInbox::available`) — لا قائمةَ ولا معرّف. والقائمةُ باقيةٌ لأنّ
+     * الترحيلَ القديمَ يقرؤها.
      */
     'inbox_businesses' => [5],
 ];

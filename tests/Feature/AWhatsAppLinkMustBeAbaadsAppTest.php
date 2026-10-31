@@ -81,7 +81,6 @@ class AWhatsAppLinkMustBeAbaadsAppTest extends TestCase
             'name' => $name, 'type' => 'محل ورود', 'status' => 'نشط',
             'whatsapp_enabled' => true, 'whatsapp_own_allowed' => true,
             // «جاهز» تطلب صندوقَ المحادثات مفتوحًا — فما يصل يُحفظ ويُعرض (`WhatsAppLinkHealth::READY`)
-            'whatsapp_inbox_enabled' => true,
         ]);
         Branch::create(['business_id' => $b->id, 'name' => 'الرئيسي']);
 

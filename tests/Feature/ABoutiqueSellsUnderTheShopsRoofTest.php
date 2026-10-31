@@ -562,7 +562,8 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
         $this->shop->update(['boutiques_enabled' => false]);
 
         $this->actingAs($this->owner)->get(route('admin.products.index'))
-            ->assertInertia(fn (Assert $page) => $page->where('context.hosted', ['boutiques']));
+            // تبويبُ البوتيك وحده سؤالُ هذا الاختبار — وصندوقُ واتساب يُستضاف بجواره لمن في باقته
+            ->assertInertia(fn (Assert $page) => $page->where('context.hosted', fn ($hosted) => $hosted->contains('boutiques')));
     }
 
     /** ومحلٌّ فُتح له البابُ ولم يُدخل بوتيكَه الأوّل بعدُ يرى الشاشة — وإلّا لم يُدخله أبدًا */
@@ -582,7 +583,7 @@ class ABoutiqueSellsUnderTheShopsRoofTest extends TestCase
         $this->shop->update(['boutiques_enabled' => false]);
 
         $this->actingAs($this->owner)->get(route('admin.products.index'))
-            ->assertInertia(fn (Assert $page) => $page->where('context.hosted', []));
+            ->assertInertia(fn (Assert $page) => $page->where('context.hosted', fn ($hosted) => ! $hosted->contains('boutiques')));
     }
 
     /** والنسبةُ لا تتجاوز المئة — وإلّا صار الصافي دَينًا على البوتيك */

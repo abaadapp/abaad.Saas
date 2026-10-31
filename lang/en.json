@@ -10212,5 +10212,6 @@
     "English search description": "English search description",
     "هذا لا يُغلق متجرك — من يملك الرابط يفتحه. الإغلاق من «الإعدادات ‹ متجرك الإلكتروني ‹ نشر المتجر».": "This does not close your store — anyone with the link can open it. Close it from Settings ‹ Your online store ‹ Publish the store.",
     "موقعك المبنيّ لم يُنشر بعد — يرى زبائنك الآن صفحة متجرك البسيطة، وما تحفظه هنا يسري على موقعك حين تنشره.": "Your built site is not published yet — customers see your simple store page now, and what you save here applies to your site when you publish it.",
-    "ظهور متجرك في البحث": "Your store in search"
+    "ظهور متجرك في البحث": "Your store in search",
+    "تعذّر تحميل الملف — لم يُحفظ شيء. حاول مرة أخرى": "Could not download the file — nothing was saved. Please try again."
 }

@@ -4,6 +4,16 @@ import userEvent from '@testing-library/user-event';
 
 import ReceiptPreviewButton from '@/Pages/Pos/partials/ReceiptPreview';
 
+// والجوابُ يُبنى بـBlob هذه البيئة لا بـResponse من Node: Blob الذي تعيده Response
+// على Node 22 (CI) ليس Blob المتصفّح المزعوم، فيُقرأ «ليس ملفًّا»
+const pdfAnswer = () =>
+    ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/pdf' }),
+        blob: async () => new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+    }) as unknown as Response;
+
 const error = vi.fn();
 vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => error(...a) } }));
 
@@ -132,9 +142,22 @@ describe('معاينة فاتورة نقطة البيع', () => {
         expect(print).not.toHaveAttribute('download');
         expect(within(dialog).queryByRole('link', { name: /^طباعة$/ })).toBeNull();
 
-        const download = within(dialog).getByRole('link', { name: /تحميل/ });
-        expect(download.getAttribute('href')).toContain('pos.receipt.pdf');
-        expect(download).toHaveAttribute('download', 'INV-1042.pdf');
+        // والتحميلُ زرٌّ لا يُنزل شيئًا حتى يُضغط، ثمّ يجلب الملفَّ ويقرؤه قبل حفظه
+        const download = within(dialog).getByRole('button', { name: /تحميل/ });
+        expect(download).not.toHaveAttribute('href');
+        expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('pos.receipt.pdf'))).toBe(false);
+
+        fetchMock.mockResolvedValue(pdfAnswer());
+        URL.createObjectURL = vi.fn(() => 'blob:receipt');
+        URL.revokeObjectURL = vi.fn();
+        const saved: string[] = [];
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            saved.push(this.download);
+        });
+        await userEvent.click(download);
+        await waitFor(() => expect(saved).toEqual(['INV-1042.pdf']));
+        expect(String(fetchMock.mock.calls.at(-1)![0])).toContain('pos.receipt.pdf');
+        click.mockRestore();
     });
 
     it('وفشلُ الطلب يُقال في مكانه ولا يُخرج الكاشير من صندوقه', async () => {

@@ -136,9 +136,21 @@ class ADeployRunsLeastPrivilegeTest extends TestCase
             $this->assertStringContainsString('abaad-deploy', $r, "قاعدةٌ لغير حساب النشر: $r");
             $this->assertStringContainsString('NOPASSWD', $r);
         }
-        // قاعدةُ www-data: php artisan وحده، بمسارٍ مطلق
+        // قاعدةُ www-data: أوامرُ artisan السبعةُ بأعيانها، لا نجمةٌ عامّة
         $this->assertMatchesRegularExpression('/\(www-data\)\s+NOPASSWD:\s*ABAAD_ARTISAN/', $body);
-        $this->assertStringContainsString('/usr/bin/php /var/www/abaad/artisan *', $body);
+        foreach (['migrate --force', 'config\:cache --quiet', 'route\:cache --quiet', 'view\:cache --quiet',
+            'package\:discover --quiet', 'queue\:restart --quiet', 'abaad\:preflight'] as $cmd) {
+            $this->assertStringContainsString('/usr/bin/php /var/www/abaad/artisan '.$cmd, $body, "أمرُ artisan غيرُ مثبّت: $cmd");
+        }
+        // الأسطرُ المنفَّذة وحدها (لا التعليقُ الذي يذكر الممنوعَ كمثال)
+        $active = implode("\n", array_filter(
+            file(base_path(self::SUDOERS), FILE_IGNORE_NEW_LINES),
+            fn ($l) => ! str_starts_with(ltrim($l), '#')
+        ));
+        $this->assertStringNotContainsString('/var/www/abaad/artisan *', $active, 'artisan عامٌّ بنجمة');
+        foreach (['tinker', 'db:wipe', 'migrate:fresh', 'migrate:reset'] as $danger) {
+            $this->assertStringNotContainsString($danger, $active, "sudoers يبيح أمرًا خطرًا: $danger");
+        }
         // قاعدةُ root: إعادةُ تحميل php-fpm وحدها، بلا أيّ نجمة
         $this->assertMatchesRegularExpression('/\(root\)\s+NOPASSWD:\s*ABAAD_FPM_RELOAD/', $body);
         $this->assertStringContainsString('ABAAD_FPM_RELOAD = /usr/bin/systemctl reload php8.4-fpm', $body);
@@ -148,6 +160,87 @@ class ADeployRunsLeastPrivilegeTest extends TestCase
         foreach (['/bin/bash', '/bin/sh', 'ALL=(ALL', '(ALL:ALL)'] as $forbidden) {
             $this->assertStringNotContainsString($forbidden, $body, "sudoers يحوي $forbidden");
         }
+    }
+
+    /** حارسُ الانحراف: كلُّ أمر artisan في السكربتين مثبّتٌ في sudoers، فلا يُضاف أمرٌ بلا قاعدة */
+    public function test_every_artisan_call_in_the_scripts_is_pinned_in_sudoers(): void
+    {
+        $body = (string) file_get_contents(base_path(self::SUDOERS));
+        $calls = [];
+        foreach (self::SCRIPTS as $script) {
+            foreach (file(base_path($script), FILE_IGNORE_NEW_LINES) as $line) {
+                // استدعاءُ art (لا تعريفُها)، وتُؤخذ وسائطُه حتى إعادةِ التوجيه أو ||
+                if (preg_match('/^\s*art ((?!\(\)).+)$/', $line, $m)) {
+                    $args = trim(preg_replace('/\s*(\|\||>|2>|<).*$/', '', $m[1]));
+                    $calls[$args] = true;
+                }
+            }
+        }
+        $this->assertNotEmpty($calls, 'لم يُعثر على استدعاءات art');
+        foreach (array_keys($calls) as $args) {
+            // الـ: في sudoers مُهرَّبٌ بـ\
+            $needle = '/usr/bin/php /var/www/abaad/artisan '.str_replace(':', '\\:', $args);
+            $this->assertStringContainsString($needle, $body, "أمرٌ في السكربت بلا قاعدة sudoers: artisan $args");
+        }
+    }
+
+    /* ═══ ٣ب · مسحُ الشجرة: الأعماق والروابط والصلاحيّة الفعليّة ═══ */
+
+    public function test_the_audit_scans_subdirectories_symlinks_and_effective_permissions(): void
+    {
+        $this->root = sys_get_temp_dir().'/abaad-tree-'.bin2hex(random_bytes(4));
+        $app = $this->root.'/app';
+        foreach (['app/Http/Controllers', 'routes', 'config', 'scripts', 'storage/logs', 'storage/app', 'bootstrap/cache', 'public', '.git/hooks'] as $d) {
+            mkdir($app.'/'.$d, 0755, true);
+        }
+        foreach (['app/Http/Controllers/Deep.php', 'routes/web.php', 'config/app.php', 'scripts/deploy.sh', '.git/config', '.git/hooks/pre-commit'] as $f) {
+            file_put_contents($app.'/'.$f, "x\n");
+            chmod($app.'/'.$f, 0644);
+        }
+        // رابطٌ داخليّ سليم (كـpublic/storage)
+        symlink('../storage/app', $app.'/public/storage');
+
+        $run = fn () => $this->auditTree($app);
+
+        // نظيفة: لا شيء يكتبه www-data، ولا رابطَ يهرب
+        [$rc, $out] = $run();
+        $this->assertSame(0, $rc, $out);
+        $this->assertStringContainsString('لا مسارَ في الشجرة يكتبه', $out);
+        $this->assertStringContainsString('كلُّ رابطٍ داخل الشجرة', $out);
+
+        // ملفٌّ عميقٌ قابلٌ للكتابة للجميع (o+w) يُكتشف
+        chmod($app.'/app/Http/Controllers/Deep.php', 0646);
+        [$rc, $out] = $run();
+        $this->assertSame(1, $rc, $out);
+        $this->assertStringContainsString('app/Http/Controllers/Deep.php', $out);
+        chmod($app.'/app/Http/Controllers/Deep.php', 0644);
+
+        // ما تحت storage قابلٌ للكتابة — ويُتجاهَل (مقصود)
+        file_put_contents($app.'/storage/logs/laravel.log', "x\n");
+        chmod($app.'/storage/logs/laravel.log', 0666);
+        [$rc, $out] = $run();
+        $this->assertSame(0, $rc, 'عُدَّ ما تحت storage خطأً: '.$out);
+
+        // رابطٌ يهرب خارج الشجرة يُكتشف
+        symlink('/etc/passwd', $app.'/public/evil');
+        [$rc, $out] = $run();
+        $this->assertSame(1, $rc, $out);
+        $this->assertStringContainsString('public/evil -> /etc/passwd', $out);
+    }
+
+    /** @return array{0:int,1:string} */
+    private function auditTree(string $app): array
+    {
+        $proc = proc_open(
+            ['bash', base_path('scripts/audit-deploy-permissions.sh')],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes,
+            null,
+            ['AUDIT_ONLY' => 'tree', 'APP_DIR' => $app, 'APP_USER' => 'nobody', 'PATH' => getenv('PATH')],
+        );
+        $out = (string) preg_replace('/\e\[[0-9;]*m/', '', stream_get_contents($pipes[1]).stream_get_contents($pipes[2]));
+
+        return [proc_close($proc), $out];
     }
 
     public function test_the_sudoers_file_passes_visudo_when_available(): void

@@ -245,13 +245,19 @@ git لدى root سطرًا كلَّ نشر، وتجعله يثق بشجرة غي
    ```bash
    sudo cp -a /root/.ssh/authorized_keys /root/.ssh/authorized_keys.pre-split
    ```
-5. **نقلُ ملكيّة الشجرة** إلى حساب النشر، إلّا storage وbootstrap/cache (لا توقّفَ للموقع —
-   الملفّاتُ تبقى مقروءة):
+5. **نقلُ ملكيّة الشجرة** إلى حساب النشر، **دون أن تُمسَّ** storage وbootstrap/cache لحظةً
+   واحدة — فيبقى www-data يكتب فيهما طوال العمليّة، ولا تنقطع جلساتٌ ولا سجلّ، ولا يتوقّف
+   الموقع. (لا `chown -R` على الكلّ ثمّ ردّ: ذاك يترك نافذةً يملك فيها حسابُ النشر storage
+   فيعجز www-data عن الكتابة. بل يُستثنيان بـprune من البداية):
    ```bash
-   sudo chown -R abaad-deploy:abaad-deploy /var/www/abaad
-   sudo chown -R www-data:www-data /var/www/abaad/storage /var/www/abaad/bootstrap/cache
+   sudo find /var/www/abaad -xdev \
+       \( -path /var/www/abaad/storage -o -path /var/www/abaad/bootstrap/cache \) -prune -o \
+       -print0 | sudo xargs -0 chown -h abaad-deploy:abaad-deploy
    sudo chgrp www-data /var/www/abaad/.env && sudo chmod 640 /var/www/abaad/.env
    ```
+   القراءةُ لا تنقطع: نقلُ الملكيّة لا يغيّر صلاحيّاتِ القراءة (644/755)، فphp-fpm (www-data)
+   يقرأ الكودَ طوال الوقت. وopcache يُبقي الكودَ القديمَ في الذاكرة حتى reload، فلا أثرَ
+   يُرى أصلًا قبل التشغيل في الخطوة 8.
 6. **نقلُ مفتاح GitHub** من authorized_keys الخاصّ بـroot إلى الخاصّ بحساب النشر، بأمرِه
    المقيّد، مع إبقائه على root مؤقّتًا حتى تنجح الخطوة 8:
    ```bash
@@ -271,10 +277,26 @@ git لدى root سطرًا كلَّ نشر، وتجعله يثق بشجرة غي
 9. **بعد النجاح:** حذفُ مفتاح GitHub من authorized_keys الخاصّ بـroot، وحذفُ أسطر
    `safe.directory` من إعداد git لدى root، ورفعُ التجميد.
 
-**الرجوعُ إن تعثّر شيء:** إعادةُ ملكيّة الشجرة إلى www-data
-(`sudo chown -R www-data:www-data /var/www/abaad`)، وإعادةُ مفتاح root من النسخة، وحذفُ
-`/etc/sudoers.d/abaad-deploy`، وإرجاعُ `deploy-main.yml` إلى `root@` (Revert PR).
-والقاعدةُ لا تُمسّ في أيّ خطوة.
+### الرجوعُ إن تعثّر الانتقال — بأوامر root وحدها، لا بالسكربت الجديد
+
+الموقعُ لا يتوقّف لو تعثّر شيء: php-fpm يُقدّم الكودَ المُحمَّل في opcache بصرف النظر عن
+مالكِ الملفّات، والتشغيلُ اليدويّ (الخطوة 8) إن فشل في منتصفه فتبديلُ الأصول ذرّيٌّ
+والهجراتُ تقف قبل reload — فيبقى الموقعُ على ما كان. والرجوعُ لا يحتاج `deploy.sh` الجديد
+ولا الاتّصالَ بحساب النشر؛ كلُّه أوامرُ root مباشرة، ومفتاحُ المالك على root لم يُمسّ فالوصولُ قائم:
+
+```bash
+# ١) إعادةُ ملكيّة الشجرة إلى www-data (النموذج القديم)
+sudo chown -R www-data:www-data /var/www/abaad
+# ٢) إعادةُ مفتاح GitHub إلى root من النسخة، وحذفُ ملفّ sudoers
+sudo cp -a /root/.ssh/authorized_keys.pre-split /root/.ssh/authorized_keys
+sudo rm -f /etc/sudoers.d/abaad-deploy
+```
+
+ثمّ إرجاعُ `deploy-main.yml` إلى `root@` (Revert PR) — ويبقى «Deploy Main» معطّلًا حتى
+يُرجَع. والقاعدةُ لا تُمسّ في أيّ خطوة، لا في الانتقال ولا في الرجوع.
+
+وإن نجح الانتقالُ ثمّ ساء نشرٌ لاحق، فذاك رجوعُ كودٍ عاديّ بـ`rollback-code.sh` (القسم أدناه)،
+لا رجوعُ الانتقال.
 
 **ما لا يتغيّر:** CI وMain Gate وفحصُ الصحّة والهجراتُ بلا نسخة، و`backup:run` لكلّ متجر،
 والنسخُ القديمة في `/root/pre-deploy`، ومفتاحُ المالك ومفتاحُ سعد على root.

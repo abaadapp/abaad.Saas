@@ -12,19 +12,32 @@
 # حسابُ النشر يملك شجرةَ الكود، فيُجري git وcomposer وnpm وتبديلَ الأصول
 # بنفسه بلا sudo. ولا يحتاج sudo إلّا لأمرين لا يملكهما:
 #
-#   ١) أوامرُ Laravel بحساب www-data — لا بحساب النشر — كيلا يشغّل حسابُ النشر
-#      التطبيقَ ولا يكتب في bootstrap/cache (يملكها www-data). والانتقالُ إلى
-#      www-data نزولٌ لا صعود: www-data هو هويّةُ التطبيق، وهي أدنى من حساب
-#      النشر الذي يملك الكود. فلا حدَّ أمنيًّا يُكسَر، ولو شغّل أمرًا عامًّا.
-#      والمسارُ مطلقٌ (php وartisan) فلا يُلتقط من PATH.
+#   ١) أوامرُ Laravel السبعةُ التي يحتاجها النشرُ والرجوع — بأعيانها، لا
+#      `artisan *`. فلا tinker (كودٌ عامّ)، ولا db:wipe، ولا migrate:fresh،
+#      ولا down، ولا أيُّ أمرٍ آخر — ولو بحساب www-data. وكلٌّ بوسائطه المثبّتة.
+#      تُشغَّل بحساب www-data لا بحساب النشر، كيلا يشغّل حسابُ النشر التطبيقَ
+#      ولا يكتب bootstrap/cache (يملكها www-data). والمسارُ مطلقٌ فلا يُلتقط من PATH.
 #
 #   ٢) إعادةُ تحميل php-fpm وحدها بصلاحية root — أمرٌ واحدٌ بوسائطَ مثبّتة،
 #      لا systemctl عامٌّ: لا start/stop/mask، ولا خدمةٌ أخرى.
 #
 # وما لا تبيحه: لا shell بصلاحية root، ولا تحرير ملفّات، ولا systemctl عامّ،
-# ولا أمرَ بحساب www-data غيرَ php artisan. ولا قاعدةَ لحساب www-data إطلاقًا.
+# ولا أمرَ بحساب www-data غيرَ هذه السبعة. ولا قاعدةَ لحساب www-data إطلاقًا.
+#
+# ═══ إن تغيّر النشر ═══
+# هذه القائمةُ تطابق أوامرَ artisan في scripts/deploy.sh وrollback-code.sh
+# حرفًا بحرف (حارسٌ في ADeployRunsLeastPrivilegeTest يمنع الانحراف). فإن أضاف
+# نشرٌ أمرَ artisan جديدًا أو غيّر وسائطَه، يُحدَّث هذا الملفُّ في الانتقال نفسِه،
+# وإلّا سقطت تلك الخطوةُ على الخادم بخطأ sudo واضحٍ — لا بصمت.
 
-Cmnd_Alias ABAAD_ARTISAN = /usr/bin/php /var/www/abaad/artisan *
+Cmnd_Alias ABAAD_ARTISAN = \
+    /usr/bin/php /var/www/abaad/artisan migrate --force, \
+    /usr/bin/php /var/www/abaad/artisan config\:cache --quiet, \
+    /usr/bin/php /var/www/abaad/artisan route\:cache --quiet, \
+    /usr/bin/php /var/www/abaad/artisan view\:cache --quiet, \
+    /usr/bin/php /var/www/abaad/artisan package\:discover --quiet, \
+    /usr/bin/php /var/www/abaad/artisan queue\:restart --quiet, \
+    /usr/bin/php /var/www/abaad/artisan abaad\:preflight
 Cmnd_Alias ABAAD_FPM_RELOAD = /usr/bin/systemctl reload php8.4-fpm
 
 abaad-deploy ALL=(www-data) NOPASSWD: ABAAD_ARTISAN

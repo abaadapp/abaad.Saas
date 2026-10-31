@@ -170,13 +170,20 @@ class WhatsAppController extends Controller
             $source = 'all';
         }
 
+        // ومرشِّحُ النوع: الإشعاراتُ أو ردودُ الموظّفين أو كلاهما
+        $kind = (string) $request->query('kind', 'all');
+
+        if (! in_array($kind, WhatsAppLog::KINDS, true)) {
+            $kind = 'all';
+        }
+
         /* و`%` تُنزع من نصّ البحث: من كتبها وحدها رأى كلَّ شيءٍ — انظر `Search::term` */
         $q = Search::term($request);
 
         // ومن يرى صندوقَ المحادثات يفتح من الصفّ محادثةَ زبونه — والصندوقُ يحرس نفسَه ثانيةً
         $opens = WhatsAppInbox::canView($request->user());
 
-        $page = WhatsAppLog::page($business->id, $filter === 'all' ? null : $filter, $q, $source === 'all' ? null : $source, $opens);
+        $page = WhatsAppLog::page($business->id, $filter === 'all' ? null : $filter, $q, $source === 'all' ? null : $source, $opens, $kind === 'all' ? null : $kind);
 
         return Inertia::render('Admin/Marketing/WhatsappLog', [
             /* حالُ الربط أوّلًا: دفترٌ فارغٌ لمن لم يربط ليس عطبًا، وقولُه يمنع البحث عن عطب */
@@ -189,7 +196,8 @@ class WhatsAppController extends Controller
             'summaryDays' => WhatsAppLog::SUMMARY_DAYS,
             'buckets' => WhatsAppLog::filters(),
             'sources' => WhatsAppLog::sources(),
-            'params' => ['filter' => $filter, 'source' => $source, 'q' => $q],
+            'kinds' => WhatsAppLog::kinds(),
+            'params' => ['filter' => $filter, 'source' => $source, 'kind' => $kind, 'q' => $q],
         ]);
     }
 

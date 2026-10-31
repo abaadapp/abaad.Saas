@@ -12,10 +12,12 @@ use App\Models\User;
 use App\Models\WhatsAppChat;
 use App\Models\WhatsAppChatMessage;
 use App\Models\WhatsAppConnection;
+use App\Models\WhatsAppInboundMessage;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppTemplateMapping;
 use App\Support\Crm;
 use App\Support\CrmLeads;
+use App\Support\WhatsAppAutoReply;
 use App\Support\WhatsAppEvent;
 use App\Support\WhatsAppInbox;
 use App\Support\WhatsAppMode;
@@ -36,7 +38,10 @@ use Tests\TestCase;
  * - السجلّ: النصُّ أو وصفُه، والعميلُ، والرقمُ الذي خرجت منه، ومتى وصلت —
  *   ويُقرأ بعد انقطاع الربط، ولا يرى متجرٌ صفَّ غيره.
  * - الصندوقُ يحمل من وصلته إشعاراتٌ ولم يكتب، ويُفتح من رسالته داخل متجرها وحده.
- * - الرقمُ المشترك: من تحادثه مبيعاتُ أبعاد لا يُنسب لمتجرٍ بلا اقتباس.
+ * - الرقمُ المشترك بين متاجر: كلٌّ يرى زبائنَه وحده، وزبونُ اثنين لا يُكشف لأحدهما
+ *   بلا اقتباس، ومن تحادثه مبيعاتُ أبعاد لا يُنسب لمتجرٍ بلا اقتباس.
+ * - السجلّ يحمل ردودَ الموظّفين من جدولها بجوار الإشعارات — لا نسخةٌ ثالثة.
+ * - الردُّ الآليّ لا يخرج ممّن لا يملك الإرسال، ويبقى لمن يملكه.
  * - خارج نافذة الأربعِ والعشرين: لا نصَّ حرًّا — قالبُ المتابعة المعتمَد وحده،
  *   على رقم المتجر، وفشلُ ميتا يُكتب ولا يُقال «أُرسلت».
  */
@@ -276,6 +281,92 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
         $this->assertSame([], $this->props($owner, 'admin.marketing.whatsapp.log', ['q' => '99998888'])['rows']);
     }
 
+    public function test_the_log_holds_staff_replies_beside_the_notices_without_copying_them(): void
+    {
+        $shop = $this->shop('محل الورد', WhatsAppMode::BUSINESS_OWN);
+        $line = $this->own($shop, 'PN-A');
+        $neighbour = $this->shop('محل الجار', WhatsAppMode::BUSINESS_OWN);
+        $this->own($neighbour, 'PN-B');
+        $owner = $this->owner($shop);
+        $staff = $this->owner($shop, 'sales', WhatsAppInbox::REPLY);
+
+        $notice = $this->notified($shop, $line, ['body_snapshot' => 'طلبك جاهز', 'created_at' => now()->subMinutes(5)]);
+        $this->inbound('PN-A', 'wamid.Q', 'متى يصل؟');
+        $chat = WhatsAppChat::where('business_id', $shop->id)->sole();
+        $this->actingAs($staff)->post(route('admin.whatsappInbox.reply', $chat->id), ['body' => 'خلال ساعة إن شاء الله'])->assertSessionHasNoErrors();
+        $this->inbound('PN-B', 'wamid.QB', 'سؤالٌ للجار');
+        $this->actingAs($this->owner($neighbour))->post(route('admin.whatsappInbox.reply', WhatsAppChat::where('business_id', $neighbour->id)->sole()->id), ['body' => 'ردُّ الجار'])
+            ->assertSessionHasNoErrors();
+
+        $before = WhatsAppMessage::count();
+        $props = $this->props($owner, 'admin.marketing.whatsapp.log');
+        $this->assertSame($before, WhatsAppMessage::count(), 'السجلّ يقرأ ولا يكتب');
+        $this->assertSame(1, WhatsAppMessage::count(), 'الردُّ لا يُنسخ إلى دفتر الإشعارات');
+
+        $rows = collect($props['rows']);
+        $this->assertSame(['reply', 'notice'], $rows->pluck('kind')->all());
+        $reply = $rows->first();
+        $this->assertSame(['خلال ساعة إن شاء الله', $staff->name, self::CUSTOMER, WhatsAppStatus::SENT], [$reply['body'], $reply['sender'], $reply['phone'], $reply['status']]);
+        $this->assertSame(route('admin.whatsappInbox.index', ['c' => $chat->id]), $reply['open']);
+        $this->assertNotContains('ردُّ الجار', $rows->pluck('body')->all());
+
+        // والبحثُ بنصّ الرسالة يجد الردّ والإشعار — والنوعُ يفصلهما
+        $this->assertSame(['r'.$reply['id']], collect($this->props($owner, 'admin.marketing.whatsapp.log', ['q' => 'إن شاء الله'])['rows'])->pluck('key')->all());
+        $this->assertSame(['n'.$notice->id], collect($this->props($owner, 'admin.marketing.whatsapp.log', ['q' => 'طلبك جاهز'])['rows'])->pluck('key')->all());
+        $this->assertSame(['notice'], collect($this->props($owner, 'admin.marketing.whatsapp.log', ['kind' => 'notices'])['rows'])->pluck('kind')->all());
+        $this->assertSame(['reply'], collect($this->props($owner, 'admin.marketing.whatsapp.log', ['kind' => 'replies'])['rows'])->pluck('kind')->all());
+        $this->assertSame([], $this->props($owner, 'admin.marketing.whatsapp.log', ['q' => 'ردُّ الجار'])['rows']);
+
+        // وعدّادُ الشهر عدّادُ الإشعارات كما كان
+        $this->assertSame(1, array_sum($props['summary']));
+    }
+
+    /* ============================== الردّ الآليّ ============================== */
+
+    public function test_the_auto_reply_never_leaves_a_shop_that_may_not_send_and_still_answers_for_one_that_may(): void
+    {
+        $withWhatsApp = Plan::create(['name' => 'الاحترافية', 'monthly_price' => 29.9, 'yearly_price' => 299, 'capabilities' => ['whatsapp']]);
+        $without = Plan::create(['name' => 'الأساسية', 'monthly_price' => 9.9, 'yearly_price' => 99, 'capabilities' => []]);
+        $cases = [
+            'eligible' => [$withWhatsApp, []],
+            'plan' => [$without, []],
+            'off' => [$withWhatsApp, ['whatsapp_enabled' => false]],
+            'own_revoked' => [$withWhatsApp, ['whatsapp_own_allowed' => false]],
+            // يُرسل من رقم أبعاد، وبقي ربطُ رقمه بلا إذن: لا يردّ منه
+            'shared_mode' => [$withWhatsApp, ['whatsapp_own_allowed' => false, 'whatsapp_mode' => WhatsAppMode::ABAAD_SHARED]],
+        ];
+
+        $n = 0;
+        foreach ($cases as $case => [$plan, $change]) {
+            $shop = $this->shop('متجر '.$case, WhatsAppMode::BUSINESS_OWN, $plan);
+            $this->own($shop, 'PN-'.$case);
+            $shop->update($change);
+            WhatsAppAutoReply::save($shop->id, ['enabled' => true, 'ar' => 'شكرًا لتواصلك', 'cooldown_hours' => 12]);
+
+            $this->inbound('PN-'.$case, 'wamid.AR-'.(++$n));
+        }
+
+        $reply = fn (string $case) => WhatsAppInboundMessage::where('whatsapp_connection_id', WhatsAppConnection::where('phone_number_id', 'PN-'.$case)->value('id'))
+            ->first(['reply_status', 'reply_reason'])?->only(['reply_status', 'reply_reason']);
+
+        $this->assertSame(['reply_status' => 'sent', 'reply_reason' => null], $reply('eligible'));
+        $this->assertSame(1, $this->sentTo('PN-eligible'));
+        $this->assertSame(['reply_status' => 'skipped', 'reply_reason' => WhatsAppStatus::SKIP_PLAN], $reply('plan'));
+        $this->assertSame(['reply_status' => 'skipped', 'reply_reason' => WhatsAppStatus::SKIP_AUTOMATION_OFF], $reply('off'));
+        $this->assertSame(['reply_status' => 'skipped', 'reply_reason' => WhatsAppStatus::SKIP_OWN_NOT_ALLOWED], $reply('own_revoked'));
+        $this->assertSame(['reply_status' => 'skipped', 'reply_reason' => WhatsAppStatus::SKIP_OWN_NOT_ALLOWED], $reply('shared_mode'));
+        $this->assertSame(0, $this->sentTo('PN-plan') + $this->sentTo('PN-off') + $this->sentTo('PN-own_revoked') + $this->sentTo('PN-shared_mode'));
+
+        // وواتساب مطفأٌ في المنصّة كلّها: لا ردَّ آليًّا من أحد
+        Setting::updateOrCreate(['business_id' => null, 'key' => 'whatsapp_enabled'], ['value' => '0']);
+        $this->webhook([
+            'metadata' => ['phone_number_id' => 'PN-eligible'],
+            'messages' => [['id' => 'wamid.AR-GLOBAL', 'from' => '96899990000', 'type' => 'text', 'timestamp' => (string) now()->timestamp, 'text' => ['body' => 'مرحبا']]],
+        ]);
+        $this->assertSame(WhatsAppStatus::SKIP_AUTOMATION_OFF, WhatsAppInboundMessage::where('wamid', 'wamid.AR-GLOBAL')->value('reply_reason'));
+        $this->assertSame(1, $this->sentTo('PN-eligible'));
+    }
+
     /* ============================== الصندوق ============================== */
 
     public function test_a_customer_who_only_received_notices_has_a_conversation_that_opens_inside_its_shop(): void
@@ -336,6 +427,42 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
     }
 
     /* ============================== الرقم المشترك ============================== */
+
+    public function test_shops_sharing_abaads_number_each_see_their_own_customers_only(): void
+    {
+        $gifts = $this->shop('محل الهدايا', WhatsAppMode::ABAAD_SHARED);
+        $sweets = $this->shop('محل الحلوى', WhatsAppMode::ABAAD_SHARED);
+        $giftsOwner = $this->owner($gifts);
+        $sweetsOwner = $this->owner($sweets);
+
+        // زبونُ الهدايا وحده: ردُّه للهدايا وحدها
+        $this->notified($gifts);
+        $this->inbound('ABAAD-PN', 'wamid.G1', 'طلبي من الهدايا');
+        $chat = WhatsAppChat::where('business_id', $gifts->id)->sole();
+        $this->assertSame(['طلبي من الهدايا'], WhatsAppChatMessage::where('chat_id', $chat->id)->pluck('body')->all());
+
+        // ولا يرى محلُّ الحلوى محادثتَه ولا إشعارَه ولا سجلَّه — ولا بتبديل الرقم في العنوان
+        $this->assertSame([], $this->props($sweetsOwner, 'admin.whatsappInbox.index')['chats']);
+        $this->actingAs($sweetsOwner)->get(route('admin.whatsappInbox.index', ['c' => $chat->id]))->assertOk()
+            ->assertViewHas('page', fn ($p) => $p['props']['thread'] === null);
+        $this->actingAs($sweetsOwner)->get(route('admin.whatsappInbox.older', $chat->id))->assertNotFound();
+        $this->actingAs($sweetsOwner)->post(route('admin.whatsappInbox.reply', $chat->id), ['body' => 'x'])->assertNotFound();
+        $this->assertSame([], $this->props($sweetsOwner, 'admin.marketing.whatsapp.log')['rows']);
+
+        // ثمّ راسله محلُّ الحلوى أيضًا: صار زبونَ اثنين — ردُّه بلا اقتباس لأحد
+        $sweetNotice = $this->notified($sweets);
+        $this->inbound('ABAAD-PN', 'wamid.G2', 'وصل؟');
+        $this->assertSame(1, WhatsAppChatMessage::count(), 'لا يُكشف لأحدهما ما لا يُعرف لمن كُتب');
+
+        // والاقتباسُ يحسم لصاحب الرسالة المقتبَسة وحده
+        $this->inbound('ABAAD-PN', 'wamid.G3', 'بخصوص الحلوى', ['from' => '96870000000', 'id' => $sweetNotice->provider_message_id]);
+        $this->assertSame(['بخصوص الحلوى'], WhatsAppChatMessage::where('business_id', $sweets->id)->pluck('body')->all());
+        $this->assertSame(['طلبي من الهدايا'], WhatsAppChatMessage::where('business_id', $gifts->id)->pluck('body')->all());
+
+        // وكلٌّ في قائمته محادثتُه وحدها
+        $this->assertSame([$chat->id], collect($this->props($giftsOwner, 'admin.whatsappInbox.index')['chats'])->pluck('id')->all());
+        $this->assertSame([WhatsAppChat::where('business_id', $sweets->id)->value('id')], collect($this->props($sweetsOwner, 'admin.whatsappInbox.index')['chats'])->pluck('id')->all());
+    }
 
     public function test_a_customer_who_talks_to_abaad_sales_on_the_shared_number_is_no_shops_without_a_quote(): void
     {

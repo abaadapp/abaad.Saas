@@ -331,7 +331,7 @@ class AShopReadsAndAnswersItsCustomersOnWhatsAppTest extends TestCase
         $this->assertSame(0, WhatsAppChatMessage::count());
     }
 
-    public function test_a_shop_without_the_inbox_records_nothing_and_its_auto_reply_still_answers(): void
+    public function test_a_shop_whose_whatsapp_is_off_records_nothing_and_sends_no_auto_reply(): void
     {
         // والصندوقُ يُغلق بإطفاء واتساب لحسابه — لا بعمودٍ له وحده
         $this->shopA->update(['whatsapp_enabled' => false]);
@@ -339,10 +339,19 @@ class AShopReadsAndAnswersItsCustomersOnWhatsAppTest extends TestCase
 
         $this->inbound('PN-A', 'wamid.LEGACY');
 
+        // والردُّ الآليّ رسالةٌ تخرج: لا يخرج ممّن أُطفئ عنه الإرسال — ويُكتب لماذا
         $this->assertSame(0, WhatsAppChatMessage::count());
-        $this->assertSame(WhatsAppInboundMessage::SENT, WhatsAppInboundMessage::where('wamid', 'wamid.LEGACY')->value('reply_status'));
-        $this->assertSame(1, $this->sentTo('PN-A'));
+        $row = WhatsAppInboundMessage::where('wamid', 'wamid.LEGACY')->sole();
+        $this->assertSame([WhatsAppInboundMessage::SKIPPED, WhatsAppStatus::SKIP_AUTOMATION_OFF], [$row->reply_status, $row->reply_reason]);
+        $this->assertSame(0, $this->sentTo('PN-A'));
         $this->actingAs($this->ownerA)->get(route('admin.whatsappInbox.index'))->assertNotFound();
+
+        // وأُعيد: يعود الصندوقُ والردُّ معًا، والإشعالُ باقٍ في إعداده
+        $this->shopA->update(['whatsapp_enabled' => true]);
+        $this->inbound('PN-A', 'wamid.BACK', 'مرحبا', '96899990000');
+        $this->assertSame(WhatsAppInboundMessage::SENT, WhatsAppInboundMessage::where('wamid', 'wamid.BACK')->value('reply_status'));
+        $this->assertSame(1, $this->sentTo('PN-A'));
+        $this->assertSame(1, WhatsAppChatMessage::where('wamid', 'wamid.BACK')->count());
     }
 
     public function test_the_inbox_records_before_the_auto_reply_answers_and_both_work(): void

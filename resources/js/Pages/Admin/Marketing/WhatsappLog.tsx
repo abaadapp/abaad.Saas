@@ -15,6 +15,12 @@ import type { PageProps } from '@/types';
 /** صفٌّ من الدفتر — انظر `App\Support\WhatsAppLog::row` */
 export interface Row {
     id: number;
+    /** مفتاحٌ لا يتكرّر بين المصدرين — `n12` إشعار، `r5` ردّ */
+    key: string;
+    /** إشعارٌ أرسله النظام، أو ردُّ موظّفٍ من المحادثات */
+    kind: 'notice' | 'reply';
+    /** من ردّ — كما كُتب اسمُه ساعتَها */
+    sender: string | null;
     at: string | null;
     event: string;
     phone: string | null;
@@ -51,7 +57,8 @@ interface Props {
     summaryDays: number;
     buckets: { key: string; label: string }[];
     sources: { key: string; label: string }[];
-    params: { filter: string; source: string; q: string };
+    kinds: { key: string; label: string }[];
+    params: { filter: string; source: string; kind: string; q: string };
 }
 
 const TIME_LABELS: Record<string, string> = {
@@ -91,7 +98,7 @@ const TONE: Record<string, string> = {
  * شيئًا أسوأ من غياب الزرّ.
  */
 export default function WhatsappLog() {
-    const { readiness, hasHistory, rows, pagination, summary, summaryDays, buckets, sources, params } =
+    const { readiness, hasHistory, rows, pagination, summary, summaryDays, buckets, sources, kinds, params } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
@@ -140,7 +147,10 @@ export default function WhatsappLog() {
             header: 'الرسالة',
             cell: (r) => (
                 <div className="max-w-[360px] space-y-1">
-                    <p className="text-[12px] font-medium text-[#6b7280]">{r.event}</p>
+                    <p className="text-[12px] font-medium text-[#6b7280]" data-testid="log-event">
+                        {r.event}
+                        {r.sender && <span data-testid="log-sender"> · {r.sender}</span>}
+                    </p>
                     {/* النصُّ كما قرأه الزبون — أو وصفٌ بغير شكل النصّ، لا نصٌّ مخترَع */}
                     {r.body ? (
                         <p className="line-clamp-3 whitespace-pre-wrap text-[13px] leading-relaxed text-[#111]" data-testid="log-body">{r.body}</p>
@@ -259,11 +269,11 @@ export default function WhatsappLog() {
                 <DataTable
                     rows={rows}
                     columns={columns}
-                    rowKey={(r) => r.id}
-                    searchPlaceholder="ابحث باسم العميل أو رقمه أو رقم الطلب أو الفاتورة…"
+                    rowKey={(r) => r.key}
+                    searchPlaceholder="ابحث بنصّ الرسالة أو اسم العميل أو رقمه أو رقم الطلب أو الفاتورة…"
                     searchable={() => ''}
                     empty={
-                        params.q !== '' || params.filter !== 'all' || params.source !== 'all'
+                        params.q !== '' || params.filter !== 'all' || params.source !== 'all' || params.kind !== 'all'
                             ? 'لا رسائل تطابق البحث'
                             : 'لم تخرج رسالةٌ بعد'
                     }
@@ -273,6 +283,11 @@ export default function WhatsappLog() {
                             param: 'filter',
                             asTabs: true,
                             options: buckets.map((b) => ({ label: b.label, value: b.key })),
+                        },
+                        {
+                            label: 'النوع',
+                            param: 'kind',
+                            options: kinds.map((k) => ({ label: k.label, value: k.key })),
                         },
                         {
                             label: 'الرقم',

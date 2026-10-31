@@ -64,7 +64,7 @@ const NOT_READY = {
 };
 
 const ROW = {
-    id: 11, at: '2026-10-30 09:00', event: 'الطلب جاهز', phone: '96891234567', customer: 'سارة الهنائي',
+    id: 11, key: 'n11', kind: 'notice', sender: null, at: '2026-10-30 09:00', event: 'الطلب جاهز', phone: '96891234567', customer: 'سارة الهنائي',
     body: 'طلبك جاهز للاستلام', summary: null, source: 'business_own', source_label: 'رقم متجرك',
     status: 'read', status_label: 'قرأها الزبون', times: { sent: '2026-10-30 09:00', read: '2026-10-30 09:05' },
     reason: null, error: null, ours: null, subject: { label: '#1042', url: '/admin.orders.show/1042' },
@@ -85,13 +85,14 @@ const log = (over: Props = {}) => {
     set({
         readiness: { connected: true, ready: true, steps: [] },
         hasHistory: true,
-        rows: [ROW, { ...ROW, id: 12, body: null, summary: 'تأكيد الطلب — #1041', customer: null, source: 'abaad_shared', source_label: 'رقم أبعاد المشترك', status: 'sent', status_label: 'خرجت إلى واتساب', times: { sent: '2026-10-29 12:00' }, open: null }],
+        rows: [ROW, { ...ROW, id: 12, key: 'n12', body: null, summary: 'تأكيد الطلب — #1041', customer: null, source: 'abaad_shared', source_label: 'رقم أبعاد المشترك', status: 'sent', status_label: 'خرجت إلى واتساب', times: { sent: '2026-10-29 12:00' }, open: null }],
         pagination: { current_page: 1, last_page: 1, per_page: 30, total: 2, from: 1, to: 2 },
         summary: { pending: 1, arrived: 1, failed: 0, skipped: 0 },
         summaryDays: 30,
         buckets: [{ key: 'all', label: 'الكلّ' }],
         sources: [{ key: 'all', label: 'كلّ الأرقام' }, { key: 'own', label: 'رقم متجرك' }, { key: 'shared', label: 'رقم أبعاد المشترك' }],
-        params: { filter: 'all', source: 'all', q: '' },
+        kinds: [{ key: 'all', label: 'كلّ الرسائل' }, { key: 'notices', label: 'الإشعارات' }, { key: 'replies', label: 'ردود الموظفين' }],
+        params: { filter: 'all', source: 'all', kind: 'all', q: '' },
         ...over,
     });
 
@@ -132,6 +133,18 @@ describe('سجلّ رسائل واتساب', () => {
         expect(screen.getAllByTestId('log-source').map((n) => n.textContent)).toEqual(['رقم متجرك', 'رقم أبعاد المشترك']);
         expect(screen.getAllByTestId('log-times')[0]).toHaveTextContent('قُرئت');
         expect(screen.getAllByText('خرجت إلى واتساب').length).toBeGreaterThan(0);
+    });
+
+    it('وردُّ الموظّف في السجلّ نفسِه باسم من كتبه — بجوار الإشعارات لا بدلها', () => {
+        log({
+            rows: [ROW, {
+                ...ROW, id: 11, key: 'r11', kind: 'reply', sender: 'منى', event: 'ردّ من المحادثات', body: 'خلال ساعة',
+                subject: null, open: '/admin.whatsappInbox.index',
+            }],
+        });
+
+        expect(screen.getAllByTestId('log-body').map((n) => n.textContent)).toEqual(['طلبك جاهز للاستلام', 'خلال ساعة']);
+        expect(screen.getByTestId('log-sender')).toHaveTextContent('منى');
     });
 
     it('ويفتح محادثةَ الزبون لما خرج إلى واتساب وحده', () => {

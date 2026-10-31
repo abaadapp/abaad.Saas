@@ -228,6 +228,8 @@ class WhatsAppTemplates
             ->when($businessId === null, fn ($q) => $q->whereNull('business_id'))
             ->when($businessId !== null, fn ($q) => $q->where('business_id', $businessId))
             ->where('enabled', true)
+            // وقالبُ متابعة الصندوق ليس من الإشعارات — حالُه لا تُحمِّر خطوةَ القوالب
+            ->where('event_type', '!=', WhatsAppInbox::FOLLOW_UP_EVENT)
             ->get(['meta_status']);
 
         if ($rows->isEmpty() || $rows->every(fn ($r) => blank($r->meta_status))) {
@@ -407,7 +409,7 @@ class WhatsAppTemplates
 
         WhatsAppTemplateMapping::where('scope_type', WhatsAppMode::OWNER_BUSINESS)
             ->where('business_id', $businessId)
-            ->whereNotIn('event_type', WhatsAppEvent::RIBBON_EVENTS)
+            ->whereNotIn('event_type', [...WhatsAppEvent::RIBBON_EVENTS, WhatsAppInbox::FOLLOW_UP_EVENT])
             ->delete();
 
         foreach (WhatsAppEvent::RIBBON_EVENTS as $event) {
@@ -474,6 +476,28 @@ class WhatsAppTemplates
     private static function adopt(array $templates, string $scope, ?int $businessId): void
     {
         $preferred = (string) config('whatsapp.language', 'ar');
+
+        /*
+         * وقالبُ متابعة الصندوق — في حساب المتجر وحده، ويُربط مثلها يومَ يُعتمد.
+         *
+         * رقمُ أبعاد لا يبدأ محادثةً عن متجر، فلا يُربط له. ومتغيّرُه اسمُ
+         * المتجر وحده — انظر `WhatsAppInbox::followUp`.
+         */
+        if ($scope === WhatsAppMode::OWNER_BUSINESS && $businessId !== null) {
+            $approved = array_keys(array_filter((array) ($templates[WhatsAppInbox::FOLLOW_UP_TEMPLATE] ?? []), fn ($status) => $status === self::APPROVED));
+
+            if ($approved !== []) {
+                WhatsAppTemplateMapping::firstOrCreate(
+                    ['scope_type' => $scope, 'business_id' => $businessId, 'event_type' => WhatsAppInbox::FOLLOW_UP_EVENT],
+                    [
+                        'template_name' => WhatsAppInbox::FOLLOW_UP_TEMPLATE,
+                        'language_code' => in_array($preferred, $approved, true) || in_array('*', $approved, true) ? $preferred : (string) $approved[0],
+                        'enabled' => true,
+                        'variable_mapping' => ['1' => 'business_name'],
+                    ],
+                );
+            }
+        }
 
         foreach (WhatsAppEvent::ON_APPROVAL as $event) {
             if ($businessId !== null && ! WhatsAppEvent::allowedForBusiness($businessId, $event)) {

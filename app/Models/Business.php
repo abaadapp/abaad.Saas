@@ -25,9 +25,13 @@ class Business extends Model
         // أتُجهَّز فواتيرُ العملاء بعد سدادها؟ — يفتحه مديرُ المنصّة (`CustomerInvoicePreparations::on`)
         'customer_invoice_preparation_enabled' => 'boolean',
         'customer_invoice_preparation_enabled_at' => 'datetime',
-        // أتُقرأ رسائلُ واتساب محادثاتٍ؟ — مغلقٌ افتراضًا (`WhatsAppConversations::enabled`)
+        /*
+         * عمودان لم يعودا يُقرآن — بقيا كما هما فلا يُمسّ صفُّ متجر.
+         *
+         * كانا يفتحان «محادثات واتساب» وصندوقَها لمتجرٍ بعينه. وصار الصندوقُ
+         * لكلّ متجرٍ يملك واتساب (`WhatsAppInbox::available`).
+         */
         'whatsapp_conversations_enabled' => 'boolean',
-        // أيُفتح صندوقُ محادثات واتساب؟ — يفتحه فريقُ أبعاد (`WhatsAppInbox::available`)
         'whatsapp_inbox_enabled' => 'boolean',
         // أيُرسل من رقم أبعاد المشترك؟ — يُغلقه مديرُ المنصّة (`WhatsAppFeature::canUseShared`)
         'whatsapp_shared_allowed' => 'boolean',

@@ -8,11 +8,16 @@ import { Card } from '@/Components/ui/card';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { ConnectSteps, type Readiness } from '@/Components/Connect';
 import type { PageProps } from '@/types';
 
 /** محادثةٌ في القائمة — انظر `WhatsAppInbox::page` */
 export interface Chat {
-    id: number;
+    /** محادثةٌ قائمة — أو `null` لزبونٍ وصلته إشعاراتٌ ولم يكتب بعد */
+    id: number | null;
+    key: string;
+    /** وتلك تُفتح من رسالةٍ خرجت إليه (`admin.whatsappInbox.open`) */
+    url: string | null;
     name: string | null;
     phone: string;
     at: string | null;
@@ -57,6 +62,10 @@ export interface Thread {
     window_ends_at: string | null;
     /** لمَ لا يخرج ردٌّ الآن — من `WhatsAppInbox::check` نفسِها التي يسألها الخادم */
     blocked: string | null;
+    /** وخارج النافذة: اسمُ قالب المتابعة المعتمَد — وإلّا لا شيء */
+    template: string | null;
+    /** كلُّ ما خرج إليه في سجلّ الرسائل — لمن يملك قسمه */
+    log_url: string | null;
     messages: Item[];
     has_more: boolean;
     before: number | null;
@@ -69,6 +78,10 @@ interface Props {
     thread: Thread | null;
     canReply: boolean;
     line: { mode: string; number: string | null; usable: boolean; status: string | null; expires_at: string | null };
+    /** خطواتُ الربط وحالُ كلٍّ — `WhatsAppFeature::readiness` */
+    readiness: Readiness;
+    /** يملك الربطَ فيُدَلّ عليه */
+    mayManage: boolean;
     unread: number;
     stamp: string;
     files: { max: number; max_kb: number; accept: string };
@@ -105,7 +118,7 @@ function StatusMark({ status, label }: { status: string | null; label: string | 
  * ما أمامه — لا يبقى خيطٌ مفتوحٌ لمن لم يعد له.
  */
 export default function WhatsAppInbox() {
-    const { chats, pagination, params, thread, canReply, line, stamp, files } = usePage<PageProps<Props>>().props;
+    const { chats, pagination, params, thread, canReply, line, stamp, files, readiness, mayManage } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
     const [revoked, setRevoked] = useState(false);
     const [replyAllowed, setReplyAllowed] = useState(canReply);
@@ -138,7 +151,7 @@ export default function WhatsAppInbox() {
 
                 if (data.stamp !== last.current) {
                     last.current = data.stamp;
-                    router.reload({ only: ['chats', 'thread', 'unread', 'stamp', 'canReply', 'line'] });
+                    router.reload({ only: ['chats', 'thread', 'unread', 'stamp', 'canReply', 'line', 'readiness'] });
                 }
             } catch {
                 /* انقطاعُ شبكةٍ لحظيّ — يُسأل في الدورة التالية */
@@ -178,9 +191,30 @@ export default function WhatsAppInbox() {
                 </div>
             )}
 
+            {/* وما ينقص الربطَ بخطواته وأين يُصلَح — والمحادثاتُ تحته تُقرأ كما هي */}
+            {!readiness.ready && (
+                <details className="mb-4" data-testid="inbox-readiness">
+                    <summary className="cursor-pointer text-[13px] font-medium text-[#92400e]">
+                        {t('ربط واتساب غير مكتمل — اعرض ما ينقص وكيف يُصلَح')}
+                    </summary>
+                    <ConnectSteps
+                        className="mt-3"
+                        readiness={readiness}
+                        title={t('خطوات ربط واتساب')}
+                        done={t('رسائلك تخرج')}
+                        waiting={t('المحادثات محفوظة وتُقرأ — والردود والإشعارات الجديدة لا تخرج حتى تكتمل هذه الخطوات.')}
+                    />
+                    {mayManage && (
+                        <Button asChild variant="outline" size="sm" className="mt-3">
+                            <Link href={route('admin.integrations.whatsapp')}>{t('اذهب إلى ربط واتساب')}</Link>
+                        </Button>
+                    )}
+                </details>
+            )}
+
             {empty ? (
                 <Card className="p-10 text-center text-[14px] text-[#6b7280]" data-testid="inbox-empty">
-                    {t('لم تصل رسائل من العملاء بعد')}
+                    {t('لا محادثات بعد — تظهر هنا رسائل عملائك وما خرج إليهم من إشعارات')}
                 </Card>
             ) : (
                 <Card className="grid min-h-[560px] overflow-hidden md:grid-cols-[320px_1fr]">
@@ -243,11 +277,11 @@ function ChatList({ chats, pagination, params }: { chats: Chat[]; pagination: Pr
             <ul className="flex-1 divide-y divide-[var(--ui-border,#f0f0f0)] overflow-y-auto" data-testid="chat-list">
                 {chats.length === 0 && <li className="p-6 text-center text-[13px] text-[#9ca3af]">{t('لا محادثات تطابق البحث')}</li>}
                 {chats.map((c) => (
-                    <li key={c.id}>
+                    <li key={c.key}>
                         <Link
-                            href={route('admin.whatsappInbox.index', { ...(params.q ? { q: params.q } : {}), c: c.id })}
+                            href={c.url ?? route('admin.whatsappInbox.index', { ...(params.q ? { q: params.q } : {}), c: c.id })}
                             preserveScroll
-                            className={cn('block px-4 py-3 hover:bg-[#f9fafb]', params.c === String(c.id) && 'bg-[#f3f4f6]')}
+                            className={cn('block px-4 py-3 hover:bg-[#f9fafb]', c.id !== null && params.c === String(c.id) && 'bg-[#f3f4f6]')}
                             data-testid="chat-row"
                         >
                             <div className="flex items-baseline justify-between gap-2">
@@ -337,6 +371,9 @@ export function ThreadView({ thread, q, canReply, files }: { thread: Thread; q: 
                         <span className="text-[#9ca3af]">
                             {thread.source === 'abaad_shared' ? t('على رقم أبعاد المشترك') : thread.line_number ? t('على رقم :number', { number: thread.line_number }) : t('على رقم سابق')}
                         </span>
+                        {thread.log_url && (
+                            <Link href={thread.log_url} className="text-[#6d28d9] hover:underline" data-testid="thread-log">{t('سجلّ رسائله')}</Link>
+                        )}
                     </div>
                 </div>
             </div>
@@ -420,6 +457,7 @@ function Composer({ thread, files }: { thread: Thread; files: Props['files'] }) 
     const t = useTranslate();
     const picker = useRef<HTMLInputElement>(null);
     const form = useForm<{ body: string; files: File[] }>({ body: '', files: [] });
+    const followUp = useForm({});
 
     const send = (e: React.FormEvent) => {
         e.preventDefault();
@@ -435,7 +473,26 @@ function Composer({ thread, files }: { thread: Thread; files: Props['files'] }) 
     return (
         <form onSubmit={send} className="space-y-2 border-t border-[var(--ui-border,#e8e8e8)] p-3" data-testid="inbox-composer">
             {thread.blocked ? (
-                <p className="rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]" data-testid="inbox-blocked">{thread.blocked}</p>
+                <div className="space-y-2 rounded-[10px] bg-[#fffbeb] px-3 py-2 text-[12px] text-[#92400e]" data-testid="inbox-blocked">
+                    <p>{thread.blocked}</p>
+                    {/* وخارج النافذة: القالبُ المعتمَد وحده — يُرسل مرّةً، ونصُّه من ميتا */}
+                    {thread.template && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            loading={followUp.processing}
+                            onClick={() => followUp.post(route('admin.whatsappInbox.followUp', thread.id), { preserveScroll: true })}
+                            data-testid="inbox-follow-up"
+                        >
+                            <Send />
+                            {t('إرسال قالب المتابعة')}
+                        </Button>
+                    )}
+                    {(followUp.errors as Record<string, string | undefined>).body && (
+                        <p className="text-[#b91c1c]" data-testid="inbox-follow-up-error">{(followUp.errors as Record<string, string | undefined>).body}</p>
+                    )}
+                </div>
             ) : thread.window_ends_at ? (
                 <p className="text-[11px] text-[#9ca3af]">{t('نافذة الرد مفتوحة حتى :at', { at: thread.window_ends_at })}</p>
             ) : null}

@@ -116,7 +116,7 @@ class AShopReadsAndAnswersItsCustomersOnWhatsAppTest extends TestCase
         $b = Business::create([
             'name' => $name, 'type' => 'محل ورود', 'status' => 'نشط',
             'whatsapp_enabled' => true, 'whatsapp_own_allowed' => true, 'whatsapp_shared_allowed' => true,
-            'whatsapp_mode' => $mode, 'whatsapp_inbox_enabled' => true,
+            'whatsapp_mode' => $mode,
         ]);
         Branch::create(['business_id' => $b->id, 'name' => 'الرئيسي']);
 
@@ -333,7 +333,8 @@ class AShopReadsAndAnswersItsCustomersOnWhatsAppTest extends TestCase
 
     public function test_a_shop_without_the_inbox_records_nothing_and_its_auto_reply_still_answers(): void
     {
-        $this->shopA->update(['whatsapp_inbox_enabled' => false]);
+        // والصندوقُ يُغلق بإطفاء واتساب لحسابه — لا بعمودٍ له وحده
+        $this->shopA->update(['whatsapp_enabled' => false]);
         WhatsAppAutoReply::save($this->shopA->id, ['enabled' => true, 'ar' => 'شكرًا لتواصلك', 'cooldown_hours' => 12]);
 
         $this->inbound('PN-A', 'wamid.LEGACY');
@@ -496,36 +497,56 @@ class AShopReadsAndAnswersItsCustomersOnWhatsAppTest extends TestCase
         ];
     }
 
-    public function test_only_the_owner_grants_inbox_access_and_new_staff_start_with_none(): void
+    public function test_the_owner_and_a_manager_he_authorised_grant_inbox_access_and_new_staff_start_with_none(): void
     {
         $manager = $this->user($this->shopA, 'manager');
         $staff = $this->user($this->shopA, 'sales', null, ['dashboard']);
+        // بنصّ الشاشة العربيّ — اللغةُ تُضبط في الطلب لا قبله
+        $refused = 'صلاحيات محادثات واتساب يمنحها صاحب النشاط، أو مديرٌ منحه هو الردّ على المحادثات.';
 
         $this->assertNull($staff->whatsapp_inbox);
 
-        // مديرُ الفرع يملك «الموظفين» — ولا يمنح المحادثات
+        // مديرُ الفرع يملك «الموظفين» — ولا يمنح المحادثات ما لم يخوّله صاحبُ النشاط
         $this->actingAs($manager)->put(route('admin.employees.update', $staff->id), $this->employeeForm($staff, WhatsAppInbox::REPLY))
-            ->assertSessionHasErrors('whatsapp_inbox');
+            ->assertSessionHasErrors(['whatsapp_inbox' => $refused]);
         $this->assertNull($staff->fresh()->whatsapp_inbox);
 
-        // ولا يرفع موظّفٌ نفسَه — مديرُ فرعٍ يقرأ المحادثات لا يمنح نفسَه الردّ
+        // ومن يقرأ المحادثات وحده لا يمنحها — ولا يرفع نفسَه إلى الردّ
         $viewer = $this->user($this->shopA, 'manager', WhatsAppInbox::VIEW);
         $self = $this->employeeForm($viewer, WhatsAppInbox::REPLY, 'مدير', 'manager');
         unset($self['manual_permissions'], $self['permissions']);
         $this->actingAs($viewer)->put(route('admin.employees.update', $viewer->id), $self)
-            ->assertSessionHasErrors(['whatsapp_inbox' => __('صلاحيات محادثات واتساب يمنحها صاحب النشاط وحده.')]);
+            ->assertSessionHasErrors(['whatsapp_inbox' => $refused]);
         $this->assertSame(WhatsAppInbox::VIEW, $viewer->fresh()->whatsapp_inbox);
+        $this->actingAs($viewer)->put(route('admin.employees.update', $staff->id), $this->employeeForm($staff, WhatsAppInbox::VIEW))
+            ->assertSessionHasErrors(['whatsapp_inbox' => $refused]);
 
-        // وصاحبُ النشاط يمنح
+        // وصاحبُ النشاط يمنح — ويُكتب في سجلّ النشاط
         $this->actingAs($this->ownerA)->put(route('admin.employees.update', $staff->id), $this->employeeForm($staff, WhatsAppInbox::REPLY))
             ->assertSessionHasNoErrors();
         $this->assertSame(WhatsAppInbox::REPLY, $staff->fresh()->whatsapp_inbox);
         $this->assertDatabaseHas('activity_logs', ['business_id' => $this->shopA->id, 'subject_id' => $staff->id]);
 
+        // ويخوّل مديرًا بأن يمنحه الردّ — فيدير هو صلاحيات الموظّفين: يُنزل ويمنح
+        $manager->forceFill(['whatsapp_inbox' => WhatsAppInbox::REPLY])->save();
+        $this->actingAs($manager)->put(route('admin.employees.update', $staff->id), $this->employeeForm($staff, WhatsAppInbox::VIEW))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppInbox::VIEW, $staff->fresh()->whatsapp_inbox);
+        $this->actingAs($manager)->put(route('admin.employees.update', $viewer->id), $this->employeeForm($viewer, WhatsAppInbox::REPLY, 'مدير', 'manager'))
+            ->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppInbox::REPLY, $viewer->fresh()->whatsapp_inbox);
+
+        // ولا يعدّل المخوَّلُ صلاحيته هو
+        $mine = $this->employeeForm($manager, 'none', 'مدير', 'manager');
+        unset($mine['manual_permissions'], $mine['permissions']);
+        $this->actingAs($manager)->put(route('admin.employees.update', $manager->id), $mine)
+            ->assertSessionHasErrors('whatsapp_inbox');
+        $this->assertSame(WhatsAppInbox::REPLY, $manager->fresh()->whatsapp_inbox);
+
         // ومتجرٌ آخر لا يمسّ موظّفَه
         $this->actingAs($this->ownerB)->put(route('admin.employees.update', $staff->id), $this->employeeForm($staff, 'none'))
             ->assertNotFound();
-        $this->assertSame(WhatsAppInbox::REPLY, $staff->fresh()->whatsapp_inbox);
+        $this->assertSame(WhatsAppInbox::VIEW, $staff->fresh()->whatsapp_inbox);
     }
 
     /* ============================== الإرسال ============================== */

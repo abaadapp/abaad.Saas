@@ -1532,9 +1532,6 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
      * ومعرّفُه يُقرأ من الجلسة في المتحكّم لا من العنوان.
      */
     Route::get('/marketing/whatsapp/log', [App\Http\Controllers\Admin\WhatsAppController::class, 'log'])->name('marketing.whatsapp.log');
-    // رسائلُ أقدم في «محادثات واتساب» — 404 لمن لم تُفتح له (`WhatsAppConversations::enabled`)
-    Route::get('/marketing/whatsapp/conversations/{message}/older', [App\Http\Controllers\Admin\WhatsAppController::class, 'olderMessages'])
-        ->whereNumber('message')->name('marketing.whatsapp.conversations.older');
 
     /*
      * «محادثات واتساب» — صندوقُ المتجر مع زبائنه، بفعلٍ لا بقسم.
@@ -1551,6 +1548,12 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
                 ->whereNumber('chat')->name('older');
             Route::post('/{chat}/reply', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'reply'])
                 ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:30,1,whatsapp-inbox-reply'])->name('reply');
+            // وخارج نافذة ميتا: قالبُ المتابعة المعتمَد وحده — بفعل الردّ نفسِه
+            Route::post('/{chat}/follow-up', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'followUp'])
+                ->whereNumber('chat')->middleware(['may:'.Permissions::INBOX_REPLY, 'throttle:10,1,whatsapp-inbox-follow-up'])->name('followUp');
+            // محادثةُ زبونٍ لم يكتب بعد — تُفتح من رسالةٍ خرجت إليه
+            Route::get('/from/{message}', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'open'])
+                ->whereNumber('message')->name('open');
             Route::get('/attachments/{attachment}', [App\Http\Controllers\Admin\WhatsAppInboxController::class, 'attachment'])
                 ->whereNumber('attachment')->name('attachment');
         });

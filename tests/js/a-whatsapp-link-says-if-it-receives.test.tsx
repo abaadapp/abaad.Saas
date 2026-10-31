@@ -39,7 +39,6 @@ const DATA: BusinessWhatsApp = {
     },
     own_eligible: true,
     own_needs_addon: false,
-    inbox_enabled: true,
     inbox_available: true,
 };
 

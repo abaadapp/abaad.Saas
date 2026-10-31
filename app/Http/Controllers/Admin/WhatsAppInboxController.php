@@ -57,6 +57,10 @@ class WhatsAppInboxController extends Controller
 
             $thread = WhatsAppInbox::contact($chat, $user) + WhatsAppInbox::thread($chat) + [
                 'blocked' => $check['reason'],
+                // وخارج النافذة: قالبُ المتابعة المعتمَد إن وُجد — اسمُه وحده، والنصُّ من ميتا عند الإرسال
+                'template' => $check['template'] ? (string) $check['template']->template_name : null,
+                // وما خرج إليه من إشعاراتٍ كلُّها في السجلّ — لمن يملك قسمه
+                'log_url' => $user->allows('marketing') ? route('admin.marketing.whatsapp.log', ['q' => (string) $chat->customer_phone]) : null,
             ];
         }
 
@@ -72,6 +76,14 @@ class WhatsAppInboxController extends Controller
             'thread' => $thread,
             'canReply' => WhatsAppInbox::canReply($user),
             'line' => self::line($business),
+            /*
+             * وحالُ الربط بخطواته — من الحلّال الذي يسأله المُرسِل نفسُه.
+             *
+             * ربطٌ ناقصٌ أو منقطع لا يُغلق الصندوق: المحادثاتُ تُقرأ، ويُقال فوقها
+             * ما ينقص وأين يُصلَح. وزرُّ الربط لمن يملكه وحده.
+             */
+            'readiness' => WhatsAppFeature::readiness($business),
+            'mayManage' => (bool) $user->isAdmin(),
             'unread' => WhatsAppInbox::unreadTotal($user),
             'stamp' => WhatsAppInbox::stamp($business),
             'files' => [
@@ -141,6 +153,39 @@ class WhatsAppInboxController extends Controller
         return back()->with('toast', $failed === 0
             ? ['msg' => __('أُرسل الردّ'), 'type' => 'success']
             : ['msg' => __('لم يخرج جزءٌ من الردّ — سببُه مكتوبٌ تحته.'), 'type' => 'danger']);
+    }
+
+    /**
+     * محادثةُ زبونٍ من رسالةٍ خرجت إليه — لم يكتب بعد، فلا صفَّ لها حتّى تُفتح.
+     *
+     * والرسالةُ من متجر الجلسة وحده، وما سواها 404 (`WhatsAppInbox::open`).
+     */
+    public function open(Request $request, int $message): RedirectResponse
+    {
+        $chat = WhatsAppInbox::open($this->business($request), $message);
+
+        abort_unless($chat !== null, 404);
+
+        return redirect()->route('admin.whatsappInbox.index', ['c' => $chat->id]);
+    }
+
+    /**
+     * قالبُ المتابعة — لزبونٍ أُغلقت نافذتُه، من رقم المتجر وحده.
+     *
+     * لا شيء يُقرأ من الطلب: القالبُ والرقمُ والمتغيّرُ من حال المحادثة
+     * (`WhatsAppInbox::followUp`)، والمرسِلُ من الجلسة.
+     */
+    public function followUp(Request $request, int $chat): RedirectResponse
+    {
+        $found = WhatsAppInbox::find($this->business($request), $chat);
+
+        abort_unless($found !== null, 404);
+
+        $sent = WhatsAppInbox::followUp($found, $request->user());
+
+        return back()->with('toast', $sent->status === 'failed'
+            ? ['msg' => __('لم يخرج قالب المتابعة — سببُه مكتوبٌ تحته.'), 'type' => 'danger']
+            : ['msg' => __('أُرسل قالب المتابعة — يُفتح الردّ حين يكتب العميل.'), 'type' => 'success']);
     }
 
     /** مرفقٌ في محادثة — من متجر الجلسة وحده، وما سواه 404 */

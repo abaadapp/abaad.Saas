@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { MessageCircle, SlidersHorizontal } from 'lucide-react';
+import { MessageCircle, MessagesSquare, SlidersHorizontal } from 'lucide-react';
 import { WhatsAppBusinessMark } from '@/Components/BrandMarks';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
@@ -9,15 +9,27 @@ import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import type { Readiness } from '@/Components/Connect';
+import { ConnectSteps, type Readiness } from '@/Components/Connect';
 import type { PageProps } from '@/types';
 
 /** صفٌّ من الدفتر — انظر `App\Support\WhatsAppLog::row` */
-interface Row {
+export interface Row {
     id: number;
     at: string | null;
     event: string;
     phone: string | null;
+    /** اسمُ العميل في هذا المتجر — إن سمّته الرسالة */
+    customer: string | null;
+    /** النصُّ كما قرأه الزبون — إن حُفظ */
+    body: string | null;
+    /** وإلّا وصفٌ: الحدثُ والورقة — لا يُعرض بشكل النصّ */
+    summary: string | null;
+    source: 'business_own' | 'abaad_shared';
+    source_label: string;
+    /** متى خرجت ووصلت وقُرئت أو فشلت — ما وقع منها */
+    times: Partial<Record<'sent' | 'delivered' | 'read' | 'failed', string>>;
+    /** محادثتُه في الصندوق — لمن يراه، ولما خرج إلى واتساب */
+    open: string | null;
     status: string;
     status_label: string;
     /** سببُ الامتناع بلغةٍ تُقرأ — أو لا شيء لأخطاء ميتا */
@@ -31,13 +43,23 @@ interface Row {
 
 interface Props {
     readiness: Readiness;
+    /** في الدفتر صادرٌ قديم — فلا يُخفى خلف «اربط أوّلًا» إن انقطع الربط */
+    hasHistory: boolean;
     rows: Row[];
     pagination: ServerPagination;
     summary: Record<string, number>;
     summaryDays: number;
     buckets: { key: string; label: string }[];
-    params: { filter: string; q: string };
+    sources: { key: string; label: string }[];
+    params: { filter: string; source: string; q: string };
 }
+
+const TIME_LABELS: Record<string, string> = {
+    sent: 'خرجت',
+    delivered: 'وصلت',
+    read: 'قُرئت',
+    failed: 'فشلت',
+};
 
 /**
  * لونُ الحال — ولا لونَ ثالثٌ بين «وصلت» و«لم تصل».
@@ -69,11 +91,17 @@ const TONE: Record<string, string> = {
  * شيئًا أسوأ من غياب الزرّ.
  */
 export default function WhatsappLog() {
-    const { readiness, rows, pagination, summary, summaryDays, buckets, params } =
+    const { readiness, hasHistory, rows, pagination, summary, summaryDays, buckets, sources, params } =
         usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
-    if (! readiness.connected) {
+    /*
+     * والبابُ لمن لا دفترَ له أصلًا — لا لمن انقطع ربطُه.
+     *
+     * رقمٌ فُكّ أو انتهت صلاحيتُه لا يمحو ما خرج قبله: السجلُّ يُقرأ، وما
+     * ينقص الربطَ يُقال فوقه بخطواته.
+     */
+    if (! readiness.connected && ! hasHistory) {
         return (
             <AdminLayout title="سجلّ رسائل واتساب">
                 <PageHeader title="سجلّ رسائل واتساب" subtitle={t('ما خرج فعلًا إلى زبائنك — وماذا جرى له')} />
@@ -97,15 +125,35 @@ export default function WhatsappLog() {
             header: 'التاريخ',
             cell: (r) => <span className="whitespace-nowrap text-[13px] text-[#6b7280]" dir="ltr">{r.at ?? '—'}</span>,
         },
-        { key: 'event', header: 'الحدث', cell: (r) => <span className="text-[13px]">{r.event}</span> },
         {
-            key: 'phone',
-            header: 'رقم الزبون',
-            cell: (r) => <span dir="ltr" className="text-[13px]">{r.phone ?? '—'}</span>,
+            key: 'customer',
+            header: 'العميل',
+            cell: (r) => (
+                <div className="text-[13px]">
+                    {r.customer && <p className="font-medium text-[#111]">{r.customer}</p>}
+                    <p dir="ltr" className={cn('text-start', r.customer ? 'text-[12px] text-[#6b7280]' : '')}>{r.phone ?? '—'}</p>
+                </div>
+            ),
+        },
+        {
+            key: 'message',
+            header: 'الرسالة',
+            cell: (r) => (
+                <div className="max-w-[360px] space-y-1">
+                    <p className="text-[12px] font-medium text-[#6b7280]">{r.event}</p>
+                    {/* النصُّ كما قرأه الزبون — أو وصفٌ بغير شكل النصّ، لا نصٌّ مخترَع */}
+                    {r.body ? (
+                        <p className="line-clamp-3 whitespace-pre-wrap text-[13px] leading-relaxed text-[#111]" data-testid="log-body">{r.body}</p>
+                    ) : r.summary ? (
+                        <p className="text-[12px] italic text-[#6b7280]" data-testid="log-summary">{r.summary}</p>
+                    ) : null}
+                    <p className="text-[11px] text-[#9ca3af]" data-testid="log-source">{r.source_label}</p>
+                </div>
+            ),
         },
         {
             key: 'subject',
-            header: 'الورقة',
+            header: 'الطلب أو الفاتورة',
             cell: (r) =>
                 r.subject ? (
                     <Link href={r.subject.url} className="text-[13px] text-[#6d28d9] hover:underline">
@@ -129,6 +177,16 @@ export default function WhatsappLog() {
                         {r.status_label}
                     </span>
 
+                    {Object.entries(r.times).length > 0 && (
+                        <p className="text-[11px] text-[#9ca3af]" data-testid="log-times">
+                            {Object.entries(r.times).map(([k, v]) => (
+                                <span key={k} className="me-2 inline-block">
+                                    {t(TIME_LABELS[k] ?? k)} <span dir="ltr">{v}</span>
+                                </span>
+                            ))}
+                        </p>
+                    )}
+
                     {/* السببُ يُقرأ ولا يُخمَّن — ونصُّ ميتا يُعرض كما ردّته */}
                     {r.reason && <p className="max-w-[420px] text-[12px] leading-relaxed text-[#6b7280]">{r.reason}</p>}
 
@@ -144,6 +202,13 @@ export default function WhatsappLog() {
                             </span>{' '}
                             <span dir="ltr">{r.error}</span>
                         </p>
+                    )}
+
+                    {r.open && (
+                        <Link href={r.open} className="inline-flex items-center gap-1 text-[12px] text-[#6d28d9] hover:underline" data-testid="log-open-chat">
+                            <MessagesSquare size={13} />
+                            {t('فتح المحادثة')}
+                        </Link>
                     )}
                 </div>
             ),
@@ -165,6 +230,16 @@ export default function WhatsappLog() {
                 }
             />
 
+            {! readiness.ready && (
+                <ConnectSteps
+                    className="mb-6"
+                    readiness={readiness}
+                    title={t('ربط واتساب غير مكتمل')}
+                    done={t('رسائلك تخرج')}
+                    waiting={t('ما خرج قبل ذلك محفوظٌ هنا ويُقرأ — والرسائلُ الجديدة لا تخرج حتى تكتمل هذه الخطوات.')}
+                />
+            )}
+
             {/* عدّادُ الشهر — والنافذةُ مكتوبةٌ فيه: رقمٌ بلا مدّةٍ لا يُقرأ */}
             <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 {buckets
@@ -185,10 +260,10 @@ export default function WhatsappLog() {
                     rows={rows}
                     columns={columns}
                     rowKey={(r) => r.id}
-                    searchPlaceholder="ابحث برقم الزبون أو رقم الطلب أو الفاتورة…"
+                    searchPlaceholder="ابحث باسم العميل أو رقمه أو رقم الطلب أو الفاتورة…"
                     searchable={() => ''}
                     empty={
-                        params.q !== '' || params.filter !== 'all'
+                        params.q !== '' || params.filter !== 'all' || params.source !== 'all'
                             ? 'لا رسائل تطابق البحث'
                             : 'لم تخرج رسالةٌ بعد'
                     }
@@ -198,6 +273,11 @@ export default function WhatsappLog() {
                             param: 'filter',
                             asTabs: true,
                             options: buckets.map((b) => ({ label: b.label, value: b.key })),
+                        },
+                        {
+                            label: 'الرقم',
+                            param: 'source',
+                            options: sources.map((s) => ({ label: s.label, value: s.key })),
                         },
                     ]}
                     server={{ pagination, params }}

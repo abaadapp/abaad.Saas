@@ -1,18 +1,19 @@
 import { router, useForm } from '@inertiajs/react';
-import { AlertTriangle, MessageSquare, PlugZap, RefreshCw, Smartphone, Unplug } from 'lucide-react';
+import { AlertTriangle, KeyRound, MessageSquare, PlugZap, RefreshCw, Smartphone, Unplug } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import StatusPill, { type SetupState } from '@/Components/StatusPill';
 import { useConfirm } from '@/Components/ConfirmDialog';
 import { PageActions, SettingsSection } from '@/Components/Settings';
 import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import EmbeddedSignup, { type EmbeddedConfig, type OnboardingKind, type SignupAssets } from '@/Pages/Admin/Integrations/partials/EmbeddedSignup';
 import { cn } from '@/lib/utils';
 
 /** حالُ الربط كما حسبها الخادم — انظر App\Support\WhatsAppLink */
 export interface WhatsappLink {
-    state: 'disconnected' | 'connecting' | 'connected' | 'reauthorization_required' | 'expired' | 'error';
+    state: 'disconnected' | 'connecting' | 'needs_registration' | 'connected' | 'reauthorization_required' | 'expired' | 'error';
     label: string;
     waba_id: string | null;
     meta_business_id: string | null;
@@ -83,6 +84,7 @@ export function pillFor(state: WhatsappLink['state']): SetupState {
         case 'connecting':
             return 'progress';
         case 'reauthorization_required':
+        case 'needs_registration':
             return 'action';
         case 'expired':
         case 'error':
@@ -143,6 +145,8 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
     }, [kind]);
 
     const autoReply = useForm({});
+    // رمزُ التحقّق بخطوتين — يمرّ إلى الخادم ثمّ إلى ميتا، ولا يُحفظ في أيٍّ منهما
+    const registration = useForm({ pin: '' });
 
     const state = link.state;
     const connected = state === 'connected';
@@ -167,6 +171,8 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
             >
                 {state === 'connected' && t('رقمك مربوط، والرسائل تخرج منه.')}
                 {state === 'connecting' && t('تمّ التفويض — وحسابك لم يُظهر رقمًا بعد. تكتمل عادةً خلال دقائق.')}
+                {state === 'needs_registration' &&
+                    t('رُبط رقمك ولم يُفعَّل في واتساب للأعمال بعد — اكتب رمز التحقّق بخطوتين (ستّة أرقام) ليبدأ الإرسال منه.')}
                 {state === 'disconnected' &&
                     (sharedAllowed
                         ? t('لم يُربط رقمٌ بعد — تخرج رسائلك من رقم أبعاد المشترك.')
@@ -227,7 +233,51 @@ export default function WhatsappLinkCard({ link, health = null, config, mayManag
             )}
 
             {/* ٢ · ما رُبط — يُقرأ بعد النجاح: الرقم واسمه وحساب الأعمال */}
-            {(connected || state === 'connecting' || state === 'reauthorization_required') && (
+            {/*
+                ١ج · تفعيلُ رقمٍ جديد — ميتا تطلبه بعد التسجيل المدمج لرقمٍ لم يُسجَّل
+                في Cloud API. ورقمٌ مسجَّلٌ أصلًا لا يصل هذه الحال (`WhatsAppOnboarding`).
+            */}
+            {state === 'needs_registration' && mayManage && (
+                <form
+                    className="mt-3 flex flex-wrap items-end gap-2"
+                    data-testid="register-number"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        registration.post(route('admin.integrations.whatsapp.register'), {
+                            preserveScroll: true,
+                            onFinish: () => registration.reset('pin'),
+                        });
+                    }}
+                >
+                    <label className="flex flex-col gap-1 text-[12px] text-[#6b7280]">
+                        {t('رمز التحقّق بخطوتين')}
+                        <Input
+                            dir="ltr"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            maxLength={6}
+                            value={registration.data.pin}
+                            onChange={(e) => registration.setData('pin', e.target.value.replace(/\D/g, ''))}
+                            className="w-32 tabular-nums"
+                            data-testid="register-pin"
+                        />
+                    </label>
+                    <Button type="submit" loading={registration.processing} disabled={registration.data.pin.length !== 6} data-testid="register-submit">
+                        <KeyRound />
+                        {t('تفعيل الرقم')}
+                    </Button>
+                    <p className="basis-full text-[12px] leading-relaxed text-[#6b7280]">
+                        {t('إن كان لرقمك رمزٌ مضبوط فاكتبه هو، وإلّا صار ما تكتبه رمزَه. لا يُحفظ عندنا.')}
+                    </p>
+                    {registration.errors.pin && (
+                        <p className="basis-full text-[12px] text-[#b91c1c]" data-testid="register-error">
+                            {registration.errors.pin}
+                        </p>
+                    )}
+                </form>
+            )}
+
+            {(connected || state === 'connecting' || state === 'needs_registration' || state === 'reauthorization_required') && (
                 <dl className="mt-4 space-y-2 rounded-[12px] bg-[#fafafa] p-4 text-[13px]" data-testid="link-facts">
                     {link.display_phone_number && (
                         <div className="flex flex-wrap justify-between gap-3">

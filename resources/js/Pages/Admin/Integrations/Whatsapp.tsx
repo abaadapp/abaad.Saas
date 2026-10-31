@@ -171,7 +171,8 @@ export default function IntegrationsWhatsapp() {
                         health={automation.health}
                         config={automation.embedded}
                         mayManage={automation.may_manage}
-                        sharedAllowed={automation.shared_allowed}
+                        // «تخرج رسائلك من رقم أبعاد» تُقال لمن يُرسل منه فعلًا — لا لمن يبدأ على رقمه
+                        sharedAllowed={automation.shared_allowed && automation.effective_mode === 'abaad_shared'}
                     />
                 )}
 

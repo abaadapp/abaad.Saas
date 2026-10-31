@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Signup;
 use App\Support\Tenancy;
+use App\Support\WhatsAppMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -121,6 +122,28 @@ class ASelfSignupStartsOnTheBasicPlanForFourteenDaysTest extends TestCase
 
         // وسطرُ السجلّ كما كان — وهو ما يعدّه اختبارُ الرفض صفرًا
         $this->assertSame(1, ActivityLog::where('description', 'like', 'سجّل متجرًا جديدًا%')->count());
+    }
+
+    /**
+     * والمتجرُ الجديد يبدأ على رقم واتسابه هو — من البابين — والقائمُ لا يُمسّ.
+     *
+     * رقمُ أبعاد المشترك اختيارٌ يضغطه التاجر لا افتراضٌ يُكتب له. وعمودُ
+     * القاعدة يبقى `abaad_shared`: متجرٌ أُنشئ قبل هذا لا يتبدّل وضعُه.
+     */
+    public function test_both_doors_open_a_new_shop_on_its_own_whatsapp_number_and_old_shops_keep_theirs(): void
+    {
+        $old = Business::create(['name' => 'متجر قديم', 'type' => 'عام', 'status' => 'نشط']);
+
+        $this->post(route('register.store'), $this->form(['whatsapp_mode' => WhatsAppMode::ABAAD_SHARED]));
+        $this->assertSame(WhatsAppMode::BUSINESS_OWN, Business::where('registration_source', Business::SOURCE_SELF_SIGNUP)->value('whatsapp_mode'));
+
+        $this->actingAs($this->superAdmin())->post(route('super-admin.businesses.store'), [
+            'name' => 'متجر يدوي', 'type' => 'عام', 'status' => 'نشط', 'subscription_mode' => 'trial',
+            'login_username' => 'manualshop', 'login_password' => 'secret123',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppMode::BUSINESS_OWN, Business::where('name', 'متجر يدوي')->value('whatsapp_mode'));
+
+        $this->assertSame(WhatsAppMode::ABAAD_SHARED, $old->fresh()->whatsapp_mode, 'لا يتبدّل متجرٌ قائم');
     }
 
     /** واليومُ الرابعَ عشرَ يعمل كاملًا، ويُقفل بعده — بقراءة `Tenancy` نفسِها */

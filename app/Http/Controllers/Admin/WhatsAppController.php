@@ -464,13 +464,18 @@ class WhatsAppController extends Controller
             ]);
         }
 
-        // ومن أُغلق عنه رقمُ أبعاد يبقى على رقمه غيرَ مربوط — لا يُرجَع إليه
-        if ($business->whatsapp_mode === WhatsAppMode::BUSINESS_OWN && WhatsAppFeature::canUseShared($business)) {
-            $business->update(['whatsapp_mode' => WhatsAppMode::ABAAD_SHARED]);
-        }
-
+        /*
+         * والفصلُ لا يُرجعه إلى رقم أبعاد — يبقى على رقمه غيرَ مربوط.
+         *
+         * كان يُبدَّل إلى `abaad_shared` هنا، فتخرج رسائلُ زبائنه بعد الفصل من
+         * رقمٍ لم يختره، ويردّ الزبونُ على رقمٍ لا يعرفه المحلّ. فصار الرقمُ
+         * المشترك اختيارًا يُضغط (`mode`) لا نتيجةً لفصل.
+         *
+         * والفصلُ محلّيٌّ كما كان: لا `deregister` ولا حذفَ عند ميتا — الرقمُ
+         * وحسابُ الأعمال يبقيان ملكَ صاحبهما، ويُربطان من جديد متى شاء.
+         */
         Activity::log('settings', 'واتساب — فصل رقم المتجر');
 
-        return back()->with('toast', ['msg' => __('فُصل رقم المتجر'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('فُصل رقم المتجر — لا تخرج رسائل واتساب حتى تربطه من جديد أو تختار رقم أبعاد.'), 'type' => 'success']);
     }
 }

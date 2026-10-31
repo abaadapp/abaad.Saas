@@ -1493,6 +1493,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
         Route::post('/whatsapp/embedded-signup/callback', [WhatsAppOnboardingController::class, 'callback'])
             ->middleware('throttle:10,1')->name('whatsapp.embedded.callback');
 
+        /* وتفعيلُ رقمٍ جديد برمز التحقّق بخطوتين — خمسُ محاولاتٍ في عشر دقائق لا تكفي من يُخمّن */
+        Route::post('/whatsapp/register', [WhatsAppOnboardingController::class, 'register'])
+            ->middleware('throttle:5,10,whatsapp-register')->name('whatsapp.register');
+
         /* واختبارُ الاتصال نداءٌ إلى ميتا — فلا يُترك بلا حدّ */
         Route::post('/whatsapp/test', [WhatsAppOnboardingController::class, 'test'])
             ->middleware('throttle:20,1')->name('whatsapp.test');

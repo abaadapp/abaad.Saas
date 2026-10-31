@@ -47,6 +47,12 @@ class WhatsAppEmbeddedSignup
      */
     public const PLATFORM_SMB_APP = 'SMB_APP';
 
+    /** رقمٌ في الحساب لم يُسجَّل في Cloud API بعد — `platform_type` كما تكتبه ميتا */
+    public const PLATFORM_NOT_APPLICABLE = 'NOT_APPLICABLE';
+
+    /** رمزُ التحقّق بخطوتين لا يطابق رمزَ الرقم */
+    public const PIN_MISMATCH = '133005';
+
     /** أمكتملُ الإعداد؟ — بلا معرّفٍ أو سرٍّ أو إعدادِ تسجيلٍ لا يُعرض الزرّ */
     public static function configured(): bool
     {
@@ -247,6 +253,38 @@ class WhatsAppEmbeddedSignup
         }
 
         return ['ok' => true, 'numbers' => (array) ($response->json('data') ?? []), 'code' => null, 'message' => null];
+    }
+
+    /**
+     * تسجيلُ الرقم في Cloud API — `POST /{phone}/register` برمز التحقّق بخطوتين.
+     *
+     * خطوةٌ تطلبها ميتا بعد التسجيل المدمج لرقمٍ جديدٍ على Cloud API: بلاها
+     * يبقى الرقمُ في الحساب ولا يُرسل (`133010`). والرمزُ يكتبه التاجر: إن
+     * كان لرقمه رمزٌ قائم فهو هو، وإلّا صار ما كتبه رمزَه.
+     *
+     * والرمزُ لا يُحفظ ولا يُكتب في سجلّ — يمرّ في هذا النداء وحده.
+     *
+     * @return array{ok:bool, code:?string, message:?string}
+     */
+    public static function register(string $phoneNumberId, string $token, string $pin): array
+    {
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->post(self::base().'/'.$phoneNumberId.'/register', [
+                    'messaging_product' => 'whatsapp',
+                    'pin' => $pin,
+                ]);
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'code' => 'network_error', 'message' => self::scrub($e->getMessage())];
+        }
+
+        if (! $response->successful() || $response->json('success') !== true) {
+            [$code, $message] = self::error($response->json());
+
+            return ['ok' => false, 'code' => $code, 'message' => $message];
+        }
+
+        return ['ok' => true, 'code' => null, 'message' => null];
     }
 
     /**

@@ -120,7 +120,7 @@ describe('a file link carries the business of its page', () => {
 
     it('puts the page business on a document panel’s download and print links', async () => {
         asBusiness(7);
-        const fetch = vi.fn(async () => new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+        const fetch = vi.fn(async (_input: RequestInfo | URL) => new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
         vi.stubGlobal('fetch', fetch);
         URL.createObjectURL = vi.fn(() => 'blob:doc');
         URL.revokeObjectURL = vi.fn();

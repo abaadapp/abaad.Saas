@@ -59,7 +59,7 @@ describe('DocumentPanel', () => {
 
     it('يفرّق الأفعال الثلاثة: تكبيرٌ يُري، وتحميلٌ يحفظ، وطباعةٌ تفتح', async () => {
         // والتحميلُ زرٌّ يقرأ الجوابَ قبل أن يحفظه — انظر `a-document-downloads-a-pdf-or-says-why-not`
-        const fetch = vi.fn(async () => new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+        const fetch = vi.fn(async (_input: RequestInfo | URL) => new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
         vi.stubGlobal('fetch', fetch);
         URL.createObjectURL = vi.fn(() => 'blob:po');
         URL.revokeObjectURL = vi.fn();

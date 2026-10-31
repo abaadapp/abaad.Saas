@@ -342,6 +342,18 @@ class ANewShopBuysPosAndTheRestAsAddonsTest extends TestCase
         $this->assertTrue(WhatsAppFeature::needsOwnNumberAddon($basic));
     }
 
+    /** وواتساب يُشترى مرّة: إضافةُ «ربط واتساب برقم المتجر» تفتح صندوقَ محادثاته أيضًا */
+    public function test_whatsapp_bought_as_an_addon_opens_the_inbox_too(): void
+    {
+        [$basic] = $this->shop('basic', 'inbox@shop.om');
+        $this->assertFalse(\App\Support\WhatsAppInbox::available($basic));
+
+        AddonOrders::grant($basic, $this->addon('whatsapp_own_number'), 1, now()->addYear()->toDateString(), 'هدية افتتاح', $this->platform);
+
+        $this->assertTrue(\App\Support\WhatsAppInbox::available($basic->fresh()));
+        $this->assertFalse(WhatsAppFeature::needsOwnNumberAddon($basic->fresh()));
+    }
+
     public function test_gift_and_custom_orders_are_opened_by_their_addon_for_new_shops_only(): void
     {
         [$business] = $this->shop('professional');

@@ -239,7 +239,17 @@ git لدى root سطرًا كلَّ نشر، وتجعله يثق بشجرة غي
    sudo useradd --system --create-home --shell /bin/bash abaad-deploy
    sudo install -d -m 700 -o abaad-deploy -g abaad-deploy /var/log/abaad-deploy
    ```
-3. **قواعدُ sudo**، بعد التحقّق:
+3. **الدمجُ ثمّ السحبُ اليدويّ، ثمّ قواعدُ sudo.** ملفُّ القواعد يأتي مع هذا الطلب، فلا يكون على
+   الخادم قبل سحبه. يُدمج الطلب و«Deploy Main» معطّل، ثمّ يُسحب بحساب www-data الذي ما زال يملك
+   الشجرة (لا بـroot: ملفّاتُ root في `.git` تكسر السحب). والطلبُ لا يغيّر كودَ التطبيق، و opcache
+   يُبقي الموقعَ على ما حمّل حتى reload:
+   ```bash
+   cd /var/www/abaad
+   sudo -u www-data git status --porcelain                              # فارغ، وإلّا توقّف
+   sudo -u www-data git pull --ff-only origin main
+   sudo -u www-data git rev-parse --short HEAD                          # = بصمةُ الدمج
+   ```
+   ثمّ القواعد، بعد التحقّق:
    ```bash
    sudo visudo -cf /var/www/abaad/deploy/abaad-deploy.sudoers          # يتحقّق من الصياغة
    sudo install -m 440 -o root -g root /var/www/abaad/deploy/abaad-deploy.sudoers /etc/sudoers.d/abaad-deploy

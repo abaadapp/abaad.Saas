@@ -226,17 +226,51 @@ class ADeployRunsLeastPrivilegeTest extends TestCase
         [$rc, $out] = $run();
         $this->assertSame(1, $rc, $out);
         $this->assertStringContainsString('public/evil -> /etc/passwd', $out);
+        unlink($app.'/public/evil');
+
+        // حسابٌ لا يُعرف: يفشل مغلقًا — لا «نظيفة» لشجرةٍ لم تُفحص
+        [$rc, $out] = $this->auditTree($app, 'no-such-account-xyz');
+        $this->assertSame(1, $rc, 'نجح الفحص بلا هويّةٍ يُحكم بها: '.$out);
+        $this->assertStringContainsString('لا حسابَ no-such-account-xyz هنا', $out);
+
+        // مجلّدٌ لا يُقرأ يُخرج find بخطأ: يفشل الفحصُ — لا يُعدّ نظيفًا ما لم يُفحص
+        mkdir($app.'/app/Locked', 0755);
+        chmod($app.'/app/Locked', 0000);
+        try {
+            [$rc, $out] = $run();
+            $this->assertSame(1, $rc, 'عُدَّ خطأُ find نظافةً: '.$out);
+            $this->assertStringContainsString('تعذّر مسحُ الشجرة', $out);
+        } finally {
+            chmod($app.'/app/Locked', 0755);
+        }
+    }
+
+    /**
+     * سقط هذا على CI: كان المسحُ يسأل `find -group "$APP_USER"`، ومجموعةُ nobody على لينكس
+     * اسمُها nogroup، فخرج find بخطأٍ محجوبٍ ومرّ الفحصُ نظيفًا وهو لم يفحص. فالهويّاتُ أرقامٌ،
+     * والمجموعاتُ كلُّها، وخطأُ find فشلٌ لا نظافة.
+     */
+    public function test_the_tree_scan_uses_numeric_ids_and_fails_closed(): void
+    {
+        $code = $this->code('scripts/audit-deploy-permissions.sh');
+        $this->assertStringContainsString('-uid "$APP_UID"', $code);
+        $this->assertStringContainsString('-gid "$g"', $code);
+        $this->assertStringContainsString('id -G "$APP_USER"', $code, 'لا تُؤخذ مجموعاتُ الحساب كلُّها');
+        foreach (['-user "$APP_USER"', '-group "$APP_USER"'] as $byName) {
+            $this->assertStringNotContainsString($byName, $code, "المسحُ بالاسم يسقط بصمتٍ حين لا يطابق اسمُ المجموعة: $byName");
+        }
+        $this->assertStringContainsString('تعذّر مسحُ الشجرة', $code, 'خطأُ find لا يُعدّ فشلًا');
     }
 
     /** @return array{0:int,1:string} */
-    private function auditTree(string $app): array
+    private function auditTree(string $app, string $user = 'nobody'): array
     {
         $proc = proc_open(
             ['bash', base_path('scripts/audit-deploy-permissions.sh')],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             null,
-            ['AUDIT_ONLY' => 'tree', 'APP_DIR' => $app, 'APP_USER' => 'nobody', 'PATH' => getenv('PATH')],
+            ['AUDIT_ONLY' => 'tree', 'APP_DIR' => $app, 'APP_USER' => $user, 'PATH' => getenv('PATH')],
         );
         $out = (string) preg_replace('/\e\[[0-9;]*m/', '', stream_get_contents($pipes[1]).stream_get_contents($pipes[2]));
 

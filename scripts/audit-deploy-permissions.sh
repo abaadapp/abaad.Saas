@@ -27,20 +27,36 @@ fail() { printf '  \033[31m✗ %s\033[0m\n' "$*"; FAIL=$((FAIL+1)); }
 note() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 sec()  { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
 
-# كلُّ مسارٍ في الشجرة يستطيع www-data كتابته: يملكه، أو مجموعتُه مجموعتُه وهو g+w،
-# أو o+w. مسحٌ واحدٌ سريع، يشمل الأعماقَ كلَّها، ويستثني storage وbootstrap/cache.
-# (الروابطُ تُفحص وحدها؛ صلاحيّةُ الرابط نفسِه lrwxrwxrwx لا تعني شيئًا)
-scan_tree_writable() {
-    find "$APP_DIR" -xdev \
-        \( -path "$APP_DIR/storage" -o -path "$APP_DIR/bootstrap/cache" \) -prune -o \
-        ! -type l \( -user "$APP_USER" -o \( -group "$APP_USER" -perm -g+w \) -o -perm -o+w \) -print 2>/dev/null
+# هويّاتُ www-data بالأرقام: uid ومجموعاتُه كلُّها. لا بالاسم — فاسمُ المجموعة قد لا يساوي
+# اسمَ المستخدم (nobody مجموعتُه nogroup على لينكس)، و`find -group <اسمٍ غائب>` يخرج بخطأٍ
+# بلا نتيجة، فيبدو الفحصُ نظيفًا وهو لم يفحص شيئًا
+APP_UID="" APP_GIDS=""
+app_ids() {
+    APP_UID="$(id -u "$APP_USER" 2>/dev/null)" && APP_GIDS="$(id -G "$APP_USER" 2>/dev/null)" && [[ -n "$APP_GIDS" ]]
 }
 
-# روابطُ رمزيّة تهرب خارج الشجرة — فكتابةٌ عبرها كتابةٌ خارجها
+# كلُّ مسارٍ في الشجرة يستطيع www-data كتابته: يملكه، أو إحدى مجموعاته مجموعتُه وهو g+w،
+# أو o+w. مسحٌ واحدٌ سريع، يشمل الأعماقَ كلَّها، ويستثني storage وbootstrap/cache.
+# (الروابطُ تُفحص وحدها؛ صلاحيّةُ الرابط نفسِه lrwxrwxrwx لا تعني شيئًا)
+# ويخرج بخطأ find نفسِه — فالخطأُ فشلٌ لا نظافة
+scan_tree_writable() {
+    local g gexpr=()
+    for g in $APP_GIDS; do
+        [[ ${#gexpr[@]} -eq 0 ]] || gexpr+=(-o)
+        gexpr+=(-gid "$g")
+    done
+    find "$APP_DIR" -xdev \
+        \( -path "$APP_DIR/storage" -o -path "$APP_DIR/bootstrap/cache" \) -prune -o \
+        ! -type l \( -uid "$APP_UID" -o \( \( "${gexpr[@]}" \) -perm -g+w \) -o -perm -o+w \) -print
+}
+
+# روابطُ رمزيّة تهرب خارج الشجرة — فكتابةٌ عبرها كتابةٌ خارجها. ويخرج بغير صفرٍ إن تعذّر المسح
 scan_symlinks_escaping() {
-    local base; base="$(cd "$APP_DIR" 2>/dev/null && pwd -P)" || return 0
-    find "$APP_DIR" -xdev \( -path "$APP_DIR/vendor" -o -path "$APP_DIR/node_modules" \) -prune -o -type l -print 2>/dev/null \
-    | while IFS= read -r l; do
+    local base links l t d
+    base="$(cd "$APP_DIR" 2>/dev/null && pwd -P)" || return 2
+    links="$(find "$APP_DIR" -xdev \( -path "$APP_DIR/vendor" -o -path "$APP_DIR/node_modules" \) -prune -o -type l -print)" || return 2
+    while IFS= read -r l; do
+        [[ -n "$l" ]] || continue
         t="$(readlink "$l" 2>/dev/null || true)"
         # مجلّدُ الهدف محلولًا إلى مسارٍ حقيقيّ (يعالج /var↔/private والنسبيّ)، ثمّ يُقارن بجذرٍ محلولٍ مثله
         case "$t" in
@@ -48,21 +64,30 @@ scan_symlinks_escaping() {
             *)  d="$(cd "$(dirname "$l")" 2>/dev/null && cd "$(dirname "$t")" 2>/dev/null && pwd -P || true)" ;;
         esac
         case "$d/" in "$base"/*|"$base"/) ;; *) echo "$l -> $t" ;; esac
-    done
+    done <<<"$links"
 }
 
 tree_section() {
     sec "لا شيء في عمق الشجرة يكتبه www-data (عدا storage وbootstrap/cache)"
-    local hits; hits="$(scan_tree_writable)"
-    if [[ -z "$hits" ]]; then
-        pass "لا مسارَ في الشجرة يكتبه $APP_USER"
+    local hits esc rc
+    if ! app_ids; then
+        fail "لا حسابَ $APP_USER هنا — لا يُحكم على الشجرة بلا هويّته"
     else
-        fail "$APP_USER يكتب في الشجرة:"; sed 's/^/      /' <<<"$hits" | head -10
+        hits="$(scan_tree_writable 2>/dev/null)"; rc=$?
+        if (( rc != 0 )); then
+            fail "تعذّر مسحُ الشجرة (find خرج بـ$rc) — لا يُعدّ نظيفًا ما لم يُفحص"
+        elif [[ -z "$hits" ]]; then
+            pass "لا مسارَ في الشجرة يكتبه $APP_USER (uid $APP_UID، المجموعات: $APP_GIDS)"
+        else
+            fail "$APP_USER يكتب في الشجرة:"; sed 's/^/      /' <<<"$hits" | head -10
+        fi
     fi
 
     sec "لا رابطَ رمزيّ يهرب خارج الشجرة"
-    local esc; esc="$(scan_symlinks_escaping)"
-    if [[ -z "$esc" ]]; then
+    esc="$(scan_symlinks_escaping 2>/dev/null)"; rc=$?
+    if (( rc != 0 )); then
+        fail "تعذّر مسحُ الروابط — لا يُعدّ نظيفًا ما لم يُفحص"
+    elif [[ -z "$esc" ]]; then
         pass "كلُّ رابطٍ داخل الشجرة"
     else
         fail "روابطُ تهرب خارجها:"; sed 's/^/      /' <<<"$esc" | head -10

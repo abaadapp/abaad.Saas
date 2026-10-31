@@ -264,8 +264,9 @@ class ADeployMigratesWithoutADumpTest extends TestCase
                 break;
             }
         }
-        $this->assertStringContainsString('/home/.npm-cache', $cacheLine, 'مخبأُ npm ليس في بيت الحساب');
-        $this->assertStringNotContainsString('/tmp', $cacheLine, 'مخبأُ npm في /tmp المشترك');
+        // بيتُ الحساب نفسُه — لا يُفحص «لا يحوي /tmp»: مجلّدُ المختبر المؤقّت يقع تحت /tmp على لينكس
+        $this->assertSame('npmcache '.$this->root.'/home/.npm-cache', $cacheLine, 'مخبأُ npm ليس في بيت الحساب');
+        $this->assertStringNotContainsString('/tmp/npm-cache', $cacheLine, 'مخبأُ npm في /tmp/npm-cache المشترك');
     }
 
     /* ═══ ٣ · الهجراتُ تُسمّى، ومعها ما لا يُرجَع ═══ */

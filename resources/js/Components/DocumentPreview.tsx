@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { Download, ExternalLink, Loader2, Printer, Share } from 'lucide-react';
+import { ExternalLink, Loader2, Printer, Share } from 'lucide-react';
 
 import PaperFrame from '@/Components/PaperFrame';
+import PdfDownloadButton from '@/Components/PdfDownloadButton';
 import { Button } from '@/Components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/Components/ui/dialog';
 import { useTenantLink } from '@/lib/exportLink';
@@ -115,12 +116,7 @@ export default function DocumentPreview({
                                 </a>
                             </Button>
                         )}
-                        <Button variant="outline" size="sm" asChild>
-                            <a href={fileUrl} download={filename}>
-                                <Download />
-                                <span className="max-sm:sr-only">{t('تحميل')}</span>
-                            </a>
-                        </Button>
+                        <PdfDownloadButton url={fileUrl} filename={filename} />
                         <Button variant="outline" size="sm" asChild>
                             <a href={fileUrl} target="_blank" rel="noreferrer">
                                 <ExternalLink />

@@ -1,8 +1,9 @@
-import { Download, Maximize2, Printer } from 'lucide-react';
+import { Maximize2, Printer } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
 import DocumentPreview from '@/Components/DocumentPreview';
 import PaperFrame from '@/Components/PaperFrame';
+import PdfDownloadButton from '@/Components/PdfDownloadButton';
 import { Button } from '@/Components/ui/button';
 import { Card } from '@/Components/ui/card';
 import { useTenantLink } from '@/lib/exportLink';
@@ -92,12 +93,7 @@ export default function DocumentPanel({
                             <Maximize2 />
                             <span className="max-sm:sr-only">{t('تكبير')}</span>
                         </Button>
-                        <Button variant="outline" size="sm" asChild>
-                            <a href={fileUrl} download={filename}>
-                                <Download />
-                                <span className="max-sm:sr-only">{t('تحميل')}</span>
-                            </a>
-                        </Button>
+                        <PdfDownloadButton url={fileUrl} filename={filename} />
                         <Button variant="outline" size="sm" asChild>
                             <a href={fileUrl} target="_blank" rel="noreferrer">
                                 <Printer />

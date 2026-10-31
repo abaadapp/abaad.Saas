@@ -126,9 +126,12 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
         // ورسالتا عدم توفّر التوصيل (اثنتان) تُقرآن في الإتمام كأخواتهما — تسريان فورًا (#137)
         // وفرعُ طلبات الموقع واختيارُ الزبون فرعَ استلامه (اثنان) — منهما يُخصم المخزون
         // ويُنسب الطلب، تشغيلٌ لا تصميم — يسريان فورًا (`Store\StoreBranches`)
-        $this->assertCount(106, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
-        $this->assertCount(49, $versioned, 'تبدّل عددُ ما يُنشر');
-        $this->assertCount(57, $live, 'تبدّل عددُ ما يسري فورًا');
+        // ونصوصُ «الظهور في البحث» الأربعة خرجت من النشر ومعها وقتُ حفظها (خمسة) — تسري
+        // بالحفظ كإذن الفهرسة: من كتب عنوانَه في غوغل لا ينتظر نشرةَ تصميم، ونشرُ مسوّدةٍ
+        // قديمة لا يُعيده (`Store\StoreSeo::save`، `StoreContent::RETIRED`)
+        $this->assertCount(107, $all, 'تبدّل عددُ مفاتيح المتجر — أقرِّر موضعَ الجديد');
+        $this->assertCount(45, $versioned, 'تبدّل عددُ ما يُنشر');
+        $this->assertCount(62, $live, 'تبدّل عددُ ما يسري فورًا');
 
         $this->assertSame([], array_diff($versioned, $all),
             'مفتاحٌ في العقد وليس في المجموعة: '.implode(', ', array_diff($versioned, $all)));
@@ -171,8 +174,9 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
             'site_on', 'site_domain', 'site_domain_mode', 'site_path', 'store_on',
             // تواصلٌ تشغيليّ — رقمٌ خطأ أو ساعةٌ خطأ يُصحَّحان الآن
             'store_whatsapp', 'store_hours', 'store_hours_en', 'store_instagram',
-            // وإذنُ الفهرسة: «لا تُفهرسني» طلبٌ يُستعجَل
-            'store_seo_index',
+            // و«الظهور في البحث» كلُّه: «لا تُفهرسني» طلبٌ يُستعجَل، وعنوانُ غوغل لا ينتظر نشرة
+            'store_seo_index', 'store_seo_title', 'store_seo_desc', 'store_seo_title_en', 'store_seo_desc_en',
+            'store_seo_saved_at',
             // وقرارٌ تجاريٌّ قد يُتَّخذ فجأة
             'store_show_prices',
             // والقالبُ لا يُنشر ولا يُستعاد
@@ -184,7 +188,7 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
                 'المفتاح «'.$key.'» دخل النشر — وهو يسري على زبونٍ يشتري الآن.');
         }
 
-        $this->assertCount(48, $mustStayLive, 'قائمةُ الحيّ ناقصةٌ أو زائدة');
+        $this->assertCount(53, $mustStayLive, 'قائمةُ الحيّ ناقصةٌ أو زائدة');
         $this->assertSame([], array_diff($mustStayLive, array_keys(MarketingSettings::GROUPS['website'])));
     }
 
@@ -198,7 +202,6 @@ class AThemedStoreDraftsBeforeItPublishesTest extends TestCase
             'store_new_arrivals_mode', 'store_new_arrivals',
             'store_block_on', 'store_block_title', 'store_block_text',
             'store_block_image', 'store_block_cta', 'store_block_href',
-            'store_seo_title', 'store_seo_desc',
             'store_announcement_ar', 'store_announcement_en', 'store_announcement_align',
             'store_shop_nav_categories',
         ] as $key) {

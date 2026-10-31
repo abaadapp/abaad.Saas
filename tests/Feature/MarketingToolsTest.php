@@ -168,6 +168,8 @@ class MarketingToolsTest extends TestCase
              * ثمّ `store.ribbon.layout`).
              */
             'store_seo_title', 'store_seo_desc', 'store_seo_title_en', 'store_seo_desc_en', 'store_seo_index',
+            // ووقتُ آخرِ حفظٍ منها — يقرؤه سطرُ «آخر حفظ» تحت زرّها (`SettingsController::themedSeo`)
+            'store_seo_saved_at',
         ], array_keys($saved), 'مفتاحٌ لا يقرؤه شيء ما زال يُحفظ');
 
         foreach (['site_enabled', 'site_tagline', 'site_show_prices'] as $dead) {

@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\Ledger;
 use App\Support\MarketingSettings;
 use App\Support\Store\PageEditor;
+use App\Support\Store\StoreContent;
 use App\Support\Store\StoreTerms;
 use App\Support\Store\ThemePublisher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -127,20 +128,21 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
     /* ═══════════ والشاشاتُ تفتح على المسوّدة ═══════════ */
 
     /**
-     * ما حُفظ ولم يُنشر يُرى حين يعود صاحبُه.
+     * ما حُفظ يُرى حين يعود صاحبُه — والبحثُ منه حيٌّ لا ينتظر نشرة.
      *
-     * ═══ والعطبُ الذي وقع ═══
+     * ═══ والعطبُ الذي وقع أوّلًا ═══
      *
-     * `StoreContent::VERSIONED` تُرسل سبعةَ عشرَ مفتاحًا إلى المسوّدة متى
-     * فُتح النظام، ومنها `store_seo_title`. وكانت `themeSeed` تقرأ المنشورَ
-     * وحدَه — فيكتب صاحبُ المتجر عنوانَ بحثه ويحفظ ويرى «حُفظ»، ثمّ يُحدّث
-     * الصفحةَ فيجده قد عاد إلى ما كان. وهو لم يذهب: هو في المسوّدة ينتظر
-     * النشر، والشاشةُ تنظر إلى غير موضعه.
+     * كانت `themeSeed` تقرأ المنشورَ وحدَه، وعنوانُ البحث في المسوّدة —
+     * فيكتب صاحبُ المتجر عنوانَه ويحفظ ويرى «حُفظ»، ثمّ يُحدّث الصفحةَ فيجده
+     * قد عاد. فقُرئت المسوّدة (وحارسُ ذلك اليومَ «الصفحات» تحته).
      *
-     * وهي عينُ الحال التي يحذّر منها `PageEditor::values` في المحرّر — فحُمل
-     * الحكمُ نفسُه إلى أخواته الأربع.
+     * ═══ ثمّ خرج البحثُ من المسوّدة ═══
+     *
+     * عنوانٌ حُفظ ولم يصل غوغل حتّى يُنشر التصميم ليس «حُفظ». فصار يسري
+     * بالحفظ (`StoreSeo::save`): يُرى في الشاشة، ويُكتب في الصفحة المنشورة
+     * الآن، ولا تتقدّم به المسوّدة.
      */
-    public function test_a_saved_but_unpublished_title_is_what_the_screen_shows(): void
+    public function test_a_saved_title_is_what_the_screen_shows_and_it_is_live(): void
     {
         MarketingSettings::save($this->shop->id, 'website', ['store_seo_title' => 'المنشور']);
 
@@ -148,14 +150,17 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         ThemePublisher::enable($this->shop, null);
 
         $this->actingAs($this->owner)
-            ->post(route('admin.marketing.store.save'), ['store_seo_title' => 'ما لم يُنشر بعد'])
+            ->post(route('admin.marketing.store.save'), ['store_seo_title' => 'ما حُفظ الآن'])
             ->assertRedirect();
 
         $page = $this->actingAs($this->owner)->get(route('admin.website.seo'))
             ->assertOk()->viewData('page');
 
-        $this->assertSame('ما لم يُنشر بعد', $page['props']['seo']['title']);
-        $this->assertSame('ما لم يُنشر بعد', $page['props']['settings']['store_seo_title']);
+        $this->assertSame('ما حُفظ الآن', $page['props']['seo']['title']);
+        $this->assertSame('ما حُفظ الآن', $page['props']['settings']['store_seo_title']);
+        $this->assertSame('ما حُفظ الآن', MarketingSettings::group($this->shop->id, 'website')['store_seo_title'],
+            'عنوانُ البحث لم يُكتب حيًّا — ما زال ينتظر نشرة');
+        $this->assertSame([], StoreContent::changed($this->shop->id), 'حفظُ البحث صار «تغييرًا غير منشور»');
     }
 
     /**
@@ -233,8 +238,9 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
 
         Carbon::setTestNow('2027-02-10 11:00:00');
 
+        // ومفتاحٌ يُنشر لا مفتاحُ البحث: ذاك يسري بالحفظ ولا يمرّ بالمسوّدة (`StoreSeo::save`)
         $this->actingAs($this->owner)
-            ->post(route('admin.marketing.store.save'), ['store_seo_title' => 'ما حُفظ'])
+            ->post(route('admin.marketing.store.save'), ['store_headline' => 'ما حُفظ'])
             ->assertRedirect();
 
         $saved = $this->hubState()['saved_at'];
@@ -260,11 +266,11 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
         ThemePublisher::enable($this->shop, null);
 
         Carbon::setTestNow('2027-02-10 11:00:00');
-        $this->actingAs($this->owner)->post(route('admin.marketing.store.save'), ['store_seo_title' => 'الأولى']);
+        $this->actingAs($this->owner)->post(route('admin.marketing.store.save'), ['store_headline' => 'الأولى']);
         $first = $this->hubState()['saved_at'];
 
         Carbon::setTestNow('2027-02-10 13:00:00');
-        $this->actingAs($this->owner)->post(route('admin.marketing.store.save'), ['store_seo_title' => 'الثانية']);
+        $this->actingAs($this->owner)->post(route('admin.marketing.store.save'), ['store_headline' => 'الثانية']);
         $second = $this->hubState()['saved_at'];
 
         $this->assertNotSame($first, $second, '«آخر حفظ» لا يتقدّم بالحفظ');
@@ -506,8 +512,12 @@ class AThemedShopWearsTheSameWebsiteShellTest extends TestCase
             $file.' تحفظ بلا قسمة — فتكتب فوق ما ضبطته أخواتها',
         );
 
+        /*
+         * و«الظهور في البحث» لها بابُها: تسري بالحفظ وتحت حارس ضبط الموقع
+         * (`admin.website.seo.save` ← `StoreSeo::save`) — وأخواتُها في بابهنّ.
+         */
         $this->assertStringContainsString(
-            "route('admin.marketing.store.save')",
+            $key === 'seo' ? "route('admin.website.seo.save')" : "route('admin.marketing.store.save')",
             $code,
             $file.' تحفظ في بابٍ آخر',
         );

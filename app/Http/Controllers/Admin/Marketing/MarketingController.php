@@ -740,7 +740,15 @@ class MarketingController extends Controller
         $site = MarketingSettings::group($this->bid(), 'website');
         $configures = $slug !== $business->site_slug
             || $published !== (($site['store_on'] ?? '') === '1')
-            || ($request->exists('store_theme') && (string) $request->input('store_theme') !== (string) ($site['store_theme'] ?? ''));
+            || ($request->exists('store_theme') && (string) $request->input('store_theme') !== (string) ($site['store_theme'] ?? ''))
+            /*
+             * و«الظهور في البحث» ضبطٌ كذلك: شاشتُه تحت `WEBSITE_CONFIGURE`
+             * وبابُها `admin.website.seo.save`. ومن أرسله إلى هنا بيده لا يتخطّى
+             * حارسَها — إخفاءُ متجرٍ من غوغل ليس كتابةَ ساعات توصيل.
+             */
+            || collect(StoreSeo::KEYS)->contains(fn (string $key) => array_key_exists($key, $data)
+                && ($key === 'store_seo_index' ? ($request->boolean($key) ? '1' : '0') : (string) ($data[$key] ?? ''))
+                    !== (string) ($site[$key] ?? ''));
 
         abort_if($configures && ! $request->user()?->may(Permissions::WEBSITE_CONFIGURE), 403);
 
@@ -777,6 +785,17 @@ class MarketingController extends Controller
             );
         }
         unset($data[StoreTerms::TEXT], $data[StoreTerms::TEXT_EN]);
+
+        /*
+         * ═══ والبحثُ يسري بالحفظ ومن بابه الواحد ═══
+         *
+         * خرج من عقد المسوّدة (`StoreContent::RETIRED`)، ويُكتب بـ`StoreSeo::save`
+         * — حيًّا مع وقت حفظه، ويُسقط ما بقي منه في مسوّدةٍ قديمة. فتبويبٌ
+         * قديمٌ ما زال يرسله إلى هنا يحفظه كما تحفظه شاشتُه.
+         */
+        $seo = array_intersect_key($data, array_flip(StoreSeo::KEYS));
+        $data = array_diff_key($data, $seo);
+        StoreSeo::save($this->bid(), $seo);
 
         /*
          * ═══ ما يُنشر يذهب إلى المسوّدة، وما يسري فورًا يُكتب حيًّا ═══

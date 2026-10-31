@@ -63,6 +63,7 @@ const THREAD = {
     id: 7, name: 'سارة', phone: '96891234567', profile_name: 'سارة', customer: { name: 'سارة', url: '/admin.customers.show/3' },
     orders: [{ number: '1042', total: 25, status: 'pending', url: '/admin.orders.show/1042' }],
     source: 'business_own', line_number: '+968 7000 0001', window_ends_at: '2026-10-29 10:30', blocked: null,
+    template: null, log_url: null,
     has_more: false, before: null,
     messages: [
         { kind: 'notice', key: 'n1', at: '2026-10-28 09:00', time: '09:00', body: 'طلبك 1042 جاهز', status: 'read', status_label: 'قرأها الزبون', event: 'الطلب جاهز' },
@@ -77,7 +78,7 @@ const draw = (over: Props = {}) => {
         translations: {},
         auth: { abilities: [], mayActions: ['whatsapp.inbox.view'], planFeatures: { whatsapp: true } },
         context: { currency: { code: 'OMR', symbol: 'ر.ع', decimals: 3 }, hosted: ['whatsapp_inbox'] },
-        chats: [{ id: 7, name: 'سارة', phone: '96891234567', at: '2026-10-28 10:31', preview: 'خلال ساعة', direction: 'out', unread: 2, source: 'business_own' }],
+        chats: [{ id: 7, key: 'c7', url: null, name: 'سارة', phone: '96891234567', at: '2026-10-28 10:31', preview: 'خلال ساعة', direction: 'out', unread: 2, source: 'business_own' }],
         pagination: { current_page: 1, last_page: 1, prev_page_url: null, next_page_url: null },
         params: { q: '', c: '7' },
         thread: THREAD,
@@ -86,6 +87,8 @@ const draw = (over: Props = {}) => {
         unread: 2,
         stamp: '3|2026-10-28 10:31:00',
         files: { max: 3, max_kb: 10240, accept: '.jpg,.jpeg,.png,.webp,.pdf' },
+        readiness: { connected: true, ready: true, steps: [] },
+        mayManage: false,
         ...over,
     });
 
@@ -231,14 +234,15 @@ describe('الشريط', () => {
         expect(screen.queryByText('محادثات واتساب')).toBeNull();
     });
 
-    it('ومن فُتح له الصندوقُ ومحادثاتُ الإشعارات معًا: صفحةُ الإشعارات «سجلّ إشعارات واتساب» — لا اسمان لشيئين', () => {
+    it('والصندوقُ والسجلُّ بابان باسمين — «محادثات واتساب» مرّةً واحدة، و«سجلّ رسائل واتساب» دفترُ ما خرج', () => {
         // وقائمةُ التسويق مفتوحةٌ على صفحة السجلّ — بنوها لا يُرسمون وهي مطويّة
         globalThis.route = ((name?: string) =>
             name === undefined ? { current: () => 'admin.marketing.whatsapp.log' } : `/${name}`) as never;
-        side(['whatsapp.inbox.view'], ['whatsapp_inbox', 'whatsapp_conversations'], ['marketing']);
+        side(['whatsapp.inbox.view'], ['whatsapp_inbox'], ['marketing']);
 
         expect(screen.getAllByText('محادثات واتساب')).toHaveLength(1);
-        expect(screen.getByText('سجلّ إشعارات واتساب')).toBeInTheDocument();
+        expect(screen.getByText('سجلّ رسائل واتساب')).toBeInTheDocument();
+        expect(screen.queryByText('سجلّ إشعارات واتساب')).toBeNull();
     });
 });
 
@@ -263,6 +267,6 @@ describe('صلاحية الموظّف على المحادثات', () => {
         for (const key of ['none', 'view', 'reply']) {
             expect(screen.getByTestId(`inbox-access-${key}`)).toBeDisabled();
         }
-        expect(screen.getByTestId('inbox-access-locked')).toHaveTextContent('يمنحها صاحب النشاط وحده');
+        expect(screen.getByTestId('inbox-access-locked')).toHaveTextContent('يمنحها صاحب النشاط، أو مديرٌ منحه هو الردّ على المحادثات');
     });
 });

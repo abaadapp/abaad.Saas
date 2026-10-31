@@ -77,7 +77,7 @@ export default function InboxAccessField({
 
             {!canGrant && (
                 <p className="text-[12px] text-[#6b7280]" data-testid="inbox-access-locked">
-                    {t('صلاحيات محادثات واتساب يمنحها صاحب النشاط وحده.')}
+                    {t('صلاحيات محادثات واتساب يمنحها صاحب النشاط، أو مديرٌ منحه هو الردّ على المحادثات.')}
                 </p>
             )}
 

@@ -659,10 +659,22 @@ class Permissions
         };
     }
 
-    /** أيمنح هذا الفاعلُ صلاحياتِ المحادثات؟ — صاحبُ النشاط وحده */
+    /**
+     * أيمنح هذا الفاعلُ صلاحياتِ المحادثات؟ — صاحبُ النشاط، أو مديرُه المخوَّل.
+     *
+     * والمخوَّلُ من خوّله صاحبُ النشاط: مديرٌ (`isAdmin`) يملك قسمَ الموظّفين،
+     * ومنحه صاحبُ النشاط الردَّ على المحادثات بنفسه. فالمالكُ يقرّر من يدير
+     * المحادثات بقرارٍ واحد يُرى في ملفّ ذلك المدير — ولا يمنحها مديرٌ لا يملكها،
+     * ولا يرفع أحدٌ صلاحيته هو (`EmployeeController::inboxGrant`).
+     */
     public static function grantsInbox(?User $actor): bool
     {
-        return self::isOwner($actor);
+        if (self::isOwner($actor)) {
+            return true;
+        }
+
+        return $actor !== null && $actor->business_id !== null && $actor->isAdmin()
+            && $actor->allows('employees') && self::inboxMay($actor, self::INBOX_REPLY);
     }
 
     /**

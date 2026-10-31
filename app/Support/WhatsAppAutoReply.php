@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Branch;
+use App\Models\Business;
 use App\Models\Customer;
 use App\Models\Setting;
 use App\Models\WhatsAppConnection;
@@ -176,6 +177,31 @@ class WhatsAppAutoReply
 
         if (! $settings['enabled']) {
             return 'disabled';
+        }
+
+        /*
+         * ═══ والردُّ الآليّ رسالةٌ تخرج — فيسأل بابَ الإرسال نفسَه ═══
+         *
+         * كان يردّ ما دام صاحبُ المحلّ أشعله، ولو أطفأ فريقُ أبعاد واتساب
+         * لحسابه أو خرجت باقتُه منه أو سُحب ربطُ رقمه: إرسالٌ لم يُؤذن به.
+         * فيُسأل ما يسأله كلُّ إرسال (`WhatsAppFeature::blockReason`)، والردُّ
+         * يخرج من رقم المتجر فيُسأل إذنُه (`canUseOwnNumber`). والإشعالُ
+         * يبقى في إعداده: يعود الإذنُ فيعود الردّ.
+         */
+        $business = Business::find($connection->business_id);
+
+        // والسببُ بحروف سجلّ الإرسال نفسِها (`WhatsAppStatus::SKIP_*`) — لا قاموسٌ ثانٍ
+        if ($business === null) {
+            return WhatsAppStatus::SKIP_AUTOMATION_OFF;
+        }
+
+        if (($blocked = WhatsAppFeature::blockReason($business)) !== null) {
+            return $blocked;
+        }
+
+        // وفي وضع رقم أبعاد يبقى ربطُ رقمه — ولا يردّ منه ما لم يملك ربطه
+        if (! WhatsAppFeature::canUseOwnNumber($business)) {
+            return WhatsAppStatus::SKIP_OWN_NOT_ALLOWED;
         }
 
         if (! $connection->isUsable()) {

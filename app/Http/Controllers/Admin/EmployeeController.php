@@ -834,14 +834,15 @@ class EmployeeController extends Controller
     }
 
     /**
-     * صلاحيةُ محادثات واتساب من طلب الحفظ — لصاحب النشاط وحده.
+     * صلاحيةُ محادثات واتساب من طلب الحفظ — لصاحب النشاط ومديره المخوَّل.
      *
-     * ═══ ولمَ لا تُقاس بـ«ما يملكه المانح» ═══
+     * ═══ ولمَ لا تُقاس بـ«ما يملكه المانح» وحده ═══
      *
      * القاعدةُ العامّة أنّ من يملك قسمًا يمنحه (`refuseGrantingMoreThanIHave`).
-     * ورسائلُ الزبائن خارجها بقرار المالك: مديرُ فرعٍ مُنح الردَّ لا يمنحه
-     * لغيره، ولا يرفع نفسَه، ولا ينزعه عن أحد. وما لم يتبدّل يُحفظ كما هو بيد
-     * أيٍّ كان — النموذجُ يرسله في كلّ حفظة، ومن عدّل رقمَ هاتف لا يُردّ.
+     * ورسائلُ الزبائن أضيقُ منها بقرار المالك: يمنحها هو، أو مديرٌ خوّله هو
+     * (`Permissions::grantsInbox`) — لا كلُّ من يملك قسمَ الموظّفين. ولا يرفع
+     * أحدٌ نفسَه. وما لم يتبدّل يُحفظ كما هو بيد أيٍّ كان — النموذجُ يرسله في
+     * كلّ حفظة، ومن عدّل رقمَ هاتف لا يُردّ.
      *
      * @return array{0: bool, 1: ?string} أُرسل الحقل؟ والقيمةُ المحفوظة
      */
@@ -864,9 +865,11 @@ class EmployeeController extends Controller
         }
 
         $refusal = match (true) {
-            ! Permissions::grantsInbox(auth()->user()) => __('صلاحيات محادثات واتساب يمنحها صاحب النشاط وحده.'),
+            ! Permissions::grantsInbox(auth()->user()) => __('صلاحيات محادثات واتساب يمنحها صاحب النشاط، أو مديرٌ منحه هو الردّ على المحادثات.'),
+            // وصاحبُ النشاط يملكها بدوره — لا تُنزع عنه بعمود
+            $employee !== null && Permissions::isOwner($employee) => __('صاحب النشاط يملك محادثات واتساب بدوره — لا تُعدَّل صلاحيته.'),
             $employee !== null && $employee->id === auth()->id() => __('لا يمكنك تعديل صلاحيات حسابك الخاص.'),
-            $wanted !== null && ! WhatsAppInbox::available(auth()->user()->business) => __('صندوق محادثات واتساب غير مفعّل لمتجرك — يفتحه فريق أبعاد.'),
+            $wanted !== null && ! WhatsAppInbox::available(auth()->user()->business) => __('صندوق محادثات واتساب غير متاحٍ لمتجرك — باقتك لا تشمل واتساب، أو واتساب مطفأ لحسابك.'),
             default => null,
         };
 
@@ -909,7 +912,8 @@ class EmployeeController extends Controller
         return [
             'level' => $employee?->whatsapp_inbox ?: 'none',
             // ولا يُعدِّل أحدٌ صلاحيته هو — ولا صاحبُ النشاط، فهو يملكها بدوره
-            'can_grant' => Permissions::grantsInbox(auth()->user()) && $employee?->id !== auth()->id(),
+            'can_grant' => Permissions::grantsInbox(auth()->user()) && $employee?->id !== auth()->id()
+                && ! ($employee !== null && Permissions::isOwner($employee)),
         ];
     }
 

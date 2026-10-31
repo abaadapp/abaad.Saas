@@ -268,6 +268,21 @@
         html.rb-catalog-contain .rb-card:hover .rb-img img { transform: none; }
         .rb-card .rb-name { margin-top: 12px; font-size: 15px; text-align: center; }
         .rb-card .rb-price { margin-top: 4px; font-size: 17px; font-weight: 600; text-align: center; }
+        /*
+         * ═══ فاصلٌ بين البطاقات في العمود الواحد ═══
+         *
+         * على الهاتف تتتابع البطاقاتُ عمودًا فيقترب سعرُ هذه من صورة التي
+         * تليها — فخطٌّ خفيفٌ بينهما في وسط مسافةٍ أوسع. والشرطُ عرضُ الشبكة
+         * نفسِها لا الشاشة: عمودان يتّسعان من ٢×٢٣٠ + ٢٤ = ٤٨٤px، فما دونها
+         * عمودٌ واحد أيًّا كانت حواشي الصفحة. فلا خطَّ بين الأعمدة، ولا بعد
+         * الأخيرة. وابنُ الشبكة البطاقةُ نفسُها أو غلافُها مع زرّ واتساب —
+         * والخطُّ عليه في الحالين، ولا يُلمس فلا يفتح المنتج.
+         */
+        .rb-grid { container: rb-grid / inline-size; }
+        @container rb-grid (max-width: 483.98px) {
+            .rb-grid > :not(:last-child) { position: relative; margin-bottom: 20px; }
+            .rb-grid > :not(:last-child)::after { content: ''; position: absolute; inset-inline: 6%; bottom: -24px; height: 1px; background: var(--rb-line); pointer-events: none; }
+        }
         .rb-stripes { background: repeating-linear-gradient(135deg, var(--tint, #e6dcc8) 0 12px, #f3efe9 12px 24px); width: 100%; height: 100%; }
         .rb-h2 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); font-weight: 500; }
         .rb-h1 { margin: 0; font-size: 30px; font-weight: 500; }

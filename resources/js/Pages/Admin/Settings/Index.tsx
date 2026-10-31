@@ -956,16 +956,31 @@ export default function SettingsIndex() {
                         }
                         action={
                             store.slug && (store.serves !== 'none' || storeForm.data.store_on) && (
-                                <Button variant="outline" size="sm" asChild>
-                                    <a
-                                        href={`https://${store.slug}.${store.domain}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                    >
-                                        <ExternalLink />
-                                        {t('افتح متجري')}
-                                    </a>
-                                </Button>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {/*
+                                        و«الظهور في البحث» لصفحته المنشورة — عنوانُها في غوغل ووصفُها
+                                        وإذنُ فهرستها، يسري بالحفظ (`SettingsController::simpleSeo`).
+                                    */}
+                                    {store.serves !== 'none' && (
+                                        <Button variant="outline" size="sm" asChild>
+                                            {/* والبسيطةُ المنشورة إلى شاشتها — ولو كان موقعٌ مبنيٌّ قيد الإنشاء */}
+                                            <Link href={route(store.serves === 'simple' ? 'admin.website.seo.store' : 'admin.website.seo')} data-testid="store-card-seo">
+                                                <Search />
+                                                {t('الظهور في البحث')}
+                                            </Link>
+                                        </Button>
+                                    )}
+                                    <Button variant="outline" size="sm" asChild>
+                                        <a
+                                            href={`https://${store.slug}.${store.domain}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            <ExternalLink />
+                                            {t('افتح متجري')}
+                                        </a>
+                                    </Button>
+                                </div>
                             )
                         }
                         divided

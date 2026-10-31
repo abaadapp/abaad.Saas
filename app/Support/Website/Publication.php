@@ -143,9 +143,12 @@ final class Publication
      * «السماح لمحرّكات البحث» فيرى «حُفظ» ويبقى موقعُه مفهرسًا. فتدخل
      * العقدَ هنا، ويكتبها الرأسُ `noindex` هناك.
      *
+     * ويقرؤه الموقعُ المنشورُ من الصفّ مباشرةً متى سرى السيو بالحفظ
+     * (`Website::seoIsLive`) — فالشكلُ واحدٌ في النشرة وفي الحيّ.
+     *
      * @return array<string, mixed>
      */
-    private static function seo(Website $website): array
+    public static function seo(Website $website): array
     {
         $seo = is_array($website->seo) ? $website->seo : [];
 

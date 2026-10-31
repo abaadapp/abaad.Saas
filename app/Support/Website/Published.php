@@ -111,6 +111,22 @@ final class Published
         }
 
         $version = $website->publishedVersion;
+        $payload = (array) $version->payload;
+
+        /*
+         * ═══ والسيو من الصفّ لا من اللقطة — لمن يسري سيوُه بالحفظ ═══
+         *
+         * عنوانُ الموقع في غوغل ووصفُه وصورةُ مشاركته وإذنُ فهرسته يُكتبان
+         * في «الظهور في البحث» ويسريان بالحفظ، لا ينتظران نشرةَ تصميم. ولو
+         * قُرئت من اللقطة لَقرأ صاحبُها «حُفظ» وبقي غوغل على القديم، ولَأعاد
+         * نشرُ مسوّدةٍ قديمة ما كتب فوقه.
+         *
+         * وسيوُ الصفحات يبقى في لقطتها: هو من الصفحة يُنشر معها.
+         * ومن لم يحفظ من الشاشة بعد الترقية يبقى على لقطته — انظر `Website::seoIsLive`.
+         */
+        if ($website->seoIsLive()) {
+            $payload['seo'] = Publication::seo($website);
+        }
 
         return [
             'state' => self::OK,
@@ -118,7 +134,7 @@ final class Published
             'published_at' => optional($version->published_at)->toIso8601String(),
             'version' => $version->number,
             // اللقطة المجمّدة، ومعها الكتالوج كما هو اليوم — انظر Preview
-            'site' => self::visible(Preview::resolve($version->payload, $businessId)),
+            'site' => self::visible(Preview::resolve($payload, $businessId)),
         ];
     }
 

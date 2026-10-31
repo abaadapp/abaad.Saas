@@ -37,13 +37,14 @@
         {{--
             والعربيّةُ والإنجليزيّةُ ترجمتان لا نسختان.
 
-            الصفحتان على العنوان نفسِه ويفرّق بينهما `‎?lang‎`، وأصلُهما
-            واحدٌ في `canonical`. فبلا هذين السطرين يقرأ غوغل الإنجليزيّةَ
-            نسخةً مكرَّرةً ويُسقطها — ولا يجدها من يبحث بالإنجليزيّة.
+            الصفحتان على العنوان نفسِه ويفرّق بينهما `‎?lang‎`، ولكلٍّ منهما
+            أصلُها نفسُها في `canonical` (انظر `StoreSeo::head`). فبلا هذه
+            السطور يقرأ غوغل الإنجليزيّةَ نسخةً مكرَّرةً ويُسقطها — ولا يجدها
+            من يبحث بالإنجليزيّة.
         --}}
-        <link rel="alternate" hreflang="ar" href="{{ $seo['canonical'] }}">
-        <link rel="alternate" hreflang="en" href="{{ $seo['canonical'] }}?lang=en">
-        <link rel="alternate" hreflang="x-default" href="{{ $seo['canonical'] }}">
+        <link rel="alternate" hreflang="ar" href="{{ $seo['alternates']['ar'] }}">
+        <link rel="alternate" hreflang="en" href="{{ $seo['alternates']['en'] }}">
+        <link rel="alternate" hreflang="x-default" href="{{ $seo['alternates']['ar'] }}">
     @endif
     {{--
         ═══ وما يُعرض حين يُلصَق الرابط ═══

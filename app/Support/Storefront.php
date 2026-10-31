@@ -484,6 +484,8 @@ class Storefront
              * والفرعُ أقدمُ فرعٍ مربوط: صفحةُ المتجر واحدةٌ لا صفحةَ لكلّ فرع.
              */
             'google' => self::googleRating($bid),
+            // وما يقرؤه غوغل — من «الظهور في البحث»، وفراغُه ما كان (`StoreSeo::simple`)
+            'seo' => \App\Support\Store\StoreSeo::simple($business),
         ];
     }
 

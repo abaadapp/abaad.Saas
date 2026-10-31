@@ -1,5 +1,5 @@
 import { useForm, usePage } from '@inertiajs/react';
-import { Check, Globe, Search } from 'lucide-react';
+import { Check, Globe, Search, ShieldCheck } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 import PageHeader from '@/Components/PageHeader';
 import SectionTabs, { WEBSITE_TABS } from '@/Components/SectionTabs';
@@ -12,10 +12,17 @@ import Field from '@/Components/Field';
 import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import type { PageProps } from '@/types';
+import { LengthNote, type Limits, PendingNotice, type Readiness, ReadinessList, SaveState, SerpPreview, useSaveFeedback } from './search/SearchParts';
 import { type DomainState, domainHost, type SiteShell } from './shell';
 
 interface Props extends SiteShell {
+    /** ما يقرؤه غوغل الآن — انظر `SettingsController::seo` */
     seo: { title: string; description: string; image: string; index: boolean };
+    limits: Limits;
+    savedAt: string | null;
+    /** ما حُفظ قبل أن يسري البحثُ بالحفظ ولم يُنشر — حقلًا حقلًا، والفهرسةُ «1» أو «0» */
+    pending: Partial<Record<'title' | 'description' | 'image' | 'index', string>>;
+    readiness: Readiness;
     pages: {
         id: number;
         title: string;
@@ -24,6 +31,8 @@ interface Props extends SiteShell {
         seo: { title: string; description: string; image: string };
     }[];
     domain: DomainState;
+    /** صفحةُ المتجر البسيطة هي ما يُخدم الآن، وهذا الموقعُ لم يُنشر — ولها شاشتُها */
+    liveSimple?: boolean;
 }
 
 /**
@@ -35,9 +44,15 @@ interface Props extends SiteShell {
  *
  * والمعاينة هي الشرح: يرى سطرَه كما سيظهر في نتائج البحث، فيعرف أنّ عنوانه
  * طويلٌ قبل أن يُقصَّ هناك.
+ *
+ * ═══ ويسري بالحفظ ═══
+ *
+ * كان يُحفظ في الصفّ والزائرُ يقرأ آخرَ نشرة — فيقرأ صاحبُه «حُفظ» ويبقى
+ * غوغل على القديم حتّى ينشر تصميمَه كلَّه. اليوم يُطبَّق بالحفظ وحده، ولا
+ * يُعيده استرجاعُ نسخةٍ قديمة (`Published::forBusiness`، `Publisher::restore`).
  */
 export default function Seo() {
-    const { site, seo, pages, domain } = usePage<PageProps<Props>>().props;
+    const { site, seo, pages, domain, limits, savedAt, pending, readiness, liveSimple } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const form = useForm({
@@ -46,9 +61,40 @@ export default function Seo() {
         image: seo.image,
         index: seo.index,
     });
+    const feedback = useSaveFeedback();
 
-    const host = domainHost(domain) ?? 'example.om';
+    const url = readiness.canonical ?? domainHost(domain);
     const missing = pages.filter((p) => p.status === 'published' && !p.seo.description);
+
+    const save = () =>
+        form.put(route('admin.website.seo.save'), {
+            ...feedback.options,
+            // والحالُ تبقى: رسالةُ «حُفظ» تُقرأ في الشاشة نفسِها، والمحفوظُ يصير أساسَ «غير محفوظ»
+            preserveState: true,
+            onSuccess: () => {
+                form.setDefaults();
+                feedback.options.onSuccess();
+            },
+        });
+
+    const labels = {
+        title: t('عنوان موقعك في غوغل'),
+        description: t('الوصف تحت العنوان'),
+        image: t('صورة المشاركة'),
+        index: t('السماح لمحركات البحث بإظهار موقعك'),
+    };
+    const fields = (Object.keys(labels) as (keyof typeof labels)[]).filter((k) => pending?.[k] !== undefined);
+    const pendingRows = fields.map((k) => ({
+        label: labels[k],
+        value: k === 'index' ? (pending[k] === '1' ? t('مسموح') : t('مخفيّ عن محرّكات البحث')) : (pending[k] ?? ''),
+    }));
+
+    const applyPending = () => {
+        for (const k of fields) {
+            if (k === 'index') form.setData('index', pending.index === '1');
+            else form.setData(k, pending[k] ?? '');
+        }
+    };
 
     return (
         <AdminLayout title="الظهور في البحث">
@@ -66,10 +112,23 @@ export default function Seo() {
                 الصفحات» — وهما تقريران لا حقلان، فيزاحمان ما يُكتب فعلًا.
             */}
             <SettingsPage>
+                {liveSimple && (
+                    <div data-testid="seo-live-simple" className="rounded-[12px] border border-[#bfdbfe] bg-[#eff6ff] p-4 text-[13px] leading-relaxed text-[#1e40af]">
+                        <p>{t('موقعك هذا لم يُنشر بعد — يرى زبائنك وغوغل الآن صفحة متجرك البسيطة. ما تحفظه هنا ينتظر نشر موقعك.')}</p>
+                        <Button variant="outline" size="sm" className="mt-3" asChild>
+                            <SmartLink routeName="admin.website.seo.store" href={route('admin.website.seo.store')}>
+                                <Search />
+                                {t('عدّل ظهور صفحتك المنشورة الآن')}
+                            </SmartLink>
+                        </Button>
+                    </div>
+                )}
+                <PendingNotice rows={pendingRows} onUse={applyPending} />
+
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
-                        form.put(route('admin.website.seo.save'), { preserveScroll: true });
+                        save();
                     }}
                 >
                     <SettingsSection
@@ -78,17 +137,7 @@ export default function Seo() {
                         icon={Search}
                     >
                         {/* المعاينة قبل الحقول: يرى النتيجة ثمّ يعدّل لأجلها */}
-                        <div className="rounded-[12px] border border-[var(--ui-border,#e8e8e8)] bg-[#fafafa] p-4">
-                            <p className="truncate text-[12px] text-[#15803d]" dir="ltr">
-                                {host}
-                            </p>
-                            <p className="mt-1 truncate text-[17px] text-[#1a0dab]">
-                                {form.data.title || site.name}
-                            </p>
-                            <p className="mt-1 line-clamp-2 text-[13px] leading-6 text-[#4d5156]">
-                                {form.data.description || t('لا وصف بعد — اكتب سطرين يقنعان من يقرؤهما بأن يضغط.')}
-                            </p>
-                        </div>
+                        <SerpPreview url={url} title={form.data.title.trim() || site.name} description={form.data.description.trim()} />
 
                         <div className="mt-5 space-y-4">
                             <Field
@@ -102,6 +151,7 @@ export default function Seo() {
                                     onChange={(e) => form.setData('title', e.target.value)}
                                     placeholder={site.name}
                                 />
+                                <LengthNote value={form.data.title} kind="title" min={limits.titleMin} max={limits.title} testId="count-title" />
                             </Field>
 
                             <Field
@@ -116,6 +166,7 @@ export default function Seo() {
                                     onChange={(e) => form.setData('description', e.target.value)}
                                     className="w-full rounded-[10px] border border-[var(--ui-border,#e8e8e8)] bg-white px-3 py-2.5 text-sm leading-7 outline-none focus:border-[#111]"
                                 />
+                                <LengthNote value={form.data.description} kind="desc" min={limits.descMin} max={limits.desc} testId="count-desc" />
                             </Field>
 
                             <Field
@@ -146,13 +197,26 @@ export default function Seo() {
                         </div>
 
                         <PageActions className="mt-5">
-                            <Button type="submit" loading={form.processing}>
+                            <Button type="submit" loading={form.processing} disabled={! form.isDirty}>
                                 <Check />
                                 {t('حفظ')}
                             </Button>
                         </PageActions>
+
+                        <div className="mt-3">
+                            <SaveState dirty={form.isDirty} savedAt={savedAt} justSaved={feedback.justSaved} failure={feedback.failure} />
+                        </div>
                     </SettingsSection>
                 </form>
+
+                {/* وما يقرؤه غوغل الآن — بما حُفظ، لا بما في الحقول قبل الحفظ */}
+                <SettingsSection
+                    icon={ShieldCheck}
+                    title="جاهزية الفهرسة"
+                    description="ما تقرؤه محرّكات البحث من موقعك كما حُفظ الآن."
+                >
+                    <ReadinessList readiness={readiness} />
+                </SettingsSection>
 
                 {/* ما يُقرأ ويُضبط في موضعٍ آخر — ومن أين يُضبط مكتوبٌ معه */}
                 <SettingsSection title="ما يحكم ظهورك ويُضبط في موضعٍ آخر" divided>

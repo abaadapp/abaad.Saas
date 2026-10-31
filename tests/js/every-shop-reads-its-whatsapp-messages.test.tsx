@@ -186,7 +186,7 @@ describe('صندوق المحادثات لكلّ متجر', () => {
         expect(screen.getByTestId('chat-list')).toBeInTheDocument();
     });
 
-    it('وخارج النافذة: لا نصَّ حرًّا — زرُّ قالب المتابعة يطرق بابه وحده', async () => {
+    it('وخارج النافذة: لا نصَّ حرًّا — زرُّ قالب المتابعة يقول إنّه مدفوع ويسأل قبل أن يخرج', async () => {
         inbox({
             params: { q: '', c: '7' },
             thread: {
@@ -200,7 +200,16 @@ describe('صندوق المحادثات لكلّ متجر', () => {
         expect(screen.getByTestId('inbox-body')).toBeDisabled();
         expect(screen.getByTestId('thread-log')).toHaveAttribute('href', '/admin.marketing.whatsapp.log');
 
-        await userEvent.setup().click(screen.getByTestId('inbox-follow-up'));
+        // مدفوعٌ عند ميتا: يُقال ذلك تحت الزرّ، ويُسأل قبل أن يخرج — والإلغاءُ لا يُرسل شيئًا
+        expect(screen.getByTestId('inbox-follow-up-cost')).toHaveTextContent('رسالةٌ مدفوعة');
+        const user = userEvent.setup();
+        await user.click(screen.getByTestId('inbox-follow-up'));
+        expect(await screen.findByText(/لا يُرسل إلّا بتأكيدك هذا/)).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'إلغاء' }));
+        expect(sent).toEqual([]);
+
+        await user.click(screen.getByTestId('inbox-follow-up'));
+        await user.click(await screen.findByRole('button', { name: 'أرسل القالب' }));
         expect(sent).toEqual(['/admin.whatsappInbox.followUp/7']);
     });
 

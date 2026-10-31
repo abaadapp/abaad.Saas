@@ -51,6 +51,9 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
 
     private const CUSTOMER = '96891234567';
 
+    /** ومن يُرسل قالبَ المتابعة قرأ أنّه مدفوعٌ وأكّده — كما يُرسله الزرّ بعد نافذة التأكيد */
+    private const PAID = ['cost_acknowledged' => '1'];
+
     private WhatsAppConnection $abaad;
 
     private static int $seq = 0;
@@ -518,7 +521,7 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
         $thread = $this->props($owner, 'admin.whatsappInbox.index', ['c' => $chat->id])['thread'];
         $this->assertNull($thread['template']);
         $this->assertStringContainsString(WhatsAppInbox::FOLLOW_UP_TEMPLATE, $thread['blocked']);
-        $this->actingAs($owner)->post(route('admin.whatsappInbox.followUp', $chat->id))->assertSessionHasErrors('body');
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.followUp', $chat->id), self::PAID)->assertSessionHasErrors('body');
         $this->assertSame(0, $this->sentTo('PN-A'));
 
         // اعتُمد: يخرج القالبُ باسمه ومتغيّره — والنصُّ الحرُّ ما زال يُردّ
@@ -526,7 +529,7 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
         $this->assertSame(WhatsAppInbox::FOLLOW_UP_TEMPLATE, $this->props($owner, 'admin.whatsappInbox.index', ['c' => $chat->id])['thread']['template']);
         $this->actingAs($owner)->post(route('admin.whatsappInbox.reply', $chat->id), ['body' => 'نعم'])->assertSessionHasErrors('body');
 
-        $this->actingAs($owner)->post(route('admin.whatsappInbox.followUp', $chat->id))->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.followUp', $chat->id), self::PAID)->assertSessionHasNoErrors();
         $sent = Http::recorded(fn (HttpRequest $r) => str_contains($r->url(), '/PN-A/messages'))->sole()[0]->data();
         $this->assertSame('template', $sent['type']);
         $this->assertSame(WhatsAppInbox::FOLLOW_UP_TEMPLATE, $sent['template']['name']);
@@ -538,6 +541,22 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
         $this->assertNull($out->delivered_at);
     }
 
+    /** وقالبٌ مدفوعٌ لا يخرج بلا تأكيد التكلفة — ولو اعتُمد ومُنح المُرسِلُ الردّ */
+    public function test_the_paid_follow_up_template_never_leaves_without_its_cost_acknowledged(): void
+    {
+        $shop = $this->shop('محل الورد', WhatsAppMode::BUSINESS_OWN);
+        $this->own($shop, 'PN-A');
+        $owner = $this->owner($shop);
+        $chat = $this->closedChat($shop, 'PN-A');
+        $this->approveFollowUp($shop);
+
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.followUp', $chat->id))->assertSessionHasErrors('cost_acknowledged');
+        $this->actingAs($owner)->post(route('admin.whatsappInbox.followUp', $chat->id), ['cost_acknowledged' => '0'])->assertSessionHasErrors('cost_acknowledged');
+
+        $this->assertSame(0, $this->sentTo('PN-A'));
+        $this->assertSame(0, WhatsAppChatMessage::where('chat_id', $chat->id)->where('direction', WhatsAppChatMessage::OUT)->count());
+    }
+
     public function test_a_refused_follow_up_is_written_failed_with_metas_words_and_view_only_staff_cannot_send_it(): void
     {
         $shop = $this->shop('محل الورد', WhatsAppMode::BUSINESS_OWN);
@@ -546,11 +565,11 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
         $this->approveFollowUp($shop);
 
         $this->actingAs($this->owner($shop, 'sales', WhatsAppInbox::VIEW))
-            ->post(route('admin.whatsappInbox.followUp', $chat->id))->assertForbidden();
+            ->post(route('admin.whatsappInbox.followUp', $chat->id), self::PAID)->assertForbidden();
         $this->assertSame(0, $this->sentTo('PN-A'));
 
         $this->metaRefuses = true;
-        $this->actingAs($this->owner($shop))->post(route('admin.whatsappInbox.followUp', $chat->id))
+        $this->actingAs($this->owner($shop))->post(route('admin.whatsappInbox.followUp', $chat->id), self::PAID)
             ->assertSessionHas('toast', fn ($t) => $t['type'] === 'danger');
 
         $out = WhatsAppChatMessage::where('chat_id', $chat->id)->where('direction', WhatsAppChatMessage::OUT)->sole();
@@ -566,7 +585,7 @@ class EveryShopWithWhatsAppReadsItsMessagesTest extends TestCase
         $this->approveFollowUp($shop);
 
         $this->assertNull(WhatsAppInbox::followUpTemplate($chat));
-        $this->actingAs($this->owner($shop))->post(route('admin.whatsappInbox.followUp', $chat->id))->assertSessionHasErrors('body');
+        $this->actingAs($this->owner($shop))->post(route('admin.whatsappInbox.followUp', $chat->id), self::PAID)->assertSessionHasErrors('body');
         $this->assertSame(0, $this->sentTo('ABAAD-PN'));
     }
 

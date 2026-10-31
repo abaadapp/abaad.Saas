@@ -181,6 +181,14 @@ class WhatsAppInboxController extends Controller
 
         abort_unless($found !== null, 404);
 
+        /*
+         * والقالبُ خارج النافذة رسالةٌ تحتسبها ميتا على حساب واتساب المتجر —
+         * فلا يخرج إلّا بعد أن يقرأ مُرسِلُه ذلك ويؤكّده. الزرُّ يسأل أوّلًا
+         * ثمّ يرسل هذا الحقل؛ وطلبٌ بلاه يُردّ ولا يُرسل شيء. ولا بابَ آخر في
+         * النظام يُرسل هذا القالب: لا مجدولَ ولا ردَّ آليًّا.
+         */
+        $request->validate(['cost_acknowledged' => ['accepted']]);
+
         $sent = WhatsAppInbox::followUp($found, $request->user());
 
         return back()->with('toast', $sent->status === 'failed'

@@ -9,6 +9,7 @@ import { Input } from '@/Components/ui/input';
 import { useTranslate } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { ConnectSteps, type Readiness } from '@/Components/Connect';
+import { useConfirm } from '@/Components/ConfirmDialog';
 import type { PageProps } from '@/types';
 
 /** محادثةٌ في القائمة — انظر `WhatsAppInbox::page` */
@@ -458,6 +459,8 @@ function Composer({ thread, files }: { thread: Thread; files: Props['files'] }) 
     const picker = useRef<HTMLInputElement>(null);
     const form = useForm<{ body: string; files: File[] }>({ body: '', files: [] });
     const followUp = useForm({});
+    // وقالبُ المتابعة مدفوعٌ عند ميتا — يُسأل عنه قبل أن يخرج (`cost_acknowledged`)
+    const [ask, dialog] = useConfirm();
 
     const send = (e: React.FormEvent) => {
         e.preventDefault();
@@ -482,15 +485,32 @@ function Composer({ thread, files }: { thread: Thread; files: Props['files'] }) 
                             size="sm"
                             variant="outline"
                             loading={followUp.processing}
-                            onClick={() => followUp.post(route('admin.whatsappInbox.followUp', thread.id), { preserveScroll: true })}
+                            onClick={async () => {
+                                const yes = await ask({
+                                    title: 'إرسال قالب المتابعة',
+                                    message: 'قالب المتابعة رسالةٌ خارج نافذة ٢٤ ساعة، تحتسبها ميتا على حساب واتساب متجرك — لا على أبعاد — بحسب فئة القالب وبلد العميل. لا يُرسل إلّا بتأكيدك هذا. متابعة؟',
+                                    action: 'أرسل القالب',
+                                });
+                                if (! yes) return;
+
+                                followUp.transform(() => ({ cost_acknowledged: true }));
+                                followUp.post(route('admin.whatsappInbox.followUp', thread.id), { preserveScroll: true });
+                            }}
                             data-testid="inbox-follow-up"
                         >
                             <Send />
                             {t('إرسال قالب المتابعة')}
                         </Button>
                     )}
-                    {(followUp.errors as Record<string, string | undefined>).body && (
-                        <p className="text-[#b91c1c]" data-testid="inbox-follow-up-error">{(followUp.errors as Record<string, string | undefined>).body}</p>
+                    {thread.template && (
+                        <p className="text-[11px] text-[#92400e]/80" data-testid="inbox-follow-up-cost">
+                            {t('رسالةٌ مدفوعة تحتسبها ميتا على حساب واتساب متجرك.')}
+                        </p>
+                    )}
+                    {((followUp.errors as Record<string, string | undefined>).body ?? (followUp.errors as Record<string, string | undefined>).cost_acknowledged) && (
+                        <p className="text-[#b91c1c]" data-testid="inbox-follow-up-error">
+                            {(followUp.errors as Record<string, string | undefined>).body ?? (followUp.errors as Record<string, string | undefined>).cost_acknowledged}
+                        </p>
                     )}
                 </div>
             ) : thread.window_ends_at ? (
@@ -553,6 +573,8 @@ function Composer({ thread, files }: { thread: Thread; files: Props['files'] }) 
                     {form.errors.body ?? Object.entries(form.errors).find(([k]) => k.startsWith('files'))?.[1]}
                 </p>
             )}
+
+            {dialog}
         </form>
     );
 }

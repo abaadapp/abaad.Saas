@@ -55,6 +55,8 @@ export interface BusinessWhatsApp {
         /** متّصلٌ أم مشتركٌ أم يستقبل فعلًا — `WhatsAppLinkHealth::view` */
         link?: LinkHealth;
         can_check?: boolean;
+        /** فوترةُ ميتا لوصلة المتجر: وقائعُها، وما يمنع تأكيدها، وما رُوجع — `WhatsAppOwnApp::reviewView` */
+        own_app?: BillingReview | null;
     } | null;
     /** أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`WhatsAppFeature::canUseOwnNumber`) */
     own_eligible?: boolean;
@@ -62,6 +64,127 @@ export interface BusinessWhatsApp {
     own_needs_addon?: boolean;
     /** صندوقُ محادثات واتساب مفتوحٌ له — تلقائيًّا: الباقةُ تشمل واتساب ولم يُطفأ (`WhatsAppInbox::available`) */
     inbox_available?: boolean;
+}
+
+/** ما يراه فريقُ أبعاد قبل أن يؤكّد أنّ فوترة ميتا على التاجر */
+export interface BillingReview {
+    own_app: boolean;
+    billing_state: string | null;
+    billing_owner: string | null;
+    awaits_billing: boolean;
+    may_confirm: boolean;
+    facts: { ownership: string | null; funding: string | null; abaad_access: string | null; partner_owned: boolean; read_at: string | null } | null;
+    blocker: string | null;
+    stopped: string | null;
+    evidence: { kind: string; reference: string | null; reviewed_by: string | null; reviewed_at: string | null } | null;
+    kinds: { key: string; label: string }[];
+}
+
+const FUNDING: Record<string, string> = {
+    present: 'عليه وسيلة دفع (لا نعرف لمن)',
+    absent: 'بلا وسيلة دفع',
+    unreadable: 'لا تُطلعنا ميتا عليها',
+};
+
+const ACCESS: Record<string, string> = {
+    none: 'لا يملكه ولا يشاركه',
+    shared: 'مشارَكٌ معه',
+    owned: 'يملكه',
+    unknown: 'تعذّرت القراءة',
+};
+
+/**
+ * مراجعةُ دليل الفوترة — لا زرٌّ يُضغط.
+ *
+ * ميتا لا تُطلع تطبيقًا ليس لـ«مزوّد حلول أعمال» على وسيلة الدفع، فلا يثبت
+ * آليًّا على من تُحتسب الرسائل. فيُسمّى الدليلُ ومرجعُه، ويُقرّ المراجعُ أنّه
+ * رأى فيه اسمَ نشاط التاجر ومعرّفَ هذا الحساب — والخادمُ يقرأ ميتا لحظتها.
+ */
+export function BillingReviewBlock({ businessId, review }: { businessId: number; review: BillingReview }) {
+    const t = useTranslate();
+    const confirm = useForm({ evidence_kind: '', evidence_reference: '', evidence_checked: false });
+    const facts = review.facts;
+    const ready = confirm.data.evidence_kind !== '' && confirm.data.evidence_reference.trim().length >= 3 && confirm.data.evidence_checked;
+
+    return (
+        <div className="mt-2 border-t border-[#f0f0f0] pt-2" data-testid="whatsapp-billing" data-state={review.billing_state ?? ''}>
+            <div className="flex justify-between gap-3">
+                <dt className="text-[#6b7280]">{t('فوترة ميتا')}</dt>
+                <dd className="font-medium text-[#111]">
+                    {review.billing_state === 'confirmed'
+                        ? `${t('رُوجع دليلها — على التاجر')}${review.billing_owner ? ` — ${review.billing_owner}` : ''}`
+                        : review.own_app
+                          ? t('لم يُراجَع دليلها — لا يُرسل الربط')
+                          : t('لم يُراجَع دليلها — يُراجَع قبل أن ينتقل إلى تطبيقه')}
+                </dd>
+            </div>
+            {review.stopped && <p className="mt-1 text-[11px] text-[#b91c1c]">{review.stopped}</p>}
+            {facts && (
+                <ul className="mt-1 space-y-0.5 text-[11px] text-[#6b7280]" data-testid="whatsapp-billing-facts">
+                    <li>{t('الملكيّة عند ميتا')}: {facts.ownership ?? t('تعذّرت القراءة')}{facts.partner_owned ? ` — ${t('لشريكٍ نيابةً عن التاجر')}` : ''}</li>
+                    <li>{t('وسيلة الدفع')}: {t(FUNDING[facts.funding ?? 'unreadable'] ?? FUNDING.unreadable)}</li>
+                    <li>{t('نشاط أبعاد')}: {t(ACCESS[facts.abaad_access ?? 'unknown'] ?? ACCESS.unknown)}</li>
+                    {facts.read_at && <li>{t('قُرئت')}: {facts.read_at}</li>}
+                </ul>
+            )}
+            {review.blocker && <p className="mt-1 text-[11px] font-medium text-[#b91c1c]" data-testid="whatsapp-billing-blocker">{review.blocker}</p>}
+            {review.evidence && (
+                <p className="mt-1 text-[11px] text-[#6b7280]" data-testid="whatsapp-billing-evidence">
+                    {review.evidence.kind} — {review.evidence.reference} · {review.evidence.reviewed_by} · {review.evidence.reviewed_at}
+                </p>
+            )}
+            {review.may_confirm && (
+                <form
+                    className="mt-2 space-y-2"
+                    data-testid="whatsapp-billing-review"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        confirm.post(route('super-admin.businesses.whatsapp.billing', businessId), { preserveScroll: true });
+                    }}
+                >
+                    <p className="text-[11px] leading-relaxed text-[#6b7280]">
+                        {t('ميتا لا تُطلعنا على وسيلة الدفع، وإقرار التاجر لا يكفي. أكّد بعد أن ترى دليلًا من ميتا نفسها:')}
+                    </p>
+                    <select
+                        className="w-full rounded-[8px] border border-[#e5e7eb] p-2 text-[12px]"
+                        value={confirm.data.evidence_kind}
+                        onChange={(e) => confirm.setData('evidence_kind', e.target.value)}
+                        data-testid="whatsapp-billing-kind"
+                    >
+                        <option value="">{t('ما الدليل؟')}</option>
+                        {review.kinds.map((k) => (
+                            <option key={k.key} value={k.key}>
+                                {k.label}
+                            </option>
+                        ))}
+                    </select>
+                    <Input
+                        value={confirm.data.evidence_reference}
+                        onChange={(e) => confirm.setData('evidence_reference', e.target.value)}
+                        placeholder={t('مرجعه: رقم الفاتورة أو تاريخ الصورة')}
+                        data-testid="whatsapp-billing-reference"
+                    />
+                    <label className="flex items-start gap-2 text-[11px] leading-relaxed text-[#374151]">
+                        <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={confirm.data.evidence_checked}
+                            onChange={(e) => confirm.setData('evidence_checked', e.target.checked)}
+                            data-testid="whatsapp-billing-checked"
+                        />
+                        <span>{t('رأيت في الدليل اسمَ نشاط التاجر ومعرّفَ هذا الحساب، ووسيلةَ دفعٍ ليست لأبعاد.')}</span>
+                    </label>
+                    {(confirm.errors.evidence_kind || confirm.errors.evidence_reference || confirm.errors.evidence_checked) && (
+                        <p className="text-[11px] text-[#b91c1c]">{confirm.errors.evidence_kind || confirm.errors.evidence_reference || confirm.errors.evidence_checked}</p>
+                    )}
+                    <Button type="submit" variant="outline" size="sm" loading={confirm.processing} disabled={! ready} data-testid="whatsapp-billing-confirm">
+                        <Check />
+                        {t('راجعتُ الدليل — الفوترة على التاجر')}
+                    </Button>
+                </form>
+            )}
+        </div>
+    );
 }
 
 const MODES = [
@@ -210,6 +333,8 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                                 </Button>
                             )}
                             <p className="mt-1 text-[11px] text-[#9ca3af]">{t('الفحص قراءة عند ميتا فقط — لا يغيّر الرقم ولا الرمز ولا الاشتراك.')}</p>
+                            {/* وفوترةُ ميتا: لا تُرسل وصلةُ تطبيق التاجر قبل أن يُراجَع دليلُها */}
+                            {data.own_health.own_app && <BillingReviewBlock businessId={businessId} review={data.own_health.own_app} />}
                         </div>
                     )}
                 </dl>

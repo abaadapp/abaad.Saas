@@ -51,6 +51,9 @@ class WhatsAppOnboarding
 
     public const TYPES = [self::CLOUD_API, self::COEXISTENCE];
 
+    /** رقمٌ رُبط ولم يُسجَّل في Cloud API بعد — ينتظر رمزَ التحقّق بخطوتين */
+    public const NEEDS_REGISTRATION = 'needs_registration';
+
     /**
      * أمفتوحٌ مسارُ التعايش على هذا الخادم؟
      *
@@ -196,6 +199,26 @@ class WhatsAppOnboarding
             ]);
         }
 
+        /*
+         * ═══ ورقمٌ جديدٌ على Cloud API يحتاج تسجيلًا ═══
+         *
+         * ميتا تقولها في الرقم نفسِه: `platform_type` = `NOT_APPLICABLE`.
+         * فيُحفظ الربطُ «بانتظار التفعيل» ولا يُرسل، ويكتب التاجرُ رمزَ
+         * التحقّق بخطوتين فيُسجَّل (`register`). ورقمٌ مسجَّلٌ أصلًا — رقمُ
+         * تاجرٍ يعمل على تطبيقه الخاصّ — لا يُسجَّل ثانيةً: لا شيء يمسّ ما
+         * يعمل عنده. ورقمُ التعايش لا يُسجَّل أبدًا (انظر رأس الملفّ).
+         *
+         * ولا يحلّ رقمٌ لم يُفعَّل محلَّ رقمٍ يُرسل اليوم — كما في «لا رقمَ بعد».
+         */
+        $unregistered = $kind['on_app'] === false
+            && ($chosen['platform_type'] ?? null) === WhatsAppEmbeddedSignup::PLATFORM_NOT_APPLICABLE;
+
+        if ($unregistered && $existing?->isUsable() && $existing->phone_number_id !== $numberId) {
+            return self::fail($business, 'phone_number_id', __('الرقم الجديد لم يُفعَّل في واتساب للأعمال بعد — بقي ربطك الحاليّ كما هو. افصله ثمّ أعد الربط لتفعيل الرقم الجديد.'), [
+                'code' => self::NEEDS_REGISTRATION, 'message' => 'kept existing connection',
+            ]);
+        }
+
         $hook = WhatsAppLinkCheck::subscribe($waba, $token);
 
         /*
@@ -215,8 +238,8 @@ class WhatsAppOnboarding
             'coexistence' => $kind['on_app'] === true,
             'access_token' => $token,
             'token_expires_at' => $check['expires_at'] ?? $exchange['expires_at'],
-            'status' => WhatsAppConnection::ACTIVE,
-            'last_error_code' => null,
+            'status' => $unregistered ? WhatsAppConnection::PENDING : WhatsAppConnection::ACTIVE,
+            'last_error_code' => $unregistered ? self::NEEDS_REGISTRATION : null,
             'last_error_message' => null,
             'last_error_at' => null,
         ] + WhatsAppLinkCheck::stamp($check['app_id'], $hook['state'], WhatsAppLinkCheck::routing($numberId, $token)['state'])
@@ -232,8 +255,62 @@ class WhatsAppOnboarding
         Activity::log('settings', 'واتساب — ربط رقم المتجر بالتسجيل المدمج ('
             .($chosen['display_phone_number'] ?? $numberId).')');
 
+        if ($unregistered) {
+            return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => true, 'webhook' => $hook['state'],
+                'message' => __('تمّ التفويض — بقيت خطوةٌ واحدة: فعّل رقمك برمز التحقّق بخطوتين (ستّة أرقام) أدناه.')];
+        }
+
         return ['ok' => true, 'connection' => $connection, 'field' => null, 'pending' => false, 'webhook' => $hook['state'],
             'message' => self::linkedMessage($hook['state'])];
+    }
+
+    /** أينتظر رقمُ هذه الوصلة تسجيلَه في Cloud API؟ */
+    public static function awaitsRegistration(?WhatsAppConnection $connection): bool
+    {
+        return $connection !== null
+            && $connection->status === WhatsAppConnection::PENDING
+            && $connection->last_error_code === self::NEEDS_REGISTRATION
+            && filled($connection->phone_number_id)
+            && filled($connection->access_token);
+    }
+
+    /**
+     * يُسجّل رقمَ المتجر في Cloud API برمزٍ يكتبه صاحبُه — ثمّ يُرسل منه.
+     *
+     * لا يُنادى إلّا لوصلةٍ قال الربطُ إنّ رقمها ينتظر (`awaitsRegistration`):
+     * فلا يُسجَّل رقمٌ يعمل، ولا رقمُ متجرٍ آخر — الوصلةُ وصلةُ متجر الجلسة.
+     *
+     * @return array{ok:bool, message:string}
+     */
+    public static function register(Business $business, string $pin): array
+    {
+        $connection = WhatsAppConnections::forBusiness($business->id);
+
+        if (! self::awaitsRegistration($connection)) {
+            return ['ok' => false, 'message' => __('لا رقمَ ينتظر التفعيل — أعد الربط من زرّ «ربط واتساب API».')];
+        }
+
+        $done = WhatsAppEmbeddedSignup::register((string) $connection->phone_number_id, (string) $connection->access_token, $pin);
+
+        if (! $done['ok']) {
+            self::log('register_failed', $business->id, ['code' => $done['code'], 'message' => $done['message']]);
+
+            return ['ok' => false, 'message' => $done['code'] === WhatsAppEmbeddedSignup::PIN_MISMATCH
+                ? __('الرمز لا يطابق رمز التحقّق بخطوتين المضبوط لرقمك — اكتب رمزه الحاليّ.')
+                : __('لم تقبل ميتا تفعيل الرقم — لم يتغيّر شيء. أعد المحاولة بعد قليل.')];
+        }
+
+        $connection->update([
+            'status' => WhatsAppConnection::ACTIVE,
+            'last_error_code' => null,
+            'last_error_message' => null,
+            'last_error_at' => null,
+        ]);
+
+        Activity::log('settings', 'واتساب — تفعيل رقم المتجر في Cloud API ('
+            .($connection->display_phone_number ?? $connection->phone_number_id).')');
+
+        return ['ok' => true, 'message' => self::linkedMessage((string) $connection->webhook_state)];
     }
 
     /** ما يُقال بعد ربطٍ قُبل — والاستقبالُ لا يُدّعى قبل أن يثبت */

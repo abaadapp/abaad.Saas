@@ -5,7 +5,7 @@ namespace App\Support;
 use App\Models\WhatsAppConnection;
 
 /**
- * حالُ الربط كما تُقرأ على البطاقة — ستُّ حالاتٍ لا سابعة.
+ * حالُ الربط كما تُقرأ على البطاقة — ثماني حالاتٍ لا تاسعة.
  *
  * ═══ ولمَ تُحسب هنا لا في الشاشة ═══
  *
@@ -28,6 +28,12 @@ class WhatsAppLink
 
     /** التفويض تمّ والرقمُ لم يصل بعد */
     public const CONNECTING = 'connecting';
+
+    /** الرقمُ وصل ولم يُسجَّل في Cloud API — ينتظر رمزَ التحقّق بخطوتين */
+    public const NEEDS_REGISTRATION = 'needs_registration';
+
+    /** رُبط بتطبيق التاجر ولم يثبت أنّ فوترة ميتا عليه — لا يُرسل (`WhatsAppOwnApp`) */
+    public const BILLING_UNPROVEN = 'billing_unproven';
 
     public const CONNECTED = 'connected';
 
@@ -62,6 +68,14 @@ class WhatsAppLink
 
         if ($c->status === WhatsAppConnection::REVOKED) {
             return self::REAUTH;
+        }
+
+        if (WhatsAppOwnApp::awaitsBilling($c)) {
+            return self::BILLING_UNPROVEN;
+        }
+
+        if (WhatsAppOnboarding::awaitsRegistration($c)) {
+            return self::NEEDS_REGISTRATION;
         }
 
         if ($c->status === WhatsAppConnection::PENDING) {
@@ -127,6 +141,8 @@ class WhatsAppLink
         return match ($state) {
             self::CONNECTED => __('متصل'),
             self::CONNECTING => __('جاري الربط'),
+            self::NEEDS_REGISTRATION => __('بقي تفعيل الرقم'),
+            self::BILLING_UNPROVEN => __('بانتظار إثبات الفوترة'),
             self::REAUTH => __('يحتاج إعادة تفويض'),
             self::EXPIRED => __('انتهت صلاحية التفويض'),
             self::ERROR => __('حدث خطأ'),

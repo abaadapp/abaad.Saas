@@ -379,13 +379,13 @@ class WhatsAppController extends Controller
          * ═══ و«API مستقلّ» لمتجر سياسة الإضافات إضافةٌ تُباع ═══
          *
          * لا يُختار له رقمُه قبل أن تسري إضافةُ «ربط واتساب برقم المتجر» —
-         * بطلبٍ يُسدَّد أو بمنحةٍ مؤرّخة من «خدمات أبعاد». ومتجرُ السياسة
-         * السابقة على حاله: صلاحيةُ الرقم الخاصّ وحدها.
+         * بطلبٍ يُسدَّد أو بمنحةٍ مؤرّخة من «خدمات أبعاد». وباقةٌ تشمل واتساب
+         * لا تُطلب فوقها الإضافة: شراءٌ واحدٌ يكفي (`needsOwnNumberAddon`).
+         * ومتجرُ السياسة السابقة على حاله: صلاحيةُ الرقم الخاصّ وحدها.
          */
         if (($data['whatsapp_mode'] ?? null) === WhatsAppMode::BUSINESS_OWN
             && $business->whatsapp_mode !== WhatsAppMode::BUSINESS_OWN
-            && PricingPolicy::isAddons($business)
-            && ! Entitlements::has($business, Catalog::OWN_NUMBER)) {
+            && WhatsAppFeature::needsOwnNumberAddon($business)) {
             return back()->withErrors([
                 'whatsapp_mode' => __('API المستقلّ إضافةٌ لهذا المتجر — اطلبها له أو امنحها بتاريخ من «خدمات أبعاد» في صفحته.'),
             ]);
@@ -492,6 +492,42 @@ class WhatsAppController extends Controller
     }
 
     /**
+     * يؤكّد فريقُ أبعاد أنّ فوترة ميتا على التاجر — بعد أن راجع دليلًا من ميتا نفسها.
+     *
+     * لا زرٌّ يُضغط: يُسمّى الدليلُ ومرجعُه، ويُقرّ المراجعُ أنّه رأى اسمَ نشاط
+     * التاجر ومعرّفَ هذا الحساب فيه. ويُقرأ الحسابُ عند ميتا لحظتها، فوقائعُ
+     * تنقضه تردّه (`WhatsAppOwnApp::confirmBilling`). ولا يمسّ رمزًا ولا رقمًا.
+     */
+    public function confirmBilling(Request $request, int $id)
+    {
+        $business = Business::findOrFail($id);
+        $own = WhatsAppConnections::forBusiness($business->id);
+
+        if (! \App\Support\WhatsAppOwnApp::mayConfirm($own)) {
+            return back()->withErrors(['whatsapp' => __('لا ربطَ لهذا المتجر ينتظر إثبات الفوترة.')]);
+        }
+
+        $data = $request->validate([
+            'evidence_kind' => ['required', Rule::in(array_keys(\App\Support\WhatsAppOwnApp::EVIDENCE))],
+            'evidence_reference' => ['required', 'string', 'min:3', 'max:120'],
+            'evidence_checked' => ['accepted'],
+        ]);
+
+        $result = \App\Support\WhatsAppOwnApp::confirmBilling($own, $request->user(), [
+            'kind' => $data['evidence_kind'], 'reference' => $data['evidence_reference'],
+        ]);
+
+        if (! $result['ok']) {
+            return back()->withErrors(['whatsapp' => $result['message']]);
+        }
+
+        Activity::log('settings', 'واتساب — مراجعة دليل أنّ فوترة ميتا على «'.$business->name.'» ('.$data['evidence_kind'].')',
+            ['business_id' => $business->id]);
+
+        return back()->with('toast', ['msg' => $result['message'], 'type' => 'success']);
+    }
+
+    /**
      * «فحص إعداد تطبيق أبعاد» — عنوانُ الإشعارات وحقلُ `messages` في التطبيق نفسه.
      *
      * واحدٌ لكلّ المتاجر: لو أُطفئ `messages` في لوحة التطبيق أو تبدّل العنوان
@@ -546,6 +582,9 @@ class WhatsAppController extends Controller
                 // متّصلٌ أم مشتركٌ أم يستقبل فعلًا — بلا رمزٍ ولا معرّفِ تطبيقٍ آخر
                 'link' => WhatsAppLinkHealth::view($own),
                 'can_check' => filled($own->phone_number_id) && filled($own->access_token),
+                // وربطُ التاجر بتطبيقه: على من تُحتسب رسائلُه، وأينتظر إثباتَها
+                'own_app' => \App\Support\WhatsAppOwnApp::is($own) || \App\Support\WhatsAppOwnApp::mayConfirm($own)
+                    ? \App\Support\WhatsAppOwnApp::reviewView($own) : null,
             ] : null,
             // أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`canUseOwnNumber`)
             'own_eligible' => WhatsAppFeature::canUseOwnNumber($business),

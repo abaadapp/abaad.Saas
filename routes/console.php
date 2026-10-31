@@ -94,6 +94,14 @@ Schedule::command('invoices:remind')->dailyAt('09:00')->withoutOverlapping();
  */
 Schedule::command('whatsapp:sync-templates')->hourly()->withoutOverlapping();
 
+/*
+ * فوترةُ وصلات تطبيقات التجّار كما رُوجعت؟ — قراءةٌ يوميّة عند ميتا.
+ *
+ * دليلٌ رُوجع ثمّ نقضته ميتا (شُورك الحسابُ مع أبعاد، أو غابت وسيلةُ الدفع،
+ * أو تبدّلت) يُوقف الإرسال حتى يُراجَع جديد. قراءاتٌ لا غير.
+ */
+Schedule::command('whatsapp:own-billing')->dailyAt('06:30')->withoutOverlapping();
+
 // تنبيه انخفاض المخزون بالبريد يوميًا (الساعة 08:00)
 Schedule::command('alerts:low-stock')->dailyAt('08:00')->withoutOverlapping();
 

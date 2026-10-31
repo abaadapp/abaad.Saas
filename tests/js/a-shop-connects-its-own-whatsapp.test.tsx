@@ -401,4 +401,32 @@ describe('بطاقةُ الحال', () => {
 
         expect(screen.getByTestId('meta-error').textContent).toContain('not eligible');
     });
+
+    /** رقمٌ جديدٌ على Cloud API: خطوةُ التفعيل برمز التحقّق بخطوتين — لصاحب الحساب وحده */
+    it('تطلب رمز التحقّق بخطوتين لرقمٍ لم يُفعَّل، ولا تقبل غيرَ ستّة أرقام', async () => {
+        const user = userEvent.setup();
+        const { unmount } = card({ state: 'needs_registration', display_phone_number: '+968 9100 0001' });
+
+        expect(pillFor('needs_registration')).toBe('action');
+        expect(screen.getByTestId('link-line').textContent).toContain('اكتب رمز التحقّق بخطوتين');
+        expect(screen.getByTestId('link-facts').textContent).toContain('+968 9100 0001');
+
+        const pin = screen.getByTestId('register-pin');
+        expect(screen.getByTestId('register-submit')).toBeDisabled();
+        await user.type(pin, '48a29-15');
+        expect(pin).toHaveValue('482915');
+        expect(screen.getByTestId('register-submit')).toBeEnabled();
+        unmount();
+
+        card({ state: 'needs_registration' }, false);
+        expect(screen.queryByTestId('register-number')).toBeNull();
+    });
+
+    /** ومن يبدأ على رقمه لا يُقال له إنّ رسائله تخرج من رقم أبعاد */
+    it('لا تَعِد برقم أبعاد من لا يُرسل منه', () => {
+        render(<WhatsappLinkCard link={base} config={CONFIG} mayManage sharedAllowed={false} />);
+
+        expect(screen.getByTestId('link-line').textContent).toContain('لا رسالةَ تخرج قبل ذلك');
+        expect(screen.getByTestId('link-line').textContent).not.toContain('رقم أبعاد المشترك');
+    });
 });

@@ -118,6 +118,24 @@ final class WhatsAppLinkCheck
     }
 
     /**
+     * التطبيقُ الذي يجب أن يكون أصدر رمزَ هذه الوصلة، وعنوانُ إشعاراته.
+     *
+     * وصلةٌ بتطبيق التاجر (`own_app`) تُقاس بتطبيقه وسرّه وعنوانها الخاصّ؛
+     * وما سواها بتطبيق أبعاد وعنوانه العامّ — كما كان.
+     *
+     * @return array{id:string, secret:?string, callback:string}
+     */
+    public static function expectedApp(?WhatsAppConnection $connection): array
+    {
+        if ($connection !== null && WhatsAppOwnApp::is($connection)) {
+            return ['id' => (string) $connection->token_app_id, 'secret' => $connection->app_secret,
+                'callback' => WhatsAppOwnApp::callbackUrl($connection)];
+        }
+
+        return ['id' => self::appId(), 'secret' => null, 'callback' => (string) route('webhooks.whatsapp')];
+    }
+
+    /**
      * فحصُ الرمز قبل قبوله — بلا كتابةٍ في قاعدةٍ ولا نداءٍ يغيّر عند ميتا.
      *
      * و`$wantedWaba` ما سمّاه المتصفّح أو الحقل: يُطابَق بما مُنحه الرمز أو
@@ -126,9 +144,9 @@ final class WhatsAppLinkCheck
      *
      * @return array{ok:bool, problem:?string, message:?string, app_id:?string, waba:?string, expires_at:?Carbon, meta:array{code:?string, message:?string}}
      */
-    public static function token(string $token, ?string $wantedWaba): array
+    public static function token(string $token, ?string $wantedWaba, ?string $appId = null, ?string $appSecret = null): array
     {
-        $inspect = WhatsAppEmbeddedSignup::inspect($token);
+        $inspect = WhatsAppEmbeddedSignup::inspect($token, $appId, $appSecret);
         $meta = ['code' => $inspect['code'], 'message' => $inspect['message']];
 
         if (! $inspect['ok']) {
@@ -146,7 +164,7 @@ final class WhatsAppLinkCheck
             return self::refuse($problem, $inspect['app_id'], $meta);
         }
 
-        if ($inspect['app_id'] !== self::appId()) {
+        if ($inspect['app_id'] !== ($appId ?? self::appId())) {
             return self::refuse(self::WRONG_APP, $inspect['app_id'], [
                 'code' => 'wrong_app', 'message' => 'token app '.(string) $inspect['app_id'],
             ]);
@@ -265,7 +283,7 @@ final class WhatsAppLinkCheck
      *
      * @return array{state:string, apps:list<array{app_id:string, name:?string, override:?string}>, meta:array{code:?string, message:?string}}
      */
-    public static function webhook(string $waba, string $token): array
+    public static function webhook(string $waba, string $token, ?string $appId = null, ?string $callback = null): array
     {
         $read = WhatsAppEmbeddedSignup::subscribedApps($waba, $token);
         $meta = ['code' => $read['code'], 'message' => $read['message']];
@@ -274,11 +292,12 @@ final class WhatsAppLinkCheck
             return ['state' => self::UNKNOWN, 'apps' => [], 'meta' => $meta];
         }
 
-        $ours = collect($read['apps'])->firstWhere('app_id', self::appId());
+        // والمنتظَرُ تطبيقُ الوصلة: تطبيقُ أبعاد، أو تطبيقُ التاجر في `own_app`
+        $ours = collect($read['apps'])->firstWhere('app_id', $appId ?? self::appId());
 
         $state = match (true) {
             $ours === null => self::NOT_SUBSCRIBED,
-            ! self::isOurCallback($ours['override']) => self::OVERRIDE,
+            ! self::isOurCallback($ours['override'], $callback) => self::OVERRIDE,
             default => self::SUBSCRIBED,
         };
 
@@ -300,9 +319,9 @@ final class WhatsAppLinkCheck
      *
      * @return array{state:string, posted:bool, meta:array{code:?string, message:?string}}
      */
-    public static function subscribe(string $waba, string $token): array
+    public static function subscribe(string $waba, string $token, ?string $appId = null, ?string $callback = null): array
     {
-        $before = self::webhook($waba, $token);
+        $before = self::webhook($waba, $token, $appId, $callback);
 
         if ($before['state'] !== self::NOT_SUBSCRIBED) {
             return ['state' => $before['state'], 'posted' => false, 'meta' => $before['meta']];
@@ -321,7 +340,7 @@ final class WhatsAppLinkCheck
          * هي قالتها يومَها والمشتركُ تطبيقٌ آخر. الدليلُ أن يظهر تطبيقُنا
          * بعينه في القائمة بعد النداء.
          */
-        $after = self::webhook($waba, $token);
+        $after = self::webhook($waba, $token, $appId, $callback);
 
         return ['state' => $after['state'], 'posted' => true, 'meta' => $after['meta']];
     }
@@ -363,7 +382,8 @@ final class WhatsAppLinkCheck
             return ['skipped' => true, 'routing' => null, 'app_id' => null, 'ours' => null, 'problem' => null, 'webhook' => null, 'verified' => false];
         }
 
-        $check = self::token($token, $connection->waba_id);
+        $app = self::expectedApp($connection);
+        $check = self::token($token, $connection->waba_id, $app['id'], $app['secret']);
         $problem = $check['ok'] ? null : $check['problem'];
         $webhook = null;
         $routing = null;
@@ -371,7 +391,7 @@ final class WhatsAppLinkCheck
         if ($check['ok']) {
             $number = self::number((string) $check['waba'], $token, (string) $connection->phone_number_id, $connection->id);
             $problem = $number['ok'] ? null : $number['problem'];
-            $webhook = self::webhook((string) $check['waba'], $token)['state'];
+            $webhook = self::webhook((string) $check['waba'], $token, $app['id'], $app['callback'])['state'];
             $routing = $number['ok'] ? self::routing((string) $connection->phone_number_id, $token)['state'] : null;
         }
 
@@ -380,7 +400,7 @@ final class WhatsAppLinkCheck
             'routing' => $routing,
             'app_id' => $check['app_id'],
             // و`#100` لا يُسمّي التطبيق — لكنّه يقول إنّه ليس تطبيقنا
-            'ours' => $problem === self::WRONG_APP ? false : ($check['app_id'] === null ? null : $check['app_id'] === self::appId()),
+            'ours' => $problem === self::WRONG_APP ? false : ($check['app_id'] === null ? null : $check['app_id'] === $app['id']),
             'problem' => $problem,
             'webhook' => $webhook,
             'verified' => $check['ok'] && $problem === null,
@@ -392,16 +412,16 @@ final class WhatsAppLinkCheck
      *
      * @return array{state:string, callback_ours:?bool, fields:list<string>, meta:array{code:?string, message:?string}}
      */
-    public static function appWebhook(): array
+    public static function appWebhook(?string $appId = null, ?string $appSecret = null, ?string $callback = null): array
     {
-        $read = WhatsAppEmbeddedSignup::appSubscription();
+        $read = WhatsAppEmbeddedSignup::appSubscription($appId, $appSecret);
         $meta = ['code' => $read['code'], 'message' => $read['message']];
 
         if (! $read['ok']) {
             return ['state' => self::UNKNOWN, 'callback_ours' => null, 'fields' => [], 'meta' => $meta];
         }
 
-        $ours = filled($read['callback_url']) && self::isOurCallback($read['callback_url']);
+        $ours = filled($read['callback_url']) && self::isOurCallback($read['callback_url'], $callback);
 
         return [
             'state' => match (true) {
@@ -509,13 +529,13 @@ final class WhatsAppLinkCheck
     /**
      * عنوانٌ بديلٌ هو عنوانُنا نفسُه لا يُعدّ بديلًا.
      */
-    public static function isOurCallback(?string $override): bool
+    public static function isOurCallback(?string $override, ?string $ours = null): bool
     {
         if (blank($override)) {
             return true;
         }
 
-        $ours = (string) route('webhooks.whatsapp');
+        $ours ??= (string) route('webhooks.whatsapp');
 
         return parse_url((string) $override, PHP_URL_HOST) === parse_url($ours, PHP_URL_HOST)
             && rtrim((string) parse_url((string) $override, PHP_URL_PATH), '/') === rtrim((string) parse_url($ours, PHP_URL_PATH), '/');
@@ -525,7 +545,7 @@ final class WhatsAppLinkCheck
     public static function say(string $problem): string
     {
         return match ($problem) {
-            self::WRONG_APP => __('هذا الرمز لم يصدر من تطبيق أبعاد (Abaad Messaging) — فلا تصلنا رسائل زبائنك به. اربط رقمك من زرّ «ربط واتساب API» في أبعاد، أو أنشئ الرمز من تطبيق أبعاد.'),
+            self::WRONG_APP => __('هذا الرمز صادرٌ من تطبيق ميتا آخر لا من تطبيق أبعاد (Abaad Messaging) — فلا تصلنا به رسائل زبائنك ولا حالاتها. اربط رقمك من زرّ «ربط واتساب API» في أبعاد واختر حسابك ورقمك نفسيهما: يبقى الرقم والحساب ملكك، ولا يُطلب منك ترك تطبيقك.'),
             self::INVALID_TOKEN => __('الرمز منتهٍ أو مسحوب عند ميتا — أعد الربط.'),
             self::UNVERIFIABLE => __('تعذّر الوصول إلى ميتا للتحقّق من التفويض — أعد المحاولة بعد قليل.'),
             self::MISSING_SCOPES => __('التفويض ناقص — أعد الربط واقبل كلّ الأذونات المطلوبة.'),

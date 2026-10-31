@@ -32,6 +32,10 @@ class MetaWhatsAppClient
         array $variables = [],
         ?array $document = null,
     ): array {
+        if ($refusal = self::unbilled($connection)) {
+            return $refusal;
+        }
+
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
             .'/'.$connection->phone_number_id.'/messages';
@@ -176,6 +180,10 @@ class MetaWhatsAppClient
 
     public static function sendText(WhatsAppConnection $connection, string $to, string $body): array
     {
+        if ($refusal = self::unbilled($connection)) {
+            return $refusal;
+        }
+
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
             .'/'.$connection->phone_number_id.'/messages';
@@ -222,6 +230,10 @@ class MetaWhatsAppClient
         ?string $caption = null,
         ?string $filename = null,
     ): array {
+        if ($refusal = self::unbilled($connection)) {
+            return $refusal;
+        }
+
         if (! in_array($kind, ['image', 'document'], true)) {
             return self::failure('unsupported_kind', __('نوعٌ لا يُرسَل.'), retryable: false);
         }
@@ -302,6 +314,21 @@ class MetaWhatsAppClient
         );
     }
 
+    /**
+     * وصلةُ تطبيق تاجرٍ لم يُراجَع دليلُ فوترتها لا يخرج منها شيءٌ إلى ميتا.
+     *
+     * آخرُ بابٍ قبل النداء: من وصل هنا بوصلةٍ لم تمرّ بـ`isUsable` يُردّ أيضًا،
+     * فلا تُحتسب رسالةٌ على حسابٍ لم يثبت أنّ صاحبه يدفعها.
+     *
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}|null
+     */
+    private static function unbilled(WhatsAppConnection $connection): ?array
+    {
+        return WhatsAppOwnApp::is($connection) && ! WhatsAppOwnApp::billed($connection)
+            ? self::failure(WhatsAppOwnApp::AWAITS_BILLING, WhatsAppOwnApp::say(WhatsAppOwnApp::AWAITS_BILLING), retryable: false)
+            : null;
+    }
+
     private static function failure(string $code, string $message, bool $retryable): array
     {
         return ['ok' => false, 'id' => null, 'code' => $code, 'message' => $message, 'retryable' => $retryable];
@@ -317,9 +344,10 @@ class MetaWhatsAppClient
      * والمقارنة بـ`hash_equals` لا بـ`===`: المقارنة العادية تخرج عند أوّل
      * حرفٍ مختلف، وفارقُ الزمن يُقرأ فيُخمَّن التوقيع حرفًا حرفًا.
      */
-    public static function verifySignature(?string $header, string $rawBody): bool
+    public static function verifySignature(?string $header, string $rawBody, ?string $secret = null): bool
     {
-        $secret = (string) config('whatsapp.app_secret');
+        // وإشعارُ تطبيق التاجر يُقاس بسرّ تطبيقه هو — لا بسرّ أبعاد (`WhatsAppOwnApp`)
+        $secret ??= (string) config('whatsapp.app_secret');
 
         // بلا سرٍّ لا تحقّق — ولا قبول: الأمان لا يُفتح بغياب إعداد
         if ($secret === '' || blank($header)) {

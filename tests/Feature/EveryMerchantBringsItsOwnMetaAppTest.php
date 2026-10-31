@@ -39,7 +39,7 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
 
     private const ABAAD_APP = '1082481610822941';
 
-    private const ABAAD_BIZ = '1091513693452776';
+    private const ABAAD_BIZ = '9990000000099';
 
     private const APP = '5550000000001';
 

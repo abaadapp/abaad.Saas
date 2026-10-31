@@ -81,12 +81,12 @@ describe('ربط التاجر بتطبيقه على Meta', () => {
                 link={{ ...LINK, state: 'connected' }}
                 config={CONFIG}
                 mayManage={false}
-                ownApp={{ ...LINKED, connection: { ...LINKED.connection!, verify_token: null, billing: { state: 'merchant', owner: 'SALAM SITY Trading LLC', checked_at: null } } }}
+                ownApp={{ ...LINKED, connection: { ...LINKED.connection!, verify_token: null, billing: { state: 'merchant', owner: 'نشاط التاجر', checked_at: null } } }}
             />,
         );
 
         expect(screen.queryByTestId('own-app-form')).toBeNull();
         expect(screen.queryByTestId('own-app-verify')).toBeNull();
-        expect(screen.getByTestId('own-app-billing')).toHaveTextContent('SALAM SITY Trading LLC');
+        expect(screen.getByTestId('own-app-billing')).toHaveTextContent('نشاط التاجر');
     });
 });

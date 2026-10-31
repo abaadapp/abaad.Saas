@@ -291,7 +291,7 @@ class EveryMerchantLinksAndActivatesItsOwnNumberTest extends TestCase
     public function test_a_token_from_another_meta_app_is_refused_with_the_supported_way(): void
     {
         Http::fake(['*/oauth/access_token*' => Http::response(['access_token' => 'OTHER-APP-TOKEN-0123456789'], 200)]
-            + $this->abaadAppMeta(appId: '980169825105048'));
+            + $this->abaadAppMeta(appId: '5550000000009'));
 
         $this->signup($this->owner, 'WABA-1', 'PN-1')->assertSessionHasErrors('code');
 

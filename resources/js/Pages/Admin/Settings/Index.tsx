@@ -963,7 +963,8 @@ export default function SettingsIndex() {
                                     */}
                                     {store.serves !== 'none' && (
                                         <Button variant="outline" size="sm" asChild>
-                                            <Link href={route('admin.website.seo')} data-testid="store-card-seo">
+                                            {/* والبسيطةُ المنشورة إلى شاشتها — ولو كان موقعٌ مبنيٌّ قيد الإنشاء */}
+                                            <Link href={route(store.serves === 'simple' ? 'admin.website.seo.store' : 'admin.website.seo')} data-testid="store-card-seo">
                                                 <Search />
                                                 {t('الظهور في البحث')}
                                             </Link>

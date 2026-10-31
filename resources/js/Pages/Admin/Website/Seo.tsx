@@ -31,6 +31,8 @@ interface Props extends SiteShell {
         seo: { title: string; description: string; image: string };
     }[];
     domain: DomainState;
+    /** صفحةُ المتجر البسيطة هي ما يُخدم الآن، وهذا الموقعُ لم يُنشر — ولها شاشتُها */
+    liveSimple?: boolean;
 }
 
 /**
@@ -50,7 +52,7 @@ interface Props extends SiteShell {
  * يُعيده استرجاعُ نسخةٍ قديمة (`Published::forBusiness`، `Publisher::restore`).
  */
 export default function Seo() {
-    const { site, seo, pages, domain, limits, savedAt, pending, readiness } = usePage<PageProps<Props>>().props;
+    const { site, seo, pages, domain, limits, savedAt, pending, readiness, liveSimple } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const form = useForm({
@@ -110,6 +112,17 @@ export default function Seo() {
                 الصفحات» — وهما تقريران لا حقلان، فيزاحمان ما يُكتب فعلًا.
             */}
             <SettingsPage>
+                {liveSimple && (
+                    <div data-testid="seo-live-simple" className="rounded-[12px] border border-[#bfdbfe] bg-[#eff6ff] p-4 text-[13px] leading-relaxed text-[#1e40af]">
+                        <p>{t('موقعك هذا لم يُنشر بعد — يرى زبائنك وغوغل الآن صفحة متجرك البسيطة. ما تحفظه هنا ينتظر نشر موقعك.')}</p>
+                        <Button variant="outline" size="sm" className="mt-3" asChild>
+                            <SmartLink routeName="admin.website.seo.store" href={route('admin.website.seo.store')}>
+                                <Search />
+                                {t('عدّل ظهور صفحتك المنشورة الآن')}
+                            </SmartLink>
+                        </Button>
+                    </div>
+                )}
                 <PendingNotice rows={pendingRows} onUse={applyPending} />
 
                 <form

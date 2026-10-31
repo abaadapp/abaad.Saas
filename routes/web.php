@@ -1347,6 +1347,9 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'export.tenant', 'te
             Route::put('/shop', [SettingsController::class, 'saveStore'])->name('shop.save');
             Route::get('/seo', [SettingsController::class, 'seo'])->name('seo');
             Route::put('/seo', [SettingsController::class, 'saveSeo'])->name('seo.save');
+            // وصفحةُ المتجر البسيطة المنشورة — ولو كان موقعٌ مبنيٌّ قيد الإنشاء (`SettingsController::simpleLive`)
+            Route::get('/seo/store', [SettingsController::class, 'storeSeo'])->name('seo.store');
+            Route::put('/seo/store', [SettingsController::class, 'saveStoreSeo'])->name('seo.store.save');
             Route::put('/settings', [SettingsController::class, 'saveSite'])->name('settings.save');
 
             /*
@@ -2191,6 +2194,9 @@ Route::domain('{slug}.'.config('storefront.domain'))
         Route::get('/sitemap.xml', [SitemapController::class, 'show'])
             ->where('slug', Storefront::pattern())
             ->name('store.sitemap');
+        Route::get('/sitemap-{part}.xml', [SitemapController::class, 'part'])
+            ->where(['slug' => Storefront::pattern(), 'part' => '[1-9][0-9]{0,4}'])
+            ->name('store.sitemap.part');
 
         /*
          * وصفحاتُ الموقع الداخليّة — «المتجر» و«من نحن» و«تواصل معنا».
@@ -2254,6 +2260,8 @@ Route::domain('{slug}.'.config('storefront.domain'))
 
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
 Route::get('/s/{slug}/sitemap.xml', [SitemapController::class, 'show'])->name('store.show.sitemap');
+Route::get('/s/{slug}/sitemap-{part}.xml', [SitemapController::class, 'part'])
+    ->where('part', '[1-9][0-9]{0,4}')->name('store.show.sitemap.part');
 Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
     ->where('path', Storefront::PATH)->name('store.show.page');
 // والعدّادان نفسُهما على المسار البديل — انظر حجّتهما في مجموعة النطاق الفرعيّ
@@ -2296,6 +2304,9 @@ Route::domain('{host}')
         Route::get('/sitemap.xml', [SitemapController::class, 'byHost'])
             ->where('host', Storefront::foreignHost())
             ->name('store.custom.sitemap');
+        Route::get('/sitemap-{part}.xml', [SitemapController::class, 'byHostPart'])
+            ->where(['host' => Storefront::foreignHost(), 'part' => '[1-9][0-9]{0,4}'])
+            ->name('store.custom.sitemap.part');
 
         // وصفحاتُه الداخليّة معه — القائمةُ واحدةٌ على الطرق الثلاث
         Route::get('/{path}', [StorefrontController::class, 'byHost'])
@@ -2313,6 +2324,15 @@ Route::domain('{host}')
             ->where('host', Storefront::foreignHost())
             ->middleware('throttle:20,1')->name('store.custom.giftcard');
     });
+
+/*
+ * وخريطةُ المنصّة على مضيف أبعاد — فهرسُ خرائط المتاجر المؤهَّلة كلِّها.
+ *
+ * يدلّ عليها `public/robots.txt`. وتقع بعد مجموعتَي النطاق الفرعيّ ونطاق
+ * التاجر عمدًا: لكلٍّ منهما `‎/sitemap.xml‎` مقيَّدٌ بمضيفه، وهذا المطلقُ لا
+ * يبقى له إلّا مضيفُ أبعاد. انظر `Website\Sitemap::platform`.
+ */
+Route::get('/sitemap.xml', [SitemapController::class, 'platform'])->name('sitemap.platform');
 
 /*
  * الورقةُ أونلاين — ما يفتحه من مسح الرمز أسفل إيصاله.

@@ -27,8 +27,10 @@ use App\Support\Website\Domains;
 use App\Support\Website\Published;
 use App\Support\Website\Publisher;
 use App\Support\Website\SearchReadiness;
+use App\Support\Website\Sitemap;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -789,6 +791,80 @@ class ASearchAppearanceIsLiveTheMomentItIsSavedTest extends TestCase
         $this->assertSame('0', MarketingSettings::group($shop->id, 'website')['store_seo_index']);
     }
 
+    /**
+     * صفحةٌ بسيطةٌ منشورة وموقعٌ مبنيٌّ قيد الإنشاء: يعدّل صاحبُها ظهورَ ما يُقرأ اليوم
+     * من بابٍ مستقلّ — فلا يُنشر موقعُه الجديد، ولا تُمسّ مسوّدتُه ولا سيوه.
+     */
+    public function test_a_live_simple_page_beside_an_unpublished_builder_site_is_edited_on_its_own(): void
+    {
+        [$shop, $owner] = $this->simple('lily');
+        $site = Builder::create($shop, Blueprints::STORE, 'modern', $owner->id);
+        $this->saveBuilt($owner, ['title' => 'عنوانُ الموقع الجديد'])->assertSessionHasNoErrors();
+        $hero = WebsiteSection::where('website_id', $site->id)->where('type', 'hero')->firstOrFail();
+        $hero->update(['data' => array_merge((array) $hero->data, ['title' => 'جملةٌ في مسوّدة الموقع الجديد'])]);
+        $site->touchDraft();
+        $before = $site->fresh();
+        $app = rtrim(url('/'), '/');
+
+        // شاشتُه الرئيسيّة شاشةُ موقعه الجديد — وتدلّه على صفحته المنشورة
+        $main = $this->actingAs($owner)->get(route('admin.website.seo'))->assertOk()->viewData('page');
+        $this->assertSame('Admin/Website/Seo', $main['component']);
+        $this->assertTrue($main['props']['liveSimple']);
+
+        // وصفحتُه المنشورة لها شاشتُها: فحصُها فحصُ الصفحة البسيطة لا الموقعِ المسوّدة
+        $page = $this->actingAs($owner)->get(route('admin.website.seo.store'))->assertOk()->viewData('page');
+        $this->assertSame('Admin/Website/SimpleSeo', $page['component']);
+        $this->assertTrue($page['props']['builderDraft']);
+        $this->assertSame('ورود lily', $page['props']['fallback']['title']);
+        $this->assertSame(url('/s/lily'), $page['props']['readiness']['canonical']);
+        $this->assertTrue($page['props']['readiness']['published']);
+
+        $this->actingAs($owner)->from(route('admin.website.seo.store'))->put(route('admin.website.seo.store.save'), [
+            'store_seo_title' => 'ورود ليلي · باقات مسقط',
+            'store_seo_desc' => 'باقاتُ وردٍ طبيعيّ تُوصَّل في مسقط خلال اليوم نفسه، وهدايا مختارة لكلّ مناسبة.',
+            'store_seo_index' => '1',
+        ])->assertSessionHasNoErrors()->assertRedirect(route('admin.website.seo.store'));
+
+        // يسري على المنشور الآن
+        $html = $this->get($app.'/s/lily')->assertOk()->getContent();
+        $this->assertSame('ورود ليلي · باقات مسقط', $this->titleOf($html));
+        $this->assertStringNotContainsString('جملةٌ في مسوّدة الموقع الجديد', $html, 'حفظُ الصفحة نشر مسوّدةَ الموقع');
+        $this->assertSame([url('/s/lily')], $this->locs($this->get($app.'/s/lily/sitemap.xml')->assertOk()->getContent()));
+
+        // والموقعُ الجديد كما تُرك: بلا نشرة، ومسوّدتُه وسيوه لم يُمسّا
+        $after = $site->fresh();
+        $this->assertNull($after->published_version_id, 'حفظُ الصفحة نشر الموقعَ الجديد');
+        $this->assertSame(0, WebsiteVersion::where('website_id', $site->id)->count());
+        $this->assertSame($before->draft_revision, $after->draft_revision, 'حفظُ الصفحة مسّ مسوّدةَ الموقع');
+        $this->assertSame($before->seo, $after->seo, 'حفظُ الصفحة كتب في سيو الموقع الجديد');
+        $this->assertSame('جملةٌ في مسوّدة الموقع الجديد', WebsiteSection::find($hero->id)->data['title']);
+
+        // وشاشتُها تحفظ من بابها هذا لا من باب الموقع الجديد
+        $this->assertStringContainsString("route('admin.website.seo.store.save')", (string) file_get_contents(resource_path('js/Pages/Admin/Website/SimpleSeo.tsx')));
+
+        // ومن لا يضبط الموقع لا يفتح البابين
+        $staff = $this->owner($shop, ['role' => 'staff', 'permissions' => ['website', 'marketing']]);
+        $this->actingAs($staff)->put(route('admin.website.seo.store.save'), ['store_seo_title' => 'موظّف', 'store_seo_index' => '1'])->assertForbidden();
+        $this->assertSame('ورود ليلي · باقات مسقط', MarketingSettings::group($shop->id, 'website')['store_seo_title']);
+
+        // فإذا نشر موقعَه صار هو المنشور — والبابُ يردّه إلى شاشته، والحفظُ منه مردود
+        Publisher::publish($site->fresh(), $owner->id);
+        $this->actingAs($owner)->get(route('admin.website.seo.store'))->assertRedirect(route('admin.website.seo'));
+        $this->actingAs($owner)->put(route('admin.website.seo.store.save'), ['store_seo_title' => 'بعد النشر', 'store_seo_index' => '1'])->assertNotFound();
+        $this->assertFalse($this->screen($owner)['liveSimple']);
+    }
+
+    /** والواجهةُ الخاصّة لا تُكتب من باب الصفحة البسيطة — مفاتيحُهما واحدة */
+    public function test_the_simple_page_door_is_closed_to_a_themed_store(): void
+    {
+        [$shop, $owner] = $this->themed('ribbon');
+
+        $this->actingAs($owner)->get(route('admin.website.seo.store'))->assertRedirect(route('admin.website.seo'));
+        $this->actingAs($owner)->put(route('admin.website.seo.store.save'), ['store_seo_title' => 'من الباب الخطأ', 'store_seo_index' => '0'])->assertNotFound();
+        $this->assertSame('', (string) (MarketingSettings::group($shop->id, 'website')['store_seo_title'] ?? ''));
+        $this->assertSame('1', MarketingSettings::group($shop->id, 'website')['store_seo_index'] ?? '1');
+    }
+
     /* ═══════════ خرائطُ المواقع على الطرق الثلاث ═══════════ */
 
     /**
@@ -965,5 +1041,131 @@ class ASearchAppearanceIsLiveTheMomentItIsSavedTest extends TestCase
             ->assertSessionHasNoErrors();
         $this->assertSame('G-ABC1234', MarketingSettings::group($shop->id, 'seo')['ga_measurement_id']);
         $this->actingAs($staff)->get(route('admin.marketing.seo'))->assertOk();
+    }
+
+    /* ═══════════ حدُّ الخريطة واكتشافُها ═══════════ */
+
+    /** منتجاتٌ معروضةٌ بالجملة — كما يكون متجرٌ كبير */
+    private function products(Business $business, int $n, array $over = []): void
+    {
+        $now = now();
+        $rows = [];
+
+        for ($i = 0; $i < $n; $i++) {
+            $rows[] = $over + [
+                'business_id' => $business->id, 'name' => 'منتج '.$i, 'price' => 5, 'cost' => 2,
+                'quantity' => 1, 'alert_qty' => 0, 'active' => true, 'published' => true,
+                'created_at' => $now, 'updated_at' => $now,
+            ];
+        }
+
+        foreach (array_chunk($rows, 400) as $chunk) {
+            DB::table('products')->insert($chunk);
+        }
+    }
+
+    /**
+     * متجرٌ يزيد على ملفٍّ: `sitemap.xml` فهرسٌ لأجزائه، ولا يزيد جزءٌ على الحدّ،
+     * ولا منتجَ يُقصّ، وعنوانا المنتج بلغتيه في جزءٍ واحد.
+     */
+    public function test_a_large_catalogue_splits_its_sitemap_under_the_protocol_limit(): void
+    {
+        [$shop] = $this->themed('ribbon');
+        $per = intdiv(Sitemap::PER_FILE, 2);
+        $this->products($shop, $per);
+        $this->products($shop, 3, ['published' => false]);
+        $app = rtrim(url('/'), '/');
+
+        $this->assertLessThanOrEqual(50000, Sitemap::PER_FILE, 'حدُّ الملفّ فوق حدّ البروتوكول');
+
+        $index = $this->get($app.'/s/ribbon/sitemap.xml')->assertOk()->assertHeader('Content-Type', 'application/xml; charset=UTF-8')->getContent();
+        $this->assertStringContainsString('<sitemapindex', $index);
+        $this->assertSame([url('/s/ribbon/sitemap-1.xml'), url('/s/ribbon/sitemap-2.xml')], $this->locs($index));
+
+        $one = $this->locs($this->get($app.'/s/ribbon/sitemap-1.xml')->assertOk()->getContent());
+        $two = $this->locs($this->get($app.'/s/ribbon/sitemap-2.xml')->assertOk()->getContent());
+        $this->get($app.'/s/ribbon/sitemap-3.xml')->assertNotFound();
+
+        $this->assertLessThanOrEqual(Sitemap::PER_FILE, count($one));
+        $this->assertLessThanOrEqual(Sitemap::PER_FILE, count($two));
+
+        // كلُّ منتجٍ معروضٍ بلغتيه، مرّةً واحدة — والمخفيُّ لا
+        $all = array_merge($one, $two);
+        $shown = DB::table('products')->where('business_id', $shop->id)->where('published', true)->where('active', true)->pluck('id');
+        $this->assertSame(count($all), count(array_unique($all)), 'عنوانٌ في جزأين');
+        foreach ($shown as $id) {
+            $ar = url('/s/ribbon/p/'.$id);
+            $this->assertContains($ar, $all);
+            // وترجمتُه معه في جزئه — لا يفصل الحدُّ بينهما
+            $this->assertSame(in_array($ar, $one, true), in_array($ar.'?lang=en', $one, true), 'فُصل المنتج عن ترجمته');
+        }
+        $hidden = DB::table('products')->where('business_id', $shop->id)->where('published', false)->pluck('id');
+        foreach ($hidden as $id) {
+            $this->assertNotContains(url('/s/ribbon/p/'.$id), $all, 'منتجٌ غير معروض في الخريطة');
+        }
+
+        // والعنوانُ ما تكتبه صفحتُه
+        $this->assertSame(url('/s/ribbon/p/'.$shown->last()), $this->canonicalOf($this->get($app.'/s/ribbon/p/'.$shown->last())->getContent()));
+
+        // وخريطةٌ في ملفٍّ واحد: جزؤها الأوّلُ هي نفسُها، ولا ثاني
+        $this->built('wrood');
+        $this->assertSame($this->get($app.'/s/wrood/sitemap.xml')->getContent(), $this->get($app.'/s/wrood/sitemap-1.xml')->assertOk()->getContent());
+        $this->get($app.'/s/wrood/sitemap-2.xml')->assertNotFound();
+    }
+
+    /**
+     * خريطةُ المنصّة: يدلّ عليها robots.txt، وتُعدّد ملفّاتِ كلِّ متجرٍ مؤهَّلٍ على مضيفها
+     * — ومن يصير مؤهَّلًا غدًا يدخلها بلا يد، والمخفيُّ وغيرُ المنشور خارجَها.
+     */
+    public function test_the_platform_sitemap_lists_every_eligible_store_and_nothing_hidden(): void
+    {
+        $basic = Plan::create(['name' => 'الباقة الأساسية', 'monthly_price' => 9.9, 'yearly_price' => 99, 'capabilities' => ['whatsapp']]);
+        $pro = Plan::create(['name' => 'الباقة الاحترافية', 'monthly_price' => 29.9, 'yearly_price' => 299, 'capabilities' => PlanFeatures::keys()]);
+
+        $this->built('wrood');
+        [$big] = $this->themed('ribbon');
+        $this->products($big, intdiv(Sitemap::PER_FILE, 2));
+        $this->simple('lily');
+
+        // مخفيٌّ عن البحث، وغيرُ منشور، وباقتُه لا تبيع الموقع، وأصلُه نطاقُه الخاصّ
+        [, $hiddenOwner] = $this->simple('hidden');
+        $this->saveSimple($hiddenOwner, ['store_seo_index' => '0'])->assertSessionHasNoErrors();
+        $this->business('draft');
+        $later = $this->business('later', ['plan_id' => $basic->id]);
+        MarketingSettings::save($later->id, 'website', ['store_on' => '1', 'store_headline' => 'لاحقًا']);
+        [$own] = $this->built('own');
+        $this->activeDomain($own, 'own-flowers.om');
+
+        $app = rtrim(url('/'), '/');
+        $platform = fn () => $this->locs($this->get($app.'/sitemap.xml')->assertOk()->assertHeader('Content-Type', 'application/xml; charset=UTF-8')->getContent());
+
+        $this->assertSame([
+            url('/s/wrood/sitemap.xml'),
+            url('/s/ribbon/sitemap-1.xml'),
+            url('/s/ribbon/sitemap-2.xml'),
+            url('/s/lily/sitemap.xml'),
+        ], $platform(), 'خريطةُ المنصّة لا تطابق المؤهَّلين');
+
+        // وكلُّ ملفٍّ فيها يُفتح — لا تدلّ على بابٍ مغلق
+        foreach ($platform() as $file) {
+            $this->get($file)->assertOk();
+        }
+
+        // والتاجرُ الذي تُفتح له الميزةُ لاحقًا يدخلها بلا يد
+        $later->forceFill(['plan_id' => $pro->id])->save();
+        $this->assertContains(url('/s/later/sitemap.xml'), $platform());
+
+        // ومن أطفأ متجرَه يخرج منها
+        MarketingSettings::save($later->id, 'website', ['store_on' => '0']);
+        MarketingSettings::forget($later->id);
+        $this->assertNotContains(url('/s/later/sitemap.xml'), $platform());
+
+        // وrobots.txt يدلّ عليها، ولا يمنع المتاجر
+        $robots = (string) file_get_contents(public_path('robots.txt'));
+        $this->assertMatchesRegularExpression('#^Sitemap:\s*https://[^/\s]+/sitemap\.xml\s*$#m', $robots);
+        preg_match('#^Sitemap:\s*(\S+)#m', $robots, $m);
+        $this->assertSame('/sitemap.xml', parse_url($m[1], PHP_URL_PATH));
+        $this->assertSame('/sitemap.xml', route('sitemap.platform', [], false));
+        $this->assertTrue(SearchReadiness::robotsTxtAllows('/s/lily'));
     }
 }

@@ -213,6 +213,41 @@ describe('جاهزيّةُ الفهرسة', () => {
     });
 });
 
+describe('صفحةٌ بسيطةٌ منشورة وموقعٌ مبنيٌّ قيد الإنشاء', () => {
+    /** شاشةُ الموقع الجديد تقول إنّ زبائنه يرون البسيطة الآن — وتدلّه على بابها */
+    it('شاشة الموقع الجديد تدلّ على صفحته المنشورة', () => {
+        reset({ liveSimple: true });
+        render(<Seo />);
+
+        const notice = screen.getByTestId('seo-live-simple');
+        expect(notice).toHaveTextContent('صفحة متجرك البسيطة');
+        expect(notice.querySelector('a')).toHaveAttribute('href', '/admin.website.seo.store');
+    });
+
+    it('ومن نشر موقعه لا يُقال له ذلك', () => {
+        reset({ liveSimple: false });
+        render(<Seo />);
+
+        expect(screen.queryByTestId('seo-live-simple')).toBeNull();
+    });
+
+    /** وشاشةُ الصفحة البسيطة تقول إنّ حفظها لا يمسّ موقعه الجديد — وتدلّه على شاشته */
+    it('شاشة الصفحة المنشورة تقول إنّ الموقع الجديد لا يُمسّ', () => {
+        reset({
+            builderDraft: true,
+            site: { name: 'ليلي', url: 'https://app.abaadapp.om/s/lily' },
+            seo: { title: '', desc: '', index: true },
+            fallback: { title: 'ورود ليلي', description: 'باقاتُ وردٍ وهدايا في مسقط.' },
+            savedAt: null,
+        });
+        render(<SimpleSeo />);
+
+        const notice = screen.getByTestId('seo-builder-draft');
+        expect(notice).toHaveTextContent('لا يمسّه هذا الحفظ ولا يُنشر به');
+        expect(notice.querySelector('a')).toHaveAttribute('href', '/admin.website.seo');
+    });
+});
+
 describe('صفحةُ المتجر البسيطة — لها شاشتُها', () => {
     const simple = (over: Record<string, unknown> = {}) =>
         reset({
@@ -239,6 +274,7 @@ describe('صفحةُ المتجر البسيطة — لها شاشتُها', () 
         expect(box).toHaveTextContent('ورود ليلي · باقات مسقط');
         expect(screen.getByTestId('seo-unsaved')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /حفظ/ })).not.toBeDisabled();
+        expect(screen.queryByTestId('seo-builder-draft')).toBeNull();
     });
 
     /** والصفحةُ عربيّةٌ وحدها — فلا حقلَ إنجليزيٌّ يُكتب لصفحةٍ لا وجود لها */

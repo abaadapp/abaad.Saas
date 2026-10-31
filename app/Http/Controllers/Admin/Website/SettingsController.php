@@ -299,14 +299,48 @@ class SettingsController extends Controller
      * منشورةٌ يقرؤها غوغل بعنوانٍ ووصفٍ لا يملك إليهما بابًا — وهو يملك
      * الموقع في باقته. فاستُثني من «الظهور في البحث» بلا قصد.
      *
-     * ومن بدأ موقعًا مبنيًّا ولم ينشره يرى شاشةَ موقعه الجديد: ما يحفظه لها
-     * يسري لحظةَ ينشره، والجاهزيّةُ تقول إنّ زبائنه يرون البسيطةَ الآن.
+     * ومن بدأ موقعًا مبنيًّا ولم ينشره يرى شاشةَ موقعه الجديد على هذا الباب،
+     * وصفحتُه المنشورةُ الآن لها بابُها (`storeSeo`) — انظر `simpleLive`.
      */
     private function simpleStore(): bool
     {
+        return $this->site() === null && $this->simpleLive();
+    }
+
+    /**
+     * أصفحةُ المتجر البسيطة هي ما يُخدم الآن؟ — لا واجهةَ، ولا موقعَ مبنيٌّ منشور، ومتجرُه منشور.
+     *
+     * ═══ ومن بدأ موقعًا ولم ينشره ═══
+     *
+     * زبائنُه وغوغل يقرؤون صفحتَه البسيطة، وموقعُه الجديد مسوّدةٌ لم ترَ أحدًا.
+     * وشاشةُ البحث على `admin.website.seo` شاشةُ موقعه الجديد — ما يحفظه فيها
+     * ينتظر نشرَه. فكان لا يملك أن يصلح عنوانَ ما يُقرأ اليوم إلّا بنشر موقعٍ
+     * لم يكتمل. فلصفحته المنشورة بابٌ مستقلٌّ يكتب مفاتيحَها وحدها
+     * (`StoreSeo::save`)، ولا يمسّ صفَّ موقعه ولا مسوّدتَه ولا نشراته.
+     */
+    private function simpleLive(): bool
+    {
         $business = Business::find($this->bid());
 
-        return $business !== null && $this->site() === null && Storefront::published($business);
+        return $business !== null
+            && $business->storefrontTheme() === null
+            && Storefront::published($business)
+            && $this->site()?->published_version_id === null;
+    }
+
+    /** «الظهور في البحث» لصفحة المتجر البسيطة المنشورة — ولو كان موقعٌ مبنيٌّ قيد الإنشاء */
+    public function storeSeo(): Response|RedirectResponse
+    {
+        // ومن لا تُخدم له البسيطة فشاشتُه شاشةُ ما يُخدم
+        return $this->simpleLive() ? $this->simpleSeo() : redirect()->route('admin.website.seo');
+    }
+
+    /** يحفظ رأسَ الصفحة البسيطة — ولا يلمس الموقعَ المبنيّ ولا مسوّدتَه */
+    public function saveStoreSeo(Request $request)
+    {
+        abort_unless($this->simpleLive(), 404);
+
+        return $this->themedSaveSeo($request, english: false);
     }
 
     /** «الظهور في البحث» لصفحة المتجر البسيطة — عنوانٌ ووصفٌ وإذنُ فهرسة، بالعربيّة */
@@ -320,6 +354,8 @@ class SettingsController extends Controller
         $saved = (string) ($values[StoreSeo::SAVED_AT] ?? '') !== '';
 
         return Inertia::render('Admin/Website/SimpleSeo', [
+            // وموقعٌ مبنيٌّ قيد الإنشاء — تقول له الشاشةُ إنّ هذا غيرُه، وتدلّه على شاشته
+            'builderDraft' => $this->site() !== null,
             'site' => [
                 'name' => (string) $business->name,
                 'url' => Storefront::serves($business) === Storefront::SERVES_SIMPLE ? $page['seo']['canonical'] : null,
@@ -336,6 +372,7 @@ class SettingsController extends Controller
             $business,
             savedAt: (string) ($values[StoreSeo::SAVED_AT] ?? ''),
             pending: StoreSeo::simpleUnsaved($values) + StoreSeo::pending($bid),
+            simplePage: true,
         ));
     }
 
@@ -348,7 +385,7 @@ class SettingsController extends Controller
      * @param  array<string, string>  $pending  ما حُفظ قبل أن يسري البحثُ بالحفظ ولم يُنشر
      * @return array<string, mixed>
      */
-    private function searchState(Business $business, string $savedAt, array $pending): array
+    private function searchState(Business $business, string $savedAt, array $pending, bool $simplePage = false): array
     {
         return [
             'limits' => [
@@ -358,7 +395,7 @@ class SettingsController extends Controller
             // وقتُ آخرِ حفظٍ من هذه الشاشة بساعة النظام — وفارغٌ لمن لم يحفظ منها بعد
             'savedAt' => $savedAt === '' ? null : Carbon::parse($savedAt)->timezone(config('app.timezone'))->format('Y-m-d H:i'),
             'pending' => $pending,
-            'readiness' => SearchReadiness::forBusiness($business),
+            'readiness' => SearchReadiness::forBusiness($business, $simplePage),
         ];
     }
 
@@ -509,6 +546,8 @@ class SettingsController extends Controller
                 'seo' => $p->seo ?? ['title' => '', 'description' => '', 'image' => ''],
             ])->all(),
             'domain' => $this->domainState(),
+            // وصفحتُه البسيطة هي المنشورة الآن — ولها بابُها (`storeSeo`)
+            'liveSimple' => $this->simpleLive(),
         ] + $this->searchState(
             Business::findOrFail($this->bid()),
             savedAt: (string) ($site->seo['saved_at'] ?? ''),

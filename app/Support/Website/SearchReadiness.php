@@ -33,10 +33,12 @@ final class SearchReadiness
     /**
      * @return array{published: bool, indexable: bool, canonical: ?string, sitemap: ?string, items: list<array{key: string, label: string, state: string, detail: ?string, fix: ?string}>}
      */
-    public static function forBusiness(Business $business): array
+    public static function forBusiness(Business $business, bool $simplePage = false): array
     {
         return match (true) {
             $business->storefrontTheme() !== null => self::theme($business),
+            // وشاشةُ الصفحة البسيطة تسأل عنها ولو كان موقعٌ مبنيٌّ قيد الإنشاء
+            $simplePage => self::simple($business),
             Website::where('business_id', $business->id)->exists() => self::built($business),
             default => self::simple($business),
         };
@@ -49,10 +51,12 @@ final class SearchReadiness
         $values = MarketingSettings::group((int) $business->id, 'website');
         $head = StoreSeo::simple($business);
         $published = Storefront::serves($business) === Storefront::SERVES_SIMPLE;
+        // وما في المفاتيح قبل حفظه من الشاشة لا يُقرأ في الرأس — فلا يُفحص كأنّه مكتوب (`StoreSeo::simple`)
+        $written = fn (string $key) => (string) ($values[StoreSeo::SAVED_AT] ?? '') === '' ? '' : trim((string) ($values[$key] ?? ''));
 
         return self::report($business, $published, false, $head['index'], $published ? $head['canonical'] : null, [
-            self::title('title', 'عنوان المتجر في البحث', trim((string) ($values['store_seo_title'] ?? '')), $head['title']),
-            self::description('description', 'الوصف تحت العنوان', trim((string) ($values['store_seo_desc'] ?? ''))),
+            self::title('title', 'عنوان المتجر في البحث', $written('store_seo_title'), $head['title']),
+            self::description('description', 'الوصف تحت العنوان', $written('store_seo_desc')),
         ]);
     }
 

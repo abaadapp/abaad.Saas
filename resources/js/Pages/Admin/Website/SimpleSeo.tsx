@@ -2,6 +2,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { Check, Search, ShieldCheck } from 'lucide-react';
 import Field from '@/Components/Field';
 import PageHeader from '@/Components/PageHeader';
+import SmartLink from '@/Components/SmartLink';
 import { PageActions, SettingsGroup, SettingsPage, SettingsSection } from '@/Components/Settings';
 import Toggle from '@/Components/Toggle';
 import { Button } from '@/Components/ui/button';
@@ -12,6 +13,8 @@ import type { PageProps } from '@/types';
 import { LengthNote, type Limits, PendingNotice, type Readiness, ReadinessList, SaveState, SerpPreview, useSaveFeedback } from './search/SearchParts';
 
 interface Props {
+    /** موقعٌ مبنيٌّ قيد الإنشاء — لم يُنشر، وصفحتُه البسيطة هي المنشورة */
+    builderDraft?: boolean;
     site: { name: string; url: string | null };
     seo: { title: string; desc: string; index: boolean };
     fallback: { title: string; description: string };
@@ -32,7 +35,7 @@ interface Props {
  * يقرؤها رأسُها (`StoreSeo::simple`) وتسري بالحفظ كأخواتها (`StoreSeo::save`).
  */
 export default function SimpleSeo() {
-    const { site, seo, fallback, limits, savedAt, pending, readiness } = usePage<PageProps<Props>>().props;
+    const { builderDraft, site, seo, fallback, limits, savedAt, pending, readiness } = usePage<PageProps<Props>>().props;
     const t = useTranslate();
 
     const form = useForm({
@@ -43,7 +46,8 @@ export default function SimpleSeo() {
     const feedback = useSaveFeedback();
 
     const save = () =>
-        form.put(route('admin.website.seo.save'), {
+        // وبابُها وحدها — لا يمسّ موقعًا مبنيًّا قيد الإنشاء ولا مسوّدتَه (`SettingsController::saveStoreSeo`)
+        form.put(route('admin.website.seo.store.save'), {
             ...feedback.options,
             // والحالُ تبقى: رسالةُ «حُفظ» تُقرأ في الشاشة نفسِها، والمحفوظُ يصير أساسَ «غير محفوظ»
             preserveState: true,
@@ -66,6 +70,16 @@ export default function SimpleSeo() {
             <PageHeader title="ظهور متجرك في البحث" subtitle={t('كيف يظهر متجرك في غوغل وحين تُشارك رابطه')} />
 
             <SettingsPage>
+                {builderDraft && (
+                    <div data-testid="seo-builder-draft" className="rounded-[12px] border border-[#bfdbfe] bg-[#eff6ff] p-4 text-[13px] leading-relaxed text-[#1e40af]">
+                        <p>{t('هذه صفحة متجرك المنشورة الآن — ما يراه زبائنك وغوغل. وموقعك الجديد قيد الإنشاء: لا يمسّه هذا الحفظ ولا يُنشر به.')}</p>
+                        <Button variant="outline" size="sm" className="mt-3" asChild>
+                            <SmartLink routeName="admin.website.seo" href={route('admin.website.seo')}>
+                                {t('ظهور موقعك الجديد في البحث')}
+                            </SmartLink>
+                        </Button>
+                    </div>
+                )}
                 <PendingNotice
                     rows={rows}
                     onUse={() => {

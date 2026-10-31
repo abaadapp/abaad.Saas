@@ -248,10 +248,17 @@ final class StoreSeo
     {
         $root = Storefront::canonical($business->site_slug, (int) $business->id);
 
-        if ($root === null) {
-            return null;
-        }
+        return $root === null ? null : self::join($root, $base, $path);
+    }
 
+    /**
+     * عنوانُ صفحةٍ من جذر متجرٍ معروف — قاعدةُ `canonical` بلا سؤال القاعدة.
+     *
+     * وخريطةُ الموقع تبني بها آلافَ العناوين من جذرٍ واحد (`Website\Sitemap`):
+     * سؤالُ جدول النطاقات لكلّ منتجٍ خمسةُ آلاف استعلامٍ لملفٍّ واحد.
+     */
+    public static function join(string $root, string $base, string $path): string
+    {
         // المسارُ منسوبًا إلى جذر المتجر — والجذرُ يحمل القاعدةَ إن كانت
         $relative = $base !== '' && str_starts_with($path, $base)
             ? substr($path, strlen($base))

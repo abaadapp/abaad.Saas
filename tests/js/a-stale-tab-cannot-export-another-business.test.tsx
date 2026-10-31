@@ -6,6 +6,16 @@ import ExportMenu from '@/Components/ExportMenu';
 import { downloadFile, EXPECTED_BUSINESS_PARAM, expectBusiness, withFilters } from '@/lib/exportLink';
 import { pageProps } from './setup';
 
+// والجوابُ يُبنى بـBlob هذه البيئة لا بـResponse من Node: Blob الذي تعيده Response
+// على Node 22 (CI) ليس Blob المتصفّح المزعوم، فيُقرأ «ليس ملفًّا»
+const pdfAnswer = () =>
+    ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/pdf' }),
+        blob: async () => new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+    }) as unknown as Response;
+
 /**
  * كلُّ رابطِ ملفٍّ يحمل نشاطَ الصفحة التي رُسم فيها — والتبويبُ القديم يُقال له «حدّث».
  *
@@ -120,7 +130,7 @@ describe('a file link carries the business of its page', () => {
 
     it('puts the page business on a document panel’s download and print links', async () => {
         asBusiness(7);
-        const fetch = vi.fn(async (_input: RequestInfo | URL) => new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+        const fetch = vi.fn(async (_input: RequestInfo | URL) => pdfAnswer());
         vi.stubGlobal('fetch', fetch);
         URL.createObjectURL = vi.fn(() => 'blob:doc');
         URL.revokeObjectURL = vi.fn();

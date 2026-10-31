@@ -4,6 +4,16 @@ import userEvent from '@testing-library/user-event';
 
 import ReceiptPreviewButton from '@/Pages/Pos/partials/ReceiptPreview';
 
+// والجوابُ يُبنى بـBlob هذه البيئة لا بـResponse من Node: Blob الذي تعيده Response
+// على Node 22 (CI) ليس Blob المتصفّح المزعوم، فيُقرأ «ليس ملفًّا»
+const pdfAnswer = () =>
+    ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/pdf' }),
+        blob: async () => new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+    }) as unknown as Response;
+
 const error = vi.fn();
 vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => error(...a) } }));
 
@@ -137,7 +147,7 @@ describe('معاينة فاتورة نقطة البيع', () => {
         expect(download).not.toHaveAttribute('href');
         expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('pos.receipt.pdf'))).toBe(false);
 
-        fetchMock.mockResolvedValue(new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+        fetchMock.mockResolvedValue(pdfAnswer());
         URL.createObjectURL = vi.fn(() => 'blob:receipt');
         URL.revokeObjectURL = vi.fn();
         const saved: string[] = [];

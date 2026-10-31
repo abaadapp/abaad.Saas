@@ -4,6 +4,16 @@ import userEvent from '@testing-library/user-event';
 
 import PdfDownloadButton from '@/Components/PdfDownloadButton';
 
+// والجوابُ يُبنى بـBlob هذه البيئة لا بـResponse من Node: Blob الذي تعيده Response
+// على Node 22 (CI) ليس Blob المتصفّح المزعوم، فيُقرأ «ليس ملفًّا»
+const pdfAnswer = () =>
+    ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/pdf' }),
+        blob: async () => new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+    }) as unknown as Response;
+
 const toasts = { error: vi.fn() };
 vi.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => toasts.error(...a) } }));
 
@@ -53,7 +63,7 @@ async function press() {
 
 describe('تحميل ورقة المستند', () => {
     it('يحفظ الـPDF باسمه حين يردّ الخادم PDF', async () => {
-        respond('%PDF-1.4', 200, 'application/pdf');
+        vi.stubGlobal('fetch', vi.fn(async () => pdfAnswer()));
         await press();
 
         await waitFor(() => expect(clicks).toEqual([{ href: 'blob:pdf-1', download: NAME }]));
@@ -89,7 +99,7 @@ describe('تحميل ورقة المستند', () => {
         const fetch = vi.fn(
             () =>
                 new Promise<Response>((resolve) => {
-                    release = () => resolve(new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+                    release = () => resolve(pdfAnswer());
                 }),
         );
         vi.stubGlobal('fetch', fetch);
@@ -110,7 +120,7 @@ describe('تحميل ورقة المستند', () => {
 
     it('على iPhone يُحفظ من رابط الخادم بعد أن ثبت أنّه PDF — لا من blob', async () => {
         setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) CriOS/130 Mobile/15E148');
-        respond('%PDF-1.4', 200, 'application/pdf');
+        vi.stubGlobal('fetch', vi.fn(async () => pdfAnswer()));
         await press();
 
         await waitFor(() => expect(clicks).toEqual([{ href: URL_, download: NAME }]));

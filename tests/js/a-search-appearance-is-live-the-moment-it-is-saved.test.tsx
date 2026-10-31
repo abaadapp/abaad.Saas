@@ -2,6 +2,7 @@ import { act, fireEvent, render, renderHook, screen } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import Seo from '@/Pages/Admin/Website/Seo';
+import SimpleSeo from '@/Pages/Admin/Website/SimpleSeo';
 import { LengthNote, ReadinessList, SaveState, useSaveFeedback } from '@/Pages/Admin/Website/search/SearchParts';
 import SeoSection from '@/Pages/Admin/Website/theme/sections/Seo';
 import { pageProps } from './setup';
@@ -209,5 +210,45 @@ describe('جاهزيّةُ الفهرسة', () => {
         expect(screen.getByTestId('readiness-title')).toHaveTextContent('اكتب ما تبيعه وأين');
         expect(screen.getByTestId('readiness-published')).toHaveAttribute('data-state', 'pass');
         expect(screen.getByTestId('readiness-canonical')).toHaveTextContent('https://app.abaadapp.om/s/wrood');
+    });
+});
+
+describe('صفحةُ المتجر البسيطة — لها شاشتُها', () => {
+    const simple = (over: Record<string, unknown> = {}) =>
+        reset({
+            site: { name: 'ليلي', url: 'https://app.abaadapp.om/s/lily' },
+            seo: { title: '', desc: '', index: true },
+            fallback: { title: 'ورود ليلي', description: 'باقاتُ وردٍ وهدايا في مسقط.' },
+            pending: [],
+            savedAt: null,
+            ...over,
+        });
+
+    it('تعرض ما يُحسب حين لا يكتب، وتقول «غير محفوظ» حين يكتب', () => {
+        simple();
+        render(<SimpleSeo />);
+
+        const box = screen.getByTestId('seo-preview');
+        expect(box).toHaveTextContent('ورود ليلي');
+        expect(box).toHaveTextContent('باقاتُ وردٍ وهدايا في مسقط.');
+        expect(box).toHaveTextContent('https://app.abaadapp.om/s/lily');
+        expect(screen.getByRole('button', { name: /حفظ/ })).toBeDisabled();
+
+        fireEvent.change(screen.getByLabelText('عنوان متجرك في البحث'), { target: { value: 'ورود ليلي · باقات مسقط' } });
+
+        expect(box).toHaveTextContent('ورود ليلي · باقات مسقط');
+        expect(screen.getByTestId('seo-unsaved')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /حفظ/ })).not.toBeDisabled();
+    });
+
+    /** والصفحةُ عربيّةٌ وحدها — فلا حقلَ إنجليزيٌّ يُكتب لصفحةٍ لا وجود لها */
+    it('بلا حقولٍ إنجليزيّة، وتقول إنّ إطفاء الفهرسة لا يُغلق المتجر', () => {
+        simple({ seo: { title: '', desc: '', index: false } });
+        render(<SimpleSeo />);
+
+        expect(screen.queryByLabelText('Search title — English')).toBeNull();
+        expect(screen.queryByTestId('seo-preview-en')).toBeNull();
+        expect(screen.getByTestId('seo-not-closed')).toHaveTextContent('لا يُغلق متجرك');
+        expect(screen.getByTestId('seo-readiness')).toBeInTheDocument();
     });
 });

@@ -35,9 +35,25 @@ final class SearchReadiness
      */
     public static function forBusiness(Business $business): array
     {
-        return $business->storefrontTheme() !== null
-            ? self::theme($business)
-            : self::built($business);
+        return match (true) {
+            $business->storefrontTheme() !== null => self::theme($business),
+            Website::where('business_id', $business->id)->exists() => self::built($business),
+            default => self::simple($business),
+        };
+    }
+
+    /* ═══════════ صفحةُ المتجر البسيطة ═══════════ */
+
+    private static function simple(Business $business): array
+    {
+        $values = MarketingSettings::group((int) $business->id, 'website');
+        $head = StoreSeo::simple($business);
+        $published = Storefront::serves($business) === Storefront::SERVES_SIMPLE;
+
+        return self::report($business, $published, false, $head['index'], $published ? $head['canonical'] : null, [
+            self::title('title', 'عنوان المتجر في البحث', trim((string) ($values['store_seo_title'] ?? '')), $head['title']),
+            self::description('description', 'الوصف تحت العنوان', trim((string) ($values['store_seo_desc'] ?? ''))),
+        ]);
     }
 
     /* ═══════════ الموقعُ المبنيّ ═══════════ */
@@ -64,7 +80,7 @@ final class SearchReadiness
         return self::report($business, $published, $maintenance, $indexable, $canonical, [
             self::title('title', 'عنوان الموقع في البحث', $written('title'), $head['title']),
             self::description('description', 'الوصف تحت العنوان', $written('description')),
-        ]);
+        ], simpleLive: Storefront::serves($business) === Storefront::SERVES_SIMPLE);
     }
 
     /* ═══════════ الواجهةُ الخاصّة ═══════════ */
@@ -92,7 +108,10 @@ final class SearchReadiness
     /**
      * @param  list<array<string, ?string>>  $texts
      */
-    private static function report(Business $business, bool $published, bool $maintenance, bool $indexable, ?string $canonical, array $texts): array
+    /**
+     * @param  bool  $simpleLive  موقعٌ مبنيٌّ لم يُنشر بعد وصفحةُ المتجر البسيطة هي ما يُخدَم الآن
+     */
+    private static function report(Business $business, bool $published, bool $maintenance, bool $indexable, ?string $canonical, array $texts, bool $simpleLive = false): array
     {
         $sitemap = $published && $indexable ? Sitemap::url($business) : null;
         $blocked = $canonical !== null && ! self::robotsTxtAllows((string) (parse_url($canonical, PHP_URL_PATH) ?: '/'));
@@ -103,6 +122,11 @@ final class SearchReadiness
                 match (true) {
                     $maintenance => __('موقعك في وضع الصيانة — غوغل يؤجّل قراءته حتّى يعود.'),
                     $published => __('يفتحه الزائر على عنوانه الآن.'),
+                    /*
+                     * ومن بدأ موقعًا ولم ينشره وصفحتُه البسيطة منشورة: زبائنه يرون
+                     * تلك الآن، وما يحفظه هنا لموقعه الجديد — يسري لحظةَ ينشره.
+                     */
+                    $simpleLive => __('موقعك المبنيّ لم يُنشر بعد — يرى زبائنك الآن صفحة متجرك البسيطة، وما تحفظه هنا يسري على موقعك حين تنشره.'),
                     default => __('موقعك غير منشور — لا يقرؤه غوغل ولا يصله زبائنك.'),
                 },
                 $published && ! $maintenance ? null : __('انشر موقعك من «الموقع الإلكتروني ‹ عام» — ما تحفظه هنا يبقى ويُطبَّق لحظة النشر.'),

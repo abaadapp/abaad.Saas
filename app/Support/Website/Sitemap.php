@@ -32,8 +32,8 @@ use App\Support\Storefront;
  * وموقعٌ أطفأ صاحبُه فهرستَه لا خريطةَ له: خريطةٌ تُعدّد صفحاتٍ تقول كلٌّ
  * منها «لا تفهرسني» تناقضٌ يقرؤه غوغل خطأً.
  *
- * وصفحةُ المتجر البسيطة خارجها: عنوانُها الأصليُّ مكتوبٌ في قالبها لا هنا،
- * وخريطةٌ تُعطي عنوانًا غيرَه تُفرّق ما يجمعه `canonical`.
+ *  • صفحةُ المتجر البسيطة: عنوانُها الواحد كما يكتبه رأسُها (`StoreSeo::simple`).
+ *    ولا خريطةَ لها على نطاق التاجر الخاصّ: لا يخدمها هناك.
  */
 final class Sitemap
 {
@@ -45,11 +45,12 @@ final class Sitemap
      *
      * @return list<array{loc: string, alternates: array<string, string>}>|null
      */
-    public static function urls(Business $business): ?array
+    public static function urls(Business $business, bool $customHost = false): ?array
     {
         return match (Storefront::serves($business)) {
             Storefront::SERVES_THEME => self::theme($business),
             Storefront::SERVES_BUILT => self::built($business),
+            Storefront::SERVES_SIMPLE => $customHost ? null : self::simple($business),
             default => null,
         };
     }
@@ -57,9 +58,22 @@ final class Sitemap
     /** عنوانُ الخريطة على عنوان المتجر الأصليّ — أو null إن لم يكن له عنوان */
     public static function url(Business $business): ?string
     {
-        $root = Storefront::canonical($business->site_slug, (int) $business->id);
+        // والصفحةُ البسيطة أصلُها ما يخدمها — لا نطاقُ التاجر الخاصّ (`StoreSeo::simple`)
+        $root = Storefront::serves($business) === Storefront::SERVES_SIMPLE
+            ? StoreSeo::simple($business)['canonical']
+            : Storefront::canonical($business->site_slug, (int) $business->id);
 
         return $root === null ? null : rtrim($root, '/').'/sitemap.xml';
+    }
+
+    /** @return list<array{loc: string, alternates: array<string, string>}>|null */
+    private static function simple(Business $business): ?array
+    {
+        $head = StoreSeo::simple($business);
+
+        return $head['index'] && $head['canonical'] !== null
+            ? [['loc' => $head['canonical'], 'alternates' => []]]
+            : null;
     }
 
     /**

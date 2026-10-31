@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\WebsiteSection;
 use App\Support\MarketingSettings;
 use App\Support\Seo;
+use App\Support\Storefront;
 use App\Support\Store\OrderWindow;
 use App\Support\Store\Paymob;
 use App\Support\Store\PaymobSettings;
@@ -290,6 +291,53 @@ class SettingsController extends Controller
     }
 
     /**
+     * أصاحبُ صفحة المتجر البسيطة هذا؟ — لا واجهةَ خاصّة، ولا موقعَ مبنيّ، ونشر متجره.
+     *
+     * ═══ ولمَ لها شاشةُ بحثٍ الآن ═══
+     *
+     * كانت `siteOrFail` تردّه إلى معالج الإنشاء: لا موقعَ مبنيًّا له. وصفحتُه
+     * منشورةٌ يقرؤها غوغل بعنوانٍ ووصفٍ لا يملك إليهما بابًا — وهو يملك
+     * الموقع في باقته. فاستُثني من «الظهور في البحث» بلا قصد.
+     *
+     * ومن بدأ موقعًا مبنيًّا ولم ينشره يرى شاشةَ موقعه الجديد: ما يحفظه لها
+     * يسري لحظةَ ينشره، والجاهزيّةُ تقول إنّ زبائنه يرون البسيطةَ الآن.
+     */
+    private function simpleStore(): bool
+    {
+        $business = Business::find($this->bid());
+
+        return $business !== null && $this->site() === null && Storefront::published($business);
+    }
+
+    /** «الظهور في البحث» لصفحة المتجر البسيطة — عنوانٌ ووصفٌ وإذنُ فهرسة، بالعربيّة */
+    private function simpleSeo(): Response
+    {
+        $bid = $this->bid();
+        $business = Business::findOrFail($bid);
+        $values = MarketingSettings::group($bid, 'website');
+        $page = Storefront::page($business);
+        $about = (string) $page['about'];
+
+        return Inertia::render('Admin/Website/SimpleSeo', [
+            'site' => [
+                'name' => (string) $business->name,
+                'url' => Storefront::serves($business) === Storefront::SERVES_SIMPLE ? $page['seo']['canonical'] : null,
+            ],
+            'seo' => [
+                'title' => (string) ($values['store_seo_title'] ?? ''),
+                'desc' => (string) ($values['store_seo_desc'] ?? ''),
+                'index' => ($values['store_seo_index'] ?? '1') === '1',
+            ],
+            // وما يظهر حين لا يكتب — ما يكتبه رأسُ صفحته نفسُه (`StoreSeo::simple`)
+            'fallback' => ['title' => (string) $page['headline'], 'description' => $about !== '' ? $about : (string) $page['headline']],
+        ] + $this->searchState(
+            $business,
+            savedAt: (string) ($values[StoreSeo::SAVED_AT] ?? ''),
+            pending: StoreSeo::pending($bid),
+        ));
+    }
+
+    /**
      * ما تقرؤه شاشتا «الظهور في البحث» معًا — حدودٌ وحالُ حفظٍ وجاهزيّة.
      *
      * والحدودُ من `Seo` نفسِها التي يقيس بها الفحص: رقمٌ في الشاشة وآخرُ في
@@ -417,6 +465,10 @@ class SettingsController extends Controller
             return $this->themedSeo($theme);
         }
 
+        if ($this->simpleStore()) {
+            return $this->simpleSeo();
+        }
+
         $site = $this->siteOrFail();
         $row = Publication::seo($site);
 
@@ -483,6 +535,10 @@ class SettingsController extends Controller
             return $this->themedSaveSeo($request);
         }
 
+        if ($this->simpleStore()) {
+            return $this->themedSaveSeo($request, english: false);
+        }
+
         $site = $this->siteOrFail();
 
         $data = $request->validate([
@@ -516,17 +572,23 @@ class SettingsController extends Controller
         return back()->with('toast', ['msg' => __('حُفظ وطُبّق على موقعك — بلا نشر'), 'type' => 'success']);
     }
 
-    /** «الظهور في البحث» للواجهة الخاصّة — حيًّا، بلغتيه */
-    private function themedSaveSeo(Request $request)
+    /**
+     * «الظهور في البحث» للواجهة الخاصّة ولصفحة المتجر البسيطة — حيًّا.
+     *
+     * والبسيطةُ عربيّةٌ وحدها: لا صفحةَ إنجليزيّة لها يُكتب لها عنوان، فلا
+     * يُقبل لها ما لا يُقرأ.
+     */
+    private function themedSaveSeo(Request $request, bool $english = true)
     {
         $data = $request->validate([
             // ولا يُقصّ ما كُتب: الحدُّ حدُّ ما يُقبل، وغوغل يقصّ في نتيجته (`StoreSeo::TITLE_MAX`)
             'store_seo_title' => ['nullable', 'string', 'max:'.StoreSeo::TITLE_MAX],
             'store_seo_desc' => ['nullable', 'string', 'max:'.StoreSeo::DESC_MAX],
+            'store_seo_index' => ['required', 'boolean'],
+        ] + ($english ? [
             'store_seo_title_en' => ['nullable', 'string', 'max:'.StoreSeo::TITLE_MAX],
             'store_seo_desc_en' => ['nullable', 'string', 'max:'.StoreSeo::DESC_MAX],
-            'store_seo_index' => ['required', 'boolean'],
-        ]);
+        ] : []));
 
         StoreSeo::save($this->bid(), array_map(fn ($v) => $v ?? '', $data));
         Activity::log('updated', 'حفظ ظهور متجره في البحث');

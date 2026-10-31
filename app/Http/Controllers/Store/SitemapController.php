@@ -31,12 +31,12 @@ class SitemapController extends Controller
 
         $id = Domains::resolve($host);
 
-        return $this->respond($id === null ? null : Business::find($id));
+        return $this->respond($id === null ? null : Business::find($id), customHost: true);
     }
 
-    private function respond(?Business $business): Response
+    private function respond(?Business $business, bool $customHost = false): Response
     {
-        $urls = $business === null ? null : Sitemap::urls($business);
+        $urls = $business === null ? null : Sitemap::urls($business, $customHost);
 
         abort_if($urls === null, 404);
 

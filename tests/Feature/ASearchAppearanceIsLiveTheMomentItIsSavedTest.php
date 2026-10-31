@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Models\StoreSite;
 use App\Models\User;
 use App\Models\Website;
+use App\Models\WebsitePage;
 use App\Models\WebsiteSection;
 use App\Models\WebsiteVersion;
 use App\Support\Ledger;
@@ -22,6 +23,8 @@ use App\Support\Store\StoreSeo;
 use App\Support\Store\ThemePublisher;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Builder;
+use App\Support\Website\Domains;
+use App\Support\Website\Published;
 use App\Support\Website\Publisher;
 use App\Support\Website\SearchReadiness;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -99,6 +102,44 @@ class ASearchAppearanceIsLiveTheMomentItIsSavedTest extends TestCase
         ]);
 
         return [$business->fresh(), $this->owner($business)];
+    }
+
+    /** متجرٌ بصفحة المتجر البسيطة وحدها — نشره ولم يبنِ موقعًا ولم يلبس واجهة @return array{0: Business, 1: User} */
+    private function simple(string $slug, array $settings = []): array
+    {
+        $business = $this->business($slug);
+        MarketingSettings::save($business->id, 'website', $settings + ['store_on' => '1', 'store_headline' => 'ورود '.$slug, 'store_about' => 'باقاتُ وردٍ وهدايا في مسقط.']);
+
+        return [$business->fresh(), $this->owner($business)];
+    }
+
+    private function saveSimple(User $as, array $seo)
+    {
+        return $this->actingAs($as)->from(route('admin.website.seo'))->put(route('admin.website.seo.save'), $seo + [
+            'store_seo_title' => '', 'store_seo_desc' => '', 'store_seo_index' => '1',
+        ]);
+    }
+
+    /** العنوانُ الأصليُّ كما يكتبه رأسُ الصفحة */
+    private function canonicalOf(string $html): ?string
+    {
+        return preg_match('#<link rel="canonical" href="([^"]+)">#', $html, $m) ? html_entity_decode($m[1]) : null;
+    }
+
+    /** @return list<string> */
+    private function locs(string $xml): array
+    {
+        preg_match_all('#<loc>([^<]+)</loc>#', $xml, $m);
+
+        return array_map(fn ($v) => html_entity_decode($v, ENT_QUOTES | ENT_XML1), $m[1]);
+    }
+
+    /** نطاقُ التاجر الخاصّ نشطًا — كما يصير بعد فحص توجيهه */
+    private function activeDomain(Business $business, string $host): void
+    {
+        config(['storefront.custom_domains' => true]);
+        Domains::attach($business->fresh(), $host);
+        Domains::custom((int) $business->id)->update(['status' => Domains::ACTIVE]);
     }
 
     private function saveBuilt(User $as, array $seo)
@@ -626,5 +667,269 @@ class ASearchAppearanceIsLiveTheMomentItIsSavedTest extends TestCase
 
         // وملفُّ الخادم اليومَ يأذن بالمتاجر كلِّها
         $this->assertTrue(SearchReadiness::robotsTxtAllows('/s/ribbon'));
+    }
+
+    /* ═══════════ مراجعة #204 — كلُّ تاجرٍ مؤهَّل، بلا استثناء ═══════════ */
+
+    /**
+     * كلُّ صورةٍ يكون عليها متجرٌ يملك الموقع — وأيُّ شاشةٍ تفتح له، وأيُّ حفظٍ يسري.
+     *
+     * ═══ والاستثناءُ الذي وُجد ═══
+     *
+     * صاحبُ صفحة المتجر البسيطة (نشر متجره ولم يبنِ موقعًا) كانت الشاشةُ
+     * تردّه إلى معالج الإنشاء، وصفحتُه منشورةٌ يقرؤها غوغل. فصار له شاشتُه.
+     */
+    public function test_every_kind_of_eligible_merchant_gets_a_search_screen(): void
+    {
+        [, $theme] = $this->themed('ribbon');
+        [, $built] = $this->built('wrood');
+        [, $simple] = $this->simple('lily');
+
+        // موقعٌ مبنيٌّ لم يُنشر، وصفحتُه البسيطة منشورة — يرى شاشةَ موقعه الجديد
+        [$moving, $movingOwner] = $this->simple('jasmine');
+        Builder::create($moving, Blueprints::STORE, 'modern', $movingOwner->id);
+
+        // ومن لا موقعَ له أصلًا — يُقاد إلى إنشائه
+        $none = $this->owner($this->business('nothing'));
+
+        foreach ([
+            'الواجهة الخاصّة' => [$theme, 'Admin/Website/ThemeSeo'],
+            'الموقع المبنيّ' => [$built, 'Admin/Website/Seo'],
+            'الصفحة البسيطة' => [$simple, 'Admin/Website/SimpleSeo'],
+            'موقعٌ مبنيٌّ لم يُنشر' => [$movingOwner, 'Admin/Website/Seo'],
+        ] as $kind => [$owner, $component]) {
+            $this->assertSame($component, $this->actingAs($owner)->get(route('admin.website.seo'))->assertOk()->viewData('page')['component'], $kind);
+        }
+
+        $this->actingAs($none)->get(route('admin.website.seo'))->assertRedirect(route('admin.website.index'));
+
+        // ومن بدأ موقعًا ولم ينشره يُقال له إنّ زبائنه يرون البسيطةَ الآن
+        $published = collect($this->screen($movingOwner)['readiness']['items'])->firstWhere('key', 'published');
+        $this->assertSame('fail', $published['state']);
+        $this->assertStringContainsString('صفحة متجرك البسيطة', $published['detail']);
+    }
+
+    /**
+     * صفحةُ المتجر البسيطة: رأسُها كما كان حتّى يكتب صاحبُها — ثمّ يسري ما كتب.
+     */
+    public function test_a_simple_store_page_keeps_its_head_until_saved_then_applies_it_live(): void
+    {
+        [$shop, $owner] = $this->simple('lily');
+
+        $html = $this->get('/s/lily')->assertOk()->getContent();
+        $this->assertSame('ورود lily', $this->titleOf($html), 'تبدّل عنوانُ صفحةٍ قائمةٍ بالترقية');
+        $this->assertStringContainsString('<meta name="description" content="باقاتُ وردٍ وهدايا في مسقط.">', $html);
+        $this->assertStringNotContainsString('noindex', $html, 'أُخفيت صفحةٌ قائمةٌ بالترقية');
+        // والأصلُ ما يخدمها فعلًا — لا نطاقٌ فرعيٌّ مطفأ
+        $this->assertSame(url('/s/lily'), $this->canonicalOf($html));
+
+        $props = $this->screen($owner);
+        $this->assertSame('ورود lily', $props['fallback']['title']);
+        $this->assertSame('', $props['seo']['title']);
+        $this->assertNull($props['savedAt']);
+
+        $this->saveSimple($owner, [
+            'store_seo_title' => 'ورود ليلي · باقات مسقط',
+            'store_seo_desc' => 'باقاتُ وردٍ طبيعيّ تُوصَّل في مسقط خلال اليوم نفسه، وهدايا مختارة لكلّ مناسبة.',
+            // وما لا صفحةَ له لا يُقبل: البسيطةُ عربيّةٌ وحدها
+            'store_seo_title_en' => 'Lily',
+        ])->assertSessionHasNoErrors()->assertSessionHas('toast');
+
+        $html = $this->get('/s/lily')->getContent();
+        $this->assertSame('ورود ليلي · باقات مسقط', $this->titleOf($html));
+        $this->assertStringContainsString('<meta property="og:title" content="ورود ليلي · باقات مسقط">', $html);
+        $this->assertStringContainsString('باقاتُ وردٍ طبيعيّ تُوصَّل في مسقط', $html);
+        $this->assertSame('', MarketingSettings::group($shop->id, 'website')['store_seo_title_en']);
+        $this->assertNotNull($this->screen($owner)['savedAt']);
+
+        $this->assertSame([url('/s/lily')], $this->locs($this->get('/s/lily/sitemap.xml')->assertOk()->getContent()));
+
+        $this->saveSimple($owner, ['store_seo_title' => 'ورود ليلي · باقات مسقط', 'store_seo_index' => '0'])->assertSessionHasNoErrors();
+        $this->assertStringContainsString('<meta name="robots" content="noindex, nofollow">', $this->get('/s/lily')->getContent());
+        $this->get('/s/lily/sitemap.xml')->assertNotFound();
+        $this->assertSame('off', collect($this->screen($owner)['readiness']['items'])->firstWhere('key', 'robots')['state']);
+
+        // ومن لا يضبط الموقع لا يحفظها
+        $staff = $this->owner($shop, ['role' => 'staff', 'permissions' => ['website', 'marketing']]);
+        $this->saveSimple($staff, ['store_seo_title' => 'موظّف'])->assertForbidden();
+        $this->assertSame('ورود ليلي · باقات مسقط', MarketingSettings::group($shop->id, 'website')['store_seo_title']);
+    }
+
+    /* ═══════════ خرائطُ المواقع على الطرق الثلاث ═══════════ */
+
+    /**
+     * الطريقُ البديل والنطاقُ الفرعيّ ونطاقُ التاجر — لكلّ نوع: ٢٠٠، و٤٠٤، وnoindex،
+     * وعنوانٌ في الخريطة يساوي ما تكتبه الصفحةُ نفسُها في `canonical`.
+     */
+    public function test_sitemaps_on_the_path_the_subdomain_and_the_custom_domain(): void
+    {
+        [$builtShop, $builtOwner] = $this->built('wrood');
+        [$themedShop, $themedOwner] = $this->themed('ribbon');
+        [, $simpleOwner] = $this->simple('lily');
+
+        // والطريقُ البديلُ بعنوانه كاملًا: المسارُ النسبيُّ بعد طلبٍ إلى نطاقٍ آخر يُرسَل إليه
+        $app = rtrim(url('/'), '/');
+
+        // الطريقُ البديل — والنطاقاتُ مطفأة
+        config(['storefront.subdomains' => false, 'storefront.custom_domains' => false]);
+        foreach (['wrood', 'ribbon', 'lily'] as $slug) {
+            $locs = $this->locs($this->get('/s/'.$slug.'/sitemap.xml')->assertOk()->getContent());
+            $this->assertSame($this->canonicalOf($this->get('/s/'.$slug)->getContent()), $locs[0], $slug.': الخريطةُ والصفحةُ تختلفان في الأصل');
+            $this->assertStringStartsWith(url('/s/'.$slug), $locs[0]);
+        }
+
+        // النطاقُ الفرعيّ
+        config(['storefront.subdomains' => true]);
+        foreach (['wrood', 'ribbon', 'lily'] as $slug) {
+            $host = 'http://'.$slug.'.abaadapp.om';
+            $locs = $this->locs($this->get($host.'/sitemap.xml')->assertOk()->getContent());
+            $this->assertSame('https://'.$slug.'.abaadapp.om', $locs[0], $slug.' على النطاق الفرعيّ');
+            $this->assertSame($locs[0], $this->canonicalOf($this->get($host.'/')->assertOk()->getContent()));
+        }
+        $this->get('http://nobody.abaadapp.om/sitemap.xml')->assertNotFound();
+        config(['storefront.subdomains' => false]);
+
+        // ونطاقُ التاجر — مطفأً ثمّ نشطًا
+        Domains::attach($builtShop->fresh(), 'wrood.om');
+        $this->get('https://wrood.om/sitemap.xml')->assertNotFound();
+
+        $this->activeDomain($builtShop, 'wrood.om');
+        $this->activeDomain($themedShop, 'ribbon.om');
+        $built = $this->locs($this->get('https://wrood.om/sitemap.xml')->assertOk()->getContent());
+        $this->assertSame('https://wrood.om', $built[0]);
+        $this->assertSame($built[0], $this->canonicalOf($this->get('https://wrood.om/')->assertOk()->getContent()));
+        $themed = $this->locs($this->get('https://ribbon.om/sitemap.xml')->assertOk()->getContent());
+        $this->assertContains('https://ribbon.om/shop', $themed);
+        $this->assertSame('https://ribbon.om', $this->canonicalOf($this->get('https://ribbon.om/')->assertOk()->getContent()));
+        $this->get('https://someone-else.om/sitemap.xml')->assertNotFound();
+
+        // والصفحةُ البسيطة لا تُخدَم على نطاقٍ خاصّ — فلا خريطةَ لها هناك، وأصلُها طريقُها
+        $this->activeDomain(Business::where('site_slug', 'lily')->firstOrFail(), 'lily.om');
+        $this->get('https://lily.om/sitemap.xml')->assertNotFound();
+        $this->assertSame($app.'/s/lily', $this->canonicalOf($this->get($app.'/s/lily')->assertOk()->getContent()));
+
+        // وnoindex يطوي الخريطةَ على كلّ طريق
+        $this->saveBuilt($builtOwner, ['title' => 'ورود', 'index' => false])->assertSessionHasNoErrors();
+        $this->saveThemed($themedOwner, ['store_seo_index' => '0'])->assertSessionHasNoErrors();
+        $this->saveSimple($simpleOwner, ['store_seo_index' => '0'])->assertSessionHasNoErrors();
+        $this->get('https://wrood.om/sitemap.xml')->assertNotFound();
+        $this->get('https://ribbon.om/sitemap.xml')->assertNotFound();
+        foreach (['wrood', 'ribbon', 'lily'] as $slug) {
+            $this->assertStringContainsString('noindex', $this->get($app.'/s/'.$slug)->assertOk()->getContent());
+            $this->get($app.'/s/'.$slug.'/sitemap.xml')->assertNotFound();
+        }
+        config(['storefront.subdomains' => true]);
+        $this->get('http://wrood.abaadapp.om/sitemap.xml')->assertNotFound();
+        $this->get('http://ribbon.abaadapp.om/sitemap.xml')->assertNotFound();
+        $this->get('http://lily.abaadapp.om/sitemap.xml')->assertNotFound();
+    }
+
+    /* ═══════════ و«حفظ» لا ينشر شيئًا معلّقًا ═══════════ */
+
+    /**
+     * الموقعُ المبنيّ: صفحةٌ أُضيفت، وتصميمٌ بُدّل، ومنتجٌ غيرُ منشور — لا يخرج منها
+     * شيءٌ بحفظ البحث. والمستندُ المخدوم قبلَه وبعدَه واحدٌ إلّا سيوَه.
+     */
+    public function test_saving_search_publishes_no_pending_page_design_or_product_on_a_built_site(): void
+    {
+        [$business, $owner, $site] = $this->built('wrood');
+
+        WebsitePage::create([
+            'website_id' => $site->id, 'business_id' => $business->id, 'key' => 'custom',
+            'title' => 'عروض الموسم', 'slug' => 'offers', 'status' => 'published', 'is_home' => false, 'removable' => true, 'position' => 9,
+        ]);
+        $site->update(['theme' => array_merge((array) $site->theme, ['accent' => '#123456'])]);
+        $site->touchDraft();
+        Product::create([
+            'business_id' => $business->id, 'name' => 'باقةٌ لم تُنشر', 'price' => 30, 'cost' => 10,
+            'quantity' => 3, 'alert_qty' => 1, 'active' => true, 'published' => false,
+        ]);
+
+        $before = Published::forBusiness($business->id)['site'];
+
+        $this->saveBuilt($owner, ['title' => 'ورود مسقط · باقات', 'description' => 'وصفٌ جديد للبحث'])->assertSessionHasNoErrors();
+
+        $after = Published::forBusiness($business->id)['site'];
+        $this->assertSame('ورود مسقط · باقات', $after['seo']['title']);
+        unset($before['seo'], $after['seo']);
+        $this->assertEquals($before, $after, 'حفظُ البحث بدّل في الموقع المنشور غيرَ سيوه');
+
+        $this->get('/s/wrood/offers')->assertNotFound();
+        $this->assertStringNotContainsString('#123456', $this->get('/s/wrood')->getContent(), 'نُشر تصميمٌ معلّق');
+        $this->assertStringNotContainsString('باقةٌ لم تُنشر', $this->get('/s/wrood')->getContent());
+        $this->assertNotContains(url('/s/wrood/offers'), $this->locs($this->get('/s/wrood/sitemap.xml')->getContent()));
+
+        // ونشرُ صاحبه يُخرجها — فالاختبارُ يرى ما يقيس
+        Publisher::publish($site->fresh(), $owner->id);
+        $this->get('/s/wrood/offers')->assertOk();
+        $this->assertContains(url('/s/wrood/offers'), $this->locs($this->get('/s/wrood/sitemap.xml')->getContent()));
+    }
+
+    /** والواجهةُ الخاصّة: صفحةٌ فُتحت في المسوّدة ومنتجٌ غيرُ منشور — لا يخرجان */
+    public function test_saving_search_publishes_no_pending_page_or_product_on_a_themed_store(): void
+    {
+        [$shop, $owner] = $this->themed('ribbon');
+        MarketingSettings::save($shop->id, 'website', ['store_about' => 'محلُّ وردٍ في الخوير منذ عشر سنين.', 'store_pages' => 'contact']);
+        ThemePublisher::enable($shop, null);
+        $hidden = Product::create([
+            'business_id' => $shop->id, 'name' => 'باقةٌ لم تُنشر', 'price' => 30, 'cost' => 10,
+            'quantity' => 3, 'alert_qty' => 1, 'active' => true, 'published' => false,
+        ]);
+
+        // يفتح «من نحن» في المسوّدة ولا ينشر
+        $this->actingAs($owner)->post(route('admin.marketing.store.save'), ['store_pages' => 'about,contact'])->assertSessionHasNoErrors();
+        $live = StoreContent::live($shop->id);
+        $site = StoreSite::where('business_id', $shop->id)->firstOrFail();
+
+        $this->saveThemed($owner, ['store_seo_title' => 'ريبون — ورد مسقط'])->assertSessionHasNoErrors();
+
+        $this->assertSame($live, StoreContent::live($shop->id), 'حفظُ البحث نشر شيئًا من المسوّدة');
+        $this->assertSame(['store_pages'], StoreContent::changed($shop->id));
+        $this->assertSame((int) $site->published_version_id, (int) $site->fresh()->published_version_id);
+        $this->get('/s/ribbon/about')->assertNotFound();
+        $this->get('/s/ribbon/p/'.$hidden->id)->assertNotFound();
+        $xml = $this->get('/s/ribbon/sitemap.xml')->getContent();
+        $this->assertStringNotContainsString('/about', $xml);
+        $this->assertStringNotContainsString('/p/'.$hidden->id.'<', $xml);
+
+        ThemePublisher::publish($shop, $owner->id);
+        $this->get('/s/ribbon/about')->assertOk();
+    }
+
+    /* ═══════════ وحارسُ البحث لا يمسّ سائرَ التسويق ═══════════ */
+
+    /**
+     * موظّفُ التسويق بلا ضبط الموقع: يحفظ شاشةَ المتجر كلَّها كما كان، ومعرّفَ
+     * Google Analytics، ولا يُردّ لأنّ حمولته حملت مفاتيحَ البحث بقيمها نفسِها.
+     */
+    public function test_the_search_guard_leaves_the_rest_of_marketing_as_it_was(): void
+    {
+        [$shop] = $this->themed('ribbon');
+        MarketingSettings::save($shop->id, 'website', ['store_seo_title' => 'ريبون', 'store_seo_index' => '1']);
+        $staff = $this->owner($shop, ['role' => 'staff', 'permissions' => ['website', 'marketing']]);
+
+        // حمولةُ «المتجر والطلبات» — مفاتيحُها كما ترسلها شاشتُها
+        $this->actingAs($staff)->post(route('admin.marketing.store.save'), [
+            'store_delivery_fee' => '2.500', 'store_free_delivery_over' => '30', 'store_delivery_note' => 'نوصّل حتّى التاسعة',
+            'store_pay_cod' => '1', 'store_pay_transfer' => '1', 'store_bank' => 'OM12 3456',
+            'store_thanks_title' => 'شكرًا لك', 'store_image_note' => 'الصورةُ للتوضيح',
+        ])->assertSessionHasNoErrors();
+
+        $now = MarketingSettings::group($shop->id, 'website');
+        $this->assertSame('2.500', $now['store_delivery_fee']);
+        $this->assertSame('OM12 3456', $now['store_bank']);
+        $this->assertSame('شكرًا لك', $now['store_thanks_title']);
+
+        // وحمولةٌ تحمل البحثَ بلا تغيير لا تُردّ — الحارسُ على ما تغيّر
+        $this->actingAs($staff)->post(route('admin.marketing.store.save'), [
+            'store_seo_title' => 'ريبون', 'store_seo_index' => '1', 'store_delivery_note' => 'نوصّل حتّى العاشرة',
+        ])->assertSessionHasNoErrors();
+        $this->assertSame('نوصّل حتّى العاشرة', MarketingSettings::group($shop->id, 'website')['store_delivery_note']);
+
+        // ومعرّفُ Google Analytics بابُه كما كان
+        $this->actingAs($staff)->from(route('admin.marketing.seo'))->post(route('admin.marketing.seo.save'), ['ga_measurement_id' => 'G-ABC1234'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('G-ABC1234', MarketingSettings::group($shop->id, 'seo')['ga_measurement_id']);
+        $this->actingAs($staff)->get(route('admin.marketing.seo'))->assertOk();
     }
 }

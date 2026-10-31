@@ -13,17 +13,24 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-    <title>{{ $headline }}</title>
-    <meta name="description" content="{{ Str::limit($about !== '' ? $about : $headline, 155) }}">
+    {{--
+        ورأسُ الصفحة من «الظهور في البحث» — وفراغُه العنوانُ الرئيسيُّ والنبذة
+        كما كانا (`Store\StoreSeo::simple`).
+    --}}
+    <title>{{ $seo['title'] }}</title>
+    <meta name="description" content="{{ $seo['description'] }}">
+    @unless ($seo['index'])
+        <meta name="robots" content="noindex, nofollow">
+    @endunless
 
-    {{-- الأصل هو النطاق الفرعيّ: لا يقرأ محرّكُ البحث نسختين لصفحةٍ واحدة --}}
-    @if ($url)
-        <link rel="canonical" href="{{ $url }}">
+    {{-- والأصلُ ما يخدم الصفحةَ فعلًا: لا يقرأ محرّكُ البحث نسختين لصفحةٍ واحدة --}}
+    @if ($seo['canonical'])
+        <link rel="canonical" href="{{ $seo['canonical'] }}">
     @endif
 
     <meta property="og:type" content="website">
-    <meta property="og:title" content="{{ $headline }}">
-    <meta property="og:description" content="{{ Str::limit($about !== '' ? $about : $headline, 155) }}">
+    <meta property="og:title" content="{{ $seo['title'] }}">
+    <meta property="og:description" content="{{ $seo['description'] }}">
     @if ($logo)
         <meta property="og:image" content="{{ $logo }}">
     @endif

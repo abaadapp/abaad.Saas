@@ -104,6 +104,42 @@ final class StoreSeo
     }
 
     /**
+     * رأسُ صفحة المتجر البسيطة — ما كُتب في «الظهور في البحث»، وإلّا ما كان.
+     *
+     * ═══ ولمَ لها رأسٌ من هنا ═══
+     *
+     * صفحةُ المتجر البسيطة (`store.show`) يُخدَم بها كلُّ من نشر متجره ولم
+     * يبنِ موقعًا ولم يلبس واجهة. وكان رأسُها العنوانَ الرئيسيَّ والنبذة،
+     * بلا شاشة بحثٍ ولا إذنِ فهرسة — فتاجرُها مستثنًى من «الظهور في البحث»
+     * وهو يملك الموقع في باقته.
+     *
+     * فتقرأ المفاتيحَ نفسَها التي تكتبها الشاشة (`KEYS`)، وفراغُها «ما كان»
+     * حرفًا بحرف: العنوانُ الرئيسيّ، ثمّ النبذة — فلا يتبدّل رأسُ صفحةٍ قائمة
+     * حتّى يكتب صاحبُها.
+     *
+     * والعنوانُ الأصليُّ ما يخدمها فعلًا: النطاقُ الفرعيّ إن فُتح، وإلّا
+     * الطريقُ البديل. وكان النطاقَ الفرعيَّ دائمًا — عنوانًا لا يُحلّ ما دامت
+     * النطاقاتُ الفرعيّة مطفأة، فيدلّ غوغل على صفحةٍ لا وجود لها. ولا يُقرأ
+     * نطاقُ التاجر الخاصّ هنا: لا يخدم هذه الصفحة (`StorefrontController::byHost`).
+     *
+     * @return array{title: string, description: string, index: bool, canonical: ?string}
+     */
+    public static function simple(Business $business): array
+    {
+        $site = MarketingSettings::group((int) $business->id, 'website');
+        $headline = trim((string) ($site['store_headline'] ?? '')) ?: (string) $business->name;
+        $about = trim((string) ($site['store_about'] ?? ''));
+        $desc = trim((string) ($site['store_seo_desc'] ?? '')) ?: ($about !== '' ? $about : $headline);
+
+        return [
+            'title' => trim((string) ($site['store_seo_title'] ?? '')) ?: $headline,
+            'description' => Str::limit($desc, 155),
+            'index' => ($site['store_seo_index'] ?? '1') === '1',
+            'canonical' => Storefront::canonical($business->site_slug),
+        ];
+    }
+
+    /**
      * صفحاتٌ لا تُفهرَس — مهما أذِن صاحبُ المتجر بالفهرسة.
      *
      * ═══ والعطبُ الذي وُضع لأجله ═══

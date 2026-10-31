@@ -94,7 +94,7 @@ final class WhatsAppLinkHealth
         }
 
         if ($c->link_problem === WhatsAppLinkCheck::WRONG_APP
-            || (filled($c->token_app_id) && $c->token_app_id !== WhatsAppLinkCheck::appId())) {
+            || (filled($c->token_app_id) && $c->token_app_id !== WhatsAppLinkCheck::expectedApp($c)['id'])) {
             return self::WRONG_APP;
         }
 

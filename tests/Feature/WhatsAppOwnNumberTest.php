@@ -44,6 +44,8 @@ class WhatsAppOwnNumberTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
 
         Setting::updateOrCreate(['business_id' => null, 'key' => 'whatsapp_enabled'], ['value' => '1']);
         Setting::updateOrCreate(['business_id' => null, 'key' => WhatsAppQuota::DEFAULT_KEY], ['value' => '100']);

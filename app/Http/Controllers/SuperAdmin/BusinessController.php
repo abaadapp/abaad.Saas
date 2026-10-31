@@ -144,8 +144,9 @@ class BusinessController extends Controller
 
         // بابُ الإنشاء يختمه الخادم — `validateData` لا يقبله من الطلب
         $data['registration_source'] = Business::SOURCE_PLATFORM_MANUAL;
-        // ويبدأ على رقمه هو — رقمُ أبعاد يختاره التاجرُ بنفسه (`WhatsAppMode::DEFAULT`)
+        // ويبدأ على رقمه هو بتطبيقه — ورقمُ أبعاد المشترك مغلقٌ عن الجديد كلّيًّا (`WhatsAppMode::DEFAULT`)
         $data['whatsapp_mode'] = \App\Support\WhatsAppMode::DEFAULT;
+        $data['whatsapp_shared_allowed'] = false;
 
         try {
             /*

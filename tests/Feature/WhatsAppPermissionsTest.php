@@ -34,6 +34,8 @@ class WhatsAppPermissionsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // الطريقُ السابق — رمزٌ من تطبيق أبعاد للتاجر؛ والافتراضُ اليوم تطبيقُ التاجر (`WhatsAppOwnApp`)
+        config(['whatsapp.merchant_link' => 'abaad_app']);
 
         $this->business = Business::create(['name' => 'محل ورد', 'type' => 'محل ورود', 'status' => 'نشط']);
         Branch::create(['business_id' => $this->business->id, 'name' => 'الرئيسي']);

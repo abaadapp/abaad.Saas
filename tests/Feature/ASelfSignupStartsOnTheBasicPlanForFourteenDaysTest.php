@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\Signup;
 use App\Support\Tenancy;
+use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -130,7 +131,7 @@ class ASelfSignupStartsOnTheBasicPlanForFourteenDaysTest extends TestCase
      * رقمُ أبعاد المشترك اختيارٌ يضغطه التاجر لا افتراضٌ يُكتب له. وعمودُ
      * القاعدة يبقى `abaad_shared`: متجرٌ أُنشئ قبل هذا لا يتبدّل وضعُه.
      */
-    public function test_both_doors_open_a_new_shop_on_its_own_whatsapp_number_and_old_shops_keep_theirs(): void
+    public function test_both_doors_open_a_new_shop_on_its_own_whatsapp_number_closed_to_the_shared_one_and_old_shops_keep_theirs(): void
     {
         $old = Business::create(['name' => 'متجر قديم', 'type' => 'عام', 'status' => 'نشط']);
 
@@ -144,6 +145,11 @@ class ASelfSignupStartsOnTheBasicPlanForFourteenDaysTest extends TestCase
         $this->assertSame(WhatsAppMode::BUSINESS_OWN, Business::where('name', 'متجر يدوي')->value('whatsapp_mode'));
 
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $old->fresh()->whatsapp_mode, 'لا يتبدّل متجرٌ قائم');
+
+        // ورقمُ أبعاد المشترك مغلقٌ عن الجديد من البابين — والقائمُ كما كان
+        $this->assertSame([false, false], Business::whereIn('registration_source', [Business::SOURCE_SELF_SIGNUP, Business::SOURCE_PLATFORM_MANUAL])
+            ->orderBy('id')->pluck('whatsapp_shared_allowed')->map(fn ($v) => (bool) $v)->all());
+        $this->assertTrue(WhatsAppFeature::canUseShared($old->fresh()));
     }
 
     /** واليومُ الرابعَ عشرَ يعمل كاملًا، ويُقفل بعده — بقراءة `Tenancy` نفسِها */

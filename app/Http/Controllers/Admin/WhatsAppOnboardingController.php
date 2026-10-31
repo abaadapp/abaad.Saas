@@ -14,6 +14,7 @@ use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppLinkCheck;
 use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppOnboarding;
+use App\Support\WhatsAppOwnApp;
 use Illuminate\Http\Request;
 
 /**
@@ -90,6 +91,11 @@ class WhatsAppOnboardingController extends Controller
 
         if (! WhatsAppEmbeddedSignup::configured()) {
             return back()->withErrors(['code' => __('ربط واتساب غير مهيّأ على الخادم — راجع أبعاد.')]);
+        }
+
+        // والتجّارُ يربطون بتطبيقاتهم — التسجيلُ المدمج عبر تطبيق أبعاد ليس طريقَهم (`WhatsAppOwnApp`)
+        if (WhatsAppOwnApp::enabled()) {
+            return back()->withErrors(['code' => __('الربط يتمّ بتطبيقك الخاص على Meta — اتبع خطوات «اربط تطبيقك» في الصفحة.')]);
         }
 
         $data = $request->validate([
@@ -204,13 +210,25 @@ class WhatsAppOnboardingController extends Controller
          * التاجر قد يُغيّر اسمَ العرض عندهم، وقد تُصلَح العلّةُ التي كُتبت
          * أمس. فبقاءُ «حدث خطأ» بعد أن زال الخطأ عطبٌ في نفسه.
          */
+        /*
+         * ووصلةٌ تنتظر خطوةً — إثباتَ الفوترة أو تفعيلَ الرقم — لا يجعلها ردُّ
+         * الرقم «نشطة»: تلك خطوةٌ لم تتمّ، والفحصُ لا يقفز فوقها.
+         */
+        $waiting = WhatsAppOwnApp::awaitsBilling($connection) || WhatsAppOnboarding::awaitsRegistration($connection);
+
         $connection->forceFill([
-            'status' => WhatsAppConnection::ACTIVE,
             'display_phone_number' => $result['display_phone_number'] ?? $connection->display_phone_number,
+        ] + ($waiting ? [] : [
+            'status' => WhatsAppConnection::ACTIVE,
             'last_error_code' => null,
             'last_error_message' => null,
             'last_error_at' => null,
-        ])->save();
+        ]))->save();
+
+        // ووصلةُ تطبيق التاجر: الفوترةُ واشتراكُ تطبيقه وعنوانُ إشعاراته (`WhatsAppOwnApp::recheck`)
+        if (WhatsAppOwnApp::is($connection)) {
+            WhatsAppOwnApp::recheck($connection);
+        }
 
         /*
          * ثمّ الأهمّ: أيصلنا ما يكتبه الزبائن؟ — قراءةٌ عند ميتا لا غير.

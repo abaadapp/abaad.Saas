@@ -580,6 +580,8 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])
         ->middleware('throttle:20,1,whatsapp-link-check')->name('businesses.whatsapp.check');
+    // وإثباتُ أنّ فوترة ميتا على التاجر — حين لم تقلها ملكيّةُ حسابه آليًّا (`WhatsAppOwnApp::billing`)
+    Route::post('/businesses/{id}/whatsapp/billing', [WhatsAppController::class, 'confirmBilling'])->name('businesses.whatsapp.billing');
     // وإعدادُ الإشعارات في تطبيق أبعاد نفسه — واحدٌ لكلّ المتاجر، وقراءةٌ لا غير
     Route::post('/whatsapp/app-webhook/check', [WhatsAppController::class, 'checkAppWebhook'])
         ->middleware('throttle:10,1,whatsapp-app-webhook-check')->name('whatsapp.app-webhook.check');
@@ -2417,6 +2419,9 @@ Route::post('/webhooks/paymob', [PaymobController::class, 'callback'])
     ->name('webhooks.paymob');
 Route::get('/webhooks/whatsapp', [WebhookController::class, 'verify'])->name('webhooks.whatsapp.verify');
 Route::post('/webhooks/whatsapp', [WebhookController::class, 'handle'])->name('webhooks.whatsapp');
+// وإشعاراتُ تطبيق التاجر — عنوانٌ لكلّ وصلة، يُتحقَّق منه بسرّ تطبيقها (`WhatsAppOwnApp`)
+Route::get('/webhooks/whatsapp/m/{key}', [WebhookController::class, 'verifyOwn'])->where('key', '[A-Za-z0-9]{32,64}')->name('webhooks.whatsapp.own.verify');
+Route::post('/webhooks/whatsapp/m/{key}', [WebhookController::class, 'handleOwn'])->where('key', '[A-Za-z0-9]{32,64}')->name('webhooks.whatsapp.own');
 
 /*
  * «تواصل معنا» في الموقع التعريفيّ abaadapp.om — بابٌ عامّ إلى CRM المنصّة.

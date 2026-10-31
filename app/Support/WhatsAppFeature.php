@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Business;
 use App\Models\Setting;
+use App\Models\WhatsAppConnection;
 use App\Support\Addons\Catalog;
 use App\Support\Addons\Entitlements;
 use App\Support\Addons\PricingPolicy;
@@ -65,7 +66,20 @@ class WhatsAppFeature
             return false;
         }
 
-        return ! PricingPolicy::isAddons($business) || Entitlements::has($business, Catalog::OWN_NUMBER);
+        return ! PricingPolicy::isAddons($business) || self::servicePurchased($business);
+    }
+
+    /**
+     * اشترى المتجرُ خدمة واتساب من أبعاد؟ — ضمن باقته أو إضافةً، أيُّهما.
+     *
+     * والخدمةُ اليوم ربطُ رقمه بتطبيقه هو (`WhatsAppOwnApp`). فمن في باقته
+     * «إشعارات واتساب» لا يُطلب منه شراءُ «ربط واتساب برقم المتجر» فوقها، ومن
+     * اشترى الإضافة وحدها لا يُردّ لأنّ باقته لا تسمّي واتساب. شراءٌ واحدٌ يكفي.
+     */
+    public static function servicePurchased(Business $business): bool
+    {
+        return PlanFeatures::allows($business, 'whatsapp')
+            || (PricingPolicy::isAddons($business) && Entitlements::has($business, Catalog::OWN_NUMBER));
     }
 
     /**
@@ -159,7 +173,7 @@ class WhatsAppFeature
             Integration::step(
                 'plan',
                 'باقتك تشمل إشعارات واتساب',
-                PlanFeatures::allows($business, 'whatsapp'),
+                self::servicePurchased($business),
                 fix: PlanFeatures::refusal($business, 'whatsapp'),
                 theirs: true,
             ),
@@ -189,6 +203,34 @@ class WhatsAppFeature
                 theirs: ! $own,
             ),
         ];
+
+        /*
+         * ═══ وربطُ التاجر بتطبيقه: فوترتُه وإشعاراتُ تطبيقه خطوتان بيده ═══
+         *
+         * «مربوط» لا يقولهما: وصلةٌ لم تثبت فوترتُها لا تُرسل، ووصلةٌ تُرسل ولم
+         * تُضبط إشعاراتُ تطبيقها لا يصلنا منها ما يكتبه الزبائن ولا «وصلت».
+         */
+        $link = $own ? WhatsAppConnections::forBusiness($business->id) : null;
+
+        if (WhatsAppOwnApp::is($link) && $link->status !== WhatsAppConnection::INACTIVE) {
+            $steps[] = Integration::step(
+                'billing',
+                'رسوم ميتا على حسابك أنت',
+                WhatsAppOwnApp::billed($link),
+                detail: WhatsAppOwnApp::billed($link) && filled($link->billing_owner_name)
+                    ? __('تُحتسب على: :owner', ['owner' => $link->billing_owner_name]) : null,
+                fix: 'لم يثبت أنّ رسائل حسابك تُحتسب عليك عند ميتا — أرسل لأبعاد ما يثبت وسيلة الدفع في حسابك، ولا يُرسل الربط قبل ذلك.',
+            );
+
+            $heard = $link->webhook_verified_at !== null || $link->last_webhook_at !== null;
+
+            $steps[] = Integration::step(
+                'webhook',
+                'إشعارات تطبيقك تصل أبعاد',
+                $heard,
+                fix: 'الصق عنوان الإشعارات ورمز التحقّق في لوحة تطبيقك (WhatsApp ‹ Configuration)، واشترك في حقل messages.',
+            );
+        }
 
         /*
          * ═══ وخطوةُ القالب — آخرُ حلقةٍ قبل أن تخرج الرسالة ═══
@@ -322,7 +364,7 @@ class WhatsAppFeature
          * والسبب يُكتب في السجلّ باسمه: «امتنع لأنّ الباقة لا تشمله» يُقرأ
          * ويُرقّى، و«الأتمتة مطفأة» يُبحث عن مفتاحٍ لا وجود له.
          */
-        if (! PlanFeatures::allows($business, 'whatsapp')) {
+        if (! self::servicePurchased($business)) {
             return WhatsAppStatus::SKIP_PLAN;
         }
 

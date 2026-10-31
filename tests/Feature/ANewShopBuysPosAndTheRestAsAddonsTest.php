@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Support\Addons\AddonOrders;
 use App\Support\Addons\Catalog;
+use App\Support\Addons\Entitlements;
 use App\Support\Addons\PricingPolicy;
 use App\Support\Billing;
 use App\Support\CustomArrangement;
@@ -291,12 +292,18 @@ class ANewShopBuysPosAndTheRestAsAddonsTest extends TestCase
     {
         [$business] = $this->shop('professional');
         $this->assertTrue((bool) $business->whatsapp_own_allowed, 'العمودُ يُمنح بالولادة');
-        $this->assertFalse(WhatsAppFeature::canUseOwnNumber($business), 'رقمُ المتجر فُتح بلا إضافته');
 
+        /*
+         * وخدمةُ واتساب تُشترى مرّةً: الاحترافيّةُ تشملها، فربطُ رقم المتجر مفتوحٌ
+         * بها بلا شراء «ربط واتساب برقم المتجر» فوقها (`WhatsAppFeature::servicePurchased`).
+         */
+        $this->assertTrue(WhatsAppFeature::canUseOwnNumber($business), 'طُلب شراءُ واتساب مرّتين');
+
+        // والإضافةُ «حسب الطلب» نفسُها لا تسري قبل سعرٍ معتمَدٍ وسداد
         $order = AddonOrders::request($business, $this->addon('whatsapp_own_number'), 'monthly')['order'];
         $this->assertNull($order->unit_price);
         $this->assertNull($order->invoice_id);
-        $this->assertFalse(WhatsAppFeature::canUseOwnNumber($business->fresh()));
+        $this->assertFalse(Entitlements::active($business->fresh(), Catalog::OWN_NUMBER));
 
         try {
             AddonOrders::approve($order);
@@ -307,10 +314,10 @@ class ANewShopBuysPosAndTheRestAsAddonsTest extends TestCase
 
         $order = AddonOrders::approve($order, 15.0, 'عرض سعر رقم 7');
         $this->assertSame(15.0, (float) $order->invoice->amount);
-        $this->assertFalse(WhatsAppFeature::canUseOwnNumber($business->fresh()), 'سرت قبل السداد');
+        $this->assertFalse(Entitlements::active($business->fresh(), Catalog::OWN_NUMBER), 'سرت قبل السداد');
 
         $this->pay($order);
-        $this->assertTrue(WhatsAppFeature::canUseOwnNumber($business->fresh()));
+        $this->assertTrue(Entitlements::active($business->fresh(), Catalog::OWN_NUMBER));
 
         // والسحبُ يبقى سحبًا
         $business->update(['whatsapp_own_allowed' => false]);

@@ -147,13 +147,19 @@ class WhatsAppEmbeddedSignup
      *
      * @return array{ok:bool, app_id:?string, scopes:list<string>, waba_ids:list<string>, messaging_waba_ids:list<string>, expires_at:?Carbon, code:?string, message:?string}
      */
-    public static function inspect(string $token): array
+    public static function inspect(string $token, ?string $appId = null, ?string $appSecret = null): array
     {
+        /*
+         * وتطبيقُ التاجر يصف رموزَه هو — بمعرّفه وسرّه (`WhatsAppOwnApp`). وسرٌّ
+         * خاطئ يُردّ هنا قبل أن يُحفظ: به وحده يُتحقَّق من إشعارات تطبيقه.
+         */
+        $app = ($appId ?? config('whatsapp.app_id')).'|'.($appSecret ?? config('whatsapp.app_secret'));
+
         try {
             $response = Http::timeout(self::timeout())->acceptJson()
                 ->get(self::base().'/debug_token', [
                     'input_token' => $token,
-                    'access_token' => config('whatsapp.app_id').'|'.config('whatsapp.app_secret'),
+                    'access_token' => $app,
                 ]);
         } catch (\Throwable $e) {
             return ['ok' => false, 'app_id' => null, 'scopes' => [], 'waba_ids' => [], 'messaging_waba_ids' => [], 'expires_at' => null,
@@ -288,6 +294,45 @@ class WhatsAppEmbeddedSignup
     }
 
     /**
+     * على من تُحتسب رسائلُ هذا الحساب؟ — مالكُه، ومن أُنشئ نيابةً عنه، ونوعُ ملكيّته.
+     *
+     * قراءةٌ لا غير. و`primary_funding_id` لا يُسأل: ميتا لا تُعيده إلّا لمزوّدي
+     * حلول الأعمال (`#10` في فحص 2026-10-31)، فلا يُبنى عليه حكم.
+     *
+     * @return array{ok:bool, owner_id:?string, owner_name:?string, on_behalf_id:?string, on_behalf_type:?string, ownership_type:?string, code:?string, message:?string}
+     */
+    public static function wabaOwnership(string $wabaId, string $token): array
+    {
+        $none = ['ok' => false, 'owner_id' => null, 'owner_name' => null, 'on_behalf_id' => null, 'on_behalf_type' => null, 'ownership_type' => null];
+
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.$wabaId, ['fields' => 'owner_business_info,on_behalf_of_business_info,ownership_type']);
+        } catch (\Throwable $e) {
+            return $none + ['code' => 'network_error', 'message' => self::scrub($e->getMessage())];
+        }
+
+        if (! $response->successful()) {
+            [$code, $message] = self::error($response->json());
+
+            return $none + ['code' => $code, 'message' => $message];
+        }
+
+        $text = fn (string $key) => filled($response->json($key)) ? (string) $response->json($key) : null;
+
+        return [
+            'ok' => true,
+            'owner_id' => $text('owner_business_info.id'),
+            'owner_name' => $text('owner_business_info.name'),
+            'on_behalf_id' => $text('on_behalf_of_business_info.id'),
+            'on_behalf_type' => $text('on_behalf_of_business_info.type'),
+            'ownership_type' => $text('ownership_type'),
+            'code' => null,
+            'message' => null,
+        ];
+    }
+
+    /**
      * حسابُ الأعمال في ميتا الذي يملك هذا الـWABA — للعرض والتقييد.
      *
      * ويُطلب وحده في نداءٍ صغير: `owner_business_info` لا يأتي مع الأرقام.
@@ -313,7 +358,7 @@ class WhatsAppEmbeddedSignup
      * و`null` تعني «لم نستطع أن نعرف» — لا «لا». فمن قرأها «لا» اشترك
      * ثانيةً، ومن قرأها «نعم» ترك الاشتراك مفقودًا.
      */
-    public static function subscribed(string $wabaId, string $token): ?bool
+    public static function subscribed(string $wabaId, string $token, ?string $appId = null): ?bool
     {
         $read = self::subscribedApps($wabaId, $token);
 
@@ -321,7 +366,7 @@ class WhatsAppEmbeddedSignup
             return null;
         }
 
-        $appId = (string) config('whatsapp.app_id');
+        $appId ??= (string) config('whatsapp.app_id');
 
         foreach ($read['apps'] as $app) {
             if ($app['app_id'] === $appId) {
@@ -406,18 +451,20 @@ class WhatsAppEmbeddedSignup
      *
      * @return array{ok:bool, callback_url:?string, fields:list<string>, active:bool, code:?string, message:?string}
      */
-    public static function appSubscription(): array
+    public static function appSubscription(?string $appId = null, ?string $appSecret = null): array
     {
         $none = ['ok' => false, 'callback_url' => null, 'fields' => [], 'active' => false];
+        $appId ??= (string) config('whatsapp.app_id');
+        $appSecret ??= (string) config('whatsapp.app_secret');
 
-        if (blank(config('whatsapp.app_id')) || blank(config('whatsapp.app_secret'))) {
-            return $none + ['code' => 'not_configured', 'message' => 'whatsapp.app_id or app_secret missing'];
+        if (blank($appId) || blank($appSecret)) {
+            return $none + ['code' => 'not_configured', 'message' => 'app id or app secret missing'];
         }
 
         try {
-            $response = Http::withToken(config('whatsapp.app_id').'|'.config('whatsapp.app_secret'))
+            $response = Http::withToken($appId.'|'.$appSecret)
                 ->timeout(self::timeout())->acceptJson()
-                ->get(self::base().'/'.config('whatsapp.app_id').'/subscriptions');
+                ->get(self::base().'/'.$appId.'/subscriptions');
         } catch (\Throwable $e) {
             return $none + ['code' => 'network_error', 'message' => self::scrub($e->getMessage())];
         }
@@ -592,6 +639,8 @@ class WhatsAppEmbeddedSignup
             'display_phone_number' => $response->json('display_phone_number'),
             'verified_name' => $response->json('verified_name'),
             'quality_rating' => $response->json('quality_rating'),
+            // `NOT_APPLICABLE` = رقمٌ لم يُسجَّل في Cloud API بعد (`WhatsAppOnboarding::register`)
+            'platform_type' => $response->json('platform_type'),
             'code' => null,
             'message' => null,
         ];

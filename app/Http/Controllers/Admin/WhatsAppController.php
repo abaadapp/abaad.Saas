@@ -22,6 +22,7 @@ use App\Support\WhatsAppLinkHealth;
 use App\Support\WhatsAppLog;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOnboarding;
+use App\Support\WhatsAppOwnApp;
 use App\Support\WhatsAppPacks;
 use App\Support\WhatsAppQuota;
 use App\Support\WhatsAppStatus;
@@ -112,6 +113,12 @@ class WhatsAppController extends Controller
 
             /* وأيستقبل؟ — متّصلٌ ومشتركٌ ومُثبَت ثلاثةُ أشياء (`WhatsAppLinkHealth`) */
             'health' => $own ? WhatsAppLinkHealth::view($own) : null,
+
+            /*
+             * والربطُ بتطبيق التاجر: عنوانُ إشعارات وصلته ورمزُ تحقّقها وحالُ فوترتها
+             * (`WhatsAppOwnApp::view`) — ورمزُ التحقّق لصاحب الحساب وحده.
+             */
+            'own_app' => WhatsAppOwnApp::view($own, \App\Support\Permissions::isOwner(auth()->user())),
 
             /* والردُّ التلقائيّ: ما حُفظ، وفروعُ المتجر التي يُختار منها */
             'auto_reply' => $ownAllowed ? WhatsAppAutoReply::settings($business->id) : null,
@@ -357,6 +364,37 @@ class WhatsAppController extends Controller
 
         if (! WhatsAppFeature::canUseOwnNumber($business)) {
             return back()->withErrors(['access_token' => __('ربط رقم المتجر ميزة غير مفعّلة لحسابك — راجع أبعاد.')]);
+        }
+
+        /*
+         * ═══ والتاجرُ يربط بتطبيقه هو — الطريقُ الافتراضيّ (`WhatsAppOwnApp`) ═══
+         *
+         * تطبيقُه وحسابُه ورقمُه ورمزُه ووسيلةُ دفعه عند ميتا. ولا يُقبل هنا رمزٌ من
+         * تطبيق أبعاد. وهو تفويضٌ باسم النشاط يُرسل برقمه ويقرأ رسائل زبائنه —
+         * فلصاحب الحساب وحده، كالتسجيل المدمج.
+         */
+        if (WhatsAppOwnApp::enabled()) {
+            if (! \App\Support\Permissions::isOwner($request->user())) {
+                return back()->withErrors(['app_id' => __('ربط واتساب لصاحب الحساب وحده.')]);
+            }
+
+            $data = $request->validate([
+                'app_id' => ['required', 'string', 'regex:/^[0-9]{5,25}$/'],
+                'app_secret' => ['nullable', 'string', 'min:16', 'max:200'],
+                'waba_id' => ['required', 'string', 'regex:/^[0-9]{5,25}$/'],
+                'phone_number_id' => ['required', 'string', 'regex:/^[0-9]{5,25}$/'],
+                'access_token' => ['nullable', 'string', 'min:20', 'max:1000'],
+                // والتاجرُ يُقرّ أنّ رسوم ميتا ووسيلةَ دفعها عليه — لا على أبعاد
+                'billing_ack' => ['accepted'],
+            ]);
+
+            $result = WhatsAppOwnApp::link($business, $request->user(), $data);
+
+            if (! $result['ok']) {
+                return back()->withErrors([(string) $result['field'] => $result['message']]);
+            }
+
+            return back()->with('toast', ['msg' => $result['message'], 'type' => $result['pending'] ? 'info' : 'success']);
         }
 
         $data = $request->validate([

@@ -317,9 +317,10 @@ class MetaWhatsAppClient
      * والمقارنة بـ`hash_equals` لا بـ`===`: المقارنة العادية تخرج عند أوّل
      * حرفٍ مختلف، وفارقُ الزمن يُقرأ فيُخمَّن التوقيع حرفًا حرفًا.
      */
-    public static function verifySignature(?string $header, string $rawBody): bool
+    public static function verifySignature(?string $header, string $rawBody, ?string $secret = null): bool
     {
-        $secret = (string) config('whatsapp.app_secret');
+        // وإشعارُ تطبيق التاجر يُقاس بسرّ تطبيقه هو — لا بسرّ أبعاد (`WhatsAppOwnApp`)
+        $secret ??= (string) config('whatsapp.app_secret');
 
         // بلا سرٍّ لا تحقّق — ولا قبول: الأمان لا يُفتح بغياب إعداد
         if ($secret === '' || blank($header)) {

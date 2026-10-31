@@ -63,7 +63,7 @@ return Application::configure(basePath: dirname(__DIR__))
          * المتحكّم، ولا يُقبل شيءٌ بدونه. واستثناءٌ بمسارٍ واحد لا بنمطٍ
          * واسع — `webhooks/*` غدًا قد تشمل ما لا يُوقَّع.
          */
-        $middleware->validateCsrfTokens(except: ['webhooks/whatsapp', 'webhooks/paymob']);
+        $middleware->validateCsrfTokens(except: ['webhooks/whatsapp', 'webhooks/whatsapp/m/*', 'webhooks/paymob']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         /*

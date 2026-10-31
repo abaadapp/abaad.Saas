@@ -21,6 +21,11 @@ class WhatsAppConnection extends Model
 
     protected $casts = [
         'access_token' => 'encrypted',
+        // وسرُّ تطبيق التاجر ورمزُ تحقّق إشعاراته — مشفَّران كالرمز (`WhatsAppOwnApp`)
+        'app_secret' => 'encrypted',
+        'webhook_verify_token' => 'encrypted',
+        'webhook_verified_at' => 'datetime',
+        'billing_checked_at' => 'datetime',
         'token_expires_at' => 'datetime',
         'connected_at' => 'datetime',
         'disconnected_at' => 'datetime',
@@ -43,7 +48,7 @@ class WhatsAppConnection extends Model
      * `WhatsAppConnections::publicView`)، وهذا حارسٌ ثانٍ: من كتب
      * `->toArray()` سهوًا لا يُسرّب المفتاح.
      */
-    protected $hidden = ['access_token'];
+    protected $hidden = ['access_token', 'app_secret', 'webhook_verify_token'];
 
     public const ACTIVE = 'active';
 

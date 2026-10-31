@@ -55,6 +55,8 @@ export interface BusinessWhatsApp {
         /** متّصلٌ أم مشتركٌ أم يستقبل فعلًا — `WhatsAppLinkHealth::view` */
         link?: LinkHealth;
         can_check?: boolean;
+        /** ربطُ التاجر بتطبيقه: على من تُحتسب رسائلُه، وأينتظر إثباتَها — `WhatsAppOwnApp` */
+        own_app?: { billing_state: string | null; billing_owner: string | null; awaits_billing: boolean } | null;
     } | null;
     /** أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`WhatsAppFeature::canUseOwnNumber`) */
     own_eligible?: boolean;
@@ -213,6 +215,32 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                                 </Button>
                             )}
                             <p className="mt-1 text-[11px] text-[#9ca3af]">{t('الفحص قراءة عند ميتا فقط — لا يغيّر الرقم ولا الرمز ولا الاشتراك.')}</p>
+                            {/* وفوترةُ ميتا: على التاجر أم لم تثبت — والتأكيدُ بعد أن يُرى إثباتُها، لا قبله */}
+                            {data.own_health.own_app && (
+                                <div className="mt-2 border-t border-[#f0f0f0] pt-2" data-testid="whatsapp-billing" data-state={data.own_health.own_app.billing_state ?? ''}>
+                                    <div className="flex justify-between gap-3">
+                                        <dt className="text-[#6b7280]">{t('فوترة ميتا')}</dt>
+                                        <dd className="font-medium text-[#111]">
+                                            {data.own_health.own_app.awaits_billing
+                                                ? t('لم يثبت أنّها على التاجر — لا يُرسل الربط')
+                                                : `${t('على التاجر')}${data.own_health.own_app.billing_owner ? ` — ${data.own_health.own_app.billing_owner}` : ''}`}
+                                        </dd>
+                                    </div>
+                                    {data.own_health.own_app.awaits_billing && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="mt-2"
+                                            data-testid="whatsapp-billing-confirm"
+                                            onClick={() => router.post(route('super-admin.businesses.whatsapp.billing', businessId), {}, { preserveScroll: true })}
+                                        >
+                                            <Check />
+                                            {t('رأيتُ الإثبات — الفوترة على التاجر')}
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
                 </dl>

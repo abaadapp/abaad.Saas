@@ -132,8 +132,9 @@ class Signup
                 'status' => 'نشط',
                 // الخادمُ يختم البابَ — لا حقلَ في الطلب يكتبه
                 'registration_source' => Business::SOURCE_SELF_SIGNUP,
-                // ويبدأ على رقمه هو — رقمُ أبعاد يُختار ولا يُفترض
+                // ويبدأ على رقمه هو بتطبيقه — ورقمُ أبعاد المشترك مغلقٌ عن الجديد كلّيًّا
                 'whatsapp_mode' => WhatsAppMode::DEFAULT,
+                'whatsapp_shared_allowed' => false,
             ] + self::subscription($plan));
 
             // والختمُ يُقرأ بعد الكتابة: إطلاقٌ أُطفئ بين السؤال والكتابة لا يترك متجرًا على السابقة

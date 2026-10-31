@@ -1,6 +1,6 @@
 import { useForm } from '@inertiajs/react';
-import { Copy, KeyRound, Link2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { KeyRound, Link2 } from 'lucide-react';
+import CopyButton from '@/Components/CopyButton';
 import Field from '@/Components/Field';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -89,18 +89,7 @@ function Copyable({ label, value, testid }: { label: string; value: string; test
                 <code dir="ltr" className="min-w-0 flex-1 truncate rounded-[8px] bg-[#f3f4f6] px-2 py-1 text-[12px] text-[#111]" data-testid={testid}>
                     {value}
                 </code>
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                        void navigator.clipboard?.writeText(value);
-                        toast.success(t('نُسخ'));
-                    }}
-                >
-                    <Copy />
-                    {t('نسخ')}
-                </Button>
+                <CopyButton text={value} label="نسخ" />
             </dd>
         </div>
     );

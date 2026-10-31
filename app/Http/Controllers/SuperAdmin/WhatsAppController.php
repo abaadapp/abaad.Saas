@@ -395,6 +395,19 @@ class WhatsAppController extends Controller
             ]);
         }
 
+        /*
+         * ولا يُحوَّل متجرٌ إلى رقمه قبل أن تكون وصلتُه جاهزة: تُرسل، ورُوجع دليلُ
+         * فوترتها، ويُعرف حسابُ رسائلها (`WhatsAppOwnApp::readyForOwnMode`). ومن
+         * يُحوَّل قبل ذلك تقف رسائلُه — ومن بقي ينتظر يُرسل كما كان.
+         */
+        if (($data['whatsapp_mode'] ?? null) === WhatsAppMode::BUSINESS_OWN
+            && $business->whatsapp_mode !== WhatsAppMode::BUSINESS_OWN
+            && ! \App\Support\WhatsAppOwnApp::readyForOwnMode(WhatsAppConnections::forBusiness($business->id))) {
+            return back()->withErrors([
+                'whatsapp_mode' => __('لا يُحوَّل هذا المتجر إلى رقمه قبل أن تكتمل وصلته ويُراجَع دليل فوترتها ويُعرف حساب رسائلها — يبقى إرساله كما هو.'),
+            ]);
+        }
+
         $business->update($data);
 
         $this->logChanges($business, $before, $business->only(array_keys($before)));

@@ -305,6 +305,11 @@ class WhatsAppController extends Controller
             if (! $own || ! $own->isUsable()) {
                 return back()->withErrors(['mode' => __('اربط رقم متجرك أولًا — لا وصلة صالحة بعد.')]);
             }
+
+            // ولا يُحوَّل قبل أن يُراجَع دليلُ الفوترة ويُعرف حسابُ الرسائل — ويبقى إرسالُه كما هو
+            if (! WhatsAppOwnApp::readyForOwnMode($own)) {
+                return back()->withErrors(['mode' => __('لا يُحوَّل الإرسال إلى رقم متجرك قبل أن يُراجَع دليل فوترته ويُعرف حساب رسائله — ويبقى إرسالك كما هو حتى ذلك.')]);
+            }
         }
 
         $from = $business->whatsapp_mode;

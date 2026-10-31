@@ -102,14 +102,20 @@ describe('ربط التاجر بتطبيقه على Meta', () => {
     it('فريقُ أبعاد لا يؤكّد الفوترة بزرّ — يُسمّي الدليلَ ومرجعَه ويُقرّ بما رأى', async () => {
         const review: BillingReview = {
             own_app: true, billing_state: 'unproven', billing_owner: 'نشاط التاجر', awaits_billing: true, may_confirm: true,
-            facts: { ownership: 'SELF', funding: 'unreadable', abaad_access: 'none', partner_owned: false, read_at: '2026-10-31 20:00' },
-            blocker: null, stopped: null, evidence: null,
+            facts: {
+                ownership: 'SELF', funding: 'unreadable', abaad_access: 'none', partner_owned: false,
+                token_sends: true, phone_in_account: true, reach: 2, read_at: '2026-10-31 20:00',
+            },
+            blocker: null, stopped: null, evidence: null, names_account: true,
             kinds: [{ key: 'meta_invoice', label: 'فاتورة من ميتا' }, { key: 'payment_settings', label: 'صفحة الفوترة' }],
         };
         const user = userEvent.setup();
         render(<BillingReviewBlock businessId={7} review={review} />);
 
         expect(screen.getByTestId('whatsapp-billing-facts')).toHaveTextContent('لا تُطلعنا ميتا عليها');
+        // حسابا رسائل على الرقم — ويُسمّى حسابُ التاجر في كلّ رسالة
+        expect(screen.getByTestId('whatsapp-billing-facts')).toHaveTextContent('حسابات الرسائل التي يصلها الرمز على الرقم: 2');
+        expect(screen.getByTestId('whatsapp-billing-facts')).toHaveTextContent('يُسمّى حساب التاجر في كلّ رسالة');
         expect(screen.getByTestId('whatsapp-billing-confirm')).toBeDisabled();
 
         await user.selectOptions(screen.getByTestId('whatsapp-billing-kind'), 'meta_invoice');

@@ -219,13 +219,18 @@ class WhatsAppFeature
         $link = $own ? WhatsAppConnections::forBusiness($business->id) : null;
 
         if (WhatsAppOwnApp::is($link) && $link->status !== WhatsAppConnection::INACTIVE) {
+            // وفوترةٌ رُوجعت ولا يُعرف بأمان حسابُ رسائلها لا تُعدّ تامّة — الرسالةُ لا تخرج
+            $account = WhatsAppOwnApp::sendAccount($link)['problem'];
+
             $steps[] = Integration::step(
                 'billing',
                 'رسوم ميتا على حسابك أنت',
-                WhatsAppOwnApp::billed($link),
+                WhatsAppOwnApp::billed($link) && $account === null,
                 detail: WhatsAppOwnApp::billed($link) && filled($link->billing_owner_name)
                     ? __('راجع فريق أبعاد دليلها — تُحتسب على: :owner', ['owner' => $link->billing_owner_name]) : null,
-                fix: 'لم يُراجَع بعدُ دليلٌ من ميتا على أنّ رسائل حسابك تُحتسب عليك — أرسل لفريق أبعاد فاتورة ميتا لهذا الحساب أو صفحة «الفوترة والمدفوعات» تُظهر وسيلة دفعك عليه. ولا يُرسل الربط قبل مراجعته.',
+                fix: WhatsAppOwnApp::billed($link) && $account !== null
+                    ? WhatsAppOwnApp::say($account)
+                    : 'لم يُراجَع بعدُ دليلٌ من ميتا على أنّ رسائل حسابك تُحتسب عليك — أرسل لفريق أبعاد فاتورة ميتا لهذا الحساب أو صفحة «الفوترة والمدفوعات» تُظهر وسيلة دفعك عليه. ولا يُرسل الربط قبل مراجعته.',
             );
 
             $heard = $link->webhook_verified_at !== null || $link->last_webhook_at !== null;

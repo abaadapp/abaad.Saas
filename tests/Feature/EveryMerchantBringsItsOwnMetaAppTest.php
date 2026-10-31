@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Setting;
 use App\Models\User;
+use App\Models\WhatsAppChat;
 use App\Models\WhatsAppChatMessage;
 use App\Models\WhatsAppConnection;
 use App\Support\MetaWhatsAppClient;
@@ -17,6 +18,7 @@ use App\Support\WhatsAppOwnApp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -54,6 +56,9 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
     private const WABA = '7770000000001';
 
     private const PHONE = '8880000000001';
+
+    /** حسابُ رسائل شريكٍ على الرقم نفسه — يصله رمزُ التاجر أيضًا */
+    private const PARTNER = '7770000000003';
 
     private Business $shop;
 
@@ -101,7 +106,7 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
     /**
      * ميتا كما تجيب تطبيقَ تاجر — وما يُغيَّر يُمرَّر في `$over` فيُقدَّم.
      *
-     * @param  array<string, array{app:string, secret:string, waba:string, phone:string, token:string}>  $apps
+     * @param  array<int, array{app:string, secret:string, waba:string, phone:string, token:string, messaging?:list<string>}>  $apps
      * @param  array<string, mixed>  $over
      */
     private function meta(array $over = [], array $apps = [], array $ownership = [], int $expiresAt = 0, string $platform = 'CLOUD_API'): void
@@ -116,7 +121,8 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
                         'is_valid' => true, 'app_id' => $a['app'], 'expires_at' => $expiresAt,
                         'granular_scopes' => [
                             ['scope' => 'whatsapp_business_management', 'target_ids' => [$a['waba']]],
-                            ['scope' => 'whatsapp_business_messaging', 'target_ids' => [$a['waba']]],
+                            // وحساباتُ الرسائل التي يُرسل منها الرمز — قد تكون أكثرَ من حساب
+                            ['scope' => 'whatsapp_business_messaging', 'target_ids' => $a['messaging'] ?? [$a['waba']]],
                         ],
                     ]], 200);
                 }
@@ -149,6 +155,7 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
                 'object' => 'whatsapp_business_account', 'callback_url' => 'https://elsewhere.example/hook',
                 'fields' => [['name' => 'messages']], 'active' => true,
             ]]], 200);
+            $patterns["*/{$a['phone']}/messages"] = Http::response(['messages' => [['id' => 'wamid.OUT-'.$a['phone']]]], 200);
             $patterns["*/{$a['phone']}?fields=display_phone_number*"] = Http::response([
                 'display_phone_number' => '+968 9100 0001', 'verified_name' => 'متجر', 'platform_type' => $platform,
             ], 200);
@@ -650,5 +657,179 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::ABAAD_SHARED])->assertSessionHasErrors('mode');
 
         $this->assertSame(0, DB::table('whatsapp_message_packs')->count());
+    }
+
+    /* ═════════════ ١١ · كلُّ رسالةٍ تُحتسب على حساب رسائل التاجر الذي رُوجع ═════════════ */
+
+    /** وصلةٌ رُبطت ورُوجع دليلُها — بميتا كما يُمرَّر */
+    private function reviewed(array $over = [], array $apps = []): WhatsAppConnection
+    {
+        $this->meta($over, $apps);
+        $this->link($this->owner)->assertSessionHasNoErrors();
+        $this->review()->assertSessionHasNoErrors();
+
+        return $this->connection();
+    }
+
+    /** @return Collection<int, HttpRequest> ما خرج إلى `/messages` */
+    private function sends()
+    {
+        return Http::recorded(fn (HttpRequest $r) => str_contains($r->url(), '/messages'))->map(fn (array $pair) => $pair[0])->values();
+    }
+
+    /** @return array<int, array<string, mixed>> رمزُ التاجر يُرسل أيضًا من حساب شريكٍ */
+    private function withPartner(): array
+    {
+        return [['app' => self::APP, 'secret' => self::SECRET, 'waba' => self::WABA, 'phone' => self::PHONE, 'token' => self::TOKEN,
+            'messaging' => [self::WABA, self::PARTNER]]];
+    }
+
+    public function test_every_send_path_names_the_reviewed_messaging_account(): void
+    {
+        $c = $this->reviewed();
+
+        MetaWhatsAppClient::sendText($c, '96891234567', 'مرحبًا');
+        MetaWhatsAppClient::sendTemplate($c, '96891234567', 'order_ready', 'ar', ['1']);
+        MetaWhatsAppClient::sendMedia($c, '96891234567', 'document', 'MEDIA-1', 'فاتورة', 'invoice.pdf');
+
+        // ومن الصندوق كما يردّ التاجر: زبونٌ كتب، فردّ عليه
+        $this->hook(WhatsAppOwnApp::callbackUrl($c), $this->inbound(self::PHONE), self::SECRET)->assertOk();
+        $chat = WhatsAppChat::where('business_id', $this->shop->id)->firstOrFail();
+        $this->actingAs($this->owner)->post(route('admin.whatsappInbox.reply', $chat->id), ['body' => 'جاهز'])->assertSessionHasNoErrors();
+
+        $sent = $this->sends();
+        $this->assertCount(4, $sent);
+        $sent->each(fn (HttpRequest $r) => $this->assertSame(self::WABA, $r['messaging_account_id'], 'كلُّ رسالةٍ على الحساب الذي رُوجع'));
+    }
+
+    public function test_a_number_with_two_messaging_accounts_bills_only_the_reviewed_one_or_sends_nothing(): void
+    {
+        // حسابُ الشريك على الرقم نفسه، ورمزُ التاجر يُرسل منه أيضًا
+        $partner = ['*/'.self::PARTNER.'/phone_numbers*' => Http::response(['data' => [['id' => self::PHONE]]], 200)];
+        $c = $this->reviewed($partner, $this->withPartner());
+        $this->assertSame(2, $c->metadata['billing_facts']['reach']);
+
+        MetaWhatsAppClient::sendText($c, '96891234567', 'مرحبًا');
+        $this->assertSame(self::WABA, $this->sends()->sole()['messaging_account_id'], 'لا على حساب الشريك');
+
+        // وعلى إصدارٍ لا يُعرف أنّه يقبل تسميةَ الحساب: لا رسالة — خيرٌ من فوترة حسابٍ آخر
+        config(['whatsapp.api_version' => 'v21.0']);
+        $this->meta($partner, $this->withPartner());
+        $result = MetaWhatsAppClient::sendText($c->fresh(), '96891234567', 'مرحبًا');
+
+        $this->assertSame([false, WhatsAppOwnApp::AMBIGUOUS_ACCOUNT], [$result['ok'], $result['code']]);
+        $this->assertFalse($c->fresh()->isUsable());
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()));
+        $this->assertCount(0, $this->sends());
+
+        // ومفتاحُ التسمية مطفأً كذلك
+        config(['whatsapp.api_version' => 'v26.0', 'whatsapp.messaging_account_param' => false]);
+        $this->assertFalse($c->fresh()->isUsable());
+    }
+
+    public function test_a_token_reaching_another_account_without_this_number_is_not_ambiguous(): void
+    {
+        // يُرسل الرمزُ من حسابٍ ثانٍ — لكنّ رقمَ المتجر ليس فيه
+        $c = $this->reviewed(['*/'.self::PARTNER.'/phone_numbers*' => Http::response(['data' => [['id' => '8880000000077']]], 200)], $this->withPartner());
+        $this->assertSame(1, $c->metadata['billing_facts']['reach']);
+
+        // فحتى بلا تسمية الحساب تختاره ميتا وحده
+        config(['whatsapp.messaging_account_param' => false]);
+        $this->assertTrue(MetaWhatsAppClient::sendText($c->fresh(), '96891234567', 'مرحبًا')['ok']);
+        $this->assertArrayNotHasKey('messaging_account_id', $this->sends()->sole()->data());
+    }
+
+    public function test_an_unread_account_list_blocks_sending_where_the_account_cannot_be_named(): void
+    {
+        $c = $this->reviewed(['*/'.self::PARTNER.'/phone_numbers*' => Http::response(['error' => ['code' => 2, 'message' => 'unavailable']], 503)], $this->withPartner());
+        $this->assertNull($c->metadata['billing_facts']['reach'], 'لا نعرف — لا «واحد»');
+
+        config(['whatsapp.messaging_account_param' => false]);
+        $this->assertSame(WhatsAppOwnApp::AMBIGUOUS_ACCOUNT, MetaWhatsAppClient::sendText($c->fresh(), '96891234567', 'مرحبًا')['code']);
+        $this->assertCount(0, $this->sends());
+
+        // وبالتسمية يُرسل — على حسابه
+        config(['whatsapp.messaging_account_param' => true]);
+        $this->assertTrue(MetaWhatsAppClient::sendText($c->fresh(), '96891234567', 'مرحبًا')['ok']);
+        $this->assertSame(self::WABA, $this->sends()->sole()['messaging_account_id']);
+    }
+
+    public function test_a_token_that_no_longer_sends_from_its_account_is_stopped_and_cannot_be_reviewed(): void
+    {
+        $c = $this->reviewed();
+
+        // سُحب من «مستخدم النظام» الإرسالُ من هذا الحساب
+        $this->meta(['*/7770000000055/phone_numbers*' => Http::response(['data' => []], 200)], [[
+            'app' => self::APP, 'secret' => self::SECRET, 'waba' => self::WABA, 'phone' => self::PHONE, 'token' => self::TOKEN,
+            'messaging' => ['7770000000055'],
+        ]]);
+        $this->artisan('whatsapp:own-billing')->assertSuccessful();
+
+        $c = $c->fresh();
+        $this->assertSame([WhatsAppConnection::PENDING, WhatsAppOwnApp::say(WhatsAppOwnApp::ACCOUNT_UNBOUND)], [$c->status, $c->last_error_message]);
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()));
+        $this->review()->assertSessionHasErrors(['whatsapp' => WhatsAppOwnApp::say(WhatsAppOwnApp::ACCOUNT_UNBOUND)]);
+    }
+
+    /* ═════════════ ١٢ · حسابُ رسائلٍ واحد لمتجرٍ واحد ═════════════ */
+
+    public function test_a_messaging_account_belongs_to_one_shop_only(): void
+    {
+        [$other, $otherOwner] = $this->merchant('محل الجار', 'next@own.om');
+        $second = ['app' => '5550000000002', 'secret' => 'second-app-secret-0123456789', 'waba' => self::WABA, 'phone' => '8880000000002', 'token' => 'EAAG-second-token-0123456789'];
+        // حسابٌ واحدٌ فيه رقمان، ورمزُ الجار مُنح الحسابَ نفسه
+        $both = ['*/'.self::WABA.'/phone_numbers*' => Http::response(['data' => [
+            ['id' => self::PHONE, 'display_phone_number' => '+968 9100 0001', 'platform_type' => 'CLOUD_API'],
+            ['id' => '8880000000002', 'display_phone_number' => '+968 9100 0002', 'platform_type' => 'CLOUD_API'],
+        ]], 200)];
+        $apps = [['app' => self::APP, 'secret' => self::SECRET, 'waba' => self::WABA, 'phone' => self::PHONE, 'token' => self::TOKEN], $second];
+
+        $this->meta($both, $apps);
+        $this->link($this->owner)->assertSessionHasNoErrors();
+        $this->review()->assertSessionHasNoErrors();
+
+        $this->link($otherOwner, ['app_id' => $second['app'], 'app_secret' => $second['secret'], 'phone_number_id' => $second['phone'], 'access_token' => $second['token']])
+            ->assertSessionHasErrors(['waba_id' => WhatsAppOwnApp::say(WhatsAppOwnApp::ACCOUNT_TAKEN)]);
+        $this->assertNull($this->connection($other));
+
+        // ولا يُؤكَّد لمتجرٍ ثانٍ صفٌّ على الحساب نفسه — ولو كتبه كودٌ قديم
+        WhatsAppConnection::create([
+            'owner_type' => WhatsAppMode::OWNER_BUSINESS, 'business_id' => $other->id, 'provider' => 'meta_cloud', 'purpose' => WhatsAppMode::PURPOSE_NOTIFICATIONS,
+            'link_type' => WhatsAppOwnApp::TYPE, 'waba_id' => self::WABA, 'phone_number_id' => $second['phone'], 'access_token' => $second['token'],
+            'token_app_id' => $second['app'], 'app_secret' => $second['secret'], 'webhook_key' => str_repeat('k', 40),
+            'status' => WhatsAppConnection::PENDING, 'last_error_code' => WhatsAppOwnApp::AWAITS_BILLING, 'billing_state' => WhatsAppOwnApp::BILLING_UNPROVEN,
+        ]);
+        $this->review($other)->assertSessionHasErrors(['whatsapp' => WhatsAppOwnApp::say(WhatsAppOwnApp::ACCOUNT_TAKEN)]);
+        $this->assertNull(WhatsAppConnections::resolve($other->fresh()));
+
+        // والأوّلُ كما هو: يُرسل، ورسائلُه على حسابه
+        $this->assertSame($this->connection()->id, WhatsAppConnections::resolve($this->shop->fresh())?->id);
+    }
+
+    /* ═════════════ ١٣ · المتجرُ القائم على الرقم المشترك: لا تحويلَ قبل الجاهزيّة، ولا توقّف ═════════════ */
+
+    public function test_an_existing_shared_shop_keeps_sending_until_its_own_link_is_ready_and_is_never_moved_by_itself(): void
+    {
+        $this->shop->update(['whatsapp_mode' => WhatsAppMode::ABAAD_SHARED, 'whatsapp_shared_allowed' => true]);
+        $platform = $this->platformNumber();
+        $this->assertSame($platform->id, WhatsAppConnections::resolve($this->shop->fresh())?->id, 'يُرسل اليوم من رقم أبعاد');
+
+        $this->meta();
+        $this->link($this->owner)->assertSessionHasNoErrors();
+
+        // تحويلُ التاجر وتحويلُ المنصّة ينتظران مراجعةَ الدليل
+        $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])->assertSessionHasErrors('mode');
+        $this->actingAs($this->admin())->put(route('super-admin.businesses.whatsapp.update', $this->shop->id), ['whatsapp_mode' => WhatsAppMode::BUSINESS_OWN])
+            ->assertSessionHasErrors('whatsapp_mode');
+        $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->shop->fresh()->whatsapp_mode);
+        $this->assertSame($platform->id, WhatsAppConnections::resolve($this->shop->fresh())?->id, 'ولم يقف إرسالُه');
+
+        // وبعد المراجعة لا يُحوَّل وحده — التحويلُ قرارٌ يُتّخذ
+        $this->review()->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->shop->fresh()->whatsapp_mode);
+        $this->assertSame($platform->id, WhatsAppConnections::resolve($this->shop->fresh())?->id);
+
+        $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])->assertSessionHasNoErrors();
+        $this->assertSame($this->connection()->id, WhatsAppConnections::resolve($this->shop->fresh())?->id);
     }
 }

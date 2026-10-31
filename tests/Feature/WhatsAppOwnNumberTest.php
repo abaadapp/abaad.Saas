@@ -153,7 +153,12 @@ class WhatsAppOwnNumberTest extends TestCase
         $this->assertSame(WhatsAppMode::ABAAD_SHARED, $this->business->fresh()->whatsapp_mode);
     }
 
-    public function test_the_entitlement_allows_connecting_and_switching(): void
+    /**
+     * والتحويلُ إلى رقمه ينتظر مراجعةَ دليل فوترته — ويبقى إرسالُه كما هو حتى ذلك.
+     *
+     * وصلةٌ تُرسل ليست وصلةً ثبت على من تُحتسب رسائلُها (`WhatsAppOwnApp::readyForOwnMode`).
+     */
+    public function test_the_entitlement_allows_connecting_and_switching_once_billing_is_reviewed(): void
     {
         $this->linkable();
         $this->grant();
@@ -163,6 +168,13 @@ class WhatsAppOwnNumberTest extends TestCase
             'display_phone_number' => '+96892222222',
             'access_token' => 'shop-token-value-9876543210',
         ])->assertRedirect();
+
+        $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
+            ->assertRedirect()->assertSessionHasErrors('mode');
+        $this->assertNotSame(WhatsAppMode::BUSINESS_OWN, $this->business->fresh()->whatsapp_mode);
+
+        // دليلٌ رُوجع على وصلته — فيُحوَّل
+        WhatsAppConnection::where('business_id', $this->business->id)->update(['billing_state' => \App\Support\WhatsAppOwnApp::BILLING_CONFIRMED]);
 
         $this->post(route('admin.integrations.whatsapp.mode'), ['mode' => WhatsAppMode::BUSINESS_OWN])
             ->assertRedirect()->assertSessionHasNoErrors();

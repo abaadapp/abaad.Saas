@@ -32,6 +32,8 @@ APP_USER="${APP_USER:-www-data}"
 BRANCH="${BRANCH:-main}"
 BACKUP_DIR="${BACKUP_DIR:-/root/pre-deploy}"
 HEALTH_URL="${HEALTH_URL:-https://app.abaadapp.om/health}"
+# إعدادُ النشر على الخادم — خارج المستودع، فلا تغيّره دفعةٌ إلى GitHub. انظر «النسخة» أدناه
+DEPLOY_CONF="${DEPLOY_CONF:-/etc/abaad/deploy.conf}"
 
 # npm يكتب في $HOME، وبيت www-data غير قابل للكتابة: بلا هذا ينهار
 # `npm ci` بخطأٍ عن /var/www/.npm/_logs لا عن سببه الحقيقي
@@ -50,29 +52,68 @@ cd "$APP_DIR"
 FROM_COMMIT="$(git -c safe.directory="$APP_DIR" rev-parse --short HEAD)"
 
 # ---------------------------------------------------------------------------
-# النسخة أولًا — قبل أي لمسة.
+# النسخة أولًا — قبل أي لمسة. إلّا أن يكتب المالكُ: لا نسخة.
 #
 # الهجرات تُغيّر الشكل ولا تُرجَع بأمر: `migrate:rollback` يعتمد على down()
 # وقد لا تكون صحيحة، وقد تكون البيانات ضاعت قبلها. النسخة هي طريق الرجوع
 # الوحيد المضمون.
+#
+# ═══ وإطفاؤها سطرٌ مكتوبٌ على الخادم، لا متغيّرٌ يُمرَّر ═══
+#
+# `PRE_DEPLOY_BACKUP=off` في $DEPLOY_CONF. والملفّ خارج المستودع: دفعةٌ إلى
+# main لا تُطفئ النسخة، ومفتاحُ النشر المقيّد لا يُمرّر متغيّرًا أصلًا.
+#
+#   - لا ملفّ، أو لا سطر، أو `on`: النسخة كما كانت.
+#   - `off`: لا نسخة — ويُقال ذلك هنا، وفي هجرات هذا النشر، وفي ROLLBACK.txt،
+#     وفي آخر السجلّ. والخطواتُ الأخرى كلُّها كما هي.
+#   - غيرُهما، أو السطرُ مرّتين، أو ملفٌّ لا يملكه من ينشر أو يكتبه غيرُ
+#     مالكه: يتوقّف النشر هنا، قبل أي لمسة. لا يُخمَّن: «of» ليست «off».
 # ---------------------------------------------------------------------------
 step "نسخة القاعدة قبل النشر"
+BACKUP_MODE=on
+if [[ -e "$DEPLOY_CONF" ]]; then
+    CONF_OWNER="$(stat -c %u "$DEPLOY_CONF" 2>/dev/null || stat -f %u "$DEPLOY_CONF")"
+    CONF_MODE="$(stat -c %a "$DEPLOY_CONF" 2>/dev/null || stat -f %Lp "$DEPLOY_CONF")"
+    [[ "$CONF_OWNER" == "$EUID" ]] \
+        || die "$DEPLOY_CONF لا يملكه من ينشر (المالك $CONF_OWNER) — لا يُقرأ إعدادُ نسخةٍ كتبه غيرُه"
+    (( (8#$CONF_MODE & 8#022) == 0 )) \
+        || die "$DEPLOY_CONF يكتبه غيرُ مالكه ($CONF_MODE) — chmod 600 ثمّ أعد النشر"
+
+    CONF_LINES="$(grep -cE '^[[:space:]]*PRE_DEPLOY_BACKUP[[:space:]]*=' "$DEPLOY_CONF" || true)"
+    (( CONF_LINES <= 1 )) || die "PRE_DEPLOY_BACKUP مكتوبٌ $CONF_LINES مرّات في $DEPLOY_CONF — سطرٌ واحدٌ يُقرأ"
+    if (( CONF_LINES == 1 )); then
+        CONF_VALUE="$(grep -E '^[[:space:]]*PRE_DEPLOY_BACKUP[[:space:]]*=' "$DEPLOY_CONF" | cut -d= -f2- | tr -d '[:space:]')"
+        case "$CONF_VALUE" in
+            on)  BACKUP_MODE=on ;;
+            off) BACKUP_MODE=off ;;
+            *)   die "PRE_DEPLOY_BACKUP=«$CONF_VALUE» في $DEPLOY_CONF — on أو off وحدهما" ;;
+        esac
+    fi
+fi
+
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-DUMP="$BACKUP_DIR/abaad-$STAMP.dump"
 
-if [[ "$(as_app php artisan tinker --execute='echo config("database.default");' 2>/dev/null | tail -1)" == "pgsql" ]] \
-   || grep -q '^DB_CONNECTION=pgsql' .env; then
-    sudo -u postgres pg_dump -Fc "$(grep '^DB_DATABASE=' .env | cut -d= -f2)" > "$DUMP"
+if [[ "$BACKUP_MODE" == "off" ]]; then
+    DUMP=""
+    printf '  \033[33m!\033[0m لا نسخة لهذا النشر: PRE_DEPLOY_BACKUP=off في %s (عُدّل %s) — والرجوعُ رجوعُ كودٍ وحده\n' \
+        "$DEPLOY_CONF" "$(date -r "$DEPLOY_CONF" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')"
 else
-    cp "$(grep '^DB_DATABASE=' .env | cut -d= -f2)" "$DUMP" 2>/dev/null || die "تعذّرت نسخة القاعدة"
+    DUMP="$BACKUP_DIR/abaad-$STAMP.dump"
+
+    if [[ "$(as_app php artisan tinker --execute='echo config("database.default");' 2>/dev/null | tail -1)" == "pgsql" ]] \
+       || grep -q '^DB_CONNECTION=pgsql' .env; then
+        sudo -u postgres pg_dump -Fc "$(grep '^DB_DATABASE=' .env | cut -d= -f2)" > "$DUMP"
+    else
+        cp "$(grep '^DB_DATABASE=' .env | cut -d= -f2)" "$DUMP" 2>/dev/null || die "تعذّرت نسخة القاعدة"
+    fi
 fi
 
 # الرجوعُ رجوعُ كود: النسخةُ لا تُستعاد فوق القاعدة الحيّة — تمحو كلَّ ما بِيع
 # بعدها، وتُعيد عدّادات الفواتير. تُفتح في قاعدةٍ منفصلة للمقارنة إن احتيج
 printf 'commit قبل النشر: %s\nالنسخة: %s\nللرجوع (الكود وحده): sudo bash %s/scripts/rollback-code.sh %s\nلا تستعِد النسخة فوق القاعدة الحيّة — تمحو كلَّ ما بِيع بعدها. تُفتح في قاعدةٍ منفصلة للمقارنة فقط.\n' \
-    "$FROM_COMMIT" "$DUMP" "$APP_DIR" "$FROM_COMMIT" > "$BACKUP_DIR/ROLLBACK.txt"
-ok "$(du -h "$DUMP" | cut -f1) → $DUMP"
+    "$FROM_COMMIT" "${DUMP:-لا نسخة لهذا النشر (PRE_DEPLOY_BACKUP=off في $DEPLOY_CONF)}" "$APP_DIR" "$FROM_COMMIT" > "$BACKUP_DIR/ROLLBACK.txt"
+[[ -z "$DUMP" ]] || ok "$(du -h "$DUMP" | cut -f1) → $DUMP"
 
 # ---------------------------------------------------------------------------
 step "سحب $BRANCH"
@@ -126,6 +167,16 @@ ok "الأصول (بُنيت جانبًا وبُدِّلت)"
 
 # ---------------------------------------------------------------------------
 step "الهجرات"
+# وبلا نسخةٍ تُسمّى هجراتُ هذا النشر قبل أن تجري — من يقرأ السجلّ يعرف ما تغيّر بلا طريق رجوع
+if [[ "$BACKUP_MODE" == "off" ]]; then
+    NEW_MIGRATIONS="$(git diff --name-only "$FROM_COMMIT" "$TO_COMMIT" -- database/migrations)"
+    if [[ -n "$NEW_MIGRATIONS" ]]; then
+        printf '  \033[33m!\033[0m هجراتٌ تجري بلا نسخة:\n'
+        sed 's/^/    /' <<<"$NEW_MIGRATIONS"
+    else
+        ok "لا هجرةَ جديدة في هذا النشر"
+    fi
+fi
 as_app php artisan migrate --force 2>&1 | tail -4
 
 # ---------------------------------------------------------------------------
@@ -153,10 +204,15 @@ if [[ "$CODE" == "200" ]]; then
 else
     # كانت هنا `pg_restore -c` فوق القاعدة الحيّة: تمحو كلَّ طلبٍ ودفعةٍ وقيدٍ
     # بعد النسخة. والرجوعُ رجوعُ كود — ويرفض وحده إن جرت في هذا النشر هجرة
+    if [[ -n "$DUMP" ]]; then
+        NO_RESTORE="ولا تستعِد $DUMP فوق القاعدة الحيّة — تمحو كلَّ ما بِيع بعدها."
+    else
+        NO_RESTORE="ولا نسخةَ لهذا النشر (PRE_DEPLOY_BACKUP=off): ما غيّرته هجراتُه يبقى، ويُصلَح بهجرةٍ لا بنسخة."
+    fi
     die "الموقع يردّ $CODE — أرجِع الكود وحده، والقاعدةُ لا تُمسّ:
     sudo bash $APP_DIR/scripts/rollback-code.sh $FROM_COMMIT
 ثمّ أرجِع main نفسَه (Revert PR)، وإلّا أعاد النشرُ التالي الكودَ نفسه.
-ولا تستعِد $DUMP فوق القاعدة الحيّة — تمحو كلَّ ما بِيع بعدها."
+$NO_RESTORE"
 fi
 
 # ---------------------------------------------------------------------------
@@ -198,4 +254,5 @@ printf '\n\033[1mتمّ: %s → %s (%s)\033[0m\n' "$FROM_COMMIT" "$TO_COMMIT" "$
 printf 'لنشر الوسم من جهازك: \033[1mgit tag -a %s %s -m "نُشر على الإنتاج" && git push origin %s\033[0m\n' \
     "$VERSION" "$TO_COMMIT" "$VERSION"
 [[ $PREFLIGHT -eq 0 ]] || printf '\033[33m! preflight يبلّغ عن موانع أعلاه — النشر تمّ، والموانع تبقى قرارك\033[0m\n'
+[[ -n "$DUMP" ]] || printf '\033[33m! نُشر بلا نسخة: PRE_DEPLOY_BACKUP=off في %s\033[0m\n' "$DEPLOY_CONF"
 printf 'للرجوع: %s\n' "$BACKUP_DIR/ROLLBACK.txt"

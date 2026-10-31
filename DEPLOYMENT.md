@@ -239,20 +239,31 @@ git لدى root سطرًا كلَّ نشر، وتجعله يثق بشجرة غي
    sudo useradd --system --create-home --shell /bin/bash abaad-deploy
    sudo install -d -m 700 -o abaad-deploy -g abaad-deploy /var/log/abaad-deploy
    ```
-3. **الدمجُ ثمّ السحبُ اليدويّ، ثمّ قواعدُ sudo.** ملفُّ القواعد يأتي مع هذا الطلب، فلا يكون على
-   الخادم قبل سحبه. يُدمج الطلب و«Deploy Main» معطّل، ثمّ يُسحب بحساب www-data الذي ما زال يملك
-   الشجرة (لا بـroot: ملفّاتُ root في `.git` تكسر السحب). والطلبُ لا يغيّر كودَ التطبيق، و opcache
-   يُبقي الموقعَ على ما حمّل حتى reload:
+3. **الدمجُ، ثمّ سحبُ رأسِ هذا الطلب وحده، ثمّ قواعدُ sudo.** ملفُّ القواعد يأتي مع هذا الطلب،
+   فلا يكون على الخادم قبل سحبه. يُدمج الطلب و«Deploy Main» معطّل، **بـMerge commit لا Squash**،
+   فيبقى رأسُه سلفًا لـmain. ثمّ يُسحب رأسُه هو — لا main — بحساب www-data الذي ما زال يملك الشجرة
+   (لا بـroot: ملفّاتُ root في `.git` تكسر السحب):
    ```bash
    cd /var/www/abaad
    sudo -u www-data git status --porcelain                              # فارغ، وإلّا توقّف
-   sudo -u www-data git pull --ff-only origin main
-   sudo -u www-data git rev-parse --short HEAD                          # = بصمةُ الدمج
+   sudo -u www-data git fetch --quiet origin refs/pull/205/head
+   sudo -u www-data git rev-parse --short FETCH_HEAD                    # = رأسُ الطلب المختبَر
+   sudo -u www-data git diff --stat HEAD FETCH_HEAD                     # scripts/ deploy/ tests/ .github/ والوثيقة وحدها
+   sudo -u www-data git merge --ff-only --quiet FETCH_HEAD
    ```
-   ثمّ القواعد، بعد التحقّق:
+   لماذا لا `pull origin main`: قد يدخل main كودُ تطبيقٍ بعد تعطيل Deploy Main — دخله #204 فعلًا —
+   وسحبُه بلا composer ولا بناءٍ ولا ذاكرة يخلط الجديدَ بالقديم: opcache يُبقي ما حمّل، لكنّ ملفًّا
+   لم يُحمَّل بعدُ وقالبَ Blade تغيّر يُقرآن جديدَين فوق كودٍ قديم. أمّا رأسُ الطلب فلا يغيّر كودَ
+   التطبيق، فلا أثرَ يُرى. وما في main غيرُه يصل كاملًا مع أوّل نشرٍ في الخطوة 8 (`pull` هناك تقديمٌ
+   سريعٌ من هذا الرأس).
+
+   ثمّ القواعد: تُنسخ أوّلًا إلى ملفٍّ يملكه root، فيُفحص ويُركَّب هو — لا مصدرٌ يكتبه www-data
+   حتى الخطوة 5 فيتغيّر بين الفحص والتركيب:
    ```bash
-   sudo visudo -cf /var/www/abaad/deploy/abaad-deploy.sudoers          # يتحقّق من الصياغة
-   sudo install -m 440 -o root -g root /var/www/abaad/deploy/abaad-deploy.sudoers /etc/sudoers.d/abaad-deploy
+   sudo install -m 440 -o root -g root /var/www/abaad/deploy/abaad-deploy.sudoers /root/abaad-deploy.sudoers.new
+   sudo sha256sum /root/abaad-deploy.sudoers.new                       # = بصمةُ الملفّ في الطلب
+   sudo visudo -cf /root/abaad-deploy.sudoers.new                      # يتحقّق من الصياغة
+   sudo install -m 440 -o root -g root /root/abaad-deploy.sudoers.new /etc/sudoers.d/abaad-deploy
    sudo visudo -c                                                       # يتحقّق من المجموع
    ```
 4. **نسخةٌ نصّيّة** من ملفّ مفاتيح root ومن sudoers قبل تغييرهما (نسخُ إعدادٍ لا قاعدةِ بيانات):
@@ -264,12 +275,18 @@ git لدى root سطرًا كلَّ نشر، وتجعله يثق بشجرة غي
    الموقع. (لا `chown -R` على الكلّ ثمّ ردّ: ذاك يترك نافذةً يملك فيها حسابُ النشر storage
    فيعجز www-data عن الكتابة. بل يُستثنيان بـprune من البداية):
    ```bash
+   # قبل النقل: ما لا يقرؤه «الآخرون» يعجز عنه www-data بعده. المتوقّع: .env وحده (يُعالَج تحت).
+   # وأيُّ سطرٍ غيرُه يُوقف الخطوة حتى يُقرَّر.
+   sudo find /var/www/abaad -xdev \
+       \( -path /var/www/abaad/storage -o -path /var/www/abaad/bootstrap/cache \) -prune -o \
+       \( -type f ! -perm -o+r -o -type d ! -perm -o+rx \) -printf '%m %u:%g %p\n'
+   # ثمّ النقل:
    sudo find /var/www/abaad -xdev \
        \( -path /var/www/abaad/storage -o -path /var/www/abaad/bootstrap/cache \) -prune -o \
        -print0 | sudo xargs -0 chown -h abaad-deploy:abaad-deploy
    sudo chgrp www-data /var/www/abaad/.env && sudo chmod 640 /var/www/abaad/.env
    ```
-   القراءةُ لا تنقطع: نقلُ الملكيّة لا يغيّر صلاحيّاتِ القراءة (644/755)، فphp-fpm (www-data)
+   القراءةُ لا تنقطع: نقلُ الملكيّة لا يغيّر صلاحيّاتِ القراءة (644/755، والفحصُ أعلاه يُثبتها)، فphp-fpm (www-data)
    يقرأ الكودَ طوال الوقت. وopcache يُبقي الكودَ القديمَ في الذاكرة حتى reload، فلا أثرَ
    يُرى أصلًا قبل التشغيل في الخطوة 8.
 6. **نقلُ مفتاح GitHub** من authorized_keys الخاصّ بـroot إلى الخاصّ بحساب النشر، بأمرِه

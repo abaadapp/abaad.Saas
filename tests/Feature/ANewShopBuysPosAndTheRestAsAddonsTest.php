@@ -324,6 +324,24 @@ class ANewShopBuysPosAndTheRestAsAddonsTest extends TestCase
         $this->assertFalse(WhatsAppFeature::canUseOwnNumber($business->fresh()));
     }
 
+    /** وفريقُ أبعاد يختار له رقمَه على باقةٍ تشمل واتساب — بلا إضافةٍ فوقها */
+    public function test_the_platform_opens_the_shops_own_number_without_selling_whatsapp_twice(): void
+    {
+        [$pro] = $this->shop('professional', 'pro@shop.om');
+        $this->assertTrue($this->allows($pro, 'whatsapp'));
+        $this->assertFalse(WhatsAppFeature::needsOwnNumberAddon($pro));
+
+        $this->actingAs($this->platform)->put(route('super-admin.businesses.whatsapp.update', $pro->id), [
+            'whatsapp_mode' => \App\Support\WhatsAppMode::BUSINESS_OWN,
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(\App\Support\WhatsAppMode::BUSINESS_OWN, $pro->fresh()->whatsapp_mode);
+
+        // وباقةٌ لا تشمله: الإضافةُ وحدها تفتحه
+        [$basic] = $this->shop('basic', 'basic@shop.om');
+        $this->assertFalse($this->allows($basic, 'whatsapp'));
+        $this->assertTrue(WhatsAppFeature::needsOwnNumberAddon($basic));
+    }
+
     public function test_gift_and_custom_orders_are_opened_by_their_addon_for_new_shops_only(): void
     {
         [$business] = $this->shop('professional');

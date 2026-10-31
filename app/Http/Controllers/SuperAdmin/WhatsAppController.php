@@ -383,13 +383,13 @@ class WhatsAppController extends Controller
          * ═══ و«API مستقلّ» لمتجر سياسة الإضافات إضافةٌ تُباع ═══
          *
          * لا يُختار له رقمُه قبل أن تسري إضافةُ «ربط واتساب برقم المتجر» —
-         * بطلبٍ يُسدَّد أو بمنحةٍ مؤرّخة من «خدمات أبعاد». ومتجرُ السياسة
-         * السابقة على حاله: صلاحيةُ الرقم الخاصّ وحدها.
+         * بطلبٍ يُسدَّد أو بمنحةٍ مؤرّخة من «خدمات أبعاد». وباقةٌ تشمل واتساب
+         * لا تُطلب فوقها الإضافة: شراءٌ واحدٌ يكفي (`needsOwnNumberAddon`).
+         * ومتجرُ السياسة السابقة على حاله: صلاحيةُ الرقم الخاصّ وحدها.
          */
         if (($data['whatsapp_mode'] ?? null) === WhatsAppMode::BUSINESS_OWN
             && $business->whatsapp_mode !== WhatsAppMode::BUSINESS_OWN
-            && PricingPolicy::isAddons($business)
-            && ! Entitlements::has($business, Catalog::OWN_NUMBER)) {
+            && WhatsAppFeature::needsOwnNumberAddon($business)) {
             return back()->withErrors([
                 'whatsapp_mode' => __('API المستقلّ إضافةٌ لهذا المتجر — اطلبها له أو امنحها بتاريخ من «خدمات أبعاد» في صفحته.'),
             ]);

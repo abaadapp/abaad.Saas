@@ -82,6 +82,12 @@ class WhatsAppFeature
             || (PricingPolicy::isAddons($business) && Entitlements::has($business, Catalog::OWN_NUMBER));
     }
 
+    /** متجرُ سياسة الإضافات لم يشترِ واتساب بعد — لا في باقته ولا إضافةً */
+    public static function needsOwnNumberAddon(Business $business): bool
+    {
+        return PricingPolicy::isAddons($business) && ! self::servicePurchased($business);
+    }
+
     /**
      * هل يُرسل هذا المتجر من رقم أبعاد المشترك أصلًا؟
      *

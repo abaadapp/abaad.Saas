@@ -358,14 +358,10 @@ class WhatsAppController extends Controller
              */
             'whatsapp_monthly_limit' => ['sometimes', 'nullable', 'integer', 'min:-1', 'max:1000000'],
             'whatsapp_mode' => ['sometimes', Rule::in(WhatsAppMode::ALL)],
-            /*
-             * وصندوقُ المحادثات — يفتحه فريقُ أبعاد وحده، ولا يفتحه التاجرُ
-             * بنفسه. والأهليّةُ للرقم المستقلّ من الباقة والإضافات أدناه.
-             */
-            'whatsapp_inbox_enabled' => ['sometimes', 'boolean'],
+            // ولا مقبضَ لصندوق المحادثات: يُفتح لكلّ متجرٍ يملك واتساب (`WhatsAppInbox::available`)
         ]);
 
-        $before = $business->only(['whatsapp_enabled', 'whatsapp_own_allowed', 'whatsapp_shared_allowed', 'whatsapp_monthly_limit', 'whatsapp_mode', 'whatsapp_inbox_enabled']);
+        $before = $business->only(['whatsapp_enabled', 'whatsapp_own_allowed', 'whatsapp_shared_allowed', 'whatsapp_monthly_limit', 'whatsapp_mode']);
 
         /*
          * وضعٌ خاصٌّ بلا إذنٍ لا يُكتب.
@@ -411,7 +407,6 @@ class WhatsAppController extends Controller
             'whatsapp_shared_allowed' => 'الإرسال عبر رقم أبعاد',
             'whatsapp_monthly_limit' => 'حدّ الرسائل الشهري',
             'whatsapp_mode' => 'وضع الإرسال',
-            'whatsapp_inbox_enabled' => 'صندوق محادثات واتساب',
         ];
 
         foreach ($labels as $field => $label) {
@@ -555,7 +550,7 @@ class WhatsAppController extends Controller
             // أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`canUseOwnNumber`)
             'own_eligible' => WhatsAppFeature::canUseOwnNumber($business),
             'own_needs_addon' => PricingPolicy::isAddons($business) && ! Entitlements::has($business, Catalog::OWN_NUMBER),
-            'inbox_enabled' => (bool) $business->whatsapp_inbox_enabled,
+            // مفتوحٌ تلقائيًّا لمن تشمل باقتُه واتساب ولم يُطفأ عنه — قراءةٌ لا مقبض
             'inbox_available' => WhatsAppInbox::available($business),
         ];
     }

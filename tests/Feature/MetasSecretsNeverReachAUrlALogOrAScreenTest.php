@@ -70,7 +70,7 @@ class MetasSecretsNeverReachAUrlALogOrAScreenTest extends TestCase
         $this->shop = Business::create([
             'name' => 'محل الورد', 'type' => 'محل ورود', 'status' => 'نشط',
             'whatsapp_enabled' => true, 'whatsapp_own_allowed' => true,
-            'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN, 'whatsapp_inbox_enabled' => true,
+            'whatsapp_mode' => WhatsAppMode::BUSINESS_OWN,
         ]);
         Branch::create(['business_id' => $this->shop->id, 'name' => 'الرئيسي']);
         $this->owner = User::create([

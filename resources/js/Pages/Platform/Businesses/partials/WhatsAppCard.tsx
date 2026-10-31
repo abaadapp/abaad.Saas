@@ -60,9 +60,7 @@ export interface BusinessWhatsApp {
     own_eligible?: boolean;
     /** متجرُ سياسة الإضافات بلا إضافة «ربط واتساب برقم المتجر» */
     own_needs_addon?: boolean;
-    /** صندوقُ محادثات واتساب — يفتحه فريقُ أبعاد (`WhatsAppInbox::available`) */
-    inbox_enabled?: boolean;
-    /** مفتوحٌ فعلًا: المفتاحُ والباقةُ تشمل واتساب */
+    /** صندوقُ محادثات واتساب مفتوحٌ له — تلقائيًّا: الباقةُ تشمل واتساب ولم يُطفأ (`WhatsAppInbox::available`) */
     inbox_available?: boolean;
 }
 
@@ -86,7 +84,6 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
         whatsapp_own_allowed: data.own_allowed,
         whatsapp_shared_allowed: data.shared_allowed,
         whatsapp_mode: data.mode,
-        whatsapp_inbox_enabled: data.inbox_enabled ?? false,
         // فارغٌ يعني «افتراضي المنصّة» — لا صفرًا، والصفر يعني المنع
         whatsapp_monthly_limit: data.limit_override === null ? '' : String(data.limit_override),
     });
@@ -257,12 +254,12 @@ export default function WhatsAppCard({ businessId, data }: { businessId: number;
                     {form.errors.whatsapp_mode && <p className="text-[12px] text-[#b91c1c]">{form.errors.whatsapp_mode}</p>}
                 </div>
 
-                <Toggle
-                    on={form.data.whatsapp_inbox_enabled}
-                    onChange={(v) => form.setData('whatsapp_inbox_enabled', v)}
-                    label="صندوق محادثات واتساب"
-                    hint="يستقبل رسائل زبائنه ويردّ موظّفوه المخوَّلون من لوحته — على رقمه المستقل، أو على رقم أبعاد لما ثبت أنه له وحده. إطفاؤه يخفي الصندوق ولا يحذف محادثاته"
-                />
+                {/* لا مقبضَ للصندوق: يُفتح وحده لمن يملك واتساب — يُقرأ هنا ولا يُبدَّل */}
+                <p className="rounded-[10px] bg-[#fafafa] px-3 py-2 text-[12px] leading-relaxed text-[#6b7280]" data-testid="inbox-status">
+                    {data.inbox_available
+                        ? t('صندوق محادثات واتساب مفتوحٌ له تلقائيًا — باقته تشمل واتساب. موظّفوه بصلاحيةٍ يمنحها صاحب المتجر.')
+                        : t('صندوق محادثات واتساب مغلقٌ له — باقته لا تشمل واتساب، أو واتساب مطفأ لحسابه.')}
+                </p>
                 <Toggle
                     on={form.data.whatsapp_enabled}
                     onChange={(v) => form.setData('whatsapp_enabled', v)}

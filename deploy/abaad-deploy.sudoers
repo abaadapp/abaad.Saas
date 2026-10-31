@@ -1,0 +1,31 @@
+# قواعدُ sudo لحساب النشر abaad-deploy — أقلُّ ما يلزم، لا أكثر.
+#
+# ═══ لا يُنسخ باليد ═══
+# التثبيتُ خطوةٌ في خطة الانتقال (DEPLOYMENT.md)، بعد التحقّق:
+#   visudo -cf deploy/abaad-deploy.sudoers        # يتحقّق أنّ الصياغة سليمة
+#   install -m 440 -o root -g root deploy/abaad-deploy.sudoers /etc/sudoers.d/abaad-deploy
+#   visudo -c                                      # يتحقّق من المجموع بعد التركيب
+# الملفُّ يملكه root 440 — ولو كتبه غيرُ root رفضه sudo.
+#
+# ═══ ما تبيحه، ولماذا هي أقلُّ صلاحية ═══
+#
+# حسابُ النشر يملك شجرةَ الكود، فيُجري git وcomposer وnpm وتبديلَ الأصول
+# بنفسه بلا sudo. ولا يحتاج sudo إلّا لأمرين لا يملكهما:
+#
+#   ١) أوامرُ Laravel بحساب www-data — لا بحساب النشر — كيلا يشغّل حسابُ النشر
+#      التطبيقَ ولا يكتب في bootstrap/cache (يملكها www-data). والانتقالُ إلى
+#      www-data نزولٌ لا صعود: www-data هو هويّةُ التطبيق، وهي أدنى من حساب
+#      النشر الذي يملك الكود. فلا حدَّ أمنيًّا يُكسَر، ولو شغّل أمرًا عامًّا.
+#      والمسارُ مطلقٌ (php وartisan) فلا يُلتقط من PATH.
+#
+#   ٢) إعادةُ تحميل php-fpm وحدها بصلاحية root — أمرٌ واحدٌ بوسائطَ مثبّتة،
+#      لا systemctl عامٌّ: لا start/stop/mask، ولا خدمةٌ أخرى.
+#
+# وما لا تبيحه: لا shell بصلاحية root، ولا تحرير ملفّات، ولا systemctl عامّ،
+# ولا أمرَ بحساب www-data غيرَ php artisan. ولا قاعدةَ لحساب www-data إطلاقًا.
+
+Cmnd_Alias ABAAD_ARTISAN = /usr/bin/php /var/www/abaad/artisan *
+Cmnd_Alias ABAAD_FPM_RELOAD = /usr/bin/systemctl reload php8.4-fpm
+
+abaad-deploy ALL=(www-data) NOPASSWD: ABAAD_ARTISAN
+abaad-deploy ALL=(root)     NOPASSWD: ABAAD_FPM_RELOAD

@@ -5,33 +5,34 @@ namespace Tests\Feature;
 use Tests\TestCase;
 
 /**
- * النشرُ بلا نسخةٍ للقاعدة قبله — والهجراتُ تجري كما كانت، ويُسمّى ما جرى منها.
+ * النشرُ بحساب abaad-deploy لا root، وبلا نسخةٍ للقاعدة — والهجراتُ تجري بحساب www-data.
  *
- * قرارُ المالك (2026-10-31): لا `pg_dump` قبل النشر، ولا تكون النسخةُ شرطًا للهجرات.
- * فما يُحرس هنا هو ما بقي: كلُّ خطوةٍ بترتيبها، والتوقّفُ عند أوّل خطأ، والرجوعُ
- * بالكود وحده — وأنّ السجلّ يقول ما جرى وما لا يُرجَع.
+ * قرارُ المالك (2026-10-31): لا `pg_dump`، ولا نسخةَ شرطًا للهجرات. وفصلُ الصلاحيّات
+ * (المرحلة 1): النشرُ بحساب يملك الكود، وأوامرُ Laravel وحدها تُبدَّل إلى www-data
+ * عبر sudo، وإعادةُ تحميل php-fpm وحدها بصلاحية root.
  *
  * ═══ كيف يُختبر سكربتُ نشرٍ بلا خادم ═══
  *
  * `scripts/deploy.sh` نفسُه يجري في مجلّدٍ مؤقّت: مستودعٌ حقيقيّ ومنبعُه، وgit
- * الحقيقيّ يسحب منه. وما يمسّ الخادم بدائلُ تكتب ما طُلب منها في سجلّ:
- * pg_dump وcomposer وnpm وphp وsystemctl وcurl. و`migrate` البديلُ يطبع ما يطبعه
- * Laravel حرفيًّا (` <الهجرة> .. 2.34ms DONE`). والسطرُ الوحيد الذي يتغيّر في نسخة
- * الاختبار فحصُ root — يُتحقَّق أنّه سطرٌ واحدٌ بعينه قبل أن يُعطَّل. وتجري
- * بـ`DEPLOY_DETACHED=1` المكتوبةِ في السكربت: هي خارج المستودع، فلا يمسّها السحب.
+ * الحقيقيّ يسحب منه بحساب المختبِر (الذي يملك الشجرة، كـabaad-deploy على الخادم).
+ * وما يُبدَّل إلى حسابٍ آخر يمرّ ببديلِ `sudo` الذي يسجّل الحسابَ المقصود:
+ * `sudo[www-data] …` و`sudo[root] …`. وبدائلُ php وsystemctl وcomposer وnpm وcurl
+ * تسجّل ما طُلب منها. و`migrate` البديلُ يطبع ما يطبعه Laravel حرفيًّا.
+ *
+ * ولا يُعطَّل فحصُ root: المختبِر ليس root، فالسكربتُ يمضي كما يمضي بحساب abaad-deploy.
  *
  * ═══ ما يُحرس ═══
  *
- *   - لا pg_dump ولا ملفّ نسخة، ولا إعدادَ يُعيدها؛ والنسخُ القديمة في المجلّد لا تُمسّ.
- *   - كلُّ خطوةٍ بترتيبها، وسطرُ «تمّ:» الذي يقرؤه Deploy Main.
- *   - الهجراتُ تُسمّى في السجلّ بحالها، ومعها أنّ ما تحذفه لا يُرجَع وأنّ CI لا تضمنها.
- *     وخرجُها كاملًا في ملفٍّ لا يقرؤه غيرُ مالكه — وخطأُ القاعدة لا يصل السجلَّ العامّ.
+ *   - لا pg_dump ولا ملفّ نسخة، ولا إعدادَ يُعيدها.
+ *   - أوامرُ Laravel كلُّها بحساب www-data عبر sudo، وsystemctl بصلاحية root وحده،
+ *     وgit وcomposer وnpm بحساب النشر مباشرةً — لا sudo حولها.
+ *   - composer بـ--no-scripts، ثمّ package:discover بحساب www-data بعده.
+ *   - مخبأُ npm في بيت حساب النشر لا في /tmp المشترك.
+ *   - الهجراتُ تُسمّى بحالها، وخرجُها في ملفٍّ لا يقرؤه غيرُ مالكه؛ وخطأُ القاعدة لا يصل السجلَّ العامّ.
  *   - وفشلُ خطوةٍ أو هجرةٍ أو فحصِ الصحّة يوقف النشر حيث وقع، ويدلّ على الرجوع بالكود.
  */
 class ADeployMigratesWithoutADumpTest extends TestCase
 {
-    private const ROOT_CHECK = '[[ $EUID -eq 0 ]] || die "شغّله بـsudo: يحتاج التبديل إلى $APP_USER وإعادة تحميل php-fpm"';
-
     private const B = '2026_02_01_000000_b';
 
     private const SECRET = 'customer-secret@x.om';
@@ -66,7 +67,7 @@ class ADeployMigratesWithoutADumpTest extends TestCase
     private function server(): void
     {
         $this->root = sys_get_temp_dir().'/abaad-deploy-test-'.bin2hex(random_bytes(4));
-        foreach (['bin', 'home', 'pre-deploy', 'seed/database/migrations'] as $dir) {
+        foreach (['bin', 'home', 'pre-deploy', 'state', 'seed/database/migrations'] as $dir) {
             mkdir($this->root.'/'.$dir, 0700, true);
         }
 
@@ -88,19 +89,22 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         $this->git('push -q origin HEAD:main', $seed);
         $this->to = $this->git('rev-parse --short HEAD', $seed);
 
-        // نسخةٌ من قبل القرار: تبقى كما هي
+        // نسخةٌ من قبل القرار في مجلّدٍ لا يعرفه السكربت: دليلٌ أنّ القديم لا يُمسّ
         file_put_contents($this->root.'/pre-deploy/abaad-20261029-033620.dump', 'old dump');
 
         $log = 'echo "$(basename "$0") $*" >> "$CALLS"';
+        // بديلُ sudo يسجّل الحسابَ المقصود ثمّ ينفّذ — فيُعرف أنّ artisan جرى بحساب www-data وsystemctl بصلاحية root
+        $sudo = 'u=root; while [ $# -gt 0 ]; do case "$1" in -n) shift;; -u) u="$2"; shift 2;; *) break;; esac; done; '
+            .'echo "sudo[$u] $*" >> "$CALLS"; exec "$@"';
         // خرجُ `php artisan migrate` كما يطبعه Laravel
         $migrate = 'if [ "${FAIL_MIGRATE:-}" = 1 ]; then printf "\n INFO Running migrations.\n\n '.self::B.' .. 0.08ms FAIL\n\n   Illuminate\\\\Database\\\\QueryException\n\n  SQLSTATE[23505]: Key (email)=('.self::SECRET.')\n"; exit 1; fi; '
             .'case "${MIGRATE_SAYS:-ran}" in nothing) printf "\n INFO Nothing to migrate.\n";; garbled) printf "ok\n";; '
             .'*) printf "\n INFO Running migrations.\n\n '.self::B.' .. 2.34ms DONE\n";; esac';
         $stubs = [
-            'sudo' => '[ "$1" = "-u" ] && shift 2; exec "$@"',
+            'sudo' => $sudo,
             'pg_dump' => $log.'; echo dumped',
             'composer' => $log.'; [ "${FAIL_COMPOSER:-}" = 1 ] && exit 1; true',
-            'npm' => $log.'; case "$*" in *"run build"*) for a in "$@"; do [ "$p" = "--outDir" ] && { mkdir -p "$a"; touch "$a/manifest.json"; }; p="$a"; done;; esac',
+            'npm' => $log.'; echo "npmcache ${npm_config_cache:-?}" >> "$CALLS"; case "$*" in *"run build"*) for a in "$@"; do [ "$p" = "--outDir" ] && { mkdir -p "$a"; touch "$a/manifest.json"; }; p="$a"; done;; esac',
             'php' => $log.'; case "$*" in *"migrate --force"*) '.$migrate.';; esac',
             'systemctl' => $log,
             'curl' => $log.'; printf "%s" "${HEALTH_CODE:-200}"',
@@ -110,10 +114,7 @@ class ADeployMigratesWithoutADumpTest extends TestCase
             chmod($this->root.'/bin/'.$name, 0700);
         }
 
-        // نسخةُ الاختبار: فحصُ root وحده يُعطَّل — والباقي حرفًا بحرف
-        $script = file_get_contents(base_path('scripts/deploy.sh'));
-        $this->assertSame(1, substr_count($script, self::ROOT_CHECK), 'تغيّر فحصُ root — راجع المختبر');
-        file_put_contents($this->root.'/deploy.sh', str_replace(self::ROOT_CHECK, ': # فحصُ root مُعطَّلٌ في المختبر وحده', $script));
+        copy(base_path('scripts/deploy.sh'), $this->root.'/deploy.sh');
     }
 
     /** @return array{rc: int, out: string, calls: list<string>, head: string} */
@@ -123,12 +124,15 @@ class ADeployMigratesWithoutADumpTest extends TestCase
             'PATH' => $this->root.'/bin:'.getenv('PATH'),
             'HOME' => $this->root.'/home',
             'APP_DIR' => $this->root.'/app',
-            'APP_USER' => (string) get_current_user(),
-            'BACKUP_DIR' => $this->root.'/pre-deploy',
+            // بديلُ sudo يسجّل الحسابَ وينفّذ بلا تبديلٍ فعليّ، فيصحُّ أن يكون www-data حرفيًّا
+            'APP_USER' => 'www-data',
+            'STATE_DIR' => $this->root.'/state',
             'HEALTH_URL' => 'http://health.test',
             'CALLS' => $this->root.'/calls.log',
+            'PHP_BIN' => 'php',
+            'SYSTEMCTL' => 'systemctl',
             'GIT_CONFIG_NOSYSTEM' => '1',
-            // السكربتُ ينسخ نفسَه إلى /tmp قبل السحب — ونسخةُ المختبر خارجَ المستودع أصلًا، فلا يمسّها السحب
+            // السكربتُ ينسخ نفسَه قبل السحب — ونسخةُ المختبر خارجَ المستودع أصلًا، فلا يمسّها السحب
             'DEPLOY_DETACHED' => '1',
         ]);
         $out = stream_get_contents($pipes[1]).stream_get_contents($pipes[2]);
@@ -142,11 +146,11 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         ];
     }
 
-    /** موضعُ أوّل نداءٍ يبدأ بهذا — أو -1 */
-    private function at(array $calls, string $prefix): int
+    /** موضعُ أوّل نداءٍ يحوي هذا — أو -1 */
+    private function at(array $calls, string $needle): int
     {
         foreach ($calls as $i => $call) {
-            if (str_starts_with($call, $prefix)) {
+            if (str_contains($call, $needle)) {
                 return $i;
             }
         }
@@ -154,10 +158,21 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         return -1;
     }
 
+    private function hasLine(array $calls, string $pattern): bool
+    {
+        foreach ($calls as $call) {
+            if (preg_match($pattern, $call)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** خرجُ migrate كاملًا كما حُفظ على الخادم */
     private function migrateLog(): string
     {
-        $logs = glob($this->root.'/pre-deploy/migrate-*.log') ?: [];
+        $logs = glob($this->root.'/state/migrate-*.log') ?: [];
         $this->assertCount(1, $logs, 'لم يُحفظ خرجُ migrate');
         $this->assertSame(0600, fileperms($logs[0]) & 0777, 'خرجُ migrate يقرؤه غيرُ مالكه');
 
@@ -172,9 +187,9 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         return implode("\n", array_filter($lines, fn ($l) => ! str_starts_with(ltrim($l), '#')));
     }
 
-    /* ═══ ١ · لا نسخة — وكلُّ خطوةٍ أخرى بترتيبها ═══ */
+    /* ═══ ١ · لا نسخة، وكلُّ خطوةٍ بترتيبها وبحسابها ═══ */
 
-    public function test_it_takes_no_dump_and_runs_every_other_step_in_order(): void
+    public function test_it_takes_no_dump_and_runs_every_step_in_order_and_under_the_right_account(): void
     {
         $this->server();
         $code = $this->code();
@@ -186,8 +201,8 @@ class ADeployMigratesWithoutADumpTest extends TestCase
 
         $this->assertSame(0, $run['rc'], $run['out']);
         $this->assertSame($this->to, $run['head'], 'لم يُسحب الكود');
-        $order = ['composer install', 'npm ci', 'npm run build', 'php artisan migrate --force', 'php artisan config:cache',
-            'php artisan route:cache', 'php artisan view:cache', 'systemctl reload', 'php artisan abaad:preflight', 'curl'];
+        $order = ['composer install', 'artisan package:discover', 'npm ci', 'npm run build', 'artisan migrate --force',
+            'artisan config:cache', 'artisan route:cache', 'artisan view:cache', 'systemctl reload', 'artisan abaad:preflight', 'curl'];
         $positions = array_map(fn ($step) => $this->at($run['calls'], $step), $order);
         foreach ($order as $i => $step) {
             $this->assertGreaterThanOrEqual(0, $positions[$i], "لم تجرِ: $step");
@@ -195,20 +210,65 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         $sorted = $positions;
         sort($sorted);
         $this->assertSame($sorted, $positions, 'تبدّل ترتيبُ الخطوات');
-        // السطرُ الذي يقرأ منه Deploy Main البصمةَ التي تعمل
         $this->assertMatchesRegularExpression('/تمّ: '.$this->from.' → '.$this->to.' /u', $run['out']);
 
+        // لا نسخة، ولا ملفَّ نسخة، والقديمُ لم يُمسّ
         $this->assertSame(-1, $this->at($run['calls'], 'pg_dump'), 'جرت نسخة');
-        $this->assertSame([$this->root.'/pre-deploy/abaad-20261029-033620.dump'], glob($this->root.'/pre-deploy/*.dump'), 'كُتبت نسخةٌ جديدة');
+        $this->assertSame([], glob($this->root.'/state/*.dump'), 'كُتبت نسخةٌ جديدة');
         $this->assertSame('old dump', file_get_contents($this->root.'/pre-deploy/abaad-20261029-033620.dump'), 'مُسّت نسخةٌ قديمة');
 
-        $note = (string) file_get_contents($this->root.'/pre-deploy/ROLLBACK.txt');
+        // ═══ الحسابات ═══
+        // كلُّ أمر artisan بحساب www-data
+        foreach (['migrate --force', 'package:discover', 'config:cache', 'route:cache', 'view:cache', 'abaad:preflight'] as $sub) {
+            $this->assertTrue($this->hasLine($run['calls'], '/^sudo\[www-data\] php .*artisan '.preg_quote($sub, '/').'/'),
+                "artisan $sub لم يجرِ بحساب www-data");
+        }
+        // systemctl بصلاحية root وحده، وأمرًا واحدًا مثبّتًا
+        $this->assertTrue($this->hasLine($run['calls'], '/^sudo\[root\] systemctl reload php8\.4-fpm$/'), 'إعادةُ تحميل php-fpm لم تجرِ بصلاحية root وأمرًا مثبّتًا');
+        // ولا sudo يحمل root لغير systemctl reload
+        $this->assertFalse($this->hasLine($run['calls'], '/^sudo\[root\] (?!systemctl reload php8\.4-fpm$)/'), 'sudo بصلاحية root لأمرٍ آخر');
+        // composer وnpm وgit بحساب النشر مباشرةً — لا sudo حولها
+        $this->assertFalse($this->hasLine($run['calls'], '/^sudo\[[^]]+\] (composer|npm|git)\b/'), 'أمرُ بناءٍ مرّ عبر sudo');
+
+        $note = (string) file_get_contents($this->root.'/state/ROLLBACK.txt');
         $this->assertStringContainsString('commit قبل النشر: '.$this->from, $note);
         $this->assertStringContainsString('scripts/rollback-code.sh '.$this->from, $note);
         $this->assertStringContainsString('الرجوعُ بالكود لا يُرجع ما غيّرته الهجرات', $note);
     }
 
-    /* ═══ ٢ · الهجراتُ تُسمّى، ومعها ما لا يُرجَع ═══ */
+    /* ═══ ٢ · composer --no-scripts، ثمّ package:discover بحساب www-data بعده ═══ */
+
+    public function test_composer_runs_without_scripts_and_package_discover_runs_as_www_data_after_it(): void
+    {
+        $this->server();
+
+        $run = $this->deploy();
+
+        $this->assertTrue($this->hasLine($run['calls'], '/^composer install .*--no-scripts/'), 'composer بلا --no-scripts');
+        $composer = $this->at($run['calls'], 'composer install');
+        $discover = $this->at($run['calls'], 'sudo[www-data] php');
+        $this->assertGreaterThan($composer, $this->at($run['calls'], 'artisan package:discover'), 'package:discover لم يأتِ بعد composer');
+        $this->assertGreaterThanOrEqual(0, $discover, 'لم يُبدَّل إلى www-data');
+    }
+
+    public function test_the_npm_cache_lives_in_the_accounts_home_not_a_shared_tmp(): void
+    {
+        $this->server();
+
+        $run = $this->deploy();
+
+        $cacheLine = '';
+        foreach ($run['calls'] as $call) {
+            if (str_starts_with($call, 'npmcache ')) {
+                $cacheLine = $call;
+                break;
+            }
+        }
+        $this->assertStringContainsString('/home/.npm-cache', $cacheLine, 'مخبأُ npm ليس في بيت الحساب');
+        $this->assertStringNotContainsString('/tmp', $cacheLine, 'مخبأُ npm في /tmp المشترك');
+    }
+
+    /* ═══ ٣ · الهجراتُ تُسمّى، ومعها ما لا يُرجَع ═══ */
 
     public function test_the_log_names_each_migration_that_ran_and_says_a_code_rollback_cannot_undo_it(): void
     {
@@ -232,14 +292,14 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         $this->assertStringNotContainsString('جرت بلا نسخةٍ قبلها', $run['out']);
 
         $this->git('reset -q --hard '.$this->from, $this->root.'/app');
-        array_map('unlink', glob($this->root.'/pre-deploy/migrate-*.log') ?: []);
+        array_map('unlink', glob($this->root.'/state/migrate-*.log') ?: []);
         $run = $this->deploy(['MIGRATE_SAYS' => 'garbled']);
         $this->assertSame(0, $run['rc'], $run['out']);
         $this->assertStringNotContainsString('لا هجرةَ جديدة', $run['out']);
         $this->assertStringContainsString('لم يُقرأ من خرج migrate ما جرى', $run['out']);
     }
 
-    /* ═══ ٣ · الفشلُ يوقفه حيث وقع ═══ */
+    /* ═══ ٤ · الفشلُ يوقفه حيث وقع ═══ */
 
     public function test_a_failed_migration_stops_before_the_caches_and_keeps_the_database_error_off_the_public_log(): void
     {
@@ -252,7 +312,7 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         $this->assertStringContainsString('سقطت الهجرات', $run['out']);
         $this->assertStringContainsString('ما جرى قبل السقوط يبقى في القاعدة، ولا نسخةَ تُرجعه', $run['out']);
         // الكودُ الحيّ لم يُبدَّل: لا ذاكرةَ مؤقّتة ولا إعادةَ تحميلٍ لـPHP بعد هجرةٍ سقطت
-        $this->assertSame(-1, $this->at($run['calls'], 'php artisan config:cache'));
+        $this->assertSame(-1, $this->at($run['calls'], 'artisan config:cache'));
         $this->assertSame(-1, $this->at($run['calls'], 'systemctl'));
         $this->assertStringNotContainsString('تمّ:', $run['out']);
         // وخطأُ القاعدة على الخادم وحده: سجلُّ Deploy Main عامّ
@@ -268,7 +328,7 @@ class ADeployMigratesWithoutADumpTest extends TestCase
         $run = $this->deploy(['FAIL_COMPOSER' => '1']);
 
         $this->assertNotSame(0, $run['rc']);
-        foreach (['npm', 'php artisan migrate', 'systemctl'] as $step) {
+        foreach (['npm', 'artisan migrate', 'systemctl'] as $step) {
             $this->assertSame(-1, $this->at($run['calls'], $step), "جرت $step بعد composer سقط");
         }
         $this->assertStringNotContainsString('تمّ:', $run['out']);

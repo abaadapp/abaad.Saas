@@ -189,16 +189,111 @@ php artisan abaad:preflight          # يجب أن يخرج ✓ جاهز للإ�
 
 ---
 
+## النشرُ بأقلِّ صلاحية — بحساب abaad-deploy لا root
+
+كان النشرُ يجري بحساب **root** في شجرةٍ يملكها **www-data**: يُشغّل git وتطبيقَ Laravel
+في ملفّاتٍ يكتبها www-data، فمن يملك ملفًّا فيها — أو يخترق الموقعَ — يوجّه أمرَ root.
+صار لكلِّ عملٍ هويّتُه، ولا يَصِل www-data إلى root عبر النشر:
+
+| الحساب | يملك | يُشغّل في النشر |
+|---|---|---|
+| **root** | لا شيء من الشجرة | لا شيء — غيرَ إعادة تحميل php-fpm عبر sudo |
+| **abaad-deploy** | شجرةَ الكود و`.git` وvendor وpublic، وسجلَّ `/var/log/abaad-deploy`، ومخابئَه في بيته | git وcomposer وnpm وتبديلَ الأصول والوسم — مباشرةً، بلا sudo |
+| **www-data** | `storage/` و`bootstrap/cache/` وحدهما | كلَّ أوامر `php artisan` (الهجرات والذاكرة وpreflight) — عبر sudo |
+
+**قاعدتا sudo، لا ثالثةَ لهما** (`deploy/abaad-deploy.sudoers`):
+
+```
+abaad-deploy ALL=(www-data) NOPASSWD: /usr/bin/php /var/www/abaad/artisan *
+abaad-deploy ALL=(root)     NOPASSWD: /usr/bin/systemctl reload php8.4-fpm
+```
+
+- **الأولى** تبيح أوامرَ Laravel بحساب www-data. والانتقالُ إلى www-data نزولٌ لا صعود:
+  www-data هويّةُ التطبيق، وأدنى من حساب النشر الذي يملك الكود — فلا حدَّ أمنيًّا يُكسَر.
+- **الثانية** أمرٌ واحدٌ بوسائطَ مثبّتة، لا `systemctl` عامٌّ. ولا shell بصلاحية root، ولا
+  قاعدةَ لـwww-data إطلاقًا.
+
+وحساب النشر يملك الشجرة، فلا `sudo` حول git ولا `safe.directory` (كانت تتراكم في إعداد
+git لدى root سطرًا كلَّ نشر، وتجعله يثق بشجرة غيره). و`composer` يجري بـ`--no-scripts`
+ثمّ `package:discover` بحساب www-data، فلا يشغّل حسابُ النشر التطبيقَ ولا يكتب ذاكرتَه.
+
+**فحصٌ يُثبت الفصل:** `scripts/audit-deploy-permissions.sh` (قرائيٌّ، بـsudo على الخادم)
+يتحقّق أنّ www-data لا يكتب الكودَ ولا السكربتات ولا ملفّات git، وأنّه يكتب `storage`
+وحدها، وأنّ قواعد sudo قاعدتان، وأنّ مفتاح GitHub على حساب النشر لا على root.
+
+### الانتقال إلى حساب النشر — مجرَّب، ولم يُنفَّذ
+
+السكربتُ الجديد يرفض أن يجري بحساب root. ومفتاحُ GitHub اليوم على authorized_keys الخاصّ
+بـroot بأمرٍ مقيّد. فأيُّ نشرٍ تلقائيٍّ بعد الدمج — وهو يتّصل بـroot ويشغّل السكربتَ الجديد —
+سيُرفض. لذا الانتقال بنمط #203 نفسه: **Deploy Main معطَّل، وسحبٌ يدويّ، وتشغيلٌ واحد**.
+
+وكلُّ خطوةٍ بموافقة المالك:
+
+1. **تعطيلُ «Deploy Main»** قبل الدمج، ولا دمجَ آخر إلى main حتى الخطوة 8.
+2. **إنشاءُ الحساب** على الخادم (بلا دخولٍ بكلمة مرور، وبصدفةٍ ليقبل الأمرَ المقيّد):
+   ```bash
+   sudo useradd --system --create-home --shell /bin/bash abaad-deploy
+   sudo install -d -m 700 -o abaad-deploy -g abaad-deploy /var/log/abaad-deploy
+   ```
+3. **قواعدُ sudo**، بعد التحقّق:
+   ```bash
+   sudo visudo -cf /var/www/abaad/deploy/abaad-deploy.sudoers          # يتحقّق من الصياغة
+   sudo install -m 440 -o root -g root /var/www/abaad/deploy/abaad-deploy.sudoers /etc/sudoers.d/abaad-deploy
+   sudo visudo -c                                                       # يتحقّق من المجموع
+   ```
+4. **نسخةٌ نصّيّة** من ملفّ مفاتيح root ومن sudoers قبل تغييرهما (نسخُ إعدادٍ لا قاعدةِ بيانات):
+   ```bash
+   sudo cp -a /root/.ssh/authorized_keys /root/.ssh/authorized_keys.pre-split
+   ```
+5. **نقلُ ملكيّة الشجرة** إلى حساب النشر، إلّا storage وbootstrap/cache (لا توقّفَ للموقع —
+   الملفّاتُ تبقى مقروءة):
+   ```bash
+   sudo chown -R abaad-deploy:abaad-deploy /var/www/abaad
+   sudo chown -R www-data:www-data /var/www/abaad/storage /var/www/abaad/bootstrap/cache
+   sudo chgrp www-data /var/www/abaad/.env && sudo chmod 640 /var/www/abaad/.env
+   ```
+6. **نقلُ مفتاح GitHub** من authorized_keys الخاصّ بـroot إلى الخاصّ بحساب النشر، بأمرِه
+   المقيّد، مع إبقائه على root مؤقّتًا حتى تنجح الخطوة 8:
+   ```bash
+   sudo install -d -m 700 -o abaad-deploy -g abaad-deploy /home/abaad-deploy/.ssh
+   # السطرُ نفسُه بأمرِه المقيّد، يُنسخ إلى /home/abaad-deploy/.ssh/authorized_keys
+   sudo chown abaad-deploy:abaad-deploy /home/abaad-deploy/.ssh/authorized_keys
+   sudo chmod 600 /home/abaad-deploy/.ssh/authorized_keys
+   ```
+7. **تبديلُ وجهة Deploy Main** إلى `abaad-deploy@` — وهو تغييرُ سطرٍ في `deploy-main.yml`،
+   يأتي مع هذا الطلب، فلا خطوةَ يدويّة هنا.
+8. **فحصٌ ثمّ تشغيل:**
+   ```bash
+   sudo bash /var/www/abaad/scripts/audit-deploy-permissions.sh        # كلُّه ✓
+   ```
+   ثمّ تفعيلُ «Deploy Main» وتشغيلُه يدويًّا مرّةً. يتّصل بحساب النشر، ويرفض السكربتُ root،
+   ويجري كلُّ شيءٍ بحسابه.
+9. **بعد النجاح:** حذفُ مفتاح GitHub من authorized_keys الخاصّ بـroot، وحذفُ أسطر
+   `safe.directory` من إعداد git لدى root، ورفعُ التجميد.
+
+**الرجوعُ إن تعثّر شيء:** إعادةُ ملكيّة الشجرة إلى www-data
+(`sudo chown -R www-data:www-data /var/www/abaad`)، وإعادةُ مفتاح root من النسخة، وحذفُ
+`/etc/sudoers.d/abaad-deploy`، وإرجاعُ `deploy-main.yml` إلى `root@` (Revert PR).
+والقاعدةُ لا تُمسّ في أيّ خطوة.
+
+**ما لا يتغيّر:** CI وMain Gate وفحصُ الصحّة والهجراتُ بلا نسخة، و`backup:run` لكلّ متجر،
+والنسخُ القديمة في `/root/pre-deploy`، ومفتاحُ المالك ومفتاحُ سعد على root.
+
+---
+
 ## الرجوع بعد نشرٍ سيّئ — الكود وحده
 
 كلُّ ما جرى بعد النشر في القاعدة: طلباتٌ، ودفعاتُ Paymob، وقيودٌ، وحركاتُ مخزون،
 ومستحقّاتُ بوتيك. فالرجوعُ **رجوعُ كود**، والقاعدةُ لا تُمسّ. ولا نسخةَ للقاعدة قبل النشر، فهو
 لا يستعيد ما غيّرته الهجرات (انظر الحدود أعلاه).
 
+يُشغَّل بحساب abaad-deploy (يملك الشجرة)، لا بـsudo. فإن دخلتَ بـroot فبدِّل أوّلًا:
+`sudo -u abaad-deploy -H bash …`.
+
 ```bash
-cat /root/pre-deploy/ROLLBACK.txt                                   # «commit قبل النشر»
+cat /var/log/abaad-deploy/ROLLBACK.txt                              # «commit قبل النشر»
 DRY_RUN=1 bash /var/www/abaad/scripts/rollback-code.sh <commit>     # يفحص ويقول ما سيفعل
-sudo bash /var/www/abaad/scripts/rollback-code.sh <commit>          # يُرجع الكود ويبني الواجهة والذاكرة
+bash /var/www/abaad/scripts/rollback-code.sh <commit>              # يُرجع الكود ويبني الواجهة والذاكرة
 ```
 
 ثمّ **أرجِع main نفسَه** (Revert PR → CI → دمج): النشرُ التالي يسحب main كما هو،

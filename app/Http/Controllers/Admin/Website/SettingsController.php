@@ -317,23 +317,25 @@ class SettingsController extends Controller
         $values = MarketingSettings::group($bid, 'website');
         $page = Storefront::page($business);
         $about = (string) $page['about'];
+        $saved = (string) ($values[StoreSeo::SAVED_AT] ?? '') !== '';
 
         return Inertia::render('Admin/Website/SimpleSeo', [
             'site' => [
                 'name' => (string) $business->name,
                 'url' => Storefront::serves($business) === Storefront::SERVES_SIMPLE ? $page['seo']['canonical'] : null,
             ],
+            // والحقولُ ما على صفحته الآن — وما في المفاتيح قبل حفظه منها يُعرض معلّقًا (`StoreSeo::simpleUnsaved`)
             'seo' => [
-                'title' => (string) ($values['store_seo_title'] ?? ''),
-                'desc' => (string) ($values['store_seo_desc'] ?? ''),
-                'index' => ($values['store_seo_index'] ?? '1') === '1',
+                'title' => $saved ? (string) ($values['store_seo_title'] ?? '') : '',
+                'desc' => $saved ? (string) ($values['store_seo_desc'] ?? '') : '',
+                'index' => $page['seo']['index'],
             ],
             // وما يظهر حين لا يكتب — ما يكتبه رأسُ صفحته نفسُه (`StoreSeo::simple`)
             'fallback' => ['title' => (string) $page['headline'], 'description' => $about !== '' ? $about : (string) $page['headline']],
         ] + $this->searchState(
             $business,
             savedAt: (string) ($values[StoreSeo::SAVED_AT] ?? ''),
-            pending: StoreSeo::pending($bid),
+            pending: StoreSeo::simpleUnsaved($values) + StoreSeo::pending($bid),
         ));
     }
 

@@ -251,4 +251,20 @@ describe('صفحةُ المتجر البسيطة — لها شاشتُها', () 
         expect(screen.getByTestId('seo-not-closed')).toHaveTextContent('لا يُغلق متجرك');
         expect(screen.getByTestId('seo-readiness')).toBeInTheDocument();
     });
+
+    /** وإخفاءٌ حُفظ قبل أن تقرأه الصفحة يُعرض معلّقًا — لا يُطبَّق حتّى يختاره */
+    it('تعرض القيم القديمة معلّقةً، وزرّ «استعمل» يُطفئ الفهرسة معها', () => {
+        simple({ pending: { store_seo_title: 'عنوانٌ قديم', store_seo_index: '0' } });
+        render(<SimpleSeo />);
+
+        const notice = screen.getByTestId('seo-pending');
+        expect(notice).toHaveTextContent('عنوانٌ قديم');
+        expect(notice).toHaveTextContent('مخفيّ عن نتائج البحث');
+        expect(screen.queryByTestId('seo-not-closed')).toBeNull();
+
+        fireEvent.click(screen.getByTestId('seo-use-pending'));
+
+        expect(screen.getByLabelText('عنوان متجرك في البحث')).toHaveValue('عنوانٌ قديم');
+        expect(screen.getByTestId('seo-not-closed')).toBeInTheDocument();
+    });
 });

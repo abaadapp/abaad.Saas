@@ -117,6 +117,11 @@ final class StoreSeo
      * حرفًا بحرف: العنوانُ الرئيسيّ، ثمّ النبذة — فلا يتبدّل رأسُ صفحةٍ قائمة
      * حتّى يكتب صاحبُها.
      *
+     * ولا تُقرأ إلّا بعد حفظٍ من الشاشة (`SAVED_AT`): المفاتيحُ قد تحمل قيمًا
+     * كُتبت قبل أن تقرأها هذه الصفحة — من واجهةٍ لبسها ثمّ خلعها، أو من باب
+     * «التسويق» — ولم تصل زبونًا قطّ. ولو قُرئت لأخفى النشرُ متجرًا من غوغل
+     * أو بدّل عنوانَه بلا طلب صاحبه. فتُعرض عليه في الشاشة (`simpleUnsaved`).
+     *
      * والعنوانُ الأصليُّ ما يخدمها فعلًا: النطاقُ الفرعيّ إن فُتح، وإلّا
      * الطريقُ البديل. وكان النطاقَ الفرعيَّ دائمًا — عنوانًا لا يُحلّ ما دامت
      * النطاقاتُ الفرعيّة مطفأة، فيدلّ غوغل على صفحةٍ لا وجود لها. ولا يُقرأ
@@ -127,16 +132,39 @@ final class StoreSeo
     public static function simple(Business $business): array
     {
         $site = MarketingSettings::group((int) $business->id, 'website');
+        $saved = (string) ($site[self::SAVED_AT] ?? '') !== '';
         $headline = trim((string) ($site['store_headline'] ?? '')) ?: (string) $business->name;
         $about = trim((string) ($site['store_about'] ?? ''));
-        $desc = trim((string) ($site['store_seo_desc'] ?? '')) ?: ($about !== '' ? $about : $headline);
+        $desc = ($saved ? trim((string) ($site['store_seo_desc'] ?? '')) : '') ?: ($about !== '' ? $about : $headline);
 
         return [
-            'title' => trim((string) ($site['store_seo_title'] ?? '')) ?: $headline,
+            'title' => ($saved ? trim((string) ($site['store_seo_title'] ?? '')) : '') ?: $headline,
             'description' => Str::limit($desc, 155),
-            'index' => ($site['store_seo_index'] ?? '1') === '1',
+            'index' => ! $saved || ($site['store_seo_index'] ?? '1') === '1',
             'canonical' => Storefront::canonical($business->site_slug),
         ];
+    }
+
+    /**
+     * ما في مفاتيح البحث ولا تقرؤه صفحةُ المتجر البسيطة بعد — لم يحفظ صاحبُها من شاشتها.
+     *
+     * يُعرض عليه ليستعمله أو يتركه، كأخيه في المسوّدة (`pending`). وفارغُه وإذنُ
+     * الفهرسة المفتوح لا يُعرضان: هما ما على الصفحة الآن.
+     *
+     * @param  array<string, mixed>  $site  إعداداتُ مجموعة الموقع
+     * @return array<string, string>
+     */
+    public static function simpleUnsaved(array $site): array
+    {
+        if ((string) ($site[self::SAVED_AT] ?? '') !== '') {
+            return [];
+        }
+
+        return array_filter([
+            'store_seo_title' => trim((string) ($site['store_seo_title'] ?? '')),
+            'store_seo_desc' => trim((string) ($site['store_seo_desc'] ?? '')),
+            'store_seo_index' => ($site['store_seo_index'] ?? '1') === '0' ? '0' : '',
+        ], fn (string $v) => $v !== '');
     }
 
     /**

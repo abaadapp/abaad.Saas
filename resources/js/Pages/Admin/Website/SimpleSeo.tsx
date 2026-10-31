@@ -17,7 +17,7 @@ interface Props {
     fallback: { title: string; description: string };
     limits: Limits;
     savedAt: string | null;
-    pending: Partial<Record<'store_seo_title' | 'store_seo_desc', string>>;
+    pending: Partial<Record<'store_seo_title' | 'store_seo_desc' | 'store_seo_index', string>>;
     readiness: Readiness;
 }
 
@@ -55,6 +55,10 @@ export default function SimpleSeo() {
 
     const labels = { store_seo_title: t('عنوان متجرك في البحث'), store_seo_desc: t('وصفُ متجرك في البحث') };
     const fields = (Object.keys(labels) as (keyof typeof labels)[]).filter((k) => pending?.[k] !== undefined);
+    // وإخفاءٌ عن البحث حُفظ قبل أن تقرأه الصفحة — لا يسري حتّى يختاره صاحبُه
+    const hidden = pending?.store_seo_index === '0';
+    const rows = fields.map((k) => ({ label: labels[k], value: pending[k] ?? '' }));
+    if (hidden) rows.push({ label: t('الفهرسة'), value: t('مخفيّ عن نتائج البحث') });
 
     return (
         <AdminLayout title="ظهور متجرك في البحث">
@@ -63,8 +67,11 @@ export default function SimpleSeo() {
 
             <SettingsPage>
                 <PendingNotice
-                    rows={fields.map((k) => ({ label: labels[k], value: pending[k] ?? '' }))}
-                    onUse={() => fields.forEach((k) => form.setData(k, pending[k] ?? ''))}
+                    rows={rows}
+                    onUse={() => {
+                        fields.forEach((k) => form.setData(k, pending[k] ?? ''));
+                        if (hidden) form.setData('store_seo_index', false);
+                    }}
                 />
 
                 <form

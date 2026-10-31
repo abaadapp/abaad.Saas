@@ -755,6 +755,40 @@ class ASearchAppearanceIsLiveTheMomentItIsSavedTest extends TestCase
         $this->assertSame('ورود ليلي · باقات مسقط', MarketingSettings::group($shop->id, 'website')['store_seo_title']);
     }
 
+    /**
+     * صفحةٌ بسيطةٌ في مفاتيحها قيمُ بحثٍ كُتبت قبل أن تقرأها — من واجهةٍ خُلعت أو
+     * من باب «التسويق». لم تصل زبونًا قطّ، فلا يُخفيها النشرُ ولا يبدّل عنوانَها.
+     */
+    public function test_a_simple_store_page_ignores_search_values_written_before_it_read_them(): void
+    {
+        [$shop, $owner] = $this->simple('lily', [
+            'store_seo_title' => 'عنوانٌ قديم',
+            'store_seo_desc' => 'وصفٌ قديمٌ لم يُنشر.',
+            'store_seo_index' => '0',
+        ]);
+        $app = rtrim(url('/'), '/');
+
+        $html = $this->get($app.'/s/lily')->assertOk()->getContent();
+        $this->assertSame('ورود lily', $this->titleOf($html), 'تبدّل عنوانُ صفحةٍ قائمةٍ بالترقية');
+        $this->assertStringContainsString('<meta name="description" content="باقاتُ وردٍ وهدايا في مسقط.">', $html);
+        $this->assertStringNotContainsString('noindex', $html, 'أُخفيت صفحةٌ قائمةٌ بالترقية');
+        $this->assertSame([url('/s/lily')], $this->locs($this->get($app.'/s/lily/sitemap.xml')->assertOk()->getContent()));
+        $this->assertSame('pass', collect($this->screen($owner)['readiness']['items'])->firstWhere('key', 'robots')['state']);
+
+        // والشاشةُ تعرض ما على الصفحة، والقديمُ معلّقًا يختاره صاحبُه
+        $props = $this->screen($owner);
+        $this->assertSame(['title' => '', 'desc' => '', 'index' => true], $props['seo']);
+        $this->assertSame(['store_seo_title' => 'عنوانٌ قديم', 'store_seo_desc' => 'وصفٌ قديمٌ لم يُنشر.', 'store_seo_index' => '0'], $props['pending']);
+
+        // فإن حفظ — سرى ما حفظه، وانطفأ المعلّق
+        $this->saveSimple($owner, ['store_seo_title' => 'عنوانٌ قديم', 'store_seo_index' => '0'])->assertSessionHasNoErrors();
+        $html = $this->get($app.'/s/lily')->getContent();
+        $this->assertSame('عنوانٌ قديم', $this->titleOf($html));
+        $this->assertStringContainsString('<meta name="robots" content="noindex, nofollow">', $html);
+        $this->assertSame([], $this->screen($owner)['pending']);
+        $this->assertSame('0', MarketingSettings::group($shop->id, 'website')['store_seo_index']);
+    }
+
     /* ═══════════ خرائطُ المواقع على الطرق الثلاث ═══════════ */
 
     /**

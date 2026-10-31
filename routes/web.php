@@ -580,7 +580,7 @@ Route::prefix('super-admin')->name('super-admin.')->middleware(['auth', 'role:su
     // فحصُ ربط المتجر عند ميتا — قراءةٌ لا غير، ونداءاتٌ إلى ميتا فلا تُترك بلا حدّ
     Route::post('/businesses/{id}/whatsapp/check', [WhatsAppController::class, 'checkBusinessLink'])
         ->middleware('throttle:20,1,whatsapp-link-check')->name('businesses.whatsapp.check');
-    // وإثباتُ أنّ فوترة ميتا على التاجر — حين لم تقلها ملكيّةُ حسابه آليًّا (`WhatsAppOwnApp::billing`)
+    // ومراجعةُ دليلٍ من ميتا على أنّ فوترتها على التاجر — ولا يُرسل ربطُ تطبيقه قبلها (`WhatsAppOwnApp::confirmBilling`)
     Route::post('/businesses/{id}/whatsapp/billing', [WhatsAppController::class, 'confirmBilling'])->name('businesses.whatsapp.billing');
     // وإعدادُ الإشعارات في تطبيق أبعاد نفسه — واحدٌ لكلّ المتاجر، وقراءةٌ لا غير
     Route::post('/whatsapp/app-webhook/check', [WhatsAppController::class, 'checkAppWebhook'])

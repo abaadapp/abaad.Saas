@@ -20,7 +20,17 @@ export interface OwnAppView {
         webhook_verified_at: string | null;
         last_webhook_at: string | null;
         app_webhook: string | null;
-        billing: { state: string | null; owner: string | null; checked_at: string | null };
+        billing: {
+            state: string | null;
+            owner: string | null;
+            checked_at: string | null;
+            /** متى راجع فريقُ أبعاد دليلَها — ولا يُرسل الربط قبله */
+            reviewed_at?: string | null;
+            /** ما يُرسله التاجرُ دليلًا — من ميتا نفسها */
+            evidence?: string[];
+            /** سببُ وقوف إرسالٍ رُوجع دليلُه ثمّ نقضته ميتا */
+            stopped?: string | null;
+        };
     } | null;
 }
 
@@ -53,11 +63,15 @@ const GUIDE: { title: string; body: string }[] = [
     },
     {
         title: 'الصقها هنا واضغط «تحقّق وحفظ»',
-        body: 'نتحقّق أنّ الرمز صادرٌ من تطبيقك ودائم، وأنّ الرقم في حسابك، وأنّ رسائل حسابك تُحتسب عليك لا على أبعاد.',
+        body: 'نتحقّق أنّ الرمز صادرٌ من تطبيقك ودائم، وأنّ الرقم في حسابك، وأنّ حسابك ليس لأبعاد ولا مشارَكًا معها.',
     },
     {
         title: 'اضبط الإشعارات في تطبيقك',
         body: 'في لوحة تطبيقك ‹ WhatsApp ‹ Configuration: الصق عنوان الإشعارات ورمز التحقّق الظاهرين هنا، واشترك في حقل messages، وحوّل التطبيق إلى Live. ثمّ «فحص الربط».',
+    },
+    {
+        title: 'أرسل دليل الفوترة',
+        body: 'ميتا لا تُطلعنا على وسيلة الدفع، وإقرارك وحده لا يكفي. أرسل لفريق أبعاد فاتورة ميتا لهذا الحساب، أو صورة صفحة «الفوترة والمدفوعات» في حساب أعمالك تُظهر وسيلة دفعك عليه. لا تخرج رسالة قبل مراجعته.',
     },
     {
         title: 'جرّب',
@@ -111,7 +125,7 @@ export default function OwnAppLink({ ownApp, mayManage }: { ownApp: OwnAppView; 
     });
 
     const billing = linked?.billing.state;
-    const billed = billing === 'merchant' || billing === 'confirmed';
+    const billed = billing === 'confirmed';
 
     return (
         <div className="mt-4 space-y-4" data-testid="own-app">
@@ -151,10 +165,21 @@ export default function OwnAppLink({ ownApp, mayManage }: { ownApp: OwnAppView; 
                         <dt className="text-[#6b7280]">{t('فوترة ميتا')}</dt>
                         <dd className={billed ? 'font-medium text-[#047857]' : 'font-medium text-[#b45309]'}>
                             {billed
-                                ? `${t('على حسابك')}${linked.billing.owner ? ` — ${linked.billing.owner}` : ''}`
-                                : t('لم يثبت أنّها عليك — لا تخرج رسالة حتى يثبت')}
+                                ? `${t('راجع فريق أبعاد دليلها — على حسابك')}${linked.billing.owner ? ` — ${linked.billing.owner}` : ''}`
+                                : t('بانتظار مراجعة دليلٍ من ميتا — لا تخرج رسالة قبلها')}
                         </dd>
                     </div>
+                    {! billed && (
+                        <div className="rounded-[10px] bg-[#fffbeb] p-3 text-[12px] leading-relaxed text-[#92400e]" data-testid="own-app-billing-evidence">
+                            {linked.billing.stopped && <p className="mb-1 font-medium">{linked.billing.stopped}</p>}
+                            <p>{t('ميتا لا تُطلعنا على وسيلة الدفع، وإقرارك وحده لا يكفي. أرسل لفريق أبعاد واحدًا من:')}</p>
+                            <ul className="mt-1 list-disc ps-5">
+                                {(linked.billing.evidence ?? []).map((e) => (
+                                    <li key={e}>{e}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                 </dl>
             )}
 

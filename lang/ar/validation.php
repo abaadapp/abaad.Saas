@@ -634,6 +634,9 @@ return [
         'app_id' => 'معرّف التطبيق',
         'app_secret' => 'سرّ التطبيق',
         'billing_ack' => 'الإقرار بأنّ رسوم ميتا عليك',
+        'evidence_kind' => 'نوع دليل الفوترة',
+        'evidence_reference' => 'مرجع الدليل',
+        'evidence_checked' => 'الإقرار بمراجعة الدليل',
         'display_phone_number' => 'الرقم المعروض',
         'access_token' => 'رمز الوصول',
 

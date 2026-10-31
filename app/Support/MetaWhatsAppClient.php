@@ -32,6 +32,10 @@ class MetaWhatsAppClient
         array $variables = [],
         ?array $document = null,
     ): array {
+        if ($refusal = self::unbilled($connection)) {
+            return $refusal;
+        }
+
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
             .'/'.$connection->phone_number_id.'/messages';
@@ -176,6 +180,10 @@ class MetaWhatsAppClient
 
     public static function sendText(WhatsAppConnection $connection, string $to, string $body): array
     {
+        if ($refusal = self::unbilled($connection)) {
+            return $refusal;
+        }
+
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
             .'/'.config('whatsapp.api_version')
             .'/'.$connection->phone_number_id.'/messages';
@@ -222,6 +230,10 @@ class MetaWhatsAppClient
         ?string $caption = null,
         ?string $filename = null,
     ): array {
+        if ($refusal = self::unbilled($connection)) {
+            return $refusal;
+        }
+
         if (! in_array($kind, ['image', 'document'], true)) {
             return self::failure('unsupported_kind', __('نوعٌ لا يُرسَل.'), retryable: false);
         }
@@ -300,6 +312,21 @@ class MetaWhatsAppClient
              */
             retryable: $response->status() === 429 || $response->serverError(),
         );
+    }
+
+    /**
+     * وصلةُ تطبيق تاجرٍ لم يُراجَع دليلُ فوترتها لا يخرج منها شيءٌ إلى ميتا.
+     *
+     * آخرُ بابٍ قبل النداء: من وصل هنا بوصلةٍ لم تمرّ بـ`isUsable` يُردّ أيضًا،
+     * فلا تُحتسب رسالةٌ على حسابٍ لم يثبت أنّ صاحبه يدفعها.
+     *
+     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}|null
+     */
+    private static function unbilled(WhatsAppConnection $connection): ?array
+    {
+        return WhatsAppOwnApp::is($connection) && ! WhatsAppOwnApp::billed($connection)
+            ? self::failure(WhatsAppOwnApp::AWAITS_BILLING, WhatsAppOwnApp::say(WhatsAppOwnApp::AWAITS_BILLING), retryable: false)
+            : null;
     }
 
     private static function failure(string $code, string $message, bool $retryable): array

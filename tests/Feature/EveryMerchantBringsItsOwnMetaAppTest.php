@@ -8,12 +8,14 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\WhatsAppChatMessage;
 use App\Models\WhatsAppConnection;
+use App\Support\MetaWhatsAppClient;
 use App\Support\WhatsAppConnections;
 use App\Support\WhatsAppFeature;
 use App\Support\WhatsAppLink;
 use App\Support\WhatsAppMode;
 use App\Support\WhatsAppOwnApp;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -26,8 +28,10 @@ use Tests\TestCase;
  *
  *  • الربطُ يُقبل برمزٍ دائمٍ من تطبيق التاجر نفسه، ويُردّ رمزُ تطبيق أبعاد،
  *    والمؤقّت، وسرٌّ خاطئ، ورقمٌ على تطبيق الهاتف، وحسابٌ رسائلُه على أبعاد.
- *  • والفوترةُ تثبت من ملكيّة الحساب (`SELF`، مالكُه ليس أبعاد) — وما لم
- *    تثبت يبقى «بانتظار إثبات الفوترة» ولا يُرسل حتى يؤكّده صاحبُ المنصّة.
+ *  • والفوترةُ لا تثبت آليًّا: ميتا لا تُطلع غيرَ «مزوّد حلول أعمال» على وسيلة
+ *    الدفع، والملكيّةُ `SELF` وإقرارُ التاجر لا يقولان من يدفع. فكلُّ ربطٍ
+ *    «بانتظار إثبات الفوترة» ولا يُرسل — حتى يراجع فريقُ أبعاد دليلًا من ميتا،
+ *    ووقائعُ تنقض الدليل تردّ التأكيد أو توقف الإرسال بعده.
  *  • وإشعاراتُ تطبيقه على عنوان وصلته، بسرّ تطبيقه، ولرقمها وحده.
  *  • ومتجران بتطبيقين لا يمسّ أحدُهما الآخر، والأسرارُ لا تبلغ الشاشة.
  *
@@ -150,9 +154,16 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
             ], 200);
         }
 
+        // وسيلةُ الدفع: ميتا تردّها بـ`#10` لتطبيقٍ لا يملكه «مزوّد حلول أعمال» — كما في فحص الإنتاج
+        $patterns['*fields=primary_funding_id*'] = Http::response(['error' => ['code' => 10,
+            'message' => 'This action requires that the Business that owns this App is a Business Solution Provider for WhatsApp.']], 400);
+        $patterns['*/owned_whatsapp_business_accounts*'] = Http::response(['data' => []], 200);
+        $patterns['*/client_whatsapp_business_accounts*'] = Http::response(['data' => []], 200);
         $patterns['*fields=is_on_biz_app*'] = Http::response(['is_on_biz_app' => false, 'platform_type' => $platform], 200);
         $patterns['*/routing_roles*'] = Http::response(['error' => ['code' => 100, 'message' => 'Conversation routing is not enabled for this phone number.']], 400);
 
+        // وكلُّ نداءٍ لـ`meta()` يبدأ ميتا من جديد: `Http::fake` الثاني لا يغلب الأوّل
+        Http::swap(new HttpFactory);
         Http::preventStrayRequests();
         // وما يُغيّره الاختبارُ يُقدَّم — `Http::fake` يأخذ أوّلَ نمطٍ ينطبق
         Http::fake($over + $patterns);
@@ -163,6 +174,31 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         return $this->actingAs($owner)->post(route('admin.integrations.whatsapp.connect'), $over + [
             'app_id' => self::APP, 'app_secret' => self::SECRET, 'waba_id' => self::WABA,
             'phone_number_id' => self::PHONE, 'access_token' => self::TOKEN, 'billing_ack' => '1',
+        ]);
+    }
+
+    private function admin(): User
+    {
+        return User::firstOrCreate(['email' => 'root@abaad.om'], [
+            'name' => 'المنصّة', 'password' => bcrypt('password12345'), 'role' => 'super_admin', 'status' => 'نشط',
+        ]);
+    }
+
+    /** يراجع فريقُ أبعاد دليلًا من ميتا — مسمًّى، بمرجعه، وبإقرار المراجع */
+    private function review(?Business $b = null, array $over = [])
+    {
+        return $this->actingAs($this->admin())->post(route('super-admin.businesses.whatsapp.billing', ($b ?? $this->shop)->id), $over + [
+            'evidence_kind' => 'meta_invoice', 'evidence_reference' => 'FBADS-2026-10-0042', 'evidence_checked' => '1',
+        ]);
+    }
+
+    /** وصلةٌ أبعادُ فيها: رمزُ أرقام المنصّة الذي تُقرأ به حساباتُ نشاط أبعاد */
+    private function platformNumber(string $waba = '7770000000099'): WhatsAppConnection
+    {
+        return WhatsAppConnection::create([
+            'owner_type' => WhatsAppMode::OWNER_PLATFORM, 'provider' => 'meta_cloud', 'purpose' => WhatsAppMode::PURPOSE_NOTIFICATIONS,
+            'waba_id' => $waba, 'phone_number_id' => 'ABAAD-PN', 'access_token' => 'abaad-platform-token-0123456789',
+            'status' => WhatsAppConnection::ACTIVE, 'meta_business_id' => self::ABAAD_BIZ,
         ]);
     }
 
@@ -203,13 +239,18 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
     {
         $this->meta();
 
-        $this->link($this->owner)->assertSessionHasNoErrors()->assertSessionHas('toast.type', 'success');
+        $this->link($this->owner)->assertSessionHasNoErrors()->assertSessionHas('toast.type', 'info');
 
         $c = $this->connection();
-        $this->assertSame([WhatsAppOwnApp::TYPE, self::APP, WhatsAppConnection::ACTIVE, WhatsAppOwnApp::BILLING_MERCHANT],
+        $this->assertSame([WhatsAppOwnApp::TYPE, self::APP, WhatsAppConnection::PENDING, WhatsAppOwnApp::BILLING_UNPROVEN],
             [$c->link_type, $c->token_app_id, $c->status, $c->billing_state]);
         $this->assertSame('نشاط '.self::WABA, $c->billing_owner_name);
         $this->assertSame(40, strlen((string) $c->webhook_key));
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()), 'لا يُرسل قبل مراجعة دليل الفوترة');
+
+        $this->review()->assertSessionHasNoErrors();
+        $c = $c->fresh();
+        $this->assertSame([WhatsAppConnection::ACTIVE, WhatsAppOwnApp::BILLING_CONFIRMED], [$c->status, $c->billing_state]);
         $this->assertSame($c->id, WhatsAppConnections::resolve($this->shop->fresh())?->id, 'يُرسل برمزه');
 
         // سُئل `debug_token` بتطبيق التاجر وسرّه — وأُشرك تطبيقُه هو في حسابه
@@ -316,6 +357,12 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $this->meta();
         $this->link($this->owner)->assertSessionHasErrors('waba_id');
 
+        // وحسابٌ في حسابات نشاط أبعاد عند ميتا — ولو قالت ملكيّتُه غير ذلك
+        WhatsAppConnection::query()->delete();
+        $this->platformNumber();
+        $this->meta(['*/'.self::ABAAD_BIZ.'/owned_whatsapp_business_accounts*' => Http::response(['data' => [['id' => self::WABA]]], 200)]);
+        $this->link($this->owner)->assertSessionHasErrors(['waba_id' => WhatsAppOwnApp::say(WhatsAppOwnApp::BILLED_TO_ABAAD)]);
+
         $this->assertNull($this->connection());
     }
 
@@ -327,12 +374,12 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $this->assertNull($this->connection());
     }
 
-    /* ═════════════ ٣ · فوترةٌ لم تثبت: لا يُرسل حتى يؤكّدها صاحبُ المنصّة ═════════════ */
+    /* ═════════════ ٣ · الفوترةُ لا تثبت آليًّا: لا يُرسل حتى يُراجَع دليلٌ من ميتا ═════════════ */
 
-    public function test_unproven_billing_waits_and_sends_nothing_until_the_platform_confirms(): void
+    public function test_ownership_and_the_merchants_word_never_turn_sending_on(): void
     {
-        // حسابٌ يملكه صاحبُه ويشاركه شريكٌ — قد يدفع عنه الشريك
-        $this->meta(ownership: ['ownership_type' => 'CLIENT_OWNED']);
+        // حسابٌ يملكه نشاطُ التاجر نفسُه (`SELF`)، والتاجرُ أقرّ أنّ الرسوم عليه — ولا يكفي
+        $this->meta();
 
         $this->link($this->owner)->assertSessionHasNoErrors()->assertSessionHas('toast.type', 'info');
 
@@ -342,21 +389,108 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $this->assertSame(WhatsAppLink::BILLING_UNPROVEN, WhatsAppLink::state($c));
         $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()), 'لا يُرسل');
         $this->assertFalse(collect(WhatsAppFeature::readiness($this->shop->fresh())['steps'])->firstWhere('key', 'billing')['done']);
+        // ووقائعُ ما قُرئ محفوظة: الملكيّة، ووسيلةُ الدفع التي لا تُطلعنا عليها ميتا
+        $this->assertSame(['SELF', 'unreadable', 'unknown'], [
+            $c->metadata['billing_facts']['ownership'], $c->metadata['billing_facts']['funding'], $c->metadata['billing_facts']['abaad_access'],
+        ]);
 
         // و«فحص الربط» لا يقفز فوق الخطوة
         $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.test'));
         $this->assertSame(WhatsAppConnection::PENDING, $c->fresh()->status);
 
         // والتاجرُ لا يؤكّد فوترتَه بنفسه
-        $this->actingAs($this->owner)->post(route('super-admin.businesses.whatsapp.billing', $this->shop->id));
+        $this->actingAs($this->owner)->post(route('super-admin.businesses.whatsapp.billing', $this->shop->id), [
+            'evidence_kind' => 'meta_invoice', 'evidence_reference' => 'FBADS-2026-10-0042', 'evidence_checked' => '1',
+        ]);
         $this->assertSame(WhatsAppConnection::PENDING, $c->fresh()->status);
 
-        $admin = User::create(['name' => 'المنصّة', 'email' => 'root@abaad.om', 'password' => bcrypt('password12345'), 'role' => 'super_admin', 'status' => 'نشط']);
-        $this->actingAs($admin)->post(route('super-admin.businesses.whatsapp.billing', $this->shop->id))->assertSessionHasNoErrors();
+        // ولا فريقُ أبعاد بلا دليلٍ مسمًّى ومرجعِه وإقراره
+        $this->review(over: ['evidence_kind' => ''])->assertSessionHasErrors('evidence_kind');
+        $this->review(over: ['evidence_kind' => 'merchant_said_so'])->assertSessionHasErrors('evidence_kind');
+        $this->review(over: ['evidence_reference' => ''])->assertSessionHasErrors('evidence_reference');
+        $this->review(over: ['evidence_checked' => null])->assertSessionHasErrors('evidence_checked');
+        $this->assertSame(WhatsAppConnection::PENDING, $c->fresh()->status);
+
+        $this->review()->assertSessionHasNoErrors();
 
         $c = $c->fresh();
         $this->assertSame([WhatsAppConnection::ACTIVE, WhatsAppOwnApp::BILLING_CONFIRMED], [$c->status, $c->billing_state]);
         $this->assertSame($c->id, WhatsAppConnections::resolve($this->shop->fresh())?->id);
+        $this->assertSame(['meta_invoice', 'FBADS-2026-10-0042', 'المنصّة', self::WABA],
+            [$c->billing_evidence['kind'], $c->billing_evidence['reference'], $c->billing_evidence['reviewed_by'], $c->billing_evidence['waba_id']]);
+        $this->assertSame(0, Http::recorded(fn (HttpRequest $r) => str_contains($r->url(), '/messages'))->count(), 'ولا رسالةَ خرجت');
+    }
+
+    public function test_nothing_leaves_an_unreviewed_link_even_if_its_status_says_active(): void
+    {
+        $this->meta();
+        $this->link($this->owner);
+
+        // حالةٌ صُحّحت خطأً إلى «نشطة» — والفوترةُ لم تُراجَع
+        $c = $this->connection();
+        $c->forceFill(['status' => WhatsAppConnection::ACTIVE, 'last_error_code' => null])->save();
+
+        $this->assertFalse($c->fresh()->isUsable());
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()));
+
+        // وآخرُ بابٍ قبل ميتا يردّها أيضًا — لا نداءَ على `/messages`
+        $sent = MetaWhatsAppClient::sendText($c->fresh(), '96891234567', 'مرحبًا');
+        $template = MetaWhatsAppClient::sendTemplate($c->fresh(), '96891234567', 'order_ready', 'ar');
+        $this->assertSame([false, WhatsAppOwnApp::AWAITS_BILLING, false], [$sent['ok'], $sent['code'], $template['ok']]);
+        Http::assertNotSent(fn (HttpRequest $r) => str_contains($r->url(), '/messages'));
+        $this->assertSame(WhatsAppLink::BILLING_UNPROVEN, WhatsAppLink::state($c->fresh()));
+    }
+
+    /** دليلٌ رُئي لا يُؤكَّد به حسابٌ تقول ميتا إنّه بلا وسيلة دفع، أو لأبعاد فيه يد، أو لشريك */
+    public function test_a_review_is_refused_when_meta_contradicts_it(): void
+    {
+        $this->meta(['*fields=primary_funding_id*' => Http::response(['id' => self::WABA], 200)]);
+        $this->link($this->owner);
+
+        $this->review()->assertSessionHasErrors(['whatsapp' => WhatsAppOwnApp::say(WhatsAppOwnApp::NO_PAYMENT_METHOD)]);
+        $this->assertSame(WhatsAppOwnApp::BILLING_UNPROVEN, $this->connection()->billing_state);
+
+        // ومشارَكٌ مع نشاط أبعاد — شريكٌ قد يمدّه بخطّ ائتمانه
+        $this->platformNumber();
+        $this->meta(['*/'.self::ABAAD_BIZ.'/client_whatsapp_business_accounts*' => Http::response(['data' => [['id' => self::WABA]]], 200)]);
+        $this->review()->assertSessionHasErrors(['whatsapp' => WhatsAppOwnApp::say(WhatsAppOwnApp::SHARED_WITH_ABAAD)]);
+
+        // ولشريكٍ نيابةً عن التاجر
+        $this->meta(ownership: ['ownership_type' => 'ON_BEHALF_OF', 'on_behalf_of_business_info' => ['id' => 'BIZ-CLIENT', 'name' => 'التاجر', 'type' => 'ON_BEHALF_OF']]);
+        $this->review()->assertSessionHasErrors(['whatsapp' => WhatsAppOwnApp::say(WhatsAppOwnApp::PARTNER_OWNED)]);
+
+        $c = $this->connection();
+        $this->assertSame([WhatsAppConnection::PENDING, WhatsAppOwnApp::BILLING_UNPROVEN, null], [$c->status, $c->billing_state, $c->billing_evidence]);
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()));
+    }
+
+    /** ودليلٌ رُوجع ثمّ نقضته ميتا يوقف الإرسال — كلَّ يوم يُقرأ (`whatsapp:own-billing`) */
+    public function test_a_reviewed_link_stops_when_meta_later_contradicts_its_evidence(): void
+    {
+        $this->meta(['*fields=primary_funding_id*' => Http::response(['primary_funding_id' => '4400000000001', 'id' => self::WABA], 200)]);
+        $this->link($this->owner);
+        $this->review()->assertSessionHasNoErrors();
+        $this->assertNotNull(WhatsAppConnections::resolve($this->shop->fresh()));
+
+        // قراءةٌ لم تنجح لا توقف شيئًا
+        $this->meta(['*fields=primary_funding_id*' => Http::response(['error' => ['code' => 2, 'message' => 'temporarily unavailable']], 503)]);
+        $this->artisan('whatsapp:own-billing')->assertSuccessful();
+        $this->assertSame(WhatsAppConnection::ACTIVE, $this->connection()->status);
+
+        // ووسيلةُ دفعٍ تبدّلت بعد المراجعة: يقف حتى يُراجَع دليلٌ جديد
+        $this->meta(['*fields=primary_funding_id*' => Http::response(['primary_funding_id' => '4400000000002', 'id' => self::WABA], 200)]);
+        $this->artisan('whatsapp:own-billing')->assertSuccessful();
+
+        $c = $this->connection();
+        $this->assertSame([WhatsAppConnection::PENDING, WhatsAppOwnApp::AWAITS_BILLING, WhatsAppOwnApp::BILLING_UNPROVEN],
+            [$c->status, $c->last_error_code, $c->billing_state]);
+        $this->assertSame(WhatsAppOwnApp::say(WhatsAppOwnApp::FUNDING_CHANGED), $c->last_error_message);
+        $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()));
+        $this->assertSame(0, Http::recorded(fn (HttpRequest $r) => $r->method() === 'POST')->count(), 'قراءاتٌ لا غير');
+
+        // ودليلٌ جديدٌ يُعيده
+        $this->review()->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppConnection::ACTIVE, $this->connection()->status);
     }
 
     public function test_an_unreadable_ownership_is_unproven_not_merchant(): void
@@ -365,6 +499,7 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
 
         $this->link($this->owner)->assertSessionHasNoErrors();
         $this->assertSame(WhatsAppOwnApp::BILLING_UNPROVEN, $this->connection()->billing_state);
+        $this->assertNull($this->connection()->metadata['billing_facts']['ownership']);
         $this->assertNull(WhatsAppConnections::resolve($this->shop->fresh()));
     }
 
@@ -441,10 +576,19 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $this->assertSame($legacy->id, WhatsAppConnections::resolve($this->shop)?->id, 'يُرسل اليوم');
         $this->meta();
 
+        // قبل مراجعة دليله: لا يُستبدل ربطُه، وإرسالُه كما هو
+        $this->link($this->owner, ['access_token' => ''])->assertSessionHasErrors('phone_number_id');
+        $this->assertNull($legacy->fresh()->link_type);
+        $this->assertSame($legacy->id, WhatsAppConnections::resolve($this->shop->fresh())?->id);
+
+        // يُراجَع دليلُه وهو يُرسل بطريقه القديم — ثمّ يُكمل الربطَ بسرّه
+        $this->review()->assertSessionHasNoErrors();
+        $this->assertSame($legacy->id, WhatsAppConnections::resolve($this->shop->fresh())?->id, 'المراجعةُ لا توقفه');
         $this->link($this->owner, ['access_token' => ''])->assertSessionHasNoErrors();
 
         $c = $legacy->fresh();
-        $this->assertSame([WhatsAppOwnApp::TYPE, self::TOKEN, WhatsAppConnection::ACTIVE], [$c->link_type, $c->access_token, $c->status]);
+        $this->assertSame([WhatsAppOwnApp::TYPE, self::TOKEN, WhatsAppConnection::ACTIVE, WhatsAppOwnApp::BILLING_CONFIRMED],
+            [$c->link_type, $c->access_token, $c->status, $c->billing_state]);
         $this->assertSame(1, WhatsAppConnection::where('business_id', $this->shop->id)->count(), 'الصفُّ نفسُه');
         $this->assertSame($c->id, WhatsAppConnections::resolve($this->shop->fresh())?->id, 'وإرسالُه لم يقف');
     }
@@ -455,6 +599,7 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
     {
         $this->meta();
         $this->link($this->owner);
+        $this->review();
         $key = $this->connection()->webhook_key;
 
         $before = $this->posts();
@@ -464,7 +609,7 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
 
         $this->link($this->owner)->assertSessionHasNoErrors();
         $this->assertSame($key, $this->connection()->webhook_key, 'لا يُعاد ضبطُ تطبيقه');
-        $this->assertSame(WhatsAppConnection::ACTIVE, $this->connection()->status);
+        $this->assertSame(WhatsAppConnection::ACTIVE, $this->connection()->status, 'ودليلُ الحساب نفسِه يمضي معه');
     }
 
     /* ═════════════ ٨ · رقمٌ جديدٌ على Cloud API يُفعَّل برمزه — كما في التسجيل ═════════════ */
@@ -474,6 +619,8 @@ class EveryMerchantBringsItsOwnMetaAppTest extends TestCase
         $this->meta(['*/'.self::PHONE.'/register' => Http::response(['success' => true], 200)], platform: 'NOT_APPLICABLE');
 
         $this->link($this->owner)->assertSessionHasNoErrors();
+        $this->assertSame(WhatsAppLink::BILLING_UNPROVEN, WhatsAppLink::state($this->connection()));
+        $this->review()->assertSessionHasNoErrors();
         $this->assertSame(WhatsAppLink::NEEDS_REGISTRATION, WhatsAppLink::state($this->connection()));
 
         $this->actingAs($this->owner)->post(route('admin.integrations.whatsapp.register'), ['pin' => '482915'])->assertSessionHasNoErrors();

@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Schema;
  * - `webhook_verified_at`: متى طابقت ميتا الرمزَ على عنواننا.
  * - `billing_state` و`billing_owner_*` و`billing_checked_at`: على من تُحتسب
  *   رسائلُ هذا الحساب عند ميتا — والربطُ لا يُرسل قبل أن يثبت أنّها على التاجر.
+ * - `billing_evidence`: ما راجعه فريقُ أبعاد دليلًا على ذلك، ومن راجعه ومتى،
+ *   وبصمةُ وسيلة الدفع إن قرأتها ميتا لنا.
  *
  * أعمدةٌ فارغةٌ على الوصلات القائمة: لا يُمسّ رمزٌ ولا رقمٌ ولا وضع.
  */
@@ -53,6 +55,9 @@ return new class extends Migration
             if (! Schema::hasColumn('whatsapp_connections', 'billing_checked_at')) {
                 $table->timestamp('billing_checked_at')->nullable();
             }
+            if (! Schema::hasColumn('whatsapp_connections', 'billing_evidence')) {
+                $table->json('billing_evidence')->nullable();
+            }
         });
     }
 
@@ -66,7 +71,7 @@ return new class extends Migration
 
         Schema::table('whatsapp_connections', function (Blueprint $table) {
             foreach (['link_type', 'app_secret', 'webhook_key', 'webhook_verify_token', 'webhook_verified_at',
-                'billing_state', 'billing_owner_id', 'billing_owner_name', 'billing_checked_at'] as $column) {
+                'billing_state', 'billing_owner_id', 'billing_owner_name', 'billing_checked_at', 'billing_evidence'] as $column) {
                 if (Schema::hasColumn('whatsapp_connections', $column)) {
                     $table->dropColumn($column);
                 }

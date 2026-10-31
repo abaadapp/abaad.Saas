@@ -218,8 +218,8 @@ class WhatsAppFeature
                 'رسوم ميتا على حسابك أنت',
                 WhatsAppOwnApp::billed($link),
                 detail: WhatsAppOwnApp::billed($link) && filled($link->billing_owner_name)
-                    ? __('تُحتسب على: :owner', ['owner' => $link->billing_owner_name]) : null,
-                fix: 'لم يثبت أنّ رسائل حسابك تُحتسب عليك عند ميتا — أرسل لأبعاد ما يثبت وسيلة الدفع في حسابك، ولا يُرسل الربط قبل ذلك.',
+                    ? __('راجع فريق أبعاد دليلها — تُحتسب على: :owner', ['owner' => $link->billing_owner_name]) : null,
+                fix: 'لم يُراجَع بعدُ دليلٌ من ميتا على أنّ رسائل حسابك تُحتسب عليك — أرسل لفريق أبعاد فاتورة ميتا لهذا الحساب أو صفحة «الفوترة والمدفوعات» تُظهر وسيلة دفعك عليه. ولا يُرسل الربط قبل مراجعته.',
             );
 
             $heard = $link->webhook_verified_at !== null || $link->last_webhook_at !== null;

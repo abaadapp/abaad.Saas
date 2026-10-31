@@ -294,10 +294,10 @@ class WhatsAppEmbeddedSignup
     }
 
     /**
-     * على من تُحتسب رسائلُ هذا الحساب؟ — مالكُه، ومن أُنشئ نيابةً عنه، ونوعُ ملكيّته.
+     * من يملك هذا الحساب؟ — مالكُه، ومن أُنشئ نيابةً عنه، ونوعُ ملكيّته.
      *
-     * قراءةٌ لا غير. و`primary_funding_id` لا يُسأل: ميتا لا تُعيده إلّا لمزوّدي
-     * حلول الأعمال (`#10` في فحص 2026-10-31)، فلا يُبنى عليه حكم.
+     * قراءةٌ لا غير. والملكيّةُ تقول من يملك الحساب لا من يدفع عنه — وسيلةُ
+     * الدفع تُسأل وحدها (`funding`).
      *
      * @return array{ok:bool, owner_id:?string, owner_name:?string, on_behalf_id:?string, on_behalf_type:?string, ownership_type:?string, code:?string, message:?string}
      */
@@ -330,6 +330,77 @@ class WhatsAppEmbeddedSignup
             'code' => null,
             'message' => null,
         ];
+    }
+
+    /**
+     * أعلى «حساب الرسائل» وسيلةُ دفع؟ — `primary_funding_id` كما تصفه ميتا.
+     *
+     * في نموذج ميتا الجديد معرّفُ الـWABA هو معرّفُ «حساب الرسائل» (Messaging
+     * account) الذي يحمل القوالبَ ووسيلةَ الدفع. وغيابُ الحقل في ردٍّ ناجح =
+     * لا وسيلة دفع، فلا تخرج منه رسالةٌ مدفوعة. وميتا تردّه بـ`#10` لكلّ تطبيقٍ
+     * لا يملكه «مزوّد حلول أعمال» — فهو «لم يُقرأ»، لا «غائب».
+     *
+     * والمعرّفُ لا يُحفظ: بصمتُه وحدها (`mark`) — تكفي لنعرف أنّه تبدّل.
+     *
+     * @return array{state:'present'|'absent'|'unreadable', mark:?string, code:?string}
+     */
+    public static function funding(string $wabaId, string $token): array
+    {
+        try {
+            $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()
+                ->get(self::base().'/'.$wabaId, ['fields' => 'primary_funding_id']);
+        } catch (\Throwable) {
+            return ['state' => 'unreadable', 'mark' => null, 'code' => 'network_error'];
+        }
+
+        if (! $response->successful()) {
+            return ['state' => 'unreadable', 'mark' => null, 'code' => self::error($response->json())[0]];
+        }
+
+        $id = $response->json('primary_funding_id');
+
+        return filled($id)
+            ? ['state' => 'present', 'mark' => substr(hash('sha256', (string) $id), 0, 16), 'code' => null]
+            : ['state' => 'absent', 'mark' => null, 'code' => null];
+    }
+
+    /**
+     * حساباتُ واتساب التي يملكها حسابُ أعمالٍ أو شُورك معه — معرّفاتُها وحدها.
+     *
+     * `owned_whatsapp_business_accounts` أو `client_whatsapp_business_accounts`،
+     * صفحةً بعد صفحة. وما فشل منها `null` — «لا نعرف»، لا قائمةٌ فارغة.
+     *
+     * @return list<string>|null
+     */
+    public static function businessWabas(string $businessId, string $edge, string $token): ?array
+    {
+        $ids = [];
+        $url = self::base().'/'.$businessId.'/'.$edge;
+        $query = ['fields' => 'id', 'limit' => 100];
+
+        for ($page = 0; $page < 20 && $url; $page++) {
+            try {
+                $response = Http::withToken($token)->timeout(self::timeout())->acceptJson()->get($url, $query);
+            } catch (\Throwable) {
+                return null;
+            }
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            foreach ((array) $response->json('data') as $row) {
+                if (filled($row['id'] ?? null)) {
+                    $ids[] = (string) $row['id'];
+                }
+            }
+
+            // والرابطُ التالي يحمل استعلامَه كلَّه
+            $url = $response->json('paging.next');
+            $query = [];
+        }
+
+        return $url ? null : $ids;
     }
 
     /**

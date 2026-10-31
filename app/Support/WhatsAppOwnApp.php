@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\Business;
 use App\Models\User;
 use App\Models\WhatsAppConnection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -24,8 +25,9 @@ use Illuminate\Support\Str;
  *
  *   · رمزٌ من تطبيق أبعاد — ذاك طريقُ أرقام أبعاد لا التجّار.
  *   · رمزٌ مؤقّت: ينتهي خلال ساعاتٍ فتقف رسائلُ المتجر بلا سبب يُرى.
- *   · حسابٌ تُحتسب رسائلُه على أبعاد (`billing`). ولا يُعدّ «جاهزًا» ما لم
- *     يثبت أنّها على التاجر: يبقى «بانتظار إثبات الفوترة» ولا يُرسل.
+ *   · حسابٌ تُحتسب رسائلُه على أبعاد (`billing`). ولا يُعدّ «جاهزًا» حتى يراجع
+ *     فريقُ أبعاد دليلًا من ميتا على أنّ رسومه على التاجر (`confirmBilling`):
+ *     يبقى «بانتظار إثبات الفوترة» ولا يُرسل — ولا تفتحه ملكيّةٌ ولا إقرار.
  *   · رقمٌ على تطبيق واتساب للأعمال في الهاتف: التعايشُ لا تتيحه ميتا إلّا
  *     عبر شريكٍ تقنيّ بالتسجيل المدمج — فلا نَعِد به هنا.
  *
@@ -36,10 +38,7 @@ class WhatsAppOwnApp
 {
     public const TYPE = 'own_app';
 
-    /** الفوترةُ على التاجر — ثبتت من ملكيّة الحساب عند ميتا */
-    public const BILLING_MERCHANT = 'merchant';
-
-    /** أكّدها صاحبُ المنصّة بعد أن رأى إثباتها */
+    /** راجع فريقُ أبعاد دليلًا من ميتا على أنّها على التاجر — الطريقُ الوحيد إلى الإرسال */
     public const BILLING_CONFIRMED = 'confirmed';
 
     /** لم يثبت على من تُحتسب — والربطُ لا يُرسل */
@@ -63,6 +62,22 @@ class WhatsAppOwnApp
 
     public const ON_PHONE_APP = 'own_app_on_phone_app';
 
+    /* ═══ وقائعُ من ميتا تمنع تأكيدَ الفوترة ولو رُئي دليل — أو توقفه بعده ═══ */
+
+    public const NO_PAYMENT_METHOD = 'billing_no_payment_method';
+
+    public const SHARED_WITH_ABAAD = 'billing_shared_with_abaad';
+
+    public const PARTNER_OWNED = 'billing_partner_owned';
+
+    public const FUNDING_CHANGED = 'billing_funding_changed';
+
+    /** ما يُقبل دليلًا — من ميتا نفسها، باسم نشاط التاجر، لهذا الحساب */
+    public const EVIDENCE = [
+        'meta_invoice' => 'فاتورة أو إيصال من ميتا لرسائل هذا الحساب باسم نشاط التاجر',
+        'payment_settings' => 'صفحة «الفوترة والمدفوعات» في حساب أعمال التاجر تُظهر وسيلة دفعه على هذا الحساب',
+    ];
+
     /** أيربط التجّارُ بتطبيقاتهم على هذا الخادم؟ — الافتراضُ نعم (`whatsapp.merchant_link`) */
     public static function enabled(): bool
     {
@@ -84,18 +99,38 @@ class WhatsAppOwnApp
         return (string) route('webhooks.whatsapp.own', ['key' => $key]);
     }
 
-    /** أثبتت الفوترةُ أنّها على التاجر؟ */
+    /** راجع فريقُ أبعاد دليلَ أنّ فوترتها على التاجر؟ — ولا يُرسل غيرُها (`WhatsAppConnection::isUsable`) */
     public static function billed(?WhatsAppConnection $connection): bool
     {
-        return self::is($connection)
-            && in_array($connection->billing_state, [self::BILLING_MERCHANT, self::BILLING_CONFIRMED], true);
+        return self::is($connection) && $connection->billing_state === self::BILLING_CONFIRMED;
     }
 
+    /**
+     * وصلةُ تطبيق تاجرٍ لم تُراجَع فوترتُها — لا تُرسل.
+     *
+     * من الفوترة وحدها لا من الحالة: وصلةٌ أخطأت ثمّ نجح «فحصُ الربط» لا تصير
+     * بنجاحه «نشطة» قبل أن يُراجَع دليلُها.
+     */
     public static function awaitsBilling(?WhatsAppConnection $connection): bool
     {
         return self::is($connection)
-            && $connection->status === WhatsAppConnection::PENDING
-            && $connection->last_error_code === self::AWAITS_BILLING;
+            && $connection->status !== WhatsAppConnection::INACTIVE
+            && ! self::billed($connection);
+    }
+
+    /**
+     * أيُؤكِّد فريقُ أبعاد فوترةَ هذه الوصلة؟ — وصلةُ متجرٍ برقمه، لم تُؤكَّد.
+     *
+     * ووصلةُ رقمٍ يُرسل اليوم بطريقه القديم (RIBBON) تُراجَع أيضًا: فإذا أكمل
+     * صاحبُها الربطَ بتطبيقه على الحساب نفسه مضى الدليلُ معه، ولم يقف إرسالُه.
+     */
+    public static function mayConfirm(?WhatsAppConnection $connection): bool
+    {
+        return $connection !== null
+            && $connection->owner_type === WhatsAppMode::OWNER_BUSINESS
+            && filled($connection->waba_id) && filled($connection->access_token)
+            && $connection->status !== WhatsAppConnection::INACTIVE
+            && $connection->billing_state !== self::BILLING_CONFIRMED;
     }
 
     /**
@@ -178,13 +213,23 @@ class WhatsAppOwnApp
             return self::refuse($business, 'waba_id', self::BILLED_TO_ABAAD, $billing['meta']);
         }
 
+        /*
+         * ودليلٌ راجعه فريقُ أبعاد على هذا الحساب نفسه يمضي مع الربط — ما لم
+         * تنقضه وقائعُ ميتا اليوم. وما سواه ينتظر مراجعةً: إقرارُ التاجر
+         * (`billing_ack`) وملكيّةُ الحساب لا يفتحان الإرسال.
+         */
+        $carried = $existing !== null
+            && (string) $existing->waba_id === $waba
+            && $existing->billing_state === self::BILLING_CONFIRMED
+            && self::refuted((array) $existing->billing_evidence, $billing, $waba) === null;
+
         $unregistered = ($number['number']['platform_type'] ?? null) === WhatsAppEmbeddedSignup::PLATFORM_NOT_APPLICABLE;
-        $waits = $billing['state'] === self::BILLING_UNPROVEN || $unregistered;
+        $waits = ! $carried || $unregistered;
 
         // وما لا يُرسل بعد لا يحلّ محلَّ رقمٍ يُرسل اليوم
         if ($waits && $existing?->isUsable()) {
-            return ['ok' => false, 'field' => 'phone_number_id', 'connection' => null, 'pending' => false, 'message' => $billing['state'] === self::BILLING_UNPROVEN
-                ? __('لم يثبت أنّ رسائل هذا الحساب تُحتسب عليك عند ميتا — بقي ربطك الحاليّ كما هو.')
+            return ['ok' => false, 'field' => 'phone_number_id', 'connection' => null, 'pending' => false, 'message' => ! $carried
+                ? __('لم يُراجَع بعدُ دليلٌ من ميتا على أنّ رسائل هذا الحساب تُحتسب عليك — بقي ربطك الحاليّ كما هو حتى يراجعه فريق أبعاد.')
                 : __('الرقم الجديد لم يُفعَّل في واتساب للأعمال بعد — بقي ربطك الحاليّ كما هو. افصله ثمّ أعد الربط لتفعيل الرقم الجديد.')];
         }
 
@@ -199,7 +244,7 @@ class WhatsAppOwnApp
         }
 
         $step = match (true) {
-            $billing['state'] === self::BILLING_UNPROVEN => self::AWAITS_BILLING,
+            ! $carried => self::AWAITS_BILLING,
             $unregistered => WhatsAppOnboarding::NEEDS_REGISTRATION,
             default => null,
         };
@@ -224,10 +269,12 @@ class WhatsAppOwnApp
             'last_error_code' => $step,
             'last_error_message' => null,
             'last_error_at' => null,
-            'billing_state' => $billing['state'],
+            'billing_state' => $carried ? self::BILLING_CONFIRMED : $billing['state'],
+            'billing_evidence' => $carried ? $existing->billing_evidence : null,
             'billing_owner_id' => $billing['owner_id'],
             'billing_owner_name' => $billing['owner_name'],
             'billing_checked_at' => now(),
+            'metadata' => array_merge((array) $existing?->metadata, ['billing_facts' => $billing['facts']]),
             'connected_at' => $same ? $existing->connected_at : now(),
             'connected_by_user_id' => $actor->id,
             'disconnected_at' => null,
@@ -244,56 +291,179 @@ class WhatsAppOwnApp
             .($connection->display_phone_number ?? $phone).')');
 
         return ['ok' => true, 'field' => null, 'connection' => $connection, 'pending' => $step !== null, 'message' => match ($step) {
-            self::AWAITS_BILLING => __('حُفظ الربط — ولا يُرسل حتى يثبت أنّ رسائل حسابك تُحتسب عليك عند ميتا. أكمل الخطوات أدناه.'),
+            self::AWAITS_BILLING => __('حُفظ الربط — ولا يُرسل حتى يراجع فريق أبعاد دليلًا من ميتا على أنّ رسائل حسابك تُحتسب عليك. أكمل الخطوات أدناه.'),
             WhatsAppOnboarding::NEEDS_REGISTRATION => __('تمّ التفويض — بقيت خطوةٌ واحدة: فعّل رقمك برمز التحقّق بخطوتين (ستّة أرقام) أدناه.'),
             default => __('رُبط رقمك بتطبيقك — الصق عنوان الإشعارات ورمز التحقّق في لوحة تطبيقك ليصلنا ما يكتبه زبائنك.'),
         }];
     }
 
     /**
-     * على من تُحتسب رسائلُ هذا الحساب عند ميتا؟
+     * على من تُحتسب رسائلُ هذا الحساب عند ميتا؟ — ما نقرؤه، وما لا نقدر عليه.
      *
-     * ═══ ما يُعدّ دليلًا ═══
+     * ═══ ما لا تقوله الواجهةُ لنا ═══
      *
-     * حسابٌ نوعُ ملكيّته `SELF`، ومالكُه هو من أُنشئ نيابةً عنه، وليس واحدًا
-     * من حسابات أعمال أبعاد. فحسابٌ كهذا يملكه صاحبُه ويستعمله لنفسه، وفوترتُه
-     * فوترتُه. وأبعاد ليست «مزوّد حلول أعمال» عند ميتا، فلا خطَّ ائتمانٍ لها
-     * يُشارَك مع حسابٍ لا تملكه (`#10` في فحص 2026-10-31).
+     * في نموذج ميتا الجديد ينفصل «حسابُ واتساب» (WAAC: الرقمُ والاسم) عن
+     * «حساب الرسائل» (القوالبُ ووسيلةُ الدفع) — ومعرّفُ الـWABA هو معرّفُ حساب
+     * الرسائل. ووسيلةُ دفعه تُسأل بـ`primary_funding_id`، وميتا تردّه بـ`#10`
+     * لكلّ تطبيقٍ لا يملكه «مزوّد حلول أعمال» — ولو سأل صاحبُ الحساب عن حسابه
+     * برمز تطبيقه (فحص 2026-10-31). والملكيّةُ `SELF` تقول من يملك الحساب لا
+     * من يدفع عنه.
      *
-     * و`primary_funding_id` لا يُعتمد: ميتا لا تُعيده لنا أصلًا.
+     * فلا شيءَ هنا يُثبت أنّ الرسوم على التاجر: النتيجةُ «لم يثبت» أو «أبعاد»
+     * لا غير، ويثبت ذلك بمراجعة دليلٍ من ميتا (`confirmBilling`).
      *
-     * وما سوى ذلك «لم يثبت» — لا «على التاجر»: قراءةٌ فشلت، أو ملكيّةٌ لشريك
-     * (`CLIENT_OWNED` / `ON_BEHALF_OF`)، أو حساباتُ أبعاد لم تُعرف بعد. فيبقى
-     * الربطُ لا يُرسل حتى يؤكّد صاحبُ المنصّة الإثبات (`confirmBilling`).
+     * ═══ وما نقرؤه — فيردّ الربط، أو يمنع التأكيد، أو يوقفه بعده ═══
      *
-     * @return array{state:string, owner_id:?string, owner_name:?string, meta:array{code:?string, message:?string}}
+     *   · المالك، ومن أُنشئ نيابةً عنه: أحدُهما أبعاد → يُردّ.
+     *   · أيرى نشاطُ أبعاد الحساب (`abaadAccess`)؟ يملكه → يُردّ؛ شُورك معه →
+     *     لا يُؤكَّد: خطُّ ائتمان شريكٍ لا يبلغ حسابًا لم يُشارَك معه.
+     *   · `primary_funding_id` إن ردّته ميتا: غائبٌ = لا وسيلة دفع → لا يُؤكَّد؛
+     *     وحاضرٌ تُحفظ بصمتُه، فإن تبدّلت بعد التأكيد وقف الإرسال.
+     *   · حسابٌ لشريكٍ نيابةً عن التاجر (`ON_BEHALF_OF`) → لا يُؤكَّد.
+     *
+     * @return array{state:string, owner_id:?string, owner_name:?string, facts:array<string, mixed>, meta:array{code:?string, message:?string}}
      */
     public static function billing(string $waba, string $token): array
     {
         $read = WhatsAppEmbeddedSignup::wabaOwnership($waba, $token);
-        $meta = ['code' => $read['code'], 'message' => $read['message']];
+        $funding = WhatsAppEmbeddedSignup::funding($waba, $token);
+        $access = self::abaadAccess($waba);
 
-        if (! $read['ok']) {
-            return ['state' => self::BILLING_UNPROVEN, 'owner_id' => null, 'owner_name' => null, 'meta' => $meta];
-        }
+        $facts = [
+            'ownership' => $read['ok'] ? $read['ownership_type'] : null,
+            'partner_owned' => $read['ok'] && ($read['ownership_type'] === 'ON_BEHALF_OF'
+                || (filled($read['on_behalf_id']) && $read['on_behalf_id'] !== $read['owner_id'])),
+            'funding' => $funding['state'],
+            'funding_mark' => $funding['mark'],
+            'funding_code' => $funding['code'],
+            'abaad_access' => $access,
+            'read_at' => now()->toIso8601String(),
+        ];
 
-        $abaad = self::abaadBusinessIds();
         $named = array_values(array_filter([$read['owner_id'], $read['on_behalf_id']]));
-
-        if (array_intersect($named, $abaad) !== []) {
-            return ['state' => self::BILLING_ABAAD, 'owner_id' => $read['owner_id'], 'owner_name' => $read['owner_name'], 'meta' => $meta];
-        }
-
-        $self = $read['ownership_type'] === 'SELF'
-            && filled($read['owner_id'])
-            && ($read['on_behalf_id'] === null || $read['on_behalf_id'] === $read['owner_id']);
+        $abaad = array_intersect($named, self::abaadBusinessIds()) !== [] || $access === 'owned';
 
         return [
-            'state' => $self && $abaad !== [] ? self::BILLING_MERCHANT : self::BILLING_UNPROVEN,
+            'state' => $abaad ? self::BILLING_ABAAD : self::BILLING_UNPROVEN,
             'owner_id' => $read['owner_id'],
             'owner_name' => $read['owner_name'],
-            'meta' => $meta,
+            'facts' => $facts,
+            'meta' => ['code' => $read['code'], 'message' => $read['message']],
         ];
+    }
+
+    /**
+     * أتنقض وقائعُ ميتا اليوم دليلًا رُوجع؟ — سببُ النقض، أو `null`.
+     *
+     * وما لم يُقرأ لا ينقض: `#10` على وسيلة الدفع، أو قائمةٌ لم تُقرأ، لا
+     * تُوقف إرسالًا رُوجع دليلُه. ينقضه ما قرأناه فخالفه.
+     *
+     * @param  array<string, mixed>  $evidence  ما حُفظ عند التأكيد
+     * @param  array{state:string, facts:array<string, mixed>}  $billing  قراءةُ اليوم (`billing`)
+     */
+    public static function refuted(array $evidence, array $billing, ?string $waba = null): ?string
+    {
+        $facts = $billing['facts'];
+        $was = $evidence['funding_mark'] ?? null;
+
+        return match (true) {
+            blank($evidence['reviewed_at'] ?? null) => self::AWAITS_BILLING,
+            $waba !== null && (string) ($evidence['waba_id'] ?? '') !== $waba => self::AWAITS_BILLING,
+            $billing['state'] === self::BILLING_ABAAD => self::BILLED_TO_ABAAD,
+            ($blocker = self::blocker($facts)) !== null => $blocker,
+            filled($was) && filled($facts['funding_mark']) && $was !== $facts['funding_mark'] => self::FUNDING_CHANGED,
+            default => null,
+        };
+    }
+
+    /**
+     * ما يمنع التأكيدَ في وقائعِ قراءةٍ واحدة — ولو رُئي دليل.
+     *
+     * @param  array<string, mixed>  $facts
+     */
+    public static function blocker(array $facts): ?string
+    {
+        return match (true) {
+            ($facts['abaad_access'] ?? null) === 'owned' => self::BILLED_TO_ABAAD,
+            ($facts['funding'] ?? null) === 'absent' => self::NO_PAYMENT_METHOD,
+            ($facts['abaad_access'] ?? null) === 'shared' => self::SHARED_WITH_ABAAD,
+            ($facts['partner_owned'] ?? false) === true => self::PARTNER_OWNED,
+            default => null,
+        };
+    }
+
+    /**
+     * ما يراه فريقُ أبعاد قبل أن يؤكّد — وقائعُ ميتا كما قُرئت، وما يمنع، وما رُوجع.
+     *
+     * بلا رمزٍ ولا سرٍّ ولا معرّفِ وسيلة دفع: البصمةُ نفسُها لا تُعرض.
+     *
+     * @return array<string, mixed>
+     */
+    public static function reviewView(WhatsAppConnection $connection): array
+    {
+        $facts = (array) (((array) $connection->metadata)['billing_facts'] ?? []);
+        $evidence = (array) $connection->billing_evidence;
+        $blocker = $facts === [] ? null : self::blocker($facts);
+
+        return [
+            'own_app' => self::is($connection),
+            'billing_state' => $connection->billing_state,
+            'billing_owner' => $connection->billing_owner_name,
+            'awaits_billing' => self::awaitsBilling($connection),
+            'may_confirm' => self::mayConfirm($connection),
+            'facts' => $facts === [] ? null : [
+                'ownership' => $facts['ownership'] ?? null,
+                'funding' => $facts['funding'] ?? null,
+                'abaad_access' => $facts['abaad_access'] ?? null,
+                'partner_owned' => (bool) ($facts['partner_owned'] ?? false),
+                'read_at' => filled($facts['read_at'] ?? null) ? Carbon::parse($facts['read_at'])->format('Y-m-d H:i') : null,
+            ],
+            'blocker' => $blocker === null ? null : self::say($blocker),
+            'stopped' => self::is($connection) && $connection->last_error_code === self::AWAITS_BILLING && filled($connection->last_error_message)
+                ? (string) $connection->last_error_message : null,
+            'evidence' => $connection->billing_state === self::BILLING_CONFIRMED && $evidence !== [] ? [
+                'kind' => __(self::EVIDENCE[$evidence['kind'] ?? ''] ?? (string) ($evidence['kind'] ?? '')),
+                'reference' => $evidence['reference'] ?? null,
+                'reviewed_by' => $evidence['reviewed_by'] ?? null,
+                'reviewed_at' => filled($evidence['reviewed_at'] ?? null) ? Carbon::parse($evidence['reviewed_at'])->format('Y-m-d H:i') : null,
+            ] : null,
+            'kinds' => collect(self::EVIDENCE)->map(fn (string $label, string $key) => ['key' => $key, 'label' => __($label)])->values()->all(),
+        ];
+    }
+
+    /**
+     * أيرى نشاطُ أبعاد هذا الحساب عند ميتا؟ — برمز أرقام المنصّة، قراءةً لا غير.
+     *
+     * ما يملكه (`owned_whatsapp_business_accounts`)، وما شُورك معه
+     * (`client_whatsapp_business_accounts`). وما لم يُقرأ «لا نعرف» — لا «لا».
+     *
+     * @return 'owned'|'shared'|'none'|'unknown'
+     */
+    public static function abaadAccess(string $waba): string
+    {
+        $platform = WhatsAppConnection::where('owner_type', WhatsAppMode::OWNER_PLATFORM)->get()
+            ->first(fn (WhatsAppConnection $c) => filled($c->access_token));
+        $ids = self::abaadBusinessIds();
+
+        if (! $platform || $ids === []) {
+            return 'unknown';
+        }
+
+        $known = true;
+
+        foreach ($ids as $business) {
+            foreach (['owned' => 'owned_whatsapp_business_accounts', 'shared' => 'client_whatsapp_business_accounts'] as $kind => $edge) {
+                $list = WhatsAppEmbeddedSignup::businessWabas($business, $edge, (string) $platform->access_token);
+
+                if ($list === null) {
+                    $known = false;
+                } elseif (in_array($waba, $list, true)) {
+                    return $kind;
+                }
+            }
+        }
+
+        return $known ? 'none' : 'unknown';
     }
 
     /**
@@ -339,26 +509,61 @@ class WhatsAppOwnApp
     }
 
     /**
-     * يؤكّد صاحبُ المنصّة أنّ فوترة هذا الحساب على التاجر — بعد أن رأى إثباتها.
+     * يؤكّد فريقُ أبعاد أنّ فوترة هذا الحساب على التاجر — بعد أن راجع دليلًا من ميتا.
+     *
+     * وهو الطريقُ الوحيد إلى الإرسال: إقرارُ التاجر لا يكفي، وملكيّةُ الحساب
+     * لا تكفي. ويُقرأ الحسابُ عند ميتا لحظةَ التأكيد، فوقائعُ تنقضه تردّه ولو
+     * رُئي الدليل. ويُحفظ ما رُوجع، ومرجعُه، ومن راجعه ومتى، وبصمةُ وسيلة الدفع
+     * إن قرأناها — فإن تبدّلت بعده وقف الإرسال (`recheckBilling`).
      *
      * ثمّ تمضي الوصلة إلى خطوتها التالية: تفعيلُ الرقم إن كان جديدًا على
-     * Cloud API، وإلّا «نشطة». ولا يمسّ هذا رمزًا ولا رقمًا.
+     * Cloud API، وإلّا «نشطة». ولا يمسّ هذا رمزًا ولا رقمًا ولا شيئًا عند ميتا.
+     *
+     * @param  array{kind:string, reference:string}  $evidence
+     * @return array{ok:bool, message:string}
      */
-    public static function confirmBilling(WhatsAppConnection $connection): WhatsAppConnection
+    public static function confirmBilling(WhatsAppConnection $connection, User $reviewer, array $evidence): array
     {
-        if (! self::is($connection) || self::billed($connection)) {
-            return $connection;
+        if (! self::mayConfirm($connection) || ! array_key_exists($evidence['kind'], self::EVIDENCE)) {
+            return ['ok' => false, 'message' => __('لا ربطَ لهذا المتجر ينتظر إثبات الفوترة.')];
         }
 
-        $connection->forceFill(['billing_state' => self::BILLING_CONFIRMED, 'billing_checked_at' => now()])->save();
+        $billing = self::billing((string) $connection->waba_id, (string) $connection->access_token);
+        $record = [
+            'kind' => $evidence['kind'],
+            'reference' => mb_substr(trim($evidence['reference']), 0, 120),
+            'reviewed_by_id' => $reviewer->id,
+            'reviewed_by' => $reviewer->name,
+            'reviewed_at' => now()->toIso8601String(),
+            'waba_id' => (string) $connection->waba_id,
+            'funding' => $billing['facts']['funding'],
+            'funding_mark' => $billing['facts']['funding_mark'],
+            'abaad_access' => $billing['facts']['abaad_access'],
+        ];
+        $refusal = self::refuted($record, $billing);
 
-        return self::advance($connection);
+        $connection->forceFill([
+            'billing_owner_id' => $billing['owner_id'] ?? $connection->billing_owner_id,
+            'billing_owner_name' => $billing['owner_name'] ?? $connection->billing_owner_name,
+            'billing_checked_at' => now(),
+            'metadata' => array_merge((array) $connection->metadata, ['billing_facts' => $billing['facts']]),
+        ] + ($refusal === null ? ['billing_state' => self::BILLING_CONFIRMED, 'billing_evidence' => $record] : []))->save();
+
+        if ($refusal !== null) {
+            return ['ok' => false, 'message' => self::say($refusal)];
+        }
+
+        self::advance($connection);
+
+        return ['ok' => true, 'message' => self::is($connection)
+            ? __('أُكّد أنّ فوترة ميتا على التاجر — مضى الربط إلى خطوته التالية.')
+            : __('حُفظ الدليل — إذا أكمل التاجر الربط بتطبيقه على هذا الحساب لم يقف إرساله.')];
     }
 
-    /** وصلةٌ ثبتت فوترتُها تمضي إلى خطوتها التالية */
+    /** وصلةٌ رُوجعت فوترتُها تمضي إلى خطوتها التالية */
     private static function advance(WhatsAppConnection $connection): WhatsAppConnection
     {
-        if (! self::awaitsBilling($connection) || ! self::billed($connection)) {
+        if (! self::billed($connection) || $connection->last_error_code !== self::AWAITS_BILLING) {
             return $connection;
         }
 
@@ -374,30 +579,57 @@ class WhatsAppOwnApp
     }
 
     /**
+     * تُعاد قراءةُ فوترة الوصلة عند ميتا — قراءةٌ لا غير، ولا نداءَ يغيّر شيئًا.
+     *
+     * ووصلةٌ رُوجعت فوترتُها تنقضها وقائعُ اليوم — أبعادُ صارت مالكةً أو
+     * شريكة، أو غابت وسيلةُ الدفع، أو تبدّلت — تقف: تعود «بانتظار إثبات
+     * الفوترة» ولا تُرسل حتى يُراجَع دليلٌ جديد. وما لم يُقرأ لا يوقفها.
+     *
+     * @return string|null سببُ الإيقاف إن وقفت
+     */
+    public static function recheckBilling(WhatsAppConnection $connection): ?string
+    {
+        if (! self::is($connection) || $connection->status === WhatsAppConnection::INACTIVE) {
+            return null;
+        }
+
+        $billing = self::billing((string) $connection->waba_id, (string) $connection->access_token);
+        $billed = self::billed($connection);
+        $stop = $billed ? self::refuted((array) $connection->billing_evidence, $billing, (string) $connection->waba_id) : null;
+
+        $connection->forceFill([
+            'billing_state' => $billed && $stop === null ? self::BILLING_CONFIRMED : $billing['state'],
+            'billing_owner_id' => $billing['owner_id'] ?? $connection->billing_owner_id,
+            'billing_owner_name' => $billing['owner_name'] ?? $connection->billing_owner_name,
+            'billing_checked_at' => now(),
+            'metadata' => array_merge((array) $connection->metadata, ['billing_facts' => $billing['facts']]),
+        ] + ($stop === null ? [] : [
+            'status' => WhatsAppConnection::PENDING,
+            'last_error_code' => self::AWAITS_BILLING,
+            'last_error_message' => self::say($stop),
+            'last_error_at' => now(),
+        ]))->save();
+
+        if ($stop !== null) {
+            WhatsAppLinkCheck::log('own_app_billing_stopped', $connection->business_id, ['problem' => $stop, 'code' => null, 'message' => null]);
+            Activity::log('settings', 'واتساب — أُوقف إرسال وصلة تطبيق التاجر: نقضت قراءةُ ميتا دليلَ الفوترة', ['business_id' => $connection->business_id]);
+        }
+
+        return $stop;
+    }
+
+    /**
      * «تحقّق الآن» لوصلة تطبيق التاجر — قراءةٌ عند ميتا، ونداءٌ واحدٌ إن لزم.
      *
-     * يُعاد سؤالُ الفوترة لما لم يثبت، ويُثبت اشتراكُ تطبيقه في حسابه (`subscribe`
-     * يُنادي `POST` على حسابه وبرمزه حين تقول قراءةٌ إنّه غائب)، ويُقرأ إعدادُ
-     * إشعارات تطبيقه: أعنوانُها عنوانُنا، وأفيها حقلُ `messages`؟
+     * تُعاد قراءةُ الفوترة (`recheckBilling`)، ويُثبت اشتراكُ تطبيقه في حسابه
+     * (`subscribe` يُنادي `POST` على حسابه وبرمزه حين تقول قراءةٌ إنّه غائب)،
+     * ويُقرأ إعدادُ إشعارات تطبيقه: أعنوانُها عنوانُنا، وأفيها حقلُ `messages`؟
      *
      * @return array{billing:string, webhook:string, app:string}
      */
     public static function recheck(WhatsAppConnection $connection): array
     {
-        if (! self::billed($connection)) {
-            $billing = self::billing((string) $connection->waba_id, (string) $connection->access_token);
-
-            if ($billing['state'] !== self::BILLING_UNPROVEN) {
-                $connection->forceFill([
-                    'billing_state' => $billing['state'],
-                    'billing_owner_id' => $billing['owner_id'] ?? $connection->billing_owner_id,
-                    'billing_owner_name' => $billing['owner_name'] ?? $connection->billing_owner_name,
-                    'billing_checked_at' => now(),
-                ])->save();
-            }
-
-            self::advance($connection);
-        }
+        self::recheckBilling($connection);
 
         $callback = self::callbackUrl($connection);
         $hook = WhatsAppLinkCheck::subscribe((string) $connection->waba_id, (string) $connection->access_token, (string) $connection->token_app_id, $callback);
@@ -439,6 +671,11 @@ class WhatsAppOwnApp
                     'state' => $connection->billing_state,
                     'owner' => $connection->billing_owner_name,
                     'checked_at' => $connection->billing_checked_at?->format('Y-m-d H:i'),
+                    'reviewed_at' => self::billed($connection) ? substr((string) (((array) $connection->billing_evidence)['reviewed_at'] ?? ''), 0, 10) ?: null : null,
+                    // ما يُرسله التاجر دليلًا — من ميتا نفسها، لا إقرارُه
+                    'evidence' => array_values(array_map(fn (string $label) => __($label), self::EVIDENCE)),
+                    'stopped' => $connection->last_error_code === self::AWAITS_BILLING && filled($connection->last_error_message)
+                        ? (string) $connection->last_error_message : null,
                 ],
             ] : null,
         ];
@@ -454,6 +691,11 @@ class WhatsAppOwnApp
             self::TOKEN_EXPIRES => __('هذا رمزٌ مؤقّت ينتهي — أنشئ رمز «مستخدم نظام» لا ينتهي من إعدادات حسابك في Meta.'),
             self::BILLED_TO_ABAAD => __('هذا الحساب تُحتسب رسائله على أبعاد لا عليك — اربط حساب واتساب للأعمال الذي يملكه نشاطك ووسيلة دفعه.'),
             self::ON_PHONE_APP => __('هذا الرقم يعمل على تطبيق واتساب للأعمال في الهاتف. الربط بتطبيقك يحتاج رقمًا ليس على تطبيق الهاتف — والتعايش لا تتيحه ميتا إلّا عبر شريكٍ تقنيّ.'),
+            self::AWAITS_BILLING => __('لم يُراجَع بعدُ دليلٌ من ميتا على أنّ رسائل هذا الحساب تُحتسب على التاجر.'),
+            self::NO_PAYMENT_METHOD => __('ميتا تقول إنّ هذا الحساب بلا وسيلة دفع — تُضاف من «الفوترة والمدفوعات» في حساب أعمال التاجر ثمّ يُراجَع الدليل.'),
+            self::SHARED_WITH_ABAAD => __('هذا الحساب مشارَكٌ مع نشاط أبعاد عند ميتا — تُزال المشاركة أوّلًا، فحسابُ التاجر لا يُشارَك مع أبعاد.'),
+            self::PARTNER_OWNED => __('هذا الحساب يملكه شريكٌ نيابةً عن التاجر — قد يدفع عنه الشريك. يُربط حسابٌ يملكه نشاط التاجر نفسه.'),
+            self::FUNDING_CHANGED => __('تبدّلت وسيلة الدفع على هذا الحساب بعد مراجعة دليله — يُراجَع دليلٌ جديد قبل أن يعود الإرسال.'),
             default => WhatsAppLinkCheck::say($problem),
         };
     }

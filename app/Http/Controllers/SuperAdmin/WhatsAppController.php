@@ -497,25 +497,39 @@ class WhatsAppController extends Controller
     }
 
     /**
-     * يؤكّد صاحبُ المنصّة أنّ فوترة ميتا على التاجر — بعد أن رأى إثباتها بنفسه.
+     * يؤكّد فريقُ أبعاد أنّ فوترة ميتا على التاجر — بعد أن راجع دليلًا من ميتا نفسها.
      *
-     * لوصلةٍ بتطبيق التاجر لم تقل ملكيّةُ حسابها ذلك آليًّا. ولا يمسّ رمزًا
-     * ولا رقمًا: تمضي الوصلة إلى خطوتها التالية وحدها (`WhatsAppOwnApp::confirmBilling`).
+     * لا زرٌّ يُضغط: يُسمّى الدليلُ ومرجعُه، ويُقرّ المراجعُ أنّه رأى اسمَ نشاط
+     * التاجر ومعرّفَ هذا الحساب فيه. ويُقرأ الحسابُ عند ميتا لحظتها، فوقائعُ
+     * تنقضه تردّه (`WhatsAppOwnApp::confirmBilling`). ولا يمسّ رمزًا ولا رقمًا.
      */
-    public function confirmBilling(int $id)
+    public function confirmBilling(Request $request, int $id)
     {
         $business = Business::findOrFail($id);
         $own = WhatsAppConnections::forBusiness($business->id);
 
-        if (! \App\Support\WhatsAppOwnApp::awaitsBilling($own)) {
+        if (! \App\Support\WhatsAppOwnApp::mayConfirm($own)) {
             return back()->withErrors(['whatsapp' => __('لا ربطَ لهذا المتجر ينتظر إثبات الفوترة.')]);
         }
 
-        \App\Support\WhatsAppOwnApp::confirmBilling($own);
+        $data = $request->validate([
+            'evidence_kind' => ['required', Rule::in(array_keys(\App\Support\WhatsAppOwnApp::EVIDENCE))],
+            'evidence_reference' => ['required', 'string', 'min:3', 'max:120'],
+            'evidence_checked' => ['accepted'],
+        ]);
 
-        Activity::log('settings', 'واتساب — تأكيد أنّ فوترة ميتا على «'.$business->name.'»');
+        $result = \App\Support\WhatsAppOwnApp::confirmBilling($own, $request->user(), [
+            'kind' => $data['evidence_kind'], 'reference' => $data['evidence_reference'],
+        ]);
 
-        return back()->with('toast', ['msg' => __('أُكّد أنّ فوترة ميتا على التاجر — مضى الربط إلى خطوته التالية.'), 'type' => 'success']);
+        if (! $result['ok']) {
+            return back()->withErrors(['whatsapp' => $result['message']]);
+        }
+
+        Activity::log('settings', 'واتساب — مراجعة دليل أنّ فوترة ميتا على «'.$business->name.'» ('.$data['evidence_kind'].')',
+            ['business_id' => $business->id]);
+
+        return back()->with('toast', ['msg' => $result['message'], 'type' => 'success']);
     }
 
     /**
@@ -574,11 +588,8 @@ class WhatsAppController extends Controller
                 'link' => WhatsAppLinkHealth::view($own),
                 'can_check' => filled($own->phone_number_id) && filled($own->access_token),
                 // وربطُ التاجر بتطبيقه: على من تُحتسب رسائلُه، وأينتظر إثباتَها
-                'own_app' => \App\Support\WhatsAppOwnApp::is($own) ? [
-                    'billing_state' => $own->billing_state,
-                    'billing_owner' => $own->billing_owner_name,
-                    'awaits_billing' => \App\Support\WhatsAppOwnApp::awaitsBilling($own),
-                ] : null,
+                'own_app' => \App\Support\WhatsAppOwnApp::is($own) || \App\Support\WhatsAppOwnApp::mayConfirm($own)
+                    ? \App\Support\WhatsAppOwnApp::reviewView($own) : null,
             ] : null,
             // أيُختار له «API مستقلّ» الآن؟ — الباقةُ والإضافات (`canUseOwnNumber`)
             'own_eligible' => WhatsAppFeature::canUseOwnNumber($business),

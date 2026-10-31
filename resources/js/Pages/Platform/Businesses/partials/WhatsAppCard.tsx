@@ -73,12 +73,26 @@ export interface BillingReview {
     billing_owner: string | null;
     awaits_billing: boolean;
     may_confirm: boolean;
-    facts: { ownership: string | null; funding: string | null; abaad_access: string | null; partner_owned: boolean; read_at: string | null } | null;
+    facts: {
+        ownership: string | null;
+        funding: string | null;
+        abaad_access: string | null;
+        partner_owned: boolean;
+        /** أيُرسل الرمزُ من هذا الحساب، وأفيه الرقم، وكم حسابَ رسائل يصله الرمزُ على الرقم */
+        token_sends?: boolean | null;
+        phone_in_account?: boolean | null;
+        reach?: number | null;
+        read_at: string | null;
+    } | null;
     blocker: string | null;
     stopped: string | null;
     evidence: { kind: string; reference: string | null; reviewed_by: string | null; reviewed_at: string | null } | null;
     kinds: { key: string; label: string }[];
+    /** يُسمّى حسابُ الرسائل في كلّ رسالة (`messaging_account_id`) على إصدار الواجهة الحاليّ */
+    names_account?: boolean;
 }
+
+const yesNo = (v: boolean | null | undefined) => (v === true ? 'نعم' : v === false ? 'لا' : 'تعذّرت القراءة');
 
 const FUNDING: Record<string, string> = {
     present: 'عليه وسيلة دفع (لا نعرف لمن)',
@@ -124,6 +138,12 @@ export function BillingReviewBlock({ businessId, review }: { businessId: number;
                     <li>{t('الملكيّة عند ميتا')}: {facts.ownership ?? t('تعذّرت القراءة')}{facts.partner_owned ? ` — ${t('لشريكٍ نيابةً عن التاجر')}` : ''}</li>
                     <li>{t('وسيلة الدفع')}: {t(FUNDING[facts.funding ?? 'unreadable'] ?? FUNDING.unreadable)}</li>
                     <li>{t('نشاط أبعاد')}: {t(ACCESS[facts.abaad_access ?? 'unknown'] ?? ACCESS.unknown)}</li>
+                    <li>{t('الرمز يُرسل من هذا الحساب')}: {t(yesNo(facts.token_sends))}</li>
+                    <li>{t('الرقم في هذا الحساب')}: {t(yesNo(facts.phone_in_account))}</li>
+                    <li>
+                        {t('حسابات الرسائل التي يصلها الرمز على الرقم')}: {facts.reach ?? t('تعذّرت القراءة')}
+                        {review.names_account ? ` — ${t('يُسمّى حساب التاجر في كلّ رسالة')}` : ''}
+                    </li>
                     {facts.read_at && <li>{t('قُرئت')}: {facts.read_at}</li>}
                 </ul>
             )}

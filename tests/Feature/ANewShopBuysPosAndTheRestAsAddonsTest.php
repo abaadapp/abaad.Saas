@@ -331,6 +331,14 @@ class ANewShopBuysPosAndTheRestAsAddonsTest extends TestCase
         $this->assertTrue($this->allows($pro, 'whatsapp'));
         $this->assertFalse(WhatsAppFeature::needsOwnNumberAddon($pro));
 
+        // وصلتُه جاهزة: تُرسل، ورُوجع دليلُ فوترتها (`WhatsAppOwnApp::readyForOwnMode`) — فالإضافةُ وحدها السؤال
+        \App\Models\WhatsAppConnection::create([
+            'owner_type' => \App\Support\WhatsAppMode::OWNER_BUSINESS, 'business_id' => $pro->id, 'provider' => 'meta_cloud',
+            'purpose' => \App\Support\WhatsAppMode::PURPOSE_NOTIFICATIONS, 'waba_id' => 'W-PRO', 'phone_number_id' => 'PN-PRO',
+            'access_token' => 'pro-shop-token-0123456789', 'status' => \App\Models\WhatsAppConnection::ACTIVE,
+            'billing_state' => \App\Support\WhatsAppOwnApp::BILLING_CONFIRMED,
+        ]);
+
         $this->actingAs($this->platform)->put(route('super-admin.businesses.whatsapp.update', $pro->id), [
             'whatsapp_mode' => \App\Support\WhatsAppMode::BUSINESS_OWN,
         ])->assertSessionHasNoErrors();

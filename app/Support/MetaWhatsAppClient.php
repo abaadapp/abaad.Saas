@@ -32,8 +32,10 @@ class MetaWhatsAppClient
         array $variables = [],
         ?array $document = null,
     ): array {
-        if ($refusal = self::unbilled($connection)) {
-            return $refusal;
+        $account = self::account($connection);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
         }
 
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
@@ -81,7 +83,7 @@ class MetaWhatsAppClient
             $response = Http::withToken($connection->access_token)
                 ->timeout((int) config('whatsapp.timeout', 15))
                 ->acceptJson()
-                ->post($url, $payload);
+                ->post($url, $payload + $account['field']);
         } catch (\Throwable $e) {
             // انقطاع شبكة أو مهلة — يُعاد، لا يُقيَّد فشلًا نهائيًّا
             return self::failure('network_error', $e->getMessage(), retryable: true);
@@ -180,8 +182,10 @@ class MetaWhatsAppClient
 
     public static function sendText(WhatsAppConnection $connection, string $to, string $body): array
     {
-        if ($refusal = self::unbilled($connection)) {
-            return $refusal;
+        $account = self::account($connection);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
         }
 
         $url = rtrim((string) config('whatsapp.graph_url'), '/')
@@ -204,7 +208,7 @@ class MetaWhatsAppClient
                      * ميتا تفتح الرابط من خوادمها لتسحب عنوانه وصورته.
                      */
                     'text' => ['preview_url' => false, 'body' => $body],
-                ]);
+                ] + $account['field']);
         } catch (\Throwable $e) {
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
@@ -230,8 +234,10 @@ class MetaWhatsAppClient
         ?string $caption = null,
         ?string $filename = null,
     ): array {
-        if ($refusal = self::unbilled($connection)) {
-            return $refusal;
+        $account = self::account($connection);
+
+        if ($account['refusal'] !== null) {
+            return $account['refusal'];
         }
 
         if (! in_array($kind, ['image', 'document'], true)) {
@@ -269,7 +275,7 @@ class MetaWhatsAppClient
                     'to' => $to,
                     'type' => $kind,
                     $kind => $media,
-                ]);
+                ] + $account['field']);
         } catch (\Throwable $e) {
             return self::failure('network_error', $e->getMessage(), retryable: true);
         }
@@ -315,18 +321,23 @@ class MetaWhatsAppClient
     }
 
     /**
-     * وصلةُ تطبيق تاجرٍ لم يُراجَع دليلُ فوترتها لا يخرج منها شيءٌ إلى ميتا.
+     * على أيّ حساب رسائل تُحتسب هذه الرسالة — يُسمّى فيها، أو لا تخرج.
      *
-     * آخرُ بابٍ قبل النداء: من وصل هنا بوصلةٍ لم تمرّ بـ`isUsable` يُردّ أيضًا،
-     * فلا تُحتسب رسالةٌ على حسابٍ لم يثبت أنّ صاحبه يدفعها.
+     * آخرُ بابٍ قبل النداء، في الدوالّ الثلاث التي تُخرج رسالة: وصلةُ تطبيق
+     * تاجرٍ لم يُراجَع دليلُ فوترتها، أو لا يُعرف حسابُ رسائلها بأمان، لا يخرج
+     * منها شيء. وما يُسمّى هو الحسابُ الذي رُوجع دليلُه (`WhatsAppOwnApp::sendAccount`).
      *
-     * @return array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}|null
+     * @return array{refusal: ?array{ok:bool, id:?string, code:?string, message:?string, retryable:bool}, field: array<string, string>}
      */
-    private static function unbilled(WhatsAppConnection $connection): ?array
+    private static function account(WhatsAppConnection $connection): array
     {
-        return WhatsAppOwnApp::is($connection) && ! WhatsAppOwnApp::billed($connection)
-            ? self::failure(WhatsAppOwnApp::AWAITS_BILLING, WhatsAppOwnApp::say(WhatsAppOwnApp::AWAITS_BILLING), retryable: false)
-            : null;
+        $bind = WhatsAppOwnApp::sendAccount($connection);
+
+        return [
+            'refusal' => $bind['problem'] === null ? null
+                : self::failure($bind['problem'], WhatsAppOwnApp::say($bind['problem']), retryable: false),
+            'field' => $bind['account'] === null ? [] : ['messaging_account_id' => $bind['account']],
+        ];
     }
 
     private static function failure(string $code, string $message, bool $retryable): array

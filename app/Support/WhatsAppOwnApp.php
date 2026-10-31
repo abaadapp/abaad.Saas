@@ -72,6 +72,17 @@ class WhatsAppOwnApp
 
     public const FUNDING_CHANGED = 'billing_funding_changed';
 
+    /* ═══ وحسابُ الرسائل الذي تُحتسب عليه كلُّ رسالة (`sendAccount`) ═══ */
+
+    /** الرمزُ يصل على هذا الرقم أكثرَ من حساب رسائل — أو لا يُعرف كم — ولا يُسمّى الحسابُ في الرسالة */
+    public const AMBIGUOUS_ACCOUNT = 'messaging_account_ambiguous';
+
+    /** الرمزُ لم يعد يُرسل من هذا الحساب، أو الرقمُ لم يعد فيه */
+    public const ACCOUNT_UNBOUND = 'messaging_account_unbound';
+
+    /** حسابُ الرسائل مربوطٌ لمتجرٍ آخر عندنا */
+    public const ACCOUNT_TAKEN = 'messaging_account_taken';
+
     /** ما يُقبل دليلًا — من ميتا نفسها، باسم نشاط التاجر، لهذا الحساب */
     public const EVIDENCE = [
         'meta_invoice' => 'فاتورة أو إيصال من ميتا لرسائل هذا الحساب باسم نشاط التاجر',
@@ -194,6 +205,11 @@ class WhatsAppOwnApp
             return self::refuse($business, 'waba_id', self::BILLED_TO_ABAAD);
         }
 
+        // وحسابُ رسائلٍ لمتجرٍ واحد: متجران على حسابٍ واحد تُحتسب رسائلُهما معًا
+        if (self::accountTaken($waba, $business->id)) {
+            return self::refuse($business, 'waba_id', self::ACCOUNT_TAKEN);
+        }
+
         $number = WhatsAppLinkCheck::number($waba, (string) $token, $phone, $existing?->id);
 
         if (! $number['ok']) {
@@ -207,7 +223,7 @@ class WhatsAppOwnApp
                 $kind['problem'] === WhatsAppLinkCheck::COEXISTENCE_NOT_CHOSEN ? self::ON_PHONE_APP : (string) $kind['problem']);
         }
 
-        $billing = self::billing($waba, (string) $token);
+        $billing = self::read($waba, (string) $token, $phone, $appId, (string) $secret);
 
         if ($billing['state'] === self::BILLING_ABAAD) {
             return self::refuse($business, 'waba_id', self::BILLED_TO_ABAAD, $billing['meta']);
@@ -353,6 +369,137 @@ class WhatsAppOwnApp
     }
 
     /**
+     * الفوترةُ وعلاقةُ الرمز والرقم والحساب — قراءةٌ واحدة تُحفظ وقائعُها معًا.
+     *
+     * @return array{state:string, owner_id:?string, owner_name:?string, facts:array<string, mixed>, meta:array{code:?string, message:?string}}
+     */
+    private static function read(string $waba, string $token, string $phone, ?string $appId, ?string $secret): array
+    {
+        $billing = self::billing($waba, $token);
+        $billing['facts'] += self::relation($waba, $token, $phone, $appId, $secret);
+
+        return $billing;
+    }
+
+    /**
+     * أما زال الرمزُ يُرسل من هذا الحساب، والرقمُ فيه؟ — وكم حسابَ رسائل يصله الرمزُ على هذا الرقم.
+     *
+     * `debug_token` يُسمّي الحساباتِ التي مُنح الرمزُ الإرسالَ منها
+     * (`whatsapp_business_messaging`)، فيُسأل كلٌّ منها: أفيه هذا الرقم؟ وما لم
+     * يُقرأ — قائمةٌ فارغة تعني «كلَّ ما يصله صاحبُ الرمز»، أو نداءٌ فشل — لا
+     * يُعدّ: `reach` يبقى `null`، وهو «لا نعرف» لا «واحد».
+     *
+     * @return array{token_sends:?bool, phone_in_account:?bool, reach:?int}
+     */
+    public static function relation(string $waba, string $token, string $phone, ?string $appId, ?string $secret): array
+    {
+        $inspect = filled($appId) && filled($secret) ? WhatsAppEmbeddedSignup::inspect($token, $appId, $secret) : null;
+        $messaging = $inspect !== null && $inspect['ok'] && $inspect['messaging_waba_ids'] !== [] ? $inspect['messaging_waba_ids'] : null;
+
+        $numbers = WhatsAppEmbeddedSignup::phoneNumbers($waba, $token);
+        $has = fn (array $list) => collect($list)->contains(fn ($n) => (string) ($n['id'] ?? '') === $phone);
+        $phoneIn = $numbers['ok'] ? $has($numbers['numbers']) : null;
+        $sends = $messaging === null ? null : in_array($waba, $messaging, true);
+
+        $reach = null;
+        $others = $messaging === null ? [] : array_values(array_diff($messaging, [$waba]));
+
+        if ($sends === true && $phoneIn === true && count($others) <= 20) {
+            $reach = 1;
+
+            foreach ($others as $other) {
+                $list = WhatsAppEmbeddedSignup::phoneNumbers($other, $token);
+
+                if (! $list['ok']) {
+                    $reach = null;
+                    break;
+                }
+
+                $reach += $has($list['numbers']) ? 1 : 0;
+            }
+        }
+
+        return ['token_sends' => $sends, 'phone_in_account' => $phoneIn, 'reach' => $reach];
+    }
+
+    /** أحسابُ الرسائل هذا مربوطٌ عندنا لمتجرٍ غير هذا؟ — مفصولًا كان أو قائمًا، كالرقم */
+    public static function accountTaken(string $waba, int $businessId): bool
+    {
+        return WhatsAppConnection::where('waba_id', $waba)
+            ->where('owner_type', WhatsAppMode::OWNER_BUSINESS)
+            ->where('business_id', '!=', $businessId)
+            ->exists();
+    }
+
+    /**
+     * على أيّ حساب رسائل تُحتسب رسالةُ هذه الوصلة؟ — يُسمّى في كلّ رسالة، أو لا تخرج.
+     *
+     * ═══ لماذا يُسمّى ═══
+     *
+     * الرقمُ الواحد قد يحمل أكثر من حساب رسائل (حسابٌ لكلّ شريك). وميتا تقول:
+     * رمزٌ يصل على الرقم أكثرَ من حساب ولم يُرسل `messaging_account_id` «قد
+     * تُحتسب رسالتُه على حساب رسائل لم تقصده، أو تُرفض». فيُسمّى الحسابُ الذي
+     * رُوجع دليلُ فوترته — ومعرّفُه معرّفُ الـWABA نفسُه في نموذجها الجديد.
+     *
+     * ═══ ومتى لا يُسمّى ═══
+     *
+     * إصدارٌ أقدم من `messaging_account_since`، أو المفتاحُ مطفأ: لا يُفترض أنّ
+     * ميتا تقبله. فلا تخرج إلّا رسالةُ رمزٍ ثبت أنّه لا يصل على هذا الرقم إلّا
+     * حسابًا واحدًا — وميتا تختاره وحدها. وما لم يثبت يُمنع: رسالةٌ لا تخرج
+     * خيرٌ من رسالةٍ تُحتسب على حسابٍ آخر.
+     *
+     * ووصلاتُ أرقام أبعاد ووصلةُ RIBBON القديمة لا تُمسّ: لا يُضاف إليها شيء.
+     *
+     * @return array{account:?string, problem:?string}
+     */
+    public static function sendAccount(WhatsAppConnection $connection): array
+    {
+        if (! self::is($connection)) {
+            return ['account' => null, 'problem' => null];
+        }
+
+        $reviewed = (string) (((array) $connection->billing_evidence)['waba_id'] ?? '');
+
+        if (! self::billed($connection) || blank($connection->waba_id) || $reviewed !== (string) $connection->waba_id) {
+            return ['account' => null, 'problem' => self::AWAITS_BILLING];
+        }
+
+        if (self::namesAccount()) {
+            return ['account' => (string) $connection->waba_id, 'problem' => null];
+        }
+
+        $reach = ((array) (((array) $connection->metadata)['billing_facts'] ?? []))['reach'] ?? null;
+
+        return $reach === 1 ? ['account' => null, 'problem' => null] : ['account' => null, 'problem' => self::AMBIGUOUS_ACCOUNT];
+    }
+
+    /** أيُسمّى حسابُ الرسائل في الرسالة على إصدار Graph الحاليّ؟ — `whatsapp.messaging_account_*` */
+    public static function namesAccount(): bool
+    {
+        $version = ltrim((string) config('whatsapp.api_version'), 'v');
+        $since = ltrim((string) config('whatsapp.messaging_account_since', 'v22.0'), 'v');
+
+        return (bool) config('whatsapp.messaging_account_param', true)
+            && preg_match('/^\d+(\.\d+)?$/', $version) === 1
+            && version_compare($version, $since, '>=');
+    }
+
+    /**
+     * أيُحوَّل إرسالُ المتجر إلى رقمه؟ — وصلةٌ تُرسل، رُوجع دليلُ فوترتها، ويُعرف حسابُ رسائلها.
+     *
+     * والطريقان يسألانه — التاجرُ من شاشته وفريقُ أبعاد من بطاقة المتجر: من
+     * يُحوَّل قبل ذلك تقف رسائلُه، ومن بقي ينتظر يُرسل كما كان.
+     */
+    public static function readyForOwnMode(?WhatsAppConnection $connection): bool
+    {
+        return $connection !== null
+            && $connection->owner_type === WhatsAppMode::OWNER_BUSINESS
+            && $connection->isUsable()
+            && $connection->billing_state === self::BILLING_CONFIRMED
+            && self::sendAccount($connection)['problem'] === null;
+    }
+
+    /**
      * أتنقض وقائعُ ميتا اليوم دليلًا رُوجع؟ — سببُ النقض، أو `null`.
      *
      * وما لم يُقرأ لا ينقض: `#10` على وسيلة الدفع، أو قائمةٌ لم تُقرأ، لا
@@ -388,6 +535,7 @@ class WhatsAppOwnApp
             ($facts['funding'] ?? null) === 'absent' => self::NO_PAYMENT_METHOD,
             ($facts['abaad_access'] ?? null) === 'shared' => self::SHARED_WITH_ABAAD,
             ($facts['partner_owned'] ?? false) === true => self::PARTNER_OWNED,
+            ($facts['token_sends'] ?? null) === false, ($facts['phone_in_account'] ?? null) === false => self::ACCOUNT_UNBOUND,
             default => null,
         };
     }
@@ -416,6 +564,9 @@ class WhatsAppOwnApp
                 'funding' => $facts['funding'] ?? null,
                 'abaad_access' => $facts['abaad_access'] ?? null,
                 'partner_owned' => (bool) ($facts['partner_owned'] ?? false),
+                'token_sends' => $facts['token_sends'] ?? null,
+                'phone_in_account' => $facts['phone_in_account'] ?? null,
+                'reach' => $facts['reach'] ?? null,
                 'read_at' => filled($facts['read_at'] ?? null) ? Carbon::parse($facts['read_at'])->format('Y-m-d H:i') : null,
             ],
             'blocker' => $blocker === null ? null : self::say($blocker),
@@ -427,6 +578,8 @@ class WhatsAppOwnApp
                 'reviewed_by' => $evidence['reviewed_by'] ?? null,
                 'reviewed_at' => filled($evidence['reviewed_at'] ?? null) ? Carbon::parse($evidence['reviewed_at'])->format('Y-m-d H:i') : null,
             ] : null,
+            // ويُسمّى حسابُ الرسائل في كلّ رسالة؟ — وإلّا فالرمزُ يصل على الرقم حسابًا واحدًا أو لا تخرج
+            'names_account' => self::namesAccount(),
             'kinds' => collect(self::EVIDENCE)->map(fn (string $label, string $key) => ['key' => $key, 'label' => __($label)])->values()->all(),
         ];
     }
@@ -528,7 +681,8 @@ class WhatsAppOwnApp
             return ['ok' => false, 'message' => __('لا ربطَ لهذا المتجر ينتظر إثبات الفوترة.')];
         }
 
-        $billing = self::billing((string) $connection->waba_id, (string) $connection->access_token);
+        $billing = self::read((string) $connection->waba_id, (string) $connection->access_token,
+            (string) $connection->phone_number_id, $connection->token_app_id, $connection->app_secret);
         $record = [
             'kind' => $evidence['kind'],
             'reference' => mb_substr(trim($evidence['reference']), 0, 120),
@@ -540,7 +694,8 @@ class WhatsAppOwnApp
             'funding_mark' => $billing['facts']['funding_mark'],
             'abaad_access' => $billing['facts']['abaad_access'],
         ];
-        $refusal = self::refuted($record, $billing);
+        $refusal = self::accountTaken((string) $connection->waba_id, (int) $connection->business_id)
+            ? self::ACCOUNT_TAKEN : self::refuted($record, $billing);
 
         $connection->forceFill([
             'billing_owner_id' => $billing['owner_id'] ?? $connection->billing_owner_id,
@@ -593,7 +748,8 @@ class WhatsAppOwnApp
             return null;
         }
 
-        $billing = self::billing((string) $connection->waba_id, (string) $connection->access_token);
+        $billing = self::read((string) $connection->waba_id, (string) $connection->access_token,
+            (string) $connection->phone_number_id, $connection->token_app_id, $connection->app_secret);
         $billed = self::billed($connection);
         $stop = $billed ? self::refuted((array) $connection->billing_evidence, $billing, (string) $connection->waba_id) : null;
 
@@ -695,6 +851,9 @@ class WhatsAppOwnApp
             self::NO_PAYMENT_METHOD => __('ميتا تقول إنّ هذا الحساب بلا وسيلة دفع — تُضاف من «الفوترة والمدفوعات» في حساب أعمال التاجر ثمّ يُراجَع الدليل.'),
             self::SHARED_WITH_ABAAD => __('هذا الحساب مشارَكٌ مع نشاط أبعاد عند ميتا — تُزال المشاركة أوّلًا، فحسابُ التاجر لا يُشارَك مع أبعاد.'),
             self::PARTNER_OWNED => __('هذا الحساب يملكه شريكٌ نيابةً عن التاجر — قد يدفع عنه الشريك. يُربط حسابٌ يملكه نشاط التاجر نفسه.'),
+            self::AMBIGUOUS_ACCOUNT => __('لا يُعرف بأمان على أيّ حساب رسائل تُحتسب رسائل هذا الرقم — رمزك يصل على الرقم أكثر من حساب، ولا يُسمّى الحساب في الرسالة على إصدار الواجهة الحاليّ. لا تخرج رسالة حتى يُحسم.'),
+            self::ACCOUNT_UNBOUND => __('رمزك لم يعد يُرسل من حساب الرسائل هذا، أو الرقم لم يعد فيه — راجع صلاحيّات «مستخدم النظام» في حسابك ثمّ أعد الربط.'),
+            self::ACCOUNT_TAKEN => __('حساب الرسائل هذا مربوطٌ لمتجرٍ آخر عندنا — لكلّ متجرٍ حسابُ رسائله ووسيلةُ دفعه. اربط حساب الرسائل الذي يملكه نشاطك.'),
             self::FUNDING_CHANGED => __('تبدّلت وسيلة الدفع على هذا الحساب بعد مراجعة دليله — يُراجَع دليلٌ جديد قبل أن يعود الإرسال.'),
             default => WhatsAppLinkCheck::say($problem),
         };

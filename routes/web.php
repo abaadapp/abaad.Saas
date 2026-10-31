@@ -102,6 +102,7 @@ use App\Http\Controllers\ReviewInviteController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\Store\PaymobController;
 use App\Http\Controllers\Admin\Finance\PaymentLinkController;
+use App\Http\Controllers\Store\SitemapController;
 use App\Http\Controllers\Store\StorefrontController;
 use App\Http\Controllers\SubscriptionExpiredController;
 use App\Http\Controllers\SuperAdmin\AddonController as SubscriptionAddonCatalogController;
@@ -2186,6 +2187,11 @@ Route::domain('{slug}.'.config('storefront.domain'))
             ->where('slug', Storefront::pattern())
             ->name('store.home');
 
+        // وخريطةُ الموقع على جذره — انظر `Website\Sitemap`
+        Route::get('/sitemap.xml', [SitemapController::class, 'show'])
+            ->where('slug', Storefront::pattern())
+            ->name('store.sitemap');
+
         /*
          * وصفحاتُ الموقع الداخليّة — «المتجر» و«من نحن» و«تواصل معنا».
          *
@@ -2247,6 +2253,7 @@ Route::domain('{slug}.'.config('storefront.domain'))
     });
 
 Route::get('/s/{slug}', [StorefrontController::class, 'show'])->name('store.show');
+Route::get('/s/{slug}/sitemap.xml', [SitemapController::class, 'show'])->name('store.show.sitemap');
 Route::get('/s/{slug}/{path}', [StorefrontController::class, 'show'])
     ->where('path', Storefront::PATH)->name('store.show.page');
 // والعدّادان نفسُهما على المسار البديل — انظر حجّتهما في مجموعة النطاق الفرعيّ
@@ -2285,6 +2292,10 @@ Route::domain('{host}')
         Route::get('/', [StorefrontController::class, 'byHost'])
             ->where('host', Storefront::foreignHost())
             ->name('store.custom');
+
+        Route::get('/sitemap.xml', [SitemapController::class, 'byHost'])
+            ->where('host', Storefront::foreignHost())
+            ->name('store.custom.sitemap');
 
         // وصفحاتُه الداخليّة معه — القائمةُ واحدةٌ على الطرق الثلاث
         Route::get('/{path}', [StorefrontController::class, 'byHost'])

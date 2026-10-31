@@ -3,8 +3,10 @@
 namespace App\Support\Store;
 
 use App\Models\Business;
+use App\Models\StoreSite;
 use App\Support\MarketingSettings;
 use App\Support\Storefront;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -26,6 +28,81 @@ use Illuminate\Support\Str;
  */
 final class StoreSeo
 {
+    /**
+     * ما تكتبه شاشةُ «الظهور في البحث» — نصوصُها بلغتيها وإذنُ الفهرسة.
+     *
+     * @var list<string>
+     */
+    public const KEYS = ['store_seo_title', 'store_seo_desc', 'store_seo_title_en', 'store_seo_desc_en', 'store_seo_index'];
+
+    /** متى حفظ صاحبُه من الشاشة آخرَ مرّة — انظر `save` */
+    public const SAVED_AT = 'store_seo_saved_at';
+
+    /**
+     * يحفظ «الظهور في البحث» — ويسري في اللحظة نفسِها، بلا نشر.
+     *
+     * ═══ ولمَ لا يمرّ بالمسوّدة ═══
+     *
+     * كان النصُّ يُكتب في المسوّدة وينتظر «نشر»، وإذنُ الفهرسة يسري فورًا.
+     * فشاشةٌ بزرّ حفظٍ واحد يسري نصفُها ويتأجّل نصفُها، وصاحبُها يقرأ «حُفظ»
+     * ثمّ يبحث عن متجره فيجد العنوانَ القديم. وأسوأُ منه أنّ نشرَ مسوّدةٍ
+     * قديمة — أو استرجاعَ نشرةٍ سابقة — كان يُعيد عنوانًا كتب صاحبُه فوقه.
+     *
+     * فالخمسةُ تُكتب حيّةً معًا في معاملةٍ واحدة: لا يُحفظ نصفُها ويُترك
+     * نصفُها إن تعثّر الحفظ. ولا تمسّ المسوّدةَ إلّا لتُسقط منها ما بقي من
+     * قبلُ (`StoreContent::RETIRED`) — قرّر صاحبُه الآن، فلا يُعرض عليه ثانيةً.
+     * ولا يُنشر بها تصميمٌ ولا صفحةٌ ولا منتج.
+     *
+     * @param  array<string, mixed>  $values  ما أُرسل من `KEYS` وحدها
+     */
+    public static function save(int $businessId, array $values): void
+    {
+        $clean = array_intersect_key($values, array_flip(self::KEYS));
+
+        if ($clean === []) {
+            return;
+        }
+
+        if (array_key_exists('store_seo_index', $clean)) {
+            $clean['store_seo_index'] = filter_var($clean['store_seo_index'], FILTER_VALIDATE_BOOLEAN) ? '1' : '0';
+        }
+
+        DB::transaction(function () use ($businessId, $clean) {
+            MarketingSettings::save($businessId, 'website', $clean + [self::SAVED_AT => now()->toIso8601String()]);
+
+            $site = StoreSite::where('business_id', $businessId)->lockForUpdate()->first();
+
+            if ($site !== null && StoreContent::retired((array) $site->draft) !== []) {
+                // ولا تتقدّم المراجعة: ما يُنشر لم يتبدّل، ومن فتح المحرّرَ لا يُقال له إنّ زميلًا بدّله
+                $site->update(['draft' => array_diff_key((array) $site->draft, array_flip(StoreContent::RETIRED))]);
+            }
+        });
+
+        MarketingSettings::forget($businessId);
+    }
+
+    /**
+     * ما حُفظ في المسوّدة قبل أن يصير البحثُ يسري بالحفظ — ولم يُنشر.
+     *
+     * وهو ما يُعرض على صاحبه في الشاشة ليستعمله أو يتركه: لم يصل زبونًا
+     * قطّ، فلا يُطبَّق عنه بترقية، ولا يُرمى وقد كتبه بيده. وما يساوي
+     * المنشورَ ليس معلّقًا — لا يُعرض.
+     *
+     * @return array<string, string>
+     */
+    public static function pending(int $businessId): array
+    {
+        $draft = StoreSite::where('business_id', $businessId)->value('draft');
+        $retired = StoreContent::retired(is_array($draft) ? $draft : (array) json_decode((string) $draft, true));
+        $live = MarketingSettings::group($businessId, 'website');
+
+        return array_filter(
+            $retired,
+            fn (string $value, string $key) => $value !== (string) ($live[$key] ?? ''),
+            ARRAY_FILTER_USE_BOTH,
+        );
+    }
+
     /**
      * صفحاتٌ لا تُفهرَس — مهما أذِن صاحبُ المتجر بالفهرسة.
      *
@@ -133,9 +210,17 @@ final class StoreSeo
      * والعربيّةُ مفتاحَيها. وفارغُ اللغة يُحسب كما كان (اسمُ النشاط، ثمّ
      * النبذة) — لا يُكتب في وسمٍ إنجليزيّ ما كتبه صاحبُه للعربيّة.
      *
+     * ═══ وللصفحة الإنجليزيّة عنوانُها الأصليّ ═══
+     *
+     * كانت الإنجليزيّةُ (`‎?lang=en‎`) تُعلن أصلَها الصفحةَ العربيّة، وتُعلن
+     * في `hreflang` أنّها ترجمتُها. وغوغل يقرأ الأولى فيطوي الإنجليزيّة في
+     * العربيّة نسخةً مكرّرة — فلا يظهر ما كتبه صاحبُ المتجر لها في نتيجة
+     * بحثٍ قطّ، ولا يجدها من يبحث بالإنجليزيّة. فلكلّ لغةٍ أصلُها نفسُها،
+     * والترجمتان تُذكران معًا في `alternates`.
+     *
      * @param  array<string, string>  $t  نصوصُ الواجهة بلغة الزائر
      * @param  array<string, string>  $identity
-     * @return array{brand: string, title: string, description: string, index: bool, canonical: ?string, image: ?string}
+     * @return array{brand: string, title: string, description: string, index: bool, canonical: ?string, alternates: ?array{ar: string, en: string}, image: ?string}
      */
     public static function head(Business $business, string $page, array $t, array $identity, string $base = '', string $path = '/', string $lang = 'ar'): array
     {
@@ -178,8 +263,11 @@ final class StoreSeo
              */
             'index' => ($site['store_seo_index'] ?? '1') === '1'
                 && ! in_array($page, self::PRIVATE_PAGES, true),
-            // وكلُّ ما يقرؤه غوغل في موضعٍ واحد — العنوانُ الأصليّ منه
-            'canonical' => self::canonical($business, $base, $path),
+            // وكلُّ ما يقرؤه غوغل في موضعٍ واحد — العنوانُ الأصليّ منه، ولكلّ لغةٍ أصلُها
+            'canonical' => ($canonical = self::canonical($business, $base, $path)) === null
+                ? null
+                : ($lang === 'en' ? $canonical.'?lang=en' : $canonical),
+            'alternates' => $canonical === null ? null : ['ar' => $canonical, 'en' => $canonical.'?lang=en'],
             /*
              * وصورةُ المشاركة: ما يظهر حين يُلصَق الرابطُ في واتساب.
              *

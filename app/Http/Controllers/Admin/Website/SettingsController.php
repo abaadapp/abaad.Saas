@@ -20,10 +20,14 @@ use App\Support\Store\StoreSeo;
 use App\Support\Website\Blueprints;
 use App\Support\Website\Commerce;
 use App\Support\Website\MerchantData;
+use App\Support\Website\Publication;
 use App\Support\Website\Readiness;
+use App\Support\Website\SearchReadiness;
 use App\Support\Website\Templates;
+use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -278,8 +282,34 @@ class SettingsController extends Controller
             'fallback' => StoreSeo::head($business, StoreNav::HOME, RibbonTexts::for('ar'), MerchantData::identity($bid)),
             // وما يُكتب في الصفحة الإنجليزيّة حين لا يكتب لها شيئًا — يُحسب بالقاعدة نفسِها
             'fallbackEn' => StoreSeo::head($business, StoreNav::HOME, RibbonTexts::for('en'), MerchantData::identity($bid), lang: 'en'),
-            'limits' => ['title' => Seo::TITLE_MAX, 'desc' => Seo::DESC_MAX],
-        ]);
+        ] + $this->searchState(
+            $business,
+            savedAt: (string) (MarketingSettings::group($bid, 'website')[StoreSeo::SAVED_AT] ?? ''),
+            pending: StoreSeo::pending($bid),
+        ));
+    }
+
+    /**
+     * ما تقرؤه شاشتا «الظهور في البحث» معًا — حدودٌ وحالُ حفظٍ وجاهزيّة.
+     *
+     * والحدودُ من `Seo` نفسِها التي يقيس بها الفحص: رقمٌ في الشاشة وآخرُ في
+     * الفحص يفترقان يومَ يُبدَّل أحدهما، فتقول الشاشةُ «جيّد» والفحصُ «قصير».
+     *
+     * @param  array<string, string>  $pending  ما حُفظ قبل أن يسري البحثُ بالحفظ ولم يُنشر
+     * @return array<string, mixed>
+     */
+    private function searchState(Business $business, string $savedAt, array $pending): array
+    {
+        return [
+            'limits' => [
+                'title' => Seo::TITLE_MAX, 'desc' => Seo::DESC_MAX,
+                'titleMin' => Seo::TITLE_MIN, 'descMin' => Seo::DESC_MIN,
+            ],
+            // وقتُ آخرِ حفظٍ من هذه الشاشة بساعة النظام — وفارغٌ لمن لم يحفظ منها بعد
+            'savedAt' => $savedAt === '' ? null : Carbon::parse($savedAt)->timezone(config('app.timezone'))->format('Y-m-d H:i'),
+            'pending' => $pending,
+            'readiness' => SearchReadiness::forBusiness($business),
+        ];
     }
 
     public function store(): Response|RedirectResponse
@@ -388,7 +418,27 @@ class SettingsController extends Controller
         }
 
         $site = $this->siteOrFail();
-        $seo = $site->seo ?? [];
+        $row = Publication::seo($site);
+
+        /*
+         * ═══ والنموذجُ يفتح على ما يقرؤه غوغل الآن ═══
+         *
+         * من سرى سيوُه بالحفظ (`Website::seoIsLive`) فالصفُّ هو المنشور. ومن
+         * لم يحفظ من هنا منذ الترقية فالمنشورُ ما في آخر نشرة — وما في صفّه
+         * ممّا يخالفها حفظٌ قديمٌ لم يُنشر: يُعرض عليه تحت الحقول ليستعمله أو
+         * يتركه (`pending`)، ولا يُطبَّق عنه بترقيةٍ لم يطلبها.
+         */
+        $snapshot = $site->publishedVersion ? Publication::upgrade((array) $site->publishedVersion->payload)['seo'] : null;
+        $seo = ($snapshot === null || $site->seoIsLive()) ? $row : $snapshot;
+        $pending = [];
+
+        if ($seo !== $row) {
+            foreach (['title', 'description', 'image', 'index'] as $field) {
+                if ($row[$field] !== $seo[$field]) {
+                    $pending[$field] = $field === 'index' ? ($row[$field] ? '1' : '0') : (string) $row[$field];
+                }
+            }
+        }
 
         return Inertia::render('Admin/Website/Seo', $this->shell($site) + [
             'seo' => [
@@ -405,11 +455,34 @@ class SettingsController extends Controller
                 'seo' => $p->seo ?? ['title' => '', 'description' => '', 'image' => ''],
             ])->all(),
             'domain' => $this->domainState(),
-        ]);
+        ] + $this->searchState(
+            Business::findOrFail($this->bid()),
+            savedAt: (string) ($site->seo['saved_at'] ?? ''),
+            pending: $pending,
+        ));
     }
 
+    /**
+     * يحفظ «الظهور في البحث» — ويسري على الموقع المنشور في اللحظة نفسِها.
+     *
+     * ═══ بلا نشر، ولا يمسّ المسوّدة ═══
+     *
+     * كان يكتب في الصفّ ثمّ يزيد المراجعة (`touchDraft`)، والزائرُ يقرأ
+     * اللقطة: فيرى صاحبُه «حُفظ» ويبقى غوغل على القديم حتّى ينشر — ونشرُه
+     * يحمل معه كلَّ ما في مسوّدته من تصميمٍ وصفحاتٍ لم يرضَ عنها بعد.
+     *
+     * فالسيو اليوم يُكتب ويُقرأ من الصفّ (`Published::forBusiness`)، ولا تزيد
+     * به المراجعة: لا «تغييرات غير منشورة» عن شيءٍ سرى. ولا يستعيده
+     * استرجاعُ نسخةٍ قديمة (`Publisher::restore`).
+     *
+     * وللواجهة الخاصّة بابُها في البيت نفسِه — `StoreSeo::save`.
+     */
     public function saveSeo(Request $request)
     {
+        if ($this->theme() !== null) {
+            return $this->themedSaveSeo($request);
+        }
+
         $site = $this->siteOrFail();
 
         $data = $request->validate([
@@ -425,8 +498,10 @@ class SettingsController extends Controller
             'description' => (string) ($data['description'] ?? ''),
             'image' => (string) ($data['image'] ?? ''),
             'index' => (bool) $data['index'],
+            // ومنه يصير الصفُّ مصدرَ الموقع المنشور — انظر `Website::seoIsLive`
+            'saved_at' => now()->toIso8601String(),
         ]]);
-        $site->touchDraft();
+        Activity::log('updated', 'حفظ ظهور موقعه في البحث');
 
         /*
          * ولا تُكتب نسخةٌ ثانية في `settings`.
@@ -438,7 +513,25 @@ class SettingsController extends Controller
          * ومنه تُقرأ الشاشة أعلاه وتُبنى وسومُ الصفحة المنشورة.
          */
 
-        return back()->with('toast', ['msg' => __('حُفظت إعدادات الظهور في البحث'), 'type' => 'success']);
+        return back()->with('toast', ['msg' => __('حُفظ وطُبّق على موقعك — بلا نشر'), 'type' => 'success']);
+    }
+
+    /** «الظهور في البحث» للواجهة الخاصّة — حيًّا، بلغتيه */
+    private function themedSaveSeo(Request $request)
+    {
+        $data = $request->validate([
+            // ولا يُقصّ ما كُتب: الحدُّ حدُّ ما يُقبل، وغوغل يقصّ في نتيجته (`StoreSeo::TITLE_MAX`)
+            'store_seo_title' => ['nullable', 'string', 'max:'.StoreSeo::TITLE_MAX],
+            'store_seo_desc' => ['nullable', 'string', 'max:'.StoreSeo::DESC_MAX],
+            'store_seo_title_en' => ['nullable', 'string', 'max:'.StoreSeo::TITLE_MAX],
+            'store_seo_desc_en' => ['nullable', 'string', 'max:'.StoreSeo::DESC_MAX],
+            'store_seo_index' => ['required', 'boolean'],
+        ]);
+
+        StoreSeo::save($this->bid(), array_map(fn ($v) => $v ?? '', $data));
+        Activity::log('updated', 'حفظ ظهور متجره في البحث');
+
+        return back()->with('toast', ['msg' => __('حُفظ وطُبّق على متجرك — بلا نشر'), 'type' => 'success']);
     }
 
     /** إعدادات الموقع نفسه: اسمُه ووجهتُه */

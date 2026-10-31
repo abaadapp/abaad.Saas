@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import DocumentMeta from '@/Components/DocumentMeta';
 import DocumentPanel, { DocumentAside } from '@/Components/DocumentPanel';
@@ -57,12 +57,27 @@ describe('DocumentPanel', () => {
         expect(sandbox).toBe('allow-same-origin');
     });
 
-    it('يفرّق الأفعال الثلاثة: تكبيرٌ يُري، وتحميلٌ يحفظ، وطباعةٌ تفتح', () => {
+    it('يفرّق الأفعال الثلاثة: تكبيرٌ يُري، وتحميلٌ يحفظ، وطباعةٌ تفتح', async () => {
+        // والتحميلُ زرٌّ يقرأ الجوابَ قبل أن يحفظه — انظر `a-document-downloads-a-pdf-or-says-why-not`
+        const fetch = vi.fn(async () => new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+        vi.stubGlobal('fetch', fetch);
+        URL.createObjectURL = vi.fn(() => 'blob:po');
+        URL.revokeObjectURL = vi.fn();
+        const saved: string[] = [];
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            saved.push(this.download);
+        });
+
         panel();
 
-        const download = screen.getByRole('link', { name: /تحميل/ });
-        expect(download).toHaveAttribute('href', '/admin/purchases/7/pdf');
-        expect(download).toHaveAttribute('download', 'PO-1042.pdf');
+        const download = screen.getByRole('button', { name: /تحميل/ });
+        expect(download).not.toHaveAttribute('href');
+        expect(fetch).not.toHaveBeenCalled();
+        await userEvent.click(download);
+        await vi.waitFor(() => expect(saved).toEqual(['PO-1042.pdf']));
+        expect(fetch.mock.calls[0][0]).toBe('/admin/purchases/7/pdf');
+        click.mockRestore();
+        vi.unstubAllGlobals();
 
         const print = screen.getByRole('link', { name: /طباعة/ });
         expect(print).toHaveAttribute('href', '/admin/purchases/7/pdf');

@@ -118,14 +118,25 @@ describe('a file link carries the business of its page', () => {
         expect(document.querySelector('[data-export-failure]')!.getAttribute('data-export-failure')).toBe('failed');
     });
 
-    it('puts the page business on a document panel’s download and print links', () => {
+    it('puts the page business on a document panel’s download and print links', async () => {
         asBusiness(7);
+        const fetch = vi.fn(async () => new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+        vi.stubGlobal('fetch', fetch);
+        URL.createObjectURL = vi.fn(() => 'blob:doc');
+        URL.revokeObjectURL = vi.fn();
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
         render(<DocumentPanel html="<p>ورقة</p>" url="/admin/orders/INV-000204/pdf" filename="INV-000204.pdf" label="فاتورة" />);
 
+        // الطباعةُ رابط، والتحميلُ زرٌّ يجلب الملفّ — وكلاهما يحمل نشاطَ الصفحة
         const links = [...document.querySelectorAll('a[href]')].map((a) => a.getAttribute('href')!);
-        expect(links.length).toBeGreaterThanOrEqual(2);
-        for (const href of links) {
+        expect(links.length).toBeGreaterThanOrEqual(1);
+        fireEvent.click(screen.getByRole('button', { name: /تحميل/ }));
+        await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+        const fetched = String(fetch.mock.calls[0][0]);
+
+        for (const href of [...links, fetched]) {
             expect(new URL(href, 'http://x').searchParams.get(EXPECTED_BUSINESS_PARAM)).toBe('7');
         }
+        click.mockRestore();
     });
 });

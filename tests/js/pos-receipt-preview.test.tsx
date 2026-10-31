@@ -132,9 +132,22 @@ describe('معاينة فاتورة نقطة البيع', () => {
         expect(print).not.toHaveAttribute('download');
         expect(within(dialog).queryByRole('link', { name: /^طباعة$/ })).toBeNull();
 
-        const download = within(dialog).getByRole('link', { name: /تحميل/ });
-        expect(download.getAttribute('href')).toContain('pos.receipt.pdf');
-        expect(download).toHaveAttribute('download', 'INV-1042.pdf');
+        // والتحميلُ زرٌّ لا يُنزل شيئًا حتى يُضغط، ثمّ يجلب الملفَّ ويقرؤه قبل حفظه
+        const download = within(dialog).getByRole('button', { name: /تحميل/ });
+        expect(download).not.toHaveAttribute('href');
+        expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('pos.receipt.pdf'))).toBe(false);
+
+        fetchMock.mockResolvedValue(new Response('%PDF-1.4', { status: 200, headers: { 'content-type': 'application/pdf' } }));
+        URL.createObjectURL = vi.fn(() => 'blob:receipt');
+        URL.revokeObjectURL = vi.fn();
+        const saved: string[] = [];
+        const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+            saved.push(this.download);
+        });
+        await userEvent.click(download);
+        await waitFor(() => expect(saved).toEqual(['INV-1042.pdf']));
+        expect(String(fetchMock.mock.calls.at(-1)![0])).toContain('pos.receipt.pdf');
+        click.mockRestore();
     });
 
     it('وفشلُ الطلب يُقال في مكانه ولا يُخرج الكاشير من صندوقه', async () => {

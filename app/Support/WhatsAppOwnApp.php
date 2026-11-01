@@ -83,6 +83,15 @@ class WhatsAppOwnApp
     /** حسابُ الرسائل مربوطٌ لمتجرٍ آخر عندنا */
     public const ACCOUNT_TAKEN = 'messaging_account_taken';
 
+    /**
+     * دليلٌ لحسابٍ غير المربوط — بالاسم نفسِه ربّما، وبمعرّفٍ آخر.
+     *
+     * لنشاطٍ واحدٍ عند ميتا أكثرُ من حساب واتساب بالاسم نفسِه (RIBBON: حسابٌ
+     * عليه وسيلةُ الدفع، وآخرُ بلا وسيلة). فالدليلُ يُطابَق بمعرّف الحساب الذي
+     * يكتبه المراجعُ من صفحة ميتا، لا باسم النشاط (`confirmBilling`).
+     */
+    public const EVIDENCE_OTHER_ACCOUNT = 'billing_evidence_other_account';
+
     /** ما يُقبل دليلًا — من ميتا نفسها، باسم نشاط التاجر، لهذا الحساب */
     public const EVIDENCE = [
         'meta_invoice' => 'فاتورة أو إيصال من ميتا لرسائل هذا الحساب باسم نشاط التاجر',
@@ -555,6 +564,9 @@ class WhatsAppOwnApp
 
         return [
             'own_app' => self::is($connection),
+            // ومعرّفُ حساب الرسائل المربوط — به يُطابَق الدليل، لا باسم النشاط
+            'waba_id' => filled($connection->waba_id) ? (string) $connection->waba_id : null,
+            'stages' => self::stages($connection),
             'billing_state' => $connection->billing_state,
             'billing_owner' => $connection->billing_owner_name,
             'awaits_billing' => self::awaitsBilling($connection),
@@ -569,7 +581,7 @@ class WhatsAppOwnApp
                 'reach' => $facts['reach'] ?? null,
                 'read_at' => filled($facts['read_at'] ?? null) ? Carbon::parse($facts['read_at'])->format('Y-m-d H:i') : null,
             ],
-            'blocker' => $blocker === null ? null : self::say($blocker),
+            'blocker' => $blocker === null ? null : self::sayFor($blocker, filled($connection->waba_id) ? (string) $connection->waba_id : null),
             'stopped' => self::is($connection) && $connection->last_error_code === self::AWAITS_BILLING && filled($connection->last_error_message)
                 ? (string) $connection->last_error_message : null,
             'evidence' => $connection->billing_state === self::BILLING_CONFIRMED && $evidence !== [] ? [
@@ -672,13 +684,26 @@ class WhatsAppOwnApp
      * ثمّ تمضي الوصلة إلى خطوتها التالية: تفعيلُ الرقم إن كان جديدًا على
      * Cloud API، وإلّا «نشطة». ولا يمسّ هذا رمزًا ولا رقمًا ولا شيئًا عند ميتا.
      *
-     * @param  array{kind:string, reference:string}  $evidence
+     * ═══ والدليلُ لحسابٍ بمعرّفه ═══
+     *
+     * يكتب المراجعُ معرّفَ الحساب كما رآه في صفحة ميتا (`waba_id`)، ويُطابَق
+     * بمعرّف الحساب المربوط حرفًا بحرف قبل أن يُقرأ شيءٌ أو يُكتب. فدليلُ حسابٍ
+     * آخرَ لنشاطٍ واحد — بالاسم نفسِه — لا يفتح إرسالَ هذا الحساب.
+     *
+     * @param  array{kind:string, reference:string, waba_id?:?string}  $evidence
      * @return array{ok:bool, message:string}
      */
     public static function confirmBilling(WhatsAppConnection $connection, User $reviewer, array $evidence): array
     {
         if (! self::mayConfirm($connection) || ! array_key_exists($evidence['kind'], self::EVIDENCE)) {
             return ['ok' => false, 'message' => __('لا ربطَ لهذا المتجر ينتظر إثبات الفوترة.')];
+        }
+
+        $seen = preg_replace('/\D/', '', (string) ($evidence['waba_id'] ?? ''));
+        $linked = (string) $connection->waba_id;
+
+        if ($seen === '' || $linked === '' || ! hash_equals($linked, $seen)) {
+            return ['ok' => false, 'message' => self::sayFor(self::EVIDENCE_OTHER_ACCOUNT, $linked, $seen)];
         }
 
         $billing = self::read((string) $connection->waba_id, (string) $connection->access_token,
@@ -855,8 +880,76 @@ class WhatsAppOwnApp
             self::ACCOUNT_UNBOUND => __('رمزك لم يعد يُرسل من حساب الرسائل هذا، أو الرقم لم يعد فيه — راجع صلاحيّات «مستخدم النظام» في حسابك ثمّ أعد الربط.'),
             self::ACCOUNT_TAKEN => __('حساب الرسائل هذا مربوطٌ لمتجرٍ آخر عندنا — لكلّ متجرٍ حسابُ رسائله ووسيلةُ دفعه. اربط حساب الرسائل الذي يملكه نشاطك.'),
             self::FUNDING_CHANGED => __('تبدّلت وسيلة الدفع على هذا الحساب بعد مراجعة دليله — يُراجَع دليلٌ جديد قبل أن يعود الإرسال.'),
+            self::EVIDENCE_OTHER_ACCOUNT => __('الدليل ليس لحساب الرسائل المربوط — طابِق معرّف الحساب في صفحة ميتا لا اسم النشاط.'),
             default => WhatsAppLinkCheck::say($problem),
         };
+    }
+
+    /**
+     * العلّةُ ومعها معرّفُ الحساب الذي قُرئ — فلا يُخلط حسابان باسمٍ واحد.
+     *
+     * «بلا وسيلة دفع» تُقال عن حسابٍ بعينه، والحسابُ الذي عليه البطاقةُ قد
+     * يكون غيرَه. ودليلُ حسابٍ آخر يُسمّى معه الحسابان كلاهما.
+     */
+    public static function sayFor(string $problem, ?string $waba, ?string $seen = null): string
+    {
+        $why = self::say($problem);
+
+        if ($problem === self::EVIDENCE_OTHER_ACCOUNT) {
+            return $why.' '.__('المربوط: :linked — والمكتوب من الدليل: :seen.', [
+                'linked' => filled($waba) ? $waba : '—', 'seen' => filled($seen) ? $seen : '—',
+            ]);
+        }
+
+        return filled($waba) ? __('حساب الرسائل :waba — :why', ['waba' => $waba, 'why' => $why]) : $why;
+    }
+
+    /**
+     * ثلاثةُ أسئلةٍ لا يُجاب أحدُها بالآخر — وسيلةُ الدفع، ومن يدفع، وهل يُرسل.
+     *
+     * بطاقةٌ على الحساب لا تقول إنّ رسومه على التاجر (قد يكون خطَّ ائتمانِ شريك)،
+     * والتأكيدُ البشريّ لا يُرسل وحده (قد يبقى حسابُ الرسائل مبهمًا). فيُقال كلٌّ
+     * على حدة، وسببُ المنع بكلماته — ولا يُقال «بلا وسيلة دفع» عن حسابٍ ميتا لم
+     * تقل ذلك عنه.
+     *
+     * @return array{payment_method:string, responsibility:string, sending:string, sending_reason:?string}
+     */
+    public static function stages(WhatsAppConnection $connection): array
+    {
+        $facts = (array) (((array) $connection->metadata)['billing_facts'] ?? []);
+        $funding = $facts['funding'] ?? null;
+        $waba = filled($connection->waba_id) ? (string) $connection->waba_id : null;
+        $own = self::is($connection);
+
+        $responsibility = match ($connection->billing_state) {
+            self::BILLING_CONFIRMED => 'confirmed',
+            self::BILLING_ABAAD => 'abaad',
+            default => 'unproven',
+        };
+
+        $blocker = $facts === [] ? null : self::blocker($facts);
+        $account = $own ? self::sendAccount($connection)['problem'] : null;
+
+        $reason = match (true) {
+            $own && $responsibility === 'abaad' => self::sayFor(self::BILLED_TO_ABAAD, $waba),
+            $own && $responsibility !== 'confirmed' && $blocker !== null => self::sayFor($blocker, $waba),
+            $own && $responsibility !== 'confirmed' && $funding === 'present' => __('على الحساب :waba وسيلة دفع، ولم يُراجَع بعدُ دليلٌ من ميتا على أنّ رسومه على التاجر لا على أبعاد.', ['waba' => $waba ?? '—']),
+            $own && $responsibility !== 'confirmed' => self::sayFor(self::AWAITS_BILLING, $waba),
+            $account !== null => self::sayFor($account, $waba),
+            ! $connection->isUsable() => __('الربط غير نشط بعد.'),
+            default => null,
+        };
+
+        return [
+            'payment_method' => match ($funding) {
+                'present' => 'present',
+                'absent' => 'absent',
+                default => 'unknown',
+            },
+            'responsibility' => $responsibility,
+            'sending' => $reason === null ? 'allowed' : 'blocked',
+            'sending_reason' => $reason,
+        ];
     }
 
     /**

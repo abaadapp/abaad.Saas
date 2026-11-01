@@ -69,6 +69,15 @@ export interface BusinessWhatsApp {
 /** ما يراه فريقُ أبعاد قبل أن يؤكّد أنّ فوترة ميتا على التاجر */
 export interface BillingReview {
     own_app: boolean;
+    /** معرّفُ حساب الرسائل المربوط — به يُطابَق الدليل، لا باسم النشاط */
+    waba_id?: string | null;
+    /** ثلاثةُ أسئلةٍ على حدة: أعليه وسيلةُ دفع؟ ومن يدفع؟ وهل يُرسل؟ */
+    stages?: {
+        payment_method: 'present' | 'absent' | 'unknown';
+        responsibility: 'confirmed' | 'unproven' | 'abaad';
+        sending: 'allowed' | 'blocked';
+        sending_reason: string | null;
+    };
     billing_state: string | null;
     billing_owner: string | null;
     awaits_billing: boolean;
@@ -100,6 +109,18 @@ const FUNDING: Record<string, string> = {
     unreadable: 'لا تُطلعنا ميتا عليها',
 };
 
+const PAYMENT: Record<string, string> = {
+    present: 'موجودة (لا تقول لمن تُحتسب)',
+    absent: 'ميتا تقول لا وسيلة دفع',
+    unknown: 'لا تُطلعنا ميتا عليها — تُرى في دليل التاجر',
+};
+
+const RESPONSIBILITY: Record<string, string> = {
+    confirmed: 'على التاجر — رُوجع دليلها',
+    unproven: 'غير مثبتة بعد — تنتظر مراجعة دليل',
+    abaad: 'على أبعاد — يُردّ الربط',
+};
+
 const ACCESS: Record<string, string> = {
     none: 'لا يملكه ولا يشاركه',
     shared: 'مشارَكٌ معه',
@@ -116,9 +137,11 @@ const ACCESS: Record<string, string> = {
  */
 export function BillingReviewBlock({ businessId, review }: { businessId: number; review: BillingReview }) {
     const t = useTranslate();
-    const confirm = useForm({ evidence_kind: '', evidence_reference: '', evidence_checked: false });
+    const confirm = useForm({ evidence_kind: '', evidence_reference: '', evidence_waba_id: '', evidence_checked: false });
     const facts = review.facts;
-    const ready = confirm.data.evidence_kind !== '' && confirm.data.evidence_reference.trim().length >= 3 && confirm.data.evidence_checked;
+    const ready = confirm.data.evidence_kind !== '' && confirm.data.evidence_reference.trim().length >= 3
+        && confirm.data.evidence_waba_id.trim() !== '' && confirm.data.evidence_checked;
+    const stages = review.stages;
 
     return (
         <div className="mt-2 border-t border-[#f0f0f0] pt-2" data-testid="whatsapp-billing" data-state={review.billing_state ?? ''}>
@@ -132,6 +155,25 @@ export function BillingReviewBlock({ businessId, review }: { businessId: number;
                           : t('لم يُراجَع دليلها — يُراجَع قبل أن ينتقل إلى تطبيقه')}
                 </dd>
             </div>
+            {review.waba_id && (
+                <p className="mt-1 text-[11px] text-[#374151]" data-testid="whatsapp-billing-account">
+                    {t('حساب الرسائل المربوط')}: <bdi dir="ltr">{review.waba_id}</bdi>
+                </p>
+            )}
+            {stages && (
+                <ul className="mt-1 space-y-0.5 text-[11px]" data-testid="whatsapp-billing-stages">
+                    <li data-testid="whatsapp-billing-stage-payment">
+                        {t('وسيلة الدفع على هذا الحساب')}: {t(PAYMENT[stages.payment_method])}
+                    </li>
+                    <li data-testid="whatsapp-billing-stage-responsibility">
+                        {t('مسؤولية الرسوم')}: {t(RESPONSIBILITY[stages.responsibility])}
+                    </li>
+                    <li data-testid="whatsapp-billing-stage-sending" className={stages.sending === 'allowed' ? 'text-[#047857]' : 'text-[#b91c1c]'}>
+                        {t('الإرسال')}: {stages.sending === 'allowed' ? t('مسموح') : t('محظور')}
+                        {stages.sending_reason ? ` — ${stages.sending_reason}` : ''}
+                    </li>
+                </ul>
+            )}
             {review.stopped && <p className="mt-1 text-[11px] text-[#b91c1c]">{review.stopped}</p>}
             {facts && (
                 <ul className="mt-1 space-y-0.5 text-[11px] text-[#6b7280]" data-testid="whatsapp-billing-facts">
@@ -184,6 +226,14 @@ export function BillingReviewBlock({ businessId, review }: { businessId: number;
                         placeholder={t('مرجعه: رقم الفاتورة أو تاريخ الصورة')}
                         data-testid="whatsapp-billing-reference"
                     />
+                    <Input
+                        value={confirm.data.evidence_waba_id}
+                        onChange={(e) => confirm.setData('evidence_waba_id', e.target.value)}
+                        placeholder={t('معرّف الحساب كما في صفحة ميتا (WABA ID)')}
+                        dir="ltr"
+                        inputMode="numeric"
+                        data-testid="whatsapp-billing-waba"
+                    />
                     <label className="flex items-start gap-2 text-[11px] leading-relaxed text-[#374151]">
                         <input
                             type="checkbox"
@@ -192,10 +242,10 @@ export function BillingReviewBlock({ businessId, review }: { businessId: number;
                             onChange={(e) => confirm.setData('evidence_checked', e.target.checked)}
                             data-testid="whatsapp-billing-checked"
                         />
-                        <span>{t('رأيت في الدليل اسمَ نشاط التاجر ومعرّفَ هذا الحساب، ووسيلةَ دفعٍ ليست لأبعاد.')}</span>
+                        <span>{t('رأيت في الدليل معرّفَ هذا الحساب نفسه — لا اسمَ النشاط وحده — ووسيلةَ دفعٍ ليست لأبعاد.')}</span>
                     </label>
-                    {(confirm.errors.evidence_kind || confirm.errors.evidence_reference || confirm.errors.evidence_checked) && (
-                        <p className="text-[11px] text-[#b91c1c]">{confirm.errors.evidence_kind || confirm.errors.evidence_reference || confirm.errors.evidence_checked}</p>
+                    {(confirm.errors.evidence_kind || confirm.errors.evidence_reference || confirm.errors.evidence_waba_id || confirm.errors.evidence_checked) && (
+                        <p className="text-[11px] text-[#b91c1c]">{confirm.errors.evidence_kind || confirm.errors.evidence_reference || confirm.errors.evidence_waba_id || confirm.errors.evidence_checked}</p>
                     )}
                     <Button type="submit" variant="outline" size="sm" loading={confirm.processing} disabled={! ready} data-testid="whatsapp-billing-confirm">
                         <Check />

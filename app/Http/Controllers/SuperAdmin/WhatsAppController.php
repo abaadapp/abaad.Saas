@@ -521,10 +521,12 @@ class WhatsAppController extends Controller
             'evidence_kind' => ['required', Rule::in(array_keys(\App\Support\WhatsAppOwnApp::EVIDENCE))],
             'evidence_reference' => ['required', 'string', 'min:3', 'max:120'],
             'evidence_checked' => ['accepted'],
+            // ومعرّفُ الحساب كما في صفحة ميتا — يُطابَق بالمربوط لا باسم النشاط
+            'evidence_waba_id' => ['required', 'string', 'max:40'],
         ]);
 
         $result = \App\Support\WhatsAppOwnApp::confirmBilling($own, $request->user(), [
-            'kind' => $data['evidence_kind'], 'reference' => $data['evidence_reference'],
+            'kind' => $data['evidence_kind'], 'reference' => $data['evidence_reference'], 'waba_id' => $data['evidence_waba_id'],
         ]);
 
         if (! $result['ok']) {

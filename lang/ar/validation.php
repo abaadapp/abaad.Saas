@@ -641,6 +641,7 @@ return [
         'billing_ack' => 'الإقرار بأنّ رسوم ميتا عليك',
         'evidence_kind' => 'نوع دليل الفوترة',
         'evidence_reference' => 'مرجع الدليل',
+        'evidence_waba_id' => 'معرّف الحساب في الدليل',
         'evidence_checked' => 'الإقرار بمراجعة الدليل',
         'display_phone_number' => 'الرقم المعروض',
         'access_token' => 'رمز الوصول',
